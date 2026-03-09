@@ -7,8 +7,8 @@ import type { TenantContext } from './TenantContext';
  */
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { userId: string; isSuperAdmin: boolean };
-    user: { userId: string; isSuperAdmin: boolean };
+    payload: { userId: string; isSuperAdmin: boolean; tenantId?: string };
+    user: { userId: string; isSuperAdmin: boolean; tenantId?: string };
   }
 }
 

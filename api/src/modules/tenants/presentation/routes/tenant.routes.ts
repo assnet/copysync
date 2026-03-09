@@ -46,7 +46,7 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { userId } = request.user;
       const result = await listUserTenantsUseCase.execute({ userId });
-      httpResponse.ok(reply, TenantPresenter.toTenantList(result.tenants));
+      reply.status(200).send(result.tenants.map(TenantPresenter.toTenantItem));
     },
   );
 
@@ -78,10 +78,22 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.body as { tenantId: string };
-      const { userId } = request.user;
+      const { userId, isSuperAdmin } = request.user;
 
       const result = await switchTenantUseCase.execute({ userId, targetTenantId: tenantId });
-      httpResponse.ok(reply, TenantPresenter.toSwitchResult(result));
+
+      // Gera novo access token com contexto do tenant embutido
+      const accessToken = await reply.jwtSign({
+        userId,
+        isSuperAdmin,
+        tenantId: result.tenantId,
+      });
+
+      reply.status(200).send({
+        accessToken,
+        tenantId: result.tenantId,
+        tenantName: result.tenantName,
+      });
     },
   );
 }
