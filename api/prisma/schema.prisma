@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserRole {
+  SUPER_ADMIN // global, outside any specific tenant
+  ADMIN       // full admin inside a tenant
+  OPERATOR    // day-to-day operator inside a tenant
+}
+
+enum SessionStatus {
+  PENDING       // created, awaiting first connection attempt
+  CONNECTING    // connection in progress
+  CONNECTED     // connected and operational
+  DISCONNECTED  // temporarily disconnected
+  LOGGED_OUT    // explicit logout
+  FAILED        // unrecoverable failure
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AuditAction {
+  USER_CREATED
+  USER_UPDATED
+  USER_LOGGED_IN
+  USER_LOGGED_OUT
+  TENANT_CREATED
+  TENANT_UPDATED
+  TENANT_SUSPENDED
+  SESSION_CREATED
+  SESSION_CONNECTED
+  SESSION_DISCONNECTED
+  SESSION_LOGGED_OUT
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TENANT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  userTenants UserTenant[]
+  sessions    Session[]
+  messages    Message[]
+  auditLogs   AuditLog[]
+
+  @@index([slug])
+  @@map("tenants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  isSuperAdmin Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userTenants   UserTenant[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER <-> TENANT  (membership + role)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserTenant {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      UserRole @default(OPERATOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("user_tenants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFRESH TOKEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION  (one WhatsApp session per tenant)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Session {
+  id         String        @id @default(cuid())
+  tenantId   String
+  name       String        // human-friendly label given by the user
+  phone      String?       // phone number after successful connection
+  status     SessionStatus @default(PENDING)
+  lastSeenAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authState SessionAuthState?
+  messages  Message[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION AUTH STATE  (persists Baileys/engine credentials)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SessionAuthState {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  data      Json     // engine credentials — keep encrypted at-rest if possible
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("session_auth_states")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MESSAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Message {
+  id          String           @id @default(cuid())
+  tenantId    String
+  sessionId   String
+  externalId  String?          // WhatsApp-assigned message ID
+  direction   MessageDirection
+  status      MessageStatus    @default(PENDING)
+  from        String
+  to          String
+  body        String?          @db.Text
+  mediaUrl    String?
+  mediaType   String?          // image | video | audio | document | sticker
+  rawPayload  Json?            // full original payload for audit / debugging
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+  failReason  String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  session Session @relation(fields: [sessionId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, sessionId])
+  @@index([tenantId, status])
+  @@index([externalId])
+  @@index([from, tenantId])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  tenantId  String?     // null for super-admin actions
+  userId    String?     // null for system actions
+  action    AuditAction
+  meta      Json?       // contextual data (IDs, previous values, etc.)
+  ip        String?
+  createdAt DateTime    @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
