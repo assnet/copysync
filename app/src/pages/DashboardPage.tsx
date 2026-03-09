@@ -20,7 +20,7 @@ export function DashboardPage() {
   useEffect(() => {
     sessionService
       .list()
-      .then((r) => setSessions(r.sessions))
+      .then((r) => setSessions(r.sessions ?? []))
       .catch(() => setSessions([]))
       .finally(() => setLoading(false));
   }, []);

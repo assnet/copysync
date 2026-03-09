@@ -29,7 +29,7 @@ export default function SessionsPage() {
     try {
       setError(null);
       const data = await sessionService.list();
-      setSessions(data.sessions);
+      setSessions(data.sessions ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar sessões');
     } finally {

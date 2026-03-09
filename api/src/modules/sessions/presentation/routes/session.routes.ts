@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
-import { httpResponse } from '../../../../shared/http/httpResponse';
 import { SessionPresenter } from '../presenters/SessionPresenter';
 import { createSessionBodySchema, sessionIdParamSchema } from '../schemas/session.schema';
 import { PrismaSessionRepository } from '../../infrastructure/repositories/PrismaSessionRepository';
@@ -80,7 +79,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { name, engine } = request.body as { name: string; engine?: string };
 
       const session = await createSessionUseCase.execute({ tenantId, userId, name, engine });
-      httpResponse.created(reply, SessionPresenter.toSessionItem(session));
+      reply.status(201).send(SessionPresenter.toSessionItem(session));
     },
   );
 
@@ -110,7 +109,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const sessions = await listSessionsUseCase.execute({ tenantId });
-      httpResponse.ok(reply, SessionPresenter.toSessionList(sessions));
+      reply.status(200).send(SessionPresenter.toSessionList(sessions));
     },
   );
 
@@ -136,7 +135,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const session = await getSessionByIdUseCase.execute({ sessionId: id, tenantId });
-      httpResponse.ok(reply, SessionPresenter.toSessionItem(session));
+      reply.status(200).send(SessionPresenter.toSessionItem(session));
     },
   );
 
@@ -171,7 +170,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await getSessionStatusUseCase.execute({ sessionId: id, tenantId });
-      httpResponse.ok(reply, SessionPresenter.toSessionStatus(result));
+      reply.status(200).send(SessionPresenter.toSessionStatus(result));
     },
   );
 
@@ -207,7 +206,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await connectSessionUseCase.execute({ sessionId: id, tenantId, userId });
-      httpResponse.ok(reply, SessionPresenter.toConnectResult(result));
+      reply.status(200).send(SessionPresenter.toConnectResult(result));
     },
   );
 
@@ -239,7 +238,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await disconnectSessionUseCase.execute({ sessionId: id, tenantId, userId });
-      httpResponse.ok(reply, SessionPresenter.toActionResult(result));
+      reply.status(200).send(SessionPresenter.toActionResult(result));
     },
   );
 
@@ -273,7 +272,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await reconnectSessionUseCase.execute({ sessionId: id, tenantId, userId });
-      httpResponse.ok(reply, SessionPresenter.toConnectResult(result));
+      reply.status(200).send(SessionPresenter.toConnectResult(result));
     },
   );
 
@@ -306,7 +305,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await logoutSessionUseCase.execute({ sessionId: id, tenantId, userId });
-      httpResponse.ok(reply, SessionPresenter.toActionResult(result));
+      reply.status(200).send(SessionPresenter.toActionResult(result));
     },
   );
 
@@ -339,7 +338,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await getSessionQrUseCase.execute({ sessionId: id, tenantId });
-      httpResponse.ok(reply, SessionPresenter.toQrResult(result));
+      reply.status(200).send(SessionPresenter.toQrResult(result));
     },
   );
 
@@ -372,7 +371,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const result = await getSessionPairingCodeUseCase.execute({ sessionId: id, tenantId });
-      httpResponse.ok(reply, SessionPresenter.toPairingCodeResult(result));
+      reply.status(200).send(SessionPresenter.toPairingCodeResult(result));
     },
   );
 }

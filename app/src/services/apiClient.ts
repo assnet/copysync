@@ -24,6 +24,17 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ error?: { message?: string }; message?: string }>) => {
+    // Token inválido/expirado — limpa estado e redireciona ao login
+    if (error.response?.status === 401) {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('activeTenantId');
+      localStorage.removeItem('activeTenantName');
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+    }
+
     const msg =
       error.response?.data?.error?.message ??
       error.response?.data?.message ??
