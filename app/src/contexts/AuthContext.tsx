@@ -19,8 +19,10 @@ interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function loadInitialState(): AuthState {
+  const raw = localStorage.getItem('authUser');
+  const user: AuthUser | null = raw ? (JSON.parse(raw) as AuthUser) : null;
   return {
-    user: null,
+    user,
     tenants: [],
     accessToken: localStorage.getItem('accessToken'),
     refreshToken: localStorage.getItem('refreshToken'),
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem('accessToken', result.accessToken);
     localStorage.setItem('refreshToken', result.refreshToken);
+    localStorage.setItem('authUser', JSON.stringify(result.user));
 
     setState({
       user: result.user,
@@ -58,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('authUser');
     localStorage.removeItem('activeTenantId');
     localStorage.removeItem('activeTenantName');
 

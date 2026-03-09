@@ -164,11 +164,11 @@ function DrawerContent({ onClose }: DrawerContentProps) {
             {user?.name?.[0]?.toUpperCase() ?? 'U'}
           </Avatar>
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="body2" fontWeight={600} noWrap>
-              {user?.name ?? '—'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
+            <Typography variant="caption" color="text.secondary" noWrap display="block">
               {user?.email ?? '—'}
+            </Typography>
+            <Typography variant="caption" color="text.disabled" noWrap>
+              {user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}
             </Typography>
           </Box>
         </Box>

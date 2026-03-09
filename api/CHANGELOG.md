@@ -11,6 +11,90 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.4.0] — 2026-03-09 — Redesign SaaS do painel + correções de QR e persistência de sessão de usuário
+
+### Added
+
+#### Tema global — dark/light mode
+
+- **`buildTheme(mode: PaletteMode)`** — factory de tema MUI substituindo o export estático anterior; suporta alternância claro/escuro em runtime
+- Paleta nova: `primary #4f70e0`, `secondary #7c3aed`; dark: `background.default #0f1117`, `paper #1a1d27`; light: `background.default #f4f6fb`, `paper #ffffff`
+- Overrides de componentes MUI: `Button`, `Card`, `Drawer`, `AppBar`, `TextField`, `Chip`, `ListItemButton`, `Dialog`, `IconButton`, `Alert`, `Tooltip`; scroll global customizado
+
+#### ThemeContext — persistência do tema
+
+- **`src/contexts/ThemeContext.tsx`** — `ColorModeProvider` com hook `useColorMode()`; modo persiste em `localStorage.colorMode`; `App.tsx` atualizado para usar `ColorModeProvider` em vez de `ThemeProvider` direto
+
+#### Componentes reutilizáveis — `src/components/`
+
+- **`PageHeader.tsx`** — cabeçalho de página: `{ title, subtitle, action, sx }`; flex layout responsivo
+- **`StatCard.tsx`** — cartão de métrica: `{ label, value, icon, accentColor }`; barra lateral de acento colorido + caixa de ícone
+- **`EmptyState.tsx`** — estado vazio com borda tracejada: `{ icon, title, description, action }`
+- **`SectionCard.tsx`** — card com header e divisor: `{ title, subtitle, action, children, noPadding }`
+- **`src/components/index.ts`** — barrel export dos quatro componentes
+
+#### AppLayout — sidebar SaaS
+
+- Reescrito com `DRAWER_WIDTH=248`; componente `NavLogo` com ícone "W" gradiente; seção "EM BREVE" com itens desabilitados (Contatos, Campanhas, Flows, Automação, Assistentes, Métricas) e `<Chip label="Em breve" />` inline
+- Botão de toggle claro/escuro na topbar; chip do tenant ativo; bloco inferior da sidebar exibe **e-mail** e **papel** do usuário (`Super Admin` / `Usuário`)
+
+#### LoginPage — layout split-panel
+
+- Reescrita com painel esquerdo (gradiente `primary.dark → secondary.main`) contendo logo, lista de features da plataforma e círculos decorativos; painel direito com formulário de login
+- toggle de tema no canto superior direito; painel esquerdo oculto em `xs/sm` (responsivo); card de credenciais de desenvolvimento exibido só em `IS_DEV`
+
+#### DashboardPage — visão geral operacional
+
+- Reescrita com saudação por horário (Bom dia / Boa tarde / Boa noite), chip do tenant ativo, 4 `StatCard` com cores de acento (total/conectadas/aguardando/com problemas)
+- `SectionCard` com preview das 5 sessões mais recentes (dot de status + nome + telefone) e botão "Gerenciar"
+- `SectionCard` com lista dos próximos módulos (Chatbots, Flows visuais, Campanhas, Assistentes IA, Métricas)
+
+#### SessionsPage
+
+- Atualizada para usar `PageHeader` + `EmptyState` dos componentes reutilizáveis; lógica de negócio intacta
+
+#### SessionCard — card moderno
+
+- Reescrito: avatar com inicial + dot de status (verde/amarelo/vermelho/cinza) posicionado no canto inferior-direito do avatar
+- `SessionStatusChip` inline; linha com ícone de telefone + número; data formatada de `updatedAt`
+- Efeito hover: `border-color alpha(primary, 0.35)` + `box-shadow`; ações separadas em grupo esquerdo (connect/disconnect/reconnect/logout como `IconButton`) e grupo direito (QR + delete)
+
+#### QrCodeDialog — modal refinado
+
+- Reescrito: sem `DialogTitle` — header customizado com nome da sessão, `SessionStatusChip`, botão de refresh e close
+- Frame do QR: `border 2px solid alpha(primary, 0.4)` + `boxShadow` de glow; fundo sempre branco para o QR
+- Dot animado com `@keyframes pulse` (opacidade 1→0.3→1 a 1,5s) indicando polling ativo
+
+### Fixed
+
+#### QR — renderização correta
+
+- Instalado `qrcode.react`; tela de QR substituída de `<img src={qrCode}>` (que não renderizava string raw do Baileys) para `<QRCodeSVG value={qrCode} />` — QR agora scaneável corretamente
+
+#### QR — loop infinito de polling
+
+- **Causa raiz:** callback `onStatusChange` criava novo objeto `{ ...prev, status }` → referência de `session` mudava → `useEffect([session])` disparava novamente → novo `setInterval` → loop exponencial
+- **Correção 1** (`QrCodeDialog`): dependência trocada de `session` (objeto) para `session?.id` (string primitiva); `fetchStateRef` para evitar stale closure no intervalo; cleanup ao fechar o dialog
+- **Correção 2** (`SessionsPage`): `handleStatusChange` memoizado com `useCallback` para estabilizar referência entre re-renders
+
+#### Persistência do usuário após reload
+
+- **Causa:** `loadInitialState` em `AuthContext` só restaurava `accessToken` do `localStorage`; `user` voltava como `null` após qualquer reload, quebrando a exibição de e-mail/papel na sidebar
+- **Correção:** objeto `user` serializado em `localStorage.authUser` no login; restaurado no `loadInitialState`; removido no logout
+
+### Tested
+
+- `tsc --noEmit` (app/) — zero erros de tipagem
+- Smoke test manual no browser:
+  - Login → token e dados do usuário persistidos corretamente (e-mail e papel exibidos na sidebar após reload)
+  - Toggle claro/escuro → persist no localStorage, aplicado imediatamente em toda a UI
+  - Dashboard → StatCards renderizando totais corretos de sessões; preview de sessões ativas listando corretamente
+  - Sessões → `SessionCard` com dot de status correto; ações de connect/disconnect/reconnect/logout funcionando
+  - QR dialog → QR code renderiza e é scaneável; polling a cada 5 s sem loops; indicador de pulse visível durante atualização
+  - Responsividade verificada (painel esquerdo do login oculto em telas menores)
+
+---
+
 ## [0.3.0] — 2026-03-09 — OpenAPI 3.0 / Swagger UI
 
 ### Added
