@@ -71,10 +71,11 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  userTenants UserTenant[]
-  sessions    Session[]
-  messages    Message[]
-  auditLogs   AuditLog[]
+  userTenants      UserTenant[]
+  sessions         Session[]
+  sessionAuthStates SessionAuthState[]
+  messages         Message[]
+  auditLogs        AuditLog[]
 
   @@index([slug])
   @@map("tenants")
@@ -146,14 +147,19 @@ model RefreshToken {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Session {
-  id         String        @id @default(cuid())
-  tenantId   String
-  name       String        // human-friendly label given by the user
-  phone      String?       // phone number after successful connection
-  status     SessionStatus @default(PENDING)
-  lastSeenAt DateTime?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id                 String        @id @default(cuid())
+  tenantId           String
+  name               String        // human-friendly label given by the user
+  engine             String        @default("baileys") // engine managing this session
+  phone              String?       // phone number after successful pairing
+  externalRef        String?       // engine-specific session reference
+  status             SessionStatus @default(PENDING)
+  lastConnectedAt    DateTime?     // when the session last reached CONNECTED
+  lastDisconnectedAt DateTime?     // when the session last reached DISCONNECTED
+  lastSeenAt         DateTime?     // timestamp of last inbound/outbound message
+  deletedAt          DateTime?     // soft-delete
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   authState SessionAuthState?
@@ -161,22 +167,28 @@ model Session {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, deletedAt])
   @@map("sessions")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SESSION AUTH STATE  (persists Baileys/engine credentials)
+// SESSION AUTH STATE  (persists engine credentials — one record per session)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model SessionAuthState {
-  id        String   @id @default(cuid())
-  sessionId String   @unique
-  data      Json     // engine credentials — keep encrypted at-rest if possible
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  sessionId    String   @unique
+  tenantId     String
+  provider     String   @default("baileys") // engine/provider identifier
+  statePayload Json     // credentials blob — encrypt at-rest in production
+  version      Int      @default(0)         // increments on each update
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
 
+  @@index([tenantId])
   @@map("session_auth_states")
 }
 

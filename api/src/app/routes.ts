@@ -2,6 +2,7 @@ import { env } from '../shared/config/env';
 import { authRoutes } from '../modules/auth/presentation/routes/auth.routes';
 import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.routes';
 import { meRoutes } from '../modules/users/presentation/routes/me.routes';
+import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFastifyInstance = any;
@@ -30,8 +31,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── Me route (auth required, no tenant scope) ──────────────────────────────
   await app.register(meRoutes, { prefix: `${env.API_PREFIX}/me` });
 
+  // ── Session routes (auth + tenant scope required) ──────────────────────────
+  await app.register(sessionRoutes, { prefix: `${env.API_PREFIX}/sessions` });
+
   // Future modules:
-  // await app.register(sessionRoutes,  { prefix: `${env.API_PREFIX}/sessions` });
   // await app.register(messageRoutes,  { prefix: `${env.API_PREFIX}/messages` });
   // await app.register(contactRoutes,  { prefix: `${env.API_PREFIX}/contacts` });
 }
