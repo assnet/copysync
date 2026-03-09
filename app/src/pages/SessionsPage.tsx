@@ -41,13 +41,13 @@ export default function SessionsPage() {
     loadSessions();
   }, [loadSessions]);
 
-  function handleStatusChange(sessionId: string, status: SessionStatus) {
+  const handleStatusChange = useCallback((sessionId: string, status: SessionStatus) => {
     setSessions((prev) =>
       prev.map((s) => (s.id === sessionId ? { ...s, status } : s))
     );
     // Atualiza também a sessão selecionada no QR dialog
     setQrSession((prev) => (prev?.id === sessionId ? { ...prev, status } : prev));
-  }
+  }, []);
 
   async function handleCreated() {
     setCreateOpen(false);

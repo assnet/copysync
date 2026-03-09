@@ -56,12 +56,18 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
     }
   }, [session, onStatusChange]);
 
-  // Polling enquanto aguardando QR / conectando
+  // Mantém ref de fetchState sempre atualizada para uso seguro dentro do setInterval
+  const fetchStateRef = useRef(fetchState);
+  useEffect(() => { fetchStateRef.current = fetchState; }, [fetchState]);
+
+  // Polling enquanto aguardando QR / conectando.
+  // Depende de session?.id (não do objeto inteiro) para não re-triggar quando o pai
+  // cria um novo objeto {…, status} com o mesmo ID ao receber onStatusChange.
   useEffect(() => {
-    if (!open || !session) return;
+    if (!open || !session?.id) return;
 
     setLoading(true);
-    fetchState().finally(() => setLoading(false));
+    fetchStateRef.current().finally(() => setLoading(false));
 
     const interval = setInterval(async () => {
       const s = statusRef.current;
@@ -69,11 +75,20 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
         clearInterval(interval);
         return;
       }
-      await fetchState();
+      await fetchStateRef.current();
     }, POLLING_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [open, session]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Limpa estado local ao fechar o dialog
+  useEffect(() => {
+    if (!open) {
+      setQrCode(null);
+      setStatus(null);
+      setError(null);
+    }
+  }, [open]);
 
   const isWaiting = status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING';
 
