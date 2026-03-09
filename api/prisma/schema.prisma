@@ -62,6 +62,36 @@ enum AuditAction {
   SESSION_DELETED
 }
 
+enum ConversationStatus {
+  OPEN    // conversa aberta, aguardando ou em atendimento
+  PENDING // aguardando primeira resposta do operador
+  WAITING // na fila de espera
+  BOT     // sendo atendida por bot/automação
+  CLOSED  // encerrada
+}
+
+enum ChatMessageDirection {
+  INBOUND  // mensagem recebida do contato
+  OUTBOUND // mensagem enviada pelo operador/sistema
+  SYSTEM   // evento interno (ex.: "atendimento encerrado")
+}
+
+enum ChatMessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  DOCUMENT
+  EVENT
+  STICKER
+}
+
+enum ChatMessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TENANT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,11 +104,14 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  userTenants      UserTenant[]
-  sessions         Session[]
+  userTenants       UserTenant[]
+  sessions          Session[]
   sessionAuthStates SessionAuthState[]
-  messages         Message[]
-  auditLogs        AuditLog[]
+  messages          Message[]
+  auditLogs         AuditLog[]
+  chatContacts      ChatContact[]
+  chatConversations ChatConversation[]
+  chatMessages      ChatMessage[]
 
   @@index([slug])
   @@map("tenants")
@@ -97,9 +130,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  userTenants   UserTenant[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
+  userTenants           UserTenant[]
+  refreshTokens         RefreshToken[]
+  auditLogs             AuditLog[]
+  assignedConversations ChatConversation[] @relation("AssignedConversations")
 
   @@index([email])
   @@map("users")
@@ -164,9 +198,10 @@ model Session {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  authState SessionAuthState?
-  messages  Message[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authState         SessionAuthState?
+  messages          Message[]
+  chatConversations ChatConversation[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -252,4 +287,87 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT CONTACT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ChatContact {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  phone     String
+  avatarUrl String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations ChatConversation[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@map("chat_contacts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT CONVERSATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ChatConversation {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  sessionId          String?            // sessão WhatsApp vinculada
+  contactId          String
+  externalChatId     String?            // ID externo da conversa (ex: JID do WhatsApp)
+  channel            String             @default("whatsapp")
+  status             ConversationStatus @default(OPEN)
+  unreadCount        Int                @default(0)
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  assignedUserId     String?            // operador responsável
+  queueName          String?
+  tags               String[]           @default([])
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session      Session?      @relation(fields: [sessionId], references: [id])
+  contact      ChatContact   @relation(fields: [contactId], references: [id])
+  assignedUser User?         @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  messages     ChatMessage[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, lastMessageAt])
+  @@index([tenantId, sessionId])
+  @@index([tenantId, contactId])
+  @@map("chat_conversations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT MESSAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ChatMessage {
+  id                String               @id @default(cuid())
+  tenantId          String
+  conversationId    String
+  direction         ChatMessageDirection
+  type              ChatMessageType      @default(TEXT)
+  content           String?              @db.Text
+  mediaUrl          String?
+  mimeType          String?
+  externalMessageId String?              // ID externo (ex: messageId do WhatsApp)
+  status            ChatMessageStatus?
+  sentAt            DateTime?
+  createdAt         DateTime             @default(now())
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, conversationId])
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
 }

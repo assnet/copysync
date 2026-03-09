@@ -1,4 +1,4 @@
-import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, alpha, useTheme } from '@mui/material';
+import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, alpha, useTheme } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import RouterOutlinedIcon from '@mui/icons-material/RouterOutlined';
@@ -9,7 +9,9 @@ import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import AutoGraphOutlinedIcon from '@mui/icons-material/AutoGraphOutlined';
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
-import type { ChatConversation } from '../types';
+import { useState } from 'react';
+import type { ChatConversation, ConversationStatus } from '../types';
+import type { UpdateConversationRequest } from '@/types/chat.api.types';
 import { formatPhone, getStatusConfig } from '../utils';
 
 interface SectionProps {
@@ -81,11 +83,21 @@ function ComingSoonCard({ icon, label }: { icon: React.ReactNode; label: string 
 interface Props {
   conversation: ChatConversation;
   onClose: () => void;
+  onUpdate?: (data: UpdateConversationRequest) => void;
 }
 
-export function ConversationDetailsPanel({ conversation, onClose }: Props) {
+const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
+  { value: 'open',    label: 'Aberta' },
+  { value: 'pending', label: 'Pendente' },
+  { value: 'waiting', label: 'Fila' },
+  { value: 'bot',     label: 'Bot' },
+  { value: 'closed',  label: 'Encerrada' },
+];
+
+export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Props) {
   const { contact, session, status, queue, assignedTo, tags, notes } = conversation;
   const statusConfig = getStatusConfig(status);
+  const [localNotes, setLocalNotes] = useState(notes);
 
   return (
     <Box
@@ -159,18 +171,34 @@ export function ConversationDetailsPanel({ conversation, onClose }: Props) {
             <Typography variant="caption" color="text.disabled">
               Status
             </Typography>
-            <Chip
-              label={statusConfig.label}
-              size="small"
-              sx={{
-                height: 18,
-                fontSize: 10,
-                fontWeight: 600,
-                bgcolor: alpha(statusConfig.color, 0.12),
-                color: statusConfig.color,
-                border: `1px solid ${alpha(statusConfig.color, 0.2)}`,
-              }}
-            />
+            <FormControl size="small" sx={{ minWidth: 110 }}>
+              <Select
+                value={status}
+                onChange={(e) => {
+                  const newStatus = e.target.value as ConversationStatus;
+                  onUpdate?.({ status: newStatus.toUpperCase() as UpdateConversationRequest['status'] });
+                }}
+                sx={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  height: 24,
+                  color: statusConfig.color,
+                  '.MuiOutlinedInput-notchedOutline': {
+                    borderColor: alpha(statusConfig.color, 0.3),
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: statusConfig.color,
+                  },
+                  '.MuiSelect-select': { py: 0, pr: '24px !important', pl: 1 },
+                }}
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 12 }}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Box>
           {session && (
             <InfoRow label="Sessão" value={`${session.name} (${formatPhone(session.phone)})`} />
@@ -217,7 +245,13 @@ export function ConversationDetailsPanel({ conversation, onClose }: Props) {
             multiline
             rows={3}
             placeholder="Adicionar observações sobre este contato..."
-            defaultValue={notes}
+            value={localNotes}
+            onChange={(e) => setLocalNotes(e.target.value)}
+            onBlur={() => {
+              if (localNotes !== notes) {
+                onUpdate?.({ notes: localNotes });
+              }
+            }}
             sx={{
               '& .MuiOutlinedInput-root': { fontSize: 12, borderRadius: 2 },
             }}

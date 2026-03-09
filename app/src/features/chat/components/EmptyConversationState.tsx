@@ -57,7 +57,7 @@ export function EmptyConversationState() {
           gap: 1,
           mt: 2,
           p: 2.5,
-          borderRadius: 3,
+          borderRadius: 1,
           bgcolor: alpha(theme.palette.text.primary, 0.03),
           border: '1px dashed',
           borderColor: 'divider',

@@ -6,6 +6,7 @@ import { formatDateSeparator } from '../utils';
 
 interface Props {
   messages: ChatMessage[];
+  loading?: boolean;
 }
 
 function isSameDay(a: string, b: string) {
@@ -47,7 +48,7 @@ function DateSeparator({ label }: { label: string }) {
 
 // ── Message list ──────────────────────────────────────────────────────────────
 
-export function MessageList({ messages }: Props) {
+export function MessageList({ messages, loading = false }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,17 +66,26 @@ export function MessageList({ messages }: Props) {
         bgcolor: 'background.default',
       }}
     >
-      {messages.map((msg, index) => {
-        const prevMsg = messages[index - 1];
-        const showDateSep = !prevMsg || !isSameDay(prevMsg.timestamp, msg.timestamp);
-
-        return (
-          <Box key={msg.id}>
-            {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
-            <MessageBubble message={msg} />
-          </Box>
-        );
-      })}
+      {loading ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+          <Typography variant="body2" color="text.disabled">Carregando mensagens...</Typography>
+        </Box>
+      ) : messages.length === 0 ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+          <Typography variant="body2" color="text.disabled">Nenhuma mensagem nesta conversa.</Typography>
+        </Box>
+      ) : (
+        messages.map((msg, index) => {
+          const prevMsg = messages[index - 1];
+          const showDateSep = !prevMsg || !isSameDay(prevMsg.timestamp, msg.timestamp);
+          return (
+            <Box key={msg.id}>
+              {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
+              <MessageBubble message={msg} />
+            </Box>
+          );
+        })
+      )}
       <div ref={bottomRef} />
     </Box>
   );

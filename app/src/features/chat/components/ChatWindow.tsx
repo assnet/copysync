@@ -10,6 +10,7 @@ interface Props {
   onSendMessage: (text: string) => void;
   detailsOpen: boolean;
   onToggleDetails: () => void;
+  loadingMessages?: boolean;
 }
 
 export function ChatWindow({
@@ -18,6 +19,7 @@ export function ChatWindow({
   onSendMessage,
   detailsOpen,
   onToggleDetails,
+  loadingMessages = false,
 }: Props) {
   const isClosed = conversation.status === 'closed';
 
@@ -38,7 +40,7 @@ export function ChatWindow({
         onToggleDetails={onToggleDetails}
       />
 
-      <MessageList messages={messages} />
+      <MessageList messages={messages} loading={loadingMessages} />
 
       <MessageComposer onSend={onSendMessage} disabled={isClosed} />
     </Box>

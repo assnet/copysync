@@ -1,0 +1,60 @@
+import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
+import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
+import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import type { ChatMessageDirection, ChatMessageStatus, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
+
+export interface ListMessagesInput {
+  conversationId: string;
+  tenantId: string;
+  limit?: number;
+  before?: string;
+}
+
+export interface ChatMessageDto {
+  id: string;
+  conversationId: string;
+  tenantId: string;
+  direction: ChatMessageDirection;
+  type: ChatMessageType;
+  content: string | null;
+  mediaUrl: string | null;
+  mimeType: string | null;
+  externalMessageId: string | null;
+  status: ChatMessageStatus | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export class ListMessagesUseCase {
+  constructor(
+    private readonly messageRepo: IChatMessageRepository,
+    private readonly conversationRepo: IChatConversationRepository,
+  ) {}
+
+  async execute(input: ListMessagesInput): Promise<ChatMessageDto[]> {
+    const conv = await this.conversationRepo.findById(input.conversationId, input.tenantId);
+    if (!conv) throw new NotFoundError('Conversation', input.conversationId);
+
+    const messages = await this.messageRepo.findMany({
+      tenantId: input.tenantId,
+      conversationId: input.conversationId,
+      limit: input.limit ?? 50,
+      before: input.before,
+    });
+
+    return messages.map((m) => ({
+      id: m.id,
+      conversationId: m.conversationId,
+      tenantId: m.tenantId,
+      direction: m.direction,
+      type: m.type,
+      content: m.content,
+      mediaUrl: m.mediaUrl,
+      mimeType: m.mimeType,
+      externalMessageId: m.externalMessageId,
+      status: m.status,
+      sentAt: m.sentAt?.toISOString() ?? null,
+      createdAt: m.createdAt.toISOString(),
+    }));
+  }
+}

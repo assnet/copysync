@@ -37,6 +37,7 @@ interface Props {
   onSearchChange: (value: string) => void;
   filter: ConversationFilter;
   onFilterChange: (filter: ConversationFilter) => void;
+  loading?: boolean;
 }
 
 export function ConversationSidebar({
@@ -47,6 +48,7 @@ export function ConversationSidebar({
   onSearchChange,
   filter,
   onFilterChange,
+  loading = false,
 }: Props) {
   const theme = useTheme();
 
@@ -106,7 +108,7 @@ export function ConversationSidebar({
             size="small"
             startIcon={<AddIcon />}
             disableElevation
-            sx={{ fontSize: 12, px: 1.25, py: 0.5, minWidth: 'unset' }}
+            sx={{ fontSize: 12, px: 1.25, py: 0.5, minWidth: 'unset', borderRadius: 0.5 }}
           >
             Nova
           </Button>
@@ -133,14 +135,7 @@ export function ConversationSidebar({
       </Box>
 
       {/* Filters */}
-      <Box
-        sx={{
-          px: 1,
-          pb: 1,
-          display: 'flex',
-          gap: 0.5,
-          overflowX: 'auto',
-          flexShrink: 0,
+      <Box sx={{ px: 1, pb: 1, display: 'flex', gap: 0.5, overflowX: 'auto', flexShrink: 0,
           '&::-webkit-scrollbar': { display: 'none' },
         }}
       >
@@ -179,7 +174,11 @@ export function ConversationSidebar({
 
       {/* Conversation list */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
-        {filtered.length === 0 ? (
+        {loading ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 6, px: 3, gap: 1.5 }}>
+            <Typography variant="body2" color="text.disabled">Carregando...</Typography>
+          </Box>
+        ) : filtered.length === 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 6, px: 3, gap: 1.5 }}>
             <ForumOutlinedIcon sx={{ fontSize: 36, color: 'text.disabled', opacity: 0.5 }} />
             <Typography variant="body2" color="text.disabled" textAlign="center">
