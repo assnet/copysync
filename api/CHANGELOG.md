@@ -11,6 +11,73 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.3.0] — 2026-03-09 — OpenAPI 3.0 / Swagger UI
+
+### Added
+
+#### Dependências
+
+- **`@fastify/swagger@8.15.0`** — geração automática de spec OpenAPI 3.0.3 a partir dos schemas das rotas; versão 8.x compatível com Fastify v4
+- **`@fastify/swagger-ui@4.2.0`** — interface Swagger UI servida em `GET /docs`
+
+#### Spec OpenAPI
+
+- Título, versão (0.3.0), descrição e contato cadastrados em `openapi.info`
+- Dois servidores declarados: `http://localhost:<PORT>` (local) e `https://washoot-api.onrender.com` (produção)
+- Security scheme **`bearerAuth`** (HTTP Bearer JWT) configurado globalmente; bearer obtido via `POST /api/auth/login`
+- Tags declaradas: `Health`, `Auth`, `Tenants`, `Me`, `Sessions`
+
+#### Schemas compartilhados — `app.addSchema()`
+
+Todos registrados via `addSchema()` para reuso por `$ref` em todas as rotas:
+
+- **`LoginResponse`** — objeto com `success`, `data.accessToken`, `data.refreshToken`, `data.user`, `data.tenants`
+- **`TenantItem`** — objeto com `id`, `name`, `slug`, `role` (enum OWNER/ADMIN/MEMBER/SUPER_ADMIN), `status`
+- **`SessionStatus`** — enum dos 8 estados possíveis de sessão
+- **`SessionItem`** — objeto completo de sessão com todos os campos
+- **`ErrorResponse`** — objeto `{ success: false, error: { code, message } }`
+
+#### Anotações por rota
+
+Todas as rotas receberam `schema: { tags, summary, description?, security?, headers?, body?, params?, response }`:
+
+- **`GET /health`** — tag Health; response 200 com `status`, `timestamp`, `environment`
+- **`POST /api/auth/login`** — body existente reaproveitado; response 200 `LoginResponse`, 401 `ErrorResponse`
+- **`POST /api/auth/refresh`** — response 200 `{ accessToken }`, 401 `ErrorResponse`
+- **`POST /api/auth/logout`** — `security: [bearerAuth]`; response 204, 401 `ErrorResponse`
+- **`GET /api/tenants`** — `security: [bearerAuth]`; response 200 array de `TenantItem`
+- **`POST /api/tenants/switch`** — `security: [bearerAuth]`; response 200 `{ accessToken, tenantId, tenantName }`
+- **`GET /api/me`** — `security: [bearerAuth]`; response 200 com perfil completo e tenants
+- **10 rotas de sessions** — todas com `security: [bearerAuth]`, header `x-tenant-id` obrigatório, params `sessionIdParamSchema` quando aplicável, responses tipados por rota:
+  - `POST /api/sessions` → 201 `SessionItem`
+  - `GET /api/sessions` → 200 `{ sessions: SessionItem[], total }`
+  - `GET /api/sessions/:id` → 200 `SessionItem`
+  - `GET /api/sessions/:id/status` → 200 `{ sessionId, status, phone, lastConnectedAt, lastDisconnectedAt }`
+  - `POST /api/sessions/:id/connect` → 200 `{ sessionId, status, qrCode?, pairingCode? }`
+  - `POST /api/sessions/:id/disconnect` → 200 `{ sessionId, status }`
+  - `POST /api/sessions/:id/reconnect` → 200 `{ sessionId, status, qrCode?, pairingCode? }`
+  - `POST /api/sessions/:id/logout` → 200 `{ sessionId, status }`
+  - `GET /api/sessions/:id/qr` → 200 `{ sessionId, qrCode }`
+  - `GET /api/sessions/:id/pairing-code` → 200 `{ sessionId, pairingCode }`
+
+#### Swagger UI
+
+- Servido em `GET /docs` (sem autenticação)
+- `docExpansion: 'list'`, `deepLinking: true`, `persistAuthorization: true`
+
+#### CORS
+
+- `allowedHeaders` atualizado para incluir `x-tenant-id`
+
+### Tested
+
+- `tsc --noEmit` — zero erros de tipagem
+- Servidor sobe sem erros (`pnpm run dev`)
+- `GET /docs` retorna `200 OK` com a interface Swagger UI
+- spec JSON disponível em `GET /docs/json`
+
+---
+
 ## [0.2.0] — 2026-03-09 — Integração real do Baileys ao módulo de sessions
 
 ### Added

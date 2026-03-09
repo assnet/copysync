@@ -14,7 +14,40 @@ const userRepo = new PrismaUserRepository();
 export async function meRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/',
-    { preHandler: [authHook] },
+    {
+      preHandler: [authHook],
+      schema: {
+        tags: ['Me'],
+        summary: 'Perfil do usuário autenticado',
+        description: 'Retorna os dados do usuário autenticado e os tenants aos quais ele pertence.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              email: { type: 'string', format: 'email' },
+              isSuperAdmin: { type: 'boolean' },
+              tenants: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    slug: { type: 'string' },
+                    role: { type: 'string' },
+                    status: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { userId } = request.user;
 

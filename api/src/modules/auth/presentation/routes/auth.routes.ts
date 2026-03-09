@@ -24,7 +24,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /auth/login ───────────────────────────────────────────────────────
   app.post(
     '/login',
-    { schema: { body: loginBodySchema } },
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Autenticar usuário',
+        description: 'Retorna access token JWT e refresh token.',
+        body: loginBodySchema,
+        response: {
+          200: { $ref: 'LoginResponse#' },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const input = request.body as LoginInputDto;
       const result = await loginUseCase.execute(input);
@@ -39,7 +50,23 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /auth/refresh ─────────────────────────────────────────────────────
   app.post(
     '/refresh',
-    { schema: { body: refreshBodySchema } },
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Renovar access token',
+        description: 'Recebe um refresh token válido e retorna um novo access token.',
+        body: refreshBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              accessToken: { type: 'string' },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { refreshToken } = request.body as { refreshToken: string };
       const result = await refreshTokenUseCase.execute(refreshToken);
@@ -54,7 +81,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /auth/logout ──────────────────────────────────────────────────────
   app.post(
     '/logout',
-    { preHandler: [authHook], schema: { body: logoutBodySchema } },
+    {
+      preHandler: [authHook],
+      schema: {
+        tags: ['Auth'],
+        summary: 'Encerrar sessão',
+        description: 'Invalida o refresh token informado.',
+        security: [{ bearerAuth: [] }],
+        body: logoutBodySchema,
+        response: {
+          204: { type: 'null', description: 'Logout realizado com sucesso.' },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { refreshToken } = request.body as { refreshToken: string };
       await logoutUseCase.execute(refreshToken);

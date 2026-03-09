@@ -43,6 +43,13 @@ const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRep
 const preHandler = [authHook, tenantHook];
 type IdParam = { id: string };
 
+// OpenAPI: header x-tenant-id required on all session routes
+const tenantHeader = {
+  type: 'object',
+  required: ['x-tenant-id'],
+  properties: { 'x-tenant-id': { type: 'string', description: 'ID do tenant ativo' } },
+} as const;
+
 /**
  * Session routes — require authentication AND an active tenant context.
  * All operations are scoped to request.tenantContext.tenantId.
@@ -52,7 +59,22 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /sessions — create new session ────────────────────────────────────
   app.post(
     '/',
-    { preHandler, schema: { body: createSessionBodySchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Criar sessão',
+        description: 'Cria uma nova sessão de mensageria para o tenant.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        body: createSessionBodySchema,
+        response: {
+          201: { $ref: 'SessionItem#' },
+          401: { $ref: 'ErrorResponse#' },
+          422: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { name, engine } = request.body as { name: string; engine?: string };
@@ -65,7 +87,26 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /sessions — list sessions for tenant ───────────────────────────────
   app.get(
     '/',
-    { preHandler },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Listar sessões',
+        description: 'Retorna todas as sessões do tenant.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessions: { type: 'array', items: { $ref: 'SessionItem#' } },
+              total: { type: 'number' },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const sessions = await listSessionsUseCase.execute({ tenantId });
@@ -76,7 +117,21 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /sessions/:id — get session by id ─────────────────────────────────
   app.get(
     '/:id',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Buscar sessão por ID',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: { $ref: 'SessionItem#' },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -88,7 +143,30 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /sessions/:id/status — get session status ─────────────────────────
   app.get(
     '/:id/status',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Status da sessão',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              status: { $ref: 'SessionStatus#' },
+              phone: { type: 'string', nullable: true },
+              lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
+              lastDisconnectedAt: { type: 'string', format: 'date-time', nullable: true },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -100,7 +178,31 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /sessions/:id/connect — request connection ───────────────────────
   app.post(
     '/:id/connect',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Conectar sessão',
+        description: 'Inicia a conexão da sessão. Retorna QR code ou pairing code quando disponível.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              status: { $ref: 'SessionStatus#' },
+              qrCode: { type: 'string', nullable: true },
+              pairingCode: { type: 'string', nullable: true },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+          409: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -112,7 +214,27 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /sessions/:id/disconnect — request disconnection ─────────────────
   app.post(
     '/:id/disconnect',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Desconectar sessão',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              status: { $ref: 'SessionStatus#' },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -124,7 +246,29 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /sessions/:id/reconnect — request reconnection ───────────────────
   app.post(
     '/:id/reconnect',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Reconectar sessão',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              status: { $ref: 'SessionStatus#' },
+              qrCode: { type: 'string', nullable: true },
+              pairingCode: { type: 'string', nullable: true },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -136,7 +280,28 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /sessions/:id/logout — logical logout ────────────────────────────
   app.post(
     '/:id/logout',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Logout da sessão',
+        description: 'Encerra a sessão e remove o estado de autenticação.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              status: { $ref: 'SessionStatus#' },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -148,7 +313,28 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /sessions/:id/qr — get current QR code ───────────────────────────
   app.get(
     '/:id/qr',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'QR code da sessão',
+        description: 'Retorna o QR code atual da sessão, ou null se não disponível.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              qrCode: { type: 'string', nullable: true },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
@@ -160,7 +346,28 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /sessions/:id/pairing-code — get current pairing code ────────────
   app.get(
     '/:id/pairing-code',
-    { preHandler, schema: { params: sessionIdParamSchema } },
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Pairing code da sessão',
+        description: 'Retorna o pairing code atual da sessão, ou null se não disponível.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              pairingCode: { type: 'string', nullable: true },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;

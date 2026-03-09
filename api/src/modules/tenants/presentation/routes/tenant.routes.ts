@@ -27,7 +27,22 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /tenants — list tenants the current user belongs to ───────────────
   app.get(
     '/',
-    { preHandler: [authHook] },
+    {
+      preHandler: [authHook],
+      schema: {
+        tags: ['Tenants'],
+        summary: 'Listar tenants do usuário',
+        description: 'Retorna todos os tenants aos quais o usuário autenticado pertence.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: 'array',
+            items: { $ref: 'TenantItem#' },
+          },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { userId } = request.user;
       const result = await listUserTenantsUseCase.execute({ userId });
@@ -40,7 +55,26 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
     '/switch',
     {
       preHandler: [authHook],
-      schema: { body: switchBodySchema },
+      schema: {
+        tags: ['Tenants'],
+        summary: 'Trocar tenant ativo',
+        description: 'Valida se o usuário pertence ao tenant informado e retorna um novo access token com o contexto de tenant.',
+        security: [{ bearerAuth: [] }],
+        body: switchBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              accessToken: { type: 'string' },
+              tenantId: { type: 'string' },
+              tenantName: { type: 'string' },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+          403: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.body as { tenantId: string };

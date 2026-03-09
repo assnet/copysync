@@ -14,13 +14,32 @@ type AnyFastifyInstance = any;
  */
 export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── Health check (no auth) ─────────────────────────────────────────────────
-  app.get('/health', async (_request: unknown, reply: { send: (payload: unknown) => void }) => {
-    reply.send({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV ?? 'unknown',
-    });
-  });
+  app.get(
+    '/health',
+    {
+      schema: {
+        tags: ['Health'],
+        summary: 'Healthcheck da API',
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              status: { type: 'string', example: 'ok' },
+              timestamp: { type: 'string', format: 'date-time' },
+              environment: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (_request: unknown, reply: { send: (payload: unknown) => void }) => {
+      reply.send({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV ?? 'unknown',
+      });
+    },
+  );
 
   // ── Auth routes (no auth required, except /logout) ─────────────────────────
   await app.register(authRoutes, { prefix: `${env.API_PREFIX}/auth` });
