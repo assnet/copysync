@@ -7,6 +7,7 @@ import { createSessionBodySchema, sessionIdParamSchema } from '../schemas/sessio
 import { PrismaSessionRepository } from '../../infrastructure/repositories/PrismaSessionRepository';
 import { PrismaSessionAuthStateRepository } from '../../infrastructure/repositories/PrismaSessionAuthStateRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
+import { MessagingEngineFactory } from '../../../messaging/infrastructure/MessagingEngineFactory';
 import { CreateSessionUseCase } from '../../application/use-cases/CreateSessionUseCase';
 import { ListSessionsUseCase } from '../../application/use-cases/ListSessionsUseCase';
 import { GetSessionByIdUseCase } from '../../application/use-cases/GetSessionByIdUseCase';
@@ -15,21 +16,28 @@ import { ConnectSessionUseCase } from '../../application/use-cases/ConnectSessio
 import { DisconnectSessionUseCase } from '../../application/use-cases/DisconnectSessionUseCase';
 import { ReconnectSessionUseCase } from '../../application/use-cases/ReconnectSessionUseCase';
 import { LogoutSessionUseCase } from '../../application/use-cases/LogoutSessionUseCase';
+import { GetSessionQrUseCase } from '../../application/use-cases/GetSessionQrUseCase';
+import { GetSessionPairingCodeUseCase } from '../../application/use-cases/GetSessionPairingCodeUseCase';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
 const sessionRepo = new PrismaSessionRepository();
 const authStateRepo = new PrismaSessionAuthStateRepository();
 const auditRepo = new PrismaAuditLogRepository();
 
+// Engine singleton — wired once, shared across all requests
+const engine = MessagingEngineFactory.create('baileys', sessionRepo, authStateRepo);
+
 // ── Use cases ─────────────────────────────────────────────────────────────────
 const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo);
 const listSessionsUseCase = new ListSessionsUseCase(sessionRepo);
 const getSessionByIdUseCase = new GetSessionByIdUseCase(sessionRepo);
 const getSessionStatusUseCase = new GetSessionStatusUseCase(sessionRepo);
-const connectSessionUseCase = new ConnectSessionUseCase(sessionRepo, auditRepo);
-const disconnectSessionUseCase = new DisconnectSessionUseCase(sessionRepo, auditRepo);
-const reconnectSessionUseCase = new ReconnectSessionUseCase(sessionRepo, auditRepo);
-const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo);
+const connectSessionUseCase = new ConnectSessionUseCase(sessionRepo, auditRepo, engine);
+const disconnectSessionUseCase = new DisconnectSessionUseCase(sessionRepo, auditRepo, engine);
+const reconnectSessionUseCase = new ReconnectSessionUseCase(sessionRepo, auditRepo, engine);
+const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
+const getSessionQrUseCase = new GetSessionQrUseCase(sessionRepo, engine);
+const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRepo, engine);
 
 // Both auth + tenant context required for all session routes
 const preHandler = [authHook, tenantHook];
@@ -134,6 +142,30 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { id } = request.params as IdParam;
       const result = await logoutSessionUseCase.execute({ sessionId: id, tenantId, userId });
       httpResponse.ok(reply, SessionPresenter.toActionResult(result));
+    },
+  );
+
+  // ── GET /sessions/:id/qr — get current QR code ───────────────────────────
+  app.get(
+    '/:id/qr',
+    { preHandler, schema: { params: sessionIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      const result = await getSessionQrUseCase.execute({ sessionId: id, tenantId });
+      httpResponse.ok(reply, SessionPresenter.toQrResult(result));
+    },
+  );
+
+  // ── GET /sessions/:id/pairing-code — get current pairing code ────────────
+  app.get(
+    '/:id/pairing-code',
+    { preHandler, schema: { params: sessionIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      const result = await getSessionPairingCodeUseCase.execute({ sessionId: id, tenantId });
+      httpResponse.ok(reply, SessionPresenter.toPairingCodeResult(result));
     },
   );
 }

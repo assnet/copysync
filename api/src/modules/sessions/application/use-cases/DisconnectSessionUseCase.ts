@@ -1,5 +1,6 @@
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
+import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../domain/enums/SessionStatus';
 import {
   SessionNotFoundError,
@@ -21,6 +22,7 @@ export class DisconnectSessionUseCase {
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly auditRepo: IAuditLogRepository,
+    private readonly engine: IMessagingEngine,
   ) {}
 
   async execute(input: DisconnectSessionInput): Promise<DisconnectSessionOutput> {
@@ -30,6 +32,9 @@ export class DisconnectSessionUseCase {
     if (!session.canDisconnect()) {
       throw new InvalidSessionStateError(input.sessionId, session.status);
     }
+
+    // Engine closes the socket; adapter also updates DB — we update here for safety
+    await this.engine.disconnectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
 
     await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, {
       status: 'DISCONNECTED',
@@ -43,7 +48,6 @@ export class DisconnectSessionUseCase {
       meta: { sessionId: input.sessionId },
     });
 
-    // TODO (next step): call IMessagingEngine.disconnectSession()
     return { sessionId: input.sessionId, status: 'DISCONNECTED' };
   }
 }

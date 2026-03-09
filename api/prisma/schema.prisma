@@ -24,12 +24,14 @@ enum UserRole {
 }
 
 enum SessionStatus {
-  PENDING       // created, awaiting first connection attempt
-  CONNECTING    // connection in progress
-  CONNECTED     // connected and operational
-  DISCONNECTED  // temporarily disconnected
-  LOGGED_OUT    // explicit logout
-  FAILED        // unrecoverable failure
+  PENDING          // created, awaiting first connection attempt
+  CONNECTING       // initiating connection (socket being opened)
+  AWAITING_QR      // connection open, waiting for QR scan
+  AWAITING_PAIRING // connection open, waiting for pairing code entry
+  CONNECTED        // connected and operational
+  DISCONNECTED     // temporarily disconnected (recoverable)
+  LOGGED_OUT       // explicit logout — credentials cleared
+  FAILED           // unrecoverable failure
 }
 
 enum MessageDirection {

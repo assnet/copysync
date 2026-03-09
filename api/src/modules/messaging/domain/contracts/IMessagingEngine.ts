@@ -7,6 +7,26 @@ export interface CreateSessionInput {
   tenantId: string;
 }
 
+export interface ConnectSessionInput {
+  sessionId: string;
+  tenantId: string;
+}
+
+export interface DisconnectSessionInput {
+  sessionId: string;
+  tenantId: string;
+}
+
+export interface ReconnectSessionInput {
+  sessionId: string;
+  tenantId: string;
+}
+
+export interface LogoutSessionInput {
+  sessionId: string;
+  tenantId: string;
+}
+
 export interface SendTextMessageInput {
   sessionId: string;
   tenantId: string;
@@ -28,9 +48,9 @@ export interface SendMediaMessageInput {
 // ── Output types ──────────────────────────────────────────────────────────────
 
 export interface ConnectSessionResult {
-  /** Present when engine requests QR-code-based auth */
+  /** QR code is not returned synchronously — it arrives via SESSION_QR_UPDATED event. */
   qrCode?: string;
-  /** Present when engine requests pairing-code-based auth */
+  /** Present only on pairing-code flows. */
   pairingCode?: string;
 }
 
@@ -53,12 +73,23 @@ export { SessionStatus as MessagingSessionStatus };
  * This contract must never leak engine-specific types.
  */
 export interface IMessagingEngine {
+  /** Prepare session metadata. Must be called before connectSession. */
   createSession(input: CreateSessionInput): Promise<void>;
-  connectSession(sessionId: string): Promise<ConnectSessionResult>;
-  disconnectSession(sessionId: string): Promise<void>;
-  reconnectSession(sessionId: string): Promise<void>;
-  logoutSession(sessionId: string): Promise<void>;
+  /** Initiate the WhatsApp connection. QR/pairing events arrive asynchronously. */
+  connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult>;
+  /** Gracefully close the connection (state kept — can reconnect). */
+  disconnectSession(input: DisconnectSessionInput): Promise<void>;
+  /** Re-open a previously disconnected session. */
+  reconnectSession(input: ReconnectSessionInput): Promise<void>;
+  /** Logout from WhatsApp and clear credentials. */
+  logoutSession(input: LogoutSessionInput): Promise<void>;
+  /** Return current engine-level status for a session. */
   getSessionStatus(sessionId: string): Promise<SessionStatus>;
+  /** Return the latest QR code for a session waiting for scan, or null. */
+  getSessionQr(sessionId: string): Promise<string | null>;
+  /** Return the latest pairing code for a session, or null. */
+  getSessionPairingCode(sessionId: string): Promise<string | null>;
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult>;
   sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult>;
 }
+

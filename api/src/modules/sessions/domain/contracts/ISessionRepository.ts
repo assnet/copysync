@@ -18,6 +18,11 @@ export interface ISessionRepository {
   findById(id: string, tenantId: string): Promise<Session | null>;
   findAllByTenant(tenantId: string): Promise<Session[]>;
   /**
+   * Returns all sessions across ALL tenants that were in an active state
+   * when the process last ran.  Used only by SessionBootstrapService on startup.
+   */
+  findActiveSessionsForBootstrap(): Promise<Session[]>;
+  /**
    * Updates status (and optional timestamps).
    * Callers must pre-validate tenantId ownership via findById.
    */

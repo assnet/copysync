@@ -36,6 +36,16 @@ export class PrismaSessionRepository implements ISessionRepository {
     return rows.map(PrismaSessionMapper.toDomain);
   }
 
+  async findActiveSessionsForBootstrap(): Promise<Session[]> {
+    const rows = await prisma.session.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: ['CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'CONNECTED'] },
+      },
+    });
+    return rows.map(PrismaSessionMapper.toDomain);
+  }
+
   /**
    * Updates status and optional timestamps.
    * The caller (use case) must pre-validate tenantId ownership via findById.

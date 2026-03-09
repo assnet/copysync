@@ -1,5 +1,6 @@
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
+import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../domain/enums/SessionStatus';
 import {
   SessionNotFoundError,
@@ -15,7 +16,6 @@ export interface ConnectSessionInput {
 export interface ConnectSessionOutput {
   sessionId: string;
   status: SessionStatus;
-  /** Reserved: will be populated when engine is integrated. */
   qrCode?: string;
   pairingCode?: string;
 }
@@ -24,6 +24,7 @@ export class ConnectSessionUseCase {
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly auditRepo: IAuditLogRepository,
+    private readonly engine: IMessagingEngine,
   ) {}
 
   async execute(input: ConnectSessionInput): Promise<ConnectSessionOutput> {
@@ -34,9 +35,8 @@ export class ConnectSessionUseCase {
       throw new InvalidSessionStateError(input.sessionId, session.status);
     }
 
-    await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, {
-      status: 'CONNECTING',
-    });
+    // Update DB to CONNECTING before starting engine (so any crash doesn't leave PENDING)
+    await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, { status: 'CONNECTING' });
 
     await this.auditRepo.create({
       tenantId: input.tenantId,
@@ -45,7 +45,9 @@ export class ConnectSessionUseCase {
       meta: { sessionId: input.sessionId, action: 'connect_requested' },
     });
 
-    // TODO (next step): call IMessagingEngine.connectSession() → return QR/pairingCode
+    // Initiate real connection — QR/status arrive asynchronously via InternalEventBus
+    await this.engine.connectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
+
     return { sessionId: input.sessionId, status: 'CONNECTING' };
   }
 }

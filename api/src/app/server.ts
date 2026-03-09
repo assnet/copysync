@@ -2,6 +2,10 @@ import { buildApp } from './app';
 import { env } from '../shared/config/env';
 import { logger } from '../shared/logger/logger';
 import { prisma } from '../shared/database/prisma.client';
+import { PrismaSessionRepository } from '../modules/sessions/infrastructure/repositories/PrismaSessionRepository';
+import { PrismaSessionAuthStateRepository } from '../modules/sessions/infrastructure/repositories/PrismaSessionAuthStateRepository';
+import { MessagingEngineFactory } from '../modules/messaging/infrastructure/MessagingEngineFactory';
+import { SessionBootstrapService } from '../modules/sessions/application/services/SessionBootstrapService';
 
 async function start(): Promise<void> {
   const app = await buildApp();
@@ -22,6 +26,19 @@ async function start(): Promise<void> {
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');
     process.exit(1);
+  }
+
+  // ── Bootstrap active sessions ──────────────────────────────────────────────
+  // Runs after the server is listening so QR events can be polled immediately.
+  try {
+    const sessionRepo = new PrismaSessionRepository();
+    const authStateRepo = new PrismaSessionAuthStateRepository();
+    const engine = MessagingEngineFactory.create('baileys', sessionRepo, authStateRepo);
+    const bootstrapService = new SessionBootstrapService(sessionRepo, engine);
+    await bootstrapService.bootstrap();
+  } catch (err) {
+    // Bootstrap failure must not crash the server
+    logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
   }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────

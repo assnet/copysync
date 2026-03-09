@@ -65,7 +65,12 @@ export class Session {
 
   /** Can accept a disconnect request. */
   canDisconnect(): boolean {
-    return this.status === 'CONNECTED' || this.status === 'CONNECTING';
+    return (
+      this.status === 'CONNECTED' ||
+      this.status === 'CONNECTING' ||
+      this.status === 'AWAITING_QR' ||
+      this.status === 'AWAITING_PAIRING'
+    );
   }
 
   /** Can accept a reconnect request. */

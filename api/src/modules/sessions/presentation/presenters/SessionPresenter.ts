@@ -3,6 +3,8 @@ import type { GetSessionStatusOutput } from '../../application/use-cases/GetSess
 import type { ConnectSessionOutput } from '../../application/use-cases/ConnectSessionUseCase';
 import type { DisconnectSessionOutput } from '../../application/use-cases/DisconnectSessionUseCase';
 import type { LogoutSessionOutput } from '../../application/use-cases/LogoutSessionUseCase';
+import type { GetSessionQrOutput } from '../../application/use-cases/GetSessionQrUseCase';
+import type { GetSessionPairingCodeOutput } from '../../application/use-cases/GetSessionPairingCodeUseCase';
 
 export class SessionPresenter {
   static toSessionItem(session: Session) {
@@ -52,6 +54,20 @@ export class SessionPresenter {
     return {
       sessionId: output.sessionId,
       status: output.status,
+    };
+  }
+
+  static toQrResult(output: GetSessionQrOutput) {
+    return {
+      sessionId: output.sessionId,
+      qrCode: output.qrCode,
+    };
+  }
+
+  static toPairingCodeResult(output: GetSessionPairingCodeOutput) {
+    return {
+      sessionId: output.sessionId,
+      pairingCode: output.pairingCode,
     };
   }
 }

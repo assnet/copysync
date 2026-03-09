@@ -20,6 +20,7 @@
     "@fastify/helmet": "^11.1.1",
     "@fastify/jwt": "^8.0.1",
     "@prisma/client": "^5.22.0",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
     "bcryptjs": "^3.0.3",
     "fastify": "^4.28.1",
     "pino": "^9.5.0",

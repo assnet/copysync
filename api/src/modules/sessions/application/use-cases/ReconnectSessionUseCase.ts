@@ -1,5 +1,6 @@
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
+import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ConnectSessionOutput } from './ConnectSessionUseCase';
 import {
   SessionNotFoundError,
@@ -18,6 +19,7 @@ export class ReconnectSessionUseCase {
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly auditRepo: IAuditLogRepository,
+    private readonly engine: IMessagingEngine,
   ) {}
 
   async execute(input: ReconnectSessionInput): Promise<ReconnectSessionOutput> {
@@ -28,9 +30,7 @@ export class ReconnectSessionUseCase {
       throw new InvalidSessionStateError(input.sessionId, session.status);
     }
 
-    await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, {
-      status: 'CONNECTING',
-    });
+    await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, { status: 'CONNECTING' });
 
     await this.auditRepo.create({
       tenantId: input.tenantId,
@@ -39,7 +39,8 @@ export class ReconnectSessionUseCase {
       meta: { sessionId: input.sessionId, action: 'reconnect_requested' },
     });
 
-    // TODO (next step): call IMessagingEngine.reconnectSession()
+    await this.engine.reconnectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
+
     return { sessionId: input.sessionId, status: 'CONNECTING' };
   }
 }

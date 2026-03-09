@@ -9,6 +9,101 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] — 2026-03-09 — Integração real do Baileys ao módulo de sessions
+
+### Added
+
+#### Baileys — infra da engine de mensageria
+
+- **`@whiskeysockets/baileys@7.0.0-rc.9`** instalado via npm (inclui `lib/` pré-compilado; build scripts de `postinstall` ignorados pelo pnpm por segurança — comportamento esperado)
+- **`BaileysAuthStatePersistence.ts`** — implementação de `AuthenticationState` com persistência em banco (tabela `SessionAuthState`); substitui `useMultiFileAuthState`:
+  - armazena credenciais e chaves Signal em um único blob JSON por sessão (`statePayload`)
+  - serialização via `BufferJSON.replacer/reviver` para roundtrip correto de `Buffer`/`Uint8Array`
+  - chaves de tipo `app-state-sync-key` deserializadas via `proto.Message.AppStateSyncKeyData.fromObject()`
+- **`BaileysSessionRegistry.ts`** — registro em memória de conexões `WASocket` ativas; singleton compartilhado pelo processo:
+  - `ActiveSessionEntry { socket, tenantId, latestQr?, latestPairingCode? }`
+  - métodos: `set / get / has / delete / setQr / clearQr / setPairingCode / getQr / getPairingCode / getAll()`
+- **`BaileysErrorTranslator.ts`** — tradução de erros e motivos de desconexão Baileys para `AppError` internos:
+  - `translateDisconnect(sessionId, lastError)` retorna `{ shouldReconnect, error }` para cada `DisconnectReason`
+  - `translateEngineError(err)` para erros genéricos de socket
+  - duck-typing sobre `Boom` (sem dependência direta de `@hapi/boom`)
+
+#### BaileysMessagingEngineAdapter — implementação completa
+
+- Substituído stub anterior pela implementação real de `IMessagingEngine`:
+  - **`connectSession`** — abre socket Baileys com versão WA buscada via `fetchLatestBaileysVersion()`, auth de banco via `BaileysAuthStatePersistence`, browser fingerprint `Browsers.ubuntu('Chrome')`
+  - **`disconnectSession`** — fecha socket, remove do registry, atualiza status `DISCONNECTED`
+  - **`reconnectSession`** — delega para `connectSession` (reabre socket com credenciais persistidas)
+  - **`logoutSession`** — executa `socket.logout()` + fecha socket + atualiza status `LOGGED_OUT`; credenciais limpos pelo use case
+  - **`getSessionStatus`** — inspeciona `ws.readyState` do socket ativo
+  - **`getSessionQr`** — lê QR code em memória do registry
+  - **`getSessionPairingCode`** — lê pairing code em memória do registry
+  - **Reconexão automática com backoff exponencial**: base 3s, máximo 5 tentativas; falha permanente → status `FAILED`
+  - Emite todos os eventos internos: `SESSION_CONNECTING`, `SESSION_CONNECTED`, `SESSION_DISCONNECTED`, `SESSION_QR_UPDATED`, `SESSION_LOGGED_OUT`
+
+#### Schema e domínio
+
+- **`SessionStatus`** — adicionados dois novos estados:
+  - `AWAITING_QR` — socket aberto aguardando scan do QR
+  - `AWAITING_PAIRING` — aguardando código de pareamento
+- **Migration** `20260309185659_add_session_awaiting_states` aplicada e versionada
+- **`Session.canDisconnect()`** atualizado: inclui `AWAITING_QR` e `AWAITING_PAIRING` como estados desconectáveis
+
+#### IMessagingEngine — novos tipos e métodos
+
+- Interfaces de input explícitas: `ConnectSessionInput`, `DisconnectSessionInput`, `ReconnectSessionInput`, `LogoutSessionInput` (todas com `tenantId`)
+- Novos métodos no contrato: `getSessionQr(sessionId)` e `getSessionPairingCode(sessionId)`
+- `MessagingEngineFactory.create()` agora recebe `sessionRepo` e `authStateRepo` como parâmetros
+
+#### ISessionRepository — método de bootstrap
+
+- **`findActiveSessionsForBootstrap()`** — retorna todas as sessões (cross-tenant) com status em `CONNECTING | AWAITING_QR | AWAITING_PAIRING | CONNECTED`; usado somente no startup para reconectar sessões ativas
+
+#### Use Cases — integração com engine real
+
+- **`ConnectSessionUseCase`** — injeta `IMessagingEngine`; chama `engine.connectSession()` após atualizar status para `CONNECTING`
+- **`DisconnectSessionUseCase`** — injeta `IMessagingEngine`; chama `engine.disconnectSession()` antes de atualizar status
+- **`ReconnectSessionUseCase`** — injeta `IMessagingEngine`; chama `engine.reconnectSession()`
+- **`LogoutSessionUseCase`** — injeta `IMessagingEngine`; chama `engine.logoutSession()` + limpa `SessionAuthState`
+
+#### Novos Use Cases
+
+- **`GetSessionQrUseCase`** — valida tenant ownership, delega para `engine.getSessionQr()`
+- **`GetSessionPairingCodeUseCase`** — valida tenant ownership, delega para `engine.getSessionPairingCode()`
+
+#### SessionBootstrapService
+
+- **`SessionBootstrapService`** — serviço de startup: consulta sessões ativas no banco e chama `engine.reconnectSession()` para cada uma em paralelo (`Promise.allSettled`); falhas individuais são logadas e a sessão é marcada `DISCONNECTED`, sem bloquear o boot
+
+#### Presentation
+
+- **`SessionPresenter`** — adicionados `toQrResult()` e `toPairingCodeResult()`
+- **`session.routes.ts`** — engine singleton instanciado via `MessagingEngineFactory`; 2 novas rotas:
+  - `GET /api/sessions/:id/qr` — retorna QR code atual (ou `null`)
+  - `GET /api/sessions/:id/pairing-code` — retorna pairing code atual (ou `null`)
+- **`server.ts`** — chama `SessionBootstrapService.bootstrap()` após o servidor iniciar; falha do bootstrap não derruba o processo
+
+### Changed
+
+- `api/prisma/schema.prisma` — enum `SessionStatus` com 2 novos valores
+- `api/package.json` — dependência `@whiskeysockets/baileys@7.0.0-rc.9` adicionada; `package-lock.json` substituído por `pnpm-lock.yaml`
+
+### Tested
+
+- `tsc --noEmit` — zero erros de tipagem
+- Smoke test manual end-to-end:
+  - `POST /api/auth/login` → token OK
+  - `POST /api/sessions` → sessão criada com status `PENDING`
+  - `POST /api/sessions/:id/connect` → status muda para `CONNECTING`
+  - `GET /api/sessions/:id/status` (após ~8s) → status `AWAITING_QR`
+  - `GET /api/sessions/:id/qr` → QR code string retornado corretamente
+
+---
+
+## [0.1.0] — 2026-03-09 — Módulo de sessions com ciclo de vida completo (commit 2ef19eb)
+
 ### Added
 
 #### Módulo de Sessions — ciclo de vida completo
