@@ -8,6 +8,7 @@ import {
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import DevicesIcon from '@mui/icons-material/Devices';
 import LogoutIcon from '@mui/icons-material/Logout';
+import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -21,6 +22,7 @@ const DRAWER_WIDTH = 248;
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Sessões', path: '/sessions', icon: <DevicesIcon /> },
+  { label: 'Chat', path: '/chat', icon: <ForumOutlinedIcon /> },
 ];
 
 // Itens futuros — desabilitados por ora, só para estrutura visual
