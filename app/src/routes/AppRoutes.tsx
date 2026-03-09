@@ -3,7 +3,7 @@ import { PrivateRoute } from './PrivateRoute';
 import { AppLayout } from '@/app/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { SessionsPage } from '@/pages/SessionsPage';
+import SessionsPage from '@/pages/SessionsPage';
 
 export function AppRoutes() {
   return (

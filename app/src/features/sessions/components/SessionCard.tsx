@@ -82,9 +82,9 @@ export function SessionCard({ session, onRequestQr, onStatusChange }: Props) {
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Chip label={session.engine} size="small" variant="outlined" color="default" />
-          {session.phoneNumber && (
+          {session.phone && (
             <Typography variant="caption" color="text.secondary">
-              {session.phoneNumber}
+              {session.phone}
             </Typography>
           )}
         </Box>
