@@ -17,6 +17,7 @@ import { ReconnectSessionUseCase } from '../../application/use-cases/ReconnectSe
 import { LogoutSessionUseCase } from '../../application/use-cases/LogoutSessionUseCase';
 import { GetSessionQrUseCase } from '../../application/use-cases/GetSessionQrUseCase';
 import { GetSessionPairingCodeUseCase } from '../../application/use-cases/GetSessionPairingCodeUseCase';
+import { DeleteSessionUseCase } from '../../application/use-cases/DeleteSessionUseCase';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
 const sessionRepo = new PrismaSessionRepository();
@@ -37,6 +38,7 @@ const reconnectSessionUseCase = new ReconnectSessionUseCase(sessionRepo, auditRe
 const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
 const getSessionQrUseCase = new GetSessionQrUseCase(sessionRepo, engine);
 const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRepo, engine);
+const deleteSessionUseCase = new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
 
 // Both auth + tenant context required for all session routes
 const preHandler = [authHook, tenantHook];
@@ -372,6 +374,33 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { id } = request.params as IdParam;
       const result = await getSessionPairingCodeUseCase.execute({ sessionId: id, tenantId });
       reply.status(200).send(SessionPresenter.toPairingCodeResult(result));
+    },
+  );
+
+  // ── DELETE /sessions/:id — soft-delete session ────────────────────────────
+  app.delete(
+    '/:id',
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Deletar sessão',
+        description: 'Remove permanentemente a sessão (soft-delete). Desconecta do WhatsApp se ativa.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        response: {
+          204: { type: 'null', description: 'Sessão deletada com sucesso' },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      await deleteSessionUseCase.execute({ sessionId: id, tenantId, userId });
+      reply.status(204).send();
     },
   );
 }

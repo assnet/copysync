@@ -60,4 +60,8 @@ export const sessionService = {
     const res = await apiClient.get<SessionPairingCodeResponse>(`/sessions/${id}/pairing-code`);
     return res.data;
   },
+
+  async delete(id: string): Promise<void> {
+    await apiClient.delete(`/sessions/${id}`);
+  },
 };

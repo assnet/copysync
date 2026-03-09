@@ -11,12 +11,18 @@ import {
   Tooltip,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import QrCodeIcon from '@mui/icons-material/QrCode2';
 import LinkIcon from '@mui/icons-material/Link';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import LogoutIcon from '@mui/icons-material/Logout';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { sessionService } from '@/services/session.service';
 import { SessionStatusChip } from './SessionStatusChip';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
@@ -25,13 +31,16 @@ interface Props {
   session: SessionItem;
   onRequestQr: (session: SessionItem) => void;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
+  onDeleted: (sessionId: string) => void;
 }
 
 type Action = 'connect' | 'disconnect' | 'reconnect' | 'logout';
 
-export function SessionCard({ session, onRequestQr, onStatusChange }: Props) {
+export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }: Props) {
   const [loadingAction, setLoadingAction] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function handle(action: Action) {
     setLoadingAction(action);
@@ -67,8 +76,20 @@ export function SessionCard({ session, onRequestQr, onStatusChange }: Props) {
     }
   }
 
-  const isBusy = loadingAction !== null;
+  const isBusy = loadingAction !== null || deleting;
   const status = session.status;
+
+  async function handleDelete() {
+    setDeleting(true);
+    setConfirmDelete(false);
+    try {
+      await sessionService.delete(session.id);
+      onDeleted(session.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao deletar sessão');
+      setDeleting(false);
+    }
+  }
 
   return (
     <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -175,7 +196,38 @@ export function SessionCard({ session, onRequestQr, onStatusChange }: Props) {
             QR Code
           </Button>
         )}
+
+        {/* Deletar */}
+        <Tooltip title="Deletar sessão">
+          <span>
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => setConfirmDelete(true)}
+              disabled={isBusy}
+              sx={{ ml: 'auto' }}
+            >
+              {deleting ? <CircularProgress size={18} color="error" /> : <DeleteIcon fontSize="small" />}
+            </IconButton>
+          </span>
+        </Tooltip>
       </CardActions>
+
+      {/* Diálogo de confirmação */}
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Deletar sessão</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Tem certeza que deseja deletar a sessão <strong>{session.name}</strong>? Esta ação não pode ser desfeita.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>
+            Deletar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

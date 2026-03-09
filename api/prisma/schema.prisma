@@ -59,6 +59,7 @@ enum AuditAction {
   SESSION_CONNECTED
   SESSION_DISCONNECTED
   SESSION_LOGGED_OUT
+  SESSION_DELETED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

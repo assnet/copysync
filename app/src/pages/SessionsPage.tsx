@@ -55,6 +55,11 @@ export default function SessionsPage() {
     await loadSessions();
   }
 
+  function handleDeleted(sessionId: string) {
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setToast({ message: 'Sessão deletada.', severity: 'success' });
+  }
+
   return (
     <Box>
       {/* Header */}
@@ -121,6 +126,7 @@ export default function SessionsPage() {
                 session={session}
                 onRequestQr={setQrSession}
                 onStatusChange={handleStatusChange}
+                onDeleted={handleDeleted}
               />
             </Grid>
           ))}
