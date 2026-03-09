@@ -1,19 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Box,
-  Typography,
-  CircularProgress,
-  Alert,
-  Divider,
-  IconButton,
-  Tooltip,
+  Dialog, DialogContent, DialogActions, Button, Box,
+  Typography, CircularProgress, Alert, IconButton, Tooltip,
+  Divider, alpha, useTheme,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import CloseIcon from '@mui/icons-material/Close';
 import { QRCodeSVG } from 'qrcode.react';
 import { sessionService } from '@/services/session.service';
 import { SessionStatusChip } from './SessionStatusChip';
@@ -29,24 +21,22 @@ interface Props {
 const POLLING_INTERVAL_MS = 4000;
 
 export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) {
+  const theme = useTheme();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const statusRef = useRef<SessionStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Mantém a ref de status sincronizada para uso dentro de setInterval
   useEffect(() => { statusRef.current = status; }, [status]);
 
   const fetchState = useCallback(async () => {
     if (!session) return;
-
     try {
       const [statusRes, qrRes] = await Promise.all([
         sessionService.getStatus(session.id),
         sessionService.getQr(session.id),
       ]);
-
       setStatus(statusRes.status);
       setQrCode(qrRes.qrCode);
       onStatusChange?.(session.id, statusRes.status);
@@ -56,19 +46,13 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
     }
   }, [session, onStatusChange]);
 
-  // Mantém ref de fetchState sempre atualizada para uso seguro dentro do setInterval
   const fetchStateRef = useRef(fetchState);
   useEffect(() => { fetchStateRef.current = fetchState; }, [fetchState]);
 
-  // Polling enquanto aguardando QR / conectando.
-  // Depende de session?.id (não do objeto inteiro) para não re-triggar quando o pai
-  // cria um novo objeto {…, status} com o mesmo ID ao receber onStatusChange.
   useEffect(() => {
     if (!open || !session?.id) return;
-
     setLoading(true);
     fetchStateRef.current().finally(() => setLoading(false));
-
     const interval = setInterval(async () => {
       const s = statusRef.current;
       if (s === 'CONNECTED' || s === 'FAILED' || s === 'LOGGED_OUT') {
@@ -77,38 +61,62 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
       }
       await fetchStateRef.current();
     }, POLLING_INTERVAL_MS);
-
     return () => clearInterval(interval);
   }, [open, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Limpa estado local ao fechar o dialog
   useEffect(() => {
-    if (!open) {
-      setQrCode(null);
-      setStatus(null);
-      setError(null);
-    }
+    if (!open) { setQrCode(null); setStatus(null); setError(null); }
   }, [open]);
 
   const isWaiting = status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING';
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle
-        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      {/* Cabeçalho customizado */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 2.5,
+          pt: 2.5,
+          pb: 1.5,
+        }}
       >
         <Box>
-          {session?.name ?? 'QR Code'}
-          {status && <Box component="span" sx={{ ml: 1.5 }}><SessionStatusChip status={status} /></Box>}
+          <Typography variant="h6" fontWeight={700}>
+            {session?.name ?? 'QR Code'}
+          </Typography>
+          <Box sx={{ mt: 0.5 }}>
+            {status ? (
+              <SessionStatusChip status={status} />
+            ) : (
+              <Typography variant="caption" color="text.secondary">Carregando…</Typography>
+            )}
+          </Box>
         </Box>
-        <Tooltip title="Atualizar">
-          <IconButton onClick={fetchState} size="small" disabled={loading}>
-            <RefreshIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </DialogTitle>
 
-      <DialogContent>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Tooltip title="Atualizar manualmente">
+            <span>
+              <IconButton
+                size="small"
+                onClick={fetchState}
+                disabled={loading}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <IconButton size="small" onClick={onClose}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      </Box>
+
+      <Divider />
+
+      <DialogContent sx={{ px: 2.5, py: 3 }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -116,67 +124,109 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
         )}
 
         {status === 'CONNECTED' && (
-          <Alert severity="success">
-            Sessão conectada com sucesso! Feche este painel.
+          <Alert severity="success" sx={{ mb: 1 }}>
+            Sessão conectada com sucesso!
           </Alert>
         )}
 
         {(status === 'FAILED' || status === 'LOGGED_OUT') && (
-          <Alert severity="error">
+          <Alert severity="error" sx={{ mb: 1 }}>
             A sessão encontrou um erro ou foi desconectada. Tente reconectar.
           </Alert>
         )}
 
+        {(status === 'PENDING' || status === 'DISCONNECTED') && (
+          <Alert severity="info" sx={{ mb: 1 }}>
+            Clique em "Conectar" na lista de sessões para iniciar a conexão.
+          </Alert>
+        )}
+
         {isWaiting && (
-          <Box sx={{ textAlign: 'center', py: 2 }}>
-            {loading && !qrCode && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <CircularProgress size={40} />
+          <Box sx={{ textAlign: 'center' }}>
+            {loading && !qrCode ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                  py: 4,
+                }}
+              >
+                <CircularProgress size={44} />
                 <Typography variant="body2" color="text.secondary">
                   Aguardando QR code…
                 </Typography>
               </Box>
-            )}
-
-            {qrCode && (
-              <>
-                <Typography variant="body2" color="text.secondary" mb={2}>
-                  Escaneie o QR code pelo WhatsApp para conectar a sessão.
+            ) : qrCode ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Abra o WhatsApp e escaneie o código abaixo
                 </Typography>
+
+                {/* QR frame */}
                 <Box
                   sx={{
-                    display: 'inline-block',
-                    p: 2,
+                    p: 2.5,
+                    borderRadius: 3,
                     border: '2px solid',
-                    borderColor: 'primary.main',
-                    borderRadius: 2,
-                    bgcolor: 'white',
+                    borderColor: alpha(theme.palette.primary.main, 0.4),
+                    bgcolor: '#fff',
+                    display: 'inline-flex',
+                    boxShadow: `0 0 0 6px ${alpha(theme.palette.primary.main, 0.06)}`,
                   }}
                 >
-                  {/* Renderiza o QR code a partir da string raw do Baileys */}
-                  <QRCodeSVG value={qrCode} size={240} />
+                  <QRCodeSVG
+                    value={qrCode}
+                    size={220}
+                    level="M"
+                    fgColor="#0f1117"
+                    bgColor="#ffffff"
+                  />
                 </Box>
-                <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-                  Atualizando automáticamente a cada {POLLING_INTERVAL_MS / 1000}s
-                </Typography>
-              </>
-            )}
-          </Box>
-        )}
 
-        {(status === 'PENDING' || status === 'DISCONNECTED') && (
-          <Alert severity="info">
-            Clique em "Conectar" na lista de sessões para iniciar a conexão.
-          </Alert>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    px: 1.5,
+                    py: 0.75,
+                    borderRadius: 2,
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor: 'warning.main',
+                      animation: 'pulse 1.5s ease-in-out infinite',
+                      '@keyframes pulse': {
+                        '0%, 100%': { opacity: 1 },
+                        '50%': { opacity: 0.3 },
+                      },
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Atualizando a cada {POLLING_INTERVAL_MS / 1000}s
+                  </Typography>
+                </Box>
+              </Box>
+            ) : null}
+          </Box>
         )}
       </DialogContent>
 
       <Divider />
-      <DialogActions>
-        <Button onClick={onClose}>Fechar</Button>
+
+      <DialogActions sx={{ px: 2.5, py: 1.5 }}>
+        <Button onClick={onClose} fullWidth variant="outlined">
+          Fechar
+        </Button>
       </DialogActions>
     </Dialog>
   );
 }
-
 

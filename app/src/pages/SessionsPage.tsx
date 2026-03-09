@@ -1,28 +1,20 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Grid,
-  CircularProgress,
-  Alert,
-  Snackbar,
-} from '@mui/material';
+﻿import { useState, useEffect, useCallback } from 'react';
+import { Box, Button, Grid, CircularProgress, Alert, Snackbar } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import DevicesIcon from '@mui/icons-material/Devices';
 import { sessionService } from '@/services/session.service';
 import { SessionCard } from '@/features/sessions/components/SessionCard';
 import { CreateSessionDialog } from '@/features/sessions/components/CreateSessionDialog';
 import { QrCodeDialog } from '@/features/sessions/components/QrCodeDialog';
+import { PageHeader, EmptyState } from '@/components';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [qrSession, setQrSession] = useState<SessionItem | null>(null);
-
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -37,15 +29,10 @@ export default function SessionsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+  useEffect(() => { loadSessions(); }, [loadSessions]);
 
   const handleStatusChange = useCallback((sessionId: string, status: SessionStatus) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, status } : s))
-    );
-    // Atualiza também a sessão selecionada no QR dialog
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, status } : s)));
     setQrSession((prev) => (prev?.id === sessionId ? { ...prev, status } : prev));
   }, []);
 
@@ -62,66 +49,45 @@ export default function SessionsPage() {
 
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>
-            Sessões
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Gerencie as conexões de WhatsApp do seu tenant.
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateOpen(true)}
-        >
-          Nova Sessão
-        </Button>
-      </Box>
+      <PageHeader
+        title="Sessões"
+        subtitle="Gerencie as conexões de WhatsApp do seu tenant."
+        action={
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+            Nova Sessão
+          </Button>
+        }
+      />
 
-      {/* Erro de carregamento */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
-      {/* Loading */}
       {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
           <CircularProgress />
         </Box>
       )}
 
-      {/* Lista */}
       {!loading && sessions.length === 0 && (
-        <Box
-          sx={{
-            textAlign: 'center',
-            py: 10,
-            border: '1px dashed',
-            borderColor: 'divider',
-            borderRadius: 3,
-          }}
-        >
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            Nenhuma sessão criada ainda
-          </Typography>
-          <Typography variant="body2" color="text.secondary" mb={3}>
-            Crie uma sessão para conectar um número de WhatsApp.
-          </Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            Criar primeira sessão
-          </Button>
-        </Box>
+        <EmptyState
+          icon={<DevicesIcon />}
+          title="Nenhuma sessão criada ainda"
+          description="Crie uma sessão para conectar um número de WhatsApp ao seu tenant."
+          action={
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+              Criar primeira sessão
+            </Button>
+          }
+        />
       )}
 
       {!loading && sessions.length > 0 && (
-        <Grid container spacing={2}>
+        <Grid container spacing={2.5}>
           {sessions.map((session) => (
-            <Grid key={session.id} item xs={12} sm={6} md={4} lg={3}>
+            <Grid key={session.id} item xs={12} sm={6} md={4} xl={3}>
               <SessionCard
                 session={session}
                 onRequestQr={setQrSession}
@@ -133,14 +99,11 @@ export default function SessionsPage() {
         </Grid>
       )}
 
-      {/* Modal criar sessão */}
       <CreateSessionDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={handleCreated}
       />
-
-      {/* Modal QR Code */}
       <QrCodeDialog
         session={qrSession}
         open={Boolean(qrSession)}
@@ -148,7 +111,6 @@ export default function SessionsPage() {
         onStatusChange={handleStatusChange}
       />
 
-      {/* Toast feedback */}
       <Snackbar
         open={Boolean(toast)}
         autoHideDuration={4000}
@@ -164,3 +126,4 @@ export default function SessionsPage() {
     </Box>
   );
 }
+

@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Card, CardContent, Grid, Skeleton, Button } from '@mui/material';
+import {
+  Box, Typography, Grid, Button, Chip, alpha, useTheme,
+} from '@mui/material';
 import DevicesIcon from '@mui/icons-material/Devices';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { sessionService } from '@/services/session.service';
+import { StatCard, SectionCard } from '@/components';
 import type { SessionItem } from '@/types/api.types';
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { activeTenantName } = useTenant();
+  const theme = useTheme();
 
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,96 +31,204 @@ export function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const total = sessions.length;
   const connected = sessions.filter((s) => s.status === 'CONNECTED').length;
-  const disconnected = sessions.filter(
+  const waiting = sessions.filter(
+    (s) => s.status === 'AWAITING_QR' || s.status === 'AWAITING_PAIRING' || s.status === 'CONNECTING',
+  ).length;
+  const errors = sessions.filter(
     (s) => s.status === 'DISCONNECTED' || s.status === 'FAILED' || s.status === 'LOGGED_OUT',
   ).length;
+
+  const firstName = user?.name?.split(' ')[0] ?? 'usuário';
+
+  // Saudação por hora
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
 
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5">
-          Olá, {user?.name?.split(' ')[0] ?? 'usuário'} 👋
-        </Typography>
-        <Typography variant="body2" color="text.secondary" mt={0.5}>
-          {activeTenantName ? `Tenant: ${activeTenantName}` : 'Nenhum tenant ativo'}
-        </Typography>
+      <Box sx={{ mb: 5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+          <Typography variant="h5">
+            {greeting}, {firstName} 👋
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Tenant ativo:
+          </Typography>
+          {activeTenantName ? (
+            <Chip label={activeTenantName} size="small" color="primary" variant="outlined" />
+          ) : (
+            <Typography variant="body2" color="text.disabled">Nenhum tenant selecionado</Typography>
+          )}
+        </Box>
       </Box>
 
-      {/* Cards de resumo */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={4}>
+      {/* Stats */}
+      <Grid container spacing={2.5} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} lg={3}>
           <StatCard
             label="Total de sessões"
-            value={loading ? null : sessions.length}
-            icon={<DevicesIcon fontSize="large" color="primary" />}
+            value={loading ? null : total}
+            icon={<DevicesIcon />}
+            accentColor={theme.palette.primary.main}
           />
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} lg={3}>
           <StatCard
             label="Conectadas"
             value={loading ? null : connected}
-            icon={<CheckCircleIcon fontSize="large" color="success" />}
-            color="success.main"
+            icon={<CheckCircleOutlineIcon />}
+            accentColor={theme.palette.success.main}
           />
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} lg={3}>
           <StatCard
-            label="Desconectadas / com erro"
-            value={loading ? null : disconnected}
-            icon={<ErrorIcon fontSize="large" color="error" />}
-            color="error.main"
+            label="Aguardando"
+            value={loading ? null : waiting}
+            icon={<HourglassEmptyIcon />}
+            accentColor={theme.palette.warning.main}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <StatCard
+            label="Com problemas"
+            value={loading ? null : errors}
+            icon={<ErrorOutlineIcon />}
+            accentColor={theme.palette.error.main}
           />
         </Grid>
       </Grid>
 
-      {/* Atalho */}
-      <Card>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-          <Box>
-            <Typography variant="subtitle1">Sessões WhatsApp</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Gerencie suas conexões, QR codes e status em tempo real.
-            </Typography>
-          </Box>
-          <Button variant="contained" onClick={() => navigate('/sessions')}>
-            Gerenciar sessões
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Quick actions */}
+      <Grid container spacing={2.5}>
+        <Grid item xs={12} md={7}>
+          <SectionCard
+            title="Sessões WhatsApp"
+            subtitle="Gerencie conexões e QR codes em tempo real"
+            action={
+              <Button
+                size="small"
+                variant="contained"
+                endIcon={<ArrowForwardIcon />}
+                onClick={() => navigate('/sessions')}
+              >
+                Gerenciar
+              </Button>
+            }
+          >
+            {loading ? (
+              <Typography variant="body2" color="text.secondary">Carregando…</Typography>
+            ) : total === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" color="text.secondary" mb={2}>
+                  Nenhuma sessão criada ainda.
+                </Typography>
+                <Button variant="outlined" size="small" onClick={() => navigate('/sessions')}>
+                  Criar primeira sessão
+                </Button>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {sessions.slice(0, 5).map((s) => (
+                  <Box
+                    key={s.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 2,
+                      bgcolor: 'action.hover',
+                      gap: 1,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                      <Box
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          bgcolor:
+                            s.status === 'CONNECTED'
+                              ? 'success.main'
+                              : s.status === 'AWAITING_QR' || s.status === 'CONNECTING' || s.status === 'AWAITING_PAIRING'
+                              ? 'warning.main'
+                              : 'error.main',
+                        }}
+                      />
+                      <Typography variant="body2" fontWeight={500} noWrap>
+                        {s.name}
+                      </Typography>
+                    </Box>
+                    {s.phone && (
+                      <Typography variant="caption" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>
+                        {s.phone}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+                {total > 5 && (
+                  <Button size="small" sx={{ alignSelf: 'flex-start', mt: 0.5 }} onClick={() => navigate('/sessions')}>
+                    Ver todas ({total})
+                  </Button>
+                )}
+              </Box>
+            )}
+          </SectionCard>
+        </Grid>
+
+        {/* Próximos módulos */}
+        <Grid item xs={12} md={5}>
+          <SectionCard title="Próximos módulos" subtitle="Em desenvolvimento">
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {[
+                { name: 'Chatbots', desc: 'Respostas automáticas por regras' },
+                { name: 'Flows visuais', desc: 'Construtor de fluxos por blocos' },
+                { name: 'Campanhas', desc: 'Envios em massa programados' },
+                { name: 'Assistentes IA', desc: 'Integração com modelos de linguagem' },
+                { name: 'Métricas', desc: 'Dashboards e relatórios em tempo real' },
+              ].map((mod) => (
+                <Box
+                  key={mod.name}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    px: 1.5,
+                    py: 1,
+                    borderRadius: 2,
+                    bgcolor: 'action.hover',
+                    gap: 1,
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" fontWeight={500}>{mod.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">{mod.desc}</Typography>
+                  </Box>
+                  <Chip
+                    label="Em breve"
+                    size="small"
+                    sx={{
+                      fontSize: 10,
+                      height: 20,
+                      flexShrink: 0,
+                      bgcolor: alpha(theme.palette.primary.main, 0.1),
+                      color: 'primary.main',
+                    }}
+                  />
+                </Box>
+              ))}
+            </Box>
+          </SectionCard>
+        </Grid>
+      </Grid>
     </Box>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  color,
-}: {
-  label: string;
-  value: number | null;
-  icon: React.ReactNode;
-  color?: string;
-}) {
-  return (
-    <Card>
-      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        {icon}
-        <Box>
-          <Typography variant="body2" color="text.secondary">
-            {label}
-          </Typography>
-          {value === null ? (
-            <Skeleton width={40} height={32} />
-          ) : (
-            <Typography variant="h5" fontWeight={700} color={color ?? 'text.primary'}>
-              {value}
-            </Typography>
-          )}
-        </Box>
-      </CardContent>
-    </Card>
-  );
-}
