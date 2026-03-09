@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -14,6 +14,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { QRCodeSVG } from 'qrcode.react';
 import { sessionService } from '@/services/session.service';
 import { SessionStatusChip } from './SessionStatusChip';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
@@ -30,8 +31,12 @@ const POLLING_INTERVAL_MS = 4000;
 export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
+  const statusRef = useRef<SessionStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Mantém a ref de status sincronizada para uso dentro de setInterval
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   const fetchState = useCallback(async () => {
     if (!session) return;
@@ -59,7 +64,11 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
     fetchState().finally(() => setLoading(false));
 
     const interval = setInterval(async () => {
-      if (status === 'CONNECTED' || status === 'FAILED' || status === 'LOGGED_OUT') return;
+      const s = statusRef.current;
+      if (s === 'CONNECTED' || s === 'FAILED' || s === 'LOGGED_OUT') {
+        clearInterval(interval);
+        return;
+      }
       await fetchState();
     }, POLLING_INTERVAL_MS);
 
@@ -129,8 +138,8 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
                     bgcolor: 'white',
                   }}
                 >
-                  {/* QR como texto base64 — usa a string do Baileys diretamente */}
-                  <QrImage value={qrCode} />
+                  {/* Renderiza o QR code a partir da string raw do Baileys */}
+                  <QRCodeSVG value={qrCode} size={240} />
                 </Box>
                 <Typography variant="caption" color="text.secondary" display="block" mt={1}>
                   Atualizando automáticamente a cada {POLLING_INTERVAL_MS / 1000}s
@@ -155,30 +164,4 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
   );
 }
 
-// ── QR image helper ────────────────────────────────────────────────────────────
-// O Baileys retorna o QR como string "data:image/png;base64,..." ou como raw string
-function QrImage({ value }: { value: string }) {
-  const src = value.startsWith('data:') ? value : `data:image/png;base64,${value}`;
 
-  // Se não for imagem base64, renderiza como texto para diagnóstico
-  if (!value.startsWith('data:') && value.length < 200) {
-    return (
-      <Typography
-        variant="caption"
-        component="pre"
-        sx={{ fontFamily: 'monospace', wordBreak: 'break-all', maxWidth: 280 }}
-      >
-        {value}
-      </Typography>
-    );
-  }
-
-  return (
-    <Box
-      component="img"
-      src={src}
-      alt="QR Code"
-      sx={{ display: 'block', width: 240, height: 240 }}
-    />
-  );
-}
