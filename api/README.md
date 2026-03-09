@@ -16,3 +16,6 @@ Washooting Server is our backend interface that connects external applications t
 
 
 ### Documentação da biblioteca Baileys: https://baileys.wiki/docs/intro/
+
+### Matar sessao oculta
+Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique | ForEach-Object { Write-Host "Matando PID $_"; Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
