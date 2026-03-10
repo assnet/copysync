@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
+import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { ChatPresenter } from '../presenters/ChatPresenter';
+import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import { logger } from '../../../../shared/logger/logger';
 import {
   conversationIdParamSchema,
   contactIdParamSchema,
@@ -154,6 +157,58 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const { contactId } = request.params as { contactId: string };
       const result = await getContactUseCase.execute({ contactId, tenantId });
       httpResponse.ok(reply, ChatPresenter.presentContact(result));
+    },
+  );
+
+  // ── GET /events  (Server-Sent Events — tempo real) ─────────────────────────
+  // Envia eventos do tenant autenticado ao cliente via SSE.
+  // Formato: "data: <JSON>\n\n"
+  app.get(
+    '/events',
+    { preHandler: [sseAuthHook] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
+
+      const send = (event: string, data: unknown): void => {
+        reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      // Keepalive a cada 25s para evitar timeout de proxy/browser
+      const keepalive = setInterval(() => {
+        reply.raw.write(': ping\n\n');
+      }, 25_000);
+
+      const onMessage = (payload: import('../../../../shared/events/InternalMessagingEvent').InternalMessagingEvent): void => {
+        if (payload.tenantId !== tenantId) return;
+
+        if (payload.type === 'MESSAGE_RECEIVED') {
+          send('message_received', {
+            sessionId: payload.sessionId,
+            from: payload.from,
+            fromName: (payload as { fromName?: string }).fromName,
+            body: payload.body,
+          });
+        }
+      };
+
+      internalEventBus.on('MESSAGE_RECEIVED', onMessage as never);
+
+      request.raw.on('close', () => {
+        clearInterval(keepalive);
+        internalEventBus.off('MESSAGE_RECEIVED', onMessage as never);
+        logger.debug({ tenantId }, 'SSE client disconnected');
+      });
+
+      logger.debug({ tenantId }, 'SSE client connected');
+
+      // Mantém a conexão aberta indefinidamente
+      await new Promise<void>((resolve) => request.raw.on('close', resolve));
     },
   );
 }

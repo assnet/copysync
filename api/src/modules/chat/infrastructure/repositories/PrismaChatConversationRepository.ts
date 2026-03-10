@@ -78,6 +78,23 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     return PrismaChatConversationMapper.toDomain(raw);
   }
 
+  async findActiveByContactAndSession(
+    contactId: string,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<import('../../domain/entities/ChatConversation').ChatConversation | null> {
+    const raw = await this.prisma.chatConversation.findFirst({
+      where: {
+        tenantId,
+        contactId,
+        sessionId,
+        status: { notIn: ['CLOSED'] },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+    return raw ? PrismaChatConversationMapper.toDomain(raw) : null;
+  }
+
   async update(
     id: string,
     tenantId: string,

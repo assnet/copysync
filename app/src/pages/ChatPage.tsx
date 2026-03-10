@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Box } from '@mui/material';
 import type { ChatConversation, ChatMessage, ConversationFilter } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
@@ -11,6 +11,7 @@ import { ConversationSidebar } from '@/features/chat/components/ConversationSide
 import { ChatWindow } from '@/features/chat/components/ChatWindow';
 import { EmptyConversationState } from '@/features/chat/components/EmptyConversationState';
 import { ConversationDetailsPanel } from '@/features/chat/components/ConversationDetailsPanel';
+import { useChatSSE } from '@/hooks/useChatSSE';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
 const CHAT_HEIGHT = {
@@ -29,40 +30,52 @@ export default function ChatPage() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
-  // Debounce para pesquisa
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-
-  useEffect(() => {
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => setDebouncedSearch(search), 350);
-    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
-  }, [search]);
-
-  // Carrega conversas sempre que filtro ou pesquisa mudar
-  useEffect(() => {
-    let cancelled = false;
+  // Carrega todas as conversas uma vez ao montar.
+  // Filtragem por status e pesquisa é feita localmente pelo ConversationSidebar.
+  const loadConversations = useCallback(() => {
     setLoadingConversations(true);
-
-    const params: Record<string, unknown> = {};
-    if (debouncedSearch) params.search = debouncedSearch;
-    if (filter === 'unread') params.unreadOnly = true;
-    else if (filter !== 'all') params.status = filter.toUpperCase();
-
     chatService
-      .listConversations(params as Parameters<typeof chatService.listConversations>[0])
-      .then((items) => {
-        if (!cancelled) {
-          setConversations(items.map(apiConversationToFrontend));
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) console.error('Erro ao carregar conversas', err);
-      })
-      .finally(() => { if (!cancelled) setLoadingConversations(false); });
+      .listConversations()
+      .then((items) => setConversations(items.map(apiConversationToFrontend)))
+      .catch((err: unknown) => console.error('Erro ao carregar conversas', err))
+      .finally(() => setLoadingConversations(false));
+  }, []);
 
-    return () => { cancelled = true; };
-  }, [debouncedSearch, filter]);
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  // ── Tempo real via SSE ─────────────────────────────────────────────────────
+  useChatSSE(
+    useCallback(
+      (event: string, data: unknown) => {
+        if (event === 'message_received') {
+          // Recarrega a lista de conversas para refletir nova mensagem/conversa
+          // (abordagem simples e segura — sem risco de dados desatualizados)
+          loadConversations();
+
+          // Se a conversa afetada estiver aberta, recarrega as mensagens também
+          const payload = data as { from?: string };
+          // Não sabemos ainda o conversationId a partir do from,
+          // então recarregamos as mensagens da conversa selecionada
+          setSelectedId((currentId) => {
+            if (currentId) {
+              chatService
+                .listMessages(currentId)
+                .then((items) => {
+                  setMessages((prev) => ({ ...prev, [currentId]: items.map(apiMessageToFrontend) }));
+                })
+                .catch(() => {/* silencioso */});
+            }
+            return currentId;
+          });
+
+          void payload; // usado acima via type assertion
+        }
+      },
+      [loadConversations],
+    ),
+  );
 
   const selectedConversation = selectedId
     ? conversations.find((c) => c.id === selectedId) ?? null
@@ -152,6 +165,7 @@ export default function ChatPage() {
         .updateConversation(selectedId, data)
         .then((updated) => {
           const conv = apiConversationToFrontend(updated);
+          // Atualiza inline sem recarregar toda a lista
           setConversations((prev) =>
             prev.map((c) => (c.id === selectedId ? conv : c)),
           );

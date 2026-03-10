@@ -27,6 +27,15 @@ export interface ConversationLastMessageUpdate {
 export interface IChatConversationRepository {
   findById(id: string, tenantId: string): Promise<ChatConversation | null>;
   findMany(filter: ListConversationsFilter): Promise<ChatConversation[]>;
+  /**
+   * Returns the most recent non-CLOSED conversation for a given contact+session pair.
+   * Used when ingesting incoming messages to continue an existing conversation.
+   */
+  findActiveByContactAndSession(
+    contactId: string,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<ChatConversation | null>;
   create(data: {
     tenantId: string;
     sessionId?: string | null;

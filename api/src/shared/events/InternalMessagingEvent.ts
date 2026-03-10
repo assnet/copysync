@@ -19,8 +19,14 @@ export type InternalMessagingEvent =
       type: 'MESSAGE_RECEIVED';
       sessionId: string;
       tenantId: string;
+      /** Phone number extracted from the JID (e.g. "5511999887766") */
       from: string;
+      /** Contact display name pushed by the WhatsApp client, if available */
+      fromName?: string;
       body: string;
+      /** Unique message ID from the engine (used for deduplication) */
+      externalMessageId?: string;
+      /** Raw engine payload — never use outside the adapter */
       raw?: unknown;
     }
   | { type: 'MESSAGE_SENT'; sessionId: string; tenantId: string; messageId: string }

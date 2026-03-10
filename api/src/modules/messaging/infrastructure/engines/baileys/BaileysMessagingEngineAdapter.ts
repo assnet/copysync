@@ -224,7 +224,43 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         }
       }
     });
-  }
+    // ── Incoming messages ──────────────────────────────────────────────────
+    socket.ev.on('messages.upsert', ({ messages, type }) => {
+      // 'notify' = real-time new messages; 'append' = historical sync — skip
+      if (type !== 'notify') return;
+
+      for (const msg of messages) {
+        const jid = msg.key?.remoteJid;
+        if (!jid) continue;
+        // Skip group chats and broadcast lists for now
+        if (jid.endsWith('@g.us') || jid.endsWith('@broadcast')) continue;
+        // Skip messages sent by us from the phone (not via API)
+        if (msg.key.fromMe) continue;
+
+        const from = jid.split('@')[0];
+        const body =
+          msg.message?.conversation ??
+          msg.message?.extendedTextMessage?.text ??
+          msg.message?.imageMessage?.caption ??
+          msg.message?.videoMessage?.caption ??
+          null;
+
+        if (!body) continue; // non-text (sticker, audio, etc.) — handle later
+
+        internalEventBus.emit('MESSAGE_RECEIVED', {
+          type: 'MESSAGE_RECEIVED',
+          sessionId,
+          tenantId,
+          from,
+          fromName: msg.pushName ?? undefined,
+          body,
+          externalMessageId: msg.key.id ?? undefined,
+          raw: msg,
+        });
+
+        baileysLogger.info({ sessionId, from, msgId: msg.key.id }, 'Incoming message received');
+      }
+    });  }
 
   private async updateSessionStatus(sessionId: string, tenantId: string, status: SessionStatus): Promise<void> {
     try {
