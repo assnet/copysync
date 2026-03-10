@@ -11,6 +11,65 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.7.0] — 2026-03-10 — History sync, read receipts, delivery status e fromMe
+
+### Added
+
+#### Backend — History sync (messaging-history.set + append)
+
+- **`IngestHistorySyncUseCase.ts`** (novo) — recebe batch de mensagens históricas do Baileys; deduplicação por `externalMessageId`; cria contato + conversa automaticamente; persiste mensagens com timestamp original
+- **`BaileysMessagingEngineAdapter`** — handlers `messaging-history.set` e `messages.upsert` type `append` delegam ao `IngestHistorySyncUseCase` via `setImmediate` (não-bloqueante)
+- **`mapMessagesToHistoryItems()`** — método privado no adapter que extrai `HistoryMessageItem[]` de mensagens brutas do Baileys, filtrando grupos, broadcasts e mensagens sem conteúdo
+
+#### Backend — Suporte a `fromMe` (mensagens enviadas pelo telefone)
+
+- **`InternalMessagingEvent.MESSAGE_RECEIVED`** — adicionado campo `fromMe?: boolean`
+- **`IngestIncomingMessageUseCase`** — recebe `fromMe`; define `direction = OUTBOUND` quando `true`; não incrementa `unreadCount` para mensagens outbound
+- **`BaileysMessagingEngineAdapter`** — `messages.upsert` handler não mais pula mensagens `fromMe`; repassa o campo no evento interno
+
+#### Backend — Read receipts (double blue tick)
+
+- **`IMessagingEngine`** — novo método `markMessagesRead(input: MarkMessagesReadInput): Promise<void>`
+- **`BaileysMessagingEngineAdapter.markMessagesRead()`** — chama `socket.readMessages()` com keys `fromMe: false`; usa `normalizeJid()` para evitar sufixo `@s.whatsapp.net` duplicado
+- **`MarkConversationAsReadUseCase.ts`** (novo) — reseta `unreadCount` no DB + envia receipt da última mensagem INBOUND via engine; recebe engine como nullable (se sessão offline, só reseta DB)
+- **`chat.routes.ts`** — `POST /conversations/:id/read` chama o use case e publica `chat.unread.updated` via WS
+- **`chat.service.ts` (frontend)** — `markAsRead(conversationId)` → `POST /conversations/:id/read`
+- **`ChatPage.tsx`** — `handleSelectConversation` chama `markAsRead` fire-and-forget ao selecionar conversa
+
+#### Backend — Delivery / read status em tempo real (✓✓ ticks)
+
+- **`BaileysMessagingEngineAdapter`** — novo handler `messages.update`: detecta acks de mensagens enviadas (`key.fromMe === true`); status 3 → `MESSAGE_DELIVERED`, status 4/5 → `MESSAGE_READ`
+- **`IChatMessageRepository`** — novo método `updateStatusByExternalId(externalId, tenantId, status)`
+- **`PrismaChatMessageRepository`** — implementação: busca por `externalMessageId` + atualiza `status`
+- **`ChatMessageStatusListener.ts`** (novo) — ouve `MESSAGE_DELIVERED` e `MESSAGE_READ` no event bus; atualiza status no DB; publica `chat.message.status.updated` via WebSocket
+- **`ChatWebSocketPublisher`** — novo tipo de evento `chat.message.status.updated` com `{ conversationId, messageId, status }`
+- **`server.ts`** — `registerChatMessageStatusListener(chatMessageRepo)` no startup
+
+#### Backend — Engine singleton compartilhado
+
+- **`activeEngine.ts`** (novo) — `setActiveEngine()` / `getActiveEngine()` para compartilhar a instância entre módulos sem acoplamento direto
+- **`session.routes.ts`** — chama `setActiveEngine()` após criação da engine
+
+#### Frontend — Status de mensagens em tempo real
+
+- **`useChatWebSocket.ts`** — novo tipo `WsMessageStatusUpdatedData` e evento `chat.message.status.updated` no union `ChatWsPayload`
+- **`ChatPage.tsx`** — handler `chat.message.status.updated`: localiza a mensagem pelo `messageId` no estado e atualiza `status` → `MessageBubble` renderiza o tick correto (✓ sent → ✓✓ delivered → ✓✓ azul read)
+
+### Fixed
+
+- **`BaileysMessagingEngineAdapter`** — `messaging-history.set` handler corrigido: antes fazia `histMsgs.map(h => h.message)` que stripava a `key` e descartava tudo; agora passa `histMsgs` direto
+- **`BaileysMessagingEngineAdapter`** — `messages.upsert` não mais ignora mensagens `fromMe` (antes tinha `if (msg.key.fromMe) continue`)
+- **`markMessagesRead`** — corrigido risco de JID duplicado (`@s.whatsapp.net@s.whatsapp.net`) usando `normalizeJid()` em vez de concatenação direta
+- **`vite.config.ts`** — adicionado `ws: true` no proxy `/api` para que conexões WebSocket passem pelo Vite em dev
+
+### Changed
+
+- `IngestIncomingMessageUseCase` — aceita `fromMe` no input; lógica de direction e unread condicional
+- `InternalMessagingEvent` — adicionados tipos `MESSAGE_READ` e campo `fromMe` em `MESSAGE_RECEIVED`
+- `MessagingEngineFactory` — aceita `chatContactRepo` e `ingestHistorySyncUseCase` como dependências para injeção no adapter
+
+---
+
 ## [0.6.0] — 2026-03-10 — Chat V3: WebSocket em tempo real + deduplicação de mensagens
 
 ### Added

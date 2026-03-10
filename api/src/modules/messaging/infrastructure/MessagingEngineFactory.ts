@@ -1,6 +1,8 @@
 import type { IMessagingEngine } from '../domain/contracts/IMessagingEngine';
 import type { ISessionRepository } from '../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../sessions/domain/contracts/ISessionAuthStateRepository';
+import type { IChatContactRepository } from '../../chat/domain/contracts/IChatContactRepository';
+import type { IngestHistorySyncUseCase } from '../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { BaileysMessagingEngineAdapter } from './engines/baileys/BaileysMessagingEngineAdapter';
 
 export type MessagingEngineName = 'baileys';
@@ -14,10 +16,17 @@ export class MessagingEngineFactory {
     engine: MessagingEngineName = 'baileys',
     sessionRepo: ISessionRepository,
     authStateRepo: ISessionAuthStateRepository,
+    chatContactRepo: IChatContactRepository,
+    historySyncUseCase: IngestHistorySyncUseCase,
   ): IMessagingEngine {
     switch (engine) {
       case 'baileys':
-        return new BaileysMessagingEngineAdapter(sessionRepo, authStateRepo);
+        return new BaileysMessagingEngineAdapter(
+          sessionRepo,
+          authStateRepo,
+          chatContactRepo,
+          historySyncUseCase,
+        );
       default:
         throw new Error(`Unknown messaging engine: ${engine}`);
     }

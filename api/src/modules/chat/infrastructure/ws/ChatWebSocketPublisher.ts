@@ -51,6 +51,15 @@ export type ChatWsEvent =
       };
     }
   | {
+      event: 'chat.message.status.updated';
+      data: {
+        tenantId: string;
+        conversationId: string;
+        messageId: string;
+        status: string;
+      };
+    }
+  | {
       event: 'chat.session.updated';
       data: {
         tenantId: string;

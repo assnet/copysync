@@ -36,10 +36,18 @@ export interface WsSessionUpdatedData {
   status: string;
 }
 
+export interface WsMessageStatusUpdatedData {
+  tenantId: string;
+  conversationId: string;
+  messageId: string;
+  status: string;
+}
+
 export type ChatWsPayload =
   | { event: 'chat.message.created'; data: WsMessageCreatedData }
   | { event: 'chat.conversation.updated'; data: WsConversationUpdatedData }
   | { event: 'chat.unread.updated'; data: WsUnreadUpdatedData }
+  | { event: 'chat.message.status.updated'; data: WsMessageStatusUpdatedData }
   | { event: 'chat.session.updated'; data: WsSessionUpdatedData }
   | { event: 'ping' };
 

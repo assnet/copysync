@@ -5,6 +5,7 @@ import type {
   ListMessagesFilter,
 } from '../../domain/contracts/IChatMessageRepository';
 import type { ChatMessage } from '../../domain/entities/ChatMessage';
+import type { ChatMessageStatus } from '../../domain/enums/ChatMessageEnums';
 import { PrismaChatMessageMapper } from '../mappers/PrismaChatMessageMapper';
 
 export class PrismaChatMessageRepository implements IChatMessageRepository {
@@ -36,7 +37,7 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
 
     const rows = await this.prisma.chatMessage.findMany({
       where,
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: filter.orderDir ?? 'asc' },
       take: filter.limit ?? 50,
     });
 
@@ -55,8 +56,25 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
         mimeType: data.mimeType ?? null,
         externalMessageId: data.externalMessageId ?? null,
         status: 'SENT',
-        sentAt: new Date(),
+        sentAt: data.sentAt ?? new Date(),
       },
+    });
+    return PrismaChatMessageMapper.toDomain(raw);
+  }
+
+  async updateStatusByExternalId(
+    externalId: string,
+    tenantId: string,
+    status: ChatMessageStatus,
+  ): Promise<ChatMessage | null> {
+    const existing = await this.prisma.chatMessage.findFirst({
+      where: { externalMessageId: externalId, tenantId },
+    });
+    if (!existing) return null;
+
+    const raw = await this.prisma.chatMessage.update({
+      where: { id: existing.id },
+      data: { status },
     });
     return PrismaChatMessageMapper.toDomain(raw);
   }

@@ -10,7 +10,9 @@ import { PrismaChatContactRepository } from '../modules/chat/infrastructure/repo
 import { PrismaChatConversationRepository } from '../modules/chat/infrastructure/repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from '../modules/chat/infrastructure/repositories/PrismaChatMessageRepository';
 import { IngestIncomingMessageUseCase } from '../modules/chat/application/use-cases/IngestIncomingMessageUseCase';
+import { IngestHistorySyncUseCase } from '../modules/chat/application/use-cases/IngestHistorySyncUseCase';
 import { registerChatIncomingMessageListener } from '../modules/chat/infrastructure/listeners/ChatIncomingMessageListener';
+import { registerChatMessageStatusListener } from '../modules/chat/infrastructure/listeners/ChatMessageStatusListener';
 
 async function start(): Promise<void> {
   const app = await buildApp();
@@ -42,14 +44,26 @@ async function start(): Promise<void> {
     chatConversationRepo,
     chatMessageRepo,
   );
+  const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
+    chatContactRepo,
+    chatConversationRepo,
+    chatMessageRepo,
+  );
   registerChatIncomingMessageListener(ingestUseCase);
+  registerChatMessageStatusListener(chatMessageRepo);
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Runs after the server is listening so QR events can be polled immediately.
   try {
     const sessionRepo = new PrismaSessionRepository();
     const authStateRepo = new PrismaSessionAuthStateRepository();
-    const engine = MessagingEngineFactory.create('baileys', sessionRepo, authStateRepo);
+    const engine = MessagingEngineFactory.create(
+      'baileys',
+      sessionRepo,
+      authStateRepo,
+      chatContactRepo,
+      ingestHistorySyncUseCase,
+    );
     const bootstrapService = new SessionBootstrapService(sessionRepo, engine);
     await bootstrapService.bootstrap();
   } catch (err) {

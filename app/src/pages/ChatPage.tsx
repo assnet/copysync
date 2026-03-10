@@ -120,6 +120,22 @@ export default function ChatPage() {
             prev.map((c) => (c.id === conversationId ? { ...c, unreadCount } : c)),
           );
         }
+
+        if (payload.event === 'chat.message.status.updated') {
+          const { conversationId, messageId, status } = payload.data;
+          setMessages((prev) => {
+            const msgs = prev[conversationId];
+            if (!msgs) return prev;
+            return {
+              ...prev,
+              [conversationId]: msgs.map((m) =>
+                m.id === messageId
+                  ? { ...m, status: status.toLowerCase() as import('@/features/chat/types').MessageStatus }
+                  : m,
+              ),
+            };
+          });
+        }
       },
       [loadConversations],
     ),
@@ -137,6 +153,11 @@ export default function ChatPage() {
       // Marca lida localmente de imediato
       setConversations((prev) =>
         prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)),
+      );
+
+      // Persiste no servidor e envia read receipts (double blue tick)
+      chatService.markAsRead(id).catch((err: unknown) =>
+        console.warn('Erro ao marcar conversa como lida', err),
       );
 
       // Carrega mensagens se ainda não tiver em cache

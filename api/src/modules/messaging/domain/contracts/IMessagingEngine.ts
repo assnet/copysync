@@ -59,6 +59,15 @@ export interface SendMessageResult {
   sentAt: Date;
 }
 
+export interface MarkMessagesReadInput {
+  sessionId: string;
+  tenantId: string;
+  /** Phone number of the contact (without @s.whatsapp.net) */
+  remoteJid: string;
+  /** Baileys message IDs (key.id) to mark as read */
+  messageIds: string[];
+}
+
 export { SessionStatus as MessagingSessionStatus };
 
 // ── Engine port ───────────────────────────────────────────────────────────────
@@ -91,5 +100,7 @@ export interface IMessagingEngine {
   getSessionPairingCode(sessionId: string): Promise<string | null>;
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult>;
   sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult>;
+  /** Send read receipts so the contact sees the double-blue tick. */
+  markMessagesRead(input: MarkMessagesReadInput): Promise<void>;
 }
 

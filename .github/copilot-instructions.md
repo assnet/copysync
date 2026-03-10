@@ -4,6 +4,8 @@
 Este projeto é um **monorepo full-stack** com:
 Sempre interaja utilizando a linguagem Português Brasil, pt-BR.
 
+Documentação da Lib Baileys: https://baileys.wiki/docs/category/socket/, https://baileys.wiki/docs/intro/
+
 - **API REST** em `api/`
   - **Fastify**
   - **TypeScript**

@@ -6,6 +6,8 @@ Este projeto é um sistema full-stack organizado em monorepo, com foco em mensag
 
 Sempre interaja utilizando a linguagem Português Brasil, pt-BR.
 
+Documentação da Lib Baileys: https://baileys.wiki/docs/category/socket/, https://baileys.wiki/docs/intro/
+
 ### Estrutura principal
 
 - **API REST** em `api/`

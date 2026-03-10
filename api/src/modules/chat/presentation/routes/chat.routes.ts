@@ -31,6 +31,8 @@ import { UpdateConversationUseCase } from '../../application/use-cases/UpdateCon
 import { ListMessagesUseCase } from '../../application/use-cases/ListMessagesUseCase';
 import { SendMessageUseCase } from '../../application/use-cases/SendMessageUseCase';
 import { GetContactByIdUseCase } from '../../application/use-cases/GetContactByIdUseCase';
+import { MarkConversationAsReadUseCase } from '../../application/use-cases/MarkConversationAsReadUseCase';
+import { getActiveEngine } from '../../../../shared/engine/activeEngine';
 
 import type { ConversationStatus } from '../../domain/enums/ConversationStatus';
 
@@ -176,6 +178,31 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const { contactId } = request.params as { contactId: string };
       const result = await getContactUseCase.execute({ contactId, tenantId });
       httpResponse.ok(reply, ChatPresenter.presentContact(result));
+    },
+  );
+
+  // ── POST /conversations/:id/read — marca conversa como lida ───────────────
+  app.post(
+    '/conversations/:id/read',
+    { preHandler, schema: { params: conversationIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+
+      const useCase = new MarkConversationAsReadUseCase(
+        conversationRepo,
+        contactRepo,
+        messageRepo,
+        getActiveEngine(),
+      );
+      await useCase.execute({ conversationId: id, tenantId });
+
+      chatWsPublisher.publish(tenantId, {
+        event: 'chat.unread.updated',
+        data: { tenantId, conversationId: id, unreadCount: 0 },
+      });
+
+      httpResponse.ok(reply, { success: true });
     },
   );
 

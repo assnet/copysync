@@ -26,6 +26,8 @@ export type InternalMessagingEvent =
       body: string;
       /** Unique message ID from the engine (used for deduplication) */
       externalMessageId?: string;
+      /** true = sent by us from the phone (OUTBOUND); false/undefined = received (INBOUND) */
+      fromMe?: boolean;
       /** Raw engine payload — never use outside the adapter */
       raw?: unknown;
     }

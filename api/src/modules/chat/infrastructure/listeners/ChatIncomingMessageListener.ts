@@ -25,6 +25,7 @@ export function registerChatIncomingMessageListener(
         fromName: payload.fromName,
         body: payload.body,
         externalMessageId: payload.externalMessageId,
+        fromMe: payload.fromMe,
       });
 
       if (!result) return; // duplicate — already processed

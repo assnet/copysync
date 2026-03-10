@@ -7,13 +7,15 @@ import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMe
 export interface IngestIncomingMessageInput {
   tenantId: string;
   sessionId: string;
-  /** Phone number of the sender (e.g. "5511999887766") */
+  /** Phone number of the contact involved (e.g. "5511999887766") */
   from: string;
   /** Contact display name from WhatsApp push name, if available */
   fromName?: string;
   body: string;
   /** Engine-level message ID for deduplication */
   externalMessageId?: string;
+  /** true = sent by us from the phone → OUTBOUND; false/undefined = received → INBOUND */
+  fromMe?: boolean;
 }
 
 export interface IngestIncomingMessageResult {
@@ -44,7 +46,7 @@ export class IngestIncomingMessageUseCase {
   ) {}
 
   async execute(input: IngestIncomingMessageInput): Promise<IngestIncomingMessageResult | null> {
-    const { tenantId, sessionId, from, fromName, body, externalMessageId } = input;
+    const { tenantId, sessionId, from, fromName, body, externalMessageId, fromMe } = input;
 
     // 1 — Find or create contact
     const contact = await this.contactRepo.findOrCreate({
@@ -78,10 +80,11 @@ export class IngestIncomingMessageUseCase {
     }
 
     // 4 — Persist the message
+    const direction = fromMe ? ChatMessageDirection.OUTBOUND : ChatMessageDirection.INBOUND;
     const message = await this.messageRepo.create({
       tenantId,
       conversationId: conversation.id,
-      direction: ChatMessageDirection.INBOUND,
+      direction,
       type: ChatMessageType.TEXT,
       content: body,
       externalMessageId: externalMessageId ?? null,
@@ -93,10 +96,13 @@ export class IngestIncomingMessageUseCase {
       lastMessagePreview: preview,
       lastMessageAt: new Date(),
     });
-    await this.conversationRepo.incrementUnread(conversation.id, tenantId);
+    // Mensagens enviadas por nós não incrementam o contador de não-lidas
+    if (!fromMe) {
+      await this.conversationRepo.incrementUnread(conversation.id, tenantId);
+    }
 
     const updated = await this.conversationRepo.findById(conversation.id, tenantId);
-    const unreadCount = updated?.unreadCount ?? conversation.unreadCount + 1;
+    const unreadCount = updated?.unreadCount ?? (fromMe ? conversation.unreadCount : conversation.unreadCount + 1);
 
     return { conversationId: conversation.id, message, isNewConversation, unreadCount };
   }

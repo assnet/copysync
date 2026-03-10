@@ -7,6 +7,12 @@ import { PrismaSessionRepository } from '../../infrastructure/repositories/Prism
 import { PrismaSessionAuthStateRepository } from '../../infrastructure/repositories/PrismaSessionAuthStateRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { MessagingEngineFactory } from '../../../messaging/infrastructure/MessagingEngineFactory';
+import { PrismaChatContactRepository } from '../../../chat/infrastructure/repositories/PrismaChatContactRepository';
+import { PrismaChatConversationRepository } from '../../../chat/infrastructure/repositories/PrismaChatConversationRepository';
+import { PrismaChatMessageRepository } from '../../../chat/infrastructure/repositories/PrismaChatMessageRepository';
+import { IngestHistorySyncUseCase } from '../../../chat/application/use-cases/IngestHistorySyncUseCase';
+import { prisma } from '../../../../shared/database/prisma.client';
+import { setActiveEngine } from '../../../../shared/engine/activeEngine';
 import { CreateSessionUseCase } from '../../application/use-cases/CreateSessionUseCase';
 import { ListSessionsUseCase } from '../../application/use-cases/ListSessionsUseCase';
 import { GetSessionByIdUseCase } from '../../application/use-cases/GetSessionByIdUseCase';
@@ -24,8 +30,26 @@ const sessionRepo = new PrismaSessionRepository();
 const authStateRepo = new PrismaSessionAuthStateRepository();
 const auditRepo = new PrismaAuditLogRepository();
 
+// Chat deps required by the engine (history sync + contacts upsert)
+const chatContactRepo      = new PrismaChatContactRepository(prisma);
+const chatConversationRepo = new PrismaChatConversationRepository(prisma);
+const chatMessageRepo      = new PrismaChatMessageRepository(prisma);
+const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
+  chatContactRepo,
+  chatConversationRepo,
+  chatMessageRepo,
+);
+
 // Engine singleton — wired once, shared across all requests
-const engine = MessagingEngineFactory.create('baileys', sessionRepo, authStateRepo);
+const engine = MessagingEngineFactory.create(
+  'baileys',
+  sessionRepo,
+  authStateRepo,
+  chatContactRepo,
+  ingestHistorySyncUseCase,
+);
+// Disponibiliza para outros módulos (e.g. chat routes para read receipts)
+setActiveEngine(engine);
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
 const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo);
