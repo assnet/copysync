@@ -40,6 +40,15 @@ export type InternalMessagingEvent =
       tenantId: string;
       messageId?: string;
       reason: string;
+    }
+  | {
+      type: 'PRESENCE_UPDATED';
+      sessionId: string;
+      tenantId: string;
+      /** Phone number extracted from the JID (e.g. "5511999887766") */
+      phone: string;
+      /** 'available' | 'unavailable' | 'composing' | 'recording' */
+      presence: string;
     };
 
 export type InternalEventType = InternalMessagingEvent['type'];

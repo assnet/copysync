@@ -30,6 +30,7 @@ export default function ChatPage() {
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
 
   // Carrega todas as conversas uma vez ao montar.
   // Filtragem por status e pesquisa é feita localmente pelo ConversationSidebar.
@@ -136,6 +137,11 @@ export default function ChatPage() {
             };
           });
         }
+
+        if (payload.event === 'chat.presence.updated') {
+          const { phone, presence } = payload.data;
+          setPresenceMap((prev) => ({ ...prev, [phone]: presence }));
+        }
       },
       [loadConversations],
     ),
@@ -159,6 +165,9 @@ export default function ChatPage() {
       chatService.markAsRead(id).catch((err: unknown) =>
         console.warn('Erro ao marcar conversa como lida', err),
       );
+
+      // Subscribe to presence updates for this contact
+      chatService.subscribePresence(id).catch(() => {});
 
       // Carrega mensagens se ainda não tiver em cache
       if (messages[id]) return;
@@ -268,6 +277,7 @@ export default function ChatPage() {
         filter={filter}
         onFilterChange={setFilter}
         loading={loadingConversations}
+        presenceMap={presenceMap}
       />
 
       {/* Área central */}
@@ -279,6 +289,7 @@ export default function ChatPage() {
           detailsOpen={detailsOpen}
           onToggleDetails={() => setDetailsOpen((v) => !v)}
           loadingMessages={loadingMessages}
+          presence={presenceMap[selectedConversation.contact.phone]}
         />
       ) : (
         <EmptyConversationState />

@@ -11,6 +11,7 @@ interface Props {
   detailsOpen: boolean;
   onToggleDetails: () => void;
   loadingMessages?: boolean;
+  presence?: string;
 }
 
 export function ChatWindow({
@@ -20,6 +21,7 @@ export function ChatWindow({
   detailsOpen,
   onToggleDetails,
   loadingMessages = false,
+  presence,
 }: Props) {
   const isClosed = conversation.status === 'closed';
 
@@ -38,6 +40,7 @@ export function ChatWindow({
         conversation={conversation}
         detailsOpen={detailsOpen}
         onToggleDetails={onToggleDetails}
+        presence={presence}
       />
 
       <MessageList messages={messages} loading={loadingMessages} />

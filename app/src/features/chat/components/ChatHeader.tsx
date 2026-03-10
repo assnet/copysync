@@ -15,6 +15,7 @@ interface Props {
   conversation: ChatConversation;
   detailsOpen: boolean;
   onToggleDetails: () => void;
+  presence?: string;
 }
 
 const STATUS_ICON: Record<string, ReactElement> = {
@@ -25,10 +26,20 @@ const STATUS_ICON: Record<string, ReactElement> = {
   pending: <CircleIcon sx={{ fontSize: 13, color: '#f59e0b' }} />,
 };
 
-export function ChatHeader({ conversation, detailsOpen, onToggleDetails }: Props) {
+function getPresenceLabel(presence?: string): { text: string; color: string } | null {
+  switch (presence) {
+    case 'composing': return { text: 'digitando…', color: '#22c55e' };
+    case 'recording': return { text: 'gravando áudio…', color: '#ef4444' };
+    case 'available': return { text: 'online', color: '#22c55e' };
+    default: return null;
+  }
+}
+
+export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presence }: Props) {
   const theme = useTheme();
   const { contact, session, status, queue, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
+  const presenceLabel = getPresenceLabel(presence);
 
   return (
     <Box>
@@ -77,6 +88,18 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails }: Props
               }}
             />
           </Box>
+          {presenceLabel && (
+            <Typography
+              variant="caption"
+              sx={{
+                color: presenceLabel.color,
+                fontWeight: 500,
+                fontStyle: presenceLabel.text !== 'online' ? 'italic' : 'normal',
+              }}
+            >
+              {presenceLabel.text}
+            </Typography>
+          )}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             <Typography variant="caption" color="text.secondary">
               {formatPhone(contact.phone)}

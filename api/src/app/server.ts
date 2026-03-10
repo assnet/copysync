@@ -13,6 +13,7 @@ import { IngestIncomingMessageUseCase } from '../modules/chat/application/use-ca
 import { IngestHistorySyncUseCase } from '../modules/chat/application/use-cases/IngestHistorySyncUseCase';
 import { registerChatIncomingMessageListener } from '../modules/chat/infrastructure/listeners/ChatIncomingMessageListener';
 import { registerChatMessageStatusListener } from '../modules/chat/infrastructure/listeners/ChatMessageStatusListener';
+import { registerChatPresenceListener } from '../modules/chat/infrastructure/listeners/ChatPresenceListener';
 
 async function start(): Promise<void> {
   const app = await buildApp();
@@ -51,6 +52,7 @@ async function start(): Promise<void> {
   );
   registerChatIncomingMessageListener(ingestUseCase);
   registerChatMessageStatusListener(chatMessageRepo);
+  registerChatPresenceListener();
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Runs after the server is listening so QR events can be polled immediately.

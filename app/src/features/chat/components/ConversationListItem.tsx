@@ -8,9 +8,10 @@ interface Props {
   conversation: ChatConversation;
   selected: boolean;
   onClick: () => void;
+  presence?: string;
 }
 
-export function ConversationListItem({ conversation, selected, onClick }: Props) {
+export function ConversationListItem({ conversation, selected, onClick, presence }: Props) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const { contact, status, unreadCount, lastMessage, lastMessageAt, tags, assignedTo } = conversation;
@@ -105,17 +106,37 @@ export function ConversationListItem({ conversation, selected, onClick }: Props)
           )}
         </Box>
 
-        {/* Row 3: Last message preview */}
-        <Typography
-          variant="caption"
-          color={hasUnread ? 'text.primary' : 'text.secondary'}
-          fontWeight={hasUnread ? 600 : 400}
-          noWrap
-          display="block"
-          sx={{ mt: 0.25 }}
-        >
-          {lastMessage}
-        </Typography>
+        {/* Row 3: Last message preview or typing indicator */}
+        {presence === 'composing' ? (
+          <Typography
+            variant="caption"
+            sx={{ color: '#22c55e', fontStyle: 'italic', fontWeight: 500, mt: 0.25 }}
+            noWrap
+            display="block"
+          >
+            digitando…
+          </Typography>
+        ) : presence === 'recording' ? (
+          <Typography
+            variant="caption"
+            sx={{ color: '#ef4444', fontStyle: 'italic', fontWeight: 500, mt: 0.25 }}
+            noWrap
+            display="block"
+          >
+            gravando áudio…
+          </Typography>
+        ) : (
+          <Typography
+            variant="caption"
+            color={hasUnread ? 'text.primary' : 'text.secondary'}
+            fontWeight={hasUnread ? 600 : 400}
+            noWrap
+            display="block"
+            sx={{ mt: 0.25 }}
+          >
+            {lastMessage}
+          </Typography>
+        )}
 
         {/* Row 4: Tags/indicators */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.75, flexWrap: 'wrap' }}>

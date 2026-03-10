@@ -166,6 +166,17 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     }
   }
 
+  async presenceSubscribe(sessionId: string, phone: string): Promise<void> {
+    const entry = this.registry.get(sessionId);
+    if (!entry) return;
+    const jid = this.normalizeJid(phone);
+    try {
+      await entry.socket.presenceSubscribe(jid);
+    } catch (err) {
+      baileysLogger.warn({ err, sessionId, phone }, 'Failed to subscribe to presence');
+    }
+  }
+
   // -- Private ------------------------------------------------------------------
 
   private async openSocket(sessionId: string, tenantId: string, attempt: number): Promise<void> {
@@ -361,6 +372,23 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
               baileysLogger.warn({ err, phone }, 'Failed to upsert contact from contacts.upsert'),
             );
         }
+      });
+    });
+
+    // ── Presence / typing ────────────────────────────────────────────────────
+    socket.ev.on('presence.update', ({ id: jid, presences }) => {
+      if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast')) return;
+      const phone = jid.split('@')[0];
+      if (!phone) return;
+      // Pick the first (and usually only) participant presence
+      const entry = Object.values(presences)[0];
+      if (!entry) return;
+      internalEventBus.emit('PRESENCE_UPDATED', {
+        type: 'PRESENCE_UPDATED',
+        sessionId,
+        tenantId,
+        phone,
+        presence: entry.lastKnownPresence,
       });
     });
   }

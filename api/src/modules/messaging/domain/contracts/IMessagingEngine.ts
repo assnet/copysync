@@ -102,5 +102,7 @@ export interface IMessagingEngine {
   sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult>;
   /** Send read receipts so the contact sees the double-blue tick. */
   markMessagesRead(input: MarkMessagesReadInput): Promise<void>;
+  /** Subscribe to presence updates for a specific JID. */
+  presenceSubscribe(sessionId: string, phone: string): Promise<void>;
 }
 

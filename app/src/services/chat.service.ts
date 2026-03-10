@@ -69,4 +69,8 @@ export const chatService = {
   async markAsRead(conversationId: string): Promise<void> {
     await apiClient.post(`/chat/conversations/${conversationId}/read`);
   },
+
+  async subscribePresence(conversationId: string): Promise<void> {
+    await apiClient.post(`/chat/conversations/${conversationId}/presence`);
+  },
 };

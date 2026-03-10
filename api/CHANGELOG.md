@@ -11,6 +11,37 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.8.0] — 2026-03-10 — Chat V4: presence/typing sync e refinamento de inbox
+
+### Added
+
+#### Backend — Presence/typing sync
+
+- **`InternalMessagingEvent`** — novo tipo `PRESENCE_UPDATED` com `phone` e `presence` (`composing` | `recording` | `available` | `unavailable` | `paused`)
+- **`BaileysMessagingEngineAdapter`** — handler `presence.update` do Baileys: extrai `lastKnownPresence` do participante, filtra grupos/broadcasts, emite evento interno `PRESENCE_UPDATED`
+- **`IMessagingEngine`** — novo método `presenceSubscribe(sessionId, phone): Promise<void>` para assinar atualizações de presença de um contato
+- **`BaileysMessagingEngineAdapter.presenceSubscribe()`** — chama `socket.presenceSubscribe(jid)` no Baileys
+- **`ChatPresenceListener.ts`** (novo) — ouve `PRESENCE_UPDATED` no event bus interno e publica `chat.presence.updated` via WebSocket; efêmero, sem persistência
+- **`chat.routes.ts`** — `POST /conversations/:id/presence` — recebe ID de conversa, resolve contato, chama `engine.presenceSubscribe()`; retorna `{ subscribed: true/false }`
+- **`ChatWebSocketPublisher`** — novo tipo de evento `chat.presence.updated` com `{ tenantId, phone, presence }`
+- **`server.ts`** — `registerChatPresenceListener()` registrado no startup
+
+#### Frontend — Presence/typing em tempo real
+
+- **`useChatWebSocket.ts`** — novo tipo `WsPresenceUpdatedData` e evento `chat.presence.updated` no union `ChatWsPayload`
+- **`chat.service.ts`** — `subscribePresence(conversationId)` → `POST /chat/conversations/:id/presence`
+- **`ChatPage.tsx`** — estado `presenceMap` (phone → presence); handler WS `chat.presence.updated`; chama `subscribePresence()` ao selecionar conversa
+- **`ChatWindow.tsx`** — aceita e repassa prop `presence?: string`
+- **`ChatHeader.tsx`** — exibe indicador de presença abaixo do nome: "online" (verde), "digitando…" (verde/itálico), "gravando áudio…" (vermelho/itálico)
+
+#### Frontend — Refinamento de inbox
+
+- **`ConversationListItem.tsx`** — aceita prop `presence`; quando contato está digitando ou gravando, substitui preview de última mensagem por indicador colorido ("digitando…" ou "gravando áudio…")
+- **`ConversationSidebar.tsx`** — repassa `presenceMap` para cada `ConversationListItem`
+- **`ConversationDetailsPanel.tsx`** — seção "Conversa" agora exibe "Última atividade" e "Não lidas" (quando > 0)
+
+---
+
 ## [0.7.0] — 2026-03-10 — History sync, read receipts, delivery status e fromMe
 
 ### Added

@@ -38,6 +38,7 @@ interface Props {
   filter: ConversationFilter;
   onFilterChange: (filter: ConversationFilter) => void;
   loading?: boolean;
+  presenceMap?: Record<string, string>;
 }
 
 export function ConversationSidebar({
@@ -49,6 +50,7 @@ export function ConversationSidebar({
   filter,
   onFilterChange,
   loading = false,
+  presenceMap = {},
 }: Props) {
   const theme = useTheme();
 
@@ -192,6 +194,7 @@ export function ConversationSidebar({
                 conversation={conv}
                 selected={selectedId === conv.id}
                 onClick={() => onSelect(conv.id)}
+                presence={presenceMap[conv.contact.phone]}
               />
               <Divider sx={{ mx: 2 }} />
             </Box>

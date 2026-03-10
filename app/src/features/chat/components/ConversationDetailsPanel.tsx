@@ -12,7 +12,7 @@ import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import { useState } from 'react';
 import type { ChatConversation, ConversationStatus } from '../types';
 import type { UpdateConversationRequest } from '@/types/chat.api.types';
-import { formatPhone, getStatusConfig } from '../utils';
+import { formatPhone, getStatusConfig, formatConversationTime } from '../utils';
 
 interface SectionProps {
   title: string;
@@ -95,7 +95,7 @@ const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
 ];
 
 export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Props) {
-  const { contact, session, status, queue, assignedTo, tags, notes } = conversation;
+  const { contact, session, status, queue, assignedTo, tags, notes, unreadCount, lastMessageAt } = conversation;
   const statusConfig = getStatusConfig(status);
   const [localNotes, setLocalNotes] = useState(notes);
 
@@ -210,6 +210,10 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
               <Typography variant="caption" color="text.disabled">Atendente</Typography>
               <Typography variant="caption" color="text.disabled" fontStyle="italic">Não atribuído</Typography>
             </Box>
+          )}
+          <InfoRow label="Última ativ." value={formatConversationTime(lastMessageAt)} />
+          {unreadCount > 0 && (
+            <InfoRow label="Não lidas" value={String(unreadCount)} />
           )}
         </Section>
 

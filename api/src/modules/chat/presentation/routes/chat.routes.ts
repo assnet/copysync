@@ -206,6 +206,32 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // ── POST /conversations/:id/presence — subscribe presence for a contact ───
+  app.post(
+    '/conversations/:id/presence',
+    { preHandler, schema: { params: conversationIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+
+      const conversation = await conversationRepo.findById(id, tenantId);
+      if (!conversation) {
+        return httpResponse.ok(reply, { subscribed: false });
+      }
+
+      const engine = getActiveEngine();
+      if (!engine || !conversation.sessionId) {
+        return httpResponse.ok(reply, { subscribed: false });
+      }
+
+      const contact = await contactRepo.findById(conversation.contactId, tenantId);
+      if (!contact) return httpResponse.ok(reply, { subscribed: false });
+
+      await engine.presenceSubscribe(conversation.sessionId, contact.phone);
+      httpResponse.ok(reply, { subscribed: true });
+    },
+  );
+
   // ── GET /events  (Server-Sent Events — tempo real) ─────────────────────────
   // Envia eventos do tenant autenticado ao cliente via SSE.
   // Formato: "data: <JSON>\n\n"

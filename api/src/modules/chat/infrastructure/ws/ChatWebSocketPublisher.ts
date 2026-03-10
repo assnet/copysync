@@ -60,6 +60,14 @@ export type ChatWsEvent =
       };
     }
   | {
+      event: 'chat.presence.updated';
+      data: {
+        tenantId: string;
+        phone: string;
+        presence: string;
+      };
+    }
+  | {
       event: 'chat.session.updated';
       data: {
         tenantId: string;
