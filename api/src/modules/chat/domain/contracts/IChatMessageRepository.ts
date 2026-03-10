@@ -21,6 +21,7 @@ export interface ChatMessageCreateData {
 
 export interface IChatMessageRepository {
   findById(id: string, tenantId: string): Promise<ChatMessage | null>;
+  findByExternalId(externalId: string, tenantId: string): Promise<ChatMessage | null>;
   findMany(filter: ListMessagesFilter): Promise<ChatMessage[]>;
   create(data: ChatMessageCreateData): Promise<ChatMessage>;
 }

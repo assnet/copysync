@@ -4,6 +4,7 @@ import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.rout
 import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
+import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFastifyInstance = any;
@@ -56,4 +57,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Chat routes (auth + tenant scope required) ─────────────────────────────
   await app.register(chatRoutes, { prefix: `${env.API_PREFIX}/chat` });
+
+  // ── Chat WebSocket gateway ─────────────────────────────────────────────────
+  await app.register(chatWsRoutes, { prefix: `${env.API_PREFIX}/chat` });
 }

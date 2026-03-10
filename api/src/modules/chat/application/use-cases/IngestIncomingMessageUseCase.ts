@@ -1,6 +1,7 @@
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
+import type { ChatMessage } from '../../domain/entities/ChatMessage';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 
 export interface IngestIncomingMessageInput {
@@ -15,14 +16,25 @@ export interface IngestIncomingMessageInput {
   externalMessageId?: string;
 }
 
+export interface IngestIncomingMessageResult {
+  conversationId: string;
+  message: ChatMessage;
+  /** True when the conversation was just created by this ingest */
+  isNewConversation: boolean;
+  unreadCount: number;
+}
+
 /**
  * Ingests an incoming WhatsApp message into the chat module.
  *
  * Steps:
  *  1. Find or create the ChatContact by phone
  *  2. Find an active (non-CLOSED) conversation for contact+session, or create one
- *  3. Persist the ChatMessage
- *  4. Update conversation last-message preview, timestamp, and unread counter
+ *  3. Deduplicate by externalMessageId
+ *  4. Persist the ChatMessage
+ *  5. Update conversation last-message preview, timestamp, and unread counter
+ *
+ * Returns null when the message was already processed (duplicate).
  */
 export class IngestIncomingMessageUseCase {
   constructor(
@@ -31,7 +43,7 @@ export class IngestIncomingMessageUseCase {
     private readonly messageRepo: IChatMessageRepository,
   ) {}
 
-  async execute(input: IngestIncomingMessageInput): Promise<void> {
+  async execute(input: IngestIncomingMessageInput): Promise<IngestIncomingMessageResult | null> {
     const { tenantId, sessionId, from, fromName, body, externalMessageId } = input;
 
     // 1 — Find or create contact
@@ -42,6 +54,7 @@ export class IngestIncomingMessageUseCase {
     });
 
     // 2 — Find active conversation or create a new one
+    let isNewConversation = false;
     let conversation = await this.conversationRepo.findActiveByContactAndSession(
       contact.id,
       sessionId,
@@ -55,10 +68,17 @@ export class IngestIncomingMessageUseCase {
         contactId: contact.id,
         channel: 'whatsapp',
       });
+      isNewConversation = true;
     }
 
-    // 3 — Persist the message
-    await this.messageRepo.create({
+    // 3 — Deduplicate by engine-level message ID before persisting
+    if (externalMessageId) {
+      const existing = await this.messageRepo.findByExternalId(externalMessageId, tenantId);
+      if (existing) return null;
+    }
+
+    // 4 — Persist the message
+    const message = await this.messageRepo.create({
       tenantId,
       conversationId: conversation.id,
       direction: ChatMessageDirection.INBOUND,
@@ -67,12 +87,17 @@ export class IngestIncomingMessageUseCase {
       externalMessageId: externalMessageId ?? null,
     });
 
-    // 4 — Update conversation metadata
+    // 5 — Update conversation metadata
     const preview = body.length > 100 ? body.slice(0, 97) + '…' : body;
     await this.conversationRepo.updateLastMessage(conversation.id, tenantId, {
       lastMessagePreview: preview,
       lastMessageAt: new Date(),
     });
     await this.conversationRepo.incrementUnread(conversation.id, tenantId);
+
+    const updated = await this.conversationRepo.findById(conversation.id, tenantId);
+    const unreadCount = updated?.unreadCount ?? conversation.unreadCount + 1;
+
+    return { conversationId: conversation.id, message, isNewConversation, unreadCount };
   }
 }

@@ -11,6 +11,99 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.6.0] — 2026-03-10 — Chat V3: WebSocket em tempo real + deduplicação de mensagens
+
+### Added
+
+#### Backend — WebSocket gateway
+
+- **`@fastify/websocket@8.3.1`** instalado (compatível com Fastify v4; v11 exigia Fastify v5)
+- **`ws@8.x`** e **`@types/ws`** adicionados como dependências
+- **`app.ts`** — `await app.register(websocket)` registrado após o plugin JWT
+- **`chat.ws.routes.ts`** (novo) — gateway WebSocket em `GET /api/chat/ws?token=&tenantId=`; autentica via `sseAuthHook` (mesma lógica do SSE); registra/desregistra cliente no `ChatWebSocketPublisher`; keepalive JSON ping a cada 25 s; limpa timer e desregistra ao fechar
+- **`routes.ts`** — `chatWsRoutes` registrado sob `/api/chat` após as rotas REST
+
+#### Backend — ChatWebSocketPublisher
+
+- **`ChatWebSocketPublisher.ts`** (novo) — singleton (`chatWsPublisher`) que mantém `Map<tenantId, Set<WebSocket>>`; métodos `subscribe`, `unsubscribe`, `publish`, `pingAll`; remove automaticamente clientes mortos no `publish`
+- **`ChatWsEvent`** — union type discriminado com quatro eventos: `chat.message.created`, `chat.conversation.updated`, `chat.unread.updated`, `chat.session.updated`; campo `event: 'ping'` para keepalive
+
+#### Backend — deduplicação de mensagens inbound
+
+- **`IChatMessageRepository`** — adicionado método `findByExternalId(externalId, tenantId): Promise<ChatMessage | null>`
+- **`PrismaChatMessageRepository`** — implementação: `prisma.chatMessage.findFirst({ where: { externalMessageId, tenantId } })`
+- **`IngestIncomingMessageUseCase`** — step 3 de deduplicação: se `externalMessageId` já existir no banco, retorna `null` sem duplicar; use case agora retorna `IngestIncomingMessageResult | null` com `{ conversationId, message, isNewConversation, unreadCount }` em vez de `void`
+
+#### Backend — publicação automática via WS
+
+- **`ChatIncomingMessageListener`** — após ingestão bem-sucedida, publica `chat.message.created` + `chat.unread.updated` via `chatWsPublisher`; se resultado for `null` (duplicata), ignora silenciosamente
+- **`chat.routes.ts`** — handler `PATCH /conversations/:id` publica `chat.conversation.updated` via `chatWsPublisher` após atualizar a conversa
+
+#### Frontend — hook WebSocket
+
+- **`useChatWebSocket.ts`** (novo) — hook React com reconexão automática (backoff exponencial 2 s → 30 s); constrói URL `ws://` a partir de `VITE_API_URL` (compatível com proxy Vite em dev e URL absoluta em produção); tipagem completa de `ChatWsPayload`
+- `WsMessageCreatedData`, `WsConversationUpdatedData`, `WsUnreadUpdatedData`, `WsSessionUpdatedData` — interfaces tipadas espelhando `ChatWsEvent` do backend
+
+#### Frontend — ChatPage integrado com WebSocket
+
+- **`ChatPage.tsx`** — substituído `useChatSSE` por `useChatWebSocket`; tratamento diferenciado por evento:
+  - `chat.message.created` com `isNewConversation=true` → recarrega lista completa (nova conversa ainda não no estado)
+  - `chat.message.created` com conversa já existente → atualiza preview inline no estado sem refetch
+  - `chat.message.created` com conversa aberta → insere mensagem diretamente no `messages[id]` sem HTTP
+  - `chat.conversation.updated` → atualiza campos da conversa inline
+  - `chat.unread.updated` → atualiza badge de não lidos inline
+
+### Fixed
+
+- **`chat.ws.routes.ts`** — assinatura do handler corrigida para `@fastify/websocket` v8: recebe `connection: SocketStream` (com `connection.socket: WebSocket`), não o `WebSocket` diretamente como na v11
+
+### Changed
+
+- `IngestIncomingMessageUseCase.execute()` — assinatura alterada de `Promise<void>` para `Promise<IngestIncomingMessageResult | null>`; `ChatIncomingMessageListener` atualizado correspondentemente
+
+### Tested
+
+- `tsc --noEmit` (api/) — zero erros
+- `tsc --noEmit` (app/) — zero erros
+- Handshake WebSocket autenticado — `WS CONNECTED OK`
+- End-to-end: PATCH conversa → evento `chat.conversation.updated` recebido via WS em < 400 ms
+- 2 PATCHes consecutivos → 2 eventos WS independentes entregues (`[PASS] WS sync OK`)
+- Baileys conectado e online (`AwaitingInitialSync → Online`) durante os testes
+
+---
+
+## [0.5.0] — 2026-03-10 — Chat V2: ingestão de mensagens WhatsApp em tempo real + SSE
+
+### Added
+
+#### Backend — pipeline de ingestão
+
+- **`InternalMessagingEvent`** — `MESSAGE_RECEIVED` enriquecido com campos `fromName?: string` e `externalMessageId?: string`
+- **`IChatConversationRepository`** — novo método `findActiveByContactAndSession(contactId, sessionId, tenantId)` — localiza conversa não-CLOSED para o par contato+sessão
+- **`PrismaChatConversationRepository`** — implementação: `status: { notIn: ['CLOSED'] }`, ordenado por `lastMessageAt desc`
+- **`IngestIncomingMessageUseCase`** (novo) — orquestra: findOrCreate contato → findActive ou cria conversa → persiste mensagem → atualiza preview + incrementa não lidos
+- **`BaileysMessagingEngineAdapter`** — handler `messages.upsert` com `type === 'notify'`: extrai `from`, `body`, `externalMessageId` (key.id), `pushName`; emite `MESSAGE_RECEIVED` no event bus interno
+- **`ChatIncomingMessageListener`** (novo) — subscreve `MESSAGE_RECEIVED` no event bus; delega ao `IngestIncomingMessageUseCase`; loga erros sem crashar
+- **`server.ts`** — instancia repositórios de chat, `IngestIncomingMessageUseCase` e registra o listener no startup
+
+#### Backend — SSE (Server-Sent Events)
+
+- **`sseAuthHook.ts`** (novo) — preHandler que lê `?token=` e `?tenantId=` da query string, injeta no header `Authorization` e chama `jwtVerify`; resolve tenant context (incluindo super-admin)
+- **`chat.routes.ts`** — endpoint `GET /api/chat/events` (SSE): emite `event: message_received` para clientes do tenant; keepalive `:ping` a cada 25 s; desregistra listener ao fechar
+
+#### Frontend — integração SSE
+
+- **`useChatSSE.ts`** (novo) — hook com `EventSource`, lê `?token=` e `?tenantId=` do localStorage; reconexão automática com backoff exponencial (2 s → 30 s)
+- **`ChatPage.tsx`** — integrado `useChatSSE`; recarrega lista de conversas e mensagens da conversa aberta ao receber `message_received`
+
+### Tested
+
+- `tsc --noEmit` (api/) — zero erros
+- `tsc --noEmit` (app/) — zero erros
+- Ingestão verificada via curl (mensagens armazenadas no banco com contato e conversa criados automaticamente)
+
+---
+
 ## [0.4.0] — 2026-03-09 — Redesign SaaS do painel + correções de QR e persistência de sessão de usuário
 
 ### Added

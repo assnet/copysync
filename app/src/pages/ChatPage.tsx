@@ -11,7 +11,8 @@ import { ConversationSidebar } from '@/features/chat/components/ConversationSide
 import { ChatWindow } from '@/features/chat/components/ChatWindow';
 import { EmptyConversationState } from '@/features/chat/components/EmptyConversationState';
 import { ConversationDetailsPanel } from '@/features/chat/components/ConversationDetailsPanel';
-import { useChatSSE } from '@/hooks/useChatSSE';
+import { useChatWebSocket } from '@/hooks/useChatWebSocket';
+import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
 const CHAT_HEIGHT = {
@@ -45,32 +46,79 @@ export default function ChatPage() {
     loadConversations();
   }, [loadConversations]);
 
-  // ── Tempo real via SSE ─────────────────────────────────────────────────────
-  useChatSSE(
+  // ── Tempo real via WebSocket ───────────────────────────────────────────────
+  useChatWebSocket(
     useCallback(
-      (event: string, data: unknown) => {
-        if (event === 'message_received') {
-          // Recarrega a lista de conversas para refletir nova mensagem/conversa
-          // (abordagem simples e segura — sem risco de dados desatualizados)
-          loadConversations();
+      (payload: ChatWsPayload) => {
+        if (payload.event === 'ping') return;
 
-          // Se a conversa afetada estiver aberta, recarrega as mensagens também
-          const payload = data as { from?: string };
-          // Não sabemos ainda o conversationId a partir do from,
-          // então recarregamos as mensagens da conversa selecionada
+        if (payload.event === 'chat.message.created') {
+          const { conversationId, message, unreadCount, isNewConversation } = payload.data;
+
+          if (isNewConversation) {
+            // Nova conversa — recarrega completa para obter dados de contato/sessão
+            loadConversations();
+          } else {
+            // Atualiza preview da conversa inline, sem refetch
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === conversationId
+                  ? {
+                      ...c,
+                      lastMessage:   message.content ?? c.lastMessage,
+                      lastMessageAt: message.createdAt,
+                      unreadCount,
+                    }
+                  : c,
+              ),
+            );
+          }
+
+          // Adiciona a mensagem ao estado se a conversa estiver aberta
           setSelectedId((currentId) => {
-            if (currentId) {
-              chatService
-                .listMessages(currentId)
-                .then((items) => {
-                  setMessages((prev) => ({ ...prev, [currentId]: items.map(apiMessageToFrontend) }));
-                })
-                .catch(() => {/* silencioso */});
+            if (currentId === conversationId) {
+              const frontendMsg = apiMessageToFrontend({
+                ...message,
+                tenantId:          payload.data.tenantId,
+                direction:         message.direction as import('@/types/chat.api.types').ApiMessageDirection,
+                type:              message.type as import('@/types/chat.api.types').ApiMessageType,
+                status:            (message.status ?? 'SENT') as import('@/types/chat.api.types').ApiMessageStatus,
+                externalMessageId: null,
+              });
+              setMessages((prev) => ({
+                ...prev,
+                [conversationId]: [...(prev[conversationId] ?? []), frontendMsg],
+              }));
             }
             return currentId;
           });
+        }
 
-          void payload; // usado acima via type assertion
+        if (payload.event === 'chat.conversation.updated') {
+          const d = payload.data;
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === d.conversationId
+                ? {
+                    ...c,
+                    status:        d.status.toLowerCase() as import('@/features/chat/types').ConversationStatus,
+                    queue:         d.queueName,
+                    tags:          d.tags,
+                    notes:         d.notes ?? '',
+                    unreadCount:   d.unreadCount,
+                    lastMessage:   d.lastMessagePreview ?? c.lastMessage,
+                    lastMessageAt: d.lastMessageAt ?? c.lastMessageAt,
+                  }
+                : c,
+            ),
+          );
+        }
+
+        if (payload.event === 'chat.unread.updated') {
+          const { conversationId, unreadCount } = payload.data;
+          setConversations((prev) =>
+            prev.map((c) => (c.id === conversationId ? { ...c, unreadCount } : c)),
+          );
         }
       },
       [loadConversations],

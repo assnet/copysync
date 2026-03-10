@@ -17,6 +17,13 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
     return raw ? PrismaChatMessageMapper.toDomain(raw) : null;
   }
 
+  async findByExternalId(externalId: string, tenantId: string): Promise<ChatMessage | null> {
+    const raw = await this.prisma.chatMessage.findFirst({
+      where: { externalMessageId: externalId, tenantId },
+    });
+    return raw ? PrismaChatMessageMapper.toDomain(raw) : null;
+  }
+
   async findMany(filter: ListMessagesFilter): Promise<ChatMessage[]> {
     const where: Record<string, unknown> = {
       tenantId: filter.tenantId,

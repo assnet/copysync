@@ -6,6 +6,7 @@ import { httpResponse } from '../../../../shared/http/httpResponse';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { ChatPresenter } from '../presenters/ChatPresenter';
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import { chatWsPublisher } from '../../infrastructure/ws/ChatWebSocketPublisher';
 import { logger } from '../../../../shared/logger/logger';
 import {
   conversationIdParamSchema,
@@ -110,6 +111,24 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         tags:           body.tags,
         notes:          body.notes,
       });
+
+      // Notify WS subscribers of this tenant about the updated conversation
+      chatWsPublisher.publish(tenantId, {
+        event: 'chat.conversation.updated',
+        data: {
+          tenantId,
+          conversationId: result.id,
+          status: result.status,
+          assignedUserId: result.assignedUserId ?? null,
+          queueName: result.queueName ?? null,
+          tags: result.tags,
+          notes: result.notes ?? null,
+          unreadCount: result.unreadCount,
+          lastMessagePreview: result.lastMessagePreview ?? null,
+          lastMessageAt: result.lastMessageAt ?? null,
+        },
+      });
+
       httpResponse.ok(reply, ChatPresenter.presentConversation(result));
     },
   );

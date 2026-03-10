@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
+import websocket from '@fastify/websocket';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import '../shared/types/fastify.d'; // activate type augmentation
@@ -50,6 +51,9 @@ export async function buildApp() {
       expiresIn: env.JWT_ACCESS_EXPIRES_IN,
     },
   });
+
+  // ── WebSocket plugin ──────────────────────────────────────────────────────
+  await app.register(websocket);
 
   // ── OpenAPI / Swagger ─────────────────────────────────────────────────────
   await app.register(swagger, {
