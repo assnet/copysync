@@ -32,12 +32,13 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
     };
 
     if (filter.before) {
-      where['createdAt'] = { lt: new Date(filter.before) };
+      where['sentAt'] = { lt: new Date(filter.before) };
     }
 
+    const dir = filter.orderDir ?? 'asc';
     const rows = await this.prisma.chatMessage.findMany({
       where,
-      orderBy: { createdAt: filter.orderDir ?? 'asc' },
+      orderBy: [{ sentAt: dir }, { createdAt: dir }],
       take: filter.limit ?? 50,
     });
 
