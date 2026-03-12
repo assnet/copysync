@@ -15,7 +15,7 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
 
 const DEV_CREDENTIALS = [
-  { label: 'Super Admin', email: 'admin@washoot.dev', password: 'admin123' },
+  { label: 'Super Admin', email: import.meta.env.VITE_DEV_EMAIL || '', password: import.meta.env.VITE_DEV_PASSWORD || '' },
 ] as const;
 
 const IS_DEV = import.meta.env.DEV;
@@ -197,59 +197,8 @@ export function LoginPage() {
             Entre na sua conta para continuar
           </Typography>
 
-          {/* Credenciais de dev */}
-          {IS_DEV && (
-            <Card
-              sx={{
-                mb: 3,
-                border: '1px dashed',
-                borderColor: 'warning.main',
-                bgcolor: alpha(theme.palette.warning.main, 0.05),
-              }}
-            >
-              <CardContent sx={{ p: '12px 16px !important' }}>
-                <Typography
-                  variant="caption"
-                  fontWeight={700}
-                  color="warning.dark"
-                  display="block"
-                  mb={1}
-                  sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
-                >
-                  🛠 Credenciais de desenvolvimento
-                </Typography>
-                <Stack spacing={1}>
-                  {DEV_CREDENTIALS.map((cred) => (
-                    <Box
-                      key={cred.email}
-                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
-                    >
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="caption" fontWeight={600} display="block">{cred.label}</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: 11 }}>
-                          {cred.email} · {cred.password}
-                        </Typography>
-                      </Box>
-                      <Tooltip title="Preencher formulário">
-                        <Chip
-                          label="Usar"
-                          size="small"
-                          color="warning"
-                          variant="outlined"
-                          icon={<ContentCopyIcon sx={{ fontSize: '14px !important' }} />}
-                          onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
-                          sx={{ cursor: 'pointer', fontSize: 11 }}
-                        />
-                      </Tooltip>
-                    </Box>
-                  ))}
-                </Stack>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Formulário */}
-          <Card sx={{ bgcolor: 'background.paper' }}>
+          <Card sx={{ bgcolor: 'background.paper', mb: 3 }}>
             <CardContent sx={{ p: '28px !important' }}>
               {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
@@ -305,6 +254,57 @@ export function LoginPage() {
               </Box>
             </CardContent>
           </Card>
+
+          {/* Credenciais de dev */}
+          {IS_DEV && (
+            <Card
+              sx={{
+                mb: 3,
+                border: '1px dashed',
+                borderColor: 'warning.main',
+                bgcolor: alpha(theme.palette.warning.main, 0.05),
+              }}
+            >
+              <CardContent sx={{ p: '12px 16px !important' }}>
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color="warning.dark"
+                  display="block"
+                  mb={1}
+                  sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
+                >
+                  🛠 Credenciais de desenvolvimento
+                </Typography>
+                <Stack spacing={1}>
+                  {DEV_CREDENTIALS.map((cred) => (
+                    <Box
+                      key={cred.email}
+                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="caption" fontWeight={600} display="block">{cred.label}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: 11 }}>
+                          {cred.email} · {cred.password}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Preencher formulário">
+                        <Chip
+                          label="Usar"
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          icon={<ContentCopyIcon sx={{ fontSize: '14px !important' }} />}
+                          onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
+                          sx={{ cursor: 'pointer', fontSize: 11 }}
+                        />
+                      </Tooltip>
+                    </Box>
+                  ))}
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
 
           <Typography variant="caption" color="text.disabled" display="block" textAlign="center" mt={3}>
             © {new Date().getFullYear()} Washoot · Todos os direitos reservados
