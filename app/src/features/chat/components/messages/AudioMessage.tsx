@@ -1,6 +1,6 @@
 import { Box, Typography, alpha, useTheme } from '@mui/material';
-import AudiotrackIcon from '@mui/icons-material/Audiotrack';
 import MicIcon from '@mui/icons-material/Mic';
+import AudiotrackIcon from '@mui/icons-material/Audiotrack';
 
 interface Props {
   mediaUrl?: string | null;
@@ -9,17 +9,18 @@ interface Props {
   isOut: boolean;
 }
 
-function formatDuration(sec: number | null | undefined): string {
-  if (!sec) return '';
+function formatDuration(sec: number): string {
+  if (!sec || !isFinite(sec)) return '0:00';
   const m = Math.floor(sec / 60);
-  const s = sec % 60;
+  const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function AudioMessage({ mediaUrl, mimeType, durationSeconds, isOut }: Props) {
+export function AudioMessage({ mediaUrl, mimeType, durationSeconds }: Props) {
   const theme = useTheme();
-  const isPtt = mimeType?.includes('ogg') || mimeType?.includes('opus');
+  const isPtt = mimeType?.includes('ogg') || mimeType?.includes('opus') || mimeType?.includes('mpeg');
 
+  // ── sem mídia: placeholder ─────────────────────────────────────────────────
   if (!mediaUrl) {
     return (
       <Box
@@ -27,60 +28,45 @@ export function AudioMessage({ mediaUrl, mimeType, durationSeconds, isOut }: Pro
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
-          p: 1.5,
-          bgcolor: alpha(theme.palette.text.primary, 0.06),
+          p: 1.25,
+          bgcolor: alpha(theme.palette.text.primary, 0.07),
           borderRadius: 1.5,
-          color: 'text.secondary',
+          minWidth: 160,
         }}
       >
-        {isPtt ? (
-          <MicIcon sx={{ fontSize: 24 }} />
-        ) : (
-          <AudiotrackIcon sx={{ fontSize: 24 }} />
-        )}
+        {isPtt
+          ? <MicIcon sx={{ fontSize: 22, color: 'text.secondary' }} />
+          : <AudiotrackIcon sx={{ fontSize: 22, color: 'text.secondary' }} />}
         <Box>
-          <Typography variant="caption" display="block">
+          <Typography variant="caption" display="block" color="text.secondary">
             {isPtt ? 'Mensagem de voz' : 'Áudio'}
           </Typography>
-          {durationSeconds && (
-            <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10 }}>
+          {durationSeconds ? (
+            <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
               {formatDuration(durationSeconds)}
             </Typography>
-          )}
+          ) : null}
         </Box>
       </Box>
     );
   }
 
+  // ── player nativo: entrega Baixar, Velocidade de reprodução e ⋮ de graça ──
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {isPtt ? (
-          <MicIcon sx={{ fontSize: 18, color: isOut ? 'rgba(255,255,255,0.7)' : 'text.secondary' }} />
-        ) : (
-          <AudiotrackIcon sx={{ fontSize: 18, color: isOut ? 'rgba(255,255,255,0.7)' : 'text.secondary' }} />
-        )}
-        {durationSeconds && (
-          <Typography variant="caption" sx={{ color: isOut ? 'rgba(255,255,255,0.7)' : 'text.secondary', fontSize: 10 }}>
-            {formatDuration(durationSeconds)}
-          </Typography>
-        )}
-      </Box>
-      <Box
-        component="audio"
-        controls
-        src={mediaUrl}
-        sx={{
-          width: '100%',
-          maxWidth: 260,
-          height: 36,
-          borderRadius: 1,
-          outline: 'none',
-          '&::-webkit-media-controls-panel': {
-            bgcolor: 'transparent',
-          },
-        }}
-      />
-    </Box>
+    <Box
+      component="audio"
+      controls
+      src={mediaUrl}
+      preload="metadata"
+      sx={{
+        display: 'block',
+        width: '100%',
+        minWidth: 280,
+        maxWidth: 340,
+        // Sem height fixo — o browser decide; Chrome usa ~54px com todos os controles visíveis
+        outline: 'none',
+        borderRadius: 1,
+      }}
+    />
   );
 }

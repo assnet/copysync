@@ -14,6 +14,9 @@ legado2/
 # Prisma generated
 # (keep schema.prisma and migrations, ignore generated client if using postinstall)
 
+# Media storage (arquivos baixados do WhatsApp CDN)
+api/storage/
+
 # Logs
 *.log
 logs/

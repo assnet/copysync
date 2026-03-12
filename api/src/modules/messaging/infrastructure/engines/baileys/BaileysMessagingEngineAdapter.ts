@@ -11,8 +11,10 @@ import makeWASocket, {
   Browsers,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import type { ConnectionState, AnyMessageContent, proto } from '@whiskeysockets/baileys';
+import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
 import type {
@@ -265,7 +267,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       }
     });
     // ── Incoming messages ──────────────────────────────────────────────────
-    socket.ev.on('messages.upsert', ({ messages, type }) => {
+    socket.ev.on('messages.upsert', async ({ messages, type }) => {
       // 'notify' = real-time new messages; 'append' = historical sync — skip
       if (type !== 'notify') {
         // 'append' = mensagens históricas recebidas durante reconnect / gap sync
@@ -308,6 +310,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         // Ignora mensagens sem tipo reconhecido (ex: protocolMessages, reactionMessages)
         if (!extracted) continue;
 
+        // Baixa o binário de mídia do CDN do WhatsApp e salva em disco
+        let mediaUrl: string | null = null;
+        if (MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)) {
+          mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
+        }
+
         internalEventBus.emit('MESSAGE_RECEIVED', {
           type: 'MESSAGE_RECEIVED',
           sessionId,
@@ -316,6 +324,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           fromName: msg.pushName ?? undefined,
           body: extracted.body,
           msgType: extracted.msgType,
+          mediaUrl,
           mimeType: extracted.mimeType,
           fileName: extracted.fileName,
           durationSeconds: extracted.durationSeconds,
@@ -512,6 +521,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 interface BaileysExtracted {
   msgType: ChatMessageType;
   body: string | null;
+  mediaUrl?: string | null;
   mimeType?: string | null;
   fileName?: string | null;
   durationSeconds?: number | null;
@@ -632,4 +642,53 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
   }
 
   return null;
+}
+
+// ── downloadBaileysMedia ──────────────────────────────────────────────────────
+/**
+ * Tipos de mensagem que carregam binário de mídia no CDN do WhatsApp.
+ */
+const MEDIA_TYPES_WITH_BINARY = new Set([
+  ChatMessageType.IMAGE,
+  ChatMessageType.VIDEO,
+  ChatMessageType.AUDIO,
+  ChatMessageType.DOCUMENT,
+  ChatMessageType.STICKER,
+]);
+
+/**
+ * Baixa o binário de uma mensagem de mídia via CDN do WhatsApp,
+ * salva em disco usando MediaStorage e retorna a URL pública relativa.
+ * Retorna null em caso de falha — a mensagem ainda é persistida sem mídia.
+ */
+async function downloadBaileysMedia(
+  msg: proto.IWebMessageInfo,
+  socket: ReturnType<typeof makeWASocket>,
+  sessionId: string,
+  mimeType: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const ext = mimeType ? (mimeType.split('/')[1]?.split(';')[0] ?? 'bin') : 'bin';
+    const filename = `${sessionId}_${msg.key?.id ?? Date.now()}.${ext}`;
+
+    // Idempotência: se o arquivo já existe no disco, devolve a URL sem re-baixar
+    if (await mediaFileExists(filename)) {
+      return mediaPublicUrl(filename);
+    }
+
+    const buffer = (await downloadMediaMessage(
+      msg as never,
+      'buffer',
+      {},
+      { logger: baileysLogger as never, reuploadRequest: socket.updateMediaMessage },
+    )) as Buffer;
+    await saveMediaBuffer(buffer, filename);
+    return mediaPublicUrl(filename);
+  } catch (err) {
+    baileysLogger.warn(
+      { err, sessionId, msgId: msg.key?.id },
+      'Falha ao baixar mídia do CDN do WhatsApp — mediaUrl será null',
+    );
+    return null;
+  }
 }

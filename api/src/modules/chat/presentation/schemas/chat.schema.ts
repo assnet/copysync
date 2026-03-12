@@ -42,7 +42,8 @@ export const sendMessageBodySchema = {
   type: 'object',
   required: ['content'],
   properties: {
-    content: { type: 'string', minLength: 1, maxLength: 4096 },
+    content:         { type: 'string', minLength: 1, maxLength: 4096 },
+    quotedMessageId: { type: 'string' },
   },
   additionalProperties: false,
 } as const;

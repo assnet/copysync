@@ -44,6 +44,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
       {/* Avatar with status dot */}
       <Box sx={{ position: 'relative', flexShrink: 0, mt: 0.25 }}>
         <Avatar
+          src={contact.avatarUrl ?? undefined}
           sx={{
             width: 42,
             height: 42,

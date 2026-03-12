@@ -11,6 +11,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   scrollToBottom?: number;
+  onReply?: (message: ChatMessage) => void;
 }
 
 function isSameDay(a: string, b: string) {
@@ -58,7 +59,8 @@ export function MessageList({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
-  scrollToBottom = false,
+  scrollToBottom = 0,
+  onReply,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -131,7 +133,7 @@ export function MessageList({
           return (
             <Box key={msg.id}>
               {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
-              <MessageBubble message={msg} />
+              <MessageBubble message={msg} onReply={onReply} />
             </Box>
           );
         })

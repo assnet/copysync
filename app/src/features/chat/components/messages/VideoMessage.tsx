@@ -77,11 +77,11 @@ export function VideoMessage({ mediaUrl, durationSeconds, body, textColor }: Pro
         src={mediaUrl}
         onError={() => setError(true)}
         sx={{
+          width: '100%',
           maxWidth: '100%',
           maxHeight: 220,
           borderRadius: 1.5,
           display: 'block',
-          mb: body ? 0 : 0,
         }}
       />
       {body && (

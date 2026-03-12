@@ -1,8 +1,10 @@
-import { Box, Typography, alpha, useTheme } from '@mui/material';
+import { useState } from 'react';
+import { Box, Typography, alpha, useTheme, IconButton, Tooltip } from '@mui/material';
 import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import ReplyIcon from '@mui/icons-material/Reply';
 import type { ChatMessage } from '../types';
 import { formatMessageTime } from '../utils';
 import { ImageMessage } from './messages/ImageMessage';
@@ -119,9 +121,11 @@ function MessageContent({ message, isOut, textColor }: ContentProps) {
 
 interface Props {
   message: ChatMessage;
+  onReply?: (message: ChatMessage) => void;
 }
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, onReply }: Props) {
+  const [hovered, setHovered] = useState(false);
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const isOut = message.direction === 'out';
@@ -160,15 +164,43 @@ export function MessageBubble({ message }: Props) {
   const textColor = isOut ? '#ffffff' : theme.palette.text.primary;
   const timeColor = isOut ? alpha('#ffffff', 0.65) : theme.palette.text.disabled;
 
+  const replyBtn = onReply && (
+    <Tooltip title="Responder" placement={isOut ? 'left' : 'right'}>
+      <IconButton
+        size="small"
+        onClick={() => onReply(message)}
+        sx={{
+          opacity: hovered ? 1 : 0,
+          transition: 'opacity 0.15s',
+          pointerEvents: hovered ? 'auto' : 'none',
+          width: 28,
+          height: 28,
+          color: 'text.secondary',
+          flexShrink: 0,
+          alignSelf: 'center',
+          '&:hover': { color: 'primary.main', bgcolor: alpha(theme.palette.primary.main, 0.08) },
+        }}
+      >
+        <ReplyIcon sx={{ fontSize: 16, ...(isOut ? { transform: 'scaleX(-1)' } : {}) }} />
+      </IconButton>
+    </Tooltip>
+  );
+
   return (
     <Box
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       sx={{
         display: 'flex',
         justifyContent: isOut ? 'flex-end' : 'flex-start',
+        alignItems: 'center',
+        gap: 0.25,
         px: 2.5,
         mb: 0.5,
       }}
     >
+      {/* Reply btn à esquerda para mensagens enviadas */}
+      {isOut && replyBtn}
       <Box
         sx={{
           maxWidth: '68%',
@@ -207,6 +239,9 @@ export function MessageBubble({ message }: Props) {
           {isOut && <MessageStatusIcon status={message.status} />}
         </Box>
       </Box>
+
+      {/* Reply btn à direita para mensagens recebidas */}
+      {!isOut && replyBtn}
     </Box>
   );
 }

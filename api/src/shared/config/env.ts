@@ -20,6 +20,7 @@ const envSchema = z.object({
 
   API_PREFIX: z.string().default('/api'),
   CORS_ORIGIN: z.string().default('*'),
+  STORAGE_PATH: z.string().default('./storage'),
 });
 
 export type Env = z.infer<typeof envSchema>;

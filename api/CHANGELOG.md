@@ -11,6 +11,38 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.10.0] — 2026-03-12 — Chat V6: envio real via WhatsApp, funcionalidade Responder e player nativo de mídia
+
+### Fixed
+
+#### Backend — Envio de mensagem nunca chegava ao WhatsApp
+
+- **`SendMessageUseCase`** — corrigida falha crítica: o use case salvava a mensagem no banco mas **nunca chamava a engine** para enviar via WhatsApp. Adicionadas dependências `IChatContactRepository` e `IMessagingEngine | null`; agora o fluxo é: busca conversa → busca contato → chama `engine.sendTextMessage()` → salva no banco com o `externalMessageId` retornado pelo Baileys. Se a engine estiver indisponível (sessão desconectada), loga warning e salva sem envio real (sem quebrar o sistema)
+- **`chat.routes.ts`** — `SendMessageUseCase` passou a ser instanciado **por-request** (igual ao `MarkConversationAsReadUseCase`), recebendo `contactRepo` e `getActiveEngine()` atualizados no momento do envio
+
+### Added
+
+#### Backend — Suporte a `quotedMessageId` no envio
+
+- **`sendMessageBodySchema`** — campo opcional `quotedMessageId: string` adicionado ao schema de validação do Fastify
+- **`SendMessageInput`** — aceita `quotedMessageId?: string | null`
+- **`SendMessageUseCase`** — persiste `quotedMessageId` junto com a mensagem criada
+
+#### Frontend — Funcionalidade Responder (reply)
+
+- **`MessageBubble.tsx`** — hover sobre qualquer balão exibe botão `ReplyIcon` lateral (à esquerda para mensagens enviadas, à direita para recebidas); animação de opacidade `0 → 1` no hover; `onReply?: (message: ChatMessage) => void` como prop opcional
+- **`MessageList.tsx`** — nova prop `onReply?: (message: ChatMessage) => void` repassada para cada `<MessageBubble>`
+- **`MessageComposer.tsx`** — novas props `replyTo?: QuotedMessagePreview | null` e `onCancelReply?: () => void`; exibe banner acima do input com borda colorida lateral (`primary.main`), ícone e label do tipo da mensagem citada (Imagem, Áudio, Vídeo, Documento), texto truncado, botão `CloseIcon` para cancelar
+- **`ChatWindow.tsx`** — gerencia estado `replyTo: ChatMessage | null`; `useEffect` limpa o reply ao trocar de conversa; `handleReply` e `handleCancelReply` encadeados para `MessageList` e `MessageComposer`; `handleSend` inclui `quotedMessageId` e limpa o reply após envio; constrói `QuotedMessagePreview` para passar ao composer; assinatura `onSendMessage` atualizada para `(text: string, quotedMessageId?: string | null) => void`
+- **`chat.service.ts`** — `sendMessage()` aceita terceiro argumento `quotedMessageId?: string | null` e o inclui no body quando presente
+- **`ChatPage.tsx`** — `handleSendMessage` inclui `quotedMessageId`; constrói `quotedMessage` otimista a partir do estado local de mensagens para exibição imediata; `resolveQuotedMessages()` popula `quotedMessage` em todos os itens ao carregar mensagens da API (lookup por `quotedMessageId` dentro do batch)
+
+#### Frontend — Player nativo de áudio
+
+- **`AudioMessage.tsx`** — substituído player customizado (MUI `Slider` + `IconButton`) por `<audio controls>` nativo; o browser fornece play/pause, barra de progresso, volume e menu ⋮ com "Baixar", "Velocidade da reprodução" e "PiP" sem código adicional; `minWidth: 280`, sem altura fixa para não cortar controles
+
+---
+
 ## [0.9.0] — 2026-03-12 — Chat V5: tipos de mensagem, metadados, renders dedicados e paginação reversa
 
 ### Added

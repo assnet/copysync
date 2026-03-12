@@ -47,7 +47,6 @@ const listConversationsUseCase  = new ListConversationsUseCase(conversationRepo,
 const getConversationUseCase    = new GetConversationByIdUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
 const updateConversationUseCase = new UpdateConversationUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
 const listMessagesUseCase       = new ListMessagesUseCase(messageRepo, conversationRepo);
-const sendMessageUseCase        = new SendMessageUseCase(messageRepo, conversationRepo);
 const getContactUseCase         = new GetContactByIdUseCase(contactRepo);
 
 const preHandler = [authHook, tenantHook];
@@ -162,9 +161,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as { id: string };
-      const { content } = request.body as { content: string };
+      const { content, quotedMessageId } = request.body as { content: string; quotedMessageId?: string };
 
-      const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content });
+      // Instanciado por request para capturar o estado atual da engine
+      const sendMessageUseCase = new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, getActiveEngine());
+      const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content, quotedMessageId });
       httpResponse.created(reply, ChatPresenter.presentMessage(result));
     },
   );

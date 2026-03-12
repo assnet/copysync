@@ -5,6 +5,8 @@ import jwt from '@fastify/jwt';
 import websocket from '@fastify/websocket';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import staticPlugin from '@fastify/static';
+import path from 'path';
 import '../shared/types/fastify.d'; // activate type augmentation
 import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
@@ -54,6 +56,15 @@ export async function buildApp() {
 
   // ── WebSocket plugin ──────────────────────────────────────────────────────
   await app.register(websocket);
+
+  // ── Static media storage ──────────────────────────────────────────────────
+  // Serves uploaded/downloaded media files (images, audio, video, documents)
+  // at GET /api/storage/...  No authentication — URLs are opaque and temporary.
+  await app.register(staticPlugin, {
+    root: path.resolve(env.STORAGE_PATH),
+    prefix: `${env.API_PREFIX}/storage/`,
+    decorateReply: false,
+  });
 
   // ── OpenAPI / Swagger ─────────────────────────────────────────────────────
   await app.register(swagger, {

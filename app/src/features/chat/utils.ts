@@ -96,3 +96,27 @@ export function formatPhone(phone: string): string {
   }
   return phone;
 }
+
+// ── Prévia de tipo de mensagem ────────────────────────────────────────────────
+
+/**
+ * Formata o preview da última mensagem para exibição na lista de conversas.
+ * Para mensagens de mídia, retorna ícone + rótulo quando não há legenda.
+ */
+export function formatLastMessagePreview(
+  type: string | null | undefined,
+  content: string | null | undefined,
+): string {
+  const t = (type ?? 'text').toUpperCase();
+  switch (t) {
+    case 'IMAGE':    return content ? `📷 ${content}` : '📷 Foto';
+    case 'AUDIO':    return '🎵 Áudio';
+    case 'VIDEO':    return content ? `🎥 ${content}` : '🎥 Vídeo';
+    case 'DOCUMENT': return content ? `📄 ${content}` : '📄 Documento';
+    case 'STICKER':  return '🏷️ Figurinha';
+    case 'LOCATION': return '📍 Localização';
+    case 'VCARD':    return '👤 Contato';
+    case 'CALL_LOG': return '📞 Chamada';
+    default:         return content ?? '';
+  }
+}

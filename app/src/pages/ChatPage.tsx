@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Box } from '@mui/material';
-import type { ChatConversation, ChatMessage, ConversationFilter } from '@/features/chat/types';
+import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
 import {
   apiConversationToFrontend,
   apiMessageToFrontend,
 } from '@/types/chat.api.types';
 import type { UpdateConversationRequest } from '@/types/chat.api.types';
+import { formatLastMessagePreview } from '@/features/chat/utils';
 import { ConversationSidebar } from '@/features/chat/components/ConversationSidebar';
 import { ChatWindow } from '@/features/chat/components/ChatWindow';
 import { EmptyConversationState } from '@/features/chat/components/EmptyConversationState';
@@ -22,6 +23,25 @@ const CHAT_HEIGHT = {
 };
 
 const PAGE_SIZE = 40;
+
+// Resolve quotedMessage para cada mensagem que tenha quotedMessageId
+function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
+  const byId = new Map(msgs.map((m) => [m.id, m]));
+  return msgs.map((m) => {
+    if (!m.quotedMessageId) return m;
+    const q = byId.get(m.quotedMessageId);
+    if (!q) return m;
+    const quotedMessage: QuotedMessagePreview = {
+      id:        q.id,
+      type:      q.type,
+      body:      q.body,
+      mediaUrl:  q.mediaUrl,
+      direction: q.direction,
+      isDeleted: q.isDeleted,
+    };
+    return { ...m, quotedMessage };
+  });
+}
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -69,19 +89,27 @@ export default function ChatPage() {
             // Nova conversa — recarrega completa para obter dados de contato/sessão
             loadConversations();
           } else {
-            // Atualiza preview da conversa inline, sem refetch
-            setConversations((prev) =>
-              prev.map((c) =>
+            // Atualiza preview da conversa e move para o topo da lista
+            const preview = formatLastMessagePreview(message.type, message.content);
+            setConversations((prev) => {
+              const updated = prev.map((c) =>
                 c.id === conversationId
                   ? {
                       ...c,
-                      lastMessage:   message.content ?? c.lastMessage,
+                      lastMessage:   preview || c.lastMessage,
                       lastMessageAt: message.createdAt,
                       unreadCount,
                     }
                   : c,
-              ),
-            );
+              );
+              // Move a conversa atualizada para o topo (como no legado1)
+              const idx = updated.findIndex((c) => c.id === conversationId);
+              if (idx > 0) {
+                const [item] = updated.splice(idx, 1);
+                updated.unshift(item);
+              }
+              return updated;
+            });
           }
 
           // Adiciona a mensagem ao estado se a conversa estiver aberta
@@ -190,7 +218,7 @@ export default function ChatPage() {
       chatService
         .listMessages(id, { limit: PAGE_SIZE })
         .then((items) => {
-          const mapped = items.map(apiMessageToFrontend);
+          const mapped = resolveQuotedMessages(items.map(apiMessageToFrontend));
           setMessages((prev) => ({ ...prev, [id]: mapped }));
           setHasMore((prev) => ({ ...prev, [id]: items.length >= PAGE_SIZE }));
           if (mapped.length > 0) {
@@ -215,9 +243,10 @@ export default function ChatPage() {
       .listMessages(selectedId, { limit: PAGE_SIZE, before })
       .then((items) => {
         const mapped = items.map(apiMessageToFrontend);
+        const merged = resolveQuotedMessages([...mapped, ...(messages[selectedId] ?? [])]);
         setMessages((prev) => ({
           ...prev,
-          [selectedId]: [...mapped, ...(prev[selectedId] ?? [])],
+          [selectedId]: merged,
         }));
         setHasMore((prev) => ({ ...prev, [selectedId]: items.length >= PAGE_SIZE }));
         if (mapped.length > 0) {
@@ -229,8 +258,17 @@ export default function ChatPage() {
   }, [selectedId, isLoadingMore, hasMore, oldestTimestamp]);
 
   const handleSendMessage = useCallback(
-    (text: string) => {
+    (text: string, quotedMessageId?: string | null) => {
       if (!selectedId) return;
+
+      // Preview da mensagem citada (para o update otimista)
+      const quotedMessage: QuotedMessagePreview | undefined = quotedMessageId
+        ? (() => {
+            const q = (messages[selectedId] ?? []).find((m) => m.id === quotedMessageId);
+            if (!q) return undefined;
+            return { id: q.id, type: q.type, body: q.body, mediaUrl: q.mediaUrl, direction: q.direction, isDeleted: q.isDeleted };
+          })()
+        : undefined;
 
       // Otimistic: mostra a mensagem como "sending" imediatamente
       const tmpId = `tmp-${Date.now()}`;
@@ -242,6 +280,8 @@ export default function ChatPage() {
         body: text,
         timestamp: new Date().toISOString(),
         status: 'sending',
+        quotedMessageId: quotedMessageId ?? undefined,
+        quotedMessage,
       };
 
       setMessages((prev) => ({
@@ -251,7 +291,7 @@ export default function ChatPage() {
       setScrollToBottom((v) => v + 1);
 
       chatService
-        .sendMessage(selectedId, text)
+        .sendMessage(selectedId, text, quotedMessageId ?? undefined)
         .then((sent) => {
           const realMsg = apiMessageToFrontend(sent);
           setMessages((prev) => ({
@@ -278,7 +318,7 @@ export default function ChatPage() {
           }));
         });
     },
-    [selectedId],
+    [selectedId, messages],
   );
 
   const handleUpdateConversation = useCallback(

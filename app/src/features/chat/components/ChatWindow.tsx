@@ -1,5 +1,6 @@
+import { useState, useCallback, useEffect } from 'react';
 import { Box } from '@mui/material';
-import type { ChatConversation, ChatMessage } from '../types';
+import type { ChatConversation, ChatMessage, QuotedMessagePreview } from '../types';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { MessageComposer } from './MessageComposer';
@@ -7,7 +8,7 @@ import { MessageComposer } from './MessageComposer';
 interface Props {
   conversation: ChatConversation;
   messages: ChatMessage[];
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, quotedMessageId?: string | null) => void;
   detailsOpen: boolean;
   onToggleDetails: () => void;
   loadingMessages?: boolean;
@@ -31,7 +32,33 @@ export function ChatWindow({
   onLoadMore,
   scrollToBottom = 0,
 }: Props) {
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
+
+  // Limpa reply ao trocar de conversa
+  useEffect(() => { setReplyTo(null); }, [conversation.id]);
+
+  const handleReply = useCallback((msg: ChatMessage) => { setReplyTo(msg); }, []);
+  const handleCancelReply = useCallback(() => setReplyTo(null), []);
+
+  const handleSend = useCallback(
+    (text: string) => {
+      onSendMessage(text, replyTo?.id ?? null);
+      setReplyTo(null);
+    },
+    [onSendMessage, replyTo],
+  );
+
+  const replyPreview: QuotedMessagePreview | null = replyTo
+    ? {
+        id:        replyTo.id,
+        type:      replyTo.type,
+        body:      replyTo.body,
+        mediaUrl:  replyTo.mediaUrl,
+        direction: replyTo.direction,
+        isDeleted: replyTo.isDeleted,
+      }
+    : null;
 
   return (
     <Box
@@ -58,9 +85,15 @@ export function ChatWindow({
         isLoadingMore={isLoadingMore}
         onLoadMore={onLoadMore}
         scrollToBottom={scrollToBottom}
+        onReply={handleReply}
       />
 
-      <MessageComposer onSend={onSendMessage} disabled={isClosed} />
+      <MessageComposer
+        onSend={handleSend}
+        disabled={isClosed}
+        replyTo={replyPreview}
+        onCancelReply={handleCancelReply}
+      />
     </Box>
   );
 }

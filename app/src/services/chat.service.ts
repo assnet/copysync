@@ -51,10 +51,11 @@ export const chatService = {
   async sendMessage(
     conversationId: string,
     content: string,
+    quotedMessageId?: string | null,
   ): Promise<ChatMessageApiDto> {
     const res = await apiClient.post<{ success: true; data: ChatMessageApiDto }>(
       `/chat/conversations/${conversationId}/messages`,
-      { content },
+      { content, ...(quotedMessageId ? { quotedMessageId } : {}) },
     );
     return res.data.data;
   },
