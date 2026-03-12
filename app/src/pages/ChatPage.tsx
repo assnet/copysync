@@ -38,8 +38,8 @@ export default function ChatPage() {
   const [hasMore, setHasMore] = useState<Record<string, boolean>>({});
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [oldestTimestamp, setOldestTimestamp] = useState<Record<string, string>>({});
-  // Trigger para rolar ao fundo (incrementado a cada nova mensagem WS)
-  const [scrollToBottom, setScrollToBottom] = useState(false);
+  // Trigger para rolar ao fundo (incrementa a cada evento que exige scroll)
+  const [scrollToBottom, setScrollToBottom] = useState(0);
 
   // Carrega todas as conversas uma vez ao montar.
   // Filtragem por status e pesquisa é feita localmente pelo ConversationSidebar.
@@ -100,7 +100,7 @@ export default function ChatPage() {
                 [conversationId]: [...(prev[conversationId] ?? []), frontendMsg],
               }));
               // Dispara scroll ao fundo para nova mensagem recebida
-              setScrollToBottom((v) => !v);
+              setScrollToBottom((v) => v + 1);
             }
             return currentId;
           });
@@ -180,8 +180,11 @@ export default function ChatPage() {
       // Subscribe to presence updates for this contact
       chatService.subscribePresence(id).catch(() => {});
 
-      // Carrega mensagens se ainda não tiver em cache
-      if (messages[id]) return;
+      // Carrega mensagens se já estiver em cache — apenas dispara scroll
+      if (messages[id]) {
+        setScrollToBottom((v) => v + 1);
+        return;
+      }
 
       setLoadingMessages(true);
       chatService
@@ -193,6 +196,7 @@ export default function ChatPage() {
           if (mapped.length > 0) {
             setOldestTimestamp((prev) => ({ ...prev, [id]: mapped[0].timestamp }));
           }
+          setScrollToBottom((v) => v + 1);
         })
         .catch((err: unknown) => console.error('Erro ao carregar mensagens', err))
         .finally(() => setLoadingMessages(false));
@@ -244,6 +248,7 @@ export default function ChatPage() {
         ...prev,
         [selectedId]: [...(prev[selectedId] ?? []), optimistic],
       }));
+      setScrollToBottom((v) => v + 1);
 
       chatService
         .sendMessage(selectedId, text)

@@ -10,7 +10,7 @@ interface Props {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  scrollToBottom?: boolean;
+  scrollToBottom?: number;
 }
 
 function isSameDay(a: string, b: string) {
@@ -65,16 +65,15 @@ export function MessageList({
   const prevScrollHeight = useRef<number>(0);
   const wasLoadingMore = useRef(false);
 
-  // Scroll to bottom on initial load
+  // Scroll to bottom whenever the counter increments
   useEffect(() => {
-    if (!loading && messages.length > 0) {
-      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
-    }
-  }, [loading]);
-
-  // Scroll to bottom when triggered externally (new WS message)
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!scrollToBottom) return;
+    const behavior = scrollToBottom === 1 ? 'auto' : 'smooth';
+    // Defer um frame para garantir que o DOM já pintou a nova mensagem
+    const raf = requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [scrollToBottom]);
 
   // Preserve scroll position after prepend (when older messages loaded)

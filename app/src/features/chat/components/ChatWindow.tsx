@@ -15,7 +15,7 @@ interface Props {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  scrollToBottom?: boolean;
+  scrollToBottom?: number;
 }
 
 export function ChatWindow({
@@ -29,7 +29,7 @@ export function ChatWindow({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
-  scrollToBottom = false,
+  scrollToBottom = 0,
 }: Props) {
   const isClosed = conversation.status === 'closed';
 
