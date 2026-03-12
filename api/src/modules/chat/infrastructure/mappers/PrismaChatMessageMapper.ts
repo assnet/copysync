@@ -17,8 +17,12 @@ export class PrismaChatMessageMapper {
       content: raw.content,
       mediaUrl: raw.mediaUrl,
       mimeType: raw.mimeType,
+      fileName: raw.fileName,
+      durationSeconds: raw.durationSeconds,
       externalMessageId: raw.externalMessageId,
       status: raw.status ? (raw.status as ChatMessageStatus) : null,
+      isDeleted: raw.isDeleted,
+      quotedMessageId: raw.quotedMessageId,
       sentAt: raw.sentAt,
       createdAt: raw.createdAt,
     });

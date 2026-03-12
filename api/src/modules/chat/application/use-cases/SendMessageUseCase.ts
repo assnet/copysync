@@ -47,8 +47,12 @@ export class SendMessageUseCase {
       content: message.content,
       mediaUrl: message.mediaUrl,
       mimeType: message.mimeType,
+      fileName: message.fileName,
+      durationSeconds: message.durationSeconds,
       externalMessageId: message.externalMessageId,
       status: message.status,
+      isDeleted: message.isDeleted,
+      quotedMessageId: message.quotedMessageId,
       sentAt: message.sentAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
     };

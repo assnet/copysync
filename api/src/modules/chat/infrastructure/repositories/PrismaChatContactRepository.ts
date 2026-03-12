@@ -25,7 +25,19 @@ export class PrismaChatContactRepository implements IChatContactRepository {
 
   async findOrCreate(data: ChatContactCreateData): Promise<ChatContact> {
     const existing = await this.findByPhone(data.phone, data.tenantId);
-    if (existing) return existing;
+    if (existing) {
+      // Promove nome: se o nome atual é numérico (LID/phone fallback) e chegou um nome real
+      const currentIsNumeric = /^\d+$/.test(existing.name);
+      const newIsReal = !!data.name && !/^\d+$/.test(data.name);
+      if (currentIsNumeric && newIsReal) {
+        const raw = await this.prisma.chatContact.update({
+          where: { tenantId_phone: { tenantId: data.tenantId, phone: data.phone } },
+          data: { name: data.name },
+        });
+        return PrismaChatContactMapper.toDomain(raw);
+      }
+      return existing;
+    }
 
     const raw = await this.prisma.chatContact.create({
       data: {

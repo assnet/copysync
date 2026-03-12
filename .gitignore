@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+legado1/
+legado2/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Prisma generated
+# (keep schema.prisma and migrations, ignore generated client if using postinstall)
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json

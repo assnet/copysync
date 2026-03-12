@@ -13,8 +13,12 @@ export interface ChatMessageProps {
   content: string | null;
   mediaUrl: string | null;
   mimeType: string | null;
+  fileName: string | null;
+  durationSeconds: number | null;
   externalMessageId: string | null;
   status: ChatMessageStatus | null;
+  isDeleted: boolean;
+  quotedMessageId: string | null;
   sentAt: Date | null;
   createdAt: Date;
 }
@@ -28,8 +32,12 @@ export class ChatMessage {
   readonly content: string | null;
   readonly mediaUrl: string | null;
   readonly mimeType: string | null;
+  readonly fileName: string | null;
+  readonly durationSeconds: number | null;
   readonly externalMessageId: string | null;
   readonly status: ChatMessageStatus | null;
+  readonly isDeleted: boolean;
+  readonly quotedMessageId: string | null;
   readonly sentAt: Date | null;
   readonly createdAt: Date;
 
@@ -42,8 +50,12 @@ export class ChatMessage {
     this.content = props.content;
     this.mediaUrl = props.mediaUrl;
     this.mimeType = props.mimeType;
+    this.fileName = props.fileName;
+    this.durationSeconds = props.durationSeconds;
     this.externalMessageId = props.externalMessageId;
     this.status = props.status;
+    this.isDeleted = props.isDeleted;
+    this.quotedMessageId = props.quotedMessageId;
     this.sentAt = props.sentAt;
     this.createdAt = props.createdAt;
   }

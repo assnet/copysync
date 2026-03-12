@@ -39,7 +39,11 @@ export class ChatPresenter {
       content: dto.content,
       mediaUrl: dto.mediaUrl,
       mimeType: dto.mimeType,
+      fileName: dto.fileName,
+      durationSeconds: dto.durationSeconds,
       status: dto.status,
+      isDeleted: dto.isDeleted,
+      quotedMessageId: dto.quotedMessageId,
       sentAt: dto.sentAt,
       createdAt: dto.createdAt,
     };

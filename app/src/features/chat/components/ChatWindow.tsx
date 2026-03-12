@@ -12,6 +12,10 @@ interface Props {
   onToggleDetails: () => void;
   loadingMessages?: boolean;
   presence?: string;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  scrollToBottom?: boolean;
 }
 
 export function ChatWindow({
@@ -22,6 +26,10 @@ export function ChatWindow({
   onToggleDetails,
   loadingMessages = false,
   presence,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  scrollToBottom = false,
 }: Props) {
   const isClosed = conversation.status === 'closed';
 
@@ -43,7 +51,14 @@ export function ChatWindow({
         presence={presence}
       />
 
-      <MessageList messages={messages} loading={loadingMessages} />
+      <MessageList
+        messages={messages}
+        loading={loadingMessages}
+        hasMore={hasMore}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={onLoadMore}
+        scrollToBottom={scrollToBottom}
+      />
 
       <MessageComposer onSend={onSendMessage} disabled={isClosed} />
     </Box>

@@ -9,8 +9,12 @@ export enum ChatMessageType {
   IMAGE = 'IMAGE',
   AUDIO = 'AUDIO',
   DOCUMENT = 'DOCUMENT',
-  EVENT = 'EVENT',
+  VIDEO = 'VIDEO',
   STICKER = 'STICKER',
+  LOCATION = 'LOCATION',
+  VCARD = 'VCARD',
+  CALL_LOG = 'CALL_LOG',
+  EVENT = 'EVENT',
 }
 
 export enum ChatMessageStatus {

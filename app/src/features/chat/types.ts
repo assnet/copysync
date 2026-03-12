@@ -4,7 +4,17 @@
 export type ConversationStatus = 'open' | 'pending' | 'bot' | 'closed' | 'waiting';
 
 /** Tipo do conteúdo de uma mensagem */
-export type MessageType = 'text' | 'image' | 'audio' | 'document' | 'event' | 'sticker';
+export type MessageType =
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'document'
+  | 'video'
+  | 'sticker'
+  | 'location'
+  | 'vcard'
+  | 'call_log'
+  | 'event';
 
 /** Direção da mensagem em relação ao operador/sistema */
 export type MessageDirection = 'in' | 'out';
@@ -34,19 +44,36 @@ export interface ChatSessionRef {
   phone: string;
 }
 
+/** Preview resumido da mensagem citada (reply), resolvido opcionalmente pela API */
+export interface QuotedMessagePreview {
+  id: string;
+  type: MessageType;
+  body: string | null;
+  mediaUrl?: string | null;
+  direction: MessageDirection;
+  isDeleted?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
   type: MessageType;
   direction: MessageDirection;
-  body: string;
+  body: string | null;
   mediaUrl?: string | null;
+  mimeType?: string | null;
   fileName?: string | null;
   durationSeconds?: number | null;
   timestamp: string; // ISO 8601
   status: MessageStatus;
   /** true quando se trata de mensagem de sistema/evento */
   isEvent?: boolean;
+  /** Mensagem apagada */
+  isDeleted?: boolean;
+  /** ID da mensagem citada (reply) */
+  quotedMessageId?: string | null;
+  /** Preview resolvido da mensagem citada */
+  quotedMessage?: QuotedMessagePreview | null;
 }
 
 export interface ChatConversation {

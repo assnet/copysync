@@ -40,6 +40,7 @@ import {
 } from '../../../../../shared/errors/internal/SessionErrors';
 import type { IChatContactRepository } from '../../../../chat/domain/contracts/IChatContactRepository';
 import type { IngestHistorySyncUseCase, HistoryMessageItem } from '../../../../chat/application/use-cases/IngestHistorySyncUseCase';
+import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
 
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 3_000;
@@ -280,21 +281,32 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       }
 
       for (const msg of messages) {
-        const jid = msg.key?.remoteJid;
-        if (!jid) continue;
-        // Skip group chats and broadcast lists for now
-        if (jid.endsWith('@g.us') || jid.endsWith('@broadcast')) continue;
+        const jidRaw = msg.key?.remoteJid;
+        if (!jidRaw) continue;
+        // Skip group chats and broadcast lists
+        if (jidRaw.endsWith('@g.us') || jidRaw.endsWith('@broadcast')) continue;
+
+        // Resolve LID (Linked Identity) → JID real usando remoteJidAlt fornecido pelo Baileys.
+        // Quando o contato usa privacidade de número, o remoteJid vem como @lid;
+        // o Baileys preenche key.remoteJidAlt com o JID @s.whatsapp.net real.
+        let jid = jidRaw;
+        if (jidRaw.endsWith('@lid')) {
+          const alt = (msg.key as { remoteJidAlt?: string }).remoteJidAlt;
+          if (!alt || !alt.includes('@s.whatsapp.net')) {
+            baileysLogger.debug({ sessionId, jidRaw }, 'LID sem remoteJidAlt — mensagem ignorada');
+            continue;
+          }
+          jid = alt;
+        }
 
         const fromMe = msg.key.fromMe ?? false;
         const from = jid.split('@')[0];
-        const body =
-          msg.message?.conversation ??
-          msg.message?.extendedTextMessage?.text ??
-          msg.message?.imageMessage?.caption ??
-          msg.message?.videoMessage?.caption ??
-          null;
 
-        if (!body) continue; // non-text (sticker, audio, etc.) — handle later
+        // Extrai tipo, corpo e metadados da mensagem
+        const extracted = extractBaileysMessage(msg.message ?? {});
+
+        // Ignora mensagens sem tipo reconhecido (ex: protocolMessages, reactionMessages)
+        if (!extracted) continue;
 
         internalEventBus.emit('MESSAGE_RECEIVED', {
           type: 'MESSAGE_RECEIVED',
@@ -302,13 +314,22 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           tenantId,
           from,
           fromName: msg.pushName ?? undefined,
-          body,
+          body: extracted.body,
+          msgType: extracted.msgType,
+          mimeType: extracted.mimeType,
+          fileName: extracted.fileName,
+          durationSeconds: extracted.durationSeconds,
+          isDeleted: extracted.isDeleted,
+          quotedMessageId: extracted.quotedMessageId,
           fromMe,
           externalMessageId: msg.key.id ?? undefined,
           raw: msg,
         });
 
-        baileysLogger.info({ sessionId, from, msgId: msg.key.id }, 'Incoming message received');
+        baileysLogger.info(
+          { sessionId, from, msgId: msg.key.id, msgType: extracted.msgType },
+          'Incoming message received',
+        );
       }
     });
 
@@ -359,13 +380,25 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     socket.ev.on('contacts.upsert', (contacts) => {
       setImmediate(() => {
         for (const c of contacts) {
-          const jid = c.id;
-          if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast')) continue;
-          const phone = jid.split('@')[0];
-          if (!phone) continue;
+          const rawJid = c.id;
+          if (!rawJid || rawJid.endsWith('@g.us') || rawJid.endsWith('@broadcast')) continue;
+
+          let phone: string;
+          if (rawJid.endsWith('@lid')) {
+            // LID: o Baileys pode fornecer o phoneNumber real no objeto Contact
+            const phoneNumber = (c as { phoneNumber?: string }).phoneNumber;
+            if (!phoneNumber) continue;
+            phone = phoneNumber.replace(/\D/g, '');
+            if (!phone) continue;
+          } else {
+            phone = rawJid.split('@')[0];
+            if (!phone) continue;
+          }
+
+          // Só persiste quando temos um nome real — nunca sobrescrever com LID/phone como fallback
           const name = (c as { name?: string; notify?: string }).name
-            ?? (c as { name?: string; notify?: string }).notify
-            ?? phone;
+            ?? (c as { name?: string; notify?: string }).notify;
+          if (!name || /^\d+$/.test(name)) continue;
           this.chatContactRepo
             .upsert({ tenantId, phone, name })
             .catch((err: unknown) =>
@@ -377,7 +410,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── Presence / typing ────────────────────────────────────────────────────
     socket.ev.on('presence.update', ({ id: jid, presences }) => {
-      if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast')) return;
+      if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast') || jid.endsWith('@lid')) return;
       const phone = jid.split('@')[0];
       if (!phone) return;
       // Pick the first (and usually only) participant presence
@@ -405,26 +438,24 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     for (const msg of msgs) {
       if (!msg) continue;
       const key = msg.key ?? msg?.message?.key;
-      const jid: string | undefined = key?.remoteJid;
-      if (!jid) continue;
-      if (jid.endsWith('@g.us') || jid.endsWith('@broadcast') || jid === 'status@broadcast') continue;
+      const jidRaw: string | undefined = key?.remoteJid;
+      if (!jidRaw) continue;
+      if (jidRaw.endsWith('@g.us') || jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
+
+      // Resolve LID → JID real via remoteJidAlt (fornecido pelo Baileys)
+      let jid = jidRaw;
+      if (jidRaw.endsWith('@lid')) {
+        const alt: string | undefined = key?.remoteJidAlt;
+        if (!alt || !alt.includes('@s.whatsapp.net')) continue;
+        jid = alt;
+      }
 
       const id: string | undefined = key?.id;
       if (!id) continue;
 
       const msgContent = msg.message ?? msg;
-      const body: string | null =
-        msgContent?.conversation ??
-        msgContent?.message?.conversation ??
-        msgContent?.extendedTextMessage?.text ??
-        msgContent?.message?.extendedTextMessage?.text ??
-        msgContent?.imageMessage?.caption ??
-        msgContent?.message?.imageMessage?.caption ??
-        msgContent?.videoMessage?.caption ??
-        msgContent?.message?.videoMessage?.caption ??
-        null;
-
-      if (!body) continue;
+      const extracted = extractBaileysMessage(msgContent);
+      if (!extracted) continue;
 
       const fromMe: boolean = key?.fromMe ?? false;
       const phone = jid.split('@')[0];
@@ -434,7 +465,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         ? new Date(Number(messageTimestamp) * 1000)
         : new Date();
 
-      items.push({ externalMessageId: id, from: phone, fromName: pushName, body, fromMe, timestamp });
+      items.push({
+        externalMessageId: id,
+        from: phone,
+        fromName: pushName,
+        body: extracted.body,
+        msgType: extracted.msgType,
+        mimeType: extracted.mimeType,
+        fileName: extracted.fileName,
+        durationSeconds: extracted.durationSeconds,
+        isDeleted: extracted.isDeleted,
+        quotedMessageId: extracted.quotedMessageId,
+        fromMe,
+        timestamp,
+      });
     }
     return items;
   }
@@ -458,4 +502,134 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     const clean = phone.replace(/[^0-9]/g, '');
     return clean.includes('@') ? phone : `${clean}@s.whatsapp.net`;
   }
+}
+
+// ── extractBaileysMessage ──────────────────────────────────────────────────────
+/**
+ * Extrai tipo, corpo e metadados de um objeto de mensagem Baileys (message.*).
+ * Retorna null se o tipo não for suportado ou reconhecido.
+ */
+interface BaileysExtracted {
+  msgType: ChatMessageType;
+  body: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+  durationSeconds?: number | null;
+  isDeleted?: boolean;
+  quotedMessageId?: string | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null {
+  if (!m) return null;
+
+  // Detecta se é mensagem apagada (revoke)
+  const isDeleted = !!(m.protocolMessage?.type === 0 || m.revokeMessage);
+
+  // Extrai ID da mensagem citada (context info)
+  const contextInfo = m.extendedTextMessage?.contextInfo
+    ?? m.imageMessage?.contextInfo
+    ?? m.videoMessage?.contextInfo
+    ?? m.audioMessage?.contextInfo
+    ?? m.documentMessage?.contextInfo
+    ?? null;
+  const quotedMessageId = contextInfo?.stanzaId ?? null;
+
+  // Texto simples
+  if (m.conversation) {
+    return { msgType: ChatMessageType.TEXT, body: m.conversation, quotedMessageId, isDeleted };
+  }
+  if (m.extendedTextMessage?.text) {
+    return { msgType: ChatMessageType.TEXT, body: m.extendedTextMessage.text, quotedMessageId, isDeleted };
+  }
+
+  // Imagem
+  if (m.imageMessage) {
+    return {
+      msgType: ChatMessageType.IMAGE,
+      body: m.imageMessage.caption ?? null,
+      mimeType: m.imageMessage.mimetype ?? null,
+      quotedMessageId,
+      isDeleted,
+    };
+  }
+
+  // Vídeo
+  if (m.videoMessage) {
+    return {
+      msgType: ChatMessageType.VIDEO,
+      body: m.videoMessage.caption ?? null,
+      mimeType: m.videoMessage.mimetype ?? null,
+      durationSeconds: m.videoMessage.seconds ?? null,
+      quotedMessageId,
+      isDeleted,
+    };
+  }
+
+  // Áudio / PTT
+  if (m.audioMessage) {
+    return {
+      msgType: ChatMessageType.AUDIO,
+      body: null,
+      mimeType: m.audioMessage.mimetype ?? null,
+      durationSeconds: m.audioMessage.seconds ?? null,
+      quotedMessageId,
+      isDeleted,
+    };
+  }
+
+  // Documento
+  if (m.documentMessage) {
+    return {
+      msgType: ChatMessageType.DOCUMENT,
+      body: m.documentMessage.caption ?? null,
+      mimeType: m.documentMessage.mimetype ?? null,
+      fileName: m.documentMessage.fileName ?? m.documentMessage.title ?? null,
+      quotedMessageId,
+      isDeleted,
+    };
+  }
+
+  // Sticker
+  if (m.stickerMessage) {
+    return {
+      msgType: ChatMessageType.STICKER,
+      body: null,
+      mimeType: m.stickerMessage.mimetype ?? null,
+      quotedMessageId,
+      isDeleted,
+    };
+  }
+
+  // Localização
+  if (m.locationMessage) {
+    const lat = m.locationMessage.degreesLatitude;
+    const lng = m.locationMessage.degreesLongitude;
+    const name = m.locationMessage.name ?? null;
+    const body = name ? `${name} (${lat},${lng})` : `${lat},${lng}`;
+    return { msgType: ChatMessageType.LOCATION, body, quotedMessageId, isDeleted };
+  }
+
+  // vCard (contato único ou múltiplos)
+  if (m.contactMessage) {
+    const body = m.contactMessage.displayName ?? m.contactMessage.vcard ?? null;
+    return { msgType: ChatMessageType.VCARD, body, quotedMessageId, isDeleted };
+  }
+  if (m.contactsArrayMessage) {
+    const first = m.contactsArrayMessage.contacts?.[0];
+    const body = first?.displayName ?? null;
+    return { msgType: ChatMessageType.VCARD, body, quotedMessageId, isDeleted };
+  }
+
+  // Chamada
+  if (m.call) {
+    return { msgType: ChatMessageType.CALL_LOG, body: 'Chamada', quotedMessageId, isDeleted };
+  }
+
+  // protocolMessage (delete, ephemeral, etc.) — não ingere
+  if (m.protocolMessage || m.reactionMessage || m.pollCreationMessage || m.keepInChatMessage) {
+    return null;
+  }
+
+  return null;
 }

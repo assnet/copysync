@@ -21,6 +21,8 @@ const CHAT_HEIGHT = {
   md: 'calc(100vh - 116px)',
 };
 
+const PAGE_SIZE = 40;
+
 export default function ChatPage() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
@@ -31,6 +33,13 @@ export default function ChatPage() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
+
+  // Paginação reversa
+  const [hasMore, setHasMore] = useState<Record<string, boolean>>({});
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [oldestTimestamp, setOldestTimestamp] = useState<Record<string, string>>({});
+  // Trigger para rolar ao fundo (incrementado a cada nova mensagem WS)
+  const [scrollToBottom, setScrollToBottom] = useState(false);
 
   // Carrega todas as conversas uma vez ao montar.
   // Filtragem por status e pesquisa é feita localmente pelo ConversationSidebar.
@@ -90,6 +99,8 @@ export default function ChatPage() {
                 ...prev,
                 [conversationId]: [...(prev[conversationId] ?? []), frontendMsg],
               }));
+              // Dispara scroll ao fundo para nova mensagem recebida
+              setScrollToBottom((v) => !v);
             }
             return currentId;
           });
@@ -174,15 +185,44 @@ export default function ChatPage() {
 
       setLoadingMessages(true);
       chatService
-        .listMessages(id)
+        .listMessages(id, { limit: PAGE_SIZE })
         .then((items) => {
-          setMessages((prev) => ({ ...prev, [id]: items.map(apiMessageToFrontend) }));
+          const mapped = items.map(apiMessageToFrontend);
+          setMessages((prev) => ({ ...prev, [id]: mapped }));
+          setHasMore((prev) => ({ ...prev, [id]: items.length >= PAGE_SIZE }));
+          if (mapped.length > 0) {
+            setOldestTimestamp((prev) => ({ ...prev, [id]: mapped[0].timestamp }));
+          }
         })
         .catch((err: unknown) => console.error('Erro ao carregar mensagens', err))
         .finally(() => setLoadingMessages(false));
     },
     [messages],
   );
+
+  // ── Carregar mais (scroll para cima) ──────────────────────────────────────
+  const handleLoadMore = useCallback(() => {
+    if (!selectedId || isLoadingMore || !hasMore[selectedId]) return;
+    const before = oldestTimestamp[selectedId];
+    if (!before) return;
+
+    setIsLoadingMore(true);
+    chatService
+      .listMessages(selectedId, { limit: PAGE_SIZE, before })
+      .then((items) => {
+        const mapped = items.map(apiMessageToFrontend);
+        setMessages((prev) => ({
+          ...prev,
+          [selectedId]: [...mapped, ...(prev[selectedId] ?? [])],
+        }));
+        setHasMore((prev) => ({ ...prev, [selectedId]: items.length >= PAGE_SIZE }));
+        if (mapped.length > 0) {
+          setOldestTimestamp((prev) => ({ ...prev, [selectedId]: mapped[0].timestamp }));
+        }
+      })
+      .catch((err: unknown) => console.error('Erro ao carregar mais mensagens', err))
+      .finally(() => setIsLoadingMore(false));
+  }, [selectedId, isLoadingMore, hasMore, oldestTimestamp]);
 
   const handleSendMessage = useCallback(
     (text: string) => {
@@ -290,6 +330,10 @@ export default function ChatPage() {
           onToggleDetails={() => setDetailsOpen((v) => !v)}
           loadingMessages={loadingMessages}
           presence={presenceMap[selectedConversation.contact.phone]}
+          hasMore={selectedId ? (hasMore[selectedId] ?? false) : false}
+          isLoadingMore={isLoadingMore}
+          onLoadMore={handleLoadMore}
+          scrollToBottom={scrollToBottom}
         />
       ) : (
         <EmptyConversationState />

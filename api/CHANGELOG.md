@@ -11,6 +11,144 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.9.0] — 2026-03-12 — Chat V5: tipos de mensagem, metadados, renders dedicados e paginação reversa
+
+### Added
+
+#### Backend — Novos tipos de mensagem
+
+- **`ChatMessageType` (enum)** — adicionados `VIDEO`, `LOCATION`, `VCARD`, `CALL_LOG`; enum completo: `TEXT | IMAGE | AUDIO | DOCUMENT | VIDEO | STICKER | LOCATION | VCARD | CALL_LOG | EVENT`
+- **`ChatMessage` (entidade de domínio)** — adicionados campos: `fileName?: string`, `durationSeconds?: number`, `isDeleted?: boolean`, `quotedMessageId?: string`
+- **`IChatMessageRepository`** — `ChatMessageCreateData` extendido com os quatro novos campos
+- **`PrismaChatMessageMapper`** — `toDomain()` mapeia os quatro novos campos do modelo Prisma para a entidade
+- **`PrismaChatMessageRepository`** — `create()` persiste os quatro novos campos
+
+#### Backend — Migração Prisma `20260312110628_add_message_types_and_fields`
+
+- **`schema.prisma`** — `ChatMessageType` enum expandido; `ChatMessage` model com `fileName String?`, `durationSeconds Int?`, `isDeleted Boolean @default(false)`, `quotedMessageId String?`; relação auto-referencial `quotedMessage / quotedBy` para replies
+
+#### Backend — Use cases atualizados
+
+- **`ListMessagesUseCase`** — `ChatMessageDto` inclui `fileName`, `durationSeconds`, `isDeleted`, `quotedMessageId`
+- **`SendMessageUseCase`** — retorno agora inclui todos os campos do `ChatMessageDto`
+- **`IngestIncomingMessageUseCase`** — input aceita `msgType?`, `mediaUrl?`, `mimeType?`, `fileName?`, `durationSeconds?`, `isDeleted?`, `quotedMessageId?`, `body: string | null`; tipo persistido via `input.msgType ?? TEXT`; função auxiliar `buildPreview()` com labels emoji por tipo
+- **`IngestHistorySyncUseCase`** — `HistoryMessageItem` aceita todos os novos campos; `processChunk` usa `item.msgType ?? TEXT`; função auxiliar `buildHistoryPreview()`
+
+#### Backend — Adapter Baileys: extração completa de mensagens
+
+- **`BaileysMessagingEngineAdapter`** — nova função `extractBaileysMessage(m)` que detecta e extrai dados estruturados para todos os tipos: `TEXT` (conversation, extendedTextMessage), `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`, `STICKER`, `LOCATION` (lat/lng → string `"lat,lng"`), `VCARD` (contactMessage, contactsArrayMessage), `CALL_LOG` (call); extrai `mimeType`, `fileName`, `durationSeconds`, `isDeleted` (via protocolMessage.type===0), `quotedMessageId` (via contextInfo.stanzaId); retorna `null` para reactionMessage, pollCreationMessage e protocolMessages não-deleção (não ingere)
+- Handlers `messages.upsert` e `mapMessagesToHistoryItems` migrados para usar `extractBaileysMessage()` em vez de extração manual de texto
+
+#### Backend — Eventos e apresentação
+
+- **`InternalMessagingEvent`** — `MESSAGE_RECEIVED` contém `body: string | null`, `msgType?`, `mediaUrl?`, `mimeType?`, `fileName?`, `durationSeconds?`, `isDeleted?`, `quotedMessageId?`
+- **`ChatPresenter`** — `presentMessage()` serializa `fileName`, `durationSeconds`, `isDeleted`, `quotedMessageId`
+- **`ChatWebSocketPublisher`** — tipo `chat.message.created` inclui os quatro novos campos
+- **`ChatIncomingMessageListener`** — passa todos os novos campos do payload para o use case e para o publish WS
+
+#### Frontend — Tipos atualizados
+
+- **`features/chat/types.ts`** — `MessageType` expandido com `'video' | 'location' | 'vcard' | 'call_log'`; nova interface `QuotedMessagePreview`; `ChatMessage.body` agora `string | null`; `ChatMessage` com `mimeType?`, `isDeleted?`, `quotedMessageId?`, `quotedMessage?`
+- **`chat.api.types.ts`** — `ApiMessageType` expandido; `ChatMessageApiDto` com `fileName`, `durationSeconds`, `isDeleted`, `quotedMessageId`; `apiMessageToFrontend()` mapeia todos os novos campos
+
+#### Frontend — Componentes de renderização dedicados
+
+Criado diretório `app/src/features/chat/components/messages/` com 10 componentes:
+
+- **`ImageMessage.tsx`** — `<img>` com lightbox modal ao clicar, fallback `BrokenImageOutlined`
+- **`AudioMessage.tsx`** — `<audio controls>`, detecção de PTT (ogg/opus), display de duração, fallback
+- **`DocumentMessage.tsx`** — card de arquivo com ícone, label de extensão, botão de download
+- **`StickerMessage.tsx`** — `<img>` para sticker, fallback `EmojiEmotionsOutlined`
+- **`VideoMessage.tsx`** — `<video controls>`, display de duração, fallback de erro
+- **`LocationMessage.tsx`** — card com pin vermelho, parse lat/lng, link para Google Maps
+- **`VCardMessage.tsx`** — card de contato, parse de vCard (FN/TEL), ícone verde
+- **`CallLogMessage.tsx`** — pill centralizado (como eventos do sistema), detecção de chamada perdida/atendida
+- **`DeletedMessage.tsx`** — "Mensagem apagada" em itálico com ícone `Block`
+- **`QuotedMessage.tsx`** — bloco de reply com borda colorida lateral, ícones por tipo, texto truncado
+
+#### Frontend — `MessageBubble.tsx` reescrito
+
+- Substituído `MediaPlaceholder` genérico pelos 10 renderers especializados
+- `call_log` renderiza como pill centralizado (fora da bolha)
+- `event` renderiza como pill de sistema centralizado
+- `isDeleted` → `DeletedMessage`
+- Citação/reply → `QuotedMessage` no topo da bolha antes do conteúdo
+- Switch completo por `message.type` para cada renderer dedicado
+
+#### Frontend — Paginação reversa (scroll infinito para cima)
+
+- **`MessageList.tsx`** — novas props: `hasMore`, `isLoadingMore`, `onLoadMore`, `scrollToBottom`; `onScroll` detecta quando `scrollTop < 80px` e dispara `onLoadMore`; `prevScrollHeight` ref preserva posição do scroll após prepend de mensagens antigas; spinner `CircularProgress` no topo durante carregamento; scroll ao fundo apenas no load inicial e quando `scrollToBottom` muda (não em todo re-render)
+- **`ChatWindow.tsx`** — aceita e repassa `hasMore`, `isLoadingMore`, `onLoadMore`, `scrollToBottom` para `MessageList`
+- **`ChatPage.tsx`** — `PAGE_SIZE = 40`; estados `hasMore`, `isLoadingMore`, `oldestTimestamp` por conversa; `handleSelectConversation` carrega primeiro lote com `limit: PAGE_SIZE` e inicializa cursores; `handleLoadMore` carrega lote anterior com `before: oldestTimestamp[id]` e prepende ao array; trigger `scrollToBottom` (toggle boolean) a cada nova mensagem WS
+
+### Fixed
+
+#### Backend — Filtragem de JIDs LID (Linked Identity)
+
+- **`BaileysMessagingEngineAdapter`** — adicionado filtro `@lid` em todos os handlers (`messages.upsert`, `mapMessagesToHistoryItems`, `contacts.upsert`, `presence.update`); JIDs LID do WhatsApp eram processados como telefones reais, criando contatos e conversas duplicadas com números inválidos
+
+#### Backend — Correção de pushName em mensagens fromMe
+
+- **`IngestIncomingMessageUseCase`** — nome do contato agora só é extraído de `fromName` (pushName) quando `fromMe === false`; evita que o nome do próprio usuário sobrescreva o nome do contato
+- **`IngestHistorySyncUseCase`** — mesma correção aplicada ao ingestion de histórico
+
+#### Backend — Proteção contra nomes numéricos em contacts.upsert
+
+- **`PrismaChatContactRepository`** — `findOrCreate` agora promove nomes numéricos para nomes reais quando disponíveis
+- **`BaileysMessagingEngineAdapter`** — handler `contacts.upsert` ignora contatos sem nome real ou com nome puramente numérico, evitando sobrescrever nomes já válidos
+
+#### Frontend — WebSocket em dev environment
+
+- **`useChatWebSocket.ts`** — URL do WebSocket agora usa mesma estratégia do apiClient (`VITE_API_URL` com fallback para `http://localhost:3000/api`); compatível com proxy Vite e StrictMode do React
+
+---
+
+## [0.8.0] — 2026-03-10 — Chat V4: presence/typing sync e refinamento de inbox
+
+### Added
+
+#### Backend — Presence/typing sync
+
+- **`InternalMessagingEvent`** — novo tipo `PRESENCE_UPDATED` com `phone` e `presence` (`composing` | `recording` | `available` | `unavailable` | `paused`)
+- **`BaileysMessagingEngineAdapter`** — handler `presence.update` do Baileys: extrai `lastKnownPresence` do participante, filtra grupos/broadcasts, emite evento interno `PRESENCE_UPDATED`
+- **`IMessagingEngine`** — novo método `presenceSubscribe(sessionId, phone): Promise<void>` para assinar atualizações de presença de um contato
+- **`BaileysMessagingEngineAdapter.presenceSubscribe()`** — chama `socket.presenceSubscribe(jid)` no Baileys
+- **`ChatPresenceListener.ts`** (novo) — ouve `PRESENCE_UPDATED` no event bus interno e publica `chat.presence.updated` via WebSocket; efêmero, sem persistência
+- **`chat.routes.ts`** — `POST /conversations/:id/presence` — recebe ID de conversa, resolve contato, chama `engine.presenceSubscribe()`; retorna `{ subscribed: true/false }`
+- **`ChatWebSocketPublisher`** — novo tipo de evento `chat.presence.updated` com `{ tenantId, phone, presence }`
+- **`server.ts`** — `registerChatPresenceListener()` registrado no startup
+
+#### Frontend — Presence/typing em tempo real
+
+- **`useChatWebSocket.ts`** — novo tipo `WsPresenceUpdatedData` e evento `chat.presence.updated` no union `ChatWsPayload`
+- **`chat.service.ts`** — `subscribePresence(conversationId)` → `POST /chat/conversations/:id/presence`
+- **`ChatPage.tsx`** — estado `presenceMap` (phone → presence); handler WS `chat.presence.updated`; chama `subscribePresence()` ao selecionar conversa
+- **`ChatWindow.tsx`** — aceita e repassa prop `presence?: string`
+- **`ChatHeader.tsx`** — exibe indicador de presença abaixo do nome: "online" (verde), "digitando…" (verde/itálico), "gravando áudio…" (vermelho/itálico)
+
+#### Frontend — Refinamento de inbox
+
+- **`ConversationListItem.tsx`** — aceita prop `presence`; quando contato está digitando ou gravando, substitui preview de última mensagem por indicador colorido ("digitando…" ou "gravando áudio…")
+- **`ConversationSidebar.tsx`** — repassa `presenceMap` para cada `ConversationListItem`
+
+- **`BaileysMessagingEngineAdapter`** — adicionado filtro `@lid` em todos os handlers (`messages.upsert`, `mapMessagesToHistoryItems`, `contacts.upsert`, `presence.update`); JIDs LID do WhatsApp eram processados como telefones reais, criando contatos e conversas duplicadas com números inválidos
+
+#### Backend — Correção de pushName em mensagens fromMe
+
+- **`IngestIncomingMessageUseCase`** — nome do contato agora só é extraído de `fromName` (pushName) quando `fromMe === false`; evita que o nome do próprio usuário sobrescreva o nome do contato
+- **`IngestHistorySyncUseCase`** — mesma correção aplicada ao ingestion de histórico
+
+#### Backend — Proteção contra nomes numéricos em contacts.upsert
+
+- **`PrismaChatContactRepository`** — `findOrCreate` agora promove nomes numéricos para nomes reais quando disponíveis
+- **`BaileysMessagingEngineAdapter`** — handler `contacts.upsert` ignora contatos sem nome real ou com nome puramente numérico, evitando sobrescrever nomes já válidos
+
+#### Frontend — WebSocket em dev environment
+
+- **`useChatWebSocket.ts`** — URL do WebSocket agora usa mesma estratégia do apiClient (`VITE_API_URL` com fallback para `http://localhost:3000/api`); compatível com proxy Vite e StrictMode do React
+
+---
+
 ## [0.8.0] — 2026-03-10 — Chat V4: presence/typing sync e refinamento de inbox
 
 ### Added

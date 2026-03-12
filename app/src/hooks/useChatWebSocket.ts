@@ -75,6 +75,7 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
   useEffect(() => {
     let ws: WebSocket | null = null;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let connectTimeout: ReturnType<typeof setTimeout> | null = null;
     let retryDelay = 2_000;
     let stopped = false;
 
@@ -83,10 +84,13 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
 
       const token    = localStorage.getItem('accessToken') ?? '';
       const tenantId = localStorage.getItem('activeTenantId') ?? '';
-      const apiBase  = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
 
-      // Convert /api prefix to a WebSocket URL.
-      // In dev, Vite proxies /api → http://localhost:3000, so we derive ws:// from location.
+      // Use the same base URL strategy as apiClient to avoid relying on the
+      // Vite dev proxy for WebSocket upgrades (unreliable for subpaths in Vite 6).
+      // VITE_API_URL ?? 'http://localhost:3000/api' mirrors apiClient.ts exactly.
+      const apiBase = (import.meta.env.VITE_API_URL as string | undefined)
+        ?? 'http://localhost:3000/api';
+
       const httpBase = apiBase.startsWith('http')
         ? apiBase
         : `${window.location.protocol}//${window.location.host}${apiBase}`;
@@ -123,10 +127,14 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
       };
     }
 
-    connect();
+    // Delay the initial connect by one tick so React StrictMode's synchronous
+    // cleanup can cancel it before the WebSocket is even created, avoiding the
+    // "WebSocket closed before the connection was established" console error.
+    connectTimeout = setTimeout(connect, 0);
 
     return () => {
       stopped = true;
+      if (connectTimeout) clearTimeout(connectTimeout);
       if (retryTimeout) clearTimeout(retryTimeout);
       ws?.close();
     };

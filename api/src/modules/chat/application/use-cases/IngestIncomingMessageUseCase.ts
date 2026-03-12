@@ -11,7 +11,15 @@ export interface IngestIncomingMessageInput {
   from: string;
   /** Contact display name from WhatsApp push name, if available */
   fromName?: string;
-  body: string;
+  body: string | null;
+  /** Detected message type */
+  msgType?: ChatMessageType;
+  mediaUrl?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+  durationSeconds?: number | null;
+  isDeleted?: boolean;
+  quotedMessageId?: string | null;
   /** Engine-level message ID for deduplication */
   externalMessageId?: string;
   /** true = sent by us from the phone → OUTBOUND; false/undefined = received → INBOUND */
@@ -49,10 +57,11 @@ export class IngestIncomingMessageUseCase {
     const { tenantId, sessionId, from, fromName, body, externalMessageId, fromMe } = input;
 
     // 1 — Find or create contact
+    // Quando fromMe=true, pushName é o nome do próprio usuário — não do contato
     const contact = await this.contactRepo.findOrCreate({
       tenantId,
       phone: from,
-      name: fromName ?? from,
+      name: (!fromMe && fromName) ? fromName : from,
     });
 
     // 2 — Find active conversation or create a new one
@@ -81,17 +90,24 @@ export class IngestIncomingMessageUseCase {
 
     // 4 — Persist the message
     const direction = fromMe ? ChatMessageDirection.OUTBOUND : ChatMessageDirection.INBOUND;
+    const type = input.msgType ?? ChatMessageType.TEXT;
     const message = await this.messageRepo.create({
       tenantId,
       conversationId: conversation.id,
       direction,
-      type: ChatMessageType.TEXT,
+      type,
       content: body,
+      mediaUrl: input.mediaUrl ?? null,
+      mimeType: input.mimeType ?? null,
+      fileName: input.fileName ?? null,
+      durationSeconds: input.durationSeconds ?? null,
+      isDeleted: input.isDeleted ?? false,
+      quotedMessageId: input.quotedMessageId ?? null,
       externalMessageId: externalMessageId ?? null,
     });
 
     // 5 — Update conversation metadata
-    const preview = body.length > 100 ? body.slice(0, 97) + '…' : body;
+    const preview = buildPreview(type, body);
     await this.conversationRepo.updateLastMessage(conversation.id, tenantId, {
       lastMessagePreview: preview,
       lastMessageAt: new Date(),
@@ -106,4 +122,19 @@ export class IngestIncomingMessageUseCase {
 
     return { conversationId: conversation.id, message, isNewConversation, unreadCount };
   }
+}
+
+function buildPreview(type: ChatMessageType, body: string | null): string {
+  if (body) return body.length > 100 ? body.slice(0, 97) + '…' : body;
+  const labels: Partial<Record<ChatMessageType, string>> = {
+    [ChatMessageType.IMAGE]:    '📷 Imagem',
+    [ChatMessageType.AUDIO]:    '🎵 Áudio',
+    [ChatMessageType.VIDEO]:    '🎥 Vídeo',
+    [ChatMessageType.DOCUMENT]: '📄 Documento',
+    [ChatMessageType.STICKER]:  '😊 Sticker',
+    [ChatMessageType.LOCATION]: '📍 Localização',
+    [ChatMessageType.VCARD]:    '👤 Contato',
+    [ChatMessageType.CALL_LOG]: '📞 Chamada',
+  };
+  return labels[type] ?? '📎 Mídia';
 }

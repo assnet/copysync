@@ -23,7 +23,16 @@ export type InternalMessagingEvent =
       from: string;
       /** Contact display name pushed by the WhatsApp client, if available */
       fromName?: string;
-      body: string;
+      body: string | null;
+      /** Message type detected from Baileys payload */
+      msgType?: string;
+      /** CDN/media URL if available */
+      mediaUrl?: string | null;
+      mimeType?: string | null;
+      fileName?: string | null;
+      durationSeconds?: number | null;
+      isDeleted?: boolean;
+      quotedMessageId?: string | null;
       /** Unique message ID from the engine (used for deduplication) */
       externalMessageId?: string;
       /** true = sent by us from the phone (OUTBOUND); false/undefined = received (INBOUND) */

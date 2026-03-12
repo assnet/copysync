@@ -18,7 +18,11 @@ export interface ChatMessageCreateData {
   content?: string | null;
   mediaUrl?: string | null;
   mimeType?: string | null;
+  fileName?: string | null;
+  durationSeconds?: number | null;
   externalMessageId?: string | null;
+  isDeleted?: boolean;
+  quotedMessageId?: string | null;
   /** Timestamp real da mensagem; se omitido, usa new Date() */
   sentAt?: Date | null;
 }

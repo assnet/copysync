@@ -13,7 +13,14 @@ export interface HistoryMessageItem {
    */
   from: string;
   fromName?: string;
-  body: string;
+  body: string | null;
+  /** Tipo detectado da mensagem */
+  msgType?: ChatMessageType;
+  mimeType?: string | null;
+  fileName?: string | null;
+  durationSeconds?: number | null;
+  isDeleted?: boolean;
+  quotedMessageId?: string | null;
   /** true = mensagem enviada por nós → OUTBOUND; false = recebida → INBOUND */
   fromMe: boolean;
   /** Timestamp original da mensagem */
@@ -46,7 +53,7 @@ export class IngestHistorySyncUseCase {
   ) {}
 
   execute(input: IngestHistorySyncInput): void {
-    const valid = input.messages.filter((m) => m.body && m.externalMessageId);
+    const valid = input.messages.filter((m) => m.externalMessageId && (m.body !== null || m.msgType));
     if (valid.length === 0) return;
 
     log.info(
@@ -92,10 +99,11 @@ export class IngestHistorySyncUseCase {
         if (existing) continue;
 
         // Contato
+        // Quando fromMe=true, pushName é o nome do próprio usuário — não do contato
         const contact = await this.contactRepo.findOrCreate({
           tenantId,
           phone: item.from,
-          name: item.fromName ?? item.from,
+          name: (!item.fromMe && item.fromName) ? item.fromName : item.from,
         });
 
         // Conversa ativa ou nova
@@ -115,24 +123,28 @@ export class IngestHistorySyncUseCase {
         const direction = item.fromMe
           ? ChatMessageDirection.OUTBOUND
           : ChatMessageDirection.INBOUND;
+        const type = item.msgType ?? ChatMessageType.TEXT;
 
         await this.messageRepo.create({
           tenantId,
           conversationId: conversation.id,
           direction,
-          type: ChatMessageType.TEXT,
+          type,
           content: item.body,
+          mimeType: item.mimeType ?? null,
+          fileName: item.fileName ?? null,
+          durationSeconds: item.durationSeconds ?? null,
+          isDeleted: item.isDeleted ?? false,
+          quotedMessageId: item.quotedMessageId ?? null,
           externalMessageId: item.externalMessageId,
           sentAt: item.timestamp,
         });
 
         // Mantém apenas a mensagem mais recente por conversa
+        const preview = buildHistoryPreview(type, item.body);
         const current = latestPerConversation.get(conversation.id);
         if (!current || item.timestamp > current.at) {
-          latestPerConversation.set(conversation.id, {
-            preview: item.body.slice(0, 120),
-            at: item.timestamp,
-          });
+          latestPerConversation.set(conversation.id, { preview, at: item.timestamp });
         }
       } catch (err) {
         log.warn({ err, externalMessageId: item.externalMessageId }, 'Failed to ingest history message');
@@ -151,4 +163,19 @@ export class IngestHistorySyncUseCase {
       }
     }
   }
+}
+
+function buildHistoryPreview(type: ChatMessageType, body: string | null): string {
+  if (body) return body.slice(0, 120);
+  const labels: Partial<Record<ChatMessageType, string>> = {
+    [ChatMessageType.IMAGE]:    '📷 Imagem',
+    [ChatMessageType.AUDIO]:    '🎵 Áudio',
+    [ChatMessageType.VIDEO]:    '🎥 Vídeo',
+    [ChatMessageType.DOCUMENT]: '📄 Documento',
+    [ChatMessageType.STICKER]:  '😊 Sticker',
+    [ChatMessageType.LOCATION]: '📍 Localização',
+    [ChatMessageType.VCARD]:    '👤 Contato',
+    [ChatMessageType.CALL_LOG]: '📞 Chamada',
+  };
+  return labels[type] ?? '📎 Mídia';
 }

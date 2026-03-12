@@ -19,7 +19,11 @@ export type ChatWsEvent =
           content: string | null;
           mediaUrl: string | null;
           mimeType: string | null;
+          fileName?: string | null;
+          durationSeconds?: number | null;
           status: string | null;
+          isDeleted?: boolean;
+          quotedMessageId?: string | null;
           sentAt: string | null;
           createdAt: string;
         };

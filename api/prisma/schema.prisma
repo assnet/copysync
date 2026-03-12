@@ -81,8 +81,12 @@ enum ChatMessageType {
   IMAGE
   AUDIO
   DOCUMENT
-  EVENT
+  VIDEO
   STICKER
+  LOCATION
+  VCARD
+  CALL_LOG
+  EVENT
 }
 
 enum ChatMessageStatus {
@@ -359,13 +363,19 @@ model ChatMessage {
   content           String?              @db.Text
   mediaUrl          String?
   mimeType          String?
+  fileName          String?              // Nome do arquivo (documentos)
+  durationSeconds   Int?                 // Duração em segundos (áudio/vídeo)
   externalMessageId String?              // ID externo (ex: messageId do WhatsApp)
   status            ChatMessageStatus?
+  isDeleted         Boolean              @default(false)
+  quotedMessageId   String?              // ID da mensagem citada (reply)
   sentAt            DateTime?
   createdAt         DateTime             @default(now())
 
-  tenant       Tenant           @relation(fields: [tenantId], references: [id])
-  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  quotedMessage  ChatMessage?     @relation("MessageQuote", fields: [quotedMessageId], references: [id])
+  quotedBy       ChatMessage[]    @relation("MessageQuote")
 
   @@index([tenantId, conversationId])
   @@index([conversationId, createdAt])

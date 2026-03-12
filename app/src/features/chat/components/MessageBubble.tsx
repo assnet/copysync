@@ -3,11 +3,18 @@ import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
-import AudiotrackOutlinedIcon from '@mui/icons-material/AudiotrackOutlined';
-import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import type { ChatMessage } from '../types';
 import { formatMessageTime } from '../utils';
+import { ImageMessage } from './messages/ImageMessage';
+import { AudioMessage } from './messages/AudioMessage';
+import { DocumentMessage } from './messages/DocumentMessage';
+import { VideoMessage } from './messages/VideoMessage';
+import { StickerMessage } from './messages/StickerMessage';
+import { LocationMessage } from './messages/LocationMessage';
+import { VCardMessage } from './messages/VCardMessage';
+import { CallLogMessage } from './messages/CallLogMessage';
+import { DeletedMessage } from './messages/DeletedMessage';
+import { QuotedMessage } from './messages/QuotedMessage';
 
 // ── Status icon ───────────────────────────────────────────────────────────────
 
@@ -28,41 +35,84 @@ function MessageStatusIcon({ status }: { status: ChatMessage['status'] }) {
   return null;
 }
 
-// ── Media placeholder ─────────────────────────────────────────────────────────
+// ── Message content renderer ──────────────────────────────────────────────────
 
-function MediaPlaceholder({ type }: { type: ChatMessage['type'] }) {
-  const theme = useTheme();
-  const icons = {
-    image:    <ImageOutlinedIcon sx={{ fontSize: 28, color: 'inherit' }} />,
-    audio:    <AudiotrackOutlinedIcon sx={{ fontSize: 28, color: 'inherit' }} />,
-    document: <DescriptionOutlinedIcon sx={{ fontSize: 28, color: 'inherit' }} />,
-  } as const;
+interface ContentProps {
+  message: ChatMessage;
+  isOut: boolean;
+  textColor: string;
+}
 
-  if (type === 'text' || type === 'event' || type === 'sticker') return null;
+function MessageContent({ message, isOut, textColor }: ContentProps) {
+  if (message.isDeleted) {
+    return <DeletedMessage isOut={isOut} />;
+  }
 
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1,
-        p: 1.5,
-        bgcolor: alpha(theme.palette.text.primary, 0.06),
-        borderRadius: 1.5,
-        mb: 1,
-        color: 'text.secondary',
-      }}
-    >
-      {icons[type as keyof typeof icons]}
-      <Typography variant="caption" color="text.secondary">
-        {{
-          image:    'Imagem',
-          audio:    'Áudio',
-          document: 'Documento',
-        }[type as string] ?? type}
-      </Typography>
-    </Box>
-  );
+  switch (message.type) {
+    case 'image':
+      return (
+        <ImageMessage
+          mediaUrl={message.mediaUrl}
+          body={message.body}
+          isOut={isOut}
+          textColor={textColor}
+        />
+      );
+    case 'audio':
+      return (
+        <AudioMessage
+          mediaUrl={message.mediaUrl}
+          mimeType={message.mimeType}
+          durationSeconds={message.durationSeconds}
+          isOut={isOut}
+        />
+      );
+    case 'document':
+      return (
+        <DocumentMessage
+          mediaUrl={message.mediaUrl}
+          fileName={message.fileName}
+          mimeType={message.mimeType}
+          body={message.body}
+          textColor={textColor}
+        />
+      );
+    case 'video':
+      return (
+        <VideoMessage
+          mediaUrl={message.mediaUrl}
+          mimeType={message.mimeType}
+          durationSeconds={message.durationSeconds}
+          body={message.body}
+          textColor={textColor}
+        />
+      );
+    case 'sticker':
+      return <StickerMessage mediaUrl={message.mediaUrl} isOut={isOut} />;
+    case 'location':
+      return <LocationMessage body={message.body} textColor={textColor} />;
+    case 'vcard':
+      return <VCardMessage body={message.body} textColor={textColor} />;
+    case 'call_log':
+      return null;
+    case 'text':
+    case 'event':
+    default:
+      return message.body ? (
+        <Typography
+          variant="body2"
+          sx={{
+            color: textColor,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontSize: 13.5,
+            lineHeight: 1.55,
+          }}
+        >
+          {message.body}
+        </Typography>
+      ) : null;
+  }
 }
 
 // ── Main bubble ───────────────────────────────────────────────────────────────
@@ -75,6 +125,11 @@ export function MessageBubble({ message }: Props) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const isOut = message.direction === 'out';
+
+  // Call log — pill centralizado
+  if (message.type === 'call_log') {
+    return <CallLogMessage body={message.body} isOut={isOut} />;
+  }
 
   // Event / system messages — centered pill
   if (message.isEvent) {
@@ -96,8 +151,6 @@ export function MessageBubble({ message }: Props) {
     );
   }
 
-  // Sent (out) — primary colored bubble aligned right
-  // Received (in) — neutral bubble aligned left
   const bgColor = isOut
     ? theme.palette.primary.main
     : isDark
@@ -130,26 +183,15 @@ export function MessageBubble({ message }: Props) {
           boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.08)',
         }}
       >
-        {/* Media placeholder (non-text types) */}
-        {message.type !== 'text' && <MediaPlaceholder type={message.type} />}
-
-        {/* Body text */}
-        {message.body && (
-          <Typography
-            variant="body2"
-            sx={{
-              color: textColor,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              fontSize: 13.5,
-              lineHeight: 1.55,
-            }}
-          >
-            {message.body}
-          </Typography>
+        {/* Mensagem citada (reply preview) */}
+        {message.quotedMessage && (
+          <QuotedMessage quoted={message.quotedMessage} isOut={isOut} />
         )}
 
-        {/* Footer: time + status */}
+        {/* Conteúdo da mensagem */}
+        <MessageContent message={message} isOut={isOut} textColor={textColor} />
+
+        {/* Footer: hora + tick de status */}
         <Box
           sx={{
             display: 'flex',

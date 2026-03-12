@@ -4,6 +4,8 @@ import { IngestIncomingMessageUseCase } from '../../application/use-cases/Ingest
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
 import type { InternalMessagingEvent } from '../../../../shared/events/InternalMessagingEvent';
 
+import { ChatMessageType } from '../../domain/enums/ChatMessageEnums';
+
 type MessageReceivedEvent = Extract<InternalMessagingEvent, { type: 'MESSAGE_RECEIVED' }>;
 
 /**
@@ -24,6 +26,13 @@ export function registerChatIncomingMessageListener(
         from: payload.from,
         fromName: payload.fromName,
         body: payload.body,
+        msgType: payload.msgType ? (payload.msgType as ChatMessageType) : undefined,
+        mediaUrl: payload.mediaUrl,
+        mimeType: payload.mimeType,
+        fileName: payload.fileName,
+        durationSeconds: payload.durationSeconds,
+        isDeleted: payload.isDeleted,
+        quotedMessageId: payload.quotedMessageId,
         externalMessageId: payload.externalMessageId,
         fromMe: payload.fromMe,
       });
@@ -43,7 +52,11 @@ export function registerChatIncomingMessageListener(
             content: result.message.content,
             mediaUrl: result.message.mediaUrl,
             mimeType: result.message.mimeType,
+            fileName: result.message.fileName,
+            durationSeconds: result.message.durationSeconds,
             status: result.message.status,
+            isDeleted: result.message.isDeleted,
+            quotedMessageId: result.message.quotedMessageId,
             sentAt: result.message.sentAt?.toISOString() ?? null,
             createdAt: result.message.createdAt.toISOString(),
           },

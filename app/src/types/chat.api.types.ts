@@ -2,7 +2,9 @@
 
 export type ApiConversationStatus = 'OPEN' | 'PENDING' | 'WAITING' | 'BOT' | 'CLOSED';
 export type ApiMessageDirection   = 'INBOUND' | 'OUTBOUND' | 'SYSTEM';
-export type ApiMessageType        = 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'EVENT' | 'STICKER';
+export type ApiMessageType        =
+  | 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO'
+  | 'STICKER' | 'LOCATION' | 'VCARD' | 'CALL_LOG' | 'EVENT';
 export type ApiMessageStatus      = 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
 
 export interface ChatContactApiDto {
@@ -51,8 +53,12 @@ export interface ChatMessageApiDto {
   content: string | null;
   mediaUrl: string | null;
   mimeType: string | null;
+  fileName: string | null;
+  durationSeconds: number | null;
   externalMessageId: string | null;
   status: ApiMessageStatus;
+  isDeleted: boolean;
+  quotedMessageId: string | null;
   sentAt: string;
   createdAt: string;
 }
@@ -165,14 +171,19 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
 export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
   const dir = toMessageDirection(dto.direction);
   return {
-    id:             dto.id,
-    conversationId: dto.conversationId,
-    type:           dto.type.toLowerCase() as ChatMessage['type'],
-    direction:      dir === 'system' ? 'out' : dir,
-    body:           dto.content ?? '',
-    mediaUrl:       dto.mediaUrl,
-    timestamp:      dto.sentAt ?? dto.createdAt,
-    status:         toMessageStatus(dto.status),
-    isEvent:        dto.direction === 'SYSTEM',
+    id:              dto.id,
+    conversationId:  dto.conversationId,
+    type:            dto.type.toLowerCase() as ChatMessage['type'],
+    direction:       dir === 'system' ? 'out' : dir,
+    body:            dto.content,
+    mediaUrl:        dto.mediaUrl,
+    mimeType:        dto.mimeType,
+    fileName:        dto.fileName,
+    durationSeconds: dto.durationSeconds,
+    timestamp:       dto.sentAt ?? dto.createdAt,
+    status:          toMessageStatus(dto.status),
+    isEvent:         dto.direction === 'SYSTEM',
+    isDeleted:       dto.isDeleted,
+    quotedMessageId: dto.quotedMessageId,
   };
 }

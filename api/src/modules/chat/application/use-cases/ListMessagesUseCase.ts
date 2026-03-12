@@ -19,8 +19,12 @@ export interface ChatMessageDto {
   content: string | null;
   mediaUrl: string | null;
   mimeType: string | null;
+  fileName: string | null;
+  durationSeconds: number | null;
   externalMessageId: string | null;
   status: ChatMessageStatus | null;
+  isDeleted: boolean;
+  quotedMessageId: string | null;
   sentAt: string | null;
   createdAt: string;
 }
@@ -51,8 +55,12 @@ export class ListMessagesUseCase {
       content: m.content,
       mediaUrl: m.mediaUrl,
       mimeType: m.mimeType,
+      fileName: m.fileName,
+      durationSeconds: m.durationSeconds,
       externalMessageId: m.externalMessageId,
       status: m.status,
+      isDeleted: m.isDeleted,
+      quotedMessageId: m.quotedMessageId,
       sentAt: m.sentAt?.toISOString() ?? null,
       createdAt: m.createdAt.toISOString(),
     }));

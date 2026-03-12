@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Box, Typography, alpha, useTheme } from '@mui/material';
+import { useEffect, useRef, useCallback } from 'react';
+import { Box, CircularProgress, Typography, alpha, useTheme } from '@mui/material';
 import type { ChatMessage } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { formatDateSeparator } from '../utils';
@@ -7,6 +7,10 @@ import { formatDateSeparator } from '../utils';
 interface Props {
   messages: ChatMessage[];
   loading?: boolean;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  scrollToBottom?: boolean;
 }
 
 function isSameDay(a: string, b: string) {
@@ -48,15 +52,54 @@ function DateSeparator({ label }: { label: string }) {
 
 // ── Message list ──────────────────────────────────────────────────────────────
 
-export function MessageList({ messages, loading = false }: Props) {
+export function MessageList({
+  messages,
+  loading = false,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  scrollToBottom = false,
+}: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeight = useRef<number>(0);
+  const wasLoadingMore = useRef(false);
 
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [loading]);
+
+  // Scroll to bottom when triggered externally (new WS message)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [scrollToBottom]);
+
+  // Preserve scroll position after prepend (when older messages loaded)
+  useEffect(() => {
+    if (wasLoadingMore.current && !isLoadingMore && containerRef.current) {
+      const newHeight = containerRef.current.scrollHeight;
+      containerRef.current.scrollTop += newHeight - prevScrollHeight.current;
+    }
+    wasLoadingMore.current = isLoadingMore;
+  }, [isLoadingMore, messages]);
+
+  // Detect scroll near top → load more
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el || !hasMore || isLoadingMore || !onLoadMore) return;
+    if (el.scrollTop < 80) {
+      prevScrollHeight.current = el.scrollHeight;
+      onLoadMore();
+    }
+  }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
     <Box
+      ref={containerRef}
+      onScroll={handleScroll}
       sx={{
         flex: 1,
         overflowY: 'auto',
@@ -66,6 +109,13 @@ export function MessageList({ messages, loading = false }: Props) {
         bgcolor: 'background.default',
       }}
     >
+      {/* Top loader spinner */}
+      {isLoadingMore && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
+          <CircularProgress size={20} color="inherit" sx={{ opacity: 0.4 }} />
+        </Box>
+      )}
+
       {loading ? (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
           <Typography variant="body2" color="text.disabled">Carregando mensagens...</Typography>
@@ -78,6 +128,7 @@ export function MessageList({ messages, loading = false }: Props) {
         messages.map((msg, index) => {
           const prevMsg = messages[index - 1];
           const showDateSep = !prevMsg || !isSameDay(prevMsg.timestamp, msg.timestamp);
+
           return (
             <Box key={msg.id}>
               {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
