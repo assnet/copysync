@@ -57,7 +57,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
         >
           {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 22 }} /> : contact.initials}
         </Avatar>
-        {/* Status dot */}}
+        {/* Status dot */}
         <Box
           sx={{
             position: 'absolute',
