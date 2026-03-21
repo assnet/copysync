@@ -69,4 +69,12 @@ export class PrismaChatContactRepository implements IChatContactRepository {
     });
     return PrismaChatContactMapper.toDomain(raw);
   }
+
+  async updateAvatarUrlByPhone(phone: string, tenantId: string, avatarUrl: string): Promise<void> {
+    // Atualiza apenas avatarUrl — não toca em nome nem outros campos
+    await this.prisma.chatContact.updateMany({
+      where: { tenantId, phone },
+      data: { avatarUrl },
+    });
+  }
 }

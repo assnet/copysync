@@ -68,6 +68,12 @@ export type InternalMessagingEvent =
       phone: string;
       /** 'available' | 'unavailable' | 'composing' | 'recording' */
       presence: string;
+    }
+  | {
+      type: 'CONTACT_AVATAR_UPDATED';
+      tenantId: string;
+      phone: string;
+      avatarUrl: string;
     };
 
 export type InternalEventType = InternalMessagingEvent['type'];

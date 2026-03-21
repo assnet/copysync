@@ -13,4 +13,6 @@ export interface IChatContactRepository {
   findByPhone(phone: string, tenantId: string): Promise<ChatContact | null>;
   findOrCreate(data: ChatContactCreateData): Promise<ChatContact>;
   upsert(data: ChatContactCreateData): Promise<ChatContact>;
+  /** Atualiza APENAS o avatarUrl do contato sem tocar em nome ou outros campos. */
+  updateAvatarUrlByPhone(phone: string, tenantId: string, avatarUrl: string): Promise<void>;
 }

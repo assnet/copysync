@@ -49,6 +49,12 @@ export interface WsPresenceUpdatedData {
   presence: string;
 }
 
+export interface WsContactUpdatedData {
+  tenantId: string;
+  phone: string;
+  avatarUrl: string;
+}
+
 export type ChatWsPayload =
   | { event: 'chat.message.created'; data: WsMessageCreatedData }
   | { event: 'chat.conversation.updated'; data: WsConversationUpdatedData }
@@ -56,6 +62,7 @@ export type ChatWsPayload =
   | { event: 'chat.message.status.updated'; data: WsMessageStatusUpdatedData }
   | { event: 'chat.presence.updated'; data: WsPresenceUpdatedData }
   | { event: 'chat.session.updated'; data: WsSessionUpdatedData }
+  | { event: 'chat.contact.updated'; data: WsContactUpdatedData }
   | { event: 'ping' };
 
 // ── Hook ──────────────────────────────────────────────────────────────────────

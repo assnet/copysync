@@ -79,6 +79,14 @@ export type ChatWsEvent =
         status: string;
       };
     }
+  | {
+      event: 'chat.contact.updated';
+      data: {
+        tenantId: string;
+        phone: string;
+        avatarUrl: string;
+      };
+    }
   | { event: 'ping' };
 
 /**

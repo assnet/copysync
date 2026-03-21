@@ -385,6 +385,23 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           { sessionId, from, msgId: msg.key.id, msgType: extracted.msgType, isGroup },
           'Incoming message received',
         );
+
+        // Para mensagens individuais recebidas: busca avatar em background se ainda não tiver.
+        // Cobre contatos que já existem no DB com avatarUrl: null (criados antes desta feature).
+        if (!isGroup && !fromMe) {
+          fetchAndSaveContactAvatar(socket, jid, from)
+            .then((avatarUrl) => {
+              if (avatarUrl) {
+                internalEventBus.emit('CONTACT_AVATAR_UPDATED', {
+                  type: 'CONTACT_AVATAR_UPDATED',
+                  tenantId,
+                  phone: from,
+                  avatarUrl,
+                });
+              }
+            })
+            .catch(() => null); // falha silenciosa esperada (privacidade do contato)
+        }
       }
     });
 
@@ -457,14 +474,22 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
           // Busca foto de perfil em background (idempotente: não re-baixa se já existe no disco)
           fetchAndSaveContactAvatar(socket, rawJid, phone)
-            .then((avatarUrl) =>
-              this.chatContactRepo.upsert({
+            .then(async (avatarUrl) => {
+              await this.chatContactRepo.upsert({
                 tenantId,
                 phone,
                 name,
                 ...(avatarUrl !== null ? { avatarUrl } : {}),
-              }),
-            )
+              });
+              if (avatarUrl) {
+                internalEventBus.emit('CONTACT_AVATAR_UPDATED', {
+                  type: 'CONTACT_AVATAR_UPDATED',
+                  tenantId,
+                  phone,
+                  avatarUrl,
+                });
+              }
+            })
             .catch((err: unknown) =>
               baileysLogger.warn({ err, phone }, 'Failed to upsert contact from contacts.upsert'),
             );

@@ -184,6 +184,17 @@ export default function ChatPage() {
           const { phone, presence } = payload.data;
           setPresenceMap((prev) => ({ ...prev, [phone]: presence }));
         }
+
+        if (payload.event === 'chat.contact.updated') {
+          const { phone, avatarUrl } = payload.data;
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.contact.phone === phone
+                ? { ...c, contact: { ...c.contact, avatarUrl } }
+                : c,
+            ),
+          );
+        }
       },
       [loadConversations],
     ),

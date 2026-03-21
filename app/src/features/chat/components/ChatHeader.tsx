@@ -43,7 +43,6 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
   const presenceLabel = getPresenceLabel(presence);
   const isGroup = conversation.isGroup ?? false;
   const displayName = isGroup ? (conversation.groupName ?? contact.name) : contact.name;
-  const displayPhone = isGroup ? null : contact.phone;
 
   return (
     <Box>
