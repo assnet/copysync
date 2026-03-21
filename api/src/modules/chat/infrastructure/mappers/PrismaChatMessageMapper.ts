@@ -24,6 +24,8 @@ export class PrismaChatMessageMapper {
       isDeleted: raw.isDeleted,
       quotedMessageId: raw.quotedMessageId,
       sentAt: raw.sentAt,
+      fromParticipant: raw.fromParticipant,
+      fromParticipantName: raw.fromParticipantName,
       createdAt: raw.createdAt,
     });
   }

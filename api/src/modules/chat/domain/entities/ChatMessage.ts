@@ -20,6 +20,10 @@ export interface ChatMessageProps {
   isDeleted: boolean;
   quotedMessageId: string | null;
   sentAt: Date | null;
+  /** Phone do remetente dentro de um grupo (null para conversas 1-a-1) */
+  fromParticipant: string | null;
+  /** Nome exibido do remetente dentro de um grupo */
+  fromParticipantName: string | null;
   createdAt: Date;
 }
 
@@ -39,6 +43,8 @@ export class ChatMessage {
   readonly isDeleted: boolean;
   readonly quotedMessageId: string | null;
   readonly sentAt: Date | null;
+  readonly fromParticipant: string | null;
+  readonly fromParticipantName: string | null;
   readonly createdAt: Date;
 
   constructor(props: ChatMessageProps) {
@@ -57,6 +63,8 @@ export class ChatMessage {
     this.isDeleted = props.isDeleted;
     this.quotedMessageId = props.quotedMessageId;
     this.sentAt = props.sentAt;
+    this.fromParticipant = props.fromParticipant;
+    this.fromParticipantName = props.fromParticipantName;
     this.createdAt = props.createdAt;
   }
 

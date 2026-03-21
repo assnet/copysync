@@ -1,7 +1,8 @@
-import type { PrismaClient } from '@prisma/client';
+﻿import type { PrismaClient } from '@prisma/client';
 import type {
   ConversationLastMessageUpdate,
   ConversationUpdateData,
+  CreateConversationData,
   IChatConversationRepository,
   ListConversationsFilter,
 } from '../../domain/contracts/IChatConversationRepository';
@@ -34,10 +35,9 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     }
 
     if (filter.search) {
-      // Pesquisa por preview ou pelo contato (feita via join inline)
-      // Usamos OR com condições no próprio campo lastMessagePreview e filtramos por contato externamente
       where['OR'] = [
         { lastMessagePreview: { contains: filter.search, mode: 'insensitive' } },
+        { groupName: { contains: filter.search, mode: 'insensitive' } },
         {
           contact: {
             OR: [
@@ -59,20 +59,17 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     return rows.map(PrismaChatConversationMapper.toDomain);
   }
 
-  async create(data: {
-    tenantId: string;
-    sessionId?: string | null;
-    contactId: string;
-    externalChatId?: string | null;
-    channel?: string;
-  }): Promise<ChatConversation> {
+  async create(data: CreateConversationData): Promise<ChatConversation> {
     const raw = await this.prisma.chatConversation.create({
       data: {
         tenantId: data.tenantId,
         sessionId: data.sessionId ?? null,
-        contactId: data.contactId,
+        contactId: data.contactId ?? null,
         externalChatId: data.externalChatId ?? null,
         channel: data.channel ?? 'whatsapp',
+        isGroup: data.isGroup ?? false,
+        groupJid: data.groupJid ?? null,
+        groupName: data.groupName ?? null,
       },
     });
     return PrismaChatConversationMapper.toDomain(raw);
@@ -82,12 +79,30 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     contactId: string,
     sessionId: string,
     tenantId: string,
-  ): Promise<import('../../domain/entities/ChatConversation').ChatConversation | null> {
+  ): Promise<ChatConversation | null> {
     const raw = await this.prisma.chatConversation.findFirst({
       where: {
         tenantId,
         contactId,
         sessionId,
+        status: { notIn: ['CLOSED'] },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+    return raw ? PrismaChatConversationMapper.toDomain(raw) : null;
+  }
+
+  async findActiveByGroupAndSession(
+    groupJid: string,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<ChatConversation | null> {
+    const raw = await this.prisma.chatConversation.findFirst({
+      where: {
+        tenantId,
+        groupJid,
+        sessionId,
+        isGroup: true,
         status: { notIn: ['CLOSED'] },
       },
       orderBy: { lastMessageAt: 'desc' },

@@ -225,10 +225,16 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         return httpResponse.ok(reply, { subscribed: false });
       }
 
-      const contact = await contactRepo.findById(conversation.contactId, tenantId);
-      if (!contact) return httpResponse.ok(reply, { subscribed: false });
+      const contact = conversation.contactId
+        ? await contactRepo.findById(conversation.contactId, tenantId)
+        : null;
+      // Para grupos: usa groupJid@g.us; para individuais: usa phone do contato
+      const presenceJid = conversation.isGroup && conversation.groupJid
+        ? `${conversation.groupJid}@g.us`
+        : contact?.phone;
+      if (!presenceJid) return httpResponse.ok(reply, { subscribed: false });
 
-      await engine.presenceSubscribe(conversation.sessionId, contact.phone);
+      await engine.presenceSubscribe(conversation.sessionId, presenceJid);
       httpResponse.ok(reply, { subscribed: true });
     },
   );

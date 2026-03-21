@@ -74,6 +74,10 @@ export interface ChatMessage {
   quotedMessageId?: string | null;
   /** Preview resolvido da mensagem citada */
   quotedMessage?: QuotedMessagePreview | null;
+  /** Telefone do participante que enviou (grupos) */
+  fromParticipant?: string | null;
+  /** Nome do participante que enviou (grupos) */
+  fromParticipantName?: string | null;
 }
 
 export interface ChatConversation {
@@ -88,4 +92,10 @@ export interface ChatConversation {
   assignedTo: string | null;
   notes: string;
   queue: string | null;
+  /** true = conversa de grupo WhatsApp */
+  isGroup?: boolean;
+  /** JID do grupo (sem @g.us) */
+  groupJid?: string | null;
+  /** Nome do grupo */
+  groupName?: string | null;
 }

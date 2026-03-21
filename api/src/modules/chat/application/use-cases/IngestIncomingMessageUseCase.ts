@@ -24,6 +24,16 @@ export interface IngestIncomingMessageInput {
   externalMessageId?: string;
   /** true = sent by us from the phone → OUTBOUND; false/undefined = received → INBOUND */
   fromMe?: boolean;
+  /** true = mensagem de grupo */
+  isGroup?: boolean;
+  /** JID do grupo (sem @g.us), quando isGroup=true */
+  groupJid?: string;
+  /** Nome do grupo, quando isGroup=true */
+  groupName?: string;
+  /** Telefone do participante que enviou (sem @s.whatsapp.net), em grupos */
+  participant?: string;
+  /** Nome do participante que enviou, em grupos */
+  participantName?: string;
 }
 
 export interface IngestIncomingMessageResult {
@@ -56,30 +66,52 @@ export class IngestIncomingMessageUseCase {
   async execute(input: IngestIncomingMessageInput): Promise<IngestIncomingMessageResult | null> {
     const { tenantId, sessionId, from, fromName, body, externalMessageId, fromMe } = input;
 
-    // 1 — Find or create contact
-    // Quando fromMe=true, pushName é o nome do próprio usuário — não do contato
-    const contact = await this.contactRepo.findOrCreate({
-      tenantId,
-      phone: from,
-      name: (!fromMe && fromName) ? fromName : from,
-    });
-
     // 2 — Find active conversation or create a new one
     let isNewConversation = false;
-    let conversation = await this.conversationRepo.findActiveByContactAndSession(
-      contact.id,
-      sessionId,
-      tenantId,
-    );
+    let conversation;
 
-    if (!conversation) {
-      conversation = await this.conversationRepo.create({
-        tenantId,
+    if (input.isGroup && input.groupJid) {
+      // Grupo: conversa identificada pelo groupJid, sem contato
+      conversation = await this.conversationRepo.findActiveByGroupAndSession(
+        input.groupJid,
         sessionId,
-        contactId: contact.id,
-        channel: 'whatsapp',
+        tenantId,
+      );
+      if (!conversation) {
+        conversation = await this.conversationRepo.create({
+          tenantId,
+          sessionId,
+          isGroup: true,
+          groupJid: input.groupJid,
+          groupName: input.groupName,
+          channel: 'whatsapp',
+        });
+        isNewConversation = true;
+      }
+    } else {
+      // Individual: conversa identificada pelo contato
+      // 1 — Find or create contact
+      // Quando fromMe=true, pushName é o nome do próprio usuário — não do contato
+      const contact = await this.contactRepo.findOrCreate({
+        tenantId,
+        phone: from,
+        name: (!fromMe && fromName) ? fromName : from,
       });
-      isNewConversation = true;
+
+      conversation = await this.conversationRepo.findActiveByContactAndSession(
+        contact.id,
+        sessionId,
+        tenantId,
+      );
+      if (!conversation) {
+        conversation = await this.conversationRepo.create({
+          tenantId,
+          sessionId,
+          contactId: contact.id,
+          channel: 'whatsapp',
+        });
+        isNewConversation = true;
+      }
     }
 
     // 3 — Deduplicate by engine-level message ID before persisting
@@ -104,6 +136,8 @@ export class IngestIncomingMessageUseCase {
       isDeleted: input.isDeleted ?? false,
       quotedMessageId: input.quotedMessageId ?? null,
       externalMessageId: externalMessageId ?? null,
+      fromParticipant: input.participant ?? null,
+      fromParticipantName: input.participantName ?? null,
     });
 
     // 5 — Update conversation metadata

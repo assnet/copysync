@@ -215,6 +215,16 @@ export function MessageBubble({ message, onReply }: Props) {
           boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.08)',
         }}
       >
+        {/* Nome do remetente em mensagens de grupo recebidas */}
+        {!isOut && message.fromParticipantName && (
+          <Typography
+            variant="caption"
+            sx={{ display: 'block', fontWeight: 700, fontSize: 11, color: 'primary.main', mb: 0.25 }}
+          >
+            {message.fromParticipantName}
+          </Typography>
+        )}
+
         {/* Mensagem citada (reply preview) */}
         {message.quotedMessage && (
           <QuotedMessage quoted={message.quotedMessage} isOut={isOut} />

@@ -24,6 +24,18 @@ export interface ConversationLastMessageUpdate {
   lastMessageAt: Date;
 }
 
+export interface CreateConversationData {
+  tenantId: string;
+  sessionId?: string | null;
+  /** null para conversas de grupo */
+  contactId?: string | null;
+  externalChatId?: string | null;
+  channel?: string;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupName?: string | null;
+}
+
 export interface IChatConversationRepository {
   findById(id: string, tenantId: string): Promise<ChatConversation | null>;
   findMany(filter: ListConversationsFilter): Promise<ChatConversation[]>;
@@ -36,13 +48,15 @@ export interface IChatConversationRepository {
     sessionId: string,
     tenantId: string,
   ): Promise<ChatConversation | null>;
-  create(data: {
-    tenantId: string;
-    sessionId?: string | null;
-    contactId: string;
-    externalChatId?: string | null;
-    channel?: string;
-  }): Promise<ChatConversation>;
+  /**
+   * Returns the most recent non-CLOSED group conversation for a given groupJid+session pair.
+   */
+  findActiveByGroupAndSession(
+    groupJid: string,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<ChatConversation | null>;
+  create(data: CreateConversationData): Promise<ChatConversation>;
   update(id: string, tenantId: string, data: ConversationUpdateData): Promise<ChatConversation>;
   updateLastMessage(
     id: string,

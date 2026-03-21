@@ -298,12 +298,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     });
     // ── Incoming messages ──────────────────────────────────────────────────
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
-      // 'notify' = real-time new messages; 'append' = historical sync — skip
+      // 'notify' = real-time new messages; 'append' = historical sync
       if (type !== 'notify') {
-        // 'append' = mensagens históricas recebidas durante reconnect / gap sync
         if (type === 'append') {
-          setImmediate(() => {
-            const items = this.mapMessagesToHistoryItems(messages);
+          setImmediate(async () => {
+            const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId);
             if (items.length > 0) {
               this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
             }
@@ -315,12 +314,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       for (const msg of messages) {
         const jidRaw = msg.key?.remoteJid;
         if (!jidRaw) continue;
-        // Skip group chats and broadcast lists
-        if (jidRaw.endsWith('@g.us') || jidRaw.endsWith('@broadcast')) continue;
+        // Ignora apenas broadcast — grupos são processados normalmente
+        if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
 
-        // Resolve LID (Linked Identity) → JID real usando remoteJidAlt fornecido pelo Baileys.
-        // Quando o contato usa privacidade de número, o remoteJid vem como @lid;
-        // o Baileys preenche key.remoteJidAlt com o JID @s.whatsapp.net real.
+        const isGroup = jidRaw.endsWith('@g.us');
+
+        // Resolve LID (Linked Identity) → JID real
         let jid = jidRaw;
         if (jidRaw.endsWith('@lid')) {
           const alt = (msg.key as { remoteJidAlt?: string }).remoteJidAlt;
@@ -334,13 +333,25 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         const fromMe = msg.key.fromMe ?? false;
         const from = jid.split('@')[0];
 
-        // Extrai tipo, corpo e metadados da mensagem
-        const extracted = extractBaileysMessage(msg.message ?? {});
+        // Para grupos: quem enviou a mensagem é o participant, não o remoteJid
+        const participantRaw = msg.key.participant ?? (msg as { participant?: string }).participant;
+        const participant = participantRaw ? participantRaw.split('@')[0] : undefined;
+        const participantName = isGroup ? (msg.pushName ?? undefined) : undefined;
 
-        // Ignora mensagens sem tipo reconhecido (ex: protocolMessages, reactionMessages)
+        // Para grupos: busca nome do grupo no Baileys (best-effort, cached pelo socket)
+        let groupName: string | undefined;
+        if (isGroup) {
+          try {
+            const meta = await socket.groupMetadata(jid);
+            groupName = meta.subject ?? undefined;
+          } catch {
+            groupName = undefined;
+          }
+        }
+
+        const extracted = extractBaileysMessage(msg.message ?? {});
         if (!extracted) continue;
 
-        // Baixa o binário de mídia do CDN do WhatsApp e salva em disco
         let mediaUrl: string | null = null;
         if (MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)) {
           mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
@@ -351,7 +362,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           sessionId,
           tenantId,
           from,
-          fromName: msg.pushName ?? undefined,
+          fromName: isGroup ? undefined : (msg.pushName ?? undefined),
           body: extracted.body,
           msgType: extracted.msgType,
           mediaUrl,
@@ -362,11 +373,16 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           quotedMessageId: extracted.quotedMessageId,
           fromMe,
           externalMessageId: msg.key.id ?? undefined,
+          isGroup,
+          groupJid: isGroup ? from : undefined,
+          groupName,
+          participant,
+          participantName,
           raw: msg,
         });
 
         baileysLogger.info(
-          { sessionId, from, msgId: msg.key.id, msgType: extracted.msgType },
+          { sessionId, from, msgId: msg.key.id, msgType: extracted.msgType, isGroup },
           'Incoming message received',
         );
       }
@@ -402,9 +418,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── History sync ────────────────────────────────────────────────────────
     socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
-      setImmediate(() => {
+      setImmediate(async () => {
         // histMsgs é WAMessage[] (proto.IWebMessageInfo[]) — passar direto
-        const items = this.mapMessagesToHistoryItems(histMsgs);
+        const items = await this.mapMessagesToHistoryItems(histMsgs, socket, sessionId);
         if (items.length > 0) {
           baileysLogger.info(
             { sessionId, count: items.length },
@@ -438,8 +454,17 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           const name = (c as { name?: string; notify?: string }).name
             ?? (c as { name?: string; notify?: string }).notify;
           if (!name || /^\d+$/.test(name)) continue;
-          this.chatContactRepo
-            .upsert({ tenantId, phone, name })
+
+          // Busca foto de perfil em background (idempotente: não re-baixa se já existe no disco)
+          fetchAndSaveContactAvatar(socket, rawJid, phone)
+            .then((avatarUrl) =>
+              this.chatContactRepo.upsert({
+                tenantId,
+                phone,
+                name,
+                ...(avatarUrl !== null ? { avatarUrl } : {}),
+              }),
+            )
             .catch((err: unknown) =>
               baileysLogger.warn({ err, phone }, 'Failed to upsert contact from contacts.upsert'),
             );
@@ -469,17 +494,27 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   /**
    * Extrai HistoryMessageItem de mensagens brutas do Baileys.
-   * Filtra grupos, broadcasts, mensagens sem conteúdo e sem ID.
+   * Suporta grupos (@g.us) e broadcasts são filtrados.
+   * Se socket e sessionId forem fornecidos, tenta baixar mídia para mensagens recentes (< 30 min).
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private mapMessagesToHistoryItems(msgs: any[]): HistoryMessageItem[] {
+  private async mapMessagesToHistoryItems(
+    msgs: any[],
+    socket?: ReturnType<typeof makeWASocket>,
+    sessionId?: string,
+  ): Promise<HistoryMessageItem[]> {
+    const THIRTY_MIN_MS = 30 * 60 * 1000;
+    const now = Date.now();
     const items: HistoryMessageItem[] = [];
+
     for (const msg of msgs) {
       if (!msg) continue;
       const key = msg.key ?? msg?.message?.key;
       const jidRaw: string | undefined = key?.remoteJid;
       if (!jidRaw) continue;
-      if (jidRaw.endsWith('@g.us') || jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
+      if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
+
+      const isGroup = jidRaw.endsWith('@g.us');
 
       // Resolve LID → JID real via remoteJidAlt (fornecido pelo Baileys)
       let jid = jidRaw;
@@ -504,19 +539,49 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         ? new Date(Number(messageTimestamp) * 1000)
         : new Date();
 
+      // Participante (remetente real em grupos)
+      const participantRaw: string | undefined = key?.participant ?? (msg as { participant?: string }).participant;
+      const participant = isGroup && participantRaw ? participantRaw.split('@')[0] : undefined;
+      const participantName = isGroup ? pushName : undefined;
+
+      // Nome do grupo (best-effort via groupMetadata)
+      let groupName: string | undefined;
+      if (isGroup && socket) {
+        try {
+          const meta = await socket.groupMetadata(jid);
+          groupName = meta.subject ?? undefined;
+        } catch { /* skip */ }
+      }
+
+      // Tenta baixar mídia para mensagens recentes (< 30 min) — CDN ainda válido
+      let mediaUrl: string | null = null;
+      if (
+        socket && sessionId &&
+        MEDIA_TYPES_WITH_BINARY.has(extracted.msgType) &&
+        (now - timestamp.getTime()) < THIRTY_MIN_MS
+      ) {
+        mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
+      }
+
       items.push({
         externalMessageId: id,
         from: phone,
-        fromName: pushName,
+        fromName: !isGroup ? pushName : undefined,
         body: extracted.body,
         msgType: extracted.msgType,
         mimeType: extracted.mimeType,
+        mediaUrl,
         fileName: extracted.fileName,
         durationSeconds: extracted.durationSeconds,
         isDeleted: extracted.isDeleted,
         quotedMessageId: extracted.quotedMessageId,
         fromMe,
         timestamp,
+        isGroup,
+        groupJid: isGroup ? phone : undefined,
+        groupName,
+        participant,
+        participantName,
       });
     }
     return items;
@@ -719,6 +784,42 @@ async function downloadBaileysMedia(
       { err, sessionId, msgId: msg.key?.id },
       'Falha ao baixar mídia do CDN do WhatsApp — mediaUrl será null',
     );
+    return null;
+  }
+}
+
+// ── fetchAndSaveContactAvatar ─────────────────────────────────────────────────
+/**
+ * Busca a foto de perfil de um contato via Baileys, salva localmente e retorna
+ * a URL pública.  Retorna null se o contato não tiver foto ou se as configurações
+ * de privacidade impedirem o acesso.
+ *
+ * Idempotente: se o arquivo já existir no disco, devolve a URL sem re-baixar.
+ */
+async function fetchAndSaveContactAvatar(
+  socket: ReturnType<typeof makeWASocket>,
+  jid: string,
+  phone: string,
+): Promise<string | null> {
+  try {
+    const filename = `avatar_${phone}.jpg`;
+
+    // Idempotência — evita re-download desnecessário
+    if (await mediaFileExists(filename)) {
+      return mediaPublicUrl(filename);
+    }
+
+    // Pode lançar se não houver foto ou as configurações de privacidade bloquearem
+    const cdnUrl = await socket.profilePictureUrl(jid, 'image');
+    if (!cdnUrl) return null;
+    const response = await fetch(cdnUrl);
+    if (!response.ok) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await saveMediaBuffer(buffer, filename);
+    return mediaPublicUrl(filename);
+  } catch {
+    // Sem foto ou acesso bloqueado por privacidade — falha silenciosa esperada
     return null;
   }
 }

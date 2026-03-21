@@ -43,8 +43,16 @@ export class UpdateConversationUseCase {
       },
     );
 
-    const contact = await this.contactRepo.findById(updated.contactId, updated.tenantId);
-    if (!contact) throw new NotFoundError('Contact', updated.contactId);
+    const contact = await this.contactRepo.findById(updated.contactId ?? '', updated.tenantId);
+    if (!updated.isGroup && !contact) throw new NotFoundError('Contact', updated.contactId ?? '');
+
+    const contactDto = updated.isGroup
+      ? (() => {
+          const gName = updated.groupName ?? updated.groupJid ?? 'Grupo';
+          const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
+          return { id: updated.groupJid ?? '', name: gName, phone: updated.groupJid ?? '', avatarUrl: null as string | null, initials: gInitials };
+        })()
+      : { id: contact!.id, name: contact!.name, phone: contact!.phone, avatarUrl: contact!.avatarUrl, initials: contact!.initials };
 
     let session = null;
     if (updated.sessionId) {
@@ -74,15 +82,12 @@ export class UpdateConversationUseCase {
       notes: updated.notes,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
-      contact: {
-        id: contact.id,
-        name: contact.name,
-        phone: contact.phone,
-        avatarUrl: contact.avatarUrl,
-        initials: contact.initials,
-      },
+      contact: contactDto,
       session,
       assignedUser,
+      isGroup: updated.isGroup,
+      groupJid: updated.groupJid,
+      groupName: updated.groupName,
     };
   }
 }

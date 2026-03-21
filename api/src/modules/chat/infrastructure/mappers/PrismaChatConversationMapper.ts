@@ -19,6 +19,9 @@ export class PrismaChatConversationMapper {
       queueName: raw.queueName,
       tags: raw.tags,
       notes: raw.notes,
+      isGroup: raw.isGroup,
+      groupJid: raw.groupJid,
+      groupName: raw.groupName,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

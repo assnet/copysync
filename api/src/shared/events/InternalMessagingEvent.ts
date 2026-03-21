@@ -37,6 +37,16 @@ export type InternalMessagingEvent =
       externalMessageId?: string;
       /** true = sent by us from the phone (OUTBOUND); false/undefined = received (INBOUND) */
       fromMe?: boolean;
+      /** true = mensagem proveniente de um grupo */
+      isGroup?: boolean;
+      /** JID numérico do grupo (sem @g.us), quando isGroup=true */
+      groupJid?: string;
+      /** Nome do grupo, quando isGroup=true */
+      groupName?: string;
+      /** Phone do membro do grupo que enviou a mensagem */
+      participant?: string;
+      /** Nome exibido do membro do grupo que enviou a mensagem */
+      participantName?: string;
       /** Raw engine payload — never use outside the adapter */
       raw?: unknown;
     }

@@ -8,6 +8,7 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
 import RouterOutlinedIcon from '@mui/icons-material/RouterOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import type { ChatConversation } from '../types';
 import { formatPhone, getStatusConfig } from '../utils';
 
@@ -40,6 +41,9 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
   const { contact, session, status, queue, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
   const presenceLabel = getPresenceLabel(presence);
+  const isGroup = conversation.isGroup ?? false;
+  const displayName = isGroup ? (conversation.groupName ?? contact.name) : contact.name;
+  const displayPhone = isGroup ? null : contact.phone;
 
   return (
     <Box>
@@ -55,23 +59,24 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
       >
         {/* Avatar */}
         <Avatar
+          src={!isGroup ? (contact.avatarUrl ?? undefined) : undefined}
           sx={{
             width: 40,
             height: 40,
-            bgcolor: contact.avatarColor ?? 'primary.main',
+            bgcolor: isGroup ? 'success.main' : (contact.avatarColor ?? 'primary.main'),
             fontSize: 14,
             fontWeight: 700,
             flexShrink: 0,
           }}
         >
-          {contact.initials}
+          {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 22 }} /> : contact.initials}
         </Avatar>
 
         {/* Info */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body1" fontWeight={700} noWrap>
-              {contact.name}
+              {displayName}
             </Typography>
             <Chip
               icon={STATUS_ICON[status] ?? undefined}

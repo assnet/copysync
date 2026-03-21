@@ -35,7 +35,7 @@ export interface ConversationListItemDto {
   id: string;
   tenantId: string;
   sessionId: string | null;
-  contactId: string;
+  contactId: string | null;
   channel: string;
   status: ConversationStatus;
   unreadCount: number;
@@ -50,6 +50,9 @@ export interface ConversationListItemDto {
   contact: ConversationContactDto;
   session: ConversationSessionDto | null;
   assignedUser: ConversationAssignedUserDto | null;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupName?: string | null;
 }
 
 export class ListConversationsUseCase {
@@ -73,8 +76,19 @@ export class ListConversationsUseCase {
     const results: ConversationListItemDto[] = [];
 
     for (const conv of conversations) {
-      const contact = await this.contactRepo.findById(conv.contactId, conv.tenantId);
-      if (!contact) continue;
+      let contactDto: ConversationContactDto;
+
+      if (conv.isGroup) {
+        // Grupo: monta DTO sintético a partir dos dados do grupo
+        const gName = conv.groupName ?? conv.groupJid ?? 'Grupo';
+        const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
+        contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: null, initials: gInitials };
+      } else {
+        if (!conv.contactId) continue; // conversa individual sem contactId — dado inválido
+        const contact = await this.contactRepo.findById(conv.contactId, conv.tenantId);
+        if (!contact) continue;
+        contactDto = { id: contact.id, name: contact.name, phone: contact.phone, avatarUrl: contact.avatarUrl, initials: contact.initials };
+      }
 
       let session: ConversationSessionDto | null = null;
       if (conv.sessionId) {
@@ -110,15 +124,12 @@ export class ListConversationsUseCase {
         notes: conv.notes,
         createdAt: conv.createdAt.toISOString(),
         updatedAt: conv.updatedAt.toISOString(),
-        contact: {
-          id: contact.id,
-          name: contact.name,
-          phone: contact.phone,
-          avatarUrl: contact.avatarUrl,
-          initials: contact.initials,
-        },
+        contact: contactDto,
         session,
-        assignedUser: null, // expandido no GetConversationByIdUseCase se necessário
+        assignedUser: null,
+        isGroup: conv.isGroup,
+        groupJid: conv.groupJid,
+        groupName: conv.groupName,
       });
     }
 

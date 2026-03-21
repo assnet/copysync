@@ -35,6 +35,11 @@ export function registerChatIncomingMessageListener(
         quotedMessageId: payload.quotedMessageId,
         externalMessageId: payload.externalMessageId,
         fromMe: payload.fromMe,
+        isGroup: payload.isGroup,
+        groupJid: payload.groupJid,
+        groupName: payload.groupName,
+        participant: payload.participant,
+        participantName: payload.participantName,
       });
 
       if (!result) return; // duplicate — already processed

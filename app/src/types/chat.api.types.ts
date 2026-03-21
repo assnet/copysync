@@ -42,6 +42,9 @@ export interface ChatConversationApiDto {
   contact: ChatContactApiDto;
   session: ChatSessionRefApiDto | null;
   assignedUser: { id: string; name: string } | null;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupName?: string | null;
 }
 
 export interface ChatMessageApiDto {
@@ -69,6 +72,8 @@ export interface ChatMessageApiDto {
   } | null;
   sentAt: string;
   createdAt: string;
+  fromParticipant?: string | null;
+  fromParticipantName?: string | null;
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
@@ -173,6 +178,9 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
     assignedTo:    dto.assignedUser?.name ?? null,
     notes:         dto.notes ?? '',
     queue:         dto.queueName,
+    isGroup:       dto.isGroup ?? false,
+    groupJid:      dto.groupJid ?? null,
+    groupName:     dto.groupName ?? null,
   };
 }
 
@@ -205,5 +213,7 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     isDeleted:       dto.isDeleted,
     quotedMessageId: dto.quotedMessageId,
     quotedMessage,
+    fromParticipant:     dto.fromParticipant ?? null,
+    fromParticipantName: dto.fromParticipantName ?? null,
   };
 }

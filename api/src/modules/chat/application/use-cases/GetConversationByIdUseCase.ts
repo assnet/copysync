@@ -22,8 +22,17 @@ export class GetConversationByIdUseCase {
     const conv = await this.conversationRepo.findById(input.conversationId, input.tenantId);
     if (!conv) throw new NotFoundError('Conversation', input.conversationId);
 
-    const contact = await this.contactRepo.findById(conv.contactId, conv.tenantId);
-    if (!contact) throw new NotFoundError('Contact', conv.contactId);
+    // Monta DTO do contato: real para conversas individuais, sintético para grupos
+    let contactDto;
+    if (conv.isGroup) {
+      const gName = conv.groupName ?? conv.groupJid ?? 'Grupo';
+      const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
+      contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: null, initials: gInitials };
+    } else {
+      const contact = await this.contactRepo.findById(conv.contactId ?? '', conv.tenantId);
+      if (!contact) throw new NotFoundError('Contact', conv.contactId ?? '');
+      contactDto = { id: contact.id, name: contact.name, phone: contact.phone, avatarUrl: contact.avatarUrl, initials: contact.initials };
+    }
 
     let session = null;
     if (conv.sessionId) {
@@ -62,15 +71,12 @@ export class GetConversationByIdUseCase {
       notes: conv.notes,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
-      contact: {
-        id: contact.id,
-        name: contact.name,
-        phone: contact.phone,
-        avatarUrl: contact.avatarUrl,
-        initials: contact.initials,
-      },
+      contact: contactDto,
       session,
       assignedUser,
+      isGroup: conv.isGroup,
+      groupJid: conv.groupJid,
+      groupName: conv.groupName,
     };
   }
 }

@@ -54,7 +54,11 @@ export class PrismaChatContactRepository implements IChatContactRepository {
   async upsert(data: ChatContactCreateData): Promise<ChatContact> {
     const raw = await this.prisma.chatContact.upsert({
       where: { tenantId_phone: { tenantId: data.tenantId, phone: data.phone } },
-      update: { name: data.name, avatarUrl: data.avatarUrl ?? null },
+      update: {
+        name: data.name,
+        // Só atualiza avatarUrl se foi explicitamente fornecido — nunca apaga avatar existente
+        ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
+      },
       create: {
         tenantId: data.tenantId,
         name: data.name,

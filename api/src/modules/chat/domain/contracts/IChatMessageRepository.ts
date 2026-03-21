@@ -25,6 +25,10 @@ export interface ChatMessageCreateData {
   quotedMessageId?: string | null;
   /** Timestamp real da mensagem; se omitido, usa new Date() */
   sentAt?: Date | null;
+  /** Phone do remetente dentro de um grupo */
+  fromParticipant?: string | null;
+  /** Nome do remetente dentro de um grupo */
+  fromParticipantName?: string | null;
 }
 
 export interface IChatMessageRepository {

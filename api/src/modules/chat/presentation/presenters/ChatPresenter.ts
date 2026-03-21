@@ -23,6 +23,9 @@ export class ChatPresenter {
       contact: dto.contact,
       session: dto.session,
       assignedUser: dto.assignedUser,
+      isGroup: dto.isGroup ?? false,
+      groupJid: dto.groupJid ?? null,
+      groupName: dto.groupName ?? null,
     };
   }
 

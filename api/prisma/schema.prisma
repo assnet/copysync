@@ -323,7 +323,7 @@ model ChatConversation {
   id                 String             @id @default(cuid())
   tenantId           String
   sessionId          String?            // sessão WhatsApp vinculada
-  contactId          String
+  contactId          String?            // null para conversas de grupo
   externalChatId     String?            // ID externo da conversa (ex: JID do WhatsApp)
   channel            String             @default("whatsapp")
   status             ConversationStatus @default(OPEN)
@@ -334,12 +334,16 @@ model ChatConversation {
   queueName          String?
   tags               String[]           @default([])
   notes              String?
+  // ── Grupos ──────────────────────────────────────────────────────────────
+  isGroup            Boolean            @default(false)
+  groupJid           String?            // JID numérico do grupo (sem @g.us)
+  groupName          String?            // nome do grupo exibido ao usuário
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   session      Session?      @relation(fields: [sessionId], references: [id])
-  contact      ChatContact   @relation(fields: [contactId], references: [id])
+  contact      ChatContact?  @relation(fields: [contactId], references: [id])
   assignedUser User?         @relation("AssignedConversations", fields: [assignedUserId], references: [id])
   messages     ChatMessage[]
 
@@ -347,6 +351,7 @@ model ChatConversation {
   @@index([tenantId, lastMessageAt])
   @@index([tenantId, sessionId])
   @@index([tenantId, contactId])
+  @@index([tenantId, groupJid])
   @@map("chat_conversations")
 }
 
@@ -370,6 +375,9 @@ model ChatMessage {
   isDeleted         Boolean              @default(false)
   quotedMessageId   String?              // ID da mensagem citada (reply)
   sentAt            DateTime?
+  // ── Grupos ──────────────────────────────────────────────────────────────
+  fromParticipant     String?            // phone do remetente dentro do grupo
+  fromParticipantName String?            // nome exibido do remetente no grupo
   createdAt         DateTime             @default(now())
 
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
