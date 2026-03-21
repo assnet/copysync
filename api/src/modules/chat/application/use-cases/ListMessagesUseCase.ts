@@ -37,6 +37,8 @@ export interface ChatMessageDto {
   quotedMessage?: QuotedMessageSummary | null;
   sentAt: string | null;
   createdAt: string;
+  fromParticipant: string | null;
+  fromParticipantName: string | null;
 }
 
 export class ListMessagesUseCase {
@@ -73,6 +75,8 @@ export class ListMessagesUseCase {
       quotedMessageId: m.quotedMessageId,
       sentAt: m.sentAt?.toISOString() ?? null,
       createdAt: m.createdAt.toISOString(),
+      fromParticipant: m.fromParticipant,
+      fromParticipantName: m.fromParticipantName,
     }));
   }
 }

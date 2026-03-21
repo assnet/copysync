@@ -51,6 +51,8 @@ export class ChatPresenter {
       quotedMessage: dto.quotedMessage ?? null,
       sentAt: dto.sentAt,
       createdAt: dto.createdAt,
+      fromParticipant: dto.fromParticipant,
+      fromParticipantName: dto.fromParticipantName,
     };
   }
 

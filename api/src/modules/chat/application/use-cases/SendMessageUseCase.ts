@@ -130,6 +130,8 @@ export class SendMessageUseCase {
       quotedMessage,
       sentAt:            message.sentAt?.toISOString() ?? null,
       createdAt:         message.createdAt.toISOString(),
+      fromParticipant:     message.fromParticipant,
+      fromParticipantName: message.fromParticipantName,
     };
   }
 }

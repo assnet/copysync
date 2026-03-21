@@ -358,7 +358,7 @@ export default function ChatPage() {
         display: 'flex',
         height: CHAT_HEIGHT,
         overflow: 'hidden',
-        borderRadius: 1,
+        borderRadius: 0, 
         border: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.paper',

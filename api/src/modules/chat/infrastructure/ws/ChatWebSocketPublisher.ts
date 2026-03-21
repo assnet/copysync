@@ -26,6 +26,8 @@ export type ChatWsEvent =
           quotedMessageId?: string | null;
           sentAt: string | null;
           createdAt: string;
+          fromParticipant?: string | null;
+          fromParticipantName?: string | null;
         };
         unreadCount: number;
         isNewConversation: boolean;

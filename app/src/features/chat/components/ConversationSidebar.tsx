@@ -90,7 +90,7 @@ export function ConversationSidebar({
       }}
     >
       {/* Header */}
-      <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
+      <Box sx={{ px: 2, pt: 1.5, pb: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="subtitle1" fontWeight={700}>
