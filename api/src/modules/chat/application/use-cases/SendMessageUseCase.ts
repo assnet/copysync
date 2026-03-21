@@ -5,7 +5,7 @@ import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMess
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { logger } from '../../../../shared/logger/logger';
-import type { ChatMessageDto } from './ListMessagesUseCase';
+import type { ChatMessageDto, QuotedMessageSummary } from './ListMessagesUseCase';
 
 export interface SendMessageInput {
   conversationId: string;
@@ -29,6 +29,12 @@ export class SendMessageUseCase {
     const contact = await this.contactRepo.findById(conv.contactId, input.tenantId);
     if (!contact) throw new NotFoundError('Contact', conv.contactId);
 
+    // ── Busca mensagem citada antes do envio (usada na engine e no DTO) ────
+    let quotedEntity: Awaited<ReturnType<typeof this.messageRepo.findById>> | null = null;
+    if (input.quotedMessageId) {
+      quotedEntity = await this.messageRepo.findById(input.quotedMessageId, input.tenantId);
+    }
+
     // ── Envia via WhatsApp e obtém o messageId externo ────────────────────
     let externalMessageId: string | null = null;
 
@@ -39,6 +45,15 @@ export class SendMessageUseCase {
           tenantId:  input.tenantId,
           to:        contact.phone,
           body:      input.content,
+          quotedMessage: quotedEntity?.externalMessageId
+            ? {
+                externalId: quotedEntity.externalMessageId,
+                remoteJid:  contact.phone,
+                fromMe:     quotedEntity.direction === ChatMessageDirection.OUTBOUND,
+                body:       quotedEntity.content,
+                type:       quotedEntity.type,
+              }
+            : null,
         });
         externalMessageId = result.messageId;
       } catch (err) {
@@ -73,6 +88,18 @@ export class SendMessageUseCase {
       },
     );
 
+    // Monta resumo da mensagem citada a partir da entidade já buscada
+    const quotedMessage: QuotedMessageSummary | null = quotedEntity
+      ? {
+          id:        quotedEntity.id,
+          type:      quotedEntity.type,
+          content:   quotedEntity.content,
+          mediaUrl:  quotedEntity.mediaUrl,
+          direction: quotedEntity.direction,
+          isDeleted: quotedEntity.isDeleted,
+        }
+      : null;
+
     return {
       id:                message.id,
       conversationId:    message.conversationId,
@@ -88,6 +115,7 @@ export class SendMessageUseCase {
       status:            message.status,
       isDeleted:         message.isDeleted,
       quotedMessageId:   message.quotedMessageId,
+      quotedMessage,
       sentAt:            message.sentAt?.toISOString() ?? null,
       createdAt:         message.createdAt.toISOString(),
     };

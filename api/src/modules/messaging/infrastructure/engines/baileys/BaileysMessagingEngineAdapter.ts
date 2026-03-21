@@ -13,7 +13,7 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   downloadMediaMessage,
 } from '@whiskeysockets/baileys';
-import type { ConnectionState, AnyMessageContent, proto } from '@whiskeysockets/baileys';
+import type { ConnectionState, AnyMessageContent, proto, WAMessage } from '@whiskeysockets/baileys';
 import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
@@ -128,7 +128,37 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.requireConnectedEntry(input.sessionId);
     try {
       const jid = this.normalizeJid(input.to);
-      const result = await entry.socket.sendMessage(jid, { text: input.body });
+
+      let quotedMsg: WAMessage | undefined;
+      if (input.quotedMessage?.externalId) {
+        const q = input.quotedMessage;
+        const qRemoteJid = this.normalizeJid(q.remoteJid);
+
+        // Monta o proto.IMessage correto por tipo para evitar crash no Baileys
+        // (proto.Message.create descarta strings vazias — precisamos de conteúdo válido por tipo)
+        let protoMsg: proto.IMessage;
+        const t = q.type?.toLowerCase() ?? '';
+        if (t === 'image')    { protoMsg = { imageMessage:    { caption:     q.body ?? '' } }; }
+        else if (t === 'video')    { protoMsg = { videoMessage:    { caption:     q.body ?? '' } }; }
+        else if (t === 'audio')    { protoMsg = { audioMessage:    { seconds:     0, ptt: false } }; }
+        else if (t === 'document') { protoMsg = { documentMessage: { title:       q.body ?? '' } }; }
+        else                       { protoMsg = { conversation:     q.body || ' ' }; }
+
+        quotedMsg = {
+          key: {
+            remoteJid: qRemoteJid,
+            fromMe:    q.fromMe,
+            id:        q.externalId,
+          },
+          message: protoMsg,
+        } as WAMessage;
+      }
+
+      const result = await entry.socket.sendMessage(
+        jid,
+        { text: input.body },
+        quotedMsg ? { quoted: quotedMsg } : undefined,
+      );
       return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
     } catch (err) { throw translateEngineError(err); }
   }

@@ -59,6 +59,14 @@ export interface ChatMessageApiDto {
   status: ApiMessageStatus;
   isDeleted: boolean;
   quotedMessageId: string | null;
+  quotedMessage?: {
+    id: string;
+    type: ApiMessageType;
+    content: string | null;
+    mediaUrl: string | null;
+    direction: ApiMessageDirection;
+    isDeleted: boolean;
+  } | null;
   sentAt: string;
   createdAt: string;
 }
@@ -170,6 +178,17 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
 
 export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
   const dir = toMessageDirection(dto.direction);
+  const quotedMessage = dto.quotedMessage
+    ? {
+        id:        dto.quotedMessage.id,
+        type:      dto.quotedMessage.type.toLowerCase() as ChatMessage['type'],
+        body:      dto.quotedMessage.content,
+        mediaUrl:  dto.quotedMessage.mediaUrl,
+        direction: toMessageDirection(dto.quotedMessage.direction) === 'system' ? ('out' as const) : (toMessageDirection(dto.quotedMessage.direction) as 'in' | 'out'),
+        isDeleted: dto.quotedMessage.isDeleted,
+      }
+    : undefined;
+
   return {
     id:              dto.id,
     conversationId:  dto.conversationId,
@@ -185,5 +204,6 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     isEvent:         dto.direction === 'SYSTEM',
     isDeleted:       dto.isDeleted,
     quotedMessageId: dto.quotedMessageId,
+    quotedMessage,
   };
 }

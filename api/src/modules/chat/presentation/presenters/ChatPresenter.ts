@@ -44,6 +44,7 @@ export class ChatPresenter {
       status: dto.status,
       isDeleted: dto.isDeleted,
       quotedMessageId: dto.quotedMessageId,
+      quotedMessage: dto.quotedMessage ?? null,
       sentAt: dto.sentAt,
       createdAt: dto.createdAt,
     };

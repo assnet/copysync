@@ -11,6 +11,32 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.11.0] — 2026-03-21 — Chat V7: reply entregue no WhatsApp, bloco citado persistente e regras de processo no AGENTS.md
+
+### Fixed
+
+#### Backend — Reply nunca chegava ao destinatário no WhatsApp
+
+- **`IMessagingEngine.ts`** — `SendTextMessageInput` ganhou campo `quotedMessage?: QuotedMessageRef | null`; novo tipo `QuotedMessageRef` com `externalId`, `remoteJid`, `fromMe`, `body` e `type` (tipo da mensagem citada, necessário para montar o proto correto)
+- **`SendMessageUseCase.ts`** — busca a mensagem citada no repositório **antes** de chamar a engine (em vez de depois); passa `QuotedMessageRef` completo para `engine.sendTextMessage()` incluindo `externalMessageId`, `direction`, `type` e `content`; elimina o segundo `findById` redundante que existia apenas para montar o DTO de retorno
+- **`BaileysMessagingEngineAdapter.ts`** — `sendTextMessage` agora constrói um `WAMessage` mínimo e passa como terceiro argumento (`{ quoted }`) ao `socket.sendMessage()`; proto `IMessage` montado por tipo para evitar crash: `image → imageMessage`, `video → videoMessage`, `audio → audioMessage`, `document → documentMessage`, `text/outros → conversation` com fallback `' '` para evitar que proto3 descarte string vazia (o que causava `TypeError: cannot read property of undefined` no `getContentType()` do Baileys)
+
+#### Frontend — Bloco de mensagem citada sumia ~1s após o envio
+
+- **`ChatPage.tsx`** — no `.then()` do `chatService.sendMessage()`, após substituir o otimístico pela mensagem real, aplica `resolveQuotedMessages` ao array completo para repopular `quotedMessage` a partir das mensagens já em memória; mesma correção aplicada ao handler WS `chat.message.created` (mensagens recebidas com `quotedMessageId` também são resolvidas)
+- **`chat.api.types.ts`** — `ChatMessageApiDto` ganhou campo opcional `quotedMessage?: { id, type, content, mediaUrl, direction, isDeleted } | null`; `apiMessageToFrontend()` mapeia `dto.quotedMessage` para `QuotedMessagePreview` quando presente, eliminando dependência exclusiva do `resolveQuotedMessages` client-side
+- **`ListMessagesUseCase.ts`** — novo tipo exportado `QuotedMessageSummary`; `ChatMessageDto` ganhou campo opcional `quotedMessage?: QuotedMessageSummary | null`
+- **`ChatPresenter.ts`** — `presentMessage()` serializa `quotedMessage: dto.quotedMessage ?? null` na resposta HTTP
+- **`SendMessageUseCase.ts`** — DTO de retorno inclui `quotedMessage` já resolvido (usando a entidade buscada antes do envio), sem custo de consulta adicional
+
+### Changed
+
+#### Docs — AGENTS.md: regras de processo e versionamento
+
+- **`AGENTS.md`** — adicionadas seções 31–36 adaptadas ao monorepo washoot: fluxo Git obrigatório (branches, workflow de feature/release/hotfix), SemVer com portadores de versão em `api/package.json` + `app/package.json` + `api/CHANGELOG.md` + TAG Git, template de documentação de feature no CHANGELOG, template de seção de release, padrão de commits com escopos (`auth`, `sessions`, `messaging`, `chat`, etc.), template de PR e lista de proibições absolutas de processo
+
+---
+
 ## [0.10.0] — 2026-03-12 — Chat V6: envio real via WhatsApp, funcionalidade Responder e player nativo de mídia
 
 ### Fixed

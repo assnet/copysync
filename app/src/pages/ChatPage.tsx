@@ -123,10 +123,13 @@ export default function ChatPage() {
                 status:            (message.status ?? 'SENT') as import('@/types/chat.api.types').ApiMessageStatus,
                 externalMessageId: null,
               });
-              setMessages((prev) => ({
-                ...prev,
-                [conversationId]: [...(prev[conversationId] ?? []), frontendMsg],
-              }));
+              setMessages((prev) => {
+                const cur = prev[conversationId] ?? [];
+                return {
+                  ...prev,
+                  [conversationId]: resolveQuotedMessages([...cur, frontendMsg]),
+                };
+              });
               // Dispara scroll ao fundo para nova mensagem recebida
               setScrollToBottom((v) => v + 1);
             }
@@ -294,12 +297,12 @@ export default function ChatPage() {
         .sendMessage(selectedId, text, quotedMessageId ?? undefined)
         .then((sent) => {
           const realMsg = apiMessageToFrontend(sent);
-          setMessages((prev) => ({
-            ...prev,
-            [selectedId]: (prev[selectedId] ?? []).map((m) =>
+          setMessages((prev) => {
+            const updated = (prev[selectedId] ?? []).map((m) =>
               m.id === tmpId ? realMsg : m,
-            ),
-          }));
+            );
+            return { ...prev, [selectedId]: resolveQuotedMessages(updated) };
+          });
           setConversations((prev) =>
             prev.map((c) =>
               c.id === selectedId
