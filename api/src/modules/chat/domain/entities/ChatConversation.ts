@@ -19,6 +19,7 @@ export interface ChatConversationProps {
   isGroup: boolean;
   groupJid: string | null;
   groupName: string | null;
+  groupAvatarUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,6 +43,7 @@ export class ChatConversation {
   readonly isGroup: boolean;
   readonly groupJid: string | null;
   readonly groupName: string | null;
+  readonly groupAvatarUrl: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -63,6 +65,7 @@ export class ChatConversation {
     this.isGroup = props.isGroup;
     this.groupJid = props.groupJid;
     this.groupName = props.groupName;
+    this.groupAvatarUrl = props.groupAvatarUrl;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

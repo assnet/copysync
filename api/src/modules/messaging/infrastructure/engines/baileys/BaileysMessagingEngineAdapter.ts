@@ -402,7 +402,22 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
             })
             .catch(() => null); // falha silenciosa esperada (privacidade do contato)
         }
-      }
+        // Para mensagens de grupo recebidas: busca foto do grupo em background.
+        // `from` aqui \u00e9 o groupJid (parte num\u00e9rica do JID), `jid` \u00e9 o JID completo com @g.us.
+        if (isGroup && !fromMe) {
+          fetchAndSaveContactAvatar(socket, jid, `group_${from}`)
+            .then((avatarUrl) => {
+              if (avatarUrl) {
+                internalEventBus.emit('GROUP_AVATAR_UPDATED', {
+                  type: 'GROUP_AVATAR_UPDATED',
+                  tenantId,
+                  groupJid: from,
+                  avatarUrl,
+                });
+              }
+            })
+            .catch(() => null);
+        }      }
     });
 
     // ── Delivery / read receipts for sent messages ─────────────────────────

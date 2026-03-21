@@ -65,4 +65,6 @@ export interface IChatConversationRepository {
   ): Promise<void>;
   incrementUnread(id: string, tenantId: string): Promise<void>;
   resetUnread(id: string, tenantId: string): Promise<void>;
+  /** Atualiza apenas groupAvatarUrl de todas as conversações do grupo (sem tocar outros campos). */
+  updateGroupAvatarUrlByGroupJid(groupJid: string, tenantId: string, avatarUrl: string): Promise<void>;
 }

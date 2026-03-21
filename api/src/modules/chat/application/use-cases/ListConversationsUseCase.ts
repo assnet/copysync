@@ -82,7 +82,7 @@ export class ListConversationsUseCase {
         // Grupo: monta DTO sintético a partir dos dados do grupo
         const gName = conv.groupName ?? conv.groupJid ?? 'Grupo';
         const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
-        contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: null, initials: gInitials };
+        contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: conv.groupAvatarUrl ?? null, initials: gInitials };
       } else {
         if (!conv.contactId) continue; // conversa individual sem contactId — dado inválido
         const contact = await this.contactRepo.findById(conv.contactId, conv.tenantId);

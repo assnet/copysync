@@ -160,4 +160,11 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
       data: { unreadCount: 0 },
     });
   }
+
+  async updateGroupAvatarUrlByGroupJid(groupJid: string, tenantId: string, avatarUrl: string): Promise<void> {
+    await this.prisma.chatConversation.updateMany({
+      where: { tenantId, groupJid, isGroup: true },
+      data: { groupAvatarUrl: avatarUrl },
+    });
+  }
 }

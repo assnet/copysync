@@ -58,7 +58,7 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
       >
         {/* Avatar */}
         <Avatar
-          src={!isGroup ? (contact.avatarUrl ?? undefined) : undefined}
+          src={contact.avatarUrl ?? undefined}
           sx={{
             width: 40,
             height: 40,

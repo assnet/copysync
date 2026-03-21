@@ -50,7 +50,7 @@ export class UpdateConversationUseCase {
       ? (() => {
           const gName = updated.groupName ?? updated.groupJid ?? 'Grupo';
           const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
-          return { id: updated.groupJid ?? '', name: gName, phone: updated.groupJid ?? '', avatarUrl: null as string | null, initials: gInitials };
+          return { id: updated.groupJid ?? '', name: gName, phone: updated.groupJid ?? '', avatarUrl: updated.groupAvatarUrl ?? null, initials: gInitials };
         })()
       : { id: contact!.id, name: contact!.name, phone: contact!.phone, avatarUrl: contact!.avatarUrl, initials: contact!.initials };
 

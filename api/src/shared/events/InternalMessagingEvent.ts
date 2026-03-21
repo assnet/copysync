@@ -74,6 +74,13 @@ export type InternalMessagingEvent =
       tenantId: string;
       phone: string;
       avatarUrl: string;
+    }
+  | {
+      type: 'GROUP_AVATAR_UPDATED';
+      tenantId: string;
+      /** JID numérico do grupo (sem @g.us) */
+      groupJid: string;
+      avatarUrl: string;
     };
 
 export type InternalEventType = InternalMessagingEvent['type'];

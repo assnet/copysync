@@ -27,7 +27,7 @@ export class GetConversationByIdUseCase {
     if (conv.isGroup) {
       const gName = conv.groupName ?? conv.groupJid ?? 'Grupo';
       const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
-      contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: null, initials: gInitials };
+      contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: conv.groupAvatarUrl ?? null, initials: gInitials };
     } else {
       const contact = await this.contactRepo.findById(conv.contactId ?? '', conv.tenantId);
       if (!contact) throw new NotFoundError('Contact', conv.contactId ?? '');

@@ -338,6 +338,7 @@ model ChatConversation {
   isGroup            Boolean            @default(false)
   groupJid           String?            // JID numérico do grupo (sem @g.us)
   groupName          String?            // nome do grupo exibido ao usuário
+  groupAvatarUrl     String?            // URL pública da foto do grupo
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
