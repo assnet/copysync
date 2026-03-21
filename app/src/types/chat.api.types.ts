@@ -45,6 +45,7 @@ export interface ChatConversationApiDto {
   isGroup?: boolean;
   groupJid?: string | null;
   groupName?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 export interface ChatMessageApiDto {
@@ -96,6 +97,7 @@ export interface UpdateConversationRequest {
   queueName?: string | null;
   tags?: string[];
   notes?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 // ── Adapters: API → frontend types ───────────────────────────────────────────
@@ -181,6 +183,7 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
     isGroup:       dto.isGroup ?? false,
     groupJid:      dto.groupJid ?? null,
     groupName:     dto.groupName ?? null,
+    autoDownloadMedia: dto.autoDownloadMedia ?? true,
   };
 }
 

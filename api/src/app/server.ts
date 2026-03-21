@@ -68,6 +68,7 @@ async function start(): Promise<void> {
       sessionRepo,
       authStateRepo,
       chatContactRepo,
+      chatConversationRepo,
       ingestHistorySyncUseCase,
     );
     const bootstrapService = new SessionBootstrapService(sessionRepo, engine);

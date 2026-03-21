@@ -20,6 +20,19 @@ import { QuotedMessage } from './messages/QuotedMessage';
 
 // ── Status icon ───────────────────────────────────────────────────────────────
 
+/** Gera cor distinta por telefone do participante — igual ao WhatsApp Web */
+const PARTICIPANT_PALETTE = [
+  '#e91e63', '#9c27b0', '#673ab7', '#3f51b5',
+  '#2196f3', '#03a9f4', '#00bcd4', '#009688',
+  '#4caf50', '#8bc34a', '#ff9800', '#ff5722',
+];
+function participantColor(phone: string | null | undefined): string {
+  if (!phone) return PARTICIPANT_PALETTE[0];
+  let hash = 0;
+  for (let i = 0; i < phone.length; i++) hash = phone.charCodeAt(i) + ((hash << 5) - hash);
+  return PARTICIPANT_PALETTE[Math.abs(hash) % PARTICIPANT_PALETTE.length];
+}
+
 function MessageStatusIcon({ status }: { status: ChatMessage['status'] }) {
   const theme = useTheme();
   const color =
@@ -219,7 +232,7 @@ export function MessageBubble({ message, onReply }: Props) {
         {!isOut && message.fromParticipantName && (
           <Typography
             variant="caption"
-            sx={{ display: 'block', fontWeight: 700, fontSize: 11, color: 'primary.main', mb: 0.25 }}
+            sx={{ display: 'block', fontWeight: 700, fontSize: 11, color: participantColor(message.fromParticipant), mb: 0.25 }}
           >
             {message.fromParticipantName}
           </Typography>

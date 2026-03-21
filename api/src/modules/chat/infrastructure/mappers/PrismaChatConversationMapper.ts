@@ -23,6 +23,7 @@ export class PrismaChatConversationMapper {
       groupJid: raw.groupJid,
       groupName: raw.groupName,
       groupAvatarUrl: raw.groupAvatarUrl ?? null,
+      autoDownloadMedia: raw.autoDownloadMedia,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

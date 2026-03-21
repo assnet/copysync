@@ -41,6 +41,7 @@ import {
   SessionNotConnectedError,
 } from '../../../../../shared/errors/internal/SessionErrors';
 import type { IChatContactRepository } from '../../../../chat/domain/contracts/IChatContactRepository';
+import type { IChatConversationRepository } from '../../../../chat/domain/contracts/IChatConversationRepository';
 import type { IngestHistorySyncUseCase, HistoryMessageItem } from '../../../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
 
@@ -50,11 +51,14 @@ const baileysLogger = appLogger.child({ module: 'baileys' });
 
 export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly registry = BaileysSessionRegistry.get();
+  /** Cache in-memory de autoDownloadMedia por conversationId (ou groupJid+sessionId). Limpo ao recarregar. */
+  private readonly autoDownloadCache = new Map<string, boolean>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly authStateRepo: ISessionAuthStateRepository,
     private readonly chatContactRepo: IChatContactRepository,
+    private readonly chatConversationRepo: IChatConversationRepository,
     private readonly historySyncUseCase: IngestHistorySyncUseCase,
   ) {}
 
@@ -354,7 +358,27 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
         let mediaUrl: string | null = null;
         if (MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)) {
-          mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
+          // Para grupos: verifica se autoDownloadMedia está habilitado para esta conversa.
+          // Usa cache in-memory para evitar consulta ao DB a cada mensagem.
+          let shouldDownload = true;
+          if (isGroup) {
+            const cacheKey = `${tenantId}:${from}:${sessionId}`;
+            if (this.autoDownloadCache.has(cacheKey)) {
+              shouldDownload = this.autoDownloadCache.get(cacheKey)!;
+            } else {
+              try {
+                const conv = await this.chatConversationRepo.findActiveByGroupAndSession(from, sessionId, tenantId);
+                shouldDownload = conv ? conv.autoDownloadMedia : true;
+                this.autoDownloadCache.set(cacheKey, shouldDownload);
+              } catch {
+                // fallback seguro: baixar
+                shouldDownload = true;
+              }
+            }
+          }
+          if (shouldDownload) {
+            mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
+          }
         }
 
         internalEventBus.emit('MESSAGE_RECEIVED', {

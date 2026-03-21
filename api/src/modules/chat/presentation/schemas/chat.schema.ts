@@ -51,11 +51,12 @@ export const sendMessageBodySchema = {
 export const updateConversationBodySchema = {
   type: 'object',
   properties: {
-    status:         { type: 'string' },
-    assignedUserId: { type: ['string', 'null'] },
-    queueName:      { type: ['string', 'null'] },
-    tags:           { type: 'array', items: { type: 'string' } },
-    notes:          { type: ['string', 'null'] },
+    status:            { type: 'string' },
+    assignedUserId:    { type: ['string', 'null'] },
+    queueName:         { type: ['string', 'null'] },
+    tags:              { type: 'array', items: { type: 'string' } },
+    notes:             { type: ['string', 'null'] },
+    autoDownloadMedia: { type: 'boolean' },
   },
   additionalProperties: false,
 } as const;

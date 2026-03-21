@@ -14,6 +14,7 @@ export interface UpdateConversationInput {
   queueName?: string | null;
   tags?: string[];
   notes?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 export class UpdateConversationUseCase {
@@ -40,6 +41,7 @@ export class UpdateConversationUseCase {
         queueName: input.queueName,
         tags: input.tags,
         notes: input.notes,
+        autoDownloadMedia: input.autoDownloadMedia,
       },
     );
 
@@ -88,6 +90,7 @@ export class UpdateConversationUseCase {
       isGroup: updated.isGroup,
       groupJid: updated.groupJid,
       groupName: updated.groupName,
+      autoDownloadMedia: updated.autoDownloadMedia,
     };
   }
 }

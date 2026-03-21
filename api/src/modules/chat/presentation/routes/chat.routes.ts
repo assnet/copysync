@@ -96,21 +96,23 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as { id: string };
       const body = request.body as {
-        status?:         string;
-        assignedUserId?: string | null;
-        queueName?:      string | null;
-        tags?:           string[];
-        notes?:          string | null;
+        status?:            string;
+        assignedUserId?:    string | null;
+        queueName?:         string | null;
+        tags?:              string[];
+        notes?:             string | null;
+        autoDownloadMedia?: boolean;
       };
 
       const result = await updateConversationUseCase.execute({
         conversationId: id,
         tenantId,
-        status:         body.status ? (body.status as ConversationStatus) : undefined,
-        assignedUserId: body.assignedUserId,
-        queueName:      body.queueName,
-        tags:           body.tags,
-        notes:          body.notes,
+        status:            body.status ? (body.status as ConversationStatus) : undefined,
+        assignedUserId:    body.assignedUserId,
+        queueName:         body.queueName,
+        tags:              body.tags,
+        notes:             body.notes,
+        autoDownloadMedia: body.autoDownloadMedia,
       });
 
       // Notify WS subscribers of this tenant about the updated conversation

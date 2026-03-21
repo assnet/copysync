@@ -123,6 +123,7 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
         ...(data.queueName !== undefined && { queueName: data.queueName }),
         ...(data.tags !== undefined && { tags: data.tags }),
         ...(data.notes !== undefined && { notes: data.notes }),
+        ...(data.autoDownloadMedia !== undefined && { autoDownloadMedia: data.autoDownloadMedia }),
       },
     });
 

@@ -339,6 +339,7 @@ model ChatConversation {
   groupJid           String?            // JID numérico do grupo (sem @g.us)
   groupName          String?            // nome do grupo exibido ao usuário
   groupAvatarUrl     String?            // URL pública da foto do grupo
+  autoDownloadMedia  Boolean            @default(true) // baixar mídia automaticamente nesta conversa
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 

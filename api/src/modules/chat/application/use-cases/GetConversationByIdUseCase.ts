@@ -77,6 +77,7 @@ export class GetConversationByIdUseCase {
       isGroup: conv.isGroup,
       groupJid: conv.groupJid,
       groupName: conv.groupName,
+      autoDownloadMedia: conv.autoDownloadMedia,
     };
   }
 }

@@ -98,4 +98,6 @@ export interface ChatConversation {
   groupJid?: string | null;
   /** Nome do grupo */
   groupName?: string | null;
+  /** Baixar mídia automaticamente (false = somente ao clicar) */
+  autoDownloadMedia?: boolean;
 }

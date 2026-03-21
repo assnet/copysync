@@ -17,6 +17,7 @@ export interface ConversationUpdateData {
   queueName?: string | null;
   tags?: string[];
   notes?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 export interface ConversationLastMessageUpdate {

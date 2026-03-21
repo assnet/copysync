@@ -1,14 +1,16 @@
-import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, alpha, useTheme } from '@mui/material';
+import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, Switch, FormControlLabel, alpha, useTheme } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import RouterOutlinedIcon from '@mui/icons-material/RouterOutlined';
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import SellOutlinedIcon from '@mui/icons-material/SellOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import AutoGraphOutlinedIcon from '@mui/icons-material/AutoGraphOutlined';
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import { useState } from 'react';
 import type { ChatConversation, ConversationStatus } from '../types';
 import type { UpdateConversationRequest } from '@/types/chat.api.types';
@@ -95,7 +97,7 @@ const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
 ];
 
 export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Props) {
-  const { contact, session, status, queue, assignedTo, tags, notes, unreadCount, lastMessageAt } = conversation;
+  const { contact, session, status, queue, assignedTo, tags, notes, unreadCount, lastMessageAt, isGroup, autoDownloadMedia } = conversation;
   const statusConfig = getStatusConfig(status);
   const [localNotes, setLocalNotes] = useState(notes);
 
@@ -139,28 +141,55 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
       {/* Scrollable content */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* Contact section */}
-        <Section title="Contato" icon={<PersonOutlineIcon sx={{ fontSize: 14 }} />}>
+        {/* Contact / Group section */}
+        <Section
+          title={isGroup ? 'Grupo' : 'Contato'}
+          icon={isGroup
+            ? <GroupsOutlinedIcon sx={{ fontSize: 14 }} />
+            : <PersonOutlineIcon sx={{ fontSize: 14 }} />}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-            <Avatar sx={{ width: 40, height: 40, bgcolor: contact.avatarColor ?? 'primary.main', fontSize: 14, fontWeight: 700 }}>
-              {contact.initials}
+            <Avatar
+              src={contact.avatarUrl ?? undefined}
+              sx={{ width: 40, height: 40, bgcolor: contact.avatarColor ?? 'primary.main', fontSize: 14, fontWeight: 700 }}
+            >
+              {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 20 }} /> : contact.initials}
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="body2" fontWeight={700} noWrap>
                 {contact.name}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {formatPhone(contact.phone)}
+                {isGroup ? (contact.phone ?? '') : formatPhone(contact.phone)}
               </Typography>
             </Box>
-            <Tooltip title="Editar contato (em breve)">
-              <span>
-                <IconButton size="small" disabled sx={{ ml: 'auto', opacity: 0.4 }}>
-                  <EditOutlinedIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </span>
-            </Tooltip>
+            {!isGroup && (
+              <Tooltip title="Editar contato (em breve)">
+                <span>
+                  <IconButton size="small" disabled sx={{ ml: 'auto', opacity: 0.4 }}>
+                    <EditOutlinedIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
           </Box>
+
+          {/* Toggle de download automático de mídia — apenas para grupos */}
+          {isGroup && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <DownloadOutlinedIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                <Typography variant="caption" color="text.secondary">
+                  Download automático de mídia
+                </Typography>
+              </Box>
+              <Switch
+                size="small"
+                checked={autoDownloadMedia ?? true}
+                onChange={(_, checked) => onUpdate?.({ autoDownloadMedia: checked })}
+              />
+            </Box>
+          )}
         </Section>
 
         <Divider />

@@ -53,6 +53,7 @@ export interface ConversationListItemDto {
   isGroup?: boolean;
   groupJid?: string | null;
   groupName?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 export class ListConversationsUseCase {
@@ -130,6 +131,7 @@ export class ListConversationsUseCase {
         isGroup: conv.isGroup,
         groupJid: conv.groupJid,
         groupName: conv.groupName,
+        autoDownloadMedia: conv.autoDownloadMedia,
       });
     }
 

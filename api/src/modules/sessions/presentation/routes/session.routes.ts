@@ -46,6 +46,7 @@ const engine = MessagingEngineFactory.create(
   sessionRepo,
   authStateRepo,
   chatContactRepo,
+  chatConversationRepo,
   ingestHistorySyncUseCase,
 );
 // Disponibiliza para outros módulos (e.g. chat routes para read receipts)

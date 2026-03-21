@@ -2,6 +2,7 @@ import type { IMessagingEngine } from '../domain/contracts/IMessagingEngine';
 import type { ISessionRepository } from '../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../sessions/domain/contracts/ISessionAuthStateRepository';
 import type { IChatContactRepository } from '../../chat/domain/contracts/IChatContactRepository';
+import type { IChatConversationRepository } from '../../chat/domain/contracts/IChatConversationRepository';
 import type { IngestHistorySyncUseCase } from '../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { BaileysMessagingEngineAdapter } from './engines/baileys/BaileysMessagingEngineAdapter';
 
@@ -17,6 +18,7 @@ export class MessagingEngineFactory {
     sessionRepo: ISessionRepository,
     authStateRepo: ISessionAuthStateRepository,
     chatContactRepo: IChatContactRepository,
+    chatConversationRepo: IChatConversationRepository,
     historySyncUseCase: IngestHistorySyncUseCase,
   ): IMessagingEngine {
     switch (engine) {
@@ -25,6 +27,7 @@ export class MessagingEngineFactory {
           sessionRepo,
           authStateRepo,
           chatContactRepo,
+          chatConversationRepo,
           historySyncUseCase,
         );
       default:
