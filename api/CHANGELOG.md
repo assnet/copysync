@@ -9,6 +9,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed
+
+#### Backend — Simplificação do BaileysMessagingEngineAdapter: remoção de grupos, mídia, avatares e reply
+
+- **`BaileysMessagingEngineAdapter.ts`** — refactor profundo que reverte o adapter a um estado estável focado exclusivamente em mensagens individuais (`@s.whatsapp.net`):
+  - **Mensagens de grupo removidas**: `@g.us` agora é filtrado junto com `@broadcast` em `messages.upsert`; toda lógica de `isGroup`, `groupJid`, `groupName`, `participant` (incluindo resolução de LID de participante via `signalRepository.lidMapping.getPNForLID`) e `participantName` foi removida — os campos correspondentes deixaram de ser emitidos no evento `MESSAGE_RECEIVED`
+  - **Download automático de mídia removido**: removidos imports de `downloadMediaMessage`, `saveMediaBuffer`, `mediaPublicUrl` e `mediaFileExists`; removido o cache in-memory `autoDownloadCache` e a dependência de `IChatConversationRepository`; o campo `mediaUrl` não é mais emitido no evento `MESSAGE_RECEIVED`
+  - **Reply/quoted no envio removido**: `sendTextMessage` simplificado — a construção de `WAMessage` com proto por tipo (`imageMessage`, `videoMessage`, `audioMessage`, `documentMessage`, `conversation`) e o terceiro argumento `{ quoted }` do `socket.sendMessage()` foram removidos; envio é agora `socket.sendMessage(jid, { text: input.body })` puro
+  - **Fetch de avatar em background removido**: chamadas `fetchAndSaveContactAvatar` eliminadas tanto no handler `messages.upsert` (para contatos individuais e grupos) quanto no handler `contacts.upsert`; o `contacts.upsert` agora chama `chatContactRepo.upsert({ tenantId, phone, name })` direto, sem await de avatar
+  - **`mapMessagesToHistoryItems` simplificado**: método alterado de `async` para síncrono; parâmetros `socket` e `sessionId` removidos; grupos e broadcasts são filtrados; callback de `messages.upsert` e `messaging-history.set` passam de `async () =>` para `() =>`
+  - **Imports removidos**: `downloadMediaMessage`, `WAMessage`, `IChatConversationRepository`, `saveMediaBuffer`, `mediaPublicUrl`, `mediaFileExists`
+
 ### Added
 
 #### Backend — Resolução de LID → WID (phone real) em mensagens de grupo
