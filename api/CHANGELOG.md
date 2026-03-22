@@ -56,7 +56,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 #### Docs — AGENTS.md: regras de processo e versionamento
 
-- **`AGENTS.md`** — adicionadas seções 31–36 adaptadas ao monorepo washoot: fluxo Git obrigatório (branches, workflow de feature/release/hotfix), SemVer com portadores de versão em `api/package.json` + `app/package.json` + `api/CHANGELOG.md` + TAG Git, template de documentação de feature no CHANGELOG, template de seção de release, padrão de commits com escopos (`auth`, `sessions`, `messaging`, `chat`, etc.), template de PR e lista de proibições absolutas de processo
+- **`AGENTS.md`** — adicionadas seções 31–36 adaptadas ao monorepo ChatPrime: fluxo Git obrigatório (branches, workflow de feature/release/hotfix), SemVer com portadores de versão em `api/package.json` + `app/package.json` + `api/CHANGELOG.md` + TAG Git, template de documentação de feature no CHANGELOG, template de seção de release, padrão de commits com escopos (`auth`, `sessions`, `messaging`, `chat`, etc.), template de PR e lista de proibições absolutas de processo
 
 ---
 
@@ -509,7 +509,7 @@ Criado diretório `app/src/features/chat/components/messages/` com 10 componente
 #### Spec OpenAPI
 
 - Título, versão (0.3.0), descrição e contato cadastrados em `openapi.info`
-- Dois servidores declarados: `http://localhost:<PORT>` (local) e `https://washoot-api.onrender.com` (produção)
+- Dois servidores declarados: `http://localhost:<PORT>` (local) e `https://ChatPrime-api.onrender.com` (produção)
 - Security scheme **`bearerAuth`** (HTTP Bearer JWT) configurado globalmente; bearer obtido via `POST /api/auth/login`
 - Tags declaradas: `Health`, `Auth`, `Tenants`, `Me`, `Sessions`
 
