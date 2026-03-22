@@ -352,6 +352,18 @@ export default function ChatPage() {
     [selectedId],
   );
 
+  // Abre a conversa direta com um participante de grupo pelo telefone
+  const handleParticipantClick = useCallback(
+    (phone: string, _name: string) => {
+      const conv = conversations.find((c) => c.contact.phone === phone && !c.isGroup);
+      if (conv) {
+        handleSelectConversation(conv.id);
+      }
+      // Se não tiver conversa direta com este contato, não faz nada por enquanto
+    },
+    [conversations, handleSelectConversation],
+  );
+
   return (
     <Box
       sx={{
@@ -393,6 +405,7 @@ export default function ChatPage() {
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
           scrollToBottom={scrollToBottom}
+          onParticipantClick={handleParticipantClick}
         />
       ) : (
         <EmptyConversationState />

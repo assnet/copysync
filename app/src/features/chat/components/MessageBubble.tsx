@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { Box, Typography, alpha, useTheme, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, alpha, useTheme, IconButton, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import ReplyIcon from '@mui/icons-material/Reply';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ChatIcon from '@mui/icons-material/Chat';
 import type { ChatMessage } from '../types';
 import { formatMessageTime } from '../utils';
 import { ImageMessage } from './messages/ImageMessage';
@@ -135,13 +138,39 @@ function MessageContent({ message, isOut, textColor }: ContentProps) {
 interface Props {
   message: ChatMessage;
   onReply?: (message: ChatMessage) => void;
+  onParticipantClick?: (phone: string, name: string) => void;
 }
 
-export function MessageBubble({ message, onReply }: Props) {
+export function MessageBubble({ message, onReply, onParticipantClick }: Props) {
   const [hovered, setHovered] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const isOut = message.direction === 'out';
+
+  const handleOpenMenu = (e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    setMenuAnchor(e.currentTarget);
+  };
+  const handleCloseMenu = () => setMenuAnchor(null);
+
+  const handleMenuReply = () => {
+    handleCloseMenu();
+    onReply?.(message);
+  };
+
+  const handleMenuCopy = () => {
+    if (message.body) navigator.clipboard.writeText(message.body);
+    handleCloseMenu();
+  };
+
+  const handleMenuChatWith = () => {
+    handleCloseMenu();
+    if (message.fromParticipant) {
+      const phone = message.fromParticipant.replace(/@.+$/, '');
+      onParticipantClick?.(phone, message.fromParticipantName ?? phone);
+    }
+  };
 
   // Call log — pill centralizado
   if (message.type === 'call_log') {
@@ -200,6 +229,7 @@ export function MessageBubble({ message, onReply }: Props) {
   );
 
   return (
+    <>
     <Box
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -216,6 +246,7 @@ export function MessageBubble({ message, onReply }: Props) {
       {isOut && replyBtn}
       <Box
         sx={{
+          position: 'relative',
           maxWidth: '68%',
           minWidth: 80,
           px: 1.5,
@@ -228,13 +259,60 @@ export function MessageBubble({ message, onReply }: Props) {
           boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.08)',
         }}
       >
+        {/* Botão de menu contextual — aparece ao passar o mouse */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            borderRadius: isOut ? '0 16px 0 8px' : '0 16px 0 8px',
+            background: `linear-gradient(135deg, transparent 30%, ${bgColor} 60%)`,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s',
+            pointerEvents: hovered ? 'auto' : 'none',
+            zIndex: 1,
+          }}
+        >
+          <IconButton
+            size="small"
+            onClick={handleOpenMenu}
+            sx={{ p: 0.3, color: isOut ? alpha('#fff', 0.75) : 'text.secondary' }}
+          >
+            <KeyboardArrowDownIcon sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Box>
+
         {/* Nome do remetente em mensagens de grupo recebidas */}
         {!isOut && message.fromParticipantName && (
           <Typography
             variant="caption"
-            sx={{ display: 'block', fontWeight: 700, fontSize: 11, color: participantColor(message.fromParticipant), mb: 0.25 }}
+            onClick={onParticipantClick
+              ? () => {
+                  const phone = (message.fromParticipant ?? '').replace(/@.+$/, '');
+                  onParticipantClick(phone, message.fromParticipantName ?? phone);
+                }
+              : undefined
+            }
+            sx={{
+              display: 'block',
+              fontWeight: 700,
+              fontSize: 11,
+              color: participantColor(message.fromParticipant),
+              mb: 0.25,
+              cursor: onParticipantClick ? 'pointer' : 'default',
+              '&:hover': onParticipantClick ? { textDecoration: 'underline' } : {},
+            }}
           >
             {message.fromParticipantName}
+            {message.fromParticipant && (
+              <Typography
+                component="span"
+                variant="caption"
+                sx={{ fontWeight: 400, fontSize: 10, ml: 0.75, opacity: 0.65 }}
+              >
+                · {message.fromParticipant.replace(/@.+$/, '').replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '+55 $1 $2-$3')}
+              </Typography>
+            )}
           </Typography>
         )}
 
@@ -266,5 +344,38 @@ export function MessageBubble({ message, onReply }: Props) {
       {/* Reply btn à direita para mensagens recebidas */}
       {!isOut && replyBtn}
     </Box>
+
+    {/* Menu de contexto da mensagem */}
+    <Menu
+      anchorEl={menuAnchor}
+      open={Boolean(menuAnchor)}
+      onClose={handleCloseMenu}
+      anchorOrigin={{ vertical: 'bottom', horizontal: isOut ? 'right' : 'left' }}
+      transformOrigin={{ vertical: 'top', horizontal: isOut ? 'right' : 'left' }}
+      slotProps={{ paper: { sx: { minWidth: 200, borderRadius: 2 } } }}
+    >
+      {onReply && (
+        <MenuItem onClick={handleMenuReply} dense>
+          <ListItemIcon><ReplyIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Responder</ListItemText>
+        </MenuItem>
+      )}
+      {message.body && (
+        <MenuItem onClick={handleMenuCopy} dense>
+          <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Copiar</ListItemText>
+        </MenuItem>
+      )}
+      {!isOut && message.fromParticipant && onParticipantClick && (
+        <MenuItem onClick={handleMenuChatWith} dense>
+          <ListItemIcon><ChatIcon fontSize="small" /></ListItemIcon>
+          <ListItemText
+            primary={`Conversar com ${message.fromParticipantName ?? message.fromParticipant.replace(/@.+$/, '')}`}
+            primaryTypographyProps={{ noWrap: true, sx: { maxWidth: 200 } }}
+          />
+        </MenuItem>
+      )}
+    </Menu>
+    </>
   );
 }

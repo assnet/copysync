@@ -339,7 +339,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
         // Para grupos: quem enviou a mensagem é o participant, não o remoteJid
         const participantRaw = msg.key.participant ?? (msg as { participant?: string }).participant;
-        const participant = participantRaw ? participantRaw.split('@')[0] : undefined;
+        let participant: string | undefined;
+        if (participantRaw) {
+          if (participantRaw.endsWith('@lid')) {
+            // WhatsApp pode retornar LID em vez do JID real — tenta resolver para o WID (phone)
+            const lid = participantRaw.replace('@lid', '');
+            try {
+              const pn = await socket.signalRepository.lidMapping.getPNForLID(lid);
+              participant = pn ? pn.replace(/@.+$/, '') : lid;
+            } catch {
+              participant = lid;
+            }
+          } else {
+            participant = participantRaw.replace(/@.+$/, '');
+          }
+        }
         const participantName = isGroup ? (msg.pushName ?? undefined) : undefined;
 
         // Para grupos: busca nome do grupo no Baileys (best-effort, cached pelo socket)

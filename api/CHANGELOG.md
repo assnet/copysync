@@ -9,6 +9,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added
+
+#### Backend — Resolução de LID → WID (phone real) em mensagens de grupo
+
+- **`BaileysMessagingEngineAdapter.ts`** — ao extrair o `participant` de uma mensagem de grupo, detecta se o JID retornado termina em `@lid` (Linked Identity do WhatsApp); quando há LID, chama `socket.signalRepository.lidMapping.getPNForLID(lid)` para resolver o número de telefone real (`@s.whatsapp.net` → dígitos puros); fallback seguro para o LID bruto caso a resolução falhe. Isso garante que `fromParticipant` sempre carregue o WID/phone real exibido na sidebar de conversas, não um identificador interno do WhatsApp.
+
+#### Frontend — Menu de contexto nas mensagens de grupo
+
+- **`MessageBubble.tsx`** — ao passar o mouse sobre qualquer balão de mensagem aparece um botão `⌄` no canto superior direito (gradiente de fundo igual à cor do bubble, animação de opacidade); clicar abre um `<Menu>` MUI com as opções:
+  - **Responder** — ativa o bloco de reply (mesmo comportamento do botão lateral já existente)
+  - **Copiar** — copia o texto da mensagem para o clipboard via `navigator.clipboard`
+  - **Conversar com [nome]** — visível apenas em mensagens de grupo recebidas; chama `onParticipantClick(phone, name)` para navegar à conversa direta com o participante
+
+#### Frontend — Nome do participante clicável nos grupos
+
+- **`MessageBubble.tsx`** — linha do nome/telefone do remetente em mensagens de grupo ganhou cursor pointer e underline no hover quando o handler `onParticipantClick` estiver disponível; clicar abre a conversa direta com aquele número; nova prop `onParticipantClick?: (phone: string, name: string) => void`
+
+#### Frontend — Cadeia de propagação de `onParticipantClick`
+
+- **`MessageList.tsx`** — nova prop `onParticipantClick?: (phone: string, name: string) => void` repassada para cada `<MessageBubble>`
+- **`ChatWindow.tsx`** — nova prop `onParticipantClick` declarada e repassada para `<MessageList>`
+- **`ChatPage.tsx`** — `handleParticipantClick` criado: busca em `conversations` a primeira conversa individual (`isGroup = false`) cujo `contact.phone === phone` e a seleciona via `handleSelectConversation`; caso não exista conversa direta com o contato, a ação é silenciosa
+
 ---
 
 ## [0.11.0] — 2026-03-21 — Chat V7: reply entregue no WhatsApp, bloco citado persistente e regras de processo no AGENTS.md
