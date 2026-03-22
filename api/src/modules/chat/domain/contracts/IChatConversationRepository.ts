@@ -17,11 +17,24 @@ export interface ConversationUpdateData {
   queueName?: string | null;
   tags?: string[];
   notes?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 export interface ConversationLastMessageUpdate {
   lastMessagePreview: string;
   lastMessageAt: Date;
+}
+
+export interface CreateConversationData {
+  tenantId: string;
+  sessionId?: string | null;
+  /** null para conversas de grupo */
+  contactId?: string | null;
+  externalChatId?: string | null;
+  channel?: string;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupName?: string | null;
 }
 
 export interface IChatConversationRepository {
@@ -36,13 +49,15 @@ export interface IChatConversationRepository {
     sessionId: string,
     tenantId: string,
   ): Promise<ChatConversation | null>;
-  create(data: {
-    tenantId: string;
-    sessionId?: string | null;
-    contactId: string;
-    externalChatId?: string | null;
-    channel?: string;
-  }): Promise<ChatConversation>;
+  /**
+   * Returns the most recent non-CLOSED group conversation for a given groupJid+session pair.
+   */
+  findActiveByGroupAndSession(
+    groupJid: string,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<ChatConversation | null>;
+  create(data: CreateConversationData): Promise<ChatConversation>;
   update(id: string, tenantId: string, data: ConversationUpdateData): Promise<ChatConversation>;
   updateLastMessage(
     id: string,
@@ -51,4 +66,6 @@ export interface IChatConversationRepository {
   ): Promise<void>;
   incrementUnread(id: string, tenantId: string): Promise<void>;
   resetUnread(id: string, tenantId: string): Promise<void>;
+  /** Atualiza apenas groupAvatarUrl de todas as conversações do grupo (sem tocar outros campos). */
+  updateGroupAvatarUrlByGroupJid(groupJid: string, tenantId: string, avatarUrl: string): Promise<void>;
 }

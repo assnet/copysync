@@ -9,6 +9,67 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed
+
+#### Backend — Simplificação do BaileysMessagingEngineAdapter: remoção de grupos, mídia, avatares e reply
+
+- **`BaileysMessagingEngineAdapter.ts`** — refactor profundo que reverte o adapter a um estado estável focado exclusivamente em mensagens individuais (`@s.whatsapp.net`):
+  - **Mensagens de grupo removidas**: `@g.us` agora é filtrado junto com `@broadcast` em `messages.upsert`; toda lógica de `isGroup`, `groupJid`, `groupName`, `participant` (incluindo resolução de LID de participante via `signalRepository.lidMapping.getPNForLID`) e `participantName` foi removida — os campos correspondentes deixaram de ser emitidos no evento `MESSAGE_RECEIVED`
+  - **Download automático de mídia removido**: removidos imports de `downloadMediaMessage`, `saveMediaBuffer`, `mediaPublicUrl` e `mediaFileExists`; removido o cache in-memory `autoDownloadCache` e a dependência de `IChatConversationRepository`; o campo `mediaUrl` não é mais emitido no evento `MESSAGE_RECEIVED`
+  - **Reply/quoted no envio removido**: `sendTextMessage` simplificado — a construção de `WAMessage` com proto por tipo (`imageMessage`, `videoMessage`, `audioMessage`, `documentMessage`, `conversation`) e o terceiro argumento `{ quoted }` do `socket.sendMessage()` foram removidos; envio é agora `socket.sendMessage(jid, { text: input.body })` puro
+  - **Fetch de avatar em background removido**: chamadas `fetchAndSaveContactAvatar` eliminadas tanto no handler `messages.upsert` (para contatos individuais e grupos) quanto no handler `contacts.upsert`; o `contacts.upsert` agora chama `chatContactRepo.upsert({ tenantId, phone, name })` direto, sem await de avatar
+  - **`mapMessagesToHistoryItems` simplificado**: método alterado de `async` para síncrono; parâmetros `socket` e `sessionId` removidos; grupos e broadcasts são filtrados; callback de `messages.upsert` e `messaging-history.set` passam de `async () =>` para `() =>`
+  - **Imports removidos**: `downloadMediaMessage`, `WAMessage`, `IChatConversationRepository`, `saveMediaBuffer`, `mediaPublicUrl`, `mediaFileExists`
+
+### Added
+
+#### Backend — Resolução de LID → WID (phone real) em mensagens de grupo
+
+- **`BaileysMessagingEngineAdapter.ts`** — ao extrair o `participant` de uma mensagem de grupo, detecta se o JID retornado termina em `@lid` (Linked Identity do WhatsApp); quando há LID, chama `socket.signalRepository.lidMapping.getPNForLID(lid)` para resolver o número de telefone real (`@s.whatsapp.net` → dígitos puros); fallback seguro para o LID bruto caso a resolução falhe. Isso garante que `fromParticipant` sempre carregue o WID/phone real exibido na sidebar de conversas, não um identificador interno do WhatsApp.
+
+#### Frontend — Menu de contexto nas mensagens de grupo
+
+- **`MessageBubble.tsx`** — ao passar o mouse sobre qualquer balão de mensagem aparece um botão `⌄` no canto superior direito (gradiente de fundo igual à cor do bubble, animação de opacidade); clicar abre um `<Menu>` MUI com as opções:
+  - **Responder** — ativa o bloco de reply (mesmo comportamento do botão lateral já existente)
+  - **Copiar** — copia o texto da mensagem para o clipboard via `navigator.clipboard`
+  - **Conversar com [nome]** — visível apenas em mensagens de grupo recebidas; chama `onParticipantClick(phone, name)` para navegar à conversa direta com o participante
+
+#### Frontend — Nome do participante clicável nos grupos
+
+- **`MessageBubble.tsx`** — linha do nome/telefone do remetente em mensagens de grupo ganhou cursor pointer e underline no hover quando o handler `onParticipantClick` estiver disponível; clicar abre a conversa direta com aquele número; nova prop `onParticipantClick?: (phone: string, name: string) => void`
+
+#### Frontend — Cadeia de propagação de `onParticipantClick`
+
+- **`MessageList.tsx`** — nova prop `onParticipantClick?: (phone: string, name: string) => void` repassada para cada `<MessageBubble>`
+- **`ChatWindow.tsx`** — nova prop `onParticipantClick` declarada e repassada para `<MessageList>`
+- **`ChatPage.tsx`** — `handleParticipantClick` criado: busca em `conversations` a primeira conversa individual (`isGroup = false`) cujo `contact.phone === phone` e a seleciona via `handleSelectConversation`; caso não exista conversa direta com o contato, a ação é silenciosa
+
+---
+
+## [0.11.0] — 2026-03-21 — Chat V7: reply entregue no WhatsApp, bloco citado persistente e regras de processo no AGENTS.md
+
+### Fixed
+
+#### Backend — Reply nunca chegava ao destinatário no WhatsApp
+
+- **`IMessagingEngine.ts`** — `SendTextMessageInput` ganhou campo `quotedMessage?: QuotedMessageRef | null`; novo tipo `QuotedMessageRef` com `externalId`, `remoteJid`, `fromMe`, `body` e `type` (tipo da mensagem citada, necessário para montar o proto correto)
+- **`SendMessageUseCase.ts`** — busca a mensagem citada no repositório **antes** de chamar a engine (em vez de depois); passa `QuotedMessageRef` completo para `engine.sendTextMessage()` incluindo `externalMessageId`, `direction`, `type` e `content`; elimina o segundo `findById` redundante que existia apenas para montar o DTO de retorno
+- **`BaileysMessagingEngineAdapter.ts`** — `sendTextMessage` agora constrói um `WAMessage` mínimo e passa como terceiro argumento (`{ quoted }`) ao `socket.sendMessage()`; proto `IMessage` montado por tipo para evitar crash: `image → imageMessage`, `video → videoMessage`, `audio → audioMessage`, `document → documentMessage`, `text/outros → conversation` com fallback `' '` para evitar que proto3 descarte string vazia (o que causava `TypeError: cannot read property of undefined` no `getContentType()` do Baileys)
+
+#### Frontend — Bloco de mensagem citada sumia ~1s após o envio
+
+- **`ChatPage.tsx`** — no `.then()` do `chatService.sendMessage()`, após substituir o otimístico pela mensagem real, aplica `resolveQuotedMessages` ao array completo para repopular `quotedMessage` a partir das mensagens já em memória; mesma correção aplicada ao handler WS `chat.message.created` (mensagens recebidas com `quotedMessageId` também são resolvidas)
+- **`chat.api.types.ts`** — `ChatMessageApiDto` ganhou campo opcional `quotedMessage?: { id, type, content, mediaUrl, direction, isDeleted } | null`; `apiMessageToFrontend()` mapeia `dto.quotedMessage` para `QuotedMessagePreview` quando presente, eliminando dependência exclusiva do `resolveQuotedMessages` client-side
+- **`ListMessagesUseCase.ts`** — novo tipo exportado `QuotedMessageSummary`; `ChatMessageDto` ganhou campo opcional `quotedMessage?: QuotedMessageSummary | null`
+- **`ChatPresenter.ts`** — `presentMessage()` serializa `quotedMessage: dto.quotedMessage ?? null` na resposta HTTP
+- **`SendMessageUseCase.ts`** — DTO de retorno inclui `quotedMessage` já resolvido (usando a entidade buscada antes do envio), sem custo de consulta adicional
+
+### Changed
+
+#### Docs — AGENTS.md: regras de processo e versionamento
+
+- **`AGENTS.md`** — adicionadas seções 31–36 adaptadas ao monorepo ChatPrime: fluxo Git obrigatório (branches, workflow de feature/release/hotfix), SemVer com portadores de versão em `api/package.json` + `app/package.json` + `api/CHANGELOG.md` + TAG Git, template de documentação de feature no CHANGELOG, template de seção de release, padrão de commits com escopos (`auth`, `sessions`, `messaging`, `chat`, etc.), template de PR e lista de proibições absolutas de processo
+
 ---
 
 ## [0.10.0] — 2026-03-12 — Chat V6: envio real via WhatsApp, funcionalidade Responder e player nativo de mídia
@@ -460,7 +521,7 @@ Criado diretório `app/src/features/chat/components/messages/` com 10 componente
 #### Spec OpenAPI
 
 - Título, versão (0.3.0), descrição e contato cadastrados em `openapi.info`
-- Dois servidores declarados: `http://localhost:<PORT>` (local) e `https://washoot-api.onrender.com` (produção)
+- Dois servidores declarados: `http://localhost:<PORT>` (local) e `https://ChatPrime-api.onrender.com` (produção)
 - Security scheme **`bearerAuth`** (HTTP Bearer JWT) configurado globalmente; bearer obtido via `POST /api/auth/login`
 - Tags declaradas: `Health`, `Auth`, `Tenants`, `Me`, `Sessions`
 

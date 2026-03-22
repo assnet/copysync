@@ -26,6 +26,8 @@ export type ChatWsEvent =
           quotedMessageId?: string | null;
           sentAt: string | null;
           createdAt: string;
+          fromParticipant?: string | null;
+          fromParticipantName?: string | null;
         };
         unreadCount: number;
         isNewConversation: boolean;
@@ -77,6 +79,14 @@ export type ChatWsEvent =
         tenantId: string;
         sessionId: string;
         status: string;
+      };
+    }
+  | {
+      event: 'chat.contact.updated';
+      data: {
+        tenantId: string;
+        phone: string;
+        avatarUrl: string;
       };
     }
   | { event: 'ping' };

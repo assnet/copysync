@@ -10,6 +10,15 @@ export interface ListMessagesInput {
   before?: string;
 }
 
+export interface QuotedMessageSummary {
+  id: string;
+  type: ChatMessageType;
+  content: string | null;
+  mediaUrl: string | null;
+  direction: ChatMessageDirection;
+  isDeleted: boolean;
+}
+
 export interface ChatMessageDto {
   id: string;
   conversationId: string;
@@ -25,8 +34,11 @@ export interface ChatMessageDto {
   status: ChatMessageStatus | null;
   isDeleted: boolean;
   quotedMessageId: string | null;
+  quotedMessage?: QuotedMessageSummary | null;
   sentAt: string | null;
   createdAt: string;
+  fromParticipant: string | null;
+  fromParticipantName: string | null;
 }
 
 export class ListMessagesUseCase {
@@ -63,6 +75,8 @@ export class ListMessagesUseCase {
       quotedMessageId: m.quotedMessageId,
       sentAt: m.sentAt?.toISOString() ?? null,
       createdAt: m.createdAt.toISOString(),
+      fromParticipant: m.fromParticipant,
+      fromParticipantName: m.fromParticipantName,
     }));
   }
 }

@@ -96,21 +96,23 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as { id: string };
       const body = request.body as {
-        status?:         string;
-        assignedUserId?: string | null;
-        queueName?:      string | null;
-        tags?:           string[];
-        notes?:          string | null;
+        status?:            string;
+        assignedUserId?:    string | null;
+        queueName?:         string | null;
+        tags?:              string[];
+        notes?:             string | null;
+        autoDownloadMedia?: boolean;
       };
 
       const result = await updateConversationUseCase.execute({
         conversationId: id,
         tenantId,
-        status:         body.status ? (body.status as ConversationStatus) : undefined,
-        assignedUserId: body.assignedUserId,
-        queueName:      body.queueName,
-        tags:           body.tags,
-        notes:          body.notes,
+        status:            body.status ? (body.status as ConversationStatus) : undefined,
+        assignedUserId:    body.assignedUserId,
+        queueName:         body.queueName,
+        tags:              body.tags,
+        notes:             body.notes,
+        autoDownloadMedia: body.autoDownloadMedia,
       });
 
       // Notify WS subscribers of this tenant about the updated conversation
@@ -225,10 +227,16 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         return httpResponse.ok(reply, { subscribed: false });
       }
 
-      const contact = await contactRepo.findById(conversation.contactId, tenantId);
-      if (!contact) return httpResponse.ok(reply, { subscribed: false });
+      const contact = conversation.contactId
+        ? await contactRepo.findById(conversation.contactId, tenantId)
+        : null;
+      // Para grupos: usa groupJid@g.us; para individuais: usa phone do contato
+      const presenceJid = conversation.isGroup && conversation.groupJid
+        ? `${conversation.groupJid}@g.us`
+        : contact?.phone;
+      if (!presenceJid) return httpResponse.ok(reply, { subscribed: false });
 
-      await engine.presenceSubscribe(conversation.sessionId, contact.phone);
+      await engine.presenceSubscribe(conversation.sessionId, presenceJid);
       httpResponse.ok(reply, { subscribed: true });
     },
   );

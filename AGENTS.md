@@ -8,6 +8,8 @@ Sempre interaja utilizando a linguagem Português Brasil, pt-BR.
 
 Documentação da Lib Baileys: https://baileys.wiki/, https://baileys.wiki/docs/category/socket/, https://baileys.wiki/docs/intro/
 
+Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
+
 ### Estrutura principal
 
 - **API REST** em `api/`
@@ -938,3 +940,250 @@ Sempre priorizar:
 * simplicidade suficiente
 * código pronto para produção incremental
 * suporte futuro a chatbots, automações, assistentes de IA, builders em blocos e métricas em tempo real
+
+---
+
+# 31. Fluxo Git e Versionamento (OBRIGATÓRIO)
+
+## 31.1 Estrutura de Branches
+
+```
+feature/* → develop → release/* → main (tag vX.Y.Z)
+```
+
+**Regras imutáveis:**
+
+* `main`: apenas código em produção (protegida, nunca desenvolvimento direto)
+* `develop`: integração contínua de features
+* `feature/*`: desenvolvimento de novas funcionalidades
+* `release/*`: preparação e estabilização de versão
+* `hotfix/*`: correções urgentes em produção
+* `fix/*`: correções pontuais em develop
+* `chore/*`: tarefas de manutenção, infra, deps
+
+## 31.2 Workflow de Desenvolvimento
+
+### Feature Development
+
+1. Criar branch: `feature/nome-descritivo` a partir de `develop`
+2. Desenvolver: commits atômicos e descritivos
+3. Build + verificação: `tsc --noEmit` na `api/` e `app/`
+4. PR para develop: código revisado antes do merge
+5. Merge: preservar histórico limpo
+
+### Release Process
+
+1. Criar release: `release/vX.Y.Z` a partir de `develop`
+2. Estabilização: apenas bugfixes, sem features novas
+3. Atualizar versão nos `package.json` de `api/` e `app/` → campo `"version": "X.Y.Z"`
+4. Atualizar `CHANGELOG.md` com a seção `[X.Y.Z]`
+5. QA final: smoke test completo
+6. Merge em `main` via PR → criar TAG `vX.Y.Z`
+7. Merge back: `main` → `develop` para sincronizar
+
+### Hotfix
+
+1. Criar hotfix: `hotfix/vX.Y.Z+1` a partir de `main`
+2. Corrigir: mudança mínima e cirúrgica
+3. Atualizar `package.json` + `CHANGELOG.md`
+4. Merge em `main` → TAG `vX.Y.Z+1`
+5. Merge back: `main` → `develop`
+
+## 31.3 Versionamento Semântico
+
+Seguir **SemVer** (X.Y.Z):
+
+* **X (Major)**: quebra de compatibilidade, refactor arquitetural, mudança de contrato
+* **Y (Minor)**: novas funcionalidades, backward-compatible
+* **Z (Patch)**: correções de bugs, melhorias sem impacto funcional
+
+**Versão vive em:**
+
+* `api/package.json` → campo `"version"`
+* `app/package.json` → campo `"version"`
+* `api/CHANGELOG.md` → seção `[X.Y.Z]`
+* TAG Git no `main` → `vX.Y.Z`
+
+**NUNCA:**
+
+* Usar nome de branch como versão (ex: branch `v0.11.0`)
+* Versionar sem TAG no `main`
+* Criar TAG fora do `main`
+* Alterar `package.json` de versão sem atualizar o `CHANGELOG.md`
+
+---
+
+# 32. Documentação de Feature (OBRIGATÓRIO)
+
+Toda `feature/*` significativa DEVE ser documentada no `CHANGELOG.md` antes do merge em `develop`.
+
+## Template de entrada no CHANGELOG
+
+```markdown
+## [Unreleased]
+
+### Added / Fixed / Changed / Removed
+
+#### Módulo impactado (api/ ou app/)
+
+- **`NomeDoArquivo.ts`** — descrição objetiva do que foi adicionado/corrigido e por quê
+- **`OutroArquivo.tsx`** — idem
+```
+
+## Regras
+
+* Toda entrada deve referenciar os arquivos afetados
+* Descrever o problema e a solução, não apenas "foi ajustado"
+* Entradas de `Added`, `Fixed`, `Changed` e `Removed` são separadas por tipo
+* Cada feature deve ter escopo de módulo identificado (`auth`, `sessions`, `messaging`, `chat`, `contacts`, etc.)
+
+---
+
+# 33. Documentação de Release (OBRIGATÓRIO)
+
+Toda `release/vX.Y.Z` DEVE ter sua seção própria no `CHANGELOG.md`.
+
+## Template de seção de release
+
+```markdown
+## [X.Y.Z] — YYYY-MM-DD — Título descritivo da release
+
+### Added
+
+#### Backend — [descrição do conjunto de features]
+
+- **`Arquivo.ts`** — o quê e por quê
+
+#### Frontend — [descrição]
+
+- **`Componente.tsx`** — o quê e por quê
+
+### Fixed
+
+- **`Arquivo.ts`** — bug corrigido e causa raiz
+
+### Changed
+
+- **`Arquivo.ts`** — o que mudou e impacto
+
+### Breaking Changes (se houver)
+
+- Descrever claramente qualquer mudança de contrato de API, schema Prisma ou evento interno
+- Indicar migração necessária (ex: nova migration Prisma)
+```
+
+## Regras
+
+* Seção criada junto com a branch `release/vX.Y.Z`
+* Atualizada durante estabilização
+* Congelada ao criar a TAG
+* Somente features/fixes já em `develop` podem entrar
+* Breaking changes documentados com plano de migração
+
+---
+
+# 34. Padrão de Commits
+
+**Formato**: `tipo(escopo): descrição curta`
+
+**Tipos:**
+
+* `feat`: nova funcionalidade
+* `fix`: correção de bug
+* `refactor`: refatoração sem impacto funcional
+* `chore`: tarefas de manutenção (deps, build, infra)
+* `docs`: documentação
+* `perf`: melhoria de performance
+* `test`: testes
+* `build`: configuração de build/CI
+* `ci`: pipelines e deploy
+
+**Escopos sugeridos:** `auth`, `sessions`, `messaging`, `chat`, `contacts`, `campaigns`, `flows`, `automation`, `assistants`, `metrics`, `panel`, `api`, `prisma`, `baileys`
+
+**Exemplos:**
+
+```
+feat(chat): adiciona funcionalidade Responder com preview de citação
+fix(messaging): corrige crash ao responder mensagem de imagem no Baileys
+refactor(sessions): extrai lógica de reconexão para ReconnectSessionUseCase
+chore(deps): atualiza @whiskeysockets/baileys para versão X.Y.Z
+fix(chat): corrige bloco de resposta sumindo após envio (substituição otimística)
+```
+
+**Proibido:**
+
+* `update`, `ajustes`, `fix bug`, `correções diversas`, `WIP`, `teste`
+* Commits gigantes que misturam features não relacionadas
+
+---
+
+# 35. Padrão de Pull Requests
+
+**Título**: `[TIPO] Descrição clara do que foi feito`
+
+**Descrição obrigatória:**
+
+```markdown
+## O quê
+
+[Descrição do que foi implementado/corrigido]
+
+## Por quê
+
+[Motivo / problema resolvido / issue referenciada]
+
+## Como
+
+[Abordagem técnica resumida: camadas tocadas, padrões usados]
+
+## Impacto
+
+- Módulos: [listar: auth / sessions / messaging / chat / etc.]
+- Arquivos principais: [listar]
+- Breaking change: [Sim / Não]
+- Migration Prisma necessária: [Sim / Não]
+- Restart da API necessário: [Sim / Não]
+
+## Checklist
+
+- [ ] `tsc --noEmit` sem erros na `api/`
+- [ ] `tsc --noEmit` sem erros na `app/`
+- [ ] Smoke test manual passou
+- [ ] CHANGELOG.md atualizado
+- [ ] Multi-tenancy preservado (consultas tenant-aware têm `tenantId`)
+- [ ] Nenhum model Prisma exposto fora da infra
+- [ ] Nenhuma chamada Baileys fora do adapter
+```
+
+---
+
+# 36. Proibições Absolutas de Versionamento e Processo
+
+1. **Merge em `develop`** sem:
+   - Build TypeScript passando (`tsc --noEmit`)
+   - Smoke test validado
+   - CHANGELOG.md atualizado
+
+2. **Merge em `main`** sem:
+   - TAG criada
+   - Seção de release no CHANGELOG.md completa
+   - QA final aprovado
+
+3. **Criar TAG** fora do `main`
+
+4. **Alterar contrato de API** (request/response HTTP, schema Prisma, evento interno) sem:
+   - Atualizar emissor E consumidor
+   - Documentar no CHANGELOG.md
+   - Criar migration Prisma versionada (se banco impactado)
+
+5. **Chamar Baileys fora do adapter** em `api/src/modules/messaging/infrastructure/engines/baileys/`
+
+6. **Chamar Prisma fora da camada de infraestrutura**
+
+7. **Alterar schema Prisma** sem:
+   - Criar migration versionada e descritiva (`prisma migrate dev --name descricao`)
+   - Jamais editar migration já aplicada em produção
+
+8. **Criar consulta tenant-aware** sem filtro de `tenantId`
+
+9. **Fazer deploy** de versão sem TAG e sem entrada correspondente no CHANGELOG.md

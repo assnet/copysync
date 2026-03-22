@@ -42,6 +42,10 @@ export interface ChatConversationApiDto {
   contact: ChatContactApiDto;
   session: ChatSessionRefApiDto | null;
   assignedUser: { id: string; name: string } | null;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupName?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 export interface ChatMessageApiDto {
@@ -59,8 +63,18 @@ export interface ChatMessageApiDto {
   status: ApiMessageStatus;
   isDeleted: boolean;
   quotedMessageId: string | null;
+  quotedMessage?: {
+    id: string;
+    type: ApiMessageType;
+    content: string | null;
+    mediaUrl: string | null;
+    direction: ApiMessageDirection;
+    isDeleted: boolean;
+  } | null;
   sentAt: string;
   createdAt: string;
+  fromParticipant?: string | null;
+  fromParticipantName?: string | null;
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
@@ -83,6 +97,7 @@ export interface UpdateConversationRequest {
   queueName?: string | null;
   tags?: string[];
   notes?: string | null;
+  autoDownloadMedia?: boolean;
 }
 
 // ── Adapters: API → frontend types ───────────────────────────────────────────
@@ -165,11 +180,26 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
     assignedTo:    dto.assignedUser?.name ?? null,
     notes:         dto.notes ?? '',
     queue:         dto.queueName,
+    isGroup:       dto.isGroup ?? false,
+    groupJid:      dto.groupJid ?? null,
+    groupName:     dto.groupName ?? null,
+    autoDownloadMedia: dto.autoDownloadMedia ?? true,
   };
 }
 
 export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
   const dir = toMessageDirection(dto.direction);
+  const quotedMessage = dto.quotedMessage
+    ? {
+        id:        dto.quotedMessage.id,
+        type:      dto.quotedMessage.type.toLowerCase() as ChatMessage['type'],
+        body:      dto.quotedMessage.content,
+        mediaUrl:  dto.quotedMessage.mediaUrl,
+        direction: toMessageDirection(dto.quotedMessage.direction) === 'system' ? ('out' as const) : (toMessageDirection(dto.quotedMessage.direction) as 'in' | 'out'),
+        isDeleted: dto.quotedMessage.isDeleted,
+      }
+    : undefined;
+
   return {
     id:              dto.id,
     conversationId:  dto.conversationId,
@@ -185,5 +215,8 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     isEvent:         dto.direction === 'SYSTEM',
     isDeleted:       dto.isDeleted,
     quotedMessageId: dto.quotedMessageId,
+    quotedMessage,
+    fromParticipant:     dto.fromParticipant ?? null,
+    fromParticipantName: dto.fromParticipantName ?? null,
   };
 }

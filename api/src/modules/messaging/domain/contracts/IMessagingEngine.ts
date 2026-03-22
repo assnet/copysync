@@ -27,12 +27,28 @@ export interface LogoutSessionInput {
   tenantId: string;
 }
 
+export interface QuotedMessageRef {
+  /** WhatsApp stanzaId da mensagem citada (key.id no Baileys) */
+  externalId: string;
+  /** Telefone/JID do contato da conversa */
+  remoteJid: string;
+  /** true se a mensagem citada foi enviada por nós */
+  fromMe: boolean;
+  /** Corpo de texto para o preview de contexto */
+  body: string | null;
+  /** Tipo da mensagem citada — usado para montar o proto.IMessage correto */
+  type: string;
+}
+
 export interface SendTextMessageInput {
   sessionId: string;
   tenantId: string;
   to: string;
   body: string;
+  quotedMessage?: QuotedMessageRef | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export type MediaType = 'image' | 'video' | 'audio' | 'document' | 'sticker';
 

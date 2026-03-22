@@ -16,6 +16,8 @@ export interface HistoryMessageItem {
   body: string | null;
   /** Tipo detectado da mensagem */
   msgType?: ChatMessageType;
+  /** URL local da mídia (já baixada do CDN), quando disponível */
+  mediaUrl?: string | null;
   mimeType?: string | null;
   fileName?: string | null;
   durationSeconds?: number | null;
@@ -25,6 +27,16 @@ export interface HistoryMessageItem {
   fromMe: boolean;
   /** Timestamp original da mensagem */
   timestamp: Date;
+  /** true = mensagem de grupo */
+  isGroup?: boolean;
+  /** JID do grupo (sem @g.us), quando isGroup=true */
+  groupJid?: string;
+  /** Nome do grupo, quando isGroup=true */
+  groupName?: string;
+  /** Telefone do participante que enviou (sem @s.whatsapp.net), em grupos */
+  participant?: string;
+  /** Nome do participante que enviou, em grupos */
+  participantName?: string;
 }
 
 export interface IngestHistorySyncInput {
@@ -98,26 +110,46 @@ export class IngestHistorySyncUseCase {
         const existing = await this.messageRepo.findByExternalId(item.externalMessageId, tenantId);
         if (existing) continue;
 
-        // Contato
-        // Quando fromMe=true, pushName é o nome do próprio usuário — não do contato
-        const contact = await this.contactRepo.findOrCreate({
-          tenantId,
-          phone: item.from,
-          name: (!item.fromMe && item.fromName) ? item.fromName : item.from,
-        });
+        let conversationId: string;
 
-        // Conversa ativa ou nova
-        let conversation = await this.conversationRepo.findActiveByContactAndSession(
-          contact.id,
-          sessionId,
-          tenantId,
-        );
-        if (!conversation) {
-          conversation = await this.conversationRepo.create({
-            tenantId,
+        if (item.isGroup && item.groupJid) {
+          // Conversa de grupo — não usa contato, usa groupJid
+          let conversation = await this.conversationRepo.findActiveByGroupAndSession(
+            item.groupJid,
             sessionId,
-            contactId: contact.id,
+            tenantId,
+          );
+          if (!conversation) {
+            conversation = await this.conversationRepo.create({
+              tenantId,
+              sessionId,
+              isGroup: true,
+              groupJid: item.groupJid,
+              groupName: item.groupName,
+            });
+          }
+          conversationId = conversation.id;
+        } else {
+          // Conversa individual — usa contato
+          const contact = await this.contactRepo.findOrCreate({
+            tenantId,
+            phone: item.from,
+            name: (!item.fromMe && item.fromName) ? item.fromName : item.from,
           });
+
+          let conversation = await this.conversationRepo.findActiveByContactAndSession(
+            contact.id,
+            sessionId,
+            tenantId,
+          );
+          if (!conversation) {
+            conversation = await this.conversationRepo.create({
+              tenantId,
+              sessionId,
+              contactId: contact.id,
+            });
+          }
+          conversationId = conversation.id;
         }
 
         const direction = item.fromMe
@@ -127,10 +159,11 @@ export class IngestHistorySyncUseCase {
 
         await this.messageRepo.create({
           tenantId,
-          conversationId: conversation.id,
+          conversationId,
           direction,
           type,
           content: item.body,
+          mediaUrl: item.mediaUrl ?? null,
           mimeType: item.mimeType ?? null,
           fileName: item.fileName ?? null,
           durationSeconds: item.durationSeconds ?? null,
@@ -138,13 +171,15 @@ export class IngestHistorySyncUseCase {
           quotedMessageId: item.quotedMessageId ?? null,
           externalMessageId: item.externalMessageId,
           sentAt: item.timestamp,
+          fromParticipant: item.participant ?? null,
+          fromParticipantName: item.participantName ?? null,
         });
 
         // Mantém apenas a mensagem mais recente por conversa
         const preview = buildHistoryPreview(type, item.body);
-        const current = latestPerConversation.get(conversation.id);
+        const current = latestPerConversation.get(conversationId);
         if (!current || item.timestamp > current.at) {
-          latestPerConversation.set(conversation.id, { preview, at: item.timestamp });
+          latestPerConversation.set(conversationId, { preview, at: item.timestamp });
         }
       } catch (err) {
         log.warn({ err, externalMessageId: item.externalMessageId }, 'Failed to ingest history message');

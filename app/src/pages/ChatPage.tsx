@@ -123,10 +123,13 @@ export default function ChatPage() {
                 status:            (message.status ?? 'SENT') as import('@/types/chat.api.types').ApiMessageStatus,
                 externalMessageId: null,
               });
-              setMessages((prev) => ({
-                ...prev,
-                [conversationId]: [...(prev[conversationId] ?? []), frontendMsg],
-              }));
+              setMessages((prev) => {
+                const cur = prev[conversationId] ?? [];
+                return {
+                  ...prev,
+                  [conversationId]: resolveQuotedMessages([...cur, frontendMsg]),
+                };
+              });
               // Dispara scroll ao fundo para nova mensagem recebida
               setScrollToBottom((v) => v + 1);
             }
@@ -180,6 +183,17 @@ export default function ChatPage() {
         if (payload.event === 'chat.presence.updated') {
           const { phone, presence } = payload.data;
           setPresenceMap((prev) => ({ ...prev, [phone]: presence }));
+        }
+
+        if (payload.event === 'chat.contact.updated') {
+          const { phone, avatarUrl } = payload.data;
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.contact.phone === phone
+                ? { ...c, contact: { ...c.contact, avatarUrl } }
+                : c,
+            ),
+          );
         }
       },
       [loadConversations],
@@ -294,12 +308,12 @@ export default function ChatPage() {
         .sendMessage(selectedId, text, quotedMessageId ?? undefined)
         .then((sent) => {
           const realMsg = apiMessageToFrontend(sent);
-          setMessages((prev) => ({
-            ...prev,
-            [selectedId]: (prev[selectedId] ?? []).map((m) =>
+          setMessages((prev) => {
+            const updated = (prev[selectedId] ?? []).map((m) =>
               m.id === tmpId ? realMsg : m,
-            ),
-          }));
+            );
+            return { ...prev, [selectedId]: resolveQuotedMessages(updated) };
+          });
           setConversations((prev) =>
             prev.map((c) =>
               c.id === selectedId
@@ -338,13 +352,25 @@ export default function ChatPage() {
     [selectedId],
   );
 
+  // Abre a conversa direta com um participante de grupo pelo telefone
+  const handleParticipantClick = useCallback(
+    (phone: string, _name: string) => {
+      const conv = conversations.find((c) => c.contact.phone === phone && !c.isGroup);
+      if (conv) {
+        handleSelectConversation(conv.id);
+      }
+      // Se não tiver conversa direta com este contato, não faz nada por enquanto
+    },
+    [conversations, handleSelectConversation],
+  );
+
   return (
     <Box
       sx={{
         display: 'flex',
         height: CHAT_HEIGHT,
         overflow: 'hidden',
-        borderRadius: 1,
+        borderRadius: 0, 
         border: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.paper',
@@ -379,6 +405,7 @@ export default function ChatPage() {
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
           scrollToBottom={scrollToBottom}
+          onParticipantClick={handleParticipantClick}
         />
       ) : (
         <EmptyConversationState />

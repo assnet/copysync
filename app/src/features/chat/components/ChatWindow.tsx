@@ -17,6 +17,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   scrollToBottom?: number;
+  onParticipantClick?: (phone: string, name: string) => void;
 }
 
 export function ChatWindow({
@@ -31,6 +32,7 @@ export function ChatWindow({
   isLoadingMore = false,
   onLoadMore,
   scrollToBottom = 0,
+  onParticipantClick,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
@@ -86,6 +88,7 @@ export function ChatWindow({
         onLoadMore={onLoadMore}
         scrollToBottom={scrollToBottom}
         onReply={handleReply}
+        onParticipantClick={onParticipantClick}
       />
 
       <MessageComposer

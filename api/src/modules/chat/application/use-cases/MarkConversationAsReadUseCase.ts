@@ -39,8 +39,15 @@ export class MarkConversationAsReadUseCase {
     // 2 — Envia receipts ao WhatsApp (double blue tick)
     if (!this.engine || !conversation.sessionId) return;
 
-    const contact = await this.contactRepo.findById(conversation.contactId, tenantId);
-    if (!contact) return;
+    // Para grupos: usa groupJid@g.us; para individuais: usa phone do contato
+    let remoteJid: string | undefined;
+    if (conversation.isGroup && conversation.groupJid) {
+      remoteJid = `${conversation.groupJid}@g.us`;
+    } else if (conversation.contactId) {
+      const contact = await this.contactRepo.findById(conversation.contactId, tenantId);
+      remoteJid = contact?.phone;
+    }
+    if (!remoteJid) return;
 
     // Busca as mensagens mais recentes para encontrar a última INBOUND
     // (basta enviar receipt da última — WA marca todas as anteriores como lidas)
@@ -61,7 +68,7 @@ export class MarkConversationAsReadUseCase {
       await this.engine.markMessagesRead({
         sessionId: conversation.sessionId,
         tenantId,
-        remoteJid: contact.phone,
+        remoteJid,
         messageIds: [lastInbound.externalMessageId],
       });
     } catch (err) {

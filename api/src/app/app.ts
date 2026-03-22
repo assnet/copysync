@@ -71,15 +71,15 @@ export async function buildApp() {
     openapi: {
       openapi: '3.0.3',
       info: {
-        title: 'Washoot API',
+        title: 'ChatPrime API',
         description:
-          'API REST para a plataforma Washoot — mensageria, CRM, automação e assistentes de IA.',
+          'API REST para a plataforma ChatPrime — mensageria, CRM, automação e assistentes de IA.',
         version: '0.2.0',
-        contact: { name: 'Washoot', email: 'dev@washoot.com' },
+        contact: { name: 'ChatPrime', email: 'dev@chatprime.com' },
       },
       servers: [
         { url: `http://localhost:${env.PORT}`, description: 'Local' },
-        { url: 'https://washoot-api.onrender.com', description: 'Produção' },
+        { url: 'https://chatprime-api.onrender.com', description: 'Produção' },
       ],
       components: {
         securitySchemes: {

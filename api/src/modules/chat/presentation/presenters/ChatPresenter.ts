@@ -23,6 +23,10 @@ export class ChatPresenter {
       contact: dto.contact,
       session: dto.session,
       assignedUser: dto.assignedUser,
+      isGroup: dto.isGroup ?? false,
+      groupJid: dto.groupJid ?? null,
+      groupName: dto.groupName ?? null,
+      autoDownloadMedia: dto.autoDownloadMedia ?? true,
     };
   }
 
@@ -44,8 +48,11 @@ export class ChatPresenter {
       status: dto.status,
       isDeleted: dto.isDeleted,
       quotedMessageId: dto.quotedMessageId,
+      quotedMessage: dto.quotedMessage ?? null,
       sentAt: dto.sentAt,
       createdAt: dto.createdAt,
+      fromParticipant: dto.fromParticipant,
+      fromParticipantName: dto.fromParticipantName,
     };
   }
 

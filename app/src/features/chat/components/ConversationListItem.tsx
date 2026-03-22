@@ -1,6 +1,7 @@
 import { Box, Avatar, Typography, Badge, Chip, alpha, useTheme } from '@mui/material';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import type { ChatConversation } from '../types';
 import { getStatusConfig, formatConversationTime, formatPhone } from '../utils';
 
@@ -17,6 +18,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
   const { contact, status, unreadCount, lastMessage, lastMessageAt, tags, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
   const hasUnread = unreadCount > 0;
+  const isGroup = conversation.isGroup ?? false;
 
   return (
     <Box
@@ -48,12 +50,12 @@ export function ConversationListItem({ conversation, selected, onClick, presence
           sx={{
             width: 42,
             height: 42,
-            bgcolor: contact.avatarColor ?? 'primary.main',
+            bgcolor: isGroup ? 'success.main' : (contact.avatarColor ?? 'primary.main'),
             fontSize: 15,
             fontWeight: 700,
           }}
         >
-          {contact.initials}
+          {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 22 }} /> : contact.initials}
         </Avatar>
         {/* Status dot */}
         <Box

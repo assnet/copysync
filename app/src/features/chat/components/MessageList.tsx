@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { Box, CircularProgress, Typography, alpha, useTheme } from '@mui/material';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { Box, CircularProgress, Typography, Fab, alpha, useTheme } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import type { ChatMessage } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { formatDateSeparator } from '../utils';
@@ -12,6 +13,7 @@ interface Props {
   onLoadMore?: () => void;
   scrollToBottom?: number;
   onReply?: (message: ChatMessage) => void;
+  onParticipantClick?: (phone: string, name: string) => void;
 }
 
 function isSameDay(a: string, b: string) {
@@ -61,11 +63,13 @@ export function MessageList({
   onLoadMore,
   scrollToBottom = 0,
   onReply,
+  onParticipantClick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevScrollHeight = useRef<number>(0);
   const wasLoadingMore = useRef(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // Scroll to bottom whenever the counter increments
   useEffect(() => {
@@ -87,15 +91,23 @@ export function MessageList({
     wasLoadingMore.current = isLoadingMore;
   }, [isLoadingMore, messages]);
 
-  // Detect scroll near top → load more
+  // Detect scroll near top → load more; detect distance from bottom → show FAB
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
-    if (!el || !hasMore || isLoadingMore || !onLoadMore) return;
-    if (el.scrollTop < 80) {
+    if (!el) return;
+    // Mostra botão quando o usuário subiu mais de 300px do fundo
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBtn(distFromBottom > 300);
+    // Carrega mais mensagens ao chegar perto do topo
+    if (hasMore && !isLoadingMore && onLoadMore && el.scrollTop < 80) {
       prevScrollHeight.current = el.scrollHeight;
       onLoadMore();
     }
   }, [hasMore, isLoadingMore, onLoadMore]);
+
+  const handleScrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   return (
     <Box
@@ -133,12 +145,36 @@ export function MessageList({
           return (
             <Box key={msg.id}>
               {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
-              <MessageBubble message={msg} onReply={onReply} />
+              <MessageBubble message={msg} onReply={onReply} onParticipantClick={onParticipantClick} />
             </Box>
           );
         })
       )}
       <div ref={bottomRef} />
+
+      {/* Botão flutuante para rolar ao fundo */}
+      {showScrollBtn && (
+        <Fab
+          size="small"
+          onClick={handleScrollToBottom}
+          title="Ir para as mensagens mais recentes"
+          sx={{
+            position: 'sticky',
+            bottom: 12,
+            alignSelf: 'flex-end',
+            mr: 2,
+            zIndex: 10,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: 3,
+            color: 'text.secondary',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <KeyboardArrowDownIcon />
+        </Fab>
+      )}
     </Box>
   );
 }

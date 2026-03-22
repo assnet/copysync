@@ -4,7 +4,8 @@ export interface ChatConversationProps {
   id: string;
   tenantId: string;
   sessionId: string | null;
-  contactId: string;
+  /** null para conversas de grupo */
+  contactId: string | null;
   externalChatId: string | null;
   channel: string;
   status: ConversationStatus;
@@ -15,6 +16,11 @@ export interface ChatConversationProps {
   queueName: string | null;
   tags: string[];
   notes: string | null;
+  isGroup: boolean;
+  groupJid: string | null;
+  groupName: string | null;
+  groupAvatarUrl: string | null;
+  autoDownloadMedia: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,7 +29,8 @@ export class ChatConversation {
   readonly id: string;
   readonly tenantId: string;
   readonly sessionId: string | null;
-  readonly contactId: string;
+  /** null para conversas de grupo */
+  readonly contactId: string | null;
   readonly externalChatId: string | null;
   readonly channel: string;
   readonly status: ConversationStatus;
@@ -34,6 +41,11 @@ export class ChatConversation {
   readonly queueName: string | null;
   readonly tags: string[];
   readonly notes: string | null;
+  readonly isGroup: boolean;
+  readonly groupJid: string | null;
+  readonly groupName: string | null;
+  readonly groupAvatarUrl: string | null;
+  readonly autoDownloadMedia: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -52,6 +64,11 @@ export class ChatConversation {
     this.queueName = props.queueName;
     this.tags = props.tags;
     this.notes = props.notes;
+    this.isGroup = props.isGroup;
+    this.groupJid = props.groupJid;
+    this.groupName = props.groupName;
+    this.groupAvatarUrl = props.groupAvatarUrl;
+    this.autoDownloadMedia = props.autoDownloadMedia;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

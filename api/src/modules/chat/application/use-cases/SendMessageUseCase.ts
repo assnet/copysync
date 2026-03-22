@@ -5,7 +5,7 @@ import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMess
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { logger } from '../../../../shared/logger/logger';
-import type { ChatMessageDto } from './ListMessagesUseCase';
+import type { ChatMessageDto, QuotedMessageSummary } from './ListMessagesUseCase';
 
 export interface SendMessageInput {
   conversationId: string;
@@ -26,8 +26,26 @@ export class SendMessageUseCase {
     const conv = await this.conversationRepo.findById(input.conversationId, input.tenantId);
     if (!conv) throw new NotFoundError('Conversation', input.conversationId);
 
-    const contact = await this.contactRepo.findById(conv.contactId, input.tenantId);
-    if (!contact) throw new NotFoundError('Contact', conv.contactId);
+    // Para grupos, não há contato — usa groupJid@g.us como destino
+    const isGroup = conv.isGroup ?? false;
+    let recipientPhone: string;
+    let contactPhone: string | null = null;
+
+    if (isGroup) {
+      if (!conv.groupJid) throw new NotFoundError('GroupJid', input.conversationId);
+      recipientPhone = `${conv.groupJid}@g.us`;
+    } else {
+      const contact = await this.contactRepo.findById(conv.contactId ?? '', input.tenantId);
+      if (!contact) throw new NotFoundError('Contact', conv.contactId ?? '');
+      recipientPhone = contact.phone;
+      contactPhone = contact.phone;
+    }
+
+    // ── Busca mensagem citada antes do envio (usada na engine e no DTO) ────
+    let quotedEntity: Awaited<ReturnType<typeof this.messageRepo.findById>> | null = null;
+    if (input.quotedMessageId) {
+      quotedEntity = await this.messageRepo.findById(input.quotedMessageId, input.tenantId);
+    }
 
     // ── Envia via WhatsApp e obtém o messageId externo ────────────────────
     let externalMessageId: string | null = null;
@@ -37,8 +55,17 @@ export class SendMessageUseCase {
         const result = await this.engine.sendTextMessage({
           sessionId: conv.sessionId,
           tenantId:  input.tenantId,
-          to:        contact.phone,
+          to:        recipientPhone,
           body:      input.content,
+          quotedMessage: quotedEntity?.externalMessageId
+            ? {
+                externalId: quotedEntity.externalMessageId,
+                remoteJid:  isGroup ? recipientPhone : (contactPhone ?? recipientPhone),
+                fromMe:     quotedEntity.direction === ChatMessageDirection.OUTBOUND,
+                body:       quotedEntity.content,
+                type:       quotedEntity.type,
+              }
+            : null,
         });
         externalMessageId = result.messageId;
       } catch (err) {
@@ -73,6 +100,18 @@ export class SendMessageUseCase {
       },
     );
 
+    // Monta resumo da mensagem citada a partir da entidade já buscada
+    const quotedMessage: QuotedMessageSummary | null = quotedEntity
+      ? {
+          id:        quotedEntity.id,
+          type:      quotedEntity.type,
+          content:   quotedEntity.content,
+          mediaUrl:  quotedEntity.mediaUrl,
+          direction: quotedEntity.direction,
+          isDeleted: quotedEntity.isDeleted,
+        }
+      : null;
+
     return {
       id:                message.id,
       conversationId:    message.conversationId,
@@ -88,8 +127,11 @@ export class SendMessageUseCase {
       status:            message.status,
       isDeleted:         message.isDeleted,
       quotedMessageId:   message.quotedMessageId,
+      quotedMessage,
       sentAt:            message.sentAt?.toISOString() ?? null,
       createdAt:         message.createdAt.toISOString(),
+      fromParticipant:     message.fromParticipant,
+      fromParticipantName: message.fromParticipantName,
     };
   }
 }
