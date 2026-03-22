@@ -1,18 +1,18 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: washot_postgres
+    container_name: chatprime_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: washot
-      POSTGRES_PASSWORD: washot
-      POSTGRES_DB: washot
+      POSTGRES_USER: chatprime
+      POSTGRES_PASSWORD: chatprime
+      POSTGRES_DB: chatprime
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U washot -d washot"]
+      test: ["CMD-SHELL", "pg_isready -U chatprime -d chatprime"]
       interval: 5s
       timeout: 5s
       retries: 10

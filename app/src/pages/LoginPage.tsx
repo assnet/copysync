@@ -109,7 +109,7 @@ export function LoginPage() {
               <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 22, lineHeight: 1 }}>W</Typography>
             </Box>
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, letterSpacing: -0.5 }}>
-              Washoot
+              ChatPrime
             </Typography>
           </Box>
 
@@ -187,7 +187,7 @@ export function LoginPage() {
             >
               <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 20, lineHeight: 1 }}>W</Typography>
             </Box>
-            <Typography variant="h5" fontWeight={800} letterSpacing={-0.5}>Washoot</Typography>
+            <Typography variant="h5" fontWeight={800} letterSpacing={-0.5}>ChatPrime</Typography>
           </Box>
 
           <Typography variant="h5" fontWeight={700} mb={0.5}>
@@ -307,7 +307,7 @@ export function LoginPage() {
           )}
 
           <Typography variant="caption" color="text.disabled" display="block" textAlign="center" mt={3}>
-            © {new Date().getFullYear()} Washoot · Todos os direitos reservados
+            © {new Date().getFullYear()} ChatPrime · Todos os direitos reservados
           </Typography>
         </Box>
       </Box>

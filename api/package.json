@@ -1,7 +1,7 @@
 {
-  "name": "washoot-api",
+  "name": "ChatPrime-api",
   "version": "0.1.0",
-  "description": "Washoot API — Fastify + TypeScript + Prisma + PostgreSQL",
+  "description": "ChatPrime API — Fastify + TypeScript + Prisma + PostgreSQL",
   "private": true,
   "scripts": {
     "dev": "tsx watch --env-file=.env src/app/server.ts --host",
@@ -42,5 +42,16 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "protobufjs",
+      "sharp",
+      "@whiskeysockets/baileys"
+    ]
   }
 }

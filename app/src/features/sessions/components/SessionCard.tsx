@@ -50,6 +50,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
         case 'connect': {
           const res = await sessionService.connect(session.id);
           onStatusChange(session.id, res.status);
+          onRequestQr({ ...session, status: res.status }); // abre o dialog de QR com status atualizado
           break;
         }
         case 'disconnect': {
