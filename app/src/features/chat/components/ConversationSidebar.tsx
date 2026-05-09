@@ -4,6 +4,7 @@ import AddIcon from '@mui/icons-material/Add';
 import type { ChatConversation, ConversationFilter } from '../types';
 import { ConversationListItem } from './ConversationListItem';
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
+import { formatPhone } from '../utils';
 
 interface FilterOption {
   value: ConversationFilter;
@@ -33,6 +34,9 @@ interface Props {
   conversations: ChatConversation[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  sessions: Array<{ id: string; name: string; phone: string | null }>;
+  selectedSessionId: string | null;
+  onSessionChange: (sessionId: string | null) => void;
   search: string;
   onSearchChange: (value: string) => void;
   filter: ConversationFilter;
@@ -45,6 +49,9 @@ export function ConversationSidebar({
   conversations,
   selectedId,
   onSelect,
+  sessions,
+  selectedSessionId,
+  onSessionChange,
   search,
   onSearchChange,
   filter,
@@ -74,6 +81,11 @@ export function ConversationSidebar({
   });
 
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
+
+  const renderSessionLabel = (session: { name: string; phone: string | null }): string => {
+    const phone = session.phone ? formatPhone(session.phone) : null;
+    return phone ? `${session.name} · ${phone}` : session.name;
+  };
 
   return (
     <Box
@@ -134,6 +146,65 @@ export function ConversationSidebar({
             '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: 13 },
           }}
         />
+      </Box>
+
+      <Box sx={{ px: 1.5, pb: 1.25, flexShrink: 0 }}>
+        <Typography
+          variant="caption"
+          sx={{ px: 0.5, mb: 0.75, display: 'block', color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7 }}
+        >
+          Sessões ativas
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.75, overflowX: 'auto', '&::-webkit-scrollbar': { display: 'none' } }}>
+          <Chip
+            label="Todos"
+            size="small"
+            onClick={() => onSessionChange(null)}
+            sx={{
+              height: 28,
+              fontSize: 12,
+              cursor: 'pointer',
+              fontWeight: selectedSessionId === null ? 700 : 500,
+              bgcolor: selectedSessionId === null
+                ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.1)
+                : alpha(theme.palette.text.primary, 0.05),
+              color: selectedSessionId === null ? 'primary.main' : 'text.secondary',
+              border: selectedSessionId === null
+                ? `1px solid ${alpha(theme.palette.primary.main, 0.3)}`
+                : '1px solid transparent',
+              flexShrink: 0,
+            }}
+          />
+          {sessions.map((session) => {
+            const active = selectedSessionId === session.id;
+            return (
+              <Chip
+                key={session.id}
+                label={renderSessionLabel(session)}
+                size="small"
+                onClick={() => onSessionChange(session.id)}
+                sx={{
+                  height: 28,
+                  maxWidth: 220,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  fontWeight: active ? 700 : 500,
+                  bgcolor: active
+                    ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.1)
+                    : alpha(theme.palette.text.primary, 0.05),
+                  color: active ? 'primary.main' : 'text.secondary',
+                  border: active ? `1px solid ${alpha(theme.palette.primary.main, 0.3)}` : '1px solid transparent',
+                  flexShrink: 0,
+                  '& .MuiChip-label': {
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  },
+                }}
+              />
+            );
+          })}
+        </Box>
       </Box>
 
       {/* Filters */}

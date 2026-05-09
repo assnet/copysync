@@ -26,7 +26,7 @@ export class ChatPresenter {
       isGroup: dto.isGroup ?? false,
       groupJid: dto.groupJid ?? null,
       groupName: dto.groupName ?? null,
-      autoDownloadMedia: dto.autoDownloadMedia ?? true,
+      autoDownloadMedia: dto.autoDownloadMedia ?? false,
     };
   }
 

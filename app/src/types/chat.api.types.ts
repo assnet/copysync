@@ -183,7 +183,7 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
     isGroup:       dto.isGroup ?? false,
     groupJid:      dto.groupJid ?? null,
     groupName:     dto.groupName ?? null,
-    autoDownloadMedia: dto.autoDownloadMedia ?? true,
+    autoDownloadMedia: dto.autoDownloadMedia ?? false,
   };
 }
 

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Box } from '@mui/material';
 import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
+import { sessionService } from '@/services/session.service';
 import {
   apiConversationToFrontend,
   apiMessageToFrontend,
@@ -14,6 +15,7 @@ import { EmptyConversationState } from '@/features/chat/components/EmptyConversa
 import { ConversationDetailsPanel } from '@/features/chat/components/ConversationDetailsPanel';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
+import type { SessionItem, SessionStatus } from '@/types/api.types';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
 const CHAT_HEIGHT = {
@@ -45,8 +47,10 @@ function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
   const [detailsOpen, setDetailsOpen] = useState(true);
@@ -61,20 +65,47 @@ export default function ChatPage() {
   // Trigger para rolar ao fundo (incrementa a cada evento que exige scroll)
   const [scrollToBottom, setScrollToBottom] = useState(0);
 
-  // Carrega todas as conversas uma vez ao montar.
-  // Filtragem por status e pesquisa é feita localmente pelo ConversationSidebar.
+  const loadSessions = useCallback(() => {
+    sessionService
+      .list()
+      .then((data) => setSessions(data.sessions ?? []))
+      .catch((err: unknown) => console.error('Erro ao carregar sessões do chat', err));
+  }, []);
+
+  // Carrega as conversas respeitando o filtro de sessão.
+  // Filtragem por status e pesquisa continua local no ConversationSidebar.
   const loadConversations = useCallback(() => {
     setLoadingConversations(true);
     chatService
-      .listConversations()
-      .then((items) => setConversations(items.map(apiConversationToFrontend)))
+      .listConversations(selectedSessionId ? { sessionId: selectedSessionId } : undefined)
+      .then((items) => {
+        const nextConversations = items.map(apiConversationToFrontend);
+        setConversations(nextConversations);
+        setSelectedId((current) => (
+          current && nextConversations.some((conversation) => conversation.id === current)
+            ? current
+            : null
+        ));
+      })
       .catch((err: unknown) => console.error('Erro ao carregar conversas', err))
       .finally(() => setLoadingConversations(false));
-  }, []);
+  }, [selectedSessionId]);
 
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  useEffect(() => {
+    if (selectedSessionId && !sessions.some((session) => session.id === selectedSessionId && session.status === 'CONNECTED')) {
+      setSelectedSessionId(null);
+    }
+  }, [sessions, selectedSessionId]);
+
+  const connectedSessions = sessions.filter((session) => session.status === 'CONNECTED');
 
   // ── Tempo real via WebSocket ───────────────────────────────────────────────
   useChatWebSocket(
@@ -195,8 +226,20 @@ export default function ChatPage() {
             ),
           );
         }
+
+        if (payload.event === 'chat.session.updated') {
+          const nextStatus = payload.data.status as SessionStatus;
+          setSessions((prev) =>
+            prev.map((session) => (
+              session.id === payload.data.sessionId
+                ? { ...session, status: nextStatus }
+                : session
+            )),
+          );
+          loadSessions();
+        }
       },
-      [loadConversations],
+      [loadConversations, loadSessions],
     ),
   );
 
@@ -383,6 +426,13 @@ export default function ChatPage() {
         conversations={conversations}
         selectedId={selectedId}
         onSelect={handleSelectConversation}
+        sessions={connectedSessions.map((session) => ({
+          id: session.id,
+          name: session.name,
+          phone: session.phone,
+        }))}
+        selectedSessionId={selectedSessionId}
+        onSessionChange={setSelectedSessionId}
         search={search}
         onSearchChange={setSearch}
         filter={filter}

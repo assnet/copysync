@@ -27,6 +27,7 @@ export class MessagingEngineFactory {
           sessionRepo,
           authStateRepo,
           chatContactRepo,
+          chatConversationRepo,
           historySyncUseCase,
         );
       default:

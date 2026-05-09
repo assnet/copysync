@@ -41,6 +41,7 @@ import {
   SessionNotConnectedError,
 } from '../../../../../shared/errors/internal/SessionErrors';
 import type { IChatContactRepository } from '../../../../chat/domain/contracts/IChatContactRepository';
+import type { IChatConversationRepository } from '../../../../chat/domain/contracts/IChatConversationRepository';
 import type { IngestHistorySyncUseCase, HistoryMessageItem } from '../../../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
 
@@ -51,11 +52,14 @@ const baileysLogger = appLogger.child({ module: 'baileys' });
 
 export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly registry = BaileysSessionRegistry.get();
+  private readonly groupMetadataCache = new Map<string, GroupMetadataSnapshot>();
+  private readonly groupMetadataPending = new Map<string, Promise<GroupMetadataSnapshot | null>>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly authStateRepo: ISessionAuthStateRepository,
     private readonly chatContactRepo: IChatContactRepository,
+    private readonly chatConversationRepo: IChatConversationRepository,
     private readonly historySyncUseCase: IngestHistorySyncUseCase,
   ) {}
 
@@ -87,6 +91,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       }
       this.registry.delete(sessionId);
     }
+    this.clearSessionGroupMetadata(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
   }
 
@@ -104,6 +109,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       entry.socket.end(undefined);
       this.registry.delete(sessionId);
     }
+    this.clearSessionGroupMetadata(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'LOGGED_OUT');
     internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId, tenantId });
   }
@@ -241,6 +247,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         const { shouldReconnect, error } = translateDisconnect(sessionId, lastDisconnect?.error);
         baileysLogger.warn({ sessionId, shouldReconnect, errorCode: error.code }, 'Session disconnected');
         this.registry.delete(sessionId);
+        this.clearSessionGroupMetadata(sessionId);
         internalEventBus.emit('SESSION_DISCONNECTED', {
           type: 'SESSION_DISCONNECTED', sessionId, tenantId, reason: error.code,
         });
@@ -274,7 +281,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         // 'append' = mensagens históricas recebidas durante reconnect / gap sync
         if (type === 'append') {
           setImmediate(async () => {
-            const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId);
+            const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId, tenantId);
             if (items.length > 0) {
               this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
             }
@@ -286,8 +293,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       for (const msg of messages) {
         const jidRaw = msg.key?.remoteJid;
         if (!jidRaw) continue;
-        // Skip group chats and broadcast lists
-        if (jidRaw.endsWith('@g.us') || jidRaw.endsWith('@broadcast')) continue;
+        if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
 
         // Resolve LID (Linked Identity) → JID real usando remoteJidAlt fornecido pelo Baileys.
         // Quando o contato usa privacidade de número, o remoteJid vem como @lid;
@@ -302,8 +308,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           jid = alt;
         }
 
+        const routing = await this.buildIncomingMessageRoutingInfo(msg, socket, sessionId, jid);
+        if (!routing) continue;
         const fromMe = msg.key.fromMe ?? false;
-        const from = jid.split('@')[0];
 
         // Extrai tipo, corpo e metadados da mensagem
         const extracted = extractBaileysMessage(msg.message ?? {});
@@ -312,7 +319,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         if (!extracted) continue;
 
         let mediaUrl: string | null = null;
-        if (MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)) {
+        if (
+          MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
+          && await this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId)
+        ) {
           mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
         }
 
@@ -320,8 +330,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           type: 'MESSAGE_RECEIVED',
           sessionId,
           tenantId,
-          from,
-          fromName: msg.pushName ?? undefined,
+          from: routing.from,
+          fromName: routing.fromName,
           body: extracted.body,
           msgType: extracted.msgType,
           mediaUrl,
@@ -331,12 +341,24 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           isDeleted: extracted.isDeleted,
           quotedMessageId: extracted.quotedMessageId,
           fromMe,
+          isGroup: routing.isGroup,
+          groupJid: routing.groupJid,
+          groupName: routing.groupName,
+          participant: routing.participant,
+          participantName: routing.participantName,
           externalMessageId: msg.key.id ?? undefined,
           raw: msg,
         });
 
         baileysLogger.info(
-          { sessionId, from, msgId: msg.key.id, msgType: extracted.msgType },
+          {
+            sessionId,
+            from: routing.from,
+            groupJid: routing.groupJid,
+            participant: routing.participant,
+            msgId: msg.key.id,
+            msgType: extracted.msgType,
+          },
           'Incoming message received',
         );
       }
@@ -374,7 +396,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
       setImmediate(async () => {
         // histMsgs é WAMessage[] (proto.IWebMessageInfo[]) — passar direto
-        const items = await this.mapMessagesToHistoryItems(histMsgs, socket, sessionId);
+        const items = await this.mapMessagesToHistoryItems(histMsgs, socket, sessionId, tenantId);
         if (items.length > 0) {
           baileysLogger.info(
             { sessionId, count: items.length },
@@ -439,13 +461,14 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   /**
    * Extrai HistoryMessageItem de mensagens brutas do Baileys.
-   * Filtra grupos, broadcasts, mensagens sem conteúdo e sem ID.
+   * Filtra broadcasts, mensagens sem conteúdo e sem ID.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async mapMessagesToHistoryItems(
     msgs: any[],
     socket: ReturnType<typeof makeWASocket>,
     sessionId: string,
+    tenantId: string,
   ): Promise<HistoryMessageItem[]> {
     const items: HistoryMessageItem[] = [];
     const now = Date.now();
@@ -454,7 +477,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const key = msg.key ?? msg?.message?.key;
       const jidRaw: string | undefined = key?.remoteJid;
       if (!jidRaw) continue;
-      if (jidRaw.endsWith('@g.us') || jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
+      if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
 
       // Resolve LID → JID real via remoteJidAlt (fornecido pelo Baileys)
       let jid = jidRaw;
@@ -471,9 +494,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const extracted = extractBaileysMessage(msgContent);
       if (!extracted) continue;
 
+      const routing = await this.buildIncomingMessageRoutingInfo(msg, socket, sessionId, jid, tenantId);
+      if (!routing) continue;
+
       const fromMe: boolean = key?.fromMe ?? false;
-      const phone = jid.split('@')[0];
-      const pushName: string | undefined = msg.pushName ?? msgContent?.pushName ?? undefined;
       const messageTimestamp = msg.messageTimestamp ?? msgContent?.messageTimestamp;
       const timestamp: Date = messageTimestamp
         ? new Date(Number(messageTimestamp) * 1000)
@@ -483,14 +507,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       if (
         MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
         && (now - timestamp.getTime()) < THIRTY_MIN_MS
+        && await this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId)
       ) {
         mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
       }
 
       items.push({
         externalMessageId: id,
-        from: phone,
-        fromName: pushName,
+        from: routing.from,
+        fromName: routing.fromName,
         body: extracted.body,
         msgType: extracted.msgType,
         mediaUrl,
@@ -501,9 +526,164 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         quotedMessageId: extracted.quotedMessageId,
         fromMe,
         timestamp,
+        isGroup: routing.isGroup,
+        groupJid: routing.groupJid,
+        groupName: routing.groupName,
+        participant: routing.participant,
+        participantName: routing.participantName,
       });
     }
     return items;
+  }
+
+  private async buildIncomingMessageRoutingInfo(
+    msg: proto.IWebMessageInfo,
+    socket: ReturnType<typeof makeWASocket>,
+    sessionId: string,
+    resolvedRemoteJid: string,
+    tenantId?: string,
+  ): Promise<IncomingMessageRoutingInfo | null> {
+    const rawRemoteJid = msg.key?.remoteJid;
+    if (!rawRemoteJid) return null;
+
+    const isGroup = rawRemoteJid.endsWith('@g.us');
+    if (!isGroup) {
+      return {
+        from: resolvedRemoteJid.split('@')[0],
+        fromName: msg.pushName ?? undefined,
+        isGroup: false,
+      };
+    }
+
+    const groupJid = rawRemoteJid.split('@')[0];
+    const groupMetadata = await this.getGroupMetadataSnapshot(
+      socket,
+      sessionId,
+      tenantId,
+      rawRemoteJid,
+      groupJid,
+    );
+
+    const participantJid = this.extractParticipantJid(msg);
+    const participant = participantJid
+      ? await this.resolveParticipantPhone(socket, participantJid)
+      : undefined;
+
+    return {
+      from: groupJid,
+      isGroup: true,
+      groupJid,
+      groupName: groupMetadata?.groupName ?? undefined,
+      participant,
+      participantName: participant ? (msg.pushName ?? undefined) : undefined,
+    };
+  }
+
+  private async resolveParticipantPhone(
+    socket: ReturnType<typeof makeWASocket>,
+    participantJid: string,
+  ): Promise<string> {
+    if (!participantJid.endsWith('@lid')) {
+      return participantJid.split('@')[0];
+    }
+
+    const lid = participantJid.split('@')[0];
+    try {
+      const mappedJid = await (socket as BaileysSocketWithGroupHelpers).signalRepository?.lidMapping?.getPNForLID?.(lid);
+      if (mappedJid) {
+        return mappedJid.split('@')[0];
+      }
+    } catch (err) {
+      baileysLogger.debug({ err, participantJid }, 'Failed to resolve group participant LID');
+    }
+
+    return lid;
+  }
+
+  private extractParticipantJid(msg: proto.IWebMessageInfo): string | undefined {
+    const participantFromKey = msg.key?.participant;
+    if (participantFromKey) return participantFromKey;
+
+    const content = unwrapBaileysMessageContent(msg.message ?? {});
+    const contextInfo = content.extendedTextMessage?.contextInfo
+      ?? content.imageMessage?.contextInfo
+      ?? content.videoMessage?.contextInfo
+      ?? content.audioMessage?.contextInfo
+      ?? content.documentMessage?.contextInfo
+      ?? content.stickerMessage?.contextInfo
+      ?? undefined;
+
+    return contextInfo?.participant ?? undefined;
+  }
+
+  private async getGroupMetadataSnapshot(
+    socket: ReturnType<typeof makeWASocket>,
+    sessionId: string,
+    tenantId: string | undefined,
+    groupRemoteJid: string,
+    groupJid: string,
+  ): Promise<GroupMetadataSnapshot | null> {
+    const cacheKey = `${sessionId}:${groupJid}`;
+    const cached = this.groupMetadataCache.get(cacheKey);
+    if (cached) return cached;
+
+    const pending = this.groupMetadataPending.get(cacheKey);
+    if (pending) return pending;
+
+    const request = (async () => {
+      try {
+        const metadata = await (socket as BaileysSocketWithGroupHelpers).groupMetadata?.(groupRemoteJid);
+        const snapshot: GroupMetadataSnapshot = {
+          groupName: metadata?.subject?.trim() || null,
+        };
+        this.groupMetadataCache.set(cacheKey, snapshot);
+        if (!snapshot.groupName) {
+          this.groupMetadataCache.delete(cacheKey);
+          return null;
+        }
+        return snapshot;
+      } catch (err) {
+        baileysLogger.debug({ err, sessionId, tenantId, groupJid }, 'Failed to fetch group metadata');
+        return null;
+      } finally {
+        this.groupMetadataPending.delete(cacheKey);
+      }
+    })();
+
+    this.groupMetadataPending.set(cacheKey, request);
+    return request;
+  }
+
+  private async shouldAutoDownloadGroupMedia(
+    routing: IncomingMessageRoutingInfo,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<boolean> {
+    if (!routing.isGroup || !routing.groupJid) {
+      return true;
+    }
+
+    const conversation = await this.chatConversationRepo.findActiveByGroupAndSession(
+      routing.groupJid,
+      sessionId,
+      tenantId,
+    );
+
+    return conversation?.autoDownloadMedia ?? false;
+  }
+
+  private clearSessionGroupMetadata(sessionId: string): void {
+    const prefix = `${sessionId}:`;
+    for (const key of this.groupMetadataCache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.groupMetadataCache.delete(key);
+      }
+    }
+    for (const key of this.groupMetadataPending.keys()) {
+      if (key.startsWith(prefix)) {
+        this.groupMetadataPending.delete(key);
+      }
+    }
   }
 
   private async updateSessionStatus(sessionId: string, tenantId: string, status: SessionStatus): Promise<void> {
@@ -522,10 +702,34 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   }
 
   private normalizeJid(phone: string): string {
+    if (phone.includes('@')) return phone;
     const clean = phone.replace(/[^0-9]/g, '');
-    return clean.includes('@') ? phone : `${clean}@s.whatsapp.net`;
+    return `${clean}@s.whatsapp.net`;
   }
 }
+
+interface IncomingMessageRoutingInfo {
+  from: string;
+  fromName?: string;
+  isGroup: boolean;
+  groupJid?: string;
+  groupName?: string;
+  participant?: string;
+  participantName?: string;
+}
+
+interface GroupMetadataSnapshot {
+  groupName: string | null;
+}
+
+type BaileysSocketWithGroupHelpers = ReturnType<typeof makeWASocket> & {
+  groupMetadata?: (jid: string) => Promise<{ subject?: string | null } | null | undefined>;
+  signalRepository?: {
+    lidMapping?: {
+      getPNForLID?: (lid: string) => Promise<string | null | undefined>;
+    };
+  };
+};
 
 const MEDIA_TYPES_WITH_BINARY = new Set<ChatMessageType>([
   ChatMessageType.IMAGE,

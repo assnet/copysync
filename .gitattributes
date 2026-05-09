@@ -1,0 +1,76 @@
+# =============================================================================
+# Arquivo: .gitattributes
+# Propósito: Normalizar quebras de linha (LF) e ignorar diferenças de
+#            permissão entre macOS e Windows, independente de configuração
+#            local do Git de cada desenvolvedor.
+# =============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# REGRA PADRÃO
+# Detecta arquivos de texto automaticamente e converte para LF no repositório.
+# Ao fazer checkout, o Git entrega LF em macOS/Linux e CRLF no Windows (se o
+# dev tiver core.autocrlf=true). Isso garante consistência no repositório.
+# ──────────────────────────────────────────────────────────────────────────────
+* text=auto eol=lf
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CÓDIGO FONTE — força LF explicitamente (sobrepõe a regra auto acima)
+# ──────────────────────────────────────────────────────────────────────────────
+*.ts         text eol=lf
+*.tsx        text eol=lf
+*.js         text eol=lf
+*.mjs        text eol=lf
+*.cjs        text eol=lf
+*.jsx        text eol=lf
+*.json       text eol=lf
+*.css        text eol=lf
+*.html       text eol=lf
+*.htm        text eol=lf
+*.md         text eol=lf
+*.mdx        text eol=lf
+*.txt        text eol=lf
+*.yaml       text eol=lf
+*.yml        text eol=lf
+*.xml        text eol=lf
+*.svg        text eol=lf
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ARQUIVOS DE CONFIGURAÇÃO / TOOLING
+# ──────────────────────────────────────────────────────────────────────────────
+*.env        text eol=lf
+.env.*       text eol=lf
+.babelrc     text eol=lf
+.editorconfig text eol=lf
+.eslintrc    text eol=lf
+.eslintrc.*  text eol=lf
+.prettierrc  text eol=lf
+.prettierrc.* text eol=lf
+.gitattributes text eol=lf
+.gitignore   text eol=lf
+*.lock       text eol=lf
+*.sh         text eol=lf
+Makefile     text eol=lf
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ARQUIVOS BINÁRIOS — nunca fazer conversão de EOL nem diff de texto
+# ──────────────────────────────────────────────────────────────────────────────
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.webp       binary
+*.svg        binary -text
+*.woff       binary
+*.woff2      binary
+*.ttf        binary
+*.otf        binary
+*.eot        binary
+*.zip        binary
+*.gz         binary
+*.tar        binary
+*.pdf        binary
+*.mp4        binary
+*.mp3        binary
+*.ogg        binary
+*.wav        binary

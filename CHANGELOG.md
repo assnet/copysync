@@ -9,7 +9,46 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added
+
+#### Frontend — Filtro de conversas por sessão no chat
+
+- **`app/src/pages/ChatPage.tsx`** — a tela de chat passa a carregar conversas usando `sessionId` opcional da API, mantém uma seleção explícita de sessão ativa, recarrega a lista quando o usuário alterna entre `Todos` e uma sessão conectada específica e invalida filtro/seleção quando a sessão deixa de estar conectada
+- **`app/src/features/chat/components/ConversationSidebar.tsx`** — adiciona chips de sessão no topo da sidebar, com `Todos` + sessões conectadas do tenant em formato `Nome + número`, deixando a distinção entre números conectados mais clara sem misturar a filtragem local de status e busca
+
+#### Frontend — Base visual da marca no painel
+
+- **`app/public/assets/logo_waiochat.png`**, **`app/public/assets/waioFavicon-256x256.png`**, **`app/public/assets/waioLogo-256x256.png`**, **`app/public/assets/waiochat-pro.png`**, **`app/public/assets/waiochat-pro1.png`**, **`app/public/assets/waiochat-pro2.png`**, **`app/public/assets/iProtect-256x256.png`** e **`app/public/assets/iSaver-256x256.png`** — adiciona o pacote inicial de logos, favicon e peças visuais para reutilização no painel e em materiais da marca
+
+#### Tooling — Padronização do repositório
+
+- **`.gitattributes`** — normaliza finais de linha em `LF`, marca arquivos binários corretamente e reduz ruído entre ambientes macOS/Windows
+- **`.prettierrc`** — adiciona baseline simples de formatação com `singleQuote` e `trailingComma: all`
+
+### Changed
+
+#### Frontend — Aplicação da identidade visual no acesso ao painel
+
+- **`app/index.html`** — troca o favicon SVG genérico pelo logo PNG da marca
+- **`app/src/pages/LoginPage.tsx`** — substitui o monograma temporário pelo logo real na tela de login sem alterar a estrutura principal da página
+
 ### Fixed
+
+#### Backend — Reativação de conversas de grupo e atualização de sessão no chat
+
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — deixa de descartar mensagens `@g.us` no realtime e no history sync, volta a propagar `isGroup`, `groupJid`, `groupName`, `participant` e `participantName` para o módulo de chat e corrige a normalização de JID para preservar destinos de grupo em envio, leitura e presença
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — centraliza o roteamento de mensagens recebidas com resolução do remetente real, participante e metadados do grupo, reutilizando a mesma lógica para realtime e histórico e limpando cache de metadata ao desconectar/logout
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — passa a respeitar `autoDownloadMedia` apenas para conversas de grupo; novas conversas e grupos existentes ficam com download automático desligado por padrão para reduzir consumo de armazenamento, baixando mídia só após ativação explícita do usuário
+- **`api/src/modules/messaging/infrastructure/MessagingEngineFactory.ts`** — volta a injetar `chatConversationRepo` no adapter do Baileys para permitir leitura do estado de `autoDownloadMedia` por conversa/grupo
+- **`api/prisma/schema.prisma`** e **`api/prisma/migrations/20260509190000_change_auto_download_media_default_to_false/migration.sql`** — mudam o default de `autoDownloadMedia` para `false` e migram grupos já existentes para o novo comportamento de armazenamento conservador
+- **`api/src/modules/chat/presentation/presenters/ChatPresenter.ts`** — alinha o fallback de `autoDownloadMedia` na resposta HTTP para `false`, evitando que o painel renderize grupos como se o download estivesse ligado por padrão
+- **`api/src/modules/chat/infrastructure/listeners/ChatSessionStatusListener.ts`** — novo listener que publica `chat.session.updated` no WebSocket a partir dos eventos internos de sessão, permitindo ao painel reagir a sessões conectadas e desconectadas dentro da aba Chat
+- **`api/src/app/server.ts`** — registra o listener de status de sessão junto com os demais listeners do módulo de chat
+
+#### Frontend — Controle explícito do download automático de mídia em grupos
+
+- **`app/src/types/chat.api.types.ts`** — o adapter do frontend deixa de assumir `autoDownloadMedia=true` quando o backend não envia o valor, alinhando o painel ao novo default de armazenamento
+- **`app/src/features/chat/components/ConversationDetailsPanel.tsx`** — o toggle de download automático passa a abrir desligado por padrão e informa que a ativação só afeta as próximas mídias recebidas no grupo
 
 #### Frontend — Renovação automática do access token no painel
 
@@ -39,10 +78,6 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - **`app/src/features/chat/components/messages/RichMessageText.tsx`** — novo renderer de texto com auto-link para URLs `http/https`, preservando quebra de linha e estilo do bubble
 - **`app/src/features/chat/components/MessageBubble.tsx`** — mensagens de texto passam a usar renderer rico em vez de `Typography` pura, tornando links clicáveis no chat
-
-#### Backend — Remoção de dependência não utilizada no BaileysAdapter
-
-- **`MessagingEngineFactory.ts`** — remove `chatConversationRepo` da chamada ao construtor de `BaileysMessagingEngineAdapter`; o parâmetro constava na assinatura da factory mas não era consumido pelo adapter, gerando acoplamento desnecessário e possível confusão sobre o contrato real da classe
 
 #### Frontend — Correção de URL do WebSocket em ambiente de desenvolvimento
 

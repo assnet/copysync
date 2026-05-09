@@ -1,4 +1,4 @@
-import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, Switch, FormControlLabel, alpha, useTheme } from '@mui/material';
+import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, Switch, alpha, useTheme } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import RouterOutlinedIcon from '@mui/icons-material/RouterOutlined';
@@ -176,18 +176,23 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
 
           {/* Toggle de download automático de mídia — apenas para grupos */}
           {isGroup && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <DownloadOutlinedIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-                <Typography variant="caption" color="text.secondary">
-                  Download automático de mídia
-                </Typography>
+            <Box sx={{ mt: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <DownloadOutlinedIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Download automático de mídia
+                  </Typography>
+                </Box>
+                <Switch
+                  size="small"
+                  checked={autoDownloadMedia ?? false}
+                  onChange={(_, checked) => onUpdate?.({ autoDownloadMedia: checked })}
+                />
               </Box>
-              <Switch
-                size="small"
-                checked={autoDownloadMedia ?? true}
-                onChange={(_, checked) => onUpdate?.({ autoDownloadMedia: checked })}
-              />
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5, pr: 3.5 }}>
+                Desativado por padrão. Ao ativar, baixa apenas as próximas mídias recebidas neste grupo.
+              </Typography>
             </Box>
           )}
         </Section>

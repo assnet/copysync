@@ -95,7 +95,7 @@ export function LoginPage() {
         <Box sx={{ position: 'relative', zIndex: 1 }}>
           {/* Logo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 6 }}>
-            <Box
+            {/* <Box
               sx={{
                 width: 44,
                 height: 44,
@@ -107,7 +107,13 @@ export function LoginPage() {
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 22, lineHeight: 1 }}>W</Typography>
-            </Box>
+            </Box> */}
+            <Box
+              component="img"
+              src="/assets/logo_waiochat.png"
+              alt="Imagem"
+              sx={{ width: 44, height: 44, borderRadius: 2, objectFit: 'contain' }}
+            />           
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, letterSpacing: -0.5 }}>
               WaioPrime
             </Typography>

@@ -16,6 +16,7 @@ import { registerChatMessageStatusListener } from '../modules/chat/infrastructur
 import { registerChatPresenceListener } from '../modules/chat/infrastructure/listeners/ChatPresenceListener';
 import { registerChatContactAvatarListener } from '../modules/chat/infrastructure/listeners/ChatContactAvatarListener';
 import { registerChatGroupAvatarListener } from '../modules/chat/infrastructure/listeners/ChatGroupAvatarListener';
+import { registerChatSessionStatusListener } from '../modules/chat/infrastructure/listeners/ChatSessionStatusListener';
 
 async function start(): Promise<void> {
   const app = await buildApp();
@@ -57,6 +58,7 @@ async function start(): Promise<void> {
   registerChatPresenceListener();
   registerChatContactAvatarListener(chatContactRepo);
   registerChatGroupAvatarListener(chatConversationRepo);
+  registerChatSessionStatusListener();
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Runs after the server is listening so QR events can be polled immediately.
