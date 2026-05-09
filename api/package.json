@@ -7,9 +7,11 @@
     "dev": "tsx watch --env-file=.env src/app/server.ts --host",
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/app/server.js",
+    "start:deploy": "pnpm prisma:deploy && pnpm start",
+    "start:first-deploy": "pnpm prisma:deploy && pnpm prisma:seed && pnpm start",
     "typecheck": "tsc --noEmit",
     "studio": "prisma studio",
-    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:dev": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
@@ -43,6 +45,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "packageManager": "pnpm@10.33.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@prisma/client",
