@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   console.log(`✅  Tenant: ${tenant.name} (${tenant.id})`);
 
   // ── Create super-admin user ────────────────────────────────────────────────
-  // Default dev password: teste123 — change before deploying to production.
+  // Default dev password: Teste123@ — change before deploying to production.
   const passwordHash = await hash('Teste123@', 10);
 
   const superAdmin = await prisma.user.upsert({
