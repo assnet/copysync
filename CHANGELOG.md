@@ -75,6 +75,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`api/package.json`** — fixa `packageManager` em `pnpm@10.33.0` para manter o build do Docker alinhado ao lockfile e evitar o fluxo de aprovação de scripts do `pnpm 11` no container
 - **`api/Dockerfile`** — adiciona Dockerfile multi-stage real para a API com `pnpm install`, `prisma generate`, `tsc build`, `prisma migrate deploy` no startup e `EXPOSE 3333`
 - **`api/Dockerfile`** — runner passa a copiar `node_modules` da etapa `build` em vez da etapa `deps`, preservando o client gerado do Prisma e corrigindo o crash `@prisma/client did not initialize yet`
+- **`api/prisma/seed.ts`** — o seed deixa de importar `hashPassword` de `src/` e passa a usar `bcryptjs` diretamente, permitindo executar `pnpm prisma:seed` dentro da imagem final da API na Render sem erro de `Cannot find module '../src/shared/utils/hash'`
 - **`docker-compose.yml`** — sobrescreve `DATABASE_URL`, `HOST` e `PORT` do serviço `api` para valores válidos dentro da rede Docker; corrige restart loop causado por `localhost:5440` dentro do container e aplica a porta `3333`
 - **`api/.env.dev`** — corrige o exemplo de `DATABASE_URL` para Docker Compose usando `postgres:5432` em vez da porta publicada no host
 - **`api/.dockerignore`** — evita enviar `node_modules`, `dist`, `storage` e arquivos locais desnecessários para o build do Docker

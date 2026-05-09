@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { hashPassword } from '../src/shared/utils/hash';
+import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -21,7 +21,7 @@ async function main(): Promise<void> {
 
   // ── Create super-admin user ────────────────────────────────────────────────
   // Default dev password: teste123 — change before deploying to production.
-  const passwordHash = await hashPassword('teste123');
+  const passwordHash = await hash('Teste123@', 10);
 
   const superAdmin = await prisma.user.upsert({
     where: { email: 'assnet.developer@gmail.com' },
