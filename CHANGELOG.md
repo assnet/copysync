@@ -43,6 +43,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Backend — CORS em produção para domínio público do painel
+
+- **`api/src/app/app.ts`** — normaliza origens configuradas em `CORS_ORIGIN`, adiciona os domínios públicos oficiais do painel como fallback seguro e registra no startup a lista efetiva de origens permitidas; corrige preflight `204` sem `Access-Control-Allow-Origin` quando a env da Render não casa exatamente com `https://waioprime.com`
+
 #### Backend — Reativação de conversas de grupo e atualização de sessão no chat
 
 - **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — deixa de descartar mensagens `@g.us` no realtime e no history sync, volta a propagar `isGroup`, `groupJid`, `groupName`, `participant` e `participantName` para o módulo de chat e corrige a normalização de JID para preservar destinos de grupo em envio, leitura e presença

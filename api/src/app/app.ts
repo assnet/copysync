@@ -11,6 +11,12 @@ import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
 import { registerRoutes } from './routes';
 
+const defaultCorsOrigins = [
+  'https://waioprime.com',
+  'https://www.waioprime.com',
+  'https://waioprime.onrender.com',
+];
+
 function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/^['\"]|['\"]$/g, '').replace(/\/+$/, '');
 }
@@ -20,10 +26,12 @@ function getAllowedCorsOrigins(rawOrigins: string): string[] | null {
     return null;
   }
 
-  return rawOrigins
+  const configuredOrigins = rawOrigins
     .split(',')
     .map(normalizeOrigin)
     .filter(Boolean);
+
+  return Array.from(new Set([...configuredOrigins, ...defaultCorsOrigins]));
 }
 
 export async function buildApp() {
@@ -50,6 +58,11 @@ export async function buildApp() {
     disableRequestLogging: false,
     trustProxy: true, // required for correct IPs behind Render's proxy
   });
+
+  app.log.info(
+    { corsOrigins: allowedCorsOrigins ?? ['*'] },
+    'CORS origins configured',
+  );
 
   // ── Security plugins ──────────────────────────────────────────────────────
   await app.register(helmet, {
