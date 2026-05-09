@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Typography, Modal, alpha, useTheme } from '@mui/material';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import BrokenImageOutlinedIcon from '@mui/icons-material/BrokenImageOutlined';
+import { RichMessageText } from './RichMessageText';
 
 interface Props {
   mediaUrl?: string | null;
@@ -14,8 +15,32 @@ export function ImageMessage({ mediaUrl, body, textColor }: Props) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const retriedRef = useRef(false);
 
-  if (!mediaUrl) {
+  useEffect(() => {
+    setError(false);
+    setRetryNonce(0);
+    retriedRef.current = false;
+  }, [mediaUrl]);
+
+  const resolvedMediaUrl = useMemo(() => {
+    if (!mediaUrl) return null;
+    if (retryNonce === 0) return mediaUrl;
+    const separator = mediaUrl.includes('?') ? '&' : '?';
+    return `${mediaUrl}${separator}retry=${retryNonce}`;
+  }, [mediaUrl, retryNonce]);
+
+  const handleError = () => {
+    if (!retriedRef.current) {
+      retriedRef.current = true;
+      window.setTimeout(() => setRetryNonce((current) => current + 1), 700);
+      return;
+    }
+    setError(true);
+  };
+
+  if (!resolvedMediaUrl) {
     return (
       <Box
         sx={{
@@ -38,10 +63,11 @@ export function ImageMessage({ mediaUrl, body, textColor }: Props) {
   return (
     <>
       <Box
+        key={resolvedMediaUrl}
         component="img"
-        src={mediaUrl}
+        src={resolvedMediaUrl}
         alt="Imagem"
-        onError={() => setError(true)}
+        onError={handleError}
         onClick={() => !error && setOpen(true)}
         sx={{
           display: error ? 'none' : 'block',
@@ -72,14 +98,12 @@ export function ImageMessage({ mediaUrl, body, textColor }: Props) {
         </Box>
       )}
       {body && (
-        <Typography variant="body2" sx={{ color: textColor, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {body}
-        </Typography>
+        <RichMessageText text={body} textColor={textColor} />
       )}
       <Modal open={open} onClose={() => setOpen(false)} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Box
           component="img"
-          src={mediaUrl}
+          src={resolvedMediaUrl}
           alt="Imagem"
           onClick={() => setOpen(false)}
           sx={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 2, objectFit: 'contain', cursor: 'zoom-out' }}

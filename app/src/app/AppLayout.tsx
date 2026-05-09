@@ -53,7 +53,7 @@ function NavLogo() {
         <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 16, lineHeight: 1 }}>W</Typography>
       </Box>
       <Typography variant="h6" fontWeight={800} letterSpacing={-0.5}>
-        ChatPrime
+        WaioPrime
       </Typography>
     </Box>
   );
@@ -208,7 +208,7 @@ export function AppLayout() {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }}>
-            ChatPrime
+            WaioPrime
           </Typography>
           {activeTenantName && (
             <Chip label={activeTenantName} size="small" color="primary" variant="outlined" />

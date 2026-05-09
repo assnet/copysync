@@ -46,6 +46,23 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
   }
 
   async create(data: ChatMessageCreateData): Promise<ChatMessage> {
+    let quotedMessageId: string | null = null;
+
+    if (data.quotedMessageId) {
+      const quotedMessage = await this.prisma.chatMessage.findFirst({
+        where: {
+          tenantId: data.tenantId,
+          OR: [
+            { id: data.quotedMessageId },
+            { externalMessageId: data.quotedMessageId },
+          ],
+        },
+        select: { id: true },
+      });
+
+      quotedMessageId = quotedMessage?.id ?? null;
+    }
+
     const raw = await this.prisma.chatMessage.create({
       data: {
         tenantId: data.tenantId,
@@ -59,7 +76,7 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
         durationSeconds: data.durationSeconds ?? null,
         externalMessageId: data.externalMessageId ?? null,
         isDeleted: data.isDeleted ?? false,
-        quotedMessageId: data.quotedMessageId ?? null,
+        quotedMessageId,
         fromParticipant: data.fromParticipant ?? null,
         fromParticipantName: data.fromParticipantName ?? null,
         status: 'SENT',

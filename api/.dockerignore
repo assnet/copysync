@@ -1,0 +1,7 @@
+node_modules
+dist
+storage
+startup.log
+.env
+.env.dev
+pnpm-debug.log

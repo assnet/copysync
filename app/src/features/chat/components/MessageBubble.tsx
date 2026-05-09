@@ -20,6 +20,7 @@ import { VCardMessage } from './messages/VCardMessage';
 import { CallLogMessage } from './messages/CallLogMessage';
 import { DeletedMessage } from './messages/DeletedMessage';
 import { QuotedMessage } from './messages/QuotedMessage';
+import { RichMessageText } from './messages/RichMessageText';
 
 // ── Status icon ───────────────────────────────────────────────────────────────
 
@@ -117,18 +118,9 @@ function MessageContent({ message, isOut, textColor }: ContentProps) {
     case 'event':
     default:
       return message.body ? (
-        <Typography
-          variant="body2"
-          sx={{
-            color: textColor,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            fontSize: 13.5,
-            lineHeight: 1.55,
-          }}
-        >
-          {message.body}
-        </Typography>
+        <Box sx={{ lineHeight: 1.55 }}>
+          <RichMessageText text={message.body} textColor={textColor} />
+        </Box>
       ) : null;
   }
 }

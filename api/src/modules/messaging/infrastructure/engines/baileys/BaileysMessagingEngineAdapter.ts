@@ -9,10 +9,12 @@
  */
 import makeWASocket, {
   Browsers,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys';
 import type { ConnectionState, AnyMessageContent, proto } from '@whiskeysockets/baileys';
+import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
 import type {
@@ -44,6 +46,7 @@ import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums'
 
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 3_000;
+const THIRTY_MIN_MS = 30 * 60 * 1_000;
 const baileysLogger = appLogger.child({ module: 'baileys' });
 
 export class BaileysMessagingEngineAdapter implements IMessagingEngine {
@@ -265,13 +268,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       }
     });
     // ── Incoming messages ──────────────────────────────────────────────────
-    socket.ev.on('messages.upsert', ({ messages, type }) => {
+    socket.ev.on('messages.upsert', async ({ messages, type }) => {
       // 'notify' = real-time new messages; 'append' = historical sync — skip
       if (type !== 'notify') {
         // 'append' = mensagens históricas recebidas durante reconnect / gap sync
         if (type === 'append') {
-          setImmediate(() => {
-            const items = this.mapMessagesToHistoryItems(messages);
+          setImmediate(async () => {
+            const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId);
             if (items.length > 0) {
               this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
             }
@@ -308,6 +311,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         // Ignora mensagens sem tipo reconhecido (ex: protocolMessages, reactionMessages)
         if (!extracted) continue;
 
+        let mediaUrl: string | null = null;
+        if (MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)) {
+          mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
+        }
+
         internalEventBus.emit('MESSAGE_RECEIVED', {
           type: 'MESSAGE_RECEIVED',
           sessionId,
@@ -316,6 +324,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           fromName: msg.pushName ?? undefined,
           body: extracted.body,
           msgType: extracted.msgType,
+          mediaUrl,
           mimeType: extracted.mimeType,
           fileName: extracted.fileName,
           durationSeconds: extracted.durationSeconds,
@@ -363,9 +372,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── History sync ────────────────────────────────────────────────────────
     socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
-      setImmediate(() => {
+      setImmediate(async () => {
         // histMsgs é WAMessage[] (proto.IWebMessageInfo[]) — passar direto
-        const items = this.mapMessagesToHistoryItems(histMsgs);
+        const items = await this.mapMessagesToHistoryItems(histMsgs, socket, sessionId);
         if (items.length > 0) {
           baileysLogger.info(
             { sessionId, count: items.length },
@@ -433,8 +442,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
    * Filtra grupos, broadcasts, mensagens sem conteúdo e sem ID.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private mapMessagesToHistoryItems(msgs: any[]): HistoryMessageItem[] {
+  private async mapMessagesToHistoryItems(
+    msgs: any[],
+    socket: ReturnType<typeof makeWASocket>,
+    sessionId: string,
+  ): Promise<HistoryMessageItem[]> {
     const items: HistoryMessageItem[] = [];
+    const now = Date.now();
     for (const msg of msgs) {
       if (!msg) continue;
       const key = msg.key ?? msg?.message?.key;
@@ -465,12 +479,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         ? new Date(Number(messageTimestamp) * 1000)
         : new Date();
 
+      let mediaUrl: string | null = null;
+      if (
+        MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
+        && (now - timestamp.getTime()) < THIRTY_MIN_MS
+      ) {
+        mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
+      }
+
       items.push({
         externalMessageId: id,
         from: phone,
         fromName: pushName,
         body: extracted.body,
         msgType: extracted.msgType,
+        mediaUrl,
         mimeType: extracted.mimeType,
         fileName: extracted.fileName,
         durationSeconds: extracted.durationSeconds,
@@ -504,6 +527,46 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   }
 }
 
+const MEDIA_TYPES_WITH_BINARY = new Set<ChatMessageType>([
+  ChatMessageType.IMAGE,
+  ChatMessageType.VIDEO,
+  ChatMessageType.AUDIO,
+  ChatMessageType.DOCUMENT,
+  ChatMessageType.STICKER,
+]);
+
+async function downloadBaileysMedia(
+  msg: proto.IWebMessageInfo,
+  socket: ReturnType<typeof makeWASocket>,
+  sessionId: string,
+  mimeType: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const ext = mimeType ? (mimeType.split('/')[1]?.split(';')[0] ?? 'bin') : 'bin';
+    const filename = `${sessionId}_${msg.key?.id ?? Date.now()}.${ext}`;
+
+    if (await mediaFileExists(filename)) {
+      return mediaPublicUrl(filename);
+    }
+
+    const buffer = (await downloadMediaMessage(
+      msg as never,
+      'buffer',
+      {},
+      { logger: baileysLogger as never, reuploadRequest: socket.updateMediaMessage },
+    )) as Buffer;
+
+    await saveMediaBuffer(buffer, filename);
+    return mediaPublicUrl(filename);
+  } catch (err) {
+    baileysLogger.warn(
+      { err, sessionId, msgId: msg.key?.id },
+      'Failed to download WhatsApp media; message will be persisted without mediaUrl',
+    );
+    return null;
+  }
+}
+
 // ── extractBaileysMessage ──────────────────────────────────────────────────────
 /**
  * Extrai tipo, corpo e metadados de um objeto de mensagem Baileys (message.*).
@@ -522,114 +585,151 @@ interface BaileysExtracted {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null {
   if (!m) return null;
+  const content = unwrapBaileysMessageContent(m);
 
   // Detecta se é mensagem apagada (revoke)
-  const isDeleted = !!(m.protocolMessage?.type === 0 || m.revokeMessage);
+  const isDeleted = !!(content.protocolMessage?.type === 0 || content.revokeMessage);
 
   // Extrai ID da mensagem citada (context info)
-  const contextInfo = m.extendedTextMessage?.contextInfo
-    ?? m.imageMessage?.contextInfo
-    ?? m.videoMessage?.contextInfo
-    ?? m.audioMessage?.contextInfo
-    ?? m.documentMessage?.contextInfo
+  const contextInfo = content.extendedTextMessage?.contextInfo
+    ?? content.imageMessage?.contextInfo
+    ?? content.videoMessage?.contextInfo
+    ?? content.audioMessage?.contextInfo
+    ?? content.documentMessage?.contextInfo
     ?? null;
   const quotedMessageId = contextInfo?.stanzaId ?? null;
 
   // Texto simples
-  if (m.conversation) {
-    return { msgType: ChatMessageType.TEXT, body: m.conversation, quotedMessageId, isDeleted };
+  if (content.conversation) {
+    return { msgType: ChatMessageType.TEXT, body: content.conversation, quotedMessageId, isDeleted };
   }
-  if (m.extendedTextMessage?.text) {
-    return { msgType: ChatMessageType.TEXT, body: m.extendedTextMessage.text, quotedMessageId, isDeleted };
+  if (content.extendedTextMessage?.text) {
+    return { msgType: ChatMessageType.TEXT, body: content.extendedTextMessage.text, quotedMessageId, isDeleted };
   }
 
   // Imagem
-  if (m.imageMessage) {
+  if (content.imageMessage) {
     return {
       msgType: ChatMessageType.IMAGE,
-      body: m.imageMessage.caption ?? null,
-      mimeType: m.imageMessage.mimetype ?? null,
+      body: content.imageMessage.caption ?? null,
+      mimeType: content.imageMessage.mimetype ?? null,
       quotedMessageId,
       isDeleted,
     };
   }
 
   // Vídeo
-  if (m.videoMessage) {
+  if (content.videoMessage) {
     return {
       msgType: ChatMessageType.VIDEO,
-      body: m.videoMessage.caption ?? null,
-      mimeType: m.videoMessage.mimetype ?? null,
-      durationSeconds: m.videoMessage.seconds ?? null,
+      body: content.videoMessage.caption ?? null,
+      mimeType: content.videoMessage.mimetype ?? null,
+      durationSeconds: content.videoMessage.seconds ?? null,
       quotedMessageId,
       isDeleted,
     };
   }
 
   // Áudio / PTT
-  if (m.audioMessage) {
+  if (content.audioMessage) {
     return {
       msgType: ChatMessageType.AUDIO,
       body: null,
-      mimeType: m.audioMessage.mimetype ?? null,
-      durationSeconds: m.audioMessage.seconds ?? null,
+      mimeType: content.audioMessage.mimetype ?? null,
+      durationSeconds: content.audioMessage.seconds ?? null,
       quotedMessageId,
       isDeleted,
     };
   }
 
   // Documento
-  if (m.documentMessage) {
+  if (content.documentMessage) {
     return {
       msgType: ChatMessageType.DOCUMENT,
-      body: m.documentMessage.caption ?? null,
-      mimeType: m.documentMessage.mimetype ?? null,
-      fileName: m.documentMessage.fileName ?? m.documentMessage.title ?? null,
+      body: content.documentMessage.caption ?? null,
+      mimeType: content.documentMessage.mimetype ?? null,
+      fileName: content.documentMessage.fileName ?? content.documentMessage.title ?? null,
       quotedMessageId,
       isDeleted,
     };
   }
 
   // Sticker
-  if (m.stickerMessage) {
+  if (content.stickerMessage) {
     return {
       msgType: ChatMessageType.STICKER,
       body: null,
-      mimeType: m.stickerMessage.mimetype ?? null,
+      mimeType: content.stickerMessage.mimetype ?? null,
       quotedMessageId,
       isDeleted,
     };
   }
 
   // Localização
-  if (m.locationMessage) {
-    const lat = m.locationMessage.degreesLatitude;
-    const lng = m.locationMessage.degreesLongitude;
-    const name = m.locationMessage.name ?? null;
+  if (content.locationMessage) {
+    const lat = content.locationMessage.degreesLatitude;
+    const lng = content.locationMessage.degreesLongitude;
+    const name = content.locationMessage.name ?? null;
     const body = name ? `${name} (${lat},${lng})` : `${lat},${lng}`;
     return { msgType: ChatMessageType.LOCATION, body, quotedMessageId, isDeleted };
   }
 
   // vCard (contato único ou múltiplos)
-  if (m.contactMessage) {
-    const body = m.contactMessage.displayName ?? m.contactMessage.vcard ?? null;
+  if (content.contactMessage) {
+    const body = content.contactMessage.displayName ?? content.contactMessage.vcard ?? null;
     return { msgType: ChatMessageType.VCARD, body, quotedMessageId, isDeleted };
   }
-  if (m.contactsArrayMessage) {
-    const first = m.contactsArrayMessage.contacts?.[0];
+  if (content.contactsArrayMessage) {
+    const first = content.contactsArrayMessage.contacts?.[0];
     const body = first?.displayName ?? null;
     return { msgType: ChatMessageType.VCARD, body, quotedMessageId, isDeleted };
   }
 
   // Chamada
-  if (m.call) {
+  if (content.call) {
     return { msgType: ChatMessageType.CALL_LOG, body: 'Chamada', quotedMessageId, isDeleted };
   }
 
   // protocolMessage (delete, ephemeral, etc.) — não ingere
-  if (m.protocolMessage || m.reactionMessage || m.pollCreationMessage || m.keepInChatMessage) {
+  if (content.protocolMessage || content.reactionMessage || content.pollCreationMessage || content.keepInChatMessage) {
     return null;
   }
 
   return null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function unwrapBaileysMessageContent(message: Record<string, any>): Record<string, any> {
+  let current = message;
+
+  while (current && typeof current === 'object') {
+    if (current.ephemeralMessage?.message) {
+      current = current.ephemeralMessage.message;
+      continue;
+    }
+    if (current.viewOnceMessage?.message) {
+      current = current.viewOnceMessage.message;
+      continue;
+    }
+    if (current.viewOnceMessageV2?.message) {
+      current = current.viewOnceMessageV2.message;
+      continue;
+    }
+    if (current.viewOnceMessageV2Extension?.message) {
+      current = current.viewOnceMessageV2Extension.message;
+      continue;
+    }
+    if (current.documentWithCaptionMessage?.message) {
+      current = current.documentWithCaptionMessage.message;
+      continue;
+    }
+    if (current.editedMessage?.message) {
+      current = current.editedMessage.message;
+      continue;
+    }
+
+    return current;
+  }
+
+  return message;
 }

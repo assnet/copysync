@@ -1,5 +1,5 @@
 ### 📖 About
-Welcome to our open source community, ChatPrime! Our goal is to create robust systems and functionalities involving WhatsApp Web. With our technology, we have already developed several applications that enable any type of interaction, whether for automation, customer service, media sending, natural language processing (NLP), and much more.
+Welcome to our open source community, WaioPrime! Our goal is to create robust systems and functionalities involving WhatsApp Web. With our technology, we have already developed several applications that enable any type of interaction, whether for automation, customer service, media sending, natural language processing (NLP), and much more.
 
 ### Key Features:
 📲 Send and Receive Messages (Text, Image, Audio, Video)
@@ -12,7 +12,7 @@ Welcome to our open source community, ChatPrime! Our goal is to create robust sy
 🚀 Maintained Projects
 🔹 WPPConnect Server
 
-ChatPrime Server is our backend interface that connects external applications to WhatsApp Web. It’s a stable and scalable solution, perfect for high-performance automation.
+WaioPrime Server is our backend interface that connects external applications to WhatsApp Web. It’s a stable and scalable solution, perfect for high-performance automation.
 
 
 ### Documentação da biblioteca Baileys: https://baileys.wiki/docs/intro/

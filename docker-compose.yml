@@ -1,21 +1,39 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: chatprime_postgres
+    container_name: waioprime_postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: chatprime
-      POSTGRES_PASSWORD: chatprime
-      POSTGRES_DB: chatprime
+    env_file:
+      - ./api/.env
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5440}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatprime -d chatprime"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waioprime} -d ${POSTGRES_DB:-waioprime}"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: waioprime_api
+    restart: unless-stopped
+    env_file:
+      - ./api/.env
+    environment:
+      PORT: ${PORT:-3333}
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://waioprime:waioprime@postgres:5432/waioprime?schema=public
+    ports:
+      - "${PORT:-3333}:3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./api/storage:/app/storage
 
 volumes:
   postgres_data:

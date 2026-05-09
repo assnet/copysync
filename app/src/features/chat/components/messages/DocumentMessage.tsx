@@ -1,6 +1,7 @@
 import { Box, Typography, Link, alpha, useTheme } from '@mui/material';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
+import { RichMessageText } from './RichMessageText';
 
 interface Props {
   mediaUrl?: string | null;
@@ -72,9 +73,7 @@ export function DocumentMessage({ mediaUrl, fileName, mimeType, body, textColor 
         )}
       </Box>
       {body && (
-        <Typography variant="body2" sx={{ color: textColor, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {body}
-        </Typography>
+        <RichMessageText text={body} textColor={textColor} />
       )}
     </Box>
   );

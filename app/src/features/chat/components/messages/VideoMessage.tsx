@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Typography, alpha, useTheme } from '@mui/material';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import BrokenImageOutlinedIcon from '@mui/icons-material/BrokenImageOutlined';
+import { RichMessageText } from './RichMessageText';
 
 interface Props {
   mediaUrl?: string | null;
@@ -21,8 +22,32 @@ function formatDuration(sec: number | null | undefined): string {
 export function VideoMessage({ mediaUrl, durationSeconds, body, textColor }: Props) {
   const theme = useTheme();
   const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const retriedRef = useRef(false);
 
-  if (!mediaUrl) {
+  useEffect(() => {
+    setError(false);
+    setRetryNonce(0);
+    retriedRef.current = false;
+  }, [mediaUrl]);
+
+  const resolvedMediaUrl = useMemo(() => {
+    if (!mediaUrl) return null;
+    if (retryNonce === 0) return mediaUrl;
+    const separator = mediaUrl.includes('?') ? '&' : '?';
+    return `${mediaUrl}${separator}retry=${retryNonce}`;
+  }, [mediaUrl, retryNonce]);
+
+  const handleError = () => {
+    if (!retriedRef.current) {
+      retriedRef.current = true;
+      window.setTimeout(() => setRetryNonce((current) => current + 1), 700);
+      return;
+    }
+    setError(true);
+  };
+
+  if (!resolvedMediaUrl) {
     return (
       <Box
         sx={{
@@ -72,10 +97,11 @@ export function VideoMessage({ mediaUrl, durationSeconds, body, textColor }: Pro
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Box
+        key={resolvedMediaUrl}
         component="video"
         controls
-        src={mediaUrl}
-        onError={() => setError(true)}
+        src={resolvedMediaUrl}
+        onError={handleError}
         sx={{
           width: '100%',
           maxWidth: '100%',
@@ -85,9 +111,7 @@ export function VideoMessage({ mediaUrl, durationSeconds, body, textColor }: Pro
         }}
       />
       {body && (
-        <Typography variant="body2" sx={{ color: textColor, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {body}
-        </Typography>
+        <RichMessageText text={body} textColor={textColor} />
       )}
     </Box>
   );

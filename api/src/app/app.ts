@@ -7,7 +7,6 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import staticPlugin from '@fastify/static';
 import path from 'path';
-import '../shared/types/fastify.d'; // activate type augmentation
 import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
 import { registerRoutes } from './routes';
@@ -71,15 +70,15 @@ export async function buildApp() {
     openapi: {
       openapi: '3.0.3',
       info: {
-        title: 'ChatPrime API',
+        title: 'WaioPrime API',
         description:
-          'API REST para a plataforma ChatPrime — mensageria, CRM, automação e assistentes de IA.',
+          'API REST para a plataforma WaioPrime — mensageria, CRM, automação e assistentes de IA.',
         version: '0.2.0',
-        contact: { name: 'ChatPrime', email: 'dev@chatprime.com' },
+        contact: { name: 'WaioPrime', email: 'dev@waioprime.com' },
       },
       servers: [
         { url: `http://localhost:${env.PORT}`, description: 'Local' },
-        { url: 'https://chatprime-api.onrender.com', description: 'Produção' },
+        { url: 'https://waioprime-api.onrender.com', description: 'Produção' },
       ],
       components: {
         securitySchemes: {

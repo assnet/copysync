@@ -1,9 +1,75 @@
-import axios, { type AxiosError } from 'axios';
+import axios, { AxiosHeaders, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+
+type ApiErrorPayload = {
+  error?: { message?: string };
+  message?: string;
+};
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+};
+
+const apiBaseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
+
+let refreshPromise: Promise<string | null> | null = null;
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api',
+  baseURL: apiBaseURL,
   headers: { 'Content-Type': 'application/json' },
 });
+
+const refreshClient = axios.create({
+  baseURL: apiBaseURL,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+function clearSessionAndRedirect(): void {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('activeTenantId');
+  localStorage.removeItem('activeTenantName');
+
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+}
+
+function getErrorMessage(error: AxiosError<ApiErrorPayload>): string {
+  return (
+    error.response?.data?.error?.message ??
+    error.response?.data?.message ??
+    error.message ??
+    'Erro inesperado'
+  );
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) {
+    return null;
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = refreshClient
+      .post<{ success: true; data: { accessToken: string } }>('/auth/refresh', {
+        refreshToken,
+      })
+      .then((response) => {
+        const accessToken = response.data.data.accessToken;
+        localStorage.setItem('accessToken', accessToken);
+        return accessToken;
+      })
+      .catch(() => {
+        clearSessionAndRedirect();
+        return null;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
 
 // ── Request interceptor — injeta token e tenant ─────────────────────────────
 apiClient.interceptors.request.use((config) => {
@@ -23,23 +89,40 @@ apiClient.interceptors.request.use((config) => {
 // ── Response interceptor — normaliza erros ──────────────────────────────────
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ error?: { message?: string }; message?: string }>) => {
-    // Token inválido/expirado — limpa estado e redireciona ao login
-    if (error.response?.status === 401) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('activeTenantId');
-      localStorage.removeItem('activeTenantName');
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+  async (error: AxiosError<ApiErrorPayload>) => {
+    const originalRequest = error.config as RetryableRequestConfig | undefined;
+    const requestUrl = originalRequest?.url ?? '';
+    const isAuthLogin = requestUrl.endsWith('/auth/login');
+    const isAuthRefresh = requestUrl.endsWith('/auth/refresh');
+
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthLogin &&
+      !isAuthRefresh
+    ) {
+      originalRequest._retry = true;
+
+      const accessToken = await refreshAccessToken();
+      if (accessToken) {
+        const headers = AxiosHeaders.from(originalRequest.headers);
+        headers.set('Authorization', `Bearer ${accessToken}`);
+
+        const tenantId = localStorage.getItem('activeTenantId');
+        if (tenantId) {
+          headers.set('x-tenant-id', tenantId);
+        }
+
+        originalRequest.headers = headers;
+        return apiClient(originalRequest);
       }
     }
 
-    const msg =
-      error.response?.data?.error?.message ??
-      error.response?.data?.message ??
-      error.message ??
-      'Erro inesperado';
-    return Promise.reject(new Error(msg));
+    if (error.response?.status === 401) {
+      clearSessionAndRedirect();
+    }
+
+    return Promise.reject(new Error(getErrorMessage(error)));
   },
 );

@@ -7,6 +7,50 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+#### Frontend — Renovação automática do access token no painel
+
+- **`app/src/services/apiClient.ts`** — substitui o logout imediato em qualquer `401` por um fluxo de refresh com deduplicação de requisições concorrentes e retry automático da request original; corrige logout involuntário após expiração natural do JWT de acesso (`15m`) quando o `refreshToken` ainda é válido
+
+#### Backend — Persistência segura de replies durante history sync
+
+- **`api/src/modules/chat/infrastructure/repositories/PrismaChatMessageRepository.ts`** — antes de gravar `quotedMessageId`, resolve o valor recebido para um ID interno válido da `chat_messages` (aceitando tanto ID interno quanto `externalMessageId` do WhatsApp); evita `P2003` ao ingerir mensagens históricas ou recebidas que citam uma mensagem ainda não mapeada no banco
+
+#### Infraestrutura — Build/runtime da API no Docker com porta 3333
+
+- **`api/src/app/app.ts`** — remove import em runtime de `fastify.d.ts`; a declaração continua válida para o TypeScript por estar incluída no projeto, mas deixa de quebrar o container com `Cannot find module '../shared/types/fastify.d'`
+- **`api/src/shared/config/env.ts`** — alinha o `PORT` padrão da API para `3333`, consistente com `.env` e com o `docker-compose.yml`
+- **`api/package.json`** — fixa `packageManager` em `pnpm@10.33.0` para manter o build do Docker alinhado ao lockfile e evitar o fluxo de aprovação de scripts do `pnpm 11` no container
+- **`api/Dockerfile`** — adiciona Dockerfile multi-stage real para a API com `pnpm install`, `prisma generate`, `tsc build`, `prisma migrate deploy` no startup e `EXPOSE 3333`
+- **`api/Dockerfile`** — runner passa a copiar `node_modules` da etapa `build` em vez da etapa `deps`, preservando o client gerado do Prisma e corrigindo o crash `@prisma/client did not initialize yet`
+- **`docker-compose.yml`** — sobrescreve `DATABASE_URL`, `HOST` e `PORT` do serviço `api` para valores válidos dentro da rede Docker; corrige restart loop causado por `localhost:5440` dentro do container e aplica a porta `3333`
+- **`api/.env.dev`** — corrige o exemplo de `DATABASE_URL` para Docker Compose usando `postgres:5432` em vez da porta publicada no host
+- **`api/.dockerignore`** — evita enviar `node_modules`, `dist`, `storage` e arquivos locais desnecessários para o build do Docker
+
+#### Backend — Reativação da persistência de mídia do chat
+
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — volta a baixar imagens, áudios, vídeos, documentos e stickers recebidos pelo Baileys, salva os binários em `storage/media` e repopula `mediaUrl` nos fluxos de mensagem em tempo real e history sync; corrige o chat exibindo apenas placeholders porque as mensagens estavam sendo persistidas com `mediaUrl=null`
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — passa a desempacotar wrappers comuns do WhatsApp (`ephemeralMessage`, `viewOnceMessage`, `viewOnceMessageV2`, `documentWithCaptionMessage`, `editedMessage`) antes de classificar a mensagem; corrige casos em que documentos/PDFs não chegavam ao chat como `DOCUMENT`
+
+#### Frontend — Links clicáveis em mensagens de texto
+
+- **`app/src/features/chat/components/messages/RichMessageText.tsx`** — novo renderer de texto com auto-link para URLs `http/https`, preservando quebra de linha e estilo do bubble
+- **`app/src/features/chat/components/MessageBubble.tsx`** — mensagens de texto passam a usar renderer rico em vez de `Typography` pura, tornando links clicáveis no chat
+
+#### Backend — Remoção de dependência não utilizada no BaileysAdapter
+
+- **`MessagingEngineFactory.ts`** — remove `chatConversationRepo` da chamada ao construtor de `BaileysMessagingEngineAdapter`; o parâmetro constava na assinatura da factory mas não era consumido pelo adapter, gerando acoplamento desnecessário e possível confusão sobre o contrato real da classe
+
+#### Frontend — Correção de URL do WebSocket em ambiente de desenvolvimento
+
+- **`useChatWebSocket.ts`** — reescreve a lógica de resolução de URL do WS para caminhos relativos (`/api`): passa a usar `window.location.hostname` + `VITE_API_PORT` ao invés de `window.location.host`, contornando o proxy do Vite 6 que não realiza o upgrade de WebSocket de forma confiável em sub-paths; resolve falha silenciosa de conexão WS ao acessar o painel de outro dispositivo na rede local
+- **`app/.env.example`** — documenta `VITE_API_PORT=3000` e adiciona instruções sobre como configurar `VITE_API_URL` para acesso de outros dispositivos na rede
+
+---
+
 ## [0.2.0] — 2026-03-22 — Chat V2: reply no WhatsApp, suporte a grupos, avatares em tempo real, menu contextual e estabilização do adapter
 
 ### Added

@@ -92,15 +92,24 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
       const token    = localStorage.getItem('accessToken') ?? '';
       const tenantId = localStorage.getItem('activeTenantId') ?? '';
 
-      // Use the same base URL strategy as apiClient to avoid relying on the
-      // Vite dev proxy for WebSocket upgrades (unreliable for subpaths in Vite 6).
-      // VITE_API_URL ?? 'http://localhost:3000/api' mirrors apiClient.ts exactly.
+      // WebSocket upgrades cannot go through the Vite dev proxy (unreliable in
+      // Vite 6 for sub-paths). We bypass it by connecting directly to the API
+      // server using window.location.hostname (always the correct server IP,
+      // even when accessed from other devices on the network) + VITE_API_PORT.
       const apiBase = (import.meta.env.VITE_API_URL as string | undefined)
         ?? 'http://localhost:3000/api';
 
-      const httpBase = apiBase.startsWith('http')
-        ? apiBase
-        : `${window.location.protocol}//${window.location.host}${apiBase}`;
+      let httpBase: string;
+      if (apiBase.startsWith('http')) {
+        // Full URL — use it directly (e.g. http://192.168.1.x:3000/api)
+        httpBase = apiBase;
+      } else {
+        // Relative path (e.g. /api) — build a direct URL to the API server,
+        // skipping the Vite proxy which does not reliably forward WS upgrades.
+        const apiPort = (import.meta.env.VITE_API_PORT as string | undefined) ?? '3000';
+        httpBase = `http://${window.location.hostname}:${apiPort}${apiBase}`;
+      }
+
       const wsBase = httpBase.replace(/^http/, 'ws');
 
       const url = `${wsBase}/chat/ws?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantId)}`;
