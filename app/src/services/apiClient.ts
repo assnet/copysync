@@ -9,9 +9,14 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
+type RefreshTokenResult =
+  | { status: 'success'; accessToken: string }
+  | { status: 'invalid' }
+  | { status: 'unavailable'; message: string };
+
 const apiBaseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<RefreshTokenResult> | null = null;
 
 export const apiClient = axios.create({
   baseURL: apiBaseURL,
@@ -26,6 +31,7 @@ const refreshClient = axios.create({
 function clearSessionAndRedirect(): void {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
+  localStorage.removeItem('authUser');
   localStorage.removeItem('activeTenantId');
   localStorage.removeItem('activeTenantName');
 
@@ -57,18 +63,34 @@ async function refreshAccessToken(): Promise<string | null> {
       .then((response) => {
         const accessToken = response.data.data.accessToken;
         localStorage.setItem('accessToken', accessToken);
-        return accessToken;
+        return { status: 'success', accessToken } as const;
       })
-      .catch(() => {
-        clearSessionAndRedirect();
-        return null;
+      .catch((error: AxiosError<ApiErrorPayload>) => {
+        if (!error.response || error.response.status >= 500) {
+          return {
+            status: 'unavailable',
+            message: getErrorMessage(error),
+          } as const;
+        }
+
+        return { status: 'invalid' } as const;
       })
       .finally(() => {
         refreshPromise = null;
       });
   }
 
-  return refreshPromise;
+  const result = await refreshPromise;
+
+  if (result.status === 'success') {
+    return result.accessToken;
+  }
+
+  if (result.status === 'invalid') {
+    return null;
+  }
+
+  throw new Error(result.message);
 }
 
 // ── Request interceptor — injeta token e tenant ─────────────────────────────

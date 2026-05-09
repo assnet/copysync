@@ -112,7 +112,7 @@ export function LoginPage() {
               component="img"
               src="/assets/logo_waiochat.png"
               alt="Imagem"
-              sx={{ width: 44, height: 44, borderRadius: 2, objectFit: 'contain' }}
+              sx={{ width: 44, height: 44, borderRadius: 0, objectFit: 'contain' }}
             />           
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, letterSpacing: -0.5 }}>
               WaioPrime

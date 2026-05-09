@@ -25,12 +25,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`.gitattributes`** — normaliza finais de linha em `LF`, marca arquivos binários corretamente e reduz ruído entre ambientes macOS/Windows
 - **`.prettierrc`** — adiciona baseline simples de formatação com `singleQuote` e `trailingComma: all`
 
+#### Documentação — Planejamento do offload de mídia do chat
+
+- **`docs/superpowers/plans/2026-05-09-chat-media-storage-architecture.md`** — adiciona um plano técnico detalhado para migrar a mídia do chat de disco local para object storage, cobrindo diagnóstico atual, arquitetura alvo, contratos, mapa de arquivos, etapas por task, riscos, rollout e estratégia de validação
+
 ### Changed
 
 #### Frontend — Aplicação da identidade visual no acesso ao painel
 
 - **`app/index.html`** — troca o favicon SVG genérico pelo logo PNG da marca
-- **`app/src/pages/LoginPage.tsx`** — substitui o monograma temporário pelo logo real na tela de login sem alterar a estrutura principal da página
+- **`app/src/pages/LoginPage.tsx`** — substitui o monograma temporário pelo logo real na tela de login e ajusta a renderização do asset para usar proporção simples, sem bordas arredondadas artificiais
+- **`app/src/app/AppLayout.tsx`** — aplica o mesmo logo oficial no drawer do painel autenticado, removendo o monograma placeholder e alinhando a navegação interna com a identidade visual já usada no login
 
 ### Fixed
 
@@ -53,6 +58,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 #### Frontend — Renovação automática do access token no painel
 
 - **`app/src/services/apiClient.ts`** — substitui o logout imediato em qualquer `401` por um fluxo de refresh com deduplicação de requisições concorrentes e retry automático da request original; corrige logout involuntário após expiração natural do JWT de acesso (`15m`) quando o `refreshToken` ainda é válido
+- **`app/src/services/apiClient.ts`** — falhas temporárias de conexão durante reload/HMR do Vite deixam de limpar a sessão local; o refresh agora diferencia indisponibilidade transitória da API de refresh token inválido/expirado e preserva `authUser` até que a autenticação realmente deixe de ser válida
 
 #### Backend — Persistência segura de replies durante history sync
 

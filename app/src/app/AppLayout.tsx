@@ -37,8 +37,8 @@ const NAV_FUTURE = [
 
 function NavLogo() {
   return (
-    <Box sx={{ px: 2.5, py: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-      <Box
+    <Box sx={{ px: 2.5, py: 2.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      {/* <Box
         sx={{
           width: 32,
           height: 32,
@@ -51,7 +51,13 @@ function NavLogo() {
         }}
       >
         <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 16, lineHeight: 1 }}>W</Typography>
-      </Box>
+      </Box> */}
+      <Box
+        component="img"
+        src="/assets/logo_waiochat.png"
+        alt="Imagem"
+        sx={{ width: 44, height: 44, borderRadius: 0, objectFit: 'contain' }}
+      />  
       <Typography variant="h6" fontWeight={800} letterSpacing={-0.5}>
         WaioPrime
       </Typography>
