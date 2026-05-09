@@ -29,6 +29,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - **`docs/superpowers/plans/2026-05-09-chat-media-storage-architecture.md`** — adiciona um plano técnico detalhado para migrar a mídia do chat de disco local para object storage, cobrindo diagnóstico atual, arquitetura alvo, contratos, mapa de arquivos, etapas por task, riscos, rollout e estratégia de validação
 
+#### Documentação — Migração do banco local para a Render
+
+- **`api/db.instructions.md`** — adiciona um guia operacional completo para criar um novo banco em uma instância PostgreSQL já existente na Render, exportar o banco local do Docker, importar o dump no banco remoto, atualizar a `DATABASE_URL` da API, validar o Prisma e diagnosticar problemas comuns como `psql: not found`, uso de URL interna vs. externa e incompatibilidades do meta-comando `\l`
+
 ### Changed
 
 #### Frontend — Aplicação da identidade visual no acesso ao painel
