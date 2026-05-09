@@ -11,7 +11,24 @@ import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
 import { registerRoutes } from './routes';
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/^['\"]|['\"]$/g, '').replace(/\/+$/, '');
+}
+
+function getAllowedCorsOrigins(rawOrigins: string): string[] | null {
+  if (rawOrigins.trim() === '*') {
+    return null;
+  }
+
+  return rawOrigins
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean);
+}
+
 export async function buildApp() {
+  const allowedCorsOrigins = getAllowedCorsOrigins(env.CORS_ORIGIN);
+
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
@@ -40,7 +57,14 @@ export async function buildApp() {
   });
 
   await app.register(cors, {
-    origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(','),
+    origin: (origin, callback) => {
+      if (!origin || allowedCorsOrigins === null) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, allowedCorsOrigins.includes(normalizeOrigin(origin)));
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
   });
