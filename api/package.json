@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch --env-file=.env src/app/server.ts --host",
-    "build": "pnpm prisma:generate && pnpm prisma:migrate && pnpm prisma:seed && tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json",
     "start": "node dist/app/server.js",
     "restart": "pnpm prisma:generate && pnpm prisma:migrate && pnpm prisma:seed && node dist/app/server.js",
     "typecheck": "tsc --noEmit",
