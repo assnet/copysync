@@ -85,7 +85,7 @@ export function AudioMessage({ mediaUrl, mimeType, durationSeconds }: Props) {
       controls
       src={resolvedMediaUrl}
       onError={handleError}
-      preload="metadata"
+      preload="none"
       sx={{
         display: 'block',
         width: '100%',
