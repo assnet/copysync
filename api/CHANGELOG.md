@@ -11,6 +11,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Backend — Deploy seguro sem reconexão automática de sessões WhatsApp
+
+- **`api/src/shared/config/env.ts`** — adiciona `SESSION_BOOTSTRAP_ON_STARTUP` com default `false`, impedindo que a API reconecte sessões WhatsApp automaticamente a cada boot/deploy; isso evita que o startup dispare o Baileys, carregue blobs grandes de `session_auth_states` e gere novos `upsert`s enquanto o PostgreSQL ainda está instável ou enquanto `prisma migrate deploy` tenta validar o banco
+- **`api/src/shared/config/env.ts`** — adiciona `SESSION_BOOTSTRAP_MAX_CONCURRENT` com default `1`, permitindo reativar o bootstrap de forma controlada sem reconectar várias sessões em paralelo
+- **`api/src/app/server.ts`** — envolve o bootstrap em `if (env.SESSION_BOOTSTRAP_ON_STARTUP)`; quando desligado, a API sobe normalmente, registra os listeners e deixa as sessões desconectadas até reconexão manual pela API/UI, preservando disponibilidade HTTP e reduzindo pressão no banco durante deploy
+- **`api/src/modules/sessions/application/services/SessionBootstrapService.ts`** — substitui o `Promise.allSettled` sobre todas as sessões por batches limitados por `maxConcurrent`; quando o bootstrap for ligado explicitamente, as reconexões passam a ocorrer de forma sequencial/controlada, evitando avalanche simultânea de conexão Baileys e persistência de auth state
+
 #### Backend — Persistência do auth state do Baileys: eliminação de upserts desnecessários
 
 - **`BaileysAuthStatePersistence.ts`** — adicionada `areSerializedValuesEqual(left, right)` que compara `JSON.stringify` de dois valores serializados; usada internamente para detectar se um valor realmente mudou antes de marcar o estado como sujo, eliminando gravações em banco provocadas por chamadas repetidas do Baileys com os mesmos dados

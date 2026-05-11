@@ -80,23 +80,33 @@ async function start(): Promise<void> {
   registerChatSessionStatusListener();
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
-  // Runs after the server is listening so QR events can be polled immediately.
-  try {
-    const sessionRepo = new PrismaSessionRepository();
-    const authStateRepo = new PrismaSessionAuthStateRepository();
-    const engine = MessagingEngineFactory.create(
-      'baileys',
-      sessionRepo,
-      authStateRepo,
-      chatContactRepo,
-      chatConversationRepo,
-      ingestHistorySyncUseCase,
+  // Disabled by default in production because reconnecting WhatsApp sessions on
+  // every deploy can generate large Baileys auth-state writes and overload small
+  // PostgreSQL instances. Sessions can still be connected manually via API/UI.
+  if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
+    try {
+      const sessionRepo = new PrismaSessionRepository();
+      const authStateRepo = new PrismaSessionAuthStateRepository();
+      const engine = MessagingEngineFactory.create(
+        'baileys',
+        sessionRepo,
+        authStateRepo,
+        chatContactRepo,
+        chatConversationRepo,
+        ingestHistorySyncUseCase,
+      );
+      const bootstrapService = new SessionBootstrapService(sessionRepo, engine, {
+        maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
+      });
+      await bootstrapService.bootstrap();
+    } catch (err) {
+      // Bootstrap failure must not crash the server
+      logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
+    }
+  } else {
+    logger.warn(
+      'Session bootstrap disabled; WhatsApp sessions will remain disconnected until manually connected',
     );
-    const bootstrapService = new SessionBootstrapService(sessionRepo, engine);
-    await bootstrapService.bootstrap();
-  } catch (err) {
-    // Bootstrap failure must not crash the server
-    logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
   }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────

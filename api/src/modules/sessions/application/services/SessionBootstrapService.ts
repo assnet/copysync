@@ -4,6 +4,10 @@ import { logger } from '../../../../shared/logger/logger';
 
 const bootstrapLogger = logger.child({ module: 'SessionBootstrapService' });
 
+export interface SessionBootstrapOptions {
+  maxConcurrent?: number;
+}
+
 /**
  * SessionBootstrapService
  *
@@ -19,6 +23,7 @@ export class SessionBootstrapService {
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly engine: IMessagingEngine,
+    private readonly options: SessionBootstrapOptions = {},
   ) {}
 
   async bootstrap(): Promise<void> {
@@ -35,28 +40,38 @@ export class SessionBootstrapService {
       return;
     }
 
-    bootstrapLogger.info({ count: sessions.length }, 'Bootstrapping active sessions');
-
-    const results = await Promise.allSettled(
-      sessions.map(async (session) => {
-        try {
-          await this.engine.reconnectSession({
-            sessionId: session.id,
-            tenantId: session.tenantId,
-          });
-          bootstrapLogger.info({ sessionId: session.id, tenantId: session.tenantId }, 'Session bootstrapped');
-        } catch (err) {
-          bootstrapLogger.warn({ err, sessionId: session.id }, 'Failed to bootstrap session');
-          // Mark as DISCONNECTED so the user knows it needs a manual reconnect
-          try {
-            await this.sessionRepo.updateStatus(session.id, session.tenantId, {
-              status: 'DISCONNECTED',
-            });
-          } catch { /* best-effort */ }
-          throw err;
-        }
-      }),
+    const maxConcurrent = Math.max(1, this.options.maxConcurrent ?? 1);
+    bootstrapLogger.info(
+      { count: sessions.length, maxConcurrent },
+      'Bootstrapping active sessions',
     );
+
+    const results: PromiseSettledResult<void>[] = [];
+
+    for (let index = 0; index < sessions.length; index += maxConcurrent) {
+      const batch = sessions.slice(index, index + maxConcurrent);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (session) => {
+          try {
+            await this.engine.reconnectSession({
+              sessionId: session.id,
+              tenantId: session.tenantId,
+            });
+            bootstrapLogger.info({ sessionId: session.id, tenantId: session.tenantId }, 'Session bootstrapped');
+          } catch (err) {
+            bootstrapLogger.warn({ err, sessionId: session.id }, 'Failed to bootstrap session');
+            // Mark as DISCONNECTED so the user knows it needs a manual reconnect
+            try {
+              await this.sessionRepo.updateStatus(session.id, session.tenantId, {
+                status: 'DISCONNECTED',
+              });
+            } catch { /* best-effort */ }
+            throw err;
+          }
+        }),
+      );
+      results.push(...batchResults);
+    }
 
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed > 0) {
