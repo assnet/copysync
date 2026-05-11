@@ -42,6 +42,10 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function areSerializedValuesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 /**
  * Build a Baileys-compatible AuthenticationState that persists to the database.
  *
@@ -79,16 +83,39 @@ export async function buildBaileysAuthState(
   let flushTimer: NodeJS.Timeout | null = null;
   let flushPromise: Promise<void> | null = null;
   let persistInFlight = false;
-  let dirtyAfterPersistStarted = false;
+  let hasPendingPersist = false;
 
-  async function persistStateWithRetry(): Promise<void> {
+  function setStateValue(key: string, value: unknown): boolean {
+    const serializedValue = serialize(value);
+    if (areSerializedValuesEqual(stateMap[key], serializedValue)) {
+      return false;
+    }
+
+    stateMap[key] = serializedValue;
+    return true;
+  }
+
+  function deleteStateValue(key: string): boolean {
+    if (!Object.prototype.hasOwnProperty.call(stateMap, key)) {
+      return false;
+    }
+
+    delete stateMap[key];
+    return true;
+  }
+
+  function markStateDirty(): void {
+    hasPendingPersist = true;
+  }
+
+  async function persistStateWithRetry(statePayload: Record<string, unknown>): Promise<void> {
     for (let attempt = 1; attempt <= env.BAILEYS_AUTH_PERSIST_MAX_RETRIES; attempt++) {
       try {
         await authStateRepo.upsert({
           sessionId,
           tenantId,
           provider: PROVIDER,
-          statePayload: stateMap,
+          statePayload,
         });
         return;
       } catch (err) {
@@ -104,16 +131,15 @@ export async function buildBaileysAuthState(
 
   async function flushState(): Promise<void> {
     if (persistInFlight) {
-      dirtyAfterPersistStarted = true;
       return;
     }
 
     persistInFlight = true;
     try {
       do {
-        dirtyAfterPersistStarted = false;
-        await persistStateWithRetry();
-      } while (dirtyAfterPersistStarted);
+        hasPendingPersist = false;
+        await persistStateWithRetry({ ...stateMap });
+      } while (hasPendingPersist);
     } finally {
       persistInFlight = false;
       flushPromise = null;
@@ -135,10 +161,16 @@ export async function buildBaileysAuthState(
     return flushPromise as Promise<void>;
   }
 
+  function scheduleDirtyStatePersist(): Promise<void> {
+    markStateDirty();
+    return schedulePersistState();
+  }
+
   // ── saveCreds — called by Baileys when credentials change ──────────────────
   async function saveCreds(): Promise<void> {
-    stateMap[CREDS_KEY] = serialize(creds);
-    await schedulePersistState();
+    if (setStateValue(CREDS_KEY, creds)) {
+      await scheduleDirtyStatePersist();
+    }
   }
 
   // ── SignalKeyStore — reads and writes Signal protocol keys ─────────────────
@@ -174,15 +206,14 @@ export async function buildBaileysAuthState(
           const key = `${category}__${id}`;
           const value = categoryData[id as keyof typeof categoryData];
           if (value !== null && value !== undefined) {
-            stateMap[key] = serialize(value);
+            dirty = setStateValue(key, value) || dirty;
           } else {
-            delete stateMap[key];
+            dirty = deleteStateValue(key) || dirty;
           }
-          dirty = true;
         }
       }
       if (dirty) {
-        await schedulePersistState();
+        await scheduleDirtyStatePersist();
       }
     },
   };

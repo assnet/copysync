@@ -9,6 +9,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed
+
+#### Backend — Persistência do auth state do Baileys: eliminação de upserts desnecessários
+
+- **`BaileysAuthStatePersistence.ts`** — adicionada `areSerializedValuesEqual(left, right)` que compara `JSON.stringify` de dois valores serializados; usada internamente para detectar se um valor realmente mudou antes de marcar o estado como sujo, eliminando gravações em banco provocadas por chamadas repetidas do Baileys com os mesmos dados
+- **`BaileysAuthStatePersistence.ts`** — nova função `setStateValue(key, value)` que serializa o novo valor com `BufferJSON.replacer`, compara com o que já está no `stateMap` e só grava se houver diferença; retorna `true` apenas quando a mudança foi efetiva, permitindo que `saveCreds` e `keys.set` decidam de forma confiável se há algo a persistir
+- **`BaileysAuthStatePersistence.ts`** — nova função `deleteStateValue(key)` que verifica com `hasOwnProperty` se a key existe antes de deletar; retorna `true` somente quando a remoção ocorreu de fato, evitando que `keys.set` marque dirty em tentativas de deletar keys inexistentes
+- **`BaileysAuthStatePersistence.ts`** — nova função `markStateDirty()` que centraliza a atribuição `hasPendingPersist = true`; substitui o flag `dirtyAfterPersistStarted` com nome mais claro e semântica explícita de "há mudanças aguardando a próxima janela de persistência"
+- **`BaileysAuthStatePersistence.ts`** — `persistStateWithRetry` passou a receber `statePayload: Record<string, unknown>` em vez de capturar `stateMap` pela closure; a chamada em `flushState` faz `{ ...stateMap }` antes de entrar no loop, garantindo que o snapshot gravado no banco corresponde ao estado no momento em que o flush começou — mudanças que chegam durante o `upsert` assíncrono não são gravadas parcialmente nem perdidas
+- **`BaileysAuthStatePersistence.ts`** — `flushState` usa o snapshot explícito e mantém o loop `do … while (hasPendingPersist)` para repetir automaticamente se novas mudanças chegaram enquanto a gravação anterior ainda estava em andamento; a remoção do bloco `if (persistInFlight) { dirtyAfterPersistStarted = true; return }` anterior evita que uma segunda entrada em `flushState` ignore silenciosamente mudanças já marcadas
+- **`BaileysAuthStatePersistence.ts`** — novo helper `scheduleDirtyStatePersist()` que combina `markStateDirty()` e `schedulePersistState()` em uma única chamada; simplifica `saveCreds` e `keys.set` que antes chamavam `schedulePersistState()` diretamente sem garantir que `hasPendingPersist` estava setado
+- **`BaileysAuthStatePersistence.ts`** — `saveCreds` agora chama `setStateValue(CREDS_KEY, creds)` e agenda persistência somente se o valor retornado for `true`; elimina flushes causados pelo Baileys ao chamar o callback `creds.update` com as mesmas credenciais já persistidas (comportamento comum durante heartbeat e reconfirmação de sessão)
+- **`BaileysAuthStatePersistence.ts`** — `keys.set` substitui o `dirty = true` incondicional por `dirty = setStateValue(key, value) || dirty` e `dirty = deleteStateValue(key) || dirty`; a persistência só é agendada quando pelo menos uma key teve mudança efetiva, eliminando upserts disparados por chamadas `keys.set` com dados idênticos aos já armazenados (frequentes durante descriptografia e sincronização de mensagens históricas)
+
 ### Changed
 
 #### Backend — Simplificação do BaileysMessagingEngineAdapter: remoção de grupos, mídia, avatares e reply
