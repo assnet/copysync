@@ -65,11 +65,12 @@ async function refreshAccessToken(): Promise<string | null> {
         localStorage.setItem('accessToken', accessToken);
         return { status: 'success', accessToken } as const;
       })
-      .catch((error: AxiosError<ApiErrorPayload>) => {
-        if (!error.response || error.response.status >= 500) {
+      .catch((err: unknown) => {
+        const axiosError = err as AxiosError<ApiErrorPayload>;
+        if (!axiosError.response || axiosError.response.status >= 500) {
           return {
             status: 'unavailable',
-            message: getErrorMessage(error),
+            message: err instanceof Error ? err.message : 'Erro inesperado',
           } as const;
         }
 
@@ -126,18 +127,22 @@ apiClient.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
-      const accessToken = await refreshAccessToken();
-      if (accessToken) {
-        const headers = AxiosHeaders.from(originalRequest.headers);
-        headers.set('Authorization', `Bearer ${accessToken}`);
+      try {
+        const accessToken = await refreshAccessToken();
+        if (accessToken) {
+          const headers = AxiosHeaders.from(originalRequest.headers);
+          headers.set('Authorization', `Bearer ${accessToken}`);
 
-        const tenantId = localStorage.getItem('activeTenantId');
-        if (tenantId) {
-          headers.set('x-tenant-id', tenantId);
+          const tenantId = localStorage.getItem('activeTenantId');
+          if (tenantId) {
+            headers.set('x-tenant-id', tenantId);
+          }
+
+          originalRequest.headers = headers;
+          return apiClient(originalRequest);
         }
-
-        originalRequest.headers = headers;
-        return apiClient(originalRequest);
+      } catch {
+        // refresh falhou com erro inesperado — trata como sessão inválida
       }
     }
 

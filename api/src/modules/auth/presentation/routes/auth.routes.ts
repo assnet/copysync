@@ -60,7 +60,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           200: {
             type: 'object',
             properties: {
-              accessToken: { type: 'string' },
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  accessToken: { type: 'string' },
+                },
+              },
             },
           },
           401: { $ref: 'ErrorResponse#' },
