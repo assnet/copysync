@@ -46,7 +46,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 #### Backend — Estabilidade ao conectar sessões WhatsApp na Render
 
 - **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — desliga o `syncFullHistory` completo por padrão via `BAILEYS_SYNC_FULL_HISTORY=false`, reduzindo picos de memória/CPU ao conectar um número novo; também blinda handlers `connection.update`, `messages.upsert` e `messaging-history.set` para que falhas transitórias do Prisma (`P1001`/`P1017`) não derrubem o processo Node
-- **`api/src/shared/config/env.ts`** — adiciona `BAILEYS_SYNC_FULL_HISTORY`, `DATABASE_CONNECT_MAX_ATTEMPTS` e `DATABASE_CONNECT_RETRY_DELAY_MS` para controlar sincronização inicial e retry de conexão com o banco em produção
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysAuthStatePersistence.ts`** — agrupa persistências do auth state com debounce e retry antes de gravar no PostgreSQL, reduzindo a avalanche de `sessionAuthState.upsert()` durante descriptografia, retry de mensagens e conexão de novos números
+- **`api/src/shared/config/env.ts`** — adiciona `BAILEYS_SYNC_FULL_HISTORY`, `BAILEYS_AUTH_FLUSH_DEBOUNCE_MS`, `BAILEYS_AUTH_PERSIST_MAX_RETRIES`, `BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS`, `DATABASE_CONNECT_MAX_ATTEMPTS` e `DATABASE_CONNECT_RETRY_DELAY_MS` para controlar sincronização inicial, persistência do auth state e retry de conexão com o banco em produção
 - **`api/src/app/server.ts`** — adiciona retry na conexão inicial com o Prisma antes de encerrar o startup, evitando queda imediata quando o PostgreSQL da Render fecha uma conexão temporariamente
 - **`api/scripts/prisma-migrate-deploy-with-retry.mjs`**, **`api/package.json`** e **`api/Dockerfile`** — fazem `prisma migrate deploy` tentar novamente antes de falhar, cobrindo oscilações curtas do PostgreSQL durante pre-deploy/startup
 

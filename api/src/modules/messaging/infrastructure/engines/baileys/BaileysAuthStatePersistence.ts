@@ -16,9 +16,12 @@ import {
   type SignalDataTypeMap,
 } from '@whiskeysockets/baileys';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
+import { env } from '../../../../../shared/config/env';
+import { logger } from '../../../../../shared/logger/logger';
 
 const CREDS_KEY = '__creds__';
 const PROVIDER = 'baileys';
+const log = logger.child({ module: 'BaileysAuthStatePersistence' });
 
 /**
  * Serialize a value to a plain JSON-compatible object using Baileys' BufferJSON replacer.
@@ -33,6 +36,10 @@ function serialize(value: unknown): unknown {
  */
 function deserialize(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value), BufferJSON.reviver);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -69,19 +76,69 @@ export async function buildBaileysAuthState(
     : initAuthCreds();
 
   // ── Helper to persist the whole state map ──────────────────────────────────
-  async function persistState(): Promise<void> {
-    await authStateRepo.upsert({
-      sessionId,
-      tenantId,
-      provider: PROVIDER,
-      statePayload: stateMap,
-    });
+  let flushTimer: NodeJS.Timeout | null = null;
+  let flushPromise: Promise<void> | null = null;
+  let persistInFlight = false;
+  let dirtyAfterPersistStarted = false;
+
+  async function persistStateWithRetry(): Promise<void> {
+    for (let attempt = 1; attempt <= env.BAILEYS_AUTH_PERSIST_MAX_RETRIES; attempt++) {
+      try {
+        await authStateRepo.upsert({
+          sessionId,
+          tenantId,
+          provider: PROVIDER,
+          statePayload: stateMap,
+        });
+        return;
+      } catch (err) {
+        if (attempt >= env.BAILEYS_AUTH_PERSIST_MAX_RETRIES) throw err;
+        log.warn(
+          { err, sessionId, attempt, nextAttemptInMs: env.BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS },
+          'Failed to persist Baileys auth state; retrying',
+        );
+        await wait(env.BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  async function flushState(): Promise<void> {
+    if (persistInFlight) {
+      dirtyAfterPersistStarted = true;
+      return;
+    }
+
+    persistInFlight = true;
+    try {
+      do {
+        dirtyAfterPersistStarted = false;
+        await persistStateWithRetry();
+      } while (dirtyAfterPersistStarted);
+    } finally {
+      persistInFlight = false;
+      flushPromise = null;
+    }
+  }
+
+  function schedulePersistState(): Promise<void> {
+    if (!flushPromise) {
+      flushPromise = new Promise<void>((resolve, reject) => {
+        flushTimer = setTimeout(() => {
+          flushTimer = null;
+          flushState().then(resolve).catch(reject);
+        }, env.BAILEYS_AUTH_FLUSH_DEBOUNCE_MS);
+      }).catch((err) => {
+        log.error({ err, sessionId }, 'Failed to persist Baileys auth state after retries');
+      });
+    }
+
+    return flushPromise as Promise<void>;
   }
 
   // ── saveCreds — called by Baileys when credentials change ──────────────────
   async function saveCreds(): Promise<void> {
     stateMap[CREDS_KEY] = serialize(creds);
-    await persistState();
+    await schedulePersistState();
   }
 
   // ── SignalKeyStore — reads and writes Signal protocol keys ─────────────────
@@ -125,7 +182,7 @@ export async function buildBaileysAuthState(
         }
       }
       if (dirty) {
-        await persistState();
+        await schedulePersistState();
       }
     },
   };

@@ -27,6 +27,9 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  BAILEYS_AUTH_FLUSH_DEBOUNCE_MS: z.coerce.number().int().nonnegative().default(750),
+  BAILEYS_AUTH_PERSIST_MAX_RETRIES: z.coerce.number().int().positive().default(3),
+  BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS: z.coerce.number().int().positive().default(1_000),
 });
 
 export type Env = z.infer<typeof envSchema>;
