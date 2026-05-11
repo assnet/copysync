@@ -7,6 +7,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import staticPlugin from '@fastify/static';
 import path from 'path';
+import fs from 'fs/promises';
 import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
 import { registerRoutes } from './routes';
@@ -96,10 +97,20 @@ export async function buildApp() {
   // ── Static media storage ──────────────────────────────────────────────────
   // Serves uploaded/downloaded media files (images, audio, video, documents)
   // at GET /api/storage/...  No authentication — URLs are opaque and temporary.
+  // Creates the directory if it doesn't exist (required on first boot with a
+  // fresh persistent disk on Render, otherwise @fastify/static throws ENOENT).
+  const storageRoot = path.resolve(env.STORAGE_PATH);
+  await fs.mkdir(path.join(storageRoot, 'media'), { recursive: true });
   await app.register(staticPlugin, {
-    root: path.resolve(env.STORAGE_PATH),
+    root: storageRoot,
     prefix: `${env.API_PREFIX}/storage/`,
     decorateReply: false,
+    setHeaders(res) {
+      // Allow cross-origin loading of media (audio, image, video, document)
+      // elements from the panel domain (waioprime.com → api.waioprime.com).
+      // Without this, @fastify/helmet's default CORP: same-origin blocks them.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
   });
 
   // ── OpenAPI / Swagger ─────────────────────────────────────────────────────
