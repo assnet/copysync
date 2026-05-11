@@ -35,4 +35,4 @@ COPY scripts ./scripts
 
 EXPOSE 3333
 
-CMD ["sh", "-c", "node scripts/prisma-migrate-deploy-with-retry.mjs && node dist/app/server.js"]
+CMD ["node", "dist/app/server.js"]

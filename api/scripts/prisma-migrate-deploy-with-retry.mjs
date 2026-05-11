@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 
 const maxAttempts = Number.parseInt(process.env.PRISMA_DEPLOY_MAX_ATTEMPTS ?? '5', 10);
 const retryDelayMs = Number.parseInt(process.env.PRISMA_DEPLOY_RETRY_DELAY_MS ?? '5000', 10);
+const allowUnavailable = process.env.PRISMA_DEPLOY_ALLOW_UNAVAILABLE === 'true';
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,6 +36,10 @@ for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await wait(retryDelayMs);
   } else {
     console.error(`[prisma:deploy] failed after ${maxAttempts} attempts`);
+    if (allowUnavailable) {
+      console.warn('[prisma:deploy] continuing because PRISMA_DEPLOY_ALLOW_UNAVAILABLE=true');
+      process.exit(0);
+    }
     process.exit(code);
   }
 }

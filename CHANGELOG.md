@@ -45,6 +45,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 #### Backend — Estabilidade ao conectar sessões WhatsApp na Render
 
+- **`api/Dockerfile`** — remove `prisma migrate deploy` do `CMD` do container web; migrations devem rodar no pre-deploy/one-off job, evitando que o serviço HTTP morra antes de subir quando o PostgreSQL oscila temporariamente
+- **`api/scripts/prisma-migrate-deploy-with-retry.mjs`** — adiciona `PRISMA_DEPLOY_ALLOW_UNAVAILABLE=true` como escape operacional explícito para permitir rollout quando o banco fecha conexão durante o pre-deploy e não há migration pendente crítica
 - **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — desliga o `syncFullHistory` completo por padrão via `BAILEYS_SYNC_FULL_HISTORY=false`, reduzindo picos de memória/CPU ao conectar um número novo; também blinda handlers `connection.update`, `messages.upsert` e `messaging-history.set` para que falhas transitórias do Prisma (`P1001`/`P1017`) não derrubem o processo Node
 - **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysAuthStatePersistence.ts`** — agrupa persistências do auth state com debounce e retry antes de gravar no PostgreSQL, reduzindo a avalanche de `sessionAuthState.upsert()` durante descriptografia, retry de mensagens e conexão de novos números
 - **`api/src/shared/config/env.ts`** — adiciona `BAILEYS_SYNC_FULL_HISTORY`, `BAILEYS_AUTH_FLUSH_DEBOUNCE_MS`, `BAILEYS_AUTH_PERSIST_MAX_RETRIES`, `BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS`, `DATABASE_CONNECT_MAX_ATTEMPTS` e `DATABASE_CONNECT_RETRY_DELAY_MS` para controlar sincronização inicial, persistência do auth state e retry de conexão com o banco em produção
