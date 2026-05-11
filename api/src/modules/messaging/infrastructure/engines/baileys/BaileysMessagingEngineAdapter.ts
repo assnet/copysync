@@ -16,6 +16,7 @@ import makeWASocket, {
 import type { ConnectionState, AnyMessageContent, proto } from '@whiskeysockets/baileys';
 import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
+import { env } from '../../../../../shared/config/env';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
 import type {
   IMessagingEngine,
@@ -203,7 +204,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       logger: baileysLogger as never,
       printQRInTerminal: false,
       markOnlineOnConnect: false,
-      syncFullHistory: true,
+      syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
       // Baileys usa getMessage para re-envio e read receipts.
       // Retornar undefined é seguro — mensagens não serão re-enviadas automaticamente.
       getMessage: async (_key: proto.IMessageKey): Promise<{ conversation: string } | undefined> => {
@@ -220,77 +221,83 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     });
 
     socket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
-      const { connection, lastDisconnect, qr } = update;
+      try {
+        const { connection, lastDisconnect, qr } = update;
 
-      if (qr) {
-        this.registry.setQr(sessionId, qr);
-        await this.updateSessionStatus(sessionId, tenantId, 'AWAITING_QR');
-        internalEventBus.emit('SESSION_QR_UPDATED', { type: 'SESSION_QR_UPDATED', sessionId, tenantId, qrCode: qr });
-        baileysLogger.info({ sessionId }, 'QR code updated');
-      }
-
-      if (connection === 'open') {
-        this.registry.clearQr(sessionId);
-        const phone = state.creds.me?.id?.split(':')[0] ?? null;
-        await this.sessionRepo.updateStatus(sessionId, tenantId, {
-          status: 'CONNECTED',
-          lastConnectedAt: new Date(),
-        });
-        if (phone) {
-          try { await this.sessionRepo.updatePhone(sessionId, tenantId, phone); } catch { /* best-effort */ }
-        }
-        internalEventBus.emit('SESSION_CONNECTED', { type: 'SESSION_CONNECTED', sessionId, tenantId });
-        baileysLogger.info({ sessionId, phone }, 'Session connected');
-      }
-
-      if (connection === 'close') {
-        const { shouldReconnect, error } = translateDisconnect(sessionId, lastDisconnect?.error);
-        baileysLogger.warn({ sessionId, shouldReconnect, errorCode: error.code }, 'Session disconnected');
-        this.registry.delete(sessionId);
-        this.clearSessionGroupMetadata(sessionId);
-        internalEventBus.emit('SESSION_DISCONNECTED', {
-          type: 'SESSION_DISCONNECTED', sessionId, tenantId, reason: error.code,
-        });
-
-        if (!shouldReconnect) {
-          await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
-          return;
+        if (qr) {
+          this.registry.setQr(sessionId, qr);
+          await this.updateSessionStatus(sessionId, tenantId, 'AWAITING_QR');
+          internalEventBus.emit('SESSION_QR_UPDATED', { type: 'SESSION_QR_UPDATED', sessionId, tenantId, qrCode: qr });
+          baileysLogger.info({ sessionId }, 'QR code updated');
         }
 
-        await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
-
-        const nextAttempt = attempt + 1;
-        if (nextAttempt <= RECONNECT_MAX_ATTEMPTS) {
-          const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt);
-          baileysLogger.info({ sessionId, nextAttempt, delayMs: delay }, 'Scheduling auto-reconnect');
-          setTimeout(() => {
-            this.openSocket(sessionId, tenantId, nextAttempt).catch((err) => {
-              baileysLogger.error({ err, sessionId }, 'Auto-reconnect failed');
-            });
-          }, delay);
-        } else {
-          baileysLogger.error({ sessionId }, 'Max reconnect attempts � marking FAILED');
-          await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
+        if (connection === 'open') {
+          this.registry.clearQr(sessionId);
+          const phone = state.creds.me?.id?.split(':')[0] ?? null;
+          await this.updateConnectedSessionStatus(sessionId, tenantId);
+          if (phone) {
+            try { await this.sessionRepo.updatePhone(sessionId, tenantId, phone); } catch { /* best-effort */ }
+          }
+          internalEventBus.emit('SESSION_CONNECTED', { type: 'SESSION_CONNECTED', sessionId, tenantId });
+          baileysLogger.info({ sessionId, phone }, 'Session connected');
         }
+
+        if (connection === 'close') {
+          const { shouldReconnect, error } = translateDisconnect(sessionId, lastDisconnect?.error);
+          baileysLogger.warn({ sessionId, shouldReconnect, errorCode: error.code }, 'Session disconnected');
+          this.registry.delete(sessionId);
+          this.clearSessionGroupMetadata(sessionId);
+          internalEventBus.emit('SESSION_DISCONNECTED', {
+            type: 'SESSION_DISCONNECTED', sessionId, tenantId, reason: error.code,
+          });
+
+          if (!shouldReconnect) {
+            await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
+            return;
+          }
+
+          await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
+
+          const nextAttempt = attempt + 1;
+          if (nextAttempt <= RECONNECT_MAX_ATTEMPTS) {
+            const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt);
+            baileysLogger.info({ sessionId, nextAttempt, delayMs: delay }, 'Scheduling auto-reconnect');
+            setTimeout(() => {
+              this.openSocket(sessionId, tenantId, nextAttempt).catch((err) => {
+                baileysLogger.error({ err, sessionId }, 'Auto-reconnect failed');
+              });
+            }, delay);
+          } else {
+            baileysLogger.error({ sessionId }, 'Max reconnect attempts - marking FAILED');
+            await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
+          }
+        }
+      } catch (err) {
+        baileysLogger.error({ err, sessionId }, 'Unhandled connection.update error');
       }
     });
     // ── Incoming messages ──────────────────────────────────────────────────
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
-      // 'notify' = real-time new messages; 'append' = historical sync — skip
-      if (type !== 'notify') {
-        // 'append' = mensagens históricas recebidas durante reconnect / gap sync
-        if (type === 'append') {
-          setImmediate(async () => {
-            const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId, tenantId);
-            if (items.length > 0) {
-              this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
-            }
-          });
+      try {
+        // 'notify' = real-time new messages; 'append' = historical sync — skip
+        if (type !== 'notify') {
+          // 'append' = mensagens históricas recebidas durante reconnect / gap sync
+          if (type === 'append') {
+            setImmediate(async () => {
+              try {
+                const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId, tenantId);
+                if (items.length > 0) {
+                  this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
+                }
+              } catch (err) {
+                baileysLogger.warn({ err, sessionId }, 'Failed to process append history messages');
+              }
+            });
+          }
+          return;
         }
-        return;
-      }
 
-      for (const msg of messages) {
+        for (const msg of messages) {
         const jidRaw = msg.key?.remoteJid;
         if (!jidRaw) continue;
         if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
@@ -361,6 +368,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           },
           'Incoming message received',
         );
+        }
+      } catch (err) {
+        baileysLogger.error({ err, sessionId }, 'Unhandled messages.upsert error');
       }
     });
 
@@ -395,14 +405,18 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     // ── History sync ────────────────────────────────────────────────────────
     socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
       setImmediate(async () => {
-        // histMsgs é WAMessage[] (proto.IWebMessageInfo[]) — passar direto
-        const items = await this.mapMessagesToHistoryItems(histMsgs, socket, sessionId, tenantId);
-        if (items.length > 0) {
-          baileysLogger.info(
-            { sessionId, count: items.length },
-            'History sync batch received',
-          );
-          this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
+        try {
+          // histMsgs é WAMessage[] (proto.IWebMessageInfo[]) — passar direto
+          const items = await this.mapMessagesToHistoryItems(histMsgs, socket, sessionId, tenantId);
+          if (items.length > 0) {
+            baileysLogger.info(
+              { sessionId, count: items.length },
+              'History sync batch received',
+            );
+            this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
+          }
+        } catch (err) {
+          baileysLogger.warn({ err, sessionId }, 'Failed to process messaging-history.set');
         }
       });
     });
@@ -663,13 +677,18 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       return true;
     }
 
-    const conversation = await this.chatConversationRepo.findActiveByGroupAndSession(
-      routing.groupJid,
-      sessionId,
-      tenantId,
-    );
+    try {
+      const conversation = await this.chatConversationRepo.findActiveByGroupAndSession(
+        routing.groupJid,
+        sessionId,
+        tenantId,
+      );
 
-    return conversation?.autoDownloadMedia ?? false;
+      return conversation?.autoDownloadMedia ?? false;
+    } catch (err) {
+      baileysLogger.warn({ err, sessionId, groupJid: routing.groupJid }, 'Failed to read autoDownloadMedia; skipping media download');
+      return false;
+    }
   }
 
   private clearSessionGroupMetadata(sessionId: string): void {
@@ -692,6 +711,18 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     } catch (err) {
       if (err instanceof SessionNotFoundError) return;
       baileysLogger.warn({ err, sessionId, status }, 'Failed to update session status');
+    }
+  }
+
+  private async updateConnectedSessionStatus(sessionId: string, tenantId: string): Promise<void> {
+    try {
+      await this.sessionRepo.updateStatus(sessionId, tenantId, {
+        status: 'CONNECTED',
+        lastConnectedAt: new Date(),
+      });
+    } catch (err) {
+      if (err instanceof SessionNotFoundError) return;
+      baileysLogger.warn({ err, sessionId }, 'Failed to mark session as connected');
     }
   }
 

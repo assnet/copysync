@@ -6,6 +6,8 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
 
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid connection URL'),
+  DATABASE_CONNECT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  DATABASE_CONNECT_RETRY_DELAY_MS: z.coerce.number().int().positive().default(3_000),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
@@ -21,6 +23,10 @@ const envSchema = z.object({
   API_PREFIX: z.string().default('/api'),
   CORS_ORIGIN: z.string().default('*'),
   STORAGE_PATH: z.string().default('./storage'),
+  BAILEYS_SYNC_FULL_HISTORY: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
 });
 
 export type Env = z.infer<typeof envSchema>;

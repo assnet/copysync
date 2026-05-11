@@ -43,6 +43,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Backend — Estabilidade ao conectar sessões WhatsApp na Render
+
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — desliga o `syncFullHistory` completo por padrão via `BAILEYS_SYNC_FULL_HISTORY=false`, reduzindo picos de memória/CPU ao conectar um número novo; também blinda handlers `connection.update`, `messages.upsert` e `messaging-history.set` para que falhas transitórias do Prisma (`P1001`/`P1017`) não derrubem o processo Node
+- **`api/src/shared/config/env.ts`** — adiciona `BAILEYS_SYNC_FULL_HISTORY`, `DATABASE_CONNECT_MAX_ATTEMPTS` e `DATABASE_CONNECT_RETRY_DELAY_MS` para controlar sincronização inicial e retry de conexão com o banco em produção
+- **`api/src/app/server.ts`** — adiciona retry na conexão inicial com o Prisma antes de encerrar o startup, evitando queda imediata quando o PostgreSQL da Render fecha uma conexão temporariamente
+- **`api/scripts/prisma-migrate-deploy-with-retry.mjs`**, **`api/package.json`** e **`api/Dockerfile`** — fazem `prisma migrate deploy` tentar novamente antes de falhar, cobrindo oscilações curtas do PostgreSQL durante pre-deploy/startup
+
 #### Frontend — Preview de PDF/documento e contato no chat
 
 - **`app/src/features/chat/components/messages/DocumentMessage.tsx`** — redesenha o card de documentos recebidos com preview visual para PDF, nome truncado com tooltip nativo, metadado de tipo e ações por ícone para abrir ou baixar o arquivo; corrige a prévia compacta demais que deixava PDFs pouco legíveis no histórico do chat

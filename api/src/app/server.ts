@@ -18,17 +18,36 @@ import { registerChatContactAvatarListener } from '../modules/chat/infrastructur
 import { registerChatGroupAvatarListener } from '../modules/chat/infrastructure/listeners/ChatGroupAvatarListener';
 import { registerChatSessionStatusListener } from '../modules/chat/infrastructure/listeners/ChatSessionStatusListener';
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function connectDatabaseWithRetry(): Promise<void> {
+  for (let attempt = 1; attempt <= env.DATABASE_CONNECT_MAX_ATTEMPTS; attempt++) {
+    try {
+      await prisma.$connect();
+      logger.info('Database connected');
+      return;
+    } catch (err) {
+      if (attempt >= env.DATABASE_CONNECT_MAX_ATTEMPTS) {
+        logger.fatal({ err, attempt }, 'Failed to connect to database');
+        process.exit(1);
+      }
+
+      logger.warn(
+        { err, attempt, nextAttemptInMs: env.DATABASE_CONNECT_RETRY_DELAY_MS },
+        'Database connection failed; retrying',
+      );
+      await wait(env.DATABASE_CONNECT_RETRY_DELAY_MS);
+    }
+  }
+}
+
 async function start(): Promise<void> {
   const app = await buildApp();
 
   // ── Connect to database ────────────────────────────────────────────────────
-  try {
-    await prisma.$connect();
-    logger.info('Database connected');
-  } catch (err) {
-    logger.fatal({ err }, 'Failed to connect to database');
-    process.exit(1);
-  }
+  await connectDatabaseWithRetry();
 
   // ── Start HTTP server ──────────────────────────────────────────────────────
   try {

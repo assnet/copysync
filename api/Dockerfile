@@ -31,7 +31,8 @@ COPY package.json pnpm-lock.yaml ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/dist ./dist
+COPY scripts ./scripts
 
 EXPOSE 3333
 
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/app/server.js"]
+CMD ["sh", "-c", "node scripts/prisma-migrate-deploy-with-retry.mjs && node dist/app/server.js"]
