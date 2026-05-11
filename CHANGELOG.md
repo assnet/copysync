@@ -43,6 +43,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Frontend — Preview de PDF/documento e contato no chat
+
+- **`app/src/features/chat/components/messages/DocumentMessage.tsx`** — redesenha o card de documentos recebidos com preview visual para PDF, nome truncado com tooltip nativo, metadado de tipo e ações por ícone para abrir ou baixar o arquivo; corrige a prévia compacta demais que deixava PDFs pouco legíveis no histórico do chat
+- **`app/src/features/chat/components/messages/VCardMessage.tsx`** — redesenha o card de contato recebido com avatar, nome, telefone formatado quando disponível e ação para abrir conversa via número; melhora também o parser de vCard para extrair `FN` e `TEL` de payloads estruturados
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — passa a preferir o payload `vcard` completo ao ingerir `contactMessage` e `contactsArrayMessage`, preservando telefone e metadados para que novas mensagens de contato tenham preview mais informativo no painel
+
 #### Backend — CORS em produção para domínio público do painel
 
 - **`api/src/app/app.ts`** — normaliza origens configuradas em `CORS_ORIGIN`, adiciona os domínios públicos oficiais do painel como fallback seguro e registra no startup a lista efetiva de origens permitidas; corrige preflight `204` sem `Access-Control-Allow-Origin` quando a env da Render não casa exatamente com `https://waioprime.com`

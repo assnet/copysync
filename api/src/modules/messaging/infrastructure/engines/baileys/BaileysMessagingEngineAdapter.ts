@@ -904,12 +904,12 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
 
   // vCard (contato único ou múltiplos)
   if (content.contactMessage) {
-    const body = content.contactMessage.displayName ?? content.contactMessage.vcard ?? null;
+    const body = content.contactMessage.vcard ?? content.contactMessage.displayName ?? null;
     return { msgType: ChatMessageType.VCARD, body, quotedMessageId, isDeleted };
   }
   if (content.contactsArrayMessage) {
     const first = content.contactsArrayMessage.contacts?.[0];
-    const body = first?.displayName ?? null;
+    const body = first?.vcard ?? first?.displayName ?? null;
     return { msgType: ChatMessageType.VCARD, body, quotedMessageId, isDeleted };
   }
 
