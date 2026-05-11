@@ -110,6 +110,7 @@ import type {
   MessageDirection,
   MessageStatus,
 } from '@/features/chat/types';
+import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 
 /**
  * Converte status uppercase da API → lowercase do frontend.
@@ -194,7 +195,7 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
         id:        dto.quotedMessage.id,
         type:      dto.quotedMessage.type.toLowerCase() as ChatMessage['type'],
         body:      dto.quotedMessage.content,
-        mediaUrl:  dto.quotedMessage.mediaUrl,
+        mediaUrl:  resolveMediaUrl(dto.quotedMessage.mediaUrl),
         direction: toMessageDirection(dto.quotedMessage.direction) === 'system' ? ('out' as const) : (toMessageDirection(dto.quotedMessage.direction) as 'in' | 'out'),
         isDeleted: dto.quotedMessage.isDeleted,
       }
@@ -206,7 +207,7 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     type:            dto.type.toLowerCase() as ChatMessage['type'],
     direction:       dir === 'system' ? 'out' : dir,
     body:            dto.content,
-    mediaUrl:        dto.mediaUrl,
+    mediaUrl:        resolveMediaUrl(dto.mediaUrl),
     mimeType:        dto.mimeType,
     fileName:        dto.fileName,
     durationSeconds: dto.durationSeconds,
