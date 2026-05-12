@@ -43,36 +43,6 @@ async function connectDatabaseWithRetry(): Promise<void> {
   }
 }
 
-async function markSessionsDisconnectedWhenBootstrapDisabled(): Promise<void> {
-  const sessionRepo = new PrismaSessionRepository();
-
-  try {
-    const sessions = await sessionRepo.findActiveSessionsForBootstrap();
-    if (sessions.length === 0) {
-      logger.info('No active sessions to mark as disconnected while bootstrap is disabled');
-      return;
-    }
-
-    const now = new Date();
-    for (const session of sessions) {
-      await sessionRepo.updateStatus(session.id, session.tenantId, {
-        status: 'DISCONNECTED',
-        lastDisconnectedAt: now,
-      });
-    }
-
-    logger.warn(
-      { count: sessions.length },
-      'Marked active sessions as disconnected because startup bootstrap is disabled',
-    );
-  } catch (err) {
-    logger.error(
-      { err },
-      'Failed to mark sessions as disconnected while bootstrap is disabled',
-    );
-  }
-}
-
 async function start(): Promise<void> {
   const app = await buildApp();
 
@@ -137,7 +107,6 @@ async function start(): Promise<void> {
     logger.warn(
       'Session bootstrap disabled; WhatsApp sessions will remain disconnected until manually connected',
     );
-    await markSessionsDisconnectedWhenBootstrapDisabled();
   }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
