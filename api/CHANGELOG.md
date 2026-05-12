@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Backend — History sync do Baileys agora é realmente opt-in
+
+- **`BaileysMessagingEngineAdapter.ts`** — adiciona guard clauses logo na entrada dos handlers de `messages.upsert` do tipo `append` e `messaging-history.set`; quando `BAILEYS_SYNC_FULL_HISTORY=false`, o fluxo retorna antes de chamar `mapMessagesToHistoryItems()` e antes de acionar `IngestHistorySyncUseCase`, impedindo que o reconnect dispare ingestão em lote de histórico no banco
+- **`BaileysMessagingEngineAdapter.ts`** — mantém intacto o fluxo de mensagens em tempo real (`type === 'notify'`), então o corte atua apenas no histórico/gap sync; na prática, a API continua recebendo mensagens novas normalmente, mas deixa de abrir a sequência pesada de queries de contatos, conversas e mensagens históricas que estava pressionando o PostgreSQL da Render após reconectar sessões existentes
+
 #### Backend — Deploy seguro sem reconexão automática de sessões WhatsApp
 
 - **`api/src/shared/config/env.ts`** — adiciona `SESSION_BOOTSTRAP_ON_STARTUP` com default `false`, impedindo que a API reconecte sessões WhatsApp automaticamente a cada boot/deploy; isso evita que o startup dispare o Baileys, carregue blobs grandes de `session_auth_states` e gere novos `upsert`s enquanto o PostgreSQL ainda está instável ou enquanto `prisma migrate deploy` tenta validar o banco

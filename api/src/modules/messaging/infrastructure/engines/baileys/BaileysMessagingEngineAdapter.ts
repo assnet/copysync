@@ -283,6 +283,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         if (type !== 'notify') {
           // 'append' = mensagens históricas recebidas durante reconnect / gap sync
           if (type === 'append') {
+            if (!env.BAILEYS_SYNC_FULL_HISTORY) {
+              baileysLogger.debug(
+                { sessionId, count: messages.length },
+                'Skipping append history sync because BAILEYS_SYNC_FULL_HISTORY is disabled',
+              );
+              return;
+            }
             setImmediate(async () => {
               try {
                 const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId, tenantId);
@@ -404,6 +411,14 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── History sync ────────────────────────────────────────────────────────
     socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
+      if (!env.BAILEYS_SYNC_FULL_HISTORY) {
+        baileysLogger.debug(
+          { sessionId, count: histMsgs.length },
+          'Skipping messaging-history.set because BAILEYS_SYNC_FULL_HISTORY is disabled',
+        );
+        return;
+      }
+
       setImmediate(async () => {
         try {
           // histMsgs é WAMessage[] (proto.IWebMessageInfo[]) — passar direto

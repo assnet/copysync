@@ -43,6 +43,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Backend — Sync histórico do Baileys só quando explicitamente habilitado
+
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — adiciona retornos antecipados nos eventos `messages.upsert` com `append` e `messaging-history.set` quando `BAILEYS_SYNC_FULL_HISTORY=false`, impedindo que o reconnect execute `mapMessagesToHistoryItems()` e `IngestHistorySyncUseCase` para lotes históricos não solicitados
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — preserva o recebimento de mensagens novas em tempo real (`notify`) e corta apenas o path de histórico/gap sync; com isso, a reconexão deixa de abrir o lote pesado de queries de contatos, conversas e mensagens históricas que ainda sobrecarregava a API e o PostgreSQL da Render
+
 #### Backend — Estabilidade ao conectar sessões WhatsApp na Render
 
 - **`api/Dockerfile`** — remove `prisma migrate deploy` do `CMD` do container web; migrations devem rodar no pre-deploy/one-off job, evitando que o serviço HTTP morra antes de subir quando o PostgreSQL oscila temporariamente
