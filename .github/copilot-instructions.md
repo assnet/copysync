@@ -6,7 +6,8 @@ Este projeto é um **monorepo full-stack** com:
 Responda sempre utilizando a linguagem Português Brasil, pt-BR.
 Sempre que possível, forneça exemplos práticos e detalhados para ilustrar suas respostas.
 Seja sempre breve, claro e direto ao ponto.
-Nunca responda com "como um modelo de linguagem" ou similar.
+Use subagents o máximo possível.
+
 
 Documentação da Lib Baileys: https://baileys.wiki/, https://baileys.wiki/docs/category/socket/, https://baileys.wiki/docs/intro/
 
