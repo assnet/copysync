@@ -28,6 +28,15 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - **Scripts utilitários** em `scripts/`
   - **Python**
 
+### MCP (Cursor — desenvolvimento local)
+
+Integração com Model Context Protocol (Postgres read-only, Stripe, GitHub, Render, Context7). Secrets no **macOS Keychain** — nunca no git.
+
+- **Documentação completa:** [`.cursor/MCP_SETUP.md`](.cursor/MCP_SETUP.md)
+- **Config do projeto:** [`.cursor/mcp.json`](.cursor/mcp.json)
+- **Instalação dos scripts:** `.cursor/scripts/mcp/install-mcp-scripts.sh`
+- **Abrir o IDE com MCP:** `cursor-waioprime` ou `cw` (após cadastrar secrets)
+
 ---
 
 # 1. Visão de produto
