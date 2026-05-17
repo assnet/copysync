@@ -19,7 +19,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
   - **PostgreSQL**
   - preparada para deploy na **Render**
 
-- **Painel Admin** em `panel/`
+- **Painel Admin** em `app/`
   - **React**
   - **Vite**
   - **Material-UI**
@@ -65,7 +65,7 @@ A arquitetura inicial deve ser um **monólito modular por aplicação**, dentro 
 ## Regras
 
 - não criar microserviços agora
-- separar responsabilidades entre `api/`, `panel/` e `scripts/`
+- separar responsabilidades entre `api/`, `app/` e `scripts/`
 - manter baixo acoplamento
 - preparar extração futura de módulos se houver necessidade real
 - preservar consistência entre backend e frontend
@@ -86,7 +86,7 @@ Responsável por:
 - métricas
 - integrações
 
-### `panel/`
+### `app/`
 Responsável por:
 - interface administrativa
 - gestão de tenants
@@ -130,7 +130,7 @@ Responsável por:
 ```txt
 /
   api/
-  panel/
+  app/
   scripts/
   AGENTS.md
   .github/
@@ -258,7 +258,7 @@ api/
 # 6. Estrutura recomendada do painel
 
 ```txt
-panel/
+app/
   src/
     app/
     pages/
@@ -922,7 +922,7 @@ type(scope): descrição curta
 8. implementar autenticação e tenant context
 9. implementar sessions
 10. implementar messaging
-11. criar base do panel
+11. criar base do app
 12. preparar evolução para flows / automation / assistants / metrics
 
 ---
@@ -1098,7 +1098,7 @@ Toda `release/vX.Y.Z` DEVE ter sua seção própria no `CHANGELOG.md`.
 * `build`: configuração de build/CI
 * `ci`: pipelines e deploy
 
-**Escopos sugeridos:** `auth`, `sessions`, `messaging`, `chat`, `contacts`, `campaigns`, `flows`, `automation`, `assistants`, `metrics`, `panel`, `api`, `prisma`, `baileys`
+**Escopos sugeridos:** `auth`, `sessions`, `messaging`, `chat`, `contacts`, `campaigns`, `flows`, `automation`, `assistants`, `metrics`, `app`, `api`, `prisma`, `baileys`
 
 **Exemplos:**
 
