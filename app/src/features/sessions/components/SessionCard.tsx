@@ -59,8 +59,12 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
           break;
         }
         case 'reconnect': {
-          await sessionService.reconnect(session.id);
-          onStatusChange(session.id, 'CONNECTING');
+          const res = await sessionService.reconnect(session.id);
+          onStatusChange(session.id, res.status);
+          // Após logout as credenciais foram limpas — abre QR na mesma sessão (histórico preservado)
+          if (status === 'LOGGED_OUT') {
+            onRequestQr({ ...session, status: res.status });
+          }
           break;
         }
         case 'logout': {
@@ -185,8 +189,8 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
                 </span>
               </Tooltip>
             )}
-            {(status === 'DISCONNECTED' || status === 'FAILED') && (
-              <Tooltip title="Reconectar">
+            {(status === 'DISCONNECTED' || status === 'FAILED' || status === 'LOGGED_OUT') && (
+              <Tooltip title={status === 'LOGGED_OUT' ? 'Reconectar mesmo número (mantém histórico)' : 'Reconectar'}>
                 <span>
                   <IconButton size="small" onClick={() => handle('reconnect')} disabled={isBusy}>
                     {loadingAction === 'reconnect' ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
@@ -204,7 +208,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               </Tooltip>
             )}
             {status !== 'PENDING' && status !== 'LOGGED_OUT' && (
-              <Tooltip title="Logout (desautenticar)">
+              <Tooltip title="Logout — desvincula do WhatsApp; histórico e mídia ficam nesta sessão">
                 <span>
                   <IconButton size="small" color="error" onClick={() => handle('logout')} disabled={isBusy}>
                     {loadingAction === 'logout' ? <CircularProgress size={16} /> : <LogoutIcon fontSize="small" />}

@@ -11,6 +11,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — Logout preserva vínculo de histórico da sessão
+
+- **`ISessionAuthStateRepository.ts`** — adiciona `clearCredentials()` para invalidar credenciais sem apagar a linha de `session_auth_states`
+- **`PrismaSessionAuthStateRepository.ts`** — implementa `clearCredentials()` zerando `statePayload` e mantendo o mesmo `sessionId`
+- **`LogoutSessionUseCase.ts`** — troca `deleteBySessionId` por `clearCredentials` no logout; conversas, mídia em disco e `sessions.id` permanecem ligados à mesma sessão para reconexão com QR
+
+#### Frontend — Reconectar após logout na mesma sessão
+
+- **`SessionCard.tsx`** — exibe botão Reconectar em status `LOGGED_OUT`, abre QR na mesma sessão e deixa claro no tooltip que histórico e mídia são preservados
+
 #### Backend — Alterar senha do usuário autenticado
 
 - **`api/src/shared/utils/passwordPolicy.ts`** — validador central PWD-01…PWD-05 com `getUnmetRequirements` e `validatePasswordPolicy`

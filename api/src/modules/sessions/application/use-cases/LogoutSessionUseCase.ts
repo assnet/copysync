@@ -31,8 +31,8 @@ export class LogoutSessionUseCase {
     // Engine sends WA logout packet and closes socket
     await this.engine.logoutSession({ sessionId: input.sessionId, tenantId: input.tenantId });
 
-    // Clear credentials from DB — next connect will need fresh QR/pairing
-    await this.authStateRepo.deleteBySessionId(input.sessionId);
+    // Invalidate credentials but keep session_auth_states row — same sessionId keeps chat + media links
+    await this.authStateRepo.clearCredentials(input.sessionId);
 
     await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, {
       status: 'LOGGED_OUT',

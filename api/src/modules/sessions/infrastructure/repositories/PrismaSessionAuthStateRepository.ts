@@ -36,6 +36,16 @@ export class PrismaSessionAuthStateRepository implements ISessionAuthStateReposi
     });
   }
 
+  async clearCredentials(sessionId: string): Promise<void> {
+    await prisma.sessionAuthState.updateMany({
+      where: { sessionId },
+      data: {
+        statePayload: {},
+        version: { increment: 1 },
+      },
+    });
+  }
+
   async deleteBySessionId(sessionId: string): Promise<void> {
     // deleteMany — silently no-ops when record does not exist
     await prisma.sessionAuthState.deleteMany({ where: { sessionId } });
