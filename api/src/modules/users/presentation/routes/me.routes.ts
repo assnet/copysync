@@ -3,8 +3,12 @@ import { authHook } from '../../../../shared/http/hooks/authHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { PrismaUserRepository } from '../../infrastructure/repositories/PrismaUserRepository';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { ChangePasswordUseCase } from '../../application/use-cases/ChangePasswordUseCase';
+import { changePasswordBodySchema } from '../schemas/change-password.schema';
+import type { ChangePasswordInputDto } from '../../application/dtos/ChangePasswordInputDto';
 
 const userRepo = new PrismaUserRepository();
+const changePasswordUseCase = new ChangePasswordUseCase(userRepo);
 
 /**
  * /me route — returns the authenticated user's profile and tenant memberships.
@@ -69,6 +73,32 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
           status: t.tenantStatus,
         })),
       });
+    },
+  );
+
+  app.patch(
+    '/password',
+    {
+      preHandler: [authHook],
+      schema: {
+        tags: ['Me'],
+        summary: 'Alterar senha do usuário autenticado',
+        description: 'Atualiza a senha do usuário logado. Requer nova senha e confirmação.',
+        security: [{ bearerAuth: [] }],
+        body: changePasswordBodySchema,
+        response: {
+          204: { type: 'null', description: 'Senha alterada com sucesso.' },
+          400: { $ref: 'ErrorResponse#' },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { userId } = request.user;
+      const input = request.body as ChangePasswordInputDto;
+      await changePasswordUseCase.execute(userId, input);
+      httpResponse.noContent(reply);
     },
   );
 }

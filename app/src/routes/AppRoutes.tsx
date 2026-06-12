@@ -5,6 +5,9 @@ import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import SessionsPage from '@/pages/SessionsPage';
 import ChatPage from '@/pages/ChatPage';
+import { SettingsLayout } from '@/features/settings/components/SettingsLayout';
+import { SettingsAccountPage } from '@/pages/settings/SettingsAccountPage';
+import { ChangePasswordPage } from '@/pages/settings/ChangePasswordPage';
 
 export function AppRoutes() {
   return (
@@ -19,6 +22,11 @@ export function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/settings" element={<SettingsLayout />}>
+            <Route index element={<Navigate to="/settings/account" replace />} />
+            <Route path="account" element={<SettingsAccountPage />} />
+            <Route path="account/password" element={<ChangePasswordPage />} />
+          </Route>
         </Route>
       </Route>
 

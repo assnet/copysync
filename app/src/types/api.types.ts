@@ -129,6 +129,13 @@ export interface MeResponse {
   }>;
 }
 
+// ── Account ───────────────────────────────────────────────────────────────────
+
+export interface ChangePasswordRequest {
+  newPassword: string;
+  confirmPassword: string;
+}
+
 // ── API wrapper ───────────────────────────────────────────────────────────────
 
 export interface ApiSuccess<T> {

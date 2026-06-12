@@ -11,6 +11,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — Alterar senha do usuário autenticado
+
+- **`api/src/shared/utils/passwordPolicy.ts`** — validador central PWD-01…PWD-05 com `getUnmetRequirements` e `validatePasswordPolicy`
+- **`api/src/shared/errors/internal/AuthErrors.ts`** — erros `PasswordMismatchError` e `WeakPasswordError` com códigos HTTP 400
+- **`api/src/modules/users/application/dtos/ChangePasswordInputDto.ts`** — DTO de entrada para troca de senha
+- **`api/src/modules/users/application/use-cases/ChangePasswordUseCase.ts`** — orquestra match, política, hash bcrypt e persistência via `IUserRepository.update()`
+- **`api/src/modules/users/presentation/schemas/change-password.schema.ts`** — schema Fastify do body `{ newPassword, confirmPassword }`
+- **`api/src/modules/users/presentation/routes/me.routes.ts`** — expõe `PATCH /api/me/password` autenticado, retorna `204 No Content`
+
+#### Frontend — Configurações → Minha conta → Alterar senha
+
+- **`app/src/features/settings/utils/passwordPolicy.ts`** — validação client-side espelhando PWD-01…PWD-06
+- **`app/src/services/account.service.ts`** — serviço HTTP `changePassword` via `PATCH /me/password`
+- **`app/src/types/api.types.ts`** — tipo `ChangePasswordRequest`
+- **`app/src/features/settings/components/ChangePasswordForm.tsx`** — formulário com toggle de visibilidade, checklist de requisitos e feedback de sucesso/erro
+- **`app/src/features/settings/components/SettingsLayout.tsx`** — layout de configurações com sidebar e `<Outlet />`
+- **`app/src/pages/settings/SettingsAccountPage.tsx`** — página Minha conta com dados somente leitura e link para alterar senha
+- **`app/src/pages/settings/ChangePasswordPage.tsx`** — página Alterar senha com breadcrumb
+- **`app/src/routes/AppRoutes.tsx`** — rotas `/settings`, `/settings/account` e `/settings/account/password`
+- **`app/src/app/AppLayout.tsx`** — item Configurações no menu lateral
+
 #### Frontend — Filtro de conversas por sessão no chat
 
 - **`app/src/pages/ChatPage.tsx`** — a tela de chat passa a carregar conversas usando `sessionId` opcional da API, mantém uma seleção explícita de sessão ativa, recarrega a lista quando o usuário alterna entre `Todos` e uma sessão conectada específica e invalida filtro/seleção quando a sessão deixa de estar conectada

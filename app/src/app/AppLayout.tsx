@@ -13,6 +13,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import SettingsIcon from '@mui/icons-material/Settings';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Sessões', path: '/sessions', icon: <DevicesIcon /> },
   { label: 'Chat', path: '/chat', icon: <ForumOutlinedIcon /> },
+  { label: 'Configurações', path: '/settings/account', icon: <SettingsIcon />, matchPrefix: true },
 ];
 
 // Itens futuros — desabilitados por ora, só para estrutura visual
@@ -155,7 +157,9 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
         )}
         <List disablePadding sx={{ px: 1 }}>
           {NAV_ITEMS.map((item) => {
-            const active = location.pathname === item.path;
+            const active = item.matchPrefix
+              ? location.pathname.startsWith('/settings')
+              : location.pathname === item.path;
             const button = (
               <ListItemButton
                 selected={active}

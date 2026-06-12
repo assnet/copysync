@@ -31,3 +31,20 @@ export class TokenInvalidError extends AppError {
     super('TOKEN_INVALID', 'Token is invalid', 401);
   }
 }
+
+export class PasswordMismatchError extends AppError {
+  constructor() {
+    super('PASSWORD_MISMATCH', 'As senhas não coincidem', 400);
+  }
+}
+
+export class WeakPasswordError extends AppError {
+  constructor(failures: string[]) {
+    super(
+      'WEAK_PASSWORD',
+      `Senha não atende requisitos: ${failures.join(', ')}`,
+      400,
+      { requirements: failures },
+    );
+  }
+}
