@@ -13,6 +13,7 @@ import { errorHandler } from '../shared/http/errorHandler';
 import { registerRoutes } from './routes';
 
 const defaultCorsOrigins = [
+  'http://localhost:5174',
   'https://waioprime.com',
   'https://www.waioprime.com',
   'https://waioprime.onrender.com',

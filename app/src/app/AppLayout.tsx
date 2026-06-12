@@ -10,6 +10,8 @@ import DevicesIcon from '@mui/icons-material/Devices';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -18,6 +20,24 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
 
 const DRAWER_WIDTH = 248;
+const DRAWER_WIDTH_COLLAPSED = 72;
+const SIDEBAR_COLLAPSED_KEY = 'waioprime-sidebar-collapsed';
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function persistSidebarCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
@@ -35,41 +55,47 @@ const NAV_FUTURE = [
   { label: 'Métricas', path: '/metrics' },
 ];
 
-function NavLogo() {
+function NavLogo({ collapsed }: { collapsed: boolean }) {
   return (
-    <Box sx={{ px: 2.5, py: 2.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      {/* <Box
-        sx={{
-          width: 32,
-          height: 32,
-          borderRadius: '10px',
-          background: 'linear-gradient(135deg, #4f70e0 0%, #7c3aed 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 16, lineHeight: 1 }}>W</Typography>
-      </Box> */}
+    <Box
+      sx={{
+        px: collapsed ? 1.5 : 2.5,
+        py: 2.5,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        gap: 0.5,
+        minHeight: 72,
+      }}
+    >
       <Box
         component="img"
         src="/assets/logo_waiochat.png"
-        alt="Imagem"
-        sx={{ width: 44, height: 44, borderRadius: 0, objectFit: 'contain' }}
-      />  
-      <Typography variant="h6" fontWeight={800} letterSpacing={-0.5}>
-        WaioPrime
-      </Typography>
+        alt="WaioPrime"
+        sx={{
+          width: collapsed ? 36 : 44,
+          height: collapsed ? 36 : 44,
+          borderRadius: 0,
+          objectFit: 'contain',
+          flexShrink: 0,
+        }}
+      />
+      {!collapsed && (
+        <Typography variant="h6" fontWeight={800} letterSpacing={-0.5} noWrap>
+          WaioPrime
+        </Typography>
+      )}
     </Box>
   );
 }
 
 interface DrawerContentProps {
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   onClose?: () => void;
 }
 
-function DrawerContent({ onClose }: DrawerContentProps) {
+function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerContentProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -85,110 +111,203 @@ function DrawerContent({ onClose }: DrawerContentProps) {
     navigate('/login');
   };
 
+  const navButtonSx = collapsed
+    ? { py: 1.25, px: 1, justifyContent: 'center' }
+    : { py: 1, px: 1.5 };
+
+  const navIconSx = collapsed
+    ? { minWidth: 0, justifyContent: 'center', '& svg': { fontSize: 22 } }
+    : { minWidth: 36, '& svg': { fontSize: 20 } };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <NavLogo />
+      <Box>
+        <NavLogo collapsed={collapsed} />
+        {onToggleCollapse && (
+          <Box sx={{ display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end', px: 1, pb: 1 }}>
+            <Tooltip title={collapsed ? 'Expandir menu' : 'Recolher menu'} placement="right">
+              <IconButton
+                size="small"
+                onClick={onToggleCollapse}
+                aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
+      </Box>
       <Divider />
 
       {/* Navegação principal */}
-      <Box sx={{ flex: 1, py: 1.5, overflowY: 'auto' }}>
-        <Typography
-          variant="caption"
-          sx={{ px: 2.5, mb: 0.5, display: 'block', color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}
-        >
-          Menu
-        </Typography>
+      <Box sx={{ flex: 1, py: 1.5, overflowY: 'auto', overflowX: 'hidden' }}>
+        {!collapsed && (
+          <Typography
+            variant="caption"
+            sx={{ px: 2.5, mb: 0.5, display: 'block', color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}
+          >
+            Menu
+          </Typography>
+        )}
         <List disablePadding sx={{ px: 1 }}>
           {NAV_ITEMS.map((item) => {
             const active = location.pathname === item.path;
-            return (
-              <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
-                <ListItemButton
-                  selected={active}
-                  onClick={() => handleNav(item.path)}
-                  sx={{ py: 1, px: 1.5 }}
-                >
-                  <ListItemIcon sx={{ minWidth: 36, '& svg': { fontSize: 20 } }}>
-                    {item.icon}
-                  </ListItemIcon>
+            const button = (
+              <ListItemButton
+                selected={active}
+                onClick={() => handleNav(item.path)}
+                sx={navButtonSx}
+              >
+                <ListItemIcon sx={navIconSx}>
+                  {item.icon}
+                </ListItemIcon>
+                {!collapsed && (
                   <ListItemText
                     primary={item.label}
                     primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500 }}
                   />
-                </ListItemButton>
+                )}
+              </ListItemButton>
+            );
+
+            return (
+              <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
+                {collapsed ? (
+                  <Tooltip title={item.label} placement="right">
+                    {button}
+                  </Tooltip>
+                ) : (
+                  button
+                )}
               </ListItem>
             );
           })}
         </List>
 
-        {/* Em breve */}
-        <Typography
-          variant="caption"
-          sx={{ px: 2.5, mt: 2, mb: 0.5, display: 'block', color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}
-        >
-          Em breve
-        </Typography>
-        <List disablePadding sx={{ px: 1 }}>
-          {NAV_FUTURE.map((item) => (
-            <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
-              <ListItemButton disabled sx={{ py: 1, px: 1.5, opacity: 0.45 }}>
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
-                />
-                <Chip label="Em breve" size="small" sx={{ fontSize: 10, height: 18, opacity: 0.7 }} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-        </List>
+        {!collapsed && (
+          <>
+            <Typography
+              variant="caption"
+              sx={{ px: 2.5, mt: 2, mb: 0.5, display: 'block', color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}
+            >
+              Em breve
+            </Typography>
+            <List disablePadding sx={{ px: 1 }}>
+              {NAV_FUTURE.map((item) => (
+                <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
+                  <ListItemButton disabled sx={{ py: 1, px: 1.5, opacity: 0.45 }}>
+                    <ListItemText
+                      primary={item.label}
+                      primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                    />
+                    <Chip label="Em breve" size="small" sx={{ fontSize: 10, height: 18, opacity: 0.7 }} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </>
+        )}
       </Box>
 
       <Divider />
 
       {/* Rodapé do drawer — usuário + logout */}
-      <Box sx={{ p: 1.5 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.5,
-            px: 1.5,
-            py: 1.25,
-            borderRadius: 2,
-            bgcolor: alpha(theme.palette.primary.main, 0.06),
-            mb: 0.5,
-          }}
-        >
-          <Avatar
+      <Box sx={{ p: collapsed ? 1 : 1.5 }}>
+        {collapsed ? (
+          <Tooltip
+            title={
+              <Box>
+                <Typography variant="caption" display="block">{user?.email ?? '—'}</Typography>
+                <Typography variant="caption" color="inherit" sx={{ opacity: 0.8 }}>
+                  {user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}
+                </Typography>
+              </Box>
+            }
+            placement="right"
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                py: 1,
+                mb: 0.5,
+              }}
+            >
+              <Avatar
+                sx={{
+                  width: 34,
+                  height: 34,
+                  bgcolor: 'primary.main',
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                {user?.name?.[0]?.toUpperCase() ?? 'U'}
+              </Avatar>
+            </Box>
+          </Tooltip>
+        ) : (
+          <Box
             sx={{
-              width: 34,
-              height: 34,
-              bgcolor: 'primary.main',
-              fontSize: 14,
-              fontWeight: 700,
-              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              px: 1.5,
+              py: 1.25,
+              borderRadius: 2,
+              bgcolor: alpha(theme.palette.primary.main, 0.06),
+              mb: 0.5,
             }}
           >
-            {user?.name?.[0]?.toUpperCase() ?? 'U'}
-          </Avatar>
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="caption" color="text.secondary" noWrap display="block">
-              {user?.email ?? '—'}
-            </Typography>
-            <Typography variant="caption" color="text.disabled" noWrap>
-              {user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}
-            </Typography>
+            <Avatar
+              sx={{
+                width: 34,
+                height: 34,
+                bgcolor: 'primary.main',
+                fontSize: 14,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              {user?.name?.[0]?.toUpperCase() ?? 'U'}
+            </Avatar>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="caption" color="text.secondary" noWrap display="block">
+                {user?.email ?? '—'}
+              </Typography>
+              <Typography variant="caption" color="text.disabled" noWrap>
+                {user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}
+              </Typography>
+            </Box>
           </Box>
-        </Box>
-        <ListItemButton onClick={handleLogout} sx={{ borderRadius: 2, px: 1.5, py: 0.75 }}>
-          <ListItemIcon sx={{ minWidth: 32, '& svg': { fontSize: 18 } }}>
-            <LogoutIcon />
-          </ListItemIcon>
-          <ListItemText
-            primary="Sair"
-            primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
-          />
-        </ListItemButton>
+        )}
+
+        {collapsed ? (
+          <Tooltip title="Sair" placement="right">
+            <ListItemButton
+              onClick={handleLogout}
+              sx={{ borderRadius: 2, py: 1, justifyContent: 'center' }}
+            >
+              <ListItemIcon sx={{ minWidth: 0, '& svg': { fontSize: 20 } }}>
+                <LogoutIcon />
+              </ListItemIcon>
+            </ListItemButton>
+          </Tooltip>
+        ) : (
+          <ListItemButton onClick={handleLogout} sx={{ borderRadius: 2, px: 1.5, py: 0.75 }}>
+            <ListItemIcon sx={{ minWidth: 32, '& svg': { fontSize: 18 } }}>
+              <LogoutIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="Sair"
+              primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+            />
+          </ListItemButton>
+        )}
       </Box>
     </Box>
   );
@@ -197,9 +316,31 @@ function DrawerContent({ onClose }: DrawerContentProps) {
 export function AppLayout() {
   const { activeTenantName, tenants, switchTenant } = useTenant();
   const { mode, toggleColorMode } = useColorMode();
+  const theme = useTheme();
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  const drawerWidth = sidebarCollapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
+
+  const handleToggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      persistSidebarCollapsed(next);
+      return next;
+    });
+  };
+
+  const drawerPaperSx = {
+    width: drawerWidth,
+    boxSizing: 'border-box' as const,
+    overflowX: 'hidden',
+    transition: theme.transitions.create('width', {
+      easing: theme.transitions.easing.sharp,
+      duration: theme.transitions.duration.enteringScreen,
+    }),
+  };
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -227,13 +368,17 @@ export function AppLayout() {
         variant="permanent"
         sx={{
           display: { xs: 'none', sm: 'block' },
-          width: DRAWER_WIDTH,
+          width: drawerWidth,
           flexShrink: 0,
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          transition: theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
+          '& .MuiDrawer-paper': drawerPaperSx,
         }}
         open
       >
-        <DrawerContent />
+        <DrawerContent collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
       </Drawer>
 
       {/* Drawer mobile */}

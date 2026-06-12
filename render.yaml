@@ -1,0 +1,20 @@
+# WaioPrime — Render Blueprint (parcial)
+# Docs: https://render.com/docs/blueprint-spec
+#
+# O Render já detecta pnpm quando existe app/pnpm-lock.yaml.
+# NÃO use `corepack enable` no build nativo — /usr/bin é read-only (EROFS).
+
+services:
+  - type: web
+    name: waioprime
+    runtime: static
+    rootDir: app
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false

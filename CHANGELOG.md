@@ -43,6 +43,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Frontend — Build do painel na Render (corepack EROFS)
+
+- **`render.yaml`** — define `buildCommand` do static site sem `corepack enable`; o Render nativo já instala pnpm ao detectar `app/pnpm-lock.yaml`, e `corepack enable` falha com `EROFS: read-only file system` ao tentar escrever em `/usr/bin/pnpm`
+
 #### Backend — Sync histórico do Baileys só quando explicitamente habilitado
 
 - **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — adiciona retornos antecipados nos eventos `messages.upsert` com `append` e `messaging-history.set` quando `BAILEYS_SYNC_FULL_HISTORY=false`, impedindo que o reconnect execute `mapMessagesToHistoryItems()` e `IngestHistorySyncUseCase` para lotes históricos não solicitados

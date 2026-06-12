@@ -21,13 +21,13 @@ async function main(): Promise<void> {
 
   // ── Create super-admin user ────────────────────────────────────────────────
   // Default dev password: Teste123@ — change before deploying to production.
-  const passwordHash = await hash('Teste123@', 10);
+  const passwordHash = await hash('Teste123@321', 10);
 
   const superAdmin = await prisma.user.upsert({
-    where: { email: 'assnet.developer@gmail.com' },
+    where: { email: 'waiopremium@gmail.com' },
     update: { passwordHash },
     create: {
-      email: 'assnet.developer@gmail.com',
+      email: 'waiopremium@gmail.com',
       name: 'Super Admin',
       passwordHash,
       isSuperAdmin: true,
