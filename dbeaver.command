@@ -1,0 +1,1 @@
+open -n -a DBeaver --args -data  /Users/adrielss/Library/DBeaverData/workspace6/WaioChat
