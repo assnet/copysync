@@ -6,9 +6,47 @@ Este projeto é um sistema full-stack organizado em monorepo, com foco em mensag
 
 Sempre interaja utilizando a linguagem Português Brasil, pt-BR.
 
-Documentação da Lib Baileys: https://baileys.wiki/, https://baileys.wiki/docs/category/socket/, https://baileys.wiki/docs/intro/
+Documentação da Lib Baileys: https://baileys.wiki/, https://baileys.wiki/docs/category/socket/, https://baileys.wiki/docs/intro/, https://github.com/WhiskeySockets/Baileys/releases
 
 Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
+
+###
+
+
+## BANCO DE DADOS (SOMENTE LEITURA)
+
+- ACESSO(SOMENTE LEITURA): postgresql://waiochat_jesus:OkIsmdZTOzi36eqfZHwuME4lMhGAKbVd@dpg-d7oihnqpmmbs73b714s0-a.virginia-postgres.render.com/waioprime?sslmode=require
+
+- NUNCA DEVE ALTERAR DADOS DO BANCO SEM AUTORIZACAO CLARA E PRÉVIA.
+
+### USE MCP's
+- Sempre que necessário use o MCP apropriado se facilitar e melhorar a execução das tarefas.
+
+### SUBAGENTS
+
+- Use subagents o máximo possível.
+
+### SEMPRE UTILIZE AS SKILLS COM SUB AGENTS
+
+- use as skills disponiveis em .agents.
+- Podes usar o agent browser para verificar se o visual do layout ficou certo.
+- copywritten para bons textos.
+- ui/ux max para melhores telas.
+- Use sempre Tooltip Libraries para melhorar a acessibilidade de forma clean, e moderna.
+- Sempre verifique se i18n está coberto em toda implementação verificada e implementada.
+- Use agent browser para verificar se o resultado está coerente e profissional como solicitado.
+
+### SEMPRE ATUALIZAR O PACKAGE JSON
+
+- Sempre atualizar o package json e manifest, com a nova versão a cada alteração do projeto, sempre respeitando as normas internacinais de controle de versão.
+
+### TODA NOVA FEATURE E TODA MANUTENÇÃO:
+
+- Deve ser implementada como projeto white label, todos os termos, nomes de funções e etc, devem usar nomes claros dos recursos, evitando no nome do app.
+- Deve obrigatóriamente ser compatível com o sistema i18n implantado no projeto.
+- Deve obrigatóriamente ser compatível com os modos: sistema, claro e escuro.
+- Deve obrigatóriamente ser documentado de forma adequado no projeto, para futuros processos terem conhecimento e saber o que fazer e o que não fazer.
+- Deve obrigatóriamente sempre tentar economizar caracteres nos processos, para não travar os terminais e não extrapolar limites de prompts.
 
 ### Estrutura principal
 

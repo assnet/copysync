@@ -17,5 +17,8 @@ WaioPrime Server is our backend interface that connects external applications to
 
 ### Documentação da biblioteca Baileys: https://baileys.wiki/docs/intro/
 
+### GITHUB:
+https://github.com/WhiskeySockets/Baileys/releases
+
 ### Matar sessao oculta
 Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique | ForEach-Object { Write-Host "Matando PID $_"; Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
