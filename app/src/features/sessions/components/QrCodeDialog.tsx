@@ -129,7 +129,14 @@ export function QrCodeDialog({ session, open, onClose, onStatusChange }: Props) 
           </Alert>
         )}
 
-        {(status === 'FAILED' || status === 'LOGGED_OUT') && (
+        {status === 'LOGGED_OUT' && (
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            A conexão com o WhatsApp foi desfeita no celular. Clique em Reconectar para
+            gerar um novo QR Code — o histórico desta sessão é preservado.
+          </Alert>
+        )}
+
+        {status === 'FAILED' && (
           <Alert severity="error" sx={{ mb: 1 }}>
             A sessão encontrou um erro ou foi desconectada. Tente reconectar.
           </Alert>

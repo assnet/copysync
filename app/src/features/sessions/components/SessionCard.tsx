@@ -61,10 +61,10 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
         case 'reconnect': {
           const res = await sessionService.reconnect(session.id);
           onStatusChange(session.id, res.status);
-          // Após logout as credenciais foram limpas — abre QR na mesma sessão (histórico preservado)
-          if (status === 'LOGGED_OUT') {
-            onRequestQr({ ...session, status: res.status });
-          }
+          // Sempre abre o QR: se as credenciais ainda valem a sessão conecta sozinha e o
+          // dialog só mostra o progresso; se foram revogadas, o QR é o único caminho de volta.
+          // Em ambos os casos é a MESMA sessão — histórico e mídia preservados.
+          onRequestQr({ ...session, status: res.status });
           break;
         }
         case 'logout': {
@@ -180,7 +180,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
         <CardActions sx={{ px: 1.5, py: 1, justifyContent: 'space-between' }}>
           {/* Ações principais */}
           <Box sx={{ display: 'flex', gap: 0.25 }}>
-            {(status === 'PENDING' || status === 'DISCONNECTED' || status === 'FAILED') && (
+            {status === 'PENDING' && (
               <Tooltip title="Conectar">
                 <span>
                   <IconButton size="small" color="primary" onClick={() => handle('connect')} disabled={isBusy}>
@@ -190,7 +190,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               </Tooltip>
             )}
             {(status === 'DISCONNECTED' || status === 'FAILED' || status === 'LOGGED_OUT') && (
-              <Tooltip title={status === 'LOGGED_OUT' ? 'Reconectar mesmo número (mantém histórico)' : 'Reconectar'}>
+              <Tooltip title="Reconectar nesta mesma sessão — mantém histórico e mídia">
                 <span>
                   <IconButton size="small" onClick={() => handle('reconnect')} disabled={isBusy}>
                     {loadingAction === 'reconnect' ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
