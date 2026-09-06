@@ -9,6 +9,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed
+
+#### Backend — Reconexão de sessão com credencial revogada
+
+- **`BaileysErrorTranslator.ts`** — `translateDisconnect` passa a devolver `shouldClearCredentials`. Motivos em que o WhatsApp revoga o dispositivo (`loggedOut`, `forbidden`, `badSession`, `multideviceMismatch`) marcam a credencial como morta; `connectionReplaced` e falhas de transporte **não** marcam, pois a credencial continua válida e limpá-la forçaria um pareamento desnecessário
+- **`BaileysMessagingEngineAdapter.ts`** — credencial revogada agora é apagada via `clearCredentials()` e o socket é **reaberto na hora** (`discardCredentials`), de modo que o QR de pareamento nasce da mesma ação do usuário que esbarrou na credencial morta. Antes, o reconnect reusava a credencial morta, o WhatsApp devolvia 401 em segundos e o único caminho de saída era deletar a sessão — o que quebrava o vínculo das conversas (`chat_conversations.sessionId`) e duplicava o histórico. Sessões já presas em `FAILED` se recuperam no primeiro clique em Reconectar, sem intervenção no banco
+- **`BaileysMessagingEngineAdapter.ts`** — guarda `pairingRestarts` impede laço de limpeza/reabertura: se a credencial recém-gerada for revogada de novo, a sessão é estacionada em `LOGGED_OUT` para pareamento manual. O guard é liberado ao conectar e em toda ação manual (connect/disconnect/logout)
+- **`BaileysMessagingEngineAdapter.ts`** — cada socket recebe um `epoch`; eventos vindos de um socket já substituído são descartados e seus listeners removidos (`detachSocket`). Antes, o `close` do socket antigo chegava depois da criação do novo, apagava a entrada do socket novo no registry, sobrescrevia o status e agendava reconexão paralela — dois sockets na mesma credencial faziam o WhatsApp responder `connectionReplaced` e a sessão caía em `FAILED` logo após clicar em Reconectar
+- **`BaileysMessagingEngineAdapter.ts`** — contador de tentativas migrado para o registry e zerado em `connection === 'open'`. Antes ele vivia no closure do socket, então uma sessão que já tinha usado as 5 tentativas ia direto para `FAILED` na primeira queda recuperável seguinte
+- **`BaileysMessagingEngineAdapter.ts`** — auto-reconexão agendada é abortada se um connect/reconnect manual já reabriu a sessão
+- **`BaileysSessionRegistry.ts`** — entrada ganha `epoch` e `reconnectAttempt`, com `nextEpoch()`, `isCurrentEpoch()`, `deleteIfCurrentEpoch()` e acessores do contador
+
+#### Frontend — Fluxo de reconexão coerente
+
+- **`SessionCard.tsx`** — Reconectar sempre abre o QrCodeDialog (credencial válida → mostra o progresso; credencial revogada → mostra o QR), e o botão Conectar fica restrito a `PENDING`, eliminando dois botões com o mesmo efeito em `DISCONNECTED`/`FAILED`
+- **`QrCodeDialog.tsx`** — `LOGGED_OUT` deixa de ser tratado como erro e passa a instruir o novo pareamento, informando que o histórico da sessão é preservado
+
 ### Added
 
 #### Backend — Logout preserva vínculo de histórico da sessão
