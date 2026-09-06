@@ -32,6 +32,14 @@ function isBoomLike(err: unknown): err is BoomLike {
 export type BaileysDisconnectInfo = {
   /** Whether the adapter should attempt automatic reconnect */
   shouldReconnect: boolean;
+  /**
+   * Whether the persisted credentials are definitively dead and must be wiped so
+   * the session can be paired again (new QR).  Only true when WhatsApp itself
+   * invalidated the device — never for transport-level or concurrency failures,
+   * where the credentials are still valid and wiping them would force a pointless
+   * re-pairing.
+   */
+  shouldClearCredentials: boolean;
   /** Translated internal error */
   error: AppError;
 };
@@ -50,6 +58,7 @@ export function translateDisconnect(
   if (!isBoomLike(lastError)) {
     return {
       shouldReconnect: true,
+      shouldClearCredentials: false,
       error: new RecoverableConnectionError('non-boom disconnect'),
     };
   }
@@ -57,34 +66,36 @@ export function translateDisconnect(
   const reason = lastError.output?.statusCode as DisconnectReason | undefined;
 
   switch (reason) {
+    // ── Credentials revoked by WhatsApp — only a new pairing recovers the session ──
     case DisconnectReason.loggedOut:
-      return {
-        shouldReconnect: false,
-        error: new SessionExpiredError(sessionId),
-      };
-
     case DisconnectReason.forbidden:
-      return {
-        shouldReconnect: false,
-        error: new SessionExpiredError(sessionId),
-      };
-
     case DisconnectReason.badSession:
       return {
         shouldReconnect: false,
+        shouldClearCredentials: true,
         error: new SessionExpiredError(sessionId),
       };
 
-    case DisconnectReason.connectionReplaced:
-      // WhatsApp opened on another device — do not reconnect from here
+    case DisconnectReason.multideviceMismatch:
       return {
         shouldReconnect: false,
+        shouldClearCredentials: true,
+        error: new PairingFailedError('multi-device mismatch'),
+      };
+
+    case DisconnectReason.connectionReplaced:
+      // Another socket took over this device (WhatsApp opened elsewhere, or a
+      // duplicated socket on our side).  Credentials remain valid — never wipe them.
+      return {
+        shouldReconnect: false,
+        shouldClearCredentials: false,
         error: new SessionExpiredError(sessionId),
       };
 
     case DisconnectReason.restartRequired:
       return {
         shouldReconnect: true,
+        shouldClearCredentials: false,
         error: new RecoverableConnectionError('restart required'),
       };
 
@@ -93,24 +104,21 @@ export function translateDisconnect(
     case DisconnectReason.timedOut:
       return {
         shouldReconnect: true,
+        shouldClearCredentials: false,
         error: new RecoverableConnectionError(`disconnect reason ${reason}`),
-      };
-
-    case DisconnectReason.multideviceMismatch:
-      return {
-        shouldReconnect: false,
-        error: new PairingFailedError('multi-device mismatch'),
       };
 
     case DisconnectReason.unavailableService:
       return {
         shouldReconnect: true,
+        shouldClearCredentials: false,
         error: new EngineTemporarilyUnavailableError(),
       };
 
     default:
       return {
         shouldReconnect: true,
+        shouldClearCredentials: false,
         error: new RecoverableConnectionError(`unknown reason ${reason ?? 'n/a'}`),
       };
   }

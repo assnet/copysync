@@ -13,7 +13,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys';
-import type { ConnectionState, AnyMessageContent, proto } from '@whiskeysockets/baileys';
+import type { ConnectionState, AnyMessageContent, WASocket, proto } from '@whiskeysockets/baileys';
 import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { env } from '../../../../../shared/config/env';
@@ -46,6 +46,17 @@ import type { IChatConversationRepository } from '../../../../chat/domain/contra
 import type { IngestHistorySyncUseCase, HistoryMessageItem } from '../../../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
 
+/** Every socket event this adapter subscribes to — detached when a socket is replaced. */
+const HANDLED_SOCKET_EVENTS = [
+  'creds.update',
+  'connection.update',
+  'messages.upsert',
+  'messages.update',
+  'messaging-history.set',
+  'contacts.upsert',
+  'presence.update',
+] as const;
+
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 3_000;
 const THIRTY_MIN_MS = 30 * 60 * 1_000;
@@ -55,6 +66,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly registry = BaileysSessionRegistry.get();
   private readonly groupMetadataCache = new Map<string, GroupMetadataSnapshot>();
   private readonly groupMetadataPending = new Map<string, Promise<GroupMetadataSnapshot | null>>();
+  /**
+   * Sessions whose socket was reopened right after wiping revoked credentials.
+   * Guards against an endless wipe/reopen loop; cleared once the session connects.
+   */
+  private readonly pairingRestarts = new Set<string>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -74,8 +90,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
     const { sessionId, tenantId } = input;
+    // A user-initiated connect starts a fresh recovery cycle.
+    this.pairingRestarts.delete(sessionId);
     const existing = this.registry.get(sessionId);
     if (existing) {
+      // Detach before ending: the old socket still emits 'close' asynchronously and
+      // that handler would otherwise tear down the socket we are about to create.
+      this.detachSocket(existing.socket);
       try { existing.socket.end(undefined); } catch { /* best-effort */ }
       this.registry.delete(sessionId);
     }
@@ -85,8 +106,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
+    this.pairingRestarts.delete(sessionId);
     const entry = this.registry.get(sessionId);
     if (entry) {
+      this.detachSocket(entry.socket);
       try { entry.socket.end(undefined); } catch (err) {
         baileysLogger.warn({ err, sessionId }, 'Error closing socket on disconnect');
       }
@@ -102,11 +125,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   async logoutSession(input: LogoutSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
+    this.pairingRestarts.delete(sessionId);
     const entry = this.registry.get(sessionId);
     if (entry) {
       try { await entry.socket.logout(); } catch (err) {
         baileysLogger.warn({ err, sessionId }, 'Error during Baileys logout');
       }
+      this.detachSocket(entry.socket);
       entry.socket.end(undefined);
       this.registry.delete(sessionId);
     }
@@ -212,10 +237,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       },
     });
 
-    this.registry.set(sessionId, { socket, tenantId });
+    const epoch = this.registry.nextEpoch();
+    this.registry.set(sessionId, { socket, tenantId, epoch, reconnectAttempt: attempt });
     internalEventBus.emit('SESSION_CONNECTING', { type: 'SESSION_CONNECTING', sessionId, tenantId });
 
+    /** True once this socket has been replaced by a newer one — its events must be ignored. */
+    const isStale = (): boolean => !this.registry.isCurrentEpoch(sessionId, epoch);
+
     socket.ev.on('creds.update', async () => {
+      if (isStale()) return;
       try { await saveCreds(); }
       catch (err) { baileysLogger.error({ err, sessionId }, 'Failed to persist credentials'); }
     });
@@ -223,6 +253,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     socket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
       try {
         const { connection, lastDisconnect, qr } = update;
+
+        if (isStale()) {
+          // A newer socket owns this session; only clean up after ourselves.
+          if (connection === 'close') {
+            this.detachSocket(socket);
+            baileysLogger.debug({ sessionId, epoch }, 'Ignoring close from superseded socket');
+          }
+          return;
+        }
 
         if (qr) {
           this.registry.setQr(sessionId, qr);
@@ -233,6 +272,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
         if (connection === 'open') {
           this.registry.clearQr(sessionId);
+          // Connection is healthy again — the backoff budget and the pairing guard reset.
+          this.registry.setReconnectAttempt(sessionId, 0);
+          this.pairingRestarts.delete(sessionId);
           const phone = state.creds.me?.id?.split(':')[0] ?? null;
           await this.updateConnectedSessionStatus(sessionId, tenantId);
           if (phone) {
@@ -243,13 +285,29 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         }
 
         if (connection === 'close') {
-          const { shouldReconnect, error } = translateDisconnect(sessionId, lastDisconnect?.error);
-          baileysLogger.warn({ sessionId, shouldReconnect, errorCode: error.code }, 'Session disconnected');
-          this.registry.delete(sessionId);
+          const { shouldReconnect, shouldClearCredentials, error } =
+            translateDisconnect(sessionId, lastDisconnect?.error);
+          baileysLogger.warn(
+            { sessionId, shouldReconnect, shouldClearCredentials, errorCode: error.code },
+            'Session disconnected',
+          );
+
+          // Current attempt count lives in the registry so a successful 'open' resets it.
+          const currentAttempt = this.registry.getReconnectAttempt(sessionId);
+          this.detachSocket(socket);
+          this.registry.deleteIfCurrentEpoch(sessionId, epoch);
           this.clearSessionGroupMetadata(sessionId);
           internalEventBus.emit('SESSION_DISCONNECTED', {
             type: 'SESSION_DISCONNECTED', sessionId, tenantId, reason: error.code,
           });
+
+          if (shouldClearCredentials) {
+            // WhatsApp revoked this device: the stored credentials can never connect
+            // again.  Wipe them so the very same session (and therefore its whole chat
+            // history) can be paired again with a fresh QR code.
+            await this.discardCredentials(sessionId, tenantId, error.code);
+            return;
+          }
 
           if (!shouldReconnect) {
             await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
@@ -258,11 +316,16 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
           await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
 
-          const nextAttempt = attempt + 1;
+          const nextAttempt = currentAttempt + 1;
           if (nextAttempt <= RECONNECT_MAX_ATTEMPTS) {
-            const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt);
+            const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, currentAttempt);
             baileysLogger.info({ sessionId, nextAttempt, delayMs: delay }, 'Scheduling auto-reconnect');
             setTimeout(() => {
+              // A manual connect/reconnect may have already opened a new socket meanwhile.
+              if (this.registry.has(sessionId)) {
+                baileysLogger.debug({ sessionId }, 'Auto-reconnect skipped — session already active');
+                return;
+              }
               this.openSocket(sessionId, tenantId, nextAttempt).catch((err) => {
                 baileysLogger.error({ err, sessionId }, 'Auto-reconnect failed');
               });
@@ -278,6 +341,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     });
     // ── Incoming messages ──────────────────────────────────────────────────
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (isStale()) return;
       try {
         // 'notify' = real-time new messages; 'append' = historical sync — skip
         if (type !== 'notify') {
@@ -387,6 +451,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     //   status 4 (READ)         → recipient read it            → READ
     //   status 5 (PLAYED)       → recipient played audio/video → READ
     socket.ev.on('messages.update', (updates) => {
+      if (isStale()) return;
       for (const { key, update } of updates) {
         if (!key.fromMe || !key.id || !update.status) continue;
 
@@ -411,6 +476,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── History sync ────────────────────────────────────────────────────────
     socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
+      if (isStale()) return;
       if (!env.BAILEYS_SYNC_FULL_HISTORY) {
         baileysLogger.debug(
           { sessionId, count: histMsgs.length },
@@ -438,6 +504,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── Contacts upsert ──────────────────────────────────────────────────────
     socket.ev.on('contacts.upsert', (contacts) => {
+      if (isStale()) return;
       setImmediate(() => {
         for (const c of contacts) {
           const rawJid = c.id;
@@ -470,6 +537,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── Presence / typing ────────────────────────────────────────────────────
     socket.ev.on('presence.update', ({ id: jid, presences }) => {
+      if (isStale()) return;
       if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast') || jid.endsWith('@lid')) return;
       const phone = jid.split('@')[0];
       if (!phone) return;
@@ -718,6 +786,70 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         this.groupMetadataPending.delete(key);
       }
     }
+  }
+
+  /**
+   * Removes every listener this adapter registered on a socket.
+   *
+   * Baileys keeps emitting on a socket after `end()`, so a replaced socket would
+   * otherwise keep ingesting messages and tearing down the session that succeeded it.
+   */
+  private detachSocket(socket: WASocket): void {
+    for (const event of HANDLED_SOCKET_EVENTS) {
+      try { socket.ev.removeAllListeners(event); } catch { /* best-effort */ }
+    }
+  }
+
+  /**
+   * Recovers a session whose credentials WhatsApp revoked.
+   *
+   * Wipes the dead credentials and immediately reopens the socket, so the pairing QR
+   * is produced by the very same user action that hit the revoked credential — no
+   * second click, no session parked in a dead state.
+   *
+   * The session row (and therefore every conversation and message bound to its id)
+   * is left untouched — only `session_auth_states.statePayload` is cleared.
+   */
+  private async discardCredentials(sessionId: string, tenantId: string, reason: string): Promise<void> {
+    try {
+      await this.authStateRepo.clearCredentials(sessionId);
+      baileysLogger.warn({ sessionId, reason }, 'Credentials revoked by WhatsApp — cleared');
+    } catch (err) {
+      // Could not clear: leave the session FAILED rather than claiming it is pairable.
+      baileysLogger.error({ err, sessionId }, 'Failed to clear revoked credentials');
+      await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
+      return;
+    }
+
+    // Loop guard: freshly generated credentials being revoked again means the problem
+    // is not the stored state.  Park the session instead of reopening forever.
+    if (this.pairingRestarts.has(sessionId)) {
+      this.pairingRestarts.delete(sessionId);
+      baileysLogger.error(
+        { sessionId, reason },
+        'Fresh credentials revoked again — session parked awaiting manual reconnect',
+      );
+      await this.parkAsLoggedOut(sessionId, tenantId);
+      return;
+    }
+
+    this.pairingRestarts.add(sessionId);
+    await this.updateSessionStatus(sessionId, tenantId, 'CONNECTING');
+
+    try {
+      await this.openSocket(sessionId, tenantId, 0);
+      baileysLogger.info({ sessionId }, 'Socket reopened with clean credentials — awaiting QR');
+    } catch (err) {
+      this.pairingRestarts.delete(sessionId);
+      baileysLogger.error({ err, sessionId }, 'Failed to reopen socket after clearing credentials');
+      await this.parkAsLoggedOut(sessionId, tenantId);
+    }
+  }
+
+  /** Marks the session as needing a manual, user-initiated pairing. */
+  private async parkAsLoggedOut(sessionId: string, tenantId: string): Promise<void> {
+    await this.updateSessionStatus(sessionId, tenantId, 'LOGGED_OUT');
+    internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId, tenantId });
   }
 
   private async updateSessionStatus(sessionId: string, tenantId: string, status: SessionStatus): Promise<void> {

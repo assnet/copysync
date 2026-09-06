@@ -14,6 +14,14 @@ import type { WASocket } from '@whiskeysockets/baileys';
 export interface ActiveSessionEntry {
   socket: WASocket;
   tenantId: string;
+  /**
+   * Monotonic id of the socket generation. Every openSocket() call produces a new
+   * epoch; event handlers carry the epoch they were registered with so that events
+   * emitted by a socket that was already replaced can be discarded.
+   */
+  epoch: number;
+  /** Consecutive automatic reconnect attempts. Reset to 0 once the connection opens. */
+  reconnectAttempt: number;
   /** Latest QR string, set via SESSION_QR_UPDATED event. Cleared on connect. */
   latestQr?: string;
   /** Latest pairing code, set via SESSION_PAIRING_CODE_UPDATED. */
@@ -29,8 +37,37 @@ export class BaileysSessionRegistry {
 
   private readonly sessions = new Map<string, ActiveSessionEntry>();
 
+  private epochCounter = 0;
+
+  /** Reserve the next socket generation id. */
+  nextEpoch(): number {
+    this.epochCounter += 1;
+    return this.epochCounter;
+  }
+
   set(sessionId: string, entry: ActiveSessionEntry): void {
     this.sessions.set(sessionId, entry);
+  }
+
+  /** True when the given epoch still owns the session (i.e. it is the live socket). */
+  isCurrentEpoch(sessionId: string, epoch: number): boolean {
+    return this.sessions.get(sessionId)?.epoch === epoch;
+  }
+
+  /** Removes the entry only when it still belongs to the given epoch. */
+  deleteIfCurrentEpoch(sessionId: string, epoch: number): boolean {
+    if (!this.isCurrentEpoch(sessionId, epoch)) return false;
+    this.sessions.delete(sessionId);
+    return true;
+  }
+
+  getReconnectAttempt(sessionId: string): number {
+    return this.sessions.get(sessionId)?.reconnectAttempt ?? 0;
+  }
+
+  setReconnectAttempt(sessionId: string, attempt: number): void {
+    const entry = this.sessions.get(sessionId);
+    if (entry) entry.reconnectAttempt = attempt;
   }
 
   get(sessionId: string): ActiveSessionEntry | undefined {
