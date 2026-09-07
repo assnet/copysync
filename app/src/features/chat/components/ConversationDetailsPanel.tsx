@@ -11,10 +11,9 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import AutoGraphOutlinedIcon from '@mui/icons-material/AutoGraphOutlined';
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { ChatConversation, ConversationStatus } from '../types';
 import type { UpdateConversationRequest, GroupParticipantApiDto } from '@/types/chat.api.types';
-import { chatService } from '@/services/chat.service';
 import { formatPhone, getStatusConfig, formatConversationTime } from '../utils';
 
 interface SectionProps {
@@ -87,6 +86,9 @@ interface Props {
   conversation: ChatConversation;
   onClose: () => void;
   onUpdate?: (data: UpdateConversationRequest) => void;
+  /** Participantes do grupo, carregados uma vez pelo ChatPage e reaproveitados aqui. */
+  participants?: GroupParticipantApiDto[];
+  loadingParticipants?: boolean;
 }
 
 const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
@@ -97,27 +99,10 @@ const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
   { value: 'closed',  label: 'Encerrada' },
 ];
 
-export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Props) {
+export function ConversationDetailsPanel({ conversation, onClose, onUpdate, participants = [], loadingParticipants = false }: Props) {
   const { contact, session, status, queue, assignedTo, tags, notes, unreadCount, lastMessageAt, isGroup, autoDownloadMedia } = conversation;
 
-  // Participantes vêm do WhatsApp sob demanda: só para grupos e só quando o painel abre.
-  const [participants, setParticipants] = useState<GroupParticipantApiDto[]>([]);
-  const [loadingParticipants, setLoadingParticipants] = useState(false);
 
-  useEffect(() => {
-    if (!isGroup) {
-      setParticipants([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingParticipants(true);
-    chatService
-      .listGroupParticipants(conversation.id)
-      .then((items) => { if (!cancelled) setParticipants(items); })
-      .catch(() => { if (!cancelled) setParticipants([]); })
-      .finally(() => { if (!cancelled) setLoadingParticipants(false); });
-    return () => { cancelled = true; };
-  }, [conversation.id, isGroup]);
   const statusConfig = getStatusConfig(status);
   const [localNotes, setLocalNotes] = useState(notes);
 

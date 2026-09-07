@@ -18,6 +18,8 @@ interface Props {
   onLoadMore?: () => void;
   scrollSignal?: { n: number; smooth: boolean };
   onParticipantClick?: (phone: string, name: string) => void;
+  /** Avatares dos participantes por telefone, usados nas bolhas de grupo. */
+  participantAvatars?: Record<string, string>;
 }
 
 export function ChatWindow({
@@ -33,6 +35,7 @@ export function ChatWindow({
   onLoadMore,
   scrollSignal,
   onParticipantClick,
+  participantAvatars,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
@@ -87,6 +90,7 @@ export function ChatWindow({
         isLoadingMore={isLoadingMore}
         onLoadMore={onLoadMore}
         scrollSignal={scrollSignal}
+        participantAvatars={participantAvatars}
         onReply={handleReply}
         onParticipantClick={onParticipantClick}
       />

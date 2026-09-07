@@ -15,6 +15,7 @@ interface Props {
   scrollSignal?: { n: number; smooth: boolean };
   onReply?: (message: ChatMessage) => void;
   onParticipantClick?: (phone: string, name: string) => void;
+  participantAvatars?: Record<string, string>;
 }
 
 function isSameDay(a: string, b: string) {
@@ -65,6 +66,7 @@ export function MessageList({
   scrollSignal,
   onReply,
   onParticipantClick,
+  participantAvatars,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -148,7 +150,12 @@ export function MessageList({
           return (
             <Box key={msg.id}>
               {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
-              <MessageBubble message={msg} onReply={onReply} onParticipantClick={onParticipantClick} />
+              <MessageBubble
+                message={msg}
+                onReply={onReply}
+                onParticipantClick={onParticipantClick}
+                participantAvatars={participantAvatars}
+              />
             </Box>
           );
         })

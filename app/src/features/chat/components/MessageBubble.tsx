@@ -131,9 +131,10 @@ interface Props {
   message: ChatMessage;
   onReply?: (message: ChatMessage) => void;
   onParticipantClick?: (phone: string, name: string) => void;
+  participantAvatars?: Record<string, string>;
 }
 
-export function MessageBubble({ message, onReply, onParticipantClick }: Props) {
+export function MessageBubble({ message, onReply, onParticipantClick, participantAvatars }: Props) {
   const [hovered, setHovered] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const theme = useTheme();
@@ -241,7 +242,11 @@ export function MessageBubble({ message, onReply, onParticipantClick }: Props) {
       {/* Avatar do remetente em mensagens de grupo recebidas, como no WhatsApp Web */}
       {!isOut && message.fromParticipantName && (
         <Avatar
-          src={message.fromParticipantAvatarUrl ?? undefined}
+          src={
+            message.fromParticipantAvatarUrl
+            ?? (participantPhone ? participantAvatars?.[participantPhone] : undefined)
+            ?? undefined
+          }
           sx={{
             width: 28,
             height: 28,

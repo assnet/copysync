@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Box } from '@mui/material';
 import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
@@ -17,6 +17,7 @@ import { ConversationDetailsPanel } from '@/features/chat/components/Conversatio
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
+import type { GroupParticipantApiDto } from '@/types/chat.api.types';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
 const CHAT_HEIGHT = {
@@ -58,6 +59,11 @@ export default function ChatPage() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
+  // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
+  // de avatar para as bolhas, já que participante de grupo raramente tem contato
+  // salvo no tenant (só 7 de 1503 contatos têm avatar).
+  const [participants, setParticipants] = useState<GroupParticipantApiDto[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
 
   // Paginação reversa
   const [hasMore, setHasMore] = useState<Record<string, boolean>>({});
@@ -101,6 +107,32 @@ export default function ChatPage() {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Participantes da conversa aberta (só grupos)
+  useEffect(() => {
+    const conv = conversations.find((c) => c.id === selectedId);
+    if (!selectedId || !conv?.isGroup) {
+      setParticipants([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingParticipants(true);
+    chatService
+      .listGroupParticipants(selectedId)
+      .then((items) => { if (!cancelled) setParticipants(items); })
+      .catch(() => { if (!cancelled) setParticipants([]); })
+      .finally(() => { if (!cancelled) setLoadingParticipants(false); });
+    return () => { cancelled = true; };
+  }, [selectedId, conversations]);
+
+  // Mapa telefone → avatar, usado como fallback nas bolhas de grupo
+  const participantAvatars = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of participants) {
+      if (p.phone && p.avatarUrl) map[p.phone] = p.avatarUrl;
+    }
+    return map;
+  }, [participants]);
 
   // Preenche os avatares que faltam. Cada foto é uma consulta ao WhatsApp, então a
   // API trabalha em lotes e devolve quantas sobraram; repetimos até zerar. As fotos
@@ -514,6 +546,7 @@ export default function ChatPage() {
           onLoadMore={handleLoadMore}
           scrollSignal={scrollSignal}
           onParticipantClick={handleParticipantClick}
+          participantAvatars={participantAvatars}
         />
       ) : (
         <EmptyConversationState />
@@ -525,6 +558,8 @@ export default function ChatPage() {
           conversation={selectedConversation}
           onClose={() => setDetailsOpen(false)}
           onUpdate={handleUpdateConversation}
+          participants={participants}
+          loadingParticipants={loadingParticipants}
         />
       )}
     </Box>

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Grid, Button, Chip, alpha, useTheme,
+  Box, Typography, Grid, Button, Chip, Avatar, alpha, useTheme,
 } from '@mui/material';
 import DevicesIcon from '@mui/icons-material/Devices';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -12,6 +12,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { sessionService } from '@/services/session.service';
 import { StatCard, SectionCard } from '@/components';
+import { SessionStatusChip } from '@/features/sessions/components/SessionStatusChip';
+import { formatPhone } from '@/features/chat/utils';
 import type { SessionItem } from '@/types/api.types';
 
 export function DashboardPage() {
@@ -148,29 +150,47 @@ export function DashboardPage() {
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-                      <Box
-                        sx={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          flexShrink: 0,
-                          bgcolor:
-                            s.status === 'CONNECTED'
-                              ? 'success.main'
-                              : s.status === 'AWAITING_QR' || s.status === 'CONNECTING' || s.status === 'AWAITING_PAIRING'
-                              ? 'warning.main'
-                              : 'error.main',
-                        }}
-                      />
-                      <Typography variant="body2" fontWeight={500} noWrap>
-                        {s.name}
-                      </Typography>
+                      {/* Avatar com o ponto de status sobreposto: identidade da conexão,
+                          como num chat, mas com o estado sempre visível */}
+                      <Box sx={{ position: 'relative', flexShrink: 0 }}>
+                        <Avatar
+                          src={s.avatarUrl ?? undefined}
+                          sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 700 }}
+                        >
+                          {s.name[0]?.toUpperCase() ?? '?'}
+                        </Avatar>
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            bottom: -1,
+                            right: -1,
+                            width: 11,
+                            height: 11,
+                            borderRadius: '50%',
+                            border: '2px solid',
+                            borderColor: 'background.paper',
+                            bgcolor:
+                              s.status === 'CONNECTED'
+                                ? 'success.main'
+                                : s.status === 'AWAITING_QR' || s.status === 'CONNECTING' || s.status === 'AWAITING_PAIRING'
+                                ? 'warning.main'
+                                : 'error.main',
+                          }}
+                        />
+                      </Box>
+                      {/* Nome acima, número abaixo — centrados na linha média do avatar */}
+                      <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                        <Typography variant="body2" fontWeight={600} noWrap sx={{ lineHeight: 1.3 }}>
+                          {s.name}
+                        </Typography>
+                        {s.phone && (
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ lineHeight: 1.3 }}>
+                            {formatPhone(s.phone)}
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
-                    {s.phone && (
-                      <Typography variant="caption" color="text.secondary" noWrap sx={{ flexShrink: 0 }}>
-                        {s.phone}
-                      </Typography>
-                    )}
+                    <SessionStatusChip status={s.status} />
                   </Box>
                 ))}
                 {total > 5 && (
