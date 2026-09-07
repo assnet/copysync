@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
+import { SyncChatAvatarsUseCase } from '../../application/use-cases/SyncChatAvatarsUseCase';
 import { ListGroupParticipantsUseCase } from '../../application/use-cases/ListGroupParticipantsUseCase';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { prisma } from '../../../../shared/database/prisma.client';
@@ -47,7 +48,7 @@ const userRepo          = new PrismaUserRepository();
 const listConversationsUseCase  = new ListConversationsUseCase(conversationRepo, contactRepo, sessionRepo);
 const getConversationUseCase    = new GetConversationByIdUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
 const updateConversationUseCase = new UpdateConversationUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
-const listMessagesUseCase       = new ListMessagesUseCase(messageRepo, conversationRepo);
+const listMessagesUseCase       = new ListMessagesUseCase(messageRepo, conversationRepo, contactRepo);
 const getContactUseCase         = new GetContactByIdUseCase(contactRepo);
 
 const preHandler = [authHook, tenantHook];
@@ -207,6 +208,23 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       });
 
       httpResponse.ok(reply, { success: true });
+    },
+  );
+
+  // ── POST /avatars/sync — preenche avatares faltantes em lote ──────────────
+  app.post(
+    '/avatars/sync',
+    { preHandler },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+
+      const engine = getActiveEngine();
+      if (!engine) return httpResponse.ok(reply, { updated: 0, remaining: 0 });
+
+      const useCase = new SyncChatAvatarsUseCase(conversationRepo, contactRepo, engine);
+      const result = await useCase.execute({ tenantId });
+
+      httpResponse.ok(reply, result);
     },
   );
 

@@ -55,6 +55,12 @@ export interface WsContactUpdatedData {
   avatarUrl: string;
 }
 
+export interface WsGroupAvatarUpdatedData {
+  tenantId: string;
+  groupJid: string;
+  avatarUrl: string;
+}
+
 export type ChatWsPayload =
   | { event: 'chat.message.created'; data: WsMessageCreatedData }
   | { event: 'chat.conversation.updated'; data: WsConversationUpdatedData }
@@ -63,6 +69,7 @@ export type ChatWsPayload =
   | { event: 'chat.presence.updated'; data: WsPresenceUpdatedData }
   | { event: 'chat.session.updated'; data: WsSessionUpdatedData }
   | { event: 'chat.contact.updated'; data: WsContactUpdatedData }
+  | { event: 'chat.group.avatar.updated'; data: WsGroupAvatarUpdatedData }
   | { event: 'ping' };
 
 // ── Hook ──────────────────────────────────────────────────────────────────────

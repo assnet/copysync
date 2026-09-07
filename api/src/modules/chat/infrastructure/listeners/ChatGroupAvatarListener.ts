@@ -25,11 +25,13 @@ export function registerChatGroupAvatarListener(
         payload.avatarUrl,
       );
 
+      // Grupos não têm telefone no DTO (o campo é vazio de propósito, para não expor o
+      // JID como número), então o painel casa a atualização por groupJid.
       chatWsPublisher.publish(payload.tenantId, {
-        event: 'chat.contact.updated',
+        event: 'chat.group.avatar.updated',
         data: {
           tenantId: payload.tenantId,
-          phone: payload.groupJid, // grupos têm contact.phone = groupJid no DTO sintético
+          groupJid: payload.groupJid,
           avatarUrl: payload.avatarUrl,
         },
       });

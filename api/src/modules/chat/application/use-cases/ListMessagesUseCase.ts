@@ -1,5 +1,6 @@
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
+import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import type { ChatMessageDirection, ChatMessageStatus, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 
@@ -39,12 +40,15 @@ export interface ChatMessageDto {
   createdAt: string;
   fromParticipant: string | null;
   fromParticipantName: string | null;
+  /** Foto do remetente em mensagens de grupo, quando o contato é conhecido. */
+  fromParticipantAvatarUrl: string | null;
 }
 
 export class ListMessagesUseCase {
   constructor(
     private readonly messageRepo: IChatMessageRepository,
     private readonly conversationRepo: IChatConversationRepository,
+    private readonly contactRepo: IChatContactRepository,
   ) {}
 
   async execute(input: ListMessagesInput): Promise<ChatMessageDto[]> {
@@ -57,6 +61,15 @@ export class ListMessagesUseCase {
       limit: input.limit ?? 50,
       before: input.before,
     });
+
+    // Avatares dos remetentes de grupo, em consulta única para toda a página.
+    const participantPhones = messages
+      .map((m) => m.fromParticipant)
+      .filter((p): p is string => !!p);
+    const avatarByPhone = new Map(
+      (await this.contactRepo.findByPhones(participantPhones, input.tenantId))
+        .map((c) => [c.phone, c.avatarUrl]),
+    );
 
     return messages.map((m) => ({
       id: m.id,
@@ -77,6 +90,9 @@ export class ListMessagesUseCase {
       createdAt: m.createdAt.toISOString(),
       fromParticipant: m.fromParticipant,
       fromParticipantName: m.fromParticipantName,
+      fromParticipantAvatarUrl: m.fromParticipant
+        ? (avatarByPhone.get(m.fromParticipant) ?? null)
+        : null,
     }));
   }
 }

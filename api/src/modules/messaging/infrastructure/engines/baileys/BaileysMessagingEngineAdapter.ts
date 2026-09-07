@@ -264,6 +264,31 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     }
   }
 
+  async fetchProfilePicture(sessionId: string, jid: string, isGroup: boolean): Promise<string | null> {
+    const entry = this.registry.get(sessionId);
+    if (!entry) return null;
+
+    const remoteJid = isGroup ? `${jid}@g.us` : `${jid}@s.whatsapp.net`;
+    const filename = `avatar_${isGroup ? 'g' : 'c'}_${jid}.jpg`;
+
+    try {
+      const url = await entry.socket.profilePictureUrl(remoteJid, 'image');
+      if (!url) return null;
+
+      // A URL do WhatsApp expira em algumas horas: baixamos a imagem e servimos por
+      // conta própria, para o avatar não quebrar depois de persistido.
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await saveMediaBuffer(buffer, filename);
+      return mediaPublicUrl(filename);
+    } catch (err) {
+      baileysLogger.debug({ err, sessionId, jid, isGroup }, 'Failed to fetch profile picture');
+      return null;
+    }
+  }
+
   // -- Private ------------------------------------------------------------------
 
   private async openSocket(sessionId: string, tenantId: string, attempt: number): Promise<void> {

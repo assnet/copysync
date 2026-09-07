@@ -132,6 +132,8 @@ export class SendMessageUseCase {
       createdAt:         message.createdAt.toISOString(),
       fromParticipant:     message.fromParticipant,
       fromParticipantName: message.fromParticipantName,
+      // Mensagem enviada por nós: não há avatar de participante de grupo.
+      fromParticipantAvatarUrl: null,
     };
   }
 }

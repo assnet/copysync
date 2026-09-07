@@ -78,6 +78,7 @@ export interface ChatMessage {
   fromParticipant?: string | null;
   /** Nome do participante que enviou (grupos) */
   fromParticipantName?: string | null;
+  fromParticipantAvatarUrl?: string | null;
 }
 
 export interface ChatConversation {

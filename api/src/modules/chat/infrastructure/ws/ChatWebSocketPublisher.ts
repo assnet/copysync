@@ -89,6 +89,14 @@ export type ChatWsEvent =
         avatarUrl: string;
       };
     }
+  | {
+      event: 'chat.group.avatar.updated';
+      data: {
+        tenantId: string;
+        groupJid: string;
+        avatarUrl: string;
+      };
+    }
   | { event: 'ping' };
 
 /**

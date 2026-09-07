@@ -84,6 +84,7 @@ export interface ChatMessageApiDto {
   createdAt: string;
   fromParticipant?: string | null;
   fromParticipantName?: string | null;
+  fromParticipantAvatarUrl?: string | null;
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
@@ -228,5 +229,6 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     quotedMessage,
     fromParticipant:     dto.fromParticipant ?? null,
     fromParticipantName: dto.fromParticipantName ?? null,
+    fromParticipantAvatarUrl: dto.fromParticipantAvatarUrl ?? null,
   };
 }

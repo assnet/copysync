@@ -101,6 +101,29 @@ export default function ChatPage() {
     loadConversations();
   }, [loadConversations]);
 
+  // Preenche os avatares que faltam. Cada foto é uma consulta ao WhatsApp, então a
+  // API trabalha em lotes e devolve quantas sobraram; repetimos até zerar. As fotos
+  // obtidas chegam pelos eventos chat.contact.updated / chat.group.avatar.updated.
+  useEffect(() => {
+    let cancelled = false;
+    let rounds = 0;
+
+    const run = async () => {
+      while (!cancelled && rounds < 10) {
+        rounds += 1;
+        try {
+          const { updated, remaining } = await chatService.syncAvatars();
+          if (remaining === 0 || updated === 0) return;
+        } catch {
+          return; // sessão desconectada ou erro de rede — tenta de novo no próximo load
+        }
+      }
+    };
+
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
@@ -240,6 +263,17 @@ export default function ChatPage() {
           setConversations((prev) =>
             prev.map((c) =>
               c.contact.phone === phone
+                ? { ...c, contact: { ...c.contact, avatarUrl } }
+                : c,
+            ),
+          );
+        }
+
+        if (payload.event === 'chat.group.avatar.updated') {
+          const { groupJid, avatarUrl } = payload.data;
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.groupJid === groupJid
                 ? { ...c, contact: { ...c.contact, avatarUrl } }
                 : c,
             ),

@@ -127,6 +127,17 @@ export interface IMessagingEngine {
    * identificador interno está disponível.
    */
   getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]>;
+  /**
+   * Baixa a foto de perfil de um contato ou grupo e devolve uma URL servida por nós.
+   *
+   * A URL que o WhatsApp fornece é temporária; persisti-la deixaria avatares quebrados
+   * depois de algumas horas. Por isso a imagem é armazenada e o retorno é uma URL
+   * estável. Devolve null quando não há foto, ela é restrita por privacidade, ou a
+   * busca falha.
+   *
+   * @param jid telefone em dígitos (contato) ou groupJid (grupo, sem @g.us)
+   */
+  fetchProfilePicture(sessionId: string, jid: string, isGroup: boolean): Promise<string | null>;
 }
 
 export interface GroupParticipantInfo {

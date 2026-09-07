@@ -76,6 +76,13 @@ export const chatService = {
     await apiClient.post(`/chat/conversations/${conversationId}/presence`);
   },
 
+  async syncAvatars(): Promise<{ updated: number; remaining: number }> {
+    const res = await apiClient.post<{ success: true; data: { updated: number; remaining: number } }>(
+      '/chat/avatars/sync',
+    );
+    return res.data.data;
+  },
+
   async listGroupParticipants(conversationId: string): Promise<GroupParticipantApiDto[]> {
     const res = await apiClient.get<{ success: true; data: { participants: GroupParticipantApiDto[]; total: number } }>(
       `/chat/conversations/${conversationId}/participants`,

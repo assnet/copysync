@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Typography, alpha, useTheme, IconButton, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Box, Typography, Avatar, alpha, useTheme, IconButton, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
@@ -238,6 +238,23 @@ export function MessageBubble({ message, onReply, onParticipantClick }: Props) {
     >
       {/* Reply btn à esquerda para mensagens enviadas */}
       {isOut && replyBtn}
+      {/* Avatar do remetente em mensagens de grupo recebidas, como no WhatsApp Web */}
+      {!isOut && message.fromParticipantName && (
+        <Avatar
+          src={message.fromParticipantAvatarUrl ?? undefined}
+          sx={{
+            width: 28,
+            height: 28,
+            fontSize: 11,
+            fontWeight: 700,
+            alignSelf: 'flex-end',
+            mr: 0.5,
+            flexShrink: 0,
+          }}
+        >
+          {(message.fromParticipantName[0] ?? '?').toUpperCase()}
+        </Avatar>
+      )}
       <Box
         sx={{
           position: 'relative',
