@@ -11,6 +11,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Ações da conversa
+
+- **`schema.prisma`**, **migration `add_conversation_state_flags`** — colunas `pinned`, `mutedUntil`, `favorite` e `manuallyUnread`, mais o índice `(tenantId, pinned)`; as listas reaproveitam o campo `tags`
+- **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`** — `updateChatState` traduz para `chatModify`. `archive` e `markRead` exigem a última mensagem da conversa, que o protocolo usa para localizar o ponto do histórico
+- **`UpdateConversationStateUseCase.ts`**, **`chat.routes.ts`** — `PATCH /chat/conversations/:id/state`. A mudança local é persistida antes da sincronização e não é desfeita quando ela falha; o retorno informa em `syncedToWhatsApp` se chegou ao aparelho. Arquivar, fixar, silenciar e marcar como não lida são espelhados no WhatsApp; favoritos e listas ficam no painel, porque a biblioteca não expõe equivalentes
+- **`ConversationActionsMenu.tsx`**, **`ConversationListItem.tsx`**, **`ConversationSidebar.tsx`**, **`ChatPage.tsx`** — chevron no item da lista abre o menu com as seis ações na ordem do WhatsApp Web; o card exibe os indicadores de fixada, silenciada e favorita. Fixadas passam a vir no topo da listagem
+
 #### Chat — Sugestão de contatos ao iniciar conversa
 
 - **`SuggestContactsUseCase.ts`**, **`chat.routes.ts`**, **`IMessagingEngine.ts`** — `GET /chat/contacts/suggest` combina os contatos conhecidos do tenant (nome ou telefone parcial) com a verificação no WhatsApp via `onWhatsApp` quando o texto já é um telefone completo desconhecido, trazendo a foto quando disponível. `checkNumberExists` devolve `null` com a sessão fora do ar, caso em que não se pode afirmar que o número não existe
