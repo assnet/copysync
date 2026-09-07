@@ -11,6 +11,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Membros paginados, ações do painel e navegação por teclado
+
+- **`ListGroupParticipantsUseCase.ts`**, **`chat.routes.ts`** — a rota de participantes aceita `limit`, `offset` e `search`, devolvendo `{ participants, total }`. A lista completa de um grupo é dado pessoal de centenas de pessoas e deixa de trafegar inteira
+- **`GroupMembersDialog.tsx`**, **`ConversationDetailsPanel.tsx`** — o painel exibe 10 membros e um "Ver todos"; o modal carrega de 10 em 10 sob demanda, com busca, e limpa a lista ao fechar. O corte também é aplicado no painel, para não depender da versão da API
+- **`ConversationDetailsPanel.tsx`** — ações na ordem do WhatsApp Web: Favoritos e Adicionar à lista funcionando; exportar, limpar e sair do grupo visíveis e desabilitadas, com aviso de "em breve"
+- **`ChatPage.tsx`** — `Esc` fecha em cascata: busca, depois painel de contexto, depois conversa; diálogos e menus abertos tratam o próprio `Esc`
+- **`ChatPage.tsx`** — arquivar e fixar passam a atualizar a lista localmente (remoção da visão atual e reordenação), sem recarregá-la inteira; o recarregamento fica reservado para o caso de falha da chamada
+- **`VideoMessage.tsx`** — `preload="metadata"` e clique único para reproduzir; sem os metadados o primeiro clique era gasto carregando
+
 #### Chat — Ações da conversa
 
 - **`schema.prisma`**, **migration `add_conversation_state_flags`** — colunas `pinned`, `mutedUntil`, `favorite` e `manuallyUnread`, mais o índice `(tenantId, pinned)`; as listas reaproveitam o campo `tags`
