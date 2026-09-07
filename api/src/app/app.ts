@@ -231,6 +231,9 @@ export async function buildApp() {
       lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
       lastDisconnectedAt: { type: 'string', format: 'date-time', nullable: true },
       lastSeenAt: { type: 'string', format: 'date-time', nullable: true },
+      // Foto do número conectado. Sem declarar aqui, o serializer do Fastify
+      // descarta o campo silenciosamente, mesmo o presenter devolvendo-o.
+      avatarUrl: { type: 'string', nullable: true },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },
     },

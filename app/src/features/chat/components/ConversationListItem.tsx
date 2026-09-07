@@ -19,6 +19,13 @@ export function ConversationListItem({ conversation, selected, onClick, presence
   const statusConfig = getStatusConfig(status);
   const hasUnread = unreadCount > 0;
   const isGroup = conversation.isGroup ?? false;
+  // Contato sem nome salvo tem o próprio número como nome: nesse caso exibimos o
+  // telefone formatado, como faz o WhatsApp Web, em vez do número cru.
+  const displayTitle = isGroup
+    ? (conversation.groupName ?? contact.name)
+    : /^[\d\s+()-]+$/.test(contact.name)
+      ? formatPhone(contact.phone || contact.name)
+      : contact.name;
 
   return (
     <Box
@@ -82,7 +89,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
             noWrap
             sx={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}
           >
-            {contact.name}
+            {displayTitle}
           </Typography>
           <Typography
             variant="caption"
@@ -94,22 +101,9 @@ export function ConversationListItem({ conversation, selected, onClick, presence
           </Typography>
         </Box>
 
-        {/* Row 2: Phone + unread badge */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-          <Typography variant="caption" color="text.disabled" noWrap sx={{ flex: 1, lineHeight: 1.3 }}>
-            {isGroup ? 'Grupo' : formatPhone(contact.phone)}
-          </Typography>
-          {hasUnread && (
-            <Badge
-              badgeContent={unreadCount}
-              color="primary"
-              max={99}
-              sx={{ flexShrink: 0, '& .MuiBadge-badge': { position: 'relative', transform: 'none', fontSize: 10, minWidth: 18, height: 18 } }}
-            />
-          )}
-        </Box>
-
-        {/* Row 3: Last message preview or typing indicator */}
+        {/* Row 2: preview da última mensagem + badge de não lidas, como no WhatsApp Web */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
         {presence === 'composing' ? (
           <Typography
             variant="caption"
@@ -140,8 +134,18 @@ export function ConversationListItem({ conversation, selected, onClick, presence
             {lastMessage}
           </Typography>
         )}
+          </Box>
+          {hasUnread && (
+            <Badge
+              badgeContent={unreadCount}
+              color="primary"
+              max={99}
+              sx={{ flexShrink: 0, '& .MuiBadge-badge': { position: 'relative', transform: 'none', fontSize: 10, minWidth: 18, height: 18 } }}
+            />
+          )}
+        </Box>
 
-        {/* Row 4: Tags/indicators */}
+        {/* Row 3: Tags/indicators */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.75, flexWrap: 'wrap' }}>
           {status === 'bot' && (
             <Chip

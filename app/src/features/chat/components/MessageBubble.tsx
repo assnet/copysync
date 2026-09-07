@@ -271,11 +271,29 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
           px: 1.5,
           pt: 1,
           pb: 0.75,
+          // Canto agudo no topo, do lado de quem fala — a mesma aresta onde fica o
+          // avatar — e não na base, como estava.
           borderRadius: isOut
-            ? '16px 16px 4px 16px'
-            : '16px 16px 16px 4px',
+            ? '16px 4px 16px 16px'
+            : '4px 16px 16px 16px',
           bgcolor: bgColor,
           boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.08)',
+          // Bico do balão: triângulo saindo para fora, na altura da primeira linha,
+          // formado por uma borda transparente contra a cor da bolha.
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            ...(isOut
+              ? { right: -7, borderWidth: '0 0 10px 8px' }
+              : { left: -7, borderWidth: '0 8px 10px 0' }),
+            width: 0,
+            height: 0,
+            borderStyle: 'solid',
+            borderColor: isOut
+              ? `transparent transparent transparent ${bgColor}`
+              : `transparent ${bgColor} transparent transparent`,
+          },
         }}
       >
         {/* Botão de menu contextual — aparece ao passar o mouse */}
