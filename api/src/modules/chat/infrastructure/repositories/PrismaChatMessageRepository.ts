@@ -35,14 +35,20 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
       where['sentAt'] = { lt: new Date(filter.before) };
     }
 
-    const dir = filter.orderDir ?? 'asc';
+    // A janela é SEMPRE as `limit` mensagens mais recentes (respeitando o cursor
+    // `before`). Paginar com ordem crescente devolveria as mais antigas e as
+    // mensagens novas nunca apareceriam em conversas com mais de `limit` itens.
     const rows = await this.prisma.chatMessage.findMany({
       where,
-      orderBy: [{ sentAt: dir }, { createdAt: dir }],
+      orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
       take: filter.limit ?? 50,
     });
 
-    return rows.map(PrismaChatMessageMapper.toDomain);
+    // `orderDir` controla apenas a ordem do resultado: 'asc' devolve a janela em
+    // ordem cronológica (usada pelo painel), 'desc' mantém a mais recente primeiro.
+    const ordered = (filter.orderDir ?? 'asc') === 'asc' ? rows.reverse() : rows;
+
+    return ordered.map(PrismaChatMessageMapper.toDomain);
   }
 
   async create(data: ChatMessageCreateData): Promise<ChatMessage> {
