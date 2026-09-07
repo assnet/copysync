@@ -11,10 +11,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Sugestão de contatos ao iniciar conversa
+
+- **`SuggestContactsUseCase.ts`**, **`chat.routes.ts`**, **`IMessagingEngine.ts`** — `GET /chat/contacts/suggest` combina os contatos conhecidos do tenant (nome ou telefone parcial) com a verificação no WhatsApp via `onWhatsApp` quando o texto já é um telefone completo desconhecido, trazendo a foto quando disponível. `checkNumberExists` devolve `null` com a sessão fora do ar, caso em que não se pode afirmar que o número não existe
+- **`NewConversationDialog.tsx`** — lista as sugestões enquanto o usuário digita; escolher uma preenche número e, para contato conhecido, o nome
+
 #### Chat — Nova conversa, arquivadas e painel no mobile
 
 - **`NewConversationDialog.tsx`**, **`ConversationSidebar.tsx`**, **`ChatPage.tsx`** — o botão "Nova" era decorativo; abre um diálogo com número, nome opcional e escolha da sessão quando há mais de uma conectada. O número é normalizado para dígitos. O diálogo capturava a lista de sessões antes dela carregar, deixando o botão de confirmar sempre desabilitado — corrigido, com a lista memoizada na página
 - **`BaileysMessagingEngineAdapter.ts`** — o estado de arquivamento passa a ser lido também do `messaging-history.set`, único momento em que chega para sessões já pareadas (o `chats.upsert` ocorre apenas na sincronização inicial). Sem isso a seção "Arquivadas" nunca aparecia, porque nenhuma conversa era marcada
+- **`ConversationSidebar.tsx`** — a linha "Arquivadas" esticava verticalmente e empurrava a lista para baixo: `ListItemButton` nasce com `flex-grow: 1`, pensado para viver dentro de um `ListItem` em linha, e na coluna da lista ocupava todo o espaço livre
 - **`ConversationDetailsPanel.tsx`** — no mobile o painel ganha botão de voltar e título que identifica o conteúdo ("Dados do grupo" / "Dados do contato"), já que ali ocupa a tela inteira
 
 #### Chat — Abrir conversa com um participante
