@@ -6,6 +6,7 @@ import { PrismaSessionRepository } from '../modules/sessions/infrastructure/repo
 import { PrismaSessionAuthStateRepository } from '../modules/sessions/infrastructure/repositories/PrismaSessionAuthStateRepository';
 import { MessagingEngineFactory } from '../modules/messaging/infrastructure/MessagingEngineFactory';
 import { SessionBootstrapService } from '../modules/sessions/application/services/SessionBootstrapService';
+import { SessionStatusReconciler } from '../modules/sessions/application/services/SessionStatusReconciler';
 import { PrismaChatContactRepository } from '../modules/chat/infrastructure/repositories/PrismaChatContactRepository';
 import { PrismaChatConversationRepository } from '../modules/chat/infrastructure/repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from '../modules/chat/infrastructure/repositories/PrismaChatMessageRepository';
@@ -107,6 +108,14 @@ async function start(): Promise<void> {
     logger.warn(
       'Session bootstrap disabled; WhatsApp sessions will remain disconnected until manually connected',
     );
+    // Nenhum socket sobrevive ao restart, mas o status gravado antes do shutdown sim.
+    // Sem reconciliar, a sessão aparece CONNECTED no painel enquanto nada chega.
+    try {
+      const reconciler = new SessionStatusReconciler(new PrismaSessionRepository());
+      await reconciler.markActiveSessionsAsDisconnected();
+    } catch (err) {
+      logger.error({ err }, 'Failed to reconcile session statuses on startup');
+    }
   }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
