@@ -278,7 +278,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       },
       browser: Browsers.ubuntu('Chrome'),
       logger: baileysLogger as never,
-      printQRInTerminal: false,
+      // printQRInTerminal foi deprecado na 7.0.0-rc14 e só emite aviso: o QR já é lido
+      // do evento connection.update e publicado via SESSION_QR_UPDATED.
       markOnlineOnConnect: false,
       syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
       // Baileys usa getMessage para re-envio e read receipts.
