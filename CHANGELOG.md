@@ -11,6 +11,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Testes — Vitest em `api/` e `app/`
+
+- **`api/vitest.config.mts`**, **`app/vitest.config.ts`** — o projeto passa a ter runner de testes; antes o único gate automatizado era `tsc --noEmit`, que não pega regra de negócio errada. Escopo deliberado: lógica pura, use cases com dependências injetadas e componentes visuais. Repositórios Prisma, rotas Fastify e páginas com estado grande seguem validados por smoke manual — sem banco de teste, um teste de repositório custa mais do que entrega
+- **`api/tsconfig.build.json`** — exclui `src/**/*.test.ts` do build, para que nenhum teste vá para `dist/`
+- **`app/src/test/setup.ts`**, **`app/src/test/renderWithTheme.tsx`** — setup do Testing Library com limpeza entre testes e helper que renderiza no `ThemeProvider` com o modo (claro/escuro) como parâmetro, já que toda tela precisa funcionar nos dois
+- **`api/src/shared/utils/passwordPolicy.test.ts`**, **`app/src/features/chat/utils.test.ts`**, **`app/src/features/chat/components/EmptyConversationState.test.tsx`** — primeiros testes, cobrindo código já existente: política de senha, formatação de telefone/preview de mensagem e render de componente nos dois temas
+- **`package.json` (api e app)** — scripts `test` (`vitest run`) e `test:watch`
+- **`.specs/codebase/TESTING.md`** — matriz de cobertura por camada, convenções (testes co-locados, imports explícitos do Vitest, consultas por texto/role) e dívidas conhecidas
+
+### Added
+
 #### Interface — Barreiras de cópia e inspeção
 
 - **`app/src/security/uiGuards.ts`**, **`useUiGuards.ts`**, **`AppLayout.tsx`** — módulo global, sem dependência de framework, aplicado uma vez na área autenticada: bloqueia cópia e recorte fora de campos de entrada, o menu de contexto e os atalhos de DevTools e código-fonte no Windows/Linux (`F12`, `Ctrl+Shift+I/J/C`, `Ctrl+U`) e no macOS (`Cmd+Alt+I/J/C`, `Cmd+U`). Campos de entrada seguem funcionando, para não atrapalhar digitação e gerenciadores de senha. **Isso é atrito, não segurança**: as DevTools abrem pelo menu do navegador e o conteúdo aparece na aba de rede — o que não pode vazar não deve chegar ao cliente, que é a razão da paginação por cursor acima

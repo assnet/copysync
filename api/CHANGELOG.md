@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added
+
+#### Backend — Vitest
+
+- **`vitest.config.mts`**, **`tsconfig.build.json`**, **`package.json`** — runner de testes na API, com testes co-locados (`Arquivo.test.ts` ao lado do código) e exclusão dos testes do build. Cobertura exigida por camada em `.specs/codebase/TESTING.md`: use cases, mappers e funções puras têm teste; repositórios Prisma e rotas Fastify seguem no smoke manual
+- **`src/shared/utils/passwordPolicy.test.ts`** — primeiro teste, sobre código existente, garantindo que a política devolve todas as falhas de uma vez e lança `WeakPasswordError`
+
 ### Fixed
 
 #### Backend — History sync do Baileys agora é realmente opt-in
