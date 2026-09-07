@@ -160,7 +160,7 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
                 {contact.name}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {isGroup ? (contact.phone ?? '') : formatPhone(contact.phone)}
+                {isGroup ? 'Grupo' : formatPhone(contact.phone)}
               </Typography>
             </Box>
             {!isGroup && (

@@ -106,7 +106,7 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
           )}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             <Typography variant="caption" color="text.secondary">
-              {formatPhone(contact.phone)}
+              {isGroup ? 'Grupo' : formatPhone(contact.phone)}
             </Typography>
             {session && (
               <>

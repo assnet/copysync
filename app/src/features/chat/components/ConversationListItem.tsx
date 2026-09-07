@@ -97,7 +97,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
         {/* Row 2: Phone + unread badge */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography variant="caption" color="text.disabled" noWrap sx={{ flex: 1 }}>
-            {formatPhone(contact.phone)}
+            {isGroup ? 'Grupo' : formatPhone(contact.phone)}
           </Typography>
           {hasUnread && (
             <Badge

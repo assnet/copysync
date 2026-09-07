@@ -83,7 +83,9 @@ export class ListConversationsUseCase {
         // Grupo: monta DTO sintético a partir dos dados do grupo
         const gName = conv.groupName ?? conv.groupJid ?? 'Grupo';
         const gInitials = gName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'G';
-        contactDto = { id: conv.groupJid ?? '', name: gName, phone: conv.groupJid ?? '', avatarUrl: conv.groupAvatarUrl ?? null, initials: gInitials };
+        // O JID do grupo (<criador>-<timestamp>) é identificador interno, não telefone:
+        // publicá-lo em `phone` fazia o painel exibi-lo onde vai o número do contato.
+        contactDto = { id: conv.groupJid ?? '', name: gName, phone: '', avatarUrl: conv.groupAvatarUrl ?? null, initials: gInitials };
       } else {
         if (!conv.contactId) continue; // conversa individual sem contactId — dado inválido
         const contact = await this.contactRepo.findById(conv.contactId, conv.tenantId);
