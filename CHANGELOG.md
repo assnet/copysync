@@ -20,6 +20,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`ChatPage.tsx`**, **`chat.service.ts`** — o painel dispara o sync ao abrir e acompanha a fila até zerar
 - **`chat.api.types.ts`**, **`ChatPage.tsx`**, **`chat.service.ts`** — avatares são persistidos como caminho relativo (`/api/storage/media/...`) e eram usados direto no `src`: em produção o painel é servido por `waioprime.com` e a API por `api.waioprime.com`, então o navegador buscava a imagem no domínio do site estático e recebia 404 (o mesmo arquivo responde 200 na API). O helper `resolveMediaUrl`, que só cobria `mediaUrl` de mensagens, passa a cobrir o avatar do contato, o do remetente nas bolhas, os participantes e os avatares vindos por WebSocket
 
+- **`BaileysMessagingEngineAdapter.ts`**, **`ListGroupParticipantsUseCase.ts`**, **`ConversationDetailsPanel.tsx`** — num grupo de 172 membros só 50 exibiam foto: o limite de 60 consultas deixava 112 sem tentar, e 10 das tentadas falhavam por privacidade do perfil. O limite sobe para 200, as consultas passam a ser feitas em lotes de 8 (172 simultâneas causam timeout no WhatsApp) e um cache por JID com validade de 6 h evita repetir a busca a cada abertura, inclusive para resultados negativos. Participante identificado só pelo número deixa de exibir a inicial "5" e passa a usar o ícone de pessoa
+
 #### Chat — Participantes do grupo
 
 - **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`** — nova capacidade `getGroupParticipants`, com o Baileys isolado no adapter. Participantes com privacidade de número chegam como `@lid` e o telefone real, quando disponível, vem em `phoneNumber`; sem telefone o campo fica nulo, para nunca exibir identificador interno como número
