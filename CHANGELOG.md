@@ -11,10 +11,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Interface — Barreiras de cópia e inspeção
+
+- **`app/src/security/uiGuards.ts`**, **`useUiGuards.ts`**, **`AppLayout.tsx`** — módulo global, sem dependência de framework, aplicado uma vez na área autenticada: bloqueia cópia e recorte fora de campos de entrada, o menu de contexto e os atalhos de DevTools e código-fonte no Windows/Linux (`F12`, `Ctrl+Shift+I/J/C`, `Ctrl+U`) e no macOS (`Cmd+Alt+I/J/C`, `Cmd+U`). Campos de entrada seguem funcionando, para não atrapalhar digitação e gerenciadores de senha. **Isso é atrito, não segurança**: as DevTools abrem pelo menu do navegador e o conteúdo aparece na aba de rede — o que não pode vazar não deve chegar ao cliente, que é a razão da paginação por cursor acima
+- **`uiGuards.ts`** — o estilo global é marcado com `data-app`, senão o `DomGuardian` o remove como injeção de extensão; e a configuração é resolvida campo a campo, porque espalhar as opções sobrescrevia os padrões com `undefined` e desligava todas as barreiras silenciosamente
+
 #### Chat — Membros paginados, ações do painel e navegação por teclado
 
-- **`ListGroupParticipantsUseCase.ts`**, **`chat.routes.ts`** — a rota de participantes aceita `limit`, `offset` e `search`, devolvendo `{ participants, total }`. A lista completa de um grupo é dado pessoal de centenas de pessoas e deixa de trafegar inteira
-- **`GroupMembersDialog.tsx`**, **`ConversationDetailsPanel.tsx`** — o painel exibe 10 membros e um "Ver todos"; o modal carrega de 10 em 10 sob demanda, com busca, e limpa a lista ao fechar. O corte também é aplicado no painel, para não depender da versão da API
+- **`OpaqueCursor.ts`**, **`ListGroupParticipantsUseCase.ts`**, **`chat.routes.ts`**, **`chat.schema.ts`** — a rota de participantes deixa de aceitar `limit`/`offset`: o tamanho da página é do servidor e a posição vem num cursor opaco assinado por HMAC, amarrado ao recurso e com validade de 30 minutos. Com `limit` vindo do front, bastava alterar a requisição para puxar a lista inteira — que é dado pessoal de centenas de pessoas. A resposta traz `{ participants, total, nextCursor }`, e um cursor inválido ou expirado é tratado como início da lista
+- **`GroupMembersDialog.tsx`**, **`ConversationDetailsPanel.tsx`** — o painel exibe 10 membros e um "Ver todos"; o modal carrega de 10 em 10 sob demanda, com busca, e limpa a lista ao fechar. O botão "Carregar mais" saiu: a próxima página é pedida por `IntersectionObserver` numa sentinela no fim da lista, exigindo rolagem real do usuário e dificultando a coleta automatizada
 - **`ConversationDetailsPanel.tsx`** — ações na ordem do WhatsApp Web: Favoritos e Adicionar à lista funcionando; exportar, limpar e sair do grupo visíveis e desabilitadas, com aviso de "em breve"
 - **`ChatPage.tsx`** — `Esc` fecha em cascata: busca, depois painel de contexto, depois conversa; diálogos e menus abertos tratam o próprio `Esc`
 - **`ChatPage.tsx`** — arquivar e fixar passam a atualizar a lista localmente (remoção da visão atual e reordenação), sem recarregá-la inteira; o recarregamento fica reservado para o caso de falha da chamada
@@ -125,6 +130,7 @@ Verificado no navegador em 1440×900 e 390×844, com medições do DOM.
 
 ### Changed
 
+- **`ConversationDetailsPanel.tsx`** — recursos exclusivos de grupo (participantes, "Ver todos", download automático de mídia e "Sair do grupo") não são mais renderizados em conversa de contato, onde apareciam vazios. Regra registrada em `AGENTS.md` e em `docs/sessoes-e-chat-diagnostico.md`
 - **`@whiskeysockets/baileys`** — atualizado de `7.0.0-rc.9` (21/11/2025) para `7.0.0-rc14` (29/07/2026). Traz o rc10 (correções de estabilidade em reenvio de mensagens, upload de mídia, Mutex, vazamento de memória e sincronia de app state) e o rc13 (parsing de `protocolMessage` com `fromMe` incorretamente `false`). Pontos de contato verificados: `key.participantAlt`/`remoteJidAlt`, entrega offline como `append`, `lidMapping.getPNForLID` (agora tipado), `profilePictureUrl`, `Contact.phoneNumber` e os valores de `DisconnectReason` seguem inalterados
 - **`BaileysMessagingEngineAdapter.ts`** — remove `printQRInTerminal`, deprecado na rc14; o QR já vinha do evento `connection.update` e é publicado via `SESSION_QR_UPDATED`
 - **`docs/sessoes-e-chat-diagnostico.md`** — novo documento com os doze problemas investigados em 06–07/09/2026, causas reais, soluções, cuidados não óbvios ao mexer e armadilhas de diagnóstico
