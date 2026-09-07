@@ -1,0 +1,50 @@
+# Verificação automática de api/ e app/ em todo push e PR para develop e main.
+#
+# Roda os mesmos gates que o processo manual exige (AGENTS.md §36): compilação
+# TypeScript e testes. Sem isso, os gates dependem de alguém lembrar de rodá-los
+# antes do merge.
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  verify:
+    name: ${{ matrix.app }} — typecheck + testes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, app]
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: ${{ matrix.app }}/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # O client do Prisma é gerado no postinstall em máquina de dev; no CI o
+      # typecheck da API precisa dele explicitamente.
+      - name: Gerar Prisma Client
+        if: matrix.app == 'api'
+        run: pnpm prisma:generate
+
+      - run: pnpm typecheck
+
+      - run: pnpm test

@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'path';
 
 /**
  * Vitest da API.
@@ -17,12 +16,5 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     clearMocks: true,
     restoreMocks: true,
-  },
-  resolve: {
-    alias: {
-      '@shared':  resolve(__dirname, 'src/shared'),
-      '@modules': resolve(__dirname, 'src/modules'),
-      '@app':     resolve(__dirname, 'src/app'),
-    },
   },
 });

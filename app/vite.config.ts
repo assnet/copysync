@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
@@ -31,6 +32,18 @@ export default defineConfig(({ mode }) => {
           ws: true,
         },
       },
+    },
+    // Vitest mora aqui, e não em vitest.config.ts, para herdar `define`, `resolve.alias`
+    // e plugins desta configuração. Separado, o teste resolvia módulos por um alias
+    // paralelo e rodava sem `__APP_VERSION__` — qualquer componente que exiba a versão
+    // quebrava só no teste.
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./src/test/setup.ts'],
+      include: ['src/**/*.test.{ts,tsx}'],
+      css: false,
+      clearMocks: true,
+      restoreMocks: true,
     },
   };
 });

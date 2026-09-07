@@ -3,6 +3,13 @@
 Runner: **Vitest 5** em `api/` e `app/`. Introduzido junto com a feature de reações
 (antes disso o projeto só tinha `tsc --noEmit`).
 
+Configuração: `api/vitest.config.mts` na API; no painel, **dentro do `app/vite.config.ts`** —
+separar as duas faz os testes perderem `define` (`__APP_VERSION__`) e `resolve.alias`, então não
+separe. `app/src/test/appVersion.test.ts` existe só para quebrar se alguém separar.
+
+CI: `.github/workflows/ci.yml` roda `typecheck` + `test` nos dois apps a cada push e PR para
+`develop` e `main`.
+
 ## Comandos
 
 | Gate | Comando | Quando |
