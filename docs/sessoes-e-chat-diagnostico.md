@@ -220,6 +220,53 @@ existia.
 
 ---
 
+## 13. Recursos de grupo aparecendo em conversa de contato
+
+**Sintoma:** o painel de contexto de uma conversa individual exibia a seção
+"Participantes" (vazia, com o texto "Nenhum participante adicional") e outros
+controles que só fazem sentido em grupo.
+
+**Causa:** a seção era renderizada sempre, deixando o dado vazio falar por si.
+
+**Regra do projeto:** *nada exclusivo de grupo é renderizado em conversa de contato.*
+Isso vale para a seção de participantes, o diálogo "Ver todos" (`GroupMembersDialog`),
+o toggle de download automático de mídia e "Sair do grupo". O critério é
+`conversation.isGroup`, e o componente responsável é
+`app/src/features/chat/components/ConversationDetailsPanel.tsx`. Ao adicionar um
+recurso novo de grupo, coloque-o dentro de um bloco `{isGroup && (…)}` — não confie em
+"a lista virá vazia mesmo".
+
+**Por que importa além do visual:** o `ChatPage` só busca participantes quando
+`isGroup`; renderizar a seção fora disso sugere ao operador que existe um dado que
+nunca será carregado.
+
+---
+
+## 14. Barreiras de interface (cópia e DevTools) sem efeito
+
+**Sintoma:** `installUiGuards` executava (efeito confirmado no navegador), mas o
+`<style>` não existia no `<head>`, `user-select` continuava `auto` e nenhum evento de
+cópia ou menu de contexto era bloqueado.
+
+**Duas causas somadas:**
+
+1. O `DomGuardian` remove do `<head>` qualquer `<style>` sem um atributo reconhecido
+   (`data-emotion`, `data-styled`, `data-vite-dev-id`, `data-app`). O estilo das
+   barreiras era injetado com `data-ui-guards` e removido no mesmo instante. Estilos
+   próprios do painel precisam carregar `data-app`.
+2. `installUiGuards` resolvia a configuração com `{ ...DEFAULTS, ...options }`. O hook
+   repassa `blockCopy`/`blockDevTools`/`blockContextMenu` mesmo quando não informados,
+   e o `undefined` explícito **sobrescreve** o default — todas as barreiras ficavam
+   desligadas sem nenhum erro. A resolução passou a ser campo a campo, com `??`.
+
+**Alcance real:** essas barreiras criam atrito, não segurança. As DevTools abrem pelo
+menu do navegador, o conteúdo aparece na aba de rede e uma captura de tela ignora
+tudo. O que não pode vazar não deve chegar ao cliente — por isso a lista de membros é
+paginada no servidor com cursor assinado (`api/src/shared/http/pagination/OpaqueCursor.ts`),
+sem `limit`/`offset` vindos do front.
+
+---
+
 ## Armadilhas de diagnóstico
 
 Erros que custaram tempo e que vale reconhecer de longe:

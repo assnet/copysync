@@ -340,6 +340,13 @@ app/
 * usar Material-UI com consistência visual
 * preparar a UI para dashboards, builders e métricas
 * evitar acoplamento do painel à estrutura interna do banco
+* **recursos de grupo só aparecem em conversa de grupo**: participantes, "Ver todos",
+  download automático de mídia e "Sair do grupo" ficam sob `{isGroup && (…)}` em
+  `ConversationDetailsPanel`. Conversa de contato não renderiza seção de grupo vazia
+* dados sensíveis paginam no servidor: o front envia apenas o cursor assinado, nunca
+  `limit`/`offset` — ver `api/src/shared/http/pagination/OpaqueCursor.ts`
+* estilos globais injetados por código levam `data-app`, senão o `DomGuardian` os
+  remove como injeção de extensão
 
 ---
 

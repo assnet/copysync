@@ -354,66 +354,71 @@ export function ConversationDetailsPanel({
           />
         </Section>
 
-        <Divider />
+        {/* Participantes só existem em grupo: numa conversa de contato a seção não
+            é exibida, assim como qualquer outro recurso exclusivo de grupo. */}
+        {isGroup && (
+          <>
+            <Divider />
 
-        {/* Participants */}
-        <Section
-          title={total > 0 ? `Participantes · ${total}` : 'Participantes'}
-          icon={<GroupOutlinedIcon sx={{ fontSize: 14 }} />}
-        >
-          {loadingParticipants ? (
-            <Typography variant="caption" color="text.disabled">Carregando…</Typography>
-          ) : participants.length === 0 ? (
-            <Typography variant="caption" color="text.disabled" fontStyle="italic">
-              {isGroup ? 'Nenhum participante disponível' : 'Nenhum participante adicional'}
-            </Typography>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-              {preview.map((p, i) => (
-                <Box
-                  key={`${p.phone ?? 'lid'}-${i}`}
-                  sx={{ display: 'flex', alignItems: 'center', gap: 1.25, py: 0.75 }}
-                >
-                  <Avatar
-                    src={p.avatarUrl ?? undefined}
-                    sx={{ width: 34, height: 34, fontSize: 12, fontWeight: 700, flexShrink: 0 }}
-                  >
-                    {/* Sem iniciais (participante identificado só pelo número) o MUI
-                        já exibe o ícone genérico de pessoa. */}
-                    {p.initials || undefined}
-                  </Avatar>
-                    <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 0.15 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <Typography variant="body2" noWrap title={p.name} sx={{ lineHeight: 1.25 }}>{p.name}</Typography>
-                      {p.isAdmin && (
-                        <Chip
-                          label="Admin"
-                          size="small"
-                          sx={{ height: 16, fontSize: 9, fontWeight: 700, '& .MuiChip-label': { px: 0.6 } }}
-                        />
-                      )}
-                    </Box>
-                    {p.phone && (
-                      <Typography variant="caption" color="text.disabled" noWrap sx={{ lineHeight: 1.25 }}>
-                        {formatPhone(p.phone)}
-                      </Typography>
-                    )}
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-          )}
-
-          {total > preview.length && (
-            <Button
-              size="small"
-              onClick={() => setMembersOpen(true)}
-              sx={{ mt: 0.5, px: 0, fontSize: 12, textTransform: 'none' }}
+            <Section
+              title={total > 0 ? `Participantes · ${total}` : 'Participantes'}
+              icon={<GroupOutlinedIcon sx={{ fontSize: 14 }} />}
             >
-              Ver todos ({total})
-            </Button>
-          )}
-        </Section>
+              {loadingParticipants ? (
+                <Typography variant="caption" color="text.disabled">Carregando…</Typography>
+              ) : participants.length === 0 ? (
+                <Typography variant="caption" color="text.disabled" fontStyle="italic">
+                  Nenhum participante disponível
+                </Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  {preview.map((p, i) => (
+                    <Box
+                      key={`${p.phone ?? 'lid'}-${i}`}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1.25, py: 0.75 }}
+                    >
+                      <Avatar
+                        src={p.avatarUrl ?? undefined}
+                        sx={{ width: 34, height: 34, fontSize: 12, fontWeight: 700, flexShrink: 0 }}
+                      >
+                        {/* Sem iniciais (participante identificado só pelo número) o MUI
+                            já exibe o ícone genérico de pessoa. */}
+                        {p.initials || undefined}
+                      </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 0.15 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <Typography variant="body2" noWrap title={p.name} sx={{ lineHeight: 1.25 }}>{p.name}</Typography>
+                          {p.isAdmin && (
+                            <Chip
+                              label="Admin"
+                              size="small"
+                              sx={{ height: 16, fontSize: 9, fontWeight: 700, '& .MuiChip-label': { px: 0.6 } }}
+                            />
+                          )}
+                        </Box>
+                        {p.phone && (
+                          <Typography variant="caption" color="text.disabled" noWrap sx={{ lineHeight: 1.25 }}>
+                            {formatPhone(p.phone)}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+
+              {total > preview.length && (
+                <Button
+                  size="small"
+                  onClick={() => setMembersOpen(true)}
+                  sx={{ mt: 0.5, px: 0, fontSize: 12, textTransform: 'none' }}
+                >
+                  Ver todos ({total})
+                </Button>
+            )}
+            </Section>
+          </>
+        )}
 
         <Divider />
 
@@ -502,12 +507,14 @@ export function ConversationDetailsPanel({
 
       </Box>
 
-      <GroupMembersDialog
-        open={membersOpen}
-        onClose={() => setMembersOpen(false)}
-        conversationId={conversation.id}
-        total={total}
-      />
+      {isGroup && (
+        <GroupMembersDialog
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          conversationId={conversation.id}
+          total={total}
+        />
+      )}
 
       {/* Listas: mesma mecânica do menu da lista de conversas */}
       <Popper
