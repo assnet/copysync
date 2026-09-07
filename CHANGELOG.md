@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Abrir conversa com um participante
+
+- **`StartConversationUseCase.ts`**, **`chat.routes.ts`** — `POST /chat/conversations` abre a conversa individual com um contato pela sessão indicada, reaproveitando contato e conversa ativa quando já existirem; responde 201 ao criar e 200 ao reaproveitar
+- **`ChatPage.tsx`**, **`chat.service.ts`**, **`MessageBubble.tsx`** — a opção "Conversar com" do menu da mensagem, que só funcionava havendo conversa prévia, passa a criar a conversa quando necessário. A lista é recarregada antes da seleção, já que o carregamento descarta o id que ainda não consta nela. A opção só aparece quando o remetente tem telefone válido, evitando criar contato a partir de um LID gravado por mensagens antigas
+
 #### Chat — Acesso aos dados da conversa
 
 - **`ConversationDetailsPanel.tsx`** — largura do painel de contexto de 280 para 322 px (+15 %) no desktop; no mobile segue como sobreposição de tela cheia
