@@ -11,6 +11,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Conversas arquivadas
+
+- **`schema.prisma`**, **migration `add_conversation_archived`** — nova coluna `archived` em `chat_conversations` e índice `(tenantId, archived)`, que é como a listagem sempre filtra
+- **`BaileysMessagingEngineAdapter.ts`** — passa a escutar `chats.upsert` (sincronização inicial) e `chats.update` (mudança em qualquer aparelho), emitindo `CHAT_ARCHIVE_UPDATED`. Por ser estado de conversa, e não histórico de mensagens, não depende de `BAILEYS_SYNC_FULL_HISTORY`
+- **`ChatArchiveListener.ts`** — persiste o estado e anuncia por WebSocket; conversa desconhecida é ignorada em silêncio, já que o WhatsApp envia o estado de todos os chats do aparelho
+- **`chat.routes.ts`**, **`ListConversationsUseCase.ts`** — `GET /chat/conversations` aceita `archived` e devolve `{ conversations, archivedCount }`, evitando uma segunda chamada só para a contagem. O serviço do painel tolera a resposta antiga em array durante a janela entre os deploys
+- **`ConversationSidebar.tsx`**, **`ChatPage.tsx`** — linha "Arquivadas · N" acima da lista e visão de arquivadas com botão de voltar
+
+
+
 #### Painel — Layout do chat e conformidade de interface
 
 Verificado no navegador em 1440×900 e 390×844, com medições do DOM.
