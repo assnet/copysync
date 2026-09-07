@@ -92,24 +92,22 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
       const token    = localStorage.getItem('accessToken') ?? '';
       const tenantId = localStorage.getItem('activeTenantId') ?? '';
 
-      // WebSocket upgrades cannot go through the Vite dev proxy (unreliable in
-      // Vite 6 for sub-paths). We bypass it by connecting directly to the API
-      // server using window.location.hostname (always the correct server IP,
-      // even when accessed from other devices on the network) + VITE_API_PORT.
       const apiBase = (import.meta.env.VITE_API_URL as string | undefined)
         ?? 'http://localhost:3000/api';
 
       let httpBase: string;
       if (apiBase.startsWith('http')) {
-        // Full URL — use it directly (e.g. http://192.168.1.x:3000/api)
+        // URL absoluta (ex.: https://api.exemplo.com/api) — usada como está.
         httpBase = apiBase;
       } else {
-        // Relative path (e.g. /api) — build a direct URL to the API server,
-        // skipping the Vite proxy which does not reliably forward WS upgrades.
-        const apiPort = (import.meta.env.VITE_API_PORT as string | undefined) ?? '3000';
-        httpBase = `http://${window.location.hostname}:${apiPort}${apiBase}`;
+        // Caminho relativo (ex.: /api): a API é servida pela mesma origem da página.
+        // Em dev isso é o proxy do Vite, que encaminha o upgrade (`ws: true` em
+        // vite.config.ts); em produção é o próprio domínio do painel. Chutar host:porta
+        // aqui quebrava o WS sempre que a API não estivesse em :3000 na mesma máquina.
+        httpBase = `${window.location.origin}${apiBase}`;
       }
 
+      // http→ws e https→wss (a página em https exige wss).
       const wsBase = httpBase.replace(/^http/, 'ws');
 
       const url = `${wsBase}/chat/ws?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantId)}`;
