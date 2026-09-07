@@ -143,31 +143,38 @@ export default function ChatPage() {
             });
           }
 
-          // Adiciona a mensagem ao estado se a conversa estiver aberta
+          const frontendMsg = apiMessageToFrontend({
+            ...message,
+            tenantId:          payload.data.tenantId,
+            direction:         message.direction as import('@/types/chat.api.types').ApiMessageDirection,
+            type:              message.type as import('@/types/chat.api.types').ApiMessageType,
+            status:            (message.status ?? 'SENT') as import('@/types/chat.api.types').ApiMessageStatus,
+            externalMessageId: null,
+          });
+
+          // Anexa ao cache da conversa mesmo com ela fechada: ao reabrir, o cache é
+          // reaproveitado sem refetch, então uma mensagem ignorada aqui só reapareceria
+          // após recarregar a página.
+          setMessages((prev) => {
+            const cur = prev[conversationId];
+            // Conversa ainda não carregada: não criar um cache parcial, senão a
+            // abertura reaproveitaria essa lista de um item só e pularia o fetch.
+            if (!cur) return prev;
+            // A mesma mensagem pode chegar mais de uma vez: duas conexões WS
+            // (StrictMode monta o efeito duas vezes em dev), uma reconexão que
+            // reentrega o evento, ou corrida entre o evento e um refetch.
+            // Sem esta checagem o React acusa chaves duplicadas e a bolha aparece
+            // repetida na conversa.
+            if (cur.some((m) => m.id === frontendMsg.id)) return prev;
+            return {
+              ...prev,
+              [conversationId]: resolveQuotedMessages([...cur, frontendMsg]),
+            };
+          });
+
+          // Scroll ao fundo apenas quando a conversa está aberta na tela
           setSelectedId((currentId) => {
             if (currentId === conversationId) {
-              const frontendMsg = apiMessageToFrontend({
-                ...message,
-                tenantId:          payload.data.tenantId,
-                direction:         message.direction as import('@/types/chat.api.types').ApiMessageDirection,
-                type:              message.type as import('@/types/chat.api.types').ApiMessageType,
-                status:            (message.status ?? 'SENT') as import('@/types/chat.api.types').ApiMessageStatus,
-                externalMessageId: null,
-              });
-              setMessages((prev) => {
-                const cur = prev[conversationId] ?? [];
-                // A mesma mensagem pode chegar mais de uma vez: duas conexões WS
-                // (StrictMode monta o efeito duas vezes em dev), uma reconexão que
-                // reentrega o evento, ou corrida entre o evento e um refetch.
-                // Sem esta checagem o React acusa chaves duplicadas e a bolha aparece
-                // repetida na conversa.
-                if (cur.some((m) => m.id === frontendMsg.id)) return prev;
-                return {
-                  ...prev,
-                  [conversationId]: resolveQuotedMessages([...cur, frontendMsg]),
-                };
-              });
-              // Dispara scroll ao fundo para nova mensagem recebida
               setScrollToBottom((v) => v + 1);
             }
             return currentId;
