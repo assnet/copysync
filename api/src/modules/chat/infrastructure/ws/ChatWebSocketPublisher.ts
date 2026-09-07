@@ -97,6 +97,15 @@ export type ChatWsEvent =
         avatarUrl: string;
       };
     }
+  | {
+      event: 'chat.archive.updated';
+      data: {
+        tenantId: string;
+        chatId: string;
+        isGroup: boolean;
+        archived: boolean;
+      };
+    }
   | { event: 'ping' };
 
 /**

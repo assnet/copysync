@@ -56,6 +56,8 @@ const HANDLED_SOCKET_EVENTS = [
   'messaging-history.set',
   'contacts.upsert',
   'presence.update',
+  'chats.upsert',
+  'chats.update',
 ] as const;
 
 /** Máximo de fotos de perfil buscadas ao listar participantes de um grupo. */
@@ -608,6 +610,36 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           baileysLogger.warn({ err, sessionId }, 'Failed to process messaging-history.set');
         }
       });
+    });
+
+    // ── Arquivamento de conversas ────────────────────────────────────────────
+    // O WhatsApp entrega o estado de arquivamento em chats.upsert (sincronização
+    // inicial) e chats.update (mudança feita em qualquer aparelho). É estado de
+    // conversa, não histórico de mensagens, por isso não depende de
+    // BAILEYS_SYNC_FULL_HISTORY.
+    const emitArchiveState = (chatId: string | null | undefined, archived: boolean | null | undefined): void => {
+      if (!chatId || archived === null || archived === undefined) return;
+      if (chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) return;
+
+      const isGroup = chatId.endsWith('@g.us');
+      internalEventBus.emit('CHAT_ARCHIVE_UPDATED', {
+        type: 'CHAT_ARCHIVE_UPDATED',
+        sessionId,
+        tenantId,
+        chatId: chatId.split('@')[0],
+        isGroup,
+        archived,
+      });
+    };
+
+    socket.ev.on('chats.upsert', (chats) => {
+      if (isStale()) return;
+      for (const chat of chats) emitArchiveState(chat.id, chat.archived);
+    });
+
+    socket.ev.on('chats.update', (updates) => {
+      if (isStale()) return;
+      for (const update of updates) emitArchiveState(update.id, update.archived);
     });
 
     // ── Contacts upsert ──────────────────────────────────────────────────────

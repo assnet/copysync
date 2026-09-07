@@ -91,6 +91,7 @@ export class UpdateConversationUseCase {
       groupJid: updated.groupJid,
       groupName: updated.groupName,
       autoDownloadMedia: updated.autoDownloadMedia,
+      archived: updated.archived,
     };
   }
 }

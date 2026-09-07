@@ -80,6 +80,7 @@ export class GetConversationByIdUseCase {
       groupJid: conv.groupJid,
       groupName: conv.groupName,
       autoDownloadMedia: conv.autoDownloadMedia,
+      archived: conv.archived,
     };
   }
 }

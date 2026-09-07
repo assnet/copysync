@@ -67,6 +67,9 @@ export default function ChatPage() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
+  // Arquivadas ficam numa visão à parte, como no WhatsApp Web.
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedCount, setArchivedCount] = useState(0);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
   // salvo no tenant (só 7 de 1503 contatos têm avatar).
@@ -98,10 +101,14 @@ export default function ChatPage() {
   const loadConversations = useCallback(() => {
     setLoadingConversations(true);
     chatService
-      .listConversations(selectedSessionId ? { sessionId: selectedSessionId } : undefined)
-      .then((items) => {
+      .listConversations({
+        ...(selectedSessionId ? { sessionId: selectedSessionId } : {}),
+        ...(showArchived ? { archived: 'true' } : {}),
+      })
+      .then(({ conversations: items, archivedCount: count }) => {
         const nextConversations = items.map(apiConversationToFrontend);
         setConversations(nextConversations);
+        setArchivedCount(count);
         setSelectedId((current) => (
           current && nextConversations.some((conversation) => conversation.id === current)
             ? current
@@ -110,7 +117,7 @@ export default function ChatPage() {
       })
       .catch((err: unknown) => console.error('Erro ao carregar conversas', err))
       .finally(() => setLoadingConversations(false));
-  }, [selectedSessionId]);
+  }, [selectedSessionId, showArchived]);
 
   useEffect(() => {
     loadConversations();
@@ -551,6 +558,14 @@ export default function ChatPage() {
         onFilterChange={setFilter}
         loading={loadingConversations}
         presenceMap={presenceMap}
+        archivedCount={archivedCount}
+        showArchived={showArchived}
+        onToggleArchived={(show) => {
+          setShowArchived(show);
+          // Sair de uma conversa arquivada ao trocar de visão evita mostrar uma
+          // conversa que não pertence à lista exibida.
+          setSelectedId(null);
+        }}
       />
       </Box>
 

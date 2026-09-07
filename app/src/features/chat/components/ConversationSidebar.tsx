@@ -1,6 +1,8 @@
-import { Box, Typography, TextField, InputAdornment, Divider, Button, Chip, alpha, useTheme } from '@mui/material';
+import { Box, Typography, TextField, InputAdornment, Divider, Button, Chip, IconButton, ListItemButton, alpha, useTheme } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
+import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import type { ChatConversation, ConversationFilter } from '../types';
 import { ConversationListItem } from './ConversationListItem';
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
@@ -43,6 +45,11 @@ interface Props {
   onFilterChange: (filter: ConversationFilter) => void;
   loading?: boolean;
   presenceMap?: Record<string, string>;
+  /** Quantidade de conversas arquivadas — mostrada na linha de acesso à seção. */
+  archivedCount?: number;
+  /** true quando a lista já está exibindo as arquivadas. */
+  showArchived?: boolean;
+  onToggleArchived?: (show: boolean) => void;
 }
 
 export function ConversationSidebar({
@@ -58,6 +65,9 @@ export function ConversationSidebar({
   onFilterChange,
   loading = false,
   presenceMap = {},
+  archivedCount = 0,
+  showArchived = false,
+  onToggleArchived,
 }: Props) {
   const theme = useTheme();
 
@@ -107,8 +117,18 @@ export function ConversationSidebar({
       <Box sx={{ px: 2, pt: 1.5, pb: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {showArchived && onToggleArchived && (
+              <IconButton
+                size="small"
+                aria-label="Voltar para as conversas"
+                onClick={() => onToggleArchived(false)}
+                sx={{ ml: -0.75 }}
+              >
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+            )}
             <Typography variant="subtitle1" fontWeight={700}>
-              Conversas
+              {showArchived ? 'Arquivadas' : 'Conversas'}
             </Typography>
             {totalUnread > 0 && (
               <Chip
@@ -246,6 +266,22 @@ export function ConversationSidebar({
       </Box>
 
       <Divider />
+
+      {/* Acesso às arquivadas, como no WhatsApp Web: uma linha acima da lista */}
+      {!showArchived && (archivedCount ?? 0) > 0 && onToggleArchived && (
+        <>
+          <ListItemButton onClick={() => onToggleArchived(true)} sx={{ px: 2, py: 1.25 }}>
+            <ArchiveOutlinedIcon sx={{ fontSize: 20, color: 'text.secondary', mr: 1.75 }} />
+            <Typography variant="body2" fontWeight={500} sx={{ flex: 1 }}>
+              Arquivadas
+            </Typography>
+            <Typography variant="caption" color="primary.main" fontWeight={700}>
+              {archivedCount}
+            </Typography>
+          </ListItemButton>
+          <Divider />
+        </>
+      )}
 
       {/* Conversation list */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>

@@ -72,9 +72,20 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         status:     qs['status'] ? (qs['status'] as ConversationStatus) : undefined,
         sessionId:  qs['sessionId'] || undefined,
         unreadOnly: qs['unreadOnly'] === 'true',
+        archived:   qs['archived'] === 'true',
       });
 
-      httpResponse.ok(reply, ChatPresenter.presentConversationList(result));
+      // A contagem acompanha a listagem para o painel exibir "Arquivadas · N" sem
+      // precisar de uma chamada extra.
+      const archivedCount = await conversationRepo.countArchived(
+        tenantId,
+        qs['sessionId'] || undefined,
+      );
+
+      httpResponse.ok(reply, {
+        conversations: ChatPresenter.presentConversationList(result),
+        archivedCount,
+      });
     },
   );
 

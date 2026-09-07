@@ -25,6 +25,7 @@ export const listConversationsQuerySchema = {
     status:     { type: 'string' },
     sessionId:  { type: 'string' },
     unreadOnly: { type: 'string' },
+    archived:   { type: 'string' },
   },
 } as const;
 

@@ -340,6 +340,7 @@ model ChatConversation {
   groupName          String?            // nome do grupo exibido ao usuário
   groupAvatarUrl     String?            // URL pública da foto do grupo
   autoDownloadMedia  Boolean            @default(false) // baixar mídia automaticamente nesta conversa
+  archived           Boolean            @default(false) // espelha o arquivamento no WhatsApp
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -354,6 +355,7 @@ model ChatConversation {
   @@index([tenantId, sessionId])
   @@index([tenantId, contactId])
   @@index([tenantId, groupJid])
+  @@index([tenantId, archived])
   @@map("chat_conversations")
 }
 

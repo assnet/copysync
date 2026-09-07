@@ -30,6 +30,10 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
       where['sessionId'] = filter.sessionId;
     }
 
+    if (filter.archived !== undefined) {
+      where['archived'] = filter.archived;
+    }
+
     if (filter.unreadOnly) {
       where['unreadCount'] = { gt: 0 };
     }
@@ -57,6 +61,41 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     });
 
     return rows.map(PrismaChatConversationMapper.toDomain);
+  }
+
+  async setArchivedByChat(input: {
+    tenantId: string;
+    sessionId: string;
+    isGroup: boolean;
+    chatId: string;
+    archived: boolean;
+  }): Promise<number> {
+    if (input.isGroup) {
+      const result = await this.prisma.chatConversation.updateMany({
+        where: { tenantId: input.tenantId, sessionId: input.sessionId, groupJid: input.chatId },
+        data: { archived: input.archived },
+      });
+      return result.count;
+    }
+
+    // Conversa individual: o WhatsApp identifica pelo telefone, que aqui está no contato.
+    const contact = await this.prisma.chatContact.findUnique({
+      where: { tenantId_phone: { tenantId: input.tenantId, phone: input.chatId } },
+      select: { id: true },
+    });
+    if (!contact) return 0;
+
+    const result = await this.prisma.chatConversation.updateMany({
+      where: { tenantId: input.tenantId, sessionId: input.sessionId, contactId: contact.id },
+      data: { archived: input.archived },
+    });
+    return result.count;
+  }
+
+  async countArchived(tenantId: string, sessionId?: string): Promise<number> {
+    return this.prisma.chatConversation.count({
+      where: { tenantId, archived: true, ...(sessionId ? { sessionId } : {}) },
+    });
   }
 
   async create(data: CreateConversationData): Promise<ChatConversation> {

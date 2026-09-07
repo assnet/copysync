@@ -50,7 +50,9 @@ export interface ChatConversationApiDto {
   updatedAt: string;
   contact: ChatContactApiDto;
   session: ChatSessionRefApiDto | null;
-  assignedUser: { id: string; name: string } | null;
+  assignedUser: { id: string; name: string
+  archived?: boolean;
+} | null;
   isGroup?: boolean;
   groupJid?: string | null;
   groupName?: string | null;
@@ -94,6 +96,8 @@ export interface ListConversationsParams {
   status?: ApiConversationStatus;
   sessionId?: string;
   unreadOnly?: boolean;
+  /** 'true' lista apenas as conversas arquivadas. */
+  archived?: string;
 }
 
 export interface ListMessagesParams {

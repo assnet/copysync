@@ -13,12 +13,18 @@ import type {
 export const chatService = {
   async listConversations(
     params?: ListConversationsParams,
-  ): Promise<ChatConversationApiDto[]> {
-    const res = await apiClient.get<{ success: true; data: ChatConversationApiDto[] }>(
-      '/chat/conversations',
-      { params },
-    );
-    return res.data.data;
+  ): Promise<{ conversations: ChatConversationApiDto[]; archivedCount: number }> {
+    const res = await apiClient.get<{
+      success: true;
+      data: { conversations: ChatConversationApiDto[]; archivedCount: number } | ChatConversationApiDto[];
+    }>('/chat/conversations', { params });
+
+    // Tolera a resposta antiga (array puro) durante a janela entre o deploy do
+    // painel e o da API, quando os dois ainda não estão na mesma versão.
+    const data = res.data.data;
+    return Array.isArray(data)
+      ? { conversations: data, archivedCount: 0 }
+      : data;
   },
 
   async getConversation(id: string): Promise<ChatConversationApiDto> {

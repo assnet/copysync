@@ -3,6 +3,8 @@ import type { ConversationStatus } from '../enums/ConversationStatus';
 
 export interface ListConversationsFilter {
   tenantId: string;
+  /** true = só arquivadas, false = só ativas, undefined = todas. */
+  archived?: boolean;
   search?: string;
   status?: ConversationStatus;
   sessionId?: string;
@@ -68,4 +70,15 @@ export interface IChatConversationRepository {
   resetUnread(id: string, tenantId: string): Promise<void>;
   /** Atualiza apenas groupAvatarUrl de todas as conversações do grupo (sem tocar outros campos). */
   updateGroupAvatarUrlByGroupJid(groupJid: string, tenantId: string, avatarUrl: string): Promise<void>;
+  /** Espelha o arquivamento vindo do WhatsApp. Devolve quantas conversas mudaram. */
+  setArchivedByChat(input: {
+    tenantId: string;
+    sessionId: string;
+    isGroup: boolean;
+    /** groupJid (grupo) ou telefone do contato (individual). */
+    chatId: string;
+    archived: boolean;
+  }): Promise<number>;
+  /** Quantidade de conversas arquivadas do tenant. */
+  countArchived(tenantId: string, sessionId?: string): Promise<number>;
 }

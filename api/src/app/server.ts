@@ -17,6 +17,7 @@ import { registerChatMessageStatusListener } from '../modules/chat/infrastructur
 import { registerChatPresenceListener } from '../modules/chat/infrastructure/listeners/ChatPresenceListener';
 import { registerChatContactAvatarListener } from '../modules/chat/infrastructure/listeners/ChatContactAvatarListener';
 import { registerChatGroupAvatarListener } from '../modules/chat/infrastructure/listeners/ChatGroupAvatarListener';
+import { registerChatArchiveListener } from '../modules/chat/infrastructure/listeners/ChatArchiveListener';
 import { registerChatSessionStatusListener } from '../modules/chat/infrastructure/listeners/ChatSessionStatusListener';
 
 function wait(ms: number): Promise<void> {
@@ -79,6 +80,7 @@ async function start(): Promise<void> {
   registerChatContactAvatarListener(chatContactRepo);
   registerChatGroupAvatarListener(chatConversationRepo);
   registerChatSessionStatusListener();
+  registerChatArchiveListener(chatConversationRepo);
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Disabled by default in production because reconnecting WhatsApp sessions on

@@ -81,6 +81,15 @@ export type InternalMessagingEvent =
       /** JID numérico do grupo (sem @g.us) */
       groupJid: string;
       avatarUrl: string;
+    }
+  | {
+      type: 'CHAT_ARCHIVE_UPDATED';
+      sessionId: string;
+      tenantId: string;
+      /** Telefone (conversa individual) ou groupJid sem @g.us (grupo). */
+      chatId: string;
+      isGroup: boolean;
+      archived: boolean;
     };
 
 export type InternalEventType = InternalMessagingEvent['type'];

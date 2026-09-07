@@ -21,6 +21,7 @@ export interface ChatConversationProps {
   groupName: string | null;
   groupAvatarUrl: string | null;
   autoDownloadMedia: boolean;
+  archived: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +47,7 @@ export class ChatConversation {
   readonly groupName: string | null;
   readonly groupAvatarUrl: string | null;
   readonly autoDownloadMedia: boolean;
+  readonly archived: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -69,6 +71,7 @@ export class ChatConversation {
     this.groupName = props.groupName;
     this.groupAvatarUrl = props.groupAvatarUrl;
     this.autoDownloadMedia = props.autoDownloadMedia;
+    this.archived = props.archived;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

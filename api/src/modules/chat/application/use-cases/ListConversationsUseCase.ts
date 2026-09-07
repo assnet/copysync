@@ -9,6 +9,8 @@ export interface ListConversationsInput {
   status?: ConversationStatus;
   sessionId?: string;
   unreadOnly?: boolean;
+  /** true = só arquivadas; padrão false = só ativas. */
+  archived?: boolean;
 }
 
 export interface ConversationContactDto {
@@ -54,6 +56,7 @@ export interface ConversationListItemDto {
   groupJid?: string | null;
   groupName?: string | null;
   autoDownloadMedia?: boolean;
+  archived: boolean;
 }
 
 export class ListConversationsUseCase {
@@ -70,6 +73,9 @@ export class ListConversationsUseCase {
       status: input.status,
       sessionId: input.sessionId,
       unreadOnly: input.unreadOnly,
+      // Sem filtro explícito a listagem traz apenas as conversas ativas — arquivadas
+      // ficam na própria seção, como no WhatsApp Web.
+      archived: input.archived ?? false,
     });
 
     const sessionCache = new Map<string, ConversationSessionDto | null>();
@@ -143,6 +149,7 @@ export class ListConversationsUseCase {
         groupJid: conv.groupJid,
         groupName: conv.groupName,
         autoDownloadMedia: conv.autoDownloadMedia,
+        archived: conv.archived,
       });
     }
 
