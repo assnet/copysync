@@ -319,14 +319,13 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const qs = request.query as Record<string, string | undefined>;
 
       const engine = getActiveEngine();
-      if (!engine) return httpResponse.ok(reply, { participants: [], total: 0 });
+      if (!engine) return httpResponse.ok(reply, { participants: [], total: 0, nextCursor: null });
 
       const useCase = new ListGroupParticipantsUseCase(conversationRepo, contactRepo, engine);
       const result = await useCase.execute({
         conversationId: id,
         tenantId,
-        limit:  qs['limit'] ? parseInt(qs['limit'], 10) : undefined,
-        offset: qs['offset'] ? parseInt(qs['offset'], 10) : undefined,
+        cursor: qs['cursor'] || undefined,
         search: qs['search'] || undefined,
       });
 

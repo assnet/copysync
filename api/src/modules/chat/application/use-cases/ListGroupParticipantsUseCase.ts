@@ -2,13 +2,13 @@ import type { IChatConversationRepository } from '../../domain/contracts/IChatCo
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { createCursor, readCursor } from '../../../../shared/http/pagination/OpaqueCursor';
 
 export interface ListGroupParticipantsInput {
   conversationId: string;
   tenantId: string;
-  /** Página pedida; o painel nunca recebe a lista inteira. */
-  limit?: number;
-  offset?: number;
+  /** Cursor opaco da página seguinte; ausente pede a primeira. */
+  cursor?: string;
   /** Filtra por nome ou telefone, para a busca do modal. */
   search?: string;
 }
@@ -17,6 +17,8 @@ export interface ListGroupParticipantsOutput {
   participants: GroupParticipantDto[];
   /** Total no grupo, para o painel saber quantos faltam. */
   total: number;
+  /** Presente enquanto houver mais páginas. */
+  nextCursor: string | null;
 }
 
 export interface GroupParticipantDto {
@@ -27,6 +29,9 @@ export interface GroupParticipantDto {
   initials: string;
   isAdmin: boolean;
 }
+
+/** Tamanho da página, decidido pelo servidor. */
+const PAGE_SIZE = 10;
 
 function buildInitials(name: string): string {
   // Participante desconhecido tem o próprio número como nome; a inicial seria o
@@ -60,7 +65,7 @@ export class ListGroupParticipantsUseCase {
     if (!conversation) throw new NotFoundError('Conversation', input.conversationId);
 
     if (!conversation.isGroup || !conversation.groupJid || !conversation.sessionId) {
-      return { participants: [], total: 0 };
+      return { participants: [], total: 0, nextCursor: null };
     }
 
     const all = await this.engine.getGroupParticipants(
@@ -77,9 +82,14 @@ export class ListGroupParticipantsUseCase {
 
     // Só a fatia pedida deixa o servidor: a lista completa de um grupo grande é dado
     // pessoal de centenas de pessoas e não tem por que trafegar inteira.
-    const offset = Math.max(0, input.offset ?? 0);
-    const limit = Math.min(Math.max(1, input.limit ?? 10), 50);
-    const participants = filtered.slice(offset, offset + limit);
+    //
+    // O tamanho da página é do servidor e o cursor é assinado: o cliente não escolhe
+    // quantos registros recebe nem salta para uma posição arbitrária.
+    const scope = `participants:${input.conversationId}`;
+    const offset = readCursor(input.cursor, scope) ?? 0;
+    const participants = filtered.slice(offset, offset + PAGE_SIZE);
+    const nextOffset = offset + participants.length;
+    const nextCursor = nextOffset < filtered.length ? createCursor(scope, nextOffset) : null;
 
     // Enriquecimento em lote — nunca uma consulta por participante.
     const phones = participants.map((p) => p.phone).filter((p): p is string => p !== null);
@@ -101,6 +111,6 @@ export class ListGroupParticipantsUseCase {
       };
     });
 
-    return { participants: page, total: filtered.length };
+    return { participants: page, total: filtered.length, nextCursor };
   }
 }

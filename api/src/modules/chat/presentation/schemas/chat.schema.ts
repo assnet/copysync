@@ -98,9 +98,10 @@ export const conversationStateBodySchema = {
 
 export const listParticipantsQuerySchema = {
   type: 'object',
+  // Sem limit/offset: o tamanho da página é do servidor e a posição vem no cursor
+  // assinado, para o cliente não conseguir pedir a lista inteira.
   properties: {
-    limit:  { type: 'string' },
-    offset: { type: 'string' },
+    cursor: { type: 'string' },
     search: { type: 'string' },
   },
 } as const;
