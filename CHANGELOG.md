@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Sessões — Foto do número conectado
+
+- **`ListSessionsUseCase.ts`**, **`SessionPresenter.ts`**, **`SessionCard.tsx`** — o card exibia sempre a inicial do nome da sessão; passa a mostrar a foto de perfil do número conectado, com a inicial como fallback. Só sessões `CONNECTED` são consultadas e o resultado usa o cache de 6 h do adapter, para a listagem não rebaixar a imagem a cada chamada
+- **`ConversationListItem.tsx`**, **`ChatHeader.tsx`**, **`ConversationDetailsPanel.tsx`** — nome e número passam a formar um bloco centrado na linha média do avatar, com espaçamento uniforme entre as linhas
+
 #### Chat — Avatares de contatos, grupos e remetentes
 
 - **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`** — nova capacidade `fetchProfilePicture`, que baixa a foto e a armazena: a URL do WhatsApp expira em horas, então persisti-la deixaria avatares quebrados; guardamos a imagem e devolvemos uma URL estável
