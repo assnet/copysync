@@ -12,6 +12,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 
 ###
 
+## agentbrowser e outras skills estao em .agents/skills
 
 ## BANCO DE DADOS (SOMENTE LEITURA)
 
