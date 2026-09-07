@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Busca dentro da conversa
+
+- **`ListMessagesUseCase.ts`**, **`PrismaChatMessageRepository.ts`**, **`chat.routes.ts`** — `GET /chat/conversations/:id/messages` aceita `search`, com `contains` insensitive sobre o conteúdo, ignorando mensagens apagadas e devolvendo do mais recente para o mais antigo. A leitura normal da conversa segue em ordem cronológica, sem mudança de comportamento
+- **`ConversationSearchPanel.tsx`**, **`ChatHeader.tsx`**, **`ChatPage.tsx`** — a lupa do cabeçalho, que não fazia nada, passa a abrir o painel de busca com resultados datados e o termo destacado. A consulta é feita no servidor, para alcançar o histórico que ainda não foi carregado; a digitação é aguardada antes de consultar e a busca começa com dois caracteres. Busca e contexto dividem a mesma coluna, então abrir um fecha o outro
+
 #### Chat — Conversas arquivadas
 
 - **`schema.prisma`**, **migration `add_conversation_archived`** — nova coluna `archived` em `chat_conversations` e índice `(tenantId, archived)`, que é como a listagem sempre filtra
