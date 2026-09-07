@@ -11,6 +11,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Chat — Mensagens novas não apareciam no painel
+
+- **`PrismaChatMessageRepository.ts`** — a listagem paginava com `orderBy sentAt asc` + `take limit`, devolvendo as mensagens mais **antigas**. Em conversas maiores que a página (ex.: 78 mensagens com `PAGE_SIZE` 40) as recentes nunca chegavam ao painel: o card da lista mostrava a última mensagem, vinda de `lastMessagePreview`, mas a janela da conversa parava meses atrás. A janela passa a ser sempre as `limit` mais recentes, respeitando o cursor `before`; `orderDir` controla apenas a ordem do resultado, preservando o `desc` usado por `MarkConversationAsReadUseCase`
+- **`useChatWebSocket.ts`** — o hook contornava o proxy do Vite montando a URL do WS com `window.location.hostname` + `VITE_API_PORT`. Como `pnpm dev` roda `--mode dev` e o `.env.dev` define `VITE_API_URL=/api`, o REST passava pelo proxy e funcionava, mas o WebSocket ia para `ws://<host>:3000` e falhava com `ERR_CONNECTION_REFUSED` em backoff infinito — o painel só via mensagens novas ao recarregar a página. Com `VITE_API_URL` relativo o WS passa a usar a origem da página (proxy do Vite em dev, domínio do painel em produção)
+- **`ListConversationsUseCase.ts`**, **`GetConversationByIdUseCase.ts`** — conversas de grupo montam um contato sintético que recebia `phone: conv.groupJid`. O JID de grupo tem formato interno `<criador>-<timestamp>` (ex.: `554799247313-1615683047`) e era exibido onde vai o número do contato. O campo passa a ficar vazio em grupos
+- **`ConversationListItem.tsx`**, **`ChatHeader.tsx`**, **`ConversationDetailsPanel.tsx`** — exibem "Grupo" no lugar do telefone quando a conversa é de grupo
+
 #### Backend — Reconexão de sessão com credencial revogada
 
 - **`BaileysErrorTranslator.ts`** — `translateDisconnect` passa a devolver `shouldClearCredentials`. Motivos em que o WhatsApp revoga o dispositivo (`loggedOut`, `forbidden`, `badSession`, `multideviceMismatch`) marcam a credencial como morta; `connectionReplaced` e falhas de transporte **não** marcam, pois a credencial continua válida e limpá-la forçaria um pareamento desnecessário
