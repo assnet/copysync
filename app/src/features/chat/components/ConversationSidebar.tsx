@@ -275,7 +275,13 @@ export function ConversationSidebar({
       {/* Acesso às arquivadas, como no WhatsApp Web: uma linha acima da lista */}
       {!showArchived && (archivedCount ?? 0) > 0 && onToggleArchived && (
         <>
-          <ListItemButton onClick={() => onToggleArchived(true)} sx={{ px: 2, py: 1.25 }}>
+          <ListItemButton
+            onClick={() => onToggleArchived(true)}
+            // ListItemButton nasce com flex-grow: 1 (feito para viver dentro de um
+            // ListItem em linha). Num container em coluna isso o faz esticar na
+            // vertical e empurrar a lista para baixo.
+            sx={{ px: 2, py: 1.25, flexGrow: 0, flexShrink: 0 }}
+          >
             <ArchiveOutlinedIcon sx={{ fontSize: 20, color: 'text.secondary', mr: 1.75 }} />
             <Typography variant="body2" fontWeight={500} sx={{ flex: 1 }}>
               Arquivadas
