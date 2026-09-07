@@ -74,6 +74,15 @@ export class ListConversationsUseCase {
 
     const sessionCache = new Map<string, ConversationSessionDto | null>();
 
+    // Contatos em lote: uma consulta para toda a lista. Buscar um a um dentro do laço
+    // custava uma ida ao banco por conversa individual, em série.
+    const contactIds = conversations
+      .filter((conv) => !conv.isGroup && conv.contactId)
+      .map((conv) => conv.contactId as string);
+    const contactsById = new Map(
+      (await this.contactRepo.findByIds(contactIds, input.tenantId)).map((c) => [c.id, c]),
+    );
+
     const results: ConversationListItemDto[] = [];
 
     for (const conv of conversations) {
@@ -88,7 +97,7 @@ export class ListConversationsUseCase {
         contactDto = { id: conv.groupJid ?? '', name: gName, phone: '', avatarUrl: conv.groupAvatarUrl ?? null, initials: gInitials };
       } else {
         if (!conv.contactId) continue; // conversa individual sem contactId — dado inválido
-        const contact = await this.contactRepo.findById(conv.contactId, conv.tenantId);
+        const contact = contactsById.get(conv.contactId);
         if (!contact) continue;
         contactDto = { id: contact.id, name: contact.name, phone: contact.phone, avatarUrl: contact.avatarUrl, initials: contact.initials };
       }

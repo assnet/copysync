@@ -16,6 +16,22 @@ export class PrismaChatContactRepository implements IChatContactRepository {
     return raw ? PrismaChatContactMapper.toDomain(raw) : null;
   }
 
+  async findByIds(ids: string[], tenantId: string): Promise<ChatContact[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.chatContact.findMany({
+      where: { id: { in: [...new Set(ids)] }, tenantId },
+    });
+    return rows.map(PrismaChatContactMapper.toDomain);
+  }
+
+  async findByPhones(phones: string[], tenantId: string): Promise<ChatContact[]> {
+    if (phones.length === 0) return [];
+    const rows = await this.prisma.chatContact.findMany({
+      where: { phone: { in: [...new Set(phones)] }, tenantId },
+    });
+    return rows.map(PrismaChatContactMapper.toDomain);
+  }
+
   async findByPhone(phone: string, tenantId: string): Promise<ChatContact | null> {
     const raw = await this.prisma.chatContact.findUnique({
       where: { tenantId_phone: { tenantId, phone } },
