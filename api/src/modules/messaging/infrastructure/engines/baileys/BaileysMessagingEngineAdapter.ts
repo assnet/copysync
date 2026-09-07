@@ -291,10 +291,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     const remoteJid = isGroup ? `${jid}@g.us` : `${jid}@s.whatsapp.net`;
     const filename = `avatar_${isGroup ? 'g' : 'c'}_${jid}.jpg`;
+    const cacheKey = `stored:${remoteJid}`;
+
+    // Sem cache, cada listagem rebaixaria a mesma imagem.
+    const cached = this.profilePictureCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < PROFILE_PICTURE_TTL_MS) {
+      return cached.url;
+    }
 
     try {
       const url = await entry.socket.profilePictureUrl(remoteJid, 'image');
-      if (!url) return null;
+      if (!url) {
+        this.profilePictureCache.set(cacheKey, { url: null, at: Date.now() });
+        return null;
+      }
 
       // A URL do WhatsApp expira em algumas horas: baixamos a imagem e servimos por
       // conta própria, para o avatar não quebrar depois de persistido.
@@ -303,7 +313,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
       const buffer = Buffer.from(await response.arrayBuffer());
       await saveMediaBuffer(buffer, filename);
-      return mediaPublicUrl(filename);
+      const publicUrl = mediaPublicUrl(filename);
+      this.profilePictureCache.set(cacheKey, { url: publicUrl, at: Date.now() });
+      return publicUrl;
     } catch (err) {
       baileysLogger.debug({ err, sessionId, jid, isGroup }, 'Failed to fetch profile picture');
       return null;

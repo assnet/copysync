@@ -72,15 +72,15 @@ export function ConversationListItem({ conversation, selected, onClick, presence
         />
       </Box>
 
-      {/* Content */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      {/* Content — nome, número e preview com respiro uniforme entre as linhas */}
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {/* Row 1: Name + time */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography
             variant="body2"
             fontWeight={hasUnread ? 700 : 500}
             noWrap
-            sx={{ flex: 1, minWidth: 0 }}
+            sx={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}
           >
             {contact.name}
           </Typography>
@@ -96,7 +96,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
 
         {/* Row 2: Phone + unread badge */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-          <Typography variant="caption" color="text.disabled" noWrap sx={{ flex: 1 }}>
+          <Typography variant="caption" color="text.disabled" noWrap sx={{ flex: 1, lineHeight: 1.3 }}>
             {isGroup ? 'Grupo' : formatPhone(contact.phone)}
           </Typography>
           {hasUnread && (

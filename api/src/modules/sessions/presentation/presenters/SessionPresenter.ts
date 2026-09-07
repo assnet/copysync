@@ -7,8 +7,9 @@ import type { GetSessionQrOutput } from '../../application/use-cases/GetSessionQ
 import type { GetSessionPairingCodeOutput } from '../../application/use-cases/GetSessionPairingCodeUseCase';
 
 export class SessionPresenter {
-  static toSessionItem(session: Session) {
+  static toSessionItem(session: Session, avatarUrl: string | null = null) {
     return {
+      avatarUrl,
       id: session.id,
       tenantId: session.tenantId,
       name: session.name,
@@ -24,10 +25,10 @@ export class SessionPresenter {
     };
   }
 
-  static toSessionList(sessions: Session[]) {
+  static toSessionList(items: Array<{ session: Session; avatarUrl: string | null }>) {
     return {
-      sessions: sessions.map(SessionPresenter.toSessionItem),
-      total: sessions.length,
+      sessions: items.map((item) => SessionPresenter.toSessionItem(item.session, item.avatarUrl)),
+      total: items.length,
     };
   }
 

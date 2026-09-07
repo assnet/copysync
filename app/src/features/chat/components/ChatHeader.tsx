@@ -71,10 +71,10 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
           {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 22 }} /> : contact.initials}
         </Avatar>
 
-        {/* Info */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Info — nome e número centrados na linha média do avatar */}
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body1" fontWeight={700} noWrap>
+            <Typography variant="body1" fontWeight={700} noWrap sx={{ lineHeight: 1.3 }}>
               {displayName}
             </Typography>
             <Chip
@@ -105,7 +105,7 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
             </Typography>
           )}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>
               {isGroup ? 'Grupo' : formatPhone(contact.phone)}
             </Typography>
             {session && (

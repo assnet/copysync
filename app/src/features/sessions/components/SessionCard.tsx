@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react';
 import {
-  Card, CardContent, CardActions, Box, Typography, IconButton, Tooltip,
+  Card, CardContent, CardActions, Box, Typography, Avatar, IconButton, Tooltip,
   CircularProgress, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, Button, alpha, useTheme, Divider,
 } from '@mui/material';
@@ -111,22 +111,22 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
         <CardContent sx={{ flex: 1, pb: 1.5 }}>
           {/* Topo: nome + status dot */}
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: 2.5,
-                bgcolor: alpha(theme.palette.primary.main, 0.1),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                position: 'relative',
-              }}
-            >
-              <Typography sx={{ color: 'primary.main', fontWeight: 800, fontSize: 16, lineHeight: 1 }}>
+            <Box sx={{ position: 'relative', flexShrink: 0 }}>
+              <Avatar
+                src={session.avatarUrl ?? undefined}
+                variant="rounded"
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 2.5,
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: 'primary.main',
+                  fontWeight: 800,
+                  fontSize: 16,
+                }}
+              >
                 {session.name[0]?.toUpperCase() ?? '?'}
-              </Typography>
+              </Avatar>
               {/* Dot de status */}
               <Box
                 sx={{

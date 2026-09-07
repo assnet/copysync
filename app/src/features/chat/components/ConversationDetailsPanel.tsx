@@ -344,9 +344,9 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
                         já exibe o ícone genérico de pessoa. */}
                     {p.initials || undefined}
                   </Avatar>
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 0.15 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <Typography variant="body2" noWrap title={p.name}>{p.name}</Typography>
+                      <Typography variant="body2" noWrap title={p.name} sx={{ lineHeight: 1.25 }}>{p.name}</Typography>
                       {p.isAdmin && (
                         <Chip
                           label="Admin"
@@ -356,7 +356,7 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
                       )}
                     </Box>
                     {p.phone && (
-                      <Typography variant="caption" color="text.disabled" noWrap>
+                      <Typography variant="caption" color="text.disabled" noWrap sx={{ lineHeight: 1.25 }}>
                         {formatPhone(p.phone)}
                       </Typography>
                     )}

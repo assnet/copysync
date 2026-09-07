@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import type {
   CreateSessionRequest,
   SessionItem,
@@ -13,7 +14,11 @@ import type {
 export const sessionService = {
   async list(): Promise<SessionListResponse> {
     const res = await apiClient.get<SessionListResponse>('/sessions');
-    return res.data;
+    return {
+      ...res.data,
+      // O avatar vem como caminho relativo à API, que em produção fica noutro domínio.
+      sessions: res.data.sessions.map((s) => ({ ...s, avatarUrl: resolveMediaUrl(s.avatarUrl) })),
+    };
   },
 
   async getById(id: string): Promise<SessionItem> {

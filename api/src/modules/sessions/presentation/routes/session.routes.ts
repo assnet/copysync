@@ -54,7 +54,7 @@ setActiveEngine(engine);
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
 const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo);
-const listSessionsUseCase = new ListSessionsUseCase(sessionRepo);
+const listSessionsUseCase = new ListSessionsUseCase(sessionRepo, engine);
 const getSessionByIdUseCase = new GetSessionByIdUseCase(sessionRepo);
 const getSessionStatusUseCase = new GetSessionStatusUseCase(sessionRepo);
 const connectSessionUseCase = new ConnectSessionUseCase(sessionRepo, auditRepo, engine);

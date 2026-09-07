@@ -71,6 +71,8 @@ export interface SessionItem {
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Foto do número conectado, servida pela API. */
+  avatarUrl?: string | null;
 }
 
 export interface CreateSessionRequest {
