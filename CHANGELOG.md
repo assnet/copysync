@@ -13,6 +13,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 #### Chat — Acesso aos dados da conversa
 
+- **`ConversationDetailsPanel.tsx`** — largura do painel de contexto de 280 para 322 px (+15 %) no desktop; no mobile segue como sobreposição de tela cheia
+
 - **`ChatHeader.tsx`** — o ícone de informação sai do cabeçalho e vira item do menu de três pontos, com rótulo que acompanha o estado ("Dados do grupo" / "Dados do contato" / "Fechar dados"). O avatar do cabeçalho passa a ser o atalho direto para o painel, com papel de botão, rótulo, foco visível e acionamento por teclado
 
 #### Chat — Busca dentro da conversa
