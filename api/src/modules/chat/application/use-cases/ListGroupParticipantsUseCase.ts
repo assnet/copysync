@@ -6,6 +6,17 @@ import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors
 export interface ListGroupParticipantsInput {
   conversationId: string;
   tenantId: string;
+  /** Página pedida; o painel nunca recebe a lista inteira. */
+  limit?: number;
+  offset?: number;
+  /** Filtra por nome ou telefone, para a busca do modal. */
+  search?: string;
+}
+
+export interface ListGroupParticipantsOutput {
+  participants: GroupParticipantDto[];
+  /** Total no grupo, para o painel saber quantos faltam. */
+  total: number;
 }
 
 export interface GroupParticipantDto {
@@ -44,16 +55,31 @@ export class ListGroupParticipantsUseCase {
     private readonly engine: IMessagingEngine,
   ) {}
 
-  async execute(input: ListGroupParticipantsInput): Promise<GroupParticipantDto[]> {
+  async execute(input: ListGroupParticipantsInput): Promise<ListGroupParticipantsOutput> {
     const conversation = await this.conversationRepo.findById(input.conversationId, input.tenantId);
     if (!conversation) throw new NotFoundError('Conversation', input.conversationId);
 
-    if (!conversation.isGroup || !conversation.groupJid || !conversation.sessionId) return [];
+    if (!conversation.isGroup || !conversation.groupJid || !conversation.sessionId) {
+      return { participants: [], total: 0 };
+    }
 
-    const participants = await this.engine.getGroupParticipants(
+    const all = await this.engine.getGroupParticipants(
       conversation.sessionId,
       conversation.groupJid,
     );
+
+    const term = input.search?.trim().toLowerCase();
+    const filtered = term
+      ? all.filter((p) =>
+          (p.name ?? '').toLowerCase().includes(term) || (p.phone ?? '').includes(term.replace(/\D/g, '')),
+        )
+      : all;
+
+    // Só a fatia pedida deixa o servidor: a lista completa de um grupo grande é dado
+    // pessoal de centenas de pessoas e não tem por que trafegar inteira.
+    const offset = Math.max(0, input.offset ?? 0);
+    const limit = Math.min(Math.max(1, input.limit ?? 10), 50);
+    const participants = filtered.slice(offset, offset + limit);
 
     // Enriquecimento em lote — nunca uma consulta por participante.
     const phones = participants.map((p) => p.phone).filter((p): p is string => p !== null);
@@ -61,7 +87,7 @@ export class ListGroupParticipantsUseCase {
       (await this.contactRepo.findByPhones(phones, input.tenantId)).map((c) => [c.phone, c]),
     );
 
-    return participants.map((participant) => {
+    const page = participants.map((participant) => {
       const contact = participant.phone ? contactsByPhone.get(participant.phone) : undefined;
       const name = contact?.name ?? participant.name ?? participant.phone ?? 'Participante';
 
@@ -74,5 +100,7 @@ export class ListGroupParticipantsUseCase {
         isAdmin: participant.isAdmin,
       };
     });
+
+    return { participants: page, total: filtered.length };
   }
 }

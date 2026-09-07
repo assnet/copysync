@@ -20,6 +20,7 @@ import {
   listMessagesQuerySchema,
   startConversationBodySchema,
   suggestContactsQuerySchema,
+  listParticipantsQuerySchema,
   conversationStateBodySchema,
   sendMessageBodySchema,
   updateConversationBodySchema,
@@ -308,21 +309,28 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ── GET /conversations/:id/participants — membros do grupo ────────────────
+  // ── GET /conversations/:id/participants — membros do grupo, paginados ─────
   app.get(
     '/conversations/:id/participants',
-    { preHandler, schema: { params: conversationIdParamSchema } },
+    { preHandler, schema: { params: conversationIdParamSchema, querystring: listParticipantsQuerySchema } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as { id: string };
+      const qs = request.query as Record<string, string | undefined>;
 
       const engine = getActiveEngine();
-      if (!engine) return httpResponse.ok(reply, { participants: [] });
+      if (!engine) return httpResponse.ok(reply, { participants: [], total: 0 });
 
       const useCase = new ListGroupParticipantsUseCase(conversationRepo, contactRepo, engine);
-      const participants = await useCase.execute({ conversationId: id, tenantId });
+      const result = await useCase.execute({
+        conversationId: id,
+        tenantId,
+        limit:  qs['limit'] ? parseInt(qs['limit'], 10) : undefined,
+        offset: qs['offset'] ? parseInt(qs['offset'], 10) : undefined,
+        search: qs['search'] || undefined,
+      });
 
-      httpResponse.ok(reply, { participants, total: participants.length });
+      httpResponse.ok(reply, result);
     },
   );
 

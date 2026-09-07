@@ -32,6 +32,8 @@ const CHAT_HEIGHT = {
 };
 
 const PAGE_SIZE = 40;
+/** Participantes exibidos no painel; o restante fica no modal "Ver todos". */
+const PARTICIPANTS_PREVIEW = 10;
 
 // Resolve quotedMessage para cada mensagem que tenha quotedMessageId
 function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
@@ -82,6 +84,7 @@ export default function ChatPage() {
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
   // salvo no tenant (só 7 de 1503 contatos têm avatar).
   const [participants, setParticipants] = useState<GroupParticipantApiDto[]>([]);
+  const [participantsTotal, setParticipantsTotal] = useState(0);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
 
   // Paginação reversa
@@ -131,6 +134,22 @@ export default function ChatPage() {
     loadConversations();
   }, [loadConversations]);
 
+  // Esc fecha em cascata: primeiro o painel de contexto ou a busca, depois a conversa.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Diálogos e menus tratam o próprio Esc; não interferir enquanto houver um aberto.
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+
+      if (searchPanelOpen) { setSearchPanelOpen(false); return; }
+      if (detailsOpen && selectedId) { setDetailsOpen(false); return; }
+      if (selectedId) setSelectedId(null);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [searchPanelOpen, detailsOpen, selectedId]);
+
   // Participantes da conversa aberta (só grupos)
   useEffect(() => {
     const conv = conversations.find((c) => c.id === selectedId);
@@ -140,10 +159,15 @@ export default function ChatPage() {
     }
     let cancelled = false;
     setLoadingParticipants(true);
+    // Só a prévia: a lista completa fica no modal, carregada sob demanda.
     chatService
-      .listGroupParticipants(selectedId)
-      .then((items) => { if (!cancelled) setParticipants(items); })
-      .catch(() => { if (!cancelled) setParticipants([]); })
+      .listGroupParticipants(selectedId, { limit: PARTICIPANTS_PREVIEW })
+      .then(({ participants: items, total }) => {
+        if (cancelled) return;
+        setParticipants(items);
+        setParticipantsTotal(total);
+      })
+      .catch(() => { if (!cancelled) { setParticipants([]); setParticipantsTotal(0); } })
       .finally(() => { if (!cancelled) setLoadingParticipants(false); });
     return () => { cancelled = true; };
   }, [selectedId, conversations]);
@@ -592,18 +616,36 @@ export default function ChatPage() {
         ),
       );
 
+      // Arquivar tira a conversa da visão atual e fixar reordena — as duas coisas
+      // são resolvidas localmente, sem recarregar a lista inteira.
+      if (change.archived !== undefined) {
+        const leftTheList = change.archived !== showArchived;
+        if (leftTheList) {
+          setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+          setArchivedCount((n) => Math.max(0, n + (change.archived ? 1 : -1)));
+          setSelectedId((current) => (current === conversationId ? null : current));
+        }
+      }
+
+      if (change.pinned !== undefined) {
+        setConversations((prev) =>
+          [...prev].sort((a, b) => {
+            if ((a.pinned ?? false) !== (b.pinned ?? false)) return a.pinned ? -1 : 1;
+            return new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime();
+          }),
+        );
+      }
+
       chatService
         .updateConversationState(conversationId, change)
-        .catch((err: unknown) => console.error('Erro ao atualizar a conversa', err))
-        .finally(() => {
-          // Arquivar tira da lista atual; fixar reordena. Em ambos, recarregar mantém
-          // a lista fiel ao servidor.
-          if (change.archived !== undefined || change.pinned !== undefined) {
-            void loadConversations();
-          }
+        .catch((err: unknown) => {
+          // A lista local já mudou: só nesse caso vale recarregar, para não deixar a
+          // interface divergindo do servidor.
+          console.error('Erro ao atualizar a conversa', err);
+          void loadConversations();
         });
     },
-    [loadConversations],
+    [loadConversations, showArchived],
   );
 
   // Abre a conversa direta com um participante de grupo pelo telefone
@@ -792,7 +834,10 @@ export default function ChatPage() {
           onClose={() => setDetailsOpen(false)}
           onUpdate={handleUpdateConversation}
           participants={participants}
+          participantsTotal={participantsTotal}
           loadingParticipants={loadingParticipants}
+          onStateChange={(change) => handleConversationStateChange(selectedConversation.id, change)}
+          knownLists={knownLists}
         />
         </Box>
       )}

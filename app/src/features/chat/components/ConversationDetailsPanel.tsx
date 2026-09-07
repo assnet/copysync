@@ -1,4 +1,8 @@
-import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, Switch, alpha, useTheme } from '@mui/material';
+import {
+  Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem,
+  FormControl, Switch, Button, ListItemButton, ListItemIcon, ListItemText, MenuList, Paper,
+  Popper, ClickAwayListener, alpha, useTheme,
+} from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
@@ -12,9 +16,16 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import AutoGraphOutlinedIcon from '@mui/icons-material/AutoGraphOutlined';
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
+import PlaylistAddOutlinedIcon from '@mui/icons-material/PlaylistAddOutlined';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import { useState } from 'react';
 import type { ChatConversation, ConversationStatus } from '../types';
 import type { UpdateConversationRequest, GroupParticipantApiDto } from '@/types/chat.api.types';
+import { GroupMembersDialog } from './GroupMembersDialog';
+import type { ConversationStateChange } from './ConversationActionsMenu';
 import { formatPhone, getStatusConfig, formatConversationTime } from '../utils';
 
 interface SectionProps {
@@ -89,8 +100,15 @@ interface Props {
   onUpdate?: (data: UpdateConversationRequest) => void;
   /** Participantes do grupo, carregados uma vez pelo ChatPage e reaproveitados aqui. */
   participants?: GroupParticipantApiDto[];
+  /** Total de membros do grupo; a prévia mostra apenas os primeiros. */
+  participantsTotal?: number;
   loadingParticipants?: boolean;
+  onStateChange?: (change: ConversationStateChange) => void;
+  knownLists?: string[];
 }
+
+/** Quantos membros o painel exibe antes do "Ver todos". */
+const PARTICIPANTS_PREVIEW = 10;
 
 const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
   { value: 'open',    label: 'Aberta' },
@@ -100,8 +118,25 @@ const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
   { value: 'closed',  label: 'Encerrada' },
 ];
 
-export function ConversationDetailsPanel({ conversation, onClose, onUpdate, participants = [], loadingParticipants = false }: Props) {
+export function ConversationDetailsPanel({
+  conversation,
+  onClose,
+  onUpdate,
+  participants = [],
+  participantsTotal = 0,
+  loadingParticipants = false,
+  onStateChange,
+  knownLists = [],
+}: Props) {
   const { contact, session, status, queue, assignedTo, tags, notes, unreadCount, lastMessageAt, isGroup, autoDownloadMedia } = conversation;
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
+  const [newList, setNewList] = useState('');
+  const currentLists = conversation.lists ?? [];
+  // A prévia é limitada aqui também: se a API devolver mais do que o pedido, o painel
+  // ainda mostra apenas os primeiros, e o restante fica no modal.
+  const preview = participants.slice(0, PARTICIPANTS_PREVIEW);
+  const total = Math.max(participantsTotal, participants.length);
 
 
   const statusConfig = getStatusConfig(status);
@@ -323,7 +358,7 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate, part
 
         {/* Participants */}
         <Section
-          title={participants.length > 0 ? `Participantes · ${participants.length}` : 'Participantes'}
+          title={total > 0 ? `Participantes · ${total}` : 'Participantes'}
           icon={<GroupOutlinedIcon sx={{ fontSize: 14 }} />}
         >
           {loadingParticipants ? (
@@ -334,7 +369,7 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate, part
             </Typography>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-              {participants.map((p, i) => (
+              {preview.map((p, i) => (
                 <Box
                   key={`${p.phone ?? 'lid'}-${i}`}
                   sx={{ display: 'flex', alignItems: 'center', gap: 1.25, py: 0.75 }}
@@ -368,7 +403,93 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate, part
               ))}
             </Box>
           )}
+
+          {total > preview.length && (
+            <Button
+              size="small"
+              onClick={() => setMembersOpen(true)}
+              sx={{ mt: 0.5, px: 0, fontSize: 12, textTransform: 'none' }}
+            >
+              Ver todos ({total})
+            </Button>
+          )}
         </Section>
+
+        <Divider />
+
+        {/* Ações do grupo/contato, na ordem do WhatsApp Web */}
+        <Box sx={{ py: 0.5 }}>
+          <ListItemButton
+            onClick={() => onStateChange?.({ favorite: !conversation.favorite })}
+            disabled={!onStateChange}
+            sx={{ px: 2, py: 1.25, flexGrow: 0 }}
+          >
+            <ListItemIcon sx={{ minWidth: 34 }}>
+              {conversation.favorite
+                ? <FavoriteIcon sx={{ fontSize: 18, color: 'error.light' }} />
+                : <FavoriteBorderIcon sx={{ fontSize: 18 }} />}
+            </ListItemIcon>
+            <ListItemText
+              primary={conversation.favorite ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
+              primaryTypographyProps={{ variant: 'body2' }}
+            />
+          </ListItemButton>
+
+          <ListItemButton
+            onClick={(e) => setListAnchor(e.currentTarget)}
+            disabled={!onStateChange}
+            sx={{ px: 2, py: 1.25, flexGrow: 0 }}
+          >
+            <ListItemIcon sx={{ minWidth: 34 }}>
+              <PlaylistAddOutlinedIcon sx={{ fontSize: 18 }} />
+            </ListItemIcon>
+            <ListItemText primary="Adicionar à lista" primaryTypographyProps={{ variant: 'body2' }} />
+          </ListItemButton>
+
+          {/* Ainda sem implementação: exigem exportação, remoção em massa e saída do
+              grupo, que dependem de fluxos próprios. Ficam visíveis e desabilitadas
+              para não sugerir que já funcionam. */}
+          <Tooltip title="Em breve" placement="left">
+            <span>
+              <ListItemButton disabled sx={{ px: 2, py: 1.25, flexGrow: 0, width: '100%' }}>
+                <ListItemIcon sx={{ minWidth: 34 }}>
+                  <DownloadOutlinedIcon sx={{ fontSize: 18 }} />
+                </ListItemIcon>
+                <ListItemText primary="Exportar conversa" primaryTypographyProps={{ variant: 'body2' }} />
+              </ListItemButton>
+            </span>
+          </Tooltip>
+
+          <Tooltip title="Em breve" placement="left">
+            <span>
+              <ListItemButton disabled sx={{ px: 2, py: 1.25, flexGrow: 0, width: '100%' }}>
+                <ListItemIcon sx={{ minWidth: 34 }}>
+                  <RemoveCircleOutlineIcon sx={{ fontSize: 18, color: 'error.main' }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Limpar conversa"
+                  primaryTypographyProps={{ variant: 'body2', color: 'error.main' }}
+                />
+              </ListItemButton>
+            </span>
+          </Tooltip>
+
+          {isGroup && (
+            <Tooltip title="Em breve" placement="left">
+              <span>
+                <ListItemButton disabled sx={{ px: 2, py: 1.25, flexGrow: 0, width: '100%' }}>
+                  <ListItemIcon sx={{ minWidth: 34 }}>
+                    <LogoutOutlinedIcon sx={{ fontSize: 18, color: 'error.main' }} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Sair do grupo"
+                    primaryTypographyProps={{ variant: 'body2', color: 'error.main' }}
+                  />
+                </ListItemButton>
+              </span>
+            </Tooltip>
+          )}
+        </Box>
 
         <Divider />
 
@@ -380,6 +501,81 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate, part
         </Section>
 
       </Box>
+
+      <GroupMembersDialog
+        open={membersOpen}
+        onClose={() => setMembersOpen(false)}
+        conversationId={conversation.id}
+        total={total}
+      />
+
+      {/* Listas: mesma mecânica do menu da lista de conversas */}
+      <Popper
+        open={Boolean(listAnchor)}
+        anchorEl={listAnchor}
+        placement="left-start"
+        style={{ zIndex: 1400 }}
+        modifiers={[
+          { name: 'offset', options: { offset: [0, 4] } },
+          { name: 'flip', options: { fallbackPlacements: ['right-start', 'bottom-end'] } },
+          { name: 'preventOverflow', options: { padding: 8 } },
+        ]}
+      >
+        <ClickAwayListener onClickAway={() => setListAnchor(null)}>
+          <Paper elevation={8}>
+            <MenuList dense>
+              {knownLists.map((list) => (
+                <MenuItem
+                  key={list}
+                  onClick={() => {
+                    const next = currentLists.includes(list)
+                      ? currentLists.filter((l) => l !== list)
+                      : [...currentLists, list];
+                    onStateChange?.({ lists: next });
+                    setListAnchor(null);
+                  }}
+                  dense
+                >
+                  <ListItemText>{list}</ListItemText>
+                  {currentLists.includes(list) && (
+                    <Box component="span" sx={{ ml: 2, color: 'primary.main', fontWeight: 700 }}>✓</Box>
+                  )}
+                </MenuItem>
+              ))}
+              {knownLists.length > 0 && <Divider />}
+              <Box sx={{ px: 1.5, py: 1, display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField
+                  size="small"
+                  placeholder="Nova lista"
+                  value={newList}
+                  onChange={(e) => setNewList(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter' && newList.trim()) {
+                      onStateChange?.({ lists: [...currentLists, newList.trim()] });
+                      setNewList('');
+                      setListAnchor(null);
+                    }
+                  }}
+                  inputProps={{ 'aria-label': 'Nome da nova lista' }}
+                  sx={{ width: 150, '& .MuiInputBase-input': { fontSize: 13 } }}
+                />
+                <Button
+                  size="small"
+                  disabled={!newList.trim()}
+                  onClick={() => {
+                    onStateChange?.({ lists: [...currentLists, newList.trim()] });
+                    setNewList('');
+                    setListAnchor(null);
+                  }}
+                >
+                  Criar
+                </Button>
+              </Box>
+            </MenuList>
+          </Paper>
+        </ClickAwayListener>
+      </Popper>
     </Box>
   );
 }

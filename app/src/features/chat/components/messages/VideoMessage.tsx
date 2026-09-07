@@ -19,6 +19,9 @@ function formatDuration(sec: number | null | undefined): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Altura aproximada da barra de controles nativa, reservada para os cliques dela. */
+const CONTROLS_HEIGHT = 40;
+
 export function VideoMessage({ mediaUrl, durationSeconds, body, textColor }: Props) {
   const theme = useTheme();
   const [error, setError] = useState(false);
@@ -100,9 +103,23 @@ export function VideoMessage({ mediaUrl, durationSeconds, body, textColor }: Pro
         key={resolvedMediaUrl}
         component="video"
         controls
+        // metadata traz duração e primeiro quadro sem baixar o vídeo inteiro: sem
+        // isso o primeiro clique era gasto carregando, e só o segundo reproduzia.
+        preload="metadata"
+        playsInline
         src={resolvedMediaUrl}
         onError={handleError}
+        onClick={(e: React.MouseEvent<HTMLVideoElement>) => {
+          const video = e.currentTarget;
+          // A barra de controles nativa ocupa a faixa inferior; cliques ali são dela.
+          const y = e.clientY - video.getBoundingClientRect().top;
+          if (y > video.clientHeight - CONTROLS_HEIGHT) return;
+
+          if (video.paused) void video.play().catch(() => {});
+          else video.pause();
+        }}
         sx={{
+          cursor: 'pointer',
           width: '100%',
           maxWidth: '100%',
           maxHeight: 220,

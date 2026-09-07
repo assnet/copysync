@@ -95,3 +95,12 @@ export const conversationStateBodySchema = {
     lists:    { type: 'array', items: { type: 'string' } },
   },
 } as const;
+
+export const listParticipantsQuerySchema = {
+  type: 'object',
+  properties: {
+    limit:  { type: 'string' },
+    offset: { type: 'string' },
+    search: { type: 'string' },
+  },
+} as const;
