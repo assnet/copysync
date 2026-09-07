@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Avatar do remetente nas bolhas de grupo
+
+- **`ChatPage.tsx`**, **`ChatWindow.tsx`**, **`MessageList.tsx`**, **`MessageBubble.tsx`**, **`ConversationDetailsPanel.tsx`** — a bolha só exibia foto quando o remetente tinha contato salvo com avatar (apenas 7 de 1503 contatos têm, porque o sync cobre só quem tem conversa individual). Os participantes passam a ser carregados uma vez pelo `ChatPage` e alimentam tanto o painel quanto um mapa telefone → avatar usado nas bolhas; o painel deixa de fazer requisição própria
+- **`DashboardPage.tsx`** — o card de sessão passa a mostrar avatar com o ponto de status sobreposto, nome e número centrados na linha média e o status em chip
+
 #### Sessões — Foto do número conectado
 
 - **`ListSessionsUseCase.ts`**, **`SessionPresenter.ts`**, **`SessionCard.tsx`** — o card exibia sempre a inicial do nome da sessão; passa a mostrar a foto de perfil do número conectado, com a inicial como fallback. Só sessões `CONNECTED` são consultadas e o resultado usa o cache de 6 h do adapter, para a listagem não rebaixar a imagem a cada chamada
