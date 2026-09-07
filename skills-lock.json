@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "agent-browser": {
+      "source": "vercel-labs/agent-browser",
+      "sourceType": "github",
+      "skillPath": "skills/agent-browser/SKILL.md",
+      "computedHash": "80161e6836b3b40f4e83730a290deb40ac14d877d38c97ad5f6d71be37ce74c3"
+    },
     "caveman": {
       "source": "JuliusBrussee/caveman",
       "sourceType": "github",
@@ -30,6 +36,12 @@
       "sourceType": "github",
       "skillPath": "skills/frontend-design/SKILL.md",
       "computedHash": "89496d5dd00f4810205f351759594fc2742bf8eea85a2f2b2d1de59f4bd91576"
+    },
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "computedHash": "19b6942c9cbcf9b9e3000fc497f8f156b8251d66055de806017e4aaa651e0c7b"
     },
     "ui-ux-pro-max": {
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
