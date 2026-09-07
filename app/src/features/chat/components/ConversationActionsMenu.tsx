@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Menu, MenuItem, ListItemIcon, ListItemText, Divider, TextField, Box, Button,
+  Menu, MenuItem, MenuList, ListItemIcon, ListItemText, Divider, TextField, Box, Button,
+  Paper, Popper, useMediaQuery, useTheme,
 } from '@mui/material';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined';
@@ -50,6 +51,9 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
   const [muteAnchor, setMuteAnchor] = useState<HTMLElement | null>(null);
   const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
   const [newList, setNewList] = useState('');
+  const theme = useTheme();
+  // Em telas de toque não há hover: abrir por proximidade dispararia sozinho.
+  const canHover = useMediaQuery('(hover: hover) and (pointer: fine)');
 
   // Um pequeno atraso antes de fechar evita que o submenu suma enquanto o ponteiro
   // atravessa o vão entre o item e o painel.
@@ -68,6 +72,7 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
 
   /** Passar por um item sem submenu fecha o submenu que estiver aberto. */
   const closeSubmenusOnHover = () => {
+    if (!canHover) return;
     cancelClose();
     setMuteAnchor(null);
     setListAnchor(null);
@@ -126,8 +131,13 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
 
         <MenuItem
           onClick={(e) => setListAnchor(e.currentTarget)}
-          onMouseEnter={(e) => { cancelClose(); setMuteAnchor(null); setListAnchor(e.currentTarget); }}
-          onMouseLeave={() => scheduleClose(() => setListAnchor(null))}
+          onMouseEnter={(e) => {
+            if (!canHover) return;
+            cancelClose();
+            setMuteAnchor(null);
+            setListAnchor(e.currentTarget);
+          }}
+          onMouseLeave={() => canHover && scheduleClose(() => setListAnchor(null))}
           dense
         >
           <ListItemIcon><PlaylistAddOutlinedIcon fontSize="small" /></ListItemIcon>
@@ -138,12 +148,13 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
         <MenuItem
           onClick={(e) => (isMuted ? apply({ muteMs: null }) : setMuteAnchor(e.currentTarget))}
           onMouseEnter={(e) => {
+            if (!canHover) return;
             cancelClose();
             setListAnchor(null);
             // Silenciada: o item vira ação direta de reativar, sem submenu.
             if (!isMuted) setMuteAnchor(e.currentTarget);
           }}
-          onMouseLeave={() => scheduleClose(() => setMuteAnchor(null))}
+          onMouseLeave={() => canHover && scheduleClose(() => setMuteAnchor(null))}
           dense
         >
           <ListItemIcon>
@@ -163,89 +174,95 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
         </MenuItem>
       </Menu>
 
-      {/* Submenu de silenciar */}
-      <Menu
-        anchorEl={muteAnchor}
+      {/* Submenus em Popper: sem backdrop e com posicionamento previsível.
+          Menu ancorado sobre o próprio item cobria o ponteiro, disparando
+          mouseleave/mouseenter em sequência — o submenu piscava. */}
+      <Popper
         open={Boolean(muteAnchor)}
-        onClose={() => { setMuteAnchor(null); onClose(); }}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        // O submenu abre por hover: sem isto o backdrop invisível capturaria o
-        // ponteiro e o menu principal deixaria de responder.
-        hideBackdrop
-        disableAutoFocus
-        disableEnforceFocus
-        disableRestoreFocus
-        slotProps={{
-          paper: {
-            onMouseEnter: cancelClose,
-            onMouseLeave: () => scheduleClose(() => setMuteAnchor(null)),
-          },
-        }}
+        anchorEl={muteAnchor}
+        placement="right-start"
+        // Sai do fluxo do menu para não ser recortado, e fica acima dele.
+        style={{ zIndex: theme.zIndex.modal + 1 }}
+        modifiers={[
+          { name: 'offset', options: { offset: [0, 4] } },
+          // Sem espaço à direita (mobile, ou lista junto à borda), abre à esquerda
+          // em vez de cobrir o item.
+          { name: 'flip', options: { fallbackPlacements: ['left-start', 'bottom-end'] } },
+          { name: 'preventOverflow', options: { padding: 8 } },
+        ]}
       >
-        {MUTE_OPTIONS.map((opt) => (
-          <MenuItem key={opt.label} onClick={() => apply({ muteMs: opt.ms })} dense>
-            <ListItemText>{opt.label}</ListItemText>
-          </MenuItem>
-        ))}
-      </Menu>
+        <Paper
+          elevation={8}
+          onMouseEnter={cancelClose}
+          onMouseLeave={() => scheduleClose(() => setMuteAnchor(null))}
+        >
+          <MenuList dense autoFocusItem={false}>
+            {MUTE_OPTIONS.map((opt) => (
+              <MenuItem key={opt.label} onClick={() => apply({ muteMs: opt.ms })} dense>
+                <ListItemText>{opt.label}</ListItemText>
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Paper>
+      </Popper>
 
-      {/* Submenu de listas */}
-      <Menu
-        anchorEl={listAnchor}
+      <Popper
         open={Boolean(listAnchor)}
-        onClose={() => { setListAnchor(null); onClose(); }}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        hideBackdrop
-        disableAutoFocus
-        disableEnforceFocus
-        disableRestoreFocus
-        slotProps={{
-          paper: {
-            onMouseEnter: cancelClose,
-            onMouseLeave: () => scheduleClose(() => setListAnchor(null)),
-          },
-        }}
+        anchorEl={listAnchor}
+        placement="right-start"
+        style={{ zIndex: theme.zIndex.modal + 1 }}
+        modifiers={[
+          { name: 'offset', options: { offset: [0, 4] } },
+          { name: 'flip', options: { fallbackPlacements: ['left-start', 'bottom-end'] } },
+          { name: 'preventOverflow', options: { padding: 8 } },
+        ]}
       >
-        {knownLists.map((list) => (
-          <MenuItem key={list} onClick={() => toggleList(list)} dense>
-            <ListItemText>{list}</ListItemText>
-            {currentLists.includes(list) && (
-              <ListItemText sx={{ textAlign: 'right', ml: 2 }} primaryTypographyProps={{ color: 'primary.main' }}>
-                ✓
-              </ListItemText>
-            )}
-          </MenuItem>
-        ))}
-        {knownLists.length > 0 && <Divider />}
-        <Box sx={{ px: 1.5, py: 1, display: 'flex', gap: 1, alignItems: 'center' }}>
-          <TextField
-            size="small"
-            placeholder="Nova lista"
-            value={newList}
-            onChange={(e) => setNewList(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newList.trim()) {
-                apply({ lists: [...currentLists, newList.trim()] });
-                setNewList('');
-              }
-            }}
-            inputProps={{ 'aria-label': 'Nome da nova lista' }}
-            sx={{ width: 160, '& .MuiInputBase-input': { fontSize: 13 } }}
-          />
-          <Button
-            size="small"
-            disabled={!newList.trim()}
-            onClick={() => {
-              apply({ lists: [...currentLists, newList.trim()] });
-              setNewList('');
-            }}
-          >
-            Criar
-          </Button>
-        </Box>
-      </Menu>
+        <Paper
+          elevation={8}
+          onMouseEnter={cancelClose}
+          onMouseLeave={() => scheduleClose(() => setListAnchor(null))}
+        >
+          <MenuList dense autoFocusItem={false}>
+            {knownLists.map((list) => (
+              <MenuItem key={list} onClick={() => toggleList(list)} dense>
+                <ListItemText>{list}</ListItemText>
+                {currentLists.includes(list) && (
+                  <Box component="span" sx={{ ml: 2, color: 'primary.main', fontWeight: 700 }}>✓</Box>
+                )}
+              </MenuItem>
+            ))}
+            {knownLists.length > 0 && <Divider />}
+            <Box sx={{ px: 1.5, py: 1, display: 'flex', gap: 1, alignItems: 'center' }}>
+              <TextField
+                size="small"
+                placeholder="Nova lista"
+                value={newList}
+                onChange={(e) => setNewList(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter' && newList.trim()) {
+                    apply({ lists: [...currentLists, newList.trim()] });
+                    setNewList('');
+                  }
+                }}
+                inputProps={{ 'aria-label': 'Nome da nova lista' }}
+                sx={{ width: 150, '& .MuiInputBase-input': { fontSize: 13 } }}
+              />
+              <Button
+                size="small"
+                disabled={!newList.trim()}
+                onClick={() => {
+                  apply({ lists: [...currentLists, newList.trim()] });
+                  setNewList('');
+                }}
+              >
+                Criar
+              </Button>
+            </Box>
+          </MenuList>
+        </Paper>
+      </Popper>
+
     </>
   );
 }
