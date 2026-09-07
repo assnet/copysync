@@ -16,7 +16,7 @@ interface Props {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  scrollToBottom?: number;
+  scrollSignal?: { n: number; smooth: boolean };
   onParticipantClick?: (phone: string, name: string) => void;
 }
 
@@ -31,7 +31,7 @@ export function ChatWindow({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
-  scrollToBottom = 0,
+  scrollSignal,
   onParticipantClick,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -86,7 +86,7 @@ export function ChatWindow({
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onLoadMore={onLoadMore}
-        scrollToBottom={scrollToBottom}
+        scrollSignal={scrollSignal}
         onReply={handleReply}
         onParticipantClick={onParticipantClick}
       />

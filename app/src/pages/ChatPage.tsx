@@ -62,8 +62,14 @@ export default function ChatPage() {
   const [hasMore, setHasMore] = useState<Record<string, boolean>>({});
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [oldestTimestamp, setOldestTimestamp] = useState<Record<string, string>>({});
-  // Trigger para rolar ao fundo (incrementa a cada evento que exige scroll)
-  const [scrollToBottom, setScrollToBottom] = useState(0);
+  // Sinal para rolar ao fundo. `smooth` distingue a intenção: abrir uma conversa
+  // deve posicionar no fim instantaneamente, enquanto uma mensagem nova numa conversa
+  // já aberta rola suavemente. Inferir isso de um contador global fazia toda abertura
+  // a partir da segunda animar a rolagem da mensagem mais antiga até a mais recente.
+  const [scrollSignal, setScrollSignal] = useState({ n: 0, smooth: false });
+  const requestScroll = useCallback((smooth: boolean) => {
+    setScrollSignal((prev) => ({ n: prev.n + 1, smooth }));
+  }, []);
 
   const loadSessions = useCallback(() => {
     sessionService
@@ -175,7 +181,7 @@ export default function ChatPage() {
           // Scroll ao fundo apenas quando a conversa está aberta na tela
           setSelectedId((currentId) => {
             if (currentId === conversationId) {
-              setScrollToBottom((v) => v + 1);
+              requestScroll(true);
             }
             return currentId;
           });
@@ -280,7 +286,7 @@ export default function ChatPage() {
 
       // Carrega mensagens se já estiver em cache — apenas dispara scroll
       if (messages[id]) {
-        setScrollToBottom((v) => v + 1);
+        requestScroll(false);
         return;
       }
 
@@ -294,7 +300,7 @@ export default function ChatPage() {
           if (mapped.length > 0) {
             setOldestTimestamp((prev) => ({ ...prev, [id]: mapped[0].timestamp }));
           }
-          setScrollToBottom((v) => v + 1);
+          requestScroll(false);
         })
         .catch((err: unknown) => console.error('Erro ao carregar mensagens', err))
         .finally(() => setLoadingMessages(false));
@@ -358,7 +364,7 @@ export default function ChatPage() {
         ...prev,
         [selectedId]: [...(prev[selectedId] ?? []), optimistic],
       }));
-      setScrollToBottom((v) => v + 1);
+      requestScroll(true);
 
       chatService
         .sendMessage(selectedId, text, quotedMessageId ?? undefined)
@@ -467,7 +473,7 @@ export default function ChatPage() {
           hasMore={selectedId ? (hasMore[selectedId] ?? false) : false}
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
-          scrollToBottom={scrollToBottom}
+          scrollSignal={scrollSignal}
           onParticipantClick={handleParticipantClick}
         />
       ) : (

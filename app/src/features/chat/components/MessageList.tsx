@@ -11,7 +11,8 @@ interface Props {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  scrollToBottom?: number;
+  /** Sinal de rolagem: `n` incrementa a cada pedido, `smooth` define se anima. */
+  scrollSignal?: { n: number; smooth: boolean };
   onReply?: (message: ChatMessage) => void;
   onParticipantClick?: (phone: string, name: string) => void;
 }
@@ -61,7 +62,7 @@ export function MessageList({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
-  scrollToBottom = 0,
+  scrollSignal,
   onReply,
   onParticipantClick,
 }: Props) {
@@ -71,16 +72,18 @@ export function MessageList({
   const wasLoadingMore = useRef(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  // Scroll to bottom whenever the counter increments
+  // Rola ao fundo a cada novo sinal. A animação é decidida por quem pede: abrir uma
+  // conversa salta direto para o fim ('auto'), mensagem nova numa conversa aberta anima.
+  const scrollN = scrollSignal?.n ?? 0;
+  const scrollSmooth = scrollSignal?.smooth ?? false;
   useEffect(() => {
-    if (!scrollToBottom) return;
-    const behavior = scrollToBottom === 1 ? 'auto' : 'smooth';
+    if (!scrollN) return;
     // Defer um frame para garantir que o DOM já pintou a nova mensagem
     const raf = requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior });
+      bottomRef.current?.scrollIntoView({ behavior: scrollSmooth ? 'smooth' : 'auto' });
     });
     return () => cancelAnimationFrame(raf);
-  }, [scrollToBottom]);
+  }, [scrollN, scrollSmooth]);
 
   // Preserve scroll position after prepend (when older messages loaded)
   useEffect(() => {
