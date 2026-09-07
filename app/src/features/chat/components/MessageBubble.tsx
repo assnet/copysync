@@ -231,7 +231,9 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
       sx={{
         display: 'flex',
         justifyContent: isOut ? 'flex-end' : 'flex-start',
-        alignItems: 'center',
+        // Alinhado ao topo: o avatar acompanha a linha do nome, como no WhatsApp Web,
+        // em vez de flutuar na base de bolhas altas.
+        alignItems: 'flex-start',
         gap: 0.25,
         px: 2.5,
         mb: 0.5,
@@ -252,7 +254,8 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
             height: 28,
             fontSize: 11,
             fontWeight: 700,
-            alignSelf: 'flex-end',
+            // Desce o suficiente para o centro do avatar cair na linha do nome.
+            mt: 0.5,
             mr: 0.5,
             flexShrink: 0,
           }}

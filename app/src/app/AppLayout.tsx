@@ -113,9 +113,25 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
     navigate('/login');
   };
 
-  const navButtonSx = collapsed
-    ? { py: 1.25, px: 1, justifyContent: 'center' }
-    : { py: 1, px: 1.5 };
+  // Alvo de toque de 44px no mobile (recomendação de acessibilidade) e um indicador
+  // lateral no item ativo, que o `selected` do MUI sozinho não deixa evidente.
+  const navButtonSx = {
+    borderRadius: 2,
+    position: 'relative' as const,
+    minHeight: { xs: 44, sm: 40 },
+    ...(collapsed ? { py: 1.25, px: 1, justifyContent: 'center' } : { py: 1, px: 1.5 }),
+    '&.Mui-selected::before': {
+      content: '""',
+      position: 'absolute',
+      left: 0,
+      top: '50%',
+      transform: 'translateY(-50%)',
+      width: 3,
+      height: '60%',
+      borderRadius: 4,
+      bgcolor: 'primary.main',
+    },
+  };
 
   const navIconSx = collapsed
     ? { minWidth: 0, justifyContent: 'center', '& svg': { fontSize: 22 } }
@@ -312,6 +328,24 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
             />
           </ListItemButton>
         )}
+
+        {/* Versão do painel — discreta, presente também no modo compacto */}
+        <Tooltip title={`WaioPrime v${__APP_VERSION__}`} placement="right">
+          <Typography
+            variant="caption"
+            color="text.disabled"
+            align="center"
+            sx={{
+              display: 'block',
+              mt: 0.75,
+              fontSize: 10,
+              letterSpacing: 0.3,
+              userSelect: 'none',
+            }}
+          >
+            {collapsed ? __APP_VERSION__ : `v${__APP_VERSION__}`}
+          </Typography>
+        </Tooltip>
       </Box>
     </Box>
   );
@@ -322,7 +356,15 @@ export function AppLayout() {
   const { mode, toggleColorMode } = useColorMode();
   const theme = useTheme();
 
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Título da AppBar mobile: a seção atual orienta melhor que o nome do produto,
+  // que já aparece no menu.
+  const currentSectionLabel =
+    NAV_ITEMS.find((item) =>
+      item.matchPrefix ? location.pathname.startsWith('/settings') : location.pathname === item.path,
+    )?.label ?? 'WaioPrime';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -358,8 +400,8 @@ export function AppLayout() {
           <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 1 }}>
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }}>
-            WaioPrime
+          <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }} noWrap>
+            {currentSectionLabel}
           </Typography>
           {activeTenantName && (
             <Chip label={activeTenantName} size="small" color="primary" variant="outlined" />
@@ -390,6 +432,8 @@ export function AppLayout() {
         variant="temporary"
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
+        // keepMounted evita remontar o menu a cada abertura no mobile
+        ModalProps={{ keepMounted: true }}
         sx={{ display: { xs: 'block', sm: 'none' }, '& .MuiDrawer-paper': { width: DRAWER_WIDTH } }}
       >
         <DrawerContent onClose={() => setMobileOpen(false)} />
