@@ -18,6 +18,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`ChatGroupAvatarListener.ts`**, **`ChatWebSocketPublisher.ts`** — passa a publicar `chat.group.avatar.updated` com `groupJid`; casava por `contact.phone`, hoje vazio em grupos de propósito, e a atualização nunca chegaria ao painel
 - **`ListMessagesUseCase.ts`**, **`MessageBubble.tsx`** — mensagens de grupo trazem `fromParticipantAvatarUrl`, resolvido em consulta única por página, e a bolha exibe o avatar do remetente ao lado da mensagem, como no WhatsApp Web
 - **`ChatPage.tsx`**, **`chat.service.ts`** — o painel dispara o sync ao abrir e acompanha a fila até zerar
+- **`chat.api.types.ts`**, **`ChatPage.tsx`**, **`chat.service.ts`** — avatares são persistidos como caminho relativo (`/api/storage/media/...`) e eram usados direto no `src`: em produção o painel é servido por `waioprime.com` e a API por `api.waioprime.com`, então o navegador buscava a imagem no domínio do site estático e recebia 404 (o mesmo arquivo responde 200 na API). O helper `resolveMediaUrl`, que só cobria `mediaUrl` de mensagens, passa a cobrir o avatar do contato, o do remetente nas bolhas, os participantes e os avatares vindos por WebSocket
 
 #### Chat — Participantes do grupo
 
