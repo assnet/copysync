@@ -156,6 +156,12 @@ export default function ChatPage() {
               });
               setMessages((prev) => {
                 const cur = prev[conversationId] ?? [];
+                // A mesma mensagem pode chegar mais de uma vez: duas conexões WS
+                // (StrictMode monta o efeito duas vezes em dev), uma reconexão que
+                // reentrega o evento, ou corrida entre o evento e um refetch.
+                // Sem esta checagem o React acusa chaves duplicadas e a bolha aparece
+                // repetida na conversa.
+                if (cur.some((m) => m.id === frontendMsg.id)) return prev;
                 return {
                   ...prev,
                   [conversationId]: resolveQuotedMessages([...cur, frontendMsg]),
