@@ -205,6 +205,7 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
     <Tooltip title="Responder" placement={isOut ? 'left' : 'right'}>
       <IconButton
         size="small"
+        aria-label="Responder mensagem"
         onClick={() => onReply(message)}
         sx={{
           opacity: hovered ? 1 : 0,
@@ -266,7 +267,9 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
       <Box
         sx={{
           position: 'relative',
-          maxWidth: '68%',
+          // No mobile a bolha pode ocupar mais da largura: 68% deixa linhas curtas
+          // demais e obriga a quebrar frases simples.
+          maxWidth: { xs: '85%', sm: '68%' },
           minWidth: 80,
           px: 1.5,
           pt: 1,
@@ -312,6 +315,7 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
         >
           <IconButton
             size="small"
+            aria-label="Opções da mensagem"
             onClick={handleOpenMenu}
             sx={{ p: 0.3, color: isOut ? alpha('#fff', 0.75) : 'text.secondary' }}
           >
@@ -345,7 +349,9 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
               <Typography
                 component="span"
                 variant="caption"
-                sx={{ fontWeight: 400, fontSize: 10, ml: 0.75, opacity: 0.65 }}
+                // O número ao lado do nome é contexto útil no desktop, mas rouba
+                // largura preciosa no mobile, onde só o nome basta.
+                sx={{ fontWeight: 400, fontSize: 10, ml: 0.75, opacity: 0.65, display: { xs: 'none', sm: 'inline' } }}
               >
                 · {participantPhone.replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '+55 $1 $2-$3')}
               </Typography>

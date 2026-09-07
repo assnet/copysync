@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { Box } from '@mui/material';
+import { Box, useMediaQuery, useTheme } from '@mui/material';
 import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
 import { sessionService } from '@/services/session.service';
@@ -20,10 +20,11 @@ import type { SessionItem, SessionStatus } from '@/types/api.types';
 import type { GroupParticipantApiDto } from '@/types/chat.api.types';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
+// Altura útil = viewport menos a barra superior (AppBar de 56px no mobile, topbar de
+// 52px no desktop). O padding do wrapper é anulado pela margem negativa do container.
 const CHAT_HEIGHT = {
-  xs: 'calc(100vh - 88px)',
-  sm: 'calc(100vh - 100px)',
-  md: 'calc(100vh - 116px)',
+  xs: 'calc(100vh - 56px)',
+  sm: 'calc(100vh - 52px)',
 };
 
 const PAGE_SIZE = 40;
@@ -55,7 +56,14 @@ export default function ChatPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  // No mobile o painel de contexto é uma sobreposição de tela cheia: começar aberto
+  // esconderia a conversa que o usuário acabou de abrir.
+  const isMobile = useMediaQuery(useTheme().breakpoints.down('sm'));
+  const [detailsOpen, setDetailsOpen] = useState(!isMobile);
+
+  useEffect(() => {
+    if (isMobile) setDetailsOpen(false);
+  }, [isMobile]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
@@ -508,8 +516,9 @@ export default function ChatPage() {
         border: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.paper',
-        mx: { xs: -2, sm: -3, md: -4 },
-        mb: { xs: -2, sm: -3, md: -4 },
+        // Anula o padding do wrapper de conteúdo nos quatro lados: sem o topo, sobrava
+        // uma faixa vazia entre a topbar e a lista de conversas.
+        m: { xs: -2, sm: -3, md: -4 },
       }}
     >
       {/* Lista de conversas. No mobile é uma tela inteira e some quando há conversa

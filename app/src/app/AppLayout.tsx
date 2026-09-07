@@ -442,7 +442,21 @@ export function AppLayout() {
       {/* Conteúdo principal */}
       <Box
         component="main"
-        sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', mt: { xs: '56px', sm: 0 } }}
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          // minWidth 0 é o que permite ao main encolher abaixo da largura intrínseca do
+          // conteúdo. Sem isso, listas com texto longo esticavam a página para 849px
+          // numa viewport de 390px e criavam rolagem horizontal no mobile.
+          minWidth: 0,
+          overflowX: 'hidden',
+          // padding em vez de margin: a margem do main colapsava com a margem negativa
+          // que as páginas usam para anular o padding do wrapper, e o conteúdo subia
+          // para trás da AppBar fixa no mobile.
+          pt: { xs: '56px', sm: 0 },
+        }}
       >
         {/* Topbar desktop */}
         <Box

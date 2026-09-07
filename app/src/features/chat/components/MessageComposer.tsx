@@ -119,6 +119,9 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
           gap: 1,
           px: 1.5,
           py: 1.25,
+          // Respeita a área segura de aparelhos com barra inferior (iPhone), para o
+          // campo não ficar sob o indicador de home.
+          pb: 'calc(10px + env(safe-area-inset-bottom))',
           bgcolor: 'background.paper',
         }}
       >

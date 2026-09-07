@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/assets/logo_waiochat.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Cor da barra do navegador acompanhando o tema do painel -->
+    <meta name="theme-color" content="#f5f6fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1117" media="(prefers-color-scheme: dark)" />
     <title>WaioPrime</title>
     <!--
       data-app="waioprime" — marcador de whitelist do DomGuardian.
@@ -14,6 +17,18 @@
     <style data-app="waioprime">
       *, *::before, *::after { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; height: 100%; }
+      /* Remove o atraso de ~300ms do toque e evita zoom por duplo toque */
+      html { touch-action: manipulation; }
+      /* Elementos nativos (scrollbars, inputs) acompanham o tema do sistema */
+      :root { color-scheme: light dark; }
+      /* Sem animação para quem pediu menos movimento */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
       #root {
         isolation: isolate;
         height: 100%;

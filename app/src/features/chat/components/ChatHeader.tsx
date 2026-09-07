@@ -156,12 +156,12 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
           <Tooltip title="Buscar na conversa">
-            <IconButton size="small">
+            <IconButton size="small" aria-label="Buscar nesta conversa">
               <SearchIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Mais opções">
-            <IconButton size="small">
+            <IconButton size="small" aria-label="Mais ações">
               <MoreVertIcon fontSize="small" />
             </IconButton>
           </Tooltip>
