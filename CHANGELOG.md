@@ -20,6 +20,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Changed
 
+- **`@whiskeysockets/baileys`** — atualizado de `7.0.0-rc.9` (21/11/2025) para `7.0.0-rc14` (29/07/2026). Traz o rc10 (correções de estabilidade em reenvio de mensagens, upload de mídia, Mutex, vazamento de memória e sincronia de app state) e o rc13 (parsing de `protocolMessage` com `fromMe` incorretamente `false`). Pontos de contato verificados: `key.participantAlt`/`remoteJidAlt`, entrega offline como `append`, `lidMapping.getPNForLID` (agora tipado), `profilePictureUrl`, `Contact.phoneNumber` e os valores de `DisconnectReason` seguem inalterados
+- **`BaileysMessagingEngineAdapter.ts`** — remove `printQRInTerminal`, deprecado na rc14; o QR já vinha do evento `connection.update` e é publicado via `SESSION_QR_UPDATED`
+- **`docs/sessoes-e-chat-diagnostico.md`** — novo documento com os doze problemas investigados em 06–07/09/2026, causas reais, soluções, cuidados não óbvios ao mexer e armadilhas de diagnóstico
 - **`ListConversationsUseCase.ts`**, **`IChatContactRepository.ts`**, **`PrismaChatContactRepository.ts`** — a listagem buscava o contato de cada conversa individual com um `findById` dentro do laço, em série: 23 consultas para 51 conversas (19 individuais, 3 sessões) onde bastavam 3, cada uma pagando a latência até o Postgres (~125 ms de servidor contra ~33 ms da rota de mensagens). Os contatos passam a ser carregados em lote e resolvidos por `Map`; acrescenta `findByIds` e `findByPhones` ao repositório. Resposta HTTP inalterada
 
 ### Fixed
