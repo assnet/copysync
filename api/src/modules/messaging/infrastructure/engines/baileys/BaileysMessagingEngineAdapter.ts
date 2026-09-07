@@ -58,6 +58,9 @@ const HANDLED_SOCKET_EVENTS = [
   'presence.update',
 ] as const;
 
+/** Máximo de fotos de perfil buscadas ao listar participantes de um grupo. */
+const GROUP_AVATAR_FETCH_LIMIT = 60;
+
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 3_000;
 const THIRTY_MIN_MS = 30 * 60 * 1_000;
@@ -222,6 +225,24 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const metadata = await (entry.socket as BaileysSocketWithGroupHelpers).groupMetadata?.(remoteJid);
       const participants = metadata?.participants ?? [];
 
+      // Foto de perfil é uma consulta por participante ao WhatsApp; buscamos só até
+      // GROUP_AVATAR_FETCH_LIMIT para não transformar a abertura de um grupo grande em
+      // dezenas de idas à rede. Acima disso o painel cai nas iniciais.
+      const avatarByJid = new Map<string, string | null>();
+      await Promise.all(
+        participants.slice(0, GROUP_AVATAR_FETCH_LIMIT).map(async (p) => {
+          const jid = p.id;
+          if (!jid) return;
+          try {
+            const url = await entry.socket.profilePictureUrl(jid, 'preview');
+            avatarByJid.set(jid, url ?? null);
+          } catch {
+            // Sem foto, foto restrita por privacidade ou timeout — cai nas iniciais.
+            avatarByJid.set(jid, null);
+          }
+        }),
+      );
+
       return participants.map((p) => {
         // Em grupos com privacidade de número o `id` vem como @lid e o telefone real,
         // quando disponível, chega em `phoneNumber` — mesmo par de campos das mensagens
@@ -234,6 +255,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         return {
           phone,
           name: p.name ?? p.notify ?? p.verifiedName ?? null,
+          avatarUrl: (p.id ? avatarByJid.get(p.id) : null) ?? null,
           isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
         };
       });

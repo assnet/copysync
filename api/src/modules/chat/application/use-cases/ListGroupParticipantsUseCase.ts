@@ -63,7 +63,8 @@ export class ListGroupParticipantsUseCase {
       return {
         phone: participant.phone,
         name,
-        avatarUrl: contact?.avatarUrl ?? null,
+        // A foto vinda do WhatsApp é a mais atual; o contato do tenant é fallback.
+        avatarUrl: participant.avatarUrl ?? contact?.avatarUrl ?? null,
         initials: buildInitials(name),
         isAdmin: participant.isAdmin,
       };

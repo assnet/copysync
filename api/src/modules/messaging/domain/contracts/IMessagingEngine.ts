@@ -134,6 +134,8 @@ export interface GroupParticipantInfo {
   phone: string | null;
   /** Nome exibido, quando o WhatsApp o fornece. */
   name: string | null;
+  /** Foto de perfil. URL temporária do WhatsApp — não deve ser persistida. */
+  avatarUrl: string | null;
   isAdmin: boolean;
 }
 
