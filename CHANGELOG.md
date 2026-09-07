@@ -11,6 +11,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Acesso aos dados da conversa
+
+- **`ChatHeader.tsx`** — o ícone de informação sai do cabeçalho e vira item do menu de três pontos, com rótulo que acompanha o estado ("Dados do grupo" / "Dados do contato" / "Fechar dados"). O avatar do cabeçalho passa a ser o atalho direto para o painel, com papel de botão, rótulo, foco visível e acionamento por teclado
+
 #### Chat — Busca dentro da conversa
 
 - **`ListMessagesUseCase.ts`**, **`PrismaChatMessageRepository.ts`**, **`chat.routes.ts`** — `GET /chat/conversations/:id/messages` aceita `search`, com `contains` insensitive sobre o conteúdo, ignorando mensagens apagadas e devolvendo do mais recente para o mais antigo. A leitura normal da conversa segue em ordem cronológica, sem mudança de comportamento
