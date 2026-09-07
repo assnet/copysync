@@ -123,16 +123,18 @@ export const chatService = {
 
   async listGroupParticipants(
     conversationId: string,
-    params?: { limit?: number; offset?: number; search?: string },
-  ): Promise<{ participants: GroupParticipantApiDto[]; total: number }> {
-    const res = await apiClient.get<{ success: true; data: { participants: GroupParticipantApiDto[]; total: number } }>(
-      `/chat/conversations/${conversationId}/participants`,
-      { params },
-    );
+    // O tamanho da página é do servidor; o cliente só repassa o cursor recebido.
+    params?: { cursor?: string; search?: string },
+  ): Promise<{ participants: GroupParticipantApiDto[]; total: number; nextCursor: string | null }> {
+    const res = await apiClient.get<{
+      success: true;
+      data: { participants: GroupParticipantApiDto[]; total: number; nextCursor?: string | null };
+    }>(`/chat/conversations/${conversationId}/participants`, { params });
     // Participantes podem trazer avatar do WhatsApp (absoluto) ou do contato do
     // tenant (relativo à API) — resolver cobre os dois casos.
     return {
       total: res.data.data.total,
+      nextCursor: res.data.data.nextCursor ?? null,
       participants: res.data.data.participants.map((p) => ({
         ...p,
         avatarUrl: resolveMediaUrl(p.avatarUrl),

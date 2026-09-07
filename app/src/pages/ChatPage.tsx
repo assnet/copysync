@@ -32,8 +32,6 @@ const CHAT_HEIGHT = {
 };
 
 const PAGE_SIZE = 40;
-/** Participantes exibidos no painel; o restante fica no modal "Ver todos". */
-const PARTICIPANTS_PREVIEW = 10;
 
 // Resolve quotedMessage para cada mensagem que tenha quotedMessageId
 function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
@@ -161,7 +159,7 @@ export default function ChatPage() {
     setLoadingParticipants(true);
     // Só a prévia: a lista completa fica no modal, carregada sob demanda.
     chatService
-      .listGroupParticipants(selectedId, { limit: PARTICIPANTS_PREVIEW })
+      .listGroupParticipants(selectedId)
       .then(({ participants: items, total }) => {
         if (cancelled) return;
         setParticipants(items);

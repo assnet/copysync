@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, TextField, InputAdornment, Box, Typography,
-  Avatar, Chip, CircularProgress, IconButton, Button,
+  Avatar, Chip, CircularProgress, IconButton,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
@@ -17,8 +17,10 @@ interface Props {
   total: number;
 }
 
-/** Tamanho da página — o painel nunca recebe a lista inteira do grupo. */
-const PAGE = 10;
+/**
+ * O tamanho da página é decidido pelo servidor: o cliente apenas segue o cursor
+ * assinado que recebe. Alterar a requisição não traz mais registros.
+ */
 
 /**
  * Lista completa de membros, carregada sob demanda.
@@ -32,25 +34,30 @@ export function GroupMembersDialog({ open, onClose, conversationId, total }: Pro
   const [count, setCount] = useState(total);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  // A carga seguinte é disparada pela rolagem; a trava evita disparos repetidos
+  // enquanto uma requisição está em andamento.
+  const loadingRef = useRef(false);
 
   const loadPage = useCallback(
-    async (offset: number, term: string, replace: boolean) => {
+    async (pageCursor: string | null, term: string, replace: boolean) => {
+      if (loadingRef.current) return;
+      loadingRef.current = true;
       setLoading(true);
       try {
         const res = await chatService.listGroupParticipants(conversationId, {
-          limit: PAGE,
-          offset,
+          ...(pageCursor ? { cursor: pageCursor } : {}),
           ...(term ? { search: term } : {}),
         });
         setCount(res.total);
-        // Corta na página mesmo se o servidor devolver mais: a paginação não pode
-        // depender da versão da API para valer.
-        const page = res.participants.slice(0, PAGE);
-        setMembers((prev) => (replace ? page : [...prev, ...page]));
+        setCursor(res.nextCursor);
+        setMembers((prev) => (replace ? res.participants : [...prev, ...res.participants]));
       } catch {
         if (replace) setMembers([]);
       } finally {
+        loadingRef.current = false;
         setLoading(false);
       }
     },
@@ -62,9 +69,10 @@ export function GroupMembersDialog({ open, onClose, conversationId, total }: Pro
     if (!open) {
       setMembers([]);
       setSearch('');
+      setCursor(null);
       return;
     }
-    void loadPage(0, '', true);
+    void loadPage(null, '', true);
   }, [open, loadPage]);
 
   // Busca refaz a paginação do zero, aguardando a digitação parar.
@@ -72,12 +80,26 @@ export function GroupMembersDialog({ open, onClose, conversationId, total }: Pro
     if (!open) return;
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({ top: 0 });
-      void loadPage(0, search.trim(), true);
+      void loadPage(null, search.trim(), true);
     }, 350);
     return () => clearTimeout(timer);
   }, [search, open, loadPage]);
 
-  const hasMore = members.length < count;
+  // Carrega ao alcançar o fim da lista, durante a rolagem: não há botão para
+  // automatizar, e nada é buscado sem o usuário chegar até ali.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!open || !sentinel || !cursor) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadPage(cursor, search.trim(), false);
+      },
+      { root: scrollRef.current, rootMargin: '80px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [open, cursor, search, loadPage]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -152,13 +174,8 @@ export function GroupMembersDialog({ open, onClose, conversationId, total }: Pro
           </Typography>
         )}
 
-        {hasMore && !loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
-            <Button size="small" onClick={() => void loadPage(members.length, search.trim(), false)}>
-              Carregar mais ({count - members.length} restantes)
-            </Button>
-          </Box>
-        )}
+        {/* Sentinela do fim da lista: entra em vista quando o usuário chega ao fim. */}
+        <Box ref={sentinelRef} sx={{ height: 1 }} />
       </DialogContent>
     </Dialog>
   );
