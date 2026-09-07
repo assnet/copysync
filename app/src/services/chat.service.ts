@@ -8,6 +8,7 @@ import type {
   ListMessagesParams,
   UpdateConversationRequest,
   GroupParticipantApiDto,
+  ContactSuggestionApiDto,
 } from '@/types/chat.api.types';
 
 export const chatService = {
@@ -81,6 +82,14 @@ export const chatService = {
 
   async subscribePresence(conversationId: string): Promise<void> {
     await apiClient.post(`/chat/conversations/${conversationId}/presence`);
+  },
+
+  async suggestContacts(term: string, sessionId?: string): Promise<ContactSuggestionApiDto[]> {
+    const res = await apiClient.get<{ success: true; data: { suggestions: ContactSuggestionApiDto[] } }>(
+      '/chat/contacts/suggest',
+      { params: { q: term, ...(sessionId ? { sessionId } : {}) } },
+    );
+    return res.data.data.suggestions.map((s) => ({ ...s, avatarUrl: resolveMediaUrl(s.avatarUrl) }));
   },
 
   async startConversation(input: { sessionId: string; phone: string; name?: string }): Promise<string> {

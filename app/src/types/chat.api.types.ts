@@ -19,6 +19,16 @@ export interface ChatContactApiDto {
   updatedAt: string;
 }
 
+export interface ContactSuggestionApiDto {
+  phone: string;
+  name: string;
+  avatarUrl: string | null;
+  /** true quando o contato já existe no tenant. */
+  known: boolean;
+  /** true tem conta, false não tem, null não foi possível verificar. */
+  onWhatsApp: boolean | null;
+}
+
 export interface GroupParticipantApiDto {
   /** Telefone em dígitos, ou null quando o participante não o revela. */
   phone: string | null;

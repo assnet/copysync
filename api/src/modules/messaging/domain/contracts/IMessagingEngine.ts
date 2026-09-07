@@ -138,6 +138,12 @@ export interface IMessagingEngine {
    * @param jid telefone em dígitos (contato) ou groupJid (grupo, sem @g.us)
    */
   fetchProfilePicture(sessionId: string, jid: string, isGroup: boolean): Promise<string | null>;
+  /**
+   * Verifica se um telefone tem conta no WhatsApp.
+   * Devolve null quando a sessão não está conectada ou a consulta falha — nesse caso
+   * não dá para afirmar que o número não existe.
+   */
+  checkNumberExists(sessionId: string, phone: string): Promise<boolean | null>;
 }
 
 export interface GroupParticipantInfo {

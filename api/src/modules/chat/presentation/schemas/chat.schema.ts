@@ -73,3 +73,12 @@ export const startConversationBodySchema = {
     name:      { type: 'string' },
   },
 } as const;
+
+export const suggestContactsQuerySchema = {
+  type: 'object',
+  required: ['q'],
+  properties: {
+    q:         { type: 'string' },
+    sessionId: { type: 'string' },
+  },
+} as const;

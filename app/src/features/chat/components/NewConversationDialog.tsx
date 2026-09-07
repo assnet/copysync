@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
-  Box, Typography, MenuItem, Alert,
+  Box, Typography, MenuItem, Alert, Avatar, ListItemButton, CircularProgress,
 } from '@mui/material';
 import { chatService } from '@/services/chat.service';
+import type { ContactSuggestionApiDto } from '@/types/chat.api.types';
+import { formatPhone } from '../utils';
 
 interface Props {
   open: boolean;
@@ -26,6 +28,8 @@ export function NewConversationDialog({ open, onClose, sessions, defaultSessionI
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<ContactSuggestionApiDto[]>([]);
+  const [searching, setSearching] = useState(false);
 
   // As sessões chegam por requisição, depois da primeira renderização: sem isso o
   // estado inicial fica vazio e o botão nunca habilita.
@@ -37,6 +41,28 @@ export function NewConversationDialog({ open, onClose, sessions, defaultSessionI
       return defaultSessionId ?? sessions[0]?.id ?? '';
     });
   }, [open, sessions, defaultSessionId]);
+
+  // Sugestões enquanto digita: contatos conhecidos e, para número completo ainda
+  // desconhecido, a verificação no WhatsApp feita pelo servidor.
+  useEffect(() => {
+    const term = phone.trim();
+    if (!open || term.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      chatService
+        .suggestContacts(term, sessionId || undefined)
+        .then((items) => { if (!cancelled) setSuggestions(items); })
+        .catch(() => { if (!cancelled) setSuggestions([]); })
+        .finally(() => { if (!cancelled) setSearching(false); });
+    }, 400);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [phone, sessionId, open]);
 
   const digits = onlyDigits(phone);
   // 10 dígitos cobrem fixo com DDD; 14 é o teto de E.164 usado no resto do painel.
@@ -98,6 +124,50 @@ export function NewConversationDialog({ open, onClose, sessions, defaultSessionI
             }
             error={Boolean(phone) && !phoneValid}
           />
+
+          {(searching || suggestions.length > 0) && (
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                maxHeight: 220,
+                overflowY: 'auto',
+              }}
+              aria-live="polite"
+            >
+              {searching && suggestions.length === 0 ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={18} />
+                </Box>
+              ) : (
+                suggestions.map((s) => (
+                  <ListItemButton
+                    key={s.phone}
+                    onClick={() => {
+                      setPhone(s.phone);
+                      if (!name && s.known) setName(s.name);
+                      setSuggestions([]);
+                    }}
+                    sx={{ gap: 1.5, py: 1, flexGrow: 0 }}
+                  >
+                    <Avatar src={s.avatarUrl ?? undefined} sx={{ width: 32, height: 32, fontSize: 12 }}>
+                      {/^[\d\s+()-]+$/.test(s.name) ? undefined : s.name[0]?.toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography variant="body2" noWrap>{s.name}</Typography>
+                      <Typography variant="caption" color="text.disabled" noWrap>
+                        {s.known ? formatPhone(s.phone) : 'Não está nos seus contatos'}
+                      </Typography>
+                    </Box>
+                    {s.onWhatsApp === false && (
+                      <Typography variant="caption" color="error.main">sem WhatsApp</Typography>
+                    )}
+                  </ListItemButton>
+                ))
+              )}
+            </Box>
+          )}
 
           <TextField
             label="Nome (opcional)"

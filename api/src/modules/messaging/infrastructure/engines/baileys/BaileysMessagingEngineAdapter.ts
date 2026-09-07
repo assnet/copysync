@@ -324,6 +324,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     }
   }
 
+  async checkNumberExists(sessionId: string, phone: string): Promise<boolean | null> {
+    const entry = this.registry.get(sessionId);
+    if (!entry) return null;
+
+    try {
+      const results = await entry.socket.onWhatsApp(`${phone}@s.whatsapp.net`);
+      const match = results?.[0];
+      return match ? match.exists : false;
+    } catch (err) {
+      baileysLogger.debug({ err, sessionId, phone }, 'Failed to check number on WhatsApp');
+      return null;
+    }
+  }
+
   // -- Private ------------------------------------------------------------------
 
   private async openSocket(sessionId: string, tenantId: string, attempt: number): Promise<void> {

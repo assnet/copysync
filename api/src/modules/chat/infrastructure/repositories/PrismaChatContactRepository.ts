@@ -39,6 +39,22 @@ export class PrismaChatContactRepository implements IChatContactRepository {
     return raw ? PrismaChatContactMapper.toDomain(raw) : null;
   }
 
+  async search(term: string, tenantId: string, limit: number): Promise<ChatContact[]> {
+    const digits = term.replace(/\D/g, '');
+    const rows = await this.prisma.chatContact.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { name: { contains: term, mode: 'insensitive' } },
+          ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
+        ],
+      },
+      orderBy: { name: 'asc' },
+      take: limit,
+    });
+    return rows.map(PrismaChatContactMapper.toDomain);
+  }
+
   async findOrCreate(data: ChatContactCreateData): Promise<ChatContact> {
     const existing = await this.findByPhone(data.phone, data.tenantId);
     if (existing) {

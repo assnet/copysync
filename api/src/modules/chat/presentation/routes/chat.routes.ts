@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
+import { SuggestContactsUseCase } from '../../application/use-cases/SuggestContactsUseCase';
 import { StartConversationUseCase } from '../../application/use-cases/StartConversationUseCase';
 import { SyncChatAvatarsUseCase } from '../../application/use-cases/SyncChatAvatarsUseCase';
 import { ListGroupParticipantsUseCase } from '../../application/use-cases/ListGroupParticipantsUseCase';
@@ -17,6 +18,7 @@ import {
   listConversationsQuerySchema,
   listMessagesQuerySchema,
   startConversationBodySchema,
+  suggestContactsQuerySchema,
   sendMessageBodySchema,
   updateConversationBodySchema,
 } from '../schemas/chat.schema';
@@ -223,6 +225,25 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       });
 
       httpResponse.ok(reply, { success: true });
+    },
+  );
+
+  // ── GET /contacts/suggest — sugestões ao iniciar uma conversa ─────────────
+  app.get(
+    '/contacts/suggest',
+    { preHandler, schema: { querystring: suggestContactsQuerySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const qs = request.query as Record<string, string | undefined>;
+
+      const useCase = new SuggestContactsUseCase(contactRepo, getActiveEngine() ?? undefined);
+      const suggestions = await useCase.execute({
+        tenantId,
+        term: qs['q'] ?? '',
+        sessionId: qs['sessionId'] || undefined,
+      });
+
+      httpResponse.ok(reply, { suggestions });
     },
   );
 
