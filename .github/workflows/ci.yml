@@ -1,19 +1,27 @@
-# Verificação automática de api/ e app/ em todo push e PR para develop e main.
+# Verificação automática de api/ e app/.
 #
 # Roda os mesmos gates que o processo manual exige (AGENTS.md §36): compilação
-# TypeScript e testes. Sem isso, os gates dependem de alguém lembrar de rodá-los
-# antes do merge.
+# TypeScript, testes e build. Sem isso, os gates dependem de alguém lembrar de
+# executá-los antes do merge.
+#
+# Dispara também nas branches de trabalho (feature/fix/chore) porque o fluxo do
+# projeto autoriza merge direto na develop, sem PR — se o CI só rodasse na
+# develop, o gate chegaria depois do merge, tarde demais para servir de gate.
 name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop, main, 'feature/**', 'fix/**', 'chore/**', 'hotfix/**']
   pull_request:
     branches: [develop, main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
-    name: ${{ matrix.app }} — typecheck + testes
+    name: ${{ matrix.app }} — typecheck + testes + build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,16 +39,19 @@ jobs:
         with:
           version: 10.33.0
 
+      # Node 22: o Vitest 5 exige ^22.12.0 || ^24.0.0 || >=26.0.0 — o 20, apesar
+      # de atender o `engines` da API, não roda o runner de testes.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           cache-dependency-path: ${{ matrix.app }}/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
-      # O client do Prisma é gerado no postinstall em máquina de dev; no CI o
-      # typecheck da API precisa dele explicitamente.
+      # Não há postinstall no projeto: em máquina de dev o client sai do
+      # `pnpm restart`/`prisma:generate` rodados à mão. No CI o passo é explícito,
+      # senão o typecheck da API falha por falta dos tipos gerados.
       - name: Gerar Prisma Client
         if: matrix.app == 'api'
         run: pnpm prisma:generate
@@ -48,3 +59,8 @@ jobs:
       - run: pnpm typecheck
 
       - run: pnpm test
+
+      # `typecheck` usa `tsc --noEmit`; o build usa outro grafo (`tsc -b` + `vite build`
+      # no painel, `tsconfig.build.json` na API). Erro de configuração de build só
+      # aparece aqui — do contrário, quebraria direto no deploy.
+      - run: pnpm build

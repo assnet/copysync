@@ -4,9 +4,6 @@ node_modules/
 # Build output
 dist/
 
-# Cache incremental do tsc (`tsc -b`) — regenerado a cada build, não versionar
-*.tsbuildinfo
-
 # Environment
 .env
 .env.local
