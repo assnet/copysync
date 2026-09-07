@@ -11,6 +11,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Painel — Layout do chat e conformidade de interface
+
+Verificado no navegador em 1440×900 e 390×844, com medições do DOM.
+
+- **`AppLayout.tsx`** — o `main` não tinha `minWidth: 0` e não encolhia abaixo da largura intrínseca do conteúdo: a página esticava para 849 px numa viewport de 390 px, com rolagem horizontal no mobile. O `marginTop` também colapsava com a margem negativa usada pelas páginas para anular o padding do wrapper, jogando o conteúdo para trás da AppBar fixa e escondendo o cabeçalho da conversa — trocado por `paddingTop`
+- **`ChatPage.tsx`** — o padding do wrapper era anulado só nas laterais e no rodapé, deixando faixa vazia acima da lista; a altura passa a descontar apenas a barra superior real (56 px no mobile, 52 px no desktop). O painel de contexto passa a iniciar fechado no mobile, onde é sobreposição de tela cheia
+- **`MessageBubble.tsx`** — bolha ocupa 85 % da largura no mobile e o número do participante aparece só a partir de `sm`
+- **`index.html`**, **`MessageComposer.tsx`**, **`ChatHeader.tsx`** — `theme-color` por esquema de cor, `viewport-fit=cover`, `color-scheme: light dark`, `touch-action: manipulation`, respeito a `prefers-reduced-motion`, área segura no campo de mensagem e `aria-label` nos botões de ícone (eram 13 com apenas 1 rotulado)
+
 #### Chat — Layout responsivo e navegação mobile
 
 - **`ConversationSidebar.tsx`** — a coluna de conversas tinha largura fixa de 320 px e não acompanhava o espaço disponível; passa a ser fluida (tela cheia no mobile, 300/340/380 px conforme o breakpoint)
