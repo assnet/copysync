@@ -343,17 +343,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
       if (isStale()) return;
       try {
-        // 'notify' = real-time new messages; 'append' = historical sync — skip
+        // 'notify' = mensagem em tempo real.
+        // 'append' = entrega offline: mensagens que chegaram enquanto a sessão estava
+        // fora do ar e o WhatsApp acumulou (o Baileys marca `offline` como 'append').
+        // São mensagens reais endereçadas ao tenant, não histórico antigo, então são
+        // sempre ingeridas — do contrário todo restart da API perderia silenciosamente
+        // tudo que chegou durante o deploy. O dedupe por externalMessageId no
+        // IngestHistorySyncUseCase evita gravar duas vezes.
         if (type !== 'notify') {
-          // 'append' = mensagens históricas recebidas durante reconnect / gap sync
           if (type === 'append') {
-            if (!env.BAILEYS_SYNC_FULL_HISTORY) {
-              baileysLogger.debug(
-                { sessionId, count: messages.length },
-                'Skipping append history sync because BAILEYS_SYNC_FULL_HISTORY is disabled',
-              );
-              return;
-            }
             setImmediate(async () => {
               try {
                 const items = await this.mapMessagesToHistoryItems(messages, socket, sessionId, tenantId);
