@@ -7,6 +7,7 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RouterOutlinedIcon from '@mui/icons-material/RouterOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import type { ChatConversation } from '../types';
@@ -17,6 +18,8 @@ interface Props {
   detailsOpen: boolean;
   onToggleDetails: () => void;
   presence?: string;
+  /** Volta para a lista de conversas — usado na navegação por telas do mobile. */
+  onBack?: () => void;
 }
 
 const STATUS_ICON: Record<string, ReactElement> = {
@@ -36,7 +39,7 @@ function getPresenceLabel(presence?: string): { text: string; color: string } | 
   }
 }
 
-export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presence }: Props) {
+export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presence, onBack }: Props) {
   const theme = useTheme();
   const { contact, session, status, queue, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
@@ -56,6 +59,18 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
           bgcolor: 'background.paper',
         }}
       >
+        {/* Voltar — só no mobile, onde lista e conversa são telas separadas */}
+        {onBack && (
+          <IconButton
+            onClick={onBack}
+            size="small"
+            aria-label="Voltar para as conversas"
+            sx={{ display: { xs: 'inline-flex', sm: 'none' }, ml: -0.5, mr: -0.5 }}
+          >
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+        )}
+
         {/* Avatar */}
         <Avatar
           src={contact.avatarUrl ?? undefined}

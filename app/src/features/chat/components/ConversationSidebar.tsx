@@ -90,7 +90,9 @@ export function ConversationSidebar({
   return (
     <Box
       sx={{
-        width: 320,
+        // Largura fluida: ocupa a tela no mobile e acompanha o espaço disponível no
+        // desktop, em vez de ficar presa em 320px.
+        width: { xs: '100%', sm: 300, md: 340, lg: 380 },
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',

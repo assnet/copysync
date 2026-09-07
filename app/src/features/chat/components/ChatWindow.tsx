@@ -20,6 +20,8 @@ interface Props {
   onParticipantClick?: (phone: string, name: string) => void;
   /** Avatares dos participantes por telefone, usados nas bolhas de grupo. */
   participantAvatars?: Record<string, string>;
+  /** Volta para a lista — navegação por telas no mobile. */
+  onBack?: () => void;
 }
 
 export function ChatWindow({
@@ -36,6 +38,7 @@ export function ChatWindow({
   scrollSignal,
   onParticipantClick,
   participantAvatars,
+  onBack,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
@@ -80,6 +83,7 @@ export function ChatWindow({
         conversation={conversation}
         detailsOpen={detailsOpen}
         onToggleDetails={onToggleDetails}
+        onBack={onBack}
         presence={presence}
       />
 

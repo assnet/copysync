@@ -501,6 +501,7 @@ export default function ChatPage() {
     <Box
       sx={{
         display: 'flex',
+        position: 'relative',
         height: CHAT_HEIGHT,
         overflow: 'hidden',
         borderRadius: 0, 
@@ -511,7 +512,19 @@ export default function ChatPage() {
         mb: { xs: -2, sm: -3, md: -4 },
       }}
     >
-      {/* Conversa sidebar — esquerda */}
+      {/* Lista de conversas. No mobile é uma tela inteira e some quando há conversa
+          aberta — navegação por telas, como num app de mensagens. */}
+      <Box
+        sx={{
+          display: {
+            xs: selectedConversation ? 'none' : 'flex',
+            sm: 'flex',
+          },
+          flexDirection: 'column',
+          minWidth: 0,
+          width: { xs: '100%', sm: 'auto' },
+        }}
+      >
       <ConversationSidebar
         conversations={conversations}
         selectedId={selectedId}
@@ -530,8 +543,9 @@ export default function ChatPage() {
         loading={loadingConversations}
         presenceMap={presenceMap}
       />
+      </Box>
 
-      {/* Área central */}
+      {/* Área central — no mobile ocupa a tela quando há conversa selecionada */}
       {selectedConversation ? (
         <ChatWindow
           conversation={selectedConversation}
@@ -547,13 +561,26 @@ export default function ChatPage() {
           scrollSignal={scrollSignal}
           onParticipantClick={handleParticipantClick}
           participantAvatars={participantAvatars}
+          onBack={() => setSelectedId(null)}
         />
       ) : (
-        <EmptyConversationState />
+        <Box sx={{ display: { xs: 'none', sm: 'flex' }, flex: 1, minWidth: 0 }}>
+          <EmptyConversationState />
+        </Box>
       )}
 
-      {/* Painel de contexto — direita */}
+      {/* Painel de contexto. No desktop é a terceira coluna; no mobile ocupa a tela,
+          já que não há largura para três colunas. */}
       {selectedConversation && detailsOpen && (
+        <Box
+          sx={{
+            display: 'flex',
+            position: { xs: 'absolute', sm: 'static' },
+            inset: { xs: 0, sm: 'auto' },
+            zIndex: { xs: 3, sm: 'auto' },
+            bgcolor: 'background.paper',
+          }}
+        >
         <ConversationDetailsPanel
           conversation={selectedConversation}
           onClose={() => setDetailsOpen(false)}
@@ -561,6 +588,7 @@ export default function ChatPage() {
           participants={participants}
           loadingParticipants={loadingParticipants}
         />
+        </Box>
       )}
     </Box>
   );
