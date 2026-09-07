@@ -35,6 +35,12 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
       where['sentAt'] = { lt: new Date(filter.before) };
     }
 
+    if (filter.search) {
+      // Mensagens sem texto (mídia pura) simplesmente não casam com a busca.
+      where['content'] = { contains: filter.search, mode: 'insensitive' };
+      where['isDeleted'] = false;
+    }
+
     // A janela é SEMPRE as `limit` mensagens mais recentes (respeitando o cursor
     // `before`). Paginar com ordem crescente devolveria as mais antigas e as
     // mensagens novas nunca apareceriam em conversas com mais de `limit` itens.

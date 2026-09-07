@@ -20,6 +20,9 @@ interface Props {
   presence?: string;
   /** Volta para a lista de conversas — usado na navegação por telas do mobile. */
   onBack?: () => void;
+  /** Abre/fecha a busca de mensagens da conversa. */
+  onToggleSearch?: () => void;
+  searchOpen?: boolean;
 }
 
 const STATUS_ICON: Record<string, ReactElement> = {
@@ -39,7 +42,7 @@ function getPresenceLabel(presence?: string): { text: string; color: string } | 
   }
 }
 
-export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presence, onBack }: Props) {
+export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presence, onBack, onToggleSearch, searchOpen }: Props) {
   const theme = useTheme();
   const { contact, session, status, queue, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
@@ -156,7 +159,12 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
           <Tooltip title="Buscar na conversa">
-            <IconButton size="small" aria-label="Buscar nesta conversa">
+            <IconButton
+              size="small"
+              aria-label="Buscar nesta conversa"
+              onClick={onToggleSearch}
+              color={searchOpen ? 'primary' : 'default'}
+            >
               <SearchIcon fontSize="small" />
             </IconButton>
           </Tooltip>

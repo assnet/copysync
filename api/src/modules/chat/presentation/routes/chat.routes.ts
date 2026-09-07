@@ -163,6 +163,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         tenantId,
         limit:  qs['limit'] ? parseInt(qs['limit'], 10) : undefined,
         before: qs['before'],
+        search: qs['search'] || undefined,
       });
 
       httpResponse.ok(reply, ChatPresenter.presentMessageList(result));

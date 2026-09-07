@@ -9,6 +9,8 @@ export interface ListMessagesInput {
   tenantId: string;
   limit?: number;
   before?: string;
+  /** Busca textual dentro da conversa. */
+  search?: string;
 }
 
 export interface QuotedMessageSummary {
@@ -60,6 +62,10 @@ export class ListMessagesUseCase {
       conversationId: input.conversationId,
       limit: input.limit ?? 50,
       before: input.before,
+      search: input.search,
+      // Numa busca interessa o resultado mais recente primeiro; a leitura normal da
+      // conversa continua em ordem cronológica.
+      orderDir: input.search ? 'desc' : 'asc',
     });
 
     // Avatares dos remetentes de grupo, em consulta única para toda a página.

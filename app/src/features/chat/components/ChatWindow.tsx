@@ -22,6 +22,8 @@ interface Props {
   participantAvatars?: Record<string, string>;
   /** Volta para a lista — navegação por telas no mobile. */
   onBack?: () => void;
+  onToggleSearch?: () => void;
+  searchOpen?: boolean;
 }
 
 export function ChatWindow({
@@ -39,6 +41,8 @@ export function ChatWindow({
   onParticipantClick,
   participantAvatars,
   onBack,
+  onToggleSearch,
+  searchOpen,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
@@ -84,6 +88,8 @@ export function ChatWindow({
         detailsOpen={detailsOpen}
         onToggleDetails={onToggleDetails}
         onBack={onBack}
+        onToggleSearch={onToggleSearch}
+        searchOpen={searchOpen}
         presence={presence}
       />
 

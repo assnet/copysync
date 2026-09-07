@@ -103,6 +103,8 @@ export interface ListConversationsParams {
 export interface ListMessagesParams {
   limit?: number;
   before?: string;
+  /** Busca textual dentro da conversa. */
+  search?: string;
 }
 
 export interface UpdateConversationRequest {

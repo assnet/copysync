@@ -8,6 +8,8 @@ export interface ListMessagesFilter {
   before?: string; // ISO date — para paginação por cursor
   /** 'asc' (padrão) exibe do mais antigo; 'desc' do mais recente */
   orderDir?: 'asc' | 'desc';
+  /** Busca textual no conteúdo da mensagem, dentro da conversa. */
+  search?: string;
 }
 
 export interface ChatMessageCreateData {

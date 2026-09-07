@@ -14,6 +14,7 @@ import { ConversationSidebar } from '@/features/chat/components/ConversationSide
 import { ChatWindow } from '@/features/chat/components/ChatWindow';
 import { EmptyConversationState } from '@/features/chat/components/EmptyConversationState';
 import { ConversationDetailsPanel } from '@/features/chat/components/ConversationDetailsPanel';
+import { ConversationSearchPanel } from '@/features/chat/components/ConversationSearchPanel';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
@@ -68,6 +69,7 @@ export default function ChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
   // Arquivadas ficam numa visão à parte, como no WhatsApp Web.
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedCount, setArchivedCount] = useState(0);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
@@ -576,7 +578,13 @@ export default function ChatPage() {
           messages={selectedMessages}
           onSendMessage={handleSendMessage}
           detailsOpen={detailsOpen}
-          onToggleDetails={() => setDetailsOpen((v) => !v)}
+          onToggleDetails={() => {
+            setDetailsOpen((v) => {
+              const next = !v;
+              if (next) setSearchPanelOpen(false);
+              return next;
+            });
+          }}
           loadingMessages={loadingMessages}
           presence={presenceMap[selectedConversation.contact.phone]}
           hasMore={selectedId ? (hasMore[selectedId] ?? false) : false}
@@ -586,10 +594,37 @@ export default function ChatPage() {
           onParticipantClick={handleParticipantClick}
           participantAvatars={participantAvatars}
           onBack={() => setSelectedId(null)}
+          onToggleSearch={() => {
+            setSearchPanelOpen((v) => {
+              const next = !v;
+              // Busca e contexto disputam a mesma coluna: abrir um fecha o outro.
+              if (next) setDetailsOpen(false);
+              return next;
+            });
+          }}
+          searchOpen={searchPanelOpen}
         />
       ) : (
         <Box sx={{ display: { xs: 'none', sm: 'flex' }, flex: 1, minWidth: 0 }}>
           <EmptyConversationState />
+        </Box>
+      )}
+
+      {/* Busca de mensagens da conversa — ocupa a mesma coluna do contexto */}
+      {selectedConversation && searchPanelOpen && (
+        <Box
+          sx={{
+            display: 'flex',
+            position: { xs: 'absolute', sm: 'static' },
+            inset: { xs: 0, sm: 'auto' },
+            zIndex: { xs: 3, sm: 'auto' },
+            bgcolor: 'background.paper',
+          }}
+        >
+          <ConversationSearchPanel
+            conversationId={selectedConversation.id}
+            onClose={() => setSearchPanelOpen(false)}
+          />
         </Box>
       )}
 
