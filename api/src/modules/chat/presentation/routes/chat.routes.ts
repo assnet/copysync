@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
+import { StartConversationUseCase } from '../../application/use-cases/StartConversationUseCase';
 import { SyncChatAvatarsUseCase } from '../../application/use-cases/SyncChatAvatarsUseCase';
 import { ListGroupParticipantsUseCase } from '../../application/use-cases/ListGroupParticipantsUseCase';
 import { httpResponse } from '../../../../shared/http/httpResponse';
@@ -15,6 +16,7 @@ import {
   contactIdParamSchema,
   listConversationsQuerySchema,
   listMessagesQuerySchema,
+  startConversationBodySchema,
   sendMessageBodySchema,
   updateConversationBodySchema,
 } from '../schemas/chat.schema';
@@ -221,6 +223,27 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       });
 
       httpResponse.ok(reply, { success: true });
+    },
+  );
+
+  // ── POST /conversations — abre (ou reaproveita) conversa com um contato ───
+  app.post(
+    '/conversations',
+    { preHandler, schema: { body: startConversationBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const body = request.body as { sessionId: string; phone: string; name?: string };
+
+      const useCase = new StartConversationUseCase(conversationRepo, contactRepo, sessionRepo);
+      const result = await useCase.execute({
+        tenantId,
+        sessionId: body.sessionId,
+        phone: body.phone,
+        name: body.name,
+      });
+
+      reply.status(result.created ? 201 : 200);
+      httpResponse.ok(reply, result);
     },
   );
 

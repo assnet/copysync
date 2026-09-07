@@ -143,6 +143,12 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
 
   const participantPhone = message.fromParticipant?.replace(/@.+$/, '') || null;
 
+  // Mensagens antigas guardaram o LID no lugar do telefone (corrigido na ingestão,
+  // mas o dado gravado permanece). Abrir conversa com um LID criaria um contato
+  // inválido, então exigimos algo com cara de telefone: E.164 vai até 15 dígitos,
+  // enquanto os LIDs observados têm 15 — daí o teto em 14.
+  const canStartConversation = !!participantPhone && /^\d{10,14}$/.test(participantPhone);
+
   const handleOpenMenu = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
     setMenuAnchor(e.currentTarget);
@@ -409,11 +415,11 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
           <ListItemText>Copiar</ListItemText>
         </MenuItem>
       )}
-      {!isOut && message.fromParticipant && onParticipantClick && (
+      {!isOut && canStartConversation && onParticipantClick && (
         <MenuItem onClick={handleMenuChatWith} dense>
           <ListItemIcon><ChatIcon fontSize="small" /></ListItemIcon>
           <ListItemText
-            primary={`Conversar com ${message.fromParticipantName ?? message.fromParticipant.replace(/@.+$/, '')}`}
+            primary={`Conversar com ${message.fromParticipantName ?? participantPhone}`}
             primaryTypographyProps={{ noWrap: true, sx: { maxWidth: 200 } }}
           />
         </MenuItem>

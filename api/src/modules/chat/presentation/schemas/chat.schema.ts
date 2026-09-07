@@ -63,3 +63,13 @@ export const updateConversationBodySchema = {
   },
   additionalProperties: false,
 } as const;
+
+export const startConversationBodySchema = {
+  type: 'object',
+  required: ['sessionId', 'phone'],
+  properties: {
+    sessionId: { type: 'string', minLength: 1 },
+    phone:     { type: 'string', minLength: 8 },
+    name:      { type: 'string' },
+  },
+} as const;

@@ -103,7 +103,7 @@ export default function ChatPage() {
   // Filtragem por status e pesquisa continua local no ConversationSidebar.
   const loadConversations = useCallback(() => {
     setLoadingConversations(true);
-    chatService
+    return chatService
       .listConversations({
         ...(selectedSessionId ? { sessionId: selectedSessionId } : {}),
         ...(showArchived ? { archived: 'true' } : {}),
@@ -548,14 +548,32 @@ export default function ChatPage() {
 
   // Abre a conversa direta com um participante de grupo pelo telefone
   const handleParticipantClick = useCallback(
-    (phone: string, _name: string) => {
-      const conv = conversations.find((c) => c.contact.phone === phone && !c.isGroup);
-      if (conv) {
-        handleSelectConversation(conv.id);
+    (phone: string, name: string) => {
+      const existing = conversations.find((c) => c.contact.phone === phone && !c.isGroup);
+      if (existing) {
+        handleSelectConversation(existing.id);
+        return;
       }
-      // Se não tiver conversa direta com este contato, não faz nada por enquanto
+
+      // Sem conversa prévia, abre uma pela mesma sessão do grupo de origem. Antes a
+      // ação simplesmente não levava a lugar nenhum.
+      const sessionId =
+        conversations.find((c) => c.id === selectedId)?.session?.id
+        ?? selectedSessionId
+        ?? connectedSessions[0]?.id;
+      if (!sessionId) return;
+
+      chatService
+        .startConversation({ sessionId, phone, name })
+        .then(async (conversationId) => {
+          // A lista precisa chegar antes da seleção: loadConversations descarta o id
+          // selecionado quando ele ainda não consta na lista.
+          await loadConversations();
+          handleSelectConversation(conversationId);
+        })
+        .catch((err: unknown) => console.error('Erro ao abrir conversa com o contato', err));
     },
-    [conversations, handleSelectConversation],
+    [conversations, handleSelectConversation, selectedId, selectedSessionId, connectedSessions, loadConversations],
   );
 
   return (

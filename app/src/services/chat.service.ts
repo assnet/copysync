@@ -83,6 +83,14 @@ export const chatService = {
     await apiClient.post(`/chat/conversations/${conversationId}/presence`);
   },
 
+  async startConversation(input: { sessionId: string; phone: string; name?: string }): Promise<string> {
+    const res = await apiClient.post<{ success: true; data: { conversationId: string; created: boolean } }>(
+      '/chat/conversations',
+      input,
+    );
+    return res.data.data.conversationId;
+  },
+
   async syncAvatars(): Promise<{ updated: number; remaining: number }> {
     const res = await apiClient.post<{ success: true; data: { updated: number; remaining: number } }>(
       '/chat/avatars/sync',
