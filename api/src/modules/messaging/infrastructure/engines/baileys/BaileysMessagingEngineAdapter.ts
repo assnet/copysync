@@ -59,7 +59,11 @@ const HANDLED_SOCKET_EVENTS = [
 ] as const;
 
 /** Máximo de fotos de perfil buscadas ao listar participantes de um grupo. */
-const GROUP_AVATAR_FETCH_LIMIT = 60;
+const GROUP_AVATAR_FETCH_LIMIT = 200;
+/** Consultas de foto em paralelo — o WhatsApp responde mal a rajadas maiores. */
+const GROUP_AVATAR_CONCURRENCY = 8;
+/** Validade do cache de fotos de participante. A URL do WhatsApp é temporária. */
+const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 3_000;
@@ -75,6 +79,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
    * Guards against an endless wipe/reopen loop; cleared once the session connects.
    */
   private readonly pairingRestarts = new Set<string>();
+  /** Cache de fotos por JID: evita repetir a consulta a cada abertura do painel. */
+  private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -229,19 +235,34 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // GROUP_AVATAR_FETCH_LIMIT para não transformar a abertura de um grupo grande em
       // dezenas de idas à rede. Acima disso o painel cai nas iniciais.
       const avatarByJid = new Map<string, string | null>();
-      await Promise.all(
-        participants.slice(0, GROUP_AVATAR_FETCH_LIMIT).map(async (p) => {
-          const jid = p.id;
-          if (!jid) return;
-          try {
-            const url = await entry.socket.profilePictureUrl(jid, 'preview');
-            avatarByJid.set(jid, url ?? null);
-          } catch {
-            // Sem foto, foto restrita por privacidade ou timeout — cai nas iniciais.
-            avatarByJid.set(jid, null);
-          }
-        }),
-      );
+      const targets = participants
+        .map((p) => p.id)
+        .filter((jid): jid is string => !!jid)
+        .slice(0, GROUP_AVATAR_FETCH_LIMIT);
+
+      // Em lotes: 172 consultas simultâneas fazem o WhatsApp responder com timeout.
+      for (let i = 0; i < targets.length; i += GROUP_AVATAR_CONCURRENCY) {
+        const slice = targets.slice(i, i + GROUP_AVATAR_CONCURRENCY);
+        await Promise.all(
+          slice.map(async (jid) => {
+            const cached = this.profilePictureCache.get(jid);
+            if (cached && Date.now() - cached.at < PROFILE_PICTURE_TTL_MS) {
+              avatarByJid.set(jid, cached.url);
+              return;
+            }
+            try {
+              const url = await entry.socket.profilePictureUrl(jid, 'preview');
+              avatarByJid.set(jid, url ?? null);
+              this.profilePictureCache.set(jid, { url: url ?? null, at: Date.now() });
+            } catch {
+              // Sem foto, restrita por privacidade ou timeout — cai nas iniciais.
+              // O resultado negativo também é cacheado: repetir não muda a resposta.
+              avatarByJid.set(jid, null);
+              this.profilePictureCache.set(jid, { url: null, at: Date.now() });
+            }
+          }),
+        );
+      }
 
       return participants.map((p) => {
         // Em grupos com privacidade de número o `id` vem como @lid e o telefone real,

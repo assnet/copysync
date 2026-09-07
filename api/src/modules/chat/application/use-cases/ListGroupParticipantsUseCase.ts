@@ -18,12 +18,17 @@ export interface GroupParticipantDto {
 }
 
 function buildInitials(name: string): string {
+  // Participante desconhecido tem o próprio número como nome; a inicial seria o
+  // primeiro dígito ("5"), que não identifica ninguém. Nesse caso não há iniciais e
+  // o painel usa o ícone genérico de pessoa.
+  if (/^[\d\s+()-]+$/.test(name)) return '';
+
   const initials = name
     .split(' ')
     .slice(0, 2)
     .map((word) => word[0]?.toUpperCase() ?? '')
     .join('');
-  return initials || '?';
+  return initials;
 }
 
 /**

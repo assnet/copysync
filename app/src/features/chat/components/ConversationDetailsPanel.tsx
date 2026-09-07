@@ -340,7 +340,9 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
                     src={p.avatarUrl ?? undefined}
                     sx={{ width: 34, height: 34, fontSize: 12, fontWeight: 700, flexShrink: 0 }}
                   >
-                    {p.initials}
+                    {/* Sem iniciais (participante identificado só pelo número) o MUI
+                        já exibe o ícone genérico de pessoa. */}
+                    {p.initials || undefined}
                   </Avatar>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
