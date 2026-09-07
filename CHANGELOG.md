@@ -11,6 +11,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Avatares de contatos, grupos e remetentes
+
+- **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`** — nova capacidade `fetchProfilePicture`, que baixa a foto e a armazena: a URL do WhatsApp expira em horas, então persisti-la deixaria avatares quebrados; guardamos a imagem e devolvemos uma URL estável
+- **`SyncChatAvatarsUseCase.ts`**, **`chat.routes.ts`** — `POST /chat/avatars/sync` varre as conversas sem avatar e emite `CONTACT_AVATAR_UPDATED`/`GROUP_AVATAR_UPDATED`, eventos que os listeners já consumiam mas que **nenhum ponto do sistema emitia** — daí `chat_contacts.avatarUrl` estar nulo em 1503 de 1503 contatos. Trabalha em lotes e devolve quantas faltam
+- **`ChatGroupAvatarListener.ts`**, **`ChatWebSocketPublisher.ts`** — passa a publicar `chat.group.avatar.updated` com `groupJid`; casava por `contact.phone`, hoje vazio em grupos de propósito, e a atualização nunca chegaria ao painel
+- **`ListMessagesUseCase.ts`**, **`MessageBubble.tsx`** — mensagens de grupo trazem `fromParticipantAvatarUrl`, resolvido em consulta única por página, e a bolha exibe o avatar do remetente ao lado da mensagem, como no WhatsApp Web
+- **`ChatPage.tsx`**, **`chat.service.ts`** — o painel dispara o sync ao abrir e acompanha a fila até zerar
+
 #### Chat — Participantes do grupo
 
 - **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`** — nova capacidade `getGroupParticipants`, com o Baileys isolado no adapter. Participantes com privacidade de número chegam como `@lid` e o telefone real, quando disponível, vem em `phoneNumber`; sem telefone o campo fica nulo, para nunca exibir identificador interno como número
