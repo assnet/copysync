@@ -11,6 +11,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Nova conversa, arquivadas e painel no mobile
+
+- **`NewConversationDialog.tsx`**, **`ConversationSidebar.tsx`**, **`ChatPage.tsx`** — o botão "Nova" era decorativo; abre um diálogo com número, nome opcional e escolha da sessão quando há mais de uma conectada. O número é normalizado para dígitos. O diálogo capturava a lista de sessões antes dela carregar, deixando o botão de confirmar sempre desabilitado — corrigido, com a lista memoizada na página
+- **`BaileysMessagingEngineAdapter.ts`** — o estado de arquivamento passa a ser lido também do `messaging-history.set`, único momento em que chega para sessões já pareadas (o `chats.upsert` ocorre apenas na sincronização inicial). Sem isso a seção "Arquivadas" nunca aparecia, porque nenhuma conversa era marcada
+- **`ConversationDetailsPanel.tsx`** — no mobile o painel ganha botão de voltar e título que identifica o conteúdo ("Dados do grupo" / "Dados do contato"), já que ali ocupa a tela inteira
+
 #### Chat — Abrir conversa com um participante
 
 - **`StartConversationUseCase.ts`**, **`chat.routes.ts`** — `POST /chat/conversations` abre a conversa individual com um contato pela sessão indicada, reaproveitando contato e conversa ativa quando já existirem; responde 201 ao criar e 200 ao reaproveitar
