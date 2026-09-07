@@ -585,8 +585,36 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     });
 
     // ── History sync ────────────────────────────────────────────────────────
-    socket.ev.on('messaging-history.set', ({ messages: histMsgs }) => {
+    // ── Arquivamento de conversas ────────────────────────────────────────────
+    // O WhatsApp entrega o estado de arquivamento em chats.upsert (sincronização
+    // inicial) e chats.update (mudança feita em qualquer aparelho). É estado de
+    // conversa, não histórico de mensagens, por isso não depende de
+    // BAILEYS_SYNC_FULL_HISTORY.
+    const emitArchiveState = (chatId: string | null | undefined, archived: boolean | null | undefined): void => {
+      if (!chatId || archived === null || archived === undefined) return;
+      if (chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) return;
+
+      const isGroup = chatId.endsWith('@g.us');
+      internalEventBus.emit('CHAT_ARCHIVE_UPDATED', {
+        type: 'CHAT_ARCHIVE_UPDATED',
+        sessionId,
+        tenantId,
+        chatId: chatId.split('@')[0],
+        isGroup,
+        archived,
+      });
+    };
+
+    socket.ev.on('messaging-history.set', ({ messages: histMsgs, chats: histChats }) => {
       if (isStale()) return;
+
+      // O estado de arquivamento vem junto do history sync, e é o único momento em
+      // que ele chega para sessões já pareadas — o chats.upsert acontece apenas na
+      // sincronização inicial. Como é estado de conversa, não histórico de mensagens,
+      // é processado independentemente de BAILEYS_SYNC_FULL_HISTORY.
+      for (const chat of histChats ?? []) {
+        emitArchiveState(chat.id, chat.archived);
+      }
       if (!env.BAILEYS_SYNC_FULL_HISTORY) {
         baileysLogger.debug(
           { sessionId, count: histMsgs.length },
@@ -611,26 +639,6 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         }
       });
     });
-
-    // ── Arquivamento de conversas ────────────────────────────────────────────
-    // O WhatsApp entrega o estado de arquivamento em chats.upsert (sincronização
-    // inicial) e chats.update (mudança feita em qualquer aparelho). É estado de
-    // conversa, não histórico de mensagens, por isso não depende de
-    // BAILEYS_SYNC_FULL_HISTORY.
-    const emitArchiveState = (chatId: string | null | undefined, archived: boolean | null | undefined): void => {
-      if (!chatId || archived === null || archived === undefined) return;
-      if (chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) return;
-
-      const isGroup = chatId.endsWith('@g.us');
-      internalEventBus.emit('CHAT_ARCHIVE_UPDATED', {
-        type: 'CHAT_ARCHIVE_UPDATED',
-        sessionId,
-        tenantId,
-        chatId: chatId.split('@')[0],
-        isGroup,
-        archived,
-      });
-    };
 
     socket.ev.on('chats.upsert', (chats) => {
       if (isStale()) return;

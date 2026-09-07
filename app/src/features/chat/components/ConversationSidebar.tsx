@@ -50,6 +50,8 @@ interface Props {
   /** true quando a lista já está exibindo as arquivadas. */
   showArchived?: boolean;
   onToggleArchived?: (show: boolean) => void;
+  /** Abre o diálogo de nova conversa. */
+  onNewConversation?: () => void;
 }
 
 export function ConversationSidebar({
@@ -68,6 +70,7 @@ export function ConversationSidebar({
   archivedCount = 0,
   showArchived = false,
   onToggleArchived,
+  onNewConversation,
 }: Props) {
   const theme = useTheme();
 
@@ -144,6 +147,8 @@ export function ConversationSidebar({
             size="small"
             startIcon={<AddIcon />}
             disableElevation
+            onClick={onNewConversation}
+            disabled={!onNewConversation}
             sx={{ fontSize: 12, px: 1.25, py: 0.5, minWidth: 'unset', borderRadius: 0.5 }}
           >
             Nova

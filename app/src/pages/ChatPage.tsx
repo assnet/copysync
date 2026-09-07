@@ -15,6 +15,7 @@ import { ChatWindow } from '@/features/chat/components/ChatWindow';
 import { EmptyConversationState } from '@/features/chat/components/EmptyConversationState';
 import { ConversationDetailsPanel } from '@/features/chat/components/ConversationDetailsPanel';
 import { ConversationSearchPanel } from '@/features/chat/components/ConversationSearchPanel';
+import { NewConversationDialog } from '@/features/chat/components/NewConversationDialog';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
@@ -72,6 +73,7 @@ export default function ChatPage() {
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [archivedCount, setArchivedCount] = useState(0);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
@@ -185,7 +187,15 @@ export default function ChatPage() {
     }
   }, [sessions, selectedSessionId]);
 
-  const connectedSessions = sessions.filter((session) => session.status === 'CONNECTED');
+  const connectedSessions = useMemo(
+    () => sessions.filter((session) => session.status === 'CONNECTED'),
+    [sessions],
+  );
+  // Referência estável: o diálogo reage a mudanças nesta lista.
+  const sessionOptions = useMemo(
+    () => connectedSessions.map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
+    [connectedSessions],
+  );
 
   // ── Tempo real via WebSocket ───────────────────────────────────────────────
   useChatWebSocket(
@@ -624,6 +634,7 @@ export default function ChatPage() {
         presenceMap={presenceMap}
         archivedCount={archivedCount}
         showArchived={showArchived}
+        onNewConversation={() => setNewConversationOpen(true)}
         onToggleArchived={(show) => {
           setShowArchived(show);
           // Sair de uma conversa arquivada ao trocar de visão evita mostrar uma
@@ -672,6 +683,17 @@ export default function ChatPage() {
           <EmptyConversationState />
         </Box>
       )}
+
+      <NewConversationDialog
+        open={newConversationOpen}
+        onClose={() => setNewConversationOpen(false)}
+        sessions={sessionOptions}
+        defaultSessionId={selectedSessionId}
+        onCreated={async (conversationId) => {
+          await loadConversations();
+          handleSelectConversation(conversationId);
+        }}
+      />
 
       {/* Busca de mensagens da conversa — ocupa a mesma coluna do contexto */}
       {selectedConversation && searchPanelOpen && (

@@ -1,5 +1,6 @@
 import { Box, Typography, Avatar, Chip, Divider, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, Switch, alpha, useTheme } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import RouterOutlinedIcon from '@mui/icons-material/RouterOutlined';
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
@@ -134,11 +135,27 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate, part
           flexShrink: 0,
         }}
       >
-        <Typography variant="subtitle2" fontWeight={700}>
-          Contexto
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+          {/* No mobile o painel ocupa a tela: voltar é mais natural que fechar */}
+          <IconButton
+            size="small"
+            onClick={onClose}
+            aria-label="Voltar para a conversa"
+            sx={{ display: { xs: 'inline-flex', sm: 'none' }, ml: -0.75 }}
+          >
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+          <Typography variant="subtitle2" fontWeight={700} noWrap>
+            {isGroup ? 'Dados do grupo' : 'Dados do contato'}
+          </Typography>
+        </Box>
         <Tooltip title="Fechar painel">
-          <IconButton size="small" onClick={onClose}>
+          <IconButton
+            size="small"
+            onClick={onClose}
+            aria-label="Fechar painel"
+            sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+          >
             <CloseIcon fontSize="small" />
           </IconButton>
         </Tooltip>
