@@ -170,7 +170,7 @@ export function apiContactToParticipant(dto: ChatContactApiDto): ChatParticipant
     id:          dto.id,
     name:        dto.name,
     phone:       dto.phone,
-    avatarUrl:   dto.avatarUrl,
+    avatarUrl:   resolveMediaUrl(dto.avatarUrl),
     initials:    dto.initials,
     avatarColor: avatarColorFromName(dto.name),
   };
@@ -229,6 +229,6 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     quotedMessage,
     fromParticipant:     dto.fromParticipant ?? null,
     fromParticipantName: dto.fromParticipantName ?? null,
-    fromParticipantAvatarUrl: dto.fromParticipantAvatarUrl ?? null,
+    fromParticipantAvatarUrl: resolveMediaUrl(dto.fromParticipantAvatarUrl),
   };
 }

@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import type {
   ChatConversationApiDto,
   ChatMessageApiDto,
@@ -87,6 +88,11 @@ export const chatService = {
     const res = await apiClient.get<{ success: true; data: { participants: GroupParticipantApiDto[]; total: number } }>(
       `/chat/conversations/${conversationId}/participants`,
     );
-    return res.data.data.participants;
+    // Participantes podem trazer avatar do WhatsApp (absoluto) ou do contato do
+    // tenant (relativo à API) — resolver cobre os dois casos.
+    return res.data.data.participants.map((p) => ({
+      ...p,
+      avatarUrl: resolveMediaUrl(p.avatarUrl),
+    }));
   },
 };

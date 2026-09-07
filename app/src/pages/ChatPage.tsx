@@ -9,6 +9,7 @@ import {
 } from '@/types/chat.api.types';
 import type { UpdateConversationRequest } from '@/types/chat.api.types';
 import { formatLastMessagePreview } from '@/features/chat/utils';
+import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { ConversationSidebar } from '@/features/chat/components/ConversationSidebar';
 import { ChatWindow } from '@/features/chat/components/ChatWindow';
 import { EmptyConversationState } from '@/features/chat/components/EmptyConversationState';
@@ -259,7 +260,10 @@ export default function ChatPage() {
         }
 
         if (payload.event === 'chat.contact.updated') {
-          const { phone, avatarUrl } = payload.data;
+          const { phone } = payload.data;
+          // O backend publica caminho relativo (/api/storage/...); o painel é servido
+          // por outro domínio em produção, então precisa resolver contra a API.
+          const avatarUrl = resolveMediaUrl(payload.data.avatarUrl);
           setConversations((prev) =>
             prev.map((c) =>
               c.contact.phone === phone
@@ -270,7 +274,8 @@ export default function ChatPage() {
         }
 
         if (payload.event === 'chat.group.avatar.updated') {
-          const { groupJid, avatarUrl } = payload.data;
+          const { groupJid } = payload.data;
+          const avatarUrl = resolveMediaUrl(payload.data.avatarUrl);
           setConversations((prev) =>
             prev.map((c) =>
               c.groupJid === groupJid
