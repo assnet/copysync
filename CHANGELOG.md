@@ -9,6 +9,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added
+
+#### Chat — Participantes do grupo
+
+- **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`** — nova capacidade `getGroupParticipants`, com o Baileys isolado no adapter. Participantes com privacidade de número chegam como `@lid` e o telefone real, quando disponível, vem em `phoneNumber`; sem telefone o campo fica nulo, para nunca exibir identificador interno como número
+- **`ListGroupParticipantsUseCase.ts`** — monta a lista enriquecida com os contatos já conhecidos do tenant (nome salvo e avatar), em consulta única por lote
+- **`chat.routes.ts`** — `GET /chat/conversations/:id/participants` devolve os participantes e o total
+- **`ConversationDetailsPanel.tsx`**, **`chat.service.ts`**, **`chat.api.types.ts`** — a seção Participantes deixa de exibir texto fixo e passa a listar os membros com avatar, nome, telefone e marcação de admin, com o total no título
+
+### Changed
+
+- **`ListConversationsUseCase.ts`**, **`IChatContactRepository.ts`**, **`PrismaChatContactRepository.ts`** — a listagem buscava o contato de cada conversa individual com um `findById` dentro do laço, em série: 23 consultas para 51 conversas (19 individuais, 3 sessões) onde bastavam 3, cada uma pagando a latência até o Postgres (~125 ms de servidor contra ~33 ms da rota de mensagens). Os contatos passam a ser carregados em lote e resolvidos por `Map`; acrescenta `findByIds` e `findByPhones` ao repositório. Resposta HTTP inalterada
+
 ### Fixed
 
 #### Chat — Mensagens novas não apareciam no painel
