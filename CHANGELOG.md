@@ -11,6 +11,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Painel — Versão no menu e navegação
+
+- **`AppLayout.tsx`**, **`vite.config.ts`**, **`vite-env.d.ts`** — a versão do painel passa a aparecer discretamente no rodapé do menu, também no modo compacto; o número é lido do `package.json` em tempo de build e injetado como `__APP_VERSION__`
+- **`AppLayout.tsx`** — item ativo ganha indicador lateral (o `selected` do MUI não era evidente no tema escuro), alvo de toque de 44 px no mobile, AppBar mobile mostrando a seção atual em vez do nome do produto e drawer com `keepMounted`
+- **`MessageBubble.tsx`** — o balão passa a ser alinhado ao topo, com o avatar do remetente na linha do nome, como no WhatsApp Web
+
 #### Chat — Avatar do remetente nas bolhas de grupo
 
 - **`ChatPage.tsx`**, **`ChatWindow.tsx`**, **`MessageList.tsx`**, **`MessageBubble.tsx`**, **`ConversationDetailsPanel.tsx`** — a bolha só exibia foto quando o remetente tinha contato salvo com avatar (apenas 7 de 1503 contatos têm, porque o sync cobre só quem tem conversa individual). Os participantes passam a ser carregados uma vez pelo `ChatPage` e alimentam tanto o painel quanto um mapa telefone → avatar usado nas bolhas; o painel deixa de fazer requisição própria
