@@ -12,6 +12,15 @@ export interface ListMessagesFilter {
   search?: string;
 }
 
+export interface FindAroundInput {
+  tenantId: string;
+  conversationId: string;
+  /** Mensagem que deve ficar no meio da janela retornada. */
+  messageId: string;
+  /** Total aproximado de mensagens: metade antes, metade depois. */
+  limit: number;
+}
+
 export interface ChatMessageCreateData {
   tenantId: string;
   conversationId: string;
@@ -37,6 +46,11 @@ export interface IChatMessageRepository {
   findById(id: string, tenantId: string): Promise<ChatMessage | null>;
   findByExternalId(externalId: string, tenantId: string): Promise<ChatMessage | null>;
   findMany(filter: ListMessagesFilter): Promise<ChatMessage[]>;
+  /**
+   * Janela de mensagens ao redor de uma específica, em ordem cronológica.
+   * Usada para saltar da busca até o ponto da conversa onde a mensagem está.
+   */
+  findAround(input: FindAroundInput): Promise<ChatMessage[]>;
   create(data: ChatMessageCreateData): Promise<ChatMessage>;
   updateStatusByExternalId(
     externalId: string,

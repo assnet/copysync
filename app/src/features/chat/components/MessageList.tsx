@@ -16,6 +16,8 @@ interface Props {
   onReply?: (message: ChatMessage) => void;
   onParticipantClick?: (phone: string, name: string) => void;
   participantAvatars?: Record<string, string>;
+  /** Mensagem a destacar e para onde rolar (vinda da busca). */
+  highlightMessageId?: string | null;
 }
 
 function isSameDay(a: string, b: string) {
@@ -67,7 +69,9 @@ export function MessageList({
   onReply,
   onParticipantClick,
   participantAvatars,
+  highlightMessageId,
 }: Props) {
+  const theme = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevScrollHeight = useRef<number>(0);
@@ -86,6 +90,20 @@ export function MessageList({
     });
     return () => cancelAnimationFrame(raf);
   }, [scrollN, scrollSmooth]);
+
+  // Salto vindo da busca: rola até a mensagem e a destaca por um instante.
+  useEffect(() => {
+    if (!highlightMessageId) return;
+    const el = containerRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${highlightMessageId}"]`,
+    );
+    if (!el) return;
+
+    const raf = requestAnimationFrame(() => {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [highlightMessageId, messages]);
 
   // Preserve scroll position after prepend (when older messages loaded)
   useEffect(() => {
@@ -148,7 +166,23 @@ export function MessageList({
           const showDateSep = !prevMsg || !isSameDay(prevMsg.timestamp, msg.timestamp);
 
           return (
-            <Box key={msg.id}>
+            <Box
+              key={msg.id}
+              data-message-id={msg.id}
+              sx={
+                highlightMessageId === msg.id
+                  ? {
+                      // Destaque breve: some sozinho, sem exigir ação de quem leu.
+                      animation: 'messageFlash 1.6s ease-out',
+                      '@keyframes messageFlash': {
+                        '0%':   { backgroundColor: alpha(theme.palette.primary.main, 0.22) },
+                        '70%':  { backgroundColor: alpha(theme.palette.primary.main, 0.22) },
+                        '100%': { backgroundColor: 'transparent' },
+                      },
+                    }
+                  : undefined
+              }
+            >
               {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
               <MessageBubble
                 message={msg}

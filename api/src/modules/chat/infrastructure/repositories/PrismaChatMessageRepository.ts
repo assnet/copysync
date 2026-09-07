@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
   ChatMessageCreateData,
+  FindAroundInput,
   IChatMessageRepository,
   ListMessagesFilter,
 } from '../../domain/contracts/IChatMessageRepository';
@@ -55,6 +56,35 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
     const ordered = (filter.orderDir ?? 'asc') === 'asc' ? rows.reverse() : rows;
 
     return ordered.map(PrismaChatMessageMapper.toDomain);
+  }
+
+  async findAround(input: FindAroundInput): Promise<ChatMessage[]> {
+    const anchor = await this.prisma.chatMessage.findFirst({
+      where: { id: input.messageId, tenantId: input.tenantId, conversationId: input.conversationId },
+      select: { id: true, sentAt: true, createdAt: true },
+    });
+    if (!anchor) return [];
+
+    const pivot = anchor.sentAt ?? anchor.createdAt;
+    const half = Math.max(1, Math.floor(input.limit / 2));
+    const base = { tenantId: input.tenantId, conversationId: input.conversationId };
+
+    // Duas consultas: as anteriores em ordem decrescente (para pegar as mais próximas
+    // da âncora) e as seguintes em ordem crescente.
+    const [before, after] = await Promise.all([
+      this.prisma.chatMessage.findMany({
+        where: { ...base, sentAt: { lt: pivot } },
+        orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
+        take: half,
+      }),
+      this.prisma.chatMessage.findMany({
+        where: { ...base, sentAt: { gte: pivot } },
+        orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
+        take: half,
+      }),
+    ]);
+
+    return [...before.reverse(), ...after].map(PrismaChatMessageMapper.toDomain);
   }
 
   async create(data: ChatMessageCreateData): Promise<ChatMessage> {

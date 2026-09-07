@@ -33,6 +33,7 @@ export const listMessagesQuerySchema = {
   type: 'object',
   properties: {
     search: { type: 'string' },
+    around: { type: 'string' },
     limit:  { type: 'string' },
     before: { type: 'string' },
   },

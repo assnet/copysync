@@ -11,6 +11,8 @@ export interface ListMessagesInput {
   before?: string;
   /** Busca textual dentro da conversa. */
   search?: string;
+  /** Carrega a janela ao redor desta mensagem, para saltar até ela. */
+  around?: string;
 }
 
 export interface QuotedMessageSummary {
@@ -57,16 +59,23 @@ export class ListMessagesUseCase {
     const conv = await this.conversationRepo.findById(input.conversationId, input.tenantId);
     if (!conv) throw new NotFoundError('Conversation', input.conversationId);
 
-    const messages = await this.messageRepo.findMany({
-      tenantId: input.tenantId,
-      conversationId: input.conversationId,
-      limit: input.limit ?? 50,
-      before: input.before,
-      search: input.search,
-      // Numa busca interessa o resultado mais recente primeiro; a leitura normal da
-      // conversa continua em ordem cronológica.
-      orderDir: input.search ? 'desc' : 'asc',
-    });
+    const messages = input.around
+      ? await this.messageRepo.findAround({
+          tenantId: input.tenantId,
+          conversationId: input.conversationId,
+          messageId: input.around,
+          limit: input.limit ?? 50,
+        })
+      : await this.messageRepo.findMany({
+          tenantId: input.tenantId,
+          conversationId: input.conversationId,
+          limit: input.limit ?? 50,
+          before: input.before,
+          search: input.search,
+          // Numa busca interessa o resultado mais recente primeiro; a leitura normal
+          // da conversa continua em ordem cronológica.
+          orderDir: input.search ? 'desc' : 'asc',
+        });
 
     // Avatares dos remetentes de grupo, em consulta única para toda a página.
     const participantPhones = messages

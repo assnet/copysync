@@ -105,6 +105,8 @@ export interface ListMessagesParams {
   before?: string;
   /** Busca textual dentro da conversa. */
   search?: string;
+  /** Carrega a janela ao redor desta mensagem. */
+  around?: string;
 }
 
 export interface UpdateConversationRequest {

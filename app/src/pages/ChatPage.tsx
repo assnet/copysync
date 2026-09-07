@@ -70,6 +70,7 @@ export default function ChatPage() {
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
   // Arquivadas ficam numa visão à parte, como no WhatsApp Web.
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedCount, setArchivedCount] = useState(0);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
@@ -502,6 +503,49 @@ export default function ChatPage() {
     [selectedId],
   );
 
+  /**
+   * Salto a partir de um resultado da busca.
+   *
+   * Se a mensagem já está carregada, basta destacar — o MessageList rola até ela.
+   * Caso contrário, busca a janela ao redor no servidor e substitui a lista: a
+   * mensagem pode estar muito atrás no histórico, fora de qualquer página carregada.
+   */
+  const handleJumpToMessage = useCallback(
+    (messageId: string) => {
+      if (!selectedId) return;
+
+      const already = (messages[selectedId] ?? []).some((m) => m.id === messageId);
+      if (already) {
+        setHighlightMessageId(messageId);
+        return;
+      }
+
+      setLoadingMessages(true);
+      chatService
+        .listMessages(selectedId, { around: messageId, limit: PAGE_SIZE })
+        .then((items) => {
+          const mapped = resolveQuotedMessages(items.map(apiMessageToFrontend));
+          setMessages((prev) => ({ ...prev, [selectedId]: mapped }));
+          if (mapped.length > 0) {
+            setOldestTimestamp((prev) => ({ ...prev, [selectedId]: mapped[0].timestamp }));
+          }
+          // A janela ao redor não é o fim da conversa: ainda há mensagens anteriores.
+          setHasMore((prev) => ({ ...prev, [selectedId]: true }));
+          setHighlightMessageId(messageId);
+        })
+        .catch((err: unknown) => console.error('Erro ao carregar a mensagem', err))
+        .finally(() => setLoadingMessages(false));
+    },
+    [selectedId, messages],
+  );
+
+  // O destaque é temporário: some sozinho depois da animação.
+  useEffect(() => {
+    if (!highlightMessageId) return;
+    const timer = setTimeout(() => setHighlightMessageId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [highlightMessageId]);
+
   // Abre a conversa direta com um participante de grupo pelo telefone
   const handleParticipantClick = useCallback(
     (phone: string, _name: string) => {
@@ -593,6 +637,7 @@ export default function ChatPage() {
           scrollSignal={scrollSignal}
           onParticipantClick={handleParticipantClick}
           participantAvatars={participantAvatars}
+          highlightMessageId={highlightMessageId}
           onBack={() => setSelectedId(null)}
           onToggleSearch={() => {
             setSearchPanelOpen((v) => {
@@ -624,6 +669,7 @@ export default function ChatPage() {
           <ConversationSearchPanel
             conversationId={selectedConversation.id}
             onClose={() => setSearchPanelOpen(false)}
+            onSelectMessage={handleJumpToMessage}
           />
         </Box>
       )}

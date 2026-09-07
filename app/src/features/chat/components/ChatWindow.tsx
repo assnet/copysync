@@ -24,6 +24,7 @@ interface Props {
   onBack?: () => void;
   onToggleSearch?: () => void;
   searchOpen?: boolean;
+  highlightMessageId?: string | null;
 }
 
 export function ChatWindow({
@@ -43,6 +44,7 @@ export function ChatWindow({
   onBack,
   onToggleSearch,
   searchOpen,
+  highlightMessageId,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
@@ -101,6 +103,7 @@ export function ChatWindow({
         onLoadMore={onLoadMore}
         scrollSignal={scrollSignal}
         participantAvatars={participantAvatars}
+        highlightMessageId={highlightMessageId}
         onReply={handleReply}
         onParticipantClick={onParticipantClick}
       />
