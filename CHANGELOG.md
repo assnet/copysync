@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Layout responsivo e navegação mobile
+
+- **`ConversationSidebar.tsx`** — a coluna de conversas tinha largura fixa de 320 px e não acompanhava o espaço disponível; passa a ser fluida (tela cheia no mobile, 300/340/380 px conforme o breakpoint)
+- **`ChatPage.tsx`**, **`ChatWindow.tsx`**, **`ChatHeader.tsx`** — no mobile, lista e conversa passam a ser telas separadas, como num app de mensagens: selecionar uma conversa substitui a lista pela janela de mensagens e o cabeçalho ganha botão de voltar. O painel de contexto, terceira coluna no desktop, vira sobreposição de tela cheia
+
 #### Sessões/Chat — Avatar ausente e leitura dos cards
 
 - **`app.ts`** — o schema de resposta `SessionItem` não declarava `avatarUrl`, e o serializer do Fastify remove silenciosamente propriedades ausentes do schema: a foto do número conectado nunca chegava ao painel, mesmo com o presenter devolvendo o campo
