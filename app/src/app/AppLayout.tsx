@@ -19,6 +19,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
+import { useUiGuards } from '@/security/useUiGuards';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -352,6 +353,9 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
 }
 
 export function AppLayout() {
+  // Barreiras de cópia e inspeção, aplicadas apenas na área autenticada.
+  useUiGuards();
+
   const { activeTenantName, tenants, switchTenant } = useTenant();
   const { mode, toggleColorMode } = useColorMode();
   const theme = useTheme();
