@@ -57,6 +57,10 @@ export interface ConversationListItemDto {
   groupName?: string | null;
   autoDownloadMedia?: boolean;
   archived: boolean;
+  pinned: boolean;
+  mutedUntil: string | null;
+  favorite: boolean;
+  manuallyUnread: boolean;
 }
 
 export class ListConversationsUseCase {
@@ -150,6 +154,10 @@ export class ListConversationsUseCase {
         groupName: conv.groupName,
         autoDownloadMedia: conv.autoDownloadMedia,
         archived: conv.archived,
+        pinned: conv.pinned,
+        mutedUntil: conv.mutedUntil?.toISOString() ?? null,
+        favorite: conv.favorite,
+        manuallyUnread: conv.manuallyUnread,
       });
     }
 

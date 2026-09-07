@@ -22,6 +22,10 @@ export interface ChatConversationProps {
   groupAvatarUrl: string | null;
   autoDownloadMedia: boolean;
   archived: boolean;
+  pinned: boolean;
+  mutedUntil: Date | null;
+  favorite: boolean;
+  manuallyUnread: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +52,10 @@ export class ChatConversation {
   readonly groupAvatarUrl: string | null;
   readonly autoDownloadMedia: boolean;
   readonly archived: boolean;
+  readonly pinned: boolean;
+  readonly mutedUntil: Date | null;
+  readonly favorite: boolean;
+  readonly manuallyUnread: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -72,6 +80,10 @@ export class ChatConversation {
     this.groupAvatarUrl = props.groupAvatarUrl;
     this.autoDownloadMedia = props.autoDownloadMedia;
     this.archived = props.archived;
+    this.pinned = props.pinned;
+    this.mutedUntil = props.mutedUntil;
+    this.favorite = props.favorite;
+    this.manuallyUnread = props.manuallyUnread;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

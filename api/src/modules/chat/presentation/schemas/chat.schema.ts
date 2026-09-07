@@ -82,3 +82,16 @@ export const suggestContactsQuerySchema = {
     sessionId: { type: 'string' },
   },
 } as const;
+
+export const conversationStateBodySchema = {
+  type: 'object',
+  properties: {
+    archived: { type: 'boolean' },
+    pinned:   { type: 'boolean' },
+    // null remove o silêncio; número é a duração em milissegundos.
+    muteMs:   { type: ['number', 'null'] },
+    favorite: { type: 'boolean' },
+    unread:   { type: 'boolean' },
+    lists:    { type: 'array', items: { type: 'string' } },
+  },
+} as const;

@@ -4,6 +4,7 @@ import type {
   ConversationUpdateData,
   CreateConversationData,
   IChatConversationRepository,
+  ConversationStateUpdate,
   ListConversationsFilter,
 } from '../../domain/contracts/IChatConversationRepository';
 import type { ChatConversation } from '../../domain/entities/ChatConversation';
@@ -55,12 +56,33 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
 
     const rows = await this.prisma.chatConversation.findMany({
       where,
-      orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+      // Fixadas primeiro, como no WhatsApp Web; o resto por atividade recente.
+      orderBy: [{ pinned: 'desc' }, { lastMessageAt: 'desc' }, { createdAt: 'desc' }],
       take: filter.limit ?? 50,
       skip: filter.offset ?? 0,
     });
 
     return rows.map(PrismaChatConversationMapper.toDomain);
+  }
+
+  async updateState(id: string, tenantId: string, data: ConversationStateUpdate): Promise<ChatConversation> {
+    // updateMany filtra por tenant; o findFirst seguinte devolve o registro atualizado.
+    await this.prisma.chatConversation.updateMany({
+      where: { id, tenantId },
+      data: {
+        ...(data.archived !== undefined ? { archived: data.archived } : {}),
+        ...(data.pinned !== undefined ? { pinned: data.pinned } : {}),
+        ...(data.mutedUntil !== undefined ? { mutedUntil: data.mutedUntil } : {}),
+        ...(data.favorite !== undefined ? { favorite: data.favorite } : {}),
+        ...(data.manuallyUnread !== undefined ? { manuallyUnread: data.manuallyUnread } : {}),
+        ...(data.tags !== undefined ? { tags: data.tags } : {}),
+        ...(data.unreadCount !== undefined ? { unreadCount: data.unreadCount } : {}),
+      },
+    });
+
+    const raw = await this.prisma.chatConversation.findFirst({ where: { id, tenantId } });
+    if (!raw) throw new Error(`Conversation not found after update: ${id}`);
+    return PrismaChatConversationMapper.toDomain(raw);
   }
 
   async setArchivedByChat(input: {

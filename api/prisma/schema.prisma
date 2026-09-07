@@ -341,6 +341,10 @@ model ChatConversation {
   groupAvatarUrl     String?            // URL pública da foto do grupo
   autoDownloadMedia  Boolean            @default(false) // baixar mídia automaticamente nesta conversa
   archived           Boolean            @default(false) // espelha o arquivamento no WhatsApp
+  pinned             Boolean            @default(false) // espelha a fixação no WhatsApp
+  mutedUntil         DateTime?          // silenciada até; null = com notificações
+  favorite           Boolean            @default(false) // marcação local do painel
+  manuallyUnread     Boolean            @default(false) // marcada como não lida pelo operador
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -356,6 +360,7 @@ model ChatConversation {
   @@index([tenantId, contactId])
   @@index([tenantId, groupJid])
   @@index([tenantId, archived])
+  @@index([tenantId, pinned])
   @@map("chat_conversations")
 }
 

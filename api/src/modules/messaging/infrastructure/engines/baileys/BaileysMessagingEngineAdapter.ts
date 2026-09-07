@@ -31,6 +31,7 @@ import type {
   SendMessageResult,
   MarkMessagesReadInput,
   GroupParticipantInfo,
+  UpdateChatStateInput,
 } from '../../../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
@@ -335,6 +336,37 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     } catch (err) {
       baileysLogger.debug({ err, sessionId, phone }, 'Failed to check number on WhatsApp');
       return null;
+    }
+  }
+
+  async updateChatState(input: UpdateChatStateInput): Promise<void> {
+    const entry = this.requireConnectedEntry(input.sessionId);
+    const jid = input.isGroup ? `${input.chatId}@g.us` : `${input.chatId}@s.whatsapp.net`;
+
+    // archive e markRead exigem a última mensagem para o WhatsApp localizar o ponto
+    // da conversa; sem ela o protocolo rejeita a modificação.
+    const lastMessages = input.lastMessage
+      ? [{
+          key: { remoteJid: jid, id: input.lastMessage.externalId, fromMe: input.lastMessage.fromMe },
+          messageTimestamp: Math.floor(input.lastMessage.timestamp.getTime() / 1000),
+        }]
+      : [];
+
+    try {
+      if (input.archived !== undefined) {
+        await entry.socket.chatModify({ archive: input.archived, lastMessages }, jid);
+      }
+      if (input.pinned !== undefined) {
+        await entry.socket.chatModify({ pin: input.pinned }, jid);
+      }
+      if (input.muteMs !== undefined) {
+        await entry.socket.chatModify({ mute: input.muteMs }, jid);
+      }
+      if (input.read !== undefined) {
+        await entry.socket.chatModify({ markRead: input.read, lastMessages }, jid);
+      }
+    } catch (err) {
+      throw translateEngineError(err);
     }
   }
 

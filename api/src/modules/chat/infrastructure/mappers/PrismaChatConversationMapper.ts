@@ -25,6 +25,10 @@ export class PrismaChatConversationMapper {
       groupAvatarUrl: raw.groupAvatarUrl ?? null,
       autoDownloadMedia: raw.autoDownloadMedia,
       archived: raw.archived,
+      pinned: raw.pinned,
+      mutedUntil: raw.mutedUntil,
+      favorite: raw.favorite,
+      manuallyUnread: raw.manuallyUnread,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

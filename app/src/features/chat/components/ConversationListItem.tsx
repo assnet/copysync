@@ -1,24 +1,31 @@
-import { Box, Avatar, Typography, Badge, Chip, alpha, useTheme } from '@mui/material';
+import { Box, Avatar, Typography, Badge, Chip, IconButton, alpha, useTheme } from '@mui/material';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
+import FavoriteIcon from '@mui/icons-material/Favorite';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import type { ChatConversation } from '../types';
 import { getStatusConfig, formatConversationTime, formatPhone } from '../utils';
 
 interface Props {
+  /** Abre o menu de ações da conversa, ancorado no botão. */
+  onOpenActions?: (anchor: HTMLElement) => void;
   conversation: ChatConversation;
   selected: boolean;
   onClick: () => void;
   presence?: string;
 }
 
-export function ConversationListItem({ conversation, selected, onClick, presence }: Props) {
+export function ConversationListItem({ conversation, selected, onClick, presence, onOpenActions }: Props) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const { contact, status, unreadCount, lastMessage, lastMessageAt, tags, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
   const hasUnread = unreadCount > 0;
   const isGroup = conversation.isGroup ?? false;
+  const isMuted = Boolean(conversation.mutedUntil && new Date(conversation.mutedUntil) > new Date());
   // Contato sem nome salvo tem o próprio número como nome: nesse caso exibimos o
   // telefone formatado, como faz o WhatsApp Web, em vez do número cru.
   const displayTitle = isGroup
@@ -99,6 +106,39 @@ export function ConversationListItem({ conversation, selected, onClick, presence
           >
             {formatConversationTime(lastMessageAt)}
           </Typography>
+          {conversation.favorite && (
+            <FavoriteIcon sx={{ fontSize: 13, color: 'error.light', flexShrink: 0 }} titleAccess="Favorita" />
+          )}
+          {isMuted && (
+            <NotificationsOffIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} titleAccess="Silenciada" />
+          )}
+          {conversation.pinned && (
+            <PushPinIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} titleAccess="Fixada" />
+          )}
+          {onOpenActions && (
+            <IconButton
+              size="small"
+              aria-label="Ações da conversa"
+              onClick={(e) => {
+                // O clique é do botão, não da conversa: sem isso abrir o menu também
+                // selecionaria a conversa.
+                e.stopPropagation();
+                onOpenActions(e.currentTarget);
+              }}
+              sx={{
+                p: 0.25,
+                ml: -0.25,
+                flexShrink: 0,
+                // Aparece no hover no desktop; no toque fica sempre visível, já que
+                // não existe hover.
+                opacity: { xs: 1, sm: 0 },
+                '.MuiBox-root:hover > * > &': { opacity: 1 },
+                transition: 'opacity 0.15s',
+              }}
+            >
+              <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          )}
         </Box>
 
         {/* Row 2: preview da última mensagem + badge de não lidas, como no WhatsApp Web */}

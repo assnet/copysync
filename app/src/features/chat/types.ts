@@ -101,4 +101,12 @@ export interface ChatConversation {
   groupName?: string | null;
   /** Baixar mídia automaticamente (false = somente ao clicar) */
   autoDownloadMedia?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  /** ISO; conversa silenciada até esta data. */
+  mutedUntil?: string | null;
+  favorite?: boolean;
+  manuallyUnread?: boolean;
+  /** Listas do painel às quais a conversa pertence. */
+  lists?: string[];
 }

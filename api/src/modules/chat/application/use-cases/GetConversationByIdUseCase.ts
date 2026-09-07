@@ -81,6 +81,10 @@ export class GetConversationByIdUseCase {
       groupName: conv.groupName,
       autoDownloadMedia: conv.autoDownloadMedia,
       archived: conv.archived,
+      pinned: conv.pinned,
+      mutedUntil: conv.mutedUntil?.toISOString() ?? null,
+      favorite: conv.favorite,
+      manuallyUnread: conv.manuallyUnread,
     };
   }
 }

@@ -60,13 +60,16 @@ export interface ChatConversationApiDto {
   updatedAt: string;
   contact: ChatContactApiDto;
   session: ChatSessionRefApiDto | null;
-  assignedUser: { id: string; name: string
-  archived?: boolean;
-} | null;
+  assignedUser: { id: string; name: string } | null;
   isGroup?: boolean;
   groupJid?: string | null;
   groupName?: string | null;
   autoDownloadMedia?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  mutedUntil?: string | null;
+  favorite?: boolean;
+  manuallyUnread?: boolean;
 }
 
 export interface ChatMessageApiDto {
@@ -211,6 +214,12 @@ export function apiConversationToFrontend(dto: ChatConversationApiDto): ChatConv
     queue:         dto.queueName,
     isGroup:       dto.isGroup ?? false,
     groupJid:      dto.groupJid ?? null,
+    archived:      dto.archived ?? false,
+    pinned:        dto.pinned ?? false,
+    mutedUntil:    dto.mutedUntil ?? null,
+    favorite:      dto.favorite ?? false,
+    manuallyUnread: dto.manuallyUnread ?? false,
+    lists:         dto.tags ?? [],
     groupName:     dto.groupName ?? null,
     autoDownloadMedia: dto.autoDownloadMedia ?? false,
   };

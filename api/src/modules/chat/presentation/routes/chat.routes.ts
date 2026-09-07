@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
+import { UpdateConversationStateUseCase } from '../../application/use-cases/UpdateConversationStateUseCase';
 import { SuggestContactsUseCase } from '../../application/use-cases/SuggestContactsUseCase';
 import { StartConversationUseCase } from '../../application/use-cases/StartConversationUseCase';
 import { SyncChatAvatarsUseCase } from '../../application/use-cases/SyncChatAvatarsUseCase';
@@ -19,6 +20,7 @@ import {
   listMessagesQuerySchema,
   startConversationBodySchema,
   suggestContactsQuerySchema,
+  conversationStateBodySchema,
   sendMessageBodySchema,
   updateConversationBodySchema,
 } from '../schemas/chat.schema';
@@ -200,6 +202,27 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const { contactId } = request.params as { contactId: string };
       const result = await getContactUseCase.execute({ contactId, tenantId });
       httpResponse.ok(reply, ChatPresenter.presentContact(result));
+    },
+  );
+
+  // ── PATCH /conversations/:id/state — arquivar, fixar, silenciar, etc. ─────
+  app.patch(
+    '/conversations/:id/state',
+    { preHandler, schema: { params: conversationIdParamSchema, body: conversationStateBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+      const body = request.body as {
+        archived?: boolean; pinned?: boolean; muteMs?: number | null;
+        favorite?: boolean; unread?: boolean; lists?: string[];
+      };
+
+      const useCase = new UpdateConversationStateUseCase(
+        conversationRepo, contactRepo, messageRepo, getActiveEngine() ?? undefined,
+      );
+      const state = await useCase.execute({ tenantId, conversationId: id, ...body });
+
+      httpResponse.ok(reply, state);
     },
   );
 

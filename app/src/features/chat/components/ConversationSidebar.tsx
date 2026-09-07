@@ -52,6 +52,8 @@ interface Props {
   onToggleArchived?: (show: boolean) => void;
   /** Abre o diálogo de nova conversa. */
   onNewConversation?: () => void;
+  /** Abre o menu de ações de uma conversa. */
+  onOpenActions?: (conversationId: string, anchor: HTMLElement) => void;
 }
 
 export function ConversationSidebar({
@@ -71,6 +73,7 @@ export function ConversationSidebar({
   showArchived = false,
   onToggleArchived,
   onNewConversation,
+  onOpenActions,
 }: Props) {
   const theme = useTheme();
 
@@ -311,6 +314,9 @@ export function ConversationSidebar({
           filtered.map((conv) => (
             <Box key={conv.id}>
               <ConversationListItem
+                onOpenActions={
+                  onOpenActions ? (anchor) => onOpenActions(conv.id, anchor) : undefined
+                }
                 conversation={conv}
                 selected={selectedId === conv.id}
                 onClick={() => onSelect(conv.id)}

@@ -27,6 +27,16 @@ export interface ConversationLastMessageUpdate {
   lastMessageAt: Date;
 }
 
+export interface ConversationStateUpdate {
+  archived?: boolean;
+  pinned?: boolean;
+  mutedUntil?: Date | null;
+  favorite?: boolean;
+  manuallyUnread?: boolean;
+  tags?: string[];
+  unreadCount?: number;
+}
+
 export interface CreateConversationData {
   tenantId: string;
   sessionId?: string | null;
@@ -70,6 +80,8 @@ export interface IChatConversationRepository {
   resetUnread(id: string, tenantId: string): Promise<void>;
   /** Atualiza apenas groupAvatarUrl de todas as conversações do grupo (sem tocar outros campos). */
   updateGroupAvatarUrlByGroupJid(groupJid: string, tenantId: string, avatarUrl: string): Promise<void>;
+  /** Atualiza os estados da conversa (arquivada, fixada, silenciada, etc.). */
+  updateState(id: string, tenantId: string, data: ConversationStateUpdate): Promise<ChatConversation>;
   /** Espelha o arquivamento vindo do WhatsApp. Devolve quantas conversas mudaram. */
   setArchivedByChat(input: {
     tenantId: string;

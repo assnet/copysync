@@ -144,6 +144,32 @@ export interface IMessagingEngine {
    * não dá para afirmar que o número não existe.
    */
   checkNumberExists(sessionId: string, phone: string): Promise<boolean | null>;
+  /**
+   * Aplica no WhatsApp uma mudança de estado da conversa.
+   *
+   * Só expõe o que o protocolo suporta: arquivar, fixar, silenciar e marcar como não
+   * lida. Favoritos e listas não têm equivalente e ficam no painel.
+   */
+  updateChatState(input: UpdateChatStateInput): Promise<void>;
+}
+
+export interface UpdateChatStateInput {
+  sessionId: string;
+  /** Telefone (conversa individual) ou groupJid sem @g.us (grupo). */
+  chatId: string;
+  isGroup: boolean;
+  /** Última mensagem conhecida — exigida pelo protocolo em archive e markRead. */
+  lastMessage?: {
+    externalId: string;
+    fromMe: boolean;
+    timestamp: Date;
+  };
+  archived?: boolean;
+  pinned?: boolean;
+  /** Duração do silêncio em ms; null remove. */
+  muteMs?: number | null;
+  /** false marca como não lida. */
+  read?: boolean;
 }
 
 export interface GroupParticipantInfo {

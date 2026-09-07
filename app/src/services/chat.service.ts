@@ -84,6 +84,20 @@ export const chatService = {
     await apiClient.post(`/chat/conversations/${conversationId}/presence`);
   },
 
+  async updateConversationState(
+    conversationId: string,
+    change: {
+      archived?: boolean; pinned?: boolean; muteMs?: number | null;
+      favorite?: boolean; unread?: boolean; lists?: string[];
+    },
+  ): Promise<{ syncedToWhatsApp: boolean }> {
+    const res = await apiClient.patch<{ success: true; data: { syncedToWhatsApp: boolean } }>(
+      `/chat/conversations/${conversationId}/state`,
+      change,
+    );
+    return res.data.data;
+  },
+
   async suggestContacts(term: string, sessionId?: string): Promise<ContactSuggestionApiDto[]> {
     const res = await apiClient.get<{ success: true; data: { suggestions: ContactSuggestionApiDto[] } }>(
       '/chat/contacts/suggest',

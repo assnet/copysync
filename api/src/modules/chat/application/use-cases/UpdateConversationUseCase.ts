@@ -92,6 +92,10 @@ export class UpdateConversationUseCase {
       groupName: updated.groupName,
       autoDownloadMedia: updated.autoDownloadMedia,
       archived: updated.archived,
+      pinned: updated.pinned,
+      mutedUntil: updated.mutedUntil?.toISOString() ?? null,
+      favorite: updated.favorite,
+      manuallyUnread: updated.manuallyUnread,
     };
   }
 }

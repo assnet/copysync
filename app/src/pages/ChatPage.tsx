@@ -16,6 +16,8 @@ import { EmptyConversationState } from '@/features/chat/components/EmptyConversa
 import { ConversationDetailsPanel } from '@/features/chat/components/ConversationDetailsPanel';
 import { ConversationSearchPanel } from '@/features/chat/components/ConversationSearchPanel';
 import { NewConversationDialog } from '@/features/chat/components/NewConversationDialog';
+import { ConversationActionsMenu } from '@/features/chat/components/ConversationActionsMenu';
+import type { ConversationStateChange } from '@/features/chat/components/ConversationActionsMenu';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
@@ -74,6 +76,7 @@ export default function ChatPage() {
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
+  const [actionsFor, setActionsFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const [archivedCount, setArchivedCount] = useState(0);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
@@ -556,6 +559,53 @@ export default function ChatPage() {
     return () => clearTimeout(timer);
   }, [highlightMessageId]);
 
+  const actionsConversation = actionsFor
+    ? conversations.find((c) => c.id === actionsFor.id) ?? null
+    : null;
+
+  // Listas já usadas, para reaproveitar os nomes ao classificar outra conversa.
+  const knownLists = useMemo(() => {
+    const all = new Set<string>();
+    for (const c of conversations) for (const l of c.lists ?? []) all.add(l);
+    return [...all].sort();
+  }, [conversations]);
+
+  const handleConversationStateChange = useCallback(
+    (conversationId: string, change: ConversationStateChange) => {
+      // Atualização otimista: a interface responde na hora e a lista é recarregada
+      // depois, porque arquivar e fixar mudam a composição e a ordem dela.
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                ...(change.archived !== undefined ? { archived: change.archived } : {}),
+                ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
+                ...(change.favorite !== undefined ? { favorite: change.favorite } : {}),
+                ...(change.lists !== undefined ? { lists: change.lists } : {}),
+                ...(change.unread === true ? { unreadCount: Math.max(1, c.unreadCount) } : {}),
+                ...(change.muteMs !== undefined
+                  ? { mutedUntil: change.muteMs === null ? null : new Date(Date.now() + change.muteMs).toISOString() }
+                  : {}),
+              }
+            : c,
+        ),
+      );
+
+      chatService
+        .updateConversationState(conversationId, change)
+        .catch((err: unknown) => console.error('Erro ao atualizar a conversa', err))
+        .finally(() => {
+          // Arquivar tira da lista atual; fixar reordena. Em ambos, recarregar mantém
+          // a lista fiel ao servidor.
+          if (change.archived !== undefined || change.pinned !== undefined) {
+            void loadConversations();
+          }
+        });
+    },
+    [loadConversations],
+  );
+
   // Abre a conversa direta com um participante de grupo pelo telefone
   const handleParticipantClick = useCallback(
     (phone: string, name: string) => {
@@ -635,6 +685,7 @@ export default function ChatPage() {
         archivedCount={archivedCount}
         showArchived={showArchived}
         onNewConversation={() => setNewConversationOpen(true)}
+        onOpenActions={(id, anchor) => setActionsFor({ id, anchor })}
         onToggleArchived={(show) => {
           setShowArchived(show);
           // Sair de uma conversa arquivada ao trocar de visão evita mostrar uma
@@ -682,6 +733,16 @@ export default function ChatPage() {
         <Box sx={{ display: { xs: 'none', sm: 'flex' }, flex: 1, minWidth: 0 }}>
           <EmptyConversationState />
         </Box>
+      )}
+
+      {actionsConversation && (
+        <ConversationActionsMenu
+          conversation={actionsConversation}
+          anchorEl={actionsFor?.anchor ?? null}
+          onClose={() => setActionsFor(null)}
+          knownLists={knownLists}
+          onChange={(change) => handleConversationStateChange(actionsConversation.id, change)}
+        />
       )}
 
       <NewConversationDialog

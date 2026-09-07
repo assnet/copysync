@@ -28,6 +28,10 @@ export class ChatPresenter {
       groupName: dto.groupName ?? null,
       autoDownloadMedia: dto.autoDownloadMedia ?? false,
       archived: dto.archived ?? false,
+      pinned: dto.pinned ?? false,
+      mutedUntil: dto.mutedUntil ?? null,
+      favorite: dto.favorite ?? false,
+      manuallyUnread: dto.manuallyUnread ?? false,
     };
   }
 
