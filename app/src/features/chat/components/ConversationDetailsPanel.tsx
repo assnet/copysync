@@ -109,7 +109,8 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate, part
   return (
     <Box
       sx={{
-        width: 280,
+        // 280 → 322px (+15%). No mobile o painel é sobreposição de tela cheia.
+        width: { xs: '100%', sm: 322 },
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
