@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Menu, MenuItem, ListItemIcon, ListItemText, Divider, TextField, Box, Button,
 } from '@mui/material';
@@ -51,6 +51,28 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
   const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
   const [newList, setNewList] = useState('');
 
+  // Um pequeno atraso antes de fechar evita que o submenu suma enquanto o ponteiro
+  // atravessa o vão entre o item e o painel.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const scheduleClose = (close: () => void) => {
+    cancelClose();
+    closeTimer.current = setTimeout(close, 180);
+  };
+  useEffect(() => cancelClose, []);
+
+  /** Passar por um item sem submenu fecha o submenu que estiver aberto. */
+  const closeSubmenusOnHover = () => {
+    cancelClose();
+    setMuteAnchor(null);
+    setListAnchor(null);
+  };
+
   const isMuted = Boolean(conversation.mutedUntil && new Date(conversation.mutedUntil) > new Date());
   const currentLists = conversation.lists ?? [];
 
@@ -72,12 +94,12 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
     <>
       <Menu
         anchorEl={anchorEl}
-        open={Boolean(anchorEl) && !muteAnchor && !listAnchor}
+        open={Boolean(anchorEl)}
         onClose={onClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <MenuItem onClick={() => apply({ archived: !conversation.archived })} dense>
+        <MenuItem onClick={() => apply({ archived: !conversation.archived })} onMouseEnter={closeSubmenusOnHover} dense>
           <ListItemIcon>
             {conversation.archived
               ? <UnarchiveOutlinedIcon fontSize="small" />
@@ -86,12 +108,12 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
           <ListItemText>{conversation.archived ? 'Desarquivar conversa' : 'Arquivar conversa'}</ListItemText>
         </MenuItem>
 
-        <MenuItem onClick={() => apply({ pinned: !conversation.pinned })} dense>
+        <MenuItem onClick={() => apply({ pinned: !conversation.pinned })} onMouseEnter={closeSubmenusOnHover} dense>
           <ListItemIcon><PushPinOutlinedIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{conversation.pinned ? 'Desafixar conversa' : 'Fixar conversa'}</ListItemText>
         </MenuItem>
 
-        <MenuItem onClick={() => apply({ favorite: !conversation.favorite })} dense>
+        <MenuItem onClick={() => apply({ favorite: !conversation.favorite })} onMouseEnter={closeSubmenusOnHover} dense>
           <ListItemIcon>
             {conversation.favorite
               ? <FavoriteIcon fontSize="small" />
@@ -102,7 +124,12 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
           </ListItemText>
         </MenuItem>
 
-        <MenuItem onClick={(e) => setListAnchor(e.currentTarget)} dense>
+        <MenuItem
+          onClick={(e) => setListAnchor(e.currentTarget)}
+          onMouseEnter={(e) => { cancelClose(); setMuteAnchor(null); setListAnchor(e.currentTarget); }}
+          onMouseLeave={() => scheduleClose(() => setListAnchor(null))}
+          dense
+        >
           <ListItemIcon><PlaylistAddOutlinedIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Adicionar à lista</ListItemText>
           <ArrowRightIcon fontSize="small" sx={{ color: 'text.disabled' }} />
@@ -110,6 +137,13 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
 
         <MenuItem
           onClick={(e) => (isMuted ? apply({ muteMs: null }) : setMuteAnchor(e.currentTarget))}
+          onMouseEnter={(e) => {
+            cancelClose();
+            setListAnchor(null);
+            // Silenciada: o item vira ação direta de reativar, sem submenu.
+            if (!isMuted) setMuteAnchor(e.currentTarget);
+          }}
+          onMouseLeave={() => scheduleClose(() => setMuteAnchor(null))}
           dense
         >
           <ListItemIcon>
@@ -123,14 +157,32 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
 
         <Divider />
 
-        <MenuItem onClick={() => apply({ unread: true })} dense>
+        <MenuItem onClick={() => apply({ unread: true })} onMouseEnter={closeSubmenusOnHover} dense>
           <ListItemIcon><MarkChatUnreadOutlinedIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Marcar como não lida</ListItemText>
         </MenuItem>
       </Menu>
 
       {/* Submenu de silenciar */}
-      <Menu anchorEl={muteAnchor} open={Boolean(muteAnchor)} onClose={() => { setMuteAnchor(null); onClose(); }}>
+      <Menu
+        anchorEl={muteAnchor}
+        open={Boolean(muteAnchor)}
+        onClose={() => { setMuteAnchor(null); onClose(); }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        // O submenu abre por hover: sem isto o backdrop invisível capturaria o
+        // ponteiro e o menu principal deixaria de responder.
+        hideBackdrop
+        disableAutoFocus
+        disableEnforceFocus
+        disableRestoreFocus
+        slotProps={{
+          paper: {
+            onMouseEnter: cancelClose,
+            onMouseLeave: () => scheduleClose(() => setMuteAnchor(null)),
+          },
+        }}
+      >
         {MUTE_OPTIONS.map((opt) => (
           <MenuItem key={opt.label} onClick={() => apply({ muteMs: opt.ms })} dense>
             <ListItemText>{opt.label}</ListItemText>
@@ -139,7 +191,23 @@ export function ConversationActionsMenu({ conversation, anchorEl, onClose, onCha
       </Menu>
 
       {/* Submenu de listas */}
-      <Menu anchorEl={listAnchor} open={Boolean(listAnchor)} onClose={() => { setListAnchor(null); onClose(); }}>
+      <Menu
+        anchorEl={listAnchor}
+        open={Boolean(listAnchor)}
+        onClose={() => { setListAnchor(null); onClose(); }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        hideBackdrop
+        disableAutoFocus
+        disableEnforceFocus
+        disableRestoreFocus
+        slotProps={{
+          paper: {
+            onMouseEnter: cancelClose,
+            onMouseLeave: () => scheduleClose(() => setListAnchor(null)),
+          },
+        }}
+      >
         {knownLists.map((list) => (
           <MenuItem key={list} onClick={() => toggleList(list)} dense>
             <ListItemText>{list}</ListItemText>
