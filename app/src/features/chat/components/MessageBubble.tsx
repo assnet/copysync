@@ -140,6 +140,8 @@ export function MessageBubble({ message, onReply, onParticipantClick }: Props) {
   const isDark = theme.palette.mode === 'dark';
   const isOut = message.direction === 'out';
 
+  const participantPhone = message.fromParticipant?.replace(/@.+$/, '') || null;
+
   const handleOpenMenu = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
     setMenuAnchor(e.currentTarget);
@@ -296,13 +298,13 @@ export function MessageBubble({ message, onReply, onParticipantClick }: Props) {
             }}
           >
             {message.fromParticipantName}
-            {message.fromParticipant && (
+            {participantPhone && (
               <Typography
                 component="span"
                 variant="caption"
                 sx={{ fontWeight: 400, fontSize: 10, ml: 0.75, opacity: 0.65 }}
               >
-                · {message.fromParticipant.replace(/@.+$/, '').replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '+55 $1 $2-$3')}
+                · {participantPhone.replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '+55 $1 $2-$3')}
               </Typography>
             )}
           </Typography>

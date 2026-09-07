@@ -676,10 +676,18 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     };
   }
 
+  /**
+   * Devolve o telefone real do participante, ou `undefined` quando ele não pode ser
+   * resolvido.
+   *
+   * Nunca devolve o LID como fallback: o LID é identificador interno do WhatsApp e,
+   * gravado em `fromParticipant`, era exibido no painel como se fosse um telefone.
+   * Sem número, o painel mostra apenas o nome do participante — como o WhatsApp Web.
+   */
   private async resolveParticipantPhone(
     socket: ReturnType<typeof makeWASocket>,
     participantJid: string,
-  ): Promise<string> {
+  ): Promise<string | undefined> {
     if (!participantJid.endsWith('@lid')) {
       return participantJid.split('@')[0];
     }
@@ -694,12 +702,22 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       baileysLogger.debug({ err, participantJid }, 'Failed to resolve group participant LID');
     }
 
-    return lid;
+    baileysLogger.debug({ participantJid }, 'Group participant LID not resolvable to a phone');
+    return undefined;
   }
 
   private extractParticipantJid(msg: proto.IWebMessageInfo): string | undefined {
     const participantFromKey = msg.key?.participant;
-    if (participantFromKey) return participantFromKey;
+    if (participantFromKey) {
+      // Quando o participante usa privacidade de número, `participant` vem como @lid
+      // e o Baileys entrega o JID real em `participantAlt` — mesmo par de campos que
+      // remoteJid/remoteJidAlt. Sem isso o LID acabava salvo como se fosse telefone.
+      if (participantFromKey.endsWith('@lid')) {
+        const alt = (msg.key as { participantAlt?: string }).participantAlt;
+        if (alt?.includes('@s.whatsapp.net')) return alt;
+      }
+      return participantFromKey;
+    }
 
     const content = unwrapBaileysMessageContent(msg.message ?? {});
     const contextInfo = content.extendedTextMessage?.contextInfo
