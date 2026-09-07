@@ -11,6 +11,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Sessões/Chat — Avatar ausente e leitura dos cards
+
+- **`app.ts`** — o schema de resposta `SessionItem` não declarava `avatarUrl`, e o serializer do Fastify remove silenciosamente propriedades ausentes do schema: a foto do número conectado nunca chegava ao painel, mesmo com o presenter devolvendo o campo
+- **`ConversationListItem.tsx`** — o card passa a exibir nome (ou o telefone formatado, quando o contato não tem nome salvo) e a prévia da última mensagem logo abaixo, com o badge de não lidas ao lado, como no WhatsApp Web; a linha dedicada ao telefone sai
+- **`MessageBubble.tsx`** — o canto agudo do balão vai para o topo, do lado de quem fala (a mesma aresta do avatar), e ganha um bico triangular saindo para fora
+
 #### Painel — Versão no menu e navegação
 
 - **`AppLayout.tsx`**, **`vite.config.ts`**, **`vite-env.d.ts`** — a versão do painel passa a aparecer discretamente no rodapé do menu, também no modo compacto; o número é lido do `package.json` em tempo de build e injetado como `__APP_VERSION__`
