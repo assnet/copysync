@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
+import { ListGroupParticipantsUseCase } from '../../application/use-cases/ListGroupParticipantsUseCase';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { ChatPresenter } from '../presenters/ChatPresenter';
@@ -206,6 +207,24 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       });
 
       httpResponse.ok(reply, { success: true });
+    },
+  );
+
+  // ── GET /conversations/:id/participants — membros do grupo ────────────────
+  app.get(
+    '/conversations/:id/participants',
+    { preHandler, schema: { params: conversationIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+
+      const engine = getActiveEngine();
+      if (!engine) return httpResponse.ok(reply, { participants: [] });
+
+      const useCase = new ListGroupParticipantsUseCase(conversationRepo, contactRepo, engine);
+      const participants = await useCase.execute({ conversationId: id, tenantId });
+
+      httpResponse.ok(reply, { participants, total: participants.length });
     },
   );
 

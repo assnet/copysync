@@ -6,6 +6,7 @@ import type {
   ListConversationsParams,
   ListMessagesParams,
   UpdateConversationRequest,
+  GroupParticipantApiDto,
 } from '@/types/chat.api.types';
 
 export const chatService = {
@@ -73,5 +74,12 @@ export const chatService = {
 
   async subscribePresence(conversationId: string): Promise<void> {
     await apiClient.post(`/chat/conversations/${conversationId}/presence`);
+  },
+
+  async listGroupParticipants(conversationId: string): Promise<GroupParticipantApiDto[]> {
+    const res = await apiClient.get<{ success: true; data: { participants: GroupParticipantApiDto[]; total: number } }>(
+      `/chat/conversations/${conversationId}/participants`,
+    );
+    return res.data.data.participants;
   },
 };

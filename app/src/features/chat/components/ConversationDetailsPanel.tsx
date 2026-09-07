@@ -11,9 +11,10 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import AutoGraphOutlinedIcon from '@mui/icons-material/AutoGraphOutlined';
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ChatConversation, ConversationStatus } from '../types';
-import type { UpdateConversationRequest } from '@/types/chat.api.types';
+import type { UpdateConversationRequest, GroupParticipantApiDto } from '@/types/chat.api.types';
+import { chatService } from '@/services/chat.service';
 import { formatPhone, getStatusConfig, formatConversationTime } from '../utils';
 
 interface SectionProps {
@@ -98,6 +99,25 @@ const STATUS_OPTIONS: { value: ConversationStatus; label: string }[] = [
 
 export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Props) {
   const { contact, session, status, queue, assignedTo, tags, notes, unreadCount, lastMessageAt, isGroup, autoDownloadMedia } = conversation;
+
+  // Participantes vêm do WhatsApp sob demanda: só para grupos e só quando o painel abre.
+  const [participants, setParticipants] = useState<GroupParticipantApiDto[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+
+  useEffect(() => {
+    if (!isGroup) {
+      setParticipants([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingParticipants(true);
+    chatService
+      .listGroupParticipants(conversation.id)
+      .then((items) => { if (!cancelled) setParticipants(items); })
+      .catch(() => { if (!cancelled) setParticipants([]); })
+      .finally(() => { if (!cancelled) setLoadingParticipants(false); });
+    return () => { cancelled = true; };
+  }, [conversation.id, isGroup]);
   const statusConfig = getStatusConfig(status);
   const [localNotes, setLocalNotes] = useState(notes);
 
@@ -299,10 +319,50 @@ export function ConversationDetailsPanel({ conversation, onClose, onUpdate }: Pr
         <Divider />
 
         {/* Participants */}
-        <Section title="Participantes" icon={<GroupOutlinedIcon sx={{ fontSize: 14 }} />}>
-          <Typography variant="caption" color="text.disabled" fontStyle="italic">
-            Nenhum participante adicional
-          </Typography>
+        <Section
+          title={participants.length > 0 ? `Participantes · ${participants.length}` : 'Participantes'}
+          icon={<GroupOutlinedIcon sx={{ fontSize: 14 }} />}
+        >
+          {loadingParticipants ? (
+            <Typography variant="caption" color="text.disabled">Carregando…</Typography>
+          ) : participants.length === 0 ? (
+            <Typography variant="caption" color="text.disabled" fontStyle="italic">
+              {isGroup ? 'Nenhum participante disponível' : 'Nenhum participante adicional'}
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+              {participants.map((p, i) => (
+                <Box
+                  key={`${p.phone ?? 'lid'}-${i}`}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1.25, py: 0.75 }}
+                >
+                  <Avatar
+                    src={p.avatarUrl ?? undefined}
+                    sx={{ width: 34, height: 34, fontSize: 12, fontWeight: 700, flexShrink: 0 }}
+                  >
+                    {p.initials}
+                  </Avatar>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Typography variant="body2" noWrap title={p.name}>{p.name}</Typography>
+                      {p.isAdmin && (
+                        <Chip
+                          label="Admin"
+                          size="small"
+                          sx={{ height: 16, fontSize: 9, fontWeight: 700, '& .MuiChip-label': { px: 0.6 } }}
+                        />
+                      )}
+                    </Box>
+                    {p.phone && (
+                      <Typography variant="caption" color="text.disabled" noWrap>
+                        {formatPhone(p.phone)}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          )}
         </Section>
 
         <Divider />

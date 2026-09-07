@@ -120,5 +120,20 @@ export interface IMessagingEngine {
   markMessagesRead(input: MarkMessagesReadInput): Promise<void>;
   /** Subscribe to presence updates for a specific JID. */
   presenceSubscribe(sessionId: string, phone: string): Promise<void>;
+  /**
+   * Lista os participantes de um grupo.
+   *
+   * `phone` fica nulo quando o participante usa privacidade de número e só o
+   * identificador interno está disponível.
+   */
+  getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]>;
+}
+
+export interface GroupParticipantInfo {
+  /** Telefone em dígitos, ou null quando não revelado pelo participante. */
+  phone: string | null;
+  /** Nome exibido, quando o WhatsApp o fornece. */
+  name: string | null;
+  isAdmin: boolean;
 }
 

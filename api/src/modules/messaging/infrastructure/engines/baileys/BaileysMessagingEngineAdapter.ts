@@ -30,6 +30,7 @@ import type {
   SendMediaMessageInput,
   SendMessageResult,
   MarkMessagesReadInput,
+  GroupParticipantInfo,
 } from '../../../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
@@ -210,6 +211,34 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       await entry.socket.presenceSubscribe(jid);
     } catch (err) {
       baileysLogger.warn({ err, sessionId, phone }, 'Failed to subscribe to presence');
+    }
+  }
+
+  async getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]> {
+    const entry = this.requireConnectedEntry(sessionId);
+    const remoteJid = groupJid.endsWith('@g.us') ? groupJid : `${groupJid}@g.us`;
+
+    try {
+      const metadata = await (entry.socket as BaileysSocketWithGroupHelpers).groupMetadata?.(remoteJid);
+      const participants = metadata?.participants ?? [];
+
+      return participants.map((p) => {
+        // Em grupos com privacidade de número o `id` vem como @lid e o telefone real,
+        // quando disponível, chega em `phoneNumber` — mesmo par de campos das mensagens
+        // (participant/participantAlt). Sem telefone devolvemos null em vez do LID, que
+        // é identificador interno e não deve ser exibido como número.
+        const rawId = p.phoneNumber ?? p.id ?? '';
+        const digits = rawId.split('@')[0] ?? '';
+        const phone = rawId.includes('@lid') || !/^\d{8,15}$/.test(digits) ? null : digits;
+
+        return {
+          phone,
+          name: p.name ?? p.notify ?? p.verifiedName ?? null,
+          isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
+        };
+      });
+    } catch (err) {
+      throw translateEngineError(err);
     }
   }
 
@@ -916,8 +945,21 @@ interface GroupMetadataSnapshot {
   groupName: string | null;
 }
 
+type BaileysGroupParticipant = {
+  id?: string;
+  lid?: string;
+  phoneNumber?: string;
+  name?: string;
+  notify?: string;
+  verifiedName?: string;
+  admin?: 'admin' | 'superadmin' | null;
+};
+
 type BaileysSocketWithGroupHelpers = ReturnType<typeof makeWASocket> & {
-  groupMetadata?: (jid: string) => Promise<{ subject?: string | null } | null | undefined>;
+  groupMetadata?: (jid: string) => Promise<{
+    subject?: string | null;
+    participants?: BaileysGroupParticipant[];
+  } | null | undefined>;
   signalRepository?: {
     lidMapping?: {
       getPNForLID?: (lid: string) => Promise<string | null | undefined>;
