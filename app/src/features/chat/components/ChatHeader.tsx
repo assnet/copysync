@@ -1,4 +1,5 @@
-import { Box, Avatar, Typography, IconButton, Chip, Tooltip, Divider, alpha, useTheme } from '@mui/material';
+import { Box, Avatar, Typography, IconButton, Chip, Tooltip, Divider, Menu, MenuItem, ListItemIcon, ListItemText, alpha, useTheme } from '@mui/material';
+import { useState } from 'react';
 import type { ReactElement } from 'react';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SearchIcon from '@mui/icons-material/Search';
@@ -44,6 +45,7 @@ function getPresenceLabel(presence?: string): { text: string; color: string } | 
 
 export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presence, onBack, onToggleSearch, searchOpen }: Props) {
   const theme = useTheme();
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { contact, session, status, queue, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
   const presenceLabel = getPresenceLabel(presence);
@@ -74,20 +76,39 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
           </IconButton>
         )}
 
-        {/* Avatar */}
-        <Avatar
-          src={contact.avatarUrl ?? undefined}
-          sx={{
-            width: 40,
-            height: 40,
-            bgcolor: isGroup ? 'success.main' : (contact.avatarColor ?? 'primary.main'),
-            fontSize: 14,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 22 }} /> : contact.initials}
-        </Avatar>
+        {/* Avatar — atalho para os dados da conversa, como no WhatsApp Web */}
+        <Tooltip title={isGroup ? 'Dados do grupo' : 'Dados do contato'}>
+          <Avatar
+            src={contact.avatarUrl ?? undefined}
+            onClick={onToggleDetails}
+            role="button"
+            tabIndex={0}
+            aria-label={isGroup ? 'Abrir dados do grupo' : 'Abrir dados do contato'}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggleDetails();
+              }
+            }}
+            sx={{
+              width: 40,
+              height: 40,
+              bgcolor: isGroup ? 'success.main' : (contact.avatarColor ?? 'primary.main'),
+              fontSize: 14,
+              fontWeight: 700,
+              flexShrink: 0,
+              cursor: 'pointer',
+              transition: 'opacity 0.15s',
+              '&:hover': { opacity: 0.85 },
+              '&:focus-visible': {
+                outline: `2px solid ${theme.palette.primary.main}`,
+                outlineOffset: 2,
+              },
+            }}
+          >
+            {isGroup ? <GroupsOutlinedIcon sx={{ fontSize: 22 }} /> : contact.initials}
+          </Avatar>
+        </Tooltip>
 
         {/* Info — nome e número centrados na linha média do avatar */}
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -169,22 +190,40 @@ export function ChatHeader({ conversation, detailsOpen, onToggleDetails, presenc
             </IconButton>
           </Tooltip>
           <Tooltip title="Mais opções">
-            <IconButton size="small" aria-label="Mais ações">
+            <IconButton
+              size="small"
+              aria-label="Mais ações"
+              onClick={(e) => setMenuAnchor(e.currentTarget)}
+              sx={{
+                color: menuAnchor ? 'primary.main' : undefined,
+                bgcolor: menuAnchor ? alpha(theme.palette.primary.main, 0.1) : 'transparent',
+              }}
+            >
               <MoreVertIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={detailsOpen ? 'Fechar painel' : 'Abrir painel de contexto'}>
-            <IconButton
-              size="small"
-              onClick={onToggleDetails}
-              sx={{
-                color: detailsOpen ? 'primary.main' : 'text.secondary',
-                bgcolor: detailsOpen ? alpha(theme.palette.primary.main, 0.1) : 'transparent',
+          <Menu
+            anchorEl={menuAnchor}
+            open={Boolean(menuAnchor)}
+            onClose={() => setMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                onToggleDetails();
               }}
             >
-              <InfoOutlinedIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+              <ListItemIcon>
+                <InfoOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={detailsOpen ? 'Fechar dados' : (isGroup ? 'Dados do grupo' : 'Dados do contato')}
+                primaryTypographyProps={{ variant: 'body2' }}
+              />
+            </MenuItem>
+          </Menu>
         </Box>
       </Box>
       <Divider />
