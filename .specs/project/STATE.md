@@ -38,11 +38,18 @@ Memória entre sessões: decisões, bloqueios, lições.
   mesmo item da lista; se um dia um consumidor precisar distinguir a procedência, aí sim vale
   separar.
 
-- **Conversa criada pelo history sync nasce com contador só da ingestão.** O `unreadCount` absoluto
-  de `chats.upsert` é descartado porque consumi-lo exigiria ordenar upsert e ingestão do mesmo lote.
-  O desvio se corrige na primeira leitura real da conversa.
+- ~~Conversa criada pelo history sync nasce com contador só da ingestão.~~ **Resolvido em
+  2026-09-21**, depois do primeiro teste com sessão real: o total do `messaging-history.set` passou
+  a ser adotado. A dívida se mostrou grave, não cosmética — na sincronização inicial de app-state o
+  WhatsApp entrega `unreadCount: null` para conversa já lida (`chat-utils.js:707`), então sem essa
+  fonte o passivo acumulado antes da conexão ficava para sempre.
 
 ## Lições
+
+- **Ler a lib não substitui rodar com sessão real.** A semântica de `unreadCount` foi lida direto do
+  código do Baileys e ainda assim faltou o caso que mais importa: `isInitialSync && read` emite
+  `null`, não `0`. O primeiro print de produção mostrou o painel com badge 50 numa conversa lida —
+  algo que nenhuma leitura estática tinha apontado.
 
 - Evento publicado sem consumidor passa despercebido: `chat.archive.updated` existia na API há
   tempos e o painel nunca o tratou — o tipo `ChatWsPayload` sequer o listava. Ao criar evento WS,

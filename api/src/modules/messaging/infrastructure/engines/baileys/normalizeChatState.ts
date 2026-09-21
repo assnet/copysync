@@ -28,6 +28,19 @@ function toNumber(value: NumberLike): number | null {
 }
 
 /**
+ * De onde veio o estado, o que muda a leitura do contador.
+ *
+ * - `update`: chats.update, onde o número positivo é **incremento** (o event-buffer da
+ *   lib soma esses valores) — descartado, porque o contador do painel já é mantido pela
+ *   ingestão de mensagens e copiá-lo duplicaria a contagem
+ * - `history`: messaging-history.set, único lugar que entrega o **total** do aparelho.
+ *   É o que reconcilia o passivo: na sincronização inicial de app-state, conversa já
+ *   lida chega com unreadCount null (a lib trata "lida" como padrão), então sem esta
+ *   fonte o contador acumulado antes da conexão nunca seria corrigido
+ */
+export type ChatStateSource = 'update' | 'history';
+
+/**
  * Traduz o estado cru do Baileys para o contrato interno.
  *
  * Esta é a única função que conhece a semântica numérica da lib:
@@ -46,12 +59,18 @@ function toNumber(value: NumberLike): number | null {
  * Devolve objeto vazio quando nada aproveitável chegou — o chamador não deve emitir
  * evento nesse caso.
  */
-export function normalizeChatState(raw: RawChatState, now: number = Date.now()): RemoteChatState {
+export function normalizeChatState(
+  raw: RawChatState,
+  options: { now?: number; source?: ChatStateSource } = {},
+): RemoteChatState {
+  const now = options.now ?? Date.now();
+  const source = options.source ?? 'update';
   const state: RemoteChatState = {};
 
   if (typeof raw.unreadCount === 'number') {
     if (raw.unreadCount === 0) state.read = true;
     else if (raw.unreadCount < 0) state.manuallyUnread = true;
+    else if (source === 'history') state.unreadCount = raw.unreadCount;
   }
 
   if (raw.archived !== undefined && raw.archived !== null) {

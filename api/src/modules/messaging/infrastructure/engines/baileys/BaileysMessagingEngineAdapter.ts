@@ -39,7 +39,7 @@ import type { ISessionAuthStateRepository } from '../../../../sessions/domain/co
 import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import { translateDisconnect, translateEngineError } from './BaileysErrorTranslator';
-import { normalizeChatState, isEmptyChatState, type RawChatState } from './normalizeChatState';
+import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
@@ -639,17 +639,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     // depende de BAILEYS_SYNC_FULL_HISTORY.
     //
     // Nada aqui origina chamada ao WhatsApp: só consome o que o socket já entrega.
-    const emitChatState = (chat: { id?: string | null } & RawChatState): void => {
+    const emitChatState = (
+      chat: { id?: string | null } & RawChatState,
+      source: ChatStateSource = 'update',
+    ): void => {
       const chatId = chat.id;
       if (!chatId) return;
       if (chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) return;
 
-      const state = normalizeChatState(chat);
+      const state = normalizeChatState(chat, { source });
       // Evento sem nada aproveitável não entra no barramento: a sincronização inicial
       // traz centenas de chats e a maioria não tem estado a espelhar.
       if (isEmptyChatState(state)) return;
 
       const isGroup = chatId.endsWith('@g.us');
+      baileysLogger.debug({ sessionId, chatId, source, state }, 'Remote chat state received');
       internalEventBus.emit('CHAT_STATE_UPDATED', {
         type: 'CHAT_STATE_UPDATED',
         sessionId,
@@ -668,7 +672,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // sincronização inicial. Como é estado de conversa, não histórico de mensagens,
       // é processado independentemente de BAILEYS_SYNC_FULL_HISTORY.
       for (const chat of histChats ?? []) {
-        emitChatState(chat);
+        // History sync é a única fonte com o total de não lidas do aparelho.
+        emitChatState(chat, 'history');
       }
       if (!env.BAILEYS_SYNC_FULL_HISTORY) {
         baileysLogger.debug(

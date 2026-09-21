@@ -33,6 +33,10 @@ describe('toWsShape', () => {
     expect(shape).not.toHaveProperty('lists');
   });
 
+  it('repassa o total vindo do history sync', () => {
+    expect(toWsShape({ unreadCount: 7 })).toEqual({ unreadCount: 7 });
+  });
+
   it('devolve objeto vazio quando não houve mudança alguma', () => {
     expect(toWsShape({})).toEqual({});
   });

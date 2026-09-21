@@ -105,6 +105,11 @@ export type InternalMessagingEvent =
 export interface RemoteChatState {
   /** Lida em outro aparelho: zera o contador e a marcação manual. */
   read?: true;
+  /**
+   * Total de não lidas segundo o WhatsApp. Só chega do history sync, única fonte que
+   * entrega valor absoluto — em chats.update o número é incremento.
+   */
+  unreadCount?: number;
   /** Marcada como não lida em outro aparelho: não mexe no contador. */
   manuallyUnread?: true;
   archived?: boolean;

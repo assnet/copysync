@@ -57,7 +57,7 @@ o WhatsApp.
 | --- | --- |
 | Alterar o espelhamento *do painel para o WhatsApp* | Já existe e funciona: `updateChatState` no adapter (`BaileysMessagingEngineAdapter.ts:342-371`) chama `chatModify` para arquivar, fixar, silenciar e marcar lida/não lida. Esta feature **não toca** esse caminho — nem amplia, nem acrescenta gatilho novo |
 | Adotar a contagem absoluta de não lidas do WhatsApp em `chats.update` | Valores positivos ali são delta (`event-buffer.js:613-616`); o contador do painel é derivado da ingestão e continua autoritativo |
-| Reconciliar o contador de conversas criadas pelo history sync | Dívida aceita e registrada em `STATE.md`: sessão recém-pareada nasce com o contador derivado só do que o painel ingeriu, e o valor absoluto de `chats.upsert` é descartado. Consumir o absoluto exigiria ordenar upsert e ingestão do mesmo lote — custo alto para um desvio que se corrige na primeira leitura real |
+| _(revisado em 2026-09-21)_ ~~Reconciliar o contador pelo history sync~~ | **Passou a ser escopo.** O primeiro teste com sessão real mostrou o porquê: na sincronização inicial de app-state, conversa já lida chega com `unreadCount: null` (`chat-utils.js:707` — a lib trata "lida" como padrão), então o acumulado anterior à conexão nunca recebia correção. O total do `messaging-history.set` é a única fonte absoluta e passou a ser adotado |
 | Estrelar / favoritar mensagem, labels, comunidades | Estado de mensagem/rótulo, não de conversa; nada consumido hoje |
 | Estado de conversas que não existem no painel | O WhatsApp entrega estado de todos os chats do aparelho; sem conversa correspondente não há o que atualizar |
 | Backfill histórico de estado além do que a sync inicial já entrega | Não há fonte extra sem chamada nova |

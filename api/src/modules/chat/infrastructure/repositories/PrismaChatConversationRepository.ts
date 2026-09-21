@@ -133,6 +133,10 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
       changed.manuallyUnread = false;
     } else if (state.manuallyUnread && !current.manuallyUnread) {
       changed.manuallyUnread = true;
+    } else if (state.unreadCount !== undefined && state.unreadCount !== current.unreadCount) {
+      // Total do aparelho (history sync): reconcilia o contador acumulado pela ingestão
+      // com o que o usuário de fato tem por ler.
+      changed.unreadCount = state.unreadCount;
     }
 
     if (state.archived !== undefined && state.archived !== current.archived) {
