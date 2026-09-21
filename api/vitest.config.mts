@@ -14,6 +14,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // env sintético: shared/config/env valida no import e derruba qualquer teste que
+    // alcance um módulo com log.
+    setupFiles: ['src/test/setup.ts'],
     clearMocks: true,
     restoreMocks: true,
   },

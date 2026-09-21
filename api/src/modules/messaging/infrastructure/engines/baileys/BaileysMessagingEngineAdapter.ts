@@ -39,6 +39,7 @@ import type { ISessionAuthStateRepository } from '../../../../sessions/domain/co
 import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import { translateDisconnect, translateEngineError } from './BaileysErrorTranslator';
+import { normalizeChatState, isEmptyChatState, type RawChatState } from './normalizeChatState';
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
@@ -631,23 +632,31 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     });
 
     // ── History sync ────────────────────────────────────────────────────────
-    // ── Arquivamento de conversas ────────────────────────────────────────────
-    // O WhatsApp entrega o estado de arquivamento em chats.upsert (sincronização
-    // inicial) e chats.update (mudança feita em qualquer aparelho). É estado de
-    // conversa, não histórico de mensagens, por isso não depende de
-    // BAILEYS_SYNC_FULL_HISTORY.
-    const emitArchiveState = (chatId: string | null | undefined, archived: boolean | null | undefined): void => {
-      if (!chatId || archived === null || archived === undefined) return;
+    // ── Estado de conversa alterado em outro aparelho ────────────────────────
+    // O WhatsApp entrega arquivamento, leitura, fixação e silenciamento em
+    // chats.upsert (sincronização inicial) e chats.update (mudança em qualquer
+    // aparelho). É estado de conversa, não histórico de mensagens, por isso não
+    // depende de BAILEYS_SYNC_FULL_HISTORY.
+    //
+    // Nada aqui origina chamada ao WhatsApp: só consome o que o socket já entrega.
+    const emitChatState = (chat: { id?: string | null } & RawChatState): void => {
+      const chatId = chat.id;
+      if (!chatId) return;
       if (chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) return;
 
+      const state = normalizeChatState(chat);
+      // Evento sem nada aproveitável não entra no barramento: a sincronização inicial
+      // traz centenas de chats e a maioria não tem estado a espelhar.
+      if (isEmptyChatState(state)) return;
+
       const isGroup = chatId.endsWith('@g.us');
-      internalEventBus.emit('CHAT_ARCHIVE_UPDATED', {
-        type: 'CHAT_ARCHIVE_UPDATED',
+      internalEventBus.emit('CHAT_STATE_UPDATED', {
+        type: 'CHAT_STATE_UPDATED',
         sessionId,
         tenantId,
         chatId: chatId.split('@')[0],
         isGroup,
-        archived,
+        state,
       });
     };
 
@@ -659,7 +668,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // sincronização inicial. Como é estado de conversa, não histórico de mensagens,
       // é processado independentemente de BAILEYS_SYNC_FULL_HISTORY.
       for (const chat of histChats ?? []) {
-        emitArchiveState(chat.id, chat.archived);
+        emitChatState(chat);
       }
       if (!env.BAILEYS_SYNC_FULL_HISTORY) {
         baileysLogger.debug(
@@ -688,12 +697,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     socket.ev.on('chats.upsert', (chats) => {
       if (isStale()) return;
-      for (const chat of chats) emitArchiveState(chat.id, chat.archived);
+      for (const chat of chats) emitChatState(chat);
     });
 
-    socket.ev.on('chats.update', (updates) => {
+    socket.ev.on('chats.update', (update) => {
       if (isStale()) return;
-      for (const update of updates) emitArchiveState(update.id, update.archived);
+      for (const chat of update) emitChatState(chat);
     });
 
     // ── Contacts upsert ──────────────────────────────────────────────────────

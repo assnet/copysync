@@ -243,9 +243,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       );
       await useCase.execute({ conversationId: id, tenantId });
 
+      // manuallyUnread acompanha o contador: sem ele, as demais abas seguiriam
+      // destacando a conversa depois que esta a marcou como lida.
       chatWsPublisher.publish(tenantId, {
         event: 'chat.unread.updated',
-        data: { tenantId, conversationId: id, unreadCount: 0 },
+        data: { tenantId, conversationId: id, unreadCount: 0, manuallyUnread: false },
       });
 
       httpResponse.ok(reply, { success: true });

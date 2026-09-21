@@ -6,7 +6,10 @@ import type {
   IChatConversationRepository,
   ConversationStateUpdate,
   ListConversationsFilter,
+  ApplyRemoteStateResult,
+  AppliedConversationState,
 } from '../../domain/contracts/IChatConversationRepository';
+import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
 import type { ChatConversation } from '../../domain/entities/ChatConversation';
 import { PrismaChatConversationMapper } from '../mappers/PrismaChatConversationMapper';
 
@@ -85,33 +88,92 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     return PrismaChatConversationMapper.toDomain(raw);
   }
 
-  async setArchivedByChat(input: {
+  async applyRemoteState(input: {
     tenantId: string;
     sessionId: string;
     isGroup: boolean;
     chatId: string;
-    archived: boolean;
-  }): Promise<number> {
+    state: RemoteChatState;
+  }): Promise<ApplyRemoteStateResult | null> {
+    const { tenantId, sessionId, state } = input;
+
+    // O WhatsApp identifica o chat pelo groupJid ou pelo telefone; aqui o telefone
+    // mora no contato.
+    let where: { tenantId: string; sessionId: string; groupJid?: string; contactId?: string };
     if (input.isGroup) {
-      const result = await this.prisma.chatConversation.updateMany({
-        where: { tenantId: input.tenantId, sessionId: input.sessionId, groupJid: input.chatId },
-        data: { archived: input.archived },
+      where = { tenantId, sessionId, groupJid: input.chatId };
+    } else {
+      const contact = await this.prisma.chatContact.findUnique({
+        where: { tenantId_phone: { tenantId, phone: input.chatId } },
+        select: { id: true },
       });
-      return result.count;
+      if (!contact) return null;
+      where = { tenantId, sessionId, contactId: contact.id };
     }
 
-    // Conversa individual: o WhatsApp identifica pelo telefone, que aqui está no contato.
-    const contact = await this.prisma.chatContact.findUnique({
-      where: { tenantId_phone: { tenantId: input.tenantId, phone: input.chatId } },
-      select: { id: true },
+    const current = await this.prisma.chatConversation.findFirst({
+      where,
+      select: {
+        id: true,
+        unreadCount: true,
+        manuallyUnread: true,
+        archived: true,
+        pinned: true,
+        mutedUntil: true,
+      },
     });
-    if (!contact) return 0;
+    // O WhatsApp entrega o estado de todos os chats do aparelho e a maioria não tem
+    // conversa aqui: ignorar em silêncio é o caminho normal, não um erro.
+    if (!current) return null;
 
+    const changed: AppliedConversationState = {};
+
+    if (state.read && (current.unreadCount > 0 || current.manuallyUnread)) {
+      changed.unreadCount = 0;
+      changed.manuallyUnread = false;
+    } else if (state.manuallyUnread && !current.manuallyUnread) {
+      changed.manuallyUnread = true;
+    }
+
+    if (state.archived !== undefined && state.archived !== current.archived) {
+      changed.archived = state.archived;
+    }
+    if (state.pinned !== undefined && state.pinned !== current.pinned) {
+      changed.pinned = state.pinned;
+    }
+    if (state.mutedUntil !== undefined) {
+      const atual = current.mutedUntil?.getTime() ?? null;
+      const novo = state.mutedUntil?.getTime() ?? null;
+      if (atual !== novo) changed.mutedUntil = state.mutedUntil;
+    }
+
+    // Estado igual ao persistido: nada a gravar e nada a anunciar. É o que impede o
+    // eco do próprio painel de virar gravação e frame de WebSocket.
+    if (Object.keys(changed).length === 0) {
+      return { conversationId: current.id, changed: {} };
+    }
+
+    // Compare-and-set: o listener é assíncrono e um lote de sincronização pode trazer
+    // dois eventos do mesmo chat. Sem os valores lidos no where, a segunda gravação
+    // sobrescreveria a primeira com dado obsoleto.
     const result = await this.prisma.chatConversation.updateMany({
-      where: { tenantId: input.tenantId, sessionId: input.sessionId, contactId: contact.id },
-      data: { archived: input.archived },
+      where: {
+        id: current.id,
+        tenantId,
+        ...(changed.unreadCount !== undefined ? { unreadCount: current.unreadCount } : {}),
+        ...(changed.manuallyUnread !== undefined ? { manuallyUnread: current.manuallyUnread } : {}),
+        ...(changed.archived !== undefined ? { archived: current.archived } : {}),
+        ...(changed.pinned !== undefined ? { pinned: current.pinned } : {}),
+        ...(changed.mutedUntil !== undefined ? { mutedUntil: current.mutedUntil } : {}),
+      },
+      data: changed,
     });
-    return result.count;
+
+    // Corrida perdida: quem gravou primeiro já publicou o estado final, e republicar
+    // aqui emitiria um valor obsoleto.
+    if (result.count === 0) return { conversationId: current.id, changed: {} };
+
+    return { conversationId: current.id, changed };
   }
 
   async countArchived(tenantId: string, sessionId?: string): Promise<number> {
@@ -217,9 +279,11 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
   }
 
   async resetUnread(id: string, tenantId: string): Promise<void> {
+    // A marcação manual sai junto: a conversa foi lida, então continuar destacada
+    // como "não lida" contradiz o que o operador acabou de fazer.
     await this.prisma.chatConversation.updateMany({
       where: { id, tenantId },
-      data: { unreadCount: 0 },
+      data: { unreadCount: 0, manuallyUnread: false },
     });
   }
 
