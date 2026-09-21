@@ -223,6 +223,23 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       );
       const state = await useCase.execute({ tenantId, conversationId: id, ...body });
 
+      // Anuncia às demais abas e aos outros operadores do tenant. syncedToWhatsApp fica
+      // de fora: descreve a tentativa de sincronização, não o estado da conversa — e a
+      // mudança local vale mesmo quando a sessão está fora do ar.
+      chatWsPublisher.publish(tenantId, {
+        event: 'chat.state.updated',
+        data: {
+          tenantId,
+          conversationId: id,
+          archived: state.archived,
+          pinned: state.pinned,
+          mutedUntil: state.mutedUntil,
+          manuallyUnread: state.manuallyUnread,
+          favorite: state.favorite,
+          lists: state.lists,
+        },
+      });
+
       httpResponse.ok(reply, state);
     },
   );

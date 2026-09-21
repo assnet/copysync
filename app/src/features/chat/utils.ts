@@ -120,3 +120,41 @@ export function formatLastMessagePreview(
     default:         return content ?? '';
   }
 }
+
+// ── Não lidas ─────────────────────────────────────────────────────────────────
+
+/**
+ * Conversa conta como não lida por mensagens pendentes ou por marcação manual —
+ * do operador no painel, ou do usuário em outro aparelho.
+ *
+ * A marcação manual não tem número: zera o contador e ainda assim a conversa fica
+ * destacada, como no WhatsApp.
+ */
+export function isUnread(conversation: { unreadCount: number; manuallyUnread?: boolean }): boolean {
+  return conversation.unreadCount > 0 || (conversation.manuallyUnread ?? false);
+}
+
+/** Total exibido no cabeçalho: conversa marcada manualmente vale 1. */
+export function countUnread(conversations: Array<{ unreadCount: number; manuallyUnread?: boolean }>): number {
+  return conversations.reduce(
+    (sum, c) => sum + (c.unreadCount > 0 ? c.unreadCount : (c.manuallyUnread ? 1 : 0)),
+    0,
+  );
+}
+
+// ── Ordenação da lista de conversas ───────────────────────────────────────────
+
+/**
+ * Ordem da lista: fixadas primeiro, depois a mais recente.
+ *
+ * É a mesma regra que o servidor aplica ao listar (`orderBy: pinned, lastMessageAt`),
+ * repetida aqui para reordenar sem ida ao servidor quando a fixação muda — pelo painel
+ * ou em outro aparelho do usuário.
+ */
+export function byPinnedThenRecent(
+  a: { pinned?: boolean; lastMessageAt?: string | null },
+  b: { pinned?: boolean; lastMessageAt?: string | null },
+): number {
+  if ((a.pinned ?? false) !== (b.pinned ?? false)) return a.pinned ? -1 : 1;
+  return new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime();
+}

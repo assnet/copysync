@@ -11,6 +11,35 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Estado de conversa sincronizado entre dispositivos e abas
+
+- **`api/src/modules/messaging/infrastructure/engines/baileys/normalizeChatState.ts`** — traduz num único lugar a semântica numérica do Baileys: `unreadCount` 0 é conversa lida, negativo é marcação manual de não lida, positivo é **incremento** e por isso é descartado (o contador do painel vem da ingestão de mensagens; copiar o valor duplicaria a contagem). `pinned` chega como timestamp e `muteEndTime` como epoch, ambos podendo vir como `Long` do protobuf
+- **`api/src/shared/events/InternalMessagingEvent.ts`** — `CHAT_ARCHIVE_UPDATED` dá lugar a `CHAT_STATE_UPDATED`, que carrega estado parcial (`read`, `manuallyUnread`, `archived`, `pinned`, `mutedUntil`). Campo ausente significa "o WhatsApp não falou disso", nunca `false` — sem isso, um evento de fixação apagaria o arquivamento persistido
+- **`api/.../repositories/PrismaChatConversationRepository.ts`** — `setArchivedByChat` dá lugar a `applyRemoteState`, que lê o estado atual, calcula o diff e grava por compare-and-set. Diff vazio não grava nem publica: é o que impede o eco das ações do próprio painel (que já espelha para o WhatsApp via `chatModify`) de virar gravação e frame de WebSocket. Corrida perdida também não republica, para não emitir valor obsoleto
+- **`api/.../listeners/ChatConversationStateListener.ts`** — substitui `ChatArchiveListener` e publica `chat.state.updated` só quando algo mudou. Não chama a engine em nenhum caminho: reagir a evento recebido com chamada de saída fecharia o laço painel ↔ WhatsApp
+- **`api/.../ws/ChatWebSocketPublisher.ts`** — evento `chat.state.updated` substitui `chat.archive.updated`, que era publicado sem nenhum consumidor no painel e identificava a conversa por `chatId` em vez de `conversationId`
+- **`api/.../routes/chat.routes.ts`** — `PATCH /conversations/:id/state` passa a publicar o estado resultante; antes, arquivar numa aba não chegava às demais nem aos outros operadores do tenant
+- **`app/src/hooks/shouldResync.ts`** — decide quando recarregar a lista após o painel ficar sem receber eventos. Janela de 5 s para reconexão (houve perda real de frames) e de 60 s para retomada de aba (alt-tab curto não perde nada; janela curta ali seria polling com outro nome), com 30 s de intervalo mínimo entre dois resyncs
+- **`app/src/hooks/useChatWebSocket.ts`** — avisa por `onResync` na reconexão e na volta da aba; o WebSocket não reenvia o que se perdeu durante a queda. Nenhum timer periódico é criado
+- **`app/src/pages/ChatPage.tsx`** — trata `chat.state.updated` com merge parcial; arquivamento remoto remove a conversa da visão carregada e ajusta o contador de arquivadas, porque o filtro é do servidor e não da renderização
+- **`app/src/features/chat/utils.ts`** — `isUnread` e `countUnread` passam a considerar a marcação manual (conversa marcada vale 1 no total, como no WhatsApp Web), e `byPinnedThenRecent` extrai a ordenação que estava embutida no `ChatPage`
+- **`api/src/test/setup.ts`** — env sintético para os testes da API: `shared/config/env` valida no import e derrubava qualquer teste que alcançasse um módulo com log
+
+### Fixed
+
+- **`app/src/pages/ChatPage.tsx`** — mensagem que chega na conversa aberta não gera mais badge, e a confirmação de leitura é agrupada em uma chamada por 1,5 s: antes, uma rajada de cinco mensagens virava cinco chamadas de saída ao WhatsApp
+- **`app/src/pages/ChatPage.tsx`**, **`ConversationListItem.tsx`**, **`ConversationSidebar.tsx`** — marcação manual de não lida deixa de ser simulada com `Math.max(1, unreadCount)` e passa a usar a flag real; a conversa exibe ponto sem número, em vez de um "1" inventado
+- **`api/.../MarkConversationAsReadUseCase.ts`**, **`PrismaChatConversationRepository.ts`** — abrir a conversa limpa `manuallyUnread` junto do contador, no banco e nas demais abas; antes a conversa seguia destacada depois de lida
+
+### Changed
+
+- **Contrato de evento interno**: `CHAT_ARCHIVE_UPDATED` deixa de existir. Emissor (adapter Baileys) e consumidor (listener do chat) foram atualizados no mesmo commit
+- **Contrato WebSocket**: `chat.archive.updated` removido (sem consumidor); `chat.unread.updated` ganha `manuallyUnread` opcional, aditivo
+
+Sem migration Prisma: `archived`, `pinned`, `mutedUntil` e `manuallyUnread` já existiam em `chat_conversations`.
+
+### Added
+
 #### Testes — Vitest em `api/` e `app/`
 
 - **`api/vitest.config.mts`**, **`app/vite.config.ts`** — o projeto passa a ter runner de testes; antes o único gate automatizado era `tsc --noEmit`, que não pega regra de negócio errada. Escopo deliberado: lógica pura, use cases com dependências injetadas e componentes visuais. Repositórios Prisma, rotas Fastify e páginas com estado grande seguem validados por smoke manual — sem banco de teste, um teste de repositório custa mais do que entrega

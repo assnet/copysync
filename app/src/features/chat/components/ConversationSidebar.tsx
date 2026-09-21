@@ -6,7 +6,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import type { ChatConversation, ConversationFilter } from '../types';
 import { ConversationListItem } from './ConversationListItem';
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
-import { formatPhone } from '../utils';
+import { formatPhone, isUnread, countUnread } from '../utils';
 
 interface FilterOption {
   value: ConversationFilter;
@@ -24,7 +24,7 @@ const FILTER_OPTIONS: FilterOption[] = [
 
 function getFilterCount(conversations: ChatConversation[], filter: ConversationFilter): number {
   if (filter === 'all')     return conversations.length;
-  if (filter === 'unread')  return conversations.filter((c) => c.unreadCount > 0).length;
+  if (filter === 'unread')  return conversations.filter(isUnread).length;
   if (filter === 'open')    return conversations.filter((c) => c.status === 'open').length;
   if (filter === 'waiting') return conversations.filter((c) => c.status === 'waiting').length;
   if (filter === 'bot')     return conversations.filter((c) => c.status === 'bot').length;
@@ -87,7 +87,7 @@ export function ConversationSidebar({
 
     const matchesFilter =
       filter === 'all' ||
-      (filter === 'unread'  && c.unreadCount > 0) ||
+      (filter === 'unread'  && isUnread(c)) ||
       (filter === 'open'    && c.status === 'open') ||
       (filter === 'waiting' && c.status === 'waiting') ||
       (filter === 'bot'     && c.status === 'bot') ||
@@ -96,7 +96,7 @@ export function ConversationSidebar({
     return matchesSearch && matchesFilter;
   });
 
-  const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
+  const totalUnread = countUnread(conversations);
 
   const renderSessionLabel = (session: { name: string; phone: string | null }): string => {
     const phone = session.phone ? formatPhone(session.phone) : null;

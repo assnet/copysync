@@ -7,7 +7,7 @@ import FavoriteIcon from '@mui/icons-material/Favorite';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import type { ChatConversation } from '../types';
-import { getStatusConfig, formatConversationTime, formatPhone } from '../utils';
+import { isUnread, getStatusConfig, formatConversationTime, formatPhone } from '../utils';
 
 interface Props {
   /** Abre o menu de ações da conversa, ancorado no botão. */
@@ -23,7 +23,9 @@ export function ConversationListItem({ conversation, selected, onClick, presence
   const isDark = theme.palette.mode === 'dark';
   const { contact, status, unreadCount, lastMessage, lastMessageAt, tags, assignedTo } = conversation;
   const statusConfig = getStatusConfig(status);
-  const hasUnread = unreadCount > 0;
+  const hasUnread = isUnread(conversation);
+  // Marcação manual não tem contagem: o ponto sinaliza sem número inventado.
+  const unreadLabel = unreadCount > 0 ? unreadCount : '';
   const isGroup = conversation.isGroup ?? false;
   const isMuted = Boolean(conversation.mutedUntil && new Date(conversation.mutedUntil) > new Date());
   // Contato sem nome salvo tem o próprio número como nome: nesse caso exibimos o
@@ -177,7 +179,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
           </Box>
           {hasUnread && (
             <Badge
-              badgeContent={unreadCount}
+              badgeContent={unreadLabel}
               color="primary"
               max={99}
               sx={{ flexShrink: 0, '& .MuiBadge-badge': { position: 'relative', transform: 'none', fontSize: 10, minWidth: 18, height: 18 } }}

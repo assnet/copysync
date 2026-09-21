@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ChatMessageApiDto } from '@/types/chat.api.types';
+import { shouldResync, type ResyncReason } from './shouldResync';
 
 // ── WS event types (mirror backend ChatWsEvent) ───────────────────────────────
 
@@ -101,10 +102,18 @@ export type ChatWsPayload =
  * - Disconnects cleanly on unmount
  * - Auth via ?token=... &tenantId=... (Authorization headers are not allowed in
  *   the browser WebSocket API)
+ * - Avisa por `onResync` quando o painel esteve sem receber eventos e precisa
+ *   recarregar o estado: o WebSocket não reenvia o que se perdeu durante a queda.
+ *   Nada aqui roda em intervalo fixo — só reage a eventos do navegador.
  */
-export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): void {
+export function useChatWebSocket(
+  onEvent: (payload: ChatWsPayload) => void,
+  options?: { onResync?: () => void },
+): void {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  const onResyncRef = useRef(options?.onResync);
+  onResyncRef.current = options?.onResync;
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -112,6 +121,16 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
     let connectTimeout: ReturnType<typeof setTimeout> | null = null;
     let retryDelay = 2_000;
     let stopped = false;
+    let disconnectedAt: number | null = null;
+    let hiddenAt: number | null = null;
+    let lastResyncAt: number | null = null;
+
+    function maybeResync(reason: ResyncReason, awayMs: number): void {
+      const now = Date.now();
+      if (!shouldResync({ reason, awayMs, lastResyncAt, now })) return;
+      lastResyncAt = now;
+      onResyncRef.current?.();
+    }
 
     function connect(): void {
       if (stopped) return;
@@ -143,6 +162,10 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
 
       ws.onopen = () => {
         retryDelay = 2_000; // reset backoff on successful connect
+        if (disconnectedAt !== null) {
+          maybeResync('reconnect', Date.now() - disconnectedAt);
+          disconnectedAt = null;
+        }
       };
 
       ws.onmessage = (ev: MessageEvent<string>) => {
@@ -161,12 +184,29 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
       ws.onclose = () => {
         ws = null;
         if (stopped) return;
+        // Só marca a primeira queda da sequência: o que importa é há quanto tempo o
+        // painel está sem receber, não quantas tentativas houve.
+        disconnectedAt ??= Date.now();
         retryTimeout = setTimeout(() => {
           retryDelay = Math.min(retryDelay * 2, 30_000);
           connect();
         }, retryDelay);
       };
     }
+
+    // Aba oculta por muito tempo costuma significar máquina suspensa: o navegador
+    // devolve um socket que ele ainda considera aberto, mas os frames do período
+    // dormido não voltam.
+    const handleVisibility = (): void => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt === null) return;
+      maybeResync('tab-visible', Date.now() - hiddenAt);
+      hiddenAt = null;
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     // Delay the initial connect by one tick so React StrictMode's synchronous
     // cleanup can cancel it before the WebSocket is even created, avoiding the
@@ -175,6 +215,7 @@ export function useChatWebSocket(onEvent: (payload: ChatWsPayload) => void): voi
 
     return () => {
       stopped = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (connectTimeout) clearTimeout(connectTimeout);
       if (retryTimeout) clearTimeout(retryTimeout);
       ws?.close();

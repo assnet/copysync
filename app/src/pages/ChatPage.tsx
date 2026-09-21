@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Box, useMediaQuery, useTheme } from '@mui/material';
 import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
@@ -8,7 +8,7 @@ import {
   apiMessageToFrontend,
 } from '@/types/chat.api.types';
 import type { UpdateConversationRequest } from '@/types/chat.api.types';
-import { formatLastMessagePreview } from '@/features/chat/utils';
+import { formatLastMessagePreview, byPinnedThenRecent } from '@/features/chat/utils';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { ConversationSidebar } from '@/features/chat/components/ConversationSidebar';
 import { ChatWindow } from '@/features/chat/components/ChatWindow';
@@ -57,6 +57,11 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // O handler do WebSocket é memoizado e não enxerga o selectedId corrente; a ref evita
+  // recriar a assinatura a cada troca de conversa.
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
+  const markAsReadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
@@ -222,6 +227,28 @@ export default function ChatPage() {
     [connectedSessions],
   );
 
+  /**
+   * Confirma a leitura no servidor uma vez por janela, não por mensagem.
+   *
+   * Sem isso, cinco mensagens em rajada na conversa aberta virariam cinco chamadas de
+   * saída ao WhatsApp — volume que não corresponde a comportamento humano.
+   */
+  const scheduleMarkAsRead = useCallback((conversationId: string) => {
+    if (markAsReadTimer.current) clearTimeout(markAsReadTimer.current);
+    markAsReadTimer.current = setTimeout(() => {
+      markAsReadTimer.current = null;
+      if (selectedIdRef.current !== conversationId) return; // trocou de conversa no meio
+      chatService.markAsRead(conversationId).catch((err: unknown) =>
+        console.warn('Erro ao marcar conversa como lida', err),
+      );
+    }, 1_500);
+  }, []);
+
+  // Nenhum recibo pendente sobrevive à saída da tela.
+  useEffect(() => () => {
+    if (markAsReadTimer.current) clearTimeout(markAsReadTimer.current);
+  }, []);
+
   // ── Tempo real via WebSocket ───────────────────────────────────────────────
   useChatWebSocket(
     useCallback(
@@ -237,6 +264,9 @@ export default function ChatPage() {
           } else {
             // Atualiza preview da conversa e move para o topo da lista
             const preview = formatLastMessagePreview(message.type, message.content);
+            // Mensagem que chega na conversa aberta já está sendo lida: marcar não lida
+            // aqui obrigaria o operador a "limpar" um badge do que ele acabou de ver.
+            const estaAberta = selectedIdRef.current === conversationId;
             setConversations((prev) => {
               const updated = prev.map((c) =>
                 c.id === conversationId
@@ -244,7 +274,7 @@ export default function ChatPage() {
                       ...c,
                       lastMessage:   preview || c.lastMessage,
                       lastMessageAt: message.createdAt,
-                      unreadCount,
+                      ...(estaAberta ? {} : { unreadCount }),
                     }
                   : c,
               );
@@ -256,6 +286,10 @@ export default function ChatPage() {
               }
               return updated;
             });
+
+            // Agrupa as confirmações de leitura: uma rajada de mensagens não pode virar
+            // uma chamada de saída por mensagem.
+            if (estaAberta) scheduleMarkAsRead(conversationId);
           }
 
           const frontendMsg = apiMessageToFrontend({
@@ -317,10 +351,52 @@ export default function ChatPage() {
         }
 
         if (payload.event === 'chat.unread.updated') {
-          const { conversationId, unreadCount } = payload.data;
+          const { conversationId, unreadCount, manuallyUnread } = payload.data;
           setConversations((prev) =>
-            prev.map((c) => (c.id === conversationId ? { ...c, unreadCount } : c)),
+            prev.map((c) => (c.id === conversationId
+              ? {
+                  ...c,
+                  unreadCount,
+                  ...(manuallyUnread !== undefined ? { manuallyUnread } : {}),
+                }
+              : c)),
           );
+        }
+
+        // Estado alterado fora desta aba: em outro aparelho do usuário ou por outro
+        // operador do mesmo tenant. Campo ausente significa "sem informação" — mesclar
+        // com false apagaria estado que ninguém mexeu.
+        if (payload.event === 'chat.state.updated') {
+          const d = payload.data;
+
+          setConversations((prev) => {
+            let next = prev.map((c) => (c.id === d.conversationId
+              ? {
+                  ...c,
+                  ...(d.unreadCount    !== undefined ? { unreadCount:    d.unreadCount }    : {}),
+                  ...(d.manuallyUnread !== undefined ? { manuallyUnread: d.manuallyUnread } : {}),
+                  ...(d.archived       !== undefined ? { archived:       d.archived }       : {}),
+                  ...(d.pinned         !== undefined ? { pinned:         d.pinned }         : {}),
+                  ...(d.mutedUntil     !== undefined ? { mutedUntil:     d.mutedUntil }     : {}),
+                  ...(d.favorite       !== undefined ? { favorite:       d.favorite }       : {}),
+                  ...(d.lists          !== undefined ? { lists:          d.lists }          : {}),
+                }
+              : c));
+
+            // Arquivar não é só um campo: a visão carregada é decidida pelo servidor
+            // (GET /conversations?archived=...), então a conversa precisa sair da lista.
+            if (d.archived !== undefined && d.archived !== showArchived) {
+              next = next.filter((c) => c.id !== d.conversationId);
+            }
+
+            if (d.pinned !== undefined) next = [...next].sort(byPinnedThenRecent);
+            return next;
+          });
+
+          if (d.archived !== undefined && d.archived !== showArchived) {
+            setArchivedCount((n) => Math.max(0, n + (d.archived ? 1 : -1)));
+            setSelectedId((current) => (current === d.conversationId ? null : current));
+          }
         }
 
         if (payload.event === 'chat.message.status.updated') {
@@ -382,8 +458,10 @@ export default function ChatPage() {
           loadSessions();
         }
       },
-      [loadConversations, loadSessions],
+      [loadConversations, loadSessions, showArchived, scheduleMarkAsRead],
     ),
+    // Frames perdidos durante a queda não são reenviados: ao voltar, recarrega a lista.
+    { onResync: loadConversations },
   );
 
   const selectedConversation = selectedId
@@ -394,10 +472,15 @@ export default function ChatPage() {
 
   const handleSelectConversation = useCallback(
     (id: string) => {
+      if (markAsReadTimer.current) {
+        clearTimeout(markAsReadTimer.current);
+        markAsReadTimer.current = null;
+      }
       setSelectedId(id);
-      // Marca lida localmente de imediato
+      // Marca lida localmente de imediato — a marcação manual sai junto, senão a
+      // conversa continuaria destacada mesmo depois de aberta.
       setConversations((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)),
+        prev.map((c) => (c.id === id ? { ...c, unreadCount: 0, manuallyUnread: false } : c)),
       );
 
       // Persiste no servidor e envia read receipts (double blue tick)
@@ -605,7 +688,7 @@ export default function ChatPage() {
                 ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
                 ...(change.favorite !== undefined ? { favorite: change.favorite } : {}),
                 ...(change.lists !== undefined ? { lists: change.lists } : {}),
-                ...(change.unread === true ? { unreadCount: Math.max(1, c.unreadCount) } : {}),
+                ...(change.unread !== undefined ? { manuallyUnread: change.unread } : {}),
                 ...(change.muteMs !== undefined
                   ? { mutedUntil: change.muteMs === null ? null : new Date(Date.now() + change.muteMs).toISOString() }
                   : {}),
@@ -626,12 +709,7 @@ export default function ChatPage() {
       }
 
       if (change.pinned !== undefined) {
-        setConversations((prev) =>
-          [...prev].sort((a, b) => {
-            if ((a.pinned ?? false) !== (b.pinned ?? false)) return a.pinned ? -1 : 1;
-            return new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime();
-          }),
-        );
+        setConversations((prev) => [...prev].sort(byPinnedThenRecent));
       }
 
       chatService
