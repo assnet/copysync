@@ -83,13 +83,33 @@ export type InternalMessagingEvent =
       avatarUrl: string;
     }
   | {
-      type: 'CHAT_ARCHIVE_UPDATED';
+      type: 'CHAT_STATE_UPDATED';
       sessionId: string;
       tenantId: string;
       /** Telefone (conversa individual) ou groupJid sem @g.us (grupo). */
       chatId: string;
       isGroup: boolean;
-      archived: boolean;
+      /**
+       * Estado alterado em outro aparelho do mesmo usuário.
+       *
+       * Campo ausente significa "o WhatsApp não falou disso", nunca "false" — assim
+       * um evento de fixação não apaga o estado de arquivamento.
+       */
+      state: RemoteChatState;
     };
+
+/**
+ * Estado de conversa espelhado de outro aparelho, já traduzido da semântica crua da
+ * engine (ver normalizeChatState no adapter Baileys).
+ */
+export interface RemoteChatState {
+  /** Lida em outro aparelho: zera o contador e a marcação manual. */
+  read?: true;
+  /** Marcada como não lida em outro aparelho: não mexe no contador. */
+  manuallyUnread?: true;
+  archived?: boolean;
+  pinned?: boolean;
+  mutedUntil?: Date | null;
+}
 
 export type InternalEventType = InternalMessagingEvent['type'];

@@ -1,5 +1,8 @@
 import type { ChatConversation } from '../entities/ChatConversation';
 import type { ConversationStatus } from '../enums/ConversationStatus';
+// RemoteChatState é o contrato de eventos internos (AGENTS.md §12): tipo puro, sem
+// Prisma, Fastify ou engine. O domínio pode depender dele sem quebrar a regra da §8.
+import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
 
 export interface ListConversationsFilter {
   tenantId: string;
@@ -35,6 +38,21 @@ export interface ConversationStateUpdate {
   manuallyUnread?: boolean;
   tags?: string[];
   unreadCount?: number;
+}
+
+/** Campos efetivamente alterados por applyRemoteState, já com valores finais. */
+export interface AppliedConversationState {
+  unreadCount?: number;
+  manuallyUnread?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  mutedUntil?: Date | null;
+}
+
+export interface ApplyRemoteStateResult {
+  conversationId: string;
+  /** Vazio quando nada mudou: o chamador não deve publicar nada. */
+  changed: AppliedConversationState;
 }
 
 export interface CreateConversationData {
@@ -82,15 +100,22 @@ export interface IChatConversationRepository {
   updateGroupAvatarUrlByGroupJid(groupJid: string, tenantId: string, avatarUrl: string): Promise<void>;
   /** Atualiza os estados da conversa (arquivada, fixada, silenciada, etc.). */
   updateState(id: string, tenantId: string, data: ConversationStateUpdate): Promise<ChatConversation>;
-  /** Espelha o arquivamento vindo do WhatsApp. Devolve quantas conversas mudaram. */
-  setArchivedByChat(input: {
+  /**
+   * Espelha o estado alterado em outro aparelho do mesmo usuário.
+   *
+   * Devolve null quando não há conversa correspondente (o WhatsApp entrega o estado de
+   * todos os chats do aparelho, e a maioria não existe aqui) e `changed` vazio quando o
+   * estado recebido é igual ao persistido — é assim que o eco do próprio painel é
+   * barrado antes de virar gravação e frame de WebSocket.
+   */
+  applyRemoteState(input: {
     tenantId: string;
     sessionId: string;
     isGroup: boolean;
     /** groupJid (grupo) ou telefone do contato (individual). */
     chatId: string;
-    archived: boolean;
-  }): Promise<number>;
+    state: RemoteChatState;
+  }): Promise<ApplyRemoteStateResult | null>;
   /** Quantidade de conversas arquivadas do tenant. */
   countArchived(tenantId: string, sessionId?: string): Promise<number>;
 }

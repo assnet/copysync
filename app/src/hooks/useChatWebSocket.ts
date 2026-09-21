@@ -28,6 +28,25 @@ export interface WsUnreadUpdatedData {
   tenantId: string;
   conversationId: string;
   unreadCount: number;
+  /** Acompanha o contador quando a leitura também limpa a marcação manual. */
+  manuallyUnread?: boolean;
+}
+
+/**
+ * Estado de conversa alterado fora desta aba: em outro aparelho do usuário ou por
+ * outro operador do mesmo tenant. Campo ausente = sem informação, não "false".
+ */
+export interface WsConversationStateData {
+  tenantId: string;
+  conversationId: string;
+  unreadCount?: number;
+  manuallyUnread?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  /** ISO 8601, ou null quando deixa de ser silenciada. */
+  mutedUntil?: string | null;
+  favorite?: boolean;
+  lists?: string[];
 }
 
 export interface WsSessionUpdatedData {
@@ -65,6 +84,7 @@ export type ChatWsPayload =
   | { event: 'chat.message.created'; data: WsMessageCreatedData }
   | { event: 'chat.conversation.updated'; data: WsConversationUpdatedData }
   | { event: 'chat.unread.updated'; data: WsUnreadUpdatedData }
+  | { event: 'chat.state.updated'; data: WsConversationStateData }
   | { event: 'chat.message.status.updated'; data: WsMessageStatusUpdatedData }
   | { event: 'chat.presence.updated'; data: WsPresenceUpdatedData }
   | { event: 'chat.session.updated'; data: WsSessionUpdatedData }

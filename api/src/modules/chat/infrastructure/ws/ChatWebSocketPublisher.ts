@@ -54,6 +54,11 @@ export type ChatWsEvent =
         tenantId: string;
         conversationId: string;
         unreadCount: number;
+        /**
+         * Acompanha o contador quando a leitura também limpa a marcação manual. Opcional
+         * para não quebrar quem já publica só o contador.
+         */
+        manuallyUnread?: boolean;
       };
     }
   | {
@@ -98,12 +103,25 @@ export type ChatWsEvent =
       };
     }
   | {
-      event: 'chat.archive.updated';
+      /**
+       * Estado de conversa alterado fora desta aba: em outro aparelho do usuário
+       * (espelhamento) ou por outro operador do mesmo tenant (PATCH /state).
+       *
+       * Todos os campos são opcionais e cada emissor preenche o que sabe — o
+       * espelhamento nunca envia favorite/lists, que não existem no WhatsApp.
+       */
+      event: 'chat.state.updated';
       data: {
         tenantId: string;
-        chatId: string;
-        isGroup: boolean;
-        archived: boolean;
+        conversationId: string;
+        unreadCount?: number;
+        manuallyUnread?: boolean;
+        archived?: boolean;
+        pinned?: boolean;
+        /** ISO 8601, ou null quando a conversa deixa de ser silenciada. */
+        mutedUntil?: string | null;
+        favorite?: boolean;
+        lists?: string[];
       };
     }
   | { event: 'ping' };
