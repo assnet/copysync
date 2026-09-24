@@ -183,6 +183,24 @@ Duas queries no pior caso, uma no caso comum de eco. Multi-tenancy preservado em
 
 ---
 
+## 6.1 Conversa que ainda não existe
+
+Os dois caminhos do history sync rodam fora de ordem: `emitChatState` dispara assim que o
+lote chega, enquanto as mensagens são ingeridas em background. Para conversa que o painel
+ainda não conhece, `applyRemoteState` devolve `null` e o retrato se perderia — ela
+nasceria lida, desarquivada, sem fixação e sem silenciamento, sem nada que a corrigisse
+depois (o espelhamento só atualiza o que existe, a reconciliação do contador é monotônica
+para baixo, e arquivamento/fixação só chegam quando mudam).
+
+Por isso o mesmo lote alimenta `chatStates`, que o `IngestHistorySyncUseCase` usa **apenas
+ao criar** a conversa, via `initialStateFromRemote`. Semear na criação é seguro justamente
+por acontecer uma vez: não há estado anterior para atropelar nem leitura do operador para
+ignorar.
+
+Chave do mapa: `groupJid` em grupos, telefone em conversas individuais — e chat entregue
+por LID tem o telefone resolvido por `pnJid`, o mesmo caminho do mapeamento de mensagens.
+Sem isso a chave nunca casaria e a conversa nasceria sem estado, em silêncio.
+
 ## 7. Listener
 
 `ChatConversationStateListener` (renomeia e amplia `ChatArchiveListener`, mesmo diretório):

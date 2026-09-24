@@ -40,6 +40,7 @@ import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import { translateDisconnect, translateEngineError } from './BaileysErrorTranslator';
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
+import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
@@ -670,19 +671,35 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // o chats.upsert só é emitido quando um grupo é criado (Socket/messages-recv.js),
       // e não traz arquivamento nem contador. Por ser estado de conversa, e não
       // histórico de mensagens, roda independentemente de BAILEYS_SYNC_FULL_HISTORY.
-      // Total de não lidas por chat, como o aparelho reporta. Serve a dois caminhos:
-      // espelhar em conversa que já existe (evento abaixo) e semear a conversa que
-      // ainda vai ser criada pela ingestão deste mesmo lote — sem isso, conversa
-      // importada nasceria como lida e a reconciliação não a corrigiria, por ser
-      // monotônica para baixo.
-      const unreadByChat: Record<string, number> = {};
+      // O retrato de cada chat serve a dois caminhos: espelhar em conversa que já existe
+      // (evento abaixo) e semear a que ainda vai ser criada pela ingestão deste mesmo
+      // lote. Sem o segundo, a conversa importada nasceria lida, desarquivada e sem
+      // fixação — o espelhamento roda antes da ingestão e não acha o que atualizar.
+      const chatStates: Record<string, RemoteChatState> = {};
+      let chatsSemChave = 0;
       for (const chat of histChats ?? []) {
         emitChatState(chat, 'history');
+
         const chatId = chat.id;
-        if (!chatId || chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) continue;
-        if (typeof chat.unreadCount === 'number' && chat.unreadCount > 0) {
-          unreadByChat[chatId.split('@')[0]] = chat.unreadCount;
+        if (!chatId || chatId.endsWith('@broadcast')) continue;
+
+        // Chat entregue por LID: o telefone real vem em pnJid, o mesmo caminho que o
+        // mapeamento de mensagens usa. Sem ele não há chave em comum com a ingestão.
+        let chaveJid = chatId;
+        if (chatId.endsWith('@lid')) {
+          const pnJid = (chat as { pnJid?: string | null }).pnJid;
+          if (!pnJid) { chatsSemChave++; continue; }
+          chaveJid = pnJid;
         }
+
+        const state = normalizeChatState(chat, { source: 'history' });
+        if (!isEmptyChatState(state)) chatStates[chaveJid.split('@')[0]] = state;
+      }
+      if (chatsSemChave > 0) {
+        baileysLogger.debug(
+          { sessionId, count: chatsSemChave },
+          'History chats skipped: LID without pnJid, initial state will not be seeded',
+        );
       }
       if (!env.BAILEYS_SYNC_FULL_HISTORY) {
         baileysLogger.debug(
@@ -701,7 +718,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
               { sessionId, count: items.length },
               'History sync batch received',
             );
-            this.historySyncUseCase.execute({ tenantId, sessionId, messages: items, unreadByChat });
+            this.historySyncUseCase.execute({ tenantId, sessionId, messages: items, chatStates });
           }
         } catch (err) {
           baileysLogger.warn({ err, sessionId }, 'Failed to process messaging-history.set');

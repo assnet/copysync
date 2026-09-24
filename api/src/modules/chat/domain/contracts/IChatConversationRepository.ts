@@ -58,12 +58,20 @@ export interface CreateConversationData {
   groupJid?: string | null;
   groupName?: string | null;
   /**
-   * Contador inicial de não lidas. Só o history sync informa: é o total do aparelho no
-   * momento em que a conversa entra no painel. Sem ele, conversa importada nasceria
-   * como lida — e a reconciliação posterior não corrige, por ser monotônica para baixo
-   * (ver diffRemoteState).
+   * Estado que a conversa já nasce tendo — contador de não lidas, arquivamento, fixação
+   * e silenciamento. Só o history sync informa: é o retrato do aparelho no momento em
+   * que a conversa entra no painel.
+   *
+   * Sem isso a conversa importada nasceria lida, desarquivada e sem fixação, e nada a
+   * corrigiria: o espelhamento só atualiza conversa existente, a reconciliação do
+   * contador é monotônica para baixo e arquivamento/fixação só chegam quando mudam.
+   * Ver `initialStateFromRemote`.
    */
   unreadCount?: number;
+  manuallyUnread?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  mutedUntil?: Date | null;
 }
 
 export interface IChatConversationRepository {

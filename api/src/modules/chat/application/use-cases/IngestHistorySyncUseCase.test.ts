@@ -42,9 +42,17 @@ function makeItem(overrides: Partial<HistoryMessageItem> = {}): HistoryMessageIt
   };
 }
 
-/** O processamento roda em background via setImmediate. */
-async function aguardarProcessamento(): Promise<void> {
-  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+/**
+ * O processamento roda em background via setImmediate. Espera pela condição, e não por
+ * um número fixo de ticks: um `await` a mais dentro do use case não deve quebrar teste.
+ */
+async function aguardarChamada(fn: unknown): Promise<void> {
+  await vi.waitFor(() => expect(fn).toHaveBeenCalled());
+}
+
+/** Para os casos em que se espera que NADA seja chamado. */
+async function aguardarOcioso(): Promise<void> {
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 describe('IngestHistorySyncUseCase', () => {
@@ -58,9 +66,9 @@ describe('IngestHistorySyncUseCase', () => {
       tenantId: TENANT,
       sessionId: SESSION,
       messages: [makeItem()],
-      unreadByChat: { '5511999999999': 7 },
+      chatStates: { '5511999999999': { unreadCount: 7 } },
     });
-    await aguardarProcessamento();
+    await aguardarChamada(deps.conversationRepo.create);
 
     expect(deps.conversationRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ unreadCount: 7 }),
@@ -75,12 +83,12 @@ describe('IngestHistorySyncUseCase', () => {
       tenantId: TENANT,
       sessionId: SESSION,
       messages: [makeItem({ isGroup: true, groupJid: '123456', groupName: 'Equipe' })],
-      unreadByChat: { '123456': 3 },
+      chatStates: { '123456': { unreadCount: 3, archived: true } },
     });
-    await aguardarProcessamento();
+    await aguardarChamada(deps.conversationRepo.create);
 
     expect(deps.conversationRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ isGroup: true, unreadCount: 3 }),
+      expect.objectContaining({ isGroup: true, unreadCount: 3, archived: true }),
     );
   });
 
@@ -89,7 +97,7 @@ describe('IngestHistorySyncUseCase', () => {
     const useCase = new IngestHistorySyncUseCase(deps.contactRepo, deps.conversationRepo, deps.messageRepo);
 
     useCase.execute({ tenantId: TENANT, sessionId: SESSION, messages: [makeItem()] });
-    await aguardarProcessamento();
+    await aguardarChamada(deps.conversationRepo.create);
 
     const args = (deps.conversationRepo.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
     expect(args).not.toHaveProperty('unreadCount');
@@ -105,9 +113,9 @@ describe('IngestHistorySyncUseCase', () => {
       tenantId: TENANT,
       sessionId: SESSION,
       messages: [makeItem()],
-      unreadByChat: { '5511999999999': 9 },
+      chatStates: { '5511999999999': { unreadCount: 9 } },
     });
-    await aguardarProcessamento();
+    await aguardarChamada(deps.messageRepo.create);
 
     expect(deps.conversationRepo.create).not.toHaveBeenCalled();
   });
@@ -121,7 +129,7 @@ describe('IngestHistorySyncUseCase', () => {
       sessionId: SESSION,
       messages: [makeItem({ externalMessageId: '', body: null, msgType: undefined })],
     });
-    await aguardarProcessamento();
+    await aguardarOcioso();
 
     expect(deps.messageRepo.create).not.toHaveBeenCalled();
   });

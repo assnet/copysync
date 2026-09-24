@@ -79,7 +79,11 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
         ...(data.favorite !== undefined ? { favorite: data.favorite } : {}),
         ...(data.manuallyUnread !== undefined ? { manuallyUnread: data.manuallyUnread } : {}),
         ...(data.tags !== undefined ? { tags: data.tags } : {}),
-        ...(data.unreadCount !== undefined ? { unreadCount: data.unreadCount } : {}),
+        ...(data.unreadCount    !== undefined ? { unreadCount:    data.unreadCount }    : {}),
+        ...(data.manuallyUnread !== undefined ? { manuallyUnread: data.manuallyUnread } : {}),
+        ...(data.archived       !== undefined ? { archived:       data.archived }       : {}),
+        ...(data.pinned         !== undefined ? { pinned:         data.pinned }         : {}),
+        ...(data.mutedUntil     !== undefined ? { mutedUntil:     data.mutedUntil }     : {}),
       },
     });
 
@@ -175,7 +179,11 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
         isGroup: data.isGroup ?? false,
         groupJid: data.groupJid ?? null,
         groupName: data.groupName ?? null,
-        ...(data.unreadCount !== undefined ? { unreadCount: data.unreadCount } : {}),
+        ...(data.unreadCount    !== undefined ? { unreadCount:    data.unreadCount }    : {}),
+        ...(data.manuallyUnread !== undefined ? { manuallyUnread: data.manuallyUnread } : {}),
+        ...(data.archived       !== undefined ? { archived:       data.archived }       : {}),
+        ...(data.pinned         !== undefined ? { pinned:         data.pinned }         : {}),
+        ...(data.mutedUntil     !== undefined ? { mutedUntil:     data.mutedUntil }     : {}),
       },
     });
     return PrismaChatConversationMapper.toDomain(raw);

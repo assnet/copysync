@@ -3,6 +3,8 @@ import type { IChatConversationRepository } from '../../domain/contracts/IChatCo
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { logger } from '../../../../shared/logger/logger';
+import { initialStateFromRemote } from '../../domain/services/initialStateFromRemote';
+import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
 
 export interface HistoryMessageItem {
   /** ID externo da mensagem (Baileys key.id) — necessário para deduplicação */
@@ -44,15 +46,15 @@ export interface IngestHistorySyncInput {
   sessionId: string;
   messages: HistoryMessageItem[];
   /**
-   * Total de não lidas por chat, como o aparelho reporta no mesmo lote de history sync.
+   * Estado de cada chat como o aparelho reporta no mesmo lote de history sync — não
+   * lidas, arquivamento, fixação e silenciamento.
    * Chave: groupJid em grupos, telefone em conversas individuais.
    *
    * Usado **apenas na criação** da conversa. Conversa que já existe é reconciliada pelo
-   * caminho de espelhamento (applyRemoteState), que é monotônico para baixo justamente
-   * porque lotes atrasados ressuscitariam badge — restrição que não se aplica aqui, já
-   * que criar acontece uma vez só.
+   * caminho de espelhamento (applyRemoteState), que compara com o estado atual antes de
+   * gravar — cuidado que não se aplica aqui, já que criar acontece uma vez só.
    */
-  unreadByChat?: Record<string, number>;
+  chatStates?: Record<string, RemoteChatState>;
 }
 
 const CHUNK_SIZE = 50;
@@ -63,8 +65,8 @@ const log = logger.child({ module: 'IngestHistorySyncUseCase' });
  *
  * - Idempotente: verifica externalMessageId antes de criar
  * - Não publica eventos WebSocket (sync silencioso)
- * - Não incrementa contador de não-lidas; apenas semeia o total do aparelho ao criar
- *   uma conversa, quando o lote informa (unreadByChat)
+ * - Não incrementa contador de não-lidas; apenas semeia o estado do aparelho ao criar
+ *   uma conversa, quando o lote informa (chatStates)
  * - Processa em chunks de CHUNK_SIZE via setImmediate para não bloquear o event loop
  * - Atualiza lastMessageAt/preview da conversa apenas quando a mensagem é mais recente
  */
@@ -85,7 +87,7 @@ export class IngestHistorySyncUseCase {
     );
 
     // Agenda processamento de todos os chunks em background
-    this.scheduleChunks(input.tenantId, input.sessionId, valid, 0, input.unreadByChat);
+    this.scheduleChunks(input.tenantId, input.sessionId, valid, 0, input.chatStates);
   }
 
   private scheduleChunks(
@@ -93,7 +95,7 @@ export class IngestHistorySyncUseCase {
     sessionId: string,
     messages: HistoryMessageItem[],
     offset: number,
-    unreadByChat?: Record<string, number>,
+    chatStates?: Record<string, RemoteChatState>,
   ): void {
     if (offset >= messages.length) {
       log.info({ tenantId, sessionId }, 'History sync completed');
@@ -102,10 +104,10 @@ export class IngestHistorySyncUseCase {
 
     setImmediate(() => {
       const chunk = messages.slice(offset, offset + CHUNK_SIZE);
-      this.processChunk(tenantId, sessionId, chunk, unreadByChat)
+      this.processChunk(tenantId, sessionId, chunk, chatStates)
         .catch((err) => log.warn({ err, tenantId, sessionId, offset }, 'Chunk error in history sync'))
         .finally(() =>
-          this.scheduleChunks(tenantId, sessionId, messages, offset + CHUNK_SIZE, unreadByChat),
+          this.scheduleChunks(tenantId, sessionId, messages, offset + CHUNK_SIZE, chatStates),
         );
     });
   }
@@ -114,7 +116,7 @@ export class IngestHistorySyncUseCase {
     tenantId: string,
     sessionId: string,
     items: HistoryMessageItem[],
-    unreadByChat?: Record<string, number>,
+    chatStates?: Record<string, RemoteChatState>,
   ): Promise<void> {
     // Acumula a última mensagem por conversa para atualizar preview ao final
     const latestPerConversation = new Map<string, { preview: string; at: Date }>();
@@ -141,8 +143,8 @@ export class IngestHistorySyncUseCase {
               isGroup: true,
               groupJid: item.groupJid,
               groupName: item.groupName,
-              ...(unreadByChat?.[item.groupJid] !== undefined
-                ? { unreadCount: unreadByChat[item.groupJid] }
+              ...(chatStates?.[item.groupJid]
+                ? initialStateFromRemote(chatStates[item.groupJid])
                 : {}),
             });
           }
@@ -165,8 +167,8 @@ export class IngestHistorySyncUseCase {
               tenantId,
               sessionId,
               contactId: contact.id,
-              ...(unreadByChat?.[item.from] !== undefined
-                ? { unreadCount: unreadByChat[item.from] }
+              ...(chatStates?.[item.from]
+                ? initialStateFromRemote(chatStates[item.from])
                 : {}),
             });
           }
