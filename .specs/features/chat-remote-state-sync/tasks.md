@@ -352,11 +352,22 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
    por commit, filtrando pelo escopo da feature:
 
    ```
-   for c in $(git log --format='%h %s' | grep -E '\(chat\):' | cut -d' ' -f1); do
+   BASE=$(git merge-base origin/develop HEAD)   # df04970 hoje; derivado, não fixo
+   for c in $(git log --format='%h %s' $BASE..HEAD | grep -E '\(chat\):' | cut -d' ' -f1); do
      git show "$c" -- api/src app/src | grep -E "^\+" |
        grep -oE "(socket|engine|chatService)\.[a-zA-Z]+\("
    done | sort | uniq -c
    ```
+
+   **O intervalo não é opcional**: sem `$BASE..HEAD` o `git log` varre os 63 commits `(chat):`
+   do repositório e devolve 23 linhas de chamadas que nada têm a ver com esta feature.
+
+   **O filtro por escopo tem prazo de validade**: `(chat):` também casa com a feature de
+   reações, que compartilha o escopo. Enquanto as duas vivem em branches separadas isso não
+   atrapalha — dentro de `$BASE..HEAD` só entram commits desta linha (o de planejamento de
+   reações entra, mas toca apenas `.specs/` e some no `git show -- api/src app/src`). Quando
+   as duas convergirem, filtrar pelo trailer `Feature: chat-remote-state-sync`, que os commits
+   desta feature passam a carregar a partir daqui, em vez do escopo.
 
    Resultado: `chatService.markAsRead` (1) e nada mais. Nenhum método de socket e nenhuma
    chamada de engine adicionados; o único gatilho novo é a exceção declarada da T15, agrupada
