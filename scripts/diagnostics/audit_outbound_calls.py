@@ -64,27 +64,28 @@ def git(*args: str) -> str:
     return resultado.stdout
 
 
-def base_pela_feature(feature: str, escopo: str) -> str | None:
+def base_pela_feature(feature: str) -> str | None:
     """
-    Base derivada do próprio histórico: pai do commit mais antigo da feature.
+    Base derivada do histórico: pai do commit mais antigo que carrega o trailer.
 
     Serve para depois do merge em develop, quando `git merge-base origin/develop HEAD`
-    degenera para o próprio HEAD e o intervalo fica vazio. Procura primeiro pelo trailer,
-    que é preciso; cai para o escopo, que é abrangente demais para servir de padrão mas
-    resolve enquanto os commits antigos não têm trailer.
+    degenera para o próprio HEAD e o intervalo fica vazio.
+
+    Só o trailer serve aqui. O escopo do commit já foi tentado e recuava para o commit
+    `(chat):` mais antigo do repositório — meses atrás, 64 commits, 22 chamadas de features
+    alheias marcadas como não declaradas. Um relatório grande demais se parece com auditoria
+    de verdade, e essa é a pior forma de errar: sem trailer, este script prefere recusar e
+    pedir `--base`.
     """
-    saida = git("log", "--no-merges", "--format=%h%x09%s%x09%(trailers:key=Feature,valueonly)")
-    com_trailer = [
-        l.split("\t")[0] for l in saida.splitlines()
-        if len(l.split("\t")) > 2 and l.split("\t")[2].strip() == feature
-    ]
-    if com_trailer:
-        return f"{com_trailer[-1]}^"
-    no_escopo = [
-        l.split("\t")[0] for l in saida.splitlines()
-        if len(l.split("\t")) > 1 and f"({escopo}):" in l.split("\t")[1]
-    ]
-    return f"{no_escopo[-1]}^" if no_escopo else None
+    saida = git(
+        "log", "--reverse", "--no-merges",
+        "--format=%h%x09%(trailers:key=Feature,valueonly)",
+    )
+    for linha in saida.splitlines():
+        partes = linha.split("\t")
+        if len(partes) > 1 and partes[1].strip() == feature:
+            return f"{partes[0]}^"
+    return None
 
 
 def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, str]]:
@@ -195,12 +196,13 @@ def main() -> int:
     # Depois do merge em develop, a ref de comparação passa a conter a feature e o
     # merge-base vira o próprio HEAD. Em vez de falhar, deriva a base do histórico.
     if base == git("rev-parse", "HEAD").strip():
-        derivada = base_pela_feature(args.feature, args.escopo)
+        derivada = base_pela_feature(args.feature)
         if derivada is None:
             sys.exit(
-                f"erro: {args.base} já contém a feature e não há commit com trailer "
-                f"'Feature: {args.feature}' nem escopo ({args.escopo}) no histórico.\n"
-                "Passe --base apontando para antes do primeiro commit da feature."
+                f"erro: {args.base} já contém a feature e nenhum commit carrega o trailer "
+                f"'Feature: {args.feature}'.\n"
+                "Passe --base apontando para antes do primeiro commit da feature — derivar "
+                "pelo escopo recuaria o histórico inteiro e devolveria features alheias."
             )
         base = git("rev-parse", derivada).strip()
         print(
@@ -220,8 +222,11 @@ def main() -> int:
 
     print(f"base: {base[:9]} {git('log', '-1', '--format=%s', base).strip()}")
 
+    # Escala do intervalo sempre visível: número grande é sinal de base errada, e o leitor
+    # merece perceber isso antes de confiar no relatório.
+    no_intervalo = len(git("log", "--no-merges", "--format=%h", f"{base}..HEAD").splitlines())
     commits = commits_da_feature(base, args.feature, args.escopo)
-    print(f"commits auditados: {len(commits)} (merges excluídos)\n")
+    print(f"commits no intervalo: {no_intervalo} | auditados pelo filtro: {len(commits)}\n")
 
     # chamada -> {sha: linhas adicionadas naquele commit}. Guardar a origem, e não só um
     # número, responde "onde isso entrou" — a pergunta de quem audita. Um total solto

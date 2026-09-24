@@ -354,7 +354,12 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
    passou a conter a feature, o merge-base degenera para o próprio HEAD e o intervalo fica
    vazio. O script detecta isso e deriva a base do histórico pelo trailer `Feature:` — que aqui
    foi adotado no meio da feature, então ele avisa que a cobertura ficaria **parcial** e pede a
-   base explícita. `4a1c122` é o commit de `develop` anterior ao primeiro da feature.
+   base explícita.
+
+   `4a1c122` é o commit de `develop` anterior ao primeiro da feature. O SHA aqui é fixo de
+   propósito, ao contrário do que vale para refs móveis: ele está publicado em `develop` e não
+   sai mais de lá. Uma ref (`origin/develop`) mudaria de posição a cada merge e deixaria de
+   apontar para a base desta feature — que é justamente o que aconteceu ao fazer o release.
 
    O script existe porque a verificação em uma linha de shell falha **devolvendo vazio**, e
    vazio aqui é indistinguível de "nada foi adicionado". Quatro modos de falha silenciosa, cada
