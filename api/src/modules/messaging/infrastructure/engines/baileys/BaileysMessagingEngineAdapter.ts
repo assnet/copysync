@@ -633,10 +633,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // ── History sync ────────────────────────────────────────────────────────
     // ── Estado de conversa alterado em outro aparelho ────────────────────────
-    // O WhatsApp entrega arquivamento, leitura, fixação e silenciamento em
-    // chats.upsert (sincronização inicial) e chats.update (mudança em qualquer
-    // aparelho). É estado de conversa, não histórico de mensagens, por isso não
-    // depende de BAILEYS_SYNC_FULL_HISTORY.
+    // Arquivamento, leitura, fixação e silenciamento chegam por chats.update (mudança
+    // feita em qualquer aparelho) e por messaging-history.set (retrato em massa, com o
+    // total de não lidas).
     //
     // Nada aqui origina chamada ao WhatsApp: só consome o que o socket já entrega.
     const emitChatState = (
@@ -667,10 +666,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     socket.ev.on('messaging-history.set', ({ messages: histMsgs, chats: histChats }) => {
       if (isStale()) return;
 
-      // O estado de arquivamento vem junto do history sync, e é o único momento em
-      // que ele chega para sessões já pareadas — o chats.upsert acontece apenas na
-      // sincronização inicial. Como é estado de conversa, não histórico de mensagens,
-      // é processado independentemente de BAILEYS_SYNC_FULL_HISTORY.
+      // History sync é a única entrega em massa de estado de conversa: na lib instalada
+      // o chats.upsert só é emitido quando um grupo é criado (Socket/messages-recv.js),
+      // e não traz arquivamento nem contador. Por ser estado de conversa, e não
+      // histórico de mensagens, roda independentemente de BAILEYS_SYNC_FULL_HISTORY.
       for (const chat of histChats ?? []) {
         // History sync é a única fonte com o total de não lidas do aparelho.
         emitChatState(chat, 'history');

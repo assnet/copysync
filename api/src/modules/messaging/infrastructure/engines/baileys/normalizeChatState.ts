@@ -7,7 +7,10 @@ import type { RemoteChatState } from '../../../../../shared/events/InternalMessa
  */
 export interface RawChatState {
   archived?: boolean | null;
-  /** 0 = lida, negativo = marcada como não lida, positivo = delta de mensagens novas. */
+  /**
+   * 0 = lida, negativo = marcada como não lida. O positivo depende da origem:
+   * incremento em chats.update, total do aparelho no history sync — ver ChatStateSource.
+   */
   unreadCount?: number | null;
   /** Timestamp de quando foi fixada, ou null/ausente quando não está. */
   pinned?: NumberLike;
@@ -30,13 +33,14 @@ function toNumber(value: NumberLike): number | null {
 /**
  * De onde veio o estado, o que muda a leitura do contador.
  *
- * - `update`: chats.update, onde o número positivo é **incremento** (o event-buffer da
- *   lib soma esses valores) — descartado, porque o contador do painel já é mantido pela
- *   ingestão de mensagens e copiá-lo duplicaria a contagem
+ * - `update`: chats.update e chats.upsert, onde o número positivo é **incremento** (o
+ *   event-buffer da lib soma esses valores) — descartado, porque o contador do painel já
+ *   é mantido pela ingestão de mensagens e copiá-lo duplicaria a contagem
  * - `history`: messaging-history.set, único lugar que entrega o **total** do aparelho.
  *   É o que reconcilia o passivo: na sincronização inicial de app-state, conversa já
  *   lida chega com unreadCount null (a lib trata "lida" como padrão), então sem esta
- *   fonte o contador acumulado antes da conexão nunca seria corrigido
+ *   fonte o contador acumulado antes da conexão nunca seria corrigido. O total só é
+ *   aplicado quando reduz o contador — ver diffRemoteState, que explica por quê
  */
 export type ChatStateSource = 'update' | 'history';
 

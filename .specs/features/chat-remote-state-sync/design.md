@@ -154,9 +154,14 @@ Algoritmo:
 1. Resolve a conversa (grupo por `groupJid`; individual por `contactId` via `tenant_phone`) — mesma
    lógica de `setArchivedByChat`. Sem conversa ⇒ `null`, fim silencioso (SYNC-01.4)
 2. Lê os campos de estado atuais no mesmo `findFirst` (`select` enxuto, sem trazer a linha inteira)
-3. Calcula o diff em memória:
+3. Calcula o diff chamando `diffRemoteState` (domínio, função pura — a regra é testável
+   sem banco):
    - `read: true` ⇒ entra no diff se `unreadCount > 0` **ou** `manuallyUnread === true`
    - `manuallyUnread: true` ⇒ entra se `manuallyUnread === false`
+   - `unreadCount` absoluto (só do history sync) ⇒ entra **apenas se reduzir** o contador.
+     Os lotes do history sync chegam sem ordem garantida; um retrato atrasado ressuscitaria
+     o badge numa conversa recém-lida, inclusive na aberta na tela. Subir é tarefa da
+     ingestão, que reage a cada mensagem
    - `archived`/`pinned` ⇒ entram se diferentes do persistido
    - `mutedUntil` ⇒ entra se o instante (ou `null`) for diferente
 4. Diff vazio ⇒ retorna `{ conversationId, changed: {} }` **sem gravar** (SYNC-03, supressão de eco)

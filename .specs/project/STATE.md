@@ -44,6 +44,15 @@ Memória entre sessões: decisões, bloqueios, lições.
   WhatsApp entrega `unreadCount: null` para conversa já lida (`chat-utils.js:707`), então sem essa
   fonte o passivo acumulado antes da conexão ficava para sempre.
 
+## Decisões (continuação)
+
+- **2026-09-24 — Reconciliação do contador é monotônica para baixo.**
+  O total que vem do history sync só é aplicado quando reduz o `unreadCount`. Os lotes do
+  history sync não têm ordem garantida, então um retrato antigo faria o badge voltar numa
+  conversa já lida. O painel superestima por natureza (conta por ingestão, inclusive o que
+  já fora lido no celular antes), então corrigir para baixo é onde essa fonte agrega;
+  para cima a ingestão já cobre. Ver `diffRemoteState`.
+
 ## Lições
 
 - **Ler a lib não substitui rodar com sessão real.** A semântica de `unreadCount` foi lida direto do

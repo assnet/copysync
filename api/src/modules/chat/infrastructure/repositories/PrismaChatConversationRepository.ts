@@ -10,6 +10,7 @@ import type {
   AppliedConversationState,
 } from '../../domain/contracts/IChatConversationRepository';
 import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
+import { diffRemoteState } from '../../domain/services/diffRemoteState';
 import type { ChatConversation } from '../../domain/entities/ChatConversation';
 import { PrismaChatConversationMapper } from '../mappers/PrismaChatConversationMapper';
 
@@ -126,30 +127,8 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     // conversa aqui: ignorar em silêncio é o caminho normal, não um erro.
     if (!current) return null;
 
-    const changed: AppliedConversationState = {};
-
-    if (state.read && (current.unreadCount > 0 || current.manuallyUnread)) {
-      changed.unreadCount = 0;
-      changed.manuallyUnread = false;
-    } else if (state.manuallyUnread && !current.manuallyUnread) {
-      changed.manuallyUnread = true;
-    } else if (state.unreadCount !== undefined && state.unreadCount !== current.unreadCount) {
-      // Total do aparelho (history sync): reconcilia o contador acumulado pela ingestão
-      // com o que o usuário de fato tem por ler.
-      changed.unreadCount = state.unreadCount;
-    }
-
-    if (state.archived !== undefined && state.archived !== current.archived) {
-      changed.archived = state.archived;
-    }
-    if (state.pinned !== undefined && state.pinned !== current.pinned) {
-      changed.pinned = state.pinned;
-    }
-    if (state.mutedUntil !== undefined) {
-      const atual = current.mutedUntil?.getTime() ?? null;
-      const novo = state.mutedUntil?.getTime() ?? null;
-      if (atual !== novo) changed.mutedUntil = state.mutedUntil;
-    }
+    // A regra de comparação mora no domínio, onde é testável sem banco.
+    const changed = diffRemoteState(current, state);
 
     // Estado igual ao persistido: nada a gravar e nada a anunciar. É o que impede o
     // eco do próprio painel de virar gravação e frame de WebSocket.
