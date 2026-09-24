@@ -345,33 +345,20 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
 5. Abrir a conversa no painel → limpa contador e marcação manual
 6. Derrubar a API 20 s, ler no celular, subir → painel realinha sozinho, uma única requisição
 7. Rajada de 5 mensagens na conversa aberta → **uma** chamada `markAsRead`
-8. ✅ **parte estática verificada em 2026-09-24**. O escopo é a parte difícil: um `git pull`
-   reaplicou os commits da feature sobre a linha remota e eles ficaram **intercalados** com os
-   de infra de testes, então não existe base linear que separe os dois — `develop...HEAD` e
-   qualquer SHA fixo dão o recorte errado, além de o SHA morrer no próximo rebase. Verificar
-   por commit, filtrando pelo escopo da feature:
+8. ✅ **parte estática verificada em 2026-09-24** por
+   `python3 scripts/diagnostics/audit_outbound_calls.py`, que devolve
+   `chatService.markAsRead (1)` — a exceção declarada da T15 — e mais nada: nenhum método de
+   socket e nenhuma chamada de engine adicionados.
 
-   ```
-   BASE=$(git merge-base origin/develop HEAD)   # df04970 hoje; derivado, não fixo
-   for c in $(git log --format='%h %s' $BASE..HEAD | grep -E '\(chat\):' | cut -d' ' -f1); do
-     git show "$c" -- api/src app/src | grep -E "^\+" |
-       grep -oE "(socket|engine|chatService)\.[a-zA-Z]+\("
-   done | sort | uniq -c
-   ```
+   O script existe porque a verificação em uma linha de shell falha **devolvendo vazio**, e
+   vazio aqui é indistinguível de "nada foi adicionado". Três modos de falha silenciosa já
+   apareceram: intervalo vazio depois que a feature entra em `develop` (o merge-base vira o
+   próprio HEAD), commit de merge que `git show -- <paths>` não expande, e filtro que não casa
+   com commit nenhum. Cada um agora é erro explícito com código de saída 1 — verificado.
 
-   **O intervalo não é opcional**: sem `$BASE..HEAD` o `git log` varre os 63 commits `(chat):`
-   do repositório e devolve 23 linhas de chamadas que nada têm a ver com esta feature.
-
-   **O filtro por escopo tem prazo de validade**: `(chat):` também casa com a feature de
-   reações, que compartilha o escopo. Enquanto as duas vivem em branches separadas isso não
-   atrapalha — dentro de `$BASE..HEAD` só entram commits desta linha (o de planejamento de
-   reações entra, mas toca apenas `.specs/` e some no `git show -- api/src app/src`). Quando
-   as duas convergirem, filtrar pelo trailer `Feature: chat-remote-state-sync`, que os commits
-   desta feature passam a carregar a partir daqui, em vez do escopo.
-
-   Resultado: `chatService.markAsRead` (1) e nada mais. Nenhum método de socket e nenhuma
-   chamada de engine adicionados; o único gatilho novo é a exceção declarada da T15, agrupada
-   em uma chamada por 1,5 s.
+   O escopo do commit não identifica uma feature (`chat` é compartilhado com reações), então o
+   script prefere o trailer `Feature: chat-remote-state-sync` e avisa quando há commits no
+   escopo sem o trailer, caindo para o filtro mais abrangente em vez de calar.
 
    Inventário aberto do adapter (`grep -oE 'socket\.[a-zA-Z]+\('`, sem lista fixa de métodos):
    `chatModify` (4), `end` (3), `sendMessage` (2), `profilePictureUrl` (2), `readMessages`,
