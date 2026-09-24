@@ -95,6 +95,13 @@ def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, 
     Prefere o trailer `Feature:`, que identifica a feature mesmo quando várias compartilham
     o escopo do commit. Cai para o escopo quando nenhum commit tem o trailer — é o caso dos
     commits anteriores à adoção dele.
+
+    Aqui o escopo é aceitável, e em `base_pela_feature` não é — a diferença não é de rigor,
+    é de alcance. Derivar a base pelo escopo recua o histórico até onde aquele escopo existir,
+    sem limite: meses atrás, features alheias inteiras. Selecionar pelo escopo age **dentro**
+    de um intervalo já fixado, então o pior caso é incluir um commit vizinho da mesma área —
+    ruído, não relatório falso. A linha "commits no intervalo" impressa pelo main existe para
+    que um intervalo grande demais salte aos olhos antes de alguém confiar no resultado.
     """
     intervalo = f"{base}..HEAD"
     saida = git(
