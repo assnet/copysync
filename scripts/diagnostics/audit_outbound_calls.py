@@ -39,14 +39,13 @@ PADRAO_SAIDA = re.compile(r"(socket|engine|chatService)\.[a-zA-Z]+\(")
 # por 1,5 s.
 DECLARADAS = {"chatService.markAsRead("}
 
-CAMINHOS = [
-    "api/src",
-    "app/src",
-    # Dublês de teste citam a engine sem chamá-la de verdade. Incluí-los transformaria
-    # `engine.markMessagesRead(...)` num mock em "chamada de saída nova".
-    ":(exclude)**/*.test.ts",
-    ":(exclude)**/*.test.tsx",
-]
+CAMINHOS_CODIGO = ["api/src", "app/src"]
+
+# Dublês de teste citam a engine sem chamá-la de verdade. Incluí-los transformaria
+# `engine.markMessagesRead(...)` num mock em "chamada de saída nova".
+EXCLUSOES = [":(exclude)**/*.test.ts", ":(exclude)**/*.test.tsx"]
+
+PATHSPEC = [*CAMINHOS_CODIGO, *EXCLUSOES]
 
 
 def git(*args: str) -> str:
@@ -79,13 +78,18 @@ def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, 
             "Rode com --base apontando para antes do primeiro commit da feature."
         )
 
+    # O log vem do mais recente para o mais antigo: índice menor = commit mais novo.
     com_trailer, no_escopo = [], []
-    for linha in linhas:
+    indice_por_sha: dict[str, int] = {}
+    indice_trailer_mais_antigo: int | None = None
+    for i, linha in enumerate(linhas):
         partes = linha.split("\t")
         sha, assunto = partes[0], partes[1]
         trailer = partes[2].strip() if len(partes) > 2 else ""
+        indice_por_sha[sha] = i
         if trailer == feature:
             com_trailer.append((sha, assunto))
+            indice_trailer_mais_antigo = i
         if f"({escopo}):" in assunto:
             no_escopo.append((sha, assunto))
 
@@ -101,13 +105,25 @@ def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, 
         selecionados.append((sha, assunto))
 
     if com_trailer:
-        sem_trailer = len(selecionados) - len(com_trailer)
-        if sem_trailer > 0:
+        # Avisar sobre os commits anteriores à adoção do trailer seria ruído permanente:
+        # eles já estão publicados e o projeto decidiu não reescrever histórico. O aviso
+        # serve para pegar commit **novo** que esqueceu o trailer.
+        shas_com_trailer = {sha for sha, _ in com_trailer}
+        esquecidos = [
+            (sha, assunto)
+            for sha, assunto in selecionados
+            if sha not in shas_com_trailer
+            and indice_trailer_mais_antigo is not None
+            and indice_por_sha[sha] < indice_trailer_mais_antigo
+        ]
+        if esquecidos:
             print(
-                f"aviso: {sem_trailer} commit(s) auditado(s) sem o trailer "
-                f"Feature: {feature} — entraram pelo escopo ({escopo}).",
+                f"aviso: {len(esquecidos)} commit(s) depois da adoção do trailer sem "
+                f"'Feature: {feature}':",
                 file=sys.stderr,
             )
+            for sha, assunto in esquecidos:
+                print(f"  {sha} {assunto}", file=sys.stderr)
         return selecionados
 
     if not no_escopo:
@@ -121,11 +137,11 @@ def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, 
 
 def tocou_codigo(sha: str) -> bool:
     """true quando o commit mexeu em algum arquivo dentro de CAMINHOS."""
-    return bool(git("show", "--name-only", "--format=", sha, "--", *CAMINHOS).strip())
+    return bool(git("show", "--name-only", "--format=", sha, "--", *PATHSPEC).strip())
 
 
 def chamadas_adicionadas(sha: str) -> list[str]:
-    diff = git("show", sha, "--", *CAMINHOS)
+    diff = git("show", sha, "--", *PATHSPEC)
     achados = []
     for linha in diff.splitlines():
         if not linha.startswith("+") or linha.startswith("+++"):
@@ -164,7 +180,7 @@ def main() -> int:
     # — nos dois casos, nada foi realmente examinado.
     if commits_com_codigo == 0:
         sys.exit(
-            f"erro: nenhum dos {len(commits)} commits tocou {', '.join(CAMINHOS[:2])}.\n"
+            f"erro: nenhum dos {len(commits)} commits tocou {', '.join(CAMINHOS_CODIGO)}.\n"
             "CAMINHOS desatualizado ou filtro pegando só documentação — isso não é "
             "'feature limpa'."
         )
