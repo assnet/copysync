@@ -18,6 +18,13 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Bloqueios
 
+- **2026-09-24 — `develop` local tem um merge que nunca foi enviado.** O merge da branch de
+  reações (infra de testes + CI) foi feito localmente; um `git pull --tags origin
+  feature/chat-remote-state-sync` depois reaplicou os commits da feature sobre a linha remota,
+  e a branch deixou de descender desse merge. Consequência prática: `git diff develop...HEAD`
+  dá merge-base errado e traz conteúdo alheio à feature — usar a base real dos commits.
+  Resolver enviando `develop` ou refazendo a integração antes do próximo merge.
+
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
   strings em pt-BR direto no JSX. O AGENTS.md exige cobertura de i18n em toda feature, o que hoje é
   impossível de cumprir literalmente. Features novas mantêm os textos centralizados no topo do

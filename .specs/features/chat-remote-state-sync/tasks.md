@@ -341,11 +341,23 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
 3. Arquivar no celular → sai da lista ativa
 4. Fixar e silenciar no celular → indicadores existentes reagem; fixada sobe na página carregada
 4.1. Arquivar no celular com a conversa **selecionada** → sai da lista, `archivedCount` incrementa e a seleção é limpa, igual ao arquivar pelo painel
-4.2. ✅ **verificado em 2026-09-24 sem sessão** — a regra extraída para `byPinnedThenRecent` é textualmente idêntica à que estava embutida em `ChatPage` na `develop` (comparação das duas linhas do corpo, extraídas dos arquivos). Resta conferir na tela que a lista se comporta igual
+4.2. **regra: ✅ verificada em 2026-09-24** — as duas linhas do corpo de `byPinnedThenRecent` são textualmente idênticas às que estavam embutidas no `ChatPage` antes da extração (comparadas a partir dos arquivos, não de cópia digitada). **comportamento: pendente** — a identidade textual não cobre os call sites: o handler local continua ordenando ao fixar, e o handler remoto passou a ordenar também. Só a tela mostra se a lista se comporta igual
 5. Abrir a conversa no painel → limpa contador e marcação manual
 6. Derrubar a API 20 s, ler no celular, subir → painel realinha sozinho, uma única requisição
 7. Rajada de 5 mensagens na conversa aberta → **uma** chamada `markAsRead`
-8. ✅ **parte estática verificada em 2026-09-24** — `git diff develop...HEAD -- api/src/modules/messaging | grep '^+.*socket\.'` não retorna nada: nenhum método de saída foi adicionado. Os existentes seguem sendo `sendMessage` (2), `chatModify` (4), `readMessages`, `presenceSubscribe`, `profilePictureUrl` (2) e `onWhatsApp`. As duas chamadas de engine (`markMessagesRead`, `updateChatState`) estão em use cases acionados por rota HTTP, nunca em listener de evento recebido. Falta só a medição de **volume**: `git diff develop...HEAD -- api/src/modules/messaging | grep 'socket\.'` não mostra método novo, e nenhum handler de evento recebido chama `updateChatState`. Para o volume, ativar `LOG_LEVEL=debug` e conferir que o roteiro produz **menos** linhas de envio que o baseline (a T15 agrupa receipts) — não existe contador dedicado no adapter e esta feature não adiciona um
+8. ✅ **parte estática verificada em 2026-09-24**, com estes comandos — o escopo importa: `develop...HEAD` **não serve** enquanto o merge de reações existir só localmente, porque o merge-base cai antes dele e o diff passa a incluir conteúdo alheio à feature. Usar a base real dos commits da feature:
+
+   ```
+   git diff 302ab2a..HEAD -- api/src | grep '^+' | grep -oE 'socket\.[a-zA-Z]+\('     # vazio
+   git diff 302ab2a..HEAD -- api/src | grep '^+' | grep -oE 'engine\.[a-zA-Z]+\('     # vazio
+   git diff 302ab2a..HEAD -- app/src | grep '^+' | grep -oE 'chatService\.[a-zA-Z]+\(' # markAsRead (1)
+   ```
+
+   Resultado: **nenhum** método de socket e **nenhuma** chamada de engine adicionados na API. No painel, um único gatilho novo — `chatService.markAsRead`, a exceção declarada da T15, agrupada em uma chamada por 1,5 s.
+
+   Inventário aberto do adapter (`grep -oE 'socket\.[a-zA-Z]+\('`, sem lista fixa de métodos): `chatModify` (4), `end` (3), `sendMessage` (2), `profilePictureUrl` (2), `readMessages`, `presenceSubscribe`, `onWhatsApp`, `logout`. `end` e `logout` encerram conexão, não geram tráfego de conversa.
+
+   Falta a medição de **volume**: ativar `LOG_LEVEL=debug` e conferir que o roteiro produz **menos** linhas de envio que o baseline (a T15 agrupa receipts). Não existe contador dedicado no adapter e esta feature não adiciona um
 9. Sessão com muitos chats: estado repetido não gera frames WS (observar o console do painel)
 10. Três modos de tema conferidos
 11. Duas abas abertas: arquivar/fixar/silenciar/favoritar/mudar listas/marcar não lida numa reflete na outra sem refresh, e a aba de origem não pisca
