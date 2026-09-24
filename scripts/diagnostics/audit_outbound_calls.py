@@ -173,34 +173,43 @@ def main() -> int:
     commits = commits_da_feature(base, args.feature, args.escopo)
     print(f"commits auditados: {len(commits)} (merges excluídos)\n")
 
-    total: dict[str, int] = {}
+    # chamada -> {sha: linhas adicionadas naquele commit}. Guardar a origem, e não só um
+    # número, responde "onde isso entrou" — a pergunta de quem audita. Um total solto
+    # engana: mover a linha num refactor dobraria a contagem sem nada ter mudado.
+    ocorrencias: dict[str, dict[str, int]] = {}
+    assunto_por_sha: dict[str, str] = {}
     commits_com_codigo = 0
-    for sha, _assunto in commits:
+    for sha, assunto in commits:
         if not tocou_codigo(sha):
             continue
         commits_com_codigo += 1
+        assunto_por_sha[sha] = assunto
         for chamada in chamadas_adicionadas(sha):
-            total[chamada] = total.get(chamada, 0) + 1
+            ocorrencias.setdefault(chamada, {})
+            ocorrencias[chamada][sha] = ocorrencias[chamada].get(sha, 0) + 1
 
     # Quarta falha silenciosa: commits auditados, mas nenhum tocou os caminhos de código.
-    # Significa CAMINHOS desatualizado (pasta renomeada) ou filtro pegando só documentação
-    # — nos dois casos, nada foi realmente examinado.
+    # Significa CAMINHOS_CODIGO desatualizado (pasta renomeada) ou filtro pegando só
+    # documentação — nos dois casos, nada foi realmente examinado.
     if commits_com_codigo == 0:
         sys.exit(
             f"erro: nenhum dos {len(commits)} commits tocou {', '.join(CAMINHOS_CODIGO)}.\n"
-            "CAMINHOS desatualizado ou filtro pegando só documentação — isso não é "
+            "CAMINHOS_CODIGO desatualizado ou filtro pegando só documentação — isso não é "
             "'feature limpa'."
         )
     print(f"commits que tocaram código: {commits_com_codigo}")
 
-    if not total:
+    if not ocorrencias:
         print("nenhuma chamada de saída adicionada.")
         return 0
 
-    nao_declaradas = {c: n for c, n in total.items() if c not in DECLARADAS}
-    for chamada, n in sorted(total.items()):
+    nao_declaradas = {c for c in ocorrencias if c not in DECLARADAS}
+    for chamada in sorted(ocorrencias):
         marca = "declarada" if chamada in DECLARADAS else "NÃO DECLARADA"
-        print(f"  {n:>3}  {chamada:<40} {marca}")
+        print(f"  {chamada:<40} {marca}")
+        for sha, linhas in ocorrencias[chamada].items():
+            plural = "linha" if linhas == 1 else "linhas"
+            print(f"      {sha} {assunto_por_sha[sha]}  ({linhas} {plural})")
 
     if nao_declaradas:
         print(
