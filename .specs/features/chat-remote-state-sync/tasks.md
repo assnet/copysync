@@ -351,14 +351,23 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
    socket e nenhuma chamada de engine adicionados.
 
    O script existe porque a verificação em uma linha de shell falha **devolvendo vazio**, e
-   vazio aqui é indistinguível de "nada foi adicionado". Três modos de falha silenciosa já
-   apareceram: intervalo vazio depois que a feature entra em `develop` (o merge-base vira o
-   próprio HEAD), commit de merge que `git show -- <paths>` não expande, e filtro que não casa
-   com commit nenhum. Cada um agora é erro explícito com código de saída 1 — verificado.
+   vazio aqui é indistinguível de "nada foi adicionado". Quatro modos de falha silenciosa, cada
+   um hoje erro explícito com código de saída 1 (todos verificados):
 
-   O escopo do commit não identifica uma feature (`chat` é compartilhado com reações), então o
-   script prefere o trailer `Feature: chat-remote-state-sync` e avisa quando há commits no
-   escopo sem o trailer, caindo para o filtro mais abrangente em vez de calar.
+   | Falha | Quando acontece |
+   | --- | --- |
+   | intervalo vazio | a feature entrou em `develop` e o merge-base virou o próprio HEAD |
+   | commit de merge | `git show -- <paths>` não o expande; excluídos com `--no-merges` |
+   | filtro sem match | escopo mudou ou trailer esquecido |
+   | nenhum commit tocou código | `CAMINHOS` desatualizado, ou filtro pegando só documentação |
+
+   Seleção de commits: o escopo não identifica uma feature (`chat` é compartilhado com
+   reações), e o trailer sozinho também não basta — commit da feature pode ter escopo
+   diferente, como o `chore(diagnostics)` que criou este script. O script usa a **união** dos
+   dois critérios e avisa quantos entraram só pelo escopo.
+
+   Arquivos de teste ficam de fora do diff auditado: dublês citam a engine sem chamá-la, e
+   contá-los transformaria um mock em "chamada de saída nova".
 
    Inventário aberto do adapter (`grep -oE 'socket\.[a-zA-Z]+\('`, sem lista fixa de métodos):
    `chatModify` (4), `end` (3), `sendMessage` (2), `profilePictureUrl` (2), `readMessages`,

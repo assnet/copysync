@@ -39,7 +39,14 @@ PADRAO_SAIDA = re.compile(r"(socket|engine|chatService)\.[a-zA-Z]+\(")
 # por 1,5 s.
 DECLARADAS = {"chatService.markAsRead("}
 
-CAMINHOS = ["api/src", "app/src"]
+CAMINHOS = [
+    "api/src",
+    "app/src",
+    # Dublês de teste citam a engine sem chamá-la de verdade. Incluí-los transformaria
+    # `engine.markMessagesRead(...)` num mock em "chamada de saída nova".
+    ":(exclude)**/*.test.ts",
+    ":(exclude)**/*.test.tsx",
+]
 
 
 def git(*args: str) -> str:
@@ -82,16 +89,26 @@ def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, 
         if f"({escopo}):" in assunto:
             no_escopo.append((sha, assunto))
 
+    # União, nunca substituição: commit da feature pode ter o trailer e um escopo
+    # diferente (um utilitário em `chore(diagnostics)`, por exemplo). Filtrar só por um
+    # dos critérios deixaria esse commit fora da auditoria sem avisar ninguém.
+    vistos: set[str] = set()
+    selecionados = []
+    for sha, assunto in com_trailer + no_escopo:
+        if sha in vistos:
+            continue
+        vistos.add(sha)
+        selecionados.append((sha, assunto))
+
     if com_trailer:
-        faltando = len(no_escopo) - len(com_trailer)
-        if faltando > 0:
+        sem_trailer = len(selecionados) - len(com_trailer)
+        if sem_trailer > 0:
             print(
-                f"aviso: {faltando} commit(s) com escopo ({escopo}) sem o trailer "
-                f"Feature: {feature} — auditando pelo escopo, que é mais abrangente.",
+                f"aviso: {sem_trailer} commit(s) auditado(s) sem o trailer "
+                f"Feature: {feature} — entraram pelo escopo ({escopo}).",
                 file=sys.stderr,
             )
-            return no_escopo
-        return com_trailer
+        return selecionados
 
     if not no_escopo:
         sys.exit(
@@ -99,7 +116,12 @@ def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, 
             f"escopo ({escopo}) em {intervalo}.\n"
             "Filtro errado ou base errada — nunca interprete isso como 'nada adicionado'."
         )
-    return no_escopo
+    return selecionados
+
+
+def tocou_codigo(sha: str) -> bool:
+    """true quando o commit mexeu em algum arquivo dentro de CAMINHOS."""
+    return bool(git("show", "--name-only", "--format=", sha, "--", *CAMINHOS).strip())
 
 
 def chamadas_adicionadas(sha: str) -> list[str]:
@@ -129,9 +151,24 @@ def main() -> int:
     print(f"commits auditados: {len(commits)} (merges excluídos)\n")
 
     total: dict[str, int] = {}
-    for sha, assunto in commits:
+    commits_com_codigo = 0
+    for sha, _assunto in commits:
+        if not tocou_codigo(sha):
+            continue
+        commits_com_codigo += 1
         for chamada in chamadas_adicionadas(sha):
             total[chamada] = total.get(chamada, 0) + 1
+
+    # Quarta falha silenciosa: commits auditados, mas nenhum tocou os caminhos de código.
+    # Significa CAMINHOS desatualizado (pasta renomeada) ou filtro pegando só documentação
+    # — nos dois casos, nada foi realmente examinado.
+    if commits_com_codigo == 0:
+        sys.exit(
+            f"erro: nenhum dos {len(commits)} commits tocou {', '.join(CAMINHOS[:2])}.\n"
+            "CAMINHOS desatualizado ou filtro pegando só documentação — isso não é "
+            "'feature limpa'."
+        )
+    print(f"commits que tocaram código: {commits_com_codigo}")
 
     if not total:
         print("nenhuma chamada de saída adicionada.")
