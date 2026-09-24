@@ -16,6 +16,13 @@ de falha silenciosa já apareceram na prática:
 
 Aqui cada um desses casos é erro explícito, com código de saída diferente de zero.
 
+Limitação conhecida: commit da feature que tenha **escopo alheio e nenhum trailer** fica
+invisível — não entra na seleção (o escopo não casa) nem gera aviso (o aviso só cobre quem
+entrou pelo escopo). Um `chore(build): ...` sem trailer que adicionasse chamada de saída
+passaria batido. O script não tem como adivinhar a que feature ele pertence; quem fecha essa
+porta é o trailer ser obrigatório — um hook `commit-msg` ou uma checagem no CI, ainda não
+implementados aqui.
+
 Uso:
     python3 scripts/diagnostics/audit_outbound_calls.py
     python3 scripts/diagnostics/audit_outbound_calls.py --base origin/develop \\
