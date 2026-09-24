@@ -345,19 +345,32 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
 5. Abrir a conversa no painel → limpa contador e marcação manual
 6. Derrubar a API 20 s, ler no celular, subir → painel realinha sozinho, uma única requisição
 7. Rajada de 5 mensagens na conversa aberta → **uma** chamada `markAsRead`
-8. ✅ **parte estática verificada em 2026-09-24**, com estes comandos — o escopo importa: `develop...HEAD` **não serve** enquanto o merge de reações existir só localmente, porque o merge-base cai antes dele e o diff passa a incluir conteúdo alheio à feature. Usar a base real dos commits da feature:
+8. ✅ **parte estática verificada em 2026-09-24**. O escopo é a parte difícil: um `git pull`
+   reaplicou os commits da feature sobre a linha remota e eles ficaram **intercalados** com os
+   de infra de testes, então não existe base linear que separe os dois — `develop...HEAD` e
+   qualquer SHA fixo dão o recorte errado, além de o SHA morrer no próximo rebase. Verificar
+   por commit, filtrando pelo escopo da feature:
 
    ```
-   git diff 302ab2a..HEAD -- api/src | grep '^+' | grep -oE 'socket\.[a-zA-Z]+\('     # vazio
-   git diff 302ab2a..HEAD -- api/src | grep '^+' | grep -oE 'engine\.[a-zA-Z]+\('     # vazio
-   git diff 302ab2a..HEAD -- app/src | grep '^+' | grep -oE 'chatService\.[a-zA-Z]+\(' # markAsRead (1)
+   for c in $(git log --format='%h %s' | grep -E '\(chat\):' | cut -d' ' -f1); do
+     git show "$c" -- api/src app/src | grep -E "^\+" |
+       grep -oE "(socket|engine|chatService)\.[a-zA-Z]+\("
+   done | sort | uniq -c
    ```
 
-   Resultado: **nenhum** método de socket e **nenhuma** chamada de engine adicionados na API. No painel, um único gatilho novo — `chatService.markAsRead`, a exceção declarada da T15, agrupada em uma chamada por 1,5 s.
+   Resultado: `chatService.markAsRead` (1) e nada mais. Nenhum método de socket e nenhuma
+   chamada de engine adicionados; o único gatilho novo é a exceção declarada da T15, agrupada
+   em uma chamada por 1,5 s.
 
-   Inventário aberto do adapter (`grep -oE 'socket\.[a-zA-Z]+\('`, sem lista fixa de métodos): `chatModify` (4), `end` (3), `sendMessage` (2), `profilePictureUrl` (2), `readMessages`, `presenceSubscribe`, `onWhatsApp`, `logout`. `end` e `logout` encerram conexão, não geram tráfego de conversa.
+   Inventário aberto do adapter (`grep -oE 'socket\.[a-zA-Z]+\('`, sem lista fixa de métodos):
+   `chatModify` (4), `end` (3), `sendMessage` (2), `profilePictureUrl` (2), `readMessages`,
+   `presenceSubscribe`, `onWhatsApp`, `logout`. `end` fecha o socket localmente; `logout`
+   **emite requisição ao servidor** para desparear o dispositivo — é tráfego de saída, só não
+   de conversa, e dispara apenas por ação explícita de desconectar a sessão.
 
-   Falta a medição de **volume**: ativar `LOG_LEVEL=debug` e conferir que o roteiro produz **menos** linhas de envio que o baseline (a T15 agrupa receipts). Não existe contador dedicado no adapter e esta feature não adiciona um
+   Falta a medição de **volume**: ativar `LOG_LEVEL=debug` e conferir que o roteiro produz
+   **menos** linhas de envio que o baseline (a T15 agrupa receipts). Não existe contador
+   dedicado no adapter e esta feature não adiciona um
 9. Sessão com muitos chats: estado repetido não gera frames WS (observar o console do painel)
 10. Três modos de tema conferidos
 11. Duas abas abertas: arquivar/fixar/silenciar/favoritar/mudar listas/marcar não lida numa reflete na outra sem refresh, e a aba de origem não pisca

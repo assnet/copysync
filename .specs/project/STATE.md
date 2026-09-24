@@ -16,14 +16,31 @@ Memória entre sessões: decisões, bloqueios, lições.
   `unreadCount` positivo em `chats.update` é delta (`event-buffer.js:613-616`), não valor absoluto.
   Só `0` (lida) e `< 0` (marcada como não lida) são consumidos.
 
+- **2026-09-24 — Reconciliação do contador é monotônica para baixo.**
+  O total que vem do history sync só é aplicado quando reduz o `unreadCount`. Os lotes do
+  history sync não têm ordem garantida, então um retrato antigo faria o badge voltar numa
+  conversa já lida. O painel superestima por natureza (conta por ingestão, inclusive o que
+  já fora lido no celular antes), então corrigir para baixo é onde essa fonte agrega;
+  para cima a ingestão já cobre. Ver `diffRemoteState`.
+
 ## Bloqueios
 
-- **2026-09-24 — `develop` local tem um merge que nunca foi enviado.** O merge da branch de
-  reações (infra de testes + CI) foi feito localmente; um `git pull --tags origin
-  feature/chat-remote-state-sync` depois reaplicou os commits da feature sobre a linha remota,
-  e a branch deixou de descender desse merge. Consequência prática: `git diff develop...HEAD`
-  dá merge-base errado e traz conteúdo alheio à feature — usar a base real dos commits.
-  Resolver enviando `develop` ou refazendo a integração antes do próximo merge.
+- **2026-09-24 — infra de testes chega a `develop` por dois caminhos.** O merge da branch de
+  reações foi feito localmente e nunca enviado; depois, um `git pull --tags origin
+  feature/chat-remote-state-sync` reaplicou os commits da feature sobre a linha remota, que já
+  trazia os mesmos arquivos de Vitest e CI com **outros SHAs**. Hoje `git log --oneline
+  develop..HEAD | grep -i vitest` lista `chore(test): adiciona Vitest` e `fix(test): config do
+  Vitest do painel` — os mesmos commits que `develop` local já tem sob outro hash.
+
+  **Risco no próximo merge**: o mesmo conteúdo entra duas vezes por linhagens diferentes, com
+  conflito provável em `package.json`, `vitest.config.mts` e `vite.config.ts`. Antes de
+  mergear, conferir que o comando acima vem **vazio**; se não vier, a integração precisa ser
+  refeita (enviar `develop` primeiro e rebasear a feature sobre ele, ou descartar o merge local
+  e deixar a infra entrar pela própria branch).
+
+  **Efeito colateral já sentido**: os commits da feature ficaram intercalados com os de infra,
+  então nenhuma base linear separa os dois — verificações de diff precisam ser feitas por
+  commit, não por intervalo (ver T17, item 8).
 
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
   strings em pt-BR direto no JSX. O AGENTS.md exige cobertura de i18n em toda feature, o que hoje é
@@ -50,15 +67,6 @@ Memória entre sessões: decisões, bloqueios, lições.
   a ser adotado. A dívida se mostrou grave, não cosmética — na sincronização inicial de app-state o
   WhatsApp entrega `unreadCount: null` para conversa já lida (`chat-utils.js:707`), então sem essa
   fonte o passivo acumulado antes da conexão ficava para sempre.
-
-## Decisões (continuação)
-
-- **2026-09-24 — Reconciliação do contador é monotônica para baixo.**
-  O total que vem do history sync só é aplicado quando reduz o `unreadCount`. Os lotes do
-  history sync não têm ordem garantida, então um retrato antigo faria o badge voltar numa
-  conversa já lida. O painel superestima por natureza (conta por ingestão, inclusive o que
-  já fora lido no celular antes), então corrigir para baixo é onde essa fonte agrega;
-  para cima a ingestão já cobre. Ver `diffRemoteState`.
 
 ## Lições
 
