@@ -9,6 +9,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+> **Estado do versionamento (2026-09-24)**: `api/package.json` e `app/package.json` estão em
+> `0.11.0`, mas a única TAG do repositório é `v0.2.0` e a última seção fechada aqui é `[0.2.0]`.
+> Tudo abaixo é trabalho acumulado desde então, atravessando várias versões dos `package.json`
+> sem seção nem TAG correspondente — AGENTS.md §31.3 pede os três lugares em sincronia.
+>
+> Sanar isso exige decidir o recorte das versões intermediárias, o que não dá para inferir do
+> histórico com segurança. Duas saídas: criar `release/v0.11.0` distribuindo o conteúdo abaixo
+> entre as versões que ele representa, ou assumir `0.11.0` como marco único, fechando a seção
+> com tudo. A segunda é mais honesta com o que de fato foi entregue em bloco.
+
 ### Added
 
 #### Chat — Estado de conversa sincronizado entre dispositivos e abas

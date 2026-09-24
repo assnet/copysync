@@ -25,7 +25,12 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Bloqueios
 
-- **2026-09-24 — infra de testes chega a `develop` por dois caminhos.** O merge da branch de
+- ~~**2026-09-24 — infra de testes chega a `develop` por dois caminhos.**~~ **Resolvido no mesmo
+  dia**: o merge de reações foi enviado ao remoto e a feature de sync foi rebaseada sobre
+  `origin/develop`. O git reconheceu os patches idênticos e pulou sozinho os três commits
+  duplicados (`6bb0c94`, `c6779f5`, `302ab2a`), então `develop` recebeu a feature por
+  fast-forward, sem conflito e sem histórico duplicado. `git diff` entre o estado testado e o
+  publicado veio vazio. Registro abaixo o que era, porque a causa pode se repetir: O merge da branch de
   reações foi feito localmente e nunca enviado; depois, um `git pull --tags origin
   feature/chat-remote-state-sync` reaplicou os commits da feature sobre a linha remota, que já
   trazia os mesmos arquivos de Vitest e CI com **outros SHAs**. Hoje `git log --oneline
@@ -48,6 +53,13 @@ Memória entre sessões: decisões, bloqueios, lições.
   componente, prontos para extração. Decidir a biblioteca e fazer a extração em chore próprio.
 
 ## Dívidas assumidas
+
+- **Versionamento fora de sincronia desde a 0.2.0.** Os `package.json` chegaram a `0.11.0`, mas
+  o repositório tem uma única TAG (`v0.2.0`) e o CHANGELOG uma única seção fechada. Todo o
+  trabalho posterior vive em `[Unreleased]`. AGENTS.md §31.3 pede versão nos três lugares ao
+  mesmo tempo; §36.9 proíbe deploy sem TAG e entrada correspondente — e houve deploys. Sanar
+  exige decidir o recorte das versões intermediárias, decisão de produto, não de código. Ver a
+  nota no topo do CHANGELOG.
 
 - **`unreadCount` e `manuallyUnread` chegam ao painel por dois eventos WS**: `chat.unread.updated`
   (ingestão + rota de leitura, este último com o campo `manuallyUnread` opcional) e
