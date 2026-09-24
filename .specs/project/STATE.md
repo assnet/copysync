@@ -23,6 +23,18 @@ Memória entre sessões: decisões, bloqueios, lições.
   já fora lido no celular antes), então corrigir para baixo é onde essa fonte agrega;
   para cima a ingestão já cobre. Ver `diffRemoteState`.
 
+- **2026-09-24 — Reação removida vira tombstone, não `DELETE`.** Plano de
+  `message-reactions` revisado: set e remoção passam por uma única escrita last-write-wins em
+  `reactedAt`, serializada por (mensagem, autor) com `pg_advisory_xact_lock` e decidida por função
+  pura (`decideReactionWrite`). Sem a linha, remoção e reação fora de ordem não têm com o que
+  comparar. Só publica no WS quem mudou o estado visível. A identidade do autor (`reactorKey`) é a
+  crua do protocolo (`lid:`/`pn:`), nunca o telefone resolvido; gestos nossos usam o relógio do
+  servidor, nunca o do celular do operador, e o eco do painel (reconhecido por id pré-gerado)
+  mantém o carimbo original. O painel ordena agregados por `reactionsRevision` (maior
+  `updatedAt`, tombstones incluídos), porque resposta HTTP não tem ordem entre requisições.
+  Reação respeita a regra de volume da decisão de 2026-09-21 (sincronização só de consumo): o painel envia só o último gesto de uma
+  sequência e a API limita por mensagem e por sessão (429). Ver `.specs/features/message-reactions/design.md` §4.
+
 ## Bloqueios
 
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
@@ -58,6 +70,17 @@ Memória entre sessões: decisões, bloqueios, lições.
   caso voltar, não porque ele esteja ativo.
 
 ## Dívidas assumidas
+
+- **Dois CHANGELOGs, um só em uso.** O da raiz recebe todas as entradas desde maio; `api/CHANGELOG.md`
+  parou em 2026-09-07, mas é o que o AGENTS.md §31.3 cita. Novas entradas vão para o da raiz até
+  o AGENTS.md ser alinhado.
+
+- **`messages.upsert` roteia antes de descartar.** `buildIncomingMessageRoutingInfo` roda antes de
+  `extractBaileysMessage` descartar reação/protocolo (adapter, ~linhas 547-555): em grupo, consulta
+  metadados e resolve LID para nada. Pré-existente. Reordenar pede smoke próprio do recebimento.
+
+- **`chat_messages` sem índice em `externalMessageId`.** A busca por id externo (status de entrega)
+  é scan. Resolvida pela migration de `message-reactions` (T1), que depende do índice.
 
 - **Versionamento fora de sincronia desde a 0.2.0.** Os `package.json` chegaram a `0.11.0`, mas
   o repositório tem uma única TAG (`v0.2.0`) e o CHANGELOG uma única seção fechada. Todo o
