@@ -382,7 +382,11 @@ Pode conter:
 * value objects
 * enums
 * contratos
-* regras puras
+* regras puras — quando a regra não pertence a uma entidade específica, fica em
+  `domain/services/` como **função pura** (ex.: `chat/domain/services/diffRemoteState.ts`,
+  que decide o que muda ao espelhar estado vindo de outro aparelho). Sem classe, sem
+  estado, sem dependência: é o que permite testar a regra sem banco. O contrato do
+  repositório importa os tipos desse módulo, nunca o contrário
 
 Não pode conter:
 

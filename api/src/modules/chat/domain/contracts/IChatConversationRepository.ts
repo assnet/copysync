@@ -3,6 +3,7 @@ import type { ConversationStatus } from '../enums/ConversationStatus';
 // RemoteChatState é o contrato de eventos internos (AGENTS.md §12): tipo puro, sem
 // Prisma, Fastify ou engine. O domínio pode depender dele sem quebrar a regra da §8.
 import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
+import type { AppliedConversationState } from '../services/diffRemoteState';
 
 export interface ListConversationsFilter {
   tenantId: string;
@@ -40,15 +41,6 @@ export interface ConversationStateUpdate {
   unreadCount?: number;
 }
 
-/** Campos efetivamente alterados por applyRemoteState, já com valores finais. */
-export interface AppliedConversationState {
-  unreadCount?: number;
-  manuallyUnread?: boolean;
-  archived?: boolean;
-  pinned?: boolean;
-  mutedUntil?: Date | null;
-}
-
 export interface ApplyRemoteStateResult {
   conversationId: string;
   /** Vazio quando nada mudou: o chamador não deve publicar nada. */
@@ -65,6 +57,13 @@ export interface CreateConversationData {
   isGroup?: boolean;
   groupJid?: string | null;
   groupName?: string | null;
+  /**
+   * Contador inicial de não lidas. Só o history sync informa: é o total do aparelho no
+   * momento em que a conversa entra no painel. Sem ele, conversa importada nasceria
+   * como lida — e a reconciliação posterior não corrige, por ser monotônica para baixo
+   * (ver diffRemoteState).
+   */
+  unreadCount?: number;
 }
 
 export interface IChatConversationRepository {

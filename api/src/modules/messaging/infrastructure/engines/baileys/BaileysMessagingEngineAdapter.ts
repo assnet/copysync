@@ -670,9 +670,19 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // o chats.upsert só é emitido quando um grupo é criado (Socket/messages-recv.js),
       // e não traz arquivamento nem contador. Por ser estado de conversa, e não
       // histórico de mensagens, roda independentemente de BAILEYS_SYNC_FULL_HISTORY.
+      // Total de não lidas por chat, como o aparelho reporta. Serve a dois caminhos:
+      // espelhar em conversa que já existe (evento abaixo) e semear a conversa que
+      // ainda vai ser criada pela ingestão deste mesmo lote — sem isso, conversa
+      // importada nasceria como lida e a reconciliação não a corrigiria, por ser
+      // monotônica para baixo.
+      const unreadByChat: Record<string, number> = {};
       for (const chat of histChats ?? []) {
-        // History sync é a única fonte com o total de não lidas do aparelho.
         emitChatState(chat, 'history');
+        const chatId = chat.id;
+        if (!chatId || chatId.endsWith('@broadcast') || chatId.endsWith('@lid')) continue;
+        if (typeof chat.unreadCount === 'number' && chat.unreadCount > 0) {
+          unreadByChat[chatId.split('@')[0]] = chat.unreadCount;
+        }
       }
       if (!env.BAILEYS_SYNC_FULL_HISTORY) {
         baileysLogger.debug(
@@ -691,7 +701,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
               { sessionId, count: items.length },
               'History sync batch received',
             );
-            this.historySyncUseCase.execute({ tenantId, sessionId, messages: items });
+            this.historySyncUseCase.execute({ tenantId, sessionId, messages: items, unreadByChat });
           }
         } catch (err) {
           baileysLogger.warn({ err, sessionId }, 'Failed to process messaging-history.set');

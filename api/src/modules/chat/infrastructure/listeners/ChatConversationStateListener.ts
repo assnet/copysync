@@ -2,7 +2,7 @@ import { internalEventBus } from '../../../../shared/events/InternalEventBus';
 import { logger } from '../../../../shared/logger/logger';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
-import type { AppliedConversationState } from '../../domain/contracts/IChatConversationRepository';
+import type { AppliedConversationState } from '../../domain/services/diffRemoteState';
 import type { InternalMessagingEvent } from '../../../../shared/events/InternalMessagingEvent';
 
 type ChatStateUpdatedEvent = Extract<InternalMessagingEvent, { type: 'CHAT_STATE_UPDATED' }>;

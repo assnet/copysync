@@ -1,5 +1,19 @@
 import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
-import type { AppliedConversationState } from '../contracts/IChatConversationRepository';
+
+/**
+ * Campos efetivamente alterados, já com valores finais.
+ *
+ * Mora aqui, junto da regra que os produz: o contrato do repositório importa deste
+ * módulo, e não o contrário — a regra de negócio não deve mudar de forma porque a
+ * persistência mudou a dela.
+ */
+export interface AppliedConversationState {
+  unreadCount?: number;
+  manuallyUnread?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  mutedUntil?: Date | null;
+}
 
 /** Recorte persistido que a comparação precisa conhecer. */
 export interface CurrentConversationState {
@@ -44,6 +58,10 @@ export function diffRemoteState(
   } else if (state.manuallyUnread && !current.manuallyUnread) {
     changed.manuallyUnread = true;
   } else if (state.unreadCount !== undefined && state.unreadCount < current.unreadCount) {
+    // Precedência deliberada: `read` e `manuallyUnread` vêm de uma ação explícita do
+    // usuário e vencem o total, que é retrato de sincronização. Hoje normalizeChatState
+    // nunca produz as duas coisas no mesmo evento — esta ordem é a rede de segurança
+    // caso um emissor futuro produza.
     changed.unreadCount = state.unreadCount;
   }
 

@@ -7,7 +7,6 @@ import type {
   ConversationStateUpdate,
   ListConversationsFilter,
   ApplyRemoteStateResult,
-  AppliedConversationState,
 } from '../../domain/contracts/IChatConversationRepository';
 import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
 import { diffRemoteState } from '../../domain/services/diffRemoteState';
@@ -176,6 +175,7 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
         isGroup: data.isGroup ?? false,
         groupJid: data.groupJid ?? null,
         groupName: data.groupName ?? null,
+        ...(data.unreadCount !== undefined ? { unreadCount: data.unreadCount } : {}),
       },
     });
     return PrismaChatConversationMapper.toDomain(raw);
