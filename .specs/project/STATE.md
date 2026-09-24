@@ -25,32 +25,33 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Bloqueios
 
-- ~~**2026-09-24 — infra de testes chega a `develop` por dois caminhos.**~~ **Resolvido no mesmo
-  dia**: o merge de reações foi enviado ao remoto e a feature de sync foi rebaseada sobre
-  `origin/develop`. O git reconheceu os patches idênticos e pulou sozinho os três commits
-  duplicados (`6bb0c94`, `c6779f5`, `302ab2a`), então `develop` recebeu a feature por
-  fast-forward, sem conflito e sem histórico duplicado. `git diff` entre o estado testado e o
-  publicado veio vazio. Registro abaixo o que era, porque a causa pode se repetir: O merge da branch de
-  reações foi feito localmente e nunca enviado; depois, um `git pull --tags origin
-  feature/chat-remote-state-sync` reaplicou os commits da feature sobre a linha remota, que já
-  trazia os mesmos arquivos de Vitest e CI com **outros SHAs**. Hoje `git log --oneline
-  develop..HEAD | grep -i vitest` lista `chore(test): adiciona Vitest` e `fix(test): config do
-  Vitest do painel` — os mesmos commits que `develop` local já tem sob outro hash.
-
-  **Risco no próximo merge**: o mesmo conteúdo entra duas vezes por linhagens diferentes, com
-  conflito provável em `package.json`, `vitest.config.mts` e `vite.config.ts`. Antes de
-  mergear, conferir que o comando acima vem **vazio**; se não vier, a integração precisa ser
-  refeita (enviar `develop` primeiro e rebasear a feature sobre ele, ou descartar o merge local
-  e deixar a infra entrar pela própria branch).
-
-  **Efeito colateral já sentido**: os commits da feature ficaram intercalados com os de infra,
-  então nenhuma base linear separa os dois — verificações de diff precisam ser feitas por
-  commit, não por intervalo (ver T17, item 8).
-
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
   strings em pt-BR direto no JSX. O AGENTS.md exige cobertura de i18n em toda feature, o que hoje é
   impossível de cumprir literalmente. Features novas mantêm os textos centralizados no topo do
   componente, prontos para extração. Decidir a biblioteca e fazer a extração em chore próprio.
+
+## Resolvidos
+
+- **2026-09-24 — infra de testes chegava a `develop` por duas linhagens.**
+
+  **O que era**: o merge da branch de reações tinha sido feito só localmente e nunca enviado.
+  Depois, um `git pull --tags origin feature/chat-remote-state-sync` reaplicou os commits da
+  feature sobre a linha remota, que já trazia os mesmos arquivos de Vitest e CI com **outros
+  SHAs**. `git log develop..HEAD | grep -i vitest` listava commits que `develop` já tinha sob
+  outro hash, e `git merge-tree` acusava conflito em cinco arquivos — `CHANGELOG.md`, os dois
+  `package.json`, `vitest.config.mts` e `utils.test.ts`.
+
+  **Como foi resolvido**: o merge de reações subiu ao remoto e a feature foi rebaseada sobre
+  `origin/develop`. O git reconheceu os patches idênticos e pulou sozinho os três commits
+  duplicados (`6bb0c94`, `c6779f5`, `302ab2a`), restando só os 17 da feature. `develop` recebeu
+  por fast-forward, sem conflito e sem histórico duplicado; o `git diff` entre o estado testado
+  e o publicado veio vazio.
+
+  **Por que fica registrado**: a causa se repete a cada pull que reescreve commits já
+  publicados. O sintoma a procurar é conteúdo idêntico com SHAs diferentes dos dois lados. E um
+  efeito colateral sobreviveu ao conserto: os commits da feature ficaram intercalados com os de
+  infra, então verificações de diff nesse intervalo precisam ser feitas por commit, não por
+  intervalo (ver T17, item 8, e `scripts/diagnostics/audit_outbound_calls.py`).
 
 ## Dívidas assumidas
 

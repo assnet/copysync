@@ -18,6 +18,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 > histórico com segurança. Duas saídas: criar `release/v0.11.0` distribuindo o conteúdo abaixo
 > entre as versões que ele representa, ou assumir `0.11.0` como marco único, fechando a seção
 > com tudo. A segunda é mais honesta com o que de fato foi entregue em bloco.
+>
+> _Remover esta nota ao fechar a primeira seção de versão._
 
 ### Added
 
