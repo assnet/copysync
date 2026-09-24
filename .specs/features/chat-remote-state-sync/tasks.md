@@ -341,17 +341,23 @@ mudar o resultado. **Nada de UI nova**: os indicadores de fixado/silenciado já 
 3. Arquivar no celular → sai da lista ativa
 4. Fixar e silenciar no celular → indicadores existentes reagem; fixada sobe na página carregada
 4.1. Arquivar no celular com a conversa **selecionada** → sai da lista, `archivedCount` incrementa e a seleção é limpa, igual ao arquivar pelo painel
-4.2. Fixar pelo painel (caminho local) → ordem idêntica à de antes da feature (não houve regressão na extração da T14)
+4.2. ✅ **verificado em 2026-09-24 sem sessão** — a regra extraída para `byPinnedThenRecent` é textualmente idêntica à que estava embutida em `ChatPage` na `develop` (comparação das duas linhas do corpo, extraídas dos arquivos). Resta conferir na tela que a lista se comporta igual
 5. Abrir a conversa no painel → limpa contador e marcação manual
 6. Derrubar a API 20 s, ler no celular, subir → painel realinha sozinho, uma única requisição
 7. Rajada de 5 mensagens na conversa aberta → **uma** chamada `markAsRead`
-8. **Nenhuma chamada de saída de tipo novo**: `git diff develop...HEAD -- api/src/modules/messaging | grep 'socket\.'` não mostra método novo, e nenhum handler de evento recebido chama `updateChatState`. Para o volume, ativar `LOG_LEVEL=debug` e conferir que o roteiro produz **menos** linhas de envio que o baseline (a T15 agrupa receipts) — não existe contador dedicado no adapter e esta feature não adiciona um
+8. ✅ **parte estática verificada em 2026-09-24** — `git diff develop...HEAD -- api/src/modules/messaging | grep '^+.*socket\.'` não retorna nada: nenhum método de saída foi adicionado. Os existentes seguem sendo `sendMessage` (2), `chatModify` (4), `readMessages`, `presenceSubscribe`, `profilePictureUrl` (2) e `onWhatsApp`. As duas chamadas de engine (`markMessagesRead`, `updateChatState`) estão em use cases acionados por rota HTTP, nunca em listener de evento recebido. Falta só a medição de **volume**: `git diff develop...HEAD -- api/src/modules/messaging | grep 'socket\.'` não mostra método novo, e nenhum handler de evento recebido chama `updateChatState`. Para o volume, ativar `LOG_LEVEL=debug` e conferir que o roteiro produz **menos** linhas de envio que o baseline (a T15 agrupa receipts) — não existe contador dedicado no adapter e esta feature não adiciona um
 9. Sessão com muitos chats: estado repetido não gera frames WS (observar o console do painel)
 10. Três modos de tema conferidos
 11. Duas abas abertas: arquivar/fixar/silenciar/favoritar/mudar listas/marcar não lida numa reflete na outra sem refresh, e a aba de origem não pisca
 11.1. Repetir o item 11 com a sessão WhatsApp desconectada (`syncedToWhatsApp: false`) → a outra aba recebe o estado mesmo assim
 12. Abrir conversa marcada como não lida: destaque some na aba que abriu **e** na outra
 13. Observar no log se o receipt enviado pelo painel retorna como `chats.update` para a própria sessão — responde a pergunta em aberto da spec; em qualquer caso a supressão por diff deve impedir gravação e frame
+14. **Repareamento da sessão** (history sync completo): conversa que o painel não tinha nasce com o retrato do aparelho — não lidas, arquivamento, fixação e silenciamento — em vez de nascer lida e desarquivada
+15. **Reconexão com contadores divergentes**: os totais do aparelho reduzem o que o painel superestimava, **sem** ressuscitar badge em conversa que acabou de ser lida (regra monotônica). Conferir também que o log `Remote chat state received` aparece com `source: 'history'`
+16. **Chat entregue por LID**: nasce com estado, não em branco. Se o log `History chats skipped: LID without pnJid` aparecer com contagem alta, o `pnJid` não está vindo e a semeadura desses chats precisa de outra fonte
+**Verificado sem sessão em 2026-09-24**: itens 4.2 e 8 (parte estática), mais `pnpm build`
+limpo nos dois apps e nenhum arquivo de teste no `dist/` da API.
+**Pendente**: tudo que exige aparelho e sessão conectada — itens 1-4.1, 5-7, 9-16.
 **Testes**: manual
 **Gate**: `smoke`
 **Requisitos**: todos
