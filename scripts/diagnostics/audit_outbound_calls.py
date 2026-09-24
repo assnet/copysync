@@ -64,6 +64,29 @@ def git(*args: str) -> str:
     return resultado.stdout
 
 
+def base_pela_feature(feature: str, escopo: str) -> str | None:
+    """
+    Base derivada do próprio histórico: pai do commit mais antigo da feature.
+
+    Serve para depois do merge em develop, quando `git merge-base origin/develop HEAD`
+    degenera para o próprio HEAD e o intervalo fica vazio. Procura primeiro pelo trailer,
+    que é preciso; cai para o escopo, que é abrangente demais para servir de padrão mas
+    resolve enquanto os commits antigos não têm trailer.
+    """
+    saida = git("log", "--no-merges", "--format=%h%x09%s%x09%(trailers:key=Feature,valueonly)")
+    com_trailer = [
+        l.split("\t")[0] for l in saida.splitlines()
+        if len(l.split("\t")) > 2 and l.split("\t")[2].strip() == feature
+    ]
+    if com_trailer:
+        return f"{com_trailer[-1]}^"
+    no_escopo = [
+        l.split("\t")[0] for l in saida.splitlines()
+        if len(l.split("\t")) > 1 and f"({escopo}):" in l.split("\t")[1]
+    ]
+    return f"{no_escopo[-1]}^" if no_escopo else None
+
+
 def commits_da_feature(base: str, feature: str, escopo: str) -> list[tuple[str, str]]:
     """
     Commits a auditar, sem merges.
@@ -168,6 +191,33 @@ def main() -> int:
     args = parser.parse_args()
 
     base = git("merge-base", args.base, "HEAD").strip()
+
+    # Depois do merge em develop, a ref de comparação passa a conter a feature e o
+    # merge-base vira o próprio HEAD. Em vez de falhar, deriva a base do histórico.
+    if base == git("rev-parse", "HEAD").strip():
+        derivada = base_pela_feature(args.feature, args.escopo)
+        if derivada is None:
+            sys.exit(
+                f"erro: {args.base} já contém a feature e não há commit com trailer "
+                f"'Feature: {args.feature}' nem escopo ({args.escopo}) no histórico.\n"
+                "Passe --base apontando para antes do primeiro commit da feature."
+            )
+        base = git("rev-parse", derivada).strip()
+        print(
+            f"aviso: {args.base} já contém a feature; base derivada do histórico.",
+            file=sys.stderr,
+        )
+        # Trailer adotado no meio da feature deixa commits anteriores fora do intervalo.
+        # Silenciar isso seria pior que errar: quem audita acharia que viu tudo.
+        anterior = git("log", "-1", "--format=%s", base).strip()
+        if f"({args.escopo}):" in anterior:
+            print(
+                f"aviso: o commit da base — {anterior} — tem o mesmo escopo, sinal de que a\n"
+                f"       feature começa antes dela (trailer adotado tarde). A auditoria está\n"
+                f"       PARCIAL; passe --base apontando para antes do primeiro commit.",
+                file=sys.stderr,
+            )
+
     print(f"base: {base[:9]} {git('log', '-1', '--format=%s', base).strip()}")
 
     commits = commits_da_feature(base, args.feature, args.escopo)

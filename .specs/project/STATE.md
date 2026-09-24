@@ -48,10 +48,14 @@ Memória entre sessões: decisões, bloqueios, lições.
   e o publicado veio vazio.
 
   **Por que fica registrado**: a causa se repete a cada pull que reescreve commits já
-  publicados. O sintoma a procurar é conteúdo idêntico com SHAs diferentes dos dois lados. E um
-  efeito colateral sobreviveu ao conserto: os commits da feature ficaram intercalados com os de
-  infra, então verificações de diff nesse intervalo precisam ser feitas por commit, não por
-  intervalo (ver T17, item 8, e `scripts/diagnostics/audit_outbound_calls.py`).
+  publicados. O sintoma a procurar é conteúdo idêntico com SHAs diferentes dos dois lados.
+
+  **O que o rebase desfez junto**: enquanto durou, os commits da feature ficaram intercalados
+  com os de infra e nenhuma base linear separava os dois — por isso a auditoria de chamadas de
+  saída foi escrita para varrer por commit. Em `develop` a intercalação não existe mais
+  (`git log 4a1c122..develop` traz os 17 commits da feature contíguos), então o intervalo
+  voltou a ser confiável. A varredura por commit permanece no script porque protege contra o
+  caso voltar, não porque ele esteja ativo.
 
 ## Dívidas assumidas
 
