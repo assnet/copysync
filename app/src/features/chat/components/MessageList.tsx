@@ -19,6 +19,10 @@ interface Props {
   /** Mensagem a destacar e para onde rolar (vinda da busca). */
   highlightMessageId?: string | null;
   onSetReaction?: (message: ChatMessage, emoji: string | null) => void;
+  /** Envio de mídia: cancelar upload, tentar de novo e descartar (repassados à bolha). */
+  onCancelUpload?: (message: ChatMessage) => void;
+  onRetry?: (message: ChatMessage) => void;
+  onDiscard?: (message: ChatMessage) => void;
 }
 
 function isSameDay(a: string, b: string) {
@@ -72,6 +76,9 @@ export function MessageList({
   participantAvatars,
   highlightMessageId,
   onSetReaction,
+  onCancelUpload,
+  onRetry,
+  onDiscard,
 }: Props) {
   const theme = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,6 +199,9 @@ export function MessageList({
                 onParticipantClick={onParticipantClick}
                 participantAvatars={participantAvatars}
                 onSetReaction={onSetReaction}
+                onCancelUpload={onCancelUpload}
+                onRetry={onRetry}
+                onDiscard={onDiscard}
               />
             </Box>
           );

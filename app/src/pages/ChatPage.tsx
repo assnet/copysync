@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Alert, Box, Snackbar, useMediaQuery, useTheme } from '@mui/material';
-import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
+import type {
+  ChatConversation,
+  ChatMessage,
+  ConversationFilter,
+  MessageStatus,
+  QuotedMessagePreview,
+} from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
 import { sessionService } from '@/services/session.service';
 import {
@@ -34,6 +40,9 @@ import {
 import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
 import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
 import { chatStrings } from '@/features/chat/strings';
+import { useOutgoingMedia } from '@/features/chat/media/useOutgoingMedia';
+import { useMediaUploadConfig } from '@/features/chat/media/useMediaUploadConfig';
+import type { AttachmentSendItem } from '@/features/chat/components/AttachmentPreviewPanel';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
 // Altura útil = viewport menos a barra superior (AppBar de 56px no mobile, topbar de
@@ -73,6 +82,9 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
+  // O handler do WebSocket é memoizado: a ref diz se um id já está na lista da página.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // O handler do WebSocket é memoizado e não enxerga o selectedId corrente; a ref evita
   // recriar a assinatura a cada troca de conversa.
@@ -102,7 +114,8 @@ export default function ChatPage() {
   const [archivedCount, setArchivedCount] = useState(0);
   // Gestos de reação sem resposta, por mensagem. O agregado do servidor fica na própria mensagem.
   const [pendingReactions, setPendingReactions] = useState<Record<string, PendingReaction[]>>({});
-  const [reactionError, setReactionError] = useState<string | null>(null);
+  // Aviso de falha de ação (reação, reenvio de mídia) no Snackbar da página.
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
   // salvo no tenant (só 7 de 1503 contatos têm avatar).
@@ -122,6 +135,44 @@ export default function ChatPage() {
   const requestScroll = useCallback((smooth: boolean) => {
     setScrollSignal((prev) => ({ n: prev.n + 1, smooth }));
   }, []);
+
+  // ── Envio de mídia (bolhas em envio vivem no hook, sobrepostas na renderização) ──
+  const mediaUpload = useMediaUploadConfig();
+
+  /** Mensagem real do 202/200. Pode já estar na lista (refetch): troca em vez de anexar. */
+  const handleMediaConfirmed = useCallback((conversationId: string, message: ChatMessage) => {
+    setMessages((prev) => {
+      const cur = prev[conversationId];
+      // Conversa sem cache: o GET ao abrir traz a mensagem (mesma regra do WS).
+      if (!cur) return prev;
+      const index = cur.findIndex((m) => m.id === message.id);
+      if (index < 0) return { ...prev, [conversationId]: [...cur, message] };
+      const existing = cur[index];
+      // A lista pode ter status mais novo que o do 202 (ainda `sending`).
+      const next = message.status === 'sending' && existing.status !== 'sending'
+        ? { ...message, status: existing.status }
+        : message;
+      return { ...prev, [conversationId]: cur.map((m, i) => (i === index ? next : m)) };
+    });
+    const preview = formatLastMessagePreview(message.type, message.body);
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conversationId
+          ? { ...c, lastMessage: preview || c.lastMessage, lastMessageAt: message.timestamp }
+          : c,
+      ),
+    );
+  }, []);
+
+  const {
+    enqueue: enqueueMedia,
+    cancel: cancelMediaUpload,
+    retry: retryMediaUpload,
+    discard: discardMediaUpload,
+    retryServerMessage,
+    onWsStatus: onMediaWsStatus,
+    overlay: overlayOutgoingMedia,
+  } = useOutgoingMedia({ onConfirmed: handleMediaConfirmed });
 
   const loadSessions = useCallback(() => {
     sessionService
@@ -420,17 +471,20 @@ export default function ChatPage() {
         }
 
         if (payload.event === 'chat.message.status.updated') {
-          const { conversationId, messageId, status } = payload.data;
+          const { conversationId, messageId } = payload.data;
+          const status = payload.data.status.toLowerCase() as MessageStatus;
+          // Id fora da lista: o status chegou antes do 202 da mídia. O hook guarda e aplica na
+          // troca da bolha. A lista é atualizada igual — a ref pode estar um render atrás.
+          // Só conversa carregada: mídia só sai de conversa aberta, e recibos de conversas nunca
+          // abertas não viram estado (nem re-render).
+          const loaded = messagesRef.current[conversationId];
+          if (loaded && !loaded.some((m) => m.id === messageId)) onMediaWsStatus(messageId, status);
           setMessages((prev) => {
             const msgs = prev[conversationId];
             if (!msgs) return prev;
             return {
               ...prev,
-              [conversationId]: msgs.map((m) =>
-                m.id === messageId
-                  ? { ...m, status: status.toLowerCase() as import('@/features/chat/types').MessageStatus }
-                  : m,
-              ),
+              [conversationId]: msgs.map((m) => (m.id === messageId ? { ...m, status } : m)),
             };
           });
         }
@@ -486,7 +540,7 @@ export default function ChatPage() {
           loadSessions();
         }
       },
-      [loadConversations, loadSessions, showArchived, scheduleMarkAsRead],
+      [loadConversations, loadSessions, showArchived, scheduleMarkAsRead, onMediaWsStatus],
     ),
     // Frames perdidos durante a queda não são reenviados: ao voltar, recarrega a lista.
     { onResync: loadConversations },
@@ -496,9 +550,16 @@ export default function ChatPage() {
     ? conversations.find((c) => c.id === selectedId) ?? null
     : null;
 
+  // Servidor + bolhas em envio (ao fim) → citações resolvidas → reações pendentes por cima.
   const selectedMessages = useMemo(
-    () => overlayPending(selectedId ? (messages[selectedId] ?? []) : [], pendingReactions),
-    [selectedId, messages, pendingReactions],
+    () =>
+      selectedId
+        ? overlayPending(
+            resolveQuotedMessages(overlayOutgoingMedia(selectedId, messages[selectedId] ?? [])),
+            pendingReactions,
+          )
+        : [],
+    [selectedId, messages, pendingReactions, overlayOutgoingMedia],
   );
 
   const handleSelectConversation = useCallback(
@@ -573,7 +634,7 @@ export default function ChatPage() {
           return;
         }
         const errors = chatStrings.reactions.errors;
-        setReactionError(
+        setErrorToast(
           event.code === 'rate_limited' ? errors.rateLimited
           : event.code === 'session_disconnected' ? errors.sessionDisconnected
           : errors.sendFailed,
@@ -609,11 +670,13 @@ export default function ChatPage() {
       .listMessages(selectedId, { limit: PAGE_SIZE, before })
       .then((items) => {
         const mapped = items.map(apiMessageToFrontend);
-        const merged = resolveQuotedMessages([...mapped, ...(messages[selectedId] ?? [])]);
-        setMessages((prev) => ({
-          ...prev,
-          [selectedId]: keepNewerReactions(prev[selectedId], merged),
-        }));
+        // Funcional: a lista pode ter mudado durante o GET (WS, mídia confirmada).
+        setMessages((prev) => {
+          const current = prev[selectedId] ?? [];
+          const known = new Set(current.map((m) => m.id));
+          const merged = resolveQuotedMessages([...mapped.filter((m) => !known.has(m.id)), ...current]);
+          return { ...prev, [selectedId]: keepNewerReactions(prev[selectedId], merged) };
+        });
         setHasMore((prev) => ({ ...prev, [selectedId]: items.length >= PAGE_SIZE }));
         if (mapped.length > 0) {
           setOldestTimestamp((prev) => ({ ...prev, [selectedId]: mapped[0].timestamp }));
@@ -685,6 +748,65 @@ export default function ChatPage() {
         });
     },
     [selectedId, messages],
+  );
+
+  // ── Anexos: lote da prévia, cancelar, reenviar e descartar ─────────────────
+  const handleSendAttachments = useCallback(
+    (items: AttachmentSendItem[], quotedMessageId: string | null) => {
+      if (!selectedId || items.length === 0) return;
+      enqueueMedia(
+        selectedId,
+        items.map((item, index) => ({
+          file: item.file,
+          caption: item.caption,
+          classification: item.classification,
+          // Citação só no 1º item do lote, como no WhatsApp.
+          quotedMessageId: index === 0 ? (quotedMessageId ?? undefined) : undefined,
+        })),
+      );
+      requestScroll(true);
+    },
+    [selectedId, enqueueMedia, requestScroll],
+  );
+
+  const handleCancelUpload = useCallback((message: ChatMessage) => cancelMediaUpload(message.id), [cancelMediaUpload]);
+  const handleDiscardUpload = useCallback((message: ChatMessage) => discardMediaUpload(message.id), [discardMediaUpload]);
+
+  /**
+   * "Tentar de novo". Bolha local → o hook retoma/reconfirma. Mensagem gravada com falha →
+   * `POST /retry`: a bolha vira `sending` na hora e o status do 202 é ignorado (o WS pode ter
+   * chegado antes com SENT/FAILED); só volta a `failed` se a chamada falhar.
+   */
+  const handleRetryMessage = useCallback(
+    (message: ChatMessage) => {
+      if (message.upload) {
+        retryMediaUpload(message.id);
+        return;
+      }
+      const { conversationId, id } = message;
+      const moveStatus = (from: MessageStatus, to: MessageStatus) =>
+        setMessages((prev) => {
+          const list = prev[conversationId];
+          if (!list?.some((m) => m.id === id && m.status === from)) return prev;
+          return {
+            ...prev,
+            [conversationId]: list.map((m) => (m.id === id && m.status === from ? { ...m, status: to } : m)),
+          };
+        });
+
+      moveStatus('failed', 'sending');
+      retryServerMessage(message).catch((err: unknown) => {
+        console.error('Erro ao reenviar a mensagem', err);
+        moveStatus('sending', 'failed');
+        const code = (err as { code?: string } | null)?.code;
+        setErrorToast(
+          code === 'SESSION_NOT_CONNECTED'
+            ? chatStrings.upload.errors.sessionDisconnected
+            : chatStrings.upload.errors.generic,
+        );
+      });
+    },
+    [retryMediaUpload, retryServerMessage],
   );
 
   const handleUpdateConversation = useCallback(
@@ -930,6 +1052,11 @@ export default function ChatPage() {
           }}
           searchOpen={searchPanelOpen}
           onSetReaction={handleSetReaction}
+          mediaConfig={mediaUpload.config}
+          onSendAttachments={handleSendAttachments}
+          onCancelUpload={handleCancelUpload}
+          onRetryMessage={handleRetryMessage}
+          onDiscardUpload={handleDiscardUpload}
         />
       ) : (
         <Box sx={{ display: { xs: 'none', sm: 'flex' }, flex: 1, minWidth: 0 }}>
@@ -1003,14 +1130,14 @@ export default function ChatPage() {
       )}
 
       <Snackbar
-        open={Boolean(reactionError)}
+        open={Boolean(errorToast)}
         autoHideDuration={4000}
-        onClose={() => setReactionError(null)}
+        onClose={() => setErrorToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        {reactionError ? (
-          <Alert severity="error" variant="filled" onClose={() => setReactionError(null)}>
-            {reactionError}
+        {errorToast ? (
+          <Alert severity="error" variant="filled" onClose={() => setErrorToast(null)}>
+            {errorToast}
           </Alert>
         ) : undefined}
       </Snackbar>

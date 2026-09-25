@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+  type Ref,
+} from 'react';
 import { Box, TextField, IconButton, Tooltip, Divider, alpha, useTheme, Typography } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import EmojiEmotionsOutlinedIcon from '@mui/icons-material/EmojiEmotionsOutlined';
-import AttachFileOutlinedIcon from '@mui/icons-material/AttachFileOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
 import CloseIcon from '@mui/icons-material/Close';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
@@ -11,6 +18,9 @@ import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import type { QuotedMessagePreview } from '../types';
 import { chatStrings } from '../strings';
+import { filesFrom } from '../media/dataTransferFiles';
+import type { AttachmentOrigin } from '../media/mediaPolicy';
+import { AttachmentMenu } from './AttachmentMenu';
 
 const texts = chatStrings.composer;
 
@@ -22,17 +32,41 @@ const REPLY_TYPE_ICON: Record<string, React.ReactNode> = {
 };
 const REPLY_TYPE_LABEL: Readonly<Record<string, string>> = texts.replyTypes;
 
+/** Acesso do pai ao texto do campo: a prévia do lote o usa como legenda do 1º item. */
+export interface MessageComposerHandle {
+  /** Texto atual, aparado. */
+  getText: () => string;
+  /** Limpa o campo (lote enviado). */
+  clearText: () => void;
+}
+
 interface Props {
   onSend: (text: string) => void;
   disabled?: boolean;
   replyTo?: QuotedMessagePreview | null;
   onCancelReply?: () => void;
+  /** Arquivos do clipe (`media`/`document`) ou colados no campo (`auto`). Ausente → clipe desabilitado. */
+  onAttachFiles?: (files: File[], origin: AttachmentOrigin) => void;
+  /** Motivo do clipe desabilitado (tooltip). Com motivo, colar arquivo segue o padrão do navegador. */
+  attachDisabledReason?: string | null;
+  ref?: Ref<MessageComposerHandle>;
 }
 
-export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Props) {
+export function MessageComposer({
+  onSend,
+  disabled,
+  replyTo,
+  onCancelReply,
+  onAttachFiles,
+  attachDisabledReason,
+  ref,
+}: Props) {
   const theme = useTheme();
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const canAttach = !!onAttachFiles && !disabled && !attachDisabledReason;
+
+  useImperativeHandle(ref, () => ({ getText: () => text.trim(), clearText: () => setText('') }), [text]);
 
   // Responder leva o foco ao campo, como no WhatsApp. No quadro seguinte: fechar o menu da
   // bolha devolve o foco ao botão que o abriu, e isso roda no mesmo commit desta mudança.
@@ -56,6 +90,15 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Colar com arquivo (print, imagem copiada, arquivo do sistema) abre a prévia; só texto segue normal.
+  const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
+    if (!canAttach || !onAttachFiles) return;
+    const files = filesFrom(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    onAttachFiles(files, 'auto');
   };
 
   const hasText = text.trim().length > 0;
@@ -134,8 +177,8 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
           bgcolor: 'background.paper',
         }}
       >
-        {/* Attachments */}
-        <Box sx={{ display: 'flex', alignItems: 'center', pb: 0.5 }}>
+        {/* Emoji e anexos */}
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Tooltip title={texts.emojiSoon}>
             <span>
               <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
@@ -143,13 +186,11 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={texts.attachSoon}>
-            <span>
-              <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
-                <AttachFileOutlinedIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
+          <AttachmentMenu
+            onFiles={(files, origin) => onAttachFiles?.(files, origin)}
+            disabled={!canAttach}
+            disabledReason={attachDisabledReason ?? undefined}
+          />
         </Box>
 
         {/* Input */}
@@ -163,6 +204,7 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           disabled={disabled}
           sx={{
             '& .MuiOutlinedInput-root': {

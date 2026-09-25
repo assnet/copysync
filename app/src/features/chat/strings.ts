@@ -63,6 +63,8 @@ export const chatStrings = {
     document: 'Documento',
     photosAndVideos: 'Fotos e vídeos',
     unavailable: 'Anexos indisponíveis no momento',
+    /** Tooltip do clipe com a conversa encerrada. */
+    conversationClosed: 'Conversa encerrada. Reabra para enviar anexos',
 
     previewTitle: 'Revisar anexos',
     closePreview: 'Fechar prévia',
