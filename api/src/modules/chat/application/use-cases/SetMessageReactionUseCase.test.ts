@@ -90,7 +90,7 @@ describe('SetMessageReactionUseCase', () => {
 
     expect(out).toEqual({
       conversationId: 'conv-1', messageId: 'msg-1', reactionsRevision: NOW.toISOString(),
-      reactions: [{ emoji: '👍', count: 1, reactedByMe: true, reactors: [{ name: null, phone: null }] }],
+      reactions: [{ emoji: '👍', count: 1, reactedByMe: true, reactors: [{ name: null, phone: null, isMe: true }] }],
     });
     expect(d.publisher.publishReactionUpdated).toHaveBeenCalledWith({ tenantId: TENANT, ...out });
   });

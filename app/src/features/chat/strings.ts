@@ -23,6 +23,8 @@ export const chatStrings = {
     quickBar: 'Reações rápidas',
     openFullPicker: 'Mais emojis',
     participant: 'Participante',
+    /** Autor da reação quando é a própria conta. */
+    you: 'Você',
 
     /** Tooltip do chip: quem reagiu. Lista vazia vira texto neutro. */
     reactorsTooltip: (names: string[]): string =>

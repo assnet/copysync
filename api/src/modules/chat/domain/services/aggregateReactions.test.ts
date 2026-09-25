@@ -89,9 +89,23 @@ describe('aggregateReactions', () => {
       contatos,
     );
     expect(reactions[0].reactors).toEqual([
-      { name: 'Maria (contato)', phone: '5511999' },
-      { name: 'João', phone: '5511888' },
-      { name: null, phone: null },
+      { name: 'Maria (contato)', phone: '5511999', isMe: false },
+      { name: 'João', phone: '5511888', isMe: false },
+      { name: null, phone: null, isMe: false },
+    ]);
+  });
+
+  it('marca isMe na reação da própria conta, distinguindo-a do participante anônimo', () => {
+    const { reactions } = aggregateReactions(
+      [
+        linha({ reactorKey: 'self', fromMe: true, reactorPhone: null, reactorName: null, reactedAt: at(1) }),
+        linha({ reactorKey: 'lid:abc', fromMe: false, reactorPhone: null, reactorName: null, reactedAt: at(2) }),
+      ],
+      new Map(),
+    );
+    expect(reactions[0].reactors).toEqual([
+      { name: null, phone: null, isMe: true },
+      { name: null, phone: null, isMe: false },
     ]);
   });
 

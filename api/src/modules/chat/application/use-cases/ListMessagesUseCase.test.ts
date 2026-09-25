@@ -87,7 +87,7 @@ describe('ListMessagesUseCase — reações', () => {
     expect(dto.reactionsRevision).toBe(T.toISOString());
     expect(dto.reactions).toEqual([{
       emoji: '👍', count: 1, reactedByMe: false,
-      reactors: [{ name: 'Pedro da Agenda', phone: '5511922223333' }],
+      reactors: [{ name: 'Pedro da Agenda', phone: '5511922223333', isMe: false }],
     }]);
   });
 

@@ -93,7 +93,8 @@ export interface MessageReaction {
   count: number;
   reactedByMe: boolean;
   /** Autores conhecidos (até 10). `name` nulo → "Participante". */
-  reactors: { name: string | null; phone: string | null }[];
+  /** `isMe` = reação da própria conta (tooltip mostra "Você"). */
+  reactors: { name: string | null; phone: string | null; isMe: boolean }[];
 }
 
 export interface ChatConversation {

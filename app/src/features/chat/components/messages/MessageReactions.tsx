@@ -49,7 +49,7 @@ export function MessageReactions({ reactions, onToggle }: Props) {
       }}
     >
       {groups.map((r) => {
-        const names = r.reactors.map((p) => p.name ?? t.participant);
+        const names = r.reactors.map((p) => (p.isMe ? t.you : p.name ?? t.participant));
         const interactive = Boolean(onToggle);
         return (
           <Tooltip key={r.emoji} title={t.reactorsTooltip(names)} placement="top" arrow>

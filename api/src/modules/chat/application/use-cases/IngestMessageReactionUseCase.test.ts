@@ -119,7 +119,7 @@ describe('IngestMessageReactionUseCase', () => {
       reactionsRevision: expect.any(String),
       reactions: [{
         emoji: '👍', count: 1, reactedByMe: false,
-        reactors: [{ name: 'Maria da Agenda', phone: '5511988887777' }],
+        reactors: [{ name: 'Maria da Agenda', phone: '5511988887777', isMe: false }],
       }],
     });
     expect(deps.contactRepo.findByPhones).toHaveBeenCalledWith(['5511988887777'], TENANT);

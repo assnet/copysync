@@ -12,8 +12,10 @@ import {
   type ReactionAggregate,
 } from './reactionsState';
 
-const me = { name: null, phone: null };
-const ana = { name: 'Ana', phone: '5511999990000' };
+const me = { name: null, phone: null, isMe: true };
+const ana = { name: 'Ana', phone: '5511999990000', isMe: false };
+// Número privado sem telefone: mesmo nome/telefone nulos do operador, mas não é ele.
+const anon = { name: null, phone: null, isMe: false };
 const mine = (emoji: string, extra: MessageReaction['reactors'] = []): MessageReaction => ({
   emoji,
   count: 1 + extra.length,
@@ -123,6 +125,13 @@ describe('sobreposição do gesto', () => {
   it('remoção com outros no mesmo emoji: contagem −1 e sem o próprio autor', () => {
     expect(applyPendingOverlay([mine('👍', [ana])], null)).toEqual([
       { emoji: '👍', count: 1, reactedByMe: false, reactors: [ana] },
+    ]);
+  });
+
+  it('remoção tira o operador, nunca o participante anônimo de mesmo formato', () => {
+    // Anônimo vem antes na lista: identificar por nome/telefone nulos tiraria ele.
+    expect(applyPendingOverlay([mine('👍', [anon])], null)).toEqual([
+      { emoji: '👍', count: 1, reactedByMe: false, reactors: [anon] },
     ]);
   });
 

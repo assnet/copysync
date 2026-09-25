@@ -12,15 +12,15 @@ const thumbs: MessageReaction = {
   emoji: '👍',
   count: 1,
   reactedByMe: false,
-  reactors: [{ name: 'Ana', phone: '5511999990000' }],
+  reactors: [{ name: 'Ana', phone: '5511999990000', isMe: false }],
 };
 const heart: MessageReaction = {
   emoji: '❤️',
   count: 3,
   reactedByMe: true,
   reactors: [
-    { name: 'Bruno', phone: '5511999990001' },
-    { name: null, phone: null },
+    { name: 'Bruno', phone: '5511999990001', isMe: false },
+    { name: null, phone: null, isMe: false },
   ],
 };
 
@@ -67,6 +67,18 @@ describe('MessageReactions', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
       t.reactorsTooltip(['Bruno', t.participant]),
     );
+  });
+
+  it('mostra "Você" para a reação da própria conta', async () => {
+    renderWithTheme(
+      <MessageReactions
+        reactions={[{ ...heart, reactors: [{ name: null, phone: null, isMe: true }] }]}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    await userEvent.tab();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(t.reactorsTooltip([t.you]));
   });
 
   it('sem onToggle, os chips aparecem mas não são botões', () => {

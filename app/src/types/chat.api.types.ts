@@ -78,7 +78,7 @@ export interface ReactionSummaryApiDto {
   count: number;
   reactedByMe: boolean;
   /** Até 10 autores, para o tooltip. `name` já resolvido pela API; `null` → "Participante". */
-  reactors: { name: string | null; phone: string | null }[];
+  reactors: { name: string | null; phone: string | null; isMe?: boolean }[];
 }
 
 export interface ChatMessageApiDto {
@@ -289,6 +289,6 @@ export function apiReactionToFrontend(dto: ReactionSummaryApiDto): MessageReacti
     emoji:       dto.emoji,
     count:       dto.count,
     reactedByMe: dto.reactedByMe,
-    reactors:    (dto.reactors ?? []).map((r) => ({ name: r.name ?? null, phone: r.phone ?? null })),
+    reactors:    (dto.reactors ?? []).map((r) => ({ name: r.name ?? null, phone: r.phone ?? null, isMe: r.isMe ?? false })),
   };
 }

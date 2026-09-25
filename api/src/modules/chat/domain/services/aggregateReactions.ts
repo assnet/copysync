@@ -9,7 +9,9 @@ export interface ReactionSummary {
   count: number;
   reactedByMe: boolean;
   /** Autores para o tooltip (até 10), com nome já resolvido. */
-  reactors: { name: string | null; phone: string | null }[];
+  /** `isMe` marca a reação da própria conta: sem ele, operador e participante anônimo
+   *  (nome e telefone nulos) seriam indistinguíveis. */
+  reactors: { name: string | null; phone: string | null; isMe: boolean }[];
 }
 
 /** Agregado completo de uma mensagem. */
@@ -61,6 +63,7 @@ export function aggregateReactions(
           reactors: sorted.slice(0, MAX_REACTORS).map((r) => ({
             name: resolveName(r, contactsByPhone),
             phone: r.reactorPhone,
+            isMe: r.fromMe,
           })),
         } satisfies ReactionSummary,
       };

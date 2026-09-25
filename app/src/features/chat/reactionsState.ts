@@ -98,7 +98,8 @@ export function selfEmoji(reactions: MessageReaction[] | undefined): string | nu
   return reactions?.find((r) => r.reactedByMe)?.emoji ?? null;
 }
 
-const isSelfReactor = (p: MessageReaction['reactors'][number]) => p.name === null && p.phone === null;
+// Pelo marcador, nunca por nome/telefone nulos: participante anônimo tem o mesmo formato.
+const isSelfReactor = (p: MessageReaction['reactors'][number]) => p.isMe;
 
 /**
  * Aplica um gesto do operador por cima do agregado: tira a própria reação do emoji anterior
@@ -122,8 +123,8 @@ export function applyPendingOverlay(reactions: MessageReaction[], emoji: string 
   }
   if (emoji === null) return next;
 
-  // A API grava o próprio autor sem nome nem telefone — o otimista segue o mesmo shape.
-  const self = { name: null, phone: null };
+  // Mesmo shape que a API devolve para a reação da própria conta.
+  const self = { name: null, phone: null, isMe: true };
   const existing = next.findIndex((r) => r.emoji === emoji);
   if (existing < 0) return [...next, { emoji, count: 1, reactedByMe: true, reactors: [self] }];
   return next.map((r, i) =>
