@@ -167,14 +167,15 @@ Mutex em memória por `uploadId` serializa escrita de parte + atualização do l
 
 ### Limpeza e reconciliação
 
-`UploadSessionSweeper` (boot + 10 min): apaga `.bin` + `.json` com `updatedAt` além de
-`MEDIA_UPLOAD_TTL_MINUTES` (120); `.bin` sem lateral; `CONSUMED` mantém só o `.json` até o TTL.
-Só disco local — seguro com qualquer banco.
+`UploadSessionSweeper` (boot + 10 min): `discardIfExpired` sob o mutex (reconfere `updatedAt`;
+**nunca** apaga `CONSUMING`) para `.bin`/`.json`/`.voice.*` além de `MEDIA_UPLOAD_TTL_MINUTES`
+(120); `OPEN` sem nenhuma parte expira em 10 min; `.bin` sem lateral; `CONSUMED` mantém só o
+`.json` até o TTL (o `.bin` da voz sai logo após o consumo, `dropBinary`). Só disco local.
 
-`ReconcileInterruptedUploadsUseCase` (chat, boot): lateral em `CONSUMING` (queda entre
-promoção e `finishConsume`) → busca mensagem por `externalMessageId` (**só leitura**):
-existe → `CONSUMED` com `messageId`; não existe → apaga o arquivo promovido órfão e descarta o
-upload (painel sobe de novo a partir do `File` retido, §14).
+`ReconcileInterruptedUploadsUseCase` (chat, boot, antes do sweeper): lateral em `CONSUMING` →
+busca mensagem por `externalMessageId` (**só leitura**): existe → `CONSUMED`; não existe e o
+`.bin` ainda está lá (caiu antes da promoção) → `OPEN` (retomável); sem `.bin` → descarta. O
+arquivo promovido órfão fica (o lateral não guarda o caminho — dívida). Revisado em 2026-09-25 (§19).
 
 ## 6. Sniff e classificação (`media/domain/services/`, puras)
 
@@ -422,7 +423,7 @@ Todas com `preHandler: [authHook, tenantHook]`; erros no formato do `errorHandle
 | POST | `/api/media/uploads` | `{ fileName, sizeBytes, purpose, declaredMimeType? }` | `201 { uploadId, chunkSizeBytes, totalParts, receivedParts: [], expiresAt }` |
 | PUT | `/api/media/uploads/:uploadId/parts/:index` | binário | `200 { receivedParts, complete }` |
 | GET | `/api/media/uploads/:uploadId` | — | `200 { receivedParts, complete, state, messageId }` |
-| DELETE | `/api/media/uploads/:uploadId` | — | `204` (idempotente) |
+| DELETE | `/api/media/uploads/:uploadId` | — | `204` (idempotente); `409 UPLOAD_IN_PROGRESS` em consumo (marca `cancelRequested`: falhou → descarta; concluiu → mensagem sai) |
 | POST | `/api/chat/conversations/:id/messages/media` | `{ uploadId, caption?, quotedMessageId? }` | `202 ChatMessage` (`200` se repetido) |
 | POST | `/api/chat/messages/:messageId/retry` | — | `202 ChatMessage` |
 
@@ -487,6 +488,8 @@ ou falha imediata): o painel guarda status antecipados por id real (§14).
 | `MEDIA_PROCESS_CONCURRENCY` | `2` |
 | `MEDIA_UPLOAD_IDLE_TIMEOUT_MS` | `60000` (`mediaUploadTimeoutMs`: ociosidade do socket, não tempo total) |
 | `MEDIA_ECHO_TTL_MS` / `MEDIA_ECHO_MAX_PER_SESSION` | `3600000` / `200` |
+| `MEDIA_UPLOAD_MAX_OPEN_BYTES_PER_USER` | metade do teto global |
+| `MEDIA_UPLOAD_MAX_CONCURRENT_PARTS` / `..._PER_USER` | `8` / `2` |
 | `MEDIA_PENDING_RECOVERY_ENABLED` | `false` (ligar na Render) |
 | `MEDIA_PENDING_STALE_MINUTES` | `60` |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` |
@@ -517,7 +520,7 @@ app/src/features/chat/components/
 
 - `putPart`: `Content-Type: application/octet-stream` **por chamada** (a instância fixa JSON,
   `apiClient.ts:23`, e o axios mandaria o Blob com ele), `signal`, `onUploadProgress`,
-  `timeout` 120 s por chamada
+  timeout por **inatividade** (60 s sem progresso → aborta e reenvia como rede; rearmado a cada `onUploadProgress`)
 - O interceptor rejeita com `Error` só com `status`/`code` da API (`apiClient.ts:154-159`):
   cancelamento detectado por `signal.aborted`; sem `status` = erro de rede
 - Retry de parte: exponencial 1 s → 30 s, total ~3 min (cobre deploy com disco, que não tem

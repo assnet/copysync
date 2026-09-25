@@ -84,7 +84,7 @@ Todas com auth + tenant. Upload de outro usuário/tenant → 404.
 | POST | `/api/media/uploads` `{ fileName, sizeBytes, purpose, declaredMimeType? }` | 201 `{ uploadId, chunkSizeBytes, totalParts, receivedParts, expiresAt }` |
 | PUT | `/api/media/uploads/:uploadId/parts/:index` (octet-stream) | `{ receivedParts, complete }` |
 | GET | `/api/media/uploads/:uploadId` | `{ receivedParts, complete, state, messageId }` |
-| DELETE | `/api/media/uploads/:uploadId` | 204 (idempotente) |
+| DELETE | `/api/media/uploads/:uploadId` | 204 (idempotente); **409 `UPLOAD_IN_PROGRESS`** se já está sendo consumido — a marca faz o consumo descartar se falhar; se concluir, a mensagem sai (o painel consulta o GET e mostra a mensagem real) |
 | POST | `/api/chat/conversations/:id/messages/media` `{ uploadId, caption?, quotedMessageId? }` | 202 mensagem `PENDING` (200 se repetida) |
 | POST | `/api/chat/messages/:messageId/retry` | 202 (só `OUTBOUND` + `FAILED` + arquivo presente; reusa o id) |
 
@@ -119,6 +119,8 @@ Todas opcionais. Única obrigatória na Render: `MEDIA_PENDING_RECOVERY_ENABLED=
 | `MEDIA_PROCESS_CONCURRENCY` | 2 |
 | `MEDIA_UPLOAD_IDLE_TIMEOUT_MS` | 60000 (ociosidade do socket, não tempo total) |
 | `MEDIA_ECHO_TTL_MS` / `MEDIA_ECHO_MAX_PER_SESSION` | 3600000 / 200 |
+| `MEDIA_UPLOAD_MAX_OPEN_BYTES_PER_USER` | metade do teto global (bytes abertos por usuário → 429) |
+| `MEDIA_UPLOAD_MAX_CONCURRENT_PARTS` / `..._PER_USER` | 8 / 2 (partes em andamento; vaga pega em `onRequest`, sem vaga → 429 antes de ler o corpo) |
 | `MEDIA_PENDING_RECOVERY_ENABLED` | `false` — **`true` só na Render** |
 | `MEDIA_PENDING_STALE_MINUTES` | 60 |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` |

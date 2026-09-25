@@ -108,6 +108,17 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Dívidas assumidas
 
+- **Anexos — revisão de 2026-09-25, não corrigido de propósito.** (1) Nome de arquivo recebido
+  de Office/quicktime/text/plain/octet-stream ganhou extensão curta: uma mensagem antiga
+  reentregue (append) baixa de novo com o nome novo — duplicata rara de disco, não de mensagem.
+  (2) `failPending` filtra por `status` sem índice; ~8,7 mil linhas, leve; índice parcial não é
+  modelável no Prisma. (3) Recuperação no boot publica `FAILED` antes de haver WS conectado —
+  o painel vê ao recarregar. (4) Janela residual varredura × reenvio: o retry troca para
+  `PENDING` e ainda relê antes de enfileirar; mitigada pelo despacho, que relê o status antes
+  de enviar. (5) Upload preso em `CONSUMING` (falha de `releaseConsume`/`finishConsume`) só é
+  resolvido na reconciliação do próximo boot e ocupa reserva até lá. (6) `MessageBubble` tem
+  "Opções da mensagem", "Copiar" e "Responder" literais (anterior à feature).
+
 - **Dois CHANGELOGs, um só em uso.** O da raiz recebe todas as entradas desde maio; `api/CHANGELOG.md`
   parou em 2026-09-07, mas é o que o AGENTS.md §31.3 cita. Novas entradas vão para o da raiz até
   o AGENTS.md ser alinhado.
