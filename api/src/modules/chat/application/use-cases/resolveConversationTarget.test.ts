@@ -113,6 +113,16 @@ describe('buildEngineMessageRef', () => {
     expect(ref).not.toHaveProperty('participant');
   });
 
+  it('mídia citada leva MIME, nome e duração para o preview da citação', () => {
+    const target = resolveConversationTarget(individual, contato);
+    const ref = buildEngineMessageRef(target, {
+      ...mensagem(), type: ChatMessageType.DOCUMENT, content: null,
+      mimeType: 'application/pdf', fileName: 'contrato.pdf', durationSeconds: null,
+    });
+    expect(ref).toMatchObject({ mimeType: 'application/pdf', fileName: 'contrato.pdf' });
+    expect(ref).not.toHaveProperty('durationSeconds');
+  });
+
   it('grupo sem autor conhecido não inventa participant', () => {
     const target = resolveConversationTarget(grupo, null);
     const ref = buildEngineMessageRef(target, { ...mensagem(), fromParticipant: null });

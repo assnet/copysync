@@ -97,6 +97,17 @@ describe('SendMessageUseCase — citação', () => {
     });
   });
 
+  it('resposta a mídia leva os metadados da citada para o preview no WhatsApp', async () => {
+    const d = makeDeps({
+      quoted: citada({ type: ChatMessageType.AUDIO, content: null, mimeType: 'audio/ogg; codecs=opus', durationSeconds: 9 }),
+    });
+    await enviar(d);
+
+    expect(engineInput(d).quotedMessage).toMatchObject({
+      type: ChatMessageType.AUDIO, mimeType: 'audio/ogg; codecs=opus', durationSeconds: 9,
+    });
+  });
+
   it('citada de outra conversa não é citada nem vinculada', async () => {
     const d = makeDeps({ quoted: citada({ conversationId: 'conv-outra' }) });
     const dto = await enviar(d);

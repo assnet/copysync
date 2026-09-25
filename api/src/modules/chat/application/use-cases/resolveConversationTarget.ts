@@ -43,7 +43,7 @@ export function resolveConversationTarget(
 export function buildEngineMessageRef(
   target: ConversationTarget,
   message: Pick<ChatMessage, 'externalMessageId' | 'direction' | 'content' | 'type'>
-    & { fromParticipant?: string | null },
+    & Partial<Pick<ChatMessage, 'fromParticipant' | 'mimeType' | 'fileName' | 'durationSeconds'>>,
 ): QuotedMessageRef | null {
   if (!message.externalMessageId) return null;
   const fromMe = message.direction === ChatMessageDirection.OUTBOUND;
@@ -56,5 +56,8 @@ export function buildEngineMessageRef(
     ...(target.isGroup && !fromMe && message.fromParticipant
       ? { participant: message.fromParticipant }
       : {}),
+    ...(message.mimeType ? { mimeType: message.mimeType } : {}),
+    ...(message.fileName ? { fileName: message.fileName } : {}),
+    ...(message.durationSeconds ? { durationSeconds: message.durationSeconds } : {}),
   };
 }

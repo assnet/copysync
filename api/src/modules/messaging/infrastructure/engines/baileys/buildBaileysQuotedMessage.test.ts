@@ -49,6 +49,30 @@ describe('buildBaileysQuotedMessage — key', () => {
   it('conversa individual ignora participant', () => {
     expect(quotedOf(ref({ participant: '5551804625870' })).key).not.toHaveProperty('participant');
   });
+
+  it('grupo com autor resolvido (LID) usa esse autor, inclusive para mensagem nossa', () => {
+    const nossa = buildBaileysQuotedMessage(
+      ref({ remoteJid: GRUPO, fromMe: true }), GRUPO, normalizeJid, { authorJid: '111222333@lid' },
+    );
+    expect(nossa.quoted?.key).toEqual({ remoteJid: GRUPO, id: 'EXT-1', fromMe: false, participant: '111222333@lid' });
+
+    const deTerceiro = buildBaileysQuotedMessage(
+      ref({ remoteJid: GRUPO, participant: '5551804625870' }), GRUPO, normalizeJid, { authorJid: '444555666@lid' },
+    );
+    expect(deTerceiro.quoted?.key.participant).toBe('444555666@lid');
+  });
+
+  it('grupo sem autor resolvido cai no número (comportamento anterior)', () => {
+    const quoted = buildBaileysQuotedMessage(
+      ref({ remoteJid: GRUPO, participant: '5551804625870' }), GRUPO, normalizeJid, { authorJid: null },
+    ).quoted;
+    expect(quoted?.key.participant).toBe('5551804625870@s.whatsapp.net');
+  });
+
+  it('autor resolvido é ignorado em conversa individual', () => {
+    const quoted = buildBaileysQuotedMessage(ref(), CONTATO, normalizeJid, { authorJid: '111222333@lid' }).quoted;
+    expect(quoted?.key).toEqual({ remoteJid: CONTATO, id: 'EXT-1', fromMe: false });
+  });
 });
 
 describe('buildBaileysQuotedMessage — conteúdo citado', () => {
@@ -70,6 +94,17 @@ describe('buildBaileysQuotedMessage — conteúdo citado', () => {
     ['image', 'minúsculo', { imageMessage: { caption: 'minúsculo' } }],
   ])('%s com corpo %j', (type, body, expected) => {
     expect(quotedOf(ref({ type, body })).message).toEqual(expected);
+  });
+
+  it('mídia citada leva MIME, nome e duração quando conhecidos', () => {
+    expect(quotedOf(ref({ type: 'IMAGE', body: null, mimeType: 'image/jpeg' })).message)
+      .toEqual({ imageMessage: { mimetype: 'image/jpeg' } });
+    expect(quotedOf(ref({ type: 'VIDEO', body: 'clipe', mimeType: 'video/mp4', durationSeconds: 12 })).message)
+      .toEqual({ videoMessage: { mimetype: 'video/mp4', caption: 'clipe', seconds: 12 } });
+    expect(quotedOf(ref({ type: 'AUDIO', body: null, mimeType: 'audio/ogg; codecs=opus', durationSeconds: 7 })).message)
+      .toEqual({ audioMessage: { mimetype: 'audio/ogg; codecs=opus', seconds: 7, ptt: false } });
+    expect(quotedOf(ref({ type: 'DOCUMENT', body: 'segue', mimeType: 'application/pdf', fileName: 'contrato.pdf' })).message)
+      .toEqual({ documentMessage: { mimetype: 'application/pdf', fileName: 'contrato.pdf', title: 'contrato.pdf' } });
   });
 });
 
@@ -110,9 +145,27 @@ describe('buildBaileysQuotedMessage — contextInfo gerado pelo Baileys', () => 
     expect(ci?.remoteJid ?? null).toBeNull();
   });
 
+  it('grupo LID: mensagem nossa sai com o LID da sessão como autor, não o número', async () => {
+    const quoted = buildBaileysQuotedMessage(
+      ref({ remoteJid: GRUPO, fromMe: true }), GRUPO, normalizeJid, { authorJid: '111222333@lid' },
+    ).quoted as BaileysQuotedMessage;
+    const ci = await contextInfoFor(quoted, GRUPO);
+    expect(ci?.participant).toBe('111222333@lid');
+    expect(ci?.stanzaId).toBe('EXT-1');
+    expect(ci?.remoteJid ?? null).toBeNull();
+  });
+
   it('mensagem nossa: autor = número da sessão, sem o device', async () => {
     const ci = await contextInfoFor(quotedOf(ref({ fromMe: true })), CONTATO);
     expect(ci?.participant).toBe('5547740003804@s.whatsapp.net');
+  });
+
+  it('mídia citada com metadados sobrevive à serialização', async () => {
+    const ci = await contextInfoFor(
+      quotedOf(ref({ type: 'DOCUMENT', body: null, mimeType: 'application/pdf', fileName: 'x.pdf' })), CONTATO,
+    );
+    expect(ci?.quotedMessage?.documentMessage?.fileName).toBe('x.pdf');
+    expect(ci?.quotedMessage?.documentMessage?.mimetype).toBe('application/pdf');
   });
 
   it.each(['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER', 'VCARD', 'LOCATION'])(

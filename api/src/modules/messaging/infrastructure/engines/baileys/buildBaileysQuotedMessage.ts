@@ -16,15 +16,25 @@ export type QuoteBuildResult =
   | { quoted: BaileysQuotedMessage; skipped: null }
   | { quoted: null; skipped: QuoteSkipReason };
 
+export interface QuoteBuildOptions {
+  /**
+   * Autor da citada já resolvido pelo adapter para o endereçamento do grupo (o LID em grupo
+   * LID). Quando vem, vale também para mensagem nossa: o Baileys usaria o número da sessão
+   * (`userJid`, com `TODO: Add support for LIDs`), mas em grupo LID a mensagem saiu com o LID
+   * como autor e os clientes oficiais citam pelo LID.
+   */
+  authorJid?: string | null;
+}
+
 /**
  * Monta a citação a partir da referência gravada pelo chat.
  *
  * O Baileys copia a key para o `contextInfo` (`Utils/messages.js`, `generateWAMessageFromContent`):
  * - `key.remoteJid` diferente do destino vira `contextInfo.remoteJid` — citação "de outra
  *   conversa". Por isso a key usa o próprio `chatJid` e uma referência de outro chat não cita.
- * - Sem `participant`, o autor citado vira `key.remoteJid`: em grupo, o próprio grupo. Por
- *   isso grupo sem autor conhecido não cita (o envio segue, só sem citação).
- * - Mensagem nossa usa o JID da sessão como autor; o `participant` é ignorado.
+ * - `key.fromMe` faz a lib usar o número da sessão como autor; `key.participant` é usado nos
+ *   demais casos. Sem nenhum dos dois, o autor vira `key.remoteJid`: em grupo, o próprio grupo.
+ *   Por isso grupo sem autor conhecido não cita (o envio segue, só sem citação).
  *
  * O conteúdo citado é mínimo e nunca vazio: `proto.Message.create` descarta campos vazios e a
  * lib quebra ao procurar o tipo (lição de `dea6c36`).
@@ -33,10 +43,17 @@ export function buildBaileysQuotedMessage(
   ref: QuotedMessageRef,
   chatJid: string,
   normalizeJid: (value: string) => string,
+  options: QuoteBuildOptions = {},
 ): QuoteBuildResult {
   if (normalizeJid(ref.remoteJid) !== chatJid) return { quoted: null, skipped: 'different_chat' };
 
+  const message = quotedContent(ref);
   const isGroup = chatJid.endsWith('@g.us');
+  const base = { remoteJid: chatJid, id: ref.externalId };
+
+  if (isGroup && options.authorJid) {
+    return { quoted: { key: { ...base, fromMe: false, participant: options.authorJid }, message }, skipped: null };
+  }
   if (isGroup && !ref.fromMe && !ref.participant) {
     return { quoted: null, skipped: 'group_without_participant' };
   }
@@ -44,14 +61,13 @@ export function buildBaileysQuotedMessage(
   return {
     quoted: {
       key: {
-        remoteJid: chatJid,
+        ...base,
         fromMe: ref.fromMe,
-        id: ref.externalId,
         ...(isGroup && !ref.fromMe && ref.participant
           ? { participant: normalizeJid(ref.participant) }
           : {}),
       },
-      message: quotedContent(ref.type, ref.body),
+      message,
     },
     skipped: null,
   };
@@ -62,15 +78,22 @@ function nonEmpty(text: string | null | undefined): string {
   return text && text.trim() ? text : ' ';
 }
 
-function quotedContent(type: string, body: string | null): Record<string, unknown> {
-  const text = body && body.trim() ? body : null;
-  switch (type.toUpperCase()) {
-    case 'IMAGE':    return { imageMessage: text ? { caption: text } : {} };
-    case 'VIDEO':    return { videoMessage: text ? { caption: text } : {} };
-    case 'AUDIO':    return { audioMessage: { seconds: 0, ptt: false } };
-    case 'DOCUMENT': return { documentMessage: text ? { title: text } : {} };
-    case 'STICKER':  return { stickerMessage: {} };
-    case 'VCARD':    return { contactMessage: { displayName: nonEmpty(body) } };
-    default:         return { conversation: nonEmpty(body) };
+/** Só os campos presentes: o proto não aceita `undefined` como "ausente" em todos os caminhos. */
+function compact(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+}
+
+function quotedContent(ref: QuotedMessageRef): Record<string, unknown> {
+  const text = ref.body && ref.body.trim() ? ref.body : null;
+  const mimetype = ref.mimeType ?? null;
+  const seconds = ref.durationSeconds ?? null;
+  switch (ref.type.toUpperCase()) {
+    case 'IMAGE':    return { imageMessage: compact({ mimetype, caption: text }) };
+    case 'VIDEO':    return { videoMessage: compact({ mimetype, caption: text, seconds }) };
+    case 'AUDIO':    return { audioMessage: { ...compact({ mimetype }), seconds: seconds ?? 0, ptt: false } };
+    case 'DOCUMENT': return { documentMessage: compact({ mimetype, fileName: ref.fileName, title: ref.fileName ?? text }) };
+    case 'STICKER':  return { stickerMessage: compact({ mimetype }) };
+    case 'VCARD':    return { contactMessage: { displayName: nonEmpty(ref.body) } };
+    default:         return { conversation: nonEmpty(ref.body) };
   }
 }

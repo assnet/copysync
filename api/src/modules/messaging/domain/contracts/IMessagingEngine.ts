@@ -43,6 +43,12 @@ export interface QuotedMessageRef {
    * citação ao próprio grupo — por isso a engine não cita em grupo sem autor.
    */
   participant?: string | null;
+  /** MIME da mídia citada — deixa o preview da citação igual ao do cliente oficial. */
+  mimeType?: string | null;
+  /** Nome do documento citado. */
+  fileName?: string | null;
+  /** Duração do áudio/vídeo citado, em segundos. */
+  durationSeconds?: number | null;
 }
 
 export interface SendTextMessageInput {

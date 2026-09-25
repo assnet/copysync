@@ -12,6 +12,7 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   generateMessageIDV2,
+  jidNormalizedUser,
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys';
 import type { ConnectionState, AnyMessageContent, WASocket, WAMessage, proto } from '@whiskeysockets/baileys';
@@ -77,6 +78,15 @@ const GROUP_AVATAR_FETCH_LIMIT = 200;
 const GROUP_AVATAR_CONCURRENCY = 8;
 /** Validade do cache de fotos de participante. A URL do WhatsApp é temporária. */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
+/** Tempo máximo para descobrir o LID do autor citado; estourou, a citação sai pelo número. */
+const QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS = 3_000;
+
+/** Resolve `null` se a promessa não terminar no prazo (a original segue e é descartada). */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 3_000;
@@ -197,7 +207,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.requireConnectedEntry(input.sessionId);
     try {
       const jid = this.normalizeJid(input.to);
-      const quoted = this.buildQuoted(input.quotedMessage, jid, input.sessionId);
+      const quoted = await this.buildQuoted(entry.socket, entry.tenantId, input.quotedMessage, jid, input.sessionId);
       const result = await entry.socket.sendMessage(jid, { text: input.body }, quoted ? { quoted } : undefined);
       return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
     } catch (err) { throw translateEngineError(err); }
@@ -1091,6 +1101,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         const metadata = await (socket as BaileysSocketWithGroupHelpers).groupMetadata?.(groupRemoteJid);
         const snapshot: GroupMetadataSnapshot = {
           groupName: metadata?.subject?.trim() || null,
+          addressingMode: metadata?.addressingMode ?? null,
         };
         this.groupMetadataCache.set(cacheKey, snapshot);
         if (!snapshot.groupName) {
@@ -1243,20 +1254,75 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
    * segurança (ver `buildBaileysQuotedMessage`), a mensagem sai sem citação e o motivo
    * vai para o log.
    */
-  private buildQuoted(
+  private async buildQuoted(
+    socket: ReturnType<typeof makeWASocket>,
+    tenantId: string,
     ref: QuotedMessageRef | null | undefined,
     jid: string,
     sessionId: string,
-  ): WAMessage | undefined {
+  ): Promise<WAMessage | undefined> {
     if (!ref) return undefined;
+    const log = { sessionId, quotedId: ref.externalId };
     try {
-      const result = buildBaileysQuotedMessage(ref, jid, (value) => this.normalizeJid(value));
-      if (result.quoted) return result.quoted as unknown as WAMessage;
-      baileysLogger.warn({ sessionId, quotedId: ref.externalId, reason: result.skipped }, 'Reply sent without quote');
+      const authorJid = jid.endsWith('@g.us')
+        ? await this.resolveQuoteAuthor(socket, tenantId, ref, jid, sessionId)
+        : null;
+      const result = buildBaileysQuotedMessage(ref, jid, (value) => this.normalizeJid(value), { authorJid });
+      if (result.quoted) {
+        // Diagnóstico da citação: só o tipo do autor e do conteúdo — nem id de pessoa, nem texto.
+        const { participant, fromMe } = result.quoted.key;
+        baileysLogger.info({
+          ...log,
+          author: participant ? (participant.endsWith('@lid') ? 'lid' : 'pn') : fromMe ? 'session' : 'chat',
+          content: Object.keys(result.quoted.message)[0],
+        }, 'Reply quote attached');
+        return result.quoted as unknown as WAMessage;
+      }
+      baileysLogger.warn({ ...log, reason: result.skipped }, 'Reply sent without quote');
     } catch (err) {
-      baileysLogger.warn({ sessionId, quotedId: ref.externalId, err }, 'Failed to build quote — reply sent without it');
+      baileysLogger.warn({ ...log, err }, 'Failed to build quote — reply sent without it');
     }
     return undefined;
+  }
+
+  /**
+   * Autor da citação em grupo, no endereçamento em que o grupo opera. Em grupo LID — o padrão
+   * do Baileys quando o modo é desconhecido (`messages-send.js:544`) — a mensagem sai com o LID
+   * como autor e os clientes oficiais citam pelo LID; citar pelo número diverge do que os
+   * aparelhos têm. `null` = siga pelo número (comportamento padrão). Nunca lança.
+   */
+  private async resolveQuoteAuthor(
+    socket: ReturnType<typeof makeWASocket>,
+    tenantId: string,
+    ref: QuotedMessageRef,
+    groupRemoteJid: string,
+    sessionId: string,
+  ): Promise<string | null> {
+    try {
+      const groupJid = groupRemoteJid.split('@')[0];
+      // Modo desconhecido (sem metadado ou consulta lenta) segue como LID, igual ao Baileys.
+      const metadata = await withTimeout(
+        this.getGroupMetadataSnapshot(socket, sessionId, tenantId, groupRemoteJid, groupJid),
+        QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS,
+      );
+      if (metadata?.addressingMode === 'pn') return null;
+
+      if (ref.fromMe) {
+        const meLid = socket.user?.lid;
+        return meLid ? jidNormalizedUser(meLid) : null;
+      }
+      if (!ref.participant) return null;
+
+      const participantJid = this.normalizeJid(ref.participant);
+      if (participantJid.endsWith('@lid')) return jidNormalizedUser(participantJid);
+
+      const lookup = (socket as BaileysSocketWithGroupHelpers).signalRepository?.lidMapping?.getLIDForPN?.(participantJid);
+      const lid = lookup ? await withTimeout(lookup, QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS) : null;
+      return lid ? jidNormalizedUser(lid) : null;
+    } catch (err) {
+      baileysLogger.debug({ err, sessionId, quotedId: ref.externalId }, 'Quote author LID not resolved — using phone');
+      return null;
+    }
   }
 
   private normalizeJid(phone: string): string {
@@ -1278,6 +1344,8 @@ interface IncomingMessageRoutingInfo {
 
 interface GroupMetadataSnapshot {
   groupName: string | null;
+  /** 'lid' ou 'pn'; `null` quando a lib não informou (o Baileys trata como 'lid'). */
+  addressingMode: 'lid' | 'pn' | null;
 }
 
 type BaileysGroupParticipant = {
@@ -1294,10 +1362,12 @@ type BaileysSocketWithGroupHelpers = ReturnType<typeof makeWASocket> & {
   groupMetadata?: (jid: string) => Promise<{
     subject?: string | null;
     participants?: BaileysGroupParticipant[];
+    addressingMode?: 'lid' | 'pn';
   } | null | undefined>;
   signalRepository?: {
     lidMapping?: {
       getPNForLID?: (lid: string) => Promise<string | null | undefined>;
+      getLIDForPN?: (pn: string) => Promise<string | null | undefined>;
     };
   };
 };
