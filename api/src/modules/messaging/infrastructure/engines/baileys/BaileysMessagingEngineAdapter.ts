@@ -14,7 +14,7 @@ import makeWASocket, {
   generateMessageIDV2,
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys';
-import type { ConnectionState, AnyMessageContent, WASocket, proto } from '@whiskeysockets/baileys';
+import type { ConnectionState, AnyMessageContent, WASocket, WAMessage, proto } from '@whiskeysockets/baileys';
 import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { env } from '../../../../../shared/config/env';
@@ -28,6 +28,7 @@ import type {
   ReconnectSessionInput,
   LogoutSessionInput,
   SendTextMessageInput,
+  QuotedMessageRef,
   SendMediaMessageInput,
   SendMessageResult,
   SendReactionInput,
@@ -45,6 +46,7 @@ import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatState
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import { ReactionEchoRegistry } from './ReactionEchoRegistry';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
+import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import {
   SessionNotFoundError,
@@ -195,7 +197,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.requireConnectedEntry(input.sessionId);
     try {
       const jid = this.normalizeJid(input.to);
-      const result = await entry.socket.sendMessage(jid, { text: input.body });
+      const quoted = this.buildQuoted(input.quotedMessage, jid, input.sessionId);
+      const result = await entry.socket.sendMessage(jid, { text: input.body }, quoted ? { quoted } : undefined);
       return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
     } catch (err) { throw translateEngineError(err); }
   }
@@ -1233,6 +1236,27 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.registry.get(sessionId);
     if (!entry) throw new SessionNotConnectedError(sessionId);
     return entry;
+  }
+
+  /**
+   * Citação para o `sendMessage`. Nunca derruba o envio: quando não dá para citar com
+   * segurança (ver `buildBaileysQuotedMessage`), a mensagem sai sem citação e o motivo
+   * vai para o log.
+   */
+  private buildQuoted(
+    ref: QuotedMessageRef | null | undefined,
+    jid: string,
+    sessionId: string,
+  ): WAMessage | undefined {
+    if (!ref) return undefined;
+    try {
+      const result = buildBaileysQuotedMessage(ref, jid, (value) => this.normalizeJid(value));
+      if (result.quoted) return result.quoted as unknown as WAMessage;
+      baileysLogger.warn({ sessionId, quotedId: ref.externalId, reason: result.skipped }, 'Reply sent without quote');
+    } catch (err) {
+      baileysLogger.warn({ sessionId, quotedId: ref.externalId, err }, 'Failed to build quote — reply sent without it');
+    }
+    return undefined;
   }
 
   private normalizeJid(phone: string): string {

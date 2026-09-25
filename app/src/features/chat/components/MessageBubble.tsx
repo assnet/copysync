@@ -224,6 +224,8 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
 
   // Mensagem apagada ou nunca entregue não aceita reação (a API responderia 409).
   const canReact = !!onSetReaction && !message.isDeleted && !!message.externalMessageId;
+  // Mensagem apagada não aceita resposta (o WhatsApp também não oferece): não há o que citar.
+  const canReply = !!onReply && !message.isDeleted;
   const reactions = message.reactions ?? [];
   const hasReactions = reactions.some((r) => r.count > 0);
   const activeEmoji = reactions.find((r) => r.reactedByMe)?.emoji ?? null;
@@ -243,12 +245,12 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
     '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
   } as const;
 
-  const replyBtn = onReply && (
+  const replyBtn = canReply && (
     <Tooltip title="Responder" placement={isOut ? 'left' : 'right'}>
       <IconButton
         size="small"
         aria-label="Responder mensagem"
-        onClick={() => onReply(message)}
+        onClick={() => onReply?.(message)}
         sx={actionBtnSx}
       >
         <ReplyIcon sx={{ fontSize: 16, ...(isOut ? { transform: 'scaleX(-1)' } : {}) }} />
@@ -478,7 +480,7 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
           <ListItemText>{chatStrings.reactions.react}</ListItemText>
         </MenuItem>
       )}
-      {onReply && (
+      {canReply && (
         <MenuItem onClick={handleMenuReply} dense>
           <ListItemIcon><ReplyIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Responder</ListItemText>

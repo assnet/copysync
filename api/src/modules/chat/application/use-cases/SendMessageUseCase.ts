@@ -34,10 +34,22 @@ export class SendMessageUseCase {
     const target = resolveConversationTarget(conv, contact);
 
     // ── Busca mensagem citada antes do envio (usada na engine e no DTO) ────
+    // O vínculo só existe com a citada encontrada **nesta** conversa. Sem ela, nada de vínculo:
+    // o `create` resolveria o id também por `externalMessageId` em todo o tenant e poderia
+    // ligar a resposta a uma mensagem de outro chat.
     let quotedEntity: Awaited<ReturnType<typeof this.messageRepo.findById>> | null = null;
     if (input.quotedMessageId) {
-      quotedEntity = await this.messageRepo.findById(input.quotedMessageId, input.tenantId);
+      const found = await this.messageRepo.findById(input.quotedMessageId, input.tenantId);
+      if (found && found.conversationId === input.conversationId) {
+        quotedEntity = found;
+      } else {
+        logger.warn(
+          { conversationId: input.conversationId, quotedMessageId: input.quotedMessageId, found: !!found },
+          'Quoted message not found in this conversation — sending without quote',
+        );
+      }
     }
+    const quotedMessageId = quotedEntity?.id ?? null;
 
     // ── Envia via WhatsApp e obtém o messageId externo ────────────────────
     let externalMessageId: string | null = null;
@@ -49,7 +61,11 @@ export class SendMessageUseCase {
           tenantId:  input.tenantId,
           to:        target.recipientPhone,
           body:      input.content,
-          quotedMessage: quotedEntity ? buildEngineMessageRef(target, quotedEntity) : null,
+          // Apagada não vai citada ao WhatsApp: a linha guarda o id da revogação e nenhum
+          // conteúdo — o contato veria uma citação em branco. O vínculo no painel continua.
+          quotedMessage: quotedEntity && !quotedEntity.isDeleted
+            ? buildEngineMessageRef(target, quotedEntity)
+            : null,
         });
         externalMessageId = result.messageId;
       } catch (err) {
@@ -70,7 +86,7 @@ export class SendMessageUseCase {
       direction:         ChatMessageDirection.OUTBOUND,
       type:              ChatMessageType.TEXT,
       content:           input.content,
-      quotedMessageId:   input.quotedMessageId ?? null,
+      quotedMessageId,
       externalMessageId,
     });
 

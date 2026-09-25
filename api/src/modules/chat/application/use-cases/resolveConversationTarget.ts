@@ -36,17 +36,25 @@ export function resolveConversationTarget(
 /**
  * Monta a referência de uma mensagem já existente no WhatsApp (citação, e reação a seguir).
  * `null` quando a mensagem nunca chegou à engine (sem `externalMessageId`).
+ *
+ * Em grupo, a mensagem de outro autor leva `participant` (quem escreveu): a key citada
+ * precisa dele. A reação monta o próprio alvo a partir destes campos e ignora este.
  */
 export function buildEngineMessageRef(
   target: ConversationTarget,
-  message: Pick<ChatMessage, 'externalMessageId' | 'direction' | 'content' | 'type'>,
+  message: Pick<ChatMessage, 'externalMessageId' | 'direction' | 'content' | 'type'>
+    & { fromParticipant?: string | null },
 ): QuotedMessageRef | null {
   if (!message.externalMessageId) return null;
+  const fromMe = message.direction === ChatMessageDirection.OUTBOUND;
   return {
     externalId: message.externalMessageId,
     remoteJid:  target.isGroup ? target.recipientPhone : (target.contactPhone ?? target.recipientPhone),
-    fromMe:     message.direction === ChatMessageDirection.OUTBOUND,
+    fromMe,
     body:       message.content,
     type:       message.type,
+    ...(target.isGroup && !fromMe && message.fromParticipant
+      ? { participant: message.fromParticipant }
+      : {}),
   };
 }
