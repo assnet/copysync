@@ -66,9 +66,11 @@ interface ContentProps {
   message: ChatMessage;
   isOut: boolean;
   textColor: string;
+  /** Foto de quem enviou, para a bolha de áudio (grupos recebidos). */
+  senderAvatarUrl?: string;
 }
 
-function MessageContent({ message, isOut, textColor }: ContentProps) {
+function MessageContent({ message, isOut, textColor, senderAvatarUrl }: ContentProps) {
   if (message.isDeleted) {
     return <DeletedMessage isOut={isOut} />;
   }
@@ -90,6 +92,8 @@ function MessageContent({ message, isOut, textColor }: ContentProps) {
           mimeType={message.mimeType}
           durationSeconds={message.durationSeconds}
           isOut={isOut}
+          avatarUrl={senderAvatarUrl}
+          waveformSeed={message.id}
         />
       );
     case 'document':
@@ -172,6 +176,12 @@ export function MessageBubble({
   const isOut = message.direction === 'out';
 
   const participantPhone = message.fromParticipant?.replace(/@.+$/, '') || null;
+  // Mesma foto do avatar de grupo: a bolha de áudio a repete ao lado do play, como no WhatsApp Web.
+  const senderAvatarUrl = isOut
+    ? undefined
+    : message.fromParticipantAvatarUrl
+      ?? (participantPhone ? participantAvatars?.[participantPhone] : undefined)
+      ?? undefined;
 
   // Mensagens antigas guardaram o LID no lugar do telefone (corrigido na ingestão,
   // mas o dado gravado permanece). Abrir conversa com um LID criaria um contato
@@ -471,7 +481,7 @@ export function MessageBubble({
         {isOutMedia ? (
           // `isolation`: o véu não cobre o botão de opções da bolha (zIndex 1).
           <Box sx={{ position: 'relative', ...(showProgress && { minHeight: 56, isolation: 'isolate' }) }}>
-            <MessageContent message={message} isOut={isOut} textColor={textColor} />
+            <MessageContent message={message} isOut={isOut} textColor={textColor} senderAvatarUrl={senderAvatarUrl} />
             {showProgress && (
               <UploadProgressOverlay
                 progress={determinateProgress}
@@ -480,7 +490,7 @@ export function MessageBubble({
             )}
           </Box>
         ) : (
-          <MessageContent message={message} isOut={isOut} textColor={textColor} />
+          <MessageContent message={message} isOut={isOut} textColor={textColor} senderAvatarUrl={senderAvatarUrl} />
         )}
 
         {failure && (

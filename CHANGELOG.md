@@ -66,6 +66,8 @@ instala só para o `docker-compose` local.
 - **`messages/UploadProgressOverlay.tsx`**, **`messages/FailedMessageActions.tsx`**, **`MessageBubble.tsx`** — progresso, cancelar, tentar de novo e descartar na bolha
 - **`MessageComposer.tsx`**, **`ChatWindow.tsx`**, **`MessageList.tsx`**, **`pages/ChatPage.tsx`**, **`strings.ts`** — clipe, colar, soltar e prévia integrados; textos centralizados
 - **`voiceRecorderMachine.ts`**, **`pickRecorderMimeType.ts`**, **`useVoiceRecorder.ts`**, **`components/VoiceRecorderBar.tsx`** — voz: formato por navegador, ondas, pausar/retomar, pré-escuta e barra no lugar do composer. Microfone só com campo vazio; trocar de conversa gravando vira rascunho da conversa. O gravador vive num provider próprio (**`media/VoiceRecorderProvider.tsx`**), fora do `ChatPage` (o estado por quadro não re-renderiza a lista); soltar arquivo fica bloqueado com a barra aberta
+- **`messages/AudioMessage.tsx`**, **`media/audioWaveform.ts`**, **`media/activeAudio.ts`** — bolha de áudio no estilo do WhatsApp Web: avatar do remetente (selo de microfone em nota de voz), play/pause, onda de 44 barras com trecho tocado e cursor arrastável (seek por clique/teclado), tempo corrente e velocidade 1×/1,5×/2×; onda real decodificada por Web Audio ao entrar no viewport (cache por URL) com onda provisória determinística por id enquanto isso (Safari fica na provisória); um áudio toca por vez
+- **`messages/DocumentMessage.tsx`**, **`media/useMediaFileSize.ts`** — cartão de documento horizontal compacto: ícone por tipo com a extensão, nome em uma linha, subtítulo `ZIP • 2 MB` (tamanho por `HEAD` sob demanda, cache por URL) e botão de download; PDF/imagem/texto abrem em nova aba, o resto baixa
 
 ### Fixed
 
