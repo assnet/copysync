@@ -45,7 +45,7 @@ import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import { translateDisconnect, translateEngineError, translateSendError } from './BaileysErrorTranslator';
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
-import { ReactionEchoRegistry } from './ReactionEchoRegistry';
+import { outboundEchoRegistries } from './outboundEchoRegistries';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
@@ -104,19 +104,6 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly pairingRestarts = new Set<string>();
   /** Cache de fotos por JID: evita repetir a consulta a cada abertura do painel. */
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
-  /**
-   * Ids das reações enviadas por nós cujo eco ainda não voltou — marca `isEcho` no
-   * `messages.reaction`. TTL e teto vêm de env.ts (teto derivado do limite de envio).
-   */
-  private readonly reactionEchoes = new ReactionEchoRegistry({
-    ttlMs: env.REACTION_ECHO_TTL_MS,
-    maxPerSession: env.REACTION_ECHO_MAX_PER_SESSION,
-    onForcedEviction: (sessionId, reactionId) => {
-      // Só acontece se o limite de envio foi afrouxado sem ajustar o TTL: um eco
-      // legítimo pode perder a marca e cair na regra do celular.
-      baileysLogger.warn({ sessionId, reactionId }, 'Reaction echo registry full — dropped id still within TTL');
-    },
-  });
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -257,8 +244,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     // Id pré-gerado e registrado ANTES do envio: o eco é emitido de dentro do sendMessage.
     // Falha de envio não retira o id — o eco tardio de um timeout ainda precisa da marca.
+    // Registro de módulo, não da instância: há dois adapters no processo e o eco chega no
+    // handler de quem abriu o socket, que pode não ser quem enviou.
     const messageId = generateMessageIDV2(entry.socket.user.id);
-    this.reactionEchoes.register(sessionId, messageId);
+    outboundEchoRegistries().reactions.register(sessionId, messageId);
 
     try {
       const result = await entry.socket.sendMessage(
@@ -714,7 +703,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       for (const item of items) {
         try {
           const normalized = normalizeReactionEvent(item, {
-            consumeEcho: (reactionId) => this.reactionEchoes.consume(sessionId, reactionId),
+            consumeEcho: (reactionId) => outboundEchoRegistries().reactions.consume(sessionId, reactionId),
           });
           if (!normalized) continue;
 
