@@ -10,10 +10,13 @@ import { SessionStatusReconciler } from '../modules/sessions/application/service
 import { PrismaChatContactRepository } from '../modules/chat/infrastructure/repositories/PrismaChatContactRepository';
 import { PrismaChatConversationRepository } from '../modules/chat/infrastructure/repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from '../modules/chat/infrastructure/repositories/PrismaChatMessageRepository';
+import { PrismaChatMessageReactionRepository } from '../modules/chat/infrastructure/repositories/PrismaChatMessageReactionRepository';
 import { IngestIncomingMessageUseCase } from '../modules/chat/application/use-cases/IngestIncomingMessageUseCase';
+import { IngestMessageReactionUseCase } from '../modules/chat/application/use-cases/IngestMessageReactionUseCase';
 import { IngestHistorySyncUseCase } from '../modules/chat/application/use-cases/IngestHistorySyncUseCase';
 import { registerChatIncomingMessageListener } from '../modules/chat/infrastructure/listeners/ChatIncomingMessageListener';
 import { registerChatMessageStatusListener } from '../modules/chat/infrastructure/listeners/ChatMessageStatusListener';
+import { registerChatMessageReactionListener } from '../modules/chat/infrastructure/listeners/ChatMessageReactionListener';
 import { registerChatPresenceListener } from '../modules/chat/infrastructure/listeners/ChatPresenceListener';
 import { registerChatContactAvatarListener } from '../modules/chat/infrastructure/listeners/ChatContactAvatarListener';
 import { registerChatGroupAvatarListener } from '../modules/chat/infrastructure/listeners/ChatGroupAvatarListener';
@@ -64,6 +67,7 @@ async function start(): Promise<void> {
   const chatContactRepo      = new PrismaChatContactRepository(prisma);
   const chatConversationRepo = new PrismaChatConversationRepository(prisma);
   const chatMessageRepo      = new PrismaChatMessageRepository(prisma);
+  const chatReactionRepo     = new PrismaChatMessageReactionRepository(prisma);
   const ingestUseCase = new IngestIncomingMessageUseCase(
     chatContactRepo,
     chatConversationRepo,
@@ -76,6 +80,9 @@ async function start(): Promise<void> {
   );
   registerChatIncomingMessageListener(ingestUseCase);
   registerChatMessageStatusListener(chatMessageRepo);
+  registerChatMessageReactionListener(
+    new IngestMessageReactionUseCase(chatMessageRepo, chatReactionRepo, chatContactRepo),
+  );
   registerChatPresenceListener();
   registerChatContactAvatarListener(chatContactRepo);
   registerChatGroupAvatarListener(chatConversationRepo);
