@@ -9,6 +9,10 @@ import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CheckIcon from '@mui/icons-material/Check';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { ChatConversation, ConversationFilter, ConversationStatusFilter } from '../types';
 import { ConversationListItem } from './ConversationListItem';
 import { NewListDialog } from './NewListDialog';
@@ -88,7 +92,16 @@ interface Props {
   knownLists?: string[];
   /** Cria a lista `name` com as conversas marcadas no diálogo. Sem ele o chip ▾ não aparece. */
   onCreateList?: (name: string, conversationIds: string[]) => void;
+  /**
+   * Renomeia `oldName` para `newName` e deixa exatamente `conversationIds` na lista. Só as
+   * conversas carregadas contam: uma fora do painel (outra sessão, arquivada) não é tocada.
+   */
+  onUpdateList?: (oldName: string, newName: string, conversationIds: string[]) => void;
+  /** Remove `name` de todas as conversas carregadas. */
+  onDeleteList?: (name: string) => void;
 }
+
+type ListDialogState = { mode: 'create' } | { mode: 'edit'; name: string };
 
 // Memoizada: a página re-renderiza com o progresso de envio e as mensagens da conversa aberta;
 // com props estáveis, a lista de conversas não acompanha.
@@ -112,10 +125,16 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   onOpenActions,
   knownLists,
   onCreateList,
+  onUpdateList,
+  onDeleteList,
 }: Props) {
   const theme = useTheme();
   const [listsAnchor, setListsAnchor] = useState<HTMLElement | null>(null);
-  const [newListOpen, setNewListOpen] = useState(false);
+  const [listDialog, setListDialog] = useState<ListDialogState | null>(null);
+  // ⋮ de uma lista: menu com Editar/Excluir ancorado no botão que o abriu.
+  const [listActions, setListActions] = useState<{ name: string; anchor: HTMLElement } | null>(null);
+  const [deletingList, setDeletingList] = useState<string | null>(null);
+  const canManageLists = Boolean(onUpdateList || onDeleteList);
 
   const lists = useMemo(
     () => (knownLists ? [...knownLists].sort((a, b) => a.localeCompare(b)) : collectKnownLists(conversations)),
@@ -153,6 +172,15 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   });
 
   const totalUnread = countUnread(conversations);
+
+  const openListActions = (name: string, anchor: HTMLElement) => setListActions({ name, anchor });
+  // As ações fecham o ▾ junto: o ⋮ que ancorava o menu some com ele, então os dois saem no mesmo render.
+  const closeListActions = () => { setListActions(null); setListsAnchor(null); };
+  const startEditing = (name: string) => { closeListActions(); setListDialog({ mode: 'edit', name }); };
+  const startDeleting = (name: string) => { closeListActions(); setDeletingList(name); };
+  const editingIds = listDialog?.mode === 'edit'
+    ? conversations.filter((c) => c.lists?.includes(listDialog.name)).map((c) => c.id)
+    : undefined;
 
   const renderSessionLabel = (session: { name: string; phone: string | null }): string => {
     const phone = session.phone ? formatPhone(session.phone) : null;
@@ -333,6 +361,18 @@ export const ConversationSidebar = memo(function ConversationSidebar({
             sx={{ ...chipSx(activeList !== null), maxWidth: 200, '& .MuiChip-label': { display: 'flex', minWidth: 0 } }}
           />
         )}
+        {/* Com uma lista ativa, o ⋮ fica fora do chip: botão de verdade, alcançável pelo teclado */}
+        {onCreateList && canManageLists && activeList !== null && (
+          <IconButton
+            size="small"
+            aria-label={chatStrings.lists.itemActions(activeList)}
+            aria-haspopup="menu"
+            onClick={(e) => openListActions(activeList, e.currentTarget)}
+            sx={{ width: 26, height: 26, ml: -0.25, flexShrink: 0, color: 'primary.main' }}
+          >
+            <MoreVertIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        )}
       </Box>
 
       {onCreateList && (
@@ -370,24 +410,79 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
                   {count}
                 </Typography>
+                {canManageLists && (
+                  <IconButton
+                    size="small"
+                    edge="end"
+                    aria-label={chatStrings.lists.itemActions(name)}
+                    aria-haspopup="menu"
+                    onClick={(e) => { e.stopPropagation(); openListActions(name, e.currentTarget); }}
+                    sx={{ ml: 0.5, mr: -0.75, color: 'text.secondary' }}
+                  >
+                    <MoreVertIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                )}
               </MenuItem>
             );
           })}
           <Divider />
-          <MenuItem dense onClick={() => { setListsAnchor(null); setNewListOpen(true); }}>
+          <MenuItem dense onClick={() => { setListsAnchor(null); setListDialog({ mode: 'create' }); }}>
             <ListItemIcon sx={{ minWidth: 28 }}><AddIcon fontSize="small" /></ListItemIcon>
             <ListItemText>{chatStrings.lists.newList}</ListItemText>
           </MenuItem>
         </Menu>
       )}
 
+      {canManageLists && (
+        <Menu
+          anchorEl={listActions?.anchor ?? null}
+          open={Boolean(listActions)}
+          onClose={() => setListActions(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          MenuListProps={{ dense: true, 'aria-label': listActions ? chatStrings.lists.itemActions(listActions.name) : undefined }}
+        >
+          {onUpdateList && (
+            <MenuItem dense onClick={() => listActions && startEditing(listActions.name)}>
+              <ListItemIcon sx={{ minWidth: 28 }}><EditOutlinedIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{chatStrings.lists.editList}</ListItemText>
+            </MenuItem>
+          )}
+          {onDeleteList && (
+            <MenuItem dense onClick={() => listActions && startDeleting(listActions.name)} sx={{ color: 'error.main' }}>
+              <ListItemIcon sx={{ minWidth: 28, color: 'inherit' }}><DeleteOutlineIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{chatStrings.lists.deleteList}</ListItemText>
+            </MenuItem>
+          )}
+        </Menu>
+      )}
+
       {onCreateList && (
         <NewListDialog
-          open={newListOpen}
-          onClose={() => setNewListOpen(false)}
+          open={listDialog !== null}
+          onClose={() => setListDialog(null)}
           conversations={conversations}
           existingLists={lists}
-          onCreate={onCreateList}
+          mode={listDialog?.mode ?? 'create'}
+          initialName={listDialog?.mode === 'edit' ? listDialog.name : ''}
+          initialConversationIds={editingIds}
+          onSubmit={(name, ids) => {
+            if (listDialog?.mode === 'edit') onUpdateList?.(listDialog.name, name, ids);
+            else onCreateList(name, ids);
+          }}
+        />
+      )}
+
+      {onDeleteList && (
+        <ConfirmDialog
+          open={deletingList !== null}
+          title={chatStrings.lists.deleteTitle}
+          description={deletingList ? chatStrings.lists.deleteConfirm(deletingList, countInList(conversations, deletingList)) : ''}
+          confirmLabel={chatStrings.lists.deleteAction}
+          cancelLabel={chatStrings.lists.dialog.cancel}
+          confirmColor="error"
+          onConfirm={() => { if (deletingList) onDeleteList(deletingList); setDeletingList(null); }}
+          onClose={() => setDeletingList(null)}
         />
       )}
 

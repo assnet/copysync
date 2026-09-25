@@ -40,7 +40,9 @@ import {
 import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
 import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
 import { chatStrings } from '@/features/chat/strings';
-import { collectKnownLists, listFilter } from '@/features/chat/conversationFilters';
+import {
+  collectKnownLists, listFilter, listFilterName, planListUpdate, type ListUpdatePlan,
+} from '@/features/chat/conversationFilters';
 import { useOutgoingMedia, useOutgoingMediaItems } from '@/features/chat/media/OutgoingMediaProvider';
 import { overlayOutgoing } from '@/features/chat/media/outgoingMediaState';
 import { useMediaUploadConfig } from '@/features/chat/media/useMediaUploadConfig';
@@ -981,38 +983,69 @@ export default function ChatPage() {
     [loadConversations, showArchived],
   );
 
-  // Cria uma lista do painel: cada conversa marcada recebe o nome. Mesmo caminho do
-  // menu de ações (otimista + `updateConversationState`), só que em lote; as que
-  // falharem voltam ao estado anterior e o filtro só liga se alguma entrou.
-  const handleCreateList = useCallback(
-    (name: string, conversationIds: string[]) => {
+  // Grava `lists` em lote: otimista, `allSettled`, as que falharem voltam ao estado anterior
+  // e o snackbar avisa. Resolve com quantas entraram, para quem chamou decidir o filtro.
+  const commitListPlan = useCallback(
+    (plan: ListUpdatePlan[], failureMessage: (failed: number) => string): Promise<number> => {
       const previousLists = new Map<string, string[] | undefined>();
-      const nextLists = new Map<string, string[]>();
-      for (const c of conversations) {
-        if (!conversationIds.includes(c.id)) continue;
-        previousLists.set(c.id, c.lists);
-        nextLists.set(c.id, [...(c.lists ?? []).filter((l) => l !== name), name]);
-      }
+      for (const c of conversations) if (plan.some((p) => p.id === c.id)) previousLists.set(c.id, c.lists);
+      const nextLists = new Map(plan.map((p) => [p.id, p.lists]));
 
       setConversations((prev) =>
         prev.map((c) => (nextLists.has(c.id) ? { ...c, lists: nextLists.get(c.id) } : c)),
       );
 
-      void Promise.allSettled(
-        [...nextLists].map(([id, lists]) => chatService.updateConversationState(id, { lists })),
+      return Promise.allSettled(
+        plan.map((p) => chatService.updateConversationState(p.id, { lists: p.lists })),
       ).then((results) => {
-        const failedIds = [...nextLists.keys()].filter((_, i) => results[i].status === 'rejected');
+        const failedIds = plan.filter((_, i) => results[i].status === 'rejected').map((p) => p.id);
         if (failedIds.length > 0) {
-          console.error('Erro ao criar a lista', results.find((r) => r.status === 'rejected'));
+          console.error('Erro ao gravar a lista', results.find((r) => r.status === 'rejected'));
           setConversations((prev) =>
             prev.map((c) => (failedIds.includes(c.id) ? { ...c, lists: previousLists.get(c.id) } : c)),
           );
-          setErrorToast(chatStrings.lists.partialFailure(name, failedIds.length));
+          setErrorToast(failureMessage(failedIds.length));
         }
-        if (failedIds.length < nextLists.size) setFilter(listFilter(name));
+        return plan.length - failedIds.length;
       });
     },
     [conversations, setErrorToast],
+  );
+
+  // Cria uma lista do painel: cada conversa marcada recebe o nome. Mesmo caminho do
+  // menu de ações (otimista + `updateConversationState`), só que em lote; o filtro só
+  // liga se alguma entrou.
+  const handleCreateList = useCallback(
+    (name: string, conversationIds: string[]) => {
+      const plan: ListUpdatePlan[] = conversations
+        .filter((c) => conversationIds.includes(c.id))
+        .map((c) => ({ id: c.id, lists: [...(c.lists ?? []).filter((l) => l !== name), name] }));
+      void commitListPlan(plan, (failed) => chatStrings.lists.partialFailure(name, failed)).then((ok) => {
+        if (ok > 0) setFilter(listFilter(name));
+      });
+    },
+    [conversations, commitListPlan],
+  );
+
+  // Edita uma lista: regrava o nome novo nas conversas escolhidas e tira o antigo das demais.
+  // Só as carregadas contam — uma conversa fora do painel segue com o nome antigo.
+  const handleUpdateList = useCallback(
+    (oldName: string, newName: string, conversationIds: string[]) => {
+      const plan = planListUpdate(conversations, oldName, newName, conversationIds);
+      void commitListPlan(plan, (failed) => chatStrings.lists.updatePartialFailure(newName, failed));
+      setFilter((current) => (listFilterName(current) === oldName ? listFilter(newName) : current));
+    },
+    [conversations, commitListPlan],
+  );
+
+  // Exclui uma lista: remove o nome de todas as conversas carregadas; o filtro dela volta a Todos.
+  const handleDeleteList = useCallback(
+    (name: string) => {
+      const plan = planListUpdate(conversations, name, null);
+      void commitListPlan(plan, (failed) => chatStrings.lists.updatePartialFailure(name, failed));
+      setFilter((current) => (listFilterName(current) === name ? 'all' : current));
+    },
+    [conversations, commitListPlan],
   );
 
   // Abre a conversa direta com um participante de grupo pelo telefone
@@ -1117,6 +1150,8 @@ export default function ChatPage() {
         onToggleArchived={handleToggleArchived}
         knownLists={knownLists}
         onCreateList={handleCreateList}
+        onUpdateList={handleUpdateList}
+        onDeleteList={handleDeleteList}
       />
       </Box>
 

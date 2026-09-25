@@ -32,7 +32,7 @@ function render(mode?: 'light' | 'dark', existing: string[] = ['Auto peças']) {
   const onCreate = vi.fn();
   const onClose = vi.fn();
   renderWithTheme(
-    <NewListDialog open onClose={onClose} conversations={conversas} existingLists={existing} onCreate={onCreate} />,
+    <NewListDialog open onClose={onClose} conversations={conversas} existingLists={existing} onSubmit={onCreate} />,
     mode,
   );
   return { onCreate, onClose };
@@ -136,5 +136,74 @@ describe('NewListDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(onClose).toHaveBeenCalledTimes(2);
     expect(onCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewListDialog — modo edição', () => {
+  function renderEdit(mode?: 'light' | 'dark') {
+    const onSubmit = vi.fn();
+    const onClose = vi.fn();
+    renderWithTheme(
+      <NewListDialog
+        open
+        mode="edit"
+        initialName="Auto peças"
+        initialConversationIds={['a', 'g']}
+        onClose={onClose}
+        conversations={conversas}
+        existingLists={['Auto peças', 'Clientes']}
+        onSubmit={onSubmit}
+      />,
+      mode,
+    );
+    return { onSubmit, onClose };
+  }
+
+  it('abre com título Editar lista, nome preenchido e conversas marcadas', () => {
+    renderEdit('dark');
+
+    expect(screen.getByRole('dialog', { name: 'Editar lista' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome da lista')).toHaveValue('Auto peças');
+    expect(screen.getByRole('checkbox', { name: /Oficina Zé/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Mecânicos/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Peças Norte/ })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText('2 conversas selecionadas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled();
+  });
+
+  it('o próprio nome não conta como repetido, mas outra lista conta', async () => {
+    renderEdit();
+    const name = screen.getByLabelText('Nome da lista');
+
+    await userEvent.tab();
+    expect(screen.queryByText('Já existe uma lista com esse nome.')).not.toBeInTheDocument();
+
+    await userEvent.clear(name);
+    await userEvent.type(name, 'clientes');
+    await userEvent.tab();
+    expect(screen.getByText('Já existe uma lista com esse nome.')).toBeInTheDocument();
+  });
+
+  it('salvar envia o nome e o conjunto atual de ids, depois fecha', async () => {
+    const { onSubmit, onClose } = renderEdit('dark');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Mecânicos/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Peças Norte/ }));
+    const name = screen.getByLabelText('Nome da lista');
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Peças');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    expect(onSubmit).toHaveBeenCalledWith('Peças', ['a', 'b']);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('sem nenhuma conversa marcada, Salvar desabilita', async () => {
+    renderEdit();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Oficina Zé/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Mecânicos/ }));
+
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { ConversationSidebar } from './ConversationSidebar';
@@ -32,7 +32,12 @@ function render(
   filter: ConversationFilter,
   onFilterChange = vi.fn(),
   mode?: 'light' | 'dark',
-  extra: { conversations?: ChatConversation[]; onCreateList?: (name: string, ids: string[]) => void } = {},
+  extra: {
+    conversations?: ChatConversation[];
+    onCreateList?: (name: string, ids: string[]) => void;
+    onUpdateList?: (oldName: string, newName: string, ids: string[]) => void;
+    onDeleteList?: (name: string) => void;
+  } = {},
 ) {
   renderWithTheme(
     <ConversationSidebar
@@ -47,6 +52,8 @@ function render(
       filter={filter}
       onFilterChange={onFilterChange}
       onCreateList={extra.onCreateList}
+      onUpdateList={extra.onUpdateList}
+      onDeleteList={extra.onDeleteList}
     />,
     mode,
   );
@@ -140,5 +147,88 @@ describe('ConversationSidebar — chip de listas', () => {
 
     expect(screen.getByText('Nenhuma lista ainda')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Nova lista' })).toBeInTheDocument();
+  });
+});
+
+describe('ConversationSidebar — editar e excluir lista', () => {
+  const manage = () => ({ onCreateList: vi.fn(), onUpdateList: vi.fn(), onDeleteList: vi.fn() });
+
+  it('sem onUpdateList/onDeleteList, os itens não têm ⋮', async () => {
+    render('all', vi.fn(), undefined, { conversations: comListas, onCreateList: vi.fn() });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Listas' }));
+
+    expect(screen.queryByRole('button', { name: 'Ações da lista Auto peças' })).not.toBeInTheDocument();
+  });
+
+  it('o ⋮ de um item abre Editar lista e Excluir lista', async () => {
+    render('all', vi.fn(), 'dark', { conversations: comListas, ...manage() });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Listas' }));
+    const actions = screen.getByRole('button', { name: 'Ações da lista Auto peças' });
+    expect(actions).toHaveAttribute('aria-haspopup', 'menu');
+    await userEvent.click(actions);
+
+    expect(screen.getByRole('menuitem', { name: 'Editar lista' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Excluir lista' })).toBeInTheDocument();
+  });
+
+  it('Editar lista abre o diálogo com nome e conversas da lista e salva pelo onUpdateList', async () => {
+    const handlers = manage();
+    render('all', vi.fn(), 'dark', { conversations: comListas, ...handlers });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Listas' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ações da lista Auto peças' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Editar lista' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Editar lista' });
+    expect(within(dialog).getByLabelText('Nome da lista')).toHaveValue('Auto peças');
+    expect(within(dialog).getByRole('checkbox', { name: /Oficina Zé/ })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).getByRole('checkbox', { name: /Peças Norte/ })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).getByRole('checkbox', { name: /Sem lista/ })).toHaveAttribute('aria-checked', 'false');
+
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: /Peças Norte/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    expect(handlers.onUpdateList).toHaveBeenCalledWith('Auto peças', 'Auto peças', ['p1']);
+    expect(handlers.onCreateList).not.toHaveBeenCalled();
+  });
+
+  async function openDeleteConfirm() {
+    await userEvent.click(screen.getByRole('button', { name: 'Listas' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ações da lista Auto peças' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Excluir lista' }));
+    return screen.getByRole('dialog', { name: 'Excluir lista?' });
+  }
+
+  it('Excluir lista pede confirmação com a contagem; Cancelar não exclui', async () => {
+    const handlers = manage();
+    render('all', vi.fn(), 'dark', { conversations: comListas, ...handlers });
+
+    const dialog = await openDeleteConfirm();
+    expect(within(dialog).getByText('A lista Auto peças será removida de 2 conversas. As conversas continuam no painel.')).toBeInTheDocument();
+    expect(handlers.onDeleteList).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    expect(handlers.onDeleteList).not.toHaveBeenCalled();
+  });
+
+  it('confirmar a exclusão chama onDeleteList com o nome', async () => {
+    const handlers = manage();
+    render('all', vi.fn(), undefined, { conversations: comListas, ...handlers });
+
+    const dialog = await openDeleteConfirm();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }));
+
+    expect(handlers.onDeleteList).toHaveBeenCalledWith('Auto peças');
+  });
+
+  it('com a lista ativa, um ⋮ ao lado do chip abre as mesmas ações', async () => {
+    render('list:Clientes', vi.fn(), 'dark', { conversations: comListas, ...manage() });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ações da lista Clientes' }));
+
+    expect(screen.getByRole('menuitem', { name: 'Editar lista' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Excluir lista' })).toBeInTheDocument();
   });
 });

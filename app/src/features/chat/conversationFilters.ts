@@ -42,3 +42,39 @@ export function validateListName(raw: string, existing: ReadonlyArray<string>): 
   if (existing.some((e) => e.trim().toLowerCase() === lower)) return 'duplicate';
   return null;
 }
+
+export interface ListUpdatePlan {
+  id: string;
+  lists: string[];
+}
+
+/**
+ * Planeja renomear, reorganizar ou excluir uma lista. Uma lista não tem registro próprio:
+ * é o nome gravado em `lists` de cada conversa, então mudar a lista é regravar esse campo
+ * conversa a conversa. Devolve só as que mudam, com o `lists` final de cada uma.
+ *
+ * - `oldName` sai de todas as conversas que o carregam
+ * - `newName` entra nas conversas de `memberIds` (sem repetir, no fim da lista)
+ * - `newName === null` é exclusão: `memberIds` é ignorado
+ *
+ * Só as conversas recebidas contam: quem não está carregado no painel fica como está.
+ */
+export function planListUpdate(
+  conversations: ReadonlyArray<Pick<ChatConversation, 'id' | 'lists'>>,
+  oldName: string,
+  newName: string | null,
+  memberIds: ReadonlyArray<string> = [],
+): ListUpdatePlan[] {
+  const members = newName === null ? new Set<string>() : new Set(memberIds);
+  const plan: ListUpdatePlan[] = [];
+  for (const c of conversations) {
+    const current = c.lists ?? [];
+    const without = current.filter((l) => l !== oldName);
+    const next = members.has(c.id) && newName !== null
+      ? [...without.filter((l) => l !== newName), newName]
+      : without;
+    const changed = next.length !== current.length || next.some((l, i) => l !== current[i]);
+    if (changed) plan.push({ id: c.id, lists: next });
+  }
+  return plan;
+}

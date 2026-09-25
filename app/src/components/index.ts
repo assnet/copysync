@@ -3,3 +3,4 @@ export { PageHeader } from './PageHeader';
 export { StatCard } from './StatCard';
 export { EmptyState } from './EmptyState';
 export { SectionCard } from './SectionCard';
+export { ConfirmDialog } from './ConfirmDialog';

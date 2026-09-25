@@ -223,9 +223,19 @@ export const chatStrings = {
     menuItem: (name: string, count: number): string => `${name}, ${countOf(count, 'conversa', 'conversas')}`,
     /** Chip ativo com o filtro de lista: nome e contagem. */
     activeChip: (name: string, count: number): string => (count > 0 ? `${name} ${count}` : name),
+    /** `aria-label` do ⋮ que abre editar/excluir de uma lista. */
+    itemActions: (name: string): string => `Ações da lista ${name}`,
+    editList: 'Editar lista',
+    deleteList: 'Excluir lista',
+    /** Confirmação de exclusão: o nome some das conversas carregadas, sem apagar conversa. */
+    deleteTitle: 'Excluir lista?',
+    deleteConfirm: (name: string, count: number): string =>
+      `A lista ${name} será removida de ${countOf(count, 'conversa', 'conversas')}. As conversas continuam no painel.`,
+    deleteAction: 'Excluir',
 
     dialog: {
       title: 'Nova lista',
+      editTitle: 'Editar lista',
       /** Explica o modelo: a lista existe pelas conversas que estão nela. */
       intro: 'Dê um nome e escolha as conversas que vão para a lista.',
       nameLabel: 'Nome da lista',
@@ -240,7 +250,8 @@ export const chatStrings = {
         count === 0 ? 'Nenhuma conversa selecionada' : `${countOf(count, 'conversa selecionada', 'conversas selecionadas')}`,
       cancel: 'Cancelar',
       create: 'Criar',
-      /** Tooltip do Criar desabilitado. */
+      save: 'Salvar',
+      /** Tooltip do Criar/Salvar desabilitado. */
       createHint: 'Informe um nome e escolha ao menos uma conversa',
       errors: {
         empty: 'Informe um nome para a lista.',
@@ -252,6 +263,9 @@ export const chatStrings = {
     /** Snackbar quando parte das conversas não entrou na lista. */
     partialFailure: (name: string, failed: number): string =>
       `${countOf(failed, 'conversa não entrou', 'conversas não entraram')} na lista ${name}. Tente de novo.`,
+    /** Snackbar quando parte das conversas não foi regravada ao editar ou excluir. */
+    updatePartialFailure: (name: string, failed: number): string =>
+      `${countOf(failed, 'conversa não foi atualizada', 'conversas não foram atualizadas')} na lista ${name}. Tente de novo.`,
   },
 
   /** Textos internos do seletor completo de emojis. */

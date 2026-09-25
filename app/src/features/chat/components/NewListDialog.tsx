@@ -18,8 +18,12 @@ interface Props {
   conversations: ChatConversation[];
   /** Nomes já usados: um nome repetido (sem diferenciar maiúsculas) é recusado. */
   existingLists: string[];
-  /** Nome aparado e ids das conversas marcadas. */
-  onCreate: (name: string, conversationIds: string[]) => void;
+  /** Nome aparado e ids das conversas marcadas. Em `edit`, é o conjunto final da lista. */
+  onSubmit: (name: string, conversationIds: string[]) => void;
+  /** `edit` abre com nome e conversas da lista preenchidos; o próprio nome não conta como repetido. */
+  mode?: 'create' | 'edit';
+  initialName?: string;
+  initialConversationIds?: string[];
 }
 
 const strings = chatStrings.lists.dialog;
@@ -34,30 +38,42 @@ function displayTitle(c: ChatConversation): string {
 }
 
 /**
- * Cria uma lista do painel escolhendo as conversas que a compõem.
+ * Cria ou edita uma lista do painel escolhendo as conversas que a compõem.
  *
  * Não há catálogo de listas por tenant: a lista existe enquanto ao menos uma conversa a
  * carrega. Por isso o diálogo exige uma conversa marcada — sem ela a lista sumiria ao fechar.
+ * Em `edit`, só as conversas carregadas no painel entram no conjunto: uma que esteja fora
+ * (outra sessão, arquivada) não aparece aqui e não é tocada ao salvar.
  */
-export function NewListDialog({ open, onClose, conversations, existingLists, onCreate }: Props) {
+export function NewListDialog({
+  open, onClose, conversations, existingLists, onSubmit,
+  mode = 'create', initialName = '', initialConversationIds,
+}: Props) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const editing = mode === 'edit';
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName);
   const [nameTouched, setNameTouched] = useState(false);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialConversationIds));
 
-  // Cada abertura começa limpa: a lista anterior já foi criada ou descartada.
+  // Cada abertura parte do estado inicial: em `create` limpo, em `edit` com a lista atual.
   useEffect(() => {
     if (!open) return;
-    setName('');
+    setName(initialName);
     setNameTouched(false);
     setSearch('');
-    setSelected(new Set());
+    setSelected(new Set(initialConversationIds));
+    // Só na abertura: os iniciais mudando com o diálogo aberto não devem descartar o que o operador editou.
   }, [open]);
 
-  const nameError = validateListName(name, existingLists);
+  // Em edição o nome atual é da própria lista, não uma repetição.
+  const otherLists = useMemo(
+    () => (editing ? existingLists.filter((l) => l.trim().toLowerCase() !== initialName.trim().toLowerCase()) : existingLists),
+    [editing, existingLists, initialName],
+  );
+  const nameError = validateListName(name, otherLists);
   const showNameError = nameTouched && nameError !== null;
 
   const visible = useMemo(() => {
@@ -84,7 +100,7 @@ export function NewListDialog({ open, onClose, conversations, existingLists, onC
       setNameTouched(true);
       return;
     }
-    onCreate(name.trim(), [...selected]);
+    onSubmit(name.trim(), [...selected]);
     onClose();
   };
 
@@ -99,7 +115,7 @@ export function NewListDialog({ open, onClose, conversations, existingLists, onC
       aria-describedby="new-list-dialog-intro"
     >
       <DialogTitle id="new-list-dialog-title" sx={{ fontWeight: 700, pb: 0.5 }}>
-        {strings.title}
+        {editing ? strings.editTitle : strings.title}
       </DialogTitle>
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
@@ -202,7 +218,7 @@ export function NewListDialog({ open, onClose, conversations, existingLists, onC
         <Tooltip title={canCreate ? '' : strings.createHint}>
           <span>
             <Button variant="contained" disableElevation disabled={!canCreate} onClick={handleCreate}>
-              {strings.create}
+              {editing ? strings.save : strings.create}
             </Button>
           </span>
         </Tooltip>
