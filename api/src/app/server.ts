@@ -14,6 +14,10 @@ import { PrismaChatMessageReactionRepository } from '../modules/chat/infrastruct
 import { IngestIncomingMessageUseCase } from '../modules/chat/application/use-cases/IngestIncomingMessageUseCase';
 import { IngestMessageReactionUseCase } from '../modules/chat/application/use-cases/IngestMessageReactionUseCase';
 import { IngestHistorySyncUseCase } from '../modules/chat/application/use-cases/IngestHistorySyncUseCase';
+import { FailOrphanPendingMediaUseCase } from '../modules/chat/application/use-cases/FailOrphanPendingMediaUseCase';
+import { ReconcileInterruptedUploadsUseCase } from '../modules/chat/application/use-cases/ReconcileInterruptedUploadsUseCase';
+import type { IMessageStatusPublisher } from '../modules/chat/application/contracts/IMessageStatusPublisher';
+import { chatWsPublisher } from '../modules/chat/infrastructure/ws/ChatWebSocketPublisher';
 import { registerChatIncomingMessageListener } from '../modules/chat/infrastructure/listeners/ChatIncomingMessageListener';
 import { registerChatMessageStatusListener } from '../modules/chat/infrastructure/listeners/ChatMessageStatusListener';
 import { registerChatMessageReactionListener } from '../modules/chat/infrastructure/listeners/ChatMessageReactionListener';
@@ -65,6 +69,42 @@ async function start(): Promise<void> {
     logger.error({ err }, 'Media module initialization failed');
   }
 
+  // ── Chat repositories ──────────────────────────────────────────────────────
+  const chatContactRepo      = new PrismaChatContactRepository(prisma);
+  const chatConversationRepo = new PrismaChatConversationRepository(prisma);
+  const chatMessageRepo      = new PrismaChatMessageRepository(prisma);
+  const chatReactionRepo     = new PrismaChatMessageReactionRepository(prisma);
+
+  // Porta de status ligada ao WebSocket do chat (despacho, retry e recuperação de mídia).
+  const messageStatusPublisher: IMessageStatusPublisher = {
+    publishStatusUpdated: (event) =>
+      chatWsPublisher.publish(event.tenantId, { event: 'chat.message.status.updated', data: event }),
+  };
+
+  // ── Mídia pendente órfã ────────────────────────────────────────────────────
+  // Antes do listen: a fila é memória, então todo PENDING do banco ficou sem envio. Só com
+  // MEDIA_PENDING_RECOVERY_ENABLED (Render) — `api/.env` aponta para produção e um `pnpm dev`
+  // não pode falhar mídia que a produção ainda envia. A varredura periódica (`runPeriodic`)
+  // é agendada junto com a fila. Nunca lança; o try/catch só guarda o boot.
+  const failOrphanPendingMedia = new FailOrphanPendingMediaUseCase(chatMessageRepo, messageStatusPublisher, {
+    enabled:      env.MEDIA_PENDING_RECOVERY_ENABLED,
+    staleMinutes: env.MEDIA_PENDING_STALE_MINUTES,
+  });
+  try {
+    await failOrphanPendingMedia.runBoot();
+  } catch (err) {
+    logger.error({ err }, 'Pending media recovery failed on startup');
+  }
+
+  // ── Uploads interrompidos no meio do consumo ───────────────────────────────
+  // Antes da varredura de uploads (que apagaria um CONSUMING vencido sem olhar se virou
+  // mensagem). No banco, só leitura — seguro sem flag.
+  try {
+    await new ReconcileInterruptedUploadsUseCase(mediaContainer.uploadStore, chatMessageRepo).execute();
+  } catch (err) {
+    logger.error({ err }, 'Interrupted upload reconciliation failed on startup');
+  }
+
   // ── Start HTTP server ──────────────────────────────────────────────────────
   try {
     await app.listen({ port: env.PORT, host: env.HOST });
@@ -91,10 +131,6 @@ async function start(): Promise<void> {
   }
 
   // ── Register chat listeners ────────────────────────────────────────────────
-  const chatContactRepo      = new PrismaChatContactRepository(prisma);
-  const chatConversationRepo = new PrismaChatConversationRepository(prisma);
-  const chatMessageRepo      = new PrismaChatMessageRepository(prisma);
-  const chatReactionRepo     = new PrismaChatMessageReactionRepository(prisma);
   const ingestUseCase = new IngestIncomingMessageUseCase(
     chatContactRepo,
     chatConversationRepo,
