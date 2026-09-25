@@ -23,7 +23,16 @@ export type MessageDirection = 'in' | 'out';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 /** Filtro de exibição na lista de conversas */
-export type ConversationFilter = 'all' | 'unread' | 'favorite' | 'open' | 'waiting' | 'bot' | 'closed';
+export type ConversationFilter = ConversationStatusFilter | ConversationListFilter;
+
+/** Filtros fixos da barra: status e marcações. */
+export type ConversationStatusFilter = 'all' | 'unread' | 'favorite' | 'open' | 'waiting' | 'bot' | 'closed';
+
+/**
+ * Filtro por lista do painel (`list:<nome>`). Monte e leia com `listFilter` e
+ * `listFilterName` em `conversationFilters.ts` — nunca concatene o prefixo no JSX.
+ */
+export type ConversationListFilter = `list:${string}`;
 
 // ── Entities ──────────────────────────────────────────────────────────────────
 

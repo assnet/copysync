@@ -40,6 +40,7 @@ import {
 import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
 import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
 import { chatStrings } from '@/features/chat/strings';
+import { collectKnownLists, listFilter } from '@/features/chat/conversationFilters';
 import { useOutgoingMedia, useOutgoingMediaItems } from '@/features/chat/media/OutgoingMediaProvider';
 import { overlayOutgoing } from '@/features/chat/media/outgoingMediaState';
 import { useMediaUploadConfig } from '@/features/chat/media/useMediaUploadConfig';
@@ -929,11 +930,7 @@ export default function ChatPage() {
     : null;
 
   // Listas já usadas, para reaproveitar os nomes ao classificar outra conversa.
-  const knownLists = useMemo(() => {
-    const all = new Set<string>();
-    for (const c of conversations) for (const l of c.lists ?? []) all.add(l);
-    return [...all].sort();
-  }, [conversations]);
+  const knownLists = useMemo(() => collectKnownLists(conversations), [conversations]);
 
   const handleConversationStateChange = useCallback(
     (conversationId: string, change: ConversationStateChange) => {
@@ -982,6 +979,40 @@ export default function ChatPage() {
         });
     },
     [loadConversations, showArchived],
+  );
+
+  // Cria uma lista do painel: cada conversa marcada recebe o nome. Mesmo caminho do
+  // menu de ações (otimista + `updateConversationState`), só que em lote; as que
+  // falharem voltam ao estado anterior e o filtro só liga se alguma entrou.
+  const handleCreateList = useCallback(
+    (name: string, conversationIds: string[]) => {
+      const previousLists = new Map<string, string[] | undefined>();
+      const nextLists = new Map<string, string[]>();
+      for (const c of conversations) {
+        if (!conversationIds.includes(c.id)) continue;
+        previousLists.set(c.id, c.lists);
+        nextLists.set(c.id, [...(c.lists ?? []).filter((l) => l !== name), name]);
+      }
+
+      setConversations((prev) =>
+        prev.map((c) => (nextLists.has(c.id) ? { ...c, lists: nextLists.get(c.id) } : c)),
+      );
+
+      void Promise.allSettled(
+        [...nextLists].map(([id, lists]) => chatService.updateConversationState(id, { lists })),
+      ).then((results) => {
+        const failedIds = [...nextLists.keys()].filter((_, i) => results[i].status === 'rejected');
+        if (failedIds.length > 0) {
+          console.error('Erro ao criar a lista', results.find((r) => r.status === 'rejected'));
+          setConversations((prev) =>
+            prev.map((c) => (failedIds.includes(c.id) ? { ...c, lists: previousLists.get(c.id) } : c)),
+          );
+          setErrorToast(chatStrings.lists.partialFailure(name, failedIds.length));
+        }
+        if (failedIds.length < nextLists.size) setFilter(listFilter(name));
+      });
+    },
+    [conversations, setErrorToast],
   );
 
   // Abre a conversa direta com um participante de grupo pelo telefone
@@ -1084,6 +1115,8 @@ export default function ChatPage() {
         onNewConversation={openNewConversation}
         onOpenActions={openConversationActions}
         onToggleArchived={handleToggleArchived}
+        knownLists={knownLists}
+        onCreateList={handleCreateList}
       />
       </Box>
 

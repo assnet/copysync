@@ -35,8 +35,9 @@ export const chatStrings = {
   composer: {
     placeholder: 'Digite uma mensagem... (Enter para enviar)',
     send: 'Enviar (Enter)',
-    /** Tooltips dos botões ainda desabilitados enquanto o recurso não está ligado. */
-    emojiSoon: 'Emoji (em breve)',
+    /** Botão que abre o seletor de emoji (tooltip e `aria-label`). */
+    emoji: 'Emoji',
+    /** Tooltip do botão ainda desabilitado enquanto o recurso não está ligado. */
     attachSoon: 'Anexar (em breve)',
     /** Clipe e microfone habilitados. */
     attach: 'Anexar',
@@ -207,6 +208,50 @@ export const chatStrings = {
       sessionDisconnected: 'Sessão desconectada. Reconecte para reagir.',
       rateLimited: 'Muitas reações seguidas. Aguarde um instante.',
     },
+  },
+
+  /** Listas do painel: chip ▾ da barra de filtros e diálogo de nova lista. */
+  lists: {
+    /** `aria-label` do chip ▾ e título do menu. */
+    menuLabel: 'Listas',
+    /** Rótulo do chip enquanto nenhuma lista está filtrando. */
+    chip: 'Listas',
+    newList: 'Nova lista',
+    /** Item do menu quando nenhuma conversa tem lista ainda. */
+    empty: 'Nenhuma lista ainda',
+    /** Item de lista no menu: nome e quantidade de conversas. */
+    menuItem: (name: string, count: number): string => `${name}, ${countOf(count, 'conversa', 'conversas')}`,
+    /** Chip ativo com o filtro de lista: nome e contagem. */
+    activeChip: (name: string, count: number): string => (count > 0 ? `${name} ${count}` : name),
+
+    dialog: {
+      title: 'Nova lista',
+      /** Explica o modelo: a lista existe pelas conversas que estão nela. */
+      intro: 'Dê um nome e escolha as conversas que vão para a lista.',
+      nameLabel: 'Nome da lista',
+      namePlaceholder: 'Ex.: Auto peças',
+      searchLabel: 'Buscar conversa',
+      searchPlaceholder: 'Buscar por nome ou número',
+      conversationsLabel: 'Conversas',
+      noResults: 'Nenhuma conversa encontrada.',
+      group: 'Grupo',
+      /** Contador abaixo da lista. Plural resolvido aqui. */
+      selectedCount: (count: number): string =>
+        count === 0 ? 'Nenhuma conversa selecionada' : `${countOf(count, 'conversa selecionada', 'conversas selecionadas')}`,
+      cancel: 'Cancelar',
+      create: 'Criar',
+      /** Tooltip do Criar desabilitado. */
+      createHint: 'Informe um nome e escolha ao menos uma conversa',
+      errors: {
+        empty: 'Informe um nome para a lista.',
+        tooLong: (max: number): string => `Use até ${countOf(max, 'caractere', 'caracteres')}.`,
+        duplicate: 'Já existe uma lista com esse nome.',
+      },
+    },
+
+    /** Snackbar quando parte das conversas não entrou na lista. */
+    partialFailure: (name: string, failed: number): string =>
+      `${countOf(failed, 'conversa não entrou', 'conversas não entraram')} na lista ${name}. Tente de novo.`,
   },
 
   /** Textos internos do seletor completo de emojis. */

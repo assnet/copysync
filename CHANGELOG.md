@@ -23,6 +23,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Listas na barra de filtros e emoji no composer (`0.13.0`)
+
+Chip ▾ ao fim da faixa `Tudo · Não lidas · Favoritas · …`, como no WhatsApp Web: abre as listas
+do painel (ordem alfabética, com contagem) e "Nova lista". Com uma lista ativa o chip mostra o
+nome e a contagem. Modelo inalterado: lista = nome gravado em cada conversa; existe enquanto ao
+menos uma conversa a carrega, por isso o diálogo exige uma conversa marcada.
+
+- **`conversationFilters.ts`** (+ teste) — filtro `list:<nome>` (`listFilter`/`listFilterName`), `collectKnownLists`, `countInList` e `validateListName` (aparado, ≤ 40, sem repetir sem diferenciar maiúsculas); **`types.ts`** — `ConversationFilter` = `ConversationStatusFilter | ConversationListFilter`
+- **`ConversationSidebar.tsx`** — chip ▾ (`aria-haspopup="menu"`), menu das listas e diálogo; props `knownLists` e `onCreateList(name, ids)` (sem o callback o chip não aparece)
+- **`NewListDialog.tsx`** (+ teste) — nome com validação inline, busca, conversas com checkbox e contador; Criar só com nome válido e ≥ 1 conversa; tela cheia no mobile
+- **`ChatPage.tsx`** — `handleCreateList`: otimista + `updateConversationState` em lote (`allSettled`); as que falham voltam e o snackbar avisa; o filtro da lista liga se alguma entrou
+- **`strings.ts`** — grupo `lists`
+- **`MessageComposer.tsx`** — botão de emoji habilitado: abre o `EmojiPicker` das reações num popover acima do botão, insere na posição do cursor (substitui seleção), mantém o foco no campo e o popover aberto para escolher mais; desabilitado com conversa encerrada ou barra de voz aberta
+
 #### Chat — Anexos e mensagem de voz (`0.12.0`)
 
 O operador envia documento, foto, vídeo (até 180 MB) e mensagem de voz gravada no navegador, em

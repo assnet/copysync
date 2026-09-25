@@ -1,16 +1,24 @@
-import { memo } from 'react';
-import { Box, Typography, TextField, InputAdornment, Divider, Button, Chip, IconButton, ListItemButton, alpha, useTheme } from '@mui/material';
+import { memo, useMemo, useState } from 'react';
+import {
+  Box, Typography, TextField, InputAdornment, Divider, Button, Chip, IconButton, ListItemButton,
+  Menu, MenuItem, ListItemIcon, ListItemText, alpha, useTheme,
+} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import type { ChatConversation, ConversationFilter } from '../types';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import CheckIcon from '@mui/icons-material/Check';
+import type { ChatConversation, ConversationFilter, ConversationStatusFilter } from '../types';
 import { ConversationListItem } from './ConversationListItem';
+import { NewListDialog } from './NewListDialog';
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
 import { formatPhone, isUnread, countUnread } from '../utils';
+import { chatStrings } from '../strings';
+import { collectKnownLists, countInList, listFilter, listFilterName } from '../conversationFilters';
 
 interface FilterOption {
-  value: ConversationFilter;
+  value: ConversationStatusFilter;
   label: string;
 }
 
@@ -24,7 +32,23 @@ const FILTER_OPTIONS: FilterOption[] = [
   { value: 'closed',  label: 'Enc.' },
 ];
 
+function matchesFilter(c: ChatConversation, filter: ConversationFilter): boolean {
+  const list = listFilterName(filter);
+  if (list !== null) return c.lists?.includes(list) ?? false;
+  return (
+    filter === 'all' ||
+    (filter === 'unread'  && isUnread(c)) ||
+    (filter === 'favorite' && c.favorite === true) ||
+    (filter === 'open'    && c.status === 'open') ||
+    (filter === 'waiting' && c.status === 'waiting') ||
+    (filter === 'bot'     && c.status === 'bot') ||
+    (filter === 'closed'  && c.status === 'closed')
+  );
+}
+
 function getFilterCount(conversations: ChatConversation[], filter: ConversationFilter): number {
+  const list = listFilterName(filter);
+  if (list !== null)        return countInList(conversations, list);
   if (filter === 'all')     return conversations.length;
   if (filter === 'unread')  return conversations.filter(isUnread).length;
   if (filter === 'favorite') return conversations.filter((c) => c.favorite === true).length;
@@ -57,6 +81,13 @@ interface Props {
   onNewConversation?: () => void;
   /** Abre o menu de ações de uma conversa. */
   onOpenActions?: (conversationId: string, anchor: HTMLElement) => void;
+  /**
+   * Listas do painel para o chip ▾. Quando ausente, é derivada das conversas
+   * recebidas — passe a união de todas as carregadas para não perder nomes filtrados.
+   */
+  knownLists?: string[];
+  /** Cria a lista `name` com as conversas marcadas no diálogo. Sem ele o chip ▾ não aparece. */
+  onCreateList?: (name: string, conversationIds: string[]) => void;
 }
 
 // Memoizada: a página re-renderiza com o progresso de envio e as mensagens da conversa aberta;
@@ -79,8 +110,18 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   onToggleArchived,
   onNewConversation,
   onOpenActions,
+  knownLists,
+  onCreateList,
 }: Props) {
   const theme = useTheme();
+  const [listsAnchor, setListsAnchor] = useState<HTMLElement | null>(null);
+  const [newListOpen, setNewListOpen] = useState(false);
+
+  const lists = useMemo(
+    () => (knownLists ? [...knownLists].sort((a, b) => a.localeCompare(b)) : collectKnownLists(conversations)),
+    [knownLists, conversations],
+  );
+  const activeList = listFilterName(filter);
 
   const filtered = conversations.filter((c) => {
     const q = search.toLowerCase();
@@ -90,16 +131,25 @@ export const ConversationSidebar = memo(function ConversationSidebar({
       c.contact.phone.includes(search) ||
       c.lastMessage.toLowerCase().includes(q);
 
-    const matchesFilter =
-      filter === 'all' ||
-      (filter === 'unread'  && isUnread(c)) ||
-      (filter === 'favorite' && c.favorite === true) ||
-      (filter === 'open'    && c.status === 'open') ||
-      (filter === 'waiting' && c.status === 'waiting') ||
-      (filter === 'bot'     && c.status === 'bot') ||
-      (filter === 'closed'  && c.status === 'closed');
+    return matchesSearch && matchesFilter(c, filter);
+  });
 
-    return matchesSearch && matchesFilter;
+  const chipSx = (active: boolean) => ({
+    height: 26,
+    fontSize: 12,
+    cursor: 'pointer',
+    fontWeight: active ? 700 : 500,
+    bgcolor: active
+      ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.1)
+      : alpha(theme.palette.text.primary, 0.05),
+    color: active ? 'primary.main' : 'text.secondary',
+    border: active ? `1px solid ${alpha(theme.palette.primary.main, 0.3)}` : '1px solid transparent',
+    '&:hover': {
+      bgcolor: active
+        ? alpha(theme.palette.primary.main, 0.2)
+        : alpha(theme.palette.text.primary, 0.08),
+    },
+    flexShrink: 0,
   });
 
   const totalUnread = countUnread(conversations);
@@ -250,34 +300,96 @@ export const ConversationSidebar = memo(function ConversationSidebar({
       >
         {FILTER_OPTIONS.map((opt) => {
           const count = getFilterCount(conversations, opt.value);
-          const active = filter === opt.value;
           return (
             <Chip
               key={opt.value}
               label={count > 0 && opt.value !== 'all' ? `${opt.label} ${count}` : opt.label}
               size="small"
               onClick={() => onFilterChange(opt.value)}
-              sx={{
-                height: 26,
-                fontSize: 12,
-                cursor: 'pointer',
-                fontWeight: active ? 700 : 500,
-                bgcolor: active
-                  ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.1)
-                  : alpha(theme.palette.text.primary, 0.05),
-                color: active ? 'primary.main' : 'text.secondary',
-                border: active ? `1px solid ${alpha(theme.palette.primary.main, 0.3)}` : '1px solid transparent',
-                '&:hover': {
-                  bgcolor: active
-                    ? alpha(theme.palette.primary.main, 0.2)
-                    : alpha(theme.palette.text.primary, 0.08),
-                },
-                flexShrink: 0,
-              }}
+              sx={chipSx(filter === opt.value)}
             />
           );
         })}
+
+        {/* Listas do painel, como o ▾ do WhatsApp Web: o chip vira o nome da lista ativa */}
+        {onCreateList && (
+          <Chip
+            label={
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', minWidth: 0 }}>
+                <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activeList !== null
+                    ? chatStrings.lists.activeChip(activeList, getFilterCount(conversations, filter))
+                    : chatStrings.lists.chip}
+                </Box>
+                <ArrowDropDownIcon aria-hidden sx={{ fontSize: 18, ml: 0.25, mr: -0.5, flexShrink: 0 }} />
+              </Box>
+            }
+            size="small"
+            onClick={(e) => setListsAnchor(e.currentTarget)}
+            aria-label={chatStrings.lists.menuLabel}
+            aria-haspopup="menu"
+            aria-expanded={listsAnchor ? true : undefined}
+            aria-controls={listsAnchor ? 'conversation-lists-menu' : undefined}
+            sx={{ ...chipSx(activeList !== null), maxWidth: 200, '& .MuiChip-label': { display: 'flex', minWidth: 0 } }}
+          />
+        )}
       </Box>
+
+      {onCreateList && (
+        <Menu
+          id="conversation-lists-menu"
+          anchorEl={listsAnchor}
+          open={Boolean(listsAnchor)}
+          onClose={() => setListsAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+          MenuListProps={{ dense: true, 'aria-label': chatStrings.lists.menuLabel }}
+        >
+          {lists.length === 0 && (
+            <MenuItem disabled dense>
+              <ListItemText>{chatStrings.lists.empty}</ListItemText>
+            </MenuItem>
+          )}
+          {lists.map((name) => {
+            const count = countInList(conversations, name);
+            const active = activeList === name;
+            return (
+              <MenuItem
+                key={name}
+                dense
+                selected={active}
+                aria-label={chatStrings.lists.menuItem(name, count)}
+                onClick={() => { onFilterChange(listFilter(name)); setListsAnchor(null); }}
+              >
+                <ListItemIcon sx={{ minWidth: 28 }}>
+                  {active && <CheckIcon fontSize="small" color="primary" />}
+                </ListItemIcon>
+                <ListItemText primaryTypographyProps={{ noWrap: true }} sx={{ maxWidth: 200 }}>
+                  {name}
+                </ListItemText>
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+                  {count}
+                </Typography>
+              </MenuItem>
+            );
+          })}
+          <Divider />
+          <MenuItem dense onClick={() => { setListsAnchor(null); setNewListOpen(true); }}>
+            <ListItemIcon sx={{ minWidth: 28 }}><AddIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>{chatStrings.lists.newList}</ListItemText>
+          </MenuItem>
+        </Menu>
+      )}
+
+      {onCreateList && (
+        <NewListDialog
+          open={newListOpen}
+          onClose={() => setNewListOpen(false)}
+          conversations={conversations}
+          existingLists={lists}
+          onCreate={onCreateList}
+        />
+      )}
 
       <Divider />
 
