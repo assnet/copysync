@@ -11,6 +11,7 @@ import {
   EngineTemporarilyUnavailableError,
   RecoverableConnectionError,
   PairingFailedError,
+  MessageSendFailedError,
 } from '../../../../../shared/errors/internal/MessagingErrors';
 import {
   SessionExpiredError,
@@ -148,4 +149,22 @@ export function translateEngineError(err: unknown): AppError {
   }
 
   return new EngineNotReadyError();
+}
+
+/**
+ * Traduz a falha de um envio pontual (ex.: reação).
+ *
+ * Sessão fora do ar ou expirada mantém o erro de sessão; qualquer outra falha vira
+ * MESSAGE_SEND_FAILED. A mensagem crua da lib não sobe — só o código.
+ */
+export function translateSendError(err: unknown, reason: string): AppError {
+  const translated = translateEngineError(err);
+  if (
+    err instanceof AppError
+    || translated instanceof SessionNotConnectedError
+    || translated instanceof SessionExpiredError
+  ) {
+    return translated;
+  }
+  return new MessageSendFailedError(reason);
 }
