@@ -80,7 +80,7 @@ T22 [P]
 T2,T3,T10,T16,T17,T19,T22 → T23 ─┐
 T2,T16,T17,T19,T22 → T24 ────────┤
 T22 → T25 ───────────────────────┤
-T2,T22 → T26 ────────────────────┼→ T29 (T15)
+T2,T17,T19,T22 → T26 ────────────┼→ T29 (T15)
 T2,T10,T25 → T27 ────────────────┤
 T2 → T28 ────────────────────────┘
 T30 [P]
@@ -579,7 +579,7 @@ T14,T20,T21,T30,T47 → T48 → T49
 
 **What**: `RetryOutboundMediaUseCase`.
 **Where**: `.../use-cases/RetryOutboundMediaUseCase.ts` (+ teste)
-**Depends on**: T2, T22
+**Depends on**: T2, T17, T19, T22 (corrigido na execução: checar arquivo exige T17; checar sessão exige `createOutboundMessageId`, da T19)
 **Requirement**: MEDIA-19
 
 **Done when**:
@@ -1047,7 +1047,7 @@ T14,T20,T21,T30,T47 → T48 → T49
 | T23 | T2, T3, T10, T16, T17, T19, T22 | idem → T23 | ✅ |
 | T24 | T2, T16, T17, T19, T22 | idem → T24 | ✅ |
 | T25 | T22 | T22 → T25 | ✅ |
-| T26 | T2, T22 | T2,T22 → T26 | ✅ |
+| T26 | T2, T17, T19, T22 | T2,T17,T19,T22 → T26 | ✅ |
 | T27 | T2, T10, T25 | T2,T10,T25 → T27 | ✅ |
 | T28 | T2 | T2 → T28 | ✅ |
 | T29 | T15, T23, T24, T25, T26, T27, T28 | T23..T28 → T29 (T15) | ✅ |

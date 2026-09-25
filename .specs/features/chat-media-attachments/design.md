@@ -208,7 +208,7 @@ upload (painel sobe de novo a partir do `File` retido, §14).
 | `media` | vídeo sem probe (ffmpeg ausente) | `document` (codec desconhecido — HEVC tocaria mal) |
 | `media` | HEIC, GIF, SVG, imagem > limite, vídeo não-H.264/10 bits/MOV/WebM, vídeo > limite inline | `document`, `reason: 'converted_to_document'` |
 | `document` | qualquer, ≤ `MEDIA_MAX_DOCUMENT_BYTES` | `document` |
-| qualquer | tamanho 0 | `422 VALIDATION_ERROR` |
+| qualquer | tamanho 0 | `400 VALIDATION_ERROR` (classe existente) |
 | qualquer | acima do limite do tipo final | `413 MEDIA_TOO_LARGE` |
 
 O painel roda um espelho (`app/.../mediaPolicy.ts`) só com o que sabe sem probe (tipo e
