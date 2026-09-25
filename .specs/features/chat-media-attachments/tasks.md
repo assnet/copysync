@@ -1,7 +1,7 @@
 # Anexos e Mensagem de Voz — Tasks
 
 **Design**: `.specs/features/chat-media-attachments/design.md`
-**Status**: Aprovado em 2026-09-25 — em execução
+**Status**: Implementado em 2026-09-25 — smoke (T49) pendente
 **Branch**: `feature/chat-media-attachments` (a partir de `develop`, AGENTS.md §31)
 **Pré-requisito**: `fix/chat-reply-quote` em `develop` — **cumprido** (`2df4dc6`, 0.11.2, smoke aprovado)
 

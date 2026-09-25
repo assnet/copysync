@@ -348,6 +348,8 @@ app/
   `limit`/`offset` — ver `api/src/shared/http/pagination/OpaqueCursor.ts`
 * estilos globais injetados por código levam `data-app`, senão o `DomGuardian` os
   remove como injeção de extensão
+* upload de arquivo só por `chunkedUpload` (partes de 8 MiB, retomável) — ver
+  `docs/chat-midias-anexos.md`
 
 ---
 
@@ -420,6 +422,7 @@ Pode conter:
 * providers
 * implementações externas
 * mappers
+* ffmpeg/ffprobe — só na infra do módulo `media`, via `spawn` com array, sem shell
 
 ## Presentation
 
@@ -449,6 +452,9 @@ O Baileys deve ficar isolado em:
 ```txt
 api/src/modules/messaging/infrastructure/engines/baileys/
 ```
+
+Mídia enviada pelo painel é gravada `PENDING` com id externo pré-gerado **antes** do envio
+(o eco é reconhecido por esse id) — ver `docs/chat-midias-anexos.md`.
 
 ---
 
@@ -562,6 +568,13 @@ Nunca deixar erro cru da engine subir para a API.
 * `MESSAGE_SEND_FAILED`
 * `ENGINE_NOT_READY`
 * `INVALID_SESSION_STATE`
+
+## Erros de mídia e upload (`shared/errors/internal/MediaErrors.ts`)
+
+* `MEDIA_TOO_LARGE` (413), `UNSUPPORTED_MEDIA_TYPE` (415), `MEDIA_PROCESSING_FAILED` (422),
+  `MEDIA_PROCESSOR_UNAVAILABLE` (503)
+* `UPLOAD_NOT_FOUND` (404), `UPLOAD_INCOMPLETE` (409), `UPLOAD_IN_PROGRESS` (409),
+  `INSUFFICIENT_STORAGE` (507)
 
 ---
 
@@ -774,6 +787,8 @@ A arquitetura deve permitir evolução para métricas em tempo real.
 * config centralizada
 * startup resiliente
 * shutdown gracioso
+* nenhum boot escreve em massa no banco sem flag (`api/.env` aponta para produção) —
+  ex.: `MEDIA_PENDING_RECOVERY_ENABLED`, ligada só na Render
 
 ---
 

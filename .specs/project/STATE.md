@@ -35,6 +35,27 @@ Memória entre sessões: decisões, bloqueios, lições.
   Reação respeita a regra de volume da decisão de 2026-09-21 (sincronização só de consumo): o painel envia só o último gesto de uma
   sequência e a API limita por mensagem e por sessão (429). Ver `.specs/features/message-reactions/design.md` §4.
 
+- **2026-09-25 — Mídia do painel persiste antes de enviar.** Mensagem `PENDING` com
+  `externalMessageId` pré-gerado entra no banco antes de qualquer byte ir ao WhatsApp; a fila
+  despacha depois. O eco (`append`) deduplica por esse id e a bolha tem status consistente.
+  Texto continua gravando `SENT` direto. Ver `docs/chat-midias-anexos.md`.
+
+- **2026-09-25 — Upload em partes pela própria API.** 8 MiB por `PUT`, retomável, direto no
+  disco. O proxy da Render não documenta limite de corpo (há relatos de 413); 180 MB numa
+  requisição só não tem garantia.
+
+- **2026-09-25 — Registro de eco e cache de mídia enviada são de módulo.** Há duas instâncias
+  do adapter no processo (`server.ts` e `session.routes.ts`) compartilhando sockets; registro
+  por instância registra numa e confere noutra.
+
+- **2026-09-25 — Limites de disco relativos ao disco.** Reserva `max(100 MiB, 10%)` e teto de
+  uploads abertos `min(2 GB, 50%)`, lidos do `statfs` a cada criação. O disco de produção tinha
+  974 MB; valor fixo recusaria todo upload.
+
+- **2026-09-25 — Recuperação de `PENDING` atrás de flag.** `MEDIA_PENDING_RECOVERY_ENABLED`
+  (padrão `false`, `true` só na Render): um `pnpm dev` com `api/.env` de produção não pode
+  falhar mídia que a produção ainda envia.
+
 ## Bloqueios
 
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
@@ -43,6 +64,13 @@ Memória entre sessões: decisões, bloqueios, lições.
   componente, prontos para extração. Decidir a biblioteca e fazer a extração em chore próprio.
 
 ## Resolvidos
+
+- **2026-09-25 — Eco de reação conferido na instância errada do adapter** quando o bootstrap
+  estava ligado (envio registrava numa instância, o eco chegava na outra). Registros passaram a
+  ser de módulo (`outboundEchoRegistries.ts`, `81c1da8`).
+
+- **2026-09-25 — `handleLoadMore` fechava sobre `messages` velho.** `setMessages` funcional
+  (`a38d5c9`); sem isso, paginar regrediria bolhas de mídia recém-confirmadas.
 
 - **2026-09-25 — "Responder" não citava no WhatsApp desde março (`fix/chat-reply-quote`, 0.11.1).**
   `b45f4e7` (2026-03-22) tirou o `quoted` do `sendTextMessage` junto com grupos, mídia e
@@ -127,13 +155,35 @@ Memória entre sessões: decisões, bloqueios, lições.
 - **`MessageBubble` sem `memo`.** Uma reação re-renderiza a lista inteira da conversa
   (item "sem re-render da lista" da T21 não cumprido).
 
-- **`handleLoadMore` no `ChatPage` fecha sobre `messages` velho.** Bug pré-existente; atenuado
-  para reações por `keepNewerReactions`, não corrigido.
-
 - **Smoke de reações (T23) e de envio após o refactor da T8 pendentes.** Exigem banco local
   (Docker) e sessão WhatsApp real — `api/.env` aponta para produção.
 
+- **Anexos e voz (2026-09-25)** — ver `docs/chat-midias-anexos.md`:
+  - Mensagem enviada pelo painel (texto e mídia) não chega em tempo real a outros operadores
+    (a API não publica `chat.message.created` no envio).
+  - Download de mídia **recebida** em `'buffer'`: vídeo grande recebido carrega inteiro na memória.
+  - Mídia em disco local; object storage segue no plano de 2026-05-09.
+  - `failPending` sem `tenantId` (varredura do processo) — exceção ao AGENTS.md §36.8.
+  - Duas criações de upload simultâneas podem passar juntas pela checagem de disco; a reserva
+    conservadora mitiga.
+  - Arquivo promovido fica órfão se o processo cair entre a promoção e a gravação (o lateral
+    não guarda o caminho).
+  - Painel sem modo de tema "sistema" (só claro/escuro) — lacuna anterior à feature.
+  - i18n ainda em `strings.ts` (ver Bloqueios).
+  - Comandos ffmpeg não validados no binário 5.1.9 real (só a fonte conferida); `docker build` pendente.
+  - Reenvio pelo mesmo id: dedupe do WhatsApp é INCERTO (pode duplicar após timeout aceito).
+  - Colar do Excel abre prévia de imagem — mesmo comportamento do WhatsApp Web.
+
 ## Lições
+
+- **Conferência visual de feature que escreve dados exige banco local.** Em anexos, um
+  subagent logou no painel de produção (gravou sessão) mesmo com as rotas de escrita bloqueadas.
+
+- **Edições paralelas no mesmo arquivo precisam ser serializadas** (em anexos: adapter do
+  Baileys e `server.ts`). Tasks `[P]` que tocam o mesmo arquivo não são paralelas.
+
+- **Dependência de task se revisa pelo uso real de contrato.** O plano de anexos omitia
+  T26 → T17/T19 (checar arquivo e sessão usa contratos delas); só apareceu na execução.
 
 - **O painel exibir não prova que o WhatsApp recebeu.** Vínculos gravados localmente
   (citação, e qualquer metadado de envio) aparecem no painel mesmo quando a engine os descarta.

@@ -23,15 +23,57 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
-#### Chat — Anexos e mensagem de voz (em andamento, `0.12.0`)
+#### Chat — Anexos e mensagem de voz (`0.12.0`)
 
-O operador envia documento, foto, vídeo e mensagem de voz gravada no navegador direto da conversa; a
-mensagem aparece na hora como pendente e vira enviada quando o WhatsApp aceita. Versão
-`0.11.2` → `0.12.0` em `api/` e `app/`.
+O operador envia documento, foto, vídeo (até 180 MB) e mensagem de voz gravada no navegador, em
+lote, com legenda, arrastar e colar. O arquivo sobe em partes retomáveis; a mensagem nasce
+`PENDING` e vira `SENT` (ou `FAILED`, com reenvio) quando o WhatsApp aceita. Versão `0.11.2` →
+`0.12.0` em `api/` e `app/`. Doc: `docs/chat-midias-anexos.md`.
 
-- **`api/prisma/schema.prisma`** + migration **`20260925120000_add_pending_chat_message_status`** — status `PENDING` em `ChatMessageStatus` (aditiva, só `ALTER TYPE ... ADD VALUE`), no fim do enum para não gerar drift com o Postgres. Espelhado no enum de domínio (`ChatMessageEnums.ts`); `ChatMessageCreateData.status` opcional e `PrismaChatMessageRepository.create` grava `data.status ?? 'SENT'`, então texto e mensagens recebidas seguem nascendo `SENT`. Teste do mapper cobre `PENDING`, `SENT` e nulo
+Migration **`20260925120000_add_pending_chat_message_status`** (aditiva: só `ALTER TYPE ... ADD
+VALUE 'PENDING'`, no fim do enum). Env novas, todas opcionais (tabela na doc): `MEDIA_UPLOAD_*`,
+`MEDIA_DISK_RESERVE_BYTES`, `MEDIA_TMP_RESERVE_BYTES`, `MEDIA_MAX_*`, `MEDIA_SEND_*`,
+`MEDIA_PROCESS_CONCURRENCY`, `MEDIA_ECHO_*`, `MEDIA_PENDING_*`, `FFMPEG_PATH`/`FFPROBE_PATH`.
+**Na Render: `MEDIA_PENDING_RECOVERY_ENABLED=true`** (padrão `false`: `api/.env` aponta para
+produção). ffmpeg/ffprobe vêm do runtime nativo da Render (5.1.9 com `libopus`); `api/Dockerfile`
+instala só para o `docker-compose` local.
+
+##### api/
+
+- **`prisma/schema.prisma`**, **`ChatMessageEnums.ts`**, **`IChatMessageRepository.ts`**, **`PrismaChatMessageRepository.ts`** — `PENDING`; `create` com status opcional (texto e recebidas seguem `SENT`); `transitionStatus` condicional (`SENT` tardio não sobrescreve `DELIVERED`) e `failPending` para a recuperação
+- **`shared/errors/internal/MediaErrors.ts`** — oito erros de mídia/upload (AGENTS.md §13); **`shared/http/httpResponse.ts`** ganha `accepted` (202)
+- **`shared/config/env.ts`** — env de mídia; pasta de upload derivada de `STORAGE_PATH`, fora da raiz estática (`media-uploads/` no `.gitignore`/`.dockerignore`)
+- **`modules/media/domain/services/`** — regras puras com teste: `sniffMediaType` (magic bytes), `classifyOutboundMedia`, `sanitizeFileName`, `uploadPlan`, `diskBudget` (limites relativos ao disco), `mediaUploadConfig`, `parseProbeOutput`, `buildWaveform`
+- **`media/infrastructure/uploads/DiskUploadSessionStore.ts`**, **`UploadSessionSweeper.ts`** — `.bin` esparso + lateral JSON atômico, mutex por upload; varredura de expirados e alerta de disco baixo
+- **`media/application/use-cases/`** (criar, receber parte, consultar, cancelar, config) + **`media/presentation/routes/media.upload.routes.ts`** — `/media/uploads`, com parser `octet-stream` isolado no plugin e sem `bodyLimit` na rota
+- **`media/infrastructure/storage/LocalMediaFileStore.ts`** — promoção por `rename` (`EXDEV` → cópia por stream) com a mesma regra de nome do download
+- **`media/infrastructure/ffmpeg/`** (`FfmpegMediaProcessor`, `ffmpegArgs`, `runProcess`) — voz Ogg/Opus, probe, miniatura e ondas; `spawn` sem shell, whitelist de protocolo e demuxer, timeout com `SIGKILL`, capacidades detectadas no boot
+- **`media/infrastructure/mediaContainer.ts`**, **`chat/infrastructure/chatMediaContainer.ts`** — singletons compartilhados pelas rotas de `media` e `chat`
+- **`chat/application/use-cases/SendMediaMessageUseCase.ts`**, **`chat.routes.ts`**, **`chat.schema.ts`** — `POST /conversations/:id/messages/media`: id pré-gerado, classifica, grava `PENDING`, enfileira; 202 (200 se repetida)
+- **`chat/infrastructure/queue/InMemoryOutboundMediaQueue.ts`**, **`DispatchOutboundMediaUseCase.ts`**, **`IOutboundMediaQueue.ts`**, **`IMessageStatusPublisher.ts`** — fila serial por conversa (2 por sessão, 2 no total) e despacho em `try/finally`, publicando `SENT`/`FAILED`
+- **`RetryOutboundMediaUseCase.ts`** — `POST /messages/:messageId/retry`, reusa o id gravado
+- **`FailOrphanPendingMediaUseCase.ts`**, **`ReconcileInterruptedUploadsUseCase.ts`**, **`app/server.ts`** — recuperação de `PENDING` atrás de flag (boot + a cada 5 min), reconciliação de uploads interrompidos, `drain` de 25 s no shutdown
+- **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`**, **`buildBaileysMediaContent.ts`** — `createOutboundMessageId` e `sendMediaMessage` por arquivo (`{ url }`, stream), com duração, dimensões, miniatura, `waveform`, citação pelo mesmo `buildQuoted` do texto e checagem do `maxContentLengthBytes`
+- **`isOwnOutboundEcho.ts`**, **`sentMediaCache.ts`** — eco da mídia própria descartado antes do download; `getMessage` responde pedido de reenvio da mídia enviada (grupo sem "Aguardando esta mensagem")
+
+##### app/
+
+- **`services/media.service.ts`**, **`services/chat.service.ts`**, **`types/media.api.types.ts`**, **`types/chat.api.types.ts`**, **`features/chat/types.ts`** — upload (`Content-Type` binário por chamada, `signal`, 120 s por parte), `sendMediaMessage`, `retryMessage`; `PENDING` → `sending`
+- **`features/chat/media/chunkedUpload.ts`** — partes com retry exponencial por até ~3 min e retomada
+- **`mediaPolicy.ts`**, **`dataTransferFiles.ts`** — espelho da classificação (tipo e tamanho) e arquivos de arrastar/colar
+- **`outgoingMediaState.ts`**, **`useOutgoingMedia.ts`**, **`useMediaUploadConfig.ts`** — bolhas otimistas sobrepostas à lista, status antecipado do WS, decisões por `error.code`
+- **`components/AttachmentMenu.tsx`**, **`AttachmentPreviewPanel.tsx`**, **`DropZoneOverlay.tsx`** — menu do clipe, prévia do lote com legenda por item, área de soltar
+- **`messages/UploadProgressOverlay.tsx`**, **`messages/FailedMessageActions.tsx`**, **`MessageBubble.tsx`** — progresso, cancelar, tentar de novo e descartar na bolha
+- **`MessageComposer.tsx`**, **`ChatWindow.tsx`**, **`MessageList.tsx`**, **`pages/ChatPage.tsx`**, **`strings.ts`** — clipe, colar, soltar e prévia integrados; textos centralizados
+- **`voiceRecorderMachine.ts`**, **`pickRecorderMimeType.ts`**, **`useVoiceRecorder.ts`**, **`components/VoiceRecorderBar.tsx`** — voz: formato por navegador, ondas, pausar/retomar, pré-escuta e barra no lugar do composer. Microfone só com campo vazio; trocar de conversa gravando vira rascunho da conversa. O gravador vive num provider próprio, fora do `ChatPage` (o estado por quadro não re-renderiza a lista)
 
 ### Fixed
+
+#### Chat — Anexos e mensagem de voz (`0.12.0`)
+
+- **`OutboundEchoRegistry.ts`**, **`outboundEchoRegistries.ts`**, **`BaileysMessagingEngineAdapter.ts`** — o registro de eco era por instância do adapter e há duas no processo: com o bootstrap ligado, a reação registrava numa e o eco chegava na outra. Agora é de módulo (`ReactionEchoRegistry.ts` reexporta)
+- **`api/src/app/app.ts`**, **`shared/storage/staticMediaPolicy.ts`** — `/api/storage/` servia a raiz inteira: restrita a `media/` com caminho normalizado (`/media/../x` passava), `dotfiles: 'deny'` e `Content-Disposition: attachment` fora da allowlist inline (svg/html/xml abriam na origem da API)
+- **`SetMessageReactionUseCase.ts`**, **`MessageBubble.tsx`** — reação recusada (409) em mensagem `PENDING`/`FAILED`: o id pré-gerado existe antes de a mensagem chegar ao WhatsApp. No painel, reagir e responder ficam ocultos em envio/falha
 
 #### Chat — Responder volta a citar a mensagem no WhatsApp (`0.11.1`, `0.11.2`)
 
@@ -53,6 +95,14 @@ no outro aparelho; foco não ia ao campo):
 - **`api/.../engines/baileys/BaileysMessagingEngineAdapter.ts`**, **`buildBaileysQuotedMessage.ts`** — em grupo LID (padrão do Baileys), a citação passa a levar o **LID** do autor, como os clientes oficiais: o da sessão para mensagem nossa (o Baileys usaria o número — `TODO: Add support for LIDs` em `Utils/messages.js`) e o do participante via `lidMapping`. Grupo `pn`, LID não resolvido ou consulta lenta (> 3 s) seguem pelo número. Log `Reply quote attached` com autor e tipo citado, para diagnóstico
 - **`api/.../messaging/domain/contracts/IMessagingEngine.ts`**, **`resolveConversationTarget.ts`** — referência citada leva `mimeType`, `fileName` e `durationSeconds`: o preview da citação de mídia sai com tipo, nome do documento e duração, em vez de vazio
 - **`app/src/features/chat/components/MessageComposer.tsx`** — escolher "Responder" leva o foco ao campo de texto (no quadro seguinte, para não perder para o `Menu`, que devolve o foco ao botão ao fechar); primeiro teste do componente (`MessageComposer.test.tsx`)
+
+### Changed
+
+#### Chat — Anexos e mensagem de voz (`0.12.0`)
+
+- **`shared/storage/mediaFileExtension.ts`** (era `mimeTypeToExt` no adapter) — regra única de nome para download e envio; mídia **recebida** de Office, `video/quicktime`, `text/plain` e `application/octet-stream` passa a gravar extensão curta (`docx`, `mov`, `txt`, `bin`…) em vez do subtipo cru. Arquivos antigos não mudam
+- **`chat/domain/services/buildMessagePreview.ts`**, **`IngestIncomingMessageUseCase.ts`** — prévia da última mensagem extraída para o domínio (mesma saída), reusada no envio
+- **`IMessagingEngine.ts`** — `MediaType` e o `SendMediaMessageInput` antigos (sem chamador) dão lugar ao contrato por arquivo
 
 ### Added
 
