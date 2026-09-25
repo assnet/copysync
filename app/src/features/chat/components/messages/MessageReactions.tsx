@@ -1,4 +1,4 @@
-import { Box, Tooltip, alpha, useTheme } from '@mui/material';
+import { Box, Tooltip, useTheme } from '@mui/material';
 import type { MessageReaction } from '../../types';
 import { chatStrings } from '../../strings';
 
@@ -35,7 +35,6 @@ export function MessageReactions({ reactions, onToggle }: Props) {
   if (groups.length === 0) return null;
 
   const t = chatStrings.reactions;
-  const isDark = theme.palette.mode === 'dark';
   const accent = theme.palette.primary.main;
 
   return (
@@ -72,28 +71,22 @@ export function MessageReactions({ reactions, onToggle }: Props) {
                 px: 0.9,
                 m: 0,
                 borderRadius: 999,
-                border: '1px solid',
-                // Borda neutra em todos os chips; a reação própria se distingue pelo fundo,
-                // pelo peso da contagem e por aria-pressed — sem anel colorido.
-                borderColor: theme.palette.divider,
-                boxShadow: theme.shadows[1],
-                bgcolor: r.reactedByMe
-                  ? alpha(accent, isDark ? 0.28 : 0.12)
-                  : theme.palette.background.paper,
+                // Só o emoji: sem borda, fundo nem sombra. A reação própria segue anunciada por
+                // aria-pressed e pelo peso da contagem.
+                border: 'none',
+                bgcolor: 'transparent',
                 color: theme.palette.text.primary,
                 font: 'inherit',
                 lineHeight: 1,
                 cursor: interactive ? 'pointer' : 'default',
                 touchAction: 'manipulation',
                 userSelect: 'none',
-                transition: theme.transitions.create(['background-color', 'border-color'], {
+                transition: theme.transitions.create('transform', {
                   duration: theme.transitions.duration.shortest,
                 }),
-                '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+                '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
                 ...(interactive && {
-                  '&:hover': {
-                    bgcolor: alpha(accent, r.reactedByMe ? (isDark ? 0.36 : 0.18) : 0.08),
-                  },
+                  '&:hover': { transform: 'scale(1.12)' },
                 }),
                 '&:focus-visible': {
                   outline: `2px solid ${accent}`,
@@ -101,7 +94,7 @@ export function MessageReactions({ reactions, onToggle }: Props) {
                 },
               }}
             >
-              <Box component="span" aria-hidden sx={{ fontSize: 14, lineHeight: 1 }}>
+              <Box component="span" aria-hidden sx={{ fontSize: 17, lineHeight: 1 }}>
                 {r.emoji}
               </Box>
               {r.count > 1 && (
