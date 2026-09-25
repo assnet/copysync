@@ -34,6 +34,7 @@ function render(
   mode?: 'light' | 'dark',
   extra: {
     conversations?: ChatConversation[];
+    lists?: Array<{ name: string; count: number }>;
     onCreateList?: (name: string, ids: string[]) => void;
     onUpdateList?: (oldName: string, newName: string, ids: string[]) => void;
     onDeleteList?: (name: string) => void;
@@ -51,6 +52,7 @@ function render(
       onSearchChange={vi.fn()}
       filter={filter}
       onFilterChange={onFilterChange}
+      lists={extra.lists}
       onCreateList={extra.onCreateList}
       onUpdateList={extra.onUpdateList}
       onDeleteList={extra.onDeleteList}
@@ -138,6 +140,27 @@ describe('ConversationSidebar — chip de listas', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Nova lista' }));
 
     expect(screen.getByRole('dialog', { name: 'Nova lista' })).toBeInTheDocument();
+  });
+
+  it('com o catálogo, o menu mostra a contagem do servidor e inclui lista vazia', async () => {
+    const lists = [{ name: 'Zeta', count: 0 }, { name: 'Auto peças', count: 7 }];
+    render('all', vi.fn(), 'dark', { conversations: comListas, lists, onCreateList: vi.fn() });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Listas' }));
+
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((el) => el.getAttribute('aria-label') ?? el.textContent)).toEqual([
+      'Auto peças, 7 conversas',
+      'Zeta, 0 conversas',
+      'Nova lista',
+    ]);
+  });
+
+  it('com o catálogo, o chip da lista ativa usa a contagem do servidor', () => {
+    const lists = [{ name: 'Auto peças', count: 7 }];
+    render('list:Auto peças', vi.fn(), undefined, { conversations: comListas, lists, onCreateList: vi.fn() });
+
+    expect(screen.getByRole('button', { name: 'Listas' })).toHaveTextContent('Auto peças 7');
   });
 
   it('sem nenhuma lista, o menu avisa e ainda oferece criar', async () => {

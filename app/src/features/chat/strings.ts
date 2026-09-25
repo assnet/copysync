@@ -227,17 +227,19 @@ export const chatStrings = {
     itemActions: (name: string): string => `Ações da lista ${name}`,
     editList: 'Editar lista',
     deleteList: 'Excluir lista',
-    /** Confirmação de exclusão: o nome some das conversas carregadas, sem apagar conversa. */
+    /** Confirmação de exclusão: o nome some de todas as conversas do tenant, sem apagar conversa. */
     deleteTitle: 'Excluir lista?',
     deleteConfirm: (name: string, count: number): string =>
-      `A lista ${name} será removida de ${countOf(count, 'conversa', 'conversas')}. As conversas continuam no painel.`,
+      count === 0
+        ? `A lista ${name} está vazia e será excluída.`
+        : `A lista ${name} será removida de ${countOf(count, 'conversa', 'conversas')}. As conversas continuam no painel.`,
     deleteAction: 'Excluir',
 
     dialog: {
       title: 'Nova lista',
       editTitle: 'Editar lista',
-      /** Explica o modelo: a lista existe pelas conversas que estão nela. */
-      intro: 'Dê um nome e escolha as conversas que vão para a lista.',
+      /** A lista tem registro próprio: pode nascer vazia e receber conversas depois. */
+      intro: 'Dê um nome e, se quiser, escolha as conversas que vão para a lista.',
       nameLabel: 'Nome da lista',
       namePlaceholder: 'Ex.: Auto peças',
       searchLabel: 'Buscar conversa',
@@ -251,8 +253,8 @@ export const chatStrings = {
       cancel: 'Cancelar',
       create: 'Criar',
       save: 'Salvar',
-      /** Tooltip do Criar/Salvar desabilitado. */
-      createHint: 'Informe um nome e escolha ao menos uma conversa',
+      /** Tooltip do Criar/Salvar desabilitado: só o nome é obrigatório. */
+      createHint: 'Informe um nome para a lista',
       errors: {
         empty: 'Informe um nome para a lista.',
         tooLong: (max: number): string => `Use até ${countOf(max, 'caractere', 'caracteres')}.`,
@@ -260,6 +262,15 @@ export const chatStrings = {
       },
     },
 
+    /** Snackbar das operações no catálogo (criar, renomear, excluir, carregar). Sem fallback: nada muda localmente. */
+    errors: {
+      loadFailed: 'Não foi possível carregar as listas. Tente de novo.',
+      createFailed: (name: string): string => `Não foi possível criar a lista ${name}. Tente de novo.`,
+      renameFailed: (name: string): string => `Não foi possível renomear a lista ${name}. Tente de novo.`,
+      deleteFailed: (name: string): string => `Não foi possível excluir a lista ${name}. Tente de novo.`,
+      /** 409 da API: outra lista já tem o nome pedido. */
+      nameExists: (name: string): string => `Já existe uma lista chamada ${name}.`,
+    },
     /** Snackbar quando parte das conversas não entrou na lista. */
     partialFailure: (name: string, failed: number): string =>
       `${countOf(failed, 'conversa não entrou', 'conversas não entraram')} na lista ${name}. Tente de novo.`,

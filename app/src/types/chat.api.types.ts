@@ -143,6 +143,19 @@ export interface ListMessagesParams {
   around?: string;
 }
 
+/**
+ * Lista do catálogo do tenant. `id: null` é um nome que só existe em `tags` de conversas
+ * antigas, ainda sem entrada no catálogo — renomear/excluir por nome cobre esse caso.
+ */
+export interface ChatListDto {
+  id: string | null;
+  name: string;
+  conversationCount: number;
+}
+
+/** Referência a uma lista: pelo id do catálogo ou, sem id, pelo nome. */
+export type ChatListRef = { id: string } | { name: string };
+
 export interface UpdateConversationRequest {
   status?: ApiConversationStatus;
   assignedUserId?: string | null;

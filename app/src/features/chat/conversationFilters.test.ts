@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  collectKnownLists, countInList, listFilter, listFilterName, planListUpdate, validateListName, LIST_NAME_MAX_LENGTH,
+  applyListRemoval, applyListRename, collectKnownLists, countInList, listFilter, listFilterName, planListMembers,
+  validateListName, LIST_NAME_MAX_LENGTH,
 } from './conversationFilters';
 
 describe('filtro por lista', () => {
@@ -50,7 +51,7 @@ describe('nome de nova lista', () => {
   });
 });
 
-describe('planListUpdate — editar e excluir lista', () => {
+describe('planListMembers — quem fica na lista', () => {
   const conversas = [
     { id: 'a', lists: ['Auto peças'] },
     { id: 'b', lists: ['Clientes', 'Auto peças'] },
@@ -58,40 +59,55 @@ describe('planListUpdate — editar e excluir lista', () => {
     { id: 'd', lists: undefined },
   ];
 
-  it('renomear sem mudar membros regrava só quem tem a lista, preservando as outras', () => {
-    expect(planListUpdate(conversas, 'Auto peças', 'Peças', ['a', 'b'])).toEqual([
-      { id: 'a', lists: ['Peças'] },
-      { id: 'b', lists: ['Clientes', 'Peças'] },
-    ]);
+  it('mesmos membros não muda nada', () => {
+    expect(planListMembers(conversas, 'Auto peças', ['a', 'b'])).toEqual([]);
   });
 
-  it('mesmo nome e mesmos membros não muda nada', () => {
-    expect(planListUpdate(conversas, 'Auto peças', 'Auto peças', ['a', 'b'])).toEqual([]);
-  });
-
-  it('remover membro tira o nome só dele', () => {
-    expect(planListUpdate(conversas, 'Auto peças', 'Auto peças', ['a'])).toEqual([
+  it('remover membro tira o nome só dele, preservando as outras listas', () => {
+    expect(planListMembers(conversas, 'Auto peças', ['a'])).toEqual([
       { id: 'b', lists: ['Clientes'] },
     ]);
   });
 
   it('adicionar membro grava o nome nele, sem repetir nos que já têm', () => {
-    expect(planListUpdate(conversas, 'Auto peças', 'Auto peças', ['a', 'b', 'd'])).toEqual([
+    expect(planListMembers(conversas, 'Auto peças', ['a', 'b', 'd'])).toEqual([
       { id: 'd', lists: ['Auto peças'] },
     ]);
   });
 
-  it('excluir (nome novo nulo) remove de todas e ignora membros', () => {
-    expect(planListUpdate(conversas, 'Clientes', null, ['a', 'b', 'c'])).toEqual([
-      { id: 'b', lists: ['Auto peças'] },
-      { id: 'c', lists: [] },
-    ]);
+  it('lista nova sem membros não toca conversa alguma: a lista vazia vive no catálogo', () => {
+    expect(planListMembers(conversas, 'Fornecedores', [])).toEqual([]);
   });
 
-  it('renomear para um nome que o membro já carrega não duplica nem mexe em quem está fora', () => {
-    expect(planListUpdate(conversas, 'Auto peças', 'Clientes', ['a', 'b'])).toEqual([
-      { id: 'a', lists: ['Clientes'] },
-      { id: 'b', lists: ['Clientes'] },
+  it('não renomeia: o nome antigo fica onde está, o plano só cuida da pertença ao nome dado', () => {
+    expect(planListMembers(conversas, 'Peças', ['a'])).toEqual([
+      { id: 'a', lists: ['Auto peças', 'Peças'] },
     ]);
+  });
+});
+
+describe('applyListRename / applyListRemoval — espelho local do servidor', () => {
+  const conversas = [
+    { id: 'a', lists: ['Auto peças'] },
+    { id: 'b', lists: ['Clientes', 'Auto peças'] },
+    { id: 'c', lists: ['Clientes'] },
+    { id: 'd', lists: undefined },
+  ];
+
+  it('renomear troca o nome na posição em que estava e mantém a referência de quem não tem a lista', () => {
+    const out = applyListRename(conversas, 'Auto peças', 'Peças');
+    expect(out.map((c) => c.lists)).toEqual([['Peças'], ['Clientes', 'Peças'], ['Clientes'], undefined]);
+    expect(out[2]).toBe(conversas[2]);
+    expect(out[3]).toBe(conversas[3]);
+  });
+
+  it('renomear para um nome que a conversa já carrega não duplica', () => {
+    expect(applyListRename(conversas, 'Auto peças', 'Clientes')[1].lists).toEqual(['Clientes']);
+  });
+
+  it('excluir tira o nome de todas e deixa as outras listas', () => {
+    const out = applyListRemoval(conversas, 'Clientes');
+    expect(out.map((c) => c.lists)).toEqual([['Auto peças'], ['Auto peças'], [], undefined]);
+    expect(out[0]).toBe(conversas[0]);
   });
 });

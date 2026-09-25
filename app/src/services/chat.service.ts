@@ -10,6 +10,8 @@ import type {
   GroupParticipantApiDto,
   ContactSuggestionApiDto,
   MessageReactionResultApiDto,
+  ChatListDto,
+  ChatListRef,
 } from '@/types/chat.api.types';
 import type { SendMediaMessageRequest } from '@/types/media.api.types';
 
@@ -130,6 +132,45 @@ export const chatService = {
       change,
     );
     return res.data.data;
+  },
+
+  // ── Catálogo de listas do tenant ─────────────────────────────────────────
+  // A lista tem registro próprio: existe vazia, e renomear/excluir alcançam todas as
+  // conversas do tenant no servidor, não só as carregadas no painel.
+
+  /** União do catálogo com nomes antigos gravados só em `tags` (`id: null`). */
+  async listLists(): Promise<ChatListDto[]> {
+    const res = await apiClient.get<{ success: true; data: ChatListDto[] }>('/chat/lists');
+    return res.data.data;
+  },
+
+  /** Cria a lista (201) ou devolve a existente com o mesmo nome (200): idempotente. */
+  async createList(name: string): Promise<ChatListDto> {
+    const res = await apiClient.post<{ success: true; data: ChatListDto }>('/chat/lists', { name });
+    return res.data.data;
+  },
+
+  /** Renomeia em cascata em todas as conversas do tenant; 409 se `newName` já existe. */
+  async renameList(ref: ChatListRef, newName: string): Promise<ChatListDto> {
+    const res = 'id' in ref
+      ? await apiClient.patch<{ success: true; data: ChatListDto }>(
+          `/chat/lists/${encodeURIComponent(ref.id)}`,
+          { name: newName },
+        )
+      : await apiClient.patch<{ success: true; data: ChatListDto }>(
+          '/chat/lists/by-name',
+          { name: ref.name, newName },
+        );
+    return res.data.data;
+  },
+
+  /** Exclui a lista e a remove de todas as conversas do tenant (204). */
+  async deleteList(ref: ChatListRef): Promise<void> {
+    await apiClient.delete(
+      'id' in ref
+        ? `/chat/lists/${encodeURIComponent(ref.id)}`
+        : `/chat/lists/by-name/${encodeURIComponent(ref.name)}`,
+    );
   },
 
   async suggestContacts(term: string, sessionId?: string): Promise<ContactSuggestionApiDto[]> {

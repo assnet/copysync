@@ -49,32 +49,55 @@ export interface ListUpdatePlan {
 }
 
 /**
- * Planeja renomear, reorganizar ou excluir uma lista. Uma lista não tem registro próprio:
- * é o nome gravado em `lists` de cada conversa, então mudar a lista é regravar esse campo
- * conversa a conversa. Devolve só as que mudam, com o `lists` final de cada uma.
- *
- * - `oldName` sai de todas as conversas que o carregam
- * - `newName` entra nas conversas de `memberIds` (sem repetir, no fim da lista)
- * - `newName === null` é exclusão: `memberIds` é ignorado
+ * Planeja deixar exatamente `memberIds` na lista `name`. A lista tem registro próprio no
+ * catálogo do tenant; o que se grava conversa a conversa é só a pertença. Devolve apenas as
+ * conversas que mudam, com o `lists` final de cada uma: `name` entra nas de `memberIds` (sem
+ * repetir, no fim) e sai das demais.
  *
  * Só as conversas recebidas contam: quem não está carregado no painel fica como está.
  */
-export function planListUpdate(
+export function planListMembers(
   conversations: ReadonlyArray<Pick<ChatConversation, 'id' | 'lists'>>,
-  oldName: string,
-  newName: string | null,
-  memberIds: ReadonlyArray<string> = [],
+  name: string,
+  memberIds: ReadonlyArray<string>,
 ): ListUpdatePlan[] {
-  const members = newName === null ? new Set<string>() : new Set(memberIds);
+  const members = new Set(memberIds);
   const plan: ListUpdatePlan[] = [];
   for (const c of conversations) {
     const current = c.lists ?? [];
-    const without = current.filter((l) => l !== oldName);
-    const next = members.has(c.id) && newName !== null
-      ? [...without.filter((l) => l !== newName), newName]
-      : without;
+    const without = current.filter((l) => l !== name);
+    const next = members.has(c.id) ? [...without, name] : without;
     const changed = next.length !== current.length || next.some((l, i) => l !== current[i]);
     if (changed) plan.push({ id: c.id, lists: next });
   }
   return plan;
+}
+
+/**
+ * Espelho local de um renomeio já feito pelo servidor (que renomeia em cascata em todas as
+ * conversas do tenant): troca `oldName` por `newName` em cada conversa carregada, sem repetir
+ * se ela já carregava o novo. Conversas sem a lista voltam pela mesma referência.
+ */
+export function applyListRename<T extends Pick<ChatConversation, 'lists'>>(
+  conversations: ReadonlyArray<T>,
+  oldName: string,
+  newName: string,
+): T[] {
+  return conversations.map((c) => {
+    if (!c.lists?.includes(oldName)) return c;
+    const lists = c.lists.filter((l) => l !== oldName && l !== newName);
+    const at = c.lists.indexOf(oldName);
+    lists.splice(Math.min(at, lists.length), 0, newName);
+    return { ...c, lists };
+  });
+}
+
+/** Espelho local de uma exclusão já feita pelo servidor: tira `name` de toda conversa carregada. */
+export function applyListRemoval<T extends Pick<ChatConversation, 'lists'>>(
+  conversations: ReadonlyArray<T>,
+  name: string,
+): T[] {
+  return conversations.map((c) => (
+    c.lists?.includes(name) ? { ...c, lists: c.lists.filter((l) => l !== name) } : c
+  ));
 }

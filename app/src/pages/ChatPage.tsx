@@ -41,8 +41,11 @@ import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
 import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
 import { chatStrings } from '@/features/chat/strings';
 import {
-  collectKnownLists, listFilter, listFilterName, planListUpdate, type ListUpdatePlan,
+  applyListRemoval, applyListRename, collectKnownLists, listFilter, listFilterName, planListMembers,
+  type ListUpdatePlan,
 } from '@/features/chat/conversationFilters';
+import { isAxiosError } from 'axios';
+import type { ChatListDto } from '@/types/chat.api.types';
 import { useOutgoingMedia, useOutgoingMediaItems } from '@/features/chat/media/OutgoingMediaProvider';
 import { overlayOutgoing } from '@/features/chat/media/outgoingMediaState';
 import { useMediaUploadConfig } from '@/features/chat/media/useMediaUploadConfig';
@@ -94,6 +97,9 @@ function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  // Catálogo de listas do tenant: existe independente das conversas carregadas (lista vazia
+  // conta) e traz a contagem de todas as conversas, não só as do painel.
+  const [lists, setLists] = useState<ChatListDto[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
   // O handler do WebSocket é memoizado: a ref diz se um id já está na lista da página.
@@ -242,9 +248,22 @@ export default function ChatPage() {
       .finally(() => setLoadingConversations(false));
   }, [selectedSessionId, showArchived]);
 
+  // Recarregada junto com as conversas e depois de criar/renomear/excluir ou de mudar
+  // `lists` de uma conversa — qualquer um desses muda nomes ou contagens do catálogo.
+  const loadLists = useCallback(() => {
+    return chatService
+      .listLists()
+      .then(setLists)
+      .catch((err: unknown) => {
+        console.error('Erro ao carregar as listas', err);
+        setErrorToast(chatStrings.lists.errors.loadFailed);
+      });
+  }, [setErrorToast]);
+
   useEffect(() => {
     loadConversations();
-  }, [loadConversations]);
+    void loadLists();
+  }, [loadConversations, loadLists]);
 
   // Esc fecha em cascata: primeiro o painel de contexto ou a busca, depois a conversa.
   useEffect(() => {
@@ -931,8 +950,21 @@ export default function ChatPage() {
     ? conversations.find((c) => c.id === actionsFor.id) ?? null
     : null;
 
-  // Listas já usadas, para reaproveitar os nomes ao classificar outra conversa.
-  const knownLists = useMemo(() => collectKnownLists(conversations), [conversations]);
+  // Nomes do catálogo ∪ os gravados nas conversas carregadas: entre uma recarga e outra
+  // nenhum nome some (uma lista recém-gravada numa conversa aparece antes do catálogo voltar).
+  const knownLists = useMemo(
+    () => collectKnownLists([...conversations, { lists: lists.map((l) => l.name) }]),
+    [conversations, lists],
+  );
+  // Catálogo para o ▾ da barra lateral: contagem do servidor, com os nomes que só as
+  // conversas carregadas conhecem entrando com a contagem local.
+  const sidebarLists = useMemo(() => {
+    const byName = new Map(lists.map((l) => [l.name, l.conversationCount]));
+    return knownLists.map((name) => ({
+      name,
+      count: byName.get(name) ?? conversations.filter((c) => c.lists?.includes(name)).length,
+    }));
+  }, [knownLists, lists, conversations]);
 
   const handleConversationStateChange = useCallback(
     (conversationId: string, change: ConversationStateChange) => {
@@ -973,6 +1005,10 @@ export default function ChatPage() {
 
       chatService
         .updateConversationState(conversationId, change)
+        .then(() => {
+          // Um nome novo gravado por aqui também entra no catálogo; as contagens mudam sempre.
+          if (change.lists !== undefined) void loadLists();
+        })
         .catch((err: unknown) => {
           // A lista local já mudou: só nesse caso vale recarregar, para não deixar a
           // interface divergindo do servidor.
@@ -980,15 +1016,19 @@ export default function ChatPage() {
           void loadConversations();
         });
     },
-    [loadConversations, showArchived],
+    [loadConversations, loadLists, showArchived],
   );
 
   // Grava `lists` em lote: otimista, `allSettled`, as que falharem voltam ao estado anterior
   // e o snackbar avisa. Resolve com quantas entraram, para quem chamou decidir o filtro.
   const commitListPlan = useCallback(
-    (plan: ListUpdatePlan[], failureMessage: (failed: number) => string): Promise<number> => {
+    (
+      base: ReadonlyArray<Pick<ChatConversation, 'id' | 'lists'>>,
+      plan: ListUpdatePlan[],
+      failureMessage: (failed: number) => string,
+    ): Promise<number> => {
       const previousLists = new Map<string, string[] | undefined>();
-      for (const c of conversations) if (plan.some((p) => p.id === c.id)) previousLists.set(c.id, c.lists);
+      for (const c of base) if (plan.some((p) => p.id === c.id)) previousLists.set(c.id, c.lists);
       const nextLists = new Map(plan.map((p) => [p.id, p.lists]));
 
       setConversations((prev) =>
@@ -1009,43 +1049,87 @@ export default function ChatPage() {
         return plan.length - failedIds.length;
       });
     },
-    [conversations, setErrorToast],
+    [setErrorToast],
   );
 
-  // Cria uma lista do painel: cada conversa marcada recebe o nome. Mesmo caminho do
-  // menu de ações (otimista + `updateConversationState`), só que em lote; o filtro só
-  // liga se alguma entrou.
-  const handleCreateList = useCallback(
-    (name: string, conversationIds: string[]) => {
-      const plan: ListUpdatePlan[] = conversations
-        .filter((c) => conversationIds.includes(c.id))
-        .map((c) => ({ id: c.id, lists: [...(c.lists ?? []).filter((l) => l !== name), name] }));
-      void commitListPlan(plan, (failed) => chatStrings.lists.partialFailure(name, failed)).then((ok) => {
-        if (ok > 0) setFilter(listFilter(name));
-      });
-    },
-    [conversations, commitListPlan],
-  );
-
-  // Edita uma lista: regrava o nome novo nas conversas escolhidas e tira o antigo das demais.
-  // Só as carregadas contam — uma conversa fora do painel segue com o nome antigo.
-  const handleUpdateList = useCallback(
-    (oldName: string, newName: string, conversationIds: string[]) => {
-      const plan = planListUpdate(conversations, oldName, newName, conversationIds);
-      void commitListPlan(plan, (failed) => chatStrings.lists.updatePartialFailure(newName, failed));
-      setFilter((current) => (listFilterName(current) === oldName ? listFilter(newName) : current));
-    },
-    [conversations, commitListPlan],
-  );
-
-  // Exclui uma lista: remove o nome de todas as conversas carregadas; o filtro dela volta a Todos.
-  const handleDeleteList = useCallback(
+  // Referência para a API: pelo id do catálogo; um nome ainda só em `tags` vai pelo nome.
+  const listRef = useCallback(
     (name: string) => {
-      const plan = planListUpdate(conversations, name, null);
-      void commitListPlan(plan, (failed) => chatStrings.lists.updatePartialFailure(name, failed));
-      setFilter((current) => (listFilterName(current) === name ? 'all' : current));
+      const id = lists.find((l) => l.name === name)?.id ?? null;
+      return id ? { id } : { name };
     },
-    [conversations, commitListPlan],
+    [lists],
+  );
+
+  // Erro do catálogo vira snackbar; 409 é colisão de nome. Nada muda localmente.
+  const reportListError = useCallback(
+    (err: unknown, name: string, fallback: (name: string) => string) => {
+      console.error('Erro no catálogo de listas', err);
+      const conflict = isAxiosError(err) && err.response?.status === 409;
+      setErrorToast(conflict ? chatStrings.lists.errors.nameExists(name) : fallback(name));
+    },
+    [setErrorToast],
+  );
+
+  // Cria a lista no catálogo antes de gravar os membros: uma lista sem conversa é válida
+  // e persiste. Se a criação falhar, nada muda localmente. O filtro liga se alguma entrou.
+  const handleCreateList = useCallback(
+    async (name: string, conversationIds: string[]) => {
+      try {
+        await chatService.createList(name);
+      } catch (err) {
+        reportListError(err, name, chatStrings.lists.errors.createFailed);
+        return;
+      }
+      const plan = planListMembers(conversations, name, conversationIds);
+      const ok = await commitListPlan(conversations, plan, (failed) => chatStrings.lists.partialFailure(name, failed));
+      await loadLists();
+      if (ok > 0) setFilter(listFilter(name));
+    },
+    [conversations, commitListPlan, loadLists, reportListError],
+  );
+
+  // Edita uma lista. Nome novo → `renameList`: o servidor renomeia em cascata em todas as
+  // conversas do tenant e o painel só espelha. Depois, a diferença de membros entre as
+  // conversas carregadas vai conversa a conversa (`planListMembers`).
+  const handleUpdateList = useCallback(
+    async (oldName: string, newName: string, conversationIds: string[]) => {
+      let base = conversations;
+      if (newName !== oldName) {
+        try {
+          await chatService.renameList(listRef(oldName), newName);
+        } catch (err) {
+          reportListError(err, newName, chatStrings.lists.errors.renameFailed);
+          return;
+        }
+        base = applyListRename(conversations, oldName, newName);
+        setConversations((prev) => applyListRename(prev, oldName, newName));
+        setLists((prev) => prev.map((l) => (l.name === oldName ? { ...l, name: newName } : l)));
+        setFilter((current) => (listFilterName(current) === oldName ? listFilter(newName) : current));
+      }
+      const plan = planListMembers(base, newName, conversationIds);
+      await commitListPlan(base, plan, (failed) => chatStrings.lists.updatePartialFailure(newName, failed));
+      await loadLists();
+    },
+    [conversations, commitListPlan, listRef, loadLists, reportListError],
+  );
+
+  // Exclui a lista no catálogo (cascata no servidor) e espelha nas conversas carregadas;
+  // o filtro dela volta a Todos. Se a API falhar, nada muda.
+  const handleDeleteList = useCallback(
+    async (name: string) => {
+      try {
+        await chatService.deleteList(listRef(name));
+      } catch (err) {
+        reportListError(err, name, chatStrings.lists.errors.deleteFailed);
+        return;
+      }
+      setConversations((prev) => applyListRemoval(prev, name));
+      setLists((prev) => prev.filter((l) => l.name !== name));
+      setFilter((current) => (listFilterName(current) === name ? 'all' : current));
+      await loadLists();
+    },
+    [listRef, loadLists, reportListError],
   );
 
   // Abre a conversa direta com um participante de grupo pelo telefone
@@ -1149,6 +1233,7 @@ export default function ChatPage() {
         onOpenActions={openConversationActions}
         onToggleArchived={handleToggleArchived}
         knownLists={knownLists}
+        lists={sidebarLists}
         onCreateList={handleCreateList}
         onUpdateList={handleUpdateList}
         onDeleteList={handleDeleteList}

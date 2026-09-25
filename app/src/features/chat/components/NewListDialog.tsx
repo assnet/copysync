@@ -40,10 +40,9 @@ function displayTitle(c: ChatConversation): string {
 /**
  * Cria ou edita uma lista do painel escolhendo as conversas que a compõem.
  *
- * Não há catálogo de listas por tenant: a lista existe enquanto ao menos uma conversa a
- * carrega. Por isso o diálogo exige uma conversa marcada — sem ela a lista sumiria ao fechar.
- * Em `edit`, só as conversas carregadas no painel entram no conjunto: uma que esteja fora
- * (outra sessão, arquivada) não aparece aqui e não é tocada ao salvar.
+ * A lista tem registro próprio no catálogo do tenant, então pode nascer ou ficar vazia: só o
+ * nome é obrigatório. Em `edit`, só as conversas carregadas no painel entram no conjunto: uma
+ * que esteja fora (outra sessão, arquivada) não aparece aqui e mantém a pertença ao salvar.
  */
 export function NewListDialog({
   open, onClose, conversations, existingLists, onSubmit,
@@ -93,7 +92,7 @@ export function NewListDialog({
     });
   };
 
-  const canCreate = nameError === null && selected.size > 0;
+  const canCreate = nameError === null;
 
   const handleCreate = () => {
     if (!canCreate) {

@@ -81,13 +81,16 @@ describe('NewListDialog', () => {
     expect(screen.getByText('Informe um nome para a lista.')).toBeInTheDocument();
   });
 
-  it('exige ao menos uma conversa: com nome válido e nada marcado, Criar segue desabilitado', async () => {
-    render();
+  it('lista vazia é válida: com nome e nada marcado, Criar habilita e envia sem ids', async () => {
+    const { onCreate } = render();
 
     await userEvent.type(screen.getByLabelText('Nome da lista'), 'Clientes');
 
     expect(screen.getByText('Nenhuma conversa selecionada')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Criar' })).toBeDisabled();
+    const create = screen.getByRole('button', { name: 'Criar' });
+    expect(create).toBeEnabled();
+    await userEvent.click(create);
+    expect(onCreate).toHaveBeenCalledWith('Clientes', []);
   });
 
   it('filtra as conversas pela busca', async () => {
@@ -123,7 +126,7 @@ describe('NewListDialog', () => {
     expect(item).toHaveAttribute('aria-checked', 'true');
     await userEvent.click(item);
     expect(item).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('button', { name: 'Criar' })).toBeDisabled();
+    expect(screen.getByText('Nenhuma conversa selecionada')).toBeInTheDocument();
     expect(onCreate).not.toHaveBeenCalled();
   });
 
@@ -198,12 +201,14 @@ describe('NewListDialog — modo edição', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('sem nenhuma conversa marcada, Salvar desabilita', async () => {
-    renderEdit();
+  it('desmarcar todas mantém Salvar: a lista pode ficar vazia', async () => {
+    const { onSubmit } = renderEdit();
 
     await userEvent.click(screen.getByRole('checkbox', { name: /Oficina Zé/ }));
     await userEvent.click(screen.getByRole('checkbox', { name: /Mecânicos/ }));
 
-    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(onSubmit).toHaveBeenCalledWith('Auto peças', []);
   });
 });

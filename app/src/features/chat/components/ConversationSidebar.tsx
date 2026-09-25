@@ -86,18 +86,23 @@ interface Props {
   /** Abre o menu de ações de uma conversa. */
   onOpenActions?: (conversationId: string, anchor: HTMLElement) => void;
   /**
-   * Listas do painel para o chip ▾. Quando ausente, é derivada das conversas
-   * recebidas — passe a união de todas as carregadas para não perder nomes filtrados.
+   * Catálogo de listas do tenant para o chip ▾, com a contagem do servidor (todas as
+   * conversas, não só as carregadas). Tem precedência sobre `knownLists`.
+   */
+  lists?: ReadonlyArray<{ name: string; count: number }>;
+  /**
+   * Só os nomes, sem contagem: a contagem sai das conversas recebidas. Quando nenhum dos dois
+   * vem, os nomes são derivados das conversas — passe a união de todas as carregadas.
    */
   knownLists?: string[];
-  /** Cria a lista `name` com as conversas marcadas no diálogo. Sem ele o chip ▾ não aparece. */
+  /** Cria a lista `name` com as conversas marcadas (pode ser nenhuma). Sem ele o chip ▾ não aparece. */
   onCreateList?: (name: string, conversationIds: string[]) => void;
   /**
-   * Renomeia `oldName` para `newName` e deixa exatamente `conversationIds` na lista. Só as
-   * conversas carregadas contam: uma fora do painel (outra sessão, arquivada) não é tocada.
+   * Renomeia `oldName` para `newName` (em todas as conversas do tenant) e deixa exatamente
+   * `conversationIds`, entre as carregadas, na lista. Uma fora do painel mantém a pertença.
    */
   onUpdateList?: (oldName: string, newName: string, conversationIds: string[]) => void;
-  /** Remove `name` de todas as conversas carregadas. */
+  /** Exclui a lista do catálogo e a remove de todas as conversas do tenant. */
   onDeleteList?: (name: string) => void;
 }
 
@@ -123,6 +128,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   onToggleArchived,
   onNewConversation,
   onOpenActions,
+  lists: catalog,
   knownLists,
   onCreateList,
   onUpdateList,
@@ -136,10 +142,15 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   const [deletingList, setDeletingList] = useState<string | null>(null);
   const canManageLists = Boolean(onUpdateList || onDeleteList);
 
-  const lists = useMemo(
-    () => (knownLists ? [...knownLists].sort((a, b) => a.localeCompare(b)) : collectKnownLists(conversations)),
-    [knownLists, conversations],
-  );
+  // Entradas do ▾ em ordem alfabética. A contagem vem do catálogo quando ele existe; sem ele,
+  // das conversas recebidas.
+  const lists = useMemo<Array<{ name: string; count: number }>>(() => {
+    if (catalog) return [...catalog].sort((a, b) => a.name.localeCompare(b.name));
+    const names = knownLists ? [...knownLists].sort((a, b) => a.localeCompare(b)) : collectKnownLists(conversations);
+    return names.map((name) => ({ name, count: countInList(conversations, name) }));
+  }, [catalog, knownLists, conversations]);
+  const listNames = useMemo(() => lists.map((l) => l.name), [lists]);
+  const listCount = (name: string) => lists.find((l) => l.name === name)?.count ?? countInList(conversations, name);
   const activeList = listFilterName(filter);
 
   const filtered = conversations.filter((c) => {
@@ -346,7 +357,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', minWidth: 0 }}>
                 <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {activeList !== null
-                    ? chatStrings.lists.activeChip(activeList, getFilterCount(conversations, filter))
+                    ? chatStrings.lists.activeChip(activeList, listCount(activeList))
                     : chatStrings.lists.chip}
                 </Box>
                 <ArrowDropDownIcon aria-hidden sx={{ fontSize: 18, ml: 0.25, mr: -0.5, flexShrink: 0 }} />
@@ -390,8 +401,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               <ListItemText>{chatStrings.lists.empty}</ListItemText>
             </MenuItem>
           )}
-          {lists.map((name) => {
-            const count = countInList(conversations, name);
+          {lists.map(({ name, count }) => {
             const active = activeList === name;
             return (
               <MenuItem
@@ -462,7 +472,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
           open={listDialog !== null}
           onClose={() => setListDialog(null)}
           conversations={conversations}
-          existingLists={lists}
+          existingLists={listNames}
           mode={listDialog?.mode ?? 'create'}
           initialName={listDialog?.mode === 'edit' ? listDialog.name : ''}
           initialConversationIds={editingIds}
@@ -477,7 +487,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
         <ConfirmDialog
           open={deletingList !== null}
           title={chatStrings.lists.deleteTitle}
-          description={deletingList ? chatStrings.lists.deleteConfirm(deletingList, countInList(conversations, deletingList)) : ''}
+          description={deletingList ? chatStrings.lists.deleteConfirm(deletingList, listCount(deletingList)) : ''}
           confirmLabel={chatStrings.lists.deleteAction}
           cancelLabel={chatStrings.lists.dialog.cancel}
           confirmColor="error"
