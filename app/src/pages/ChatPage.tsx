@@ -586,7 +586,9 @@ export default function ChatPage() {
   const handleSetReaction = useCallback(
     (message: ChatMessage, emoji: string | null) => {
       // A bolha recebe a mensagem com o otimista por cima; a base do envio é a do servidor.
-      const server = (messages[message.conversationId] ?? []).find((m) => m.id === message.id) ?? message;
+      // Sem a versão do servidor não há base confiável: a recebida pode ter o otimista por cima.
+      const server = (messages[message.conversationId] ?? []).find((m) => m.id === message.id);
+      if (!server) return;
       const requestId = enqueueReaction(message.id, emoji, {
         revision: server.reactionsRevision ?? null,
         reactions: server.reactions ?? [],
