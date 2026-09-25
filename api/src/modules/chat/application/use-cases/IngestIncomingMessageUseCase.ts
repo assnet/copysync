@@ -3,6 +3,7 @@ import type { IChatConversationRepository } from '../../domain/contracts/IChatCo
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
 import type { ChatMessage } from '../../domain/entities/ChatMessage';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
+import { buildMessagePreview } from '../../domain/services/buildMessagePreview';
 
 export interface IngestIncomingMessageInput {
   tenantId: string;
@@ -141,7 +142,7 @@ export class IngestIncomingMessageUseCase {
     });
 
     // 5 — Update conversation metadata
-    const preview = buildPreview(type, body);
+    const preview = buildMessagePreview(type, body);
     await this.conversationRepo.updateLastMessage(conversation.id, tenantId, {
       lastMessagePreview: preview,
       lastMessageAt: new Date(),
@@ -156,19 +157,4 @@ export class IngestIncomingMessageUseCase {
 
     return { conversationId: conversation.id, message, isNewConversation, unreadCount };
   }
-}
-
-function buildPreview(type: ChatMessageType, body: string | null): string {
-  if (body) return body.length > 100 ? body.slice(0, 97) + '…' : body;
-  const labels: Partial<Record<ChatMessageType, string>> = {
-    [ChatMessageType.IMAGE]:    '📷 Imagem',
-    [ChatMessageType.AUDIO]:    '🎵 Áudio',
-    [ChatMessageType.VIDEO]:    '🎥 Vídeo',
-    [ChatMessageType.DOCUMENT]: '📄 Documento',
-    [ChatMessageType.STICKER]:  '😊 Sticker',
-    [ChatMessageType.LOCATION]: '📍 Localização',
-    [ChatMessageType.VCARD]:    '👤 Contato',
-    [ChatMessageType.CALL_LOG]: '📞 Chamada',
-  };
-  return labels[type] ?? '📎 Mídia';
 }
