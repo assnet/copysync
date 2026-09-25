@@ -11,6 +11,7 @@ import type {
   ContactSuggestionApiDto,
   MessageReactionResultApiDto,
 } from '@/types/chat.api.types';
+import type { SendMediaMessageRequest } from '@/types/media.api.types';
 
 export const chatService = {
   async listConversations(
@@ -66,6 +67,26 @@ export const chatService = {
     const res = await apiClient.post<{ success: true; data: ChatMessageApiDto }>(
       `/chat/conversations/${conversationId}/messages`,
       { content, ...(quotedMessageId ? { quotedMessageId } : {}) },
+    );
+    return res.data.data;
+  },
+
+  /** Envia um upload já completo (202; 200 se o mesmo `uploadId` for repetido). */
+  async sendMediaMessage(
+    conversationId: string,
+    input: SendMediaMessageRequest,
+  ): Promise<ChatMessageApiDto> {
+    const res = await apiClient.post<{ success: true; data: ChatMessageApiDto }>(
+      `/chat/conversations/${conversationId}/messages/media`,
+      input,
+    );
+    return res.data.data;
+  },
+
+  /** Reenvia uma mensagem que falhou (202). */
+  async retryMessage(messageId: string): Promise<ChatMessageApiDto> {
+    const res = await apiClient.post<{ success: true; data: ChatMessageApiDto }>(
+      `/chat/messages/${messageId}/retry`,
     );
     return res.data.data;
   },
