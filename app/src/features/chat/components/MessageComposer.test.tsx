@@ -9,6 +9,15 @@ import { MessageComposer } from './MessageComposer';
 import { VoiceRecorderProvider } from '../media/VoiceRecorderProvider';
 import type { QuotedMessagePreview } from '../types';
 
+// Dublê do picker completo: evita baixar a lib e expõe a escolha por um botão.
+vi.mock('@/components/EmojiPicker', () => ({
+  EmojiPicker: ({ onSelect }: { onSelect: (emoji: string) => void }) => (
+    <button type="button" onClick={() => onSelect('🔥')}>
+      escolher no picker
+    </button>
+  ),
+}));
+
 const citada: QuotedMessagePreview = { id: 'msg-1', type: 'text', body: 'pergunta', direction: 'in' };
 const campo = () => screen.getByPlaceholderText(/Digite uma mensagem/);
 
@@ -389,5 +398,95 @@ describe('MessageComposer — mensagem de voz', () => {
     await userEvent.click(screen.getByRole('button', { name: voz.discard }));
     await waitFor(() => expect(screen.queryByRole('group', { name: voz.draft })).not.toBeInTheDocument());
     expect(enqueue).not.toHaveBeenCalled();
+  });
+});
+
+// ── Emoji ──────────────────────────────────────────────────────────────────────
+
+// `hidden`: com o seletor aberto o Modal marca o resto da página com `aria-hidden`.
+const botaoEmoji = () => screen.getByRole('button', { name: chatStrings.composer.emoji, hidden: true });
+const seletor = () => screen.queryByRole('dialog', { name: chatStrings.composer.emoji });
+const escolher = () => userEvent.click(screen.getByRole('button', { name: 'escolher no picker' }));
+
+describe('MessageComposer — emoji', () => {
+  it('o botão abre o seletor acima dele e Esc fecha', async () => {
+    renderWithTheme(<MessageComposer onSend={vi.fn()} />);
+    expect(botaoEmoji()).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(botaoEmoji()).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(botaoEmoji());
+
+    expect(seletor()).toBeInTheDocument();
+    expect(botaoEmoji()).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(seletor()).not.toBeInTheDocument());
+    expect(botaoEmoji()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('insere o emoji na posição do cursor, foca o campo e mantém o seletor aberto', async () => {
+    renderWithTheme(<MessageComposer onSend={vi.fn()} />);
+    await userEvent.type(campo(), 'ola mundo');
+    const input = campo() as HTMLTextAreaElement;
+    input.setSelectionRange(3, 3);
+
+    await userEvent.click(botaoEmoji());
+    await escolher();
+
+    expect(input).toHaveValue('ola🔥 mundo');
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(input.selectionStart).toBe(5);
+    expect(input.selectionEnd).toBe(5);
+    expect(seletor()).toBeInTheDocument();
+
+    await escolher();
+    expect(input).toHaveValue('ola🔥🔥 mundo');
+  });
+
+  it('escolher com texto selecionado substitui a seleção', async () => {
+    renderWithTheme(<MessageComposer onSend={vi.fn()} />);
+    await userEvent.type(campo(), 'bom dia');
+    (campo() as HTMLTextAreaElement).setSelectionRange(0, 3);
+
+    await userEvent.click(botaoEmoji());
+    await escolher();
+
+    expect(campo()).toHaveValue('🔥 dia');
+  });
+
+  it('fechar e reabrir preserva o texto; Enter continua enviando', async () => {
+    const onSend = vi.fn();
+    renderWithTheme(<MessageComposer onSend={onSend} />);
+    await userEvent.click(botaoEmoji());
+    await escolher();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(seletor()).not.toBeInTheDocument());
+
+    await userEvent.click(botaoEmoji());
+    expect(seletor()).toBeInTheDocument();
+    expect(campo()).toHaveValue('🔥');
+
+    await userEvent.click(campo());
+    await userEvent.keyboard('{Enter}');
+    expect(onSend).toHaveBeenCalledWith('🔥');
+  });
+
+  it('conversa encerrada desabilita o botão de emoji', async () => {
+    renderWithTheme(<MessageComposer onSend={vi.fn()} disabled />);
+    expect(botaoEmoji()).toBeDisabled();
+
+    fireEvent.click(botaoEmoji());
+    expect(seletor()).not.toBeInTheDocument();
+  });
+
+  it('abre o seletor também no tema escuro', async () => {
+    renderWithTheme(<MessageComposer onSend={vi.fn()} />, 'dark');
+
+    await userEvent.click(botaoEmoji());
+
+    expect(seletor()).toBeInTheDocument();
+    await escolher();
+    expect(campo()).toHaveValue('🔥');
   });
 });

@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type Ref,
 } from 'react';
-import { Box, TextField, IconButton, Tooltip, Divider, alpha, useTheme, Typography, CircularProgress } from '@mui/material';
+import { Box, TextField, IconButton, Tooltip, Divider, Popover, alpha, useTheme, Typography, CircularProgress } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import EmojiEmotionsOutlinedIcon from '@mui/icons-material/EmojiEmotionsOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
@@ -16,6 +16,8 @@ import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import AudiotrackOutlinedIcon from '@mui/icons-material/AudiotrackOutlined';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
+// Import direto (não pelo barrel `components/index.ts`) para a lib do picker seguir lazy.
+import { EmojiPicker } from '@/components/EmojiPicker';
 import type { QuotedMessagePreview } from '../types';
 import { chatStrings } from '../strings';
 import { pastedFiles } from '../media/dataTransferFiles';
@@ -142,10 +144,48 @@ export function MessageComposer({
     inputRef.current?.focus();
   };
 
+  // ── Emoji ──────────────────────────────────────────────────────────────────
+  // O picker fica aberto após escolher (como no WhatsApp Web): o foco volta ao campo e o
+  // Popover não o rouba de volta (`disableEnforceFocus`). Cursor pendente aplicado após o
+  // React escrever o novo valor no campo — antes disso `setSelectionRange` cairia no valor velho.
+  const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
+  const pendingCursorRef = useRef<number | null>(null);
+  const emojiOpen = Boolean(emojiAnchor);
+  const emojiDisabled = !!disabled || barVisible;
+
+  useEffect(() => {
+    if (emojiDisabled) setEmojiAnchor(null);
+  }, [emojiDisabled]);
+
+  useEffect(() => {
+    const cursor = pendingCursorRef.current;
+    const input = inputRef.current;
+    if (cursor === null || !input) return;
+    pendingCursorRef.current = null;
+    input.focus();
+    input.setSelectionRange(cursor, cursor);
+  }, [text]);
+
+  const closeEmoji = () => setEmojiAnchor(null);
+
+  const insertEmoji = (emoji: string) => {
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? text.length;
+    const end = input?.selectionEnd ?? start;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    pendingCursorRef.current = start + emoji.length;
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+      return;
+    }
+    // Com o foco no campo, o Esc não chega ao Popover; fecha o picker daqui.
+    if (e.key === 'Escape' && emojiOpen) {
+      e.preventDefault();
+      closeEmoji();
     }
   };
 
@@ -254,13 +294,43 @@ export function MessageComposer({
         >
           {/* Emoji e anexos */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Tooltip title={texts.emojiSoon}>
+            <Tooltip title={texts.emoji} disableInteractive>
               <span>
-                <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
+                <IconButton
+                  size="small"
+                  aria-label={texts.emoji}
+                  aria-haspopup="dialog"
+                  aria-expanded={emojiOpen}
+                  disabled={emojiDisabled}
+                  onClick={(e) => setEmojiAnchor(emojiOpen ? null : e.currentTarget)}
+                  sx={(t) => ({
+                    color: emojiOpen ? t.palette.primary.main : t.palette.text.secondary,
+                    '&.Mui-disabled': { color: t.palette.text.disabled },
+                    '&.Mui-focusVisible': { outline: `2px solid ${t.palette.primary.main}`, outlineOffset: 2 },
+                  })}
+                >
                   <EmojiEmotionsOutlinedIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
+            <Popover
+              open={emojiOpen}
+              anchorEl={emojiAnchor}
+              onClose={closeEmoji}
+              anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              disableEnforceFocus
+              slotProps={{
+                paper: {
+                  elevation: 6,
+                  role: 'dialog',
+                  'aria-label': texts.emoji,
+                  sx: { borderRadius: 2, overflow: 'hidden', mb: 0.5 },
+                },
+              }}
+            >
+              <EmojiPicker onSelect={insertEmoji} onClose={closeEmoji} />
+            </Popover>
             <AttachmentMenu
               onFiles={(files, origin) => onAttachFiles?.(files, origin)}
               disabled={!canAttach}
