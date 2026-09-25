@@ -65,8 +65,17 @@ describe('sniffMediaType — assinaturas conhecidas', () => {
     expect(sniffMediaType(ftyp('M4A '))).toEqual({ mimeType: 'audio/mp4', demuxer: 'mov' });
   });
 
-  it.each(['isom', 'mp42', 'avc1'])('trata as demais brands ftyp (%s) como MP4', (brand) => {
-    expect(sniffMediaType(ftyp(brand))).toEqual({ mimeType: 'video/mp4', demuxer: 'mov' });
+  it.each(['isom', 'iso2', 'iso5', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash'])(
+    'trata brand MP4 conhecida (%s) como MP4, sem marca de genérico',
+    (brand) => {
+      const sniffed = sniffMediaType(ftyp(brand), 'application/x-qualquer');
+      expect(sniffed).toEqual({ mimeType: 'video/mp4', demuxer: 'mov' });
+      expect(sniffed.generic).toBeUndefined();
+    },
+  );
+
+  it.each(['avif', 'avis'])('reconhece AVIF pela brand %s, sem ffmpeg', (brand) => {
+    expect(sniffMediaType(ftyp(brand))).toEqual({ mimeType: 'image/avif', demuxer: null });
   });
 
   it('reconhece WebM/Matroska pelo EBML', () => {
@@ -114,6 +123,22 @@ describe('sniffMediaType — assinaturas conhecidas', () => {
   });
 });
 
+describe('sniffMediaType — ftyp de brand desconhecida', () => {
+  it('cai em MP4 para o ffprobe confirmar, marcado como genérico e com o declarado saneado', () => {
+    expect(sniffMediaType(ftyp('crx '), ' Application/X-Canon-CR3 ; q=1')).toEqual({
+      mimeType: 'video/mp4',
+      demuxer: 'mov',
+      generic: true,
+      declaredMimeType: 'application/x-canon-cr3',
+    });
+  });
+
+  it('sem declarado válido, o genérico leva declarado nulo', () => {
+    expect(sniffMediaType(ftyp('xxxx'))).toMatchObject({ generic: true, declaredMimeType: null });
+    expect(sniffMediaType(ftyp('xxxx'), 'text/pl#ain')).toMatchObject({ generic: true, declaredMimeType: null });
+  });
+});
+
 describe('sniffMediaType — sem assinatura', () => {
   const texto = bytes('ola, mundo\n');
 
@@ -129,7 +154,11 @@ describe('sniffMediaType — sem assinatura', () => {
     expect(sniffMediaType(texto, '../x')).toEqual({ mimeType: 'application/octet-stream', demuxer: null });
   });
 
-  it.each(['', '   ', 'texto', 'a/b/c', 'text/', '/plain', 'text/pl ain', 'text/plain\r\nX-Evil: 1'])(
+  it.each([
+    '', '   ', 'texto', 'a/b/c', 'text/', '/plain', 'text/pl ain', 'text/plain\r\nX-Evil: 1',
+    'text/pl#ain', 'application/x$y', 'application/a&b', 'application/a^b', 'application/x_y', 'application/x!y',
+    'image/.png', 'image/-png',
+  ])(
     'declarado inválido %j vira octet-stream',
     (declarado) => {
       expect(sniffMediaType(texto, declarado)).toEqual({ mimeType: 'application/octet-stream', demuxer: null });
@@ -140,6 +169,13 @@ describe('sniffMediaType — sem assinatura', () => {
     expect(sniffMediaType(texto)).toEqual({ mimeType: 'application/octet-stream', demuxer: null });
     expect(sniffMediaType(texto, null)).toEqual({ mimeType: 'application/octet-stream', demuxer: null });
   });
+
+  it.each(['application/vnd.ms-excel', 'image/svg+xml', 'application/x-rar-compressed', 'application/vnd.oasis.opendocument.text'])(
+    'declarado com subtipo normal %s continua aceito',
+    (declarado) => {
+      expect(sniffMediaType(texto, declarado)).toEqual({ mimeType: declarado, demuxer: null });
+    },
+  );
 
   it('mídia declarada sem assinatura nunca ganha demuxer', () => {
     expect(sniffMediaType(texto, 'video/mp4')).toEqual({ mimeType: 'video/mp4', demuxer: null });
@@ -169,7 +205,12 @@ describe('sniffMediaType — cabeçalho curto', () => {
     });
   });
 
-  it('ftyp sem brand completa cai em MP4', () => {
-    expect(sniffMediaType(ftyp('heic').subarray(0, 10))).toEqual({ mimeType: 'video/mp4', demuxer: 'mov' });
+  it('ftyp sem brand completa cai em MP4 genérico', () => {
+    expect(sniffMediaType(ftyp('heic').subarray(0, 10))).toEqual({
+      mimeType: 'video/mp4',
+      demuxer: 'mov',
+      generic: true,
+      declaredMimeType: null,
+    });
   });
 });

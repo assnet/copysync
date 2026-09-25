@@ -42,9 +42,26 @@ const MIME_TO_EXT: Record<string, string> = {
   'text/csv':   'csv',
 };
 
-/** Fora do mapa vale o subtipo (`image/heic` → `heic`); sem MIME type ou sem subtipo, `bin`. */
+/**
+ * Subtipo que pode virar extensão: vira parte do nome do arquivo e da URL estática. Sem `#`
+ * (cortaria a URL), `$&^_`, barra, espaço ou não-ASCII; e sem `..` (fora do padrão já barra
+ * o ponto inicial). O teto de 61 cobre com folga os tipos Office mais longos.
+ */
+const SAFE_SUBTYPE_PATTERN = /^[a-z0-9][a-z0-9.+-]{0,60}$/;
+
+/**
+ * Fora do mapa vale o subtipo (`image/heic` → `heic`) quando ele é seguro como extensão;
+ * sem MIME type, sem subtipo ou com subtipo fora do padrão, `bin`. O MIME pode vir do
+ * navegador (declarado no upload) ou do WhatsApp — nunca confiável como nome de arquivo.
+ */
 export function mimeTypeToExt(mimeType: string | null | undefined): string {
   if (!mimeType) return 'bin';
   const normalized = mimeType.split(';')[0].trim().toLowerCase();
-  return MIME_TO_EXT[normalized] ?? normalized.split('/')[1]?.split(';')[0] ?? 'bin';
+  const mapped = MIME_TO_EXT[normalized];
+  if (mapped) return mapped;
+
+  const slash = normalized.indexOf('/');
+  // Tudo depois da primeira barra: `a/b/c` tem subtipo `b/c`, que o padrão recusa.
+  const subtype = slash === -1 ? '' : normalized.slice(slash + 1);
+  return SAFE_SUBTYPE_PATTERN.test(subtype) && !subtype.includes('..') ? subtype : 'bin';
 }

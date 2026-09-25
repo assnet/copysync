@@ -20,6 +20,10 @@ const OGG: SniffedMediaType = { mimeType: 'audio/ogg', demuxer: 'ogg' };
 const M4A: SniffedMediaType = { mimeType: 'audio/mp4', demuxer: 'mov' };
 const PDF: SniffedMediaType = { mimeType: 'application/pdf', demuxer: null };
 const UNKNOWN: SniffedMediaType = { mimeType: 'application/octet-stream', demuxer: null };
+/** `ftyp` de brand desconhecida: `video/mp4` é só palpite para o ffprobe confirmar. */
+const FTYP_GENERICO = (declaredMimeType: string | null): SniffedMediaType => ({
+  mimeType: 'video/mp4', demuxer: 'mov', generic: true, declaredMimeType,
+});
 
 const H264_VIDEO: MediaProbe = {
   durationSeconds: 12,
@@ -201,6 +205,41 @@ describe('classifyOutboundMedia — documento', () => {
   it('recusa documento 1 byte acima do limite de documento', () => {
     expectTooLarge(
       () => classify({ purpose: 'document', sniffed: PDF, sizeBytes: LIMITS.documentBytes + 1 }),
+      LIMITS.documentBytes,
+      'document',
+    );
+  });
+});
+
+describe('classifyOutboundMedia — ftyp de brand desconhecida', () => {
+  it('documento usa o declarado saneado, não o palpite de vídeo — mesmo com probe', () => {
+    expect(classify({ purpose: 'document', sniffed: FTYP_GENERICO('application/x-canon-cr3'), probe: H264_VIDEO }))
+      .toEqual({ kind: 'document', mimeType: 'application/x-canon-cr3' });
+  });
+
+  it('documento sem declarado sai como application/octet-stream', () => {
+    expect(classify({ purpose: 'document', sniffed: FTYP_GENERICO(null) }))
+      .toEqual({ kind: 'document', mimeType: 'application/octet-stream' });
+  });
+
+  it('em "fotos e vídeos", sem probe vira documento com o declarado', () => {
+    expect(classify({ sniffed: FTYP_GENERICO('application/x-canon-cr3'), probe: null }))
+      .toEqual(CONVERTED('application/x-canon-cr3'));
+    expect(classify({ sniffed: FTYP_GENERICO(null), probe: null })).toEqual(CONVERTED('application/octet-stream'));
+  });
+
+  it('em "fotos e vídeos", o probe que confirma H.264 yuv420p ainda manda como vídeo', () => {
+    expect(classify({ sniffed: FTYP_GENERICO(null), probe: H264_VIDEO })).toEqual({ kind: 'video', mimeType: 'video/mp4' });
+  });
+
+  it('em "fotos e vídeos", probe que não confirma vídeo inline vira documento com o declarado', () => {
+    const probe = { ...H264_VIDEO, videoCodec: 'hevc' };
+    expect(classify({ sniffed: FTYP_GENERICO('video/x-outro'), probe })).toEqual(CONVERTED('video/x-outro'));
+  });
+
+  it('o documento genérico continua sujeito ao limite de documento', () => {
+    expectTooLarge(
+      () => classify({ purpose: 'document', sniffed: FTYP_GENERICO(null), sizeBytes: LIMITS.documentBytes + 1 }),
       LIMITS.documentBytes,
       'document',
     );

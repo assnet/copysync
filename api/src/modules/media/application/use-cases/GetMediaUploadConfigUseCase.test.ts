@@ -26,7 +26,8 @@ describe('GetMediaUploadConfigUseCase', () => {
         documentBytes: 180_000_000,
         voiceBytes: 58_982_400,
       },
-      capabilities: { voiceNotes: true, videoMetadata: false },
+      // Voz exige transcodificar E ler a duração (ffprobe): só ffmpeg não basta.
+      capabilities: { voiceNotes: false, videoMetadata: false },
     });
   });
 

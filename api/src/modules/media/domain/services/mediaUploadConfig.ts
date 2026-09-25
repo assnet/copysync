@@ -42,6 +42,10 @@ export interface MediaUploadConfig {
  * Monta o config público de upload: limites para o painel avisar antes de subir e
  * capacidades para esconder o que o servidor não sabe fazer (voz sem ffmpeg, metadados
  * de vídeo sem ffprobe).
+ *
+ * Voz exige ffmpeg **e** ffprobe: a confirmação transcodifica e lê a duração da saída. Esta é a
+ * fonte única da regra — a criação do upload também recusa por ela, então o painel nunca mostra
+ * o gravador para um envio que a confirmação recusaria.
  */
 export function buildMediaUploadConfig(
   settings: MediaUploadSettings,
@@ -59,7 +63,7 @@ export function buildMediaUploadConfig(
       voiceBytes: settings.MEDIA_MAX_VOICE_SECONDS * VOICE_BYTES_PER_SECOND,
     },
     capabilities: {
-      voiceNotes: capabilities.transcodeVoice,
+      voiceNotes: capabilities.transcodeVoice && capabilities.probe,
       videoMetadata: capabilities.probe,
     },
   };

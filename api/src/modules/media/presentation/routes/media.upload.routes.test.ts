@@ -1,18 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
+import http from 'http';
 import os from 'os';
 import path from 'path';
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+  type onRequestAsyncHookHandler,
+} from 'fastify';
 import { mediaUploadRoutes, type MediaUploadRoutesOptions } from './media.upload.routes';
 import { DiskUploadSessionStore } from '../../infrastructure/uploads/DiskUploadSessionStore';
+import type { WriteUploadPartResult } from '../../domain/contracts/IUploadSessionStore';
 import type { MediaCapabilities } from '../../domain/contracts/MediaCapabilities';
 import { errorHandler } from '../../../../shared/http/errorHandler';
+import { UnauthorizedError } from '../../../../shared/errors/internal/AuthErrors';
 
 /**
  * Exceção justificada à matriz do TESTING.md: o isolamento do parser binário e o limite de
  * corpo só aparecem com o Fastify de verdade. Store real em pasta temporária; autenticação
  * e tenant entram por um hook `onRequest` falso — nenhum banco.
+ *
+ * Os dois testes de desistência do cliente abrem um servidor em porta efêmera de 127.0.0.1:
+ * o `inject` nunca marca a requisição como abortada, então o `onRequestAbort` só roda com socket.
  */
 
 const MIB = 1024 * 1024;
@@ -32,6 +43,8 @@ const settings: MediaUploadRoutesOptions['settings'] = {
   // O teste não depende do disco da máquina: sem reserva e com teto folgado.
   MEDIA_DISK_RESERVE_BYTES: 0,
   MEDIA_UPLOAD_MAX_OPEN_BYTES: 1024 * MIB,
+  MEDIA_UPLOAD_MAX_CONCURRENT_PARTS: 8,
+  MEDIA_UPLOAD_MAX_CONCURRENT_PARTS_PER_USER: 2,
 };
 
 let root: string;
@@ -229,5 +242,218 @@ describe('rotas de upload em partes', () => {
 
     expect(semFfmpeg.statusCode).toBe(503);
     expect(comFfmpeg.statusCode).toBe(201);
+  });
+});
+
+/** Store real que segura a gravação de uma parte até o teste soltar: a parte fica "em andamento". */
+class StoreComTrava extends DiskUploadSessionStore {
+  private readonly travas = new Map<string, { avisar: () => void; aberta: Promise<void> }>();
+
+  travar(uploadId: string): { entrou: Promise<void>; soltar: () => void } {
+    let avisar!: () => void;
+    let soltar!: () => void;
+    const entrou = new Promise<void>((r) => { avisar = r; });
+    const aberta = new Promise<void>((r) => { soltar = r; });
+    this.travas.set(uploadId, { avisar, aberta });
+    return { entrou, soltar: () => { this.travas.delete(uploadId); soltar(); } };
+  }
+
+  override async writePart(uploadId: string, index: number, data: Uint8Array): Promise<WriteUploadPartResult> {
+    const trava = this.travas.get(uploadId);
+    if (trava) {
+      trava.avisar();
+      await trava.aberta;
+    }
+    return super.writePart(uploadId, index, data);
+  }
+}
+
+/** Usuário pelo cabeçalho `x-user`; sem ele, 401 — como o `authHook` de produção, por exceção. */
+async function authPorCabecalho(request: FastifyRequest): Promise<void> {
+  const userId = request.headers['x-user'];
+  if (typeof userId !== 'string') throw new UnauthorizedError('Missing test user');
+  request.user = { userId, isSuperAdmin: false };
+  request.tenantContext = { userId, tenantId: 'tenant-a', role: 'ADMIN', isSuperAdmin: false };
+}
+
+describe('vagas de partes em andamento', () => {
+  let instancia: FastifyInstance | undefined;
+  const clientes: http.ClientRequest[] = [];
+
+  afterEach(async () => {
+    // Cliente ainda aberto seguraria o `close` do servidor até o timeout.
+    clientes.splice(0).forEach((c) => c.destroy());
+    await instancia?.close();
+    instancia = undefined;
+  });
+
+  async function montar(total: number, porUsuario: number, authExtra?: onRequestAsyncHookHandler) {
+    const store = new StoreComTrava({ dir: root });
+    const inst = Fastify();
+    inst.setErrorHandler(errorHandler);
+    await inst.register(mediaUploadRoutes, {
+      prefix: PREFIX,
+      store,
+      capabilities: () => caps,
+      settings: { ...settings, MEDIA_UPLOAD_MAX_CONCURRENT_PARTS: total, MEDIA_UPLOAD_MAX_CONCURRENT_PARTS_PER_USER: porUsuario },
+      authHooks: authExtra ? [authPorCabecalho, authExtra] : [authPorCabecalho],
+    });
+    await inst.ready();
+    instancia = inst;
+
+    const criar = async (user: string, sizeBytes = 1000): Promise<string> => {
+      const res = await inst.inject({
+        method: 'POST',
+        url: PREFIX,
+        headers: { 'x-user': user },
+        payload: { fileName: 'arquivo.bin', sizeBytes, purpose: 'document' },
+      });
+      expect(res.statusCode).toBe(201);
+      return res.json().data.uploadId as string;
+    };
+    const parte = (user: string, uploadId: string, body = Buffer.alloc(1000, 1), index = 0) =>
+      inst.inject({
+        method: 'PUT',
+        url: `${PREFIX}/${uploadId}/parts/${index}`,
+        headers: { ...HEADERS_BIN, 'x-user': user },
+        payload: body,
+      });
+    return { inst, store, criar, parte };
+  }
+
+  /** Abre um PUT de verdade, manda só 1 KiB de um corpo de 8 MiB e fica esperando. */
+  function parteQueDesiste(endereco: string, uploadId: string, user: string, extras: Record<string, string> = {}) {
+    const req = http.request(`${endereco}${PREFIX}/${uploadId}/parts/0`, {
+      method: 'PUT',
+      headers: { ...HEADERS_BIN, 'content-length': String(CHUNK), 'x-user': user, ...extras },
+    });
+    req.on('error', () => undefined); // ECONNRESET é o esperado ao desistir
+    req.write(Buffer.alloc(1024));
+    clientes.push(req);
+    return req;
+  }
+
+  it('sem vaga no processo responde 429 sem ler o corpo — nem parte acima do limite chega ao 413', async () => {
+    const s = await montar(1, 1);
+    const a = await s.criar('user-a');
+    const b = await s.criar('user-b');
+    const trava = s.store.travar(a);
+    const emAndamento = s.parte('user-a', a);
+    await trava.entrou;
+
+    const recusa = await s.parte('user-b', b, Buffer.alloc(CHUNK + 2 * 1024));
+    expect(recusa.statusCode).toBe(429);
+    expect(recusa.json().error.code).toBe('TOO_MANY_REQUESTS');
+    // A recusa não devolve a vaga de quem está em andamento: a seguinte também é 429.
+    expect((await s.parte('user-b', b)).statusCode).toBe(429);
+
+    trava.soltar();
+    expect((await emAndamento).statusCode).toBe(200);
+    expect((await s.parte('user-b', b)).statusCode).toBe(200);
+  });
+
+  it('por usuário: o mesmo usuário espera a própria vaga, outro usuário ainda entra', async () => {
+    const s = await montar(8, 1);
+    const a1 = await s.criar('user-a');
+    const a2 = await s.criar('user-a');
+    const b = await s.criar('user-b');
+    const trava = s.store.travar(a1);
+    const emAndamento = s.parte('user-a', a1);
+    await trava.entrou;
+
+    expect((await s.parte('user-a', a2)).statusCode).toBe(429);
+    expect((await s.parte('user-b', b)).statusCode).toBe(200);
+
+    trava.soltar();
+    await emAndamento;
+    expect((await s.parte('user-a', a2)).statusCode).toBe(200);
+  });
+
+  it('autenticação vem antes da vaga: sem credencial é 401 mesmo com o processo lotado', async () => {
+    const s = await montar(1, 1);
+    const a = await s.criar('user-a');
+    const trava = s.store.travar(a);
+    const emAndamento = s.parte('user-a', a);
+    await trava.entrou;
+
+    const semAuth = await s.inst.inject({
+      method: 'PUT',
+      url: `${PREFIX}/${randomUUID()}/parts/0`,
+      headers: HEADERS_BIN,
+      payload: Buffer.from('x'),
+    });
+    expect(semAuth.statusCode).toBe(401);
+
+    trava.soltar();
+    await emAndamento;
+  });
+
+  it('a vaga volta depois de 413, 400 e 404 — nenhuma recusa vaza vaga', async () => {
+    const s = await montar(1, 1);
+    const a = await s.criar('user-a', CHUNK + 10);
+
+    expect((await s.parte('user-a', a, Buffer.alloc(CHUNK + 2 * 1024))).statusCode).toBe(413);
+    expect((await s.parte('user-a', a, Buffer.alloc(9), 1)).statusCode).toBe(400);
+    expect((await s.parte('user-a', randomUUID(), Buffer.alloc(10))).statusCode).toBe(404);
+    const indiceInvalido = await s.inst.inject({
+      method: 'PUT', url: `${PREFIX}/${a}/parts/x`, headers: { ...HEADERS_BIN, 'x-user': 'user-a' }, payload: Buffer.from('x'),
+    });
+    expect(indiceInvalido.statusCode).toBe(400);
+    const semBinario = await s.inst.inject({
+      method: 'PUT', url: `${PREFIX}/${a}/parts/1`, headers: { 'x-user': 'user-a' }, payload: { parte: 1 },
+    });
+    expect(semBinario.statusCode).toBe(400);
+
+    expect((await s.parte('user-a', a, Buffer.alloc(10, 1), 1)).statusCode).toBe(200);
+  });
+
+  it('a vaga volta quando o cliente desiste no meio do corpo', async () => {
+    let avisarChegada!: () => void;
+    const chegou = new Promise<void>((r) => { avisarChegada = r; });
+    const marcaChegada: onRequestAsyncHookHandler = async (request) => {
+      if (request.headers['x-marca'] === '1') avisarChegada();
+    };
+    const s = await montar(1, 1, marcaChegada);
+    const a = await s.criar('user-a', CHUNK);
+    const b = await s.criar('user-b');
+    const endereco = await s.inst.listen({ port: 0, host: '127.0.0.1' });
+
+    const cliente = parteQueDesiste(endereco, a, 'user-a', { 'x-marca': '1' });
+    await chegou;
+    await new Promise((r) => setTimeout(r, 20));
+    // O PUT real passou da autenticação e está lendo o corpo: a vaga é dele.
+    expect((await s.parte('user-b', b)).statusCode).toBe(429);
+
+    cliente.destroy();
+    await vi.waitFor(async () => expect((await s.parte('user-b', b)).statusCode).toBe(200));
+  });
+
+  it('cliente que cai durante a autenticação não fica com vaga presa', async () => {
+    let avisarEntrada!: () => void;
+    const entrouNaAuth = new Promise<void>((r) => { avisarEntrada = r; });
+    let liberarAuth!: () => void;
+    const authLiberada = new Promise<void>((r) => { liberarAuth = r; });
+    let bruto: http.IncomingMessage | undefined;
+    const authLenta: onRequestAsyncHookHandler = async (request) => {
+      if (request.headers['x-auth-lenta'] !== '1') return;
+      bruto = request.raw;
+      avisarEntrada();
+      await authLiberada;
+    };
+
+    const s = await montar(1, 1, authLenta);
+    const a = await s.criar('user-a', CHUNK);
+    const b = await s.criar('user-b');
+    const endereco = await s.inst.listen({ port: 0, host: '127.0.0.1' });
+
+    const cliente = parteQueDesiste(endereco, a, 'user-a', { 'x-auth-lenta': '1' });
+    await entrouNaAuth;
+    cliente.destroy();
+    await vi.waitFor(() => expect(bruto?.destroyed).toBe(true));
+
+    // A autenticação termina depois do `close`: ninguém mais devolveria uma vaga tomada agora.
+    liberarAuth();
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await s.parte('user-b', b)).statusCode).toBe(200);
   });
 });

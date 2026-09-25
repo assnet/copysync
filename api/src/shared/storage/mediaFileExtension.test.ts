@@ -65,4 +65,45 @@ describe('mimeTypeToExt', () => {
   it('reconhece texto com charset', () => {
     expect(mimeTypeToExt('text/plain; charset=utf-8')).toBe('txt');
   });
+
+  // Trava o fallback pelo subtipo para os tipos reais: o endurecimento abaixo não pode mudar
+  // o nome de nenhum arquivo recebido de tipo normal.
+  it.each([
+    ['image/heic', 'heic'],
+    ['image/avif', 'avif'],
+    ['image/svg+xml', 'svg+xml'],
+    ['audio/opus', 'opus'],
+    ['audio/amr', 'amr'],
+    ['video/webm', 'webm'],
+    ['video/x-matroska', 'x-matroska'],
+    ['application/x-7z-compressed', 'x-7z-compressed'],
+    ['application/vnd.android.package-archive', 'vnd.android.package-archive'],
+    ['application/vnd.ms-excel.sheet.macroenabled.12', 'vnd.ms-excel.sheet.macroenabled.12'],
+    ['application/vnd.openxmlformats-officedocument.wordprocessingml.template', 'vnd.openxmlformats-officedocument.wordprocessingml.template'],
+  ])('mantém o subtipo de tipo normal fora do mapa: %s → %s', (mime, ext) => {
+    expect(mimeTypeToExt(mime)).toBe(ext);
+  });
+
+  it.each([
+    ['image/../../etc', 'caminho'],
+    ['image/a..b', 'dois pontos seguidos'],
+    ['image/.oculto', 'começa com ponto'],
+    ['image/-x', 'começa com hífen'],
+    ['application/x#y', 'cerquilha (corta a URL)'],
+    ['application/x$y', 'cifrão'],
+    ['application/x&y', 'e comercial'],
+    ['application/x^y', 'circunflexo'],
+    ['application/x_y', 'sublinhado'],
+    ['application/x y', 'espaço'],
+    ['image/jpé', 'fora do ASCII'],
+    ['a/b/c', 'barra no subtipo'],
+    ['text/', 'subtipo vazio'],
+    [`application/${'a'.repeat(62)}`, 'mais de 61 caracteres'],
+  ])('subtipo inseguro vira bin: %s (%s)', (mime) => {
+    expect(mimeTypeToExt(mime)).toBe('bin');
+  });
+
+  it('aceita subtipo de exatamente 61 caracteres', () => {
+    expect(mimeTypeToExt(`application/${'a'.repeat(61)}`)).toBe('a'.repeat(61));
+  });
 });

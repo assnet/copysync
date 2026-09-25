@@ -1,6 +1,15 @@
-import type { IUploadSessionStore, UploadPurpose } from '../../domain/contracts/IUploadSessionStore';
+import type {
+  IUploadSessionStore,
+  UploadPurpose,
+  UploadSessionRecord,
+  UploadSessionState,
+} from '../../domain/contracts/IUploadSessionStore';
 import type { MediaCapabilities } from '../../domain/contracts/MediaCapabilities';
-import { buildMediaUploadConfig, type MediaUploadSettings } from '../../domain/services/mediaUploadConfig';
+import {
+  buildMediaUploadConfig,
+  type MediaUploadConfig,
+  type MediaUploadSettings,
+} from '../../domain/services/mediaUploadConfig';
 import { diskBudget } from '../../domain/services/diskBudget';
 import { sanitizeFileName } from '../../domain/services/sanitizeFileName';
 import {
@@ -18,6 +27,8 @@ export interface CreateUploadSessionSettings extends MediaUploadSettings {
   MEDIA_DISK_RESERVE_BYTES?: number;
   /** Sem valor, o teto de abertos sai do tamanho do disco (`diskBudget`). */
   MEDIA_UPLOAD_MAX_OPEN_BYTES?: number;
+  /** Sem valor, metade do teto de abertos — um usuário nunca esgota a reserva dos outros tenants. */
+  MEDIA_UPLOAD_MAX_OPEN_BYTES_PER_USER?: number;
 }
 
 export interface CreateUploadSessionInput {
@@ -39,12 +50,31 @@ export interface CreateUploadSessionOutput {
   expiresAt: string;
 }
 
+/** Estados que ainda seguram bytes declarados: o `.bin` existe e a mensagem ainda não. */
+const HOLDING_STATES: readonly UploadSessionState[] = ['OPEN', 'CONSUMING'];
+
+/**
+ * Fila do processo para checagens + `create`. Sem ela, POSTs paralelos leem o mesmo estado,
+ * todos passam e juntos furam os tetos. Fica no módulo, não na instância: a rota cria um use
+ * case por requisição. Vale para um processo só (disco local da Render); vários processos no
+ * mesmo disco precisariam de trava no próprio store.
+ */
+let creationQueue: Promise<unknown> = Promise.resolve();
+
+function inCreationQueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = creationQueue.then(task);
+  // A próxima criação espera esta terminar, com sucesso ou erro — uma falha não trava a fila.
+  creationQueue = run.catch(() => undefined);
+  return run;
+}
+
 /**
  * Abre um upload em partes (design §5).
  *
- * Ordem importa: nome → tamanho válido → limite da finalidade (413) → voz sem ffmpeg (503) →
- * abertos do usuário (429) → disco (507) → cria. As recusas baratas vêm antes de ler o disco,
- * e nada é gravado antes de todas passarem.
+ * Ordem importa: nome → tamanho válido → limite da finalidade (413) → voz sem ffmpeg/ffprobe
+ * (503) → **fila** → abertos do usuário (429) → bytes abertos do usuário (429) → disco (507) →
+ * cria. As recusas baratas vêm antes da fila e de ler o disco; nada é gravado antes de todas
+ * passarem, e da primeira leitura do store até o `create` só uma criação roda por vez.
  */
 export class CreateUploadSessionUseCase {
   constructor(
@@ -62,30 +92,34 @@ export class CreateUploadSessionUseCase {
       throw new ValidationError('Upload size must be a positive integer', { sizeBytes });
     }
 
-    const maxBytes = this.maxBytesFor(purpose);
+    const config = buildMediaUploadConfig(this.settings, this.capabilities);
+    const maxBytes = maxBytesFor(purpose, config.limits);
     if (sizeBytes > maxBytes) {
       throw new MediaTooLargeError(undefined, { purpose, sizeBytes, maxBytes });
     }
 
-    if (purpose === 'voice' && !this.capabilities.transcodeVoice) {
+    // Mesma regra do config público: o painel só mostra o gravador quando a confirmação aceitaria.
+    if (purpose === 'voice' && !config.capabilities.voiceNotes) {
       throw new MediaProcessorUnavailableError('Voice notes are unavailable on this server');
     }
 
-    const openByUser = await this.store.countOpenByUser(tenantId, userId);
-    if (openByUser >= this.settings.MEDIA_UPLOAD_MAX_OPEN_PER_USER) {
-      throw new TooManyRequestsError('Too many open uploads for this user');
-    }
+    const record = await inCreationQueue(async () => {
+      const openByUser = await this.store.countOpenByUser(tenantId, userId);
+      if (openByUser >= this.settings.MEDIA_UPLOAD_MAX_OPEN_PER_USER) {
+        throw new TooManyRequestsError('Too many open uploads for this user');
+      }
 
-    await this.ensureDiskRoom(sizeBytes);
+      await this.ensureRoom(tenantId, userId, sizeBytes);
 
-    const record = await this.store.create({
-      tenantId,
-      userId,
-      purpose,
-      fileName,
-      declaredMimeType: input.declaredMimeType ?? null,
-      sizeBytes,
-      chunkSizeBytes: this.settings.MEDIA_UPLOAD_CHUNK_BYTES,
+      return this.store.create({
+        tenantId,
+        userId,
+        purpose,
+        fileName,
+        declaredMimeType: input.declaredMimeType ?? null,
+        sizeBytes,
+        chunkSizeBytes: this.settings.MEDIA_UPLOAD_CHUNK_BYTES,
+      });
     });
 
     const ttlMs = this.settings.MEDIA_UPLOAD_TTL_MINUTES * 60_000;
@@ -99,29 +133,17 @@ export class CreateUploadSessionUseCase {
   }
 
   /**
-   * `media` ainda não sabe se é imagem ou vídeo — a classificação só acontece no consumo,
-   * pelo conteúdo. Por isso vale o maior dos dois; o consumo aplica o limite do tipo real.
-   */
-  private maxBytesFor(purpose: UploadPurpose): number {
-    const { limits } = buildMediaUploadConfig(this.settings, this.capabilities);
-    switch (purpose) {
-      case 'document':
-        return limits.documentBytes;
-      case 'voice':
-        return limits.voiceBytes;
-      case 'media':
-        return Math.max(limits.imageBytes, limits.inlineVideoBytes);
-    }
-  }
-
-  /**
    * Bytes declarados dos uploads abertos contam como ocupados: o `.bin` esparso ainda não
    * gastou esses blocos. A reserva protege a mídia recebida, que grava no mesmo disco.
+   *
+   * O teto do usuário vem antes do global: sem ele, um usuário de um tenant enche a reserva e
+   * todos os outros tenants recebem 507. Quem acumula recebe 429; o disco cheio de fato, 507.
    */
-  private async ensureDiskRoom(sizeBytes: number): Promise<void> {
-    const [{ totalBytes, freeBytes }, reservedBytes] = await Promise.all([
+  private async ensureRoom(tenantId: string, userId: string, sizeBytes: number): Promise<void> {
+    const [{ totalBytes, freeBytes }, reservedBytes, userBytes] = await Promise.all([
       this.store.diskStats(),
       this.store.openReservedBytes(),
+      this.openBytesOf(tenantId, userId),
     ]);
     const budget = diskBudget({
       totalBytes,
@@ -129,9 +151,38 @@ export class CreateUploadSessionUseCase {
       maxOpenBytes: this.settings.MEDIA_UPLOAD_MAX_OPEN_BYTES,
     });
 
+    const maxUserBytes = this.settings.MEDIA_UPLOAD_MAX_OPEN_BYTES_PER_USER ?? Math.floor(budget.maxOpenBytes / 2);
+    if (userBytes + sizeBytes > maxUserBytes) {
+      throw new TooManyRequestsError('Too many open upload bytes for this user');
+    }
+
     const leftAfter = freeBytes - reservedBytes - sizeBytes;
     if (leftAfter < budget.reserveBytes || reservedBytes + sizeBytes > budget.maxOpenBytes) {
       throw new InsufficientStorageError(undefined, { sizeBytes });
     }
+  }
+
+  /** Soma declarada dos uploads `OPEN`/`CONSUMING` do usuário no tenant. */
+  private async openBytesOf(tenantId: string, userId: string): Promise<number> {
+    const lists = await Promise.all(HOLDING_STATES.map((state) => this.store.listByState(state)));
+    return lists
+      .flat()
+      .filter((record: UploadSessionRecord) => record.tenantId === tenantId && record.userId === userId)
+      .reduce((total, record) => total + record.sizeBytes, 0);
+  }
+}
+
+/**
+ * `media` ainda não sabe se é imagem ou vídeo — a classificação só acontece no consumo,
+ * pelo conteúdo. Por isso vale o maior dos dois; o consumo aplica o limite do tipo real.
+ */
+function maxBytesFor(purpose: UploadPurpose, limits: MediaUploadConfig['limits']): number {
+  switch (purpose) {
+    case 'document':
+      return limits.documentBytes;
+    case 'voice':
+      return limits.voiceBytes;
+    case 'media':
+      return Math.max(limits.imageBytes, limits.inlineVideoBytes);
   }
 }

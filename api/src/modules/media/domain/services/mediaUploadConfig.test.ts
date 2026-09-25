@@ -46,10 +46,19 @@ describe('buildMediaUploadConfig', () => {
     expect(config.capabilities).toEqual({ voiceNotes: false, videoMetadata: true });
   });
 
-  it('avisa que não há metadados de vídeo quando não há probe', () => {
+  it('sem probe, avisa que não há metadados de vídeo e desliga a voz — a confirmação lê a duração pelo probe', () => {
     const config = buildMediaUploadConfig(padroes(), { transcodeVoice: true, probe: false });
 
-    expect(config.capabilities).toEqual({ voiceNotes: true, videoMetadata: false });
+    expect(config.capabilities).toEqual({ voiceNotes: false, videoMetadata: false });
+  });
+
+  it.each([
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+  ])('voz disponível só com transcode e probe juntos (transcode %s, probe %s → %s)', (transcodeVoice, probe, voiceNotes) => {
+    expect(buildMediaUploadConfig(padroes(), { transcodeVoice, probe }).capabilities.voiceNotes).toBe(voiceNotes);
   });
 
   it('reflete limites configurados fora do padrão', () => {

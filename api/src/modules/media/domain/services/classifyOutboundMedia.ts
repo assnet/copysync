@@ -39,6 +39,16 @@ const VOICE_SOURCE_MIME_TYPES = new Set(['audio/ogg', 'video/webm', 'audio/mp4',
 
 /** Formato final da nota de voz; quem produz o arquivo é o transcode. */
 const VOICE_MIME_TYPE = 'audio/ogg; codecs=opus';
+const UNKNOWN_DOCUMENT_MIME_TYPE = 'application/octet-stream';
+
+/**
+ * Rótulo do arquivo que sai como documento. O `video/mp4` do `ftyp` genérico é palpite, não
+ * assinatura: rotulado assim, um arquivo de brand desconhecida (raw de câmera, por exemplo)
+ * chegaria ao contato como vídeo e com extensão `.mp4`. Vale o declarado saneado.
+ */
+function documentMimeType(sniffed: SniffedMediaType): string {
+  return sniffed.generic ? sniffed.declaredMimeType ?? UNKNOWN_DOCUMENT_MIME_TYPE : sniffed.mimeType;
+}
 
 function ensureWithinLimit(sizeBytes: number, limitBytes: number, kind: OutboundMediaKind): void {
   if (sizeBytes > limitBytes) {
@@ -57,7 +67,8 @@ function classifyVoice({ sniffed, sizeBytes, probe, limits }: ClassifyOutboundMe
 
 /**
  * Vídeo inline só em H.264 8 bits (`yuv420p`) dentro de MP4/3GP: é o que toca em todo aparelho.
- * Sem probe o codec é desconhecido (HEVC tocaria mal), então não entra inline.
+ * Sem probe o codec é desconhecido (HEVC tocaria mal), então não entra inline — e o `ftyp`
+ * genérico, sem probe, nem é certeza de vídeo: só o codec confirmado o faz sair como vídeo.
  */
 function isInlineVideo(sniffed: SniffedMediaType, probe: MediaProbe | null): boolean {
   return (
@@ -75,7 +86,7 @@ function classifyMedia({ sniffed, sizeBytes, probe, limits }: ClassifyOutboundMe
     return { kind: 'video', mimeType: sniffed.mimeType };
   }
   ensureWithinLimit(sizeBytes, limits.documentBytes, 'document');
-  return { kind: 'document', mimeType: sniffed.mimeType, reason: 'converted_to_document' };
+  return { kind: 'document', mimeType: documentMimeType(sniffed), reason: 'converted_to_document' };
 }
 
 /**
@@ -95,5 +106,5 @@ export function classifyOutboundMedia(input: ClassifyOutboundMediaInput): Outbou
   if (input.purpose === 'media') return classifyMedia(input);
 
   ensureWithinLimit(input.sizeBytes, input.limits.documentBytes, 'document');
-  return { kind: 'document', mimeType: input.sniffed.mimeType };
+  return { kind: 'document', mimeType: documentMimeType(input.sniffed) };
 }

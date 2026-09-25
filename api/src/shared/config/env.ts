@@ -55,6 +55,13 @@ const envSchema = z.object({
   // Mídia enviada: sem padrão fixo — sem valor, relativos ao tamanho do disco (diskBudget).
   MEDIA_UPLOAD_MAX_OPEN_BYTES: z.coerce.number().int().positive().optional(),
   MEDIA_DISK_RESERVE_BYTES: z.coerce.number().int().nonnegative().optional(),
+  // Mídia enviada: bytes abertos por usuário — sem valor, metade do teto de abertos acima.
+  // Impede que um só usuário (de um só tenant) esgote a reserva de disco de todos.
+  MEDIA_UPLOAD_MAX_OPEN_BYTES_PER_USER: z.coerce.number().int().positive().optional(),
+  // Mídia enviada: partes (PUT) em andamento no processo e por usuário — cada uma segura até
+  // um chunk em memória; sem vaga a parte volta 429 antes de o corpo ser lido.
+  MEDIA_UPLOAD_MAX_CONCURRENT_PARTS: z.coerce.number().int().positive().default(8),
+  MEDIA_UPLOAD_MAX_CONCURRENT_PARTS_PER_USER: z.coerce.number().int().positive().default(2),
   // Mídia enviada: folga mínima no /tmp para o processamento (256 MiB).
   MEDIA_TMP_RESERVE_BYTES: z.coerce.number().int().nonnegative().default(268_435_456),
   // Mídia enviada: limites por tipo, em decimal como os do WhatsApp.
