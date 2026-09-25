@@ -23,7 +23,7 @@ export type MessageDirection = 'in' | 'out';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 /** Filtro de exibição na lista de conversas */
-export type ConversationFilter = 'all' | 'unread' | 'open' | 'waiting' | 'bot' | 'closed';
+export type ConversationFilter = 'all' | 'unread' | 'favorite' | 'open' | 'waiting' | 'bot' | 'closed';
 
 // ── Entities ──────────────────────────────────────────────────────────────────
 

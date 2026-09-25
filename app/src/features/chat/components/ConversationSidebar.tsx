@@ -17,6 +17,7 @@ interface FilterOption {
 const FILTER_OPTIONS: FilterOption[] = [
   { value: 'all',     label: 'Todos' },
   { value: 'unread',  label: 'Não lidas' },
+  { value: 'favorite', label: 'Favoritas' },
   { value: 'open',    label: 'Abertas' },
   { value: 'waiting', label: 'Fila' },
   { value: 'bot',     label: 'Bot' },
@@ -26,6 +27,7 @@ const FILTER_OPTIONS: FilterOption[] = [
 function getFilterCount(conversations: ChatConversation[], filter: ConversationFilter): number {
   if (filter === 'all')     return conversations.length;
   if (filter === 'unread')  return conversations.filter(isUnread).length;
+  if (filter === 'favorite') return conversations.filter((c) => c.favorite === true).length;
   if (filter === 'open')    return conversations.filter((c) => c.status === 'open').length;
   if (filter === 'waiting') return conversations.filter((c) => c.status === 'waiting').length;
   if (filter === 'bot')     return conversations.filter((c) => c.status === 'bot').length;
@@ -91,6 +93,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
     const matchesFilter =
       filter === 'all' ||
       (filter === 'unread'  && isUnread(c)) ||
+      (filter === 'favorite' && c.favorite === true) ||
       (filter === 'open'    && c.status === 'open') ||
       (filter === 'waiting' && c.status === 'waiting') ||
       (filter === 'bot'     && c.status === 'bot') ||
