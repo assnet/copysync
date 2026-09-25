@@ -5,6 +5,7 @@ import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMess
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { logger } from '../../../../shared/logger/logger';
+import { resolveConversationTarget, buildEngineMessageRef } from './resolveConversationTarget';
 import type { ChatMessageDto, QuotedMessageSummary } from './ListMessagesUseCase';
 
 export interface SendMessageInput {
@@ -27,19 +28,10 @@ export class SendMessageUseCase {
     if (!conv) throw new NotFoundError('Conversation', input.conversationId);
 
     // Para grupos, não há contato — usa groupJid@g.us como destino
-    const isGroup = conv.isGroup ?? false;
-    let recipientPhone: string;
-    let contactPhone: string | null = null;
-
-    if (isGroup) {
-      if (!conv.groupJid) throw new NotFoundError('GroupJid', input.conversationId);
-      recipientPhone = `${conv.groupJid}@g.us`;
-    } else {
-      const contact = await this.contactRepo.findById(conv.contactId ?? '', input.tenantId);
-      if (!contact) throw new NotFoundError('Contact', conv.contactId ?? '');
-      recipientPhone = contact.phone;
-      contactPhone = contact.phone;
-    }
+    const contact = conv.isGroup
+      ? null
+      : await this.contactRepo.findById(conv.contactId ?? '', input.tenantId);
+    const target = resolveConversationTarget(conv, contact);
 
     // ── Busca mensagem citada antes do envio (usada na engine e no DTO) ────
     let quotedEntity: Awaited<ReturnType<typeof this.messageRepo.findById>> | null = null;
@@ -55,17 +47,9 @@ export class SendMessageUseCase {
         const result = await this.engine.sendTextMessage({
           sessionId: conv.sessionId,
           tenantId:  input.tenantId,
-          to:        recipientPhone,
+          to:        target.recipientPhone,
           body:      input.content,
-          quotedMessage: quotedEntity?.externalMessageId
-            ? {
-                externalId: quotedEntity.externalMessageId,
-                remoteJid:  isGroup ? recipientPhone : (contactPhone ?? recipientPhone),
-                fromMe:     quotedEntity.direction === ChatMessageDirection.OUTBOUND,
-                body:       quotedEntity.content,
-                type:       quotedEntity.type,
-              }
-            : null,
+          quotedMessage: quotedEntity ? buildEngineMessageRef(target, quotedEntity) : null,
         });
         externalMessageId = result.messageId;
       } catch (err) {
