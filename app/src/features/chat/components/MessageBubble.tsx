@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Box, Typography, Avatar, alpha, useTheme, IconButton, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
@@ -8,6 +8,7 @@ import ReplyIcon from '@mui/icons-material/Reply';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ChatIcon from '@mui/icons-material/Chat';
+import AddReactionOutlinedIcon from '@mui/icons-material/AddReactionOutlined';
 import type { ChatMessage } from '../types';
 import { formatMessageTime } from '../utils';
 import { ImageMessage } from './messages/ImageMessage';
@@ -21,6 +22,9 @@ import { CallLogMessage } from './messages/CallLogMessage';
 import { DeletedMessage } from './messages/DeletedMessage';
 import { QuotedMessage } from './messages/QuotedMessage';
 import { RichMessageText } from './messages/RichMessageText';
+import { ReactionBar } from './messages/ReactionBar';
+import { MessageReactions } from './messages/MessageReactions';
+import { chatStrings } from '../strings';
 
 // ── Status icon ───────────────────────────────────────────────────────────────
 
@@ -132,10 +136,16 @@ interface Props {
   onReply?: (message: ChatMessage) => void;
   onParticipantClick?: (phone: string, name: string) => void;
   participantAvatars?: Record<string, string>;
+  /** Reagir (`emoji`) ou remover a própria reação (`null`). Ausente → chips só leitura. */
+  onSetReaction?: (message: ChatMessage, emoji: string | null) => void;
 }
 
-export function MessageBubble({ message, onReply, onParticipantClick, participantAvatars }: Props) {
+export function MessageBubble({ message, onReply, onParticipantClick, participantAvatars, onSetReaction }: Props) {
   const [hovered, setHovered] = useState(false);
+  // Foco por teclado dentro da linha mostra as mesmas ações do hover.
+  const [focused, setFocused] = useState(false);
+  const [reactAnchor, setReactAnchor] = useState<HTMLElement | null>(null);
+  const reactBtnRef = useRef<HTMLButtonElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -158,6 +168,11 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
   const handleMenuReply = () => {
     handleCloseMenu();
     onReply?.(message);
+  };
+
+  const handleMenuReact = () => {
+    handleCloseMenu();
+    setReactAnchor(reactBtnRef.current);
   };
 
   const handleMenuCopy = () => {
@@ -207,34 +222,69 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
   const textColor = isOut ? '#ffffff' : theme.palette.text.primary;
   const timeColor = isOut ? alpha('#ffffff', 0.65) : theme.palette.text.disabled;
 
+  // Mensagem apagada ou nunca entregue não aceita reação (a API responderia 409).
+  const canReact = !!onSetReaction && !message.isDeleted && !!message.externalMessageId;
+  const reactions = message.reactions ?? [];
+  const hasReactions = reactions.some((r) => r.count > 0);
+  const activeEmoji = reactions.find((r) => r.reactedByMe)?.emoji ?? null;
+  const showActions = hovered || focused || Boolean(reactAnchor);
+
+  const actionBtnSx = {
+    opacity: showActions ? 1 : 0,
+    transition: 'opacity 0.15s',
+    pointerEvents: showActions ? 'auto' : 'none',
+    width: 28,
+    height: 28,
+    color: 'text.secondary',
+    flexShrink: 0,
+    alignSelf: 'center',
+    '&:hover': { color: 'primary.main', bgcolor: alpha(theme.palette.primary.main, 0.08) },
+    '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 1 },
+    '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+  } as const;
+
   const replyBtn = onReply && (
     <Tooltip title="Responder" placement={isOut ? 'left' : 'right'}>
       <IconButton
         size="small"
         aria-label="Responder mensagem"
         onClick={() => onReply(message)}
-        sx={{
-          opacity: hovered ? 1 : 0,
-          transition: 'opacity 0.15s',
-          pointerEvents: hovered ? 'auto' : 'none',
-          width: 28,
-          height: 28,
-          color: 'text.secondary',
-          flexShrink: 0,
-          alignSelf: 'center',
-          '&:hover': { color: 'primary.main', bgcolor: alpha(theme.palette.primary.main, 0.08) },
-        }}
+        sx={actionBtnSx}
       >
         <ReplyIcon sx={{ fontSize: 16, ...(isOut ? { transform: 'scaleX(-1)' } : {}) }} />
       </IconButton>
     </Tooltip>
   );
 
+  const reactBtn = canReact && (
+    <Tooltip title={chatStrings.reactions.react} placement={isOut ? 'left' : 'right'}>
+      <IconButton
+        ref={reactBtnRef}
+        size="small"
+        aria-label={chatStrings.reactions.reactToMessage}
+        aria-haspopup="true"
+        aria-expanded={Boolean(reactAnchor)}
+        onClick={(e) => setReactAnchor(e.currentTarget)}
+        sx={actionBtnSx}
+      >
+        <AddReactionOutlinedIcon sx={{ fontSize: 16 }} />
+      </IconButton>
+    </Tooltip>
+  );
+
+  const handleToggleChip = canReact
+    ? (emoji: string, reactedByMe: boolean) => onSetReaction?.(message, reactedByMe ? null : emoji)
+    : undefined;
+
   return (
     <>
     <Box
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+      }}
       sx={{
         display: 'flex',
         justifyContent: isOut ? 'flex-end' : 'flex-start',
@@ -243,10 +293,12 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
         alignItems: 'flex-start',
         gap: 0.25,
         px: 2.5,
-        mb: 0.5,
+        // Os chips sobrepõem a borda inferior: reserva espaço para não invadir a próxima bolha.
+        mb: hasReactions ? 2 : 0.5,
       }}
     >
       {/* Reply btn à esquerda para mensagens enviadas */}
+      {isOut && reactBtn}
       {isOut && replyBtn}
       {/* Avatar do remetente em mensagens de grupo recebidas, como no WhatsApp Web */}
       {!isOut && message.fromParticipantName && (
@@ -313,9 +365,9 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
             right: 0,
             borderRadius: isOut ? '0 16px 0 8px' : '0 16px 0 8px',
             background: `linear-gradient(135deg, transparent 30%, ${bgColor} 60%)`,
-            opacity: hovered ? 1 : 0,
+            opacity: showActions ? 1 : 0,
             transition: 'opacity 0.15s',
-            pointerEvents: hovered ? 'auto' : 'none',
+            pointerEvents: showActions ? 'auto' : 'none',
             zIndex: 1,
           }}
         >
@@ -388,10 +440,27 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
           </Typography>
           {isOut && <MessageStatusIcon status={message.status} />}
         </Box>
+
+        {/* Chips de reação: abaixo do horário (nunca por cima) e metade para fora da borda. */}
+        {hasReactions && (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: isOut ? 'flex-end' : 'flex-start',
+              mt: 0.5,
+              mb: '-18px',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            <MessageReactions reactions={reactions} onToggle={handleToggleChip} />
+          </Box>
+        )}
       </Box>
 
       {/* Reply btn à direita para mensagens recebidas */}
       {!isOut && replyBtn}
+      {!isOut && reactBtn}
     </Box>
 
     {/* Menu de contexto da mensagem */}
@@ -403,6 +472,12 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
       transformOrigin={{ vertical: 'top', horizontal: isOut ? 'right' : 'left' }}
       slotProps={{ paper: { sx: { minWidth: 200, borderRadius: 2 } } }}
     >
+      {canReact && (
+        <MenuItem onClick={handleMenuReact} dense>
+          <ListItemIcon><AddReactionOutlinedIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>{chatStrings.reactions.react}</ListItemText>
+        </MenuItem>
+      )}
       {onReply && (
         <MenuItem onClick={handleMenuReply} dense>
           <ListItemIcon><ReplyIcon fontSize="small" /></ListItemIcon>
@@ -425,6 +500,16 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
         </MenuItem>
       )}
     </Menu>
+
+    {canReact && (
+      <ReactionBar
+        anchorEl={reactAnchor}
+        open={Boolean(reactAnchor)}
+        onClose={() => setReactAnchor(null)}
+        activeEmoji={activeEmoji}
+        onSelect={(emoji) => onSetReaction?.(message, emoji)}
+      />
+    )}
     </>
   );
 }

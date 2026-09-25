@@ -17,6 +17,8 @@ function joinNames(names: string[]): string {
 export const chatStrings = {
   reactions: {
     react: 'Reagir',
+    /** `aria-label` do botão de reagir no cluster de ações da bolha. */
+    reactToMessage: 'Reagir à mensagem',
     remove: 'Remover reação',
     quickBar: 'Reações rápidas',
     openFullPicker: 'Mais emojis',

@@ -278,6 +278,7 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     fromParticipant:     dto.fromParticipant ?? null,
     fromParticipantName: dto.fromParticipantName ?? null,
     fromParticipantAvatarUrl: resolveMediaUrl(dto.fromParticipantAvatarUrl),
+    externalMessageId: dto.externalMessageId ?? null,
     reactions:         (dto.reactions ?? []).map(apiReactionToFrontend),
     reactionsRevision: dto.reactionsRevision ?? null,
   };

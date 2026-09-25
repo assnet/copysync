@@ -79,6 +79,8 @@ export interface ChatMessage {
   /** Nome do participante que enviou (grupos) */
   fromParticipantName?: string | null;
   fromParticipantAvatarUrl?: string | null;
+  /** Id da mensagem no canal de mensageria. `null` = nunca entregue (não aceita reação). */
+  externalMessageId?: string | null;
   /** Reações agrupadas por emoji. Ausente/vazio = sem reações. */
   reactions?: MessageReaction[];
   /** Versão do agregado no servidor (descarta atualização fora de ordem). */
