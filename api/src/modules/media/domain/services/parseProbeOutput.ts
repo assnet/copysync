@@ -54,6 +54,11 @@ function rotationOf(stream: Json): number | null {
   return isObject(stream.tags) ? toNumber(stream.tags.rotate) : null;
 }
 
+/** Capa embutida de áudio (mp3/m4a): o ffprobe a lista como stream de vídeo (`mjpeg`/`png`). */
+function isAttachedPicture(stream: Json): boolean {
+  return isObject(stream.disposition) && toNumber(stream.disposition.attached_pic) === 1;
+}
+
 function isQuarterTurn(rotation: number | null): boolean {
   if (rotation === null) return false;
   const normalized = ((rotation % 360) + 360) % 360;
@@ -62,8 +67,8 @@ function isQuarterTurn(rotation: number | null): boolean {
 
 /**
  * Lê a saída JSON de
- * `ffprobe -show_entries format=duration:stream=codec_type,codec_name,pix_fmt,width,height:stream_side_data=rotation:stream_tags=rotate -of json`.
- * Considera só a primeira stream de vídeo e a primeira de áudio.
+ * `ffprobe -show_entries format=duration:stream=codec_type,codec_name,pix_fmt,width,height:stream_side_data=rotation:stream_tags=rotate:stream_disposition=attached_pic -of json`.
+ * Considera só a primeira stream de vídeo e a primeira de áudio; capa embutida (`attached_pic`) não conta como vídeo.
  * @throws {InvalidProbeOutputError} quando o texto não é um objeto JSON.
  */
 export function parseProbeOutput(json: string): MediaProbe {
@@ -76,7 +81,7 @@ export function parseProbeOutput(json: string): MediaProbe {
   if (!isObject(parsed)) throw new InvalidProbeOutputError();
 
   const streams = (Array.isArray(parsed.streams) ? parsed.streams : []).filter(isObject);
-  const video = streams.find((s) => s.codec_type === 'video');
+  const video = streams.find((s) => s.codec_type === 'video' && !isAttachedPicture(s));
   const audio = streams.find((s) => s.codec_type === 'audio');
   const duration = isObject(parsed.format) ? toNumber(parsed.format.duration) : null;
 

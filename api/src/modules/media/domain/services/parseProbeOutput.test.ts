@@ -117,6 +117,26 @@ describe('parseProbeOutput', () => {
     expect(probe).toMatchObject({ videoCodec: 'h264', width: 320, height: 240, pixelFormat: 'yuv420p', audioCodec: 'aac' });
   });
 
+  it('ignora a capa embutida do áudio (stream mjpeg com attached_pic)', () => {
+    const capa = video({ codec_name: 'mjpeg', width: 600, height: 600, pix_fmt: 'yuvj420p', disposition: { attached_pic: 1 } });
+    const probe = parseProbeOutput(saida([{ codec_name: 'mp3', codec_type: 'audio', disposition: { attached_pic: 0 } }, capa]));
+    expect(probe).toEqual({
+      durationSeconds: 3,
+      width: null,
+      height: null,
+      videoCodec: null,
+      pixelFormat: null,
+      audioCodec: 'mp3',
+      hasAudio: true,
+    });
+  });
+
+  it('usa o vídeo real quando a capa embutida vem antes dele', () => {
+    const capa = video({ codec_name: 'png', width: 600, height: 600, disposition: { attached_pic: 1 } });
+    const probe = parseProbeOutput(saida([capa, video({ disposition: { attached_pic: 0 } }), audio]));
+    expect(probe).toMatchObject({ videoCodec: 'h264', width: 320, height: 240, pixelFormat: 'yuv420p' });
+  });
+
   it('ignora streams que não são de áudio nem de vídeo', () => {
     const probe = parseProbeOutput(saida([{ codec_name: 'mov_text', codec_type: 'subtitle' }]));
     expect(probe).toMatchObject({ videoCodec: null, audioCodec: null, hasAudio: false });
