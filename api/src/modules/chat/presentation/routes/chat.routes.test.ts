@@ -5,6 +5,11 @@ import { ChatPresenter } from '../presenters/ChatPresenter';
 import { SendMessageUseCase } from '../../application/use-cases/SendMessageUseCase';
 import { SendMediaMessageUseCase } from '../../application/use-cases/SendMediaMessageUseCase';
 import { RetryOutboundMediaUseCase } from '../../application/use-cases/RetryOutboundMediaUseCase';
+import { ListChatListsUseCase } from '../../application/use-cases/ListChatListsUseCase';
+import { CreateChatListUseCase } from '../../application/use-cases/CreateChatListUseCase';
+import { RenameChatListUseCase } from '../../application/use-cases/RenameChatListUseCase';
+import { DeleteChatListUseCase } from '../../application/use-cases/DeleteChatListUseCase';
+import { ConflictError } from '../../../../shared/errors/internal/ResourceErrors';
 import type { ChatMessageDto } from '../../application/use-cases/ListMessagesUseCase';
 import {
   ChatMessageDirection,
@@ -180,5 +185,81 @@ describe('POST /conversations/:id/messages (texto)', () => {
 
     expect(res.statusCode).toBe(400);
     expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('Listas — /lists', () => {
+  const lista = { id: 'list-1', name: 'VIP', conversationCount: 2 };
+
+  it('GET responde o catálogo do tenant no envelope de sempre', async () => {
+    const execute = vi.spyOn(ListChatListsUseCase.prototype, 'execute')
+      .mockResolvedValue([lista, { id: null, name: 'legado', conversationCount: 1 }]);
+
+    const res = await app.inject({ method: 'GET', url: `${PREFIX}/lists` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: [lista, { id: null, name: 'legado', conversationCount: 1 }] });
+    expect(execute).toHaveBeenCalledWith({ tenantId: 'tenant-a' });
+  });
+
+  it('POST cria com 201 e repete com 200 quando o nome já existe', async () => {
+    const execute = vi.spyOn(CreateChatListUseCase.prototype, 'execute')
+      .mockResolvedValueOnce({ list: lista, created: true })
+      .mockResolvedValueOnce({ list: lista, created: false });
+
+    const primeira = await app.inject({ method: 'POST', url: `${PREFIX}/lists`, payload: { name: 'VIP' } });
+    const segunda  = await app.inject({ method: 'POST', url: `${PREFIX}/lists`, payload: { name: 'VIP' } });
+
+    expect(primeira.statusCode).toBe(201);
+    expect(segunda.statusCode).toBe(200);
+    expect(segunda.json()).toEqual({ success: true, data: lista });
+    expect(execute).toHaveBeenCalledWith({ tenantId: 'tenant-a', name: 'VIP' });
+  });
+
+  it.each([['vazio', ''], ['longo demais', 'x'.repeat(41)]])('POST com nome %s responde 400 sem chegar ao use case', async (_c, name) => {
+    const execute = vi.spyOn(CreateChatListUseCase.prototype, 'execute');
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/lists`, payload: { name } });
+    expect(res.statusCode).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /:id renomeia pela entrada do catálogo', async () => {
+    const execute = vi.spyOn(RenameChatListUseCase.prototype, 'execute').mockResolvedValue({ ...lista, name: 'Leads' });
+
+    const res = await app.inject({ method: 'PATCH', url: `${PREFIX}/lists/list-1`, payload: { name: 'Leads' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ...lista, name: 'Leads' } });
+    expect(execute).toHaveBeenCalledWith({ tenantId: 'tenant-a', target: { id: 'list-1' }, newName: 'Leads' });
+  });
+
+  it('PATCH /by-name atende lista que só existe em tags, sem cair na rota por id', async () => {
+    const execute = vi.spyOn(RenameChatListUseCase.prototype, 'execute').mockResolvedValue({ ...lista, name: 'Nova' });
+
+    const res = await app.inject({ method: 'PATCH', url: `${PREFIX}/lists/by-name`, payload: { name: 'antiga', newName: 'Nova' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith({ tenantId: 'tenant-a', target: { name: 'antiga' }, newName: 'Nova' });
+  });
+
+  it('PATCH com nome de outra lista responde 409 CONFLICT', async () => {
+    vi.spyOn(RenameChatListUseCase.prototype, 'execute').mockRejectedValue(new ConflictError('A list named "Leads" already exists'));
+
+    const res = await app.inject({ method: 'PATCH', url: `${PREFIX}/lists/list-1`, payload: { name: 'Leads' } });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ success: false, error: { code: 'CONFLICT' } });
+  });
+
+  it('DELETE /:id e /by-name/:name (URL-encoded) respondem 204', async () => {
+    const execute = vi.spyOn(DeleteChatListUseCase.prototype, 'execute').mockResolvedValue(undefined);
+
+    const porId   = await app.inject({ method: 'DELETE', url: `${PREFIX}/lists/list-1` });
+    const porNome = await app.inject({ method: 'DELETE', url: `${PREFIX}/lists/by-name/${encodeURIComponent('Clientes VIP')}` });
+
+    expect(porId.statusCode).toBe(204);
+    expect(porNome.statusCode).toBe(204);
+    expect(execute).toHaveBeenNthCalledWith(1, { tenantId: 'tenant-a', target: { id: 'list-1' } });
+    expect(execute).toHaveBeenNthCalledWith(2, { tenantId: 'tenant-a', target: { name: 'Clientes VIP' } });
   });
 });

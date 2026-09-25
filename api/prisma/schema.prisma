@@ -120,6 +120,7 @@ model Tenant {
   chatConversations    ChatConversation[]
   chatMessages         ChatMessage[]
   chatMessageReactions ChatMessageReaction[]
+  chatLists            ChatList[]
 
   @@index([slug])
   @@map("tenants")
@@ -365,7 +366,30 @@ model ChatConversation {
   @@index([tenantId, groupJid])
   @@index([tenantId, archived])
   @@index([tenantId, pinned])
+  // GIN: `tags @> ARRAY[nome]` nas contagens e cascatas do catálogo de listas.
+  @@index([tags], type: Gin)
   @@map("chat_conversations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT LIST — catálogo de listas de conversa do painel
+// ─────────────────────────────────────────────────────────────────────────────
+// Uma lista é um nome; a associação continua em `ChatConversation.tags`. O catálogo
+// garante que a lista exista mesmo sem conversa e é a única porta para renomear/excluir
+// (cascata em `tags`). Nunca edite `tags` fora do catálogo — ver docs/chat-listas.md.
+
+model ChatList {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("chat_lists")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

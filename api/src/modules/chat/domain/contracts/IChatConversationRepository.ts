@@ -125,4 +125,12 @@ export interface IChatConversationRepository {
   }): Promise<ApplyRemoteStateResult | null>;
   /** Quantidade de conversas arquivadas do tenant. */
   countArchived(tenantId: string, sessionId?: string): Promise<number>;
+  /**
+   * Troca `oldName` por `newName` em `tags` de todas as conversas do tenant, sem duplicar
+   * quando a conversa já tinha o novo. Chame pelo catálogo de listas (`IChatListRepository`),
+   * que faz isso na mesma transação da mudança de nome.
+   */
+  replaceTag(tenantId: string, oldName: string, newName: string): Promise<number>;
+  /** Remove `name` de `tags` de todas as conversas do tenant. Idem: passe pelo catálogo. */
+  removeTag(tenantId: string, name: string): Promise<number>;
 }

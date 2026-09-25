@@ -3,6 +3,10 @@ import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { sseAuthHook } from '../../../../shared/http/hooks/sseAuthHook';
 import { UpdateConversationStateUseCase } from '../../application/use-cases/UpdateConversationStateUseCase';
+import { ListChatListsUseCase } from '../../application/use-cases/ListChatListsUseCase';
+import { CreateChatListUseCase } from '../../application/use-cases/CreateChatListUseCase';
+import { RenameChatListUseCase } from '../../application/use-cases/RenameChatListUseCase';
+import { DeleteChatListUseCase } from '../../application/use-cases/DeleteChatListUseCase';
 import { SuggestContactsUseCase } from '../../application/use-cases/SuggestContactsUseCase';
 import { StartConversationUseCase } from '../../application/use-cases/StartConversationUseCase';
 import { SyncChatAvatarsUseCase } from '../../application/use-cases/SyncChatAvatarsUseCase';
@@ -27,6 +31,10 @@ import {
   messageIdParamSchema,
   reactionBodySchema,
   updateConversationBodySchema,
+  listIdParamSchema,
+  listNameParamSchema,
+  listNameBodySchema,
+  renameListByNameBodySchema,
 } from '../schemas/chat.schema';
 
 // ── Infrastructure ────────────────────────────────────────────────────────────
@@ -34,6 +42,7 @@ import { PrismaChatContactRepository } from '../../infrastructure/repositories/P
 import { PrismaChatConversationRepository } from '../../infrastructure/repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from '../../infrastructure/repositories/PrismaChatMessageRepository';
 import { PrismaChatMessageReactionRepository } from '../../infrastructure/repositories/PrismaChatMessageReactionRepository';
+import { PrismaChatListRepository } from '../../infrastructure/repositories/PrismaChatListRepository';
 import { PrismaSessionRepository } from '../../../sessions/infrastructure/repositories/PrismaSessionRepository';
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 
@@ -62,6 +71,7 @@ const contactRepo       = new PrismaChatContactRepository(prisma);
 const conversationRepo  = new PrismaChatConversationRepository(prisma);
 const messageRepo       = new PrismaChatMessageRepository(prisma);
 const reactionRepo      = new PrismaChatMessageReactionRepository(prisma);
+const listRepo          = new PrismaChatListRepository(prisma);
 const sessionRepo       = new PrismaSessionRepository();
 const userRepo          = new PrismaUserRepository();
 
@@ -319,7 +329,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       };
 
       const useCase = new UpdateConversationStateUseCase(
-        conversationRepo, contactRepo, messageRepo, getActiveEngine() ?? undefined,
+        conversationRepo, contactRepo, messageRepo, listRepo, getActiveEngine() ?? undefined,
       );
       const state = await useCase.execute({ tenantId, conversationId: id, ...body });
 
@@ -341,6 +351,73 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       });
 
       httpResponse.ok(reply, state);
+    },
+  );
+
+  // ── Listas — catálogo por tenant; renomear/excluir refletem em `tags` ─────
+  app.get('/lists', { preHandler }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { tenantId } = request.tenantContext;
+    const lists = await new ListChatListsUseCase(listRepo).execute({ tenantId });
+    httpResponse.ok(reply, ChatPresenter.presentLists(lists));
+  });
+
+  app.post(
+    '/lists',
+    { preHandler, schema: { body: listNameBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { name } = request.body as { name: string };
+      const result = await new CreateChatListUseCase(listRepo).execute({ tenantId, name });
+      const data = ChatPresenter.presentList(result.list);
+      // Nome já existente responde 200 com a lista de sempre: criar duas vezes não é erro.
+      if (result.created) httpResponse.created(reply, data);
+      else httpResponse.ok(reply, data);
+    },
+  );
+
+  // Estática antes de `/lists/:id`: o roteador dá preferência, mas a ordem deixa claro.
+  app.patch(
+    '/lists/by-name',
+    { preHandler, schema: { body: renameListByNameBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { name, newName } = request.body as { name: string; newName: string };
+      const list = await new RenameChatListUseCase(listRepo).execute({ tenantId, target: { name }, newName });
+      httpResponse.ok(reply, ChatPresenter.presentList(list));
+    },
+  );
+
+  app.patch(
+    '/lists/:id',
+    { preHandler, schema: { params: listIdParamSchema, body: listNameBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+      const { name } = request.body as { name: string };
+      const list = await new RenameChatListUseCase(listRepo).execute({ tenantId, target: { id }, newName: name });
+      httpResponse.ok(reply, ChatPresenter.presentList(list));
+    },
+  );
+
+  app.delete(
+    '/lists/by-name/:name',
+    { preHandler, schema: { params: listNameParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { name } = request.params as { name: string };
+      await new DeleteChatListUseCase(listRepo).execute({ tenantId, target: { name } });
+      httpResponse.noContent(reply);
+    },
+  );
+
+  app.delete(
+    '/lists/:id',
+    { preHandler, schema: { params: listIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+      await new DeleteChatListUseCase(listRepo).execute({ tenantId, target: { id } });
+      httpResponse.noContent(reply);
     },
   );
 

@@ -1,6 +1,8 @@
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
+import type { IChatListRepository } from '../../domain/contracts/IChatListRepository';
+import { normalizeChatListName } from '../../domain/services/normalizeChatListName';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { logger } from '../../../../shared/logger/logger';
@@ -44,13 +46,16 @@ export interface ConversationStateDto {
  * informa que ficou só aqui.
  *
  * Favoritos e listas são exclusivos do painel: o protocolo do WhatsApp não expõe
- * equivalentes que a biblioteca permita manipular.
+ * equivalentes que a biblioteca permita manipular. Toda lista recebida em `lists` ganha
+ * entrada no catálogo (`IChatListRepository.ensure`): é o que a mantém viva quando a
+ * última conversa sai dela.
  */
 export class UpdateConversationStateUseCase {
   constructor(
     private readonly conversationRepo: IChatConversationRepository,
     private readonly contactRepo: IChatContactRepository,
     private readonly messageRepo: IChatMessageRepository,
+    private readonly listRepo: IChatListRepository,
     private readonly engine?: IMessagingEngine,
   ) {}
 
@@ -64,6 +69,13 @@ export class UpdateConversationStateUseCase {
         : input.muteMs === null
           ? null
           : new Date(Date.now() + input.muteMs);
+
+    // Antes de gravar: se o catálogo falhar, a conversa não fica apontando para uma
+    // lista que não existe.
+    for (const name of input.lists ?? []) {
+      const normalized = normalizeChatListName(name);
+      if (normalized) await this.listRepo.ensure(input.tenantId, normalized);
+    }
 
     const updated = await this.conversationRepo.updateState(input.conversationId, input.tenantId, {
       archived: input.archived,

@@ -12,6 +12,7 @@ import type { RemoteChatState } from '../../../../shared/events/InternalMessagin
 import { diffRemoteState } from '../../domain/services/diffRemoteState';
 import type { ChatConversation } from '../../domain/entities/ChatConversation';
 import { PrismaChatConversationMapper } from '../mappers/PrismaChatConversationMapper';
+import { chatConversationTagsSql } from './chatConversationTagsSql';
 
 export class PrismaChatConversationRepository implements IChatConversationRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -166,6 +167,14 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
     return this.prisma.chatConversation.count({
       where: { tenantId, archived: true, ...(sessionId ? { sessionId } : {}) },
     });
+  }
+
+  replaceTag(tenantId: string, oldName: string, newName: string): Promise<number> {
+    return chatConversationTagsSql.replace(this.prisma, tenantId, oldName, newName);
+  }
+
+  removeTag(tenantId: string, name: string): Promise<number> {
+    return chatConversationTagsSql.remove(this.prisma, tenantId, name);
   }
 
   async create(data: CreateConversationData): Promise<ChatConversation> {

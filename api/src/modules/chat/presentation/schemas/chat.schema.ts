@@ -143,3 +143,43 @@ export const listParticipantsQuerySchema = {
     search: { type: 'string' },
   },
 } as const;
+
+// ── Listas (catálogo) ─────────────────────────────────────────────────────────
+// maxLength é barreira grosseira; o aparo e a regra final (1..40 após trim) ficam no use case.
+
+export const listIdParamSchema = {
+  type: 'object',
+  required: ['id'],
+  properties: {
+    id: { type: 'string', minLength: 1 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const listNameParamSchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 40 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const listNameBodySchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 40 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const renameListByNameBodySchema = {
+  type: 'object',
+  required: ['name', 'newName'],
+  properties: {
+    name:    { type: 'string', minLength: 1, maxLength: 40 },
+    newName: { type: 'string', minLength: 1, maxLength: 40 },
+  },
+  additionalProperties: false,
+} as const;

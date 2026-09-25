@@ -2,6 +2,7 @@ import type { ConversationListItemDto } from '../../application/use-cases/ListCo
 import type { ChatMessageDto } from '../../application/use-cases/ListMessagesUseCase';
 import type { ChatContactDto } from '../../application/use-cases/GetContactByIdUseCase';
 import type { ReactionSummary } from '../../domain/services/aggregateReactions';
+import type { ChatListDto } from '../../application/use-cases/ListChatListsUseCase';
 
 export class ChatPresenter {
   static presentConversation(dto: ConversationListItemDto): object {
@@ -34,6 +35,14 @@ export class ChatPresenter {
       favorite: dto.favorite ?? false,
       manuallyUnread: dto.manuallyUnread ?? false,
     };
+  }
+
+  static presentList(dto: ChatListDto): object {
+    return { id: dto.id, name: dto.name, conversationCount: dto.conversationCount };
+  }
+
+  static presentLists(dtos: ChatListDto[]): object[] {
+    return dtos.map(ChatPresenter.presentList);
   }
 
   static presentConversationList(dtos: ConversationListItemDto[]): object[] {
