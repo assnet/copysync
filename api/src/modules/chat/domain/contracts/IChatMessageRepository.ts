@@ -40,6 +40,8 @@ export interface ChatMessageCreateData {
   fromParticipant?: string | null;
   /** Nome do remetente dentro de um grupo */
   fromParticipantName?: string | null;
+  /** Status inicial; se omitido, SENT. Mídia do painel nasce PENDING até o WhatsApp aceitar. */
+  status?: ChatMessageStatus;
 }
 
 export interface IChatMessageRepository {

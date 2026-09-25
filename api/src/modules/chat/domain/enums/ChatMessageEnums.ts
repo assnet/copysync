@@ -22,4 +22,6 @@ export enum ChatMessageStatus {
   DELIVERED = 'DELIVERED',
   READ = 'READ',
   FAILED = 'FAILED',
+  /** Gravada e aguardando/enviando ao WhatsApp (só mídia enviada pelo painel). */
+  PENDING = 'PENDING',
 }

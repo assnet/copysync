@@ -94,6 +94,9 @@ enum ChatMessageStatus {
   DELIVERED
   READ
   FAILED
+  // Gravada e aguardando/enviando ao WhatsApp (só mídia do painel). No fim porque o
+  // Postgres anexa o valor novo ao final do tipo; outra posição gera drift no diff.
+  PENDING
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

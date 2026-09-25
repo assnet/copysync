@@ -10,7 +10,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Unreleased]
 
 > **Estado do versionamento (2026-09-25)**: `api/package.json` e `app/package.json` estão em
-> `0.11.2`, mas a única TAG do repositório é `v0.2.0` e a última seção fechada aqui é `[0.2.0]`.
+> `0.12.0`, mas a única TAG do repositório é `v0.2.0` e a última seção fechada aqui é `[0.2.0]`.
 > Tudo abaixo é trabalho acumulado desde então, atravessando várias versões dos `package.json`
 > sem seção nem TAG correspondente — AGENTS.md §31.3 pede os três lugares em sincronia.
 >
@@ -20,6 +20,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 > com tudo. A segunda é mais honesta com o que de fato foi entregue em bloco.
 >
 > _Remover esta nota ao fechar a primeira seção de versão._
+
+### Added
+
+#### Chat — Anexos e mensagem de voz (em andamento, `0.12.0`)
+
+O operador envia documento, foto, vídeo e mensagem de voz gravada no navegador direto da conversa; a
+mensagem aparece na hora como pendente e vira enviada quando o WhatsApp aceita. Versão
+`0.11.2` → `0.12.0` em `api/` e `app/`.
+
+- **`api/prisma/schema.prisma`** + migration **`20260925120000_add_pending_chat_message_status`** — status `PENDING` em `ChatMessageStatus` (aditiva, só `ALTER TYPE ... ADD VALUE`), no fim do enum para não gerar drift com o Postgres. Espelhado no enum de domínio (`ChatMessageEnums.ts`); `ChatMessageCreateData.status` opcional e `PrismaChatMessageRepository.create` grava `data.status ?? 'SENT'`, então texto e mensagens recebidas seguem nascendo `SENT`. Teste do mapper cobre `PENDING`, `SENT` e nulo
 
 ### Fixed
 

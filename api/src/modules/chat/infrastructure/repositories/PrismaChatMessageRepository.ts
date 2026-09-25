@@ -121,7 +121,7 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
         quotedMessageId,
         fromParticipant: data.fromParticipant ?? null,
         fromParticipantName: data.fromParticipantName ?? null,
-        status: 'SENT',
+        status: data.status ?? 'SENT',
         sentAt: data.sentAt ?? new Date(),
       },
     });

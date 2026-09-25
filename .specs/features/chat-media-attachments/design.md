@@ -86,11 +86,11 @@ arquivo) — as rotas do `media` e do `chat` usam as **mesmas** instâncias (o m
 
 ```prisma
 enum ChatMessageStatus {
-  PENDING   // novo: gravada, aguardando/enviando ao WhatsApp (só mídia do painel)
   SENT
   DELIVERED
   READ
   FAILED
+  PENDING   // novo, no fim: o Postgres anexa o valor ao final do tipo (mesma ordem = sem drift)
 }
 ```
 
