@@ -127,6 +127,25 @@ export const chatStrings = {
     },
   },
 
+  /** Bolha de áudio recebido/enviado: player com forma de onda. */
+  audioPlayer: {
+    voiceNote: 'Mensagem de voz',
+    audio: 'Áudio',
+    /** Placeholder quando o arquivo não carregou. */
+    unavailable: 'Áudio indisponível',
+    play: 'Reproduzir áudio',
+    pause: 'Pausar áudio',
+    /** `aria-label` da onda (`role="slider"`). */
+    seek: 'Posição do áudio',
+    /** `aria-valuetext` da onda: posição atual e total. */
+    position: (currentSeconds: number, totalSeconds: number): string =>
+      `${spokenDuration(currentSeconds)} de ${spokenDuration(totalSeconds)}`,
+    /** Botão da duração: alterna a velocidade. `rateLabel` já formatado, ex.: "1,5×". */
+    speed: (rateLabel: string): string => `Velocidade de reprodução: ${rateLabel}. Clique para alterar`,
+    /** Foto de quem enviou (`alt` do avatar). */
+    senderAvatar: 'Foto de quem enviou',
+  },
+
   /** Bolha de mídia em envio: progresso, cancelamento e reenvio. */
   upload: {
     sending: 'Enviando',
@@ -146,6 +165,22 @@ export const chatStrings = {
       confirmInProgress: 'Finalizando o envio. Aguarde.',
       generic: 'Não foi possível enviar. Tente de novo.',
     },
+  },
+
+  /** Cartão de documento na bolha: nome, tipo/tamanho, abrir e baixar. */
+  documentCard: {
+    open: 'Abrir',
+    download: 'Baixar',
+    /** Nome exibido quando a mensagem não trouxe nome nem URL legível. */
+    fallbackName: 'Documento',
+    /** Extensão desconhecida no ícone e no subtítulo. */
+    unknownType: 'ARQUIVO',
+    /** `ZIP • 2 MB`; sem tamanho, só a extensão. */
+    subtitle: (extension: string, sizeLabel: string | null): string =>
+      sizeLabel ? `${extension} • ${sizeLabel}` : extension,
+    /** Rótulo acessível do cartão inteiro. */
+    label: (fileName: string, sizeLabel: string | null): string =>
+      sizeLabel ? `Documento ${fileName}, ${sizeLabel}` : `Documento ${fileName}`,
   },
 
   reactions: {

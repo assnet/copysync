@@ -1,10 +1,18 @@
-import { Box, IconButton, Tooltip, Typography, alpha, useTheme } from '@mui/material';
-import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
-import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
+/**
+ * Cartão de documento na bolha: ícone do tipo, nome em uma linha, `TIPO • tamanho` e botão de baixar.
+ *
+ * O corpo do cartão abre em nova aba o que o navegador exibe (PDF, imagem, texto) e baixa o resto.
+ * O tamanho vem de um `HEAD` sob demanda (`useMediaFileSize`) — sem ele, o subtítulo é só o tipo.
+ * Cores vêm de `textColor` (branco na bolha enviada, `text.primary` na recebida) e da paleta semântica.
+ */
+import { Box, ButtonBase, IconButton, Tooltip, Typography, alpha, useTheme } from '@mui/material';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
+import { chatStrings } from '../../strings';
+import { formatBytesLabel } from '../../media/mediaPolicy';
+import { useMediaFileSize } from '../../media/useMediaFileSize';
 import { RichMessageText } from './RichMessageText';
+
+const texts = chatStrings.documentCard;
 
 interface Props {
   mediaUrl?: string | null;
@@ -14,162 +22,230 @@ interface Props {
   textColor: string;
 }
 
-function getFileExtension(fileName: string | null | undefined, mimeType: string | null | undefined): string {
-  if (fileName) {
-    const dot = fileName.lastIndexOf('.');
-    if (dot !== -1) return fileName.slice(dot + 1).toUpperCase();
-  }
-  if (mimeType) {
-    const parts = mimeType.split('/');
-    return (parts[1] ?? '').toUpperCase().split(';')[0] ?? 'FILE';
-  }
-  return 'FILE';
+export type DocumentKind = 'pdf' | 'archive' | 'doc' | 'sheet' | 'slides' | 'text' | 'image' | 'generic';
+
+const KIND_BY_EXTENSION: Record<string, DocumentKind> = {
+  pdf: 'pdf',
+  zip: 'archive', rar: 'archive', '7z': 'archive', gz: 'archive', tar: 'archive', tgz: 'archive', bz2: 'archive',
+  doc: 'doc', docx: 'doc', odt: 'doc', rtf: 'doc', pages: 'doc',
+  xls: 'sheet', xlsx: 'sheet', csv: 'sheet', ods: 'sheet', numbers: 'sheet',
+  ppt: 'slides', pptx: 'slides', odp: 'slides', key: 'slides',
+  txt: 'text', md: 'text', log: 'text', json: 'text', xml: 'text',
+  jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image', svg: 'image', heic: 'image',
+};
+
+/** Extensão sem ponto, minúscula. Cai no subtipo do MIME quando o nome não tem extensão. */
+export function getDocumentExtension(fileName: string, mimeType: string | null | undefined): string {
+  const dot = fileName.lastIndexOf('.');
+  if (dot > 0 && dot < fileName.length - 1) return fileName.slice(dot + 1).toLowerCase();
+  const subtype = mimeType?.split('/')[1]?.split(';')[0]?.trim().toLowerCase() ?? '';
+  return subtype === 'octet-stream' ? '' : subtype;
 }
+
+export function getDocumentKind(extension: string, mimeType: string | null | undefined): DocumentKind {
+  const byExtension = KIND_BY_EXTENSION[extension];
+  if (byExtension) return byExtension;
+  const mime = mimeType?.toLowerCase() ?? '';
+  if (mime.includes('pdf')) return 'pdf';
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('text/')) return 'text';
+  if (mime.includes('zip') || mime.includes('compressed')) return 'archive';
+  if (mime.includes('word')) return 'doc';
+  if (mime.includes('sheet') || mime.includes('excel')) return 'sheet';
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return 'slides';
+  return 'generic';
+}
+
+/** O navegador exibe inline: abre em nova aba em vez de baixar. */
+const OPENABLE_KINDS: ReadonlySet<DocumentKind> = new Set(['pdf', 'image', 'text']);
 
 function getDisplayName(fileName: string | null | undefined, mediaUrl: string | null | undefined): string {
-  if (fileName) return fileName;
-  if (!mediaUrl) return 'Documento';
-
-  const urlName = mediaUrl.split('/').pop()?.split('?')[0];
-  return urlName ? decodeURIComponent(urlName) : 'Documento';
+  if (fileName?.trim()) return fileName.trim();
+  const urlName = mediaUrl?.split('/').pop()?.split('?')[0];
+  if (!urlName) return texts.fallbackName;
+  try {
+    return decodeURIComponent(urlName);
+  } catch {
+    return urlName;
+  }
 }
 
-function isPdfDocument(fileName: string, mimeType: string | null | undefined): boolean {
-  return mimeType?.toLowerCase().includes('pdf') === true || fileName.toLowerCase().endsWith('.pdf');
+/** Rótulo curto dentro do ícone: até 4 letras para caber no papel. */
+function iconLabel(extension: string): string {
+  return (extension || texts.unknownType).slice(0, 4).toUpperCase();
+}
+
+interface FileGlyphProps {
+  label: string;
+  accent: string;
+  paper: string;
+  edge: string;
+  onAccent: string;
+}
+
+/** Folha com canto dobrado e faixa colorida com a extensão — legível nos dois modos e nas duas bolhas. */
+function FileGlyph({ label, accent, paper, edge, onAccent }: FileGlyphProps) {
+  return (
+    <Box
+      component="svg"
+      viewBox="0 0 40 48"
+      aria-hidden
+      sx={{ width: 40, height: 48, flexShrink: 0, display: 'block' }}
+    >
+      <path d="M4 1.5h22l10 10v33a2.5 2.5 0 0 1-2.5 2.5h-29.5a2.5 2.5 0 0 1-2.5-2.5v-40.5a2.5 2.5 0 0 1 2.5-2.5z" fill={paper} stroke={edge} />
+      <path d="M26 1.5v7.5a2.5 2.5 0 0 0 2.5 2.5h7.5" fill="none" stroke={edge} />
+      <rect x="-1" y="27" width="34" height="14" rx="3" fill={accent} />
+      <text
+        x="16"
+        y="37.2"
+        textAnchor="middle"
+        fontSize={label.length > 3 ? 8 : 9}
+        fontWeight={800}
+        fontFamily="inherit"
+        letterSpacing="0.02em"
+        fill={onAccent}
+      >
+        {label}
+      </text>
+    </Box>
+  );
 }
 
 export function DocumentMessage({ mediaUrl, fileName, mimeType, body, textColor }: Props) {
   const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const displayName = getDisplayName(fileName, mediaUrl);
-  const ext = getFileExtension(displayName, mimeType);
-  const isPdf = isPdfDocument(displayName, mimeType);
-  const accentColor = isPdf ? theme.palette.error.main : theme.palette.primary.main;
-  const softAccent = alpha(accentColor, theme.palette.mode === 'dark' ? 0.22 : 0.12);
+  const extension = getDocumentExtension(displayName, mimeType);
+  const kind = getDocumentKind(extension, mimeType);
+  const openable = OPENABLE_KINDS.has(kind);
+  const { ref, sizeBytes } = useMediaFileSize(mediaUrl);
+  const sizeLabel = sizeBytes == null ? null : formatBytesLabel(sizeBytes);
+  const typeLabel = extension ? extension.toUpperCase() : texts.unknownType;
+
+  const { palette } = theme;
+  const accentByKind: Record<DocumentKind, string> = {
+    pdf: palette.error.main,
+    archive: palette.warning.dark,
+    doc: palette.info.main,
+    sheet: palette.success.dark,
+    slides: palette.warning.main,
+    text: palette.grey[600],
+    image: palette.secondary.main,
+    generic: palette.grey[600],
+  };
+  const accent = accentByKind[kind];
+  const cardBg = alpha(textColor, isDark ? 0.1 : 0.06);
+  const cardHover = alpha(textColor, isDark ? 0.16 : 0.1);
+  const focusRing = `2px solid ${alpha(textColor, 0.6)}`;
+  const mutedText = alpha(textColor, 0.68);
+  const linkProps = openable ? { target: '_blank', rel: 'noopener' } : { download: displayName };
+
+  const bodySx = {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    textAlign: 'left',
+    gap: 1.25,
+    px: 1.25,
+    py: 1,
+    color: textColor,
+    transition: 'background-color 120ms ease',
+  } as const;
+
+  const content = (
+    <>
+      <FileGlyph
+        label={iconLabel(extension)}
+        accent={accent}
+        paper={isDark ? palette.grey[800] : palette.common.white}
+        edge={alpha(textColor, 0.32)}
+        onAccent={palette.common.white}
+      />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography
+          variant="body2"
+          component="span"
+          title={displayName}
+          sx={{
+            display: 'block',
+            color: textColor,
+            fontWeight: 500,
+            lineHeight: 1.35,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {displayName}
+        </Typography>
+        <Typography variant="caption" component="span" sx={{ display: 'block', color: mutedText, lineHeight: 1.4, mt: 0.25 }}>
+          {texts.subtitle(typeLabel, sizeLabel)}
+        </Typography>
+      </Box>
+    </>
+  );
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: { xs: '100%', sm: 292 }, maxWidth: '100%' }}>
+    <Box
+      ref={ref}
+      sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: { xs: '100%', sm: 300 }, maxWidth: '100%' }}
+    >
       <Box
         sx={{
           display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          bgcolor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.08 : 0.05),
-          border: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+          alignItems: 'stretch',
+          minHeight: 64,
           borderRadius: 2,
+          overflow: 'hidden',
+          bgcolor: cardBg,
+          border: `1px solid ${alpha(textColor, isDark ? 0.14 : 0.1)}`,
         }}
       >
-        <Box
-          sx={{
-            position: 'relative',
-            width: '100%',
-            height: 112,
-            overflow: 'hidden',
-            bgcolor: theme.palette.mode === 'dark' ? alpha('#ffffff', 0.08) : alpha('#000000', 0.035),
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              opacity: theme.palette.mode === 'dark' ? 0.18 : 0.32,
-              backgroundImage: `linear-gradient(${alpha(textColor, 0.22)} 1px, transparent 1px), linear-gradient(90deg, ${alpha(textColor, 0.18)} 1px, transparent 1px)`,
-              backgroundSize: '18px 18px',
-            }}
-          />
-          <Box
-            sx={{
-              position: 'relative',
-              width: 78,
-              height: 92,
-              borderRadius: 1.5,
-              bgcolor: alpha(theme.palette.background.paper, 0.94),
-              boxShadow: `0 16px 35px ${alpha('#000000', 0.22)}`,
-              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 0.75,
-            }}
-          >
-            {isPdf ? (
-              <PictureAsPdfOutlinedIcon sx={{ fontSize: 34, color: accentColor }} />
-            ) : (
-              <ArticleOutlinedIcon sx={{ fontSize: 34, color: accentColor }} />
-            )}
-            <Typography sx={{ fontSize: 10, fontWeight: 800, color: accentColor, letterSpacing: 0 }}>
-              {ext}
-            </Typography>
-          </Box>
-        </Box>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, width: '100%', p: 1.25 }}>
-          <Box
-            sx={{
-              width: 38,
-              height: 38,
-              borderRadius: 1.25,
-              bgcolor: softAccent,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {isPdf ? (
-              <PictureAsPdfOutlinedIcon sx={{ fontSize: 21, color: accentColor }} />
-            ) : (
-              <DescriptionOutlinedIcon sx={{ fontSize: 21, color: accentColor }} />
-            )}
-          </Box>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              variant="caption"
-              display="block"
-              title={displayName}
-              sx={{ color: textColor, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        {mediaUrl ? (
+          <Tooltip title={openable ? texts.open : texts.download} enterDelay={600}>
+            <ButtonBase
+              component="a"
+              href={mediaUrl}
+              {...linkProps}
+              aria-label={texts.label(displayName, sizeLabel)}
+              sx={{ ...bodySx, '&:hover': { bgcolor: cardHover }, '&.Mui-focusVisible': { outline: focusRing, outlineOffset: -2 } }}
             >
-              {displayName}
-            </Typography>
-            <Typography variant="caption" sx={{ color: alpha(textColor, 0.62), fontSize: 10.5 }}>
-              {isPdf ? 'PDF' : ext}
-            </Typography>
+              {content}
+            </ButtonBase>
+          </Tooltip>
+        ) : (
+          <Box role="group" aria-label={texts.label(displayName, sizeLabel)} sx={{ ...bodySx, opacity: 0.7 }}>
+            {content}
           </Box>
-          {mediaUrl && (
-            <Box sx={{ display: 'flex', gap: 0.25, flexShrink: 0 }}>
-              <Tooltip title="Abrir documento">
-                <IconButton
-                  component="a"
-                  href={mediaUrl}
-                  target="_blank"
-                  rel="noopener"
-                  size="small"
-                  sx={{ width: 28, height: 28, color: alpha(textColor, 0.82), '&:hover': { bgcolor: alpha(textColor, 0.08) } }}
-                >
-                  <OpenInNewIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Baixar documento">
-                <IconButton
-                  component="a"
-                  href={mediaUrl}
-                  download={fileName ?? true}
-                  size="small"
-                  sx={{ width: 28, height: 28, color: alpha(textColor, 0.82), '&:hover': { bgcolor: alpha(textColor, 0.08) } }}
-                >
-                  <DownloadOutlinedIcon sx={{ fontSize: 17 }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          )}
-        </Box>
+        )}
+
+        {mediaUrl && (
+          <Box sx={{ display: 'flex', alignItems: 'center', pr: 1, pl: 0.25 }}>
+            <Tooltip title={texts.download} enterDelay={600}>
+              <IconButton
+                component="a"
+                href={mediaUrl}
+                download={displayName}
+                aria-label={texts.download}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  color: textColor,
+                  border: `1.5px solid ${alpha(textColor, 0.55)}`,
+                  '&:hover': { bgcolor: cardHover, borderColor: textColor },
+                  '&.Mui-focusVisible': { outline: focusRing, outlineOffset: 2 },
+                }}
+              >
+                <DownloadOutlinedIcon sx={{ fontSize: 20 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
       </Box>
-      {body && (
-        <RichMessageText text={body} textColor={textColor} />
-      )}
+
+      {body && <RichMessageText text={body} textColor={textColor} />}
     </Box>
   );
 }
