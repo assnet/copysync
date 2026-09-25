@@ -38,7 +38,6 @@ export const chatStrings = {
     /** Tooltips dos botões ainda desabilitados enquanto o recurso não está ligado. */
     emojiSoon: 'Emoji (em breve)',
     attachSoon: 'Anexar (em breve)',
-    voiceSoon: 'Áudio (em breve)',
     /** Clipe e microfone habilitados. */
     attach: 'Anexar',
     recordVoice: 'Gravar mensagem de voz',
@@ -115,6 +114,8 @@ export const chatStrings = {
     draftSaved: 'Gravação guardada como rascunho',
     /** Microfone desabilitado: servidor sem suporte a nota de voz. */
     unavailable: 'Mensagem de voz indisponível',
+    /** Tooltip do microfone com a conversa encerrada. */
+    conversationClosed: 'Conversa encerrada. Reabra para gravar áudio',
 
     errors: {
       permissionDenied: 'Acesso ao microfone bloqueado. Libere nas configurações do navegador.',

@@ -65,7 +65,7 @@ instala só para o `docker-compose` local.
 - **`components/AttachmentMenu.tsx`**, **`AttachmentPreviewPanel.tsx`**, **`DropZoneOverlay.tsx`** — menu do clipe, prévia do lote com legenda por item, área de soltar
 - **`messages/UploadProgressOverlay.tsx`**, **`messages/FailedMessageActions.tsx`**, **`MessageBubble.tsx`** — progresso, cancelar, tentar de novo e descartar na bolha
 - **`MessageComposer.tsx`**, **`ChatWindow.tsx`**, **`MessageList.tsx`**, **`pages/ChatPage.tsx`**, **`strings.ts`** — clipe, colar, soltar e prévia integrados; textos centralizados
-- **`voiceRecorderMachine.ts`**, **`pickRecorderMimeType.ts`**, **`useVoiceRecorder.ts`**, **`components/VoiceRecorderBar.tsx`** — voz: formato por navegador, ondas, pausar/retomar, pré-escuta e barra no lugar do composer. Microfone só com campo vazio; trocar de conversa gravando vira rascunho da conversa. O gravador vive num provider próprio, fora do `ChatPage` (o estado por quadro não re-renderiza a lista)
+- **`voiceRecorderMachine.ts`**, **`pickRecorderMimeType.ts`**, **`useVoiceRecorder.ts`**, **`components/VoiceRecorderBar.tsx`** — voz: formato por navegador, ondas, pausar/retomar, pré-escuta e barra no lugar do composer. Microfone só com campo vazio; trocar de conversa gravando vira rascunho da conversa. O gravador vive num provider próprio (**`media/VoiceRecorderProvider.tsx`**), fora do `ChatPage` (o estado por quadro não re-renderiza a lista); soltar arquivo fica bloqueado com a barra aberta
 
 ### Fixed
 

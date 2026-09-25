@@ -87,6 +87,8 @@ export function ChatWindow({
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [preview, setPreview] = useState<AttachmentPreview | null>(null);
+  // Barra de voz na linha do campo: soltar arquivo abriria a prévia por cima da gravação.
+  const [voiceBarVisible, setVoiceBarVisible] = useState(false);
   const composerRef = useRef<MessageComposerHandle>(null);
   const isClosed = conversation.status === 'closed';
 
@@ -187,7 +189,7 @@ export function ChatWindow({
         presence={presence}
       />
 
-      <DropZoneOverlay disabled={!canAttach} onFiles={handleDropFiles}>
+      <DropZoneOverlay disabled={!canAttach || voiceBarVisible} onFiles={handleDropFiles}>
         {/* A prévia cobre lista e campo (o rodapé dela substitui o do campo). `isolation`
             contém o zIndex dela aqui dentro: a área de soltar passa por cima e os painéis
             sobrepostos da página (mobile) continuam acima da conversa. */}
@@ -226,6 +228,7 @@ export function ChatWindow({
             onCancelReply={handleCancelReply}
             onAttachFiles={handleAttachFiles}
             attachDisabledReason={attachDisabledReason}
+            onVoiceBarChange={setVoiceBarVisible}
           />
 
           {preview && mediaConfig && (

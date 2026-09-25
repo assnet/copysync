@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type Ref,
 } from 'react';
-import { Box, TextField, IconButton, Tooltip, Divider, alpha, useTheme, Typography } from '@mui/material';
+import { Box, TextField, IconButton, Tooltip, Divider, alpha, useTheme, Typography, CircularProgress } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import EmojiEmotionsOutlinedIcon from '@mui/icons-material/EmojiEmotionsOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
@@ -20,9 +20,14 @@ import type { QuotedMessagePreview } from '../types';
 import { chatStrings } from '../strings';
 import { filesFrom } from '../media/dataTransferFiles';
 import type { AttachmentOrigin } from '../media/mediaPolicy';
+import { useVoiceRecorderContext } from '../media/VoiceRecorderProvider';
 import { AttachmentMenu } from './AttachmentMenu';
+import { VoiceRecorderBar } from './VoiceRecorderBar';
 
 const texts = chatStrings.composer;
+const voiceTexts = chatStrings.voice;
+/** Alvo mínimo de clique/toque (MEDIA-23). */
+const TOUCH_TARGET = 40;
 
 const REPLY_TYPE_ICON: Record<string, React.ReactNode> = {
   image:    <ImageOutlinedIcon sx={{ fontSize: 13 }} />,
@@ -49,6 +54,11 @@ interface Props {
   onAttachFiles?: (files: File[], origin: AttachmentOrigin) => void;
   /** Motivo do clipe desabilitado (tooltip). Com motivo, colar arquivo segue o padrão do navegador. */
   attachDisabledReason?: string | null;
+  /**
+   * A barra de voz passou a ocupar (ou deixou) a linha do campo — o pai bloqueia soltar arquivo
+   * enquanto isso. Sem `VoiceRecorderProvider` acima, o microfone fica indisponível.
+   */
+  onVoiceBarChange?: (visible: boolean) => void;
   ref?: Ref<MessageComposerHandle>;
 }
 
@@ -59,12 +69,59 @@ export function MessageComposer({
   onCancelReply,
   onAttachFiles,
   attachDisabledReason,
+  onVoiceBarChange,
   ref,
 }: Props) {
   const theme = useTheme();
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const canAttach = !!onAttachFiles && !disabled && !attachDisabledReason;
+
+  // ── Mensagem de voz ────────────────────────────────────────────────────────
+  const voice = useVoiceRecorderContext();
+  const barVisible = !!voice?.barVisible;
+  const micDisabledReason = disabled
+    ? voiceTexts.conversationClosed
+    : !voice?.available
+      ? voiceTexts.unavailable
+      : null;
+  const micBusy = !!voice?.requesting;
+  const barStatus = barVisible ? voice?.state.status : undefined;
+  const barRef = useRef<HTMLDivElement>(null);
+  const barWasVisibleRef = useRef(barVisible);
+
+  useEffect(() => {
+    onVoiceBarChange?.(barVisible);
+  }, [barVisible, onVoiceBarChange]);
+
+  // Abriu gravando (só o microfone faz isso) → foco no enviar da barra; o rascunho que reabre
+  // ao voltar à conversa não rouba o foco da lista. Fechou (enviou/descartou) com o foco nela
+  // → volta ao campo.
+  useEffect(() => {
+    const wasVisible = barWasVisibleRef.current;
+    barWasVisibleRef.current = barVisible;
+    if (barVisible === wasVisible) return;
+    if (barVisible) {
+      if (barStatus === 'recording') {
+        barRef.current?.querySelector<HTMLButtonElement>(`button[aria-label="${voiceTexts.send}"]`)?.focus();
+      }
+      return;
+    }
+    const focusLost = document.activeElement === null || document.activeElement === document.body;
+    if (focusLost && !disabled) inputRef.current?.focus();
+  }, [barVisible, barStatus, disabled]);
+
+  const handleMicClick = () => {
+    if (!voice || micDisabledReason || micBusy) return;
+    void voice.start();
+  };
+
+  // Resposta ativa vai citada; enviado nesta conversa, o banner some (spec P1, critério 7).
+  const handleVoiceSend = async () => {
+    if (!voice) return;
+    const sentHere = await voice.send(replyTo?.id ?? null);
+    if (sentHere) onCancelReply?.();
+  };
 
   useImperativeHandle(ref, () => ({ getText: () => text.trim(), clearText: () => setText('') }), [text]);
 
@@ -164,94 +221,132 @@ export function MessageComposer({
       )}
 
       <Divider />
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'flex-end',
-          gap: 1,
-          px: 1.5,
-          py: 1.25,
-          // Respeita a área segura de aparelhos com barra inferior (iPhone), para o
-          // campo não ficar sob o indicador de home.
-          pb: 'calc(10px + env(safe-area-inset-bottom))',
-          bgcolor: 'background.paper',
-        }}
-      >
-        {/* Emoji e anexos */}
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Tooltip title={texts.emojiSoon}>
-            <span>
-              <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
-                <EmojiEmotionsOutlinedIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <AttachmentMenu
-            onFiles={(files, origin) => onAttachFiles?.(files, origin)}
-            disabled={!canAttach}
-            disabledReason={attachDisabledReason ?? undefined}
+      {/* Gravando ou com rascunho, a barra ocupa a linha: clipe e campo saem. `Esc` não
+          descarta — perder a gravação por acidente custa mais que clicar na lixeira. */}
+      {voice && barVisible ? (
+        <Box ref={barRef}>
+          <VoiceRecorderBar
+            state={voice.state}
+            levels={voice.levels}
+            previewUrl={voice.previewUrl}
+            onPause={voice.pause}
+            onResume={voice.resume}
+            onSend={() => void handleVoiceSend()}
+            onDiscard={() => void voice.discard()}
+            onPreviewError={voice.markPreviewFailed}
           />
         </Box>
-
-        {/* Input */}
-        <TextField
-          inputRef={inputRef}
-          multiline
-          maxRows={4}
-          fullWidth
-          size="small"
-          placeholder={texts.placeholder}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          disabled={disabled}
+      ) : (
+        <Box
           sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 3,
-              fontSize: 14,
-              bgcolor: alpha(theme.palette.text.primary, 0.04),
-              '& fieldset': { border: 'none' },
-              '&:hover': { bgcolor: alpha(theme.palette.text.primary, 0.06) },
-              '&.Mui-focused': {
-                bgcolor: alpha(theme.palette.primary.main, 0.04),
-                outline: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-              },
-            },
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 1,
+            px: 1.5,
+            py: 1.25,
+            // Respeita a área segura de aparelhos com barra inferior (iPhone), para o
+            // campo não ficar sob o indicador de home.
+            pb: 'calc(10px + env(safe-area-inset-bottom))',
+            bgcolor: 'background.paper',
           }}
-        />
-
-        {/* Send or mic */}
-        <Box sx={{ pb: 0.5 }}>
-          {hasText ? (
-            <Tooltip title={texts.send}>
-              <IconButton
-                onClick={handleSend}
-                disabled={disabled}
-                sx={{
-                  bgcolor: 'primary.main',
-                  color: '#fff',
-                  width: 36,
-                  height: 36,
-                  '&:hover': { bgcolor: 'primary.dark' },
-                  '&:disabled': { bgcolor: 'action.disabledBackground' },
-                  transition: 'all 0.15s',
-                }}
-              >
-                <SendIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          ) : (
-            <Tooltip title={texts.voiceSoon}>
+        >
+          {/* Emoji e anexos */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tooltip title={texts.emojiSoon}>
               <span>
                 <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
-                  <MicNoneOutlinedIcon fontSize="small" />
+                  <EmojiEmotionsOutlinedIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
-          )}
+            <AttachmentMenu
+              onFiles={(files, origin) => onAttachFiles?.(files, origin)}
+              disabled={!canAttach}
+              disabledReason={attachDisabledReason ?? undefined}
+            />
+          </Box>
+
+          {/* Input */}
+          <TextField
+            inputRef={inputRef}
+            multiline
+            maxRows={4}
+            fullWidth
+            size="small"
+            placeholder={texts.placeholder}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 3,
+                fontSize: 14,
+                bgcolor: alpha(theme.palette.text.primary, 0.04),
+                '& fieldset': { border: 'none' },
+                '&:hover': { bgcolor: alpha(theme.palette.text.primary, 0.06) },
+                '&.Mui-focused': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.04),
+                  outline: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                },
+              },
+            }}
+          />
+
+          {/* Enviar ou microfone. Recuo só no enviar (36 px): o microfone tem os 40 px do clipe. */}
+          <Box sx={{ pb: hasText ? 0.5 : 0 }}>
+            {hasText ? (
+              <Tooltip title={texts.send}>
+                <IconButton
+                  onClick={handleSend}
+                  disabled={disabled}
+                  sx={{
+                    bgcolor: 'primary.main',
+                    color: '#fff',
+                    width: 36,
+                    height: 36,
+                    '&:hover': { bgcolor: 'primary.dark' },
+                    '&:disabled': { bgcolor: 'action.disabledBackground' },
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <SendIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <Tooltip
+                title={micDisabledReason ?? texts.recordVoice}
+                describeChild={!!micDisabledReason}
+                disableInteractive
+              >
+                {/* `aria-disabled` em vez de `disabled`: segue focável e o motivo chega ao teclado. */}
+                <IconButton
+                  aria-label={texts.recordVoice}
+                  aria-disabled={!!micDisabledReason || undefined}
+                  aria-busy={micBusy || undefined}
+                  disableRipple={!!micDisabledReason}
+                  onClick={handleMicClick}
+                  sx={(t) => ({
+                    width: TOUCH_TARGET,
+                    height: TOUCH_TARGET,
+                    color: micDisabledReason ? t.palette.text.disabled : t.palette.text.secondary,
+                    cursor: micDisabledReason ? 'default' : 'pointer',
+                    '&:hover': { bgcolor: micDisabledReason ? 'transparent' : t.palette.action.hover },
+                    '&.Mui-focusVisible': { outline: `2px solid ${t.palette.primary.main}`, outlineOffset: 2 },
+                  })}
+                >
+                  {micBusy ? (
+                    <CircularProgress size={18} color="inherit" aria-hidden="true" />
+                  ) : (
+                    <MicNoneOutlinedIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 }

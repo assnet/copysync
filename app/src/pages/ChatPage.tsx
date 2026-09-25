@@ -40,8 +40,9 @@ import {
 import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
 import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
 import { chatStrings } from '@/features/chat/strings';
-import { useOutgoingMedia } from '@/features/chat/media/useOutgoingMedia';
+import { useOutgoingMedia, type OutgoingMediaInput } from '@/features/chat/media/useOutgoingMedia';
 import { useMediaUploadConfig } from '@/features/chat/media/useMediaUploadConfig';
+import { VoiceRecorderProvider, type VoiceNoticeSeverity } from '@/features/chat/media/VoiceRecorderProvider';
 import type { AttachmentSendItem } from '@/features/chat/components/AttachmentPreviewPanel';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
@@ -114,8 +115,13 @@ export default function ChatPage() {
   const [archivedCount, setArchivedCount] = useState(0);
   // Gestos de reação sem resposta, por mensagem. O agregado do servidor fica na própria mensagem.
   const [pendingReactions, setPendingReactions] = useState<Record<string, PendingReaction[]>>({});
-  // Aviso de falha de ação (reação, reenvio de mídia) no Snackbar da página.
-  const [errorToast, setErrorToast] = useState<string | null>(null);
+  // Aviso no Snackbar da página: falha de ação (reação, reenvio de mídia) e avisos da voz.
+  const [toast, setToast] = useState<{ message: string; severity: VoiceNoticeSeverity } | null>(null);
+  const setErrorToast = useCallback((message: string) => setToast({ message, severity: 'error' }), []);
+  const showNotice = useCallback(
+    (message: string, severity: VoiceNoticeSeverity) => setToast({ message, severity }),
+    [],
+  );
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
   // salvo no tenant (só 7 de 1503 contatos têm avatar).
@@ -640,7 +646,7 @@ export default function ChatPage() {
           : errors.sendFailed,
         );
       },
-      [updatePending],
+      [updatePending, setErrorToast],
     ),
   );
 
@@ -769,6 +775,15 @@ export default function ChatPage() {
     [selectedId, enqueueMedia, requestScroll],
   );
 
+  /** Nota de voz do gravador: mesma fila dos anexos; rola ao fim se a conversa ainda está aberta. */
+  const handleEnqueueVoice = useCallback(
+    (conversationId: string, items: OutgoingMediaInput[]) => {
+      enqueueMedia(conversationId, items);
+      if (selectedIdRef.current === conversationId) requestScroll(true);
+    },
+    [enqueueMedia, requestScroll],
+  );
+
   const handleCancelUpload = useCallback((message: ChatMessage) => cancelMediaUpload(message.id), [cancelMediaUpload]);
   const handleDiscardUpload = useCallback((message: ChatMessage) => discardMediaUpload(message.id), [discardMediaUpload]);
 
@@ -806,7 +821,7 @@ export default function ChatPage() {
         );
       });
     },
-    [retryMediaUpload, retryServerMessage],
+    [retryMediaUpload, retryServerMessage, setErrorToast],
   );
 
   const handleUpdateConversation = useCallback(
@@ -959,7 +974,7 @@ export default function ChatPage() {
     [conversations, handleSelectConversation, selectedId, selectedSessionId, connectedSessions, loadConversations],
   );
 
-  return (
+  const page = (
     <Box
       sx={{
         display: 'flex',
@@ -1130,17 +1145,37 @@ export default function ChatPage() {
       )}
 
       <Snackbar
-        open={Boolean(errorToast)}
+        open={Boolean(toast)}
         autoHideDuration={4000}
-        onClose={() => setErrorToast(null)}
+        onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        {errorToast ? (
-          <Alert severity="error" variant="filled" onClose={() => setErrorToast(null)}>
-            {errorToast}
+        {toast ? (
+          // Só erro interrompe o leitor de tela; aviso e informação entram educados.
+          <Alert
+            severity={toast.severity}
+            variant="filled"
+            role={toast.severity === 'error' ? 'alert' : 'status'}
+            onClose={() => setToast(null)}
+          >
+            {toast.message}
           </Alert>
         ) : undefined}
       </Snackbar>
     </Box>
+  );
+
+  // Gravador de voz acima da árvore do chat: re-renderiza só quem o consome (o composer), e
+  // trocar ou perder a conversa aberta guarda a gravação como rascunho dela.
+  return (
+    <VoiceRecorderProvider
+      activeConversationId={selectedConversation?.id ?? null}
+      available={mediaUpload.config?.capabilities.voiceNotes === true}
+      maxSeconds={mediaUpload.config?.maxVoiceSeconds}
+      enqueue={handleEnqueueVoice}
+      onNotice={showNotice}
+    >
+      {page}
+    </VoiceRecorderProvider>
   );
 }
