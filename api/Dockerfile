@@ -2,7 +2,8 @@ FROM node:22-alpine AS base
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl \
+# ffmpeg (traz ffprobe) só para o docker-compose local; produção usa o do runtime nativo da Render.
+RUN apk add --no-cache openssl ffmpeg \
   && corepack enable \
   && corepack prepare pnpm@10.33.0 --activate
 
