@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { authService } from '@/services/auth.service';
+import { reactionDispatcher } from '@/features/chat/reactionDispatcher';
 import type { AuthUser, LoginRequest, TenantRef } from '@/types/api.types';
 
 interface AuthState {
@@ -50,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Nada agendado pode sair depois com o token de outro usuário.
+    reactionDispatcher.reset();
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) {
       try {

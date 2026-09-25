@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Box, useMediaQuery, useTheme } from '@mui/material';
+import { Alert, Box, Snackbar, useMediaQuery, useTheme } from '@mui/material';
 import type { ChatConversation, ChatMessage, ConversationFilter, QuotedMessagePreview } from '@/features/chat/types';
 import { chatService } from '@/services/chat.service';
 import { sessionService } from '@/services/session.service';
 import {
   apiConversationToFrontend,
   apiMessageToFrontend,
+  apiReactionToFrontend,
 } from '@/types/chat.api.types';
 import type { UpdateConversationRequest } from '@/types/chat.api.types';
 import { formatLastMessagePreview, byPinnedThenRecent } from '@/features/chat/utils';
@@ -21,7 +22,18 @@ import type { ConversationStateChange } from '@/features/chat/components/Convers
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import type { ChatWsPayload } from '@/hooks/useChatWebSocket';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
-import type { GroupParticipantApiDto } from '@/types/chat.api.types';
+import type { GroupParticipantApiDto, ReactionSummaryApiDto } from '@/types/chat.api.types';
+import {
+  acceptIntoMessages,
+  keepNewerReactions,
+  overlayPending,
+  reducePending,
+  type PendingAction,
+  type PendingReaction,
+} from '@/features/chat/reactionsState';
+import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
+import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
+import { chatStrings } from '@/features/chat/strings';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
 // Altura útil = viewport menos a barra superior (AppBar de 56px no mobile, topbar de
@@ -32,6 +44,11 @@ const CHAT_HEIGHT = {
 };
 
 const PAGE_SIZE = 40;
+
+const toAggregate = (revision: string | null, reactions: ReactionSummaryApiDto[]) => ({
+  revision,
+  reactions: reactions.map(apiReactionToFrontend),
+});
 
 // Resolve quotedMessage para cada mensagem que tenha quotedMessageId
 function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
@@ -83,6 +100,9 @@ export default function ChatPage() {
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [actionsFor, setActionsFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const [archivedCount, setArchivedCount] = useState(0);
+  // Gestos de reação sem resposta, por mensagem. O agregado do servidor fica na própria mensagem.
+  const [pendingReactions, setPendingReactions] = useState<Record<string, PendingReaction[]>>({});
+  const [reactionError, setReactionError] = useState<string | null>(null);
   // Participantes do grupo aberto: alimentam o painel de contexto e servem de fonte
   // de avatar para as bolhas, já que participante de grupo raramente tem contato
   // salvo no tenant (só 7 de 1503 contatos têm avatar).
@@ -298,7 +318,7 @@ export default function ChatPage() {
             direction:         message.direction as import('@/types/chat.api.types').ApiMessageDirection,
             type:              message.type as import('@/types/chat.api.types').ApiMessageType,
             status:            (message.status ?? 'SENT') as import('@/types/chat.api.types').ApiMessageStatus,
-            externalMessageId: null,
+            externalMessageId: message.externalMessageId ?? null,
           });
 
           // Anexa ao cache da conversa mesmo com ela fechada: ao reabrir, o cache é
@@ -415,6 +435,14 @@ export default function ChatPage() {
           });
         }
 
+        if (payload.event === 'chat.message.reaction.updated') {
+          const { conversationId, messageId, reactionsRevision, reactions } = payload.data;
+          // Conversa não carregada é ignorada: o GET ao abrir traz o estado real.
+          setMessages((prev) =>
+            acceptIntoMessages(prev, conversationId, messageId, toAggregate(reactionsRevision, reactions)),
+          );
+        }
+
         if (payload.event === 'chat.presence.updated') {
           const { phone, presence } = payload.data;
           setPresenceMap((prev) => ({ ...prev, [phone]: presence }));
@@ -468,7 +496,10 @@ export default function ChatPage() {
     ? conversations.find((c) => c.id === selectedId) ?? null
     : null;
 
-  const selectedMessages = selectedId ? (messages[selectedId] ?? []) : [];
+  const selectedMessages = useMemo(
+    () => overlayPending(selectedId ? (messages[selectedId] ?? []) : [], pendingReactions),
+    [selectedId, messages, pendingReactions],
+  );
 
   const handleSelectConversation = useCallback(
     (id: string) => {
@@ -502,7 +533,7 @@ export default function ChatPage() {
         .listMessages(id, { limit: PAGE_SIZE })
         .then((items) => {
           const mapped = resolveQuotedMessages(items.map(apiMessageToFrontend));
-          setMessages((prev) => ({ ...prev, [id]: mapped }));
+          setMessages((prev) => ({ ...prev, [id]: keepNewerReactions(prev[id], mapped) }));
           setHasMore((prev) => ({ ...prev, [id]: items.length >= PAGE_SIZE }));
           if (mapped.length > 0) {
             setOldestTimestamp((prev) => ({ ...prev, [id]: mapped[0].timestamp }));
@@ -513,6 +544,56 @@ export default function ChatPage() {
         .finally(() => setLoadingMessages(false));
     },
     [messages],
+  );
+
+  // ── Reações (estado otimista + envio agrupado; regras em reactionsState) ────
+  const updatePending = useCallback((messageId: string, action: PendingAction) => {
+    setPendingReactions((prev) => {
+      const next = reducePending(prev[messageId], action);
+      if (next.length > 0) return { ...prev, [messageId]: next };
+      if (!(messageId in prev)) return prev;
+      const { [messageId]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const enqueueReaction = useReactionDispatcher(
+    useCallback(
+      (event: ReactionDispatchEvent) => {
+        if (event.type === 'sent' || event.type === 'discarded') {
+          updatePending(event.messageId, event);
+          return;
+        }
+        updatePending(event.messageId, { type: event.type, requestId: event.requestId });
+        if (event.type === 'success') {
+          const { conversationId, messageId, reactionsRevision, reactions } = event.result;
+          setMessages((prev) =>
+            acceptIntoMessages(prev, conversationId, messageId, toAggregate(reactionsRevision, reactions)),
+          );
+          return;
+        }
+        const errors = chatStrings.reactions.errors;
+        setReactionError(
+          event.code === 'rate_limited' ? errors.rateLimited
+          : event.code === 'session_disconnected' ? errors.sessionDisconnected
+          : errors.sendFailed,
+        );
+      },
+      [updatePending],
+    ),
+  );
+
+  const handleSetReaction = useCallback(
+    (message: ChatMessage, emoji: string | null) => {
+      // A bolha recebe a mensagem com o otimista por cima; a base do envio é a do servidor.
+      const server = (messages[message.conversationId] ?? []).find((m) => m.id === message.id) ?? message;
+      const requestId = enqueueReaction(message.id, emoji, {
+        revision: server.reactionsRevision ?? null,
+        reactions: server.reactions ?? [],
+      });
+      updatePending(message.id, { type: 'click', requestId, emoji });
+    },
+    [messages, enqueueReaction, updatePending],
   );
 
   // ── Carregar mais (scroll para cima) ──────────────────────────────────────
@@ -529,7 +610,7 @@ export default function ChatPage() {
         const merged = resolveQuotedMessages([...mapped, ...(messages[selectedId] ?? [])]);
         setMessages((prev) => ({
           ...prev,
-          [selectedId]: merged,
+          [selectedId]: keepNewerReactions(prev[selectedId], merged),
         }));
         setHasMore((prev) => ({ ...prev, [selectedId]: items.length >= PAGE_SIZE }));
         if (mapped.length > 0) {
@@ -643,7 +724,7 @@ export default function ChatPage() {
         .listMessages(selectedId, { around: messageId, limit: PAGE_SIZE })
         .then((items) => {
           const mapped = resolveQuotedMessages(items.map(apiMessageToFrontend));
-          setMessages((prev) => ({ ...prev, [selectedId]: mapped }));
+          setMessages((prev) => ({ ...prev, [selectedId]: keepNewerReactions(prev[selectedId], mapped) }));
           if (mapped.length > 0) {
             setOldestTimestamp((prev) => ({ ...prev, [selectedId]: mapped[0].timestamp }));
           }
@@ -846,6 +927,7 @@ export default function ChatPage() {
             });
           }}
           searchOpen={searchPanelOpen}
+          onSetReaction={handleSetReaction}
         />
       ) : (
         <Box sx={{ display: { xs: 'none', sm: 'flex' }, flex: 1, minWidth: 0 }}>
@@ -917,6 +999,19 @@ export default function ChatPage() {
         />
         </Box>
       )}
+
+      <Snackbar
+        open={Boolean(reactionError)}
+        autoHideDuration={4000}
+        onClose={() => setReactionError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {reactionError ? (
+          <Alert severity="error" variant="filled" onClose={() => setReactionError(null)}>
+            {reactionError}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Box>
   );
 }

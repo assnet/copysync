@@ -1,7 +1,7 @@
 import axios, { AxiosHeaders, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 type ApiErrorPayload = {
-  error?: { message?: string };
+  error?: { message?: string; code?: string };
   message?: string;
 };
 
@@ -150,6 +150,12 @@ apiClient.interceptors.response.use(
       clearSessionAndRedirect();
     }
 
-    return Promise.reject(new Error(getErrorMessage(error)));
+    // `status`/`code` seguem junto para quem precisa distinguir o erro (ex.: 429 × 409).
+    return Promise.reject(
+      Object.assign(new Error(getErrorMessage(error)), {
+        status: error.response?.status,
+        code: error.response?.data?.error?.code,
+      }),
+    );
   },
 );

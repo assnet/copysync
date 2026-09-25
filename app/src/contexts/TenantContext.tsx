@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { tenantService } from '@/services/tenant.service';
+import { reactionDispatcher } from '@/features/chat/reactionDispatcher';
 import type { TenantItem } from '@/types/api.types';
 
 interface TenantState {
@@ -47,6 +48,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const switchTenant = useCallback(async (tenantId: string) => {
+    // Nada agendado pode sair com o tenant novo para mensagem do anterior.
+    reactionDispatcher.reset();
     const result = await tenantService.switchTenant(tenantId);
 
     // Novo token com contexto do tenant
