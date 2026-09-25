@@ -20,3 +20,9 @@ export class ValidationError extends AppError {
     super('VALIDATION_ERROR', message, 400, meta);
   }
 }
+
+export class TooManyRequestsError extends AppError {
+  constructor(message: string) {
+    super('TOO_MANY_REQUESTS', message, 429);
+  }
+}
