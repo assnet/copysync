@@ -5,6 +5,13 @@ import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
 import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
+import {
+  mediaUploadRoutes,
+  type MediaUploadRoutesOptions,
+} from '../modules/media/presentation/routes/media.upload.routes';
+import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
+import { authHook } from '../shared/http/hooks/authHook';
+import { tenantHook } from '../shared/http/hooks/tenantHook';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFastifyInstance = any;
@@ -60,4 +67,17 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Chat WebSocket gateway ─────────────────────────────────────────────────
   await app.register(chatWsRoutes, { prefix: `${env.API_PREFIX}/chat` });
+
+  // ── Media upload routes (auth + tenant scope required) ─────────────────────
+  // Parser binário encapsulado no plugin; store e capacidades vêm da composição única.
+  const mediaUploadOptions: MediaUploadRoutesOptions = {
+    store: mediaContainer.uploadStore,
+    capabilities: mediaContainer.capabilities,
+    settings: env,
+    authHooks: [authHook, tenantHook],
+  };
+  await app.register(mediaUploadRoutes, {
+    prefix: `${env.API_PREFIX}/media/uploads`,
+    ...mediaUploadOptions,
+  });
 }

@@ -22,10 +22,9 @@ import { registerChatContactAvatarListener } from '../modules/chat/infrastructur
 import { registerChatGroupAvatarListener } from '../modules/chat/infrastructure/listeners/ChatGroupAvatarListener';
 import { registerChatConversationStateListener } from '../modules/chat/infrastructure/listeners/ChatConversationStateListener';
 import { registerChatSessionStatusListener } from '../modules/chat/infrastructure/listeners/ChatSessionStatusListener';
-import { DiskUploadSessionStore } from '../modules/media/infrastructure/uploads/DiskUploadSessionStore';
 import { UploadSessionSweeper } from '../modules/media/infrastructure/uploads/UploadSessionSweeper';
 import { diskBudget } from '../modules/media/domain/services/diskBudget';
-import { mediaFilePath } from '../shared/storage/MediaStorage';
+import { initMediaModule, mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,6 +57,14 @@ async function start(): Promise<void> {
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
 
+  // ── Media module (ffmpeg + pasta de uploads) ───────────────────────────────
+  // Antes do listen: a primeira requisição já vê as capacidades detectadas. Só loga.
+  try {
+    await initMediaModule();
+  } catch (err) {
+    logger.error({ err }, 'Media module initialization failed');
+  }
+
   // ── Start HTTP server ──────────────────────────────────────────────────────
   try {
     await app.listen({ port: env.PORT, host: env.HOST });
@@ -69,12 +76,11 @@ async function start(): Promise<void> {
 
   // ── Limpeza de uploads em partes ───────────────────────────────────────────
   // Só disco, nenhum banco. Falha aqui só loga: a API sobe sem a varredura.
+  // Mesmo store das rotas (pasta preparada no `initMediaModule`).
   let uploadSweeper: UploadSessionSweeper | null = null;
   try {
-    const uploadStore = new DiskUploadSessionStore({ dir: env.MEDIA_UPLOAD_TMP_PATH });
-    await uploadStore.ensureReady(mediaFilePath(''));
     uploadSweeper = new UploadSessionSweeper({
-      store: uploadStore,
+      store: mediaContainer.uploadStore,
       ttlMs: env.MEDIA_UPLOAD_TTL_MINUTES * 60_000,
       reserveFor: (totalBytes) =>
         diskBudget({ totalBytes, reserveBytes: env.MEDIA_DISK_RESERVE_BYTES }).reserveBytes,
