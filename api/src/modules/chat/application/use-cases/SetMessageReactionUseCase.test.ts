@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SetMessageReactionUseCase } from './SetMessageReactionUseCase';
-import { ChatMessageDirection } from '../../domain/enums/ChatMessageEnums';
+import { ChatMessageDirection, ChatMessageStatus } from '../../domain/enums/ChatMessageEnums';
 import { InMemoryReactionSendThrottle } from '../../infrastructure/throttle/InMemoryReactionSendThrottle';
 import {
   ConflictError,
@@ -148,6 +148,17 @@ describe('SetMessageReactionUseCase', () => {
     await expect(run(d)).rejects.toBeInstanceOf(ConflictError);
     expect(d.engine!.sendReaction).not.toHaveBeenCalled();
   });
+
+  it.each([ChatMessageStatus.PENDING, ChatMessageStatus.FAILED])(
+    'mensagem %s: conflito antes do limite e da engine',
+    async (status) => {
+      const throttle: IReactionSendThrottle = { tryAcquire: vi.fn(), release: vi.fn() };
+      const d = makeDeps({ message: { status }, throttle });
+      await expect(run(d)).rejects.toBeInstanceOf(ConflictError);
+      expect(throttle.tryAcquire).not.toHaveBeenCalled();
+      expect(d.engine!.sendReaction).not.toHaveBeenCalled();
+    },
+  );
 
   it('mensagem apagada: conflito', async () => {
     const d = makeDeps({ message: { isDeleted: true } });

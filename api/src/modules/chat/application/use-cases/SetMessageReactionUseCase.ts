@@ -6,6 +6,7 @@ import type { IMessagingEngine, ReactionTargetRef } from '../../../messaging/dom
 import type { IReactionSendThrottle } from '../contracts/IReactionSendThrottle';
 import type { IReactionUpdatePublisher } from '../contracts/IReactionUpdatePublisher';
 import { aggregateReactions, type ReactionSummary } from '../../domain/services/aggregateReactions';
+import { ChatMessageStatus } from '../../domain/enums/ChatMessageEnums';
 import {
   ConflictError,
   NotFoundError,
@@ -71,6 +72,10 @@ export class SetMessageReactionUseCase {
     if (!this.engine || !conv.sessionId) throw new SessionNotConnectedError(conv.sessionId ?? conv.id);
     const sessionId = conv.sessionId;
     if (!message.externalMessageId) throw new ConflictError('Message was never delivered to WhatsApp');
+    // O id pré-gerado existe antes de a mensagem chegar ao WhatsApp: PENDING/FAILED não é alvo.
+    if (message.status === ChatMessageStatus.PENDING || message.status === ChatMessageStatus.FAILED) {
+      throw new ConflictError('Message was not delivered to WhatsApp yet');
+    }
     if (message.isDeleted) throw new ConflictError('Cannot react to a deleted message');
 
     // 4. Alvo: só a identidade da mensagem (id, chat, autor)
