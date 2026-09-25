@@ -72,6 +72,15 @@ export interface ChatConversationApiDto {
   manuallyUnread?: boolean;
 }
 
+/** Reações de uma mensagem agrupadas por emoji (mesmo shape em PUT, GET e WS). */
+export interface ReactionSummaryApiDto {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+  /** Até 10 autores, para o tooltip. `name` já resolvido pela API; `null` → "Participante". */
+  reactors: { name: string | null; phone: string | null }[];
+}
+
 export interface ChatMessageApiDto {
   id: string;
   conversationId: string;
