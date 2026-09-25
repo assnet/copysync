@@ -49,7 +49,9 @@ import type { RemoteChatState } from '../../../../../shared/events/InternalMessa
 import { outboundEchoRegistries } from './outboundEchoRegistries';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
+import { buildBaileysMediaContent } from './buildBaileysMediaContent';
 import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
+import { MediaTooLargeError } from '../../../../../shared/errors/internal/MediaErrors';
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
@@ -87,6 +89,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Menor limite de upload anunciado pelos servidores de mídia (`media_conn`), ou `null` sem
+ * limite conhecido. Atributo ausente vira `NaN` na lib e é ignorado; zero não é limite real.
+ */
+function mediaUploadLimitBytes(limits: number[]): number | null {
+  const known = limits.filter((value) => Number.isFinite(value) && value > 0);
+  return known.length ? Math.min(...known) : null;
 }
 
 const RECONNECT_MAX_ATTEMPTS = 5;
@@ -201,23 +212,61 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     } catch (err) { throw translateEngineError(err); }
   }
 
+  createOutboundMessageId(sessionId: string): string {
+    const entry = this.registry.get(sessionId);
+    if (!entry || !entry.socket.user || !entry.socket.ws.isOpen) {
+      throw new SessionNotConnectedError(sessionId);
+    }
+    return generateMessageIDV2(entry.socket.user.id);
+  }
+
   async sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult> {
-    const entry = this.requireConnectedEntry(input.sessionId);
+    const { sessionId, messageId, media } = input;
+    // Sem caminho nem legenda no log: só o que identifica o envio.
+    const log = { sessionId, messageId, kind: media.kind, mimeType: media.mimeType, sizeBytes: media.sizeBytes };
+
+    // Pré-condições antes do socket (as mesmas da reação): falha rápida, sem envio parcial.
+    const entry = this.registry.get(sessionId);
+    if (!entry || !entry.socket.user || !entry.socket.ws.isOpen) {
+      throw new SessionNotConnectedError(sessionId);
+    }
+    const jid = this.normalizeJid(input.to);
+
     try {
-      const jid = this.normalizeJid(input.to);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const content: Record<string, any> = { caption: input.caption };
-      const url = input.mediaUrl;
-      switch (input.mediaType) {
-        case 'image':    content.image    = { url }; break;
-        case 'video':    content.video    = { url }; break;
-        case 'audio':    content.audio    = { url, ptt: false }; break;
-        case 'document': content.document = { url }; break;
-        case 'sticker':  content.sticker  = { url }; break;
+      // Limite anunciado pelos servidores de mídia: acima dele o upload falharia depois de subir
+      // o arquivo inteiro. Checado antes para falhar sem gastar banda.
+      const { hosts } = await entry.socket.refreshMediaConn(false);
+      const maxBytes = mediaUploadLimitBytes(hosts.map((h) => h.maxContentLengthBytes));
+      if (maxBytes !== null && media.sizeBytes > maxBytes) {
+        baileysLogger.info({ ...log, maxBytes }, 'Media above engine upload limit — not sent');
+        throw new MediaTooLargeError('Media exceeds the messaging engine upload limit', {
+          sizeBytes: media.sizeBytes,
+          maxBytes,
+        });
       }
-      const result = await entry.socket.sendMessage(jid, content as AnyMessageContent);
-      return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
-    } catch (err) { throw translateEngineError(err); }
+      baileysLogger.info({ ...log, maxBytes }, 'Media send started');
+
+      const quoted = await this.buildQuoted(entry.socket, entry.tenantId, input.quotedMessage, jid, sessionId);
+
+      // Registro de eco ANTES do envio: o eco sai de dentro do sendMessage, depois do upload.
+      // Falha não retira o id — o eco tardio de um timeout ainda precisa da marca. Registro de
+      // módulo: o eco chega no handler do adapter que abriu o socket, que pode ser outro.
+      outboundEchoRegistries().media.register(sessionId, messageId);
+
+      const startedAt = Date.now();
+      const result = await entry.socket.sendMessage(
+        jid,
+        buildBaileysMediaContent(media) as AnyMessageContent,
+        { messageId, mediaUploadTimeoutMs: env.MEDIA_UPLOAD_IDLE_TIMEOUT_MS, ...(quoted ? { quoted } : {}) },
+      );
+      baileysLogger.info({ ...log, durationMs: Date.now() - startedAt }, 'Media sent');
+      return { messageId: result?.key?.id ?? messageId, sentAt: new Date() };
+    } catch (err) {
+      if (!(err instanceof MediaTooLargeError)) {
+        baileysLogger.warn({ ...log, err }, 'Failed to send media');
+      }
+      throw translateSendError(err, 'media not accepted by engine');
+    }
   }
 
   async sendReaction(input: SendReactionInput): Promise<SendMessageResult> {

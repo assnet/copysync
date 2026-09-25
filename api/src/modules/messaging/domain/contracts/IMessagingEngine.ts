@@ -90,15 +90,39 @@ export interface SendReactionInput {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type MediaType = 'image' | 'video' | 'audio' | 'document' | 'sticker';
+/** Como a mídia chega ao contato: foto, vídeo, nota de voz ou arquivo. */
+export type OutboundMediaKind = 'image' | 'video' | 'voice' | 'document';
+
+/**
+ * Arquivo pronto para envio, já classificado e processado. A engine lê do disco em stream —
+ * nunca recebe o conteúdo em memória.
+ */
+export interface OutboundMedia {
+  kind: OutboundMediaKind;
+  /** Caminho absoluto, dentro da storage de mídia. */
+  filePath: string;
+  mimeType: string;
+  /** Nome exibido ao contato (obrigatório para `document`). */
+  fileName?: string | null;
+  caption?: string | null;
+  durationSeconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  /** Miniatura JPEG do vídeo, em base64. */
+  thumbnailJpegBase64?: string | null;
+  /** Forma de onda da nota de voz. */
+  waveform?: Uint8Array | null;
+  sizeBytes: number;
+}
 
 export interface SendMediaMessageInput {
   sessionId: string;
   tenantId: string;
   to: string;
-  mediaUrl: string;
-  mediaType: MediaType;
-  caption?: string;
+  /** Id pré-gerado por `createOutboundMessageId` e já persistido pelo chat. */
+  messageId: string;
+  media: OutboundMedia;
+  quotedMessage?: QuotedMessageRef | null;
 }
 
 // ── Output types ──────────────────────────────────────────────────────────────
@@ -155,6 +179,15 @@ export interface IMessagingEngine {
   /** Return the latest pairing code for a session, or null. */
   getSessionPairingCode(sessionId: string): Promise<string | null>;
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult>;
+  /**
+   * Gera o id que a próxima mensagem da sessão terá no WhatsApp, para o chat gravar antes do
+   * envio. Lança `SessionNotConnectedError` sem sessão conectada.
+   */
+  createOutboundMessageId(sessionId: string): string;
+  /**
+   * Envia mídia a partir de um arquivo em disco, com o id pré-gerado. Arquivo acima do limite
+   * do WhatsApp falha antes de subir (`MediaTooLargeError`).
+   */
   sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult>;
   /** Aplica ou remove nossa reação em uma mensagem. `emoji: null` remove. */
   sendReaction(input: SendReactionInput): Promise<SendMessageResult>;
