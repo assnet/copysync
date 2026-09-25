@@ -10,6 +10,9 @@ import AudiotrackOutlinedIcon from '@mui/icons-material/AudiotrackOutlined';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import type { QuotedMessagePreview } from '../types';
+import { chatStrings } from '../strings';
+
+const texts = chatStrings.composer;
 
 const REPLY_TYPE_ICON: Record<string, React.ReactNode> = {
   image:    <ImageOutlinedIcon sx={{ fontSize: 13 }} />,
@@ -17,10 +20,7 @@ const REPLY_TYPE_ICON: Record<string, React.ReactNode> = {
   document: <DescriptionOutlinedIcon sx={{ fontSize: 13 }} />,
   video:    <VideocamOutlinedIcon sx={{ fontSize: 13 }} />,
 };
-const REPLY_TYPE_LABEL: Record<string, string> = {
-  image: 'Imagem', audio: 'Áudio', document: 'Documento', video: 'Vídeo',
-  sticker: 'Sticker', location: 'Localização', vcard: 'Contato',
-};
+const REPLY_TYPE_LABEL: Readonly<Record<string, string>> = texts.replyTypes;
 
 interface Props {
   onSend: (text: string) => void;
@@ -108,11 +108,11 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
               }}
             >
               {replyTo.isDeleted
-                ? 'Mensagem apagada'
+                ? texts.replyDeleted
                 : (replyTo.body ?? REPLY_TYPE_LABEL[replyTo.type] ?? '')}
             </Typography>
           </Box>
-          <Tooltip title="Cancelar resposta">
+          <Tooltip title={texts.cancelReply}>
             <IconButton size="small" onClick={onCancelReply} sx={{ flexShrink: 0, color: 'text.secondary' }}>
               <CloseIcon sx={{ fontSize: 16 }} />
             </IconButton>
@@ -136,14 +136,14 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
       >
         {/* Attachments */}
         <Box sx={{ display: 'flex', alignItems: 'center', pb: 0.5 }}>
-          <Tooltip title="Emoji (em breve)">
+          <Tooltip title={texts.emojiSoon}>
             <span>
               <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
                 <EmojiEmotionsOutlinedIcon fontSize="small" />
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Anexar (em breve)">
+          <Tooltip title={texts.attachSoon}>
             <span>
               <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
                 <AttachFileOutlinedIcon fontSize="small" />
@@ -159,7 +159,7 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
           maxRows={4}
           fullWidth
           size="small"
-          placeholder="Digite uma mensagem... (Enter para enviar)"
+          placeholder={texts.placeholder}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -182,7 +182,7 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
         {/* Send or mic */}
         <Box sx={{ pb: 0.5 }}>
           {hasText ? (
-            <Tooltip title="Enviar (Enter)">
+            <Tooltip title={texts.send}>
               <IconButton
                 onClick={handleSend}
                 disabled={disabled}
@@ -200,7 +200,7 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
               </IconButton>
             </Tooltip>
           ) : (
-            <Tooltip title="Áudio (em breve)">
+            <Tooltip title={texts.voiceSoon}>
               <span>
                 <IconButton size="small" disabled sx={{ color: 'text.disabled' }}>
                   <MicNoneOutlinedIcon fontSize="small" />
