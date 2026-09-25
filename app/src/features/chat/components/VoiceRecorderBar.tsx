@@ -31,6 +31,8 @@ export interface VoiceRecorderBarProps {
   onDiscard: () => void;
   /** O navegador não tocou o trecho (`context.md` D2): o hook marca a pré-escuta indisponível. */
   onPreviewError: () => void;
+  /** Motivo de não poder enviar (ex.: conversa encerrada): enviar desabilitado com ele no tooltip; descartar segue. */
+  sendDisabledReason?: string | null;
 }
 
 /** 65 → `01:05`. */
@@ -200,6 +202,7 @@ export function VoiceRecorderBar({
   onSend,
   onDiscard,
   onPreviewError,
+  sendDisabledReason,
 }: VoiceRecorderBarProps) {
   const { status } = state;
   if (!BAR_STATUSES.has(status)) return null;
@@ -300,7 +303,8 @@ export function VoiceRecorderBar({
 
       <BarAction
         label={texts.send}
-        disabled={sending}
+        tooltip={sendDisabledReason ?? undefined}
+        disabled={sending || !!sendDisabledReason}
         onClick={onSend}
         sx={{
           bgcolor: 'primary.main',

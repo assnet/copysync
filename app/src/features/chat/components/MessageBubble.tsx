@@ -263,6 +263,10 @@ export function MessageBubble({
   // otimista tem id `tmp-`, que a API não reconhece como citada).
   const canReply = !!onReply && !message.isDeleted
     && message.status !== 'sending' && message.status !== 'failed';
+  const canCopy = !!message.body;
+  const canChatWith = !isOut && canStartConversation && !!onParticipantClick;
+  // Menu sem item nenhum (mídia em envio, apagada sem remetente) não ganha botão.
+  const hasMenuItems = canReact || canReply || canCopy || canChatWith;
   const reactions = message.reactions ?? [];
   const hasReactions = reactions.some((r) => r.count > 0);
   const activeEmoji = reactions.find((r) => r.reactedByMe)?.emoji ?? null;
@@ -397,28 +401,30 @@ export function MessageBubble({
         }}
       >
         {/* Botão de menu contextual — aparece ao passar o mouse */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            borderRadius: isOut ? '0 16px 0 8px' : '0 16px 0 8px',
-            background: `linear-gradient(135deg, transparent 30%, ${bgColor} 60%)`,
-            opacity: showActions ? 1 : 0,
-            transition: 'opacity 0.15s',
-            pointerEvents: showActions ? 'auto' : 'none',
-            zIndex: 1,
-          }}
-        >
-          <IconButton
-            size="small"
-            aria-label="Opções da mensagem"
-            onClick={handleOpenMenu}
-            sx={{ p: 0.3, color: isOut ? alpha('#fff', 0.75) : 'text.secondary' }}
+        {hasMenuItems && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              borderRadius: isOut ? '0 16px 0 8px' : '0 16px 0 8px',
+              background: `linear-gradient(135deg, transparent 30%, ${bgColor} 60%)`,
+              opacity: showActions ? 1 : 0,
+              transition: 'opacity 0.15s',
+              pointerEvents: showActions ? 'auto' : 'none',
+              zIndex: 1,
+            }}
           >
-            <KeyboardArrowDownIcon sx={{ fontSize: 15 }} />
-          </IconButton>
-        </Box>
+            <IconButton
+              size="small"
+              aria-label="Opções da mensagem"
+              onClick={handleOpenMenu}
+              sx={{ p: 0.3, color: isOut ? alpha('#fff', 0.75) : 'text.secondary' }}
+            >
+              <KeyboardArrowDownIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Box>
+        )}
 
         {/* Nome do remetente em mensagens de grupo recebidas */}
         {!isOut && message.fromParticipantName && (
@@ -544,13 +550,13 @@ export function MessageBubble({
           <ListItemText>Responder</ListItemText>
         </MenuItem>
       )}
-      {message.body && (
+      {canCopy && (
         <MenuItem onClick={handleMenuCopy} dense>
           <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Copiar</ListItemText>
         </MenuItem>
       )}
-      {!isOut && canStartConversation && onParticipantClick && (
+      {canChatWith && (
         <MenuItem onClick={handleMenuChatWith} dense>
           <ListItemIcon><ChatIcon fontSize="small" /></ListItemIcon>
           <ListItemText

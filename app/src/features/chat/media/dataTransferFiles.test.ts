@@ -1,5 +1,11 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
-import { filesFrom, hasFiles, type DataTransferItemLike, type DataTransferLike } from './dataTransferFiles';
+import {
+  filesFrom,
+  hasFiles,
+  pastedFiles,
+  type DataTransferItemLike,
+  type DataTransferLike,
+} from './dataTransferFiles';
 
 const foto = new File(['a'], 'foto.png', { type: 'image/png' });
 const nota = new File(['b'], 'nota.pdf', { type: 'application/pdf' });
@@ -101,5 +107,40 @@ describe('filesFrom', () => {
     expect(filesFrom(null)).toEqual([]);
     expect(filesFrom(undefined)).toEqual([]);
     expect(filesFrom({})).toEqual([]);
+  });
+});
+
+describe('pastedFiles', () => {
+  /** Área de transferência do colar: arquivos como itens e, opcionalmente, `text/plain`. */
+  const colado = (files: File[], texto?: string): DataTransferLike => ({
+    types: [...(files.length ? ['Files'] : []), ...(texto === undefined ? [] : ['text/plain'])],
+    items: files.map((file) => itemArquivo(file)),
+    getData: (formato: string) => (formato === 'text/plain' ? (texto ?? '') : ''),
+  });
+
+  it('print de tela (só a imagem) vira anexo', () => {
+    expect(pastedFiles(colado([foto]))).toEqual([foto]);
+  });
+
+  it('texto copiado do Office, que chega com a imagem renderizada dele, cola como texto', () => {
+    expect(pastedFiles(colado([foto], 'Total do trimestre\t1.234'))).toEqual([]);
+  });
+
+  it('texto só com espaços não conta: a imagem continua sendo anexo', () => {
+    expect(pastedFiles(colado([foto], ' \r\n'))).toEqual([foto]);
+  });
+
+  it('com texto, só a imagem única cede: outro arquivo ou vários seguem como anexo', () => {
+    expect(pastedFiles(colado([nota], 'nota.pdf'))).toEqual([nota]);
+    expect(pastedFiles(colado([foto, nota], 'foto.png nota.pdf'))).toEqual([foto, nota]);
+  });
+
+  it('navegador sem leitura do texto trata como colar só arquivo', () => {
+    expect(pastedFiles({ items: [itemArquivo(foto)] })).toEqual([foto]);
+  });
+
+  it('colar só texto não gera anexo', () => {
+    expect(pastedFiles(colado([], 'bom dia'))).toEqual([]);
+    expect(pastedFiles(null)).toEqual([]);
   });
 });

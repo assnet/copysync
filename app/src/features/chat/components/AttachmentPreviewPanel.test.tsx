@@ -56,6 +56,9 @@ function renderizar({ files, origin = 'media', config = configCom(), initialCapt
 }
 
 const legenda = () => screen.getByRole('textbox', { name: 'Legenda' });
+/** Miniatura pelo nome acessível: nome do arquivo seguido da posição no lote. */
+const botaoMiniatura = (nome: string, posicao: number, total: number) =>
+  screen.getByRole('button', { name: `${nome} Arquivo ${posicao} de ${total}` });
 const botaoEnviar = (quantidade: number) =>
   screen.getByRole('button', { name: quantidade === 1 ? 'Enviar 1 arquivo' : `Enviar ${quantidade} arquivos` });
 
@@ -115,7 +118,7 @@ describe('AttachmentPreviewPanel — abertura e foco', () => {
     });
 
     expect(legenda()).toHaveValue('olá');
-    await user.click(screen.getByRole('button', { name: 'Arquivo 2 de 2' }));
+    await user.click(botaoMiniatura('b.jpg', 2, 2));
     expect(legenda()).toHaveValue('');
   });
 });
@@ -134,11 +137,11 @@ describe('AttachmentPreviewPanel — item atual e miniaturas', () => {
     expect(recebidos).toContain(foto1);
     expect(recebidos).not.toContain(foto2);
     expect(recebidos).not.toContain(clipe);
-    expect(screen.queryByLabelText('clipe.mp4')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('clipe.mp4', { selector: 'video' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Arquivo 3 de 3' }));
+    await user.click(botaoMiniatura('clipe.mp4', 3, 3));
 
-    const video = await screen.findByLabelText('clipe.mp4');
+    const video = await screen.findByLabelText('clipe.mp4', { selector: 'video' });
     expect(video).toHaveAttribute('preload', 'metadata');
     expect(video).toHaveAttribute('controls');
     expect(screen.queryByRole('img', { name: 'foto1.jpg' })).not.toBeInTheDocument();
@@ -154,8 +157,15 @@ describe('AttachmentPreviewPanel — item atual e miniaturas', () => {
     expect(createImageBitmapMock.mock.calls.map(([file]) => file)).toEqual([foto1, foto2]);
     // Recorte central de 300×300 da foto 400×300, desenhado em 96×96.
     expect(drawImage).toHaveBeenCalledWith(expect.anything(), 50, 0, 300, 300, 0, 0, 96, 96);
-    const miniatura = within(screen.getByRole('button', { name: 'Arquivo 2 de 3' })).getByRole('presentation');
+    const miniatura = within(botaoMiniatura('foto2.png', 2, 3)).getByRole('presentation');
     await waitFor(() => expect(miniatura).toHaveAttribute('src', expect.stringMatching(/^blob:/)));
+  });
+
+  it('cada miniatura é nomeada para o leitor de tela pelo arquivo e pela posição no lote', () => {
+    renderizar({ files: [arquivo('foto.jpg', 'image/jpeg'), arquivo('contrato.pdf', 'application/pdf')], origin: 'auto' });
+
+    expect(botaoMiniatura('foto.jpg', 1, 2)).toHaveAttribute('aria-current', 'true');
+    expect(botaoMiniatura('contrato.pdf', 2, 2)).not.toHaveAttribute('aria-current');
   });
 
   it('mostra documento como cartão com nome, tipo e tamanho', () => {
@@ -173,10 +183,10 @@ describe('AttachmentPreviewPanel — legendas', () => {
     const { user } = renderizar({ files: [arquivo('a.jpg', 'image/jpeg'), arquivo('b.jpg', 'image/jpeg')] });
 
     await user.type(legenda(), 'primeira');
-    await user.click(screen.getByRole('button', { name: 'Arquivo 2 de 2' }));
+    await user.click(botaoMiniatura('b.jpg', 2, 2));
     expect(legenda()).toHaveValue('');
     await user.type(legenda(), 'segunda');
-    await user.click(screen.getByRole('button', { name: 'Arquivo 1 de 2' }));
+    await user.click(botaoMiniatura('a.jpg', 1, 2));
 
     expect(legenda()).toHaveValue('primeira');
   });
@@ -205,7 +215,7 @@ describe('AttachmentPreviewPanel — avisos e bloqueios', () => {
 
     expect(botaoEnviar(2)).toBeDisabled();
     expect(screen.getByText('Remova os arquivos com aviso para enviar')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Arquivo 2 de 2' }));
+    await user.click(botaoMiniatura('vazio.pdf', 2, 2));
     expect(screen.getByText('Arquivo vazio')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Remover vazio.pdf' }));
@@ -244,7 +254,7 @@ describe('AttachmentPreviewPanel — teclado e ações', () => {
     const { user, onSend } = renderizar({ files: [foto, filme] });
 
     await user.type(legenda(), '  primeira  ');
-    await user.click(screen.getByRole('button', { name: 'Arquivo 2 de 2' }));
+    await user.click(botaoMiniatura('filme.mov', 2, 2));
     await user.type(legenda(), 'segunda{Enter}');
 
     expect(onSend).toHaveBeenCalledTimes(1);
@@ -295,7 +305,7 @@ describe('AttachmentPreviewPanel — teclado e ações', () => {
 
     expect(onAddMore).toHaveBeenCalledWith(novos);
     expect(botaoEnviar(3)).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Arquivo 2 de 3' })).toHaveAttribute('aria-current', 'true');
+    expect(botaoMiniatura('b.png', 2, 3)).toHaveAttribute('aria-current', 'true');
     expect(await screen.findByRole('img', { name: 'b.png' })).toBeInTheDocument();
   });
 
@@ -320,8 +330,8 @@ describe('AttachmentPreviewPanel — limpeza', () => {
       files: [arquivo('a.jpg', 'image/jpeg'), arquivo('b.jpg', 'image/jpeg'), arquivo('c.mp4', 'video/mp4')],
     });
     await waitFor(() => expect(drawImage).toHaveBeenCalledTimes(2));
-    await user.click(screen.getByRole('button', { name: 'Arquivo 3 de 3' }));
-    await screen.findByLabelText('c.mp4');
+    await user.click(botaoMiniatura('c.mp4', 3, 3));
+    await screen.findByLabelText('c.mp4', { selector: 'video' });
 
     unmount();
 

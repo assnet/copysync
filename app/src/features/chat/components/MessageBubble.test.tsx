@@ -224,6 +224,31 @@ describe('MessageBubble — reação em mensagem enviando ou com falha', () => {
   });
 });
 
+describe('MessageBubble — menu de opções', () => {
+  const OPCOES = 'Opções da mensagem';
+
+  it('sem nenhuma opção disponível não mostra o botão do menu', () => {
+    renderWithTheme(<MessageBubble message={emEnvio()} onReply={vi.fn()} onSetReaction={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: OPCOES })).not.toBeInTheDocument();
+  });
+
+  it('mensagem apagada, sem texto nem remetente, também fica sem o botão', () => {
+    renderWithTheme(<MessageBubble message={mensagem({ isDeleted: true, body: null })} onReply={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: OPCOES })).not.toBeInTheDocument();
+  });
+
+  it('com ao menos uma opção o botão aparece e abre o menu', async () => {
+    renderWithTheme(<MessageBubble message={mensagem()} />, 'dark');
+
+    await userEvent.hover(screen.getByText('olá'));
+    await userEvent.click(screen.getByRole('button', { name: OPCOES }));
+
+    expect(screen.getByRole('menuitem', { name: 'Copiar' })).toBeInTheDocument();
+  });
+});
+
 describe('MessageBubble — sem upload e sem falha, nada muda', () => {
   const semEnvio = () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

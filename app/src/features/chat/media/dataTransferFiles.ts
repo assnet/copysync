@@ -14,6 +14,8 @@ export interface DataTransferLike {
   readonly types?: ArrayLike<string> | null;
   readonly items?: ArrayLike<DataTransferItemLike> | null;
   readonly files?: ArrayLike<File> | null;
+  /** Texto da transferência; ausente = navegador que não expõe (tratado como vazio). */
+  getData?(format: string): string;
 }
 
 /**
@@ -40,5 +42,17 @@ export function filesFrom(dt: DataTransferLike | null | undefined): File[] {
     const file = item.getAsFile();
     if (file) files.push(file);
   }
+  return files;
+}
+
+/**
+ * Arquivos a anexar ao colar. Office e editores ricos copiam o texto junto com uma imagem dele
+ * renderizada: com `text/plain` não vazio e uma única imagem, vale o texto (colar padrão) → `[]`.
+ * Print de tela (só a imagem) segue como anexo.
+ */
+export function pastedFiles(dt: DataTransferLike | null | undefined): File[] {
+  const files = filesFrom(dt);
+  const singleImage = files.length === 1 && !!files[0]?.type.startsWith('image/');
+  if (singleImage && dt?.getData?.('text/plain').trim()) return [];
   return files;
 }

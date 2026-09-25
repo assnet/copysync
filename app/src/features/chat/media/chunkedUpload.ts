@@ -6,6 +6,9 @@ import type { MediaUploadPurpose } from '@/types/media.api.types';
 const FIRST_RETRY_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 30_000;
 const RETRY_WINDOW_MS = 180_000;
+// Parte sem nenhum progresso por 60 s é abortada e repetida como queda de rede. O prazo se renova
+// a cada progresso: um tempo fixo por parte derrubaria a rede lenta que ainda avança.
+const PART_IDLE_TIMEOUT_MS = 60_000;
 
 /** Mesma forma do `mediaService`; injetado para teste. */
 export type ChunkedUploadClient = Pick<
@@ -63,6 +66,28 @@ export const isUploadGone = (error: unknown): boolean => statusOf(error) === 404
 function isTransient(error: unknown): boolean {
   const status = statusOf(error);
   return status === undefined || status >= 500 || status === 429;
+}
+
+/**
+ * `signal` que aborta junto com o do chamador ou após `ms` sem `touch()`. Só este é abortado pela
+ * inatividade: o do chamador fica intacto, e é ele que distingue cancelamento de queda de rede.
+ */
+function idleSignal(ms: number, parent?: AbortSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  let timer = setTimeout(abort, ms);
+  parent?.addEventListener('abort', abort, { once: true });
+  return {
+    signal: controller.signal,
+    touch: () => {
+      clearTimeout(timer);
+      timer = setTimeout(abort, ms);
+    },
+    dispose: () => {
+      clearTimeout(timer);
+      parent?.removeEventListener('abort', abort);
+    },
+  };
 }
 
 function waitFor(ms: number, signal?: AbortSignal): Promise<void> {
@@ -157,11 +182,19 @@ export async function uploadInParts(input: UploadInPartsInput): Promise<{ upload
           if (received.has(index)) return;
           throwIfAborted();
         }
-        const result = await client.putPart(id, index, blob, {
-          signal,
-          onProgress: (sent) => report(Math.min(sent, blob.size)),
-        });
-        markReceived([...result.receivedParts, index]);
+        const idle = idleSignal(PART_IDLE_TIMEOUT_MS, signal);
+        try {
+          const result = await client.putPart(id, index, blob, {
+            signal: idle.signal,
+            onProgress: (sent) => {
+              idle.touch();
+              report(Math.min(sent, blob.size));
+            },
+          });
+          markReceived([...result.receivedParts, index]);
+        } finally {
+          idle.dispose();
+        }
       });
       report(0);
     }

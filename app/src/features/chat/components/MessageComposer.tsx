@@ -18,7 +18,7 @@ import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import type { QuotedMessagePreview } from '../types';
 import { chatStrings } from '../strings';
-import { filesFrom } from '../media/dataTransferFiles';
+import { pastedFiles } from '../media/dataTransferFiles';
 import type { AttachmentOrigin } from '../media/mediaPolicy';
 import { useVoiceRecorderContext } from '../media/VoiceRecorderProvider';
 import { AttachmentMenu } from './AttachmentMenu';
@@ -118,7 +118,7 @@ export function MessageComposer({
 
   // Resposta ativa vai citada; enviado nesta conversa, o banner some (spec P1, critério 7).
   const handleVoiceSend = async () => {
-    if (!voice) return;
+    if (!voice || disabled) return;
     const sentHere = await voice.send(replyTo?.id ?? null);
     if (sentHere) onCancelReply?.();
   };
@@ -149,10 +149,11 @@ export function MessageComposer({
     }
   };
 
-  // Colar com arquivo (print, imagem copiada, arquivo do sistema) abre a prévia; só texto segue normal.
+  // Colar com arquivo (print, imagem copiada, arquivo do sistema) abre a prévia; só texto — ou
+  // texto do Office, que vem com a imagem dele — segue normal.
   const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
     if (!canAttach || !onAttachFiles) return;
-    const files = filesFrom(e.clipboardData);
+    const files = pastedFiles(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
     onAttachFiles(files, 'auto');
@@ -234,6 +235,7 @@ export function MessageComposer({
             onSend={() => void handleVoiceSend()}
             onDiscard={() => void voice.discard()}
             onPreviewError={voice.markPreviewFailed}
+            sendDisabledReason={disabled ? voiceTexts.conversationClosed : null}
           />
         </Box>
       ) : (

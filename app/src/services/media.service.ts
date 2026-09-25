@@ -7,9 +7,6 @@ import type {
   UploadStatusDto,
 } from '@/types/media.api.types';
 
-// Parte grande em rede lenta: o tempo vale só para o PUT, não para a instância.
-const PART_TIMEOUT_MS = 120_000;
-
 export interface PutPartOptions {
   signal?: AbortSignal;
   /** Bytes desta parte já enviados. */
@@ -32,7 +29,10 @@ export const mediaService = {
     return res.data.data;
   },
 
-  /** Envia o `Blob` cru; cabeçalho, tempo e cancelamento valem só para esta chamada. */
+  /**
+   * Envia o `Blob` cru; cabeçalho e cancelamento valem só para esta chamada. Sem tempo total: a
+   * parte parada é abortada por inatividade pelo `signal` de quem chama (`chunkedUpload`).
+   */
   async putPart(
     uploadId: string,
     index: number,
@@ -45,7 +45,6 @@ export const mediaService = {
       {
         // A instância fixa JSON; sem isto o Blob sairia como `application/json`.
         headers: { 'Content-Type': 'application/octet-stream' },
-        timeout: PART_TIMEOUT_MS,
         signal,
         onUploadProgress: onProgress ? (e) => onProgress(e.loaded) : undefined,
       },

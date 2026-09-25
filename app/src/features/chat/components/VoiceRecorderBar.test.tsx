@@ -12,7 +12,7 @@ const voz = chatStrings.voice;
 
 function renderizar(
   parcial: Partial<VoiceRecorderState> = {},
-  extra: { previewUrl?: string | null; levels?: number[] } = {},
+  extra: { previewUrl?: string | null; levels?: number[]; sendDisabledReason?: string | null } = {},
   mode: PaletteMode = 'light',
 ) {
   const callbacks = {
@@ -28,6 +28,7 @@ function renderizar(
       state={state}
       levels={extra.levels ?? [0.2, 0.8, 0.5]}
       previewUrl={extra.previewUrl === undefined ? 'blob:gravacao' : extra.previewUrl}
+      sendDisabledReason={extra.sendDisabledReason}
       {...callbacks}
     />,
     mode,
@@ -166,6 +167,22 @@ describe('VoiceRecorderBar — rascunho', () => {
     await user.click(botao(voz.discard));
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('VoiceRecorderBar — envio bloqueado', () => {
+  it('enviar desabilitado com o motivo no tooltip; ouvir e descartar seguem', async () => {
+    const user = userEvent.setup();
+    const { onSend, onDiscard } = renderizar({ status: 'draft' }, { sendDisabledReason: voz.conversationClosed });
+
+    expect(botao(voz.send)).toBeDisabled();
+    expect(botao(voz.play)).toBeEnabled();
+    await user.hover(screen.getByLabelText(voz.conversationClosed));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(voz.conversationClosed);
+
+    await user.click(botao(voz.discard));
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
   });
 });
 

@@ -373,3 +373,72 @@ describe('upload em partes: espera padrão (timers falsos)', () => {
     expect(client.putPart).toHaveBeenCalledOnce();
   });
 });
+
+describe('upload em partes: parte parada (timers falsos)', () => {
+  /** `putPart` como o axios numa conexão travada: nenhum progresso; o `signal` rejeita sem `status`. */
+  const parada = (_id: string, _index: number, _blob: Blob, opts: PutPartOptions = {}) =>
+    new Promise<never>((_resolve, reject) => {
+      opts.signal?.addEventListener('abort', () => reject(httpError()), { once: true });
+    });
+  const sinalDaParte = (client: ChunkedUploadClient, chamada: number) =>
+    vi.mocked(client.putPart).mock.calls[chamada]?.[3]?.signal;
+
+  it('parte sem progresso por 60 s é abortada e reenviada como queda de rede', async () => {
+    vi.useFakeTimers();
+    const { client, clock, input, sentIndexes } = setup(25);
+    client.putPart.mockImplementationOnce(parada);
+
+    const done = uploadInParts(input);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(sinalDaParte(client, 0)?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sinalDaParte(client, 0)?.aborted).toBe(true);
+    await expect(done).resolves.toEqual({ uploadId: 'up-1' });
+    expect(clock.waits()).toEqual([1000]);
+    expect(client.getUpload).toHaveBeenCalledOnce();
+    expect(sentIndexes()).toEqual([0, 0, 1, 2]);
+    expect(client.cancelUpload).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('cada progresso rearma o prazo: parte lenta que ainda avança não é abortada', async () => {
+    vi.useFakeTimers();
+    const { client, clock, input, sentIndexes } = setup(25);
+    // 3 min na mesma parte, um avanço a cada 50 s: um tempo fixo de 120 s a derrubaria.
+    client.putPart.mockImplementationOnce(
+      (_id, index, blob, opts = {}) =>
+        new Promise((resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => reject(httpError()), { once: true });
+          [1, 2, 3].forEach((n) => setTimeout(() => opts.onProgress?.((blob.size * n) / 4), n * 50_000));
+          setTimeout(() => resolve({ receivedParts: [index], complete: false }), 180_000);
+        }),
+    );
+
+    const done = uploadInParts(input);
+    await vi.advanceTimersByTimeAsync(180_000);
+
+    await expect(done).resolves.toEqual({ uploadId: 'up-1' });
+    expect(sinalDaParte(client, 0)?.aborted).toBe(false);
+    expect(sentIndexes()).toEqual([0, 1, 2]);
+    expect(clock.sleep).not.toHaveBeenCalled();
+  });
+
+  it('cancelar com a parte em voo aborta o envio dela e segue sendo cancelamento, não queda de rede', async () => {
+    vi.useFakeTimers();
+    const { client, clock, input } = setup(25);
+    const controller = new AbortController();
+    client.putPart.mockImplementationOnce(parada);
+
+    const outcome = uploadInParts({ ...input, signal: controller.signal }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(10_000);
+    controller.abort();
+
+    expect(await outcome).toBeInstanceOf(UploadAbortedError);
+    expect(sinalDaParte(client, 0)?.aborted).toBe(true);
+    expect(client.cancelUpload).toHaveBeenCalledExactlyOnceWith('up-1');
+    expect(clock.sleep).not.toHaveBeenCalled();
+    expect(client.getUpload).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

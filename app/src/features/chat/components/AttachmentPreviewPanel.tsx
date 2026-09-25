@@ -208,6 +208,7 @@ export function AttachmentPreviewPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const thumbnailRefs = useRef(new Map<number, HTMLElement>());
   const reasonId = useId();
+  const thumbnailId = useId();
 
   const classified = useMemo<ClassifiedItem[]>(
     () => items.map((item) => ({ ...item, classification: classifyAttachment(item.file, item.origin, config) })),
@@ -477,13 +478,21 @@ export function AttachmentPreviewPanel({
                 sx={{ position: 'relative', flexShrink: 0 }}
               >
                 <Tooltip title={item.file.name}>
+                  {/* Nome falado = arquivo + posição, em dois textos atômicos (sem concatenar); o
+                      texto `hidden` referenciado por `aria-labelledby` entra no nome. */}
                   <ButtonBase
-                    aria-label={texts.itemPosition(index + 1, classified.length)}
+                    aria-labelledby={`${thumbnailId}-${item.id}-name ${thumbnailId}-${item.id}-position`}
                     aria-current={item.id === current.id ? 'true' : undefined}
                     onClick={() => setCurrentId(item.id)}
                     sx={thumbnailSx(item.id === current.id, !!item.classification.blocked)}
                   >
                     <ThumbnailContent item={item} url={thumbnails.get(item.file)} />
+                    <span id={`${thumbnailId}-${item.id}-name`} hidden>
+                      {item.file.name}
+                    </span>
+                    <span id={`${thumbnailId}-${item.id}-position`} hidden>
+                      {texts.itemPosition(index + 1, classified.length)}
+                    </span>
                   </ButtonBase>
                 </Tooltip>
                 <Tooltip title={texts.removeItem}>

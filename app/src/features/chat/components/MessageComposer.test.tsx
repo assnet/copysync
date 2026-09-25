@@ -91,6 +91,16 @@ describe('MessageComposer — anexos', () => {
     expect(onAttachFiles).not.toHaveBeenCalled();
   });
 
+  it('texto copiado do Office (texto + imagem renderizada dele) cola como texto, sem abrir a prévia', () => {
+    const onAttachFiles = vi.fn();
+    renderWithTheme(<MessageComposer onSend={vi.fn()} onAttachFiles={onAttachFiles} />);
+
+    const naoCancelado = fireEvent.paste(campo(), { clipboardData: clipboard([print()], 'Total do trimestre') });
+
+    expect(naoCancelado).toBe(true);
+    expect(onAttachFiles).not.toHaveBeenCalled();
+  });
+
   it('conversa encerrada desabilita o clipe com o motivo e ignora arquivo colado', async () => {
     const onAttachFiles = vi.fn();
     renderWithTheme(
@@ -359,5 +369,25 @@ describe('MessageComposer — mensagem de voz', () => {
       ]),
     );
     expect(await screen.findByPlaceholderText(/Digite uma mensagem/)).toBeInTheDocument();
+  });
+
+  it('conversa encerrada com rascunho: enviar desabilitado com o motivo, descartar continua possível', async () => {
+    const { enqueue, trocar } = renderComVoz({ conversa: 'conv-a' });
+    await userEvent.click(microfone());
+    await barraGravando();
+    agora = 3_200;
+    trocar({ conversa: 'conv-b' });
+    await waitFor(() => expect(trilha.stop).toHaveBeenCalled());
+
+    trocar({ conversa: 'conv-a', disabled: true });
+
+    await screen.findByRole('group', { name: voz.draft });
+    expect(screen.getByRole('button', { name: voz.send })).toBeDisabled();
+    await userEvent.hover(screen.getByLabelText(voz.conversationClosed));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(voz.conversationClosed);
+
+    await userEvent.click(screen.getByRole('button', { name: voz.discard }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: voz.draft })).not.toBeInTheDocument());
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });
