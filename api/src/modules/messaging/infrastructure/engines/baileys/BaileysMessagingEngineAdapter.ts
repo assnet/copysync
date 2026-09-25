@@ -17,6 +17,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import type { ConnectionState, AnyMessageContent, WASocket, WAMessage, proto } from '@whiskeysockets/baileys';
 import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
+import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { env } from '../../../../../shared/config/env';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
@@ -1368,30 +1369,6 @@ const MEDIA_TYPES_WITH_BINARY = new Set<ChatMessageType>([
   ChatMessageType.DOCUMENT,
   ChatMessageType.STICKER,
 ]);
-
-/**
- * Garante que o MIME type seja mapeado para a extensão correta do arquivo de mídia.
- * Isso evita que o @fastify/static sirva áudio como video/mpeg (para .mpeg) ou
- * outros tipos incorretos que o browser recusa no elemento <audio>.
- */
-const MIME_TO_EXT: Record<string, string> = {
-  'audio/mpeg':   'mp3',
-  'audio/mp3':    'mp3',
-  'audio/mp4':    'm4a',
-  'audio/x-m4a':  'm4a',
-  'audio/aac':    'aac',
-  'audio/ogg':    'ogg',
-  'image/jpeg':   'jpg',
-  'image/jpg':    'jpg',
-  'video/mp4':    'mp4',
-  'video/mpeg':   'mpeg',
-};
-
-function mimeTypeToExt(mimeType: string | null | undefined): string {
-  if (!mimeType) return 'bin';
-  const normalized = mimeType.split(';')[0].trim().toLowerCase();
-  return MIME_TO_EXT[normalized] ?? normalized.split('/')[1]?.split(';')[0] ?? 'bin';
-}
 
 async function downloadBaileysMedia(
   msg: proto.IWebMessageInfo,
