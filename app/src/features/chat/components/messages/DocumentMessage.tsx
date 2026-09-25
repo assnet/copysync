@@ -59,6 +59,12 @@ export function getDocumentKind(extension: string, mimeType: string | null | und
 /** O navegador exibe inline: abre em nova aba em vez de baixar. */
 const OPENABLE_KINDS: ReadonlySet<DocumentKind> = new Set(['pdf', 'image', 'text']);
 
+/** Acrescenta `?name=` preservando query existente. */
+export function withDownloadName(url: string, name: string): string {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}name=${encodeURIComponent(name)}`;
+}
+
 function getDisplayName(fileName: string | null | undefined, mediaUrl: string | null | undefined): string {
   if (fileName?.trim()) return fileName.trim();
   const urlName = mediaUrl?.split('/').pop()?.split('?')[0];
@@ -115,6 +121,9 @@ export function DocumentMessage({ mediaUrl, fileName, mimeType, body, textColor 
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const displayName = getDisplayName(fileName, mediaUrl);
+  // A API está em outra origem e o navegador ignora o `download` de link cross-origin: o nome
+  // vai na query e a API o devolve em `Content-Disposition`.
+  const downloadUrl = mediaUrl ? withDownloadName(mediaUrl, displayName) : undefined;
   const extension = getDocumentExtension(displayName, mimeType);
   const kind = getDocumentKind(extension, mimeType);
   const openable = OPENABLE_KINDS.has(kind);
@@ -207,7 +216,7 @@ export function DocumentMessage({ mediaUrl, fileName, mimeType, body, textColor 
           <Tooltip title={openable ? texts.open : texts.download} enterDelay={600}>
             <ButtonBase
               component="a"
-              href={mediaUrl}
+              href={openable ? mediaUrl : (downloadUrl ?? mediaUrl)}
               {...linkProps}
               aria-label={texts.label(displayName, sizeLabel)}
               sx={{ ...bodySx, '&:hover': { bgcolor: cardHover }, '&.Mui-focusVisible': { outline: focusRing, outlineOffset: -2 } }}
@@ -226,7 +235,7 @@ export function DocumentMessage({ mediaUrl, fileName, mimeType, body, textColor 
             <Tooltip title={texts.download} enterDelay={600}>
               <IconButton
                 component="a"
-                href={mediaUrl}
+                href={downloadUrl ?? mediaUrl}
                 download={displayName}
                 aria-label={texts.download}
                 sx={{

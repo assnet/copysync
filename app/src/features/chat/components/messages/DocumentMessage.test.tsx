@@ -59,7 +59,7 @@ describe('DocumentMessage — cartão de documento', () => {
   it('botão de baixar leva o nome do arquivo no atributo download', () => {
     renderCard();
     const baixar = screen.getByRole('link', { name: texts.download });
-    expect(baixar).toHaveAttribute('href', '/api/storage/media/t/relatorio.zip');
+    expect(baixar).toHaveAttribute('href', '/api/storage/media/t/relatorio.zip?name=relatorio.zip');
     expect(baixar).toHaveAttribute('download', 'relatorio.zip');
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { contentDispositionFor, isAllowedMediaPath } from './staticMediaPolicy';
+import { contentDispositionFor, isAllowedMediaPath, contentDispositionHeader, sanitizeDownloadName } from './staticMediaPolicy';
 
 describe('isAllowedMediaPath', () => {
   it('libera arquivo dentro de media/, inclusive avatar salvo ali', () => {
@@ -51,5 +51,33 @@ describe('contentDispositionFor', () => {
     expect(contentDispositionFor('docx')).toBe('attachment');
     expect(contentDispositionFor('bin')).toBe('attachment');
     expect(contentDispositionFor('')).toBe('attachment');
+  });
+});
+
+describe('contentDispositionHeader', () => {
+  it('sem nome devolve só a disposição', () => {
+    expect(contentDispositionHeader('.zip')).toBe('attachment');
+    expect(contentDispositionHeader('.pdf')).toBe('inline');
+  });
+
+  it('com nome, manda filename ASCII e filename* com o nome original', () => {
+    expect(contentDispositionHeader('.zip', 'relatório final.zip')).toBe(
+      `attachment; filename="relat_rio final.zip"; filename*=UTF-8''relat%C3%B3rio%20final.zip`,
+    );
+  });
+
+  it('PDF com nome continua inline, mas nomeado', () => {
+    expect(contentDispositionHeader('.pdf', 'a.pdf')).toBe(`inline; filename="a.pdf"; filename*=UTF-8''a.pdf`);
+  });
+});
+
+describe('sanitizeDownloadName', () => {
+  it('remove caminho, aspas, controle e bidi', () => {
+    expect(sanitizeDownloadName('../x/"a\u202eb".pdf')).toBe('..xab.pdf');
+    expect(sanitizeDownloadName('a\x00b\n c.txt')).toBe('ab c.txt');
+  });
+
+  it('vazio, só espaços, "." e ".." viram null', () => {
+    for (const v of ['', '   ', '.', '..', 42, null]) expect(sanitizeDownloadName(v)).toBeNull();
   });
 });

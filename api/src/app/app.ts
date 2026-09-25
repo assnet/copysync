@@ -10,7 +10,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
-import { contentDispositionFor, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
+import { contentDispositionFor, contentDispositionHeader, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
 import { registerRoutes } from './routes';
 
 const defaultCorsOrigins = [
@@ -120,6 +120,16 @@ export async function buildApp() {
       // rodaria script na origem da API, então baixa. O nosniff já vem do helmet.
       res.setHeader('Content-Disposition', contentDispositionFor(path.extname(filePath)));
     },
+  });
+  // `?name=` põe o nome original no download: link cross-origin ignora o atributo `download`
+  // do painel. O `setHeaders` do plugin não vê a requisição, por isso o hook vem aqui.
+  const storagePrefix = `${env.API_PREFIX}/storage/`;
+  app.addHook('onSend', async (request, reply) => {
+    if (!request.url.startsWith(storagePrefix)) return;
+    const name = (request.query as Record<string, unknown> | undefined)?.name;
+    if (typeof name !== 'string' || !name) return;
+    const ext = path.extname(request.url.split('?')[0]);
+    reply.header('Content-Disposition', contentDispositionHeader(ext, name));
   });
 
   // ── OpenAPI / Swagger ─────────────────────────────────────────────────────
