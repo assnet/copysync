@@ -47,6 +47,7 @@ import { translateDisconnect, translateEngineError, translateSendError } from '.
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import { outboundEchoRegistries } from './outboundEchoRegistries';
+import { sentMediaCache } from './sentMediaCache';
 import { isOwnOutboundEcho } from './isOwnOutboundEcho';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
@@ -261,7 +262,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         { messageId, mediaUploadTimeoutMs: env.MEDIA_UPLOAD_IDLE_TIMEOUT_MS, ...(quoted ? { quoted } : {}) },
       );
       baileysLogger.info({ ...log, durationMs: Date.now() - startedAt }, 'Media sent');
-      return { messageId: result?.key?.id ?? messageId, sentAt: new Date() };
+      const sentId = result?.key?.id ?? messageId;
+      // Guardado para o getMessage: aparelho do grupo que não decifrou a mídia pede reenvio.
+      if (result?.message) sentMediaCache().set(sessionId, sentId, result.message);
+      return { messageId: sentId, sentAt: new Date() };
     } catch (err) {
       if (!(err instanceof MediaTooLargeError)) {
         baileysLogger.warn({ ...log, err }, 'Failed to send media');
@@ -504,11 +508,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // do evento connection.update e publicado via SESSION_QR_UPDATED.
       markOnlineOnConnect: false,
       syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
-      // Baileys usa getMessage para re-envio e read receipts.
-      // Retornar undefined é seguro — mensagens não serão re-enviadas automaticamente.
-      getMessage: async (_key: proto.IMessageKey): Promise<{ conversation: string } | undefined> => {
-        return undefined;
-      },
+      // Responde o pedido de reenvio de criptografia da nossa mídia (aparelho de grupo que não
+      // decifrou). Texto, reação e o resto seguem undefined: não são reenviados.
+      getMessage: async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> =>
+        key.id ? sentMediaCache().get(sessionId, key.id) : undefined,
     });
 
     const epoch = this.registry.nextEpoch();
