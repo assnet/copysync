@@ -109,6 +109,17 @@ export interface ChatMessageApiDto {
   fromParticipant?: string | null;
   fromParticipantName?: string | null;
   fromParticipantAvatarUrl?: string | null;
+  /** Ausentes em API antiga (deploy em andamento): o adapter trata como sem reações. */
+  reactionsRevision?: string | null;
+  reactions?: ReactionSummaryApiDto[];
+}
+
+/** Resposta do `PUT /chat/messages/:messageId/reaction`: agregado final da mensagem. */
+export interface MessageReactionResultApiDto {
+  messageId: string;
+  conversationId: string;
+  reactionsRevision: string | null;
+  reactions: ReactionSummaryApiDto[];
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
@@ -148,6 +159,7 @@ import type {
   ChatParticipant,
   ConversationStatus,
   MessageDirection,
+  MessageReaction,
   MessageStatus,
 } from '@/features/chat/types';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
@@ -266,5 +278,16 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     fromParticipant:     dto.fromParticipant ?? null,
     fromParticipantName: dto.fromParticipantName ?? null,
     fromParticipantAvatarUrl: resolveMediaUrl(dto.fromParticipantAvatarUrl),
+    reactions:         (dto.reactions ?? []).map(apiReactionToFrontend),
+    reactionsRevision: dto.reactionsRevision ?? null,
+  };
+}
+
+export function apiReactionToFrontend(dto: ReactionSummaryApiDto): MessageReaction {
+  return {
+    emoji:       dto.emoji,
+    count:       dto.count,
+    reactedByMe: dto.reactedByMe,
+    reactors:    (dto.reactors ?? []).map((r) => ({ name: r.name ?? null, phone: r.phone ?? null })),
   };
 }

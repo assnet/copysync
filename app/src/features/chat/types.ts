@@ -79,6 +79,19 @@ export interface ChatMessage {
   /** Nome do participante que enviou (grupos) */
   fromParticipantName?: string | null;
   fromParticipantAvatarUrl?: string | null;
+  /** Reações agrupadas por emoji. Ausente/vazio = sem reações. */
+  reactions?: MessageReaction[];
+  /** Versão do agregado no servidor (descarta atualização fora de ordem). */
+  reactionsRevision?: string | null;
+}
+
+/** Reações de uma mensagem com o mesmo emoji. */
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+  /** Autores conhecidos (até 10). `name` nulo → "Participante". */
+  reactors: { name: string | null; phone: string | null }[];
 }
 
 export interface ChatConversation {
