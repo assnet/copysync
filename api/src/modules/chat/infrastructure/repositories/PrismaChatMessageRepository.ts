@@ -1,6 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
   ChatMessageCreateData,
+  FailedPendingMessage,
+  FailPendingInput,
   FindAroundInput,
   IChatMessageRepository,
   ListMessagesFilter,
@@ -143,5 +145,51 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
       data: { status },
     });
     return PrismaChatMessageMapper.toDomain(raw);
+  }
+
+  async transitionStatus(
+    id: string,
+    tenantId: string,
+    from: ChatMessageStatus[],
+    to: ChatMessageStatus,
+    sentAt?: Date,
+  ): Promise<ChatMessage | null> {
+    // A condição no WHERE torna a troca atômica: quem chegar depois não sobrescreve.
+    const { count } = await this.prisma.chatMessage.updateMany({
+      where: { id, tenantId, status: { in: from } },
+      data: { status: to, ...(sentAt ? { sentAt } : {}) },
+    });
+    if (count !== 1) return null;
+    return this.findById(id, tenantId);
+  }
+
+  async failPending(input: FailPendingInput): Promise<FailedPendingMessage[]> {
+    // Sem `tenantId` de propósito: varredura do processo sobre todos os tenants
+    // (boot e rotina periódica), exceção explícita ao AGENTS.md §36.8. Não expor em rota.
+    const select = { id: true, tenantId: true, conversationId: true } as const;
+    const candidates = await this.prisma.chatMessage.findMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: input.olderThan },
+        ...(input.excludeIds?.length ? { id: { notIn: input.excludeIds } } : {}),
+      },
+      select,
+    });
+    if (candidates.length === 0) return [];
+
+    const ids = candidates.map((c) => c.id);
+    const { count } = await this.prisma.chatMessage.updateMany({
+      where: { id: { in: ids }, status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
+    if (count === ids.length) return candidates;
+
+    // Parte saiu de PENDING entre a leitura e a escrita (despacho ou recibo): devolve só
+    // as que ficaram FAILED. Uma que o despacho falhou no intervalo pode vir junto; a
+    // publicação de status é idempotente.
+    return this.prisma.chatMessage.findMany({
+      where: { id: { in: ids }, status: 'FAILED' },
+      select,
+    });
   }
 }

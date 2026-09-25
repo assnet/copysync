@@ -44,6 +44,19 @@ export interface ChatMessageCreateData {
   status?: ChatMessageStatus;
 }
 
+export interface FailPendingInput {
+  /** Só mensagens criadas antes deste instante. */
+  olderThan: Date;
+  /** Ids que ainda estão sendo enviados neste processo e não podem falhar. */
+  excludeIds?: string[];
+}
+
+export interface FailedPendingMessage {
+  id: string;
+  tenantId: string;
+  conversationId: string;
+}
+
 export interface IChatMessageRepository {
   findById(id: string, tenantId: string): Promise<ChatMessage | null>;
   findByExternalId(externalId: string, tenantId: string): Promise<ChatMessage | null>;
@@ -59,4 +72,24 @@ export interface IChatMessageRepository {
     tenantId: string,
     status: ChatMessageStatus,
   ): Promise<ChatMessage | null>;
+  /**
+   * Troca o status só se o atual estiver em `from` (e grava `sentAt`, se informado).
+   * Devolve `null` quando nada mudou: outro processo ou transição já passou por ela
+   * (ex.: o `DELIVERED` chegou antes do `SENT` do despacho). Torna retry e recuperação
+   * idempotentes.
+   */
+  transitionStatus(
+    id: string,
+    tenantId: string,
+    from: ChatMessageStatus[],
+    to: ChatMessageStatus,
+    sentAt?: Date,
+  ): Promise<ChatMessage | null>;
+  /**
+   * Marca como `FAILED` as mensagens `PENDING` criadas antes de `olderThan`, fora de
+   * `excludeIds`, e devolve as que mudaram. Varredura do processo (boot e rotina
+   * periódica): atravessa todos os tenants por natureza, por isso não recebe `tenantId`
+   * — exceção explícita ao AGENTS.md §36.8. Não use em fluxo de requisição.
+   */
+  failPending(input: FailPendingInput): Promise<FailedPendingMessage[]>;
 }
