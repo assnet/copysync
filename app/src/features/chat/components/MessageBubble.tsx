@@ -9,7 +9,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ChatIcon from '@mui/icons-material/Chat';
 import AddReactionOutlinedIcon from '@mui/icons-material/AddReactionOutlined';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, MessageType } from '../types';
 import { formatMessageTime } from '../utils';
 import { ImageMessage } from './messages/ImageMessage';
 import { AudioMessage } from './messages/AudioMessage';
@@ -24,6 +24,8 @@ import { QuotedMessage } from './messages/QuotedMessage';
 import { RichMessageText } from './messages/RichMessageText';
 import { ReactionBar } from './messages/ReactionBar';
 import { MessageReactions } from './messages/MessageReactions';
+import { UploadProgressOverlay } from './messages/UploadProgressOverlay';
+import { FailedMessageActions, type FailedMessageKind } from './messages/FailedMessageActions';
 import { chatStrings } from '../strings';
 
 // ── Status icon ───────────────────────────────────────────────────────────────
@@ -131,6 +133,9 @@ function MessageContent({ message, isOut, textColor }: ContentProps) {
 
 // ── Main bubble ───────────────────────────────────────────────────────────────
 
+/** Tipos com arquivo: só eles têm progresso de envio e reenvio (`POST /messages/:id/retry`). */
+const MEDIA_TYPES: ReadonlySet<MessageType> = new Set(['image', 'video', 'audio', 'document', 'sticker']);
+
 interface Props {
   message: ChatMessage;
   onReply?: (message: ChatMessage) => void;
@@ -138,9 +143,24 @@ interface Props {
   participantAvatars?: Record<string, string>;
   /** Reagir (`emoji`) ou remover a própria reação (`null`). Ausente → chips só leitura. */
   onSetReaction?: (message: ChatMessage, emoji: string | null) => void;
+  /** Cancela o upload da bolha otimista. */
+  onCancelUpload?: (message: ChatMessage) => void;
+  /** Tentar de novo: retoma/reconfirma a bolha local ou reenvia a mídia gravada com falha. */
+  onRetry?: (message: ChatMessage) => void;
+  /** Descarta a bolha local com falha (mensagem gravada não é descartável). */
+  onDiscard?: (message: ChatMessage) => void;
 }
 
-export function MessageBubble({ message, onReply, onParticipantClick, participantAvatars, onSetReaction }: Props) {
+export function MessageBubble({
+  message,
+  onReply,
+  onParticipantClick,
+  participantAvatars,
+  onSetReaction,
+  onCancelUpload,
+  onRetry,
+  onDiscard,
+}: Props) {
   const [hovered, setHovered] = useState(false);
   // Foco por teclado dentro da linha mostra as mesmas ações do hover.
   const [focused, setFocused] = useState(false);
@@ -222,10 +242,27 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
   const textColor = isOut ? '#ffffff' : theme.palette.text.primary;
   const timeColor = isOut ? alpha('#ffffff', 0.65) : theme.palette.text.disabled;
 
-  // Mensagem apagada ou nunca entregue não aceita reação (a API responderia 409).
-  const canReact = !!onSetReaction && !message.isDeleted && !!message.externalMessageId;
+  // Apagada, nunca entregue, ainda enviando ou com falha: o contato pode não ter a mensagem
+  // (a API responderia 409).
+  const canReact =
+    !!onSetReaction &&
+    !message.isDeleted &&
+    !!message.externalMessageId &&
+    message.status !== 'sending' &&
+    message.status !== 'failed';
+
+  // Envio de mídia: `upload` só existe na bolha otimista; `sending` sem ele = PENDING do servidor.
+  const isOutMedia = isOut && !message.isDeleted && MEDIA_TYPES.has(message.type);
+  const upload = message.upload;
+  const failure: FailedMessageKind | null =
+    upload?.error ?? (isOutMedia && message.status === 'failed' && onRetry ? 'server' : null);
+  const showProgress = isOutMedia && !failure && (!!upload || message.status === 'sending');
+  const determinateProgress = upload?.phase === 'uploading' ? upload.progress : undefined;
   // Mensagem apagada não aceita resposta (o WhatsApp também não oferece): não há o que citar.
-  const canReply = !!onReply && !message.isDeleted;
+  // Em envio ou com falha também não: a mensagem ainda não existe no WhatsApp (e a bolha
+  // otimista tem id `tmp-`, que a API não reconhece como citada).
+  const canReply = !!onReply && !message.isDeleted
+    && message.status !== 'sending' && message.status !== 'failed';
   const reactions = message.reactions ?? [];
   const hasReactions = reactions.some((r) => r.count > 0);
   const activeEmoji = reactions.find((r) => r.reactedByMe)?.emoji ?? null;
@@ -424,8 +461,29 @@ export function MessageBubble({ message, onReply, onParticipantClick, participan
           <QuotedMessage quoted={message.quotedMessage} isOut={isOut} />
         )}
 
-        {/* Conteúdo da mensagem */}
-        <MessageContent message={message} isOut={isOut} textColor={textColor} />
+        {/* Conteúdo da mensagem; mídia ganha um contêiner estável para o véu de envio */}
+        {isOutMedia ? (
+          // `isolation`: o véu não cobre o botão de opções da bolha (zIndex 1).
+          <Box sx={{ position: 'relative', ...(showProgress && { minHeight: 56, isolation: 'isolate' }) }}>
+            <MessageContent message={message} isOut={isOut} textColor={textColor} />
+            {showProgress && (
+              <UploadProgressOverlay
+                progress={determinateProgress}
+                onCancel={onCancelUpload ? () => onCancelUpload(message) : undefined}
+              />
+            )}
+          </Box>
+        ) : (
+          <MessageContent message={message} isOut={isOut} textColor={textColor} />
+        )}
+
+        {failure && (
+          <FailedMessageActions
+            kind={failure}
+            onRetry={onRetry ? () => onRetry(message) : undefined}
+            onDiscard={onDiscard ? () => onDiscard(message) : undefined}
+          />
+        )}
 
         {/* Footer: hora + tick de status */}
         <Box
