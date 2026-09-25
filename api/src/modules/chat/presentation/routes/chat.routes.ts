@@ -30,6 +30,7 @@ import {
 import { PrismaChatContactRepository } from '../../infrastructure/repositories/PrismaChatContactRepository';
 import { PrismaChatConversationRepository } from '../../infrastructure/repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from '../../infrastructure/repositories/PrismaChatMessageRepository';
+import { PrismaChatMessageReactionRepository } from '../../infrastructure/repositories/PrismaChatMessageReactionRepository';
 import { PrismaSessionRepository } from '../../../sessions/infrastructure/repositories/PrismaSessionRepository';
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 
@@ -49,13 +50,14 @@ import type { ConversationStatus } from '../../domain/enums/ConversationStatus';
 const contactRepo       = new PrismaChatContactRepository(prisma);
 const conversationRepo  = new PrismaChatConversationRepository(prisma);
 const messageRepo       = new PrismaChatMessageRepository(prisma);
+const reactionRepo      = new PrismaChatMessageReactionRepository(prisma);
 const sessionRepo       = new PrismaSessionRepository();
 const userRepo          = new PrismaUserRepository();
 
 const listConversationsUseCase  = new ListConversationsUseCase(conversationRepo, contactRepo, sessionRepo);
 const getConversationUseCase    = new GetConversationByIdUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
 const updateConversationUseCase = new UpdateConversationUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
-const listMessagesUseCase       = new ListMessagesUseCase(messageRepo, conversationRepo, contactRepo);
+const listMessagesUseCase       = new ListMessagesUseCase(messageRepo, conversationRepo, contactRepo, reactionRepo);
 const getContactUseCase         = new GetContactByIdUseCase(contactRepo);
 
 const preHandler = [authHook, tenantHook];
