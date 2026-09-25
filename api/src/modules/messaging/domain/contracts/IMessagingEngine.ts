@@ -48,6 +48,35 @@ export interface SendTextMessageInput {
   quotedMessage?: QuotedMessageRef | null;
 }
 
+/**
+ * Referência à mensagem que recebe a reação, montada a partir do que o chat já gravou.
+ * Mesmo papel do `QuotedMessageRef`, sem os campos de preview.
+ */
+export interface ReactionTargetRef {
+  /** key.id da mensagem alvo no WhatsApp */
+  externalId: string;
+  /** Telefone (individual) ou "<groupJid>@g.us" (grupo) */
+  remoteJid: string;
+  /** true quando a mensagem alvo foi enviada por nós */
+  fromMe: boolean;
+  /** JID do participante autor da mensagem alvo (obrigatório em grupo p/ montar a key) */
+  participant?: string | null;
+}
+
+export interface SendReactionInput {
+  sessionId: string;
+  tenantId: string;
+  target: ReactionTargetRef;
+  /** Emoji a aplicar; `null` remove a reação existente. */
+  emoji: string | null;
+  /**
+   * Carimbo do gesto, fixado pelo use case (relógio do servidor). A engine o envia como
+   * `senderTimestampMs` — sem ele a lib usaria o próprio `Date.now()`.
+   * O destinatário recebe o mesmo carimbo que gravamos; a nossa ordenação não depende disso.
+   */
+  reactedAt: Date;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type MediaType = 'image' | 'video' | 'audio' | 'document' | 'sticker';
@@ -116,6 +145,8 @@ export interface IMessagingEngine {
   getSessionPairingCode(sessionId: string): Promise<string | null>;
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult>;
   sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult>;
+  /** Aplica ou remove nossa reação em uma mensagem. `emoji: null` remove. */
+  sendReaction(input: SendReactionInput): Promise<SendMessageResult>;
   /** Send read receipts so the contact sees the double-blue tick. */
   markMessagesRead(input: MarkMessagesReadInput): Promise<void>;
   /** Subscribe to presence updates for a specific JID. */

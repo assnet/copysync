@@ -9,6 +9,7 @@ import type {
   UpdateConversationRequest,
   GroupParticipantApiDto,
   ContactSuggestionApiDto,
+  MessageReactionResultApiDto,
 } from '@/types/chat.api.types';
 
 export const chatService = {
@@ -65,6 +66,18 @@ export const chatService = {
     const res = await apiClient.post<{ success: true; data: ChatMessageApiDto }>(
       `/chat/conversations/${conversationId}/messages`,
       { content, ...(quotedMessageId ? { quotedMessageId } : {}) },
+    );
+    return res.data.data;
+  },
+
+  /** Reage (`emoji`) ou remove a própria reação (`null`). Devolve o agregado final. */
+  async setMessageReaction(
+    messageId: string,
+    emoji: string | null,
+  ): Promise<MessageReactionResultApiDto> {
+    const res = await apiClient.put<{ success: true; data: MessageReactionResultApiDto }>(
+      `/chat/messages/${messageId}/reaction`,
+      { emoji },
     );
     return res.data.data;
   },

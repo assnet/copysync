@@ -2,14 +2,14 @@
 
 **Módulo**: `chat` (api/) + `chat` feature (app/)
 **Escopo**: Large (multi-camada: Prisma → engine port → adapter Baileys → use cases → WS → REST → UI)
-**Status**: Draft
+**Status**: Draft — revisado em 2026-09-24 (robustez; ver cabeçalho de `tasks.md`)
 
 ---
 
 ## Problem Statement
 
 O painel exibe mensagens de WhatsApp mas ignora completamente reações: o adapter Baileys descarta
-`reactionMessage` (`BaileysMessagingEngineAdapter.ts:1325`) e não há tabela, evento interno nem UI.
+`reactionMessage` (`BaileysMessagingEngineAdapter.ts:1365`) e não há tabela, evento interno nem UI.
 Quem opera pelo painel vê a conversa incompleta em relação ao celular — reações do contato somem, e
 o operador não consegue responder com o gesto mais barato que existe (👍 em vez de uma mensagem).
 Em grupos a perda é maior: reação é o principal sinal de leitura/acordo sem poluir o histórico.
@@ -73,7 +73,7 @@ confirmar/expressar algo sem enviar uma nova mensagem.
 1. WHEN o operador clica no chip da reação que ele mesmo deu THEN o sistema SHALL remover a reação
 2. WHEN o operador reabre a barra rápida e clica no emoji já ativo THEN o sistema SHALL remover a reação
 3. WHEN a remoção é confirmada THEN o sistema SHALL enviar reação vazia ao WhatsApp (`text: ''`),
-   apagar a linha do banco e publicar o novo agregado por WebSocket
+   gravar tombstone (`emoji = NULL`, ver `context.md`) e publicar o novo agregado por WebSocket
 
 **Independent Test**: reagir, remover, e confirmar que o emoji sumiu no celular.
 
@@ -100,6 +100,10 @@ confirmar/expressar algo sem enviar uma nova mensagem.
 7. WHEN uma reação é recebida ou enviada THEN o sistema SHALL manter inalterados `lastMessageAt`,
    `lastMessagePreview`, `unreadCount` e `status` da conversa — reação não reordena a lista nem
    marca a conversa como não lida
+8. WHEN um contato reage a mensagem nossa numa conversa arquivada e a conta tem "manter conversas
+   arquivadas" desligado THEN a conversa SHALL desarquivar — pelo caminho de espelhamento de estado
+   (`chats.update` → `CHAT_STATE_UPDATED`), nunca pelo de reação. É o que o celular faz
+   (`process-message.js:200-205`); o caminho de reação continua sem escrever na conversa
 
 **Independent Test**: reagir pelo celular a uma mensagem e ver o chip surgir no painel com a conversa aberta.
 
@@ -116,7 +120,13 @@ confirmar/expressar algo sem enviar uma nova mensagem.
 1. WHEN a reação vem de um participante de grupo THEN o sistema SHALL guardar o telefone e o pushName do autor
 2. WHEN o autor for conhecido em `ChatContact` THEN o tooltip SHALL exibir o nome do contato em vez
    do telefone, resolvido no mesmo lote `findByPhones` já usado para avatares de participante
-3. WHEN o telefone é privado (`@lid` sem `remoteJidAlt`) THEN o sistema SHALL exibir "Participante" e não descartar a reação
+3. WHEN o autor chega como `@lid` THEN o sistema SHALL tentar o telefone por `participantAlt`/
+   `remoteJidAlt` e depois pelo mapeamento LID→telefone da sessão — a mesma resolução que o adapter
+   já usa para remetente de grupo (`extractParticipantJid` + `resolveParticipantPhone`)
+4. WHEN nenhuma resolução dá telefone THEN o sistema SHALL exibir "Participante" e não descartar a reação
+5. WHEN o mesmo autor reage duas vezes e o telefone passou a resolver entre uma e outra THEN o
+   sistema SHALL tratar como o mesmo autor — a identidade da reação é a crua do protocolo, não o
+   telefone resolvido (`context.md`, `reactorKey`)
 
 ---
 
@@ -125,13 +135,37 @@ confirmar/expressar algo sem enviar uma nova mensagem.
 - WHEN a reação chega para uma mensagem que não existe no banco (fora da janela ingerida) THEN o
   sistema SHALL descartar silenciosamente com log `debug` — não criar mensagem fantasma
 - WHEN o mesmo evento de reação chega duas vezes (upsert + reaction, reconexão) THEN o sistema SHALL
-  ser idempotente via `@@unique([messageId, reactorKey])` + upsert
+  ser idempotente via `@@unique([messageId, reactorKey])` + escrita last-write-wins (`apply`)
 - WHEN chegam duas reações do mesmo autor fora de ordem THEN o sistema SHALL manter a de
-  `reactedAt` maior e ignorar a mais antiga
+  `reactedAt` maior e ignorar a mais antiga — **inclusive quando uma delas é remoção**: remoção
+  atrasada não apaga reação mais nova, e reação atrasada não ressuscita reação removida (tombstone)
+- WHEN o relógio do celular do operador diverge do servidor THEN a ordem entre gestos nossos
+  (painel × celular) SHALL seguir o relógio do servidor, não o carimbo do aparelho
+- WHEN o operador clica dois emojis em sequência rápida pelo painel THEN o estado final SHALL ser o
+  do último clique, mesmo que os ecos ou as respostas HTTP cheguem fora de ordem
+- WHEN o `PUT` falha no cliente (timeout) mas a reação foi aplicada e o WS chegou THEN o painel
+  SHALL manter a reação visível, não voltar ao estado anterior
+- WHEN o operador clica vários emojis em sequência na mesma mensagem THEN o painel SHALL mostrar
+  cada gesto na hora e enviar ao WhatsApp **só o último** — rajada de reações é volume de saída
+  fora do padrão humano e arrisca o número (`STATE.md`)
+- WHEN a API recebe reações acima do limite por mensagem ou por sessão THEN SHALL responder 429
+  sem enviar nem gravar
+- WHEN o `PUT` do painel e o eco da engine gravam ao mesmo tempo, em qualquer ordem THEN o sistema
+  SHALL serializar as duas escritas e publicar **um** evento WS — só quem mudou o estado visível publica
+- WHEN a conversa não tem `sessionId` ou não há engine disponível THEN o sistema SHALL falhar com
+  `SESSION_NOT_CONNECTED` — **não** repetir o fallback do `SendMessageUseCase`, que grava a mensagem
+  sem enviar (`SendMessageUseCase.ts:53-78`). Reação gravada sem envio mente para o operador
+- WHEN a mensagem alvo não tem `externalMessageId` (enviada sem engine, ainda sem id do WhatsApp)
+  THEN o painel SHALL ocultar o botão de reagir e a API SHALL responder 409 se chamada direto
+- WHEN a mensagem alvo é de grupo, de terceiro, e não tem `fromParticipant` THEN o sistema SHALL
+  recusar o envio com erro interno em vez de mandar uma key sem `participant` (o WhatsApp aceita e
+  não aplica — falha silenciosa)
 - WHEN a sessão está desconectada e o operador reage THEN o sistema SHALL falhar com
   `SESSION_NOT_CONNECTED` traduzido e NÃO persistir a reação
 - WHEN o emoji recebido não é um emoji válido (string arbitrária do protocolo) THEN o sistema SHALL
-  rejeitar no envio: vazio, acima de 64 bytes, ASCII imprimível ou com whitespace
+  rejeitar no envio quando: vazio; acima de 64 bytes; composto inteiramente de ASCII; ou contendo
+  qualquer caractere de whitespace ou controle.
+  Keycap (`1️⃣`, `#️⃣`, `*️⃣`) contém ASCII e SHALL ser aceito
 - WHEN a mensagem alvo foi apagada (`isDeleted`) THEN o painel SHALL ocultar o botão de reagir
 - WHEN a conversa tem 500+ mensagens carregadas THEN a listagem SHALL buscar reações em uma única
   query por lote de mensagens (sem N+1)
@@ -176,3 +210,4 @@ confirmar/expressar algo sem enviar uma nova mensagem.
 - [ ] Listagem de 200 mensagens com reações não adiciona mais de 1 query extra
 - [ ] Chips legíveis nos três temas (claro, escuro, sistema) e navegáveis por teclado
 - [ ] Reagir a uma mensagem antiga não altera a posição da conversa na lista nem o contador de não lidas
+- [ ] Remover e reagir em sequência rápida (painel e celular) converge para o último gesto nos dois lados

@@ -1,6 +1,7 @@
 import type { ConversationListItemDto } from '../../application/use-cases/ListConversationsUseCase';
 import type { ChatMessageDto } from '../../application/use-cases/ListMessagesUseCase';
 import type { ChatContactDto } from '../../application/use-cases/GetContactByIdUseCase';
+import type { ReactionSummary } from '../../domain/services/aggregateReactions';
 
 export class ChatPresenter {
   static presentConversation(dto: ConversationListItemDto): object {
@@ -58,6 +59,25 @@ export class ChatPresenter {
       createdAt: dto.createdAt,
       fromParticipant: dto.fromParticipant,
       fromParticipantName: dto.fromParticipantName,
+      // Id da mensagem no WhatsApp: o painel só oferece reagir quando ele existe.
+      externalMessageId: dto.externalMessageId,
+      reactionsRevision: dto.reactionsRevision,
+      reactions: dto.reactions,
+    };
+  }
+
+  /** Resultado de reagir/remover: mesmo shape do evento chat.message.reaction.updated. */
+  static presentReactionResult(dto: {
+    messageId: string;
+    conversationId: string;
+    reactionsRevision: string | null;
+    reactions: ReactionSummary[];
+  }): object {
+    return {
+      messageId: dto.messageId,
+      conversationId: dto.conversationId,
+      reactionsRevision: dto.reactionsRevision,
+      reactions: dto.reactions,
     };
   }
 

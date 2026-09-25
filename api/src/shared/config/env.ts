@@ -35,12 +35,35 @@ const envSchema = z.object({
   BAILEYS_AUTH_FLUSH_DEBOUNCE_MS: z.coerce.number().int().nonnegative().default(750),
   BAILEYS_AUTH_PERSIST_MAX_RETRIES: z.coerce.number().int().positive().default(3),
   BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS: z.coerce.number().int().positive().default(1_000),
+
+  // Reações: janela em que o adapter reconhece o eco da própria reação enviada.
+  REACTION_ECHO_TTL_MS: z.coerce.number().int().positive().default(120_000),
+  // Reações: limite de envio por sessão (janela deslizante de 1 minuto).
+  REACTION_MAX_PER_MINUTE: z.coerce.number().int().positive().default(30),
+  // Reações: intervalo mínimo entre dois envios na mesma mensagem (menor que o do painel).
+  REACTION_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(700),
 });
 
-export type Env = z.infer<typeof envSchema>;
+/**
+ * Teto de ids de eco guardados por sessão — derivado, nunca configurado à parte.
+ *
+ * Se fosse menor que o que pode estar em voo, descartar o mais antigo tiraria a marca de
+ * um eco legítimo. O limite de envio garante no máximo REACTION_MAX_PER_MINUTE por minuto;
+ * o fator 2 cobre a folga entre a janela deslizante do limite e o TTL.
+ */
+function reactionEchoCap(e: z.infer<typeof envSchema>): number {
+  return e.REACTION_MAX_PER_MINUTE * Math.ceil(e.REACTION_ECHO_TTL_MS / 60_000) * 2;
+}
+
+const envWithDerivedSchema = envSchema.transform((e) => ({
+  ...e,
+  REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
+}));
+
+export type Env = z.infer<typeof envWithDerivedSchema>;
 
 function loadEnv(): Env {
-  const result = envSchema.safeParse(process.env);
+  const result = envWithDerivedSchema.safeParse(process.env);
 
   if (!result.success) {
     const formatted = result.error.errors

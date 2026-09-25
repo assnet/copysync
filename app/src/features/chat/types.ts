@@ -79,6 +79,22 @@ export interface ChatMessage {
   /** Nome do participante que enviou (grupos) */
   fromParticipantName?: string | null;
   fromParticipantAvatarUrl?: string | null;
+  /** Id da mensagem no canal de mensageria. `null` = nunca entregue (não aceita reação). */
+  externalMessageId?: string | null;
+  /** Reações agrupadas por emoji. Ausente/vazio = sem reações. */
+  reactions?: MessageReaction[];
+  /** Versão do agregado no servidor (descarta atualização fora de ordem). */
+  reactionsRevision?: string | null;
+}
+
+/** Reações de uma mensagem com o mesmo emoji. */
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+  /** Autores conhecidos (até 10). `name` nulo → "Participante". */
+  /** `isMe` = reação da própria conta (tooltip mostra "Você"). */
+  reactors: { name: string | null; phone: string | null; isMe: boolean }[];
 }
 
 export interface ChatConversation {

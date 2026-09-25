@@ -50,6 +50,29 @@ export type InternalMessagingEvent =
       /** Raw engine payload — never use outside the adapter */
       raw?: unknown;
     }
+  | {
+      type: 'MESSAGE_REACTION_UPDATED';
+      sessionId: string;
+      tenantId: string;
+      /** key.id da mensagem que recebeu a reação */
+      targetExternalMessageId: string;
+      /** Emoji aplicado; null = reação removida */
+      emoji: string | null;
+      /** Identidade estável do autor: 'self', 'lid:<id>' ou 'pn:<dígitos>' — nunca o telefone resolvido */
+      reactorKey: string;
+      /** Telefone do autor, só para exibição; null quando o LID não pôde ser resolvido */
+      reactorPhone: string | null;
+      /** Nome exibido do autor, quando a engine o fornece */
+      reactorName: string | null;
+      /** true = reação feita por nós (painel ou celular do operador) */
+      fromMe: boolean;
+      /** true = eco de reação que esta engine acabou de enviar (id registrado antes do envio). */
+      isEcho: boolean;
+      /** key.id da própria mensagem de reação, quando disponível */
+      reactionExternalId: string | null;
+      /** ISO — senderTimestampMs convertido; a ingestão decide se usa */
+      reactedAt: string;
+    }
   | { type: 'MESSAGE_SENT'; sessionId: string; tenantId: string; messageId: string }
   | { type: 'MESSAGE_DELIVERED'; sessionId: string; tenantId: string; messageId: string }
   | { type: 'MESSAGE_READ'; sessionId: string; tenantId: string; messageId: string }

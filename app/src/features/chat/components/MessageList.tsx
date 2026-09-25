@@ -18,6 +18,7 @@ interface Props {
   participantAvatars?: Record<string, string>;
   /** Mensagem a destacar e para onde rolar (vinda da busca). */
   highlightMessageId?: string | null;
+  onSetReaction?: (message: ChatMessage, emoji: string | null) => void;
 }
 
 function isSameDay(a: string, b: string) {
@@ -70,6 +71,7 @@ export function MessageList({
   onParticipantClick,
   participantAvatars,
   highlightMessageId,
+  onSetReaction,
 }: Props) {
   const theme = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -189,6 +191,7 @@ export function MessageList({
                 onReply={onReply}
                 onParticipantClick={onParticipantClick}
                 participantAvatars={participantAvatars}
+                onSetReaction={onSetReaction}
               />
             </Box>
           );

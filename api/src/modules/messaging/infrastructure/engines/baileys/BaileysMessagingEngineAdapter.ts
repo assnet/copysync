@@ -11,6 +11,7 @@ import makeWASocket, {
   Browsers,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  generateMessageIDV2,
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys';
 import type { ConnectionState, AnyMessageContent, WASocket, proto } from '@whiskeysockets/baileys';
@@ -29,6 +30,7 @@ import type {
   SendTextMessageInput,
   SendMediaMessageInput,
   SendMessageResult,
+  SendReactionInput,
   MarkMessagesReadInput,
   GroupParticipantInfo,
   UpdateChatStateInput,
@@ -38,9 +40,12 @@ import type { ISessionRepository } from '../../../../sessions/domain/contracts/I
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
-import { translateDisconnect, translateEngineError } from './BaileysErrorTranslator';
+import { translateDisconnect, translateEngineError, translateSendError } from './BaileysErrorTranslator';
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
+import { ReactionEchoRegistry } from './ReactionEchoRegistry';
+import { normalizeReactionEvent } from './normalizeReactionEvent';
+import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
@@ -56,6 +61,7 @@ const HANDLED_SOCKET_EVENTS = [
   'connection.update',
   'messages.upsert',
   'messages.update',
+  'messages.reaction',
   'messaging-history.set',
   'contacts.upsert',
   'presence.update',
@@ -86,6 +92,19 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly pairingRestarts = new Set<string>();
   /** Cache de fotos por JID: evita repetir a consulta a cada abertura do painel. */
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
+  /**
+   * Ids das reações enviadas por nós cujo eco ainda não voltou — marca `isEcho` no
+   * `messages.reaction`. TTL e teto vêm de env.ts (teto derivado do limite de envio).
+   */
+  private readonly reactionEchoes = new ReactionEchoRegistry({
+    ttlMs: env.REACTION_ECHO_TTL_MS,
+    maxPerSession: env.REACTION_ECHO_MAX_PER_SESSION,
+    onForcedEviction: (sessionId, reactionId) => {
+      // Só acontece se o limite de envio foi afrouxado sem ajustar o TTL: um eco
+      // legítimo pode perder a marca e cair na regra do celular.
+      baileysLogger.warn({ sessionId, reactionId }, 'Reaction echo registry full — dropped id still within TTL');
+    },
+  });
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -198,6 +217,48 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const result = await entry.socket.sendMessage(jid, content as AnyMessageContent);
       return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
     } catch (err) { throw translateEngineError(err); }
+  }
+
+  async sendReaction(input: SendReactionInput): Promise<SendMessageResult> {
+    const { sessionId, target, emoji, reactedAt } = input;
+    const log = { sessionId, targetId: target.externalId, emoji };
+
+    // Pré-condições antes do socket: falha rápida, sem envio parcial.
+    const entry = this.registry.get(sessionId);
+    if (!entry || !entry.socket.user || !entry.socket.ws.isOpen) {
+      throw new SessionNotConnectedError(sessionId);
+    }
+    const remoteJid = this.normalizeJid(target.remoteJid);
+    if (remoteJid.endsWith('@g.us') && !target.fromMe && !target.participant) {
+      // Key de grupo sem participant é aceita pelo WhatsApp e não aplicada — falha silenciosa.
+      baileysLogger.warn(log, 'Group reaction target without participant');
+      throw new MessageSendFailedError('group reaction target without participant');
+    }
+
+    const key = {
+      id: target.externalId,
+      remoteJid,
+      fromMe: target.fromMe,
+      ...(target.participant ? { participant: this.normalizeJid(target.participant) } : {}),
+    };
+
+    // Id pré-gerado e registrado ANTES do envio: o eco é emitido de dentro do sendMessage.
+    // Falha de envio não retira o id — o eco tardio de um timeout ainda precisa da marca.
+    const messageId = generateMessageIDV2(entry.socket.user.id);
+    this.reactionEchoes.register(sessionId, messageId);
+
+    try {
+      const result = await entry.socket.sendMessage(
+        remoteJid,
+        { react: { text: emoji ?? '', key, senderTimestampMs: reactedAt.getTime() } },
+        { messageId },
+      );
+      baileysLogger.info({ ...log, reactionId: messageId }, 'Reaction sent');
+      return { messageId: result?.key?.id ?? messageId, sentAt: new Date() };
+    } catch (err) {
+      baileysLogger.warn({ ...log, reactionId: messageId, err }, 'Failed to send reaction');
+      throw translateSendError(err, 'reaction not accepted by engine');
+    }
   }
 
   async markMessagesRead(input: MarkMessagesReadInput): Promise<void> {
@@ -628,6 +689,49 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
             tenantId,
             messageId: key.id,
           });
+        }
+      }
+    });
+
+    // ── Reações ─────────────────────────────────────────────────────────────
+    // Único caminho de ingestão de reação: extractBaileysMessage devolve null para
+    // reactionMessage no messages.upsert. Chega também o eco das nossas (emitOwnEvents).
+    socket.ev.on('messages.reaction', async (items) => {
+      if (isStale()) return;
+      for (const item of items) {
+        try {
+          const normalized = normalizeReactionEvent(item, {
+            consumeEcho: (reactionId) => this.reactionEchoes.consume(sessionId, reactionId),
+          });
+          if (!normalized) continue;
+
+          const { unresolvedLid, ...reaction } = normalized;
+          // LID sem alternativa no evento: tenta o mapeamento da sessão. Sem resolução a
+          // reação segue com telefone nulo — não é descartada como no messages.upsert.
+          const reactorPhone = reaction.reactorPhone
+            ?? (unresolvedLid ? (await this.resolveParticipantPhone(socket, unresolvedLid)) ?? null : null);
+
+          internalEventBus.emit('MESSAGE_REACTION_UPDATED', {
+            type: 'MESSAGE_REACTION_UPDATED',
+            sessionId,
+            tenantId,
+            ...reaction,
+            reactorPhone,
+            // O evento de reação não traz pushName.
+            reactorName: null,
+          });
+          baileysLogger.debug(
+            {
+              sessionId,
+              targetId: reaction.targetExternalMessageId,
+              emoji: reaction.emoji,
+              fromMe: reaction.fromMe,
+              isEcho: reaction.isEcho,
+            },
+            'Reaction received',
+          );
+        } catch (err) {
+          baileysLogger.warn({ err, sessionId }, 'Failed to process reaction');
         }
       }
     });

@@ -8,6 +8,28 @@ export const conversationIdParamSchema = {
   },
 } as const;
 
+export const messageIdParamSchema = {
+  type: 'object',
+  required: ['messageId'],
+  properties: {
+    messageId: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+/**
+ * `emoji` obrigatório: corpo vazio é erro, não remoção implícita. `null` remove.
+ * maxLength é só barreira grosseira (em code points); a regra real (≤ 64 bytes, não só ASCII,
+ * sem whitespace/controle) fica no use case, fonte única.
+ */
+export const reactionBodySchema = {
+  type: 'object',
+  required: ['emoji'],
+  properties: {
+    emoji: { type: ['string', 'null'], maxLength: 32 },
+  },
+  additionalProperties: false,
+} as const;
+
 export const contactIdParamSchema = {
   type: 'object',
   required: ['contactId'],

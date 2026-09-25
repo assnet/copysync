@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import { logger } from '../../../../shared/logger/logger';
+import type { ReactionSummary } from '../../domain/services/aggregateReactions';
 
 /**
  * Typed WebSocket event contract.
@@ -28,6 +29,8 @@ export type ChatWsEvent =
           createdAt: string;
           fromParticipant?: string | null;
           fromParticipantName?: string | null;
+          /** Id no WhatsApp: o painel só oferece reagir quando ele existe. */
+          externalMessageId: string | null;
         };
         unreadCount: number;
         isNewConversation: boolean;
@@ -68,6 +71,18 @@ export type ChatWsEvent =
         conversationId: string;
         messageId: string;
         status: string;
+      };
+    }
+  | {
+      /** Agregado completo das reações de uma mensagem — substitui o estado, nunca é delta. */
+      event: 'chat.message.reaction.updated';
+      data: {
+        tenantId: string;
+        conversationId: string;
+        messageId: string;
+        /** Maior updatedAt das reações da mensagem; o painel descarta agregado com revisão menor. */
+        reactionsRevision: string | null;
+        reactions: ReactionSummary[];
       };
     }
   | {

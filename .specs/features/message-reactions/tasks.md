@@ -1,8 +1,18 @@
 # Reações em Mensagens — Tasks
 
 **Design**: `.specs/features/message-reactions/design.md`
-**Status**: Draft
+**Status**: Draft — revisado em 2026-09-24 (robustez; ver cabeçalho de `tasks.md`)
 **Branch**: `feature/chat-message-reactions` (a partir de `develop`, conforme AGENTS.md §31)
+
+> **Revisão 2026-09-24** — nenhuma task implementada até aqui. A branch existente (local e
+> `origin`) não tem commit próprio e está 22 atrás de `develop`: o conteúdo que carregava (Vitest,
+> CI) já entrou por outra linhagem (`STATE.md`, "Resolvidos"). Antes da T1, recolocá-la sobre a
+> `develop` atual (`git switch -C feature/chat-message-reactions develop`; o push dela exige
+> `--force-with-lease`, e só depois de confirmar que `origin` também não tem commit próprio).
+> Esta revisão incorporou ao plano: tombstone + last-write-wins serializado por autor (lock + decisão pura), relógio do servidor para gestos nossos, publicação só com `changed`, keycap aceito, `reactorKey` pela
+> identidade crua do protocolo, índice em `externalMessageId`, proibição do fallback "grava sem
+> enviar", carimbo do envio fixado pelo use case, exceção de `archived` (REACT-14) e
+> estado do servidor separado dos cliques pendentes com `reactionsRevision`, eco reconhecido por id pré-gerado. Motivos em `design.md` §4-§8 e §10.
 
 ---
 
@@ -93,15 +103,19 @@ T21 → T22 → T23
 **What**: Adicionar `ChatMessageReaction` ao schema com relações em `ChatMessage` e `Tenant`, e gerar a migration.
 **Where**: `api/prisma/schema.prisma`, `api/prisma/migrations/<ts>_add_chat_message_reactions/`
 **Depends on**: None
-**Reuses**: Estilo do model `ChatMessage` (cuid, `@@map`, índices tenant-aware)
+**Reuses**: Estilo do model `ChatMessage` (`@@map`, índices tenant-aware); `id` sem `@default` — gerado na aplicação (design §4)
 **Requirement**: REACT-02, REACT-07
 
 **Done when**:
-- [ ] Model conforme §4 do design, com `@@unique([messageId, reactorKey])` e `@@index([tenantId, messageId])`
-- [ ] Back-relations em `ChatMessage.reactions` e `Tenant.chatMessageReactions`
+- [x] Model conforme §4 do design, com `@@unique([messageId, reactorKey])` e `@@index([tenantId, messageId])`
+- [x] `emoji String?` — `NULL` é tombstone de remoção, não "sem emoji"
+- [x] `updatedAt DateTime @updatedAt` — base da `reactionsRevision` (design §4)
+- [x] Back-relations em `ChatMessage.reactions` e `Tenant.chatMessageReactions`
+- [x] `@@index([tenantId, externalMessageId])` em `ChatMessage`, na mesma migration (alvo da reação é resolvido por esse par)
+- [x] SQL gerado conferido antes de aplicar: só `CREATE TABLE`, `CREATE INDEX` e FKs — nenhum `ALTER`/`DROP` em tabela existente
 - [ ] `pnpm prisma:migrate --name add_chat_message_reactions` (snake_case, como `20260907060000_add_conversation_state_flags`) gera migration aditiva — nenhuma migration existente editada
-- [ ] Schema alterado é o de `api/prisma/schema.prisma` (não existe outro diretório `prisma/` no repo — verificado)
-- [ ] `pnpm prisma:generate` sem erros
+- [x] Schema alterado é o de `api/prisma/schema.prisma` (não existe outro diretório `prisma/` no repo — verificado)
+- [x] `pnpm prisma:generate` sem erros
 
 **Gate**: full
 
@@ -109,17 +123,23 @@ T21 → T22 → T23
 
 ### T2: Entidade de domínio + contrato do repositório [P]
 
-**What**: Criar `ChatMessageReaction` (entidade pura) e `IChatMessageReactionRepository` com `upsert`, `remove`, `findByMessageId`, `findByMessageIds`.
-**Where**: `api/src/modules/chat/domain/entities/ChatMessageReaction.ts`, `api/src/modules/chat/domain/contracts/IChatMessageReactionRepository.ts`
+**What**: Criar `ChatMessageReaction` (entidade pura), `IChatMessageReactionRepository` com `apply`, `findByMessageId`, `findByMessageIds`, e as funções puras `decideReactionWrite` e `aggregateReactions` em `chat/domain/services/`.
+**Where**: `api/src/modules/chat/domain/entities/ChatMessageReaction.ts`, `api/src/modules/chat/domain/contracts/IChatMessageReactionRepository.ts`, `api/src/modules/chat/domain/services/aggregateReactions.ts`, `api/src/modules/chat/domain/services/decideReactionWrite.ts`
 **Depends on**: None
-**Reuses**: Forma de `ChatMessage.ts` e `IChatMessageRepository.ts`
-**Requirement**: REACT-02
+**Reuses**: Forma de `ChatMessage.ts` e `IChatMessageRepository.ts`; `domain/services/diffRemoteState.ts` como modelo de função pura com teste
+**Requirement**: REACT-02, REACT-10, REACT-11
 
 **Done when**:
-- [ ] Entidade sem qualquer import de Prisma/Fastify/Baileys
-- [ ] Todo método do contrato recebe `tenantId`
-- [ ] Tipos de input (`UpsertReactionInput`) exportados
+- [x] Entidade sem qualquer import de Prisma/Fastify/Baileys; `emoji: string | null` (tombstone)
+- [x] Todo método do contrato recebe `tenantId`
+- [x] Uma única porta de escrita (`apply`, last-write-wins) — sem `upsert`/`remove` separados (design §4)
+- [x] Tipos `ApplyReactionInput`, `ApplyReactionResult` (`applied`, `changed`), `ReactionSummary` e `ReactionAggregate` (`{ revision, reactions }`) exportados; o contrato importa o tipo do serviço, nunca o contrário (AGENTS.md §8)
+- [x] `aggregateReactions` devolve `{ revision, reactions }`: `revision` = maior `updatedAt` incluindo tombstones (`null` sem linhas); na lista ignora tombstone, agrupa por emoji, contagem desc e depois primeira `reactedAt`, `reactedByMe` = `fromMe`, nome contato → `reactorName` → `null`, corte em 10 autores
+- [x] `decideReactionWrite`: implementa a tabela do design §4 linha a linha (carimbo menor ignora; carimbo igual conta como ≥; remoção sem estado grava tombstone sem `changed`)
+- [x] `aggregateReactions.test.ts` cobrindo cada regra acima, mais entrada vazia → `{ revision: null, reactions: [] }` e remoção mais recente avançando a `revision`
+- [x] `decideReactionWrite.test.ts`: um caso por linha da tabela do design §4, mais carimbo igual com emoji diferente → `applied` e `changed`
 
+**Tests**: unit (função pura)
 **Gate**: quick (api)
 
 ---
@@ -133,12 +153,18 @@ T21 → T22 → T23
 **Requirement**: REACT-02, REACT-07, REACT-09
 
 **Done when**:
-- [ ] `upsert` usa `prisma.chatMessageReaction.upsert` na chave composta (idempotente)
-- [ ] `upsert` ignora evento com `reactedAt` anterior ao registro existente (reação fora de ordem)
-- [ ] `findByMessageIds` faz **uma** query com `in` (sem N+1)
-- [ ] Nenhum model Prisma escapa: tudo passa pelo mapper
-- [ ] Todas as queries filtram `tenantId`
-- [ ] `PrismaChatMessageReactionMapper.test.ts`: Prisma → domínio com `reactorPhone`/`reactorName` nulos, `reactedAt` como `Date`, `fromMe` preservado
+- [x] `apply` em `prisma.$transaction({ maxWait: 2000, timeout: 5000 })`: `pg_advisory_xact_lock(hashtextextended(${key}::text, 0::bigint))` via `$executeRaw` tagged template — casts obrigatórios (bind sem tipo quebra a resolução da função); nunca `$executeRawUnsafe`; nunca `$queryRaw` (retorno `void` não desserializa) → `findUnique` → `decideReactionWrite` → `upsert` só se `write` — esqueleto no design §4
+- [x] Linha existente de outro `tenantId` → erro, nunca sobrescreve (defesa multi-tenant)
+- [x] Devolve `{ applied, changed }` da decisão; repositório não decide regra
+- [x] Timeout/`P2028` e falha de conexão traduzidos para `EngineTemporarilyUnavailableError` (503); nenhum erro cru do Prisma sobe
+- [x] `id` = `crypto.randomUUID()` (nenhuma dependência nova)
+- [ ] Smoke do repositório (sem banco de teste): mesmo `apply` duas vezes → segunda `changed: false`; remoção com carimbo anterior à reação → `applied: false` e reação continua; dois `apply` iguais disparados em paralelo (`Promise.all`) sem linha prévia → exatamente um `changed: true`
+- [x] Remoção grava `emoji = NULL` (tombstone), nunca `DELETE`
+- [x] `findByMessageId`/`findByMessageIds` filtram `tenantId` e devolvem tombstones também (a `revision` precisa deles; quem filtra é `aggregateReactions`)
+- [x] `findByMessageIds` faz **uma** query com `in` (sem N+1); lista vazia não consulta o banco
+- [x] Nenhum model Prisma escapa: tudo passa pelo mapper
+- [x] Todas as queries filtram `tenantId`
+- [x] `PrismaChatMessageReactionMapper.test.ts`: Prisma → domínio com `reactorPhone`/`reactorName` nulos, `reactedAt` como `Date`, `fromMe` preservado
 
 **Tests**: unit (mapper)
 **Gate**: quick (api)
@@ -154,11 +180,14 @@ T21 → T22 → T23
 **Requirement**: REACT-03, REACT-05
 
 **Done when**:
-- [ ] Tipos conforme §5 do design, documentados em pt-BR como o restante do arquivo
-- [ ] `emoji: string | null` (null = remover) documentado no JSDoc
-- [ ] Nenhum tipo do Baileys referenciado
+- [x] Tipos conforme §5 do design, documentados em pt-BR como o restante do arquivo
+- [x] `emoji: string | null` (null = remover) documentado no JSDoc
+- [x] `reactedAt: Date` no input — a engine envia como `senderTimestampMs` (design §5); é carimbo informativo para o destinatário, não a base da nossa ordenação
+- [x] Nenhum tipo do Baileys referenciado
 
-**Gate**: quick (api)
+**Gate**: nenhum próprio — o único implementador é o `BaileysMessagingEngineAdapter`, então o
+contrato novo quebra o `tsc` até a T6. T4 e T6 vão no mesmo commit; o `quick` é cobrado ao fim da T6
+(gate que se espera ver falhar não é gate — mesma regra de `chat-remote-state-sync/tasks.md`).
 
 ---
 
@@ -171,8 +200,8 @@ T21 → T22 → T23
 **Requirement**: REACT-06
 
 **Done when**:
-- [ ] Campos conforme §6 do design, com `sessionId` e `tenantId`
-- [ ] Nenhum campo carrega payload cru da engine
+- [x] Campos conforme §6 do design, com `sessionId`, `tenantId` e `isEcho`
+- [x] Nenhum campo carrega payload cru da engine
 
 **Gate**: quick (api)
 
@@ -181,18 +210,25 @@ T21 → T22 → T23
 ### T6: `sendReaction` no adapter Baileys
 
 **What**: Implementar o envio de reação (`{ react: { text, key } }`) com tradução de erro.
-**Where**: `api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`
+**Where**: `api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`, `engines/baileys/ReactionEchoRegistry.ts` (+ teste), `api/src/shared/config/env.ts`
 **Depends on**: T4
 **Reuses**: `sendTextMessage` (resolução de socket/JID), `BaileysErrorTranslator`
 **Requirement**: REACT-03, REACT-05
 
 **Done when**:
-- [ ] Monta a `key` alvo com `remoteJid`, `fromMe`, `id` e `participant` (grupo)
-- [ ] `emoji: null` envia `text: ''` (remoção)
-- [ ] Sessão ausente/desconectada → erro interno `SESSION_NOT_CONNECTED`; falha de envio → `MESSAGE_SEND_FAILED`
-- [ ] Log estruturado com `sessionId`, `targetId`, `emoji`
+- [x] Monta a `key` alvo com `remoteJid`, `fromMe`, `id` e `participant` (grupo)
+- [x] `emoji: null` envia `text: ''` (remoção)
+- [x] `senderTimestampMs = input.reactedAt.getTime()` explícito — é o carimbo que o eco devolve e que a ingestão mantém (design §4, "Relógio")
+- [x] Id da reação pré-gerado (`generateMessageIDV2`) e passado em `sendMessage(jid, content, { messageId })`; registrado no `Set` de ecos da sessão **antes** do envio (TTL `REACTION_ECHO_TTL_MS`, teto calculado em `env.ts` a partir de `REACTION_MAX_PER_MINUTE` e do TTL — design §4; nenhum número fixo no adapter); **mantido mesmo se o envio falhar** — timeout pode ocorrer depois de o WhatsApp aceitar, e o eco tardio precisa da marca (design §4). Só o eco recebido ou o TTL retiram o id
+- [x] Cria no schema zod de `shared/config/env.ts`, com padrão: `REACTION_ECHO_TTL_MS` (120000), `REACTION_MAX_PER_MINUTE` (30), `REACTION_MIN_INTERVAL_MS` (700) e o teto derivado (design §4). Nascem aqui porque o teto já depende do limite; a T9 só consome
+- [x] Teto cheio: descarta primeiro id vencido; só sem vencido tira o mais antigo, com `logger.warn`
+- [x] Estrutura do `Set` de ecos extraída como classe pura (`ReactionEchoRegistry`, relógio injetável) com teste: com o teto cheio, id dentro do TTL nunca é descartado; id vencido sai primeiro; eco recebido retira o id; falha de envio não retira
+- [x] Pré-condições antes do socket: sessão ausente/não `open` → `SESSION_NOT_CONNECTED`; grupo com alvo de terceiro sem `participant` → `MESSAGE_SEND_FAILED` com motivo
+- [x] Falha de envio → `MESSAGE_SEND_FAILED` via `BaileysErrorTranslator`; erro cru nunca sobe
+- [x] Log estruturado com `sessionId`, `targetId`, `emoji`
 
-**Gate**: quick (api)
+**Tests**: unit (`ReactionEchoRegistry`)
+**Gate**: quick (api) — cobre T4 + T6
 
 ---
 
@@ -201,19 +237,22 @@ T21 → T22 → T23
 **What**: Assinar `socket.ev.on('messages.reaction')`, normalizar e emitir `MESSAGE_REACTION_UPDATED`.
 **Where**: `api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`
 **Depends on**: T5
-**Reuses**: Normalização `@lid → remoteJidAlt` e filtro `@broadcast` do handler `messages.upsert`
+**Reuses**: `extractParticipantJid` + `resolveParticipantPhone` (resolução de LID já usada para remetente de grupo), filtro `@broadcast` do `messages.upsert`, formato de `normalizeChatState.ts`
 **Requirement**: REACT-06, REACT-11
 
 **Done when**:
-- [ ] **Alvo = `item.key.id`** e **autor = `item.reaction.key`** (a lib inverte o que a intuição sugere — ver design §6, `process-message.js:411-421`). Trocar os dois grava a reação na mensagem errada
-- [ ] Autor: `reaction.key.participant` em grupo, senão `reaction.key.remoteJid`; `fromMe` = `reaction.key.fromMe`
-- [ ] `reaction.text` vazio/ausente → `emoji: null`
-- [ ] `senderTimestampMs` (Long) convertido para ISO; ausente → agora
-- [ ] `@broadcast`/`status@broadcast` ignorados; `@lid` sem `remoteJidAlt` → `reactorPhone: null` (reação preservada)
-- [ ] `extractBaileysMessage` continua retornando `null` para `reactionMessage` (sem duplicidade)
-- [ ] Erro dentro do handler não derruba o socket (try/catch + `logger.warn`)
-- [ ] Normalização extraída como **função pura exportada** (`normalizeReactionEvent`) para ser testável sem socket
-- [ ] Teste co-locado cobrindo: alvo vindo de `item.key` e autor de `item.reaction.key` (o erro que este plano quase cometeu), `text` vazio → `emoji: null`, grupo com `participant`, `@lid` sem alternativa → `reactorPhone: null`, `senderTimestampMs` ausente
+- [x] **Alvo = `item.key.id`** e **autor = `item.reaction.key`** (a lib inverte o que a intuição sugere — ver design §6, `process-message.js:411-421`). Trocar os dois grava a reação na mensagem errada
+- [x] Autor: `reaction.key.participant` em grupo, senão `reaction.key.remoteJid`; `fromMe` = `reaction.key.fromMe`
+- [x] `reactorKey`: `'self'` se `fromMe`; senão `lid:<id>` para autor `@lid`, `pn:<dígitos>` caso contrário — nunca o telefone resolvido
+- [x] `reactorPhone`: `participantAlt`/`remoteJidAlt`, depois `lidMapping`; sem resolução → `null` (reação preservada, **não** descartada como o `messages.upsert` faz em 1:1)
+- [x] `reaction.text` vazio/ausente → `emoji: null`
+- [x] `senderTimestampMs` (Long) convertido para ISO; ausente, zero ou não finito → agora. Só converte — a troca pelo relógio do servidor em `fromMe` é da T10, não do adapter
+- [x] `@broadcast`/`status@broadcast` ignorados
+- [x] `isEcho = fromMe && Set de ecos contém reaction.key.id` (e remove o id do `Set`); o `Set` fica fora da função pura, entra como parâmetro
+- [x] `extractBaileysMessage` continua retornando `null` para `reactionMessage` (sem duplicidade)
+- [x] Erro dentro do handler não derruba o socket (try/catch + `logger.warn`)
+- [x] Normalização extraída como **função pura exportada** (`normalizeReactionEvent`) para ser testável sem socket
+- [x] Teste co-locado cobrindo: alvo vindo de `item.key` e autor de `item.reaction.key` (o erro que este plano quase cometeu), `text` vazio → `emoji: null`, grupo com `participant`, `@lid` sem alternativa → `reactorPhone: null`, `senderTimestampMs` ausente, id no conjunto de ecos → `isEcho: true`, `fromMe` sem id no conjunto → `isEcho: false`
 
 **Tests**: unit (normalização pura)
 **Gate**: quick (api)
@@ -233,10 +272,13 @@ T21 → T22 → T23
 > Se o smoke não puder ser feito na hora, T9 duplica a resolução e T8 fica para depois.
 
 **Done when**:
-- [ ] `SendMessageUseCase` usa o helper e mantém comportamento idêntico (envio com e sem citação, individual e grupo)
-- [ ] Helper devolve `{ recipientPhone, contactPhone, isGroup }` e monta a ref de mensagem externa
-- [ ] Nenhuma assinatura pública alterada
+- [x] Helper escrito como **função pura** e coberto por teste **antes** de o `SendMessageUseCase` passar a usá-lo — o teste caracteriza o comportamento atual (individual, grupo `<groupJid>@g.us`, citação com `remoteJid` de grupo vs contato) e é a rede que hoje não existe
+- [x] `SendMessageUseCase` usa o helper e mantém comportamento idêntico (envio com e sem citação, individual e grupo)
+- [x] Helper devolve `{ recipientPhone, contactPhone, isGroup }` e monta a ref de mensagem externa
+- [x] Fallback "grava sem enviar" (`SendMessageUseCase.ts:53-78`) **fica onde está** — é regra do envio de mensagem, não do helper; o helper não decide nada sobre engine/sessão
+- [x] Nenhuma assinatura pública alterada
 
+**Tests**: unit (helper puro, caracterização)
 **Gate**: quick (api) + smoke de envio simples
 
 ---
@@ -244,20 +286,28 @@ T21 → T22 → T23
 ### T9: `SetMessageReactionUseCase`
 
 **What**: Use case de reagir/remover pelo painel — valida, envia pela engine, persiste, devolve agregado.
-**Where**: `api/src/modules/chat/application/use-cases/SetMessageReactionUseCase.ts`
+**Where**: `api/src/modules/chat/application/use-cases/SetMessageReactionUseCase.ts`, `chat/application/contracts/IReactionSendThrottle.ts`, `chat/infrastructure/throttle/InMemoryReactionSendThrottle.ts`, `shared/errors/internal/ResourceErrors.ts`
 **Depends on**: T3, T4, T8
-**Reuses**: `SendMessageUseCase` (estrutura), helper da T8, `NotFoundError`
+**Reuses**: helper da T8, `aggregateReactions` (T2), `NotFoundError`, `ConflictError`, `SessionNotConnectedError`. **Não** reusar a estrutura do `SendMessageUseCase` inteira: o fallback "grava sem enviar" dele é proibido aqui (design §7, passo 3)
 **Requirement**: REACT-01, REACT-02, REACT-03, REACT-05
 
 **Done when**:
-- [ ] Ordem do §7 respeitada: carrega → valida → resolve → engine → persiste → publica → retorna
-- [ ] Emoji validado por tamanho: não vazio, ≤ 64 bytes, sem ASCII imprimível/whitespace → `ValidationError` (**400**, é o statusCode de `ValidationError` em `ResourceErrors.ts:20`; não inventar 422)
-- [ ] `reactorKey = 'self'` (constante, não derivada do `sessionId`), `fromMe: true`
-- [ ] `emoji: null` chama `remove` e envia remoção à engine
-- [ ] Falha da engine propaga sem gravar nada
-- [ ] Publica `chat.message.reaction.updated` e devolve `ReactionSummary[]`
-- [ ] Depende apenas de interfaces (nenhum Prisma, nenhum Fastify)
-- [ ] Teste co-locado com repos e engine dublês: emoji válido persiste e envia; **engine falha → nada é gravado**; `emoji: null` chama `remove`; emoji inválido lança `ValidationError` antes de tocar a engine; grupo monta o alvo com `participant`
+- [x] Ordem do §7 respeitada: carrega → valida → pré-condições → resolve → engine → persiste → publica (se `changed`) → retorna
+- [x] Emoji validado por tamanho: não vazio, ≤ 64 bytes, não composto só de ASCII, sem whitespace/controle (keycap `1️⃣` válido); controle = `\p{Cc}`, nunca `\p{C}` (rejeitaria ZWJ) → `ValidationError` (**400**, é o statusCode de `ValidationError` em `ResourceErrors.ts:20`; não inventar 422)
+- [x] Sem engine ou sem `conv.sessionId` → `SessionNotConnectedError` (409); mensagem sem `externalMessageId` → `ConflictError` (409); `isDeleted` → `ConflictError`
+- [x] Alvo: `fromMe = direction === OUTBOUND`; grupo com alvo de terceiro exige `fromParticipant`
+- [x] Limite antes da engine (design §7, passo 5): `IReactionSendThrottle.tryAcquire(sessionId, messageId)`; recusado → `TooManyRequestsError` (429, novo em `ResourceErrors.ts`, código `TOO_MANY_REQUESTS`), nada enviado nem gravado
+- [x] Usa as chaves de `env.ts` criadas na T6 — `REACTION_MIN_INTERVAL_MS` (**700** — menor que os 1000 ms do painel, folga para jitter; design §8) e `REACTION_MAX_PER_MINUTE` (30); nenhum número mágico no use case
+- [x] Porta com `tryAcquire(sessionId, messageId) → reserva | null` (reserva síncrona, sem `await` entre checar e registrar) e `release(reserva)`
+- [x] Engine falha → `release` antes de propagar; `release` é idempotente
+- [x] `InMemoryReactionSendThrottle` com relógio injetável e limpeza das chaves expiradas (sem crescer sem limite); teste co-locado: intervalo por mensagem, teto por sessão, janela deslizante, sessões independentes, `release` devolve a vaga nos dois limites, duas aquisições seguidas sem `await` → a segunda recusada
+- [x] `reactedAt = now` (relógio do servidor) fixado uma vez e usado no envio **e** na gravação
+- [x] `reactorKey = 'self'` (constante, não derivada do `sessionId`), `fromMe: true`
+- [x] `emoji: null` grava tombstone via `apply` e envia remoção à engine
+- [x] Falha da engine propaga sem gravar nada
+- [x] Publica `chat.message.reaction.updated` **só se `changed`** (o eco pode ter chegado antes e publicado); devolve sempre o `ReactionAggregate` (`revision` + lista) lido após o `apply`, calculado por `aggregateReactions`
+- [x] Depende apenas de interfaces (nenhum Prisma, nenhum Fastify)
+- [x] Teste co-locado com repos e engine dublês: emoji válido grava e envia **com o mesmo `reactedAt`**; **engine falha → nada é gravado**; **limite estourado → 429 e engine não chamada**; **engine falha → vaga devolvida e nova tentativa imediata recebe o erro da engine, não 429**; **sem sessão/engine → erro e nada gravado nem enviado**; sem `externalMessageId` → `ConflictError`; `emoji: null` grava tombstone; emoji inválido (`abc`, `' '`) lança `ValidationError` antes de tocar a engine; grupo monta o alvo com `participant`; ZWJ, skin tone e keycap (`1️⃣`) aceitos; `apply` → `changed: false` não publica mas devolve o agregado
 
 **Tests**: unit (use case)
 **Gate**: quick (api)
@@ -273,13 +323,14 @@ T21 → T22 → T23
 **Requirement**: REACT-06, REACT-07, REACT-11
 
 **Done when**:
-- [ ] Mensagem alvo não encontrada → retorna `null` (log `debug`, sem criar nada)
-- [ ] `emoji: null` → `remove`; caso contrário `upsert`
-- [ ] Reação nossa (celular ou eco do próprio envio pelo painel) gera o mesmo `reactorKey = 'self'` do painel — idempotente
-- [ ] **Não toca na conversa**: `lastMessageAt`, `lastMessagePreview`, `unreadCount` e `status` intactos; nenhum `chat.conversation.updated`/`chat.unread.updated` emitido (design §7.1)
-- [ ] Nome do autor resolvido: `ChatContact` por telefone → `reactorName` (pushName) → `null`
-- [ ] Retorna `{ conversationId, messageId, reactions }` para o listener publicar
-- [ ] Teste co-locado: mensagem inexistente → `null` sem efeito colateral; reação repetida (eco) é no-op; `emoji: null` remove; **conversa nunca é escrita** (repo de conversa dublê sem nenhuma chamada de escrita); reação fora de ordem por `reactedAt` é ignorada
+- [x] Mensagem alvo não encontrada → retorna `null` (log `debug`, sem criar nada)
+- [x] Set e remoção pelo mesmo `apply` (remoção = tombstone); `changed: false` → retorna `null` (evento velho, eco ou sem mudança visível — nada a publicar)
+- [x] Carimbo: `isEcho` → `reactedAt` do evento (carimbo que o painel fixou); `fromMe` sem eco → `now` do servidor, ignorando o do celular; terceiros → `reactedAt` do evento (design §4, "Relógio")
+- [x] Reação nossa (celular ou eco do próprio envio pelo painel) gera o mesmo `reactorKey = 'self'` do painel — idempotente
+- [x] **Não toca na conversa**: `lastMessageAt`, `lastMessagePreview`, `unreadCount`, `status` e `archived` intactos por este caminho; nenhum `chat.conversation.updated`/`chat.unread.updated` emitido (design §7.1 — o desarquivamento, quando houver, vem do espelhamento de estado)
+- [x] Nome do autor resolvido: `ChatContact` por telefone → `reactorName` (pushName) → `null`
+- [x] Retorna `{ conversationId, messageId, reactionsRevision, reactions }` para o listener publicar
+- [x] Teste co-locado: mensagem inexistente → `null` sem efeito colateral; reação repetida (eco) é no-op; `emoji: null` grava tombstone; **conversa nunca é escrita** (repo de conversa dublê sem nenhuma chamada de escrita); `changed: false` devolve `null`; evento `fromMe` sem eco com `senderTimestampMs` antigo é gravado com o `now` do servidor (relógio injetável no teste); **eco com carimbo T0 depois de gesto T1 → `applied: false`** (o caso dos cliques rápidos)
 
 **Tests**: unit (use case)
 **Gate**: quick (api)
@@ -288,21 +339,21 @@ T21 → T22 → T23
 
 ### T11: Reações agregadas no `ListMessagesUseCase`
 
-**What**: Anexar `reactions: ReactionSummary[]` ao `ChatMessageDto`, em uma única busca por lote.
+**What**: Anexar `reactionsRevision` e `reactions: ReactionSummary[]` ao `ChatMessageDto`, em uma única busca por lote.
 **Where**: `api/src/modules/chat/application/use-cases/ListMessagesUseCase.ts`
-**Depends on**: T3
+**Depends on**: T2, T3
 **Reuses**: Padrão do enriquecimento de `quotedMessage`/avatar já existente no use case
 **Requirement**: REACT-09, REACT-10
 
 **Done when**:
-- [ ] Uma chamada a `findByMessageIds` por listagem (verificar com log de query em dev)
-- [ ] `reactedByMe` derivado de `fromMe`
-- [ ] `reactors[].name` resolvido reusando o `Map` de `contactRepo.findByPhones` que o use case já monta para avatares (`ListMessagesUseCase.ts:84-86`) — zero query nova
-- [ ] `reactors` limitado a 10 autores
-- [ ] Mensagem sem reação retorna `[]` (nunca `undefined`)
-- [ ] Teste co-locado da agregação: agrupamento por emoji com contagem, `reactedByMe`, resolução de nome (contato → pushName → null), corte em 10 autores
+- [ ] Uma chamada a `findByMessageIds` por listagem, nos três caminhos (`findMany`, `findAround`, busca) — verificar com log de query em dev
+- [x] Reações buscadas **antes** do `findByPhones`: os `reactorPhone` entram no mesmo lote dos `fromParticipant` (`ListMessagesUseCase.ts:80-86`). Hoje o lote só tem remetentes e o `Map` só guarda `avatarUrl` — passa a guardar o contato (nome + avatar), com o avatar da mensagem **idêntico** ao de antes
+- [x] Zero query de contato nova; agregação por `aggregateReactions` (T2)
+- [x] Mensagem sem reação retorna `reactions: []` e `reactionsRevision: null` (nunca `undefined`)
+- [x] Contrato de paginação intocado (`limit`/`before`/`around` como estão hoje)
+- [x] Teste co-locado do use case com dublês: 1 chamada a `findByMessageIds` e 1 a `findByPhones` por página; `avatarUrl` do remetente inalterado; reator resolvido pelo contato
 
-**Tests**: unit (agregação pura — extrair `aggregateReactions` para função testável)
+**Tests**: unit (use case com dublês)
 **Gate**: quick (api)
 
 ---
@@ -316,8 +367,8 @@ T21 → T22 → T23
 **Requirement**: REACT-08
 
 **Done when**:
-- [ ] Campos idênticos nos dois arquivos (`tenantId`, `conversationId`, `messageId`, `reactions`)
-- [ ] `pnpm typecheck` limpo em api/ e app/
+- [x] Campos idênticos nos dois arquivos (`tenantId`, `conversationId`, `messageId`, `reactionsRevision`, `reactions`)
+- [x] `pnpm typecheck` limpo em api/ e app/
 
 **Gate**: full
 
@@ -328,15 +379,15 @@ T21 → T22 → T23
 **What**: Listener que consome `MESSAGE_REACTION_UPDATED`, chama a ingestão e publica no WS; registrado no bootstrap junto aos demais.
 **Where**: `api/src/modules/chat/infrastructure/listeners/ChatMessageReactionListener.ts` + ponto de registro dos listeners
 **Depends on**: T7, T10, T12
-**Reuses**: `ChatMessageStatusListener` (estrutura literal)
-**Requirement**: REACT-06, REACT-08
+**Reuses**: `ChatConversationStateListener` (pula publicação quando nada mudou, linha 66) e `ChatMessageStatusListener` (registro)
+**Requirement**: REACT-06, REACT-08, REACT-14
 
 **Done when**:
-- [ ] `registerChatMessageReactionListener(...)` no mesmo formato dos existentes
-- [ ] Resultado `null` da ingestão não publica evento
-- [ ] Agregado idêntico ao anterior não publica evento — evita o WS duplicado do eco das nossas próprias reações (design §6)
-- [ ] Erro capturado com `logger.warn` — nunca derruba o processo
-- [ ] Registrado no startup ao lado dos outros listeners de chat
+- [x] `registerChatMessageReactionListener(...)` no mesmo formato dos existentes
+- [x] Resultado `null` da ingestão não publica evento — cobre mensagem inexistente, evento velho e eco sem mudança visível (`changed: false`, design §4/§6); sem comparar agregado no listener
+- [x] Nunca publica `chat.conversation.updated`/`chat.unread.updated`
+- [x] Erro capturado com `logger.warn` — nunca derruba o processo
+- [x] Registrado no startup ao lado dos outros listeners de chat
 
 **Gate**: quick (api)
 
@@ -351,11 +402,13 @@ T21 → T22 → T23
 **Requirement**: REACT-01, REACT-05, REACT-09
 
 **Done when**:
-- [ ] `messageIdParamSchema` e `reactionBodySchema` (`emoji: string|null`, maxLength 32)
-- [ ] Handler: valida → use case → presenter → `httpResponse`; zero regra de negócio
-- [ ] Sem acesso a Prisma no handler
-- [ ] Resposta `{ messageId, conversationId, reactions }`
-- [ ] Erros mapeados pelos erros internos existentes: `NotFoundError` 404, `SessionNotConnectedError` 409, `ValidationError` **400** — sem statusCode novo inventado na rota
+- [x] `messageIdParamSchema` e `reactionBodySchema`: `emoji` **obrigatório** e `type: ['string','null']` (corpo `{}` é 400, não remoção implícita), `maxLength: 32` como barreira grosseira de tamanho — a regra real (≤ 64 bytes, não só ASCII, sem whitespace/controle) é do use case, única fonte
+- [x] `additionalProperties: false` no body
+- [x] Handler: valida → use case → presenter → `httpResponse`; zero regra de negócio
+- [x] Uma única instância de `InMemoryReactionSendThrottle` criada no wiring do módulo e injetada no use case (instância por requisição zeraria o limite)
+- [x] Sem acesso a Prisma no handler
+- [x] Resposta `{ messageId, conversationId, reactionsRevision, reactions }`
+- [x] Erros mapeados pelos erros internos existentes: `NotFoundError` 404, `SessionNotConnectedError`/`ConflictError` 409, `ValidationError` **400**, `TooManyRequestsError` 429, `EngineTemporarilyUnavailableError` 503 — todos vindos de erros internos, nenhum statusCode decidido na rota
 
 **Gate**: quick (api)
 
@@ -370,9 +423,10 @@ T21 → T22 → T23
 **Requirement**: REACT-13
 
 **Done when**:
-- [ ] Objeto `chatStrings.reactions` com chaves para: reagir, remover, tooltip de autores, erro de envio, "Participante"
-- [ ] Sem nome de marca do produto
-- [ ] Formato pronto para virar chave i18n (nomes semânticos, sem interpolação implícita)
+- [x] Objeto `chatStrings.reactions` com chaves para: reagir, remover, tooltip de autores, erro de envio, sessão desconectada, limite de envio ("aguarde um instante"), "Participante"
+- [x] Sem nome de marca do produto nem da engine
+- [x] Formato pronto para virar chave i18n (nomes semânticos, sem interpolação implícita): frase com variável é função tipada (`reactorsTooltip(names: string[])`, `chipLabel(emoji, count)`), nunca concatenação no componente
+- [x] Plural resolvido na função (`1 reação` / `n reações`), não no JSX
 
 **Tests**: none (constantes)
 **Gate**: quick (app)
@@ -388,9 +442,9 @@ T21 → T22 → T23
 **Requirement**: REACT-09, REACT-10
 
 **Done when**:
-- [ ] `ChatMessage.reactions?: MessageReaction[]` no tipo do painel
-- [ ] `setMessageReaction(messageId, emoji: string | null)` tipado, usando `apiClient`
-- [ ] Mapeamento DTO→domínio no mesmo lugar em que as demais mensagens são mapeadas
+- [x] `ChatMessage.reactions?: MessageReaction[]` e `reactionsRevision?: string | null` no tipo do painel
+- [x] `setMessageReaction(messageId, emoji: string | null)` tipado, usando `apiClient`
+- [x] Mapeamento DTO→domínio no mesmo lugar em que as demais mensagens são mapeadas; `reactions` ausente no DTO (API antiga durante deploy) vira `[]`, nunca quebra a bolha
 
 **Gate**: quick (app)
 
@@ -405,10 +459,13 @@ T21 → T22 → T23
 **Requirement**: REACT-01, REACT-12
 
 **Done when**:
-- [ ] Carregado via `React.lazy` + `Suspense` (não entra no bundle inicial)
-- [ ] Tema segue `theme.palette.mode` (claro/escuro/sistema)
-- [ ] API do componente: `onSelect(emoji: string)` e `onClose()` — sem vazar tipos da lib
-- [ ] `app/package.json` atualizado com versão fixada
+- [x] Carregado via `React.lazy` + `Suspense` (não entra no bundle inicial)
+- [x] Tema segue `theme.palette.mode` (claro/escuro/sistema)
+- [x] `emojiStyle={EmojiStyle.NATIVE}` — o padrão (`apple`) baixa imagens de CDN externo (`context.md` D1)
+- [ ] Textos internos do picker (busca, categorias) passados pela prop de textos da lib a partir de `strings.ts`, não o inglês padrão
+- [x] Falha no chunk lazy (rede) cai num fallback silencioso — a barra rápida continua funcionando
+- [x] API do componente: `onSelect(emoji: string)` e `onClose()` — sem vazar tipos da lib
+- [x] `app/package.json` atualizado com versão fixada (`4.22.2`, sem `^`) e lockfile commitado
 
 **Gate**: quick (app)
 
@@ -423,11 +480,11 @@ T21 → T22 → T23
 **Requirement**: REACT-01, REACT-12, REACT-13
 
 **Done when**:
-- [ ] Emoji já ativo do usuário aparece marcado; clicar nele remove (toggle)
-- [ ] Navegação por setas, `Esc` fecha e devolve o foco ao botão de origem
-- [ ] Cores só por tokens do tema; legível nos três modos
-- [ ] Strings de T15
-- [ ] Teste: clicar num emoji da barra chama `onSelect` com ele; clicar no emoji já ativo emite remoção (`null`); `Esc` fecha
+- [x] Emoji já ativo do usuário aparece marcado; clicar nele remove (toggle)
+- [x] Navegação por setas, `Esc` fecha e devolve o foco ao botão de origem
+- [x] Cores só por tokens do tema; legível nos três modos
+- [x] Strings de T15
+- [x] Teste: clicar num emoji da barra chama `onSelect` com ele; clicar no emoji já ativo emite remoção (`null`); `Esc` fecha
 
 **Tests**: unit (componente)
 **Gate**: quick (app)
@@ -443,12 +500,12 @@ T21 → T22 → T23
 **Requirement**: REACT-10, REACT-11, REACT-12
 
 **Done when**:
-- [ ] Agrupa por emoji; contagem oculta quando 1
-- [ ] `reactedByMe` destacado com borda/contraste (não só cor — daltônicos)
-- [ ] `<button>` com `aria-label` e `aria-pressed`; tooltip abre por foco de teclado
-- [ ] Autor sem telefone conhecido exibe "Participante"
-- [ ] Overflow com muitos emojis distintos não quebra o layout da bolha
-- [ ] Teste com Testing Library via `renderWithTheme`: contagem oculta quando 1 e visível quando > 1; `aria-pressed` reflete `reactedByMe`; clique dispara o toggle com o emoji certo; renderiza no tema escuro
+- [x] Agrupa por emoji; contagem oculta quando 1
+- [x] `reactedByMe` destacado com borda/contraste (não só cor — daltônicos)
+- [x] `<button>` com `aria-label` e `aria-pressed`; tooltip abre por foco de teclado
+- [x] Autor sem telefone conhecido exibe "Participante"
+- [x] Overflow com muitos emojis distintos não quebra o layout da bolha
+- [x] Teste com Testing Library via `renderWithTheme`: contagem oculta quando 1 e visível quando > 1; `aria-pressed` reflete `reactedByMe`; clique dispara o toggle com o emoji certo; renderiza no tema escuro
 
 **Tests**: unit (componente)
 **Gate**: quick (app)
@@ -464,11 +521,12 @@ T21 → T22 → T23
 **Requirement**: REACT-01, REACT-10, REACT-12
 
 **Done when**:
-- [ ] Props novas: `onSetReaction?(message, emoji: string | null)`
-- [ ] Ações de hover também aparecem no foco por teclado (corrige o botão Responder de passagem)
-- [ ] Mensagem `isDeleted` não exibe o botão de reagir
-- [ ] Chips não cobrem o horário/status da mensagem
-- [ ] Bolhas de entrada e de saída ambas corretas
+- [x] Props novas: `onSetReaction?(message, emoji: string | null)`
+- [x] Ações de hover também aparecem no foco por teclado (corrige o botão Responder de passagem)
+- [x] Mensagem `isDeleted` ou sem `externalMessageId` não exibe o botão de reagir (a API recusaria com 409)
+- [x] Sem `onSetReaction` (outros usos da bolha), nada de reação é renderizado além dos chips — nenhum consumidor atual muda de comportamento
+- [x] Chips não cobrem o horário/status da mensagem
+- [x] Bolhas de entrada e de saída ambas corretas
 
 **Gate**: quick (app)
 
@@ -483,11 +541,18 @@ T21 → T22 → T23
 **Requirement**: REACT-01, REACT-04, REACT-05, REACT-08
 
 **Done when**:
-- [ ] Aplicação otimista + substituição pelo agregado da resposta HTTP
-- [ ] `catch` restaura o snapshot e mostra erro não bloqueante com a string de T15
-- [ ] Evento WS substitui o agregado (sem merge incremental) e ignora conversa não carregada
+- [x] Estado por mensagem separado em `server` (`{ revision, reactions }`) e `pending` (cliques sem resposta); a bolha mostra `server` com o último pendente por cima (design §8)
+- [x] Envio agrupado (design §8, regra 3): despachante em módulo TS sem React (`features/chat/reactionDispatcher.ts`, singleton por aba, `subscribe`/`unsubscribe`) + adaptador `useReactionDispatcher`; temporizador por mensagem — 400 ms parado **e** ≥ 1000 ms desde o último envio; envia só o último `draft`; gesto final igual à base efetiva (alvo do último `inflight`, senão `self` de `server`) não envia
+- [x] Sem flush: trocar de conversa ou sair da rota não adianta envio; o gesto em espera sai no horário normal. Desmontar o `ChatPage` só cancela a inscrição, **não** os temporizadores
+- [x] `reset()` chamado no logout e na troca de tenant (`AuthContext`/`TenantContext`): cancela temporizadores e esquece os drafts — nada sai com o contexto novo
+- [x] Resultado sem inscrito: erro vai para `console.warn` com `messageId` e código; nada de estado órfão (o despachante esquece a mensagem depois do resultado)
+- [x] Teste do despachante com timers falsos do Vitest: sair e voltar antes do envio → um envio só, no horário; `reset()` antes do horário → nenhum envio; três cliques → um envio; nenhum envio antes de 1000 ms desde o anterior
+- [x] Decisão do que enviar em função pura `selectReactionToSend(server, inflight, drafts)` com teste: três cliques → um envio com o último; vai e volta sem nada em voo → nenhum envio; **server 👍 + remoção em voo + novo 👍 → envia 👍**; draft igual ao alvo em voo → não envia
+- [x] Erro remove só aquele clique de `pending` e mostra erro não bloqueante com a string de T15 (409 de sessão tem texto próprio) — sem snapshot: o que fica visível é `server`
+- [x] Resposta HTTP, evento WS e página do `GET` passam pela mesma regra: aceitos só com `revision >= server.revision`; substituição, sem merge incremental; conversa não carregada é ignorada
+- [x] Teste do redutor cobre: clique → resposta; clique → erro → volta a `server`; **clique → WS com o gesto → erro (timeout) → reação continua visível**; dois cliques com respostas HTTP fora de ordem → estado final = último clique; agregado com `revision` menor descartado; página do `GET` mais velha que o WS não desfaz o WS
 - [ ] Sem re-render da lista inteira a cada reação (atualiza só a mensagem alvo)
-- [ ] A redução de estado (aplicar agregado otimista / aplicar agregado do servidor) sai como **função pura** fora do componente, com teste co-locado — é o que torna esse trecho testável sem montar a página
+- [x] A redução de estado (aplicar agregado otimista / aplicar agregado do servidor) sai como **função pura** fora do componente, com teste co-locado — é o que torna esse trecho testável sem montar a página
 
 **Tests**: unit (redutor puro)
 **Gate**: full
@@ -496,17 +561,28 @@ T21 → T22 → T23
 
 ### T22: Documentação e versão
 
-**What**: `CHANGELOG.md`, doc da feature em `docs/`, bump de versão em `api/` e `app/`.
-**Where**: `CHANGELOG.md`, `docs/chat-reacoes-mensagens.md`, `api/package.json`, `app/package.json`
+**What**: `CHANGELOG.md` da raiz, doc da feature em `docs/`, dívidas no `STATE.md`. Versão **não** é bumpada aqui.
+**Where**: `CHANGELOG.md` (raiz), `docs/chat-reacoes-mensagens.md`, `.specs/project/STATE.md`
 **Depends on**: T21
 **Reuses**: Formato do §32 do AGENTS.md
 **Requirement**: Todos (rastreabilidade)
 
+> **Qual CHANGELOG**: o da raiz. É o que recebe todas as entradas desde maio (`git log -- CHANGELOG.md`)
+> e carrega a nota de estado do versionamento; `api/CHANGELOG.md` parou em 2026-09-07. AGENTS.md
+> §31.3 ainda cita `api/CHANGELOG.md` — divergência de processo registrada no `STATE.md`, não
+> resolvida por esta feature.
+>
+> **Versão**: os `package.json` já estão em `0.11.0` (o plano original mandava ir de 0.10.x para
+> 0.11.0, número já consumido). O número sai na `release/*`, a partir do que estiver em `develop` —
+> mesma regra de `chat-remote-state-sync/tasks.md`, que disputa a mesma minor. Com as duas features
+> entrando, a próxima minor é `0.12.0`, a decidir junto com o recorte pendente do versionamento
+> (nota no topo do CHANGELOG).
+
 **Done when**:
-- [ ] Entrada `Added` no CHANGELOG listando arquivos afetados e o porquê
-- [ ] `docs/chat-reacoes-mensagens.md`: fluxo ponta a ponta, contrato HTTP/WS, o que **não** fazer (não chamar Baileys fora do adapter, não fazer merge incremental do agregado, backfill fora de escopo)
-- [ ] Versão minor em ambos os `package.json` (0.10.x → **0.11.0**, feature backward-compatible)
-- [ ] Débito registrado: i18n pendente, reações de histórico fora de escopo
+- [x] Entrada `Added` em `[Unreleased]` do CHANGELOG da raiz, listando arquivos afetados e o porquê; migration nova citada (tabela + índice em `chat_messages`)
+- [x] `docs/chat-reacoes-mensagens.md`: fluxo ponta a ponta, contrato HTTP/WS, o que **não** fazer (não chamar Baileys fora do adapter, não fazer merge incremental do agregado, não apagar reação com `DELETE`, não derivar `reactorKey` do telefone resolvido, não gravar reação sem envio, backfill fora de escopo)
+- [x] `package.json` intocados nesta feature
+- [x] `STATE.md`: decisões (tombstone/LWW, `reactorKey` crua); dívidas (i18n pendente, reações de histórico fora de escopo, roteamento do `messages.upsert` antes do descarte de reação, CHANGELOG citado no AGENTS.md × usado)
 
 **Gate**: quick (nenhum código)
 
@@ -529,8 +605,21 @@ T21 → T22 → T23
 - [ ] Derrubar e reconectar a sessão não duplica reações
 - [ ] Sessão desconectada → erro tratado, sem reação fantasma
 - [ ] Reagir a mensagem antiga **não** move a conversa no topo da lista nem gera não lida
-- [ ] Reagir pelo painel gera **um** evento WS, não dois (eco tratado)
+- [ ] Reagir pelo painel gera **um** evento WS, não dois (eco tratado) — repetir 10× seguidas para pegar a corrida eco × `PUT`
+- [ ] Com o relógio do celular do operador atrasado alguns minutos: reagir no painel e logo depois trocar no celular → painel termina com o emoji do celular
+- [ ] Keycap (`1️⃣`) aceito pelo painel e entregue no celular
+- [ ] Cliques rápidos no painel (👍, ❤️, 😂 em menos de 1 s) → painel e celular terminam em 😂 com **um** envio (conferir na aba Network: um `PUT`)
+- [ ] Toggle vai e volta (👍 → remover → 👍 já existente) → nenhum `PUT`
+- [ ] `PUT` direto via curl em rajada (10 em 1 s na mesma mensagem) → só as requisições espaçadas ≥ 700 ms da anterior aceita passam (tipicamente 2); as demais 429, e só as aceitas chegam ao celular
+- [ ] Derrubar a sessão, reagir (erro de sessão), reconectar e reagir de novo em menos de 1 s → recebe o resultado real, nunca 429
+- [ ] Rede lenta simulada (DevTools, throttling) com `PUT` expirando: reação que chegou ao celular continua visível no painel
 - [ ] Emoji com ZWJ (👨‍👩‍👧‍👦) e skin tone aceitos
+- [ ] Grupo com participante de número privado (`@lid`): reação dele aparece (nome ou "Participante"); reagir à mensagem dele pelo painel **chega no celular** (key com `participant` correto)
+- [ ] O mesmo participante `@lid` reage duas vezes → um chip trocado, não dois
+- [ ] Reagir e remover em sequência rápida (painel e celular alternados) → os dois lados terminam no último gesto
+- [ ] Conversa arquivada, contato reage a mensagem nossa: desarquiva se o celular desarquiva (config "manter arquivadas"), e só nesse caso — timestamp e não lidas intactos
+- [ ] Sem regressão no envio de mensagem (T8): texto, mídia e resposta com citação, individual e grupo
+- [ ] Nenhuma requisição a CDN de emoji na aba Network ao abrir o picker
 - [ ] Conferido nos temas claro, escuro e sistema, e navegando por teclado
 
 **Gate**: smoke
@@ -557,7 +646,7 @@ tipada — separá-las garante divergência) e **T1** (schema + migration são i
 | T8 | None | Fase 3, raiz | ✅ |
 | T9 | T3, T4, T8 | T3,T4,T8 → T9 | ✅ |
 | T10 | T3 | T3 → T10 | ✅ |
-| T11 | T3 | T3 → T11 | ✅ |
+| T11 | T2, T3 | T2,T3 → T11 | ✅ |
 | T12 | None | Fase 3, raiz | ✅ |
 | T13 | T7, T10, T12 | T7,T10,T12 → T13 | ✅ |
 | T14 | T9, T12 | T9,T12 → T14 | ✅ |
@@ -576,16 +665,16 @@ tipada — separá-las garante divergência) e **T1** (schema + migration são i
 | Task | Camada | Tipo exigido pela matriz | Teste na task? | ✅ |
 | --- | --- | --- | --- | --- |
 | T1 | schema/migration | none | — | ✅ |
-| T2 | domain (tipos) | none | — | ✅ |
-| T3 | mapper + repo Prisma | unit (mapper); repo → smoke | mapper | ✅ |
-| T4 | port (tipos) | none | — | ✅ |
+| T2 | domain (tipos + `decideReactionWrite` + `aggregateReactions`) | unit (funções puras) | sim | ✅ |
+| T3 | mapper + repo Prisma (SQL LWW) | unit (mapper); repo → smoke | mapper + smoke do `apply` | ✅ |
+| T4 | port (tipos) — gate só com T6 | none | — | ✅ |
 | T5 | evento (tipos) | none | — | ✅ |
-| T6 | adapter (I/O de socket) | none | — | ✅ |
+| T6 | adapter (I/O de socket) + `ReactionEchoRegistry` puro | unit (registry) | sim | ✅ |
 | T7 | adapter (normalização pura) | unit | sim | ✅ |
-| T8 | refactor de use case | unit (cobertura pelo existente) | smoke de envio | ✅ |
+| T8 | refactor de use case | unit (caracterização do helper, antes de mover) | sim + smoke de envio | ✅ |
 | T9 | use case | unit | sim | ✅ |
 | T10 | use case | unit | sim | ✅ |
-| T11 | use case (agregação) | unit | sim | ✅ |
+| T11 | use case (lote de reações + contatos) | unit (dublês) | sim | ✅ |
 | T12 | tipos WS | none | — | ✅ |
 | T13 | listener (fiação) | none | — | ✅ |
 | T14 | rota Fastify | none (sem harness HTTP) | smoke | ✅ |
@@ -605,7 +694,7 @@ marcadores `[P]` seguem válidos.
 ## Paralelismo
 
 - Fase 1: T1+T2 (→T3), T4 e T5 simultâneos — 3 frentes
-- Fase 2: T6 e T7 simultâneos
+- Fase 2: T6 e T7 simultâneos (T4 e T6 no mesmo commit)
 - Fase 3: T8, T10, T11, T12 simultâneos; T9 depois de T8; T13 e T14 fecham
 - Fase 4: T15 e T17 simultâneos; o resto é cadeia
 
@@ -622,10 +711,29 @@ marcadores `[P]` seguem válidos.
 | REACT-07 | T1, T3, T10 |
 | REACT-08 | T12, T13, T21 |
 | REACT-09 | T3, T11, T14, T16 |
-| REACT-10 | T11, T16, T19, T20 |
-| REACT-11 | T7, T10, T11, T19 |
+| REACT-10 | T2, T11, T16, T19, T20 |
+| REACT-11 | T2, T7, T10, T11, T19 |
 | REACT-12 | T17, T18, T19, T20 |
 | REACT-13 | T15, T18 |
-| REACT-14 | T10, T13 |
+| REACT-14 | T10, T13, T23 |
 
 **Cobertura**: 14/14 requisitos mapeados. Nenhum órfão.
+
+---
+
+## Desvios registrados
+
+`SPEC_DEVIATION` aceitos na execução (T1–T22):
+
+- **`decideReactionWrite`** devolve `{ applied, changed }`; não há `write` — o repositório grava quando `applied` (design §4 atualizado).
+- **`IReactionUpdatePublisher`**: porta nova para o use case publicar no WS sem depender do `chatWsPublisher`.
+- **Throttle** configurado pelo construtor (`minIntervalMs`, `maxPerMinute` vindos de `env.ts` no wiring da rota), não lido de `env` dentro do use case.
+- **Grupo sem `participant`**: o use case responde `ConflictError` (409) antes da engine; o adapter mantém `MessageSendFailedError` como defesa.
+- **Linha de outro tenant** no `apply` → `NotFoundError` (404), para não confirmar a existência da mensagem.
+- **`reactorName` sempre `null`** na ingestão: o evento `messages.reaction` não traz `pushName`; o nome vem do contato.
+- **`isMe`** adicionado a `reactors` (aditivo), para distinguir o operador de participante `@lid` sem nome/telefone.
+- **`EmojiPicker`** carrega os dados em pt (`emoji-picker-react/dist/data/emojis-pt`); textos sem prop na lib ficam em inglês.
+- **`apiClient`** rejeita com `status` e `code`, para o despachante distinguir 429 de 409 de sessão.
+- **Migration (T1)** gerada por diff de schema, sem `prisma migrate dev` — `api/.env` aponta para produção.
+
+Pendentes (Done when não marcados): smoke do repositório (T3) e log de query em dev (T11) exigem banco local; textos internos do picker só parcialmente traduzidos (T17); `MessageBubble` sem `memo` re-renderiza a lista (T21). Ver dívidas em `.specs/project/STATE.md`.

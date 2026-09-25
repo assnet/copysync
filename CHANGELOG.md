@@ -23,6 +23,65 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — Reações em mensagens
+
+Reagir, trocar e remover reação pelo painel (barra rápida + seletor completo) e receber as do
+WhatsApp em tempo real, individual e grupo. Doc: `docs/chat-reacoes-mensagens.md`.
+
+Migration **`20260924120000_add_chat_message_reactions`** (aditiva): tabela `chat_message_reactions`
+(unique `messageId+reactorKey`, índice `tenantId+messageId`) e índice `tenantId+externalMessageId`
+em `chat_messages`. Env novas (opcionais): `REACTION_ECHO_TTL_MS` (120000),
+`REACTION_MAX_PER_MINUTE` (30), `REACTION_MIN_INTERVAL_MS` (700). Dependência nova no app:
+`emoji-picker-react` `4.22.2` (versão fixa).
+
+##### api/
+
+- **`api/prisma/schema.prisma`** — model `ChatMessageReaction` (uma linha por mensagem × autor; `emoji` nulo = tombstone de remoção) e back-relations em `ChatMessage`/`Tenant`
+- **`api/src/modules/chat/domain/entities/ChatMessageReaction.ts`**, **`.../domain/contracts/IChatMessageReactionRepository.ts`** — entidade pura e contrato com porta única de escrita `apply` (last-write-wins), sem `upsert`/`remove` separados
+- **`.../domain/services/decideReactionWrite.ts`** — regra pura: carimbo menor é ignorado, igual conta como ≥, remoção sem estado grava tombstone sem `changed`. Devolve `{ applied, changed }`
+- **`.../domain/services/aggregateReactions.ts`** — um cálculo só para `PUT`, `GET` e WS: agrupa por emoji, ordena, resolve nome, corta em 10 autores, marca `isMe`; `revision` = maior `updatedAt` incluindo tombstones (remoção precisa avançar a revisão)
+- **`.../infrastructure/repositories/PrismaChatMessageReactionRepository.ts`** + **`.../mappers/PrismaChatMessageReactionMapper.ts`** — `apply` em transação curta com `pg_advisory_xact_lock` por (mensagem, autor); linha de outro tenant → 404; erros transitórios do Prisma → 503; busca em lote numa query só
+- **`.../application/use-cases/SetMessageReactionUseCase.ts`** — reação pelo painel: valida emoji por forma (≤ 64 bytes, não só ASCII, sem whitespace/`\p{Cc}`), exige sessão e `externalMessageId`, aplica limite, envia **antes** de gravar (nunca grava sem envio) e publica só se `changed`
+- **`.../application/contracts/IReactionSendThrottle.ts`**, **`.../infrastructure/throttle/InMemoryReactionSendThrottle.ts`** — limite por mensagem (700 ms) e por sessão (30/min, janela deslizante), reserva síncrona e `release` quando a engine falha. Reação em volume fora do padrão humano arrisca o número
+- **`.../application/contracts/IReactionUpdatePublisher.ts`** — porta de publicação WS, para o use case não depender do publisher concreto
+- **`.../application/use-cases/IngestMessageReactionUseCase.ts`** — ingestão da reação recebida; não toca na conversa (sem mexer em `lastMessageAt`, não lidas ou arquivamento); `fromMe` sem eco usa o relógio do servidor
+- **`.../infrastructure/listeners/ChatMessageReactionListener.ts`**, **`api/src/app/server.ts`** — consome `MESSAGE_REACTION_UPDATED` e publica `chat.message.reaction.updated` só quando a ingestão devolve resultado
+- **`.../application/use-cases/ListMessagesUseCase.ts`** — `reactions` e `reactionsRevision` em cada mensagem, com uma busca de reações e uma de contatos por página
+- **`.../presentation/routes/chat.routes.ts`**, **`.../schemas/chat.schema.ts`**, **`.../presenters/ChatPresenter.ts`** — `PUT /chat/messages/:messageId/reaction` (`emoji` obrigatório, `null` remove); throttle em instância única do módulo
+- **`.../infrastructure/ws/ChatWebSocketPublisher.ts`** — evento `chat.message.reaction.updated` com o agregado completo
+- **`api/src/modules/messaging/domain/contracts/IMessagingEngine.ts`** — `sendReaction` e `ReactionTargetRef`, sem tipo do Baileys
+- **`api/src/shared/events/InternalMessagingEvent.ts`** — `MESSAGE_REACTION_UPDATED`, com `reactorKey` crua (`self`/`lid:`/`pn:`) e `isEcho`
+- **`.../engines/baileys/BaileysMessagingEngineAdapter.ts`** — `sendReaction` (id pré-gerado, `senderTimestampMs` do servidor) e handler `messages.reaction`
+- **`.../engines/baileys/normalizeReactionEvent.ts`** — tradução pura do evento: alvo em `item.key`, autor em `item.reaction.key` (a lib inverte a intuição)
+- **`.../engines/baileys/ReactionEchoRegistry.ts`** — ids das reações enviadas, com TTL e teto derivado do limite, para reconhecer o eco e não publicar duas vezes
+- **`.../engines/baileys/BaileysErrorTranslator.ts`**, **`api/src/shared/errors/internal/ResourceErrors.ts`** — tradução do erro de envio de reação e `TooManyRequestsError` (429)
+- **`api/src/shared/config/env.ts`** — as três env de reação e o teto derivado `REACTION_ECHO_MAX_PER_SESSION`
+
+##### app/
+
+- **`app/src/components/EmojiPicker.tsx`** — `emoji-picker-react` lazy, tema do MUI, emoji nativo (sem CDN), dados em pt e fallback silencioso se o chunk falhar
+- **`app/src/features/chat/components/messages/ReactionBar.tsx`** — barra rápida (👍 ❤️ 😂 😮 😢 🙏) + `+`; toggle, setas e `Esc`
+- **`app/src/features/chat/components/messages/MessageReactions.tsx`** — chips por emoji com contagem, `aria-pressed` e tooltip de autores ("Você", "Participante")
+- **`app/src/features/chat/components/MessageBubble.tsx`**, **`MessageList.tsx`**, **`ChatWindow.tsx`** — botão de reagir no hover/foco e item no menu; oculto em mensagem apagada ou sem `externalMessageId`
+- **`app/src/features/chat/reactionsState.ts`** — redutores puros: estado `server` + `pending`, aceita agregado só com `revision` ≥ atual, `selectReactionToSend`
+- **`app/src/features/chat/reactionDispatcher.ts`**, **`useReactionDispatcher.ts`** — envio agrupado fora do React (400 ms parado e ≥ 1000 ms desde o último envio; só o último gesto sai); `reset()` no logout e troca de tenant (**`AuthContext.tsx`**, **`TenantContext.tsx`**)
+- **`app/src/pages/ChatPage.tsx`** — estado otimista, erro não bloqueante e handler do WS
+- **`app/src/features/chat/strings.ts`**, **`types.ts`**, **`app/src/types/chat.api.types.ts`**, **`app/src/services/chat.service.ts`**, **`app/src/hooks/useChatWebSocket.ts`** — textos centralizados, tipos, `setMessageReaction` e evento WS tipado
+
+### Fixed
+
+- **`api/.../presentation/presenters/ChatPresenter.ts`** — o presenter escolhe campo a campo e descartava `reactions`/`reactionsRevision` da listagem e nunca enviava o `externalMessageId` que o painel já declarava no DTO
+- **`api/.../listeners/ChatIncomingMessageListener.ts`**, **`.../ws/ChatWebSocketPublisher.ts`** — `chat.message.created` passa a levar `externalMessageId`; sem ele a mensagem recém-chegada não oferecia reagir até recarregar a conversa
+- **`api/.../aggregateReactions.ts`**, **`app/src/features/chat/reactionsState.ts`**, **`MessageReactions.tsx`** — a própria reação era identificada por nome e telefone nulos, formato idêntico ao de participante `@lid`: o otimista podia remover o participante no lugar do operador. Cada autor ganha `isMe` (aditivo)
+
+### Changed
+
+- **`api/.../use-cases/SendMessageUseCase.ts`**, **`resolveConversationTarget.ts`** — resolução de destino e da referência externa extraída para função pura com teste de caracterização, reusada pela reação. Refactor sem mudança de comportamento
+- **`app/src/services/apiClient.ts`** — erro rejeitado leva `status` e `code` da API (distingue 429 de 409 de sessão); mensagem inalterada
+- **`app/src/features/chat/components/MessageBubble.tsx`** — ações de hover (inclusive Responder) também aparecem com foco de teclado
+
+### Added
+
 #### Chat — Estado de conversa sincronizado entre dispositivos e abas
 
 - **`api/src/modules/messaging/infrastructure/engines/baileys/normalizeChatState.ts`** — traduz num único lugar a semântica numérica do Baileys: `unreadCount` 0 é conversa lida, negativo é marcação manual de não lida, positivo é **incremento** e por isso é descartado (o contador do painel vem da ingestão de mensagens; copiar o valor duplicaria a contagem). `pinned` chega como timestamp e `muteEndTime` como epoch, ambos podendo vir como `Long` do protobuf

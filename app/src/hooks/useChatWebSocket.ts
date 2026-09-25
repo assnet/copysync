@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { ChatMessageApiDto } from '@/types/chat.api.types';
+import type { ChatMessageApiDto, ReactionSummaryApiDto } from '@/types/chat.api.types';
 import { shouldResync, type ResyncReason } from './shouldResync';
 
 // ── WS event types (mirror backend ChatWsEvent) ───────────────────────────────
@@ -63,6 +63,15 @@ export interface WsMessageStatusUpdatedData {
   status: string;
 }
 
+/** Agregado completo: substitui o estado do servidor, aceito só com revisão >= à atual. */
+export interface WsMessageReactionUpdatedData {
+  tenantId: string;
+  conversationId: string;
+  messageId: string;
+  reactionsRevision: string | null;
+  reactions: ReactionSummaryApiDto[];
+}
+
 export interface WsPresenceUpdatedData {
   tenantId: string;
   phone: string;
@@ -87,6 +96,7 @@ export type ChatWsPayload =
   | { event: 'chat.unread.updated'; data: WsUnreadUpdatedData }
   | { event: 'chat.state.updated'; data: WsConversationStateData }
   | { event: 'chat.message.status.updated'; data: WsMessageStatusUpdatedData }
+  | { event: 'chat.message.reaction.updated'; data: WsMessageReactionUpdatedData }
   | { event: 'chat.presence.updated'; data: WsPresenceUpdatedData }
   | { event: 'chat.session.updated'; data: WsSessionUpdatedData }
   | { event: 'chat.contact.updated'; data: WsContactUpdatedData }

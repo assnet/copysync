@@ -25,6 +25,8 @@ interface Props {
   onToggleSearch?: () => void;
   searchOpen?: boolean;
   highlightMessageId?: string | null;
+  /** Reagir (`emoji`) ou remover a própria reação (`null`). */
+  onSetReaction?: (message: ChatMessage, emoji: string | null) => void;
 }
 
 export function ChatWindow({
@@ -45,6 +47,7 @@ export function ChatWindow({
   onToggleSearch,
   searchOpen,
   highlightMessageId,
+  onSetReaction,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const isClosed = conversation.status === 'closed';
@@ -106,6 +109,7 @@ export function ChatWindow({
         highlightMessageId={highlightMessageId}
         onReply={handleReply}
         onParticipantClick={onParticipantClick}
+        onSetReaction={onSetReaction}
       />
 
       <MessageComposer

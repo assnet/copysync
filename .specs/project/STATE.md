@@ -23,6 +23,18 @@ Memória entre sessões: decisões, bloqueios, lições.
   já fora lido no celular antes), então corrigir para baixo é onde essa fonte agrega;
   para cima a ingestão já cobre. Ver `diffRemoteState`.
 
+- **2026-09-24 — Reação removida vira tombstone, não `DELETE`.** Plano de
+  `message-reactions` revisado: set e remoção passam por uma única escrita last-write-wins em
+  `reactedAt`, serializada por (mensagem, autor) com `pg_advisory_xact_lock` e decidida por função
+  pura (`decideReactionWrite`). Sem a linha, remoção e reação fora de ordem não têm com o que
+  comparar. Só publica no WS quem mudou o estado visível. A identidade do autor (`reactorKey`) é a
+  crua do protocolo (`lid:`/`pn:`), nunca o telefone resolvido; gestos nossos usam o relógio do
+  servidor, nunca o do celular do operador, e o eco do painel (reconhecido por id pré-gerado)
+  mantém o carimbo original. O painel ordena agregados por `reactionsRevision` (maior
+  `updatedAt`, tombstones incluídos), porque resposta HTTP não tem ordem entre requisições.
+  Reação respeita a regra de volume da decisão de 2026-09-21 (sincronização só de consumo): o painel envia só o último gesto de uma
+  sequência e a API limita por mensagem e por sessão (429). Ver `.specs/features/message-reactions/design.md` §4.
+
 ## Bloqueios
 
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
@@ -59,6 +71,17 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Dívidas assumidas
 
+- **Dois CHANGELOGs, um só em uso.** O da raiz recebe todas as entradas desde maio; `api/CHANGELOG.md`
+  parou em 2026-09-07, mas é o que o AGENTS.md §31.3 cita. Novas entradas vão para o da raiz até
+  o AGENTS.md ser alinhado.
+
+- **`messages.upsert` roteia antes de descartar.** `buildIncomingMessageRoutingInfo` roda antes de
+  `extractBaileysMessage` descartar reação/protocolo (adapter, ~linhas 547-555): em grupo, consulta
+  metadados e resolve LID para nada. Pré-existente. Reordenar pede smoke próprio do recebimento.
+
+- **`chat_messages` sem índice em `externalMessageId`.** A busca por id externo (status de entrega)
+  é scan. Resolvida pela migration de `message-reactions` (T1), que depende do índice.
+
 - **Versionamento fora de sincronia desde a 0.2.0.** Os `package.json` chegaram a `0.11.0`, mas
   o repositório tem uma única TAG (`v0.2.0`) e o CHANGELOG uma única seção fechada. Todo o
   trabalho posterior vive em `[Unreleased]`. AGENTS.md §31.3 pede versão nos três lugares ao
@@ -85,7 +108,28 @@ Memória entre sessões: decisões, bloqueios, lições.
   WhatsApp entrega `unreadCount: null` para conversa já lida (`chat-utils.js:707`), então sem essa
   fonte o passivo acumulado antes da conexão ficava para sempre.
 
+- **Reações — i18n pendente.** Textos centralizados em `app/src/features/chat/strings.ts`, prontos
+  para extração. O que o `emoji-picker-react` não expõe por prop fica em inglês ("No results found",
+  alguns `aria-label`).
+
+- **Reações vindas do history sync fora de escopo.** Só `messages.reaction` em tempo real é
+  ingerido; sem backfill.
+
+- **`MessageBubble` sem `memo`.** Uma reação re-renderiza a lista inteira da conversa
+  (item "sem re-render da lista" da T21 não cumprido).
+
+- **`handleLoadMore` no `ChatPage` fecha sobre `messages` velho.** Bug pré-existente; atenuado
+  para reações por `keepNewerReactions`, não corrigido.
+
+- **Smoke de reações (T23) e de envio após o refactor da T8 pendentes.** Exigem banco local
+  (Docker) e sessão WhatsApp real — `api/.env` aponta para produção.
+
 ## Lições
+
+- **`ChatPresenter` escolhe campo a campo.** Os testes unitários dos use cases passavam e a
+  listagem ainda descartava `reactions`/`externalMessageId`. Ao adicionar campo em DTO, conferir
+  os pontos de integração: presenter e payload WS (`chat.message.created`).
+
 
 - **Ler a lib não substitui rodar com sessão real.** A semântica de `unreadCount` foi lida direto do
   código do Baileys e ainda assim faltou o caso que mais importa: `isInitialSync && read` emite

@@ -19,19 +19,19 @@ enum TenantStatus {
 
 enum UserRole {
   SUPER_ADMIN // global, outside any specific tenant
-  ADMIN       // full admin inside a tenant
-  OPERATOR    // day-to-day operator inside a tenant
+  ADMIN // full admin inside a tenant
+  OPERATOR // day-to-day operator inside a tenant
 }
 
 enum SessionStatus {
-  PENDING          // created, awaiting first connection attempt
-  CONNECTING       // initiating connection (socket being opened)
-  AWAITING_QR      // connection open, waiting for QR scan
+  PENDING // created, awaiting first connection attempt
+  CONNECTING // initiating connection (socket being opened)
+  AWAITING_QR // connection open, waiting for QR scan
   AWAITING_PAIRING // connection open, waiting for pairing code entry
-  CONNECTED        // connected and operational
-  DISCONNECTED     // temporarily disconnected (recoverable)
-  LOGGED_OUT       // explicit logout — credentials cleared
-  FAILED           // unrecoverable failure
+  CONNECTED // connected and operational
+  DISCONNECTED // temporarily disconnected (recoverable)
+  LOGGED_OUT // explicit logout — credentials cleared
+  FAILED // unrecoverable failure
 }
 
 enum MessageDirection {
@@ -63,17 +63,17 @@ enum AuditAction {
 }
 
 enum ConversationStatus {
-  OPEN    // conversa aberta, aguardando ou em atendimento
+  OPEN // conversa aberta, aguardando ou em atendimento
   PENDING // aguardando primeira resposta do operador
   WAITING // na fila de espera
-  BOT     // sendo atendida por bot/automação
-  CLOSED  // encerrada
+  BOT // sendo atendida por bot/automação
+  CLOSED // encerrada
 }
 
 enum ChatMessageDirection {
-  INBOUND  // mensagem recebida do contato
+  INBOUND // mensagem recebida do contato
   OUTBOUND // mensagem enviada pelo operador/sistema
-  SYSTEM   // evento interno (ex.: "atendimento encerrado")
+  SYSTEM // evento interno (ex.: "atendimento encerrado")
 }
 
 enum ChatMessageType {
@@ -108,14 +108,15 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  userTenants       UserTenant[]
-  sessions          Session[]
-  sessionAuthStates SessionAuthState[]
-  messages          Message[]
-  auditLogs         AuditLog[]
-  chatContacts      ChatContact[]
-  chatConversations ChatConversation[]
-  chatMessages      ChatMessage[]
+  userTenants          UserTenant[]
+  sessions             Session[]
+  sessionAuthStates    SessionAuthState[]
+  messages             Message[]
+  auditLogs            AuditLog[]
+  chatContacts         ChatContact[]
+  chatConversations    ChatConversation[]
+  chatMessages         ChatMessage[]
+  chatMessageReactions ChatMessageReaction[]
 
   @@index([slug])
   @@map("tenants")
@@ -190,15 +191,15 @@ model RefreshToken {
 model Session {
   id                 String        @id @default(cuid())
   tenantId           String
-  name               String        // human-friendly label given by the user
+  name               String // human-friendly label given by the user
   engine             String        @default("baileys") // engine managing this session
-  phone              String?       // phone number after successful pairing
-  externalRef        String?       // engine-specific session reference
+  phone              String? // phone number after successful pairing
+  externalRef        String? // engine-specific session reference
   status             SessionStatus @default(PENDING)
-  lastConnectedAt    DateTime?     // when the session last reached CONNECTED
-  lastDisconnectedAt DateTime?     // when the session last reached DISCONNECTED
-  lastSeenAt         DateTime?     // timestamp of last inbound/outbound message
-  deletedAt          DateTime?     // soft-delete
+  lastConnectedAt    DateTime? // when the session last reached CONNECTED
+  lastDisconnectedAt DateTime? // when the session last reached DISCONNECTED
+  lastSeenAt         DateTime? // timestamp of last inbound/outbound message
+  deletedAt          DateTime? // soft-delete
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -222,8 +223,8 @@ model SessionAuthState {
   sessionId    String   @unique
   tenantId     String
   provider     String   @default("baileys") // engine/provider identifier
-  statePayload Json     // credentials blob — encrypt at-rest in production
-  version      Int      @default(0)         // increments on each update
+  statePayload Json // credentials blob — encrypt at-rest in production
+  version      Int      @default(0) // increments on each update
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -242,15 +243,15 @@ model Message {
   id          String           @id @default(cuid())
   tenantId    String
   sessionId   String
-  externalId  String?          // WhatsApp-assigned message ID
+  externalId  String? // WhatsApp-assigned message ID
   direction   MessageDirection
   status      MessageStatus    @default(PENDING)
   from        String
   to          String
   body        String?          @db.Text
   mediaUrl    String?
-  mediaType   String?          // image | video | audio | document | sticker
-  rawPayload  Json?            // full original payload for audit / debugging
+  mediaType   String? // image | video | audio | document | sticker
+  rawPayload  Json? // full original payload for audit / debugging
   sentAt      DateTime?
   deliveredAt DateTime?
   readAt      DateTime?
@@ -276,10 +277,10 @@ model Message {
 
 model AuditLog {
   id        String      @id @default(cuid())
-  tenantId  String?     // null for super-admin actions
-  userId    String?     // null for system actions
+  tenantId  String? // null for super-admin actions
+  userId    String? // null for system actions
   action    AuditAction
-  meta      Json?       // contextual data (IDs, previous values, etc.)
+  meta      Json? // contextual data (IDs, previous values, etc.)
   ip        String?
   createdAt DateTime    @default(now())
 
@@ -322,27 +323,27 @@ model ChatContact {
 model ChatConversation {
   id                 String             @id @default(cuid())
   tenantId           String
-  sessionId          String?            // sessão WhatsApp vinculada
-  contactId          String?            // null para conversas de grupo
-  externalChatId     String?            // ID externo da conversa (ex: JID do WhatsApp)
+  sessionId          String? // sessão WhatsApp vinculada
+  contactId          String? // null para conversas de grupo
+  externalChatId     String? // ID externo da conversa (ex: JID do WhatsApp)
   channel            String             @default("whatsapp")
   status             ConversationStatus @default(OPEN)
   unreadCount        Int                @default(0)
   lastMessageAt      DateTime?
   lastMessagePreview String?
-  assignedUserId     String?            // operador responsável
+  assignedUserId     String? // operador responsável
   queueName          String?
   tags               String[]           @default([])
   notes              String?
   // ── Grupos ──────────────────────────────────────────────────────────────
   isGroup            Boolean            @default(false)
-  groupJid           String?            // JID numérico do grupo (sem @g.us)
-  groupName          String?            // nome do grupo exibido ao usuário
-  groupAvatarUrl     String?            // URL pública da foto do grupo
+  groupJid           String? // JID numérico do grupo (sem @g.us)
+  groupName          String? // nome do grupo exibido ao usuário
+  groupAvatarUrl     String? // URL pública da foto do grupo
   autoDownloadMedia  Boolean            @default(false) // baixar mídia automaticamente nesta conversa
   archived           Boolean            @default(false) // espelha o arquivamento no WhatsApp
   pinned             Boolean            @default(false) // espelha a fixação no WhatsApp
-  mutedUntil         DateTime?          // silenciada até; null = com notificações
+  mutedUntil         DateTime? // silenciada até; null = com notificações
   favorite           Boolean            @default(false) // marcação local do painel
   manuallyUnread     Boolean            @default(false) // marcada como não lida pelo operador
   createdAt          DateTime           @default(now())
@@ -369,32 +370,69 @@ model ChatConversation {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ChatMessage {
-  id                String               @id @default(cuid())
-  tenantId          String
-  conversationId    String
-  direction         ChatMessageDirection
-  type              ChatMessageType      @default(TEXT)
-  content           String?              @db.Text
-  mediaUrl          String?
-  mimeType          String?
-  fileName          String?              // Nome do arquivo (documentos)
-  durationSeconds   Int?                 // Duração em segundos (áudio/vídeo)
-  externalMessageId String?              // ID externo (ex: messageId do WhatsApp)
-  status            ChatMessageStatus?
-  isDeleted         Boolean              @default(false)
-  quotedMessageId   String?              // ID da mensagem citada (reply)
-  sentAt            DateTime?
+  id                  String               @id @default(cuid())
+  tenantId            String
+  conversationId      String
+  direction           ChatMessageDirection
+  type                ChatMessageType      @default(TEXT)
+  content             String?              @db.Text
+  mediaUrl            String?
+  mimeType            String?
+  fileName            String? // Nome do arquivo (documentos)
+  durationSeconds     Int? // Duração em segundos (áudio/vídeo)
+  externalMessageId   String? // ID externo (ex: messageId do WhatsApp)
+  status              ChatMessageStatus?
+  isDeleted           Boolean              @default(false)
+  quotedMessageId     String? // ID da mensagem citada (reply)
+  sentAt              DateTime?
   // ── Grupos ──────────────────────────────────────────────────────────────
-  fromParticipant     String?            // phone do remetente dentro do grupo
-  fromParticipantName String?            // nome exibido do remetente no grupo
-  createdAt         DateTime             @default(now())
+  fromParticipant     String? // phone do remetente dentro do grupo
+  fromParticipantName String? // nome exibido do remetente no grupo
+  createdAt           DateTime             @default(now())
 
-  tenant         Tenant           @relation(fields: [tenantId], references: [id])
-  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  quotedMessage  ChatMessage?     @relation("MessageQuote", fields: [quotedMessageId], references: [id])
-  quotedBy       ChatMessage[]    @relation("MessageQuote")
+  tenant        Tenant                @relation(fields: [tenantId], references: [id])
+  conversation  ChatConversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  quotedMessage ChatMessage?          @relation("MessageQuote", fields: [quotedMessageId], references: [id])
+  quotedBy      ChatMessage[]         @relation("MessageQuote")
+  reactions     ChatMessageReaction[]
 
   @@index([tenantId, conversationId])
   @@index([conversationId, createdAt])
+  // Reação recebida e status de entrega resolvem a mensagem pelo id externo.
+  @@index([tenantId, externalMessageId])
   @@map("chat_messages")
+}
+
+// Reação de um autor a uma mensagem. Uma linha por (mensagem, autor); a remoção vira
+// tombstone (emoji NULL) para que eventos fora de ordem ainda tenham com o que comparar.
+model ChatMessageReaction {
+  /// Gerado na aplicação (crypto.randomUUID): a escrita não passa pelo create do Prisma.
+  id           String   @id
+  tenantId     String
+  messageId    String
+  /// NULL = tombstone (reação removida). Nunca string vazia.
+  emoji        String?
+  /// "self" para reações nossas (painel ou celular do operador); senão a identidade crua do
+  /// protocolo, "lid:<id>" ou "pn:<dígitos>" — nunca o telefone resolvido, que pode mudar.
+  reactorKey   String
+  /// Telefone do autor quando conhecido; só exibição.
+  reactorPhone String?
+  /// pushName do autor no momento da reação.
+  reactorName  String?
+  fromMe       Boolean  @default(false)
+  /// key.id da mensagem de reação no WhatsApp.
+  externalId   String?
+  /// Carimbo de ordem (last-write-wins): senderTimestampMs para terceiros, relógio do servidor
+  /// para reações nossas.
+  reactedAt    DateTime
+  createdAt    DateTime @default(now())
+  /// Maior updatedAt da mensagem = revisão do agregado usada pelo painel para ordenar.
+  updatedAt    DateTime @updatedAt
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id])
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, reactorKey])
+  @@index([tenantId, messageId])
+  @@map("chat_message_reactions")
 }
