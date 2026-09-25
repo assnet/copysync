@@ -1,3 +1,4 @@
+import path from 'path';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -42,6 +43,46 @@ const envSchema = z.object({
   REACTION_MAX_PER_MINUTE: z.coerce.number().int().positive().default(30),
   // Reações: intervalo mínimo entre dois envios na mesma mensagem (menor que o do painel).
   REACTION_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(700),
+
+  // Mídia enviada: pasta das partes em upload. Sem valor, derivada de STORAGE_PATH (abaixo).
+  MEDIA_UPLOAD_TMP_PATH: z.string().min(1).optional(),
+  // Mídia enviada: tamanho de cada parte do upload (8 MiB).
+  MEDIA_UPLOAD_CHUNK_BYTES: z.coerce.number().int().positive().default(8_388_608),
+  // Mídia enviada: upload parado há mais que isso é apagado pela varredura.
+  MEDIA_UPLOAD_TTL_MINUTES: z.coerce.number().int().positive().default(120),
+  // Mídia enviada: uploads abertos por usuário (igual ao lote).
+  MEDIA_UPLOAD_MAX_OPEN_PER_USER: z.coerce.number().int().positive().default(30),
+  // Mídia enviada: sem padrão fixo — sem valor, relativos ao tamanho do disco (diskBudget).
+  MEDIA_UPLOAD_MAX_OPEN_BYTES: z.coerce.number().int().positive().optional(),
+  MEDIA_DISK_RESERVE_BYTES: z.coerce.number().int().nonnegative().optional(),
+  // Mídia enviada: folga mínima no /tmp para o processamento (256 MiB).
+  MEDIA_TMP_RESERVE_BYTES: z.coerce.number().int().nonnegative().default(268_435_456),
+  // Mídia enviada: limites por tipo, em decimal como os do WhatsApp.
+  MEDIA_MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(16_000_000),
+  MEDIA_MAX_INLINE_VIDEO_BYTES: z.coerce.number().int().positive().default(180_000_000),
+  MEDIA_MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().default(180_000_000),
+  MEDIA_MAX_VOICE_SECONDS: z.coerce.number().int().positive().default(900),
+  MEDIA_MAX_FILES_PER_BATCH: z.coerce.number().int().positive().default(30),
+  // Mídia enviada: fila de envio ao WhatsApp (total, por sessão e tamanho por sessão).
+  MEDIA_SEND_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  MEDIA_SEND_PER_SESSION: z.coerce.number().int().positive().default(2),
+  MEDIA_SEND_QUEUE_MAX_PER_SESSION: z.coerce.number().int().positive().default(100),
+  // Mídia enviada: processos ffmpeg/ffprobe simultâneos.
+  MEDIA_PROCESS_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  // Mídia enviada: ociosidade do socket no upload ao WhatsApp — não é tempo total.
+  MEDIA_UPLOAD_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // Mídia enviada: janela e teto do registro de eco da própria mídia.
+  MEDIA_ECHO_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
+  MEDIA_ECHO_MAX_PER_SESSION: z.coerce.number().int().positive().default(200),
+  // Mídia enviada: no boot, PENDING antigo vira FAILED. Desligado por padrão porque o
+  // .env local aponta para o banco de produção — ligar só no ambiente que envia de fato.
+  MEDIA_PENDING_RECOVERY_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  MEDIA_PENDING_STALE_MINUTES: z.coerce.number().int().positive().default(60),
+  FFMPEG_PATH: z.string().default('ffmpeg'),
+  FFPROBE_PATH: z.string().default('ffprobe'),
 });
 
 /**
@@ -55,9 +96,21 @@ function reactionEchoCap(e: z.infer<typeof envSchema>): number {
   return e.REACTION_MAX_PER_MINUTE * Math.ceil(e.REACTION_ECHO_TTL_MS / 60_000) * 2;
 }
 
+/**
+ * Pasta das partes em upload — irmã de STORAGE_PATH quando não configurada.
+ *
+ * Mesmo disco (a promoção para a pasta de mídia é um `rename` atômico) e **fora** da raiz
+ * estática, que serviria o upload incompleto. Na Render: `/var/data/media-uploads`; em
+ * desenvolvimento, `api/media-uploads`.
+ */
+function mediaUploadTmpPath(e: z.infer<typeof envSchema>): string {
+  return e.MEDIA_UPLOAD_TMP_PATH ?? path.join(path.dirname(e.STORAGE_PATH), 'media-uploads');
+}
+
 const envWithDerivedSchema = envSchema.transform((e) => ({
   ...e,
   REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
+  MEDIA_UPLOAD_TMP_PATH: mediaUploadTmpPath(e),
 }));
 
 export type Env = z.infer<typeof envWithDerivedSchema>;

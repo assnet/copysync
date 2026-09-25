@@ -5,3 +5,4 @@ startup.log
 .env
 .env.dev
 pnpm-debug.log
+media-uploads/
