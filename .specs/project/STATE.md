@@ -44,6 +44,15 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Resolvidos
 
+- **2026-09-25 — "Responder" não citava no WhatsApp desde março (`fix/chat-reply-quote`, 0.11.1).**
+  `b45f4e7` (2026-03-22) tirou o `quoted` do `sendTextMessage` junto com grupos, mídia e
+  avatares; os outros três voltaram, a citação não. O painel seguia mostrando o bloco citado
+  porque o vínculo é gravado localmente — ninguém notou por seis meses. Restaurada com builder
+  puro (`buildBaileysQuotedMessage`) e teste de contrato contra o `generateWAMessage` real.
+  Segundo achado no smoke (0.11.2): em grupo LID a citação precisa do **LID** do autor — o
+  Baileys usa o número para mensagem nossa (`TODO: Add support for LIDs`). Smoke aprovado.
+  Ver `.specs/quick/001-restaurar-citacao-no-envio/`.
+
 - **2026-09-24 — infra de testes chegava a `develop` por duas linhagens.**
 
   **O que era**: o merge da branch de reações tinha sido feito só localmente e nunca enviado.
@@ -125,6 +134,14 @@ Memória entre sessões: decisões, bloqueios, lições.
   (Docker) e sessão WhatsApp real — `api/.env` aponta para produção.
 
 ## Lições
+
+- **O painel exibir não prova que o WhatsApp recebeu.** Vínculos gravados localmente
+  (citação, e qualquer metadado de envio) aparecem no painel mesmo quando a engine os descarta.
+  Todo recurso de envio precisa de conferência no celular do contato no smoke, e de teste que
+  exercite a lib real onde der (o `generateWAMessage` roda sem socket).
+
+- **Refactor que remove recurso precisa de dívida registrada.** A remoção em lote de
+  `b45f4e7` não deixou rastro de "reply removido" fora da mensagem do commit.
 
 - **`ChatPresenter` escolhe campo a campo.** Os testes unitários dos use cases passavam e a
   listagem ainda descartava `reactions`/`externalMessageId`. Ao adicionar campo em DTO, conferir

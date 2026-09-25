@@ -91,4 +91,41 @@ describe('buildEngineMessageRef', () => {
     const target = { recipientPhone: '5511888888888', contactPhone: null, isGroup: false };
     expect(buildEngineMessageRef(target, mensagem())?.remoteJid).toBe('5511888888888');
   });
+
+  it('citação em grupo de mensagem de outro autor leva o autor como participant', () => {
+    const target = resolveConversationTarget(grupo, null);
+    const ref = buildEngineMessageRef(target, { ...mensagem(), fromParticipant: '5551804625870' });
+    expect(ref?.participant).toBe('5551804625870');
+  });
+
+  it('citação em grupo de mensagem nossa não leva participant', () => {
+    const target = resolveConversationTarget(grupo, null);
+    const ref = buildEngineMessageRef(target, {
+      ...mensagem({ direction: ChatMessageDirection.OUTBOUND }),
+      fromParticipant: '5551804625870',
+    });
+    expect(ref).not.toHaveProperty('participant');
+  });
+
+  it('conversa individual nunca leva participant', () => {
+    const target = resolveConversationTarget(individual, contato);
+    const ref = buildEngineMessageRef(target, { ...mensagem(), fromParticipant: '5551804625870' });
+    expect(ref).not.toHaveProperty('participant');
+  });
+
+  it('mídia citada leva MIME, nome e duração para o preview da citação', () => {
+    const target = resolveConversationTarget(individual, contato);
+    const ref = buildEngineMessageRef(target, {
+      ...mensagem(), type: ChatMessageType.DOCUMENT, content: null,
+      mimeType: 'application/pdf', fileName: 'contrato.pdf', durationSeconds: null,
+    });
+    expect(ref).toMatchObject({ mimeType: 'application/pdf', fileName: 'contrato.pdf' });
+    expect(ref).not.toHaveProperty('durationSeconds');
+  });
+
+  it('grupo sem autor conhecido não inventa participant', () => {
+    const target = resolveConversationTarget(grupo, null);
+    const ref = buildEngineMessageRef(target, { ...mensagem(), fromParticipant: null });
+    expect(ref).not.toHaveProperty('participant');
+  });
 });

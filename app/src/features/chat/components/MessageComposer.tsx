@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Box, TextField, IconButton, Tooltip, Divider, alpha, useTheme, Typography } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import EmojiEmotionsOutlinedIcon from '@mui/icons-material/EmojiEmotionsOutlined';
@@ -33,6 +33,15 @@ export function MessageComposer({ onSend, disabled, replyTo, onCancelReply }: Pr
   const theme = useTheme();
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Responder leva o foco ao campo, como no WhatsApp. No quadro seguinte: fechar o menu da
+  // bolha devolve o foco ao botão que o abriu, e isso roda no mesmo commit desta mudança.
+  const replyToId = replyTo?.id ?? null;
+  useEffect(() => {
+    if (!replyToId || disabled) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [replyToId, disabled]);
 
   const handleSend = () => {
     const trimmed = text.trim();

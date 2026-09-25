@@ -9,8 +9,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
-> **Estado do versionamento (2026-09-24)**: `api/package.json` e `app/package.json` estão em
-> `0.11.0`, mas a única TAG do repositório é `v0.2.0` e a última seção fechada aqui é `[0.2.0]`.
+> **Estado do versionamento (2026-09-25)**: `api/package.json` e `app/package.json` estão em
+> `0.11.2`, mas a única TAG do repositório é `v0.2.0` e a última seção fechada aqui é `[0.2.0]`.
 > Tudo abaixo é trabalho acumulado desde então, atravessando várias versões dos `package.json`
 > sem seção nem TAG correspondente — AGENTS.md §31.3 pede os três lugares em sincronia.
 >
@@ -20,6 +20,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 > com tudo. A segunda é mais honesta com o que de fato foi entregue em bloco.
 >
 > _Remover esta nota ao fechar a primeira seção de versão._
+
+### Fixed
+
+#### Chat — Responder volta a citar a mensagem no WhatsApp (`0.11.1`, `0.11.2`)
+
+Regressão: `b45f4e7` ("simplifica adapter — remove grupos, midia, avatares e reply") tirou o
+`quoted` do envio; grupos, mídia e avatares voltaram depois, a citação não. O painel continuava
+mostrando o bloco citado (vínculo gravado localmente), então a falha só aparecia no celular do
+contato. Versão `0.11.0` → `0.11.1` em `api/` e `app/`.
+
+- **`api/.../engines/baileys/buildBaileysQuotedMessage.ts`** — novo, puro: monta a key e o conteúdo mínimo da citada (nunca vazio — `proto` descarta campo vazio e a lib quebra, lição de `dea6c36`). Não cita quando a referência é de outra conversa (viraria "citação de outro chat") nem em grupo sem autor conhecido (o Baileys atribuiria a citação ao próprio grupo). Teste inclui contrato com o `generateWAMessage` real da lib
+- **`api/.../engines/baileys/BaileysMessagingEngineAdapter.ts`** — `sendTextMessage` passa `{ quoted }`; a citação nunca derruba o envio (sem citação possível, sai sem ela e loga o motivo)
+- **`api/.../messaging/domain/contracts/IMessagingEngine.ts`** — `QuotedMessageRef.participant` (opcional)
+- **`api/.../chat/application/use-cases/resolveConversationTarget.ts`** — referência em grupo leva o autor (`fromParticipant`) quando a citada não é nossa; a reação monta o próprio alvo e não muda
+- **`api/.../chat/application/use-cases/SendMessageUseCase.ts`** — vínculo só com a citada encontrada **nesta** conversa (antes, id não encontrado ia para o `create`, que resolve também por `externalMessageId` em todo o tenant e podia ligar a resposta a outro chat); citada apagada não vai ao WhatsApp (a linha guarda o id da revogação e nenhum conteúdo — o contato veria citação em branco), mas o vínculo no painel continua. Primeiro teste do use case (`SendMessageUseCase.test.ts`), cobrindo citação e o comportamento de envio mantido
+- **`app/src/features/chat/components/MessageBubble.tsx`** — mensagem apagada não oferece "Responder" (botão e menu), como no WhatsApp; primeiro teste do componente (`MessageBubble.test.tsx`)
+
+`0.11.2` — após o primeiro teste em produção (citação de mensagem nossa em grupo não aparecia
+no outro aparelho; foco não ia ao campo):
+
+- **`api/.../engines/baileys/BaileysMessagingEngineAdapter.ts`**, **`buildBaileysQuotedMessage.ts`** — em grupo LID (padrão do Baileys), a citação passa a levar o **LID** do autor, como os clientes oficiais: o da sessão para mensagem nossa (o Baileys usaria o número — `TODO: Add support for LIDs` em `Utils/messages.js`) e o do participante via `lidMapping`. Grupo `pn`, LID não resolvido ou consulta lenta (> 3 s) seguem pelo número. Log `Reply quote attached` com autor e tipo citado, para diagnóstico
+- **`api/.../messaging/domain/contracts/IMessagingEngine.ts`**, **`resolveConversationTarget.ts`** — referência citada leva `mimeType`, `fileName` e `durationSeconds`: o preview da citação de mídia sai com tipo, nome do documento e duração, em vez de vazio
+- **`app/src/features/chat/components/MessageComposer.tsx`** — escolher "Responder" leva o foco ao campo de texto (no quadro seguinte, para não perder para o `Menu`, que devolve o foco ao botão ao fechar); primeiro teste do componente (`MessageComposer.test.tsx`)
 
 ### Added
 

@@ -38,6 +38,17 @@ export interface QuotedMessageRef {
   body: string | null;
   /** Tipo da mensagem citada — usado para montar o proto.IMessage correto */
   type: string;
+  /**
+   * Autor da mensagem citada em grupo, quando não é nossa. Sem ele o WhatsApp atribui a
+   * citação ao próprio grupo — por isso a engine não cita em grupo sem autor.
+   */
+  participant?: string | null;
+  /** MIME da mídia citada — deixa o preview da citação igual ao do cliente oficial. */
+  mimeType?: string | null;
+  /** Nome do documento citado. */
+  fileName?: string | null;
+  /** Duração do áudio/vídeo citado, em segundos. */
+  durationSeconds?: number | null;
 }
 
 export interface SendTextMessageInput {
