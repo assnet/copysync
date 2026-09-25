@@ -582,7 +582,7 @@ Lote em sequência (upload i → confirmação i → i+1). `beforeunload` só co
 
 - Cores só do tema; teste de cada componente no escuro
 - Todo botão de ícone com `Tooltip` do MUI e `aria-label`
-- Cronômetro `role="status"` + `aria-live="polite"`; ondas `aria-hidden`
+- Cronômetro `role="timer"` com rótulo falado (sem `aria-live`: anunciaria a cada segundo); ondas `aria-hidden`
 - Foco inicial na legenda, devolvido ao clipe; alvos ≥ 40 px; `prefers-reduced-motion`
 - Textos em `strings.ts` (`composer`, `attachments`, `voice`, `upload`); literais do composer migram
 - `canReact` exige status fora de `sending`/`failed`
