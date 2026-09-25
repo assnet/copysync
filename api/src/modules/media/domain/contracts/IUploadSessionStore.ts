@@ -24,6 +24,11 @@ export interface UploadSessionRecord {
   externalMessageId: string | null;
   /** Gravado no `finishConsume`: confirmação repetida devolve a mesma mensagem. */
   messageId: string | null;
+  /**
+   * Cancelamento pedido durante o `CONSUMING`: se o consumo for liberado, o upload é descartado
+   * em vez de voltar a `OPEN`. Ausente nos laterais que nunca receberam o pedido.
+   */
+  cancelRequested?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,10 +80,23 @@ export interface IUploadSessionStore {
   beginConsume(uploadId: string, tenantId: string, userId: string): Promise<BeginConsumeResult>;
   /** Só em `CONSUMING`. */
   setExternalId(uploadId: string, externalMessageId: string): Promise<UploadSessionRecord | null>;
-  /** `CONSUMING` → `OPEN`, limpando o id externo. */
+  /**
+   * `CONSUMING` → `OPEN`, limpando o id externo. Com cancelamento pedido, descarta o upload
+   * (como `discard`) e devolve `null`.
+   */
   releaseConsume(uploadId: string): Promise<UploadSessionRecord | null>;
-  /** `CONSUMING` → `CONSUMED` com a mensagem gravada. */
+  /** `CONSUMING` → `CONSUMED` com a mensagem gravada (vale mesmo com cancelamento pedido). */
   finishConsume(uploadId: string, messageId: string): Promise<UploadSessionRecord | null>;
+  /**
+   * Marca `cancelRequested` só em `CONSUMING`, sob o mutex do consumo: se ele for liberado, o
+   * upload é descartado; se terminar, a mensagem sai. `true` = marcou.
+   */
+  requestCancel(uploadId: string): Promise<boolean>;
+  /**
+   * Só em `CONSUMED`: apaga o `.bin` e mantém o lateral (confirmação repetida). Serve à voz, cuja
+   * promoção leva o arquivo transcodificado e deixa o original para trás. Idempotente.
+   */
+  dropBinary(uploadId: string): Promise<void>;
   /** Apaga arquivo e lateral. Idempotente. */
   discard(uploadId: string): Promise<void>;
   /**
@@ -88,10 +106,18 @@ export interface IUploadSessionStore {
   discardIfOpen(uploadId: string): Promise<boolean>;
   listByState(state: UploadSessionState): Promise<UploadSessionRecord[]>;
   /**
-   * Ids com `updatedAt` além do TTL. Arquivo sem lateral legível entra pelo horário de
-   * modificação — cobre a queda entre criar o `.bin` e gravar o lateral.
+   * Ids com `updatedAt` além do TTL — ou além de um TTL curto quando o upload `OPEN` não recebeu
+   * nenhuma parte. `CONSUMING` nunca entra: quem resolve consumo interrompido é a reconciliação
+   * do boot. Arquivo sem lateral legível entra pelo horário de modificação — cobre a queda entre
+   * criar o `.bin` e gravar o lateral. Só candidatos: quem apaga é `discardIfExpired`.
    */
   listExpired(now: Date, ttlMs: number): Promise<string[]>;
+  /**
+   * Apaga como `discard` se o upload **ainda** está expirado pela regra do `listExpired`,
+   * reconferida sob o mutex: parte recebida ou consumo iniciado depois da listagem salva o
+   * upload. Nunca apaga `CONSUMING`. `true` = apagou.
+   */
+  discardIfExpired(uploadId: string, now: Date, ttlMs: number): Promise<boolean>;
   /** Uploads ainda não consumidos (`OPEN`/`CONSUMING`) do usuário no tenant. */
   countOpenByUser(tenantId: string, userId: string): Promise<number>;
   /** Soma de `sizeBytes` de `OPEN`/`CONSUMING`: o `.bin` esparso ainda não ocupa esses blocos. */

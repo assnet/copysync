@@ -5,7 +5,7 @@ import { logger as sharedLogger } from '../../../../shared/logger/logger';
 /** Só o que a varredura usa do store — nada de banco. */
 export type SweepableUploadStore = Pick<
   IUploadSessionStore,
-  'listExpired' | 'discard' | 'diskStats' | 'openReservedBytes'
+  'listExpired' | 'discardIfExpired' | 'diskStats' | 'openReservedBytes'
 >;
 
 /** Só o que a varredura registra; o logger compartilhado (pino) satisfaz. */
@@ -34,8 +34,11 @@ const DEFAULT_INTERVAL_MS = 10 * 60_000;
  * Varredura dos uploads em partes: no boot e a cada intervalo.
  *
  * Apaga (`.bin` + lateral) o que o store dá como expirado — o `listExpired` já cobre o `.bin`
- * sem lateral (pelo `mtime`) e o `CONSUMED`, que guarda só o lateral até o TTL para a
- * confirmação repetida. Depois confere o espaço: livre abaixo de 2× a reserva vira `warn` a
+ * sem lateral (pelo `mtime`), o upload vazio (TTL curto) e o `CONSUMED`, que guarda só o lateral
+ * até o TTL para a confirmação repetida. Cada id é apagado por `discardIfExpired`, que reconfere
+ * sob o mutex: parte recebida ou confirmação iniciada depois da listagem salva o upload, e
+ * `CONSUMING` nunca é apagado (um consumo preso só sai na reconciliação do próximo boot).
+ * Depois confere o espaço: livre abaixo de 2× a reserva vira `warn` a
  * cada varredura, porque a mídia **recebida** grava no mesmo disco e perde o arquivo em
  * silêncio quando falta espaço.
  *
@@ -94,13 +97,14 @@ export class UploadSessionSweeper {
   }
 
   private async removeExpired(): Promise<void> {
-    const expired = await this.options.store.listExpired(this.now(), this.options.ttlMs);
+    const now = this.now();
+    const { store, ttlMs } = this.options;
+    const expired = await store.listExpired(now, ttlMs);
     let removed = 0;
     // Um upload que falha ao apagar não pode prender os demais em toda varredura.
     for (const uploadId of expired) {
       try {
-        await this.options.store.discard(uploadId);
-        removed++;
+        if (await store.discardIfExpired(uploadId, now, ttlMs)) removed++;
       } catch (err) {
         this.log.error({ err, uploadId }, 'Upload sweep failed to discard expired upload');
       }

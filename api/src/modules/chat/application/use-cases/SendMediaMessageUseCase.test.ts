@@ -150,6 +150,7 @@ function makeDeps(o: {
     releaseConsume: track('releaseConsume', async () => ({ ...record, state: 'OPEN' })),
     finishConsume: track('finishConsume', async () => ({ ...record, state: 'CONSUMED' })),
     discard: track('discard', async () => undefined),
+    dropBinary: track('dropBinary', async () => undefined),
     readHead: track('readHead', async () => (o.head === undefined ? JPEG : o.head)),
     binPath: vi.fn(() => BIN),
   };
@@ -229,6 +230,7 @@ describe('SendMediaMessageUseCase — caminho feliz', () => {
     const d = makeDeps();
     await enviar(d);
 
+    // Sem `dropBinary`: fora da voz, a promoção já levou o próprio `.bin`
     expect(d.calls).toEqual([
       'beginConsume', 'createOutboundMessageId', 'setExternalId', 'readHead',
       'promote', 'create', 'finishConsume', 'updateLastMessage', 'enqueue',
@@ -247,6 +249,19 @@ describe('SendMediaMessageUseCase — caminho feliz', () => {
       type: ChatMessageType.DOCUMENT, mimeType: 'application/pdf', fileName: 'contrato.pdf', content: null,
     });
     expect(out.message.type).toBe(ChatMessageType.DOCUMENT);
+  });
+
+  it('documento não passa pelo probe, mesmo quando o conteúdo é vídeo', async () => {
+    const d = makeDeps({
+      record: { purpose: 'document', fileName: 'clipe.mp4', declaredMimeType: 'video/mp4' },
+      head: MP4,
+      probe: async () => { throw new MediaProcessingFailedError(); },
+    });
+    await enviar(d);
+
+    expect(d.processor.probe).not.toHaveBeenCalled();
+    expect(gravado(d)).toMatchObject({ type: ChatMessageType.DOCUMENT, mimeType: 'video/mp4', fileName: 'clipe.mp4' });
+    expect(d.uploads.releaseConsume).not.toHaveBeenCalled();
   });
 
   it('vídeo H.264 yuv420p dentro do limite vai como vídeo com a duração do probe', async () => {
@@ -281,6 +296,33 @@ describe('SendMediaMessageUseCase — vídeo fora do padrão vira documento', ()
     expect(gravado(d).type).toBe(ChatMessageType.DOCUMENT);
   });
 
+  it('arquivo que o ffprobe não consegue ler vai como documento, sem devolver o upload', async () => {
+    const d = makeDeps({
+      record: { fileName: 'clipe.mp4', declaredMimeType: 'video/mp4' },
+      head: MP4,
+      probe: async () => { throw new MediaProcessingFailedError(); },
+    });
+    await enviar(d);
+
+    expect(d.processor.probe).toHaveBeenCalledWith(BIN, 'mov');
+    expect(gravado(d)).toMatchObject({
+      type: ChatMessageType.DOCUMENT, mimeType: 'video/mp4', fileName: 'clipe.mp4', durationSeconds: null,
+    });
+    expect(d.uploads.releaseConsume).not.toHaveBeenCalled();
+  });
+
+  it('erro inesperado no probe não vira documento: devolve o upload e propaga', async () => {
+    const d = makeDeps({
+      record: { fileName: 'clipe.mp4' },
+      head: MP4,
+      probe: async () => { throw new Error('EMFILE'); },
+    });
+
+    await expect(enviar(d)).rejects.toThrow('EMFILE');
+    expect(d.uploads.releaseConsume).toHaveBeenCalledWith(UPLOAD);
+    expect(d.messageRepo.create).not.toHaveBeenCalled();
+  });
+
   it('sem ffprobe o codec é desconhecido: documento, sem chamar o probe', async () => {
     const d = makeDeps({ record: { fileName: 'clipe.mp4' }, head: MP4, caps: { probe: false } });
     await enviar(d);
@@ -309,6 +351,45 @@ describe('SendMediaMessageUseCase — nota de voz', () => {
       type: ChatMessageType.AUDIO, mimeType: 'audio/ogg; codecs=opus', durationSeconds: 7, fileName: null,
     });
     expect(out.message.durationSeconds).toBe(7);
+  });
+
+  it('depois de virar mensagem, apaga o original do upload (o arquivo promovido é o transcodificado)', async () => {
+    const d = makeDeps({ record: { purpose: 'voice' }, head: WEBM });
+    await enviar(d);
+
+    expect(d.uploads.dropBinary).toHaveBeenCalledWith(UPLOAD);
+    expect(d.calls.indexOf('dropBinary')).toBe(d.calls.indexOf('finishConsume') + 1);
+  });
+
+  it('falha ao apagar o original da voz não impede o envio', async () => {
+    const d = makeDeps({ record: { purpose: 'voice' }, head: WEBM });
+    d.uploads.dropBinary.mockRejectedValueOnce(new Error('EBUSY'));
+    const out = await enviar(d);
+
+    expect(d.queue.enqueue).toHaveBeenCalled();
+    expect(out.message.status).toBe(ChatMessageStatus.PENDING);
+  });
+
+  it('ignora a legenda: grava sem texto e a prévia da conversa usa o rótulo do áudio', async () => {
+    const d = makeDeps({ record: { purpose: 'voice' }, head: WEBM });
+    const out = await enviar(d, { caption: 'escuta isso' });
+
+    expect(gravado(d).content).toBeNull();
+    expect(out.message.content).toBeNull();
+    expect(d.conversationRepo.updateLastMessage.mock.calls[0][2].lastMessagePreview).toBe('🎵 Áudio');
+  });
+
+  it('gravação que o ffprobe não lê é recusada e o upload volta a OPEN', async () => {
+    const d = makeDeps({
+      record: { purpose: 'voice' },
+      head: WEBM,
+      probe: async () => { throw new MediaProcessingFailedError(); },
+    });
+
+    await expect(enviar(d)).rejects.toBeInstanceOf(MediaProcessingFailedError);
+    expect(d.processor.transcodeVoiceNote).not.toHaveBeenCalled();
+    expect(d.uploads.releaseConsume).toHaveBeenCalledWith(UPLOAD);
+    expect(d.messageRepo.create).not.toHaveBeenCalled();
   });
 
   it('sem ffmpeg recusa com MEDIA_PROCESSOR_UNAVAILABLE e devolve o upload', async () => {

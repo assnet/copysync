@@ -18,8 +18,12 @@ function fakeStore(lastActivity: Record<string, Date>, freeBytes = 5 * GIB) {
     listExpired: vi.fn(async (now: Date, ttlMs: number) =>
       [...uploads].filter(([, at]) => now.getTime() - at.getTime() > ttlMs).map(([id]) => id),
     ),
-    discard: vi.fn(async (uploadId: string) => {
+    // Reconfere a atividade como o store real: só apaga o que continua vencido.
+    discardIfExpired: vi.fn(async (uploadId: string, now: Date, ttlMs: number) => {
+      const at = uploads.get(uploadId);
+      if (!at || now.getTime() - at.getTime() <= ttlMs) return false;
       uploads.delete(uploadId);
+      return true;
     }),
     diskStats: vi.fn(async () => ({ totalBytes: TOTAL, freeBytes })),
     openReservedBytes: vi.fn(async () => 300 * MIB),
@@ -61,13 +65,30 @@ describe('UploadSessionSweeper', () => {
     await sweeper.runOnce();
 
     expect(store.listExpired).toHaveBeenCalledWith(T0, TTL);
-    expect(store.discard.mock.calls.map(([id]) => id).sort()).toEqual(['abandonado', 'consumidoAntigo']);
+    expect(store.discardIfExpired.mock.calls.map(([id]) => id).sort()).toEqual(['abandonado', 'consumidoAntigo']);
+    expect(store.discardIfExpired).toHaveBeenCalledWith('abandonado', T0, TTL);
     expect([...uploads.keys()].sort()).toEqual(['emAndamento', 'noLimite']);
+  });
+
+  it('upload que voltou a receber partes entre a listagem e o descarte não é apagado', async () => {
+    const { store, uploads } = fakeStore({ retomado: minutesAgo(200), abandonado: minutesAgo(200) });
+    store.listExpired.mockImplementationOnce(async () => {
+      uploads.set('retomado', T0); // parte chegou depois da listagem
+      return ['retomado', 'abandonado'];
+    });
+    const logger = fakeLogger();
+    const sweeper = new UploadSessionSweeper({ store, ttlMs: TTL, now: () => T0, logger });
+
+    await sweeper.runOnce();
+
+    expect(store.discardIfExpired).toHaveBeenCalledWith('retomado', T0, TTL);
+    expect([...uploads.keys()]).toEqual(['retomado']);
+    expect(logger.info).toHaveBeenCalledWith({ removed: 1 }, expect.any(String));
   });
 
   it('um upload que falha ao apagar não impede a limpeza dos outros', async () => {
     const { store, uploads } = fakeStore({ travado: minutesAgo(200), abandonado: minutesAgo(200) });
-    store.discard.mockImplementationOnce(async () => {
+    store.discardIfExpired.mockImplementationOnce(async () => {
       throw new Error('EACCES');
     });
     const logger = fakeLogger();
@@ -75,7 +96,7 @@ describe('UploadSessionSweeper', () => {
 
     await sweeper.runOnce();
 
-    expect(store.discard).toHaveBeenCalledTimes(2);
+    expect(store.discardIfExpired).toHaveBeenCalledTimes(2);
     expect(uploads.size).toBe(1);
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
@@ -133,7 +154,7 @@ describe('UploadSessionSweeper', () => {
 
     release();
     await Promise.all([first, second]);
-    expect(store.discard).toHaveBeenCalledTimes(1);
+    expect(store.discardIfExpired).toHaveBeenCalledTimes(1);
 
     await sweeper.runOnce();
     expect(store.listExpired).toHaveBeenCalledTimes(2);
@@ -172,10 +193,10 @@ describe('UploadSessionSweeper', () => {
     sweeper.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(store.discard).not.toHaveBeenCalled();
+    expect(store.discardIfExpired).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(INTERVAL);
-    expect(store.discard).toHaveBeenCalledWith('abandonado');
+    expect(store.discardIfExpired).toHaveBeenCalledWith('abandonado', T0, TTL);
     sweeper.stop();
   });
 

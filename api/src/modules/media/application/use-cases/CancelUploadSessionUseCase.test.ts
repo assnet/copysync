@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CancelUploadSessionUseCase } from './CancelUploadSessionUseCase';
+import { UploadInProgressError } from '../../../../shared/errors/internal/MediaErrors';
 import type {
   IUploadSessionStore,
   UploadSessionRecord,
@@ -22,10 +23,12 @@ function makeRecord(state: UploadSessionState): UploadSessionRecord {
   };
 }
 
+/** Store falso: `discardIfOpen`/`requestCancel` respondem pelo estado lido, salvo quando o teste troca. */
 function makeDeps(record: UploadSessionRecord | null) {
   const store = {
     get: vi.fn().mockResolvedValue(record),
-    discardIfOpen: vi.fn().mockResolvedValue(true),
+    discardIfOpen: vi.fn().mockResolvedValue(record?.state === 'OPEN'),
+    requestCancel: vi.fn().mockResolvedValue(record?.state === 'CONSUMING'),
   } as unknown as IUploadSessionStore;
   return { useCase: new CancelUploadSessionUseCase(store), store };
 }
@@ -40,6 +43,7 @@ describe('CancelUploadSessionUseCase', () => {
     await expect(run(d)).resolves.toBeUndefined();
     expect(d.store.get).toHaveBeenCalledWith(UPLOAD, TENANT, USER);
     expect(d.store.discardIfOpen).toHaveBeenCalledWith(UPLOAD);
+    expect(d.store.requestCancel).not.toHaveBeenCalled();
   });
 
   it('upload inexistente ou de outro dono: sucesso silencioso, sem descartar nada', async () => {
@@ -58,11 +62,37 @@ describe('CancelUploadSessionUseCase', () => {
     expect(d.store.discardIfOpen).toHaveBeenCalledTimes(1);
   });
 
-  it('upload virando mensagem: não descarta e responde sucesso', async () => {
+  it('upload virando mensagem: pede o cancelamento e avisa com 409 que ele pode já ter saído', async () => {
     const d = makeDeps(makeRecord('CONSUMING'));
 
+    await expect(run(d)).rejects.toBeInstanceOf(UploadInProgressError);
+    expect(d.store.requestCancel).toHaveBeenCalledWith(UPLOAD);
+  });
+
+  it('confirmação que começa entre a leitura e o descarte: pede o cancelamento em vez de apagar', async () => {
+    const d = makeDeps(makeRecord('OPEN'));
+    vi.mocked(d.store.discardIfOpen).mockResolvedValue(false);
+    vi.mocked(d.store.requestCancel).mockResolvedValue(true);
+
+    await expect(run(d)).rejects.toBeInstanceOf(UploadInProgressError);
+    expect(d.store.requestCancel).toHaveBeenCalledWith(UPLOAD);
+  });
+
+  it('consumo que falha e reabre o upload antes do pedido: descarta o que voltou a aberto', async () => {
+    const d = makeDeps(makeRecord('CONSUMING'));
+    vi.mocked(d.store.requestCancel).mockResolvedValue(false);
+    vi.mocked(d.store.discardIfOpen).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
     await expect(run(d)).resolves.toBeUndefined();
-    expect(d.store.discardIfOpen).not.toHaveBeenCalled();
+    expect(d.store.discardIfOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('consumo que termina antes do pedido: sucesso, sem 409', async () => {
+    const d = makeDeps(makeRecord('CONSUMING'));
+    vi.mocked(d.store.requestCancel).mockResolvedValue(false);
+
+    await expect(run(d)).resolves.toBeUndefined();
+    expect(d.store.requestCancel).toHaveBeenCalledWith(UPLOAD);
   });
 
   it('upload já consumido: preserva mensagem, arquivo promovido e lateral', async () => {
@@ -70,5 +100,6 @@ describe('CancelUploadSessionUseCase', () => {
 
     await expect(run(d)).resolves.toBeUndefined();
     expect(d.store.discardIfOpen).not.toHaveBeenCalled();
+    expect(d.store.requestCancel).not.toHaveBeenCalled();
   });
 });

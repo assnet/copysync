@@ -20,6 +20,14 @@ const UPLOAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 const UPLOAD_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(?:bin|json|json\.tmp|voice\.[a-z0-9]+)$/;
 const NOT_CONSUMED: ReadonlySet<UploadSessionState> = new Set(['OPEN', 'CONSUMING']);
 
+/**
+ * TTL de upload `OPEN` que não recebeu nenhuma parte (o configurado vale, se for menor). O painel
+ * cria o upload e já sobe a primeira parte, então upload vazio parado é abandono — e cada um segura
+ * `sizeBytes` na reserva de disco e na cota por usuário até expirar. Limite conhecido: primeira
+ * parte que leve mais que isso para chegar inteira (8 MiB abaixo de ~14 KB/s) perde o upload.
+ */
+export const EMPTY_UPLOAD_TTL_MS = 10 * 60_000;
+
 export interface DiskUploadSessionStoreOptions {
   /** `MEDIA_UPLOAD_TMP_PATH`. */
   dir: string;
@@ -149,12 +157,38 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
     return this.transition(uploadId, 'CONSUMING', { externalMessageId });
   }
 
-  releaseConsume(uploadId: string): Promise<UploadSessionRecord | null> {
-    return this.transition(uploadId, 'CONSUMING', { state: 'OPEN', externalMessageId: null });
+  async releaseConsume(uploadId: string): Promise<UploadSessionRecord | null> {
+    if (!UPLOAD_ID.test(uploadId)) return null;
+    return this.withLock(uploadId, async () => {
+      const record = await this.readRecord(uploadId);
+      if (!record || record.state !== 'CONSUMING') return record;
+      // O painel desistiu durante o consumo: reabrir deixaria o upload parado até o TTL
+      if (record.cancelRequested) {
+        await this.removeFiles(uploadId);
+        return null;
+      }
+      const next = this.touch({ ...record, state: 'OPEN', externalMessageId: null });
+      await this.writeRecord(next);
+      return next;
+    });
   }
 
   finishConsume(uploadId: string, messageId: string): Promise<UploadSessionRecord | null> {
     return this.transition(uploadId, 'CONSUMING', { state: 'CONSUMED', messageId });
+  }
+
+  async requestCancel(uploadId: string): Promise<boolean> {
+    // `transition` só aplica em `CONSUMING` e devolve os outros estados como estão
+    const record = await this.transition(uploadId, 'CONSUMING', { cancelRequested: true });
+    return record?.state === 'CONSUMING';
+  }
+
+  async dropBinary(uploadId: string): Promise<void> {
+    if (!UPLOAD_ID.test(uploadId)) return;
+    await this.withLock(uploadId, async () => {
+      const record = await this.readRecord(uploadId);
+      if (record?.state === 'CONSUMED') await fs.rm(this.filePath(uploadId, 'bin'), { force: true });
+    });
   }
 
   async discard(uploadId: string): Promise<void> {
@@ -179,11 +213,19 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
   async listExpired(now: Date, ttlMs: number): Promise<string[]> {
     const expired: string[] = [];
     for (const [uploadId, files] of await this.listUploadFiles()) {
-      const record = await this.readRecord(uploadId);
-      const lastActivity = record ? Date.parse(record.updatedAt) : await newestMtime(this.dir, files);
-      if (now.getTime() - lastActivity > ttlMs) expired.push(uploadId);
+      if (await this.isExpired(uploadId, files, now, ttlMs)) expired.push(uploadId);
     }
     return expired;
+  }
+
+  async discardIfExpired(uploadId: string, now: Date, ttlMs: number): Promise<boolean> {
+    if (!UPLOAD_ID.test(uploadId)) return false;
+    return this.withLock(uploadId, async () => {
+      const files = (await this.listUploadFiles()).get(uploadId);
+      if (!files || !(await this.isExpired(uploadId, files, now, ttlMs))) return false;
+      await this.removeFiles(uploadId);
+      return true;
+    });
   }
 
   async countOpenByUser(tenantId: string, userId: string): Promise<number> {
@@ -239,11 +281,23 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
     return { sameDevice };
   }
 
+  /**
+   * Regra única da listagem e da reconferência. `CONSUMING` nunca expira: pode estar em plena
+   * promoção, e o interrompido por queda é da reconciliação do boot.
+   */
+  private async isExpired(uploadId: string, files: string[], now: Date, ttlMs: number): Promise<boolean> {
+    const record = await this.readRecord(uploadId);
+    if (record?.state === 'CONSUMING') return false;
+    const lastActivity = record ? Date.parse(record.updatedAt) : await newestMtime(this.dir, files);
+    const empty = record?.state === 'OPEN' && record.receivedParts.length === 0;
+    return now.getTime() - lastActivity > (empty ? Math.min(ttlMs, EMPTY_UPLOAD_TTL_MS) : ttlMs);
+  }
+
   /** Aplica `patch` só se o upload estiver em `from`; em outro estado devolve como está. */
   private async transition(
     uploadId: string,
     from: UploadSessionState,
-    patch: Partial<Pick<UploadSessionRecord, 'state' | 'externalMessageId' | 'messageId'>>,
+    patch: Partial<Pick<UploadSessionRecord, 'state' | 'externalMessageId' | 'messageId' | 'cancelRequested'>>,
   ): Promise<UploadSessionRecord | null> {
     if (!UPLOAD_ID.test(uploadId)) return null;
     return this.withLock(uploadId, async () => {

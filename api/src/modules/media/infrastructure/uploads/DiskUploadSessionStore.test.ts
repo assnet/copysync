@@ -374,6 +374,169 @@ describe('DiskUploadSessionStore', () => {
     }
   });
 
+  it('cancelamento pedido durante o consumo descarta o upload quando o consumo é liberado', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input({ purpose: 'voice' }));
+    await completeUpload(store, uploadId);
+    await store.beginConsume(uploadId, 'tenant-a', 'user-a');
+    await store.setExternalId(uploadId, 'EXT-1');
+    await fs.writeFile(uploadVoiceFilePath(dir, uploadId, 'ogg'), 'opus');
+
+    expect(await store.requestCancel(uploadId)).toBe(true);
+    const lateral = JSON.parse(await fs.readFile(path.join(dir, `${uploadId}.json`), 'utf8'));
+    expect(lateral).toMatchObject({ state: 'CONSUMING', cancelRequested: true });
+
+    expect(await store.releaseConsume(uploadId)).toBeNull();
+    expect(await store.get(uploadId, 'tenant-a', 'user-a')).toBeNull();
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it('cancelamento pedido durante o consumo não impede a mensagem de sair', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input());
+    await completeUpload(store, uploadId);
+    await store.beginConsume(uploadId, 'tenant-a', 'user-a');
+    await store.requestCancel(uploadId);
+
+    expect(await store.finishConsume(uploadId, 'msg-1')).toMatchObject({ state: 'CONSUMED', messageId: 'msg-1' });
+    expect(await store.beginConsume(uploadId, 'tenant-a', 'user-a')).toMatchObject({
+      outcome: 'consumed',
+      messageId: 'msg-1',
+    });
+  });
+
+  it('pedido de cancelamento enfileirado antes da liberação vence: o upload não reabre', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input());
+    await completeUpload(store, uploadId);
+    await store.beginConsume(uploadId, 'tenant-a', 'user-a');
+
+    const [marcou, liberado] = await Promise.all([store.requestCancel(uploadId), store.releaseConsume(uploadId)]);
+
+    expect(marcou).toBe(true);
+    expect(liberado).toBeNull();
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it('pedir cancelamento fora do consumo não marca nada', async () => {
+    const store = makeStore();
+    const aberto = await store.create(input());
+    const consumido = await store.create(input());
+    await completeUpload(store, consumido.uploadId);
+    await store.beginConsume(consumido.uploadId, 'tenant-a', 'user-a');
+    await store.finishConsume(consumido.uploadId, 'msg-1');
+
+    expect(await store.requestCancel(aberto.uploadId)).toBe(false);
+    expect(await store.requestCancel(consumido.uploadId)).toBe(false);
+    expect(await store.requestCancel('1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed')).toBe(false);
+    expect(await store.requestCancel(`../${aberto.uploadId}`)).toBe(false);
+
+    expect(await store.get(aberto.uploadId, 'tenant-a', 'user-a')).not.toHaveProperty('cancelRequested');
+    // Sem marca, a liberação devolve o upload para aberto normalmente
+    const outro = await store.create(input());
+    await completeUpload(store, outro.uploadId);
+    await store.beginConsume(outro.uploadId, 'tenant-a', 'user-a');
+    expect(await store.releaseConsume(outro.uploadId)).toMatchObject({ state: 'OPEN' });
+  });
+
+  it('depois que a voz vira mensagem, apaga o original e mantém o lateral da confirmação repetida', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input({ purpose: 'voice' }));
+    await completeUpload(store, uploadId);
+    await store.beginConsume(uploadId, 'tenant-a', 'user-a');
+    await store.finishConsume(uploadId, 'msg-1');
+
+    await store.dropBinary(uploadId);
+
+    expect(await fs.readdir(dir)).toEqual([`${uploadId}.json`]);
+    expect(await store.beginConsume(uploadId, 'tenant-a', 'user-a')).toMatchObject({
+      outcome: 'consumed',
+      messageId: 'msg-1',
+    });
+    await expect(store.dropBinary(uploadId)).resolves.toBeUndefined();
+  });
+
+  it('não apaga o original de upload aberto ou em consumo', async () => {
+    const store = makeStore();
+    const aberto = await store.create(input({ purpose: 'voice' }));
+    const consumindo = await store.create(input({ purpose: 'voice' }));
+    await completeUpload(store, consumindo.uploadId);
+    await store.beginConsume(consumindo.uploadId, 'tenant-a', 'user-a');
+
+    await store.dropBinary(aberto.uploadId);
+    await store.dropBinary(consumindo.uploadId);
+    await store.dropBinary(`../${aberto.uploadId}`);
+
+    expect(await store.readHead(aberto.uploadId, 4)).not.toBeNull();
+    expect(await store.readHead(consumindo.uploadId, 4)).not.toBeNull();
+  });
+
+  it('upload sem nenhuma parte recebida expira em 10 minutos, não no TTL', async () => {
+    const store = makeStore();
+    const vazio = await store.create(input());
+    const comParte = await store.create(input());
+    await store.writePart(comParte.uploadId, 0, part(0));
+
+    expect(await store.listExpired(new Date(T0.getTime() + 10 * MINUTE), 120 * MINUTE)).toEqual([]);
+    expect(await store.listExpired(new Date(T0.getTime() + 11 * MINUTE), 120 * MINUTE)).toEqual([vazio.uploadId]);
+    // TTL configurado abaixo de 10 minutos vale também para o upload vazio
+    expect((await store.listExpired(new Date(T0.getTime() + 6 * MINUTE), 5 * MINUTE)).sort()).toEqual(
+      [vazio.uploadId, comParte.uploadId].sort(),
+    );
+  });
+
+  it('upload em consumo nunca é dado como expirado', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input());
+    await completeUpload(store, uploadId);
+    await store.beginConsume(uploadId, 'tenant-a', 'user-a');
+    const muitoDepois = new Date(T0.getTime() + 500 * MINUTE);
+
+    expect(await store.listExpired(muitoDepois, 120 * MINUTE)).toEqual([]);
+    expect(await store.discardIfExpired(uploadId, muitoDepois, 120 * MINUTE)).toBe(false);
+    expect(await store.readHead(uploadId, 4)).not.toBeNull();
+  });
+
+  it('descarte por expiração reconfere a atividade: upload que recebeu parte depois da listagem fica', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input());
+    await store.writePart(uploadId, 0, part(0));
+    const agora = new Date(T0.getTime() + 121 * MINUTE);
+    expect(await store.listExpired(agora, 120 * MINUTE)).toEqual([uploadId]);
+
+    clock = agora;
+    await store.writePart(uploadId, 1, part(1));
+
+    expect(await store.discardIfExpired(uploadId, agora, 120 * MINUTE)).toBe(false);
+    expect((await store.get(uploadId, 'tenant-a', 'user-a'))?.receivedParts).toEqual([0, 1]);
+  });
+
+  it('descarte por expiração apaga arquivo, lateral e nota de voz do upload vencido', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input({ purpose: 'voice' }));
+    await store.writePart(uploadId, 0, part(0));
+    await fs.writeFile(uploadVoiceFilePath(dir, uploadId, 'ogg'), 'opus');
+
+    expect(await store.discardIfExpired(uploadId, new Date(T0.getTime() + 121 * MINUTE), 120 * MINUTE)).toBe(true);
+    expect(await fs.readdir(dir)).toEqual([]);
+    expect(await store.discardIfExpired(uploadId, new Date(T0.getTime() + 121 * MINUTE), 120 * MINUTE)).toBe(false);
+    expect(await store.discardIfExpired(`../${uploadId}`, new Date(), 0)).toBe(false);
+  });
+
+  it('descarte por expiração de arquivo sem lateral usa o horário de modificação', async () => {
+    const store = makeStore();
+    const staleId = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
+    const freshId = '6ec0bd7f-11c0-43da-975e-2a8ad9ebae0b';
+    await fs.writeFile(path.join(dir, `${staleId}.bin`), '');
+    await fs.writeFile(path.join(dir, `${freshId}.bin`), '');
+    const old = new Date(Date.now() - 200 * MINUTE);
+    await fs.utimes(path.join(dir, `${staleId}.bin`), old, old);
+
+    expect(await store.discardIfExpired(staleId, new Date(), 120 * MINUTE)).toBe(true);
+    expect(await store.discardIfExpired(freshId, new Date(), 120 * MINUTE)).toBe(false);
+    expect(await fs.readdir(dir)).toEqual([`${freshId}.bin`]);
+  });
+
   it('lê o começo do arquivo para identificar o tipo', async () => {
     const store = makeStore();
     const { uploadId } = await store.create(input());

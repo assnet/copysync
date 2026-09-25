@@ -5,6 +5,7 @@ import type { ChatMessage } from '../../domain/entities/ChatMessage';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import type {
   IUploadSessionStore,
+  UploadPurpose,
   UploadSessionRecord,
 } from '../../../media/domain/contracts/IUploadSessionStore';
 import type { IMediaProcessor } from '../../../media/domain/contracts/IMediaProcessor';
@@ -17,6 +18,7 @@ import {
 } from '../../domain/enums/ChatMessageEnums';
 import { buildMessagePreview } from '../../domain/services/buildMessagePreview';
 import { sniffMediaType, type MediaDemuxer } from '../../../media/domain/services/sniffMediaType';
+import type { MediaProbe } from '../../../media/domain/services/parseProbeOutput';
 import {
   classifyOutboundMedia,
   type OutboundMediaKind,
@@ -25,6 +27,7 @@ import {
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
 import {
+  MediaProcessingFailedError,
   MediaProcessorUnavailableError,
   UnsupportedMediaTypeError,
   UploadIncompleteError,
@@ -127,7 +130,9 @@ export class SendMediaMessageUseCase {
     }
 
     // 7. Grava PENDING. Só falha de banco chega aqui: desfaz arquivo e upload (painel sobe de novo)
-    const caption = input.caption || null;
+    const isVoice = begun.record.purpose === 'voice';
+    // Nota de voz não leva legenda no WhatsApp: gravar o texto mostraria no painel o que não saiu
+    const caption = isVoice ? null : input.caption || null;
     let message: ChatMessage;
     try {
       message = await messageRepo.create({
@@ -152,6 +157,10 @@ export class SendMediaMessageUseCase {
 
     // 8–9. Mensagem já existe: falha aqui não pode impedir o envio (reconciliação cobre o lateral)
     await this.quietly('Falha ao concluir upload', uploadId, () => uploads.finishConsume(uploadId, message.id));
+    // Voz promoveu o transcodificado: o original ficaria na pasta até o TTL. Só age em `CONSUMED`
+    if (isVoice) {
+      await this.quietly('Falha ao apagar o original da nota de voz', uploadId, () => uploads.dropBinary(uploadId));
+    }
     await this.quietly('Falha ao atualizar prévia da conversa', uploadId, () =>
       conversationRepo.updateLastMessage(conversationId, tenantId, {
         lastMessagePreview: buildMessagePreview(prepared.type, caption),
@@ -200,7 +209,9 @@ export class SendMediaMessageUseCase {
     const head = await uploads.readHead(uploadId, SNIFF_BYTES);
     if (!srcPath || !head) throw new UploadNotFoundError(undefined, { uploadId });
     const sniffed = sniffMediaType(head, record.declaredMimeType);
-    const probe = sniffed.demuxer && caps.probe ? await processor.probe(srcPath, sniffed.demuxer) : null;
+    const probe = sniffed.demuxer && caps.probe
+      ? await this.probeSource(uploadId, record.purpose, srcPath, sniffed.demuxer)
+      : null;
     const { kind, mimeType } = classifyOutboundMedia({
       purpose: record.purpose, sniffed, sizeBytes: record.sizeBytes, probe, limits,
     });
@@ -219,6 +230,27 @@ export class SendMediaMessageUseCase {
       durationSeconds: kind === 'video' ? probe?.durationSeconds ?? null : null,
       file,
     };
+  }
+
+  /**
+   * Documento não usa o probe (vai como está). Em "fotos e vídeos", arquivo que o ffprobe não lê
+   * segue sem probe e a classificação o manda como documento. Voz exige o probe: sem ele não há
+   * como saber se existe áudio.
+   */
+  private async probeSource(
+    uploadId: string,
+    purpose: UploadPurpose,
+    srcPath: string,
+    demuxer: MediaDemuxer,
+  ): Promise<MediaProbe | null> {
+    if (purpose === 'document') return null;
+    try {
+      return await this.deps.processor.probe(srcPath, demuxer);
+    } catch (err) {
+      if (purpose !== 'media' || !(err instanceof MediaProcessingFailedError)) throw err;
+      logger.warn({ err, uploadId }, 'Probe falhou — mídia segue como documento');
+      return null;
+    }
   }
 
   /** Transcodifica, lê a duração da saída e promove; a saída parcial é apagada se algo falhar. */

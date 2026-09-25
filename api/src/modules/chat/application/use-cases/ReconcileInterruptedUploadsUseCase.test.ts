@@ -26,8 +26,11 @@ function makeUseCase(opts: {
   consumindo: UploadSessionRecord[];
   /** Mensagens gravadas, por `externalMessageId` (tenant na chave para provar o filtro). */
   mensagens?: Record<string, { id: string }>;
+  /** Uploads cujo `.bin` ainda está na pasta de uploads (os demais foram promovidos). */
+  comArquivo?: string[];
   falhaLista?: boolean;
 }) {
+  const comArquivo = new Set(opts.comArquivo ?? []);
   const mensagens = opts.mensagens ?? {};
   const findByExternalId = vi.fn().mockImplementation(
     async (externalId: string, tenantId: string) => mensagens[`${tenantId}:${externalId}`] ?? null,
@@ -47,6 +50,8 @@ function makeUseCase(opts: {
     finishConsume: vi.fn().mockResolvedValue(null),
     releaseConsume: vi.fn().mockResolvedValue(null),
     discard: vi.fn().mockResolvedValue(undefined),
+    dropBinary: vi.fn().mockResolvedValue(undefined),
+    readHead: vi.fn(async (uploadId: string) => (comArquivo.has(uploadId) ? new Uint8Array([1]) : null)),
   };
   const useCase = new ReconcileInterruptedUploadsUseCase(
     uploads as unknown as IUploadSessionStore,
@@ -90,7 +95,7 @@ describe('ReconcileInterruptedUploadsUseCase', () => {
     expect(uploads.discard).toHaveBeenCalledWith('up-1');
   });
 
-  it('upload sem mensagem gravada é descartado (o painel sobe o arquivo de novo)', async () => {
+  it('upload promovido sem mensagem gravada é descartado (o painel sobe o arquivo de novo)', async () => {
     const { useCase, uploads } = makeUseCase({
       consumindo: [upload('up-1', { externalMessageId: 'EXT-1' })],
     });
@@ -105,6 +110,36 @@ describe('ReconcileInterruptedUploadsUseCase', () => {
       expect.objectContaining({ uploadId: 'up-1', externalMessageId: 'EXT-1' }),
       expect.any(String),
     );
+  });
+
+  it('upload sem mensagem mas com o arquivo intacto volta a aceitar a confirmação, sem descartar', async () => {
+    const { useCase, uploads } = makeUseCase({
+      consumindo: [upload('up-1', { externalMessageId: 'EXT-1' })],
+      comArquivo: ['up-1'],
+    });
+
+    await useCase.execute();
+
+    expect(uploads.readHead).toHaveBeenCalledWith('up-1', expect.any(Number));
+    expect(uploads.releaseConsume).toHaveBeenCalledWith('up-1');
+    expect(uploads.discard).not.toHaveBeenCalled();
+    expect(uploads.finishConsume).not.toHaveBeenCalled();
+  });
+
+  it('nota de voz concluída no boot também apaga o original, que a promoção não levou', async () => {
+    const { useCase, uploads } = makeUseCase({
+      consumindo: [
+        upload('voz', { purpose: 'voice', externalMessageId: 'EXT-1' }),
+        upload('foto', { externalMessageId: 'EXT-2' }),
+      ],
+      mensagens: { 'tenant-1:EXT-1': { id: 'msg-1' }, 'tenant-1:EXT-2': { id: 'msg-2' } },
+    });
+
+    await useCase.execute();
+
+    expect(uploads.finishConsume).toHaveBeenCalledWith('voz', 'msg-1');
+    expect(uploads.dropBinary).toHaveBeenCalledTimes(1);
+    expect(uploads.dropBinary).toHaveBeenCalledWith('voz');
   });
 
   it('upload que caiu antes de receber o id do WhatsApp volta a aceitar a confirmação', async () => {
