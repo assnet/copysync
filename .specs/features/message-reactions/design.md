@@ -164,7 +164,7 @@ await prisma.$transaction(async (tx) => {
   const current = await tx.chatMessageReaction.findUnique({ where: { messageId_reactorKey } });
   if (current && current.tenantId !== tenantId) throw …; // defesa multi-tenant
   const decision = decideReactionWrite(current && toDomain(current), input); // regra pura
-  if (decision.write) await tx.chatMessageReaction.upsert(…);                // id: randomUUID()
+  if (decision.applied) await tx.chatMessageReaction.upsert(…);                // id: randomUUID()
   return decision; // { applied, changed }
 }, { maxWait: 2_000, timeout: 5_000 });
 ```

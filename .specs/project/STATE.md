@@ -108,7 +108,28 @@ Memória entre sessões: decisões, bloqueios, lições.
   WhatsApp entrega `unreadCount: null` para conversa já lida (`chat-utils.js:707`), então sem essa
   fonte o passivo acumulado antes da conexão ficava para sempre.
 
+- **Reações — i18n pendente.** Textos centralizados em `app/src/features/chat/strings.ts`, prontos
+  para extração. O que o `emoji-picker-react` não expõe por prop fica em inglês ("No results found",
+  alguns `aria-label`).
+
+- **Reações vindas do history sync fora de escopo.** Só `messages.reaction` em tempo real é
+  ingerido; sem backfill.
+
+- **`MessageBubble` sem `memo`.** Uma reação re-renderiza a lista inteira da conversa
+  (item "sem re-render da lista" da T21 não cumprido).
+
+- **`handleLoadMore` no `ChatPage` fecha sobre `messages` velho.** Bug pré-existente; atenuado
+  para reações por `keepNewerReactions`, não corrigido.
+
+- **Smoke de reações (T23) e de envio após o refactor da T8 pendentes.** Exigem banco local
+  (Docker) e sessão WhatsApp real — `api/.env` aponta para produção.
+
 ## Lições
+
+- **`ChatPresenter` escolhe campo a campo.** Os testes unitários dos use cases passavam e a
+  listagem ainda descartava `reactions`/`externalMessageId`. Ao adicionar campo em DTO, conferir
+  os pontos de integração: presenter e payload WS (`chat.message.created`).
+
 
 - **Ler a lib não substitui rodar com sessão real.** A semântica de `unreadCount` foi lida direto do
   código do Baileys e ainda assim faltou o caso que mais importa: `isInitialSync && read` emite
