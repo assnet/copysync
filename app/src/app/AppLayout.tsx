@@ -20,6 +20,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
 import { useUiGuards } from '@/security/useUiGuards';
+import { OutgoingMediaProvider } from '@/features/chat/media/OutgoingMediaProvider';
+import { VoiceRecorderHost } from '@/features/chat/media/VoiceRecorderProvider';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -392,7 +394,7 @@ export function AppLayout() {
     }),
   };
 
-  return (
+  const layout = (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       {/* AppBar mobile */}
       <AppBar
@@ -522,6 +524,14 @@ export function AppLayout() {
         </Box>
       </Box>
     </Box>
+  );
+
+  // Envio de mídia e gravador de voz acima das rotas: sair da tela do chat não cancela envio
+  // nem gravação (a gravação vira rascunho da conversa). Logout e troca de tenant limpam tudo.
+  return (
+    <OutgoingMediaProvider>
+      <VoiceRecorderHost>{layout}</VoiceRecorderHost>
+    </OutgoingMediaProvider>
   );
 }
 

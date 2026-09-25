@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Box, Typography, TextField, InputAdornment, Divider, Button, Chip, IconButton, ListItemButton, alpha, useTheme } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -56,7 +57,9 @@ interface Props {
   onOpenActions?: (conversationId: string, anchor: HTMLElement) => void;
 }
 
-export function ConversationSidebar({
+// Memoizada: a página re-renderiza com o progresso de envio e as mensagens da conversa aberta;
+// com props estáveis, a lista de conversas não acompanha.
+export const ConversationSidebar = memo(function ConversationSidebar({
   conversations,
   selectedId,
   onSelect,
@@ -329,4 +332,4 @@ export function ConversationSidebar({
       </Box>
     </Box>
   );
-}
+});

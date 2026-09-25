@@ -1,9 +1,13 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { memo, useEffect, useRef, useCallback, useState } from 'react';
 import { Box, CircularProgress, Typography, Fab, alpha, useTheme } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import type { ChatMessage } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { formatDateSeparator } from '../utils';
+
+// Com callbacks estáveis e a mesma mensagem, a bolha não re-renderiza: o progresso de um envio
+// re-renderiza só a bolha dele, não a conversa inteira.
+const MessageBubbleMemo = memo(MessageBubble);
 
 interface Props {
   messages: ChatMessage[];
@@ -193,7 +197,7 @@ export function MessageList({
               }
             >
               {showDateSep && <DateSeparator label={formatDateSeparator(msg.timestamp)} />}
-              <MessageBubble
+              <MessageBubbleMemo
                 message={msg}
                 onReply={onReply}
                 onParticipantClick={onParticipantClick}

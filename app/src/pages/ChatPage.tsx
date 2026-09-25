@@ -14,7 +14,7 @@ import {
   apiMessageToFrontend,
   apiReactionToFrontend,
 } from '@/types/chat.api.types';
-import type { UpdateConversationRequest } from '@/types/chat.api.types';
+import type { ChatMessageApiDto, UpdateConversationRequest } from '@/types/chat.api.types';
 import { formatLastMessagePreview, byPinnedThenRecent } from '@/features/chat/utils';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { ConversationSidebar } from '@/features/chat/components/ConversationSidebar';
@@ -40,9 +40,11 @@ import {
 import type { ReactionDispatchEvent } from '@/features/chat/reactionDispatcher';
 import { useReactionDispatcher } from '@/features/chat/useReactionDispatcher';
 import { chatStrings } from '@/features/chat/strings';
-import { useOutgoingMedia, type OutgoingMediaInput } from '@/features/chat/media/useOutgoingMedia';
+import { useOutgoingMedia, useOutgoingMediaItems } from '@/features/chat/media/OutgoingMediaProvider';
+import { overlayOutgoing } from '@/features/chat/media/outgoingMediaState';
 import { useMediaUploadConfig } from '@/features/chat/media/useMediaUploadConfig';
-import { VoiceRecorderProvider, type VoiceNoticeSeverity } from '@/features/chat/media/VoiceRecorderProvider';
+import { useVoiceRecorderBinding, type VoiceNoticeSeverity } from '@/features/chat/media/VoiceRecorderProvider';
+import { mergeLatestMessages, upsertConfirmedMessage } from '@/features/chat/messagesMerge';
 import type { AttachmentSendItem } from '@/features/chat/components/AttachmentPreviewPanel';
 
 // Altura da área de conteúdo: viewport - topbar (52px) - padding vertical (sm=48px, md=64px)
@@ -67,6 +69,14 @@ function resolveQuotedMessages(msgs: ChatMessage[]): ChatMessage[] {
     if (!m.quotedMessageId) return m;
     const q = byId.get(m.quotedMessageId);
     if (!q) return m;
+    // Mesma prévia → mesmo objeto: a bolha memoizada não re-renderiza a cada render da página.
+    const cur = m.quotedMessage;
+    if (
+      cur && cur.id === q.id && cur.type === q.type && cur.body === q.body &&
+      cur.mediaUrl === q.mediaUrl && cur.direction === q.direction && cur.isDeleted === q.isDeleted
+    ) {
+      return m;
+    }
     const quotedMessage: QuotedMessagePreview = {
       id:        q.id,
       type:      q.type,
@@ -142,23 +152,22 @@ export default function ChatPage() {
     setScrollSignal((prev) => ({ n: prev.n + 1, smooth }));
   }, []);
 
-  // ── Envio de mídia (bolhas em envio vivem no hook, sobrepostas na renderização) ──
+  // ── Envio de mídia (bolhas vivem no `OutgoingMediaProvider` do layout, sobrepostas aqui) ──
   const mediaUpload = useMediaUploadConfig();
+  // Confirmações que chegaram com a conversa sem cache (GET de abertura em voo): entram na mescla
+  // do GET. Criar um cache parcial aqui faria a abertura pular o fetch.
+  const confirmedBeforeLoadRef = useRef<Record<string, ChatMessage[]>>({});
 
   /** Mensagem real do 202/200. Pode já estar na lista (refetch): troca em vez de anexar. */
   const handleMediaConfirmed = useCallback((conversationId: string, message: ChatMessage) => {
+    if (!messagesRef.current[conversationId]) {
+      const stash = confirmedBeforeLoadRef.current;
+      stash[conversationId] = upsertConfirmedMessage(stash[conversationId] ?? [], message);
+    }
     setMessages((prev) => {
       const cur = prev[conversationId];
-      // Conversa sem cache: o GET ao abrir traz a mensagem (mesma regra do WS).
       if (!cur) return prev;
-      const index = cur.findIndex((m) => m.id === message.id);
-      if (index < 0) return { ...prev, [conversationId]: [...cur, message] };
-      const existing = cur[index];
-      // A lista pode ter status mais novo que o do 202 (ainda `sending`).
-      const next = message.status === 'sending' && existing.status !== 'sending'
-        ? { ...message, status: existing.status }
-        : message;
-      return { ...prev, [conversationId]: cur.map((m, i) => (i === index ? next : m)) };
+      return { ...prev, [conversationId]: upsertConfirmedMessage(cur, message) };
     });
     const preview = formatLastMessagePreview(message.type, message.body);
     setConversations((prev) =>
@@ -177,8 +186,28 @@ export default function ChatPage() {
     discard: discardMediaUpload,
     retryServerMessage,
     onWsStatus: onMediaWsStatus,
-    overlay: overlayOutgoingMedia,
-  } = useOutgoingMedia({ onConfirmed: handleMediaConfirmed });
+  } = useOutgoingMedia(handleMediaConfirmed);
+  // Só as bolhas da conversa aberta: progresso de outra conversa não re-renderiza a página.
+  const outgoingItems = useOutgoingMediaItems(selectedId);
+
+  /**
+   * Página mais recente do GET (abertura ou resync) mesclada à lista local: mídia confirmada e
+   * texto enviado com o GET em voo não somem. A paginação recomeça da página nova.
+   */
+  const applyLatestPage = useCallback((conversationId: string, items: ChatMessageApiDto[]) => {
+    const fetched = items.map(apiMessageToFrontend);
+    const stashed = confirmedBeforeLoadRef.current[conversationId] ?? [];
+    delete confirmedBeforeLoadRef.current[conversationId];
+    setMessages((prev) => {
+      const local = stashed.reduce((list, m) => upsertConfirmedMessage(list, m), prev[conversationId] ?? []);
+      const merged = resolveQuotedMessages(mergeLatestMessages(local, fetched));
+      return { ...prev, [conversationId]: keepNewerReactions(prev[conversationId], merged) };
+    });
+    setHasMore((prev) => ({ ...prev, [conversationId]: items.length >= PAGE_SIZE }));
+    if (fetched.length > 0) {
+      setOldestTimestamp((prev) => ({ ...prev, [conversationId]: fetched[0].timestamp }));
+    }
+  }, []);
 
   const loadSessions = useCallback(() => {
     sessionService
@@ -325,6 +354,22 @@ export default function ChatPage() {
   useEffect(() => () => {
     if (markAsReadTimer.current) clearTimeout(markAsReadTimer.current);
   }, []);
+
+  /**
+   * Volta do WS (queda, aba dormindo): os frames perdidos não são reenviados. Recarrega a lista,
+   * a conversa aberta (mídia que ficou `sending` sem o `status.updated`) com a mesma mescla da
+   * abertura, e descarta o cache das outras — perderam os mesmos frames; reabrir busca de novo.
+   */
+  const handleResync = useCallback(() => {
+    void loadConversations();
+    const openId = selectedIdRef.current;
+    setMessages((prev) => (openId && prev[openId] ? { [openId]: prev[openId] } : {}));
+    if (!openId) return;
+    chatService
+      .listMessages(openId, { limit: PAGE_SIZE })
+      .then((items) => applyLatestPage(openId, items))
+      .catch((err: unknown) => console.error('Erro ao recarregar mensagens', err));
+  }, [loadConversations, applyLatestPage]);
 
   // ── Tempo real via WebSocket ───────────────────────────────────────────────
   useChatWebSocket(
@@ -548,8 +593,8 @@ export default function ChatPage() {
       },
       [loadConversations, loadSessions, showArchived, scheduleMarkAsRead, onMediaWsStatus],
     ),
-    // Frames perdidos durante a queda não são reenviados: ao voltar, recarrega a lista.
-    { onResync: loadConversations },
+    // Frames perdidos durante a queda não são reenviados: ao voltar, recarrega.
+    { onResync: handleResync },
   );
 
   const selectedConversation = selectedId
@@ -561,11 +606,11 @@ export default function ChatPage() {
     () =>
       selectedId
         ? overlayPending(
-            resolveQuotedMessages(overlayOutgoingMedia(selectedId, messages[selectedId] ?? [])),
+            resolveQuotedMessages(overlayOutgoing(messages[selectedId] ?? [], outgoingItems)),
             pendingReactions,
           )
         : [],
-    [selectedId, messages, pendingReactions, overlayOutgoingMedia],
+    [selectedId, messages, pendingReactions, outgoingItems],
   );
 
   const handleSelectConversation = useCallback(
@@ -589,8 +634,9 @@ export default function ChatPage() {
       // Subscribe to presence updates for this contact
       chatService.subscribePresence(id).catch(() => {});
 
-      // Carrega mensagens se já estiver em cache — apenas dispara scroll
-      if (messages[id]) {
+      // Carrega mensagens se já estiver em cache — apenas dispara scroll. Pela ref: a
+      // callback fica estável e a lista de conversas (memoizada) não re-renderiza à toa.
+      if (messagesRef.current[id]) {
         requestScroll(false);
         return;
       }
@@ -599,18 +645,13 @@ export default function ChatPage() {
       chatService
         .listMessages(id, { limit: PAGE_SIZE })
         .then((items) => {
-          const mapped = resolveQuotedMessages(items.map(apiMessageToFrontend));
-          setMessages((prev) => ({ ...prev, [id]: keepNewerReactions(prev[id], mapped) }));
-          setHasMore((prev) => ({ ...prev, [id]: items.length >= PAGE_SIZE }));
-          if (mapped.length > 0) {
-            setOldestTimestamp((prev) => ({ ...prev, [id]: mapped[0].timestamp }));
-          }
+          applyLatestPage(id, items);
           requestScroll(false);
         })
         .catch((err: unknown) => console.error('Erro ao carregar mensagens', err))
         .finally(() => setLoadingMessages(false));
     },
-    [messages],
+    [applyLatestPage, requestScroll],
   );
 
   // ── Reações (estado otimista + envio agrupado; regras em reactionsState) ────
@@ -775,13 +816,12 @@ export default function ChatPage() {
     [selectedId, enqueueMedia, requestScroll],
   );
 
-  /** Nota de voz do gravador: mesma fila dos anexos; rola ao fim se a conversa ainda está aberta. */
-  const handleEnqueueVoice = useCallback(
-    (conversationId: string, items: OutgoingMediaInput[]) => {
-      enqueueMedia(conversationId, items);
+  /** Nota de voz do gravador (no layout) entrou na fila: rola ao fim se a conversa ainda está aberta. */
+  const handleVoiceEnqueued = useCallback(
+    (conversationId: string) => {
       if (selectedIdRef.current === conversationId) requestScroll(true);
     },
-    [enqueueMedia, requestScroll],
+    [requestScroll],
   );
 
   const handleCancelUpload = useCallback((message: ChatMessage) => cancelMediaUpload(message.id), [cancelMediaUpload]);
@@ -974,7 +1014,30 @@ export default function ChatPage() {
     [conversations, handleSelectConversation, selectedId, selectedSessionId, connectedSessions, loadConversations],
   );
 
-  const page = (
+  // Gravador de voz do layout: a conversa aberta chega a ele; sair da página (ou da conversa)
+  // gravando guarda o áudio como rascunho dela.
+  useVoiceRecorderBinding({
+    activeConversationId: selectedConversation?.id ?? null,
+    available: mediaUpload.config?.capabilities.voiceNotes === true,
+    maxSeconds: mediaUpload.config?.maxVoiceSeconds,
+    onNotice: showNotice,
+    onEnqueued: handleVoiceEnqueued,
+  });
+
+  // Callbacks estáveis para a lista de conversas memoizada.
+  const openNewConversation = useCallback(() => setNewConversationOpen(true), []);
+  const openConversationActions = useCallback(
+    (id: string, anchor: HTMLElement) => setActionsFor({ id, anchor }),
+    [],
+  );
+  const handleToggleArchived = useCallback((show: boolean) => {
+    setShowArchived(show);
+    // Sair de uma conversa arquivada ao trocar de visão evita mostrar uma
+    // conversa que não pertence à lista exibida.
+    setSelectedId(null);
+  }, []);
+
+  return (
     <Box
       sx={{
         display: 'flex',
@@ -1007,11 +1070,7 @@ export default function ChatPage() {
         conversations={conversations}
         selectedId={selectedId}
         onSelect={handleSelectConversation}
-        sessions={connectedSessions.map((session) => ({
-          id: session.id,
-          name: session.name,
-          phone: session.phone,
-        }))}
+        sessions={sessionOptions}
         selectedSessionId={selectedSessionId}
         onSessionChange={setSelectedSessionId}
         search={search}
@@ -1022,14 +1081,9 @@ export default function ChatPage() {
         presenceMap={presenceMap}
         archivedCount={archivedCount}
         showArchived={showArchived}
-        onNewConversation={() => setNewConversationOpen(true)}
-        onOpenActions={(id, anchor) => setActionsFor({ id, anchor })}
-        onToggleArchived={(show) => {
-          setShowArchived(show);
-          // Sair de uma conversa arquivada ao trocar de visão evita mostrar uma
-          // conversa que não pertence à lista exibida.
-          setSelectedId(null);
-        }}
+        onNewConversation={openNewConversation}
+        onOpenActions={openConversationActions}
+        onToggleArchived={handleToggleArchived}
       />
       </Box>
 
@@ -1163,19 +1217,5 @@ export default function ChatPage() {
         ) : undefined}
       </Snackbar>
     </Box>
-  );
-
-  // Gravador de voz acima da árvore do chat: re-renderiza só quem o consome (o composer), e
-  // trocar ou perder a conversa aberta guarda a gravação como rascunho dela.
-  return (
-    <VoiceRecorderProvider
-      activeConversationId={selectedConversation?.id ?? null}
-      available={mediaUpload.config?.capabilities.voiceNotes === true}
-      maxSeconds={mediaUpload.config?.maxVoiceSeconds}
-      enqueue={handleEnqueueVoice}
-      onNotice={showNotice}
-    >
-      {page}
-    </VoiceRecorderProvider>
   );
 }

@@ -105,6 +105,27 @@ export function applyEarlyStatus(message: ChatMessage, earlyStatusById: Record<s
   return { ...message, status: early.status };
 }
 
+/** Último `PROGRESS` despachado de um item; `at` em ms. */
+export interface ReportedProgress {
+  progress: number;
+  at: number;
+}
+
+/** ~4 atualizações por segundo por item: cada despacho re-renderiza a conversa aberta. */
+export const PROGRESS_MIN_INTERVAL_MS = 250;
+
+/** Limita o `PROGRESS`: avanço de ≥ 1 ponto e intervalo mínimo; o 100% sai na hora. */
+export function shouldReportProgress(last: ReportedProgress | undefined, progress: number, now: number): boolean {
+  if (!last) return true;
+  if (progress - last.progress < 1) return false;
+  return progress >= 100 || now - last.at >= PROGRESS_MIN_INTERVAL_MS;
+}
+
+/** Envio que ainda pode seguir (inclui parado em `network`/`session`): fechar a aba perde o `File`. */
+export function hasPendingSend(state: OutgoingMediaState): boolean {
+  return Object.values(state.byConversation).some((items) => items.some((i) => i.error !== 'rejected'));
+}
+
 /** Lista renderizada: servidor + bolhas ao fim, na ordem de criação (onde a mensagem real entrará). */
 export function overlayOutgoing(
   serverMessages: ChatMessage[],

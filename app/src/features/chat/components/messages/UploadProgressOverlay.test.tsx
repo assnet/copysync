@@ -60,6 +60,19 @@ describe('UploadProgressOverlay — confirmação ou PENDING do servidor', () =>
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: t.cancel })).not.toBeInTheDocument();
   });
+
+  it('não captura cliques: a mídia por baixo continua tocável (PENDING do servidor)', async () => {
+    renderWithTheme(<UploadProgressOverlay />);
+
+    // O user-event recusa clicar em elemento com `pointer-events: none` — o clique vai para a mídia.
+    await expect(userEvent.click(screen.getByText(t.sending))).rejects.toThrow(/pointer-events/);
+  });
+
+  it('com upload em andamento o véu segue bloqueando a mídia', async () => {
+    renderWithTheme(<UploadProgressOverlay progress={10} onCancel={vi.fn()} />);
+
+    await expect(userEvent.click(screen.getByText(t.progress(10)))).resolves.toBeUndefined();
+  });
 });
 
 describe('UploadProgressOverlay — tema escuro', () => {

@@ -14,6 +14,8 @@ const RING = 44;
 /**
  * Véu sobre a mídia da bolha em envio (design §14). O pai precisa ser `position: relative`.
  * Anel + cancelar ficam numa pílula escura própria: o contraste não depende da mídia por baixo.
+ * Indeterminado (confirmação ou `PENDING` do servidor) não tem o que clicar: o véu deixa o clique
+ * passar para tocar ou abrir a mídia.
  */
 export function UploadProgressOverlay({ progress, onCancel }: Props) {
   const theme = useTheme();
@@ -35,6 +37,7 @@ export function UploadProgressOverlay({ progress, onCancel }: Props) {
         justifyContent: 'center',
         borderRadius: 1.5,
         bgcolor: alpha(black, isDark ? 0.4 : 0.28),
+        ...(!determinate && { pointerEvents: 'none' }),
       }}
     >
       <Box

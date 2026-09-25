@@ -4,9 +4,12 @@ import {
   EARLY_STATUS_TTL_MS,
   applyEarlyStatus,
   failureKind,
+  hasPendingSend,
   initialOutgoingMediaState,
   overlayOutgoing,
+  PROGRESS_MIN_INTERVAL_MS,
   reduceOutgoingMedia,
+  shouldReportProgress,
   type OutgoingMediaEvent,
   type OutgoingMediaState,
 } from './outgoingMediaState';
@@ -276,5 +279,43 @@ describe('robustez do redutor', () => {
     const r = reduceOutgoingMedia(cancelado, { type: 'CONFIRMED', tmpId: 'tmp-1', message: real('m-1') });
     expect(r.confirmed?.id).toBe('m-1');
     expect(r.revoke).toEqual([]);
+  });
+});
+
+describe('shouldReportProgress — frequência do progresso na bolha', () => {
+  it('o primeiro valor de cada upload sempre sai', () => {
+    expect(shouldReportProgress(undefined, 0, 1_000)).toBe(true);
+  });
+
+  it('avanço de ao menos 1 ponto sai só depois do intervalo mínimo (~4 por segundo)', () => {
+    const ultimo = { progress: 10, at: 1_000 };
+    expect(shouldReportProgress(ultimo, 15, 1_000 + PROGRESS_MIN_INTERVAL_MS - 1)).toBe(false);
+    expect(shouldReportProgress(ultimo, 15, 1_000 + PROGRESS_MIN_INTERVAL_MS)).toBe(true);
+  });
+
+  it('menos de 1 ponto de avanço não sai, mesmo com o intervalo vencido', () => {
+    expect(shouldReportProgress({ progress: 10, at: 0 }, 10.5, 60_000)).toBe(false);
+    expect(shouldReportProgress({ progress: 10, at: 0 }, 9, 60_000)).toBe(false);
+  });
+
+  it('o 100% sai na hora, sem esperar o intervalo', () => {
+    expect(shouldReportProgress({ progress: 97, at: 1_000 }, 100, 1_001)).toBe(true);
+    expect(shouldReportProgress({ progress: 100, at: 1_000 }, 100, 9_000)).toBe(false);
+  });
+});
+
+describe('hasPendingSend — aviso ao fechar a aba', () => {
+  it('sem bolhas não avisa', () => {
+    expect(hasPendingSend(initialOutgoingMediaState)).toBe(false);
+  });
+
+  it('envio andando ou parado em rede/sessão avisa: sair perde o arquivo', () => {
+    expect(hasPendingSend(subindo)).toBe(true);
+    expect(hasPendingSend(run(subindo, { type: 'FAILED', tmpId: 'tmp-1', kind: 'network' }))).toBe(true);
+    expect(hasPendingSend(run(confirmando, { type: 'FAILED', tmpId: 'tmp-1', kind: 'session' }))).toBe(true);
+  });
+
+  it('só bolhas recusadas (resta descartar) não avisa', () => {
+    expect(hasPendingSend(run(subindo, { type: 'FAILED', tmpId: 'tmp-1', kind: 'rejected' }))).toBe(false);
   });
 });

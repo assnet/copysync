@@ -1,20 +1,36 @@
 /**
- * Gravador de voz do chat, compartilhado pela página (design §14, "Gravador"; MEDIA-11..14, 31).
+ * Gravador de voz do chat (design §14, "Gravador"; MEDIA-11..14, 31).
  *
- * Existe para duas coisas que o composer sozinho não resolve:
+ * Existe para três coisas que o composer sozinho não resolve:
  * - **Desempenho**: o hook re-renderiza a cada ~100 ms gravando. Hospedado aqui, com `children`
- *   estável vindo da página, só quem consome o contexto (o composer) re-renderiza — a lista de
- *   conversas e as mensagens não.
+ *   estável, só quem consome o contexto (o composer) re-renderiza — a lista de conversas e as
+ *   mensagens não.
  * - **Rascunho por conversa**: trocar ou perder a seleção gravando (inclusive arquivamento
- *   vindo do WS) encerra, libera o microfone e guarda o áudio da conversa. Ao voltar, a barra
- *   abre em rascunho (ouvir, enviar ou descartar; sem retomar). Outra conversa grava do zero.
+ *   vindo do WS, ou sair da tela do chat) encerra, libera o microfone e guarda o áudio da
+ *   conversa. Ao voltar, a barra abre em rascunho (ouvir, enviar ou descartar; sem retomar).
+ *   Outra conversa grava do zero.
+ * - **Vida além da página**: o `VoiceRecorderHost` fica no `AppLayout`; o `ChatPage` só informa
+ *   a conversa aberta (`useVoiceRecorderBinding`). Rascunhos e notas de voz em envio sobrevivem à
+ *   troca de página; logout e troca de tenant descartam tudo (`mediaAccountScope`).
  *
  * O hook grava uma conversa por vez (a "dona"); os rascunhos ficam num mapa por conversa, fora
  * do hook, com `File` e URL de pré-escuta próprios.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+  type ReactNode,
+} from 'react';
 import { chatStrings } from '../strings';
-import type { OutgoingMedia } from './useOutgoingMedia';
+import { mediaAccountScope } from './mediaAccountScope';
+import { useOutgoingMedia, type OutgoingMedia } from './OutgoingMediaProvider';
 import { useVoiceRecorder } from './useVoiceRecorder';
 import {
   initialVoiceRecorderState,
@@ -97,7 +113,7 @@ export interface VoiceRecorderProviderProps {
   available: boolean;
   /** `maxVoiceSeconds` da configuração de upload. */
   maxSeconds?: number;
-  /** Fila de envio de mídia da página (`useOutgoingMedia().enqueue`). */
+  /** Fila de envio de mídia (`useOutgoingMedia().enqueue`). */
   enqueue: OutgoingMedia['enqueue'];
   /** Aviso ao operador (snackbar da página). */
   onNotice: (message: string, severity: VoiceNoticeSeverity) => void;
@@ -146,6 +162,8 @@ export function VoiceRecorderProvider({
   const [detaching, setDetaching] = useState<Detaching | null>(null);
   const detachRef = useRef<Promise<void> | null>(null);
   const activeRef = useRef(activeConversationId);
+  /** Sobe a cada troca de conta: gravação que termina depois não vira rascunho nem envio. */
+  const accountEpochRef = useRef(0);
 
   const setOwner = useCallback((conversationId: string | null) => {
     ownerRef.current = conversationId;
@@ -188,6 +206,7 @@ export function VoiceRecorderProvider({
         return;
       }
       setDetaching({ conversationId, state: draftState(before.elapsedMs, before.previewUnsupported), levels });
+      const epoch = accountEpochRef.current;
       const run = (async () => {
         try {
           await toDraft();
@@ -198,7 +217,7 @@ export function VoiceRecorderProvider({
           // Tira o áudio do hook (fica livre para outra conversa). Curta demais volta `null`:
           // sai sem aviso — o operador já está em outra conversa.
           const file = await stop();
-          if (!file) return;
+          if (!file || accountEpochRef.current !== epoch) return;
           const draft: VoiceDraft = {
             file,
             previewUrl: URL.createObjectURL(file),
@@ -228,12 +247,25 @@ export function VoiceRecorderProvider({
     if (current !== null && current !== activeConversationId) detach(current);
   }, [activeConversationId, detach]);
 
-  // Rascunhos não sobrevivem à página; o hook solta o microfone sozinho ao desmontar.
+  // Rascunhos não sobrevivem ao provider (logout); o hook solta o microfone sozinho ao desmontar.
   useEffect(
     () => () => {
       draftsRef.current.forEach((draft) => URL.revokeObjectURL(draft.previewUrl));
     },
     [],
+  );
+
+  // Troca de conta: gravação e rascunhos da conta anterior não seguem para a próxima.
+  useEffect(
+    () =>
+      mediaAccountScope.subscribe(() => {
+        accountEpochRef.current += 1;
+        discardRecording();
+        draftsRef.current.forEach((draft) => URL.revokeObjectURL(draft.previewUrl));
+        updateDrafts((map) => map.clear());
+        setOwner(null);
+      }),
+    [discardRecording, setOwner, updateDrafts],
   );
 
   const start = useCallback(async () => {
@@ -260,6 +292,7 @@ export function VoiceRecorderProvider({
       const conversationId = activeRef.current;
       if (!conversationId) return false;
       if (detachRef.current) await detachRef.current;
+      const epoch = accountEpochRef.current;
 
       let file: File | null;
       const draft = draftsRef.current.get(conversationId);
@@ -279,6 +312,7 @@ export function VoiceRecorderProvider({
         }
       }
 
+      if (accountEpochRef.current !== epoch) return false;
       callbacksRef.current.enqueue(conversationId, [
         { file, classification: 'voice', quotedMessageId: quotedMessageId ?? undefined },
       ]);
@@ -348,6 +382,114 @@ export function VoiceRecorderProvider({
   );
 
   return <VoiceRecorderContext.Provider value={value}>{children}</VoiceRecorderContext.Provider>;
+}
+
+// ── Hospedagem no layout ───────────────────────────────────────────────────────
+
+/** O que a página do chat informa ao gravador montado no layout. */
+export interface VoiceRecorderBinding {
+  /** Conversa aberta; ao desmontar a página vira `null` (gravando → rascunho). */
+  activeConversationId: string | null;
+  available: boolean;
+  maxSeconds?: number;
+  /** Aviso ao operador (snackbar da página). Sem página montada, o aviso é descartado. */
+  onNotice: (message: string, severity: VoiceNoticeSeverity) => void;
+  /** Nota de voz entrou na fila (a página rola ao fim se a conversa ainda estiver aberta). */
+  onEnqueued?: (conversationId: string) => void;
+}
+
+type PageState = Pick<VoiceRecorderBinding, 'activeConversationId' | 'available' | 'maxSeconds'>;
+type PageListeners = Pick<VoiceRecorderBinding, 'onNotice' | 'onEnqueued'>;
+
+interface VoiceRecorderHostLink {
+  setPage: (page: PageState) => void;
+  listeners: RefObject<PageListeners | null>;
+}
+
+const NO_PAGE: PageState = { activeConversationId: null, available: false };
+
+const VoiceRecorderHostContext = createContext<VoiceRecorderHostLink | null>(null);
+
+/**
+ * Gravador no `AppLayout`, dentro do `OutgoingMediaProvider`: trocar de página gravando guarda o
+ * rascunho e a nota de voz em envio segue. Re-renderiza só quando a página muda a conversa aberta
+ * ou a configuração — `children` estável não re-renderiza com ele.
+ */
+export function VoiceRecorderHost({ children }: { children: ReactNode }) {
+  const { enqueue } = useOutgoingMedia();
+  const [page, setPageState] = useState<PageState>(NO_PAGE);
+  const listeners = useRef<PageListeners | null>(null);
+
+  const link = useMemo<VoiceRecorderHostLink>(
+    () => ({
+      setPage: (next) =>
+        setPageState((prev) =>
+          prev.activeConversationId === next.activeConversationId &&
+          prev.available === next.available &&
+          prev.maxSeconds === next.maxSeconds
+            ? prev
+            : next,
+        ),
+      listeners,
+    }),
+    [],
+  );
+
+  const handleEnqueue = useCallback<OutgoingMedia['enqueue']>(
+    (conversationId, items) => {
+      enqueue(conversationId, items);
+      listeners.current?.onEnqueued?.(conversationId);
+    },
+    [enqueue],
+  );
+  const handleNotice = useCallback((message: string, severity: VoiceNoticeSeverity) => {
+    listeners.current?.onNotice(message, severity);
+  }, []);
+
+  return (
+    <VoiceRecorderHostContext.Provider value={link}>
+      <VoiceRecorderProvider
+        activeConversationId={page.activeConversationId}
+        available={page.available}
+        maxSeconds={page.maxSeconds}
+        enqueue={handleEnqueue}
+        onNotice={handleNotice}
+      >
+        {children}
+      </VoiceRecorderProvider>
+    </VoiceRecorderHostContext.Provider>
+  );
+}
+
+/**
+ * Liga a página ao gravador do layout. Efeitos de layout: a conversa nova chega ao provider antes
+ * da pintura — o composer dela não mostra, nem por um quadro, a barra da anterior. Sem
+ * `VoiceRecorderHost` acima, não faz nada.
+ */
+export function useVoiceRecorderBinding({
+  activeConversationId,
+  available,
+  maxSeconds,
+  onNotice,
+  onEnqueued,
+}: VoiceRecorderBinding): void {
+  const link = useContext(VoiceRecorderHostContext);
+
+  useLayoutEffect(() => {
+    if (link) link.listeners.current = { onNotice, onEnqueued };
+  });
+
+  useLayoutEffect(() => {
+    link?.setPage({ activeConversationId, available, maxSeconds });
+  }, [link, activeConversationId, available, maxSeconds]);
+
+  useLayoutEffect(() => {
+    if (!link) return;
+    return () => {
+      link.listeners.current = null;
+      link.setPage(NO_PAGE);
+    };
+  }, [link]);
 }
 
 function draftState(elapsedMs: number, previewUnsupported: boolean): VoiceRecorderState {
