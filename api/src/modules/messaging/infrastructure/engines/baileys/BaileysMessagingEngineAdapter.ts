@@ -47,6 +47,7 @@ import { translateDisconnect, translateEngineError, translateSendError } from '.
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import { outboundEchoRegistries } from './outboundEchoRegistries';
+import { isOwnOutboundEcho } from './isOwnOutboundEcho';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { buildBaileysMediaContent } from './buildBaileysMediaContent';
@@ -962,6 +963,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     for (const msg of msgs) {
       if (!msg) continue;
       const key = msg.key ?? msg?.message?.key;
+      // Eco da mídia enviada pelo painel: já está gravada (PENDING) e baixá-la traria o
+      // arquivo inteiro de volta em Buffer. Mídia enviada pelo celular não está no registro.
+      if (isOwnOutboundEcho(key, (id) => outboundEchoRegistries().media.consume(sessionId, id))) {
+        baileysLogger.debug({ sessionId, id: key.id }, 'Skipping own media echo');
+        continue;
+      }
       const jidRaw: string | undefined = key?.remoteJid;
       if (!jidRaw) continue;
       if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
