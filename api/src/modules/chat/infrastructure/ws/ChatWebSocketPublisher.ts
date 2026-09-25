@@ -29,6 +29,8 @@ export type ChatWsEvent =
           createdAt: string;
           fromParticipant?: string | null;
           fromParticipantName?: string | null;
+          /** Id no WhatsApp: o painel só oferece reagir quando ele existe. */
+          externalMessageId: string | null;
         };
         unreadCount: number;
         isNewConversation: boolean;
