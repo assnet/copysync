@@ -73,11 +73,10 @@ export function MessageReactions({ reactions, onToggle }: Props) {
                 m: 0,
                 borderRadius: 999,
                 border: '1px solid',
-                borderColor: r.reactedByMe ? accent : theme.palette.divider,
-                // Segunda linha de borda: destaque que não depende só da cor.
-                boxShadow: r.reactedByMe
-                  ? `inset 0 0 0 1px ${accent}, ${theme.shadows[1]}`
-                  : theme.shadows[1],
+                // Borda neutra em todos os chips; a reação própria se distingue pelo fundo,
+                // pelo peso da contagem e por aria-pressed — sem anel colorido.
+                borderColor: theme.palette.divider,
+                boxShadow: theme.shadows[1],
                 bgcolor: r.reactedByMe
                   ? alpha(accent, isDark ? 0.28 : 0.12)
                   : theme.palette.background.paper,
