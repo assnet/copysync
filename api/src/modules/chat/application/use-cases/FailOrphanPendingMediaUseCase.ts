@@ -36,8 +36,14 @@ export class FailOrphanPendingMediaUseCase {
     await this.failAndPublish('boot', { olderThan: this.now() });
   }
 
-  /** Varredura periódica: só os antigos, poupando o que a fila ainda está enviando. */
-  async runPeriodic(inFlightIds: string[]): Promise<void> {
+  /**
+   * Varredura periódica: só os antigos, poupando o que a fila ainda está enviando.
+   *
+   * Recebe a consulta à fila, não a lista: o repositório a chama entre a seleção e a escrita.
+   * Uma foto tirada aqui deixaria de fora o reenvio que entra na fila durante a seleção — a
+   * mensagem sairia para o contato marcada como `FAILED`, e um novo reenvio a duplicaria.
+   */
+  async runPeriodic(inFlightIds: () => readonly string[]): Promise<void> {
     if (!this.config.enabled) return;
     const olderThan = new Date(this.now().getTime() - this.config.staleMinutes * 60_000);
     await this.failAndPublish('periodic', { olderThan, excludeIds: inFlightIds });

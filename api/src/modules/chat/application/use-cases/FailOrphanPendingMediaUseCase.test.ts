@@ -18,10 +18,18 @@ const AFETADAS: FailedPendingMessage[] = [
   { id: 'msg-2', tenantId: 'tenant-2', conversationId: 'conv-9' },
 ];
 
-function makeUseCase(opts: { enabled: boolean; afetadas?: FailedPendingMessage[]; falhaBanco?: boolean }) {
-  const failPending = opts.falhaBanco
-    ? vi.fn().mockRejectedValue(new Error('conexão perdida'))
-    : vi.fn().mockResolvedValue(opts.afetadas ?? AFETADAS);
+function makeUseCase(opts: {
+  enabled: boolean;
+  afetadas?: FailedPendingMessage[];
+  falhaBanco?: boolean;
+  /** Implementação própria do repositório, para emular a ordem seleção → escrita. */
+  failPending?: IChatMessageRepository['failPending'];
+}) {
+  const failPending = opts.failPending
+    ? vi.fn(opts.failPending)
+    : opts.falhaBanco
+      ? vi.fn().mockRejectedValue(new Error('conexão perdida'))
+      : vi.fn().mockResolvedValue(opts.afetadas ?? AFETADAS);
   // Registra qualquer acesso ao repositório: com a flag desligada, nenhum pode acontecer.
   const acessos: string[] = [];
   const messageRepo = new Proxy({ failPending } as unknown as IChatMessageRepository, {
@@ -53,10 +61,12 @@ describe('FailOrphanPendingMediaUseCase', () => {
 
     it('na varredura periódica não toca o banco nem publica nada', async () => {
       const { useCase, acessos, publisher } = makeUseCase({ enabled: false });
+      const emEnvio = vi.fn(() => ['msg-3']);
 
-      await useCase.runPeriodic(['msg-3']);
+      await useCase.runPeriodic(emEnvio);
 
       expect(acessos).toEqual([]);
+      expect(emEnvio).not.toHaveBeenCalled();
       expect(publisher.publishStatusUpdated).not.toHaveBeenCalled();
     });
   });
@@ -87,13 +97,47 @@ describe('FailOrphanPendingMediaUseCase', () => {
 
     it('na varredura falha só as pendentes além do limite e poupa as que estão sendo enviadas', async () => {
       const { useCase, failPending, publisher } = makeUseCase({ enabled: true, afetadas: [AFETADAS[0]] });
+      const emEnvio = vi.fn(() => ['msg-7', 'msg-8']);
 
-      await useCase.runPeriodic(['msg-7', 'msg-8']);
+      await useCase.runPeriodic(emEnvio);
 
+      // A consulta à fila vai inteira para o repositório: quem a avalia é ele, após a seleção
       expect(failPending).toHaveBeenCalledWith({
         olderThan: new Date('2026-09-25T11:00:00.000Z'),
-        excludeIds: ['msg-7', 'msg-8'],
+        excludeIds: emEnvio,
       });
+      expect(emEnvio).not.toHaveBeenCalled();
+      expect(publisher.publishStatusUpdated).toHaveBeenCalledTimes(1);
+      expect(publisher.publishStatusUpdated).toHaveBeenCalledWith({
+        tenantId: 'tenant-1', conversationId: 'conv-1', messageId: 'msg-1', status: ChatMessageStatus.FAILED,
+      });
+    });
+
+    it('na varredura poupa a mensagem que entra em envio entre a seleção e a escrita', async () => {
+      // Reenvio de mensagem antiga: volta a PENDING com o createdAt original e entra na fila
+      // enquanto a seleção da varredura ainda está no banco. Uma foto tirada antes da seleção
+      // não o conteria, e a mensagem sairia para o contato marcada como FAILED.
+      const naFila = new Set<string>();
+      const ordem: string[] = [];
+      const { useCase, publisher } = makeUseCase({
+        enabled: true,
+        // Emula o contrato do repositório: seleciona, e só então pergunta à fila quem poupar
+        failPending: async ({ excludeIds }) => {
+          ordem.push('seleção');
+          const selecionadas = AFETADAS;
+          naFila.add('msg-2');
+          const poupadas = new Set(typeof excludeIds === 'function' ? excludeIds() : excludeIds);
+          ordem.push('escrita');
+          return selecionadas.filter((m) => !poupadas.has(m.id));
+        },
+      });
+
+      await useCase.runPeriodic(() => {
+        ordem.push('fila consultada');
+        return [...naFila];
+      });
+
+      expect(ordem).toEqual(['seleção', 'fila consultada', 'escrita']);
       expect(publisher.publishStatusUpdated).toHaveBeenCalledTimes(1);
       expect(publisher.publishStatusUpdated).toHaveBeenCalledWith({
         tenantId: 'tenant-1', conversationId: 'conv-1', messageId: 'msg-1', status: ChatMessageStatus.FAILED,
@@ -104,7 +148,7 @@ describe('FailOrphanPendingMediaUseCase', () => {
       const { useCase, publisher } = makeUseCase({ enabled: true, afetadas: [] });
 
       await useCase.runBoot();
-      await useCase.runPeriodic([]);
+      await useCase.runPeriodic(() => []);
 
       expect(publisher.publishStatusUpdated).not.toHaveBeenCalled();
     });
@@ -121,7 +165,7 @@ describe('FailOrphanPendingMediaUseCase', () => {
     it('falha do banco na varredura só vai para o log e não derruba o agendamento', async () => {
       const { useCase } = makeUseCase({ enabled: true, falhaBanco: true });
 
-      await expect(useCase.runPeriodic(['msg-1'])).resolves.toBeUndefined();
+      await expect(useCase.runPeriodic(() => ['msg-1'])).resolves.toBeUndefined();
 
       expect(logger.error).toHaveBeenCalledTimes(1);
     });

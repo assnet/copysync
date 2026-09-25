@@ -167,14 +167,17 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
     // Sem `tenantId` de propósito: varredura do processo sobre todos os tenants
     // (boot e rotina periódica), exceção explícita ao AGENTS.md §36.8. Não expor em rota.
     const select = { id: true, tenantId: true, conversationId: true } as const;
-    const candidates = await this.prisma.chatMessage.findMany({
-      where: {
-        status: 'PENDING',
-        createdAt: { lt: input.olderThan },
-        ...(input.excludeIds?.length ? { id: { notIn: input.excludeIds } } : {}),
-      },
+    const selected = await this.prisma.chatMessage.findMany({
+      where: { status: 'PENDING', createdAt: { lt: input.olderThan } },
       select,
     });
+    // Exclusão avaliada só agora, depois da seleção e logo antes da escrita: um reenvio que
+    // entrou na fila enquanto o `findMany` rodava também é poupado. Sem `await` entre a
+    // consulta e o `updateMany`, nada entra na fila no meio.
+    const excluded = new Set(
+      typeof input.excludeIds === 'function' ? input.excludeIds() : (input.excludeIds ?? []),
+    );
+    const candidates = selected.filter((c) => !excluded.has(c.id));
     if (candidates.length === 0) return [];
 
     const ids = candidates.map((c) => c.id);

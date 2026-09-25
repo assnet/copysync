@@ -47,8 +47,12 @@ export interface ChatMessageCreateData {
 export interface FailPendingInput {
   /** Só mensagens criadas antes deste instante. */
   olderThan: Date;
-  /** Ids que ainda estão sendo enviados neste processo e não podem falhar. */
-  excludeIds?: string[];
+  /**
+   * Ids que ainda estão sendo enviados neste processo e não podem falhar. Como função, é
+   * avaliada depois da seleção e logo antes da escrita: poupa também o que entrou na fila
+   * durante a leitura (ex.: reenvio de mensagem antiga). Uma lista é uma foto e não cobre isso.
+   */
+  excludeIds?: readonly string[] | (() => readonly string[]);
 }
 
 export interface FailedPendingMessage {
@@ -87,7 +91,7 @@ export interface IChatMessageRepository {
   ): Promise<ChatMessage | null>;
   /**
    * Marca como `FAILED` as mensagens `PENDING` criadas antes de `olderThan`, fora de
-   * `excludeIds`, e devolve as que mudaram. Varredura do processo (boot e rotina
+   * `excludeIds` (consultado entre a seleção e a escrita), e devolve as que mudaram. Varredura do processo (boot e rotina
    * periódica): atravessa todos os tenants por natureza, por isso não recebe `tenantId`
    * — exceção explícita ao AGENTS.md §36.8. Não use em fluxo de requisição.
    */

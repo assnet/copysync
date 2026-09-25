@@ -134,7 +134,8 @@ async function start(): Promise<void> {
   let pendingMediaSweep: NodeJS.Timeout | null = null;
   if (env.MEDIA_PENDING_RECOVERY_ENABLED) {
     pendingMediaSweep = setInterval(() => {
-      void failOrphanPendingMedia.runPeriodic(chatMediaContainer.queue.inFlightIds());
+      // A consulta, não a foto: o repositório a chama entre a seleção e a escrita
+      void failOrphanPendingMedia.runPeriodic(() => chatMediaContainer.queue.inFlightIds());
     }, PENDING_MEDIA_SWEEP_INTERVAL_MS);
     pendingMediaSweep.unref();
   }
