@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { DiskUploadSessionStore } from './DiskUploadSessionStore';
+import { DiskUploadSessionStore, uploadVoiceFilePath } from './DiskUploadSessionStore';
 import type { CreateUploadSessionInput } from '../../domain/contracts/IUploadSessionStore';
 import { logger } from '../../../../shared/logger/logger';
 
@@ -288,6 +288,54 @@ describe('DiskUploadSessionStore', () => {
     await store.discard(uploadId);
 
     expect(await store.get(uploadId, 'tenant-a', 'user-a')).toBeNull();
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it('a nota de voz transcodificada fica na pasta de uploads e expira junto com o upload', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input({ purpose: 'voice' }));
+    const voz = uploadVoiceFilePath(dir, uploadId, 'ogg');
+    await fs.writeFile(voz, 'opus');
+
+    expect(path.dirname(voz)).toBe(dir);
+    expect(path.basename(voz)).toBe(`${uploadId}.voice.ogg`);
+    expect(await store.listExpired(new Date(T0.getTime() + 121 * MINUTE), 120 * MINUTE)).toEqual([uploadId]);
+  });
+
+  it('nota de voz que sobrou sozinha (transcode interrompido) expira pelo horário de modificação', async () => {
+    const store = makeStore();
+    const orfaId = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
+    const voz = uploadVoiceFilePath(dir, orfaId, 'ogg');
+    await fs.writeFile(voz, 'opus');
+    const old = new Date(Date.now() - 200 * MINUTE);
+    await fs.utimes(voz, old, old);
+
+    expect(await store.listExpired(new Date(), 120 * MINUTE)).toEqual([orfaId]);
+
+    await store.discard(orfaId);
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it('descartar apaga também a nota de voz do upload e preserva a de outro upload', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input({ purpose: 'voice' }));
+    const outro = await store.create(input({ purpose: 'voice' }));
+    await fs.writeFile(uploadVoiceFilePath(dir, uploadId, 'ogg'), 'opus');
+    await fs.writeFile(uploadVoiceFilePath(dir, outro.uploadId, 'ogg'), 'opus');
+
+    await store.discard(uploadId);
+
+    expect((await fs.readdir(dir)).sort()).toEqual(
+      [`${outro.uploadId}.bin`, `${outro.uploadId}.json`, `${outro.uploadId}.voice.ogg`].sort(),
+    );
+  });
+
+  it('descarte condicional de upload aberto apaga também a nota de voz', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input({ purpose: 'voice' }));
+    await fs.writeFile(uploadVoiceFilePath(dir, uploadId, 'ogg'), 'opus');
+
+    expect(await store.discardIfOpen(uploadId)).toBe(true);
     expect(await fs.readdir(dir)).toEqual([]);
   });
 

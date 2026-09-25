@@ -16,8 +16,7 @@ import { IngestMessageReactionUseCase } from '../modules/chat/application/use-ca
 import { IngestHistorySyncUseCase } from '../modules/chat/application/use-cases/IngestHistorySyncUseCase';
 import { FailOrphanPendingMediaUseCase } from '../modules/chat/application/use-cases/FailOrphanPendingMediaUseCase';
 import { ReconcileInterruptedUploadsUseCase } from '../modules/chat/application/use-cases/ReconcileInterruptedUploadsUseCase';
-import type { IMessageStatusPublisher } from '../modules/chat/application/contracts/IMessageStatusPublisher';
-import { chatWsPublisher } from '../modules/chat/infrastructure/ws/ChatWebSocketPublisher';
+import { chatMediaContainer } from '../modules/chat/infrastructure/chatMediaContainer';
 import { registerChatIncomingMessageListener } from '../modules/chat/infrastructure/listeners/ChatIncomingMessageListener';
 import { registerChatMessageStatusListener } from '../modules/chat/infrastructure/listeners/ChatMessageStatusListener';
 import { registerChatMessageReactionListener } from '../modules/chat/infrastructure/listeners/ChatMessageReactionListener';
@@ -29,6 +28,11 @@ import { registerChatSessionStatusListener } from '../modules/chat/infrastructur
 import { UploadSessionSweeper } from '../modules/media/infrastructure/uploads/UploadSessionSweeper';
 import { diskBudget } from '../modules/media/domain/services/diskBudget';
 import { initMediaModule, mediaContainer } from '../modules/media/infrastructure/mediaContainer';
+
+/** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
+const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
+/** Espera dos envios de mídia em andamento no shutdown: a Render dá 30 s entre SIGTERM e SIGKILL. */
+const MEDIA_QUEUE_DRAIN_TIMEOUT_MS = 25_000;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,18 +79,12 @@ async function start(): Promise<void> {
   const chatMessageRepo      = new PrismaChatMessageRepository(prisma);
   const chatReactionRepo     = new PrismaChatMessageReactionRepository(prisma);
 
-  // Porta de status ligada ao WebSocket do chat (despacho, retry e recuperação de mídia).
-  const messageStatusPublisher: IMessageStatusPublisher = {
-    publishStatusUpdated: (event) =>
-      chatWsPublisher.publish(event.tenantId, { event: 'chat.message.status.updated', data: event }),
-  };
-
   // ── Mídia pendente órfã ────────────────────────────────────────────────────
   // Antes do listen: a fila é memória, então todo PENDING do banco ficou sem envio. Só com
   // MEDIA_PENDING_RECOVERY_ENABLED (Render) — `api/.env` aponta para produção e um `pnpm dev`
   // não pode falhar mídia que a produção ainda envia. A varredura periódica (`runPeriodic`)
   // é agendada junto com a fila. Nunca lança; o try/catch só guarda o boot.
-  const failOrphanPendingMedia = new FailOrphanPendingMediaUseCase(chatMessageRepo, messageStatusPublisher, {
+  const failOrphanPendingMedia = new FailOrphanPendingMediaUseCase(chatMessageRepo, chatMediaContainer.statusPublisher, {
     enabled:      env.MEDIA_PENDING_RECOVERY_ENABLED,
     staleMinutes: env.MEDIA_PENDING_STALE_MINUTES,
   });
@@ -128,6 +126,17 @@ async function start(): Promise<void> {
     uploadSweeper.start();
   } catch (err) {
     logger.error({ err }, 'Upload sweeper failed to start — expired uploads will not be removed');
+  }
+
+  // ── Varredura de mídia pendente ────────────────────────────────────────────
+  // Só com MEDIA_PENDING_RECOVERY_ENABLED (mesmo motivo do boot). Poupa o que a fila ainda
+  // tem; `runPeriodic` nunca lança. `unref`: o intervalo não segura o processo vivo.
+  let pendingMediaSweep: NodeJS.Timeout | null = null;
+  if (env.MEDIA_PENDING_RECOVERY_ENABLED) {
+    pendingMediaSweep = setInterval(() => {
+      void failOrphanPendingMedia.runPeriodic(chatMediaContainer.queue.inFlightIds());
+    }, PENDING_MEDIA_SWEEP_INTERVAL_MS);
+    pendingMediaSweep.unref();
   }
 
   // ── Register chat listeners ────────────────────────────────────────────────
@@ -194,6 +203,14 @@ async function start(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutdown signal received');
     uploadSweeper?.stop();
+    if (pendingMediaSweep) clearInterval(pendingMediaSweep);
+    // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
+    // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).
+    try {
+      await chatMediaContainer.queue.drain(MEDIA_QUEUE_DRAIN_TIMEOUT_MS);
+    } catch (err) {
+      logger.error({ err }, 'Media send queue drain failed during shutdown');
+    }
     try {
       await app.close();
       await prisma.$disconnect();

@@ -23,6 +23,7 @@ import {
   listParticipantsQuerySchema,
   conversationStateBodySchema,
   sendMessageBodySchema,
+  sendMediaMessageBodySchema,
   messageIdParamSchema,
   reactionBodySchema,
   updateConversationBodySchema,
@@ -43,6 +44,10 @@ import { UpdateConversationUseCase } from '../../application/use-cases/UpdateCon
 import { ListMessagesUseCase } from '../../application/use-cases/ListMessagesUseCase';
 import { SendMessageUseCase } from '../../application/use-cases/SendMessageUseCase';
 import { SetMessageReactionUseCase } from '../../application/use-cases/SetMessageReactionUseCase';
+import { SendMediaMessageUseCase } from '../../application/use-cases/SendMediaMessageUseCase';
+import { RetryOutboundMediaUseCase } from '../../application/use-cases/RetryOutboundMediaUseCase';
+import { chatMediaContainer } from '../../infrastructure/chatMediaContainer';
+import { mediaContainer } from '../../../media/infrastructure/mediaContainer';
 import { InMemoryReactionSendThrottle } from '../../infrastructure/throttle/InMemoryReactionSendThrottle';
 import type { IReactionUpdatePublisher } from '../../application/contracts/IReactionUpdatePublisher';
 import { env } from '../../../../shared/config/env';
@@ -209,6 +214,63 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const sendMessageUseCase = new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, getActiveEngine());
       const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content, quotedMessageId });
       httpResponse.created(reply, ChatPresenter.presentMessage(result));
+    },
+  );
+
+  // ── POST /conversations/:id/messages/media ────────────────────────────────
+  // Confirma um upload concluído como mensagem: grava PENDING e enfileira. 202 = aceito, o
+  // resultado chega por `chat.message.status.updated`; 200 = confirmação repetida (mesma mensagem).
+  app.post(
+    '/conversations/:id/messages/media',
+    { preHandler, schema: { params: conversationIdParamSchema, body: sendMediaMessageBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as { id: string };
+      const body = request.body as { uploadId: string; caption?: string; quotedMessageId?: string };
+
+      // Por request para capturar a engine da hora; store, fila e processador são os únicos do processo.
+      const useCase = new SendMediaMessageUseCase({
+        messageRepo:      chatMediaContainer.messageRepo,
+        conversationRepo: chatMediaContainer.conversationRepo,
+        contactRepo:      chatMediaContainer.contactRepo,
+        engine:           getActiveEngine(),
+        uploads:          mediaContainer.uploadStore,
+        processor:        mediaContainer.mediaProcessor,
+        files:            mediaContainer.mediaFileStore,
+        queue:            chatMediaContainer.queue,
+        limits:           chatMediaContainer.outboundLimits(),
+        tmpPathFor:       chatMediaContainer.voiceTmpPath,
+      });
+      const { message, replayed } = await useCase.execute({
+        tenantId,
+        userId:          request.user.userId,
+        conversationId:  id,
+        uploadId:        body.uploadId,
+        caption:         body.caption,
+        quotedMessageId: body.quotedMessageId,
+      });
+
+      const data = ChatPresenter.presentMessage(message);
+      if (replayed) httpResponse.ok(reply, data);
+      else httpResponse.accepted(reply, data);
+    },
+  );
+
+  // ── POST /messages/:messageId/retry ───────────────────────────────────────
+  // Reenfileira mídia que falhou, com o arquivo já guardado; o resultado chega pelo WS de status.
+  app.post(
+    '/messages/:messageId/retry',
+    { preHandler, schema: { params: messageIdParamSchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { messageId } = request.params as { messageId: string };
+
+      const useCase = new RetryOutboundMediaUseCase(
+        chatMediaContainer.messageRepo, chatMediaContainer.conversationRepo,
+        mediaContainer.mediaFileStore, getActiveEngine(), chatMediaContainer.queue,
+      );
+      const result = await useCase.execute({ tenantId, messageId });
+      httpResponse.accepted(reply, ChatPresenter.presentMessage(result));
     },
   );
 

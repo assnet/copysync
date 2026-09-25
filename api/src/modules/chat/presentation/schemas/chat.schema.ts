@@ -73,6 +73,22 @@ export const sendMessageBodySchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Confirma um upload como mensagem. `uploadId` só no formato que o store gera (`randomUUID`: v4,
+ * minúsculo — mesmo padrão de `media.upload.schema.ts`); fora disso, 400 antes de tocar o disco.
+ * Legenda com o mesmo limite do texto.
+ */
+export const sendMediaMessageBodySchema = {
+  type: 'object',
+  required: ['uploadId'],
+  properties: {
+    uploadId:        { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' },
+    caption:         { type: 'string', maxLength: 4096 },
+    quotedMessageId: { type: 'string' },
+  },
+  additionalProperties: false,
+} as const;
+
 export const updateConversationBodySchema = {
   type: 'object',
   properties: {

@@ -16,7 +16,8 @@ import { logger } from '../../../../shared/logger/logger';
 
 /** Só o formato que `randomUUID` gera: nenhum outro texto vira caminho. */
 const UPLOAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const UPLOAD_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(?:bin|json|json\.tmp)$/;
+/** Inclui a saída do transcode de voz (`<id>.voice.<ext>`): ela também pertence ao upload. */
+const UPLOAD_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(?:bin|json|json\.tmp|voice\.[a-z0-9]+)$/;
 const NOT_CONSUMED: ReadonlySet<UploadSessionState> = new Set(['OPEN', 'CONSUMING']);
 
 export interface DiskUploadSessionStoreOptions {
@@ -158,11 +159,7 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
 
   async discard(uploadId: string): Promise<void> {
     if (!UPLOAD_ID.test(uploadId)) return;
-    await this.withLock(uploadId, async () => {
-      await Promise.all(
-        (['bin', 'json', 'json.tmp'] as const).map((ext) => fs.rm(this.filePath(uploadId, ext), { force: true })),
-      );
-    });
+    await this.withLock(uploadId, () => this.removeFiles(uploadId));
   }
 
   async discardIfOpen(uploadId: string): Promise<boolean> {
@@ -170,9 +167,7 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
     return this.withLock(uploadId, async () => {
       const record = await this.readRecord(uploadId);
       if (record?.state !== 'OPEN') return false;
-      await Promise.all(
-        (['bin', 'json', 'json.tmp'] as const).map((ext) => fs.rm(this.filePath(uploadId, ext), { force: true })),
-      );
+      await this.removeFiles(uploadId);
       return true;
     });
   }
@@ -279,6 +274,18 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
     return { ...record, updatedAt: this.now().toISOString() };
   }
 
+  /**
+   * Arquivo, lateral e o que sobrou de um transcode de voz interrompido. A saída do transcode
+   * tem extensão variável, então só a listagem da pasta a encontra. Chamado sob o mutex.
+   */
+  private async removeFiles(uploadId: string): Promise<void> {
+    const fixed = (['bin', 'json', 'json.tmp'] as const).map((ext) => `${uploadId}.${ext}`);
+    const found = (await this.listUploadFiles()).get(uploadId) ?? [];
+    await Promise.all(
+      [...new Set([...fixed, ...found])].map((name) => fs.rm(path.join(this.dir, name), { force: true })),
+    );
+  }
+
   /** Chamado só com `uploadId` já validado. */
   private filePath(uploadId: string, ext: 'bin' | 'json' | 'json.tmp'): string {
     return path.join(this.dir, `${uploadId}.${ext}`);
@@ -333,6 +340,14 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
     }
     return byUpload;
   }
+}
+
+/**
+ * Saída do transcode de voz: na pasta de uploads (mesmo disco da mídia, a promoção é `rename`)
+ * e com o nome que a varredura e o descarte reconhecem como parte do upload.
+ */
+export function uploadVoiceFilePath(dir: string, uploadId: string, ext: string): string {
+  return path.join(dir, `${uploadId}.voice.${ext}`);
 }
 
 function isOwner(record: UploadSessionRecord, tenantId: string, userId: string): boolean {
