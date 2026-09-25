@@ -5,7 +5,8 @@ export type ApiMessageDirection   = 'INBOUND' | 'OUTBOUND' | 'SYSTEM';
 export type ApiMessageType        =
   | 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO'
   | 'STICKER' | 'LOCATION' | 'VCARD' | 'CALL_LOG' | 'EVENT';
-export type ApiMessageStatus      = 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+/** `PENDING` = aceita pelo servidor, ainda sem confirmação do canal (envio de mídia). */
+export type ApiMessageStatus      = 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
 
 export interface ChatContactApiDto {
   id: string;
@@ -186,10 +187,12 @@ function toMessageDirection(d: ApiMessageDirection): MessageDirection | 'system'
 
 function toMessageStatus(s: ApiMessageStatus): MessageStatus {
   switch (s) {
+    case 'PENDING':   return 'sending';
     case 'SENT':      return 'sent';
     case 'DELIVERED': return 'delivered';
     case 'READ':      return 'read';
     case 'FAILED':    return 'failed';
+    // Status desconhecido (API mais nova que o painel) não pode travar a bolha em "enviando".
     default:          return 'sent';
   }
 }

@@ -85,6 +85,22 @@ export interface ChatMessage {
   reactions?: MessageReaction[];
   /** Versão do agregado no servidor (descarta atualização fora de ordem). */
   reactionsRevision?: string | null;
+  /**
+   * Só do painel — a API nunca envia. Presente apenas na bolha otimista (`tmp-<uuid>`)
+   * enquanto a mídia sobe (`uploading`) ou aguarda o servidor aceitar o envio (`confirming`).
+   * `progress` em porcentagem, 0 a 100 (o `value` dos progressos do MUI).
+   * `error`: `network` retoma pelo `uploadId`, `session` só reconfirma,
+   * `rejected` (413/415/422) só permite descartar.
+   */
+  upload?: MessageUploadState;
+}
+
+/** Estado do envio de mídia de uma bolha otimista (campo só do painel). */
+export interface MessageUploadState {
+  phase: 'uploading' | 'confirming';
+  progress: number;
+  uploadId?: string;
+  error?: 'network' | 'session' | 'rejected' | null;
 }
 
 /** Reações de uma mensagem com o mesmo emoji. */
