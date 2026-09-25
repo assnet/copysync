@@ -165,6 +165,18 @@ export class DiskUploadSessionStore implements IUploadSessionStore {
     });
   }
 
+  async discardIfOpen(uploadId: string): Promise<boolean> {
+    if (!UPLOAD_ID.test(uploadId)) return false;
+    return this.withLock(uploadId, async () => {
+      const record = await this.readRecord(uploadId);
+      if (record?.state !== 'OPEN') return false;
+      await Promise.all(
+        (['bin', 'json', 'json.tmp'] as const).map((ext) => fs.rm(this.filePath(uploadId, ext), { force: true })),
+      );
+      return true;
+    });
+  }
+
   async listByState(state: UploadSessionState): Promise<UploadSessionRecord[]> {
     return (await this.readAllRecords()).filter((record) => record.state === state);
   }

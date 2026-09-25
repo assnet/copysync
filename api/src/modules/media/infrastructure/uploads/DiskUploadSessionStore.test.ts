@@ -291,6 +291,41 @@ describe('DiskUploadSessionStore', () => {
     expect(await fs.readdir(dir)).toEqual([]);
   });
 
+  it('descarte condicional apaga upload aberto e preserva o que já está em consumo', async () => {
+    const store = makeStore();
+    const aberto = await store.create(input());
+    const consumindo = await store.create(input());
+    await completeUpload(store, consumindo.uploadId);
+    await store.beginConsume(consumindo.uploadId, 'tenant-a', 'user-a');
+
+    expect(await store.discardIfOpen(aberto.uploadId)).toBe(true);
+    expect(await store.discardIfOpen(consumindo.uploadId)).toBe(false);
+
+    expect(await store.get(aberto.uploadId, 'tenant-a', 'user-a')).toBeNull();
+    expect((await store.get(consumindo.uploadId, 'tenant-a', 'user-a'))?.state).toBe('CONSUMING');
+    expect(await store.readHead(consumindo.uploadId, 4)).not.toBeNull();
+  });
+
+  it('descarte condicional concorrente com o início do consumo nunca apaga o arquivo do consumo', async () => {
+    const store = makeStore();
+    const { uploadId } = await store.create(input());
+    await completeUpload(store, uploadId);
+
+    const [consumo, descartou] = await Promise.all([
+      store.beginConsume(uploadId, 'tenant-a', 'user-a'),
+      store.discardIfOpen(uploadId),
+    ]);
+
+    // O mutex serializa: ou o consumo começou e o arquivo fica, ou o descarte venceu e não há consumo.
+    if (consumo.outcome === 'started') {
+      expect(descartou).toBe(false);
+      expect(await store.readHead(uploadId, 4)).not.toBeNull();
+    } else {
+      expect(descartou).toBe(true);
+      expect(consumo.outcome).toBe('not_found');
+    }
+  });
+
   it('lê o começo do arquivo para identificar o tipo', async () => {
     const store = makeStore();
     const { uploadId } = await store.create(input());

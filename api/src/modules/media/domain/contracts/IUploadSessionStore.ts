@@ -81,6 +81,11 @@ export interface IUploadSessionStore {
   finishConsume(uploadId: string, messageId: string): Promise<UploadSessionRecord | null>;
   /** Apaga arquivo e lateral. Idempotente. */
   discard(uploadId: string): Promise<void>;
+  /**
+   * Apaga só se o upload ainda está `OPEN`, conferindo o estado sob o mesmo mutex da escrita:
+   * um cancelamento concorrente nunca apaga o `.bin` de um consumo em curso. `true` = apagou.
+   */
+  discardIfOpen(uploadId: string): Promise<boolean>;
   listByState(state: UploadSessionState): Promise<UploadSessionRecord[]>;
   /**
    * Ids com `updatedAt` além do TTL. Arquivo sem lateral legível entra pelo horário de
