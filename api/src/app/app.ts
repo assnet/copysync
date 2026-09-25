@@ -10,6 +10,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
+import { contentDispositionFor, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
 import { registerRoutes } from './routes';
 
 const defaultCorsOrigins = [
@@ -106,11 +107,18 @@ export async function buildApp() {
     root: storageRoot,
     prefix: `${env.API_PREFIX}/storage/`,
     decorateReply: false,
-    setHeaders(res) {
+    // O plugin troca o padrão do send para 'allow'; a raiz guarda pastas ocultas (uploads).
+    dotfiles: 'deny',
+    // Só media/, já normalizado: o que estiver fora da pasta responde 404.
+    allowedPath: isAllowedMediaPath,
+    setHeaders(res, filePath) {
       // Allow cross-origin loading of media (audio, image, video, document)
       // elements from the panel domain (waioprime.com → api.waioprime.com).
       // Without this, @fastify/helmet's default CORP: same-origin blocks them.
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      // Imagem/áudio/vídeo/PDF seguem inline como antes; svg/html/xml aberto na aba
+      // rodaria script na origem da API, então baixa. O nosniff já vem do helmet.
+      res.setHeader('Content-Disposition', contentDispositionFor(path.extname(filePath)));
     },
   });
 
