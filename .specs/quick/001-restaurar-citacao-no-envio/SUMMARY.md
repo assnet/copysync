@@ -1,6 +1,6 @@
 # Quick 001 — Resumo
 
-**Status**: Implementado na branch `fix/chat-reply-quote` — smoke com sessão real pendente
+**Status**: Concluído — smoke com sessão real aprovado em 2026-09-25 (0.11.2)
 **Versão**: `0.11.0` → `0.11.1` → `0.11.2` (`api/` e `app/`)
 
 ## O que mudou
@@ -67,3 +67,9 @@ número); citada de mídia com MIME/nome/duração; foco no campo ao responder; 
 
 Se o individual funcionar e o grupo não, o problema segue no autor; se nenhum funcionar, está no
 envio em si (conferir `Reply quote attached` no log — sem ele, o deploy não tem este código).
+
+## Smoke — aprovado (2026-09-25, `0.11.2`)
+
+Os quatro casos da tabela acima passaram no aparelho do contato, com o log `Reply quote attached`
+esperado em cada um; foco no campo ao responder confirmado; reações sem mudança. Confirma a
+causa da rodada 2: em grupo LID, a citação precisa do LID do autor.

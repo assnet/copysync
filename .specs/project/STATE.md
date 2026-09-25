@@ -49,6 +49,8 @@ Memória entre sessões: decisões, bloqueios, lições.
   avatares; os outros três voltaram, a citação não. O painel seguia mostrando o bloco citado
   porque o vínculo é gravado localmente — ninguém notou por seis meses. Restaurada com builder
   puro (`buildBaileysQuotedMessage`) e teste de contrato contra o `generateWAMessage` real.
+  Segundo achado no smoke (0.11.2): em grupo LID a citação precisa do **LID** do autor — o
+  Baileys usa o número para mensagem nossa (`TODO: Add support for LIDs`). Smoke aprovado.
   Ver `.specs/quick/001-restaurar-citacao-no-envio/`.
 
 - **2026-09-24 — infra de testes chegava a `develop` por duas linhagens.**

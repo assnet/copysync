@@ -1,7 +1,7 @@
 # Quick 001 — Restaurar a citação no envio de texto
 
 **Branch**: `fix/chat-reply-quote` (a partir de `develop`, AGENTS.md §31 — não misturar com a feature de mídia)
-**Status**: Implementado (2026-09-25) — ver `SUMMARY.md`; smoke com sessão real pendente
+**Status**: Concluído (2026-09-25, `0.11.2`) — smoke aprovado; ver `SUMMARY.md`
 **Pré-requisito de**: `.specs/features/chat-media-attachments` (T19 reusa o builder)
 
 ## Problema
