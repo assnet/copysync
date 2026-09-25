@@ -22,6 +22,10 @@ import { registerChatContactAvatarListener } from '../modules/chat/infrastructur
 import { registerChatGroupAvatarListener } from '../modules/chat/infrastructure/listeners/ChatGroupAvatarListener';
 import { registerChatConversationStateListener } from '../modules/chat/infrastructure/listeners/ChatConversationStateListener';
 import { registerChatSessionStatusListener } from '../modules/chat/infrastructure/listeners/ChatSessionStatusListener';
+import { DiskUploadSessionStore } from '../modules/media/infrastructure/uploads/DiskUploadSessionStore';
+import { UploadSessionSweeper } from '../modules/media/infrastructure/uploads/UploadSessionSweeper';
+import { diskBudget } from '../modules/media/domain/services/diskBudget';
+import { mediaFilePath } from '../shared/storage/MediaStorage';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,6 +65,23 @@ async function start(): Promise<void> {
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');
     process.exit(1);
+  }
+
+  // ── Limpeza de uploads em partes ───────────────────────────────────────────
+  // Só disco, nenhum banco. Falha aqui só loga: a API sobe sem a varredura.
+  let uploadSweeper: UploadSessionSweeper | null = null;
+  try {
+    const uploadStore = new DiskUploadSessionStore({ dir: env.MEDIA_UPLOAD_TMP_PATH });
+    await uploadStore.ensureReady(mediaFilePath(''));
+    uploadSweeper = new UploadSessionSweeper({
+      store: uploadStore,
+      ttlMs: env.MEDIA_UPLOAD_TTL_MINUTES * 60_000,
+      reserveFor: (totalBytes) =>
+        diskBudget({ totalBytes, reserveBytes: env.MEDIA_DISK_RESERVE_BYTES }).reserveBytes,
+    });
+    uploadSweeper.start();
+  } catch (err) {
+    logger.error({ err }, 'Upload sweeper failed to start — expired uploads will not be removed');
   }
 
   // ── Register chat listeners ────────────────────────────────────────────────
@@ -130,6 +151,7 @@ async function start(): Promise<void> {
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutdown signal received');
+    uploadSweeper?.stop();
     try {
       await app.close();
       await prisma.$disconnect();
