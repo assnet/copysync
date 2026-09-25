@@ -23,6 +23,8 @@ import {
   listParticipantsQuerySchema,
   conversationStateBodySchema,
   sendMessageBodySchema,
+  messageIdParamSchema,
+  reactionBodySchema,
   updateConversationBodySchema,
 } from '../schemas/chat.schema';
 
@@ -40,6 +42,10 @@ import { GetConversationByIdUseCase } from '../../application/use-cases/GetConve
 import { UpdateConversationUseCase } from '../../application/use-cases/UpdateConversationUseCase';
 import { ListMessagesUseCase } from '../../application/use-cases/ListMessagesUseCase';
 import { SendMessageUseCase } from '../../application/use-cases/SendMessageUseCase';
+import { SetMessageReactionUseCase } from '../../application/use-cases/SetMessageReactionUseCase';
+import { InMemoryReactionSendThrottle } from '../../infrastructure/throttle/InMemoryReactionSendThrottle';
+import type { IReactionUpdatePublisher } from '../../application/contracts/IReactionUpdatePublisher';
+import { env } from '../../../../shared/config/env';
 import { GetContactByIdUseCase } from '../../application/use-cases/GetContactByIdUseCase';
 import { MarkConversationAsReadUseCase } from '../../application/use-cases/MarkConversationAsReadUseCase';
 import { getActiveEngine } from '../../../../shared/engine/activeEngine';
@@ -59,6 +65,16 @@ const getConversationUseCase    = new GetConversationByIdUseCase(conversationRep
 const updateConversationUseCase = new UpdateConversationUseCase(conversationRepo, contactRepo, sessionRepo, userRepo);
 const listMessagesUseCase       = new ListMessagesUseCase(messageRepo, conversationRepo, contactRepo, reactionRepo);
 const getContactUseCase         = new GetContactByIdUseCase(contactRepo);
+
+// Instância única no módulo: uma por requisição zeraria o limite de envio de reações.
+const reactionThrottle = new InMemoryReactionSendThrottle({
+  minIntervalMs: env.REACTION_MIN_INTERVAL_MS,
+  maxPerMinute:  env.REACTION_MAX_PER_MINUTE,
+});
+const reactionPublisher: IReactionUpdatePublisher = {
+  publishReactionUpdated: (data) =>
+    chatWsPublisher.publish(data.tenantId, { event: 'chat.message.reaction.updated', data }),
+};
 
 const preHandler = [authHook, tenantHook];
 
@@ -193,6 +209,26 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const sendMessageUseCase = new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, getActiveEngine());
       const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content, quotedMessageId });
       httpResponse.created(reply, ChatPresenter.presentMessage(result));
+    },
+  );
+
+  // ── PUT /messages/:messageId/reaction ─────────────────────────────────────
+  // Idempotente: aplica a nossa reação ou, com `emoji: null`, remove.
+  app.put(
+    '/messages/:messageId/reaction',
+    { preHandler, schema: { params: messageIdParamSchema, body: reactionBodySchema } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { messageId } = request.params as { messageId: string };
+      const { emoji } = request.body as { emoji: string | null };
+
+      // Instanciado por request para capturar o estado atual da engine; o limite é compartilhado.
+      const useCase = new SetMessageReactionUseCase(
+        messageRepo, conversationRepo, contactRepo, reactionRepo,
+        getActiveEngine(), reactionThrottle, reactionPublisher,
+      );
+      const result = await useCase.execute({ tenantId, messageId, emoji });
+      httpResponse.ok(reply, ChatPresenter.presentReactionResult(result));
     },
   );
 
