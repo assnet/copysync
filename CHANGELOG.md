@@ -21,6 +21,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 >
 > _Remover esta nota ao fechar a primeira seção de versão._
 
+### Changed
+
+#### Rebranding → CopySync — fase 1, documentação (`0.13.1`)
+
+O projeto é cópia do WaioPrime e passa a se chamar **CopySync** (painel `https://copysync.app`,
+API `https://api.copysync.app`). Nesta fase só documentação, assets e caminhos de clone mudam;
+nenhum identificador de código, banco, Keychain ou container foi renomeado. Plano por fase e lista
+do que **não** renomear em `docs/rebranding-copysync.md`.
+
+- **`docs/rebranding-copysync.md`** — novo: identidade, fases 2–4 (painel, API, tooling) com arquivo e troca exata, itens proibidos (banco de produção `waioprime`) e comando de verificação
+- **`AGENTS.md`** — seção *Marca e domínios* apontando para o guia
+- **`README.md`**, **`api/README.md`**, **`.cursor/MCP_SETUP.md`**, **`.github/MCP_SETUP.md`**, **`api/db.instructions.md`**, **`.specs/features/service-desk/integracao-api-central.md`** — prosa, domínios e caminho do clone (`~/www/copysync`); dump local passa a `copysync-local.sql`
+- **`.cursor/plans/rules_skills_mcps_copysync_c5f11ded.plan.md`** — renomeado (era `…_waioprime_…`); nomes propostos de rules/skills `copysync-*`
+- **`.cursor/scripts/mcp/waioprime-mcp.zsh`** — alias `cw` abre `~/www/copysync` (caminho antigo não existe); reinstalar com `install-mcp-scripts.sh`
+- **`app/public/assets/copysync-logo.png`**, **`copysync-logo-256x256.png`** — logo oficial (ainda não referenciado pelo painel; fase 2)
+- **`render.yaml`** — só o comentário de cabeçalho; serviço continua `waioprime`
+- **`api/package.json`**, **`app/package.json`** — `0.13.0` → `0.13.1`
+
 ### Added
 
 #### Chat — Listas na barra de filtros e emoji no composer (`0.13.0`)

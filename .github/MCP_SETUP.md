@@ -1,6 +1,6 @@
-# MCP — Model Context Protocol (WaioPrime)
+# MCP — Model Context Protocol (CopySync)
 
-Documentação completa da integração MCP no **Cursor IDE** para o monorepo WaioPrime: migração a partir do VS Code/Copilot, configuração de servidores, gestão de secrets via **macOS Keychain** e scripts de automação.
+Documentação completa da integração MCP no **Cursor IDE** para o monorepo CopySync: migração a partir do VS Code/Copilot, configuração de servidores, gestão de secrets via **macOS Keychain** e scripts de automação.
 
 **Público:** desenvolvedores do time com macOS + Cursor.
 
@@ -37,7 +37,7 @@ Documentação completa da integração MCP no **Cursor IDE** para o monorepo Wa
 | **`.cursor/mcp.json`** | Definição dos 5 MCP servers do projeto (sem secrets; usa `${env:...}`) |
 | **Scripts Keychain** | `store` / `load` / launcher — equivalente ao Secret Storage do VS Code |
 | **`cursor-waioprime`** | Função shell que carrega secrets e abre o Cursor com env correto |
-| **Alias `cw`** | Atalho para abrir o monorepo WaioPrime |
+| **Alias `cw`** | Atalho para abrir o monorepo CopySync |
 | **`install-mcp-scripts.sh`** | Copia scripts para `~/.cursor/` e registra no `~/.zshrc` |
 | **Esta documentação** | `.github/MCP_SETUP.md` |
 
@@ -168,7 +168,7 @@ O `~/.zshrc` ganha uma linha:
 
 - **Postgres:** usuário dedicado read-only (ex.: `agent_ro`) — apenas `SELECT`
 - **Stripe:** [Restricted Key](https://dashboard.stripe.com/apikeys) (`rk_test_` / `rk_live_`) — escopo read-only
-- **GitHub:** fine-grained PAT — repositório WaioPrime, leitura + comentário em PR
+- **GitHub:** fine-grained PAT — repositório CopySync, leitura + comentário em PR
 - **Render:** API key (`rnd_...`) — escopo mínimo para logs/status
 
 ---
@@ -191,7 +191,7 @@ O instalador:
 Opcional — apontar o alias `cw` para outro caminho de clone:
 
 ```bash
-export WAIOPRIME_ROOT="/caminho/para/waioprime"
+export WAIOPRIME_ROOT="/caminho/para/copysync"
 ```
 
 (defina no `~/.zshrc` antes do `source` do `waioprime-mcp.zsh`)
@@ -290,7 +290,7 @@ CREATE ROLE agent_ro WITH
 GRANT CONNECT ON DATABASE waioprime TO agent_ro;
 GRANT USAGE ON SCHEMA public TO agent_ro;
 
--- Tabelas existentes (snake_case — schema Prisma do WaioPrime)
+-- Tabelas existentes (snake_case — schema Prisma do CopySync)
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO agent_ro;
 
 -- Tabelas criadas no futuro por migrations
@@ -378,10 +378,10 @@ Depois atualize o Keychain com `store-mcp-secrets.sh --one database`.
 ## 8. Abrir o Cursor com MCP ativo
 
 ```bash
-cursor-waioprime /caminho/para/waioprime
+cursor-waioprime /caminho/para/copysync
 ```
 
-Ou, com alias padrão (`~/www/waioprime`):
+Ou, com alias padrão (`~/www/copysync`):
 
 ```bash
 cw
@@ -502,7 +502,7 @@ Implementação: `security add-generic-password` com conta `$USER`, serviço `wa
 | Símbolo | Descrição |
 |---------|-----------|
 | `cursor-waioprime [args...]` | `source` load → executa `cursor` com args |
-| `cw` | `cursor-waioprime "${WAIOPRIME_ROOT:-$HOME/www/waioprime}"` |
+| `cw` | `cursor-waioprime "${WAIOPRIME_ROOT:-$HOME/www/copysync}"` |
 
 ### `install-mcp-scripts.sh`
 
@@ -627,7 +627,7 @@ Abrir sempre via terminal: `cursor .`
 
 O Agent usa tools automaticamente quando relevantes. Para forçar, cite o servidor ou a ação (“consulte o Postgres read-only”, “verifique CI no GitHub”).
 
-Matriz alinhada ao plano interno: [`.cursor/plans/rules_skills_mcps_waioprime_c5f11ded.plan.md`](../.cursor/plans/rules_skills_mcps_waioprime_c5f11ded.plan.md)
+Matriz alinhada ao plano interno: [`.cursor/plans/rules_skills_mcps_copysync_c5f11ded.plan.md`](../.cursor/plans/rules_skills_mcps_copysync_c5f11ded.plan.md)
 
 ---
 

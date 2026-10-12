@@ -1,4 +1,4 @@
-# WaioPrime — MCP secrets via Keychain + Cursor
+# CopySync — MCP secrets via Keychain + Cursor
 # Fonte: .github/scripts/mcp/waioprime-mcp.zsh
 # Instalado em ~/.cursor/ pelo install-mcp-scripts.sh
 
@@ -23,4 +23,4 @@ cursor-waioprime() {
 }
 
 # Ajuste o caminho do monorepo se o seu clone for diferente:
-alias cw='cursor-waioprime "${WAIOPRIME_ROOT:-$HOME/www/waioprime}"'
+alias cw='cursor-waioprime "${WAIOPRIME_ROOT:-$HOME/www/copysync}"'

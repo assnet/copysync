@@ -1,9 +1,9 @@
 ---
-name: Rules Skills MCPs WaioPrime
-overview: "Plano para tornar o desenvolvimento do WaioPrime mais acertivo: criar camada Cursor (`.cursor/rules/`, skills de projeto, MCPs) alinhada ao `AGENTS.md` e à stack real (`api/` Fastify+Prisma+Baileys, `app/` React+MUI), corrigir lacunas de CI/processos e priorizar skills globais já instaladas no ambiente do usuário."
+name: Rules Skills MCPs CopySync
+overview: "Plano para tornar o desenvolvimento do CopySync mais acertivo: criar camada Cursor (`.cursor/rules/`, skills de projeto, MCPs) alinhada ao `AGENTS.md` e à stack real (`api/` Fastify+Prisma+Baileys, `app/` React+MUI), corrigir lacunas de CI/processos e priorizar skills globais já instaladas no ambiente do usuário."
 todos:
   - id: rules-core
-    content: Criar .cursor/rules/ com waioprime-core.mdc (alwaysApply) + 7 rules por glob (api, prisma, baileys, sessions/chat, app, git-release)
+    content: Criar .cursor/rules/ com copysync-core.mdc (alwaysApply) + 7 rules por glob (api, prisma, baileys, sessions/chat, app, git-release)
     status: pending
   - id: sync-copilot
     content: "Atualizar .github/copilot-instructions.md: app/ vs panel/, AGENTS §31-36, envelopes HTTP por módulo"
@@ -15,7 +15,7 @@ todos:
     content: Criar .cursor/mcp.json com GitHub + Postgres read-only (env vars, sem secrets no repo)
     status: pending
   - id: project-skills
-    content: "Criar .cursor/skills/: waioprime-release, prisma-migrate, baileys-adapter, api-contract, smoke-manual"
+    content: "Criar .cursor/skills/: copysync-release, prisma-migrate, baileys-adapter, api-contract, smoke-manual"
     status: pending
   - id: pr-template-hooks
     content: PR template AGENTS §35 + hooks Cursor opcionais (typecheck pós-edit) + documentar skills globais na matriz do README
@@ -26,7 +26,7 @@ todos:
 isProject: false
 ---
 
-# Plano: Rules, Skills e MCPs para WaioPrime
+# Plano: Rules, Skills e MCPs para CopySync
 
 ## Diagnóstico (síntese dos subagentes)
 
@@ -74,14 +74,14 @@ flowchart TB
 
 ## 1. Rules Cursor recomendadas (`.cursor/rules/`)
 
-**Não portar** `[legado2/.cursor/rules/](legado2/)` (gitignored, stack Evolution/Express). Criar regras novas espelhando o WaioPrime.
+**Não portar** `[legado2/.cursor/rules/](legado2/)` (gitignored, stack Evolution/Express). Criar regras novas espelhando o CopySync.
 
 ### 1.1 Regra global (always apply)
 
 
 | Arquivo              | `alwaysApply` | Conteúdo essencial                                                                                                                                                                                                                                                                          |
 | -------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `waioprime-core.mdc` | `true`        | pt-BR; monorepo `api/` + `app/`; ler [AGENTS.md](AGENTS.md) seções 8–20 e 31–36; usar subagents para exploração ampla; `pnpm` (não npm); proibições: Baileys fora de `engines/baileys/`, Prisma fora de `infrastructure/`, consultas sem `tenantId`; merge exige `tsc --noEmit` + CHANGELOG |
+| `copysync-core.mdc` | `true`        | pt-BR; monorepo `api/` + `app/`; ler [AGENTS.md](AGENTS.md) seções 8–20 e 31–36; usar subagents para exploração ampla; `pnpm` (não npm); proibições: Baileys fora de `engines/baileys/`, Prisma fora de `infrastructure/`, consultas sem `tenantId`; merge exige `tsc --noEmit` + CHANGELOG |
 
 
 ### 1.2 Rules por glob (ativam ao editar arquivos)
@@ -121,7 +121,7 @@ Usar skill **create-hook** para scripts em `.cursor/hooks/`:
 ### 2.1 Skills globais — usar por contexto de tarefa
 
 
-| Skill                                                                                                                               | Quando acionar                                | Por quê no WaioPrime                                                                                                                                                 |
+| Skill                                                                                                                               | Quando acionar                                | Por quê no CopySync                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [verification-before-completion](~/.agents/skills/verification-before-completion/SKILL.md)                                          | Antes de “pronto”, PR ou merge                | **Zero testes**; único gate real é `pnpm typecheck` em `api/` e `app/`                                                                                               |
 | [writing-plans](~/.agents/skills/writing-plans/SKILL.md)                                                                            | Features grandes (flows, campanhas, métricas) | Já existe precedente em [docs/superpowers/plans/2026-05-09-chat-media-storage-architecture.md](docs/superpowers/plans/2026-05-09-chat-media-storage-architecture.md) |
@@ -147,7 +147,7 @@ Usar skill **create-hook** para scripts em `.cursor/hooks/`:
 | ---------------------------- | ------------------------------------ |
 | better-auth-best-practices   | Auth própria JWT + refresh em Prisma |
 | tailwind-design-system       | UI é **MUI 6 + Emotion**             |
-| brand-guidelines (Anthropic) | Marca WaioPrime própria              |
+| brand-guidelines (Anthropic) | Marca CopySync própria              |
 
 
 ### 2.3 Skills de projeto (criar em `.cursor/skills/`)
@@ -157,11 +157,11 @@ Versionar no repo para todo o time:
 
 | Skill                       | Objetivo                                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------------------------ |
-| `waioprime-release`         | Checklist SemVer: `api/package.json`, `app/package.json`, `api/CHANGELOG.md`, tag, seção release |
-| `waioprime-prisma-migrate`  | `prisma migrate dev --name descricao`; revisar índices/`tenantId`; nunca `db push` em prod       |
-| `waioprime-baileys-adapter` | Isolamento, `BaileysErrorTranslator`, auth state em DB, links wiki                               |
-| `waioprime-api-contract`    | Ao mudar rota: atualizar `app/src/services/`*, tipos, envelope, OpenAPI se exposto               |
-| `waioprime-smoke-manual`    | Roteiro: health → login → tenant switch → criar sessão → QR → chat WS                            |
+| `copysync-release`         | Checklist SemVer: `api/package.json`, `app/package.json`, `api/CHANGELOG.md`, tag, seção release |
+| `copysync-prisma-migrate`  | `prisma migrate dev --name descricao`; revisar índices/`tenantId`; nunca `db push` em prod       |
+| `copysync-baileys-adapter` | Isolamento, `BaileysErrorTranslator`, auth state em DB, links wiki                               |
+| `copysync-api-contract`    | Ao mudar rota: atualizar `app/src/services/`*, tipos, envelope, OpenAPI se exposto               |
+| `copysync-smoke-manual`    | Roteiro: health → login → tenant switch → criar sessão → QR → chat WS                            |
 
 
 Buscar skills da comunidade via `npx skills find vitest prisma fastify` antes de escrever do zero.
@@ -173,7 +173,7 @@ Buscar skills da comunidade via `npx skills find vitest prisma fastify` antes de
 Configurar em `**.cursor/mcp.json**` (time + máquina local). Prioridade por impacto:
 
 
-| MCP                                               | Uso no WaioPrime                                                 | Prioridade                   |
+| MCP                                               | Uso no CopySync                                                 | Prioridade                   |
 | ------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------- |
 | **GitHub** (`gh` / server-github)                 | PRs, issues, checks, releases — processo AGENTS.md §35           | Alta                         |
 | **PostgreSQL** (read-only)                        | Validar queries, índices, `tenantId`, debug inbox sem expor prod | Alta                         |
@@ -221,11 +221,11 @@ Sem CI, rules e skills **não se autoimpõem**. Mínimo alinhado ao AGENTS.md:
 | Tarefa frequente         | Rules                                           | Skills                                                            | MCPs                     |
 | ------------------------ | ----------------------------------------------- | ----------------------------------------------------------------- | ------------------------ |
 | Novo use case + rota API | `api-architecture`, `api-fastify`, `api-prisma` | verification-before-completion, typescript-advanced-types         | Postgres (validar query) |
-| Mudança Baileys          | `api-messaging-baileys`                         | waioprime-baileys-adapter                                         | Fetch (wiki)             |
+| Mudança Baileys          | `api-messaging-baileys`                         | copysync-baileys-adapter                                         | Fetch (wiki)             |
 | Tela/feature no app      | `app-architecture`, `app-chat-ui`               | vercel-react-best-practices, ui-ux-pro-max                        | Browser                  |
-| Feature api+app          | `waioprime-core`                                | subagent-driven-development, waioprime-api-contract, split-to-prs | GitHub                   |
-| Release                  | `git-release`                                   | waioprime-release                                                 | GitHub                   |
-| PR para develop          | `waioprime-core`                                | babysit, verification-before-completion                           | GitHub                   |
+| Feature api+app          | `copysync-core`                                | subagent-driven-development, copysync-api-contract, split-to-prs | GitHub                   |
+| Release                  | `git-release`                                   | copysync-release                                                 | GitHub                   |
+| PR para develop          | `copysync-core`                                | babysit, verification-before-completion                           | GitHub                   |
 | Explorar código legado   | —                                               | token-efficiency + subagent explore                               | —                        |
 
 
@@ -273,4 +273,4 @@ Com **rules por camada**, **skills de fluxo** (release, Prisma, Baileys, contrat
 - valida com `typecheck` e CI antes de afirmar “pronto”;
 - explora com subagents e implementa com menos regressões em multi-tenant e envelopes HTTP.
 
-**Não usar** regras do `legado2/` como base — stack e pastas são incompatíveis com Fastify modular do WaioPrime.
+**Não usar** regras do `legado2/` como base — stack e pastas são incompatíveis com Fastify modular do CopySync.

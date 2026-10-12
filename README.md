@@ -1,6 +1,6 @@
 ### Abrir CURSOR: 17/05/26
 source ~/.zshrc   # se ainda não tiver o alias
-cursor-waioprime ~/www/waioprime
+cursor-waioprime ~/www/copysync
 
 # ou
 cw

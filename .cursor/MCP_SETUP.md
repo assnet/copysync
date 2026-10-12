@@ -1,6 +1,6 @@
 # MCP — setup local (Cursor)
 
-Guia para conectar os MCP servers do WaioPrime no **Cursor**, sem commitar credenciais no repositório.
+Guia para conectar os MCP servers do CopySync no **Cursor**, sem commitar credenciais no repositório.
 
 ## É seguro documentar?
 
@@ -100,7 +100,7 @@ O Cursor precisa ser iniciado **pelo terminal** para herdar as variáveis:
 
 ```bash
 source ~/.zshrc   # primeira vez após instalar o alias
-cursor-waioprime ~/www/waioprime
+cursor-waioprime ~/www/copysync
 # ou
 cw
 ```
@@ -187,4 +187,4 @@ O merge do Cursor: config do projeto + `~/.cursor/mcp.json` (projeto tem priorid
 
 - [Cursor — MCP](https://cursor.com/docs/mcp)
 - [Cursor — config interpolation (`${env:...}`)](https://cursor.com/docs/mcp#config-interpolation)
-- Plano interno: `.cursor/plans/rules_skills_mcps_waioprime_c5f11ded.plan.md`
+- Plano interno: `.cursor/plans/rules_skills_mcps_copysync_c5f11ded.plan.md`

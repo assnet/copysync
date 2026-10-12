@@ -7,7 +7,7 @@ Este documento descreve o processo completo para:
 1. criar um novo banco dentro de uma instancia PostgreSQL ja existente na Render;
 2. exportar o banco local usado pelo projeto no Docker;
 3. importar esse dump para o novo banco remoto na Render;
-4. apontar a API do WaioPrime para o banco remoto;
+4. apontar a API do CopySync para o banco remoto;
 5. validar se a migracao terminou corretamente.
 
 O foco deste guia e o cenario atual do projeto:
@@ -43,7 +43,7 @@ Antes de comecar, confirme que voce tem:
 Se o ambiente local ainda nao estiver ativo:
 
 ```bash
-cd /Users/adrielss/www/waioprime
+cd /Users/adrielss/www/copysync
 docker compose up -d postgres
 ```
 
@@ -106,21 +106,21 @@ docker run --rm -it \
 Exporte estrutura e dados do banco local para um arquivo SQL:
 
 ```bash
-cd /Users/adrielss/www/waioprime
+cd /Users/adrielss/www/copysync
 docker exec -i waioprime_postgres pg_dump \
   -U waioprime \
   -d waioprime \
   --no-owner \
   --no-privileges \
-  > waioprime-local.sql
+  > copysync-local.sql
 ```
 
-Esse comando gera um dump textual chamado `waioprime-local.sql` na raiz do repositorio.
+Esse comando gera um dump textual chamado `copysync-local.sql` na raiz do repositorio.
 
 Para confirmar que o arquivo foi criado:
 
 ```bash
-ls -lh waioprime-local.sql
+ls -lh copysync-local.sql
 ```
 
 ## 5. Importar o dump local para o novo banco remoto
@@ -128,8 +128,8 @@ ls -lh waioprime-local.sql
 Depois que o banco remoto `waioprime` existir, envie o dump:
 
 ```bash
-cd /Users/adrielss/www/waioprime
-cat waioprime-local.sql | docker run --rm -i \
+cd /Users/adrielss/www/copysync
+cat copysync-local.sql | docker run --rm -i \
   -e PGPASSWORD='<RENDER_PASSWORD>' \
   postgres:16-alpine \
   psql "host=<RENDER_HOST> port=5432 dbname=waioprime user=<RENDER_USER> sslmode=require"
@@ -212,7 +212,7 @@ Se o banco remoto ja recebeu o dump completo do banco local, o esperado e que o 
 Ainda assim, rode o deploy de migrations como verificacao final:
 
 ```bash
-cd /Users/adrielss/www/waioprime/api
+cd /Users/adrielss/www/copysync/api
 pnpm prisma migrate deploy
 ```
 
@@ -223,7 +223,7 @@ Se nao houver divergencia, o Prisma deve informar que nao existem migrations pen
 Com a `DATABASE_URL` atualizada:
 
 ```bash
-cd /Users/adrielss/www/waioprime/api
+cd /Users/adrielss/www/copysync/api
 pnpm dev
 ```
 
@@ -290,13 +290,13 @@ CREATE DATABASE waioprime;
 Exportar banco local:
 
 ```bash
-docker exec -i waioprime_postgres pg_dump -U waioprime -d waioprime --no-owner --no-privileges > waioprime-local.sql
+docker exec -i waioprime_postgres pg_dump -U waioprime -d waioprime --no-owner --no-privileges > copysync-local.sql
 ```
 
 Importar no banco remoto:
 
 ```bash
-cat waioprime-local.sql | docker run --rm -i -e PGPASSWORD='<RENDER_PASSWORD>' postgres:16-alpine psql "host=<RENDER_HOST> port=5432 dbname=waioprime user=<RENDER_USER> sslmode=require"
+cat copysync-local.sql | docker run --rm -i -e PGPASSWORD='<RENDER_PASSWORD>' postgres:16-alpine psql "host=<RENDER_HOST> port=5432 dbname=waioprime user=<RENDER_USER> sslmode=require"
 ```
 
 Atualizar a API:
