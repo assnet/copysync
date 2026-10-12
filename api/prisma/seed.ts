@@ -24,10 +24,10 @@ async function main(): Promise<void> {
   const passwordHash = await hash('Teste123@321', 10);
 
   const superAdmin = await prisma.user.upsert({
-    where: { email: 'waiopremium@gmail.com' },
+    where: { email: 'copysyncapp@gmail.com' },
     update: { passwordHash },
     create: {
-      email: 'waiopremium@gmail.com',
+      email: 'copysyncapp@gmail.com',
       name: 'Super Admin',
       passwordHash,
       isSuperAdmin: true,
