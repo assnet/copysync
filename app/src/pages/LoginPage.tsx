@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
@@ -10,16 +10,14 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import StorefrontIcon from '@mui/icons-material/Storefront';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import AltRouteIcon from '@mui/icons-material/AltRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
 import { APP_NAME } from '@/shared/branding/brand';
-import { BrandLogo } from '@/shared/branding/BrandLogo';
+import { LoginShowcasePanel } from './login/LoginShowcasePanel';
+import { LoginMobileBanner } from './login/LoginMobileBanner';
+import { LOGIN_COPY } from './login/loginContent';
+import { GOLDEN_SPACE, GOLDEN_SPLIT, GOLDEN_TYPE } from './login/goldenRatio';
 
 const DEV_CREDENTIALS = [
   { label: 'Super Admin', email: import.meta.env.VITE_DEV_EMAIL || '', password: import.meta.env.VITE_DEV_PASSWORD || '' },
@@ -27,38 +25,15 @@ const DEV_CREDENTIALS = [
 
 const IS_DEV = import.meta.env.DEV;
 
-/** Navy da marca (logo); o gradiente vai daqui até `primary.main`, sem roxo. */
-const BRAND_NAVY = '#0b1a4a';
-
-/** Provas exibidas no painel de apresentação — alinhadas ao roadmap do produto. */
-const LOGIN_BENEFITS = [
-  {
-    label: 'WhatsApp e Telegram',
-    hint: 'Conecte seus números e contas para monitorar grupos e publicar ofertas.',
-    Icon: WhatsAppIcon,
-  },
-  {
-    label: 'Shopee, Mercado Livre e Amazon',
-    hint: 'Ligue suas contas de afiliado e cada oferta sai com o seu link.',
-    Icon: StorefrontIcon,
-  },
-  {
-    label: 'Texto reescrito com IA',
-    hint: 'Cada oferta ganha um texto novo, sem parecer cópia do concorrente.',
-    Icon: AutoAwesomeIcon,
-  },
-  {
-    label: 'Horário programado',
-    hint: 'Escolha a janela de horários e as ofertas saem sozinhas.',
-    Icon: ScheduleIcon,
-  },
-  {
-    label: 'Rodízio de links',
-    hint: 'Um link só que distribui quem entra entre os seus grupos.',
-    Icon: AltRouteIcon,
-  },
-] as const;
-
+/**
+ * Tela de login.
+ *
+ * φ (proporção áurea) — ver `./login/goldenRatio.ts`:
+ * - desktop (md+): painel visual 61,8% × formulário 38,2% (`GOLDEN_SPLIT`);
+ * - tipografia 16 → 26 → 42 (`GOLDEN_TYPE`) e espaçamentos 8 × φⁿ (`GOLDEN_SPACE`);
+ * - largura do formulário = 26 × 16 ≈ 416 px.
+ * Copy, fotos e provas vivem em `./login/loginContent.ts`.
+ */
 export function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -91,145 +66,83 @@ export function LoginPage() {
     }
   };
 
+  const isDark = theme.palette.mode === 'dark';
+
   return (
     <Box
       sx={{
         minHeight: '100vh',
-        display: 'flex',
+        display: 'grid',
+        // φ: 61,8% painel visual × 38,2% formulário no desktop; coluna única no mobile.
+        gridTemplateColumns: { xs: '1fr', md: `${GOLDEN_SPLIT.major} ${GOLDEN_SPLIT.minor}` },
+        gridTemplateRows: { xs: 'auto 1fr', md: '1fr' },
         bgcolor: 'background.default',
-        position: 'relative',
-        overflow: 'hidden',
       }}
     >
-      {/* Painel de apresentação (desktop) */}
-      <Box
-        sx={{
-          display: { xs: 'none', md: 'flex' },
-          flexDirection: 'column',
-          justifyContent: 'center',
-          p: 8,
-          width: '45%',
-          flexShrink: 0,
-          background: `linear-gradient(155deg, ${BRAND_NAVY} 0%, #15307e 55%, ${theme.palette.primary.main} 100%)`,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Brilhos suaves em azul da marca */}
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute', top: -140, right: -120,
-            width: 420, height: 420, borderRadius: '50%',
-            background: `radial-gradient(circle, ${alpha(theme.palette.primary.light, 0.45)} 0%, transparent 70%)`,
-          }}
-        />
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute', bottom: -160, left: -100,
-            width: 380, height: 380, borderRadius: '50%',
-            background: `radial-gradient(circle, ${alpha('#fff', 0.1)} 0%, transparent 70%)`,
-          }}
-        />
+      {/* Painel visual — desktop */}
+      <Box sx={{ display: { xs: 'none', md: 'block' }, minHeight: '100vh' }}>
+        <LoginShowcasePanel />
+      </Box>
 
-        <Box sx={{ position: 'relative', zIndex: 1 }}>
-          {/* Logo */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 6 }}>
-            <BrandLogo size={44} />
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, letterSpacing: -0.5 }}>
-              {APP_NAME}
-            </Typography>
-          </Box>
-
-          <Typography
-            component="h2"
-            variant="h4"
-            sx={{ color: '#fff', mb: 2, maxWidth: 420, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2 }}
-          >
-            Suas ofertas de afiliado publicadas no automático
-          </Typography>
-          <Typography sx={{ color: alpha('#fff', 0.8), lineHeight: 1.7, maxWidth: 400, fontSize: '0.95rem' }}>
-            Monitora os grupos que você escolher, troca o link pelo seu, reescreve o texto com IA e
-            dispara nos seus grupos. Sem copiar e colar o dia inteiro.
-          </Typography>
-
-          {/* Provas / benefícios */}
-          <Stack component="ul" spacing={1.25} sx={{ m: 0, mt: 5, p: 0, listStyle: 'none' }}>
-            {LOGIN_BENEFITS.map(({ label, hint, Icon }) => (
-              <Tooltip key={label} title={hint} placement="right" arrow enterDelay={300} describeChild>
-                <Box
-                  component="li"
-                  tabIndex={0}
-                  sx={{
-                    display: 'flex', alignItems: 'center', gap: 1.5,
-                    px: 1.5, py: 1, borderRadius: 2, cursor: 'default',
-                    bgcolor: alpha('#fff', 0.06),
-                    border: `1px solid ${alpha('#fff', 0.1)}`,
-                    transition: 'background-color 150ms ease',
-                    '&:hover, &:focus-visible': { bgcolor: alpha('#fff', 0.12), outline: 'none' },
-                    '&:focus-visible': { boxShadow: `0 0 0 2px ${alpha('#fff', 0.6)}` },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: 34, height: 34, borderRadius: '10px', flexShrink: 0,
-                      bgcolor: alpha('#fff', 0.14),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Icon aria-hidden sx={{ fontSize: 19, color: '#fff' }} />
-                  </Box>
-                  <Typography sx={{ color: alpha('#fff', 0.92), fontSize: '0.9rem', fontWeight: 600 }}>
-                    {label}
-                  </Typography>
-                </Box>
-              </Tooltip>
-            ))}
-          </Stack>
-        </Box>
+      {/* Faixa visual — mobile */}
+      <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+        <LoginMobileBanner />
       </Box>
 
       {/* Painel de login */}
       <Box
+        component="main"
         sx={{
-          flex: 1,
+          position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          p: { xs: 3, sm: 6 },
-          position: 'relative',
+          px: { xs: `${GOLDEN_SPACE.s3}px`, sm: `${GOLDEN_SPACE.s5}px` },
+          // xs: espaço extra no topo para o toggle de tema não encostar no título.
+          pt: { xs: `${GOLDEN_SPACE.s6}px`, md: `${GOLDEN_SPACE.s5}px` },
+          pb: { xs: `${GOLDEN_SPACE.s4}px`, md: `${GOLDEN_SPACE.s5}px` },
+          // Brilho discreto do azul da marca atrás do card (ancora o glass).
+          backgroundImage: `radial-gradient(60% 50% at 50% 38.2%, ${alpha(theme.palette.primary.main, isDark ? 0.16 : 0.1)} 0%, transparent 100%)`,
         }}
       >
         {/* Toggle tema */}
-        <Box sx={{ position: 'absolute', top: 20, right: 20 }}>
+        <Box sx={{ position: 'absolute', top: `${GOLDEN_SPACE.s3}px`, right: `${GOLDEN_SPACE.s3}px` }}>
           <Tooltip title={mode === 'dark' ? 'Tema claro' : 'Tema escuro'}>
-            <IconButton size="small" onClick={toggleColorMode}>
+            <IconButton size="small" onClick={toggleColorMode} aria-label={mode === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}>
               {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
         </Box>
 
-        <Box sx={{ width: '100%', maxWidth: 400 }}>
-          {/* Logo mobile */}
-          <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1.5, mb: 4 }}>
-            <BrandLogo size={40} />
-            <Typography variant="h5" fontWeight={800} letterSpacing={-0.5}>{APP_NAME}</Typography>
-          </Box>
-
-          <Typography component="h1" variant="h5" fontWeight={700} mb={0.5}>
-            Bem-vindo de volta
+        <Box sx={{ width: '100%', maxWidth: GOLDEN_TYPE.lead * 16 /* ≈ 416 px */ }}>
+          <Typography
+            component="h1"
+            sx={{ fontSize: GOLDEN_TYPE.lead, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.15, mb: `${GOLDEN_SPACE.s1}px` }}
+          >
+            {LOGIN_COPY.formTitle}
           </Typography>
-          <Typography variant="body2" color="text.secondary" mb={4}>
-            Entre para ver suas ofertas e grupos
+          <Typography sx={{ fontSize: GOLDEN_TYPE.base, color: 'text.secondary', mb: `${GOLDEN_SPACE.s4}px` }}>
+            {LOGIN_COPY.formSubtitle}
           </Typography>
 
-          {/* Formulário */}
-          <Card sx={{ bgcolor: 'background.paper', mb: 3 }}>
-            <CardContent sx={{ p: '28px !important' }}>
+          {/* Formulário — card com glass sutil */}
+          <Card
+            elevation={0}
+            sx={{
+              mb: `${GOLDEN_SPACE.s3}px`,
+              borderRadius: `${GOLDEN_SPACE.s3}px`,
+              bgcolor: alpha(theme.palette.background.paper, isDark ? 0.72 : 0.8),
+              backdropFilter: 'blur(14px)',
+              border: `1px solid ${alpha(isDark ? '#fff' : theme.palette.primary.main, isDark ? 0.1 : 0.14)}`,
+              boxShadow: isDark
+                ? `0 ${GOLDEN_SPACE.s3}px ${GOLDEN_SPACE.s5}px ${alpha('#000', 0.45)}`
+                : `0 ${GOLDEN_SPACE.s3}px ${GOLDEN_SPACE.s5}px ${alpha(theme.palette.primary.dark, 0.12)}`,
+            }}
+          >
+            <CardContent sx={{ p: `${GOLDEN_SPACE.s4}px !important` }}>
               {error && (
-                <Alert severity="error" sx={{ mb: 3 }}>
+                <Alert severity="error" sx={{ mb: `${GOLDEN_SPACE.s3}px` }}>
                   {error}
                 </Alert>
               )}
@@ -244,7 +157,7 @@ export function LoginPage() {
                   required
                   autoFocus
                   autoComplete="email"
-                  sx={{ mb: 2 }}
+                  sx={{ mb: `${GOLDEN_SPACE.s3}px` }}
                 />
                 <TextField
                   label="Senha"
@@ -254,17 +167,20 @@ export function LoginPage() {
                   fullWidth
                   required
                   autoComplete="current-password"
-                  sx={{ mb: 3 }}
+                  sx={{ mb: `${GOLDEN_SPACE.s4}px` }}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
-                        <IconButton
-                          onClick={() => setShowPassword((v) => !v)}
-                          edge="end"
-                          size="small"
-                        >
-                          {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                        </IconButton>
+                        <Tooltip title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+                          <IconButton
+                            onClick={() => setShowPassword((v) => !v)}
+                            edge="end"
+                            size="small"
+                            aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                          >
+                            {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ),
                   }}
@@ -275,7 +191,13 @@ export function LoginPage() {
                   fullWidth
                   size="large"
                   disabled={loading || !email || !password}
-                  sx={{ py: 1.25 }}
+                  sx={{
+                    py: `${GOLDEN_SPACE.s2}px`,
+                    fontSize: GOLDEN_TYPE.base,
+                    transition: 'transform 160ms ease, box-shadow 160ms ease',
+                    '&:hover:not(:disabled)': { transform: 'translateY(-1px)' },
+                    '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
+                  }}
                 >
                   {loading ? <CircularProgress size={22} color="inherit" /> : 'Entrar'}
                 </Button>
@@ -334,7 +256,7 @@ export function LoginPage() {
             </Card>
           )}
 
-          <Typography variant="caption" color="text.disabled" display="block" textAlign="center" mt={3}>
+          <Typography sx={{ fontSize: GOLDEN_TYPE.caption, color: 'text.disabled', textAlign: 'center', mt: `${GOLDEN_SPACE.s3}px` }}>
             © {new Date().getFullYear()} {APP_NAME} · Todos os direitos reservados
           </Typography>
         </Box>
@@ -342,4 +264,3 @@ export function LoginPage() {
     </Box>
   );
 }
-

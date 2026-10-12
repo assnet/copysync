@@ -21,6 +21,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 >
 > _Remover esta nota ao fechar a primeira seção de versão._
 
+### Added
+
+#### Login humanizada e premium em proporção áurea (`0.15.0`)
+
+Tela de login com foto real de equipe, prova social e layout em proporção áurea, alinhada ao
+propósito do produto (afiliados publicando ofertas). Validada em claro, escuro e mobile.
+
+- **`app/src/pages/login/goldenRatio.ts`** — novo: `PHI`, divisão 61,8/38,2, tipografia 16/26/42 e espaçamentos 8×φⁿ; comentários no código indicam cada aplicação
+- **`app/src/pages/login/loginContent.ts`** — novo: copy, `LOGIN_BENEFITS` (ícone + `Tooltip describeChild`) e caminhos das fotos; **`LoginShowcasePanel.tsx`** (desktop) e **`LoginMobileBanner.tsx`** (xs/sm) — novos
+- **`LoginPage.tsx`** — grid áureo, card com blur e borda translúcida, reveal único desligado em `prefers-reduced-motion`, `aria-label` no toggle de tema e no olho da senha; `handleSubmit`, `IS_DEV`, `BrandLogo` e `APP_NAME` intactos
+- **`app/public/assets/login/`** — `team-hero.webp` (~96 KB, `fetchPriority="high"`, dimensões reservadas) e 3 avatares (~3 KB, lazy), Unsplash License; autores e links em `CREDITS.md`
+- **`docs/rebranding-copysync.md`** — subseção *Tela de login* (layout, fotos, como trocar)
+- **`api/package.json`**, **`app/package.json`** — `0.14.2` → `0.15.0`
+
 ### Changed
 
 #### Logo com fundo transparente (`0.14.2`)

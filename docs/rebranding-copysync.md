@@ -73,13 +73,27 @@ Checar i18n: o nome do produto exibido deve vir de uma constante única (ex.: `A
 `app/src/config`), não ficar duplicado em cada tela. Validar modos sistema/claro/escuro com o logo novo
 (fundo branco do PNG pode exigir versão com fundo transparente).
 
+### Tela de login (2026-10-12)
+
+`app/src/pages/LoginPage.tsx` foi redesenhada com proporção áurea (constantes em
+`app/src/pages/login/goldenRatio.ts`: `PHI`, `GOLDEN_SPLIT` 61,8 % painel × 38,2 % formulário no
+desktop, tipografia 16 → 26 → 42 px, espaçamentos 8 × φⁿ, headline na linha áurea de 38,2 % do
+painel). Subcomponentes: `LoginShowcasePanel` (desktop), `LoginMobileBanner` (xs/sm) e
+`loginContent.ts` (copy, provas com tooltip e caminhos das fotos).
+
+Fotos reais em `app/public/assets/login/` (`team-hero.webp` ≈ 96 KB + 3 avatares ≈ 3 KB), WebP,
+com overlay navy `#0b1a4a` para contraste. Autor, origem e licença (Unsplash License) em
+`app/public/assets/login/CREDITS.md`. Para trocar: converter com Pillow (`quality=78`, ≤ 250 KB),
+salvar na pasta, atualizar `LOGIN_IMAGES` em `loginContent.ts` e a tabela do `CREDITS.md`.
+A marca aparece só via `APP_NAME`/`BrandLogo`; nenhum texto literal.
+
 ## Fase 3 — API (`api/`) ⏳
 
 | Arquivo | Trocar |
 |---------|--------|
 | `api/src/app/app.ts` | fallback de CORS: `https://copysync.app`, `https://www.copysync.app` (manter os antigos até o DNS antigo ser desligado) |
 | `api/src/app/app.ts` | OpenAPI: `title: 'CopySync API'`, descrição, `contact` (`dev@copysync.app`), server de produção `https://api.copysync.app` |
-| `api/prisma/seed.ts` | e-mail do usuário seed (`waiopremium@gmail.com`) — decidir novo e-mail; **não** altera banco existente |
+| `api/prisma/seed.ts` | e-mail do usuário seed (`copysyncapp@gmail.com`) — decidir novo e-mail; **não** altera banco existente |
 | `api/package.json` | `"name": "waioprime-api"` → `"copysync-api"` |
 
 Deploy na Render: cadastrar domínios `copysync.app` (static) e `api.copysync.app` (web) e
