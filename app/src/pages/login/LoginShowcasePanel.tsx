@@ -1,12 +1,21 @@
-import { Box, Stack, Tooltip, Typography, alpha } from '@mui/material';
+import { Box, Tooltip, Typography, alpha } from '@mui/material';
 import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { BRAND_NAVY, LOGIN_BENEFITS, LOGIN_COPY, LOGIN_IMAGES } from './loginContent';
 import { GOLDEN_LINE, GOLDEN_SPACE, GOLDEN_TYPE, PHI } from './goldenRatio';
 
+/** Fio de 1px entre os passos (branco α 0,14 sobre o overlay navy). */
+const HAIRLINE = alpha('#fff', 0.14);
+
+/** Texto só para leitor de tela (padrão sr-only), sem dependência extra. */
+const SR_ONLY = {
+  position: 'absolute', width: 1, height: 1, p: 0, m: -1, overflow: 'hidden',
+  clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+} as const;
+
 /**
  * Painel visual (desktop, md+): foto real de equipe com overlay navy da marca,
- * logo, headline, provas com tooltip e faixa de prova social.
+ * logo, headline, índice numerado dos passos do produto e faixa de prova social.
  *
  * φ aplicado: a grade vertical divide o painel na linha áurea superior (38,2%):
  * o logo vive acima dela e a headline nasce exatamente nela. A largura máxima
@@ -100,41 +109,71 @@ export function LoginShowcasePanel() {
           {LOGIN_COPY.subtitle}
         </Typography>
 
-        {/* Provas: chips focáveis com tooltip descritivo */}
-        <Stack
-          component="ul"
-          direction="row"
-          useFlexGap
-          flexWrap="wrap"
-          spacing={`${GOLDEN_SPACE.s1}px`}
-          sx={{ m: 0, p: 0, listStyle: 'none', mb: `${GOLDEN_SPACE.s4}px` }}
+        {/* Índice do produto: passos numerados em ordem, fios de 1px, sem fundo.
+            Não focável (não é interativo); a hint vai no tooltip (mouse) e em
+            texto só-para-leitor-de-tela. */}
+        <Box
+          component="ol"
+          aria-label="Como o produto funciona, em ordem"
+          sx={{
+            m: 0, p: 0, listStyle: 'none',
+            mb: `${GOLDEN_SPACE.s3}px`,
+            borderTop: `1px solid ${HAIRLINE}`,
+          }}
         >
-          {LOGIN_BENEFITS.map(({ label, hint, Icon }) => (
-            <Tooltip key={label} title={hint} placement="top" arrow enterDelay={250} describeChild>
+          {LOGIN_BENEFITS.map(({ label, hint }, i) => (
+            <Tooltip key={label} title={hint} placement="right" enterDelay={200} describeChild>
               <Box
                 component="li"
-                tabIndex={0}
                 sx={{
-                  display: 'inline-flex', alignItems: 'center', gap: `${GOLDEN_SPACE.s1}px`,
-                  px: `${GOLDEN_SPACE.s2}px`, py: `${GOLDEN_SPACE.s1}px`,
-                  borderRadius: 999, cursor: 'default',
-                  fontSize: GOLDEN_TYPE.caption, fontWeight: 600,
-                  color: '#fff',
-                  bgcolor: alpha('#fff', 0.1),
-                  border: `1px solid ${alpha('#fff', 0.18)}`,
-                  backdropFilter: 'blur(8px)',
-                  transition: 'background-color 160ms ease, border-color 160ms ease',
-                  '&:hover, &:focus-visible': { bgcolor: alpha('#fff', 0.18), borderColor: alpha('#fff', 0.4) },
-                  '&:focus-visible': { outline: `2px solid ${alpha('#fff', 0.9)}`, outlineOffset: 2 },
-                  '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+                  position: 'relative',
+                  display: 'grid',
+                  gridTemplateColumns: 'auto 1fr',
+                  alignItems: 'baseline',
+                  columnGap: `${GOLDEN_SPACE.s2}px`,
+                  py: `${GOLDEN_SPACE.s1}px`,
+                  borderBottom: `1px solid ${HAIRLINE}`,
+                  cursor: 'default',
+                  // Fio que cresce da esquerda no hover, sobre a hairline.
+                  '&::after': {
+                    content: '""',
+                    position: 'absolute', left: 0, right: 0, bottom: '-1px', height: '1px',
+                    bgcolor: 'primary.light',
+                    transform: 'scaleX(0)', transformOrigin: 'left center',
+                    transition: 'transform 240ms cubic-bezier(.2,.7,.2,1)',
+                  },
+                  '&:hover::after': { transform: 'scaleX(1)' },
+                  '&:hover .login-step-index': { color: 'primary.light' },
+                  '@media (prefers-reduced-motion: reduce)': {
+                    '&::after, & .login-step-index': { transition: 'none' },
+                  },
                 }}
               >
-                <Icon aria-hidden sx={{ fontSize: 16 }} />
-                {label}
+                <Typography
+                  component="span"
+                  className="login-step-index"
+                  aria-hidden
+                  sx={{
+                    fontSize: GOLDEN_TYPE.caption, fontWeight: 500, lineHeight: 1,
+                    fontVariantNumeric: 'tabular-nums', letterSpacing: 0.6,
+                    color: alpha('#fff', 0.55),
+                    transition: 'color 240ms ease',
+                    minWidth: '2ch',
+                  }}
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </Typography>
+                <Typography
+                  component="span"
+                  sx={{ fontSize: GOLDEN_TYPE.base, fontWeight: 600, lineHeight: 1.25, letterSpacing: -0.2 }}
+                >
+                  {label}
+                  <Box component="span" sx={SR_ONLY}>{`. ${hint}`}</Box>
+                </Typography>
               </Box>
             </Tooltip>
           ))}
-        </Stack>
+        </Box>
 
         {/* Prova social: avatares recortados das fotos (sem números inventados) */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: `${GOLDEN_SPACE.s2}px` }}>

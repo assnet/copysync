@@ -1,9 +1,3 @@
-import type { SvgIconComponent } from '@mui/icons-material';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import StorefrontIcon from '@mui/icons-material/Storefront';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import AltRouteIcon from '@mui/icons-material/AltRoute';
 
 /** Navy da marca (logo); base dos overlays sobre a foto. */
 export const BRAND_NAVY = '#0b1a4a';
@@ -33,34 +27,31 @@ export const LOGIN_COPY = {
 export interface LoginBenefit {
   label: string;
   hint: string;
-  Icon: SvgIconComponent;
 }
 
-/** Provas exibidas no painel — cada uma com tooltip (`describeChild`) focável. */
+/**
+ * Passos do produto, na ordem em que acontecem (conectar → ligar contas →
+ * reescrever → agendar → rodízio). A ordem é o conteúdo: o painel numera.
+ */
 export const LOGIN_BENEFITS: readonly LoginBenefit[] = [
   {
     label: 'WhatsApp e Telegram',
     hint: 'Conecte seus números e contas para monitorar grupos e publicar ofertas.',
-    Icon: WhatsAppIcon,
   },
   {
     label: 'Shopee, Mercado Livre e Amazon',
     hint: 'Ligue suas contas de afiliado e cada oferta sai com o seu link.',
-    Icon: StorefrontIcon,
   },
   {
     label: 'Texto reescrito com IA',
     hint: 'Cada oferta ganha um texto novo, sem parecer cópia do concorrente.',
-    Icon: AutoAwesomeIcon,
   },
   {
     label: 'Horário programado',
     hint: 'Escolha a janela de horários e as ofertas saem sozinhas.',
-    Icon: ScheduleIcon,
   },
   {
     label: 'Rodízio de links',
     hint: 'Um link só que distribui quem entra entre os seus grupos.',
-    Icon: AltRouteIcon,
   },
 ];

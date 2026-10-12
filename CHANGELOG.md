@@ -21,6 +21,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 >
 > _Remover esta nota ao fechar a primeira seção de versão._
 
+### Changed
+
+#### Login — índice editorial no lugar das cápsulas (`0.15.1`)
+
+Os 5 benefícios deixam de ser chips e viram um índice numerado que conta o fluxo do produto
+em ordem (conectar → contas de afiliado → IA → horário → rodízio), sem fundo nem ícone.
+
+- **`LoginShowcasePanel.tsx`** — `<ol>` com `01`–`05` em fonte tabular (branco α 0,55), rótulo 600, fios de 1 px (α 0,14); hover: número em `primary.light` e fio que cresce da esquerda (240 ms, desligado em `prefers-reduced-motion`); hint via `Tooltip describeChild` + texto só para leitor de tela; itens não focáveis
+- **`loginContent.ts`** — `LoginBenefit` vira `{ label, hint }`, ícones removidos
+- **`api/package.json`**, **`app/package.json`** — `0.15.0` → `0.15.1`
+
 ### Added
 
 #### Login humanizada e premium em proporção áurea (`0.15.0`)
