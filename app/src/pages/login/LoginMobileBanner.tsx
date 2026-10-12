@@ -3,6 +3,7 @@ import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { BRAND_NAVY, LOGIN_COPY, LOGIN_IMAGES } from './loginContent';
 import { GOLDEN_SPACE, GOLDEN_TYPE, PHI } from './goldenRatio';
+import { REVEAL_KEYFRAMES, revealSx } from './loginReveal';
 
 /**
  * Faixa superior compacta (xs/sm): foto com overlay navy, logo e headline curta.
@@ -18,6 +19,7 @@ export function LoginMobileBanner() {
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
         p: `${GOLDEN_SPACE.s3}px`, // 21 px
         color: '#fff', bgcolor: BRAND_NAVY,
+        ...REVEAL_KEYFRAMES,
       }}
     >
       <Box
@@ -52,6 +54,7 @@ export function LoginMobileBanner() {
           fontSize: GOLDEN_TYPE.lead, // 26 px
           fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.15,
           textWrap: 'balance', maxWidth: 360, mt: `${GOLDEN_SPACE.s3}px`,
+          ...revealSx(0), // só fade/rise, sem stagger
         }}
       >
         {LOGIN_COPY.headlineShort}

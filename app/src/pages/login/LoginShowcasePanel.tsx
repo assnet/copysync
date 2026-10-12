@@ -3,9 +3,17 @@ import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { BRAND_NAVY, LOGIN_BENEFITS, LOGIN_COPY, LOGIN_IMAGES } from './loginContent';
 import { GOLDEN_LINE, GOLDEN_SPACE, GOLDEN_TYPE, PHI } from './goldenRatio';
+import { LoginAmbientVideo } from './LoginAmbientVideo';
+import {
+  REVEAL_ITEMS_DELAY_MS, REVEAL_ITEM_STAGGER_MS, REVEAL_KEYFRAMES, REVEAL_SUBTITLE_DELAY_MS,
+  REVEAL_WORD_STAGGER_MS, revealSx,
+} from './loginReveal';
 
 /** Fio de 1px entre os passos (branco α 0,14 sobre o overlay navy). */
 const HAIRLINE = alpha('#fff', 0.14);
+
+/** Palavras da headline, para o reveal escalonado. */
+const HEADLINE_WORDS = LOGIN_COPY.headline.split(' ');
 
 /** Texto só para leitor de tela (padrão sr-only), sem dependência extra. */
 const SR_ONLY = {
@@ -14,7 +22,7 @@ const SR_ONLY = {
 } as const;
 
 /**
- * Painel visual (desktop, md+): foto real de equipe com overlay navy da marca,
+ * Painel visual (desktop, md+): vídeo ambiente de equipe (poster + loop) com overlay navy da marca,
  * logo, headline, índice numerado dos passos do produto e faixa de prova social.
  *
  * φ aplicado: a grade vertical divide o painel na linha áurea superior (38,2%):
@@ -39,21 +47,16 @@ export function LoginShowcasePanel() {
         color: '#fff',
         bgcolor: BRAND_NAVY,
         isolation: 'isolate',
+        ...REVEAL_KEYFRAMES,
       }}
     >
-      {/* Foto de fundo (LCP): carregada com prioridade, dimensões reservadas. */}
-      <Box
-        component="img"
-        src={LOGIN_IMAGES.hero}
-        alt=""
-        width={1600}
-        height={1067}
-        fetchPriority="high"
-        decoding="async"
-        sx={{
-          position: 'absolute', inset: 0, width: '100%', height: '100%',
-          objectFit: 'cover', objectPosition: '62% 40%', zIndex: -2,
-        }}
+      {/* Fundo: poster (primeiro frame) + vídeo ambiente em loop, atrás do overlay.
+          Sem vídeo em movimento reduzido / Save-Data / 2g — fica só o poster. */}
+      <LoginAmbientVideo
+        poster={LOGIN_IMAGES.ambientPoster}
+        webmSrc={LOGIN_IMAGES.ambientWebm}
+        mp4Src={LOGIN_IMAGES.ambientMp4}
+        objectPosition="50% 40%"
       />
       {/* Overlay navy: mais denso onde o texto fica (esquerda/baixo) para contraste ≥ 4.5:1. */}
       <Box
@@ -80,12 +83,6 @@ export function LoginShowcasePanel() {
         sx={{
           maxWidth: GOLDEN_TYPE.lead * 16, // ≈ 416 px
           display: 'flex', flexDirection: 'column',
-          animation: 'loginReveal 700ms cubic-bezier(.2,.7,.2,1) both',
-          '@keyframes loginReveal': {
-            from: { opacity: 0, transform: `translateY(${GOLDEN_SPACE.s3}px)` },
-            to: { opacity: 1, transform: 'none' },
-          },
-          '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
         }}
       >
         <Typography
@@ -97,13 +94,24 @@ export function LoginShowcasePanel() {
             mb: `${GOLDEN_SPACE.s3}px`,
           }}
         >
-          {LOGIN_COPY.headline}
+          {/* Reveal palavra a palavra (stagger 70 ms); os espaços entre spans
+              preservam as quebras naturais de linha. */}
+          {HEADLINE_WORDS.map((word, i) => (
+            <Box
+              key={`${word}-${i}`}
+              component="span"
+              sx={{ display: 'inline-block', ...revealSx(i * REVEAL_WORD_STAGGER_MS) }}
+            >
+              {word}
+            </Box>
+          )).flatMap((node, i) => (i === 0 ? [node] : [' ', node]))}
         </Typography>
         <Typography
           sx={{
             fontSize: GOLDEN_TYPE.base, lineHeight: PHI, // 16 px, altura de linha φ
             color: alpha('#fff', 0.84),
             mb: `${GOLDEN_SPACE.s4}px`,
+            ...revealSx(REVEAL_SUBTITLE_DELAY_MS),
           }}
         >
           {LOGIN_COPY.subtitle}
@@ -134,6 +142,7 @@ export function LoginShowcasePanel() {
                   py: `${GOLDEN_SPACE.s1}px`,
                   borderBottom: `1px solid ${HAIRLINE}`,
                   cursor: 'default',
+                  ...revealSx(REVEAL_ITEMS_DELAY_MS + i * REVEAL_ITEM_STAGGER_MS),
                   // Fio que cresce da esquerda no hover, sobre a hairline.
                   '&::after': {
                     content: '""',
@@ -144,7 +153,9 @@ export function LoginShowcasePanel() {
                   },
                   '&:hover::after': { transform: 'scaleX(1)' },
                   '&:hover .login-step-index': { color: 'primary.light' },
+                  // Mescla com a regra de reduced-motion do revealSx (mesma chave).
                   '@media (prefers-reduced-motion: reduce)': {
+                    animation: 'none', willChange: 'auto',
                     '&::after, & .login-step-index': { transition: 'none' },
                   },
                 }}
@@ -176,7 +187,12 @@ export function LoginShowcasePanel() {
         </Box>
 
         {/* Prova social: avatares recortados das fotos (sem números inventados) */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: `${GOLDEN_SPACE.s2}px` }}>
+        <Box
+          sx={{
+            display: 'flex', alignItems: 'center', gap: `${GOLDEN_SPACE.s2}px`,
+            ...revealSx(REVEAL_ITEMS_DELAY_MS + LOGIN_BENEFITS.length * REVEAL_ITEM_STAGGER_MS),
+          }}
+        >
           <Box sx={{ display: 'flex', flexShrink: 0 }}>
             {LOGIN_IMAGES.avatars.map((avatar, i) => (
               <Box

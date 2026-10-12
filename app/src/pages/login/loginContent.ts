@@ -6,6 +6,10 @@ export const BRAND_NAVY = '#0b1a4a';
 export const LOGIN_IMAGES = {
   hero: '/assets/login/team-hero.webp',
   heroAlt: 'Equipe reunida em uma mesa, sorrindo e trabalhando em notebooks',
+  /** Vídeo ambiente do painel desktop (loop de 12 s, sem áudio) e seu primeiro frame. */
+  ambientPoster: '/assets/login/team-poster.webp',
+  ambientWebm: '/assets/login/team-ambient.webm',
+  ambientMp4: '/assets/login/team-ambient.mp4',
   avatars: [
     { src: '/assets/login/avatar-1.webp', alt: 'Afiliada sorrindo' },
     { src: '/assets/login/avatar-2.webp', alt: 'Afiliado concentrado no notebook' },

@@ -87,6 +87,44 @@ com overlay navy `#0b1a4a` para contraste. Autor, origem e licença (Unsplash Li
 salvar na pasta, atualizar `LOGIN_IMAGES` em `loginContent.ts` e a tabela do `CREDITS.md`.
 A marca aparece só via `APP_NAME`/`BrandLogo`; nenhum texto literal.
 
+**Vídeo ambiente (2026-10-12).** No desktop o fundo do painel é `LoginAmbientVideo`
+(`app/src/pages/login/LoginAmbientVideo.tsx`): poster `team-poster.webp` (1º frame) + `<video>`
+em loop (`team-ambient.webm` / `.mp4`, 1280×720, 24 fps, 12 s, sem áudio, ≈ 0,9 MB cada), atrás
+do mesmo overlay navy. O `<video>` só é montado após o primeiro paint (`requestIdleCallback`),
+com fade de 600 ms no `canplay`; não é criado com `prefers-reduced-motion: reduce`, `Save-Data`
+ou rede `2g`/`slow-2g` (hook `useAmbientVideoAllowed`), pausa com a aba oculta e `play()`
+rejeitado deixa o poster. Mobile continua só com `team-hero.webp`. Origem/licença em `CREDITS.md`.
+
+Para trocar pelo vídeo da equipe real (`source.mp4`, escolhendo `-ss` início do melhor trecho,
+12 s úteis + 1 s extra para o crossfade de loop; alvo ≤ 2,5 MB mp4 / ≤ 2 MB webm — subir o
+`crf` ou encurtar se passar). O filtro faz o último segundo do trecho desvanecer sobre o
+primeiro, então o fim emenda no início sem salto:
+
+```sh
+FG='[0:v]scale=1280:-2,fps=24,split[s0][s1];[s0]trim=0:12,setpts=PTS-STARTPTS[c];[s1]trim=12:13,setpts=PTS-STARTPTS[e];[e][c]xfade=transition=fade:duration=1:offset=0[v]'
+ffmpeg -ss 8 -i source.mp4 -t 13 -filter_complex "$FG" -map '[v]' -an \
+  -c:v libx264 -crf 28 -preset slow -profile:v high -pix_fmt yuv420p -movflags +faststart team-ambient.mp4
+ffmpeg -ss 8 -i source.mp4 -t 13 -filter_complex "$FG" -map '[v]' -an \
+  -c:v libvpx-vp9 -crf 36 -b:v 0 -row-mt 1 -pix_fmt yuv420p team-ambient.webm
+ffmpeg -i team-ambient.mp4 -frames:v 1 poster.png   # 1º frame do trecho = poster, sem salto
+python3 -c "from PIL import Image; Image.open('poster.png').convert('RGB').save('team-poster.webp', quality=74, method=6)"
+```
+
+O loop é garantido no componente: atributo `loop`, retomada ao voltar de `document.hidden` e,
+se `ended` disparar, `currentTime = 0` + `play()`.
+
+**Reveal do texto (2026-10-12).** `app/src/pages/login/loginReveal.ts` define o keyframe
+`loginRise` (14 px ↑, fade, blur 6 → 0, 520 ms, `cubic-bezier(.2,.7,.2,1)`) e `revealSx(delayMs)`.
+No painel desktop: headline palavra a palavra (stagger 70 ms), subtítulo em 420 ms, índice e
+prova social a partir de 600 ms (60 ms/item); logo não anima. Mobile: só a headline curta.
+Regras: o `@keyframes` é registrado pelo `sx` do container (`REVEAL_KEYFRAMES`), o estado final
+é o natural do elemento (nunca `opacity: 0` fora do keyframe — se a animação falhar o texto
+aparece) e `prefers-reduced-motion: reduce` desliga tudo (`animation: none`). Para ajustar tempos,
+mudar as constantes `REVEAL_*` nesse arquivo.
+
+Salvar os três em `app/public/assets/login/`, ajustar `objectPosition` em `LoginShowcasePanel`
+se o enquadramento mudar e atualizar a tabela do `CREDITS.md`.
+
 ## Fase 3 — API (`api/`) ⏳
 
 | Arquivo | Trocar |

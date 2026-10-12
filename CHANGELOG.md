@@ -21,6 +21,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 >
 > _Remover esta nota ao fechar a primeira seção de versão._
 
+### Added
+
+#### Login — vídeo ambiente no painel desktop (`0.16.0`)
+
+- **`app/src/pages/login/LoginAmbientVideo.tsx`** — novo: poster + `<video muted loop playsInline>` em loop atrás do overlay navy; montado após o primeiro paint (`requestIdleCallback`), fade de 600 ms no `canplay`, pausa com a aba oculta e retoma ao voltar, `ended` reinicia o loop, `play()` rejeitado cai no poster. Hook `useAmbientVideoAllowed` desliga o vídeo fora do desktop (md+), com `prefers-reduced-motion`, `Save-Data` e rede 2g
+- **`app/src/pages/login/LoginShowcasePanel.tsx`**, **`loginContent.ts`** — painel desktop usa o vídeo (`LOGIN_IMAGES.ambient*`); mobile segue com a foto
+- **`app/src/pages/login/loginReveal.ts`** — novo: keyframe `loginRise` (sobe 14 px, fade, blur 6 px → 0, 520 ms, ease-out cúbico) e `revealSx(delay)`; estado final = estado natural (sem opacidade 0 fora do keyframe) e `animation: none` em `prefers-reduced-motion`
+- **`LoginShowcasePanel.tsx`**, **`LoginMobileBanner.tsx`** — reveal escalonado no load: headline palavra a palavra (70 ms), subtítulo aos 420 ms, índice 01–05 e prova social a partir de 600 ms com 60 ms por item; logo não anima. Mobile só fade/rise da headline curta. Substitui a animação única do bloco
+- **`app/public/assets/login/team-ambient.{mp4,webm}`**, **`team-poster.webp`**, **`CREDITS.md`** — clipe Pexels (Ivan S, Pexels License), 12 s com crossfade de loop, 1280×720, ≈ 1 MB cada; comandos de troca em `docs/rebranding-copysync.md`
+
 ### Changed
 
 #### Login — índice editorial no lugar das cápsulas (`0.15.1`)
