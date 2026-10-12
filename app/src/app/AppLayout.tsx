@@ -22,10 +22,12 @@ import { useColorMode } from '@/contexts/ThemeContext';
 import { useUiGuards } from '@/security/useUiGuards';
 import { OutgoingMediaProvider } from '@/features/chat/media/OutgoingMediaProvider';
 import { VoiceRecorderHost } from '@/features/chat/media/VoiceRecorderProvider';
+import { APP_NAME } from '@/shared/branding/brand';
+import { BrandLogo } from '@/shared/branding/BrandLogo';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
-const SIDEBAR_COLLAPSED_KEY = 'waioprime-sidebar-collapsed';
+const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed';
 
 function readSidebarCollapsed(): boolean {
   try {
@@ -73,21 +75,10 @@ function NavLogo({ collapsed }: { collapsed: boolean }) {
         minHeight: 72,
       }}
     >
-      <Box
-        component="img"
-        src="/assets/logo_waiochat.png"
-        alt="WaioPrime"
-        sx={{
-          width: collapsed ? 36 : 44,
-          height: collapsed ? 36 : 44,
-          borderRadius: 0,
-          objectFit: 'contain',
-          flexShrink: 0,
-        }}
-      />
+      <BrandLogo size={collapsed ? 36 : 44} />
       {!collapsed && (
         <Typography variant="h6" fontWeight={800} letterSpacing={-0.5} noWrap>
-          WaioPrime
+          {APP_NAME}
         </Typography>
       )}
     </Box>
@@ -333,7 +324,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
         )}
 
         {/* Versão do painel — discreta, presente também no modo compacto */}
-        <Tooltip title={`WaioPrime v${__APP_VERSION__}`} placement="right">
+        <Tooltip title={`${APP_NAME} v${__APP_VERSION__}`} placement="right">
           <Typography
             variant="caption"
             color="text.disabled"
@@ -370,7 +361,7 @@ export function AppLayout() {
   const currentSectionLabel =
     NAV_ITEMS.find((item) =>
       item.matchPrefix ? location.pathname.startsWith('/settings') : location.pathname === item.path,
-    )?.label ?? 'WaioPrime';
+    )?.label ?? APP_NAME;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 

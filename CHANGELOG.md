@@ -23,6 +23,26 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Changed
 
+#### Rebranding → CopySync — fase 2, painel (`0.14.0`)
+
+Tela de login, sidebar, título da aba, favicon, apple-touch-icon e manifest PWA passam a usar a
+marca CopySync. O nome do produto sai de uma constante única e o logo de um componente, então
+nenhuma tela repete a string da marca (white label).
+
+- **`app/src/shared/branding/brand.ts`** — novo: `APP_NAME` e caminhos dos assets de marca
+- **`app/src/shared/branding/BrandLogo.tsx`** — novo: logo em tile branco arredondado com borda sutil; o PNG tem fundo branco, o tile mantém contraste igual sobre o gradiente do login e nos temas claro/escuro
+- **`app/public/assets/brand/`** — fonte 1254 px e derivados (512, 192, 180, 32, 16, `.ico`) gerados com Pillow; **`app/public/site.webmanifest`** — novo, ícones 192/512 e cores de tema
+- **`app/index.html`** — `<title>CopySync</title>`, `favicon.ico` + PNG 32/16, apple-touch-icon, link do manifest; `data-app="copysync"` (o `DomGuardian` valida só a presença do atributo, não o valor)
+- **`LoginPage.tsx`** — logo e nome no painel esquerdo, cabeçalho mobile (substitui o tile "W" por `BrandLogo`) e rodapé via `APP_NAME`
+- **`AppLayout.tsx`** — logo/nome da sidebar, tooltip de versão e rótulo padrão via `APP_NAME`; chave `localStorage` `waioprime-sidebar-collapsed` → `sidebar-collapsed` (usuário perde só a preferência de sidebar recolhida)
+- **`conversations.mock.ts`**, **`resolveMediaUrl.ts`**, **`DomGuardian.ts`** — textos de mock e comentários
+- **`app/.env.dev`** — comentário neutro; `VITE_DEV_PROXY_TARGET` segue na API atual com TODO até `api.copysync.app` existir
+- **`app/package.json`** — `"name"` → `copysync-app`; **`api/package.json`**, **`app/package.json`** — `0.13.1` → `0.14.0`
+
+### Removed
+
+- **`app/public/assets/logo_waiochat.png`**, **`waioFavicon-256x256.png`**, **`waioLogo-256x256.png`**, **`waiochat-pro*.png`**, **`copysync-logo*.png`** (raiz) — substituídos por `assets/brand/`
+
 #### Rebranding → CopySync — fase 1, documentação (`0.13.1`)
 
 O projeto é cópia do WaioPrime e passa a se chamar **CopySync** (painel `https://copysync.app`,

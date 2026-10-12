@@ -12,8 +12,11 @@ Este repositório nasceu como cópia do projeto **WaioPrime** e está sendo reba
 | Painel (app) | https://copysync.app |
 | API | https://api.copysync.app |
 | Repositório | git@github.com:assnet/copysync.git |
-| Logo (fonte) | `app/public/assets/copysync-logo.png` (1254×1254) |
-| Logo 256 px | `app/public/assets/copysync-logo-256x256.png` |
+| Logo (fonte) | `app/public/assets/brand/logo-source.png` (1254×1254, fundo branco) |
+| Derivados | `app/public/assets/brand/`: `logo-512.png`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `favicon-32.png`, `favicon-16.png`, `favicon.ico` |
+| Manifest PWA | `app/public/site.webmanifest` |
+| Constante de nome | `APP_NAME` em `app/src/shared/branding/brand.ts` |
+| Componente de logo | `BrandLogo` em `app/src/shared/branding/BrandLogo.tsx` (tile branco arredondado, funciona em claro/escuro) |
 
 Regra white label (AGENTS.md): nomes de funções, chaves, eventos e componentes descrevem o
 **recurso**, nunca a marca. A marca aparece só em texto exibido ao usuário, metadados HTTP
@@ -25,7 +28,7 @@ Prosa, domínios e caminhos de clone rebatizados em: `README.md`, `api/README.md
 `AGENTS.md` (seção *Marca e domínios*), `.cursor/MCP_SETUP.md`, `.github/MCP_SETUP.md`,
 `.cursor/plans/rules_skills_mcps_copysync_c5f11ded.plan.md` (renomeado),
 `.specs/features/service-desk/integracao-api-central.md`, `api/db.instructions.md`,
-comentário de cabeçalho em `render.yaml`. Logo adicionado em `app/public/assets/`.
+comentário de cabeçalho em `render.yaml`. Logo adicionado em `app/public/assets/` (movido para `assets/brand/` na fase 2).
 
 Único ajuste de tooling: o alias `cw` em `.cursor/scripts/mcp/waioprime-mcp.zsh` passou a abrir
 `~/www/copysync` (o caminho antigo não existe mais). Rode `.cursor/scripts/mcp/install-mcp-scripts.sh`
@@ -34,9 +37,24 @@ para atualizar a cópia em `~/.cursor/`.
 Histórico do `CHANGELOG.md` **não** foi reescrito: entradas antigas citam `waioprime.com` porque
 descrevem o estado da época.
 
-## Fase 2 — Painel (`app/`) ⏳
+## Fase 2 — Painel (`app/`) ✅ (2026-10-12, v0.14.0)
 
-Cada item lista o arquivo e o que trocar. Trocar **texto e assets**, não identificadores de recurso.
+Feito: `index.html` (título, favicon/apple-touch/manifest, `data-app="copysync"` junto com o comentário do `DomGuardian`), `LoginPage` (3 pontos), `AppLayout` (logo, nome, tooltip de versão, chave `localStorage` → `sidebar-collapsed`), mocks de chat, comentários de `resolveMediaUrl`, `app/package.json` → `copysync-app`. Assets antigos `logo_waiochat.png` e `waio*.png` removidos; `iProtect`/`iSaver` mantidos (não pertencem à marca, sem referência).
+
+**Regenerar ícones** (a partir de `logo-source.png`, requer Pillow):
+
+```bash
+cd app/public/assets/brand && python3 -c "
+from PIL import Image; s=Image.open('logo-source.png').convert('RGBA')
+for n,z in [('logo-512',512),('icon-192',192),('icon-512',512),('apple-touch-icon',180),('favicon-32',32),('favicon-16',16)]: s.resize((z,z),Image.LANCZOS).save(n+'.png',optimize=True)
+s.resize((64,64),Image.LANCZOS).save('favicon.ico',sizes=[(16,16),(32,32),(48,48),(64,64)])"
+```
+
+Pendente da fase 2, depende do DNS: `app/.env.dev` e `app/.env` ainda apontam para `api.waioprime.com` (marcado com TODO); trocar na fase 3.
+
+Não há biblioteca i18n no `app/` hoje: strings seguem em pt-BR no código. Quando i18n entrar, `APP_NAME` continua sendo a única fonte do nome.
+
+Tabela original da fase (referência do que foi tocado):
 
 | Arquivo | Trocar |
 |---------|--------|

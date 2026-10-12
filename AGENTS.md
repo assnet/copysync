@@ -14,7 +14,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 
 - Produto: **CopySync** (rebranding do WaioPrime; cópia do repositório original).
 - Painel: https://copysync.app · API: https://api.copysync.app
-- Logo: `app/public/assets/copysync-logo.png` (e versão 256 px).
+- Logo e ícones: `app/public/assets/brand/` (fonte `logo-source.png`; favicon, apple-touch, 192/512). Nome do produto só via `APP_NAME` em `app/src/shared/branding/brand.ts`; logo via `BrandLogo`.
 - O banco de produção na Render mantém o nome `waioprime` — **não renomear**.
 - Estado do rebranding, pendências por fase e o que não mexer: [`docs/rebranding-copysync.md`](docs/rebranding-copysync.md).
 - A marca só aparece em texto exibido, `<title>`, OpenAPI e assets. Nomes de funções, chaves, eventos e rotas descrevem o recurso (white label).

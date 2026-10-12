@@ -13,6 +13,8 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
+import { APP_NAME } from '@/shared/branding/brand';
+import { BrandLogo } from '@/shared/branding/BrandLogo';
 
 const DEV_CREDENTIALS = [
   { label: 'Super Admin', email: import.meta.env.VITE_DEV_EMAIL || '', password: import.meta.env.VITE_DEV_PASSWORD || '' },
@@ -108,14 +110,9 @@ export function LoginPage() {
             >
               <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 22, lineHeight: 1 }}>W</Typography>
             </Box> */}
-            <Box
-              component="img"
-              src="/assets/logo_waiochat.png"
-              alt="Imagem"
-              sx={{ width: 44, height: 44, borderRadius: 0, objectFit: 'contain' }}
-            />           
+            <BrandLogo size={44} />
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, letterSpacing: -0.5 }}>
-              WaioPrime
+              {APP_NAME}
             </Typography>
           </Box>
 
@@ -180,20 +177,8 @@ export function LoginPage() {
         <Box sx={{ width: '100%', maxWidth: 400 }}>
           {/* Logo mobile */}
           <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1.5, mb: 4 }}>
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #4f70e0 0%, #7c3aed 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 20, lineHeight: 1 }}>W</Typography>
-            </Box>
-            <Typography variant="h5" fontWeight={800} letterSpacing={-0.5}>WaioPrime</Typography>
+            <BrandLogo size={40} />
+            <Typography variant="h5" fontWeight={800} letterSpacing={-0.5}>{APP_NAME}</Typography>
           </Box>
 
           <Typography variant="h5" fontWeight={700} mb={0.5}>
@@ -313,7 +298,7 @@ export function LoginPage() {
           )}
 
           <Typography variant="caption" color="text.disabled" display="block" textAlign="center" mt={3}>
-            © {new Date().getFullYear()} WaioPrime · Todos os direitos reservados
+            © {new Date().getFullYear()} {APP_NAME} · Todos os direitos reservados
           </Typography>
         </Box>
       </Box>

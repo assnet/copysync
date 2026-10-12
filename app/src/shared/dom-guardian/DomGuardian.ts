@@ -14,7 +14,7 @@
  * - data-emotion: emotion (MUI v5)
  * - data-styled: styled-components
  * - data-vite-dev-id: Vite HMR em dev
- * - data-app: marcador explícito do WaioPrime (aplicado em nossos estilos globais)
+ * - data-app: marcador explícito da aplicação (aplicado em nossos estilos globais)
  */
 const LEGITIMATE_STYLE_ATTRS = [
   'data-emotion',

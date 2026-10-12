@@ -80,7 +80,7 @@ export const MOCK_CONVERSATIONS: ChatConversation[] = [
     session: { id: 'sess-1', name: 'Adriel 2', phone: '554774003804' },
     status: 'bot',
     unreadCount: 0,
-    lastMessage: 'Olá! Sou o assistente virtual da WaioPrime. Como posso ajudar?',
+    lastMessage: 'Olá! Sou o assistente virtual da CopySync. Como posso ajudar?',
     lastMessageAt: hoursAgo(1),
     tags: ['bot', 'novo'],
     assignedTo: null,
@@ -95,7 +95,7 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
   'conv-1': [
     { id: 'm1-1', conversationId: 'conv-1', type: 'event', direction: 'in', body: 'Conversa iniciada via bot', timestamp: daysAgo(1), status: 'read', isEvent: true },
     { id: 'm1-2', conversationId: 'conv-1', type: 'text', direction: 'in', body: 'Olá! Gostaria de saber mais sobre os planos.', timestamp: daysAgo(1), status: 'read' },
-    { id: 'm1-3', conversationId: 'conv-1', type: 'text', direction: 'out', body: '👋 Olá! Bem-vinda à WaioPrime!\n\nEscolha uma das opções:\n*1* - Comercial 🏢\n*2* - Financeiro 💰\n*3* - Suporte técnico 🔧\n*0* - Falar com atendente', timestamp: daysAgo(1), status: 'read' },
+    { id: 'm1-3', conversationId: 'conv-1', type: 'text', direction: 'out', body: '👋 Olá! Bem-vinda à CopySync!\n\nEscolha uma das opções:\n*1* - Comercial 🏢\n*2* - Financeiro 💰\n*3* - Suporte técnico 🔧\n*0* - Falar com atendente', timestamp: daysAgo(1), status: 'read' },
     { id: 'm1-4', conversationId: 'conv-1', type: 'text', direction: 'in', body: '1', timestamp: minutesAgo(10), status: 'read' },
     { id: 'm1-5', conversationId: 'conv-1', type: 'text', direction: 'out', body: '*Setor Comercial*\n\nEscolha:\n*1* - Planos e preços\n*2* - Demonstração\n*3* - Voltar', timestamp: minutesAgo(10), status: 'read' },
     { id: 'm1-6', conversationId: 'conv-1', type: 'text', direction: 'in', body: '5', timestamp: minutesAgo(5), status: 'read' },
@@ -130,6 +130,6 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
   ],
   'conv-6': [
     { id: 'm6-1', conversationId: 'conv-6', type: 'text', direction: 'in', body: 'Boa tarde!', timestamp: hoursAgo(2), status: 'read' },
-    { id: 'm6-2', conversationId: 'conv-6', type: 'text', direction: 'out', body: 'Olá! Sou o assistente virtual da WaioPrime. Como posso ajudar?\n\nEscolha uma opção:\n*1* - Suporte\n*2* - Vendas\n*3* - Financeiro', timestamp: hoursAgo(1), status: 'read' },
+    { id: 'm6-2', conversationId: 'conv-6', type: 'text', direction: 'out', body: 'Olá! Sou o assistente virtual da CopySync. Como posso ajudar?\n\nEscolha uma opção:\n*1* - Suporte\n*2* - Vendas\n*3* - Financeiro', timestamp: hoursAgo(1), status: 'read' },
   ],
 };
