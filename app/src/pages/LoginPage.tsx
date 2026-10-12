@@ -10,6 +10,11 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import AltRouteIcon from '@mui/icons-material/AltRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
@@ -21,6 +26,38 @@ const DEV_CREDENTIALS = [
 ] as const;
 
 const IS_DEV = import.meta.env.DEV;
+
+/** Navy da marca (logo); o gradiente vai daqui até `primary.main`, sem roxo. */
+const BRAND_NAVY = '#0b1a4a';
+
+/** Provas exibidas no painel de apresentação — alinhadas ao roadmap do produto. */
+const LOGIN_BENEFITS = [
+  {
+    label: 'WhatsApp e Telegram',
+    hint: 'Conecte seus números e contas para monitorar grupos e publicar ofertas.',
+    Icon: WhatsAppIcon,
+  },
+  {
+    label: 'Shopee, Mercado Livre e Amazon',
+    hint: 'Ligue suas contas de afiliado e cada oferta sai com o seu link.',
+    Icon: StorefrontIcon,
+  },
+  {
+    label: 'Texto reescrito com IA',
+    hint: 'Cada oferta ganha um texto novo, sem parecer cópia do concorrente.',
+    Icon: AutoAwesomeIcon,
+  },
+  {
+    label: 'Horário programado',
+    hint: 'Escolha a janela de horários e as ofertas saem sozinhas.',
+    Icon: ScheduleIcon,
+  },
+  {
+    label: 'Rodízio de links',
+    hint: 'Um link só que distribui quem entra entre os seus grupos.',
+    Icon: AltRouteIcon,
+  },
+] as const;
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -64,7 +101,7 @@ export function LoginPage() {
         overflow: 'hidden',
       }}
     >
-      {/* Bloco decorativo lateral esquerdo */}
+      {/* Painel de apresentação (desktop) */}
       <Box
         sx={{
           display: { xs: 'none', md: 'flex' },
@@ -73,81 +110,81 @@ export function LoginPage() {
           p: 8,
           width: '45%',
           flexShrink: 0,
-          background: `linear-gradient(145deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.main} 100%)`,
+          background: `linear-gradient(155deg, ${BRAND_NAVY} 0%, #15307e 55%, ${theme.palette.primary.main} 100%)`,
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        {/* Círculos decorativos */}
+        {/* Brilhos suaves em azul da marca */}
         <Box
+          aria-hidden
           sx={{
-            position: 'absolute', top: -80, right: -80,
-            width: 300, height: 300, borderRadius: '50%',
-            bgcolor: alpha('#fff', 0.06),
+            position: 'absolute', top: -140, right: -120,
+            width: 420, height: 420, borderRadius: '50%',
+            background: `radial-gradient(circle, ${alpha(theme.palette.primary.light, 0.45)} 0%, transparent 70%)`,
           }}
         />
         <Box
+          aria-hidden
           sx={{
-            position: 'absolute', bottom: -60, left: -60,
-            width: 240, height: 240, borderRadius: '50%',
-            bgcolor: alpha('#fff', 0.05),
+            position: 'absolute', bottom: -160, left: -100,
+            width: 380, height: 380, borderRadius: '50%',
+            background: `radial-gradient(circle, ${alpha('#fff', 0.1)} 0%, transparent 70%)`,
           }}
         />
 
         <Box sx={{ position: 'relative', zIndex: 1 }}>
           {/* Logo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 6 }}>
-            {/* <Box
-              sx={{
-                width: 44,
-                height: 44,
-                borderRadius: '14px',
-                bgcolor: alpha('#fff', 0.2),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: 22, lineHeight: 1 }}>W</Typography>
-            </Box> */}
             <BrandLogo size={44} />
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, letterSpacing: -0.5 }}>
               {APP_NAME}
             </Typography>
           </Box>
 
-          <Typography variant="h4" sx={{ color: '#fff', mb: 2, maxWidth: 360 }}>
-            Gerencie sua comunicação em um só lugar
+          <Typography
+            component="h2"
+            variant="h4"
+            sx={{ color: '#fff', mb: 2, maxWidth: 420, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2 }}
+          >
+            Suas ofertas de afiliado publicadas no automático
           </Typography>
-          <Typography sx={{ color: alpha('#fff', 0.75), lineHeight: 1.7, maxWidth: 340, fontSize: '0.95rem' }}>
-            Sessões WhatsApp, chatbots, automações e métricas em tempo real para o seu negócio.
+          <Typography sx={{ color: alpha('#fff', 0.8), lineHeight: 1.7, maxWidth: 400, fontSize: '0.95rem' }}>
+            Monitora os grupos que você escolher, troca o link pelo seu, reescreve o texto com IA e
+            dispara nos seus grupos. Sem copiar e colar o dia inteiro.
           </Typography>
 
-          {/* Features */}
-          <Stack spacing={1.5} sx={{ mt: 5 }}>
-            {[
-              'Multi-sessões WhatsApp',
-              'Chatbots e automações',
-              'Flows visuais por blocos',
-              'Métricas em tempo real',
-            ].map((feat) => (
-              <Box key={feat} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          {/* Provas / benefícios */}
+          <Stack component="ul" spacing={1.25} sx={{ m: 0, mt: 5, p: 0, listStyle: 'none' }}>
+            {LOGIN_BENEFITS.map(({ label, hint, Icon }) => (
+              <Tooltip key={label} title={hint} placement="right" arrow enterDelay={300} describeChild>
                 <Box
+                  component="li"
+                  tabIndex={0}
                   sx={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    bgcolor: alpha('#fff', 0.2),
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
+                    display: 'flex', alignItems: 'center', gap: 1.5,
+                    px: 1.5, py: 1, borderRadius: 2, cursor: 'default',
+                    bgcolor: alpha('#fff', 0.06),
+                    border: `1px solid ${alpha('#fff', 0.1)}`,
+                    transition: 'background-color 150ms ease',
+                    '&:hover, &:focus-visible': { bgcolor: alpha('#fff', 0.12), outline: 'none' },
+                    '&:focus-visible': { boxShadow: `0 0 0 2px ${alpha('#fff', 0.6)}` },
                   }}
                 >
-                  <Typography sx={{ color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</Typography>
+                  <Box
+                    sx={{
+                      width: 34, height: 34, borderRadius: '10px', flexShrink: 0,
+                      bgcolor: alpha('#fff', 0.14),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Icon aria-hidden sx={{ fontSize: 19, color: '#fff' }} />
+                  </Box>
+                  <Typography sx={{ color: alpha('#fff', 0.92), fontSize: '0.9rem', fontWeight: 600 }}>
+                    {label}
+                  </Typography>
                 </Box>
-                <Typography sx={{ color: alpha('#fff', 0.85), fontSize: '0.875rem' }}>{feat}</Typography>
-              </Box>
+              </Tooltip>
             ))}
           </Stack>
         </Box>
@@ -181,11 +218,11 @@ export function LoginPage() {
             <Typography variant="h5" fontWeight={800} letterSpacing={-0.5}>{APP_NAME}</Typography>
           </Box>
 
-          <Typography variant="h5" fontWeight={700} mb={0.5}>
+          <Typography component="h1" variant="h5" fontWeight={700} mb={0.5}>
             Bem-vindo de volta
           </Typography>
           <Typography variant="body2" color="text.secondary" mb={4}>
-            Entre na sua conta para continuar
+            Entre para ver suas ofertas e grupos
           </Typography>
 
           {/* Formulário */}

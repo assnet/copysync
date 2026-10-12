@@ -23,6 +23,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Changed
 
+#### Login alinhado ao posicionamento do produto (`0.14.1`)
+
+O painel esquerdo do login falava em "CRM, chatbots e métricas" (herança do projeto original).
+Agora apresenta o que o produto faz: ofertas de afiliado publicadas no automático. Copy produzida
+com a skill de copywriting; visual sem roxo, só azuis da marca.
+
+- **`docs/produto-roadmap.md`** — novo: funcionalidades, planos (Básico/Plus/Pro) com limites por tenant, chaves de entitlement sugeridas, ordem de entrega e copy de referência; **`AGENTS.md`** — ponteiro na seção *Marca e domínios*
+- **`LoginPage.tsx`** — headline "Suas ofertas de afiliado publicadas no automático", subtítulo e 5 provas em `LOGIN_BENEFITS` (WhatsApp e Telegram, Shopee/Mercado Livre/Amazon, reescrita com IA, horário programado, rodízio de links), cada uma com ícone MUI e `Tooltip describeChild` focável por teclado; gradiente `#0b1a4a → #15307e → primary.main`; brilhos radiais `aria-hidden` no lugar dos círculos sólidos; "Bem-vindo de volta" vira `h1`
+- **`api/package.json`**, **`app/package.json`** — `0.14.0` → `0.14.1`
+
 #### Rebranding → CopySync — fase 2, painel (`0.14.0`)
 
 Tela de login, sidebar, título da aba, favicon, apple-touch-icon e manifest PWA passam a usar a
