@@ -23,6 +23,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Changed
 
+#### Logo com fundo transparente (`0.14.2`)
+
+- **`app/public/assets/brand/`** — fonte substituída pela versão com fundo transparente (128×128) e todos os derivados regenerados (favicon 16/32/ico, apple-touch 180, ícones 192/512, `logo-512`). Tamanhos acima de 128 px são ampliados; trocar por fonte maior quando houver
+- **`api/package.json`**, **`app/package.json`** — `0.14.1` → `0.14.2`
+
 #### Login alinhado ao posicionamento do produto (`0.14.1`)
 
 O painel esquerdo do login falava em "CRM, chatbots e métricas" (herança do projeto original).

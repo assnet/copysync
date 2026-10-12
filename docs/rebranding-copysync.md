@@ -12,7 +12,7 @@ Este repositório nasceu como cópia do projeto **WaioPrime** e está sendo reba
 | Painel (app) | https://copysync.app |
 | API | https://api.copysync.app |
 | Repositório | git@github.com:assnet/copysync.git |
-| Logo (fonte) | `app/public/assets/brand/logo-source.png` (1254×1254, fundo branco) |
+| Logo (fonte) | `app/public/assets/brand/logo-source.png` (128×128, fundo transparente — **pedir fonte ≥ 512 px** para apple-touch/192/512 sem ampliação) |
 | Derivados | `app/public/assets/brand/`: `logo-512.png`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `favicon-32.png`, `favicon-16.png`, `favicon.ico` |
 | Manifest PWA | `app/public/site.webmanifest` |
 | Constante de nome | `APP_NAME` em `app/src/shared/branding/brand.ts` |
@@ -39,7 +39,7 @@ descrevem o estado da época.
 
 ## Fase 2 — Painel (`app/`) ✅ (2026-10-12, v0.14.0)
 
-Feito: `index.html` (título, favicon/apple-touch/manifest, `data-app="copysync"` junto com o comentário do `DomGuardian`), `LoginPage` (3 pontos), `AppLayout` (logo, nome, tooltip de versão, chave `localStorage` → `sidebar-collapsed`), mocks de chat, comentários de `resolveMediaUrl`, `app/package.json` → `copysync-app`. Assets antigos `logo_waiochat.png` e `waio*.png` removidos; `iProtect`/`iSaver` mantidos (não pertencem à marca, sem referência).
+Logo trocado em 2026-10-12 pela versão com fundo transparente (128 px). Feito: `index.html` (título, favicon/apple-touch/manifest, `data-app="copysync"` junto com o comentário do `DomGuardian`), `LoginPage` (3 pontos), `AppLayout` (logo, nome, tooltip de versão, chave `localStorage` → `sidebar-collapsed`), mocks de chat, comentários de `resolveMediaUrl`, `app/package.json` → `copysync-app`. Assets antigos `logo_waiochat.png` e `waio*.png` removidos; `iProtect`/`iSaver` mantidos (não pertencem à marca, sem referência).
 
 **Regenerar ícones** (a partir de `logo-source.png`, requer Pillow):
 
