@@ -11,6 +11,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — CSP correto do painel versionado no Blueprint
+
+- **`render.yaml`** — adiciona `Content-Security-Policy` em `/*` com `connect-src`/`media-src` em `api.copysync.app` (+ `wss:`) e `style-src 'unsafe-inline'` (MUI/Emotion); o CSP configurado à mão no dashboard apontava para domínios de outro projeto e bloqueava estilos inline, deixando login impossível e layout quebrado
+- **`docs/app-bloqueio-indexacao.md`** — tabela explicando cada diretiva, registro do incidente e aviso para atualizar o header ao trocar domínio
+
 #### Frontend — Painel invisível para buscadores (app.copysync.app)
 
 - **`app/public/robots.txt`** — `Disallow: /` para todo `User-agent`; o painel é área privada e nenhum crawler deve rastreá-lo

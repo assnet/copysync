@@ -18,11 +18,36 @@ estende a regra a arquivos não-HTML. Juntas, o subdomínio fica invisível.
 O SPA tem rewrite `/* → /index.html`, mas a Render serve arquivos existentes antes do rewrite,
 então `/robots.txt` é entregue como arquivo real.
 
+## Headers de segurança do static site (render.yaml → `headers`)
+
+Além do `X-Robots-Tag`, o painel envia `Content-Security-Policy`, `X-Content-Type-Options: nosniff`
+e `Referrer-Policy: strict-origin-when-cross-origin`. Valor atual do CSP:
+
+```
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data: https://api.copysync.app; font-src 'self' data:; connect-src 'self' https://api.copysync.app wss://api.copysync.app; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+```
+
+| Diretiva | Por quê |
+|---|---|
+| `style-src 'unsafe-inline'` | MUI/Emotion injeta `<style>`; `index.html` tem `<style data-app>`. Sem isso o layout some |
+| `connect-src https://api.copysync.app wss://api.copysync.app` | REST (Axios), SSE e WebSocket do chat. Sem isso nenhuma chamada sai, login falha com "Failed to fetch" |
+| `media-src https://api.copysync.app` | áudio/vídeo do chat servidos pela API (`resolveMediaUrl`) |
+| `img-src https:` | fotos de perfil e mídias de CDN externas |
+| `worker-src blob:` | workers de upload/mídia |
+| `frame-ancestors 'none'` | painel não pode ser embutido em iframe (clickjacking) |
+
+Incidente 2026-10-12: CSP no dashboard apontava `connect-src`/`frame-src` para domínios de outro
+projeto (`pulsosocial`) e `style-src 'self'` sem inline → login impossível e tela sem estilo.
+**Ao trocar domínio da API ou do painel, atualizar este header primeiro.**
+
+Serviço na Render chama-se `copysync_app`; `render.yaml` ainda declara `waioprime`. Se o Blueprint
+não estiver vinculado, os headers precisam ser replicados à mão em **Settings → Headers**.
+
 ## Como verificar após deploy
 
 ```bash
 curl -s https://app.copysync.app/robots.txt
-curl -sI https://app.copysync.app/ | grep -i -E 'x-robots-tag|x-content-type|referrer'
+curl -sI https://app.copysync.app/ | grep -i -E 'x-robots-tag|x-content-type|referrer|content-security'
 curl -sI https://app.copysync.app/site.webmanifest | grep -i x-robots-tag
 curl -s https://app.copysync.app/ | grep -i 'name="robots"'
 ```
