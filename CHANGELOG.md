@@ -23,6 +23,43 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Extensão Chrome (`extension/`) — sessão de afiliado do marketplace (`0.17.6`)
+
+Reescrita do legado "Redirect Flow" como projeto próprio (MV3, webpack + TypeScript), white label,
+i18n `pt_BR`/`en` e temas sistema/claro/escuro. Doc: `docs/extensao-navegador.md`.
+
+- **`extension/src/background/apiClient.ts`** — único lugar que monta URL (`env.apiUrl` + path): `login`, `refresh`, `syncAffiliateSession` (`PUT /integrations/affiliate-credentials/MERCADO_LIVRE/session` com `Authorization: Bearer` e `X-Tenant-Id`). Em 401 faz um refresh e repete; refresh recusado → limpa auth e `api_unauthorized`. 404 → `api_route_missing`, rede → `api_unreachable`, resto → `api_rejected`. Nunca propaga texto da API (AGENTS §13)
+- **`extension/src/background/marketplaceSession.ts`** — único uso de `chrome.cookies` do projeto (cookie `ssid` do domínio do marketplace); acha a aba do marketplace e pede o CSRF ao content script, com fallback `chrome.scripting.executeScript` para aba aberta antes da instalação
+- **`extension/src/background/syncSession.ts`** — `runSync('alarm'|'manual')` com mutex; grava `SyncState` (`syncing→ok|error`, `lastSyncAt`, `lastErrorCode`; `lastErrorDetail` só em DEV)
+- **`extension/src/background/authStore.ts`**, **`errors.ts`**, **`index.ts`** — `chrome.storage.local` tipado (tenant padrão = primeiro da lista; `auth/select-tenant` valida pertencimento); `SyncError`; alarme `affiliate-session-sync` e `onMessage` com switch exaustivo em `RuntimeRequest`, remetente restrito à própria extensão
+- **`extension/src/content/index.ts`** — só responde `page/get-csrf` lendo `meta[name="csrf-token"]`; sem polling, sem log, sem DOM
+- **`extension/src/contract/messages.ts`** — `SyncErrorCode` ganha `login_invalid` e `login_no_tenant` (chaves `err_*` já existiam nas locales)
+- **`extension/scripts/check-dist.mjs`** — pós-build: versão do manifest = `package.json`, sem `localhost`/IP privado, host de `API_URL` presente no `background.js`, sem `console.log(`/`debugger`, sem `_metadata/` nem `update_url`
+- **`extension/scripts/check-cookie-scope.mjs`** — `chrome.cookies.*` só em `marketplaceSession.ts` e com `MARKETPLACE_COOKIE_DOMAIN`
+- **`extension/scripts/check-i18n.mjs`** — paridade pt_BR ⇄ en e toda chave usada (`t()`, `data-i18n`, `data-i18n-attr`, `err_<SyncErrorCode>`) existe
+- **`extension/README.md`**, **`docs/extensao-navegador.md`**, **`AGENTS.md`** — como rodar, variáveis, fluxo, contrato com a API (a rota `PUT …/session` ainda não existe — pendência de `.specs/features/affiliate-credentials`), sistema de proteção e publicação
+- **`extension/src/popup/`** (`popup.html`, `popup.css`, `index.ts`, `view.ts`, `theme.ts`, `relativeTime.ts`) — popup redesenhado: tokens de cor da paleta do painel, tema sistema/claro/escuro (`prefers-color-scheme` + `data-theme` persistido), tooltips `tippy.js`, foco visível, `prefers-reduced-motion`, telas de login e de sessão (status, última sincronização relativa, seletor de espaço, etiqueta de afiliado, sair); só `textContent`/`createElement`, nunca `innerHTML`
+- **`extension/public/_locales/{pt_BR,en}/messages.json`**, **`extension/src/core/i18n.ts`** — i18n nativo do Chrome; manifest usa `__MSG_*`; `t()` e `applyI18n()` com `data-i18n`/`data-i18n-attr`
+- **`extension/public/manifest.json`** — chave `key` para ID estável (privada em `extension/.keys/*.pem`, ignorada); sem `update_url`; ícones gerados de `app/public/assets/brand/logo-source.png`
+- **Revisão pós-implementação** — `apiClient.ts`: refresh recusado (401) limpa auth, refresh falho por rede/5xx não desloga; `API_URL` exige `https:` fora de DEV; `logout` revoga o refresh token em `POST /auth/logout` antes de limpar o storage; `authStore.ts`: escritas serializadas em fila (tema e etiqueta gravavam em paralelo e uma perdia), `applyRenewedAccessToken` não ressuscita sessão após logout/troca de tenant, `syncing` com mais de 5 min vira `idle` (service worker morto no meio); `index.ts`: popup recebe `AuthSummary` sem tokens, content script (`sender.tab`) não fala com o canal, `syncing` resetado em `onStartup`/`onInstalled`; `popup/index.ts`: etiqueta só marca "salva" após resposta ok e mostra erro inline
+- **`api/package.json`**, **`app/package.json`** — `0.17.5` → `0.17.6`
+- **Pendências** — rota `PUT …/affiliate-credentials/MERCADO_LIVRE/session` na API (T7b da spec), smoke com extensão carregada, nova listagem na Web Store, testes unitários: lista completa em `docs/extensao-navegador.md` → *Pendências*
+
+### Removed
+
+#### Extensão legada (`extension/iiobglifbapgfafnghkcakggkcaddpap/`)
+
+- Pacote baixado da Web Store ("Redirect Flow") sai da pasta `extension/`; cópia preservada em `legadoML/`. Removidos com ele `_metadata/verified_contents.json` (assinatura da loja, inválida após edição) e `update_url` da listagem antiga, que fariam o Chrome auto-atualizar para pacote de terceiro
+
+#### Docs — planos Starter/Profissional/Business e carga por plano (`0.17.5`)
+
+- **`docs/produto-roadmap.md`** — planos reescritos conforme a tabela de venda (Starter R$ 97, Profissional R$ 167, Business R$ 247; limites por canal, Telegram a partir do Profissional, Template Instagram exclusivo do Business); funcionalidades 14-16 (menção a todos, domínio personalizado, níveis de suporte) e entitlements `mention_all_enabled`, `custom_domain_enabled`, `support_tier`; nova seção "Carga por plano" com sessões, msgs/dia e posts/dia por tenant e mix de referência para 1.000 tenants
+- **`docs/arquitetura-escala.md`** — meta de dimensionamento recalculada pelos planos (~1.150 sessões WhatsApp + 650 Telegram para 1.000 tenants); gargalo identificado como envio em rajada nas janelas agendadas
+
+#### Docs — estratégia de escala (`0.17.4`)
+
+- **`docs/arquitetura-escala.md`** — novo: diagnóstico do acoplamento a processo único (registry Baileys, lease inexistente, WS/SSE e fila in-memory, mídia em disco), comparação com `legado1`/`legado2`, limites físicos por processo, arquitetura alvo (lease de sessão, shard, `PROCESS_ROLE` http/worker, BullMQ, Redis pub/sub, S3/R2), ordem de entrega em fases e escada de servidores Render × Hetzner+Coolify. Registra o estado da Render (disco em `/var/data`, Postgres compartilhado com o PulsoSocial) e a tabela de planos por faixa de sessões; seção 7 lista o que o adapter Baileys e o módulo `chat` gastam além do que o roadmap de afiliados exige (ingestão 1:1, presença, reações, avatares, blob único de auth state) e a ordem de corte
+
 #### Chat — @menção resolvida (recebimento) e estruturada (envio) (`0.17.0`)
 
 - **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — `extractBaileysMessage` passa a capturar `contextInfo.mentionedJid`; novo `resolveMentionsInBody` troca `@<lid>` pelo telefone real via `signalRepository.lidMapping` (mesmo padrão já usado para participante de grupo) antes de persistir/emitir a mensagem recebida. Corrige menção exibida como LID cru em vez do contato
