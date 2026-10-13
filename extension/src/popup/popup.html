@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+  </head>
+  <body>
+    <main id="app" class="app" aria-busy="true">
+      <header class="header">
+        <img class="header__logo" src="icons/icon-128.png" width="32" height="32" alt="" data-i18n-attr="alt:extName" />
+        <div class="header__titles">
+          <h1 class="header__name" id="app-name"></h1>
+          <p class="header__tagline" data-i18n="popup_tagline"></p>
+        </div>
+        <div class="header__actions">
+          <button type="button" class="icon-btn" id="theme-btn" data-i18n-attr="aria-label:popup_theme_system">
+            <svg class="icon" id="theme-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+          </button>
+          <button type="button" class="icon-btn" id="panel-btn" data-i18n-attr="aria-label:popup_open_panel">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Login -->
+      <section id="view-login" class="view" hidden>
+        <form id="login-form" class="login" novalidate>
+          <h2 class="login__title" data-i18n="login_title"></h2>
+          <p class="login__subtitle" data-i18n="login_subtitle"></p>
+          <div class="field">
+            <label class="field__label" for="login-email" data-i18n="login_email"></label>
+            <input class="input" id="login-email" name="email" type="email" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label class="field__label" for="login-password" data-i18n="login_password"></label>
+            <div class="input-group">
+              <input class="input" id="login-password" name="password" type="password" autocomplete="current-password" required />
+              <button type="button" class="icon-btn icon-btn--inset" id="toggle-password" data-i18n-attr="aria-label:login_show_password" aria-pressed="false">
+                <svg class="icon" id="eye-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+              </button>
+            </div>
+          </div>
+          <p class="alert alert--error" id="login-error" role="alert" hidden></p>
+          <button type="submit" class="btn btn--primary btn--block" id="login-submit">
+            <span class="btn__spinner" aria-hidden="true"></span>
+            <span class="btn__label" data-i18n="login_submit"></span>
+          </button>
+        </form>
+      </section>
+
+      <!-- Autenticado -->
+      <section id="view-main" class="view" hidden>
+        <section class="card" aria-labelledby="session-title">
+          <div class="card__head">
+            <h2 class="card__title" id="session-title" data-i18n="session_title"></h2>
+            <button type="button" class="icon-btn icon-btn--sm" id="sync-help" data-i18n-attr="aria-label:session_sync_help">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M9.6 9.5a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1 .8-1 1.5v.3M12 17h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="signal" id="signal">
+            <span class="signal__dot" aria-hidden="true"></span>
+            <span class="signal__text" id="signal-text"></span>
+          </div>
+
+          <div class="card__actions">
+            <button type="button" class="btn btn--secondary btn--block" id="open-marketplace" hidden>
+              <span class="btn__label" data-i18n="session_open_marketplace"></span>
+            </button>
+            <button type="button" class="btn btn--primary btn--block" id="sync-now">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__label" data-i18n="session_sync_now"></span>
+            </button>
+          </div>
+
+          <div class="sync" id="sync-status" aria-live="polite">
+            <span class="sync__badge" id="sync-badge"></span>
+            <span class="sync__when" id="sync-when"></span>
+          </div>
+          <p class="alert alert--error alert--compact" id="sync-error" hidden></p>
+          <p class="hint" id="auto-hint"></p>
+        </section>
+
+        <div class="field field--row" id="tenant-field" hidden>
+          <label class="field__label" for="tenant-select" data-i18n="tenant_label"></label>
+          <select class="input input--select" id="tenant-select" data-i18n-attr="title:tenant_help"></select>
+        </div>
+
+        <div class="field field--row">
+          <div class="field__label-row">
+            <label class="field__label" for="tag-input" data-i18n="tag_label"></label>
+            <button type="button" class="icon-btn icon-btn--sm" id="tag-help" data-i18n-attr="aria-label:tag_help">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M9.6 9.5a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1 .8-1 1.5v.3M12 17h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <span class="field__feedback" id="tag-feedback" role="status" aria-live="polite"></span>
+          </div>
+          <input class="input" id="tag-input" type="text" autocomplete="off" spellcheck="false" maxlength="64" data-i18n-attr="placeholder:tag_placeholder" />
+        </div>
+
+        <footer class="footer">
+          <span class="footer__account" id="account-label"></span>
+          <button type="button" class="btn btn--ghost btn--sm" id="logout-btn" data-i18n-attr="aria-label:account_logout_help">
+            <span class="btn__label" data-i18n="account_logout"></span>
+          </button>
+        </footer>
+      </section>
+
+      <p class="version" id="version"></p>
+    </main>
+  </body>
+</html>
