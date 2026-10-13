@@ -32,7 +32,7 @@ function rejectUnhandledFileDrag(e: DragEvent<HTMLElement>) {
 interface Props {
   conversation: ChatConversation;
   messages: ChatMessage[];
-  onSendMessage: (text: string, quotedMessageId?: string | null) => void;
+  onSendMessage: (text: string, quotedMessageId?: string | null, mentions?: string[]) => void;
   detailsOpen: boolean;
   onToggleDetails: () => void;
   loadingMessages?: boolean;
@@ -115,8 +115,8 @@ export function ChatWindow({
   const handleCancelReply = useCallback(() => setReplyTo(null), []);
 
   const handleSend = useCallback(
-    (text: string) => {
-      onSendMessage(text, replyTo?.id ?? null);
+    (text: string, mentions?: string[]) => {
+      onSendMessage(text, replyTo?.id ?? null, mentions);
       setReplyTo(null);
     },
     [onSendMessage, replyTo],
@@ -229,6 +229,8 @@ export function ChatWindow({
             onAttachFiles={handleAttachFiles}
             attachDisabledReason={attachDisabledReason}
             onVoiceBarChange={setVoiceBarVisible}
+            isGroup={conversation.isGroup}
+            conversationId={conversation.id}
           />
 
           {preview && mediaConfig && (

@@ -57,6 +57,12 @@ export const chatStrings = {
     },
   },
 
+  /** Popover de autocompletar ao digitar @ num grupo (MessageComposer). */
+  mention: {
+    ariaLabel: 'Marcar participante',
+    noResults: 'Nenhum participante encontrado',
+  },
+
   /** Menu do clipe, prévia do lote e área de soltar. */
   attachments: {
     menuLabel: 'Opções de anexo',

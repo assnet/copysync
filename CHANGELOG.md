@@ -23,6 +23,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Chat — @menção resolvida (recebimento) e estruturada (envio) (`0.17.0`)
+
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysMessagingEngineAdapter.ts`** — `extractBaileysMessage` passa a capturar `contextInfo.mentionedJid`; novo `resolveMentionsInBody` troca `@<lid>` pelo telefone real via `signalRepository.lidMapping` (mesmo padrão já usado para participante de grupo) antes de persistir/emitir a mensagem recebida. Corrige menção exibida como LID cru em vez do contato
+- **`api/src/modules/messaging/domain/contracts/IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.sendTextMessage`** — novo campo `mentions?: string[]` (telefones); convertido para JID e repassado em `socket.sendMessage(jid, { text, mentions })`, habilitando menção estruturada (destaque real no WhatsApp) no envio pelo painel
+- **`api/src/modules/chat/application/use-cases/SendMessageUseCase.ts`**, **`chat.schema.ts`**, **`chat.routes.ts`** — `SendMessageInput`/body da rota `POST /conversations/:id/messages` aceitam `mentions` (array de telefones, `additionalProperties: false` mantido)
+- **`app/src/features/chat/components/MessageComposer.tsx`** — digitar `@` numa conversa de grupo abre popover de participantes (busca com debounce via `chatService.listGroupParticipants`); selecionar insere `@<telefone>` no texto. `extractMentionPhones` lê o texto final no envio — único ponto que decide o que vira menção, então editar/apagar o `@<telefone>` depois de inserido também remove a menção
+- **`app/src/services/chat.service.ts`**, **`app/src/pages/ChatPage.tsx`**, **`app/src/features/chat/components/ChatWindow.tsx`** — `mentions` passado ponta a ponta do composer até a chamada HTTP
+- **`app/src/features/chat/strings.ts`** — novas strings em `chatStrings.mention` (popover de autocompletar), seguindo o padrão de chaves semânticas do arquivo
+
 #### Login — vídeo ambiente no painel desktop (`0.16.0`)
 
 - **`app/src/pages/login/LoginAmbientVideo.tsx`** — novo: poster + `<video muted loop playsInline>` em loop atrás do overlay navy; montado após o primeiro paint (`requestIdleCallback`), fade de 600 ms no `canplay`, pausa com a aba oculta e retoma ao voltar, `ended` reinicia o loop, `play()` rejeitado cai no poster. Hook `useAmbientVideoAllowed` desliga o vídeo fora do desktop (md+), com `prefers-reduced-motion`, `Save-Data` e rede 2g

@@ -209,7 +209,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     try {
       const jid = this.normalizeJid(input.to);
       const quoted = await this.buildQuoted(entry.socket, entry.tenantId, input.quotedMessage, jid, input.sessionId);
-      const result = await entry.socket.sendMessage(jid, { text: input.body }, quoted ? { quoted } : undefined);
+      const mentions = input.mentions?.length ? input.mentions.map((phone) => this.normalizeJid(phone)) : undefined;
+      const result = await entry.socket.sendMessage(
+        jid,
+        { text: input.body, ...(mentions ? { mentions } : {}) },
+        quoted ? { quoted } : undefined,
+      );
       return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
     } catch (err) { throw translateEngineError(err); }
   }

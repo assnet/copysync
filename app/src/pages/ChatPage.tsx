@@ -756,7 +756,7 @@ export default function ChatPage() {
   }, [selectedId, isLoadingMore, hasMore, oldestTimestamp]);
 
   const handleSendMessage = useCallback(
-    (text: string, quotedMessageId?: string | null) => {
+    (text: string, quotedMessageId?: string | null, mentions?: string[]) => {
       if (!selectedId) return;
 
       // Preview da mensagem citada (para o update otimista)
@@ -789,7 +789,7 @@ export default function ChatPage() {
       requestScroll(true);
 
       chatService
-        .sendMessage(selectedId, text, quotedMessageId ?? undefined)
+        .sendMessage(selectedId, text, quotedMessageId ?? undefined, mentions)
         .then((sent) => {
           const realMsg = apiMessageToFrontend(sent);
           setMessages((prev) => {

@@ -218,11 +218,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as { id: string };
-      const { content, quotedMessageId } = request.body as { content: string; quotedMessageId?: string };
+      const { content, quotedMessageId, mentions } = request.body as {
+        content: string;
+        quotedMessageId?: string;
+        mentions?: string[];
+      };
 
       // Instanciado por request para capturar o estado atual da engine
       const sendMessageUseCase = new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, getActiveEngine());
-      const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content, quotedMessageId });
+      const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content, quotedMessageId, mentions });
       httpResponse.created(reply, ChatPresenter.presentMessage(result));
     },
   );

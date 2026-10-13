@@ -57,6 +57,8 @@ export interface SendTextMessageInput {
   to: string;
   body: string;
   quotedMessage?: QuotedMessageRef | null;
+  /** Telefones (dígitos) dos participantes marcados com @ no corpo — menção estruturada. */
+  mentions?: string[] | null;
 }
 
 /**

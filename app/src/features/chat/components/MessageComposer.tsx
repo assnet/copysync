@@ -7,7 +7,10 @@ import {
   type KeyboardEvent,
   type Ref,
 } from 'react';
-import { Box, TextField, IconButton, Tooltip, Divider, Popover, alpha, useTheme, Typography, CircularProgress } from '@mui/material';
+import {
+  Box, TextField, IconButton, Tooltip, Divider, Popover, alpha, useTheme, Typography, CircularProgress,
+  List, ListItemButton, ListItemAvatar, ListItemText, Avatar,
+} from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import EmojiEmotionsOutlinedIcon from '@mui/icons-material/EmojiEmotionsOutlined';
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined';
@@ -25,6 +28,18 @@ import type { AttachmentOrigin } from '../media/mediaPolicy';
 import { useVoiceRecorderContext } from '../media/VoiceRecorderProvider';
 import { AttachmentMenu } from './AttachmentMenu';
 import { VoiceRecorderBar } from './VoiceRecorderBar';
+import { chatService } from '@/services/chat.service';
+import type { GroupParticipantApiDto } from '@/types/chat.api.types';
+
+/** Telefones (dígitos) marcados com @ no texto final — único ponto que decide o que vira menção. */
+const MENTION_REGEX = /(?:^|\s)@(\d{5,20})(?=\s|$)/g;
+function extractMentionPhones(value: string): string[] {
+  const phones = new Set<string>();
+  let match: RegExpExecArray | null;
+  MENTION_REGEX.lastIndex = 0;
+  while ((match = MENTION_REGEX.exec(value))) phones.add(match[1]);
+  return [...phones];
+}
 
 const texts = chatStrings.composer;
 const voiceTexts = chatStrings.voice;
@@ -48,7 +63,8 @@ export interface MessageComposerHandle {
 }
 
 interface Props {
-  onSend: (text: string) => void;
+  /** `mentions`: telefones (dígitos) extraídos do texto final — presente só quando há `@<telefone>`. */
+  onSend: (text: string, mentions?: string[]) => void;
   disabled?: boolean;
   replyTo?: QuotedMessagePreview | null;
   onCancelReply?: () => void;
@@ -61,6 +77,10 @@ interface Props {
    * enquanto isso. Sem `VoiceRecorderProvider` acima, o microfone fica indisponível.
    */
   onVoiceBarChange?: (visible: boolean) => void;
+  /** Conversa de grupo: liga o autocompletar de @menção. Sem isso, "@" é só texto. */
+  isGroup?: boolean;
+  /** Necessário para buscar participantes do grupo ao digitar "@". */
+  conversationId?: string;
   ref?: Ref<MessageComposerHandle>;
 }
 
@@ -72,6 +92,8 @@ export function MessageComposer({
   onAttachFiles,
   attachDisabledReason,
   onVoiceBarChange,
+  isGroup,
+  conversationId,
   ref,
 }: Props) {
   const theme = useTheme();
@@ -139,7 +161,8 @@ export function MessageComposer({
   const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
-    onSend(trimmed);
+    const mentions = extractMentionPhones(trimmed);
+    onSend(trimmed, mentions.length > 0 ? mentions : undefined);
     setText('');
     inputRef.current?.focus();
   };
@@ -156,6 +179,15 @@ export function MessageComposer({
   useEffect(() => {
     if (emojiDisabled) setEmojiAnchor(null);
   }, [emojiDisabled]);
+
+  useEffect(() => {
+    if (disabled) closeMention();
+  }, [disabled]);
+
+  // Trocar de conversa não pode deixar o popover buscando participantes do chat anterior.
+  useEffect(() => {
+    closeMention();
+  }, [conversationId]);
 
   useEffect(() => {
     const cursor = pendingCursorRef.current;
@@ -176,7 +208,86 @@ export function MessageComposer({
     pendingCursorRef.current = start + emoji.length;
   };
 
+  // ── Menção (@) ─────────────────────────────────────────────────────────────
+  // Só liga em grupo. O popover é conveniência de digitação; quem decide o que vira
+  // menção de verdade é `extractMentionPhones` sobre o texto final, no envio — editar
+  // ou apagar o "@<telefone>" depois de inserido também remove a menção, sem estado solto.
+  const mentionTexts = chatStrings.mention;
+  const mentionEnabled = !!isGroup && !!conversationId;
+  const [mentionAnchor, setMentionAnchor] = useState<HTMLElement | null>(null);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionResults, setMentionResults] = useState<GroupParticipantApiDto[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const mentionStartRef = useRef<number | null>(null);
+  const mentionOpen = Boolean(mentionAnchor);
+
+  const closeMention = () => {
+    setMentionAnchor(null);
+    mentionStartRef.current = null;
+    setMentionResults([]);
+  };
+
+  useEffect(() => {
+    if (!mentionOpen || !conversationId) return;
+    let cancelled = false;
+    setMentionLoading(true);
+    const timer = setTimeout(() => {
+      chatService
+        .listGroupParticipants(conversationId, mentionQuery ? { search: mentionQuery } : undefined)
+        .then((res) => {
+          if (cancelled) return;
+          setMentionResults(res.participants.filter((p) => !!p.phone));
+        })
+        .catch(() => {
+          if (!cancelled) setMentionResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setMentionLoading(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mentionOpen, mentionQuery, conversationId]);
+
+  const insertMention = (participant: GroupParticipantApiDto) => {
+    const start = mentionStartRef.current;
+    if (start === null || !participant.phone) return;
+    const input = inputRef.current;
+    const cursor = input?.selectionStart ?? text.length;
+    const inserted = `@${participant.phone} `;
+    setText(text.slice(0, start) + inserted + text.slice(cursor));
+    pendingCursorRef.current = start + inserted.length;
+    closeMention();
+  };
+
+  const handleTextChange = (value: string) => {
+    setText(value);
+    if (!mentionEnabled) return;
+    const cursor = inputRef.current?.selectionStart ?? value.length;
+    const uptoCursor = value.slice(0, cursor);
+    const atIndex = uptoCursor.lastIndexOf('@');
+    if (atIndex === -1 || /\s/.test(uptoCursor.slice(atIndex + 1))) {
+      closeMention();
+      return;
+    }
+    mentionStartRef.current = atIndex;
+    setMentionQuery(uptoCursor.slice(atIndex + 1));
+    setMentionAnchor(inputRef.current);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (mentionOpen && e.key === 'Enter' && mentionResults[0]) {
+      e.preventDefault();
+      insertMention(mentionResults[0]);
+      return;
+    }
+    if (mentionOpen && e.key === 'Escape') {
+      e.preventDefault();
+      closeMention();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -347,7 +458,7 @@ export function MessageComposer({
             size="small"
             placeholder={texts.placeholder}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => handleTextChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={disabled}
@@ -365,6 +476,53 @@ export function MessageComposer({
               },
             }}
           />
+          <Popover
+            open={mentionOpen}
+            anchorEl={mentionAnchor}
+            onClose={closeMention}
+            anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            disableAutoFocus
+            disableEnforceFocus
+            slotProps={{
+              paper: {
+                elevation: 6,
+                role: 'listbox',
+                'aria-label': mentionTexts.ariaLabel,
+                sx: { borderRadius: 2, overflow: 'hidden', mb: 0.5, width: 260, maxHeight: 280 },
+              },
+            }}
+          >
+            {mentionLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                <CircularProgress size={18} />
+              </Box>
+            ) : mentionResults.length === 0 ? (
+              <Typography variant="caption" sx={{ display: 'block', p: 2, color: 'text.secondary' }}>
+                {mentionTexts.noResults}
+              </Typography>
+            ) : (
+              <List dense disablePadding>
+                {mentionResults.map((p) => (
+                  <ListItemButton key={p.phone} onMouseDown={(e) => e.preventDefault()} onClick={() => insertMention(p)}>
+                    <ListItemAvatar sx={{ minWidth: 36 }}>
+                      <Avatar src={p.avatarUrl ?? undefined} sx={{ width: 28, height: 28, fontSize: 12 }}>
+                        {p.initials}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={p.name}
+                      secondary={p.phone}
+                      slotProps={{
+                        primary: { fontSize: 13, noWrap: true },
+                        secondary: { fontSize: 11 },
+                      }}
+                    />
+                  </ListItemButton>
+                ))}
+              </List>
+            )}
+          </Popover>
 
           {/* Enviar ou microfone. Recuo só no enviar (36 px): o microfone tem os 40 px do clipe. */}
           <Box sx={{ pb: hasText ? 0.5 : 0 }}>

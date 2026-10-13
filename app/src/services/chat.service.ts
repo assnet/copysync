@@ -65,10 +65,15 @@ export const chatService = {
     conversationId: string,
     content: string,
     quotedMessageId?: string | null,
+    mentions?: string[],
   ): Promise<ChatMessageApiDto> {
     const res = await apiClient.post<{ success: true; data: ChatMessageApiDto }>(
       `/chat/conversations/${conversationId}/messages`,
-      { content, ...(quotedMessageId ? { quotedMessageId } : {}) },
+      {
+        content,
+        ...(quotedMessageId ? { quotedMessageId } : {}),
+        ...(mentions?.length ? { mentions } : {}),
+      },
     );
     return res.data.data;
   },

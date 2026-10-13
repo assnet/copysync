@@ -13,6 +13,8 @@ export interface SendMessageInput {
   tenantId: string;
   content: string;
   quotedMessageId?: string | null;
+  /** Telefones (dígitos) dos participantes marcados com @ no texto — menção estruturada. */
+  mentions?: string[] | null;
 }
 
 export class SendMessageUseCase {
@@ -66,6 +68,7 @@ export class SendMessageUseCase {
           quotedMessage: quotedEntity && !quotedEntity.isDeleted
             ? buildEngineMessageRef(target, quotedEntity)
             : null,
+          mentions: input.mentions,
         });
         externalMessageId = result.messageId;
       } catch (err) {

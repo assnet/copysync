@@ -69,6 +69,11 @@ export const sendMessageBodySchema = {
   properties: {
     content:         { type: 'string', minLength: 1, maxLength: 4096 },
     quotedMessageId: { type: 'string' },
+    mentions: {
+      type: 'array',
+      items: { type: 'string', pattern: '^[0-9]{5,20}$' },
+      maxItems: 50,
+    },
   },
   additionalProperties: false,
 } as const;
