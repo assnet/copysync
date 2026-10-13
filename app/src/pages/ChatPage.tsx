@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { MentionNamesContext } from '../features/chat/mentions';
 import { Alert, Box, Snackbar, useMediaQuery, useTheme } from '@mui/material';
 import type {
   ChatConversation,
@@ -320,6 +321,29 @@ export default function ChatPage() {
     }
     return map;
   }, [participants]);
+
+  // Nomes acumulados: contatos das conversas individuais já carregadas e participantes de
+  // todo grupo aberto na sessão. A prévia da lista (atualizada em tempo real com `@<telefone>`)
+  // e o balão mostram `@Nome` sem nova ida à API — e seguem funcionando quando a lista de
+  // participantes não chega (sessão desconectada no momento).
+  const [knownMentionNames, setKnownMentionNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const entries: [string, string][] = [];
+    for (const conv of conversations) {
+      const { phone, name } = conv.contact;
+      if (!conv.isGroup && phone && name && !/^[\d\s+()-]+$/.test(name)) entries.push([phone, name]);
+    }
+    entries.push(...Object.entries(participantNames));
+    if (entries.length === 0) return;
+    setKnownMentionNames((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [phone, name] of entries) {
+        if (next[phone] !== name) { next[phone] = name; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [conversations, participantNames]);
 
   // Preenche os avatares que faltam. Cada foto é uma consulta ao WhatsApp, então a
   // API trabalha em lotes e devolve quantas sobraram; repetimos até zerar. As fotos
@@ -1223,6 +1247,7 @@ export default function ChatPage() {
           width: { xs: '100%', sm: 'auto' },
         }}
       >
+      <MentionNamesContext.Provider value={knownMentionNames}>
       <ConversationSidebar
         conversations={conversations}
         selectedId={selectedId}
@@ -1247,6 +1272,7 @@ export default function ChatPage() {
         onUpdateList={handleUpdateList}
         onDeleteList={handleDeleteList}
       />
+      </MentionNamesContext.Provider>
       </Box>
 
       {/* Área central — no mobile ocupa a tela quando há conversa selecionada */}
@@ -1271,7 +1297,7 @@ export default function ChatPage() {
           scrollSignal={scrollSignal}
           onParticipantClick={handleParticipantClick}
           participantAvatars={participantAvatars}
-          participantNames={participantNames}
+          participantNames={knownMentionNames}
           highlightMessageId={highlightMessageId}
           onBack={() => setSelectedId(null)}
           onToggleSearch={() => {

@@ -2,6 +2,7 @@ import type { IChatConversationRepository } from '../../domain/contracts/IChatCo
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { ISessionRepository } from '../../../sessions/domain/contracts/ISessionRepository';
 import type { ConversationStatus } from '../../domain/enums/ConversationStatus';
+import { extractMentionPhonesFromText, resolveMentionNames } from '../../domain/services/resolveMentionNames';
 
 export interface ListConversationsInput {
   tenantId: string;
@@ -93,6 +94,21 @@ export class ListConversationsUseCase {
       (await this.contactRepo.findByIds(contactIds, input.tenantId)).map((c) => [c.id, c]),
     );
 
+    // Menção na prévia de grupo chega como `@<telefone>`; o nome do contato do tenant entra
+    // só na exibição, numa única consulta para toda a lista.
+    const mentionPhones = new Set<string>();
+    for (const conv of conversations) {
+      if (conv.isGroup && conv.lastMessagePreview) {
+        for (const phone of extractMentionPhonesFromText(conv.lastMessagePreview)) mentionPhones.add(phone);
+      }
+    }
+    const mentionNames = new Map<string, string>();
+    if (mentionPhones.size > 0) {
+      for (const c of await this.contactRepo.findByPhones([...mentionPhones], input.tenantId)) {
+        if (c.name && !/^[\d\s+()-]+$/.test(c.name)) mentionNames.set(c.phone, c.name);
+      }
+    }
+
     const results: ConversationListItemDto[] = [];
 
     for (const conv of conversations) {
@@ -139,7 +155,10 @@ export class ListConversationsUseCase {
         status: conv.status,
         unreadCount: conv.unreadCount,
         lastMessageAt: conv.lastMessageAt?.toISOString() ?? null,
-        lastMessagePreview: conv.lastMessagePreview,
+        lastMessagePreview:
+          conv.isGroup && conv.lastMessagePreview
+            ? resolveMentionNames(conv.lastMessagePreview, mentionNames)
+            : conv.lastMessagePreview,
         assignedUserId: conv.assignedUserId,
         queueName: conv.queueName,
         tags: conv.tags,

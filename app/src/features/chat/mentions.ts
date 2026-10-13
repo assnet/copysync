@@ -51,3 +51,12 @@ export const MentionNamesContext = createContext<Readonly<Record<string, string>
 export function useMentionNames(): Readonly<Record<string, string>> {
   return useContext(MentionNamesContext);
 }
+
+/** Troca `@<telefone>` conhecido por `@Nome` num texto plano (prévia da lista). */
+export function applyMentionNames(text: string, names: Readonly<Record<string, string>>): string {
+  if (!text.includes('@')) return text;
+  return text.replace(/(^|\s)@(\d{5,20})(?=\s|$)/g, (whole, lead: string, phone: string) => {
+    const name = names[phone];
+    return name ? `${lead}@${name}` : whole;
+  });
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractMentionPhones, splitMentions } from './mentions';
+import { applyMentionNames, extractMentionPhones, splitMentions } from './mentions';
 
 const names = { '554799247313': 'Adriel Silva da Silveira' };
 
@@ -31,5 +31,16 @@ describe('splitMentions', () => {
 
   it('não casa @ no meio de palavra', () => {
     expect(splitMentions('a@554799247313', names)).toEqual([{ kind: 'text', value: 'a@554799247313' }]);
+  });
+});
+
+describe('applyMentionNames', () => {
+  it('troca telefone conhecido pelo nome na prévia', () => {
+    expect(applyMentionNames('@554799247313 teste wweb', names)).toBe('@Adriel Silva da Silveira teste wweb');
+  });
+
+  it('mantém desconhecido e texto sem menção', () => {
+    expect(applyMentionNames('oi @5511999999999', names)).toBe('oi @5511999999999');
+    expect(applyMentionNames('sem menção', names)).toBe('sem menção');
   });
 });

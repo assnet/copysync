@@ -8,6 +8,7 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import type { ChatConversation } from '../types';
 import { isUnread, getStatusConfig, formatConversationTime, formatPhone } from '../utils';
+import { applyMentionNames, useMentionNames } from '../mentions';
 
 interface Props {
   /** Abre o menu de ações da conversa, ancorado no botão. */
@@ -27,6 +28,9 @@ export function ConversationListItem({ conversation, selected, onClick, presence
   // Marcação manual não tem contagem: o ponto sinaliza sem número inventado.
   const unreadLabel = unreadCount > 0 ? unreadCount : '';
   const isGroup = conversation.isGroup ?? false;
+  // Prévia de grupo com `@<telefone>` vira `@Nome` quando o participante é conhecido
+  const mentionNames = useMentionNames();
+  const previewText = isGroup ? applyMentionNames(lastMessage, mentionNames) : lastMessage;
   const isMuted = Boolean(conversation.mutedUntil && new Date(conversation.mutedUntil) > new Date());
   // Contato sem nome salvo tem o próprio número como nome: nesse caso exibimos o
   // telefone formatado, como faz o WhatsApp Web, em vez do número cru.
@@ -173,7 +177,7 @@ export function ConversationListItem({ conversation, selected, onClick, presence
             display="block"
             sx={{ mt: 0.25 }}
           >
-            {lastMessage}
+            {previewText}
           </Typography>
         )}
           </Box>

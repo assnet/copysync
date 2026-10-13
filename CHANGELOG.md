@@ -187,6 +187,18 @@ instala só para o `docker-compose` local.
 
 ### Fixed
 
+#### Chat — `@Nome` na prévia da lista e resiliente à sessão fora (`0.17.5`)
+
+O balão já exibia `@Nome`, mas a prévia da lista seguia com `@<telefone>` (a lista não tem os
+participantes de cada grupo) e, com a sessão desconectada, até o balão voltava ao número porque
+`listGroupParticipants` falha sem socket. Portado do `waioprime` e estendido.
+
+- **`api/src/modules/chat/domain/services/resolveMentionNames.ts`** (+ teste) — função pura: `extractMentionPhonesFromText` e `resolveMentionNames` (`@<telefone>` → `@Nome` só com fronteira de espaço)
+- **`api/src/modules/chat/application/use-cases/ListConversationsUseCase.ts`** — resolve os telefones mencionados nas prévias de grupo pelo contato do tenant numa única `findByPhones`; o valor gravado segue com o telefone
+- **`app/src/features/chat/mentions.ts`** (+ teste) — `applyMentionNames`; **`ConversationListItem.tsx`** aplica na prévia de grupo via `useMentionNames`
+- **`app/src/pages/ChatPage.tsx`** — `knownMentionNames` acumula contatos das conversas individuais carregadas + participantes de todo grupo aberto (participante vence no mesmo telefone) e alimenta tanto a `ConversationSidebar` quanto o `ChatWindow`; nomes seguem no balão mesmo sem a lista de participantes
+- **`docs/chat-mencoes.md`** — novo: formato canônico, fluxo de recebimento/envio, painel, limites e o que não fazer
+
 #### Sessions — sessão morria após dois deploys seguidos (`0.17.1`)
 
 Sintoma: após o deploy, "Nenhum participante disponível" nos grupos e envio recusado — a única
