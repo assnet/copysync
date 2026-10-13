@@ -1,0 +1,65 @@
+{
+  "extName": { "message": "CopySync" },
+  "extShortName": { "message": "CopySync" },
+  "extDescription": { "message": "Syncs your Mercado Livre affiliate session with the dashboard to generate links automatically." },
+
+  "popup_tagline": { "message": "Affiliate session" },
+  "popup_open_panel": { "message": "Open dashboard" },
+  "popup_theme_system": { "message": "Theme: follow system" },
+  "popup_theme_light": { "message": "Theme: light" },
+  "popup_theme_dark": { "message": "Theme: dark" },
+  "popup_version": { "message": "Version $VERSION$", "placeholders": { "VERSION": { "content": "$1" } } },
+
+  "login_title": { "message": "Sign in" },
+  "login_subtitle": { "message": "Use the same account as the dashboard." },
+  "login_email": { "message": "Email" },
+  "login_password": { "message": "Password" },
+  "login_submit": { "message": "Sign in" },
+  "login_submitting": { "message": "Signing in…" },
+  "login_show_password": { "message": "Show password" },
+  "login_hide_password": { "message": "Hide password" },
+
+  "tenant_label": { "message": "Workspace" },
+  "tenant_help": { "message": "The session is sent to this workspace." },
+
+  "session_title": { "message": "Mercado Livre" },
+  "session_logged_in": { "message": "Signed in to Mercado Livre" },
+  "session_logged_out": { "message": "Sign in to Mercado Livre in this window" },
+  "session_tab_missing": { "message": "Open a Mercado Livre tab" },
+  "session_open_marketplace": { "message": "Open Mercado Livre" },
+  "session_sync_now": { "message": "Sync now" },
+  "session_syncing": { "message": "Syncing…" },
+  "session_last_sync": { "message": "Last sync: $WHEN$", "placeholders": { "WHEN": { "content": "$1" } } },
+  "session_never_synced": { "message": "Not synced yet" },
+  "session_auto_hint": { "message": "Renews automatically every $MIN$ min while the browser is open.", "placeholders": { "MIN": { "content": "$1" } } },
+  "session_sync_help": { "message": "Captures your signed-in Mercado Livre session and sends it to the dashboard. No marketplace password is read." },
+
+  "tag_label": { "message": "Affiliate tag" },
+  "tag_placeholder": { "message": "Optional, e.g. jc20240625" },
+  "tag_help": { "message": "Your Mercado Livre affiliate program ID. Can also be set in the dashboard." },
+  "tag_saved": { "message": "Tag saved" },
+
+  "account_signed_as": { "message": "Signed in as $EMAIL$", "placeholders": { "EMAIL": { "content": "$1" } } },
+  "account_logout": { "message": "Sign out" },
+  "account_logout_help": { "message": "Removes dashboard credentials from this browser." },
+
+  "status_ok": { "message": "Session synced" },
+  "status_idle": { "message": "Ready to sync" },
+  "status_error": { "message": "Sync failed" },
+
+  "time_just_now": { "message": "just now" },
+  "time_minutes_ago": { "message": "$N$ min ago", "placeholders": { "N": { "content": "$1" } } },
+  "time_hours_ago": { "message": "$N$ h ago", "placeholders": { "N": { "content": "$1" } } },
+  "time_days_ago": { "message": "$N$ d ago", "placeholders": { "N": { "content": "$1" } } },
+
+  "err_not_authenticated": { "message": "Sign in with your dashboard account to continue." },
+  "err_marketplace_not_logged": { "message": "You are not signed in to Mercado Livre in this browser." },
+  "err_marketplace_tab_missing": { "message": "Open a Mercado Livre tab and try again." },
+  "err_csrf_missing": { "message": "Could not read the page. Reload the Mercado Livre tab." },
+  "err_api_unreachable": { "message": "Could not reach the dashboard. Check your connection." },
+  "err_api_rejected": { "message": "The dashboard rejected the session. Try again shortly." },
+  "err_api_unauthorized": { "message": "Your dashboard session expired. Sign in again." },
+  "err_api_route_missing": { "message": "The dashboard does not accept this feature yet. Update the extension." },
+  "err_login_invalid": { "message": "Incorrect email or password." },
+  "err_login_no_tenant": { "message": "Your account is not a member of any workspace." }
+}

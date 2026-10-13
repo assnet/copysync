@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "short_name": "__MSG_extShortName__",
+  "description": "__MSG_extDescription__",
+  "default_locale": "pt_BR",
+  "version": "2.0.0",
+  "author": "Assnet Developer",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqK06ayxvYgTkhvTtIQ4SaTq4v3gNGs0OtZ21XriQ5f6NmWAJ6XStj3gkDxBxe+YOuXIJNLxgvYcUx8ISo/d5reDVckcPxVuXl9tByxYCW9ar2odurGomyhfVyJbLj1UDuSJ/ozium4WBVxDuxzNVDGzc2peG0ZCmMxa1JmVasohknRw29zFpLkLygljD4b5bEhK+6nw/faXw1z+6QrYcfyJSbuJ988r0pO/OB+isc3vIkBDutmWyCHT2ZGESUXczFHce0fG0/QqrZVA585ujOfoQhJP4S8Gy9DblL71Etfp7e1hgc4AD6a1rUWJ79ETgJIgTriJK2Ibq34dFc6x/uwIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "__MSG_extName__",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": ["cookies", "storage", "alarms", "scripting", "tabs"],
+  "host_permissions": [
+    "https://*.mercadolivre.com.br/*",
+    "https://*.mercadolibre.com.ar/*",
+    "https://*.mercadolibre.com.mx/*"
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://*.mercadolivre.com.br/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

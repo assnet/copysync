@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.env.dev
+.keys/*.pem
+*.zip
+.DS_Store
