@@ -41,6 +41,8 @@ descrevem o estado da época.
 
 Logo trocado em 2026-10-12 pela versão com fundo transparente (128 px). Feito: `index.html` (título, favicon/apple-touch/manifest, `data-app="copysync"` junto com o comentário do `DomGuardian`), `LoginPage` (3 pontos), `AppLayout` (logo, nome, tooltip de versão, chave `localStorage` → `sidebar-collapsed`), mocks de chat, comentários de `resolveMediaUrl`, `app/package.json` → `copysync-app`. Assets antigos `logo_waiochat.png` e `waio*.png` removidos; `iProtect`/`iSaver` mantidos (não pertencem à marca, sem referência).
 
+**Indexação**: o painel (`app.copysync.app`) é invisível para buscadores — `robots.txt`, `<meta name="robots">` e header `X-Robots-Tag` (Render). Não mexer sem ler [`app-bloqueio-indexacao.md`](app-bloqueio-indexacao.md).
+
 **Regenerar ícones** (a partir de `logo-source.png`, requer Pillow):
 
 ```bash

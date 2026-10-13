@@ -11,6 +11,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Painel invisível para buscadores (app.copysync.app)
+
+- **`app/public/robots.txt`** — `Disallow: /` para todo `User-agent`; o painel é área privada e nenhum crawler deve rastreá-lo
+- **`app/index.html`** — `<meta name="robots">` (+ `googlebot`, `bingbot`) com `noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate`; impede indexação mesmo se a URL for descoberta por link externo
+- **`render.yaml`** — header `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex` em `/*`, cobrindo também JS, CSS, imagens e manifest (a meta tag só vale para HTML); adiciona `X-Content-Type-Options: nosniff` e `Referrer-Policy`
+- **`docs/app-bloqueio-indexacao.md`** — como as três camadas se complementam, por que `robots.txt` sozinho não basta e como verificar após deploy
+
 #### Backend — Vitest
 
 - **`vitest.config.mts`**, **`tsconfig.build.json`**, **`package.json`** — runner de testes na API, com testes co-locados (`Arquivo.test.ts` ao lado do código) e exclusão dos testes do build. Cobertura exigida por camada em `.specs/codebase/TESTING.md`: use cases, mappers e funções puras têm teste; repositórios Prisma e rotas Fastify seguem no smoke manual

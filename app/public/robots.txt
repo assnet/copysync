@@ -1,0 +1,5 @@
+# Painel administrativo: area privada, nao deve ser rastreada nem indexada.
+# Reforcado por <meta name="robots"> em index.html e pelo header X-Robots-Tag
+# definido em render.yaml. Ver docs/app-bloqueio-indexacao.md.
+User-agent: *
+Disallow: /
