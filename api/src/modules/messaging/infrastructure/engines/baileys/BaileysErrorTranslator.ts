@@ -41,6 +41,13 @@ export type BaileysDisconnectInfo = {
    * re-pairing.
    */
   shouldClearCredentials: boolean;
+  /**
+   * Another client with the same credentials took the session over (440). Only
+   * our own API can hold these credentials, so the taker is another instance of
+   * it (deploy overlap, local run against the same database). The taker owns the
+   * session and its status from now on; the losing socket must not write status.
+   */
+  takenOverByAnotherInstance: boolean;
   /** Translated internal error */
   error: AppError;
 };
@@ -60,6 +67,7 @@ export function translateDisconnect(
     return {
       shouldReconnect: true,
       shouldClearCredentials: false,
+      takenOverByAnotherInstance: false,
       error: new RecoverableConnectionError('non-boom disconnect'),
     };
   }
@@ -74,6 +82,7 @@ export function translateDisconnect(
       return {
         shouldReconnect: false,
         shouldClearCredentials: true,
+        takenOverByAnotherInstance: false,
         error: new SessionExpiredError(sessionId),
       };
 
@@ -81,15 +90,18 @@ export function translateDisconnect(
       return {
         shouldReconnect: false,
         shouldClearCredentials: true,
+        takenOverByAnotherInstance: false,
         error: new PairingFailedError('multi-device mismatch'),
       };
 
     case DisconnectReason.connectionReplaced:
-      // Another socket took over this device (WhatsApp opened elsewhere, or a
-      // duplicated socket on our side).  Credentials remain valid — never wipe them.
+      // Another socket with these same credentials took the device over — only another
+      // instance of this API can do that. Credentials remain valid — never wipe them —
+      // and the status in the database now belongs to the instance that took over.
       return {
         shouldReconnect: false,
         shouldClearCredentials: false,
+        takenOverByAnotherInstance: true,
         error: new SessionExpiredError(sessionId),
       };
 
@@ -97,6 +109,7 @@ export function translateDisconnect(
       return {
         shouldReconnect: true,
         shouldClearCredentials: false,
+      takenOverByAnotherInstance: false,
         error: new RecoverableConnectionError('restart required'),
       };
 
@@ -106,6 +119,7 @@ export function translateDisconnect(
       return {
         shouldReconnect: true,
         shouldClearCredentials: false,
+      takenOverByAnotherInstance: false,
         error: new RecoverableConnectionError(`disconnect reason ${reason}`),
       };
 
@@ -113,6 +127,7 @@ export function translateDisconnect(
       return {
         shouldReconnect: true,
         shouldClearCredentials: false,
+      takenOverByAnotherInstance: false,
         error: new EngineTemporarilyUnavailableError(),
       };
 
@@ -120,6 +135,7 @@ export function translateDisconnect(
       return {
         shouldReconnect: true,
         shouldClearCredentials: false,
+      takenOverByAnotherInstance: false,
         error: new RecoverableConnectionError(`unknown reason ${reason ?? 'n/a'}`),
       };
   }

@@ -567,10 +567,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         }
 
         if (connection === 'close') {
-          const { shouldReconnect, shouldClearCredentials, error } =
+          const { shouldReconnect, shouldClearCredentials, takenOverByAnotherInstance, error } =
             translateDisconnect(sessionId, lastDisconnect?.error);
           baileysLogger.warn(
-            { sessionId, shouldReconnect, shouldClearCredentials, errorCode: error.code },
+            { sessionId, shouldReconnect, shouldClearCredentials, takenOverByAnotherInstance, errorCode: error.code },
             'Session disconnected',
           );
 
@@ -579,6 +579,16 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           this.detachSocket(socket);
           this.registry.deleteIfCurrentEpoch(sessionId, epoch);
           this.clearSessionGroupMetadata(sessionId);
+
+          if (takenOverByAnotherInstance) {
+            // The instance that took the session over already wrote CONNECTED. Writing
+            // FAILED here (as this path used to) overwrote it a few hundred ms later, and
+            // the next deploy's bootstrap — which only picks CONNECTED sessions — skipped
+            // the session for good. Two back-to-back deploys were enough to kill it.
+            baileysLogger.info({ sessionId, epoch }, 'Session taken over by another instance — leaving status to it');
+            return;
+          }
+
           internalEventBus.emit('SESSION_DISCONNECTED', {
             type: 'SESSION_DISCONNECTED', sessionId, tenantId, reason: error.code,
           });

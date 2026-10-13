@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { translateSendError } from './BaileysErrorTranslator';
+import { DisconnectReason } from '@whiskeysockets/baileys';
+import { translateDisconnect, translateSendError } from './BaileysErrorTranslator';
 import { MediaTooLargeError } from '../../../../../shared/errors/internal/MediaErrors';
 
 // Mesmo formato do Boom da lib (`output.statusCode`), sem depender de @hapi/boom.
@@ -27,5 +28,26 @@ describe('translateSendError — envio de mídia', () => {
   it('erro interno já traduzido passa intacto (ex.: mídia acima do limite)', () => {
     const tooLarge = new MediaTooLargeError('limite', { sizeBytes: 10, maxBytes: 5 });
     expect(translateSendError(tooLarge, 'x')).toBe(tooLarge);
+  });
+});
+
+describe('translateDisconnect — sessão tomada por outra instância (440)', () => {
+  it('não reconecta, não apaga credenciais e deixa o status para quem tomou a sessão', () => {
+    const info = translateDisconnect('s1', boom('replaced', DisconnectReason.connectionReplaced));
+    expect(info.shouldReconnect).toBe(false);
+    expect(info.shouldClearCredentials).toBe(false);
+    expect(info.takenOverByAnotherInstance).toBe(true);
+  });
+
+  it('as demais quedas nunca são tratadas como tomada de sessão', () => {
+    for (const reason of [
+      DisconnectReason.loggedOut,
+      DisconnectReason.connectionLost,
+      DisconnectReason.restartRequired,
+      DisconnectReason.timedOut,
+    ]) {
+      expect(translateDisconnect('s1', boom('x', reason)).takenOverByAnotherInstance).toBe(false);
+    }
+    expect(translateDisconnect('s1', new Error('not boom')).takenOverByAnotherInstance).toBe(false);
   });
 });

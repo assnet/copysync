@@ -185,6 +185,14 @@ instala só para o `docker-compose` local.
 
 ### Fixed
 
+#### Sessions — sessão morria após dois deploys seguidos (`0.17.1`)
+
+Sintoma: após o deploy, "Nenhum participante disponível" nos grupos e envio recusado — a única
+sessão conectada constava `FAILED` no banco, com `lastConnectedAt` 379 ms antes do `FAILED`.
+
+- **`api/.../baileys/BaileysErrorTranslator.ts`** — `translateDisconnect` passa a devolver `takenOverByAnotherInstance`, verdadeiro só para `connectionReplaced` (440). Só outra instância desta API consegue tomar a sessão com as mesmas credenciais (overlap do deploy na Render, ou API local apontando para o mesmo banco)
+- **`api/.../baileys/BaileysMessagingEngineAdapter.ts`** — no `close` com a sessão tomada, o socket perdedor limpa o registro e sai sem gravar status nem emitir `SESSION_DISCONNECTED`. Antes gravava `FAILED` por cima do `CONNECTED` que a instância nova acabara de escrever; o bootstrap do deploy seguinte só reconecta `CONNECTED`, então pulava a sessão e ela ficava morta até reconexão manual. Teste em `BaileysErrorTranslator.test.ts`
+
 #### Chat — Anexos e mensagem de voz (`0.12.0`)
 
 - **`OutboundEchoRegistry.ts`**, **`outboundEchoRegistries.ts`**, **`BaileysMessagingEngineAdapter.ts`** — o registro de eco era por instância do adapter e há duas no processo: com o bootstrap ligado, a reação registrava numa e o eco chegava na outra. Agora é de módulo (`ReactionEchoRegistry.ts` reexporta)
