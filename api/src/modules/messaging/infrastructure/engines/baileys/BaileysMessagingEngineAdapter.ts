@@ -671,6 +671,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         // Ignora mensagens sem tipo reconhecido (ex: protocolMessages, reactionMessages)
         if (!extracted) continue;
 
+        extracted.body = await this.resolveMentionsInBody(socket, extracted.body, extracted.mentionedJids);
+
         let mediaUrl: string | null = null;
         if (
           MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
@@ -991,6 +993,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const extracted = extractBaileysMessage(msgContent);
       if (!extracted) continue;
 
+      extracted.body = await this.resolveMentionsInBody(socket, extracted.body, extracted.mentionedJids);
+
       const routing = await this.buildIncomingMessageRoutingInfo(msg, socket, sessionId, jid, tenantId);
       if (!routing) continue;
 
@@ -1104,6 +1108,31 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
     baileysLogger.debug({ participantJid }, 'Group participant LID not resolvable to a phone');
     return undefined;
+  }
+
+  /**
+   * Substitui, no corpo da mensagem, cada `@<lid>` (menção a participante com
+   * privacidade de número ativa) pelo telefone real resolvido via `resolveParticipantPhone`.
+   * Menções que já vêm como `@s.whatsapp.net` ou que não resolvem permanecem como
+   * estavam — nunca lança, só retorna o corpo original nesses casos.
+   */
+  private async resolveMentionsInBody(
+    socket: ReturnType<typeof makeWASocket>,
+    body: string | null,
+    mentionedJids: string[] | null | undefined,
+  ): Promise<string | null> {
+    if (!body || !mentionedJids || mentionedJids.length === 0) return body;
+
+    let resolvedBody = body;
+    for (const mentionedJid of mentionedJids) {
+      if (!mentionedJid.endsWith('@lid')) continue;
+      const lid = mentionedJid.split('@')[0];
+      const phone = await this.resolveParticipantPhone(socket, mentionedJid);
+      if (phone && phone !== lid) {
+        resolvedBody = resolvedBody.split(`@${lid}`).join(`@${phone}`);
+      }
+    }
+    return resolvedBody;
   }
 
   private extractParticipantJid(msg: proto.IWebMessageInfo): string | undefined {
@@ -1474,6 +1503,7 @@ interface BaileysExtracted {
   durationSeconds?: number | null;
   isDeleted?: boolean;
   quotedMessageId?: string | null;
+  mentionedJids?: string[] | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1492,13 +1522,26 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
     ?? content.documentMessage?.contextInfo
     ?? null;
   const quotedMessageId = contextInfo?.stanzaId ?? null;
+  // Menções (@) no texto: o WhatsApp grava `@<id-sem-sufixo>` no corpo e devolve os
+  // JIDs reais em contextInfo.mentionedJid. Quando o participante usa privacidade de
+  // número, esse JID vem em formato @lid — precisa ser resolvido pelo chamador (que
+  // tem acesso ao socket) antes de o texto ser persistido/exibido.
+  const mentionedJids: string[] | null = Array.isArray(contextInfo?.mentionedJid) && contextInfo.mentionedJid.length > 0
+    ? contextInfo.mentionedJid
+    : null;
 
   // Texto simples
   if (content.conversation) {
-    return { msgType: ChatMessageType.TEXT, body: content.conversation, quotedMessageId, isDeleted };
+    return { msgType: ChatMessageType.TEXT, body: content.conversation, quotedMessageId, isDeleted, mentionedJids };
   }
   if (content.extendedTextMessage?.text) {
-    return { msgType: ChatMessageType.TEXT, body: content.extendedTextMessage.text, quotedMessageId, isDeleted };
+    return {
+      msgType: ChatMessageType.TEXT,
+      body: content.extendedTextMessage.text,
+      quotedMessageId,
+      isDeleted,
+      mentionedJids,
+    };
   }
 
   // Imagem
@@ -1509,6 +1552,7 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
       mimeType: content.imageMessage.mimetype ?? null,
       quotedMessageId,
       isDeleted,
+      mentionedJids,
     };
   }
 
@@ -1521,6 +1565,7 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
       durationSeconds: content.videoMessage.seconds ?? null,
       quotedMessageId,
       isDeleted,
+      mentionedJids,
     };
   }
 
@@ -1545,6 +1590,7 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
       fileName: content.documentMessage.fileName ?? content.documentMessage.title ?? null,
       quotedMessageId,
       isDeleted,
+      mentionedJids,
     };
   }
 
