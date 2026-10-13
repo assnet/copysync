@@ -686,7 +686,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         // Ignora mensagens sem tipo reconhecido (ex: protocolMessages, reactionMessages)
         if (!extracted) continue;
 
-        extracted.body = await this.resolveMentionsInBody(socket, extracted.body, extracted.mentionedJids);
+        extracted.body = await this.resolveMentionsInBody(
+          socket, sessionId, routing.groupJid, extracted.body, extracted.mentionedJids,
+        );
 
         let mediaUrl: string | null = null;
         if (
@@ -1008,10 +1010,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const extracted = extractBaileysMessage(msgContent);
       if (!extracted) continue;
 
-      extracted.body = await this.resolveMentionsInBody(socket, extracted.body, extracted.mentionedJids);
-
       const routing = await this.buildIncomingMessageRoutingInfo(msg, socket, sessionId, jid, tenantId);
       if (!routing) continue;
+
+      extracted.body = await this.resolveMentionsInBody(
+        socket, sessionId, routing.groupJid, extracted.body, extracted.mentionedJids,
+      );
 
       const fromMe: boolean = key?.fromMe ?? false;
       const messageTimestamp = msg.messageTimestamp ?? msgContent?.messageTimestamp;
@@ -1133,18 +1137,26 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
    */
   private async resolveMentionsInBody(
     socket: ReturnType<typeof makeWASocket>,
+    sessionId: string,
+    groupJid: string | null | undefined,
     body: string | null,
     mentionedJids: string[] | null | undefined,
   ): Promise<string | null> {
     if (!body || !mentionedJids || mentionedJids.length === 0) return body;
 
+    // Metadata do grupo já buscado pelo roteamento desta mensagem; o store só conhece
+    // o LID de quem já trocou chaves com a sessão, então uma menção a terceiro ficava sem resolver.
+    const lidToPhone = groupJid ? this.groupMetadataCache.get(`${sessionId}:${groupJid}`)?.lidToPhone : undefined;
+
     let resolvedBody = body;
     for (const mentionedJid of mentionedJids) {
       if (!mentionedJid.endsWith('@lid')) continue;
       const lid = mentionedJid.split('@')[0];
-      const phone = await this.resolveParticipantPhone(socket, mentionedJid);
+      const phone = (await this.resolveParticipantPhone(socket, mentionedJid)) ?? lidToPhone?.[lid];
       if (phone && phone !== lid) {
         resolvedBody = resolvedBody.split(`@${lid}`).join(`@${phone}`);
+      } else {
+        baileysLogger.debug({ sessionId, groupJid, mentionedJid }, 'Mention LID not resolvable to a phone');
       }
     }
     return resolvedBody;
@@ -1195,6 +1207,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         const snapshot: GroupMetadataSnapshot = {
           groupName: metadata?.subject?.trim() || null,
           addressingMode: metadata?.addressingMode ?? null,
+          lidToPhone: buildLidToPhoneMap(metadata?.participants as BaileysGroupParticipant[] | undefined),
         };
         this.groupMetadataCache.set(cacheKey, snapshot);
         if (!snapshot.groupName) {
@@ -1439,6 +1452,24 @@ interface GroupMetadataSnapshot {
   groupName: string | null;
   /** 'lid' ou 'pn'; `null` quando a lib não informou (o Baileys trata como 'lid'). */
   addressingMode: 'lid' | 'pn' | null;
+  /**
+   * LID (dígitos) → telefone (dígitos) dos participantes, vindo do metadata do grupo
+   * (`id`/`lid` + `phoneNumber`). O signal store só conhece o mapeamento de quem já trocou
+   * chaves com a sessão; o metadata cobre o grupo inteiro.
+   */
+  lidToPhone: Readonly<Record<string, string>>;
+}
+
+function buildLidToPhoneMap(participants: readonly BaileysGroupParticipant[] | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const p of participants ?? []) {
+    const lidJid = p.id?.endsWith('@lid') ? p.id : p.lid;
+    const phoneJid = p.phoneNumber ?? (p.id?.endsWith('@s.whatsapp.net') ? p.id : undefined);
+    const lid = lidJid?.split('@')[0];
+    const phone = phoneJid?.split('@')[0];
+    if (lid && phone && /^\d+$/.test(lid) && /^\d{8,15}$/.test(phone)) map[lid] = phone;
+  }
+  return map;
 }
 
 type BaileysGroupParticipant = {
