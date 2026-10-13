@@ -10,6 +10,9 @@ import { MessageList } from './MessageList';
 import { MessageComposer, type MessageComposerHandle } from './MessageComposer';
 import { AttachmentPreviewPanel, type AttachmentSendItem } from './AttachmentPreviewPanel';
 import { DropZoneOverlay } from './DropZoneOverlay';
+import { MentionNamesContext } from '../mentions';
+
+const NO_MENTION_NAMES: Readonly<Record<string, string>> = {};
 
 interface AttachmentPreview {
   files: File[];
@@ -44,6 +47,8 @@ interface Props {
   onParticipantClick?: (phone: string, name: string) => void;
   /** Avatares dos participantes por telefone, usados nas bolhas de grupo. */
   participantAvatars?: Record<string, string>;
+  /** Nomes dos participantes por telefone: `@<telefone>` no texto vira `@Nome`. */
+  participantNames?: Record<string, string>;
   /** Volta para a lista — navegação por telas no mobile. */
   onBack?: () => void;
   onToggleSearch?: () => void;
@@ -74,6 +79,7 @@ export function ChatWindow({
   scrollSignal,
   onParticipantClick,
   participantAvatars,
+  participantNames,
   onBack,
   onToggleSearch,
   searchOpen,
@@ -203,6 +209,7 @@ export function ChatWindow({
             minHeight: 0,
           }}
         >
+          <MentionNamesContext.Provider value={participantNames ?? NO_MENTION_NAMES}>
           <MessageList
             messages={messages}
             loading={loadingMessages}
@@ -219,6 +226,7 @@ export function ChatWindow({
             onRetry={onRetryMessage}
             onDiscard={onDiscardUpload}
           />
+          </MentionNamesContext.Provider>
 
           <MessageComposer
             ref={composerRef}

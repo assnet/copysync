@@ -30,15 +30,25 @@ import { AttachmentMenu } from './AttachmentMenu';
 import { VoiceRecorderBar } from './VoiceRecorderBar';
 import { chatService } from '@/services/chat.service';
 import type { GroupParticipantApiDto } from '@/types/chat.api.types';
+import { extractMentionPhones } from '../mentions';
 
-/** Telefones (dígitos) marcados com @ no texto final — único ponto que decide o que vira menção. */
-const MENTION_REGEX = /(?:^|\s)@(\d{5,20})(?=\s|$)/g;
-function extractMentionPhones(value: string): string[] {
-  const phones = new Set<string>();
-  let match: RegExpExecArray | null;
-  MENTION_REGEX.lastIndex = 0;
-  while ((match = MENTION_REGEX.exec(value))) phones.add(match[1]);
-  return [...phones];
+/** Escapa um nome para uso literal em RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * O campo mostra `@Nome` (como o WhatsApp Web); o texto enviado leva `@<telefone>`, que é o
+ * formato que o WhatsApp e o painel resolvem de volta para o nome. `picks` guarda nome → telefone
+ * dos participantes escolhidos no popover; nome editado à mão deixa de casar e segue como texto.
+ */
+function resolveMentionsForSend(text: string, picks: ReadonlyMap<string, string>): string {
+  let resolved = text;
+  for (const [name, phone] of picks) {
+    const pattern = new RegExp(`(^|\\s)@${escapeRegExp(name)}(?=\\s|$)`, 'g');
+    resolved = resolved.replace(pattern, `$1@${phone}`);
+  }
+  return resolved;
 }
 
 const texts = chatStrings.composer;
@@ -161,9 +171,12 @@ export function MessageComposer({
   const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
-    const mentions = extractMentionPhones(trimmed);
-    onSend(trimmed, mentions.length > 0 ? mentions : undefined);
+    const outgoing = resolveMentionsForSend(trimmed, mentionPicksRef.current);
+    const mentions = extractMentionPhones(outgoing);
+    if (mentions.length > 0) onSend(outgoing, mentions);
+    else onSend(outgoing);
     setText('');
+    mentionPicksRef.current.clear();
     inputRef.current?.focus();
   };
 
@@ -187,6 +200,7 @@ export function MessageComposer({
   // Trocar de conversa não pode deixar o popover buscando participantes do chat anterior.
   useEffect(() => {
     closeMention();
+    mentionPicksRef.current.clear();
   }, [conversationId]);
 
   useEffect(() => {
@@ -219,6 +233,7 @@ export function MessageComposer({
   const [mentionResults, setMentionResults] = useState<GroupParticipantApiDto[]>([]);
   const [mentionLoading, setMentionLoading] = useState(false);
   const mentionStartRef = useRef<number | null>(null);
+  const mentionPicksRef = useRef(new Map<string, string>());
   const mentionOpen = Boolean(mentionAnchor);
 
   const closeMention = () => {
@@ -256,7 +271,12 @@ export function MessageComposer({
     if (start === null || !participant.phone) return;
     const input = inputRef.current;
     const cursor = input?.selectionStart ?? text.length;
-    const inserted = `@${participant.phone} `;
+    // Sem nome real (participante desconhecido tem o próprio número como nome) fica o telefone.
+    const label = participant.name && !/^[\d\s+()-]+$/.test(participant.name)
+      ? participant.name
+      : participant.phone;
+    if (label !== participant.phone) mentionPicksRef.current.set(label, participant.phone);
+    const inserted = `@${label} `;
     setText(text.slice(0, start) + inserted + text.slice(cursor));
     pendingCursorRef.current = start + inserted.length;
     closeMention();

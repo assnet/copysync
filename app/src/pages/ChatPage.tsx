@@ -312,6 +312,15 @@ export default function ChatPage() {
     return map;
   }, [participants]);
 
+  // Mapa telefone → nome, para exibir `@Nome` nas menções (o texto gravado traz o telefone)
+  const participantNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of participants) {
+      if (p.phone && p.name && !/^[\d\s+()-]+$/.test(p.name)) map[p.phone] = p.name;
+    }
+    return map;
+  }, [participants]);
+
   // Preenche os avatares que faltam. Cada foto é uma consulta ao WhatsApp, então a
   // API trabalha em lotes e devolve quantas sobraram; repetimos até zerar. As fotos
   // obtidas chegam pelos eventos chat.contact.updated / chat.group.avatar.updated.
@@ -1262,6 +1271,7 @@ export default function ChatPage() {
           scrollSignal={scrollSignal}
           onParticipantClick={handleParticipantClick}
           participantAvatars={participantAvatars}
+          participantNames={participantNames}
           highlightMessageId={highlightMessageId}
           onBack={() => setSelectedId(null)}
           onToggleSearch={() => {

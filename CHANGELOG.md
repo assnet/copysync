@@ -31,6 +31,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`app/src/features/chat/components/MessageComposer.tsx`** — digitar `@` numa conversa de grupo abre popover de participantes (busca com debounce via `chatService.listGroupParticipants`); selecionar insere `@<telefone>` no texto. `extractMentionPhones` lê o texto final no envio — único ponto que decide o que vira menção, então editar/apagar o `@<telefone>` depois de inserido também remove a menção
 - **`app/src/services/chat.service.ts`**, **`app/src/pages/ChatPage.tsx`**, **`app/src/features/chat/components/ChatWindow.tsx`** — `mentions` passado ponta a ponta do composer até a chamada HTTP
 - **`app/src/features/chat/strings.ts`** — novas strings em `chatStrings.mention` (popover de autocompletar), seguindo o padrão de chaves semânticas do arquivo
+- **`app/src/features/chat/mentions.ts`** (`0.17.2`) — `splitMentions`/`extractMentionPhones` e `MentionNamesContext` (telefone → nome dos participantes da conversa aberta, montado em `ChatPage` como `participantNames` e provido em `ChatWindow`). **`RichMessageText.tsx`** renderiza `@<telefone>` conhecido como `@Nome` em destaque, como o WhatsApp Web; desconhecido segue como número. **`MessageComposer.tsx`** mostra `@Nome` no campo e converte para `@<telefone>` só no envio (`resolveMentionsForSend`) — o texto gravado e o enviado ao WhatsApp seguem com o telefone, que é o formato que todo cliente resolve de volta
 
 #### Login — vídeo ambiente no painel desktop (`0.16.0`)
 
