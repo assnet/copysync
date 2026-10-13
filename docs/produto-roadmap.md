@@ -5,7 +5,7 @@ caber em um item desta lista (ou propor um novo aqui antes de nascer no código)
 que sustenta isso está em [`../AGENTS.md`](../AGENTS.md); o estado do rebranding em
 [`rebranding-copysync.md`](rebranding-copysync.md).
 
-Atualizado em 2026-10-12. Nomes de módulo/feature em código seguem o **recurso**, nunca a marca
+Atualizado em 2026-10-13. Nomes de módulo/feature em código seguem o **recurso**, nunca a marca
 (white label): ex. `offer-generator`, `group-monitoring`, `link-rotation`.
 
 ## Posicionamento
@@ -31,33 +31,65 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `campaigns/offer-story` | ⏳ |
 | 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` (novo módulo) | ⏳ |
 | 13 | 🎓 Conta | Aulas e suporte pelo WhatsApp | `tenants` (entitlements) + conteúdo externo | ⏳ |
+| 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
+| 15 | 🌐 Domínio personalizado | Site de ofertas e rodízio de links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
+| 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
 
-## Planos
+## Planos (rascunho 2026-10-13)
 
 Limites são **entitlements por tenant**: devem viver em dado (ex. `Tenant.plan` + tabela de
 limites), nunca hardcoded em use case. Enforcement no `application` layer, com erro interno
-`PLAN_LIMIT_REACHED` (a criar em `shared/errors`).
+`PLAN_LIMIT_REACHED` (a criar em `shared/errors`). Preço "de/por" é só marketing; o sistema
+guarda o plano, não o preço.
 
-| Limite | 🟢 Básico — R$ 99/mês | 🔵 Plus — R$ 169/mês ⭐ | 🟣 Pro — R$ 299/mês |
+| Limite | 🟢 Starter — R$ 97/mês (de 161,90) | 🔵 Profissional — R$ 167/mês (de 278,90) ⭐ | 🟣 Business — R$ 247/mês (de 411,90) |
 |---|---|---|---|
-| Números WhatsApp | 1 | 2 | 5 |
-| Telegram | — | ✅ | ✅ |
-| Grupos monitorados | 1 | 6 | 30 |
-| Grupos de disparo | 5 | 10 | 40 |
-| Gerador de ofertas | 10/dia | 20/dia | ilimitado |
-| Rodízios de links | 1 | 2 | 5 |
-| Reescrita com IA | — | ✅ | ✅ |
-| Story de oferta (Instagram) | — | ✅ | ✅ |
-| Site de ofertas | — | ✅ | ✅ |
-| Credenciais de afiliado | ✅ | ✅ | ✅ |
-| Horário de postagem | ✅ | ✅ | ✅ |
+| Conexões WhatsApp | 1 | 1 | 2 |
+| Conexões Telegram | — | 1 | 2 |
+| Grupos monitorados (por canal) | 1 | 2 | 6 |
+| Grupos de disparo (por canal) | 5 | 10 | 40 |
 | Disparo em massa | ✅ | ✅ | ✅ |
-| Aulas e suporte | ✅ | ✅ | ✅ |
+| Agendamento de horários | ✅ | ✅ | ✅ |
+| Rodízio de links inteligentes | ✅ | ✅ | ✅ |
+| Menção a todos os participantes | — | ✅ | ✅ |
+| Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
+| Gerador de ofertas automático | — | ✅ | ✅ |
+| Site pra bio | — | ✅ | ✅ |
+| Domínio personalizado | — | ✅ | ✅ |
+| Template Instagram | — | — | ✅ (exclusivo) |
+| Suporte | 24/7 | prioritário 24/7 | exclusivo 24/7 |
+| Aulas em vídeo | ✅ | ✅ | ✅ |
+
+Não aparecem na tabela de venda e ficam como entitlement interno, default ligado nos três:
+reescrita com IA (`ai_rewrite_enabled`), limite diário do gerador (`offer_generations_per_day`,
+`null` = ilimitado; sugerido 20 no Profissional e `null` no Business).
+
+Versão anterior (Básico/Plus/Pro, R$ 99/169/299) fica substituída por esta. Telegram no
+Profissional e Business repete os mesmos limites de grupos do WhatsApp ("monitora 2 + 10 de
+envio" por canal).
+
+### Carga por plano (entrada do estudo de arquitetura)
+
+Base para [`arquitetura-escala.md`](arquitetura-escala.md). Estimativas, não medições.
+
+| Por tenant | Starter | Profissional | Business |
+|---|---|---|---|
+| Sessões WhatsApp (Baileys) | 1 | 1 | 2 |
+| Sessões Telegram (engine leve, Bot API/MTProto) | 0 | 1 | 2 |
+| Mensagens de entrada/dia (grupos-fonte × ~150 msg) | ~150 | ~300 | ~900 |
+| Posts de saída/dia (ofertas × grupos de disparo; ~20 ofertas/dia) | ~100 | ~200 | ~800 |
+| Metadata de grupo em cache | 6 | 12 | 46 |
+
+Mix de referência para 1.000 tenants (50% / 35% / 15%): **1.150 sessões WhatsApp**,
+650 Telegram, ~350 mil msgs de entrada/dia, ~300 mil posts/dia (~3,5/s médio, picos 10×
+nas janelas agendadas). O gargalo é o **envio em rajada nas janelas de horário**, não a
+escuta: fila por sessão com rate limit é obrigatória (item 3.6 do doc de escala).
 
 Chaves de entitlement sugeridas (snake_case, estáveis):
 `whatsapp_sessions`, `telegram_enabled`, `monitored_groups`, `broadcast_groups`,
 `offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `ai_rewrite_enabled`,
-`offer_story_enabled`, `storefront_enabled`.
+`offer_story_enabled`, `storefront_enabled`, `mention_all_enabled`, `custom_domain_enabled`,
+`support_tier` (`standard | priority | exclusive`).
 
 Billing: ver análise em `.specs/features/service-desk/integracao-api-central.md` (reaproveitar
 API central para checkout/assinatura; tenant guarda `billingCustomerId`).
@@ -68,7 +100,8 @@ API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 2. **Grupos de disparo** + **Horário de postagem** + **Disparo em massa** — base de distribuição.
 3. **Monitoramento** com troca de link — núcleo do produto, depende de 1 e 2.
 4. **Reescrita com IA** — plug no pipeline de 3.
-5. **Rodízio de links**, **Story**, **Site de ofertas** — diferenciais Plus/Pro.
+5. **Rodízio de links**, **Story**, **Site de ofertas**, **Domínio personalizado** — diferenciais Profissional/Business.
+5b. **Menção a todos** — depende de `cachedGroupMetadata` com TTL (doc de escala, seção 7).
 6. **Telegram** — segundo engine atrás de `MessagingEngine`.
 7. **Planos e limites** — pode entrar cedo como tabela, com enforcement crescendo por feature.
 
