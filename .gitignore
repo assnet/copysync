@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist_bkp/
 legado1/
 legado2/
 
