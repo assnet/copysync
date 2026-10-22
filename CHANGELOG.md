@@ -23,6 +23,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend (`app/`, `settings`) — Logos dos marketplaces nos cards de credencial (`0.18.1`)
+
+- **`app/public/assets/marketplaces/`** — `shopee.svg`, `amazon.svg` (Simple Icons, CC0, cor da marca) e `mercado-livre.svg` (theSVG, MIT); licenças em `LICENSE.md` da pasta
+- **`features/settings/affiliateProviders.ts`** — catálogo troca o ícone genérico do MUI por `logo` (caminho do SVG)
+- **`features/settings/components/AffiliateCredentialCard.tsx`** — logo em bloco de fundo branco com borda do tema, legível no claro e no escuro
+
 #### Backend (`api/`, `integrations`) — Credenciais de afiliado (`0.18.0`)
 
 Roadmap item 3. Doc: `docs/integracoes-credenciais-afiliado.md`; spec em `.specs/features/affiliate-credentials/`.

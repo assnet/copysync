@@ -51,7 +51,6 @@ function ReadOnlyField({ label, value, muted }: { label: string; value: string; 
 export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemove, onStatusChange }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const chip = stateChip(item);
-  const Icon = spec.icon;
   const active = item?.status === 'ACTIVE';
 
   return (
@@ -62,14 +61,16 @@ export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemov
       <Stack spacing={2} sx={{ height: '100%' }}>
         {/* Status no corpo, não no cabeçalho: em 3 colunas o chip empurrava o nome para 2 linhas. */}
         <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+          {/* Fundo branco nos dois temas: logo de marca tem cores próprias e some no escuro. */}
           <Box
             aria-hidden
             sx={{
-              display: 'flex', p: 1, borderRadius: 2, color: 'primary.main',
-              bgcolor: 'action.hover', flexShrink: 0,
+              width: 48, height: 48, p: 1, borderRadius: 2, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              bgcolor: 'common.white', border: 1, borderColor: 'divider',
             }}
           >
-            <Icon fontSize="small" />
+            <Box component="img" src={spec.logo} alt="" sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           </Box>
           <Chip size="small" label={chip.label} color={chip.color} variant={item ? 'filled' : 'outlined'} />
         </Stack>

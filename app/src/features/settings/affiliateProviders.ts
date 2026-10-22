@@ -1,7 +1,3 @@
-import type { SvgIconComponent } from '@mui/icons-material';
-import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
-import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
-import LocalMallOutlinedIcon from '@mui/icons-material/LocalMallOutlined';
 import type { AffiliateProvider } from '@/types/api.types';
 import { settingsStrings } from './strings';
 
@@ -22,7 +18,8 @@ export interface AffiliateProviderSpec {
   /** Nome do marketplace (terceiro), pode aparecer na tela. */
   name: string;
   description: string;
-  icon: SvgIconComponent;
+  /** Logo do marketplace em `public/assets/marketplaces/` (licenças no LICENSE.md da pasta). */
+  logo: string;
   publicField: AffiliateFieldSpec;
   /** Ausente quando o programa não tem chave secreta. */
   secretField?: AffiliateFieldSpec;
@@ -37,7 +34,7 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     provider: 'SHOPEE',
     name: 'Shopee',
     description: providerDescriptions.SHOPEE,
-    icon: ShoppingBagOutlinedIcon,
+    logo: '/assets/marketplaces/shopee.svg',
     publicField: { label: fields.shopeeAppId, helper: fields.shopeeAppIdHelp, pattern: /^\d{5,20}$/ },
     secretField: { label: fields.shopeeSecret, helper: fields.shopeeSecretHelp, pattern: /^[A-Za-z0-9]{16,128}$/ },
     usesBrowserSession: false,
@@ -46,7 +43,7 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     provider: 'MERCADO_LIVRE',
     name: 'Mercado Livre',
     description: providerDescriptions.MERCADO_LIVRE,
-    icon: StorefrontOutlinedIcon,
+    logo: '/assets/marketplaces/mercado-livre.svg',
     publicField: {
       label: fields.mercadoLivreTag,
       helper: fields.mercadoLivreTagHelp,
@@ -58,7 +55,7 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     provider: 'AMAZON',
     name: 'Amazon',
     description: providerDescriptions.AMAZON,
-    icon: LocalMallOutlinedIcon,
+    logo: '/assets/marketplaces/amazon.svg',
     publicField: {
       label: fields.amazonTag,
       helper: fields.amazonTagHelp,
