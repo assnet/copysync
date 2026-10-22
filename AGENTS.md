@@ -19,6 +19,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Estado do rebranding, pendências por fase e o que não mexer: [`docs/rebranding-copysync.md`](docs/rebranding-copysync.md).
 - A marca só aparece em texto exibido, `<title>`, OpenAPI e assets. Nomes de funções, chaves, eventos e rotas descrevem o recurso (white label).
 - Funcionalidades, planos/limites e ordem de entrega do produto: [`docs/produto-roadmap.md`](docs/produto-roadmap.md). Feature nova deve caber em um item de lá.
+- Credenciais de afiliado (cifra, rotas, o que não fazer): [`docs/integracoes-credenciais-afiliado.md`](docs/integracoes-credenciais-afiliado.md). Segredo só via `ISecretCipher`; nunca devolver/logar.
 - Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá.
 
 ###
