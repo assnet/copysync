@@ -35,7 +35,9 @@ describe('AffiliateCredentialCard', () => {
     );
 
     expect(screen.getAllByText('Não configurado')).toHaveLength(3);
-    expect(screen.getAllByRole('button', { name: 'Configurar' })).toHaveLength(3);
+    for (const s of AFFILIATE_PROVIDERS) {
+      expect(screen.getByRole('button', { name: `Conectar ${s.name}` })).toBeInTheDocument();
+    }
   });
 
   it('credencial salva mostra a máscara e nunca o valor em claro', () => {

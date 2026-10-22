@@ -1,3 +1,12 @@
+import type { SvgIconComponent } from '@mui/icons-material';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined';
+import PaidOutlinedIcon from '@mui/icons-material/PaidOutlined';
+import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined';
+import SellOutlinedIcon from '@mui/icons-material/SellOutlined';
+import KeyOffOutlinedIcon from '@mui/icons-material/KeyOffOutlined';
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
+import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined';
 import type { AffiliateProvider } from '@/types/api.types';
 import { settingsStrings } from './strings';
 
@@ -13,6 +22,11 @@ export interface AffiliateFieldSpec {
   placeholder?: string;
 }
 
+export interface AffiliateHighlight {
+  icon: SvgIconComponent;
+  text: string;
+}
+
 export interface AffiliateProviderSpec {
   provider: AffiliateProvider;
   /** Nome do marketplace (terceiro), pode aparecer na tela. */
@@ -20,6 +34,13 @@ export interface AffiliateProviderSpec {
   description: string;
   /** Logo do marketplace em `public/assets/marketplaces/` (licenças no LICENSE.md da pasta). */
   logo: string;
+  /**
+   * Cor oficial da marca do marketplace (terceiro). Única cor fixa permitida na tela:
+   * usada só como acento (faixa e fundo translúcido), nunca como cor de texto.
+   */
+  brandColor: string;
+  /** O que a conexão faz, em 3 linhas curtas com ícone. */
+  highlights: readonly AffiliateHighlight[];
   publicField: AffiliateFieldSpec;
   /** Ausente quando o programa não tem chave secreta. */
   secretField?: AffiliateFieldSpec;
@@ -27,7 +48,7 @@ export interface AffiliateProviderSpec {
   usesBrowserSession: boolean;
 }
 
-const { fields, providerDescriptions } = settingsStrings.affiliate;
+const { fields, providerDescriptions, providerHighlights: hl } = settingsStrings.affiliate;
 
 export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
   {
@@ -35,6 +56,12 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     name: 'Shopee',
     description: providerDescriptions.SHOPEE,
     logo: '/assets/marketplaces/shopee.svg',
+    brandColor: '#EE4D2D',
+    highlights: [
+      { icon: VpnKeyOutlinedIcon, text: hl.SHOPEE[0] },
+      { icon: LockOutlinedIcon, text: hl.SHOPEE[1] },
+      { icon: PaidOutlinedIcon, text: hl.SHOPEE[2] },
+    ],
     publicField: { label: fields.shopeeAppId, helper: fields.shopeeAppIdHelp, pattern: /^\d{5,20}$/ },
     secretField: { label: fields.shopeeSecret, helper: fields.shopeeSecretHelp, pattern: /^[A-Za-z0-9]{16,128}$/ },
     usesBrowserSession: false,
@@ -44,6 +71,12 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     name: 'Mercado Livre',
     description: providerDescriptions.MERCADO_LIVRE,
     logo: '/assets/marketplaces/mercado-livre.svg',
+    brandColor: '#FFE600',
+    highlights: [
+      { icon: ExtensionOutlinedIcon, text: hl.MERCADO_LIVRE[0] },
+      { icon: SellOutlinedIcon, text: hl.MERCADO_LIVRE[1] },
+      { icon: KeyOffOutlinedIcon, text: hl.MERCADO_LIVRE[2] },
+    ],
     publicField: {
       label: fields.mercadoLivreTag,
       helper: fields.mercadoLivreTagHelp,
@@ -56,6 +89,12 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     name: 'Amazon',
     description: providerDescriptions.AMAZON,
     logo: '/assets/marketplaces/amazon.svg',
+    brandColor: '#FF9900',
+    highlights: [
+      { icon: FactCheckOutlinedIcon, text: hl.AMAZON[0] },
+      { icon: KeyOffOutlinedIcon, text: hl.AMAZON[1] },
+      { icon: ShareOutlinedIcon, text: hl.AMAZON[2] },
+    ],
     publicField: {
       label: fields.amazonTag,
       helper: fields.amazonTagHelp,

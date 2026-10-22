@@ -3,6 +3,7 @@ import { Alert, Box, Button, CircularProgress, Grid, Snackbar } from '@mui/mater
 import { PageHeader } from '@/components';
 import type { AffiliateProvider } from '@/types/api.types';
 import { AffiliateCredentialCard } from '@/features/settings/components/AffiliateCredentialCard';
+import { AffiliateConnectionSummary } from '@/features/settings/components/AffiliateConnectionSummary';
 import { AffiliateCredentialDialog } from '@/features/settings/components/AffiliateCredentialDialog';
 import { useAffiliateCredentials } from '@/features/settings/hooks/useAffiliateCredentials';
 import { settingsStrings } from '@/features/settings/strings';
@@ -20,8 +21,6 @@ export function AffiliateCredentialsPage() {
     <Box>
       <PageHeader title={t.pageTitle} subtitle={t.pageSubtitle} />
 
-      <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>{t.pageNotice}</Alert>
-
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress aria-label={t.pageTitle} />
@@ -34,20 +33,23 @@ export function AffiliateCredentialsPage() {
           {loadError}
         </Alert>
       ) : (
-        <Grid container spacing={3}>
-          {entries.map(({ spec, item }) => (
-            <Grid item xs={12} md={4} key={spec.provider}>
-              <AffiliateCredentialCard
-                spec={spec}
-                item={item}
-                busy={busy[spec.provider]}
-                onConfigure={() => setEditing(spec.provider)}
-                onRemove={() => void remove(spec.provider)}
-                onStatusChange={(status) => void setStatus(spec.provider, status)}
-              />
-            </Grid>
-          ))}
-        </Grid>
+        <>
+          <AffiliateConnectionSummary entries={entries} />
+          <Grid container spacing={3}>
+            {entries.map(({ spec, item }) => (
+              <Grid item xs={12} md={4} key={spec.provider} sx={{ display: 'flex', '& > *': { flexGrow: 1 } }}>
+                <AffiliateCredentialCard
+                  spec={spec}
+                  item={item}
+                  busy={busy[spec.provider]}
+                  onConfigure={() => setEditing(spec.provider)}
+                  onRemove={() => void remove(spec.provider)}
+                  onStatusChange={(status) => void setStatus(spec.provider, status)}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </>
       )}
 
       {editingEntry && (

@@ -13,7 +13,7 @@ Gerador de ofertas trocar o link do concorrente pelo do cliente. Spec, design e 
 | Prisma | `api/src/modules/integrations/infrastructure/` · tabela `affiliate_credentials` · migration `add_affiliate_credentials` |
 | HTTP | `api/src/modules/integrations/presentation/` |
 | Cifra | `api/src/shared/security/` (`ISecretCipher`, `AesGcmSecretCipher`, `SecretCipherFactory`) |
-| Painel | `app/src/features/settings/` (card, diálogo, hook, `strings.ts`, `affiliateProviders.ts`; logos em `app/public/assets/marketplaces/`, licenças no `LICENSE.md` da pasta) · `app/src/pages/settings/AffiliateCredentialsPage.tsx` · rota `/settings/affiliate-credentials` |
+| Painel | `app/src/features/settings/` (card, resumo de progresso `AffiliateConnectionSummary`, `MarketplaceLogo`, diálogo, hook, `strings.ts`, `affiliateProviders.ts`; logos em `app/public/assets/marketplaces/`, licenças no `LICENSE.md` da pasta) · `app/src/pages/settings/AffiliateCredentialsPage.tsx` · rota `/settings/affiliate-credentials` |
 | Extensão | `extension/` sincroniza a sessão do Mercado Livre (`docs/extensao-navegador.md`) |
 
 ## Campos por marketplace

@@ -23,6 +23,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend (`app/`, `settings`) — Redesenho da tela de credenciais de afiliado (`0.18.2`)
+
+- **`features/settings/components/AffiliateConnectionSummary.tsx`** — topo com progresso ("X de 3 marketplaces conectados", só ativas contam), logos com selo de conectado, barra que anima ao montar (sem animação com `prefers-reduced-motion`) e "Como funciona" em 3 passos; aviso de cifragem vira rodapé com cadeado
+- **`features/settings/components/AffiliateCredentialCard.tsx`** — cabeçalho próprio (sem `SectionCard`): logo à esquerda do nome e chip de status sob o nome (ao lado, em 3 colunas, sobrepunha o nome); faixa e fundo translúcido na cor da marca; 3 destaques com ícone; CTA "Conectar {marketplace}"; hover com leve elevação
+- **`features/settings/components/MarketplaceLogo.tsx`** — bloco branco da logo reaproveitado pelo card e pelo resumo
+- **`features/settings/affiliateProviders.ts`** — `brandColor` (cor oficial, só como acento) e `highlights` (ícone + texto) por marketplace; textos em `strings.ts`
+
 #### Frontend (`app/`, `settings`) — Logos dos marketplaces nos cards de credencial (`0.18.1`)
 
 - **`app/public/assets/marketplaces/`** — `shopee.svg`, `amazon.svg` (Simple Icons, CC0, cor da marca) e `mercado-livre.svg` (theSVG, MIT); licenças em `LICENSE.md` da pasta

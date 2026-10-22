@@ -65,6 +65,7 @@ export const settingsStrings = {
     notInformed: 'Não informado',
 
     configure: 'Configurar',
+    connect: (marketplace: string) => `Conectar ${marketplace}`,
     edit: 'Editar',
     remove: 'Remover',
     removeTooltip: 'Remover credencial',
@@ -103,6 +104,41 @@ export const settingsStrings = {
       mercadoLivreTagHelp: 'Valor que aparece em matt_word nos seus links de afiliado.',
       amazonTag: 'ID de rastreamento',
       amazonTagHelp: 'Termina com hífen e dois dígitos, por exemplo minhaloja-20.',
+    },
+
+    summaryNone: 'Nenhum marketplace conectado ainda',
+    summarySome: (connected: number, total: number) => `${connected} de ${total} marketplaces conectados`,
+    summaryAll: 'Todos os marketplaces conectados',
+    summaryNoneHint: 'Conecte o primeiro e a ferramenta passa a trocar os links pelos seus.',
+    summarySomeHint: 'Conecte os demais para ganhar comissão em mais lojas.',
+    summaryAllHint: 'Seus links já saem com a sua comissão em todas as lojas.',
+    summaryProgressLabel: 'Marketplaces conectados',
+    marketplaceConnected: (marketplace: string) => `${marketplace} conectado`,
+    marketplacePending: (marketplace: string) => `${marketplace} não conectado`,
+    howItWorks: 'Como funciona',
+    steps: [
+      { title: 'Conecte sua conta', text: 'Informe os dados do seu programa de afiliados.' },
+      { title: 'A ferramenta troca os links', text: 'Links de produtos viram links com a sua etiqueta.' },
+      { title: 'Você recebe a comissão', text: 'As vendas caem direto na sua conta de afiliado.' },
+    ],
+    stepLabel: (n: number) => `Passo ${n}`,
+
+    providerHighlights: {
+      SHOPEE: [
+        'Assinatura segura em cada chamada à API',
+        'Secret guardado cifrado',
+        'Comissão rastreada na sua conta',
+      ],
+      MERCADO_LIVRE: [
+        'Login feito uma vez, pela extensão',
+        'Etiqueta em todos os links compartilhados',
+        'Sem chave de API para cadastrar',
+      ],
+      AMAZON: [
+        'Formato do ID conferido antes de salvar',
+        'Sem chave secreta para cadastrar',
+        'Links prontos para compartilhar nos grupos',
+      ],
     },
 
     providerDescriptions: {
