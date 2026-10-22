@@ -13,6 +13,9 @@ import {
   passwordsMatch,
   PASSWORD_REQUIREMENTS,
 } from '../utils/passwordPolicy';
+import { settingsStrings } from '../strings';
+
+const t = settingsStrings.password;
 
 interface Props {
   onSuccess?: () => void;
@@ -48,7 +51,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
     }
 
     if (!passwordsMatch(newPassword, confirmPassword)) {
-      setError('As senhas não coincidem');
+      setError(t.mismatch);
       return;
     }
 
@@ -60,7 +63,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
       setConfirmPassword('');
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao alterar senha');
+      setError(err instanceof Error ? err.message : t.genericError);
     } finally {
       setLoading(false);
     }
@@ -76,12 +79,12 @@ export function ChangePasswordForm({ onSuccess }: Props) {
 
       {success && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          Senha alterada com sucesso.
+          {t.success}
         </Alert>
       )}
 
       <TextField
-        label="Nova senha"
+        label={t.newPasswordLabel}
         type={showNewPassword ? 'text' : 'password'}
         value={newPassword}
         onChange={(e) => setNewPassword(e.target.value)}
@@ -96,7 +99,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
                 onClick={() => setShowNewPassword((v) => !v)}
                 edge="end"
                 size="small"
-                aria-label={showNewPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                aria-label={showNewPassword ? t.hidePassword : t.showPassword}
               >
                 {showNewPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
               </IconButton>
@@ -106,7 +109,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
       />
 
       <TextField
-        label="Confirmar nova senha"
+        label={t.confirmPasswordLabel}
         type={showConfirmPassword ? 'text' : 'password'}
         value={confirmPassword}
         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -114,7 +117,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
         required
         autoComplete="new-password"
         error={mismatch}
-        helperText={mismatch ? 'As senhas não coincidem' : undefined}
+        helperText={mismatch ? t.mismatch : undefined}
         sx={{ mb: 2 }}
         InputProps={{
           endAdornment: (
@@ -123,7 +126,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
                 onClick={() => setShowConfirmPassword((v) => !v)}
                 edge="end"
                 size="small"
-                aria-label={showConfirmPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                aria-label={showConfirmPassword ? t.hidePassword : t.showPassword}
               >
                 {showConfirmPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
               </IconButton>
@@ -135,7 +138,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
       {newPassword.length > 0 && (
         <Box sx={{ mb: 3 }}>
           <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-            Requisitos da senha:
+            {t.requirementsTitle}
           </Typography>
           <List dense disablePadding>
             {PASSWORD_REQUIREMENTS.map((req) => {
@@ -169,7 +172,7 @@ export function ChangePasswordForm({ onSuccess }: Props) {
         disabled={!canSubmit}
         sx={{ minWidth: 160 }}
       >
-        {loading ? <CircularProgress size={22} color="inherit" /> : 'Alterar senha'}
+        {loading ? <CircularProgress size={22} color="inherit" /> : t.submit}
       </Button>
     </Box>
   );

@@ -12,6 +12,7 @@ import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
 import { contentDispositionFor, contentDispositionHeader, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
 import { registerRoutes } from './routes';
+import { affiliateCredentialItemSchema } from '../modules/integrations/presentation/schemas/affiliateCredential.schema';
 
 const defaultCorsOrigins = [
   'http://localhost:5174',
@@ -163,6 +164,7 @@ export async function buildApp() {
         { name: 'Tenants', description: 'Tenants do usuário autenticado' },
         { name: 'Me', description: 'Perfil do usuário autenticado' },
         { name: 'Sessions', description: 'Sessões WhatsApp — ciclo de vida, QR code, pairing' },
+        { name: 'Integrations', description: 'Credenciais de afiliado por marketplace' },
       ],
     },
   });
@@ -257,6 +259,8 @@ export async function buildApp() {
     },
   });
 
+  app.addSchema(affiliateCredentialItemSchema);
+
   // Errors
   app.addSchema({
     $id: 'ErrorResponse',
@@ -268,6 +272,8 @@ export async function buildApp() {
         properties: {
           code: { type: 'string' },
           message: { type: 'string' },
+          // Ex.: { field } em 422 — sem declarar, o serializer descarta.
+          meta: { type: 'object', additionalProperties: true },
         },
       },
     },

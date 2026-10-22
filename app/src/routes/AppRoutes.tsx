@@ -8,6 +8,7 @@ import ChatPage from '@/pages/ChatPage';
 import { SettingsLayout } from '@/features/settings/components/SettingsLayout';
 import { SettingsAccountPage } from '@/pages/settings/SettingsAccountPage';
 import { ChangePasswordPage } from '@/pages/settings/ChangePasswordPage';
+import { AffiliateCredentialsPage } from '@/pages/settings/AffiliateCredentialsPage';
 
 export function AppRoutes() {
   return (
@@ -26,6 +27,7 @@ export function AppRoutes() {
             <Route index element={<Navigate to="/settings/account" replace />} />
             <Route path="account" element={<SettingsAccountPage />} />
             <Route path="account/password" element={<ChangePasswordPage />} />
+            <Route path="affiliate-credentials" element={<AffiliateCredentialsPage />} />
           </Route>
         </Route>
       </Route>

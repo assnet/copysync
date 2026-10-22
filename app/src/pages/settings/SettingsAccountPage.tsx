@@ -3,6 +3,9 @@ import { Box, TextField, Button } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageHeader, SectionCard } from '@/components';
+import { settingsStrings } from '@/features/settings/strings';
+
+const t = settingsStrings.account;
 
 export function SettingsAccountPage() {
   const navigate = useNavigate();
@@ -11,20 +14,20 @@ export function SettingsAccountPage() {
   return (
     <Box>
       <PageHeader
-        title="Minha conta"
-        subtitle="Visualize seus dados e gerencie a segurança da conta"
+        title={t.title}
+        subtitle={t.subtitle}
       />
 
-      <SectionCard title="Dados pessoais" sx={{ mb: 3 }}>
+      <SectionCard title={t.personalData} sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 480 }}>
           <TextField
-            label="Nome"
+            label={t.nameLabel}
             value={user?.name ?? ''}
             fullWidth
             InputProps={{ readOnly: true }}
           />
           <TextField
-            label="E-mail"
+            label={t.emailLabel}
             value={user?.email ?? ''}
             fullWidth
             InputProps={{ readOnly: true }}
@@ -32,13 +35,13 @@ export function SettingsAccountPage() {
         </Box>
       </SectionCard>
 
-      <SectionCard title="Segurança" subtitle="Gerencie a senha de acesso ao painel">
+      <SectionCard title={t.security} subtitle={t.securitySubtitle}>
         <Button
           variant="outlined"
           startIcon={<LockOutlinedIcon />}
           onClick={() => navigate('/settings/account/password')}
         >
-          Alterar senha
+          {t.changePassword}
         </Button>
       </SectionCard>
     </Box>

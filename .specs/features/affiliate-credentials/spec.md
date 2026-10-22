@@ -3,7 +3,7 @@
 **Módulo**: `integrations/affiliate-credentials` (api/) + `settings` feature (app/)
 **Roadmap**: item 3 de `docs/produto-roadmap.md` ("Credenciais de afiliado")
 **Escopo**: Large (Prisma → criptografia → use cases → REST → página em Configurações)
-**Status**: Draft — 2026-10-13. Aguarda aprovação do usuário.
+**Status**: Implementado — 2026-10-22 (API/painel 0.18.0)
 
 ---
 
@@ -38,13 +38,13 @@ Gerador de ofertas e do Monitoramento.
 
 ---
 
-## Campos por marketplace (assunção, verificar em design)
+## Campos por marketplace (verificado em T0, 2026-10-22 — regex em `docs/integracoes-credenciais-afiliado.md`)
 
 | Marketplace | Campo público | Campo secreto |
 | --- | --- | --- |
 | Shopee | App ID | Secret Key |
-| Mercado Livre | ID do afiliado | — |
-| Amazon | Tag de associado | — |
+| Mercado Livre | Etiqueta de afiliado (`matt_word`) | — |
+| Amazon | ID de rastreamento (`?tag=`) | — |
 
 Fonte: app de referência (capturas). Verificação contra a documentação oficial é a task T0.
 
@@ -64,7 +64,8 @@ a ferramenta monetize meus links automaticamente.
 1. WHEN o operador abre Configurações THEN o submenu SHALL mostrar "Credenciais de afiliado" ao
    lado de "Minha conta"
 2. WHEN a página carrega THEN o sistema SHALL mostrar um card por marketplace (Shopee, Mercado
-   Livre, Amazon) com estado "Não configurado" ou "Configurado"
+   Livre, Amazon) com estado "Não configurado" ou "Configurado" (Configurado = tem
+   `publicIdentifier`; linha só com sessão da extensão = "ID pendente", ver AC8)
 3. WHEN o operador clica "Configurar" e salva campos válidos THEN a API SHALL gravar a
    credencial do tenant (`PUT /integrations/affiliate-credentials/:provider`) e o card SHALL
    mudar para "Configurado" sem recarregar a página
@@ -73,6 +74,9 @@ a ferramenta monetize meus links automaticamente.
 5. WHEN o operador salva campo vazio ou fora do formato THEN o sistema SHALL recusar com
    mensagem no campo, sem chamar a API
 6. WHEN a API responde erro THEN o diálogo SHALL manter os valores digitados e mostrar a mensagem
+7. WHEN a extensão já sincronizou a sessão do Mercado Livre THEN o card SHALL mostrar "Sessão
+   sincronizada" com data (`sessionSyncedAt`); sem sessão, SHALL orientar a instalar/abrir a extensão
+8. WHEN a linha existe sem ID público (criada pela extensão) THEN o card SHALL mostrar "ID pendente"
 
 **Independent Test**: Logar, abrir Configurações → Credenciais de afiliado, salvar Shopee com App
 ID + Secret, recarregar: card "Configurado", valores mascarados, `SELECT` na tabela mostra
@@ -92,8 +96,11 @@ ou quando eu deixar o programa.
 2. WHEN salva com secreto vazio THEN a API SHALL manter o secreto atual e atualizar só o público
 3. WHEN clica "Remover" e confirma no `ConfirmDialog` THEN a API SHALL apagar a linha
    (`DELETE .../:provider`) e o card SHALL voltar a "Não configurado"
+   (Mercado Livre: a sessão é apagada junto; se a extensão continuar logada, o próximo sync recria a
+   linha com a sessão — o diálogo de confirmação avisa para desconectar a extensão antes)
 4. WHEN qualquer gravação ou remoção ocorre THEN o sistema SHALL registrar `AuditLog`
-   (`AFFILIATE_CREDENTIAL_UPSERTED` / `AFFILIATE_CREDENTIAL_DELETED`) sem o valor da chave
+   (`AFFILIATE_CREDENTIAL_UPSERTED` / `AFFILIATE_CREDENTIAL_DELETED`) sem o valor da chave; sync da
+   extensão registra `AFFILIATE_SESSION_SYNCED` só quando a sessão muda (token diferente do atual)
 
 **Independent Test**: Editar App ID da Shopee deixando Secret vazio; recarregar; público novo,
 `secretCiphertext` inalterado no banco. Remover; card volta ao estado inicial; `audit_logs` tem
@@ -132,16 +139,18 @@ as duas ações.
 
 - WHEN dois `PUT` simultâneos do mesmo tenant/provider THEN SHALL prevalecer o último
   (`@@unique([tenantId, provider])` + `upsert`), sem linha duplicada
-- WHEN `CREDENTIALS_ENCRYPTION_KEY` ausente ou com tamanho errado THEN a API SHALL falhar no boot
-  (validação em `env.ts`), nunca gravar em claro
-- WHEN a chave de cifra for rotacionada THEN o registro SHALL guardar `keyVersion` para
-  permitir recifrar em script (`scripts/maintenance/`); rotação em si fica fora do escopo
+- WHEN `CREDENTIALS_ENCRYPTION_KEY` ausente THEN a API SHALL subir normal e as rotas de afiliado SHALL
+  responder 503 (`SECRET_CIPHER_UNAVAILABLE`) nas que cifram (PUT credencial e PUT sessão; o GET
+  lista segue 200), nunca gravar em claro; chave com tamanho errado SHALL
+  ser tratada como ausente (503 + `logger.error` no boot), sem derrubar a API
+- WHEN a chave de cifra for rotacionada THEN — fora do escopo: cada blob guarda sua versão de chave
+  (`keyVersion`, `sessionKeyVersion`) para a chore de rotação; nesta feature só existe a versão 1
 - WHEN tenant de outra membership tenta `GET` THEN `tenantHook` SHALL negar (já existe)
 - WHEN o campo público tiver espaços nas pontas THEN o sistema SHALL fazer `trim` antes de validar
 - WHEN resposta de `GET` for lista vazia THEN os 3 cards SHALL aparecer em "Não configurado"
   (catálogo de provedores é do painel, não do banco)
 - WHEN o painel estiver em modo escuro THEN cards, chips e diálogo SHALL usar tokens do tema
-  (teste com `renderWithTheme('dark')`)
+  (teste com `renderWithTheme(<X />, 'dark')`)
 
 ---
 
@@ -149,20 +158,21 @@ as duas ações.
 
 | ID | Story | Fase | Status |
 | --- | --- | --- | --- |
-| AFCRED-01 | P1 cadastrar: submenu em Configurações | Design | Pending |
-| AFCRED-02 | P1 cadastrar: cards por marketplace com estado | Design | Pending |
-| AFCRED-03 | P1 cadastrar: `PUT` upsert por tenant/provider | Design | Pending |
-| AFCRED-04 | P1 cadastrar: resposta mascarada, nunca em claro | Design | Pending |
-| AFCRED-05 | P1 cadastrar: validação de campos no painel | Design | Pending |
-| AFCRED-06 | P1 cadastrar: cifra AES-256-GCM em repouso | Design | Pending |
-| AFCRED-07 | P1 editar: secreto vazio mantém o atual | Design | Pending |
-| AFCRED-08 | P1 remover: `DELETE` + confirmação | Design | Pending |
-| AFCRED-09 | P1: auditoria de upsert/delete | Design | Pending |
-| AFCRED-10 | P2: status ativo/inativo | — | Pending |
+| AFCRED-01 | P1 cadastrar: submenu em Configurações | Design | Done |
+| AFCRED-02 | P1 cadastrar: cards por marketplace com estado | Design | Done |
+| AFCRED-03 | P1 cadastrar: `PUT` upsert por tenant/provider | Design | Done |
+| AFCRED-04 | P1 cadastrar: resposta mascarada, nunca em claro | Design | Done |
+| AFCRED-05 | P1 cadastrar: validação de campos no painel | Design | Done |
+| AFCRED-06 | P1 cadastrar: cifra AES-256-GCM em repouso | Design | Done |
+| AFCRED-07 | P1 editar: secreto vazio mantém o atual | Design | Done |
+| AFCRED-08 | P1 remover: `DELETE` + confirmação | Design | Done |
+| AFCRED-09 | P1: auditoria de upsert/delete | Design | Done |
+| AFCRED-10 | P2: status ativo/inativo | — | Done |
 | AFCRED-11 | P3: testar credencial | — | Pending |
-| AFCRED-12 | transversal: textos centralizados (`strings.ts`), tema escuro | Design | Pending |
+| AFCRED-12 | transversal: textos centralizados (`strings.ts`), tema escuro | Design | Done |
+| AFCRED-13 | P1: sessão do Mercado Livre via extensão (rota + estado no card) | Design | Done |
 
-**Coverage:** 12 total, 0 mapeados em tasks, 12 pendentes ⚠️ (atualizar em `tasks.md`)
+**Coverage:** 13 total; mapeamento por task em `tasks.md` (Traceability). Status muda para Done na execução.
 
 ---
 

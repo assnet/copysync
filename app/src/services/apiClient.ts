@@ -1,7 +1,7 @@
 import axios, { AxiosHeaders, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 type ApiErrorPayload = {
-  error?: { message?: string; code?: string };
+  error?: { message?: string; code?: string; meta?: { field?: string } };
   message?: string;
 };
 
@@ -150,11 +150,13 @@ apiClient.interceptors.response.use(
       clearSessionAndRedirect();
     }
 
-    // `status`/`code` seguem junto para quem precisa distinguir o erro (ex.: 429 × 409).
+    // `status`/`code` seguem junto para quem precisa distinguir o erro (ex.: 429 × 409);
+    // `field` aponta o campo recusado num 422, para o formulário marcar.
     return Promise.reject(
       Object.assign(new Error(getErrorMessage(error)), {
         status: error.response?.status,
         code: error.response?.data?.error?.code,
+        field: error.response?.data?.error?.meta?.field,
       }),
     );
   },

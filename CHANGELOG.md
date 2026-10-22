@@ -23,6 +23,40 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend (`api/`, `integrations`) — Credenciais de afiliado (`0.18.0`)
+
+Roadmap item 3. Doc: `docs/integracoes-credenciais-afiliado.md`; spec em `.specs/features/affiliate-credentials/`.
+
+- **`prisma/schema.prisma`** + migration **`20261022135437_add_affiliate_credentials`** — enums `AffiliateProvider` (`SHOPEE`, `MERCADO_LIVRE`, `AMAZON`) e `AffiliateCredentialStatus`, tabela `affiliate_credentials` (`@@unique([tenantId, provider])`, segredo e sessão em colunas `Bytes` cifradas com `keyVersion` próprio, `publicIdentifier` opcional para a linha criada pela extensão) e 3 valores em `AuditAction` (`AFFILIATE_CREDENTIAL_UPSERTED`, `AFFILIATE_CREDENTIAL_DELETED`, `AFFILIATE_SESSION_SYNCED`)
+- **`shared/security/AesGcmSecretCipher.ts`**, **`ISecretCipher.ts`**, **`SecretCipherFactory.ts`** — AES-256-GCM com Node `crypto`, AAD `tenantId:provider:campo` (blob trocado de linha/coluna não decifra); chave validada no primeiro uso: ausente/malformada → `SECRET_CIPHER_UNAVAILABLE` (503) só nas gravações que cifram, sem derrubar o boot
+- **`shared/config/env.ts`** — `CREDENTIALS_ENCRYPTION_KEY` opcional (vazia = ausente) e carga de `api/.env.local` (gitignored) via `process.loadEnvFile`; **`package.json`** `engines.node >=20.12.0`
+- **`app/server.ts`** — loga no boot se a chave está indisponível, sem imprimir o valor
+- **`shared/errors/internal/AffiliateCredentialErrors.ts`**, **`SecretCipherErrors.ts`** — `AFFILIATE_CREDENTIAL_INVALID` (422, `meta.field`), `AFFILIATE_CREDENTIAL_NOT_FOUND` (404), `SECRET_CIPHER_UNAVAILABLE` (503), `SECRET_CIPHER_FAILED` (500)
+- **`modules/integrations/domain/`** — entidade, contrato `IAffiliateCredentialRepository`, `maskIdentifier` (`••••3128`) e `affiliateProviderFields` (campos e regex permissivas por marketplace, verificadas em T0)
+- **`modules/integrations/application/use-cases/`** — `List`, `Upsert` (secret vazio mantém o atual; cifra só quando há segredo), `Delete`, `SetStatus`, `Resolve` (único que decifra para uso; sem rota) e `UpsertAffiliateSession` (sessão da extensão: tag inválida descartada, tag só preenche ID vazio, auditoria só quando o token muda, blob indecifrável regravado sem 500)
+- **`modules/integrations/infrastructure/`** — `PrismaAffiliateCredentialRepository` (tudo por `tenantId`; P2002 concorrente repete 1x; preenchimento de tag atômico no `WHERE`) e `PrismaAffiliateCredentialMapper`
+- **`modules/integrations/presentation/`** — `GET/PUT/DELETE /integrations/affiliate-credentials[/:provider]`, `PATCH /:provider/status`, `PUT /:provider/session` (contrato da extensão), envelope `{ success, data }`, schema `AffiliateCredentialItem` sem campo secreto; **`app/app.ts`** registra o schema, a tag OpenAPI `Integrations` e `meta` no `ErrorResponse`
+- **`shared/audit/IAuditLogRepository.ts`** — 3 ações novas, auditadas sem valor de chave/token
+
+#### Frontend (`app/`, `settings`) — Configurações → Credenciais de afiliado (`0.18.0`)
+
+- **`pages/settings/AffiliateCredentialsPage.tsx`** + rota `/settings/affiliate-credentials` em **`routes/AppRoutes.tsx`** — cabeçalho, aviso, grid 3/1 colunas de cards
+- **`features/settings/components/AffiliateCredentialCard.tsx`** — chip Configurado/Não configurado/Inativo, valores só mascarados, switch Ativa, remover com `ConfirmDialog`; Mercado Livre mostra "Sessão sincronizada em …", "ID pendente" e orientação da extensão
+- **`features/settings/components/AffiliateCredentialDialog.tsx`** — validação local espelhando o domínio, secret com olho e "mantido se vazio" na edição, mantém valores em erro e marca o campo recusado pela API
+- **`features/settings/hooks/useAffiliateCredentials.ts`** — remoção/status otimistas com rollback; salvar não é otimista
+- **`features/settings/affiliateProviders.ts`**, **`strings.ts`** — catálogo dos marketplaces e textos centralizados (inclui os de conta/senha migrados de `SettingsAccountPage`, `ChangePasswordForm`, `ChangePasswordPage`)
+- **`features/settings/components/SettingsLayout.tsx`** — novo item de submenu; ícone do item agora é renderizado
+- **`services/affiliateCredential.service.ts`**, **`types/api.types.ts`** — cliente e tipos do contrato
+- **`services/apiClient.ts`** — erro rejeitado carrega `field` de `meta.field` (422)
+
+#### Extensão (`extension/`) — rota de sessão disponível (`2.0.1`)
+
+- **`extension/src/contract/api.ts`**, **`docs/extensao-navegador.md`** — rota `PUT …/session` deixou de ser pendência (T7b); extensão `2.0.1`
+
+#### Deploy — credenciais de afiliado
+
+- Criar **`CREDENTIALS_ENCRYPTION_KEY`** (`openssl rand -base64 32`) no dashboard da Render **antes** do deploy da API; sem ela as gravações que cifram respondem 503. Migration `add_affiliate_credentials` aplicada pelo `prisma:deploy`.
+
 #### Extensão Chrome (`extension/`) — sessão de afiliado do marketplace (`0.17.6`)
 
 Reescrita do legado "Redirect Flow" como projeto próprio (MV3, webpack + TypeScript), white label,

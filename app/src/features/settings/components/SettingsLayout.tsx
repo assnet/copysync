@@ -1,11 +1,20 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box, Grid, List, ListItem, ListItemButton, ListItemText, Typography,
+  Box, Grid, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Typography,
 } from '@mui/material';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
+import { settingsStrings } from '../strings';
+
+const t = settingsStrings.layout;
 
 const SETTINGS_NAV = [
-  { label: 'Minha conta', path: '/settings/account', icon: <PersonOutlineIcon fontSize="small" /> },
+  { label: t.navAccount, path: '/settings/account', icon: <PersonOutlineIcon fontSize="small" /> },
+  {
+    label: t.navAffiliateCredentials,
+    path: '/settings/affiliate-credentials',
+    icon: <KeyOutlinedIcon fontSize="small" />,
+  },
 ];
 
 export function SettingsLayout() {
@@ -15,7 +24,7 @@ export function SettingsLayout() {
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} mb={3}>
-        Configurações
+        {t.title}
       </Typography>
 
       <Grid container spacing={3}>
@@ -30,6 +39,9 @@ export function SettingsLayout() {
                     onClick={() => navigate(item.path)}
                     sx={{ borderRadius: 2, py: 1 }}
                   >
+                    <ListItemIcon sx={{ minWidth: 32, color: active ? 'primary.main' : 'text.secondary' }}>
+                      {item.icon}
+                    </ListItemIcon>
                     <ListItemText
                       primary={item.label}
                       primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500 }}

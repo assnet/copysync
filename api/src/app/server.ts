@@ -28,6 +28,7 @@ import { registerChatSessionStatusListener } from '../modules/chat/infrastructur
 import { UploadSessionSweeper } from '../modules/media/infrastructure/uploads/UploadSessionSweeper';
 import { diskBudget } from '../modules/media/domain/services/diskBudget';
 import { initMediaModule, mediaContainer } from '../modules/media/infrastructure/mediaContainer';
+import { SecretCipherFactory } from '../shared/security/SecretCipherFactory';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -71,6 +72,13 @@ async function start(): Promise<void> {
     await initMediaModule();
   } catch (err) {
     logger.error({ err }, 'Media module initialization failed');
+  }
+
+  // ── Cifra de credenciais ───────────────────────────────────────────────────
+  // Só avisa: sem chave válida as rotas que cifram respondem 503, o resto da API sobe.
+  const cipherProblem = SecretCipherFactory.check();
+  if (cipherProblem) {
+    logger.error({ reason: cipherProblem }, 'CREDENTIALS_ENCRYPTION_KEY unavailable — affiliate credential writes will return 503');
   }
 
   // ── Chat repositories ──────────────────────────────────────────────────────

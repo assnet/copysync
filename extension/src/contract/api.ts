@@ -8,9 +8,9 @@
  *   PUT  {API_URL}/integrations/affiliate-credentials/MERCADO_LIVRE/session
  *        headers: Authorization: Bearer, X-Tenant-Id            → AffiliateSessionSyncResponse
  *
- * A rota PUT ainda não existe na API (feature `affiliate-credentials`, T7 em
- * `.specs/features/affiliate-credentials/tasks.md`). Enquanto não existir a
- * API responde 404 e o popup mostra o erro.
+ * A rota PUT vive em `api/src/modules/integrations` (feature `affiliate-credentials`,
+ * T7b em `.specs/features/affiliate-credentials/tasks.md`). Grava a sessão cifrada;
+ * etiqueta inválida é ignorada sem recusar a sessão.
  */
 
 /** Envelope padrão de `shared/http/httpResponse.ts`. */

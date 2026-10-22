@@ -9,6 +9,7 @@ import {
   mediaUploadRoutes,
   type MediaUploadRoutesOptions,
 } from '../modules/media/presentation/routes/media.upload.routes';
+import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -67,6 +68,11 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Chat WebSocket gateway ─────────────────────────────────────────────────
   await app.register(chatWsRoutes, { prefix: `${env.API_PREFIX}/chat` });
+
+  // ── Integration routes (auth + tenant scope required) ──────────────────────
+  await app.register(affiliateCredentialRoutes, {
+    prefix: `${env.API_PREFIX}/integrations/affiliate-credentials`,
+  });
 
   // ── Media upload routes (auth + tenant scope required) ─────────────────────
   // Parser binário encapsulado no plugin; store e capacidades vêm da composição única.

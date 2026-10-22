@@ -60,6 +60,9 @@ enum AuditAction {
   SESSION_DISCONNECTED
   SESSION_LOGGED_OUT
   SESSION_DELETED
+  AFFILIATE_CREDENTIAL_UPSERTED
+  AFFILIATE_CREDENTIAL_DELETED
+  AFFILIATE_SESSION_SYNCED
 }
 
 enum ConversationStatus {
@@ -121,6 +124,7 @@ model Tenant {
   chatMessages         ChatMessage[]
   chatMessageReactions ChatMessageReaction[]
   chatLists            ChatList[]
+  affiliateCredentials AffiliateCredential[]
 
   @@index([slug])
   @@map("tenants")
@@ -462,4 +466,44 @@ model ChatMessageReaction {
   @@unique([messageId, reactorKey])
   @@index([tenantId, messageId])
   @@map("chat_message_reactions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AFFILIATE CREDENTIALS (integrations)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AffiliateProvider {
+  SHOPEE
+  MERCADO_LIVRE
+  AMAZON
+}
+
+enum AffiliateCredentialStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model AffiliateCredential {
+  id                String                    @id @default(cuid())
+  tenantId          String
+  provider          AffiliateProvider
+  publicIdentifier  String? // null quando a linha nasce da extensão sem tag
+  secretCiphertext  Bytes? // AES-256-GCM; AAD = tenantId:provider:secret
+  secretIv          Bytes?
+  secretTag         Bytes?
+  keyVersion        Int                       @default(1) // versão da chave do secret
+  status            AffiliateCredentialStatus @default(ACTIVE)
+  sessionCiphertext Bytes? // sessão do marketplace vinda da extensão; AAD = tenantId:provider:session
+  sessionIv         Bytes?
+  sessionTag        Bytes?
+  sessionKeyVersion Int?
+  sessionSyncedAt   DateTime?
+  lastValidatedAt   DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@map("affiliate_credentials")
 }

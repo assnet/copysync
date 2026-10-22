@@ -56,12 +56,33 @@ Memória entre sessões: decisões, bloqueios, lições.
   (padrão `false`, `true` só na Render): um `pnpm dev` com `api/.env` de produção não pode
   falhar mídia que a produção ainda envia.
 
+- **2026-10-22 — Segredo de afiliado cifrado com chave em env, não KMS.** AES-256-GCM, chave
+  `CREDENTIALS_ENCRYPTION_KEY` (32 bytes base64), AAD `tenantId:provider:campo`, `keyVersion` por
+  blob. Chave ausente/malformada não derruba o boot: só as gravações que cifram respondem 503.
+  Local em `api/.env.local` (gitignored), nunca em `.env.dev` (versionado). Ver
+  `docs/integracoes-credenciais-afiliado.md`.
+
+- **2026-10-22 — ID público de afiliado em claro, só o segredo cifrado.** Tag/AppID aparecem na
+  URL gerada; cifrar não protege e impede busca. Máscara é só de exibição. Regras de formato são
+  permissivas (nenhum programa publica formato oficial — T0); apertar só com valores reais.
+
+- **2026-10-22 — Tag vinda da extensão só preenche ID vazio.** O valor do painel sempre vence;
+  tag inválida é descartada sem recusar a sessão (renovação a cada 30 min não pode travar).
+
 ## Bloqueios
 
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
   strings em pt-BR direto no JSX. O AGENTS.md exige cobertura de i18n em toda feature, o que hoje é
   impossível de cumprir literalmente. Features novas mantêm os textos centralizados no topo do
   componente, prontos para extração. Decidir a biblioteca e fazer a extração em chore próprio.
+
+## Lições
+
+- **2026-10-22 — `app/.env.dev` aponta o proxy do Vite para a API de produção**
+  (`VITE_DEV_PROXY_TARGET`). Para testar contra a API local: `VITE_DEV_PROXY_TARGET=http://localhost:3333 pnpm dev`
+  (variável de processo vence o arquivo).
+- **2026-10-22 — `pnpm dev` da API quebra no `tsx`** com `ERR_PACKAGE_PATH_NOT_EXPORTED` em
+  `whatsapp-rust-bridge` (dep do Baileys rc14). Contorno: `pnpm build && node --env-file=.env.dev dist/app/server.js`.
 
 ## Resolvidos
 

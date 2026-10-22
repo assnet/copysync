@@ -14,7 +14,10 @@ export type AuditAction =
   | 'SESSION_CONNECTED'
   | 'SESSION_DISCONNECTED'
   | 'SESSION_LOGGED_OUT'
-  | 'SESSION_DELETED';
+  | 'SESSION_DELETED'
+  | 'AFFILIATE_CREDENTIAL_UPSERTED'
+  | 'AFFILIATE_CREDENTIAL_DELETED'
+  | 'AFFILIATE_SESSION_SYNCED';
 
 export interface CreateAuditLogInput {
   tenantId?: string;

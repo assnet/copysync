@@ -41,10 +41,12 @@ compartilhados), `src/core/{devLog,i18n}.ts`. Nenhuma regra mora em `index.ts`.
 
 Todas no envelope `{ success, data, error? }` de `shared/http/httpResponse.ts`.
 
-**Pendência:** a rota `PUT …/session` **ainda não existe** na API — é parte da feature
-`.specs/features/affiliate-credentials` (T7, rotas de `integrations/presentation`). Até lá a API
-responde 404 e a extensão mostra `err_api_route_missing`. Quando implementar, manter
-`AffiliateSessionSyncRequest` (`extension/src/contract/api.ts`) como contrato.
+**Rota implementada (API 0.18.0):** `PUT …/session` em `api/src/modules/integrations`
+(`.specs/features/affiliate-credentials`, T7b). Sessão gravada cifrada (AES-256-GCM); `affiliateTag`
+inválida é descartada sem recusar a sessão e só preenche ID vazio (o painel vence); auditoria só
+quando o token muda. Ver `docs/integracoes-credenciais-afiliado.md`. API antiga (sem a rota)
+responde 404 e a extensão mostra `err_api_route_missing`. Manter `AffiliateSessionSyncRequest`
+(`extension/src/contract/api.ts`) como contrato.
 
 Tradução de erros (padrão AGENTS.md §13): `apiClient.ts` nunca propaga texto da API; cada falha
 vira `SyncErrorCode` → chave `err_<code>` nas locales. 401 → um refresh e repete; refresh recusado
@@ -108,7 +110,7 @@ Nunca editar `version` em `public/manifest.json` à mão. SemVer igual ao resto 
 
 | # | Item | Onde | Bloqueia |
 |---|---|---|---|
-| 1 | Rota `PUT /integrations/affiliate-credentials/MERCADO_LIVRE/session` na API (recebe `AffiliateSessionSyncRequest`, grava sessão cifrada do marketplace por tenant, auditoria sem valor do token) | `.specs/features/affiliate-credentials/tasks.md` → T7b | Sincronização real; hoje a extensão mostra `err_api_route_missing` |
+| 1 | ~~Rota `PUT …/MERCADO_LIVRE/session` na API~~ — feita na API 0.18.0 (T7b) | `docs/integracoes-credenciais-afiliado.md` | — |
 | 2 | Smoke test com a extensão carregada (`pnpm dev` → `dist/` em `chrome://extensions`): login, captura, PUT, alarme, troca de tenant, logout | `extension/README.md` | Fechamento da feature |
 | 3 | Publicação na Chrome Web Store: nova listagem (a antiga `iiobglifbapgfafnghkcakggkcaddpap` era do "Redirect Flow"); guardar `extension/.keys/extension-private.pem` fora do repositório (cofre) | seção *Publicação* | Distribuição |
 | 4 | Expiração da sessão do marketplace: a API precisa sinalizar quando `sessionToken` deixou de funcionar para a extensão forçar nova captura (hoje só renova por alarme) | API + `syncSession.ts` | Confiabilidade do gerador de links |
