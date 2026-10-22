@@ -138,6 +138,35 @@ export interface ChangePasswordRequest {
   confirmPassword: string;
 }
 
+// ── Affiliate credentials ────────────────────────────────────────────────────
+
+export type AffiliateProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON';
+
+export type AffiliateCredentialStatus = 'ACTIVE' | 'INACTIVE';
+
+/** Credencial de afiliado como a API devolve: nunca traz o segredo nem a sessão em claro. */
+export interface AffiliateCredentialItem {
+  provider: AffiliateProvider;
+  status: AffiliateCredentialStatus;
+  publicIdentifier: string | null;
+  publicIdentifierMasked: string | null;
+  hasSecret: boolean;
+  hasSession: boolean;
+  sessionSyncedAt: string | null;
+  lastValidatedAt: string | null;
+  updatedAt: string;
+}
+
+export interface AffiliateCredentialListResponse {
+  items: AffiliateCredentialItem[];
+}
+
+export interface UpsertAffiliateCredentialRequest {
+  publicIdentifier: string;
+  /** Ausente na edição = mantém o segredo já salvo. */
+  secret?: string;
+}
+
 // ── API wrapper ───────────────────────────────────────────────────────────────
 
 export interface ApiSuccess<T> {
