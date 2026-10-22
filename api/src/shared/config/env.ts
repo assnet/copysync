@@ -1,5 +1,18 @@
+import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
+
+/**
+ * Segredos locais fora do git (`api/.env.local`): carregados antes do zod, sem sobrescrever o
+ * que já veio do processo ou do `--env-file`. Teste nunca lê o arquivo — o setup é sintético.
+ */
+function loadLocalEnvFile(): void {
+  const file = path.resolve(process.cwd(), '.env.local');
+  if (process.env['NODE_ENV'] === 'test' || !fs.existsSync(file)) return;
+  process.loadEnvFile(file);
+}
+
+loadLocalEnvFile();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -90,6 +103,14 @@ const envSchema = z.object({
   MEDIA_PENDING_STALE_MINUTES: z.coerce.number().int().positive().default(60),
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),
+
+  // Credenciais de afiliado: chave AES-256 (32 bytes em base64), versão 1. Opcional — sem ela
+  // só as rotas que cifram respondem 503. O tamanho é checado na SecretCipherFactory, não aqui:
+  // typo no dashboard não pode derrubar a API inteira.
+  CREDENTIALS_ENCRYPTION_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
 });
 
 /**

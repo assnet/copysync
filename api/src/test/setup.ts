@@ -11,3 +11,5 @@
 process.env['DATABASE_URL'] ??= 'postgresql://test:test@localhost:5432/test';
 process.env['JWT_SECRET'] ??= 'test-secret-nao-usar-fora-de-teste';
 process.env['NODE_ENV'] ??= 'test';
+// Chave sintética de 32 bytes (base64) para a cifra de credenciais.
+process.env['CREDENTIALS_ENCRYPTION_KEY'] ??= Buffer.alloc(32, 7).toString('base64');
