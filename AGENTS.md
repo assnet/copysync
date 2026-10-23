@@ -1275,3 +1275,7 @@ fix(chat): corrige bloco de resposta sumindo após envio (substituição otimís
 8. **Criar consulta tenant-aware** sem filtro de `tenantId`
 
 9. **Fazer deploy** de versão sem TAG e sem entrada correspondente no CHANGELOG.md
+
+### SUPORTE CHOPEE:
+- Ativar a API no painel de afiliado Shopee
+- url: https://help.shopee.com.br/portal/webform/bbce78695c364ba18c9cbceb74ec9091
