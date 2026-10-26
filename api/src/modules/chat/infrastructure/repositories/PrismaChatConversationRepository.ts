@@ -39,6 +39,10 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
       where['archived'] = filter.archived;
     }
 
+    if (filter.isGroup !== undefined) {
+      where['isGroup'] = filter.isGroup;
+    }
+
     if (filter.unreadOnly) {
       where['unreadCount'] = { gt: 0 };
     }

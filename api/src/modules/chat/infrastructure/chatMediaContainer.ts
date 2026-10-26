@@ -1,5 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
+import path from 'path';
+import { randomUUID } from 'crypto';
 import { prisma } from '../../../shared/database/prisma.client';
 import { env } from '../../../shared/config/env';
 import { getActiveEngine } from '../../../shared/engine/activeEngine';
@@ -13,6 +15,7 @@ import {
   type FileSizeProbe,
   type TmpSpaceProbe,
 } from '../application/use-cases/DispatchOutboundMediaUseCase';
+import { SendStoredMediaMessageUseCase } from '../application/use-cases/SendStoredMediaMessageUseCase';
 import { PrismaChatContactRepository } from './repositories/PrismaChatContactRepository';
 import { PrismaChatConversationRepository } from './repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from './repositories/PrismaChatMessageRepository';
@@ -77,5 +80,22 @@ export const chatMediaContainer = {
   /** Saída do transcode de voz: pasta de uploads, reconhecida pela varredura e pelo descarte. */
   voiceTmpPath(uploadId: string, ext: string): string {
     return uploadVoiceFilePath(env.MEDIA_UPLOAD_TMP_PATH, uploadId, ext);
+  },
+  /**
+   * Envio de imagem já armazenada (gerador de ofertas). Montado a cada chamada: a engine é a
+   * ativa na hora; repositórios e fila são os MESMOS singletons acima.
+   */
+  sendStoredMediaMessage(): SendStoredMediaMessageUseCase {
+    return new SendStoredMediaMessageUseCase({
+      messageRepo,
+      conversationRepo,
+      contactRepo,
+      engine:     getActiveEngine(),
+      files:      mediaContainer.mediaFileStore,
+      queue,
+      tmpPathFor: (ext) => path.join(os.tmpdir(), `stored-media-${randomUUID()}.${ext}`),
+      copyFile:   (src, dest) => fs.copyFile(src, dest),
+      removeTmp:  (filePath) => fs.rm(filePath, { force: true }),
+    });
   },
 };

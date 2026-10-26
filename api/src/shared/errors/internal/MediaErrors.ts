@@ -67,3 +67,10 @@ export class InsufficientStorageError extends AppError {
     super('INSUFFICIENT_STORAGE', message, 507, withoutDiskPaths(meta));
   }
 }
+
+/** Arquivo de mídia guardado sumiu do store (origem de envio, ex.: foto de oferta). */
+export class MediaNotFoundError extends AppError {
+  constructor(message = 'Media file not found', meta?: MediaErrorMeta) {
+    super('MEDIA_NOT_FOUND', message, 404, withoutDiskPaths(meta));
+  }
+}

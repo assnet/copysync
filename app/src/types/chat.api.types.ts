@@ -132,6 +132,8 @@ export interface ListConversationsParams {
   unreadOnly?: boolean;
   /** 'true' lista apenas as conversas arquivadas. */
   archived?: string;
+  /** 'true' só grupos; 'false' só contatos; ausente = todas. */
+  isGroup?: 'true' | 'false';
 }
 
 export interface ListMessagesParams {

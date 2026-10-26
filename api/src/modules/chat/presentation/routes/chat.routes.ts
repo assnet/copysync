@@ -113,6 +113,8 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         sessionId:  qs['sessionId'] || undefined,
         unreadOnly: qs['unreadOnly'] === 'true',
         archived:   qs['archived'] === 'true',
+        // Ausente = todas (compatível com o painel); 'true'/'false' filtra por tipo
+        isGroup:    qs['isGroup'] === undefined ? undefined : qs['isGroup'] === 'true',
       });
 
       // A contagem acompanha a listagem para o painel exibir "Arquivadas · N" sem

@@ -21,6 +21,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Funcionalidades, planos/limites e ordem de entrega do produto: [`docs/produto-roadmap.md`](docs/produto-roadmap.md). Feature nova deve caber em um item de lá.
 - Credenciais de afiliado (cifra, rotas, o que não fazer): [`docs/integracoes-credenciais-afiliado.md`](docs/integracoes-credenciais-afiliado.md). Segredo só via `ISecretCipher`; nunca devolver/logar.
 - Billing, checkout e e-mail via API central (hub, webhook HMAC, entitlements): [`docs/arquitetura-central-billing.md`](docs/arquitetura-central-billing.md). Sem cálculo de preço nem gateway no CopySync: só receiver de eventos, status do tenant e entitlements.
+- Gerador de ofertas (marketplaces, anti-SSRF, worker de envio e flag `OFFER_DISPATCH_WORKER_ENABLED`): [`docs/gerador-de-ofertas.md`](docs/gerador-de-ofertas.md). Worker só liga na Render.
 - Plano mestre de lançamento (marcos, trilhas, rede de segurança do PulsoSocial): [`docs/plano-lancamento-hub-copysync.md`](docs/plano-lancamento-hub-copysync.md).
 - Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá.
 

@@ -167,6 +167,78 @@ export interface UpsertAffiliateCredentialRequest {
   secret?: string;
 }
 
+// ── Offer generator ──────────────────────────────────────────────────────────
+
+export type OfferStatus = 'DRAFT' | 'SENDING' | 'SENT' | 'FAILED';
+
+export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+
+/** Envio da oferta para um destino. `failureReason` é um código interno (ex.: `SESSION_NOT_CONNECTED`). */
+export interface OfferDispatchItem {
+  id: string;
+  conversationId: string;
+  status: OfferDispatchStatus;
+  notBefore: string;
+  chatMessageId: string | null;
+  failureReason: string | null;
+  updatedAt: string;
+}
+
+/** Oferta como a API devolve: preços em centavos, datas ISO, nunca traz credencial. */
+export interface OfferItem {
+  id: string;
+  provider: AffiliateProvider;
+  sourceUrl: string;
+  productRef: string | null;
+  title: string | null;
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  imageUrl: string | null;
+  affiliateUrl: string;
+  /** `false` quando o marketplace não confirma a atribuição pelo parâmetro do link. */
+  attributionVerified: boolean;
+  text: string;
+  /** Texto editado à mão: mudar título/preço não o remonta mais. */
+  textEdited: boolean;
+  status: OfferStatus;
+  createdAt: string;
+  updatedAt: string;
+  dispatches?: OfferDispatchItem[];
+}
+
+export interface GenerateOfferResponse {
+  offer: OfferItem;
+  /** Marketplace sem dados automáticos: o operador preenche título, preço e foto. */
+  needsManualData: boolean;
+}
+
+export interface UpdateOfferRequest {
+  title?: string | null;
+  priceCents?: number | null;
+  originalPriceCents?: number | null;
+  text?: string;
+  imageUploadId?: string;
+}
+
+export interface SendOfferResponse {
+  offer: OfferItem;
+  dispatches: OfferDispatchItem[];
+}
+
+/** `limit: null` = ilimitado. */
+export interface OfferUsage {
+  used: number;
+  limit: number | null;
+}
+
+export interface OfferDestinationItem {
+  conversationId: string;
+  title: string | null;
+  isGroup: boolean;
+  sessionId: string | null;
+  sessionName?: string | null;
+}
+
 // ── API wrapper ───────────────────────────────────────────────────────────────
 
 export interface ApiSuccess<T> {

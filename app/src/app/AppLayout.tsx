@@ -14,6 +14,7 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import SettingsIcon from '@mui/icons-material/Settings';
+import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Sessões', path: '/sessions', icon: <DevicesIcon /> },
   { label: 'Chat', path: '/chat', icon: <ForumOutlinedIcon /> },
+  { label: 'Gerador de ofertas', path: '/offers', icon: <LocalOfferOutlinedIcon /> },
   { label: 'Configurações', path: '/settings/account', icon: <SettingsIcon />, matchPrefix: true },
 ];
 

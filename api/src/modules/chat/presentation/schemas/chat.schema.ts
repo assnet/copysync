@@ -48,6 +48,7 @@ export const listConversationsQuerySchema = {
     sessionId:  { type: 'string' },
     unreadOnly: { type: 'string' },
     archived:   { type: 'string' },
+    isGroup:    { type: 'string', enum: ['true', 'false'] },
   },
 } as const;
 

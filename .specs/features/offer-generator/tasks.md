@@ -15,4 +15,6 @@
 | T9 | Doc `docs/gerador-de-ofertas.md`, AGENTS.md (link), roadmap status, CHANGELOG `[Unreleased]`, versão 0.21.0 em `api/` e `app/` | docs | T7,T8 | — | — | |
 | T10 | Smoke local (banco local, AppID Shopee real se houver) + revisão | — | T9 | todos | manual | |
 
+**Status 2026-10-26:** T1–T9 concluídas (revisão independente aplicada: 10 achados corrigidos). T10 pendente: smoke com AppID Shopee real + verificação visual (exige API com banco não-produção).
+
 P2 (OFFER-11..13) fica para depois do MVP.

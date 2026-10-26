@@ -25,7 +25,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 5 | 📤 Grupos de disparo | Grupos do cliente que recebem as ofertas | `campaigns/broadcast-groups` | ⏳ |
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ⏳ |
 | 7 | 🤖 Reescrita com IA | Reescreve o texto de cada oferta automaticamente | `assistants/offer-rewriter` | ⏳ |
-| 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offer-generator` | ⏳ |
+| 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offers` (`docs/gerador-de-ofertas.md`) | ✅ MVP (Shopee automático; Amazon/ML com dados manuais) |
 | 9 | 🔄 Rodízio de links | Um link único que distribui pessoas entre os grupos | `campaigns/link-rotation` | ⏳ |
 | 10 | 📢 Disparo em massa | O que é postado num grupo é espelhado nos outros | `campaigns/broadcast-mirror` | ⏳ |
 | 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `campaigns/offer-story` | ⏳ |

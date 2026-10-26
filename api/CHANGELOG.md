@@ -11,6 +11,32 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — Gerador de ofertas (`campaigns`, M1-P)
+
+- **`campaigns/domain/services/*`** — funções puras: marketplace por host com allowlist (`detectMarketplace`/`isSupportedProductUrl`), referência do produto, link de afiliado Amazon/ML, texto da oferta, agenda espaçada dos envios, início do dia em `America/Sao_Paulo`
+- **`ShopeeAffiliateClient.ts`** — Affiliate Open API (assinatura SHA256), `productOfferV2` + `generateShortLink`, erros traduzidos sem vazar segredo
+- **`HttpShortLinkExpander.ts`** / **`HttpOfferImageFetcher.ts`** — redirect manual revalidando cada salto (anti-SSRF); foto só de CDN permitida, ≤ 5 MB
+- **`GenerateOfferUseCase`**, **`UpdateOfferUseCase`**, **`SendOfferUseCase`**, **`ProcessDueOfferDispatchesUseCase`**, destinos e uso — gerar, revisar, enviar espaçado e limite diário `offer_generations_per_day` (`PLAN_LIMIT_REACHED`, recontagem sob advisory lock)
+- **`OfferDispatchWorker.ts`** — envio durável no banco (`SKIP LOCKED` + `claimToken`), atrás de `OFFER_DISPATCH_WORKER_ENABLED` (padrão `false`)
+- **`offer.routes.ts`** — `/api/campaigns/offers` (gerar, editar, enviar, uso, destinos)
+- **`SendStoredMediaMessageUseCase.ts`** (chat) — envia imagem já guardada no store; cada mensagem recebe a própria cópia
+- **`ListConversationsUseCase`** — filtro opcional `isGroup`
+- **`OfferErrors.ts`**, **`PlanErrors.ts`**, **`MediaNotFoundError`** — erros internos novos
+- **Migration `20261026160000_create_offers_and_dispatches`** — tabelas `offers`, `offer_dispatches`, `offer_destinations`
+- Doc: `docs/gerador-de-ofertas.md`
+
+#### Frontend — Gerador de ofertas
+
+- **`features/offers/`** + **`OfferGeneratorPage.tsx`** — colar link, prévia, edição (preço em BRL, foto por upload em partes, texto), destinos, confirmação e progresso por destino; rota `/offers` e item no menu
+
+### Changed
+
+- **`ResolveAffiliateCredentialUseCase.ts`** — decifra a sessão só para provider que usa sessão (ML); JSON inválido não vaza o texto decifrado na mensagem de erro
+
+### Fixed
+
+- **`DispatchOutboundMediaUseCase.test.ts`**, **`RetryOutboundMediaUseCase.test.ts`** — fakes adaptados ao `acquireLocalFile` do E1 (22 testes quebrados)
+
 #### Backend — S3/R2 Media Storage (E1)
 
 - **`IMediaFileStore.ts`** — contrato estendido com `saveBuffer`, `mediaExists`, `publicUrl` e `acquireLocalFile` (+ tipo `AcquiredMediaFile` com `release()` para limpeza de temporários)

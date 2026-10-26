@@ -135,6 +135,28 @@ describe('ResolveAffiliateCredentialUseCase', () => {
     await expect(new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher).execute(TENANT, 'SHOPEE')).resolves.toBeNull();
   });
 
+  it('ML: sessão decifrada; JSON inválido vira erro genérico sem o texto', async () => {
+    const mlRecord = (plain: string) => makeRecord({
+      provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, hasSecret: false, hasSession: true,
+      session: cipher.encrypt(plain, affiliateCipherAad(TENANT, 'MERCADO_LIVRE', 'session')),
+    });
+    const ok = makeDeps(mlRecord('{"cookies":"c"}'));
+    const r = await new ResolveAffiliateCredentialUseCase(ok.repo, ok.getCipher).execute(TENANT, 'MERCADO_LIVRE');
+    expect(r?.session).toEqual({ cookies: 'c' });
+
+    const bad = makeDeps(mlRecord('segredo-em-claro{'));
+    const err = await errorOf(new ResolveAffiliateCredentialUseCase(bad.repo, bad.getCipher).execute(TENANT, 'MERCADO_LIVRE'));
+    expect(err).toMatchObject({ code: 'SECRET_CIPHER_FAILED' });
+    expect(String((err as Error).message)).not.toContain('segredo-em-claro');
+  });
+
+  it('provider sem sessão não decifra a sessão gravada', async () => {
+    // Se fosse decifrada, o JSON inválido lançaria
+    const d = makeDeps(makeRecord({ session: cipher.encrypt('{', affiliateCipherAad(TENANT, 'SHOPEE', 'session')) }));
+    const r = await new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher).execute(TENANT, 'SHOPEE');
+    expect(r?.session).toBeNull();
+  });
+
   it('linha sem ID público nunca resolve, mesmo se vier do repositório', async () => {
     const d = makeDeps(makeRecord({ publicIdentifier: null }));
     await expect(new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher).execute(TENANT, 'SHOPEE')).resolves.toBeNull();

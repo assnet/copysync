@@ -13,6 +13,8 @@ export interface ListConversationsFilter {
   status?: ConversationStatus;
   sessionId?: string;
   unreadOnly?: boolean;
+  /** true = só grupos, false = só individuais, undefined = todas. */
+  isGroup?: boolean;
   limit?: number;
   offset?: number;
 }

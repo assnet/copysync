@@ -10,6 +10,8 @@ export interface ListConversationsInput {
   status?: ConversationStatus;
   sessionId?: string;
   unreadOnly?: boolean;
+  /** true = só grupos, false = só individuais; ausente = todas. */
+  isGroup?: boolean;
   /** true = só arquivadas; padrão false = só ativas. */
   archived?: boolean;
 }
@@ -78,6 +80,7 @@ export class ListConversationsUseCase {
       status: input.status,
       sessionId: input.sessionId,
       unreadOnly: input.unreadOnly,
+      isGroup: input.isGroup,
       // Sem filtro explícito a listagem traz apenas as conversas ativas — arquivadas
       // ficam na própria seção, como no WhatsApp Web.
       archived: input.archived ?? false,

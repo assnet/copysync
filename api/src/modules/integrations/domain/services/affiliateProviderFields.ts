@@ -11,25 +11,34 @@ import type { AffiliateProvider } from '../enums/AffiliateProvider';
 export interface AffiliateProviderFields {
   publicIdentifier: { pattern: RegExp; maxLength: number };
   secret: { pattern: RegExp; maxLength: number } | null;
+  /** Usa sessão do navegador (extensão) no uso da credencial; só então ela é decifrada. */
+  usesSession: boolean;
 }
 
 export const AFFILIATE_PROVIDER_FIELDS: Record<AffiliateProvider, AffiliateProviderFields> = {
   SHOPEE: {
     publicIdentifier: { pattern: /^\d{5,20}$/, maxLength: 20 },
     secret: { pattern: /^[A-Za-z0-9]{16,128}$/, maxLength: 128 },
+    usesSession: false,
   },
   MERCADO_LIVRE: {
     publicIdentifier: { pattern: /^[A-Za-z0-9._-]{2,64}$/, maxLength: 64 },
     secret: null,
+    usesSession: true,
   },
   AMAZON: {
     publicIdentifier: { pattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}-\d{2}$/, maxLength: 67 },
     secret: null,
+    usesSession: false,
   },
 };
 
 export function providerRequiresSecret(provider: AffiliateProvider): boolean {
   return AFFILIATE_PROVIDER_FIELDS[provider].secret !== null;
+}
+
+export function providerUsesSession(provider: AffiliateProvider): boolean {
+  return AFFILIATE_PROVIDER_FIELDS[provider].usesSession;
 }
 
 /** Valor já com `trim`, ou null se vazio/fora do formato. */

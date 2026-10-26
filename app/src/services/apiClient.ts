@@ -1,7 +1,7 @@
 import axios, { AxiosHeaders, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 type ApiErrorPayload = {
-  error?: { message?: string; code?: string; meta?: { field?: string } };
+  error?: { message?: string; code?: string; meta?: { field?: string } & Record<string, unknown> };
   message?: string;
 };
 
@@ -167,6 +167,8 @@ apiClient.interceptors.response.use(
         status: error.response?.status,
         code: error.response?.data?.error?.code,
         field: error.response?.data?.error?.meta?.field,
+        // Dados extras do erro (ex.: `limit` do PLAN_LIMIT_REACHED); nunca carrega segredo.
+        meta: error.response?.data?.error?.meta,
       }),
     );
   },
