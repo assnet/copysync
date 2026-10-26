@@ -40,8 +40,9 @@ webhook da central (opção A) e SSO (opção B). Esta feature entrega `Provisio
 exposto só ao SUPER_ADMIN. Qualquer integração futura entra como nova porta de entrada do mesmo
 use case, sem tocar no atendimento.
 
-**Implicação**: `Tenant` ganha campos neutros (`billingCustomerId?`, `planSnapshot?`) já nesta
-feature, para o webhook futuro não exigir migration no núcleo.
+**Implicação**: `Tenant` ganha campos neutros (`billingCustomerId?`, `planSlug?`; era `planSnapshot?`, trocado em
+2026-10-26) já nesta feature, para o webhook futuro não exigir migration no núcleo. D7 superada em 2026-10-26: opção A
+decidida (`integracao-api-central.md` §9).
 
 ## D8 — Resposta pelo celular não mexe no atendimento (2026-09-27)
 

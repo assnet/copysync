@@ -69,7 +69,31 @@ Memória entre sessões: decisões, bloqueios, lições.
 - **2026-10-22 — Tag vinda da extensão só preenche ID vazio.** O valor do painel sempre vence;
   tag inválida é descartada sem recusar a sessão (renovação a cada 30 min não pode travar).
 
+- **2026-10-26 — Billing, checkout e e-mail vêm da API central (`pulsosocial_api`), que vira hub
+  multi-aplicação.** CopySync não calcula preço nem fala com gateway: recebe `subscription.*` por
+  webhook HMAC (canônica `X-Timestamp + "." + corpo`, ordem por `seq` por cliente, receipt na mesma
+  transação), provisiona pelo `ProvisionTenantUseCase` da service-desk e guarda `planSlug` +
+  `TenantEntitlement`. Descartados: fork da central, segunda instância, checkout próprio, SSO,
+  repo novo, gerir workers pelo hub. Checkout é por aplicação (um deploy do front da central por
+  app). Créditos só para quem tem `Application.creditsEnabled`; CopySync é só período. Tenant
+  suspenso passa a ter sessões desconectadas (`sessions` consome `TENANT_SUSPENDED`; supera a
+  decisão de 2026-09-27 do design §17). `planSnapshot` virou `planSlug`. Plano em marcos e rede
+  de segurança do PulsoSocial em `docs/plano-lancamento-hub-copysync.md`; contrato em
+  `docs/arquitetura-central-billing.md`; lado da central em
+  `pulsosocial_api/.specs/features/multi-application-hub/spec.md`. Specs passaram por 4 rodadas
+  de revisão contra o código dos dois repos.
+
+- **2026-10-26 — Postgres dedicado do CopySync, em Virginia.** 256 MB só enquanto não há cliente
+  real; 0.5c-1g no primeiro pagante; 1c-2g perto de 50 sessões. Criado sob demanda (owner sobe na hora), sem dump: só há sessões de teste em
+  produção; testes seguem no banco compartilhado até lá. PulsoSocial tem usuários reais: zero regressão.
+
 ## Bloqueios
+
+- **Exclusão de `/integrations/*` do log de corpo na central** contraria a decisão de
+  2026-10-06 de manter o corpo em `RequestLog`; precisa de aprovação explícita do owner antes da
+  fase 2 do hub.
+- **Service-desk P1.0 + USR-01 não implementadas**: o receiver de billing depende delas
+  (`ProvisionTenantUseCase`, `UserInvite`, `resolveMembership`).
 
 - **i18n não existe no painel.** Nenhuma biblioteca de internacionalização instalada em `app/`;
   strings em pt-BR direto no JSX. O AGENTS.md exige cobertura de i18n em toda feature, o que hoje é

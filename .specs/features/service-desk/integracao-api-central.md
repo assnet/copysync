@@ -91,7 +91,7 @@ Duplica 4 gateways, fila de e-mail e ciclo de assinatura. Descartada.
 **CopySync (`api/`)**
 1. Módulo `billing` (ou `integrations/billing`): receiver de webhook, verificação HMAC,
    idempotência, tradução para `ProvisionTenantUseCase` / `UpdateTenantStatusUseCase`.
-2. `Tenant.billingCustomerId`, `Tenant.plan/limits` (snapshot), `User.passwordSetAt` nullable.
+2. `Tenant.billingCustomerId`, `Tenant.planSlug` + `TenantEntitlement` (o snapshot foi superado por §9; entitlements em `docs/arquitetura-central-billing.md`), `User.passwordSetAt` nullable.
 3. `tenantHook` bloqueia `SUSPENDED`/`CANCELLED` com erro `TENANT_SUSPENDED`.
 4. Porta `EmailSender` com adapter que chama a central (M2M); fallback SMTP direto por env.
 5. Painel: "Assinatura" com link para a central; tela "defina sua senha" (mesmo fluxo do convite).
@@ -111,3 +111,17 @@ Assim a service-desk **não fica bloqueada** pela integração.
 - `apiKey` de ADMIN em texto puro no banco e no path da URL dos webhooks.
 - `webhooks.md` (linhas 51+) traz URLs de produção com apiKey parcialmente em claro — rotacionar.
 - Login com e-mail desconhecido dispara e-mail `SUBSCRIPTION_OFFER` (enumeração de contas).
+
+## 9. Decisões de 2026-10-26
+
+Reanálise com os repos atuais (`pulsosocial_api` 1.84.5, CopySync 0.18.3). Supera a D7 do `design.md` ("não decidir agora entre A e B"): decidido A. Opção A confirmada e ampliada:
+
+- Sem fork da central, sem segunda instância, sem checkout próprio no CopySync.
+- Sem produtor/coprodutor ou checkout para terceiros agora; gateways continuam controlados pela central.
+- Cascata de gateway conservadora (1 retentativa, só recusa recuperável sem sinal de fraude, token por gateway no navegador).
+- Front do checkout: mesmo `app/` da central, um deploy estático por aplicação com marca própria.
+- Créditos por flag `Application.creditsEnabled`; CopySync só período.
+- Senha na central já é bcrypt: bloqueio de SSO menor, mas SSO segue fora de escopo.
+
+Spec do lado da central: `pulsosocial_api/.specs/features/multi-application-hub/spec.md` (repositório irmão).
+Doc operacional do lado CopySync: [`docs/arquitetura-central-billing.md`](../../../docs/arquitetura-central-billing.md).

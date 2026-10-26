@@ -1,7 +1,7 @@
 # Central de Atendimento Multiusuário — Design
 
 **Spec**: `.specs/features/service-desk/spec.md`
-**Contexto**: `context.md` (D1–D7 travadas) · `integracao-api-central.md` (integração adiada)
+**Contexto**: `context.md` (D1–D7 travadas) · `integracao-api-central.md` (D7 superada em 2026-10-26: opção A decidida, ver §9 dele)
 **Status**: Rascunho — aguardando aprovação
 
 ---
@@ -130,7 +130,7 @@ graph LR
 model Tenant {
   // + neutros, para o webhook de billing futuro (D7)
   billingCustomerId String?  @unique
-  planSnapshot      Json?
+  planSlug          String?   // era planSnapshot Json?; trocado em 2026-10-26 (AGENTS §26, docs/arquitetura-central-billing.md)
   suspendedAt       DateTime?
 }
 
@@ -808,7 +808,7 @@ quem pode (ADMIN / responsável / flag) em `inbox/domain/services/ticketPolicy.t
 
 ## 10. Equipe e provisionamento
 
-**`tenants`** — `ProvisionTenantUseCase({name, slug, owner:{email,name}, origin})`: cria
+**`tenants`** — `ProvisionTenantUseCase({name, slug, owner:{email,name}, origin})` com `origin: 'SUPER_ADMIN' | 'BILLING_WEBHOOK'` (mesmo tipo em `UpdateTenantStatusUseCase`): cria
 `Tenant`, `User` (sem senha, se novo), `UserTenant(ADMIN)`, `Department` padrão, `UserInvite`
 de primeiro acesso e `AuditLog TENANT_CREATED {origin}`. Rota `POST /tenants`, `SUPER_ADMIN`.
 - **Atomicidade**: as cinco linhas (`Tenant`, `User`, `UserTenant`, `Department`, `UserInvite`)
@@ -1103,7 +1103,8 @@ INBOX_PRESENCE_OFFLINE_AFTER_MIN=5
 INBOX_SCOPE_CACHE_TTL_SECONDS=30
 INBOX_REDISTRIBUTE_BATCH=20
 TEAM_INVITE_TTL_HOURS=72
-EMAIL_SMTP_URL= (opcional; ausente = NoopEmailSender)
+EMAIL_SENDER=noop|smtp|hub   (default noop, com aviso no boot; `hub` = adapter da API central, 2026-10-26)
+EMAIL_SMTP_URL= (usado por smtp)
 EMAIL_FROM= 
 PANEL_URL= (monta o link de primeiro acesso)
 ```
@@ -1213,7 +1214,7 @@ quando for uma única origem absoluta; senão o link de primeiro acesso sai **re
 | E-mail normalizado                        | `normalizeEmail` em login/convite/criação + migration guardada | `User.email` case-sensitive; sem isso a regra 11 falha em silêncio |
 | Resposta pelo celular não toca o ticket   | **decidido em 2026-09-27**: `fromMe` só grava a mensagem; ticket segue na fila marcado "respondida pelo aparelho" | a spec manda `fromMe` não abrir atendimento; fechar o ticket (`origin: PHONE`) tiraria o chat da fila sem ninguém do painel saber — poderia esconder cliente sem atendimento |
 | Backlog offline abre ticket; histórico completo não | `IngestHistorySyncUseCase.origin` + `IChatEventPublisher` | cliente que escreveu durante um deploy precisa ser distribuído; importar histórico ao parear não |
-| Tenant suspenso mantém sessões WhatsApp   | **decisão explícita: não desconectar nesta feature**      | desconectar/parar ingestão é política de billing (retenção, reativação); fica para a feature de integração. Efeito: banco continua crescendo enquanto suspenso |
+| Tenant suspenso mantém sessões WhatsApp   | **decisão explícita: não desconectar nesta feature** (superada em 2026-10-26: `sessions` passa a consumir `TENANT_SUSPENDED` e desconectar; ver `docs/arquitetura-central-billing.md`) | desconectar/parar ingestão é política de billing (retenção, reativação); fica para a feature de integração. Efeito: banco continua crescendo enquanto suspenso |
 | Atribuição condicional no banco           | `updateMany … IS NULL` em vez de lock/advisory            | funciona entre processos e com o `openKey` único; 0 linhas é sinal, não erro |
 | Convite não redefine senha existente      | aceite exige login p/ conta com senha                     | link circula por qualquer canal; evita tomada de conta (§10)            |
 | Criação direta não toca conta existente   | só vínculo + `existingAccount`                            | mesma classe de risco, sem precisar de link (§10)                       |
