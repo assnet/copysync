@@ -11,6 +11,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — S3/R2 Media Storage (E1)
+
+- **`IMediaFileStore.ts`** — contrato estendido com `saveBuffer`, `mediaExists`, `publicUrl` e `acquireLocalFile` (+ tipo `AcquiredMediaFile` com `release()` para limpeza de temporários)
+- **`S3MediaFileStore.ts`** — implementação S3-compatível (Cloudflare R2) do `IMediaFileStore`: upload via `PutObjectCommand`, download sob demanda para arquivo temporário (`acquireLocalFile`), remoção e verificação de existência via `HeadObject`
+- **`LocalMediaFileStore.ts`** — métodos novos do contrato implementados delegando ao legado `MediaStorage` (sem mudança de comportamento para `MEDIA_STORAGE_DRIVER=local`)
+- **`mediaContainer.ts`** — swap point agora escolhe `S3MediaFileStore` ou `LocalMediaFileStore` conforme `env.S3_ENABLED`
+- **`env.ts`** — variáveis `MEDIA_STORAGE_DRIVER`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`; derivada `S3_ENABLED`
+- **`@aws-sdk/client-s3`**, **`@aws-sdk/s3-request-presigner`** — dependências adicionadas (v3.679.0)
+
+#### Backend — Migração de consumidores para novo contrato de mídia
+
+- **`BaileysMessagingEngineAdapter.ts`** — substituídas chamadas diretas a `saveMediaBuffer`/`mediaFileExists`/`mediaPublicUrl` (legado `MediaStorage`) por `mediaContainer.mediaFileStore.saveBuffer`/`mediaExists`/`publicUrl`; adapter agora funciona com disco ou S3 sem alteração
+- **`DispatchOutboundMediaUseCase.ts`** — `resolveLocalPath` + `exists` substituídos por `acquireLocalFile` com `try/finally release()`, permitindo envio de mídia armazenada em S3 (download temporário transparente)
+- **`RetryOutboundMediaUseCase.ts`** — verificação de existência migrada para `acquireLocalFile` + `release()` imediato
+
 #### Frontend — CSP correto do painel versionado no Blueprint
 
 - **`render.yaml`** — adiciona `Content-Security-Policy` em `/*` com `connect-src`/`media-src` em `api.copysync.app` (+ `wss:`) e `style-src 'unsafe-inline'` (MUI/Emotion); o CSP configurado à mão no dashboard apontava para domínios de outro projeto e bloqueava estilos inline, deixando login impossível e layout quebrado

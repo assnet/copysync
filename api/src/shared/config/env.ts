@@ -104,6 +104,32 @@ const envSchema = z.object({
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),
 
+  // ── Object storage (S3/R2) ───────────────────────────────────────────────
+  // Driver: 'local' (default, disco) ou 's3' (Cloudflare R2 / qualquer S3-compat).
+  MEDIA_STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  S3_ENDPOINT: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+  S3_BUCKET: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  S3_REGION: z.string().default('auto'),
+  S3_ACCESS_KEY_ID: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  S3_SECRET_ACCESS_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  // URL pública do bucket (CDN ou R2 public access). Ex: https://media.copysync.app
+  S3_PUBLIC_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+
   // Credenciais de afiliado: chave AES-256 (32 bytes em base64), versão 1. Opcional — sem ela
   // só as rotas que cifram respondem 503. O tamanho é checado na SecretCipherFactory, não aqui:
   // typo no dashboard não pode derrubar a API inteira.
@@ -172,6 +198,7 @@ const envWithDerivedSchema = envSchema.transform((e) => ({
   REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
   MEDIA_UPLOAD_TMP_PATH: mediaUploadTmpPath(e),
   BILLING_ENABLED: !!(e.BILLING_HUB_URL && e.BILLING_APPLICATION_KEY && e.BILLING_APPLICATION_SECRET),
+  S3_ENABLED: e.MEDIA_STORAGE_DRIVER === 's3' && !!e.S3_ENDPOINT && !!e.S3_BUCKET && !!e.S3_ACCESS_KEY_ID && !!e.S3_SECRET_ACCESS_KEY,
 }));
 
 export type Env = z.infer<typeof envWithDerivedSchema>;

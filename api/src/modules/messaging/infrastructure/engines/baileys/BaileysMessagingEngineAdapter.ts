@@ -16,7 +16,7 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
 } from '@whiskeysockets/baileys';
 import type { ConnectionState, AnyMessageContent, WASocket, WAMessage, proto } from '@whiskeysockets/baileys';
-import { saveMediaBuffer, mediaPublicUrl, mediaFileExists } from '../../../../../shared/storage/MediaStorage';
+import { mediaContainer } from '../../../../media/infrastructure/mediaContainer';
 import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { env } from '../../../../../shared/config/env';
@@ -440,8 +440,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       if (!response.ok) return null;
 
       const buffer = Buffer.from(await response.arrayBuffer());
-      await saveMediaBuffer(buffer, filename);
-      const publicUrl = mediaPublicUrl(filename);
+      const store = mediaContainer.mediaFileStore;
+      const publicUrl = await store.saveBuffer(buffer, filename);
       this.profilePictureCache.set(cacheKey, { url: publicUrl, at: Date.now() });
       return publicUrl;
     } catch (err) {
@@ -1522,9 +1522,10 @@ async function downloadBaileysMedia(
   try {
     const ext = mimeTypeToExt(mimeType);
     const filename = `${sessionId}_${msg.key?.id ?? Date.now()}.${ext}`;
+    const store = mediaContainer.mediaFileStore;
 
-    if (await mediaFileExists(filename)) {
-      return mediaPublicUrl(filename);
+    if (await store.mediaExists(filename)) {
+      return store.publicUrl(filename);
     }
 
     const buffer = (await downloadMediaMessage(
@@ -1534,8 +1535,7 @@ async function downloadBaileysMedia(
       { logger: baileysLogger as never, reuploadRequest: socket.updateMediaMessage },
     )) as Buffer;
 
-    await saveMediaBuffer(buffer, filename);
-    return mediaPublicUrl(filename);
+    return await store.saveBuffer(buffer, filename);
   } catch (err) {
     baileysLogger.warn(
       { err, sessionId, msgId: msg.key?.id },

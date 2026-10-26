@@ -3,6 +3,7 @@ import { createReadStream, createWriteStream } from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import type {
+  AcquiredMediaFile,
   IMediaFileStore,
   PromoteMediaFileInput,
   PromotedMediaFile,
@@ -12,7 +13,6 @@ import { mimeTypeToExt } from '../../../../shared/storage/mediaFileExtension';
 
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
-/** Nome de arquivo direto na pasta: sem separador, sem `..`, sem oculto e sem byte nulo. */
 function isCleanBasename(name: string): boolean {
   return (
     name.length > 0 &&
@@ -22,23 +22,15 @@ function isCleanBasename(name: string): boolean {
   );
 }
 
-/**
- * Pasta de mídia em disco local — a mesma do download da mídia recebida (`MediaStorage`).
- *
- * A pasta é injetável para os testes rodarem em pasta temporária própria.
- */
 export class LocalMediaFileStore implements IMediaFileStore {
-  // `mediaFilePath('')` resolve a própria pasta de mídia; `mediaPublicUrl('')`, o prefixo público.
   constructor(private readonly mediaDir: string = mediaFilePath('')) {}
 
   async promote(input: PromoteMediaFileInput): Promise<PromotedMediaFile> {
     const { srcPath, sessionId, externalMessageId, mimeType } = input;
-    // Validado antes de montar o caminho: os ids viram nome de arquivo.
     if (!SAFE_ID.test(sessionId) || !SAFE_ID.test(externalMessageId)) {
       throw new Error('Invalid session or message id for media file name');
     }
     const fileName = `${sessionId}_${externalMessageId}.${mimeTypeToExt(mimeType)}`;
-    // O que é promovido tem de voltar pelo `resolveLocalPath` no envio.
     if (!isCleanBasename(fileName)) {
       throw new Error('Invalid media file name');
     }
@@ -48,6 +40,38 @@ export class LocalMediaFileStore implements IMediaFileStore {
     await this.move(srcPath, destPath);
     const { size } = await fs.stat(destPath);
     return { publicUrl: mediaPublicUrl(fileName), localPath: destPath, sizeBytes: size };
+  }
+
+  async saveBuffer(buffer: Buffer, filename: string): Promise<string> {
+    if (!isCleanBasename(filename)) throw new Error('Invalid media file name');
+    await fs.mkdir(this.mediaDir, { recursive: true });
+    await fs.writeFile(path.join(this.mediaDir, filename), buffer);
+    return mediaPublicUrl(filename);
+  }
+
+  async mediaExists(filename: string): Promise<boolean> {
+    if (!isCleanBasename(filename)) return false;
+    try {
+      await fs.access(path.join(this.mediaDir, filename));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  publicUrl(filename: string): string {
+    return mediaPublicUrl(filename);
+  }
+
+  async acquireLocalFile(mediaUrl: string): Promise<AcquiredMediaFile | null> {
+    const filePath = this.resolveLocalPath(mediaUrl);
+    if (!filePath) return null;
+    try {
+      const { size } = await fs.stat(filePath);
+      return { filePath, sizeBytes: size, release: async () => {} };
+    } catch {
+      return null;
+    }
   }
 
   resolveLocalPath(mediaUrl: string): string | null {
@@ -70,7 +94,6 @@ export class LocalMediaFileStore implements IMediaFileStore {
     }
   }
 
-  /** `rename` é atômico; entre discos (`EXDEV`) vira cópia por stream + unlink da origem. */
   private async move(srcPath: string, destPath: string): Promise<void> {
     try {
       await fs.rename(srcPath, destPath);
@@ -81,7 +104,6 @@ export class LocalMediaFileStore implements IMediaFileStore {
     try {
       await pipeline(createReadStream(srcPath), createWriteStream(destPath));
     } catch (err) {
-      // Cópia pela metade não pode ficar servível na pasta de mídia.
       await fs.rm(destPath, { force: true });
       throw err;
     }

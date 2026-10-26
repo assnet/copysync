@@ -102,27 +102,31 @@ export class DispatchOutboundMediaUseCase {
     const target = resolveConversationTarget(conv, contact);
     const quotedMessage = await this.quotedRef(message, target, job.tenantId);
 
-    const filePath = message.mediaUrl ? this.fileStore.resolveLocalPath(message.mediaUrl) : null;
-    if (!filePath || !(await this.fileStore.exists(filePath))) throw new NotFoundError('MediaFile', message.id);
-    const sizeBytes = await this.fileSize(filePath);
-    await this.assertTmpSpace(message.id, sizeBytes);
+    const acquired = message.mediaUrl ? await this.fileStore.acquireLocalFile(message.mediaUrl) : null;
+    if (!acquired) throw new NotFoundError('MediaFile', message.id);
+    try {
+      const { filePath, sizeBytes } = acquired;
+      await this.assertTmpSpace(message.id, sizeBytes);
 
-    await this.engine.sendMediaMessage({
-      sessionId: job.sessionId,
-      tenantId:  job.tenantId,
-      to:        target.recipientPhone,
-      messageId: message.externalMessageId,
-      media: {
-        kind,
-        filePath,
-        mimeType: message.mimeType,
-        fileName: message.fileName,
-        caption:  message.content,
-        sizeBytes,
-        ...(await this.sendMetadata(kind, filePath, message)),
-      },
-      quotedMessage,
-    });
+      await this.engine.sendMediaMessage({
+        sessionId: job.sessionId,
+        tenantId:  job.tenantId,
+        to:        target.recipientPhone,
+        messageId: message.externalMessageId,
+        media: {
+          kind,
+          filePath,
+          mimeType: message.mimeType,
+          fileName: message.fileName,
+          caption:  message.content,
+          sizeBytes,
+          ...(await this.sendMetadata(kind, filePath, message)),
+        },
+        quotedMessage,
+      });
+    } finally {
+      await acquired.release();
+    }
   }
 
   /** Mesma guarda do texto: só cita mensagem desta conversa; apagada não vai ao WhatsApp. */

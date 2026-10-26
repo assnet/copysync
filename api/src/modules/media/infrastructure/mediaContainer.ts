@@ -5,19 +5,14 @@ import type { MediaCapabilities } from '../domain/contracts/MediaCapabilities';
 import { DiskUploadSessionStore } from './uploads/DiskUploadSessionStore';
 import { FfmpegMediaProcessor } from './ffmpeg/FfmpegMediaProcessor';
 import { LocalMediaFileStore } from './storage/LocalMediaFileStore';
+import { S3MediaFileStore } from './storage/S3MediaFileStore';
 import { env } from '../../../shared/config/env';
 import { logger } from '../../../shared/logger/logger';
 import { mediaFilePath } from '../../../shared/storage/MediaStorage';
 
-/*
- * Composição única do módulo `media` (design §2): rotas do `media`, do `chat` e a varredura
- * usam as MESMAS instâncias. O mutex por upload vive dentro do store e o semáforo do ffmpeg
- * dentro do processador — duas instâncias no processo deixariam de serializar.
- * Criadas no primeiro uso, para importar este arquivo não tocar disco nem processo.
- */
 let uploadStore: DiskUploadSessionStore | null = null;
 let mediaProcessor: FfmpegMediaProcessor | null = null;
-let mediaFileStore: LocalMediaFileStore | null = null;
+let mediaFileStore: IMediaFileStore | null = null;
 let initialization: Promise<void> | null = null;
 
 function getUploadStore(): DiskUploadSessionStore {
@@ -30,6 +25,27 @@ function getMediaProcessor(): FfmpegMediaProcessor {
   return mediaProcessor;
 }
 
+function getMediaFileStore(): IMediaFileStore {
+  if (mediaFileStore) return mediaFileStore;
+
+  if (env.S3_ENABLED) {
+    mediaFileStore = new S3MediaFileStore({
+      endpoint:        env.S3_ENDPOINT!,
+      bucket:          env.S3_BUCKET!,
+      region:          env.S3_REGION,
+      accessKeyId:     env.S3_ACCESS_KEY_ID!,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY!,
+      publicUrl:       env.S3_PUBLIC_URL,
+    });
+    logger.info({ driver: 's3', bucket: env.S3_BUCKET }, 'Media file store: S3/R2');
+  } else {
+    mediaFileStore = new LocalMediaFileStore();
+    logger.info({ driver: 'local' }, 'Media file store: local disk');
+  }
+
+  return mediaFileStore;
+}
+
 export const mediaContainer = {
   get uploadStore(): IUploadSessionStore {
     return getUploadStore();
@@ -38,23 +54,13 @@ export const mediaContainer = {
     return getMediaProcessor();
   },
   get mediaFileStore(): IMediaFileStore {
-    mediaFileStore ??= new LocalMediaFileStore();
-    return mediaFileStore;
+    return getMediaFileStore();
   },
-  /**
-   * Sempre ao vivo: antes do `initMediaModule` tudo vem desligado, e quem guardasse um
-   * retrato tirado no registro das rotas nunca veria o ffmpeg detectado no boot.
-   */
   capabilities(): MediaCapabilities {
     return getMediaProcessor().capabilities();
   },
 };
 
-/**
- * Boot do módulo: detecta ffmpeg/ffprobe e prepara a pasta de uploads. Idempotente (a
- * segunda chamada devolve a mesma promessa) e nunca rejeita — sem ffmpeg a API sobe com as
- * capacidades desligadas; sem pasta gravável, o upload falha na hora e o motivo fica no log.
- */
 export function initMediaModule(): Promise<void> {
   initialization ??= initialize();
   return initialization;
@@ -67,6 +73,8 @@ async function initialize(): Promise<void> {
       getMediaProcessor().detectCapabilities(),
       getUploadStore().ensureReady(mediaFilePath('')),
     ]);
+    // Eagerly create file store so config issues surface at boot
+    getMediaFileStore();
     log.info({ transcodeVoice, probe, sameDevice }, 'Media module ready');
   } catch (err) {
     log.error({ err }, 'Media module failed to initialize — uploads may fail until the upload folder is writable');

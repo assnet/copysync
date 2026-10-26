@@ -60,10 +60,9 @@ export class RetryOutboundMediaUseCase {
     if (!RETRYABLE_TYPES.has(message.type) || !message.mediaUrl || !message.externalMessageId) {
       throw new ConflictError('Message has no media to retry');
     }
-    const localPath = this.fileStore.resolveLocalPath(message.mediaUrl);
-    if (!localPath || !(await this.fileStore.exists(localPath))) {
-      throw new ConflictError('Media file is no longer available');
-    }
+    const acquired = await this.fileStore.acquireLocalFile(message.mediaUrl);
+    if (!acquired) throw new ConflictError('Media file is no longer available');
+    await acquired.release();
 
     // 2. Sessão conectada. O id gerado aqui é descartado: serve só como checagem, e lança
     //    `SessionNotConnectedError` antes de qualquer mudança de status.
