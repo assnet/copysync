@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { prisma } from '../../database/prisma.client';
-import { UnauthorizedError, ForbiddenError } from '../../errors/internal/AuthErrors';
+import { UnauthorizedError } from '../../errors/internal/AuthErrors';
+import { resolveMembership } from './resolveMembership';
 
 /**
  * Fastify preHandler — resolves the active tenant from the X-Tenant-Id header.
@@ -20,47 +20,5 @@ export async function tenantHook(request: FastifyRequest, _reply: FastifyReply):
 
   const { userId, isSuperAdmin } = request.user;
 
-  if (isSuperAdmin) {
-    // Super-admins can operate on any active tenant
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { id: true, status: true },
-    });
-
-    if (!tenant) {
-      throw new ForbiddenError(`Tenant not found: ${tenantId}`);
-    }
-    if (tenant.status !== 'ACTIVE') {
-      throw new ForbiddenError('Tenant is not active');
-    }
-
-    request.tenantContext = {
-      userId,
-      tenantId,
-      role: 'SUPER_ADMIN',
-      isSuperAdmin: true,
-    };
-    return;
-  }
-
-  // Regular users: validate membership
-  const membership = await prisma.userTenant.findUnique({
-    where: { userId_tenantId: { userId, tenantId } },
-    include: { tenant: { select: { status: true } } },
-  });
-
-  if (!membership) {
-    throw new ForbiddenError('You do not have access to this tenant');
-  }
-
-  if (membership.tenant.status !== 'ACTIVE') {
-    throw new ForbiddenError('Tenant is not active');
-  }
-
-  request.tenantContext = {
-    userId,
-    tenantId,
-    role: membership.role as 'ADMIN' | 'OPERATOR',
-    isSuperAdmin: false,
-  };
+  request.tenantContext = await resolveMembership(userId, tenantId, isSuperAdmin);
 }

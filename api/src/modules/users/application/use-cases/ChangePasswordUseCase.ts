@@ -25,6 +25,8 @@ export class ChangePasswordUseCase {
       id: user.id,
       email: user.email,
       passwordHash,
+      passwordSetAt: new Date(),
+      mustChangePassword: false,
       name: user.name,
       isSuperAdmin: user.isSuperAdmin,
       createdAt: user.createdAt,

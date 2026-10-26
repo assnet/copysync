@@ -1,5 +1,6 @@
 import { env } from '../shared/config/env';
 import { authRoutes } from '../modules/auth/presentation/routes/auth.routes';
+import { inviteRoutes } from '../modules/auth/presentation/routes/invite.routes';
 import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.routes';
 import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
@@ -10,6 +11,8 @@ import {
   type MediaUploadRoutesOptions,
 } from '../modules/media/presentation/routes/media.upload.routes';
 import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
+import { provisioningRoutes } from '../modules/tenants/presentation/routes/provisioning.routes';
+import { billingRoutes } from '../modules/integrations/billing/billing.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -54,6 +57,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── Auth routes (no auth required, except /logout) ─────────────────────────
   await app.register(authRoutes, { prefix: `${env.API_PREFIX}/auth` });
 
+  // ── Invite routes (public, optional auth on accept) ────────────────────────
+  await app.register(inviteRoutes, { prefix: `${env.API_PREFIX}/auth` });
+
   // ── Tenant routes (auth required, no tenant scope) ─────────────────────────
   await app.register(tenantRoutes, { prefix: `${env.API_PREFIX}/tenants` });
 
@@ -73,6 +79,18 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(affiliateCredentialRoutes, {
     prefix: `${env.API_PREFIX}/integrations/affiliate-credentials`,
   });
+
+  // ── Provisioning routes (super-admin only) ─────────────────────────────────
+  await app.register(provisioningRoutes, {
+    prefix: `${env.API_PREFIX}/provisioning`,
+  });
+
+  // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
+  if (env.BILLING_ENABLED) {
+    await app.register(billingRoutes, {
+      prefix: `${env.API_PREFIX}/integrations/billing`,
+    });
+  }
 
   // ── Media upload routes (auth + tenant scope required) ─────────────────────
   // Parser binário encapsulado no plugin; store e capacidades vêm da composição única.

@@ -37,8 +37,8 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 
 ## Planos (rascunho 2026-10-13)
 
-Limites são **entitlements por tenant**: devem viver em dado (ex. `Tenant.plan` + tabela de
-limites), nunca hardcoded em use case. Enforcement no `application` layer, com erro interno
+Limites são **entitlements por tenant**: devem viver em dado (`Tenant.planSlug` + `TenantEntitlement`,
+ver `arquitetura-central-billing.md`), nunca hardcoded em use case. Enforcement no `application` layer, com erro interno
 `PLAN_LIMIT_REACHED` (a criar em `shared/errors`). Preço "de/por" é só marketing; o sistema
 guarda o plano, não o preço.
 
@@ -91,7 +91,7 @@ Chaves de entitlement sugeridas (snake_case, estáveis):
 `offer_story_enabled`, `storefront_enabled`, `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).
 
-Billing: ver análise em `.specs/features/service-desk/integracao-api-central.md` (reaproveitar
+Billing: via API central, ver [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (reaproveitar
 API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 
 ## Ordem sugerida de entrega

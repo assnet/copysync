@@ -23,6 +23,67 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — M1-B: Hub billing receiver, provisioning, invites, entitlements (`0.20.0`)
+
+- **`api/src/modules/integrations/billing/verifyBillingHmac.ts`** — HMAC verification (sha256, timingSafeEqual, ±5min drift tolerance)
+- **`api/src/modules/integrations/billing/ApplyBillingEventUseCase.ts`** — processa eventos do hub: provision (subscription.activated), status changes (renewed/reactivated→ACTIVE, payment_failed→SUSPENDED, canceled/expired→CANCELLED), idempotency via BillingEventReceipt, seq watermark, entitlements sync inline
+- **`api/src/modules/integrations/billing/billing.routes.ts`** — POST /integrations/billing/webhook com raw body parser, HMAC auth, sem authHook
+- **`api/src/modules/integrations/billing/SyncTenantEntitlementsUseCase.ts`** — sincroniza entitlements do tenant a partir de PlanEntitlementPreset
+- **`api/src/modules/integrations/billing/ReconcileSubscriptionsUseCase.ts`** — reconciliação periódica com lease (JobLease), placeholder para M2 hub API
+- **`api/src/modules/tenants/application/use-cases/ProvisionTenantUseCase.ts`** — cria Tenant + User + UserTenant(ADMIN) + UserInvite em UoW, email afterCommit
+- **`api/src/modules/tenants/application/use-cases/UpdateTenantStatusUseCase.ts`** — muda status, emite TENANT_SUSPENDED para SUSPENDED/CANCELLED
+- **`api/src/modules/users/application/use-cases/InviteUserUseCase.ts`** — convite por email com token hash, expiração 7 dias
+- **`api/src/modules/users/application/use-cases/AcceptInviteUseCase.ts`** — aceita convite (3 paths: novo user, user existente sem senha, user com senha)
+- **`api/src/modules/tenants/presentation/routes/provisioning.routes.ts`** — rotas super-admin: POST /provisioning/tenants, PATCH /:id/status, POST /:id/invite
+- **`api/src/modules/auth/presentation/routes/invite.routes.ts`** — GET/POST /auth/invites/:token (public)
+- **`api/src/modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener.ts`** — desconecta sessões ativas ao suspender tenant
+- **`api/src/shared/database/UnitOfWork.ts`** — UoW pattern com TransactionClient + afterCommit
+- **`api/src/shared/events/InternalTeamEvent.ts`** — eventos MEMBER_DEACTIVATED e TENANT_SUSPENDED
+- **`api/src/shared/events/InternalEventBus.ts`** — generalizado para InternalEvent = InternalMessagingEvent | InternalTeamEvent
+- **`api/src/modules/users/domain/contracts/IUserInviteRepository.ts`** + **`PrismaUserInviteRepository.ts`** — repositório de convites
+- **`api/src/modules/integrations/domain/contracts/IEmailSender.ts`** — porta email (NoopEmailSender, SmtpEmailSender, EmailSenderFactory)
+- **`api/src/shared/utils/normalizeEmail.ts`** + **`generateInviteToken.ts`** — utilitários de convite
+- **`api/prisma/migrations/20261026140000_add_billing_integration_models/`** — TenantEntitlement, PlanEntitlementPreset, BillingEventReceipt, JobLease, planSlug/lastBillingEventSeq em Tenant, mustChangePassword em User
+
+#### Frontend — M1-B: Tela de aceitar convite (`0.19.0`)
+
+- **`app/src/pages/InvitePage.tsx`** — tela pública /invite/:token (info do convite, set password, aceitar)
+- **`app/src/services/invite.service.ts`** — service para GET/POST invite API
+- **`app/src/i18n/locales/pt-BR/invite.json`** + **`en/invite.json`** — i18n do fluxo de convite
+
+### Changed
+
+- **`api/src/app/routes.ts`** — registro condicional de billingRoutes (BILLING_ENABLED) e provisioningRoutes
+- **`api/src/app/server.ts`** — billing reconciliation interval, warning EMAIL_SENDER=noop+BILLING_ENABLED, cleanup no shutdown
+- **`api/src/shared/config/env.ts`** — vars BILLING_* e EMAIL_* para billing hub e email sender
+- **`api/src/shared/http/hooks/superAdminHook.ts`** — hook de autorização super-admin
+- **`api/src/modules/tenants/domain/entities/Tenant.ts`** — adicionado lastBillingEventSeq, isSuspended()
+- **`api/src/modules/users/domain/entities/User.ts`** — passwordHash nullable, mustChangePassword, hasPassword()
+
+---
+
+#### Backend — M0 fundação: billing fields, team invites, auth flush, adapter unificado (`0.18.4`)
+
+- **`api/prisma/migrations/20261026120000_add_team_invites_and_billing_fields/migration.sql`** — migration manual (prod DB): `tenants.billingCustomerId` (unique nullable), `tenants.suspendedAt`, `users.passwordHash` DROP NOT NULL, `users.passwordSetAt`, tabela `user_invites` com FK cascade + índice (tenantId, email)
+- **`api/prisma/schema.prisma`** — modelo `UserInvite`, campos `billingCustomerId`/`suspendedAt` em Tenant, `passwordHash` nullable + `passwordSetAt` em User
+- **`api/src/shared/errors/internal/TeamErrors.ts`** — `TenantSuspendedError` (403) e `UserInactiveError` (403) para rejeição semântica de tenant suspenso/membro inativo
+- **`api/src/shared/http/hooks/resolveMembership.ts`** — extração da lógica duplicada de `tenantHook` + `sseAuthHook`; usa `TenantSuspendedError` em vez de `ForbiddenError` genérico
+- **`api/src/shared/http/hooks/tenantHook.ts`** — refatorado para usar `resolveMembership`
+- **`api/src/shared/http/hooks/sseAuthHook.ts`** — refatorado para usar `resolveMembership`
+- **`api/src/modules/auth/application/use-cases/LoginUseCase.ts`** — guard `passwordHash` null → `InvalidCredentialsError` (contas provisionadas via billing sem senha)
+- **`api/src/modules/messaging/infrastructure/engines/baileys/BaileysAuthStatePersistence.ts`** — `flushAllAuthStates()` no shutdown (registry `activeFlushers` + `forceFlush`/`dispose` por sessão); elimina perda de auth state no SIGTERM
+- **`api/src/app/server.ts`** — shutdown chama `flushAllAuthStates()` antes de `app.close()`; bootstrap usa `getActiveEngine()` em vez de criar 2ª instância do adapter Baileys
+- **`api/.env.dev`** — `connection_limit=5` na DATABASE_URL (limita pool Prisma por processo)
+
+#### Docs — billing via API central e plano de lançamento (`0.18.3`)
+
+- **`docs/arquitetura-central-billing.md`** — decisão de 2026-10-26: a API central (`pulsosocial_api`) é o hub de checkout, assinatura, e-mail e créditos; o CopySync só recebe eventos HMAC, provisiona tenant e guarda entitlements. Lista o que implementar aqui, o que não fazer, a ordem, as alternativas descartadas (fork, 2ª instância, checkout próprio, SSO, repo novo, instâncias pelo hub), a carga do CopySync no hub e o que fica para o futuro (checkout para terceiros, cascata de gateway).
+- **`.specs/features/service-desk/integracao-api-central.md`** — seção 9 com as decisões (sem fork, sem segunda instância, sem checkout próprio, cascata de gateway conservadora, créditos por flag de aplicação); §6 item 2 marcado como superado.
+- **`.specs/features/service-desk/design.md`**, **`context.md`** — D7 marcada como superada; `Tenant.planSnapshot` vira `planSlug`; `origin` tipado em `ProvisionTenantUseCase`/`UpdateTenantStatusUseCase`; `EMAIL_SENDER=noop|smtp|hub`; decisão "não desconectar sessão de tenant suspenso" superada pela integração.
+- **`AGENTS.md`**, **`docs/produto-roadmap.md`** — ponteiros para o doc novo.
+- **`docs/arquitetura-escala.md`** — escada do Postgres dedicado (256mb dev → 0.5c-1g primeiro cliente → 1c-2g ~50 sessões), região Virginia, `connection_limit=5`, migração a partir do banco compartilhado.
+- **`docs/plano-lancamento-hub-copysync.md`** — plano mestre em marcos M0–M4 amarrando hub, escala, produto e billing; rede de segurança S1–S7 para o PulsoSocial (central hoje sem testes/CI/staging); gestão de instâncias fica na infra e no super-admin do CopySync, não no hub.
+
 #### Frontend (`app/`, `settings`) — Redesenho da tela de credenciais de afiliado (`0.18.2`)
 
 - **`features/settings/components/AffiliateConnectionSummary.tsx`** — topo com progresso ("X de 3 marketplaces conectados", só ativas contam), logos com selo de conectado, barra que anima ao montar (sem animação com `prefers-reduced-motion`) e "Como funciona" em 3 passos; aviso de cifragem vira rodapé com cadeado

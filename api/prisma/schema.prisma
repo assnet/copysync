@@ -63,6 +63,13 @@ enum AuditAction {
   AFFILIATE_CREDENTIAL_UPSERTED
   AFFILIATE_CREDENTIAL_DELETED
   AFFILIATE_SESSION_SYNCED
+  INVITE_ACCEPTED
+  MEMBER_INVITED
+  MEMBER_CREATED
+  MEMBER_DEACTIVATED
+  MEMBER_ROLE_CHANGED
+  TENANT_STATUS_CHANGED
+  BILLING_EVENT_RECEIVED
 }
 
 enum ConversationStatus {
@@ -107,12 +114,16 @@ enum ChatMessageStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id        String       @id @default(cuid())
-  name      String
-  slug      String       @unique
-  status    TenantStatus @default(ACTIVE)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                  String       @id @default(cuid())
+  name                String
+  slug                String       @unique
+  status              TenantStatus @default(ACTIVE)
+  billingCustomerId   String?      @unique
+  planSlug            String?
+  lastBillingEventSeq Int?
+  suspendedAt         DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   userTenants          UserTenant[]
   sessions             Session[]
@@ -125,6 +136,9 @@ model Tenant {
   chatMessageReactions ChatMessageReaction[]
   chatLists            ChatList[]
   affiliateCredentials AffiliateCredential[]
+  userInvites          UserInvite[]
+  tenantEntitlements   TenantEntitlement[]
+  BillingEventReceipt  BillingEventReceipt[]
 
   @@index([slug])
   @@map("tenants")
@@ -135,13 +149,15 @@ model Tenant {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  isSuperAdmin Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String?
+  passwordSetAt      DateTime?
+  mustChangePassword Boolean   @default(false)
+  name               String
+  isSuperAdmin       Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   userTenants           UserTenant[]
   refreshTokens         RefreshToken[]
@@ -171,6 +187,27 @@ model UserTenant {
   @@index([tenantId])
   @@index([userId])
   @@map("user_tenants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER INVITE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserInvite {
+  id          String    @id @default(cuid())
+  tenantId    String
+  email       String
+  role        UserRole  @default(OPERATOR)
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String?
+  createdAt   DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, email])
+  @@map("user_invites")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -506,4 +543,62 @@ model AffiliateCredential {
 
   @@unique([tenantId, provider])
   @@map("affiliate_credentials")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BILLING INTEGRATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TenantEntitlement {
+  id       String @id @default(cuid())
+  tenantId String
+  key      String
+  value    Json?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@map("tenant_entitlements")
+}
+
+model PlanEntitlementPreset {
+  id       String @id @default(cuid())
+  planSlug String
+  key      String
+  value    Json?
+
+  @@unique([planSlug, key])
+  @@map("plan_entitlement_presets")
+}
+
+enum BillingEventOutcome {
+  APPLIED
+  DUPLICATE
+  OUT_OF_ORDER
+  IGNORED
+}
+
+model BillingEventReceipt {
+  eventId           String              @id
+  billingCustomerId String?
+  tenantId          String?
+  type              String
+  seq               Int
+  payload           Json?
+  outcome           BillingEventOutcome
+  receivedAt        DateTime            @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([billingCustomerId])
+  @@index([tenantId])
+  @@map("billing_event_receipts")
+}
+
+model JobLease {
+  name      String   @id
+  ownerId   String
+  expiresAt DateTime
+
+  @@map("job_leases")
 }

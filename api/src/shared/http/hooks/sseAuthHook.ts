@@ -1,9 +1,9 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { prisma } from '../../database/prisma.client';
-import { UnauthorizedError, ForbiddenError } from '../../errors/internal/AuthErrors';
+import { UnauthorizedError } from '../../errors/internal/AuthErrors';
+import { resolveMembership } from './resolveMembership';
 
 /**
- * Combined auth + tenant preHandler for SSE endpoints.
+ * Combined auth + tenant preHandler for SSE/WS endpoints.
  *
  * EventSource (browser) cannot set custom headers, so the JWT token and
  * tenantId must arrive via query string parameters:
@@ -30,29 +30,5 @@ export async function sseAuthHook(request: FastifyRequest, _reply: FastifyReply)
 
   const { userId, isSuperAdmin } = request.user;
 
-  if (isSuperAdmin) {
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { id: true, status: true },
-    });
-    if (!tenant) throw new ForbiddenError(`Tenant not found: ${tenantId}`);
-    if (tenant.status !== 'ACTIVE') throw new ForbiddenError('Tenant is not active');
-
-    request.tenantContext = { userId, tenantId, role: 'SUPER_ADMIN', isSuperAdmin: true };
-    return;
-  }
-
-  const membership = await prisma.userTenant.findUnique({
-    where: { userId_tenantId: { userId, tenantId } },
-    include: { tenant: { select: { status: true } } },
-  });
-  if (!membership) throw new ForbiddenError('You do not have access to this tenant');
-  if (membership.tenant.status !== 'ACTIVE') throw new ForbiddenError('Tenant is not active');
-
-  request.tenantContext = {
-    userId,
-    tenantId,
-    role: membership.role as 'ADMIN' | 'OPERATOR',
-    isSuperAdmin: false,
-  };
+  request.tenantContext = await resolveMembership(userId, tenantId, isSuperAdmin);
 }

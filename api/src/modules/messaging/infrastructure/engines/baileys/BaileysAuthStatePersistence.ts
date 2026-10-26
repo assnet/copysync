@@ -23,6 +23,17 @@ const CREDS_KEY = '__creds__';
 const PROVIDER = 'baileys';
 const log = logger.child({ module: 'BaileysAuthStatePersistence' });
 
+const activeFlushers = new Map<string, () => Promise<void>>();
+
+export async function flushAllAuthStates(): Promise<void> {
+  const entries = Array.from(activeFlushers.entries());
+  if (entries.length === 0) return;
+  log.info({ count: entries.length }, 'Flushing all pending auth states on shutdown');
+  await Promise.allSettled(entries.map(([id, flush]) =>
+    flush().catch((err) => log.error({ err, sessionId: id }, 'Auth state flush failed')),
+  ));
+}
+
 /**
  * Serialize a value to a plain JSON-compatible object using Baileys' BufferJSON replacer.
  * Handles Buffer / Uint8Array roundtripping.
@@ -63,7 +74,7 @@ export async function buildBaileysAuthState(
   sessionId: string,
   tenantId: string,
   authStateRepo: ISessionAuthStateRepository,
-): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
+): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void>; forceFlush: () => Promise<void>; dispose: () => void }> {
   // ── Load state from DB ───────────────────────────────────────────────────────
   const record = await authStateRepo.findBySessionId(sessionId);
 
@@ -218,8 +229,28 @@ export async function buildBaileysAuthState(
     },
   };
 
+  async function forceFlush(): Promise<void> {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    await flushState();
+  }
+
+  function dispose(): void {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    activeFlushers.delete(sessionId);
+  }
+
+  activeFlushers.set(sessionId, forceFlush);
+
   return {
     state: { creds, keys },
     saveCreds,
+    forceFlush,
+    dispose,
   };
 }

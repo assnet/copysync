@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { PrivateRoute } from './PrivateRoute';
 import { AppLayout } from '@/app/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
+import { InvitePage } from '@/pages/InvitePage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import SessionsPage from '@/pages/SessionsPage';
 import ChatPage from '@/pages/ChatPage';
@@ -13,8 +14,9 @@ import { AffiliateCredentialsPage } from '@/pages/settings/AffiliateCredentialsP
 export function AppRoutes() {
   return (
     <Routes>
-      {/* Pública */}
+      {/* Públicas */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/invite/:token" element={<InvitePage />} />
 
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>

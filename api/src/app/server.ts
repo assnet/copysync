@@ -3,9 +3,8 @@ import { env } from '../shared/config/env';
 import { logger } from '../shared/logger/logger';
 import { prisma } from '../shared/database/prisma.client';
 import { PrismaSessionRepository } from '../modules/sessions/infrastructure/repositories/PrismaSessionRepository';
-import { PrismaSessionAuthStateRepository } from '../modules/sessions/infrastructure/repositories/PrismaSessionAuthStateRepository';
-import { MessagingEngineFactory } from '../modules/messaging/infrastructure/MessagingEngineFactory';
 import { SessionBootstrapService } from '../modules/sessions/application/services/SessionBootstrapService';
+import { getActiveEngine } from '../shared/engine/activeEngine';
 import { SessionStatusReconciler } from '../modules/sessions/application/services/SessionStatusReconciler';
 import { PrismaChatContactRepository } from '../modules/chat/infrastructure/repositories/PrismaChatContactRepository';
 import { PrismaChatConversationRepository } from '../modules/chat/infrastructure/repositories/PrismaChatConversationRepository';
@@ -29,6 +28,10 @@ import { UploadSessionSweeper } from '../modules/media/infrastructure/uploads/Up
 import { diskBudget } from '../modules/media/domain/services/diskBudget';
 import { initMediaModule, mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { SecretCipherFactory } from '../shared/security/SecretCipherFactory';
+import { flushAllAuthStates } from '../modules/messaging/infrastructure/engines/baileys/BaileysAuthStatePersistence';
+import { registerTenantSuspendedSessionListener } from '../modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener';
+import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogRepository';
+import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -148,6 +151,24 @@ async function start(): Promise<void> {
     pendingMediaSweep.unref();
   }
 
+  // ── Billing warnings ───────────────────────────────────────────────────────
+  if (env.BILLING_ENABLED && env.EMAIL_SENDER === 'noop') {
+    logger.warn('Billing enabled but EMAIL_SENDER=noop — invite and provision emails will not be delivered');
+  }
+
+  // ── Billing reconciliation interval ───────────────────────────────────────
+  let billingReconcileInterval: NodeJS.Timeout | null = null;
+  if (env.BILLING_ENABLED && env.BILLING_RECONCILE_INTERVAL_MS > 0) {
+    const reconcileUseCase = new ReconcileSubscriptionsUseCase();
+    billingReconcileInterval = setInterval(() => {
+      void reconcileUseCase.execute().catch((err) => {
+        logger.error({ err }, 'Billing reconciliation failed');
+      });
+    }, env.BILLING_RECONCILE_INTERVAL_MS);
+    billingReconcileInterval.unref();
+    logger.info({ intervalMs: env.BILLING_RECONCILE_INTERVAL_MS }, 'Billing reconciliation scheduled');
+  }
+
   // ── Register chat listeners ────────────────────────────────────────────────
   const ingestUseCase = new IngestIncomingMessageUseCase(
     chatContactRepo,
@@ -170,28 +191,31 @@ async function start(): Promise<void> {
   registerChatSessionStatusListener();
   registerChatConversationStateListener(chatConversationRepo);
 
+  // ── Session suspension listener ────────────────────────────────────────────
+  {
+    const activeEngine = getActiveEngine();
+    if (activeEngine) {
+      registerTenantSuspendedSessionListener(
+        new PrismaSessionRepository(),
+        activeEngine,
+        new PrismaAuditLogRepository(),
+      );
+    }
+  }
+
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Disabled by default in production because reconnecting WhatsApp sessions on
   // every deploy can generate large Baileys auth-state writes and overload small
   // PostgreSQL instances. Sessions can still be connected manually via API/UI.
   if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
     try {
-      const sessionRepo = new PrismaSessionRepository();
-      const authStateRepo = new PrismaSessionAuthStateRepository();
-      const engine = MessagingEngineFactory.create(
-        'baileys',
-        sessionRepo,
-        authStateRepo,
-        chatContactRepo,
-        chatConversationRepo,
-        ingestHistorySyncUseCase,
-      );
-      const bootstrapService = new SessionBootstrapService(sessionRepo, engine, {
+      const engine = getActiveEngine();
+      if (!engine) throw new Error('MessagingEngine not initialized — session routes must register before bootstrap');
+      const bootstrapService = new SessionBootstrapService(new PrismaSessionRepository(), engine, {
         maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
       });
       await bootstrapService.bootstrap();
     } catch (err) {
-      // Bootstrap failure must not crash the server
       logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
     }
   } else {
@@ -213,12 +237,18 @@ async function start(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received');
     uploadSweeper?.stop();
     if (pendingMediaSweep) clearInterval(pendingMediaSweep);
+    if (billingReconcileInterval) clearInterval(billingReconcileInterval);
     // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
     // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).
     try {
       await chatMediaContainer.queue.drain(MEDIA_QUEUE_DRAIN_TIMEOUT_MS);
     } catch (err) {
       logger.error({ err }, 'Media send queue drain failed during shutdown');
+    }
+    try {
+      await flushAllAuthStates();
+    } catch (err) {
+      logger.error({ err }, 'Auth state flush failed during shutdown');
     }
     try {
       await app.close();

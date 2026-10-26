@@ -7,6 +7,8 @@ export class PrismaUserMapper {
       id: raw.id,
       email: raw.email,
       passwordHash: raw.passwordHash,
+      passwordSetAt: raw.passwordSetAt,
+      mustChangePassword: raw.mustChangePassword,
       name: raw.name,
       isSuperAdmin: raw.isSuperAdmin,
       createdAt: raw.createdAt,

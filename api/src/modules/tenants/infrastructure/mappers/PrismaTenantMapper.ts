@@ -8,6 +8,10 @@ export class PrismaTenantMapper {
       name: raw.name,
       slug: raw.slug,
       status: raw.status as TenantStatus,
+      billingCustomerId: raw.billingCustomerId,
+      planSlug: raw.planSlug,
+      lastBillingEventSeq: raw.lastBillingEventSeq,
+      suspendedAt: raw.suspendedAt,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

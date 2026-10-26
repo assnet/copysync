@@ -111,6 +111,38 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().optional(),
   ),
+
+  // ── Billing & e-mail (hub integration) ────────────────────────────────────
+  // Todas opcionais: ausentes = módulo desligado. Ver docs/arquitetura-central-billing.md.
+  BILLING_HUB_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+  BILLING_APPLICATION_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  BILLING_APPLICATION_SECRET: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  BILLING_HMAC_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
+  BILLING_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  BILLING_RECONCILE_LEASE_TTL_MS: z.coerce.number().int().positive().default(600_000),
+
+  EMAIL_SENDER: z.enum(['noop', 'smtp', 'hub']).default('noop'),
+  EMAIL_SMTP_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  EMAIL_FROM: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  PANEL_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
 });
 
 /**
@@ -139,6 +171,7 @@ const envWithDerivedSchema = envSchema.transform((e) => ({
   ...e,
   REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
   MEDIA_UPLOAD_TMP_PATH: mediaUploadTmpPath(e),
+  BILLING_ENABLED: !!(e.BILLING_HUB_URL && e.BILLING_APPLICATION_KEY && e.BILLING_APPLICATION_SECRET),
 }));
 
 export type Env = z.infer<typeof envWithDerivedSchema>;

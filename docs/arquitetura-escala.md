@@ -178,11 +178,25 @@ com o PulsoSocial** (plano Basic-256mb em 2026-10-13): não aguenta auth state d
 e qualquer pico de um produto derruba o outro. Mínimo 1c-2g (US$ 40); separar em instâncias
 distintas antes de 300 sessões.
 
+Escada do Postgres dedicado do CopySync (decisão 2026-10-26; região **Virginia**, mesma do `copysync_api` e do banco `waioprime`;
+a central fica em Oregon e não deve ser seguida):
+
+| Momento | Plano Render | Observação |
+|---|---|---|
+| Desenvolvimento e debug | 0.1c-256mb (US$ 6) | serve para poucas sessões; `connection_limit=5` na `DATABASE_URL` desde já |
+| Primeiro cliente pagante | 0.5c-1g (US$ 19) | mínimo para produção pequena |
+| ~50 sessões ou CPU/conexões > 70% | 1c-2g (US$ 40) | cobre até 150 sessões; daí em diante vale a tabela abaixo |
+
+A medição da Fase 0 (RAM/CPU por sessão) só vale no 0.5c-1g ou acima; no 256 MB o gargalo medido é o Postgres, não o Node.
+Criação (decisão 2026-10-26: só sessões de teste em produção, então **sem dump**): banco vazio + `prisma migrate deploy`, trocar
+`DATABASE_URL`, subir, parear as sessões de teste de novo. Criado sob demanda, antes da Fase 1 (R2) ou do primeiro teste de carga.
+Apagar as tabelas do CopySync no banco compartilhado 7 dias depois. Storage 15 GB basta porque mídia vai para R2 (Fase 1).
+
 Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa de
 `NODE_OPTIONS=--max-old-space-size=<70% da RAM em MB>`, senão o heap padrão do Node
 (~2-4 GB) estoura antes do plano.
 
-Escada na Render, só o worker:
+Escada na Render (API em processo único + Postgres):
 
 | Sessões | API (processo único, `PROCESS_ROLE=all`) | US$/mês | Postgres (dedicado ao CopySync) | US$/mês |
 |---|---|---|---|---|
