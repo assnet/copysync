@@ -24,6 +24,10 @@ export class LoginUseCase {
       throw new InvalidCredentialsError();
     }
 
+    if (!user.passwordHash) {
+      throw new InvalidCredentialsError();
+    }
+
     const passwordValid = await verifyPassword(input.password, user.passwordHash);
     if (!passwordValid) {
       throw new InvalidCredentialsError();
