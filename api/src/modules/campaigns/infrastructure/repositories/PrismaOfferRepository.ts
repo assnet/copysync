@@ -39,15 +39,24 @@ export class PrismaOfferRepository implements IOfferRepository {
     return raw ? Mapper.toDomain(raw) : null;
   }
 
-  /** updateMany condicional evita corrida com o início do envio; refetch para devolver a linha. */
-  async update(id: string, tenantId: string, patch: OfferPatch): Promise<UpdateOfferResult> {
+  /** updateMany condicional evita corrida com o início do envio (e com outra edição, via `updatedAt`); refetch para devolver a linha. */
+  async update(id: string, tenantId: string, patch: OfferPatch, expectedUpdatedAt?: Date): Promise<UpdateOfferResult> {
     const { count } = await this.prisma.offer.updateMany({
-      where: { id, tenantId, status: { in: [...EDITABLE_OFFER_STATUSES] } },
+      where: {
+        id,
+        tenantId,
+        status: { in: [...EDITABLE_OFFER_STATUSES] },
+        ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+      },
       data: patch,
     });
     const current = await this.findById(id, tenantId);
     if (!current) return { outcome: 'not_found' };
-    if (count === 0) return { outcome: 'not_editable' };
+    if (count === 0) {
+      return EDITABLE_OFFER_STATUSES.includes(current.status) && expectedUpdatedAt
+        ? { outcome: 'changed' }
+        : { outcome: 'not_editable' };
+    }
     return { outcome: 'updated', offer: current };
   }
 

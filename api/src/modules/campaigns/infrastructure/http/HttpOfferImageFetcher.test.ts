@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpOfferImageFetcher } from './HttpOfferImageFetcher';
+import { HttpOfferImageFetcher, isAllowedImageUrl } from './HttpOfferImageFetcher';
 
 const OK_URL = 'https://down-br.img.susercontent.com/file/abc?token=1';
 
@@ -58,5 +58,17 @@ describe('HttpOfferImageFetcher', () => {
     expect(await new HttpOfferImageFetcher().fetch(OK_URL)).toBeNull();
     stubFetch(async () => new Response('', { status: 404, headers: { 'content-type': 'image/png' } }));
     expect(await new HttpOfferImageFetcher().fetch(OK_URL)).toBeNull();
+  });
+});
+
+describe('isAllowedImageUrl — CDNs de ML e Amazon', () => {
+  it.each([
+    ['https://http2.mlstatic.com/D_NQ_NP_1.jpg', true],
+    ['https://m.media-amazon.com/images/I/k.jpg', true],
+    ['https://images-na.ssl-images-amazon.com/images/I/k.jpg', true],
+    ['https://evilmlstatic.com/a.jpg', false],
+    ['https://media-amazon.com.evil.com/a.jpg', false],
+  ])('%s → %s', (url, ok) => {
+    expect(isAllowedImageUrl(new URL(url))).toBe(ok);
   });
 });

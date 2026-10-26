@@ -73,11 +73,17 @@ export interface SessionItem {
   updatedAt: string;
   /** Foto do número conectado, servida pela API. */
   avatarUrl?: string | null;
+  /** Número informado na criação (`55DDDNÚMERO`), ou `null` em sessão antiga. */
+  declaredPhone?: string | null;
+  /** O WhatsApp conectado é de outro número que o informado. */
+  phoneMismatch?: boolean;
 }
 
 export interface CreateSessionRequest {
   name: string;
   engine?: string;
+  /** Número do WhatsApp esperado; a API valida (422 `SESSION_PHONE_INVALID`). */
+  declaredPhone?: string;
 }
 
 export interface SessionListResponse {
@@ -108,6 +114,11 @@ export interface SessionActionResponse {
 export interface SessionQrResponse {
   sessionId: string;
   qrCode: string | null;
+}
+
+export interface StartPairingResponse {
+  pairingCode: string | null;
+  status: SessionStatus;
 }
 
 export interface SessionPairingCodeResponse {
@@ -173,6 +184,9 @@ export type OfferStatus = 'DRAFT' | 'SENDING' | 'SENT' | 'FAILED';
 
 export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
 
+/** Público-alvo do texto. `STANDARD` = modelo fixo (sem IA); os demais passam pela IA. */
+export type OfferAudience = 'STANDARD' | 'MOMS' | 'PET' | 'BEAUTY_FASHION' | 'MEN' | 'FITNESS' | 'HOME_KITCHEN';
+
 /** Envio da oferta para um destino. `failureReason` é um código interno (ex.: `SESSION_NOT_CONNECTED`). */
 export interface OfferDispatchItem {
   id: string;
@@ -194,9 +208,14 @@ export interface OfferItem {
   priceCents: number | null;
   originalPriceCents: number | null;
   imageUrl: string | null;
+  /** O link colado pelo operador (normalizado): é o próprio link de afiliado. */
   affiliateUrl: string;
-  /** `false` quando o marketplace não confirma a atribuição pelo parâmetro do link. */
+  /** `false` quando não deu para confirmar que o link é do operador (sem credencial ou Shopee). */
   attributionVerified: boolean;
+  coupon: string | null;
+  audience: OfferAudience;
+  /** Menciona todos os participantes de cada grupo no envio. */
+  mentionAll: boolean;
   text: string;
   /** Texto editado à mão: mudar título/preço não o remonta mais. */
   textEdited: boolean;
@@ -206,10 +225,25 @@ export interface OfferItem {
   dispatches?: OfferDispatchItem[];
 }
 
+export interface GenerateOfferRequest {
+  url: string;
+  coupon?: string;
+  audience: OfferAudience;
+}
+
 export interface GenerateOfferResponse {
   offer: OfferItem;
   /** Marketplace sem dados automáticos: o operador preenche título, preço e foto. */
   needsManualData: boolean;
+  /** A IA não respondeu; o texto veio do modelo padrão. */
+  aiFallback: boolean;
+  aiErrorCode?: string;
+}
+
+export interface RegenerateOfferResponse {
+  offer: OfferItem;
+  aiFallback: boolean;
+  aiErrorCode?: string;
 }
 
 export interface UpdateOfferRequest {
@@ -218,6 +252,9 @@ export interface UpdateOfferRequest {
   originalPriceCents?: number | null;
   text?: string;
   imageUploadId?: string;
+  coupon?: string | null;
+  audience?: OfferAudience;
+  mentionAll?: boolean;
 }
 
 export interface SendOfferResponse {
@@ -231,12 +268,31 @@ export interface OfferUsage {
   limit: number | null;
 }
 
-export interface OfferDestinationItem {
+/** Grupo de destino salvo na configuração do gerador. */
+export interface OfferConfigGroup {
   conversationId: string;
   title: string | null;
-  isGroup: boolean;
   sessionId: string | null;
-  sessionName?: string | null;
+}
+
+export interface OfferConfigSettings {
+  sessionId: string | null;
+  intervalMinSeconds: number;
+  intervalMaxSeconds: number;
+}
+
+/** `config: null` = nunca configurado; `groupLimit: null` = sem limite de grupos no plano. */
+export interface OfferConfigResponse {
+  config: OfferConfigSettings | null;
+  groups: OfferConfigGroup[];
+  groupLimit: number | null;
+}
+
+export interface SaveOfferConfigRequest {
+  sessionId: string;
+  intervalMinSeconds: number;
+  intervalMaxSeconds: number;
+  conversationIds: string[];
 }
 
 // ── API wrapper ───────────────────────────────────────────────────────────────
@@ -252,4 +308,68 @@ export interface ApiError {
     code: string;
     message: string;
   };
+}
+
+// ── IA (provedores da plataforma e chave do cliente) ──────────────────────────
+
+export type AiProviderKind = 'ANTHROPIC' | 'OPENAI';
+
+export interface AiPlatformSettings {
+  platformEnabled: boolean;
+  tenantKeysEnabled: boolean;
+}
+
+export interface AiPlatformProvider {
+  id: string;
+  kind: AiProviderKind;
+  label: string;
+  model: string;
+  enabled: boolean;
+  priority: number;
+  dailyLimitPerTenant: number | null;
+  hasKey: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAiPlatformProviderRequest {
+  kind: AiProviderKind;
+  label: string;
+  model: string;
+  apiKey: string;
+  enabled?: boolean;
+  priority?: number;
+  dailyLimitPerTenant?: number | null;
+}
+
+/** `apiKey` vazio ou ausente mantém a chave atual. */
+export type UpdateAiPlatformProviderRequest = Partial<CreateAiPlatformProviderRequest>;
+
+export interface AiProviderTestResult {
+  ok: boolean;
+  errorCode?: string;
+}
+
+export type AiMode = 'PLATFORM' | 'TENANT' | 'NONE';
+
+export interface TenantAiCredential {
+  kind: AiProviderKind;
+  model: string;
+  enabled: boolean;
+  /** Contrato do orquestrador; a spec fala em `masked` — os dois são aceitos. */
+  hasKey?: boolean;
+  masked?: string | null;
+}
+
+export interface TenantAiStatus {
+  mode: AiMode;
+  tenantKeysAllowed: boolean;
+  platformAvailable: boolean;
+  credential: TenantAiCredential | null;
+}
+
+export interface UpsertTenantAiCredentialRequest {
+  kind: AiProviderKind;
+  model: string;
+  apiKey?: string;
 }

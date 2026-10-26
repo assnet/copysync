@@ -22,6 +22,13 @@ export interface ReconnectSessionInput {
   tenantId: string;
 }
 
+export interface RequestPairingCodeInput {
+  sessionId: string;
+  tenantId: string;
+  /** Número do aparelho a parear, só dígitos com DDI (ex.: 5511987654321). */
+  phone: string;
+}
+
 export interface LogoutSessionInput {
   sessionId: string;
   tenantId: string;
@@ -125,6 +132,11 @@ export interface SendMediaMessageInput {
   messageId: string;
   media: OutboundMedia;
   quotedMessage?: QuotedMessageRef | null;
+  /**
+   * Telefones (dígitos) a mencionar — mesmo formato de `SendTextMessageInput.mentions`.
+   * Vale para imagem, vídeo e documento; nota de voz não leva menção (ignorado).
+   */
+  mentions?: string[] | null;
 }
 
 // ── Output types ──────────────────────────────────────────────────────────────
@@ -134,6 +146,14 @@ export interface ConnectSessionResult {
   qrCode?: string;
   /** Present only on pairing-code flows. */
   pairingCode?: string;
+}
+
+export interface RequestPairingCodeResult {
+  /**
+   * Código de 8 caracteres para digitar no WhatsApp. `null` quando o socket ainda está
+   * subindo: o código chega depois via SESSION_PAIRING_CODE_UPDATED / getSessionPairingCode.
+   */
+  pairingCode: string | null;
 }
 
 export interface SendMessageResult {
@@ -180,6 +200,13 @@ export interface IMessagingEngine {
   getSessionQr(sessionId: string): Promise<string | null>;
   /** Return the latest pairing code for a session, or null. */
   getSessionPairingCode(sessionId: string): Promise<string | null>;
+  /**
+   * Conecta por código de pareamento (alternativa ao QR). Abre o socket se preciso e pede
+   * o código assim que o WhatsApp aceita o pedido. Enquanto a sessão não conectar, cada
+   * novo socket (reconexão) pede um código novo para o mesmo número. Um `connectSession`
+   * posterior volta ao modo QR.
+   */
+  requestPairingCode(input: RequestPairingCodeInput): Promise<RequestPairingCodeResult>;
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult>;
   /**
    * Gera o id que a próxima mensagem da sessão terá no WhatsApp, para o chat gravar antes do

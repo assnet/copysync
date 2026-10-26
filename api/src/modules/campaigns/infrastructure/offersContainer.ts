@@ -5,11 +5,14 @@ import { PrismaAffiliateCredentialRepository } from '../../integrations/infrastr
 import { ResolveAffiliateCredentialUseCase } from '../../integrations/application/use-cases/ResolveAffiliateCredentialUseCase';
 import { PrismaOfferRepository } from './repositories/PrismaOfferRepository';
 import { PrismaOfferDispatchRepository } from './repositories/PrismaOfferDispatchRepository';
-import { PrismaOfferDestinationRepository } from './repositories/PrismaOfferDestinationRepository';
+import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
 import { PrismaEntitlementReader } from './repositories/PrismaEntitlementReader';
 import { ShopeeAffiliateClient } from './http/ShopeeAffiliateClient';
 import { HttpShortLinkExpander } from './http/HttpShortLinkExpander';
 import { HttpOfferImageFetcher } from './http/HttpOfferImageFetcher';
+import { HttpProductPageReader } from './http/HttpProductPageReader';
+import { LazyAiTextGenerator } from './adapters/LazyAiTextGenerator';
+import { OfferTextComposer } from '../application/services/OfferTextComposer';
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
 import { GenerateOfferUseCase } from '../application/use-cases/GenerateOfferUseCase';
@@ -17,8 +20,11 @@ import { GetOfferUseCase } from '../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../application/use-cases/GetOfferUsageUseCase';
 import { UpdateOfferUseCase } from '../application/use-cases/UpdateOfferUseCase';
 import { SendOfferUseCase } from '../application/use-cases/SendOfferUseCase';
-import { ListOfferDestinationsUseCase } from '../application/use-cases/ListOfferDestinationsUseCase';
-import { ReplaceOfferDestinationsUseCase } from '../application/use-cases/ReplaceOfferDestinationsUseCase';
+import { RegenerateOfferTextUseCase } from '../application/use-cases/RegenerateOfferTextUseCase';
+import {
+  GetOfferGeneratorConfigUseCase,
+  SaveOfferGeneratorConfigUseCase,
+} from '../application/use-cases/OfferGeneratorConfigUseCases';
 import { ProcessDueOfferDispatchesUseCase } from '../application/use-cases/ProcessDueOfferDispatchesUseCase';
 
 /*
@@ -32,7 +38,7 @@ function lazy<T>(make: () => T): () => T {
 
 const offers       = lazy(() => new PrismaOfferRepository(prisma));
 const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma));
-const destinations = lazy(() => new PrismaOfferDestinationRepository(prisma));
+const configs      = lazy(() => new PrismaOfferGeneratorConfigRepository(prisma));
 const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
 // Cifra resolvida no uso: sem chave, só quem decifra falha.
 const credentials  = lazy(
@@ -42,6 +48,7 @@ const mediaStore   = lazy(
   () => new MediaOfferStore({ files: () => mediaContainer.mediaFileStore, uploads: () => mediaContainer.uploadStore }),
 );
 const sender       = lazy(() => new ChatOfferMessageSender());
+const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator()));
 
 const generate = lazy(() => new GenerateOfferUseCase({
   offers:       offers(),
@@ -49,15 +56,20 @@ const generate = lazy(() => new GenerateOfferUseCase({
   expander:     new HttpShortLinkExpander(),
   credentials:  credentials(),
   shopee:       new ShopeeAffiliateClient(),
+  pageReader:   new HttpProductPageReader(),
   imageFetcher: new HttpOfferImageFetcher(),
   mediaStore:   mediaStore(),
+  texts:        texts(),
 }));
 const get       = lazy(() => new GetOfferUseCase(offers(), dispatches()));
 const usage     = lazy(() => new GetOfferUsageUseCase(offers(), entitlements()));
 const update    = lazy(() => new UpdateOfferUseCase({ offers: offers(), mediaStore: mediaStore() }));
-const send      = lazy(() => new SendOfferUseCase({ offers: offers(), dispatches: dispatches(), destinations: destinations() }));
-const listDest  = lazy(() => new ListOfferDestinationsUseCase(destinations()));
-const replaceDest = lazy(() => new ReplaceOfferDestinationsUseCase(destinations()));
+const regenerate = lazy(() => new RegenerateOfferTextUseCase({ offers: offers(), texts: texts() }));
+const send      = lazy(() => new SendOfferUseCase({
+  offers: offers(), dispatches: dispatches(), configs: configs(), entitlements: entitlements(),
+}));
+const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
+const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),
 }));
@@ -67,8 +79,9 @@ export const offersContainer = {
   getOffer:             get,
   getOfferUsage:        usage,
   updateOffer:          update,
+  regenerateOfferText:  regenerate,
   sendOffer:            send,
-  listDestinations:     listDest,
-  replaceDestinations:  replaceDest,
+  getConfig:            getConfig,
+  saveConfig:           saveConfig,
   processDueDispatches: processDue,
 };

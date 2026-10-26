@@ -6,6 +6,8 @@ export interface SendOfferMessageInput {
   text: string;
   /** URL do media store; null = só texto. */
   imageUrl: string | null;
+  /** Em grupo: menciona todos os participantes (menção oculta, sem `@` no texto). */
+  mentionAll: boolean;
 }
 
 export interface IOfferMessageSender {

@@ -1,0 +1,16 @@
+import type { OfferAudience } from '@/types/api.types';
+
+/** Ordem dos cartões de público-alvo. */
+export const OFFER_AUDIENCES: readonly OfferAudience[] = [
+  'STANDARD', 'MOMS', 'PET', 'BEAUTY_FASHION', 'MEN', 'FITNESS', 'HOME_KITCHEN',
+];
+
+/** Espelha a validação da API: 5 ≤ min ≤ max ≤ 120. */
+export const INTERVAL_MIN_SECONDS = 5;
+export const INTERVAL_MAX_SECONDS = 120;
+export const DEFAULT_INTERVAL = { min: 8, max: 15 } as const;
+
+export function intervalValid(min: number, max: number): boolean {
+  return Number.isInteger(min) && Number.isInteger(max)
+    && min >= INTERVAL_MIN_SECONDS && max <= INTERVAL_MAX_SECONDS && min <= max;
+}

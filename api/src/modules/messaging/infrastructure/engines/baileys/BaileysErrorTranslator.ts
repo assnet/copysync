@@ -184,3 +184,15 @@ export function translateSendError(err: unknown, reason: string): AppError {
   }
   return new MessageSendFailedError(reason);
 }
+
+/**
+ * Traduz a falha ao pedir o código de pareamento.
+ *
+ * Erro de sessão/conexão conhecido mantém o tipo; o resto vira PAIRING_FAILED — a
+ * mensagem crua da lib não sobe.
+ */
+export function translatePairingError(err: unknown): AppError {
+  const translated = translateEngineError(err);
+  if (err instanceof AppError || !(translated instanceof EngineNotReadyError)) return translated;
+  return new PairingFailedError('pairing_code_request_failed');
+}

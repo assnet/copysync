@@ -141,6 +141,9 @@ model Tenant {
   offers               Offer[]
   offerDispatches      OfferDispatch[]
   offerDestinations    OfferDestination[]
+  offerGeneratorConfig OfferGeneratorConfig?
+  aiCredential         TenantAiCredential?
+  aiUsageLogs          AiUsageLog[]
   BillingEventReceipt  BillingEventReceipt[]
 
   @@index([slug])
@@ -243,6 +246,7 @@ model Session {
   name               String // human-friendly label given by the user
   engine             String        @default("baileys") // engine managing this session
   phone              String? // phone number after successful pairing
+  declaredPhone      String? // número informado pelo operador ao criar (55+DDD+número); comparado com `phone`
   externalRef        String? // engine-specific session reference
   status             SessionStatus @default(PENDING)
   lastConnectedAt    DateTime? // when the session last reached CONNECTED
@@ -252,10 +256,11 @@ model Session {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  authState         SessionAuthState?
-  messages          Message[]
-  chatConversations ChatConversation[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authState             SessionAuthState?
+  messages              Message[]
+  chatConversations     ChatConversation[]
+  offerGeneratorConfigs OfferGeneratorConfig[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -586,6 +591,9 @@ model Offer {
   attributionVerified Boolean           @default(true)
   text                String            @db.Text
   textEdited          Boolean           @default(false)
+  coupon              String?
+  audience            OfferAudience     @default(STANDARD)
+  mentionAll          Boolean           @default(false)
   status              OfferStatus       @default(DRAFT)
   createdById         String? // null se o usuário for removido
   createdAt           DateTime          @default(now())
@@ -599,6 +607,110 @@ model Offer {
   // Varredura do worker: ofertas SENDING sem envio aberto
   @@index([status])
   @@map("offers")
+}
+
+enum OfferAudience {
+  STANDARD
+  MOMS
+  PET
+  BEAUTY_FASHION
+  MEN
+  FITNESS
+  HOME_KITCHEN
+}
+
+/// Configuração do gerador por tenant: sessão que envia e intervalo entre grupos.
+model OfferGeneratorConfig {
+  tenantId           String   @id
+  sessionId          String?
+  intervalMinSeconds Int      @default(8)
+  intervalMaxSeconds Int      @default(15)
+  updatedAt          DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@map("offer_generator_configs")
+}
+
+// ─── AI TEXT PROVIDERS ────────────────────────────────────────────────────────
+
+enum AiProviderKind {
+  ANTHROPIC
+  OPENAI
+}
+
+enum AiUsageSource {
+  PLATFORM
+  TENANT
+}
+
+/// Configuração global da plataforma (chave → JSON). Ex.: `ai.platform.enabled`, `ai.tenant_keys.enabled`.
+model PlatformSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+/// Provedor de IA da plataforma, cadastrado pelo super admin. Chave cifrada; AAD = `platform:ai:<id>`.
+model AiPlatformProvider {
+  id                  String         @id @default(cuid())
+  kind                AiProviderKind
+  label               String
+  model               String
+  apiKeyCiphertext    Bytes
+  apiKeyIv            Bytes
+  apiKeyTag           Bytes
+  keyVersion          Int            @default(1)
+  enabled             Boolean        @default(true)
+  priority            Int            @default(0)
+  dailyLimitPerTenant Int? // null = sem teto além dos limites do plano
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([enabled, priority])
+  @@map("ai_platform_providers")
+}
+
+/// Chave de IA do próprio tenant. AAD = `<tenantId>:ai:apikey`.
+model TenantAiCredential {
+  tenantId         String         @id
+  kind             AiProviderKind
+  model            String
+  apiKeyCiphertext Bytes
+  apiKeyIv         Bytes
+  apiKeyTag        Bytes
+  keyVersion       Int            @default(1)
+  enabled          Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_ai_credentials")
+}
+
+/// Uma linha por chamada de IA (sem prompt nem resposta). Base dos limites diários.
+model AiUsageLog {
+  id           String         @id @default(cuid())
+  tenantId     String
+  source       AiUsageSource
+  kind         AiProviderKind
+  model        String
+  providerId   String? // AiPlatformProvider quando source = PLATFORM
+  purpose      String
+  inputTokens  Int?
+  outputTokens Int?
+  success      Boolean
+  createdAt    DateTime       @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("ai_usage_logs")
 }
 
 model OfferDispatch {

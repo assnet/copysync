@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GenerateOfferUseCase, type GenerateOfferDeps } from './GenerateOfferUseCase';
-import { InMemoryOfferRepository, makeOffer, NOW, TENANT, USER } from './offerTestFakes';
+import { FakeEntitlementReader, InMemoryOfferRepository, makeOffer, NOW, TENANT, USER } from './offerTestFakes';
+import { OfferTextComposer } from '../services/OfferTextComposer';
 import type { IShopeeAffiliateClient, ShopeeProduct } from '../../domain/contracts/IShopeeAffiliateClient';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
+import type { ProductPageData } from '../../domain/services/parseProductPage';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import { AppError } from '../../../../shared/errors/AppError';
 import { OfferUrlUnsupportedError, AffiliateApiUnavailableError } from '../../../../shared/errors/internal/OfferErrors';
 
 const SHOPEE_PRODUCT: ShopeeProduct = {
@@ -14,65 +17,75 @@ const SHOPEE_PRODUCT: ShopeeProduct = {
   offerLink: 'https://shopee.com.br/product/123/456?aff=1',
 };
 
+const PAGE: ProductPageData = {
+  title: 'Air Fryer 4L',
+  imageUrl: 'https://http2.mlstatic.com/D_NQ_NP_1.jpg',
+  priceCents: 29990,
+  originalPriceCents: 39990,
+  productRef: null,
+};
+
 const CREDS: Record<AffiliateProvider, OfferAffiliateCredential> = {
   SHOPEE: { provider: 'SHOPEE', publicIdentifier: '18301234567', secret: 'S3CR3T' },
   AMAZON: { provider: 'AMAZON', publicIdentifier: 'loja-20', secret: null },
-  MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null },
+  MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { sessionToken: 'SSID-TOKEN' } },
 };
 
 function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> } = {}) {
   const offers = new InMemoryOfferRepository();
   const shopee = {
     getProduct: vi.fn().mockResolvedValue(SHOPEE_PRODUCT),
-    generateShortLink: vi.fn().mockResolvedValue('https://s.shopee.com.br/abc'),
+    generateShortLink: vi.fn(),
   } satisfies IShopeeAffiliateClient;
+  const ai = { generate: vi.fn().mockResolvedValue({ text: 'Texto da IA 💜\nhttps://amzn.to/abc' }) };
   const deps = {
     offers,
-    entitlements: { getNumber: vi.fn().mockResolvedValue(opts.limit ?? null) },
+    entitlements: new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {}),
     expander: { expand: vi.fn(async (u: URL) => u) },
     credentials: { execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null) },
     shopee,
+    pageReader: { read: vi.fn().mockResolvedValue(PAGE) },
     imageFetcher: { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) },
     mediaStore: { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() },
+    texts: new OfferTextComposer(ai),
     now: () => NOW,
   } satisfies GenerateOfferDeps;
-  return { deps, offers, uc: new GenerateOfferUseCase(deps) };
+  return { deps, offers, ai, uc: new GenerateOfferUseCase(deps) };
 }
 
-const run = (s: ReturnType<typeof setup>, url: string) => s.uc.execute({ tenantId: TENANT, userId: USER, url });
+const AMAZON = 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=loja-20';
+const run = (s: ReturnType<typeof setup>, url: string, extra: { coupon?: string | null; audience?: 'STANDARD' | 'PET' } = {}) =>
+  s.uc.execute({ tenantId: TENANT, userId: USER, url, ...extra });
 const errorOf = (p: Promise<unknown>) => p.catch((e: unknown) => e);
 
 describe('GenerateOfferUseCase — limite diário', () => {
   it('limite atingido no dia → PLAN_LIMIT_REACHED com meta, sem chamar marketplace', async () => {
     const s = setup({ limit: 2 });
     s.offers.items.push(makeOffer({ id: 'a' }), makeOffer({ id: 'b' }));
-    const err = await errorOf(run(s, 'https://amazon.com.br/dp/B0ABCDEFGH'));
+    const err = await errorOf(run(s, AMAZON));
     expect(err).toMatchObject({ code: 'PLAN_LIMIT_REACHED', statusCode: 403, meta: { key: 'offer_generations_per_day', limit: 2 } });
     expect(s.deps.expander.expand).not.toHaveBeenCalled();
   });
 
-  it('cota esgotada entre a checagem e a gravação → PLAN_LIMIT_REACHED, nada gravado', async () => {
+  it('cota esgotada entre a checagem e a gravação → PLAN_LIMIT_REACHED, nada gravado, foto descartada', async () => {
     const s = setup({ limit: 1 });
-    // Outra geração concorrente grava enquanto esta consulta o marketplace
     s.deps.expander.expand.mockImplementationOnce(async (u: URL) => {
       s.offers.items.push(makeOffer({ id: 'concorrente' }));
       return u;
     });
-    const err = await errorOf(run(s, 'https://amazon.com.br/dp/B0ABCDEFGH'));
+    const err = await errorOf(run(s, AMAZON));
     expect(err).toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
     expect(s.offers.items).toHaveLength(1);
+    expect(s.deps.mediaStore.removeImage).toHaveBeenCalledWith('store://offers/1.jpg');
   });
 
-  it('ofertas de ontem não contam', async () => {
+  it('ofertas de ontem não contam; entitlement ausente = ilimitado', async () => {
     const s = setup({ limit: 1 });
     s.offers.items.push(makeOffer({ createdAt: new Date('2026-10-25T12:00:00Z') }));
-    await expect(run(s, 'https://amazon.com.br/dp/B0ABCDEFGH')).resolves.toBeDefined();
-  });
-
-  it('entitlement null = ilimitado', async () => {
-    const s = setup({ limit: null });
-    for (let i = 0; i < 50; i++) s.offers.items.push(makeOffer({ id: `x${i}` }));
-    await expect(run(s, 'https://amazon.com.br/dp/B0ABCDEFGH')).resolves.toBeDefined();
+    await expect(run(s, AMAZON)).resolves.toBeDefined();
+    const u = setup();
+    for (let i = 0; i < 50; i++) u.offers.items.push(makeOffer({ id: `x${i}` }));
+    await expect(run(u, AMAZON)).resolves.toBeDefined();
   });
 });
 
@@ -88,6 +101,7 @@ describe('GenerateOfferUseCase — URL', () => {
     const err = await errorOf(run(s, url));
     expect(err).toMatchObject({ code: 'OFFER_URL_UNSUPPORTED', statusCode: 422 });
     expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    expect(s.deps.pageReader.read).not.toHaveBeenCalled();
     expect(s.offers.items).toHaveLength(0);
   });
 
@@ -99,136 +113,172 @@ describe('GenerateOfferUseCase — URL', () => {
 
   it('produto não reconhecido na URL final', async () => {
     const s = setup();
-    await expect(run(s, 'https://amazon.com.br/s?k=fone')).rejects.toMatchObject({
+    await expect(run(s, 'https://amazon.com.br/s?k=fone&tag=loja-20')).rejects.toMatchObject({
       code: 'OFFER_URL_UNSUPPORTED',
       message: 'Product not recognized',
     });
   });
 
-  it('link curto: usa a URL expandida', async () => {
+  it('cupom inválido → OFFER_INVALID_INPUT (coupon) sem rede', async () => {
     const s = setup();
-    s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.amazon.com.br/dp/B0ZZZZZZZZ?ref=x'));
+    await expect(run(s, AMAZON, { coupon: 'A;B<script>' })).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'coupon' } });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+  });
+});
+
+describe('GenerateOfferUseCase — link colado é o link de afiliado', () => {
+  it('Amazon curto: affiliateUrl = link colado; dono conferido na URL expandida', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.amazon.com.br/dp/B0ZZZZZZZZ?tag=LOJA-20&ref=x'));
     const { offer } = await run(s, 'https://amzn.to/abc');
-    expect(offer.affiliateUrl).toBe('https://www.amazon.com.br/dp/B0ZZZZZZZZ?tag=loja-20');
-    expect(offer.sourceUrl).toBe('https://amzn.to/abc');
+    expect(offer).toMatchObject({
+      affiliateUrl: 'https://amzn.to/abc', sourceUrl: 'https://amzn.to/abc', productRef: 'B0ZZZZZZZZ', attributionVerified: true,
+    });
+    expect(s.deps.shopee.generateShortLink).not.toHaveBeenCalled();
   });
-});
 
-describe('GenerateOfferUseCase — credencial', () => {
-  it('sem credencial ativa → AFFILIATE_CREDENTIAL_NOT_FOUND, nada gravado', async () => {
-    const s = setup({ creds: {} });
-    const err = await errorOf(run(s, 'https://shopee.com.br/x-i.123.456'));
-    expect(err).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_NOT_FOUND', statusCode: 404 });
+  it('Amazon com tag de outra conta → OFFER_LINK_NOT_OWNED, nada gravado', async () => {
+    const s = setup();
+    const err = await errorOf(run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=outro-20'));
+    expect(err).toMatchObject({ code: 'OFFER_LINK_NOT_OWNED', statusCode: 422, meta: { provider: 'AMAZON' } });
+    expect(JSON.stringify(err)).not.toContain('outro-20');
     expect(s.offers.items).toHaveLength(0);
+    expect(s.deps.pageReader.read).not.toHaveBeenCalled();
+  });
+
+  it('Amazon sem tag → OFFER_LINK_NOT_AFFILIATE (mesmo sem credencial)', async () => {
+    const s = setup({ creds: {} });
+    await expect(run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE', statusCode: 422 });
+  });
+
+  it('sem credencial do marketplace: não bloqueia, attributionVerified=false', async () => {
+    const s = setup({ creds: {} });
+    const { offer } = await run(s, AMAZON);
+    expect(offer.attributionVerified).toBe(false);
+  });
+
+  it('ML: matt_word do tenant → verificado; página lida com cookie da sessão', async () => {
+    const s = setup();
+    const url = 'https://produto.mercadolivre.com.br/MLB-123456-fone?matt_word=minhaetq&matt_tool=1';
+    const out = await run(s, url);
+    expect(out.offer).toMatchObject({ provider: 'MERCADO_LIVRE', productRef: 'MLB123456', attributionVerified: true, affiliateUrl: url });
+    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(url), mercadoLivreSessionToken: 'SSID-TOKEN' });
+    expect(JSON.stringify(out)).not.toContain('SSID-TOKEN');
+  });
+
+  it('ML: matt_word de outra etiqueta → OFFER_LINK_NOT_OWNED; sem matt_word → NOT_AFFILIATE', async () => {
+    const s = setup();
+    await expect(run(s, 'https://produto.mercadolivre.com.br/MLB-1-x?matt_word=outra')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
+    await expect(run(s, 'https://produto.mercadolivre.com.br/MLB-1-x')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
+  });
+
+  it('meli.la → página social: link colado mantido; produto pelo product_id da página', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(
+      new URL('https://www.mercadolivre.com.br/social/minhaetq?matt_word=minhaetq&matt_tool=63844234'),
+    );
+    s.deps.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB999' });
+    const out = await run(s, 'https://meli.la/1Hb6zu6');
+    expect(out.offer).toMatchObject({
+      provider: 'MERCADO_LIVRE', productRef: 'MLB999', attributionVerified: true, affiliateUrl: 'https://meli.la/1Hb6zu6',
+      title: 'Air Fryer 4L', priceCents: 29990,
+    });
+    expect(out.needsManualData).toBe(false);
+  });
+
+  it('página social sem matt_word: etiqueta do path vale', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/outra'));
+    await expect(run(s, 'https://meli.la/xyz')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
   });
 });
 
-describe('GenerateOfferUseCase — Shopee', () => {
-  it('caminho feliz: produto, link curto, foto no store, texto montado', async () => {
+describe('GenerateOfferUseCase — dados do produto', () => {
+  it('Shopee com secret: Open API, link colado, sem verificação de dono', async () => {
     const s = setup();
     const out = await run(s, 'https://shopee.com.br/fone-i.123.456');
-
     expect(s.deps.shopee.getProduct).toHaveBeenCalledWith(
       { appId: '18301234567', secret: 'S3CR3T' },
       { shopId: '123', itemId: '456' },
     );
-    expect(s.deps.shopee.generateShortLink).toHaveBeenCalledWith(expect.anything(), SHOPEE_PRODUCT.offerLink);
+    expect(s.deps.pageReader.read).not.toHaveBeenCalled();
     expect(out.needsManualData).toBe(false);
     expect(out.offer).toMatchObject({
-      provider: 'SHOPEE', status: 'DRAFT', productRef: '123.456', title: 'Fone Bluetooth', priceCents: 4990,
-      originalPriceCents: 9990, imageUrl: 'store://offers/1.jpg', affiliateUrl: 'https://s.shopee.com.br/abc',
-      attributionVerified: true,
+      provider: 'SHOPEE', productRef: '123.456', title: 'Fone Bluetooth', priceCents: 4990, originalPriceCents: 9990,
+      imageUrl: 'store://offers/1.jpg', affiliateUrl: 'https://shopee.com.br/fone-i.123.456', attributionVerified: false,
     });
-    expect(out.offer.text).toContain('🔥 Fone Bluetooth');
     expect(out.offer.text).toContain('50% OFF');
-    expect(out.offer.text).toContain('https://s.shopee.com.br/abc');
-    expect(s.offers.items[0]!.createdById).toBe(USER);
     expect(JSON.stringify(out)).not.toContain('S3CR3T');
   });
 
-  it('sem offerLink: link curto da URL canônica', async () => {
-    const s = setup();
-    s.deps.shopee.getProduct.mockResolvedValueOnce({ ...SHOPEE_PRODUCT, offerLink: null });
+  it('Shopee sem credencial: lê a página', async () => {
+    const s = setup({ creds: {} });
     await run(s, 'https://shopee.com.br/fone-i.123.456');
-    expect(s.deps.shopee.generateShortLink).toHaveBeenCalledWith(expect.anything(), 'https://shopee.com.br/product/123/456');
+    expect(s.deps.shopee.getProduct).not.toHaveBeenCalled();
+    expect(s.deps.pageReader.read).toHaveBeenCalled();
   });
 
-  it('foto não baixa → oferta sem foto, sem erro', async () => {
+  it('Shopee API indisponível ou produto ausente → cai na página, oferta gravada', async () => {
+    const s = setup({ limit: 5 });
+    s.deps.shopee.getProduct.mockRejectedValueOnce(new AffiliateApiUnavailableError('SHOPEE'));
+    s.deps.pageReader.read.mockResolvedValueOnce(null);
+    const out = await run(s, 'https://shopee.com.br/fone-i.123.456');
+    expect(out.needsManualData).toBe(true);
+    expect(out.offer).toMatchObject({ title: null, priceCents: null, productRef: '123.456' });
+    s.deps.shopee.getProduct.mockResolvedValueOnce(null);
+    expect((await run(s, 'https://shopee.com.br/fone-i.123.456')).offer.title).toBe('Air Fryer 4L');
+  });
+
+  it('Amazon: página lida sem cookie; foto baixada e guardada', async () => {
+    const s = setup();
+    const out = await run(s, AMAZON);
+    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(AMAZON), mercadoLivreSessionToken: null });
+    expect(s.deps.imageFetcher.fetch).toHaveBeenCalledWith(PAGE.imageUrl);
+    expect(out.offer.imageUrl).toBe('store://offers/1.jpg');
+  });
+
+  it('foto não baixa ou store falha → oferta sem foto, needsManualData', async () => {
     const s = setup();
     s.deps.imageFetcher.fetch.mockResolvedValueOnce(null);
-    expect((await run(s, 'https://shopee.com.br/fone-i.123.456')).offer.imageUrl).toBeNull();
-  });
-
-  it('store falha → oferta sem foto, sem erro', async () => {
-    const s = setup();
+    expect(await run(s, AMAZON)).toMatchObject({ needsManualData: true, offer: { imageUrl: null } });
     s.deps.mediaStore.saveImage.mockRejectedValueOnce(new Error('disk'));
-    const out = await run(s, 'https://shopee.com.br/fone-i.123.456');
-    expect(out.offer.imageUrl).toBeNull();
-    expect(s.offers.items).toHaveLength(1);
-  });
-
-  it('produto não encontrado → OFFER_PRODUCT_NOT_FOUND', async () => {
-    const s = setup();
-    s.deps.shopee.getProduct.mockResolvedValueOnce(null);
-    await expect(run(s, 'https://shopee.com.br/fone-i.123.456')).rejects.toMatchObject({ code: 'OFFER_PRODUCT_NOT_FOUND' });
-    expect(s.offers.items).toHaveLength(0);
-  });
-
-  it('API indisponível → erro propagado e nada gravado nem contado', async () => {
-    const s = setup({ limit: 5 });
-    s.deps.shopee.generateShortLink.mockRejectedValueOnce(new AffiliateApiUnavailableError('SHOPEE'));
-    await expect(run(s, 'https://shopee.com.br/fone-i.123.456')).rejects.toMatchObject({ code: 'AFFILIATE_API_UNAVAILABLE' });
-    expect(s.offers.items).toHaveLength(0);
+    expect((await run(s, AMAZON)).offer.imageUrl).toBeNull();
   });
 });
 
-describe('GenerateOfferUseCase — Amazon e Mercado Livre', () => {
-  it('Amazon: link com tag, produto vazio, needsManualData', async () => {
+describe('GenerateOfferUseCase — texto', () => {
+  it('STANDARD: modelo fixo com cupom, sem IA', async () => {
     const s = setup();
-    const out = await run(s, 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=outro-20');
-    expect(out.needsManualData).toBe(true);
-    expect(out.offer).toMatchObject({
-      provider: 'AMAZON', affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=loja-20',
-      title: null, priceCents: null, imageUrl: null, attributionVerified: true,
-    });
-    expect(s.deps.shopee.getProduct).not.toHaveBeenCalled();
+    const out = await run(s, AMAZON, { coupon: ' PROMO10 ' });
+    expect(s.ai.generate).not.toHaveBeenCalled();
+    expect(out.aiFallback).toBe(false);
+    expect(out.offer).toMatchObject({ coupon: 'PROMO10', audience: 'STANDARD' });
+    expect(out.offer.text).toContain('🎟️ Cupom: PROMO10');
+    expect(out.offer.text).toContain(AMAZON);
   });
 
-  it('Mercado Livre: matt_word, sem rastreio de origem, attributionVerified=false', async () => {
+  it('público PET: IA com purpose offer.text; link exato anexado se faltar', async () => {
     const s = setup();
-    const out = await run(s, 'https://produto.mercadolivre.com.br/MLB-123456-fone?matt_tool=99#x');
-    expect(out.needsManualData).toBe(true);
-    expect(out.offer).toMatchObject({
-      provider: 'MERCADO_LIVRE', productRef: 'MLB123456', attributionVerified: false,
-      affiliateUrl: 'https://produto.mercadolivre.com.br/MLB-123456-fone?matt_word=minhaetq',
-    });
+    s.ai.generate.mockResolvedValueOnce({ text: 'Seu pet merece 🐶' });
+    const out = await run(s, AMAZON, { audience: 'PET' });
+    expect(s.ai.generate).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, purpose: 'offer.text', maxOutputTokens: 400 }));
+    expect(out.offer.text).toBe(`Seu pet merece 🐶\n\n🛒 ${AMAZON}`);
+    expect(out).toMatchObject({ aiFallback: false, offer: { audience: 'PET' } });
   });
 
-  it('meli.la → página social: mantém o link colado; verificado quando a etiqueta é do tenant', async () => {
+  it('erro AI_* → modelo fixo + aiFallback + aiErrorCode, oferta gravada', async () => {
     const s = setup();
-    s.deps.expander.expand.mockResolvedValueOnce(
-      new URL('https://www.mercadolivre.com.br/social/minhaetq?matt_word=minhaetq&matt_tool=63844234&ref=abc'),
-    );
-    const out = await run(s, 'https://meli.la/1Hb6zu6');
-    expect(out.needsManualData).toBe(true);
-    expect(out.offer).toMatchObject({
-      provider: 'MERCADO_LIVRE', productRef: null, attributionVerified: true,
-      affiliateUrl: 'https://meli.la/1Hb6zu6',
-    });
+    s.ai.generate.mockRejectedValueOnce(new AppError('AI_NOT_CONFIGURED', 'x', 409));
+    const out = await run(s, AMAZON, { audience: 'PET' });
+    expect(out).toMatchObject({ aiFallback: true, aiErrorCode: 'AI_NOT_CONFIGURED' });
+    expect(out.offer.text).toContain('🔥 Air Fryer 4L');
+    expect(s.offers.items).toHaveLength(1);
   });
 
-  it('meli.la de outra etiqueta: gera, mas não verificado', async () => {
+  it('erro que não é de IA propaga', async () => {
     const s = setup();
-    s.deps.expander.expand.mockResolvedValueOnce(
-      new URL('https://www.mercadolivre.com.br/social/outra?matt_word=outra'),
-    );
-    const out = await run(s, 'https://meli.la/xyz');
-    expect(out.offer.attributionVerified).toBe(false);
-  });
-
-  it('página social sem matt_word → não reconhecido', async () => {
-    const s = setup();
-    s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/abc'));
-    await expect(run(s, 'https://meli.la/xyz')).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    s.ai.generate.mockRejectedValueOnce(new Error('boom'));
+    await expect(run(s, AMAZON, { audience: 'PET' })).rejects.toThrow('boom');
+    expect(s.offers.items).toHaveLength(0);
   });
 });

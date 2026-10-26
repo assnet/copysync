@@ -26,6 +26,11 @@ export interface ActiveSessionEntry {
   latestQr?: string;
   /** Latest pairing code, set via SESSION_PAIRING_CODE_UPDATED. */
   latestPairingCode?: string;
+  /**
+   * Número para o qual ESTE socket já pediu código de pareamento. Evita pedir de novo a
+   * cada QR que a lib rotaciona; um socket novo (reconexão) começa sem ele.
+   */
+  pairingCodePhone?: string;
 }
 
 export class BaileysSessionRegistry {
@@ -97,6 +102,14 @@ export class BaileysSessionRegistry {
   setPairingCode(sessionId: string, code: string): void {
     const entry = this.sessions.get(sessionId);
     if (entry) entry.latestPairingCode = code;
+  }
+
+  clearPairingCode(sessionId: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (entry) {
+      entry.latestPairingCode = undefined;
+      entry.pairingCodePhone = undefined;
+    }
   }
 
   getQr(sessionId: string): string | undefined {

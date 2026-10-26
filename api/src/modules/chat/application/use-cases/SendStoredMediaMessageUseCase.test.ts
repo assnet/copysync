@@ -84,7 +84,7 @@ function makeDeps(o: {
 }
 
 type Deps = ReturnType<typeof makeDeps>;
-const enviar = (d: Deps, over: { mimeType?: string; caption?: string | null } = {}) =>
+const enviar = (d: Deps, over: { mimeType?: string; caption?: string | null; mentions?: string[] | null } = {}) =>
   d.useCase.execute({
     tenantId: TENANT, conversationId: CONVERSA, sourceMediaUrl: SRC_URL,
     mimeType: 'image/jpeg', caption: 'Oferta!', ...over,
@@ -112,6 +112,24 @@ describe('SendStoredMediaMessageUseCase', () => {
     expect(d.files.remove).not.toHaveBeenCalledWith(SRC_PATH);
     expect(message.status).toBe(ChatMessageStatus.PENDING);
     expect(message.quotedMessage).toBeNull();
+  });
+
+  it('menções seguem no job da fila (não são gravadas na mensagem)', async () => {
+    const d = makeDeps();
+    await enviar(d, { mentions: ['5511999990001', '5511999990002'] });
+    expect(d.queue.enqueue).toHaveBeenCalledWith({
+      messageId: 'msg-nova', tenantId: TENANT, sessionId: SESSAO, conversationId: CONVERSA,
+      mentions: ['5511999990001', '5511999990002'],
+    });
+    expect(d.messageRepo.create).toHaveBeenCalledWith(expect.not.objectContaining({ mentions: expect.anything() }));
+  });
+
+  it('lista de menções vazia não vai ao job', async () => {
+    const d = makeDeps();
+    await enviar(d, { mentions: [] });
+    expect(d.queue.enqueue).toHaveBeenCalledWith({
+      messageId: 'msg-nova', tenantId: TENANT, sessionId: SESSAO, conversationId: CONVERSA,
+    });
   });
 
   it('sem engine ou sessão recusa com SessionNotConnectedError antes de tocar a mídia', async () => {

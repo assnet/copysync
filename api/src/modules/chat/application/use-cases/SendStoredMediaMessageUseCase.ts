@@ -25,6 +25,8 @@ export interface SendStoredMediaMessageInput {
   sourceMediaUrl: string;
   mimeType: string;
   caption?: string | null;
+  /** Telefones a mencionar; só seguem no job da fila (não são gravados — ver OutboundMediaJob). */
+  mentions?: string[] | null;
 }
 
 export interface SendStoredMediaMessageOutput {
@@ -117,7 +119,10 @@ export class SendStoredMediaMessageUseCase {
     );
 
     // 7. Enfileira; recusa (fila cheia ou em drain) vira FAILED reenviável
-    const accepted = queue.enqueue({ messageId: message.id, tenantId, sessionId, conversationId });
+    const mentions = input.mentions?.length ? input.mentions : undefined;
+    const accepted = queue.enqueue({
+      messageId: message.id, tenantId, sessionId, conversationId, ...(mentions ? { mentions } : {}),
+    });
     if (!accepted) {
       logger.warn({ messageId: message.id, sessionId }, 'Fila de mídia recusou o envio');
       const failed = await messageRepo.transitionStatus(

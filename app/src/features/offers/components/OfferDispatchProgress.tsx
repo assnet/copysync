@@ -1,6 +1,6 @@
 import { Alert, Box, Chip, LinearProgress, List, ListItem, ListItemText, Typography, type ChipProps } from '@mui/material';
 import { SectionCard } from '@/components';
-import type { OfferDestinationItem, OfferDispatchItem, OfferDispatchStatus, OfferStatus } from '@/types/api.types';
+import type { OfferConfigGroup, OfferDispatchItem, OfferDispatchStatus, OfferStatus } from '@/types/api.types';
 import { offerStrings } from '../strings';
 
 const t = offerStrings.progress;
@@ -18,7 +18,8 @@ const DONE: ReadonlySet<OfferDispatchStatus> = new Set(['SENT', 'FAILED', 'SKIPP
 interface Props {
   status: OfferStatus;
   dispatches: OfferDispatchItem[];
-  destinations: OfferDestinationItem[];
+  /** Títulos vindos da configuração; grupo que saiu dela aparece como removido. */
+  destinations: OfferConfigGroup[];
 }
 
 /** Situação do envio por destino. Os dados chegam pelo polling do hook enquanto a oferta está `SENDING`. */

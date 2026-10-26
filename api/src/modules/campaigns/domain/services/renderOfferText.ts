@@ -4,6 +4,7 @@ export interface OfferTextInput {
   priceCents?: number | null;
   originalPriceCents?: number | null;
   affiliateUrl: string;
+  coupon?: string | null;
 }
 
 /** Modelo padrão, estilo WhatsApp (`~riscado~`). Linhas sem dado somem. */
@@ -13,16 +14,17 @@ export const DEFAULT_OFFER_TEMPLATE = [
   '~De {preco_original}~',
   '✅ Por {preco}',
   '📉 {desconto} OFF',
+  '🎟️ Cupom: {cupom}',
   '',
   '🛒 {link}',
 ].join('\n');
 
-const PLACEHOLDER = /\{(titulo|preco|preco_original|desconto|link)\}/g;
+const PLACEHOLDER = /\{(titulo|preco|preco_original|desconto|cupom|link)\}/g;
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 /** `R$ 1.234,56` — o Intl usa NBSP após o símbolo; vira espaço comum. */
-function formatPrice(cents: number | null | undefined): string {
+export function formatPrice(cents: number | null | undefined): string {
   if (cents == null || !Number.isFinite(cents)) return '';
   return BRL.format(cents / 100).replace(/\s/g, ' ');
 }
@@ -45,6 +47,7 @@ export function renderOfferText(input: OfferTextInput, template: string = DEFAUL
     preco: formatPrice(price),
     preco_original: hasDiscount ? formatPrice(original) : '',
     desconto: discount > 0 ? `${discount}%` : '',
+    cupom: input.coupon?.trim() ?? '',
     link: input.affiliateUrl.trim(),
   };
 

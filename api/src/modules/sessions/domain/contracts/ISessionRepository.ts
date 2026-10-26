@@ -5,6 +5,8 @@ export interface SessionCreateData {
   tenantId: string;
   name: string;
   engine: string;
+  /** Já normalizado (55+DDD+número) pelo use case. */
+  declaredPhone?: string | null;
 }
 
 export interface SessionStatusUpdate {

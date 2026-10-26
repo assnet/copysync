@@ -1,6 +1,7 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { Offer } from '../entities/Offer';
 import type { OfferStatus } from '../enums/OfferStatus';
+import type { OfferAudience } from '../enums/OfferAudience';
 
 export interface CreateOfferInput {
   tenantId: string;
@@ -14,6 +15,8 @@ export interface CreateOfferInput {
   affiliateUrl: string;
   attributionVerified: boolean;
   text: string;
+  coupon: string | null;
+  audience: OfferAudience;
   createdById: string | null;
 }
 
@@ -26,13 +29,15 @@ export interface DailyQuota {
 
 /** Campos editáveis pelo operador antes do envio. */
 export type OfferPatch = Partial<
-  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited'>
+  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'coupon' | 'audience' | 'mentionAll'>
 >;
 
 export type UpdateOfferResult =
   | { outcome: 'updated'; offer: Offer }
   | { outcome: 'not_found' }
-  | { outcome: 'not_editable' };
+  | { outcome: 'not_editable' }
+  /** `expectedUpdatedAt` informado e a oferta mudou depois da leitura. */
+  | { outcome: 'changed' };
 
 /** Status em que a oferta ainda aceita edição. */
 // Só rascunho: o envio sai de DRAFT; oferta FAILED é refeita por cópia (reenviar, P2).
@@ -46,8 +51,11 @@ export interface IOfferRepository {
    */
   createWithinDailyLimit(input: CreateOfferInput, quota: DailyQuota): Promise<Offer>;
   findById(id: string, tenantId: string): Promise<Offer | null>;
-  /** Só EDITABLE_OFFER_STATUSES; update condicional atômico. */
-  update(id: string, tenantId: string, patch: OfferPatch): Promise<UpdateOfferResult>;
+  /**
+   * Só EDITABLE_OFFER_STATUSES; update condicional atômico. Com `expectedUpdatedAt`, só grava se
+   * a oferta não mudou desde a leitura (senão `changed`, sem sobrescrever).
+   */
+  update(id: string, tenantId: string, patch: OfferPatch, expectedUpdatedAt?: Date): Promise<UpdateOfferResult>;
   /** Base da cota diária do plano. */
   countCreatedSince(tenantId: string, since: Date): Promise<number>;
   /** Troca atômica de status; false se o status atual não está em `from`. */

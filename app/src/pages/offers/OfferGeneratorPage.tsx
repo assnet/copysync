@@ -1,41 +1,49 @@
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, Snackbar, Stack, Tooltip, Typography } from '@mui/material';
-import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
-import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
+import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
-import { ConfirmDialog, EmptyState, PageHeader, SectionCard } from '@/components';
+import ChatOutlinedIcon from '@mui/icons-material/ChatOutlined';
+import { ConfirmDialog, EmptyState, PageHeader } from '@/components';
+import { useOfferConfig } from '@/features/offers/hooks/useOfferConfig';
 import { useOfferGenerator } from '@/features/offers/hooks/useOfferGenerator';
 import { useOfferDraft } from '@/features/offers/hooks/useOfferDraft';
-import { OfferLinkInput } from '@/features/offers/components/OfferLinkInput';
+import { OfferConfigWizard } from '@/features/offers/components/config/OfferConfigWizard';
+import { OfferConfigSummary } from '@/features/offers/components/OfferConfigSummary';
+import { OfferGeneratorForm } from '@/features/offers/components/OfferGeneratorForm';
+import { OfferResultPanel } from '@/features/offers/components/OfferResultPanel';
 import { OfferUsageChip } from '@/features/offers/components/OfferUsageChip';
-import { OfferPreviewCard } from '@/features/offers/components/OfferPreviewCard';
-import { OfferEditor } from '@/features/offers/components/OfferEditor';
-import { OfferDestinationsDialog } from '@/features/offers/components/OfferDestinationsDialog';
 import { OfferDispatchProgress } from '@/features/offers/components/OfferDispatchProgress';
 import { offerStrings } from '@/features/offers/strings';
+import { DEFAULT_INTERVAL } from '@/features/offers/utils/offerConfig';
 import type { OfferErrorView } from '@/features/offers/utils/offerErrors';
 
 const t = offerStrings;
 const CREDENTIALS_PATH = '/settings/affiliate-credentials';
+const ignore = () => undefined;
 
 export function OfferGeneratorPage() {
+  const cfg = useOfferConfig();
   const gen = useOfferGenerator();
   const { offer } = gen;
   const form = useOfferDraft(offer);
-  const [destinationsOpen, setDestinationsOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [mentionUnavailable, setMentionUnavailable] = useState(false);
 
-  const destinationCount = gen.destinations.length;
+  const showWizard = !cfg.loading && !cfg.failed && (!cfg.configured || wizardOpen);
+  const groupCount = cfg.groups.length;
+  const sessionOffline = cfg.session != null && cfg.session.status !== 'CONNECTED';
   const limitReached = gen.usage?.limit != null && gen.usage.used >= gen.usage.limit;
+  const offerSending = offer?.status === 'SENDING';
   const linkFieldError = gen.error?.isLinkField ? gen.error.message : null;
   const pageError = gen.error && !gen.error.isLinkField ? gen.error : null;
-  /** Editável e enviável: rascunho ou envio que falhou por inteiro (mesma regra da API). */
-  const isDraft = offer?.status === 'DRAFT';
+  const intervalMin = cfg.config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min;
+  const intervalMax = cfg.config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max;
 
-  const ignore = () => undefined;
+  const markPlanError = (err: unknown) => {
+    if ((err as OfferErrorView | null)?.code === 'PLAN_FEATURE_UNAVAILABLE') setMentionUnavailable(true);
+  };
 
   const errorAction = (err: OfferErrorView) => {
     if (err.action === 'credentials') {
@@ -45,156 +53,152 @@ export function OfferGeneratorPage() {
         </Button>
       );
     }
-    if (err.action === 'destinations') {
-      return (
-        <Button color="inherit" size="small" onClick={() => setDestinationsOpen(true)}>
-          {t.destinations.button(0)}
-        </Button>
-      );
+    if (err.action === 'config') {
+      return <Button color="inherit" size="small" onClick={() => { gen.clearError(); setWizardOpen(true); }}>{t.openConfig}</Button>;
+    }
+    if (err.action === 'sessions') {
+      return <Button color="inherit" size="small" component={RouterLink} to="/sessions">{t.goToSessions}</Button>;
     }
     return undefined;
   };
 
-  const sendDisabled = !isDraft || destinationCount === 0 || form.textTooLong || gen.sending || gen.saving || gen.imageProgress != null;
+  const header = (
+    <PageHeader title={t.page.title} subtitle={t.page.subtitle} action={<OfferUsageChip usage={gen.usage} />} />
+  );
+
+  if (cfg.loading) {
+    return (
+      <Box>
+        {header}
+        <Skeleton variant="rounded" height={56} sx={{ mb: 3 }} />
+        <Skeleton variant="rounded" height={420} />
+      </Box>
+    );
+  }
+
+  if (cfg.failed) {
+    return (
+      <Box>
+        {header}
+        <Alert severity="error" action={<Button color="inherit" size="small" onClick={cfg.retry}>{t.page.retry}</Button>}>
+          {t.page.loadError}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      <PageHeader
-        title={t.page.title}
-        subtitle={t.page.subtitle}
-        action={
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <OfferUsageChip usage={gen.usage} />
-            <Tooltip title={t.destinations.buttonTooltip}>
-              <Button variant="outlined" startIcon={<GroupsOutlinedIcon />} onClick={() => setDestinationsOpen(true)}>
-                {t.destinations.button(destinationCount)}
-              </Button>
-            </Tooltip>
-          </Stack>
-        }
-      />
+      {header}
 
-      <SectionCard sx={{ mb: 3 }}>
-        <OfferLinkInput
-          generating={gen.generating}
-          serverError={linkFieldError}
-          disabled={limitReached}
-          onGenerate={gen.generate}
-          onChange={() => { if (gen.error?.isLinkField) gen.clearError(); }}
-        />
-        {limitReached && gen.usage?.limit != null && (
-          <Alert severity="warning" sx={{ mt: 2 }}>{t.planLimit(gen.usage.limit)}</Alert>
-        )}
-        {!offer && pageError && (
-          <Alert severity="error" sx={{ mt: 2 }} onClose={gen.clearError} action={errorAction(pageError)}>
-            {pageError.message}
-          </Alert>
-        )}
-      </SectionCard>
-
-      {!offer ? (
-        <EmptyState
-          icon={<LocalOfferOutlinedIcon />}
-          title={t.page.emptyTitle}
-          description={t.page.emptyDescription}
+      {showWizard ? (
+        <OfferConfigWizard
+          config={cfg.config}
+          groups={cfg.groups}
+          groupLimit={cfg.groupLimit}
+          sessions={cfg.sessions}
+          sessionsLoading={cfg.sessionsLoading}
+          sessionsFailed={cfg.sessionsFailed}
+          onRetrySessions={() => void cfg.reloadSessions()}
+          onSave={cfg.save}
+          onSaved={() => { setWizardOpen(false); setNotice(t.wizard.saved); }}
+          onCancel={cfg.configured ? () => setWizardOpen(false) : undefined}
         />
       ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gap: 3,
-            gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 360px) 1fr' },
-            alignItems: 'start',
-          }}
-        >
-          <Box sx={{ position: { md: 'sticky' }, top: { md: 88 } }}>
-            <Typography variant="overline" color="text.secondary" component="h2" sx={{ display: 'block', mb: 1 }}>
-              {t.preview.title}
-            </Typography>
-            <OfferPreviewCard
-              provider={offer.provider}
-              imageUrl={offer.imageUrl}
-              title={form.draft.title}
-              priceCents={form.draft.priceCents}
-              originalPriceCents={form.draft.originalPriceCents}
-              affiliateUrl={offer.affiliateUrl}
-            />
-          </Box>
+        <>
+          <OfferConfigSummary session={cfg.session} groups={cfg.groups} onEdit={() => setWizardOpen(true)} />
 
-          <Stack spacing={3} sx={{ minWidth: 0 }}>
-            <OfferEditor
-              offer={offer}
-              draft={form.draft}
-              onField={form.setField}
-              needsManualData={gen.needsManualData}
-              dirty={form.dirty}
-              saving={gen.saving}
-              textTooLong={form.textTooLong}
-              missingLink={form.missingLink}
-              imageProgress={gen.imageProgress}
-              onSave={() => {
-                gen.update(form.patch).then(() => setSavedNotice(t.editor.saved), ignore);
-              }}
-              onReplaceImage={(file) => { gen.replaceImage(file).catch(ignore); }}
-            />
-
-            {isDraft ? (
-              <Box
-                sx={{
-                  display: 'flex',
-                  gap: 1.5,
-                  alignItems: { xs: 'stretch', sm: 'center' },
-                  justifyContent: 'space-between',
-                  flexDirection: { xs: 'column', sm: 'row' },
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 3,
+              gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(320px, 420px)' },
+              alignItems: 'start',
+            }}
+          >
+            <Stack spacing={2} sx={{ minWidth: 0 }}>
+              <OfferGeneratorForm
+                generating={gen.generating}
+                serverError={linkFieldError}
+                disabled={limitReached || offerSending}
+                disabledReason={offerSending ? t.form.sendingLock : null}
+                onGenerate={async (body) => {
+                  setMentionUnavailable(false);
+                  await gen.generate(body);
                 }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  {destinationCount === 0 ? t.send.noDestinations : t.destinations.selectedCount(destinationCount)}
-                </Typography>
-                <Button
-                  variant="contained"
-                  size="large"
-                  disableElevation
-                  startIcon={gen.sending ? <CircularProgress size={18} color="inherit" /> : <SendOutlinedIcon />}
-                  disabled={sendDisabled}
-                  onClick={() => setConfirmOpen(true)}
-                >
-                  {gen.sending ? t.send.sending : t.send.button(destinationCount)}
-                </Button>
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Button variant="outlined" startIcon={<AddIcon />} onClick={gen.reset}>{t.page.newOffer}</Button>
-              </Box>
-            )}
+                onChange={() => { if (gen.error?.isLinkField) gen.clearError(); }}
+              />
+              {limitReached && gen.usage?.limit != null && <Alert severity="warning">{t.planLimit(gen.usage.limit)}</Alert>}
+              {!offer && pageError && (
+                <Alert severity="error" onClose={gen.clearError} action={errorAction(pageError)}>{pageError.message}</Alert>
+              )}
+            </Stack>
 
-            {offer.dispatches && offer.dispatches.length > 0 && (
-              <OfferDispatchProgress status={offer.status} dispatches={offer.dispatches} destinations={gen.destinations} />
-            )}
-          </Stack>
-        </Box>
+            <Stack spacing={2} sx={{ minWidth: 0, position: { md: 'sticky' }, top: { md: 88 } }}>
+              {!offer ? (
+                <EmptyState
+                  icon={<ChatOutlinedIcon />}
+                  title={t.preview.emptyTitle}
+                  description={t.preview.emptyDescription}
+                  sx={{ py: 8 }}
+                />
+              ) : (
+                <>
+                  <OfferResultPanel
+                    key={offer.id}
+                    offer={offer}
+                    draft={form.draft}
+                    onField={form.setField}
+                    dirty={form.dirty}
+                    textTooLong={form.textTooLong}
+                    missingLink={form.missingLink}
+                    needsManualData={gen.needsManualData}
+                    aiFallback={gen.aiFallback}
+                    groups={cfg.groups}
+                    saving={gen.saving}
+                    regenerating={gen.regenerating}
+                    mentionSaving={gen.mentionSaving}
+                    mentionUnavailable={mentionUnavailable}
+                    sending={gen.sending}
+                    imageProgress={gen.imageProgress}
+                    sendBlocked={groupCount === 0 || sessionOffline}
+                    onSave={async () => {
+                      await gen.update(form.patch);
+                      setNotice(t.editor.saved);
+                    }}
+                    onDiscard={form.discard}
+                    onRegenerate={(audience) => { gen.regenerate(audience).catch(ignore); }}
+                    onMentionAll={(value) => { gen.setMentionAll(value).catch(markPlanError); }}
+                    onReplaceImage={(file) => { gen.replaceImage(file).catch(ignore); }}
+                    onSend={() => setConfirmOpen(true)}
+                  />
+
+                  {offer.dispatches && offer.dispatches.length > 0 && (
+                    <OfferDispatchProgress status={offer.status} dispatches={offer.dispatches} destinations={cfg.groups} />
+                  )}
+
+                  {(offer.status === 'SENT' || offer.status === 'FAILED') && (
+                    <Button variant="outlined" startIcon={<AddIcon />} onClick={gen.reset} sx={{ alignSelf: 'flex-end' }}>
+                      {t.page.newOffer}
+                    </Button>
+                  )}
+                </>
+              )}
+            </Stack>
+          </Box>
+        </>
       )}
-
-      <OfferDestinationsDialog
-        open={destinationsOpen}
-        current={gen.destinations}
-        onClose={() => setDestinationsOpen(false)}
-        onSave={async (ids) => {
-          await gen.saveDestinations(ids);
-          setSavedNotice(t.destinations.saved);
-        }}
-      />
 
       <ConfirmDialog
         open={confirmOpen}
-        title={t.send.confirmTitle(destinationCount)}
-        description={t.send.confirmDescription(destinationCount, form.missingLink)}
+        title={t.send.confirmTitle(groupCount)}
+        description={t.send.confirmDescription(groupCount, intervalMin, intervalMax, Boolean(offer?.mentionAll), form.missingLink, form.dirty)}
         confirmLabel={t.send.confirm}
         cancelLabel={t.send.cancel}
         onClose={() => setConfirmOpen(false)}
         onConfirm={() => {
           setConfirmOpen(false);
-          gen.send(form.patch).catch(ignore);
+          gen.send(form.patch).catch(markPlanError);
         }}
       />
 
@@ -204,23 +208,18 @@ export function OfferGeneratorPage() {
         onClose={(_, reason) => { if (reason !== 'clickaway') gen.clearError(); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          severity="error"
-          variant="filled"
-          onClose={gen.clearError}
-          action={pageError ? errorAction(pageError) : undefined}
-        >
+        <Alert severity="error" variant="filled" onClose={gen.clearError} action={pageError ? errorAction(pageError) : undefined}>
           {pageError?.message}
         </Alert>
       </Snackbar>
 
       <Snackbar
-        open={Boolean(savedNotice)}
-        autoHideDuration={3000}
-        onClose={() => setSavedNotice(null)}
+        open={Boolean(notice)}
+        autoHideDuration={3500}
+        onClose={() => setNotice(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="success" variant="filled" onClose={() => setSavedNotice(null)}>{savedNotice}</Alert>
+        <Alert severity="success" variant="filled" onClose={() => setNotice(null)}>{notice}</Alert>
       </Snackbar>
     </Box>
   );

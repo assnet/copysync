@@ -1,10 +1,14 @@
 import { apiClient } from './apiClient';
 import type {
   ApiSuccess,
+  GenerateOfferRequest,
   GenerateOfferResponse,
-  OfferDestinationItem,
+  OfferAudience,
+  OfferConfigResponse,
   OfferItem,
   OfferUsage,
+  RegenerateOfferResponse,
+  SaveOfferConfigRequest,
   SendOfferResponse,
   UpdateOfferRequest,
 } from '@/types/api.types';
@@ -12,8 +16,13 @@ import type {
 const BASE = '/campaigns/offers';
 
 export const offerService = {
-  async generate(url: string): Promise<GenerateOfferResponse> {
-    const res = await apiClient.post<ApiSuccess<GenerateOfferResponse>>(BASE, { url });
+  async generate(body: GenerateOfferRequest): Promise<GenerateOfferResponse> {
+    const res = await apiClient.post<ApiSuccess<GenerateOfferResponse>>(BASE, body);
+    return res.data.data;
+  },
+
+  async regenerate(id: string, audience?: OfferAudience): Promise<RegenerateOfferResponse> {
+    const res = await apiClient.post<ApiSuccess<RegenerateOfferResponse>>(`${BASE}/${id}/regenerate`, { audience });
     return res.data.data;
   },
 
@@ -37,13 +46,33 @@ export const offerService = {
     return res.data.data;
   },
 
-  async listDestinations(): Promise<OfferDestinationItem[]> {
-    const res = await apiClient.get<ApiSuccess<OfferDestinationItem[]>>(`${BASE}/destinations`);
-    return res.data.data;
+  async getConfig(): Promise<OfferConfigResponse> {
+    const res = await apiClient.get<ApiSuccess<OfferConfigApiDto>>(`${BASE}/config`);
+    return toOfferConfig(res.data.data);
   },
 
-  async replaceDestinations(conversationIds: string[]): Promise<OfferDestinationItem[]> {
-    const res = await apiClient.put<ApiSuccess<OfferDestinationItem[]>>(`${BASE}/destinations`, { conversationIds });
-    return res.data.data;
+  async saveConfig(body: SaveOfferConfigRequest): Promise<OfferConfigResponse> {
+    const res = await apiClient.put<ApiSuccess<OfferConfigApiDto>>(`${BASE}/config`, body);
+    return toOfferConfig(res.data.data);
   },
 };
+
+/** Formato plano devolvido pela API em `/config`. */
+interface OfferConfigApiDto {
+  sessionId: string | null;
+  intervalMinSeconds: number;
+  intervalMaxSeconds: number;
+  groups: { id: string; title: string | null; sessionId: string | null }[];
+  groupLimit: number | null;
+  configured: boolean;
+}
+
+function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
+  return {
+    config: dto.sessionId
+      ? { sessionId: dto.sessionId, intervalMinSeconds: dto.intervalMinSeconds, intervalMaxSeconds: dto.intervalMaxSeconds }
+      : null,
+    groups: dto.groups.map((g) => ({ conversationId: g.id, title: g.title, sessionId: g.sessionId })),
+    groupLimit: dto.groupLimit,
+  };
+}

@@ -4,9 +4,15 @@ import { EDITABLE_OFFER_STATUSES } from '../../domain/contracts/IOfferRepository
 import type {
   IOfferDispatchRepository,
   NewOfferDispatchItem,
+  StartSendingExpectation,
   OfferDispatchResult,
 } from '../../domain/contracts/IOfferDispatchRepository';
-import type { IOfferDestinationRepository } from '../../domain/contracts/IOfferDestinationRepository';
+import type {
+  IOfferGeneratorConfigRepository,
+  SaveOfferGeneratorConfigInput,
+} from '../../domain/contracts/IOfferGeneratorConfigRepository';
+import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
+import type { OfferGeneratorConfig, OfferSessionRef } from '../../domain/entities/OfferGeneratorConfig';
 import type { Offer } from '../../domain/entities/Offer';
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
 import type { OfferDestinationView } from '../../domain/entities/OfferDestination';
@@ -23,7 +29,7 @@ export function makeOffer(overrides: Partial<Offer> = {}): Offer {
     id: 'offer-1', tenantId: TENANT, provider: 'AMAZON', sourceUrl: 'https://amazon.com.br/dp/B0ABCDEFGH',
     productRef: 'B0ABCDEFGH', title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
     affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', attributionVerified: true,
-    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, status: 'DRAFT',
+    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, status: 'DRAFT',
     createdById: USER, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
@@ -46,11 +52,12 @@ export class InMemoryOfferRepository implements IOfferRepository {
   async findById(id: string, tenantId: string) {
     return this.items.find((o) => o.id === id && o.tenantId === tenantId) ?? null;
   }
-  async update(id: string, tenantId: string, patch: OfferPatch): Promise<UpdateOfferResult> {
+  async update(id: string, tenantId: string, patch: OfferPatch, expectedUpdatedAt?: Date): Promise<UpdateOfferResult> {
     const o = await this.findById(id, tenantId);
     if (!o) return { outcome: 'not_found' };
     if (!EDITABLE_OFFER_STATUSES.includes(o.status)) return { outcome: 'not_editable' };
-    Object.assign(o, patch);
+    if (expectedUpdatedAt && o.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { outcome: 'changed' };
+    Object.assign(o, patch, { updatedAt: new Date(o.updatedAt.getTime() + 1) });
     return { outcome: 'updated', offer: o };
   }
   async countCreatedSince(tenantId: string, since: Date) {
@@ -70,7 +77,8 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
 
   constructor(private readonly offers: InMemoryOfferRepository) {}
 
-  async startSending(offerId: string, tenantId: string, items: NewOfferDispatchItem[]) {
+  async startSending(offerId: string, tenantId: string, expected: StartSendingExpectation, items: NewOfferDispatchItem[]) {
+    if ((await this.offers.findById(offerId, tenantId))?.mentionAll !== expected.mentionAll) return null;
     const moved = await this.offers.transitionStatus(offerId, tenantId, ['DRAFT'], 'SENDING');
     if (!moved) return null;
     const created = items.map((i) => this.add({ tenantId, offerId, ...i }));
@@ -133,23 +141,60 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
   }
 }
 
-export class InMemoryOfferDestinationRepository implements IOfferDestinationRepository {
-  selected: string[] = [];
+/** Conversa conhecida pelo fake de configuração. */
+export interface FakeConversation {
+  id: string;
+  tenantId: string;
+  sessionId: string | null;
+  isGroup: boolean;
+  title?: string;
+}
 
-  /** Conversas existentes por tenant. */
-  constructor(private readonly conversations: Record<string, string[]> = { [TENANT]: [] }) {}
+export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorConfigRepository {
+  configs = new Map<string, OfferGeneratorConfig>();
+  selected = new Map<string, string[]>();
+  saves = 0;
 
-  async list(tenantId: string): Promise<OfferDestinationView[]> {
-    const owned = this.conversations[tenantId] ?? [];
-    return this.selected
-      .filter((id) => owned.includes(id))
-      .map((conversationId) => ({ conversationId, title: conversationId, isGroup: true, sessionId: 's1' }));
+  constructor(
+    public sessions: (OfferSessionRef & { tenantId: string })[] = [],
+    public conversations: FakeConversation[] = [],
+  ) {}
+
+  async find(tenantId: string) {
+    return this.configs.get(tenantId) ?? null;
   }
-  async replace(_tenantId: string, ids: string[]) {
-    this.selected = [...ids];
+  async listGroups(tenantId: string) {
+    return (this.selected.get(tenantId) ?? [])
+      .map((id) => this.conversations.find((c) => c.id === id && c.tenantId === tenantId))
+      .filter((c): c is FakeConversation => !!c)
+      .map((c) => ({ conversationId: c.id, title: c.title ?? c.id, isGroup: c.isGroup, sessionId: c.sessionId }));
   }
-  async filterOwnedConversations(tenantId: string, ids: string[]) {
-    const owned = this.conversations[tenantId] ?? [];
-    return ids.filter((id) => owned.includes(id));
+  async save(input: SaveOfferGeneratorConfigInput) {
+    this.saves++;
+    const { tenantId, conversationIds, ...rest } = input;
+    this.configs.set(tenantId, { tenantId, ...rest, updatedAt: NOW });
+    this.selected.set(tenantId, [...conversationIds]);
+  }
+  async findSession(tenantId: string, sessionId: string) {
+    const s = this.sessions.find((x) => x.id === sessionId && x.tenantId === tenantId);
+    return s ? { id: s.id, status: s.status } : null;
+  }
+  async filterSessionGroups(tenantId: string, sessionId: string, ids: string[]) {
+    return ids.filter((id) =>
+      this.conversations.some((c) => c.id === id && c.tenantId === tenantId && c.sessionId === sessionId && c.isGroup),
+    );
+  }
+}
+
+/** Entitlements em memória: chave → valor cru (como no JSON do hub). */
+export class FakeEntitlementReader implements IEntitlementReader {
+  constructor(public values: Record<string, unknown> = {}) {}
+  async getNumber(_tenantId: string, key: string) {
+    const v = this.values[key];
+    return typeof v === 'number' ? v : null;
+  }
+  async getBoolean(_tenantId: string, key: string) {
+    const v = this.values[key];
+    return typeof v === 'boolean' ? v : null;
   }
 }

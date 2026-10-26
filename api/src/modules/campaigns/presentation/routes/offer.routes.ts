@@ -3,14 +3,17 @@ import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { offersContainer } from '../../infrastructure/offersContainer';
+import type { OfferAudience } from '../../domain/enums/OfferAudience';
 import {
   generateOfferBodySchema,
   generateOfferResponse,
-  offerDestinationsResponse,
+  offerConfigResponse,
   offerIdParamSchema,
   offerResponse,
   offerUsageResponse,
-  replaceDestinationsBodySchema,
+  regenerateOfferBodySchema,
+  regenerateOfferResponse,
+  saveConfigBodySchema,
   sendOfferResponse,
   updateOfferBodySchema,
 } from '../schemas/offer.schema';
@@ -25,6 +28,16 @@ type UpdateBody = {
   originalPriceCents?: number | null;
   text?: string;
   imageUploadId?: string;
+  coupon?: string | null;
+  audience?: OfferAudience;
+  mentionAll?: boolean;
+};
+type GenerateBody = { url: string; coupon?: string | null; audience?: OfferAudience };
+type SaveConfigBody = {
+  sessionId: string;
+  intervalMinSeconds: number;
+  intervalMaxSeconds: number;
+  conversationIds: string[];
 };
 
 /**
@@ -33,7 +46,7 @@ type UpdateBody = {
  * Paths estáticos antes de `/:id`.
  */
 export async function offerRoutes(app: FastifyInstance): Promise<void> {
-  app.post<{ Body: { url: string } }>(
+  app.post<{ Body: GenerateBody }>(
     '/',
     {
       preHandler,
@@ -46,7 +59,8 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { tenantId, userId } = request.tenantContext;
-      const result = await offersContainer.generateOffer().execute({ tenantId, userId, url: request.body.url });
+      const { url, coupon, audience } = request.body;
+      const result = await offersContainer.generateOffer().execute({ tenantId, userId, url, coupon, audience });
       httpResponse.created(reply, result);
     },
   );
@@ -60,28 +74,28 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.get(
-    '/destinations',
-    { preHandler, schema: { tags, summary: 'Listar destinos das ofertas', response: { 200: offerDestinationsResponse } } },
+    '/config',
+    { preHandler, schema: { tags, summary: 'Configuração do gerador (sessão, grupos, intervalo)', response: { 200: offerConfigResponse } } },
     async (request, reply) => {
-      httpResponse.ok(reply, await offersContainer.listDestinations().execute(request.tenantContext.tenantId));
+      httpResponse.ok(reply, await offersContainer.getConfig().execute(request.tenantContext.tenantId));
     },
   );
 
-  app.put<{ Body: { conversationIds: string[] } }>(
-    '/destinations',
+  app.put<{ Body: SaveConfigBody }>(
+    '/config',
     {
       preHandler,
       schema: {
         tags,
-        summary: 'Substituir destinos das ofertas',
-        body: replaceDestinationsBodySchema,
-        response: { 200: offerDestinationsResponse },
+        summary: 'Salvar configuração do gerador',
+        body: saveConfigBodySchema,
+        response: { 200: offerConfigResponse },
       },
     },
     async (request, reply) => {
-      const result = await offersContainer.replaceDestinations().execute({
+      const result = await offersContainer.saveConfig().execute({
         tenantId: request.tenantContext.tenantId,
-        conversationIds: request.body.conversationIds,
+        ...request.body,
       });
       httpResponse.ok(reply, result);
     },
@@ -123,11 +137,33 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  app.post<IdParams & { Body: { audience?: OfferAudience } | null }>(
+    '/:id/regenerate',
+    {
+      preHandler,
+      schema: {
+        tags,
+        summary: 'Gerar novamente o texto da oferta',
+        params: offerIdParamSchema,
+        body: regenerateOfferBodySchema,
+        response: { 200: regenerateOfferResponse },
+      },
+    },
+    async (request, reply) => {
+      const result = await offersContainer.regenerateOfferText().execute({
+        tenantId: request.tenantContext.tenantId,
+        offerId: request.params.id,
+        audience: request.body?.audience,
+      });
+      httpResponse.ok(reply, result);
+    },
+  );
+
   app.post<IdParams>(
     '/:id/send',
     {
       preHandler,
-      schema: { tags, summary: 'Enfileirar envio para os destinos', params: offerIdParamSchema, response: { 202: sendOfferResponse } },
+      schema: { tags, summary: 'Enfileirar envio para os grupos da configuração', params: offerIdParamSchema, response: { 202: sendOfferResponse } },
     },
     async (request, reply) => {
       const result = await offersContainer.sendOffer().execute({

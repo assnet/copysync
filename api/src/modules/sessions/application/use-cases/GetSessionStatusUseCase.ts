@@ -11,6 +11,8 @@ export interface GetSessionStatusOutput {
   sessionId: string;
   status: SessionStatus;
   phone: string | null;
+  declaredPhone: string | null;
+  phoneMismatch: boolean;
   lastConnectedAt: Date | null;
   lastDisconnectedAt: Date | null;
 }
@@ -26,6 +28,8 @@ export class GetSessionStatusUseCase {
       sessionId: session.id,
       status: session.status,
       phone: session.phone,
+      declaredPhone: session.declaredPhone,
+      phoneMismatch: session.hasPhoneMismatch(),
       lastConnectedAt: session.lastConnectedAt,
       lastDisconnectedAt: session.lastDisconnectedAt,
     };

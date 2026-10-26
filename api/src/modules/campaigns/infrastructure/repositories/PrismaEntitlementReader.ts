@@ -10,6 +10,16 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function toBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+  }
+  return null;
+}
+
 /**
  * Lê `TenantEntitlement` por (tenantId, key). Mora em campaigns por ora; pode migrar para
  * `tenants/infrastructure` quando outro módulo precisar.
@@ -23,5 +33,13 @@ export class PrismaEntitlementReader implements IEntitlementReader {
       select: { value: true },
     });
     return row ? toNumber(row.value) : null;
+  }
+
+  async getBoolean(tenantId: string, key: string): Promise<boolean | null> {
+    const row = await this.prisma.tenantEntitlement.findUnique({
+      where: { tenantId_key: { tenantId, key } },
+      select: { value: true },
+    });
+    return row ? toBoolean(row.value) : null;
   }
 }

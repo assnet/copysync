@@ -19,10 +19,17 @@ function setup(convs = ['c1', 'c2']) {
 const statuses = (s: ReturnType<typeof setup>) => s.dispatches.items.map((d) => [d.status, d.failureReason ?? d.chatMessageId]);
 
 describe('ProcessDueOfferDispatchesUseCase', () => {
+  it('oferta com mentionAll repassa a flag ao sender', async () => {
+    const s = setup(['c1']);
+    s.offers.items[0]!.mentionAll = true;
+    await s.uc.execute();
+    expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({ mentionAll: true }));
+  });
+
   it('envia vencidos com texto e foto; todos SENT → oferta SENT', async () => {
     const s = setup();
     expect(await s.uc.execute()).toEqual({ processed: 2 });
-    expect(s.sender.send).toHaveBeenCalledWith({ tenantId: TENANT, conversationId: 'c1', text: 'oferta', imageUrl: 'store://1.jpg' });
+    expect(s.sender.send).toHaveBeenCalledWith({ tenantId: TENANT, conversationId: 'c1', text: 'oferta', imageUrl: 'store://1.jpg', mentionAll: false });
     expect(statuses(s)).toEqual([['SENT', 'm1'], ['SENT', 'm1']]);
     expect(s.offers.items[0]!.status).toBe('SENT');
   });

@@ -10,6 +10,7 @@ export class PrismaSessionMapper {
       name: raw.name,
       engine: raw.engine,
       phone: raw.phone,
+      declaredPhone: raw.declaredPhone ?? null,
       externalRef: raw.externalRef,
       status: raw.status as SessionStatus,
       lastConnectedAt: raw.lastConnectedAt,

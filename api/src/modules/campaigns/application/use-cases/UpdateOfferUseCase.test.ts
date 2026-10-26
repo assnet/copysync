@@ -16,6 +16,48 @@ function setup(status: OfferStatus = 'DRAFT', textEdited = false) {
 
 const base = { tenantId: TENANT, userId: USER, offerId: 'offer-1' };
 
+describe('UpdateOfferUseCase — v2 (cupom, público, marcar todos)', () => {
+  it('cupom em STANDARD com texto não editado → remonta com a linha do cupom', async () => {
+    const s = setup();
+    const dto = await s.uc.execute({ ...base, coupon: 'PROMO10' });
+    expect(dto).toMatchObject({ coupon: 'PROMO10', textEdited: false });
+    expect(dto.text).toContain('🎟️ Cupom: PROMO10');
+    const cleared = await s.uc.execute({ ...base, coupon: '' });
+    expect(cleared.coupon).toBeNull();
+    expect(cleared.text).not.toContain('Cupom');
+  });
+
+  it('público de IA: cupom/preço mudam sem remontar o texto', async () => {
+    const s = setup();
+    s.offers.items[0]!.audience = 'PET';
+    s.offers.items[0]!.text = 'texto da IA';
+    const dto = await s.uc.execute({ ...base, coupon: 'X1', priceCents: 100 });
+    expect(dto.text).toBe('texto da IA');
+  });
+
+  it('volta para STANDARD sem edição manual → modelo fixo', async () => {
+    const s = setup();
+    s.offers.items[0]!.audience = 'PET';
+    s.offers.items[0]!.text = 'texto da IA';
+    const dto = await s.uc.execute({ ...base, audience: 'STANDARD' });
+    expect(dto.text).not.toBe('texto da IA');
+    expect(dto.audience).toBe('STANDARD');
+  });
+
+  it('mentionAll grava sem mexer no texto', async () => {
+    const s = setup();
+    const before = s.offers.items[0]!.text;
+    const dto = await s.uc.execute({ ...base, mentionAll: true });
+    expect(dto).toMatchObject({ mentionAll: true, text: before });
+  });
+
+  it('cupom inválido → OFFER_INVALID_INPUT (coupon)', async () => {
+    const s = setup();
+    await expect(s.uc.execute({ ...base, coupon: 'a\nb' })).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'coupon' } });
+    await expect(s.uc.execute({ ...base, coupon: 'x'.repeat(41) })).rejects.toMatchObject({ meta: { field: 'coupon' } });
+  });
+});
+
 describe('UpdateOfferUseCase', () => {
   it('preço/título com texto não editado → remonta o texto', async () => {
     const s = setup();

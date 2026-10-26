@@ -85,6 +85,7 @@ export class ProcessDueOfferDispatchesUseCase {
         conversationId: dispatch.conversationId,
         text: offer.text,
         imageUrl: offer.imageUrl,
+        mentionAll: offer.mentionAll,
       });
       result = { status: 'SENT', chatMessageId: sent.chatMessageId };
     } catch (err) {

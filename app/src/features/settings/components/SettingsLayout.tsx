@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import { settingsStrings } from '../strings';
 
 const t = settingsStrings.layout;
@@ -15,6 +16,7 @@ const SETTINGS_NAV = [
     path: '/settings/affiliate-credentials',
     icon: <KeyOutlinedIcon fontSize="small" />,
   },
+  { label: t.navAi, path: '/settings/ai', icon: <AutoAwesomeOutlinedIcon fontSize="small" /> },
 ];
 
 export function SettingsLayout() {

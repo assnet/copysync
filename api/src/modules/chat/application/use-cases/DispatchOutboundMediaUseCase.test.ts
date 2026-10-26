@@ -162,6 +162,16 @@ describe('DispatchOutboundMediaUseCase', () => {
     });
   });
 
+  it('job com menções: repassa à engine; sem menções, o campo não vai', async () => {
+    const d = makeDeps();
+    await d.useCase.execute({ ...JOB, mentions: ['5511999990001'] });
+    expect(enviado(d).mentions).toEqual(['5511999990001']);
+
+    const semMencao = makeDeps();
+    await semMencao.useCase.execute(JOB);
+    expect(enviado(semMencao)).not.toHaveProperty('mentions');
+  });
+
   it('transição não ocorre (DELIVERED chegou antes do SENT): não publica', async () => {
     const d = makeDeps({ transicaoOcorre: false });
     await d.useCase.execute(JOB);

@@ -1,7 +1,7 @@
 ﻿import { useState } from 'react';
 import {
   Card, CardContent, CardActions, Box, Typography, Avatar, IconButton, Tooltip,
-  CircularProgress, Dialog, DialogTitle, DialogContent,
+  CircularProgress, Chip, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, Button, alpha, useTheme, Divider,
 } from '@mui/material';
 import QrCodeIcon from '@mui/icons-material/QrCode2';
@@ -11,9 +11,14 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PhoneIcon from '@mui/icons-material/PhoneIphone';
+import WarningIcon from '@mui/icons-material/WarningAmberRounded';
 import { sessionService } from '@/services/session.service';
 import { SessionStatusChip } from './SessionStatusChip';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
+import { sessionStrings } from '../strings';
+import { formatBrazilPhone } from '../utils';
+
+const t = sessionStrings.card;
 
 interface Props {
   session: SessionItem;
@@ -74,7 +79,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ocorreu um erro');
+      setError(err instanceof Error ? err.message : t.genericError);
     } finally {
       setLoadingAction(null);
     }
@@ -87,7 +92,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
       await sessionService.delete(session.id);
       onDeleted(session.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao deletar sessão');
+      setError(err instanceof Error ? err.message : t.deleteError);
       setDeleting(false);
     }
   }
@@ -147,7 +152,20 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               <Typography variant="subtitle2" noWrap title={session.name}>
                 {session.name}
               </Typography>
-              <SessionStatusChip status={status} />
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                <SessionStatusChip status={status} />
+                {session.phoneMismatch && (
+                  <Tooltip title={t.mismatchTooltip(formatBrazilPhone(session.declaredPhone))}>
+                    <Chip
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                      icon={<WarningIcon />}
+                      label={t.mismatchChip}
+                    />
+                  </Tooltip>
+                )}
+              </Box>
             </Box>
           </Box>
 
@@ -157,13 +175,13 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <PhoneIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                 <Typography variant="caption" color="text.secondary">
-                  {session.phone}
+                  {formatBrazilPhone(session.phone)}
                 </Typography>
               </Box>
             )}
             {session.updatedAt && (
               <Typography variant="caption" color="text.disabled">
-                Atualizado {new Date(session.updatedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                {t.updatedAt(new Date(session.updatedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}
               </Typography>
             )}
           </Box>
@@ -181,7 +199,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
           {/* Ações principais */}
           <Box sx={{ display: 'flex', gap: 0.25 }}>
             {status === 'PENDING' && (
-              <Tooltip title="Conectar">
+              <Tooltip title={t.connect}>
                 <span>
                   <IconButton size="small" color="primary" onClick={() => handle('connect')} disabled={isBusy}>
                     {loadingAction === 'connect' ? <CircularProgress size={16} /> : <LinkIcon fontSize="small" />}
@@ -190,7 +208,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               </Tooltip>
             )}
             {(status === 'DISCONNECTED' || status === 'FAILED' || status === 'LOGGED_OUT') && (
-              <Tooltip title="Reconectar nesta mesma sessão — mantém histórico e mídia">
+              <Tooltip title={t.reconnect}>
                 <span>
                   <IconButton size="small" onClick={() => handle('reconnect')} disabled={isBusy}>
                     {loadingAction === 'reconnect' ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
@@ -199,7 +217,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               </Tooltip>
             )}
             {isActive && (
-              <Tooltip title="Desconectar">
+              <Tooltip title={t.disconnect}>
                 <span>
                   <IconButton size="small" color="warning" onClick={() => handle('disconnect')} disabled={isBusy}>
                     {loadingAction === 'disconnect' ? <CircularProgress size={16} /> : <LinkOffIcon fontSize="small" />}
@@ -208,7 +226,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               </Tooltip>
             )}
             {status !== 'PENDING' && status !== 'LOGGED_OUT' && (
-              <Tooltip title="Logout — desvincula do WhatsApp; histórico e mídia ficam nesta sessão">
+              <Tooltip title={t.logout}>
                 <span>
                   <IconButton size="small" color="error" onClick={() => handle('logout')} disabled={isBusy}>
                     {loadingAction === 'logout' ? <CircularProgress size={16} /> : <LogoutIcon fontSize="small" />}
@@ -221,7 +239,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
           {/* QR e delete */}
           <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
             {(status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING') && (
-              <Tooltip title="Ver QR Code">
+              <Tooltip title={t.showConnection}>
                 <span>
                   <IconButton size="small" color="primary" onClick={() => onRequestQr(session)} disabled={isBusy}>
                     <QrCodeIcon fontSize="small" />
@@ -229,7 +247,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
                 </span>
               </Tooltip>
             )}
-            <Tooltip title="Deletar sessão">
+            <Tooltip title={t.delete}>
               <span>
                 <IconButton
                   size="small"
@@ -247,16 +265,16 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
 
       {/* Confirm delete */}
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Deletar sessão</DialogTitle>
+        <DialogTitle>{t.deleteTitle}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Tem certeza que deseja deletar a sessão <strong>{session.name}</strong>? Esta ação não pode ser desfeita.
+            {t.deleteMessage(session.name)}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+          <Button onClick={() => setConfirmDelete(false)}>{t.cancel}</Button>
           <Button color="error" variant="contained" onClick={handleDelete}>
-            Deletar
+            {t.confirmDelete}
           </Button>
         </DialogActions>
       </Dialog>

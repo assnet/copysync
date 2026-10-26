@@ -22,6 +22,8 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Credenciais de afiliado (cifra, rotas, o que não fazer): [`docs/integracoes-credenciais-afiliado.md`](docs/integracoes-credenciais-afiliado.md). Segredo só via `ISecretCipher`; nunca devolver/logar.
 - Billing, checkout e e-mail via API central (hub, webhook HMAC, entitlements): [`docs/arquitetura-central-billing.md`](docs/arquitetura-central-billing.md). Sem cálculo de preço nem gateway no CopySync: só receiver de eventos, status do tenant e entitlements.
 - Gerador de ofertas (marketplaces, anti-SSRF, worker de envio e flag `OFFER_DISPATCH_WORKER_ENABLED`): [`docs/gerador-de-ofertas.md`](docs/gerador-de-ofertas.md). Worker só liga na Render.
+- Provedores de IA (plataforma × chave do tenant, nunca os dois desligados): [`docs/ia-provedores.md`](docs/ia-provedores.md). Consumir só via `IAiTextGenerator`.
+- Conexão de sessão (assistente, `declaredPhone`, pareamento por código): [`docs/sessoes-conexao.md`](docs/sessoes-conexao.md). Termo de produto: sessão, nunca instância.
 - Plano mestre de lançamento (marcos, trilhas, rede de segurança do PulsoSocial): [`docs/plano-lancamento-hub-copysync.md`](docs/plano-lancamento-hub-copysync.md).
 - Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá.
 
