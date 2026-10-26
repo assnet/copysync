@@ -918,14 +918,14 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     // ── Contacts upsert ──────────────────────────────────────────────────────
     socket.ev.on('contacts.upsert', (contacts) => {
       if (isStale()) return;
-      setImmediate(() => {
+      setImmediate(async () => {
+        const pending: Array<{ phone: string; name: string }> = [];
         for (const c of contacts) {
           const rawJid = c.id;
           if (!rawJid || rawJid.endsWith('@g.us') || rawJid.endsWith('@broadcast')) continue;
 
           let phone: string;
           if (rawJid.endsWith('@lid')) {
-            // LID: o Baileys pode fornecer o phoneNumber real no objeto Contact
             const phoneNumber = (c as { phoneNumber?: string }).phoneNumber;
             if (!phoneNumber) continue;
             phone = phoneNumber.replace(/\D/g, '');
@@ -935,15 +935,24 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
             if (!phone) continue;
           }
 
-          // Só persiste quando temos um nome real — nunca sobrescrever com LID/phone como fallback
           const name = (c as { name?: string; notify?: string }).name
             ?? (c as { name?: string; notify?: string }).notify;
           if (!name || /^\d+$/.test(name)) continue;
-          this.chatContactRepo
-            .upsert({ tenantId, phone, name })
-            .catch((err: unknown) =>
-              baileysLogger.warn({ err, phone }, 'Failed to upsert contact from contacts.upsert'),
-            );
+          pending.push({ phone, name });
+        }
+
+        const BATCH = 8;
+        for (let i = 0; i < pending.length; i += BATCH) {
+          const slice = pending.slice(i, i + BATCH);
+          await Promise.allSettled(
+            slice.map(({ phone, name }) =>
+              this.chatContactRepo
+                .upsert({ tenantId, phone, name })
+                .catch((err: unknown) =>
+                  baileysLogger.warn({ err, phone }, 'Failed to upsert contact from contacts.upsert'),
+                ),
+            ),
+          );
         }
       });
     });
