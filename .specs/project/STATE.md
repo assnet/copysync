@@ -87,6 +87,16 @@ Memória entre sessões: decisões, bloqueios, lições.
   real; 0.5c-1g no primeiro pagante; 1c-2g perto de 50 sessões. Criado sob demanda (owner sobe na hora), sem dump: só há sessões de teste em
   produção; testes seguem no banco compartilhado até lá. PulsoSocial tem usuários reais: zero regressão.
 
+- **2026-10-26 — Gerador de ofertas: só Shopee é automático.** ML e Amazon bloqueiam scraping de
+  datacenter e não têm API acessível (PA-API 5 descontinuada; Creators API exige 10 vendas/30 dias):
+  link de afiliado automático, dados pelo operador. ML via `matt_word` com atribuição **não verificada**
+  (aviso no painel). Envio espaçado é estado no banco (`offer_dispatches`, `SKIP LOCKED` + `claimToken`),
+  não em memória; worker atrás de `OFFER_DISPATCH_WORKER_ENABLED`, ligado só na Render. Gerador e
+  espelhamento (disparo em massa) são recursos separados. Ver `docs/gerador-de-ofertas.md`.
+
+- **2026-10-26 — Integração na `feature/rebranding-app`.** Features nascem dela e voltam para ela;
+  `develop` está atrasada (decisão do owner).
+
 ## Bloqueios
 
 - **Exclusão de `/integrations/*` do log de corpo na central** contraria a decisão de

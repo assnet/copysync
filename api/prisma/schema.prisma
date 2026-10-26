@@ -138,6 +138,9 @@ model Tenant {
   affiliateCredentials AffiliateCredential[]
   userInvites          UserInvite[]
   tenantEntitlements   TenantEntitlement[]
+  offers               Offer[]
+  offerDispatches      OfferDispatch[]
+  offerDestinations    OfferDestination[]
   BillingEventReceipt  BillingEventReceipt[]
 
   @@index([slug])
@@ -163,6 +166,7 @@ model User {
   refreshTokens         RefreshToken[]
   auditLogs             AuditLog[]
   assignedConversations ChatConversation[] @relation("AssignedConversations")
+  createdOffers         Offer[]
 
   @@index([email])
   @@map("users")
@@ -394,11 +398,13 @@ model ChatConversation {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  session      Session?      @relation(fields: [sessionId], references: [id])
-  contact      ChatContact?  @relation(fields: [contactId], references: [id])
-  assignedUser User?         @relation("AssignedConversations", fields: [assignedUserId], references: [id])
-  messages     ChatMessage[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session           Session?           @relation(fields: [sessionId], references: [id])
+  contact           ChatContact?       @relation(fields: [contactId], references: [id])
+  assignedUser      User?              @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  messages          ChatMessage[]
+  offerDispatches   OfferDispatch[]
+  offerDestinations OfferDestination[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastMessageAt])
@@ -543,6 +549,92 @@ model AffiliateCredential {
 
   @@unique([tenantId, provider])
   @@map("affiliate_credentials")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OFFERS (campaigns) — gerador de ofertas e disparo para grupos
+// ─────────────────────────────────────────────────────────────────────────────
+// Ver .specs/features/offer-generator/design.md. Limite diário conta `offers`
+// por tenantId + createdAt; o worker reivindica `offer_dispatches` por status + notBefore.
+
+enum OfferStatus {
+  DRAFT
+  SENDING
+  SENT
+  FAILED
+}
+
+enum OfferDispatchStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Offer {
+  id                  String            @id @default(cuid())
+  tenantId            String
+  provider            AffiliateProvider
+  sourceUrl           String            @db.Text
+  productRef          String?
+  title               String?
+  priceCents          Int?
+  originalPriceCents  Int?
+  imageUrl            String?           @db.Text // URL do media store
+  affiliateUrl        String            @db.Text
+  attributionVerified Boolean           @default(true)
+  text                String            @db.Text
+  textEdited          Boolean           @default(false)
+  status              OfferStatus       @default(DRAFT)
+  createdById         String? // null se o usuário for removido
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy  User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  dispatches OfferDispatch[]
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  // Varredura do worker: ofertas SENDING sem envio aberto
+  @@index([status])
+  @@map("offers")
+}
+
+model OfferDispatch {
+  id             String              @id @default(cuid())
+  tenantId       String
+  offerId        String
+  conversationId String
+  status         OfferDispatchStatus @default(QUEUED)
+  notBefore      DateTime
+  claimedAt      DateTime?
+  /// Posse do worker: novo uuid a cada claim; resultado só grava com o token da posse.
+  claimToken     String?
+  chatMessageId  String?
+  failureReason  String?
+  updatedAt      DateTime            @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offer        Offer            @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, conversationId])
+  @@index([status, notBefore])
+  @@index([tenantId, offerId])
+  @@map("offer_dispatches")
+}
+
+model OfferDestination {
+  tenantId       String
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, conversationId])
+  @@map("offer_destinations")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

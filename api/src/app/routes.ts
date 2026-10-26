@@ -11,6 +11,7 @@ import {
   type MediaUploadRoutesOptions,
 } from '../modules/media/presentation/routes/media.upload.routes';
 import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
+import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.routes';
 import { provisioningRoutes } from '../modules/tenants/presentation/routes/provisioning.routes';
 import { billingRoutes } from '../modules/integrations/billing/billing.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
@@ -79,6 +80,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(affiliateCredentialRoutes, {
     prefix: `${env.API_PREFIX}/integrations/affiliate-credentials`,
   });
+
+  // ── Gerador de ofertas (auth + tenant scope required) ──────────────────────
+  await app.register(offerRoutes, { prefix: `${env.API_PREFIX}/campaigns/offers` });
 
   // ── Provisioning routes (super-admin only) ─────────────────────────────────
   await app.register(provisioningRoutes, {

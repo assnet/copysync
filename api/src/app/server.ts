@@ -32,6 +32,8 @@ import { flushAllAuthStates } from '../modules/messaging/infrastructure/engines/
 import { registerTenantSuspendedSessionListener } from '../modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener';
 import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogRepository';
 import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
+import { offersContainer } from '../modules/campaigns/infrastructure/offersContainer';
+import { OfferDispatchWorker } from '../modules/campaigns/infrastructure/worker/OfferDispatchWorker';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -151,6 +153,18 @@ async function start(): Promise<void> {
     pendingMediaSweep.unref();
   }
 
+  // ── Envios do gerador de ofertas ───────────────────────────────────────────
+  // Só com OFFER_DISPATCH_WORKER_ENABLED: o worker escreve no banco e envia mensagens, e
+  // `api/.env` aponta para produção (AGENTS §22).
+  let offerDispatchWorker: OfferDispatchWorker | null = null;
+  if (env.OFFER_DISPATCH_WORKER_ENABLED) {
+    offerDispatchWorker = new OfferDispatchWorker({ tick: offersContainer.processDueDispatches });
+    offerDispatchWorker.start();
+    logger.info('Offer dispatch worker started');
+  } else {
+    logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false)');
+  }
+
   // ── Billing warnings ───────────────────────────────────────────────────────
   if (env.BILLING_ENABLED && env.EMAIL_SENDER === 'noop') {
     logger.warn('Billing enabled but EMAIL_SENDER=noop — invite and provision emails will not be delivered');
@@ -238,6 +252,12 @@ async function start(): Promise<void> {
     uploadSweeper?.stop();
     if (pendingMediaSweep) clearInterval(pendingMediaSweep);
     if (billingReconcileInterval) clearInterval(billingReconcileInterval);
+    // Antes do drain: o tick em curso termina de enfileirar; nada novo entra na fila depois.
+    try {
+      await offerDispatchWorker?.stop();
+    } catch (err) {
+      logger.error({ err }, 'Offer dispatch worker stop failed during shutdown');
+    }
     // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
     // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).
     try {

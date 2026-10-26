@@ -100,6 +100,12 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Worker de envios do gerador de ofertas. Desligado por padrão: `.env` aponta para produção.
+  // `true` só na Render ou com banco local.
+  OFFER_DISPATCH_WORKER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   MEDIA_PENDING_STALE_MINUTES: z.coerce.number().int().positive().default(60),
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),

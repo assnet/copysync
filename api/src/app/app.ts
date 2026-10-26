@@ -165,6 +165,7 @@ export async function buildApp() {
         { name: 'Me', description: 'Perfil do usuário autenticado' },
         { name: 'Sessions', description: 'Sessões WhatsApp — ciclo de vida, QR code, pairing' },
         { name: 'Integrations', description: 'Credenciais de afiliado por marketplace' },
+        { name: 'Offers', description: 'Gerador de ofertas — link do produto, edição e envio' },
       ],
     },
   });
