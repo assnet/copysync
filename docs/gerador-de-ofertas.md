@@ -1,94 +1,105 @@
 # Gerador de ofertas
 
-Cola o link do produto → oferta montada com o link de afiliado do tenant → revisar → enviar aos
-destinos pré-selecionados, espaçado. Item 8 do roadmap. Spec, design e tasks em
-`.specs/features/offer-generator/`.
+Fluxo (v2, 0.22.0): **configurar** (sessão → grupos → confirmar) → **colar o próprio link de afiliado** → cupom e
+público-alvo → texto por IA → prévia, editar ou gerar novamente → marcar todos (opcional) → disparar nos grupos, espaçado.
+Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/features/offer-generator-v2/spec.md` (Parte C).
 
 ## Onde está
 
 | Camada | Caminho |
 | --- | --- |
-| Domínio (funções puras) | `api/src/modules/campaigns/domain/services/` (`detectMarketplace`, `parseProductRef`, `buildAffiliateUrl`, `renderOfferText`, `scheduleDispatches`, `startOfDayInZone`) |
-| Use cases | `api/src/modules/campaigns/application/use-cases/` |
-| HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `HttpShortLinkExpander`, `HttpOfferImageFetcher`) |
-| Envio | `campaigns/infrastructure/adapters/ChatOfferMessageSender.ts` → `chat/.../SendStoredMediaMessageUseCase.ts` (imagem) ou `SendMessageUseCase` (texto) |
+| Domínio (funções puras) | `api/src/modules/campaigns/domain/services/` (`detectMarketplace`, `parseProductRef`, `verifyAffiliateLink`, `parseProductPage`, `buildOfferTextPrompt`, `renderOfferText`, `scheduleDispatches`, `startOfDayInZone`) |
+| Use cases | `campaigns/application/use-cases/` (Generate, Update, Regenerate, Send, ProcessDue, Config, Get, Usage) · `application/services/OfferTextComposer.ts` |
+| HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `HttpShortLinkExpander`, `HttpProductPageReader`, `HttpOfferImageFetcher`) |
+| IA | porta `IAiTextGenerator` via `LazyAiTextGenerator` → `docs/ia-provedores.md` |
+| Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem) / `SendMessageUseCase` (texto), com `mentions` |
 | Worker | `campaigns/infrastructure/worker/OfferDispatchWorker.ts`, ligado em `app/server.ts` |
-| Composição | `campaigns/infrastructure/offersContainer.ts` |
-| Tabelas | `offers`, `offer_dispatches`, `offer_destinations` · migration `20261026160000_create_offers_and_dispatches` |
-| Painel | `app/src/features/offers/` · `app/src/pages/offers/OfferGeneratorPage.tsx` · rota `/offers` |
+| Tabelas | `offers`, `offer_dispatches`, `offer_destinations`, `offer_generator_configs` |
+| Painel | `app/src/features/offers/` (`components/config/` = assistente) · `app/src/pages/offers/OfferGeneratorPage.tsx` · `/offers` |
 
-## Marketplaces
+## Configuração
 
-| Marketplace | Link | Dados do produto |
+`GET/PUT /campaigns/offers/config` `{ sessionId, intervalMinSeconds, intervalMaxSeconds, conversationIds }`. Sessão do
+tenant; só grupos dessa sessão; total ≤ entitlement `broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com
+`meta.key='broadcast_groups'`); 5 ≤ min ≤ max ≤ 120 s. Config e destinos gravam numa transação. Os destinos usados no
+envio são os grupos da configuração **no momento do envio**.
+
+## Link do usuário e verificação de dono
+
+O link colado **é** o link de afiliado (o sistema não gera mais link). Após expandir (allowlist por salto):
+
+| Loja | Prova | Regra |
 | --- | --- | --- |
-| Shopee | `generateShortLink` na Affiliate Open API (`open-api.affiliate.shopee.com.br/graphql`, header `SHA256 Credential=…, Timestamp=…, Signature=sha256(appId+ts+body+secret)`) | `productOfferV2(shopId,itemId)`: título, foto, preço, desconto |
-| Amazon | `https://www.amazon.com.br/dp/{ASIN}?tag={id}` | operador preenche |
-| Mercado Livre | URL canônica + `?matt_word={etiqueta}` (**atribuição não confirmada**; o painel avisa) | operador preenche |
+| Amazon | `tag=` | ≠ credencial → `OFFER_LINK_NOT_OWNED`; sem `tag` → `OFFER_LINK_NOT_AFFILIATE` |
+| Mercado Livre | `matt_word` ou `/social/<etiqueta>` (`meli.la`) | idem (comparação sem caixa) |
+| Shopee | — | sem verificação (aviso fixo no painel); `attributionVerified=false` |
 
-- A Shopee exige acesso liberado à Open API no painel do afiliado (erro `10035` → `AFFILIATE_API_ACCESS_DENIED`). Suporte: webform citado no `AGENTS.md`.
-- **Não verificado** contra conta real: campos de `productOfferV2`, formato de preço (decimal em BRL) e `priceDiscountRate` (percentual), códigos `10031–10034`. O mapper tolera campo ausente. Conferir no primeiro smoke com AppID real.
-- ML e Amazon bloqueiam scraping de IP de datacenter (403/500/captcha), e a PA-API 5 foi descontinuada (Creators API exige 10 vendas em 30 dias). Dados automáticos desses dois ficam para P3 (extensão lendo o DOM).
+Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos: `shopee.com.br`,
+`shope.ee`, `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`, `amazon.com.br`, `amzn.to`.
 
-## Segurança do link colado (SSRF)
+## Dados do produto
 
-- Só `https`, sem porta, userinfo ou IP literal; host exato ou subdomínio da allowlist (`detectMarketplace`).
-- Link curto (`s.shopee.com.br`, `shope.ee`, `amzn.to`, `mercadolivre.com/sec|social`) é seguido com `redirect: 'manual'`, até 5 saltos, 8 s no total, **revalidando cada `Location` antes de requisitar**.
-- Foto: só `*.susercontent.com` / `*.shopee.com.br`, `image/*`, ≤ 5 MB, `redirect: 'error'`.
+- Shopee: Affiliate Open API (`productOfferV2`) quando há credencial com secret; erro na API cai para a leitura da página.
+- ML / Amazon: `HttpProductPageReader` — UA de navegador, 8 s, HTML cortado em 2 MB, só `text/html`, até 5 redirects
+  revalidados; lê `og:*`, JSON-LD, `product:price:amount`, `andes-money-amount` (ML), `#productTitle`/`a-offscreen` (Amazon).
+- **Sessão da extensão (ML)**: se o tenant sincronizou a sessão pela extensão, a leitura vai com `Cookie: ssid=…` (só para
+  `*.mercadolivre.com.br`; token validado contra injeção de cookie). Mesmo mecanismo das extensões do mercado: requisição
+  logada é bloqueada bem menos. Rotas não documentadas do ML podem mudar sem aviso.
+- Faltou título, preço ou foto → `needsManualData: true` e o painel pede os campos.
+- Fotos: `*.susercontent.com`, `*.shopee.com.br`, `*.mlstatic.com`, `*.media-amazon.com`, `*.ssl-images-amazon.com`.
 
-## Rotas
+## Texto
 
-Prefixo `/api/campaigns/offers`, `authHook` + `tenantHook`, envelope `{ success, data }`.
+`STANDARD` = modelo fixo (título, de/por, desconto, cupom, link). Outros públicos (`MOMS`, `PET`, `BEAUTY_FASHION`, `MEN`,
+`FITNESS`, `HOME_KITCHEN`) → IA com prompt por público; dados do produto vão delimitados e o system manda ignorar
+instruções vindas deles. Se a IA omitir o link, ele é anexado. Erro de IA, resposta vazia ou longa demais → modelo fixo e
+`aiFallback: true`. `POST /:id/regenerate` gera outra versão (não conta no limite de ofertas; conta no da IA).
+
+## Rotas (`/api/campaigns/offers`, `authHook` + `tenantHook`)
 
 | Método | Path | Faz |
 | --- | --- | --- |
-| POST | `/` | `{ url }` → 201 `{ offer, needsManualData }` |
-| GET | `/usage` | `{ used, limit }` (`limit: null` = ilimitado) |
-| GET / PUT | `/destinations` | lista / substitui `{ conversationIds }` (máx. 200, só conversas do tenant) |
-| GET | `/:id` | oferta com `dispatches` |
-| PATCH | `/:id` | título, preços (centavos), texto, `imageUploadId` (upload por `chunkedUpload`). Só `DRAFT` |
-| POST | `/:id/send` | 202; cria um envio por destino com `notBefore` espaçado (8–15 s aleatório) |
+| POST | `/` | `{ url, coupon?, audience? }` → 201 `{ offer, needsManualData, aiFallback, aiErrorCode? }` |
+| GET | `/usage` | `{ used, limit }` |
+| GET / PUT | `/config` | configuração (acima) |
+| GET | `/:id` | oferta + `dispatches` |
+| PATCH | `/:id` | título, preços, texto, `imageUploadId`, `coupon`, `audience`, `mentionAll`. Só `DRAFT` |
+| POST | `/:id/regenerate` | `{ audience? }` → `{ offer, aiFallback }`; 409 `OFFER_CHANGED` se a oferta foi editada durante a geração |
+| POST | `/:id/send` | 202; um envio por grupo, espaçado pelo intervalo da configuração |
 
-`GET /chat/conversations` aceita `isGroup=true|false` (seletor de destinos).
-
-Erros: `OFFER_URL_UNSUPPORTED` 422 · `OFFER_PRODUCT_NOT_FOUND` 404 · `OFFER_NOT_FOUND` 404 · `OFFER_ALREADY_SENT` 409 ·
-`OFFER_NO_DESTINATIONS` 422 · `OFFER_INVALID_INPUT` 422 (`meta.field`) · `AFFILIATE_CREDENTIAL_NOT_FOUND` 404 ·
-`AFFILIATE_API_ACCESS_DENIED` / `AFFILIATE_CREDENTIAL_REJECTED` 422 · `AFFILIATE_API_RATE_LIMITED` 429 ·
-`AFFILIATE_API_UNAVAILABLE` 503 (nada gravado, não conta no limite) · `PLAN_LIMIT_REACHED` 403 (`meta { key, limit }`).
+Ordem de checagem do envio: oferta (409 `OFFER_CHANGED` se `mentionAll` mudou durante a checagem) → `PLAN_FEATURE_UNAVAILABLE` (marcar todos sem `mention_all_enabled`) →
+`OFFER_CONFIG_MISSING` → `SESSION_NOT_CONNECTED` → `OFFER_NO_DESTINATIONS` → `PLAN_LIMIT_REACHED` (plano rebaixado).
 
 ## Limite diário
 
-Entitlement `offer_generations_per_day` em `TenantEntitlement` (lido por `PrismaEntitlementReader`). Ausente ou
-`null` = ilimitado. Conta as `Offer` criadas desde a meia-noite de `America/Sao_Paulo`. A gravação reconta sob
-`pg_advisory_xact_lock(hashtext(tenantId))` (`createWithinDailyLimit`), então requisições paralelas não passam do limite.
+Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/Sao_Paulo`, recontagem sob
+`pg_advisory_xact_lock` na gravação.
 
 ## Envio (worker)
 
-- Estados: `Offer` `DRAFT → SENDING → SENT | FAILED`; `OfferDispatch` `QUEUED → SENDING → SENT | FAILED | SKIPPED`.
-- `SendOfferUseCase` troca `DRAFT → SENDING` e cria os envios na **mesma transação**.
-- Worker a cada 2 s: `claimDue` (`FOR UPDATE SKIP LOCKED`, `claimToken` por linha) → um envio por vez, `touchClaim` antes de enviar →
-  `markResult` exige o token. `releaseStale` devolve à fila o que ficou `SENDING` há > 5 min **sem `chatMessageId`**.
-  Timeout de 60 s por envio → `FAILED SEND_TIMEOUT`, sem retry. Varredura fecha ofertas `SENDING` sem envio aberto.
-- `SKIPPED`: conversa/sessão inexistente (`OFFER_DESTINATION_UNAVAILABLE`, `NOT_FOUND`, `SESSION_NOT_FOUND`). `FAILED`: o resto, com código interno.
-- Cada destino recebe a própria cópia da foto (`acquireLocalFile` → cópia em tmp → `promote`); a foto da oferta nunca é movida.
-- Flag **`OFFER_DISPATCH_WORKER_ENABLED`** (padrão `false`). Ligar **só na Render** (variável criada à mão no dashboard). `api/.env` e `api/.env.dev`
-  apontam para o banco real: `true` local enviaria ofertas de produção.
-- Futuro: fila BullMQ `broadcast.post` (`arquitetura-escala.md` §3.6) substitui o tick sem mudar os use cases.
+- `DRAFT → SENDING → SENT | FAILED`; envio `QUEUED → SENDING → SENT | FAILED | SKIPPED`.
+- Tick de 2 s, `claimDue` com `FOR UPDATE SKIP LOCKED` + `claimToken`; `touchClaim` antes de enviar; `releaseStale` só sem `chatMessageId`; timeout 60 s → `SEND_TIMEOUT`.
+- **Marcar todos**: participantes via `getGroupParticipants`; JIDs em `mentions` (menção oculta). Participante só com LID (sem telefone) não é mencionado.
+- Flag **`OFFER_DISPATCH_WORKER_ENABLED`** (padrão `false`; ligar só na Render — `api/.env` e `.env.dev` apontam para o banco real).
 
 ### Limites conhecidos
 
-- **At-least-once**: queda entre o envio e o `markResult` deixa o envio `SENDING` sem `chatMessageId`; depois de 5 min ele pode sair de novo.
-- Falha **assíncrona** da fila de mídia do chat depois de enfileirar deixa o envio `SENT` (a bolha no chat mostra `FAILED`). Reconciliar por `chatMessageId` fica para depois.
+- At-least-once: queda entre envio e `markResult` pode repetir o envio após 5 min.
+- Falha assíncrona da fila de mídia após enfileirar deixa o envio `SENT`.
+- Retry/recuperação de mídia pendente reenvia sem menções.
+- Parser de página não validado contra HTML real de ML/Amazon em produção: conferir no smoke.
 
 ## O que não fazer
 
-- Não buscar URL que não passou por `isSupportedProductUrl`, nem seguir redirect automático.
-- Não logar corpo, header, assinatura ou segredo da Shopee; `meta` de erro só leva `provider`.
-- Não devolver credencial no `OfferDTO` (schema de resposta é fechado).
-- Não ligar o worker com banco de produção fora da Render.
-- Não enviar em rajada: todo envio passa por `OfferDispatch` com `notBefore`.
+- Buscar URL fora da allowlist ou seguir redirect automático.
+- Logar corpo, headers, cookie `ssid`, assinatura ou segredo.
+- Gerar link de afiliado em nome do usuário: o link é sempre o dele.
+- Ligar o worker com banco de produção fora da Render.
+- Enviar sem passar por `OfferDispatch` com `notBefore`.
 
 ## Deploy
 
-1. `prisma migrate deploy` (migration nova, só cria tabelas/enums).
-2. Render: `OFFER_DISPATCH_WORKER_ENABLED=true`.
-3. Smoke: gerar oferta Shopee com AppID real, conferir campos; dois grupos de teste como destino; enviar e ver ~8–15 s entre as mensagens.
+1. `prisma migrate deploy` (`20261026160000_create_offers_and_dispatches`, `20261026210000_add_session_phone_ai_providers_offer_config`).
+2. Render: `OFFER_DISPATCH_WORKER_ENABLED=true`; `CREDENTIALS_ENCRYPTION_KEY` já existente cifra as chaves de IA.
+3. Super admin cadastra um provedor de IA em `/admin/ai`.
+4. Smoke: configurar sessão + 2 grupos; colar link próprio de cada loja (inclusive `meli.la`); público com IA; gerar novamente; marcar todos; disparar.

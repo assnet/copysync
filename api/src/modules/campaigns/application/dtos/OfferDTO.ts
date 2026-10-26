@@ -3,6 +3,7 @@ import type { Offer } from '../../domain/entities/Offer';
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
 import type { OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import type { OfferStatus } from '../../domain/enums/OfferStatus';
+import type { OfferAudience } from '../../domain/enums/OfferAudience';
 
 export interface OfferDispatchDTO {
   id: string;
@@ -28,6 +29,9 @@ export interface OfferDTO {
   attributionVerified: boolean;
   text: string;
   textEdited: boolean;
+  coupon: string | null;
+  audience: OfferAudience;
+  mentionAll: boolean;
   status: OfferStatus;
   createdAt: string;
   updatedAt: string;
@@ -60,6 +64,9 @@ export function toOfferDto(offer: Offer, dispatches?: OfferDispatch[]): OfferDTO
     attributionVerified: offer.attributionVerified,
     text: offer.text,
     textEdited: offer.textEdited,
+    coupon: offer.coupon,
+    audience: offer.audience,
+    mentionAll: offer.mentionAll,
     status: offer.status,
     createdAt: offer.createdAt.toISOString(),
     updatedAt: offer.updatedAt.toISOString(),

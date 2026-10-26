@@ -5,6 +5,7 @@ import type { DisconnectSessionOutput } from '../../application/use-cases/Discon
 import type { LogoutSessionOutput } from '../../application/use-cases/LogoutSessionUseCase';
 import type { GetSessionQrOutput } from '../../application/use-cases/GetSessionQrUseCase';
 import type { GetSessionPairingCodeOutput } from '../../application/use-cases/GetSessionPairingCodeUseCase';
+import type { RequestSessionPairingCodeOutput } from '../../application/use-cases/RequestSessionPairingCodeUseCase';
 
 export class SessionPresenter {
   static toSessionItem(session: Session, avatarUrl: string | null = null) {
@@ -15,6 +16,8 @@ export class SessionPresenter {
       name: session.name,
       engine: session.engine,
       phone: session.phone,
+      declaredPhone: session.declaredPhone,
+      phoneMismatch: session.hasPhoneMismatch(),
       externalRef: session.externalRef,
       status: session.status,
       lastConnectedAt: session.lastConnectedAt?.toISOString() ?? null,
@@ -37,6 +40,8 @@ export class SessionPresenter {
       sessionId: output.sessionId,
       status: output.status,
       phone: output.phone,
+      declaredPhone: output.declaredPhone,
+      phoneMismatch: output.phoneMismatch,
       lastConnectedAt: output.lastConnectedAt?.toISOString() ?? null,
       lastDisconnectedAt: output.lastDisconnectedAt?.toISOString() ?? null,
     };
@@ -62,6 +67,14 @@ export class SessionPresenter {
     return {
       sessionId: output.sessionId,
       qrCode: output.qrCode,
+    };
+  }
+
+  static toPairingRequestResult(output: RequestSessionPairingCodeOutput) {
+    return {
+      sessionId: output.sessionId,
+      status: output.status,
+      pairingCode: output.pairingCode,
     };
   }
 

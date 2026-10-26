@@ -15,6 +15,7 @@ export class PrismaSessionRepository implements ISessionRepository {
         tenantId: data.tenantId,
         name: data.name,
         engine: data.engine,
+        declaredPhone: data.declaredPhone ?? null,
         status: 'PENDING',
       },
     });

@@ -15,6 +15,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +26,7 @@ import { OutgoingMediaProvider } from '@/features/chat/media/OutgoingMediaProvid
 import { VoiceRecorderHost } from '@/features/chat/media/VoiceRecorderProvider';
 import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
+import { aiStrings } from '@/features/ai/strings';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -52,6 +54,11 @@ const NAV_ITEMS = [
   { label: 'Chat', path: '/chat', icon: <ForumOutlinedIcon /> },
   { label: 'Gerador de ofertas', path: '/offers', icon: <LocalOfferOutlinedIcon /> },
   { label: 'Configurações', path: '/settings/account', icon: <SettingsIcon />, matchPrefix: true },
+];
+
+/** Plataforma: só super admin vê (a rota também redireciona os demais). */
+const NAV_ADMIN_ITEMS = [
+  { label: aiStrings.admin.navLabel, path: '/admin/ai', icon: <AdminPanelSettingsOutlinedIcon /> },
 ];
 
 // Itens futuros — desabilitados por ora, só para estrutura visual
@@ -168,8 +175,8 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
           </Typography>
         )}
         <List disablePadding sx={{ px: 1 }}>
-          {NAV_ITEMS.map((item) => {
-            const active = item.matchPrefix
+          {[...NAV_ITEMS, ...(user?.isSuperAdmin ? NAV_ADMIN_ITEMS : [])].map((item) => {
+            const active = 'matchPrefix' in item && item.matchPrefix
               ? location.pathname.startsWith('/settings')
               : location.pathname === item.path;
             const button = (

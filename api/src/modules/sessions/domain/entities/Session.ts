@@ -1,4 +1,5 @@
 import type { SessionStatus } from '../enums/SessionStatus';
+import { hasPhoneMismatch } from '../services/normalizeBrazilPhone';
 
 export interface SessionProps {
   id: string;
@@ -6,6 +7,8 @@ export interface SessionProps {
   name: string;
   engine: string;
   phone: string | null;
+  /** Número informado pelo operador ao criar (55+DDD+número), comparado com `phone`. */
+  declaredPhone: string | null;
   externalRef: string | null;
   status: SessionStatus;
   lastConnectedAt: Date | null;
@@ -25,6 +28,7 @@ export class Session {
   public readonly name: string;
   public readonly engine: string;
   public readonly phone: string | null;
+  public readonly declaredPhone: string | null;
   public readonly externalRef: string | null;
   public readonly status: SessionStatus;
   public readonly lastConnectedAt: Date | null;
@@ -40,6 +44,7 @@ export class Session {
     this.name = props.name;
     this.engine = props.engine;
     this.phone = props.phone;
+    this.declaredPhone = props.declaredPhone;
     this.externalRef = props.externalRef;
     this.status = props.status;
     this.lastConnectedAt = props.lastConnectedAt;
@@ -48,6 +53,11 @@ export class Session {
     this.deletedAt = props.deletedAt;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+  }
+
+  /** O aparelho conectado não é o número que o operador declarou. */
+  hasPhoneMismatch(): boolean {
+    return hasPhoneMismatch(this.phone, this.declaredPhone);
   }
 
   isConnected(): boolean {

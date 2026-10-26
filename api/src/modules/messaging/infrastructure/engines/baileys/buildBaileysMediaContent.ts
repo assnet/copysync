@@ -11,7 +11,7 @@ interface BaileysMediaSource {
  * vídeo e `waveform` ficam fora do tipo da lib, mas o proto os aceita.
  */
 export type BaileysMediaContent =
-  | { image: BaileysMediaSource; mimetype?: string; caption?: string }
+  | { image: BaileysMediaSource; mimetype?: string; caption?: string; mentions?: string[] }
   | {
     video: BaileysMediaSource;
     mimetype?: string;
@@ -22,9 +22,10 @@ export type BaileysMediaContent =
     /** base64: o proto decodifica o texto para bytes. */
     jpegThumbnail?: string;
     gifPlayback: false;
+    mentions?: string[];
   }
   | { audio: BaileysMediaSource; ptt: true; mimetype: string; seconds?: number; waveform?: Uint8Array }
-  | { document: BaileysMediaSource; mimetype: string; fileName: string; caption?: string };
+  | { document: BaileysMediaSource; mimetype: string; fileName: string; caption?: string; mentions?: string[] };
 
 /** MIME que o WhatsApp exige para tocar como nota de voz. */
 const VOICE_MIME_TYPE = 'audio/ogg; codecs=opus';
@@ -58,14 +59,16 @@ function defined<T extends object>(fields: T): T {
  * - vídeo: nunca como GIF; sem miniatura, a lib gera a dela
  * - documento: sempre com MIME e nome
  * - legenda, MIME, duração, dimensões, miniatura e onda vazios ficam de fora
+ * - `mentionJids` (JIDs já normalizados pelo adapter) só em imagem, vídeo e documento; voz não
  */
-export function buildBaileysMediaContent(media: OutboundMedia): BaileysMediaContent {
+export function buildBaileysMediaContent(media: OutboundMedia, mentionJids?: string[] | null): BaileysMediaContent {
   const source = { url: media.filePath };
   const caption = text(media.caption);
+  const mentions = mentionJids?.length ? mentionJids : undefined;
 
   switch (media.kind) {
     case 'image':
-      return defined({ image: source, mimetype: text(media.mimeType), caption });
+      return defined({ image: source, mimetype: text(media.mimeType), caption, mentions });
     case 'video':
       return defined({
         video: source,
@@ -76,6 +79,7 @@ export function buildBaileysMediaContent(media: OutboundMedia): BaileysMediaCont
         height: positiveInt(media.height),
         jpegThumbnail: text(media.thumbnailJpegBase64),
         gifPlayback: false as const,
+        mentions,
       });
     case 'voice':
       return defined({
@@ -91,6 +95,7 @@ export function buildBaileysMediaContent(media: OutboundMedia): BaileysMediaCont
         mimetype: text(media.mimeType) ?? DOCUMENT_FALLBACK_MIME_TYPE,
         fileName: text(media.fileName) ?? DOCUMENT_FALLBACK_FILE_NAME,
         caption,
+        mentions,
       });
   }
 }

@@ -30,16 +30,16 @@ export function diffDraft(offer: OfferItem, draft: OfferDraft): UpdateOfferReque
 
 /**
  * Rascunho local dos campos editáveis. Volta ao valor salvo sempre que a oferta muda no servidor
- * (salvar, trocar foto): o texto remontado pela API aparece sem o operador fazer nada.
+ * (salvar, gerar novamente): o texto remontado pela API aparece sem o operador fazer nada.
  */
 export function useOfferDraft(offer: OfferItem | null) {
   const [draft, setDraft] = useState<OfferDraft>(() => fromOffer(offer));
 
   useEffect(() => {
     setDraft(fromOffer(offer));
-    // `updatedAt` muda a cada gravação; o objeto inteiro mudaria também a cada polling.
+    // Só os campos do rascunho: ligar "marcar todos" ou o polling do envio não apagam a edição em curso.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offer?.id, offer?.updatedAt]);
+  }, [offer?.id, offer?.title, offer?.priceCents, offer?.originalPriceCents, offer?.text]);
 
   const patch = useMemo(() => (offer ? diffDraft(offer, draft) : {}), [offer, draft]);
   const dirty = Object.keys(patch).length > 0;
@@ -50,6 +50,8 @@ export function useOfferDraft(offer: OfferItem | null) {
     draft,
     setField: <K extends keyof OfferDraft>(key: K, value: OfferDraft[K]) =>
       setDraft((prev) => ({ ...prev, [key]: value })),
+    /** Volta ao que está salvo (cancelar edição). */
+    discard: () => setDraft(fromOffer(offer)),
     patch,
     dirty,
     textTooLong,

@@ -4,7 +4,8 @@ import type { FetchedOfferImage, IOfferImageFetcher } from '../../domain/contrac
 const log = logger.child({ module: 'HttpOfferImageFetcher' });
 const TIMEOUT_MS = 8_000;
 const MAX_BYTES = 5 * 1024 * 1024;
-const HOST_SUFFIXES = ['susercontent.com', 'shopee.com.br'];
+// Shopee, Mercado Livre e Amazon (CDNs de foto de produto)
+const HOST_SUFFIXES = ['susercontent.com', 'shopee.com.br', 'mlstatic.com', 'media-amazon.com', 'ssl-images-amazon.com'];
 
 /** https, sem porta/userinfo, host igual ou subdomínio de um sufixo permitido. */
 export function isAllowedImageUrl(url: URL): boolean {

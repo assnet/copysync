@@ -5,6 +5,7 @@ import type { SessionStatus } from '../../domain/enums/SessionStatus';
 export interface CreateSessionInputDto {
   name: string;
   engine?: string;
+  declaredPhone?: string;
 }
 
 // ── Output DTOs ───────────────────────────────────────────────────────────────
@@ -15,6 +16,8 @@ export interface SessionItemDto {
   name: string;
   engine: string;
   phone: string | null;
+  declaredPhone: string | null;
+  phoneMismatch: boolean;
   externalRef: string | null;
   status: SessionStatus;
   lastConnectedAt: string | null;
@@ -28,6 +31,8 @@ export interface SessionStatusDto {
   sessionId: string;
   status: SessionStatus;
   phone: string | null;
+  declaredPhone: string | null;
+  phoneMismatch: boolean;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
 }

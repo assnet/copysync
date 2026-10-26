@@ -2,14 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { offerService } from '@/services/offer.service';
 import { mediaService } from '@/services/media.service';
 import { uploadInParts } from '@/features/chat/media/chunkedUpload';
-import type { OfferDestinationItem, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
+import type { GenerateOfferRequest, OfferAudience, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
 import { toOfferError, type OfferErrorView } from '../utils/offerErrors';
 
 /** Intervalo do polling de progresso enquanto a oferta está `SENDING`. */
 const POLL_INTERVAL_MS = 3_000;
 
 /**
- * Estado do gerador (sem store global): oferta atual, uso do dia e destinos.
+ * Estado do gerador (sem store global): oferta atual e uso do dia. Destinos vêm da configuração
+ * (`useOfferConfig`).
  * Componentes só leem e chamam ações; toda chamada HTTP passa por aqui.
  * Ações que falham devolvem `OfferErrorView` em `error` e rejeitam, para o formulário reagir.
  */
@@ -17,9 +18,10 @@ export function useOfferGenerator() {
   const [offer, setOffer] = useState<OfferItem | null>(null);
   const [needsManualData, setNeedsManualData] = useState(false);
   const [usage, setUsage] = useState<OfferUsage | null>(null);
-  const [destinations, setDestinations] = useState<OfferDestinationItem[]>([]);
-  const [destinationsLoaded, setDestinationsLoaded] = useState(false);
+  const [aiFallback, setAiFallback] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [mentionSaving, setMentionSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [imageProgress, setImageProgress] = useState<number | null>(null);
@@ -42,30 +44,20 @@ export function useOfferGenerator() {
     }
   }, []);
 
-  const loadDestinations = useCallback(async () => {
-    try {
-      setDestinations(await offerService.listDestinations());
-    } catch (err) {
-      setError(toOfferError(err));
-    } finally {
-      setDestinationsLoaded(true);
-    }
-  }, []);
-
   useEffect(() => {
     void loadUsage();
-    void loadDestinations();
-  }, [loadUsage, loadDestinations]);
+  }, [loadUsage]);
 
   useEffect(() => () => uploadAbort.current?.abort(), []);
 
-  const generate = useCallback(async (url: string) => {
+  const generate = useCallback(async (body: GenerateOfferRequest) => {
     setGenerating(true);
     setError(null);
     try {
-      const res = await offerService.generate(url);
+      const res = await offerService.generate(body);
       setOffer(res.offer);
       setNeedsManualData(res.needsManualData);
+      setAiFallback(res.aiFallback);
     } catch (err) {
       fail(err);
     } finally {
@@ -73,6 +65,39 @@ export function useOfferGenerator() {
       void loadUsage();
     }
   }, [fail, loadUsage]);
+
+  /** Novo texto para o público dado (ou o atual). Não conta no limite de ofertas. */
+  const regenerate = useCallback(async (audience?: OfferAudience) => {
+    if (!offer) return;
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await offerService.regenerate(offer.id, audience);
+      setOffer(res.offer);
+      setAiFallback(res.aiFallback);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setRegenerating(false);
+    }
+  }, [offer, fail]);
+
+  /** Liga/desliga "marcar todos" na hora; volta ao valor anterior se a API recusar. */
+  const setMentionAll = useCallback(async (value: boolean) => {
+    if (!offer) return;
+    const previous = offer;
+    setOffer({ ...offer, mentionAll: value });
+    setMentionSaving(true);
+    setError(null);
+    try {
+      setOffer(await offerService.update(offer.id, { mentionAll: value }));
+    } catch (err) {
+      setOffer(previous);
+      fail(err);
+    } finally {
+      setMentionSaving(false);
+    }
+  }, [offer, fail]);
 
   const update = useCallback(async (body: UpdateOfferRequest): Promise<OfferItem> => {
     if (!offer) throw new Error('no offer');
@@ -133,18 +158,11 @@ export function useOfferGenerator() {
     }
   }, [offer, fail]);
 
-  const saveDestinations = useCallback(async (conversationIds: string[]) => {
-    try {
-      setDestinations(await offerService.replaceDestinations(conversationIds));
-    } catch (err) {
-      throw toOfferError(err);
-    }
-  }, []);
-
   const reset = useCallback(() => {
     uploadAbort.current?.abort();
     setOffer(null);
     setNeedsManualData(false);
+    setAiFallback(false);
     setError(null);
   }, []);
 
@@ -175,19 +193,21 @@ export function useOfferGenerator() {
     offer,
     needsManualData,
     usage,
-    destinations,
-    destinationsLoaded,
+    aiFallback,
     generating,
+    regenerating,
+    mentionSaving,
     saving,
     sending,
     imageProgress,
     error,
     clearError: () => setError(null),
     generate,
+    regenerate,
+    setMentionAll,
     update,
     replaceImage,
     send,
-    saveDestinations,
     reset,
   };
 }

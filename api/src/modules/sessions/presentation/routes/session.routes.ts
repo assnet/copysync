@@ -2,7 +2,11 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { SessionPresenter } from '../presenters/SessionPresenter';
-import { createSessionBodySchema, sessionIdParamSchema } from '../schemas/session.schema';
+import {
+  createSessionBodySchema,
+  requestPairingCodeBodySchema,
+  sessionIdParamSchema,
+} from '../schemas/session.schema';
 import { PrismaSessionRepository } from '../../infrastructure/repositories/PrismaSessionRepository';
 import { PrismaSessionAuthStateRepository } from '../../infrastructure/repositories/PrismaSessionAuthStateRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
@@ -23,6 +27,7 @@ import { ReconnectSessionUseCase } from '../../application/use-cases/ReconnectSe
 import { LogoutSessionUseCase } from '../../application/use-cases/LogoutSessionUseCase';
 import { GetSessionQrUseCase } from '../../application/use-cases/GetSessionQrUseCase';
 import { GetSessionPairingCodeUseCase } from '../../application/use-cases/GetSessionPairingCodeUseCase';
+import { RequestSessionPairingCodeUseCase } from '../../application/use-cases/RequestSessionPairingCodeUseCase';
 import { DeleteSessionUseCase } from '../../application/use-cases/DeleteSessionUseCase';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
@@ -63,6 +68,7 @@ const reconnectSessionUseCase = new ReconnectSessionUseCase(sessionRepo, auditRe
 const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
 const getSessionQrUseCase = new GetSessionQrUseCase(sessionRepo, engine);
 const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRepo, engine);
+const requestSessionPairingCodeUseCase = new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine);
 const deleteSessionUseCase = new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
 
 // Both auth + tenant context required for all session routes
@@ -103,9 +109,13 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
-      const { name, engine } = request.body as { name: string; engine?: string };
+      const { name, engine, declaredPhone } = request.body as {
+        name: string;
+        engine?: string;
+        declaredPhone?: string;
+      };
 
-      const session = await createSessionUseCase.execute({ tenantId, userId, name, engine });
+      const session = await createSessionUseCase.execute({ tenantId, userId, name, engine, declaredPhone });
       reply.status(201).send(SessionPresenter.toSessionItem(session));
     },
   );
@@ -184,6 +194,8 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
               sessionId: { type: 'string' },
               status: { $ref: 'SessionStatus#' },
               phone: { type: 'string', nullable: true },
+              declaredPhone: { type: 'string', nullable: true },
+              phoneMismatch: { type: 'boolean' },
               lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
               lastDisconnectedAt: { type: 'string', format: 'date-time', nullable: true },
             },
@@ -399,6 +411,52 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { id } = request.params as IdParam;
       const result = await getSessionPairingCodeUseCase.execute({ sessionId: id, tenantId });
       reply.status(200).send(SessionPresenter.toPairingCodeResult(result));
+    },
+  );
+
+  // ── POST /sessions/:id/pairing-code — connect by pairing code ────────────
+  app.post(
+    '/:id/pairing-code',
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Conectar com código',
+        description:
+          'Inicia a conexão por código de pareamento para o número informado (ou o número '
+          + 'declarado na criação). O código pode chegar depois: consulte GET /:id/pairing-code.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        body: requestPairingCodeBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string' },
+              status: { $ref: 'SessionStatus#' },
+              pairingCode: { type: 'string', nullable: true },
+            },
+          },
+          400: { $ref: 'ErrorResponse#' },
+          401: { $ref: 'ErrorResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+          409: { $ref: 'ErrorResponse#' },
+          422: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      const body = (request.body ?? {}) as { phone?: string };
+      const result = await requestSessionPairingCodeUseCase.execute({
+        sessionId: id,
+        tenantId,
+        userId,
+        phone: body.phone,
+      });
+      reply.status(200).send(SessionPresenter.toPairingRequestResult(result));
     },
   );
 

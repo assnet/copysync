@@ -97,6 +97,14 @@ Memória entre sessões: decisões, bloqueios, lições.
 - **2026-10-26 — Integração na `feature/rebranding-app`.** Features nascem dela e voltam para ela;
   `develop` está atrasada (decisão do owner).
 
+- **2026-10-26 — IA em dois modos.** Plataforma (super admin cadastra provedores) e chave do tenant; nunca os dois
+  desligados; tenant só vê o formulário de chave quando a IA da plataforma não está disponível para ele. Teto diário da
+  plataforma reservado de forma atômica (padrão 200/dia). Ver `docs/ia-provedores.md`.
+
+- **2026-10-26 — Gerador v2: o link é sempre o do usuário.** O sistema não gera link de afiliado; bloqueia link de
+  terceiro quando a loja expõe a etiqueta (Amazon `tag`, ML `matt_word`). Dados de ML usam a sessão da extensão
+  (mesmo mecanismo das extensões do mercado).
+
 ## Bloqueios
 
 - **Exclusão de `/integrations/*` do log de corpo na central** contraria a decisão de

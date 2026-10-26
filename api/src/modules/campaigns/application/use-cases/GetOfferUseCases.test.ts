@@ -27,7 +27,7 @@ describe('GetOfferUsageUseCase', () => {
   it.each([[3], [null]])('used do dia + limit %s', async (limit) => {
     const offers = new InMemoryOfferRepository();
     offers.items.push(makeOffer({ id: 'a' }), makeOffer({ id: 'b', createdAt: new Date('2026-10-25T10:00:00Z') }));
-    const uc = new GetOfferUsageUseCase(offers, { getNumber: async () => limit }, () => NOW);
+    const uc = new GetOfferUsageUseCase(offers, { getNumber: async () => limit, getBoolean: async () => null }, () => NOW);
     expect(await uc.execute(TENANT)).toEqual({ used: 1, limit });
   });
 });

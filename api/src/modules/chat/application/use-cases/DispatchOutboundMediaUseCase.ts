@@ -123,6 +123,8 @@ export class DispatchOutboundMediaUseCase {
           ...(await this.sendMetadata(kind, filePath, message)),
         },
         quotedMessage,
+        // Só no job em memória: retry/recuperação chegam sem menção (ver OutboundMediaJob)
+        ...(job.mentions?.length ? { mentions: job.mentions } : {}),
       });
     } finally {
       await acquired.release();

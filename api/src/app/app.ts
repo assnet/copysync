@@ -166,6 +166,7 @@ export async function buildApp() {
         { name: 'Sessions', description: 'Sessões WhatsApp — ciclo de vida, QR code, pairing' },
         { name: 'Integrations', description: 'Credenciais de afiliado por marketplace' },
         { name: 'Offers', description: 'Gerador de ofertas — link do produto, edição e envio' },
+        { name: 'AI', description: 'Provedores de IA da plataforma e chave própria do tenant' },
       ],
     },
   });
@@ -247,6 +248,8 @@ export async function buildApp() {
       name: { type: 'string' },
       engine: { type: 'string' },
       phone: { type: 'string', nullable: true },
+      declaredPhone: { type: 'string', nullable: true },
+      phoneMismatch: { type: 'boolean' },
       externalRef: { type: 'string', nullable: true },
       status: { $ref: 'SessionStatus#' },
       lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },

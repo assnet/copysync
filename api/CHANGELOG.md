@@ -11,6 +11,36 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — Provedores de IA (`assistants`)
+
+- **`assistants/*`** — dois modos (IA da plataforma × chave do tenant) com invariante "nunca os dois desligados" (`platform_settings`); provedores da plataforma (`ai_platform_providers`) e chave do tenant (`tenant_ai_credentials`) cifrados com `ISecretCipher`; resolução por plano (`ai_rewrite_enabled`) e teto diário atômico (`ai_requests_per_day`, padrão 200); adapters Anthropic (`claude-haiku-5-5`) e OpenAI por `fetch`; log de uso sem conteúdo (`ai_usage_logs`); porta `IAiTextGenerator`
+- **`ai.routes.ts`** — `/api/admin/ai` (super admin) e `/api/ai` (tenant). Doc: `docs/ia-provedores.md`
+
+#### Backend — Gerador de ofertas v2 (`campaigns`)
+
+- **`OfferGeneratorConfigUseCases`** — `/config`: sessão, grupos (≤ `broadcast_groups`) e intervalo; substitui `/destinations`
+- **`verifyAffiliateLink.ts`** — o link colado é o do usuário; bloqueia link de terceiro (Amazon `tag`, ML `matt_word`) e link sem afiliado
+- **`HttpProductPageReader.ts`** / **`parseProductPage.ts`** — dados de ML/Amazon pela página (com sessão da extensão no ML), fallback manual
+- **`OfferTextComposer`**, **`buildOfferTextPrompt.ts`**, **`RegenerateOfferTextUseCase`** — cupom, público-alvo com IA, gerar novamente, fallback para o modelo fixo
+- **Marcar todos** — menções em texto e mídia (`mention_all_enabled`)
+
+#### Backend — Sessão
+
+- **`normalizeBrazilPhone.ts`**, **`RequestSessionPairingCodeUseCase`** — `declaredPhone`, `phoneMismatch` e pareamento por código (`POST /sessions/:id/pairing-code`, `requestPairingCode` na Baileys). Doc: `docs/sessoes-conexao.md`
+- **Migration `20261026210000_add_session_phone_ai_providers_offer_config`**
+
+#### Frontend
+
+- **`features/sessions/`** — assistente "Nova sessão" em 4 passos com contagem regressiva do QR e conexão por código
+- **`features/ai/`**, **`AdminAiPage`**, **`AiSettingsPage`** — IA da plataforma (super admin) e chave própria do cliente
+- **`features/offers/`** — configuração guiada, link + cupom + público, prévia estilo WhatsApp, editar, gerar novamente, marcar todos e disparo
+
+### Removed
+
+- **`/campaigns/offers/destinations`**, geração de link de afiliado pelo sistema (`buildAffiliateUrl.ts`)
+
+### Added
+
 #### Backend — Gerador de ofertas (`campaigns`, M1-P)
 
 - **`campaigns/domain/services/*`** — funções puras: marketplace por host com allowlist (`detectMarketplace`/`isSupportedProductUrl`), referência do produto, link de afiliado Amazon/ML, texto da oferta, agenda espaçada dos envios, início do dia em `America/Sao_Paulo`

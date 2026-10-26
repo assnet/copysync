@@ -10,12 +10,23 @@ export type OfferDispatchResult =
   | { status: 'SENT'; chatMessageId: string }
   | { status: 'FAILED' | 'SKIPPED'; failureReason: string };
 
+/** Valor validado no envio; a transição só acontece se a oferta ainda tiver esse valor. */
+export interface StartSendingExpectation {
+  mentionAll: boolean;
+}
+
 export interface IOfferDispatchRepository {
   /**
-   * Numa transação: oferta DRAFT → SENDING (condicional) + cria os envios.
-   * null se a oferta não existe ou não está em DRAFT.
+   * Numa transação: oferta DRAFT → SENDING (condicional) + cria os envios. A transição exige o
+   * `mentionAll` validado no envio: edição no meio não passa sem nova validação.
+   * null se a oferta não existe, não está em DRAFT ou mudou o `mentionAll`.
    */
-  startSending(offerId: string, tenantId: string, items: NewOfferDispatchItem[]): Promise<OfferDispatch[] | null>;
+  startSending(
+    offerId: string,
+    tenantId: string,
+    expected: StartSendingExpectation,
+    items: NewOfferDispatchItem[],
+  ): Promise<OfferDispatch[] | null>;
   listByOffer(offerId: string, tenantId: string): Promise<OfferDispatch[]>;
   /**
    * Worker, cross-tenant: QUEUED vencidos → SENDING com SKIP LOCKED. Cada envio volta com

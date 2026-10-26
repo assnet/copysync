@@ -7,9 +7,13 @@ import { GetOfferUseCase } from '../../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../../application/use-cases/GetOfferUsageUseCase';
 import { UpdateOfferUseCase } from '../../application/use-cases/UpdateOfferUseCase';
 import { SendOfferUseCase } from '../../application/use-cases/SendOfferUseCase';
-import { ListOfferDestinationsUseCase } from '../../application/use-cases/ListOfferDestinationsUseCase';
-import { ReplaceOfferDestinationsUseCase } from '../../application/use-cases/ReplaceOfferDestinationsUseCase';
-import { OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
+import { RegenerateOfferTextUseCase } from '../../application/use-cases/RegenerateOfferTextUseCase';
+import {
+  GetOfferGeneratorConfigUseCase,
+  SaveOfferGeneratorConfigUseCase,
+  type OfferGeneratorConfigDTO,
+} from '../../application/use-cases/OfferGeneratorConfigUseCases';
+import { OfferLinkNotOwnedError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../../application/dtos/OfferDTO';
 import { makeOffer } from '../../application/use-cases/offerTestFakes';
 
@@ -32,6 +36,11 @@ vi.mock('../../../../shared/http/hooks/tenantHook', () => ({
 const PREFIX = '/api/campaigns/offers';
 const UPLOAD_ID = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
 
+const CONFIG: OfferGeneratorConfigDTO = {
+  sessionId: 's1', intervalMinSeconds: 8, intervalMaxSeconds: 15,
+  groups: [{ id: 'g1', title: 'Grupo', sessionId: 's1' }], groupLimit: null, configured: true,
+};
+
 function dto(): OfferDTO {
   return JSON.parse(JSON.stringify(toOfferDto(makeOffer())));
 }
@@ -51,15 +60,35 @@ afterEach(async () => {
 });
 
 describe('POST /', () => {
-  it('201 com { offer, needsManualData } e contexto do tenant', async () => {
-    const execute = vi.spyOn(GenerateOfferUseCase.prototype, 'execute')
-      .mockResolvedValue({ offer: dto(), needsManualData: true });
+  it('201 com { offer, needsManualData, aiFallback, aiErrorCode } e contexto do tenant', async () => {
+    const data = { offer: dto(), needsManualData: true, aiFallback: true, aiErrorCode: 'AI_NOT_CONFIGURED' };
+    const execute = vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue(data);
 
-    const res = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x' } });
+    const res = await app.inject({
+      method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x', coupon: 'PROMO', audience: 'PET' },
+    });
 
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toEqual({ success: true, data: { offer: dto(), needsManualData: true } });
-    expect(execute).toHaveBeenCalledWith({ tenantId: 'tenant-a', userId: 'user-a', url: 'https://amzn.to/x' });
+    expect(res.json()).toEqual({ success: true, data });
+    expect(execute).toHaveBeenCalledWith({
+      tenantId: 'tenant-a', userId: 'user-a', url: 'https://amzn.to/x', coupon: 'PROMO', audience: 'PET',
+    });
+  });
+
+  it('400 com público desconhecido ou cupom > 40', async () => {
+    const execute = vi.spyOn(GenerateOfferUseCase.prototype, 'execute');
+    const aud = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x', audience: 'KIDS' } });
+    const cup = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x', coupon: 'x'.repeat(41) } });
+    expect(aud.statusCode).toBe(400);
+    expect(cup.statusCode).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('OFFER_LINK_NOT_OWNED → 422 com código', async () => {
+    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockRejectedValue(new OfferLinkNotOwnedError('AMAZON'));
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x' } });
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toContain('OFFER_LINK_NOT_OWNED');
   });
 
   it('400 sem url ou com url longa demais', async () => {
@@ -73,7 +102,7 @@ describe('POST /', () => {
 
   it('resposta não vaza campo fora do contrato', async () => {
     const offer = { ...dto(), secret: 'never' } as OfferDTO;
-    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue({ offer, needsManualData: false });
+    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue({ offer, needsManualData: false, aiFallback: false });
     const res = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x' } });
     expect(res.body).not.toContain('never');
   });
@@ -89,25 +118,35 @@ describe('rotas estáticas antes de /:id', () => {
     expect(getOffer).not.toHaveBeenCalled();
   });
 
-  it('GET /destinations', async () => {
-    const list = [{ conversationId: 'c1', title: 'Grupo', isGroup: true, sessionId: 's1', sessionName: 'Loja' }];
-    vi.spyOn(ListOfferDestinationsUseCase.prototype, 'execute').mockResolvedValue(list);
-    const res = await app.inject({ method: 'GET', url: `${PREFIX}/destinations` });
+  it('GET /config', async () => {
+    const vi_ = vi.spyOn(GetOfferGeneratorConfigUseCase.prototype, 'execute').mockResolvedValue(CONFIG);
+    const getOffer = vi.spyOn(GetOfferUseCase.prototype, 'execute');
+    const res = await app.inject({ method: 'GET', url: `${PREFIX}/config` });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: list });
+    expect(res.json()).toEqual({ success: true, data: CONFIG });
+    expect(vi_).toHaveBeenCalledWith('tenant-a');
+    expect(getOffer).not.toHaveBeenCalled();
   });
 
-  it('PUT /destinations valida maxItems 200', async () => {
-    const replace = vi.spyOn(ReplaceOfferDestinationsUseCase.prototype, 'execute').mockResolvedValue([]);
-    const ok = await app.inject({ method: 'PUT', url: `${PREFIX}/destinations`, payload: { conversationIds: ['c1'] } });
-    const demais = await app.inject({
-      method: 'PUT', url: `${PREFIX}/destinations`,
-      payload: { conversationIds: Array.from({ length: 201 }, (_, i) => `c${i}`) },
-    });
+  it('PUT /config repassa; intervalo fora de 5–120, sem campo ou > 200 grupos → 400', async () => {
+    const save = vi.spyOn(SaveOfferGeneratorConfigUseCase.prototype, 'execute').mockResolvedValue(CONFIG);
+    const body = { sessionId: 's1', intervalMinSeconds: 8, intervalMaxSeconds: 15, conversationIds: ['g1'] };
+    const ok = await app.inject({ method: 'PUT', url: `${PREFIX}/config`, payload: body });
+    const bad = await Promise.all([
+      { ...body, intervalMinSeconds: 4 },
+      { ...body, intervalMaxSeconds: 121 },
+      { ...body, sessionId: undefined },
+      { ...body, conversationIds: Array.from({ length: 201 }, (_, i) => `c${i}`) },
+    ].map((payload) => app.inject({ method: 'PUT', url: `${PREFIX}/config`, payload })));
     expect(ok.statusCode).toBe(200);
-    expect(demais.statusCode).toBe(400);
-    expect(replace).toHaveBeenCalledTimes(1);
-    expect(replace).toHaveBeenCalledWith({ tenantId: 'tenant-a', conversationIds: ['c1'] });
+    expect(bad.map((r) => r.statusCode)).toEqual([400, 400, 400, 400]);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith({ tenantId: 'tenant-a', ...body });
+  });
+
+  it('rotas /destinations removidas', async () => {
+    const put = await app.inject({ method: 'PUT', url: `${PREFIX}/destinations`, payload: { conversationIds: [] } });
+    expect(put.statusCode).toBe(404);
   });
 });
 
@@ -127,7 +166,7 @@ describe('/:id', () => {
     const update = vi.spyOn(UpdateOfferUseCase.prototype, 'execute').mockResolvedValue(dto());
     const ok = await app.inject({
       method: 'PATCH', url: `${PREFIX}/offer-1`,
-      payload: { priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID },
+      payload: { priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID, coupon: 'X', audience: 'MEN', mentionAll: true },
     });
     const neg = await app.inject({ method: 'PATCH', url: `${PREFIX}/offer-1`, payload: { priceCents: -1 } });
     const up = await app.inject({ method: 'PATCH', url: `${PREFIX}/offer-1`, payload: { imageUploadId: '../x' } });
@@ -136,8 +175,21 @@ describe('/:id', () => {
     expect(up.statusCode).toBe(400);
     expect(update).toHaveBeenCalledWith({
       tenantId: 'tenant-a', userId: 'user-a', offerId: 'offer-1',
-      priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID,
+      priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID, coupon: 'X', audience: 'MEN', mentionAll: true,
     });
+  });
+
+  it('POST /:id/regenerate com e sem corpo → 200 { offer, aiFallback }', async () => {
+    const regen = vi.spyOn(RegenerateOfferTextUseCase.prototype, 'execute').mockResolvedValue({ offer: dto(), aiFallback: false });
+    const withBody = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/regenerate`, payload: { audience: 'FITNESS' } });
+    const noBody = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/regenerate` });
+    const bad = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/regenerate`, payload: { audience: 'X' } });
+    expect(withBody.statusCode).toBe(200);
+    expect(withBody.json()).toEqual({ success: true, data: { offer: dto(), aiFallback: false } });
+    expect(noBody.statusCode).toBe(200);
+    expect(bad.statusCode).toBe(400);
+    expect(regen).toHaveBeenNthCalledWith(1, { tenantId: 'tenant-a', offerId: 'offer-1', audience: 'FITNESS' });
+    expect(regen).toHaveBeenNthCalledWith(2, { tenantId: 'tenant-a', offerId: 'offer-1', audience: undefined });
   });
 
   it('POST /:id/send → 202 { offer, dispatches }', async () => {

@@ -13,6 +13,7 @@ import {
 import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
 import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.routes';
 import { provisioningRoutes } from '../modules/tenants/presentation/routes/provisioning.routes';
+import { aiAdminRoutes, aiTenantRoutes } from '../modules/assistants/presentation/routes/ai.routes';
 import { billingRoutes } from '../modules/integrations/billing/billing.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
@@ -88,6 +89,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(provisioningRoutes, {
     prefix: `${env.API_PREFIX}/provisioning`,
   });
+
+  // ── IA: provedores da plataforma (super admin) e chave própria do tenant ────
+  await app.register(aiAdminRoutes, { prefix: `${env.API_PREFIX}/admin/ai` });
+  await app.register(aiTenantRoutes, { prefix: `${env.API_PREFIX}/ai` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
   if (env.BILLING_ENABLED) {

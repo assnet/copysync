@@ -7,6 +7,13 @@ export interface OutboundMediaJob {
   tenantId: string;
   sessionId: string;
   conversationId: string;
+  /**
+   * Telefones a mencionar (ex.: oferta com "marcar todos"). Exceção ao "só ids": `ChatMessage`
+   * não guarda menções, então elas viajam só no job em memória. Retry
+   * (`RetryOutboundMediaUseCase`) e recuperação de PENDING no boot reenviam SEM menção —
+   * degradação aceita: a mídia chega, só não marca ninguém.
+   */
+  mentions?: string[];
 }
 
 /**

@@ -4,10 +4,13 @@ import AddIcon from '@mui/icons-material/Add';
 import DevicesIcon from '@mui/icons-material/Devices';
 import { sessionService } from '@/services/session.service';
 import { SessionCard } from '@/features/sessions/components/SessionCard';
-import { CreateSessionDialog } from '@/features/sessions/components/CreateSessionDialog';
-import { QrCodeDialog } from '@/features/sessions/components/QrCodeDialog';
+import { CreateSessionWizard } from '@/features/sessions/components/CreateSessionWizard';
+import { ConnectSessionDialog } from '@/features/sessions/components/ConnectSessionDialog';
+import { sessionStrings } from '@/features/sessions/strings';
 import { PageHeader, EmptyState } from '@/components';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
+
+const t = sessionStrings.page;
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -23,7 +26,7 @@ export default function SessionsPage() {
       const data = await sessionService.list();
       setSessions(data.sessions ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar sessões');
+      setError(err instanceof Error ? err.message : t.loadError);
     } finally {
       setLoading(false);
     }
@@ -36,25 +39,25 @@ export default function SessionsPage() {
     setQrSession((prev) => (prev?.id === sessionId ? { ...prev, status } : prev));
   }, []);
 
+  // O assistente segue aberto para conectar; a lista já mostra a sessão nova.
   async function handleCreated() {
-    setCreateOpen(false);
-    setToast({ message: 'Sessão criada com sucesso!', severity: 'success' });
+    setToast({ message: t.created, severity: 'success' });
     await loadSessions();
   }
 
   function handleDeleted(sessionId: string) {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    setToast({ message: 'Sessão deletada.', severity: 'success' });
+    setToast({ message: t.deleted, severity: 'success' });
   }
 
   return (
     <Box>
       <PageHeader
-        title="Sessões"
-        subtitle="Gerencie as conexões de WhatsApp do seu tenant."
+        title={t.title}
+        subtitle={t.subtitle}
         action={
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            Nova Sessão
+            {t.newSession}
           </Button>
         }
       />
@@ -74,11 +77,11 @@ export default function SessionsPage() {
       {!loading && sessions.length === 0 && (
         <EmptyState
           icon={<DevicesIcon />}
-          title="Nenhuma sessão criada ainda"
-          description="Crie uma sessão para conectar um número de WhatsApp ao seu tenant."
+          title={t.emptyTitle}
+          description={t.emptyDescription}
           action={
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-              Criar primeira sessão
+              {t.emptyAction}
             </Button>
           }
         />
@@ -99,15 +102,16 @@ export default function SessionsPage() {
         </Grid>
       )}
 
-      <CreateSessionDialog
+      <CreateSessionWizard
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => { setCreateOpen(false); void loadSessions(); }}
         onCreated={handleCreated}
+        onStatusChange={handleStatusChange}
       />
-      <QrCodeDialog
+      <ConnectSessionDialog
         session={qrSession}
         open={Boolean(qrSession)}
-        onClose={() => setQrSession(null)}
+        onClose={() => { setQrSession(null); void loadSessions(); }}
         onStatusChange={handleStatusChange}
       />
 

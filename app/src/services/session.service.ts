@@ -9,6 +9,7 @@ import type {
   SessionActionResponse,
   SessionQrResponse,
   SessionPairingCodeResponse,
+  StartPairingResponse,
 } from '@/types/api.types';
 
 export const sessionService = {
@@ -63,6 +64,15 @@ export const sessionService = {
 
   async getPairingCode(id: string): Promise<SessionPairingCodeResponse> {
     const res = await apiClient.get<SessionPairingCodeResponse>(`/sessions/${id}/pairing-code`);
+    return res.data;
+  },
+
+  /** Pede o código de pareamento (alternativa ao QR); sem `phone` a API usa o número informado. */
+  async startPairing(id: string, phone?: string): Promise<StartPairingResponse> {
+    const res = await apiClient.post<StartPairingResponse>(
+      `/sessions/${id}/pairing-code`,
+      phone ? { phone } : {},
+    );
     return res.data;
   },
 

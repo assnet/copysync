@@ -39,3 +39,11 @@ describe('renderOfferText', () => {
     expect(text).toBe('Oferta!\nX por\n\nL');
   });
 });
+
+describe('renderOfferText — cupom', () => {
+  it('linha do cupom antes do link; sem cupom some', () => {
+    const withCoupon = renderOfferText({ title: 'X', priceCents: 1000, affiliateUrl: 'https://a.co/1', coupon: ' PROMO ' });
+    expect(withCoupon).toBe('🔥 X\n\n✅ Por R$ 10,00\n🎟️ Cupom: PROMO\n\n🛒 https://a.co/1');
+    expect(renderOfferText({ title: 'X', affiliateUrl: 'https://a.co/1', coupon: '' })).not.toContain('Cupom');
+  });
+});

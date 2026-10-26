@@ -35,3 +35,10 @@ export class InvalidSessionStateError extends AppError {
     );
   }
 }
+
+/** Número de WhatsApp fora do formato brasileiro aceito (DDD + número, com ou sem 55). */
+export class SessionPhoneInvalidError extends AppError {
+  constructor(field: 'declaredPhone' | 'phone' = 'declaredPhone') {
+    super('SESSION_PHONE_INVALID', 'Invalid WhatsApp phone number', 422, { field });
+  }
+}

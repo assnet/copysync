@@ -5,6 +5,8 @@ export interface OfferAffiliateCredential {
   provider: AffiliateProvider;
   publicIdentifier: string;
   secret: string | null;
+  /** Sessão capturada pela extensão (ML). `sessionToken` = cookie `ssid`. */
+  session?: { sessionToken: string } | null;
 }
 
 /** Mesmo formato de `ResolveAffiliateCredentialUseCase.execute`; null = sem credencial ativa. */

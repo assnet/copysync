@@ -197,3 +197,23 @@ describe('buildBaileysMediaContent — conteúdo aceito pelo preparo da lib', ()
     expect(Buffer.from(proto.videoMessage?.jpegThumbnail ?? []).toString('base64')).toBe(MINIATURA);
   });
 });
+
+describe('buildBaileysMediaContent — menções', () => {
+  const JIDS = ['5511999990001@s.whatsapp.net', '5511999990002@s.whatsapp.net'];
+
+  it('imagem, vídeo e documento levam as menções', () => {
+    expect(buildBaileysMediaContent(media({ caption: 'oferta' }), JIDS)).toStrictEqual({
+      image: { url: ARQUIVO }, mimetype: 'image/jpeg', caption: 'oferta', mentions: JIDS,
+    });
+    expect(buildBaileysMediaContent(media({ kind: 'video', mimeType: 'video/mp4' }), JIDS))
+      .toMatchObject({ mentions: JIDS });
+    expect(buildBaileysMediaContent(media({ kind: 'document', mimeType: 'application/pdf', fileName: 'a.pdf' }), JIDS))
+      .toMatchObject({ mentions: JIDS });
+  });
+
+  it('voz e lista vazia/nula não levam menção', () => {
+    expect(buildBaileysMediaContent(media({ kind: 'voice', mimeType: 'audio/ogg' }), JIDS)).not.toHaveProperty('mentions');
+    expect(buildBaileysMediaContent(media(), [])).not.toHaveProperty('mentions');
+    expect(buildBaileysMediaContent(media(), null)).not.toHaveProperty('mentions');
+  });
+});

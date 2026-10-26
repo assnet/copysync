@@ -2,6 +2,8 @@ import type { IOfferRepository, OfferPatch, UpdateOfferResult } from '../../doma
 import { EDITABLE_OFFER_STATUSES } from '../../domain/contracts/IOfferRepository';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import { renderOfferText } from '../../domain/services/renderOfferText';
+import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
+import { normalizeCoupon } from './offerCoupon';
 import {
   OfferAlreadySentError,
   OfferInvalidInputError,
@@ -23,6 +25,10 @@ export interface UpdateOfferInput {
   originalPriceCents?: number | null;
   text?: string;
   imageUploadId?: string;
+  /** null/vazio remove o cupom. */
+  coupon?: string | null;
+  audience?: OfferAudience;
+  mentionAll?: boolean;
 }
 
 export interface UpdateOfferDeps {
@@ -50,6 +56,9 @@ export class UpdateOfferUseCase {
     if (input.title !== undefined) patch.title = input.title?.trim() || null;
     if (input.priceCents !== undefined) patch.priceCents = input.priceCents;
     if (input.originalPriceCents !== undefined) patch.originalPriceCents = input.originalPriceCents;
+    if (input.coupon !== undefined) patch.coupon = normalizeCoupon(input.coupon);
+    if (input.audience !== undefined) patch.audience = input.audience;
+    if (input.mentionAll !== undefined) patch.mentionAll = input.mentionAll;
 
     if (input.imageUploadId) {
       patch.imageUrl = await this.deps.mediaStore.consumeUploadedImage({
@@ -62,13 +71,15 @@ export class UpdateOfferUseCase {
     if (input.text !== undefined) {
       patch.text = input.text;
       patch.textEdited = true;
-    } else if (!offer.textEdited && changesTextData(offer, patch)) {
+    } else if (!offer.textEdited && (patch.audience ?? offer.audience) === 'STANDARD' && changesTextData(offer, patch)) {
+      // Só o modelo fixo remonta sozinho; texto de IA muda por "Gerar novamente"
       patch.text = renderOfferText({
         title: patch.title !== undefined ? patch.title : offer.title,
         priceCents: patch.priceCents !== undefined ? patch.priceCents : offer.priceCents,
         originalPriceCents:
           patch.originalPriceCents !== undefined ? patch.originalPriceCents : offer.originalPriceCents,
         affiliateUrl: offer.affiliateUrl,
+        coupon: patch.coupon !== undefined ? patch.coupon : offer.coupon,
       });
     }
 
@@ -104,10 +115,18 @@ export class UpdateOfferUseCase {
 }
 
 function changesTextData(
-  offer: { title: string | null; priceCents: number | null; originalPriceCents: number | null },
+  offer: {
+    title: string | null;
+    priceCents: number | null;
+    originalPriceCents: number | null;
+    coupon: string | null;
+    audience: OfferAudience;
+  },
   patch: OfferPatch,
 ): boolean {
   return (
+    (patch.coupon !== undefined && patch.coupon !== offer.coupon) ||
+    (patch.audience !== undefined && patch.audience !== offer.audience) ||
     (patch.title !== undefined && patch.title !== offer.title) ||
     (patch.priceCents !== undefined && patch.priceCents !== offer.priceCents) ||
     (patch.originalPriceCents !== undefined && patch.originalPriceCents !== offer.originalPriceCents)
@@ -115,6 +134,10 @@ function changesTextData(
 }
 
 function validate(input: UpdateOfferInput): void {
+  if (input.audience !== undefined && !OFFER_AUDIENCES.includes(input.audience)) {
+    throw new OfferInvalidInputError('Unknown audience', 'audience');
+  }
+  if (input.coupon !== undefined) normalizeCoupon(input.coupon);
   if (input.title != null && input.title.length > OFFER_TITLE_MAX) {
     throw new OfferInvalidInputError(`Title exceeds ${OFFER_TITLE_MAX} characters`, 'title');
   }

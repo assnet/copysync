@@ -29,6 +29,8 @@ import type {
   DisconnectSessionInput,
   ReconnectSessionInput,
   LogoutSessionInput,
+  RequestPairingCodeInput,
+  RequestPairingCodeResult,
   SendTextMessageInput,
   QuotedMessageRef,
   SendMediaMessageInput,
@@ -43,7 +45,12 @@ import type { ISessionRepository } from '../../../../sessions/domain/contracts/I
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
-import { translateDisconnect, translateEngineError, translateSendError } from './BaileysErrorTranslator';
+import {
+  translateDisconnect,
+  translateEngineError,
+  translatePairingError,
+  translateSendError,
+} from './BaileysErrorTranslator';
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import { outboundEchoRegistries } from './outboundEchoRegistries';
@@ -57,6 +64,7 @@ import { MediaTooLargeError } from '../../../../../shared/errors/internal/MediaE
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
+  SessionAlreadyConnectedError,
 } from '../../../../../shared/errors/internal/SessionErrors';
 import type { IChatContactRepository } from '../../../../chat/domain/contracts/IChatContactRepository';
 import type { IChatConversationRepository } from '../../../../chat/domain/contracts/IChatConversationRepository';
@@ -116,6 +124,14 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
    * Guards against an endless wipe/reopen loop; cleared once the session connects.
    */
   private readonly pairingRestarts = new Set<string>();
+  /**
+   * Sessões em modo "conectar com código": número a parear, mantido entre reconexões até
+   * a sessão abrir, voltar ao QR (connectSession) ou ser desconectada. Efêmero como o
+   * socket — perder no restart só obriga o operador a pedir o código de novo.
+   */
+  private readonly pairingPhones = new Map<string, string>();
+  /** Pedido de código em andamento por sessão: mesmo número reaproveita a promise (sem pedido duplicado). */
+  private readonly pairingInFlight = new Map<string, { phone: string; promise: Promise<string> }>();
   /** Cache de fotos por JID: evita repetir a consulta a cada abertura do painel. */
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
 
@@ -137,8 +153,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
     const { sessionId, tenantId } = input;
-    // A user-initiated connect starts a fresh recovery cycle.
+    // A user-initiated connect starts a fresh recovery cycle — in QR mode.
     this.pairingRestarts.delete(sessionId);
+    this.pairingPhones.delete(sessionId);
     const existing = this.registry.get(sessionId);
     if (existing) {
       // Detach before ending: the old socket still emits 'close' asynchronously and
@@ -154,6 +171,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
     this.pairingRestarts.delete(sessionId);
+    this.pairingPhones.delete(sessionId);
     const entry = this.registry.get(sessionId);
     if (entry) {
       this.detachSocket(entry.socket);
@@ -173,6 +191,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   async logoutSession(input: LogoutSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
     this.pairingRestarts.delete(sessionId);
+    this.pairingPhones.delete(sessionId);
     const entry = this.registry.get(sessionId);
     if (entry) {
       try { await entry.socket.logout(); } catch (err) {
@@ -202,6 +221,38 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   async getSessionPairingCode(sessionId: string): Promise<string | null> {
     return this.registry.getPairingCode(sessionId) ?? null;
+  }
+
+  async requestPairingCode(input: RequestPairingCodeInput): Promise<RequestPairingCodeResult> {
+    const { sessionId, tenantId, phone } = input;
+    const entry = this.registry.get(sessionId);
+    if (entry?.socket.authState.creds.registered) throw new SessionAlreadyConnectedError(sessionId);
+
+    this.pairingPhones.set(sessionId, phone);
+
+    if (entry && this.registry.getQr(sessionId)) {
+      // Socket já aceito pelo WhatsApp (emitiu QR): o código pode ser pedido agora.
+      try {
+        const pairingCode = await this.issuePairingCode(sessionId, tenantId, phone);
+        return { pairingCode };
+      } catch (err) {
+        // Falhou: volta ao QR; rotações seguintes não repetem o pedido
+        if (this.pairingPhones.get(sessionId) === phone) this.pairingPhones.delete(sessionId);
+        throw err;
+      }
+    }
+
+    if (!entry) {
+      this.pairingRestarts.delete(sessionId);
+      try {
+        await this.openSocket(sessionId, tenantId, 0);
+      } catch (err) {
+        this.pairingPhones.delete(sessionId);
+        throw translatePairingError(err);
+      }
+    }
+    // Socket subindo: o primeiro QR do connection.update dispara o pedido do código.
+    return { pairingCode: null };
   }
 
   async sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult> {
@@ -254,6 +305,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       baileysLogger.info({ ...log, maxBytes }, 'Media send started');
 
       const quoted = await this.buildQuoted(entry.socket, entry.tenantId, input.quotedMessage, jid, sessionId);
+      // Mesma conversão do texto: telefone → JID
+      const mentions = input.mentions?.length ? input.mentions.map((phone) => this.normalizeJid(phone)) : undefined;
 
       // Registro de eco ANTES do envio: o eco sai de dentro do sendMessage, depois do upload.
       // Falha não retira o id — o eco tardio de um timeout ainda precisa da marca. Registro de
@@ -263,7 +316,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       const startedAt = Date.now();
       const result = await entry.socket.sendMessage(
         jid,
-        buildBaileysMediaContent(media) as AnyMessageContent,
+        buildBaileysMediaContent(media, mentions) as AnyMessageContent,
         { messageId, mediaUploadTimeoutMs: env.MEDIA_UPLOAD_IDLE_TIMEOUT_MS, ...(quoted ? { quoted } : {}) },
       );
       baileysLogger.info({ ...log, durationMs: Date.now() - startedAt }, 'Media sent');
@@ -547,13 +600,31 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
         if (qr) {
           this.registry.setQr(sessionId, qr);
-          await this.updateSessionStatus(sessionId, tenantId, 'AWAITING_QR');
+          const pairingPhone = this.pairingPhones.get(sessionId);
+          const entry = this.registry.get(sessionId);
+          if (pairingPhone && entry?.pairingCodePhone !== pairingPhone) {
+            // Modo código: o WhatsApp só aceita o pedido depois do handshake, que é
+            // quando a lib emite o primeiro QR.
+            try {
+              await this.issuePairingCode(sessionId, tenantId, pairingPhone);
+            } catch (err) {
+              // Sai do modo código: cada rotação do QR não repete o pedido; o operador pede de novo
+              this.pairingPhones.delete(sessionId);
+              baileysLogger.warn({ err, sessionId }, 'Pairing code request failed — QR still available');
+              await this.updateSessionStatus(sessionId, tenantId, 'AWAITING_QR');
+            }
+          } else if (!pairingPhone) {
+            await this.updateSessionStatus(sessionId, tenantId, 'AWAITING_QR');
+          }
+          // Em modo código o status fica AWAITING_PAIRING; o QR segue disponível em GET /qr.
           internalEventBus.emit('SESSION_QR_UPDATED', { type: 'SESSION_QR_UPDATED', sessionId, tenantId, qrCode: qr });
           baileysLogger.info({ sessionId }, 'QR code updated');
         }
 
         if (connection === 'open') {
           this.registry.clearQr(sessionId);
+          this.registry.clearPairingCode(sessionId);
+          this.pairingPhones.delete(sessionId);
           // Connection is healthy again — the backoff budget and the pairing guard reset.
           this.registry.setReconnectAttempt(sessionId, 0);
           this.pairingRestarts.delete(sessionId);
@@ -586,6 +657,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
             // the next deploy's bootstrap — which only picks CONNECTED sessions — skipped
             // the session for good. Two back-to-back deploys were enough to kill it.
             baileysLogger.info({ sessionId, epoch }, 'Session taken over by another instance — leaving status to it');
+            this.pairingPhones.delete(sessionId);
             return;
           }
 
@@ -602,6 +674,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           }
 
           if (!shouldReconnect) {
+            this.pairingPhones.delete(sessionId);
             await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
             return;
           }
@@ -624,6 +697,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
             }, delay);
           } else {
             baileysLogger.error({ sessionId }, 'Max reconnect attempts - marking FAILED');
+            this.pairingPhones.delete(sessionId);
             await this.updateSessionStatus(sessionId, tenantId, 'FAILED');
           }
         }
@@ -1296,6 +1370,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
    * is left untouched — only `session_auth_states.statePayload` is cleared.
    */
   private async discardCredentials(sessionId: string, tenantId: string, reason: string): Promise<void> {
+    // Credencial revogada: o número pedido antes não vale para o novo pareamento
+    this.pairingPhones.delete(sessionId);
     try {
       await this.authStateRepo.clearCredentials(sessionId);
       baileysLogger.warn({ sessionId, reason }, 'Credentials revoked by WhatsApp — cleared');
@@ -1331,8 +1407,48 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     }
   }
 
+  /**
+   * Pede o código de pareamento ao socket atual, grava no registry e publica
+   * AWAITING_PAIRING + SESSION_PAIRING_CODE_UPDATED. Erro sai traduzido. Pedido em andamento
+   * para o mesmo número é reaproveitado (clique duplo, QR chegando durante o pedido).
+   */
+  private issuePairingCode(sessionId: string, tenantId: string, phone: string): Promise<string> {
+    const current = this.pairingInFlight.get(sessionId);
+    if (current?.phone === phone) return current.promise;
+    const promise = this.requestPairingCodeOnSocket(sessionId, tenantId, phone).finally(() => {
+      if (this.pairingInFlight.get(sessionId)?.promise === promise) this.pairingInFlight.delete(sessionId);
+    });
+    this.pairingInFlight.set(sessionId, { phone, promise });
+    return promise;
+  }
+
+  private async requestPairingCodeOnSocket(sessionId: string, tenantId: string, phone: string): Promise<string> {
+    const entry = this.registry.get(sessionId);
+    if (!entry) throw new SessionNotConnectedError(sessionId);
+    // Marca antes do await: QRs que chegarem durante o pedido não disparam outro.
+    entry.pairingCodePhone = phone;
+    let pairingCode: string;
+    try {
+      pairingCode = await entry.socket.requestPairingCode(phone);
+    } catch (err) {
+      if (this.registry.get(sessionId) === entry) entry.pairingCodePhone = undefined;
+      throw translatePairingError(err);
+    }
+    // Socket trocado durante o pedido: o código não vale para o novo.
+    if (this.registry.get(sessionId) !== entry) throw new SessionNotConnectedError(sessionId);
+
+    this.registry.setPairingCode(sessionId, pairingCode);
+    await this.updateSessionStatus(sessionId, tenantId, 'AWAITING_PAIRING');
+    internalEventBus.emit('SESSION_PAIRING_CODE_UPDATED', {
+      type: 'SESSION_PAIRING_CODE_UPDATED', sessionId, tenantId, pairingCode,
+    });
+    baileysLogger.info({ sessionId }, 'Pairing code issued');
+    return pairingCode;
+  }
+
   /** Marks the session as needing a manual, user-initiated pairing. */
   private async parkAsLoggedOut(sessionId: string, tenantId: string): Promise<void> {
+    this.pairingPhones.delete(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'LOGGED_OUT');
     internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId, tenantId });
   }
@@ -1341,7 +1457,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     try {
       await this.sessionRepo.updateStatus(sessionId, tenantId, { status });
     } catch (err) {
-      if (err instanceof SessionNotFoundError) return;
+      if (err instanceof SessionNotFoundError) {
+        // Sessão apagada: nada de modo código pendente
+        this.pairingPhones.delete(sessionId);
+        return;
+      }
       baileysLogger.warn({ err, sessionId, status }, 'Failed to update session status');
     }
   }

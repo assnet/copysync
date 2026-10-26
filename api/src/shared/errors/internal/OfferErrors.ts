@@ -27,6 +27,13 @@ export class OfferAlreadySentError extends AppError {
   }
 }
 
+/** Oferta mudou entre a leitura e a gravação (edição concorrente): nada foi sobrescrito. */
+export class OfferChangedError extends AppError {
+  constructor(offerId: string) {
+    super('OFFER_CHANGED', `Offer changed meanwhile: ${offerId}`, 409);
+  }
+}
+
 export class OfferNoDestinationsError extends AppError {
   constructor() {
     super('OFFER_NO_DESTINATIONS', 'No offer destinations selected', 422);
@@ -73,5 +80,35 @@ export class OfferInvalidInputError extends AppError {
 export class OfferDestinationUnavailableError extends AppError {
   constructor(conversationId: string) {
     super('OFFER_DESTINATION_UNAVAILABLE', `Offer destination unavailable: ${conversationId}`, 409);
+  }
+}
+
+// ── Gerador v2 ───────────────────────────────────────────────────────────────
+
+/** Link de afiliado de outra conta (tag/etiqueta ≠ credencial do tenant). Nunca carrega a tag. */
+export class OfferLinkNotOwnedError extends AppError {
+  constructor(provider: string) {
+    super('OFFER_LINK_NOT_OWNED', `Affiliate link belongs to another account on ${provider}`, 422, { provider });
+  }
+}
+
+/** Link sem identificação de afiliado (sem `tag` na Amazon, sem `matt_word` no ML). */
+export class OfferLinkNotAffiliateError extends AppError {
+  constructor(provider: string) {
+    super('OFFER_LINK_NOT_AFFILIATE', `Link has no affiliate identifier on ${provider}`, 422, { provider });
+  }
+}
+
+/** Gerador sem configuração (sessão + grupos) no envio. */
+export class OfferConfigMissingError extends AppError {
+  constructor() {
+    super('OFFER_CONFIG_MISSING', 'Offer generator is not configured', 409);
+  }
+}
+
+/** "Marcar todos" fora do plano (entitlement `mention_all_enabled` = false). */
+export class OfferMentionAllUnavailableError extends AppError {
+  constructor() {
+    super('PLAN_FEATURE_UNAVAILABLE', 'Mention all is not available on this plan', 403, { key: 'mention_all_enabled' });
   }
 }

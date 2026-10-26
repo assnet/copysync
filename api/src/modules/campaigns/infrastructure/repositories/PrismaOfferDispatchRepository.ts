@@ -3,6 +3,7 @@ import type {
   IOfferDispatchRepository,
   NewOfferDispatchItem,
   OfferDispatchResult,
+  StartSendingExpectation,
 } from '../../domain/contracts/IOfferDispatchRepository';
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
 import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
@@ -13,16 +14,17 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
 
   /**
    * Transição da oferta + criação dos envios na mesma transação: sem oferta SENDING órfã nem
-   * envio de oferta ainda editável. Só DRAFT: oferta FAILED não reenvia (reenvio = nova oferta, P2).
+   * envio de oferta ainda editável. Só DRAFT com o `mentionAll` validado: oferta FAILED não reenvia (reenvio = nova oferta, P2).
    */
   async startSending(
     offerId: string,
     tenantId: string,
+    expected: StartSendingExpectation,
     items: NewOfferDispatchItem[],
   ): Promise<OfferDispatch[] | null> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.offer.updateMany({
-        where: { id: offerId, tenantId, status: 'DRAFT' },
+        where: { id: offerId, tenantId, status: 'DRAFT', mentionAll: expected.mentionAll },
         data: { status: 'SENDING' },
       });
       if (count === 0) return null;
