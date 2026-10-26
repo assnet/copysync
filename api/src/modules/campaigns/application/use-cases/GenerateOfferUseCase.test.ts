@@ -203,4 +203,32 @@ describe('GenerateOfferUseCase — Amazon e Mercado Livre', () => {
       affiliateUrl: 'https://produto.mercadolivre.com.br/MLB-123456-fone?matt_word=minhaetq',
     });
   });
+
+  it('meli.la → página social: mantém o link colado; verificado quando a etiqueta é do tenant', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(
+      new URL('https://www.mercadolivre.com.br/social/minhaetq?matt_word=minhaetq&matt_tool=63844234&ref=abc'),
+    );
+    const out = await run(s, 'https://meli.la/1Hb6zu6');
+    expect(out.needsManualData).toBe(true);
+    expect(out.offer).toMatchObject({
+      provider: 'MERCADO_LIVRE', productRef: null, attributionVerified: true,
+      affiliateUrl: 'https://meli.la/1Hb6zu6',
+    });
+  });
+
+  it('meli.la de outra etiqueta: gera, mas não verificado', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(
+      new URL('https://www.mercadolivre.com.br/social/outra?matt_word=outra'),
+    );
+    const out = await run(s, 'https://meli.la/xyz');
+    expect(out.offer.attributionVerified).toBe(false);
+  });
+
+  it('página social sem matt_word → não reconhecido', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/abc'));
+    await expect(run(s, 'https://meli.la/xyz')).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+  });
 });

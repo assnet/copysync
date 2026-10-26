@@ -80,14 +80,22 @@ export class GenerateOfferUseCase {
     const provider = detectMarketplace(final);
     if (!provider) throw new OfferUrlUnsupportedError();
     const ref = parseProductRef(provider, final);
-    if (!ref) throw new OfferUrlUnsupportedError('Product not recognized');
+    const mlLanding = !ref && provider === 'MERCADO_LIVRE' ? mercadoLivreAffiliateTag(final) : null;
+    if (!ref && !mlLanding) throw new OfferUrlUnsupportedError('Product not recognized');
 
     // 3. Credencial do tenant
     const cred = await this.deps.credentials.execute(tenantId, provider);
     if (!cred) throw new AffiliateCredentialNotFoundError(provider);
 
-    // 4. Produto + link de afiliado
-    const product = await this.resolveProduct(ref, final, cred);
+    // 4. Produto + link de afiliado. Link social do ML (`meli.la` → `/social/…?matt_word=`) não traz o
+    // produto: o link colado já é de afiliado e segue como está; dados pelo operador
+    const product = ref
+      ? await this.resolveProduct(ref, final, cred)
+      : {
+          productRef: null, title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
+          affiliateUrl: source.toString(),
+          attributionVerified: mlLanding === cred.publicIdentifier,
+        };
 
     // 5. Texto pelo modelo padrão e grava
     const text = renderOfferText({
@@ -166,6 +174,12 @@ function parseUrl(raw: string): URL {
   } catch {
     throw new OfferUrlUnsupportedError();
   }
+}
+
+/** Etiqueta do afiliado na página social do ML (`/social/<etiqueta>?matt_word=<etiqueta>`), ou null. */
+function mercadoLivreAffiliateTag(url: URL): string | null {
+  if (!url.pathname.startsWith('/social/')) return null;
+  return url.searchParams.get('matt_word') || null;
 }
 
 function emptyProduct(productRef: string) {

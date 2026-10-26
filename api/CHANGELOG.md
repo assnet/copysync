@@ -35,6 +35,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+- **`detectMarketplace.ts`**, **`HttpShortLinkExpander.ts`**, **`GenerateOfferUseCase.ts`** — link curto `meli.la` do Mercado Livre era recusado como "não suportado": domínio fora da allowlist e o destino (`/social/<etiqueta>?matt_word=`) não traz o ID do produto. Agora expande, mantém o link colado como link de afiliado e marca atribuição verificada quando a etiqueta bate com a credencial
 - **`DispatchOutboundMediaUseCase.test.ts`**, **`RetryOutboundMediaUseCase.test.ts`** — fakes adaptados ao `acquireLocalFile` do E1 (22 testes quebrados)
 
 #### Backend — S3/R2 Media Storage (E1)

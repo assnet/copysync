@@ -11,7 +11,7 @@ const TIMEOUT_MS = 8_000;
 const MAX_HOPS = 5;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-const SHORT_HOSTS = new Set(['s.shopee.com.br', 'shope.ee', 'amzn.to']);
+const SHORT_HOSTS = new Set(['s.shopee.com.br', 'shope.ee', 'amzn.to', 'meli.la']);
 
 /** Só link curto conhecido vai para a rede; o resto já é a URL do produto. */
 export function isShortLink(url: URL): boolean {

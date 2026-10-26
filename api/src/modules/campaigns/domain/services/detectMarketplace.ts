@@ -3,7 +3,7 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 /** Hosts aceitos por marketplace. Subdomínios entram por sufixo `.<host>`. */
 const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> = {
   SHOPEE: ['shopee.com.br', 'shope.ee'],
-  MERCADO_LIVRE: ['mercadolivre.com.br', 'mercadolivre.com', 'mercadolibre.com'],
+  MERCADO_LIVRE: ['mercadolivre.com.br', 'mercadolivre.com', 'mercadolibre.com', 'meli.la'],
   AMAZON: ['amazon.com.br', 'amzn.to'],
 };
 
