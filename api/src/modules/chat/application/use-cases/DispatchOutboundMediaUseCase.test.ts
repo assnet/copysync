@@ -75,9 +75,9 @@ function makeDeps(overrides?: {
     ? ({ sendMediaMessage: vi.fn().mockResolvedValue({ messageId: 'EXT-1', sentAt: NOW }) } as unknown as IMessagingEngine)
     : overrides.engine;
 
+  const release = vi.fn().mockResolvedValue(undefined);
   const fileStore = {
-    resolveLocalPath: vi.fn().mockReturnValue(ARQUIVO),
-    exists: vi.fn().mockResolvedValue(true),
+    acquireLocalFile: vi.fn().mockResolvedValue({ filePath: ARQUIVO, sizeBytes: TAMANHO, release }),
   } as unknown as IMediaFileStore;
   const processor = {
     capabilities: vi.fn().mockReturnValue({ probe: true, transcodeVoice: true }),
@@ -96,7 +96,9 @@ function makeDeps(overrides?: {
     messageRepo, conversationRepo, contactRepo, engine, fileStore, processor, publisher,
     tmpSpace, fileSize, RESERVA, () => NOW,
   );
-  return { useCase, messageRepo, conversationRepo, contactRepo, engine, fileStore, processor, publisher, tmpSpace, fileSize };
+  return {
+    useCase, messageRepo, conversationRepo, contactRepo, engine, fileStore, processor, publisher, tmpSpace, fileSize, release,
+  };
 }
 
 type Deps = ReturnType<typeof makeDeps>;
@@ -147,8 +149,10 @@ describe('DispatchOutboundMediaUseCase', () => {
       }),
       quotedMessage: null,
     });
-    expect(d.fileStore.resolveLocalPath).toHaveBeenCalledWith('/media/sess-1/EXT-1.jpg');
-    expect(d.fileSize).toHaveBeenCalledWith(ARQUIVO);
+    expect(d.fileStore.acquireLocalFile).toHaveBeenCalledWith('/media/sess-1/EXT-1.jpg');
+    expect(d.release).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(d.release).mock.invocationCallOrder[0])
+      .toBeGreaterThan(vi.mocked(d.engine!.sendMediaMessage).mock.invocationCallOrder[0]);
     expect(d.processor.probe).not.toHaveBeenCalled();
     expect(d.messageRepo.transitionStatus).toHaveBeenCalledWith(
       'msg-1', TENANT, [ChatMessageStatus.PENDING], ChatMessageStatus.SENT, NOW,
@@ -171,10 +175,14 @@ describe('DispatchOutboundMediaUseCase', () => {
     ['probe do vídeo lança', (d) => {
       vi.mocked(d.processor.probe).mockRejectedValue(new MediaProcessingFailedError());
     }, { message: { type: ChatMessageType.VIDEO, mimeType: 'video/mp4' } }],
-    ['arquivo ausente no disco', (d) => { vi.mocked(d.fileStore.exists).mockResolvedValue(false); }],
-    ['mediaUrl fora da pasta de mídia', (d) => { vi.mocked(d.fileStore.resolveLocalPath).mockReturnValue(null); }],
+    ['arquivo ausente ou mediaUrl fora do store', (d) => {
+      vi.mocked(d.fileStore.acquireLocalFile).mockResolvedValue(null);
+    }],
+    ['mensagem sem mediaUrl', () => {}, { message: { mediaUrl: null } }],
     ['/tmp sem folga para o arquivo e a reserva', () => {}, { freeBytes: TAMANHO + RESERVA - 1 }],
-    ['tamanho do arquivo não sai', (d) => { vi.mocked(d.fileSize).mockRejectedValue(new Error('EACCES')); }],
+    ['arquivo não materializa (leitura/download falha)', (d) => {
+      vi.mocked(d.fileStore.acquireLocalFile).mockRejectedValue(new Error('EACCES'));
+    }],
     ['repositório lança ao carregar a conversa', (d) => {
       vi.mocked(d.conversationRepo.findById).mockRejectedValue(new Error('conexão perdida'));
     }],
@@ -190,6 +198,44 @@ describe('DispatchOutboundMediaUseCase', () => {
     await expect(d.useCase.execute(JOB)).resolves.toBeUndefined();
 
     if (d.engine) expect(d.engine.sendMediaMessage).not.toHaveBeenCalled();
+    esperaFalha(d);
+  });
+
+  it.each<[string, (d: Deps) => void, Parameters<typeof makeDeps>[0]?]>([
+    ['probe do vídeo lança', (d) => {
+      vi.mocked(d.processor.probe).mockRejectedValue(new MediaProcessingFailedError());
+    }, { message: { type: ChatMessageType.VIDEO, mimeType: 'video/mp4' } }],
+    ['/tmp sem folga', () => {}, { freeBytes: TAMANHO + RESERVA - 1 }],
+    ['engine lança', (d) => {
+      vi.mocked(d.engine!.sendMediaMessage).mockRejectedValue(new MessageSendFailedError('socket caiu'));
+    }],
+  ])('%s depois de obter o arquivo: libera o arquivo e marca FAILED', async (_nome, prepara, over) => {
+    const d = makeDeps(over);
+    prepara(d);
+
+    await expect(d.useCase.execute(JOB)).resolves.toBeUndefined();
+
+    expect(d.release).toHaveBeenCalledTimes(1);
+    esperaFalha(d);
+  });
+
+  it.each<[string, (d: Deps) => void, Parameters<typeof makeDeps>[0]?]>([
+    ['arquivo não obtido', (d) => { vi.mocked(d.fileStore.acquireLocalFile).mockResolvedValue(null); }],
+    ['mensagem sem mediaUrl', () => {}, { message: { mediaUrl: null } }],
+  ])('%s: não há o que liberar', async (_nome, prepara, over) => {
+    const d = makeDeps(over);
+    prepara(d);
+    await d.useCase.execute(JOB);
+
+    expect(d.release).not.toHaveBeenCalled();
+    if (over?.message) expect(d.fileStore.acquireLocalFile).not.toHaveBeenCalled();
+  });
+
+  it('release que lança: marca FAILED sem lançar para a fila', async () => {
+    const d = makeDeps();
+    vi.mocked(d.release).mockRejectedValue(new Error('unlink falhou'));
+
+    await expect(d.useCase.execute(JOB)).resolves.toBeUndefined();
     esperaFalha(d);
   });
 

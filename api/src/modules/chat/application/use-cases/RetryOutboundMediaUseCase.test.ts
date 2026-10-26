@@ -37,8 +37,8 @@ function makeDeps(overrides?: {
   message?: Partial<ChatMessageProps> | null;
   conversation?: Record<string, unknown> | null;
   engine?: IMessagingEngine | null;
-  localPath?: string | null;
-  fileExists?: boolean;
+  /** `false` = `acquireLocalFile` devolve `null` (arquivo apagado ou URL fora do store). */
+  fileAvailable?: boolean;
   enqueue?: boolean;
 }) {
   const props = overrides?.message === null ? null : mensagem(overrides?.message);
@@ -64,11 +64,13 @@ function makeDeps(overrides?: {
     findById: vi.fn().mockResolvedValue(conversation),
   } as unknown as IChatConversationRepository;
 
+  const release = vi.fn().mockResolvedValue(undefined);
   const fileStore = {
-    resolveLocalPath: vi.fn().mockReturnValue(
-      overrides?.localPath === undefined ? '/data/media/sess-1/ext-1.mp4' : overrides.localPath,
+    acquireLocalFile: vi.fn().mockResolvedValue(
+      overrides?.fileAvailable === false
+        ? null
+        : { filePath: '/data/media/sess-1/ext-1.mp4', sizeBytes: 1_000, release },
     ),
-    exists: vi.fn().mockResolvedValue(overrides?.fileExists ?? true),
   } as unknown as IMediaFileStore;
 
   const engine = overrides?.engine === undefined
@@ -80,7 +82,7 @@ function makeDeps(overrides?: {
   } as unknown as IOutboundMediaQueue;
 
   const useCase = new RetryOutboundMediaUseCase(messageRepo, conversationRepo, fileStore, engine, queue);
-  return { useCase, messageRepo, conversationRepo, fileStore, engine, queue, db };
+  return { useCase, messageRepo, conversationRepo, fileStore, release, engine, queue, db };
 }
 
 const run = (d: ReturnType<typeof makeDeps>) => d.useCase.execute({ tenantId: TENANT, messageId: 'msg-1' });
@@ -106,8 +108,7 @@ describe('RetryOutboundMediaUseCase', () => {
     ['figurinha', { message: { type: ChatMessageType.STICKER } }],
     ['mídia sem arquivo gravado', { message: { mediaUrl: null } }],
     ['mídia sem id do WhatsApp', { message: { externalMessageId: null } }],
-    ['arquivo fora da pasta de mídia', { localPath: null }],
-    ['arquivo apagado do disco', { fileExists: false }],
+    ['arquivo indisponível no store (apagado ou URL alheia)', { fileAvailable: false }],
   ])('%s: Conflict e nada muda', async (_caso, overrides) => {
     const d = makeDeps(overrides);
     await expect(run(d)).rejects.toBeInstanceOf(ConflictError);
@@ -115,11 +116,29 @@ describe('RetryOutboundMediaUseCase', () => {
     expect(d.db.status).toBe(overrides?.message?.status ?? ChatMessageStatus.FAILED);
   });
 
-  it('confere o arquivo pelo caminho resolvido da mediaUrl gravada', async () => {
+  it('confere o arquivo pela mediaUrl gravada e o libera antes de seguir', async () => {
     const d = makeDeps();
     await run(d);
-    expect(d.fileStore.resolveLocalPath).toHaveBeenCalledWith('/media/sess-1/ext-1.mp4');
-    expect(d.fileStore.exists).toHaveBeenCalledWith('/data/media/sess-1/ext-1.mp4');
+    expect(d.fileStore.acquireLocalFile).toHaveBeenCalledWith('/media/sess-1/ext-1.mp4');
+    expect(d.release).toHaveBeenCalledTimes(1);
+    const ordem = (fn: unknown) => vi.mocked(fn as () => void).mock.invocationCallOrder[0];
+    expect(ordem(d.release)).toBeLessThan(ordem(d.conversationRepo.findById));
+  });
+
+  it.each<[string, Parameters<typeof makeDeps>[0]]>([
+    ['conversa não encontrada', { conversation: null }],
+    ['engine indisponível', { engine: null }],
+    ['fila recusa', { enqueue: false }],
+  ])('%s: o arquivo obtido já foi liberado', async (_caso, overrides) => {
+    const d = makeDeps(overrides);
+    await expect(run(d)).rejects.toBeDefined();
+    expect(d.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('arquivo indisponível: nada a liberar', async () => {
+    const d = makeDeps({ fileAvailable: false });
+    await expect(run(d)).rejects.toBeInstanceOf(ConflictError);
+    expect(d.release).not.toHaveBeenCalled();
   });
 
   it('conversa não encontrada no tenant: NotFound', async () => {
