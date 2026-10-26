@@ -20,6 +20,7 @@ export class PrismaAiMapper {
       priority: raw.priority,
       dailyLimitPerTenant: raw.dailyLimitPerTenant,
       hasKey: raw.apiKeyCiphertext.length > 0,
+      baseUrl: raw.kind === 'OPENAI_COMPATIBLE' ? raw.baseUrl : null,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };

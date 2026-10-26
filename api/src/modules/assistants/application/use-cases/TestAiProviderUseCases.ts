@@ -1,7 +1,6 @@
 import type { IAiPlatformProviderRepository } from '../../domain/contracts/IAiPlatformProviderRepository';
 import type { ITenantAiCredentialRepository } from '../../domain/contracts/ITenantAiCredentialRepository';
-import type { IAiTextProviderAdapter } from '../../domain/contracts/IAiTextProviderAdapter';
-import type { AiProviderKind } from '../../domain/enums/AiProviderKind';
+import type { AiAdapterTarget, IAiTextProviderAdapter } from '../../domain/contracts/IAiTextProviderAdapter';
 import type { ISecretCipher } from '../../../../shared/security/ISecretCipher';
 import { platformProviderAad, tenantCredentialAad } from '../../domain/services/aiProviderDefaults';
 import { AppError } from '../../../../shared/errors/AppError';
@@ -12,7 +11,7 @@ import {
 } from '../../../../shared/errors/internal/AiErrors';
 import type { AiTestResultDTO } from '../dtos/AiDTO';
 
-export type AiAdapterResolver = (kind: AiProviderKind) => IAiTextProviderAdapter;
+export type AiAdapterResolver = (target: AiAdapterTarget) => IAiTextProviderAdapter;
 
 /** Geração mínima: só prova que chave e modelo respondem. Não grava uso. */
 async function probe(adapter: IAiTextProviderAdapter, apiKey: string, model: string): Promise<AiTestResultDTO> {
@@ -39,7 +38,7 @@ export class TestAiPlatformProviderUseCase {
     const blob = provider ? await this.repo.findKey(id) : null;
     if (!provider || !blob) throw new AiPlatformProviderNotFoundError(id);
     const apiKey = this.cipher().decrypt(blob, platformProviderAad(id));
-    return probe(this.adapters(provider.kind), apiKey, provider.model);
+    return probe(this.adapters({ kind: provider.kind, baseUrl: provider.baseUrl }), apiKey, provider.model);
   }
 }
 
@@ -55,6 +54,6 @@ export class TestTenantAiCredentialUseCase {
     const blob = credential ? await this.repo.findKey(tenantId) : null;
     if (!credential || !blob) throw new AiCredentialNotFoundError();
     const apiKey = this.cipher().decrypt(blob, tenantCredentialAad(tenantId));
-    return probe(this.adapters(credential.kind), apiKey, credential.model);
+    return probe(this.adapters({ kind: credential.kind, baseUrl: null }), apiKey, credential.model);
   }
 }

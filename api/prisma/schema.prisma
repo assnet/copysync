@@ -638,6 +638,14 @@ model OfferGeneratorConfig {
 enum AiProviderKind {
   ANTHROPIC
   OPENAI
+  GEMINI
+  XAI
+  DEEPSEEK
+  GROQ
+  MISTRAL
+  OPENROUTER
+  /// Endpoint próprio compatível com a API da OpenAI; só para provedores da plataforma.
+  OPENAI_COMPATIBLE
 }
 
 enum AiUsageSource {
@@ -668,6 +676,8 @@ model AiPlatformProvider {
   enabled             Boolean        @default(true)
   priority            Int            @default(0)
   dailyLimitPerTenant Int? // null = sem teto além dos limites do plano
+  /// URL base (https, host público) usada só quando kind = OPENAI_COMPATIBLE.
+  baseUrl             String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 

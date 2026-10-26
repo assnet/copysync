@@ -4,6 +4,7 @@ import type { IAiPlatformProviderRepository } from '../../domain/contracts/IAiPl
 import type { ITenantAiCredentialRepository } from '../../domain/contracts/ITenantAiCredentialRepository';
 import type { AiUsageOutcome, AiUsageQuota, IAiUsageLogRepository } from '../../domain/contracts/IAiUsageLogRepository';
 import type { IAiAuditTrail } from '../../domain/contracts/IAiAuditTrail';
+import type { AiBaseUrlVerdict, IAiBaseUrlGuard } from '../../domain/contracts/IAiBaseUrlGuard';
 import type { AiUsageEntry, EncryptedBlob } from '../../domain/contracts/AiRecords';
 import type { AiPlatformProvider } from '../../domain/entities/AiPlatformProvider';
 import type { TenantAiCredential } from '../../domain/entities/TenantAiCredential';
@@ -25,7 +26,7 @@ export class FakeProviders implements IAiPlatformProviderRepository {
   add(p: Partial<AiPlatformProvider> & { id: string }, apiKey = 'sk-platform-123456') {
     const full: AiPlatformProvider = {
       kind: 'ANTHROPIC', label: 'Main', model: 'claude-haiku-5-5', enabled: true, priority: 0,
-      dailyLimitPerTenant: null, hasKey: true, createdAt: new Date(0), updatedAt: new Date(0), ...p,
+      dailyLimitPerTenant: null, hasKey: true, baseUrl: null, createdAt: new Date(0), updatedAt: new Date(0), ...p,
     };
     this.rows.set(p.id, { p: full, key: cipher().encrypt(apiKey, platformProviderAad(p.id)) });
     return full;
@@ -37,7 +38,7 @@ export class FakeProviders implements IAiPlatformProviderRepository {
   async create(r: Parameters<IAiPlatformProviderRepository['create']>[0]) {
     const p: AiPlatformProvider = {
       id: r.id, kind: r.kind, label: r.label, model: r.model, enabled: r.enabled, priority: r.priority,
-      dailyLimitPerTenant: r.dailyLimitPerTenant, hasKey: true, createdAt: new Date(0), updatedAt: new Date(0),
+      dailyLimitPerTenant: r.dailyLimitPerTenant, hasKey: true, baseUrl: r.baseUrl, createdAt: new Date(0), updatedAt: new Date(0),
     };
     this.rows.set(r.id, { p, key: r.apiKey });
     return p;
@@ -101,4 +102,11 @@ export class FakeUsage implements IAiUsageLogRepository {
 export class FakeAudit implements IAiAuditTrail {
   calls: Array<Parameters<IAiAuditTrail['record']>[0]> = [];
   async record(input: Parameters<IAiAuditTrail['record']>[0]) { this.calls.push(input); }
+}
+
+/** Guard de DNS falso: devolve o veredito fixo e guarda as URLs consultadas. */
+export class FakeBaseUrlGuard implements IAiBaseUrlGuard {
+  checked: string[] = [];
+  constructor(public verdict: AiBaseUrlVerdict = 'ok') {}
+  async check(url: string) { this.checked.push(url); return this.verdict; }
 }

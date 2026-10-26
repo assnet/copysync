@@ -1,3 +1,11 @@
+import type { AiProviderKind } from '../enums/AiProviderKind';
+
+/** Para qual provedor montar o adapter. `baseUrl` só conta em `OPENAI_COMPATIBLE`. */
+export interface AiAdapterTarget {
+  kind: AiProviderKind;
+  baseUrl: string | null;
+}
+
 /** Chamada já resolvida: chave em claro só vive na memória desta chamada. */
 export interface AiProviderCall {
   apiKey: string;

@@ -9,6 +9,8 @@ export interface CreateAiPlatformProviderInput {
   enabled?: boolean;
   priority?: number;
   dailyLimitPerTenant?: number | null;
+  /** Só `OPENAI_COMPATIBLE` (obrigatória nele); ignorada nos demais. */
+  baseUrl?: string | null;
 }
 
 export interface UpdateAiPlatformProviderInput {
@@ -21,6 +23,7 @@ export interface UpdateAiPlatformProviderInput {
   enabled?: boolean;
   priority?: number;
   dailyLimitPerTenant?: number | null;
+  baseUrl?: string | null;
 }
 
 export interface UpsertTenantAiCredentialInput {
@@ -45,6 +48,15 @@ export interface AiStatusDTO {
   tenantKeysAllowed: boolean;
   platformAvailable: boolean;
   credential: AiCredentialView | null;
+}
+
+/** Item de `GET /ai/catalog`: o painel monta o seletor por aqui. */
+export interface AiCatalogItemDTO {
+  kind: AiProviderKind;
+  label: string;
+  defaultModel: string | null;
+  requiresBaseUrl: boolean;
+  tenantAllowed: boolean;
 }
 
 /** Resultado do `POST .../test`: falha do provedor vira `ok: false`, não erro HTTP. */

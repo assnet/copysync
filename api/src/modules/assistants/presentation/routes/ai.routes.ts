@@ -8,6 +8,7 @@ import { AiPresenter } from '../presenters/AiPresenter';
 import type { AiProviderKind } from '../../domain/enums/AiProviderKind';
 import type { AiSettings } from '../../domain/entities/AiSettings';
 import {
+  aiCatalogResponse,
   aiCredentialResponse,
   aiProviderIdParamSchema,
   aiProviderListResponse,
@@ -31,6 +32,7 @@ type ProviderFields = {
   enabled?: boolean;
   priority?: number;
   dailyLimitPerTenant?: number | null;
+  baseUrl?: string | null;
 };
 type IdParams = { Params: { id: string } };
 
@@ -40,6 +42,13 @@ type IdParams = { Params: { id: string } };
  */
 export async function aiAdminRoutes(app: FastifyInstance): Promise<void> {
   const preHandler = [authHook, superAdminHook];
+
+  app.get('/catalog', {
+    preHandler,
+    schema: { tags, summary: 'Catálogo de provedores de IA', response: { 200: aiCatalogResponse } },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, { items: uc().catalog.execute() });
+  });
 
   app.get('/settings', {
     preHandler,
@@ -123,6 +132,13 @@ export async function aiAdminRoutes(app: FastifyInstance): Promise<void> {
 /** Tenant: status da IA e chave própria. Registrado em /api/ai. */
 export async function aiTenantRoutes(app: FastifyInstance): Promise<void> {
   const preHandler = [authHook, tenantHook];
+
+  app.get('/catalog', {
+    preHandler,
+    schema: { tags, summary: 'Catálogo de provedores de IA', response: { 200: aiCatalogResponse } },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, { items: uc().catalog.execute() });
+  });
 
   app.get('/status', {
     preHandler,

@@ -1,4 +1,6 @@
 import { AI_PROVIDER_KINDS } from '../../domain/enums/AiProviderKind';
+import { AI_PROVIDER_CATALOG } from '../../domain/services/aiProviderCatalog';
+import { CUSTOM_BASE_URL_MAX_LENGTH } from '../../domain/services/customBaseUrl';
 
 /*
  * Schemas fechados (`additionalProperties: false`) na entrada e na saída: o serializer do
@@ -11,6 +13,12 @@ const apiKey = { type: 'string', maxLength: 512 } as const;
 const label = { type: 'string', minLength: 1, maxLength: 80 } as const;
 const priority = { type: 'integer', minimum: 0, maximum: 1000 } as const;
 const dailyLimit = { type: ['integer', 'null'], minimum: 1, maximum: 1_000_000 } as const;
+/** Forma fina (https, host público) no use case; aqui só o teto. */
+const baseUrl = { type: ['string', 'null'], maxLength: CUSTOM_BASE_URL_MAX_LENGTH } as const;
+const tenantKind = {
+  type: 'string',
+  enum: AI_PROVIDER_CATALOG.filter((e) => e.tenantAllowed).map((e) => e.kind),
+} as const;
 
 const envelope = (data: object) => ({
   type: 'object',
@@ -37,6 +45,7 @@ const provider = {
     priority: { type: 'integer' },
     dailyLimitPerTenant: { type: ['integer', 'null'] },
     hasKey: { type: 'boolean' },
+    baseUrl: { type: ['string', 'null'] },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
@@ -72,14 +81,14 @@ export const createAiProviderBodySchema = {
   type: 'object',
   additionalProperties: false,
   required: ['kind', 'label', 'apiKey'],
-  properties: { kind, label, model, apiKey, enabled: { type: 'boolean' }, priority, dailyLimitPerTenant: dailyLimit },
+  properties: { kind, label, model, apiKey, enabled: { type: 'boolean' }, priority, dailyLimitPerTenant: dailyLimit, baseUrl },
 } as const;
 
 export const updateAiProviderBodySchema = {
   type: 'object',
   additionalProperties: false,
   minProperties: 1,
-  properties: { label, model, apiKey, enabled: { type: 'boolean' }, priority, dailyLimitPerTenant: dailyLimit },
+  properties: { label, model, apiKey, enabled: { type: 'boolean' }, priority, dailyLimitPerTenant: dailyLimit, baseUrl },
 } as const;
 
 export const aiProviderResponse = envelope(provider);
@@ -93,7 +102,7 @@ export const upsertAiCredentialBodySchema = {
   type: 'object',
   additionalProperties: false,
   required: ['kind'],
-  properties: { kind, model, apiKey, enabled: { type: 'boolean' } },
+  properties: { kind: tenantKind, model, apiKey, enabled: { type: 'boolean' } },
 } as const;
 
 export const aiCredentialResponse = envelope(credential);
@@ -110,3 +119,24 @@ export const aiStatusResponse = envelope({
 });
 
 export const aiTestResponse = envelope(testResult);
+
+export const aiCatalogResponse = envelope({
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          kind,
+          label: { type: 'string' },
+          defaultModel: { type: ['string', 'null'] },
+          requiresBaseUrl: { type: 'boolean' },
+          tenantAllowed: { type: 'boolean' },
+        },
+      },
+    },
+  },
+});

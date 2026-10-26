@@ -40,6 +40,7 @@ export function AiSettingsPage() {
       ) : showForm ? (
         <TenantAiKeyForm
           credential={s.credential}
+          catalog={ai.catalog}
           testing={ai.testing}
           testResult={ai.testResult}
           onSave={ai.save}
