@@ -150,6 +150,16 @@ apiClient.interceptors.response.use(
       clearSessionAndRedirect();
     }
 
+    // Tenant inválido (banco trocado, ID antigo no localStorage) → sessão morta
+    if (error.response?.status === 403) {
+      const msg = String(
+        (error.response.data as { error?: { message?: string } })?.error?.message ?? '',
+      );
+      if (msg.includes('Tenant not found') || msg.includes('do not have access')) {
+        clearSessionAndRedirect();
+      }
+    }
+
     // `status`/`code` seguem junto para quem precisa distinguir o erro (ex.: 429 × 409);
     // `field` aponta o campo recusado num 422, para o formulário marcar.
     return Promise.reject(
