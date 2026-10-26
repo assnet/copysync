@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import type {
+  AiCatalogItem,
   AiPlatformProvider,
   AiPlatformSettings,
   AiProviderTestResult,
@@ -12,6 +13,12 @@ const BASE = '/admin/ai';
 
 /** Configuração de IA da plataforma — rotas só de super admin. */
 export const adminAiService = {
+  /** Mesmo catálogo de `/ai/catalog`, inclusive o endpoint próprio (não depende de tenant ativo). */
+  async getCatalog(): Promise<AiCatalogItem[]> {
+    const res = await apiClient.get<ApiSuccess<{ items: AiCatalogItem[] }>>(`${BASE}/catalog`);
+    return res.data.data.items;
+  },
+
   async getSettings(): Promise<AiPlatformSettings> {
     const res = await apiClient.get<ApiSuccess<AiPlatformSettings>>(`${BASE}/settings`);
     return res.data.data;

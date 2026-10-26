@@ -12,6 +12,8 @@ export interface AiPlatformProvider {
   /** null = sem teto além dos limites do plano. */
   dailyLimitPerTenant: number | null;
   hasKey: boolean;
+  /** URL base do endpoint próprio; só em `OPENAI_COMPATIBLE`, null nos demais. */
+  baseUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -15,6 +15,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - **`assistants/*`** — dois modos (IA da plataforma × chave do tenant) com invariante "nunca os dois desligados" (`platform_settings`); provedores da plataforma (`ai_platform_providers`) e chave do tenant (`tenant_ai_credentials`) cifrados com `ISecretCipher`; resolução por plano (`ai_rewrite_enabled`) e teto diário atômico (`ai_requests_per_day`, padrão 200); adapters Anthropic (`claude-haiku-5-5`) e OpenAI por `fetch`; log de uso sem conteúdo (`ai_usage_logs`); porta `IAiTextGenerator`
 - **`ai.routes.ts`** — `/api/admin/ai` (super admin) e `/api/ai` (tenant). Doc: `docs/ia-provedores.md`
+- **`aiProviderCatalog.ts`** — catálogo de provedores (Anthropic, OpenAI, Gemini, xAI, DeepSeek, Groq, Mistral, OpenRouter, endpoint próprio compatível com OpenAI): protocolo, URL base, modelo padrão, parâmetro de teto; `GET /api/ai/catalog` e `/api/admin/ai/catalog`. Migration `20261027090000_extend_ai_provider_kinds` (enum + `ai_platform_providers.baseUrl`)
+- **`OpenAiCompatibleTextAdapter.ts`** — substitui `OpenAiTextAdapter`: Chat Completions em qualquer URL base; `max_completion_tokens` só na OpenAI, `max_tokens` nos demais; `fetch` sem seguir redirect
+- **`customBaseUrl.ts`** / **`DnsAiBaseUrlGuard.ts`** — endpoint próprio (só super admin): https, porta padrão, sem IP/userinfo/host interno, ≤ 300; DNS público ao salvar e antes de cada chamada (rebinding). Tenant não pode usar `OPENAI_COMPATIBLE`
+
+#### Frontend — Provedores de IA (`features/ai`)
+
+- **`AiProviderDialog.tsx`** / **`TenantAiKeyForm.tsx`** — seletor montado pelo catálogo da API, modelo sugerido por tipo, campo "URL da API" no endpoint próprio, link de chave por provedor; erro de cifra detalhado só para super admin
 
 #### Backend — Gerador de ofertas v2 (`campaigns`)
 

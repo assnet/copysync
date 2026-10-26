@@ -31,6 +31,8 @@ export async function postJson(
       headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(AI_HTTP_TIMEOUT_MS),
+      // API de IA não redireciona; seguir redirect abriria SSRF via endpoint próprio.
+      redirect: 'error',
     });
   } catch (err) {
     const name = (err as { name?: string } | null)?.name;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminAiService } from '@/services/adminAi.service';
 import type {
+  AiCatalogItem,
   AiPlatformProvider,
   AiPlatformSettings,
   AiProviderTestResult,
@@ -19,6 +20,7 @@ const byPriority = (a: AiPlatformProvider, b: AiPlatformProvider) => a.priority 
 export function useAdminAi() {
   const [settings, setSettings] = useState<AiPlatformSettings | null>(null);
   const [providers, setProviders] = useState<AiPlatformProvider[]>([]);
+  const [catalog, setCatalog] = useState<AiCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -35,11 +37,16 @@ export function useAdminAi() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [s, list] = await Promise.all([adminAiService.getSettings(), adminAiService.listProviders()]);
+      const [s, list, kinds] = await Promise.all([
+        adminAiService.getSettings(),
+        adminAiService.listProviders(),
+        adminAiService.getCatalog(),
+      ]);
       setSettings(s);
+      setCatalog(kinds);
       setProviders([...list].sort(byPriority));
     } catch (err) {
-      setLoadError(aiErrorMessage(err));
+      setLoadError(aiErrorMessage(err, 'admin'));
     } finally {
       setLoading(false);
     }
@@ -58,7 +65,7 @@ export function useAdminAi() {
       setSettings(await adminAiService.updateSettings(next));
     } catch (err) {
       setSettings(previous);
-      setActionError(aiErrorMessage(err));
+      setActionError(aiErrorMessage(err, 'admin'));
     } finally {
       setSavingSettings(false);
     }
@@ -93,7 +100,7 @@ export function useAdminAi() {
       replace(await adminAiService.updateProvider(id, { enabled }));
     } catch (err) {
       replace(previous);
-      setActionError(aiErrorMessage(err));
+      setActionError(aiErrorMessage(err, 'admin'));
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
     }
@@ -107,7 +114,7 @@ export function useAdminAi() {
       clearTest(id);
     } catch (err) {
       setProviders(snapshot);
-      setActionError(aiErrorMessage(err));
+      setActionError(aiErrorMessage(err, 'admin'));
     }
   }, []);
 
@@ -128,6 +135,7 @@ export function useAdminAi() {
   return {
     settings,
     providers,
+    catalog,
     loading,
     loadError,
     reload: load,

@@ -1,11 +1,3 @@
-import type { AiProviderKind } from '../enums/AiProviderKind';
-
-/** Modelo usado quando o cadastro não informa um. */
-export const DEFAULT_AI_MODEL: Record<AiProviderKind, string> = {
-  ANTHROPIC: 'claude-haiku-5-5',
-  OPENAI: 'gpt-4o-mini',
-};
-
 /** Máscara fixa: nenhum dígito da chave é guardado nem calculado para exibição. */
 export const MASKED_API_KEY = '••••';
 

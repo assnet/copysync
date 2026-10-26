@@ -95,6 +95,7 @@ export function AdminAiPage() {
         open={dialog !== null}
         provider={dialog?.mode === 'edit' ? dialog.provider : undefined}
         nextPriority={nextPriority}
+        catalog={ai.catalog}
         onSubmit={handleSubmit}
         onClose={() => setDialog(null)}
       />

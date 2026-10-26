@@ -8,15 +8,19 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import { ConfirmDialog, SectionCard } from '@/components';
 import type {
-  AiProviderKind, AiProviderTestResult, TenantAiCredential, UpsertTenantAiCredentialRequest,
+  AiCatalogItem, AiProviderKind, AiProviderTestResult, TenantAiCredential, UpsertTenantAiCredentialRequest,
 } from '@/types/api.types';
-import { AI_PROVIDERS, aiProviderSpec, isSuggestedModel } from '../aiProviders';
+import {
+  AI_KEY_CONSOLE_URLS, aiProviderName, catalogEntry, isSuggestedModel, suggestedModel,
+} from '../aiProviders';
 import { aiErrorCodeMessage, aiErrorMessage, aiStrings } from '../strings';
 
 const t = aiStrings.tenant;
 
 interface Props {
   credential: TenantAiCredential | null;
+  /** Só tipos com `tenantAllowed` (sem endpoint próprio). */
+  catalog: readonly AiCatalogItem[];
   testing: boolean;
   testResult: AiProviderTestResult | null;
   onSave: (body: UpsertTenantAiCredentialRequest) => Promise<void>;
@@ -25,7 +29,7 @@ interface Props {
 }
 
 /** Chave própria do cliente: explica onde conseguir, salva cifrada no servidor e testa. */
-export function TenantAiKeyForm({ credential, testing, testResult, onSave, onTest, onRemove }: Props) {
+export function TenantAiKeyForm({ credential, catalog, testing, testResult, onSave, onTest, onRemove }: Props) {
   const [kind, setKind] = useState<AiProviderKind>('ANTHROPIC');
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -38,11 +42,14 @@ export function TenantAiKeyForm({ credential, testing, testResult, onSave, onTes
   const hasKey = Boolean(credential && (credential.hasKey ?? Boolean(credential.masked)));
 
   useEffect(() => {
-    const k = credential?.kind ?? 'ANTHROPIC';
+    const k = credential?.kind ?? catalog[0]?.kind ?? 'ANTHROPIC';
     setKind(k);
-    setModel(credential?.model ?? aiProviderSpec(k).defaultModel);
+    setModel(credential?.model ?? suggestedModel(catalog, k));
     setApiKey('');
-  }, [credential]);
+  }, [credential, catalog]);
+
+  const suggested = catalogEntry(catalog, kind)?.defaultModel ?? '';
+  const consoleUrl = AI_KEY_CONSOLE_URLS[kind];
 
   const dirty = apiKey.trim() !== '' || kind !== credential?.kind || model.trim() !== credential?.model;
   const errors = {
@@ -53,7 +60,7 @@ export function TenantAiKeyForm({ credential, testing, testResult, onSave, onTes
 
   const handleKind = (k: AiProviderKind) => {
     setKind(k);
-    if (isSuggestedModel(model)) setModel(aiProviderSpec(k).defaultModel);
+    if (isSuggestedModel(model, catalog)) setModel(suggestedModel(catalog, k));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -97,21 +104,20 @@ export function TenantAiKeyForm({ credential, testing, testResult, onSave, onTes
             <Typography component="li" variant="body2" key={step}>{step}</Typography>
           ))}
         </Box>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1, sm: 3 }} mt={1.5}>
-          {AI_PROVIDERS.map((p) => (
+        {consoleUrl && (
+          <Box mt={1.5}>
             <Link
-              key={p.kind}
-              href={p.consoleUrl}
+              href={consoleUrl}
               target="_blank"
               rel="noopener noreferrer"
               variant="body2"
               sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
             >
-              {p.kind === 'ANTHROPIC' ? t.anthropicLink : t.openAiLink}
+              {t.keyLink(aiProviderName(kind, catalog))}
               <OpenInNewIcon sx={{ fontSize: 14 }} aria-hidden />
             </Link>
-          ))}
-        </Stack>
+          </Box>
+        )}
       </Box>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -130,16 +136,17 @@ export function TenantAiKeyForm({ credential, testing, testResult, onSave, onTes
               onChange={(e) => handleKind(e.target.value as AiProviderKind)}
               sx={{ minWidth: { sm: 220 } }}
             >
-              {AI_PROVIDERS.map((p) => (
-                <MenuItem key={p.kind} value={p.kind}>{aiStrings.providers[p.kind]}</MenuItem>
+              {catalog.map((c) => (
+                <MenuItem key={c.kind} value={c.kind}>{aiProviderName(c.kind, catalog)}</MenuItem>
               ))}
+              {!catalogEntry(catalog, kind) && <MenuItem value={kind}>{aiProviderName(kind, catalog)}</MenuItem>}
             </TextField>
             <TextField
               label={t.model}
               value={model}
               onChange={(e) => setModel(e.target.value)}
               error={Boolean(show(errors.model))}
-              helperText={show(errors.model) ?? t.modelHelp(aiProviderSpec(kind).defaultModel)}
+              helperText={show(errors.model) ?? (suggested ? t.modelHelp(suggested) : undefined)}
               inputProps={{ spellCheck: false, autoCapitalize: 'off' }}
               fullWidth
             />

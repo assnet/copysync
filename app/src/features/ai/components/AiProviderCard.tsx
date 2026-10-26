@@ -6,6 +6,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowOutlinedIcon from '@mui/icons-material/PlayArrowOutlined';
 import type { AiPlatformProvider, AiProviderTestResult } from '@/types/api.types';
 import { aiStrings } from '../strings';
+import { aiProviderName } from '../aiProviders';
 import { AiProviderTestChip } from './AiProviderTestChip';
 
 const t = aiStrings.admin;
@@ -29,12 +30,17 @@ export function AiProviderCard({ provider, busy, testing, testResult, onToggle, 
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Typography variant="subtitle2" noWrap>{p.label}</Typography>
-            <Chip size="small" label={aiStrings.providers[p.kind]} />
+            <Chip size="small" label={aiProviderName(p.kind)} />
             {!p.hasKey && <Chip size="small" color="warning" variant="outlined" label={t.keyMissing} />}
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', mt: 0.5, wordBreak: 'break-all' }}>
             {p.model}
           </Typography>
+          {p.baseUrl && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', display: 'block', wordBreak: 'break-all' }}>
+              {p.baseUrl}
+            </Typography>
+          )}
           <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" useFlexGap>
             <Chip size="small" variant="outlined" label={t.priorityValue(p.priority)} />
             <Chip size="small" variant="outlined" label={t.dailyLimitValue(p.dailyLimitPerTenant)} />

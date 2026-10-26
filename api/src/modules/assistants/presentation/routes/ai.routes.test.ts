@@ -25,7 +25,7 @@ vi.mock('../../../../shared/http/hooks/tenantHook', () => ({
 
 const provider = (extra: Record<string, unknown> = {}): AiPlatformProvider => ({
   id: 'p1', kind: 'ANTHROPIC', label: 'Main', model: 'claude-haiku-5-5', enabled: true, priority: 0,
-  dailyLimitPerTenant: null, hasKey: true, createdAt: new Date(0), updatedAt: new Date(0), ...extra,
+  dailyLimitPerTenant: null, hasKey: true, baseUrl: null, createdAt: new Date(0), updatedAt: new Date(0), ...extra,
 });
 
 let app: FastifyInstance;
@@ -88,10 +88,28 @@ describe('/admin/ai', () => {
     expect(execute).toHaveBeenCalledWith({ kind: 'ANTHROPIC', label: 'x', apiKey: 'sk-abcdefgh', userId: 'user-a' });
     execute.mockClear();
     const kind = await app.inject({
-      method: 'POST', url: '/api/admin/ai/providers', payload: { kind: 'GEMINI', label: 'x', apiKey: 'k' },
+      method: 'POST', url: '/api/admin/ai/providers', payload: { kind: 'COHERE', label: 'x', apiKey: 'k' },
     });
     expect(kind.statusCode).toBe(400);
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('POST /providers aceita OPENAI_COMPATIBLE com baseUrl e devolve baseUrl', async () => {
+    const execute = vi.spyOn(CreateAiPlatformProviderUseCase.prototype, 'execute')
+      .mockResolvedValue(provider({ kind: 'OPENAI_COMPATIBLE', baseUrl: 'https://llm.example.com/v1' }));
+    const payload = { kind: 'OPENAI_COMPATIBLE', label: 'x', apiKey: 'sk-abcdefgh', model: 'm', baseUrl: 'https://llm.example.com/v1' };
+    const res = await app.inject({ method: 'POST', url: '/api/admin/ai/providers', payload });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().data).toMatchObject({ kind: 'OPENAI_COMPATIBLE', baseUrl: 'https://llm.example.com/v1' });
+    expect(execute).toHaveBeenCalledWith({ ...payload, userId: 'user-a' });
+    const long = await app.inject({ method: 'POST', url: '/api/admin/ai/providers', payload: { ...payload, baseUrl: `https://a.com/${'x'.repeat(300)}` } });
+    expect(long.statusCode).toBe(400);
+  });
+
+  it('GET /catalog (admin) também exige super admin', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/admin/ai/catalog' })).statusCode).toBe(200);
+    user.isSuperAdmin = false;
+    expect((await app.inject({ method: 'GET', url: '/api/admin/ai/catalog' })).statusCode).toBe(401);
   });
 
   it('PATCH /providers/:id vazio → 400', async () => {
@@ -130,6 +148,33 @@ describe('/ai', () => {
     expect(res.json().data).toEqual({ kind: 'OPENAI', model: 'gpt-4o-mini', masked: '••••', enabled: true });
     expect(res.body).not.toContain('sk-tenant-x');
     expect(execute).toHaveBeenCalledWith({ kind: 'OPENAI', apiKey: 'sk-tenant-x', tenantId: 'tenant-a', userId: 'user-a' });
+  });
+
+  it('GET /catalog lista o catálogo sem URL nem protocolo', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/ai/catalog' });
+    expect(res.statusCode).toBe(200);
+    const items = res.json().data.items as Array<Record<string, unknown>>;
+    expect(items.map((i) => i.kind)).toEqual([
+      'ANTHROPIC', 'OPENAI', 'GEMINI', 'XAI', 'DEEPSEEK', 'GROQ', 'MISTRAL', 'OPENROUTER', 'OPENAI_COMPATIBLE',
+    ]);
+    expect(items.at(-1)).toEqual({
+      kind: 'OPENAI_COMPATIBLE', label: 'OpenAI-compatible', defaultModel: null, requiresBaseUrl: true, tenantAllowed: false,
+    });
+    expect(res.body).not.toMatch(/https:|protocol|maxTokensParam/);
+  });
+
+  it('PUT /credential recusa OPENAI_COMPATIBLE e baseUrl (400) e aceita os demais tipos', async () => {
+    const execute = vi.spyOn(UpsertTenantAiCredentialUseCase.prototype, 'execute').mockResolvedValue({
+      tenantId: 'tenant-a', kind: 'GEMINI', model: 'gemini-3.5-flash-lite', enabled: true, updatedAt: new Date(0),
+    });
+    const bad = await app.inject({ method: 'PUT', url: '/api/ai/credential', payload: { kind: 'OPENAI_COMPATIBLE', apiKey: 'sk-tenant-x' } });
+    expect(bad.statusCode).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+    const ok = await app.inject({
+      method: 'PUT', url: '/api/ai/credential', payload: { kind: 'GEMINI', apiKey: 'sk-tenant-x', baseUrl: 'https://evil.example.com' },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith({ kind: 'GEMINI', apiKey: 'sk-tenant-x', tenantId: 'tenant-a', userId: 'user-a' });
   });
 
   it('POST /credential/test devolve { ok, errorCode }', async () => {

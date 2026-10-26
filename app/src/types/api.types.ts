@@ -312,7 +312,28 @@ export interface ApiError {
 
 // ── IA (provedores da plataforma e chave do cliente) ──────────────────────────
 
-export type AiProviderKind = 'ANTHROPIC' | 'OPENAI';
+export type AiProviderKind =
+  | 'ANTHROPIC'
+  | 'OPENAI'
+  | 'GEMINI'
+  | 'XAI'
+  | 'DEEPSEEK'
+  | 'GROQ'
+  | 'MISTRAL'
+  | 'OPENROUTER'
+  | 'OPENAI_COMPATIBLE';
+
+/** Item de `GET /ai/catalog` (e `/admin/ai/catalog`). */
+export interface AiCatalogItem {
+  kind: AiProviderKind;
+  label: string;
+  /** null = modelo obrigatório (endpoint próprio). */
+  defaultModel: string | null;
+  /** Pede o campo "URL da API" (só super admin). */
+  requiresBaseUrl: boolean;
+  /** Aparece no formulário de chave própria do cliente. */
+  tenantAllowed: boolean;
+}
 
 export interface AiPlatformSettings {
   platformEnabled: boolean;
@@ -328,6 +349,8 @@ export interface AiPlatformProvider {
   priority: number;
   dailyLimitPerTenant: number | null;
   hasKey: boolean;
+  /** Só em `OPENAI_COMPATIBLE`; null nos demais. */
+  baseUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -340,6 +363,8 @@ export interface CreateAiPlatformProviderRequest {
   enabled?: boolean;
   priority?: number;
   dailyLimitPerTenant?: number | null;
+  /** Obrigatória em `OPENAI_COMPATIBLE`; ignorada nos demais. */
+  baseUrl?: string | null;
 }
 
 /** `apiKey` vazio ou ausente mantém a chave atual. */

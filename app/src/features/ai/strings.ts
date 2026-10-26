@@ -52,6 +52,11 @@ export const aiStrings = {
       labelHelp: 'Só para você identificar. Ex.: "Principal".',
       model: 'Modelo',
       modelHelp: (suggested: string) => `Sugestão: ${suggested}`,
+      modelRequiredHelp: 'Nome do modelo exatamente como aparece na documentação do provedor.',
+      kindLockedHelp: 'O provedor não muda depois de cadastrado. Para trocar, adicione outro.',
+      baseUrl: 'URL da API',
+      baseUrlHelp: 'Endereço base compatível com a API da OpenAI, ex.: https://api.exemplo.com/v1',
+      baseUrlInvalid: 'Use um endereço https público, sem porta, usuário ou IP. Ex.: https://api.exemplo.com/v1',
       apiKey: 'Chave de API',
       apiKeyKeepHelp: 'Deixe em branco para manter a chave atual.',
       apiKeyNewHelp: 'A chave é guardada cifrada e nunca é exibida de novo.',
@@ -79,7 +84,7 @@ export const aiStrings = {
     unavailableBody: 'Suas ofertas continuam sendo geradas com o texto padrão. Assim que a IA voltar, ela aparece aqui.',
     ownKeyTitle: 'Use a sua própria chave de IA',
     ownKeyIntro:
-      'Para a IA escrever suas ofertas, conecte uma conta sua na Anthropic ou na OpenAI. '
+      'Para a IA escrever suas ofertas, conecte uma conta sua em um provedor de IA, como Anthropic, OpenAI ou Google Gemini. '
       + 'Você paga direto ao provedor, só pelo que usar — gerar textos curtos costuma custar centavos.',
     howToTitle: 'Como conseguir uma chave',
     howToSteps: [
@@ -87,8 +92,7 @@ export const aiStrings = {
       'Abra a área de chaves de API e clique em criar nova chave.',
       'Copie a chave e cole no campo abaixo. Ela é guardada cifrada e não aparece de novo.',
     ],
-    anthropicLink: 'Abrir console da Anthropic',
-    openAiLink: 'Abrir plataforma da OpenAI',
+    keyLink: (provider: string) => `Criar chave em ${provider}`,
     provider: 'Provedor',
     model: 'Modelo',
     modelHelp: (suggested: string) => `Se não souber, use ${suggested}.`,
@@ -115,9 +119,17 @@ export const aiStrings = {
     retry: 'Tentar de novo',
   },
 
+  /** Nomes de terceiros; tipo sem entrada aqui usa o nome do catálogo da API. */
   providers: {
     ANTHROPIC: 'Anthropic (Claude)',
-    OPENAI: 'OpenAI (ChatGPT)',
+    OPENAI: 'OpenAI (ChatGPT, Codex)',
+    GEMINI: 'Google Gemini',
+    XAI: 'xAI (Grok)',
+    DEEPSEEK: 'DeepSeek',
+    GROQ: 'Groq',
+    MISTRAL: 'Mistral',
+    OPENROUTER: 'OpenRouter (vários modelos)',
+    OPENAI_COMPATIBLE: 'Outro (compatível com OpenAI)',
   },
 
   errors: {
@@ -132,15 +144,30 @@ export const aiStrings = {
     VALIDATION_ERROR: 'Confira os campos e tente de novo.',
     generic: 'Não foi possível concluir a ação. Tente de novo.',
   } as Record<string, string>,
+
+  /** Só na página do super admin: ele pode agir no servidor. */
+  adminErrors: {
+    SECRET_CIPHER_UNAVAILABLE:
+      'A chave de criptografia do servidor não está configurada (CREDENTIALS_ENCRYPTION_KEY). Configure-a no servidor e tente de novo.',
+  } as Record<string, string>,
 } as const;
 
+export type AiErrorAudience = 'tenant' | 'admin';
+
 /** Mensagem amigável a partir de um código de erro de IA (teste ou API). */
-export function aiErrorCodeMessage(code: string | undefined | null): string {
-  return (code && aiStrings.errors[code]) || aiStrings.errors.generic;
+export function aiErrorCodeMessage(code: string | undefined | null, audience: AiErrorAudience = 'tenant'): string {
+  if (!code) return aiStrings.errors.generic;
+  return (audience === 'admin' && aiStrings.adminErrors[code]) || aiStrings.errors[code] || aiStrings.errors.generic;
 }
 
 /** Mensagem amigável para erro vindo do `apiClient` (que anexa `code`). */
-export function aiErrorMessage(err: unknown): string {
+export function aiErrorMessage(err: unknown, audience: AiErrorAudience = 'tenant'): string {
   const code = (err as { code?: unknown } | null)?.code;
-  return aiErrorCodeMessage(typeof code === 'string' ? code : null);
+  return aiErrorCodeMessage(typeof code === 'string' ? code : null, audience);
+}
+
+/** Campo apontado pela API num 422 (`meta.field`), se houver. */
+export function aiErrorField(err: unknown): string | null {
+  const field = (err as { field?: unknown } | null)?.field;
+  return typeof field === 'string' ? field : null;
 }

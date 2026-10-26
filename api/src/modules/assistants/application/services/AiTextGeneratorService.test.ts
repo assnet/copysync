@@ -5,7 +5,7 @@ import { AiNotConfiguredError, AiProviderUnavailableError } from '../../../../sh
 import type { ResolvedAiProvider } from '../use-cases/ResolveAiTextProviderUseCase';
 
 const resolved: ResolvedAiProvider = {
-  source: 'PLATFORM', kind: 'ANTHROPIC', model: 'claude-haiku-5-5', providerId: 'p1', apiKey: 'sk-secret-xyz', dailyLimit: 2,
+  source: 'PLATFORM', kind: 'ANTHROPIC', model: 'claude-haiku-5-5', providerId: 'p1', apiKey: 'sk-secret-xyz', baseUrl: null, dailyLimit: 2,
 };
 const req = { tenantId: 't1', purpose: 'offer.text', system: 'sys', prompt: 'PROMPT-BODY', maxOutputTokens: 300 };
 

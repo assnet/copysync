@@ -19,6 +19,8 @@ export interface ResolvedAiProvider {
   model: string;
   providerId: string | null;
   apiKey: string;
+  /** Endpoint próprio (`OPENAI_COMPATIBLE` da plataforma); null nos demais. */
+  baseUrl: string | null;
   /** Teto diário de chamadas (PLATFORM); null = sem teto (chave do tenant). */
   dailyLimit: number | null;
 }
@@ -57,6 +59,7 @@ export class ResolveAiTextProviderUseCase {
           kind: provider.kind,
           model: provider.model,
           providerId: provider.id,
+          baseUrl: provider.baseUrl,
           apiKey: this.decrypt(tenantId, blob, platformProviderAad(provider.id)),
           dailyLimit,
         };
@@ -72,6 +75,7 @@ export class ResolveAiTextProviderUseCase {
           kind: credential.kind,
           model: credential.model,
           providerId: null,
+          baseUrl: null,
           apiKey: this.decrypt(tenantId, blob, tenantCredentialAad(tenantId)),
           dailyLimit: null,
         };

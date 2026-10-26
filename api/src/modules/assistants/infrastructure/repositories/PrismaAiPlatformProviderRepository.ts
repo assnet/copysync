@@ -52,6 +52,7 @@ export class PrismaAiPlatformProviderRepository implements IAiPlatformProviderRe
         enabled: r.enabled,
         priority: r.priority,
         dailyLimitPerTenant: r.dailyLimitPerTenant,
+        baseUrl: r.baseUrl,
         ...Mapper.fromBlob(r.apiKey),
       },
     });

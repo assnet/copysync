@@ -33,7 +33,7 @@ export class AiTextGeneratorService implements IAiTextGenerator {
     let result: AiProviderResult | null = null;
     let text: string;
     try {
-      result = await this.adapters(resolved.kind).generate({
+      result = await this.adapters({ kind: resolved.kind, baseUrl: resolved.baseUrl }).generate({
         apiKey: resolved.apiKey,
         model: resolved.model,
         system: input.system,

@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import type {
+  AiCatalogItem,
   AiProviderTestResult,
   ApiSuccess,
   TenantAiStatus,
@@ -10,6 +11,11 @@ const BASE = '/ai';
 
 /** IA do cliente (tenant): status do modo em uso e chave própria. */
 export const aiService = {
+  async getCatalog(): Promise<AiCatalogItem[]> {
+    const res = await apiClient.get<ApiSuccess<{ items: AiCatalogItem[] }>>(`${BASE}/catalog`);
+    return res.data.data.items;
+  },
+
   async getStatus(): Promise<TenantAiStatus> {
     const res = await apiClient.get<ApiSuccess<TenantAiStatus>>(`${BASE}/status`);
     return res.data.data;

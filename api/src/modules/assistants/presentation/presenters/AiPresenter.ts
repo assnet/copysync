@@ -15,6 +15,7 @@ export const AiPresenter = {
       priority: p.priority,
       dailyLimitPerTenant: p.dailyLimitPerTenant,
       hasKey: p.hasKey,
+      baseUrl: p.baseUrl,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     };

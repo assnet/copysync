@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { aiService } from '@/services/ai.service';
-import type { AiProviderTestResult, TenantAiStatus, UpsertTenantAiCredentialRequest } from '@/types/api.types';
+import type {
+  AiCatalogItem, AiProviderTestResult, TenantAiStatus, UpsertTenantAiCredentialRequest,
+} from '@/types/api.types';
 import { aiErrorMessage } from '../strings';
 
 /** Status de IA do cliente e ações da chave própria. Salvar/remover recarregam o status (o modo pode mudar). */
 export function useTenantAi() {
   const [status, setStatus] = useState<TenantAiStatus | null>(null);
+  /** Só os tipos que o cliente pode usar na chave própria. */
+  const [catalog, setCatalog] = useState<AiCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -19,7 +23,8 @@ export function useTenantAi() {
     setLoading(true);
     setLoadError(null);
     try {
-      await refresh();
+      const [kinds] = await Promise.all([aiService.getCatalog(), refresh()]);
+      setCatalog(kinds.filter((k) => k.tenantAllowed));
     } catch (err) {
       setLoadError(aiErrorMessage(err));
     } finally {
@@ -57,5 +62,5 @@ export function useTenantAi() {
     await refresh().catch(() => undefined);
   }, [refresh]);
 
-  return { status, loading, loadError, reload: load, save, remove, test, testing, testResult };
+  return { status, catalog, loading, loadError, reload: load, save, remove, test, testing, testResult };
 }

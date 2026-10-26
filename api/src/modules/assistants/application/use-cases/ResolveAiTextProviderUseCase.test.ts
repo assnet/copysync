@@ -30,7 +30,7 @@ describe('ResolveAiTextProviderUseCase', () => {
     providers.add({ id: 'p0', priority: 0, enabled: false });
     credentials.add(T);
     expect(await resolver().execute(T)).toEqual({
-      source: 'PLATFORM', kind: 'OPENAI', model: 'gpt-4o-mini', providerId: 'p1', apiKey: 'sk-first-key',
+      source: 'PLATFORM', kind: 'OPENAI', model: 'gpt-4o-mini', providerId: 'p1', apiKey: 'sk-first-key', baseUrl: null,
       dailyLimit: DEFAULT_PLATFORM_AI_REQUESTS_PER_DAY,
     });
   });
@@ -54,7 +54,7 @@ describe('ResolveAiTextProviderUseCase', () => {
     credentials.add(T, {}, 'sk-tenant-own');
     arrange();
     expect(await resolver().execute(T)).toEqual({
-      source: 'TENANT', kind: 'OPENAI', model: 'gpt-4o-mini', providerId: null, apiKey: 'sk-tenant-own',
+      source: 'TENANT', kind: 'OPENAI', model: 'gpt-4o-mini', providerId: null, apiKey: 'sk-tenant-own', baseUrl: null,
       dailyLimit: null,
     });
   });

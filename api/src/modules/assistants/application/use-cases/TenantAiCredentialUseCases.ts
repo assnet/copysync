@@ -5,7 +5,7 @@ import type { ISecretCipher } from '../../../../shared/security/ISecretCipher';
 import { tenantCredentialAad } from '../../domain/services/aiProviderDefaults';
 import { AiCredentialInvalidError, AiCredentialNotFoundError } from '../../../../shared/errors/internal/AiErrors';
 import type { UpsertTenantAiCredentialInput } from '../dtos/AiDTO';
-import { resolveModel, validateApiKey } from './aiValidation';
+import { assertTenantKind, resolveModel, validateApiKey } from './aiValidation';
 
 /**
  * Cadastra ou edita a chave própria do tenant. Chave vazia mantém a atual, exceto na criação
@@ -19,6 +19,7 @@ export class UpsertTenantAiCredentialUseCase {
   ) {}
 
   async execute(input: UpsertTenantAiCredentialInput): Promise<TenantAiCredential> {
+    assertTenantKind(input.kind);
     const model = resolveModel(input.kind, input.model);
     const apiKey = validateApiKey(input.apiKey);
 

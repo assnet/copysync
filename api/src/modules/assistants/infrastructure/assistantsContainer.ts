@@ -8,6 +8,8 @@ import { PrismaAiUsageLogRepository } from './repositories/PrismaAiUsageLogRepos
 import { PrismaAiEntitlementReader } from './repositories/PrismaAiEntitlementReader';
 import { LoggerAiAuditTrail } from './LoggerAiAuditTrail';
 import { createAiTextProviderAdapterFactory } from './adapters/AiTextProviderAdapterFactory';
+import { DnsAiBaseUrlGuard } from './adapters/DnsAiBaseUrlGuard';
+import { GetAiCatalogUseCase } from '../application/use-cases/GetAiCatalogUseCase';
 import { GetAiSettingsUseCase, UpdateAiSettingsUseCase } from '../application/use-cases/AiSettingsUseCases';
 import {
   CreateAiPlatformProviderUseCase,
@@ -40,15 +42,17 @@ function build() {
   const audit = new LoggerAiAuditTrail();
   // Cifra resolvida no uso: sem chave, só quem cifra/decifra responde 503.
   const cipher = () => SecretCipherFactory.get();
-  const adapters = createAiTextProviderAdapterFactory();
+  const baseUrlGuard = new DnsAiBaseUrlGuard();
+  const adapters = createAiTextProviderAdapterFactory(fetch, baseUrlGuard);
   const resolve = new ResolveAiTextProviderUseCase(settings, providers, credentials, entitlements, cipher);
 
   return {
     getSettings: new GetAiSettingsUseCase(settings),
     updateSettings: new UpdateAiSettingsUseCase(settings, audit),
     listProviders: new ListAiPlatformProvidersUseCase(providers),
-    createProvider: new CreateAiPlatformProviderUseCase(providers, cipher, audit),
-    updateProvider: new UpdateAiPlatformProviderUseCase(providers, cipher, audit),
+    catalog: new GetAiCatalogUseCase(),
+    createProvider: new CreateAiPlatformProviderUseCase(providers, cipher, audit, baseUrlGuard),
+    updateProvider: new UpdateAiPlatformProviderUseCase(providers, cipher, audit, baseUrlGuard),
     deleteProvider: new DeleteAiPlatformProviderUseCase(providers, audit),
     testProvider: new TestAiPlatformProviderUseCase(providers, cipher, adapters),
     status: new GetAiStatusUseCase(settings, providers, credentials, entitlements),

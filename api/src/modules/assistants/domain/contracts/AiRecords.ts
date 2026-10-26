@@ -12,6 +12,7 @@ export interface CreateAiPlatformProviderRecord {
   enabled: boolean;
   priority: number;
   dailyLimitPerTenant: number | null;
+  baseUrl: string | null;
 }
 
 /** Campos ausentes ficam como estão. */
@@ -22,6 +23,7 @@ export interface UpdateAiPlatformProviderRecord {
   enabled?: boolean;
   priority?: number;
   dailyLimitPerTenant?: number | null;
+  baseUrl?: string | null;
 }
 
 export interface UpsertTenantAiCredentialRecord {
