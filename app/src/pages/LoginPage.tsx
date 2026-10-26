@@ -53,6 +53,8 @@ export function LoginPage() {
     setLoading(true);
     try {
       const tenants = await login({ email, password });
+      localStorage.removeItem('activeTenantId');
+      localStorage.removeItem('activeTenantName');
       if (tenants.length > 0) {
         localStorage.setItem('activeTenantId', tenants[0].id);
         localStorage.setItem('activeTenantName', tenants[0].name);
