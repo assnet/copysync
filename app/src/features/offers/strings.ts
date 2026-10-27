@@ -280,6 +280,7 @@ export const offerStrings = {
     finishedFailed: 'Nenhum grupo recebeu a oferta.',
     nextSend: (group: string, session: string | null) => session ? `Próximo envio · ${group} · via ${session}` : `Próximo envio · ${group}`,
     viaSession: (name: string) => `via ${name}`,
+    waitingSession: 'Aguardando a sessão reconectar',
     nextSendAria: 'Tempo até o próximo envio',
     scheduledTitle: 'Envio agendado',
     scheduled: (when: string) => `Começa em ${when}. Você pode pausar ou parar antes do início.`,

@@ -62,6 +62,17 @@ export interface IOfferDispatchRepository {
    * token zerado. Retorna quantos.
    */
   releaseStale(olderThan: Date): Promise<number>;
+  /**
+   * Sessão fora do ar na vez do envio: SENDING (com o token da posse, oferta SENDING/PAUSED) →
+   * QUEUED com `notBefore = retryAt` e `waitingSessionSince` (mantém o primeiro). O claim dá prioridade a ele e não abre
+   * outro envio da sessão antes: a ordem se mantém. false = posse perdida.
+   */
+  deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date): Promise<boolean>;
+  /**
+   * Desistência (sessão fora do ar tempo demais), só em ofertas SENDING: QUEUED da sessão vencidos
+   * (`notBefore <= now`) ou da oferta `offerId` → FAILED com o motivo. Retorna quantos.
+   */
+  failOverdueInSession(tenantId: string, sessionId: string, now: Date, failureReason: string, offerId: string): Promise<number>;
   /** Só SENDING com o mesmo `claimToken` → resultado; false se a posse já não é deste token. */
   markResult(id: string, tenantId: string, claimToken: string, result: OfferDispatchResult): Promise<boolean>;
   /**

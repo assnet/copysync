@@ -279,6 +279,11 @@ function QueueRow({ item, privacy, onOpenOffer, currentOfferId }: RowProps) {
               <Chip size="small" variant="outlined" color="warning" label={t.paused} sx={{ height: 20, fontSize: 11 }} />
             </Tooltip>
           )}
+          {item.waitingSession && !pausedRow && (
+            <Tooltip title={t.waitingSessionTooltip} arrow>
+              <Chip size="small" variant="outlined" color="warning" label={t.waitingSession} sx={{ height: 20, fontSize: 11 }} />
+            </Tooltip>
+          )}
           {!pausedRow && (
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               {done ? t.finishedAt(timeOf(item.updatedAt)) : t.at(timeOf(item.notBefore))}

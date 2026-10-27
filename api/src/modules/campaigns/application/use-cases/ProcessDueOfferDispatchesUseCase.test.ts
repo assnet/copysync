@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
+import { OFFLINE_MAX_WAIT_MS, OFFLINE_RETRY_MS, ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
+import { AppError } from '../../../../shared/errors/AppError';
 import { InMemoryOfferDispatchRepository, InMemoryOfferRepository, makeOffer, NOW, TENANT } from './offerTestFakes';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
@@ -179,5 +180,89 @@ describe('ProcessDueOfferDispatchesUseCase — validade', () => {
     s.offers.items[0]!.expiresAt = new Date(NOW.getTime() + 1000);
     await s.uc.execute();
     expect(statuses(s)).toEqual([['SENT', 'm1']]);
+  });
+});
+
+describe('ProcessDueOfferDispatchesUseCase — sessão fora do ar', () => {
+  const offline = (s: ReturnType<typeof setup>) => {
+    for (const d of s.dispatches.items) d.sessionId = 's1';
+    s.sender.send.mockRejectedValue(new SessionNotConnectedError('s1'));
+  };
+
+  it('volta para a fila (não falha), tenta de novo em 1 min e guarda desde quando espera', async () => {
+    const s = setup(['c1']);
+    offline(s);
+    await s.uc.execute();
+    const d = s.dispatches.items[0]!;
+    expect(d).toMatchObject({ status: 'QUEUED', claimToken: null, failureReason: null, waitingSessionSince: NOW });
+    expect(d.notBefore).toEqual(new Date(NOW.getTime() + OFFLINE_RETRY_MS));
+    expect(s.offers.items[0]!.status).toBe('SENDING');
+  });
+
+  it('nova tentativa mantém o início da espera; sessão voltou → envia', async () => {
+    const s = setup(['c1']);
+    offline(s);
+    const since = new Date(NOW.getTime() - 3_600_000);
+    s.dispatches.items[0]!.waitingSessionSince = since;
+    await s.uc.execute();
+    expect(s.dispatches.items[0]!.waitingSessionSince).toEqual(since);
+    s.sender.send.mockResolvedValue({ chatMessageId: 'm1' });
+    s.dispatches.items[0]!.notBefore = NOW;
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['SENT', 'm1']]);
+  });
+
+  it('fora do ar há mais de 6 h: desiste dos atrasados e do resto da oferta (sem nova janela)', async () => {
+    const s = setup(['c1', 'c2']);
+    offline(s);
+    s.dispatches.items[0]!.waitingSessionSince = new Date(NOW.getTime() - OFFLINE_MAX_WAIT_MS);
+    // o 2º ainda é futuro: sem isto ele ganharia outra janela de 6 h
+    s.dispatches.items[1]!.notBefore = new Date(NOW.getTime() + 3_600_000);
+    // só o 1º é reivindicado (lote de 1); o 2º, atrasado, falha junto
+    const uc = new ProcessDueOfferDispatchesUseCase({ offers: s.offers, dispatches: s.dispatches, sender: s.sender, now: () => NOW, batchSize: 1 });
+    await uc.execute();
+    expect(statuses(s)).toEqual([['FAILED', 'SESSION_NOT_CONNECTED'], ['FAILED', 'SESSION_NOT_CONNECTED']]);
+    expect(s.offers.items[0]!.status).toBe('FAILED');
+  });
+
+  it('desistência não toca oferta pausada da mesma sessão', async () => {
+    const s = setup(['c1']);
+    offline(s);
+    s.dispatches.items[0]!.waitingSessionSince = new Date(NOW.getTime() - OFFLINE_MAX_WAIT_MS);
+    s.offers.items.push(makeOffer({ id: 'pausada', status: 'PAUSED' }));
+    s.dispatches.add({ offerId: 'pausada', conversationId: 'p1', sessionId: 's1', notBefore: new Date(NOW.getTime() - 1000) });
+    await s.uc.execute();
+    expect(s.dispatches.items.find((d) => d.offerId === 'pausada')!.status).toBe('QUEUED');
+  });
+
+  it('ENGINE_NOT_READY não volta para a fila (é também o erro genérico do envio de texto)', async () => {
+    const s = setup(['c1']);
+    for (const d of s.dispatches.items) d.sessionId = 's1';
+    s.sender.send.mockRejectedValue(new AppError('ENGINE_NOT_READY', 'x', 503));
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['FAILED', 'ENGINE_NOT_READY']]);
+  });
+
+  it('oferta parada enquanto o envio estava saindo: não volta para a fila', async () => {
+    const s = setup(['c1']);
+    offline(s);
+    s.sender.send.mockImplementation(async () => { s.offers.items[0]!.status = 'CANCELLED'; throw new SessionNotConnectedError('s1'); });
+    await s.uc.execute();
+    expect(s.dispatches.items[0]!.status).toBe('SENDING'); // releaseStale fecha como CANCELLED
+  });
+
+  it('envio sem sessão registrada (legado) continua falhando como antes', async () => {
+    const s = setup(['c1']);
+    s.sender.send.mockRejectedValue(new SessionNotConnectedError('s1'));
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['FAILED', 'SESSION_NOT_CONNECTED']]);
+  });
+
+  it('erro no meio do envio (conexão caiu) não volta para a fila: pode ter saído', async () => {
+    const s = setup(['c1']);
+    for (const d of s.dispatches.items) d.sessionId = 's1';
+    s.sender.send.mockRejectedValue(new AppError('RECOVERABLE_CONNECTION_ERROR', 'x', 503));
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['FAILED', 'RECOVERABLE_CONNECTION_ERROR']]);
   });
 });

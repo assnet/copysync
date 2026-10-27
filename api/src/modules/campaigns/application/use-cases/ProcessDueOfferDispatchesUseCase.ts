@@ -10,6 +10,17 @@ export const STALE_DISPATCH_MS = 5 * 60_000;
 export const DISPATCH_BATCH_SIZE = 10;
 /** Envio travado: vira FAILED SEND_TIMEOUT (sem retry — pode ter saído). */
 export const DISPATCH_SEND_TIMEOUT_MS = 60_000;
+/** Sessão fora do ar na vez do envio: tenta de novo depois disso, segurando a vez da sessão. */
+export const OFFLINE_RETRY_MS = 60_000;
+/** Esperando a sessão reconectar há mais que isso: desiste dos envios atrasados da sessão. */
+export const OFFLINE_MAX_WAIT_MS = 6 * 3_600_000;
+/**
+ * Erro que o envio levanta ANTES de gravar ou mandar qualquer coisa (engine ausente; socket fechado
+ * em `createOutboundMessageId`/`sendMediaMessage`): reenviar depois não duplica. `ENGINE_NOT_READY`
+ * NÃO entra: é também o código genérico do tradutor de erro do envio de texto (pode ter saído).
+ */
+const OFFLINE_CODES = new Set(['SESSION_NOT_CONNECTED']);
+
 /** Ofertas SENDING órfãs finalizadas por tick. */
 export const FINALIZE_SWEEP_LIMIT = 20;
 
@@ -99,6 +110,10 @@ export class ProcessDueOfferDispatchesUseCase {
       });
       result = { status: 'SENT', chatMessageId: sent.chatMessageId };
     } catch (err) {
+      if (err instanceof AppError && OFFLINE_CODES.has(err.code) && dispatch.sessionId) {
+        await this.waitForSession(dispatch, now);
+        return;
+      }
       result = toFailure(err);
       // Sem texto da oferta no log
       logger.warn({ dispatchId: id, offerId, tenantId, code: result.failureReason }, 'offer dispatch not sent');
@@ -108,6 +123,28 @@ export class ProcessDueOfferDispatchesUseCase {
     if (!marked) logger.warn({ dispatchId: id, offerId, tenantId }, 'offer dispatch no longer owned');
 
     await this.finalizeIfDone(offerId, tenantId);
+  }
+
+  /**
+   * Sessão fora do ar (queda silenciosa, reconexão, deploy): o envio volta para a fila e segura a
+   * vez da sessão em vez de virar FAILED. Fora do ar por mais de OFFLINE_MAX_WAIT_MS: os envios
+   * atrasados da sessão falham juntos (todos esperaram o mesmo tempo).
+   */
+  private async waitForSession(dispatch: OfferDispatch, now: Date): Promise<void> {
+    const { dispatches } = this.deps;
+    const { id, tenantId, offerId, claimToken, sessionId } = dispatch;
+    const since = dispatch.waitingSessionSince ?? now;
+    if (now.getTime() - since.getTime() >= OFFLINE_MAX_WAIT_MS) {
+      await dispatches.markResult(id, tenantId, claimToken!, { status: 'FAILED', failureReason: 'SESSION_NOT_CONNECTED' });
+      // Vencidos da sessão e o resto desta oferta: nenhum ganha outra janela de 6 h
+      const failed = await dispatches.failOverdueInSession(tenantId, sessionId!, now, 'SESSION_NOT_CONNECTED', offerId);
+      logger.warn({ dispatchId: id, offerId, tenantId, sessionId, failed }, 'offer dispatch gave up waiting for session');
+      await this.finalizeIfDone(offerId, tenantId);
+      return;
+    }
+    const deferred = await dispatches.deferForOfflineSession(id, tenantId, claimToken!, new Date(now.getTime() + OFFLINE_RETRY_MS), since);
+    // Oferta parada/finalizada no meio: fica SENDING e o releaseStale fecha como CANCELLED
+    if (deferred) logger.info({ dispatchId: id, offerId, tenantId, sessionId }, 'offer dispatch waiting for session to reconnect');
   }
 
   /** O envio pode seguir em segundo plano após o timeout; por isso SEND_TIMEOUT não reenvia. */

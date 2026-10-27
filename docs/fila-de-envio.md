@@ -54,6 +54,23 @@ Resultado: no máximo um envio por sessão por tick, nunca dois em voo na mesma 
 mínimo entre ofertas diferentes. O lock substitui o `SKIP LOCKED` (incompatível com `DISTINCT ON`) e
 impede dois workers de abrirem a mesma faixa.
 
+### 2.2.1 Sessão fora do ar na vez do envio
+
+O envio falha com `SESSION_NOT_CONNECTED` **antes** de gravar ou mandar qualquer coisa (engine
+ausente; socket fechado em `createOutboundMessageId`/`sendMediaMessage`). `ENGINE_NOT_READY` não
+entra: é também o código genérico do tradutor de erro do envio de texto (pode ter saído). Nesse caso ele **volta para a fila**
+(`deferForOfflineSession`): `QUEUED`, nova tentativa em 60 s (`OFFLINE_RETRY_MS`) e
+`waitingSessionSince` com o início da espera. No claim, envio em espera **segura a sessão** (nenhum
+outro dela sai antes da nova tentativa) e, quando vence, **sai primeiro**: a ordem da fila se mantém.
+Fora do ar por mais de 6 h (`OFFLINE_MAX_WAIT_MS`): falham juntos (`SESSION_NOT_CONNECTED`) os
+atrasados da sessão e o resto da mesma oferta, só de ofertas em envio (pausada não é tocada); nenhum
+ganha outra janela de 6 h. Oferta parada enquanto o envio saía não volta para a fila. Oferta com validade sai `SKIPPED/OFFER_EXPIRED` se vencer
+esperando. Erro no meio do envio (ex.: `RECOVERABLE_CONNECTION_ERROR`) não volta: a mensagem pode
+ter saído. Envio legado sem sessão continua falhando como antes. Painel: "Aguardando a sessão".
+
+Motivo: a sessão pode cair sem registro (o banco segue `CONNECTED`); antes, cada grupo da vez
+virava "Falhou" e perdia a oferta.
+
 ### 2.3 Previsão: encostar no fim da faixa
 
 Ao disparar (`SendOfferUseCase`) e ao retomar (`ResumeOfferUseCase`), a agenda da oferta é

@@ -3,7 +3,7 @@ import type { OfferDispatchItem } from '@/types/api.types';
 import { nextDispatchCooldown } from './dispatchCooldown';
 
 const d = (id: string, status: OfferDispatchItem['status'], notBefore: string): OfferDispatchItem => ({
-  id, conversationId: `c-${id}`, status, notBefore, chatMessageId: null, failureReason: null, updatedAt: notBefore,
+  id, conversationId: `c-${id}`, status, notBefore, chatMessageId: null, failureReason: null, waitingSession: false, updatedAt: notBefore,
 });
 
 describe('nextDispatchCooldown', () => {

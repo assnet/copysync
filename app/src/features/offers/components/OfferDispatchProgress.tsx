@@ -173,6 +173,8 @@ export function OfferDispatchProgress({ status, dispatches, scheduledAt = null, 
                 d.status === 'FAILED' || d.status === 'SKIPPED'
                   ? (d.failureReason && t.failureReasons[d.failureReason])
                     || (d.status === 'SKIPPED' ? t.failureReasons.skipped : t.failureReasons.generic)
+                  : d.waitingSession
+                    ? t.waitingSession
                   : multi && sessionOf(d.conversationId)
                     ? <Blurred when={blurSession} inline radius={4}>{t.viaSession(sessionOf(d.conversationId)!)}</Blurred>
                     : undefined

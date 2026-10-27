@@ -87,9 +87,16 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                  FROM "offer_dispatches" d
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
                   AND d."offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
-                ORDER BY COALESCE(d."sessionId", d."id"), d."notBefore"
+                -- Quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
+                ORDER BY COALESCE(d."sessionId", d."id"), (d."waitingSessionSince" IS NULL), d."notBefore"
              ) heads
               WHERE NOT EXISTS (
+                -- Sessão em espera: envio devolvido por sessão fora do ar ainda não chegou na nova tentativa
+                SELECT 1 FROM "offer_dispatches" w
+                 WHERE w."sessionId" = heads."sessionId" AND w."status" = 'QUEUED'::"OfferDispatchStatus"
+                   AND w."waitingSessionSince" IS NOT NULL AND w."notBefore" > ${now}
+              )
+              AND NOT EXISTS (
                 SELECT 1 FROM "offer_dispatches" o
                  WHERE o."sessionId" = heads."sessionId"
                    AND (o."status" = 'SENDING'::"OfferDispatchStatus"
@@ -172,6 +179,25 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     const { count } = await this.prisma.offerDispatch.updateMany({
       where: stale,
       data: { status: 'QUEUED', claimedAt: null, claimToken: null },
+    });
+    return count;
+  }
+
+  async deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date): Promise<boolean> {
+    const { count } = await this.prisma.offerDispatch.updateMany({
+      where: { id, tenantId, claimToken, status: 'SENDING', offer: { status: { in: ['SENDING', 'PAUSED'] } } },
+      data: { status: 'QUEUED', claimToken: null, claimedAt: null, notBefore: retryAt, waitingSessionSince: waitingSince },
+    });
+    return count > 0;
+  }
+
+  async failOverdueInSession(tenantId: string, sessionId: string, now: Date, failureReason: string, offerId: string): Promise<number> {
+    const { count } = await this.prisma.offerDispatch.updateMany({
+      where: {
+        tenantId, sessionId, status: 'QUEUED', offer: { status: 'SENDING' },
+        OR: [{ notBefore: { lte: now } }, { offerId }],
+      },
+      data: { status: 'FAILED', failureReason },
     });
     return count;
   }

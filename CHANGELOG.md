@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — campaigns (api 0.37.1 · app 0.42.1) — envio com a sessão fora do ar volta para a fila
+
+Sessão que cai sem registro (banco segue "conectada") fazia cada grupo da vez virar "Falhou" e perder a oferta.
+
+#### Backend
+
+- **`ProcessDueOfferDispatchesUseCase.ts`** — `SESSION_NOT_CONNECTED` (levantado antes de gravar ou enviar, sem risco de duplicar) devolve o envio à fila com nova tentativa em 60 s; após 6 h fora do ar, falham juntos os atrasados da sessão e o resto da mesma oferta (oferta pausada intacta). `ENGINE_NOT_READY` e erro no meio do envio continuam falha (pode ter saído).
+- **`PrismaOfferDispatchRepository.ts`** — `deferForOfflineSession`, `failOverdueInSession`; `claimDue` segura a sessão enquanto houver envio em espera e o devolve primeiro (ordem mantida). Validado em Postgres real.
+- **`schema.prisma`** + migration `20261028030000_dispatch_waiting_session` — `OfferDispatch.waitingSessionSince` (nullable). Aditiva.
+- **`OfferDTO.ts`**, **`GetSendQueueUseCase.ts`**, schemas — `waitingSession` no envio.
+
+#### Frontend
+
+- **`SendQueuePanel.tsx`**, **`OfferDispatchProgress.tsx`** — envio em espera aparece como "Aguardando a sessão" (com explicação no tooltip).
+
 ### Added — automation (api 0.37.0 · app 0.42.0) — monitoramento de grupos
 
 Escuta grupos de concorrentes, troca o link pelo link de afiliado do tenant e reposta nos grupos de disparo, com horário de operação, intervalo, "digitando…", marcar todos e validade da oferta/cupom. Doc: `docs/monitoramento-grupos.md`.

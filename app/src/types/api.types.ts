@@ -207,6 +207,8 @@ export interface SendQueueItem {
   claimedAt: string | null;
   updatedAt: string;
   failureReason: string | null;
+  /** Voltou para a fila porque a sessão estava fora do ar; sai quando ela reconectar. */
+  waitingSession: boolean;
 }
 
 /** Fila de uma sessão: um envio por vez, na ordem de `notBefore`. */
@@ -238,6 +240,8 @@ export interface OfferDispatchItem {
   notBefore: string;
   chatMessageId: string | null;
   failureReason: string | null;
+  /** Voltou para a fila porque a sessão estava fora do ar; sai quando ela reconectar. */
+  waitingSession: boolean;
   updatedAt: string;
 }
 
