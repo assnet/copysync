@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — sessions (app 0.38.2)
+
+- **`useSessionConnection.ts`** — o polling parava em `DISCONNECTED`/`FAILED`. Após ler o QR o WhatsApp reinicia o socket (515) e o status passa por `DISCONNECTED` antes de `CONNECTED`: o painel parava de consultar e ficava em "código expirou" com a sessão já conectada. Agora só `CONNECTED`/`LOGGED_OUT` param; `DISCONNECTED`/`PENDING` mostram "aguardando" em vez de "não concluída"; e expirado/falha nunca sobrepõem conectado (**`SessionConnectPanel.tsx`**).
+
 ### Changed — sessions (api 0.33.1 · app 0.38.1)
 
 - **QR de pareamento vive 2 min** — `qrTimeout: 120_000` no adapter Baileys (padrão da lib: 60 s no 1º QR e 20 s nos seguintes) e `QR_TTL_MS` do painel igualado; a contagem regressiva mostra `m:ss`.

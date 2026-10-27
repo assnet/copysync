@@ -41,12 +41,12 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
   const theme = useTheme();
   const [copied, setCopied] = useState(false);
   const {
-    mode, qrCode, pairingCode, status, error, busy, isFailed,
+    mode, qrCode, pairingCode, status, error, busy, isFailed, isConnected,
     secondsLeft, qrTtlSeconds, qrExpired,
   } = conn;
 
-  const needsNewCode = isFailed || (mode === 'qr' && qrExpired);
-  const refreshingQr = mode === 'qr' && secondsLeft === 0 && !qrExpired && !isFailed;
+  const needsNewCode = !isConnected && (isFailed || (mode === 'qr' && qrExpired));
+  const refreshingQr = !isConnected && mode === 'qr' && secondsLeft === 0 && !qrExpired && !isFailed;
 
   async function copy() {
     if (!pairingCode) return;

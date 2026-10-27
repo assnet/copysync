@@ -9,7 +9,10 @@ export type ConnectionMode = 'qr' | 'pairing';
 
 const POLL_MS = 2000;
 const TICK_MS = 500;
-const STOPPED: SessionStatus[] = ['CONNECTED', 'FAILED', 'LOGGED_OUT', 'DISCONNECTED'];
+// Só estados finais param o polling. DISCONNECTED/FAILED são passageiros: depois de ler o QR o
+// WhatsApp manda reiniciar o socket (515) e o status passa por DISCONNECTED antes do CONNECTED;
+// parar aqui deixava o painel preso em "expirado" com a sessão já conectada.
+const STOPPED: SessionStatus[] = ['CONNECTED', 'LOGGED_OUT'];
 const RECONNECTABLE: SessionStatus[] = ['DISCONNECTED', 'FAILED', 'LOGGED_OUT'];
 
 interface Options {
@@ -169,9 +172,11 @@ export function useSessionConnection({ sessionId, enabled, onStatusChange }: Opt
   }, [regenerate]);
 
   const isConnected = status === 'CONNECTED';
-  const isFailed = status === 'FAILED' || status === 'LOGGED_OUT' || status === 'DISCONNECTED' || status === 'PENDING';
+  // DISCONNECTED e PENDING não são falha: a engine reconecta e emite QR novo (polling segue)
+  const isFailed = status === 'FAILED' || status === 'LOGGED_OUT';
   const secondsLeft = qrIssuedAt ? qrSecondsLeft(qrIssuedAt, now) : null;
-  const qrExpired = Boolean(qrIssuedAt && isQrExpired(qrIssuedAt, now));
+  // Conectado vence expirado: o QR vence depois da leitura, enquanto o socket reinicia
+  const qrExpired = !isConnected && Boolean(qrIssuedAt && isQrExpired(qrIssuedAt, now));
 
   return {
     status,
