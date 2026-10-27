@@ -425,11 +425,35 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           this.typingOnline.add(sessionId);
         }
         await entry.socket.sendPresenceUpdate('composing', jid);
+        await this.sendGroupChatStateAsLid(entry.socket, jid, 'composing');
+        baileysLogger.info({ sessionId, jid, presence, name: !!entry.socket.user?.name }, 'Presence sent');
         return;
       }
       await entry.socket.sendPresenceUpdate('paused', jid);
+      await this.sendGroupChatStateAsLid(entry.socket, jid, 'paused');
       if (this.typingOnline.delete(sessionId)) await entry.socket.sendPresenceUpdate('unavailable');
+      baileysLogger.info({ sessionId, jid, presence }, 'Presence sent');
     } catch (err) { throw translateEngineError(err); }
+  }
+
+  /**
+   * Grupo é endereçado por LID no Baileys 7 (`addressing_mode: 'lid'`), mas o
+   * `sendPresenceUpdate` da lib manda o chatstate de grupo com `from` = JID de telefone
+   * (só usa `me.lid` quando o destino é `@lid`). Reenvia o mesmo chatstate com a identidade
+   * LID: é a que os outros participantes conhecem. Melhor esforço — falha não segura o envio.
+   */
+  private async sendGroupChatStateAsLid(
+    socket: ReturnType<typeof makeWASocket>,
+    jid: string,
+    state: 'composing' | 'paused',
+  ): Promise<void> {
+    const lid = socket.user?.lid;
+    if (!jid.endsWith('@g.us') || !lid) return;
+    try {
+      await socket.sendNode({ tag: 'chatstate', attrs: { from: lid, to: jid }, content: [{ tag: state, attrs: {} }] });
+    } catch (err) {
+      baileysLogger.debug({ jid, err: (err as Error)?.message }, 'LID chatstate failed');
+    }
   }
 
   async listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]> {

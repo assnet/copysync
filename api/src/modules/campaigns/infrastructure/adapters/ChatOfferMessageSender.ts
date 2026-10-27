@@ -94,6 +94,7 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
     try {
       const contact = conv.isGroup ? null : await chatMediaContainer.contactRepo.findById(conv.contactId ?? '', tenantId);
       to = resolveConversationTarget(conv, contact).recipientPhone;
+      log.info({ conversationId: conv.id, sessionId: conv.sessionId, seconds: totalMs / 1000 }, 'typing indicator start');
       for (let elapsed = 0; elapsed < totalMs; elapsed += PRESENCE_REFRESH_MS) {
         await engine.sendPresence(conv.sessionId, to, 'composing');
         await this.sleep(Math.min(PRESENCE_REFRESH_MS, totalMs - elapsed));

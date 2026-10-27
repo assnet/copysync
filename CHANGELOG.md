@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — messaging (api 0.34.2) — "digitando…" em grupo com identidade LID
+
+- **`BaileysMessagingEngineAdapter.ts`** — `sendPresenceUpdate('composing', grupo)` da lib manda o chatstate com `from` = JID de telefone (`me.id`); só usa `me.lid` quando o destino é `@lid`. Grupo no Baileys 7 é endereçado por LID, e os participantes conhecem a conta pelo LID: o chatstate de telefone não é exibido. O adapter reenvia o mesmo chatstate (`composing`/`paused`) com `from = me.lid` via `sendNode` (melhor esforço). Log `Presence sent` por envio (sessão, jid, presença, se há `pushName` — sem ele a lib ignora `available` em silêncio) e `typing indicator start` no sender.
+
 ### Fixed — campaigns (api 0.34.1) — "marcar todos" não marcava ninguém
 
 - **`ChatOfferMessageSender.ts`**, **`IMessagingEngine.ts`** (`GroupParticipantInfo.jid`), **`BaileysMessagingEngineAdapter.ts`** — a menção ia com o JID de telefone (`…@s.whatsapp.net`) de cada participante, mas grupo no Baileys 7 é endereçado por LID por padrão (`addressing_mode: 'lid'`): o WhatsApp ignora `mentionedJid` que não bate com o endereçamento do grupo, e participante só com LID nem entrava. Agora o adapter devolve o `jid` como o grupo endereça o participante (`@lid` ou telefone) e a oferta menciona por ele. Log `offer mention all` com contagem.
