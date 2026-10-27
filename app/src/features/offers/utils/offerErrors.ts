@@ -25,7 +25,7 @@ function actionFor(code: string | null): OfferErrorAction {
 
 /** Traduz o erro do `apiClient` (que anexa `code` e `meta`) para a tela. */
 export function toOfferError(err: unknown, fallbackLimit?: number | null): OfferErrorView {
-  const e = err as { code?: unknown; meta?: { limit?: unknown; key?: unknown } } | null;
+  const e = err as { code?: unknown; meta?: { limit?: unknown; key?: unknown; field?: unknown } } | null;
   const code = typeof e?.code === 'string' ? e.code : null;
 
   if (code === 'PLAN_LIMIT_REACHED') {
@@ -35,6 +35,10 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
     }
     const daily = limit ?? fallbackLimit;
     return { code, message: daily != null ? t.planLimit(daily) : t.planLimitNoValue, action: 'none', isLinkField: false };
+  }
+
+  if (code === 'OFFER_INVALID_INPUT' && e?.meta?.field === 'scheduledAt') {
+    return { code, message: t.schedule.invalid, action: 'none', isLinkField: false };
   }
 
   return {

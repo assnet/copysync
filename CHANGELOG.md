@@ -9,6 +9,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns (api 0.35.0 · app 0.40.0) — início agendado e prévia lado a lado com o envio
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261028000000_offer_scheduled_start` — `Offer.scheduledAt` (nullable; null = começa ao disparar). Aditiva, sem backfill.
+- **`domain/offerSchedule.ts`** — regras puras: `offerScheduleProblem` (futuro, teto de 30 dias: oferta de afiliado envelhece) e `dispatchStartAt` (agendado ainda no futuro, senão agora).
+- **`offerScheduleInput.ts`** — `scheduledAt` ISO do HTTP → `Date`; passado/além do teto → 422 `OFFER_INVALID_INPUT` com `field: scheduledAt`.
+- **`GenerateOfferUseCase.ts`**, **`UpdateOfferUseCase.ts`** — aceitam `scheduledAt` (update: `null` remove). Validação antes de qualquer rede.
+- **`SendOfferUseCase.ts`** — o 1º envio sai no início agendado e os demais encadeiam o intervalo da configuração a partir dele. Agendamento vencido no disparo começa agora. Sem status novo: a oferta fica `SENDING` com `notBefore` futuro e o worker já respeita (`claimDue`).
+- **`OfferSendControlUseCases.ts`** — retomar uma oferta pausada antes do horário mantém o início agendado (não sai "agora").
+- **`offer.schema.ts`**, **`offer.routes.ts`**, **`OfferDTO.ts`** — `scheduledAt` na entrada (generate/patch) e na saída.
+
+#### Frontend
+
+- **`OfferGeneratorPage.tsx`** — depois de gerar, o card de geração some e a prévia e o envio ficam lado a lado (empilhados no celular). "+ Novo" na prévia reabre a geração (`offers.composing` persistido); "Voltar para a oferta" desfaz. Bloqueado com tooltip enquanto a oferta está `SENDING`/`PAUSED` (uma oferta ativa por vez até existir fila por sessão).
+- **`OfferSendPanel.tsx`** (novo) — card "Envio" do rascunho: marcar todos, digitando, **Agendar início**, destinos e disparo (movidos do `OfferResultPanel.tsx`, que ficou só com prévia/editar/gerar de novo).
+- **`OfferScheduleField.tsx`** (novo) — `ToggleOption` + `datetime-local` nativo (sem lib de datas; `colorScheme` segue o tema). Usado na geração e no card de envio (grava ao sair do campo).
+- **`OfferDispatchProgress.tsx`** — antes do início: alerta "Envio agendado" + `CooldownBar` até o horário (pausar/parar disponíveis).
+- **`utils/offerSchedule.ts`** — conversão hora local ↔ ISO, limites, sugestão (próxima hora cheia), validação espelhando a API, relógio `serverNow()`.
+- **`strings.ts`**, **`offerErrors.ts`** — textos do agendamento; 422 em `scheduledAt` vira mensagem própria.
+
 ### Fixed — messaging (api 0.34.2) — "digitando…" em grupo com identidade LID
 
 - **`BaileysMessagingEngineAdapter.ts`** — `sendPresenceUpdate('composing', grupo)` da lib manda o chatstate com `from` = JID de telefone (`me.id`); só usa `me.lid` quando o destino é `@lid`. Grupo no Baileys 7 é endereçado por LID, e os participantes conhecem a conta pelo LID: o chatstate de telefone não é exibido. O adapter reenvia o mesmo chatstate (`composing`/`paused`) com `from = me.lid` via `sendNode` (melhor esforço). Log `Presence sent` por envio (sessão, jid, presença, se há `pushName` — sem ele a lib ignora `available` em silêncio) e `typing indicator start` no sender.

@@ -39,8 +39,9 @@ type UpdateBody = {
   mentionAll?: boolean;
   simulateTyping?: boolean;
   typingSeconds?: number;
+  scheduledAt?: string | null;
 };
-type GenerateBody = { url: string; coupon?: string | null; audience?: OfferAudience };
+type GenerateBody = { url: string; coupon?: string | null; audience?: OfferAudience; scheduledAt?: string | null };
 type SaveConfigBody = {
   sessionIds: string[];
   intervalMinSeconds: number;
@@ -68,8 +69,8 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const { tenantId, userId } = request.tenantContext;
-      const { url, coupon, audience } = request.body;
-      const result = await offersContainer.generateOffer().execute({ tenantId, userId, url, coupon, audience });
+      const { url, coupon, audience, scheduledAt } = request.body;
+      const result = await offersContainer.generateOffer().execute({ tenantId, userId, url, coupon, audience, scheduledAt });
       httpResponse.created(reply, result);
     },
   );

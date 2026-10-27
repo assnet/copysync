@@ -110,3 +110,13 @@ describe('CancelOfferUseCase', () => {
     await expect(new CancelOfferUseCase(deps).execute(input)).rejects.toMatchObject({ code: 'OFFER_INVALID_STATE' });
   });
 });
+
+describe('ResumeOfferUseCase — início agendado', () => {
+  it('pausada antes do horário marcado: retoma a partir do agendamento, não de agora', async () => {
+    const at = new Date(LATER.getTime() + 3 * 60 * 60_000);
+    const { deps, byConv, input } = setup({ status: 'PAUSED', scheduledAt: at });
+    await new ResumeOfferUseCase(deps).execute(input);
+    expect(byConv('c3').notBefore).toEqual(at);
+    expect(byConv('c4').notBefore).toEqual(new Date(at.getTime() + 150_000));
+  });
+});

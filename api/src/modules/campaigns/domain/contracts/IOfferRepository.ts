@@ -17,6 +17,7 @@ export interface CreateOfferInput {
   text: string;
   coupon: string | null;
   audience: OfferAudience;
+  scheduledAt: Date | null;
   createdById: string | null;
 }
 
@@ -29,7 +30,7 @@ export interface DailyQuota {
 
 /** Campos editáveis pelo operador antes do envio. */
 export type OfferPatch = Partial<
-  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'coupon' | 'audience' | 'mentionAll' | 'simulateTyping' | 'typingSeconds'>
+  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'coupon' | 'audience' | 'mentionAll' | 'simulateTyping' | 'typingSeconds' | 'scheduledAt'>
 >;
 
 export type UpdateOfferResult =

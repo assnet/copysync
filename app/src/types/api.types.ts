@@ -219,6 +219,8 @@ export interface OfferItem {
   /** Mostra "digitando…" por `typingSeconds` antes de cada envio. */
   simulateTyping: boolean;
   typingSeconds: number;
+  /** Início agendado dos disparos (ISO); null = começa ao disparar. */
+  scheduledAt: string | null;
   text: string;
   /** Texto editado à mão: mudar título/preço não o remonta mais. */
   textEdited: boolean;
@@ -232,6 +234,8 @@ export interface GenerateOfferRequest {
   url: string;
   coupon?: string;
   audience: OfferAudience;
+  /** Início agendado dos disparos (ISO). */
+  scheduledAt?: string;
 }
 
 export interface GenerateOfferResponse {
@@ -260,6 +264,8 @@ export interface UpdateOfferRequest {
   mentionAll?: boolean;
   simulateTyping?: boolean;
   typingSeconds?: number;
+  /** null remove o agendamento. */
+  scheduledAt?: string | null;
 }
 
 export interface SendOfferResponse {

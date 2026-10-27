@@ -13,6 +13,8 @@ import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo'
 import { offerStrings } from '../strings';
 import { detectStore, linkProblem } from '../utils/offerStore';
 import { AudiencePicker } from './AudiencePicker';
+import { OfferScheduleField } from './OfferScheduleField';
+import { SCHEDULE_MAX_DAYS, defaultScheduleInput, fromLocalInput, scheduleProblem } from '../utils/offerSchedule';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 interface FormDraft {
@@ -20,11 +22,15 @@ interface FormDraft {
   hasCoupon: boolean;
   coupon: string;
   audience: OfferAudience;
+  scheduleOn: boolean;
+  /** Valor do `datetime-local` (hora local). */
+  scheduleAt: string;
 }
 
-const EMPTY_FORM: FormDraft = { url: '', hasCoupon: false, coupon: '', audience: 'STANDARD' };
+const EMPTY_FORM: FormDraft = { url: '', hasCoupon: false, coupon: '', audience: 'STANDARD', scheduleOn: false, scheduleAt: '' };
 
 const t = offerStrings.form;
+const ts = offerStrings.schedule;
 const COUPON_MAX = 40;
 
 interface Props {
@@ -36,19 +42,29 @@ interface Props {
   disabledReason?: string | null;
   onGenerate: (body: GenerateOfferRequest) => Promise<void>;
   onChange?: () => void;
+  /** Volta para a oferta aberta sem gerar outra (só quando há uma). */
+  onCancel?: () => void;
 }
 
-/** Card "Gerar nova oferta": link próprio + cupom opcional + público-alvo. */
-export function OfferGeneratorForm({ generating, serverError, disabled, disabledReason, onGenerate, onChange }: Props) {
+/** Card "Gerar nova oferta": link próprio + cupom opcional + público-alvo + início agendado. */
+export function OfferGeneratorForm({ generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel }: Props) {
   // Sobrevive a reload (padrão do painel): link colado, cupom e público ficam na aba
   const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM);
-  const { url, hasCoupon, coupon, audience } = form;
+  // Rascunho antigo (antes do agendamento) não tem os campos novos
+  const { url, hasCoupon, coupon, audience, scheduleOn = false, scheduleAt = '' } = form;
   const setUrl = (v: string) => setForm((f) => ({ ...f, url: v }));
   const setHasCoupon = (v: boolean) => setForm((f) => ({ ...f, hasCoupon: v }));
   const setCoupon = (v: string) => setForm((f) => ({ ...f, coupon: v }));
   const setAudience = (v: OfferAudience) => setForm((f) => ({ ...f, audience: v }));
   const [linkError, setLinkError] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+
+  const toggleSchedule = (on: boolean) => {
+    setForm((f) => ({ ...f, scheduleOn: on, scheduleAt: on && !f.scheduleAt ? defaultScheduleInput() : f.scheduleAt }));
+    setScheduleError(null);
+  };
+  const setScheduleAt = (v: string) => { setForm((f) => ({ ...f, scheduleAt: v })); setScheduleError(null); };
 
   const store = detectStore(url);
   const spec = store ? AFFILIATE_PROVIDERS.find((p) => p.provider === store) : undefined;
@@ -66,12 +82,20 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
     const problem = linkProblem(url);
     const linkMsg = problem === 'required' ? t.linkRequired : problem === 'invalid' ? t.linkInvalid : problem ? t.linkUnknownStore : null;
     const couponMsg = hasCoupon && !coupon.trim() ? t.couponRequired : null;
+    const when = scheduleOn ? scheduleProblem(scheduleAt) : null;
+    const scheduleMsg = when === 'required' ? ts.required : when === 'past' ? ts.past : when === 'too_far' ? ts.tooFar(SCHEDULE_MAX_DAYS) : null;
     setLinkError(linkMsg);
     setCouponError(couponMsg);
-    if (linkMsg || couponMsg) return;
+    setScheduleError(scheduleMsg);
+    if (linkMsg || couponMsg || scheduleMsg) return;
     try {
-      await onGenerate({ url: url.trim(), audience, coupon: hasCoupon ? coupon.trim() : undefined });
-      setUrl('');
+      await onGenerate({
+        url: url.trim(),
+        audience,
+        coupon: hasCoupon ? coupon.trim() : undefined,
+        scheduledAt: scheduleOn ? fromLocalInput(scheduleAt) ?? undefined : undefined,
+      });
+      setForm((f) => ({ ...f, url: '', scheduleOn: false, scheduleAt: '' }));
     } catch {
       // A mensagem vem do hook (`serverError` ou alerta da página).
     }
@@ -171,6 +195,15 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
             <AudiencePicker value={audience} onChange={setAudience} disabled={busy} label={t.audienceLabel} />
           </Box>
 
+          <OfferScheduleField
+            enabled={scheduleOn}
+            value={scheduleAt}
+            onToggle={toggleSchedule}
+            onChange={setScheduleAt}
+            error={scheduleError}
+            disabled={busy}
+          />
+
           <Box>
             <Button
               type="submit"
@@ -184,6 +217,11 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
             >
               {generating ? t.generating : t.submit}
             </Button>
+            {onCancel && (
+              <Button fullWidth color="inherit" onClick={onCancel} disabled={generating} sx={{ mt: 1 }}>
+                {t.backToOffer}
+              </Button>
+            )}
             {disabledReason && (
               <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.75, textAlign: 'center' }}>
                 {disabledReason}

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Alert, Box, Button, Chip, LinearProgress, List, ListItem, ListItemText, Stack, Tooltip, Typography, type ChipProps } from '@mui/material';
-import { Pause, Play, Square } from 'lucide-react';
+import { CalendarClock, Pause, Play, Square } from 'lucide-react';
 import { AppIcon, ConfirmDialog, CooldownBar, SectionCard } from '@/components';
 import { serverToLocal } from '@/services/serverClock';
 import { nextDispatchCooldown } from '../utils/dispatchCooldown';
+import { isPendingSchedule } from '../utils/offerSchedule';
 import type { OfferConfigGroup, OfferDispatchItem, OfferDispatchStatus, OfferStatus, SessionItem } from '@/types/api.types';
 import { Blurred, useBlur } from '@/features/privacy';
 import { offerStrings } from '../strings';
@@ -26,6 +27,10 @@ export type OfferControlAction = 'pause' | 'resume' | 'cancel';
 interface Props {
   status: OfferStatus;
   dispatches: OfferDispatchItem[];
+  /** Início agendado (ISO): antes dele o card mostra a contagem até o início. */
+  scheduledAt?: string | null;
+  /** Última mudança da oferta (ISO): começo da barra até o início agendado. */
+  updatedAt?: string;
   /** Títulos vindos da configuração; grupo que saiu dela aparece como removido. */
   destinations: OfferConfigGroup[];
   /** Sessões da configuração: com mais de uma, cada linha mostra por qual número sai. */
@@ -39,7 +44,7 @@ interface Props {
  * Situação do envio por destino. Os dados chegam pelo polling do hook enquanto a oferta está
  * `SENDING`/`PAUSED`. Controles: pausar segura a fila, retomar reagenda, parar é final.
  */
-export function OfferDispatchProgress({ status, dispatches, destinations, sessions, onControl, controlling = false }: Props) {
+export function OfferDispatchProgress({ status, dispatches, scheduledAt = null, updatedAt, destinations, sessions, onControl, controlling = false }: Props) {
   const titles = new Map(destinations.map((d) => [d.conversationId, d.title]));
   const sessionNames = new Map(sessions.map((s) => [s.id, s.name]));
   const sessionOf = (conversationId: string) => {
@@ -57,6 +62,10 @@ export function OfferDispatchProgress({ status, dispatches, destinations, sessio
   const percent = total ? Math.round((done / total) * 100) : 0;
   const active = status === 'SENDING' || status === 'PAUSED';
   const cooldown = active ? nextDispatchCooldown(dispatches) : null;
+  // Agendado e nada saiu ainda: a espera é até o início, não até o próximo grupo
+  const waitingStart = active && done === 0 && isPendingSchedule(scheduledAt);
+  const startMs = scheduledAt ? Date.parse(scheduledAt) : 0;
+  const scheduledWhen = scheduledAt ? offerStrings.send.formatWhen(scheduledAt) : '';
 
   return (
     <SectionCard
@@ -95,7 +104,7 @@ export function OfferDispatchProgress({ status, dispatches, destinations, sessio
           {t.summary(done, total)}
         </Typography>
         <LinearProgress
-          variant={status === 'SENDING' && done === 0 ? 'indeterminate' : 'determinate'}
+          variant={status === 'SENDING' && done === 0 && !waitingStart ? 'indeterminate' : 'determinate'}
           value={percent}
           aria-label={t.summary(done, total)}
           color={status === 'FAILED' ? 'error' : status === 'PAUSED' ? 'warning' : 'primary'}
@@ -103,7 +112,27 @@ export function OfferDispatchProgress({ status, dispatches, destinations, sessio
         />
       </Box>
 
-      {cooldown && status === 'SENDING' && (
+      {waitingStart && (
+        <Stack spacing={1.5} sx={{ mb: 2 }}>
+          <Alert severity="info" icon={<AppIcon icon={CalendarClock} size="sm" />}>
+            <strong>{t.scheduledTitle}.</strong> {t.scheduled(scheduledWhen)}
+          </Alert>
+          {status === 'SENDING' && (
+            <CooldownBar
+              key={scheduledAt}
+              startAt={Math.min(updatedAt ? Date.parse(updatedAt) : startMs, startMs)}
+              endAt={startMs}
+              ariaLabel={t.startsInAria}
+              label={t.startsIn}
+              formatRemaining={t.remainingLong}
+              doneLabel={t.startsInDone}
+              tooltip={scheduledWhen}
+            />
+          )}
+        </Stack>
+      )}
+
+      {cooldown && status === 'SENDING' && !waitingStart && (
         <Box sx={{ mb: 2 }}>
           <CooldownBar
             key={cooldown.next.id}

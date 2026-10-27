@@ -26,7 +26,7 @@ import { ChatOfferMessageSender } from './ChatOfferMessageSender';
 
 const base = {
   tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null, mentionAll: true,
-  simulateTyping: false, typingSeconds: 15,
+  simulateTyping: false, typingSeconds: 15, scheduledAt: null,
 };
 const group = { id: 'c1', sessionId: 's1', isGroup: true, groupJid: '1203@g.us' };
 

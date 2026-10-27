@@ -624,6 +624,8 @@ model Offer {
   simulateTyping      Boolean           @default(false)
   /// Duração do "digitando…" em segundos (limites em campaigns/domain/offerTyping.ts).
   typingSeconds       Int               @default(15)
+  /// Início agendado dos disparos; null = começa ao disparar (teto em campaigns/domain/offerSchedule.ts).
+  scheduledAt         DateTime?
   status              OfferStatus       @default(DRAFT)
   createdById         String? // null se o usuário for removido
   createdAt           DateTime          @default(now())

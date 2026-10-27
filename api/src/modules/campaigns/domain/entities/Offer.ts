@@ -26,6 +26,8 @@ export interface Offer {
   simulateTyping: boolean;
   /** Segundos de "digitando…" (1–30). */
   typingSeconds: number;
+  /** Início agendado dos disparos; null = começa ao disparar. */
+  scheduledAt: Date | null;
   status: OfferStatus;
   createdById: string | null;
   createdAt: Date;

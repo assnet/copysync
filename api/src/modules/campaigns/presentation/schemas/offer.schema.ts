@@ -19,6 +19,8 @@ const priceCents = { type: ['integer', 'null'], minimum: 0, maximum: 1_000_000_0
 const audience = { type: 'string', enum: [...OFFER_AUDIENCES] } as const;
 /** Formato fino (caracteres) é 422 `coupon` no use case. */
 const coupon = { type: ['string', 'null'], maxLength: OFFER_COUPON_MAX } as const;
+/** Formato no schema; futuro e teto de dias no use case (422 `scheduledAt`). */
+const scheduledAt = { type: ['string', 'null'], format: 'date-time' } as const;
 const intervalSeconds = { type: 'integer', minimum: OFFER_INTERVAL_MIN_SECONDS, maximum: OFFER_INTERVAL_MAX_SECONDS } as const;
 
 // ── Entrada ──────────────────────────────────────────────────────────────────
@@ -32,7 +34,7 @@ export const offerIdParamSchema = {
 export const generateOfferBodySchema = {
   type: 'object',
   required: ['url'],
-  properties: { url: { type: 'string', minLength: 1, maxLength: 2048 }, coupon, audience },
+  properties: { url: { type: 'string', minLength: 1, maxLength: 2048 }, coupon, audience, scheduledAt },
   additionalProperties: false,
 } as const;
 
@@ -50,6 +52,7 @@ export const updateOfferBodySchema = {
     mentionAll: { type: 'boolean' },
     simulateTyping: { type: 'boolean' },
     typingSeconds: { type: 'integer', minimum: OFFER_TYPING_SECONDS_MIN, maximum: OFFER_TYPING_SECONDS_MAX },
+    scheduledAt,
   },
   additionalProperties: false,
 } as const;
@@ -121,6 +124,7 @@ const offerSchema = {
     mentionAll: { type: 'boolean' },
     simulateTyping: { type: 'boolean' },
     typingSeconds: { type: 'integer' },
+    scheduledAt: { type: ['string', 'null'], format: 'date-time' },
     status: { type: 'string', enum: [...OFFER_STATUSES] },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },

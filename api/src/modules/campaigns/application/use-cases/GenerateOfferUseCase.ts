@@ -28,6 +28,7 @@ import { logger } from '../../../../shared/logger/logger';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import type { OfferTextComposer } from '../services/OfferTextComposer';
 import { normalizeCoupon } from './offerCoupon';
+import { parseOfferSchedule } from './offerScheduleInput';
 
 export const OFFER_GENERATIONS_PER_DAY = 'offer_generations_per_day';
 
@@ -37,6 +38,8 @@ export interface GenerateOfferInput {
   url: string;
   coupon?: string | null;
   audience?: OfferAudience;
+  /** Início agendado dos disparos (ISO); ausente/null = começa ao disparar. */
+  scheduledAt?: string | null;
 }
 
 export interface GenerateOfferOutput {
@@ -89,6 +92,7 @@ export class GenerateOfferUseCase {
     const coupon = normalizeCoupon(input.coupon);
     const audience = input.audience ?? 'STANDARD';
     if (!OFFER_AUDIENCES.includes(audience)) throw new OfferInvalidInputError('Unknown audience', 'audience');
+    const scheduledAt = parseOfferSchedule(input.scheduledAt, this.now()) ?? null;
 
     // 1. Cota diária (null = ilimitado). Checagem cedo poupa rede; a definitiva é atômica na gravação
     const limit = await this.deps.entitlements.getNumber(tenantId, OFFER_GENERATIONS_PER_DAY);
@@ -158,6 +162,7 @@ export class GenerateOfferUseCase {
       text: composed.text,
       coupon,
       audience,
+      scheduledAt,
       createdById: userId,
     };
     let offer;

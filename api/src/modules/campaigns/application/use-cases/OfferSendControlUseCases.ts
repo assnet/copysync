@@ -2,6 +2,7 @@ import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
+import { dispatchStartAt } from '../../domain/offerSchedule';
 import { OfferInvalidStateError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import { DEFAULT_INTERVAL } from './OfferGeneratorConfigUseCases';
@@ -50,7 +51,8 @@ export class PauseOfferUseCase extends OfferControlUseCase {
 }
 
 /**
- * PAUSED → SENDING. Os QUEUED são reagendados a partir de agora com o intervalo da
+ * PAUSED → SENDING. Os QUEUED são reagendados a partir de agora (ou do início agendado, se
+ * ainda não chegou) com o intervalo da
  * configuração atual, na mesma ordem: nada sai em rajada por causa do tempo parado.
  */
 export class ResumeOfferUseCase extends OfferControlUseCase {
@@ -64,7 +66,9 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
       maxMs: (config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max) * 1000,
     };
     const queued = (await this.deps.dispatches.listByOffer(offer.id, input.tenantId)).filter((d) => d.status === 'QUEUED').length;
-    const slots = scheduleDispatches(queued, (this.deps.now ?? (() => new Date()))(), interval, this.deps.rand);
+    // Pausada antes do início agendado: retomar mantém o horário marcado
+    const start = dispatchStartAt(offer.scheduledAt, (this.deps.now ?? (() => new Date()))());
+    const slots = scheduleDispatches(queued, start, interval, this.deps.rand);
     await this.deps.dispatches.rescheduleQueued(offer.id, input.tenantId, slots);
 
     if (!(await this.deps.offers.transitionStatus(offer.id, input.tenantId, ['PAUSED'], 'SENDING'))) {

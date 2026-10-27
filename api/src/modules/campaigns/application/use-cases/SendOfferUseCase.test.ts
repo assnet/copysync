@@ -176,3 +176,20 @@ describe('SendOfferUseCase', () => {
     await expect(s.uc.execute({ ...input, offerId: 'x' })).rejects.toMatchObject({ code: 'OFFER_NOT_FOUND' });
   });
 });
+
+describe('SendOfferUseCase — início agendado', () => {
+  it('primeiro envio no horário agendado; os seguintes encadeados a partir dele', async () => {
+    const at = new Date(NOW.getTime() + 2 * 60 * 60_000);
+    const s = setup({ offer: { scheduledAt: at } });
+    const out = await s.uc.execute(input);
+    expect(out.offer.status).toBe('SENDING');
+    expect(out.dispatches[0]!.notBefore).toBe(at.toISOString());
+    expect(Date.parse(out.dispatches[1]!.notBefore)).toBe(at.getTime() + 12_000);
+  });
+
+  it('agendamento já vencido no disparo: começa agora', async () => {
+    const s = setup({ offer: { scheduledAt: new Date(NOW.getTime() - 60_000) } });
+    const out = await s.uc.execute(input);
+    expect(out.dispatches[0]!.notBefore).toBe(NOW.toISOString());
+  });
+});

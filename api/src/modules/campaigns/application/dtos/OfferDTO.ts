@@ -34,6 +34,7 @@ export interface OfferDTO {
   mentionAll: boolean;
   simulateTyping: boolean;
   typingSeconds: number;
+  scheduledAt: string | null;
   status: OfferStatus;
   createdAt: string;
   updatedAt: string;
@@ -71,6 +72,7 @@ export function toOfferDto(offer: Offer, dispatches?: OfferDispatch[]): OfferDTO
     mentionAll: offer.mentionAll,
     simulateTyping: offer.simulateTyping,
     typingSeconds: offer.typingSeconds,
+    scheduledAt: offer.scheduledAt?.toISOString() ?? null,
     status: offer.status,
     createdAt: offer.createdAt.toISOString(),
     updatedAt: offer.updatedAt.toISOString(),

@@ -1,27 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, MenuItem, Stack, TextField, Tooltip, Typography,
+  Alert, Box, Button, Chip, CircularProgress, IconButton, MenuItem, Stack, TextField, Tooltip,
 } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
-import { AppIcon, SectionCard, ToggleOption } from '@/components';
+import { AppIcon, SectionCard } from '@/components';
 import type { OfferAudience, OfferConfigGroup, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { AUDIENCE_ICONS, OFFER_AUDIENCES, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
+import { AUDIENCE_ICONS, OFFER_AUDIENCES } from '../utils/offerConfig';
 import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
-import { GroupChip } from './GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 
 const t = offerStrings.actions;
-const MAX_CHIPS = 6;
 
 interface Props {
   offer: OfferItem;
@@ -35,30 +31,29 @@ interface Props {
   groups: OfferConfigGroup[];
   saving: boolean;
   regenerating: boolean;
-  mentionSaving: boolean;
-  /** Plano recusou "marcar todos": mostra o aviso de upgrade sob a chave. */
-  mentionUnavailable: boolean;
   sending: boolean;
   imageProgress: number | null;
-  /** Bloqueia o disparo (sessão desconectada, sem grupos…). */
-  sendBlocked: boolean;
   onSave: () => Promise<void>;
   onDiscard: () => void;
   onRegenerate: (audience: OfferAudience) => void;
-  onMentionAll: (value: boolean) => void;
-  onTyping: (patch: { simulateTyping?: boolean; typingSeconds?: number }) => void;
   onReplaceImage: (file: File) => void;
-  onSend: () => void;
+  /** Editor aberto: o card de envio segura o disparo enquanto isso. */
+  onEditingChange?: (editing: boolean) => void;
+  /** "+ Novo": reabre o card de geração. */
+  onNew: () => void;
+  /** Motivo de "+ Novo" bloqueado (envio em andamento); null = liberado. */
+  newLockedReason: string | null;
 }
 
-/** Prévia + ações da oferta gerada: editar, gerar novamente, marcar todos e disparar. */
+/** Prévia da oferta gerada: editar, gerar novamente e "+ Novo". Opções e disparo ficam no card de envio. */
 export function OfferResultPanel(props: Props) {
   const {
     offer, draft, dirty, textTooLong, missingLink, needsManualData, aiFallback, groups, saving, regenerating,
-    mentionSaving, mentionUnavailable, sending, imageProgress, sendBlocked,
+    sending, imageProgress, onEditingChange, newLockedReason,
   } = props;
   // Sem dados da loja o operador precisa preencher: já abre editando.
   const [editing, setEditing] = useState(needsManualData);
+  useEffect(() => { onEditingChange?.(editing); }, [editing, onEditingChange]);
   const [audience, setAudience] = useState<OfferAudience>(offer.audience);
   const blurAudience = useBlur('offers.audience');
   const [copied, setCopied] = useState(false);
@@ -75,15 +70,11 @@ export function OfferResultPanel(props: Props) {
     }
   };
 
-  const shown = groups.slice(0, MAX_CHIPS);
-  const rest = groups.length - shown.length;
-  const untitled = offerStrings.wizard.groups.untitled;
-
   return (
     <SectionCard
       title={offerStrings.preview.title}
       action={
-        <Stack direction="row" spacing={0.5}>
+        <Stack direction="row" spacing={0.5} alignItems="center">
           <Tooltip title={copied ? offerStrings.preview.textCopied : offerStrings.preview.copyText}>
             <IconButton size="small" aria-label={offerStrings.preview.copyText} onClick={() => void copy()}>
               {copied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
@@ -100,6 +91,20 @@ export function OfferResultPanel(props: Props) {
             >
               <OpenInNewIcon fontSize="small" />
             </IconButton>
+          </Tooltip>
+          <Tooltip title={newLockedReason ?? offerStrings.page.newOfferTooltip} arrow>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                disabled={newLockedReason != null}
+                onClick={props.onNew}
+                sx={{ ml: 0.5 }}
+              >
+                {offerStrings.page.newOfferShort}
+              </Button>
+            </span>
           </Tooltip>
         </Stack>
       }
@@ -189,92 +194,6 @@ export function OfferResultPanel(props: Props) {
 
         {isDraft && !editing && missingLink && <Alert severity="warning">{offerStrings.editor.missingLink}</Alert>}
 
-        {isDraft && (
-          <>
-            <Divider />
-            <ToggleOption
-              checked={offer.mentionAll}
-              disabled={mentionSaving || busy}
-              onChange={(v) => props.onMentionAll(v)}
-              title={t.mentionAll}
-              description={
-                <Box component="span" sx={{ color: mentionUnavailable ? 'warning.main' : undefined }}>
-                  {mentionUnavailable ? t.mentionAllUnavailable : t.mentionAllHelper}
-                </Box>
-              }
-            />
-
-            <ToggleOption
-              checked={offer.simulateTyping}
-              disabled={busy}
-              onChange={(v) => props.onTyping({ simulateTyping: v })}
-              title={t.simulateTyping}
-              description={t.simulateTypingHelper}
-            >
-                <Stack direction="row" alignItems="center" spacing={1} role="group" aria-label={t.typingDuration}>
-                  <Typography variant="body2" color="text.secondary">{t.typingDuration}</Typography>
-                  <Tooltip title={t.typingDecrease} arrow>
-                    <span>
-                      <IconButton
-                        size="small"
-                        aria-label={t.typingDecrease}
-                        disabled={busy || offer.typingSeconds <= TYPING_SECONDS_MIN}
-                        onClick={() => props.onTyping({ typingSeconds: offer.typingSeconds - 1 })}
-                      >
-                        <RemoveIcon fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    aria-live="polite"
-                    sx={{ minWidth: 40, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {t.typingSeconds(offer.typingSeconds)}
-                  </Typography>
-                  <Tooltip title={t.typingIncrease} arrow>
-                    <span>
-                      <IconButton
-                        size="small"
-                        aria-label={t.typingIncrease}
-                        disabled={busy || offer.typingSeconds >= TYPING_SECONDS_MAX}
-                        onClick={() => props.onTyping({ typingSeconds: offer.typingSeconds + 1 })}
-                      >
-                        <AddIcon fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </Stack>
-            </ToggleOption>
-
-            <Box>
-              <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 0.75 }}>{t.destinations}</Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {shown.map((g) => <GroupChip key={g.conversationId} title={g.title} avatarUrl={g.avatarUrl} untitled={untitled} sx={{ maxWidth: 220 }} />)}
-                {rest > 0 && (
-                  <Tooltip title={groups.slice(MAX_CHIPS).map((g) => g.title || untitled).join(', ')} arrow>
-                    <Chip size="small" variant="outlined" label={t.moreGroups(rest)} tabIndex={0} />
-                  </Tooltip>
-                )}
-              </Box>
-            </Box>
-
-            <Button
-              variant="contained"
-              size="large"
-              disableElevation
-              fullWidth
-              startIcon={sending ? <CircularProgress size={18} color="inherit" /> : <SendOutlinedIcon />}
-              disabled={sendBlocked || busy || textTooLong || editing}
-              onClick={props.onSend}
-            >
-              {sending
-                ? offerStrings.send.sending
-                : groups.length === 1 ? offerStrings.send.buttonSingle : offerStrings.send.button(groups.length)}
-            </Button>
-          </>
-        )}
       </Stack>
     </SectionCard>
   );

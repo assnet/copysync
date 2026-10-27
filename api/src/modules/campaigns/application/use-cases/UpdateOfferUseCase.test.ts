@@ -151,3 +151,26 @@ describe('UpdateOfferUseCase', () => {
     await expect(s.uc.execute({ ...base, imageUploadId: 'up-1' })).rejects.toThrow('db');
   });
 });
+
+describe('UpdateOfferUseCase — início agendado', () => {
+  const NOW = new Date('2026-10-26T15:00:00.000Z');
+  const withClock = () => {
+    const s = setup();
+    return { ...s, uc: new UpdateOfferUseCase({ offers: s.offers, mediaStore: s.mediaStore, now: () => NOW }) };
+  };
+
+  it('agenda e remove o agendamento (null)', async () => {
+    const s = withClock();
+    const at = '2026-10-27T09:30:00.000Z';
+    expect((await s.uc.execute({ ...base, scheduledAt: at })).scheduledAt).toBe(at);
+    expect((await s.uc.execute({ ...base, scheduledAt: null })).scheduledAt).toBeNull();
+  });
+
+  it('horário passado ou além de 30 dias → 422 no campo scheduledAt', async () => {
+    const s = withClock();
+    await expect(s.uc.execute({ ...base, scheduledAt: '2026-10-26T14:00:00.000Z' }))
+      .rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'scheduledAt' } });
+    await expect(s.uc.execute({ ...base, scheduledAt: '2026-12-31T00:00:00.000Z' }))
+      .rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'scheduledAt' } });
+  });
+});

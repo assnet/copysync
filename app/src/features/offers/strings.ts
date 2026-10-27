@@ -16,7 +16,22 @@ export const offerStrings = {
     subtitle: 'Cole seu link de afiliado, escolha o público e dispare nos seus grupos',
     loadError: 'Não foi possível carregar a configuração do gerador.',
     retry: 'Tentar novamente',
-    newOffer: 'Nova oferta',
+    newOfferShort: 'Novo',
+    newOfferTooltip: 'Gerar outra oferta. Esta continua salva como rascunho.',
+    newOfferLocked: 'Aguarde o envio desta oferta terminar (ou pare o envio) para gerar outra.',
+  },
+
+  schedule: {
+    title: 'Agendar início',
+    description: 'Escolha quando o primeiro grupo recebe a oferta. Os demais seguem o intervalo da configuração.',
+    label: 'Data e hora do início',
+    helper: (days: number) => `Até ${days} dias à frente, no horário do seu dispositivo.`,
+    required: 'Escolha a data e a hora do início.',
+    past: 'Esse horário já passou. Escolha um horário futuro.',
+    tooFar: (days: number) => `Escolha um horário em até ${days} dias.`,
+    invalid: 'Horário de agendamento inválido. Escolha um horário futuro, em até 30 dias.',
+    startsAt: (when: string) => `Início agendado: ${when}`,
+    expired: 'O horário agendado já passou: o envio começa assim que você disparar.',
   },
 
   wizard: {
@@ -147,6 +162,7 @@ export const offerStrings = {
     submit: 'Gerar oferta',
     generating: 'Criando sua oferta…',
     sendingLock: 'Aguarde o envio atual terminar para gerar outra oferta.',
+    backToOffer: 'Voltar para a oferta',
   },
 
   audiences: {
@@ -232,18 +248,28 @@ export const offerStrings = {
   send: {
     button: (count: number) => `Disparar nos ${groupsLabel(count)}`,
     buttonSingle: 'Disparar no grupo',
+    buttonScheduled: (count: number) => `Agendar para ${groupsLabel(count)}`,
+    title: 'Envio',
+    idle: 'Revise a prévia e dispare quando estiver pronto.',
+    confirmScheduledTitle: (count: number) => `Agendar envio para ${groupsLabel(count)}?`,
+    confirmScheduled: 'Agendar envio',
     sending: 'Disparando…',
     confirmTitle: (count: number) => `Disparar em ${groupsLabel(count)}?`,
-    confirmDescription: (count: number, min: number, max: number, mentionAll: boolean, missingLink: boolean, dirty: boolean) =>
+    /** `scheduledWhen`: início agendado já formatado; null = começa agora. */
+    confirmDescription: (count: number, min: number, max: number, mentionAll: boolean, missingLink: boolean, dirty: boolean, scheduledWhen: string | null = null) =>
       [
         missingLink ? 'Atenção: o texto não contém o seu link de afiliado.' : null,
+        scheduledWhen ? `O primeiro grupo recebe a oferta em ${scheduledWhen}.` : null,
         count > 1
           ? `A oferta sai para um grupo de cada vez, com ${Math.round(min / 60)} a ${Math.round(max / 60)} minutos entre cada envio.`
-          : 'A oferta é enviada agora.',
+          : scheduledWhen ? null : 'A oferta é enviada agora.',
         mentionAll ? 'Todos os membros serão marcados.' : null,
         dirty ? 'Alterações não salvas são salvas antes do envio.' : null,
       ].filter(Boolean).join(' '),
     confirm: 'Disparar agora',
+    /** Data e hora curtas no idioma do painel. */
+    formatWhen: (iso: string) =>
+      new Date(iso).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
     cancel: 'Voltar',
   },
 
@@ -255,6 +281,19 @@ export const offerStrings = {
     nextSend: (group: string, session: string | null) => session ? `Próximo envio · ${group} · via ${session}` : `Próximo envio · ${group}`,
     viaSession: (name: string) => `via ${name}`,
     nextSendAria: 'Tempo até o próximo envio',
+    scheduledTitle: 'Envio agendado',
+    scheduled: (when: string) => `Começa em ${when}. Você pode pausar ou parar antes do início.`,
+    startsIn: 'Começa em',
+    startsInAria: 'Tempo até o início do envio',
+    startsInDone: 'Começando…',
+    remainingLong: (seconds: number) => {
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      if (d > 0) return `${d} d ${h} h`;
+      if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min`;
+      return seconds >= 60 ? `${m}:${String(seconds % 60).padStart(2, '0')}` : `${seconds} s`;
+    },
     nextSendDone: 'Enviando…',
     nextSendAt: (time: string) => `Envio previsto às ${time}`,
     remaining: (seconds: number) =>

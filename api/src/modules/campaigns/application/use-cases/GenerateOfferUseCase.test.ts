@@ -55,7 +55,7 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
 }
 
 const AMAZON = 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=loja-20';
-const run = (s: ReturnType<typeof setup>, url: string, extra: { coupon?: string | null; audience?: 'STANDARD' | 'PET' } = {}) =>
+const run = (s: ReturnType<typeof setup>, url: string, extra: { coupon?: string | null; audience?: 'STANDARD' | 'PET'; scheduledAt?: string | null } = {}) =>
   s.uc.execute({ tenantId: TENANT, userId: USER, url, ...extra });
 const errorOf = (p: Promise<unknown>) => p.catch((e: unknown) => e);
 
@@ -281,5 +281,21 @@ describe('GenerateOfferUseCase — texto', () => {
     s.ai.generate.mockRejectedValueOnce(new Error('boom'));
     await expect(run(s, AMAZON, { audience: 'PET' })).rejects.toThrow('boom');
     expect(s.offers.items).toHaveLength(0);
+  });
+});
+
+describe('GenerateOfferUseCase — início agendado', () => {
+  it('grava o horário agendado na oferta', async () => {
+    const s = setup();
+    const at = new Date(NOW.getTime() + 60 * 60_000).toISOString();
+    const out = await run(s, AMAZON, { scheduledAt: at });
+    expect(out.offer.scheduledAt).toBe(at);
+  });
+
+  it('horário passado → OFFER_INVALID_INPUT (scheduledAt) sem rede', async () => {
+    const s = setup();
+    await expect(run(s, AMAZON, { scheduledAt: new Date(NOW.getTime() - 1000).toISOString() }))
+      .rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'scheduledAt' } });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
   });
 });

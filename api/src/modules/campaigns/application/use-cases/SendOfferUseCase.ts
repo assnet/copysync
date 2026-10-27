@@ -4,6 +4,7 @@ import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOf
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { orderDispatchTargets } from '../../domain/services/orderDispatchTargets';
+import { dispatchStartAt } from '../../domain/offerSchedule';
 import {
   OfferAlreadySentError,
   OfferChangedError,
@@ -40,7 +41,7 @@ export interface SendOfferDeps {
 
 /**
  * Enfileira a oferta para os grupos da configuração (GEN-05): snapshot dos grupos agora,
- * intervalo da configuração, DRAFT → SENDING atômico + um envio por grupo. Quem envia é o worker.
+ * intervalo da configuração a partir do início agendado (ou agora), DRAFT → SENDING atômico + um envio por grupo. Quem envia é o worker.
  */
 export class SendOfferUseCase {
   constructor(private readonly deps: SendOfferDeps) {}
@@ -78,7 +79,8 @@ export class SendOfferUseCase {
 
     const slots = scheduleDispatches(
       targets.length,
-      (this.deps.now ?? (() => new Date()))(),
+      // Agendamento vencido (oferta disparada depois do horário) começa agora
+      dispatchStartAt(offer.scheduledAt, (this.deps.now ?? (() => new Date()))()),
       { minMs: config.intervalMinSeconds * 1000, maxMs: config.intervalMaxSeconds * 1000 },
       this.deps.rand,
     );

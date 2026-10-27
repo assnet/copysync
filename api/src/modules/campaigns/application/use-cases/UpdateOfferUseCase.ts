@@ -4,6 +4,7 @@ import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import { renderOfferText } from '../../domain/services/renderOfferText';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
 import { normalizeCoupon } from './offerCoupon';
+import { parseOfferSchedule } from './offerScheduleInput';
 import {
   OfferAlreadySentError,
   OfferInvalidInputError,
@@ -32,11 +33,14 @@ export interface UpdateOfferInput {
   mentionAll?: boolean;
   simulateTyping?: boolean;
   typingSeconds?: number;
+  /** Início agendado (ISO); null remove o agendamento. */
+  scheduledAt?: string | null;
 }
 
 export interface UpdateOfferDeps {
   offers: IOfferRepository;
   mediaStore: IOfferMediaStore;
+  now?: () => Date;
 }
 
 /**
@@ -64,6 +68,8 @@ export class UpdateOfferUseCase {
     if (input.mentionAll !== undefined) patch.mentionAll = input.mentionAll;
     if (input.simulateTyping !== undefined) patch.simulateTyping = input.simulateTyping;
     if (input.typingSeconds !== undefined) patch.typingSeconds = input.typingSeconds;
+    const scheduledAt = parseOfferSchedule(input.scheduledAt, (this.deps.now ?? (() => new Date()))());
+    if (scheduledAt !== undefined) patch.scheduledAt = scheduledAt;
 
     if (input.imageUploadId) {
       patch.imageUrl = await this.deps.mediaStore.consumeUploadedImage({
