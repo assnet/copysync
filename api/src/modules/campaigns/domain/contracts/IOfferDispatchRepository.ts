@@ -29,10 +29,18 @@ export interface IOfferDispatchRepository {
   ): Promise<OfferDispatch[] | null>;
   listByOffer(offerId: string, tenantId: string): Promise<OfferDispatch[]>;
   /**
-   * Worker, cross-tenant: QUEUED vencidos → SENDING com SKIP LOCKED. Cada envio volta com
-   * `claimToken` novo (posse); todo passo seguinte exige esse token.
+   * Worker, cross-tenant: QUEUED vencidos de ofertas SENDING → SENDING com SKIP LOCKED
+   * (oferta PAUSED segura a fila). Cada envio volta com `claimToken` novo (posse); todo passo
+   * seguinte exige esse token.
    */
   claimDue(now: Date, limit: number): Promise<OfferDispatch[]>;
+  /**
+   * Retomar: QUEUED da oferta, na ordem de `notBefore`, recebem `slots[i]`. Slot a menos que
+   * envio mantém o `notBefore` antigo. Retorna quantos mudaram.
+   */
+  rescheduleQueued(offerId: string, tenantId: string, slots: Date[]): Promise<number>;
+  /** Parar: QUEUED da oferta → CANCELLED. O que está SENDING termina. Retorna quantos. */
+  cancelQueued(offerId: string, tenantId: string): Promise<number>;
   /**
    * Renova a posse logo antes de enviar (`claimedAt = now`). false = envio já não é deste
    * token (devolvido à fila e reivindicado por outro): não envia.
@@ -46,8 +54,9 @@ export interface IOfferDispatchRepository {
   /** Só SENDING com o mesmo `claimToken` → resultado; false se a posse já não é deste token. */
   markResult(id: string, tenantId: string, claimToken: string, result: OfferDispatchResult): Promise<boolean>;
   /**
-   * Worker, cross-tenant: ofertas SENDING sem envio aberto (finalize perdido por erro/queda).
-   * Cada item carrega `tenantId`; o finalize volta a filtrar por ele.
+   * Worker, cross-tenant: ofertas SENDING/PAUSED sem envio aberto (finalize perdido por
+   * erro/queda, ou pausa quando o último envio já estava saindo). Cada item carrega `tenantId`;
+   * o finalize volta a filtrar por ele.
    */
   findSendingWithoutOpenDispatches(limit: number): Promise<{ id: string; tenantId: string }[]>;
   /** QUEUED + SENDING. */

@@ -36,7 +36,7 @@ export function OfferGeneratorPage() {
   const groupCount = cfg.groups.length;
   const sessionOffline = cfg.offlineSessions.length > 0 || cfg.missingSessions > 0;
   const limitReached = gen.usage?.limit != null && gen.usage.used >= gen.usage.limit;
-  const offerSending = offer?.status === 'SENDING';
+  const offerSending = offer?.status === 'SENDING' || offer?.status === 'PAUSED';
   const linkFieldError = gen.error?.isLinkField ? gen.error.message : null;
   const pageError = gen.error && !gen.error.isLinkField ? gen.error : null;
   const intervalMin = cfg.config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min;
@@ -177,10 +177,17 @@ export function OfferGeneratorPage() {
                   />
 
                   {offer.dispatches && offer.dispatches.length > 0 && (
-                    <OfferDispatchProgress status={offer.status} dispatches={offer.dispatches} destinations={cfg.groups} sessions={cfg.selectedSessions} />
+                    <OfferDispatchProgress
+                      status={offer.status}
+                      dispatches={offer.dispatches}
+                      destinations={cfg.groups}
+                      sessions={cfg.selectedSessions}
+                      onControl={(action) => { gen.control(action).catch(ignore); }}
+                      controlling={gen.controlling}
+                    />
                   )}
 
-                  {(offer.status === 'SENT' || offer.status === 'FAILED') && (
+                  {(offer.status === 'SENT' || offer.status === 'FAILED' || offer.status === 'CANCELLED') && (
                     <Button variant="outlined" startIcon={<AddIcon />} onClick={gen.reset} sx={{ alignSelf: 'flex-end' }}>
                       {t.page.newOffer}
                     </Button>

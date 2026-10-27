@@ -133,12 +133,15 @@ export class ProcessDueOfferDispatchesUseCase {
     }
   }
 
-  /** Sem envio aberto: SENT se ao menos um saiu, senão FAILED. */
+  /**
+   * Sem envio aberto: SENT se ao menos um saiu, senão FAILED. Vale também para PAUSED (pausa
+   * com o último envio já saindo: nada para retomar). CANCELLED é final e não entra aqui.
+   */
   private async finalizeIfDone(offerId: string, tenantId: string): Promise<void> {
     const { offers, dispatches } = this.deps;
     if ((await dispatches.countOpen(offerId, tenantId)) > 0) return;
     const counts = await dispatches.countByStatus(offerId, tenantId);
-    await offers.transitionStatus(offerId, tenantId, ['SENDING'], counts.SENT > 0 ? 'SENT' : 'FAILED');
+    await offers.transitionStatus(offerId, tenantId, ['SENDING', 'PAUSED'], counts.SENT > 0 ? 'SENT' : 'FAILED');
   }
 }
 

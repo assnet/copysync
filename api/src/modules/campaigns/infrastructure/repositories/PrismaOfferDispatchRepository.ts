@@ -66,12 +66,38 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
        WHERE "id" IN (
          SELECT "id" FROM "offer_dispatches"
           WHERE "status" = 'QUEUED'::"OfferDispatchStatus" AND "notBefore" <= ${now}
+            AND "offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
           ORDER BY "notBefore"
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
        )
       RETURNING *`;
     return rows.map(Mapper.fromRawRow);
+  }
+
+  /** Retomada: uma transação, ordem de `notBefore` preservada (só o horário muda). */
+  async rescheduleQueued(offerId: string, tenantId: string, slots: Date[]): Promise<number> {
+    if (slots.length === 0) return 0;
+    return this.prisma.$transaction(async (tx) => {
+      const queued = await tx.offerDispatch.findMany({
+        where: { offerId, tenantId, status: 'QUEUED' },
+        orderBy: { notBefore: 'asc' },
+        select: { id: true },
+        take: slots.length,
+      });
+      for (const [i, row] of queued.entries()) {
+        await tx.offerDispatch.update({ where: { id: row.id }, data: { notBefore: slots[i]! } });
+      }
+      return queued.length;
+    });
+  }
+
+  async cancelQueued(offerId: string, tenantId: string): Promise<number> {
+    const { count } = await this.prisma.offerDispatch.updateMany({
+      where: { offerId, tenantId, status: 'QUEUED' },
+      data: { status: 'CANCELLED' },
+    });
+    return count;
   }
 
   /** Token é único por claim: dispensa tenantId aqui (o envio seguinte filtra por ele). */
@@ -108,11 +134,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     return count > 0;
   }
 
-  /** CROSS-TENANT por design (varredura do worker): ofertas SENDING sem envio aberto. */
+  /** CROSS-TENANT por design (varredura do worker): ofertas SENDING/PAUSED sem envio aberto. */
   async findSendingWithoutOpenDispatches(limit: number): Promise<{ id: string; tenantId: string }[]> {
     if (limit <= 0) return [];
     return this.prisma.offer.findMany({
-      where: { status: 'SENDING', dispatches: { none: { status: { in: ['QUEUED', 'SENDING'] } } } },
+      where: { status: { in: ['SENDING', 'PAUSED'] }, dispatches: { none: { status: { in: ['QUEUED', 'SENDING'] } } } },
       select: { id: true, tenantId: true },
       take: limit,
     });

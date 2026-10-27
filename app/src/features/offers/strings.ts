@@ -265,6 +265,7 @@ export const offerStrings = {
       SENT: 'Enviado',
       FAILED: 'Falhou',
       SKIPPED: 'Ignorado',
+      CANCELLED: 'Cancelado',
     } satisfies Record<OfferDispatchStatus, string>,
     failureReasons: {
       SESSION_NOT_CONNECTED: 'Sessão desconectada',
@@ -279,6 +280,23 @@ export const offerStrings = {
       skipped: 'O grupo ou a sessão não existe mais',
     } as Record<string, string>,
     unknownDestination: 'Grupo removido',
+    paused: 'Envio pausado. Os grupos que faltam esperam você retomar.',
+    pausedBar: 'Pausado',
+    finishedCancelled: (sent: number, cancelled: number) =>
+      `Envio interrompido: ${sent} ${plural(sent, 'grupo recebeu', 'grupos receberam')} a oferta, ${cancelled} ${plural(cancelled, 'ficou', 'ficaram')} de fora.`,
+    controls: {
+      pause: 'Pausar',
+      resume: 'Retomar',
+      stop: 'Parar',
+      pauseTooltip: 'Segura a fila; o envio em curso termina',
+      resumeTooltip: 'Reagenda os grupos que faltam a partir de agora, com o mesmo intervalo',
+      stopTooltip: 'Cancela os grupos que ainda não receberam. Não dá para desfazer',
+      stopConfirmTitle: 'Parar o envio?',
+      stopConfirmDescription: (remaining: number) =>
+        `${remaining} ${plural(remaining, 'grupo ainda não recebeu', 'grupos ainda não receberam')} a oferta e ${plural(remaining, 'ficará', 'ficarão')} de fora. O que já saiu fica. Para enviar de novo, gere outra oferta.`,
+      stopConfirm: 'Parar envio',
+      stopCancel: 'Continuar enviando',
+    },
   },
 
   errors: {
@@ -288,6 +306,7 @@ export const offerStrings = {
     OFFER_PRODUCT_NOT_FOUND: 'A loja não encontrou este produto. Confira o link.',
     OFFER_NOT_FOUND: 'Esta oferta não existe mais. Gere uma nova.',
     OFFER_ALREADY_SENT: 'Esta oferta já foi enviada.',
+    OFFER_INVALID_STATE: 'O envio mudou de estado enquanto você agia. A tela foi atualizada.',
     OFFER_CHANGED: 'A oferta mudou enquanto você trabalhava. Confira e tente de novo.',
     OFFER_NO_DESTINATIONS: 'Nenhum grupo configurado. Escolha os grupos antes de disparar.',
     OFFER_CONFIG_MISSING: 'Configure a sessão e os grupos antes de disparar.',

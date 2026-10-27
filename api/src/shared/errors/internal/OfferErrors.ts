@@ -35,6 +35,13 @@ export class OfferChangedError extends AppError {
   }
 }
 
+/** Pausar/retomar/parar fora do estado que a ação exige (ex.: retomar oferta que não está pausada). */
+export class OfferInvalidStateError extends AppError {
+  constructor(offerId: string, status: string) {
+    super('OFFER_INVALID_STATE', `Offer ${offerId} is ${status}`, 409, { status });
+  }
+}
+
 export class OfferNoDestinationsError extends AppError {
   constructor() {
     super('OFFER_NO_DESTINATIONS', 'No offer destinations selected', 422);

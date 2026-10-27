@@ -92,7 +92,9 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 
 ## Envio (worker)
 
-- `DRAFT → SENDING → SENT | FAILED`; envio `QUEUED → SENDING → SENT | FAILED | SKIPPED`.
+- `DRAFT → SENDING → SENT | FAILED`; envio `QUEUED → SENDING → SENT | FAILED | SKIPPED | CANCELLED`.
+- **Reload / navegador fechado não interrompe**: a fila vive no banco e quem envia é o worker. O painel só assiste (polling de 3 s enquanto `SENDING`/`PAUSED`; id da oferta aberta persistido).
+- **Pausar / retomar / parar** (`OfferSendControlUseCases.ts`, `POST /:id/pause|resume|cancel`): `SENDING ⇄ PAUSED`, `SENDING|PAUSED → CANCELLED` (final; reenviar = nova oferta). Pausar não mexe nos envios: `claimDue` ignora oferta que não está `SENDING`. Retomar reagenda os `QUEUED` a partir de agora com o intervalo da configuração atual, na mesma ordem (`rescheduleQueued`) — sem rajada pelo tempo parado. Parar cancela só os `QUEUED` (`cancelQueued`). Envio já `SENDING` no worker **sempre termina**; se era o último, `finalizeIfDone` fecha a oferta `PAUSED` como `SENT`/`FAILED`. Estado errado → 409 `OFFER_INVALID_STATE`; o painel recarrega a oferta em vez de mostrar erro. Parar pede confirmação com quantos grupos ficam de fora.
 - Tick de 2 s, `claimDue` com `FOR UPDATE SKIP LOCKED` + `claimToken`; `touchClaim` antes de enviar; `releaseStale` só sem `chatMessageId`; timeout 60 s → `SEND_TIMEOUT`.
 - **Marcar todos**: participantes via `getGroupParticipants`; JIDs em `mentions` (menção oculta). Participante só com LID (sem telefone) não é mencionado.
 - **Foto do grupo**: `avatarUrl` nos grupos da configuração e da busca vem de `chat_conversations.groupAvatarUrl` (alimentado pelo listener de avatar do chat); grupo sem conversa não tem foto → iniciais do nome (`groupInitials`, pula emoji inicial) ou ícone.

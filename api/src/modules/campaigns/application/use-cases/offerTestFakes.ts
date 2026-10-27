@@ -96,8 +96,24 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     return this.items.filter((d) => d.offerId === offerId && d.tenantId === tenantId);
   }
   private tokenSeq = 0;
+  async rescheduleQueued(offerId: string, tenantId: string, slots: Date[]) {
+    const queued = (await this.listByOffer(offerId, tenantId))
+      .filter((d) => d.status === 'QUEUED')
+      .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime())
+      .slice(0, slots.length);
+    queued.forEach((d, i) => { d.notBefore = slots[i]!; });
+    return queued.length;
+  }
+  async cancelQueued(offerId: string, tenantId: string) {
+    const queued = (await this.listByOffer(offerId, tenantId)).filter((d) => d.status === 'QUEUED');
+    for (const d of queued) d.status = 'CANCELLED';
+    return queued.length;
+  }
   async claimDue(now: Date, limit: number) {
-    const due = this.items.filter((d) => d.status === 'QUEUED' && d.notBefore <= now).slice(0, limit);
+    const due = this.items
+      .filter((d) => d.status === 'QUEUED' && d.notBefore <= now)
+      .filter((d) => this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING')
+      .slice(0, limit);
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });
     return due.map((d) => ({ ...d }));
   }
@@ -123,7 +139,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     return true;
   }
   async findSendingWithoutOpenDispatches(limit: number) {
-    const sending = this.offers.items.filter((o) => o.status === 'SENDING');
+    const sending = this.offers.items.filter((o) => o.status === 'SENDING' || o.status === 'PAUSED');
     const out: { id: string; tenantId: string }[] = [];
     for (const o of sending) {
       if ((await this.countOpen(o.id, o.tenantId)) === 0) out.push({ id: o.id, tenantId: o.tenantId });

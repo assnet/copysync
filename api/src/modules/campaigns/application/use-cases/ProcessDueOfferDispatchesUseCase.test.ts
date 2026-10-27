@@ -73,11 +73,11 @@ describe('ProcessDueOfferDispatchesUseCase', () => {
     expect(s.offers.items[0]!.status).toBe('FAILED');
   });
 
-  it('oferta sumiu → SKIPPED OFFER_NOT_FOUND sem enviar', async () => {
+  it('oferta sumiu ou não está SENDING (pausada) → envio não é reivindicado nem enviado', async () => {
     const s = setup(['c1']);
     s.offers.items = [];
     await s.uc.execute();
-    expect(statuses(s)).toEqual([['SKIPPED', 'OFFER_NOT_FOUND']]);
+    expect(statuses(s)).toEqual([['QUEUED', null]]);
     expect(s.sender.send).not.toHaveBeenCalled();
   });
 

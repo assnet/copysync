@@ -24,6 +24,7 @@ import {
 import type { OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
 
 const preHandler = [authHook, tenantHook];
+const CONTROL_SUMMARY = { pause: 'Pausar envio', resume: 'Retomar envio', cancel: 'Parar envio' } as const;
 const tags = ['Offers'];
 
 type IdParams = { Params: { id: string } };
@@ -220,4 +221,21 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
       httpResponse.accepted(reply, result);
     },
   );
+
+  // Controles do envio em andamento: pausar segura a fila, retomar reagenda a partir de agora,
+  // parar cancela o que ainda não saiu (final). Resposta = oferta + envios.
+  for (const action of ['pause', 'resume', 'cancel'] as const) {
+    app.post<IdParams>(
+      `/:id/${action}`,
+      {
+        preHandler,
+        schema: { tags, summary: CONTROL_SUMMARY[action], params: offerIdParamSchema, response: { 200: offerResponse } },
+      },
+      async (request, reply) => {
+        const useCase = { pause: offersContainer.pauseOffer, resume: offersContainer.resumeOffer, cancel: offersContainer.cancelOffer }[action]();
+        const result = await useCase.execute({ tenantId: request.tenantContext.tenantId, offerId: request.params.id });
+        httpResponse.ok(reply, result);
+      },
+    );
+  }
 }

@@ -43,6 +43,22 @@ export const offerService = {
     return res.data.data;
   },
 
+  /** Controles do envio em andamento; devolvem a oferta com os envios. */
+  async pause(id: string): Promise<OfferItem> {
+    const res = await apiClient.post<ApiSuccess<OfferItem>>(`${BASE}/${id}/pause`, {});
+    return res.data.data;
+  },
+
+  async resume(id: string): Promise<OfferItem> {
+    const res = await apiClient.post<ApiSuccess<OfferItem>>(`${BASE}/${id}/resume`, {});
+    return res.data.data;
+  },
+
+  async cancel(id: string): Promise<OfferItem> {
+    const res = await apiClient.post<ApiSuccess<OfferItem>>(`${BASE}/${id}/cancel`, {});
+    return res.data.data;
+  },
+
   async usage(): Promise<OfferUsage> {
     const res = await apiClient.get<ApiSuccess<OfferUsage>>(`${BASE}/usage`);
     return res.data.data;

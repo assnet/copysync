@@ -26,6 +26,7 @@ import {
   GetOfferGeneratorConfigUseCase,
   SaveOfferGeneratorConfigUseCase,
 } from '../application/use-cases/OfferGeneratorConfigUseCases';
+import { CancelOfferUseCase, PauseOfferUseCase, ResumeOfferUseCase } from '../application/use-cases/OfferSendControlUseCases';
 import { ProcessDueOfferDispatchesUseCase } from '../application/use-cases/ProcessDueOfferDispatchesUseCase';
 import { EnsureSessionGroupUseCase, ListSessionGroupsUseCase } from '../application/use-cases/SessionGroupsUseCases';
 import { ChatSessionGroupDirectory } from './adapters/ChatSessionGroupDirectory';
@@ -72,6 +73,10 @@ const regenerate = lazy(() => new RegenerateOfferTextUseCase({ offers: offers(),
 const send      = lazy(() => new SendOfferUseCase({
   offers: offers(), dispatches: dispatches(), configs: configs(), entitlements: entitlements(),
 }));
+const controlDeps = () => ({ offers: offers(), dispatches: dispatches(), configs: configs() });
+const pause     = lazy(() => new PauseOfferUseCase(controlDeps()));
+const resume    = lazy(() => new ResumeOfferUseCase(controlDeps()));
+const cancel    = lazy(() => new CancelOfferUseCase(controlDeps()));
 const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
 const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
 const groupDirectory = lazy(() => new ChatSessionGroupDirectory());
@@ -88,6 +93,9 @@ export const offersContainer = {
   updateOffer:          update,
   regenerateOfferText:  regenerate,
   sendOffer:            send,
+  pauseOffer:           pause,
+  resumeOffer:          resume,
+  cancelOffer:          cancel,
   getConfig:            getConfig,
   saveConfig:           saveConfig,
   listSessionGroups:    listSessionGroups,

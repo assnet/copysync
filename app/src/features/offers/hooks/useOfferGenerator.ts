@@ -197,6 +197,28 @@ export function useOfferGenerator() {
     }
   }, [offer, fail]);
 
+  /**
+   * Pausar / retomar / parar. 409 OFFER_INVALID_STATE = o estado mudou (ex.: terminou antes
+   * do clique): recarrega a oferta em vez de mostrar erro.
+   */
+  const [controlling, setControlling] = useState(false);
+  const control = useCallback(async (action: 'pause' | 'resume' | 'cancel') => {
+    if (!offer) return;
+    setControlling(true);
+    setError(null);
+    try {
+      setOffer(await offerService[action](offer.id));
+    } catch (err) {
+      if ((err as { code?: unknown } | null)?.code === 'OFFER_INVALID_STATE') {
+        try { setOffer(await offerService.get(offer.id)); } catch { /* polling recupera */ }
+        return;
+      }
+      fail(err);
+    } finally {
+      setControlling(false);
+    }
+  }, [offer, fail]);
+
   const reset = useCallback(() => {
     uploadAbort.current?.abort();
     setOffer(null);
@@ -206,9 +228,10 @@ export function useOfferGenerator() {
     setError(null);
   }, [clearOpenOfferId]);
 
-  // Progresso por polling enquanto `SENDING`; `setTimeout` encadeado para não sobrepor chamadas.
+  // Progresso por polling enquanto `SENDING`/`PAUSED` (pausado ainda pode ter um envio em curso
+  // terminando); `setTimeout` encadeado para não sobrepor chamadas.
   const offerId = offer?.id;
-  const isSending = offer?.status === 'SENDING';
+  const isSending = offer?.status === 'SENDING' || offer?.status === 'PAUSED';
   useEffect(() => {
     if (!offerId || !isSending) return;
     let cancelled = false;
@@ -249,6 +272,8 @@ export function useOfferGenerator() {
     update,
     replaceImage,
     send,
+    control,
+    controlling,
     reset,
   };
 }

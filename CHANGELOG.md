@@ -9,6 +9,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns (api 0.34.0 · app 0.39.0) — pausar, retomar e parar o envio
+
+O envio já era do servidor (fila `OfferDispatch` + worker): reload ou fechar o navegador nunca interrompeu. Faltava o operador poder intervir.
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261027230000_offer_send_controls` — `OfferStatus` += `PAUSED`, `CANCELLED`; `OfferDispatchStatus` += `CANCELLED`.
+- **`OfferSendControlUseCases.ts`** — `PauseOfferUseCase` (SENDING → PAUSED), `ResumeOfferUseCase` (PAUSED → SENDING; QUEUED reagendados a partir de agora com o intervalo da configuração, mesma ordem — nada sai em rajada), `CancelOfferUseCase` (SENDING|PAUSED → CANCELLED; QUEUED → CANCELLED, final). Fora do estado esperado → 409 `OFFER_INVALID_STATE` (**`OfferErrors.ts`**).
+- **`PrismaOfferDispatchRepository.ts`** — `claimDue` só reivindica envio de oferta `SENDING` (pausa segura a fila); `rescheduleQueued`, `cancelQueued`; varredura de órfãs inclui `PAUSED`.
+- **`ProcessDueOfferDispatchesUseCase.ts`** — `finalizeIfDone` fecha também oferta `PAUSED` sem envio aberto (pausa com o último envio já saindo). Envio `SENDING` no worker sempre termina: pausar/parar não interrompem mensagem em curso.
+- **`offer.routes.ts`** — `POST /campaigns/offers/:id/pause|resume|cancel` → 200 oferta + envios.
+
+#### Frontend
+
+- **`OfferDispatchProgress.tsx`** — botões Pausar / Retomar / Parar (Lucide `Pause`/`Play`/`Square`) no cabeçalho do card; Parar pede confirmação com quantos grupos ficarão de fora; pausado esconde a `CooldownBar`, barra âmbar e chips "Pausado"; cancelado mostra quantos receberam × ficaram de fora.
+- **`useOfferGenerator.ts`** — `control(action)`; 409 `OFFER_INVALID_STATE` recarrega a oferta em vez de mostrar erro; polling segue em `PAUSED`.
+- **`offer.service.ts`** — `pause`, `resume`, `cancel`.
+
 ### Fixed — deploy (api 0.33.2)
 
 - **`api/Dockerfile`**, **`api/package.json`** — o container subia direto com `node dist/app/server.js` e nenhuma etapa rodava `prisma migrate deploy`: a API 0.33.x foi ao ar esperando `offer_generator_config_sessions`/`dispatchOrder` sem a migration `20261027200000_offer_config_multi_session` aplicada → "Não foi possível carregar a configuração do gerador". Novo script `start:migrate` (migrate deploy com retry → servidor) é o `CMD` da imagem; migration falhando impede o boot e a Render mantém a versão anterior.

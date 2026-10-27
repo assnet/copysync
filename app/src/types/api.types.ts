@@ -180,9 +180,9 @@ export interface UpsertAffiliateCredentialRequest {
 
 // ── Offer generator ──────────────────────────────────────────────────────────
 
-export type OfferStatus = 'DRAFT' | 'SENDING' | 'SENT' | 'FAILED';
+export type OfferStatus = 'DRAFT' | 'SENDING' | 'PAUSED' | 'SENT' | 'FAILED' | 'CANCELLED';
 
-export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
 
 /** Público-alvo do texto. `STANDARD` = modelo fixo (sem IA); os demais passam pela IA. */
 export type OfferAudience = 'STANDARD' | 'MOMS' | 'PET' | 'BEAUTY_FASHION' | 'MEN' | 'FITNESS' | 'HOME_KITCHEN';

@@ -7,6 +7,8 @@ import { GetOfferUseCase } from '../../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../../application/use-cases/GetOfferUsageUseCase';
 import { UpdateOfferUseCase } from '../../application/use-cases/UpdateOfferUseCase';
 import { SendOfferUseCase } from '../../application/use-cases/SendOfferUseCase';
+import { CancelOfferUseCase, PauseOfferUseCase, ResumeOfferUseCase } from '../../application/use-cases/OfferSendControlUseCases';
+import { OfferInvalidStateError } from '../../../../shared/errors/internal/OfferErrors';
 import { RegenerateOfferTextUseCase } from '../../application/use-cases/RegenerateOfferTextUseCase';
 import {
   GetOfferGeneratorConfigUseCase,
@@ -197,5 +199,24 @@ describe('/:id', () => {
     const res = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/send` });
     expect(res.statusCode).toBe(202);
     expect(res.json()).toEqual({ success: true, data: { offer: dto(), dispatches: [] } });
+  });
+
+  it('POST /:id/pause|resume|cancel → 200 oferta; estado errado → 409 OFFER_INVALID_STATE', async () => {
+    const paused = { ...dto(), status: 'PAUSED' as const };
+    vi.spyOn(PauseOfferUseCase.prototype, 'execute').mockResolvedValue(paused);
+    vi.spyOn(ResumeOfferUseCase.prototype, 'execute').mockRejectedValue(new OfferInvalidStateError('offer-1', 'SENT'));
+    const cancel = vi.spyOn(CancelOfferUseCase.prototype, 'execute').mockResolvedValue({ ...dto(), status: 'CANCELLED' as const });
+
+    const pause = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/pause` });
+    expect(pause.statusCode).toBe(200);
+    expect(pause.json().data.status).toBe('PAUSED');
+
+    const resume = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/resume` });
+    expect(resume.statusCode).toBe(409);
+    expect(resume.body).toContain('OFFER_INVALID_STATE');
+
+    const stop = await app.inject({ method: 'POST', url: `${PREFIX}/offer-1/cancel` });
+    expect(stop.statusCode).toBe(200);
+    expect(cancel).toHaveBeenCalledWith({ tenantId: 'tenant-a', offerId: 'offer-1' });
   });
 });

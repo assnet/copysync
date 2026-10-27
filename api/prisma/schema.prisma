@@ -586,8 +586,12 @@ model AffiliateCredential {
 enum OfferStatus {
   DRAFT
   SENDING
+  /// Operador pausou: envios QUEUED esperam; retomar reagenda a partir de agora.
+  PAUSED
   SENT
   FAILED
+  /// Operador parou: envios QUEUED viram CANCELLED; o que já saiu fica.
+  CANCELLED
 }
 
 enum OfferDispatchStatus {
@@ -596,6 +600,7 @@ enum OfferDispatchStatus {
   SENT
   FAILED
   SKIPPED
+  CANCELLED
 }
 
 model Offer {
