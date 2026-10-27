@@ -24,17 +24,22 @@ Além do `X-Robots-Tag`, o painel envia `Content-Security-Policy`, `X-Content-Ty
 e `Referrer-Policy: strict-origin-when-cross-origin`. Valor atual do CSP:
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data: https://api.copysync.app; font-src 'self' data:; connect-src 'self' https://api.copysync.app wss://api.copysync.app; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data: https://api.copysync.app https://pub-38f8c0e80d0e437f97881e64c0f408bb.r2.dev https://media.copysync.app; font-src 'self' data:; connect-src 'self' https://api.copysync.app wss://api.copysync.app https://pub-38f8c0e80d0e437f97881e64c0f408bb.r2.dev https://media.copysync.app; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 ```
 
 | Diretiva | Por quê |
 |---|---|
 | `style-src 'unsafe-inline'` | MUI/Emotion injeta `<style>`; `index.html` tem `<style data-app>`. Sem isso o layout some |
 | `connect-src https://api.copysync.app wss://api.copysync.app` | REST (Axios), SSE e WebSocket do chat. Sem isso nenhuma chamada sai, login falha com "Failed to fetch" |
-| `media-src https://api.copysync.app` | áudio/vídeo do chat servidos pela API (`resolveMediaUrl`) |
+| `media-src https://api.copysync.app` | áudio/vídeo do chat servidos pela API (`resolveMediaUrl`), mídia antiga em disco |
+| `media-src` + `connect-src` do bucket R2 (`pub-…r2.dev`, `media.copysync.app`) | com `MEDIA_STORAGE_DRIVER=s3` a mídia nova toca direto do bucket; `fetch` faz `HEAD` do tamanho do documento e a forma de onda do áudio. Trocar `S3_PUBLIC_URL` = trocar aqui |
 | `img-src https:` | fotos de perfil e mídias de CDN externas |
 | `worker-src blob:` | workers de upload/mídia |
 | `frame-ancestors 'none'` | painel não pode ser embutido em iframe (clickjacking) |
+
+Incidente 2026-10-27: com o storage no R2, imagens apareciam (`img-src https:`) mas áudio, vídeo
+e documento não, porque `media-src`/`connect-src` só liberavam a API. O bucket estava certo (206 com
+Range, `Content-Type`, CORS para o painel).
 
 Incidente 2026-10-12: CSP no dashboard apontava `connect-src`/`frame-src` para domínios de outro
 projeto (`pulsosocial`) e `style-src 'self'` sem inline → login impossível e tela sem estilo.

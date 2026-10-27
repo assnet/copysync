@@ -22,12 +22,15 @@ services:
       # CSP do painel. Precisa de:
       #  - style-src 'unsafe-inline': MUI/Emotion e o <style> do index.html (static site nao gera nonce)
       #  - connect-src/media-src api.copysync.app (+ wss): REST, SSE, WebSocket e midias do chat
+      #  - media-src/connect-src do bucket R2 (pub-…r2.dev e media.copysync.app): audio/video do chat
+      #    tocam direto do bucket; HEAD do tamanho do documento e forma de onda do audio usam fetch.
+      #    Sem isto so a imagem aparece (img-src ja aceita https:). Ver docs/media-storage-r2.md.
       # Dominio errado aqui = login morto e layout quebrado. Ver docs/app-bloqueio-indexacao.md.
       # Servico no dashboard chama-se copysync_app; se este Blueprint nao estiver vinculado,
       # replicar os headers manualmente em Settings > Headers.
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data: https://api.copysync.app; font-src 'self' data:; connect-src 'self' https://api.copysync.app wss://api.copysync.app; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data: https://api.copysync.app https://pub-38f8c0e80d0e437f97881e64c0f408bb.r2.dev https://media.copysync.app; font-src 'self' data:; connect-src 'self' https://api.copysync.app wss://api.copysync.app https://pub-38f8c0e80d0e437f97881e64c0f408bb.r2.dev https://media.copysync.app; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff

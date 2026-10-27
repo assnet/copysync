@@ -145,6 +145,14 @@ Essa URL é funcional, mas não é personalizada. Recomendamos configurar um dom
 
 ---
 
+### 3.6 CSP do painel (obrigatório)
+
+O painel só carrega áudio, vídeo e `fetch` de origens listadas no `Content-Security-Policy`
+(`render.yaml` → `copysync_app`). A origem de `S3_PUBLIC_URL` precisa estar em **`media-src` e
+`connect-src`**; sem isso só a imagem aparece (`img-src` aceita qualquer `https:`). Liberadas hoje:
+`https://pub-38f8c0e80d0e437f97881e64c0f408bb.r2.dev` e `https://media.copysync.app`. Ao trocar o
+domínio público, atualizar o CSP no mesmo deploy (ver `docs/app-bloqueio-indexacao.md`).
+
 ## 4. Passo a passo: API Token
 
 ### 4.1 Copiar o Account ID
