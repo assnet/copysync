@@ -84,14 +84,22 @@ Contrato espelhado em `app/src/features/extension/contract/channel.ts`. Paridade
 
 | Rota | Auth | Body | Resposta |
 |---|---|---|---|
-| `POST /api/extension/session` | Bearer (painel) | `{ installationId, extVersion, mlSessionConsent }` | cookie `__Host-ext_session` |
+| `POST /api/extension/session` | Bearer + X-Tenant-Id (painel) | `{ installationId, extVersion, extensionId, channel, mlSessionConsent }` | cookie `__Host-ext_session` |
 | `DELETE /api/extension/session` | Cookie | — | limpa cookie |
 | `GET /api/extension/me` | Cookie + X-Client + X-Installation-Id | — | `ExtensionProfile` |
 | `POST /api/extension/heartbeat` | Cookie | `{ extVersion, ml: { lastSyncAt } }` | `{ resyncRequested }` |
-| `PUT /api/extension/marketplaces/ml/session` | Cookie | `{ cookies, capturedAt }` | `{ status }` |
-| `POST /api/extension/lifecycle/event` | Pública (rate limited) | `{ installationId, type, version }` | — |
+| `PUT /api/extension/marketplaces/ml/session` | Cookie + consentimento ML + entitlement | `{ cookies: { ssid, … }, capturedAt }` | `{ affiliateTag }` |
+| `POST /api/extension/lifecycle/event` | Pública (rate limited) | `{ installationId, type, version, channel, dedupeKey }` | — |
 
 Todas no envelope `{ success, data, error? }` de `shared/http/httpResponse.ts`.
+
+**Sync ML:** a API só guarda os cookies de `ML_SESSION_COOKIES` (resto do body é descartado),
+busca a etiqueta ativa no ML (`getActiveTag`, melhor esforço: falha não bloqueia a sessão) e
+grava cifrado via `UpsertAffiliateSessionUseCase` — etiqueta só preenche ID vazio.
+
+**Obrigatório em produção:** `EXTENSION_ORIGINS=chrome-extension://<id>` no serviço da API.
+Sem ela, toda rota com `extensionRequestGuard` responde 403 `NO_EXTENSION_ORIGINS` — painel
+mostra "Conectada", mas `/me`, heartbeat e sync falham e o ML aparece "Não logado".
 
 Tradução de erros (padrão AGENTS.md §13): `apiFetch.ts` nunca propaga texto da API; cada falha
 vira `SyncErrorCode` → chave `err_<code>` nas locales. 401→session_expired, 403→forbidden,

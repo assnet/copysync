@@ -7,7 +7,13 @@ import { RevokeExtensionSessionUseCase } from '../../application/use-cases/Revok
 import { GetExtensionProfileUseCase } from '../../application/use-cases/GetExtensionProfileUseCase';
 import { RecordLifecycleSignalUseCase } from '../../application/use-cases/RecordLifecycleSignalUseCase';
 import { setExtSessionCookie, clearExtSessionCookie } from '../../infrastructure/cookieHelper';
-import { EXT_SESSION_TTL_SECONDS } from '../../domain/constants';
+import { EXT_SESSION_TTL_SECONDS, ML_SESSION_COOKIES } from '../../domain/constants';
+import { UpsertAffiliateSessionUseCase } from '../../../integrations/application/use-cases/UpsertAffiliateSessionUseCase';
+import { PrismaAffiliateCredentialRepository } from '../../../integrations/infrastructure/repositories/PrismaAffiliateCredentialRepository';
+import { MercadoLivreAffiliateClient } from '../../../campaigns/infrastructure/http/MercadoLivreAffiliateClient';
+import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
+import { SecretCipherFactory } from '../../../../shared/security/SecretCipherFactory';
+import { logger } from '../../../../shared/logger/logger';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
@@ -21,7 +27,89 @@ const entitlementReader = {
   },
 };
 
+const mlClient = new MercadoLivreAffiliateClient();
+const syncMlSessionUseCase = new UpsertAffiliateSessionUseCase(
+  new PrismaAffiliateCredentialRepository(),
+  () => SecretCipherFactory.get(),
+  new PrismaAuditLogRepository(),
+);
+const log = logger.child({ module: 'extension.routes' });
+
 export async function extensionRoutes(app: FastifyInstance): Promise<void> {
+  // ── PUT /marketplaces/ml/session — ML session sync (cookie auth) ─────
+  app.put(
+    '/marketplaces/ml/session',
+    {
+      preHandler: [extensionAuthHook],
+      onRequest: [extensionRequestGuard],
+      config: { rateLimit: rateLimitPresets.extensionSync },
+      schema: {
+        tags: ['Extension'],
+        summary: 'Sincronizar sessão do Mercado Livre',
+        body: {
+          type: 'object',
+          required: ['cookies', 'capturedAt'],
+          properties: {
+            cookies: {
+              type: 'object',
+              required: ['ssid'],
+              maxProperties: 16,
+              additionalProperties: { type: 'string', maxLength: 4096 },
+            },
+            capturedAt: { type: 'string', maxLength: 64 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: { affiliateTag: { type: ['string', 'null'] } },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = request.extensionSession!;
+      if (!session.mlConsent) {
+        return reply.code(403).send({ success: false, error: { code: 'ML_CONSENT_REQUIRED', message: 'ML session consent not granted' } });
+      }
+      if (!(await entitlementReader.hasMarketplaceExtension(session.mlTenantId))) {
+        return reply.code(403).send({ success: false, error: { code: 'EXTENSION_NOT_ENTITLED', message: 'Marketplace extension is not available on the current plan' } });
+      }
+
+      const body = request.body as { cookies: Record<string, string>; capturedAt: string };
+      const cookies: Record<string, string> = {};
+      for (const name of ML_SESSION_COOKIES) {
+        const value = body.cookies[name];
+        if (typeof value === 'string' && value) cookies[name] = value;
+      }
+
+      // Tag is best-effort: an ML outage must never block storing the session.
+      let affiliateTag: string | null = null;
+      try {
+        affiliateTag = await mlClient.getActiveTag(cookies);
+      } catch (err) {
+        log.warn({ reason: (err as Error)?.name }, 'ML active tag lookup failed');
+      }
+
+      await syncMlSessionUseCase.execute({
+        tenantId: session.mlTenantId,
+        userId: session.userId,
+        provider: 'MERCADO_LIVRE',
+        cookies,
+        ...(affiliateTag && { affiliateTag }),
+        capturedAt: body.capturedAt,
+      });
+
+      return reply.send({ success: true, data: { affiliateTag } });
+    },
+  );
+
   // ── POST /session — Issue extension session (Bearer auth) ──────────
   app.post(
     '/session',

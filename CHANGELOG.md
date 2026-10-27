@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — extension (api 0.27.0)
+
+- **`extension.routes.ts`** — `PUT /extension/marketplaces/ml/session`: rota que a extensão já chamava e não existia (sync sempre 404). Exige consentimento ML da sessão e entitlement; guarda só `ML_SESSION_COOKIES`, busca a etiqueta ativa no ML e grava via `UpsertAffiliateSessionUseCase`.
+- **`extensionAuthHook.ts`** — contexto expõe `mlConsent`.
+
 ### Fixed — extension (api 0.26.1)
 
 - **`extension.routes.ts`** — `POST /extension/session` lia `user.id` e `request.tenantId`, que não existem (`request.user.userId` / `request.tenantContext.tenantId`): 403 para todos e depois 500 no Prisma. Rotas agora usam os tipos do Fastify, sem `as any`.
