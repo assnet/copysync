@@ -1,6 +1,6 @@
 import TerserPlugin from 'terser-webpack-plugin';
 import CopyPlugin from 'copy-webpack-plugin';
-import HtmlWebpackPlugin from 'html-webpack-plugin';
+
 import Dotenv from 'dotenv-webpack';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -76,7 +76,6 @@ export default (env = {}, argv = {}) => {
   return {
     entry: {
       background: path.resolve(srcDir, 'background', 'index.ts'),
-      popup: path.resolve(srcDir, 'popup', 'index.ts'),
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -90,8 +89,6 @@ export default (env = {}, argv = {}) => {
     module: {
       rules: [
         { test: /\.ts$/, use: 'ts-loader', exclude: /node_modules/ },
-        { test: /\.css$/, use: ['style-loader', 'css-loader'] },
-        { test: /\.(png|svg|woff2?)$/i, type: 'asset/inline' },
       ],
     },
     mode,
@@ -119,7 +116,6 @@ export default (env = {}, argv = {}) => {
           {
             from: '.',
             context: 'public',
-            globOptions: { ignore: ['**/popup.html'] },
             transform: (content, absolutePath) => {
               if (!absolutePath.endsWith('manifest.json')) return content;
               const manifest = JSON.parse(content.toString());
@@ -139,13 +135,6 @@ export default (env = {}, argv = {}) => {
             },
           },
         ],
-      }),
-      new HtmlWebpackPlugin({
-        filename: 'popup.html',
-        template: path.resolve(srcDir, 'popup', 'popup.html'),
-        chunks: ['popup'],
-        inject: 'body',
-        minify: isProduction,
       }),
     ],
   };

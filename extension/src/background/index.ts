@@ -1,13 +1,11 @@
-import { MARKETPLACE_COOKIE_DOMAIN } from '../config/env.js';
+import { MARKETPLACE_COOKIE_DOMAIN, env } from '../config/env.js';
 import { ML_SESSION_COOKIES, ML_SYNC_PENDING_ALARM, ML_SYNC_RESERVE_ALARM, SYNC_DEBOUNCE_MS, HEARTBEAT_ALARM } from './constants.js';
 import { devError, devLog } from '../core/devLog.js';
 import { registerChannel } from './channel/index.js';
 import { setupAlarms, setupUninstallUrl, sendLifecycleEvent, sendHeartbeat } from './lifecycle.js';
 import { runSync } from './syncSession.js';
-import { getSyncState, setSyncState, getSettings, setSettings, type StoredSettings } from './store.js';
-import type { MlStatusPayload } from '../contract/channel.js';
+import { getSyncState, setSyncState } from './store.js';
 import { getMlStatus } from './marketplaceSession.js';
-import { resolverSessao, getCachedProfile, type ExtensionProfile } from './sessionResolver.js';
 
 /**
  * Service worker (MV3) — v3.0.0.
@@ -85,59 +83,8 @@ chrome.cookies.onChanged.addListener((changeInfo) => {
   });
 });
 
-// ── Internal messages (popup only) ──────────────────────────────────────────
+// ── Icon click → open panel ────────────────────────────────────────────────
 
-interface PopupRequest {
-  type: string;
-  settings?: Partial<StoredSettings>;
-}
-
-interface PopupAuth {
-  email: string;
-  name: string;
-  mlTenantId: string | null;
-}
-
-interface PopupResponse {
-  ok: boolean;
-  auth?: PopupAuth | null;
-  settings?: StoredSettings;
-  sync?: import('./store.js').SyncState;
-  ml?: MlStatusPayload;
-}
-
-chrome.runtime.onMessage.addListener(
-  (message: PopupRequest, sender, sendResponse: (r: PopupResponse) => void) => {
-    if (sender.id !== chrome.runtime.id || sender.tab) return false;
-    if (!message || typeof message.type !== 'string') return false;
-
-    const profileToAuth = (p: ExtensionProfile | null): PopupAuth | null =>
-      p ? { email: p.user.email, name: p.user.name, mlTenantId: p.mlTenantId } : null;
-
-    const handle = async (): Promise<PopupResponse> => {
-      switch (message.type) {
-        case 'popup/get-state': {
-          let profile: ExtensionProfile | null = null;
-          try { profile = await resolverSessao(); } catch { /* not authed */ }
-          const [settings, sync, ml] = await Promise.all([getSettings(), getSyncState(), getMlStatus()]);
-          return { ok: true, auth: profileToAuth(profile), settings, sync, ml };
-        }
-        case 'popup/sync-now': {
-          await runSync('manual');
-          const [sync, ml] = await Promise.all([getSyncState(), getMlStatus()]);
-          return { ok: true, sync, ml };
-        }
-        case 'popup/save-settings': {
-          if (message.settings) await setSettings(message.settings);
-          const settings = await getSettings();
-          return { ok: true, settings };
-        }
-        default:
-          return { ok: false };
-      }
-    };
-
-    void handle().then(sendResponse).catch(() => sendResponse({ ok: false }));
-    return true;
-  },
-);
+chrome.action.onClicked.addListener(() => {
+  void chrome.tabs.create({ url: env.panelUrl || 'https://app.copysync.app' });
+});
