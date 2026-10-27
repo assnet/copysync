@@ -11,6 +11,7 @@ import type {
   SaveOfferConfigRequest,
   SendOfferResponse,
   UpdateOfferRequest,
+  SessionGroupsResponse,
 } from '@/types/api.types';
 
 const BASE = '/campaigns/offers';
@@ -54,6 +55,23 @@ export const offerService = {
   async saveConfig(body: SaveOfferConfigRequest): Promise<OfferConfigResponse> {
     const res = await apiClient.put<ApiSuccess<OfferConfigApiDto>>(`${BASE}/config`, body);
     return toOfferConfig(res.data.data);
+  },
+
+  /** Todos os grupos da sessão no WhatsApp (não só os com mensagem), com busca no servidor. */
+  async listSessionGroups(sessionId: string, search?: string): Promise<SessionGroupsResponse> {
+    const res = await apiClient.get<ApiSuccess<SessionGroupsResponse>>(`${BASE}/config/groups`, {
+      params: { sessionId, search: search || undefined },
+    });
+    return res.data.data;
+  },
+
+  /** Cria (ou acha) a conversa do grupo escolhido; devolve o id usado como destino. */
+  async ensureSessionGroup(sessionId: string, groupJid: string): Promise<{ conversationId: string; title: string | null }> {
+    const res = await apiClient.post<ApiSuccess<{ conversationId: string; title: string | null }>>(
+      `${BASE}/config/groups/ensure`,
+      { sessionId, groupJid },
+    );
+    return res.data.data;
   },
 };
 

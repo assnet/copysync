@@ -3,6 +3,7 @@ import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors
 import type {
   IOfferGeneratorConfigRepository,
   SaveOfferGeneratorConfigInput,
+  SessionGroupConversation,
 } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import type { OfferDestinationView } from '../../domain/entities/OfferDestination';
 import type { OfferGeneratorConfig, OfferSessionRef } from '../../domain/entities/OfferGeneratorConfig';
@@ -73,6 +74,15 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
       select: { id: true, status: true },
     });
     return row ? { id: row.id, status: row.status } : null;
+  }
+
+  async listSessionGroupConversations(tenantId: string, sessionId: string): Promise<SessionGroupConversation[]> {
+    const rows = await this.prisma.chatConversation.findMany({
+      where: { tenantId, sessionId, isGroup: true, groupJid: { not: null }, status: { not: 'CLOSED' } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, groupJid: true, groupName: true },
+    });
+    return rows.map((r) => ({ conversationId: r.id, groupJid: r.groupJid!, title: r.groupName }));
   }
 
   async filterSessionGroups(tenantId: string, sessionId: string, ids: string[]): Promise<string[]> {

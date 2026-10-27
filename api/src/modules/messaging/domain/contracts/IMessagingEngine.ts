@@ -237,6 +237,12 @@ export interface IMessagingEngine {
    */
   getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]>;
   /**
+   * Todos os grupos de que a sessão participa no WhatsApp — inclusive os sem mensagem, que
+   * ainda não viraram conversa no chat. `groupJid` sem `@g.us`, como no chat.
+   * Lança `SessionNotConnectedError` sem sessão conectada.
+   */
+  listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]>;
+  /**
    * Baixa a foto de perfil de um contato ou grupo e devolve uma URL servida por nós.
    *
    * A URL que o WhatsApp fornece é temporária; persisti-la deixaria avatares quebrados
@@ -279,6 +285,12 @@ export interface UpdateChatStateInput {
   muteMs?: number | null;
   /** false marca como não lida. */
   read?: boolean;
+}
+
+export interface ParticipatingGroupInfo {
+  /** Sem `@g.us`. */
+  groupJid: string;
+  name: string | null;
 }
 
 export interface GroupParticipantInfo {

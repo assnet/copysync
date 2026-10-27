@@ -403,3 +403,16 @@ export interface UpsertTenantAiCredentialRequest {
   model: string;
   apiKey?: string;
 }
+
+/** Grupo de que a sessão participa no WhatsApp. `conversationId` null = ainda sem conversa no chat. */
+export interface SessionGroupItem {
+  groupJid: string;
+  title: string | null;
+  conversationId: string | null;
+}
+
+export interface SessionGroupsResponse {
+  groups: SessionGroupItem[];
+  /** WhatsApp não respondeu: só os grupos que o chat já conhece. */
+  partial: boolean;
+}

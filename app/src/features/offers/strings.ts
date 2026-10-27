@@ -41,7 +41,9 @@ export const offerStrings = {
     },
     groups: {
       title: 'Selecione os grupos',
-      subtitle: 'Só aparecem os grupos da sessão escolhida.',
+      subtitle: 'Todos os grupos de que o WhatsApp da sessão participa.',
+      partial: 'O WhatsApp da sessão não respondeu: mostrando só os grupos que já têm conversa. Reconecte a sessão para ver todos.',
+      ensureError: 'Não foi possível selecionar este grupo. Tente novamente.',
       searchLabel: 'Buscar grupo',
       loadError: 'Não foi possível carregar os grupos.',
       empty: 'Nenhum grupo encontrado nesta sessão.',

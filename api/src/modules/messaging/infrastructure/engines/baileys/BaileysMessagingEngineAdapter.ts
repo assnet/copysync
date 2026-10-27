@@ -38,6 +38,7 @@ import type {
   SendReactionInput,
   MarkMessagesReadInput,
   GroupParticipantInfo,
+  ParticipatingGroupInfo,
   UpdateChatStateInput,
 } from '../../../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
@@ -91,6 +92,7 @@ const GROUP_AVATAR_FETCH_LIMIT = 200;
 const GROUP_AVATAR_CONCURRENCY = 8;
 /** Validade do cache de fotos de participante. A URL do WhatsApp é temporária. */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
+const PARTICIPATING_GROUPS_TTL_MS = 60_000;
 /** Tempo máximo para descobrir o LID do autor citado; estourou, a citação sai pelo número. */
 const QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS = 3_000;
 
@@ -134,6 +136,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly pairingInFlight = new Map<string, { phone: string; promise: Promise<string> }>();
   /** Cache de fotos por JID: evita repetir a consulta a cada abertura do painel. */
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
+  /** Lista de grupos por sessão: a consulta ao WhatsApp é pesada e a busca do painel repete. */
+  private readonly participatingGroupsCache = new Map<string, { groups: ParticipatingGroupInfo[]; at: number }>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -408,6 +412,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.requireConnectedEntry(sessionId);
     try {
       await entry.socket.sendPresenceUpdate(presence, this.normalizeJid(to));
+    } catch (err) { throw translateEngineError(err); }
+  }
+
+  async listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]> {
+    const entry = this.requireConnectedEntry(sessionId);
+    const cached = this.participatingGroupsCache.get(sessionId);
+    if (cached && Date.now() - cached.at < PARTICIPATING_GROUPS_TTL_MS) return cached.groups;
+    try {
+      const all = await entry.socket.groupFetchAllParticipating();
+      const groups = Object.values(all).map((g) => ({
+        groupJid: g.id.split('@')[0]!,
+        name: g.subject?.trim() || null,
+      }));
+      this.participatingGroupsCache.set(sessionId, { groups, at: Date.now() });
+      return groups;
     } catch (err) { throw translateEngineError(err); }
   }
 

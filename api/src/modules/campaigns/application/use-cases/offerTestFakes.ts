@@ -148,6 +148,7 @@ export interface FakeConversation {
   sessionId: string | null;
   isGroup: boolean;
   title?: string;
+  groupJid?: string;
 }
 
 export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorConfigRepository {
@@ -179,6 +180,12 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
     const s = this.sessions.find((x) => x.id === sessionId && x.tenantId === tenantId);
     return s ? { id: s.id, status: s.status } : null;
   }
+  async listSessionGroupConversations(tenantId: string, sessionId: string) {
+    return this.conversations
+      .filter((c) => c.tenantId === tenantId && c.sessionId === sessionId && c.isGroup && c.groupJid)
+      .map((c) => ({ conversationId: c.id, groupJid: c.groupJid!, title: c.title ?? null }));
+  }
+
   async filterSessionGroups(tenantId: string, sessionId: string, ids: string[]) {
     return ids.filter((id) =>
       this.conversations.some((c) => c.id === id && c.tenantId === tenantId && c.sessionId === sessionId && c.isGroup),

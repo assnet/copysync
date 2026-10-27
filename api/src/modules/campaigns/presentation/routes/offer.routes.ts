@@ -16,6 +16,10 @@ import {
   saveConfigBodySchema,
   sendOfferResponse,
   updateOfferBodySchema,
+  ensureSessionGroupBodySchema,
+  ensureSessionGroupResponse,
+  sessionGroupsQuerySchema,
+  sessionGroupsResponse,
 } from '../schemas/offer.schema';
 
 const preHandler = [authHook, tenantHook];
@@ -100,6 +104,45 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
         ...request.body,
       });
       httpResponse.ok(reply, result);
+    },
+  );
+
+  app.get<{ Querystring: { sessionId: string; search?: string } }>(
+    '/config/groups',
+    {
+      preHandler,
+      schema: {
+        tags,
+        summary: 'Grupos de que a sessão participa no WhatsApp (busca por nome)',
+        querystring: sessionGroupsQuerySchema,
+        response: { 200: sessionGroupsResponse },
+      },
+    },
+    async (request, reply) => {
+      httpResponse.ok(reply, await offersContainer.listSessionGroups().execute({
+        tenantId: request.tenantContext.tenantId,
+        sessionId: request.query.sessionId,
+        search: request.query.search,
+      }));
+    },
+  );
+
+  app.post<{ Body: { sessionId: string; groupJid: string } }>(
+    '/config/groups/ensure',
+    {
+      preHandler,
+      schema: {
+        tags,
+        summary: 'Garante a conversa do grupo escolhido como destino',
+        body: ensureSessionGroupBodySchema,
+        response: { 200: ensureSessionGroupResponse },
+      },
+    },
+    async (request, reply) => {
+      httpResponse.ok(reply, await offersContainer.ensureSessionGroup().execute({
+        tenantId: request.tenantContext.tenantId,
+        ...request.body,
+      }));
     },
   );
 

@@ -165,3 +165,49 @@ export const offerConfigResponse = envelope({
     configured: { type: 'boolean' },
   },
 });
+
+// Grupos da sessão (todos do WhatsApp, não só os com mensagem)
+const GROUP_JID_PATTERN = '^[0-9]{5,40}(-[0-9]{5,20})?$';
+
+export const sessionGroupsQuerySchema = {
+  type: 'object',
+  required: ['sessionId'],
+  additionalProperties: false,
+  properties: {
+    sessionId: { type: 'string', minLength: 1, maxLength: 64 },
+    search: { type: 'string', maxLength: 100 },
+  },
+} as const;
+
+export const sessionGroupsResponse = envelope({
+  type: 'object',
+  properties: {
+    partial: { type: 'boolean' },
+    groups: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          groupJid: { type: 'string' },
+          title: nullableString,
+          conversationId: nullableString,
+        },
+      },
+    },
+  },
+});
+
+export const ensureSessionGroupBodySchema = {
+  type: 'object',
+  required: ['sessionId', 'groupJid'],
+  additionalProperties: false,
+  properties: {
+    sessionId: { type: 'string', minLength: 1, maxLength: 64 },
+    groupJid: { type: 'string', pattern: GROUP_JID_PATTERN },
+  },
+} as const;
+
+export const ensureSessionGroupResponse = envelope({
+  type: 'object',
+  properties: { conversationId: { type: 'string' }, title: nullableString },
+});

@@ -1,22 +1,16 @@
 import { useEffect, useState } from 'react';
-import { chatService } from '@/services/chat.service';
-import type { ChatConversationApiDto } from '@/types/chat.api.types';
+import { offerService } from '@/services/offer.service';
+import type { SessionGroupItem } from '@/types/api.types';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-export interface SessionGroup {
-  id: string;
-  title: string | null;
-}
-
-const toGroup = (c: ChatConversationApiDto): SessionGroup => ({
-  id: c.id,
-  title: c.groupName || c.contact?.name || null,
-});
-
-/** Grupos de uma sessão (reusa `GET /chat/conversations?isGroup=true&sessionId=`). Sem sessão, não busca. */
+/**
+ * Grupos de que a sessão participa no WhatsApp (`GET /campaigns/offers/config/groups`), inclusive
+ * os sem mensagem. Busca no servidor (sem acento/caixa). Sem sessão, não busca.
+ */
 export function useSessionGroups(sessionId: string | null, search: string) {
-  const [items, setItems] = useState<SessionGroup[]>([]);
+  const [items, setItems] = useState<SessionGroupItem[]>([]);
+  const [partial, setPartial] = useState(false);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -31,12 +25,11 @@ export function useSessionGroups(sessionId: string | null, search: string) {
       setLoading(true);
       setFailed(false);
       try {
-        const { conversations } = await chatService.listConversations({
-          sessionId,
-          isGroup: 'true',
-          search: search.trim() || undefined,
-        });
-        if (!cancelled) setItems(conversations.filter((c) => c.isGroup !== false).map(toGroup));
+        const result = await offerService.listSessionGroups(sessionId, search.trim() || undefined);
+        if (!cancelled) {
+          setItems(result.groups);
+          setPartial(result.partial);
+        }
       } catch {
         if (!cancelled) setFailed(true);
       } finally {
@@ -49,5 +42,5 @@ export function useSessionGroups(sessionId: string | null, search: string) {
     };
   }, [sessionId, search, attempt]);
 
-  return { items, loading, failed, retry: () => setAttempt((n) => n + 1) };
+  return { items, partial, loading, failed, retry: () => setAttempt((n) => n + 1) };
 }

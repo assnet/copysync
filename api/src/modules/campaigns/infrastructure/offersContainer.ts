@@ -27,6 +27,8 @@ import {
   SaveOfferGeneratorConfigUseCase,
 } from '../application/use-cases/OfferGeneratorConfigUseCases';
 import { ProcessDueOfferDispatchesUseCase } from '../application/use-cases/ProcessDueOfferDispatchesUseCase';
+import { EnsureSessionGroupUseCase, ListSessionGroupsUseCase } from '../application/use-cases/SessionGroupsUseCases';
+import { ChatSessionGroupDirectory } from './adapters/ChatSessionGroupDirectory';
 
 /*
  * Composição do gerador de ofertas: rotas e worker usam as MESMAS instâncias. Tudo lazy —
@@ -72,6 +74,9 @@ const send      = lazy(() => new SendOfferUseCase({
 }));
 const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
 const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
+const groupDirectory = lazy(() => new ChatSessionGroupDirectory());
+const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: configs(), directory: groupDirectory() }));
+const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),
 }));
@@ -85,5 +90,7 @@ export const offersContainer = {
   sendOffer:            send,
   getConfig:            getConfig,
   saveConfig:           saveConfig,
+  listSessionGroups:    listSessionGroups,
+  ensureSessionGroup:   ensureSessionGroup,
   processDueDispatches: processDue,
 };

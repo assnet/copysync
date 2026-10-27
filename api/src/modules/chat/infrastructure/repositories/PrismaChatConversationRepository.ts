@@ -64,8 +64,9 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
 
     const rows = await this.prisma.chatConversation.findMany({
       where,
-      // Fixadas primeiro, como no WhatsApp Web; o resto por atividade recente.
-      orderBy: [{ pinned: 'desc' }, { lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+      // Fixadas primeiro, como no WhatsApp Web; o resto por atividade recente. Sem mensagem
+      // (ex.: grupo criado como destino de oferta) vai ao fim — no Postgres DESC põe NULL no topo.
+      orderBy: [{ pinned: 'desc' }, { lastMessageAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: filter.limit ?? 50,
       skip: filter.offset ?? 0,
     });

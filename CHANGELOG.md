@@ -9,6 +9,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — campaigns (api 0.30.0 · app 0.30.0)
+
+- **Busca de grupos trazia só parte dos grupos** — a configuração do gerador listava `chat_conversations` (50 por página, sem arquivadas): grupo sem mensagem recebida não existia no chat e nunca aparecia. Agora **`IMessagingEngine.listParticipatingGroups`** (adapter Baileys, `groupFetchAllParticipating`, cache 60 s) + **`ISessionGroupDirectory`**/`ChatSessionGroupDirectory` + **`ListSessionGroupsUseCase`**/`EnsureSessionGroupUseCase` + rotas `GET /campaigns/offers/config/groups` e `POST …/config/groups/ensure`. Regra pura **`mergeSessionGroups`** (busca sem acento/caixa; sessão fora → lista parcial). Painel: `useSessionGroups` usa a rota nova; marcar grupo sem conversa cria a conversa na hora (`ConfigGroupsStep`).
+- **`PrismaChatConversationRepository.ts`** — conversa sem mensagem (criada como destino) vai ao fim da lista (`nulls: 'last'`), não ao topo.
+
+### Fixed — app 0.30.1
+
+- **`AppLayout.tsx`** — trocar de tenant não recarregava as páginas (dados do tenant anterior ficavam na tela) e erro no clique era engolido. Agora recarrega em `/dashboard` após a troca e mostra aviso em falha; item selecionado vem do estado, não do `localStorage`.
+
 ### Fixed — api 0.29.3 (API caindo em loop — causa raiz)
 
 - **`app/onSendHooks.ts`** (novo), **`app.ts`** — os dois hooks `onSend` globais (`X-Server-Time` e `Content-Disposition` do storage) viram **síncronos**. Causa raiz do incidente: com `onSend` async, `reply.send()` devolve antes de a resposta ser escrita; em handler async que envia sem `return reply` (quase todas as rotas) o Fastify chamava `send` de novo, e a 2ª escrita lançava `ERR_HTTP_HEADERS_SENT` dentro de uma promise — rejeição não tratada, processo morto. Com 1 hook async a ordem das microtasks escondia; o 2º hook (0.29.1) fez acontecer em toda requisição, com ou sem extensão. O 0.29.2 corrigiu só um sintoma (hooks da extensão). Reprodução e regressão em **`onSendHooks.test.ts`**.
