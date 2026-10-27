@@ -53,6 +53,8 @@ export const sendQueueStrings = {
   },
   at: (time: string) => `às ${time}`,
   paused: 'Pausado',
+  waitingSession: 'Aguardando a sessão',
+  waitingSessionTooltip: 'A sessão estava desconectada na vez deste envio. Ele volta para a fila e sai assim que ela reconectar (desiste após 6 h).',
   pausedTooltip: 'A oferta está pausada: este envio sai quando você retomar',
   finishedAt: (time: string) => `às ${time}`,
   origin: {

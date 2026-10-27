@@ -6,7 +6,7 @@ import { NOW, TENANT } from './offerTestFakes';
 const entry = (o: Partial<SendQueueEntry>): SendQueueEntry => ({
   dispatchId: 'd', offerId: 'o', origin: 'GENERATOR', offerStatus: 'SENDING', title: null, text: 'oferta', imageUrl: null,
   coupon: null, sessionId: 's1', conversationId: 'c', groupName: 'G', groupAvatarUrl: null, status: 'QUEUED',
-  notBefore: NOW, claimedAt: null, updatedAt: NOW, failureReason: null, ...o,
+  notBefore: NOW, claimedAt: null, updatedAt: NOW, failureReason: null, waitingSession: false, ...o,
 });
 
 function setup(snap: Partial<SendQueueSnapshot>) {

@@ -21,6 +21,8 @@ export interface SendQueueEntry {
   claimedAt: Date | null;
   updatedAt: Date;
   failureReason: string | null;
+  /** Voltou para a fila porque a sessão estava fora do ar. */
+  waitingSession: boolean;
 }
 
 export interface SendQueueSession {

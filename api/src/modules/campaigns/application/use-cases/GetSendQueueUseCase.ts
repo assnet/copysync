@@ -28,6 +28,8 @@ export interface SendQueueItemDTO {
   claimedAt: string | null;
   updatedAt: string;
   failureReason: string | null;
+  /** Voltou para a fila porque a sessão estava fora do ar; sai quando ela reconectar. */
+  waitingSession: boolean;
 }
 
 export interface SendQueueSessionDTO {
@@ -70,6 +72,7 @@ function toItem(e: SendQueueEntry): SendQueueItemDTO {
     claimedAt: e.claimedAt?.toISOString() ?? null,
     updatedAt: e.updatedAt.toISOString(),
     failureReason: e.failureReason,
+    waitingSession: e.waitingSession,
   };
 }
 

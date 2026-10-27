@@ -18,6 +18,7 @@ const entrySelect = {
   claimedAt: true,
   updatedAt: true,
   failureReason: true,
+  waitingSessionSince: true,
   offer: { select: { origin: true, status: true, title: true, text: true, imageUrl: true, coupon: true } },
   conversation: { select: { groupName: true, groupAvatarUrl: true } },
 } satisfies Prisma.OfferDispatchSelect;
@@ -43,6 +44,7 @@ function toEntry(r: EntryRow): SendQueueEntry {
     claimedAt: r.claimedAt,
     updatedAt: r.updatedAt,
     failureReason: r.failureReason,
+    waitingSession: r.status === 'QUEUED' && r.waitingSessionSince !== null,
   };
 }
 

@@ -101,6 +101,7 @@ const offerDispatchSchema = {
     notBefore: { type: 'string', format: 'date-time' },
     chatMessageId: nullableString,
     failureReason: nullableString,
+    waitingSession: { type: 'boolean' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
 } as const;

@@ -805,6 +805,9 @@ model OfferDispatch {
   sessionId      String?
   /// Intervalo mínimo (s) entre o início do último envio da mesma sessão e este (claim).
   gapSeconds     Int                 @default(0)
+  /// Sessão estava fora do ar na vez deste envio: voltou para a fila e segura a vez da sessão até
+  /// reconectar (desde quando espera). null = nunca esperou. Ver docs/fila-de-envio.md.
+  waitingSessionSince DateTime?
   status         OfferDispatchStatus @default(QUEUED)
   notBefore      DateTime
   claimedAt      DateTime?

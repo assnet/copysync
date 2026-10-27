@@ -14,6 +14,8 @@ export interface OfferDispatch {
   sessionId: string | null;
   /** Intervalo mínimo (s) desde o início do último envio da mesma sessão. */
   gapSeconds: number;
+  /** Desde quando espera a sessão reconectar (voltou para a fila); null = nunca esperou. */
+  waitingSessionSince: Date | null;
   status: OfferDispatchStatus;
   notBefore: Date;
   claimedAt: Date | null;

@@ -5,7 +5,7 @@ import type { SendQueueItem, SendQueueSession } from '@/types/api.types';
 const item = (o: Partial<SendQueueItem>): SendQueueItem => ({
   dispatchId: 'd', offerId: 'o', origin: 'GENERATOR', offerStatus: 'SENDING', title: null, textPreview: '', imageUrl: null,
   coupon: null, conversationId: 'c', groupName: null, groupAvatarUrl: null, status: 'QUEUED',
-  notBefore: '2026-10-28T12:10:00.000Z', claimedAt: null, updatedAt: '2026-10-28T12:00:00.000Z', failureReason: null, ...o,
+  notBefore: '2026-10-28T12:10:00.000Z', claimedAt: null, updatedAt: '2026-10-28T12:00:00.000Z', failureReason: null, waitingSession: false, ...o,
 });
 const session = (o: Partial<SendQueueSession>): SendQueueSession => ({
   sessionId: 's', name: 'S', status: 'CONNECTED', running: null, waiting: [], recent: [],

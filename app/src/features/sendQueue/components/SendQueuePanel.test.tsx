@@ -11,7 +11,7 @@ const soon = new Date(Date.now() + 120_000).toISOString();
 const item = (o: Partial<SendQueueItem>): SendQueueItem => ({
   dispatchId: 'd', offerId: 'o1', origin: 'GENERATOR', offerStatus: 'SENDING', title: 'Fone', textPreview: 'Fone',
   imageUrl: null, coupon: null, conversationId: 'c', groupName: 'Promo 1', groupAvatarUrl: null, status: 'QUEUED',
-  notBefore: soon, claimedAt: null, updatedAt: soon, failureReason: null, ...o,
+  notBefore: soon, claimedAt: null, updatedAt: soon, failureReason: null, waitingSession: false, ...o,
 });
 
 beforeEach(() => { get.mockReset(); });
@@ -61,5 +61,16 @@ describe('SendQueuePanel', () => {
     get.mockImplementation(async () => { throw new Error('x'); });
     render(<SendQueuePanel />);
     expect(await screen.findByText('Não foi possível carregar a fila.')).toBeInTheDocument();
+  });
+});
+
+describe('SendQueuePanel — sessão fora do ar', () => {
+  it('envio devolvido por sessão desconectada aparece como "Aguardando a sessão"', async () => {
+    get.mockResolvedValue({
+      serverTime: soon,
+      sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running: null, waiting: [item({ waitingSession: true })], recent: [], counts: { waiting: 1, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
+    });
+    render(<SendQueuePanel />);
+    expect(await screen.findByText('Aguardando a sessão')).toBeInTheDocument();
   });
 });

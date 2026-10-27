@@ -89,7 +89,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
   }
   add(d: Partial<OfferDispatch> & { offerId: string; conversationId: string }): OfferDispatch {
     const row: OfferDispatch = {
-      id: `d-${++this.seq}`, tenantId: TENANT, sessionId: null, gapSeconds: 0, status: 'QUEUED', notBefore: NOW, claimedAt: null, claimToken: null,
+      id: `d-${++this.seq}`, tenantId: TENANT, sessionId: null, gapSeconds: 0, waitingSessionSince: null, status: 'QUEUED', notBefore: NOW, claimedAt: null, claimToken: null,
       chatMessageId: null, failureReason: null, updatedAt: NOW, ...d,
     };
     this.items.push(row);
@@ -145,6 +145,19 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     );
     for (const d of stale) Object.assign(d, { status: 'QUEUED', claimedAt: null, claimToken: null });
     return stale.length;
+  }
+  async deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date) {
+    const d = this.items.find((x) => x.id === id && x.tenantId === tenantId && x.claimToken === claimToken && x.status === 'SENDING');
+    const offer = d && this.offers.items.find((o) => o.id === d.offerId);
+    if (!d || !offer || !['SENDING', 'PAUSED'].includes(offer.status)) return false;
+    Object.assign(d, { status: 'QUEUED', claimToken: null, claimedAt: null, notBefore: retryAt, waitingSessionSince: waitingSince });
+    return true;
+  }
+  async failOverdueInSession(tenantId: string, sessionId: string, now: Date, failureReason: string, offerId: string) {
+    const due = this.items.filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.status === 'QUEUED'
+      && this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING' && (d.notBefore <= now || d.offerId === offerId));
+    for (const d of due) Object.assign(d, { status: 'FAILED', failureReason });
+    return due.length;
   }
   async markResult(id: string, tenantId: string, claimToken: string, result: OfferDispatchResult) {
     const d = this.items.find(

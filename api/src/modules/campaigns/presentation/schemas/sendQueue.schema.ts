@@ -31,6 +31,7 @@ const itemSchema = {
     claimedAt: { type: ['string', 'null'], format: 'date-time' },
     updatedAt: dateTime,
     failureReason: nullableString,
+    waitingSession: { type: 'boolean' },
   },
 } as const;
 

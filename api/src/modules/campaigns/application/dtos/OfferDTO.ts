@@ -13,6 +13,8 @@ export interface OfferDispatchDTO {
   notBefore: string;
   chatMessageId: string | null;
   failureReason: string | null;
+  /** Voltou para a fila porque a sessão estava fora do ar. */
+  waitingSession: boolean;
   updatedAt: string;
 }
 
@@ -52,6 +54,7 @@ export function toOfferDispatchDto(d: OfferDispatch): OfferDispatchDTO {
     notBefore: d.notBefore.toISOString(),
     chatMessageId: d.chatMessageId,
     failureReason: d.failureReason,
+    waitingSession: d.status === 'QUEUED' && d.waitingSessionSince !== null,
     updatedAt: d.updatedAt.toISOString(),
   };
 }
