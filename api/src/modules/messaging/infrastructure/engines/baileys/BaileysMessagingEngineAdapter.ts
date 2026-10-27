@@ -488,7 +488,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         );
       }
 
-      return participants.map((p) => {
+      return participants.filter((p) => !!(p.id ?? p.phoneNumber)).map((p) => {
         // Em grupos com privacidade de número o `id` vem como @lid e o telefone real,
         // quando disponível, chega em `phoneNumber` — mesmo par de campos das mensagens
         // (participant/participantAlt). Sem telefone devolvemos null em vez do LID, que
@@ -498,6 +498,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         const phone = rawId.includes('@lid') || !/^\d{8,15}$/.test(digits) ? null : digits;
 
         return {
+          jid: p.id ?? p.phoneNumber ?? '',
           phone,
           name: p.name ?? p.notify ?? p.verifiedName ?? null,
           avatarUrl: (p.id ? avatarByJid.get(p.id) : null) ?? null,

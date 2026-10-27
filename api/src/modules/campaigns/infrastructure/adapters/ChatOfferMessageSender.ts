@@ -106,7 +106,10 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
     }
   }
 
-  /** Telefones dos participantes; falha na consulta = envia sem menção (não perde a oferta). */
+  /**
+   * JIDs dos participantes como o grupo os endereça (LID ou telefone): grupo LID (padrão no
+   * Baileys 7) ignora menção por JID de telefone. Falha na consulta = envia sem menção.
+   */
   private async groupMentions(
     engine: IMessagingEngine,
     sessionId: string,
@@ -115,8 +118,9 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
   ): Promise<string[] | null> {
     try {
       const participants = await engine.getGroupParticipants(sessionId, groupJid);
-      const phones = [...new Set(participants.map((p) => p.phone).filter((p): p is string => !!p))];
-      return phones.length ? phones : null;
+      const jids = [...new Set(participants.map((p) => p.jid).filter((j) => !!j))];
+      log.info({ conversationId, participants: participants.length, mentions: jids.length }, 'offer mention all');
+      return jids.length ? jids : null;
     } catch (err) {
       log.warn({ conversationId, err: (err as Error)?.name }, 'group participants unavailable, sending without mentions');
       return null;

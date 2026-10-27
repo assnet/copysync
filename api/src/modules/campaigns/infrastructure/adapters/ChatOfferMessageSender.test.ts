@@ -35,10 +35,10 @@ beforeEach(() => {
   h.engine = {
     sendPresence: vi.fn().mockResolvedValue(undefined),
     getGroupParticipants: vi.fn().mockResolvedValue([
-      { phone: '5511999990001', name: null, avatarUrl: null, isAdmin: false },
-      { phone: null, name: 'LID', avatarUrl: null, isAdmin: false },
-      { phone: '5511999990001', name: null, avatarUrl: null, isAdmin: true },
-      { phone: '5511999990002', name: null, avatarUrl: null, isAdmin: false },
+      { jid: '5511999990001@s.whatsapp.net', phone: '5511999990001', name: null, avatarUrl: null, isAdmin: false },
+      { jid: '123456@lid', phone: null, name: 'LID', avatarUrl: null, isAdmin: false },
+      { jid: '5511999990001@s.whatsapp.net', phone: '5511999990001', name: null, avatarUrl: null, isAdmin: true },
+      { jid: '', phone: '5511999990002', name: null, avatarUrl: null, isAdmin: false },
     ]),
   };
   h.sendText.mockReset().mockResolvedValue({ id: 'm1', externalMessageId: 'X', status: 'SENT' });
@@ -49,7 +49,7 @@ describe('ChatOfferMessageSender — marcar todos', () => {
   it('grupo + mentionAll: texto sai com os telefones dos participantes (sem repetidos)', async () => {
     await new ChatOfferMessageSender().send(base);
     expect(h.engine!.getGroupParticipants).toHaveBeenCalledWith('s1', '1203@g.us');
-    expect(h.sendText).toHaveBeenCalledWith(expect.objectContaining({ mentions: ['5511999990001', '5511999990002'] }));
+    expect(h.sendText).toHaveBeenCalledWith(expect.objectContaining({ mentions: ['5511999990001@s.whatsapp.net', '123456@lid'] }));
   });
 
   it('sem mentionAll ou conversa individual: sem consulta e sem menção', async () => {
@@ -70,7 +70,7 @@ describe('ChatOfferMessageSender — marcar todos', () => {
     await new ChatOfferMessageSender().send({ ...base, imageUrl: 'store://offers/1.jpg' });
     expect(h.engine!.getGroupParticipants).toHaveBeenCalledWith('s1', '1203@g.us');
     expect(h.sendStored).toHaveBeenCalledWith(expect.objectContaining({
-      caption: 'oferta', mentions: ['5511999990001', '5511999990002'],
+      caption: 'oferta', mentions: ['5511999990001@s.whatsapp.net', '123456@lid'],
     }));
     expect(h.sendText).not.toHaveBeenCalled();
   });

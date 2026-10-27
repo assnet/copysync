@@ -294,6 +294,11 @@ export interface ParticipatingGroupInfo {
 }
 
 export interface GroupParticipantInfo {
+  /**
+   * JID pelo qual o grupo endereça o participante (`@lid` em grupo com privacidade de número,
+   * senão `@s.whatsapp.net`). É o que vai em `mentions`: grupo LID não marca JID de telefone.
+   */
+  jid: string;
   /** Telefone em dígitos, ou null quando não revelado pelo participante. */
   phone: string | null;
   /** Nome exibido, quando o WhatsApp o fornece. */
