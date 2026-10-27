@@ -122,8 +122,10 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
             </Collapse>
           </Box>
 
-          <Box>
+          {/* Campo na mesma linha do toggle; em tela estreita desce para a linha de baixo */}
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', columnGap: 3, rowGap: 1 }}>
             <FormControlLabel
+              sx={{ mr: 0, minHeight: 40 }}
               control={
                 <Switch
                   checked={hasCoupon}
@@ -133,9 +135,8 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
               }
               label={t.couponSwitch}
             />
-            <Collapse in={hasCoupon} unmountOnExit>
+            <Collapse in={hasCoupon} orientation="horizontal" unmountOnExit sx={{ flex: '1 1 260px', maxWidth: 320 }}>
               <TextField
-                sx={{ mt: 1, maxWidth: 320 }}
                 fullWidth
                 size="small"
                 label={t.couponLabel}

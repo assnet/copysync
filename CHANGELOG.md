@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.34.1
+
+- **`OfferGeneratorForm.tsx`** — campo do cupom na mesma linha do toggle "Tem cupom" (revelação horizontal, espaço de 24 px); em tela estreita desce para a linha de baixo.
+
 ### Added — app 0.34.0
 
 - **`ToggleOption.tsx`** (`components/`) — linha de configuração com toggle: linha inteira clicável (≥ 44 px), título + texto auxiliar alinhados ao conteúdo, realce sutil quando ligada e controles filhos revelados com `Collapse` (sem animação sob `prefers-reduced-motion`). **`OfferResultPanel.tsx`**: "Marcar todos" e "Simular digitação" (com o contador de tempo como filho) usam o componente.
