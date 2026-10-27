@@ -105,14 +105,14 @@ export const offerStrings = {
   },
 
   audiences: {
-    STANDARD: { emoji: '🏷️', label: 'Padrão', subtitle: 'Título + preço + link' },
-    MOMS: { emoji: '👩‍👧', label: 'Mães', subtitle: 'Praticidade e carinho' },
-    PET: { emoji: '🐾', label: 'Donos de pet', subtitle: 'Amor pelo bichinho' },
-    BEAUTY_FASHION: { emoji: '💄', label: 'Beleza/Moda', subtitle: 'Autoestima e tendência' },
-    MEN: { emoji: '🧔', label: 'Homens', subtitle: 'Custo-benefício' },
-    FITNESS: { emoji: '💪', label: 'Fitness', subtitle: 'Resultado e disciplina' },
-    HOME_KITCHEN: { emoji: '🏠', label: 'Casa/Cozinha', subtitle: 'Economia e organização' },
-  } satisfies Record<OfferAudience, { emoji: string; label: string; subtitle: string }>,
+    STANDARD: { label: 'Padrão', subtitle: 'Título + preço + link' },
+    MOMS: { label: 'Mães', subtitle: 'Praticidade e carinho' },
+    PET: { label: 'Donos de pet', subtitle: 'Amor pelo bichinho' },
+    BEAUTY_FASHION: { label: 'Beleza/Moda', subtitle: 'Autoestima e tendência' },
+    MEN: { label: 'Homens', subtitle: 'Custo-benefício' },
+    FITNESS: { label: 'Fitness', subtitle: 'Resultado e disciplina' },
+    HOME_KITCHEN: { label: 'Casa/Cozinha', subtitle: 'Economia e organização' },
+  } satisfies Record<OfferAudience, { label: string; subtitle: string }>,
 
   usage: {
     chip: (used: number, limit: number) => `${used} de ${limit} hoje`,

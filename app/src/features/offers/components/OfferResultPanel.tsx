@@ -10,10 +10,10 @@ import CheckIcon from '@mui/icons-material/Check';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
-import { SectionCard } from '@/components';
+import { AppIcon, SectionCard } from '@/components';
 import type { OfferAudience, OfferConfigGroup, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { OFFER_AUDIENCES, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
+import { AUDIENCE_ICONS, OFFER_AUDIENCES, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
 import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
@@ -161,8 +161,8 @@ export function OfferResultPanel(props: Props) {
                 sx={{ flex: 1, minWidth: 140 }}
               >
                 {OFFER_AUDIENCES.map((key) => (
-                  <MenuItem key={key} value={key}>
-                    <Box component="span" aria-hidden sx={{ mr: 1 }}>{offerStrings.audiences[key].emoji}</Box>
+                  <MenuItem key={key} value={key} sx={{ gap: 1 }}>
+                    <AppIcon icon={AUDIENCE_ICONS[key]} />
                     {offerStrings.audiences[key].label}
                   </MenuItem>
                 ))}

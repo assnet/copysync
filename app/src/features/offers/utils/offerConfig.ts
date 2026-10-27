@@ -1,9 +1,21 @@
+import { Baby, CookingPot, Dumbbell, PawPrint, Shirt, Tag, User, type LucideIcon } from 'lucide-react';
 import type { OfferAudience } from '@/types/api.types';
 
 /** Ordem dos cartões de público-alvo. */
 export const OFFER_AUDIENCES: readonly OfferAudience[] = [
   'STANDARD', 'MOMS', 'PET', 'BEAUTY_FASHION', 'MEN', 'FITNESS', 'HOME_KITCHEN',
 ];
+
+/** Ícone de cada público (Lucide, via `AppIcon`). Texto fica em `strings.ts`. */
+export const AUDIENCE_ICONS: Record<OfferAudience, LucideIcon> = {
+  STANDARD: Tag,
+  MOMS: Baby,
+  PET: PawPrint,
+  BEAUTY_FASHION: Shirt,
+  MEN: User,
+  FITNESS: Dumbbell,
+  HOME_KITCHEN: CookingPot,
+};
 
 /** "Digitando…" antes do envio. Espelha `campaigns/domain/offerTyping.ts` da API. */
 export const TYPING_SECONDS_MIN = 1;

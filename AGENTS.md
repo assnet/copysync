@@ -376,6 +376,9 @@ app/
   `limit`/`offset` — ver `api/src/shared/http/pagination/OpaqueCursor.ts`
 * estilos globais injetados por código levam `data-app`, senão o `DomGuardian` os
   remove como injeção de extensão
+* ícones: Lucide (`lucide-react`) sempre via `AppIcon` com token de tamanho (`inline` = 1.25em
+  ao lado de texto; `sm`/`md`/`lg` isolado). Sem emoji como ícone de interface. Ver
+  [`docs/padrao-icones.md`](docs/padrao-icones.md)
 * contagem regressiva / cooldown com horário vindo da API: `CooldownBar` (`app/src/components/`)
   com o relógio `serverNow()` (`services/serverClock.ts`, alimentado pelo header `X-Server-Time`).
   Nunca `Date.now()` contra horário do servidor nem `setInterval` acumulando ticks

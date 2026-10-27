@@ -1,7 +1,8 @@
 import { Box, Card, CardActionArea, Typography } from '@mui/material';
+import { AppIcon } from '@/components';
 import type { OfferAudience } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { OFFER_AUDIENCES } from '../utils/offerConfig';
+import { AUDIENCE_ICONS, OFFER_AUDIENCES } from '../utils/offerConfig';
 
 interface Props {
   value: OfferAudience;
@@ -11,7 +12,7 @@ interface Props {
   label: string;
 }
 
-/** Cartões de escolha única do público-alvo (emoji decorativo + nome + tom do texto). */
+/** Cartões de escolha única do público-alvo (ícone + nome na mesma linha, tom do texto abaixo). */
 export function AudiencePicker({ value, onChange, disabled, label }: Props) {
   return (
     <Box
@@ -44,8 +45,13 @@ export function AudiencePicker({ value, onChange, disabled, label }: Props) {
               onClick={() => onChange(key)}
               sx={{ p: 1.25, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}
             >
-              <Box component="span" aria-hidden sx={{ fontSize: 22, lineHeight: 1.2 }}>{a.emoji}</Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{a.label}</Typography>
+              <Typography
+                variant="subtitle2"
+                sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.75, color: selected ? 'primary.main' : 'text.primary' }}
+              >
+                <AppIcon icon={AUDIENCE_ICONS[key]} />
+                {a.label}
+              </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>{a.subtitle}</Typography>
             </CardActionArea>
           </Card>

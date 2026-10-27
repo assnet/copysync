@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.29.0
+
+- **Padrão de ícones** — `lucide-react@1.55.0` + **`AppIcon.tsx`** com tokens de tamanho (`inline` 1.25em acompanha o texto em desktop/mobile; `sm`/`md`/`lg` em px). Decisão em **`docs/padrao-icones.md`** e regra no AGENTS.md.
+- **`AudiencePicker.tsx`**, **`OfferResultPanel.tsx`** — públicos-alvo com ícone Lucide na mesma linha do nome (antes: emoji acima); mapa `AUDIENCE_ICONS` em `offerConfig.ts`, emoji removido de `strings.ts`.
+
 ### Added — app 0.28.0 · api 0.29.1
 
 - **`CooldownBar.tsx`** (`components/`) — barra de energia reutilizável para qualquer cooldown: esvazia até zerar por `requestAnimationFrame` escrevendo `transform` no DOM (React só re-renderiza 1×/s), recalcula pelo relógio a cada quadro (aba em segundo plano retoma no ponto certo), cor contínua verde→laranja→vermelho, células, brilho, pulso na reserva baixa; `role="progressbar"`, `prefers-reduced-motion`, temas claro/escuro.
