@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.28.0 · api 0.29.1
+
+- **`CooldownBar.tsx`** (`components/`) — barra de energia reutilizável para qualquer cooldown: esvazia até zerar por `requestAnimationFrame` escrevendo `transform` no DOM (React só re-renderiza 1×/s), recalcula pelo relógio a cada quadro (aba em segundo plano retoma no ponto certo), cor contínua verde→laranja→vermelho, células, brilho, pulso na reserva baixa; `role="progressbar"`, `prefers-reduced-motion`, temas claro/escuro.
+- **`serverClock.ts`** + **`apiClient.ts`** — relógio do servidor estimado pelo ponto médio da ida e volta (amostra de menor latência); `serverNow()` / `serverToLocal()`.
+- **`app.ts`** (api) — header `X-Server-Time` em toda resposta, exposto no CORS.
+- **`OfferDispatchProgress.tsx`** + **`dispatchCooldown.ts`** — card "Envio" mostra a espera sorteada até o próximo envio.
+
 ### Added — campaigns (api 0.29.0 · app 0.27.0)
 
 - **`IMessagingEngine.sendPresence`** + **`BaileysMessagingEngineAdapter`** — capacidade "digitando…"/"pausado" no motor (Baileys só no adapter).

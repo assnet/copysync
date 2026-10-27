@@ -1,4 +1,5 @@
-import axios, { AxiosHeaders, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosHeaders, type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import { recordServerTime } from './serverClock';
 
 type ApiErrorPayload = {
   error?: { message?: string; code?: string; meta?: { field?: string } & Record<string, unknown> };
@@ -95,7 +96,18 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 // ── Request interceptor — injeta token e tenant ─────────────────────────────
+// Instante de saída por request, para estimar o relógio do servidor (ver serverClock.ts).
+const sentAt = new WeakMap<object, number>();
+
+function sampleServerClock(response: AxiosResponse | undefined): void {
+  if (!response) return;
+  const header = response.headers?.['x-server-time'];
+  const started = sentAt.get(response.config);
+  if (header !== undefined && started !== undefined) recordServerTime(Number(header), started, Date.now());
+}
+
 apiClient.interceptors.request.use((config) => {
+  sentAt.set(config, Date.now());
   const token = localStorage.getItem('accessToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -111,8 +123,12 @@ apiClient.interceptors.request.use((config) => {
 
 // ── Response interceptor — normaliza erros ──────────────────────────────────
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    sampleServerClock(response);
+    return response;
+  },
   async (error: AxiosError<ApiErrorPayload>) => {
+    sampleServerClock(error.response);
     const originalRequest = error.config as RetryableRequestConfig | undefined;
     const requestUrl = originalRequest?.url ?? '';
     const isAuthLogin = requestUrl.endsWith('/auth/login');

@@ -1,5 +1,7 @@
 import { Alert, Box, Chip, LinearProgress, List, ListItem, ListItemText, Typography, type ChipProps } from '@mui/material';
-import { SectionCard } from '@/components';
+import { CooldownBar, SectionCard } from '@/components';
+import { serverToLocal } from '@/services/serverClock';
+import { nextDispatchCooldown } from '../utils/dispatchCooldown';
 import type { OfferConfigGroup, OfferDispatchItem, OfferDispatchStatus, OfferStatus } from '@/types/api.types';
 import { offerStrings } from '../strings';
 
@@ -28,6 +30,7 @@ export function OfferDispatchProgress({ status, dispatches, destinations }: Prop
   const done = dispatches.filter((d) => DONE.has(d.status)).length;
   const total = dispatches.length;
   const percent = total ? Math.round((done / total) * 100) : 0;
+  const cooldown = status === 'SENDING' ? nextDispatchCooldown(dispatches) : null;
 
   return (
     <SectionCard title={t.title}>
@@ -43,6 +46,21 @@ export function OfferDispatchProgress({ status, dispatches, destinations }: Prop
           sx={{ height: 6, borderRadius: 3 }}
         />
       </Box>
+
+      {cooldown && (
+        <Box sx={{ mb: 2 }}>
+          <CooldownBar
+            key={cooldown.next.id}
+            startAt={cooldown.startMs}
+            endAt={cooldown.endMs}
+            ariaLabel={t.nextSendAria}
+            label={t.nextSend(titles.get(cooldown.next.conversationId) || t.unknownDestination)}
+            formatRemaining={t.remaining}
+            doneLabel={t.nextSendDone}
+            tooltip={t.nextSendAt(serverToLocal(cooldown.endMs).toLocaleTimeString())}
+          />
+        </Box>
+      )}
 
       {status === 'SENT' && <Alert severity="success" sx={{ mb: 2 }}>{t.finishedSent}</Alert>}
       {status === 'FAILED' && <Alert severity="error" sx={{ mb: 2 }}>{t.finishedFailed}</Alert>}

@@ -207,6 +207,11 @@ export const offerStrings = {
     summary: (done: number, total: number) => `${done} de ${total} ${plural(total, 'grupo concluído', 'grupos concluídos')}`,
     finishedSent: 'Envio concluído.',
     finishedFailed: 'Nenhum grupo recebeu a oferta.',
+    nextSend: (group: string) => `Próximo envio · ${group}`,
+    nextSendAria: 'Tempo até o próximo envio',
+    nextSendDone: 'Enviando…',
+    nextSendAt: (time: string) => `Envio previsto às ${time}`,
+    remaining: (seconds: number) => `${seconds} s`,
     status: {
       QUEUED: 'Na fila',
       SENDING: 'Enviando',

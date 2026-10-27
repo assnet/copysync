@@ -85,6 +85,13 @@ export async function buildApp() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-client', 'x-installation-id'],
+    exposedHeaders: ['X-Server-Time'],
+  });
+
+  // Relógio do servidor (ms) em toda resposta: o painel corrige o relógio local para contagens
+  // regressivas baseadas em horários do servidor (ex.: `notBefore` dos envios de oferta).
+  app.addHook('onSend', async (_request, reply) => {
+    reply.header('X-Server-Time', String(Date.now()));
   });
 
   // ── Rate limiting ────────────────────────────────────────────────────────

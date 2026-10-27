@@ -376,6 +376,9 @@ app/
   `limit`/`offset` — ver `api/src/shared/http/pagination/OpaqueCursor.ts`
 * estilos globais injetados por código levam `data-app`, senão o `DomGuardian` os
   remove como injeção de extensão
+* contagem regressiva / cooldown com horário vindo da API: `CooldownBar` (`app/src/components/`)
+  com o relógio `serverNow()` (`services/serverClock.ts`, alimentado pelo header `X-Server-Time`).
+  Nunca `Date.now()` contra horário do servidor nem `setInterval` acumulando ticks
 * upload de arquivo só por `chunkedUpload` (partes de 8 MiB, retomável) — ver
   `docs/chat-midias-anexos.md`
 
