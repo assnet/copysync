@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.33.1
+
+- **`theme.ts`** — Switch menor (36×20, bolinha 16) e ligado em azul primário em vez de verde, para seguir a identidade do painel; doc atualizada.
+
 ### Added — campaigns (api 0.32.0 · app 0.33.0)
 
 - **Foto dos grupos nos chips e na lista** — `avatarUrl` (de `chat_conversations.groupAvatarUrl`) em `OfferDestinationView`, no DTO/schema de `/config` e na busca de grupos (`mergeSessionGroups`). Painel: **`GroupChip.tsx`** (`GroupAvatar` + `GroupChip`: foto → iniciais → ícone) usado no resumo, no painel da oferta, no passo "Confirmar" e na lista do passo "Grupos". Seleção do assistente guarda `{ title, avatarUrl }`.

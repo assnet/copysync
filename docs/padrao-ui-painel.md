@@ -15,11 +15,11 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 
 ## Switch (padrão iOS)
 
-- Trilho 44×26, verde (`#22c55e`) ligado, cinza desligado; bolinha branca 22 px com sombra;
-  sem ripple; anel de foco no teclado. Claro e escuro cobertos pelo tema.
+- Trilho 36×20, azul primário (`#4f70e0`) ligado, cinza desligado; bolinha branca 16 px com
+  sombra; sem ripple; anel de foco no teclado. Claro e escuro cobertos pelo tema.
 - Decisão (2026-10-27): o estado ligado precisa ser lido de longe no celular; o switch MUI
-  padrão (bolinha colorida sobre trilho translúcido) é ambíguo. Verde = ligado é convenção
-  conhecida (iOS/Android).
+  padrão (bolinha colorida sobre trilho translúcido) é ambíguo. Trilho cheio = ligado, na cor
+  primária para seguir a identidade do painel (verde ficou reservado para status/sucesso).
 - Sempre com rótulo: `FormControlLabel` ou `aria-label`. Texto auxiliar abaixo, em `caption`.
 
 ## RangeSlider

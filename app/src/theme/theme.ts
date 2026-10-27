@@ -56,15 +56,15 @@ export function buildTheme(mode: PaletteMode) {
         },
       },
 
-      // Toggle no padrão iOS em todo o painel (docs/padrao-ui-painel.md): trilho 44×26 que
-      // fica verde quando ligado, bolinha branca com sombra, sem ripple. Vale para todo
-      // <Switch> sem prop extra; não estilizar switch por tela.
+      // Toggle no padrão iOS em todo o painel (docs/padrao-ui-painel.md): trilho 36×20 que
+      // fica azul (primário) quando ligado, bolinha branca com sombra, sem ripple. Vale para
+      // todo <Switch> sem prop extra; não estilizar switch por tela.
       MuiSwitch: {
         defaultProps: { disableRipple: true },
         styleOverrides: {
           root: {
-            width: 44,
-            height: 26,
+            width: 36,
+            height: 20,
             padding: 0,
             overflow: 'visible',
             // Sem o padding padrão do MUI, o rótulo encosta: espaço só quando há rótulo ao lado
@@ -75,9 +75,9 @@ export function buildTheme(mode: PaletteMode) {
             padding: 2,
             transitionDuration: '220ms',
             '&.Mui-checked': {
-              transform: 'translateX(18px)',
+              transform: 'translateX(16px)',
               color: '#fff',
-              '& + .MuiSwitch-track': { backgroundColor: '#22c55e', opacity: 1, border: 0 },
+              '& + .MuiSwitch-track': { backgroundColor: '#4f70e0', opacity: 1, border: 0 },
               '&.Mui-disabled + .MuiSwitch-track': { opacity: 0.45 },
             },
             '&.Mui-focusVisible .MuiSwitch-thumb': {
@@ -88,14 +88,14 @@ export function buildTheme(mode: PaletteMode) {
           },
           thumb: {
             boxSizing: 'border-box',
-            width: 22,
-            height: 22,
+            width: 16,
+            height: 16,
             color: '#fff',
             boxShadow: '0 2px 4px rgba(0,0,0,0.25), 0 0 1px rgba(0,0,0,0.2)',
           },
           track: {
-            borderRadius: 13,
-            backgroundColor: isDark ? '#3a3d48' : '#e5e7eb',
+            borderRadius: 10,
+            backgroundColor: isDark ? '#3a3d48' : '#d7dae3',
             opacity: 1,
             transition: 'background-color 220ms',
           },
