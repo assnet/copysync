@@ -11,6 +11,8 @@ import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '.
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
 export const LANE_GAP_TOLERANCE_SECONDS = 5;
+/** Envio em SEND_TIMEOUT segura a faixa ao menos isso: timeout (60 s) + digitação (até 30 s), com folga. */
+export const LANE_TIMEOUT_HOLD_SECONDS = 120;
 
 export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -91,10 +93,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                 SELECT 1 FROM "offer_dispatches" o
                  WHERE o."sessionId" = heads."sessionId"
                    AND (o."status" = 'SENDING'::"OfferDispatchStatus"
-                        -- SEND_TIMEOUT: a mensagem pode ainda estar saindo em segundo plano
-                        OR (o."status" IN ('SENT'::"OfferDispatchStatus", 'FAILED'::"OfferDispatchStatus")
-                            AND (o."status" = 'SENT'::"OfferDispatchStatus" OR o."failureReason" = 'SEND_TIMEOUT')
-                            AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, 0)) > ${now}))
+                        OR (o."status" = 'SENT'::"OfferDispatchStatus"
+                            AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, 0)) > ${now})
+                        -- SEND_TIMEOUT: a mensagem pode ainda estar saindo; segura pelo menos timeout + digitação
+                        OR (o."status" = 'FAILED'::"OfferDispatchStatus" AND o."failureReason" = 'SEND_TIMEOUT'
+                            AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, ${LANE_TIMEOUT_HOLD_SECONDS})) > ${now}))
               )
               ORDER BY heads."notBefore"
               LIMIT ${limit}

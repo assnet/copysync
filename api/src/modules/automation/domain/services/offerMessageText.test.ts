@@ -15,6 +15,11 @@ describe('extractUrls', () => {
     expect(extractUrls('Por R$ 99.90 à vista, 1.5kg/un, kit c/2')).toEqual([]);
   });
 
+  it('link com protocolo em itálico é trocado inteiro (sem protocolo duplicado)', () => {
+    const out = rewriteOfferLinks('Veja _https://amzn.to/abc_ já', new Map([['https://amzn.to/abc', 'https://novo/x']]));
+    expect(out).toBe('Veja _https://novo/x_ já');
+  });
+
   it('link em itálico/negrito do WhatsApp sem protocolo', () => {
     expect(extractUrls('Oferta _amzn.to/abc_ e *bit.ly/x*').map((u) => u.href)).toEqual(['https://amzn.to/abc', 'https://bit.ly/x']);
   });

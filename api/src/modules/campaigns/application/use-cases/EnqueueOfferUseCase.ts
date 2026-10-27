@@ -58,11 +58,12 @@ export class EnqueueOfferUseCase {
   async execute(input: EnqueueOfferInput): Promise<EnqueueOfferResult> {
     const { tenantId, sessionId, conversationIds } = input;
     if (conversationIds.length === 0) throw new Error('EnqueueOfferUseCase: no destinations');
-    let draftId: string | null = null;
+    let draft: { id: string; mentionAll: boolean } | null = null;
     if (input.sourceKey) {
       const existing = await this.deps.offers.findBySourceKey(tenantId, input.sourceKey);
       // Queda entre criar a oferta e enfileirar: ela ficou DRAFT sem envios; enfileira agora
-      if (existing?.status === 'DRAFT') draftId = existing.id;
+      // Mesma captura: os campos gravados valem (o mentionAll esperado é o da linha, senão startSending recusa)
+      if (existing?.status === 'DRAFT') draft = { id: existing.id, mentionAll: existing.mentionAll };
       else if (existing) {
         const first = (await this.deps.dispatches.listByOffer(existing.id, tenantId))
           .reduce<Date | null>((min, d) => (!min || d.notBefore < min ? d.notBefore : min), null);
@@ -79,7 +80,7 @@ export class EnqueueOfferUseCase {
     const firstSendAt = slots[0]!;
     if (input.expiresAt && firstSendAt.getTime() >= input.expiresAt.getTime()) return { kind: 'expired', firstSendAt };
 
-    const offer = draftId ? { id: draftId } : await this.deps.offers.create({
+    const offer = draft ? { id: draft.id } : await this.deps.offers.create({
       tenantId,
       provider: input.provider,
       sourceUrl: input.sourceUrl,
@@ -105,7 +106,7 @@ export class EnqueueOfferUseCase {
     const created = await this.deps.dispatches.startSending(
       offer.id,
       tenantId,
-      { mentionAll: input.mentionAll },
+      { mentionAll: draft?.mentionAll ?? input.mentionAll },
       conversationIds.map((conversationId, i) => ({ conversationId, sessionId, notBefore: slots[i]!, gapSeconds: input.intervalMinSeconds })),
     );
     // Oferta acabou de nascer DRAFT: só falha se algo a mudou no meio (não deveria)
