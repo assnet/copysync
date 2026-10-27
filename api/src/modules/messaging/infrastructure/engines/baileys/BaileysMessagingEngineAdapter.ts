@@ -404,6 +404,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     }
   }
 
+  async sendPresence(sessionId: string, to: string, presence: 'composing' | 'paused'): Promise<void> {
+    const entry = this.requireConnectedEntry(sessionId);
+    try {
+      await entry.socket.sendPresenceUpdate(presence, this.normalizeJid(to));
+    } catch (err) { throw translateEngineError(err); }
+  }
+
   async getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]> {
     const entry = this.requireConnectedEntry(sessionId);
     const remoteJid = groupJid.endsWith('@g.us') ? groupJid : `${groupJid}@g.us`;

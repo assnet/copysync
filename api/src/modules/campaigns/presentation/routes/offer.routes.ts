@@ -31,6 +31,8 @@ type UpdateBody = {
   coupon?: string | null;
   audience?: OfferAudience;
   mentionAll?: boolean;
+  simulateTyping?: boolean;
+  typingSeconds?: number;
 };
 type GenerateBody = { url: string; coupon?: string | null; audience?: OfferAudience };
 type SaveConfigBody = {

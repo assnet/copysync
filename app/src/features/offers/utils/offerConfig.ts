@@ -5,6 +5,10 @@ export const OFFER_AUDIENCES: readonly OfferAudience[] = [
   'STANDARD', 'MOMS', 'PET', 'BEAUTY_FASHION', 'MEN', 'FITNESS', 'HOME_KITCHEN',
 ];
 
+/** "Digitando…" antes do envio. Espelha `campaigns/domain/offerTyping.ts` da API. */
+export const TYPING_SECONDS_MIN = 1;
+export const TYPING_SECONDS_MAX = 30;
+
 /** Espelha a validação da API: 5 ≤ min ≤ max ≤ 120. */
 export const INTERVAL_MIN_SECONDS = 5;
 export const INTERVAL_MAX_SECONDS = 120;

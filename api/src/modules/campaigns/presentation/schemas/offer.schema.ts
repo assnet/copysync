@@ -8,6 +8,7 @@ import {
   OFFER_INTERVAL_MAX_SECONDS,
   OFFER_INTERVAL_MIN_SECONDS,
 } from '../../application/use-cases/OfferGeneratorConfigUseCases';
+import { OFFER_TYPING_SECONDS_MIN, OFFER_TYPING_SECONDS_MAX } from '../../domain/offerTyping';
 
 /** Mesmo formato do `uploadId` gerado pelo store (`randomUUID` v4, minúsculo). */
 const UPLOAD_ID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$';
@@ -45,6 +46,8 @@ export const updateOfferBodySchema = {
     coupon,
     audience,
     mentionAll: { type: 'boolean' },
+    simulateTyping: { type: 'boolean' },
+    typingSeconds: { type: 'integer', minimum: OFFER_TYPING_SECONDS_MIN, maximum: OFFER_TYPING_SECONDS_MAX },
   },
   additionalProperties: false,
 } as const;
@@ -108,6 +111,8 @@ const offerSchema = {
     coupon: nullableString,
     audience,
     mentionAll: { type: 'boolean' },
+    simulateTyping: { type: 'boolean' },
+    typingSeconds: { type: 'integer' },
     status: { type: 'string', enum: [...OFFER_STATUSES] },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },

@@ -24,12 +24,16 @@ vi.mock('../../../chat/application/use-cases/SendMessageUseCase', () => ({
 
 import { ChatOfferMessageSender } from './ChatOfferMessageSender';
 
-const base = { tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null, mentionAll: true };
+const base = {
+  tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null, mentionAll: true,
+  simulateTyping: false, typingSeconds: 15,
+};
 const group = { id: 'c1', sessionId: 's1', isGroup: true, groupJid: '1203@g.us' };
 
 beforeEach(() => {
   h.conv = { ...group };
   h.engine = {
+    sendPresence: vi.fn().mockResolvedValue(undefined),
     getGroupParticipants: vi.fn().mockResolvedValue([
       { phone: '5511999990001', name: null, avatarUrl: null, isAdmin: false },
       { phone: null, name: 'LID', avatarUrl: null, isAdmin: false },
@@ -75,5 +79,36 @@ describe('ChatOfferMessageSender — marcar todos', () => {
     await new ChatOfferMessageSender().send({ ...base, mentionAll: false, imageUrl: 'store://offers/1.jpg' });
     expect(h.engine!.getGroupParticipants).not.toHaveBeenCalled();
     expect(h.sendStored).toHaveBeenCalledWith(expect.objectContaining({ mentions: null }));
+  });
+});
+
+describe('ChatOfferMessageSender — digitando', () => {
+  const sleep = vi.fn().mockResolvedValue(undefined);
+  // groupJid como no banco (sem sufixo): o destino vira 1203@g.us
+  beforeEach(() => { sleep.mockClear(); h.conv = { ...group, groupJid: '1203' }; });
+
+  it('15 s: "composing" renovado a cada 8 s, total esperado = 15 s, "paused" antes de enviar', async () => {
+    await new ChatOfferMessageSender(sleep).send({ ...base, mentionAll: false, simulateTyping: true });
+    const presence = h.engine!.sendPresence as ReturnType<typeof vi.fn>;
+    expect(presence.mock.calls).toEqual([
+      ['s1', '1203@g.us', 'composing'],
+      ['s1', '1203@g.us', 'composing'],
+      ['s1', '1203@g.us', 'paused'],
+    ]);
+    expect(sleep.mock.calls.map((c) => c[0])).toEqual([8_000, 7_000]);
+    expect(presence.mock.invocationCallOrder.at(-1)!).toBeLessThan(h.sendText.mock.invocationCallOrder[0]!);
+  });
+
+  it('desligado: sem presença e sem espera', async () => {
+    await new ChatOfferMessageSender(sleep).send({ ...base, mentionAll: false });
+    expect(h.engine!.sendPresence).not.toHaveBeenCalled();
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('falha na presença: envia mesmo assim, sem esperar', async () => {
+    (h.engine!.sendPresence as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('offline'));
+    await expect(new ChatOfferMessageSender(sleep).send({ ...base, mentionAll: false, simulateTyping: true }))
+      .resolves.toEqual({ chatMessageId: 'm1' });
+    expect(sleep).not.toHaveBeenCalled();
   });
 });

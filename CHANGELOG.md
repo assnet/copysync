@@ -9,6 +9,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns (api 0.29.0 · app 0.27.0)
+
+- **`IMessagingEngine.sendPresence`** + **`BaileysMessagingEngineAdapter`** — capacidade "digitando…"/"pausado" no motor (Baileys só no adapter).
+- **`ChatOfferMessageSender.ts`** — com `simulateTyping`, mostra "digitando…" por `typingSeconds` (renovado a cada 8 s) antes da oferta; falha na presença não segura o envio.
+- **`ProcessDueOfferDispatchesUseCase.ts`** — timeout do envio soma o tempo de digitação.
+- **`offerTyping.ts`**, **`UpdateOfferUseCase.ts`**, schemas — `typingSeconds` inteiro 1–30, padrão 15.
+- **Migration `20261027150000_add_offer_simulate_typing`** — `offers.simulateTyping` (false) e `offers.typingSeconds` (15).
+- **`OfferResultPanel.tsx`** — switch "Simular digitação" abaixo de "Marcar todos", com contador −/+ do tempo; **`useOfferGenerator.ts`** grava otimista e ignora respostas fora de ordem.
+
 ### Fixed — app 0.26.1 · extension 3.2.0
 
 - **`AppLayout.tsx`** — lista de tenants só era carregada no login; após recarregar a página ficava vazia e o seletor de tenant sumia (super admin preso no tenant atual). Agora carrega ao montar o layout.

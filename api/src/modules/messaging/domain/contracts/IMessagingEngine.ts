@@ -225,6 +225,11 @@ export interface IMessagingEngine {
   /** Subscribe to presence updates for a specific JID. */
   presenceSubscribe(sessionId: string, phone: string): Promise<void>;
   /**
+   * Mostra ("composing") ou encerra ("paused") o "digitando…" no destino (telefone ou JID).
+   * O WhatsApp expira a presença em ~10 s: quem quer mais tempo reenvia "composing".
+   */
+  sendPresence(sessionId: string, to: string, presence: 'composing' | 'paused'): Promise<void>;
+  /**
    * Lista os participantes de um grupo.
    *
    * `phone` fica nulo quando o participante usa privacidade de número e só o

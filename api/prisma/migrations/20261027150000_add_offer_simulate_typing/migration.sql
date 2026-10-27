@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "offers" ADD COLUMN "simulateTyping" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "typingSeconds" INTEGER NOT NULL DEFAULT 15;

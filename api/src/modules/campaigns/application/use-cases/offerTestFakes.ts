@@ -29,7 +29,7 @@ export function makeOffer(overrides: Partial<Offer> = {}): Offer {
     id: 'offer-1', tenantId: TENANT, provider: 'AMAZON', sourceUrl: 'https://amazon.com.br/dp/B0ABCDEFGH',
     productRef: 'B0ABCDEFGH', title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
     affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', attributionVerified: true,
-    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, status: 'DRAFT',
+    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, status: 'DRAFT',
     createdById: USER, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }

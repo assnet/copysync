@@ -614,6 +614,10 @@ model Offer {
   coupon              String?
   audience            OfferAudience     @default(STANDARD)
   mentionAll          Boolean           @default(false)
+  /// Envia "digitando…" antes da mensagem, por um tempo proporcional ao texto.
+  simulateTyping      Boolean           @default(false)
+  /// Duração do "digitando…" em segundos (limites em campaigns/domain/offerTyping.ts).
+  typingSeconds       Int               @default(15)
   status              OfferStatus       @default(DRAFT)
   createdById         String? // null se o usuário for removido
   createdAt           DateTime          @default(now())

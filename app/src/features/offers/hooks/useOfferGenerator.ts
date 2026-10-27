@@ -82,6 +82,26 @@ export function useOfferGenerator() {
     }
   }, [offer, fail]);
 
+  /**
+   * Digitação: atualiza na hora e grava em seguida. Cliques rápidos no contador disparam
+   * vários PATCH; só a resposta do último vale (as anteriores voltariam o número).
+   */
+  const typingSeq = useRef(0);
+  const setTyping = useCallback(async (patch: Pick<UpdateOfferRequest, 'simulateTyping' | 'typingSeconds'>) => {
+    if (!offer) return;
+    const previous = offer;
+    const seq = ++typingSeq.current;
+    setOffer({ ...offer, ...patch });
+    setError(null);
+    try {
+      const saved = await offerService.update(offer.id, patch);
+      if (seq === typingSeq.current) setOffer(saved);
+    } catch (err) {
+      if (seq === typingSeq.current) setOffer(previous);
+      fail(err);
+    }
+  }, [offer, fail]);
+
   /** Liga/desliga "marcar todos" na hora; volta ao valor anterior se a API recusar. */
   const setMentionAll = useCallback(async (value: boolean) => {
     if (!offer) return;
@@ -205,6 +225,7 @@ export function useOfferGenerator() {
     generate,
     regenerate,
     setMentionAll,
+    setTyping,
     update,
     replaceImage,
     send,

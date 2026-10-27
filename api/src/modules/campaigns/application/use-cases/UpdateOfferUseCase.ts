@@ -11,6 +11,7 @@ import {
 } from '../../../../shared/errors/internal/OfferErrors';
 import { logger } from '../../../../shared/logger/logger';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
+import { isValidTypingSeconds, OFFER_TYPING_SECONDS_MIN, OFFER_TYPING_SECONDS_MAX } from '../../domain/offerTyping';
 
 export const OFFER_TEXT_MAX = 4096;
 export const OFFER_TITLE_MAX = 300;
@@ -29,6 +30,8 @@ export interface UpdateOfferInput {
   coupon?: string | null;
   audience?: OfferAudience;
   mentionAll?: boolean;
+  simulateTyping?: boolean;
+  typingSeconds?: number;
 }
 
 export interface UpdateOfferDeps {
@@ -59,6 +62,8 @@ export class UpdateOfferUseCase {
     if (input.coupon !== undefined) patch.coupon = normalizeCoupon(input.coupon);
     if (input.audience !== undefined) patch.audience = input.audience;
     if (input.mentionAll !== undefined) patch.mentionAll = input.mentionAll;
+    if (input.simulateTyping !== undefined) patch.simulateTyping = input.simulateTyping;
+    if (input.typingSeconds !== undefined) patch.typingSeconds = input.typingSeconds;
 
     if (input.imageUploadId) {
       patch.imageUrl = await this.deps.mediaStore.consumeUploadedImage({
@@ -138,6 +143,12 @@ function validate(input: UpdateOfferInput): void {
     throw new OfferInvalidInputError('Unknown audience', 'audience');
   }
   if (input.coupon !== undefined) normalizeCoupon(input.coupon);
+  if (input.typingSeconds !== undefined && !isValidTypingSeconds(input.typingSeconds)) {
+    throw new OfferInvalidInputError(
+      `Typing time must be ${OFFER_TYPING_SECONDS_MIN}-${OFFER_TYPING_SECONDS_MAX} seconds`,
+      'typingSeconds',
+    );
+  }
   if (input.title != null && input.title.length > OFFER_TITLE_MAX) {
     throw new OfferInvalidInputError(`Title exceeds ${OFFER_TITLE_MAX} characters`, 'title');
   }

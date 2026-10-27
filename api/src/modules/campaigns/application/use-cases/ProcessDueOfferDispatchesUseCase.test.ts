@@ -29,7 +29,9 @@ describe('ProcessDueOfferDispatchesUseCase', () => {
   it('envia vencidos com texto e foto; todos SENT → oferta SENT', async () => {
     const s = setup();
     expect(await s.uc.execute()).toEqual({ processed: 2 });
-    expect(s.sender.send).toHaveBeenCalledWith({ tenantId: TENANT, conversationId: 'c1', text: 'oferta', imageUrl: 'store://1.jpg', mentionAll: false });
+    expect(s.sender.send).toHaveBeenCalledWith({ tenantId: TENANT, conversationId: 'c1', text: 'oferta', imageUrl: 'store://1.jpg', mentionAll: false,
+      simulateTyping: false, typingSeconds: 15,
+    });
     expect(statuses(s)).toEqual([['SENT', 'm1'], ['SENT', 'm1']]);
     expect(s.offers.items[0]!.status).toBe('SENT');
   });

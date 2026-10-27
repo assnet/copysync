@@ -169,6 +169,7 @@ export function OfferGeneratorPage() {
                     onDiscard={form.discard}
                     onRegenerate={(audience) => { gen.regenerate(audience).catch(ignore); }}
                     onMentionAll={(value) => { gen.setMentionAll(value).catch(markPlanError); }}
+                    onTyping={(patch) => { void gen.setTyping(patch); }}
                     onReplaceImage={(file) => { gen.replaceImage(file).catch(ignore); }}
                     onSend={() => setConfirmOpen(true)}
                   />

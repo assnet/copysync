@@ -22,6 +22,10 @@ export interface Offer {
   audience: OfferAudience;
   /** Menciona todos os participantes ao enviar em grupo. */
   mentionAll: boolean;
+  /** Envia "digitando…" antes da mensagem. */
+  simulateTyping: boolean;
+  /** Segundos de "digitando…" (1–30). */
+  typingSeconds: number;
   status: OfferStatus;
   createdById: string | null;
   createdAt: Date;

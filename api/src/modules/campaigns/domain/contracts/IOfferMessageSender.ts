@@ -8,6 +8,9 @@ export interface SendOfferMessageInput {
   imageUrl: string | null;
   /** Em grupo: menciona todos os participantes (menção oculta, sem `@` no texto). */
   mentionAll: boolean;
+  /** Mostra "digitando…" por `typingSeconds` antes da mensagem. Melhor esforço. */
+  simulateTyping: boolean;
+  typingSeconds: number;
 }
 
 export interface IOfferMessageSender {

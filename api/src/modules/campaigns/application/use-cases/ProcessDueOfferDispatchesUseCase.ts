@@ -86,6 +86,8 @@ export class ProcessDueOfferDispatchesUseCase {
         text: offer.text,
         imageUrl: offer.imageUrl,
         mentionAll: offer.mentionAll,
+        simulateTyping: offer.simulateTyping,
+        typingSeconds: offer.typingSeconds,
       });
       result = { status: 'SENT', chatMessageId: sent.chatMessageId };
     } catch (err) {
@@ -104,7 +106,9 @@ export class ProcessDueOfferDispatchesUseCase {
   private async sendWithTimeout(input: Parameters<IOfferMessageSender['send']>[0]): Promise<{ chatMessageId: string }> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new SendTimeoutError()), this.deps.sendTimeoutMs ?? DISPATCH_SEND_TIMEOUT_MS);
+      // A digitação acontece dentro do envio: estende o prazo para ela não virar SEND_TIMEOUT
+      const typingMs = input.simulateTyping ? input.typingSeconds * 1000 : 0;
+      timer = setTimeout(() => reject(new SendTimeoutError()), (this.deps.sendTimeoutMs ?? DISPATCH_SEND_TIMEOUT_MS) + typingMs);
     });
     try {
       return await Promise.race([this.deps.sender.send(input), timeout]);

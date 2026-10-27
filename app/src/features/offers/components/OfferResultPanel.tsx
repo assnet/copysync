@@ -8,10 +8,12 @@ import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import { SectionCard } from '@/components';
 import type { OfferAudience, OfferConfigGroup, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { OFFER_AUDIENCES } from '../utils/offerConfig';
+import { OFFER_AUDIENCES, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
 import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
@@ -42,6 +44,7 @@ interface Props {
   onDiscard: () => void;
   onRegenerate: (audience: OfferAudience) => void;
   onMentionAll: (value: boolean) => void;
+  onTyping: (patch: { simulateTyping?: boolean; typingSeconds?: number }) => void;
   onReplaceImage: (file: File) => void;
   onSend: () => void;
 }
@@ -200,6 +203,59 @@ export function OfferResultPanel(props: Props) {
               <Typography variant="caption" color={mentionUnavailable ? 'warning.main' : 'text.secondary'} component="p" sx={{ ml: 6, mt: -0.5 }}>
                 {mentionUnavailable ? t.mentionAllUnavailable : t.mentionAllHelper}
               </Typography>
+            </Box>
+
+            <Box>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={offer.simulateTyping}
+                    disabled={busy}
+                    onChange={(e) => props.onTyping({ simulateTyping: e.target.checked })}
+                  />
+                }
+                label={t.simulateTyping}
+              />
+              <Typography variant="caption" color="text.secondary" component="p" sx={{ ml: 6, mt: -0.5 }}>
+                {t.simulateTypingHelper}
+              </Typography>
+              {offer.simulateTyping && (
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ ml: 6, mt: 1 }} role="group" aria-label={t.typingDuration}>
+                  <Typography variant="body2" color="text.secondary">{t.typingDuration}</Typography>
+                  <Tooltip title={t.typingDecrease} arrow>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={t.typingDecrease}
+                        disabled={busy || offer.typingSeconds <= TYPING_SECONDS_MIN}
+                        onClick={() => props.onTyping({ typingSeconds: offer.typingSeconds - 1 })}
+                      >
+                        <RemoveIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    aria-live="polite"
+                    sx={{ minWidth: 40, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {t.typingSeconds(offer.typingSeconds)}
+                  </Typography>
+                  <Tooltip title={t.typingIncrease} arrow>
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={t.typingIncrease}
+                        disabled={busy || offer.typingSeconds >= TYPING_SECONDS_MAX}
+                        onClick={() => props.onTyping({ typingSeconds: offer.typingSeconds + 1 })}
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Stack>
+              )}
             </Box>
 
             <Box>

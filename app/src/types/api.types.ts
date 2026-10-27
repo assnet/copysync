@@ -216,6 +216,9 @@ export interface OfferItem {
   audience: OfferAudience;
   /** Menciona todos os participantes de cada grupo no envio. */
   mentionAll: boolean;
+  /** Mostra "digitando…" por `typingSeconds` antes de cada envio. */
+  simulateTyping: boolean;
+  typingSeconds: number;
   text: string;
   /** Texto editado à mão: mudar título/preço não o remonta mais. */
   textEdited: boolean;
@@ -255,6 +258,8 @@ export interface UpdateOfferRequest {
   coupon?: string | null;
   audience?: OfferAudience;
   mentionAll?: boolean;
+  simulateTyping?: boolean;
+  typingSeconds?: number;
 }
 
 export interface SendOfferResponse {
