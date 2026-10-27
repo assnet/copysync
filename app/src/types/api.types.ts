@@ -281,10 +281,15 @@ export interface OfferConfigGroup {
   sessionId: string | null;
 }
 
+export type OfferDispatchOrder = 'SEQUENTIAL' | 'INTERLEAVED';
+
 export interface OfferConfigSettings {
-  sessionId: string | null;
+  /** Sessões que disparam, na ordem de envio. */
+  sessionIds: string[];
+  /** Pausa entre dois envios consecutivos (segundos), dentro e entre sessões. */
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
+  dispatchOrder: OfferDispatchOrder;
 }
 
 /** `config: null` = nunca configurado; `groupLimit: null` = sem limite de grupos no plano. */
@@ -292,12 +297,15 @@ export interface OfferConfigResponse {
   config: OfferConfigSettings | null;
   groups: OfferConfigGroup[];
   groupLimit: number | null;
+  /** Entitlement `whatsapp_sessions`; null = sem limite do plano. */
+  sessionLimit: number | null;
 }
 
 export interface SaveOfferConfigRequest {
-  sessionId: string;
+  sessionIds: string[];
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
+  dispatchOrder: OfferDispatchOrder;
   conversationIds: string[];
 }
 
@@ -411,6 +419,11 @@ export interface SessionGroupItem {
   title: string | null;
   avatarUrl: string | null;
   conversationId: string | null;
+}
+
+/** Grupo etiquetado com a sessão de origem (o painel junta a busca de várias sessões). */
+export interface SessionGroupWithSession extends SessionGroupItem {
+  sessionId: string;
 }
 
 export interface SessionGroupsResponse {

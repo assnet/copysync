@@ -278,6 +278,7 @@ model Session {
   messages              Message[]
   chatConversations     ChatConversation[]
   offerGeneratorConfigs OfferGeneratorConfig[]
+  offerGeneratorConfigSessions OfferGeneratorConfigSession[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -644,17 +645,41 @@ enum OfferAudience {
 }
 
 /// Configuração do gerador por tenant: sessão que envia e intervalo entre grupos.
-model OfferGeneratorConfig {
-  tenantId           String   @id
-  sessionId          String?
-  intervalMinSeconds Int      @default(8)
-  intervalMaxSeconds Int      @default(15)
-  updatedAt          DateTime @updatedAt
+/// Ordem do disparo com mais de uma sessão (ver docs/gerador-de-ofertas.md).
+enum OfferDispatchOrder {
+  SEQUENTIAL // todos os grupos de uma sessão, depois a próxima
+  INTERLEAVED // um grupo de cada sessão por vez
+}
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+model OfferGeneratorConfig {
+  tenantId                  String             @id
+  /// Legado: primeira sessão escolhida. Fonte de verdade: `sessions` (OfferGeneratorConfigSession).
+  sessionId                 String?
+  /// Pausa entre dois envios consecutivos, da mesma sessão ou não (segundos).
+  intervalMinSeconds        Int                @default(120)
+  intervalMaxSeconds        Int                @default(300)
+  dispatchOrder             OfferDispatchOrder @default(SEQUENTIAL)
+  updatedAt                 DateTime           @updatedAt
+
+  tenant   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session  Session?                      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  sessions OfferGeneratorConfigSession[]
 
   @@map("offer_generator_configs")
+}
+
+/// Sessões que disparam, na ordem escolhida (position). Sessão apagada sai sozinha (Cascade).
+model OfferGeneratorConfigSession {
+  tenantId  String
+  sessionId String
+  position  Int
+
+  config  OfferGeneratorConfig @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  session Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, sessionId])
+  @@index([sessionId])
+  @@map("offer_generator_config_sessions")
 }
 
 // ─── AI TEXT PROVIDERS ────────────────────────────────────────────────────────

@@ -13,13 +13,17 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
   constructor(private readonly prisma: PrismaClient) {}
 
   async find(tenantId: string): Promise<OfferGeneratorConfig | null> {
-    const row = await this.prisma.offerGeneratorConfig.findUnique({ where: { tenantId } });
+    const row = await this.prisma.offerGeneratorConfig.findUnique({
+      where: { tenantId },
+      include: { sessions: { orderBy: { position: 'asc' }, select: { sessionId: true } } },
+    });
     return row
       ? {
           tenantId: row.tenantId,
-          sessionId: row.sessionId,
+          sessionIds: row.sessions.map((s) => s.sessionId),
           intervalMinSeconds: row.intervalMinSeconds,
           intervalMaxSeconds: row.intervalMaxSeconds,
+          dispatchOrder: row.dispatchOrder,
           updatedAt: row.updatedAt,
         }
       : null;
@@ -45,14 +49,21 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
   }
 
   async save(input: SaveOfferGeneratorConfigInput): Promise<void> {
-    const { tenantId, sessionId, intervalMinSeconds, intervalMaxSeconds } = input;
+    const { tenantId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder } = input;
+    const sessionIds = [...new Set(input.sessionIds)];
     const unique = [...new Set(input.conversationIds)];
+    // `sessionId` legado = primeira sessão, só para leitores antigos; a lista é a fonte de verdade
+    const sessionId = sessionIds[0] ?? null;
     try {
       await this.prisma.$transaction([
         this.prisma.offerGeneratorConfig.upsert({
           where: { tenantId },
-          create: { tenantId, sessionId, intervalMinSeconds, intervalMaxSeconds },
-          update: { sessionId, intervalMinSeconds, intervalMaxSeconds },
+          create: { tenantId, sessionId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder },
+          update: { sessionId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder },
+        }),
+        this.prisma.offerGeneratorConfigSession.deleteMany({ where: { tenantId } }),
+        this.prisma.offerGeneratorConfigSession.createMany({
+          data: sessionIds.map((sid, position) => ({ tenantId, sessionId: sid, position })),
         }),
         this.prisma.offerDestination.deleteMany({ where: { tenantId } }),
         this.prisma.offerDestination.createMany({
@@ -86,11 +97,22 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
     return rows.map((r) => ({ conversationId: r.id, groupJid: r.groupJid!, title: r.groupName, avatarUrl: r.groupAvatarUrl }));
   }
 
-  async filterSessionGroups(tenantId: string, sessionId: string, ids: string[]): Promise<string[]> {
-    const unique = [...new Set(ids)];
+  async findSessions(tenantId: string, sessionIds: string[]): Promise<OfferSessionRef[]> {
+    const unique = [...new Set(sessionIds)];
     if (unique.length === 0) return [];
+    const rows = await this.prisma.session.findMany({
+      where: { id: { in: unique }, tenantId, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    const byId = new Map(rows.map((r) => [r.id, { id: r.id, status: r.status }]));
+    return unique.flatMap((id) => byId.get(id) ?? []);
+  }
+
+  async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]): Promise<string[]> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0 || sessionIds.length === 0) return [];
     const rows = await this.prisma.chatConversation.findMany({
-      where: { tenantId, sessionId, isGroup: true, id: { in: unique } },
+      where: { tenantId, sessionId: { in: sessionIds }, isGroup: true, id: { in: unique } },
       select: { id: true },
     });
     return rows.map((r) => r.id);

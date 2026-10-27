@@ -18,6 +18,8 @@ function setup(
     offer?: Partial<Offer>;
     selected?: string[];
     sessionStatus?: string;
+    sessionIds?: string[];
+    dispatchOrder?: 'SEQUENTIAL' | 'INTERLEAVED';
     configured?: boolean;
     entitlements?: Record<string, unknown>;
   } = {},
@@ -26,15 +28,18 @@ function setup(
   offers.items.push(makeOffer(opts.offer));
   const dispatches = new InMemoryOfferDispatchRepository(offers);
   const configs = new InMemoryOfferGeneratorConfigRepository(
-    [{ id: 's1', tenantId: TENANT, status: opts.sessionStatus ?? 'CONNECTED' }],
+    [{ id: 's1', tenantId: TENANT, status: opts.sessionStatus ?? 'CONNECTED' }, { id: 's2', tenantId: TENANT, status: 'CONNECTED' }],
     [
       ...GROUPS.map((id) => ({ id, tenantId: TENANT, sessionId: 's1', isGroup: true })),
       { id: 'old', tenantId: TENANT, sessionId: 's-old', isGroup: true },
+      { id: 'd1', tenantId: TENANT, sessionId: 's2', isGroup: true },
+      { id: 'd2', tenantId: TENANT, sessionId: 's2', isGroup: true },
     ],
   );
   if (opts.configured !== false) {
     configs.configs.set(TENANT, {
-      tenantId: TENANT, sessionId: 's1', intervalMinSeconds: 8, intervalMaxSeconds: 16, updatedAt: NOW,
+      tenantId: TENANT, sessionIds: opts.sessionIds ?? ['s1'], intervalMinSeconds: 8, intervalMaxSeconds: 16,
+      dispatchOrder: opts.dispatchOrder ?? 'SEQUENTIAL', updatedAt: NOW,
     });
   }
   configs.selected.set(TENANT, opts.selected ?? GROUPS);
@@ -63,6 +68,23 @@ describe('SendOfferUseCase', () => {
     const s = setup({ selected: ['c1', 'old'] });
     const out = await s.uc.execute(input);
     expect(out.dispatches.map((d) => d.conversationId)).toEqual(['c1']);
+  });
+
+  it('duas sessões INTERLEAVED: alterna S1/S2 com o mesmo intervalo entre todos os envios', async () => {
+    const s = setup({ sessionIds: ['s1', 's2'], dispatchOrder: 'INTERLEAVED', selected: ['c1', 'c2', 'd1', 'd2', 'c3'] });
+    const out = await s.uc.execute(input);
+    expect(out.dispatches.map((d) => d.conversationId)).toEqual(['c1', 'd1', 'c2', 'd2', 'c3']);
+    expect(out.dispatches.map((d) => Date.parse(d.notBefore) - NOW.getTime())).toEqual([0, 12000, 24000, 36000, 48000]);
+  });
+
+  it('duas sessões SEQUENTIAL na ordem configurada; sessão desconectada bloqueia tudo', async () => {
+    const s = setup({ sessionIds: ['s2', 's1'], selected: ['c1', 'd1', 'c2'] });
+    const out = await s.uc.execute(input);
+    expect(out.dispatches.map((d) => d.conversationId)).toEqual(['d1', 'c1', 'c2']);
+
+    const off = setup({ sessionIds: ['s1', 's2'], sessionStatus: 'DISCONNECTED', selected: ['c1', 'd1'] });
+    await expect(off.uc.execute(input)).rejects.toMatchObject({ code: 'SESSION_NOT_CONNECTED' });
+    expect(off.dispatches.items).toHaveLength(0);
   });
 
   it('sem configuração → OFFER_CONFIG_MISSING 409, nada enfileirado', async () => {

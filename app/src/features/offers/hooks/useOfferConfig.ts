@@ -54,14 +54,20 @@ export function useOfferConfig() {
 
   const config = data?.config ?? null;
   const groups = data?.groups ?? [];
-  const session = config?.sessionId ? sessions.find((s) => s.id === config.sessionId) ?? null : null;
+  // Sessões escolhidas na ordem de envio; as que sumiram (apagadas) contam em `missingSessions`
+  const selectedSessions = (config?.sessionIds ?? []).flatMap((id) => sessions.find((s) => s.id === id) ?? []);
+  const missingSessions = sessionsLoading ? 0 : (config?.sessionIds.length ?? 0) - selectedSessions.length;
+  const offlineSessions = selectedSessions.filter((s) => s.status !== 'CONNECTED');
 
   return {
     config,
     groups,
     groupLimit: data?.groupLimit ?? null,
-    configured: Boolean(config?.sessionId) && groups.length > 0,
-    session,
+    sessionLimit: data?.sessionLimit ?? null,
+    configured: (config?.sessionIds.length ?? 0) > 0 && groups.length > 0,
+    selectedSessions,
+    missingSessions,
+    offlineSessions,
     sessions,
     sessionsFailed,
     sessionsLoading,

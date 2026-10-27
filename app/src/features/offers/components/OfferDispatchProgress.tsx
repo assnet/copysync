@@ -2,7 +2,8 @@ import { Alert, Box, Chip, LinearProgress, List, ListItem, ListItemText, Typogra
 import { CooldownBar, SectionCard } from '@/components';
 import { serverToLocal } from '@/services/serverClock';
 import { nextDispatchCooldown } from '../utils/dispatchCooldown';
-import type { OfferConfigGroup, OfferDispatchItem, OfferDispatchStatus, OfferStatus } from '@/types/api.types';
+import type { OfferConfigGroup, OfferDispatchItem, OfferDispatchStatus, OfferStatus, SessionItem } from '@/types/api.types';
+import { Blurred, useBlur } from '@/features/privacy';
 import { offerStrings } from '../strings';
 
 const t = offerStrings.progress;
@@ -22,11 +23,20 @@ interface Props {
   dispatches: OfferDispatchItem[];
   /** Títulos vindos da configuração; grupo que saiu dela aparece como removido. */
   destinations: OfferConfigGroup[];
+  /** Sessões da configuração: com mais de uma, cada linha mostra por qual número sai. */
+  sessions: SessionItem[];
 }
 
 /** Situação do envio por destino. Os dados chegam pelo polling do hook enquanto a oferta está `SENDING`. */
-export function OfferDispatchProgress({ status, dispatches, destinations }: Props) {
+export function OfferDispatchProgress({ status, dispatches, destinations, sessions }: Props) {
   const titles = new Map(destinations.map((d) => [d.conversationId, d.title]));
+  const sessionNames = new Map(sessions.map((s) => [s.id, s.name]));
+  const sessionOf = (conversationId: string) => {
+    const sid = destinations.find((d) => d.conversationId === conversationId)?.sessionId;
+    return sid ? sessionNames.get(sid) ?? null : null;
+  };
+  const multi = sessions.length > 1;
+  const blurSession = useBlur('offers.sessionName');
   const done = dispatches.filter((d) => DONE.has(d.status)).length;
   const total = dispatches.length;
   const percent = total ? Math.round((done / total) * 100) : 0;
@@ -54,7 +64,7 @@ export function OfferDispatchProgress({ status, dispatches, destinations }: Prop
             startAt={cooldown.startMs}
             endAt={cooldown.endMs}
             ariaLabel={t.nextSendAria}
-            label={t.nextSend(titles.get(cooldown.next.conversationId) || t.unknownDestination)}
+            label={t.nextSend(titles.get(cooldown.next.conversationId) || t.unknownDestination, multi ? sessionOf(cooldown.next.conversationId) : null)}
             formatRemaining={t.remaining}
             doneLabel={t.nextSendDone}
             tooltip={t.nextSendAt(serverToLocal(cooldown.endMs).toLocaleTimeString())}
@@ -81,7 +91,9 @@ export function OfferDispatchProgress({ status, dispatches, destinations }: Prop
                 d.status === 'FAILED' || d.status === 'SKIPPED'
                   ? (d.failureReason && t.failureReasons[d.failureReason])
                     || (d.status === 'SKIPPED' ? t.failureReasons.skipped : t.failureReasons.generic)
-                  : undefined
+                  : multi && sessionOf(d.conversationId)
+                    ? <Blurred when={blurSession} inline radius={4}>{t.viaSession(sessionOf(d.conversationId)!)}</Blurred>
+                    : undefined
               }
               slotProps={{ primary: { noWrap: true } }}
             />

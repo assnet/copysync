@@ -37,8 +37,8 @@ const PREFIX = '/api/campaigns/offers';
 const UPLOAD_ID = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
 
 const CONFIG: OfferGeneratorConfigDTO = {
-  sessionId: 's1', intervalMinSeconds: 120, intervalMaxSeconds: 300,
-  groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1' }], groupLimit: null, configured: true,
+  sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
+  groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1' }], groupLimit: null, sessionLimit: null, configured: true,
 };
 
 function dto(): OfferDTO {
@@ -130,12 +130,12 @@ describe('rotas estáticas antes de /:id', () => {
 
   it('PUT /config repassa; intervalo fora de 60–3600 s, sem campo ou > 200 grupos → 400', async () => {
     const save = vi.spyOn(SaveOfferGeneratorConfigUseCase.prototype, 'execute').mockResolvedValue(CONFIG);
-    const body = { sessionId: 's1', intervalMinSeconds: 120, intervalMaxSeconds: 300, conversationIds: ['g1'] };
+    const body = { sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', conversationIds: ['g1'] };
     const ok = await app.inject({ method: 'PUT', url: `${PREFIX}/config`, payload: body });
     const bad = await Promise.all([
       { ...body, intervalMinSeconds: 59 },
       { ...body, intervalMaxSeconds: 3601 },
-      { ...body, sessionId: undefined },
+      { ...body, sessionIds: [] },
       { ...body, conversationIds: Array.from({ length: 201 }, (_, i) => `c${i}`) },
     ].map((payload) => app.inject({ method: 'PUT', url: `${PREFIX}/config`, payload })));
     expect(ok.statusCode).toBe(200);

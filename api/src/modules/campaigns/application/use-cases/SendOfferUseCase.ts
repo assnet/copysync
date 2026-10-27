@@ -3,6 +3,7 @@ import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDisp
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
+import { orderDispatchTargets } from '../../domain/services/orderDispatchTargets';
 import {
   OfferAlreadySentError,
   OfferChangedError,
@@ -58,13 +59,18 @@ export class SendOfferUseCase {
     }
 
     const config = await configs.find(tenantId);
-    if (!config?.sessionId) throw new OfferConfigMissingError();
-    const session = await configs.findSession(tenantId, config.sessionId);
-    if (!session) throw new OfferConfigMissingError();
-    if (session.status !== 'CONNECTED') throw new SessionNotConnectedError(session.id);
+    if (!config || config.sessionIds.length === 0) throw new OfferConfigMissingError();
+    const sessions = await configs.findSessions(tenantId, config.sessionIds);
+    if (sessions.length !== config.sessionIds.length) throw new OfferConfigMissingError();
+    // Todas precisam estar conectadas: envio parcial silencioso esconderia grupos sem oferta
+    const offline = sessions.find((s) => s.status !== 'CONNECTED');
+    if (offline) throw new SessionNotConnectedError(offline.id);
 
-    // Só grupos da sessão configurada (defesa contra destino antigo de outra sessão)
-    const targets = (await configs.listGroups(tenantId)).filter((g) => g.isGroup && g.sessionId === session.id);
+    // Só grupos das sessões configuradas (defesa contra destino antigo de outra sessão)
+    const allowed = new Set(config.sessionIds);
+    const groups = (await configs.listGroups(tenantId))
+      .filter((g): g is typeof g & { sessionId: string } => g.isGroup && g.sessionId != null && allowed.has(g.sessionId));
+    const targets = orderDispatchTargets(groups, config.sessionIds, config.dispatchOrder);
     if (targets.length === 0) throw new OfferNoDestinationsError();
     // Plano rebaixado depois de salvar a configuração
     const limit = await entitlements.getNumber(tenantId, BROADCAST_GROUPS);

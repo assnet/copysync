@@ -1,17 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
-import { SectionCard } from '@/components';
-import type { OfferConfigGroup, OfferConfigResponse, OfferConfigSettings, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
+import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
+import { AppIcon, SectionCard } from '@/components';
+import type { OfferConfigGroup, OfferConfigResponse, OfferConfigSettings, OfferDispatchOrder, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../../strings';
 import { DEFAULT_INTERVAL, intervalValid } from '../../utils/offerConfig';
 import type { OfferErrorView } from '../../utils/offerErrors';
 import { ConfigSessionStep } from './ConfigSessionStep';
-import { ConfigGroupsStep } from './ConfigGroupsStep';
+import { ConfigGroupsStep, type SelectedGroup } from './ConfigGroupsStep';
 import { ConfigConfirmStep } from './ConfigConfirmStep';
-import type { SelectedGroup } from './ConfigGroupsStep';
 
 const t = offerStrings.wizard;
 
@@ -19,6 +16,7 @@ interface Props {
   config: OfferConfigSettings | null;
   groups: OfferConfigGroup[];
   groupLimit: number | null;
+  sessionLimit: number | null;
   sessions: SessionItem[];
   sessionsLoading: boolean;
   sessionsFailed: boolean;
@@ -29,31 +27,47 @@ interface Props {
   onCancel?: () => void;
 }
 
-/** Assistente Sessão → Grupos → Confirmar. Abre preenchido com a configuração atual ao editar. */
+/** Assistente Sessões → Grupos → Confirmar. Abre preenchido com a configuração atual ao editar. */
 export function OfferConfigWizard({
-  config, groups, groupLimit, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
+  config, groups, groupLimit, sessionLimit, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
 }: Props) {
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
   const [step, setStep] = useState(0);
-  const [sessionId, setSessionId] = useState<string | null>(config?.sessionId ?? null);
-  const [selected, setSelected] = useState<Map<string, SelectedGroup>>(
-    () => new Map(groups.filter((g) => g.sessionId == null || g.sessionId === config?.sessionId).map((g) => [g.conversationId, { title: g.title, avatarUrl: g.avatarUrl }])),
-  );
+  const [sessionIds, setSessionIds] = useState<string[]>(config?.sessionIds ?? []);
+  const [selected, setSelected] = useState<Map<string, SelectedGroup>>(() => new Map(
+    groups
+      .filter((g): g is OfferConfigGroup & { sessionId: string } => g.sessionId != null && (config?.sessionIds ?? []).includes(g.sessionId))
+      .map((g) => [g.conversationId, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId }]),
+  ));
   const [intervalMin, setIntervalMin] = useState(config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min);
   const [intervalMax, setIntervalMax] = useState(config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max);
+  const [dispatchOrder, setDispatchOrder] = useState<OfferDispatchOrder>(config?.dispatchOrder ?? 'SEQUENTIAL');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A sessão salva pode ter caído: só vale se ainda estiver conectada.
-  const session = connected.find((s) => s.id === sessionId) ?? null;
-  const overLimit = groupLimit != null && selected.size > groupLimit;
+  // Sessões escolhidas que seguem conectadas, na ordem de escolha (sessão que caiu sai do envio)
+  const chosen = useMemo(
+    () => sessionIds.flatMap((id) => connected.find((s) => s.id === id) ?? []),
+    [sessionIds, connected],
+  );
+  const overGroupLimit = groupLimit != null && selected.size > groupLimit;
+  const overSessionLimit = sessionLimit != null && chosen.length > sessionLimit;
 
-  const canNext = step === 0 ? session != null : step === 1 ? selected.size > 0 && !overLimit : false;
-  const canSave = session != null && selected.size > 0 && !overLimit && intervalValid(intervalMin, intervalMax);
+  const canNext = step === 0
+    ? chosen.length > 0 && !overSessionLimit
+    : step === 1 ? selected.size > 0 && !overGroupLimit : false;
+  const canSave = chosen.length > 0 && !overSessionLimit && selected.size > 0 && !overGroupLimit && intervalValid(intervalMin, intervalMax);
 
-  const pickSession = (id: string) => {
-    if (id !== sessionId) setSelected(new Map());
-    setSessionId(id);
+  const toggleSession = (id: string) => {
+    setSessionIds((prev) => {
+      if (prev.includes(id)) {
+        // Grupos da sessão removida saem da seleção
+        setSelected((groupsPrev) => new Map([...groupsPrev].filter(([, g]) => g.sessionId !== id)));
+        return prev.filter((x) => x !== id);
+      }
+      if (sessionLimit != null && prev.length >= sessionLimit) return prev;
+      return [...prev, id];
+    });
     setError(null);
   };
 
@@ -68,14 +82,15 @@ export function OfferConfigWizard({
   };
 
   const save = async () => {
-    if (!session || !canSave) return;
+    if (!canSave) return;
     setSaving(true);
     setError(null);
     try {
       await onSave({
-        sessionId: session.id,
+        sessionIds: chosen.map((s) => s.id),
         intervalMinSeconds: intervalMin,
         intervalMaxSeconds: intervalMax,
+        dispatchOrder,
         conversationIds: [...selected.keys()],
       });
       onSaved();
@@ -107,27 +122,30 @@ export function OfferConfigWizard({
             sessions={connected}
             loading={sessionsLoading}
             failed={sessionsFailed}
-            selectedId={session?.id ?? null}
-            onSelect={pickSession}
+            selectedIds={chosen.map((s) => s.id)}
+            limit={sessionLimit}
+            onToggle={toggleSession}
             onRetry={onRetrySessions}
           />
         )}
-        {step === 1 && session && (
+        {step === 1 && (
           <ConfigGroupsStep
-            sessionId={session.id}
+            sessions={chosen}
             selected={selected}
             limit={groupLimit}
             onToggle={toggleGroup}
             onClear={() => setSelected(new Map())}
           />
         )}
-        {step === 2 && session && (
+        {step === 2 && (
           <ConfigConfirmStep
-            sessionName={session.name}
+            sessions={chosen}
             groups={[...selected.values()]}
             intervalMin={intervalMin}
             intervalMax={intervalMax}
             onInterval={(min, max) => { setIntervalMin(min); setIntervalMax(max); }}
+            dispatchOrder={dispatchOrder}
+            onDispatchOrder={setDispatchOrder}
           />
         )}
       </Box>
@@ -137,7 +155,7 @@ export function OfferConfigWizard({
       <Stack direction="row" spacing={1.5} sx={{ mt: 3, justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 1 }}>
         <Box>
           {step > 0 ? (
-            <Button color="inherit" startIcon={<ArrowBackIcon />} onClick={() => setStep((s) => s - 1)} disabled={saving}>
+            <Button color="inherit" startIcon={<AppIcon icon={ArrowLeft} size="sm" />} onClick={() => setStep((s) => s - 1)} disabled={saving}>
               {t.back}
             </Button>
           ) : onCancel ? (
@@ -145,14 +163,14 @@ export function OfferConfigWizard({
           ) : null}
         </Box>
         {step < 2 ? (
-          <Button variant="contained" disableElevation endIcon={<ArrowForwardIcon />} disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
+          <Button variant="contained" disableElevation endIcon={<AppIcon icon={ArrowRight} size="sm" />} disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
             {t.next}
           </Button>
         ) : (
           <Button
             variant="contained"
             disableElevation
-            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveOutlinedIcon />}
+            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <AppIcon icon={Save} size="sm" />}
             disabled={!canSave || saving}
             onClick={() => void save()}
           >

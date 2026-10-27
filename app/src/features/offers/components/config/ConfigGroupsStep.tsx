@@ -1,84 +1,155 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
+  Alert, Avatar, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
+import { Search, X } from 'lucide-react';
+import { AppIcon } from '@/components';
 import { GroupAvatar } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
 import { offerService } from '@/services/offer.service';
-import type { SessionGroupItem } from '@/types/api.types';
+import type { SessionGroupWithSession, SessionItem } from '@/types/api.types';
+import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
+import { sessionColor } from './DispatchOrderPicker';
 
 const t = offerStrings.wizard.groups;
 
 export interface SelectedGroup {
   title: string | null;
   avatarUrl: string | null;
+  sessionId: string;
 }
 
 interface Props {
-  sessionId: string;
-  /** id → título, mantido fora da lista para a seleção sobreviver à busca. */
+  /** Sessões escolhidas, na ordem de envio. */
+  sessions: SessionItem[];
+  /** id → grupo, mantido fora da lista para a seleção sobreviver à busca. */
   selected: ReadonlyMap<string, SelectedGroup>;
   limit: number | null;
   onToggle: (id: string, group: SelectedGroup) => void;
   onClear: () => void;
 }
 
-/** Passo 2: grade de grupos da sessão escolhida, com busca e contador × limite do plano. */
-export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear }: Props) {
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+
+/** Termos de exclusão: separados por vírgula, sem acento/caixa, vazios fora. */
+export function parseExcludeTerms(raw: string): string[] {
+  return raw.split(',').map(fold).filter(Boolean);
+}
+
+/** Passo 2: grupos de todas as sessões, com busca, filtro por sessão, exclusão por palavra e contador × limite. */
+export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear }: Props) {
   const [search, setSearch] = useState('');
-  const { items, partial, loading, failed, retry } = useSessionGroups(sessionId, search);
+  const [exclude, setExclude] = useState('');
+  const [sessionFilter, setSessionFilter] = useState<string | null>(null);
+  const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
+  const { items, partial, loading, failed, retry } = useSessionGroups(sessionIds, search);
+  const multi = sessions.length > 1;
+  const blurNames = useBlur('offers.groupNames');
+  const blurSession = useBlur('offers.sessionName');
+  const atLimit = limit != null && selected.size >= limit;
   // Abre sempre resumido: a busca procura em todos; a tela mostra VISIBLE_GROUPS até "Ver todos"
   const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? items : items.slice(0, VISIBLE_GROUPS);
-  const hidden = items.length - shown.length;
-  const blurNames = useBlur('offers.groupNames');
-  const atLimit = limit != null && selected.size >= limit;
   // Grupo sem conversa ganha uma ao ser marcado; guarda aqui para a lista refletir sem recarregar.
   const [ensured, setEnsured] = useState<ReadonlyMap<string, string>>(new Map());
-  const [pendingJid, setPendingJid] = useState<string | null>(null);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [ensureFailed, setEnsureFailed] = useState(false);
 
-  const idOf = (g: SessionGroupItem) => g.conversationId ?? ensured.get(g.groupJid) ?? null;
+  const excludeTerms = useMemo(() => parseExcludeTerms(exclude), [exclude]);
+  const filtered = useMemo(() => items.filter((g) => {
+    if (sessionFilter && g.sessionId !== sessionFilter) return false;
+    if (excludeTerms.length > 0) {
+      const name = fold(g.title ?? '');
+      if (excludeTerms.some((term) => name.includes(term))) return false;
+    }
+    return true;
+  }), [items, sessionFilter, excludeTerms]);
+  const shown = expanded ? filtered : filtered.slice(0, VISIBLE_GROUPS);
+  const hidden = filtered.length - shown.length;
 
-  const toggle = async (g: SessionGroupItem) => {
+  const keyOf = (g: SessionGroupWithSession) => `${g.sessionId}:${g.groupJid}`;
+  const idOf = (g: SessionGroupWithSession) => g.conversationId ?? ensured.get(keyOf(g)) ?? null;
+  const sessionIndex = (id: string) => sessionIds.indexOf(id);
+  const sessionOf = (id: string) => sessions.find((s) => s.id === id);
+
+  const toggle = async (g: SessionGroupWithSession) => {
     const id = idOf(g);
     if (id) {
-      onToggle(id, { title: g.title, avatarUrl: g.avatarUrl });
+      onToggle(id, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId });
       return;
     }
-    setPendingJid(g.groupJid);
+    setPendingKey(keyOf(g));
     setEnsureFailed(false);
     try {
-      const { conversationId } = await offerService.ensureSessionGroup(sessionId, g.groupJid);
-      setEnsured((prev) => new Map(prev).set(g.groupJid, conversationId));
-      onToggle(conversationId, { title: g.title, avatarUrl: g.avatarUrl });
+      const { conversationId } = await offerService.ensureSessionGroup(g.sessionId, g.groupJid);
+      setEnsured((prev) => new Map(prev).set(keyOf(g), conversationId));
+      onToggle(conversationId, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId });
     } catch {
       setEnsureFailed(true);
     } finally {
-      setPendingJid(null);
+      setPendingKey(null);
     }
   };
 
+  const countBySession = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of items) m.set(g.sessionId, (m.get(g.sessionId) ?? 0) + 1);
+    return m;
+  }, [items]);
+
   return (
     <Stack spacing={2}>
-      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
         <TextField
           size="small"
           label={t.searchLabel}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ flex: '1 1 240px' }}
           slotProps={{
             input: {
-              startAdornment: (
-                <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment>
-              ),
+              startAdornment: <InputAdornment position="start"><AppIcon icon={Search} size="sm" /></InputAdornment>,
             },
           }}
         />
+        <TextField
+          size="small"
+          label={t.excludeLabel}
+          placeholder={t.excludePlaceholder}
+          value={exclude}
+          onChange={(e) => setExclude(e.target.value)}
+          helperText={exclude ? t.excludeHelper : undefined}
+          slotProps={{
+            input: {
+              startAdornment: <InputAdornment position="start"><AppIcon icon={X} size="sm" /></InputAdornment>,
+            },
+          }}
+        />
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        {multi && (
+          <Box role="group" aria-label={t.filterAria} sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+            <Chip
+              size="small"
+              label={t.filterAll}
+              color={sessionFilter === null ? 'primary' : 'default'}
+              variant={sessionFilter === null ? 'filled' : 'outlined'}
+              onClick={() => setSessionFilter(null)}
+            />
+            {sessions.map((s, i) => (
+              <Chip
+                key={s.id}
+                size="small"
+                avatar={<Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ bgcolor: sessionColor(i), color: '#fff', fontWeight: 700 }}>{s.name.slice(0, 1).toUpperCase()}</Avatar>}
+                label={<Blurred when={blurSession} inline radius={4}>{`${s.name}${countBySession.has(s.id) ? ` · ${countBySession.get(s.id)}` : ''}`}</Blurred>}
+                color={sessionFilter === s.id ? 'primary' : 'default'}
+                variant={sessionFilter === s.id ? 'filled' : 'outlined'}
+                onClick={() => setSessionFilter(sessionFilter === s.id ? null : s.id)}
+              />
+            ))}
+          </Box>
+        )}
         <Chip
           role="status"
           aria-live="polite"
@@ -86,7 +157,7 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
           color={atLimit ? 'warning' : selected.size > 0 ? 'primary' : 'default'}
           variant={selected.size > 0 ? 'filled' : 'outlined'}
           label={t.counter(selected.size, limit)}
-          sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+          sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', ml: 'auto' }}
         />
         {selected.size > 0 && (
           <Button size="small" color="inherit" onClick={onClear}>{t.clear}</Button>
@@ -106,18 +177,19 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
         <Box sx={gridSx}>
           {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={64} />)}
         </Box>
-      ) : items.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-          {search.trim() ? t.emptySearch : t.empty}
+          {items.length > 0 ? t.emptyFiltered : search.trim() ? t.emptySearch : t.empty}
         </Typography>
       ) : (
         <Box sx={{ ...gridSx, opacity: loading ? 0.6 : 1, transition: 'opacity 150ms ease' }} aria-busy={loading}>
           {shown.map((g) => {
             const id = idOf(g);
             const checked = id != null && selected.has(id);
-            const pending = pendingJid === g.groupJid;
+            const pending = pendingKey === keyOf(g);
             const blocked = !checked && atLimit;
             const title = g.title || t.untitled;
+            const session = sessionOf(g.sessionId);
             const card = (
               <Card
                 variant="outlined"
@@ -133,14 +205,22 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
                   aria-checked={checked}
                   aria-disabled={blocked}
                   aria-busy={pending}
-                  disabled={blocked || pendingJid !== null}
+                  disabled={blocked || pendingKey !== null}
                   onClick={() => void toggle(g)}
                   sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'flex-start', minHeight: 60 }}
                 >
                   <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
-                  <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1, minWidth: 0 }} noWrap title={blurNames ? undefined : title}>
-                    <Blurred when={blurNames} inline radius={5}>{title}</Blurred>
-                  </Typography>
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap title={blurNames ? undefined : title}>
+                      <Blurred when={blurNames} inline radius={5}>{title}</Blurred>
+                    </Typography>
+                    {multi && session && (
+                      <Typography variant="caption" noWrap component="p" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                        <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: sessionColor(sessionIndex(g.sessionId)), flexShrink: 0 }} />
+                        <Blurred when={blurSession} inline radius={4}>{t.viaSession(session.name)}</Blurred>
+                      </Typography>
+                    )}
+                  </Box>
                   {pending ? (
                     <CircularProgress size={18} sx={{ m: 0.75 }} aria-hidden />
                   ) : (
@@ -150,24 +230,19 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
               </Card>
             );
             return blocked && limit != null ? (
-              <Tooltip key={g.groupJid} title={t.limitTooltip(limit)} arrow>
+              <Tooltip key={keyOf(g)} title={t.limitTooltip(limit)} arrow>
                 {/* span: o Tooltip precisa de um filho que receba eventos mesmo com o cartão desabilitado */}
                 <Box component="span" sx={{ display: 'block' }}>{card}</Box>
               </Tooltip>
             ) : (
-              <Box key={g.groupJid}>{card}</Box>
+              <Box key={keyOf(g)}>{card}</Box>
             );
           })}
         </Box>
       )}
 
-      {items.length > VISIBLE_GROUPS && (
-        <Button
-          size="small"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          sx={{ alignSelf: 'flex-start' }}
-        >
+      {filtered.length > VISIBLE_GROUPS && (
+        <Button size="small" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} sx={{ alignSelf: 'flex-start' }}>
           {expanded ? t.showLess : t.showAll(hidden)}
         </Button>
       )}

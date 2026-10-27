@@ -12,6 +12,7 @@ import type {
   SendOfferResponse,
   UpdateOfferRequest,
   SessionGroupsResponse,
+  OfferDispatchOrder,
 } from '@/types/api.types';
 
 const BASE = '/campaigns/offers';
@@ -77,20 +78,28 @@ export const offerService = {
 
 /** Formato plano devolvido pela API em `/config`. */
 interface OfferConfigApiDto {
-  sessionId: string | null;
+  sessionIds: string[];
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
+  dispatchOrder: OfferDispatchOrder;
   groups: { id: string; title: string | null; avatarUrl?: string | null; sessionId: string | null }[];
   groupLimit: number | null;
+  sessionLimit: number | null;
   configured: boolean;
 }
 
 function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
   return {
-    config: dto.sessionId
-      ? { sessionId: dto.sessionId, intervalMinSeconds: dto.intervalMinSeconds, intervalMaxSeconds: dto.intervalMaxSeconds }
+    config: dto.sessionIds.length > 0
+      ? {
+          sessionIds: dto.sessionIds,
+          intervalMinSeconds: dto.intervalMinSeconds,
+          intervalMaxSeconds: dto.intervalMaxSeconds,
+          dispatchOrder: dto.dispatchOrder,
+        }
       : null,
     groups: dto.groups.map((g) => ({ conversationId: g.id, title: g.title, avatarUrl: g.avatarUrl ?? null, sessionId: g.sessionId })),
     groupLimit: dto.groupLimit,
+    sessionLimit: dto.sessionLimit,
   };
 }

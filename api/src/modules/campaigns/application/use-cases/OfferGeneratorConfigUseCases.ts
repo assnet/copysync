@@ -4,31 +4,40 @@ import type { OfferDestinationView } from '../../domain/entities/OfferDestinatio
 import { OfferInvalidInputError } from '../../../../shared/errors/internal/OfferErrors';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { OFFER_DISPATCH_ORDERS, type OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
 
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
 export const OFFER_GROUPS_HARD_MAX = 200;
 export const BROADCAST_GROUPS = 'broadcast_groups';
+/** Entitlement: quantas sessões de WhatsApp o plano permite (e, por tabela, quantas disparam). */
+export const WHATSAPP_SESSIONS = 'whatsapp_sessions';
+export const OFFER_SESSIONS_HARD_MAX = 10;
 /** Intervalo entre grupos em segundos; o painel opera em minutos inteiros (1–60). */
 export const OFFER_INTERVAL_MIN_SECONDS = 60;
 export const OFFER_INTERVAL_MAX_SECONDS = 3600;
 export const DEFAULT_INTERVAL = { min: 120, max: 300 } as const;
 
 export interface OfferGeneratorConfigDTO {
-  sessionId: string | null;
+  /** Na ordem de envio. Vazio = nunca configurado ou sessões apagadas. */
+  sessionIds: string[];
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
+  dispatchOrder: OfferDispatchOrder;
   groups: { id: string; title: string | null; avatarUrl: string | null; sessionId: string | null }[];
   /** Entitlement `broadcast_groups`; null = sem limite do plano. */
   groupLimit: number | null;
+  /** Entitlement `whatsapp_sessions`; null = sem limite do plano. */
+  sessionLimit: number | null;
   /** false = tenant nunca salvou (valores padrão). */
   configured: boolean;
 }
 
 export interface SaveOfferGeneratorConfigInput {
   tenantId: string;
-  sessionId: string;
+  sessionIds: string[];
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
+  dispatchOrder: OfferDispatchOrder;
   conversationIds: string[];
 }
 
@@ -46,17 +55,20 @@ export class GetOfferGeneratorConfigUseCase {
   constructor(private readonly deps: Deps) {}
 
   async execute(tenantId: string): Promise<OfferGeneratorConfigDTO> {
-    const [config, groups, groupLimit] = await Promise.all([
+    const [config, groups, groupLimit, sessionLimit] = await Promise.all([
       this.deps.configs.find(tenantId),
       this.deps.configs.listGroups(tenantId),
       this.deps.entitlements.getNumber(tenantId, BROADCAST_GROUPS),
+      this.deps.entitlements.getNumber(tenantId, WHATSAPP_SESSIONS),
     ]);
     return {
-      sessionId: config?.sessionId ?? null,
+      sessionIds: config?.sessionIds ?? [],
       intervalMinSeconds: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
       intervalMaxSeconds: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
+      dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
       groups: toGroups(groups),
       groupLimit,
+      sessionLimit,
       configured: config !== null,
     };
   }
@@ -70,9 +82,20 @@ export class SaveOfferGeneratorConfigUseCase {
   constructor(private readonly deps: Deps) {}
 
   async execute(input: SaveOfferGeneratorConfigInput): Promise<OfferGeneratorConfigDTO> {
-    const { tenantId, sessionId } = input;
+    const { tenantId } = input;
     const { configs, entitlements } = this.deps;
     validateInterval(input.intervalMinSeconds, input.intervalMaxSeconds);
+    if (!OFFER_DISPATCH_ORDERS.includes(input.dispatchOrder)) {
+      throw new OfferInvalidInputError('Unknown dispatch order', 'dispatchOrder');
+    }
+
+    const sessionIds = [...new Set(input.sessionIds.map((id) => id.trim()).filter(Boolean))];
+    if (sessionIds.length === 0) throw new OfferInvalidInputError('At least one session', 'sessionIds');
+    if (sessionIds.length > OFFER_SESSIONS_HARD_MAX) {
+      throw new OfferInvalidInputError(`At most ${OFFER_SESSIONS_HARD_MAX} sessions`, 'sessionIds');
+    }
+    const sessionLimit = await entitlements.getNumber(tenantId, WHATSAPP_SESSIONS);
+    if (sessionLimit !== null && sessionIds.length > sessionLimit) throw new PlanLimitReachedError(WHATSAPP_SESSIONS, sessionLimit);
 
     const ids = [...new Set(input.conversationIds.map((id) => id.trim()).filter(Boolean))];
     if (ids.length > OFFER_GROUPS_HARD_MAX) {
@@ -81,20 +104,24 @@ export class SaveOfferGeneratorConfigUseCase {
     const limit = await entitlements.getNumber(tenantId, BROADCAST_GROUPS);
     if (limit !== null && ids.length > limit) throw new PlanLimitReachedError(BROADCAST_GROUPS, limit);
 
-    const session = await configs.findSession(tenantId, sessionId);
-    if (!session) throw new NotFoundError('Session', sessionId);
+    const sessions = await configs.findSessions(tenantId, sessionIds);
+    if (sessions.length !== sessionIds.length) {
+      const found = new Set(sessions.map((x) => x.id));
+      throw new NotFoundError('Session', sessionIds.find((id) => !found.has(id)));
+    }
 
     if (ids.length > 0) {
-      const valid = new Set(await configs.filterSessionGroups(tenantId, sessionId, ids));
+      const valid = new Set(await configs.filterSessionGroups(tenantId, sessionIds, ids));
       const invalid = ids.filter((id) => !valid.has(id)).length;
       if (invalid > 0) throw new NotFoundError('Group conversation', `${invalid} of ${ids.length}`);
     }
 
     await configs.save({
       tenantId,
-      sessionId,
+      sessionIds,
       intervalMinSeconds: input.intervalMinSeconds,
       intervalMaxSeconds: input.intervalMaxSeconds,
+      dispatchOrder: input.dispatchOrder,
       conversationIds: ids,
     });
     return new GetOfferGeneratorConfigUseCase(this.deps).execute(tenantId);

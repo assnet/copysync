@@ -21,6 +21,7 @@ import {
   sessionGroupsQuerySchema,
   sessionGroupsResponse,
 } from '../schemas/offer.schema';
+import type { OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
 
 const preHandler = [authHook, tenantHook];
 const tags = ['Offers'];
@@ -40,9 +41,10 @@ type UpdateBody = {
 };
 type GenerateBody = { url: string; coupon?: string | null; audience?: OfferAudience };
 type SaveConfigBody = {
-  sessionId: string;
+  sessionIds: string[];
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
+  dispatchOrder: OfferDispatchOrder;
   conversationIds: string[];
 };
 

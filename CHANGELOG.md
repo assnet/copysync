@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns (api 0.33.0 · app 0.37.0) — disparo por várias sessões
+
+- **API** — configuração do gerador aceita várias sessões na ordem de envio (`OfferGeneratorConfigSession`, migration `20261027200000_offer_config_multi_session` com backfill da sessão única) e `dispatchOrder` (`SEQUENTIAL` | `INTERLEAVED`). Regra pura **`orderDispatchTargets`** (testada); `SendOfferUseCase` exige todas conectadas e usa o mesmo intervalo entre quaisquer envios consecutivos. Limite de sessões pelo entitlement `whatsapp_sessions` (`sessionLimit` no `GET /config`). **Breaking**: `PUT /campaigns/offers/config` passa a receber `sessionIds[]` + `dispatchOrder` (não mais `sessionId`); `GET` devolve `sessionIds`, `dispatchOrder`, `sessionLimit`.
+- **Painel** — passo Sessões com escolha múltipla e número da ordem (cor por sessão); passo Grupos com busca em todas as sessões, filtro por sessão, campo "Excluir" por palavra e etiqueta "via sessão"; passo Confirmar com grupos por sessão e **`DispatchOrderPicker`** (dois cartões, linha do tempo animada mostrando a sequência real, teclado por setas, sem animação sob `prefers-reduced-motion`). Resumo refeito: sessões em chips e grupos como pilha de avatares + linha de nomes (cabe no celular). Progresso mostra "via sessão" por linha e na contagem regressiva.
+- **`GroupChip.tsx`** — avatar do chip com tamanho explícito (18 px): em produção o cascade deixava o avatar maior que o chip.
+
 ### Added — app 0.36.1
 
 - **Privacidade** — flags novas: e-mail e papel do usuário no menu (`layout.userIdentity`), nome e número da sessão (`offers.sessionName`: resumo, passos Sessão e Confirmar) e público-alvo escolhido (`offers.audience`: chip e seletor de novo texto).

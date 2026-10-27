@@ -7,8 +7,10 @@ import {
   OFFER_GROUPS_HARD_MAX,
   OFFER_INTERVAL_MAX_SECONDS,
   OFFER_INTERVAL_MIN_SECONDS,
+  OFFER_SESSIONS_HARD_MAX,
 } from '../../application/use-cases/OfferGeneratorConfigUseCases';
 import { OFFER_TYPING_SECONDS_MIN, OFFER_TYPING_SECONDS_MAX } from '../../domain/offerTyping';
+import { OFFER_DISPATCH_ORDERS } from '../../domain/entities/OfferGeneratorConfig';
 
 /** Mesmo formato do `uploadId` gerado pelo store (`randomUUID` v4, minúsculo). */
 const UPLOAD_ID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$';
@@ -61,11 +63,17 @@ export const regenerateOfferBodySchema = {
 /** Intervalo: 60–3600 s (1–60 min) no schema; `min ≤ max` e plano no use case. */
 export const saveConfigBodySchema = {
   type: 'object',
-  required: ['sessionId', 'intervalMinSeconds', 'intervalMaxSeconds', 'conversationIds'],
+  required: ['sessionIds', 'intervalMinSeconds', 'intervalMaxSeconds', 'dispatchOrder', 'conversationIds'],
   properties: {
-    sessionId: { type: 'string', minLength: 1, maxLength: 64 },
+    sessionIds: {
+      type: 'array',
+      minItems: 1,
+      maxItems: OFFER_SESSIONS_HARD_MAX,
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
     intervalMinSeconds: intervalSeconds,
     intervalMaxSeconds: intervalSeconds,
+    dispatchOrder: { type: 'string', enum: [...OFFER_DISPATCH_ORDERS] },
     conversationIds: {
       type: 'array',
       maxItems: OFFER_GROUPS_HARD_MAX,
@@ -157,11 +165,13 @@ export const offerUsageResponse = envelope({
 export const offerConfigResponse = envelope({
   type: 'object',
   properties: {
-    sessionId: nullableString,
+    sessionIds: { type: 'array', items: { type: 'string' } },
     intervalMinSeconds: { type: 'integer' },
     intervalMaxSeconds: { type: 'integer' },
+    dispatchOrder: { type: 'string', enum: [...OFFER_DISPATCH_ORDERS] },
     groups: { type: 'array', items: configGroupSchema },
     groupLimit: { type: ['number', 'null'] },
+    sessionLimit: { type: ['number', 'null'] },
     configured: { type: 'boolean' },
   },
 });

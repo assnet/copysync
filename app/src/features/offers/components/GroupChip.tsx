@@ -49,7 +49,7 @@ export function GroupChip({ title, avatarUrl, untitled, ...chip }: GroupChipProp
   return (
     <Chip
       size="small"
-      avatar={<GroupAvatar title={title} avatarUrl={avatarUrl} />}
+      avatar={<GroupAvatar title={title} avatarUrl={avatarUrl} size={18} />}
       label={<Blurred when={blurNames} inline radius={5}>{title || untitled}</Blurred>}
       {...chip}
     />

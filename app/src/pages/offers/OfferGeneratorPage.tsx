@@ -33,7 +33,7 @@ export function OfferGeneratorPage() {
 
   const showWizard = !cfg.loading && !cfg.failed && (!cfg.configured || wizardOpen);
   const groupCount = cfg.groups.length;
-  const sessionOffline = cfg.session != null && cfg.session.status !== 'CONNECTED';
+  const sessionOffline = cfg.offlineSessions.length > 0 || cfg.missingSessions > 0;
   const limitReached = gen.usage?.limit != null && gen.usage.used >= gen.usage.limit;
   const offerSending = offer?.status === 'SENDING';
   const linkFieldError = gen.error?.isLinkField ? gen.error.message : null;
@@ -96,6 +96,7 @@ export function OfferGeneratorPage() {
           config={cfg.config}
           groups={cfg.groups}
           groupLimit={cfg.groupLimit}
+          sessionLimit={cfg.sessionLimit}
           sessions={cfg.sessions}
           sessionsLoading={cfg.sessionsLoading}
           sessionsFailed={cfg.sessionsFailed}
@@ -106,7 +107,7 @@ export function OfferGeneratorPage() {
         />
       ) : (
         <>
-          <OfferConfigSummary session={cfg.session} groups={cfg.groups} onEdit={() => setWizardOpen(true)} />
+          <OfferConfigSummary sessions={cfg.selectedSessions} missing={cfg.missingSessions} groups={cfg.groups} dispatchOrder={cfg.config?.dispatchOrder} onEdit={() => setWizardOpen(true)} />
 
           <Box
             sx={{
@@ -175,7 +176,7 @@ export function OfferGeneratorPage() {
                   />
 
                   {offer.dispatches && offer.dispatches.length > 0 && (
-                    <OfferDispatchProgress status={offer.status} dispatches={offer.dispatches} destinations={cfg.groups} />
+                    <OfferDispatchProgress status={offer.status} dispatches={offer.dispatches} destinations={cfg.groups} sessions={cfg.selectedSessions} />
                   )}
 
                   {(offer.status === 'SENT' || offer.status === 'FAILED') && (

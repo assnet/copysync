@@ -21,20 +21,20 @@ function setup(entitlements: Record<string, unknown> = {}) {
   return { configs, get: new GetOfferGeneratorConfigUseCase(deps), save: new SaveOfferGeneratorConfigUseCase(deps) };
 }
 
-const base = { tenantId: TENANT, sessionId: 's1', intervalMinSeconds: 120, intervalMaxSeconds: 300 };
+const base = { tenantId: TENANT, sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL' as const };
 
 describe('Offer generator config', () => {
   it('sem configuração: padrões, sem grupos, limite do plano', async () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
-      sessionId: null, intervalMinSeconds: 120, intervalMaxSeconds: 300, groups: [], groupLimit: 5, configured: false,
+      sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', groups: [], groupLimit: 5, sessionLimit: null, configured: false,
     });
   });
 
   it('salva, deduplica e devolve grupos com título', async () => {
     const s = setup();
     const out = await s.save.execute({ ...base, conversationIds: ['g1', 'g2', 'g1'] });
-    expect(out).toMatchObject({ sessionId: 's1', configured: true, groupLimit: null });
+    expect(out).toMatchObject({ sessionIds: ['s1'], configured: true, groupLimit: null });
     expect(out.groups).toEqual([
       { id: 'g1', title: 'Grupo 1', avatarUrl: null, sessionId: 's1' },
       { id: 'g2', title: 'g2', avatarUrl: null, sessionId: 's1' },
@@ -53,7 +53,22 @@ describe('Offer generator config', () => {
 
   it('sessão de outro tenant → NOT_FOUND', async () => {
     const s = setup();
-    await expect(s.save.execute({ ...base, sessionId: 'sx', conversationIds: [] })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(s.save.execute({ ...base, sessionIds: ['s1', 'sx'], conversationIds: [] })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('várias sessões: grupos de qualquer uma valem; sem sessão → OFFER_INVALID_INPUT', async () => {
+    const s = setup();
+    const out = await s.save.execute({ ...base, sessionIds: ['s2', 's1'], dispatchOrder: 'INTERLEAVED', conversationIds: ['g1', 'g3'] });
+    expect(out).toMatchObject({ sessionIds: ['s2', 's1'], dispatchOrder: 'INTERLEAVED' });
+    expect(out.groups.map((g) => g.id)).toEqual(['g1', 'g3']);
+    await expect(s.save.execute({ ...base, sessionIds: [], conversationIds: [] })).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'sessionIds' } });
+  });
+
+  it('acima de whatsapp_sessions → PLAN_LIMIT_REACHED', async () => {
+    const s = setup({ whatsapp_sessions: 1 });
+    await expect(s.save.execute({ ...base, sessionIds: ['s1', 's2'], conversationIds: [] })).rejects.toMatchObject({
+      code: 'PLAN_LIMIT_REACHED', meta: { key: 'whatsapp_sessions', limit: 1 },
+    });
   });
 
   it('acima de broadcast_groups → PLAN_LIMIT_REACHED', async () => {
