@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { sendOp, detectExtension, isExtensionApiAvailable, clearCachedExtId } from '../channel/client';
+import { sendOp, detectExtension, isExtensionApiAvailable, getCachedExtId, clearCachedExtId } from '../channel/client';
 import { extensionApi, type MlCredentialStatus } from '../services/extensionApi';
 import type { HandshakePayload, MlStatusPayload, ChannelError } from '../contract/channel';
 
@@ -80,7 +80,8 @@ export function useExtension() {
   }, []);
 
   const connect = useCallback(async (installationId: string, extVersion: string, consent: boolean) => {
-    await extensionApi.issueSession({ installationId, extVersion, mlSessionConsent: consent });
+    const extensionId = getCachedExtId() ?? '';
+    await extensionApi.issueSession({ installationId, extVersion, extensionId, channel: 'cs-ext', mlSessionConsent: consent });
     await sendOp('session.changed', {});
     await refresh();
   }, [refresh]);

@@ -22,6 +22,8 @@ export const extensionApi = {
     installationId: string;
     deviceId?: string;
     extVersion: string;
+    extensionId: string;
+    channel: string;
     mlSessionConsent: boolean;
   }): Promise<void> {
     await apiClient.post('/extension/session', data, { withCredentials: true });

@@ -79,6 +79,10 @@ export async function detectExtension(): Promise<boolean> {
   }
 }
 
+export function getCachedExtId(): string | null {
+  return cachedExtId;
+}
+
 export function clearCachedExtId(): void {
   cachedExtId = null;
 }
