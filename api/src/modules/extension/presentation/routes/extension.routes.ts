@@ -65,12 +65,12 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       const { installationId, deviceId, extVersion, extensionId, channel, mlSessionConsent } =
         request.body as { installationId: string; deviceId?: string; extVersion: string; extensionId: string; channel: string; mlSessionConsent?: boolean };
       const user = (request as any).user;
-      const tenantId = (request as any).tenantId;
+      const tenantId: string = (request as any).tenantContext?.tenantId;
 
-      if (user.isSuperAdmin && !tenantId) {
+      if (!tenantId) {
         return reply.code(403).send({
           success: false,
-          error: { code: 'SUPER_ADMIN_NO_EXTENSION', message: 'Super admin cannot issue extension sessions without tenant context' },
+          error: { code: 'NO_TENANT_CONTEXT', message: 'Tenant context required to issue extension session' },
         });
       }
 

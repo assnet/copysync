@@ -67,6 +67,7 @@ export const sendLifecycleEvent = async (
         installationId: installation.installationId,
         type,
         version,
+        channel: 'cs-ext',
         dedupeKey,
         ...(previousVersion ? { previousVersion } : {}),
       },
