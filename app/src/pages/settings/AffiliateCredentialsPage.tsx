@@ -5,6 +5,7 @@ import type { AffiliateProvider } from '@/types/api.types';
 import { AffiliateCredentialCard } from '@/features/settings/components/AffiliateCredentialCard';
 import { AffiliateConnectionSummary } from '@/features/settings/components/AffiliateConnectionSummary';
 import { AffiliateCredentialDialog } from '@/features/settings/components/AffiliateCredentialDialog';
+import { BrowserSessionCredentialDialog } from '@/features/settings/components/BrowserSessionCredentialDialog';
 import { useAffiliateCredentials } from '@/features/settings/hooks/useAffiliateCredentials';
 import { settingsStrings } from '@/features/settings/strings';
 
@@ -53,16 +54,24 @@ export function AffiliateCredentialsPage() {
       )}
 
       {editingEntry && (
-        <AffiliateCredentialDialog
-          open
-          spec={editingEntry.spec}
-          item={editingEntry.item}
-          onClose={() => setEditing(null)}
-          onSubmit={async (body) => {
-            await upsert(editingEntry.spec.provider, body);
-            setEditing(null);
-          }}
-        />
+        editingEntry.spec.usesBrowserSession ? (
+          <BrowserSessionCredentialDialog
+            open
+            spec={editingEntry.spec}
+            onClose={() => { setEditing(null); void reload(); }}
+          />
+        ) : (
+          <AffiliateCredentialDialog
+            open
+            spec={editingEntry.spec}
+            item={editingEntry.item}
+            onClose={() => setEditing(null)}
+            onSubmit={async (body) => {
+              await upsert(editingEntry.spec.provider, body);
+              setEditing(null);
+            }}
+          />
+        )
       )}
 
       <Snackbar

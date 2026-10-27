@@ -23,6 +23,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend (`app/`) — Diálogo de credencial ML com wizard da extensão (`0.25.0`)
+
+Substitui o diálogo genérico de etiqueta pelo wizard completo da extensão ao configurar Mercado Livre.
+
+- **`app/src/features/settings/components/BrowserSessionCredentialDialog.tsx`** — novo diálogo para provedores com sessão de navegador; embute `ExtensionSetupWizard` quando extensão não está conectada, exibe status ML (sessão, última sync, etiqueta) quando conectada; botão de sincronizar e link para `/settings/extension`
+- **`app/src/pages/settings/AffiliateCredentialsPage.tsx`** — detecta `usesBrowserSession` e abre `BrowserSessionCredentialDialog` ao invés de `AffiliateCredentialDialog` para ML; `onClose` recarrega credenciais
+
 #### API (`api/`) — HubOutboxWorker e ExtensionRetentionJob (F6, `0.26.0`)
 
 Worker de outbox para envio de eventos de extensão ao hub central com assinatura M2M HMAC.
@@ -43,6 +50,12 @@ Cliente da API interna do programa de afiliados do Mercado Livre (não documenta
 
 - **`api/src/modules/campaigns/domain/contracts/IMercadoLivreAffiliateClient.ts`** — porta: `createAffiliateLinks` (batch até 20 URLs → short_url), `getActiveTag`
 - **`api/src/modules/campaigns/infrastructure/http/MercadoLivreAffiliateClient.ts`** — bootstrap (GET link-builder → cookies temporários `_csrf`, `_d2id`, `_mldataSessionId`), tags (`/affiliate-program/api/v2/stripe/user/tags`), createLink (`POST /affiliate-program/api/v2/affiliates/createLink`). Nunca loga cookies/body/headers. 8s timeout. Validação anti-injeção de cookie
+
+### Fixed
+
+#### Extensão Chrome (`extension/`) — Popup abria localhost em produção (`3.0.1`)
+
+- **`extension/dist/`** — rebuild com `.env` de produção; dist anterior foi gerado com `.env.dev` (localhost:5174). Botão "Abrir painel" agora abre `https://app.copysync.app`
 
 ### Changed
 

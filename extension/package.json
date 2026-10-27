@@ -1,6 +1,6 @@
 {
   "name": "copysync-extension",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Extensão Chrome MV3 — sincroniza a sessão de afiliado do Mercado Livre com o painel",
   "type": "module",
   "private": true,
