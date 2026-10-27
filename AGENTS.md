@@ -31,6 +31,10 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 
 ## agentbrowser e outras skills estao em .agents/skills
 
+### ANALISAR USO
+- https://developers.cloudflare.com/tunnel/
+- Para proteger links e dominio contra crawlers.
+
 ## MODELO INSPIRACAO MERCADO LIVRE PARA BACKEND
 
 pode usar o url: https://github.com/Afilimax/mercado-livre-provider
@@ -39,6 +43,10 @@ https://github.com/gabrieldamasse-01/bot-de-automacao
 https://botdoafiliado.com/blog/api-de-afiliados-do-mercado-livre/
 https://github.com/Raskinkamar/geralink-afiliado-mercadolivre
 Obs: para entender como a copysync deve buscar no ML
+
+## MODELO INSPIRACAO SHOPEE PARA BACKEND
+https://github.com/congminh1254/shopee-sdk
+https://github.com/nsiregar/shpee
 
 ## BANCO DE DADOS (SOMENTE LEITURA)
 
