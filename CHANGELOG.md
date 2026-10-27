@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — campaigns (api 0.32.1)
+
+- **"Digitando…" não aparecia nos grupos** — a sessão conecta com `markOnlineOnConnect: false` e o WhatsApp não exibe chatstate de conta offline. **`BaileysMessagingEngineAdapter.sendPresence`** passa a mandar `available` no primeiro `composing` e `unavailable` no `paused` (teste `…presence.test.ts` com a sequência). **`ChatOfferMessageSender`** manda `paused` sempre (também na falha), para a conta não ficar online.
+
 ### Added — app 0.35.0
 
 - **Menu lateral** — itens Monitoramento (`/monitoring`), Espelhamento (`/mirroring`), Gestor de membros (`/members`) e Página de ofertas (`/storefront`), com ícones Lucide (radar, repetição, pessoas, loja). Cada um abre uma página de módulo em desenvolvimento (**`pages/modules/`**, `UpcomingModulePage`) com o que o módulo fará, segundo o roadmap.

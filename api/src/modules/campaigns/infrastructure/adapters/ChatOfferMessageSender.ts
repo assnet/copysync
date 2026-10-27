@@ -90,7 +90,7 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
   ): Promise<void> {
     const totalMs = Math.min(seconds, OFFER_TYPING_SECONDS_MAX) * 1000;
     if (!conv.sessionId || totalMs <= 0) return;
-    let to: string;
+    let to: string | null = null;
     try {
       const contact = conv.isGroup ? null : await chatMediaContainer.contactRepo.findById(conv.contactId ?? '', tenantId);
       to = resolveConversationTarget(conv, contact).recipientPhone;
@@ -100,9 +100,10 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
       }
     } catch (err) {
       log.warn({ conversationId: conv.id, err: (err as Error)?.name }, 'typing indicator failed, sending now');
-      return;
+    } finally {
+      // Sempre encerra: o adapter devolve a presença da conta ao estado anterior aqui
+      if (to) await engine.sendPresence(conv.sessionId, to, 'paused').catch(() => undefined);
     }
-    await engine.sendPresence(conv.sessionId, to, 'paused').catch(() => undefined);
   }
 
   /** Telefones dos participantes; falha na consulta = envia sem menção (não perde a oferta). */

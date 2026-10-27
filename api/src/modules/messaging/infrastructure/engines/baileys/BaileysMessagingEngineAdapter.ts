@@ -138,6 +138,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   /** Lista de grupos por sessão: a consulta ao WhatsApp é pesada e a busca do painel repete. */
   private readonly participatingGroupsCache = new Map<string, { groups: ParticipatingGroupInfo[]; at: number }>();
+  /** Sessões que estão "disponíveis" só para mostrar "digitando…" (ver sendPresence). */
+  private readonly typingOnline = new Set<string>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -410,8 +412,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
 
   async sendPresence(sessionId: string, to: string, presence: 'composing' | 'paused'): Promise<void> {
     const entry = this.requireConnectedEntry(sessionId);
+    const jid = this.normalizeJid(to);
     try {
-      await entry.socket.sendPresenceUpdate(presence, this.normalizeJid(to));
+      if (presence === 'composing') {
+        // A conta sobe "indisponível" (markOnlineOnConnect: false, para o celular seguir
+        // notificando) e o WhatsApp não exibe o chatstate de quem está offline. Fica
+        // "disponível" só enquanto digita; `paused` devolve ao estado anterior.
+        if (!this.typingOnline.has(sessionId)) {
+          await entry.socket.sendPresenceUpdate('available');
+          this.typingOnline.add(sessionId);
+        }
+        await entry.socket.sendPresenceUpdate('composing', jid);
+        return;
+      }
+      await entry.socket.sendPresenceUpdate('paused', jid);
+      if (this.typingOnline.delete(sessionId)) await entry.socket.sendPresenceUpdate('unavailable');
     } catch (err) { throw translateEngineError(err); }
   }
 
