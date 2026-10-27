@@ -31,6 +31,8 @@ const buildUrl = (path: string): string => {
   return `${base}${p}`;
 };
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 export interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -59,6 +61,7 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
       headers,
       credentials: 'include',
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (error) {
     throw new SyncError('api_unreachable', error instanceof Error ? error.message : String(error));

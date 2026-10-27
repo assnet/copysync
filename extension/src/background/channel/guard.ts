@@ -1,5 +1,5 @@
 import type { ChannelError, OpName } from '../../contract/channel.js';
-import { resolverSessao, hasMlPermission, type ExtensionProfile } from '../sessionResolver.js';
+import { resolverSessao, hasMlPermission, getCachedProfile, type ExtensionProfile } from '../sessionResolver.js';
 import { SyncError } from '../errors.js';
 
 /**
@@ -21,14 +21,17 @@ export interface GuardResult {
   profile: ExtensionProfile;
 }
 
+// Panel gives up on the extension after 3s: public ops must answer even if the API is slow.
+const PUBLIC_PROFILE_WAIT_MS = 1_200;
+const ANONYMOUS: ExtensionProfile = { user: { id: '', name: '', email: '' }, mlTenantId: null, tenants: [] };
+
 export const checkGuard = async (op: string): Promise<GuardResult | ChannelError> => {
   if (PUBLIC_OPS.has(op)) {
-    try {
-      const profile = await resolverSessao();
-      return { profile };
-    } catch {
-      return { profile: { user: { id: '', name: '', email: '' }, mlTenantId: null, tenants: [] } } as GuardResult;
-    }
+    const profile = await Promise.race([
+      resolverSessao().catch(() => null),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), PUBLIC_PROFILE_WAIT_MS)),
+    ]);
+    return { profile: profile ?? getCachedProfile() ?? ANONYMOUS };
   }
 
   let profile: ExtensionProfile;

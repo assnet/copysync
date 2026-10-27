@@ -8,6 +8,7 @@ const mockHasMlPermission = vi.fn<[ExtensionProfile], boolean>();
 vi.mock('../sessionResolver', () => ({
   resolverSessao: (...args: []) => mockResolverSessao(...args),
   hasMlPermission: (p: ExtensionProfile) => mockHasMlPermission(p),
+  getCachedProfile: () => null,
 }));
 
 vi.mock('../errors', async (importOriginal) => {
@@ -40,6 +41,16 @@ describe('checkGuard', () => {
       mockResolverSessao.mockRejectedValue(new Error('no session'));
       const result = await checkGuard('bridge.identify');
       expect('profile' in result).toBe(true);
+    });
+
+    it('handshake answers anonymously when the API hangs', async () => {
+      vi.useFakeTimers();
+      mockResolverSessao.mockReturnValue(new Promise(() => {}));
+      const pending = checkGuard('handshake');
+      await vi.advanceTimersByTimeAsync(1_500);
+      const result = await pending;
+      vi.useRealTimers();
+      expect(result).toEqual({ profile: expect.objectContaining({ user: expect.objectContaining({ id: '' }) }) });
     });
   });
 
