@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.34.2
+
+- **`AppLayout.tsx`** — seção "Em breve" do menu lateral (Contatos, Campanhas, Flows, Automação, Assistentes, Métricas) comentada: some do painel até cada módulo existir; código mantido para reativar.
+
 ### Changed — app 0.34.1
 
 - **`OfferGeneratorForm.tsx`** — campo do cupom na mesma linha do toggle "Tem cupom" (revelação horizontal, espaço de 24 px); em tela estreita desce para a linha de baixo.

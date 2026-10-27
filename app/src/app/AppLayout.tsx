@@ -63,15 +63,16 @@ const NAV_ADMIN_ITEMS = [
   { label: aiStrings.admin.navLabel, path: '/admin/ai', icon: <AdminPanelSettingsOutlinedIcon /> },
 ];
 
-// Itens futuros — desabilitados por ora, só para estrutura visual
-const NAV_FUTURE = [
-  { label: 'Contatos', path: '/contacts' },
-  { label: 'Campanhas', path: '/campaigns' },
-  { label: 'Flows', path: '/flows' },
-  { label: 'Automação', path: '/automation' },
-  { label: 'Assistentes', path: '/assistants' },
-  { label: 'Métricas', path: '/metrics' },
-];
+// Itens futuros ("Em breve") — ocultos do menu até cada módulo existir. Para reativar, descomente
+// este array e a seção "Em breve" no drawer (ver docs/produto-roadmap.md para a ordem).
+// const NAV_FUTURE = [
+//   { label: 'Contatos', path: '/contacts' },
+//   { label: 'Campanhas', path: '/campaigns' },
+//   { label: 'Flows', path: '/flows' },
+//   { label: 'Automação', path: '/automation' },
+//   { label: 'Assistentes', path: '/assistants' },
+//   { label: 'Métricas', path: '/metrics' },
+// ];
 
 function NavLogo({ collapsed }: { collapsed: boolean }) {
   return (
@@ -213,6 +214,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
           })}
         </List>
 
+        {/* Seção "Em breve" oculta (ver NAV_FUTURE no topo do arquivo).
         {!collapsed && (
           <>
             <Typography
@@ -236,6 +238,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
             </List>
           </>
         )}
+        */}
       </Box>
 
       <Divider />
