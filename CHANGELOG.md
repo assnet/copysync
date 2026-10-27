@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app (painel) — áudio, vídeo e documento do chat com storage no R2
+
+- **`render.yaml`** — CSP do painel liberava áudio/vídeo (`media-src`) e `fetch` (`connect-src`) só da API; com `MEDIA_STORAGE_DRIVER=s3` a mídia nova vem do bucket (`pub-…r2.dev`), então só a imagem aparecia (`img-src https:`). Origem do R2 e `media.copysync.app` adicionadas às duas diretivas. Bucket conferido ao vivo: 206 com Range, `Content-Type` e CORS corretos.
+- **`docs/media-storage-r2.md`**, **`docs/app-bloqueio-indexacao.md`** — passo do CSP ao configurar/trocar `S3_PUBLIC_URL`.
+
 ### Fixed — campaigns (api 0.37.1 · app 0.42.1) — envio com a sessão fora do ar volta para a fila
 
 Sessão que cai sem registro (banco segue "conectada") fazia cada grupo da vez virar "Falhou" e perder a oferta.
