@@ -56,6 +56,8 @@ export const offerStrings = {
       limitTooltip: (limit: number) =>
         `Seu plano permite até ${groupsLabel(limit)}. Desmarque um para escolher outro.`,
       clear: 'Limpar seleção',
+      showAll: (hidden: number) => `Ver todos (+${hidden})`,
+      showLess: 'Esconder',
       required: 'Selecione ao menos um grupo.',
     },
     confirm: {

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Stack, TextField, Typography } from '@mui/material';
+import { useBlur } from '@/features/privacy';
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import type { OfferItem } from '@/types/api.types';
@@ -44,13 +45,18 @@ export function OfferEditor({
     onReplaceImage(file);
   };
 
+  const blurText = useBlur('offers.productText');
+  const blurSx = blurText ? { '& .MuiInputBase-input': { filter: 'blur(5px)', userSelect: 'none' } } : undefined;
+
   return (
     <Stack spacing={2} component="section" aria-label={t.title}>
+      {/* `blurSx` nos campos de título e texto (privacidade) */}
       {needsManualData && <Alert severity="info">{t.manualData}</Alert>}
 
       {needsManualData && (
         <>
           <TextField
+            sx={blurSx}
             label={t.titleLabel}
             value={draft.title}
             onChange={(e) => onField('title', e.target.value)}
@@ -115,6 +121,7 @@ export function OfferEditor({
 
       <Box>
         <TextField
+          sx={blurSx}
           label={t.textLabel}
           value={draft.text}
           onChange={(e) => onField('text', e.target.value)}

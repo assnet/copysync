@@ -72,6 +72,10 @@ Obs: para entender como a copysync deve buscar no ML
 - Deve ser implementada como projeto white label, todos os termos, nomes de funções e etc, devem usar nomes claros dos recursos, evitando no nome do app.
 - Deve obrigatóriamente ser compatível com o sistema i18n implantado no projeto.
 - Deve obrigatóriamente ser compatível com os modos: sistema, claro e escuro.
+- **Privacidade desde o planejamento**: toda tela que mostre dado sensível (nome, foto, número,
+  texto de cliente/grupo/produto) nasce com flags de borrar em `app/src/features/privacy/privacyFlags.ts`
+  (uma por tipo de dado) e aplica `Blurred`/`useBlur` nos pontos de exibição. Sem isso a tela não
+  está pronta. Ver [`docs/padrao-ui-painel.md`](docs/padrao-ui-painel.md), seção "Privacidade".
 - Deve obrigatóriamente ser documentado de forma adequado no projeto, para futuros processos terem conhecimento e saber o que fazer e o que não fazer.
 - Deve obrigatóriamente sempre tentar economizar caracteres nos processos, para não travar os terminais e não extrapolar limites de prompts.
 

@@ -1,6 +1,7 @@
 import { Avatar, Chip, type ChipProps } from '@mui/material';
 import { Users } from 'lucide-react';
 import { AppIcon } from '@/components';
+import { Blurred, useBlur } from '@/features/privacy';
 
 /** Iniciais das duas primeiras palavras que começam com letra ou número (emoji no início é pulado). */
 export function groupInitials(title: string | null | undefined): string {
@@ -17,6 +18,7 @@ interface GroupAvatarProps {
 /** Foto do grupo; sem foto, iniciais do nome; sem nome, ícone de grupo. Decorativo (o nome vem ao lado). */
 export function GroupAvatar({ title, avatarUrl, size }: GroupAvatarProps) {
   const initials = groupInitials(title);
+  const blurred = useBlur('offers.groupAvatars');
   return (
     <Avatar
       src={avatarUrl ?? undefined}
@@ -26,6 +28,7 @@ export function GroupAvatar({ title, avatarUrl, size }: GroupAvatarProps) {
         fontWeight: 700,
         bgcolor: 'action.selected',
         color: 'text.secondary',
+        ...(blurred && { filter: 'blur(5px)', userSelect: 'none' }),
       }}
     >
       {initials || <AppIcon icon={Users} size="sm" />}
@@ -42,5 +45,13 @@ interface GroupChipProps extends Omit<ChipProps, 'avatar' | 'label' | 'title'> {
 
 /** Chip de grupo com a foto (ou placeholder) antes do nome. */
 export function GroupChip({ title, avatarUrl, untitled, ...chip }: GroupChipProps) {
-  return <Chip size="small" avatar={<GroupAvatar title={title} avatarUrl={avatarUrl} />} label={title || untitled} {...chip} />;
+  const blurNames = useBlur('offers.groupNames');
+  return (
+    <Chip
+      size="small"
+      avatar={<GroupAvatar title={title} avatarUrl={avatarUrl} />}
+      label={<Blurred when={blurNames} inline radius={5}>{title || untitled}</Blurred>}
+      {...chip}
+    />
+  );
 }

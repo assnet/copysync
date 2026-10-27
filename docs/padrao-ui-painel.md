@@ -23,6 +23,24 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
   primária para seguir a identidade do painel (verde ficou reservado para status/sucesso).
 - Sempre com rótulo: `FormControlLabel` ou `aria-label`. Texto auxiliar abaixo, em `caption`.
 
+## Privacidade (borrar dados na tela)
+
+Menu "Privacidade" abre um diálogo (`features/privacy/PrivacyDialog`) com flags por tela e por
+tipo de dado; preferência por navegador (`localStorage`, `privacy.blur`). Uso: gravar ou
+compartilhar a tela sem expor clientes, grupos e produtos.
+
+**Regra para toda tela nova (desde o planejamento):**
+
+1. Liste os dados sensíveis que a tela mostra (nomes, fotos, números, textos de terceiros).
+2. Registre a tela e uma flag por tipo de dado em `privacyFlags.ts` (`<tela>.<dado>`): o diálogo
+   monta as opções sozinho a partir do registro.
+3. Nos pontos de exibição, envolva com `<Blurred when={useBlur('tela.dado')}>` (texto: `inline`,
+   raio 5–6; imagem: raio 10–14 via `sx`/`filter`) ou aplique `filter: blur()` no elemento.
+4. Teste com a flag ligada: o layout não pode mudar (o desfoque mantém o espaço).
+
+Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
+Primeira tela coberta: Gerador de ofertas (fotos e nomes de grupos, imagens e texto das ofertas).
+
 ## ToggleOption
 
 - Card de borda fina; a linha inteira é `<label>` do switch (alvo ≥ 44 px, clique em qualquer

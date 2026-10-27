@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.36.0
+
+- **Privacidade** — item "Privacidade" no menu (acima de Configurações) abre um diálogo responsivo (tela cheia e deslizando de baixo no celular; crescendo do centro no desktop; sem animação sob `prefers-reduced-motion`) com flags de borrar dados por tela. **`features/privacy/`**: registro `privacyFlags.ts`, `PrivacyProvider` (`localStorage`, por navegador), `Blurred`/`useBlur`, `PrivacyDialog`. Primeira tela: Gerador de ofertas — fotos e nomes dos grupos, imagens e título/texto das ofertas (chips, lista de grupos, prévia da mensagem, editor). Ponto no menu indica flags ativas.
+- **Regra de projeto** — toda tela nova nasce com flags de privacidade (AGENTS.md e `docs/padrao-ui-painel.md`, seção "Privacidade").
+- **`ConfigGroupsStep.tsx`** — lista de grupos abre resumida (6 cartões) com "Ver todos (+N)" / "Esconder"; a busca continua procurando em todos os grupos.
+
 ### Fixed — campaigns (api 0.32.1)
 
 - **"Digitando…" não aparecia nos grupos** — a sessão conecta com `markOnlineOnConnect: false` e o WhatsApp não exibe chatstate de conta offline. **`BaileysMessagingEngineAdapter.sendPresence`** passa a mandar `available` no primeiro `composing` e `unavailable` no `paused` (teste `…presence.test.ts` com a sequência). **`ChatOfferMessageSender`** manda `paused` sempre (também na falha), para a conta não ficar online.

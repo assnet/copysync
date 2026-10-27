@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { GroupAvatar } from '../GroupChip';
+import { Blurred, useBlur } from '@/features/privacy';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
 import { offerService } from '@/services/offer.service';
 import type { SessionGroupItem } from '@/types/api.types';
@@ -29,6 +30,11 @@ interface Props {
 export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear }: Props) {
   const [search, setSearch] = useState('');
   const { items, partial, loading, failed, retry } = useSessionGroups(sessionId, search);
+  // Abre sempre resumido: a busca procura em todos; a tela mostra VISIBLE_GROUPS até "Ver todos"
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? items : items.slice(0, VISIBLE_GROUPS);
+  const hidden = items.length - shown.length;
+  const blurNames = useBlur('offers.groupNames');
   const atLimit = limit != null && selected.size >= limit;
   // Grupo sem conversa ganha uma ao ser marcado; guarda aqui para a lista refletir sem recarregar.
   const [ensured, setEnsured] = useState<ReadonlyMap<string, string>>(new Map());
@@ -106,7 +112,7 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
         </Typography>
       ) : (
         <Box sx={{ ...gridSx, opacity: loading ? 0.6 : 1, transition: 'opacity 150ms ease' }} aria-busy={loading}>
-          {items.map((g) => {
+          {shown.map((g) => {
             const id = idOf(g);
             const checked = id != null && selected.has(id);
             const pending = pendingJid === g.groupJid;
@@ -132,8 +138,8 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
                   sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'flex-start', minHeight: 60 }}
                 >
                   <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
-                  <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1, minWidth: 0 }} noWrap title={title}>
-                    {title}
+                  <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1, minWidth: 0 }} noWrap title={blurNames ? undefined : title}>
+                    <Blurred when={blurNames} inline radius={5}>{title}</Blurred>
                   </Typography>
                   {pending ? (
                     <CircularProgress size={18} sx={{ m: 0.75 }} aria-hidden />
@@ -154,9 +160,22 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
           })}
         </Box>
       )}
+
+      {items.length > VISIBLE_GROUPS && (
+        <Button
+          size="small"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          sx={{ alignSelf: 'flex-start' }}
+        >
+          {expanded ? t.showLess : t.showAll(hidden)}
+        </Button>
+      )}
     </Stack>
   );
 }
+
+const VISIBLE_GROUPS = 6;
 
 const gridSx = {
   display: 'grid',

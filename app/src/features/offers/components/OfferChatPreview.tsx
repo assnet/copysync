@@ -1,4 +1,5 @@
 import { Avatar, Box, Stack, Typography, alpha, useTheme } from '@mui/material';
+import { Blurred, useBlur } from '@/features/privacy';
 import GroupsIcon from '@mui/icons-material/Groups';
 import ImageNotSupportedOutlinedIcon from '@mui/icons-material/ImageNotSupportedOutlined';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
@@ -27,6 +28,9 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
   const theme = useTheme();
   const dark = theme.palette.mode === 'dark';
   const src = resolveMediaUrl(imageUrl);
+  const blurNames = useBlur('offers.groupNames');
+  const blurImages = useBlur('offers.productImages');
+  const blurText = useBlur('offers.productText');
   const bubbleBg = alpha(theme.palette.success.main, dark ? 0.22 : 0.12);
   const time = timeFmt.format(new Date(at));
 
@@ -50,7 +54,7 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
           <GroupsIcon fontSize="small" />
         </Avatar>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" noWrap>{groupTitle || t.groupFallback}</Typography>
+          <Typography variant="subtitle2" noWrap><Blurred when={blurNames} inline radius={5}>{groupTitle || t.groupFallback}</Blurred></Typography>
           <Typography variant="caption" color="text.secondary" noWrap component="p">{t.groupMembers(groupCount)}</Typography>
         </Box>
       </Stack>
@@ -90,7 +94,7 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
             }}
           >
             {src ? (
-              <Box component="img" src={src} alt={t.imageAlt(title || t.noTitle)} loading="lazy" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              <Box component="img" src={src} alt={t.imageAlt(title || t.noTitle)} loading="lazy" sx={{ width: '100%', height: '100%', objectFit: 'contain', ...(blurImages && { filter: 'blur(14px)' }) }} />
             ) : (
               <Stack alignItems="center" spacing={1} sx={{ color: 'text.disabled' }}>
                 <ImageNotSupportedOutlinedIcon sx={{ fontSize: 40 }} aria-hidden />
@@ -103,7 +107,7 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
             component="div"
             sx={{ px: 1, pt: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45, color: 'text.primary' }}
           >
-            {renderWhatsAppText(text)}
+            <Blurred when={blurText}>{renderWhatsAppText(text)}</Blurred>
           </Typography>
           <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" sx={{ px: 1, pb: 0.5, color: 'text.secondary' }}>
             <Typography variant="caption" sx={{ fontSize: 11 }}>{time}</Typography>

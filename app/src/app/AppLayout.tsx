@@ -6,13 +6,15 @@ import {
   Divider, Chip, Menu, MenuItem, Tooltip, alpha, useTheme,
   Snackbar,
   Alert,
+  Badge,
 } from '@mui/material';
 import {
   ArrowLeftRight, Bot, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Menu as MenuIcon, MessagesSquare,
-  Moon, Settings, Smartphone, Sun, Tag,
+  EyeOff, Moon, Settings, Smartphone, Sun, Tag,
 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { MODULE_ICONS } from '@/pages/modules';
+import { PrivacyDialog, privacyStrings, usePrivacy } from '@/features/privacy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
@@ -52,6 +54,8 @@ const NAV_ITEMS = [
   { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
   { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
   { label: 'Página de ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" /> },
+  // Ação (abre o diálogo de privacidade), não rota — ver features/privacy
+  { label: privacyStrings.menuLabel, action: 'privacy' as const, icon: <AppIcon icon={EyeOff} size="md" /> },
   { label: 'Configurações', path: '/settings/account', icon: <AppIcon icon={Settings} size="md" />, matchPrefix: true },
 ];
 
@@ -105,6 +109,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
   const location = useLocation();
   const { user, logout } = useAuth();
   const theme = useTheme();
+  const privacy = usePrivacy();
 
   const handleNav = (path: string) => {
     navigate(path);
@@ -176,17 +181,22 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
         )}
         <List disablePadding sx={{ px: 1 }}>
           {[...NAV_ITEMS, ...(user?.isSuperAdmin ? NAV_ADMIN_ITEMS : [])].map((item) => {
-            const active = 'matchPrefix' in item && item.matchPrefix
-              ? location.pathname.startsWith('/settings')
-              : location.pathname === item.path;
+            const isAction = 'action' in item;
+            const active = isAction
+              ? false
+              : 'matchPrefix' in item && item.matchPrefix
+                ? location.pathname.startsWith('/settings')
+                : location.pathname === item.path;
             const button = (
               <ListItemButton
                 selected={active}
-                onClick={() => handleNav(item.path)}
+                onClick={() => (isAction ? privacy.openDialog() : handleNav(item.path))}
                 sx={navButtonSx}
               >
                 <ListItemIcon sx={navIconSx}>
-                  {item.icon}
+                  {isAction && privacy.active ? (
+                    <Badge variant="dot" color="primary" overlap="circular" title={privacyStrings.menuActiveHint}>{item.icon}</Badge>
+                  ) : item.icon}
                 </ListItemIcon>
                 {!collapsed && (
                   <ListItemText
@@ -198,7 +208,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
             );
 
             return (
-              <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
+              <ListItem key={'action' in item ? item.action : item.path} disablePadding sx={{ mb: 0.25 }}>
                 {collapsed ? (
                   <Tooltip title={item.label} placement="right">
                     {button}
@@ -552,6 +562,7 @@ export function AppLayout() {
   return (
     <OutgoingMediaProvider>
       <VoiceRecorderHost>{layout}</VoiceRecorderHost>
+      <PrivacyDialog />
     </OutgoingMediaProvider>
   );
 }
