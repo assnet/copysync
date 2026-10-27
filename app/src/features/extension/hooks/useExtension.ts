@@ -1,7 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { sendOp, detectExtension, isExtensionApiAvailable, getCachedExtId, clearCachedExtId } from '../channel/client';
 import { extensionApi, type MlCredentialStatus } from '../services/extensionApi';
-import type { HandshakePayload, MlStatusPayload, ChannelError } from '../contract/channel';
+import type { HandshakePayload, MlStatusPayload, MlSyncSessionPayload, ChannelError } from '../contract/channel';
+import { extensionStrings } from '../strings';
+
+export class ExtensionSyncError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'ExtensionSyncError';
+  }
+}
+
+export function syncErrorMessage(error: unknown): string {
+  const code = error instanceof ExtensionSyncError ? error.code : '';
+  if (code === 'forbidden' || code === 'FORBIDDEN') return extensionStrings.errors.forbidden;
+  if (code === 'NEEDS_LOGIN' || code === 'session_expired') return extensionStrings.errors.needsLogin;
+  return extensionStrings.errors.syncFailed;
+}
 
 export type ExtensionStatus =
   | 'unavailable'
@@ -89,7 +104,10 @@ export function useExtension() {
   const syncMl = useCallback(async () => {
     const result = await sendOp('ml.syncSession');
     await refresh();
-    return result;
+    if (!result.ok) throw new ExtensionSyncError(result.error.code);
+    const payload = (result as { ok: true; payload: MlSyncSessionPayload }).payload;
+    if (payload.result === 'FAILED') throw new ExtensionSyncError(payload.errorCode ?? 'unknown');
+    return payload;
   }, [refresh]);
 
   const disconnectMl = useCallback(async () => {

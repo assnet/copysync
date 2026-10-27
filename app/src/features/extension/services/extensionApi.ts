@@ -49,8 +49,24 @@ export const extensionApi = {
 
   async getMlCredentialStatus(): Promise<MlCredentialStatus | null> {
     try {
-      const { data } = await apiClient.get('/integrations/affiliate-credentials/MERCADO_LIVRE');
-      return data.data ?? null;
+      const { data } = await apiClient.get('/integrations/affiliate-credentials');
+      const items = (data.data ?? []) as Array<{
+        provider: string;
+        status: 'ACTIVE' | 'INACTIVE';
+        hasSession: boolean;
+        publicIdentifier: string | null;
+        sessionSyncedAt: string | null;
+      }>;
+      const ml = items.find(i => i.provider === 'MERCADO_LIVRE');
+      if (!ml) return null;
+      return {
+        provider: ml.provider,
+        status: ml.status,
+        hasSession: ml.hasSession,
+        sessionInvalidAt: null,
+        publicIdentifier: ml.publicIdentifier,
+        lastSyncAt: ml.sessionSyncedAt,
+      };
     } catch {
       return null;
     }

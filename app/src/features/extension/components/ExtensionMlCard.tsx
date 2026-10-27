@@ -5,7 +5,7 @@ import {
 import SyncIcon from '@mui/icons-material/Sync';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import { SectionCard, ConfirmDialog } from '@/components';
-import { useExtension } from '../hooks/useExtension';
+import { useExtension, syncErrorMessage } from '../hooks/useExtension';
 import { extensionStrings } from '../strings';
 
 const t = extensionStrings.ml;
@@ -14,10 +14,18 @@ export function ExtensionMlCard() {
   const ext = useExtension();
   const [syncing, setSyncing] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
-    try { await ext.syncMl(); } finally { setSyncing(false); }
+    setSyncError(null);
+    try {
+      await ext.syncMl();
+    } catch (err) {
+      setSyncError(syncErrorMessage(err));
+    } finally {
+      setSyncing(false);
+    }
   }, [ext]);
 
   const handleDisconnect = useCallback(async () => {
@@ -65,6 +73,12 @@ export function ExtensionMlCard() {
         {isExpired && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {t.resyncHint}
+          </Alert>
+        )}
+
+        {syncError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSyncError(null)}>
+            {syncError}
           </Alert>
         )}
 

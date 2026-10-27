@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — extension (app 0.25.4 · extension 3.1.3)
+
+- **`marketplaceSession.ts`** — captura descartava cookies de sessão do navegador (`!cookie.session`); o status "Logado" não. Com `ssid` de sessão: painel mostrava "Logado", mas o sync falhava com `ml_not_logged` sem chamar a API.
+- **`handlers.ts` / `channel.ts`** — `ml.syncSession` escondia falha como `UNCHANGED`; agora `FAILED` + `errorCode`.
+- **`useExtension.ts`, `ExtensionMlCard.tsx`, `BrowserSessionCredentialDialog.tsx`** — "Sincronizar agora" mostra erro (antes: rejeição sem `catch`).
+- **`extensionApi.ts`** — status ML lia `GET /integrations/affiliate-credentials/MERCADO_LIVRE`, rota inexistente (404 → sempre "Ainda não sincronizada" e sem etiqueta). Agora lê da lista.
+
 ### Fixed — extension (api 0.27.1 · extension 3.1.2)
 
 - **`GetExtensionProfileUseCase.ts`** — `GET /extension/me` devolvia `{ id, name, email, tenants[].mlSessionAllowed }`, mas a extensão lê `{ user, mlTenantId, tenants[].permissions }`. Com `/me` respondendo 200, o handshake estourava em `profile.user.id` e o painel mostrava "Extensão não encontrada". **Breaking** do contrato `/me` (único consumidor: a extensão).

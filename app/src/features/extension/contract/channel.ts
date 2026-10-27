@@ -54,7 +54,9 @@ export interface MlStatusPayload {
 }
 
 export interface MlSyncSessionPayload {
-  result: 'UPDATED' | 'UNCHANGED';
+  result: 'UPDATED' | 'UNCHANGED' | 'FAILED';
+  /** `SyncErrorCode` when `result === 'FAILED'` (e.g. `ml_not_logged`). Never carries secrets. */
+  errorCode?: string;
 }
 
 export type OpMap = {

@@ -7,7 +7,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import SyncIcon from '@mui/icons-material/Sync';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { useExtension } from '@/features/extension/hooks/useExtension';
+import { useExtension, syncErrorMessage } from '@/features/extension/hooks/useExtension';
 import { ExtensionSetupWizard } from '@/features/extension/components/ExtensionSetupWizard';
 import { extensionStrings } from '@/features/extension/strings';
 import { useNavigate } from 'react-router-dom';
@@ -33,10 +33,18 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose }: Props) {
   const navigate = useNavigate();
   const [wizardDone, setWizardDone] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
-    try { await ext.syncMl(); } finally { setSyncing(false); }
+    setSyncError(null);
+    try {
+      await ext.syncMl();
+    } catch (err) {
+      setSyncError(syncErrorMessage(err));
+    } finally {
+      setSyncing(false);
+    }
   }, [ext]);
 
   const isConnected = ext.status === 'connected';
@@ -109,6 +117,12 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose }: Props) {
             {!hasSession && (
               <Alert severity="info" variant="outlined" sx={{ py: 0 }}>
                 {t.sessionMissing}
+              </Alert>
+            )}
+
+            {syncError && (
+              <Alert severity="error" onClose={() => setSyncError(null)}>
+                {syncError}
               </Alert>
             )}
 

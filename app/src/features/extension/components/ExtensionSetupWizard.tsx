@@ -4,7 +4,7 @@ import {
   FormControlLabel, Alert, CircularProgress, Link,
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import { useExtension } from '../hooks/useExtension';
+import { useExtension, syncErrorMessage } from '../hooks/useExtension';
 import { extensionStrings } from '../strings';
 
 const t = extensionStrings.wizard;
@@ -57,8 +57,8 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
     try {
       await ext.syncMl();
       setStep(3);
-    } catch {
-      setError(extensionStrings.errors.syncFailed);
+    } catch (err) {
+      setError(syncErrorMessage(err));
     } finally {
       setBusy(false);
     }

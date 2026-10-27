@@ -36,7 +36,7 @@ export const captureMlCookies = async (): Promise<CapturedCookies | null> => {
     if (matches.length === 0) continue;
     // Dedupe: longest path wins (most specific)
     const best = matches.reduce((a, b) => (a.path.length >= b.path.length ? a : b));
-    if (best.value && !best.session) {
+    if (best.value) {
       result[best.name] = best.value;
     }
   }

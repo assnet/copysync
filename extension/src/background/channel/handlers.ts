@@ -56,8 +56,10 @@ const mlStatus: HandlerFn<'ml.status'> = async (_payload, _profile) => {
 
 const mlSyncSession: HandlerFn<'ml.syncSession'> = async (_payload, _profile) => {
   const state = await runSync('channel');
-  const result = state.status === 'ok' ? 'UPDATED' : 'UNCHANGED';
-  return { ok: true, payload: { result } };
+  if (state.status === 'error') {
+    return { ok: true, payload: { result: 'FAILED', errorCode: state.lastErrorCode } };
+  }
+  return { ok: true, payload: { result: state.status === 'ok' ? 'UPDATED' : 'UNCHANGED' } };
 };
 
 const handlers: Record<OpName, HandlerFn<any>> = {
