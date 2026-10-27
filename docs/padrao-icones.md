@@ -53,5 +53,7 @@ em `APP_ICON_SIZES` e nesta tabela.
 `@mui/icons-material` ainda aparece em telas antigas. Regra: **ícone novo é sempre Lucide**, e
 tela tocada migra os ícones que mexer. Não misturar as duas bibliotecas no mesmo componente.
 
-Primeira tela no padrão: público-alvo do gerador de ofertas (`AudiencePicker`, seletor
-"Público do novo texto").
+Telas já no padrão: menu lateral (`AppLayout`, inclusive tema/colapso/sair), público-alvo do
+gerador de ofertas (`AudiencePicker`, seletor "Público do novo texto"), páginas de módulo em
+desenvolvimento (`pages/modules`). Ícone de módulo do menu e da página vêm do mesmo mapa
+(`MODULE_ICONS`).

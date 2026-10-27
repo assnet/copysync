@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.35.0
+
+- **Menu lateral** — itens Monitoramento (`/monitoring`), Espelhamento (`/mirroring`), Gestor de membros (`/members`) e Página de ofertas (`/storefront`), com ícones Lucide (radar, repetição, pessoas, loja). Cada um abre uma página de módulo em desenvolvimento (**`pages/modules/`**, `UpcomingModulePage`) com o que o módulo fará, segundo o roadmap.
+- **`AppLayout.tsx`** — todos os ícones do menu (navegação, colapso, tema, troca de tenant, sair, hambúrguer) migrados de `@mui/icons-material` para Lucide via `AppIcon`, conforme `docs/padrao-icones.md`.
+
 ### Changed — app 0.34.2
 
 - **`AppLayout.tsx`** — seção "Em breve" do menu lateral (Contatos, Campanhas, Flows, Automação, Assistentes, Métricas) comentada: some do painel até cada módulo existir; código mantido para reativar.

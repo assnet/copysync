@@ -15,6 +15,7 @@ import { ExtensionSettingsPage } from '@/pages/settings/ExtensionSettingsPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
+import { MembersPage, MirroringPage, MonitoringPage, StorefrontPage } from '@/pages/modules';
 
 export function AppRoutes() {
   return (
@@ -31,6 +32,10 @@ export function AppRoutes() {
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/offers" element={<OfferGeneratorPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
+          <Route path="/mirroring" element={<MirroringPage />} />
+          <Route path="/members" element={<MembersPage />} />
+          <Route path="/storefront" element={<StorefrontPage />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="/settings/account" replace />} />
             <Route path="account" element={<SettingsAccountPage />} />

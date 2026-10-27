@@ -7,19 +7,12 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import DevicesIcon from '@mui/icons-material/Devices';
-import LogoutIcon from '@mui/icons-material/Logout';
-import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
-import MenuIcon from '@mui/icons-material/Menu';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import SettingsIcon from '@mui/icons-material/Settings';
-import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
-import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
+import {
+  ArrowLeftRight, Bot, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Menu as MenuIcon, MessagesSquare,
+  Moon, Settings, Smartphone, Sun, Tag,
+} from 'lucide-react';
+import { AppIcon } from '@/components';
+import { MODULE_ICONS } from '@/pages/modules';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
@@ -51,16 +44,20 @@ function persistSidebarCollapsed(collapsed: boolean): void {
 }
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
-  { label: 'Sessões', path: '/sessions', icon: <DevicesIcon /> },
-  { label: 'Chat', path: '/chat', icon: <ForumOutlinedIcon /> },
-  { label: 'Gerador de ofertas', path: '/offers', icon: <LocalOfferOutlinedIcon /> },
-  { label: 'Configurações', path: '/settings/account', icon: <SettingsIcon />, matchPrefix: true },
+  { label: 'Dashboard', path: '/dashboard', icon: <AppIcon icon={LayoutDashboard} size="md" /> },
+  { label: 'Sessões', path: '/sessions', icon: <AppIcon icon={Smartphone} size="md" /> },
+  { label: 'Chat', path: '/chat', icon: <AppIcon icon={MessagesSquare} size="md" /> },
+  { label: 'Gerador de ofertas', path: '/offers', icon: <AppIcon icon={Tag} size="md" /> },
+  { label: 'Monitoramento', path: '/monitoring', icon: <AppIcon icon={MODULE_ICONS.monitoring} size="md" /> },
+  { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
+  { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
+  { label: 'Página de ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" /> },
+  { label: 'Configurações', path: '/settings/account', icon: <AppIcon icon={Settings} size="md" />, matchPrefix: true },
 ];
 
 /** Plataforma: só super admin vê (a rota também redireciona os demais). */
 const NAV_ADMIN_ITEMS = [
-  { label: aiStrings.admin.navLabel, path: '/admin/ai', icon: <AdminPanelSettingsOutlinedIcon /> },
+  { label: aiStrings.admin.navLabel, path: '/admin/ai', icon: <AppIcon icon={Bot} size="md" /> },
 ];
 
 // Itens futuros ("Em breve") — ocultos do menu até cada módulo existir. Para reativar, descomente
@@ -140,8 +137,8 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
   };
 
   const navIconSx = collapsed
-    ? { minWidth: 0, justifyContent: 'center', '& svg': { fontSize: 22 } }
-    : { minWidth: 36, '& svg': { fontSize: 20 } };
+    ? { minWidth: 0, justifyContent: 'center', '& svg': { width: 22, height: 22 } }
+    : { minWidth: 36, '& svg': { width: 20, height: 20 } };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -159,7 +156,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
                   borderColor: 'divider',
                 }}
               >
-                {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+                <AppIcon icon={collapsed ? ChevronRight : ChevronLeft} size="sm" />
               </IconButton>
             </Tooltip>
           </Box>
@@ -320,15 +317,15 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
               onClick={handleLogout}
               sx={{ borderRadius: 2, py: 1, justifyContent: 'center' }}
             >
-              <ListItemIcon sx={{ minWidth: 0, '& svg': { fontSize: 20 } }}>
-                <LogoutIcon />
+              <ListItemIcon sx={{ minWidth: 0 }}>
+                <AppIcon icon={LogOut} size="md" />
               </ListItemIcon>
             </ListItemButton>
           </Tooltip>
         ) : (
           <ListItemButton onClick={handleLogout} sx={{ borderRadius: 2, px: 1.5, py: 0.75 }}>
-            <ListItemIcon sx={{ minWidth: 32, '& svg': { fontSize: 18 } }}>
-              <LogoutIcon />
+            <ListItemIcon sx={{ minWidth: 32 }}>
+              <AppIcon icon={LogOut} size="sm" />
             </ListItemIcon>
             <ListItemText
               primary="Sair"
@@ -416,7 +413,7 @@ export function AppLayout() {
       >
         <Toolbar>
           <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 1 }}>
-            <MenuIcon />
+            <AppIcon icon={MenuIcon} size="lg" />
           </IconButton>
           <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }} noWrap>
             {currentSectionLabel}
@@ -494,7 +491,7 @@ export function AppLayout() {
           {/* Toggle de tema */}
           <Tooltip title={mode === 'dark' ? 'Tema claro' : 'Tema escuro'}>
             <IconButton size="small" onClick={toggleColorMode}>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              <AppIcon icon={mode === 'dark' ? Sun : Moon} size="md" />
             </IconButton>
           </Tooltip>
 
@@ -508,7 +505,7 @@ export function AppLayout() {
                 size="small"
                 color="primary"
                 variant="outlined"
-                icon={tenants.length > 1 ? <SwapHorizIcon /> : undefined}
+                icon={tenants.length > 1 ? <AppIcon icon={ArrowLeftRight} size="sm" /> : undefined}
                 onClick={tenants.length > 1 ? (e) => setAnchorEl(e.currentTarget) : undefined}
                 clickable={tenants.length > 1}
               />
