@@ -39,7 +39,7 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
     setError(null);
     try {
       await ext.connect(
-        ext.handshake.userId ?? crypto.randomUUID(),
+        ext.handshake.installationId ?? crypto.randomUUID(),
         ext.handshake.extVersion,
         consent,
       );

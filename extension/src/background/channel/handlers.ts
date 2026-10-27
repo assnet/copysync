@@ -12,7 +12,15 @@ type HandlerFn<Op extends OpName> = (
 ) => Promise<ChannelResponse<OpMap[Op]['response']>>;
 
 const handshake: HandlerFn<'handshake'> = async (_payload, profile) => {
-  const installation = await getInstallation();
+  let installation = await getInstallation();
+  if (!installation) {
+    installation = {
+      installationId: crypto.randomUUID(),
+      extensionId: chrome.runtime.id,
+      linkedAt: new Date().toISOString(),
+    };
+    await setInstallation(installation);
+  }
   return {
     ok: true,
     payload: {
@@ -21,6 +29,7 @@ const handshake: HandlerFn<'handshake'> = async (_payload, profile) => {
       caps: ['ml.session'],
       authenticated: !!profile?.user.id,
       userId: profile?.user.id,
+      installationId: installation.installationId,
     },
   };
 };

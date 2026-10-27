@@ -36,6 +36,7 @@ export interface HandshakePayload {
   caps: string[];
   authenticated: boolean;
   userId?: string;
+  installationId?: string;
 }
 
 export interface BridgeIdentifyPayload {
