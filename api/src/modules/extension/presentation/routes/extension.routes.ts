@@ -234,9 +234,15 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
               data: {
                 type: 'object',
                 properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  email: { type: 'string' },
+                  user: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' },
+                      email: { type: 'string' },
+                    },
+                  },
+                  mlTenantId: { type: 'string' },
                   tenants: {
                     type: 'array',
                     items: {
@@ -247,7 +253,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
                         slug: { type: 'string' },
                         role: { type: 'string' },
                         status: { type: 'string' },
-                        mlSessionAllowed: { type: 'boolean' },
+                        permissions: { type: 'array', items: { type: 'string' } },
                       },
                     },
                   },
@@ -261,7 +267,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const session = request.extensionSession!;
       const useCase = new GetExtensionProfileUseCase(entitlementReader);
-      const profile = await useCase.execute(session.userId);
+      const profile = await useCase.execute(session.userId, session.mlTenantId);
       return reply.send({ success: true, data: profile });
     },
   );

@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — extension (api 0.27.1 · extension 3.1.2)
+
+- **`GetExtensionProfileUseCase.ts`** — `GET /extension/me` devolvia `{ id, name, email, tenants[].mlSessionAllowed }`, mas a extensão lê `{ user, mlTenantId, tenants[].permissions }`. Com `/me` respondendo 200, o handshake estourava em `profile.user.id` e o painel mostrava "Extensão não encontrada". **Breaking** do contrato `/me` (único consumidor: a extensão).
+- **`handlers.ts`** (extensão) — handshake tolera perfil sem `user`.
+- **`guard.ts` / `apiFetch.ts`** (extensão 3.1.1) — ops públicas esperam no máximo 1,2s pela API; `apiFetch` com timeout de 10s.
+
 ### Added — extension (api 0.27.0)
 
 - **`extension.routes.ts`** — `PUT /extension/marketplaces/ml/session`: rota que a extensão já chamava e não existia (sync sempre 404). Exige consentimento ML da sessão e entitlement; guarda só `ML_SESSION_COOKIES`, busca a etiqueta ativa no ML e grava via `UpsertAffiliateSessionUseCase`.

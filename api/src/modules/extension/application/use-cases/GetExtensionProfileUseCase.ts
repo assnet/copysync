@@ -1,19 +1,19 @@
 import { prisma } from '../../../../shared/database/prisma.client';
 import type { IExtensionEntitlementReader } from '../../domain/contracts/IExtensionEntitlementReader';
 
+/** Shape consumed by the extension (`extension/src/background/sessionResolver.ts`). */
 export interface ExtensionProfileTenant {
   id: string;
   name: string;
   slug: string;
   role: string;
   status: string;
-  mlSessionAllowed: boolean;
+  permissions: string[];
 }
 
 export interface ExtensionProfile {
-  id: string;
-  name: string;
-  email: string;
+  user: { id: string; name: string; email: string };
+  mlTenantId: string;
   tenants: ExtensionProfileTenant[];
 }
 
@@ -22,7 +22,7 @@ export class GetExtensionProfileUseCase {
     private readonly entitlementReader: IExtensionEntitlementReader,
   ) {}
 
-  async execute(userId: string): Promise<ExtensionProfile> {
+  async execute(userId: string, mlTenantId: string): Promise<ExtensionProfile> {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { id: true, name: true, email: true },
@@ -43,10 +43,10 @@ export class GetExtensionProfileUseCase {
         slug: m.tenant.slug,
         role: m.role,
         status: m.tenant.status,
-        mlSessionAllowed: mlAllowed,
+        permissions: mlAllowed ? ['ml.session'] : [],
       });
     }
 
-    return { id: user.id, name: user.name, email: user.email, tenants };
+    return { user, mlTenantId, tenants };
   }
 }

@@ -27,8 +27,8 @@ const handshake: HandlerFn<'handshake'> = async (_payload, profile) => {
       extVersion: chrome.runtime.getManifest().version,
       contractVersion: CHANNEL_VERSION,
       caps: ['ml.session'],
-      authenticated: !!profile?.user.id,
-      userId: profile?.user.id,
+      authenticated: !!profile?.user?.id,
+      userId: profile?.user?.id || undefined,
       installationId: installation.installationId,
     },
   };
