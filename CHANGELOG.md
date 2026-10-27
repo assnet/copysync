@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.38.0 — persistência contra reload
+
+- **`hooks/usePersistedState.ts`** — `useState` que sobrevive a reload (sessionStorage por padrão; localStorage opcional), com `version`, `serialize`/`deserialize` e `clear()`; testado. Regra de projeto no AGENTS.md e em `docs/padrao-ui-painel.md` ("Persistência contra reload").
+- **Gerador de ofertas** — formulário (link, cupom, público), oferta aberta (recarregada pelo id), assistente inteiro (passo, sessões, grupos, intervalo, ordem; limpo ao salvar/cancelar), filtros do passo de grupos e assistente aberto/fechado sobrevivem a reload.
+
 ### Added — campaigns (api 0.33.0 · app 0.37.0) — disparo por várias sessões
 
 - **API** — configuração do gerador aceita várias sessões na ordem de envio (`OfferGeneratorConfigSession`, migration `20261027200000_offer_config_multi_session` com backfill da sessão única) e `dispatchOrder` (`SEQUENTIAL` | `INTERLEAVED`). Regra pura **`orderDispatchTargets`** (testada); `SendOfferUseCase` exige todas conectadas e usa o mesmo intervalo entre quaisquer envios consecutivos. Limite de sessões pelo entitlement `whatsapp_sessions` (`sessionLimit` no `GET /config`). **Breaking**: `PUT /campaigns/offers/config` passa a receber `sessionIds[]` + `dispatchOrder` (não mais `sessionId`); `GET` devolve `sessionIds`, `dispatchOrder`, `sessionLimit`.

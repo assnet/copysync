@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   Alert, Avatar, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -40,9 +41,12 @@ export function parseExcludeTerms(raw: string): string[] {
 
 /** Passo 2: grupos de todas as sessões, com busca, filtro por sessão, exclusão por palavra e contador × limite. */
 export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear }: Props) {
-  const [search, setSearch] = useState('');
-  const [exclude, setExclude] = useState('');
-  const [sessionFilter, setSessionFilter] = useState<string | null>(null);
+  // Filtros sobrevivem a reload junto com o rascunho do assistente
+  const [filters, setFilters] = usePersistedState('offers.groupsFilters', { search: '', exclude: '', sessionFilter: null as string | null });
+  const { search, exclude, sessionFilter } = filters;
+  const setSearch = (v: string) => setFilters((f) => ({ ...f, search: v }));
+  const setExclude = (v: string) => setFilters((f) => ({ ...f, exclude: v }));
+  const setSessionFilter = (v: string | null) => setFilters((f) => ({ ...f, sessionFilter: v }));
   const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
   const { items, partial, loading, failed, retry } = useSessionGroups(sessionIds, search);
   const multi = sessions.length > 1;

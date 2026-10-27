@@ -13,6 +13,16 @@ import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo'
 import { offerStrings } from '../strings';
 import { detectStore, linkProblem } from '../utils/offerStore';
 import { AudiencePicker } from './AudiencePicker';
+import { usePersistedState } from '@/hooks/usePersistedState';
+
+interface FormDraft {
+  url: string;
+  hasCoupon: boolean;
+  coupon: string;
+  audience: OfferAudience;
+}
+
+const EMPTY_FORM: FormDraft = { url: '', hasCoupon: false, coupon: '', audience: 'STANDARD' };
 
 const t = offerStrings.form;
 const COUPON_MAX = 40;
@@ -30,10 +40,13 @@ interface Props {
 
 /** Card "Gerar nova oferta": link próprio + cupom opcional + público-alvo. */
 export function OfferGeneratorForm({ generating, serverError, disabled, disabledReason, onGenerate, onChange }: Props) {
-  const [url, setUrl] = useState('');
-  const [hasCoupon, setHasCoupon] = useState(false);
-  const [coupon, setCoupon] = useState('');
-  const [audience, setAudience] = useState<OfferAudience>('STANDARD');
+  // Sobrevive a reload (padrão do painel): link colado, cupom e público ficam na aba
+  const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM);
+  const { url, hasCoupon, coupon, audience } = form;
+  const setUrl = (v: string) => setForm((f) => ({ ...f, url: v }));
+  const setHasCoupon = (v: boolean) => setForm((f) => ({ ...f, hasCoupon: v }));
+  const setCoupon = (v: string) => setForm((f) => ({ ...f, coupon: v }));
+  const setAudience = (v: OfferAudience) => setForm((f) => ({ ...f, audience: v }));
   const [linkError, setLinkError] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
 

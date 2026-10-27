@@ -16,6 +16,7 @@ import { OfferDispatchProgress } from '@/features/offers/components/OfferDispatc
 import { offerStrings } from '@/features/offers/strings';
 import { DEFAULT_INTERVAL } from '@/features/offers/utils/offerConfig';
 import type { OfferErrorView } from '@/features/offers/utils/offerErrors';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 const t = offerStrings;
 const CREDENTIALS_PATH = '/settings/affiliate-credentials';
@@ -26,7 +27,7 @@ export function OfferGeneratorPage() {
   const gen = useOfferGenerator();
   const { offer } = gen;
   const form = useOfferDraft(offer);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = usePersistedState('offers.wizardOpen', false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [mentionUnavailable, setMentionUnavailable] = useState(false);

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { Alert, Box, Button, CircularProgress, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
 import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
@@ -11,6 +12,15 @@ import { ConfigGroupsStep, type SelectedGroup } from './ConfigGroupsStep';
 import { ConfigConfirmStep } from './ConfigConfirmStep';
 
 const t = offerStrings.wizard;
+
+interface WizardDraft {
+  step: number;
+  sessionIds: string[];
+  selected: [string, SelectedGroup][];
+  intervalMin: number;
+  intervalMax: number;
+  dispatchOrder: OfferDispatchOrder;
+}
 
 interface Props {
   config: OfferConfigSettings | null;
@@ -32,16 +42,27 @@ export function OfferConfigWizard({
   config, groups, groupLimit, sessionLimit, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
 }: Props) {
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
-  const [step, setStep] = useState(0);
-  const [sessionIds, setSessionIds] = useState<string[]>(config?.sessionIds ?? []);
-  const [selected, setSelected] = useState<Map<string, SelectedGroup>>(() => new Map(
-    groups
+  // Todo o rascunho do assistente sobrevive a reload (passo, sessões, grupos, intervalo, ordem);
+  // some ao salvar ou cancelar. Começa da configuração salva quando não há rascunho.
+  const [draft, setDraft, clearDraft] = usePersistedState<WizardDraft>('offers.wizard', () => ({
+    step: 0,
+    sessionIds: config?.sessionIds ?? [],
+    selected: groups
       .filter((g): g is OfferConfigGroup & { sessionId: string } => g.sessionId != null && (config?.sessionIds ?? []).includes(g.sessionId))
       .map((g) => [g.conversationId, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId }]),
-  ));
-  const [intervalMin, setIntervalMin] = useState(config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min);
-  const [intervalMax, setIntervalMax] = useState(config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max);
-  const [dispatchOrder, setDispatchOrder] = useState<OfferDispatchOrder>(config?.dispatchOrder ?? 'SEQUENTIAL');
+    intervalMin: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
+    intervalMax: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
+    dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
+  }), { version: 1 });
+  const { step, sessionIds, intervalMin, intervalMax, dispatchOrder } = draft;
+  const selected = useMemo(() => new Map(draft.selected), [draft.selected]);
+  const setStep = (fn: (s: number) => number) => setDraft((d) => ({ ...d, step: fn(d.step) }));
+  const setSessionIds = (fn: (ids: string[]) => string[]) => setDraft((d) => ({ ...d, sessionIds: fn(d.sessionIds) }));
+  const setSelected = (fn: (m: Map<string, SelectedGroup>) => Map<string, SelectedGroup>) =>
+    setDraft((d) => ({ ...d, selected: [...fn(new Map(d.selected))] }));
+  const setIntervalMin = (v: number) => setDraft((d) => ({ ...d, intervalMin: v }));
+  const setIntervalMax = (v: number) => setDraft((d) => ({ ...d, intervalMax: v }));
+  const setDispatchOrder = (v: OfferDispatchOrder) => setDraft((d) => ({ ...d, dispatchOrder: v }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,14 +81,12 @@ export function OfferConfigWizard({
 
   const toggleSession = (id: string) => {
     setSessionIds((prev) => {
-      if (prev.includes(id)) {
-        // Grupos da sessão removida saem da seleção
-        setSelected((groupsPrev) => new Map([...groupsPrev].filter(([, g]) => g.sessionId !== id)));
-        return prev.filter((x) => x !== id);
-      }
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (sessionLimit != null && prev.length >= sessionLimit) return prev;
       return [...prev, id];
     });
+    // Grupos da sessão removida saem da seleção
+    if (sessionIds.includes(id)) setSelected((m) => new Map([...m].filter(([, g]) => g.sessionId !== id)));
     setError(null);
   };
 
@@ -93,6 +112,7 @@ export function OfferConfigWizard({
         dispatchOrder,
         conversationIds: [...selected.keys()],
       });
+      clearDraft();
       onSaved();
     } catch (err) {
       setError((err as OfferErrorView).message ?? offerStrings.errors.generic);
@@ -134,7 +154,7 @@ export function OfferConfigWizard({
             selected={selected}
             limit={groupLimit}
             onToggle={toggleGroup}
-            onClear={() => setSelected(new Map())}
+            onClear={() => setSelected(() => new Map())}
           />
         )}
         {step === 2 && (
@@ -159,7 +179,7 @@ export function OfferConfigWizard({
               {t.back}
             </Button>
           ) : onCancel ? (
-            <Button color="inherit" onClick={onCancel}>{t.cancel}</Button>
+            <Button color="inherit" onClick={() => { clearDraft(); onCancel(); }}>{t.cancel}</Button>
           ) : null}
         </Box>
         {step < 2 ? (

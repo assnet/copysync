@@ -23,6 +23,27 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
   primária para seguir a identidade do painel (verde ficou reservado para status/sucesso).
 - Sempre com rótulo: `FormControlLabel` ou `aria-label`. Texto auxiliar abaixo, em `caption`.
 
+## Persistência contra reload
+
+Recarregar a página não pode jogar fora o que o usuário estava fazendo. Toda tela nova nasce com
+`usePersistedState(key, inicial, opts)` (`app/src/hooks/usePersistedState.ts`) para o estado de
+trabalho:
+
+| Persistir (estado de interface) | Não persistir |
+|---|---|
+| rascunho de formulário (campos digitados) | dado vindo da API (recarregue pelo id) |
+| passo e escolhas de assistente (seleções, intervalos) | segredos, tokens, senhas |
+| filtros, busca, ordenação, "ver todos" | estado derivado (contadores, validação) |
+| id do item aberto (oferta, conversa) | estado transitório (`loading`, `saving`) |
+
+- Escopo `tab` (sessionStorage) por padrão: sobrevive a reload, some ao fechar a aba. `browser`
+  (localStorage) só para preferência duradoura (tema, menu recolhido, privacidade).
+- Chave `tela.item` (o hook prefixa `ui.`); `version` quando a forma do estado mudar.
+- `clear()` ao concluir o fluxo (salvar, cancelar, "nova oferta"): rascunho velho não volta.
+- Map/Set: passe `serialize`/`deserialize` ou guarde como array de pares.
+- Primeira tela coberta: Gerador de ofertas (formulário, oferta aberta, assistente inteiro,
+  filtros do passo de grupos, assistente aberto/fechado).
+
 ## Privacidade (borrar dados na tela)
 
 Menu "Privacidade" abre um diálogo (`features/privacy/PrivacyDialog`) com flags por tela e por

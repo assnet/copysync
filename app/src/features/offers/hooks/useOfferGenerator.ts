@@ -4,6 +4,7 @@ import { mediaService } from '@/services/media.service';
 import { uploadInParts } from '@/features/chat/media/chunkedUpload';
 import type { GenerateOfferRequest, OfferAudience, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
 import { toOfferError, type OfferErrorView } from '../utils/offerErrors';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 /** Intervalo do polling de progresso enquanto a oferta está `SENDING`. */
 const POLL_INTERVAL_MS = 3_000;
@@ -16,6 +17,8 @@ const POLL_INTERVAL_MS = 3_000;
  */
 export function useOfferGenerator() {
   const [offer, setOffer] = useState<OfferItem | null>(null);
+  // Id da oferta aberta sobrevive a reload; a oferta em si é recarregada da API
+  const [openOfferId, setOpenOfferId, clearOpenOfferId] = usePersistedState<string | null>('offers.openOffer', null);
   const [needsManualData, setNeedsManualData] = useState(false);
   const [usage, setUsage] = useState<OfferUsage | null>(null);
   const [aiFallback, setAiFallback] = useState(false);
@@ -49,6 +52,22 @@ export function useOfferGenerator() {
   }, [loadUsage]);
 
   useEffect(() => () => uploadAbort.current?.abort(), []);
+
+  useEffect(() => {
+    if (offer) setOpenOfferId(offer.id);
+  }, [offer, setOpenOfferId]);
+
+  // Reload com oferta aberta: recarrega; se sumiu (404) ou falhou, esquece o id
+  const restoreId = useRef(openOfferId);
+  useEffect(() => {
+    const id = restoreId.current;
+    if (!id) return;
+    let cancelled = false;
+    offerService.get(id)
+      .then((fresh) => { if (!cancelled) setOffer(fresh); })
+      .catch(() => { if (!cancelled) clearOpenOfferId(); });
+    return () => { cancelled = true; };
+  }, [clearOpenOfferId]);
 
   const generate = useCallback(async (body: GenerateOfferRequest) => {
     setGenerating(true);
@@ -181,10 +200,11 @@ export function useOfferGenerator() {
   const reset = useCallback(() => {
     uploadAbort.current?.abort();
     setOffer(null);
+    clearOpenOfferId();
     setNeedsManualData(false);
     setAiFallback(false);
     setError(null);
-  }, []);
+  }, [clearOpenOfferId]);
 
   // Progresso por polling enquanto `SENDING`; `setTimeout` encadeado para não sobrepor chamadas.
   const offerId = offer?.id;
