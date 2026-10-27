@@ -78,6 +78,40 @@ async function main(): Promise<void> {
     console.log(`✅  Admin: ${user.email} → tenant ${a.tenantSlug} (${tenantId})`);
   }
 
+  // ── Entitlements por tenant ──────────────────────────────────────────────
+  const ENTITLEMENT_KEYS = [
+    { key: 'marketplace_extension', value: true },
+    { key: 'max_sessions', value: 3 },
+    { key: 'max_campaigns', value: 10 },
+  ] as const;
+
+  for (const [, tenantId] of tenantMap) {
+    for (const ent of ENTITLEMENT_KEYS) {
+      await prisma.tenantEntitlement.upsert({
+        where: { tenantId_key: { tenantId, key: ent.key } },
+        update: { value: ent.value },
+        create: { tenantId, key: ent.key, value: ent.value },
+      });
+    }
+  }
+  console.log(`✅  Entitlements: ${ENTITLEMENT_KEYS.map(e => e.key).join(', ')} → todos os tenants`);
+
+  // ── Plan presets (usados pelo billing sync) ──────────────────────────────
+  const PLAN_PRESETS = [
+    { planSlug: 'COPYSYNC_STARTER', key: 'marketplace_extension', value: true },
+    { planSlug: 'COPYSYNC_PROFISSIONAL', key: 'marketplace_extension', value: true },
+    { planSlug: 'COPYSYNC_BUSINESS', key: 'marketplace_extension', value: true },
+  ] as const;
+
+  for (const p of PLAN_PRESETS) {
+    await prisma.planEntitlementPreset.upsert({
+      where: { planSlug_key: { planSlug: p.planSlug, key: p.key } },
+      update: { value: p.value },
+      create: { planSlug: p.planSlug, key: p.key, value: p.value },
+    });
+  }
+  console.log(`✅  Plan presets: marketplace_extension → STARTER, PROFISSIONAL, BUSINESS`);
+
   console.log(`\n🎯  Seed concluído. Senha padrão: ${PASSWORD}`);
   console.log('    Super admin: copysyncapp@gmail.com (vê todos os tenants)');
   console.log('    Admin Acme:  admin-acme@copysync.app (só Acme Corp)');
