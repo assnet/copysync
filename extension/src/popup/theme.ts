@@ -1,4 +1,4 @@
-import type { StoredSettings } from '../contract/messages.js';
+import type { StoredSettings } from '../background/store.js';
 
 export type ThemePreference = StoredSettings['theme'];
 

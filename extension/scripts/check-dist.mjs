@@ -71,6 +71,45 @@ if (apiHost && bundles.includes('background.js')) {
   }
 }
 
+// v3: manifest must NOT have content_scripts
+if (manifest.content_scripts) {
+  failures.push('manifest.json contém content_scripts — v3 não usa content script.');
+}
+
+// v3: manifest must NOT have scripting/tabs permissions
+const perms = manifest.permissions ?? [];
+if (perms.includes('scripting')) {
+  failures.push('manifest.json contém permissão "scripting" — v3 não usa scripting.');
+}
+if (perms.includes('tabs')) {
+  failures.push('manifest.json contém permissão "tabs" — v3 não usa tabs.');
+}
+
+// v3: externally_connectable must exist and not have localhost in prod
+if (!manifest.externally_connectable?.matches?.length) {
+  failures.push('manifest.json sem externally_connectable.matches — webpack transform falhou?');
+}
+const extMatches = manifest.externally_connectable?.matches ?? [];
+for (const match of extMatches) {
+  for (const mark of DEV_MARKS) {
+    const hit = typeof mark === 'string' ? match.includes(mark) : mark.test(match);
+    if (hit) failures.push(`externally_connectable contém "${match}" — origem dev no build de prod.`);
+  }
+}
+
+// v3: host_permissions must not have .ar/.mx
+const hostPerms = manifest.host_permissions ?? [];
+for (const hp of hostPerms) {
+  if (hp.includes('.com.ar') || hp.includes('.com.mx')) {
+    failures.push(`host_permissions contém "${hp}" — v3 só opera no BR.`);
+  }
+}
+
+// Store build: no key
+if (process.env.STORE_BUILD === 'true' && manifest.key) {
+  failures.push('manifest.json contém "key" no build de loja — webpack deveria ter removido.');
+}
+
 if (failures.length) {
   console.error('✖ check:dist falhou:\n');
   for (const f of failures) console.error('  - ' + f);

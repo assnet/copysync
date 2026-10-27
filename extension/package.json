@@ -1,13 +1,15 @@
 {
   "name": "copysync-extension",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "Extensão Chrome MV3 — sincroniza a sessão de afiliado do Mercado Livre com o painel",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "node ./node_modules/webpack/bin/webpack.js --watch --progress --config webpack.js --stats-error-details --mode development --env envFile=.env.dev",
     "build": "node ./node_modules/webpack/bin/webpack.js --progress --config webpack.js --stats-error-details --mode production --env envFile=.env && node scripts/check-dist.mjs",
-    "type-check": "tsc --noEmit && node scripts/check-cookie-scope.mjs && node scripts/check-i18n.mjs",
+    "build:store": "node ./node_modules/webpack/bin/webpack.js --progress --config webpack.js --stats-error-details --mode production --env envFile=.env --env store=true && node scripts/check-dist.mjs",
+    "type-check": "tsc --noEmit && node scripts/check-cookie-scope.mjs && node scripts/check-i18n.mjs && node scripts/check-contract-sync.mjs",
+    "check:contract-sync": "node scripts/check-contract-sync.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "check:cookie-scope": "node scripts/check-cookie-scope.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",

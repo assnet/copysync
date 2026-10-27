@@ -4,7 +4,7 @@
  *
  * Usos reconhecidos: `t('chave')`, `data-i18n="chave"`,
  * `data-i18n-attr="attr:chave;attr2:chave2"` e `err_<code>` para cada membro
- * do union `SyncErrorCode` em `src/contract/messages.ts`.
+ * do union `SyncErrorCode` em `src/background/store.ts`.
  *
  * Uso: `pnpm check:i18n` (roda em `pnpm type-check`).
  */
@@ -14,7 +14,7 @@ import { join } from 'node:path';
 const LOCALES_DIR = join('public', '_locales');
 const LOCALES = ['pt_BR', 'en'];
 const SRC = 'src';
-const CONTRACT = join('src', 'contract', 'messages.ts');
+const CONTRACT = join('src', 'background', 'store.ts');
 
 const loadKeys = (locale) => {
   const file = join(LOCALES_DIR, locale, 'messages.json');

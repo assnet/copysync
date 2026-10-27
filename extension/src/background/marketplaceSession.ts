@@ -1,78 +1,67 @@
-import { MARKETPLACE_COOKIE_DOMAIN, MARKETPLACE_URL_PATTERN } from '../config/env.js';
-import type { ContentRequest, ContentResponse, MarketplaceLoginCheck } from '../contract/messages.js';
+import { MARKETPLACE_COOKIE_DOMAIN } from '../config/env.js';
+import { ML_SESSION_COOKIES } from './constants.js';
 import { devLog } from '../core/devLog.js';
-import { SyncError } from './errors.js';
+import { getSyncState, getMlCookieHash } from './store.js';
+import type { MlStatusPayload } from '../contract/channel.js';
 
 /**
- * Leitura da sessão do marketplace no navegador.
+ * ML cookie reader — UNIQUE module that calls `chrome.cookies.*`.
+ * Enforced by `scripts/check-cookie-scope.mjs`.
  *
- * ÚNICO módulo do projeto que chama `chrome.cookies.*`, e sempre com
- * `MARKETPLACE_COOKIE_DOMAIN` (`scripts/check-cookie-scope.mjs` garante).
- * Nunca lê cookie da própria API: a autenticação com o painel é por token.
+ * v3: reads only `ML_SESSION_COOKIES` (identity cookies).
+ * No content script, no tabs, no scripting. CSRF comes from server bootstrap.
  */
-const SESSION_COOKIE_NAME = 'ssid';
-const CSRF_REQUEST: ContentRequest = { type: 'page/get-csrf' };
 
-export const getSessionCookie = async (): Promise<string | null> => {
-  const cookies = await chrome.cookies.getAll({ domain: MARKETPLACE_COOKIE_DOMAIN });
-  const cookie = cookies.find((c) => c.name === SESSION_COOKIE_NAME && c.value);
-  return cookie?.value ?? null;
-};
+const MARKETPLACE_URL = 'https://www.mercadolivre.com.br/';
 
-export const findMarketplaceTab = async (): Promise<chrome.tabs.Tab | null> => {
-  const tabs = await chrome.tabs.query({ url: MARKETPLACE_URL_PATTERN });
-  // Prefere aba ativa; senão a primeira já carregada.
-  return tabs.find((t) => t.active) ?? tabs.find((t) => t.status === 'complete') ?? tabs[0] ?? null;
-};
-
-const askContentScript = async (tabId: number): Promise<string | null> => {
-  try {
-    const response = (await chrome.tabs.sendMessage(tabId, CSRF_REQUEST)) as ContentResponse | undefined;
-    return response?.csrfToken ?? null;
-  } catch (error) {
-    // Aba aberta antes da instalação não tem o content script injetado.
-    devLog('content script silent, falling back to scripting', error);
-    return null;
-  }
-};
-
-/** Fallback: injeta um leitor efêmero do `meta[name="csrf-token"]` (sem closures — roda na página). */
-const readCsrfViaScripting = async (tabId: number): Promise<string | null> => {
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? null,
-    });
-    return results[0]?.result ?? null;
-  } catch (error) {
-    devLog('scripting.executeScript failed', error);
-    return null;
-  }
-};
-
-export const getCsrfToken = async (tabId: number): Promise<string | null> =>
-  (await askContentScript(tabId)) ?? (await readCsrfViaScripting(tabId));
-
-export const checkLogin = async (): Promise<MarketplaceLoginCheck> => {
-  const [cookie, tab] = await Promise.all([getSessionCookie(), findMarketplaceTab()]);
-  return { loggedIn: cookie !== null, hasOpenTab: tab !== null };
-};
-
-export interface CapturedSession {
-  sessionToken: string;
-  csrfToken: string;
+export interface CapturedCookies {
+  cookies: Record<string, string>;
+  hash: string;
 }
 
-/** Cookie → aba → CSRF. Lança `SyncError` no primeiro degrau que falhar. */
-export const captureSession = async (): Promise<CapturedSession> => {
-  const sessionToken = await getSessionCookie();
-  if (!sessionToken) throw new SyncError('marketplace_not_logged');
+const hashCookies = async (sorted: string): Promise<string> => {
+  const encoded = new TextEncoder().encode(sorted);
+  const buf = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
-  const tab = await findMarketplaceTab();
-  if (!tab || typeof tab.id !== 'number') throw new SyncError('marketplace_tab_missing');
+export const captureMlCookies = async (): Promise<CapturedCookies | null> => {
+  const allCookies = await chrome.cookies.getAll({ url: MARKETPLACE_URL });
 
-  const csrfToken = await getCsrfToken(tab.id);
-  if (!csrfToken) throw new SyncError('csrf_missing', `tab ${tab.id}`);
+  const sessionSet = new Set<string>(ML_SESSION_COOKIES);
+  const result: Record<string, string> = {};
 
-  return { sessionToken, csrfToken };
+  for (const name of ML_SESSION_COOKIES) {
+    const matches = allCookies.filter(c => c.name === name && sessionSet.has(c.name));
+    if (matches.length === 0) continue;
+    // Dedupe: longest path wins (most specific)
+    const best = matches.reduce((a, b) => (a.path.length >= b.path.length ? a : b));
+    if (best.value && !best.session) {
+      result[best.name] = best.value;
+    }
+  }
+
+  if (!result.ssid) return null;
+
+  const sorted = ML_SESSION_COOKIES
+    .filter(n => result[n])
+    .map(n => `${n}=${result[n]}`)
+    .join('&');
+  const hash = await hashCookies(sorted);
+
+  return { cookies: result, hash };
+};
+
+export const hasMlSession = async (): Promise<boolean> => {
+  const cookies = await chrome.cookies.getAll({ url: MARKETPLACE_URL });
+  return cookies.some(c => c.name === 'ssid' && c.value);
+};
+
+export const getMlStatus = async (): Promise<MlStatusPayload> => {
+  const [loggedIn, syncState] = await Promise.all([hasMlSession(), getSyncState()]);
+  return {
+    loggedIn,
+    lastSyncAt: syncState.lastSyncAt,
+    resyncRequested: false,
+  };
 };

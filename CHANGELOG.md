@@ -23,6 +23,41 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Extensão Chrome (`extension/`) — v3.0.0: reescrita para modelo cookie-auth + channel (`3.0.0`)
+
+Reescrita completa da extensão do modelo Bearer-token/password-login para cookie-auth via painel.
+A extensão não tem mais tela de login — sessão vem do cookie HttpOnly `__Host-ext_session` definido
+pelo painel. Comunicação painel↔extensão via `externally_connectable` channel com envelope versionado.
+
+- **`extension/src/background/channel/`** — pipeline de canal: validação de origem, filtro de envelope (TTL 15s, anti-replay), guard de sessão/permissão, handlers para 5 ops v1 (handshake, bridge.identify, session.changed, ml.status, ml.syncSession), `assertNoSecrets` para impedir vazamento de cookies
+- **`extension/src/contract/channel.ts`** — contrato do canal (envelope, ops, error codes), copiado identicamente para `app/src/features/extension/contract/channel.ts`
+- **`extension/src/background/apiFetch.ts`** — HTTP client com cookie auth (`credentials:'include'`), sem Bearer tokens
+- **`extension/src/background/store.ts`** — substitui `authStore.ts`; sem tokens em storage; apenas settings, syncState, installationId, mlCookieHash
+- **`extension/src/background/sessionResolver.ts`** — single-flight `GET /api/extension/me` com cache TTL 5min
+- **`extension/src/background/lifecycle.ts`** — onInstalled/onStartup, heartbeat 30min, reserve sync 60min, uninstall URL
+- **`extension/src/background/constants.ts`** — listas de cookies ML reais (ssid, orguseridp, orgnickp, orguserid) confirmadas pelo spike F0
+- **`extension/src/background/marketplaceSession.ts`** — leitura de cookies via `chrome.cookies.getAll` com hash SHA-256 para detecção de mudanças
+- **`extension/src/background/syncSession.ts`** — sync via `PUT /api/extension/marketplaces/ml/session` com cookie auth, rate limit 15min
+- **`extension/src/background/index.ts`** — SW entry: channel, lifecycle, alarms, `cookies.onChanged` debounce, popup messages
+- **`extension/src/popup/`** — popup simplificado: tela "conectar via painel" (sem login) ou status ML + sync; sem tag/tenant/logout
+- **`extension/public/manifest.json`** — removido `content_scripts`, `scripting`/`tabs` permissions, hosts `.ar`/`.mx`; adicionado `externally_connectable`
+- **`extension/webpack.js`** — removido entry `content`; transforms para `externally_connectable.matches` e `host_permissions` a partir de env; strip `key` em build de loja
+- **`extension/scripts/check-contract-sync.mjs`** — verifica paridade `channel.ts` entre extension/ e app/
+
+### Removed
+
+- **`extension/src/content/index.ts`** — content script eliminado (cookies lidos via API `chrome.cookies`)
+- **`extension/src/background/authStore.ts`** — substituído por `store.ts` (sem tokens)
+- **`extension/src/background/apiClient.ts`** — substituído por `apiFetch.ts` (cookie auth)
+- **`extension/src/contract/messages.ts`** — substituído por `contract/channel.ts`
+- **`extension/src/contract/api.ts`** — não mais necessário
+
+### Changed
+
+- **`api/src/modules/extension/domain/constants.ts`** — nomes de cookies ML corrigidos de placeholders para nomes reais; TTLs: 7d→30d sliding, 30d→90d absolute
+
+---
+
 #### Backend — M1-B: Hub billing receiver, provisioning, invites, entitlements (`0.20.0`)
 
 - **`api/src/modules/integrations/billing/verifyBillingHmac.ts`** — HMAC verification (sha256, timingSafeEqual, ±5min drift tolerance)
