@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.29.3 (API caindo em loop — causa raiz)
+
+- **`app/onSendHooks.ts`** (novo), **`app.ts`** — os dois hooks `onSend` globais (`X-Server-Time` e `Content-Disposition` do storage) viram **síncronos**. Causa raiz do incidente: com `onSend` async, `reply.send()` devolve antes de a resposta ser escrita; em handler async que envia sem `return reply` (quase todas as rotas) o Fastify chamava `send` de novo, e a 2ª escrita lançava `ERR_HTTP_HEADERS_SENT` dentro de uma promise — rejeição não tratada, processo morto. Com 1 hook async a ordem das microtasks escondia; o 2º hook (0.29.1) fez acontecer em toda requisição, com ou sem extensão. O 0.29.2 corrigiu só um sintoma (hooks da extensão). Reprodução e regressão em **`onSendHooks.test.ts`**.
+- **`server.ts`** — `unhandledRejection` loga com stack e mantém o processo (uma requisição não derruba todas as sessões); `uncaughtException` loga com stack e encerra (antes só a 1ª linha do erro chegava ao log do Render).
+
 ### Fixed — api 0.29.2 (hotfix: API caindo em loop)
 
 - **`extensionAuthHook.ts`**, **`extensionRequestGuard.ts`** — hooks async respondiam 401/403 com `send` + `return;`. Com `onSend` async, `reply.sent` ainda é false quando o Fastify decide chamar o handler: heartbeat/`/me` rodavam sem sessão (TypeError) e respondiam de novo (`ERR_HTTP_HEADERS_SENT`, exceção não tratada → processo caía). Bug latente desde a F1; o `onSend` do `X-Server-Time` (0.29.1) alongou a escrita e fez a corrida acontecer sempre. Agora `return reply.code(…).send(…)`. Teste de regressão `extensionHooks.test.ts` reproduz a corrida.

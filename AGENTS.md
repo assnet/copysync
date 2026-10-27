@@ -622,10 +622,14 @@ Nunca deixar erro cru da engine subir para a API.
 * decorators apenas quando realmente fizer sentido
 * não transformar Fastify em Express disfarçado
 
-* hook async (`onRequest`/`preHandler`) que responde **sempre** `return reply.code(…).send(…)`.
-  `send` + `return;` deixa o Fastify seguir para o handler enquanto `onSend` async ainda
-  escreve a resposta → handler sem contexto + `ERR_HTTP_HEADERS_SENT` derruba o processo
-  (incidente 2026-10-27, `extensionAuthHook`). Alternativa: lançar `AppError`
+* hook `onSend` **nunca é `async`**: só a assinatura síncrona `(req, reply, payload, done)`
+  (`app/onSendHooks.ts`). Com `onSend` async, `reply.send()` devolve antes de escrever e
+  `reply.sent`/`headersSent` ficam false: handler async que envia sem `return reply` (o
+  formato das rotas do projeto) envia duas vezes, e hook que respondeu é seguido pelo handler.
+  A 2ª escrita lança `ERR_HTTP_HEADERS_SENT` em promise → rejeição não tratada → processo cai.
+  Incidente 2026-10-27: 2º hook async derrubou a API em loop em toda requisição
+* hook async (`onRequest`/`preHandler`) que responde: `return reply.code(…).send(…)` ou lançar
+  `AppError`. Nunca `send` + `return;`
 
 ## É proibido
 

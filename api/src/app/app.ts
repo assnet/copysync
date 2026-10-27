@@ -11,7 +11,8 @@ import path from 'path';
 import fs from 'fs/promises';
 import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
-import { contentDispositionFor, contentDispositionHeader, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
+import { contentDispositionFor, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
+import { serverTimeHook, storageDispositionHook } from './onSendHooks';
 import { registerRoutes } from './routes';
 import { affiliateCredentialItemSchema } from '../modules/integrations/presentation/schemas/affiliateCredential.schema';
 
@@ -88,11 +89,8 @@ export async function buildApp() {
     exposedHeaders: ['X-Server-Time'],
   });
 
-  // Relógio do servidor (ms) em toda resposta: o painel corrige o relógio local para contagens
-  // regressivas baseadas em horários do servidor (ex.: `notBefore` dos envios de oferta).
-  app.addHook('onSend', async (_request, reply) => {
-    reply.header('X-Server-Time', String(Date.now()));
-  });
+  // Hooks onSend são síncronos por obrigação — ver onSendHooks.ts.
+  app.addHook('onSend', serverTimeHook);
 
   // ── Rate limiting ────────────────────────────────────────────────────────
   await app.register(rateLimit, {
@@ -137,16 +135,7 @@ export async function buildApp() {
       res.setHeader('Content-Disposition', contentDispositionFor(path.extname(filePath)));
     },
   });
-  // `?name=` põe o nome original no download: link cross-origin ignora o atributo `download`
-  // do painel. O `setHeaders` do plugin não vê a requisição, por isso o hook vem aqui.
-  const storagePrefix = `${env.API_PREFIX}/storage/`;
-  app.addHook('onSend', async (request, reply) => {
-    if (!request.url.startsWith(storagePrefix)) return;
-    const name = (request.query as Record<string, unknown> | undefined)?.name;
-    if (typeof name !== 'string' || !name) return;
-    const ext = path.extname(request.url.split('?')[0]);
-    reply.header('Content-Disposition', contentDispositionHeader(ext, name));
-  });
+  app.addHook('onSend', storageDispositionHook(`${env.API_PREFIX}/storage/`));
 
   // ── OpenAPI / Swagger ─────────────────────────────────────────────────────
   await app.register(swagger, {

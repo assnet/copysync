@@ -321,4 +321,17 @@ async function start(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
+// Rede de segurança do processo. Uma rejeição não tratada num caminho de requisição não
+// pode derrubar todas as sessões de WhatsApp do servidor: fica logada com stack para
+// correção (incidente 2026-10-27: ERR_HTTP_HEADERS_SENT em promise matava a API em loop).
+// Exceção síncrona não tratada deixa estado desconhecido: loga com stack e encerra, para o
+// Render reiniciar — antes só a primeira linha do erro chegava ao log.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection (process kept alive)');
+});
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception — exiting');
+  process.exit(1);
+});
+
 start();
