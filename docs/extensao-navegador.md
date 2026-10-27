@@ -32,6 +32,24 @@ marketplace: só cookies de identidade (`ssid`, `orguseridp`, `orgnickp`, `orgus
 Módulos: `src/config/env.ts` (único `process.env`), `src/contract/channel.ts` (envelope tipado),
 `src/core/{devLog,i18n}.ts`. Nenhuma regra mora em `index.ts`.
 
+### Painel (`app/src/features/extension/`)
+
+Feature completa de gestão da extensão no painel (F3, `6d9f48c`):
+
+- `channel/client.ts` — cliente `chrome.runtime.sendMessage` via `externally_connectable`; tenta IDs de `VITE_EXTENSION_IDS`
+- `hooks/useExtension.ts` — hook principal: detecta extensão, handshake, status ML, connect, sync, disconnect
+- `services/extensionApi.ts` — chamadas à API: issueSession, revokeSession, listSessions, getMlCredentialStatus
+- `components/ExtensionSetupWizard.tsx` — wizard 4 passos (detectar, vincular, sincronizar, concluir)
+- `components/ExtensionMlCard.tsx` — card ML com sync, desconectar, aviso de expiração
+- `components/ExtensionStatusBadge.tsx` — chip colorido por status
+- Página: `pages/settings/ExtensionSettingsPage.tsx` → rota `/settings/extension`
+
+### Geração de links ML (`campaigns/infrastructure/http/MercadoLivreAffiliateClient.ts`)
+
+A sessão sincronizada pela extensão também alimenta o `MercadoLivreAffiliateClient` (F4, `25578e7`),
+que gera links de afiliado automaticamente via API interna do ML (`/affiliate-program/api/v2/affiliates/createLink`).
+Detalhes em [`gerador-de-ofertas.md`](gerador-de-ofertas.md).
+
 ## Autenticação
 
 Cookie-based via `__Host-ext_session` HttpOnly emitido pela API em `POST /api/extension/session`.
@@ -143,9 +161,10 @@ Nunca editar `version` em `public/manifest.json` à mão. SemVer igual ao resto 
 
 | # | Item | Onde | Bloqueia |
 |---|---|---|---|
-| 1 | Smoke test com extensão carregada (`pnpm dev` → `dist/` em `chrome://extensions`): canal com painel, cookie sync, heartbeat | `extension/README.md` | Fechamento da feature |
-| 2 | F3 — Painel: UI de extensão, botão conectar, canal handshake | `app/src/features/extension/` | Fluxo completo |
-| 3 | F4 — MercadoLivreAffiliateClient (bootstrap + createLink na API) | `api/src/modules/integrations/` | Geração de links |
-| 4 | Publicação na Chrome Web Store: nova listagem | seção *Publicação* | Distribuição |
-| 5 | Expiração da sessão do marketplace: API sinaliza via heartbeat `resyncRequested` | API + `syncSession.ts` | Confiabilidade |
-| 6 | Outros marketplaces (Shopee, Amazon) — só ML exige sessão por extensão | roadmap item 3 | — |
+| ~~F3~~ | ~~Painel: UI de extensão, wizard, configurações~~ | ~~`app/src/features/extension/`~~ | ✅ `6d9f48c` |
+| ~~F4~~ | ~~MercadoLivreAffiliateClient (bootstrap + createLink)~~ | ~~`api/src/modules/campaigns/infrastructure/http/`~~ | ✅ `25578e7` |
+| 1 | Smoke test com extensão carregada (`pnpm dev` → `dist/` em `chrome://extensions`): canal com painel, cookie sync, heartbeat, geração de link ML | `extension/README.md` | Fechamento da feature |
+| 2 | F6 — Worker Outbox → Hub (lifecycle events, HMAC M2M, retention) | `api/src/modules/extension/infrastructure/worker/` | Hub integration |
+| 3 | Publicação na Chrome Web Store: nova listagem (F8) | seção *Publicação* | Distribuição |
+| 4 | Expiração da sessão do marketplace: API sinaliza via heartbeat `resyncRequested` | API + `syncSession.ts` | Confiabilidade |
+| 5 | Outros marketplaces (Shopee, Amazon) — só ML exige sessão por extensão | roadmap item 3 | — |

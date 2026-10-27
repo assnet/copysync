@@ -34,6 +34,9 @@ import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogReposito
 import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
 import { offersContainer } from '../modules/campaigns/infrastructure/offersContainer';
 import { OfferDispatchWorker } from '../modules/campaigns/infrastructure/worker/OfferDispatchWorker';
+import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
+import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
+import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -165,6 +168,29 @@ async function start(): Promise<void> {
     logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false)');
   }
 
+  // ── Hub outbox worker + retention ─────────────────────────────────────────
+  let hubOutboxWorker: HubOutboxWorker | null = null;
+  let extensionRetentionJob: ExtensionRetentionJob | null = null;
+  if (env.HUB_EVENTS_ENABLED && env.HUB_EVENTS_CONFIGURED) {
+    hubOutboxWorker = new HubOutboxWorker({
+      repository: extensionContainer.outboxRepository,
+      hubUrl: env.HUB_EVENTS_URL!,
+      applicationKey: env.HUB_EVENTS_APPLICATION_KEY!,
+      secret: env.HUB_EVENTS_SECRET!,
+    });
+    hubOutboxWorker.start();
+    logger.info('Hub outbox worker started');
+
+    extensionRetentionJob = new ExtensionRetentionJob({
+      prisma,
+      outbox: extensionContainer.outboxRepository,
+    });
+    extensionRetentionJob.start();
+    logger.info('Extension retention job started');
+  } else {
+    logger.info('Hub outbox worker disabled (HUB_EVENTS_ENABLED=false or not configured)');
+  }
+
   // ── Billing warnings ───────────────────────────────────────────────────────
   if (env.BILLING_ENABLED && env.EMAIL_SENDER === 'noop') {
     logger.warn('Billing enabled but EMAIL_SENDER=noop — invite and provision emails will not be delivered');
@@ -257,6 +283,16 @@ async function start(): Promise<void> {
       await offerDispatchWorker?.stop();
     } catch (err) {
       logger.error({ err }, 'Offer dispatch worker stop failed during shutdown');
+    }
+    try {
+      await hubOutboxWorker?.stop();
+    } catch (err) {
+      logger.error({ err }, 'Hub outbox worker stop failed during shutdown');
+    }
+    try {
+      await extensionRetentionJob?.stop();
+    } catch (err) {
+      logger.error({ err }, 'Extension retention job stop failed during shutdown');
     }
     // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
     // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).

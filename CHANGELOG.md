@@ -23,6 +23,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### API (`api/`) — HubOutboxWorker e ExtensionRetentionJob (F6, `0.26.0`)
+
+Worker de outbox para envio de eventos de extensão ao hub central com assinatura M2M HMAC.
+
+- **`api/src/modules/extension/infrastructure/hub/hmacSigner.ts`** — assinatura M2M canônica (`method\npath\nquery\ntimestamp\nnonce\nsha256(body)`), headers `X-Application-Key`/`X-Timestamp`/`X-Nonce`/`X-Signature`; recalculada a cada tentativa
+- **`api/src/modules/extension/domain/contracts/IHubOutboxRepository.ts`** — porta: `claimHeads` (cabeça por `clientKey`, `SKIP LOCKED`), `markSent`, `markDead`, `scheduleRetry`, `purgeSent`, `purgeDead`
+- **`api/src/modules/extension/infrastructure/repositories/PrismaHubOutboxRepository.ts`** — implementação Prisma; `claimHeads` bloqueia cliente com evento `DEAD`; `DISTINCT ON (clientKey)` com `FOR UPDATE SKIP LOCKED`
+- **`api/src/modules/extension/infrastructure/hub/HubOutboxWorker.ts`** — worker setInterval 5 s, head-of-line por `clientKey`, POST `${hubUrl}/events` com fetch nativo + 8 s timeout; 4xx → DEAD imediato; 5xx/rede → backoff 1 min → 24 h (×2), máx 10 tentativas; `HUB_EVENTS_ENABLED` + `HUB_EVENTS_CONFIGURED` para ligar
+- **`api/src/modules/extension/infrastructure/jobs/ExtensionRetentionJob.ts`** — job diário com `pg_try_advisory_lock`; purga outbox SENT > 30 d, DEAD > 90 d, lifecycle events > 365 d, sessões revogadas/expiradas > 30 d
+- **`api/src/modules/extension/infrastructure/extensionContainer.ts`** — adicionado `outboxRepository`
+- **`api/src/app/server.ts`** — registro do worker e retention job com gate `HUB_EVENTS_ENABLED && HUB_EVENTS_CONFIGURED`; shutdown gracioso
+- **`api/src/modules/extension/infrastructure/hub/hmacSigner.test.ts`** — vetor de assinatura M2M: formato canônico, body vazio, query string, uppercase de método, unicidade de nonce
+- **`api/src/modules/extension/infrastructure/hub/HubOutboxWorker.test.ts`** — 2xx → SENT, 4xx → DEAD, 5xx → retry com backoff, max attempts → DEAD, network error → retry, backoff cap 24 h
+
 #### API (`api/`) — MercadoLivreAffiliateClient: geração automática de links de afiliado ML (`0.25.0`)
 
 Cliente da API interna do programa de afiliados do Mercado Livre (não documentada; requer sessão de navegador sincronizada pela extensão).

@@ -88,6 +88,13 @@ sem ID público são ignoradas.
 - Se o blob atual não decifra, a sessão é gravada por cima, auditada e registra um `warn`. Nunca
   responde 500 em loop.
 
+### Geração automática de links (F4)
+
+A sessão sincronizada pela extensão também é consumida por `MercadoLivreAffiliateClient`
+(`campaigns/infrastructure/http/`) para gerar links de afiliado automaticamente quando o operador
+cola uma URL de produto ML sem `matt_word`. Detalhes em
+[`gerador-de-ofertas.md`](gerador-de-ofertas.md) (seção "Geração automática de link ML").
+
 ## O que não fazer
 
 - Nunca devolver o segredo ou a sessão por HTTP, nem acrescentar esses campos ao schema
