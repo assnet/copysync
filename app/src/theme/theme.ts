@@ -102,6 +102,14 @@ export function buildTheme(mode: PaletteMode) {
         },
       },
 
+      // O rótulo compensa com -11px o padding de checkbox/radio; o switch iOS não tem padding,
+      // então ficava fora da margem do conteúdo. Alinha pela borda do card.
+      MuiFormControlLabel: {
+        styleOverrides: {
+          root: { '&:has(.MuiSwitch-root)': { marginLeft: 0 } },
+        },
+      },
+
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {

@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.34.0
+
+- **`ToggleOption.tsx`** (`components/`) — linha de configuração com toggle: linha inteira clicável (≥ 44 px), título + texto auxiliar alinhados ao conteúdo, realce sutil quando ligada e controles filhos revelados com `Collapse` (sem animação sob `prefers-reduced-motion`). **`OfferResultPanel.tsx`**: "Marcar todos" e "Simular digitação" (com o contador de tempo como filho) usam o componente.
+- **`theme.ts`** — `FormControlLabel` com switch perde o `-11px` de compensação de checkbox: toggles inline ("Tem cupom", consentimento da extensão) alinham pela borda do conteúdo.
+
 ### Changed — app 0.33.1
 
 - **`theme.ts`** — Switch menor (36×20, bolinha 16) e ligado em azul primário em vez de verde, para seguir a identidade do painel; doc atualizada.

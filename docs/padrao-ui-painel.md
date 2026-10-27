@@ -6,7 +6,8 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 
 | Caso | Use | Não use |
 |---|---|---|
-| Ligar/desligar | `<Switch>` do MUI — o tema já aplica o estilo iOS (`theme.ts`, `MuiSwitch`) | `Checkbox` para liga/desliga; estilo de switch por tela |
+| Ligar/desligar simples (inline) | `<Switch>` + `FormControlLabel` — o tema já aplica o estilo iOS e o alinhamento | `Checkbox` para liga/desliga; estilo de switch por tela |
+| Opção com título, texto auxiliar e/ou controles filhos | `ToggleOption` (linha inteira clicável, realce quando ligada, filhos revelados abaixo alinhados ao título) | `FormControlLabel` + `Typography` soltos; filhos com `ml` fixo |
 | Faixa "entre X e Y" (intervalo, janela, preço) | `RangeSlider` | dois `TextField` numéricos |
 | Espera/cooldown com fim conhecido | `CooldownBar` + `serverNow()` | `LinearProgress` com `setInterval` |
 | Ícone | `AppIcon` (Lucide) | emoji, `@mui/icons-material` em tela nova |
@@ -21,6 +22,17 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
   padrão (bolinha colorida sobre trilho translúcido) é ambíguo. Trilho cheio = ligado, na cor
   primária para seguir a identidade do painel (verde ficou reservado para status/sucesso).
 - Sempre com rótulo: `FormControlLabel` ou `aria-label`. Texto auxiliar abaixo, em `caption`.
+
+## ToggleOption
+
+- Card de borda fina; a linha inteira é `<label>` do switch (alvo ≥ 44 px, clique em qualquer
+  ponto alterna). Ligada: borda e fundo com 6–10% da cor primária, transição 200 ms.
+- Título em `subtitle2` 600 e texto auxiliar em `caption` abaixo, ambos alinhados pela borda do
+  conteúdo do card (o switch fica na margem, não "para fora" dela).
+- Controles filhos (`children`) só aparecem ligados, com `Collapse` (0 ms sob
+  `prefers-reduced-motion`), separados por linha fina e alinhados ao título — fora do `<label>`,
+  para clique neles não alternar o toggle.
+- Acessibilidade: `aria-labelledby`/`aria-describedby` no input do switch.
 
 ## RangeSlider
 

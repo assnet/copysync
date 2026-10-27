@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Divider, FormControlLabel, IconButton, MenuItem, Stack, Switch, TextField, Tooltip, Typography,
+  Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, MenuItem, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -10,7 +10,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
-import { AppIcon, SectionCard } from '@/components';
+import { AppIcon, SectionCard, ToggleOption } from '@/components';
 import type { OfferAudience, OfferConfigGroup, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
 import { AUDIENCE_ICONS, OFFER_AUDIENCES, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
@@ -190,38 +190,26 @@ export function OfferResultPanel(props: Props) {
         {isDraft && (
           <>
             <Divider />
-            <Box>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={offer.mentionAll}
-                    disabled={mentionSaving || busy}
-                    onChange={(e) => props.onMentionAll(e.target.checked)}
-                  />
-                }
-                label={t.mentionAll}
-              />
-              <Typography variant="caption" color={mentionUnavailable ? 'warning.main' : 'text.secondary'} component="p" sx={{ ml: 6, mt: -0.5 }}>
-                {mentionUnavailable ? t.mentionAllUnavailable : t.mentionAllHelper}
-              </Typography>
-            </Box>
+            <ToggleOption
+              checked={offer.mentionAll}
+              disabled={mentionSaving || busy}
+              onChange={(v) => props.onMentionAll(v)}
+              title={t.mentionAll}
+              description={
+                <Box component="span" sx={{ color: mentionUnavailable ? 'warning.main' : undefined }}>
+                  {mentionUnavailable ? t.mentionAllUnavailable : t.mentionAllHelper}
+                </Box>
+              }
+            />
 
-            <Box>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={offer.simulateTyping}
-                    disabled={busy}
-                    onChange={(e) => props.onTyping({ simulateTyping: e.target.checked })}
-                  />
-                }
-                label={t.simulateTyping}
-              />
-              <Typography variant="caption" color="text.secondary" component="p" sx={{ ml: 6, mt: -0.5 }}>
-                {t.simulateTypingHelper}
-              </Typography>
-              {offer.simulateTyping && (
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ ml: 6, mt: 1 }} role="group" aria-label={t.typingDuration}>
+            <ToggleOption
+              checked={offer.simulateTyping}
+              disabled={busy}
+              onChange={(v) => props.onTyping({ simulateTyping: v })}
+              title={t.simulateTyping}
+              description={t.simulateTypingHelper}
+            >
+                <Stack direction="row" alignItems="center" spacing={1} role="group" aria-label={t.typingDuration}>
                   <Typography variant="body2" color="text.secondary">{t.typingDuration}</Typography>
                   <Tooltip title={t.typingDecrease} arrow>
                     <span>
@@ -256,8 +244,7 @@ export function OfferResultPanel(props: Props) {
                     </span>
                   </Tooltip>
                 </Stack>
-              )}
-            </Box>
+            </ToggleOption>
 
             <Box>
               <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 0.75 }}>{t.destinations}</Typography>
