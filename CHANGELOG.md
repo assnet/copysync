@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.26.1 · extension 3.2.0
+
+- **`AppLayout.tsx`** — lista de tenants só era carregada no login; após recarregar a página ficava vazia e o seletor de tenant sumia (super admin preso no tenant atual). Agora carrega ao montar o layout.
+- **`index.ts`** (extensão) — clique no ícone foca a aba do painel já aberta em vez de abrir outra. **`webpack.js`** inclui a origem do painel em `host_permissions` (a atualização pede a permissão nova ao usuário).
+
 ### Added — extension (api 0.28.0 · app 0.26.0)
 
 - **`extension.routes.ts`** — `DELETE /extension/marketplaces/ml/session`: "Desconectar Mercado Livre" chamava rota inexistente. Revoga o consentimento ML de todas as sessões da extensão do tenant e apaga a sessão cifrada; etiqueta e secreto ficam. `POST /extension/marketplaces/ml/consent` reautoriza a instalação.

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Drawer, AppBar, Toolbar, List, ListItem, ListItemButton,
@@ -358,7 +358,13 @@ export function AppLayout() {
   // Barreiras de cópia e inspeção, aplicadas apenas na área autenticada.
   useUiGuards();
 
-  const { activeTenantName, tenants, switchTenant } = useTenant();
+  const { activeTenantName, tenants, switchTenant, loadTenants } = useTenant();
+
+  // The list lives only in memory: after a page reload it is empty and the switcher disappears.
+  useEffect(() => {
+    if (tenants.length === 0) void loadTenants().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { mode, toggleColorMode } = useColorMode();
   const theme = useTheme();
 

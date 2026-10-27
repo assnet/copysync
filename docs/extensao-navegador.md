@@ -148,7 +148,9 @@ manual (popup), channel (`ml.syncSession`), startup.
   - `check-i18n.mjs` — paridade pt_BR⇄en, toda chave usada existe, `err_<SyncErrorCode>` coberto
   - `check-contract-sync.mjs` — paridade channel.ts extension/⇄app/
 - `onMessageExternal` verifica origem via `externally_connectable`
-- `onMessage` do background ignora remetente que não seja a própria extensão
+- **Sem popup (3.1+)**: clique no ícone foca a aba do painel já aberta (janela atual primeiro)
+  ou abre uma nova. Achar aba por URL exige a origem do painel em `host_permissions` — o
+  `webpack.js` deriva de `PANEL_URL`. Não usar a permissão `tabs` (aviso "ler histórico").
 
 ## Versionamento
 

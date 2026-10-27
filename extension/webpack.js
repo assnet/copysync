@@ -54,6 +54,13 @@ export default (env = {}, argv = {}) => {
 
   const buildHostPermissions = () => {
     const hosts = ['https://*.mercadolivre.com.br/*'];
+    // Panel origin: lets the icon click find and focus an open panel tab.
+    if (panelUrl) {
+      try {
+        const panelHost = `${new URL(panelUrl).origin}/*`;
+        if (!hosts.includes(panelHost)) hosts.push(panelHost);
+      } catch { /* invalid PANEL_URL */ }
+    }
     if (apiUrl) {
       try {
         const u = new URL(apiUrl);

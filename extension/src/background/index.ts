@@ -85,6 +85,21 @@ chrome.cookies.onChanged.addListener((changeInfo) => {
 
 // ── Icon click → open panel ────────────────────────────────────────────────
 
+// Reuses an open panel tab (current window first) instead of stacking new ones.
+// Needs the panel origin in host_permissions to match tabs by URL (no `tabs` permission).
+const focusOrOpenPanel = async (): Promise<void> => {
+  const pattern = `${new URL(env.panelUrl).origin}/*`;
+  const [inCurrent] = await chrome.tabs.query({ url: pattern, lastFocusedWindow: true });
+  const tab = inCurrent ?? (await chrome.tabs.query({ url: pattern }))[0];
+
+  if (tab?.id === undefined) {
+    await chrome.tabs.create({ url: env.panelUrl });
+    return;
+  }
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+};
+
 chrome.action.onClicked.addListener(() => {
-  void chrome.tabs.create({ url: env.panelUrl || 'https://app.copysync.app' });
+  void focusOrOpenPanel().catch((error) => devError('open panel failed', error));
 });
