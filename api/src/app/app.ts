@@ -25,7 +25,7 @@ function getAllowedCorsOrigins(): string[] {
   if (env.CORS_ORIGIN) {
     for (const o of env.CORS_ORIGIN.split(',')) {
       const n = normalizeOrigin(o);
-      if (n) list.push(n);
+      if (n && n !== '*') list.push(n);
     }
   }
 

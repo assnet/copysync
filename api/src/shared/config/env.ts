@@ -222,17 +222,7 @@ function mediaUploadTmpPath(e: z.infer<typeof envSchema>): string {
   return e.MEDIA_UPLOAD_TMP_PATH ?? path.join(path.dirname(e.STORAGE_PATH), 'media-uploads');
 }
 
-const envWithValidation = envSchema.refine(
-  (e) => {
-    if (e.NODE_ENV !== 'production') return true;
-    if (!e.PANEL_URL) return false;
-    if (e.CORS_ORIGIN.trim() === '' || e.CORS_ORIGIN.trim() === '*') return false;
-    return true;
-  },
-  { message: 'Production requires PANEL_URL and explicit CORS_ORIGIN (not empty, not *)' },
-);
-
-const envWithDerivedSchema = envWithValidation.transform((e) => ({
+const envWithDerivedSchema = envSchema.transform((e) => ({
   ...e,
   REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
   MEDIA_UPLOAD_TMP_PATH: mediaUploadTmpPath(e),
@@ -258,7 +248,18 @@ function loadEnv(): Env {
     throw new Error(`Invalid environment variables:\n${formatted}`);
   }
 
-  return result.data;
+  const data = result.data;
+
+  if (data.NODE_ENV === 'production') {
+    const missing: string[] = [];
+    if (!data.PANEL_URL) missing.push('PANEL_URL');
+    if (!data.CORS_ORIGIN || data.CORS_ORIGIN.trim() === '' || data.CORS_ORIGIN.trim() === '*') missing.push('CORS_ORIGIN (explicit, not empty/*)');
+    if (missing.length > 0) {
+      console.warn(`[env] WARN: production without ${missing.join(', ')} — CORS will reject all origins until configured`);
+    }
+  }
+
+  return data;
 }
 
 export const env = loadEnv();
