@@ -184,6 +184,49 @@ export type OfferStatus = 'DRAFT' | 'SENDING' | 'PAUSED' | 'SENT' | 'FAILED' | '
 
 export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
 
+/** Quem criou a oferta. */
+export type OfferOrigin = 'GENERATOR' | 'MONITORING';
+
+/** Um envio na fila de envio, com resumo da oferta e do grupo destino. */
+export interface SendQueueItem {
+  dispatchId: string;
+  offerId: string;
+  origin: OfferOrigin;
+  offerStatus: OfferStatus;
+  title: string | null;
+  textPreview: string;
+  imageUrl: string | null;
+  coupon: string | null;
+  conversationId: string;
+  groupName: string | null;
+  groupAvatarUrl: string | null;
+  status: OfferDispatchStatus;
+  /** Horário previsto (ISO, relógio do servidor). */
+  notBefore: string;
+  /** Início do envio (ISO); null antes de sair. */
+  claimedAt: string | null;
+  updatedAt: string;
+  failureReason: string | null;
+}
+
+/** Fila de uma sessão: um envio por vez, na ordem de `notBefore`. */
+export interface SendQueueSession {
+  /** null = envios antigos sem sessão registrada. */
+  sessionId: string | null;
+  name: string | null;
+  status: string | null;
+  running: SendQueueItem | null;
+  waiting: SendQueueItem[];
+  /** Concluídos hoje, mais recentes primeiro (até 20). */
+  recent: SendQueueItem[];
+  counts: { waiting: number; paused: number; sentToday: number; failedToday: number; skippedToday: number };
+}
+
+export interface SendQueueResponse {
+  serverTime: string;
+  sessions: SendQueueSession[];
+}
+
 /** Público-alvo do texto. `STANDARD` = modelo fixo (sem IA); os demais passam pela IA. */
 export type OfferAudience = 'STANDARD' | 'MOMS' | 'PET' | 'BEAUTY_FASHION' | 'MEN' | 'FITNESS' | 'HOME_KITCHEN';
 
@@ -221,6 +264,10 @@ export interface OfferItem {
   typingSeconds: number;
   /** Início agendado dos disparos (ISO); null = começa ao disparar. */
   scheduledAt: string | null;
+  /** Gerador (painel) ou monitoramento de grupos. */
+  origin: OfferOrigin;
+  /** Validade (ISO): envio depois disso é pulado. null = sem validade. */
+  expiresAt: string | null;
   text: string;
   /** Texto editado à mão: mudar título/preço não o remonta mais. */
   textEdited: boolean;

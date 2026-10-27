@@ -51,7 +51,7 @@ export class ProcessDueOfferDispatchesUseCase {
 
     for (const dispatch of due) {
       try {
-        await this.processOne(dispatch);
+        await this.processOne(dispatch, now);
       } catch (err) {
         // Envio fica SENDING; releaseStale devolve à fila
         logger.error({ err: (err as Error)?.name, dispatchId: dispatch.id, tenantId: dispatch.tenantId }, 'offer dispatch processing failed');
@@ -61,7 +61,7 @@ export class ProcessDueOfferDispatchesUseCase {
     return { processed: due.length };
   }
 
-  private async processOne(dispatch: OfferDispatch): Promise<void> {
+  private async processOne(dispatch: OfferDispatch, now: Date): Promise<void> {
     const { offers, dispatches } = this.deps;
     const { id, tenantId, offerId, claimToken } = dispatch;
     if (!claimToken) return;
@@ -75,6 +75,12 @@ export class ProcessDueOfferDispatchesUseCase {
     const offer = await offers.findById(offerId, tenantId);
     if (!offer) {
       await dispatches.markResult(id, tenantId, claimToken, { status: 'SKIPPED', failureReason: 'OFFER_NOT_FOUND' });
+      return;
+    }
+    // Oferta/cupom vencido não sai (validade definida por quem criou, ex.: monitoramento)
+    if (offer.expiresAt && offer.expiresAt.getTime() <= now.getTime()) {
+      await dispatches.markResult(id, tenantId, claimToken, { status: 'SKIPPED', failureReason: 'OFFER_EXPIRED' });
+      await this.finalizeIfDone(offerId, tenantId);
       return;
     }
 

@@ -29,7 +29,7 @@ export function makeOffer(overrides: Partial<Offer> = {}): Offer {
     id: 'offer-1', tenantId: TENANT, provider: 'AMAZON', sourceUrl: 'https://amazon.com.br/dp/B0ABCDEFGH',
     productRef: 'B0ABCDEFGH', title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
     affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', attributionVerified: true,
-    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, status: 'DRAFT',
+    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, status: 'DRAFT',
     createdById: USER, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
@@ -86,7 +86,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
   }
   add(d: Partial<OfferDispatch> & { offerId: string; conversationId: string }): OfferDispatch {
     const row: OfferDispatch = {
-      id: `d-${++this.seq}`, tenantId: TENANT, status: 'QUEUED', notBefore: NOW, claimedAt: null, claimToken: null,
+      id: `d-${++this.seq}`, tenantId: TENANT, sessionId: null, gapSeconds: 0, status: 'QUEUED', notBefore: NOW, claimedAt: null, claimToken: null,
       chatMessageId: null, failureReason: null, updatedAt: NOW, ...d,
     };
     this.items.push(row);
@@ -116,6 +116,19 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
       .slice(0, limit);
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });
     return due.map((d) => ({ ...d }));
+  }
+  /** Mesma regra do Prisma: abertos de ofertas SENDING sem início agendado depois de `startAt`. */
+  async laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date) {
+    const out = new Map<string, Date>();
+    for (const d of this.items) {
+      if (d.tenantId !== tenantId || !d.sessionId || !sessionIds.includes(d.sessionId)) continue;
+      if (d.status !== 'QUEUED' && d.status !== 'SENDING') continue;
+      const o = this.offers.items.find((x) => x.id === d.offerId);
+      if (o?.status !== 'SENDING' || (o.scheduledAt && o.scheduledAt > startAt)) continue;
+      const cur = out.get(d.sessionId);
+      if (!cur || d.notBefore > cur) out.set(d.sessionId, d.notBefore);
+    }
+    return out;
   }
   async touchClaim(id: string, claimToken: string) {
     const d = this.items.find((x) => x.id === id && x.claimToken === claimToken && x.status === 'SENDING');

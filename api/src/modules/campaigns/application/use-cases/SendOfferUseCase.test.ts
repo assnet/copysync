@@ -193,3 +193,30 @@ describe('SendOfferUseCase — início agendado', () => {
     expect(out.dispatches[0]!.notBefore).toBe(NOW.toISOString());
   });
 });
+
+describe('SendOfferUseCase — fila por sessão', () => {
+  it('cada envio leva a sessão e o intervalo mínimo da configuração (faixa do worker)', async () => {
+    const s = setup();
+    await s.uc.execute(input);
+    expect(s.dispatches.items.map((d) => [d.sessionId, d.gapSeconds])).toEqual([['s1', 8], ['s1', 8], ['s1', 8]]);
+  });
+
+  it('com outra oferta em curso na mesma sessão, entra depois do fim dela + folga, sem mudar o espaçamento', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'running', status: 'SENDING' }));
+    const tail = new Date(NOW.getTime() + 600_000);
+    s.dispatches.add({ offerId: 'running', conversationId: 'x', sessionId: 's1', notBefore: tail });
+    await s.uc.execute(input);
+    const mine = s.dispatches.items.filter((d) => d.offerId === 'offer-1').map((d) => d.notBefore.getTime() - tail.getTime());
+    // folga e intervalo = meio de 8–16 s
+    expect(mine).toEqual([12_000, 24_000, 36_000]);
+  });
+
+  it('oferta agendada para depois não segura quem dispara agora', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'later', status: 'SENDING', scheduledAt: new Date(NOW.getTime() + 3_600_000) }));
+    s.dispatches.add({ offerId: 'later', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 3_600_000) });
+    await s.uc.execute(input);
+    expect(s.dispatches.items.find((d) => d.offerId === 'offer-1')!.notBefore).toEqual(NOW);
+  });
+});

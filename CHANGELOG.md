@@ -9,6 +9,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns (api 0.36.0 · app 0.41.0) — fila de envio por sessão, visível em qualquer aba
+
+Envio já era do servidor; faltavam série por número de WhatsApp (gerador + monitoramento na mesma sessão furavam o cooldown) e uma forma de ver a fila fora da aba que disparou. Doc: `docs/fila-de-envio.md`.
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261028010000_add_send_queue_lanes` — `OfferDispatch.sessionId` (cópia da sessão da conversa, com backfill dos envios existentes) e `gapSeconds`; `Offer.origin` (`GENERATOR | MONITORING`) e `Offer.expiresAt`; índices `(sessionId, status)` e `(tenantId, updatedAt)`. Aditiva: fila em andamento segue de onde parou.
+- **`PrismaOfferDispatchRepository.ts`** — `claimDue` pega no máximo um envio por sessão e só se a sessão não tem envio em curso nem envio iniciado há menos de `gapSeconds`; claims serializados por advisory lock (dois workers não abrem a mesma faixa); 5 s de tolerância no intervalo para a latência do tick. `releaseStale` fecha como `CANCELLED` envio travado de oferta já parada (antes voltava à fila órfão). `laneTails` lê o fim de cada faixa (ignora oferta agendada para depois). Validado num Postgres real com corrida de claims.
+- **`domain/services/appendToLanes.ts`** (novo) — desloca a agenda da oferta para depois do fim da faixa de cada sessão sem mudar a ordem nem o espaçamento interno.
+- **`SendOfferUseCase.ts`**, **`OfferSendControlUseCases.ts`** — disparo e retomada encostam no fim da faixa; cada envio grava sessão e intervalo mínimo.
+- **`ProcessDueOfferDispatchesUseCase.ts`** — oferta com `expiresAt` vencido não sai (`SKIPPED`/`OFFER_EXPIRED`).
+- **`GetSendQueueUseCase.ts`**, **`PrismaSendQueueReader.ts`**, **`ISendQueueReader.ts`**, **`sendQueue.routes.ts`**, **`sendQueue.schema.ts`** (novos) — `GET /campaigns/send-queue[?sessionId]`: por sessão, envio em curso, aguardando (pausados à parte), concluídos hoje e contadores exatos (`groupBy`; listas lidas por sessão para uma fila longa não esconder as outras). Sempre filtrado por tenant.
+- **`OfferDTO.ts`**, **`offer.schema.ts`** — `origin` e `expiresAt` na saída da oferta.
+
+#### Frontend
+
+- **`features/sendQueue/`** (novo) — `SendQueuePanel` (por sessão: contagens com tooltip, alerta de sessão desconectada, "Enviando agora", `CooldownBar` até o próximo com relógio do servidor, abas Aguardando/Concluídos hoje, origem da oferta, "Abrir oferta"), `useSendQueue` (polling 5 s/20 s, para com a aba oculta, descarta resposta de sessão anterior), `laneCooldown`, `strings.ts`.
+- **`OfferGeneratorPage.tsx`**, **`useOfferGenerator.ts`** — painel da fila no fim do gerador, inclusive com o assistente aberto; `open(offerId)` carrega uma oferta disparada em outra aba e sobe a tela até ela (bloqueado com edição pendente; só a última resposta vale).
+- **`api.types.ts`**, **`sendQueue.service.ts`** — tipos e serviço da fila; `OfferItem.origin`/`expiresAt`.
+- **`offers/strings.ts`** — motivo `OFFER_EXPIRED`.
+
 ### Added — campaigns (api 0.35.0 · app 0.40.0) — início agendado e prévia lado a lado com o envio
 
 #### Backend

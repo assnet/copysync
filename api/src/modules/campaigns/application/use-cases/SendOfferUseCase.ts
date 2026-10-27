@@ -3,6 +3,7 @@ import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDisp
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
+import { appendToLanes, laneGapMs } from '../../domain/services/appendToLanes';
 import { orderDispatchTargets } from '../../domain/services/orderDispatchTargets';
 import { dispatchStartAt } from '../../domain/offerSchedule';
 import {
@@ -77,14 +78,26 @@ export class SendOfferUseCase {
     const limit = await entitlements.getNumber(tenantId, BROADCAST_GROUPS);
     if (limit !== null && targets.length > limit) throw new PlanLimitReachedError(BROADCAST_GROUPS, limit);
 
-    const slots = scheduleDispatches(
+    const interval = { minMs: config.intervalMinSeconds * 1000, maxMs: config.intervalMaxSeconds * 1000 };
+    const planned = scheduleDispatches(
       targets.length,
       // Agendamento vencido (oferta disparada depois do horário) começa agora
       dispatchStartAt(offer.scheduledAt, (this.deps.now ?? (() => new Date()))()),
-      { minMs: config.intervalMinSeconds * 1000, maxMs: config.intervalMaxSeconds * 1000 },
+      interval,
       this.deps.rand,
     );
-    const items = targets.map((t, i) => ({ conversationId: t.conversationId, notBefore: slots[i]! }));
+    // Fila por sessão: a oferta inteira (uma fila só, mesmo com várias sessões) entra depois do que
+    // já está à frente em qualquer das suas sessões (docs/fila-de-envio.md)
+    const tails = await dispatches.laneTails(tenantId, [...new Set(targets.map((t) => t.sessionId))], planned[0]!);
+    const slots = tails.size === 0
+      ? planned
+      : appendToLanes(targets.map((t, i) => ({ sessionId: t.sessionId, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
+    const items = targets.map((t, i) => ({
+      conversationId: t.conversationId,
+      sessionId: t.sessionId,
+      notBefore: slots[i]!,
+      gapSeconds: config.intervalMinSeconds,
+    }));
 
     // Corrida com outro envio/edição: a transição condicional (DRAFT + mentionAll validado) decide
     const created = await dispatches.startSending(offerId, tenantId, { mentionAll: offer.mentionAll }, items);

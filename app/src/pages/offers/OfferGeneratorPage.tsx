@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
 import ChatOutlinedIcon from '@mui/icons-material/ChatOutlined';
@@ -13,6 +13,7 @@ import { OfferResultPanel } from '@/features/offers/components/OfferResultPanel'
 import { OfferUsageChip } from '@/features/offers/components/OfferUsageChip';
 import { OfferDispatchProgress } from '@/features/offers/components/OfferDispatchProgress';
 import { OfferSendPanel } from '@/features/offers/components/OfferSendPanel';
+import { SendQueuePanel } from '@/features/sendQueue/components/SendQueuePanel';
 import { isPendingSchedule } from '@/features/offers/utils/offerSchedule';
 import { offerStrings } from '@/features/offers/strings';
 import { DEFAULT_INTERVAL } from '@/features/offers/utils/offerConfig';
@@ -35,6 +36,8 @@ export function OfferGeneratorPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [mentionUnavailable, setMentionUnavailable] = useState(false);
+  // Quem rola é o <main> do layout, não a janela: sobe pelo elemento
+  const topRef = useRef<HTMLDivElement>(null);
 
   const showWizard = !cfg.loading && !cfg.failed && (!cfg.configured || wizardOpen);
   const groupCount = cfg.groups.length;
@@ -96,7 +99,7 @@ export function OfferGeneratorPage() {
   }
 
   return (
-    <Box>
+    <Box ref={topRef} sx={{ scrollMarginTop: 80 }}>
       {header}
 
       {showWizard ? (
@@ -225,6 +228,20 @@ export function OfferGeneratorPage() {
           )}
         </>
       )}
+
+      {/* Fila do servidor: visível em qualquer aba (também com o assistente aberto); abrir troca a
+          oferta da tela e sobe até ela (bloqueado com edição pendente ou assistente aberto) */}
+      <Box sx={{ mt: 3 }}>
+        <SendQueuePanel
+          currentOfferId={offer?.id ?? null}
+          onOpenOffer={showWizard || form.dirty || offerBusy || editing ? undefined : (id) => {
+            gen.open(id).then(() => {
+              setComposing(false);
+              topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }).catch(ignore);
+          }}
+        />
+      </Box>
 
       <ConfirmDialog
         open={confirmOpen}

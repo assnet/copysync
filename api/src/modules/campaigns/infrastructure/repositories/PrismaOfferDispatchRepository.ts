@@ -9,6 +9,9 @@ import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
 import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '../mappers/PrismaOfferDispatchMapper';
 
+/** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
+export const LANE_GAP_TOLERANCE_SECONDS = 5;
+
 export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -34,6 +37,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
           tenantId,
           offerId,
           conversationId: i.conversationId,
+          sessionId: i.sessionId,
+          gapSeconds: i.gapSeconds,
           notBefore: i.notBefore,
           status: 'QUEUED' as const,
         })),
@@ -54,25 +59,64 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
   /**
    * CROSS-TENANT por design: o worker drena a fila de todos os tenants. Cada envio carrega
    * `tenantId`, e todo passo seguinte (envio, markResult) volta a filtrar por ele.
-   * SKIP LOCKED deixa várias instâncias reivindicarem lotes disjuntos. `gen_random_uuid()`
-   * (nativo no PG ≥ 13) é volátil: um token por linha.
+   *
+   * Faixa por sessão (docs/fila-de-envio.md): o candidato de cada sessão é o QUEUED vencido de
+   * menor `notBefore` (DISTINCT ON), e só entra se a sessão não tem envio SENDING nem SENT
+   * iniciado (`claimedAt`) há menos de `gapSeconds` (menos LANE_GAP_TOLERANCE_SECONDS, folga para a
+   * latência do tick não empurrar a cadência da própria oferta). Envio sem sessão (legado, anterior
+   * à fila) não tem faixa: sai como antes, sem série nem intervalo.
+   * DISTINCT ON não combina com FOR UPDATE: claims concorrentes são serializados pelo advisory
+   * lock da transação, o que também impede dois workers de abrirem a mesma faixa.
+   * `gen_random_uuid()` (nativo no PG ≥ 13) é volátil: um token por linha.
    */
   async claimDue(now: Date, limit: number): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
-    const rows = await this.prisma.$queryRaw<OfferDispatchRawRow[]>`
-      UPDATE "offer_dispatches"
-         SET "status" = 'SENDING'::"OfferDispatchStatus", "claimedAt" = now(),
-             "claimToken" = gen_random_uuid()::text, "updatedAt" = now()
-       WHERE "id" IN (
-         SELECT "id" FROM "offer_dispatches"
-          WHERE "status" = 'QUEUED'::"OfferDispatchStatus" AND "notBefore" <= ${now}
-            AND "offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
-          ORDER BY "notBefore"
-          LIMIT ${limit}
-          FOR UPDATE SKIP LOCKED
-       )
-      RETURNING *`;
-    return rows.map(Mapper.fromRawRow);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('offer_dispatch_claim'))`;
+      const rows = await tx.$queryRaw<OfferDispatchRawRow[]>`
+        UPDATE "offer_dispatches"
+           SET "status" = 'SENDING'::"OfferDispatchStatus", "claimedAt" = now(),
+               "claimToken" = gen_random_uuid()::text, "updatedAt" = now()
+         WHERE "status" = 'QUEUED'::"OfferDispatchStatus"
+           AND "id" IN (
+             SELECT "id" FROM (
+               SELECT DISTINCT ON (COALESCE(d."sessionId", d."id"))
+                      d."id", d."notBefore", d."sessionId", d."gapSeconds"
+                 FROM "offer_dispatches" d
+                WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
+                  AND d."offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
+                ORDER BY COALESCE(d."sessionId", d."id"), d."notBefore"
+             ) heads
+              WHERE NOT EXISTS (
+                SELECT 1 FROM "offer_dispatches" o
+                 WHERE o."sessionId" = heads."sessionId"
+                   AND (o."status" = 'SENDING'::"OfferDispatchStatus"
+                        OR (o."status" = 'SENT'::"OfferDispatchStatus"
+                            AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, 0)) > ${now}))
+              )
+              ORDER BY heads."notBefore"
+              LIMIT ${limit}
+           )
+        RETURNING *`;
+      return rows.map(Mapper.fromRawRow);
+    });
+  }
+
+  async laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date): Promise<Map<string, Date>> {
+    if (sessionIds.length === 0) return new Map();
+    const groups = await this.prisma.offerDispatch.groupBy({
+      by: ['sessionId'],
+      where: {
+        tenantId,
+        sessionId: { in: [...sessionIds] },
+        status: { in: ['QUEUED', 'SENDING'] },
+        offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: startAt } }] },
+      },
+      _max: { notBefore: true },
+    });
+    const out = new Map<string, Date>();
+    for (const g of groups) if (g.sessionId && g._max.notBefore) out.set(g.sessionId, g._max.notBefore);
+    return out;
   }
 
   /** Retomada: uma transação, ordem de `notBefore` preservada (só o horário muda). */
@@ -114,8 +158,14 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * Com `chatMessageId` a mensagem já existe no chat: não volta (evita envio duplo).
    */
   async releaseStale(olderThan: Date): Promise<number> {
+    const stale = { status: 'SENDING' as const, claimedAt: { lt: olderThan }, chatMessageId: null };
+    // Oferta parada enquanto o envio travou: fecha como cancelado em vez de voltar à fila (órfão)
+    await this.prisma.offerDispatch.updateMany({
+      where: { ...stale, offer: { status: 'CANCELLED' } },
+      data: { status: 'CANCELLED', claimedAt: null, claimToken: null },
+    });
     const { count } = await this.prisma.offerDispatch.updateMany({
-      where: { status: 'SENDING', claimedAt: { lt: olderThan }, chatMessageId: null },
+      where: stale,
       data: { status: 'QUEUED', claimedAt: null, claimToken: null },
     });
     return count;

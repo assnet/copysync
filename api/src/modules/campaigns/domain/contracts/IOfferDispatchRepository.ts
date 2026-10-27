@@ -3,7 +3,11 @@ import type { OfferDispatchStatus } from '../enums/OfferDispatchStatus';
 
 export interface NewOfferDispatchItem {
   conversationId: string;
+  /** Faixa: sessão dona da conversa. */
+  sessionId: string;
   notBefore: Date;
+  /** Intervalo mínimo (s) desde o início do último envio da mesma sessão. */
+  gapSeconds: number;
 }
 
 export type OfferDispatchResult =
@@ -29,11 +33,18 @@ export interface IOfferDispatchRepository {
   ): Promise<OfferDispatch[] | null>;
   listByOffer(offerId: string, tenantId: string): Promise<OfferDispatch[]>;
   /**
-   * Worker, cross-tenant: QUEUED vencidos de ofertas SENDING → SENDING com SKIP LOCKED
-   * (oferta PAUSED segura a fila). Cada envio volta com `claimToken` novo (posse); todo passo
-   * seguinte exige esse token.
+   * Worker, cross-tenant: QUEUED vencidos de ofertas SENDING → SENDING (oferta PAUSED segura a
+   * fila). **No máximo um por sessão**, e só se a sessão não tem envio SENDING nem envio SENT
+   * iniciado há menos de `gapSeconds` do candidato. Claims concorrentes serializados. Cada envio
+   * volta com `claimToken` novo (posse); todo passo seguinte exige esse token.
    */
   claimDue(now: Date, limit: number): Promise<OfferDispatch[]>;
+  /**
+   * Fim de cada faixa: por sessão, o maior `notBefore` aberto (QUEUED/SENDING) de ofertas SENDING
+   * que já começaram até `startAt` (sem início agendado ou agendado até lá). Oferta agendada para
+   * depois não segura quem entra antes. Sessão sem nada à frente não aparece no mapa.
+   */
+  laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date): Promise<Map<string, Date>>;
   /**
    * Retomar: QUEUED da oferta, na ordem de `notBefore`, recebem `slots[i]`. Slot a menos que
    * envio mantém o `notBefore` antigo. Retorna quantos mudaram.

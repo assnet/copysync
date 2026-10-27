@@ -30,6 +30,8 @@ import { CancelOfferUseCase, PauseOfferUseCase, ResumeOfferUseCase } from '../ap
 import { ProcessDueOfferDispatchesUseCase } from '../application/use-cases/ProcessDueOfferDispatchesUseCase';
 import { EnsureSessionGroupUseCase, ListSessionGroupsUseCase } from '../application/use-cases/SessionGroupsUseCases';
 import { ChatSessionGroupDirectory } from './adapters/ChatSessionGroupDirectory';
+import { PrismaSendQueueReader } from './repositories/PrismaSendQueueReader';
+import { GetSendQueueUseCase } from '../application/use-cases/GetSendQueueUseCase';
 
 /*
  * Composição do gerador de ofertas: rotas e worker usam as MESMAS instâncias. Tudo lazy —
@@ -82,6 +84,7 @@ const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: con
 const groupDirectory = lazy(() => new ChatSessionGroupDirectory());
 const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: configs(), directory: groupDirectory() }));
 const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
+const sendQueue   = lazy(() => new GetSendQueueUseCase({ reader: new PrismaSendQueueReader(prisma) }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),
 }));
@@ -101,4 +104,5 @@ export const offersContainer = {
   listSessionGroups:    listSessionGroups,
   ensureSessionGroup:   ensureSessionGroup,
   processDueDispatches: processDue,
+  getSendQueue:         sendQueue,
 };

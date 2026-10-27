@@ -315,6 +315,7 @@ export const offerStrings = {
       OFFER_DESTINATION_UNAVAILABLE: 'O grupo ou a sessão não existe mais',
       SEND_TIMEOUT: 'O WhatsApp demorou demais para responder',
       MEDIA_NOT_FOUND: 'A foto da oferta não foi encontrada',
+      OFFER_EXPIRED: 'A oferta venceu antes de chegar a vez deste grupo',
       generic: 'O envio falhou',
       skipped: 'O grupo ou a sessão não existe mais',
     } as Record<string, string>,

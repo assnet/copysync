@@ -24,6 +24,8 @@ export class PrismaOfferMapper {
       simulateTyping: raw.simulateTyping,
       typingSeconds: raw.typingSeconds,
       scheduledAt: raw.scheduledAt,
+      origin: raw.origin,
+      expiresAt: raw.expiresAt,
       status: raw.status,
       createdById: raw.createdById,
       createdAt: raw.createdAt,

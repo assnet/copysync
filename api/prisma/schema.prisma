@@ -583,6 +583,12 @@ model AffiliateCredential {
 // Ver .specs/features/offer-generator/design.md. Limite diário conta `offers`
 // por tenantId + createdAt; o worker reivindica `offer_dispatches` por status + notBefore.
 
+/// Origem da oferta na fila de envio.
+enum OfferOrigin {
+  GENERATOR
+  MONITORING
+}
+
 enum OfferStatus {
   DRAFT
   SENDING
@@ -626,6 +632,10 @@ model Offer {
   typingSeconds       Int               @default(15)
   /// Início agendado dos disparos; null = começa ao disparar (teto em campaigns/domain/offerSchedule.ts).
   scheduledAt         DateTime?
+  /// Quem criou: gerador (painel) ou monitoramento de grupos (captura automática).
+  origin              OfferOrigin       @default(GENERATOR)
+  /// Validade: envio com `notBefore` depois disso sai SKIPPED (OFFER_EXPIRED). null = sem validade.
+  expiresAt           DateTime?
   status              OfferStatus       @default(DRAFT)
   createdById         String? // null se o usuário for removido
   createdAt           DateTime          @default(now())
@@ -784,6 +794,11 @@ model OfferDispatch {
   tenantId       String
   offerId        String
   conversationId String
+  /// Faixa de envio: cópia de `conversation.sessionId` (sem join no claim). null só em envio antigo
+  /// cuja conversa não tinha sessão. Ver docs/fila-de-envio.md.
+  sessionId      String?
+  /// Intervalo mínimo (s) entre o início do último envio da mesma sessão e este (claim).
+  gapSeconds     Int                 @default(0)
   status         OfferDispatchStatus @default(QUEUED)
   notBefore      DateTime
   claimedAt      DateTime?
@@ -799,6 +814,9 @@ model OfferDispatch {
 
   @@unique([offerId, conversationId])
   @@index([status, notBefore])
+  @@index([sessionId, status])
+  // Fila de envio: concluídos do dia por tenant
+  @@index([tenantId, updatedAt])
   @@index([tenantId, offerId])
   @@map("offer_dispatches")
 }
