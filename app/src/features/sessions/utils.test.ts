@@ -58,7 +58,7 @@ describe('contagem do QR', () => {
 
   it('conta os segundos restantes sem ficar negativa', () => {
     expect(qrSecondsLeft(t0, t0)).toBe(QR_TTL_MS / 1000);
-    expect(qrSecondsLeft(t0, t0 + 1_500)).toBe(19);
+    expect(qrSecondsLeft(t0, t0 + 1_500)).toBe(QR_TTL_MS / 1000 - 1);
     expect(qrSecondsLeft(t0, t0 + QR_TTL_MS + 5_000)).toBe(0);
   });
 

@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — sessions (api 0.33.1 · app 0.38.1)
+
+- **QR de pareamento vive 2 min** — `qrTimeout: 120_000` no adapter Baileys (padrão da lib: 60 s no 1º QR e 20 s nos seguintes) e `QR_TTL_MS` do painel igualado; a contagem regressiva mostra `m:ss`.
+
 ### Added — app 0.38.0 — persistência contra reload
 
 - **`hooks/usePersistedState.ts`** — `useState` que sobrevive a reload (sessionStorage por padrão; localStorage opcional), com `version`, `serialize`/`deserialize` e `clear()`; testado. Regra de projeto no AGENTS.md e em `docs/padrao-ui-painel.md` ("Persistência contra reload").

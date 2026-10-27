@@ -3,7 +3,7 @@
 "Nova sessão" no painel é um assistente em 4 passos (termo de produto: **sessão**, nunca "instância"):
 1. Número do WhatsApp (DDD + número) → `Session.declaredPhone` normalizado `55DDDNÚMERO` (`normalizeBrazilPhone`).
 2. Nome da sessão (2–40, rótulo livre) → "Criar e conectar" (`POST /sessions` + `POST /sessions/:id/connect`).
-3. Conectar: QR Code com contagem regressiva (reinicia quando o QR muda; a Baileys troca ~a cada 20 s), "Gerar novo
+3. Conectar: QR Code com contagem regressiva (reinicia quando o QR muda; a engine troca a cada 2 min, `qrTimeout` no adapter), "Gerar novo
    código" ao expirar, ou **"Prefiro conectar com código"** (pareamento por número).
 4. Conectado: número real (`Session.phone`); aviso `phoneMismatch` se for outro número.
 

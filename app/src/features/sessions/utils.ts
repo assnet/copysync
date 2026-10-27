@@ -3,8 +3,8 @@
  * A API valida e normaliza o número de novo — aqui é só para orientar o usuário antes do envio.
  */
 
-/** Tempo de vida aproximado de cada QR (a engine troca o código a cada ~20 s). */
-export const QR_TTL_MS = 20_000;
+/** Tempo de vida de cada QR: igual ao `qrTimeout` do adapter Baileys na API (2 min). */
+export const QR_TTL_MS = 120_000;
 /** Folga após zerar a contagem antes de declarar o QR expirado (o polling pode atrasar). */
 export const QR_EXPIRY_GRACE_MS = 8_000;
 

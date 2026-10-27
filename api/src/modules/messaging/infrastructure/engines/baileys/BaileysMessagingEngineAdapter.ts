@@ -93,6 +93,8 @@ const GROUP_AVATAR_CONCURRENCY = 8;
 /** Validade do cache de fotos de participante. A URL do WhatsApp é temporária. */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 const PARTICIPATING_GROUPS_TTL_MS = 60_000;
+/** Tempo de vida de cada QR de pareamento. */
+const QR_TIMEOUT_MS = 120_000;
 /** Tempo máximo para descobrir o LID do autor citado; estourou, a citação sai pelo número. */
 const QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS = 3_000;
 
@@ -606,6 +608,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // printQRInTerminal foi deprecado na 7.0.0-rc14 e só emite aviso: o QR já é lido
       // do evento connection.update e publicado via SESSION_QR_UPDATED.
       markOnlineOnConnect: false,
+      // Cada QR vive 2 min (padrão da lib: 60 s no 1º e 20 s nos seguintes). O painel conta o
+      // mesmo tempo (QR_TTL_MS em app/src/features/sessions/utils.ts): mudar aqui = mudar lá.
+      qrTimeout: QR_TIMEOUT_MS,
       syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
       // Responde o pedido de reenvio de criptografia da nossa mídia (aparelho de grupo que não
       // decifrou). Texto, reação e o resto seguem undefined: não são reenviados.
