@@ -4,6 +4,8 @@ import {
   Box, Drawer, AppBar, Toolbar, List, ListItem, ListItemButton,
   ListItemIcon, ListItemText, Typography, IconButton, Avatar,
   Divider, Chip, Menu, MenuItem, Tooltip, alpha, useTheme,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -358,7 +360,8 @@ export function AppLayout() {
   // Barreiras de cópia e inspeção, aplicadas apenas na área autenticada.
   useUiGuards();
 
-  const { activeTenantName, tenants, switchTenant, loadTenants } = useTenant();
+  const { activeTenantId, activeTenantName, tenants, switchTenant, loadTenants } = useTenant();
+  const [switchError, setSwitchError] = useState(false);
 
   // The list lives only in memory: after a page reload it is empty and the switcher disappears.
   useEffect(() => {
@@ -510,10 +513,17 @@ export function AppLayout() {
                 {tenants.map((t) => (
                   <MenuItem
                     key={t.id}
-                    selected={t.id === localStorage.getItem('activeTenantId')}
+                    selected={t.id === activeTenantId}
                     onClick={async () => {
-                      await switchTenant(t.id);
                       setAnchorEl(null);
+                      if (t.id === activeTenantId) return;
+                      try {
+                        await switchTenant(t.id);
+                        // Recarga completa: páginas, SSE/WebSocket e rascunhos são por tenant.
+                        window.location.assign('/dashboard');
+                      } catch {
+                        setSwitchError(true);
+                      }
                     }}
                   >
                     {t.name}
@@ -522,6 +532,11 @@ export function AppLayout() {
               </Menu>
             </>
           )}
+          <Snackbar open={switchError} autoHideDuration={6000} onClose={() => setSwitchError(false)}>
+            <Alert severity="error" variant="filled" onClose={() => setSwitchError(false)}>
+              Não foi possível trocar de tenant. Tente novamente.
+            </Alert>
+          </Snackbar>
         </Box>
 
         {/* Conteúdo da página */}
