@@ -34,10 +34,19 @@ export class ResolveAffiliateCredentialUseCase {
     return { provider, publicIdentifier: record.publicIdentifier, secret, session };
   }
 
-  /** JSON inválido vira erro genérico: a mensagem do parse traria trecho do texto decifrado. */
   private parseSession(plain: string): AffiliateSessionSecret {
     try {
-      return JSON.parse(plain) as AffiliateSessionSecret;
+      const raw = JSON.parse(plain) as Record<string, unknown>;
+      if (raw.cookies && typeof raw.cookies === 'object') {
+        return raw as unknown as AffiliateSessionSecret;
+      }
+      if (typeof raw.sessionToken === 'string') {
+        return {
+          cookies: { ssid: raw.sessionToken as string },
+          csrf: typeof raw.csrfToken === 'string' ? (raw.csrfToken as string) : undefined,
+        };
+      }
+      throw new Error('unrecognized format');
     } catch {
       throw new SecretCipherFailedError();
     }

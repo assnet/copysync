@@ -203,7 +203,7 @@ export class GenerateOfferUseCase {
 
     const page = await this.deps.pageReader.read({
       url: final,
-      mercadoLivreSessionToken: provider === 'MERCADO_LIVRE' ? (cred?.session?.sessionToken ?? null) : null,
+      mercadoLivreCookies: provider === 'MERCADO_LIVRE' ? (cred?.session?.cookies ?? null) : null,
     });
     if (!page) return { ...EMPTY, productRef: refId };
     return {

@@ -10,7 +10,8 @@ function row(overrides?: Partial<PrismaAffiliateCredential>): PrismaAffiliateCre
     secretCiphertext: Buffer.from('aa'), secretIv: Buffer.from('bb'), secretTag: Buffer.from('cc'),
     keyVersion: 1, status: 'ACTIVE',
     sessionCiphertext: null, sessionIv: null, sessionTag: null, sessionKeyVersion: null,
-    sessionSyncedAt: null, lastValidatedAt: null, createdAt: NOW, updatedAt: NOW,
+    sessionSyncedAt: null, sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
+    lastValidatedAt: null, createdAt: NOW, updatedAt: NOW,
     ...overrides,
   };
 }
@@ -20,7 +21,8 @@ describe('PrismaAffiliateCredentialMapper', () => {
     const d = PrismaAffiliateCredentialMapper.toDomain(row());
 
     expect(d).toMatchObject({ hasSecret: true, hasSession: false, publicIdentifier: '18301234567' });
-    expect(Object.keys(d).some((k) => k.startsWith('secret') || k.startsWith('session') && k !== 'sessionSyncedAt')).toBe(false);
+    const sessionAllowed = new Set(['sessionSyncedAt', 'sessionInvalidAt', 'sessionAccountHash', 'sessionAccountKeyVersion']);
+    expect(Object.keys(d).some((k) => k.startsWith('secret') || (k.startsWith('session') && !sessionAllowed.has(k)))).toBe(false);
   });
 
   it('linha só com sessão (criada pela extensão): sem ID público, sem secret, com sessão', () => {

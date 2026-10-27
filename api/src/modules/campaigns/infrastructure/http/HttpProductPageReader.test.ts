@@ -35,7 +35,7 @@ describe('HttpProductPageReader', () => {
         ? new Response(null, { status: 302, headers: { location: 'https://www.mercadolivre.com/p/MLB1' } })
         : html(),
     );
-    await new HttpProductPageReader().read({ url: ML, mercadoLivreSessionToken: 'tok123' });
+    await new HttpProductPageReader().read({ url: ML, mercadoLivreCookies: { ssid: 'tok123' } });
     expect(headersOf(fn.mock.calls[0][1]).Cookie).toBe('ssid=tok123');
     expect(headersOf(fn.mock.calls[1][1]).Cookie).toBeUndefined();
   });
@@ -48,7 +48,7 @@ describe('HttpProductPageReader', () => {
     const fn = stubFetch(async (url) =>
       chain[url.pathname] ? new Response(null, { status: 302, headers: { location: chain[url.pathname] } }) : html(),
     );
-    await new HttpProductPageReader().read({ url: ML, mercadoLivreSessionToken: 'tok123' });
+    await new HttpProductPageReader().read({ url: ML, mercadoLivreCookies: { ssid: 'tok123' } });
     expect(fn.mock.calls.map((c) => headersOf(c[1]).Cookie)).toEqual(['ssid=tok123', undefined, 'ssid=tok123']);
   });
 
@@ -70,7 +70,7 @@ describe('HttpProductPageReader', () => {
 
   it('token com caractere de cookie não é enviado', async () => {
     const fn = stubFetch(async () => html());
-    await new HttpProductPageReader().read({ url: ML, mercadoLivreSessionToken: 'a; other=1' });
+    await new HttpProductPageReader().read({ url: ML, mercadoLivreCookies: { ssid: 'a; other=1' } });
     expect(headersOf(fn.mock.calls[0][1]).Cookie).toBeUndefined();
   });
 

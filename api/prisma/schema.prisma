@@ -70,6 +70,20 @@ enum AuditAction {
   MEMBER_ROLE_CHANGED
   TENANT_STATUS_CHANGED
   BILLING_EVENT_RECEIVED
+  AFFILIATE_SESSION_ACCOUNT_RESET
+}
+
+enum ExtensionInstallationStatus {
+  ACTIVE
+  UNINSTALLED
+  INFERRED_GONE
+  REPLACED
+}
+
+enum HubOutboxEventStatus {
+  PENDING
+  SENT
+  DEAD
 }
 
 enum ConversationStatus {
@@ -145,6 +159,7 @@ model Tenant {
   aiCredential         TenantAiCredential?
   aiUsageLogs          AiUsageLog[]
   BillingEventReceipt  BillingEventReceipt[]
+  extensionSessions    ExtensionSession[]
 
   @@index([slug])
   @@map("tenants")
@@ -165,11 +180,13 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  userTenants           UserTenant[]
-  refreshTokens         RefreshToken[]
-  auditLogs             AuditLog[]
-  assignedConversations ChatConversation[] @relation("AssignedConversations")
-  createdOffers         Offer[]
+  userTenants               UserTenant[]
+  refreshTokens             RefreshToken[]
+  auditLogs                 AuditLog[]
+  assignedConversations     ChatConversation[] @relation("AssignedConversations")
+  createdOffers             Offer[]
+  extensionSessions         ExtensionSession[]
+  extensionInstallations    ExtensionInstallation[]
 
   @@index([email])
   @@map("users")
@@ -545,10 +562,13 @@ model AffiliateCredential {
   sessionIv         Bytes?
   sessionTag        Bytes?
   sessionKeyVersion Int?
-  sessionSyncedAt   DateTime?
-  lastValidatedAt   DateTime?
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
+  sessionSyncedAt          DateTime?
+  sessionInvalidAt         DateTime?
+  sessionAccountHash       String?
+  sessionAccountKeyVersion Int?
+  lastValidatedAt          DateTime?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -815,4 +835,108 @@ model JobLease {
   expiresAt DateTime
 
   @@map("job_leases")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTENSION BRIDGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ExtensionInstallation {
+  installationId         String                      @id // UUID validated on the server
+  extensionId            String
+  channel                String // "chrome"
+  deviceId               String?
+  userId                 String?
+  version                String
+  status                 ExtensionInstallationStatus @default(ACTIVE)
+  firstSeenAt            DateTime                    @default(now())
+  installedAt            DateTime?
+  lastSeenAt             DateTime                    @default(now())
+  lastHeartbeatAt        DateTime?
+  lastSiteSeenAt         DateTime?
+  uninstalledAt          DateTime?
+  previousInstallationId String?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  user            User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions        ExtensionSession[]
+  lifecycleEvents ExtensionLifecycleEvent[]
+
+  @@index([deviceId, extensionId])
+  @@index([userId])
+  @@index([status, lastSeenAt])
+  @@map("extension_installations")
+}
+
+model ExtensionSession {
+  id                String    @id @default(cuid())
+  tokenHash         String    @unique
+  prevTokenHash     String?
+  prevValidUntil    DateTime?
+  userId            String
+  installationId    String
+  mlTenantId        String
+  extVersion        String
+  mlConsentAt       DateTime?
+  lastSeenAt        DateTime  @default(now())
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installation ExtensionInstallation @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  tenant       Tenant                @relation(fields: [mlTenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, installationId])
+  @@index([prevTokenHash])
+  @@index([mlTenantId])
+  @@index([absoluteExpiresAt])
+  @@map("extension_sessions")
+}
+
+model ExtensionLifecycleEvent {
+  id             String   @id @default(cuid())
+  installationId String
+  type           String
+  occurredAt     DateTime @default(now())
+  userId         String?
+  channel        String
+  version        String
+  dedupeKey      String
+  createdAt      DateTime @default(now())
+
+  installation ExtensionInstallation @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+
+  @@unique([installationId, dedupeKey])
+  @@index([occurredAt])
+  @@map("extension_lifecycle_events")
+}
+
+model HubOutboxEvent {
+  id             String               @id @default(cuid())
+  clientKey      String
+  seq            Int
+  installationId String
+  type           String
+  payload        Json
+  status         HubOutboxEventStatus @default(PENDING)
+  attempts       Int                  @default(0)
+  nextAttemptAt  DateTime?
+  lockedUntil    DateTime?
+  sentAt         DateTime?
+  createdAt      DateTime             @default(now())
+
+  @@unique([clientKey, seq])
+  @@index([status, nextAttemptAt])
+  @@map("hub_outbox_events")
+}
+
+model HubOutboxSequence {
+  clientKey String @id
+  lastSeq   Int    @default(0)
+
+  @@map("hub_outbox_sequences")
 }

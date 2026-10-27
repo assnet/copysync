@@ -52,10 +52,10 @@ export const setAffiliateCredentialStatusBodySchema = {
  */
 export const upsertAffiliateSessionBodySchema = {
   type: 'object',
-  required: ['sessionToken', 'csrfToken', 'capturedAt'],
+  required: ['cookies', 'capturedAt'],
   properties: {
-    sessionToken: { type: 'string', minLength: 1, maxLength: 8192 },
-    csrfToken: { type: 'string', minLength: 1, maxLength: 8192 },
+    cookies: { type: 'object', additionalProperties: { type: 'string', maxLength: 8192 } },
+    csrf: { type: 'string', maxLength: 8192 },
     affiliateTag: { type: 'string' },
     capturedAt: { type: 'string', maxLength: 64 },
   },

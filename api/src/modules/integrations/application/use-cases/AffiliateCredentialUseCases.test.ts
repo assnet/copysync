@@ -18,8 +18,9 @@ const cipher = new AesGcmSecretCipher(new Map([[1, Buffer.alloc(32, 5)]]), 1);
 function makeRecord(overrides?: Partial<AffiliateCredentialRecord>): AffiliateCredentialRecord {
   return {
     id: 'c1', tenantId: TENANT, provider: 'SHOPEE', publicIdentifier: '18301234567',
-    hasSecret: true, hasSession: false, sessionSyncedAt: null, status: 'ACTIVE',
-    lastValidatedAt: null, createdAt: NOW, updatedAt: NOW,
+    hasSecret: true, hasSession: false, sessionSyncedAt: null,
+    sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
+    status: 'ACTIVE', lastValidatedAt: null, createdAt: NOW, updatedAt: NOW,
     secret: cipher.encrypt(SECRET, affiliateCipherAad(TENANT, 'SHOPEE', 'secret')), session: null,
     ...overrides,
   };
@@ -140,9 +141,9 @@ describe('ResolveAffiliateCredentialUseCase', () => {
       provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, hasSecret: false, hasSession: true,
       session: cipher.encrypt(plain, affiliateCipherAad(TENANT, 'MERCADO_LIVRE', 'session')),
     });
-    const ok = makeDeps(mlRecord('{"cookies":"c"}'));
+    const ok = makeDeps(mlRecord('{"cookies":{"ssid":"tok123"},"csrf":"c"}'));
     const r = await new ResolveAffiliateCredentialUseCase(ok.repo, ok.getCipher).execute(TENANT, 'MERCADO_LIVRE');
-    expect(r?.session).toEqual({ cookies: 'c' });
+    expect(r?.session).toEqual({ cookies: { ssid: 'tok123' }, csrf: 'c' });
 
     const bad = makeDeps(mlRecord('segredo-em-claro{'));
     const err = await errorOf(new ResolveAffiliateCredentialUseCase(bad.repo, bad.getCipher).execute(TENANT, 'MERCADO_LIVRE'));

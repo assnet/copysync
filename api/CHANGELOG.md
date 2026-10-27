@@ -7,6 +7,54 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.24.0] — 2026-10-27 — Extension Bridge API (F1)
+
+### Added
+
+#### Backend — Módulo Extension (sessão por cookie, ciclo de vida, outbox)
+
+- **`extension/domain/`** — Entidades ExtensionSession, ExtensionInstallation; contratos IExtensionSessionRepository, IExtensionInstallationRepository, IExtensionEntitlementReader; constantes de TTL
+- **`extension/infrastructure/`** — PrismaExtensionSessionMapper, PrismaExtensionInstallationMapper, PrismaExtensionSessionRepository, PrismaExtensionInstallationRepository, extensionContainer (lazy singleton)
+- **`extension/application/use-cases/`** — IssueExtensionSessionUseCase, ValidateExtensionSessionUseCase, RevokeExtensionSessionUseCase, GetExtensionProfileUseCase, RecordLifecycleSignalUseCase
+- **`extension/presentation/`** — extensionAuthHook (cookie → sha256 → lookup), extensionRequestGuard (X-Client, X-Installation-Id, Origin), cookieHelper (parse/set/clear sem @fastify/cookie)
+- **`extension/presentation/routes/extension.routes.ts`** — POST /session (Bearer), DELETE /session (cookie), GET /me (cookie), POST /heartbeat (cookie), GET /sessions (Bearer), DELETE /sessions/:id (Bearer), POST /lifecycle/event (público), POST /lifecycle/uninstall (público)
+
+#### Backend — Infraestrutura
+
+- **`shared/http/rateLimitPresets.ts`** — Presets de rate limiting (lifecycle, extensionAuth, extensionSync, general)
+- **`@fastify/rate-limit@^9`** — Rate limiting global (120 req/min por IP)
+- **Migration `20261027120000_add_extension_sessions_lifecycle_outbox`** — Tabelas extension_installations, extension_sessions, extension_lifecycle_events, hub_outbox_events, hub_outbox_sequences; enum ExtensionInstallationStatus, HubOutboxEventStatus; novos campos em affiliate_credentials; preset marketplace_extension nos 3 planos
+
+#### Backend — Entitlements
+
+- **`tenants/domain/contracts/IEntitlementReader.ts`** — Movido de campaigns (re-export mantido)
+- **`tenants/infrastructure/repositories/PrismaEntitlementReader.ts`** — Movido de campaigns (re-export mantido)
+- **`shared/errors/internal/PlanErrors.ts`** — PlanFeatureUnavailableError genérico
+
+### Changed
+
+- **`shared/config/env.ts`** — CORS_ORIGIN default '' (era '*'); novas vars EXTENSION_ORIGINS, HUB_EVENTS_*, ML_ACCOUNT_HMAC_KEYS; validação de produção; transforms PANEL_ORIGIN, EXTENSION_ORIGINS_LIST, HUB_EVENTS_CONFIGURED
+- **`app/app.ts`** — CORS fail-closed (sem wildcard), trustProxy 1, credentials:true, allowedHeaders += x-client/x-installation-id; Swagger CopySync API; removidas URLs waioprime
+- **`integrations/application/dtos/AffiliateCredentialDTO.ts`** — AffiliateSessionSecret: `{cookies, csrf?}` (era `{sessionToken, csrfToken}`)
+- **`integrations/application/use-cases/UpsertAffiliateSessionUseCase.ts`** — Formato cookies; compara ssid para detectar mudança
+- **`integrations/application/use-cases/ResolveAffiliateCredentialUseCase.ts`** — parseSession aceita formato legado e novo
+- **`campaigns/domain/contracts/IAffiliateCredentialResolver.ts`** — session type `{cookies}` (era `{sessionToken}`)
+- **`campaigns/domain/contracts/IProductPageReader.ts`** — mercadoLivreCookies (era mercadoLivreSessionToken)
+- **`campaigns/infrastructure/http/HttpProductPageReader.ts`** — Lê ssid do mapa de cookies
+
+### Fixed
+
+- **`integrations/billing/SyncTenantEntitlementsUseCase.ts`** — planSlug atualizado mesmo sem presets; `preset.value ?? 'false'` para booleanas
+- **`integrations/billing/ApplyBillingEventUseCase.ts`** — `preset.value ?? 'false'` (era `?? undefined`)
+
+### Breaking Changes
+
+- **AffiliateSessionSecret** mudou de `{sessionToken, csrfToken}` para `{cookies: Record<string,string>, csrf?: string}`. parseSession aceita ambos formatos na leitura.
+- **IProductPageReader** campo `mercadoLivreSessionToken` → `mercadoLivreCookies: Record<string,string>`
+- **CORS** não aceita mais wildcard `*` em produção; CORS_ORIGIN deve ser explícito
+
+---
+
 ## [Unreleased]
 
 ### Added

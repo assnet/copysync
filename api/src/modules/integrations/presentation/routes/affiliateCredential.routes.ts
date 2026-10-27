@@ -124,7 +124,7 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
 
   app.put<
     ProviderParams & {
-      Body: { sessionToken: string; csrfToken: string; affiliateTag?: string; capturedAt: string };
+      Body: { cookies: Record<string, string>; csrf?: string; affiliateTag?: string; capturedAt: string };
     }
   >(
     '/:provider/session',

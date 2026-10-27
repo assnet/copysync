@@ -35,7 +35,7 @@ const envSchema = z.object({
     .default('false'),
 
   API_PREFIX: z.string().default('/api'),
-  CORS_ORIGIN: z.string().default('*'),
+  CORS_ORIGIN: z.string().default(''),
   STORAGE_PATH: z.string().default('./storage'),
   BAILEYS_SYNC_FULL_HISTORY: z
     .string()
@@ -175,6 +175,29 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional(),
   ),
+
+  // ── Extension bridge ──────────────────────────────────────────────
+  EXTENSION_ORIGINS: z.string().default(''),
+  HUB_EVENTS_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  HUB_EVENTS_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+  HUB_EVENTS_APPLICATION_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  HUB_EVENTS_SECRET: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  ML_ACCOUNT_HMAC_KEYS: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
 });
 
 /**
@@ -199,12 +222,29 @@ function mediaUploadTmpPath(e: z.infer<typeof envSchema>): string {
   return e.MEDIA_UPLOAD_TMP_PATH ?? path.join(path.dirname(e.STORAGE_PATH), 'media-uploads');
 }
 
-const envWithDerivedSchema = envSchema.transform((e) => ({
+const envWithValidation = envSchema.refine(
+  (e) => {
+    if (e.NODE_ENV !== 'production') return true;
+    if (!e.PANEL_URL) return false;
+    if (!e.EXTENSION_ORIGINS || e.EXTENSION_ORIGINS.trim() === '') return false;
+    if (e.CORS_ORIGIN.trim() === '' || e.CORS_ORIGIN.trim() === '*') return false;
+    return true;
+  },
+  { message: 'Production requires PANEL_URL, EXTENSION_ORIGINS (non-empty) and explicit CORS_ORIGIN (not empty, not *)' },
+);
+
+const envWithDerivedSchema = envWithValidation.transform((e) => ({
   ...e,
   REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
   MEDIA_UPLOAD_TMP_PATH: mediaUploadTmpPath(e),
   BILLING_ENABLED: !!(e.BILLING_HUB_URL && e.BILLING_APPLICATION_KEY && e.BILLING_APPLICATION_SECRET),
   S3_ENABLED: e.MEDIA_STORAGE_DRIVER === 's3' && !!e.S3_ENDPOINT && !!e.S3_BUCKET && !!e.S3_ACCESS_KEY_ID && !!e.S3_SECRET_ACCESS_KEY,
+  PANEL_ORIGIN: e.PANEL_URL ? new URL(e.PANEL_URL).origin : undefined,
+  EXTENSION_ORIGINS_LIST: e.EXTENSION_ORIGINS
+    .split(',')
+    .map((s: string) => s.trim())
+    .filter(Boolean),
+  HUB_EVENTS_CONFIGURED: !!(e.HUB_EVENTS_URL && e.HUB_EVENTS_APPLICATION_KEY && e.HUB_EVENTS_SECRET),
 }));
 
 export type Env = z.infer<typeof envWithDerivedSchema>;

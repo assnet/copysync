@@ -14,7 +14,8 @@ const cipher = new AesGcmSecretCipher(new Map([[1, Buffer.alloc(32, 5)]]), 1);
 function record(session: AffiliateCredentialRecord['session'], publicIdentifier: string | null = null): AffiliateCredentialRecord {
   return {
     id: 'c1', tenantId: TENANT, provider: 'MERCADO_LIVRE', publicIdentifier,
-    hasSecret: false, hasSession: session !== null, sessionSyncedAt: NOW, status: 'ACTIVE',
+    hasSecret: false, hasSession: session !== null, sessionSyncedAt: NOW,
+    sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null, status: 'ACTIVE',
     lastValidatedAt: null, createdAt: NOW, updatedAt: NOW, secret: null, session,
   };
 }
@@ -36,7 +37,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null) {
 
 const input = (over?: object) => ({
   tenantId: TENANT, userId: USER, provider: 'MERCADO_LIVRE' as const,
-  sessionToken: 'ssid-abc', csrfToken: 'csrf-xyz', capturedAt: '2026-10-22T11:59:00.000Z', ...over,
+  cookies: { ssid: 'ssid-abc' }, csrf: 'csrf-xyz', capturedAt: '2026-10-22T11:59:00.000Z', ...over,
 });
 
 describe('UpsertAffiliateSessionUseCase', () => {
@@ -48,7 +49,7 @@ describe('UpsertAffiliateSessionUseCase', () => {
     expect(call).not.toHaveProperty('publicIdentifierIfEmpty');
     expect(call.syncedAt).toEqual(NOW);
     expect(call.session.ciphertext.toString('utf8')).not.toContain('ssid-abc');
-    expect(JSON.parse(cipher.decrypt(call.session, AAD))).toEqual({ sessionToken: 'ssid-abc', csrfToken: 'csrf-xyz' });
+    expect(JSON.parse(cipher.decrypt(call.session, AAD))).toEqual({ cookies: { ssid: 'ssid-abc' }, csrf: 'csrf-xyz' });
     expect(d.audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_SESSION_SYNCED' }));
     expect(JSON.stringify(d.audit.create.mock.calls)).not.toContain('ssid-abc');
   });
@@ -65,7 +66,7 @@ describe('UpsertAffiliateSessionUseCase', () => {
   });
 
   it('segundo sync com o mesmo token não audita', async () => {
-    const current = cipher.encrypt(JSON.stringify({ sessionToken: 'ssid-abc', csrfToken: 'old' }), AAD);
+    const current = cipher.encrypt(JSON.stringify({ cookies: { ssid: 'ssid-abc' }, csrf: 'old' }), AAD);
     const d = makeDeps(record(current));
     await d.useCase.execute(input());
 
@@ -74,7 +75,7 @@ describe('UpsertAffiliateSessionUseCase', () => {
   });
 
   it('token diferente audita', async () => {
-    const current = cipher.encrypt(JSON.stringify({ sessionToken: 'ssid-velho', csrfToken: 'old' }), AAD);
+    const current = cipher.encrypt(JSON.stringify({ cookies: { ssid: 'ssid-velho' }, csrf: 'old' }), AAD);
     const d = makeDeps(record(current));
     await d.useCase.execute(input());
     expect(d.audit.create).toHaveBeenCalledTimes(1);

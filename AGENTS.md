@@ -13,7 +13,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 ## Marca e domínios
 
 - Produto: **CopySync** (rebranding do WaioPrime; cópia do repositório original).
-- Painel: https://copysync.app · API: https://api.copysync.app
+- Painel: https://app.copysync.app · API: https://api.copysync.app
 - Logo e ícones: `app/public/assets/brand/` (fonte `logo-source.png`; favicon, apple-touch, 192/512). Nome do produto só via `APP_NAME` em `app/src/shared/branding/brand.ts`; logo via `BrandLogo`.
 - O banco de produção na Render mantém o nome `waioprime` — **não renomear**.
 - Estado do rebranding, pendências por fase e o que não mexer: [`docs/rebranding-copysync.md`](docs/rebranding-copysync.md).
@@ -31,9 +31,18 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 
 ## agentbrowser e outras skills estao em .agents/skills
 
+## MODELO INSPIRACAO MERCADO LIVRE PARA BACKEND
+
+pode usar o url: https://github.com/Afilimax/mercado-livre-provider
+https://gist.github.com/JulioBorges/8291d6cf8a32ace8099ce66d9ff26bd1
+https://github.com/gabrieldamasse-01/bot-de-automacao
+https://botdoafiliado.com/blog/api-de-afiliados-do-mercado-livre/
+https://github.com/Raskinkamar/geralink-afiliado-mercadolivre
+Obs: para entender como a copysync deve buscar no ML
+
 ## BANCO DE DADOS (SOMENTE LEITURA)
 
-- ACESSO(SOMENTE LEITURA): postgresql://waiochat_jesus:OkIsmdZTOzi36eqfZHwuME4lMhGAKbVd@dpg-d7oihnqpmmbs73b714s0-a.virginia-postgres.render.com/waioprime?sslmode=require
+- ACESSO(SOMENTE LEITURA): postgresql://db_copysync_postgres_w398_user:kIYdm8peuBIDHFiZx1XY0IHf5lwH5UrZ@dpg-dbfnlc142hec73eo7ua0-a.oregon-postgres.render.com/db_copysync_postgres_w398
 
 - NUNCA DEVE ALTERAR DADOS DO BANCO SEM AUTORIZACAO CLARA E PRÉVIA.
 

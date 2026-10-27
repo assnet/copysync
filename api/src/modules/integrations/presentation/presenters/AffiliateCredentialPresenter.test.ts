@@ -12,8 +12,9 @@ const NOW = new Date('2026-10-22T12:00:00.000Z');
 function credential(overrides?: Partial<AffiliateCredential>): AffiliateCredential {
   return {
     id: 'c1', tenantId: 't1', provider: 'SHOPEE', publicIdentifier: '18301234567',
-    hasSecret: true, hasSession: false, sessionSyncedAt: null, status: 'ACTIVE',
-    lastValidatedAt: null, createdAt: NOW, updatedAt: NOW, ...overrides,
+    hasSecret: true, hasSession: false, sessionSyncedAt: null,
+    sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
+    status: 'ACTIVE', lastValidatedAt: null, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
 

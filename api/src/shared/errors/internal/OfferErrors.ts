@@ -1,4 +1,5 @@
 import { AppError } from '../AppError';
+import { PlanFeatureUnavailableError } from './PlanErrors';
 
 // ── Offer generator errors ───────────────────────────────────────────────────
 
@@ -107,8 +108,8 @@ export class OfferConfigMissingError extends AppError {
 }
 
 /** "Marcar todos" fora do plano (entitlement `mention_all_enabled` = false). */
-export class OfferMentionAllUnavailableError extends AppError {
+export class OfferMentionAllUnavailableError extends PlanFeatureUnavailableError {
   constructor() {
-    super('PLAN_FEATURE_UNAVAILABLE', 'Mention all is not available on this plan', 403, { key: 'mention_all_enabled' });
+    super('mention_all_enabled');
   }
 }

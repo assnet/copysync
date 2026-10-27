@@ -37,7 +37,7 @@ export class HttpProductPageReader implements IProductPageReader {
   async read(input: ReadProductPageInput): Promise<ProductPageData | null> {
     const provider = detectMarketplace(input.url);
     if (!provider || !isSupportedProductUrl(input.url)) return null;
-    const cookie = safeCookieValue(input.mercadoLivreSessionToken);
+    const ssid = safeCookieValue(input.mercadoLivreCookies?.ssid);
     const signal = AbortSignal.timeout(TIMEOUT_MS);
 
     let current = input.url;
@@ -48,7 +48,7 @@ export class HttpProductPageReader implements IProductPageReader {
           Accept: 'text/html,application/xhtml+xml',
           'Accept-Language': 'pt-BR,pt;q=0.9',
         };
-        if (cookie && sendsMlCookie(current)) headers.Cookie = `ssid=${cookie}`;
+        if (ssid && sendsMlCookie(current)) headers.Cookie = `ssid=${ssid}`;
         const res = await fetch(current, { method: 'GET', redirect: 'manual', signal, headers });
 
         const location = res.headers.get('location');

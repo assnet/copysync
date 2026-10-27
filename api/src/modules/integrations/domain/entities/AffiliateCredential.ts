@@ -15,6 +15,9 @@ export interface AffiliateCredential {
   hasSecret: boolean;
   hasSession: boolean;
   sessionSyncedAt: Date | null;
+  sessionInvalidAt: Date | null;
+  sessionAccountHash: string | null;
+  sessionAccountKeyVersion: number | null;
   status: AffiliateCredentialStatus;
   lastValidatedAt: Date | null;
   createdAt: Date;

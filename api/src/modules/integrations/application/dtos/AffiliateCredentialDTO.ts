@@ -24,8 +24,8 @@ export interface UpsertAffiliateSessionInput {
   tenantId: string;
   userId: string;
   provider: AffiliateProvider;
-  sessionToken: string;
-  csrfToken: string;
+  cookies: Record<string, string>;
+  csrf?: string;
   affiliateTag?: string;
   /** Relógio do navegador: só vai para a auditoria; `sessionSyncedAt` usa o do servidor. */
   capturedAt: string;
@@ -33,6 +33,12 @@ export interface UpsertAffiliateSessionInput {
 
 /** Sessão do marketplace decifrada — nunca sai por HTTP. */
 export interface AffiliateSessionSecret {
+  cookies: Record<string, string>;
+  csrf?: string;
+}
+
+/** Formato legado — aceito na leitura, nunca gravado. */
+export interface LegacyAffiliateSessionSecret {
   sessionToken: string;
   csrfToken: string;
 }

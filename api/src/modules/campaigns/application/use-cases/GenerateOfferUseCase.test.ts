@@ -28,7 +28,7 @@ const PAGE: ProductPageData = {
 const CREDS: Record<AffiliateProvider, OfferAffiliateCredential> = {
   SHOPEE: { provider: 'SHOPEE', publicIdentifier: '18301234567', secret: 'S3CR3T' },
   AMAZON: { provider: 'AMAZON', publicIdentifier: 'loja-20', secret: null },
-  MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { sessionToken: 'SSID-TOKEN' } },
+  MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { cookies: { ssid: 'SSID-TOKEN' } } },
 };
 
 function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> } = {}) {
@@ -162,7 +162,7 @@ describe('GenerateOfferUseCase — link colado é o link de afiliado', () => {
     const url = 'https://produto.mercadolivre.com.br/MLB-123456-fone?matt_word=minhaetq&matt_tool=1';
     const out = await run(s, url);
     expect(out.offer).toMatchObject({ provider: 'MERCADO_LIVRE', productRef: 'MLB123456', attributionVerified: true, affiliateUrl: url });
-    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(url), mercadoLivreSessionToken: 'SSID-TOKEN' });
+    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(url), mercadoLivreCookies: { ssid: 'SSID-TOKEN' } });
     expect(JSON.stringify(out)).not.toContain('SSID-TOKEN');
   });
 
@@ -232,7 +232,7 @@ describe('GenerateOfferUseCase — dados do produto', () => {
   it('Amazon: página lida sem cookie; foto baixada e guardada', async () => {
     const s = setup();
     const out = await run(s, AMAZON);
-    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(AMAZON), mercadoLivreSessionToken: null });
+    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(AMAZON), mercadoLivreCookies: null });
     expect(s.deps.imageFetcher.fetch).toHaveBeenCalledWith(PAGE.imageUrl);
     expect(out.offer.imageUrl).toBe('store://offers/1.jpg');
   });

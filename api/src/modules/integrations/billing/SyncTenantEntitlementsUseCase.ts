@@ -9,21 +9,21 @@ export class SyncTenantEntitlementsUseCase {
       where: { planSlug },
     });
 
-    if (presets.length === 0) {
-      log.warn({ tenantId, planSlug }, 'No entitlement presets found for plan');
-      return;
-    }
-
     await prisma.tenant.update({
       where: { id: tenantId },
       data: { planSlug },
     });
 
+    if (presets.length === 0) {
+      log.warn({ tenantId, planSlug }, 'No entitlement presets found for plan');
+      return;
+    }
+
     for (const preset of presets) {
       await prisma.tenantEntitlement.upsert({
         where: { tenantId_key: { tenantId, key: preset.key } },
-        create: { tenantId, key: preset.key, value: preset.value ?? undefined },
-        update: { value: preset.value ?? undefined },
+        create: { tenantId, key: preset.key, value: preset.value ?? 'false' },
+        update: { value: preset.value ?? 'false' },
       });
     }
 

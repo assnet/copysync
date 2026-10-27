@@ -5,6 +5,7 @@ import jwt from '@fastify/jwt';
 import websocket from '@fastify/websocket';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import rateLimit from '@fastify/rate-limit';
 import staticPlugin from '@fastify/static';
 import path from 'path';
 import fs from 'fs/promises';
@@ -14,32 +15,35 @@ import { contentDispositionFor, contentDispositionHeader, isAllowedMediaPath } f
 import { registerRoutes } from './routes';
 import { affiliateCredentialItemSchema } from '../modules/integrations/presentation/schemas/affiliateCredential.schema';
 
-const defaultCorsOrigins = [
-  'http://localhost:5174',
-  'https://waioprime.com',
-  'https://www.waioprime.com',
-  'https://waioprime.onrender.com',
-];
-
 function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/^['\"]|['\"]$/g, '').replace(/\/+$/, '');
 }
 
-function getAllowedCorsOrigins(rawOrigins: string): string[] | null {
-  if (rawOrigins.trim() === '*') {
-    return null;
+function getAllowedCorsOrigins(): string[] {
+  const list: string[] = [];
+
+  if (env.CORS_ORIGIN) {
+    for (const o of env.CORS_ORIGIN.split(',')) {
+      const n = normalizeOrigin(o);
+      if (n) list.push(n);
+    }
   }
 
-  const configuredOrigins = rawOrigins
-    .split(',')
-    .map(normalizeOrigin)
-    .filter(Boolean);
+  if (env.PANEL_ORIGIN) list.push(env.PANEL_ORIGIN);
 
-  return Array.from(new Set([...configuredOrigins, ...defaultCorsOrigins]));
+  for (const ext of env.EXTENSION_ORIGINS_LIST) {
+    if (ext) list.push(ext);
+  }
+
+  if (env.NODE_ENV !== 'production' && list.length === 0) {
+    list.push('http://localhost:5174', 'http://localhost:3333');
+  }
+
+  return [...new Set(list)];
 }
 
 export async function buildApp() {
-  const allowedCorsOrigins = getAllowedCorsOrigins(env.CORS_ORIGIN);
+  const allowedCorsOrigins = getAllowedCorsOrigins();
 
   const app = Fastify({
     logger: {
@@ -60,11 +64,11 @@ export async function buildApp() {
           }),
     },
     disableRequestLogging: false,
-    trustProxy: true, // required for correct IPs behind Render's proxy
+    trustProxy: 1, // single trusted hop (Render proxy)
   });
 
   app.log.info(
-    { corsOrigins: allowedCorsOrigins ?? ['*'] },
+    { corsOrigins: allowedCorsOrigins },
     'CORS origins configured',
   );
 
@@ -75,15 +79,19 @@ export async function buildApp() {
 
   await app.register(cors, {
     origin: (origin, callback) => {
-      if (!origin || allowedCorsOrigins === null) {
-        callback(null, true);
-        return;
-      }
-
+      if (!origin) { callback(null, true); return; }
       callback(null, allowedCorsOrigins.includes(normalizeOrigin(origin)));
     },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-client', 'x-installation-id'],
+  });
+
+  // ── Rate limiting ────────────────────────────────────────────────────────
+  await app.register(rateLimit, {
+    max: 120,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.ip,
   });
 
   // ── Authentication plugin ─────────────────────────────────────────────────
@@ -114,7 +122,7 @@ export async function buildApp() {
     allowedPath: isAllowedMediaPath,
     setHeaders(res, filePath) {
       // Allow cross-origin loading of media (audio, image, video, document)
-      // elements from the panel domain (waioprime.com → api.waioprime.com).
+      // elements from the panel domain.
       // Without this, @fastify/helmet's default CORP: same-origin blocks them.
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       // Imagem/áudio/vídeo/PDF seguem inline como antes; svg/html/xml aberto na aba
@@ -138,15 +146,15 @@ export async function buildApp() {
     openapi: {
       openapi: '3.0.3',
       info: {
-        title: 'WaioPrime API',
+        title: 'CopySync API',
         description:
-          'API REST para a plataforma WaioPrime — mensageria, CRM, automação e assistentes de IA.',
-        version: '0.2.0',
-        contact: { name: 'WaioPrime', email: 'dev@waioprime.com' },
+          'API REST para a plataforma CopySync — mensageria, CRM, automação e assistentes de IA.',
+        version: '0.24.0',
+        contact: { name: 'CopySync', email: 'dev@copysync.app' },
       },
       servers: [
         { url: `http://localhost:${env.PORT}`, description: 'Local' },
-        { url: 'https://waioprime-api.onrender.com', description: 'Produção' },
+        { url: 'https://api.copysync.app', description: 'Produção' },
       ],
       components: {
         securitySchemes: {
@@ -167,6 +175,7 @@ export async function buildApp() {
         { name: 'Integrations', description: 'Credenciais de afiliado por marketplace' },
         { name: 'Offers', description: 'Gerador de ofertas — link do produto, edição e envio' },
         { name: 'AI', description: 'Provedores de IA da plataforma e chave própria do tenant' },
+        { name: 'Extension', description: 'Extensão de navegador — sessão, heartbeat, ciclo de vida' },
       ],
     },
   });

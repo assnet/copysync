@@ -15,6 +15,7 @@ import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.rout
 import { provisioningRoutes } from '../modules/tenants/presentation/routes/provisioning.routes';
 import { aiAdminRoutes, aiTenantRoutes } from '../modules/assistants/presentation/routes/ai.routes';
 import { billingRoutes } from '../modules/integrations/billing/billing.routes';
+import { extensionRoutes } from '../modules/extension/presentation/routes/extension.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -100,6 +101,11 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
       prefix: `${env.API_PREFIX}/integrations/billing`,
     });
   }
+
+  // ── Extension routes (mixed auth: Bearer + cookie) ────────────────────────
+  await app.register(extensionRoutes, {
+    prefix: `${env.API_PREFIX}/extension`,
+  });
 
   // ── Media upload routes (auth + tenant scope required) ─────────────────────
   // Parser binário encapsulado no plugin; store e capacidades vêm da composição única.

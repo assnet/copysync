@@ -123,8 +123,8 @@ export class ApplyBillingEventUseCase {
           for (const preset of presets) {
             await tx.tenantEntitlement.upsert({
               where: { tenantId_key: { tenantId: tenant.id, key: preset.key } },
-              create: { tenantId: tenant.id, key: preset.key, value: preset.value ?? undefined },
-              update: { value: preset.value ?? undefined },
+              create: { tenantId: tenant.id, key: preset.key, value: preset.value ?? 'false' },
+              update: { value: preset.value ?? 'false' },
             });
           }
         }

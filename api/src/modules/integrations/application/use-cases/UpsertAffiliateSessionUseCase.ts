@@ -40,9 +40,9 @@ export class UpsertAffiliateSessionUseCase {
     const tagIgnored = Boolean(input.affiliateTag?.trim()) && tag === null;
 
     const existing = await this.repo.findByTenantAndProvider(input.tenantId, input.provider);
-    const changed = this.tokenChanged(existing?.session ?? null, aad, input.sessionToken, cipher);
+    const changed = this.tokenChanged(existing?.session ?? null, aad, input.cookies.ssid ?? '', cipher);
 
-    const payload: AffiliateSessionSecret = { sessionToken: input.sessionToken, csrfToken: input.csrfToken };
+    const payload: AffiliateSessionSecret = { cookies: input.cookies, csrf: input.csrf };
     const credential = await this.repo.upsertSession({
       tenantId: input.tenantId,
       provider: input.provider,
@@ -66,13 +66,16 @@ export class UpsertAffiliateSessionUseCase {
   private tokenChanged(
     current: EncryptedBlob | null,
     aad: string,
-    sessionToken: string,
+    newSsid: string,
     cipher: ISecretCipher,
   ): boolean {
     if (!current) return true;
     try {
-      const stored = JSON.parse(cipher.decrypt(current, aad)) as Partial<AffiliateSessionSecret>;
-      return stored.sessionToken !== sessionToken;
+      const raw = JSON.parse(cipher.decrypt(current, aad)) as Record<string, unknown>;
+      const storedSsid = raw.cookies && typeof raw.cookies === 'object'
+        ? (raw.cookies as Record<string, string>).ssid
+        : (raw as Record<string, string>).sessionToken;
+      return storedSsid !== newSsid;
     } catch {
       logger.warn('Stored affiliate session could not be decrypted — overwriting');
       return true;
