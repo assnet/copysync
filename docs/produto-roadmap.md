@@ -21,7 +21,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 1 | 📱 Conexão WhatsApp | Conecta números do cliente à ferramenta (QR / pairing code) | `sessions`, `messaging` (Baileys) | ✅ existe |
 | 2 | ✈️ Conexão Telegram | Conecta conta Telegram para monitorar e postar | `messaging` (novo engine `telegram` atrás de `MessagingEngine`) | ⏳ |
 | 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre e Amazon para gerar links | `integrations/affiliate-credentials` | ✅ |
-| 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` | ⏳ |
+| 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` (`docs/monitoramento-grupos.md`) | 🟡 WhatsApp pronto; falta IA, imagem e Telegram |
 | 5 | 📤 Grupos de disparo | Grupos do cliente que recebem as ofertas | `campaigns/broadcast-groups` | ⏳ |
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ⏳ |
 | 7 | 🤖 Reescrita com IA | Reescreve o texto de cada oferta automaticamente | `assistants` (`docs/ia-provedores.md`) | 🟡 no gerador; falta no monitoramento |

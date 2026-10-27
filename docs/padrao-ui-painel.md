@@ -60,7 +60,7 @@ compartilhar a tela sem expor clientes, grupos e produtos.
 4. Teste com a flag ligada: o layout não pode mudar (o desfoque mantém o espaço).
 
 Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
-Telas cobertas: Painel/menu (e-mail e papel do usuário) e Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas).
+Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas) e Monitoramento (sessão, fotos e nomes de grupos, texto e imagens das ofertas capturadas). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
 
 ## ToggleOption
 
@@ -83,6 +83,14 @@ Telas cobertas: Painel/menu (e-mail e papel do usuário) e Gerador de ofertas (s
   (`label`, `role="status"`); quem chama calcula o score com uma regra pura da feature.
 - `formatValue` com unidade (`8 min`, `R$ 10`). Largura: limitar o pai (`maxWidth`) em telas
   largas; no celular ocupa a linha.
+- `marks` (opcional, `{ value, label }[]`): marcas na barra e rótulos intermediários abaixo (ex.:
+  horário 00/03/…/24). Sem `marks`, só os extremos.
+- `inverted` (opcional): pinta como ativa a parte de FORA dos cursores e deixa neutro o trecho
+  entre eles (janela noturna 22:00 → 06:00). Os cursores continuam com `lo <= hi` (`clampRange`
+  colapsa faixa invertida); quem chama guarda "invertida" à parte e converte ao salvar (ver
+  `features/monitoring/components/OperatingWindowField`).
+- Sem balão de valor ao arrastar (`valueLabelDisplay="off"`, em todas as telas): o valor já aparece
+  nos extremos e no rótulo, e o balão cobria os rótulos.
 
 ## CooldownBar
 

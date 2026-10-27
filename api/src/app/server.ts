@@ -34,6 +34,8 @@ import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogReposito
 import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
 import { offersContainer } from '../modules/campaigns/infrastructure/offersContainer';
 import { OfferDispatchWorker } from '../modules/campaigns/infrastructure/worker/OfferDispatchWorker';
+import { automationContainer } from '../modules/automation/infrastructure/automationContainer';
+import { registerGroupMonitoringListener } from '../modules/automation/infrastructure/listeners/GroupMonitoringMessageListener';
 import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
 import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
@@ -159,13 +161,31 @@ async function start(): Promise<void> {
   // ── Envios do gerador de ofertas ───────────────────────────────────────────
   // Só com OFFER_DISPATCH_WORKER_ENABLED: o worker escreve no banco e envia mensagens, e
   // `api/.env` aponta para produção (AGENTS §22).
+  // Mesmo worker processa as capturas do monitoramento (GROUP_MONITORING_ENABLED): sem
+  // setInterval novo. Cada parte isolada: erro numa não derruba a outra (docs/monitoramento-grupos.md).
   let offerDispatchWorker: OfferDispatchWorker | null = null;
-  if (env.OFFER_DISPATCH_WORKER_ENABLED) {
-    offerDispatchWorker = new OfferDispatchWorker({ tick: offersContainer.processDueDispatches });
+  if (env.OFFER_DISPATCH_WORKER_ENABLED || env.GROUP_MONITORING_ENABLED) {
+    const safe = async (name: string, run: () => Promise<{ processed: number }>) => {
+      try {
+        return (await run()).processed;
+      } catch (err) {
+        logger.error({ err: (err as Error)?.name, part: name }, 'worker tick part failed');
+        return 0;
+      }
+    };
+    offerDispatchWorker = new OfferDispatchWorker({
+      tick: () => ({
+        execute: async () => ({
+          processed:
+            (env.OFFER_DISPATCH_WORKER_ENABLED ? await safe('offer-dispatch', () => offersContainer.processDueDispatches().execute()) : 0)
+            + (env.GROUP_MONITORING_ENABLED ? await safe('group-monitoring', () => automationContainer.processCaptured().execute()) : 0),
+        }),
+      }),
+    });
     offerDispatchWorker.start();
-    logger.info('Offer dispatch worker started');
+    logger.info({ offerDispatch: env.OFFER_DISPATCH_WORKER_ENABLED, groupMonitoring: env.GROUP_MONITORING_ENABLED }, 'Offer dispatch worker started');
   } else {
-    logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false)');
+    logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false, GROUP_MONITORING_ENABLED=false)');
   }
 
   // ── Hub outbox worker + retention ─────────────────────────────────────────
@@ -221,6 +241,8 @@ async function start(): Promise<void> {
     chatMessageRepo,
   );
   registerChatIncomingMessageListener(ingestUseCase);
+  // Grava capturas no banco: só com a flag (api/.env local aponta para produção, AGENTS §22)
+  if (env.GROUP_MONITORING_ENABLED) registerGroupMonitoringListener();
   registerChatMessageStatusListener(chatMessageRepo);
   registerChatMessageReactionListener(
     new IngestMessageReactionUseCase(chatMessageRepo, chatReactionRepo, chatContactRepo),

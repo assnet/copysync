@@ -25,6 +25,17 @@ export const PRIVACY_SCREENS = [
       { id: 'offers.productText', label: 'Título e texto das ofertas' },
     ],
   },
+  {
+    id: 'monitoring',
+    label: 'Monitoramento',
+    flags: [
+      { id: 'monitoring.sessionName', label: 'Nome e número da sessão' },
+      { id: 'monitoring.groupAvatars', label: 'Fotos dos grupos' },
+      { id: 'monitoring.groupNames', label: 'Nomes dos grupos' },
+      { id: 'monitoring.capturedText', label: 'Texto das ofertas capturadas' },
+      { id: 'monitoring.capturedImages', label: 'Imagens das ofertas capturadas' },
+    ],
+  },
 ] as const;
 
 export type PrivacyScreenId = (typeof PRIVACY_SCREENS)[number]['id'];

@@ -9,6 +9,26 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — automation (api 0.37.0 · app 0.42.0) — monitoramento de grupos
+
+Escuta grupos de concorrentes, troca o link pelo link de afiliado do tenant e reposta nos grupos de disparo, com horário de operação, intervalo, "digitando…", marcar todos e validade da oferta/cupom. Doc: `docs/monitoramento-grupos.md`.
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261028020000_create_group_monitoring` — `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadcast_groups`, `captured_offers`. Aditiva: só tabelas novas.
+- **`modules/automation/`** (novo) — regras puras (`offerMessageText`: extrair/trocar links, remover convites do concorrente, detectar cupom, palavras-chave; `operatingWindow`: janela em São Paulo, inclusive noturna; `monitorSettings`: faixas e validade); use cases de configuração (limites `monitored_groups`/`broadcast_groups` somados no tenant, conflito monitorado × disparo, liga download de mídia do grupo monitorado), captura (`RegisterCapturedMessageUseCase`, sem rede e sem consulta para texto sem link) e processamento (`ProcessPendingCapturedOffersUseCase`, claim com token e retomada de travadas); rotas `/automation/group-monitoring/*`.
+- **`BuildTenantAffiliateLinkUseCase.ts`** (novo, campaigns) — link de produto de terceiro → link do tenant a partir da URL canônica sem query (Amazon `tag`, Shopee `generateShortLink`, Mercado Livre `createAffiliateLinks`, inclusive vitrine "social"). Nada do afiliado de origem sobrevive.
+- **`EnqueueOfferUseCase.ts`** (novo, campaigns) — oferta pronta de outro módulo entra na fila de envio da sessão (origem `MONITORING`, validade); não cria nada se a fila a empurrar para depois da validade.
+- **`server.ts`**, **`env.ts`** — `GROUP_MONITORING_ENABLED` (padrão `false`, só na Render) liga o listener de captura e o processamento no tick do worker de envio, cada parte do tick isolada.
+- **`Offer.sourceKey`** (único, nullable) — chave idempotente `captured:<id>`: captura reprocessada após queda não vira segunda oferta.
+- **`GroupMonitorErrors.ts`** (novo) — `GROUP_MONITOR_INVALID_INPUT`, `GROUP_MONITOR_GROUP_CONFLICT`, `CAPTURED_OFFER_NOT_FOUND`, `CAPTURED_OFFER_NOT_RETRYABLE`.
+
+#### Frontend
+
+- **`pages/monitoring/MonitoringPage.tsx`**, **`features/monitoring/`** (novos) — seletor de sessão, cards de sessão e grupos (n/max), seletor de grupos com palavras-chave, horário de operação só por slider (00:00–24:00, noturna), envio, validade, ofertas capturadas com "Tentar de novo" e fila de envio da sessão. Rascunho por sessão, privacidade `monitoring.*`, textos em `strings.ts`.
+- **`SessionsPage.tsx`**, **`features/sessions/utils.ts`** — `?create=1&returnTo=` abre o assistente e, ao fechar, volta com a sessão criada selecionada (`safeReturnPath` só aceita caminho interno).
+- **`RangeSlider.tsx`** — prop opcional `marks` (rótulos intermediários). **`GroupChip.tsx`** — flags de privacidade da tela que o usa. **`privacyFlags.ts`** — bloco `monitoring`.
+
 ### Added — campaigns (api 0.36.0 · app 0.41.0) — fila de envio por sessão, visível em qualquer aba
 
 Envio já era do servidor; faltavam série por número de WhatsApp (gerador + monitoramento na mesma sessão furavam o cooldown) e uma forma de ver a fila fora da aba que disparou. Doc: `docs/fila-de-envio.md`.

@@ -9,17 +9,6 @@ export const MODULE_ICONS = {
   storefront: Store,
 } as const;
 
-export function MonitoringPage() {
-  return (
-    <UpcomingModulePage
-      icon={MODULE_ICONS.monitoring}
-      title="Monitoramento"
-      subtitle="Acompanhe grupos de concorrentes e reposte com o seu link"
-      description="Escuta os grupos que você escolher, troca o link de afiliado pelo seu e reposta a oferta nos seus grupos automaticamente."
-    />
-  );
-}
-
 export function MirroringPage() {
   return (
     <UpcomingModulePage

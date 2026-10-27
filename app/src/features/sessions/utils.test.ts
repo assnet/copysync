@@ -81,3 +81,21 @@ describe('formatPairingCode', () => {
     expect(formatPairingCode('ABCD-1234')).toBe('ABCD-1234');
   });
 });
+
+describe('safeReturnPath / withSessionId', () => {
+  it('aceita só caminho interno', async () => {
+    const { safeReturnPath } = await import('./utils');
+    expect(safeReturnPath('/monitoring')).toBe('/monitoring');
+    expect(safeReturnPath('//evil.com')).toBeNull();
+    expect(safeReturnPath('https://evil.com')).toBeNull();
+    expect(safeReturnPath('/\\evil.com')).toBeNull();
+    expect(safeReturnPath('monitoring')).toBeNull();
+    expect(safeReturnPath(null)).toBeNull();
+  });
+
+  it('acrescenta sessionId respeitando a query', async () => {
+    const { withSessionId } = await import('./utils');
+    expect(withSessionId('/monitoring', 's 1')).toBe('/monitoring?sessionId=s%201');
+    expect(withSessionId('/monitoring?tab=x', 's1')).toBe('/monitoring?tab=x&sessionId=s1');
+  });
+});

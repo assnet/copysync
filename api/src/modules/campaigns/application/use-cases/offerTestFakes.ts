@@ -29,7 +29,7 @@ export function makeOffer(overrides: Partial<Offer> = {}): Offer {
     id: 'offer-1', tenantId: TENANT, provider: 'AMAZON', sourceUrl: 'https://amazon.com.br/dp/B0ABCDEFGH',
     productRef: 'B0ABCDEFGH', title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
     affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', attributionVerified: true,
-    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, status: 'DRAFT',
+    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, sourceKey: null, status: 'DRAFT',
     createdById: USER, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
@@ -48,6 +48,9 @@ export class InMemoryOfferRepository implements IOfferRepository {
       throw new PlanLimitReachedError(quota.key, quota.limit);
     }
     return this.create(input);
+  }
+  async findBySourceKey(tenantId: string, sourceKey: string) {
+    return this.items.find((o) => o.tenantId === tenantId && o.sourceKey === sourceKey) ?? null;
   }
   async findById(id: string, tenantId: string) {
     return this.items.find((o) => o.id === id && o.tenantId === tenantId) ?? null;

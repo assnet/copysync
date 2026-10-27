@@ -32,6 +32,8 @@ import { EnsureSessionGroupUseCase, ListSessionGroupsUseCase } from '../applicat
 import { ChatSessionGroupDirectory } from './adapters/ChatSessionGroupDirectory';
 import { PrismaSendQueueReader } from './repositories/PrismaSendQueueReader';
 import { GetSendQueueUseCase } from '../application/use-cases/GetSendQueueUseCase';
+import { BuildTenantAffiliateLinkUseCase } from '../application/use-cases/BuildTenantAffiliateLinkUseCase';
+import { EnqueueOfferUseCase } from '../application/use-cases/EnqueueOfferUseCase';
 
 /*
  * Composição do gerador de ofertas: rotas e worker usam as MESMAS instâncias. Tudo lazy —
@@ -85,6 +87,14 @@ const groupDirectory = lazy(() => new ChatSessionGroupDirectory());
 const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: configs(), directory: groupDirectory() }));
 const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
 const sendQueue   = lazy(() => new GetSendQueueUseCase({ reader: new PrismaSendQueueReader(prisma) }));
+const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
+  expander: new HttpShortLinkExpander(),
+  credentials: credentials(),
+  shopee: new ShopeeAffiliateClient(),
+  mercadoLivre: new MercadoLivreAffiliateClient(),
+  pageReader: new HttpProductPageReader(),
+}));
+const enqueue     = lazy(() => new EnqueueOfferUseCase({ offers: offers(), dispatches: dispatches() }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),
 }));
@@ -105,4 +115,8 @@ export const offersContainer = {
   ensureSessionGroup:   ensureSessionGroup,
   processDueDispatches: processDue,
   getSendQueue:         sendQueue,
+  // Usados pelo monitoramento de grupos (módulo automation)
+  buildTenantAffiliateLink: tenantLinks,
+  enqueueOffer:         enqueue,
+  entitlements:         entitlements,
 };

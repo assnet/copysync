@@ -1,6 +1,6 @@
 # Fila de envio por sessão (`send-queue`)
 
-Status: **implementada (api 0.36.0 · app 0.41.0, 2026-10-27)**. Pré-requisito do
+Status: **implementada (api 0.36.0 · app 0.41.0, 2026-10-27)**. Usada pelo
 [`monitoramento-grupos.md`](monitoramento-grupos.md).
 
 A fila é o banco: `offers` + `offer_dispatches`, drenada pelo `OfferDispatchWorker`. Navegador

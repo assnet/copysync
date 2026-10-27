@@ -106,6 +106,13 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Processamento das ofertas capturadas pelo monitoramento de grupos (rede + fila de envio).
+  // Desligado por padrão: `.env` aponta para produção. `true` só na Render ou com banco local.
+  // Liga o listener de captura E o processamento no worker.
+  GROUP_MONITORING_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   MEDIA_PENDING_STALE_MINUTES: z.coerce.number().int().positive().default(60),
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),

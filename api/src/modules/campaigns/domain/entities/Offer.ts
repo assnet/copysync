@@ -33,6 +33,8 @@ export interface Offer {
   origin: OfferOrigin;
   /** Validade: envio que chegar a sair depois disso é pulado (OFFER_EXPIRED). */
   expiresAt: Date | null;
+  /** Chave idempotente de origem externa (ex.: captura do monitoramento). */
+  sourceKey: string | null;
   status: OfferStatus;
   createdById: string | null;
   createdAt: Date;

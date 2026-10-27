@@ -26,6 +26,7 @@ export class PrismaOfferMapper {
       scheduledAt: raw.scheduledAt,
       origin: raw.origin,
       expiresAt: raw.expiresAt,
+      sourceKey: raw.sourceKey,
       status: raw.status,
       createdById: raw.createdById,
       createdAt: raw.createdAt,

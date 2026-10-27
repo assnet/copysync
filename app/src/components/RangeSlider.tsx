@@ -69,6 +69,21 @@ export interface RangeSliderProps {
   status?: RangeSliderStatus;
   disabled?: boolean;
   error?: boolean;
+  /**
+   * Rótulos intermediários da escala (ex.: 00/03/…/24 numa janela de horário). Viram marcas na
+   * barra e substituem os rótulos dos extremos abaixo dela. Ausente = só os extremos.
+   */
+  marks?: readonly RangeSliderMark[];
+  /**
+   * Faixa ativa é o complemento dos cursores (ex.: janela que cruza a meia-noite): pinta as pontas
+   * e deixa neutro o trecho entre os cursores.
+   */
+  inverted?: boolean;
+}
+
+export interface RangeSliderMark {
+  value: number;
+  label: string;
 }
 
 /**
@@ -79,7 +94,7 @@ export interface RangeSliderProps {
  */
 export function RangeSlider({
   value, onChange, min, max, step = 1, minDistance = 0, ariaLabel,
-  minLabel = 'Mínimo', maxLabel = 'Máximo', formatValue = (v) => String(v), status, disabled, error,
+  minLabel = 'Mínimo', maxLabel = 'Máximo', formatValue = (v) => String(v), status, disabled, error, marks, inverted,
 }: RangeSliderProps) {
   const theme = useTheme();
   const [lo, hi] = clampRange(value, { min, max, step, minDistance });
@@ -161,8 +176,10 @@ export function RangeSlider({
         step={step}
         disabled={disabled}
         disableSwap
-        valueLabelDisplay="auto"
-        valueLabelFormat={formatValue}
+        marks={marks?.map((m) => ({ value: m.value }))}
+        // Sem balão: o valor já acompanha o arraste nos extremos, e o balão cobria os rótulos
+        valueLabelDisplay="off"
+        track={inverted ? 'inverted' : 'normal'}
         getAriaLabel={(index) => `${ariaLabel}: ${index === 0 ? minLabel : maxLabel}`}
         getAriaValueText={formatValue}
         onChange={(_e, next, activeThumb) => {
@@ -188,14 +205,46 @@ export function RangeSlider({
             },
             '& .MuiSlider-rail': { opacity: 0.28 },
           }),
+          // Escuro: trilha inativa a 28–38% some no fundo do card
+          '& .MuiSlider-rail': { opacity: theme.palette.mode === 'dark' ? 0.5 : accent ? 0.28 : 0.38 },
+          ...(inverted && {
+            '& .MuiSlider-rail': { opacity: 1, backgroundColor: accent ?? theme.palette.primary.main },
+            // Trilha do meio fica por cima da azul: cor OPACA (translúcida deixava o azul aparecer)
+            '& .MuiSlider-track': {
+              opacity: 1,
+              backgroundColor: `color-mix(in oklab, ${theme.palette.text.primary} ${theme.palette.mode === 'dark' ? 22 : 14}%, ${theme.palette.background.paper})`,
+              borderColor: 'transparent',
+              boxShadow: 'none',
+            },
+          }),
           '@media (prefers-reduced-motion: reduce)': { '& *': { transition: 'none !important' } },
         }}
       />
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }} aria-hidden>
-        <Typography variant="caption" color="text.disabled" sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(min)}</Typography>
-        <Typography variant="caption" color="text.disabled" sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(max)}</Typography>
-      </Box>
+      {marks && marks.length > 0 ? (
+        // Mesma margem lateral da barra: cada rótulo fica sob a sua marca; os das pontas encostam na borda
+        <Box aria-hidden data-testid="range-slider-marks" sx={{ position: 'relative', mx: 1, height: 18 }}>
+          {marks.map((m) => {
+            const pct = max === min ? 0 : ((m.value - min) / (max - min)) * 100;
+            const shift = pct <= 0 ? '0%' : pct >= 100 ? '-100%' : '-50%';
+            return (
+              <Typography
+                key={m.value}
+                variant="caption"
+                color="text.disabled"
+                sx={{ position: 'absolute', left: `${pct}%`, transform: `translateX(${shift})`, fontVariantNumeric: 'tabular-nums', lineHeight: '18px', whiteSpace: 'nowrap' }}
+              >
+                {m.label}
+              </Typography>
+            );
+          })}
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between' }} aria-hidden>
+          <Typography variant="caption" color="text.disabled" sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(min)}</Typography>
+          <Typography variant="caption" color="text.disabled" sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatValue(max)}</Typography>
+        </Box>
+      )}
     </Box>
   );
 }

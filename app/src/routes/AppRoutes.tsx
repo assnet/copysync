@@ -15,7 +15,8 @@ import { ExtensionSettingsPage } from '@/pages/settings/ExtensionSettingsPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
-import { MembersPage, MirroringPage, MonitoringPage, StorefrontPage } from '@/pages/modules';
+import { MembersPage, MirroringPage, StorefrontPage } from '@/pages/modules';
+import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 
 export function AppRoutes() {
   return (
