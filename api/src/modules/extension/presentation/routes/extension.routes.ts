@@ -64,8 +64,8 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { installationId, deviceId, extVersion, extensionId, channel, mlSessionConsent } =
         request.body as { installationId: string; deviceId?: string; extVersion: string; extensionId: string; channel: string; mlSessionConsent?: boolean };
-      const user = (request as any).user;
-      const tenantId: string = (request as any).tenantContext?.tenantId;
+      const { userId } = request.user;
+      const tenantId = request.tenantContext?.tenantId;
 
       if (!tenantId) {
         return reply.code(403).send({
@@ -81,7 +81,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       );
 
       const result = await useCase.execute({
-        userId: user.id,
+        userId,
         mlTenantId: tenantId,
         installationId,
         deviceId,
@@ -249,8 +249,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const user = (request as any).user;
-      const sessions = await extensionContainer.sessionRepository.findActiveByUserId(user.id);
+      const sessions = await extensionContainer.sessionRepository.findActiveByUserId(request.user.userId);
       return reply.send({
         success: true,
         data: sessions.map(s => ({
@@ -290,8 +289,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { id } = request.params as { id: string };
-      const user = (request as any).user;
-      const sessions = await extensionContainer.sessionRepository.findActiveByUserId(user.id);
+      const sessions = await extensionContainer.sessionRepository.findActiveByUserId(request.user.userId);
       if (!sessions.some(s => s.id === id)) {
         return reply.code(404).send({ success: false, error: { code: 'SESSION_NOT_FOUND', message: 'Extension session not found' } });
       }

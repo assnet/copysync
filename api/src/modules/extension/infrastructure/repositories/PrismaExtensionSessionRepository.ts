@@ -34,8 +34,19 @@ export class PrismaExtensionSessionRepository implements IExtensionSessionReposi
     return rows.map(PrismaExtensionSessionMapper.toDomain);
   }
 
-  async create(input: CreateExtensionSessionInput): Promise<ExtensionSession> {
-    const row = await this.prisma.extensionSession.create({ data: input });
+  async issue(input: CreateExtensionSessionInput): Promise<ExtensionSession> {
+    const { userId, installationId, ...fields } = input;
+    const row = await this.prisma.extensionSession.upsert({
+      where: { userId_installationId: { userId, installationId } },
+      create: input,
+      update: {
+        ...fields,
+        prevTokenHash: null,
+        prevValidUntil: null,
+        revokedAt: null,
+        lastSeenAt: new Date(),
+      },
+    });
     return PrismaExtensionSessionMapper.toDomain(row);
   }
 

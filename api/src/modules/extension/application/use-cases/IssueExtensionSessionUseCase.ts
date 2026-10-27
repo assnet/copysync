@@ -48,18 +48,13 @@ export class IssueExtensionSessionUseCase {
       version: input.extVersion,
     });
 
-    const existing = await this.sessionRepo.findByUserAndInstallation(input.userId, input.installationId);
-    if (existing && !existing.revokedAt) {
-      await this.sessionRepo.revoke(existing.id);
-    }
-
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = hashToken(rawToken);
     const now = this.now();
     const expiresAt = new Date(now.getTime() + EXT_SESSION_TTL_SECONDS * 1000);
     const absoluteExpiresAt = new Date(now.getTime() + EXT_SESSION_ABSOLUTE_TTL_SECONDS * 1000);
 
-    const session = await this.sessionRepo.create({
+    const session = await this.sessionRepo.issue({
       userId: input.userId,
       installationId: input.installationId,
       mlTenantId: input.mlTenantId,

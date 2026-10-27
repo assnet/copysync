@@ -16,7 +16,8 @@ export interface IExtensionSessionRepository {
   findByPrevTokenHash(prevTokenHash: string): Promise<ExtensionSession | null>;
   findByUserAndInstallation(userId: string, installationId: string): Promise<ExtensionSession | null>;
   findActiveByUserId(userId: string): Promise<ExtensionSession[]>;
-  create(input: CreateExtensionSessionInput): Promise<ExtensionSession>;
+  /** One session per (user, installation): re-linking replaces token and clears revocation. */
+  issue(input: CreateExtensionSessionInput): Promise<ExtensionSession>;
   rotateToken(id: string, newTokenHash: string, newExpiresAt: Date, graceUntil: Date): Promise<ExtensionSession>;
   slideExpiration(id: string, newExpiresAt: Date): Promise<void>;
   revoke(id: string): Promise<void>;

@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — extension (api 0.26.1)
+
+- **`extension.routes.ts`** — `POST /extension/session` lia `user.id` e `request.tenantId`, que não existem (`request.user.userId` / `request.tenantContext.tenantId`): 403 para todos e depois 500 no Prisma. Rotas agora usam os tipos do Fastify, sem `as any`.
+- **`PrismaExtensionSessionRepository.ts`** — `create` → `issue` (upsert por usuário+instalação). Revincular o mesmo navegador violava `@@unique([userId, installationId])` → 500.
+- **`lifecycle.ts`** (extensão) — evento sem `channel` obrigatório → 400.
+
 > **Estado do versionamento (2026-09-25)**: `api/package.json` e `app/package.json` estão em
 > `0.12.0`, mas a única TAG do repositório é `v0.2.0` e a última seção fechada aqui é `[0.2.0]`.
 > Tudo abaixo é trabalho acumulado desde então, atravessando várias versões dos `package.json`
