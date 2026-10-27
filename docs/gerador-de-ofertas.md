@@ -37,6 +37,21 @@ O link colado **é** o link de afiliado (o sistema não gera mais link). Após e
 Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos: `shopee.com.br`,
 `shope.ee`, `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`, `amazon.com.br`, `amzn.to`.
 
+## Geração automática de link ML (F4)
+
+Quando o link colado é um produto ML **sem** `matt_word` ou `/social/` e o tenant tem sessão da extensão sincronizada:
+
+1. `MercadoLivreAffiliateClient.createAffiliateLinks(cookies, [url], etiqueta)` chama a API interna do programa de afiliados
+2. Bootstrap: GET `/affiliate-program/link-builder` → cookies temporários (`_csrf`, `_d2id`, `_mldataSessionId`)
+3. Se tag não foi passada, resolve via GET `/affiliate-program/api/v2/stripe/user/tags` (campo `in_use`)
+4. POST `/affiliate-program/api/v2/affiliates/createLink` com `{ urls, tag }` → `{ urls: [{ short_url }] }`
+5. `short_url` vira o `affiliateUrl` da oferta, com `attributionVerified: true`
+
+Degradação graciosa: API indisponível, sessão expirada ou rate limit → `OFFER_LINK_NOT_AFFILIATE` como antes. O tenant
+pode sempre colar seu próprio link de afiliado — a geração automática é fallback, não obrigação.
+
+Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body ou headers.
+
 ## Dados do produto
 
 - Shopee: Affiliate Open API (`productOfferV2`) quando há credencial com secret; erro na API cai para a leitura da página.
@@ -93,7 +108,7 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 
 - Buscar URL fora da allowlist ou seguir redirect automático.
 - Logar corpo, headers, cookie `ssid`, assinatura ou segredo.
-- Gerar link de afiliado em nome do usuário: o link é sempre o dele.
+- Gerar link de afiliado sem sessão válida da extensão (a geração automática exige sessão do ML sincronizada).
 - Ligar o worker com banco de produção fora da Render.
 - Enviar sem passar por `OfferDispatch` com `notBefore`.
 

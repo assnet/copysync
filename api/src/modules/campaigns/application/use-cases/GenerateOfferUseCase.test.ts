@@ -44,6 +44,7 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
     expander: { expand: vi.fn(async (u: URL) => u) },
     credentials: { execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null) },
     shopee,
+    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null) },
     pageReader: { read: vi.fn().mockResolvedValue(PAGE) },
     imageFetcher: { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) },
     mediaStore: { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() },

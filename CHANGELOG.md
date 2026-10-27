@@ -23,6 +23,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### API (`api/`) — MercadoLivreAffiliateClient: geração automática de links de afiliado ML (`0.25.0`)
+
+Cliente da API interna do programa de afiliados do Mercado Livre (não documentada; requer sessão de navegador sincronizada pela extensão).
+
+- **`api/src/modules/campaigns/domain/contracts/IMercadoLivreAffiliateClient.ts`** — porta: `createAffiliateLinks` (batch até 20 URLs → short_url), `getActiveTag`
+- **`api/src/modules/campaigns/infrastructure/http/MercadoLivreAffiliateClient.ts`** — bootstrap (GET link-builder → cookies temporários `_csrf`, `_d2id`, `_mldataSessionId`), tags (`/affiliate-program/api/v2/stripe/user/tags`), createLink (`POST /affiliate-program/api/v2/affiliates/createLink`). Nunca loga cookies/body/headers. 8s timeout. Validação anti-injeção de cookie
+
+### Changed
+
+- **`api/src/modules/campaigns/application/use-cases/GenerateOfferUseCase.ts`** — quando URL colada é produto ML sem `matt_word` e o tenant tem sessão da extensão, gera link de afiliado automaticamente via `MercadoLivreAffiliateClient`. Degradação graciosa: falha na API ML → `OFFER_LINK_NOT_AFFILIATE` como antes
+- **`api/src/modules/campaigns/infrastructure/offersContainer.ts`** — wiring do `MercadoLivreAffiliateClient` no container
+
+---
+
 #### Painel (`app/`) — Feature Extensão: canal, wizard, configurações (`0.24.0`)
 
 Feature completa de gestão da extensão Chrome no painel.

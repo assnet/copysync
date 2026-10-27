@@ -2,6 +2,7 @@ import type { IEntitlementReader } from '../../domain/contracts/IEntitlementRead
 import type { IOfferRepository, CreateOfferInput } from '../../domain/contracts/IOfferRepository';
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
+import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
@@ -53,6 +54,7 @@ export interface GenerateOfferDeps {
   expander: IShortLinkExpander;
   credentials: IAffiliateCredentialResolver;
   shopee: IShopeeAffiliateClient;
+  mercadoLivre: IMercadoLivreAffiliateClient;
   pageReader: IProductPageReader;
   imageFetcher: IOfferImageFetcher;
   mediaStore: IOfferMediaStore;
@@ -110,12 +112,27 @@ export class GenerateOfferUseCase {
     const cred = await this.deps.credentials.execute(tenantId, provider);
     const check = this.checkOwnership(provider, source, final, cred);
     if (check === 'not_owned') throw new OfferLinkNotOwnedError(provider);
-    if (check === 'not_affiliate') throw new OfferLinkNotAffiliateError(provider);
+
+    let affiliateUrl = source.toString();
+    let attributionVerified = check === 'verified';
+
+    if (check === 'not_affiliate') {
+      if (provider === 'MERCADO_LIVRE' && cred?.session?.cookies) {
+        const generated = await this.generateMlAffiliateLink(cred, final);
+        if (generated) {
+          affiliateUrl = generated;
+          attributionVerified = true;
+        } else {
+          throw new OfferLinkNotAffiliateError(provider);
+        }
+      } else {
+        throw new OfferLinkNotAffiliateError(provider);
+      }
+    }
 
     // 4. Dados do produto (melhor esforço) + foto no store
     const data = await this.resolveProduct(provider, ref, final, cred);
     const imageUrl = data.imageSourceUrl ? await this.storeImage(data.imageSourceUrl) : null;
-    const affiliateUrl = source.toString();
 
     // 5. Texto (modelo ou IA) e grava
     const composed = await this.deps.texts.compose({
@@ -137,7 +154,7 @@ export class GenerateOfferUseCase {
       originalPriceCents: data.originalPriceCents,
       imageUrl,
       affiliateUrl,
-      attributionVerified: check === 'verified',
+      attributionVerified,
       text: composed.text,
       coupon,
       audience,
@@ -159,6 +176,25 @@ export class GenerateOfferUseCase {
       aiFallback: composed.aiFallback,
       ...(composed.aiErrorCode ? { aiErrorCode: composed.aiErrorCode } : {}),
     };
+  }
+
+  private async generateMlAffiliateLink(
+    cred: OfferAffiliateCredential,
+    productUrl: URL,
+  ): Promise<string | null> {
+    if (!cred.session?.cookies) return null;
+    try {
+      const result = await this.deps.mercadoLivre.createAffiliateLinks(
+        cred.session.cookies,
+        [productUrl.toString()],
+        cred.publicIdentifier || undefined,
+      );
+      return result.success[0]?.shortUrl ?? null;
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      logger.warn({ code: err.code, provider: 'MERCADO_LIVRE' }, 'ML affiliate link generation failed');
+      return null;
+    }
   }
 
   /** Confere URL colada e final juntas: qualquer identificador divergente entre elas é `not_owned`. */

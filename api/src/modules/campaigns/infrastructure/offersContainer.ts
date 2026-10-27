@@ -8,6 +8,7 @@ import { PrismaOfferDispatchRepository } from './repositories/PrismaOfferDispatc
 import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
 import { PrismaEntitlementReader } from './repositories/PrismaEntitlementReader';
 import { ShopeeAffiliateClient } from './http/ShopeeAffiliateClient';
+import { MercadoLivreAffiliateClient } from './http/MercadoLivreAffiliateClient';
 import { HttpShortLinkExpander } from './http/HttpShortLinkExpander';
 import { HttpOfferImageFetcher } from './http/HttpOfferImageFetcher';
 import { HttpProductPageReader } from './http/HttpProductPageReader';
@@ -56,6 +57,7 @@ const generate = lazy(() => new GenerateOfferUseCase({
   expander:     new HttpShortLinkExpander(),
   credentials:  credentials(),
   shopee:       new ShopeeAffiliateClient(),
+  mercadoLivre: new MercadoLivreAffiliateClient(),
   pageReader:   new HttpProductPageReader(),
   imageFetcher: new HttpOfferImageFetcher(),
   mediaStore:   mediaStore(),
