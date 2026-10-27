@@ -226,11 +226,10 @@ const envWithValidation = envSchema.refine(
   (e) => {
     if (e.NODE_ENV !== 'production') return true;
     if (!e.PANEL_URL) return false;
-    if (!e.EXTENSION_ORIGINS || e.EXTENSION_ORIGINS.trim() === '') return false;
     if (e.CORS_ORIGIN.trim() === '' || e.CORS_ORIGIN.trim() === '*') return false;
     return true;
   },
-  { message: 'Production requires PANEL_URL, EXTENSION_ORIGINS (non-empty) and explicit CORS_ORIGIN (not empty, not *)' },
+  { message: 'Production requires PANEL_URL and explicit CORS_ORIGIN (not empty, not *)' },
 );
 
 const envWithDerivedSchema = envWithValidation.transform((e) => ({
