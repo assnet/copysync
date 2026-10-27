@@ -5,7 +5,9 @@ import {
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined';
 import { settingsStrings } from '../strings';
+import { extensionStrings } from '@/features/extension/strings';
 
 const t = settingsStrings.layout;
 
@@ -17,6 +19,7 @@ const SETTINGS_NAV = [
     icon: <KeyOutlinedIcon fontSize="small" />,
   },
   { label: t.navAi, path: '/settings/ai', icon: <AutoAwesomeOutlinedIcon fontSize="small" /> },
+  { label: extensionStrings.nav.title, path: '/settings/extension', icon: <ExtensionOutlinedIcon fontSize="small" /> },
 ];
 
 export function SettingsLayout() {

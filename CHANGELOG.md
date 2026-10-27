@@ -23,6 +23,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Painel (`app/`) — Feature Extensão: canal, wizard, configurações (`0.24.0`)
+
+Feature completa de gestão da extensão Chrome no painel.
+
+- **`app/src/features/extension/channel/client.ts`** — cliente de canal `chrome.runtime.sendMessage` via `externally_connectable`; tenta IDs de `VITE_EXTENSION_IDS`, cache do ID ativo, timeout 3s
+- **`app/src/features/extension/hooks/useExtension.ts`** — hook principal: detecta extensão, handshake, status ML, credencial, connect, sync, disconnect
+- **`app/src/features/extension/services/extensionApi.ts`** — chamadas à API de extensão: issueSession, revokeSession, listSessions, getMlCredentialStatus, disconnectMl
+- **`app/src/features/extension/strings.ts`** — textos i18n pt-BR (settings, ml, wizard, errors)
+- **`app/src/features/extension/components/ExtensionSetupWizard.tsx`** — wizard 4 passos (detectar, vincular, sincronizar, concluir)
+- **`app/src/features/extension/components/ExtensionMlCard.tsx`** — card de status ML com sync, desconectar, aviso de expiração
+- **`app/src/features/extension/components/ExtensionStatusBadge.tsx`** — chip colorido por status da extensão
+- **`app/src/pages/settings/ExtensionSettingsPage.tsx`** — página Configurações › Extensão
+
+### Changed
+
+- **`app/src/features/settings/components/SettingsLayout.tsx`** — adicionado item "Extensão" na navegação de configurações
+- **`app/src/routes/AppRoutes.tsx`** — rota `/settings/extension`
+- **`app/src/contexts/AuthContext.tsx`** — logout explícito revoga sessão da extensão (`DELETE /api/extension/session`, best-effort)
+
+---
+
 #### Extensão Chrome (`extension/`) — v3.0.0: reescrita para modelo cookie-auth + channel (`3.0.0`)
 
 Reescrita completa da extensão do modelo Bearer-token/password-login para cookie-auth via painel.

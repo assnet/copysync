@@ -11,6 +11,7 @@ import { SettingsAccountPage } from '@/pages/settings/SettingsAccountPage';
 import { ChangePasswordPage } from '@/pages/settings/ChangePasswordPage';
 import { AffiliateCredentialsPage } from '@/pages/settings/AffiliateCredentialsPage';
 import { AiSettingsPage } from '@/pages/settings/AiSettingsPage';
+import { ExtensionSettingsPage } from '@/pages/settings/ExtensionSettingsPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
@@ -36,6 +37,7 @@ export function AppRoutes() {
             <Route path="account/password" element={<ChangePasswordPage />} />
             <Route path="affiliate-credentials" element={<AffiliateCredentialsPage />} />
             <Route path="ai" element={<AiSettingsPage />} />
+            <Route path="extension" element={<ExtensionSettingsPage />} />
           </Route>
           <Route element={<SuperAdminRoute />}>
             <Route path="/admin/ai" element={<AdminAiPage />} />

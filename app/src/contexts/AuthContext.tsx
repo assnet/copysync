@@ -64,6 +64,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL ?? '/api';
+      await fetch(`${baseUrl}/extension/session`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'x-client': 'web' },
+      });
+    } catch {
+      // Best-effort — don't block logout
+    }
+
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('authUser');
