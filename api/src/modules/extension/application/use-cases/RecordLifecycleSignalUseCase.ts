@@ -29,7 +29,9 @@ export class RecordLifecycleSignalUseCase {
         },
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      // P2002: evento repetido (idempotente). P2003: instalação ainda não vinculada — rota
+      // pública não cria instalação; o sinal é descartado em vez de virar 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2002' || err.code === 'P2003')) {
         return { created: false };
       }
       throw err;

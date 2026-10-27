@@ -622,6 +622,11 @@ Nunca deixar erro cru da engine subir para a API.
 * decorators apenas quando realmente fizer sentido
 * não transformar Fastify em Express disfarçado
 
+* hook async (`onRequest`/`preHandler`) que responde **sempre** `return reply.code(…).send(…)`.
+  `send` + `return;` deixa o Fastify seguir para o handler enquanto `onSend` async ainda
+  escreve a resposta → handler sem contexto + `ERR_HTTP_HEADERS_SENT` derruba o processo
+  (incidente 2026-10-27, `extensionAuthHook`). Alternativa: lançar `AppError`
+
 ## É proibido
 
 * lógica de negócio no handler

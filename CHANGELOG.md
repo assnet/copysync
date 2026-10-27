@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.29.2 (hotfix: API caindo em loop)
+
+- **`extensionAuthHook.ts`**, **`extensionRequestGuard.ts`** — hooks async respondiam 401/403 com `send` + `return;`. Com `onSend` async, `reply.sent` ainda é false quando o Fastify decide chamar o handler: heartbeat/`/me` rodavam sem sessão (TypeError) e respondiam de novo (`ERR_HTTP_HEADERS_SENT`, exceção não tratada → processo caía). Bug latente desde a F1; o `onSend` do `X-Server-Time` (0.29.1) alongou a escrita e fez a corrida acontecer sempre. Agora `return reply.code(…).send(…)`. Teste de regressão `extensionHooks.test.ts` reproduz a corrida.
+- **`RecordLifecycleSignalUseCase.ts`** — sinal de instalação ainda não vinculada (FK `P2003`) virava 500 na rota pública; agora é descartado.
+
 ### Added — app 0.29.0
 
 - **Padrão de ícones** — `lucide-react@1.55.0` + **`AppIcon.tsx`** com tokens de tamanho (`inline` 1.25em acompanha o texto em desktop/mobile; `sm`/`md`/`lg` em px). Decisão em **`docs/padrao-icones.md`** e regra no AGENTS.md.

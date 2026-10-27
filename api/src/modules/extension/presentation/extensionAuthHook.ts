@@ -22,11 +22,10 @@ declare module 'fastify' {
 export async function extensionAuthHook(
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<void> {
+): Promise<FastifyReply | void> {
   const token = parseExtSessionCookie(request);
   if (!token) {
-    reply.code(401).send({ success: false, error: { code: 'MISSING_EXT_SESSION', message: 'Extension session cookie required' } });
-    return;
+    return reply.code(401).send({ success: false, error: { code: 'MISSING_EXT_SESSION', message: 'Extension session cookie required' } });
   }
 
   const tokenHash = hashToken(token);
@@ -34,8 +33,7 @@ export async function extensionAuthHook(
   const result = await validator.execute(tokenHash);
 
   if (!result) {
-    reply.code(401).send({ success: false, error: { code: 'INVALID_EXT_SESSION', message: 'Extension session expired or revoked' } });
-    return;
+    return reply.code(401).send({ success: false, error: { code: 'INVALID_EXT_SESSION', message: 'Extension session expired or revoked' } });
   }
 
   request.extensionSession = {
