@@ -173,7 +173,12 @@ seguem num único processo.
 
 ### 5.1 Render (hoje)
 
-Serviço `copysync_api` em Docker, plano 1c-2g, disco em `/var/data`. Postgres **compartilhado
+Serviço `copysync_api` em Docker, plano 1c-2g, disco em `/var/data`. O `CMD` da imagem é
+`pnpm start:migrate` (`prisma migrate deploy` com retry → `node dist/app/server.js`): toda
+migration commitada em `api/prisma/migrations/` é aplicada no boot de cada deploy, sem Pre-Deploy
+Command no painel. Migration falhando = container não sobe = Render mantém a versão anterior.
+Incidente 2026-10-27: API 0.33 no ar com migration `offer_config_multi_session` não aplicada
+porque o `CMD` subia o servidor direto. Postgres **compartilhado
 com o PulsoSocial** (plano Basic-256mb em 2026-10-13): não aguenta auth state de 100 sessões
 e qualquer pico de um produto derruba o outro. Mínimo 1c-2g (US$ 40); separar em instâncias
 distintas antes de 300 sessões.

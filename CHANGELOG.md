@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — deploy (api 0.33.2)
+
+- **`api/Dockerfile`**, **`api/package.json`** — o container subia direto com `node dist/app/server.js` e nenhuma etapa rodava `prisma migrate deploy`: a API 0.33.x foi ao ar esperando `offer_generator_config_sessions`/`dispatchOrder` sem a migration `20261027200000_offer_config_multi_session` aplicada → "Não foi possível carregar a configuração do gerador". Novo script `start:migrate` (migrate deploy com retry → servidor) é o `CMD` da imagem; migration falhando impede o boot e a Render mantém a versão anterior.
+- **`app.ts`** — versão do OpenAPI lida do `package.json` em vez de `'0.24.0'` fixo.
+
 ### Fixed — sessions (app 0.38.2)
 
 - **`useSessionConnection.ts`** — o polling parava em `DISCONNECTED`/`FAILED`. Após ler o QR o WhatsApp reinicia o socket (515) e o status passa por `DISCONNECTED` antes de `CONNECTED`: o painel parava de consultar e ficava em "código expirou" com a sessão já conectada. Agora só `CONNECTED`/`LOGGED_OUT` param; `DISCONNECTED`/`PENDING` mostram "aguardando" em vez de "não concluída"; e expirado/falha nunca sobrepõem conectado (**`SessionConnectPanel.tsx`**).

@@ -843,6 +843,10 @@ A arquitetura deve permitir evolução para métricas em tempo real.
 * shutdown gracioso
 * nenhum boot escreve em massa no banco sem flag (`api/.env` aponta para produção) —
   ex.: `MEDIA_PENDING_RECOVERY_ENABLED`, ligada só na Render
+* migrations rodam no boot do container: `CMD pnpm start:migrate` no `api/Dockerfile`
+  (`prisma migrate deploy` com retry → servidor). Nunca trocar o `CMD` por `node dist/app/server.js`
+  nem depender de Pre-Deploy Command no painel da Render. Local: nunca rodar `start:migrate`/
+  `prisma:deploy` fora da Render (`api/.env` = produção)
 
 ---
 

@@ -36,4 +36,7 @@ COPY scripts ./scripts
 
 EXPOSE 3333
 
-CMD ["node", "dist/app/server.js"]
+# Migrations antes do servidor: `prisma migrate deploy` é idempotente e usa advisory lock no
+# Postgres, então é seguro em todo boot. Se falhar, o container não sobe e a Render mantém a
+# versão anterior no ar (deploy fica vermelho em vez de API quebrada com schema velho).
+CMD ["pnpm", "start:migrate"]

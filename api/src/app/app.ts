@@ -43,6 +43,16 @@ function getAllowedCorsOrigins(): string[] {
   return [...new Set(list)];
 }
 
+/** Versão exibida no OpenAPI vem do package.json (dist/app → ../../package.json; igual em src/app). */
+async function readPackageVersion(): Promise<string> {
+  try {
+    const raw = await fs.readFile(path.join(__dirname, '../../package.json'), 'utf8');
+    return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 export async function buildApp() {
   const allowedCorsOrigins = getAllowedCorsOrigins();
 
@@ -145,7 +155,7 @@ export async function buildApp() {
         title: 'CopySync API',
         description:
           'API REST para a plataforma CopySync — mensageria, CRM, automação e assistentes de IA.',
-        version: '0.24.0',
+        version: await readPackageVersion(),
         contact: { name: 'CopySync', email: 'dev@copysync.app' },
       },
       servers: [

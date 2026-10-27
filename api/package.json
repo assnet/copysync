@@ -1,12 +1,13 @@
 {
   "name": "waioprime-api",
-  "version": "0.33.1",
+  "version": "0.33.2",
   "description": "WaioPrime API — Fastify + TypeScript + Prisma + PostgreSQL",
   "private": true,
   "scripts": {
     "dev": "tsx watch --env-file=.env.dev src/app/server.ts --host",
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/app/server.js",
+    "start:migrate": "node scripts/prisma-migrate-deploy-with-retry.mjs && node dist/app/server.js",
     "restart": "pnpm prisma:generate && pnpm prisma:migrate && pnpm prisma:seed && node dist/app/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
