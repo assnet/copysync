@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Alert, Avatar, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
+  Alert, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import { GroupAvatar } from '../GroupChip';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
 import { offerService } from '@/services/offer.service';
 import type { SessionGroupItem } from '@/types/api.types';
@@ -11,12 +11,17 @@ import { offerStrings } from '../../strings';
 
 const t = offerStrings.wizard.groups;
 
+export interface SelectedGroup {
+  title: string | null;
+  avatarUrl: string | null;
+}
+
 interface Props {
   sessionId: string;
   /** id → título, mantido fora da lista para a seleção sobreviver à busca. */
-  selected: ReadonlyMap<string, string | null>;
+  selected: ReadonlyMap<string, SelectedGroup>;
   limit: number | null;
-  onToggle: (id: string, title: string | null) => void;
+  onToggle: (id: string, group: SelectedGroup) => void;
   onClear: () => void;
 }
 
@@ -35,7 +40,7 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
   const toggle = async (g: SessionGroupItem) => {
     const id = idOf(g);
     if (id) {
-      onToggle(id, g.title);
+      onToggle(id, { title: g.title, avatarUrl: g.avatarUrl });
       return;
     }
     setPendingJid(g.groupJid);
@@ -43,7 +48,7 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
     try {
       const { conversationId } = await offerService.ensureSessionGroup(sessionId, g.groupJid);
       setEnsured((prev) => new Map(prev).set(g.groupJid, conversationId));
-      onToggle(conversationId, g.title);
+      onToggle(conversationId, { title: g.title, avatarUrl: g.avatarUrl });
     } catch {
       setEnsureFailed(true);
     } finally {
@@ -126,9 +131,7 @@ export function ConfigGroupsStep({ sessionId, selected, limit, onToggle, onClear
                   onClick={() => void toggle(g)}
                   sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'flex-start', minHeight: 60 }}
                 >
-                  <Avatar sx={{ width: 36, height: 36, bgcolor: 'action.hover', color: 'text.secondary' }} aria-hidden>
-                    <GroupsOutlinedIcon fontSize="small" />
-                  </Avatar>
+                  <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
                   <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1, minWidth: 0 }} noWrap title={title}>
                     {title}
                   </Typography>

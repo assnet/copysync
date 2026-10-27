@@ -11,6 +11,7 @@ import type { OfferErrorView } from '../../utils/offerErrors';
 import { ConfigSessionStep } from './ConfigSessionStep';
 import { ConfigGroupsStep } from './ConfigGroupsStep';
 import { ConfigConfirmStep } from './ConfigConfirmStep';
+import type { SelectedGroup } from './ConfigGroupsStep';
 
 const t = offerStrings.wizard;
 
@@ -35,8 +36,8 @@ export function OfferConfigWizard({
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
   const [step, setStep] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(config?.sessionId ?? null);
-  const [selected, setSelected] = useState<Map<string, string | null>>(
-    () => new Map(groups.filter((g) => g.sessionId == null || g.sessionId === config?.sessionId).map((g) => [g.conversationId, g.title])),
+  const [selected, setSelected] = useState<Map<string, SelectedGroup>>(
+    () => new Map(groups.filter((g) => g.sessionId == null || g.sessionId === config?.sessionId).map((g) => [g.conversationId, { title: g.title, avatarUrl: g.avatarUrl }])),
   );
   const [intervalMin, setIntervalMin] = useState(config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min);
   const [intervalMax, setIntervalMax] = useState(config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max);
@@ -56,11 +57,11 @@ export function OfferConfigWizard({
     setError(null);
   };
 
-  const toggleGroup = (id: string, title: string | null) => {
+  const toggleGroup = (id: string, group: SelectedGroup) => {
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(id)) next.delete(id);
-      else if (groupLimit == null || next.size < groupLimit) next.set(id, title);
+      else if (groupLimit == null || next.size < groupLimit) next.set(id, group);
       return next;
     });
     setError(null);
@@ -123,7 +124,7 @@ export function OfferConfigWizard({
         {step === 2 && session && (
           <ConfigConfirmStep
             sessionName={session.name}
-            groupTitles={[...selected.values()].map((title) => title || t.groups.untitled)}
+            groups={[...selected.values()]}
             intervalMin={intervalMin}
             intervalMax={intervalMax}
             onInterval={(min, max) => { setIntervalMin(min); setIntervalMax(max); }}

@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns (api 0.32.0 · app 0.33.0)
+
+- **Foto dos grupos nos chips e na lista** — `avatarUrl` (de `chat_conversations.groupAvatarUrl`) em `OfferDestinationView`, no DTO/schema de `/config` e na busca de grupos (`mergeSessionGroups`). Painel: **`GroupChip.tsx`** (`GroupAvatar` + `GroupChip`: foto → iniciais → ícone) usado no resumo, no painel da oferta, no passo "Confirmar" e na lista do passo "Grupos". Seleção do assistente guarda `{ title, avatarUrl }`.
+
 ### Changed — campaigns (api 0.31.0 · app 0.32.0)
 
 - **Intervalo entre grupos em minutos** — API aceita 60–3600 s (antes 5–120 s), padrão 120–300 s; painel mostra 1–60 min inteiros (`OfferGeneratorConfigUseCases.ts`, `offerConfig.ts`, `ConfigConfirmStep.tsx`). **Breaking**: `PUT /campaigns/offers/config` com intervalo < 60 s passa a dar 400; configuração salva com valores antigos continua valendo no envio até ser salva de novo (o slider já mostra o valor corrigido).

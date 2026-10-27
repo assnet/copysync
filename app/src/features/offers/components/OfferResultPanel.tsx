@@ -17,6 +17,7 @@ import { AUDIENCE_ICONS, OFFER_AUDIENCES, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN
 import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
+import { GroupChip } from './GroupChip';
 
 const t = offerStrings.actions;
 const MAX_CHIPS = 6;
@@ -261,7 +262,7 @@ export function OfferResultPanel(props: Props) {
             <Box>
               <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 0.75 }}>{t.destinations}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {shown.map((g) => <Chip key={g.conversationId} size="small" label={g.title || untitled} sx={{ maxWidth: 220 }} />)}
+                {shown.map((g) => <GroupChip key={g.conversationId} title={g.title} avatarUrl={g.avatarUrl} untitled={untitled} sx={{ maxWidth: 220 }} />)}
                 {rest > 0 && (
                   <Tooltip title={groups.slice(MAX_CHIPS).map((g) => g.title || untitled).join(', ')} arrow>
                     <Chip size="small" variant="outlined" label={t.moreGroups(rest)} tabIndex={0} />

@@ -11,6 +11,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Espera/cooldown com fim conhecido | `CooldownBar` + `serverNow()` | `LinearProgress` com `setInterval` |
 | Ícone | `AppIcon` (Lucide) | emoji, `@mui/icons-material` em tela nova |
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
+| Grupo de WhatsApp em lista/chip | `GroupAvatar` / `GroupChip` (`features/offers/components/GroupChip.tsx`): foto, senão iniciais, senão ícone | `Chip` só com texto; ícone genérico quando há foto |
 
 ## Switch (padrão iOS)
 

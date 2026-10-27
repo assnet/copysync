@@ -4,6 +4,7 @@ import PhoneIphoneOutlinedIcon from '@mui/icons-material/PhoneIphoneOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import type { OfferConfigGroup, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
+import { GroupChip } from './GroupChip';
 
 const t = offerStrings.summary;
 const MAX_CHIPS = 4;
@@ -47,7 +48,7 @@ export function OfferConfigSummary({ session, groups, onEdit }: Props) {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', minWidth: 0, flex: '1 1 240px' }}>
         <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, mr: 0.5 }}>{t.groups(groups.length)}</Typography>
         {shown.map((g) => (
-          <Chip key={g.conversationId} size="small" label={g.title || untitled} sx={{ maxWidth: 200 }} />
+          <GroupChip key={g.conversationId} title={g.title} avatarUrl={g.avatarUrl} untitled={untitled} sx={{ maxWidth: 200 }} />
         ))}
         {rest > 0 && (
           <Tooltip title={groups.slice(MAX_CHIPS).map((g) => g.title || untitled).join(', ')} arrow>

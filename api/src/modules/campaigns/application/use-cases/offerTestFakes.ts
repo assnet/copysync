@@ -168,7 +168,7 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
     return (this.selected.get(tenantId) ?? [])
       .map((id) => this.conversations.find((c) => c.id === id && c.tenantId === tenantId))
       .filter((c): c is FakeConversation => !!c)
-      .map((c) => ({ conversationId: c.id, title: c.title ?? c.id, isGroup: c.isGroup, sessionId: c.sessionId }));
+      .map((c) => ({ conversationId: c.id, title: c.title ?? c.id, avatarUrl: null, isGroup: c.isGroup, sessionId: c.sessionId }));
   }
   async save(input: SaveOfferGeneratorConfigInput) {
     this.saves++;
@@ -183,7 +183,7 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
   async listSessionGroupConversations(tenantId: string, sessionId: string) {
     return this.conversations
       .filter((c) => c.tenantId === tenantId && c.sessionId === sessionId && c.isGroup && c.groupJid)
-      .map((c) => ({ conversationId: c.id, groupJid: c.groupJid!, title: c.title ?? null }));
+      .map((c) => ({ conversationId: c.id, groupJid: c.groupJid!, title: c.title ?? null, avatarUrl: null }));
   }
 
   async filterSessionGroups(tenantId: string, sessionId: string, ids: string[]) {

@@ -1,5 +1,7 @@
 import { Box, Chip, Divider, Stack, Typography } from '@mui/material';
 import { RangeSlider } from '@/components';
+import { GroupChip } from '../GroupChip';
+import type { SelectedGroup } from './ConfigGroupsStep';
 import { offerStrings } from '../../strings';
 import { INTERVAL_MAX_SECONDS, INTERVAL_MIN_SECONDS, INTERVAL_STEP_SECONDS, intervalRisk, intervalValid } from '../../utils/offerConfig';
 
@@ -8,18 +10,18 @@ const MAX_CHIPS = 12;
 
 interface Props {
   sessionName: string;
-  groupTitles: string[];
+  groups: SelectedGroup[];
   intervalMin: number;
   intervalMax: number;
   onInterval: (min: number, max: number) => void;
 }
 
 /** Passo 3: resumo + intervalo entre grupos. */
-export function ConfigConfirmStep({ sessionName, groupTitles, intervalMin, intervalMax, onInterval }: Props) {
+export function ConfigConfirmStep({ sessionName, groups, intervalMin, intervalMax, onInterval }: Props) {
   const invalid = !intervalValid(intervalMin, intervalMax);
   const risk = intervalRisk(intervalMin, intervalMax);
-  const shown = groupTitles.slice(0, MAX_CHIPS);
-  const rest = groupTitles.length - shown.length;
+  const shown = groups.slice(0, MAX_CHIPS);
+  const rest = groups.length - shown.length;
 
   return (
     <Stack spacing={2.5} divider={<Divider flexItem />}>
@@ -30,14 +32,14 @@ export function ConfigConfirmStep({ sessionName, groupTitles, intervalMin, inter
         </Box>
         <Box>
           <Typography variant="caption" color="text.secondary">{t.total}</Typography>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{groupTitles.length}</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{groups.length}</Typography>
         </Box>
       </Box>
 
       <Box>
         <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1 }}>{t.groups}</Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-          {shown.map((title, i) => <Chip key={`${title}-${i}`} size="small" label={title} sx={{ maxWidth: 240 }} />)}
+          {shown.map((g, i) => <GroupChip key={`${g.title}-${i}`} title={g.title} avatarUrl={g.avatarUrl} untitled={offerStrings.wizard.groups.untitled} sx={{ maxWidth: 240 }} />)}
           {rest > 0 && <Chip size="small" variant="outlined" label={t.more(rest)} />}
         </Box>
       </Box>

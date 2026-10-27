@@ -5,6 +5,7 @@ export interface SessionGroupConversation {
   conversationId: string;
   groupJid: string;
   title: string | null;
+  avatarUrl: string | null;
 }
 
 export interface SaveOfferGeneratorConfigInput {

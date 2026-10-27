@@ -277,6 +277,7 @@ export interface OfferUsage {
 export interface OfferConfigGroup {
   conversationId: string;
   title: string | null;
+  avatarUrl: string | null;
   sessionId: string | null;
 }
 
@@ -408,6 +409,7 @@ export interface UpsertTenantAiCredentialRequest {
 export interface SessionGroupItem {
   groupJid: string;
   title: string | null;
+  avatarUrl: string | null;
   conversationId: string | null;
 }
 

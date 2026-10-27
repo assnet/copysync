@@ -36,8 +36,8 @@ describe('Offer generator config', () => {
     const out = await s.save.execute({ ...base, conversationIds: ['g1', 'g2', 'g1'] });
     expect(out).toMatchObject({ sessionId: 's1', configured: true, groupLimit: null });
     expect(out.groups).toEqual([
-      { id: 'g1', title: 'Grupo 1', sessionId: 's1' },
-      { id: 'g2', title: 'g2', sessionId: 's1' },
+      { id: 'g1', title: 'Grupo 1', avatarUrl: null, sessionId: 's1' },
+      { id: 'g2', title: 'g2', avatarUrl: null, sessionId: 's1' },
     ]);
   });
 

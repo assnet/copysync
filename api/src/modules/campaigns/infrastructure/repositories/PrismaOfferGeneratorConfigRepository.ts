@@ -32,12 +32,13 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
       orderBy: { createdAt: 'asc' },
       select: {
         conversationId: true,
-        conversation: { select: { isGroup: true, groupName: true, sessionId: true } },
+        conversation: { select: { isGroup: true, groupName: true, groupAvatarUrl: true, sessionId: true } },
       },
     });
     return rows.map((r) => ({
       conversationId: r.conversationId,
       title: r.conversation.groupName ?? null,
+      avatarUrl: r.conversation.groupAvatarUrl ?? null,
       isGroup: r.conversation.isGroup,
       sessionId: r.conversation.sessionId,
     }));
@@ -80,9 +81,9 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
     const rows = await this.prisma.chatConversation.findMany({
       where: { tenantId, sessionId, isGroup: true, groupJid: { not: null }, status: { not: 'CLOSED' } },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, groupJid: true, groupName: true },
+      select: { id: true, groupJid: true, groupName: true, groupAvatarUrl: true },
     });
-    return rows.map((r) => ({ conversationId: r.id, groupJid: r.groupJid!, title: r.groupName }));
+    return rows.map((r) => ({ conversationId: r.id, groupJid: r.groupJid!, title: r.groupName, avatarUrl: r.groupAvatarUrl }));
   }
 
   async filterSessionGroups(tenantId: string, sessionId: string, ids: string[]): Promise<string[]> {

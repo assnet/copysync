@@ -17,7 +17,7 @@ export interface OfferGeneratorConfigDTO {
   sessionId: string | null;
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
-  groups: { id: string; title: string | null; sessionId: string | null }[];
+  groups: { id: string; title: string | null; avatarUrl: string | null; sessionId: string | null }[];
   /** Entitlement `broadcast_groups`; null = sem limite do plano. */
   groupLimit: number | null;
   /** false = tenant nunca salvou (valores padrão). */
@@ -38,7 +38,7 @@ interface Deps {
 }
 
 function toGroups(views: OfferDestinationView[]): OfferGeneratorConfigDTO['groups'] {
-  return views.map((v) => ({ id: v.conversationId, title: v.title, sessionId: v.sessionId }));
+  return views.map((v) => ({ id: v.conversationId, title: v.title, avatarUrl: v.avatarUrl, sessionId: v.sessionId }));
 }
 
 /** Configuração atual (GEN-01). Sem configuração: padrões, sem sessão nem grupos. */

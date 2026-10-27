@@ -122,7 +122,7 @@ const offerSchema = {
 
 const configGroupSchema = {
   type: 'object',
-  properties: { id: { type: 'string' }, title: nullableString, sessionId: nullableString },
+  properties: { id: { type: 'string' }, title: nullableString, avatarUrl: nullableString, sessionId: nullableString },
 } as const;
 
 const aiFlags = { aiFallback: { type: 'boolean' }, aiErrorCode: { type: 'string' } } as const;
@@ -190,6 +190,7 @@ export const sessionGroupsResponse = envelope({
         properties: {
           groupJid: { type: 'string' },
           title: nullableString,
+          avatarUrl: nullableString,
           conversationId: nullableString,
         },
       },

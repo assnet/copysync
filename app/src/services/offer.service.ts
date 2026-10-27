@@ -80,7 +80,7 @@ interface OfferConfigApiDto {
   sessionId: string | null;
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
-  groups: { id: string; title: string | null; sessionId: string | null }[];
+  groups: { id: string; title: string | null; avatarUrl?: string | null; sessionId: string | null }[];
   groupLimit: number | null;
   configured: boolean;
 }
@@ -90,7 +90,7 @@ function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
     config: dto.sessionId
       ? { sessionId: dto.sessionId, intervalMinSeconds: dto.intervalMinSeconds, intervalMaxSeconds: dto.intervalMaxSeconds }
       : null,
-    groups: dto.groups.map((g) => ({ conversationId: g.id, title: g.title, sessionId: g.sessionId })),
+    groups: dto.groups.map((g) => ({ conversationId: g.id, title: g.title, avatarUrl: g.avatarUrl ?? null, sessionId: g.sessionId })),
     groupLimit: dto.groupLimit,
   };
 }
