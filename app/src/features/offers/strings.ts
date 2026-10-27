@@ -68,8 +68,15 @@ export const offerStrings = {
       intervalHelper: 'Uma pausa aleatória entre um grupo e outro deixa o envio mais natural.',
       min: 'Mínimo',
       max: 'Máximo',
-      seconds: (n: number) => `${n} s`,
-      intervalError: (min: number, max: number) => `Use valores entre ${min} e ${max} segundos, com o mínimo menor ou igual ao máximo.`,
+      minutes: (seconds: number) => `${Math.round(seconds / 60)} min`,
+      intervalError: (min: number, max: number) => `Use valores entre ${min / 60} e ${max / 60} minutos, com o mínimo menor ou igual ao máximo.`,
+      riskAria: 'Nível de risco do intervalo',
+      risk: {
+        high: 'Alto risco',
+        elevated: 'Risco elevado',
+        moderate: 'Risco moderado',
+        safe: 'Seguro',
+      } satisfies Record<import('./utils/offerConfig').IntervalRiskLevel, string>,
       more: (n: number) => `+${n}`,
     },
   },
@@ -196,7 +203,7 @@ export const offerStrings = {
       [
         missingLink ? 'Atenção: o texto não contém o seu link de afiliado.' : null,
         count > 1
-          ? `A oferta sai para um grupo de cada vez, com ${min} a ${max} segundos entre cada envio.`
+          ? `A oferta sai para um grupo de cada vez, com ${Math.round(min / 60)} a ${Math.round(max / 60)} minutos entre cada envio.`
           : 'A oferta é enviada agora.',
         mentionAll ? 'Todos os membros serão marcados.' : null,
         dirty ? 'Alterações não salvas são salvas antes do envio.' : null,
@@ -214,7 +221,8 @@ export const offerStrings = {
     nextSendAria: 'Tempo até o próximo envio',
     nextSendDone: 'Enviando…',
     nextSendAt: (time: string) => `Envio previsto às ${time}`,
-    remaining: (seconds: number) => `${seconds} s`,
+    remaining: (seconds: number) =>
+      seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds} s`,
     status: {
       QUEUED: 'Na fila',
       SENDING: 'Enviando',

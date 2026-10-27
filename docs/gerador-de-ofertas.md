@@ -21,7 +21,7 @@ Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/feat
 
 `GET/PUT /campaigns/offers/config` `{ sessionId, intervalMinSeconds, intervalMaxSeconds, conversationIds }`. Sessão do
 tenant; só grupos dessa sessão; total ≤ entitlement `broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com
-`meta.key='broadcast_groups'`); 5 ≤ min ≤ max ≤ 120 s. Config e destinos gravam numa transação. Os destinos usados no
+`meta.key='broadcast_groups'`); 60 ≤ min ≤ max ≤ 3600 s (painel: 1–60 min inteiros; padrão 2–5 min). Config e destinos gravam numa transação. Os destinos usados no
 envio são os grupos da configuração **no momento do envio**.
 
 ## Link do usuário e verificação de dono
@@ -96,6 +96,7 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 - Tick de 2 s, `claimDue` com `FOR UPDATE SKIP LOCKED` + `claimToken`; `touchClaim` antes de enviar; `releaseStale` só sem `chatMessageId`; timeout 60 s → `SEND_TIMEOUT`.
 - **Marcar todos**: participantes via `getGroupParticipants`; JIDs em `mentions` (menção oculta). Participante só com LID (sem telefone) não é mencionado.
 - **Grupos disponíveis** (`GET /campaigns/offers/config/groups?sessionId&search`): vêm do WhatsApp via `IMessagingEngine.listParticipatingGroups` (todos os grupos de que a sessão participa, não só os com mensagem no chat), cruzados com as conversas existentes (`mergeSessionGroups`, regra pura; busca sem acento/caixa). Sessão fora do ar → `partial: true` e só os grupos que o chat conhece. Marcar grupo sem conversa chama `POST …/config/groups/ensure` (só grupo da sessão), que cria a conversa no formato da ingestão (`groupJid` sem `@g.us`); listar nunca cria. Conversa sem mensagem fica no fim da lista do chat (`lastMessageAt` nulls last). Cache de 60 s por sessão no adapter Baileys.
+- **Termômetro do intervalo** (`utils/offerConfig.ts#intervalRisk`, só painel): score pela MÉDIA da pausa, curva em raiz, 0 em 1 min e 1 a partir de 10 min de média (`INTERVAL_SAFE_MEAN_SECONDS`); níveis <0,25 alto risco, <0,5 elevado, <0,75 moderado, senão seguro. Renderizado pelo `RangeSlider` (`status`): cor contínua vermelho→âmbar→verde na faixa e rótulo centralizado. Não é regra da API: é orientação de UX.
 - **Espera até o próximo envio**: barra de energia (`CooldownBar`) no card "Envio". Janela = `notBefore` do envio anterior → `notBefore` do próximo QUEUED (`utils/dispatchCooldown.ts`), ou seja, o intervalo sorteado entre mínimo e máximo. Relógio do servidor via `X-Server-Time`; zerada mostra "Enviando…" até o polling trazer o novo estado.
 - **Simular digitação** (`simulateTyping` + `typingSeconds`, padrão 15 s, 1–30): `ChatOfferMessageSender` manda `sendPresence('composing')` a cada 8 s (o WhatsApp apaga em ~10 s), espera o tempo escolhido, manda `paused` e envia — texto ou foto. Melhor esforço: falha na presença envia na hora. O worker soma o tempo de digitação ao timeout de 60 s. Teto de 30 s em `campaigns/domain/offerTyping.ts` (o painel espelha em `utils/offerConfig.ts`). Não é entitlement de plano.
 - Flag **`OFFER_DISPATCH_WORKER_ENABLED`** (padrão `false`; ligar só na Render — `api/.env` e `.env.dev` apontam para o banco real).

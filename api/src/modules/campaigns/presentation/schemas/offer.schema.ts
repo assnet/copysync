@@ -58,7 +58,7 @@ export const regenerateOfferBodySchema = {
   additionalProperties: false,
 } as const;
 
-/** Intervalo: 5–120 s no schema; `min ≤ max` e plano no use case. */
+/** Intervalo: 60–3600 s (1–60 min) no schema; `min ≤ max` e plano no use case. */
 export const saveConfigBodySchema = {
   type: 'object',
   required: ['sessionId', 'intervalMinSeconds', 'intervalMaxSeconds', 'conversationIds'],

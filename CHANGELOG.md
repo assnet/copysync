@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — campaigns (api 0.31.0 · app 0.32.0)
+
+- **Intervalo entre grupos em minutos** — API aceita 60–3600 s (antes 5–120 s), padrão 120–300 s; painel mostra 1–60 min inteiros (`OfferGeneratorConfigUseCases.ts`, `offerConfig.ts`, `ConfigConfirmStep.tsx`). **Breaking**: `PUT /campaigns/offers/config` com intervalo < 60 s passa a dar 400; configuração salva com valores antigos continua valendo no envio até ser salva de novo (o slider já mostra o valor corrigido).
+- **Termômetro de risco no `RangeSlider`** (`status`): cor da faixa e rótulo central animados pela média do intervalo (`intervalRisk`, com teste); "Alto risco" pulsa. Textos de confirmação e contagem regressiva em minutos (`m:ss`).
+
 ### Added — app 0.31.0
 
 - **`RangeSlider.tsx`** (`components/`) — faixa mínimo–máximo em barra com dois cursores arrastáveis; valores nos extremos acompanham o arraste, limites da escala abaixo, `minDistance`, teclado e `aria-valuetext`. Regra `clampRange` pura e testada. **`ConfigConfirmStep.tsx`**: intervalo entre grupos usa o slider no lugar de dois campos numéricos.

@@ -21,13 +21,13 @@ function setup(entitlements: Record<string, unknown> = {}) {
   return { configs, get: new GetOfferGeneratorConfigUseCase(deps), save: new SaveOfferGeneratorConfigUseCase(deps) };
 }
 
-const base = { tenantId: TENANT, sessionId: 's1', intervalMinSeconds: 8, intervalMaxSeconds: 15 };
+const base = { tenantId: TENANT, sessionId: 's1', intervalMinSeconds: 120, intervalMaxSeconds: 300 };
 
 describe('Offer generator config', () => {
   it('sem configuração: padrões, sem grupos, limite do plano', async () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
-      sessionId: null, intervalMinSeconds: 8, intervalMaxSeconds: 15, groups: [], groupLimit: 5, configured: false,
+      sessionId: null, intervalMinSeconds: 120, intervalMaxSeconds: 300, groups: [], groupLimit: 5, configured: false,
     });
   });
 
@@ -65,10 +65,10 @@ describe('Offer generator config', () => {
   });
 
   it.each([
-    [4, 10, 'intervalMinSeconds'],
-    [10, 121, 'intervalMaxSeconds'],
-    [20, 10, 'intervalMaxSeconds'],
-    [8.5, 10, 'intervalMinSeconds'],
+    [59, 600, 'intervalMinSeconds'],
+    [600, 3601, 'intervalMaxSeconds'],
+    [1200, 600, 'intervalMaxSeconds'],
+    [90.5, 600, 'intervalMinSeconds'],
   ])('intervalo %s–%s → OFFER_INVALID_INPUT (%s)', async (min, max, field) => {
     const s = setup();
     await expect(
@@ -79,7 +79,7 @@ describe('Offer generator config', () => {
   it('min = max é válido; lista vazia limpa os grupos', async () => {
     const s = setup();
     s.configs.selected.set(TENANT, ['g1']);
-    const out = await s.save.execute({ ...base, intervalMinSeconds: 10, intervalMaxSeconds: 10, conversationIds: [] });
+    const out = await s.save.execute({ ...base, intervalMinSeconds: 600, intervalMaxSeconds: 600, conversationIds: [] });
     expect(out.groups).toEqual([]);
   });
 });

@@ -55,3 +55,13 @@ describe('RangeSlider', () => {
     expect(onChange).toHaveBeenLastCalledWith([15, 16]);
   });
 });
+
+describe('RangeSlider com status (termômetro)', () => {
+  it('mostra o rótulo centralizado como status acessível', () => {
+    render(
+      <RangeSlider value={[120, 300]} min={60} max={3600} step={60} ariaLabel="Intervalo" onChange={() => undefined}
+        status={{ score: 0.3, label: 'Risco elevado', ariaLabel: 'Nível de risco do intervalo' }} />,
+    );
+    expect(screen.getByRole('status', { name: 'Nível de risco do intervalo' })).toHaveTextContent('Risco elevado');
+  });
+});

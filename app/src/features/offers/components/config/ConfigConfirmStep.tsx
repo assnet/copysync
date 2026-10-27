@@ -1,7 +1,7 @@
 import { Box, Chip, Divider, Stack, Typography } from '@mui/material';
 import { RangeSlider } from '@/components';
 import { offerStrings } from '../../strings';
-import { INTERVAL_MAX_SECONDS, INTERVAL_MIN_SECONDS, intervalValid } from '../../utils/offerConfig';
+import { INTERVAL_MAX_SECONDS, INTERVAL_MIN_SECONDS, INTERVAL_STEP_SECONDS, intervalRisk, intervalValid } from '../../utils/offerConfig';
 
 const t = offerStrings.wizard.confirm;
 const MAX_CHIPS = 12;
@@ -17,6 +17,7 @@ interface Props {
 /** Passo 3: resumo + intervalo entre grupos. */
 export function ConfigConfirmStep({ sessionName, groupTitles, intervalMin, intervalMax, onInterval }: Props) {
   const invalid = !intervalValid(intervalMin, intervalMax);
+  const risk = intervalRisk(intervalMin, intervalMax);
   const shown = groupTitles.slice(0, MAX_CHIPS);
   const rest = groupTitles.length - shown.length;
 
@@ -49,11 +50,13 @@ export function ConfigConfirmStep({ sessionName, groupTitles, intervalMin, inter
             value={[intervalMin, intervalMax]}
             min={INTERVAL_MIN_SECONDS}
             max={INTERVAL_MAX_SECONDS}
-            minDistance={1}
+            step={INTERVAL_STEP_SECONDS}
+            minDistance={INTERVAL_STEP_SECONDS}
             ariaLabel={t.interval}
             minLabel={t.min}
             maxLabel={t.max}
-            formatValue={t.seconds}
+            formatValue={t.minutes}
+            status={{ score: risk.score, label: t.risk[risk.level], ariaLabel: t.riskAria }}
             error={invalid}
             onChange={([min, max]) => onInterval(min, max)}
           />

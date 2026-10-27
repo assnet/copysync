@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectStore, linkProblem } from './offerStore';
-import { intervalValid } from './offerConfig';
+import { intervalRisk, intervalValid } from './offerConfig';
 import { toOfferError } from './offerErrors';
 
 describe('detectStore', () => {
@@ -30,11 +30,20 @@ describe('linkProblem', () => {
 });
 
 describe('intervalValid', () => {
-  it('respeita 5 ≤ min ≤ max ≤ 120', () => {
-    expect(intervalValid(8, 15)).toBe(true);
-    expect(intervalValid(4, 15)).toBe(false);
-    expect(intervalValid(20, 10)).toBe(false);
-    expect(intervalValid(10, 121)).toBe(false);
+  it('respeita 60 ≤ min ≤ max ≤ 3600 (1–60 min)', () => {
+    expect(intervalValid(120, 300)).toBe(true);
+    expect(intervalValid(59, 300)).toBe(false);
+    expect(intervalValid(1200, 600)).toBe(false);
+    expect(intervalValid(600, 3601)).toBe(false);
+  });
+
+  it('termômetro: média perto de 1 min = alto risco; média ≥ 10 min = seguro; curva monotônica', () => {
+    expect(intervalRisk(60, 60)).toMatchObject({ score: 0, level: 'high' });
+    expect(intervalRisk(600, 600).level).toBe('safe');
+    expect(intervalRisk(3000, 3600)).toMatchObject({ score: 1, level: 'safe' });
+    expect(intervalRisk(120, 300).level).toBe('moderate');
+    const scores = [[60, 120], [120, 300], [300, 600], [600, 900]].map(([a, b]) => intervalRisk(a!, b!).score);
+    expect([...scores].sort((x, y) => x - y)).toEqual(scores);
   });
 });
 

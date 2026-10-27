@@ -27,7 +27,9 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
   os limites da escala aparecem abaixo. Teclado: setas movem 1 passo; `aria-valuetext` com
   unidade.
 - `minDistance` impede cruzar; `clampRange` (pura) é a regra, testada.
-- `formatValue` com unidade (`8 s`, `R$ 10`). Largura: limitar o pai (`maxWidth`) em telas
+- `status` (opcional) vira termômetro: `score` 0–1 colore faixa, cursores e um rótulo centralizado
+  (`label`, `role="status"`); quem chama calcula o score com uma regra pura da feature.
+- `formatValue` com unidade (`8 min`, `R$ 10`). Largura: limitar o pai (`maxWidth`) em telas
   largas; no celular ocupa a linha.
 
 ## CooldownBar

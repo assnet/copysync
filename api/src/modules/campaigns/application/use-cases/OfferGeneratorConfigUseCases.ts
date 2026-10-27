@@ -8,9 +8,10 @@ import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
 export const OFFER_GROUPS_HARD_MAX = 200;
 export const BROADCAST_GROUPS = 'broadcast_groups';
-export const OFFER_INTERVAL_MIN_SECONDS = 5;
-export const OFFER_INTERVAL_MAX_SECONDS = 120;
-export const DEFAULT_INTERVAL = { min: 8, max: 15 } as const;
+/** Intervalo entre grupos em segundos; o painel opera em minutos inteiros (1–60). */
+export const OFFER_INTERVAL_MIN_SECONDS = 60;
+export const OFFER_INTERVAL_MAX_SECONDS = 3600;
+export const DEFAULT_INTERVAL = { min: 120, max: 300 } as const;
 
 export interface OfferGeneratorConfigDTO {
   sessionId: string | null;
@@ -105,11 +106,11 @@ function validateInterval(min: number, max: number): void {
     Number.isInteger(v) && v >= OFFER_INTERVAL_MIN_SECONDS && v <= OFFER_INTERVAL_MAX_SECONDS;
   if (!ok(min)) {
     throw new OfferInvalidInputError(
-      `Interval must be ${OFFER_INTERVAL_MIN_SECONDS}–${OFFER_INTERVAL_MAX_SECONDS} s`,
+      `Interval must be ${OFFER_INTERVAL_MIN_SECONDS}–${OFFER_INTERVAL_MAX_SECONDS} s (1–60 min)`,
       'intervalMinSeconds',
     );
   }
   if (!ok(max) || max < min) {
-    throw new OfferInvalidInputError('Max interval must be ≥ min and ≤ 120 s', 'intervalMaxSeconds');
+    throw new OfferInvalidInputError(`Max interval must be ≥ min and ≤ ${OFFER_INTERVAL_MAX_SECONDS} s (60 min)`, 'intervalMaxSeconds');
   }
 }
