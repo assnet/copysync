@@ -8,3 +8,5 @@ export { CooldownBar } from './CooldownBar';
 export type { CooldownBarProps, CooldownTime } from './CooldownBar';
 export { AppIcon, APP_ICON_SIZES } from './AppIcon';
 export type { AppIconProps, AppIconSize } from './AppIcon';
+export { RangeSlider, clampRange } from './RangeSlider';
+export type { RangeSliderProps, RangeValue } from './RangeSlider';

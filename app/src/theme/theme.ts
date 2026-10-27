@@ -56,6 +56,52 @@ export function buildTheme(mode: PaletteMode) {
         },
       },
 
+      // Toggle no padrão iOS em todo o painel (docs/padrao-ui-painel.md): trilho 44×26 que
+      // fica verde quando ligado, bolinha branca com sombra, sem ripple. Vale para todo
+      // <Switch> sem prop extra; não estilizar switch por tela.
+      MuiSwitch: {
+        defaultProps: { disableRipple: true },
+        styleOverrides: {
+          root: {
+            width: 44,
+            height: 26,
+            padding: 0,
+            overflow: 'visible',
+            // Sem o padding padrão do MUI, o rótulo encosta: espaço só quando há rótulo ao lado
+            '.MuiFormControlLabel-root > &': { marginRight: 10 },
+            '.MuiFormControlLabel-labelPlacementStart > &': { marginRight: 0, marginLeft: 10 },
+          },
+          switchBase: {
+            padding: 2,
+            transitionDuration: '220ms',
+            '&.Mui-checked': {
+              transform: 'translateX(18px)',
+              color: '#fff',
+              '& + .MuiSwitch-track': { backgroundColor: '#22c55e', opacity: 1, border: 0 },
+              '&.Mui-disabled + .MuiSwitch-track': { opacity: 0.45 },
+            },
+            '&.Mui-focusVisible .MuiSwitch-thumb': {
+              boxShadow: '0 0 0 3px rgba(79,112,224,0.45), 0 2px 4px rgba(0,0,0,0.25)',
+            },
+            '&.Mui-disabled .MuiSwitch-thumb': { color: isDark ? '#b4b8c4' : '#f4f4f5' },
+            '&.Mui-disabled + .MuiSwitch-track': { opacity: isDark ? 0.3 : 0.5 },
+          },
+          thumb: {
+            boxSizing: 'border-box',
+            width: 22,
+            height: 22,
+            color: '#fff',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.25), 0 0 1px rgba(0,0,0,0.2)',
+          },
+          track: {
+            borderRadius: 13,
+            backgroundColor: isDark ? '#3a3d48' : '#e5e7eb',
+            opacity: 1,
+            transition: 'background-color 220ms',
+          },
+        },
+      },
+
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {

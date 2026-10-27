@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.31.0
+
+- **`RangeSlider.tsx`** (`components/`) — faixa mínimo–máximo em barra com dois cursores arrastáveis; valores nos extremos acompanham o arraste, limites da escala abaixo, `minDistance`, teclado e `aria-valuetext`. Regra `clampRange` pura e testada. **`ConfigConfirmStep.tsx`**: intervalo entre grupos usa o slider no lugar de dois campos numéricos.
+- **`theme.ts`** — `<Switch>` no padrão iOS em todo o painel (trilho verde ligado, bolinha branca com sombra, sem ripple, foco visível, claro/escuro), via override `MuiSwitch`: nenhuma tela muda.
+- **`docs/padrao-ui-painel.md`** — tabela caso → componente (switch, faixa, cooldown, ícone, confirmação) + regra no AGENTS.md.
+
 ### Fixed — campaigns (api 0.30.0 · app 0.30.0)
 
 - **Busca de grupos trazia só parte dos grupos** — a configuração do gerador listava `chat_conversations` (50 por página, sem arquivadas): grupo sem mensagem recebida não existia no chat e nunca aparecia. Agora **`IMessagingEngine.listParticipatingGroups`** (adapter Baileys, `groupFetchAllParticipating`, cache 60 s) + **`ISessionGroupDirectory`**/`ChatSessionGroupDirectory` + **`ListSessionGroupsUseCase`**/`EnsureSessionGroupUseCase` + rotas `GET /campaigns/offers/config/groups` e `POST …/config/groups/ensure`. Regra pura **`mergeSessionGroups`** (busca sem acento/caixa; sessão fora → lista parcial). Painel: `useSessionGroups` usa a rota nova; marcar grupo sem conversa cria a conversa na hora (`ConfigGroupsStep`).

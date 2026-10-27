@@ -376,6 +376,9 @@ app/
   `limit`/`offset` — ver `api/src/shared/http/pagination/OpaqueCursor.ts`
 * estilos globais injetados por código levam `data-app`, senão o `DomGuardian` os
   remove como injeção de extensão
+* componentes de interface padronizados em [`docs/padrao-ui-painel.md`](docs/padrao-ui-painel.md):
+  liga/desliga = `<Switch>` (estilo iOS vem do tema, nunca por tela); faixa min–max =
+  `RangeSlider`; cooldown = `CooldownBar`. Caso coberto ali não ganha componente novo
 * ícones: Lucide (`lucide-react`) sempre via `AppIcon` com token de tamanho (`inline` = 1.25em
   ao lado de texto; `sm`/`md`/`lg` isolado). Sem emoji como ícone de interface. Ver
   [`docs/padrao-icones.md`](docs/padrao-icones.md)

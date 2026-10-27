@@ -1,4 +1,5 @@
-import { Box, Chip, Divider, Stack, TextField, Typography } from '@mui/material';
+import { Box, Chip, Divider, Stack, Typography } from '@mui/material';
+import { RangeSlider } from '@/components';
 import { offerStrings } from '../../strings';
 import { INTERVAL_MAX_SECONDS, INTERVAL_MIN_SECONDS, intervalValid } from '../../utils/offerConfig';
 
@@ -13,14 +14,11 @@ interface Props {
   onInterval: (min: number, max: number) => void;
 }
 
-const toInt = (raw: string) => (raw === '' ? Number.NaN : Math.trunc(Number(raw)));
-
 /** Passo 3: resumo + intervalo entre grupos. */
 export function ConfigConfirmStep({ sessionName, groupTitles, intervalMin, intervalMax, onInterval }: Props) {
   const invalid = !intervalValid(intervalMin, intervalMax);
   const shown = groupTitles.slice(0, MAX_CHIPS);
   const rest = groupTitles.length - shown.length;
-  const field = (v: number) => (Number.isNaN(v) ? '' : String(v));
 
   return (
     <Stack spacing={2.5} divider={<Divider flexItem />}>
@@ -46,24 +44,18 @@ export function ConfigConfirmStep({ sessionName, groupTitles, intervalMin, inter
       <Box>
         <Typography variant="subtitle2">{t.interval}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{t.intervalHelper}</Typography>
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr 1fr', sm: '180px 180px' } }}>
-          <TextField
-            size="small"
-            type="number"
-            label={t.min}
-            value={field(intervalMin)}
+        <Box sx={{ maxWidth: 560 }}>
+          <RangeSlider
+            value={[intervalMin, intervalMax]}
+            min={INTERVAL_MIN_SECONDS}
+            max={INTERVAL_MAX_SECONDS}
+            minDistance={1}
+            ariaLabel={t.interval}
+            minLabel={t.min}
+            maxLabel={t.max}
+            formatValue={t.seconds}
             error={invalid}
-            onChange={(e) => onInterval(toInt(e.target.value), intervalMax)}
-            slotProps={{ htmlInput: { min: INTERVAL_MIN_SECONDS, max: INTERVAL_MAX_SECONDS, inputMode: 'numeric' } }}
-          />
-          <TextField
-            size="small"
-            type="number"
-            label={t.max}
-            value={field(intervalMax)}
-            error={invalid}
-            onChange={(e) => onInterval(intervalMin, toInt(e.target.value))}
-            slotProps={{ htmlInput: { min: INTERVAL_MIN_SECONDS, max: INTERVAL_MAX_SECONDS, inputMode: 'numeric' } }}
+            onChange={([min, max]) => onInterval(min, max)}
           />
         </Box>
         {invalid && (
