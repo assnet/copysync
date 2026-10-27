@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Button, Grid, CircularProgress, Alert, Snackbar } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -7,6 +8,7 @@ import { SessionCard } from '@/features/sessions/components/SessionCard';
 import { CreateSessionWizard } from '@/features/sessions/components/CreateSessionWizard';
 import { ConnectSessionDialog } from '@/features/sessions/components/ConnectSessionDialog';
 import { sessionStrings } from '@/features/sessions/strings';
+import { safeReturnPath, withSessionId } from '@/features/sessions/utils';
 import { PageHeader, EmptyState } from '@/components';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
 
@@ -16,7 +18,12 @@ export default function SessionsPage() {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // `?create=1&returnTo=/tela`: outra tela pediu uma sessão nova e quer voltar com ela
+  const returnToRef = useRef(safeReturnPath(searchParams.get('returnTo')));
+  const createdRef = useRef<SessionItem | null>(null);
+  const [createOpen, setCreateOpen] = useState(() => searchParams.get('create') === '1');
   const [qrSession, setQrSession] = useState<SessionItem | null>(null);
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
@@ -34,15 +41,41 @@ export default function SessionsPage() {
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
+  // Tira `create`/`returnTo` da URL: recarregar a página não reabre o assistente
+  useEffect(() => {
+    if (!searchParams.has('create') && !searchParams.has('returnTo')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('create');
+    next.delete('returnTo');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleStatusChange = useCallback((sessionId: string, status: SessionStatus) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, status } : s)));
     setQrSession((prev) => (prev?.id === sessionId ? { ...prev, status } : prev));
   }, []);
 
   // O assistente segue aberto para conectar; a lista já mostra a sessão nova.
-  async function handleCreated() {
+  async function handleCreated(session: SessionItem) {
+    createdRef.current = session;
     setToast({ message: t.created, severity: 'success' });
     await loadSessions();
+  }
+
+  // Com `returnTo`, fechar o assistente volta para a tela de origem (com a sessão criada, se houver)
+  function handleWizardClose() {
+    setCreateOpen(false);
+    const returnTo = returnToRef.current;
+    if (returnTo) {
+      returnToRef.current = null;
+      const created = createdRef.current;
+      createdRef.current = null;
+      // replace: o Voltar do navegador não reabre o assistente
+      navigate(created ? withSessionId(returnTo, created.id) : returnTo, { replace: true });
+      return;
+    }
+    void loadSessions();
   }
 
   function handleDeleted(sessionId: string) {
@@ -104,8 +137,8 @@ export default function SessionsPage() {
 
       <CreateSessionWizard
         open={createOpen}
-        onClose={() => { setCreateOpen(false); void loadSessions(); }}
-        onCreated={handleCreated}
+        onClose={handleWizardClose}
+        onCreated={(session) => void handleCreated(session)}
         onStatusChange={handleStatusChange}
       />
       <ConnectSessionDialog

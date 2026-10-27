@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
 import ChatOutlinedIcon from '@mui/icons-material/ChatOutlined';
@@ -13,6 +13,7 @@ import { OfferResultPanel } from '@/features/offers/components/OfferResultPanel'
 import { OfferUsageChip } from '@/features/offers/components/OfferUsageChip';
 import { OfferDispatchProgress } from '@/features/offers/components/OfferDispatchProgress';
 import { OfferSendPanel } from '@/features/offers/components/OfferSendPanel';
+import { SendQueuePanel } from '@/features/sendQueue/components/SendQueuePanel';
 import { isPendingSchedule } from '@/features/offers/utils/offerSchedule';
 import { offerStrings } from '@/features/offers/strings';
 import { DEFAULT_INTERVAL } from '@/features/offers/utils/offerConfig';
@@ -35,6 +36,8 @@ export function OfferGeneratorPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [mentionUnavailable, setMentionUnavailable] = useState(false);
+  // Quem rola é o <main> do layout, não a janela: sobe pelo elemento
+  const topRef = useRef<HTMLDivElement>(null);
 
   const showWizard = !cfg.loading && !cfg.failed && (!cfg.configured || wizardOpen);
   const groupCount = cfg.groups.length;
@@ -47,6 +50,9 @@ export function OfferGeneratorPage() {
   const intervalMax = cfg.config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max;
   const showForm = !offer || composing;
   const offerBusy = gen.saving || gen.regenerating || gen.sending || gen.imageProgress != null;
+  // Lido na chegada do "Abrir oferta" (o clique já foi bloqueado se houvesse edição pendente)
+  const busyRef = useRef(false);
+  busyRef.current = form.dirty || offerBusy || editing;
   const scheduledWhen = offer && isPendingSchedule(offer.scheduledAt) ? t.send.formatWhen(offer.scheduledAt!) : null;
 
   const markPlanError = (err: unknown) => {
@@ -96,7 +102,7 @@ export function OfferGeneratorPage() {
   }
 
   return (
-    <Box>
+    <Box ref={topRef} sx={{ scrollMarginTop: 80 }}>
       {header}
 
       {showWizard ? (
@@ -225,6 +231,22 @@ export function OfferGeneratorPage() {
           )}
         </>
       )}
+
+      {/* Fila do servidor: visível em qualquer aba (também com o assistente aberto); abrir troca a
+          oferta da tela e sobe até ela (bloqueado com edição pendente ou assistente aberto) */}
+      <Box sx={{ mt: 3 }}>
+        <SendQueuePanel
+          currentOfferId={offer?.id ?? null}
+          onOpenOffer={showWizard || form.dirty || offerBusy || editing ? undefined : (id) => {
+            // Começou a editar enquanto carregava: a resposta é descartada (não apaga o que digitou)
+            gen.open(id, () => !busyRef.current).then((applied) => {
+              if (!applied) return;
+              setComposing(false);
+              topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }).catch(ignore);
+          }}
+        />
+      </Box>
 
       <ConfirmDialog
         open={confirmOpen}

@@ -73,3 +73,17 @@ export function formatPairingCode(code: string): string {
   const clean = code.replace(/[^0-9a-z]/gi, '').toUpperCase();
   return clean.length === 8 ? `${clean.slice(0, 4)}-${clean.slice(4)}` : code.toUpperCase();
 }
+
+/**
+ * `returnTo` vindo da URL só vale como caminho interno do painel (`/…`). Recusa URL absoluta,
+ * `//host` (protocolo relativo) e barra invertida — evita redirecionamento aberto.
+ */
+export function safeReturnPath(value: string | null | undefined): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value)) return null;
+  return value;
+}
+
+/** Acrescenta `sessionId` ao caminho de volta, respeitando query já existente. */
+export function withSessionId(path: string, sessionId: string): string {
+  return `${path}${path.includes('?') ? '&' : '?'}sessionId=${encodeURIComponent(sessionId)}`;
+}

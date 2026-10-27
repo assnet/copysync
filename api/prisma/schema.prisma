@@ -160,6 +160,7 @@ model Tenant {
   aiUsageLogs          AiUsageLog[]
   BillingEventReceipt  BillingEventReceipt[]
   extensionSessions    ExtensionSession[]
+  groupMonitorConfigs  GroupMonitorConfig[]
 
   @@index([slug])
   @@map("tenants")
@@ -279,6 +280,7 @@ model Session {
   chatConversations     ChatConversation[]
   offerGeneratorConfigs OfferGeneratorConfig[]
   offerGeneratorConfigSessions OfferGeneratorConfigSession[]
+  groupMonitorConfigs   GroupMonitorConfig[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -428,6 +430,8 @@ model ChatConversation {
   messages          ChatMessage[]
   offerDispatches   OfferDispatch[]
   offerDestinations OfferDestination[]
+  monitoredGroups   MonitoredGroup[]
+  broadcastGroups   BroadcastGroup[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastMessageAt])
@@ -583,6 +587,12 @@ model AffiliateCredential {
 // Ver .specs/features/offer-generator/design.md. Limite diário conta `offers`
 // por tenantId + createdAt; o worker reivindica `offer_dispatches` por status + notBefore.
 
+/// Origem da oferta na fila de envio.
+enum OfferOrigin {
+  GENERATOR
+  MONITORING
+}
+
 enum OfferStatus {
   DRAFT
   SENDING
@@ -626,6 +636,12 @@ model Offer {
   typingSeconds       Int               @default(15)
   /// Início agendado dos disparos; null = começa ao disparar (teto em campaigns/domain/offerSchedule.ts).
   scheduledAt         DateTime?
+  /// Quem criou: gerador (painel) ou monitoramento de grupos (captura automática).
+  origin              OfferOrigin       @default(GENERATOR)
+  /// Validade: envio com `notBefore` depois disso sai SKIPPED (OFFER_EXPIRED). null = sem validade.
+  expiresAt           DateTime?
+  /// Chave idempotente de quem criou fora do gerador (ex.: `captured:<id>`): reprocessar não duplica.
+  sourceKey           String?           @unique
   status              OfferStatus       @default(DRAFT)
   createdById         String? // null se o usuário for removido
   createdAt           DateTime          @default(now())
@@ -784,6 +800,11 @@ model OfferDispatch {
   tenantId       String
   offerId        String
   conversationId String
+  /// Faixa de envio: cópia de `conversation.sessionId` (sem join no claim). null só em envio antigo
+  /// cuja conversa não tinha sessão. Ver docs/fila-de-envio.md.
+  sessionId      String?
+  /// Intervalo mínimo (s) entre o início do último envio da mesma sessão e este (claim).
+  gapSeconds     Int                 @default(0)
   status         OfferDispatchStatus @default(QUEUED)
   notBefore      DateTime
   claimedAt      DateTime?
@@ -799,6 +820,9 @@ model OfferDispatch {
 
   @@unique([offerId, conversationId])
   @@index([status, notBefore])
+  @@index([sessionId, status])
+  // Fila de envio: concluídos do dia por tenant
+  @@index([tenantId, updatedAt])
   @@index([tenantId, offerId])
   @@map("offer_dispatches")
 }
@@ -975,4 +999,132 @@ model HubOutboxSequence {
   lastSeq   Int    @default(0)
 
   @@map("hub_outbox_sequences")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONITORAMENTO DE GRUPOS (docs/monitoramento-grupos.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Captura de oferta: PENDING (gravada pelo listener) → PROCESSING (claim) → QUEUED (oferta na
+/// fila de envio) | SKIPPED (regra) | FAILED (erro). O envio em si é acompanhado por OfferDispatch.
+enum CapturedOfferStatus {
+  PENDING
+  PROCESSING
+  QUEUED
+  SKIPPED
+  FAILED
+}
+
+/// Configuração do monitoramento de UMA sessão. Janela em minutos do dia (America/Sao_Paulo).
+model GroupMonitorConfig {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  sessionId           String
+  enabled             Boolean  @default(false)
+  /// 0..1440; start=0 e end=1440 = sem restrição; end < start = cruza a meia-noite.
+  windowStartMinute   Int      @default(0)
+  windowEndMinute     Int      @default(1440)
+  intervalMinSeconds  Int      @default(120)
+  intervalMaxSeconds  Int      @default(300)
+  /// Espera depois da captura antes do 1º envio.
+  startDelaySeconds   Int      @default(0)
+  /// Validade sem cupom / com cupom (minutos desde a captura).
+  maxOfferAgeMinutes  Int      @default(180)
+  couponMaxAgeMinutes Int      @default(60)
+  mentionAll          Boolean  @default(false)
+  simulateTyping      Boolean  @default(false)
+  typingSeconds       Int      @default(15)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session         Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  monitoredGroups MonitoredGroup[]
+  broadcastGroups BroadcastGroup[]
+  capturedOffers  CapturedOffer[]
+
+  @@unique([tenantId, sessionId])
+  @@index([sessionId])
+  @@map("group_monitor_configs")
+}
+
+/// Grupo de origem (concorrente). `groupJid` copiado da conversa: o listener decide sem join.
+model MonitoredGroup {
+  id             String   @id @default(cuid())
+  tenantId       String
+  sessionId      String
+  configId       String
+  conversationId String
+  /// Sem `@g.us`, como no chat e no evento MESSAGE_RECEIVED.
+  groupJid       String
+  /// Vazio = captura toda mensagem com link suportado.
+  keywords       String[]
+  createdAt      DateTime @default(now())
+
+  config        GroupMonitorConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  conversation  ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  capturedOffer CapturedOffer[]
+
+  @@unique([tenantId, sessionId, groupJid])
+  @@index([sessionId, groupJid])
+  @@index([tenantId])
+  @@map("monitored_groups")
+}
+
+/// Grupo de disparo (destino). Ordem de envio = `position`.
+model BroadcastGroup {
+  id             String   @id @default(cuid())
+  tenantId       String
+  sessionId      String
+  configId       String
+  conversationId String
+  groupJid       String
+  position       Int
+  createdAt      DateTime @default(now())
+
+  config       GroupMonitorConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  conversation ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sessionId, conversationId])
+  @@index([tenantId])
+  @@map("broadcast_groups")
+}
+
+/// Mensagem capturada de um grupo monitorado. Nunca guarda o link de afiliado da origem fora de
+/// `sourceText` (auditoria); o que vai para o envio é `finalText`/`affiliateUrl` do tenant.
+model CapturedOffer {
+  id                      String              @id @default(cuid())
+  tenantId                String
+  sessionId               String
+  configId                String
+  monitoredGroupId        String?
+  sourceExternalMessageId String
+  sourceText              String              @db.Text
+  /// URL do media store (só imagem JPEG/PNG/WebP); null = só texto.
+  sourceMediaUrl          String?             @db.Text
+  imageUnavailable        Boolean             @default(false)
+  marketplace             AffiliateProvider?
+  sourceUrl               String?             @db.Text
+  affiliateUrl            String?             @db.Text
+  coupon                  String?
+  finalText               String?             @db.Text
+  status                  CapturedOfferStatus @default(PENDING)
+  /// Motivo de SKIPPED/FAILED (código interno).
+  reason                  String?
+  offerId                 String?
+  startsAt                DateTime?
+  expiresAt               DateTime?
+  capturedAt              DateTime            @default(now())
+  processedAt             DateTime?
+  claimToken              String?
+  claimedAt               DateTime?
+  updatedAt               DateTime            @updatedAt
+
+  config         GroupMonitorConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  monitoredGroup MonitoredGroup?    @relation(fields: [monitoredGroupId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, sourceExternalMessageId])
+  @@index([status, capturedAt])
+  @@index([tenantId, sessionId, capturedAt(sort: Desc)])
+  @@map("captured_offers")
 }

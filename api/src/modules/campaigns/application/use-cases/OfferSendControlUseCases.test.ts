@@ -120,3 +120,16 @@ describe('ResumeOfferUseCase — início agendado', () => {
     expect(byConv('c4').notBefore).toEqual(new Date(at.getTime() + 150_000));
   });
 });
+
+describe('ResumeOfferUseCase — fila por sessão', () => {
+  it('retomada volta para o fim da faixa: não atropela oferta que entrou durante a pausa', async () => {
+    const { deps, offers, dispatches, byConv, input } = setup({ status: 'PAUSED' });
+    for (const d of dispatches.items) d.sessionId = 's1';
+    offers.items.push(makeOffer({ id: 'other', status: 'SENDING' }));
+    dispatches.add({ offerId: 'other', conversationId: 'o1', sessionId: 's1', notBefore: sec(500) });
+    await new ResumeOfferUseCase(deps).execute(input);
+    // fim da faixa (500 s) + folga 150 s; depois intervalo 150 s
+    expect(byConv('c3').notBefore).toEqual(sec(650));
+    expect(byConv('c4').notBefore).toEqual(sec(800));
+  });
+});

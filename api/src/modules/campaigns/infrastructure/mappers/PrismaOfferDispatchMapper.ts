@@ -8,6 +8,8 @@ export interface OfferDispatchRawRow {
   tenantId: string;
   offerId: string;
   conversationId: string;
+  sessionId: string | null;
+  gapSeconds: number;
   status: string;
   notBefore: Date;
   claimedAt: Date | null;
@@ -30,6 +32,8 @@ export class PrismaOfferDispatchMapper {
       tenantId: raw.tenantId,
       offerId: raw.offerId,
       conversationId: raw.conversationId,
+      sessionId: raw.sessionId,
+      gapSeconds: raw.gapSeconds,
       status: raw.status,
       notBefore: raw.notBefore,
       claimedAt: raw.claimedAt,
@@ -46,6 +50,8 @@ export class PrismaOfferDispatchMapper {
       tenantId: row.tenantId,
       offerId: row.offerId,
       conversationId: row.conversationId,
+      sessionId: row.sessionId,
+      gapSeconds: Number(row.gapSeconds),
       status: toStatus(row.status),
       notBefore: new Date(row.notBefore),
       claimedAt: row.claimedAt ? new Date(row.claimedAt) : null,

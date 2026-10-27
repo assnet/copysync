@@ -12,6 +12,8 @@ import {
 } from '../modules/media/presentation/routes/media.upload.routes';
 import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
 import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.routes';
+import { sendQueueRoutes } from '../modules/campaigns/presentation/routes/sendQueue.routes';
+import { groupMonitoringRoutes } from '../modules/automation/presentation/routes/groupMonitoring.routes';
 import { provisioningRoutes } from '../modules/tenants/presentation/routes/provisioning.routes';
 import { aiAdminRoutes, aiTenantRoutes } from '../modules/assistants/presentation/routes/ai.routes';
 import { billingRoutes } from '../modules/integrations/billing/billing.routes';
@@ -85,6 +87,8 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Gerador de ofertas (auth + tenant scope required) ──────────────────────
   await app.register(offerRoutes, { prefix: `${env.API_PREFIX}/campaigns/offers` });
+  await app.register(sendQueueRoutes, { prefix: `${env.API_PREFIX}/campaigns/send-queue` });
+  await app.register(groupMonitoringRoutes, { prefix: `${env.API_PREFIX}/automation/group-monitoring` });
 
   // ── Provisioning routes (super-admin only) ─────────────────────────────────
   await app.register(provisioningRoutes, {

@@ -2,6 +2,7 @@ import { AFFILIATE_PROVIDERS } from '../../../integrations/domain/enums/Affiliat
 import { OFFER_STATUSES } from '../../domain/enums/OfferStatus';
 import { OFFER_DISPATCH_STATUSES } from '../../domain/enums/OfferDispatchStatus';
 import { OFFER_AUDIENCES } from '../../domain/enums/OfferAudience';
+import { OFFER_ORIGINS } from '../../domain/enums/OfferOrigin';
 import { OFFER_COUPON_MAX } from '../../application/use-cases/offerCoupon';
 import {
   OFFER_GROUPS_HARD_MAX,
@@ -125,6 +126,8 @@ const offerSchema = {
     simulateTyping: { type: 'boolean' },
     typingSeconds: { type: 'integer' },
     scheduledAt: { type: ['string', 'null'], format: 'date-time' },
+    origin: { type: 'string', enum: [...OFFER_ORIGINS] },
+    expiresAt: { type: ['string', 'null'], format: 'date-time' },
     status: { type: 'string', enum: [...OFFER_STATUSES] },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },

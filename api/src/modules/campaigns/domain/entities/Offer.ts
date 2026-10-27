@@ -1,6 +1,7 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferStatus } from '../enums/OfferStatus';
 import type { OfferAudience } from '../enums/OfferAudience';
+import type { OfferOrigin } from '../enums/OfferOrigin';
 
 /** Oferta gerada a partir de um link de produto. Preços em centavos; `imageUrl` aponta pro media store. */
 export interface Offer {
@@ -28,6 +29,12 @@ export interface Offer {
   typingSeconds: number;
   /** Início agendado dos disparos; null = começa ao disparar. */
   scheduledAt: Date | null;
+  /** Gerador (painel) ou monitoramento de grupos. */
+  origin: OfferOrigin;
+  /** Validade: envio que chegar a sair depois disso é pulado (OFFER_EXPIRED). */
+  expiresAt: Date | null;
+  /** Chave idempotente de origem externa (ex.: captura do monitoramento). */
+  sourceKey: string | null;
   status: OfferStatus;
   createdById: string | null;
   createdAt: Date;

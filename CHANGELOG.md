@@ -9,6 +9,48 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — automation (api 0.37.0 · app 0.42.0) — monitoramento de grupos
+
+Escuta grupos de concorrentes, troca o link pelo link de afiliado do tenant e reposta nos grupos de disparo, com horário de operação, intervalo, "digitando…", marcar todos e validade da oferta/cupom. Doc: `docs/monitoramento-grupos.md`.
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261028020000_create_group_monitoring` — `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadcast_groups`, `captured_offers`. Aditiva: só tabelas novas.
+- **`modules/automation/`** (novo) — regras puras (`offerMessageText`: extrair/trocar links, remover convites do concorrente, detectar cupom, palavras-chave; `operatingWindow`: janela em São Paulo, inclusive noturna; `monitorSettings`: faixas e validade); use cases de configuração (limites `monitored_groups`/`broadcast_groups` somados no tenant, conflito monitorado × disparo, liga download de mídia do grupo monitorado), captura (`RegisterCapturedMessageUseCase`, sem rede e sem consulta para texto sem link) e processamento (`ProcessPendingCapturedOffersUseCase`, claim com token e retomada de travadas); rotas `/automation/group-monitoring/*`.
+- **`BuildTenantAffiliateLinkUseCase.ts`** (novo, campaigns) — link de produto de terceiro → link do tenant a partir da URL canônica sem query (Amazon `tag`, Shopee `generateShortLink`, Mercado Livre `createAffiliateLinks`, inclusive vitrine "social"). Nada do afiliado de origem sobrevive.
+- **`EnqueueOfferUseCase.ts`** (novo, campaigns) — oferta pronta de outro módulo entra na fila de envio da sessão (origem `MONITORING`, validade); não cria nada se a fila a empurrar para depois da validade.
+- **`server.ts`**, **`env.ts`** — `GROUP_MONITORING_ENABLED` (padrão `false`, só na Render) liga o listener de captura e o processamento no tick do worker de envio, cada parte do tick isolada.
+- **`Offer.sourceKey`** (único, nullable) — chave idempotente `captured:<id>`: captura reprocessada após queda não vira segunda oferta (oferta que ficou DRAFT é enfileirada).
+- Revisão final: link sem protocolo entre `_itálico_` também é trocado; rede de segurança recusa texto com qualquer link que não seja do tenant; orçamento de 25 s por captura; faixa da sessão segura envio em `SEND_TIMEOUT` por pelo menos 120 s; link com `https://` entre `_itálico_` trocado sem duplicar o protocolo; DRAFT órfã enfileirada com o "marcar todos" gravado nela; validade checada com o relógio do envio (não do início do lote); painel não cita nome de grupo em erro (privacidade), aba da fila por sessão, rascunho alterado durante o salvar não é apagado, "Abrir oferta" descarta a resposta se houver edição.
+- **`GroupMonitorErrors.ts`** (novo) — `GROUP_MONITOR_INVALID_INPUT`, `GROUP_MONITOR_GROUP_CONFLICT`, `CAPTURED_OFFER_NOT_FOUND`, `CAPTURED_OFFER_NOT_RETRYABLE`.
+
+#### Frontend
+
+- **`pages/monitoring/MonitoringPage.tsx`**, **`features/monitoring/`** (novos) — seletor de sessão, cards de sessão e grupos (n/max), seletor de grupos com palavras-chave, horário de operação só por slider (00:00–24:00, noturna), envio, validade, ofertas capturadas com "Tentar de novo" e fila de envio da sessão. Rascunho por sessão, privacidade `monitoring.*`, textos em `strings.ts`.
+- **`SessionsPage.tsx`**, **`features/sessions/utils.ts`** — `?create=1&returnTo=` abre o assistente e, ao fechar, volta com a sessão criada selecionada (`safeReturnPath` só aceita caminho interno).
+- **`RangeSlider.tsx`** — prop opcional `marks` (rótulos intermediários). **`GroupChip.tsx`** — flags de privacidade da tela que o usa. **`privacyFlags.ts`** — bloco `monitoring`.
+
+### Added — campaigns (api 0.36.0 · app 0.41.0) — fila de envio por sessão, visível em qualquer aba
+
+Envio já era do servidor; faltavam série por número de WhatsApp (gerador + monitoramento na mesma sessão furavam o cooldown) e uma forma de ver a fila fora da aba que disparou. Doc: `docs/fila-de-envio.md`.
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261028010000_add_send_queue_lanes` — `OfferDispatch.sessionId` (cópia da sessão da conversa, com backfill dos envios existentes) e `gapSeconds`; `Offer.origin` (`GENERATOR | MONITORING`) e `Offer.expiresAt`; índices `(sessionId, status)` e `(tenantId, updatedAt)`. Aditiva: fila em andamento segue de onde parou.
+- **`PrismaOfferDispatchRepository.ts`** — `claimDue` pega no máximo um envio por sessão e só se a sessão não tem envio em curso nem envio iniciado há menos de `gapSeconds`; claims serializados por advisory lock (dois workers não abrem a mesma faixa); 5 s de tolerância no intervalo para a latência do tick. `releaseStale` fecha como `CANCELLED` envio travado de oferta já parada (antes voltava à fila órfão). `laneTails` lê o fim de cada faixa (ignora oferta agendada para depois). Validado num Postgres real com corrida de claims.
+- **`domain/services/appendToLanes.ts`** (novo) — desloca a agenda da oferta para depois do fim da faixa de cada sessão sem mudar a ordem nem o espaçamento interno.
+- **`SendOfferUseCase.ts`**, **`OfferSendControlUseCases.ts`** — disparo e retomada encostam no fim da faixa; cada envio grava sessão e intervalo mínimo.
+- **`ProcessDueOfferDispatchesUseCase.ts`** — oferta com `expiresAt` vencido não sai (`SKIPPED`/`OFFER_EXPIRED`).
+- **`GetSendQueueUseCase.ts`**, **`PrismaSendQueueReader.ts`**, **`ISendQueueReader.ts`**, **`sendQueue.routes.ts`**, **`sendQueue.schema.ts`** (novos) — `GET /campaigns/send-queue[?sessionId]`: por sessão, envio em curso, aguardando (pausados à parte), concluídos hoje e contadores exatos (`groupBy`; listas lidas por sessão para uma fila longa não esconder as outras). Sempre filtrado por tenant.
+- **`OfferDTO.ts`**, **`offer.schema.ts`** — `origin` e `expiresAt` na saída da oferta.
+
+#### Frontend
+
+- **`features/sendQueue/`** (novo) — `SendQueuePanel` (por sessão: contagens com tooltip, alerta de sessão desconectada, "Enviando agora", `CooldownBar` até o próximo com relógio do servidor, abas Aguardando/Concluídos hoje, origem da oferta, "Abrir oferta"), `useSendQueue` (polling 5 s/20 s, para com a aba oculta, descarta resposta de sessão anterior), `laneCooldown`, `strings.ts`.
+- **`OfferGeneratorPage.tsx`**, **`useOfferGenerator.ts`** — painel da fila no fim do gerador, inclusive com o assistente aberto; `open(offerId)` carrega uma oferta disparada em outra aba e sobe a tela até ela (bloqueado com edição pendente; só a última resposta vale).
+- **`api.types.ts`**, **`sendQueue.service.ts`** — tipos e serviço da fila; `OfferItem.origin`/`expiresAt`.
+- **`offers/strings.ts`** — motivo `OFFER_EXPIRED`.
+
 ### Added — campaigns (api 0.35.0 · app 0.40.0) — início agendado e prévia lado a lado com o envio
 
 #### Backend

@@ -10,7 +10,7 @@ const future = new Date(Date.now() + 2 * HOUR).toISOString();
 const offer = (over: Partial<OfferItem> = {}): OfferItem => ({
   id: 'o1', provider: 'AMAZON', sourceUrl: 'https://a', productRef: null, title: 'Fone', priceCents: null,
   originalPriceCents: null, imageUrl: null, affiliateUrl: 'https://a', attributionVerified: true, coupon: null,
-  audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null,
+  audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null,
   text: 'oferta', textEdited: false, status: 'DRAFT', createdAt: future, updatedAt: new Date().toISOString(), ...over,
 });
 

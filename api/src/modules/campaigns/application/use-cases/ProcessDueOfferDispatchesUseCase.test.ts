@@ -163,3 +163,21 @@ describe('ProcessDueOfferDispatchesUseCase', () => {
     expect(s.offers.items[0]!.status).toBe('SENT');
   });
 });
+
+describe('ProcessDueOfferDispatchesUseCase — validade', () => {
+  it('oferta vencida não sai: SKIPPED OFFER_EXPIRED e a oferta fecha sem envio', async () => {
+    const s = setup(['c1']);
+    s.offers.items[0]!.expiresAt = NOW;
+    await s.uc.execute();
+    expect(s.sender.send).not.toHaveBeenCalled();
+    expect(statuses(s)).toEqual([['SKIPPED', 'OFFER_EXPIRED']]);
+    expect(s.offers.items[0]!.status).toBe('FAILED');
+  });
+
+  it('oferta ainda válida sai normalmente', async () => {
+    const s = setup(['c1']);
+    s.offers.items[0]!.expiresAt = new Date(NOW.getTime() + 1000);
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['SENT', 'm1']]);
+  });
+});

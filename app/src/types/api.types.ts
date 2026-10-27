@@ -184,6 +184,49 @@ export type OfferStatus = 'DRAFT' | 'SENDING' | 'PAUSED' | 'SENT' | 'FAILED' | '
 
 export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
 
+/** Quem criou a oferta. */
+export type OfferOrigin = 'GENERATOR' | 'MONITORING';
+
+/** Um envio na fila de envio, com resumo da oferta e do grupo destino. */
+export interface SendQueueItem {
+  dispatchId: string;
+  offerId: string;
+  origin: OfferOrigin;
+  offerStatus: OfferStatus;
+  title: string | null;
+  textPreview: string;
+  imageUrl: string | null;
+  coupon: string | null;
+  conversationId: string;
+  groupName: string | null;
+  groupAvatarUrl: string | null;
+  status: OfferDispatchStatus;
+  /** Horário previsto (ISO, relógio do servidor). */
+  notBefore: string;
+  /** Início do envio (ISO); null antes de sair. */
+  claimedAt: string | null;
+  updatedAt: string;
+  failureReason: string | null;
+}
+
+/** Fila de uma sessão: um envio por vez, na ordem de `notBefore`. */
+export interface SendQueueSession {
+  /** null = envios antigos sem sessão registrada. */
+  sessionId: string | null;
+  name: string | null;
+  status: string | null;
+  running: SendQueueItem | null;
+  waiting: SendQueueItem[];
+  /** Concluídos hoje, mais recentes primeiro (até 20). */
+  recent: SendQueueItem[];
+  counts: { waiting: number; paused: number; sentToday: number; failedToday: number; skippedToday: number };
+}
+
+export interface SendQueueResponse {
+  serverTime: string;
+  sessions: SendQueueSession[];
+}
+
 /** Público-alvo do texto. `STANDARD` = modelo fixo (sem IA); os demais passam pela IA. */
 export type OfferAudience = 'STANDARD' | 'MOMS' | 'PET' | 'BEAUTY_FASHION' | 'MEN' | 'FITNESS' | 'HOME_KITCHEN';
 
@@ -221,6 +264,10 @@ export interface OfferItem {
   typingSeconds: number;
   /** Início agendado dos disparos (ISO); null = começa ao disparar. */
   scheduledAt: string | null;
+  /** Gerador (painel) ou monitoramento de grupos. */
+  origin: OfferOrigin;
+  /** Validade (ISO): envio depois disso é pulado. null = sem validade. */
+  expiresAt: string | null;
   text: string;
   /** Texto editado à mão: mudar título/preço não o remonta mais. */
   textEdited: boolean;
@@ -436,4 +483,111 @@ export interface SessionGroupsResponse {
   groups: SessionGroupItem[];
   /** WhatsApp não respondeu: só os grupos que o chat já conhece. */
   partial: boolean;
+}
+
+// ─── Monitoramento de grupos (docs/monitoramento-grupos.md) ─────────────────────
+
+/** Configuração do monitoramento de UMA sessão. Minutos do dia em `America/Sao_Paulo`. */
+export interface GroupMonitorSettings {
+  enabled: boolean;
+  /** 0..1440. start=0 e end=1440 = sem restrição; end < start = janela que cruza a meia-noite. */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  /** Pausa entre envios (s), 60..3600, min ≤ max. */
+  intervalMinSeconds: number;
+  intervalMaxSeconds: number;
+  /** Espera depois da captura antes do 1º envio (s), 0..7200. */
+  startDelaySeconds: number;
+  /** Validade da oferta sem cupom (min), 15..1440. */
+  maxOfferAgeMinutes: number;
+  /** Validade da oferta com cupom (min), 15..maxOfferAgeMinutes. */
+  couponMaxAgeMinutes: number;
+  mentionAll: boolean;
+  simulateTyping: boolean;
+  /** 1..30. */
+  typingSeconds: number;
+}
+
+export interface MonitoredGroupItem {
+  conversationId: string;
+  groupJid: string;
+  title: string | null;
+  avatarUrl: string | null;
+  /** Vazio = captura toda mensagem com link suportado. */
+  keywords: string[];
+}
+
+export interface BroadcastGroupItem {
+  conversationId: string;
+  groupJid: string;
+  title: string | null;
+  avatarUrl: string | null;
+  position: number;
+}
+
+export interface GroupMonitorConfigResponse {
+  sessionId: string;
+  settings: GroupMonitorSettings;
+  monitoredGroups: MonitoredGroupItem[];
+  broadcastGroups: BroadcastGroupItem[];
+  /** Limites do plano (todas as sessões do tenant somadas). null = ilimitado. */
+  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean };
+  /** Uso atual no tenant (todas as sessões). */
+  usage: { monitoredGroups: number; broadcastGroups: number };
+}
+
+export type SaveGroupMonitorSettingsRequest = GroupMonitorSettings & { sessionId: string };
+
+export interface SaveMonitoredGroupsRequest {
+  sessionId: string;
+  groups: { groupJid: string; keywords: string[] }[];
+}
+
+/** Ordem do array = ordem de envio. */
+export interface SaveBroadcastGroupsRequest {
+  sessionId: string;
+  groupJids: string[];
+}
+
+export type CapturedOfferStatus = 'PENDING' | 'PROCESSING' | 'QUEUED' | 'SKIPPED' | 'FAILED';
+
+/** Motivo de não ter ido para a fila (SKIPPED/FAILED). */
+export type CapturedOfferReason =
+  | 'NO_LINK'
+  | 'UNSUPPORTED_MARKETPLACE'
+  | 'CREDENTIAL_MISSING'
+  | 'LINK_RESOLVE_FAILED'
+  | 'EXPIRED'
+  | 'MONITOR_DISABLED'
+  | 'NO_BROADCAST_GROUPS'
+  | 'KEYWORD_MISMATCH'
+  | 'INTERNAL_ERROR';
+
+export interface CapturedOfferItem {
+  id: string;
+  status: CapturedOfferStatus;
+  reason: CapturedOfferReason | null;
+  marketplace: AffiliateProvider | null;
+  sourceGroupTitle: string | null;
+  sourceGroupAvatarUrl: string | null;
+  /** Texto final (com o link do tenant) ou o original, se não processou. Até 280 caracteres. */
+  textPreview: string;
+  imageUrl: string | null;
+  coupon: string | null;
+  /** Link do tenant que vai no envio. */
+  affiliateUrl: string | null;
+  /** Oferta criada na fila de envio (QUEUED). */
+  offerId: string | null;
+  capturedAt: string;
+  expiresAt: string | null;
+  /** 1º envio previsto (QUEUED). */
+  startsAt: string | null;
+  /** Foto da mensagem não pôde ser usada: a oferta sai só com texto. */
+  imageUnavailable: boolean;
+}
+
+export interface CapturedOffersResponse {
+  items: CapturedOfferItem[];
+  /** Cursor opaco da próxima página; null = fim. */
+  nextCursor: string | null;
 }

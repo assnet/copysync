@@ -1,3 +1,4 @@
+import type { OfferOrigin } from '../enums/OfferOrigin';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { Offer } from '../entities/Offer';
 import type { OfferStatus } from '../enums/OfferStatus';
@@ -19,6 +20,14 @@ export interface CreateOfferInput {
   audience: OfferAudience;
   scheduledAt: Date | null;
   createdById: string | null;
+  /** Padrão GENERATOR. */
+  origin?: OfferOrigin;
+  expiresAt?: Date | null;
+  /** Única: criar duas vezes com a mesma chave falha. */
+  sourceKey?: string | null;
+  mentionAll?: boolean;
+  simulateTyping?: boolean;
+  typingSeconds?: number;
 }
 
 export interface DailyQuota {
@@ -46,6 +55,8 @@ export const EDITABLE_OFFER_STATUSES: readonly OfferStatus[] = ['DRAFT'];
 
 export interface IOfferRepository {
   create(input: CreateOfferInput): Promise<Offer>;
+  /** Oferta criada antes com esta chave idempotente, ou null. */
+  findBySourceKey(tenantId: string, sourceKey: string): Promise<Offer | null>;
   /**
    * Cria só se o tenant ainda tem cota no dia: recontagem + criação serializadas por tenant
    * (lock transacional). Cota esgotada → PlanLimitReachedError(key, limit).

@@ -34,6 +34,11 @@ export class PrismaOfferRepository implements IOfferRepository {
     return Mapper.toDomain(raw);
   }
 
+  async findBySourceKey(tenantId: string, sourceKey: string): Promise<Offer | null> {
+    const raw = await this.prisma.offer.findFirst({ where: { tenantId, sourceKey } });
+    return raw ? Mapper.toDomain(raw) : null;
+  }
+
   async findById(id: string, tenantId: string): Promise<Offer | null> {
     const raw = await this.prisma.offer.findFirst({ where: { id, tenantId } });
     return raw ? Mapper.toDomain(raw) : null;

@@ -2,6 +2,7 @@ import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
+import { appendToLanes, laneGapMs } from '../../domain/services/appendToLanes';
 import { dispatchStartAt } from '../../domain/offerSchedule';
 import { OfferInvalidStateError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
@@ -65,10 +66,18 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
       minMs: (config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min) * 1000,
       maxMs: (config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max) * 1000,
     };
-    const queued = (await this.deps.dispatches.listByOffer(offer.id, input.tenantId)).filter((d) => d.status === 'QUEUED').length;
+    const queued = (await this.deps.dispatches.listByOffer(offer.id, input.tenantId))
+      .filter((d) => d.status === 'QUEUED')
+      .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime());
     // Pausada antes do início agendado: retomar mantém o horário marcado
     const start = dispatchStartAt(offer.scheduledAt, (this.deps.now ?? (() => new Date()))());
-    const slots = scheduleDispatches(queued, start, interval, this.deps.rand);
+    const planned = scheduleDispatches(queued.length, start, interval, this.deps.rand);
+    // Volta para o fim da fila das suas sessões: o que entrou durante a pausa não é atropelado
+    const sessionIds = [...new Set(queued.flatMap((d) => (d.sessionId ? [d.sessionId] : [])))];
+    const tails = await this.deps.dispatches.laneTails(input.tenantId, sessionIds, planned[0] ?? start);
+    const slots = tails.size === 0
+      ? planned
+      : appendToLanes(queued.map((d, i) => ({ sessionId: d.sessionId ?? d.id, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
     await this.deps.dispatches.rescheduleQueued(offer.id, input.tenantId, slots);
 
     if (!(await this.deps.offers.transitionStatus(offer.id, input.tenantId, ['PAUSED'], 'SENDING'))) {

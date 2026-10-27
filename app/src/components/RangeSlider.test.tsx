@@ -65,3 +65,28 @@ describe('RangeSlider com status (termômetro)', () => {
     expect(screen.getByRole('status', { name: 'Nível de risco do intervalo' })).toHaveTextContent('Risco elevado');
   });
 });
+
+describe('RangeSlider com marks', () => {
+  const marks = [0, 360, 720, 1080, 1440].map((v) => ({ value: v, label: String(v / 60).padStart(2, '0') }));
+
+  it('troca os extremos pelos rótulos das marcas e mantém o teclado', () => {
+    const onChange = vi.fn();
+    render(
+      <RangeSlider value={[480, 1080]} min={0} max={1440} step={15} ariaLabel="Janela" onChange={onChange}
+        formatValue={(v) => `${v} min`} marks={marks} />,
+    );
+    const row = screen.getByTestId('range-slider-marks');
+    expect(Array.from(row.children).map((c) => c.textContent)).toEqual(['00', '06', '12', '18', '24']);
+    // Sem marks os extremos sairiam formatados; com marks, não
+    expect(screen.queryByText('0 min')).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Janela: Mínimo' }), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenLastCalledWith([495, 1080]);
+  });
+});
+
+describe('RangeSlider invertido', () => {
+  it('usa a trilha invertida do MUI', () => {
+    const { container } = render(<RangeSlider value={[360, 1320]} min={0} max={1440} ariaLabel="Janela" inverted onChange={() => undefined} />);
+    expect(container.querySelector('.MuiSlider-trackInverted')).not.toBeNull();
+  });
+});

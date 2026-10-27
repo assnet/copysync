@@ -219,6 +219,26 @@ export function useOfferGenerator() {
     }
   }, [offer, fail]);
 
+  /** Abre uma oferta pelo id (ex.: item da fila de envio vindo de outra aba). */
+  const openSeq = useRef(0);
+  /** `shouldApply`: checado na chegada; false = o operador começou a editar, resposta descartada. */
+  const open = useCallback(async (offerId: string, shouldApply: () => boolean = () => true): Promise<boolean> => {
+    setError(null);
+    // Cliques rápidos em ofertas diferentes: só a última resposta vale
+    const seq = ++openSeq.current;
+    try {
+      const fresh = await offerService.get(offerId);
+      if (seq !== openSeq.current || !shouldApply()) return false;
+      uploadAbort.current?.abort();
+      setOffer(fresh);
+      setNeedsManualData(false);
+      setAiFallback(false);
+      return true;
+    } catch (err) {
+      return fail(err);
+    }
+  }, [fail]);
+
   const reset = useCallback(() => {
     uploadAbort.current?.abort();
     setOffer(null);
@@ -274,6 +294,7 @@ export function useOfferGenerator() {
     send,
     control,
     controlling,
+    open,
     reset,
   };
 }
