@@ -58,7 +58,8 @@ function toItem(e: SendQueueEntry): SendQueueItemDTO {
     origin: e.origin,
     offerStatus: e.offerStatus,
     title: e.title,
-    textPreview: e.text.length > SEND_QUEUE_TEXT_PREVIEW ? `${e.text.slice(0, SEND_QUEUE_TEXT_PREVIEW)}…` : e.text,
+    // Por caractere (não unidade UTF-16): não corta emoji ao meio
+    textPreview: [...e.text].length > SEND_QUEUE_TEXT_PREVIEW ? `${[...e.text].slice(0, SEND_QUEUE_TEXT_PREVIEW).join('')}…` : e.text,
     imageUrl: e.imageUrl,
     coupon: e.coupon,
     conversationId: e.conversationId,

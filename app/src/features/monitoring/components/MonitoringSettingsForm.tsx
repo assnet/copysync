@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Paper, Slider, Snackbar, Stack, Switch, Tooltip, Typography } from '@mui/material';
 import { AppIcon, RangeSlider, SectionCard, ToggleOption } from '@/components';
 import { Info } from 'lucide-react';
@@ -88,6 +88,9 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
     { version: SETTINGS_DRAFT_VERSION },
   );
   const [saving, setSaving] = useState(false);
+  // Rascunho mais recente: alteração feita durante o salvar não é apagada pelo clear
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [error, setError] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
   const value = draft ?? settingsToDraft(config.settings);
@@ -102,8 +105,9 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
     setSaving(true);
     setError(null);
     try {
+      const sent = draft;
       await onSave(draftToSettings({ ...value, mentionAll: mentionAllEnabled && value.mentionAll }));
-      clearDraft();
+      if (draftRef.current === sent) clearDraft();
       setSavedToast(true);
     } catch (err) {
       setError(uiErrorMessage(err, { scope: 'settings' }));

@@ -77,8 +77,10 @@ export class ProcessDueOfferDispatchesUseCase {
       await dispatches.markResult(id, tenantId, claimToken, { status: 'SKIPPED', failureReason: 'OFFER_NOT_FOUND' });
       return;
     }
-    // Oferta/cupom vencido não sai (validade definida por quem criou, ex.: monitoramento)
-    if (offer.expiresAt && offer.expiresAt.getTime() <= now.getTime()) {
+    // Oferta/cupom vencido não sai (validade definida por quem criou, ex.: monitoramento). Relógio
+    // de agora, não do início do tick: o lote pode levar minutos
+    const sendNow = (this.deps.now ?? (() => new Date()))();
+    if (offer.expiresAt && offer.expiresAt.getTime() <= Math.max(now.getTime(), sendNow.getTime())) {
       await dispatches.markResult(id, tenantId, claimToken, { status: 'SKIPPED', failureReason: 'OFFER_EXPIRED' });
       await this.finalizeIfDone(offerId, tenantId);
       return;

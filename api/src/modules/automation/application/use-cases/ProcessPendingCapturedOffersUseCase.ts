@@ -17,6 +17,8 @@ export const CAPTURE_TICK_BUDGET_MS = 10_000;
 export const CAPTURE_STALE_MS = 5 * 60_000;
 /** Mensagem com mais links que isso é lista/catálogo, não oferta: não vai para a fila. */
 export const CAPTURE_MAX_LINKS = 8;
+/** Tempo máximo resolvendo links de UMA captura (cada link pode ir à rede); estourou = falha recuperável. */
+export const CAPTURE_LINKS_BUDGET_MS = 25_000;
 const TITLE_MAX = 120;
 
 export interface ProcessPendingCapturedOffersDeps {
@@ -93,7 +95,10 @@ export class ProcessPendingCapturedOffersUseCase {
     if (urls.length > CAPTURE_MAX_LINKS) return { status: 'SKIPPED', reason: 'UNSUPPORTED_MARKETPLACE' };
     const replacements = new Map<string, string | null>();
     let first: Extract<TenantLinkResult, { kind: 'ok' }> | null = null;
+    const clock = this.deps.clock ?? Date.now;
+    const linksStarted = clock();
     for (const u of urls) {
+      if (clock() - linksStarted > CAPTURE_LINKS_BUDGET_MS) return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED' };
       const r = await links.build(c.tenantId, u.href);
       if (r.kind === 'failed') return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: r.provider } };
       if (r.kind === 'credential_missing') return { status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', data: { marketplace: r.provider } };
@@ -103,6 +108,11 @@ export class ProcessPendingCapturedOffersUseCase {
     if (!first) return { status: 'SKIPPED', reason: urls.length ? 'UNSUPPORTED_MARKETPLACE' : 'NO_LINK' };
 
     const finalText = rewriteOfferLinks(c.sourceText, replacements);
+    // Rede de segurança: nenhum link que não seja do tenant pode sobrar no texto enviado
+    const tenantLinks = new Set([...replacements.values()].filter((v): v is string => v !== null));
+    if (extractUrls(finalText).some((u) => !tenantLinks.has(u.raw) && !tenantLinks.has(u.href))) {
+      return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: first.provider } };
+    }
     const coupon = detectCoupon(c.sourceText);
     const expiresAt = captureExpiresAt(c.capturedAt, coupon !== null, config);
     const base: CapturedOfferResolution = {

@@ -47,7 +47,10 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
      com subdomínio: `www.amazon…`, `bit.ly/…`) passa pelo `BuildTenantAffiliateLinkUseCase`: link
      de produto → link do tenant; qualquer outro (convite de grupo, encurtador de terceiro, outro
      site) → **removido**, e a linha que só tinha links removidos sai inteira; mais de 8 links =
-     catálogo, não oferta;
+     catálogo, não oferta; mais de 25 s resolvendo links da mesma captura → `FAILED/LINK_RESOLVE_FAILED`
+     (recuperável), para não segurar o worker de envio;
+   - **rede de segurança**: depois da troca, se sobrar no texto qualquer link que não seja do tenant,
+     a captura vira `FAILED/LINK_RESOLVE_FAILED` e nada vai para a fila;
    - sem credencial do marketplace → `SKIPPED/CREDENTIAL_MISSING`; erro da API →
      `FAILED/LINK_RESOLVE_FAILED`; nenhum link de produto → `UNSUPPORTED_MARKETPLACE`;
    - cupom detectado no texto (`detectCoupon`) → validade menor;
@@ -55,7 +58,8 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
      validade → `SKIPPED/EXPIRED` (oferta/cupom vencido não é distribuído);
    - entra na fila de envio da sessão (`EnqueueOfferUseCase`, origem `MONITORING`, `expiresAt`,
      `sourceKey = captured:<id>` único: captura reprocessada depois de uma queda reaproveita a
-     oferta em vez de postar duas vezes);
+     oferta em vez de postar duas vezes; se a queda foi antes de enfileirar, a oferta ficou DRAFT e
+     é enfileirada no reprocessamento);
      se a fila empurrar o 1º envio para depois da validade → `EXPIRED` sem criar oferta;
    - sucesso → `QUEUED` com `offerId` e `startsAt`. Erro inesperado → `FAILED/INTERNAL_ERROR`.
 4. **Envio**: worker da fila (digitando…, marcar todos, intervalo, série por sessão). Envio de

@@ -58,9 +58,12 @@ export class EnqueueOfferUseCase {
   async execute(input: EnqueueOfferInput): Promise<EnqueueOfferResult> {
     const { tenantId, sessionId, conversationIds } = input;
     if (conversationIds.length === 0) throw new Error('EnqueueOfferUseCase: no destinations');
+    let draftId: string | null = null;
     if (input.sourceKey) {
       const existing = await this.deps.offers.findBySourceKey(tenantId, input.sourceKey);
-      if (existing) {
+      // Queda entre criar a oferta e enfileirar: ela ficou DRAFT sem envios; enfileira agora
+      if (existing?.status === 'DRAFT') draftId = existing.id;
+      else if (existing) {
         const first = (await this.deps.dispatches.listByOffer(existing.id, tenantId))
           .reduce<Date | null>((min, d) => (!min || d.notBefore < min ? d.notBefore : min), null);
         return { kind: 'queued', offerId: existing.id, firstSendAt: first ?? input.startAt };
@@ -76,7 +79,7 @@ export class EnqueueOfferUseCase {
     const firstSendAt = slots[0]!;
     if (input.expiresAt && firstSendAt.getTime() >= input.expiresAt.getTime()) return { kind: 'expired', firstSendAt };
 
-    const offer = await this.deps.offers.create({
+    const offer = draftId ? { id: draftId } : await this.deps.offers.create({
       tenantId,
       provider: input.provider,
       sourceUrl: input.sourceUrl,

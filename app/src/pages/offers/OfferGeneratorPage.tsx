@@ -50,6 +50,9 @@ export function OfferGeneratorPage() {
   const intervalMax = cfg.config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max;
   const showForm = !offer || composing;
   const offerBusy = gen.saving || gen.regenerating || gen.sending || gen.imageProgress != null;
+  // Lido na chegada do "Abrir oferta" (o clique já foi bloqueado se houvesse edição pendente)
+  const busyRef = useRef(false);
+  busyRef.current = form.dirty || offerBusy || editing;
   const scheduledWhen = offer && isPendingSchedule(offer.scheduledAt) ? t.send.formatWhen(offer.scheduledAt!) : null;
 
   const markPlanError = (err: unknown) => {
@@ -235,7 +238,9 @@ export function OfferGeneratorPage() {
         <SendQueuePanel
           currentOfferId={offer?.id ?? null}
           onOpenOffer={showWizard || form.dirty || offerBusy || editing ? undefined : (id) => {
-            gen.open(id).then(() => {
+            // Começou a editar enquanto carregava: a resposta é descartada (não apaga o que digitou)
+            gen.open(id, () => !busyRef.current).then((applied) => {
+              if (!applied) return;
               setComposing(false);
               topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }).catch(ignore);

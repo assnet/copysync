@@ -39,9 +39,9 @@ export function monitoringErrorMessage(err: unknown, ctx: MonitoringErrorContext
     case 'NOT_FOUND':
       return ctx.scope === 'groups' ? t.groupNotFound : ctx.scope === 'captured' ? t.capturedNotFound : t.sessionNotFound;
     case 'GROUP_MONITOR_GROUP_CONFLICT': {
-      const jid = typeof meta.groupJid === 'string' ? meta.groupJid : null;
       const role = meta.role === 'monitored' || meta.role === 'broadcast' ? meta.role : null;
-      return t.groupConflict(jid ? ctx.groupTitle?.(jid) ?? null : null, role);
+      // Sem o nome do grupo: o alerta não passa pelo borrão de privacidade
+      return t.groupConflict(null, role);
     }
     case 'GROUP_MONITOR_INVALID_INPUT': {
       const field = typeof meta.field === 'string' ? meta.field : typeof e.field === 'string' ? e.field : null;

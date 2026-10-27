@@ -15,6 +15,10 @@ describe('extractUrls', () => {
     expect(extractUrls('Por R$ 99.90 à vista, 1.5kg/un, kit c/2')).toEqual([]);
   });
 
+  it('link em itálico/negrito do WhatsApp sem protocolo', () => {
+    expect(extractUrls('Oferta _amzn.to/abc_ e *bit.ly/x*').map((u) => u.href)).toEqual(['https://amzn.to/abc', 'https://bit.ly/x']);
+  });
+
   it('pega subdomínio inteiro e encurtador de terceiro sem protocolo', () => {
     expect(extractUrls('www.amazon.com.br/dp/B0ABCDEFGH e bit.ly/xyz e produto.mercadolivre.com.br/MLB-1').map((u) => u.href)).toEqual([
       'https://www.amazon.com.br/dp/B0ABCDEFGH', 'https://bit.ly/xyz', 'https://produto.mercadolivre.com.br/MLB-1',

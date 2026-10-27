@@ -115,6 +115,13 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.captured.items[1]).toMatchObject({ status: 'FAILED', reason: 'LINK_RESOLVE_FAILED' });
   });
 
+  it('link do tenant com pontuação colada continua aceito pela rede de segurança', async () => {
+    const s = await setup();
+    await s.msg({ body: 'Fone (https://amzn.to/abc).' });
+    await s.process.execute();
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED' });
+  });
+
   it('só links fora de marketplace: UNSUPPORTED_MARKETPLACE', async () => {
     const s = await setup();
     await s.msg({ body: 'Entrem: https://chat.whatsapp.com/XYZ' });

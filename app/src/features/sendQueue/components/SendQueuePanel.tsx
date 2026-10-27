@@ -102,11 +102,11 @@ interface LaneProps {
 
 function LanePanel({ session, privacy, onOpenOffer, currentOfferId }: LaneProps) {
   const laneKey = session.sessionId ?? 'none';
-  const [tabs, setTabs] = usePersistedState<Record<string, 'waiting' | 'done'>>('sendQueue.tabs', {});
+  // Uma chave por sessão: duas faixas gravando o mesmo mapa se sobrescreviam
+  const [tab, setTab] = usePersistedState<'waiting' | 'done'>(`sendQueue.tab.${laneKey}`, 'waiting');
   const [expanded, setExpanded] = useState(false);
   const blurSession = useBlur(privacy.sessionName);
   const blurNames = useBlur(privacy.groupNames);
-  const tab = tabs[laneKey] ?? 'waiting';
   const rows = tab === 'waiting' ? session.waiting : session.recent;
   const visible = expanded ? rows : rows.slice(0, COLLAPSED_ROWS);
   const cooldown = laneCooldown(session);
@@ -172,7 +172,7 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId }: LaneProps)
 
       <Tabs
         value={tab}
-        onChange={(_, v: 'waiting' | 'done') => { setTabs({ ...tabs, [laneKey]: v }); setExpanded(false); }}
+        onChange={(_, v: 'waiting' | 'done') => { setTab(v); setExpanded(false); }}
         variant="fullWidth"
         sx={{ minHeight: 36, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 36, py: 0.5, px: 1, textTransform: 'none', minWidth: 0 } }}
       >

@@ -3,7 +3,8 @@
  * (amzn.to/…, www.amazon.com.br/…, bit.ly/…), inteiro, com subdomínios. Encurtador de terceiro
  * que não for marketplace é removido no processamento: nada do concorrente passa.
  */
-const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`]+|(?<![\w@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>"'`]*/gi;
+// Antes do domínio só não pode letra/dígito/@/./-: `_amzn.to/x_` (itálico do WhatsApp) também casa
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`]+|(?<![a-z0-9@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>"'`]*/gi;
 
 /** Pontuação/markdown do WhatsApp colada no fim do link não faz parte dele. */
 const TRAILING = /[)\].,!?;:*_~]+$/;

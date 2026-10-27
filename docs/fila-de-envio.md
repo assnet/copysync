@@ -45,8 +45,9 @@ faixa da sessão até o `releaseStale` (no máximo 5 min).
 
 1. por sessão, o candidato é o `QUEUED` vencido de menor `notBefore` de oferta `SENDING`
    (`DISTINCT ON`);
-2. só entra se a sessão **não tem envio `SENDING`** nem **`SENT` iniciado (`claimedAt`) há menos
-   de `gapSeconds`** do candidato, menos 5 s de tolerância (`LANE_GAP_TOLERANCE_SECONDS`: o claim
+2. só entra se a sessão **não tem envio `SENDING`** nem **`SENT` (ou `FAILED/SEND_TIMEOUT`, que
+   pode ainda estar saindo em segundo plano) iniciado (`claimedAt`) há menos de `gapSeconds`** do
+   candidato, menos 5 s de tolerância (`LANE_GAP_TOLERANCE_SECONDS`: o claim
    acontece até um tick depois do `notBefore`, e sem folga a cadência da própria oferta escorregaria).
 
 Resultado: no máximo um envio por sessão por tick, nunca dois em voo na mesma sessão, espaçamento

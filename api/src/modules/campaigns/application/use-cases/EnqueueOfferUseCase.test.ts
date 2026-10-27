@@ -46,6 +46,16 @@ describe('EnqueueOfferUseCase', () => {
     expect(s.dispatches.items).toHaveLength(2);
   });
 
+  it('oferta da mesma chave ficou DRAFT (queda antes de enfileirar): enfileira a existente', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'orfa', status: 'DRAFT', sourceKey: 'captured:9', mentionAll: true }));
+    const out = await s.uc.execute(input({ sourceKey: 'captured:9' }));
+    expect(out).toMatchObject({ kind: 'queued', offerId: 'orfa' });
+    expect(s.offers.items).toHaveLength(1);
+    expect(s.offers.items[0]!.status).toBe('SENDING');
+    expect(s.dispatches.items).toHaveLength(2);
+  });
+
   it('fila empurraria para depois da validade: não cria nada', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'gen', status: 'SENDING' }));

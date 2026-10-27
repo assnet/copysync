@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert, Autocomplete, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, IconButton, InputAdornment, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack,
@@ -82,6 +82,8 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     () => initial.map((g) => ({ groupJid: g.groupJid, keywords: g.keywords })),
     { version: PICKER_DRAFT_VERSION },
   );
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   // Nome/foto em memória: os salvos (`initial`), os vistos na busca e os escolhidos nesta tela
   const [seen, setSeen] = useState<Map<string, { title: string | null; avatarUrl: string | null }>>(
     () => new Map(initial.map((g) => [g.groupJid, { title: g.title, avatarUrl: g.avatarUrl }])),
@@ -121,7 +123,10 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     setSaving(true);
     setError(null);
     try {
+      const sent = draft;
       await onSave(selected);
+      // Mexeu durante o salvar: mantém aberto com a alteração para salvar de novo
+      if (draftRef.current !== sent) return;
       clear();
       onClose();
     } catch (err) {

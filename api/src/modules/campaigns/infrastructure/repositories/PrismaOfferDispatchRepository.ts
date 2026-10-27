@@ -91,7 +91,9 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                 SELECT 1 FROM "offer_dispatches" o
                  WHERE o."sessionId" = heads."sessionId"
                    AND (o."status" = 'SENDING'::"OfferDispatchStatus"
-                        OR (o."status" = 'SENT'::"OfferDispatchStatus"
+                        -- SEND_TIMEOUT: a mensagem pode ainda estar saindo em segundo plano
+                        OR (o."status" IN ('SENT'::"OfferDispatchStatus", 'FAILED'::"OfferDispatchStatus")
+                            AND (o."status" = 'SENT'::"OfferDispatchStatus" OR o."failureReason" = 'SEND_TIMEOUT')
                             AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, 0)) > ${now}))
               )
               ORDER BY heads."notBefore"

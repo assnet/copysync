@@ -21,11 +21,12 @@ describe('monitoringErrorMessage', () => {
     expect(monitoringErrorMessage(err('NOT_FOUND'), { scope: 'captured' })).toBe(monitoringStrings.errors.capturedNotFound);
   });
 
-  it('conflito cita o grupo pelo nome e o papel', () => {
+  it('conflito cita o papel, sem nome nem id do grupo (alerta não passa pelo borrão)', () => {
     const msg = monitoringErrorMessage(err('GROUP_MONITOR_GROUP_CONFLICT', { groupJid: 'g1@g.us', role: 'broadcast' }), {
       scope: 'groups', groupTitle: (jid) => (jid === 'g1@g.us' ? 'Promo' : null),
     });
-    expect(msg).toBe('O grupo "Promo" já é grupo de disparo (nesta ou em outra sessão). O mesmo grupo não pode ser origem e destino.');
+    expect(msg).toContain('grupo de disparo');
+    expect(msg).not.toContain('Promo');
     expect(msg).not.toContain('g1@g.us');
   });
 
