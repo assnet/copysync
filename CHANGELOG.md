@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.36.1
+
+- **Privacidade** — flags novas: e-mail e papel do usuário no menu (`layout.userIdentity`), nome e número da sessão (`offers.sessionName`: resumo, passos Sessão e Confirmar) e público-alvo escolhido (`offers.audience`: chip e seletor de novo texto).
+
 ### Added — app 0.36.0
 
 - **Privacidade** — item "Privacidade" no menu (acima de Configurações) abre um diálogo responsivo (tela cheia e deslizando de baixo no celular; crescendo do centro no desktop; sem animação sob `prefers-reduced-motion`) com flags de borrar dados por tela. **`features/privacy/`**: registro `privacyFlags.ts`, `PrivacyProvider` (`localStorage`, por navegador), `Blurred`/`useBlur`, `PrivacyDialog`. Primeira tela: Gerador de ofertas — fotos e nomes dos grupos, imagens e título/texto das ofertas (chips, lista de grupos, prévia da mensagem, editor). Ponto no menu indica flags ativas.

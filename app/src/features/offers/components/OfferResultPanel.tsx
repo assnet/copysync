@@ -18,6 +18,7 @@ import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
 import { GroupChip } from './GroupChip';
+import { Blurred, useBlur } from '@/features/privacy';
 
 const t = offerStrings.actions;
 const MAX_CHIPS = 6;
@@ -59,6 +60,7 @@ export function OfferResultPanel(props: Props) {
   // Sem dados da loja o operador precisa preencher: já abre editando.
   const [editing, setEditing] = useState(needsManualData);
   const [audience, setAudience] = useState<OfferAudience>(offer.audience);
+  const blurAudience = useBlur('offers.audience');
   const [copied, setCopied] = useState(false);
   const isDraft = offer.status === 'DRAFT';
   const busy = saving || regenerating || sending || imageProgress != null;
@@ -122,7 +124,7 @@ export function OfferResultPanel(props: Props) {
         <Chip
           size="small"
           variant="outlined"
-          label={offerStrings.preview.audience(offerStrings.audiences[offer.audience].label)}
+          label={<Blurred when={blurAudience} inline radius={5}>{offerStrings.preview.audience(offerStrings.audiences[offer.audience].label)}</Blurred>}
           sx={{ alignSelf: 'flex-start' }}
         />
 
@@ -159,7 +161,7 @@ export function OfferResultPanel(props: Props) {
                 value={audience}
                 disabled={busy}
                 onChange={(e) => setAudience(e.target.value as OfferAudience)}
-                sx={{ flex: 1, minWidth: 140 }}
+                sx={{ flex: 1, minWidth: 140, ...(blurAudience && { '& .MuiSelect-select': { filter: 'blur(5px)' } }) }}
               >
                 {OFFER_AUDIENCES.map((key) => (
                   <MenuItem key={key} value={key} sx={{ gap: 1 }}>

@@ -3,6 +3,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { PrivacyProvider, readStoredFlags, useBlur, usePrivacy } from './PrivacyContext';
 import { Blurred } from './components/Blurred';
+import { PRIVACY_SCREENS } from './privacyFlags';
 
 const wrapper = ({ children }: { children: ReactNode }) => <PrivacyProvider>{children}</PrivacyProvider>;
 
@@ -19,7 +20,7 @@ describe('PrivacyProvider', () => {
     expect([...readStoredFlags()]).toEqual(['offers.groupNames']);
 
     act(() => result.current.setScreen('offers', true));
-    expect(result.current.flags.size).toBe(4);
+    expect(result.current.flags.size).toBe(PRIVACY_SCREENS.find((s) => s.id === 'offers')!.flags.length);
 
     act(() => result.current.setAll(false));
     expect(result.current.active).toBe(false);

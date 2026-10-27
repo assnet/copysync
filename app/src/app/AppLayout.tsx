@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { MODULE_ICONS } from '@/pages/modules';
-import { PrivacyDialog, privacyStrings, usePrivacy } from '@/features/privacy';
+import { Blurred, PrivacyDialog, privacyStrings, useBlur, usePrivacy } from '@/features/privacy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useColorMode } from '@/contexts/ThemeContext';
@@ -110,6 +110,8 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
   const { user, logout } = useAuth();
   const theme = useTheme();
   const privacy = usePrivacy();
+  const blurUser = useBlur('layout.userIdentity');
+  const blurAvatarSx = blurUser ? { filter: 'blur(4px)' } : undefined;
 
   const handleNav = (path: string) => {
     navigate(path);
@@ -256,9 +258,9 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
           <Tooltip
             title={
               <Box>
-                <Typography variant="caption" display="block">{user?.email ?? '—'}</Typography>
+                <Typography variant="caption" display="block"><Blurred when={blurUser} inline radius={4}>{user?.email ?? '—'}</Blurred></Typography>
                 <Typography variant="caption" color="inherit" sx={{ opacity: 0.8 }}>
-                  {user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}
+                  <Blurred when={blurUser} inline radius={4}>{user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}</Blurred>
                 </Typography>
               </Box>
             }
@@ -279,6 +281,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
                   bgcolor: 'primary.main',
                   fontSize: 14,
                   fontWeight: 700,
+                  ...blurAvatarSx,
                 }}
               >
                 {user?.name?.[0]?.toUpperCase() ?? 'U'}
@@ -306,16 +309,17 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
                 fontSize: 14,
                 fontWeight: 700,
                 flexShrink: 0,
+                ...blurAvatarSx,
               }}
             >
               {user?.name?.[0]?.toUpperCase() ?? 'U'}
             </Avatar>
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography variant="caption" color="text.secondary" noWrap display="block">
-                {user?.email ?? '—'}
+                <Blurred when={blurUser} inline radius={4}>{user?.email ?? '—'}</Blurred>
               </Typography>
               <Typography variant="caption" color="text.disabled" noWrap>
-                {user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}
+                <Blurred when={blurUser} inline radius={4}>{user?.isSuperAdmin ? 'Super Admin' : 'Usuário'}</Blurred>
               </Typography>
             </Box>
           </Box>

@@ -39,7 +39,7 @@ compartilhar a tela sem expor clientes, grupos e produtos.
 4. Teste com a flag ligada: o layout não pode mudar (o desfoque mantém o espaço).
 
 Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
-Primeira tela coberta: Gerador de ofertas (fotos e nomes de grupos, imagens e texto das ofertas).
+Telas cobertas: Painel/menu (e-mail e papel do usuário) e Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas).
 
 ## ToggleOption
 

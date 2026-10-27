@@ -7,11 +7,20 @@
  */
 export const PRIVACY_SCREENS = [
   {
+    id: 'layout',
+    label: 'Painel (menu)',
+    flags: [
+      { id: 'layout.userIdentity', label: 'E-mail e papel do usuário' },
+    ],
+  },
+  {
     id: 'offers',
     label: 'Gerador de ofertas',
     flags: [
+      { id: 'offers.sessionName', label: 'Nome e número da sessão' },
       { id: 'offers.groupAvatars', label: 'Fotos dos grupos' },
       { id: 'offers.groupNames', label: 'Nomes dos grupos' },
+      { id: 'offers.audience', label: 'Público-alvo escolhido' },
       { id: 'offers.productImages', label: 'Imagens dos produtos' },
       { id: 'offers.productText', label: 'Título e texto das ofertas' },
     ],

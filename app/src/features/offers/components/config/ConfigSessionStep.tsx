@@ -6,6 +6,7 @@ import { EmptyState } from '@/components';
 import type { SessionItem } from '@/types/api.types';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
+import { Blurred, useBlur } from '@/features/privacy';
 
 const t = offerStrings.wizard.session;
 
@@ -20,6 +21,7 @@ interface Props {
 
 /** Passo 1: só sessões conectadas, em cartões de escolha única. */
 export function ConfigSessionStep({ sessions, loading, failed, selectedId, onSelect, onRetry }: Props) {
+  const blurSession = useBlur('offers.sessionName');
   if (failed) {
     return (
       <Alert severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>{offerStrings.page.retry}</Button>}>
@@ -68,11 +70,11 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedId, onSel
               sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: 'flex-start', minHeight: 72 }}
             >
               <Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ width: 44, height: 44 }}>
-                {s.name.slice(0, 1).toUpperCase()}
+                <Blurred when={blurSession} inline radius={4}>{s.name.slice(0, 1).toUpperCase()}</Blurred>
               </Avatar>
               <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                <Typography variant="subtitle2" noWrap>{s.name}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>{s.phone ?? t.noPhone}</Typography>
+                <Typography variant="subtitle2" noWrap><Blurred when={blurSession} inline radius={5}>{s.name}</Blurred></Typography>
+                <Typography variant="body2" color="text.secondary" noWrap><Blurred when={blurSession} inline radius={5}>{s.phone ?? t.noPhone}</Blurred></Typography>
               </Box>
               <Stack alignItems="flex-end" spacing={0.5}>
                 {selected

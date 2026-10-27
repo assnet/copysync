@@ -5,6 +5,7 @@ import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import type { OfferConfigGroup, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
 import { GroupChip } from './GroupChip';
+import { Blurred, useBlur } from '@/features/privacy';
 
 const t = offerStrings.summary;
 const MAX_CHIPS = 4;
@@ -22,12 +23,13 @@ export function OfferConfigSummary({ session, groups, onEdit }: Props) {
   const rest = groups.length - shown.length;
   const untitled = offerStrings.wizard.groups.untitled;
 
+  const blurSession = useBlur('offers.sessionName');
   const sessionChip = (
     <Chip
       icon={offline || !session ? <WarningAmberOutlinedIcon /> : <PhoneIphoneOutlinedIcon />}
       color={offline || !session ? 'warning' : 'success'}
       variant="outlined"
-      label={session ? t.session(session.name) : t.sessionMissing}
+      label={<Blurred when={blurSession && !!session} inline radius={5}>{session ? t.session(session.name) : t.sessionMissing}</Blurred>}
       tabIndex={offline ? 0 : undefined}
       sx={{ fontWeight: 600, maxWidth: 260 }}
     />

@@ -1,6 +1,7 @@
 import { Box, Chip, Divider, Stack, Typography } from '@mui/material';
 import { RangeSlider } from '@/components';
 import { GroupChip } from '../GroupChip';
+import { Blurred, useBlur } from '@/features/privacy';
 import type { SelectedGroup } from './ConfigGroupsStep';
 import { offerStrings } from '../../strings';
 import { INTERVAL_MAX_SECONDS, INTERVAL_MIN_SECONDS, INTERVAL_STEP_SECONDS, intervalRisk, intervalValid } from '../../utils/offerConfig';
@@ -20,6 +21,7 @@ interface Props {
 export function ConfigConfirmStep({ sessionName, groups, intervalMin, intervalMax, onInterval }: Props) {
   const invalid = !intervalValid(intervalMin, intervalMax);
   const risk = intervalRisk(intervalMin, intervalMax);
+  const blurSession = useBlur('offers.sessionName');
   const shown = groups.slice(0, MAX_CHIPS);
   const rest = groups.length - shown.length;
 
@@ -28,7 +30,7 @@ export function ConfigConfirmStep({ sessionName, groups, intervalMin, intervalMa
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
         <Box>
           <Typography variant="caption" color="text.secondary">{t.session}</Typography>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }} noWrap>{sessionName}</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }} noWrap><Blurred when={blurSession} inline radius={5}>{sessionName}</Blurred></Typography>
         </Box>
         <Box>
           <Typography variant="caption" color="text.secondary">{t.total}</Typography>
