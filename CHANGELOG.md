@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — extension (api 0.28.0 · app 0.26.0)
+
+- **`extension.routes.ts`** — `DELETE /extension/marketplaces/ml/session`: "Desconectar Mercado Livre" chamava rota inexistente. Revoga o consentimento ML de todas as sessões da extensão do tenant e apaga a sessão cifrada; etiqueta e secreto ficam. `POST /extension/marketplaces/ml/consent` reautoriza a instalação.
+- **`ClearAffiliateSessionUseCase.ts`** + **`clearSession`** no repositório — idempotente, audita `AFFILIATE_SESSION_ACCOUNT_RESET`.
+- **`IAuditLogRepository.ts`** — espelho TS ganha `AFFILIATE_SESSION_ACCOUNT_RESET` (já existia no enum Prisma).
+- **`useExtension.ts`** — "Sincronizar agora" reautoriza a instalação antes do sync; **`ExtensionMlCard.tsx`** mostra erro ao desconectar.
+
 ### Fixed — extension (app 0.25.4 · extension 3.1.3)
 
 - **`marketplaceSession.ts`** — captura descartava cookies de sessão do navegador (`!cookie.session`); o status "Logado" não. Com `ssid` de sessão: painel mostrava "Logado", mas o sync falhava com `ml_not_logged` sem chamar a API.

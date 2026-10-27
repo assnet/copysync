@@ -30,7 +30,12 @@ export function ExtensionMlCard() {
 
   const handleDisconnect = useCallback(async () => {
     setConfirmDisconnect(false);
-    await ext.disconnectMl();
+    setSyncError(null);
+    try {
+      await ext.disconnectMl();
+    } catch {
+      setSyncError(extensionStrings.errors.disconnectMlFailed);
+    }
   }, [ext]);
 
   const ml = ext.mlStatus;

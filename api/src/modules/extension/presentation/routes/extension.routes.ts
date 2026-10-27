@@ -9,6 +9,7 @@ import { RecordLifecycleSignalUseCase } from '../../application/use-cases/Record
 import { setExtSessionCookie, clearExtSessionCookie } from '../../infrastructure/cookieHelper';
 import { EXT_SESSION_TTL_SECONDS, ML_SESSION_COOKIES } from '../../domain/constants';
 import { UpsertAffiliateSessionUseCase } from '../../../integrations/application/use-cases/UpsertAffiliateSessionUseCase';
+import { ClearAffiliateSessionUseCase } from '../../../integrations/application/use-cases/ClearAffiliateSessionUseCase';
 import { PrismaAffiliateCredentialRepository } from '../../../integrations/infrastructure/repositories/PrismaAffiliateCredentialRepository';
 import { MercadoLivreAffiliateClient } from '../../../campaigns/infrastructure/http/MercadoLivreAffiliateClient';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
@@ -35,7 +36,65 @@ const syncMlSessionUseCase = new UpsertAffiliateSessionUseCase(
 );
 const log = logger.child({ module: 'extension.routes' });
 
+const clearMlSessionUseCase = new ClearAffiliateSessionUseCase(
+  new PrismaAffiliateCredentialRepository(),
+  new PrismaAuditLogRepository(),
+);
+
 export async function extensionRoutes(app: FastifyInstance): Promise<void> {
+  // ── DELETE /marketplaces/ml/session — Disconnect ML (panel, Bearer) ──
+  app.delete(
+    '/marketplaces/ml/session',
+    {
+      preHandler: [authHook, tenantHook],
+      schema: {
+        tags: ['Extension'],
+        summary: 'Desconectar Mercado Livre (apaga sessão e revoga consentimento)',
+        security: [{ bearerAuth: [] }],
+        response: { 200: { type: 'object', properties: { success: { type: 'boolean' } } } },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      // Consent first: otherwise the extension may re-sync between the two writes.
+      await extensionContainer.sessionRepository.revokeMlConsentForTenant(tenantId);
+      await clearMlSessionUseCase.execute({ tenantId, userId, provider: 'MERCADO_LIVRE' });
+      return reply.send({ success: true });
+    },
+  );
+
+  // ── POST /marketplaces/ml/consent — Re-grant ML consent (panel, Bearer) ─
+  app.post(
+    '/marketplaces/ml/consent',
+    {
+      preHandler: [authHook, tenantHook],
+      config: { rateLimit: rateLimitPresets.extensionAuth },
+      schema: {
+        tags: ['Extension'],
+        summary: 'Autorizar sincronização do Mercado Livre nesta instalação',
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: 'object',
+          required: ['installationId'],
+          properties: { installationId: { type: 'string', format: 'uuid' } },
+        },
+        response: { 200: { type: 'object', properties: { success: { type: 'boolean' } } } },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const { installationId } = request.body as { installationId: string };
+      if (!(await entitlementReader.hasMarketplaceExtension(tenantId))) {
+        return reply.code(403).send({ success: false, error: { code: 'EXTENSION_NOT_ENTITLED', message: 'Marketplace extension is not available on the current plan' } });
+      }
+      const granted = await extensionContainer.sessionRepository.grantMlConsent(userId, installationId, tenantId, new Date());
+      if (!granted) {
+        return reply.code(404).send({ success: false, error: { code: 'SESSION_NOT_FOUND', message: 'Extension session not found for this installation' } });
+      }
+      return reply.send({ success: true });
+    },
+  );
+
   // ── PUT /marketplaces/ml/session — ML session sync (cookie auth) ─────
   app.put(
     '/marketplaces/ml/session',

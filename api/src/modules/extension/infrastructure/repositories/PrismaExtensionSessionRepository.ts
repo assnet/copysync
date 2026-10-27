@@ -89,6 +89,22 @@ export class PrismaExtensionSessionRepository implements IExtensionSessionReposi
     return result.count;
   }
 
+  async revokeMlConsentForTenant(mlTenantId: string): Promise<number> {
+    const result = await this.prisma.extensionSession.updateMany({
+      where: { mlTenantId, mlConsentAt: { not: null } },
+      data: { mlConsentAt: null },
+    });
+    return result.count;
+  }
+
+  async grantMlConsent(userId: string, installationId: string, mlTenantId: string, at: Date): Promise<boolean> {
+    const result = await this.prisma.extensionSession.updateMany({
+      where: { userId, installationId, mlTenantId, revokedAt: null },
+      data: { mlConsentAt: at },
+    });
+    return result.count > 0;
+  }
+
   async deleteExpiredBefore(date: Date): Promise<number> {
     const result = await this.prisma.extensionSession.deleteMany({
       where: { absoluteExpiresAt: { lt: date } },

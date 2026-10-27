@@ -73,6 +73,10 @@ export const extensionApi = {
   },
 
   async disconnectMl(): Promise<void> {
-    await apiClient.delete('/integrations/affiliate-credentials/MERCADO_LIVRE/session');
+    await apiClient.delete('/extension/marketplaces/ml/session');
+  },
+
+  async grantMlConsent(installationId: string): Promise<void> {
+    await apiClient.post('/extension/marketplaces/ml/consent', { installationId });
   },
 };

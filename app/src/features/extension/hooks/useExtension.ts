@@ -101,14 +101,17 @@ export function useExtension() {
     await refresh();
   }, [refresh]);
 
+  const installationId = state.handshake?.installationId;
   const syncMl = useCallback(async () => {
+    // Clicking sync is explicit consent; also restores it after "Desconectar Mercado Livre".
+    if (installationId) await extensionApi.grantMlConsent(installationId);
     const result = await sendOp('ml.syncSession');
     await refresh();
     if (!result.ok) throw new ExtensionSyncError(result.error.code);
     const payload = (result as { ok: true; payload: MlSyncSessionPayload }).payload;
     if (payload.result === 'FAILED') throw new ExtensionSyncError(payload.errorCode ?? 'unknown');
     return payload;
-  }, [refresh]);
+  }, [refresh, installationId]);
 
   const disconnectMl = useCallback(async () => {
     await extensionApi.disconnectMl();

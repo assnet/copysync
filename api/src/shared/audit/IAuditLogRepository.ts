@@ -24,7 +24,8 @@ export type AuditAction =
   | 'MEMBER_DEACTIVATED'
   | 'MEMBER_ROLE_CHANGED'
   | 'TENANT_STATUS_CHANGED'
-  | 'BILLING_EVENT_RECEIVED';
+  | 'BILLING_EVENT_RECEIVED'
+  | 'AFFILIATE_SESSION_ACCOUNT_RESET';
 
 export interface CreateAuditLogInput {
   tenantId?: string;

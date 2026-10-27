@@ -28,6 +28,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null) {
     upsert: vi.fn(),
     upsertSession: vi.fn().mockImplementation(async (i) => record(i.session, i.publicIdentifierIfEmpty ?? null)),
     delete: vi.fn(),
+    clearSession: vi.fn(),
     setStatus: vi.fn(),
   } satisfies IAffiliateCredentialRepository;
   const audit = { create: vi.fn().mockResolvedValue(undefined) } satisfies IAuditLogRepository;

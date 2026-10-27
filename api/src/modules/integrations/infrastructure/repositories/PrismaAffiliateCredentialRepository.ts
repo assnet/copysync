@@ -119,6 +119,23 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     return count > 0;
   }
 
+  async clearSession(tenantId: string, provider: AffiliateProvider): Promise<boolean> {
+    const { count } = await prisma.affiliateCredential.updateMany({
+      where: { tenantId, provider, sessionCiphertext: { not: null } },
+      data: {
+        sessionCiphertext: null,
+        sessionIv: null,
+        sessionTag: null,
+        sessionKeyVersion: null,
+        sessionSyncedAt: null,
+        sessionInvalidAt: null,
+        sessionAccountHash: null,
+        sessionAccountKeyVersion: null,
+      },
+    });
+    return count > 0;
+  }
+
   async setStatus(
     tenantId: string,
     provider: AffiliateProvider,

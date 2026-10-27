@@ -90,6 +90,12 @@ Contrato espelhado em `app/src/features/extension/contract/channel.ts`. Paridade
 | `POST /api/extension/heartbeat` | Cookie | `{ extVersion, ml: { lastSyncAt } }` | `{ resyncRequested }` |
 | `PUT /api/extension/marketplaces/ml/session` | Cookie + consentimento ML + entitlement | `{ cookies: { ssid, … }, capturedAt }` | `{ affiliateTag }` |
 | `POST /api/extension/lifecycle/event` | Pública (rate limited) | `{ installationId, type, version, channel, dedupeKey }` | — |
+| `DELETE /api/extension/marketplaces/ml/session` | Bearer + X-Tenant-Id (painel) | — | revoga consentimento ML do tenant e apaga a sessão cifrada |
+| `POST /api/extension/marketplaces/ml/consent` | Bearer + X-Tenant-Id (painel) | `{ installationId }` | reautoriza o sync nesta instalação |
+
+**Desconectar Mercado Livre:** revoga o consentimento **antes** de apagar a sessão (senão a
+extensão pode ressincronizar entre as duas escritas). Etiqueta e secreto da credencial ficam.
+"Sincronizar agora" no painel chama `/consent` antes do sync: clicar é consentimento explícito.
 
 Todas no envelope `{ success, data, error? }` de `shared/http/httpResponse.ts`.
 

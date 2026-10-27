@@ -79,6 +79,7 @@ export const extensionStrings = {
     extensionNotResponding: 'A extensão não respondeu. Verifique se está ativada.',
     connectionFailed: 'Falha ao vincular a extensão. Tente novamente.',
     syncFailed: 'Falha ao sincronizar. Verifique se está logado no Mercado Livre.',
+    disconnectMlFailed: 'Não foi possível desconectar o Mercado Livre. Tente novamente.',
     needsLogin: 'Faça login no painel para continuar.',
     forbidden: 'Sem permissão para esta operação.',
     planRequired: 'Recurso indisponível no seu plano atual.',

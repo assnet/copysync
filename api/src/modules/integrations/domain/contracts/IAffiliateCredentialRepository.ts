@@ -26,6 +26,8 @@ export interface IAffiliateCredentialRepository {
   upsertSession(input: UpsertAffiliateSessionRecord): Promise<AffiliateCredential>;
   /** false = não existia. */
   delete(tenantId: string, provider: AffiliateProvider): Promise<boolean>;
+  /** Zera só as colunas de sessão; ID público e secreto ficam. false = não havia sessão. */
+  clearSession(tenantId: string, provider: AffiliateProvider): Promise<boolean>;
   /** null = não existia. */
   setStatus(
     tenantId: string,

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { UpsertAffiliateCredentialUseCase } from './UpsertAffiliateCredentialUseCase';
 import { DeleteAffiliateCredentialUseCase } from './DeleteAffiliateCredentialUseCase';
+import { ClearAffiliateSessionUseCase } from './ClearAffiliateSessionUseCase';
 import { SetAffiliateCredentialStatusUseCase } from './SetAffiliateCredentialStatusUseCase';
 import { ResolveAffiliateCredentialUseCase } from './ResolveAffiliateCredentialUseCase';
 import { AesGcmSecretCipher } from '../../../../shared/security/AesGcmSecretCipher';
@@ -34,6 +35,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null = null) {
     upsert: vi.fn().mockImplementation(async (i) => ({ ...makeRecord(), publicIdentifier: i.publicIdentifier })),
     upsertSession: vi.fn(),
     delete: vi.fn().mockResolvedValue(existing !== null),
+    clearSession: vi.fn().mockResolvedValue(existing?.hasSession ?? false),
     setStatus: vi.fn().mockResolvedValue(existing),
   } satisfies IAffiliateCredentialRepository;
   const audit = { create: vi.fn().mockResolvedValue(undefined) } satisfies IAuditLogRepository;
@@ -107,6 +109,21 @@ describe('DeleteAffiliateCredentialUseCase', () => {
     await new DeleteAffiliateCredentialUseCase(d.repo, d.audit).execute({ tenantId: TENANT, userId: USER, provider: 'SHOPEE' });
     expect(d.repo.delete).toHaveBeenCalledWith(TENANT, 'SHOPEE');
     expect(d.audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_CREDENTIAL_DELETED' }));
+  });
+});
+
+describe('ClearAffiliateSessionUseCase', () => {
+  it('com sessão: zera e audita sem segredo', async () => {
+    const d = makeDeps(makeRecord({ provider: 'MERCADO_LIVRE', hasSession: true }));
+    await new ClearAffiliateSessionUseCase(d.repo, d.audit).execute({ tenantId: TENANT, userId: USER, provider: 'MERCADO_LIVRE' });
+    expect(d.repo.clearSession).toHaveBeenCalledWith(TENANT, 'MERCADO_LIVRE');
+    expect(d.audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_SESSION_ACCOUNT_RESET' }));
+  });
+
+  it('sem sessão: idempotente, não audita', async () => {
+    const d = makeDeps(null);
+    await new ClearAffiliateSessionUseCase(d.repo, d.audit).execute({ tenantId: TENANT, userId: USER, provider: 'MERCADO_LIVRE' });
+    expect(d.audit.create).not.toHaveBeenCalled();
   });
 });
 
