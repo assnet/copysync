@@ -36,6 +36,8 @@ vi.mock('@whiskeysockets/baileys', async (importOriginal) => {
 vi.mock('./BaileysAuthStatePersistence', () => ({
   buildBaileysAuthState: async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => undefined }),
   flushAllAuthStates: async () => undefined,
+  releaseAuthState: async () => undefined,
+  discardAuthState: () => undefined,
 }));
 const disconnect = vi.hoisted(() => ({ value: { shouldReconnect: false, shouldClearCredentials: false, takenOverByAnotherInstance: false } }));
 vi.mock('./BaileysErrorTranslator', async (importOriginal) => {

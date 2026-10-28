@@ -44,7 +44,7 @@ import type {
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
-import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
+import { buildBaileysAuthState, discardAuthState, releaseAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import {
   translateDisconnect,
@@ -188,6 +188,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       }
       this.registry.delete(sessionId);
     }
+    // Estado continua valendo: grava o pendente e solta o handle (sem flush atrasado depois)
+    await releaseAuthState(sessionId);
     this.clearSessionGroupMetadata(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
   }
@@ -209,6 +211,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       entry.socket.end(undefined);
       this.registry.delete(sessionId);
     }
+    // Credenciais revogadas: nada do pendente pode ser gravado (ressuscitaria o login)
+    discardAuthState(sessionId);
     this.clearSessionGroupMetadata(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'LOGGED_OUT');
     internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId, tenantId });
@@ -1443,6 +1447,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private async discardCredentials(sessionId: string, tenantId: string, reason: string): Promise<void> {
     // Credencial revogada: o número pedido antes não vale para o novo pareamento
     this.pairingPhones.delete(sessionId);
+    // Antes de limpar: um flush atrasado do handle regravaria as credenciais revogadas
+    discardAuthState(sessionId);
     try {
       await this.authStateRepo.clearCredentials(sessionId);
       baileysLogger.warn({ sessionId, reason }, 'Credentials revoked by WhatsApp — cleared');

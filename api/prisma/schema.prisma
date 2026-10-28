@@ -278,6 +278,7 @@ model Session {
   authState             SessionAuthState?
   messages              Message[]
   chatConversations     ChatConversation[]
+  authKeys              SessionAuthKey[]
   offerGeneratorConfigs OfferGeneratorConfig[]
   offerGeneratorConfigSessions OfferGeneratorConfigSession[]
   groupMonitorConfigs   GroupMonitorConfig[]
@@ -297,8 +298,11 @@ model SessionAuthState {
   sessionId    String   @unique
   tenantId     String
   provider     String   @default("baileys") // engine/provider identifier
-  statePayload Json // credentials blob — encrypt at-rest in production
-  version      Int      @default(0) // increments on each update
+  /// LEGADO: blob único com todas as chaves. Substituído por SessionAuthKey (uma linha por chave,
+  /// docs/sessoes-auth-state.md). Mantido intacto por uma janela de rollback; depois vira nullable/cai.
+  statePayload Json
+  /// Incrementa a cada gravação de chaves (lock otimista da escala, §3.1).
+  version      Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -307,6 +311,21 @@ model SessionAuthState {
 
   @@index([tenantId])
   @@map("session_auth_states")
+}
+
+/// Estado de autenticação do WhatsApp, UMA LINHA POR CHAVE (`__creds__`, `pre-key__<id>`,
+/// `session__<jid>`, `app-state-sync-version__<name>`…). Gravação só do que mudou: o blob único
+/// regravava 3–6 MB a cada chave (docs/sessoes-auth-state.md). Valor serializado com BufferJSON.
+model SessionAuthKey {
+  sessionId String
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, key])
+  @@map("session_auth_keys")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 vi.mock('./BaileysAuthStatePersistence', () => ({
   buildBaileysAuthState: async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => undefined }),
   flushAllAuthStates: async () => undefined,
+  releaseAuthState: async () => undefined,
+  discardAuthState: () => undefined,
 }));
 
 const S = 'sess-typing';
