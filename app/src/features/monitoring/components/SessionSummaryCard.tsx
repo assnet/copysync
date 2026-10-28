@@ -54,7 +54,7 @@ export function SessionSummaryCard({ session }: { session: SessionItem }) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
           <Chip size="small" color={STATUS_COLOR[session.status]} label={sessionStrings.status[session.status]} />
           <Tooltip title={connected ? t.manageTooltip : t.connectTooltip} arrow describeChild>
-            <Button size="small" variant={connected ? 'text' : 'contained'} component={RouterLink} to="/sessions">
+            <Button size="small" variant={connected ? 'text' : 'contained'} component={RouterLink} to="/settings/sessions">
               {connected ? t.manage : t.connect}
             </Button>
           </Tooltip>

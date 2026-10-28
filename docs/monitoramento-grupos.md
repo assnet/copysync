@@ -118,7 +118,7 @@ limita). Recorte completo fica para a fase 2.
 ## 5. Painel
 
 - Seletor de sessão (persistido em `monitoring.sessionId`). "Conectar nova sessão" leva a
-  `/sessions?create=1&returnTo=/monitoring`; ao fechar o assistente volta para
+  `/settings/sessions?create=1&returnTo=/monitoring`; ao fechar o assistente volta para
   `/monitoring?sessionId=<nova>` já selecionada (`safeReturnPath` só aceita caminho interno).
 - Cards Sessão / Grupos monitorados n/max / Grupos de disparo n/max; seletor de grupos com busca e
   palavras-chave; grupo já usado no outro papel aparece bloqueado.

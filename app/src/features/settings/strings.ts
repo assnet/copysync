@@ -17,6 +17,7 @@ function formatDateTime(iso: string): string {
 export const settingsStrings = {
   layout: {
     title: 'Configurações',
+    navSessions: 'Sessões',
     navAccount: 'Minha conta',
     navAffiliateCredentials: 'Credenciais de afiliado',
     navAi: 'Inteligência artificial',

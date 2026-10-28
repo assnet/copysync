@@ -28,7 +28,7 @@ const PRIVACY = {
 } as const;
 
 /** Rota de volta usada pelo assistente de sessões depois de criar uma sessão. */
-const CONNECT_NEW_PATH = '/sessions?create=1&returnTo=/monitoring';
+const CONNECT_NEW_PATH = '/settings/sessions?create=1&returnTo=/monitoring';
 
 const CARDS_GRID = { display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' } } as const;
 

@@ -16,6 +16,7 @@ O mesmo passo 3 é usado para reconectar uma sessão existente (`ConnectSessionD
 | Domínio | `api/src/modules/sessions/domain/services/normalizeBrazilPhone.ts` (`normalizeBrazilPhone`, `hasPhoneMismatch`) |
 | Use case | `RequestSessionPairingCodeUseCase.ts`, `CreateSessionUseCase.ts` |
 | Engine | `IMessagingEngine.requestPairingCode({ sessionId, tenantId, phone })`; Baileys pede `socket.requestPairingCode` no primeiro `qr` |
+| Rota | `/settings/sessions` — primeiro item do submenu de Configurações (`SettingsLayout`); `/sessions` só redireciona, mantendo a query. Links novos usam o caminho novo |
 | Painel | `app/src/features/sessions/` (`CreateSessionWizard`, `SessionConnectPanel`, `SessionConnectedPanel`, `useSessionConnection`, `utils.ts`, `strings.ts`) |
 
 ## API

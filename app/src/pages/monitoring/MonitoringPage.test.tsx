@@ -59,7 +59,7 @@ const renderAt = (url = '/monitoring') =>
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/monitoring" element={<><MonitoringPage /><Where /></>} />
-        <Route path="/sessions" element={<Where />} />
+        <Route path="/settings/sessions" element={<Where />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -111,6 +111,6 @@ describe('MonitoringPage', () => {
   it('"Conectar nova sessão" vai para o assistente com returnTo', async () => {
     renderAt();
     fireEvent.click(await screen.findByRole('button', { name: 'Conectar nova sessão' }));
-    expect(screen.getByTestId('where')).toHaveTextContent('/sessions?create=1&returnTo=/monitoring');
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings/sessions?create=1&returnTo=/monitoring');
   });
 });

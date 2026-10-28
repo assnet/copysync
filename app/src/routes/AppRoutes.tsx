@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { PrivateRoute } from './PrivateRoute';
 import { AppLayout } from '@/app/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
@@ -18,6 +18,11 @@ import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage, StorefrontPage } from '@/pages/modules';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 
+function LegacySessionsRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/settings/sessions${search}`} replace />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -30,7 +35,8 @@ export function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/sessions" element={<SessionsPage />} />
+          {/* Caminho antigo: sessões agora ficam em Configurações; mantém query (?create=1&returnTo=…) */}
+          <Route path="/sessions" element={<LegacySessionsRedirect />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/offers" element={<OfferGeneratorPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
@@ -38,7 +44,8 @@ export function AppRoutes() {
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
           <Route path="/settings" element={<SettingsLayout />}>
-            <Route index element={<Navigate to="/settings/account" replace />} />
+            <Route index element={<Navigate to="/settings/sessions" replace />} />
+            <Route path="sessions" element={<SessionsPage />} />
             <Route path="account" element={<SettingsAccountPage />} />
             <Route path="account/password" element={<ChangePasswordPage />} />
             <Route path="affiliate-credentials" element={<AffiliateCredentialsPage />} />
