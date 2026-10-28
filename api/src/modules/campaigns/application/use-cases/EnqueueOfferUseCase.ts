@@ -8,10 +8,8 @@ import { OfferAlreadySentError } from '../../../../shared/errors/internal/OfferE
 
 export interface EnqueueOfferInput {
   tenantId: string;
-  /** Sessão que envia (todos os destinos são dela). */
-  sessionId: string;
-  /** Conversas de grupo, na ordem de envio. */
-  conversationIds: string[];
+  /** Grupos na ordem de envio, cada um com a sessão que envia (faixa própria). */
+  destinations: { conversationId: string; sessionId: string }[];
   origin: OfferOrigin;
   provider: AffiliateProvider;
   sourceUrl: string;
@@ -49,15 +47,16 @@ export interface EnqueueOfferDeps {
 
 /**
  * Oferta pronta (texto, link do tenant, destinos) vinda de outro módulo (ex.: monitoramento de
- * grupos) → oferta SENDING na fila de envio da sessão, com o mesmo agendamento por faixa do
- * gerador (docs/fila-de-envio.md). Quem envia é o worker; validade checada lá também.
+ * grupos) → oferta SENDING na fila de envio, com o mesmo agendamento por faixa do gerador
+ * (docs/fila-de-envio.md); destinos de sessões diferentes caem cada um na sua faixa. Quem envia é
+ * o worker; validade checada lá também.
  */
 export class EnqueueOfferUseCase {
   constructor(private readonly deps: EnqueueOfferDeps) {}
 
   async execute(input: EnqueueOfferInput): Promise<EnqueueOfferResult> {
-    const { tenantId, sessionId, conversationIds } = input;
-    if (conversationIds.length === 0) throw new Error('EnqueueOfferUseCase: no destinations');
+    const { tenantId, destinations } = input;
+    if (destinations.length === 0) throw new Error('EnqueueOfferUseCase: no destinations');
     let draft: { id: string; mentionAll: boolean } | null = null;
     if (input.sourceKey) {
       const existing = await this.deps.offers.findBySourceKey(tenantId, input.sourceKey);
@@ -72,11 +71,13 @@ export class EnqueueOfferUseCase {
     }
 
     const interval = { minMs: input.intervalMinSeconds * 1000, maxMs: input.intervalMaxSeconds * 1000 };
-    const planned = scheduleDispatches(conversationIds.length, input.startAt, interval, this.deps.rand);
-    const tails = await this.deps.dispatches.laneTails(tenantId, [sessionId], planned[0]!);
+    const planned = scheduleDispatches(destinations.length, input.startAt, interval, this.deps.rand);
+    // Uma faixa por sessão: a oferta inteira entra depois do que já está à frente em qualquer delas
+    const sessionIds = [...new Set(destinations.map((d) => d.sessionId))];
+    const tails = await this.deps.dispatches.laneTails(tenantId, sessionIds, planned[0]!);
     const slots = tails.size === 0
       ? planned
-      : appendToLanes(planned.map((notBefore) => ({ sessionId, notBefore })), tails, laneGapMs(interval, this.deps.rand));
+      : appendToLanes(destinations.map((d, i) => ({ sessionId: d.sessionId, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
     const firstSendAt = slots[0]!;
     if (input.expiresAt && firstSendAt.getTime() >= input.expiresAt.getTime()) return { kind: 'expired', firstSendAt };
 
@@ -107,7 +108,7 @@ export class EnqueueOfferUseCase {
       offer.id,
       tenantId,
       { mentionAll: draft?.mentionAll ?? input.mentionAll },
-      conversationIds.map((conversationId, i) => ({ conversationId, sessionId, notBefore: slots[i]!, gapSeconds: input.intervalMinSeconds })),
+      destinations.map((d, i) => ({ conversationId: d.conversationId, sessionId: d.sessionId, notBefore: slots[i]!, gapSeconds: input.intervalMinSeconds })),
     );
     // Oferta acabou de nascer DRAFT: só falha se algo a mudou no meio (não deveria)
     if (!created) throw new OfferAlreadySentError(offer.id);

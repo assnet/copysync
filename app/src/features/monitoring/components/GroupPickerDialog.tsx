@@ -5,12 +5,14 @@ import {
   TextField, Tooltip, Typography, useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { Link as RouterLink } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
 import { Blurred, useBlur } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import type { SessionItem } from '@/types/api.types';
 import { monitoringStrings } from '../strings';
 import { uiErrorMessage } from '../utils/apiErrors';
 
@@ -18,10 +20,14 @@ const t = monitoringStrings.picker;
 
 export interface PickedGroup {
   groupJid: string;
+  /** Sessão dona do grupo (monitorado: a do monitor; disparo: pode ser outra, sessão cruzada). */
+  sessionId: string;
   title: string | null;
   avatarUrl: string | null;
   keywords: string[];
 }
+
+const keyOf = (g: { sessionId: string; groupJid: string }) => `${g.sessionId}:${g.groupJid}`;
 
 const pick = (g: { title: string | null; avatarUrl: string | null }) => ({ title: g.title, avatarUrl: g.avatarUrl });
 
@@ -36,6 +42,10 @@ interface Props {
   max: number | null;
   /** Grupos usados na outra lista (origem ≠ destino). */
   excludeJids: readonly string[];
+  /** Disparo: sessões do tenant; com `crossSession`, os grupos de todas as conectadas entram. */
+  sessions?: readonly SessionItem[];
+  /** Entitlement `cross_session_dispatch`. Sem ele, só a sessão atual; com 2+ sessões mostra o aviso do plano. */
+  crossSession?: boolean;
   onClose: () => void;
   /** Lança em erro; a mensagem aparece no diálogo. */
   onSave: (groups: PickedGroup[]) => Promise<void>;
@@ -48,11 +58,12 @@ export const KEYWORDS_PER_GROUP = 20;
 /** Rascunho na aba: só a escolha do usuário. Nome e foto do grupo vêm do servidor (nunca no storage). */
 interface DraftGroup {
   groupJid: string;
+  sessionId: string;
   keywords: string[];
 }
 
 /** Mude ao alterar `DraftGroup`. */
-const PICKER_DRAFT_VERSION = 2;
+const PICKER_DRAFT_VERSION = 3;
 
 /** Normaliza palavras-chave: sem espaços nas pontas, sem vazias, sem repetidas (ignora caixa), nos limites da API. */
 export function normalizeKeywords(words: readonly string[]): string[] {
@@ -73,32 +84,40 @@ export function normalizeKeywords(words: readonly string[]): string[] {
  * Escolha de grupos da sessão (busca no servidor). Monte só quando aberto: a seleção é um
  * rascunho persistido na aba por sessão e modo, apagado ao salvar ou cancelar.
  */
-export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, onClose, onSave }: Props) {
+export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, sessions, crossSession = false, onClose, onSave }: Props) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const blurNames = useBlur('monitoring.groupNames');
   const [draft, setDraft, clear] = usePersistedState<DraftGroup[]>(
     `monitoring.picker.${mode}.${sessionId}`,
-    () => initial.map((g) => ({ groupJid: g.groupJid, keywords: g.keywords })),
+    () => initial.map((g) => ({ groupJid: g.groupJid, sessionId: g.sessionId, keywords: g.keywords })),
     { version: PICKER_DRAFT_VERSION },
   );
   const draftRef = useRef(draft);
   draftRef.current = draft;
   // Nome/foto em memória: os salvos (`initial`), os vistos na busca e os escolhidos nesta tela
   const [seen, setSeen] = useState<Map<string, { title: string | null; avatarUrl: string | null }>>(
-    () => new Map(initial.map((g) => [g.groupJid, { title: g.title, avatarUrl: g.avatarUrl }])),
+    () => new Map(initial.map((g) => [keyOf(g), { title: g.title, avatarUrl: g.avatarUrl }])),
   );
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sessionIds = useMemo(() => [sessionId], [sessionId]);
+  // Disparo com sessão cruzada: grupos de todas as sessões conectadas; senão, só a sessão atual
+  const multi = mode === 'broadcast' && crossSession && (sessions?.length ?? 0) > 1;
+  const sessionIds = useMemo(
+    () => (multi ? sessions!.filter((s) => s.status === 'CONNECTED').map((s) => s.id) : [sessionId]),
+    [multi, sessions, sessionId],
+  );
+  const sessionName = (id: string) => sessions?.find((s) => s.id === id)?.name || t.sessionOf(id.slice(-4));
+  const crossLocked = mode === 'broadcast' && !crossSession && (sessions?.length ?? 0) > 1;
   const groups = useSessionGroups(sessionIds, search);
-  const metaOf = (jid: string) => seen.get(jid) ?? groups.items.find((g) => g.groupJid === jid) ?? { title: null, avatarUrl: null };
-  const selected: PickedGroup[] = draft.map((d) => ({ ...d, ...pick(metaOf(d.groupJid)) }));
+  const metaOf = (g: { sessionId: string; groupJid: string }) =>
+    seen.get(keyOf(g)) ?? groups.items.find((x) => x.groupJid === g.groupJid && x.sessionId === g.sessionId) ?? { title: null, avatarUrl: null };
+  const selected: PickedGroup[] = draft.map((d) => ({ ...d, ...pick(metaOf(d)) }));
   const excluded = useMemo(() => new Set(excludeJids), [excludeJids]);
-  const selectedJids = useMemo(() => new Set(draft.map((g) => g.groupJid)), [draft]);
+  const selectedKeys = useMemo(() => new Set(draft.map(keyOf)), [draft]);
   const full = max !== null && selected.length >= max;
-  const available = groups.items.filter((g) => !selectedJids.has(g.groupJid));
+  const available = groups.items.filter((g) => !selectedKeys.has(keyOf(g)));
   const titleId = `monitoring-picker-${mode}`;
 
   const close = () => {
@@ -106,18 +125,18 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     onClose();
   };
 
-  const toggle = (g: { groupJid: string; title: string | null; avatarUrl: string | null }) => {
+  const toggle = (g: { groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null }) => {
     setError(null);
-    setSeen((prev) => (prev.has(g.groupJid) ? prev : new Map(prev).set(g.groupJid, pick(g))));
+    setSeen((prev) => (prev.has(keyOf(g)) ? prev : new Map(prev).set(keyOf(g), pick(g))));
     setDraft((prev) =>
-      prev.some((p) => p.groupJid === g.groupJid)
-        ? prev.filter((p) => p.groupJid !== g.groupJid)
-        : [...prev, { groupJid: g.groupJid, keywords: [] }],
+      prev.some((p) => keyOf(p) === keyOf(g))
+        ? prev.filter((p) => keyOf(p) !== keyOf(g))
+        : [...prev, { groupJid: g.groupJid, sessionId: g.sessionId, keywords: [] }],
     );
   };
 
-  const setKeywords = (jid: string, words: string[]) =>
-    setDraft((prev) => prev.map((p) => (p.groupJid === jid ? { ...p, keywords: normalizeKeywords(words) } : p)));
+  const setKeywords = (key: string, words: string[]) =>
+    setDraft((prev) => prev.map((p) => (keyOf(p) === key ? { ...p, keywords: normalizeKeywords(words) } : p)));
 
   const save = async () => {
     setSaving(true);
@@ -149,6 +168,12 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
       <DialogContent dividers>
         <Stack spacing={2}>
           {error && <Alert severity="error">{error}</Alert>}
+          {crossLocked && (
+            <Alert severity="info" action={<Button color="inherit" size="small" component={RouterLink} to="/plans">{t.crossLockedLink}</Button>}>
+              {t.crossLocked}
+            </Alert>
+          )}
+          {multi && <Alert severity="info">{t.crossHelp}</Alert>}
 
           <Box>
             <Typography variant="overline" color="text.secondary">{t.selected(selected.length, max)}</Typography>
@@ -157,7 +182,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
             )}
             <Stack spacing={1}>
               {selected.map((g, i) => (
-                <Box key={g.groupJid} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1.25 }}>
+                <Box key={keyOf(g)} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1.25 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
                     {mode === 'broadcast' && (
                       <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 22, color: 'text.secondary' }}>
@@ -169,6 +194,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
                       <Blurred when={blurNames} inline radius={5}>
                         <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{g.title || monitoringStrings.groups.untitled}</Typography>
                       </Blurred>
+                      {multi && <Chip size="small" variant="outlined" label={sessionName(g.sessionId)} sx={{ height: 20, fontSize: 11, mt: 0.25 }} />}
                     </Box>
                     <Tooltip title={monitoringStrings.groups.remove} arrow>
                       <IconButton size="small" aria-label={monitoringStrings.groups.remove} onClick={() => toggle(g)}>
@@ -183,7 +209,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
                       size="small"
                       options={[]}
                       value={g.keywords}
-                      onChange={(_e, words) => setKeywords(g.groupJid, words as string[])}
+                      onChange={(_e, words) => setKeywords(keyOf(g), words as string[])}
                       renderTags={(value, getTagProps) =>
                         value.map((w, idx) => {
                           const { key, ...tag } = getTagProps({ index: idx });
@@ -232,7 +258,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
           />
 
           <Box>
-            <Typography variant="overline" color="text.secondary">{t.available}</Typography>
+            <Typography variant="overline" color="text.secondary">{multi ? t.availableAll : t.available}</Typography>
             {groups.partial && <Alert severity="info" sx={{ mb: 1 }}>{t.partial}</Alert>}
             {groups.failed ? (
               <Alert severity="error" action={<Button color="inherit" size="small" onClick={groups.retry}>{t.retry}</Button>}>{t.loadError}</Alert>
@@ -249,7 +275,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
                     ? (mode === 'monitored' ? t.usedElsewhereMonitored : t.usedElsewhereBroadcast)
                     : full ? t.limitReached : '';
                   return (
-                    <Tooltip key={g.groupJid} title={reason} arrow placement="top">
+                    <Tooltip key={keyOf(g)} title={reason} arrow placement="top">
                       <Box component="li" sx={{ listStyle: 'none' }}>
                         <ListItemButton disabled={disabled} onClick={() => toggle(g)} sx={{ borderRadius: 1.5 }}>
                           <ListItemIcon sx={{ minWidth: 36 }}>
@@ -260,7 +286,9 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
                           </Box>
                           <ListItemText
                             primary={<Blurred when={blurNames} inline radius={5}>{g.title || monitoringStrings.groups.untitled}</Blurred>}
+                            secondary={multi ? sessionName(g.sessionId) : undefined}
                             primaryTypographyProps={{ noWrap: true }}
+                            secondaryTypographyProps={{ noWrap: true, variant: 'caption' }}
                           />
                         </ListItemButton>
                       </Box>

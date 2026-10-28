@@ -101,6 +101,7 @@ interface OfferConfigApiDto {
   groups: { id: string; title: string | null; avatarUrl?: string | null; sessionId: string | null }[];
   groupLimit: number | null;
   sessionLimit: number | null;
+  crossSessionDispatch?: boolean;
   configured: boolean;
 }
 
@@ -117,5 +118,6 @@ function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
     groups: dto.groups.map((g) => ({ conversationId: g.id, title: g.title, avatarUrl: g.avatarUrl ?? null, sessionId: g.sessionId })),
     groupLimit: dto.groupLimit,
     sessionLimit: dto.sessionLimit,
+    crossSessionDispatch: dto.crossSessionDispatch ?? false,
   };
 }

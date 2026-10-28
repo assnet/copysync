@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { planPresetRows } from '../src/modules/tenants/domain/planPresets';
 
 const prisma = new PrismaClient();
 
@@ -111,11 +112,8 @@ async function main(): Promise<void> {
   console.log(`✅  Entitlements: ${ENTITLEMENT_KEYS.map(e => e.key).join(', ')} → todos os tenants`);
 
   // ── Plan presets (usados pelo billing sync) ──────────────────────────────
-  const PLAN_PRESETS = [
-    { planSlug: 'COPYSYNC_STARTER', key: 'marketplace_extension', value: true },
-    { planSlug: 'COPYSYNC_PROFISSIONAL', key: 'marketplace_extension', value: true },
-    { planSlug: 'COPYSYNC_BUSINESS', key: 'marketplace_extension', value: true },
-  ] as const;
+  // Tabela única em src/modules/tenants/domain/planPresets.ts (travada por teste contra a vitrine)
+  const PLAN_PRESETS = planPresetRows();
 
   for (const p of PLAN_PRESETS) {
     await prisma.planEntitlementPreset.upsert({

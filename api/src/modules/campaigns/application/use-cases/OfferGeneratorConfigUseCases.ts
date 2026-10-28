@@ -2,15 +2,18 @@ import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOf
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import type { OfferDestinationView } from '../../domain/entities/OfferDestination';
 import { OfferInvalidInputError } from '../../../../shared/errors/internal/OfferErrors';
-import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
+import { PlanFeatureUnavailableError, PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { OFFER_DISPATCH_ORDERS, type OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
 
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
 export const OFFER_GROUPS_HARD_MAX = 200;
-export const BROADCAST_GROUPS = 'broadcast_groups';
+export const BROADCAST_GROUPS = ENTITLEMENT_KEYS.BROADCAST_GROUPS;
 /** Entitlement: quantas sessões de WhatsApp o plano permite (e, por tabela, quantas disparam). */
-export const WHATSAPP_SESSIONS = 'whatsapp_sessions';
+export const WHATSAPP_SESSIONS = ENTITLEMENT_KEYS.WHATSAPP_SESSIONS;
+/** Entitlement: destino em sessão diferente da principal (Business). Ausente = bloqueado. */
+export const CROSS_SESSION_DISPATCH = ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH;
 export const OFFER_SESSIONS_HARD_MAX = 10;
 /** Intervalo entre grupos em segundos; o painel opera em minutos inteiros (1–60). */
 export const OFFER_INTERVAL_MIN_SECONDS = 60;
@@ -28,6 +31,8 @@ export interface OfferGeneratorConfigDTO {
   groupLimit: number | null;
   /** Entitlement `whatsapp_sessions`; null = sem limite do plano. */
   sessionLimit: number | null;
+  /** Entitlement `cross_session_dispatch`: 2+ sessões disparando. Ausente = false. */
+  crossSessionDispatch: boolean;
   /** false = tenant nunca salvou (valores padrão). */
   configured: boolean;
 }
@@ -55,11 +60,12 @@ export class GetOfferGeneratorConfigUseCase {
   constructor(private readonly deps: Deps) {}
 
   async execute(tenantId: string): Promise<OfferGeneratorConfigDTO> {
-    const [config, groups, groupLimit, sessionLimit] = await Promise.all([
+    const [config, groups, groupLimit, sessionLimit, crossSession] = await Promise.all([
       this.deps.configs.find(tenantId),
       this.deps.configs.listGroups(tenantId),
       this.deps.entitlements.getNumber(tenantId, BROADCAST_GROUPS),
       this.deps.entitlements.getNumber(tenantId, WHATSAPP_SESSIONS),
+      this.deps.entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
     ]);
     return {
       sessionIds: config?.sessionIds ?? [],
@@ -69,6 +75,7 @@ export class GetOfferGeneratorConfigUseCase {
       groups: toGroups(groups),
       groupLimit,
       sessionLimit,
+      crossSessionDispatch: crossSession === true,
       configured: config !== null,
     };
   }
@@ -108,6 +115,10 @@ export class SaveOfferGeneratorConfigUseCase {
     if (sessions.length !== sessionIds.length) {
       const found = new Set(sessions.map((x) => x.id));
       throw new NotFoundError('Session', sessionIds.find((id) => !found.has(id)));
+    }
+    // Mais de uma sessão disparando = destino fora da sessão principal: feature do plano, não quantidade
+    if (sessionIds.length > 1 && (await entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH)) !== true) {
+      throw new PlanFeatureUnavailableError(CROSS_SESSION_DISPATCH);
     }
 
     if (ids.length > 0) {

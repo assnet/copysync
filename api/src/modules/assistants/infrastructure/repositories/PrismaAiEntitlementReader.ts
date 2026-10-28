@@ -1,8 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 import type { IAiEntitlementReader } from '../../domain/contracts/IAiEntitlementReader';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
-export const AI_REWRITE_ENTITLEMENT_KEY = 'ai_rewrite_enabled';
-export const AI_REQUESTS_PER_DAY_ENTITLEMENT_KEY = 'ai_requests_per_day';
+export const AI_REWRITE_ENTITLEMENT_KEY = ENTITLEMENT_KEYS.AI_REWRITE_ENABLED;
+export const AI_REQUESTS_PER_DAY_ENTITLEMENT_KEY = ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY;
 
 /** Só `false` explícito (booleano ou texto) desliga; ausente ou null = liberado. */
 export function entitlementAllows(value: unknown): boolean {

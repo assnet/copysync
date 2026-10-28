@@ -13,7 +13,7 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   sessions = new Set([`${TENANT}:${SESSION}`, `${TENANT}:session-2`]);
   configs: GroupMonitorConfig[] = [];
   monitored: (MonitoredGroup & { tenantId: string; sessionId: string })[] = [];
-  broadcast: (BroadcastGroup & { tenantId: string; sessionId: string })[] = [];
+  broadcast: (BroadcastGroup & { tenantId: string; monitorSessionId: string })[] = [];
   private seq = 0;
 
   async sessionExists(tenantId: string, sessionId: string) { return this.sessions.has(`${tenantId}:${sessionId}`); }
@@ -31,21 +31,21 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
     return (await this.findConfig(tenantId, sessionId))?.id ?? (await this.saveSettings(tenantId, sessionId, DEFAULT_MONITOR_SETTINGS)).id;
   }
   async listMonitored(tenantId: string, sessionId: string) { return this.monitored.filter((g) => g.tenantId === tenantId && g.sessionId === sessionId); }
-  async listBroadcast(tenantId: string, sessionId: string) {
-    return this.broadcast.filter((g) => g.tenantId === tenantId && g.sessionId === sessionId).sort((a, b) => a.position - b.position);
+  async listBroadcast(tenantId: string, monitorSessionId: string) {
+    return this.broadcast.filter((g) => g.tenantId === tenantId && g.monitorSessionId === monitorSessionId).sort((a, b) => a.position - b.position);
   }
   async replaceMonitored(tenantId: string, sessionId: string, _configId: string, groups: MonitoredGroupInput[]) {
     this.monitored = this.monitored.filter((g) => !(g.tenantId === tenantId && g.sessionId === sessionId));
     for (const g of groups) this.monitored.push({ id: `mg-${++this.seq}`, tenantId, sessionId, title: null, avatarUrl: null, ...g });
   }
-  async replaceBroadcast(tenantId: string, sessionId: string, _configId: string, groups: BroadcastGroupInput[]) {
-    this.broadcast = this.broadcast.filter((g) => !(g.tenantId === tenantId && g.sessionId === sessionId));
-    groups.forEach((g, position) => this.broadcast.push({ id: `bg-${++this.seq}`, tenantId, sessionId, title: null, avatarUrl: null, position, ...g }));
+  async replaceBroadcast(tenantId: string, monitorSessionId: string, _configId: string, groups: BroadcastGroupInput[]) {
+    this.broadcast = this.broadcast.filter((g) => !(g.tenantId === tenantId && g.monitorSessionId === monitorSessionId));
+    groups.forEach((g, position) => this.broadcast.push({ id: `bg-${++this.seq}`, tenantId, monitorSessionId, title: null, avatarUrl: null, position, ...g }));
   }
   async tenantGroupJids(tenantId: string): Promise<TenantGroupJids> {
     return {
       monitored: this.monitored.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid }) => ({ sessionId, groupJid })),
-      broadcast: this.broadcast.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid }) => ({ sessionId, groupJid })),
+      broadcast: this.broadcast.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid, monitorSessionId }) => ({ sessionId, groupJid, monitorSessionId })),
     };
   }
   async findActiveMonitoredGroup(tenantId: string, sessionId: string, groupJid: string): Promise<ActiveMonitoredGroup | null> {

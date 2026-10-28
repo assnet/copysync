@@ -64,6 +64,7 @@ export function useOfferConfig() {
     groups,
     groupLimit: data?.groupLimit ?? null,
     sessionLimit: data?.sessionLimit ?? null,
+    crossSessionDispatch: data?.crossSessionDispatch ?? false,
     configured: (config?.sessionIds.length ?? 0) > 0 && groups.length > 0,
     selectedSessions,
     missingSessions,

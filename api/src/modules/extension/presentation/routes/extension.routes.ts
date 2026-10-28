@@ -20,11 +20,12 @@ import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
 import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { prisma } from '../../../../shared/database/prisma.client';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
 const _entitlementPrismaReader = new PrismaEntitlementReader(prisma);
 const entitlementReader = {
   async hasMarketplaceExtension(tenantId: string): Promise<boolean> {
-    return (await _entitlementPrismaReader.getBoolean(tenantId, 'marketplace_extension')) === true;
+    return (await _entitlementPrismaReader.getBoolean(tenantId, ENTITLEMENT_KEYS.MARKETPLACE_EXTENSION)) === true;
   },
 };
 

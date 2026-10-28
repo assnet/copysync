@@ -37,6 +37,10 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
     return { code, message: daily != null ? t.planLimit(daily) : t.planLimitNoValue, action: 'none', isLinkField: false };
   }
 
+  if (code === 'PLAN_FEATURE_UNAVAILABLE' && e?.meta?.key === 'cross_session_dispatch') {
+    return { code, message: t.crossSessionUnavailable, action: 'config', isLinkField: false };
+  }
+
   if (code === 'OFFER_INVALID_INPUT' && e?.meta?.field === 'scheduledAt') {
     return { code, message: t.schedule.invalid, action: 'none', isLinkField: false };
   }

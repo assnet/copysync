@@ -9,8 +9,9 @@ export interface GroupMonitorConfigDTO {
   sessionId: string;
   settings: GroupMonitorSettings;
   monitoredGroups: { conversationId: string; groupJid: string; title: string | null; avatarUrl: string | null; keywords: string[] }[];
-  broadcastGroups: { conversationId: string; groupJid: string; title: string | null; avatarUrl: string | null; position: number }[];
-  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean };
+  /** `sessionId` = sessão que envia naquele grupo (igual à do monitor, ou outra com `crossSessionDispatch`). */
+  broadcastGroups: { conversationId: string; groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null; position: number }[];
+  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
   usage: { monitoredGroups: number; broadcastGroups: number };
 }
 

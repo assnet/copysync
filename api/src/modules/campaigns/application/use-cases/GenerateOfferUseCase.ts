@@ -23,6 +23,7 @@ import {
   OfferUrlUnsupportedError,
 } from '../../../../shared/errors/internal/OfferErrors';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
@@ -31,7 +32,7 @@ import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
 
-export const OFFER_GENERATIONS_PER_DAY = 'offer_generations_per_day';
+export const OFFER_GENERATIONS_PER_DAY = ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY;
 
 export interface GenerateOfferInput {
   tenantId: string;

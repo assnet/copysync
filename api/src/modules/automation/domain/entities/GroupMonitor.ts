@@ -40,9 +40,10 @@ export interface MonitoredGroup {
   avatarUrl: string | null;
 }
 
-/** Grupo de disparo (destino), na ordem de envio. */
+/** Grupo de disparo (destino), na ordem de envio. `sessionId` = sessão que envia (pode ser outra, Business). */
 export interface BroadcastGroup {
   id: string;
+  sessionId: string;
   conversationId: string;
   groupJid: string;
   position: number;

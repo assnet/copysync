@@ -64,6 +64,8 @@ export const monitoringStrings = {
     broadcastEmpty: 'Nenhum grupo de disparo. Adicione os seus grupos para receber as ofertas.',
     add: 'Adicionar',
     addTooltip: 'Escolher os grupos que recebem as ofertas',
+    otherSession: (name: string) => `Envia por ${name}`,
+    otherSessionTooltip: 'Grupo de outro WhatsApp da sua conta: a oferta sai por essa sessão (sessão cruzada).',
     moveUp: 'Enviar antes',
     moveDown: 'Enviar depois',
     remove: 'Remover da lista',
@@ -83,6 +85,11 @@ export const monitoringStrings = {
     usedElsewhereMonitored: 'Já é grupo de disparo: um grupo não pode ser origem e destino ao mesmo tempo',
     usedElsewhereBroadcast: 'Já é grupo monitorado: um grupo não pode ser origem e destino ao mesmo tempo',
     limitReached: 'Limite do plano atingido',
+    availableAll: 'Grupos das sessões conectadas',
+    crossHelp: 'Grupos de qualquer WhatsApp conectado. Quem envia em cada grupo é a sessão dona dele.',
+    crossLocked: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano Business. Aqui aparecem só os grupos desta sessão.',
+    crossLockedLink: 'Ver planos',
+    sessionOf: (name: string) => `Sessão ${name}`,
     keywords: 'Palavras-chave (opcional)',
     keywordsPlaceholder: 'Digite e tecle Enter',
     keywordsHelp: 'Vazio captura toda mensagem com link suportado. Com palavras, só as que tiverem alguma delas.',
@@ -186,6 +193,7 @@ export const monitoringStrings = {
         ? 'Limite do plano atingido.'
         : `Seu plano permite até ${max} grupos somando todas as sessões. Remova algum ou fale com o suporte para ampliar.`,
     planFeature: 'Seu plano não inclui este recurso.',
+    crossSessionUnavailable: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano Business. Escolha grupos desta sessão ou faça upgrade.',
     notRetryable: 'Esta oferta não pode ser tentada de novo (já foi processada ou o motivo não é recuperável).',
     fields: {
       enabled: 'Monitoramento ativo',

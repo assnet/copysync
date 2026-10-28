@@ -126,6 +126,14 @@ limita). Recorte completo fica para a fase 2.
 - O mesmo grupo não pode ser monitorado e de disparo no tenant (409
   `GROUP_MONITOR_GROUP_CONFLICT`): a oferta postada voltaria como captura.
 - Só grupo de que a sessão participa (mesma regra do gerador); a conversa do chat é criada se faltar.
+- **Sessão cruzada** (api 0.42.0): grupo de disparo pode ser de **outra sessão do tenant**
+  (`groups[].sessionId` no `PUT /config/broadcast-groups`), com o entitlement `cross_session_dispatch`
+  (Business; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
+  no tenant (404). O limite `broadcast_groups` conta por monitoramento (config), não pela sessão dona
+  do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (422). No envio,
+  cada destino entra na faixa da **sua** sessão (`EnqueueOfferUseCase` multi-sessão); plano rebaixado
+  depois de salvar → só os grupos da própria sessão saem. Chaves de entitlement centralizadas em
+  `tenants/domain/entitlementKeys.ts`; presets por plano em `tenants/domain/planPresets.ts` (seed).
 - Tentar de novo (`POST /captured/:id/retry`): só `SKIPPED`/`FAILED` com motivo recuperável
   (`CREDENTIAL_MISSING`, `LINK_RESOLVE_FAILED`, `NO_BROADCAST_GROUPS`, `MONITOR_DISABLED`,
   `INTERNAL_ERROR`). A validade continua contando da captura original.
@@ -137,7 +145,7 @@ limita). Recorte completo fica para a fase 2.
 | GET | `/config?sessionId` | regras, grupos (nome/foto da conversa), limites e uso no tenant |
 | PUT | `/config` | salva as regras da sessão |
 | PUT | `/config/monitored-groups` | substitui `{ groupJid, keywords }[]` |
-| PUT | `/config/broadcast-groups` | substitui `groupJid[]` (ordem = envio) |
+| PUT | `/config/broadcast-groups` | substitui `{ groupJid, sessionId? }[]` (ordem = envio; `sessionId` ausente = sessão do monitor, outra exige `cross_session_dispatch`) |
 | GET | `/captured?sessionId&cursor` | capturas, mais recentes primeiro, 20 por página (cursor assinado) |
 | POST | `/captured/:id/retry` | volta para `PENDING` |
 
@@ -156,6 +164,9 @@ limita). Recorte completo fica para a fase 2.
   "Imagem das ofertas" segue "Em breve".
 - Captura mostra chip "Texto original / do modelo / da IA" (`textSource`) e "IA indisponível" com o
   código no tooltip (`aiErrorCode`).
+- Grupos de disparo: com `limits.crossSessionDispatch` o seletor lista os grupos de todas as sessões
+  conectadas (nome da sessão em cada um) e o card mostra "Envia por <sessão>" no grupo de outra sessão;
+  sem a feature, só a sessão atual e um aviso "exclusivo do plano Business" com link para `/plans`.
 - Ofertas capturadas (status, motivo, cupom, foto indisponível, "Tentar de novo") e a fila de envio
   da sessão (`SendQueuePanel`). Captura `QUEUED` traz `offerStatus`, `sentCount`/`totalCount` e os
   botões Pausar / Retomar / Parar **da oferta** (`OfferControlButtons`, `features/sendQueue`): é o

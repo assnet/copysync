@@ -64,14 +64,14 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
     }));
   }
 
-  async listBroadcast(tenantId: string, sessionId: string): Promise<BroadcastGroup[]> {
+  async listBroadcast(tenantId: string, monitorSessionId: string): Promise<BroadcastGroup[]> {
     const rows = await this.prisma.broadcastGroup.findMany({
-      where: { tenantId, sessionId },
+      where: { tenantId, config: { sessionId: monitorSessionId } },
       include: { conversation: groupView },
       orderBy: { position: 'asc' },
     });
     return rows.map((r) => ({
-      id: r.id, conversationId: r.conversationId, groupJid: r.groupJid, position: r.position,
+      id: r.id, sessionId: r.sessionId, conversationId: r.conversationId, groupJid: r.groupJid, position: r.position,
       title: r.conversation.groupName, avatarUrl: r.conversation.groupAvatarUrl,
     }));
   }
@@ -85,11 +85,11 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
     ]);
   }
 
-  async replaceBroadcast(tenantId: string, sessionId: string, configId: string, groups: BroadcastGroupInput[]): Promise<void> {
+  async replaceBroadcast(tenantId: string, _monitorSessionId: string, configId: string, groups: BroadcastGroupInput[]): Promise<void> {
     await this.prisma.$transaction([
-      this.prisma.broadcastGroup.deleteMany({ where: { tenantId, sessionId } }),
+      this.prisma.broadcastGroup.deleteMany({ where: { tenantId, configId } }),
       this.prisma.broadcastGroup.createMany({
-        data: groups.map((g, position) => ({ tenantId, sessionId, configId, conversationId: g.conversationId, groupJid: g.groupJid, position })),
+        data: groups.map((g, position) => ({ tenantId, sessionId: g.sessionId, configId, conversationId: g.conversationId, groupJid: g.groupJid, position })),
       }),
     ]);
   }
@@ -97,9 +97,9 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
   async tenantGroupJids(tenantId: string): Promise<TenantGroupJids> {
     const [monitored, broadcast] = await Promise.all([
       this.prisma.monitoredGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true } }),
-      this.prisma.broadcastGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true } }),
+      this.prisma.broadcastGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true, config: { select: { sessionId: true } } } }),
     ]);
-    return { monitored, broadcast };
+    return { monitored, broadcast: broadcast.map((b) => ({ sessionId: b.sessionId, groupJid: b.groupJid, monitorSessionId: b.config.sessionId })) };
   }
 
   /** Índice (sessionId, groupJid); tenant e monitoramento ligado no mesmo filtro. */

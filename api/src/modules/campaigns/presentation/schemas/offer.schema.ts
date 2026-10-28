@@ -180,6 +180,7 @@ export const offerConfigResponse = envelope({
     groups: { type: 'array', items: configGroupSchema },
     groupLimit: { type: ['number', 'null'] },
     sessionLimit: { type: ['number', 'null'] },
+    crossSessionDispatch: { type: 'boolean' },
     configured: { type: 'boolean' },
   },
 });

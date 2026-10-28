@@ -71,18 +71,18 @@ describe('SendOfferUseCase', () => {
   });
 
   it('duas sessões INTERLEAVED: alterna S1/S2 com o mesmo intervalo entre todos os envios', async () => {
-    const s = setup({ sessionIds: ['s1', 's2'], dispatchOrder: 'INTERLEAVED', selected: ['c1', 'c2', 'd1', 'd2', 'c3'] });
+    const s = setup({ sessionIds: ['s1', 's2'], dispatchOrder: 'INTERLEAVED', selected: ['c1', 'c2', 'd1', 'd2', 'c3'], entitlements: { cross_session_dispatch: true } });
     const out = await s.uc.execute(input);
     expect(out.dispatches.map((d) => d.conversationId)).toEqual(['c1', 'd1', 'c2', 'd2', 'c3']);
     expect(out.dispatches.map((d) => Date.parse(d.notBefore) - NOW.getTime())).toEqual([0, 12000, 24000, 36000, 48000]);
   });
 
   it('duas sessões SEQUENTIAL na ordem configurada; sessão desconectada bloqueia tudo', async () => {
-    const s = setup({ sessionIds: ['s2', 's1'], selected: ['c1', 'd1', 'c2'] });
+    const s = setup({ sessionIds: ['s2', 's1'], selected: ['c1', 'd1', 'c2'], entitlements: { cross_session_dispatch: true } });
     const out = await s.uc.execute(input);
     expect(out.dispatches.map((d) => d.conversationId)).toEqual(['d1', 'c1', 'c2']);
 
-    const off = setup({ sessionIds: ['s1', 's2'], sessionStatus: 'DISCONNECTED', selected: ['c1', 'd1'] });
+    const off = setup({ sessionIds: ['s1', 's2'], sessionStatus: 'DISCONNECTED', selected: ['c1', 'd1'], entitlements: { cross_session_dispatch: true } });
     await expect(off.uc.execute(input)).rejects.toMatchObject({ code: 'SESSION_NOT_CONNECTED' });
     expect(off.dispatches.items).toHaveLength(0);
   });
@@ -218,5 +218,19 @@ describe('SendOfferUseCase — fila por sessão', () => {
     s.dispatches.add({ offerId: 'later', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 3_600_000) });
     await s.uc.execute(input);
     expect(s.dispatches.items.find((d) => d.offerId === 'offer-1')!.notBefore).toEqual(NOW);
+  });
+});
+
+describe('SendOfferUseCase — sessão cruzada', () => {
+  it('plano rebaixado depois de salvar 2 sessões: só a principal dispara', async () => {
+    const s = setup({ sessionIds: ['s1', 's2'], selected: ['c1', 'd1'] });
+    await s.uc.execute(input);
+    expect(s.dispatches.items.map((d) => d.conversationId)).toEqual(['c1']);
+  });
+
+  it('com cross_session_dispatch as duas sessões disparam', async () => {
+    const s = setup({ sessionIds: ['s1', 's2'], selected: ['c1', 'd1'], entitlements: { cross_session_dispatch: true } });
+    await s.uc.execute(input);
+    expect(s.dispatches.items.map((d) => [d.conversationId, d.sessionId])).toEqual([['c1', 's1'], ['d1', 's2']]);
   });
 });

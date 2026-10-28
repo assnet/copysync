@@ -10,7 +10,7 @@ import { captureExpiresAt } from '../../domain/services/monitorSettings';
 import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from '../../domain/services/offerMessageText';
 import { resolveStartWithinWindow } from '../../domain/services/operatingWindow';
 import { logger } from '../../../../shared/logger/logger';
-import { BROADCAST_GROUPS, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
+import { BROADCAST_GROUPS, CROSS_SESSION_DISPATCH, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
 
 /** Capturas por tick (cada uma pode ir à rede: expandir link, API do marketplace). */
 export const CAPTURE_BATCH_SIZE = 3;
@@ -98,6 +98,10 @@ export class ProcessPendingCapturedOffersUseCase {
     const config = await monitors.findConfig(c.tenantId, c.sessionId);
     if (!config?.enabled) return { status: 'SKIPPED', reason: 'MONITOR_DISABLED' };
     let targets = await monitors.listBroadcast(c.tenantId, c.sessionId);
+    // Plano rebaixado depois de salvar: sem sessão cruzada, só os grupos da própria sessão
+    if (targets.some((t) => t.sessionId !== c.sessionId) && (await entitlements.getBoolean(c.tenantId, CROSS_SESSION_DISPATCH)) !== true) {
+      targets = targets.filter((t) => t.sessionId === c.sessionId);
+    }
     // Plano rebaixado depois de salvar: envia só até o limite atual
     const limit = await entitlements.getNumber(c.tenantId, BROADCAST_GROUPS);
     if (limit !== null) targets = targets.slice(0, Math.max(0, limit));
@@ -144,8 +148,7 @@ export class ProcessPendingCapturedOffersUseCase {
     const mentionAll = config.mentionAll && (await entitlements.getBoolean(c.tenantId, MENTION_ALL_ENABLED)) !== false;
     const res = await queue.enqueue({
       tenantId: c.tenantId,
-      sessionId: c.sessionId,
-      conversationIds: targets.map((t) => t.conversationId),
+      destinations: targets.map((t) => ({ conversationId: t.conversationId, sessionId: t.sessionId })),
       provider: first.provider,
       sourceUrl: first.sourceUrl,
       affiliateUrl: first.affiliateUrl,

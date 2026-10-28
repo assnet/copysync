@@ -356,6 +356,8 @@ export interface OfferConfigResponse {
   groupLimit: number | null;
   /** Entitlement `whatsapp_sessions`; null = sem limite do plano. */
   sessionLimit: number | null;
+  /** Entitlement `cross_session_dispatch`: 2+ sessões disparando (Business). */
+  crossSessionDispatch: boolean;
 }
 
 export interface SaveOfferConfigRequest {
@@ -532,6 +534,8 @@ export interface MonitoredGroupItem {
 export interface BroadcastGroupItem {
   conversationId: string;
   groupJid: string;
+  /** Sessão que envia neste grupo (a do monitor, ou outra com `limits.crossSessionDispatch`). */
+  sessionId: string;
   title: string | null;
   avatarUrl: string | null;
   position: number;
@@ -543,7 +547,7 @@ export interface GroupMonitorConfigResponse {
   monitoredGroups: MonitoredGroupItem[];
   broadcastGroups: BroadcastGroupItem[];
   /** Limites do plano (todas as sessões do tenant somadas). null = ilimitado. */
-  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean };
+  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
   /** Uso atual no tenant (todas as sessões). */
   usage: { monitoredGroups: number; broadcastGroups: number };
 }
@@ -558,7 +562,8 @@ export interface SaveMonitoredGroupsRequest {
 /** Ordem do array = ordem de envio. */
 export interface SaveBroadcastGroupsRequest {
   sessionId: string;
-  groupJids: string[];
+  /** Ordem = ordem de envio. `sessionId` ausente = a sessão do monitor. */
+  groups: { groupJid: string; sessionId?: string | null }[];
 }
 
 export type CapturedOfferStatus = 'PENDING' | 'PROCESSING' | 'QUEUED' | 'SKIPPED' | 'FAILED';

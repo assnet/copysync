@@ -18,7 +18,7 @@ async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>
   const images = new FakeImageStore();
   const cfg = await monitors.saveSettings(TENANT, SESSION, { ...DEFAULT_MONITOR_SETTINGS, enabled: true, ...opts.settings });
   await monitors.replaceMonitored(TENANT, SESSION, cfg.id, [{ conversationId: 'c-src', groupJid: '120363-src', keywords: [] }]);
-  await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j })));
+  await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j, sessionId: SESSION })));
   const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: () => NOW });
   const process = new ProcessPendingCapturedOffersUseCase({
     captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: () => NOW, products, texts, images,
@@ -78,7 +78,8 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     const q = s.queue.inputs[0]!;
     expect(q.text).toBe('🔥 Fone JBL por R$ 99\nhttps://www.amazon.com.br/dp/B0ABCDEFGH?tag=meu-20\nCupom: PROMO10');
     expect(q.text).not.toContain('concorrente');
-    expect(q).toMatchObject({ conversationIds: ['c-g1', 'c-g2'], imageUrl: 'https://api/media/1.jpg', coupon: 'PROMO10', title: '🔥 Fone JBL por R$ 99', startAt: NOW });
+    expect(q.destinations).toEqual([{ conversationId: 'c-g1', sessionId: SESSION }, { conversationId: 'c-g2', sessionId: SESSION }]);
+    expect(q).toMatchObject({ imageUrl: 'https://api/media/1.jpg', coupon: 'PROMO10', title: '🔥 Fone JBL por R$ 99', startAt: NOW });
     expect(q.expiresAt).toEqual(new Date(NOW.getTime() + 60 * 60_000));
     expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', offerId: 'offer-9', marketplace: 'AMAZON', coupon: 'PROMO10' });
   });
@@ -148,7 +149,8 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     const s = await setup({ broadcast: ['g1', 'g2', 'g3'], settings: { mentionAll: true }, entitlements: { broadcast_groups: 2, mention_all_enabled: false } });
     await s.msg();
     await s.process.execute();
-    expect(s.queue.inputs[0]).toMatchObject({ conversationIds: ['c-g1', 'c-g2'], mentionAll: false });
+    expect(s.queue.inputs[0]!.destinations.map((d) => d.conversationId)).toEqual(['c-g1', 'c-g2']);
+    expect(s.queue.inputs[0]).toMatchObject({ mentionAll: false });
   });
 
   it('erro inesperado vira FAILED INTERNAL_ERROR e não derruba o tick', async () => {
@@ -241,5 +243,31 @@ describe('ProcessPendingCapturedOffersUseCase — oferta montada e reescrita com
     await s.process.execute();
     expect(s.queue.inputs[0]!.text).not.toContain('concorrente');
     expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
+  });
+});
+
+describe('ProcessPendingCapturedOffersUseCase — sessão cruzada', () => {
+  it('com cross_session_dispatch: destino de outra sessão vai para a fila na faixa dela', async () => {
+    const s = await setup({ entitlements: { cross_session_dispatch: true } });
+    const cfg = (await s.monitors.findConfig(TENANT, SESSION))!;
+    await s.monitors.replaceBroadcast(TENANT, SESSION, cfg.id, [
+      { conversationId: 'c-mine', groupJid: 'mine', sessionId: SESSION },
+      { conversationId: 'c-other', groupJid: 'other', sessionId: 'session-2' },
+    ]);
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]!.destinations).toEqual([{ conversationId: 'c-mine', sessionId: SESSION }, { conversationId: 'c-other', sessionId: 'session-2' }]);
+  });
+
+  it('plano rebaixado (sem a feature): só os grupos da própria sessão recebem', async () => {
+    const s = await setup();
+    const cfg = (await s.monitors.findConfig(TENANT, SESSION))!;
+    await s.monitors.replaceBroadcast(TENANT, SESSION, cfg.id, [
+      { conversationId: 'c-other', groupJid: 'other', sessionId: 'session-2' },
+      { conversationId: 'c-mine', groupJid: 'mine', sessionId: SESSION },
+    ]);
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]!.destinations).toEqual([{ conversationId: 'c-mine', sessionId: SESSION }]);
   });
 });

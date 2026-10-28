@@ -24,7 +24,7 @@ describe('GroupMonitorConfigUseCases', () => {
     const s = setup({ monitored_groups: 2, broadcast_groups: 10 });
     const out = await s.get.execute(base);
     expect(out.settings).toEqual(DEFAULT_MONITOR_SETTINGS);
-    expect(out.limits).toEqual({ monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true });
+    expect(out.limits).toEqual({ monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false });
   });
 
   it('sessão de outro tenant: 404', async () => {
@@ -59,15 +59,51 @@ describe('GroupMonitorConfigUseCases', () => {
 
   it('mesmo grupo não pode ser monitorado e de disparo no tenant (laço)', async () => {
     const s = setup();
-    await s.broadcast.execute({ ...base, groupJids: ['meu'] });
+    await s.broadcast.execute({ ...base, groups: [{ groupJid: 'meu' }] });
     await expect(s.monitored.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'meu', keywords: [] }] }))
       .rejects.toMatchObject({ code: 'GROUP_MONITOR_GROUP_CONFLICT' });
   });
 
   it('grupos de disparo mantêm a ordem; repetido é 422', async () => {
     const s = setup();
-    const out = await s.broadcast.execute({ ...base, groupJids: ['b', 'a'] });
-    expect(out.broadcastGroups.map((g) => [g.groupJid, g.position])).toEqual([['b', 0], ['a', 1]]);
-    await expect(s.broadcast.execute({ ...base, groupJids: ['a', 'a'] })).rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT' });
+    const out = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'b' }, { groupJid: 'a' }] });
+    expect(out.broadcastGroups.map((g) => [g.groupJid, g.position, g.sessionId])).toEqual([['b', 0, SESSION], ['a', 1, SESSION]]);
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'a' }, { groupJid: 'a' }] })).rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT' });
+  });
+});
+
+describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
+  it('grupo de outra sessão exige cross_session_dispatch; sem a feature → PLAN_FEATURE_UNAVAILABLE', async () => {
+    const s = setup();
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'x', sessionId: 'session-2' }] }))
+      .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'cross_session_dispatch' } });
+    expect((await s.get.execute(base)).limits.crossSessionDispatch).toBe(false);
+  });
+
+  it('com a feature: grupo de outra sessão do tenant é aceito, conversa criada na sessão certa', async () => {
+    const s = setup({ cross_session_dispatch: true });
+    const out = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'x', sessionId: 'session-2' }, { groupJid: 'y' }] });
+    expect(out.broadcastGroups.map((g) => [g.groupJid, g.sessionId, g.conversationId])).toEqual([['x', 'session-2', 'conv-x'], ['y', SESSION, 'conv-y']]);
+    expect(out.limits.crossSessionDispatch).toBe(true);
+  });
+
+  it('sessão de destino inexistente no tenant → 404', async () => {
+    const s = setup({ cross_session_dispatch: true });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'x', sessionId: 'ghost' }] })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('limite de grupos de disparo conta por monitoramento, não pela sessão dona do grupo', async () => {
+    const s = setup({ cross_session_dispatch: true, broadcast_groups: 2 });
+    await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'a' }] });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'b', sessionId: 'session-2' }, { groupJid: 'c' }] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'b', sessionId: 'session-2' }] })).resolves.toBeTruthy();
+  });
+
+  it('mesmo grupo como destino de dois monitoramentos → 422', async () => {
+    const s = setup({ cross_session_dispatch: true });
+    await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'shared' }] });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'shared', sessionId: 'session-2' }] }))
+      .rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT' });
   });
 });

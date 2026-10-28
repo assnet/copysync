@@ -40,7 +40,7 @@ const UPLOAD_ID = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
 
 const CONFIG: OfferGeneratorConfigDTO = {
   sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
-  groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1' }], groupLimit: null, sessionLimit: null, configured: true,
+  groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1' }], groupLimit: null, sessionLimit: null, crossSessionDispatch: false, configured: true,
 };
 
 function dto(): OfferDTO {

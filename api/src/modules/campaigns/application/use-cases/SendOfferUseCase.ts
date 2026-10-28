@@ -17,9 +17,10 @@ import {
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
 import { toOfferDispatchDto, toOfferDto, type OfferDispatchDTO, type OfferDTO } from '../dtos/OfferDTO';
-import { BROADCAST_GROUPS } from './OfferGeneratorConfigUseCases';
+import { BROADCAST_GROUPS, CROSS_SESSION_DISPATCH } from './OfferGeneratorConfigUseCases';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
-export const MENTION_ALL_ENABLED = 'mention_all_enabled';
+export const MENTION_ALL_ENABLED = ENTITLEMENT_KEYS.MENTION_ALL_ENABLED;
 
 export interface SendOfferInput {
   tenantId: string;
@@ -68,8 +69,10 @@ export class SendOfferUseCase {
     const offline = sessions.find((s) => s.status !== 'CONNECTED');
     if (offline) throw new SessionNotConnectedError(offline.id);
 
-    // Só grupos das sessões configuradas (defesa contra destino antigo de outra sessão)
-    const allowed = new Set(config.sessionIds);
+    // Só grupos das sessões configuradas (defesa contra destino antigo de outra sessão). Plano
+    // rebaixado depois de salvar 2+ sessões: só a principal (a 1ª) dispara
+    const crossSession = config.sessionIds.length > 1 && (await entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH)) === true;
+    const allowed = new Set(crossSession ? config.sessionIds : config.sessionIds.slice(0, 1));
     const groups = (await configs.listGroups(tenantId))
       .filter((g): g is typeof g & { sessionId: string } => g.isGroup && g.sessionId != null && allowed.has(g.sessionId));
     const targets = orderDispatchTargets(groups, config.sessionIds, config.dispatchOrder);

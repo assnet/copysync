@@ -35,7 +35,7 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 2. `VITE_BILLING_CHECKOUT_URL` + `buildCheckoutUrl(slug, period, search)` → botão sai do `#`. Spec T3/T10.
 3. `VITE_SUPPORT_WHATSAPP_NUMBER` → CTA de suporte quando checkout ausente. Spec T3.
 4. Confirmar preço anual por plano (hoje ≈ −20% arredondado) e se o "de" riscado no anual mostra o mensal (atual) ou o preço cheio.
-5. Teste de consistência dos `limits` do catálogo com o seed de `PlanEntitlementPreset`. Spec T6.
+5. ~~Teste de consistência dos `limits` do catálogo com o seed de `PlanEntitlementPreset`.~~ Feito (api 0.42.0): `tenants/domain/planPresets.ts` + `planPresets.test.ts` travam os números da vitrine; o seed lê de lá.
 
 ## O que não fazer
 

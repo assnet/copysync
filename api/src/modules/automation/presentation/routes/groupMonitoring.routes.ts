@@ -45,9 +45,9 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  app.put<{ Body: { sessionId: string; groupJids: string[] } }>(
+  app.put<{ Body: { sessionId: string; groups: { groupJid: string; sessionId?: string | null }[] } }>(
     '/config/broadcast-groups',
-    { preHandler, schema: { tags, summary: 'Substituir grupos de disparo (ordem = envio)', body: saveBroadcastBodySchema, response: { 200: configResponse } } },
+    { preHandler, schema: { tags, summary: 'Substituir grupos de disparo (ordem = envio; grupo de outra sessão exige cross_session_dispatch)', body: saveBroadcastBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
       const result = await automationContainer.saveBroadcast().execute({ tenantId: request.tenantContext.tenantId, ...request.body });
       httpResponse.ok(reply, result);

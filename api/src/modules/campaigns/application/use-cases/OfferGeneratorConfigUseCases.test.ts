@@ -27,7 +27,7 @@ describe('Offer generator config', () => {
   it('sem configuração: padrões, sem grupos, limite do plano', async () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
-      sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', groups: [], groupLimit: 5, sessionLimit: null, configured: false,
+      sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, configured: false,
     });
   });
 
@@ -56,8 +56,8 @@ describe('Offer generator config', () => {
     await expect(s.save.execute({ ...base, sessionIds: ['s1', 'sx'], conversationIds: [] })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('várias sessões: grupos de qualquer uma valem; sem sessão → OFFER_INVALID_INPUT', async () => {
-    const s = setup();
+  it('várias sessões (com cross_session_dispatch): grupos de qualquer uma valem; sem sessão → OFFER_INVALID_INPUT', async () => {
+    const s = setup({ cross_session_dispatch: true });
     const out = await s.save.execute({ ...base, sessionIds: ['s2', 's1'], dispatchOrder: 'INTERLEAVED', conversationIds: ['g1', 'g3'] });
     expect(out).toMatchObject({ sessionIds: ['s2', 's1'], dispatchOrder: 'INTERLEAVED' });
     expect(out.groups.map((g) => g.id)).toEqual(['g1', 'g3']);
@@ -96,5 +96,15 @@ describe('Offer generator config', () => {
     s.configs.selected.set(TENANT, ['g1']);
     const out = await s.save.execute({ ...base, intervalMinSeconds: 600, intervalMaxSeconds: 600, conversationIds: [] });
     expect(out.groups).toEqual([]);
+  });
+});
+
+describe('Offer generator config — sessão cruzada', () => {
+  it('2+ sessões sem cross_session_dispatch → PLAN_FEATURE_UNAVAILABLE; com a feature passa', async () => {
+    const s = setup();
+    await expect(s.save.execute({ ...base, sessionIds: ['s1', 's2'], conversationIds: [] }))
+      .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'cross_session_dispatch' } });
+    const ok = setup({ cross_session_dispatch: true });
+    await expect(ok.save.execute({ ...base, sessionIds: ['s1', 's2'], conversationIds: [] })).resolves.toMatchObject({ sessionIds: ['s1', 's2'], crossSessionDispatch: true });
   });
 });

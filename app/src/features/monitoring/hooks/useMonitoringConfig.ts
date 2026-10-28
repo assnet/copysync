@@ -55,9 +55,9 @@ export function useMonitoringConfig(sessionId: string | null) {
   );
 
   const saveBroadcastGroups = useCallback(
-    async (groupJids: string[]) => {
+    async (groups: { groupJid: string; sessionId?: string | null }[]) => {
       if (!sessionId) throw new Error('Sem sessão');
-      return apply(await monitoringService.saveBroadcastGroups({ sessionId, groupJids }));
+      return apply(await monitoringService.saveBroadcastGroups({ sessionId, groups }));
     },
     [sessionId, apply],
   );

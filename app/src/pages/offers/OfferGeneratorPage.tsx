@@ -111,6 +111,7 @@ export function OfferGeneratorPage() {
           groups={cfg.groups}
           groupLimit={cfg.groupLimit}
           sessionLimit={cfg.sessionLimit}
+          crossSessionDispatch={cfg.crossSessionDispatch}
           sessions={cfg.sessions}
           sessionsLoading={cfg.sessionsLoading}
           sessionsFailed={cfg.sessionsFailed}

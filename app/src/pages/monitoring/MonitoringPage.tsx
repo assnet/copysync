@@ -86,9 +86,10 @@ export function MonitoringPage() {
     }
   };
 
-  const saveBroadcast = async (jids: string[], picked: readonly PickedGroup[] = []) => {
+  const sessionNameOf = (id: string) => sessions.sessions.find((s) => s.id === id)?.name ?? null;
+  const saveBroadcast = async (groups: { groupJid: string; sessionId: string }[], picked: readonly PickedGroup[] = []) => {
     try {
-      await cfg.saveBroadcastGroups(jids);
+      await cfg.saveBroadcastGroups(groups);
     } catch (err) {
       throw new MonitoringUiError(monitoringErrorMessage(err, { scope: 'groups', max: config?.limits.broadcastGroups ?? null, groupTitle: titleLookup(picked) }));
     }
@@ -138,8 +139,10 @@ export function MonitoringPage() {
                   groups={broadcastSorted}
                   used={config.usage.broadcastGroups}
                   max={config.limits.broadcastGroups}
+                  monitorSessionId={selected.id}
+                  sessionNameOf={sessionNameOf}
                   onAdd={() => setPicker('broadcast')}
-                  onChange={(jids) => saveBroadcast(jids)}
+                  onChange={(groups) => saveBroadcast(groups)}
                 />
               </>
             ) : (
@@ -164,7 +167,7 @@ export function MonitoringPage() {
             <GroupPickerDialog
               mode="monitored"
               sessionId={selected.id}
-              initial={config.monitoredGroups.map((g) => ({ groupJid: g.groupJid, title: g.title, avatarUrl: g.avatarUrl, keywords: g.keywords }))}
+              initial={config.monitoredGroups.map((g) => ({ groupJid: g.groupJid, sessionId: selected.id, title: g.title, avatarUrl: g.avatarUrl, keywords: g.keywords }))}
               max={monitoredCap}
               excludeJids={config.broadcastGroups.map((g) => g.groupJid)}
               onClose={() => setPicker(null)}
@@ -175,11 +178,13 @@ export function MonitoringPage() {
             <GroupPickerDialog
               mode="broadcast"
               sessionId={selected.id}
-              initial={broadcastSorted.map((g) => ({ groupJid: g.groupJid, title: g.title, avatarUrl: g.avatarUrl, keywords: [] }))}
+              initial={broadcastSorted.map((g) => ({ groupJid: g.groupJid, sessionId: g.sessionId, title: g.title, avatarUrl: g.avatarUrl, keywords: [] }))}
               max={broadcastCap}
               excludeJids={config.monitoredGroups.map((g) => g.groupJid)}
+              sessions={sessions.sessions}
+              crossSession={config.limits.crossSessionDispatch}
               onClose={() => setPicker(null)}
-              onSave={(groups) => saveBroadcast(groups.map((g) => g.groupJid), groups)}
+              onSave={(groups) => saveBroadcast(groups.map((g) => ({ groupJid: g.groupJid, sessionId: g.sessionId })), groups)}
             />
           )}
         </Stack>

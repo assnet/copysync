@@ -1,4 +1,5 @@
 import { AppError } from '../AppError';
+import { ENTITLEMENT_KEYS } from '../../../modules/tenants/domain/entitlementKeys';
 import { PlanFeatureUnavailableError } from './PlanErrors';
 
 // ── Offer generator errors ───────────────────────────────────────────────────
@@ -117,6 +118,6 @@ export class OfferConfigMissingError extends AppError {
 /** "Marcar todos" fora do plano (entitlement `mention_all_enabled` = false). */
 export class OfferMentionAllUnavailableError extends PlanFeatureUnavailableError {
   constructor() {
-    super('mention_all_enabled');
+    super(ENTITLEMENT_KEYS.MENTION_ALL_ENABLED);
   }
 }

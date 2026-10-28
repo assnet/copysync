@@ -36,8 +36,8 @@ const config = (sessionId: string): GroupMonitorConfigResponse => ({
     textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true,
   },
   monitoredGroups: [{ conversationId: 'c1', groupJid: 'g1@g.us', title: 'Promo Rival', avatarUrl: null, keywords: ['fone'] }],
-  broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', title: 'Meu Grupo', avatarUrl: null, position: 0 }],
-  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false },
+  broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', sessionId, title: 'Meu Grupo', avatarUrl: null, position: 0 }],
+  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false },
   usage: { monitoredGroups: 1, broadcastGroups: 1 },
 });
 

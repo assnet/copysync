@@ -9,6 +9,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api (0.42.0) · app (0.48.0) — sessão cruzada (monitorar em um WhatsApp, disparar em outro)
+
+Spec: `.specs/features/cross-session/spec.md`. A vitrine já vendia o recurso no Business; agora existe. Sem migration.
+
+#### Backend
+
+- **`tenants/domain/entitlementKeys.ts`** (novo) — todas as chaves de entitlement num lugar; literais soltos em `campaigns`, `automation`, `assistants`, `extension` e `OfferErrors` trocados. Nova chave `cross_session_dispatch` (ausente = bloqueado).
+- **`tenants/domain/planPresets.ts`** (novo) + **`seed.ts`** — presets numéricos e booleanos dos 3 planos (sessões, grupos, marcar todos, extensão, IA, sessão cruzada só no Business); **`planPresets.test.ts`** trava contra os `limits` da vitrine.
+- **`OfferGeneratorConfigUseCases.ts`** / **`SendOfferUseCase.ts`** — 2+ sessões no gerador exigem a feature (403 `PLAN_FEATURE_UNAVAILABLE`); rebaixado depois de salvar, só a 1ª sessão dispara. `crossSessionDispatch` no `GET /config`.
+- **`GroupMonitorConfigUseCases.ts`**, **`IGroupMonitorRepository.ts`**, **`PrismaGroupMonitorRepository.ts`** — grupo de disparo carrega `sessionId` próprio; `PUT /config/broadcast-groups` recebe `groups: { groupJid, sessionId? }[]`; gate da feature, sessão de destino do tenant, limite por monitoramento, grupo único entre monitoramentos; `listBroadcast`/`replaceBroadcast` escopados pela config.
+- **`EnqueueOfferUseCase.ts`** / **`IMonitorPorts.ts`** — fila recebe `destinations: { conversationId, sessionId }[]`: cada destino na faixa da própria sessão. **`ProcessPendingCapturedOffersUseCase.ts`** — sem a feature, só destinos da própria sessão.
+
+#### Frontend
+
+- **`GroupPickerDialog.tsx`** — modo disparo com `crossSession`: grupos de todas as sessões conectadas, nome da sessão em cada grupo; sem a feature, aviso "exclusivo do plano Business" com link `/plans`. Seleção por (sessão, grupo); rascunho versão 3.
+- **`BroadcastGroupsCard.tsx`** — chip "Envia por <sessão>" no grupo de outra sessão; reordenar/remover preservam a sessão. **`MonitoringPage.tsx`** — passa sessões e entitlement.
+- **`OfferConfigWizard.tsx`** — 2+ sessões sem a feature: aviso com link e passo bloqueado; **`offerErrors.ts`** traduz o 403 pela chave. Strings novas em `monitoring/strings.ts` e `offers/strings.ts`.
+
+
 ### Added — api (0.41.0) · app (0.47.0) — monitoramento: oferta montada e reescrita com IA
 
 Spec: `.specs/features/monitoring-ai-rewrite/spec.md`. Captura só com link saía só com o link; texto do concorrente

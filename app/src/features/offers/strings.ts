@@ -53,6 +53,8 @@ export const offerStrings = {
         limit != null ? `${n} de ${limit} sessões selecionadas` : `${n} ${plural(n, 'sessão selecionada', 'sessões selecionadas')}`,
       limitTooltip: (limit: number) => `Seu plano permite disparar por até ${limit} ${plural(limit, 'sessão', 'sessões')}. Desmarque uma para escolher outra.`,
       orderBadge: (n: number) => `${n}ª`,
+      crossLocked: 'Disparar por mais de um WhatsApp é exclusivo do plano Business. Deixe uma sessão marcada ou faça upgrade.',
+      crossLockedLink: 'Ver planos',
       loadError: 'Não foi possível carregar as sessões.',
       emptyTitle: 'Nenhuma sessão conectada',
       emptyDescription: 'Conecte um número de WhatsApp para disparar ofertas nos seus grupos.',
@@ -368,6 +370,7 @@ export const offerStrings = {
   planLimit: (limit: number) =>
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
+  crossSessionUnavailable: 'Disparar por mais de um WhatsApp é exclusivo do plano Business. Deixe uma sessão na configuração ou faça upgrade.',
   groupLimit: (limit: number) => `Seu plano permite até ${groupsLabel(limit)}. Desmarque alguns e salve de novo.`,
   goToCredentials: 'Conectar conta de afiliado',
   editCredentials: 'Revisar credencial',

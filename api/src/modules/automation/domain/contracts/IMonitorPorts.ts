@@ -14,8 +14,8 @@ export interface ITenantLinkBuilder {
 
 export interface QueueOfferInput {
   tenantId: string;
-  sessionId: string;
-  conversationIds: string[];
+  /** Destinos na ordem de envio; cada um na faixa da sua sessão (sessão cruzada = outra sessão). */
+  destinations: { conversationId: string; sessionId: string }[];
   provider: AffiliateProvider;
   sourceUrl: string;
   affiliateUrl: string;

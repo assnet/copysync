@@ -7,6 +7,8 @@ export interface MonitoredGroupInput {
 }
 
 export interface BroadcastGroupInput {
+  /** Sessão que envia (dona do grupo). */
+  sessionId: string;
   conversationId: string;
   groupJid: string;
 }
@@ -21,7 +23,8 @@ export interface ActiveMonitoredGroup {
 
 export interface TenantGroupJids {
   monitored: { sessionId: string; groupJid: string }[];
-  broadcast: { sessionId: string; groupJid: string }[];
+  /** `sessionId` = sessão dona do grupo; `monitorSessionId` = sessão cujo monitoramento o usa. */
+  broadcast: { sessionId: string; groupJid: string; monitorSessionId: string }[];
 }
 
 /** Persistência do monitoramento. Toda consulta filtra por `tenantId` (o listener também). */
@@ -33,11 +36,12 @@ export interface IGroupMonitorRepository {
   /** Garante a linha de configuração (padrões) e devolve o id. */
   ensureConfig(tenantId: string, sessionId: string): Promise<string>;
   listMonitored(tenantId: string, sessionId: string): Promise<MonitoredGroup[]>;
-  listBroadcast(tenantId: string, sessionId: string): Promise<BroadcastGroup[]>;
+  /** Destinos do monitoramento da sessão (grupos podem ser de outra sessão do tenant). */
+  listBroadcast(tenantId: string, monitorSessionId: string): Promise<BroadcastGroup[]>;
   /** Substitui a lista inteira numa transação. */
   replaceMonitored(tenantId: string, sessionId: string, configId: string, groups: MonitoredGroupInput[]): Promise<void>;
   /** Substitui a lista inteira numa transação; `position` = índice. */
-  replaceBroadcast(tenantId: string, sessionId: string, configId: string, groups: BroadcastGroupInput[]): Promise<void>;
+  replaceBroadcast(tenantId: string, monitorSessionId: string, configId: string, groups: BroadcastGroupInput[]): Promise<void>;
   /** Grupos usados no tenant inteiro (limites do plano e conflito monitorado × disparo). */
   tenantGroupJids(tenantId: string): Promise<TenantGroupJids>;
   /** Listener: grupo monitorado desta sessão/tenant com o monitoramento ligado. */

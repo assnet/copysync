@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Alert, Box, Button, CircularProgress, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
 import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
@@ -27,6 +28,8 @@ interface Props {
   groups: OfferConfigGroup[];
   groupLimit: number | null;
   sessionLimit: number | null;
+  /** Entitlement `cross_session_dispatch`: sem ele, 2+ sessões não salvam (403). */
+  crossSessionDispatch: boolean;
   sessions: SessionItem[];
   sessionsLoading: boolean;
   sessionsFailed: boolean;
@@ -39,7 +42,7 @@ interface Props {
 
 /** Assistente Sessões → Grupos → Confirmar. Abre preenchido com a configuração atual ao editar. */
 export function OfferConfigWizard({
-  config, groups, groupLimit, sessionLimit, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
+  config, groups, groupLimit, sessionLimit, crossSessionDispatch, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
 }: Props) {
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
   // Todo o rascunho do assistente sobrevive a reload (passo, sessões, grupos, intervalo, ordem);
@@ -73,11 +76,12 @@ export function OfferConfigWizard({
   );
   const overGroupLimit = groupLimit != null && selected.size > groupLimit;
   const overSessionLimit = sessionLimit != null && chosen.length > sessionLimit;
+  const crossLocked = chosen.length > 1 && !crossSessionDispatch;
 
   const canNext = step === 0
-    ? chosen.length > 0 && !overSessionLimit
+    ? chosen.length > 0 && !overSessionLimit && !crossLocked
     : step === 1 ? selected.size > 0 && !overGroupLimit : false;
-  const canSave = chosen.length > 0 && !overSessionLimit && selected.size > 0 && !overGroupLimit && intervalValid(intervalMin, intervalMax);
+  const canSave = chosen.length > 0 && !overSessionLimit && !crossLocked && selected.size > 0 && !overGroupLimit && intervalValid(intervalMin, intervalMax);
 
   const toggleSession = (id: string) => {
     setSessionIds((prev) => {
@@ -137,6 +141,11 @@ export function OfferConfigWizard({
       </Box>
 
       <Box sx={{ minHeight: 160 }}>
+        {step === 0 && crossLocked && (
+          <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={RouterLink} to="/plans">{t.session.crossLockedLink}</Button>}>
+            {t.session.crossLocked}
+          </Alert>
+        )}
         {step === 0 && (
           <ConfigSessionStep
             sessions={connected}

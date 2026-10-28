@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Button, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
@@ -16,19 +16,22 @@ interface Props {
   groups: BroadcastGroupItem[];
   used: number;
   max: number | null;
+  /** Sessão do monitoramento: grupo de outra sessão ganha o chip "Envia por …". */
+  monitorSessionId: string;
+  sessionNameOf: (sessionId: string) => string | null;
   onAdd: () => void;
-  /** Salva a nova ordem/lista; lança em erro. */
-  onChange: (groupJids: string[]) => Promise<void>;
+  /** Salva a nova ordem/lista (cada grupo com a sessão que envia); lança em erro. */
+  onChange: (groups: { groupJid: string; sessionId: string }[]) => Promise<void>;
 }
 
 /** Grupos que recebem as ofertas, na ordem de envio; reordenar e remover salvam na hora. */
-export function BroadcastGroupsCard({ groups, used, max, onAdd, onChange }: Props) {
+export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessionNameOf, onAdd, onChange }: Props) {
   const blurNames = useBlur('monitoring.groupNames');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const jids = groups.map((g) => g.groupJid);
+  const refs = groups.map((g) => ({ groupJid: g.groupJid, sessionId: g.sessionId }));
 
-  const commit = async (next: string[]) => {
+  const commit = async (next: { groupJid: string; sessionId: string }[]) => {
     setSaving(true);
     setError(null);
     try {
@@ -41,7 +44,7 @@ export function BroadcastGroupsCard({ groups, used, max, onAdd, onChange }: Prop
   };
 
   const move = (index: number, delta: -1 | 1) => {
-    const next = [...jids];
+    const next = [...refs];
     const [item] = next.splice(index, 1);
     next.splice(index + delta, 0, item!);
     void commit(next);
@@ -61,7 +64,7 @@ export function BroadcastGroupsCard({ groups, used, max, onAdd, onChange }: Prop
         ) : (
           <Stack component="ol" spacing={0.5} sx={{ m: 0, p: 0, listStyle: 'none' }} aria-busy={saving}>
             {groups.map((g, i) => (
-              <Box component="li" key={g.groupJid} sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+              <Box component="li" key={`${g.sessionId}:${g.groupJid}`} sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 22, color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
                   {t.position(i + 1)}
                 </Typography>
@@ -70,6 +73,11 @@ export function BroadcastGroupsCard({ groups, used, max, onAdd, onChange }: Prop
                   <Blurred when={blurNames} inline radius={5}>
                     <Typography variant="body2" noWrap>{g.title || t.untitled}</Typography>
                   </Blurred>
+                  {g.sessionId !== monitorSessionId && (
+                    <Tooltip title={t.otherSessionTooltip} arrow describeChild>
+                      <Chip size="small" variant="outlined" color="primary" label={t.otherSession(sessionNameOf(g.sessionId) || t.untitled)} sx={{ height: 20, fontSize: 11, mt: 0.25 }} />
+                    </Tooltip>
+                  )}
                 </Box>
                 <Tooltip title={t.moveUp} arrow>
                   <span>
@@ -87,7 +95,7 @@ export function BroadcastGroupsCard({ groups, used, max, onAdd, onChange }: Prop
                 </Tooltip>
                 <Tooltip title={t.remove} arrow>
                   <span>
-                    <IconButton size="small" aria-label={t.remove} disabled={saving} onClick={() => void commit(jids.filter((j) => j !== g.groupJid))}>
+                    <IconButton size="small" aria-label={t.remove} disabled={saving} onClick={() => void commit(refs.filter((r) => !(r.groupJid === g.groupJid && r.sessionId === g.sessionId)))}>
                       <AppIcon icon={X} size="sm" />
                     </IconButton>
                   </span>

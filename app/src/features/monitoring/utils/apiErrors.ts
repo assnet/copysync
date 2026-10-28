@@ -52,7 +52,7 @@ export function monitoringErrorMessage(err: unknown, ctx: MonitoringErrorContext
       return t.planLimit(limit);
     }
     case 'PLAN_FEATURE_UNAVAILABLE':
-      return t.planFeature;
+      return meta.key === 'cross_session_dispatch' ? t.crossSessionUnavailable : t.planFeature;
     case 'CAPTURED_OFFER_NOT_RETRYABLE':
       return t.notRetryable;
     default:

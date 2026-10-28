@@ -65,8 +65,18 @@ export const saveMonitoredBodySchema = {
 } as const;
 
 export const saveBroadcastBodySchema = {
-  type: 'object', additionalProperties: false, required: ['sessionId', 'groupJids'],
-  properties: { sessionId, groupJids: { type: 'array', maxItems: MONITOR_LIMITS.groupsPerSession, items: groupJid } },
+  type: 'object', additionalProperties: false, required: ['sessionId', 'groups'],
+  properties: {
+    sessionId,
+    groups: {
+      type: 'array', maxItems: MONITOR_LIMITS.groupsPerSession,
+      items: {
+        type: 'object', additionalProperties: false, required: ['groupJid'],
+        // sessionId ausente/null = a sessão do monitor; outra sessão exige `cross_session_dispatch`
+        properties: { groupJid, sessionId: { type: ['string', 'null'], minLength: 1, maxLength: 64 } },
+      },
+    },
+  },
 } as const;
 
 // ── Saída (envelope { success, data }), lista fechada de campos ──────────────
@@ -83,8 +93,8 @@ const configSchema = {
     sessionId: { type: 'string' },
     settings: { type: 'object', properties: settingsProperties },
     monitoredGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, keywords: { type: 'array', items: { type: 'string' } } } } },
-    broadcastGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, position: { type: 'integer' } } } },
-    limits: { type: 'object', properties: { monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' } } },
+    broadcastGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, sessionId: { type: 'string' }, position: { type: 'integer' } } } },
+    limits: { type: 'object', properties: { monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' } } },
     usage: { type: 'object', properties: { monitoredGroups: { type: 'integer' }, broadcastGroups: { type: 'integer' } } },
   },
 } as const;
