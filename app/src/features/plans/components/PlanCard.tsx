@@ -1,12 +1,13 @@
 import { Box, Button, Chip, Divider, Paper, Tooltip, Typography, alpha, useTheme } from '@mui/material';
 import { Check, Crown, Info } from 'lucide-react';
 import { AppIcon } from '@/components';
-import type { PlanBenefit, PlanCatalogItem } from '../catalog';
+import { priceFor, savingsFor, type BillingPeriod, type PlanBenefit, type PlanCatalogItem } from '../catalog';
 import { formatPrice, plansStrings as t } from '../strings';
 import { ctaGradient } from './PlansHero';
 
 interface Props {
   plan: PlanCatalogItem;
+  period: BillingPeriod;
   /** Destino do botão. Enquanto o checkout não existe, `#`. */
   checkoutHref: string;
 }
@@ -38,12 +39,14 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
 }
 
 /** Card de plano. O recomendado ganha moldura em gradiente e selo "Mais escolhido". */
-export function PlanCard({ plan, checkoutHref }: Props) {
+export function PlanCard({ plan, period, checkoutHref }: Props) {
   const theme = useTheme();
   const accent = theme.palette.primary.main;
   const recommended = !!plan.recommended;
   const gradient = ctaGradient(theme);
-  const savings = plan.priceFrom - plan.price;
+  const price = priceFor(plan, period);
+  const savings = savingsFor(plan, period);
+  const savingsLabel = savings.per === 'year' ? t.card.savingsPerYear(formatPrice(savings.value)) : t.card.savingsPerMonth(formatPrice(savings.value));
 
   const body = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
@@ -59,19 +62,19 @@ export function PlanCard({ plan, checkoutHref }: Props) {
 
       <Box>
         <Typography variant="caption" sx={{ color: 'text.disabled', textDecoration: 'line-through', fontWeight: 600 }}>
-          {t.card.from(formatPrice(plan.priceFrom))}
+          {t.card.from(formatPrice(period === 'annual' ? plan.price : plan.priceFrom))}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-          <Typography component="span" sx={{ fontSize: 34, fontWeight: 800, lineHeight: 1, letterSpacing: -1, fontVariantNumeric: 'tabular-nums' }}>
-            {formatPrice(plan.price)}
+          <Typography key={price} component="span" sx={{ fontSize: 34, fontWeight: 800, lineHeight: 1, letterSpacing: -1, fontVariantNumeric: 'tabular-nums' }}>
+            {formatPrice(price)}
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', lineHeight: 1.2 }}>{t.card.perMonth}</Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }}>{t.card.billedMonthly}</Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }}>{period === 'annual' ? t.card.billedAnnually : t.card.billedMonthly}</Typography>
           </Box>
         </Box>
         <Chip
-          label={t.card.savings(formatPrice(savings))}
+          label={savingsLabel}
           size="small"
           sx={{ mt: 1, height: 22, fontWeight: 800, fontSize: 11, bgcolor: alpha(theme.palette.success.main, 0.14), color: 'success.main' }}
         />

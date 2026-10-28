@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app (0.44.0) — toggle mensal/anual na vitrine de planos
+
+- **`PlansHero.tsx`** — pill Mensal/Anual no banner (modelo do Pulso), anual por padrão com selo "−20%".
+- **`catalog.ts`** — `priceAnnualMonthly` por plano (77/133/197, ≈ −20% do mensal, valor provisório até o owner fixar), `ANNUAL_DISCOUNT`, `priceFor`, `savingsFor`; **`PlanCard.tsx`** — preço, "cobrado anualmente" e chip "economize R$ X/ano" seguem o período.
+- **`PlansPage.tsx`** — período em `usePersistedState('plans.period')` (escopo da aba). **`catalog.test.ts`** — desconto real dentro de ±2 pontos do anunciado.
+
 ### Changed — app (0.43.1) — ajustes no catálogo de planos
 
 - **`features/plans/catalog.ts`**, **`docs/produto-roadmap.md`** — Starter ganha "Gerador de ofertas" e "Envio digitando… antes de cada oferta" (sai da lista do Profissional, já coberto por "Tudo do Starter"); Business ganha "Monitorar em um WhatsApp e disparar em outro" (sessão cruzada, exclusivo). Tabela do roadmap alinhada.

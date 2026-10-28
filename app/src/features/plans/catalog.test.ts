@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_CATALOG } from './catalog';
+import { ANNUAL_DISCOUNT, PLAN_CATALOG, priceFor, savingsFor } from './catalog';
 import { formatPrice } from './strings';
 
 describe('catálogo de planos (vitrine)', () => {
@@ -24,5 +24,15 @@ describe('catálogo de planos (vitrine)', () => {
   it('formata preço inteiro sem centavos e fracionado com 2 casas', () => {
     expect(formatPrice(97).replace(/\u00a0/g, ' ')).toBe('R$ 97');
     expect(formatPrice(64.9).replace(/\u00a0/g, ' ')).toBe('R$ 64,90');
+  });
+
+  it('anual fica perto do desconto anunciado e abaixo do mensal', () => {
+    for (const p of PLAN_CATALOG) {
+      expect(priceFor(p, 'annual')).toBeLessThan(priceFor(p, 'monthly'));
+      const real = 1 - p.priceAnnualMonthly / p.price;
+      expect(Math.abs(real - ANNUAL_DISCOUNT)).toBeLessThan(0.02);
+      expect(savingsFor(p, 'annual')).toEqual({ value: (p.price - p.priceAnnualMonthly) * 12, per: 'year' });
+      expect(savingsFor(p, 'monthly')).toEqual({ value: p.priceFrom - p.price, per: 'month' });
+    }
   });
 });

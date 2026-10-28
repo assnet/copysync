@@ -27,6 +27,13 @@ export const plansStrings = {
     leadDetail: 'O que muda é quantos grupos e canais você opera ao mesmo tempo.',
   },
 
+  period: {
+    groupLabel: 'Período de cobrança',
+    monthly: 'Mensal',
+    annual: 'Anual',
+    discount: (percent: number) => `−${percent}%`,
+  },
+
   guarantee: {
     ribbon: 'Garantia',
     days: '7',
@@ -39,8 +46,10 @@ export const plansStrings = {
     exclusive: 'Exclusivo',
     perMonth: '/mês',
     billedMonthly: 'cobrado mensalmente',
+    billedAnnually: 'cobrado anualmente',
     from: (value: string) => `de ${value}`,
-    savings: (value: string) => `economize ${value}/mês`,
+    savingsPerMonth: (value: string) => `economize ${value}/mês`,
+    savingsPerYear: (value: string) => `economize ${value}/ano`,
     cta: (planName: string) => `Assinar ${planName}`,
     ctaHint: 'Sem fidelidade. Cancele quando quiser.',
     fit: 'Ideal para',
