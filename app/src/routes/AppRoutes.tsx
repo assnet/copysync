@@ -17,6 +17,7 @@ import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage, StorefrontPage } from '@/pages/modules';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
+import { PlansPage } from '@/pages/plans/PlansPage';
 
 function LegacySessionsRedirect() {
   const { search } = useLocation();
@@ -43,6 +44,7 @@ export function AppRoutes() {
           <Route path="/mirroring" element={<MirroringPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
+          <Route path="/plans" element={<PlansPage />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="/settings/sessions" replace />} />
             <Route path="sessions" element={<SessionsPage />} />

@@ -26,6 +26,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Conexão de sessão (assistente, `declaredPhone`, pareamento por código): [`docs/sessoes-conexao.md`](docs/sessoes-conexao.md). Termo de produto: sessão, nunca instância.
 - Plano mestre de lançamento (marcos, trilhas, rede de segurança do PulsoSocial): [`docs/plano-lancamento-hub-copysync.md`](docs/plano-lancamento-hub-copysync.md).
 - Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá.
+- Vitrine de planos no painel (`/plans`, catálogo de vitrine, o que não fazer): [`docs/planos.md`](docs/planos.md). Preço é texto de marketing em `features/plans/catalog.ts`; nunca no banco.
 
 ###
 

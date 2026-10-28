@@ -9,7 +9,7 @@ import {
   Badge,
 } from '@mui/material';
 import {
-  ArrowLeftRight, Bot, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Menu as MenuIcon, MessagesSquare,
+  ArrowLeftRight, Bot, ChevronLeft, ChevronRight, Crown, LayoutDashboard, LogOut, Menu as MenuIcon, MessagesSquare,
   EyeOff, Moon, Settings, Sun, Tag,
 } from 'lucide-react';
 import { AppIcon } from '@/components';
@@ -24,6 +24,7 @@ import { VoiceRecorderHost } from '@/features/chat/media/VoiceRecorderProvider';
 import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { aiStrings } from '@/features/ai/strings';
+import { plansStrings } from '@/features/plans/strings';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -53,6 +54,7 @@ const NAV_ITEMS = [
   { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
   { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
   { label: 'Página de ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" /> },
+  { label: plansStrings.menuLabel, path: '/plans', icon: <AppIcon icon={Crown} size="md" /> },
   // Ação (abre o diálogo de privacidade), não rota — ver features/privacy
   { label: privacyStrings.menuLabel, action: 'privacy' as const, icon: <AppIcon icon={EyeOff} size="md" /> },
   { label: 'Configurações', path: '/settings/sessions', icon: <AppIcon icon={Settings} size="md" />, matchPrefix: true },
