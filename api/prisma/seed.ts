@@ -10,9 +10,12 @@ const TENANTS = [
   { slug: 'beta-labs', name: 'Beta Labs' },
 ] as const;
 
-const ADMINS = [
-  { email: 'admin-acme@copysync.app', name: 'Admin Acme', tenantSlug: 'acme-corp' },
-  { email: 'admin-beta@copysync.app', name: 'Admin Beta', tenantSlug: 'beta-labs' },
+const TENANT_USERS = [
+  { email: 'admin-acme@copysync.app', name: 'Admin Acme', tenantSlug: 'acme-corp', role: 'ADMIN' },
+  { email: 'admin-beta@copysync.app', name: 'Admin Beta', tenantSlug: 'beta-labs', role: 'ADMIN' },
+  // Usuários comuns (OPERATOR): sem permissão de admin no tenant
+  { email: 'pedrorodrigues.silva5@gmail.com', name: 'Pedro Rodrigues', tenantSlug: 'acme-corp', role: 'OPERATOR' },
+  { email: 'eu.israeldaywis@gmail.com', name: 'Israel Daywis', tenantSlug: 'acme-corp', role: 'OPERATOR' },
 ] as const;
 
 async function main(): Promise<void> {
@@ -53,8 +56,8 @@ async function main(): Promise<void> {
     });
   }
 
-  // ── Admin por tenant (cada um só vê o seu) ────────────────────────────────
-  for (const a of ADMINS) {
+  // ── Usuários por tenant (admin ou operador; cada um só vê o seu) ──────────
+  for (const a of TENANT_USERS) {
     const tenantId = tenantMap.get(a.tenantSlug);
     if (!tenantId) throw new Error(`Tenant ${a.tenantSlug} not found`);
 
@@ -71,11 +74,11 @@ async function main(): Promise<void> {
 
     await prisma.userTenant.upsert({
       where: { userId_tenantId: { userId: user.id, tenantId } },
-      update: {},
-      create: { userId: user.id, tenantId, role: 'ADMIN' },
+      update: { role: a.role },
+      create: { userId: user.id, tenantId, role: a.role },
     });
 
-    console.log(`✅  Admin: ${user.email} → tenant ${a.tenantSlug} (${tenantId})`);
+    console.log(`✅  ${a.role}: ${user.email} → tenant ${a.tenantSlug} (${tenantId})`);
   }
 
   // ── Entitlements por tenant ──────────────────────────────────────────────
@@ -116,6 +119,7 @@ async function main(): Promise<void> {
   console.log('    Super admin: copysyncapp@gmail.com (vê todos os tenants)');
   console.log('    Admin Acme:  admin-acme@copysync.app (só Acme Corp)');
   console.log('    Admin Beta:  admin-beta@copysync.app (só Beta Labs)');
+  console.log('    Operadores:  pedrorodrigues.silva5@gmail.com, eu.israeldaywis@gmail.com (Acme Corp)');
 }
 
 main()
