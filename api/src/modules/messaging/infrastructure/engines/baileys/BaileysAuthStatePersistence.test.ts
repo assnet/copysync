@@ -208,7 +208,7 @@ describe('buildBaileysAuthState — ciclo de vida do handle', () => {
     const repo = new InMemoryAuthRepo();
     const h = await build(repo);
     await h.saveCreds();
-    discardAuthState(SESSION);
+    await discardAuthState(SESSION);
     await repo.clearCredentials(SESSION);
     await h.forceFlush();
     expect(repo.keys.size).toBe(0);
@@ -307,6 +307,46 @@ describe('buildBaileysAuthState — concorrência (revisão)', () => {
     await flushing;
     await repo.clearCredentials(SESSION);
     expect(repo.keys.size).toBe(0);
+  });
+
+  it('carga falha depois de soltar o handle antigo: o pendente vira órfão e o próximo build o herda', async () => {
+    const repo = new InMemoryAuthRepo();
+    const a = await build(repo);
+    await a.saveCreds();
+    repo.failNext = 2; // release falha
+    vi.spyOn(repo, 'findAllKeys').mockRejectedValueOnce(new Error('db down'));
+    await expect(build(repo)).rejects.toThrow('db down');
+    const c = await build(repo);
+    await c.forceFlush();
+    expect(repo.keys.has('__creds__')).toBe(true);
+    c.dispose();
+  });
+
+  it('discardAuthState durante um build em curso espera o build e descarta o handle novo', async () => {
+    const { discardAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    let release!: () => void;
+    vi.spyOn(repo, 'findAllKeys').mockImplementationOnce(async () => { await new Promise<void>((r) => { release = r; }); return {}; });
+    const building = build(repo);
+    await tick();
+    const discarding = discardAuthState(SESSION);
+    release();
+    const h = await building;
+    await discarding;
+    await h.saveCreds();
+    await h.forceFlush();
+    expect(repo.batches).toHaveLength(0); // handle já nasceu descartado
+  });
+
+  it('forceFlush com escrita em voo que falha tenta de novo em vez de propagar', async () => {
+    const repo = new InMemoryAuthRepo();
+    const h = await buildBaileysAuthState(SESSION, TENANT, repo, { flushDebounceMs: 5, maxRetries: 1, retryDelayMs: 0 });
+    repo.failNext = 1;
+    await h.saveCreds(); // timer de 5 ms dispara a escrita que falha
+    await tick();
+    await h.forceFlush();
+    expect(repo.keys.has('__creds__')).toBe(true);
+    h.dispose();
   });
 
   it('builds concorrentes da mesma sessão são serializados: fica um handle só, sem zumbi', async () => {

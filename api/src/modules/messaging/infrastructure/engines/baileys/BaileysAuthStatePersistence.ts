@@ -59,6 +59,16 @@ export interface BaileysAuthStateHandle {
  */
 const activeHandles = new Map<string, BaileysAuthStateHandle>();
 const buildChain = new Map<string, Promise<unknown>>();
+/** Pendente que um handle morto não conseguiu gravar (banco fora): o próximo handle da sessão herda. */
+const orphanDirty = new Map<string, DirtyMap>();
+
+function stashOrphans(sessionId: string, leftover: DirtyMap): void {
+  if (leftover.size === 0) return;
+  const merged = orphanDirty.get(sessionId) ?? new Map<string, unknown | null>();
+  for (const [k, v] of leftover) merged.set(k, v);
+  orphanDirty.set(sessionId, merged);
+  log.warn({ sessionId, keys: merged.size }, 'Auth keys pending without a live handle; next handle will persist them');
+}
 
 export async function flushAllAuthStates(): Promise<void> {
   const entries = Array.from(activeHandles.entries());
@@ -71,24 +81,27 @@ export async function flushAllAuthStates(): Promise<void> {
 
 /**
  * Grava o pendente da sessão e descarta o handle (desconexão: o estado vale, só o handle morre).
- * Devolve o que NÃO conseguiu gravar, para o próximo handle não perder a alteração.
+ * O que NÃO conseguiu gravar fica guardado para o próximo handle da sessão.
  */
-export async function releaseAuthState(sessionId: string): Promise<DirtyMap> {
+export async function releaseAuthState(sessionId: string): Promise<void> {
   const h = activeHandles.get(sessionId);
-  if (!h) return new Map();
+  if (!h) return;
   try {
     await h.forceFlush();
   } catch (err) {
     log.error({ err, sessionId }, 'Auth state flush before release failed; carrying pending keys over');
   }
-  return h.dispose();
+  stashOrphans(sessionId, h.dispose());
 }
 
 /**
  * Descarta o handle SEM gravar (logout, credencial revogada, sessão apagada): o pendente é lixo.
- * Espera a escrita em voo terminar, para o `clearCredentials` seguinte não ser desfeito por ela.
+ * Espera um build em curso (o handle ainda não estaria no mapa) e a escrita em voo terminarem,
+ * para o `clearCredentials` seguinte não ser desfeito por nenhum dos dois.
  */
 export async function discardAuthState(sessionId: string): Promise<void> {
+  await buildChain.get(sessionId)?.catch(() => undefined);
+  orphanDirty.delete(sessionId);
   const h = activeHandles.get(sessionId);
   if (!h) return;
   h.dispose();
@@ -151,23 +164,30 @@ async function buildHandle(
   const retryDelayMs = deps.retryDelayMs ?? env.BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS;
 
   // Reconexão: o handle anterior grava o pendente e morre ANTES de lermos o banco; o que ele não
-  // conseguiu gravar entra como pendente deste
-  const carried = await releaseAuthState(sessionId);
+  // conseguiu gravar entra como pendente deste (e volta a órfão se esta carga falhar)
+  await releaseAuthState(sessionId);
+  const carried: DirtyMap = orphanDirty.get(sessionId) ?? new Map();
+  orphanDirty.delete(sessionId);
 
   // ── Carga: chaves da tabela nova; sessão ainda no blob legado é migrada ───────
   const stateMap = new Map<string, StoredValue>();
-  for (const [key, value] of Object.entries(await authStateRepo.findAllKeys(sessionId))) {
-    stateMap.set(key, fromDb(value));
-  }
-  if (stateMap.size === 0) {
-    const legacy = await authStateRepo.findBySessionId(sessionId);
-    const payload = legacy?.statePayload;
-    if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
-      const upserts = payload as Record<string, unknown>;
-      await authStateRepo.writeKeys({ sessionId, tenantId, provider: PROVIDER, upserts, deletes: [] });
-      for (const [key, value] of Object.entries(upserts)) stateMap.set(key, fromDb(value));
-      log.info({ sessionId, keys: stateMap.size }, 'Auth state migrated from legacy blob to per-key rows');
+  try {
+    for (const [key, value] of Object.entries(await authStateRepo.findAllKeys(sessionId))) {
+      stateMap.set(key, fromDb(value));
     }
+    if (stateMap.size === 0) {
+      const legacy = await authStateRepo.findBySessionId(sessionId);
+      const payload = legacy?.statePayload;
+      if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+        const upserts = payload as Record<string, unknown>;
+        await authStateRepo.writeKeys({ sessionId, tenantId, provider: PROVIDER, upserts, deletes: [] });
+        for (const [key, value] of Object.entries(upserts)) stateMap.set(key, fromDb(value));
+        log.info({ sessionId, keys: stateMap.size }, 'Auth state migrated from legacy blob to per-key rows');
+      }
+    }
+  } catch (err) {
+    stashOrphans(sessionId, carried);
+    throw err;
   }
   for (const [key, value] of carried) {
     if (value === null) stateMap.delete(key);
@@ -307,7 +327,8 @@ async function buildHandle(
       clearTimeout(flushTimer);
       flushTimer = null;
     }
-    if (inFlight) await inFlight;
+    // Escrita em voo que falha já devolveu as chaves a sujas: tenta de novo aqui
+    if (inFlight) await inFlight.catch(() => undefined);
     await flushState();
   }
 
@@ -328,9 +349,6 @@ async function buildHandle(
   }
 
   const handle: BaileysAuthStateHandle = { state: { creds, keys }, saveCreds, forceFlush, dispose, settled };
-  // Build que escapou da serialização (não deveria): o anterior morre aqui, sem perder o pendente
-  const stale = activeHandles.get(sessionId);
-  if (stale) for (const [key, value] of stale.dispose()) dirty.set(key, value);
   activeHandles.set(sessionId, handle);
   if (dirty.size > 0) schedulePersist();
   return handle;

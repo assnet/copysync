@@ -85,8 +85,15 @@ dona de `tenantId`, `provider`, `version` (lock otimista da Fase 2 da escala, §
   na credencial revogada, antes de `clearCredentials`: sem isso um flush atrasado ressuscitava
   credenciais após o logout.
 - Flush: a escrita em voo tem promessa própria (`inFlight`); o timer só dispara. `forceFlush`
-  cancela o timer, espera a escrita em voo (que drena o que sujar) e grava o resto; chamadas
-  concorrentes não travam.
+  cancela o timer, espera a escrita em voo (que drena o que sujar; se ela falhou, tenta de novo) e
+  grava o resto; chamadas concorrentes não travam.
+- **Pendente órfão** (`orphanDirty`): o que um handle morto não conseguiu gravar (banco fora na
+  desconexão, ou carga do handle novo falhou) fica guardado por sessão e o próximo handle herda.
+  `discardAuthState` (logout/revogação) espera um build em curso e apaga o órfão: nada ressuscita.
+- Espera limitada: cada tentativa de gravação é uma transação com `timeout: 30 s`/`maxWait: 10 s`
+  (3 tentativas), então `forceFlush`/`discardAuthState` nunca ficam pendurados por mais de ~2 min
+  com o banco travado. Logout durante um `connect` em andamento é corrida do adapter (o socket
+  ainda não está no registro para o `socket.logout`), igual ao modelo antigo.
 - Falha de gravação esgotando as tentativas: chaves voltam a sujas e o flush **rearma sozinho**
   (backoff de 5× o retry, 1–30 s); sessão quieta não fica só em memória.
 - Comparação de valor igual usa texto canônico (chaves ordenadas): o `jsonb` reordena as chaves e,
@@ -132,7 +139,8 @@ dona de `tenantId`, `provider`, `version` (lock otimista da Fase 2 da escala, §
   (inclusive com escrita em voo); `releaseAuthState`, inclusive com banco fora (pendente passa ao
   handle novo); valor idêntico após reboot com chaves reordenadas não grava; rearme após falha
   pelo timer; `forceFlush` concorrente durante escrita em voo não trava; builds concorrentes
-  serializados.
+  serializados; carga falha depois de soltar o antigo → órfão herdado pelo próximo build;
+  descarte durante build em curso; `forceFlush` após escrita em voo falha tenta de novo.
 - Postgres local descartável, script manual (não está no repo) com o
   `PrismaSessionAuthStateRepository` real: migração de blob com chave de 2 MB, `ON CONFLICT`,
   lote de 500, `clearCredentials`, `deleteBySessionId`.
