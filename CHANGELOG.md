@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — automation (api 0.38.1) — padrões do monitoramento
+
+- **`monitorSettings.ts`**, **`schema.prisma`** + migration `20261028050000_monitoring_defaults` — horário de operação padrão 06:00–18:00 (era sem restrição) e intervalo entre envios padrão 15–40 min (era 2–5 min). Só vale para sessão ainda sem configuração; o que já foi salvo não muda.
+
 ### Changed — sessions/messaging (api 0.38.0) — auth state do WhatsApp gravado por chave
 
 Causa raiz das quedas do Postgres em 2026-10-27: o estado Signal de cada sessão era um JSON único (6 MB na maior sessão, 2 MB numa só chave de app-state) regravado inteiro a cada chave alterada; 118 gravações de 241 ms e ~720 MB de temporários depois de um reinício. Doc: `docs/sessoes-auth-state.md`.

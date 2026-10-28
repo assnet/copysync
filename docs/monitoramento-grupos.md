@@ -83,14 +83,16 @@ ser do operador, aqui o link é sempre gerado.
 
 ### 2.2 Janela de operação
 
-Minutos do dia em `America/Sao_Paulo`, 0..1440. `0–1440` = sem restrição. `fim < início` = cruza a
+Minutos do dia em `America/Sao_Paulo`, 0..1440. **Padrão 06:00–18:00** (`360–1080`). `0–1440` = sem
+restrição. `fim < início` = cruza a
 meia-noite (`22:00 → 06:00`); `1440` como início equivale a 00:00 do dia seguinte. A janela só
 ancora o **início**: com muitos destinos, os envios seguintes podem passar do fim (a validade
 limita). Recorte completo fica para a fase 2.
 
 ## 3. Regras e limites
 
-- Faixas: intervalo 60–3600 s (min ≤ max), atraso 0–7200 s, validade 15–1440 min, validade com
+- Faixas: intervalo 60–3600 s (min ≤ max; **padrão 15–40 min**, mais espaçado que o gerador),
+  atraso 0–7200 s, validade 15–1440 min, validade com
   cupom ≤ validade sem cupom, "digitando…" 1–30 s. 422 `GROUP_MONITOR_INVALID_INPUT` com `field`.
 - Plano: `monitored_groups` e `broadcast_groups` somam **todas as sessões do tenant**
   (`PLAN_LIMIT_REACHED`); `mention_all_enabled=false` bloqueia "marcar todos"

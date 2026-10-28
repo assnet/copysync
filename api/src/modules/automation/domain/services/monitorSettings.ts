@@ -12,12 +12,13 @@ export const MONITOR_LIMITS = {
   keywordLength: 40,
 } as const;
 
+/** Padrões (espelham os `@default` do Prisma): 06:00–18:00 e 15–40 min entre envios. */
 export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   enabled: false,
-  windowStartMinute: 0,
-  windowEndMinute: MINUTES_PER_DAY,
-  intervalMinSeconds: 120,
-  intervalMaxSeconds: 300,
+  windowStartMinute: 6 * 60,
+  windowEndMinute: 18 * 60,
+  intervalMinSeconds: 15 * 60,
+  intervalMaxSeconds: 40 * 60,
   startDelaySeconds: 0,
   maxOfferAgeMinutes: 180,
   couponMaxAgeMinutes: 60,
