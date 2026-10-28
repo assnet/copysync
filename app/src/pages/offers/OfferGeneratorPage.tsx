@@ -71,7 +71,7 @@ export function OfferGeneratorPage() {
       return <Button color="inherit" size="small" onClick={() => { gen.clearError(); setWizardOpen(true); }}>{t.openConfig}</Button>;
     }
     if (err.action === 'sessions') {
-      return <Button color="inherit" size="small" component={RouterLink} to="/sessions">{t.goToSessions}</Button>;
+      return <Button color="inherit" size="small" component={RouterLink} to="/settings/sessions">{t.goToSessions}</Button>;
     }
     return undefined;
   };

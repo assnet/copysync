@@ -116,7 +116,7 @@ export function DashboardPage() {
                 size="small"
                 variant="contained"
                 endIcon={<ArrowForwardIcon />}
-                onClick={() => navigate('/sessions')}
+                onClick={() => navigate('/settings/sessions')}
               >
                 Gerenciar
               </Button>
@@ -129,7 +129,7 @@ export function DashboardPage() {
                 <Typography variant="body2" color="text.secondary" mb={2}>
                   Nenhuma sessão criada ainda.
                 </Typography>
-                <Button variant="outlined" size="small" onClick={() => navigate('/sessions')}>
+                <Button variant="outlined" size="small" onClick={() => navigate('/settings/sessions')}>
                   Criar primeira sessão
                 </Button>
               </Box>
@@ -194,7 +194,7 @@ export function DashboardPage() {
                   </Box>
                 ))}
                 {total > 5 && (
-                  <Button size="small" sx={{ alignSelf: 'flex-start', mt: 0.5 }} onClick={() => navigate('/sessions')}>
+                  <Button size="small" sx={{ alignSelf: 'flex-start', mt: 0.5 }} onClick={() => navigate('/settings/sessions')}>
                     Ver todas ({total})
                   </Button>
                 )}

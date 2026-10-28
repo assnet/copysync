@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Grid, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Typography,
 } from '@mui/material';
+import PhoneIphoneOutlinedIcon from '@mui/icons-material/PhoneIphoneOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
@@ -12,6 +13,7 @@ import { extensionStrings } from '@/features/extension/strings';
 const t = settingsStrings.layout;
 
 const SETTINGS_NAV = [
+  { label: t.navSessions, path: '/settings/sessions', icon: <PhoneIphoneOutlinedIcon fontSize="small" /> },
   { label: t.navAccount, path: '/settings/account', icon: <PersonOutlineIcon fontSize="small" /> },
   {
     label: t.navAffiliateCredentials,

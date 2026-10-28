@@ -49,7 +49,7 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limi
         icon={<AppIcon icon={Smartphone} size="lg" />}
         title={t.emptyTitle}
         description={t.emptyDescription}
-        action={<Button variant="contained" disableElevation component={RouterLink} to="/sessions">{t.emptyAction}</Button>}
+        action={<Button variant="contained" disableElevation component={RouterLink} to="/settings/sessions">{t.emptyAction}</Button>}
       />
     );
   }

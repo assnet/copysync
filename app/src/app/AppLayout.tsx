@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import {
   ArrowLeftRight, Bot, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Menu as MenuIcon, MessagesSquare,
-  EyeOff, Moon, Settings, Smartphone, Sun, Tag,
+  EyeOff, Moon, Settings, Sun, Tag,
 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { MODULE_ICONS } from '@/pages/modules';
@@ -47,7 +47,6 @@ function persistSidebarCollapsed(collapsed: boolean): void {
 
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <AppIcon icon={LayoutDashboard} size="md" /> },
-  { label: 'Sessões', path: '/sessions', icon: <AppIcon icon={Smartphone} size="md" /> },
   { label: 'Chat', path: '/chat', icon: <AppIcon icon={MessagesSquare} size="md" /> },
   { label: 'Gerador de ofertas', path: '/offers', icon: <AppIcon icon={Tag} size="md" /> },
   { label: 'Monitoramento', path: '/monitoring', icon: <AppIcon icon={MODULE_ICONS.monitoring} size="md" /> },
@@ -56,7 +55,7 @@ const NAV_ITEMS = [
   { label: 'Página de ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" /> },
   // Ação (abre o diálogo de privacidade), não rota — ver features/privacy
   { label: privacyStrings.menuLabel, action: 'privacy' as const, icon: <AppIcon icon={EyeOff} size="md" /> },
-  { label: 'Configurações', path: '/settings/account', icon: <AppIcon icon={Settings} size="md" />, matchPrefix: true },
+  { label: 'Configurações', path: '/settings/sessions', icon: <AppIcon icon={Settings} size="md" />, matchPrefix: true },
 ];
 
 /** Plataforma: só super admin vê (a rota também redireciona os demais). */
