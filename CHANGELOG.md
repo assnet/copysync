@@ -9,6 +9,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app (0.43.0) — Vitrine de planos no menu
+
+- **`AppLayout.tsx`** — item "Planos" (ícone `Crown`) no menu lateral, acima de Privacidade; **`AppRoutes.tsx`** — rota `/plans`.
+- **`features/plans/catalog.ts`**, **`strings.ts`** — catálogo de vitrine (Starter, Profissional, Business) com preço de/por como texto de marketing e limites do `docs/produto-roadmap.md`; textos pt-BR centralizados.
+- **`features/plans/components/`** — `PlansHero` (banner com coroa e selo de garantia), `PlanCard` (recomendado com moldura em gradiente, Tooltip nos termos), `PlansTrustStrip`, `GuaranteeSeal`; só tokens do tema, claro/escuro.
+- **`pages/plans/PlansPage.tsx`** — página; botões apontam para `#` até o checkout da central existir.
+- **`catalog.test.ts`**, **`docs/planos.md`** — teste do catálogo e doc com decisões e pendências (plano atual, checkout, preço anual).
+
 ### Changed — app (0.42.2) — Sessões dentro de Configurações
 
 - **`AppLayout.tsx`** — "Sessões" sai do menu lateral; "Configurações" abre em `/settings/sessions`.
