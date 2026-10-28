@@ -9,6 +9,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — sessions/messaging (api 0.38.0) — auth state do WhatsApp gravado por chave
+
+Causa raiz das quedas do Postgres em 2026-10-27: o estado Signal de cada sessão era um JSON único (6 MB na maior sessão, 2 MB numa só chave de app-state) regravado inteiro a cada chave alterada; 118 gravações de 241 ms e ~720 MB de temporários depois de um reinício. Doc: `docs/sessoes-auth-state.md`.
+
+#### Backend
+
+- **`schema.prisma`** + migration `20261028040000_create_session_auth_keys` — tabela `session_auth_keys` (uma linha por chave). `session_auth_states.statePayload` fica intacto por uma janela de rollback; `version` segue incrementando por flush.
+- **`BaileysAuthStatePersistence.ts`** — leitura em memória como antes; flush grava **só as chaves alteradas/removidas** em lote (`INSERT … ON CONFLICT`); sessão ainda no blob é migrada no boot sem zerar o blob; serialização uma vez por `set` (antes `stringify` duas vezes na chave de 2 MB). `keys.set`/`saveCreds` **não esperam mais o flush**: o Baileys chama `set` ao descriptografar cada mensagem e esperava o debounce (até 10 s). Falha esgotando retries devolve as chaves a sujas e rearma o flush. **Um handle por sessão**: reconexão grava o pendente do anterior e o descarta; logout/credencial revogada descartam o pendente antes de `clearCredentials` (antes, um flush atrasado podia regravar chaves velhas ou ressuscitar o login). Comparação canônica (jsonb reordena chaves).
+- **`ISessionAuthStateRepository.ts`**, **`PrismaSessionAuthStateRepository.ts`** — `findAllKeys`, `writeKeys` (transação com a linha-mãe), `clearCredentials`/`deleteBySessionId` apagam as chaves. Validado em Postgres real: flush de uma mensagem 11 ms, 500 chaves 13 ms.
+
 ### Fixed — app (painel) — áudio, vídeo e documento do chat com storage no R2
 
 - **`render.yaml`** — CSP do painel liberava áudio/vídeo (`media-src`) e `fetch` (`connect-src`) só da API; com `MEDIA_STORAGE_DRIVER=s3` a mídia nova vem do bucket (`pub-…r2.dev`), então só a imagem aparecia (`img-src https:`). Origem do R2 e `media.copysync.app` adicionadas às duas diretivas. Bucket conferido ao vivo: 206 com Range, `Content-Type` e CORS corretos.
