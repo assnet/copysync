@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, Grid, Snackbar } from '@mui/material';
-import { PageHeader } from '@/components';
+import { ArrowLeft } from 'lucide-react';
+import { AppIcon, PageHeader } from '@/components';
+import { safeReturnPath } from '@/features/sessions/utils';
 import type { AffiliateProvider } from '@/types/api.types';
 import { AffiliateCredentialCard } from '@/features/settings/components/AffiliateCredentialCard';
 import { AffiliateConnectionSummary } from '@/features/settings/components/AffiliateConnectionSummary';
@@ -17,10 +20,29 @@ export function AffiliateCredentialsPage() {
   } = useAffiliateCredentials();
   const [editing, setEditing] = useState<AffiliateProvider | null>(null);
   const editingEntry = entries.find((e) => e.spec.provider === editing);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // `?returnTo=/monitoring`: veio do aviso de credencial; guarda antes de limpar a URL (reload não repete)
+  const returnToRef = useRef(safeReturnPath(searchParams.get('returnTo')));
+  useEffect(() => {
+    if (!searchParams.has('returnTo')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('returnTo');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Box>
-      <PageHeader title={t.pageTitle} subtitle={t.pageSubtitle} />
+      <PageHeader
+        title={t.pageTitle}
+        subtitle={t.pageSubtitle}
+        action={returnToRef.current ? (
+          <Button variant="outlined" startIcon={<AppIcon icon={ArrowLeft} size="sm" />} onClick={() => navigate(returnToRef.current!)}>
+            {t.backToMonitoring}
+          </Button>
+        ) : undefined}
+      />
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

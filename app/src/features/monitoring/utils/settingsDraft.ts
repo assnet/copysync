@@ -90,4 +90,4 @@ export function isDraftDirty(draft: MonitorSettingsDraft | null, saved: GroupMon
 }
 
 /** Motivos que a API aceita reprocessar ("Tentar de novo" depois de corrigir a causa). */
-export const RETRYABLE_REASONS = ['CREDENTIAL_MISSING', 'LINK_RESOLVE_FAILED', 'NO_BROADCAST_GROUPS', 'MONITOR_DISABLED', 'INTERNAL_ERROR'] as const;
+export const RETRYABLE_REASONS = ['CREDENTIAL_MISSING', 'CREDENTIAL_REJECTED', 'LINK_RESOLVE_FAILED', 'NO_BROADCAST_GROUPS', 'MONITOR_DISABLED', 'INTERNAL_ERROR'] as const;

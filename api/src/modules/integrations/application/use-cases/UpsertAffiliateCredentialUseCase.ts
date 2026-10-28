@@ -4,6 +4,7 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import type { ISecretCipher } from '../../../../shared/security/ISecretCipher';
 import {
   providerRequiresSecret,
+  providerUsesSession,
   validatePublicIdentifier,
   validateSecret,
 } from '../../domain/services/affiliateProviderFields';
@@ -39,12 +40,15 @@ export class UpsertAffiliateCredentialUseCase {
       if (!secret) throw new AffiliateCredentialInvalidError('Invalid secret', 'secret');
     }
 
-    if (!secret && providerRequiresSecret(input.provider)) {
-      const existing = await this.repo.findByTenantAndProvider(input.tenantId, input.provider);
-      if (!existing?.hasSecret) {
-        throw new AffiliateCredentialInvalidError('Secret is required', 'secret');
-      }
+    const existing = await this.repo.findByTenantAndProvider(input.tenantId, input.provider);
+    if (!secret && providerRequiresSecret(input.provider) && !existing?.hasSecret) {
+      throw new AffiliateCredentialInvalidError('Secret is required', 'secret');
     }
+
+    // Rejeição some só quando o que foi recusado muda (secret novo ou ID diferente). ML pelo painel
+    // troca só a etiqueta e a recusa é da sessão (extensão): nunca limpa aqui.
+    const clearRejection = !providerUsesSession(input.provider)
+      && (secret !== null || existing?.publicIdentifier !== publicIdentifier);
 
     const credential = await this.repo.upsert({
       tenantId: input.tenantId,
@@ -53,6 +57,7 @@ export class UpsertAffiliateCredentialUseCase {
       ...(secret && {
         secret: this.cipher().encrypt(secret, affiliateCipherAad(input.tenantId, input.provider, 'secret')),
       }),
+      clearRejection,
     });
 
     await this.auditRepo.create({

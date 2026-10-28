@@ -14,6 +14,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Integração (banco local) tem config própria: vitest.int.config.mts
+    exclude: ['**/node_modules/**', 'src/**/*.int.test.ts'],
     // env sintético: shared/config/env valida no import e derruba qualquer teste que
     // alcance um módulo com log.
     setupFiles: ['src/test/setup.ts'],

@@ -11,7 +11,7 @@ function row(overrides?: Partial<PrismaAffiliateCredential>): PrismaAffiliateCre
     keyVersion: 1, status: 'ACTIVE',
     sessionCiphertext: null, sessionIv: null, sessionTag: null, sessionKeyVersion: null,
     sessionSyncedAt: null, sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
-    lastValidatedAt: null, createdAt: NOW, updatedAt: NOW,
+    lastValidatedAt: null, rejectedAt: null, rejectedCode: null, createdAt: NOW, updatedAt: NOW,
     ...overrides,
   };
 }

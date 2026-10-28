@@ -9,6 +9,7 @@ export const CAPTURED_OFFER_REASONS = [
   'NO_LINK',
   'UNSUPPORTED_MARKETPLACE',
   'CREDENTIAL_MISSING',
+  'CREDENTIAL_REJECTED',
   'LINK_RESOLVE_FAILED',
   'EXPIRED',
   'MONITOR_DISABLED',
@@ -21,6 +22,7 @@ export type CapturedOfferReason = (typeof CAPTURED_OFFER_REASONS)[number];
 /** Motivos em que tentar de novo pode dar outro resultado (credencial salva, API voltou…). */
 export const RETRYABLE_REASONS: ReadonlySet<CapturedOfferReason> = new Set([
   'CREDENTIAL_MISSING',
+  'CREDENTIAL_REJECTED',
   'LINK_RESOLVE_FAILED',
   'NO_BROADCAST_GROUPS',
   'MONITOR_DISABLED',

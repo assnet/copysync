@@ -9,6 +9,26 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — automation/integrations (api 0.43.0) — aviso de credencial de afiliado recusada
+
+Spec: `.specs/features/affiliate-credential-alerts/`. Sessão ML expirada (ou chave Shopee recusada) virava "Não foi
+possível gerar o seu link" em toda captura, com chamada à loja a cada uma, e a credencial seguia "Configurado".
+
+- **Prisma** — `affiliate_credentials.rejectedAt/rejectedCode`, índice `captured_offers(tenantId, status, capturedAt)`, `AuditAction.AFFILIATE_CREDENTIAL_REJECTED` (migrations `20261029000000` e `20261029000100`, a do enum separada: `ADD VALUE` não roda na transação que o usa).
+- **`PrismaAffiliateCredentialRepository.ts`** — `markRejected` (`updateMany`, no-op sem linha); `upsert`/`upsertSession` zeram só com `clearRejection`; `clearSession` zera; `setStatus` mantém.
+- **`ResolveAffiliateCredentialUseCase.ts`** — `resolveState` (`ok | missing | rejected`, por `findByTenantAndProvider`); `execute` intocado (gerador igual). **`MarkAffiliateCredentialRejectedUseCase.ts`** (novo) grava e audita só `provider`/`code`. **`IAffiliateCredentialGateway.ts`** (novo, campaigns).
+- **`UpsertAffiliateCredentialUseCase.ts`** — limpa a rejeição só com secret novo ou ID diferente (ML pelo painel nunca); **`UpsertAffiliateSessionUseCase.ts`** — só com token novo.
+- **`BuildTenantAffiliateLinkUseCase.ts`** — loja recusada: `credential_rejected` sem chamar a loja; 401/403 agora: marca e devolve `credential_rejected`; rate limit/API fora seguem `failed`. **`ProcessPendingCapturedOffersUseCase.ts`** — reason `CREDENTIAL_REJECTED` (retryable), sem texto pela metade.
+- **`GroupMonitorConfigUseCases.ts`** — `credentialAlerts` só no `GET /config` (porta `ICredentialStateSource` + `listRecentMissingProviders`, janela 7 dias; recusada prevalece). **`AffiliateCredentialPresenter.ts`** — `rejectedAt`, `rejectedCode`.
+- **`scripts/postgres-descartavel.sh`**, **`vitest.int.config.mts`**, **`src/test/setup.int.ts`**, `test:int` — testes de integração em Postgres local (`*.int.test.ts`); recusa host fora de localhost. `PrismaAffiliateCredentialRepository.int.test.ts`, `PrismaCapturedOfferRepository.int.test.ts`.
+
+### Added — app (0.49.0) — aviso de credencial no monitoramento
+
+- **`CredentialAlerts.tsx`** (novo) — um `Alert` por loja no topo do Monitoramento (sem credencial = aviso; recusada = erro com data) com "Configurar credencial" → `/settings/affiliate-credentials?returnTo=/monitoring`.
+- **`AffiliateCredentialCard.tsx`** — chip "Recusada" com data e dica por loja; **`AffiliateCredentialsPage.tsx`** — "Voltar ao monitoramento" via `returnTo` (guardado antes de limpar a URL).
+- **`useMonitoringConfig.ts`** — Save* sem `credentialAlerts` mantém o anterior (teste novo). Reason `CREDENTIAL_REJECTED` em tipos, `RETRYABLE_REASONS` e strings.
+
+
 ### Added — api (0.42.0) · app (0.48.0) — sessão cruzada (monitorar em um WhatsApp, disparar em outro)
 
 Spec: `.specs/features/cross-session/spec.md`. A vitrine já vendia o recurso no Business; agora existe. Sem migration.

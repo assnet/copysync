@@ -53,7 +53,10 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
      (recuperável), para não segurar o worker de envio;
    - **rede de segurança**: depois da troca, se sobrar no texto qualquer link que não seja do tenant,
      a captura vira `FAILED/LINK_RESOLVE_FAILED` e nada vai para a fila;
-   - sem credencial do marketplace → `SKIPPED/CREDENTIAL_MISSING`; erro da API →
+   - sem credencial do marketplace → `SKIPPED/CREDENTIAL_MISSING`; **loja recusou a credencial** (401/403 no uso,
+     ou já recusada antes) → `SKIPPED/CREDENTIAL_REJECTED` **sem chamar a loja** (loja pausada até o usuário salvar
+     chave/sessão nova; `AffiliateCredential.rejectedAt`, ver `integracoes-credenciais-afiliado.md`); rate limit e API
+     fora não pausam; erro da API →
      `FAILED/LINK_RESOLVE_FAILED`; nenhum link de produto → `UNSUPPORTED_MARKETPLACE`;
    - cupom detectado no texto (`detectCoupon`) → validade menor;
    - início = captura + atraso, empurrado para o próximo início da janela; se cair depois da
@@ -135,8 +138,11 @@ limita). Recorte completo fica para a fase 2.
   depois de salvar → só os grupos da própria sessão saem. Chaves de entitlement centralizadas em
   `tenants/domain/entitlementKeys.ts`; presets por plano em `tenants/domain/planPresets.ts` (seed).
 - Tentar de novo (`POST /captured/:id/retry`): só `SKIPPED`/`FAILED` com motivo recuperável
-  (`CREDENTIAL_MISSING`, `LINK_RESOLVE_FAILED`, `NO_BROADCAST_GROUPS`, `MONITOR_DISABLED`,
+  (`CREDENTIAL_MISSING`, `CREDENTIAL_REJECTED`, `LINK_RESOLVE_FAILED`, `NO_BROADCAST_GROUPS`, `MONITOR_DISABLED`,
   `INTERNAL_ERROR`). A validade continua contando da captura original.
+- Aviso de credencial (`credentialAlerts`, só no `GET /config`): por loja, `REJECTED` (`rejectedAt`) ou `MISSING`
+  (credencial não utilizável + captura `CREDENTIAL_MISSING` nos últimos 7 dias). Um por loja; recusada prevalece.
+  Save* não devolvem o campo; o painel mantém o anterior até o próximo load.
 
 ## 4. Rotas (`/api/automation/group-monitoring`)
 
@@ -164,6 +170,9 @@ limita). Recorte completo fica para a fase 2.
   "Imagem das ofertas" segue "Em breve".
 - Captura mostra chip "Texto original / do modelo / da IA" (`textSource`) e "IA indisponível" com o
   código no tooltip (`aiErrorCode`).
+- `CredentialAlerts` no topo: um `Alert` por loja (sem credencial = aviso; recusada = erro, com data) e
+  botão "Configurar credencial" → `/settings/affiliate-credentials?returnTo=/monitoring` (lá, "Voltar ao
+  monitoramento"). Só nome da loja e data: sem flag de privacidade nova.
 - Grupos de disparo: com `limits.crossSessionDispatch` o seletor lista os grupos de todas as sessões
   conectadas (nome da sessão em cada um) e o card mostra "Envia por <sessão>" no grupo de outra sessão;
   sem a feature, só a sessão atual e um aviso "exclusivo do plano Business" com link para `/plans`.

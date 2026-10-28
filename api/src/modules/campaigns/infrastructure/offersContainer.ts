@@ -3,6 +3,9 @@ import { SecretCipherFactory } from '../../../shared/security/SecretCipherFactor
 import { mediaContainer } from '../../media/infrastructure/mediaContainer';
 import { PrismaAffiliateCredentialRepository } from '../../integrations/infrastructure/repositories/PrismaAffiliateCredentialRepository';
 import { ResolveAffiliateCredentialUseCase } from '../../integrations/application/use-cases/ResolveAffiliateCredentialUseCase';
+import { MarkAffiliateCredentialRejectedUseCase } from '../../integrations/application/use-cases/MarkAffiliateCredentialRejectedUseCase';
+import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
+import type { IAffiliateCredentialGateway } from '../domain/contracts/IAffiliateCredentialGateway';
 import { PrismaOfferRepository } from './repositories/PrismaOfferRepository';
 import { PrismaOfferDispatchRepository } from './repositories/PrismaOfferDispatchRepository';
 import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
@@ -49,10 +52,21 @@ const offers       = lazy(() => new PrismaOfferRepository(prisma));
 const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma));
 const configs      = lazy(() => new PrismaOfferGeneratorConfigRepository(prisma));
 const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
+const credentialRepo = lazy(() => new PrismaAffiliateCredentialRepository());
 // Cifra resolvida no uso: sem chave, só quem decifra falha.
 const credentials  = lazy(
-  () => new ResolveAffiliateCredentialUseCase(new PrismaAffiliateCredentialRepository(), () => SecretCipherFactory.get()),
+  () => new ResolveAffiliateCredentialUseCase(credentialRepo(), () => SecretCipherFactory.get()),
 );
+// Monitoramento: resolver + estado de rejeição (loja pausada) + marcação com auditoria
+const credentialGateway = lazy((): IAffiliateCredentialGateway => {
+  const resolver = credentials();
+  const mark = new MarkAffiliateCredentialRejectedUseCase(credentialRepo(), new PrismaAuditLogRepository());
+  return {
+    execute: (t, p) => resolver.execute(t, p),
+    resolveState: (t, p) => resolver.resolveState(t, p),
+    markRejected: (t, p, code) => mark.execute(t, p, code),
+  };
+});
 const mediaStore   = lazy(
   () => new MediaOfferStore({ files: () => mediaContainer.mediaFileStore, uploads: () => mediaContainer.uploadStore }),
 );
@@ -90,7 +104,7 @@ const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: c
 const sendQueue   = lazy(() => new GetSendQueueUseCase({ reader: new PrismaSendQueueReader(prisma) }));
 const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
   expander: new HttpShortLinkExpander(),
-  credentials: credentials(),
+  credentials: credentialGateway(),
   shopee: new ShopeeAffiliateClient(),
   mercadoLivre: new MercadoLivreAffiliateClient(),
   pageReader: new HttpProductPageReader(),
@@ -126,4 +140,5 @@ export const offersContainer = {
   resolveProductData:   products,
   offerTexts:           texts,
   credentials:          credentials,
+  credentialRepo:       credentialRepo,
 };

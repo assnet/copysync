@@ -6,6 +6,11 @@ import { affiliateCipherAad } from './affiliateCipherAad';
 import { providerRequiresSecret, providerUsesSession } from '../../domain/services/affiliateProviderFields';
 import { SecretCipherFailedError } from '../../../../shared/errors/internal/SecretCipherErrors';
 
+export type AffiliateCredentialState =
+  | { state: 'ok'; cred: ResolvedAffiliateCredential }
+  | { state: 'missing' }
+  | { state: 'rejected'; since: Date; code: string | null };
+
 /**
  * Único ponto que entrega segredo decifrado para uso. Sem rota HTTP: o Gerador de ofertas
  * injeta este use case. Credencial inativa, só com sessão (sem ID) ou sem o segredo que o
@@ -16,6 +21,17 @@ export class ResolveAffiliateCredentialUseCase {
     private readonly repo: IAffiliateCredentialRepository,
     private readonly cipher: () => ISecretCipher,
   ) {}
+
+  /**
+   * Estado para quem usa a credencial sem o usuário na frente (monitoramento): `rejected` enquanto a
+   * loja tiver recusado (vale para ACTIVE, INACTIVE e linha só-sessão); senão o mesmo de `execute`.
+   */
+  async resolveState(tenantId: string, provider: AffiliateProvider): Promise<AffiliateCredentialState> {
+    const record = await this.repo.findByTenantAndProvider(tenantId, provider);
+    if (record?.rejectedAt) return { state: 'rejected', since: record.rejectedAt, code: record.rejectedCode };
+    const cred = await this.execute(tenantId, provider);
+    return cred ? { state: 'ok', cred } : { state: 'missing' };
+  }
 
   async execute(tenantId: string, provider: AffiliateProvider): Promise<ResolvedAffiliateCredential | null> {
     const record = await this.repo.findActiveByTenantAndProvider(tenantId, provider);

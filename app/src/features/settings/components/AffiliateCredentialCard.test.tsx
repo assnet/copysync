@@ -18,6 +18,8 @@ function item(overrides: Partial<AffiliateCredentialItem>): AffiliateCredentialI
     hasSession: false,
     sessionSyncedAt: null,
     lastValidatedAt: null,
+  rejectedAt: null,
+  rejectedCode: null,
     updatedAt: '2026-10-22T10:00:00.000Z',
     ...overrides,
   };
@@ -108,5 +110,20 @@ describe('AffiliateCredentialCard', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Remover' }));
     expect(h.onRemove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AffiliateCredentialCard — recusada', () => {
+  it('rejectedAt mostra o chip "Recusada" e a dica da loja; sem rejectedAt volta a "Configurado"', () => {
+    const h = handlers();
+    const { unmount } = renderWithTheme(
+      <AffiliateCredentialCard spec={spec('SHOPEE')} item={item({ rejectedAt: '2026-10-28T10:00:00.000Z', rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED' })} {...h} />,
+    );
+    expect(screen.getByText('Recusada')).toBeInTheDocument();
+    expect(screen.getByText(/A loja recusou esta credencial/)).toBeInTheDocument();
+    unmount();
+    renderWithTheme(<AffiliateCredentialCard spec={spec('SHOPEE')} item={item({})} {...h} />);
+    expect(screen.getByText('Configurado')).toBeInTheDocument();
+    expect(screen.queryByText('Recusada')).not.toBeInTheDocument();
   });
 });

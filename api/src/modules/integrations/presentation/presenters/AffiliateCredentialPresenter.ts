@@ -16,6 +16,8 @@ export class AffiliateCredentialPresenter {
       hasSession: c.hasSession,
       sessionSyncedAt: c.sessionSyncedAt?.toISOString() ?? null,
       lastValidatedAt: c.lastValidatedAt?.toISOString() ?? null,
+      rejectedAt: c.rejectedAt?.toISOString() ?? null,
+      rejectedCode: c.rejectedCode,
       updatedAt: c.updatedAt.toISOString(),
     };
   }

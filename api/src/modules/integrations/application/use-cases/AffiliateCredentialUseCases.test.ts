@@ -4,6 +4,7 @@ import { DeleteAffiliateCredentialUseCase } from './DeleteAffiliateCredentialUse
 import { ClearAffiliateSessionUseCase } from './ClearAffiliateSessionUseCase';
 import { SetAffiliateCredentialStatusUseCase } from './SetAffiliateCredentialStatusUseCase';
 import { ResolveAffiliateCredentialUseCase } from './ResolveAffiliateCredentialUseCase';
+import { MarkAffiliateCredentialRejectedUseCase } from './MarkAffiliateCredentialRejectedUseCase';
 import { AesGcmSecretCipher } from '../../../../shared/security/AesGcmSecretCipher';
 import type { IAffiliateCredentialRepository } from '../../domain/contracts/IAffiliateCredentialRepository';
 import type { AffiliateCredentialRecord } from '../../domain/contracts/AffiliateCredentialRecords';
@@ -21,7 +22,7 @@ function makeRecord(overrides?: Partial<AffiliateCredentialRecord>): AffiliateCr
     id: 'c1', tenantId: TENANT, provider: 'SHOPEE', publicIdentifier: '18301234567',
     hasSecret: true, hasSession: false, sessionSyncedAt: null,
     sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
-    status: 'ACTIVE', lastValidatedAt: null, createdAt: NOW, updatedAt: NOW,
+    status: 'ACTIVE', lastValidatedAt: null, rejectedAt: null, rejectedCode: null, createdAt: NOW, updatedAt: NOW,
     secret: cipher.encrypt(SECRET, affiliateCipherAad(TENANT, 'SHOPEE', 'secret')), session: null,
     ...overrides,
   };
@@ -37,6 +38,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null = null) {
     delete: vi.fn().mockResolvedValue(existing !== null),
     clearSession: vi.fn().mockResolvedValue(existing?.hasSession ?? false),
     setStatus: vi.fn().mockResolvedValue(existing),
+    markRejected: vi.fn().mockResolvedValue(undefined),
   } satisfies IAffiliateCredentialRepository;
   const audit = { create: vi.fn().mockResolvedValue(undefined) } satisfies IAuditLogRepository;
   const getCipher = vi.fn(() => cipher);
@@ -178,5 +180,61 @@ describe('ResolveAffiliateCredentialUseCase', () => {
   it('linha sem ID público nunca resolve, mesmo se vier do repositório', async () => {
     const d = makeDeps(makeRecord({ publicIdentifier: null }));
     await expect(new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher).execute(TENANT, 'SHOPEE')).resolves.toBeNull();
+  });
+});
+
+describe('ResolveAffiliateCredentialUseCase.resolveState', () => {
+  const uc = (d: ReturnType<typeof makeDeps>) => new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher);
+
+  it('ok: credencial decifrada', async () => {
+    const r = await uc(makeDeps(makeRecord())).resolveState(TENANT, 'SHOPEE');
+    expect(r).toMatchObject({ state: 'ok', cred: { provider: 'SHOPEE', secret: SECRET } });
+  });
+
+  it('missing: sem linha, ou INACTIVE sem rejeição (findActive não devolve)', async () => {
+    expect(await uc(makeDeps(null)).resolveState(TENANT, 'SHOPEE')).toEqual({ state: 'missing' });
+    const d = makeDeps(makeRecord({ status: 'INACTIVE' }));
+    d.repo.findActiveByTenantAndProvider.mockResolvedValue(null);
+    expect(await uc(d).resolveState(TENANT, 'SHOPEE')).toEqual({ state: 'missing' });
+  });
+
+  it('rejected: com rejectedAt, mesmo ACTIVE, INACTIVE ou só-sessão; sem decifrar', async () => {
+    for (const over of [{}, { status: 'INACTIVE' as const }, { publicIdentifier: null }]) {
+      const d = makeDeps(makeRecord({ ...over, rejectedAt: NOW, rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED' }));
+      expect(await uc(d).resolveState(TENANT, 'SHOPEE')).toEqual({ state: 'rejected', since: NOW, code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+      expect(d.getCipher).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('MarkAffiliateCredentialRejectedUseCase', () => {
+  it('grava a rejeição e audita só provider e código', async () => {
+    const d = makeDeps(makeRecord());
+    await new MarkAffiliateCredentialRejectedUseCase(d.repo, d.audit, () => NOW).execute(TENANT, 'MERCADO_LIVRE', 'AFFILIATE_CREDENTIAL_REJECTED');
+    expect(d.repo.markRejected).toHaveBeenCalledWith(TENANT, 'MERCADO_LIVRE', 'AFFILIATE_CREDENTIAL_REJECTED', NOW);
+    expect(d.audit.create).toHaveBeenCalledWith({ tenantId: TENANT, action: 'AFFILIATE_CREDENTIAL_REJECTED', meta: { provider: 'MERCADO_LIVRE', code: 'AFFILIATE_CREDENTIAL_REJECTED' } });
+  });
+});
+
+describe('UpsertAffiliateCredentialUseCase — limpar rejeição', () => {
+  const upsert = (d: ReturnType<typeof makeDeps>) => new UpsertAffiliateCredentialUseCase(d.repo, d.getCipher, d.audit);
+  const rejected = () => makeRecord({ rejectedAt: NOW, rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED' });
+
+  it('Shopee com secret novo limpa; AppID diferente limpa; igual sem secret mantém', async () => {
+    const a = makeDeps(rejected());
+    await upsert(a).execute({ tenantId: TENANT, userId: USER, provider: 'SHOPEE', publicIdentifier: '18301234567', secret: SECRET });
+    expect(a.repo.upsert.mock.calls[0]![0]).toMatchObject({ clearRejection: true });
+    const b = makeDeps(rejected());
+    await upsert(b).execute({ tenantId: TENANT, userId: USER, provider: 'SHOPEE', publicIdentifier: '99999999' });
+    expect(b.repo.upsert.mock.calls[0]![0]).toMatchObject({ clearRejection: true });
+    const c = makeDeps(rejected());
+    await upsert(c).execute({ tenantId: TENANT, userId: USER, provider: 'SHOPEE', publicIdentifier: '18301234567' });
+    expect(c.repo.upsert.mock.calls[0]![0]).toMatchObject({ clearRejection: false });
+  });
+
+  it('ML pelo painel (só etiqueta) nunca limpa: a recusa é da sessão', async () => {
+    const d = makeDeps(makeRecord({ provider: 'MERCADO_LIVRE', hasSecret: false, secret: null, rejectedAt: NOW, rejectedCode: 'X' }));
+    await upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'MERCADO_LIVRE', publicIdentifier: 'outra-etq' });
+    expect(d.repo.upsert.mock.calls[0]![0]).toMatchObject({ clearRejection: false });
   });
 });

@@ -28,6 +28,8 @@ export interface IAffiliateCredentialRepository {
   delete(tenantId: string, provider: AffiliateProvider): Promise<boolean>;
   /** Zera só as colunas de sessão; ID público e secreto ficam. false = não havia sessão. */
   clearSession(tenantId: string, provider: AffiliateProvider): Promise<boolean>;
+  /** Loja recusou a credencial: grava `rejectedAt`/`rejectedCode`. No-op se a linha sumiu. */
+  markRejected(tenantId: string, provider: AffiliateProvider, code: string, at: Date): Promise<void>;
   /** null = não existia. */
   setStatus(
     tenantId: string,

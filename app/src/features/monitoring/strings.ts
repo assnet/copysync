@@ -174,6 +174,18 @@ export const monitoringStrings = {
     info: 'Saiba mais',
   },
 
+  credentialAlerts: {
+    missing: (marketplace: string) => `${marketplace}: ofertas capturadas estão sendo ignoradas porque falta a sua credencial de afiliado.`,
+    rejected: (marketplace: string, when: string) => `${marketplace}: a loja recusou a sua credencial em ${when}. As ofertas desta loja estão pausadas até você reconfigurar.`,
+    hint: {
+      MERCADO_LIVRE: 'Abra a extensão, entre de novo na sua conta do Mercado Livre e sincronize a sessão.',
+      SHOPEE: 'Confira o App ID e salve um Secret novo nas credenciais de afiliado.',
+      AMAZON: 'Confira o ID de rastreamento nas credenciais de afiliado.',
+    } satisfies Record<AffiliateProvider, string>,
+    action: 'Configurar credencial',
+    actionAria: (marketplace: string) => `Configurar credencial de ${marketplace}`,
+  },
+
   errors: {
     generic: 'Não foi possível concluir agora. Tente de novo em instantes.',
     sessionNotConnected: 'A sessão não está conectada. Conecte o WhatsApp dela e tente de novo.',
@@ -285,6 +297,7 @@ export const monitoringStrings = {
       NO_LINK: 'Mensagem sem link',
       UNSUPPORTED_MARKETPLACE: 'Loja não suportada',
       CREDENTIAL_MISSING: 'Falta a sua credencial de afiliado desta loja',
+      CREDENTIAL_REJECTED: 'A loja recusou a sua credencial: reconfigure para voltar a enviar',
       LINK_RESOLVE_FAILED: 'Não foi possível gerar o seu link',
       EXPIRED: 'Venceu antes de enviar',
       MONITOR_DISABLED: 'Monitoramento desligado',

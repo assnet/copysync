@@ -113,6 +113,16 @@ export class PrismaCapturedOfferRepository implements ICapturedOfferRepository {
     });
   }
 
+  /** Índice `[tenantId, status, capturedAt]`. */
+  async listRecentMissingProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]> {
+    const rows = await this.prisma.capturedOffer.findMany({
+      where: { tenantId, status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', marketplace: { not: null }, capturedAt: { gte: since } },
+      distinct: ['marketplace'],
+      select: { marketplace: true },
+    });
+    return rows.flatMap((r) => (r.marketplace ? [r.marketplace as AffiliateProvider] : []));
+  }
+
   async resetForRetry(tenantId: string, id: string): Promise<boolean> {
     const { count } = await this.prisma.capturedOffer.updateMany({
       where: { id, tenantId, status: { in: ['SKIPPED', 'FAILED'] } },

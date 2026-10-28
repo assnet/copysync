@@ -271,3 +271,27 @@ describe('ProcessPendingCapturedOffersUseCase — sessão cruzada', () => {
     expect(s.queue.inputs[0]!.destinations).toEqual([{ conversationId: 'c-mine', sessionId: SESSION }]);
   });
 });
+
+describe('ProcessPendingCapturedOffersUseCase — credencial recusada', () => {
+  const SINCE = new Date('2026-10-28T10:00:00.000Z');
+
+  it('link recusado → SKIPPED/CREDENTIAL_REJECTED com a loja; nada vai para a fila', async () => {
+    const s = await setup();
+    s.links.resolve = () => ({ kind: 'credential_rejected', provider: 'AMAZON', since: SINCE });
+    await s.msg();
+    await s.process.execute();
+    expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'CREDENTIAL_REJECTED', marketplace: 'AMAZON' });
+    expect(s.queue.inputs).toHaveLength(0);
+  });
+
+  it('dois links, um recusado e um ok: SKIPPED/CREDENTIAL_REJECTED (não envia texto pela metade)', async () => {
+    const s = await setup();
+    s.links.resolve = (href) => (href.includes('amzn.to')
+      ? { kind: 'ok', provider: 'AMAZON', sourceUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH', affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=meu-20' }
+      : href.includes('shopee') ? { kind: 'credential_rejected', provider: 'SHOPEE', since: SINCE } : { kind: 'unsupported' });
+    await s.msg({ body: 'Oferta\nhttps://amzn.to/abc\nhttps://shopee.com.br/product/1/2' });
+    await s.process.execute();
+    expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'CREDENTIAL_REJECTED', marketplace: 'SHOPEE' });
+    expect(s.queue.inputs).toHaveLength(0);
+  });
+});

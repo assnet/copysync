@@ -49,6 +49,8 @@ export class UpsertAffiliateSessionUseCase {
       session: cipher.encrypt(JSON.stringify(payload), aad),
       ...(tag && { publicIdentifierIfEmpty: tag }),
       syncedAt: this.now(),
+      // Token novo libera a loja de novo; sync do mesmo token (alarme/startup) mantém a rejeição
+      clearRejection: changed,
     });
 
     if (changed) {

@@ -122,6 +122,8 @@ export class ProcessPendingCapturedOffersUseCase {
         logger.warn({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: r.provider, code: r.code }, 'captured offer link not built');
         return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: r.provider } };
       }
+      // Loja pausada (credencial recusada): não envia texto pela metade nem tenta os outros links
+      if (r.kind === 'credential_rejected') return { status: 'SKIPPED', reason: 'CREDENTIAL_REJECTED', data: { marketplace: r.provider } };
       if (r.kind === 'credential_missing') return { status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', data: { marketplace: r.provider } };
       replacements.set(u.href, r.kind === 'ok' ? r.affiliateUrl : null);
       if (r.kind === 'ok') first ??= r;

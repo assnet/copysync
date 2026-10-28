@@ -165,6 +165,9 @@ export interface AffiliateCredentialItem {
   hasSession: boolean;
   sessionSyncedAt: string | null;
   lastValidatedAt: string | null;
+  /** Loja recusou a credencial no uso; o monitoramento pausa a loja. Some ao salvar chave/sessão nova. */
+  rejectedAt: string | null;
+  rejectedCode: string | null;
   updatedAt: string;
 }
 
@@ -550,6 +553,16 @@ export interface GroupMonitorConfigResponse {
   limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
   /** Uso atual no tenant (todas as sessões). */
   usage: { monitoredGroups: number; broadcastGroups: number };
+  /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */
+  credentialAlerts?: CredentialAlertItem[];
+}
+
+export interface CredentialAlertItem {
+  provider: AffiliateProvider;
+  kind: 'MISSING' | 'REJECTED';
+  /** `rejectedAt` (REJECTED); null em MISSING. */
+  since: string | null;
+  code: string | null;
 }
 
 export type SaveGroupMonitorSettingsRequest = GroupMonitorSettings & { sessionId: string };
@@ -573,6 +586,7 @@ export type CapturedOfferReason =
   | 'NO_LINK'
   | 'UNSUPPORTED_MARKETPLACE'
   | 'CREDENTIAL_MISSING'
+  | 'CREDENTIAL_REJECTED'
   | 'LINK_RESOLVE_FAILED'
   | 'EXPIRED'
   | 'MONITOR_DISABLED'

@@ -1,5 +1,6 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
-import type { IAffiliateCredentialResolver } from '../../domain/contracts/IAffiliateCredentialResolver';
+import type { IAffiliateCredentialGateway } from '../../domain/contracts/IAffiliateCredentialGateway';
+import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
@@ -13,12 +14,14 @@ export type TenantAffiliateLink =
   /** Não é link de produto de marketplace suportado (convite de grupo, outro site, vitrine…). */
   | { kind: 'unsupported' }
   | { kind: 'credential_missing'; provider: AffiliateProvider }
+  /** Loja recusou a credencial (agora ou antes): nada é pedido à loja até o usuário reconfigurar. */
+  | { kind: 'credential_rejected'; provider: AffiliateProvider; since: Date }
   | { kind: 'failed'; provider: AffiliateProvider | null; code: string }
   | { kind: 'ok'; provider: AffiliateProvider; sourceUrl: string; affiliateUrl: string };
 
 export interface BuildTenantAffiliateLinkDeps {
   expander: IShortLinkExpander;
-  credentials: IAffiliateCredentialResolver;
+  credentials: IAffiliateCredentialGateway;
   shopee: IShopeeAffiliateClient;
   mercadoLivre: IMercadoLivreAffiliateClient;
   pageReader: IProductPageReader;
@@ -55,13 +58,16 @@ export class BuildTenantAffiliateLinkUseCase {
     const provider = detectMarketplace(final);
     if (!provider) return { kind: 'unsupported' };
 
-    let cred;
+    let cred: OfferAffiliateCredential;
     try {
-      cred = await this.deps.credentials.execute(tenantId, provider);
+      const state = await this.deps.credentials.resolveState(tenantId, provider);
+      // Loja pausada: credencial recusada antes, sem rede até o usuário reconfigurar
+      if (state.state === 'rejected') return { kind: 'credential_rejected', provider, since: state.since };
+      if (state.state === 'missing') return { kind: 'credential_missing', provider };
+      cred = state.cred;
     } catch (err) {
       return this.failure(provider, err, 'CREDENTIAL_UNREADABLE');
     }
-    if (!cred) return { kind: 'credential_missing', provider };
 
     try {
       switch (provider) {
@@ -101,6 +107,12 @@ export class BuildTenantAffiliateLinkUseCase {
         }
       }
     } catch (err) {
+      // Loja recusou agora (401/403): pausa a loja; rate limit e indisponibilidade NÃO pausam
+      if (err instanceof AppError && err.code === 'AFFILIATE_CREDENTIAL_REJECTED') {
+        await this.deps.credentials.markRejected(tenantId, provider, err.code);
+        logger.warn({ code: err.code, provider }, 'tenant affiliate credential rejected');
+        return { kind: 'credential_rejected', provider, since: new Date() };
+      }
       return this.failure(provider, err, 'AFFILIATE_LINK_FAILED');
     }
   }

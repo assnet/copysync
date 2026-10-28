@@ -3,7 +3,8 @@ import { offersContainer } from '../../campaigns/infrastructure/offersContainer'
 import { PrismaGroupMonitorRepository } from './repositories/PrismaGroupMonitorRepository';
 import { PrismaCapturedOfferRepository } from './repositories/PrismaCapturedOfferRepository';
 import {
-  CampaignsMonitorImageStore, CampaignsMonitorProductReader, CampaignsMonitorTextComposer, CampaignsOfferQueue, CampaignsTenantLinkBuilder, ChatMonitorGroupDirectory,
+  CampaignsCredentialStateSource, CampaignsMonitorImageStore, CampaignsMonitorProductReader, CampaignsMonitorTextComposer, CampaignsOfferQueue,
+  CampaignsTenantLinkBuilder, ChatMonitorGroupDirectory,
 } from './adapters/CampaignsMonitorAdapters';
 import {
   GetGroupMonitorConfigUseCase, SaveBroadcastGroupsUseCase, SaveGroupMonitorSettingsUseCase, SaveMonitoredGroupsUseCase,
@@ -21,7 +22,10 @@ function lazy<T>(make: () => T): () => T {
 const monitors  = lazy(() => new PrismaGroupMonitorRepository(prisma));
 const captured  = lazy(() => new PrismaCapturedOfferRepository(prisma));
 const directory = lazy(() => new ChatMonitorGroupDirectory());
-const configDeps = () => ({ monitors: monitors(), directory: directory(), entitlements: offersContainer.entitlements() });
+const configDeps = () => ({
+  monitors: monitors(), directory: directory(), entitlements: offersContainer.entitlements(),
+  credentialStates: new CampaignsCredentialStateSource(), captured: captured(),
+});
 
 export const automationContainer = {
   getConfig:        lazy(() => new GetGroupMonitorConfigUseCase(configDeps())),

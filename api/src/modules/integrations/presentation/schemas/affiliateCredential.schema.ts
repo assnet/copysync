@@ -14,6 +14,8 @@ export const affiliateCredentialItemSchema = {
     hasSession: { type: 'boolean' },
     sessionSyncedAt: { type: ['string', 'null'], format: 'date-time' },
     lastValidatedAt: { type: ['string', 'null'], format: 'date-time' },
+    rejectedAt: { type: ['string', 'null'], format: 'date-time' },
+    rejectedCode: { type: ['string', 'null'] },
     updatedAt: { type: 'string', format: 'date-time' },
   },
 } as const;

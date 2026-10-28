@@ -20,6 +20,9 @@ export interface AffiliateCredential {
   sessionAccountKeyVersion: number | null;
   status: AffiliateCredentialStatus;
   lastValidatedAt: Date | null;
+  /** Loja recusou a credencial no uso; o monitoramento pausa a loja. Zera ao salvar chave/sessão nova. */
+  rejectedAt: Date | null;
+  rejectedCode: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

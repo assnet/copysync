@@ -12,6 +12,8 @@ import type { AffiliateCredential } from '../../domain/entities/AffiliateCredent
 import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
 import type { AffiliateCredentialStatus } from '../../domain/enums/AffiliateCredentialStatus';
 
+const REJECTION_CLEARED = { rejectedAt: null, rejectedCode: null } as const;
+
 function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
@@ -81,8 +83,11 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
           provider: input.provider,
           publicIdentifier: input.publicIdentifier,
           ...secret,
+          rejectedAt: null,
+          rejectedCode: null,
         },
-        update: { publicIdentifier: input.publicIdentifier, ...secret },
+        // Rejeição só zera quando o que foi recusado mudou (decisão do use case)
+        update: { publicIdentifier: input.publicIdentifier, ...secret, ...(input.clearRejection ? REJECTION_CLEARED : {}) },
       }),
     );
     return Mapper.toDomain(raw);
@@ -96,8 +101,8 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     let raw = await withUniqueRetry(() =>
       prisma.affiliateCredential.upsert({
         where: { tenantId_provider: key },
-        create: { ...key, publicIdentifier: input.publicIdentifierIfEmpty ?? null, ...session },
-        update: session,
+        create: { ...key, publicIdentifier: input.publicIdentifierIfEmpty ?? null, ...session, rejectedAt: null, rejectedCode: null },
+        update: { ...session, ...(input.clearRejection ? REJECTION_CLEARED : {}) },
       }),
     );
 
@@ -131,9 +136,19 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
         sessionInvalidAt: null,
         sessionAccountHash: null,
         sessionAccountKeyVersion: null,
+        // Sem sessão = "não conectado": a rejeição (hoje só nasce com sessão, ML) sai junto
+        ...REJECTION_CLEARED,
       },
     });
     return count > 0;
+  }
+
+  /** `updateMany`: linha apagada no meio vira no-op, nunca P2025. */
+  async markRejected(tenantId: string, provider: AffiliateProvider, code: string, at: Date): Promise<void> {
+    await prisma.affiliateCredential.updateMany({
+      where: { tenantId, provider },
+      data: { rejectedAt: at, rejectedCode: code },
+    });
   }
 
   async setStatus(

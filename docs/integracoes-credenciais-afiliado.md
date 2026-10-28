@@ -95,6 +95,22 @@ A sessão sincronizada pela extensão também é consumida por `MercadoLivreAffi
 cola uma URL de produto ML sem `matt_word`. Detalhes em
 [`gerador-de-ofertas.md`](gerador-de-ofertas.md) (seção "Geração automática de link ML").
 
+## Credencial recusada pela loja (`rejectedAt` / `rejectedCode`)
+
+Quando o monitoramento usa a credencial e a loja responde 401/403 (`AFFILIATE_CREDENTIAL_REJECTED`), o
+`BuildTenantAffiliateLinkUseCase` chama `MarkAffiliateCredentialRejectedUseCase`: grava `rejectedAt` + `rejectedCode`
+e audita `AFFILIATE_CREDENTIAL_REJECTED` (só `provider` e `code`). A partir daí `resolveState` devolve `rejected`
+(vale para ACTIVE, INACTIVE e linha só-sessão) e o monitoramento pausa a loja: capturas saem
+`SKIPPED/CREDENTIAL_REJECTED` sem rede. O gerador segue usando `execute` (não muda).
+
+Quem limpa: `UpsertAffiliateCredentialUseCase` quando o que foi recusado muda (secret novo ou ID público diferente;
+ML pelo painel só troca etiqueta e **não** limpa); `UpsertAffiliateSessionUseCase` só com token novo (sync do mesmo
+token pela extensão mantém); `clearSession` zera junto. `setStatus` (reativar) **não** limpa. Rate limit e API fora
+não marcam rejeição. O presenter expõe `rejectedAt`/`rejectedCode`; o card mostra "Recusada" com a dica da loja.
+
+Testes com banco: `api/scripts/postgres-descartavel.sh start` → `INTEGRATION_DATABASE_URL=… pnpm -C api test:int`
+(`*.int.test.ts`, fora do `pnpm test` e do CI; gate manual de release) → `stop`.
+
 ## O que não fazer
 
 - Nunca devolver o segredo ou a sessão por HTTP, nem acrescentar esses campos ao schema
@@ -103,6 +119,8 @@ cola uma URL de produto ML sem `matt_word`. Detalhes em
 - Nunca gravar em claro como fallback quando a cifra estiver indisponível.
 - Não cifrar o `publicIdentifier`. Ele aparece na URL gerada, e cifrá-lo impediria buscas.
 - Não acessar Prisma fora de `infrastructure/`, e não criar consulta sem `tenantId`.
+- Nunca gravar em `rejectedCode` (nem na auditoria) corpo da resposta da loja, cookie ou chave: só o código interno.
+- Não limpar a rejeição ao reativar (`setStatus`) nem em sync do mesmo token: a chave recusada continua a mesma.
 
 ## Smoke (T8, executado em 2026-10-22, banco local)
 

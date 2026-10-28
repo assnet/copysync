@@ -43,6 +43,8 @@ export class PrismaAffiliateCredentialMapper {
       sessionAccountKeyVersion: raw.sessionAccountKeyVersion,
       status: raw.status,
       lastValidatedAt: raw.lastValidatedAt,
+      rejectedAt: raw.rejectedAt,
+      rejectedCode: raw.rejectedCode,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };

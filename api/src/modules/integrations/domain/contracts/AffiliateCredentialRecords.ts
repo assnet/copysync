@@ -16,6 +16,8 @@ export interface UpsertAffiliateCredentialRecord {
   provider: AffiliateProvider;
   publicIdentifier: string;
   secret?: EncryptedBlob;
+  /** true = o que foi recusado mudou (secret/ID novo): zera `rejectedAt`/`rejectedCode`. Ausente = mantém. */
+  clearRejection?: boolean;
 }
 
 /**
@@ -28,4 +30,6 @@ export interface UpsertAffiliateSessionRecord {
   session: EncryptedBlob;
   publicIdentifierIfEmpty?: string;
   syncedAt: Date;
+  /** true = token novo: zera a rejeição. Sync do mesmo token mantém (senão cada alarme liberaria a loja). */
+  clearRejection?: boolean;
 }

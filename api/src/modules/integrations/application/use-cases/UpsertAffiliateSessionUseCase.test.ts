@@ -16,7 +16,7 @@ function record(session: AffiliateCredentialRecord['session'], publicIdentifier:
     id: 'c1', tenantId: TENANT, provider: 'MERCADO_LIVRE', publicIdentifier,
     hasSecret: false, hasSession: session !== null, sessionSyncedAt: NOW,
     sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null, status: 'ACTIVE',
-    lastValidatedAt: null, createdAt: NOW, updatedAt: NOW, secret: null, session,
+    lastValidatedAt: null, rejectedAt: null, rejectedCode: null, createdAt: NOW, updatedAt: NOW, secret: null, session,
   };
 }
 
@@ -30,6 +30,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null) {
     delete: vi.fn(),
     clearSession: vi.fn(),
     setStatus: vi.fn(),
+    markRejected: vi.fn(),
   } satisfies IAffiliateCredentialRepository;
   const audit = { create: vi.fn().mockResolvedValue(undefined) } satisfies IAuditLogRepository;
   const useCase = new UpsertAffiliateSessionUseCase(repo, () => cipher, audit, () => NOW);
@@ -95,5 +96,16 @@ describe('UpsertAffiliateSessionUseCase', () => {
     const err = await d.useCase.execute(input({ provider: 'SHOPEE' })).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_INVALID', statusCode: 422 });
     expect(d.repo.upsertSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('UpsertAffiliateSessionUseCase — rejeição', () => {
+  it('mesmo token: mantém a rejeição (clearRejection false); token novo: limpa', async () => {
+    const same = makeDeps(record(cipher.encrypt(JSON.stringify({ cookies: { ssid: 'ssid-abc' } }), AAD)));
+    await same.useCase.execute(input());
+    expect(same.repo.upsertSession.mock.calls[0]![0]).toMatchObject({ clearRejection: false });
+    const fresh = makeDeps(record(cipher.encrypt(JSON.stringify({ cookies: { ssid: 'old' } }), AAD)));
+    await fresh.useCase.execute(input());
+    expect(fresh.repo.upsertSession.mock.calls[0]![0]).toMatchObject({ clearRejection: true });
   });
 });

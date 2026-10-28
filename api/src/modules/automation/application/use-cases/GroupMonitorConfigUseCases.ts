@@ -1,13 +1,15 @@
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
 import type { IGroupMonitorRepository } from '../../domain/contracts/IGroupMonitorRepository';
-import type { IMonitorGroupDirectory } from '../../domain/contracts/IMonitorPorts';
+import type { ICredentialStateSource, IMonitorGroupDirectory } from '../../domain/contracts/IMonitorPorts';
+import type { ICapturedOfferRepository } from '../../domain/contracts/ICapturedOfferRepository';
+import { AFFILIATE_PROVIDERS } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { GroupMonitorSettings } from '../../domain/entities/GroupMonitor';
 import { DEFAULT_MONITOR_SETTINGS, MONITOR_LIMITS, monitorSettingsProblem, normalizeKeywords } from '../../domain/services/monitorSettings';
 import { GroupMonitorGroupConflictError, GroupMonitorInvalidInputError } from '../../../../shared/errors/internal/GroupMonitorErrors';
 import { PlanFeatureUnavailableError, PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
-import type { GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
+import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
 
 export const MONITORED_GROUPS = ENTITLEMENT_KEYS.MONITORED_GROUPS;
 export const BROADCAST_GROUPS = ENTITLEMENT_KEYS.BROADCAST_GROUPS;
@@ -18,7 +20,13 @@ export interface GroupMonitorConfigDeps {
   monitors: IGroupMonitorRepository;
   directory: IMonitorGroupDirectory;
   entitlements: IEntitlementReader;
+  credentialStates: ICredentialStateSource;
+  captured: ICapturedOfferRepository;
+  now?: () => Date;
 }
+
+/** Janela do aviso "sem credencial": só lojas com captura CREDENTIAL_MISSING neste período. */
+export const CREDENTIAL_MISSING_WINDOW_MS = 7 * 24 * 60 * 60_000;
 
 interface SessionInput {
   tenantId: string;
@@ -62,7 +70,29 @@ abstract class GroupMonitorConfigBase {
 export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
   async execute(input: SessionInput): Promise<GroupMonitorConfigDTO> {
     await this.assertSession(input);
-    return this.load(input);
+    const dto = await this.load(input);
+    dto.credentialAlerts = await this.credentialAlerts(input.tenantId);
+    return dto;
+  }
+
+  /**
+   * Um aviso por loja: recusada (`rejectedAt`) prevalece; senão, não utilizável + captura
+   * `CREDENTIAL_MISSING` recente = sem credencial. Só aqui (não no `load`): Save* não pagam as consultas.
+   */
+  private async credentialAlerts(tenantId: string): Promise<CredentialAlertDTO[]> {
+    const now = (this.deps.now ?? (() => new Date()))();
+    const [states, missing] = await Promise.all([
+      this.deps.credentialStates.listStates(tenantId),
+      this.deps.captured.listRecentMissingProviders(tenantId, new Date(now.getTime() - CREDENTIAL_MISSING_WINDOW_MS)),
+    ]);
+    const recent = new Set(missing);
+    const alerts: CredentialAlertDTO[] = [];
+    for (const provider of AFFILIATE_PROVIDERS) {
+      const st = states.find((s) => s.provider === provider);
+      if (st?.rejectedAt) alerts.push({ provider, kind: 'REJECTED', since: st.rejectedAt.toISOString(), code: st.rejectedCode });
+      else if ((!st || !st.usable) && recent.has(provider)) alerts.push({ provider, kind: 'MISSING', since: null, code: null });
+    }
+    return alerts;
   }
 }
 

@@ -32,9 +32,12 @@ export function useMonitoringConfig(sessionId: string | null) {
     void load();
   }, [load]);
 
-  // Resposta de uma sessão que já não está selecionada é descartada
+  // Resposta de uma sessão que já não está selecionada é descartada. Save* não devolve
+  // `credentialAlerts` (só o GET): o aviso anterior fica até o próximo load.
   const apply = useCallback((data: GroupMonitorConfigResponse) => {
-    if (data.sessionId === current.current) setConfig(data);
+    if (data.sessionId === current.current) {
+      setConfig((prev) => ({ ...data, credentialAlerts: data.credentialAlerts ?? prev?.credentialAlerts ?? [] }));
+    }
     return data;
   }, []);
 

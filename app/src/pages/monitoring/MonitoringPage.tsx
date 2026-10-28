@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppIcon, EmptyState, PageHeader } from '@/components';
 import { BroadcastGroupsCard } from '@/features/monitoring/components/BroadcastGroupsCard';
 import { CapturedOffersList } from '@/features/monitoring/components/CapturedOffersList';
+import { CredentialAlerts } from '@/features/monitoring/components/CredentialAlerts';
 import { GroupPickerDialog, type GroupPickerMode, type PickedGroup } from '@/features/monitoring/components/GroupPickerDialog';
 import { MonitoredGroupsCard } from '@/features/monitoring/components/MonitoredGroupsCard';
 import { MonitoringSessionSelect } from '@/features/monitoring/components/MonitoringSessionSelect';
@@ -125,6 +126,7 @@ export function MonitoringPage() {
         />
       ) : selected ? (
         <Stack spacing={2.5}>
+          {config && <CredentialAlerts alerts={config.credentialAlerts} />}
           <Box sx={CARDS_GRID}>
             <SessionSummaryCard session={selected} />
             {config ? (

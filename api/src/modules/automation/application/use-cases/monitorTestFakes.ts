@@ -1,6 +1,7 @@
+import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { ActiveMonitoredGroup, BroadcastGroupInput, IGroupMonitorRepository, MonitoredGroupInput, TenantGroupJids } from '../../domain/contracts/IGroupMonitorRepository';
 import type { CapturedOfferListItem, CapturedOfferResolution, ICapturedOfferRepository, NewCapturedOffer } from '../../domain/contracts/ICapturedOfferRepository';
-import type { IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOfferInput, QueueOfferResult, TenantLinkResult, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, MonitorComposeInput, MonitorProductData } from '../../domain/contracts/IMonitorPorts';
+import type { IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOfferInput, QueueOfferResult, TenantLinkResult, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, MonitorComposeInput, MonitorProductData, CredentialState, ICredentialStateSource } from '../../domain/contracts/IMonitorPorts';
 import type { BroadcastGroup, GroupMonitorConfig, GroupMonitorSettings, MonitoredGroup } from '../../domain/entities/GroupMonitor';
 import type { CapturedOffer, CapturedOfferReason } from '../../domain/entities/CapturedOffer';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
@@ -90,6 +91,11 @@ export class InMemoryCapturedOfferRepository implements ICapturedOfferRepository
     const c = this.items.find((x) => x.tenantId === tenantId && x.id === id);
     return c ? { ...c, sourceGroupTitle: 'Concorrente', sourceGroupAvatarUrl: null, offerStatus: null, sentCount: 0, totalCount: 0 } : null;
   }
+  async listRecentMissingProviders(tenantId: string, since: Date) {
+    const out = new Set<AffiliateProvider>();
+    for (const c of this.items) if (c.tenantId === tenantId && c.status === 'SKIPPED' && c.reason === 'CREDENTIAL_MISSING' && c.marketplace && c.capturedAt >= since) out.add(c.marketplace);
+    return [...out];
+  }
   async resetForRetry(tenantId: string, id: string) {
     const c = this.items.find((x) => x.tenantId === tenantId && x.id === id && (x.status === 'SKIPPED' || x.status === 'FAILED'));
     if (!c) return false; Object.assign(c, { status: 'PENDING', reason: null, claimToken: null }); return true;
@@ -131,6 +137,11 @@ export class FakeTextComposer implements IMonitorTextComposer {
 export class FakeImageStore implements IMonitorImageStore {
   stored: string[] = [];
   async store(url: string) { this.stored.push(url); return `https://api/media/stored-${this.stored.length}.jpg`; }
+}
+
+export class FakeCredentialStates implements ICredentialStateSource {
+  constructor(public states: CredentialState[] = []) {}
+  async listStates() { return this.states; }
 }
 
 export class FakeDirectory implements IMonitorGroupDirectory {

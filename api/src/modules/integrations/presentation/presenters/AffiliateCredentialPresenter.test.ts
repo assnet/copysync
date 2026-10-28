@@ -14,7 +14,7 @@ function credential(overrides?: Partial<AffiliateCredential>): AffiliateCredenti
     id: 'c1', tenantId: 't1', provider: 'SHOPEE', publicIdentifier: '18301234567',
     hasSecret: true, hasSession: false, sessionSyncedAt: null,
     sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
-    status: 'ACTIVE', lastValidatedAt: null, createdAt: NOW, updatedAt: NOW, ...overrides,
+    status: 'ACTIVE', lastValidatedAt: null, rejectedAt: null, rejectedCode: null, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
 

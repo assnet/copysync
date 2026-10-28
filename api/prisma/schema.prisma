@@ -71,6 +71,7 @@ enum AuditAction {
   TENANT_STATUS_CHANGED
   BILLING_EVENT_RECEIVED
   AFFILIATE_SESSION_ACCOUNT_RESET
+  AFFILIATE_CREDENTIAL_REJECTED
 }
 
 enum ExtensionInstallationStatus {
@@ -591,6 +592,9 @@ model AffiliateCredential {
   sessionAccountHash       String?
   sessionAccountKeyVersion Int?
   lastValidatedAt          DateTime?
+  /// Loja recusou a credencial no uso (monitoramento pausa a loja); zera ao salvar chave/sessão nova.
+  rejectedAt               DateTime?
+  rejectedCode             String?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
@@ -1165,6 +1169,7 @@ model CapturedOffer {
 
   @@unique([sessionId, sourceExternalMessageId])
   @@index([status, capturedAt])
+  @@index([tenantId, status, capturedAt])
   @@index([tenantId, sessionId, capturedAt(sort: Desc)])
   @@map("captured_offers")
 }

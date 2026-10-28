@@ -1,7 +1,8 @@
 import { parseProductRef } from '../../../campaigns/domain/services/parseProductRef';
+import { providerRequiresSecret, providerUsesSession } from '../../../integrations/domain/services/affiliateProviderFields';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type {
-  IMonitorGroupDirectory, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, IOfferQueue, ITenantLinkBuilder,
+  CredentialState, ICredentialStateSource, IMonitorGroupDirectory, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, IOfferQueue, ITenantLinkBuilder,
   MonitorComposeInput, MonitorProductData, QueueOfferInput, QueueOfferResult, TenantLinkResult,
 } from '../../domain/contracts/IMonitorPorts';
 import { offersContainer } from '../../../campaigns/infrastructure/offersContainer';
@@ -51,6 +52,21 @@ export class CampaignsMonitorProductReader implements IMonitorProductReader {
     const data = await offersContainer.resolveProductData().resolve(provider, ref, url, cred);
     if (!data.title && data.priceCents == null && !data.imageSourceUrl) return null;
     return { title: data.title, priceCents: data.priceCents, originalPriceCents: data.originalPriceCents, imageUrl: data.imageSourceUrl };
+  }
+}
+
+/** Estado das credenciais do tenant pelo repositório de `integrations` exposto no container de campaigns. */
+export class CampaignsCredentialStateSource implements ICredentialStateSource {
+  async listStates(tenantId: string): Promise<CredentialState[]> {
+    const rows = await offersContainer.credentialRepo().listByTenant(tenantId);
+    return rows.map((c) => ({
+      provider: c.provider,
+      usable: c.status === 'ACTIVE' && !!c.publicIdentifier
+        && (!providerRequiresSecret(c.provider) || c.hasSecret)
+        && (!providerUsesSession(c.provider) || c.hasSession),
+      rejectedAt: c.rejectedAt,
+      rejectedCode: c.rejectedCode,
+    }));
   }
 }
 

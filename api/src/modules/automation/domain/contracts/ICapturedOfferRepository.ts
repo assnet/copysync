@@ -53,4 +53,6 @@ export interface ICapturedOfferRepository {
   findById(tenantId: string, id: string): Promise<CapturedOfferListItem | null>;
   /** SKIPPED/FAILED → PENDING, sem motivo. false se o estado mudou. */
   resetForRetry(tenantId: string, id: string): Promise<boolean>;
+  /** Lojas com captura `SKIPPED/CREDENTIAL_MISSING` desde `since` (aviso "sem credencial" no monitoramento). */
+  listRecentMissingProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]>;
 }

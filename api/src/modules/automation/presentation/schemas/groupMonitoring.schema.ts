@@ -95,6 +95,10 @@ const configSchema = {
     monitoredGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, keywords: { type: 'array', items: { type: 'string' } } } } },
     broadcastGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, sessionId: { type: 'string' }, position: { type: 'integer' } } } },
     limits: { type: 'object', properties: { monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' } } },
+    credentialAlerts: {
+      type: 'array',
+      items: { type: 'object', properties: { provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] }, kind: { type: 'string', enum: ['MISSING', 'REJECTED'] }, since: nullableDate, code: nullableString } },
+    },
     usage: { type: 'object', properties: { monitoredGroups: { type: 'integer' }, broadcastGroups: { type: 'integer' } } },
   },
 } as const;

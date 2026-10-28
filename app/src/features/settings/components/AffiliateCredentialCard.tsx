@@ -8,6 +8,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import AddLinkIcon from '@mui/icons-material/AddLink';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import { ConfirmDialog } from '@/components';
 import type { AffiliateCredentialItem, AffiliateCredentialStatus } from '@/types/api.types';
@@ -29,6 +30,8 @@ interface Props {
 
 function stateChip(item?: AffiliateCredentialItem): ChipProps {
   if (!item) return { label: t.statusNotConfigured, color: 'default', variant: 'outlined', icon: <RadioButtonUncheckedIcon /> };
+  // Recusa é fato observado no uso: prevalece sobre o status escolhido pelo usuário
+  if (item.rejectedAt) return { label: t.statusRejected, color: 'error', icon: <ErrorOutlineIcon /> };
   if (item.status === 'INACTIVE') return { label: t.statusInactive, color: 'warning', icon: <PauseCircleOutlineIcon /> };
   return { label: t.statusConfigured, color: 'success', icon: <CheckCircleIcon /> };
 }
@@ -134,6 +137,12 @@ export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemov
               />
             )}
           </Stack>
+        )}
+
+        {item?.rejectedAt && (
+          <Alert severity="error" variant="outlined" sx={{ py: 0 }}>
+            {t.rejectedSince(item.rejectedAt)} {t.rejectedHint[spec.provider] ?? ''}
+          </Alert>
         )}
 
         {spec.usesBrowserSession && (

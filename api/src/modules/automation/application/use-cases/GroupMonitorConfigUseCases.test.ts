@@ -3,14 +3,16 @@ import {
   GetGroupMonitorConfigUseCase, SaveBroadcastGroupsUseCase, SaveGroupMonitorSettingsUseCase, SaveMonitoredGroupsUseCase,
 } from './GroupMonitorConfigUseCases';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
-import { FakeDirectory, FakeEntitlements, InMemoryGroupMonitorRepository, SESSION, TENANT } from './monitorTestFakes';
+import { FakeCredentialStates, FakeDirectory, FakeEntitlements, InMemoryCapturedOfferRepository, InMemoryGroupMonitorRepository, SESSION, TENANT } from './monitorTestFakes';
 
 function setup(entitlements: Record<string, unknown> = {}) {
   const monitors = new InMemoryGroupMonitorRepository();
   const directory = new FakeDirectory();
-  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements) };
+  const credentialStates = new FakeCredentialStates();
+  const captured = new InMemoryCapturedOfferRepository();
+  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, now: () => NOW };
   return {
-    monitors, directory,
+    monitors, directory, credentialStates, captured,
     get: new GetGroupMonitorConfigUseCase(deps),
     settings: new SaveGroupMonitorSettingsUseCase(deps),
     monitored: new SaveMonitoredGroupsUseCase(deps),
@@ -18,6 +20,7 @@ function setup(entitlements: Record<string, unknown> = {}) {
   };
 }
 const base = { tenantId: TENANT, sessionId: SESSION };
+const NOW = new Date('2026-10-28T12:00:00.000Z');
 
 describe('GroupMonitorConfigUseCases', () => {
   it('sessão sem configuração devolve padrões e limites do plano', async () => {
@@ -105,5 +108,53 @@ describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
     await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'shared' }] });
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'shared', sessionId: 'session-2' }] }))
       .rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT' });
+  });
+});
+
+describe('GetGroupMonitorConfigUseCase — credentialAlerts', () => {
+  const REJ = new Date('2026-10-27T09:00:00.000Z');
+  async function missingCapture(s: ReturnType<typeof setup>, marketplace: 'SHOPEE' | 'AMAZON' | 'MERCADO_LIVRE', daysAgo = 1) {
+    const capturedAt = new Date(NOW.getTime() - daysAgo * 24 * 3600_000);
+    await s.captured.createPending({ tenantId: TENANT, sessionId: SESSION, configId: 'cfg', monitoredGroupId: 'mg', sourceExternalMessageId: `m-${marketplace}-${daysAgo}`, sourceText: 'x', sourceMediaUrl: null, imageUnavailable: false, capturedAt });
+    const [c] = await s.captured.claimPending(1);
+    await s.captured.markSkipped(c!.id, c!.claimToken!, 'CREDENTIAL_MISSING', { marketplace });
+  }
+
+  it('ML recusada + Shopee sem credencial com captura recente → 2 alertas; Amazon ok sem captura → nada', async () => {
+    const s = setup();
+    s.credentialStates.states = [
+      { provider: 'MERCADO_LIVRE', usable: true, rejectedAt: REJ, rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED' },
+      { provider: 'AMAZON', usable: true, rejectedAt: null, rejectedCode: null },
+    ];
+    await missingCapture(s, 'SHOPEE');
+    const out = await s.get.execute(base);
+    expect(out.credentialAlerts).toEqual([
+      { provider: 'SHOPEE', kind: 'MISSING', since: null, code: null },
+      { provider: 'MERCADO_LIVRE', kind: 'REJECTED', since: REJ.toISOString(), code: 'AFFILIATE_CREDENTIAL_REJECTED' },
+    ]);
+  });
+
+  it('sem capturas: só REJECTED; captura antiga (8 dias) não conta', async () => {
+    const s = setup();
+    s.credentialStates.states = [{ provider: 'SHOPEE', usable: true, rejectedAt: REJ, rejectedCode: 'X' }];
+    await missingCapture(s, 'AMAZON', 8);
+    expect((await s.get.execute(base)).credentialAlerts).toEqual([{ provider: 'SHOPEE', kind: 'REJECTED', since: REJ.toISOString(), code: 'X' }]);
+  });
+
+  it('INACTIVE ou Shopee sem secret (não utilizável) com captura recente → MISSING; utilizável → nada', async () => {
+    const s = setup();
+    s.credentialStates.states = [{ provider: 'SHOPEE', usable: false, rejectedAt: null, rejectedCode: null }, { provider: 'AMAZON', usable: true, rejectedAt: null, rejectedCode: null }];
+    await missingCapture(s, 'SHOPEE');
+    await missingCapture(s, 'AMAZON');
+    expect((await s.get.execute(base)).credentialAlerts).toEqual([{ provider: 'SHOPEE', kind: 'MISSING', since: null, code: null }]);
+  });
+
+  it('recusada e com captura MISSING recente: um alerta só, REJECTED; Save* não devolve credentialAlerts', async () => {
+    const s = setup();
+    s.credentialStates.states = [{ provider: 'SHOPEE', usable: false, rejectedAt: REJ, rejectedCode: 'X' }];
+    await missingCapture(s, 'SHOPEE');
+    expect((await s.get.execute(base)).credentialAlerts).toEqual([{ provider: 'SHOPEE', kind: 'REJECTED', since: REJ.toISOString(), code: 'X' }]);
+    const saved = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'g' }] });
+    expect(saved.credentialAlerts).toBeUndefined();
   });
 });

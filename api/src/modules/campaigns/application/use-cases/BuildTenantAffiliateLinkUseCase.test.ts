@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BuildTenantAffiliateLinkUseCase } from './BuildTenantAffiliateLinkUseCase';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
+import type { AffiliateCredentialState } from '../../domain/contracts/IAffiliateCredentialGateway';
 import { AppError } from '../../../../shared/errors/AppError';
 
 const CREDS: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = {
@@ -13,7 +14,11 @@ const CREDS: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = {
 function setup(creds = CREDS) {
   const deps = {
     expander: { expand: vi.fn(async (u: URL) => u) },
-    credentials: { execute: vi.fn(async (_t: string, p: AffiliateProvider) => creds[p] ?? null) },
+    credentials: {
+      execute: vi.fn(async (_t: string, p: AffiliateProvider) => creds[p] ?? null),
+      resolveState: vi.fn<(t: string, p: AffiliateProvider) => Promise<AffiliateCredentialState>>(async (_t, p) => (creds[p] ? { state: 'ok', cred: creds[p]! } : { state: 'missing' })),
+      markRejected: vi.fn().mockResolvedValue(undefined),
+    },
     shopee: { getProduct: vi.fn(), generateShortLink: vi.fn().mockResolvedValue('https://s.shopee.com.br/meu') },
     mercadoLivre: {
       createAffiliateLinks: vi.fn().mockResolvedValue({ success: [{ originUrl: '', shortUrl: 'https://meli.la/meu', longUrl: '' }], errors: [] }),
@@ -84,5 +89,33 @@ describe('BuildTenantAffiliateLinkUseCase', () => {
     const s = setup();
     s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [] });
     expect(await s.uc.execute('t1', 'https://www.mercadolivre.com.br/fone/p/MLB777')).toMatchObject({ kind: 'failed', code: 'AFFILIATE_LINK_NOT_CREATED' });
+  });
+});
+
+describe('BuildTenantAffiliateLinkUseCase — credencial recusada', () => {
+  const SINCE = new Date('2026-10-28T10:00:00.000Z');
+
+  it('loja já recusada: credential_rejected sem chamar a loja', async () => {
+    const s = setup();
+    s.deps.credentials.resolveState.mockResolvedValueOnce({ state: 'rejected', since: SINCE, code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    const out = await s.uc.execute('t1', 'https://www.mercadolivre.com.br/fone/p/MLB777');
+    expect(out).toEqual({ kind: 'credential_rejected', provider: 'MERCADO_LIVRE', since: SINCE });
+    expect(s.deps.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
+    expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
+  });
+
+  it('loja recusa agora (AFFILIATE_CREDENTIAL_REJECTED): marca a rejeição e devolve credential_rejected', async () => {
+    const s = setup();
+    s.deps.shopee.generateShortLink.mockRejectedValueOnce(new AppError('AFFILIATE_CREDENTIAL_REJECTED', 'rejected', 422));
+    const out = await s.uc.execute('t1', 'https://shopee.com.br/product/1/2');
+    expect(out).toMatchObject({ kind: 'credential_rejected', provider: 'SHOPEE' });
+    expect(s.deps.credentials.markRejected).toHaveBeenCalledWith('t1', 'SHOPEE', 'AFFILIATE_CREDENTIAL_REJECTED');
+  });
+
+  it('rate limit ou API fora não marcam rejeição: failed como antes', async () => {
+    const s = setup();
+    s.deps.shopee.generateShortLink.mockRejectedValueOnce(new AppError('AFFILIATE_API_RATE_LIMITED', 'slow', 429));
+    expect(await s.uc.execute('t1', 'https://shopee.com.br/product/1/2')).toMatchObject({ kind: 'failed', code: 'AFFILIATE_API_RATE_LIMITED' });
+    expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
   });
 });

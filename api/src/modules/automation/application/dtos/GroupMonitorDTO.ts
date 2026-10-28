@@ -5,6 +5,14 @@ import type { GroupMonitorSettings, MonitorTextMode } from '../../domain/entitie
 import type { CapturedOfferListItem } from '../../domain/contracts/ICapturedOfferRepository';
 import { previewText } from '../../domain/services/offerMessageText';
 
+export interface CredentialAlertDTO {
+  provider: AffiliateProvider;
+  kind: 'MISSING' | 'REJECTED';
+  /** `rejectedAt` (REJECTED); null em MISSING. */
+  since: string | null;
+  code: string | null;
+}
+
 export interface GroupMonitorConfigDTO {
   sessionId: string;
   settings: GroupMonitorSettings;
@@ -12,6 +20,8 @@ export interface GroupMonitorConfigDTO {
   /** `sessionId` = sessão que envia naquele grupo (igual à do monitor, ou outra com `crossSessionDispatch`). */
   broadcastGroups: { conversationId: string; groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null; position: number }[];
   limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
+  /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */
+  credentialAlerts?: CredentialAlertDTO[];
   usage: { monitoredGroups: number; broadcastGroups: number };
 }
 

@@ -5,6 +5,8 @@ import type { OfferAudience } from '../../../campaigns/domain/enums/OfferAudienc
 export type TenantLinkResult =
   | { kind: 'unsupported' }
   | { kind: 'credential_missing'; provider: AffiliateProvider }
+  /** Loja recusou a credencial: pausada até o usuário reconfigurar (sem rede). */
+  | { kind: 'credential_rejected'; provider: AffiliateProvider; since: Date }
   | { kind: 'failed'; provider: AffiliateProvider | null; code: string }
   | { kind: 'ok'; provider: AffiliateProvider; sourceUrl: string; affiliateUrl: string };
 
@@ -69,6 +71,18 @@ export interface IMonitorTextComposer {
 export interface IMonitorImageStore {
   /** URL no store ou null (host fora da allowlist, não-imagem, falha). Nunca lança. */
   store(externalUrl: string): Promise<string | null>;
+}
+
+/** Estado das credenciais do tenant, para o aviso do monitoramento (adapter: repositório de integrations). */
+export interface CredentialState {
+  provider: AffiliateProvider;
+  /** ACTIVE, com ID público e com o que a loja exige (secret / sessão). */
+  usable: boolean;
+  rejectedAt: Date | null;
+  rejectedCode: string | null;
+}
+export interface ICredentialStateSource {
+  listStates(tenantId: string): Promise<CredentialState[]>;
 }
 
 /** Fila de envio por sessão (adapter: módulo campaigns, origem MONITORING). */

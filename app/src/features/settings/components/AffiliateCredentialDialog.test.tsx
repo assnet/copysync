@@ -18,6 +18,8 @@ const savedShopee: AffiliateCredentialItem = {
   hasSession: false,
   sessionSyncedAt: null,
   lastValidatedAt: null,
+  rejectedAt: null,
+  rejectedCode: null,
   updatedAt: '2026-10-22T10:00:00.000Z',
 };
 
