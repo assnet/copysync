@@ -102,7 +102,10 @@ export class ProcessPendingCapturedOffersUseCase {
       const r = await links.build(c.tenantId, u.href);
       // O último link também conta: estourou no meio, não segue para os próximos
       if (clock() - linksStarted > CAPTURE_LINKS_BUDGET_MS) return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED' };
-      if (r.kind === 'failed') return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: r.provider } };
+      if (r.kind === 'failed') {
+        logger.warn({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: r.provider, code: r.code }, 'captured offer link not built');
+        return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: r.provider } };
+      }
       if (r.kind === 'credential_missing') return { status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', data: { marketplace: r.provider } };
       replacements.set(u.href, r.kind === 'ok' ? r.affiliateUrl : null);
       if (r.kind === 'ok') first ??= r;

@@ -76,8 +76,10 @@ tenant. Nada da origem (`tag`, `matt_word`, `matt_tool`, `af_*`, `utm_*`…) sob
 | Shopee | `https://shopee.com.br/product/<shop>/<item>` | `generateShortLink` com AppID/secret do tenant |
 | Mercado Livre | `/p/MLB…` ou `produto.mercadolivre.com.br/MLB-…` | `createAffiliateLinks` com a sessão (cookies) e etiqueta do tenant |
 
-Mercado Livre "social" (vitrine `meli.la` → `/social/<etiqueta>`): o produto vem do `product_id`
-da página, lida com a sessão do tenant (1º produto da vitrine). Rede só dentro da allowlist
+Mercado Livre "social" (vitrine `meli.la` → `/social/<etiqueta>?…&ref=…`): o produto vem do `product_id`
+da página (1º card; com o `ref` da query a ML abre o produto do link). É id de **catálogo**, logo a
+URL enviada ao `createLink` é `/p/<product_id>`, nunca `produto…/MLB-` (ML devolve 100). A vitrine
+é pública e é lida **sem** cookie (com cookie do servidor a ML manda para o captcha). Rede só dentro da allowlist
 (`isSupportedProductUrl`, expansor e leitor de página). Diferente do gerador, que exige o link já
 ser do operador, aqui o link é sempre gerado.
 
@@ -142,7 +144,12 @@ limita). Recorte completo fica para a fase 2.
   banco) e o processamento (envia mensagens).
 - Reescrever texto com IA nesta fase (fase 2, via `IAiTextGenerator`).
 
-## 7. Próximos passos (fase 2)
+## 7. Incidentes
+
+- 2026-10-28 — link ML nunca gerado (bootstrap 404, vitrine social com id de catálogo):
+  [`incidente-2026-10-28-link-ml.md`](incidente-2026-10-28-link-ml.md).
+
+## 8. Próximos passos (fase 2)
 
 - Reescrita com IA e "imagem das ofertas" (original × gerada).
 - Fila BullMQ `monitoring.inbound` quando a escala chegar (`arquitetura-escala.md` §3.6).

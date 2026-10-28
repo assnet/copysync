@@ -42,9 +42,9 @@ Sem credencial cadastrada da loja e com tag presente: passa como não verificado
 Quando o link colado é um produto ML **sem** `matt_word` ou `/social/` e o tenant tem sessão da extensão sincronizada:
 
 1. `MercadoLivreAffiliateClient.createAffiliateLinks(cookies, [url], etiqueta)` chama a API interna do programa de afiliados
-2. Bootstrap: GET `/affiliate-program/link-builder` → cookies temporários (`_csrf`, `_d2id`, `_mldataSessionId`)
+2. Bootstrap: GET `/afiliados/linkbuilder` (redirect manual, até 3 saltos, Set-Cookie mesclado) → cookies temporários (`_csrf`, `_d2id`, `_mldataSessionId`). Redirect para login = `AFFILIATE_CREDENTIAL_REJECTED`. **Nunca** `/affiliate-program/link-builder`: responde 404 sem `_csrf` (incidente 2026-10-28)
 3. Se tag não foi passada, resolve via GET `/affiliate-program/api/v2/stripe/user/tags` (campo `in_use`)
-4. POST `/affiliate-program/api/v2/affiliates/createLink` com `{ urls, tag }` → `{ urls: [{ short_url }] }`
+4. POST `/affiliate-program/api/v2/affiliates/createLink` com `{ urls, tag }`, headers `Origin`, `Referer: /afiliados/linkbuilder` e `X-Requested-With` → `{ urls: [{ short_url }] }`. Item sem `short_url` traz `error_code` (100 URL inválida, 1001 tipo, 1004 fechado, 1008 condição): vira `code: ML_<n>` no log
 5. `short_url` vira o `affiliateUrl` da oferta, com `attributionVerified: true`
 
 Degradação graciosa: API indisponível, sessão expirada ou rate limit → `OFFER_LINK_NOT_AFFILIATE` como antes. O tenant

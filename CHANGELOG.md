@@ -9,6 +9,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api (0.38.3) — link de afiliado ML nunca era gerado (monitoramento e gerador)
+
+Incidente 2026-10-28: captura do monitoramento caía em `FAILED/LINK_RESOLVE_FAILED` para toda oferta
+Mercado Livre; 0 de 21 ofertas ML do gerador tinham link novo. Detalhe em
+[`docs/incidente-2026-10-28-link-ml.md`](docs/incidente-2026-10-28-link-ml.md).
+
+- **`MercadoLivreAffiliateClient.ts`** — bootstrap em `/afiliados/linkbuilder` (era `/affiliate-program/link-builder`, que responde 404 e não devolve `_csrf`; o spike em `docs/extensao-ml-endpoints.md` sempre validou o primeiro). Redirect manual até 3 saltos com Set-Cookie mesclado; redirect para fora de `/afiliados/` = `AFFILIATE_CREDENTIAL_REJECTED`; status não-2xx = `AFFILIATE_API_UNAVAILABLE`. `createLink` e `tags` passam `Origin`, `Referer` e `X-Requested-With`, como o spike e o geralink.
+- **`BuildTenantAffiliateLinkUseCase.ts`** — vitrine social: `product_id` é id de catálogo, URL enviada vira `/p/<id>` (era `produto…/MLB-<id>`, inexistente → ML 100). Vitrine lida sem cookie. Item recusado pela ML devolve `code: ML_<error_code>` (era só `AFFILIATE_LINK_NOT_CREATED`) e loga o código.
+- **`HttpProductPageReader.ts`** — `sendsMlCookie` não cobre mais `/social/` (página com cookie do servidor cai no captcha).
+- **`ProcessPendingCapturedOffersUseCase.ts`** — loga `capturedOfferId` + `code` quando o link do tenant falha; `reason` continua `LINK_RESOLVE_FAILED` (sem migration).
+- **`docs/gerador-de-ofertas.md`**, **`docs/monitoramento-grupos.md`** — path correto do bootstrap, headers, catálogo × item na vitrine social.
+
+
 ### Added — app (0.44.0) — toggle mensal/anual na vitrine de planos
 
 - **`PlansHero.tsx`** — pill Mensal/Anual no banner (modelo do Pulso), anual por padrão com selo "−20%".

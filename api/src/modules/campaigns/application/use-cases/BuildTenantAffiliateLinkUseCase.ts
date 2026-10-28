@@ -90,7 +90,13 @@ export class BuildTenantAffiliateLinkUseCase {
             : `https://produto.mercadolivre.com.br/MLB-${ref.itemId.replace(/^MLB-?/i, '')}`;
           const result = await this.deps.mercadoLivre.createAffiliateLinks(cookies, [sourceUrl], cred.publicIdentifier || undefined);
           const link = result.success[0]?.shortUrl;
-          if (!link) return { kind: 'failed', provider, code: 'AFFILIATE_LINK_NOT_CREATED' };
+          if (!link) {
+            // Código por item da ML (100 URL Invalid, 1001 tipo, 1004 fechado, 1008 condição) — ver docs/extensao-ml-endpoints.md
+            const mlError = result.errors[0];
+            const code = mlError ? `ML_${mlError.errorCode}` : 'AFFILIATE_LINK_NOT_CREATED';
+            logger.warn({ code, provider }, 'tenant affiliate link not built');
+            return { kind: 'failed', provider, code };
+          }
           return { kind: 'ok', provider, sourceUrl, affiliateUrl: link };
         }
       }
@@ -99,12 +105,16 @@ export class BuildTenantAffiliateLinkUseCase {
     }
   }
 
-  /** Página "social" (vitrine de afiliado): o produto vem do `product_id` da página. */
-  private async mlRefFromPage(final: URL, cookies: Record<string, string>): Promise<ProductRef | null> {
+  /**
+   * Página "social" (vitrine de afiliado): o produto vem do `product_id` da página, que é id de
+   * **catálogo** (`/p/MLB…`); `produto.mercadolivre.com.br/MLB-<product_id>` não existe (ML 100).
+   * A vitrine é pública: lida sem cookie (página com cookie do servidor cai no captcha, spike §7).
+   */
+  private async mlRefFromPage(final: URL, _cookies: Record<string, string>): Promise<ProductRef | null> {
     if (!final.pathname.startsWith('/social/')) return null;
-    const page = await this.deps.pageReader.read({ url: final, mercadoLivreCookies: cookies });
+    const page = await this.deps.pageReader.read({ url: final });
     const id = page?.productRef ? /MLB-?(\d+)/i.exec(page.productRef)?.[1] : null;
-    return id ? { provider: 'MERCADO_LIVRE', itemId: `MLB${id}`, catalog: false } : null;
+    return id ? { provider: 'MERCADO_LIVRE', itemId: `MLB${id}`, catalog: true } : null;
   }
 
   private failure(provider: AffiliateProvider | null, err: unknown, fallback: string): TenantAffiliateLink {

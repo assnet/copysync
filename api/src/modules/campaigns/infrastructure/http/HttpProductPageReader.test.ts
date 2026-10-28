@@ -58,7 +58,7 @@ describe('HttpProductPageReader', () => {
     ['https://www.mercadolivre.com.br/p/MLB123', true],
     ['https://www.mercadolivre.com.br/fone/p/MLB123', true],
     ['https://www.mercadolivre.com.br/up/MLBU123', true],
-    ['https://www.mercadolivre.com.br/social/etq', true],
+    ['https://www.mercadolivre.com.br/social/etq', false],
     ['https://www.mercadolivre.com.br/', false],
     ['https://www.mercadolivre.com.br/ofertas', false],
     ['https://lista.mercadolivre.com.br/fone', false],

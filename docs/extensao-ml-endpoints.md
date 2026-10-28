@@ -278,6 +278,10 @@ x-csrf-token: <csrf>
 
 ## 10. Pendências restantes
 
+> 2026-10-28: a implementação do `MercadoLivreAffiliateClient` havia usado `/affiliate-program/link-builder` (404)
+> em vez do `/afiliados/linkbuilder` validado aqui. Corrigido na api 0.38.3; ver
+> [`incidente-2026-10-28-link-ml.md`](incidente-2026-10-28-link-ml.md).
+
 - [ ] Testar batch de 20 URLs (limite documentado)
 - [ ] Testar rotação de CSRF (bootstrap repetido após N minutos)
 - [ ] Testar da Render (IP de datacenter vs residencial)

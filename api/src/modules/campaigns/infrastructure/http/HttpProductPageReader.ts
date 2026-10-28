@@ -10,7 +10,8 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 /** Caminhos de produto do ML que recebem o cookie `ssid`: `/MLB-…`, `[/slug]/p/MLB…`, `[/slug]/up/MLBU…`, `/social/…`. */
-const ML_PRODUCT_PATH = /^\/(?:MLB-?\d|(?:[^/]+\/)?p\/MLB\d|(?:[^/]+\/)?up\/MLBU\d|social\/[^/])/i;
+// `/social/` (vitrine pública) fica fora: com cookie do servidor a ML manda para o captcha (spike §7)
+const ML_PRODUCT_PATH = /^\/(?:MLB-?\d|(?:[^/]+\/)?p\/MLB\d|(?:[^/]+\/)?up\/MLBU\d)/i;
 
 /**
  * Cookie `ssid` só em página de produto do ML (`*.mercadolivre.com.br`), conferido a cada salto:

@@ -49,7 +49,8 @@ describe('BuildTenantAffiliateLinkUseCase', () => {
     const s = setup();
     s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/concorrente?matt_word=concorrente'));
     const out = await s.uc.execute('t1', 'https://meli.la/abc');
-    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://produto.mercadolivre.com.br/MLB-998877'], 'minhaetq');
+    expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: expect.any(URL) });
+    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://www.mercadolivre.com.br/p/MLB998877'], 'minhaetq');
     expect(out).toMatchObject({ kind: 'ok' });
   });
 
@@ -73,9 +74,15 @@ describe('BuildTenantAffiliateLinkUseCase', () => {
     await expect(s.uc.execute('t1', 'https://shopee.com.br/product/1/2')).rejects.toThrow(TypeError);
   });
 
-  it('ML sem link gerado: failed', async () => {
+  it('ML recusou a URL: failed com o código da ML', async () => {
     const s = setup();
-    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [{ originUrl: '', errorCode: 1, message: '' }] });
+    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [{ originUrl: '', errorCode: 100, message: 'URL Invalid' }] });
+    expect(await s.uc.execute('t1', 'https://www.mercadolivre.com.br/fone/p/MLB777')).toMatchObject({ kind: 'failed', code: 'ML_100' });
+  });
+
+  it('ML sem link e sem erro por item: failed genérico', async () => {
+    const s = setup();
+    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [] });
     expect(await s.uc.execute('t1', 'https://www.mercadolivre.com.br/fone/p/MLB777')).toMatchObject({ kind: 'failed', code: 'AFFILIATE_LINK_NOT_CREATED' });
   });
 });

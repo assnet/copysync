@@ -13,7 +13,17 @@ import type {
 
 const log = logger.child({ module: 'MlAffiliateClient' });
 const ML_BASE = 'https://www.mercadolivre.com.br';
-const LINK_BUILDER_PATH = '/affiliate-program/link-builder';
+// Página real do Link Builder (spike v1–v7 em docs/extensao-ml-endpoints.md). `/affiliate-program/link-builder`
+// responde 404 e não devolve `_csrf`.
+const LINK_BUILDER_PATH = '/afiliados/linkbuilder';
+const LINK_BUILDER_URL = `${ML_BASE}${LINK_BUILDER_PATH}`;
+const BOOTSTRAP_MAX_HOPS = 3;
+/** Redirect do bootstrap para fora do hub (login em `mercadolivre.com/jms/...`) = sessão expirada. */
+function isMlLoginRedirect(location: URL): boolean {
+  const host = location.hostname.toLowerCase();
+  const inHub = (host === 'www.mercadolivre.com.br' || host === 'mercadolivre.com.br') && location.pathname.startsWith('/afiliados/');
+  return !inHub;
+}
 const TAGS_PATH = '/affiliate-program/api/v2/stripe/user/tags';
 const CREATE_LINK_PATH = '/affiliate-program/api/v2/affiliates/createLink';
 const TIMEOUT_MS = 8_000;
@@ -59,28 +69,53 @@ export class MercadoLivreAffiliateClient implements IMercadoLivreAffiliateClient
     const cookieHeader = buildCookieHeader(sessionCookies);
     if (!cookieHeader) throw new AffiliateCredentialRejectedError(PROVIDER);
 
-    let res: Response;
-    try {
-      res = await fetch(`${ML_BASE}${LINK_BUILDER_PATH}`, {
-        method: 'GET',
-        headers: { 'User-Agent': USER_AGENT, Accept: 'text/html', Cookie: cookieHeader },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (err) {
-      log.warn({ reason: (err as Error)?.name }, 'ML bootstrap sem resposta');
-      throw new AffiliateApiUnavailableError(PROVIDER);
+    // Redirect manual: o Set-Cookie (`_csrf`, `_d2id`) de cada salto entra no jar; cair no login = sessão expirada
+    const jar: Record<string, string> = { ...sessionCookies };
+    let current = new URL(LINK_BUILDER_URL);
+    const signal = AbortSignal.timeout(TIMEOUT_MS);
+    for (let hop = 0; ; hop++) {
+      let res: Response;
+      try {
+        res = await fetch(current, {
+          method: 'GET',
+          headers: { 'User-Agent': USER_AGENT, Accept: 'text/html', Cookie: buildCookieHeader(jar) },
+          redirect: 'manual',
+          signal,
+        });
+      } catch (err) {
+        log.warn({ reason: (err as Error)?.name }, 'ML bootstrap sem resposta');
+        throw new AffiliateApiUnavailableError(PROVIDER);
+      }
+      await res.body?.cancel().catch(() => undefined);
+      Object.assign(jar, extractSetCookies(res.headers));
+
+      if (res.status === 401 || res.status === 403) {
+        log.warn({ status: res.status }, 'ML bootstrap sessão inválida');
+        throw new AffiliateCredentialRejectedError(PROVIDER);
+      }
+      const location = res.headers.get('location');
+      if (res.status >= 300 && res.status < 400 && location) {
+        let next: URL;
+        try {
+          next = new URL(location, current);
+        } catch {
+          throw new AffiliateApiUnavailableError(PROVIDER);
+        }
+        if (isMlLoginRedirect(next)) {
+          log.warn({ status: res.status }, 'ML bootstrap redirecionou para login');
+          throw new AffiliateCredentialRejectedError(PROVIDER);
+        }
+        if (hop >= BOOTSTRAP_MAX_HOPS) throw new AffiliateApiUnavailableError(PROVIDER);
+        current = next;
+        continue;
+      }
+      if (!res.ok) {
+        log.warn({ status: res.status }, 'ML bootstrap falhou');
+        throw new AffiliateApiUnavailableError(PROVIDER);
+      }
+      if (!jar._csrf) log.warn({ status: res.status }, 'ML bootstrap sem _csrf');
+      return { cookies: jar };
     }
-
-    await res.body?.cancel().catch(() => undefined);
-
-    if (res.status === 401 || res.status === 403) {
-      log.warn({ status: res.status }, 'ML bootstrap sessão inválida');
-      throw new AffiliateCredentialRejectedError(PROVIDER);
-    }
-
-    const setCookies = extractSetCookies(res.headers);
-    return { cookies: { ...sessionCookies, ...setCookies } };
   }
 
   async getActiveTag(cookies: Record<string, string>): Promise<string | null> {
@@ -112,6 +147,9 @@ export class MercadoLivreAffiliateClient implements IMercadoLivreAffiliateClient
         'User-Agent': USER_AGENT,
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        Origin: ML_BASE,
+        Referer: LINK_BUILDER_URL,
+        'X-Requested-With': 'XMLHttpRequest',
         Cookie: buildCookieHeader(allCookies),
       };
       if (csrf) headers['X-Csrf-Token'] = csrf;
@@ -179,6 +217,7 @@ export class MercadoLivreAffiliateClient implements IMercadoLivreAffiliateClient
       const headers: Record<string, string> = {
         'User-Agent': USER_AGENT,
         Accept: 'application/json',
+        Referer: LINK_BUILDER_URL,
         Cookie: buildCookieHeader(allCookies),
       };
       if (csrf) headers['X-Csrf-Token'] = csrf;
