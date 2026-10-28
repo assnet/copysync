@@ -77,11 +77,16 @@ dona de `tenantId`, `provider`, `version` (lock otimista da Fase 2 da escala, §
 - Contrato: `ISessionAuthStateRepository` ganha `findAllKeys(sessionId)` e `writeKeys({ sessionId,
   tenantId, provider, upserts, deletes })` (transação com a linha-mãe, timeout 30 s);
   `clearCredentials` e `deleteBySessionId` apagam também `session_auth_keys`.
-- **Um handle vivo por sessão** (`activeHandles`): `buildBaileysAuthState` grava o pendente do
-  handle anterior e o descarta ANTES de ler o banco (reconexão não perde nem regrava chave velha);
-  handle descartado nunca mais escreve. O adapter chama `releaseAuthState` (grava e solta) na
-  desconexão e `discardAuthState` (joga fora o pendente) no logout e na credencial revogada, antes
-  de `clearCredentials`: sem isso um flush atrasado ressuscitava credenciais após o logout.
+- **Um handle vivo por sessão** (`activeHandles`), builds da mesma sessão serializados
+  (`buildChain`): `buildBaileysAuthState` grava o pendente do handle anterior e o descarta ANTES
+  de ler o banco; o que o anterior não conseguiu gravar (banco fora) entra como pendente do novo.
+  Handle descartado nunca mais escreve. O adapter chama `releaseAuthState` (grava e solta) na
+  desconexão e `discardAuthState` (joga fora o pendente e **espera a escrita em voo**) no logout e
+  na credencial revogada, antes de `clearCredentials`: sem isso um flush atrasado ressuscitava
+  credenciais após o logout.
+- Flush: a escrita em voo tem promessa própria (`inFlight`); o timer só dispara. `forceFlush`
+  cancela o timer, espera a escrita em voo (que drena o que sujar) e grava o resto; chamadas
+  concorrentes não travam.
 - Falha de gravação esgotando as tentativas: chaves voltam a sujas e o flush **rearma sozinho**
   (backoff de 5× o retry, 1–30 s); sessão quieta não fica só em memória.
 - Comparação de valor igual usa texto canônico (chaves ordenadas): o `jsonb` reordena as chaves e,
@@ -122,9 +127,12 @@ dona de `tenantId`, `provider`, `version` (lock otimista da Fase 2 da escala, §
 - Unidade (`BaileysAuthStatePersistence.test.ts`, 10 casos): só chaves alteradas, valor igual não
   grava, delete, Buffer ida e volta, reboot lê da tabela, migração do blob (sem zerar; não repete),
   chave suja durante flush em voo, falha esgotando retries devolve as chaves a sujas, retry, debounce.
-- Ciclo de vida (mesmo arquivo, 5 casos): reconexão grava o pendente do handle antigo e o antigo
-  não escreve mais; `discardAuthState` + `clearCredentials` sem ressurreição; `releaseAuthState`;
-  valor idêntico após reboot com chaves reordenadas não grava; rearme após falha pelo timer.
+- Ciclo de vida e concorrência (mesmo arquivo, 9 casos): reconexão grava o pendente do handle
+  antigo e o antigo não escreve mais; `discardAuthState` + `clearCredentials` sem ressurreição
+  (inclusive com escrita em voo); `releaseAuthState`, inclusive com banco fora (pendente passa ao
+  handle novo); valor idêntico após reboot com chaves reordenadas não grava; rearme após falha
+  pelo timer; `forceFlush` concorrente durante escrita em voo não trava; builds concorrentes
+  serializados.
 - Postgres local descartável, script manual (não está no repo) com o
   `PrismaSessionAuthStateRepository` real: migração de blob com chave de 2 MB, `ON CONFLICT`,
   lote de 500, `clearCredentials`, `deleteBySessionId`.

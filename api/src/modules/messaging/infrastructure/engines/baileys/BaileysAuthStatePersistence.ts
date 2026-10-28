@@ -30,12 +30,35 @@ const CREDS_KEY = '__creds__';
 const PROVIDER = 'baileys';
 const log = logger.child({ module: 'BaileysAuthStatePersistence' });
 
+/** Alterações ainda não gravadas: chave → valor serializado, ou null = apagar. */
+export type DirtyMap = Map<string, unknown | null>;
+
+export interface BaileysAuthStateDeps {
+  /** Debounce/retry injetáveis em teste; padrão = env. */
+  flushDebounceMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+}
+
+export interface BaileysAuthStateHandle {
+  state: AuthenticationState;
+  saveCreds: () => Promise<void>;
+  /** Grava agora o que está sujo (desligamento, testes). */
+  forceFlush: () => Promise<void>;
+  /** Para de escrever para sempre; devolve o pendente não gravado. */
+  dispose: () => DirtyMap;
+  /** Resolve quando não há mais escrita em voo (nunca rejeita). */
+  settled: () => Promise<void>;
+}
+
 /**
  * Um handle vivo por sessão. Criar outro para a mesma sessão (reconexão) grava o que o antigo
  * tinha pendente e o descarta; handle descartado nunca mais escreve (um flush atrasado regravaria
  * chaves velhas por cima das novas, ou ressuscitaria credenciais depois do logout).
+ * Builds da mesma sessão são serializados (reconexão automática × conexão manual).
  */
 const activeHandles = new Map<string, BaileysAuthStateHandle>();
+const buildChain = new Map<string, Promise<unknown>>();
 
 export async function flushAllAuthStates(): Promise<void> {
   const entries = Array.from(activeHandles.entries());
@@ -46,21 +69,30 @@ export async function flushAllAuthStates(): Promise<void> {
   ));
 }
 
-/** Grava o pendente da sessão e descarta o handle (desconexão: o estado vale, só o handle morre). */
-export async function releaseAuthState(sessionId: string): Promise<void> {
+/**
+ * Grava o pendente da sessão e descarta o handle (desconexão: o estado vale, só o handle morre).
+ * Devolve o que NÃO conseguiu gravar, para o próximo handle não perder a alteração.
+ */
+export async function releaseAuthState(sessionId: string): Promise<DirtyMap> {
   const h = activeHandles.get(sessionId);
-  if (!h) return;
+  if (!h) return new Map();
   try {
     await h.forceFlush();
   } catch (err) {
-    log.error({ err, sessionId }, 'Auth state flush before release failed');
+    log.error({ err, sessionId }, 'Auth state flush before release failed; carrying pending keys over');
   }
-  h.dispose();
+  return h.dispose();
 }
 
-/** Descarta o handle SEM gravar (logout, credencial revogada, sessão apagada): o pendente é lixo. */
-export function discardAuthState(sessionId: string): void {
-  activeHandles.get(sessionId)?.dispose();
+/**
+ * Descarta o handle SEM gravar (logout, credencial revogada, sessão apagada): o pendente é lixo.
+ * Espera a escrita em voo terminar, para o `clearCredentials` seguinte não ser desfeito por ela.
+ */
+export async function discardAuthState(sessionId: string): Promise<void> {
+  const h = activeHandles.get(sessionId);
+  if (!h) return;
+  h.dispose();
+  await h.settled();
 }
 
 /** Texto canônico (chaves ordenadas) para comparar valores: o jsonb do Postgres reordena as chaves. */
@@ -96,32 +128,31 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export interface BaileysAuthStateDeps {
-  /** Debounce/retry injetáveis em teste; padrão = env. */
-  flushDebounceMs?: number;
-  maxRetries?: number;
-  retryDelayMs?: number;
-}
-
-export interface BaileysAuthStateHandle {
-  state: AuthenticationState;
-  saveCreds: () => Promise<void>;
-  forceFlush: () => Promise<void>;
-  dispose: () => void;
-}
-
-export async function buildBaileysAuthState(
+export function buildBaileysAuthState(
   sessionId: string,
   tenantId: string,
   authStateRepo: ISessionAuthStateRepository,
   deps: BaileysAuthStateDeps = {},
 ): Promise<BaileysAuthStateHandle> {
+  const prev = buildChain.get(sessionId) ?? Promise.resolve();
+  const run = prev.then(() => buildHandle(sessionId, tenantId, authStateRepo, deps));
+  buildChain.set(sessionId, run.catch(() => undefined));
+  return run;
+}
+
+async function buildHandle(
+  sessionId: string,
+  tenantId: string,
+  authStateRepo: ISessionAuthStateRepository,
+  deps: BaileysAuthStateDeps,
+): Promise<BaileysAuthStateHandle> {
   const flushDebounceMs = deps.flushDebounceMs ?? env.BAILEYS_AUTH_FLUSH_DEBOUNCE_MS;
   const maxRetries = deps.maxRetries ?? env.BAILEYS_AUTH_PERSIST_MAX_RETRIES;
   const retryDelayMs = deps.retryDelayMs ?? env.BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS;
 
-  // Reconexão: o handle anterior grava o pendente e morre ANTES de lermos o banco
-  await releaseAuthState(sessionId);
+  // Reconexão: o handle anterior grava o pendente e morre ANTES de lermos o banco; o que ele não
+  // conseguiu gravar entra como pendente deste
+  const carried = await releaseAuthState(sessionId);
 
   // ── Carga: chaves da tabela nova; sessão ainda no blob legado é migrada ───────
   const stateMap = new Map<string, StoredValue>();
@@ -138,6 +169,10 @@ export async function buildBaileysAuthState(
       log.info({ sessionId, keys: stateMap.size }, 'Auth state migrated from legacy blob to per-key rows');
     }
   }
+  for (const [key, value] of carried) {
+    if (value === null) stateMap.delete(key);
+    else stateMap.set(key, fromDb(value));
+  }
 
   // ── Credenciais ───────────────────────────────────────────────────────────────
   const rawCreds = stateMap.get(CREDS_KEY)?.value;
@@ -146,11 +181,10 @@ export async function buildBaileysAuthState(
     : initAuthCreds();
 
   // ── Sujeira por chave e flush ─────────────────────────────────────────────────
-  /** chave → valor novo, ou null = apagar. Só isto vai ao banco no próximo flush. */
-  const dirty = new Map<string, unknown | null>();
+  const dirty: DirtyMap = new Map(carried);
   let flushTimer: NodeJS.Timeout | null = null;
-  let flushPromise: Promise<void> | null = null;
-  let persistInFlight = false;
+  /** Escrita em voo (promessa própria: o timer só dispara, nunca é esperado). */
+  let inFlight: Promise<void> | null = null;
   let disposed = false;
 
   function setStateValue(key: string, value: unknown): boolean {
@@ -181,52 +215,52 @@ export async function buildBaileysAuthState(
   }
 
   /**
-   * Grava o que está sujo agora; chave que sujar DURANTE a gravação fica para a volta seguinte do
+   * Grava o que está sujo agora; chave que sujar DURANTE a gravação sai na volta seguinte do
    * laço. Se a gravação falhar de vez, as chaves voltam a sujas (não se perde a alteração).
+   * Chamadas concorrentes esperam a mesma escrita.
    */
-  async function flushState(): Promise<void> {
-    if (persistInFlight || disposed) return;
-    persistInFlight = true;
-    try {
-      while (dirty.size > 0 && !disposed) {
-        const snapshot = new Map(dirty);
-        dirty.clear();
-        const upserts: Record<string, unknown> = {};
-        const deletes: string[] = [];
-        for (const [key, value] of snapshot) {
-          if (value === null) deletes.push(key);
-          else upserts[key] = value;
+  function flushState(): Promise<void> {
+    if (inFlight) return inFlight;
+    if (disposed || dirty.size === 0) return Promise.resolve();
+    inFlight = (async () => {
+      try {
+        while (dirty.size > 0 && !disposed) {
+          const snapshot = new Map(dirty);
+          dirty.clear();
+          const upserts: Record<string, unknown> = {};
+          const deletes: string[] = [];
+          for (const [key, value] of snapshot) {
+            if (value === null) deletes.push(key);
+            else upserts[key] = value;
+          }
+          try {
+            await writeWithRetry(upserts, deletes);
+          } catch (err) {
+            for (const [key, value] of snapshot) if (!dirty.has(key)) dirty.set(key, value);
+            throw err;
+          }
         }
-        try {
-          await writeWithRetry(upserts, deletes);
-        } catch (err) {
-          for (const [key, value] of snapshot) if (!dirty.has(key)) dirty.set(key, value);
-          throw err;
-        }
+      } finally {
+        inFlight = null;
       }
-    } finally {
-      persistInFlight = false;
-      flushPromise = null;
-    }
+    })();
+    return inFlight;
   }
 
   /**
    * Agenda o flush e NÃO espera por ele: o Baileys chama `keys.set` no meio da descriptografia
    * de cada mensagem, e esperar o debounce (hoje até 10 s) + a gravação travava esse fluxo.
-   * Erro de gravação é logado e as chaves ficam sujas para o próximo flush.
+   * Falha final: loga e rearma com backoff (sessão quieta não fica só em memória).
    */
   function schedulePersist(delayMs = flushDebounceMs): void {
-    if (disposed || flushPromise) return;
-    flushPromise = new Promise<void>((resolve, reject) => {
-      flushTimer = setTimeout(() => {
-        flushTimer = null;
-        flushState().then(resolve).catch(reject);
-      }, delayMs);
-    }).catch((err) => {
-      log.error({ err, sessionId }, 'Failed to persist Baileys auth keys after retries');
-      // Rearma: sessão quieta não pode ficar com chaves só em memória até o próximo set
-      if (dirty.size > 0) schedulePersist(Math.min(Math.max(retryDelayMs * 5, 1_000), 30_000));
-    });
+    if (disposed || flushTimer) return;
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      flushState().catch((err) => {
+        log.error({ err, sessionId }, 'Failed to persist Baileys auth keys after retries');
+        if (dirty.size > 0) schedulePersist(Math.min(Math.max(retryDelayMs * 5, 1_000), 30_000));
+      });
+    }, delayMs);
   }
 
   // ── saveCreds — chamado pelo Baileys quando as credenciais mudam ──────────────
@@ -267,31 +301,37 @@ export async function buildBaileysAuthState(
     },
   };
 
-  /** Grava agora o que está sujo (desligamento, testes). Flush em voo: espera-o (ele drena o que sujar). */
+  /** Escrita em voo é esperada (ela drena o que sujar); o que sobrar sai em seguida. */
   async function forceFlush(): Promise<void> {
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
     }
-    if (persistInFlight && flushPromise) {
-      await flushPromise;
-      if (dirty.size === 0) return;
-    }
-    flushPromise = null;
+    if (inFlight) await inFlight;
     await flushState();
   }
 
-  function dispose(): void {
+  function dispose(): DirtyMap {
     disposed = true;
-    dirty.clear();
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
     }
+    const leftover = new Map(dirty);
+    dirty.clear();
     if (activeHandles.get(sessionId) === handle) activeHandles.delete(sessionId);
+    return leftover;
   }
 
-  const handle: BaileysAuthStateHandle = { state: { creds, keys }, saveCreds, forceFlush, dispose };
+  async function settled(): Promise<void> {
+    if (inFlight) await inFlight.catch(() => undefined);
+  }
+
+  const handle: BaileysAuthStateHandle = { state: { creds, keys }, saveCreds, forceFlush, dispose, settled };
+  // Build que escapou da serialização (não deveria): o anterior morre aqui, sem perder o pendente
+  const stale = activeHandles.get(sessionId);
+  if (stale) for (const [key, value] of stale.dispose()) dirty.set(key, value);
   activeHandles.set(sessionId, handle);
+  if (dirty.size > 0) schedulePersist();
   return handle;
 }

@@ -255,3 +255,69 @@ describe('buildBaileysAuthState — ciclo de vida do handle', () => {
     h.dispose();
   });
 });
+
+describe('buildBaileysAuthState — concorrência (revisão)', () => {
+  it('forceFlush concorrente durante escrita em voo não trava: os dois terminam e o pendente sai', async () => {
+    const repo = new InMemoryAuthRepo();
+    const h = await build(repo);
+    let release!: () => void;
+    const original = repo.writeKeys.bind(repo);
+    let first = true;
+    vi.spyOn(repo, 'writeKeys').mockImplementation(async (b) => {
+      if (first) { first = false; await new Promise<void>((r) => { release = r; }); }
+      return original(b);
+    });
+    await h.state.keys.set({ 'pre-key': { '1': kp1(1) } });
+    const a = h.forceFlush();
+    await tick();
+    await h.state.keys.set({ 'pre-key': { '2': kp1(2) } }); // agenda timer durante a escrita
+    const b = h.forceFlush(); // cancela o timer e espera a escrita em voo
+    release();
+    await Promise.race([Promise.all([a, b]), new Promise((_, rej) => setTimeout(() => rej(new Error('pendurou')), 2000))]);
+    expect(repo.keys.has('pre-key__1') && repo.keys.has('pre-key__2')).toBe(true);
+    h.dispose();
+  });
+
+  it('releaseAuthState com banco fora: o pendente passa para o handle novo e sai depois', async () => {
+    const repo = new InMemoryAuthRepo();
+    const a = await build(repo);
+    await a.saveCreds();
+    repo.failNext = 2;
+    const b = await build(repo); // release falha, mas o pendente vem junto
+    expect(repo.keys.has('__creds__')).toBe(false);
+    await b.forceFlush();
+    expect(repo.keys.has('__creds__')).toBe(true);
+    expect(b.state.creds.registrationId).toBe(a.state.creds.registrationId);
+    b.dispose();
+  });
+
+  it('discardAuthState espera a escrita em voo: clear depois dela não é desfeito', async () => {
+    const { discardAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    const h = await build(repo);
+    let release!: () => void;
+    const original = repo.writeKeys.bind(repo);
+    vi.spyOn(repo, 'writeKeys').mockImplementationOnce(async (b) => { await new Promise<void>((r) => { release = r; }); return original(b); });
+    await h.saveCreds();
+    const flushing = h.forceFlush();
+    await tick();
+    const discarding = discardAuthState(SESSION);
+    release();
+    await discarding;
+    await flushing;
+    await repo.clearCredentials(SESSION);
+    expect(repo.keys.size).toBe(0);
+  });
+
+  it('builds concorrentes da mesma sessão são serializados: fica um handle só, sem zumbi', async () => {
+    const repo = new InMemoryAuthRepo();
+    const [a, b] = await Promise.all([build(repo), build(repo)]);
+    await a.saveCreds();
+    await a.forceFlush();
+    expect(repo.batches).toHaveLength(0); // `a` já foi descartado por `b`
+    await b.saveCreds();
+    await b.forceFlush();
+    expect(repo.batches).toHaveLength(1);
+    b.dispose();
+  });
+});

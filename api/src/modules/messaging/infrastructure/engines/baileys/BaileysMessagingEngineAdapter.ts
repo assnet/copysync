@@ -212,7 +212,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       this.registry.delete(sessionId);
     }
     // Credenciais revogadas: nada do pendente pode ser gravado (ressuscitaria o login)
-    discardAuthState(sessionId);
+    await discardAuthState(sessionId);
     this.clearSessionGroupMetadata(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'LOGGED_OUT');
     internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId, tenantId });
@@ -1448,7 +1448,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     // Credencial revogada: o número pedido antes não vale para o novo pareamento
     this.pairingPhones.delete(sessionId);
     // Antes de limpar: um flush atrasado do handle regravaria as credenciais revogadas
-    discardAuthState(sessionId);
+    await discardAuthState(sessionId);
     try {
       await this.authStateRepo.clearCredentials(sessionId);
       baileysLogger.warn({ sessionId, reason }, 'Credentials revoked by WhatsApp — cleared');
