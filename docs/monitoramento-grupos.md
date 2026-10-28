@@ -129,7 +129,9 @@ limita). Recorte completo fica para a fase 2.
   sessão (`monitoring.settings.<sessionId>`, formulário com `key={sessionId}`), Salvar/Descartar só
   com alteração. "Reescrita com IA" e "Imagem das ofertas" aparecem como "Em breve".
 - Ofertas capturadas (status, motivo, cupom, foto indisponível, "Tentar de novo") e a fila de envio
-  da sessão (`SendQueuePanel`).
+  da sessão (`SendQueuePanel`). Captura `QUEUED` traz `offerStatus`, `sentCount`/`totalCount` e os
+  botões Pausar / Retomar / Parar **da oferta** (`OfferControlButtons`, `features/sendQueue`): é o
+  lugar natural do controle, um por oferta. Na fila os mesmos botões aparecem só na 1ª linha da oferta.
 - Privacidade: flags `monitoring.*` (sessão, nomes e fotos de grupos, texto e imagens capturados).
 
 ## 6. O que não fazer

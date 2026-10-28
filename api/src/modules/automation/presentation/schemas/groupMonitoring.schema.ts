@@ -1,4 +1,5 @@
 import { AFFILIATE_PROVIDERS } from '../../../integrations/domain/enums/AffiliateProvider';
+import { OFFER_STATUSES } from '../../../campaigns/domain/enums/OfferStatus';
 import { CAPTURED_OFFER_STATUSES } from '../../domain/entities/CapturedOffer';
 import { MONITOR_LIMITS } from '../../domain/services/monitorSettings';
 import { MINUTES_PER_DAY } from '../../domain/services/operatingWindow';
@@ -97,6 +98,9 @@ const capturedSchema = {
     coupon: nullableString,
     affiliateUrl: nullableString,
     offerId: nullableString,
+    offerStatus: { type: ['string', 'null'], enum: [...OFFER_STATUSES, null] },
+    sentCount: { type: 'integer' },
+    totalCount: { type: 'integer' },
     capturedAt: { type: 'string', format: 'date-time' },
     expiresAt: nullableDate,
     startsAt: nullableDate,

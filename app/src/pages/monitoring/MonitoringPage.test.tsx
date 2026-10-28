@@ -44,7 +44,7 @@ const captured: CapturedOffersResponse = {
   items: [{
     id: 'o1', status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', marketplace: 'SHOPEE', sourceGroupTitle: 'Promo Rival',
     sourceGroupAvatarUrl: null, textPreview: 'Fone bluetooth por R$ 50', imageUrl: null, coupon: 'DESC10', affiliateUrl: null,
-    offerId: null, capturedAt: new Date().toISOString(), expiresAt: null, startsAt: null, imageUnavailable: true,
+    offerId: null, offerStatus: null, sentCount: 0, totalCount: 0, capturedAt: new Date().toISOString(), expiresAt: null, startsAt: null, imageUnavailable: true,
   }],
   nextCursor: 'next',
 };

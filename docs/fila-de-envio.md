@@ -117,11 +117,12 @@ FIFO por `notBefore`. Oferta manual não fura o que já está na fila. Se o prod
 - "Abrir oferta" carrega no gerador uma oferta disparada em outra aba e sobe a tela até ela (só
   origem `GENERATOR`; bloqueado com edição pendente ou assistente aberto). Próximo envio atrasado
   mais de 30 s mostra aviso em vez de "Enviando…" parado.
-- Controles por linha (app 0.45.0): pausar / retomar / parar, nos mesmos endpoints do gerador
-  (`POST /campaigns/offers/:id/{pause|resume|cancel}`). Agem na **oferta** inteira, não só na linha
-  (tooltip diz isso). Parar pede confirmação e é final. Só aparecem em envio em curso ou aguardando
-  com oferta `SENDING`/`PAUSED`. 409 `OFFER_INVALID_STATE` (estado mudou antes do clique) só
-  recarrega a fila. Vale no Monitoramento e no Gerador; é o único controle da fila no Monitoramento.
+- Controles (app 0.46.0, `OfferControls.tsx`): pausar / retomar / parar, nos mesmos endpoints do
+  gerador (`POST /campaigns/offers/:id/{pause|resume|cancel}`). Agem na **oferta** inteira: na fila
+  os botões ficam só na 1ª linha de cada oferta (em curso ou aguardando), com "esta oferta · N
+  grupos"; no Monitoramento o controle principal fica no card de capturas, um por oferta. Parar pede
+  confirmação e é final. 409 `OFFER_INVALID_STATE` só recarrega. Não repetir botão por envio: o
+  owner pausou uma linha e viu 10 "Pausado" sem entender.
 - Polling (`useSendQueue`): 5 s com algo na fila, 20 s vazia, parado com a aba oculta, atualiza ao
   voltar. WebSocket fica para quando houver evento por tenant fora do chat.
 - Privacidade: recebe as flags da tela que o hospeda (gerador usa `offers.*`).

@@ -16,7 +16,11 @@ const item = (o: Partial<SendQueueItem>): SendQueueItem => ({
   notBefore: soon, claimedAt: null, updatedAt: soon, failureReason: null, waitingSession: false, ...o,
 });
 
-beforeEach(() => { get.mockReset(); pause.mockReset(); resume.mockReset(); cancel.mockReset(); });
+beforeEach(() => {
+  get.mockReset(); pause.mockReset(); resume.mockReset(); cancel.mockReset();
+  // Aba persistida (usePersistedState) não pode vazar de um teste para o outro
+  sessionStorage.clear(); localStorage.clear();
+});
 
 describe('SendQueuePanel', () => {
   it('fila vazia mostra o estado vazio', async () => {
@@ -87,10 +91,10 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     render(<SendQueuePanel sessionId="s1" />);
     await screen.findByText('Loja');
     const calls = get.mock.calls.length;
-    fireEvent.click(screen.getAllByLabelText(/^Pausar a oferta/)[0]);
+    fireEvent.click(screen.getAllByLabelText('Pausar oferta')[0]);
     await vi.waitFor(() => expect(pause).toHaveBeenCalledWith('o2'));
     await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
-    fireEvent.click(screen.getByLabelText(/^Retomar a oferta/));
+    fireEvent.click(screen.getByLabelText('Retomar oferta'));
     await vi.waitFor(() => expect(resume).toHaveBeenCalledWith('o3'));
     expect(screen.queryByLabelText('Abrir oferta')).not.toBeInTheDocument();
   });
@@ -100,7 +104,7 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     cancel.mockResolvedValue({});
     render(<SendQueuePanel sessionId="s1" />);
     await screen.findByText('Loja');
-    fireEvent.click(screen.getByLabelText(/^Parar a oferta/));
+    fireEvent.click(screen.getByLabelText('Parar oferta'));
     expect(cancel).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: 'Parar oferta' }));
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledWith('o2'));
@@ -111,12 +115,12 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     pause.mockRejectedValueOnce({ code: 'OFFER_INVALID_STATE' });
     render(<SendQueuePanel sessionId="s1" />);
     await screen.findByText('Loja');
-    fireEvent.click(screen.getByLabelText(/^Pausar a oferta/));
+    fireEvent.click(screen.getByLabelText('Pausar oferta'));
     await vi.waitFor(() => expect(pause).toHaveBeenCalled());
     expect(screen.queryByText(/Não foi possível alterar/)).not.toBeInTheDocument();
-    await vi.waitFor(() => expect(screen.getByLabelText(/^Pausar a oferta/)).not.toBeDisabled());
+    await vi.waitFor(() => expect(screen.getByLabelText('Pausar oferta')).not.toBeDisabled());
     pause.mockRejectedValueOnce(new Error('x'));
-    fireEvent.click(screen.getByLabelText(/^Pausar a oferta/));
+    fireEvent.click(screen.getByLabelText('Pausar oferta'));
     expect(await screen.findByText(/Não foi possível alterar/)).toBeInTheDocument();
   });
 
@@ -125,7 +129,20 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     render(<SendQueuePanel sessionId="s1" />);
     await screen.findByText('Loja');
     fireEvent.click(screen.getByRole('tab', { name: /Concluídos/ }));
-    expect(screen.queryByLabelText(/^Pausar a oferta/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/^Parar a oferta/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Pausar oferta')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Parar oferta')).not.toBeInTheDocument();
+  });
+
+  it('oferta com vários grupos: botões só na 1ª linha, com o alcance', async () => {
+    get.mockResolvedValue(lane([
+      item({ dispatchId: 'w1', offerId: 'o2', groupName: 'G1' }),
+      item({ dispatchId: 'w2', offerId: 'o2', groupName: 'G2' }),
+      item({ dispatchId: 'w3', offerId: 'o2', groupName: 'G3' }),
+    ]));
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    expect(screen.getAllByLabelText('Pausar oferta')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Parar oferta')).toHaveLength(1);
+    expect(screen.getByText('esta oferta · 3 grupos')).toBeInTheDocument();
   });
 });

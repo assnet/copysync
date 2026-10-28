@@ -9,6 +9,7 @@ import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { serverNow, serverToLocal } from '@/services/serverClock';
 import type { CapturedOfferItem, CapturedOfferStatus } from '@/types/api.types';
+import { OfferControlButtons, OfferControlFeedback, isControllableOffer, useOfferControl, type OfferControl } from '@/features/sendQueue/components/OfferControls';
 import { useCapturedOffers } from '../hooks/useCapturedOffers';
 import { monitoringStrings } from '../strings';
 import { RETRYABLE_REASONS } from '../utils/settingsDraft';
@@ -76,13 +77,15 @@ export function canRetryCaptured(item: Pick<CapturedOfferItem, 'status' | 'reaso
     && (RETRYABLE_REASONS as readonly string[]).includes(item.reason);
 }
 
-function CapturedOfferRow({ item, onRetry }: { item: CapturedOfferItem; onRetry: (id: string) => Promise<void> }) {
+function CapturedOfferRow({ item, onRetry, control }: { item: CapturedOfferItem; onRetry: (id: string) => Promise<void>; control: OfferControl }) {
   const blurText = useBlur('monitoring.capturedText');
   const blurImage = useBlur('monitoring.capturedImages');
   const blurGroup = useBlur('monitoring.groupNames');
   const theme = useTheme();
   const [retrying, setRetrying] = useState(false);
   const waitingStart = item.status === 'QUEUED' && item.startsAt !== null && Date.parse(item.startsAt) > serverNow();
+  const queued = item.status === 'QUEUED' && item.offerId !== null && item.offerStatus !== null;
+  const controllable = queued && isControllableOffer(item.offerStatus);
 
   const retry = async () => {
     setRetrying(true);
@@ -158,6 +161,17 @@ function CapturedOfferRow({ item, onRetry }: { item: CapturedOfferItem; onRetry:
             <Typography variant="caption" color="text.secondary">{t.startsAt(timeOf(item.startsAt))}</Typography>
           )}
           {item.expiresAt && <Typography variant="caption" color="text.secondary">{t.expiresAt(timeOf(item.expiresAt))}</Typography>}
+          {queued && item.totalCount > 0 && (
+            <Tooltip title={t.progressTooltip} arrow describeChild>
+              <Chip size="small" variant="outlined" label={t.progress(item.sentCount, item.totalCount)} sx={{ color: 'text.secondary' }} />
+            </Tooltip>
+          )}
+          {queued && item.offerStatus === 'PAUSED' && (
+            <Chip size="small" variant="outlined" color="warning" label={t.offerPaused} />
+          )}
+          {queued && (item.offerStatus === 'CANCELLED' || item.offerStatus === 'SENT' || item.offerStatus === 'FAILED') && (
+            <Chip size="small" variant="outlined" label={t.offerStatus[item.offerStatus]} sx={{ color: 'text.secondary' }} />
+          )}
         </Box>
 
         {waitingStart && item.startsAt && (
@@ -166,6 +180,12 @@ function CapturedOfferRow({ item, onRetry }: { item: CapturedOfferItem; onRetry:
           </Box>
         )}
       </Box>
+
+      {controllable && item.offerId && item.offerStatus && (
+        <Box sx={{ alignSelf: 'center', flexShrink: 0, flexBasis: { xs: '100%', sm: 'auto' }, pl: { xs: '76px', sm: 0 } }}>
+          <OfferControlButtons offerId={item.offerId} offerStatus={item.offerStatus} control={control} variant="text" waitingCount={item.totalCount - item.sentCount} />
+        </Box>
+      )}
 
       {canRetryCaptured(item) && (
         // Celular: desce para baixo do conteúdo, alinhado ao texto (64 px da foto + 12 px do vão)
@@ -193,6 +213,7 @@ function CapturedOfferRow({ item, onRetry }: { item: CapturedOfferItem; onRetry:
 export function CapturedOffersList({ sessionId }: { sessionId: string }) {
   const { items, nextCursor, loading, loadingMore, failed, refresh, loadMore, retry } = useCapturedOffers(sessionId);
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
+  const control = useOfferControl(refresh);
 
   const onRetry = async (id: string) => {
     try {
@@ -228,7 +249,7 @@ export function CapturedOffersList({ sessionId }: { sessionId: string }) {
       ) : (
         <>
           <Box component="ul" sx={{ m: 0, p: 0, '& > li + li': { borderTop: 1, borderColor: 'divider' } }}>
-            {items.map((item) => <CapturedOfferRow key={item.id} item={item} onRetry={onRetry} />)}
+            {items.map((item) => <CapturedOfferRow key={item.id} item={item} onRetry={onRetry} control={control} />)}
           </Box>
           {failed && <Alert severity="error" sx={{ mt: 1 }}>{t.loadError}</Alert>}
           {nextCursor && (
@@ -245,6 +266,7 @@ export function CapturedOffersList({ sessionId }: { sessionId: string }) {
         </>
       )}
 
+      <OfferControlFeedback control={control} />
       <Snackbar open={Boolean(toast)} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         {toast ? <Alert severity={toast.severity} onClose={() => setToast(null)} sx={{ width: '100%' }}>{toast.message}</Alert> : undefined}
       </Snackbar>

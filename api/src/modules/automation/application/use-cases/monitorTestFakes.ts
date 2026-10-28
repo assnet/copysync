@@ -84,11 +84,11 @@ export class InMemoryCapturedOfferRepository implements ICapturedOfferRepository
   }
   async list(tenantId: string, sessionId: string, offset: number, limit: number): Promise<CapturedOfferListItem[]> {
     return this.items.filter((c) => c.tenantId === tenantId && c.sessionId === sessionId).slice(offset, offset + limit)
-      .map((c) => ({ ...c, sourceGroupTitle: 'Concorrente', sourceGroupAvatarUrl: null }));
+      .map((c) => ({ ...c, sourceGroupTitle: 'Concorrente', sourceGroupAvatarUrl: null, offerStatus: null, sentCount: 0, totalCount: 0 }));
   }
   async findById(tenantId: string, id: string) {
     const c = this.items.find((x) => x.tenantId === tenantId && x.id === id);
-    return c ? { ...c, sourceGroupTitle: 'Concorrente', sourceGroupAvatarUrl: null } : null;
+    return c ? { ...c, sourceGroupTitle: 'Concorrente', sourceGroupAvatarUrl: null, offerStatus: null, sentCount: 0, totalCount: 0 } : null;
   }
   async resetForRetry(tenantId: string, id: string) {
     const c = this.items.find((x) => x.tenantId === tenantId && x.id === id && (x.status === 'SKIPPED' || x.status === 'FAILED'));

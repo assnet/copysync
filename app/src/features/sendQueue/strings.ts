@@ -67,9 +67,15 @@ export const sendQueueStrings = {
   } satisfies Record<OfferOrigin, string>,
   openOffer: 'Abrir oferta',
   control: {
-    pause: 'Pausar a oferta: segura os envios que faltam; o que está saindo termina',
-    resume: 'Retomar a oferta: reagenda os envios que faltam a partir de agora',
-    stop: 'Parar a oferta: cancela os envios que ainda não saíram (não dá para desfazer)',
+    pause: 'Pausar oferta',
+    resume: 'Retomar oferta',
+    stop: 'Parar oferta',
+    pauseTooltip: 'Segura os envios que faltam desta oferta em todos os grupos; o que está saindo termina.',
+    resumeTooltip: 'Reagenda os envios que faltam desta oferta a partir de agora.',
+    stopTooltip: 'Cancela os envios desta oferta que ainda não saíram, em todos os grupos. Não dá para desfazer.',
+    scope: (waiting: number) => (waiting === 1 ? ' 1 envio aguardando.' : ` ${waiting} envios aguardando.`),
+    /** Linha da fila que carrega os botões da oferta (as demais linhas da mesma oferta não repetem). */
+    rowScope: (n: number) => (n === 1 ? 'esta oferta · 1 grupo' : `esta oferta · ${n} grupos`),
   },
   controlError: 'Não foi possível alterar a oferta. Atualize a fila e tente de novo.',
   stopConfirmTitle: 'Parar esta oferta?',

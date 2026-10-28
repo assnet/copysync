@@ -4,6 +4,7 @@ import type {
 } from '../../domain/contracts/ICapturedOfferRepository';
 import type { CapturedOffer, CapturedOfferReason, CapturedOfferStatus } from '../../domain/entities/CapturedOffer';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { OfferStatus } from '../../../campaigns/domain/enums/OfferStatus';
 
 type Row = Omit<CapturedOffer, 'status' | 'marketplace'> & { status: string; marketplace: string | null };
 
@@ -86,12 +87,29 @@ export class PrismaCapturedOfferRepository implements ICapturedOfferRepository {
       skip: offset,
       take: limit,
     });
-    return rows.map(toListItem);
+    return this.withOfferProgress(tenantId, rows.map(toListItem));
   }
 
   async findById(tenantId: string, id: string): Promise<CapturedOfferListItem | null> {
     const r = await this.prisma.capturedOffer.findFirst({ where: { id, tenantId }, include: withGroup });
-    return r ? toListItem(r) : null;
+    return r ? (await this.withOfferProgress(tenantId, [toListItem(r)]))[0] ?? null : null;
+  }
+
+  /** Estado e progresso da oferta de cada captura QUEUED (uma consulta para a página inteira). */
+  private async withOfferProgress(tenantId: string, items: CapturedOfferListItem[]): Promise<CapturedOfferListItem[]> {
+    const ids = [...new Set(items.map((i) => i.offerId).filter((id): id is string => id !== null))];
+    if (ids.length === 0) return items;
+    const offers = await this.prisma.offer.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true, status: true, dispatches: { select: { status: true } } },
+    });
+    const byId = new Map(offers.map((o) => [o.id, o]));
+    return items.map((i) => {
+      const o = i.offerId ? byId.get(i.offerId) : undefined;
+      if (!o) return i;
+      const sentCount = o.dispatches.filter((d) => d.status === 'SENT').length;
+      return { ...i, offerStatus: o.status as OfferStatus, sentCount, totalCount: o.dispatches.length };
+    });
   }
 
   async resetForRetry(tenantId: string, id: string): Promise<boolean> {
@@ -111,6 +129,7 @@ function toListItem(r: Row & { monitoredGroup: { conversation: { groupName: stri
   return {
     ...toDomain(r),
     sourceGroupTitle: r.monitoredGroup?.conversation.groupName ?? null,
+    offerStatus: null, sentCount: 0, totalCount: 0,
     sourceGroupAvatarUrl: r.monitoredGroup?.conversation.groupAvatarUrl ?? null,
   };
 }

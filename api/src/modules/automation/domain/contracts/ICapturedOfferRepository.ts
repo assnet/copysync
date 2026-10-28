@@ -1,5 +1,6 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { CapturedOffer, CapturedOfferReason } from '../entities/CapturedOffer';
+import type { OfferStatus } from '../../../campaigns/domain/enums/OfferStatus';
 
 export interface NewCapturedOffer {
   tenantId: string;
@@ -26,6 +27,11 @@ export interface CapturedOfferResolution {
 export interface CapturedOfferListItem extends CapturedOffer {
   sourceGroupTitle: string | null;
   sourceGroupAvatarUrl: string | null;
+  /** Estado da oferta na fila (só com `offerId`): é nela que pausar/retomar/parar agem. */
+  offerStatus: OfferStatus | null;
+  /** Envios da oferta: concluídos × total (grupos de disparo). 0/0 sem oferta. */
+  sentCount: number;
+  totalCount: number;
 }
 
 export interface ICapturedOfferRepository {

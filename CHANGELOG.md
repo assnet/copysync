@@ -9,6 +9,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — api (0.39.0) · app (0.46.0) — controle da oferta no nível certo
+
+Feedback do owner (2026-10-28): pausar uma linha da fila pausava "todos do mesmo item" e o card de
+capturas não tinha controle nenhum. Pausar/retomar/parar sempre agiram na **oferta** (API); a UI
+mostrava os botões por envio (grupo), o que confundia.
+
+- **`PrismaCapturedOfferRepository.ts`**, **`ICapturedOfferRepository.ts`**, **`GroupMonitorDTO.ts`**, **`groupMonitoring.schema.ts`** — captura devolve `offerStatus`, `sentCount` e `totalCount` da oferta (uma consulta por página). Fakes de teste atualizados.
+- **`OfferControls.tsx`** (novo, `features/sendQueue`) — `useOfferControl`, `OfferControlButtons` (`icon` | `text`) e `OfferControlFeedback` compartilhados; tooltips dizem o alcance ("N envios aguardando").
+- **`CapturedOffersList.tsx`** — captura `QUEUED` mostra "x de N grupos", chip "Pausada"/"Enviada"/"Parada" e botões Pausar/Retomar/Parar da oferta.
+- **`SendQueuePanel.tsx`** — botões só na 1ª linha de cada oferta (em curso ou aguardando), com "esta oferta · N grupos"; as demais linhas da mesma oferta não repetem. **`strings.ts`** — rótulos curtos + tooltips.
+
+
 ### Added — app (0.45.0) — controles na fila de envio (Monitoramento e Gerador)
 
 - **`SendQueuePanel.tsx`** — pausar / retomar / parar por linha da fila, agindo na oferta (todos os envios dela) pelos endpoints `POST /campaigns/offers/:id/{pause|resume|cancel}` já existentes. Parar pede confirmação (`ConfirmDialog`, final). 409 `OFFER_INVALID_STATE` só recarrega a fila; outra falha mostra alerta. Botões só em envio em curso ou aguardando com oferta enviando/pausada; concluídos não têm. Antes, a tela de Monitoramento não tinha nenhum controle sobre a fila (o `SendQueuePanel` era montado sem "Abrir oferta", e oferta de origem `MONITORING` não abre no gerador).

@@ -582,6 +582,11 @@ export interface CapturedOfferItem {
   affiliateUrl: string | null;
   /** Oferta criada na fila de envio (QUEUED). */
   offerId: string | null;
+  /** Estado da oferta na fila: pausar/retomar/parar agem nela, em todos os grupos de disparo. */
+  offerStatus: OfferStatus | null;
+  /** Envios concluídos × total da oferta (0/0 sem oferta). */
+  sentCount: number;
+  totalCount: number;
   capturedAt: string;
   expiresAt: string | null;
   /** 1º envio previsto (QUEUED). */
