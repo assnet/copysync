@@ -111,6 +111,41 @@ describe('CancelOfferUseCase', () => {
   });
 });
 
+describe('Pausar/parar compacta a faixa da sessão', () => {
+  function laneSetup(status: 'SENDING' | 'PAUSED' = 'SENDING') {
+    const s = setup({ status });
+    // Todos os envios da oferta 1 na sessão s1; c2 começou a sair em NOW
+    for (const d of s.dispatches.items) d.sessionId = 's1';
+    // Oferta 2, encostada no fim da faixa: ficaria 2 h à frente mesmo com a oferta 1 fora do caminho
+    s.offers.items.push(makeOffer({ id: 'offer-2', status: 'SENDING' }));
+    const far = s.dispatches.add({ offerId: 'offer-2', conversationId: 'c9', sessionId: 's1', notBefore: new Date(LATER.getTime() + 2 * 3600_000) });
+    const far2 = s.dispatches.add({ offerId: 'offer-2', conversationId: 'c10', sessionId: 's1', notBefore: new Date(LATER.getTime() + 2 * 3600_000 + 150_000) });
+    return { ...s, far, far2 };
+  }
+
+  it('pausar: a próxima oferta vem para agora (último envio foi há mais de uma folga)', async () => {
+    const { deps, input, far, far2 } = laneSetup();
+    await new PauseOfferUseCase(deps).execute(input);
+    // piso = claimedAt(NOW) + 150 s (rand 0,5 em 100–200 s) < LATER → "agora"
+    expect(far.notBefore).toEqual(LATER);
+    expect(far2.notBefore).toEqual(new Date(LATER.getTime() + 150_000));
+  });
+
+  it('parar: idem', async () => {
+    const { deps, input, far } = laneSetup();
+    await new CancelOfferUseCase(deps).execute(input);
+    expect(far.notBefore).toEqual(LATER);
+  });
+
+  it('oferta agendada para depois não é puxada', async () => {
+    const s = laneSetup();
+    s.offers.items.find((o) => o.id === 'offer-2')!.scheduledAt = new Date(LATER.getTime() + 3600_000);
+    const before = s.far.notBefore;
+    await new PauseOfferUseCase(s.deps).execute(s.input);
+    expect(s.far.notBefore).toEqual(before);
+  });
+});
+
 describe('ResumeOfferUseCase — início agendado', () => {
   it('pausada antes do horário marcado: retoma a partir do agendamento, não de agora', async () => {
     const at = new Date(LATER.getTime() + 3 * 60 * 60_000);

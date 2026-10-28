@@ -3,6 +3,7 @@ import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDisp
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { appendToLanes, laneGapMs } from '../../domain/services/appendToLanes';
+import { compactLane } from '../../domain/services/compactLane';
 import { dispatchStartAt } from '../../domain/offerSchedule';
 import { OfferInvalidStateError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
@@ -38,15 +39,42 @@ abstract class OfferControlUseCase {
     const offer = await this.load(input);
     return toOfferDto(offer, await this.deps.dispatches.listByOffer(input.offerId, input.tenantId));
   }
+
+  protected async interval(tenantId: string) {
+    const config = await this.deps.configs.find(tenantId);
+    return {
+      minMs: (config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min) * 1000,
+      maxMs: (config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max) * 1000,
+    };
+  }
+
+  /**
+   * Depois de pausar ou parar: puxa as ofertas seguintes das sessões desta oferta para fechar o
+   * buraco (`compactLane`). O intervalo é o da configuração do gerador (mesma simplificação da
+   * retomada).
+   */
+  protected async compactLanes(input: OfferControlInput): Promise<void> {
+    const mine = await this.deps.dispatches.listByOffer(input.offerId, input.tenantId);
+    const sessionIds = [...new Set(mine.flatMap((d) => (d.sessionId ? [d.sessionId] : [])))];
+    if (sessionIds.length === 0) return;
+    const now = (this.deps.now ?? (() => new Date()))();
+    const interval = await this.interval(input.tenantId);
+    for (const sessionId of sessionIds) {
+      const lane = await this.deps.dispatches.laneState(input.tenantId, sessionId, now);
+      const moved = compactLane(lane.open.map((d) => ({ id: d.id, notBefore: d.notBefore })), { now, lastClaimedAt: lane.lastClaimedAt, interval, rand: this.deps.rand });
+      if (moved.length > 0) await this.deps.dispatches.rescheduleMany(input.tenantId, moved);
+    }
+  }
 }
 
-/** SENDING → PAUSED. O worker deixa de reivindicar os QUEUED desta oferta. */
+/** SENDING → PAUSED. O worker deixa de reivindicar os QUEUED desta oferta; a faixa é compactada. */
 export class PauseOfferUseCase extends OfferControlUseCase {
   async execute(input: OfferControlInput): Promise<OfferDTO> {
     const offer = await this.load(input);
     if (!(await this.deps.offers.transitionStatus(offer.id, input.tenantId, ['SENDING'], 'PAUSED'))) {
       throw new OfferInvalidStateError(offer.id, offer.status);
     }
+    await this.compactLanes(input);
     return this.result(input);
   }
 }
@@ -61,11 +89,7 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
     const offer = await this.load(input);
     if (offer.status !== 'PAUSED') throw new OfferInvalidStateError(offer.id, offer.status);
 
-    const config = await this.deps.configs.find(input.tenantId);
-    const interval = {
-      minMs: (config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min) * 1000,
-      maxMs: (config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max) * 1000,
-    };
+    const interval = await this.interval(input.tenantId);
     const queued = (await this.deps.dispatches.listByOffer(offer.id, input.tenantId))
       .filter((d) => d.status === 'QUEUED')
       .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime());
@@ -95,6 +119,7 @@ export class CancelOfferUseCase extends OfferControlUseCase {
       throw new OfferInvalidStateError(offer.id, offer.status);
     }
     await this.deps.dispatches.cancelQueued(offer.id, input.tenantId);
+    await this.compactLanes(input);
     return this.result(input);
   }
 }

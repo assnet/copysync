@@ -53,6 +53,13 @@ export interface IOfferDispatchRepository {
   /** Parar: QUEUED da oferta → CANCELLED. O que está SENDING termina. Retorna quantos. */
   cancelQueued(offerId: string, tenantId: string): Promise<number>;
   /**
+   * Faixa de uma sessão para compactar (`compactLane`): QUEUED de ofertas SENDING já começadas
+   * (sem início agendado depois de `now`), e o início do último envio da sessão (SENDING/SENT).
+   */
+  laneState(tenantId: string, sessionId: string, now: Date): Promise<{ open: OfferDispatch[]; lastClaimedAt: Date | null }>;
+  /** Grava `notBefore` novo em envios ainda QUEUED (os que já saíram ficam). Retorna quantos. */
+  rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]): Promise<number>;
+  /**
    * Renova a posse logo antes de enviar (`claimedAt = now`). false = envio já não é deste
    * token (devolvido à fila e reivindicado por outro): não envia.
    */

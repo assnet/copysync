@@ -107,6 +107,22 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     queued.forEach((d, i) => { d.notBefore = slots[i]!; });
     return queued.length;
   }
+  async laneState(tenantId: string, sessionId: string, now: Date) {
+    const open = this.items
+      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.status === 'QUEUED')
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!o.scheduledAt || o.scheduledAt <= now); })
+      .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime())
+      .map((d) => ({ ...d }));
+    const last = this.items
+      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && (d.status === 'SENDING' || d.status === 'SENT') && d.claimedAt)
+      .reduce<Date | null>((m, d) => (!m || d.claimedAt! > m ? d.claimedAt! : m), null);
+    return { open, lastClaimedAt: last };
+  }
+  async rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]) {
+    let n = 0;
+    for (const s of slots) { const d = this.items.find((x) => x.id === s.id && x.tenantId === tenantId && x.status === 'QUEUED'); if (d) { d.notBefore = s.notBefore; n++; } }
+    return n;
+  }
   async cancelQueued(offerId: string, tenantId: string) {
     const queued = (await this.listByOffer(offerId, tenantId)).filter((d) => d.status === 'QUEUED');
     for (const d of queued) d.status = 'CANCELLED';

@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — api (0.40.0) — pausar/parar compacta a faixa de envio
+
+- **`compactLane.ts`** (novo, `campaigns/domain/services`) — regra pura: depois de uma pausa/parada, os envios seguintes da sessão vêm para uma folga sorteada após o último envio; buracos maiores que o intervalo máximo viram folga; ordem e espaçamentos normais ficam; sessão que nunca enviou mantém o primeiro horário. Testes próprios.
+- **`OfferSendControlUseCases.ts`** — `PauseOfferUseCase` e `CancelOfferUseCase` chamam `compactLanes` nas sessões da oferta. **`IOfferDispatchRepository`** / **`PrismaOfferDispatchRepository`** — `laneState` (QUEUED de ofertas SENDING já começadas + último `claimedAt`) e `rescheduleMany`. Fakes e testes de controle cobrem pausar, parar e oferta agendada.
+- **`docs/fila-de-envio.md`** §2.3 — por quê: owner pausou uma oferta com intervalo 1–2 min e o próximo envio ficou a 1 h.
+
+
 ### Changed — api (0.39.0) · app (0.46.0) — controle da oferta no nível certo
 
 Feedback do owner (2026-10-28): pausar uma linha da fila pausava "todos do mesmo item" e o card de

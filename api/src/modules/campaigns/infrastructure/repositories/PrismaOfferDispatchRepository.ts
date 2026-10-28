@@ -148,6 +148,31 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     });
   }
 
+  async laneState(tenantId: string, sessionId: string, now: Date): Promise<{ open: OfferDispatch[]; lastClaimedAt: Date | null }> {
+    const [open, last] = await Promise.all([
+      this.prisma.offerDispatch.findMany({
+        where: {
+          tenantId, sessionId, status: 'QUEUED',
+          offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: now } }] },
+        },
+        orderBy: { notBefore: 'asc' },
+      }),
+      this.prisma.offerDispatch.aggregate({
+        where: { tenantId, sessionId, status: { in: ['SENDING', 'SENT'] }, claimedAt: { not: null } },
+        _max: { claimedAt: true },
+      }),
+    ]);
+    return { open: open.map(Mapper.toDomain), lastClaimedAt: last._max.claimedAt ?? null };
+  }
+
+  async rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]): Promise<number> {
+    if (slots.length === 0) return 0;
+    const counts = await this.prisma.$transaction(
+      slots.map((s) => this.prisma.offerDispatch.updateMany({ where: { id: s.id, tenantId, status: 'QUEUED' }, data: { notBefore: s.notBefore } })),
+    );
+    return counts.reduce((n, c) => n + c.count, 0);
+  }
+
   async cancelQueued(offerId: string, tenantId: string): Promise<number> {
     const { count } = await this.prisma.offerDispatch.updateMany({
       where: { offerId, tenantId, status: 'QUEUED' },

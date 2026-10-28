@@ -85,6 +85,15 @@ não segura um envio de agora. Oferta pausada não conta; ao retomar, vai para o
 O enfileirar não usa lock: duas ofertas disparadas no mesmo instante podem prever horários que se
 sobrepõem. O claim (2.2) garante o espaçamento real; só a previsão fica otimista.
 
+**Pausar ou parar compacta a faixa** (`compactLane`, api 0.40.0). Antes, a oferta seguinte ficava
+com o horário marcado lá na frente (o painel mostrava "próximo em 1 h" com intervalo de 1–2 min).
+Agora, para cada sessão da oferta pausada/parada: os QUEUED de ofertas `SENDING` já começadas são
+puxados na ordem; o primeiro vai para uma folga sorteada depois do último envio da sessão (nunca
+antes do que já estava marcado, nunca para o passado; sessão que nunca enviou mantém o primeiro
+horário, pode ser "esperar para começar"), e cada espaço maior que o intervalo máximo vira uma
+folga sorteada; espaçamentos normais não mudam. Oferta com `scheduledAt` futuro não entra.
+Intervalo: o da configuração do gerador (mesma simplificação da retomada).
+
 ### 2.4 Prioridade
 
 FIFO por `notBefore`. Oferta manual não fura o que já está na fila. Se o produto pedir:
