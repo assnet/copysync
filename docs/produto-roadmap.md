@@ -53,7 +53,9 @@ guarda o plano, não o preço.
 | Rodízio de links inteligentes | ✅ | ✅ | ✅ |
 | Menção a todos os participantes | — | ✅ | ✅ |
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
-| Gerador de ofertas automático | — | ✅ | ✅ |
+| Gerador de ofertas | ✅ | ✅ | ✅ |
+| Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
+| Monitorar em um WhatsApp e disparar em outro (sessão cruzada) | — | — | ✅ (exclusivo) |
 | Site pra bio | — | ✅ | ✅ |
 | Domínio personalizado | — | ✅ | ✅ |
 | Template Instagram | — | — | ✅ (exclusivo) |

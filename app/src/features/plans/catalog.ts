@@ -39,6 +39,8 @@ const HINTS = {
   linkRotation: 'Cada envio sai com o seu link de afiliado refeito, alternando entre as credenciais cadastradas.',
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
   customDomain: 'Sua página de ofertas no seu próprio domínio, em vez do endereço padrão.',
+  typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
+  crossSession: 'Monitore grupos em um WhatsApp e dispare nos grupos de outro WhatsApp conectado na mesma conta.',
 };
 
 export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
@@ -55,6 +57,8 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: '5 grupos de disparo', hint: HINTS.broadcastGroups },
       { label: 'Disparo em massa com agendamento de horários' },
       { label: 'Rodízio de links inteligentes', hint: HINTS.linkRotation },
+      { label: 'Gerador de ofertas' },
+      { label: 'Envio "digitando…" antes de cada oferta', hint: HINTS.typing },
       { label: 'Shopee, Amazon e Mercado Livre' },
       { label: 'Suporte 24/7 e aulas em vídeo' },
     ],
@@ -74,7 +78,6 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: '2 grupos monitorados por canal', hint: HINTS.monitoredGroups },
       { label: '10 grupos de disparo por canal', hint: HINTS.broadcastGroups },
       { label: 'Menção a todos os participantes', hint: HINTS.mentionAll },
-      { label: 'Gerador de ofertas automático' },
       { label: 'Página de ofertas para a bio com domínio personalizado', hint: HINTS.customDomain },
       { label: 'Suporte prioritário 24/7' },
     ],
@@ -92,6 +95,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: '2 WhatsApp + 2 Telegram' },
       { label: '6 grupos monitorados por canal', hint: HINTS.monitoredGroups },
       { label: '40 grupos de disparo por canal', hint: HINTS.broadcastGroups },
+      { label: 'Monitorar em um WhatsApp e disparar em outro', hint: HINTS.crossSession, exclusive: true },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
     ],
