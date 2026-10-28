@@ -57,6 +57,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed
+
+#### Backend — prisma/seed
+
+- **`prisma/seed.ts`** — Lista `ADMINS` virou `TENANT_USERS` com campo `role`; o upsert de `UserTenant` passa a atualizar `role`. Adicionadas duas contas isoladas, cada uma com tenant próprio (`pedro-rodrigues`, `israel-daywis`) e dono ADMIN sem `isSuperAdmin`: `pedrorodrigues.silva5@gmail.com` e `eu.israeldaywis@gmail.com`. Flag `exclusive` remove vínculos com outros tenants (os dois estavam como `OPERATOR` no `acme-corp` em produção). Não têm acesso a Acme/Beta (isolamento por `tenantId`). Senha padrão do seed.
+
 ### Added
 
 #### Backend — Provedores de IA (`assistants`)

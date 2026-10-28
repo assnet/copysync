@@ -8,14 +8,18 @@ const PASSWORD = 'Teste123@321';
 const TENANTS = [
   { slug: 'acme-corp', name: 'Acme Corp' },
   { slug: 'beta-labs', name: 'Beta Labs' },
+  // Contas isoladas: um tenant por usuário (mesmo modelo do ProvisionTenantUseCase)
+  { slug: 'pedro-rodrigues', name: 'Pedro Rodrigues' },
+  { slug: 'israel-daywis', name: 'Israel Daywis' },
 ] as const;
 
 const TENANT_USERS = [
   { email: 'admin-acme@copysync.app', name: 'Admin Acme', tenantSlug: 'acme-corp', role: 'ADMIN' },
   { email: 'admin-beta@copysync.app', name: 'Admin Beta', tenantSlug: 'beta-labs', role: 'ADMIN' },
-  // Usuários comuns (OPERATOR): sem permissão de admin no tenant
-  { email: 'pedrorodrigues.silva5@gmail.com', name: 'Pedro Rodrigues', tenantSlug: 'acme-corp', role: 'OPERATOR' },
-  { email: 'eu.israeldaywis@gmail.com', name: 'Israel Daywis', tenantSlug: 'acme-corp', role: 'OPERATOR' },
+  // Contas comuns: dono (ADMIN) só do próprio tenant, isSuperAdmin=false; não enxergam Acme/Beta.
+  // exclusive: remove qualquer vínculo com outro tenant (ex.: OPERATOR no acme-corp deixado por seed antigo)
+  { email: 'pedrorodrigues.silva5@gmail.com', name: 'Pedro Rodrigues', tenantSlug: 'pedro-rodrigues', role: 'ADMIN', exclusive: true },
+  { email: 'eu.israeldaywis@gmail.com', name: 'Israel Daywis', tenantSlug: 'israel-daywis', role: 'ADMIN', exclusive: true },
 ] as const;
 
 async function main(): Promise<void> {
@@ -78,6 +82,13 @@ async function main(): Promise<void> {
       create: { userId: user.id, tenantId, role: a.role },
     });
 
+    if ('exclusive' in a && a.exclusive) {
+      const removed = await prisma.userTenant.deleteMany({
+        where: { userId: user.id, tenantId: { not: tenantId } },
+      });
+      if (removed.count > 0) console.log(`🧹  ${user.email}: removido de ${removed.count} outro(s) tenant(s)`);
+    }
+
     console.log(`✅  ${a.role}: ${user.email} → tenant ${a.tenantSlug} (${tenantId})`);
   }
 
@@ -119,7 +130,8 @@ async function main(): Promise<void> {
   console.log('    Super admin: copysyncapp@gmail.com (vê todos os tenants)');
   console.log('    Admin Acme:  admin-acme@copysync.app (só Acme Corp)');
   console.log('    Admin Beta:  admin-beta@copysync.app (só Beta Labs)');
-  console.log('    Operadores:  pedrorodrigues.silva5@gmail.com, eu.israeldaywis@gmail.com (Acme Corp)');
+  console.log('    Pedro:       pedrorodrigues.silva5@gmail.com (só tenant pedro-rodrigues)');
+  console.log('    Israel:      eu.israeldaywis@gmail.com (só tenant israel-daywis)');
 }
 
 main()
