@@ -686,6 +686,13 @@ enum OfferAudience {
   HOME_KITCHEN
 }
 
+/// Texto da oferta capturada: ORIGINAL = texto do grupo com links trocados; TEMPLATE = modelo fixo com dados do produto; AI = reescrito pela IA.
+enum MonitorTextMode {
+  ORIGINAL
+  TEMPLATE
+  AI
+}
+
 /// Configuração do gerador por tenant: sessão que envia e intervalo entre grupos.
 /// Ordem do disparo com mais de uma sessão (ver docs/gerador-de-ofertas.md).
 enum OfferDispatchOrder {
@@ -1057,6 +1064,12 @@ model GroupMonitorConfig {
   mentionAll          Boolean  @default(false)
   simulateTyping      Boolean  @default(false)
   typingSeconds       Int      @default(15)
+  /// Como montar o texto enviado (docs/monitoramento-grupos.md §2.4).
+  textMode            MonitorTextMode @default(ORIGINAL)
+  /// Público da IA (só com textMode AI; STANDARD = modelo fixo).
+  audience            OfferAudience   @default(STANDARD)
+  /// Captura só com link vira oferta montada mesmo em ORIGINAL.
+  enrichLinkOnly      Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -1135,6 +1148,10 @@ model CapturedOffer {
   /// Motivo de SKIPPED/FAILED (código interno).
   reason                  String?
   offerId                 String?
+  /// De onde saiu o texto enviado; null até processar.
+  textSource              MonitorTextMode?
+  /// Código AI_* quando a IA foi pedida e caiu no modelo.
+  aiErrorCode             String?
   startsAt                DateTime?
   expiresAt               DateTime?
   capturedAt              DateTime            @default(now())

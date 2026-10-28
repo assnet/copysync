@@ -1,6 +1,6 @@
 import type { ActiveMonitoredGroup, BroadcastGroupInput, IGroupMonitorRepository, MonitoredGroupInput, TenantGroupJids } from '../../domain/contracts/IGroupMonitorRepository';
 import type { CapturedOfferListItem, CapturedOfferResolution, ICapturedOfferRepository, NewCapturedOffer } from '../../domain/contracts/ICapturedOfferRepository';
-import type { IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOfferInput, QueueOfferResult, TenantLinkResult } from '../../domain/contracts/IMonitorPorts';
+import type { IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOfferInput, QueueOfferResult, TenantLinkResult, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, MonitorComposeInput, MonitorProductData } from '../../domain/contracts/IMonitorPorts';
 import type { BroadcastGroup, GroupMonitorConfig, GroupMonitorSettings, MonitoredGroup } from '../../domain/entities/GroupMonitor';
 import type { CapturedOffer, CapturedOfferReason } from '../../domain/entities/CapturedOffer';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
@@ -63,7 +63,7 @@ export class InMemoryCapturedOfferRepository implements ICapturedOfferRepository
     if (this.items.some((c) => c.sessionId === input.sessionId && c.sourceExternalMessageId === input.sourceExternalMessageId)) return false;
     this.items.push({
       id: `cap-${++this.seq}`, marketplace: null, sourceUrl: null, affiliateUrl: null, coupon: null, finalText: null,
-      status: 'PENDING', reason: null, offerId: null, startsAt: null, expiresAt: null, processedAt: null, claimToken: null, ...input,
+      status: 'PENDING', reason: null, offerId: null, textSource: null, aiErrorCode: null, startsAt: null, expiresAt: null, processedAt: null, claimToken: null, ...input,
     });
     return true;
   }
@@ -108,6 +108,29 @@ export class FakeOfferQueue implements IOfferQueue {
   inputs: QueueOfferInput[] = [];
   result: (i: QueueOfferInput) => QueueOfferResult = (i) => ({ kind: 'queued', offerId: 'offer-9', firstSendAt: i.startAt });
   async enqueue(input: QueueOfferInput) { this.inputs.push(input); return this.result(input); }
+}
+
+export class FakeProductReader implements IMonitorProductReader {
+  calls: { provider: string; sourceUrl: string }[] = [];
+  constructor(public data: MonitorProductData | null = { title: 'Fone JBL Tune 510BT', priceCents: 9900, originalPriceCents: 19900, imageUrl: 'https://m.media-amazon.com/images/I/fone.jpg' }) {}
+  async read(_t: string, provider: string, sourceUrl: string) { this.calls.push({ provider, sourceUrl }); return this.data; }
+}
+
+export class FakeTextComposer implements IMonitorTextComposer {
+  inputs: MonitorComposeInput[] = [];
+  /** Padrão: modelo fixo (título + preço + link); IA quando o público não é STANDARD. */
+  result: (i: MonitorComposeInput) => { text: string; aiFallback: boolean; aiErrorCode?: string } = (i) => ({
+    text: i.audience === 'STANDARD'
+      ? `*${i.title}*\nDe R$ ${((i.originalPriceCents ?? 0) / 100).toFixed(2)} por R$ ${((i.priceCents ?? 0) / 100).toFixed(2)}\n${i.affiliateUrl}`
+      : `✨ Texto da IA para ${i.audience}: ${i.title}\n${i.affiliateUrl}`,
+    aiFallback: false,
+  });
+  async compose(input: MonitorComposeInput) { this.inputs.push(input); return this.result(input); }
+}
+
+export class FakeImageStore implements IMonitorImageStore {
+  stored: string[] = [];
+  async store(url: string) { this.stored.push(url); return `https://api/media/stored-${this.stored.length}.jpg`; }
 }
 
 export class FakeDirectory implements IMonitorGroupDirectory {

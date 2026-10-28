@@ -1,10 +1,13 @@
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
 import type { CapturedOfferResolution, ICapturedOfferRepository } from '../../domain/contracts/ICapturedOfferRepository';
 import type { IGroupMonitorRepository } from '../../domain/contracts/IGroupMonitorRepository';
-import type { IOfferQueue, ITenantLinkBuilder, TenantLinkResult } from '../../domain/contracts/IMonitorPorts';
+import type {
+  IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, IOfferQueue, ITenantLinkBuilder, TenantLinkResult,
+} from '../../domain/contracts/IMonitorPorts';
+import type { GroupMonitorConfig, MonitorTextMode } from '../../domain/entities/GroupMonitor';
 import type { CapturedOffer } from '../../domain/entities/CapturedOffer';
 import { captureExpiresAt } from '../../domain/services/monitorSettings';
-import { detectCoupon, extractUrls, rewriteOfferLinks } from '../../domain/services/offerMessageText';
+import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from '../../domain/services/offerMessageText';
 import { resolveStartWithinWindow } from '../../domain/services/operatingWindow';
 import { logger } from '../../../../shared/logger/logger';
 import { BROADCAST_GROUPS, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
@@ -27,6 +30,9 @@ export interface ProcessPendingCapturedOffersDeps {
   links: ITenantLinkBuilder;
   queue: IOfferQueue;
   entitlements: IEntitlementReader;
+  products: IMonitorProductReader;
+  texts: IMonitorTextComposer;
+  images: IMonitorImageStore;
   now?: () => Date;
   clock?: () => number;
 }
@@ -81,6 +87,12 @@ export class ProcessPendingCapturedOffersUseCase {
     }
   }
 
+  private buildText(
+    c: CapturedOffer, config: GroupMonitorConfig, link: Extract<TenantLinkResult, { kind: 'ok' }>, coupon: string | null, originalText: string, tenantLinks: ReadonlySet<string>,
+  ): Promise<BuiltText> {
+    return buildMonitorText(this.deps, c, config, link, coupon, originalText, tenantLinks);
+  }
+
   private async resolve(c: CapturedOffer, now: Date): Promise<Outcome> {
     const { monitors, links, queue, entitlements } = this.deps;
     const config = await monitors.findConfig(c.tenantId, c.sessionId);
@@ -120,8 +132,10 @@ export class ProcessPendingCapturedOffersUseCase {
     }
     const coupon = detectCoupon(c.sourceText);
     const expiresAt = captureExpiresAt(c.capturedAt, coupon !== null, config);
+    const built = await this.buildText(c, config, first, coupon, finalText, tenantLinks);
     const base: CapturedOfferResolution = {
-      marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon, finalText, expiresAt, startsAt: null,
+      marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon,
+      finalText: built.text, textSource: built.textSource, aiErrorCode: built.aiErrorCode, expiresAt, startsAt: null,
     };
     const earliest = new Date(Math.max(now.getTime(), c.capturedAt.getTime() + config.startDelaySeconds * 1000));
     const startAt = resolveStartWithinWindow(earliest, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute });
@@ -135,9 +149,9 @@ export class ProcessPendingCapturedOffersUseCase {
       provider: first.provider,
       sourceUrl: first.sourceUrl,
       affiliateUrl: first.affiliateUrl,
-      title: titleOf(finalText),
-      text: finalText,
-      imageUrl: c.sourceMediaUrl,
+      title: titleOf(built.text),
+      text: built.text,
+      imageUrl: built.imageUrl,
       coupon,
       mentionAll,
       simulateTyping: config.simulateTyping,
@@ -152,6 +166,54 @@ export class ProcessPendingCapturedOffersUseCase {
     if (res.kind === 'expired') return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: res.firstSendAt } };
     return { status: 'QUEUED', data: { ...base, startsAt: res.firstSendAt, offerId: res.offerId } };
   }
+}
+
+interface BuiltText {
+  text: string;
+  textSource: MonitorTextMode;
+  aiErrorCode: string | null;
+  imageUrl: string | null;
+}
+
+/**
+ * Oferta montada / reescrita (docs/monitoramento-grupos.md §2.4). `ORIGINAL` = texto do grupo com
+ * links trocados (como sempre). `TEMPLATE`/`AI`, ou captura só com link(s) com `enrichLinkOnly`:
+ * lê o produto e compõe pelo mesmo compositor do gerador (a IA só vê JSON de dados, nunca o texto
+ * do concorrente). Degrada em cascata: IA falha → modelo; sem dados → original. Foto: da mensagem,
+ * senão a do produto no store. Nunca bloqueia a captura.
+ */
+async function buildMonitorText(
+  deps: Pick<ProcessPendingCapturedOffersDeps, 'products' | 'texts' | 'images'>,
+  c: CapturedOffer,
+  config: GroupMonitorConfig,
+  link: Extract<TenantLinkResult, { kind: 'ok' }>,
+  coupon: string | null,
+  originalText: string,
+  tenantLinks: ReadonlySet<string>,
+): Promise<BuiltText> {
+  const original: BuiltText = { text: originalText, textSource: 'ORIGINAL', aiErrorCode: null, imageUrl: c.sourceMediaUrl };
+  const linkOnly = !hasTextBeyondLinks(c.sourceText);
+  const wantsProduct = config.textMode !== 'ORIGINAL' || (config.enrichLinkOnly && linkOnly);
+  if (!wantsProduct) return original;
+
+  const product = await deps.products.read(c.tenantId, link.provider, link.sourceUrl);
+  if (!product || (!product.title && product.priceCents == null)) {
+    logger.info({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: link.provider }, 'captured offer product data unavailable');
+    return original;
+  }
+  const audience = config.textMode === 'AI' ? config.audience : 'STANDARD';
+  const composed = await deps.texts.compose({
+    tenantId: c.tenantId, audience, title: product.title, priceCents: product.priceCents,
+    originalPriceCents: product.originalPriceCents, coupon, affiliateUrl: link.affiliateUrl,
+  });
+  // Rede de segurança também sobre o texto composto: só o link do tenant pode sair
+  if (extractUrls(composed.text).some((u) => !tenantLinks.has(u.raw) && !tenantLinks.has(u.href))) {
+    logger.warn({ capturedOfferId: c.id, tenantId: c.tenantId }, 'captured offer composed text had foreign link');
+    return original;
+  }
+  const imageUrl = c.sourceMediaUrl ?? (product.imageUrl ? await deps.images.store(product.imageUrl) : null);
+  const usedAi = audience !== 'STANDARD' && !composed.aiFallback;
+  return { text: composed.text, textSource: usedAi ? 'AI' : 'TEMPLATE', aiErrorCode: composed.aiErrorCode ?? null, imageUrl };
 }
 
 /** 1ª linha com texto (sem links), para identificar a oferta na fila. */

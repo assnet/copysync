@@ -1,4 +1,4 @@
-import type { GroupMonitorSettings } from '@/types/api.types';
+import type { GroupMonitorSettings, MonitorTextMode, OfferAudience } from '@/types/api.types';
 import { windowFromSettings, windowToSettings, type OperatingWindow } from './operatingWindow';
 
 /**
@@ -17,10 +17,13 @@ export interface MonitorSettingsDraft {
   mentionAll: boolean;
   simulateTyping: boolean;
   typingSeconds: number;
+  textMode: MonitorTextMode;
+  audience: OfferAudience;
+  enrichLinkOnly: boolean;
 }
 
 /** Mude ao alterar `MonitorSettingsDraft`: rascunho salvo em outro formato é descartado. */
-export const SETTINGS_DRAFT_VERSION = 2;
+export const SETTINGS_DRAFT_VERSION = 3;
 
 export const LIMITS = {
   intervalMinutes: { min: 1, max: 60 },
@@ -53,6 +56,9 @@ export function settingsToDraft(s: GroupMonitorSettings): MonitorSettingsDraft {
     mentionAll: s.mentionAll,
     simulateTyping: s.simulateTyping,
     typingSeconds: s.typingSeconds,
+    textMode: s.textMode,
+    audience: s.audience,
+    enrichLinkOnly: s.enrichLinkOnly,
   };
 }
 
@@ -68,6 +74,10 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
     mentionAll: d.mentionAll,
     simulateTyping: d.simulateTyping,
     typingSeconds: d.typingSeconds,
+    textMode: d.textMode,
+    // Público só faz sentido com IA; fora dela volta ao padrão para não salvar escolha invisível
+    audience: d.textMode === 'AI' ? d.audience : 'STANDARD',
+    enrichLinkOnly: d.enrichLinkOnly,
   };
 }
 

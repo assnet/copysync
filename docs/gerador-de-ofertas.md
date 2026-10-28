@@ -34,6 +34,11 @@ O link colado **é** o link de afiliado (o sistema não gera mais link). Após e
 | Mercado Livre | `matt_word` ou `/social/<etiqueta>` (`meli.la`) | idem (comparação sem caixa) |
 | Shopee | — | sem verificação (aviso fixo no painel); `attributionVerified=false` |
 
+Dados do produto (título, preços, foto) e foto no store: `ResolveProductDataUseCase` (api 0.41.0, extraído do
+`GenerateOfferUseCase` para o monitoramento reaproveitar). Vitrine social ML (`/social/<etq>?…&ref=…`) é perfil,
+não produto: `HttpProductPageReader` usa `parseMercadoLivreSocialPage` (1º `polycard`: `title.text`,
+`price.current_price/previous_price.value`, `pictures[0].id` + `picture_template` → `D_NQ_NP_2X_<id>-F.webp`).
+
 Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos: `shopee.com.br`,
 `shope.ee`, `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`, `amazon.com.br`, `amzn.to`.
 

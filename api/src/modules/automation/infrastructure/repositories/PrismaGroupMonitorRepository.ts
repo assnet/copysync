@@ -16,6 +16,7 @@ function toConfig(r: ConfigRow): GroupMonitorConfig {
     intervalMinSeconds: r.intervalMinSeconds, intervalMaxSeconds: r.intervalMaxSeconds,
     startDelaySeconds: r.startDelaySeconds, maxOfferAgeMinutes: r.maxOfferAgeMinutes, couponMaxAgeMinutes: r.couponMaxAgeMinutes,
     mentionAll: r.mentionAll, simulateTyping: r.simulateTyping, typingSeconds: r.typingSeconds,
+    textMode: r.textMode, audience: r.audience, enrichLinkOnly: r.enrichLinkOnly,
   };
 }
 

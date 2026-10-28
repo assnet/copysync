@@ -20,6 +20,8 @@ Termos: **sessão** (nunca instância), **grupo monitorado** (origem), **grupo d
 | Captura (listener) | `RegisterCapturedMessageUseCase.ts` + `GroupMonitoringMessageListener.ts` |
 | Processamento (worker) | `ProcessPendingCapturedOffersUseCase.ts` |
 | Link do tenant | `campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase.ts` |
+| Dados do produto e foto | `campaigns/application/use-cases/ResolveProductDataUseCase.ts` (o mesmo do gerador); vitrine social ML em `parseMercadoLivreSocialPage` |
+| Texto (modelo / IA) | `campaigns/application/services/OfferTextComposer.ts` via `IMonitorTextComposer` (adapters em `CampaignsMonitorAdapters.ts`) |
 | Entrada na fila | `campaigns/application/use-cases/EnqueueOfferUseCase.ts` |
 | Rotas | `/api/automation/group-monitoring/*` (`groupMonitoring.routes.ts`) |
 | Painel | `app/src/pages/monitoring/`, `app/src/features/monitoring/` |
@@ -83,6 +85,28 @@ URL enviada ao `createLink` é `/p/<product_id>`, nunca `produto…/MLB-` (ML de
 (`isSupportedProductUrl`, expansor e leitor de página). Diferente do gerador, que exige o link já
 ser do operador, aqui o link é sempre gerado.
 
+### 2.1.1 Texto da oferta: original, modelo ou IA (api 0.41.0)
+
+Config por sessão: `textMode` (`ORIGINAL` padrão | `TEMPLATE` | `AI`), `audience` (públicos do gerador;
+`STANDARD` = modelo) e `enrichLinkOnly` (padrão `true`). Depois do link do tenant e antes de enfileirar
+(`buildMonitorText`):
+
+1. `ORIGINAL` com texto além de links → texto do grupo com links trocados (como sempre), `textSource = ORIGINAL`.
+2. `TEMPLATE`/`AI`, ou captura **só com link(s)** com `enrichLinkOnly` (`hasTextBeyondLinks` = false):
+   lê o produto por `IMonitorProductReader` (`ResolveProductDataUseCase`: Shopee pela API com credencial;
+   ML vitrine social pelo 1º `polycard` da página lida **sem cookie**, `product_id` é catálogo `/p/`;
+   Amazon pela página) e compõe por `IMonitorTextComposer` (`OfferTextComposer`: `STANDARD` = modelo fixo,
+   outro público = IA com fallback para o modelo). A IA só recebe JSON de dados, nunca o texto do
+   concorrente. `textSource = AI` só quando a IA respondeu; `aiErrorCode` guarda o `AI_*` do fallback.
+3. Degradação: sem dados do produto → texto original (captura segue `QUEUED`, log
+   `captured offer product data unavailable`); texto composto com link que não é do tenant → original.
+4. Foto: a da mensagem; sem ela, a do produto via `IMonitorImageStore` (fetcher + media store do gerador,
+   allowlist `mlstatic.com`/`susercontent.com`/`media-amazon.com`).
+
+Entitlement de IA: o mesmo do gerador (`ai_rewrite_enabled`, resolvido dentro do `IAiTextGenerator`;
+decisão do owner 2026-10-28: IA em todos os planos por enquanto). Limite diário de IA: o mesmo
+`ai_usage_logs`, purpose `offer.text`.
+
 ### 2.2 Janela de operação
 
 Minutos do dia em `America/Sao_Paulo`, 0..1440. **Padrão 06:00–18:00** (`360–1080`). `0–1440` = sem
@@ -127,7 +151,11 @@ limita). Recorte completo fica para a fase 2.
 - Regras: horário (só `RangeSlider` com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"),
   envio (intervalo, digitando, marcar todos), depois da captura (atraso, validades). Rascunho por
   sessão (`monitoring.settings.<sessionId>`, formulário com `key={sessionId}`), Salvar/Descartar só
-  com alteração. "Reescrita com IA" e "Imagem das ofertas" aparecem como "Em breve".
+  com alteração. Card "Texto da oferta": Original / Modelo / Reescrita com IA (`ToggleButtonGroup`),
+  `AudiencePicker` do gerador quando IA, switch "Montar a oferta quando chegar só o link".
+  "Imagem das ofertas" segue "Em breve".
+- Captura mostra chip "Texto original / do modelo / da IA" (`textSource`) e "IA indisponível" com o
+  código no tooltip (`aiErrorCode`).
 - Ofertas capturadas (status, motivo, cupom, foto indisponível, "Tentar de novo") e a fila de envio
   da sessão (`SendQueuePanel`). Captura `QUEUED` traz `offerStatus`, `sentCount`/`totalCount` e os
   botões Pausar / Retomar / Parar **da oferta** (`OfferControlButtons`, `features/sendQueue`): é o
@@ -144,7 +172,9 @@ limita). Recorte completo fica para a fase 2.
 - Chamar Baileys fora do adapter ou usar `raw` do evento.
 - Ligar `GROUP_MONITORING_ENABLED` local (`api/.env` = produção): ela liga a captura (grava no
   banco) e o processamento (envia mensagens).
-- Reescrever texto com IA nesta fase (fase 2, via `IAiTextGenerator`).
+- Mandar texto do concorrente para a IA: só JSON de dados (`buildOfferTextPrompt`). Não criar segundo
+  compositor nem segundo leitor de produto: `OfferTextComposer` e `ResolveProductDataUseCase` são únicos.
+- Ler página de produto ML com cookie do servidor (captcha) ou bloquear a captura por falta de dados.
 
 ## 7. Incidentes
 
@@ -153,7 +183,7 @@ limita). Recorte completo fica para a fase 2.
 
 ## 8. Próximos passos (fase 2)
 
-- Reescrita com IA e "imagem das ofertas" (original × gerada).
+- "Imagem das ofertas" (original × gerada).
 - Fila BullMQ `monitoring.inbound` quando a escala chegar (`arquitetura-escala.md` §3.6).
 - Recorte dos envios pelo fim da janela.
 - Telegram como origem/destino (`messaging` engine `telegram`).

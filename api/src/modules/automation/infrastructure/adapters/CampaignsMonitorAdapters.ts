@@ -1,5 +1,8 @@
+import { parseProductRef } from '../../../campaigns/domain/services/parseProductRef';
+import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type {
-  IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOfferInput, QueueOfferResult, TenantLinkResult,
+  IMonitorGroupDirectory, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, IOfferQueue, ITenantLinkBuilder,
+  MonitorComposeInput, MonitorProductData, QueueOfferInput, QueueOfferResult, TenantLinkResult,
 } from '../../domain/contracts/IMonitorPorts';
 import { offersContainer } from '../../../campaigns/infrastructure/offersContainer';
 import { chatMediaContainer } from '../../../chat/infrastructure/chatMediaContainer';
@@ -31,5 +34,34 @@ export class ChatMonitorGroupDirectory implements IMonitorGroupDirectory {
 
   async enableMediaDownload(tenantId: string, conversationId: string): Promise<void> {
     await chatMediaContainer.conversationRepo.update(conversationId, tenantId, { autoDownloadMedia: true });
+  }
+}
+
+/** Dados do produto pelo mesmo caminho do gerador (`ResolveProductDataUseCase`), com a credencial do tenant. */
+export class CampaignsMonitorProductReader implements IMonitorProductReader {
+  async read(tenantId: string, provider: AffiliateProvider, sourceUrl: string): Promise<MonitorProductData | null> {
+    let url: URL;
+    try {
+      url = new URL(sourceUrl);
+    } catch {
+      return null;
+    }
+    const ref = parseProductRef(provider, url);
+    const cred = await offersContainer.credentials().execute(tenantId, provider);
+    const data = await offersContainer.resolveProductData().resolve(provider, ref, url, cred);
+    if (!data.title && data.priceCents == null && !data.imageSourceUrl) return null;
+    return { title: data.title, priceCents: data.priceCents, originalPriceCents: data.originalPriceCents, imageUrl: data.imageSourceUrl };
+  }
+}
+
+export class CampaignsMonitorTextComposer implements IMonitorTextComposer {
+  compose(input: MonitorComposeInput) {
+    return offersContainer.offerTexts().compose(input);
+  }
+}
+
+export class CampaignsMonitorImageStore implements IMonitorImageStore {
+  store(externalUrl: string): Promise<string | null> {
+    return offersContainer.resolveProductData().storeImage(externalUrl);
   }
 }

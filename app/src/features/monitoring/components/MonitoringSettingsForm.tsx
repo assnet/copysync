@@ -1,9 +1,12 @@
 import { useId, useRef, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Paper, Slider, Snackbar, Stack, Switch, Tooltip, Typography } from '@mui/material';
+import {
+  Alert, Box, Button, Chip, CircularProgress, Paper, Slider, Snackbar, Stack, Switch, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+} from '@mui/material';
 import { AppIcon, RangeSlider, SectionCard, ToggleOption } from '@/components';
 import { Info } from 'lucide-react';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import type { GroupMonitorConfigResponse, GroupMonitorSettings } from '@/types/api.types';
+import type { GroupMonitorConfigResponse, GroupMonitorSettings, MonitorTextMode } from '@/types/api.types';
+import { AudiencePicker } from '@/features/offers/components/AudiencePicker';
 import { formatDuration, monitoringStrings } from '../strings';
 import { isWindowValid } from '../utils/operatingWindow';
 import {
@@ -219,9 +222,37 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
         </SectionCard>
       </Box>
 
+      <SectionCard title={t.textTitle} subtitle={t.textSubtitle}>
+        <Stack spacing={2}>
+          <ToggleButtonGroup
+            exclusive
+            fullWidth
+            color="primary"
+            value={value.textMode}
+            aria-label={t.textModeAria}
+            onChange={(_, mode: MonitorTextMode | null) => { if (mode) patch({ textMode: mode }); }}
+            sx={{ '& .MuiToggleButton-root': { textTransform: 'none', py: 1 } }}
+          >
+            {(Object.keys(t.textModes) as MonitorTextMode[]).map((mode) => (
+              <ToggleButton key={mode} value={mode}>{t.textModes[mode].label}</ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+          <Typography variant="body2" color="text.secondary">{t.textModes[value.textMode].help}</Typography>
+          {value.textMode === 'AI' && (
+            <AudiencePicker value={value.audience} onChange={(audience) => patch({ audience })} label={t.audienceLabel} />
+          )}
+          <ToggleOption
+            checked={value.enrichLinkOnly}
+            onChange={(enrichLinkOnly) => patch({ enrichLinkOnly })}
+            title={t.enrichTitle}
+            description={t.enrichHelp}
+          />
+          <Alert severity="info" icon={<AppIcon icon={Info} size="sm" />}>{t.textProductNote}</Alert>
+        </Stack>
+      </SectionCard>
+
       <SectionCard title={t.upcomingTitle}>
         <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
-          <UpcomingOption title={t.aiRewriteTitle} help={t.aiRewriteHelp} />
           <UpcomingOption title={t.imageTitle} help={t.imageHelp} />
         </Box>
       </SectionCard>

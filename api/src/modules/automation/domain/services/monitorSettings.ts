@@ -1,4 +1,5 @@
-import type { GroupMonitorSettings } from '../entities/GroupMonitor';
+import { MONITOR_TEXT_MODES, type GroupMonitorSettings } from '../entities/GroupMonitor';
+import { OFFER_AUDIENCES } from '../../../campaigns/domain/enums/OfferAudience';
 import { MINUTES_PER_DAY } from './operatingWindow';
 
 export const MONITOR_LIMITS = {
@@ -25,6 +26,9 @@ export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   mentionAll: false,
   simulateTyping: false,
   typingSeconds: 15,
+  textMode: 'ORIGINAL',
+  audience: 'STANDARD',
+  enrichLinkOnly: true,
 };
 
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;
@@ -48,6 +52,8 @@ export function monitorSettingsProblem(s: GroupMonitorSettings): { field: keyof 
   // Cupom vence antes: nunca recebe validade maior que a oferta sem cupom
   if (s.couponMaxAgeMinutes > s.maxOfferAgeMinutes) return { field: 'couponMaxAgeMinutes', reason: 'longer than offer validity' };
   if (!inRange(s.typingSeconds, MONITOR_LIMITS.typingSeconds)) return { field: 'typingSeconds', reason: 'out of range' };
+  if (!MONITOR_TEXT_MODES.includes(s.textMode)) return { field: 'textMode', reason: 'unknown' };
+  if (!OFFER_AUDIENCES.includes(s.audience)) return { field: 'audience', reason: 'unknown' };
   return null;
 }
 

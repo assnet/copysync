@@ -29,6 +29,7 @@ import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import type { OfferTextComposer } from '../services/OfferTextComposer';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
+import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
 
 export const OFFER_GENERATIONS_PER_DAY = 'offer_generations_per_day';
 
@@ -65,26 +66,20 @@ export interface GenerateOfferDeps {
   now?: () => Date;
 }
 
-interface ProductData {
-  productRef: string | null;
-  title: string | null;
-  priceCents: number | null;
-  originalPriceCents: number | null;
-  /** URL externa da foto (antes de ir para o store). */
-  imageSourceUrl: string | null;
-}
-
-const EMPTY: ProductData = { productRef: null, title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: null };
-
 /**
  * Link de afiliado colado → Offer DRAFT (GEN-02..04). O link colado É o link enviado: nada é
  * gerado. Grava só no fim: erro antes (limite, URL, dono do link) não persiste nem conta no limite.
  */
 export class GenerateOfferUseCase {
   private readonly now: () => Date;
+  /** Dados do produto e foto: o mesmo caminho do monitoramento (`ResolveProductDataUseCase`). */
+  private readonly products: ResolveProductDataUseCase;
 
   constructor(private readonly deps: GenerateOfferDeps) {
     this.now = deps.now ?? (() => new Date());
+    this.products = new ResolveProductDataUseCase({
+      shopee: deps.shopee, pageReader: deps.pageReader, imageFetcher: deps.imageFetcher, mediaStore: deps.mediaStore,
+    });
   }
 
   async execute(input: GenerateOfferInput): Promise<GenerateOfferOutput> {
@@ -135,8 +130,8 @@ export class GenerateOfferUseCase {
     }
 
     // 4. Dados do produto (melhor esforço) + foto no store
-    const data = await this.resolveProduct(provider, ref, final, cred);
-    const imageUrl = data.imageSourceUrl ? await this.storeImage(data.imageSourceUrl) : null;
+    const data = await this.products.resolve(provider, ref, final, cred);
+    const imageUrl = data.imageSourceUrl ? await this.products.storeImage(data.imageSourceUrl) : null;
 
     // 5. Texto (modelo ou IA) e grava
     const composed = await this.deps.texts.compose({
@@ -172,7 +167,7 @@ export class GenerateOfferUseCase {
           ? await this.deps.offers.create(row)
           : await this.deps.offers.createWithinDailyLimit(row, { key: OFFER_GENERATIONS_PER_DAY, since, limit });
     } catch (err) {
-      if (imageUrl) await this.discardImage(imageUrl);
+      if (imageUrl) await this.products.discardImage(imageUrl);
       throw err;
     }
     return {
@@ -212,80 +207,6 @@ export class GenerateOfferUseCase {
     return verifyAffiliateLink(provider, final === source ? [final] : [source, final], cred?.publicIdentifier ?? null);
   }
 
-  private async resolveProduct(
-    provider: AffiliateProvider,
-    ref: ProductRef | null,
-    final: URL,
-    cred: OfferAffiliateCredential | null,
-  ): Promise<ProductData> {
-    const refId = ref ? productRefOf(ref) : null;
-
-    if (ref?.provider === 'SHOPEE' && cred?.secret) {
-      try {
-        const product = await this.deps.shopee.getProduct(
-          { appId: cred.publicIdentifier, secret: cred.secret },
-          { shopId: ref.shopId, itemId: ref.itemId },
-        );
-        if (product) {
-          return {
-            productRef: refId,
-            title: product.title,
-            priceCents: product.priceCents,
-            originalPriceCents: product.originalPriceCents,
-            imageSourceUrl: product.imageUrl,
-          };
-        }
-      } catch (err) {
-        // API de afiliados com problema não impede a oferta: cai na página e no preenchimento manual
-        if (!(err instanceof AppError)) throw err;
-        logger.warn({ code: err.code, provider }, 'offer product API failed, reading page');
-      }
-    }
-
-    const page = await this.deps.pageReader.read({
-      url: final,
-      mercadoLivreCookies: provider === 'MERCADO_LIVRE' ? (cred?.session?.cookies ?? null) : null,
-    });
-    if (!page) return { ...EMPTY, productRef: refId };
-    return {
-      productRef: refId ?? page.productRef,
-      title: page.title,
-      priceCents: page.priceCents,
-      originalPriceCents: page.originalPriceCents,
-      imageSourceUrl: page.imageUrl,
-    };
-  }
-
-  /** Foto é opcional: falha vira oferta sem foto (o painel pede outra). */
-  private async storeImage(url: string): Promise<string | null> {
-    try {
-      const image = await this.deps.imageFetcher.fetch(url);
-      if (!image) return null;
-      return await this.deps.mediaStore.saveImage(image.buffer, image.mimeType);
-    } catch (err) {
-      logger.warn({ err: (err as Error)?.name }, 'offer image store failed');
-      return null;
-    }
-  }
-
-  private async discardImage(url: string): Promise<void> {
-    try {
-      await this.deps.mediaStore.removeImage(url);
-    } catch (err) {
-      logger.warn({ err: (err as Error)?.name }, 'offer image discard failed');
-    }
-  }
-}
-
-function productRefOf(ref: ProductRef): string {
-  switch (ref.provider) {
-    case 'SHOPEE':
-      return `${ref.shopId}.${ref.itemId}`;
-    case 'AMAZON':
-      return ref.asin;
-    case 'MERCADO_LIVRE':
-      return ref.itemId;
-  }
 }
 
 function parseUrl(raw: string): URL {

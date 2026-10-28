@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectCoupon, extractUrls, matchesKeywords, previewText, rewriteOfferLinks } from './offerMessageText';
+import { hasTextBeyondLinks } from './offerMessageText';
 
 describe('extractUrls', () => {
   it('acha links com e sem protocolo, sem pontuação final e sem repetir', () => {
@@ -83,5 +84,14 @@ describe('matchesKeywords', () => {
 describe('previewText', () => {
   it('corta sem quebrar emoji', () => {
     expect(previewText('🔥'.repeat(5), 3)).toBe('🔥🔥🔥…');
+  });
+});
+
+describe('hasTextBeyondLinks', () => {
+  it('só links (com pontuação/emoji) = sem texto; qualquer palavra = com texto', () => {
+    expect(hasTextBeyondLinks('https://meli.la/1bfzHwh')).toBe(false);
+    expect(hasTextBeyondLinks('👉 https://meli.la/1bfzHwh !!\nhttps://chat.whatsapp.com/XYZ')).toBe(false);
+    expect(hasTextBeyondLinks('Fone por R$ 99\nhttps://meli.la/1bfzHwh')).toBe(true);
+    expect(hasTextBeyondLinks('')).toBe(false);
   });
 });

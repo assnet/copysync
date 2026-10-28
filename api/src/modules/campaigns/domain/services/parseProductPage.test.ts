@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeHtmlEntities, parsePriceToCents, parseProductPage } from './parseProductPage';
+import { decodeHtmlEntities, parseMercadoLivreSocialPage, parsePriceToCents, parseProductPage } from './parseProductPage';
 
 describe('parsePriceToCents', () => {
   it.each([
@@ -69,5 +69,39 @@ describe('parseProductPage', () => {
 
   it('página vazia → tudo null', () => {
     expect(parseProductPage('AMAZON', '')).toEqual({ title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: null });
+  });
+});
+
+describe('parseMercadoLivreSocialPage', () => {
+  // Trecho real da vitrine (2026-10-28), com escapes `\u002F` como a ML entrega
+  const CARD = '{"unique_id":"x","metadata":{"id":"MLB4886745619","product_id":"MLB44022021","url":"www.mercadolivre.com.br\\u002Fwella\\u002Fp\\u002FMLB44022021"},'
+    + '"pictures":{"scale":"FILL","pictures":[{"id":"815770-MLA80743499878_112024"}],"square":"Q"},'
+    + '"components":[{"type":"title","id":"title","title":{"text":"Wella Professionals Oil Reflections - Shampoo 1000ml + M\\u00e1scara 500ml Kit","long_title":false}},'
+    + '{"type":"seller","seller":{"text":"Por Wella"}},'
+    + '{"type":"price","id":"price","price":{"previous_price":{"value":699.9,"currency":"BRL"},"current_price":{"value":331.11,"currency":"BRL"},"discount_pct":52}}]}';
+  const PAGE = '<html><head><meta property="og:title" content="myshoplist no Mercado Livre"></head><body><script>window.__PRELOADED_STATE__ = {"polycard_context":{"picture_template":"https:\\u002F\\u002Fhttp2.mlstatic.com\\u002FD_{square}_NP{2x}_{id}-{size}{sanitized_title}.webp","picture_square_default":"Q"},"polycards":[' + CARD + ',{"metadata":{"product_id":"MLB1"}}]};</script></body></html>';
+
+  it('1º card: título, preços, foto pelo template e product_id (catálogo)', () => {
+    expect(parseMercadoLivreSocialPage(PAGE)).toEqual({
+      title: 'Wella Professionals Oil Reflections - Shampoo 1000ml + Máscara 500ml Kit',
+      imageUrl: 'https://http2.mlstatic.com/D_NQ_NP_2X_815770-MLA80743499878_112024-F.webp',
+      priceCents: 33111,
+      originalPriceCents: 69990,
+      productRef: 'MLB44022021',
+    });
+  });
+
+  it('sem polycards ou JSON quebrado: tudo null', () => {
+    const empty = { title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: null };
+    expect(parseMercadoLivreSocialPage('<html></html>')).toEqual(empty);
+    expect(parseMercadoLivreSocialPage('{"polycards":[{"metadata":{"product_id":"MLB1"')).toEqual(empty);
+  });
+
+  it('id de foto fora do padrão não vira URL; preço anterior menor é descartado', () => {
+    const page = PAGE.replace('815770-MLA80743499878_112024', 'x/../evil').replace('"value":699.9', '"value":10');
+    const out = parseMercadoLivreSocialPage(page);
+    expect(out.imageUrl).toBeNull();
+    expect(out.originalPriceCents).toBeNull();
+    expect(out.priceCents).toBe(33111);
   });
 });

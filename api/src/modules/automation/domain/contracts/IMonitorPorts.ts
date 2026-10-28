@@ -1,4 +1,5 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { OfferAudience } from '../../../campaigns/domain/enums/OfferAudience';
 
 /** Link de afiliado DO TENANT para um link de produto de terceiro (adapter: módulo campaigns). */
 export type TenantLinkResult =
@@ -36,6 +37,39 @@ export interface QueueOfferInput {
 export type QueueOfferResult =
   | { kind: 'queued'; offerId: string; firstSendAt: Date }
   | { kind: 'expired'; firstSendAt: Date };
+
+/** Dados do produto para montar a oferta (adapter: `ResolveProductDataUseCase` do módulo campaigns). */
+export interface MonitorProductData {
+  title: string | null;
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  /** URL externa da foto (marketplace), ainda fora do media store. */
+  imageUrl: string | null;
+}
+export interface IMonitorProductReader {
+  /** null = nada encontrado. Nunca lança por falta de dado ou rede; erro inesperado sobe. */
+  read(tenantId: string, provider: AffiliateProvider, sourceUrl: string): Promise<MonitorProductData | null>;
+}
+
+/** Texto da oferta pelo modelo fixo ou pela IA (adapter: `OfferTextComposer`). */
+export interface MonitorComposeInput {
+  tenantId: string;
+  audience: OfferAudience;
+  title: string | null;
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  coupon: string | null;
+  affiliateUrl: string;
+}
+export interface IMonitorTextComposer {
+  compose(input: MonitorComposeInput): Promise<{ text: string; aiFallback: boolean; aiErrorCode?: string }>;
+}
+
+/** Foto do produto para o media store (adapter: fetcher + store do módulo campaigns). */
+export interface IMonitorImageStore {
+  /** URL no store ou null (host fora da allowlist, não-imagem, falha). Nunca lança. */
+  store(externalUrl: string): Promise<string | null>;
+}
 
 /** Fila de envio por sessão (adapter: módulo campaigns, origem MONITORING). */
 export interface IOfferQueue {

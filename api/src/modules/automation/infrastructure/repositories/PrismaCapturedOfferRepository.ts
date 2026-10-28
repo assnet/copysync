@@ -5,8 +5,9 @@ import type {
 import type { CapturedOffer, CapturedOfferReason, CapturedOfferStatus } from '../../domain/entities/CapturedOffer';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferStatus } from '../../../campaigns/domain/enums/OfferStatus';
+import type { MonitorTextMode } from '../../domain/entities/GroupMonitor';
 
-type Row = Omit<CapturedOffer, 'status' | 'marketplace'> & { status: string; marketplace: string | null };
+type Row = Omit<CapturedOffer, 'status' | 'marketplace' | 'textSource'> & { status: string; marketplace: string | null; textSource: string | null };
 
 function toDomain(r: Row): CapturedOffer {
   return {
@@ -14,7 +15,7 @@ function toDomain(r: Row): CapturedOffer {
     sourceExternalMessageId: r.sourceExternalMessageId, sourceText: r.sourceText, sourceMediaUrl: r.sourceMediaUrl,
     imageUnavailable: r.imageUnavailable, marketplace: r.marketplace as AffiliateProvider | null, sourceUrl: r.sourceUrl,
     affiliateUrl: r.affiliateUrl, coupon: r.coupon, finalText: r.finalText, status: r.status as CapturedOfferStatus,
-    reason: r.reason, offerId: r.offerId,
+    reason: r.reason, offerId: r.offerId, textSource: r.textSource as MonitorTextMode | null, aiErrorCode: r.aiErrorCode,
     startsAt: r.startsAt ? new Date(r.startsAt) : null, expiresAt: r.expiresAt ? new Date(r.expiresAt) : null,
     capturedAt: new Date(r.capturedAt), processedAt: r.processedAt ? new Date(r.processedAt) : null, claimToken: r.claimToken,
   };

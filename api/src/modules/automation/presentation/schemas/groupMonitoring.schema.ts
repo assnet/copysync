@@ -1,6 +1,8 @@
 import { AFFILIATE_PROVIDERS } from '../../../integrations/domain/enums/AffiliateProvider';
 import { OFFER_STATUSES } from '../../../campaigns/domain/enums/OfferStatus';
 import { CAPTURED_OFFER_STATUSES } from '../../domain/entities/CapturedOffer';
+import { MONITOR_TEXT_MODES } from '../../domain/entities/GroupMonitor';
+import { OFFER_AUDIENCES } from '../../../campaigns/domain/enums/OfferAudience';
 import { MONITOR_LIMITS } from '../../domain/services/monitorSettings';
 import { MINUTES_PER_DAY } from '../../domain/services/operatingWindow';
 
@@ -21,6 +23,9 @@ const settingsProperties = {
   mentionAll: { type: 'boolean' },
   simulateTyping: { type: 'boolean' },
   typingSeconds: int(MONITOR_LIMITS.typingSeconds.min, MONITOR_LIMITS.typingSeconds.max),
+  textMode: { type: 'string', enum: [...MONITOR_TEXT_MODES] },
+  audience: { type: 'string', enum: [...OFFER_AUDIENCES] },
+  enrichLinkOnly: { type: 'boolean' },
 } as const;
 const settingsKeys = Object.keys(settingsProperties);
 
@@ -98,6 +103,8 @@ const capturedSchema = {
     coupon: nullableString,
     affiliateUrl: nullableString,
     offerId: nullableString,
+    textSource: { type: ['string', 'null'], enum: [...MONITOR_TEXT_MODES, null] },
+    aiErrorCode: nullableString,
     offerStatus: { type: ['string', 'null'], enum: [...OFFER_STATUSES, null] },
     sentCount: { type: 'integer' },
     totalCount: { type: 'integer' },

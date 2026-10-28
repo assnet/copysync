@@ -1,6 +1,7 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { CapturedOffer, CapturedOfferReason } from '../entities/CapturedOffer';
 import type { OfferStatus } from '../../../campaigns/domain/enums/OfferStatus';
+import type { MonitorTextMode } from '../entities/GroupMonitor';
 
 export interface NewCapturedOffer {
   tenantId: string;
@@ -20,6 +21,8 @@ export interface CapturedOfferResolution {
   affiliateUrl: string | null;
   coupon: string | null;
   finalText: string | null;
+  textSource: MonitorTextMode | null;
+  aiErrorCode: string | null;
   expiresAt: Date | null;
   startsAt: Date | null;
 }

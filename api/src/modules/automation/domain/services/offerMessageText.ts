@@ -88,6 +88,13 @@ export function matchesKeywords(text: string, keywords: readonly string[]): bool
 }
 
 /** Prévia segura para lista (sem quebrar emoji/surrogate no corte). */
+/** Sobra algo além de links? Captura só com link(s) não tem texto de oferta para repassar. */
+export function hasTextBeyondLinks(text: string): boolean {
+  let rest = text;
+  for (const u of extractUrls(text)) rest = rest.split(u.raw).join(' ');
+  return rest.replace(/[\s\p{P}\p{S}]+/gu, '').length > 0;
+}
+
 export function previewText(text: string, max = 280): string {
   const chars = [...text];
   return chars.length > max ? `${chars.slice(0, max).join('')}…` : text;

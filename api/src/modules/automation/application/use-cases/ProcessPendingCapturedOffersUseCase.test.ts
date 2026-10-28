@@ -3,7 +3,7 @@ import { ProcessPendingCapturedOffersUseCase } from './ProcessPendingCapturedOff
 import { RegisterCapturedMessageUseCase } from './RegisterCapturedMessageUseCase';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
 import {
-  FakeEntitlements, FakeLinkBuilder, FakeOfferQueue, InMemoryCapturedOfferRepository, InMemoryGroupMonitorRepository, NOW, SESSION, TENANT,
+  FakeEntitlements, FakeImageStore, FakeLinkBuilder, FakeOfferQueue, FakeProductReader, FakeTextComposer, InMemoryCapturedOfferRepository, InMemoryGroupMonitorRepository, NOW, SESSION, TENANT,
 } from './monitorTestFakes';
 
 const TEXT = '🔥 Fone JBL por R$ 99\nhttps://amzn.to/abc?tag=concorrente-20\nCupom: PROMO10\n👉 Grupo: https://chat.whatsapp.com/XYZ';
@@ -13,18 +13,21 @@ async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>
   const captured = new InMemoryCapturedOfferRepository();
   const links = new FakeLinkBuilder();
   const queue = new FakeOfferQueue();
+  const products = new FakeProductReader();
+  const texts = new FakeTextComposer();
+  const images = new FakeImageStore();
   const cfg = await monitors.saveSettings(TENANT, SESSION, { ...DEFAULT_MONITOR_SETTINGS, enabled: true, ...opts.settings });
   await monitors.replaceMonitored(TENANT, SESSION, cfg.id, [{ conversationId: 'c-src', groupJid: '120363-src', keywords: [] }]);
   await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j })));
   const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: () => NOW });
   const process = new ProcessPendingCapturedOffersUseCase({
-    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: () => NOW,
+    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: () => NOW, products, texts, images,
   });
   const msg = (o = {}) => register.execute({
     tenantId: TENANT, sessionId: SESSION, isGroup: true, fromMe: false, groupJid: '120363-src', externalMessageId: 'm1',
     body: TEXT, msgType: 'IMAGE', mediaUrl: 'https://api/media/1.jpg', mimeType: 'image/jpeg', ...o,
   });
-  return { monitors, captured, links, queue, register, process, msg };
+  return { monitors, captured, links, queue, products, texts, images, register, process, msg };
 }
 
 describe('RegisterCapturedMessageUseCase', () => {
@@ -155,5 +158,88 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     await s.msg({ externalMessageId: 'm2' });
     expect(await s.process.execute()).toEqual({ processed: 2 });
     expect(s.captured.items.map((c) => c.reason)).toEqual(['INTERNAL_ERROR', 'INTERNAL_ERROR']);
+  });
+});
+
+describe('ProcessPendingCapturedOffersUseCase — oferta montada e reescrita com IA', () => {
+  const LINK_ONLY = 'https://amzn.to/abc';
+  const TENANT_LINK = 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=meu-20';
+
+  it('ORIGINAL com texto: não lê produto nem compõe (comportamento de sempre)', async () => {
+    const s = await setup();
+    await s.msg();
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(0);
+    expect(s.texts.inputs).toHaveLength(0);
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL', aiErrorCode: null });
+  });
+
+  it('captura só com link: monta pelo modelo com dados do produto e guarda a foto do produto', async () => {
+    const s = await setup();
+    await s.msg({ body: LINK_ONLY, msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.products.calls).toEqual([{ provider: 'AMAZON', sourceUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH' }]);
+    expect(s.texts.inputs[0]).toMatchObject({ audience: 'STANDARD', title: 'Fone JBL Tune 510BT', priceCents: 9900, originalPriceCents: 19900, affiliateUrl: TENANT_LINK, coupon: null });
+    const q = s.queue.inputs[0]!;
+    expect(q.text).toBe(`*Fone JBL Tune 510BT*\nDe R$ 199.00 por R$ 99.00\n${TENANT_LINK}`);
+    expect(q.title).toBe('*Fone JBL Tune 510BT*');
+    expect(q.imageUrl).toBe('https://api/media/stored-1.jpg');
+    expect(s.images.stored).toEqual(['https://m.media-amazon.com/images/I/fone.jpg']);
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'TEMPLATE', finalText: q.text });
+  });
+
+  it('só link com enrichLinkOnly desligado: sai só o link do tenant, ORIGINAL', async () => {
+    const s = await setup({ settings: { enrichLinkOnly: false } });
+    await s.msg({ body: LINK_ONLY, msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(0);
+    expect(s.queue.inputs[0]!.text).toBe(TENANT_LINK);
+    expect(s.captured.items[0]).toMatchObject({ textSource: 'ORIGINAL' });
+  });
+
+  it('modo AI com público: compõe pela IA, textSource AI; foto da mensagem tem prioridade', async () => {
+    const s = await setup({ settings: { textMode: 'AI', audience: 'MOMS' } });
+    await s.msg();
+    await s.process.execute();
+    expect(s.texts.inputs[0]).toMatchObject({ audience: 'MOMS', coupon: 'PROMO10' });
+    expect(s.queue.inputs[0]!.text).toBe(`✨ Texto da IA para MOMS: Fone JBL Tune 510BT\n${TENANT_LINK}`);
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/1.jpg');
+    expect(s.images.stored).toHaveLength(0);
+    expect(s.captured.items[0]).toMatchObject({ textSource: 'AI', aiErrorCode: null });
+  });
+
+  it('IA indisponível: cai no modelo, TEMPLATE com aiErrorCode', async () => {
+    const s = await setup({ settings: { textMode: 'AI', audience: 'PET' } });
+    s.texts.result = (i) => ({ text: `*${i.title}*\n${i.affiliateUrl}`, aiFallback: true, aiErrorCode: 'AI_NOT_CONFIGURED' });
+    await s.msg();
+    await s.process.execute();
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'TEMPLATE', aiErrorCode: 'AI_NOT_CONFIGURED' });
+  });
+
+  it('modo AI com público STANDARD equivale ao modelo', async () => {
+    const s = await setup({ settings: { textMode: 'AI', audience: 'STANDARD' } });
+    await s.msg();
+    await s.process.execute();
+    expect(s.texts.inputs[0]!.audience).toBe('STANDARD');
+    expect(s.captured.items[0]).toMatchObject({ textSource: 'TEMPLATE' });
+  });
+
+  it('sem dados do produto: texto original, captura segue QUEUED', async () => {
+    const s = await setup({ settings: { textMode: 'TEMPLATE' } });
+    s.products.data = null;
+    await s.msg();
+    await s.process.execute();
+    expect(s.texts.inputs).toHaveLength(0);
+    expect(s.queue.inputs[0]!.text).toContain('Fone JBL por R$ 99');
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
+  });
+
+  it('texto composto com link estranho é descartado: volta ao original', async () => {
+    const s = await setup({ settings: { textMode: 'AI', audience: 'MEN' } });
+    s.texts.result = (i) => ({ text: `Compre em https://loja-do-concorrente.com/x\n${i.affiliateUrl}`, aiFallback: false });
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]!.text).not.toContain('concorrente');
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
   });
 });

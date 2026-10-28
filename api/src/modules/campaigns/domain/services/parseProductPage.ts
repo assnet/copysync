@@ -144,6 +144,74 @@ function amazonData(html: string): Partial<ProductPageData> {
   };
 }
 
+/** Primeiro objeto JSON que começa em `start` (chaves balanceadas, strings respeitadas); null se inválido. */
+function sliceJsonObject(text: string, start: number, maxLen = 60_000): string | null {
+  if (text[start] !== '{') return null;
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < text.length && i - start < maxLen; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
+/**
+ * Vitrine "social" do ML (`/social/<etiqueta>?…&ref=…`): a página é um perfil, não um produto, e os
+ * `og:*`/JSON-LD falam do perfil. O produto está no 1º `polycard` (`metadata.product_id`,
+ * `components[type=title|price]`, `pictures.pictures[0].id` + `picture_template` do contexto).
+ * Foto: template com `{square}`→`NQ`, `{2x}`→`_2X`, `{size}`→`F` (formato padrão do ML).
+ */
+export function parseMercadoLivreSocialPage(html: string): ProductPageData {
+  const empty: ProductPageData = { title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: null };
+  const list = html.indexOf('"polycards":[');
+  if (list < 0) return empty;
+  const raw = sliceJsonObject(html, list + '"polycards":['.length);
+  if (!raw) return empty;
+  let card: Record<string, Json>;
+  try {
+    card = JSON.parse(raw) as Record<string, Json>;
+  } catch {
+    return empty;
+  }
+  const meta = (card.metadata ?? {}) as Record<string, Json>;
+  const components = asArray(card.components) as Record<string, Json>[];
+  const byType = (t: string) => components.find((c) => c?.type === t) ?? null;
+  const titleNode = byType('title')?.title as Record<string, Json> | undefined;
+  const priceNode = byType('price')?.price as Record<string, Json> | undefined;
+  const current = parsePriceToCents((priceNode?.current_price as Record<string, Json> | undefined)?.value ?? null);
+  const previous = parsePriceToCents((priceNode?.previous_price as Record<string, Json> | undefined)?.value ?? null);
+  const pictures = (card.pictures as Record<string, Json> | undefined)?.pictures;
+  const pictureId = (asArray(pictures)[0] as Record<string, Json> | undefined)?.id;
+  // O template fica no `polycard_context`, antes da lista (o 1º da página serve para todos os cards),
+  // como string JSON (`\u002F` no lugar de `/`): decodificar antes de usar
+  const rawTemplate = /"picture_template"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(html.slice(0, list))?.[1];
+  let template: string | null = null;
+  try {
+    template = rawTemplate ? (JSON.parse(`"${rawTemplate}"`) as string) : null;
+  } catch {
+    template = null;
+  }
+  const imageUrl = typeof pictureId === 'string' && template && /^[A-Za-z0-9_-]+$/.test(pictureId)
+    ? template.replace('{square}', 'NQ').replace('{2x}', '_2X').replace('{id}', pictureId).replace('{size}', 'F').replace('{sanitized_title}', '')
+    : null;
+  const productId = typeof meta.product_id === 'string' && /^MLB\d+$/i.test(meta.product_id) ? meta.product_id.toUpperCase() : null;
+  return {
+    title: typeof titleNode?.text === 'string' ? clean(titleNode.text) : null,
+    imageUrl: imageUrl?.startsWith('https://http2.mlstatic.com/') ? imageUrl : null,
+    priceCents: current,
+    originalPriceCents: previous != null && current != null && previous > current ? previous : null,
+    productRef: productId,
+  };
+}
+
 /**
  * Extrai título, foto e preços do HTML. Ordem: `og:*` → JSON-LD `Product` → `product:price:amount`
  * → marcação própria da loja (ML `andes-money-amount`, Amazon) → `<title>`. Campo ausente = null.

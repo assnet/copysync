@@ -161,6 +161,16 @@ function CapturedOfferRow({ item, onRetry, control }: { item: CapturedOfferItem;
             <Typography variant="caption" color="text.secondary">{t.startsAt(timeOf(item.startsAt))}</Typography>
           )}
           {item.expiresAt && <Typography variant="caption" color="text.secondary">{t.expiresAt(timeOf(item.expiresAt))}</Typography>}
+          {item.textSource && (
+            <Tooltip title={t.textSourceTooltip[item.textSource]} arrow describeChild>
+              <Chip size="small" variant="outlined" label={t.textSource[item.textSource]} sx={{ color: 'text.secondary' }} />
+            </Tooltip>
+          )}
+          {item.aiErrorCode && (
+            <Tooltip title={t.aiFallbackTooltip(item.aiErrorCode)} arrow describeChild>
+              <Chip size="small" variant="outlined" color="warning" label={t.aiFallback} />
+            </Tooltip>
+          )}
           {queued && item.totalCount > 0 && (
             <Tooltip title={t.progressTooltip} arrow describeChild>
               <Chip size="small" variant="outlined" label={t.progress(item.sentCount, item.totalCount)} sx={{ color: 'text.secondary' }} />

@@ -13,6 +13,7 @@ import { HttpShortLinkExpander } from './http/HttpShortLinkExpander';
 import { HttpOfferImageFetcher } from './http/HttpOfferImageFetcher';
 import { HttpProductPageReader } from './http/HttpProductPageReader';
 import { LazyAiTextGenerator } from './adapters/LazyAiTextGenerator';
+import { ResolveProductDataUseCase } from '../application/use-cases/ResolveProductDataUseCase';
 import { OfferTextComposer } from '../application/services/OfferTextComposer';
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
@@ -95,6 +96,9 @@ const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
   pageReader: new HttpProductPageReader(),
 }));
 const enqueue     = lazy(() => new EnqueueOfferUseCase({ offers: offers(), dispatches: dispatches() }));
+const products    = lazy(() => new ResolveProductDataUseCase({
+  shopee: new ShopeeAffiliateClient(), pageReader: new HttpProductPageReader(), imageFetcher: new HttpOfferImageFetcher(), mediaStore: mediaStore(),
+}));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),
 }));
@@ -119,4 +123,7 @@ export const offersContainer = {
   buildTenantAffiliateLink: tenantLinks,
   enqueueOffer:         enqueue,
   entitlements:         entitlements,
+  resolveProductData:   products,
+  offerTexts:           texts,
+  credentials:          credentials,
 };

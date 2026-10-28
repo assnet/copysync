@@ -9,6 +9,33 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api (0.41.0) · app (0.47.0) — monitoramento: oferta montada e reescrita com IA
+
+Spec: `.specs/features/monitoring-ai-rewrite/spec.md`. Captura só com link saía só com o link; texto do concorrente
+saía palavra por palavra. Agora o monitoramento monta a oferta com dados do produto e, se o tenant quiser, reescreve
+pela IA, no mesmo caminho do gerador.
+
+#### Backend
+
+- **`ResolveProductDataUseCase.ts`** (novo) — `resolveProduct`/`storeImage` extraídos do `GenerateOfferUseCase` (gerador delega, comportamento igual).
+- **`parseProductPage.ts`** — `parseMercadoLivreSocialPage`: 1º `polycard` da vitrine social (título, preços, foto por `picture_template`, `product_id`); **`HttpProductPageReader.ts`** usa para `/social/`. Validado na vitrine real.
+- **Prisma** — migration `20261028060000_monitoring_text_mode`: enum `MonitorTextMode`; `group_monitor_configs.textMode|audience|enrichLinkOnly`; `captured_offers.textSource|aiErrorCode`. Padrões mantêm o comportamento atual (ORIGINAL) com `enrichLinkOnly=true`.
+- **`GroupMonitor.ts`**, **`monitorSettings.ts`**, **`groupMonitoring.schema.ts`** — campos, defaults e validação (422 `GROUP_MONITOR_INVALID_INPUT`).
+- **`IMonitorPorts.ts`** / **`CampaignsMonitorAdapters.ts`** — `IMonitorProductReader`, `IMonitorTextComposer`, `IMonitorImageStore` sobre `ResolveProductDataUseCase`, `OfferTextComposer` e o media store. **`offersContainer`** expõe `resolveProductData`, `offerTexts`, `credentials`.
+- **`ProcessPendingCapturedOffersUseCase.ts`** — `buildMonitorText`: ORIGINAL (como sempre) · TEMPLATE/AI ou só-link → produto + compositor; IA falha → modelo (`aiErrorCode`); sem dados → original; rede de segurança também sobre o texto composto; foto da mensagem, senão do produto. **`offerMessageText.ts`** — `hasTextBeyondLinks`. 8 testes novos no worker.
+- **DTO/schema** da captura — `textSource`, `aiErrorCode`.
+
+#### Frontend
+
+- **`MonitoringSettingsForm.tsx`** — card "Texto da oferta": Original / Modelo / Reescrita com IA, `AudiencePicker` do gerador quando IA, switch "Montar a oferta quando chegar só o link". Sai o "Em breve" da IA. **`settingsDraft.ts`** versão 3.
+- **`CapturedOffersList.tsx`** — chips "Texto original / do modelo / da IA" e "IA indisponível" (tooltip com o código).
+- **`strings.ts`** (monitoring) — textos novos, sem marca.
+
+#### Docs
+
+- `docs/monitoramento-grupos.md` §1, §2.1.1, §5, §6, §8; `docs/gerador-de-ofertas.md`; `docs/produto-roadmap.md` itens 4 e 7.
+
+
 ### Changed — api (0.40.0) — pausar/parar compacta a faixa de envio
 
 - **`compactLane.ts`** (novo, `campaigns/domain/services`) — regra pura: depois de uma pausa/parada, os envios seguintes da sessão vêm para uma folga sorteada após o último envio; buracos maiores que o intervalo máximo viram folga; ordem e espaçamentos normais ficam; sessão que nunca enviou mantém o primeiro horário. Testes próprios.

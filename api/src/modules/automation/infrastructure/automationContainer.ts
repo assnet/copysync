@@ -2,7 +2,9 @@ import { prisma } from '../../../shared/database/prisma.client';
 import { offersContainer } from '../../campaigns/infrastructure/offersContainer';
 import { PrismaGroupMonitorRepository } from './repositories/PrismaGroupMonitorRepository';
 import { PrismaCapturedOfferRepository } from './repositories/PrismaCapturedOfferRepository';
-import { CampaignsOfferQueue, CampaignsTenantLinkBuilder, ChatMonitorGroupDirectory } from './adapters/CampaignsMonitorAdapters';
+import {
+  CampaignsMonitorImageStore, CampaignsMonitorProductReader, CampaignsMonitorTextComposer, CampaignsOfferQueue, CampaignsTenantLinkBuilder, ChatMonitorGroupDirectory,
+} from './adapters/CampaignsMonitorAdapters';
 import {
   GetGroupMonitorConfigUseCase, SaveBroadcastGroupsUseCase, SaveGroupMonitorSettingsUseCase, SaveMonitoredGroupsUseCase,
 } from '../application/use-cases/GroupMonitorConfigUseCases';
@@ -32,5 +34,6 @@ export const automationContainer = {
   processCaptured:  lazy(() => new ProcessPendingCapturedOffersUseCase({
     captured: captured(), monitors: monitors(), links: new CampaignsTenantLinkBuilder(), queue: new CampaignsOfferQueue(),
     entitlements: offersContainer.entitlements(),
+    products: new CampaignsMonitorProductReader(), texts: new CampaignsMonitorTextComposer(), images: new CampaignsMonitorImageStore(),
   })),
 };

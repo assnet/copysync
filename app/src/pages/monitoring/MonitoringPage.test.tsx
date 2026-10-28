@@ -33,6 +33,7 @@ const config = (sessionId: string): GroupMonitorConfigResponse => ({
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600,
     startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: true, typingSeconds: 5,
+    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true,
   },
   monitoredGroups: [{ conversationId: 'c1', groupJid: 'g1@g.us', title: 'Promo Rival', avatarUrl: null, keywords: ['fone'] }],
   broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', title: 'Meu Grupo', avatarUrl: null, position: 0 }],
@@ -44,7 +45,7 @@ const captured: CapturedOffersResponse = {
   items: [{
     id: 'o1', status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', marketplace: 'SHOPEE', sourceGroupTitle: 'Promo Rival',
     sourceGroupAvatarUrl: null, textPreview: 'Fone bluetooth por R$ 50', imageUrl: null, coupon: 'DESC10', affiliateUrl: null,
-    offerId: null, offerStatus: null, sentCount: 0, totalCount: 0, capturedAt: new Date().toISOString(), expiresAt: null, startsAt: null, imageUnavailable: true,
+    offerId: null, textSource: null, aiErrorCode: null, offerStatus: null, sentCount: 0, totalCount: 0, capturedAt: new Date().toISOString(), expiresAt: null, startsAt: null, imageUnavailable: true,
   }],
   nextCursor: 'next',
 };

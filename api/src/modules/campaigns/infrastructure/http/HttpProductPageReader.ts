@@ -1,6 +1,6 @@
 import { logger } from '../../../../shared/logger/logger';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
-import { parseProductPage, type ProductPageData } from '../../domain/services/parseProductPage';
+import { parseMercadoLivreSocialPage, parseProductPage, type ProductPageData } from '../../domain/services/parseProductPage';
 import type { IProductPageReader, ReadProductPageInput } from '../../domain/contracts/IProductPageReader';
 
 const log = logger.child({ module: 'HttpProductPageReader' });
@@ -74,7 +74,10 @@ export class HttpProductPageReader implements IProductPageReader {
           return this.fail(current, `status_${res.status}`);
         }
         const html = await readLimited(res.body);
-        return parseProductPage(detectMarketplace(current) ?? provider, html);
+        const finalProvider = detectMarketplace(current) ?? provider;
+        // Vitrine social é perfil, não produto: os dados vêm do 1º card, não dos og:*
+        if (finalProvider === 'MERCADO_LIVRE' && current.pathname.startsWith('/social/')) return parseMercadoLivreSocialPage(html);
+        return parseProductPage(finalProvider, html);
       }
     } catch (err) {
       return this.fail(current, (err as Error)?.name ?? 'error');

@@ -5,7 +5,7 @@
  * - frase com variável é função tipada; componente nunca concatena pedaços
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
-import type { AffiliateProvider, CapturedOfferReason, CapturedOfferStatus } from '@/types/api.types';
+import type { AffiliateProvider, CapturedOfferReason, CapturedOfferStatus, MonitorTextMode } from '@/types/api.types';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -141,9 +141,20 @@ export const monitoringStrings = {
     couponAgeLabel: 'Validade da oferta com cupom',
     couponAgeHelp: 'Cupons esgotam rápido. Não passa da validade sem cupom.',
 
+    textTitle: 'Texto da oferta',
+    textSubtitle: 'O que vai escrito em cada oferta repostada',
+    textModeAria: 'Como montar o texto',
+    textModes: {
+      ORIGINAL: { label: 'Original', help: 'Repassa o texto do grupo monitorado, só trocando o link pelo seu.' },
+      TEMPLATE: { label: 'Modelo', help: 'Monta a oferta com os dados do produto: título, preço, preço anterior, cupom e o seu link.' },
+      AI: { label: 'Reescrita com IA', help: 'A IA escreve a oferta para o público escolhido a partir dos dados do produto. Se a IA falhar, sai o modelo.' },
+    } satisfies Record<MonitorTextMode, { label: string; help: string }>,
+    textProductNote: 'Os dados do produto vêm da loja (vitrine do Mercado Livre, API da Shopee, página da Amazon). Quando não dá para ler, sai o texto original.',
+    audienceLabel: 'Público-alvo',
+    enrichTitle: 'Montar a oferta quando chegar só o link',
+    enrichHelp: 'Mensagem só com link, sem texto, vira oferta com título, preço e foto do produto mesmo no modo Original.',
+
     upcomingTitle: 'Próximos recursos',
-    aiRewriteTitle: 'Reescrita com IA',
-    aiRewriteHelp: 'Reescreve o texto da oferta com o seu tom antes de enviar.',
     imageTitle: 'Imagem das ofertas',
     imageHelp: 'Gera uma imagem nova para a oferta quando a original não puder ser usada.',
     soon: 'Em breve',
@@ -224,6 +235,18 @@ export const monitoringStrings = {
       FAILED: 'Falhou',
       CANCELLED: 'Parada',
     },
+    textSource: {
+      ORIGINAL: 'Texto original',
+      TEMPLATE: 'Texto do modelo',
+      AI: 'Texto da IA',
+    } satisfies Record<MonitorTextMode, string>,
+    textSourceTooltip: {
+      ORIGINAL: 'Texto do grupo monitorado com o link trocado pelo seu.',
+      TEMPLATE: 'Montado com os dados do produto (título, preço, link).',
+      AI: 'Escrito pela IA a partir dos dados do produto.',
+    } satisfies Record<MonitorTextMode, string>,
+    aiFallback: 'IA indisponível',
+    aiFallbackTooltip: (code: string) => `A IA não respondeu (${code}); a oferta saiu com o texto do modelo.`,
     untilStart: 'Começa a enviar em',
     untilStartAria: 'Tempo até o primeiro envio',
     started: 'Na fila',

@@ -510,7 +510,15 @@ export interface GroupMonitorSettings {
   simulateTyping: boolean;
   /** 1..30. */
   typingSeconds: number;
+  /** Texto enviado: original do grupo (links trocados), modelo fixo com dados do produto, ou IA. */
+  textMode: MonitorTextMode;
+  /** Só com `AI`; `STANDARD` = modelo fixo. */
+  audience: OfferAudience;
+  /** Captura só com link vira oferta montada mesmo em `ORIGINAL`. */
+  enrichLinkOnly: boolean;
 }
+
+export type MonitorTextMode = 'ORIGINAL' | 'TEMPLATE' | 'AI';
 
 export interface MonitoredGroupItem {
   conversationId: string;
@@ -582,6 +590,10 @@ export interface CapturedOfferItem {
   affiliateUrl: string | null;
   /** Oferta criada na fila de envio (QUEUED). */
   offerId: string | null;
+  /** De onde saiu o texto enviado; null até processar. */
+  textSource: MonitorTextMode | null;
+  /** `AI_*` quando a IA foi pedida e o texto caiu no modelo. */
+  aiErrorCode: string | null;
   /** Estado da oferta na fila: pausar/retomar/parar agem nela, em todos os grupos de disparo. */
   offerStatus: OfferStatus | null;
   /** Envios concluídos × total da oferta (0/0 sem oferta). */

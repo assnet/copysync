@@ -1,4 +1,5 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { MonitorTextMode } from './GroupMonitor';
 
 export const CAPTURED_OFFER_STATUSES = ['PENDING', 'PROCESSING', 'QUEUED', 'SKIPPED', 'FAILED'] as const;
 export type CapturedOfferStatus = (typeof CAPTURED_OFFER_STATUSES)[number];
@@ -44,6 +45,10 @@ export interface CapturedOffer {
   status: CapturedOfferStatus;
   reason: string | null;
   offerId: string | null;
+  /** De onde saiu `finalText`; null até processar. */
+  textSource: MonitorTextMode | null;
+  /** Código `AI_*` quando a IA foi pedida e o texto caiu no modelo fixo. */
+  aiErrorCode: string | null;
   startsAt: Date | null;
   expiresAt: Date | null;
   capturedAt: Date;

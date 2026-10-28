@@ -1,3 +1,9 @@
+import type { OfferAudience } from '../../../campaigns/domain/enums/OfferAudience';
+
+/** Texto enviado: ORIGINAL = do grupo com links trocados; TEMPLATE = modelo fixo com dados do produto; AI = reescrito. */
+export const MONITOR_TEXT_MODES = ['ORIGINAL', 'TEMPLATE', 'AI'] as const;
+export type MonitorTextMode = (typeof MONITOR_TEXT_MODES)[number];
+
 /** Regras de envio e captura do monitoramento de UMA sessão. Minutos do dia em America/Sao_Paulo. */
 export interface GroupMonitorSettings {
   enabled: boolean;
@@ -11,6 +17,11 @@ export interface GroupMonitorSettings {
   mentionAll: boolean;
   simulateTyping: boolean;
   typingSeconds: number;
+  textMode: MonitorTextMode;
+  /** Só com `textMode: 'AI'`; `STANDARD` equivale ao modelo fixo. */
+  audience: OfferAudience;
+  /** Captura sem texto além de links vira oferta montada, mesmo em `ORIGINAL`. */
+  enrichLinkOnly: boolean;
 }
 
 export interface GroupMonitorConfig extends GroupMonitorSettings {
