@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app (0.43.1) — ajustes no catálogo de planos
+
+- **`features/plans/catalog.ts`**, **`docs/produto-roadmap.md`** — Starter ganha "Gerador de ofertas" e "Envio digitando… antes de cada oferta" (sai da lista do Profissional, já coberto por "Tudo do Starter"); Business ganha "Monitorar em um WhatsApp e disparar em outro" (sessão cruzada, exclusivo). Tabela do roadmap alinhada.
+
 ### Added — app (0.43.0) — Vitrine de planos no menu
 
 - **`AppLayout.tsx`** — item "Planos" (ícone `Crown`) no menu lateral, acima de Privacidade; **`AppRoutes.tsx`** — rota `/plans`.
