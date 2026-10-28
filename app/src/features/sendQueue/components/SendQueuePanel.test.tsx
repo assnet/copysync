@@ -4,6 +4,8 @@ import type { SendQueueItem, SendQueueResponse } from '@/types/api.types';
 
 const get = vi.fn<(sessionId?: string) => Promise<SendQueueResponse>>();
 vi.mock('@/services/sendQueue.service', () => ({ sendQueueService: { get: (id?: string) => get(id) } }));
+const pause = vi.fn(); const resume = vi.fn(); const cancel = vi.fn();
+vi.mock('@/services/offer.service', () => ({ offerService: { pause: (id: string) => pause(id), resume: (id: string) => resume(id), cancel: (id: string) => cancel(id) } }));
 
 import { SendQueuePanel } from './SendQueuePanel';
 
@@ -14,7 +16,7 @@ const item = (o: Partial<SendQueueItem>): SendQueueItem => ({
   notBefore: soon, claimedAt: null, updatedAt: soon, failureReason: null, waitingSession: false, ...o,
 });
 
-beforeEach(() => { get.mockReset(); });
+beforeEach(() => { get.mockReset(); pause.mockReset(); resume.mockReset(); cancel.mockReset(); });
 
 describe('SendQueuePanel', () => {
   it('fila vazia mostra o estado vazio', async () => {
@@ -72,5 +74,58 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     });
     render(<SendQueuePanel />);
     expect(await screen.findByText('Aguardando a sessão')).toBeInTheDocument();
+  });
+
+  const lane = (waiting: SendQueueItem[], running: SendQueueItem | null = null): SendQueueResponse => ({
+    serverTime: soon,
+    sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running, waiting, recent: [], counts: { waiting: waiting.length, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
+  });
+
+  it('pausar e retomar agem na oferta e recarregam a fila (também no monitoramento, sem onOpenOffer)', async () => {
+    get.mockResolvedValue(lane([item({ dispatchId: 'w1', offerId: 'o2', origin: 'MONITORING' }), item({ dispatchId: 'w2', offerId: 'o3', offerStatus: 'PAUSED' })]));
+    pause.mockResolvedValue({}); resume.mockResolvedValue({});
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    const calls = get.mock.calls.length;
+    fireEvent.click(screen.getAllByLabelText(/^Pausar a oferta/)[0]);
+    await vi.waitFor(() => expect(pause).toHaveBeenCalledWith('o2'));
+    await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
+    fireEvent.click(screen.getByLabelText(/^Retomar a oferta/));
+    await vi.waitFor(() => expect(resume).toHaveBeenCalledWith('o3'));
+    expect(screen.queryByLabelText('Abrir oferta')).not.toBeInTheDocument();
+  });
+
+  it('parar pede confirmação e só então cancela', async () => {
+    get.mockResolvedValue(lane([item({ dispatchId: 'w1', offerId: 'o2' })]));
+    cancel.mockResolvedValue({});
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    fireEvent.click(screen.getByLabelText(/^Parar a oferta/));
+    expect(cancel).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Parar oferta' }));
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledWith('o2'));
+  });
+
+  it('409 OFFER_INVALID_STATE não mostra erro; outra falha mostra', async () => {
+    get.mockResolvedValue(lane([item({ dispatchId: 'w1', offerId: 'o2' })]));
+    pause.mockRejectedValueOnce({ code: 'OFFER_INVALID_STATE' });
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    fireEvent.click(screen.getByLabelText(/^Pausar a oferta/));
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled());
+    expect(screen.queryByText(/Não foi possível alterar/)).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.getByLabelText(/^Pausar a oferta/)).not.toBeDisabled());
+    pause.mockRejectedValueOnce(new Error('x'));
+    fireEvent.click(screen.getByLabelText(/^Pausar a oferta/));
+    expect(await screen.findByText(/Não foi possível alterar/)).toBeInTheDocument();
+  });
+
+  it('envio concluído não tem controles', async () => {
+    get.mockResolvedValue({ ...lane([]), sessions: [{ ...lane([]).sessions[0], recent: [item({ status: 'SENT', offerStatus: 'SENT' })], counts: { waiting: 0, paused: 0, sentToday: 1, failedToday: 0, skippedToday: 0 } }] });
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    fireEvent.click(screen.getByRole('tab', { name: /Concluídos/ }));
+    expect(screen.queryByLabelText(/^Pausar a oferta/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Parar a oferta/)).not.toBeInTheDocument();
   });
 });

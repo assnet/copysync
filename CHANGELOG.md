@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app (0.45.0) — controles na fila de envio (Monitoramento e Gerador)
+
+- **`SendQueuePanel.tsx`** — pausar / retomar / parar por linha da fila, agindo na oferta (todos os envios dela) pelos endpoints `POST /campaigns/offers/:id/{pause|resume|cancel}` já existentes. Parar pede confirmação (`ConfirmDialog`, final). 409 `OFFER_INVALID_STATE` só recarrega a fila; outra falha mostra alerta. Botões só em envio em curso ou aguardando com oferta enviando/pausada; concluídos não têm. Antes, a tela de Monitoramento não tinha nenhum controle sobre a fila (o `SendQueuePanel` era montado sem "Abrir oferta", e oferta de origem `MONITORING` não abre no gerador).
+- **`strings.ts`** (sendQueue) — textos dos controles, confirmação e erro. **`SendQueuePanel.test.tsx`** — 4 casos novos.
+
+
 ### Fixed — api (0.38.3) — link de afiliado ML nunca era gerado (monitoramento e gerador)
 
 Incidente 2026-10-28: captura do monitoramento caía em `FAILED/LINK_RESOLVE_FAILED` para toda oferta

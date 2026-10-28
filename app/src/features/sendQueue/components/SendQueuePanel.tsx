@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Chip, IconButton, LinearProgress, List, ListItem, ListItemAvatar,
   Skeleton, Stack, Tab, Tabs, Tooltip, Typography, type ChipProps,
 } from '@mui/material';
-import { ExternalLink, ListOrdered, RefreshCw, Users } from 'lucide-react';
-import { AppIcon, CooldownBar, EmptyState, SectionCard } from '@/components';
+import { ExternalLink, ListOrdered, Pause, Play, RefreshCw, Square, Users } from 'lucide-react';
+import { AppIcon, ConfirmDialog, CooldownBar, EmptyState, SectionCard } from '@/components';
+import { offerService } from '@/services/offer.service';
 import { serverNow, serverToLocal } from '@/services/serverClock';
 import { Blurred, useBlur, type PrivacyFlag } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { offerStrings } from '@/features/offers/strings';
-import type { OfferDispatchStatus, SendQueueItem, SendQueueSession } from '@/types/api.types';
+import type { OfferDispatchStatus, OfferItem, SendQueueItem, SendQueueSession } from '@/types/api.types';
 import { useSendQueue } from '../hooks/useSendQueue';
 import { laneCooldown } from '../utils/laneCooldown';
 import { sendQueueStrings as t } from '../strings';
@@ -58,6 +59,7 @@ interface Props {
 export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, privacy = OFFER_FLAGS }: Props) {
   const { data, loading, failed, refresh } = useSendQueue(sessionId);
   const sessions = (data?.sessions ?? []).filter((s) => s.running || s.waiting.length > 0 || s.recent.length > 0);
+  const control = useOfferControl(refresh);
 
   return (
     <SectionCard
@@ -85,12 +87,78 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
       ) : (
         <Stack spacing={2}>
           {sessions.map((s) => (
-            <LanePanel key={s.sessionId ?? 'none'} session={s} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} />
+            <LanePanel key={s.sessionId ?? 'none'} session={s} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} control={control} />
           ))}
         </Stack>
       )}
+      {control.error && (
+        <Alert severity="error" sx={{ mt: 2 }} onClose={control.dismissError}>{t.controlError}</Alert>
+      )}
+      <ConfirmDialog
+        open={control.confirmStop !== null}
+        title={t.stopConfirmTitle}
+        description={t.stopConfirmDescription}
+        confirmLabel={t.stopConfirm}
+        cancelLabel={t.stopCancel}
+        confirmColor="error"
+        onConfirm={control.confirmStopNow}
+        onClose={control.closeConfirm}
+      />
     </SectionCard>
   );
+}
+
+type OfferControlAction = 'pause' | 'resume' | 'cancel';
+
+export interface OfferControl {
+  /** Oferta com chamada em curso (desabilita os botões dela). */
+  busyOfferId: string | null;
+  confirmStop: string | null;
+  error: boolean;
+  run: (action: OfferControlAction, offerId: string) => void;
+  askStop: (offerId: string) => void;
+  confirmStopNow: () => void;
+  closeConfirm: () => void;
+  dismissError: () => void;
+}
+
+/**
+ * Pausar / retomar / parar agem na OFERTA (todos os envios dela nesta fila), pelos mesmos endpoints
+ * do gerador. 409 `OFFER_INVALID_STATE` = o estado mudou antes do clique (terminou, outra aba
+ * parou): só recarrega, sem erro. Parar é final e pede confirmação.
+ */
+function useOfferControl(refresh: () => Promise<void>): OfferControl {
+  const [busyOfferId, setBusy] = useState<string | null>(null);
+  const [confirmStop, setConfirmStop] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  const run = useCallback((action: OfferControlAction, offerId: string) => {
+    setBusy(offerId);
+    setError(false);
+    const call: Promise<OfferItem> = offerService[action](offerId);
+    call
+      .catch((err: unknown) => {
+        if ((err as { code?: unknown } | null)?.code !== 'OFFER_INVALID_STATE') setError(true);
+      })
+      .then(() => refresh())
+      .finally(() => setBusy((cur) => (cur === offerId ? null : cur)));
+  }, [refresh]);
+
+  const confirmStopNow = useCallback(() => {
+    if (confirmStop) run('cancel', confirmStop);
+    setConfirmStop(null);
+  }, [confirmStop, run]);
+
+  return {
+    busyOfferId,
+    confirmStop,
+    error,
+    run,
+    askStop: setConfirmStop,
+    confirmStopNow,
+    closeConfirm: () => setConfirmStop(null),
+    dismissError: () => setError(false),
+  };
 }
 
 interface LaneProps {
@@ -98,9 +166,10 @@ interface LaneProps {
   privacy: SendQueuePrivacyFlags;
   onOpenOffer?: (offerId: string) => void;
   currentOfferId: string | null;
+  control: OfferControl;
 }
 
-function LanePanel({ session, privacy, onOpenOffer, currentOfferId }: LaneProps) {
+function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control }: LaneProps) {
   const laneKey = session.sessionId ?? 'none';
   // Uma chave por sessão: duas faixas gravando o mesmo mapa se sobrescreviam
   const [tab, setTab] = usePersistedState<'waiting' | 'done'>(`sendQueue.tab.${laneKey}`, 'waiting');
@@ -147,7 +216,7 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId }: LaneProps)
           <Typography variant="caption" color="text.secondary">{t.sendingNow}</Typography>
           <LinearProgress sx={{ my: 0.5, height: 4, borderRadius: 2 }} />
           <List dense disablePadding>
-            <QueueRow item={session.running} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} />
+            <QueueRow item={session.running} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} control={control} />
           </List>
         </Box>
       )}
@@ -187,7 +256,7 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId }: LaneProps)
       ) : (
         <List dense disablePadding>
           {visible.map((item) => (
-            <QueueRow key={item.dispatchId} item={item} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} />
+            <QueueRow key={item.dispatchId} item={item} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} control={control} />
           ))}
         </List>
       )}
@@ -224,9 +293,10 @@ interface RowProps {
   privacy: SendQueuePrivacyFlags;
   onOpenOffer?: (offerId: string) => void;
   currentOfferId: string | null;
+  control: OfferControl;
 }
 
-function QueueRow({ item, privacy, onOpenOffer, currentOfferId }: RowProps) {
+function QueueRow({ item, privacy, onOpenOffer, currentOfferId, control }: RowProps) {
   const blurNames = useBlur(privacy.groupNames);
   const blurAvatars = useBlur(privacy.groupAvatars);
   const blurText = useBlur(privacy.productText);
@@ -237,18 +307,34 @@ function QueueRow({ item, privacy, onOpenOffer, currentOfferId }: RowProps) {
       || (item.status === 'SKIPPED' ? offerStrings.progress.failureReasons.skipped : offerStrings.progress.failureReasons.generic)
     : null;
   const canOpen = onOpenOffer && item.origin === 'GENERATOR' && item.offerId !== currentOfferId;
+  // Controles só enquanto há o que segurar: em curso ou aguardando, com a oferta enviando ou pausada
+  const controllable = !done && (item.offerStatus === 'SENDING' || item.offerStatus === 'PAUSED');
+  const busy = control.busyOfferId === item.offerId;
+  const actionCount = (controllable ? 2 : 0) + (canOpen ? 1 : 0);
+
+  const action = (label: string, icon: typeof Pause, onClick: () => void, color?: 'error') => (
+    <Tooltip title={label} arrow describeChild>
+      <span>
+        <IconButton size="small" aria-label={label} onClick={onClick} disabled={busy} color={color}>
+          <AppIcon icon={icon} size="sm" />
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
 
   return (
     <ListItem
       divider
       disableGutters
       sx={{ gap: 1, alignItems: 'flex-start', opacity: item.status === 'CANCELLED' ? 0.6 : 1 }}
-      secondaryAction={canOpen ? (
-        <Tooltip title={t.openOffer} arrow>
-          <IconButton edge="end" size="small" aria-label={t.openOffer} onClick={() => onOpenOffer!(item.offerId)}>
-            <AppIcon icon={ExternalLink} size="sm" />
-          </IconButton>
-        </Tooltip>
+      secondaryAction={actionCount > 0 ? (
+        <Stack direction="row" spacing={0} sx={{ mr: -1 }}>
+          {controllable && (pausedRow
+            ? action(t.control.resume, Play, () => control.run('resume', item.offerId))
+            : action(t.control.pause, Pause, () => control.run('pause', item.offerId)))}
+          {controllable && action(t.control.stop, Square, () => control.askStop(item.offerId), 'error')}
+          {canOpen && action(t.openOffer, ExternalLink, () => onOpenOffer!(item.offerId))}
+        </Stack>
       ) : undefined}
     >
       <ListItemAvatar sx={{ minWidth: 40, mt: 0.75 }}>
@@ -260,7 +346,7 @@ function QueueRow({ item, privacy, onOpenOffer, currentOfferId }: RowProps) {
           <AppIcon icon={Users} size="sm" />
         </Avatar>
       </ListItemAvatar>
-      <Box sx={{ minWidth: 0, flex: 1, py: 0.75, pr: canOpen ? 5 : 0 }}>
+      <Box sx={{ minWidth: 0, flex: 1, py: 0.75, pr: actionCount * 4.5 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
           <Blurred when={blurNames} inline radius={5}>{item.groupName || t.untitledGroup}</Blurred>
         </Typography>
