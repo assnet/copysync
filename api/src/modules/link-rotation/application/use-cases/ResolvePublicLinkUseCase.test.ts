@@ -54,7 +54,8 @@ class FakeStore implements ILinkRotationPublicStore {
     return true;
   }
   async findLabels(_t: string, sessionId: string, conversationId: string | null) {
-    return { sessionName: sessionId === SESSION ? 'Principal' : null, groupName: conversationId ? `Grupo ${conversationId}` : null };
+    return { sessionName: sessionId === SESSION ? 'Principal' : null, groupName: conversationId ? `Grupo ${conversationId}` : null,
+      groupAvatarUrl: conversationId ? `https://media.test/avatar_${conversationId}.jpg` : null };
   }
 }
 
@@ -105,7 +106,7 @@ describe('ResolvePublicLinkUseCase', () => {
     const r = seedRotation();
     const g = repo.seedGroup(r.id);
     const out = await resolve({ hostname: 'PROMO.copysync.com.br:8080' });
-    expect(out).toEqual({ kind: 'redirect', inviteUrl: `https://chat.whatsapp.com/${CODE}`, groupName: `Grupo ${g.conversationId}`, title: 'Principal' });
+    expect(out).toEqual({ kind: 'redirect', inviteUrl: `https://chat.whatsapp.com/${CODE}`, groupName: `Grupo ${g.conversationId}`, groupAvatarUrl: `https://media.test/avatar_${g.conversationId}.jpg`, title: 'Principal' });
     expect(repo.groups[0]!.clickCount).toBe(1);
     expect(clicks.items).toEqual([{ tenantId: r.tenantId, rotationId: r.id, groupId: g.id, ipHash: hashClickIp('200.1.1.1', NOW, SALT), userAgentClass: 'browser', createdAt: NOW }]);
   });

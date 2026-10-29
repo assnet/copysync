@@ -7,7 +7,7 @@ import { createProbeToken } from '../../application/use-cases/admin/probeToken';
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
 import { makeDomain, NOW } from '../../application/use-cases/linkRotationTestFakes';
 import { ActiveLinkDomainCache } from '../../infrastructure/cache/ActiveLinkDomainCache';
-import { PUBLIC_PAGE_CSP } from '../templates/publicLinkLayout';
+import { configurePublicPageBranding, publicPageCsp } from '../templates/publicLinkLayout';
 import { registerPublicLinkRoutes } from './publicLink.routes';
 
 const SECRET = 'probe-secret-de-teste-com-32-chars!!';
@@ -45,17 +45,18 @@ const get = (url: string, host = HOST, headers: Record<string, string> = {}) =>
 
 describe('página pública por Host', () => {
   it('redirect: título, grupo, botão, meta refresh e headers', async () => {
-    next = { kind: 'redirect', inviteUrl: INVITE, groupName: 'Ofertas VIP', title: 'Promo da Ana' };
+    next = { kind: 'redirect', inviteUrl: INVITE, groupName: 'Ofertas VIP', groupAvatarUrl: null, title: 'Promo da Ana' };
     const res = await get('/');
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     expect(res.headers['referrer-policy']).toBe('no-referrer');
-    expect(res.headers['content-security-policy']).toBe(PUBLIC_PAGE_CSP);
-    expect(PUBLIC_PAGE_CSP).not.toContain('unsafe-inline');
+    expect(res.headers['content-security-policy']).toBe(publicPageCsp());
+    expect(publicPageCsp()).not.toContain('unsafe-inline');
     expect(res.body).toContain('<title>Promo da Ana</title>');
-    expect(res.body).toContain('<strong>Ofertas VIP</strong>');
+    expect(res.body).toContain('<span class="gn" title="Ofertas VIP">Ofertas VIP</span>');
+    expect(res.body).toContain('<span class="av av-i" aria-hidden="true">O</span>');
     expect(res.body).toContain(`href="${INVITE}"`);
     expect(res.body).toContain(`content="1;url=${INVITE}"`);
     expect(res.body).toContain('Entrar no grupo');
@@ -66,11 +67,11 @@ describe('página pública por Host', () => {
     const { createHash } = await import('node:crypto');
     next = { kind: 'paused', title: 'x' };
     const css = /<style>(.*?)<\/style>/s.exec((await get('/')).body)![1]!;
-    expect(PUBLIC_PAGE_CSP).toContain(`'sha256-${createHash('sha256').update(css).digest('base64')}'`);
+    expect(publicPageCsp()).toContain(`'sha256-${createHash('sha256').update(css).digest('base64')}'`);
   });
 
   it('escapa HTML vindo do banco (título, grupo, url)', async () => {
-    next = { kind: 'redirect', inviteUrl: 'https://chat.whatsapp.com/x"><script>', groupName: '<img src=x onerror=1>', title: '</title><script>alert(1)</script>' };
+    next = { kind: 'redirect', inviteUrl: 'https://chat.whatsapp.com/x"><script>', groupName: '<img src=x onerror=1>', groupAvatarUrl: null, title: '</title><script>alert(1)</script>' };
     const res = await get('/');
     expect(res.body).not.toContain('<script>');
     expect(res.body).not.toContain('<img');
@@ -79,7 +80,7 @@ describe('página pública por Host', () => {
   });
 
   it('redirect sem nome de grupo', async () => {
-    next = { kind: 'redirect', inviteUrl: INVITE, groupName: null, title: 'Promo' };
+    next = { kind: 'redirect', inviteUrl: INVITE, groupName: null, groupAvatarUrl: null, title: 'Promo' };
     expect((await get('/')).body).toContain('Seu convite está pronto.');
   });
 
@@ -184,6 +185,30 @@ describe('isolamento host público × host da API', () => {
     app.get('/health', async () => ({ status: 'ok' }));
     await app.ready();
     expect((await get('/health')).json()).toEqual({ status: 'ok' });
+  });
+});
+
+describe('identidade da página', () => {
+  afterEach(() => configurePublicPageBranding({ panelUrl: null, mediaUrl: null }));
+
+  it('favicon e logo do painel, foto do grupo só do armazenamento de mídia, CSP com as duas origens', async () => {
+    configurePublicPageBranding({ panelUrl: 'https://app.exemplo.com/login', mediaUrl: 'https://media.exemplo.com/bucket' });
+    next = { kind: 'redirect', inviteUrl: INVITE, groupName: 'Ofertas VIP', groupAvatarUrl: 'https://media.exemplo.com/media/g.jpg', title: 'Promo' };
+    const res = await get('/');
+    expect(res.body).toContain('<img class="av" src="https://media.exemplo.com/media/g.jpg"');
+    expect(res.body).toContain('<link rel="icon" type="image/png" sizes="32x32" href="https://app.exemplo.com/assets/brand/favicon-32.png">');
+    expect(res.body).toContain('<footer><img src="https://app.exemplo.com/assets/brand/icon-192.png"');
+    expect(res.body).toContain('<meta property="og:image" content="https://media.exemplo.com/media/g.jpg">');
+    expect(res.headers['content-security-policy']).toContain('img-src https://app.exemplo.com https://media.exemplo.com;');
+  });
+
+  it('foto de outra origem é ignorada (inicial no lugar) e a prévia usa o ícone da marca', async () => {
+    configurePublicPageBranding({ panelUrl: 'https://app.exemplo.com', mediaUrl: 'https://media.exemplo.com' });
+    next = { kind: 'redirect', inviteUrl: INVITE, groupName: 'ofertas', groupAvatarUrl: 'https://evil.test/x.jpg', title: 'Promo' };
+    const res = await get('/');
+    expect(res.body).not.toContain('evil.test');
+    expect(res.body).toContain('<span class="av av-i" aria-hidden="true">O</span>');
+    expect(res.body).toContain('content="https://app.exemplo.com/assets/brand/icon-512.png"');
   });
 });
 

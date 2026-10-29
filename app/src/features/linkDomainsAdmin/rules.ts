@@ -5,7 +5,8 @@
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RESERVED_NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 export const RESERVED_NAME_MAX = 50;
-export const RESERVED_NAMES_MAX = 100;
+/** Igual a `MAX_RESERVED_NAMES` da API. */
+export const RESERVED_NAMES_MAX = 1000;
 
 /** Minúsculo, sem esquema, caminho, porta nem ponto final. */
 export function normalizeHostname(raw: string): string {

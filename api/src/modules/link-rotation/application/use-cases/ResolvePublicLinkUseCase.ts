@@ -20,7 +20,7 @@ export interface ResolvePublicLinkInput {
 }
 
 export type ResolvePublicLinkOutput =
-  | { kind: 'redirect'; inviteUrl: string; groupName: string | null; title: string }
+  | { kind: 'redirect'; inviteUrl: string; groupName: string | null; groupAvatarUrl: string | null; title: string }
   | { kind: 'all_full'; title: string }
   | { kind: 'paused'; title: string }
   | { kind: 'bot_preview'; title: string }
@@ -98,6 +98,7 @@ export class ResolvePublicLinkUseCase {
       kind: 'redirect',
       inviteUrl: inviteUrlFromCode(group.inviteCode),
       groupName: labels.groupName,
+      groupAvatarUrl: labels.groupAvatarUrl,
       title: rotation.title || labels.sessionName || rotation.slug,
     };
   }
@@ -137,7 +138,7 @@ export class ResolvePublicLinkUseCase {
       return await this.deps.store.findLabels(rotation.tenantId, rotation.sessionId, conversationId);
     } catch (err) {
       this.warn({ err: (err as Error)?.name, rotationId: rotation.id, tenantId: rotation.tenantId }, 'link labels not loaded');
-      return { sessionName: null, groupName: null };
+      return { sessionName: null, groupName: null, groupAvatarUrl: null };
     }
   }
 

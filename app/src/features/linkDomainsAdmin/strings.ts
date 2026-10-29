@@ -1,3 +1,5 @@
+import { RESERVED_NAMES_MAX } from './rules';
+
 /** Textos da tela de domínios do rodízio de links (super admin). pt-BR. */
 export const linkDomainsAdminStrings = {
   navLabel: 'Domínios de links',
@@ -71,7 +73,7 @@ export const linkDomainsAdminStrings = {
     reservedPlaceholder: 'Digite e tecle Enter',
     reservedHelp: 'Subdomínios que nenhum cliente pode usar, além dos já reservados pela plataforma.',
     reservedInvalid: (name: string) => `"${name}" não é válido: use letras minúsculas, números e hífen.`,
-    reservedTooMany: 'No máximo 100 nomes reservados.',
+    reservedTooMany: `No máximo ${RESERVED_NAMES_MAX} nomes reservados.`,
     cancel: 'Cancelar',
     save: 'Salvar',
     create: 'Adicionar',

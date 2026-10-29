@@ -1,3 +1,4 @@
+import { MAX_RESERVED_NAMES } from '../../application/use-cases/admin/linkDomainRules';
 import { LinkDomainStatus } from '../../domain/enums/LinkRotationEnums';
 
 /*
@@ -6,7 +7,7 @@ import { LinkDomainStatus } from '../../domain/enums/LinkRotationEnums';
  */
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const landingUrl = { type: ['string', 'null'], maxLength: 2048 } as const;
-const reservedNames = { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 63 } } as const;
+const reservedNames = { type: 'array', maxItems: MAX_RESERVED_NAMES, items: { type: 'string', maxLength: 63 } } as const;
 const nullableDate = { type: ['string', 'null'], format: 'date-time' } as const;
 
 const envelope = (data: object) => ({

@@ -5,7 +5,7 @@ import { verifyProbeToken } from '../../application/use-cases/admin/probeToken';
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
 import { matchPublicHost, normalizeHost, type PublicHostMatch } from '../../domain/services/publicHost';
 import { isPlatformHostname, PLATFORM_HOSTNAMES } from '../../application/use-cases/admin/linkDomainRules';
-import { PUBLIC_PAGE_CSP } from '../templates/publicLinkLayout';
+import { publicPageCsp } from '../templates/publicLinkLayout';
 import {
   allFullPage,
   botPreviewPage,
@@ -50,7 +50,7 @@ function sendHtml(reply: FastifyReply, status: number, html: string): FastifyRep
     .header('Cache-Control', 'no-store')
     .header('X-Robots-Tag', 'noindex, nofollow')
     .header('Referrer-Policy', 'no-referrer')
-    .header('Content-Security-Policy', PUBLIC_PAGE_CSP)
+    .header('Content-Security-Policy', publicPageCsp())
     .type('text/html; charset=utf-8')
     .send(html);
 }
