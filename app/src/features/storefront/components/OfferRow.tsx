@@ -121,7 +121,11 @@ export function OfferRow({ offer, categoryLabel, canMoveUp, canMoveDown, onMove,
           )}
         </Stack>
         <Blurred when={blurTitle} inline radius={5}>
-          <Typography variant="subtitle2" noWrap title={offer.title} sx={{ fontWeight: 600 }}>{offer.title}</Typography>
+          {offer.title.trim() ? (
+            <Typography variant="subtitle2" noWrap title={offer.title} sx={{ fontWeight: 600 }}>{offer.title}</Typography>
+          ) : (
+            <Typography variant="subtitle2" noWrap color="warning.main" sx={{ fontWeight: 600, fontStyle: 'italic' }}>{t.untitled}</Typography>
+          )}
         </Blurred>
         <Price offer={offer} />
       </Box>
@@ -176,7 +180,7 @@ export function OfferRow({ offer, categoryLabel, canMoveUp, canMoveDown, onMove,
       <ConfirmDialog
         open={confirmDelete}
         title={t.confirmDelete.title}
-        description={blurTitle ? t.confirmDelete.messageHidden : t.confirmDelete.message(offer.title)}
+        description={blurTitle ? t.confirmDelete.messageHidden : t.confirmDelete.message(offer.title.trim() || t.untitled)}
         confirmLabel={t.confirmDelete.confirm}
         cancelLabel={t.confirmDelete.cancel}
         confirmColor="error"

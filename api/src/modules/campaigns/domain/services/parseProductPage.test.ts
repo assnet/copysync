@@ -25,17 +25,22 @@ describe('decodeHtmlEntities', () => {
 });
 
 describe('isGenericSiteTitle', () => {
-  it.each(['Mercado Livre', 'Mercado Libre', 'mercado livre - brasil', 'Amazon.com.br', 'Amazon.com.br: Amazon', 'Shopee Brasil', 'Shopee | Shopee Brasil', ' MERCADO  LIVRE '])(
+  it.each(['Mercado Livre', 'Mercado Libre', 'mercado livre - brasil', 'Amazon.com.br', 'Amazon.com.br: Amazon', 'Shopee Brasil', 'Shopee | Shopee Brasil', ' MERCADO  LIVRE ', 'Segurança — Mercado Livre', 'Segurança', 'Verificação de segurança | Mercado Livre'])(
     '"%s" é só o nome do site',
     (t) => expect(isGenericSiteTitle(t)).toBe(true),
   );
-  it.each(['Fone Bluetooth | Mercado Livre', 'Kit 3-em-1 Amazon', 'Shopee Brasil Camiseta', 'Echo Dot - Amazon.com.br'])(
+  it.each(['Fone Bluetooth | Mercado Livre', 'Kit 3-em-1 Amazon', 'Shopee Brasil Camiseta', 'Echo Dot - Amazon.com.br', 'Câmera de Segurança Wi-Fi | Mercado Livre'])(
     '"%s" é título real',
     (t) => expect(isGenericSiteTitle(t)).toBe(false),
   );
 });
 
 describe('parseProductPage', () => {
+  it('página de verificação ("Segurança — Mercado Livre") não vira título', () => {
+    const html = `<head><title>Segurança — Mercado Livre</title><meta property="og:title" content="Segurança"></head>`;
+    expect(parseProductPage('MERCADO_LIVRE', html).title).toBeNull();
+  });
+
   it('título só com o nome do site é ignorado e cai na próxima fonte', () => {
     const generic = `<head><meta property="og:title" content="Mercado Livre"><title>Mercado Livre - Brasil</title></head>`;
     expect(parseProductPage('MERCADO_LIVRE', generic).title).toBeNull();

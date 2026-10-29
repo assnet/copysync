@@ -1,5 +1,6 @@
 import { logger } from '../../../../shared/logger/logger';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
+import { canonicalMercadoLivreProductUrl, isMercadoLivreChallengeUrl } from '../../domain/services/mercadoLivreProductUrl';
 import { parseMercadoLivreSocialPage, parseProductPage, type ProductPageData } from '../../domain/services/parseProductPage';
 import type { IProductPageReader, ReadProductPageInput } from '../../domain/contracts/IProductPageReader';
 
@@ -41,7 +42,8 @@ export class HttpProductPageReader implements IProductPageReader {
     const ssid = safeCookieValue(input.mercadoLivreCookies?.ssid);
     const signal = AbortSignal.timeout(TIMEOUT_MS);
 
-    let current = input.url;
+    // ML: lê a URL canônica do produto (sem slug/query de carrinho); quem chama mantém a colada
+    let current = (provider === 'MERCADO_LIVRE' && canonicalMercadoLivreProductUrl(input.url)) || input.url;
     try {
       for (let hop = 0; ; hop++) {
         const headers: Record<string, string> = {
@@ -64,6 +66,8 @@ export class HttpProductPageReader implements IProductPageReader {
           }
           // Revalida antes de requisitar: salto para fora da allowlist nunca é buscado
           if (!isSupportedProductUrl(next)) return this.fail(current, 'redirect_blocked');
+          // Verificação/anti-bot do ML: página ausente, nunca "Segurança" como título
+          if (isMercadoLivreChallengeUrl(next)) return this.fail(current, 'challenge');
           current = next;
           continue;
         }
@@ -72,6 +76,10 @@ export class HttpProductPageReader implements IProductPageReader {
         if (!res.ok || !type.includes('text/html') || !res.body) {
           await res.body?.cancel().catch(() => undefined);
           return this.fail(current, `status_${res.status}`);
+        }
+        if (isMercadoLivreChallengeUrl(current)) {
+          await res.body.cancel().catch(() => undefined);
+          return this.fail(current, 'challenge');
         }
         const html = await readLimited(res.body);
         const finalProvider = detectMarketplace(current) ?? provider;
