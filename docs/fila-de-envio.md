@@ -13,7 +13,7 @@ fila** (qualquer aba ou navegador) e **origem/validade** da oferta.
 |---|---|
 | Migration | `api/prisma/migrations/20261028010000_add_send_queue_lanes/` |
 | Agenda que encosta no fim da faixa | `campaigns/domain/services/appendToLanes.ts` |
-| Claim com série por sessão + `laneTails` | `campaigns/infrastructure/repositories/PrismaOfferDispatchRepository.ts` |
+| Claim com série por sessão + `openNotBefore`/`laneState` | `campaigns/infrastructure/repositories/PrismaOfferDispatchRepository.ts` |
 | Envio e retomada usando a faixa | `SendOfferUseCase.ts`, `OfferSendControlUseCases.ts` (`ResumeOfferUseCase`) |
 | Validade no envio | `ProcessDueOfferDispatchesUseCase.ts` (`OFFER_EXPIRED`) |
 | Leitura | `GetSendQueueUseCase.ts`, `PrismaSendQueueReader.ts`, `ISendQueueReader.ts` |
@@ -78,11 +78,12 @@ calculada como antes (`scheduleDispatches`) e depois deslocada por `appendToLane
 deslocamento que põe o primeiro envio de cada sessão pelo menos uma folga (sorteada no intervalo da
 configuração) depois do fim da faixa. Ordem e espaçamento internos não mudam.
 
-Fim da faixa (`laneBusyUntil` sobre `laneState`): fim do **bloco contíguo** de envios abertos a
+Fim da faixa (`laneBusyUntil` sobre `openNotBefore`, só os horários dos abertos `QUEUED`/`SENDING`;
+`laneState` carrega os envios inteiros e fica para compactar/reespalhar): fim do **bloco contíguo** de envios abertos a
 partir do início da oferta nova; um buraco maior que o intervalo máximo libera a faixa, então a
 captura do monitoramento jogada para a abertura da janela de amanhã não prende o gerador de agora.
 Só ofertas `SENDING` já começadas (`scheduledAt` nulo ou ≤ início) e não vencidas contam. Oferta
-pausada não conta; ao retomar, vai para o fim.
+pausada não conta; ao retomar (`ResumeOfferUseCase`), vai para o fim do bloco pela mesma regra.
 
 O enfileirar não usa lock: duas ofertas disparadas no mesmo instante podem prever horários que se
 sobrepõem. O claim (2.2) garante o espaçamento real; só a previsão fica otimista.

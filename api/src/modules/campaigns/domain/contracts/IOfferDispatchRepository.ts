@@ -40,11 +40,11 @@ export interface IOfferDispatchRepository {
    */
   claimDue(now: Date, limit: number): Promise<OfferDispatch[]>;
   /**
-   * Fim de cada faixa: por sessão, o maior `notBefore` aberto (QUEUED/SENDING) de ofertas SENDING
-   * que já começaram até `startAt` (sem início agendado ou agendado até lá). Oferta agendada para
-   * depois não segura quem entra antes. Sessão sem nada à frente não aparece no mapa.
+   * Horários (`notBefore`) dos envios abertos (QUEUED/SENDING) da sessão em ofertas SENDING que já
+   * começaram até `from` (`scheduledAt` nulo ou ≤ from) e não vencidas. Só horários, ordenados: é a
+   * entrada de `laneBusyUntil` (fim do bloco ocupado da faixa).
    */
-  laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date): Promise<Map<string, Date>>;
+  openNotBefore(tenantId: string, sessionId: string, from: Date): Promise<Date[]>;
   /**
    * Retomar: QUEUED da oferta, na ordem de `notBefore`, recebem `slots[i]`. Slot a menos que
    * envio mantém o `notBefore` antigo. Retorna quantos mudaram.

@@ -122,3 +122,24 @@ describe('openSessionIds', () => {
     expect(await repo.openSessionIds('outro')).toEqual([]);
   });
 });
+
+describe('openNotBefore', () => {
+  it('QUEUED e SENDING de oferta SENDING já iniciada e não vencida, em ordem; ignora PAUSED, agendada no futuro e vencida', async () => {
+    await reset();
+    const a = await offer('GENERATOR');
+    await queued(a.id, convGen, spToUtc(8, 10));
+    const d = await queued(a.id, convMon, spToUtc(8));
+    await prisma.offerDispatch.update({ where: { id: d.id }, data: { status: 'SENDING', claimToken: 'c', claimedAt: spToUtc(8) } });
+    const paused = await offer('GENERATOR');
+    await prisma.offer.update({ where: { id: paused.id }, data: { status: 'PAUSED' } });
+    await queued(paused.id, convGen, spToUtc(8, 20));
+    const future = await offer('GENERATOR');
+    await prisma.offer.update({ where: { id: future.id }, data: { scheduledAt: spToUtc(12) } });
+    await queued(future.id, convGen, spToUtc(12));
+    const expired = await offer('MONITORING');
+    await prisma.offer.update({ where: { id: expired.id }, data: { expiresAt: spToUtc(7) } });
+    await queued(expired.id, convMon, spToUtc(8, 30));
+    expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5))).toEqual([spToUtc(8), spToUtc(8, 10)]);
+    expect(await repo.openNotBefore(tenantId, 'outra', spToUtc(8, 5))).toEqual([]);
+  });
+});

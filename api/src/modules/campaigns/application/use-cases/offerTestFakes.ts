@@ -141,18 +141,13 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });
     return due.map((d) => ({ ...d }));
   }
-  /** Mesma regra do Prisma: abertos de ofertas SENDING sem início agendado depois de `startAt`. */
-  async laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date) {
-    const out = new Map<string, Date>();
-    for (const d of this.items) {
-      if (d.tenantId !== tenantId || !d.sessionId || !sessionIds.includes(d.sessionId)) continue;
-      if (d.status !== 'QUEUED' && d.status !== 'SENDING') continue;
-      const o = this.offers.items.find((x) => x.id === d.offerId);
-      if (o?.status !== 'SENDING' || (o.scheduledAt && o.scheduledAt > startAt)) continue;
-      const cur = out.get(d.sessionId);
-      if (!cur || d.notBefore > cur) out.set(d.sessionId, d.notBefore);
-    }
-    return out;
+  /** Mesma regra do Prisma: horários dos abertos de ofertas SENDING já iniciadas até `from`, não vencidas. */
+  async openNotBefore(tenantId: string, sessionId: string, from: Date) {
+    return this.items
+      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && (d.status === 'QUEUED' || d.status === 'SENDING'))
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!o.scheduledAt || o.scheduledAt <= from) && (!o.expiresAt || o.expiresAt > from); })
+      .map((d) => d.notBefore)
+      .sort((a, b) => a.getTime() - b.getTime());
   }
   async touchClaim(id: string, claimToken: string) {
     const d = this.items.find((x) => x.id === id && x.claimToken === claimToken && x.status === 'SENDING');

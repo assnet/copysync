@@ -94,7 +94,7 @@ export class SendOfferUseCase {
     // Fim do bloco ocupado de cada sessão: captura do monitoramento agendada para a próxima janela não prende o gerador
     const openBySession = new Map<string, Date[]>();
     for (const sessionId of new Set(targets.map((t) => t.sessionId))) {
-      openBySession.set(sessionId, (await dispatches.laneState(tenantId, sessionId, planned[0]!)).open.map((d) => d.notBefore));
+      openBySession.set(sessionId, await dispatches.openNotBefore(tenantId, sessionId, planned[0]!));
     }
     const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
     const slots = tails.size === 0

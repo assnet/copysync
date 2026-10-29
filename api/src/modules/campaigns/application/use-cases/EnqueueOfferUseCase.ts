@@ -95,7 +95,7 @@ export class EnqueueOfferUseCase {
     // Fim do bloco ocupado de cada sessão (buraco maior que o intervalo máximo libera a faixa)
     const openBySession = new Map<string, Date[]>();
     for (const sessionId of sessionIds) {
-      openBySession.set(sessionId, (await this.deps.dispatches.laneState(tenantId, sessionId, planned[0]!)).open.map((d) => d.notBefore));
+      openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(tenantId, sessionId, planned[0]!));
     }
     const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
     const laned = tails.size === 0

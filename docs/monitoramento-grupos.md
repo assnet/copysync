@@ -60,7 +60,8 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
      `FAILED/LINK_RESOLVE_FAILED`; nenhum link de produto → `UNSUPPORTED_MARKETPLACE`;
    - cupom detectado no texto (`detectCoupon`) → validade menor;
    - início = captura + atraso, empurrado para o próximo início da janela; a validade conta desse
-     início; se a fila da sessão empurrar o 1º envio para depois da validade → `SKIPPED/EXPIRED`
+     início **calculado da captura** (processamento atrasado não a renova; o envio em si começa de
+     agora); se a fila da sessão empurrar o 1º envio para depois da validade → `SKIPPED/EXPIRED`
      (oferta/cupom vencido não é distribuído);
    - entra na fila de envio da sessão (`EnqueueOfferUseCase`, origem `MONITORING`, `expiresAt`,
      `sourceKey = captured:<id>` único: captura reprocessada depois de uma queda reaproveita a
@@ -126,7 +127,8 @@ mostrar horários reais. O gerador de ofertas não é afetado pela janela.
 
 **Capturar fora do horário** (`captureOutsideWindow`, padrão ligado): fora da janela a captura
 continua e as ofertas acumulam na fila, saindo quando ela abrir. **A validade conta do início
-previsto do envio** (`captureExpiresAt(startAt)`): capturado às 19:00 com janela até 18:00 e
+previsto a partir da captura** (`captureExpiresAt(janela(captura + atraso))`, independente de quando
+o processamento rodou): capturado às 19:00 com janela até 18:00 e
 validade de 180 min, vale das 06:00 às 09:00 do dia seguinte; se contasse da captura, nunca sairia.
 Dentro da janela, início ≈ captura (+ atraso configurado).
 Desligado, mensagem fora da janela não é capturada nem entra na fila (`outside_window` no

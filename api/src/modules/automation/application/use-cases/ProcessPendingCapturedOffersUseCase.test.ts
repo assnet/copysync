@@ -8,7 +8,7 @@ import {
 
 const TEXT = '🔥 Fone JBL por R$ 99\nhttps://amzn.to/abc?tag=concorrente-20\nCupom: PROMO10\n👉 Grupo: https://chat.whatsapp.com/XYZ';
 
-async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>; broadcast?: string[]; entitlements?: Record<string, unknown> } = {}) {
+async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>; broadcast?: string[]; entitlements?: Record<string, unknown>; processNow?: () => Date } = {}) {
   const monitors = new InMemoryGroupMonitorRepository();
   const captured = new InMemoryCapturedOfferRepository();
   const links = new FakeLinkBuilder();
@@ -21,7 +21,7 @@ async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>
   await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j, sessionId: SESSION })));
   const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: () => NOW });
   const process = new ProcessPendingCapturedOffersUseCase({
-    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: () => NOW, products, texts, images,
+    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: opts.processNow ?? (() => NOW), products, texts, images,
   });
   const msg = (o = {}) => register.execute({
     tenantId: TENANT, sessionId: SESSION, isGroup: true, fromMe: false, groupJid: '120363-src', externalMessageId: 'm1',
@@ -111,6 +111,16 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.queue.inputs).toHaveLength(1);
     expect(s.queue.inputs[0]!.startAt).toEqual(new Date('2026-10-28T17:00:00.000Z'));
     expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date('2026-10-28T18:00:00.000Z'));
+  });
+
+  it('processamento atrasado não renova a validade: conta da captura, início é agora', async () => {
+    // Capturada 12:00 (validade do cupom 60 min → 13:00); processada só às 12:40: sai agora, vence 13:00
+    const late = new Date(NOW.getTime() + 40 * 60_000);
+    const s = await setup({ processNow: () => late });
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]!.startAt).toEqual(late);
+    expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date(NOW.getTime() + 60 * 60_000));
   });
 
   it('fila da sessão empurra para depois da validade: EXPIRED', async () => {

@@ -31,7 +31,8 @@ export function useSendQueue(sessionId?: string) {
     clearTimeout(timer.current);
     let next: SendQueueResponse | null = null;
     let release!: () => void;
-    pending.current = new Promise<void>((r) => { release = r; });
+    const p = new Promise<void>((r) => { release = r; });
+    pending.current = p;
     try {
       next = await sendQueueService.get(sessionId);
       if (gen === generation.current) { setData(next); setFailed(false); }
@@ -39,7 +40,8 @@ export function useSendQueue(sessionId?: string) {
       if (gen === generation.current) setFailed(true);
     } finally {
       if (inFlight.current === gen) inFlight.current = null;
-      pending.current = null;
+      // Só limpa a própria promessa: um `load` de geração nova pode já ter registrado a dele
+      if (pending.current === p) pending.current = null;
       release();
       if (gen === generation.current) {
         setLoading(false);
@@ -71,7 +73,10 @@ export function useSendQueue(sessionId?: string) {
 
   /** Pedido explícito (botão, após pausar/retomar): espera o poll em voo e busca de novo, nunca vira no-op. */
   const refresh = useCallback(async () => {
+    const gen = generation.current;
     if (pending.current) await pending.current;
+    // Sessão trocada / desmontado enquanto esperava: a geração nova já carrega sozinha
+    if (gen !== generation.current) return;
     await load();
   }, [load]);
 

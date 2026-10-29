@@ -137,10 +137,13 @@ export class ProcessPendingCapturedOffersUseCase {
       return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: first.provider } };
     }
     const coupon = detectCoupon(c.sourceText);
-    // Validade conta do início previsto do envio: captura fora da janela acumula e sai quando ela abrir
-    const earliest = new Date(Math.max(now.getTime(), c.capturedAt.getTime() + config.startDelaySeconds * 1000));
-    const startAt = resolveStartWithinWindow(earliest, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute });
-    const expiresAt = captureExpiresAt(startAt, coupon !== null, config);
+    // Validade conta do início previsto a partir da CAPTURA (captura fora da janela acumula e vale a
+    // partir da abertura); atraso de processamento não renova a validade
+    const window = { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute };
+    const plannedFromCapture = new Date(c.capturedAt.getTime() + config.startDelaySeconds * 1000);
+    const expiresAt = captureExpiresAt(resolveStartWithinWindow(plannedFromCapture, window), coupon !== null, config);
+    const earliest = new Date(Math.max(now.getTime(), plannedFromCapture.getTime()));
+    const startAt = resolveStartWithinWindow(earliest, window);
     const built = await this.buildText(c, config, first, coupon, finalText, tenantLinks);
     const base: CapturedOfferResolution = {
       marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon,

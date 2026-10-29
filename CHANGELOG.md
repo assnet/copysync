@@ -15,15 +15,15 @@ Monitoramento com janela 06:00–20:00 enviou das 17:00 às 23:00: a janela só 
 
 #### Backend
 
-- **`PrismaOfferDispatchRepository.ts`** (`claimDue`) — oferta do monitoramento só sai dentro da janela da configuração de ORIGEM (`Offer.monitorConfigId`, novo; sessão cruzada envia por outra sessão), minuto do dia em São Paulo em SQL, janela noturna inclusive, seja quando for agendada; tenant com pausa global não sai. `laneState` ignora oferta vencida. Filtro no candidato: captura fora da janela não prende o gerador. `openSessionIds`. Testado em Postgres real (`*.int.test.ts`).
-- **`EnqueueOfferUseCase.ts`**, **`SendOfferUseCase.ts`**, **`appendToLanes.ts`** (`laneBusyUntil`) — `fitSlot` encaixa cada horário em cadeia, preservando o espaçamento; o monitoramento passa a janela (fila mostra horários reais). Fim da faixa = fim do bloco contíguo: captura jogada para a abertura da janela de amanhã não prende o gerador de agora.
-- **`ProcessPendingCapturedOffersUseCase.ts`** — validade da captura conta do início previsto do envio (captura fora da janela acumula e sai quando ela abrir; antes vencia antes de abrir).
+- **`PrismaOfferDispatchRepository.ts`** (`claimDue`) — oferta do monitoramento só sai dentro da janela da configuração de ORIGEM (`Offer.monitorConfigId`, novo; sessão cruzada envia por outra sessão), minuto do dia em São Paulo em SQL, janela noturna inclusive, seja quando for agendada; tenant com pausa global não sai. `laneState` ignora oferta vencida. `openNotBefore` (só horários dos abertos `QUEUED`/`SENDING`) substitui `laneTails` no fim da faixa. Filtro no candidato: captura fora da janela não prende o gerador. `openSessionIds`. Testado em Postgres real (`*.int.test.ts`).
+- **`EnqueueOfferUseCase.ts`**, **`SendOfferUseCase.ts`**, **`OfferSendControlUseCases.ts`** (retomar), **`appendToLanes.ts`** (`laneBusyUntil`) — `fitSlot` encaixa cada horário em cadeia, preservando o espaçamento; o monitoramento passa a janela (fila mostra horários reais). Fim da faixa = fim do bloco contíguo: captura jogada para a abertura da janela de amanhã não prende o gerador de agora.
+- **`ProcessPendingCapturedOffersUseCase.ts`** — validade da captura conta do início previsto a partir da captura (fora da janela acumula e sai quando ela abrir; antes vencia antes de abrir); processamento atrasado não renova a validade.
 - **`SendQueueControlUseCases.ts`**, **`ISendingPauseStore.ts`**, **`PrismaSendingPauseStore.ts`**, migration `20261029010000_send_window_and_global_pause` — `tenants.sendingPausedAt`; `POST /campaigns/send-queue/pause|resume`; retomar reespalha a fila de cada sessão a partir de agora (`respreadLane`, sem rajada). `GET` devolve `sendingPausedAt`.
 - **`GroupMonitorConfig.captureOutsideWindow`** (padrão `true`) — desligado, mensagem fora da janela não é capturada (`RegisterCapturedMessageUseCase` → `outside_window`, logado sem texto). Opcional no `PUT /config` (cliente antigo segue salvando e o valor salvo é mantido). `findActiveMonitoredGroup` devolve a janela.
 
 #### Frontend
 
-- **`SendQueuePanel.tsx`**, **`sendQueue.service.ts`** — botão "Pausar todos os envios / Retomar envios" no cabeçalho da fila (gerador e monitoramento), faixa de aviso enquanto pausado, itens como "Pausado (conta)".
+- **`SendQueuePanel.tsx`**, **`sendQueue.service.ts`** — botão "Pausar todos os envios / Retomar envios" no cabeçalho da fila (gerador e monitoramento), faixa de aviso enquanto pausado, itens como "Pausado (conta)". **`useSendQueue.ts`** — `refresh` espera o poll em voo e busca de novo (não vira no-op); troca de sessão durante a espera descarta o pedido; a promessa em voo só é limpa pelo próprio `load`.
 - **`MonitoringSettingsForm.tsx`**, **`settingsDraft.ts`** — toggle "Capturar fora do horário" no card do horário; ajuda do horário diz que a janela vale para todos os envios.
 
 ### Added — automation/integrations (api 0.43.0) — aviso de credencial de afiliado recusada

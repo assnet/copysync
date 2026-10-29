@@ -143,21 +143,16 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     });
   }
 
-  async laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date): Promise<Map<string, Date>> {
-    if (sessionIds.length === 0) return new Map();
-    const groups = await this.prisma.offerDispatch.groupBy({
-      by: ['sessionId'],
+  async openNotBefore(tenantId: string, sessionId: string, from: Date): Promise<Date[]> {
+    const rows = await this.prisma.offerDispatch.findMany({
       where: {
-        tenantId,
-        sessionId: { in: [...sessionIds] },
-        status: { in: ['QUEUED', 'SENDING'] },
-        offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: startAt } }] },
+        tenantId, sessionId, status: { in: ['QUEUED', 'SENDING'] },
+        offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: from } }], AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: from } }] }] },
       },
-      _max: { notBefore: true },
+      select: { notBefore: true },
+      orderBy: { notBefore: 'asc' },
     });
-    const out = new Map<string, Date>();
-    for (const g of groups) if (g.sessionId && g._max.notBefore) out.set(g.sessionId, g._max.notBefore);
-    return out;
+    return rows.map((r) => r.notBefore);
   }
 
   /** Retomada: uma transação, ordem de `notBefore` preservada (só o horário muda). */
