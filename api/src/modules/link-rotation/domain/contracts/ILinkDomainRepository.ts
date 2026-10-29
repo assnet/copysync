@@ -5,12 +5,14 @@ export interface CreateLinkDomainInput {
   hostname: string;
   landingUrl?: string | null;
   reservedNames?: string[];
+  premiumNames?: string[];
 }
 
 export interface UpdateLinkDomainInput {
   status?: LinkDomainStatus;
   landingUrl?: string | null;
   reservedNames?: string[];
+  premiumNames?: string[];
 }
 
 /** Domínios de links da plataforma (admin). Sem tenant: o recurso é global. */
@@ -24,5 +26,7 @@ export interface ILinkDomainRepository {
   delete(id: string): Promise<void>;
   /** Rotações que apontam para o domínio (bloqueia exclusão: LINK_DOMAIN_IN_USE). */
   countRotations(id: string): Promise<number>;
+  /** Claims de nome (rodízio/página) + grants premium no domínio (FK Restrict: também bloqueiam). */
+  countSlugUsage(id: string): Promise<number>;
   recordProbe(id: string, ok: boolean, at: Date): Promise<void>;
 }

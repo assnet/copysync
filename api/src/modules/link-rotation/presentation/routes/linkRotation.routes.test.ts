@@ -11,6 +11,8 @@ import { PrismaLinkRotationGroupCatalog } from '../../infrastructure/repositorie
 import { CreateLinkRotationUseCase } from '../../application/use-cases/CreateLinkRotationUseCase';
 import { RenameLinkRotationUseCase } from '../../application/use-cases/RenameLinkRotationUseCase';
 import { SaveLinkRotationGroupsUseCase } from '../../application/use-cases/SaveLinkRotationGroupsUseCase';
+import { GrantPremiumSlugUseCase } from '../../application/use-cases/admin/GrantPremiumSlugUseCase';
+import { RevokePremiumSlugUseCase } from '../../application/use-cases/admin/RevokePremiumSlugUseCase';
 import { LinkSlugTakenError } from '../../../../shared/errors/internal/LinkRotationErrors';
 import type { LinkRotationWithGroups } from '../../domain/entities/LinkRotation';
 import {
@@ -211,7 +213,7 @@ describe('/admin/link-domains', () => {
     auth.isSuperAdmin = true;
     vi.spyOn(PrismaLinkDomainRepository.prototype, 'list').mockResolvedValue([{
       id: 'dom-1', hostname: 'copysync.com.br', status: LinkDomainStatus.ACTIVE, landingUrl: null,
-      reservedNames: [], lastProbeAt: null, lastProbeOk: null, createdAt: T0, updatedAt: T0,
+      reservedNames: [], premiumNames: [], lastProbeAt: null, lastProbeOk: null, createdAt: T0, updatedAt: T0,
     }]);
     const res = await app.inject({ method: 'GET', url: ADMIN });
     expect(res.statusCode).toBe(200);
@@ -222,7 +224,7 @@ describe('/admin/link-domains', () => {
     auth.isSuperAdmin = true;
     const domain = {
       id: 'dom-1', hostname: 'copysync.com.br', status: LinkDomainStatus.ACTIVE, landingUrl: null,
-      reservedNames: [], lastProbeAt: null, lastProbeOk: null, createdAt: T0, updatedAt: T0,
+      reservedNames: [], premiumNames: [], lastProbeAt: null, lastProbeOk: null, createdAt: T0, updatedAt: T0,
     };
     vi.spyOn(PrismaLinkDomainRepository.prototype, 'findById').mockResolvedValue({ ...domain, landingUrl: 'https://x.com' });
     const update = vi.spyOn(PrismaLinkDomainRepository.prototype, 'update').mockResolvedValue(domain);
@@ -232,6 +234,41 @@ describe('/admin/link-domains', () => {
     expect(update).toHaveBeenCalledWith('dom-1', { landingUrl: null });
 
     const bad = await app.inject({ method: 'PATCH', url: `${ADMIN}/dom-1`, payload: { status: 'GONE' } });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it.each([
+    ['POST', '/dom-1/premium-grants', { tenantId: 't-1', slug: 'vip' }],
+    ['DELETE', '/dom-1/premium-grants/g-1', undefined],
+  ] as const)('%s %s (nomes especiais) sem super-admin é recusado', async (method, path, payload) => {
+    const grant = vi.spyOn(GrantPremiumSlugUseCase.prototype, 'execute');
+    const revoke = vi.spyOn(RevokePremiumSlugUseCase.prototype, 'execute');
+    const res = await app.inject({ method, url: `${ADMIN}${path}`, payload });
+    expect(res.statusCode).toBe(401);
+    expect(grant).not.toHaveBeenCalled();
+    expect(revoke).not.toHaveBeenCalled();
+  });
+
+  it('super-admin concede nome especial: 201 com datas em ISO e autor no comando', async () => {
+    auth.isSuperAdmin = true;
+    const execute = vi.spyOn(GrantPremiumSlugUseCase.prototype, 'execute').mockResolvedValue({
+      id: 'g-1', domainId: 'dom-1', slug: 'vip', tenantId: 't-1', source: 'MANUAL', expiresAt: null, createdAt: T0,
+    });
+    const res = await app.inject({ method: 'POST', url: `${ADMIN}/dom-1/premium-grants`, payload: { tenantId: 't-1', slug: 'vip' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().data).toEqual({
+      id: 'g-1', domainId: 'dom-1', slug: 'vip', tenantId: 't-1', source: 'MANUAL', expiresAt: null, createdAt: T0.toISOString(),
+    });
+    expect(execute).toHaveBeenCalledWith({ tenantId: 't-1', slug: 'vip', domainId: 'dom-1', actorUserId: 'user-a' });
+  });
+
+  it('super-admin revoga: 204; corpo de concessão sem slug responde 400', async () => {
+    auth.isSuperAdmin = true;
+    const revoke = vi.spyOn(RevokePremiumSlugUseCase.prototype, 'execute').mockResolvedValue();
+    const ok = await app.inject({ method: 'DELETE', url: `${ADMIN}/dom-1/premium-grants/g-1` });
+    expect(ok.statusCode).toBe(204);
+    expect(revoke).toHaveBeenCalledWith({ domainId: 'dom-1', grantId: 'g-1', actorUserId: 'user-a' });
+    const bad = await app.inject({ method: 'POST', url: `${ADMIN}/dom-1/premium-grants`, payload: { tenantId: 't-1' } });
     expect(bad.statusCode).toBe(400);
   });
 });

@@ -3,6 +3,7 @@ import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { LinkDomainStatus, LinkRotationGroupLinkSource, LinkRotationStatus } from '../../domain/enums/LinkRotationEnums';
 import { GroupInviteNotAllowedError } from '../../../../shared/errors/internal/GroupErrors';
 import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
+import { LinkSlugTakenError } from '../../../../shared/errors/internal/LinkRotationErrors';
 import { CreateLinkRotationUseCase } from './CreateLinkRotationUseCase';
 import { DeleteLinkRotationUseCase } from './DeleteLinkRotationUseCase';
 import { GetLinkRotationOverviewUseCase } from './GetLinkRotationOverviewUseCase';
@@ -107,6 +108,51 @@ describe('RenameLinkRotationUseCase / DeleteLinkRotationUseCase', () => {
     expect(deps.rotations.rotations).toHaveLength(0);
     expect(deps.rotations.groups).toHaveLength(0);
     expect(deps.rotations.reservations[0]).toMatchObject({ slug: 'some', tenantId: TENANT, expiresAt: new Date(NOW.getTime() + 30 * DAY) });
+  });
+});
+
+describe('namespace público (registry de nomes)', () => {
+  it('nome usado por página de ofertas → LINK_SLUG_TAKEN com sugestões', async () => {
+    deps.slugs.storefronts.push({ tenantId: OTHER_TENANT, domainId: 'dom-1', slug: 'promodemae', ownerId: 'sf-1' });
+    const err = await create().catch((e) => e);
+    expect(err.code).toBe('LINK_SLUG_TAKEN');
+    expect(err.meta.suggestions).toHaveLength(5);
+    // página do próprio tenant (OWNED) também bloqueia o rodízio
+    deps.slugs.storefronts[0]!.tenantId = TENANT;
+    await expect(create()).rejects.toMatchObject({ code: 'LINK_SLUG_TAKEN' });
+  });
+
+  it('nome premium → LINK_SLUG_RESERVED; grant do tenant libera', async () => {
+    deps.domains.items = [makeDomain({ premiumNames: ['Ofertas'] })];
+    await expect(create({ slug: 'ofertas' })).rejects.toMatchObject({ code: 'LINK_SLUG_RESERVED', meta: { slug: 'ofertas' } });
+    deps.slugs.grants.push({ tenantId: TENANT, domainId: 'dom-1', slug: 'ofertas', expiresAt: null });
+    await expect(create({ slug: 'ofertas' })).resolves.toMatchObject({ slug: 'ofertas' });
+  });
+
+  it('rename com troca de domínio reserva o nome antigo no domínio antigo', async () => {
+    deps.domains.items = [makeDomain(), makeDomain({ id: 'dom-2', hostname: 'outro.com.br' })];
+    const r = deps.rotations.seed({ slug: 'antigo' });
+    const out = await new RenameLinkRotationUseCase(deps).execute({ tenantId: TENANT, rotationId: r.id, slug: 'antigo', domainId: 'dom-2' });
+    expect(out).toMatchObject({ slug: 'antigo', domainId: 'dom-2' });
+    expect(deps.rotations.reservations).toEqual([
+      { domainId: 'dom-1', slug: 'antigo', tenantId: TENANT, expiresAt: new Date(NOW.getTime() + 30 * DAY) },
+    ]);
+  });
+
+  it('claim recusado dentro da transação desfaz o rodízio criado', async () => {
+    deps.slugs.claim = async () => { throw new LinkSlugTakenError([]); };
+    const err = await create().catch((e) => e);
+    expect(err.code).toBe('LINK_SLUG_TAKEN');
+    expect(err.meta.suggestions).toHaveLength(5);
+    expect(deps.rotations.rotations).toHaveLength(0);
+  });
+
+  it('delete libera só o nome do rodízio e o reserva', async () => {
+    const r = deps.rotations.seed({ slug: 'meu' });
+    deps.slugs.storefronts.push({ tenantId: TENANT, domainId: 'dom-1', slug: 'loja-x', ownerId: 'sf-1' });
+    await new DeleteLinkRotationUseCase(deps).execute(TENANT, r.id);
+    expect(deps.slugs.storefronts).toHaveLength(1);
+    expect(deps.rotations.reservations).toMatchObject([{ slug: 'meu', tenantId: TENANT }]);
   });
 });
 

@@ -2,7 +2,7 @@ import {
   Box, Chip, CircularProgress, IconButton, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Tooltip, Typography,
 } from '@mui/material';
-import { Activity, CircleCheck, CircleDashed, CircleX, Pencil, Trash2 } from 'lucide-react';
+import { Activity, CircleCheck, CircleDashed, CircleX, Gem, Pencil, Trash2 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { serverNow } from '@/services/serverClock';
 import { probeReasonMessage } from '../errors';
@@ -20,6 +20,7 @@ interface Props {
   onToggle: (domain: LinkDomain, active: boolean) => void;
   onProbe: (domain: LinkDomain) => void;
   onEdit: (domain: LinkDomain) => void;
+  onGrants: (domain: LinkDomain) => void;
   onRemove: (domain: LinkDomain) => void;
 }
 
@@ -58,7 +59,7 @@ function ProbeCell({ domain, result }: { domain: LinkDomain; result?: LinkDomain
 }
 
 /** Lista de domínios: status, landing, último teste e ações. Rola na horizontal no celular. */
-export function LinkDomainsTable({ domains, busy, probing, probeResults, onToggle, onProbe, onEdit, onRemove }: Props) {
+export function LinkDomainsTable({ domains, busy, probing, probeResults, onToggle, onProbe, onEdit, onGrants, onRemove }: Props) {
   return (
     <TableContainer sx={{ overflowX: 'auto' }}>
       <Table size="small" sx={{ minWidth: 720 }}>
@@ -84,6 +85,13 @@ export function LinkDomainsTable({ domains, busy, probing, probeResults, onToggl
                     <Tooltip title={d.reservedNames.join(', ')}>
                       <Typography variant="caption" color="text.secondary" sx={{ width: 'fit-content', display: 'block' }}>
                         {t.reservedCount(d.reservedNames.length)}
+                      </Typography>
+                    </Tooltip>
+                  )}
+                  {d.premiumNames.length > 0 && (
+                    <Tooltip title={d.premiumNames.join(', ')}>
+                      <Typography variant="caption" color="text.secondary" sx={{ width: 'fit-content', display: 'block' }}>
+                        {t.premiumCount(d.premiumNames.length)}
                       </Typography>
                     </Tooltip>
                   )}
@@ -131,6 +139,11 @@ export function LinkDomainsTable({ domains, busy, probing, probeResults, onToggl
                   <Tooltip title={t.actions.edit}>
                     <IconButton aria-label={`${t.actions.edit}: ${d.hostname}`} onClick={() => onEdit(d)}>
                       <AppIcon icon={Pencil} size="sm" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title={t.actions.grants}>
+                    <IconButton aria-label={`${t.actions.grants}: ${d.hostname}`} onClick={() => onGrants(d)}>
+                      <AppIcon icon={Gem} size="sm" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title={t.actions.remove}>

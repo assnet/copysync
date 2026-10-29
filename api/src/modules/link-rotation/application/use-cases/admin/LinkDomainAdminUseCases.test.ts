@@ -31,6 +31,14 @@ describe('CreateLinkDomainUseCase', () => {
       .rejects.toMatchObject({ code: 'LINK_DOMAIN_INVALID' });
   });
 
+  it('nomes especiais: mesma normalização e limite dos reservados', async () => {
+    const d = await create().execute({ hostname: 'copysync.com.br', premiumNames: [' Ofertas ', 'ofertas', 'Black Friday'] });
+    expect(d.premiumNames).toEqual(['ofertas', 'black-friday']);
+    await expect(create().execute({ hostname: 'x.com.br', premiumNames: ['a!b'] })).rejects.toMatchObject({ code: 'LINK_DOMAIN_INVALID' });
+    await expect(create().execute({ hostname: 'y.com.br', premiumNames: Array.from({ length: 1001 }, (_, i) => `n${i}`) }))
+      .rejects.toMatchObject({ code: 'LINK_DOMAIN_INVALID' });
+  });
+
   it('hostname repetido → 409', async () => {
     repo.seed({ hostname: 'copysync.com.br' });
     await expect(create().execute({ hostname: 'copysync.com.br' })).rejects.toMatchObject({ code: 'LINK_DOMAIN_TAKEN', statusCode: 409 });
@@ -46,12 +54,27 @@ describe('UpdateLinkDomainUseCase', () => {
     await expect(uc.execute({ id, landingUrl: 'ftp://x.com' })).rejects.toMatchObject({ code: 'LINK_DOMAIN_INVALID' });
     await expect(uc.execute({ id: 'nope' })).rejects.toMatchObject({ statusCode: 404 });
   });
+
+  it('troca nomes especiais; ausente mantém', async () => {
+    const { id } = repo.seed({ hostname: 'copysync.com.br', premiumNames: ['vip'] });
+    const uc = new UpdateLinkDomainUseCase(repo);
+    expect((await uc.execute({ id, landingUrl: null })).premiumNames).toEqual(['vip']);
+    expect((await uc.execute({ id, premiumNames: ['Loja Top'] })).premiumNames).toEqual(['loja-top']);
+    await expect(uc.execute({ id, premiumNames: ['-'.repeat(2) + '!'] })).rejects.toMatchObject({ code: 'LINK_DOMAIN_INVALID' });
+  });
 });
 
 describe('DeleteLinkDomainUseCase', () => {
   it('com rotação → 409 e não exclui', async () => {
     const { id } = repo.seed({ hostname: 'copysync.com.br' });
     repo.rotations.set(id, 1);
+    await expect(new DeleteLinkDomainUseCase(repo).execute(id)).rejects.toMatchObject({ code: 'LINK_DOMAIN_IN_USE', statusCode: 409 });
+    expect(repo.rows.has(id)).toBe(true);
+  });
+
+  it('com claim de nome ou grant premium → 409 e não exclui', async () => {
+    const { id } = repo.seed({ hostname: 'copysync.com.br' });
+    repo.slugUsage.set(id, 1);
     await expect(new DeleteLinkDomainUseCase(repo).execute(id)).rejects.toMatchObject({ code: 'LINK_DOMAIN_IN_USE', statusCode: 409 });
     expect(repo.rows.has(id)).toBe(true);
   });

@@ -33,3 +33,9 @@ export enum LinkRotationGroupLinkSource {
 
 /** Classe do user agent gravada em `LinkClick.userAgentClass`. */
 export type UserAgentClass = 'bot' | 'webview' | 'browser';
+
+/** Quem ocupa `<slug>.<domínio>`: rodízio e página de ofertas disputam o mesmo namespace. */
+export enum PublicSlugKind {
+  LINK_ROTATION = 'LINK_ROTATION',
+  STOREFRONT = 'STOREFRONT',
+}

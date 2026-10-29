@@ -12,6 +12,7 @@ export interface UpdateLinkDomainCommand {
   /** `null` ou vazio remove a landing; ausente mantém. */
   landingUrl?: string | null;
   reservedNames?: string[];
+  premiumNames?: string[];
 }
 
 export class UpdateLinkDomainUseCase {
@@ -29,6 +30,11 @@ export class UpdateLinkDomainUseCase {
       const reservedNames = parseReservedNames(cmd.reservedNames);
       if (!reservedNames) throw new LinkDomainInvalidError('Invalid reserved names');
       patch.reservedNames = reservedNames;
+    }
+    if (cmd.premiumNames !== undefined) {
+      const premiumNames = parseReservedNames(cmd.premiumNames);
+      if (!premiumNames) throw new LinkDomainInvalidError('Invalid premium names');
+      patch.premiumNames = premiumNames;
     }
     if (!(await this.domains.findById(cmd.id))) throw new NotFoundError('LinkDomain', cmd.id);
     return this.domains.update(cmd.id, patch);

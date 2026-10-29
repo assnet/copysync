@@ -11,6 +11,7 @@ export class PrismaLinkDomainMapper {
       status: raw.status as LinkDomainStatus,
       landingUrl: raw.landingUrl,
       reservedNames: [...raw.reservedNames],
+      premiumNames: [...raw.premiumNames],
       lastProbeAt: raw.lastProbeAt,
       lastProbeOk: raw.lastProbeOk,
       createdAt: raw.createdAt,

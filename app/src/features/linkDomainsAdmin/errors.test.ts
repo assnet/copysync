@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkDomainErrorMessage, probeReasonMessage } from './errors';
+import { grantErrorMessage, linkDomainErrorMessage, probeReasonMessage } from './errors';
 import { linkDomainsAdminStrings as s } from './strings';
 
 describe('linkDomainErrorMessage', () => {
@@ -33,5 +33,14 @@ describe('probeReasonMessage', () => {
 
   it('motivo ausente vira texto neutro', () => {
     expect(probeReasonMessage({ reason: null, status: null })).toBe(s.probe.unknownReason);
+  });
+});
+
+describe('grantErrorMessage', () => {
+  it('textos próprios das liberações; o resto cai nos gerais', () => {
+    expect(grantErrorMessage({ code: 'NOT_FOUND' })).toBe(s.grants.errors.NOT_FOUND);
+    expect(grantErrorMessage({ code: 'LINK_SLUG_TAKEN' })).toBe(s.grants.errors.LINK_SLUG_TAKEN);
+    expect(grantErrorMessage({ code: 'UNAUTHORIZED' })).toBe(s.errors.UNAUTHORIZED);
+    expect(grantErrorMessage(null)).toBe(s.errors.generic);
   });
 });

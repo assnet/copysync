@@ -28,6 +28,7 @@ export const linkDomainsAdminStrings = {
   },
   landingNone: 'Página 404 da marca',
   reservedCount: (n: number) => (n === 1 ? '1 nome reservado' : `${n} nomes reservados`),
+  premiumCount: (n: number) => (n === 1 ? '1 nome especial' : `${n} nomes especiais`),
 
   probe: {
     never: 'Nunca testado',
@@ -55,6 +56,7 @@ export const linkDomainsAdminStrings = {
   actions: {
     edit: 'Editar',
     remove: 'Excluir',
+    grants: 'Liberar nomes especiais',
   },
 
   form: {
@@ -74,6 +76,9 @@ export const linkDomainsAdminStrings = {
     reservedHelp: 'Subdomínios que nenhum cliente pode usar, além dos já reservados pela plataforma.',
     reservedInvalid: (name: string) => `"${name}" não é válido: use letras minúsculas, números e hífen.`,
     reservedTooMany: `No máximo ${RESERVED_NAMES_MAX} nomes reservados.`,
+    premiumNames: 'Nomes especiais',
+    premiumHelp: 'Nomes vendidos à parte para a Página de Ofertas: só o cliente com liberação usa. O rodízio de links nunca usa.',
+    premiumTooMany: `No máximo ${RESERVED_NAMES_MAX} nomes especiais.`,
     cancel: 'Cancelar',
     save: 'Salvar',
     create: 'Adicionar',
@@ -85,6 +90,48 @@ export const linkDomainsAdminStrings = {
       `${hostname} deixa de aceitar links novos. Se algum cliente ainda tiver link neste domínio, a exclusão é recusada: pause o domínio em vez de excluir.`,
     confirm: 'Excluir',
     cancel: 'Cancelar',
+  },
+
+  grants: {
+    title: (hostname: string) => `Nomes especiais de ${hostname}`,
+    intro: 'Libere um nome especial para um cliente usar na Página de Ofertas. Cada nome fica com um cliente por vez.',
+    noPremiumNames: 'Este domínio não tem nomes especiais. Cadastre em Editar, no campo "Nomes especiais".',
+    listTitle: 'Liberações ativas',
+    empty: 'Nenhum nome liberado ainda.',
+    loadError: 'Não foi possível carregar as liberações.',
+    retry: 'Tentar de novo',
+    columns: { slug: 'Nome', tenant: 'Cliente (ID)', expires: 'Validade', actions: 'Ações' },
+    noExpiry: 'Sem validade',
+    sourceBilling: 'Compra',
+    form: {
+      title: 'Nova liberação',
+      slug: 'Nome especial',
+      tenantId: 'ID do cliente',
+      tenantHelp: 'Copie o ID na tela de clientes.',
+      tenantRequired: 'Informe o ID do cliente.',
+      expiresAt: 'Válido até (opcional)',
+      expiresHelp: 'Vazio = sem validade. Vale até o fim do dia escolhido.',
+      expiresInvalid: 'Escolha uma data a partir de hoje.',
+      submit: 'Liberar nome',
+      slugAllGranted: 'Todos os nomes especiais já estão liberados.',
+    },
+    revoke: 'Revogar',
+    revokeLabel: (slug: string) => `Revogar liberação de ${slug}`,
+    revokeDialog: {
+      title: 'Revogar liberação?',
+      description: (slug: string) =>
+        `O cliente deixa de poder escolher "${slug}". Uma página que já usa o nome continua no ar; o nome volta a ficar disponível só por liberação.`,
+      confirm: 'Revogar',
+      cancel: 'Cancelar',
+    },
+    grantedToast: (slug: string) => `"${slug}" liberado.`,
+    revokedToast: (slug: string) => `Liberação de "${slug}" revogada.`,
+    close: 'Fechar',
+    errors: {
+      LINK_SLUG_TAKEN: 'Este nome já está liberado para um cliente. Revogue antes de liberar de novo.',
+      LINK_DOMAIN_INVALID: 'Nome ou validade inválidos. O nome precisa estar na lista de nomes especiais do domínio.',
+      NOT_FOUND: 'Cliente ou liberação não encontrado. Confira o ID do cliente e recarregue.',
+    } as Record<string, string>,
   },
 
   dns: {
@@ -121,7 +168,7 @@ export const linkDomainsAdminStrings = {
   errors: {
     LINK_DOMAIN_INVALID: 'Domínio, endereço ou nome reservado inválido. Confira os campos.',
     LINK_DOMAIN_TAKEN: 'Este domínio já está cadastrado.',
-    LINK_DOMAIN_IN_USE: 'Há clientes com links neste domínio. Pause o domínio em vez de excluir.',
+    LINK_DOMAIN_IN_USE: 'Há clientes com links, páginas ou nomes especiais neste domínio. Pause o domínio em vez de excluir.',
     LINK_ROTATION_NOT_CONFIGURED:
       'O rodízio de links não está configurado no servidor (segredo do teste ausente). Configure o servidor e tente de novo.',
     NOT_FOUND: 'Este domínio não existe mais. Recarregue a lista.',

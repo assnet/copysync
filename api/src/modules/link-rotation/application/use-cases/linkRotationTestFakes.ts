@@ -13,9 +13,33 @@ import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEnti
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
 import type { LinkRotation, LinkRotationWithGroups } from '../../domain/entities/LinkRotation';
 import type { LinkRotationGroup } from '../../domain/entities/LinkRotationGroup';
-import { LinkDomainStatus, LinkRotationStatus, LinkRotationStrategy } from '../../domain/enums/LinkRotationEnums';
-import { LinkRotationNotFoundError, LinkSlugTakenError } from '../../../../shared/errors/internal/LinkRotationErrors';
-import type { LinkDomainReader, LinkRotationGroupEngine, LinkRotationUseCaseDeps } from './linkRotationUseCaseDeps';
+import type {
+  ClaimPublicSlugInput,
+  IPublicSlugRegistry,
+  MovePublicSlugInput,
+  ReleasePublicSlugInput,
+} from '../../domain/contracts/IPublicSlugRegistry';
+import { LinkDomainStatus, LinkRotationStatus, LinkRotationStrategy, PublicSlugKind } from '../../domain/enums/LinkRotationEnums';
+import {
+  decideSlugAvailability,
+  hasActiveGrant,
+  isPremiumSlug,
+  type SlugAvailability,
+  type SlugFacts,
+} from '../../domain/services/decideSlugAvailability';
+import { MAX_SLUG_SUGGESTIONS, normalizeSlug, suggestSlugs } from '../../domain/services/slugRules';
+import {
+  LinkDomainInvalidError,
+  LinkRotationNotFoundError,
+  LinkSlugReservedError,
+  LinkSlugTakenError,
+} from '../../../../shared/errors/internal/LinkRotationErrors';
+import type {
+  LinkDomainReader,
+  LinkRotationGroupEngine,
+  LinkRotationUseCaseDeps,
+  RotationSlugTransaction,
+} from './linkRotationUseCaseDeps';
 
 export const TENANT = 'tenant-1';
 export const OTHER_TENANT = 'tenant-2';
@@ -27,7 +51,7 @@ export const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
 export function makeDomain(over: Partial<LinkDomain> = {}): LinkDomain {
   return {
     id: 'dom-1', hostname: 'copysync.com.br', status: LinkDomainStatus.ACTIVE, landingUrl: null,
-    reservedNames: [], lastProbeAt: null, lastProbeOk: null, createdAt: NOW, updatedAt: NOW, ...over,
+    reservedNames: [], premiumNames: [], lastProbeAt: null, lastProbeOk: null, createdAt: NOW, updatedAt: NOW, ...over,
   };
 }
 
@@ -140,6 +164,118 @@ export class InMemoryLinkRotationRepository implements ILinkRotationRepository {
   }
 }
 
+interface StorefrontClaim { tenantId: string; domainId: string; slug: string; ownerId: string }
+interface Grant { tenantId: string; domainId: string; slug: string; expiresAt: Date | null }
+
+/**
+ * Namespace público em memória. Claims de rodízio = as próprias rotações do repositório (como se
+ * o backfill tivesse rodado); claims de página ficam em `storefronts`. Reservas são as do repo.
+ */
+export class InMemoryPublicSlugRegistry implements IPublicSlugRegistry {
+  storefronts: StorefrontClaim[] = [];
+  grants: Grant[] = [];
+
+  constructor(
+    private readonly repo: InMemoryLinkRotationRepository,
+    private readonly domains: FakeDomains,
+    private readonly now: Date = NOW,
+  ) {}
+
+  private async domain(domainId: string) {
+    const d = await this.domains.findById(domainId);
+    if (!d) throw new LinkDomainInvalidError('Link domain not available');
+    return d;
+  }
+
+  private claimAt(domainId: string, slug: string): SlugFacts['claim'] {
+    const r = this.repo.rotations.find((x) => x.domainId === domainId && x.slug === slug);
+    if (r) return { tenantId: r.tenantId, kind: PublicSlugKind.LINK_ROTATION, ownerId: r.id };
+    const s = this.storefronts.find((x) => x.domainId === domainId && x.slug === slug);
+    return s ? { tenantId: s.tenantId, kind: PublicSlugKind.STOREFRONT, ownerId: s.ownerId } : null;
+  }
+
+  private facts(domainId: string, slug: string): SlugFacts {
+    const reservation = this.repo.reservations.find((x) => x.domainId === domainId && x.slug === slug) ?? null;
+    const grant = this.grants.find((x) => x.domainId === domainId && x.slug === slug) ?? null;
+    return { claim: this.claimAt(domainId, slug), unclaimedRotation: false, reservation, grant };
+  }
+
+  async check(tenantId: string, domainId: string, raw: string): Promise<SlugAvailability> {
+    const d = await this.domain(domainId);
+    const slug = normalizeSlug(raw);
+    const decision = decideSlugAvailability({
+      raw, tenantId, reservedNames: d.reservedNames, premiumNames: d.premiumNames, facts: this.facts(domainId, slug), now: this.now,
+    });
+    const suggestions = decision.status === 'INVALID' || decision.status === 'AVAILABLE' ? [] : await this.suggest(tenantId, domainId, slug);
+    return { ...decision, suggestions };
+  }
+
+  async suggest(tenantId: string, domainId: string, raw: string): Promise<string[]> {
+    const d = await this.domain(domainId);
+    const pool = suggestSlugs(normalizeSlug(raw), { extraReserved: [...d.reservedNames, ...d.premiumNames], limit: 30 });
+    const taken = (s: string) => !!this.claimAt(domainId, s) || this.repo.reservations.some(
+      (x) => x.domainId === domainId && x.slug === s && x.tenantId !== tenantId && x.expiresAt > this.now,
+    );
+    return pool.filter((s) => !taken(s)).slice(0, MAX_SLUG_SUGGESTIONS);
+  }
+
+  private async guard(tenantId: string, domainId: string, slug: string, kind: PublicSlugKind, ownerId: string) {
+    const { claim, reservation, grant } = this.facts(domainId, slug);
+    if (claim && !(claim.kind === kind && claim.ownerId === ownerId)) throw new LinkSlugTakenError([]);
+    if (reservation && reservation.tenantId !== tenantId && reservation.expiresAt > this.now) throw new LinkSlugTakenError([]);
+    if (isPremiumSlug(slug, (await this.domain(domainId)).premiumNames) && !hasActiveGrant(grant, tenantId, this.now)) {
+      throw new LinkSlugReservedError(slug);
+    }
+    this.repo.reservations = this.repo.reservations.filter((x) => !(x.domainId === domainId && x.slug === slug && x.tenantId === tenantId));
+  }
+
+  private location(tenantId: string, kind: PublicSlugKind, ownerId: string) {
+    return kind === PublicSlugKind.LINK_ROTATION
+      ? this.repo.rotations.find((r) => r.id === ownerId && r.tenantId === tenantId)
+      : this.storefronts.find((s) => s.ownerId === ownerId && s.tenantId === tenantId);
+  }
+
+  async claim(input: ClaimPublicSlugInput) {
+    await this.guard(input.tenantId, input.domainId, input.slug, input.kind, input.ownerId);
+    if (input.kind === PublicSlugKind.STOREFRONT) {
+      this.storefronts.push({ tenantId: input.tenantId, domainId: input.domainId, slug: input.slug, ownerId: input.ownerId });
+    }
+  }
+
+  async move(input: MovePublicSlugInput) {
+    const old = this.location(input.tenantId, input.kind, input.ownerId);
+    const from = old && { domainId: old.domainId, slug: old.slug };
+    await this.guard(input.tenantId, input.newDomainId, input.newSlug, input.kind, input.ownerId);
+    if (input.kind === PublicSlugKind.STOREFRONT && old) Object.assign(old, { domainId: input.newDomainId, slug: input.newSlug });
+    if (from) await this.repo.reserveSlug(from.domainId, from.slug, input.tenantId, input.reserveUntil);
+  }
+
+  async release(input: ReleasePublicSlugInput) {
+    const old = this.location(input.tenantId, input.kind, input.ownerId);
+    if (old) await this.repo.reserveSlug(old.domainId, old.slug, input.tenantId, input.reserveUntil);
+    this.storefronts = this.storefronts.filter((s) => !(input.kind === PublicSlugKind.STOREFRONT && s.ownerId === input.ownerId));
+  }
+}
+
+/** "Transação" em memória: erro restaura rotações, grupos, reservas e claims de página. */
+export function fakeSlugTransaction(repo: InMemoryLinkRotationRepository, slugs: InMemoryPublicSlugRegistry): RotationSlugTransaction {
+  return async (fn) => {
+    const snap = {
+      rotations: repo.rotations.map((r) => ({ ...r })),
+      groups: repo.groups.map((g) => ({ ...g })),
+      reservations: repo.reservations.map((r) => ({ ...r })),
+      storefronts: slugs.storefronts.map((s) => ({ ...s })),
+    };
+    try {
+      return await fn({ rotations: repo, slugs });
+    } catch (err) {
+      Object.assign(repo, { rotations: snap.rotations, groups: snap.groups, reservations: snap.reservations });
+      slugs.storefronts = snap.storefronts;
+      throw err;
+    }
+  };
+}
+
 export class FakeDomains implements LinkDomainReader {
   constructor(public items: LinkDomain[] = [makeDomain()]) {}
   async findById(id: string) { return this.items.find((d) => d.id === id) ?? null; }
@@ -198,9 +334,14 @@ export class FakeEngine implements LinkRotationGroupEngine {
 }
 
 export function makeDeps() {
+  const rotations = new InMemoryLinkRotationRepository();
+  const domains = new FakeDomains();
+  const slugs = new InMemoryPublicSlugRegistry(rotations, domains);
   return {
-    rotations: new InMemoryLinkRotationRepository(),
-    domains: new FakeDomains(),
+    rotations,
+    slugs,
+    runInSlugTransaction: fakeSlugTransaction(rotations, slugs),
+    domains,
     sessions: new FakeSessions(),
     groups: new FakeGroupCatalog(),
     entitlements: new FakeEntitlements(),

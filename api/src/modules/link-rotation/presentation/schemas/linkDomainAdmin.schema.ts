@@ -26,7 +26,7 @@ export const createLinkDomainBodySchema = {
   type: 'object',
   additionalProperties: false,
   required: ['hostname'],
-  properties: { hostname: { type: 'string', minLength: 1, maxLength: 253 }, landingUrl, reservedNames },
+  properties: { hostname: { type: 'string', minLength: 1, maxLength: 253 }, landingUrl, reservedNames, premiumNames: reservedNames },
 } as const;
 
 /** Hostname não muda (excluir e cadastrar). `landingUrl: null` remove a landing. */
@@ -38,6 +38,7 @@ export const updateLinkDomainBodySchema = {
     status: { type: 'string', enum: Object.values(LinkDomainStatus) },
     landingUrl,
     reservedNames,
+    premiumNames: reservedNames,
   },
 } as const;
 
@@ -50,6 +51,7 @@ const domain = {
     status: { type: 'string', enum: Object.values(LinkDomainStatus) },
     landingUrl: { type: ['string', 'null'] },
     reservedNames: { type: 'array', items: { type: 'string' } },
+    premiumNames: { type: 'array', items: { type: 'string' } },
     lastProbeAt: nullableDate,
     lastProbeOk: { type: ['boolean', 'null'] },
     createdAt: { type: 'string', format: 'date-time' },
@@ -74,4 +76,44 @@ export const linkDomainProbeResponse = envelope({
     status: { type: ['integer', 'null'] },
     probedAt: { type: 'string', format: 'date-time' },
   },
+});
+
+export const premiumGrantParamSchema = {
+  type: 'object',
+  required: ['id', 'grantId'],
+  properties: { id, grantId: id },
+} as const;
+
+/** `slug` precisa estar em `premiumNames` do domínio (use case); `expiresAt` ausente/null = sem validade. */
+export const createPremiumGrantBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['tenantId', 'slug'],
+  properties: {
+    tenantId: id,
+    slug: { type: 'string', minLength: 1, maxLength: 63 },
+    expiresAt: nullableDate,
+  },
+} as const;
+
+const grant = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string' },
+    domainId: { type: 'string' },
+    slug: { type: 'string' },
+    tenantId: { type: 'string' },
+    source: { type: 'string', enum: ['MANUAL', 'BILLING'] },
+    expiresAt: nullableDate,
+    createdAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+export const premiumGrantResponse = envelope(grant);
+
+export const premiumGrantListResponse = envelope({
+  type: 'object',
+  additionalProperties: false,
+  properties: { items: { type: 'array', items: grant } },
 });

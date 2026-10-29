@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
+import type { TransactionClient } from '../../../../shared/database/UnitOfWork';
 import type {
   CreateLinkRotationInput,
   ILinkRotationRepository,
@@ -28,9 +29,18 @@ function rethrowSlugTaken(err: unknown): never {
   throw err;
 }
 
-/** Rotações do tenant. Tudo tenant-aware, exceto `findPublicByHost`/`incrementClick` (rota pública). */
+/**
+ * Rotações do tenant. Tudo tenant-aware, exceto `findPublicByHost`/`incrementClick` (rota pública).
+ * Aceita o client normal ou o `TransactionClient` de `runInSlugTransaction`: com tx, as operações
+ * em várias etapas rodam direto nele (tx client não tem `$transaction` para aninhar).
+ */
 export class PrismaLinkRotationRepository implements ILinkRotationRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient | TransactionClient) {}
+
+  private atomic<T>(fn: (tx: TransactionClient) => Promise<T>): Promise<T> {
+    const db = this.prisma;
+    return '$transaction' in db ? db.$transaction(fn) : fn(db);
+  }
 
   async listByTenant(tenantId: string): Promise<LinkRotationWithGroups[]> {
     const rows = await this.prisma.linkRotation.findMany({
@@ -71,7 +81,7 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
   /** Trocar `sessionId` apaga os grupos na mesma transação (pertencem à sessão antiga). */
   async update(tenantId: string, id: string, input: UpdateLinkRotationInput): Promise<LinkRotation> {
     try {
-      const row = await this.prisma.$transaction(async (tx) => {
+      const row = await this.atomic(async (tx) => {
         const current = await tx.linkRotation.findFirst({ where: { id, tenantId }, select: { sessionId: true } });
         if (!current) throw new LinkRotationNotFoundError(id);
         if (input.sessionId !== undefined && input.sessionId !== current.sessionId) {
@@ -114,7 +124,7 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
     rotationId: string,
     groups: SaveLinkRotationGroupInput[],
   ): Promise<LinkRotationGroup[]> {
-    return this.prisma.$transaction(async (tx) => {
+    return this.atomic(async (tx) => {
       const rotation = await tx.linkRotation.findFirst({ where: { id: rotationId, tenantId }, select: { id: true } });
       if (!rotation) throw new LinkRotationNotFoundError(rotationId);
 
@@ -181,7 +191,7 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
    * O grupo precisa pertencer à rotação; senão nada é contado (transação desfeita).
    */
   async incrementClick(rotationId: string, groupId: string, at: Date): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    await this.atomic(async (tx) => {
       const { count } = await tx.linkRotationGroup.updateMany({
         where: { id: groupId, rotationId },
         data: { clickCount: { increment: 1 }, clicksSinceSync: { increment: 1 }, lastClickAt: at },

@@ -9,6 +9,8 @@ export interface LinkDomain {
   landingUrl: string | null;
   /** Nomes reservados além da lista padrão de `slugRules`. */
   reservedNames: string[];
+  /** Nomes especiais: só com `PremiumSlugGrant` do tenant. */
+  premiumNames: string[];
   lastProbeAt: Date | null;
   lastProbeOk: boolean | null;
   createdAt: Date;

@@ -5,6 +5,7 @@ import type {
 } from '../../application/dtos/LinkRotationDTO';
 import type { LinkRotationStatsDTO } from '../../application/use-cases/GetLinkRotationStatsUseCase';
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
+import type { PremiumSlugGrant } from '../../domain/entities/PremiumSlugGrant';
 import type { ProbeLinkDomainResult } from '../../application/use-cases/admin/ProbeLinkDomainUseCase';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -44,10 +45,23 @@ export const LinkDomainPresenter = {
       status: d.status,
       landingUrl: d.landingUrl,
       reservedNames: d.reservedNames,
+      premiumNames: d.premiumNames,
       lastProbeAt: iso(d.lastProbeAt),
       lastProbeOk: d.lastProbeOk,
       createdAt: d.createdAt.toISOString(),
       updatedAt: d.updatedAt.toISOString(),
+    };
+  },
+
+  grant(g: PremiumSlugGrant) {
+    return {
+      id: g.id,
+      domainId: g.domainId,
+      slug: g.slug,
+      tenantId: g.tenantId,
+      source: g.source,
+      expiresAt: iso(g.expiresAt),
+      createdAt: g.createdAt.toISOString(),
     };
   },
 

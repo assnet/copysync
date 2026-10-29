@@ -84,3 +84,17 @@ export function mergeReservedNames(current: readonly string[], raw: string): Mer
   if (next.size > RESERVED_NAMES_MAX) return { ok: false, tooMany: true };
   return { ok: true, names: [...next] };
 }
+
+/**
+ * Validade da liberação a partir do `<input type="date">` (AAAA-MM-DD): fim do dia no fuso do
+ * navegador, em ISO. Vazio = sem validade (`null`); data inválida ou que já passou = `'invalid'`.
+ * `now` = `serverNow()`.
+ */
+export function grantExpiryToIso(date: string, now: number): string | null | 'invalid' {
+  const v = date.trim();
+  if (!v) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return 'invalid';
+  const end = new Date(`${v}T23:59:59.999`);
+  if (Number.isNaN(end.getTime()) || end.getTime() <= now) return 'invalid';
+  return end.toISOString();
+}

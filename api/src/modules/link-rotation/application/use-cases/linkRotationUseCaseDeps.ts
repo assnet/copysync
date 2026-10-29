@@ -4,6 +4,7 @@ import type { ILinkDomainRepository } from '../../domain/contracts/ILinkDomainRe
 import type { ILinkRotationGroupCatalog } from '../../domain/contracts/ILinkRotationGroupCatalog';
 import type { ILinkRotationRepository } from '../../domain/contracts/ILinkRotationRepository';
 import type { ILinkRotationSessionReader } from '../../domain/contracts/ILinkRotationSessionReader';
+import type { IPublicSlugRegistry } from '../../domain/contracts/IPublicSlugRegistry';
 
 /** Só o que o rodízio usa do engine (convite e resumo do grupo). */
 export type LinkRotationGroupEngine = Pick<IMessagingEngine, 'getGroupInviteLink' | 'getGroupSummary'>;
@@ -11,9 +12,21 @@ export type LinkRotationGroupEngine = Pick<IMessagingEngine, 'getGroupInviteLink
 /** Domínios: o tenant só lê. */
 export type LinkDomainReader = Pick<ILinkDomainRepository, 'findById' | 'list' | 'listActive'>;
 
+/** Repositórios presos à mesma transação (dono + claim do nome). */
+export interface SlugTransactionScope {
+  rotations: ILinkRotationRepository;
+  slugs: IPublicSlugRegistry;
+}
+
+/** Roda `fn` numa transação; erro desfaz tudo e sobe para o chamador, já fora do tx. */
+export type RotationSlugTransaction = <T>(fn: (scope: SlugTransactionScope) => Promise<T>) => Promise<T>;
+
 /** Dependências dos use cases do tenant; cada use case recebe o subconjunto que precisa. */
 export interface LinkRotationUseCaseDeps {
   rotations: ILinkRotationRepository;
+  /** Leitura do namespace público (check/suggest) fora de transação. */
+  slugs: IPublicSlugRegistry;
+  runInSlugTransaction: RotationSlugTransaction;
   domains: LinkDomainReader;
   sessions: ILinkRotationSessionReader;
   groups: ILinkRotationGroupCatalog;

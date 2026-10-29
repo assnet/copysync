@@ -45,6 +45,7 @@ export class PrismaLinkDomainRepository implements ILinkDomainRepository {
         hostname: normalizeHost(input.hostname),
         landingUrl: input.landingUrl ?? null,
         reservedNames: input.reservedNames ?? [],
+        premiumNames: input.premiumNames ?? [],
       },
     });
     return PrismaLinkDomainMapper.toDomain(row);
@@ -58,6 +59,7 @@ export class PrismaLinkDomainRepository implements ILinkDomainRepository {
           ...(input.status !== undefined && { status: input.status }),
           ...(input.landingUrl !== undefined && { landingUrl: input.landingUrl }),
           ...(input.reservedNames !== undefined && { reservedNames: input.reservedNames }),
+          ...(input.premiumNames !== undefined && { premiumNames: input.premiumNames }),
         },
       });
       return PrismaLinkDomainMapper.toDomain(row);
@@ -67,13 +69,13 @@ export class PrismaLinkDomainRepository implements ILinkDomainRepository {
     }
   }
 
-  /** onDelete: Restrict nas rotações; o use case checa `countRotations` antes (LINK_DOMAIN_IN_USE). */
+  /** onDelete: Restrict em rotações, claims e grants; o use case conta antes (LINK_DOMAIN_IN_USE). */
   async delete(id: string): Promise<void> {
     try {
       const { count } = await this.prisma.linkDomain.deleteMany({ where: { id } });
       if (count === 0) throw new NotFoundError('LinkDomain', id);
     } catch (err) {
-      // Rotação criada entre a contagem do use case e o delete: FK Restrict (P2003) vira 409.
+      // Rotação/claim/grant criado entre a contagem do use case e o delete: FK Restrict (P2003) vira 409.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') throw new LinkDomainInUseError(id);
       throw err;
     }
@@ -81,6 +83,14 @@ export class PrismaLinkDomainRepository implements ILinkDomainRepository {
 
   async countRotations(id: string): Promise<number> {
     return this.prisma.linkRotation.count({ where: { domainId: id } });
+  }
+
+  async countSlugUsage(id: string): Promise<number> {
+    const [claims, grants] = await Promise.all([
+      this.prisma.publicSlugClaim.count({ where: { domainId: id } }),
+      this.prisma.premiumSlugGrant.count({ where: { domainId: id } }),
+    ]);
+    return claims + grants;
   }
 
   async recordProbe(id: string, ok: boolean, at: Date): Promise<void> {

@@ -40,4 +40,18 @@ describe('adminLinkDomainsService', () => {
     expect(await adminLinkDomainsService.probe('d/1')).toEqual(result);
     expect(client.post).toHaveBeenCalledWith('/admin/link-domains/d%2F1/probe', {});
   });
+
+  it('listGrants, grant e revokeGrant', async () => {
+    client.get.mockResolvedValue(ok({ items: [{ id: 'g1' }] }));
+    expect(await adminLinkDomainsService.listGrants('d1')).toEqual([{ id: 'g1' }]);
+    expect(client.get).toHaveBeenCalledWith('/admin/link-domains/d1/premium-grants');
+
+    client.post.mockResolvedValue(ok({ id: 'g1' }));
+    await adminLinkDomainsService.grant('d1', { tenantId: 't1', slug: 'vip', expiresAt: null });
+    expect(client.post).toHaveBeenCalledWith('/admin/link-domains/d1/premium-grants', { tenantId: 't1', slug: 'vip', expiresAt: null });
+
+    client.delete.mockResolvedValue({ status: 204 });
+    await adminLinkDomainsService.revokeGrant('d1', 'g/1');
+    expect(client.delete).toHaveBeenCalledWith('/admin/link-domains/d1/premium-grants/g%2F1');
+  });
 });
