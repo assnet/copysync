@@ -107,15 +107,17 @@ FIFO por `notBefore`. Oferta manual não fura o que já está na fila. Se o prod
 `tenants.sendingPausedAt`: enquanto não for null, o claim ignora todos os envios do tenant, de
 qualquer sessão ou origem (gerador e monitoramento). Captura e enfileiramento continuam normalmente;
 o que vencer durante a pausa é fechado em lote pelo worker (`skipExpired`, antes de cada claim:
-`SKIPPED/OFFER_EXPIRED`), sem ocupar a cabeça da faixa um por tick na frente dos válidos. Retomar
+`SKIPPED/OFFER_EXPIRED`, só oferta `SENDING`; a `PAUSED` fica intacta e retomar segue válido),
+sem ocupar a cabeça da faixa um por tick na frente dos válidos. Retomar
 (`ResumeAllSendsUseCase`) zera o campo e reespalha a fila de cada sessão a partir de agora
 (`respreadLane`, intervalo da configuração do gerador): os vencidos saem na ordem, cada um pelo
 menos o intervalo mínimo depois do anterior (buraco maior que o máximo vira uma folga); horário
 ainda futuro fica, salvo se o reespalhar o alcançou. Retomar sem pausa ativa é no-op (botão
 desatualizado em outra aba não mexe na fila). A cadência real continua garantida pelo claim; o piso do reespalhar
-(`laneState.lastClaimedAt`) conta `SEND_TIMEOUT` com o mesmo hold do claim (prévia e envio
-real coincidem). Pausar é idempotente e atômico no banco (`pauseIfActive`: duas abas ficam com o
-mesmo instante).
+(`laneState.lastClaimedAt`) conta `SEND_TIMEOUT` como último envio em `claimedAt + 120 s`
+(hold do claim): a prévia nunca fica antes da liberação real, no máximo um pouco depois. Pausar é
+idempotente e atômico no banco (`pauseIfActive`: um `UPDATE … RETURNING`; duas abas ficam com o
+mesmo instante; tenant inexistente → 404).
 Rotas: `POST /campaigns/send-queue/pause` e `/resume`; o `GET` devolve `sendingPausedAt`. Painel:
 botão no cabeçalho da fila (gerador e monitoramento) e faixa de aviso enquanto pausado.
 

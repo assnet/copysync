@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { ISendingPauseStore } from '../../domain/contracts/ISendingPauseStore';
+import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 
 /** `tenants.sendingPausedAt` (o claim do worker lê a mesma coluna em SQL). */
 export class PrismaSendingPauseStore implements ISendingPauseStore {
@@ -10,9 +11,13 @@ export class PrismaSendingPauseStore implements ISendingPauseStore {
     return t?.sendingPausedAt ?? null;
   }
 
+  /** Um só UPDATE … RETURNING: o valor devolvido é o gravado (sem janela entre gravar e ler). */
   async pauseIfActive(tenantId: string, at: Date): Promise<Date> {
-    await this.prisma.tenant.updateMany({ where: { id: tenantId, sendingPausedAt: null }, data: { sendingPausedAt: at } });
-    return (await this.get(tenantId)) ?? at;
+    const rows = await this.prisma.$queryRaw<{ sendingPausedAt: Date }[]>`
+      UPDATE "tenants" SET "sendingPausedAt" = COALESCE("sendingPausedAt", ${at})
+       WHERE "id" = ${tenantId} RETURNING "sendingPausedAt"`;
+    if (rows.length === 0) throw new NotFoundError('Tenant', tenantId);
+    return rows[0]!.sendingPausedAt;
   }
 
   async set(tenantId: string, pausedAt: Date | null): Promise<void> {

@@ -145,19 +145,22 @@ describe('openNotBefore', () => {
 });
 
 describe('laneState — piso após SEND_TIMEOUT', () => {
-  it('SEND_TIMEOUT conta como último envio deslocado: lastClaimedAt + gap = liberação do claim (120 s)', async () => {
+  it('SEND_TIMEOUT conta como último envio em claimedAt + hold (120 s): prévia nunca antes da liberação', async () => {
     await reset();
     const a = await offer('GENERATOR');
     const d = await queued(a.id, convGen, spToUtc(8));
     await prisma.offerDispatch.update({ where: { id: d.id }, data: { status: 'FAILED', failureReason: 'SEND_TIMEOUT', claimedAt: spToUtc(8), gapSeconds: 60 } });
     const st = await repo.laneState(tenantId, sessionId, spToUtc(8, 1));
-    expect(st.lastClaimedAt).toEqual(new Date(spToUtc(8).getTime() + 60_000)); // + (120 − 60) s
+    expect(st.lastClaimedAt).toEqual(new Date(spToUtc(8).getTime() + 120_000));
   });
 });
 
 describe('skipExpired', () => {
-  it('fecha em lote QUEUED de oferta vencida; válida fica', async () => {
+  it('fecha em lote QUEUED de oferta SENDING vencida; válida e PAUSED ficam', async () => {
     await reset();
+    const paused = await offer('GENERATOR');
+    await prisma.offer.update({ where: { id: paused.id }, data: { status: 'PAUSED', expiresAt: spToUtc(7) } });
+    await queued(paused.id, convGen, spToUtc(6, 6));
     const old = await offer('MONITORING');
     await prisma.offer.update({ where: { id: old.id }, data: { expiresAt: spToUtc(7) } });
     await queued(old.id, convMon, spToUtc(6));
@@ -166,6 +169,6 @@ describe('skipExpired', () => {
     await queued(ok.id, convGen, spToUtc(6, 4));
     expect(await repo.skipExpired(spToUtc(8))).toBe(2);
     const rows = await prisma.offerDispatch.findMany({ where: { tenantId }, orderBy: { notBefore: 'asc' } });
-    expect(rows.map((r) => [r.status, r.failureReason])).toEqual([['SKIPPED', 'OFFER_EXPIRED'], ['SKIPPED', 'OFFER_EXPIRED'], ['QUEUED', null]]);
+    expect(rows.map((r) => [r.status, r.failureReason])).toEqual([['SKIPPED', 'OFFER_EXPIRED'], ['SKIPPED', 'OFFER_EXPIRED'], ['QUEUED', null], ['QUEUED', null]]);
   });
 });

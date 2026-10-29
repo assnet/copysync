@@ -117,7 +117,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     const last = this.items
       .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.claimedAt
         && (d.status === 'SENDING' || d.status === 'SENT' || (d.status === 'FAILED' && d.failureReason === 'SEND_TIMEOUT')))
-      .map((d) => (d.status === 'FAILED' ? new Date(d.claimedAt!.getTime() + Math.max(0, 120 - d.gapSeconds) * 1000) : d.claimedAt!))
+      .map((d) => (d.status === 'FAILED' ? new Date(d.claimedAt!.getTime() + 120_000) : d.claimedAt!))
       .reduce<Date | null>((m, t) => (!m || t > m ? t : m), null);
     return { open, lastClaimedAt: last };
   }
@@ -161,7 +161,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     let n = 0;
     for (const d of this.items) {
       const o = this.offers.items.find((x) => x.id === d.offerId);
-      if (d.status === 'QUEUED' && o?.expiresAt && o.expiresAt <= now) { d.status = 'SKIPPED'; d.failureReason = 'OFFER_EXPIRED'; n++; }
+      if (d.status === 'QUEUED' && o?.status === 'SENDING' && o.expiresAt && o.expiresAt <= now) { d.status = 'SKIPPED'; d.failureReason = 'OFFER_EXPIRED'; n++; }
     }
     return n;
   }

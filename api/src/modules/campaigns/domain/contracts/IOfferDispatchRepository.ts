@@ -72,8 +72,9 @@ export interface IOfferDispatchRepository {
    */
   releaseStale(olderThan: Date): Promise<number>;
   /**
-   * Fecha em lote (SKIPPED/OFFER_EXPIRED) todo QUEUED de oferta já vencida (`expiresAt` ≤ now), em
-   * qualquer tenant. Sem isso cada vencido viraria cabeça da faixa por um tick, atrasando os válidos
+   * Fecha em lote (SKIPPED/OFFER_EXPIRED) todo QUEUED de oferta SENDING já vencida (`expiresAt` ≤ now),
+   * em qualquer tenant (PAUSED fica intacta: retomar continua válido). Custo O(QUEUED) por tick: a fila
+   * aberta é pequena por natureza (centenas), não precisa de índice em `expiresAt`. Sem isso cada vencido viraria cabeça da faixa por um tick, atrasando os válidos
    * (ex.: fila acumulada durante a pausa global). A oferta é finalizada pelo sweep de órfãs.
    */
   skipExpired(now: Date): Promise<number>;

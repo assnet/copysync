@@ -25,6 +25,8 @@ export function useSendQueue(sessionId?: string) {
   const pending = useRef<Promise<void> | null>(null);
   // Pedido explícito chegou com poll em voo: ao terminar, busca de novo em vez de esperar o próximo tick
   const refetch = useRef(false);
+  // Instante da última mutação aplicada por `patch`: poll iniciado antes dela não sobrescreve o estado
+  const mutatedAt = useRef(0);
 
   const load = useCallback(async () => {
     const gen = generation.current;
@@ -35,9 +37,10 @@ export function useSendQueue(sessionId?: string) {
     let release!: () => void;
     const p = new Promise<void>((r) => { release = r; });
     pending.current = p;
+    const startedAt = performance.now();
     try {
       next = await sendQueueService.get(sessionId);
-      if (gen === generation.current) { setData(next); setFailed(false); }
+      if (gen === generation.current && startedAt >= mutatedAt.current) { setData(next); setFailed(false); }
     } catch {
       if (gen === generation.current) setFailed(true);
     } finally {
@@ -88,6 +91,7 @@ export function useSendQueue(sessionId?: string) {
 
   /** Resposta de uma mutação aplicada já (ex.: `sendingPausedAt` do pausar/retomar): se o GET seguinte falhar, a tela não fica com o estado anterior. */
   const patch = useCallback((partial: Partial<SendQueueResponse>) => {
+    mutatedAt.current = performance.now();
     setData((cur) => (cur ? { ...cur, ...partial } : cur));
   }, []);
 

@@ -174,7 +174,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
 
   async skipExpired(now: Date): Promise<number> {
     const r = await this.prisma.offerDispatch.updateMany({
-      where: { status: 'QUEUED', offer: { expiresAt: { lte: now } } },
+      // Só oferta SENDING: PAUSED fica como está (retomar continua válido e decide no envio)
+      where: { status: 'QUEUED', offer: { status: 'SENDING', expiresAt: { lte: now } } },
       data: { status: 'SKIPPED', failureReason: 'OFFER_EXPIRED' },
     });
     return r.count;
@@ -190,11 +191,12 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
         },
         orderBy: { notBefore: 'asc' },
       }),
-      // Mesmo piso do claim: SEND_TIMEOUT segura a faixa por GREATEST(gap, hold); aqui vira um
-      // "último envio" deslocado para que `lastClaimedAt + gap` coincida com a liberação real
+      // SEND_TIMEOUT segura a faixa no claim por GREATEST(gap do próximo, hold); aqui conta como
+      // "último envio" em claimedAt + hold: quem consome soma o intervalo, então a prévia fica em
+      // ou depois da liberação real (nunca antes: o claim respeitaria o notBefore de qualquer jeito)
       this.prisma.$queryRaw<{ last: Date | null }[]>`
         SELECT MAX(CASE WHEN d."status" = 'FAILED'::"OfferDispatchStatus"
-                        THEN d."claimedAt" + make_interval(secs => GREATEST(0, ${LANE_TIMEOUT_HOLD_SECONDS} - d."gapSeconds"))
+                        THEN d."claimedAt" + make_interval(secs => ${LANE_TIMEOUT_HOLD_SECONDS})
                         ELSE d."claimedAt" END) AS last
           FROM "offer_dispatches" d
          WHERE d."tenantId" = ${tenantId} AND d."sessionId" = ${sessionId} AND d."claimedAt" IS NOT NULL
