@@ -18,6 +18,8 @@ import { provisioningRoutes } from '../modules/tenants/presentation/routes/provi
 import { aiAdminRoutes, aiTenantRoutes } from '../modules/assistants/presentation/routes/ai.routes';
 import { billingRoutes } from '../modules/integrations/billing/billing.routes';
 import { extensionRoutes } from '../modules/extension/presentation/routes/extension.routes';
+import { linkRotationRoutes } from '../modules/link-rotation/presentation/routes/linkRotation.routes';
+import { linkDomainAdminRoutes } from '../modules/link-rotation/presentation/routes/linkDomainAdmin.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -98,6 +100,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── IA: provedores da plataforma (super admin) e chave própria do tenant ────
   await app.register(aiAdminRoutes, { prefix: `${env.API_PREFIX}/admin/ai` });
   await app.register(aiTenantRoutes, { prefix: `${env.API_PREFIX}/ai` });
+
+  // ── Rodízio de links: painel do tenant e domínios (super admin) ─────────────
+  await app.register(linkRotationRoutes, { prefix: `${env.API_PREFIX}/link-rotation` });
+  await app.register(linkDomainAdminRoutes, { prefix: `${env.API_PREFIX}/admin/link-domains` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
   if (env.BILLING_ENABLED) {

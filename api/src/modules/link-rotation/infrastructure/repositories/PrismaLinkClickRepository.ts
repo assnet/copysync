@@ -27,6 +27,20 @@ export class PrismaLinkClickRepository implements ILinkClickRepository {
     });
   }
 
+  async countLast7DaysByGroup(tenantId: string, rotationId: string, now: Date): Promise<Map<string, number>> {
+    const rows = await this.prisma.linkClick.groupBy({
+      by: ['groupId'],
+      where: {
+        tenantId,
+        rotationId,
+        groupId: { not: null },
+        createdAt: { gt: new Date(now.getTime() - 7 * DAY_MS), lte: now },
+      },
+      _count: { _all: true },
+    });
+    return new Map(rows.flatMap((r) => (r.groupId ? [[r.groupId, r._count._all] as const] : [])));
+  }
+
   /** Retenção global (job): sem tenantId de propósito, corta por idade em todos os tenants. */
   async deleteOlderThan(cutoff: Date): Promise<number> {
     const { count } = await this.prisma.linkClick.deleteMany({ where: { createdAt: { lt: cutoff } } });
