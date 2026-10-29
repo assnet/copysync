@@ -103,12 +103,14 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.queue.inputs[0]!.startAt).toEqual(new Date('2026-10-28T17:00:00.000Z'));
   });
 
-  it('cupom venceria antes da janela abrir: descarta (EXPIRED) sem enfileirar', async () => {
+  it('captura fora da janela acumula: a validade conta da abertura da janela, não da captura', async () => {
+    // 12:00 em SP, janela 14:00–20:00, cupom com validade de 60 min → sai às 14:00 e vale até 15:00
     const s = await setup({ settings: { windowStartMinute: 840, windowEndMinute: 1200 } });
     await s.msg();
     await s.process.execute();
-    expect(s.queue.inputs).toHaveLength(0);
-    expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'EXPIRED' });
+    expect(s.queue.inputs).toHaveLength(1);
+    expect(s.queue.inputs[0]!.startAt).toEqual(new Date('2026-10-28T17:00:00.000Z'));
+    expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date('2026-10-28T18:00:00.000Z'));
   });
 
   it('fila da sessão empurra para depois da validade: EXPIRED', async () => {

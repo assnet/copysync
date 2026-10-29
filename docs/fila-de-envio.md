@@ -78,9 +78,11 @@ calculada como antes (`scheduleDispatches`) e depois deslocada por `appendToLane
 deslocamento que põe o primeiro envio de cada sessão pelo menos uma folga (sorteada no intervalo da
 configuração) depois do fim da faixa. Ordem e espaçamento internos não mudam.
 
-Fim da faixa (`laneTails`): maior `notBefore` aberto (`QUEUED`/`SENDING`) de ofertas `SENDING` que
-**já começaram até o início desta** (`scheduledAt` nulo ou ≤ início). Oferta agendada para amanhã
-não segura um envio de agora. Oferta pausada não conta; ao retomar, vai para o fim.
+Fim da faixa (`laneBusyUntil` sobre `laneState`): fim do **bloco contíguo** de envios abertos a
+partir do início da oferta nova; um buraco maior que o intervalo máximo libera a faixa, então a
+captura do monitoramento jogada para a abertura da janela de amanhã não prende o gerador de agora.
+Só ofertas `SENDING` já começadas (`scheduledAt` nulo ou ≤ início) e não vencidas contam. Oferta
+pausada não conta; ao retomar, vai para o fim.
 
 O enfileirar não usa lock: duas ofertas disparadas no mesmo instante podem prever horários que se
 sobrepõem. O claim (2.2) garante o espaçamento real; só a previsão fica otimista.
@@ -112,6 +114,11 @@ desatualizado em outra aba não mexe na fila). A cadência real continua garanti
 Rotas: `POST /campaigns/send-queue/pause` e `/resume`; o `GET` devolve `sendingPausedAt`. Painel:
 botão no cabeçalho da fila (gerador e monitoramento) e faixa de aviso enquanto pausado.
 
+Retomada global, pausa e parar por oferta (`respreadLane`/`compactLane`) **não** encaixam os
+horários na janela do monitoramento; só o enfileiramento faz isso. A prévia pode mostrar um envio
+do monitoramento às 18:10 que o claim só libera às 06:00 (decisão: o claim é a garantia; o encaixe
+nesses caminhos fica para quando houver demanda).
+
 ### 2.6 Janela de operação no claim
 
 Oferta de origem `MONITORING` só é reivindicada dentro da janela da configuração **de origem**
@@ -126,7 +133,7 @@ a janela não prende o gerador atrás dela. Ver `docs/monitoramento-grupos.md` �
 ## 3. Leitura: `GET /campaigns/send-queue`
 
 ```json
-{ "serverTime": "…",
+{ "serverTime": "…", "sendingPausedAt": null,
   "sessions": [{
     "sessionId": "…", "name": "…", "status": "CONNECTED",
     "running": { "dispatchId", "offerId", "origin", "offerStatus", "title", "textPreview", "groupName", "status": "SENDING", "claimedAt", … } | null,

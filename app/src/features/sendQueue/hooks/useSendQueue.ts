@@ -22,6 +22,7 @@ export function useSendQueue(sessionId?: string) {
   // Geração: troca de sessão ou desmontagem invalida respostas e timers da geração anterior
   const generation = useRef(0);
   const inFlight = useRef<number | null>(null);
+  const pending = useRef<Promise<void> | null>(null);
 
   const load = useCallback(async () => {
     const gen = generation.current;
@@ -29,6 +30,8 @@ export function useSendQueue(sessionId?: string) {
     inFlight.current = gen;
     clearTimeout(timer.current);
     let next: SendQueueResponse | null = null;
+    let release!: () => void;
+    pending.current = new Promise<void>((r) => { release = r; });
     try {
       next = await sendQueueService.get(sessionId);
       if (gen === generation.current) { setData(next); setFailed(false); }
@@ -36,6 +39,8 @@ export function useSendQueue(sessionId?: string) {
       if (gen === generation.current) setFailed(true);
     } finally {
       if (inFlight.current === gen) inFlight.current = null;
+      pending.current = null;
+      release();
       if (gen === generation.current) {
         setLoading(false);
         if (!document.hidden) {
@@ -64,5 +69,11 @@ export function useSendQueue(sessionId?: string) {
     };
   }, [load]);
 
-  return { data, loading, failed, refresh: load };
+  /** Pedido explícito (botão, após pausar/retomar): espera o poll em voo e busca de novo, nunca vira no-op. */
+  const refresh = useCallback(async () => {
+    if (pending.current) await pending.current;
+    await load();
+  }, [load]);
+
+  return { data, loading, failed, refresh };
 }

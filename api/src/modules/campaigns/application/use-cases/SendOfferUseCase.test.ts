@@ -204,12 +204,22 @@ describe('SendOfferUseCase — fila por sessão', () => {
   it('com outra oferta em curso na mesma sessão, entra depois do fim dela + folga, sem mudar o espaçamento', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'running', status: 'SENDING' }));
-    const tail = new Date(NOW.getTime() + 600_000);
+    // bloco contíguo: um envio agora e outro 10 s depois (dentro do intervalo máximo de 16 s)
+    s.dispatches.add({ offerId: 'running', conversationId: 'x0', sessionId: 's1', notBefore: NOW });
+    const tail = new Date(NOW.getTime() + 10_000);
     s.dispatches.add({ offerId: 'running', conversationId: 'x', sessionId: 's1', notBefore: tail });
     await s.uc.execute(input);
     const mine = s.dispatches.items.filter((d) => d.offerId === 'offer-1').map((d) => d.notBefore.getTime() - tail.getTime());
     // folga e intervalo = meio de 8–16 s
     expect(mine).toEqual([12_000, 24_000, 36_000]);
+  });
+
+  it('envio agendado longe (buraco maior que o intervalo máximo) não prende: a faixa está livre agora', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'later', status: 'SENDING', origin: 'MONITORING' }));
+    s.dispatches.add({ offerId: 'later', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 600_000) });
+    await s.uc.execute(input);
+    expect(s.dispatches.items.find((d) => d.offerId === 'offer-1')!.notBefore).toEqual(NOW);
   });
 
   it('oferta agendada para depois não segura quem dispara agora', async () => {

@@ -191,3 +191,15 @@ describe('SendQueuePanel — pausa global da conta', () => {
     expect(await screen.findByText(/Não foi possível alterar a pausa/)).toBeInTheDocument();
   });
 });
+
+describe('SendQueuePanel — pausa da conta com sessão fora do ar', () => {
+  it('mostra "Aguardando a sessão" além de "Pausado (conta)"', async () => {
+    get.mockResolvedValue({
+      serverTime: soon, sendingPausedAt: soon,
+      sessions: [{ sessionId: 's1', name: 'Loja', status: 'DISCONNECTED', running: null, waiting: [item({ waitingSession: true })], recent: [], counts: { waiting: 1, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
+    });
+    render(<SendQueuePanel />);
+    expect(await screen.findByText('Aguardando a sessão')).toBeInTheDocument();
+    expect(screen.getByText('Pausado (conta)')).toBeInTheDocument();
+  });
+});

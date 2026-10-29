@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendToLanes, laneGapMs } from './appendToLanes';
+import { appendToLanes, laneBusyUntil, laneGapMs } from './appendToLanes';
 
 const at = (min: number) => new Date(Date.UTC(2026, 9, 28, 12, min));
 const slot = (sessionId: string, min: number) => ({ sessionId, notBefore: at(min) });
@@ -37,5 +37,23 @@ describe('laneGapMs', () => {
   it('fica dentro do intervalo', () => {
     expect(laneGapMs({ minMs: 1000, maxMs: 3000 }, () => 0)).toBe(1000);
     expect(laneGapMs({ minMs: 1000, maxMs: 3000 }, () => 1)).toBe(3000);
+  });
+});
+
+describe('laneBusyUntil', () => {
+  const gap = 60_000;
+  it('bloco contíguo a partir do início: fim = último envio do bloco', () => {
+    expect(laneBusyUntil([at(0), at(0.5), at(1.2)], at(0), gap)).toEqual(at(1.2));
+  });
+  it('envio antes do início também conta (ainda ocupa a faixa)', () => {
+    expect(laneBusyUntil([at(-1), at(0.3)], at(0), gap)).toEqual(at(0.3));
+  });
+  it('buraco maior que o intervalo máximo libera a faixa: o que vem depois não prende', () => {
+    // captura do monitoramento jogada para a abertura da janela (horas depois)
+    expect(laneBusyUntil([at(0.5), at(600)], at(0), gap)).toEqual(at(0.5));
+    expect(laneBusyUntil([at(600)], at(0), gap)).toBeNull();
+  });
+  it('sem envios: null', () => {
+    expect(laneBusyUntil([], at(0), gap)).toBeNull();
   });
 });

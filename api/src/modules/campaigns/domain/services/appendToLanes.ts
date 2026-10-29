@@ -32,3 +32,30 @@ export function appendToLanes(slots: readonly LaneSlot[], tails: ReadonlyMap<str
   }
   return slots.map((s) => new Date(s.notBefore.getTime() + offset));
 }
+
+/**
+ * Fim do bloco ocupado da faixa a partir de `from`: percorre os envios abertos em ordem e estende o
+ * fim enquanto o próximo começa até `maxGapMs` depois do fim corrente. Um buraco maior deixa a faixa
+ * livre no meio (ex.: captura do monitoramento jogada para a abertura da janela de amanhã não
+ * prende o gerador de agora). null = nada ocupado a partir de `from`.
+ */
+export function laneBusyUntil(open: readonly Date[], from: Date, maxGapMs: number): Date | null {
+  const sorted = [...open].map((d) => d.getTime()).sort((a, b) => a - b);
+  let end: number | null = null;
+  for (const t of sorted) {
+    // Envio que começa até `maxGapMs` depois do fim corrente (ou de `from`) faz parte do bloco
+    if (t > (end ?? from.getTime()) + maxGapMs) break;
+    end = Math.max(end ?? from.getTime(), t);
+  }
+  return end === null ? null : new Date(end);
+}
+
+/** Fim da faixa de cada sessão a partir de `from`, com `laneBusyUntil`. Sessão livre não entra no mapa. */
+export function laneTailsFromOpen(openBySession: ReadonlyMap<string, readonly Date[]>, from: Date, maxGapMs: number): Map<string, Date> {
+  const out = new Map<string, Date>();
+  for (const [sessionId, open] of openBySession) {
+    const end = laneBusyUntil(open, from, maxGapMs);
+    if (end) out.set(sessionId, end);
+  }
+  return out;
+}

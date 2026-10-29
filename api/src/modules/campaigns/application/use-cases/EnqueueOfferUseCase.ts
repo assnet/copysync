@@ -2,7 +2,7 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
-import { appendToLanes, laneGapMs } from '../../domain/services/appendToLanes';
+import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { OfferAlreadySentError } from '../../../../shared/errors/internal/OfferErrors';
 
@@ -92,7 +92,12 @@ export class EnqueueOfferUseCase {
     const planned = scheduleDispatches(destinations.length, input.startAt, interval, this.deps.rand);
     // Uma faixa por sessão: a oferta inteira entra depois do que já está à frente em qualquer delas
     const sessionIds = [...new Set(destinations.map((d) => d.sessionId))];
-    const tails = await this.deps.dispatches.laneTails(tenantId, sessionIds, planned[0]!);
+    // Fim do bloco ocupado de cada sessão (buraco maior que o intervalo máximo libera a faixa)
+    const openBySession = new Map<string, Date[]>();
+    for (const sessionId of sessionIds) {
+      openBySession.set(sessionId, (await this.deps.dispatches.laneState(tenantId, sessionId, planned[0]!)).open.map((d) => d.notBefore));
+    }
+    const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
     const laned = tails.size === 0
       ? planned
       : appendToLanes(destinations.map((d, i) => ({ sessionId: d.sessionId, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));

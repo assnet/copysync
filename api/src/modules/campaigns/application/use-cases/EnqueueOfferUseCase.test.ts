@@ -32,9 +32,11 @@ describe('EnqueueOfferUseCase', () => {
   it('entra depois do que já está na fila da sessão', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'gen', status: 'SENDING' }));
-    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 600_000) });
+    // bloco contíguo a partir de agora (intervalo máximo 120 s): entra depois do fim dele + folga de 90 s
+    s.dispatches.add({ offerId: 'gen', conversationId: 'x0', sessionId: 's1', notBefore: NOW });
+    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 100_000) });
     const out = await s.uc.execute(input());
-    expect(out.kind === 'queued' && out.firstSendAt.getTime() - NOW.getTime()).toBe(690_000);
+    expect(out.kind === 'queued' && out.firstSendAt.getTime() - NOW.getTime()).toBe(190_000);
   });
 
   it('mesma chave idempotente: devolve a oferta existente e não cria outra', async () => {
@@ -67,8 +69,9 @@ describe('EnqueueOfferUseCase', () => {
   it('fila empurraria para depois da validade: não cria nada', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'gen', status: 'SENDING' }));
-    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 7_200_000) });
-    const out = await s.uc.execute(input());
+    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 100_000) });
+    // 1º envio cairia em +190 s, depois da validade de +150 s
+    const out = await s.uc.execute(input({ expiresAt: new Date(NOW.getTime() + 150_000) }));
     expect(out.kind).toBe('expired');
     expect(s.offers.items).toHaveLength(1);
   });

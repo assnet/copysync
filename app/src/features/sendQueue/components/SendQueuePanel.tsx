@@ -364,7 +364,7 @@ function QueueRow({ item, privacy, onOpenOffer, currentOfferId, control, control
               <Chip size="small" variant="outlined" color="warning" label={t.global.pausedChip} sx={{ height: 20, fontSize: 11 }} />
             </Tooltip>
           )}
-          {item.waitingSession && !pausedRow && !accountPausedRow && (
+          {item.waitingSession && !pausedRow && (
             <Tooltip title={t.waitingSessionTooltip} arrow>
               <Chip size="small" variant="outlined" color="warning" label={t.waitingSession} sx={{ height: 20, fontSize: 11 }} />
             </Tooltip>

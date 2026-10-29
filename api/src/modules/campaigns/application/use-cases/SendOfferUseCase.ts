@@ -3,7 +3,7 @@ import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDisp
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
-import { appendToLanes, laneGapMs } from '../../domain/services/appendToLanes';
+import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { orderDispatchTargets } from '../../domain/services/orderDispatchTargets';
 import { dispatchStartAt } from '../../domain/offerSchedule';
 import {
@@ -91,7 +91,12 @@ export class SendOfferUseCase {
     );
     // Fila por sessão: a oferta inteira (uma fila só, mesmo com várias sessões) entra depois do que
     // já está à frente em qualquer das suas sessões (docs/fila-de-envio.md)
-    const tails = await dispatches.laneTails(tenantId, [...new Set(targets.map((t) => t.sessionId))], planned[0]!);
+    // Fim do bloco ocupado de cada sessão: captura do monitoramento agendada para a próxima janela não prende o gerador
+    const openBySession = new Map<string, Date[]>();
+    for (const sessionId of new Set(targets.map((t) => t.sessionId))) {
+      openBySession.set(sessionId, (await dispatches.laneState(tenantId, sessionId, planned[0]!)).open.map((d) => d.notBefore));
+    }
+    const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
     const slots = tails.size === 0
       ? planned
       : appendToLanes(targets.map((t, i) => ({ sessionId: t.sessionId, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
