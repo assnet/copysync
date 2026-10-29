@@ -284,3 +284,21 @@ Memória entre sessões: decisões, bloqueios, lições.
 - **Conferir o que já existe antes de planejar UI.** O plano previa construir indicadores de fixado
   e silenciado que já estavam prontos em `ConversationListItem.tsx:113-116`; faltava só a ordenação.
   Grep no componente antes de escrever a task teria evitado a task inteira.
+
+- **2026-10-28 — Rodízio de links: domínios e redirect vivem na API CopySync, não no hub.** Lista de
+  domínios base (`copysync.app`, `.pro`, …) é tabela + tela super-admin (`/admin/link-domains`); o
+  redirect público é rota da própria API resolvida pelo `Host` (`*.dominio` proxied no Cloudflare).
+  Limites: `link_rotations` 1/1/2 e `link_rotation_groups` 3/5/10 como entitlements. Grupo "cheio" =
+  membros via metadata da sessão + cliques desde a última leitura, teto por grupo (default 1000).
+  Invite link: automático pela sessão (admin) com fallback manual. Ver `.specs/features/link-rotation/`.
+
+### 2026-10-29 — Domínio de rodízio validado em produção
+
+`copysync.com.br` ativo na Cloudflare (conta CopySync, plano Free) e apontado para o serviço `copysync_api` da
+Render. Apex, `www` e `*` verificados, certificado Let's Encrypt emitido cobrindo apex + wildcard, e
+`https://teste.copysync.com.br/health` responde 200 do mesmo processo que serve `api.copysync.app`. Todos os cinco
+registros DNS ficam em *DNS only*; proxy da Cloudflare fica para a T24, junto da WAF e do rate limit.
+
+Restrição que mudou o escopo: o plano da Render inclui 2 custom domains, agrupados por raiz, e os dois já estão
+usados. A v1 do gestor de links usa **um domínio base** com muitos subdomínios. Vários domínios base passam a ser
+decisão comercial, com custo por raiz.
