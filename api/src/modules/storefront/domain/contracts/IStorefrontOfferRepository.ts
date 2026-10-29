@@ -11,6 +11,8 @@ export interface CreateStorefrontOfferInput {
   provider: AffiliateProvider;
   sourceUrl: string;
   affiliateUrl: string;
+  /** false = link colado sem confirmação de comissão (Shopee sem credencial, design.md §4.3). */
+  attributionVerified: boolean;
   title: string;
   priceCents: number | null;
   originalPriceCents: number | null;
