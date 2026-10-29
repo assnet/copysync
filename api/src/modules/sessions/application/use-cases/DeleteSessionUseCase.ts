@@ -4,6 +4,11 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import { SessionNotFoundError } from '../../../../shared/errors/internal/SessionErrors';
 
+/** Recursos de outros módulos presos à sessão (ex.: rodízio de links → PAUSED). */
+export interface SessionLinkedResources {
+  pauseBySession(tenantId: string, sessionId: string): Promise<unknown>;
+}
+
 export interface DeleteSessionInput {
   sessionId: string;
   tenantId: string;
@@ -14,6 +19,7 @@ export interface DeleteSessionInput {
  * Soft-deletes a session.
  * - Disconnects/logouts from the engine if still active.
  * - Removes auth state from DB.
+ * - Pauses resources tied to the session (link rotations → PAUSED) before the soft delete.
  * - Marks the session as deleted (soft delete).
  */
 export class DeleteSessionUseCase {
@@ -22,6 +28,7 @@ export class DeleteSessionUseCase {
     private readonly authStateRepo: ISessionAuthStateRepository,
     private readonly auditRepo: IAuditLogRepository,
     private readonly engine: IMessagingEngine,
+    private readonly linkedResources: SessionLinkedResources[] = [],
   ) {}
 
   async execute(input: DeleteSessionInput): Promise<void> {
@@ -40,6 +47,9 @@ export class DeleteSessionUseCase {
 
     // Remove stored credentials
     await this.authStateRepo.deleteBySessionId(input.sessionId);
+
+    // Rodízios da sessão param antes de a sessão sumir da lista (soft delete; FK Restrict não dispara)
+    for (const r of this.linkedResources) await r.pauseBySession(input.tenantId, input.sessionId);
 
     // Soft-delete the session record
     await this.sessionRepo.softDelete(input.sessionId, input.tenantId);

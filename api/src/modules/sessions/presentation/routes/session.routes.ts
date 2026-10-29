@@ -29,6 +29,7 @@ import { GetSessionQrUseCase } from '../../application/use-cases/GetSessionQrUse
 import { GetSessionPairingCodeUseCase } from '../../application/use-cases/GetSessionPairingCodeUseCase';
 import { RequestSessionPairingCodeUseCase } from '../../application/use-cases/RequestSessionPairingCodeUseCase';
 import { DeleteSessionUseCase } from '../../application/use-cases/DeleteSessionUseCase';
+import { PrismaLinkRotationPlanEnforcementStore } from '../../../link-rotation/infrastructure/repositories/PrismaLinkRotationPlanEnforcementStore';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
 const sessionRepo = new PrismaSessionRepository();
@@ -69,7 +70,9 @@ const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo
 const getSessionQrUseCase = new GetSessionQrUseCase(sessionRepo, engine);
 const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRepo, engine);
 const requestSessionPairingCodeUseCase = new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine);
-const deleteSessionUseCase = new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
+const deleteSessionUseCase = new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, [
+  new PrismaLinkRotationPlanEnforcementStore(prisma),
+]);
 
 // Both auth + tenant context required for all session routes
 const preHandler = [authHook, tenantHook];

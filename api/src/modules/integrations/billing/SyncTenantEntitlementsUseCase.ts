@@ -1,5 +1,6 @@
 import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
+import { applyLinkRotationPlanLimits } from '../../link-rotation/infrastructure/linkRotationPlanLimits';
 
 const log = logger.child({ module: 'SyncTenantEntitlementsUseCase' });
 
@@ -27,6 +28,9 @@ export class SyncTenantEntitlementsUseCase {
       });
     }
 
-    log.info({ tenantId, planSlug, count: presets.length }, 'Tenant entitlements synced');
+    // Rebaixo/subida de plano: rodízios e grupos excedentes ↔ PAUSED_BY_PLAN (LROT-14)
+    const linkRotations = await applyLinkRotationPlanLimits(prisma, tenantId);
+
+    log.info({ tenantId, planSlug, count: presets.length, linkRotations }, 'Tenant entitlements synced');
   }
 }

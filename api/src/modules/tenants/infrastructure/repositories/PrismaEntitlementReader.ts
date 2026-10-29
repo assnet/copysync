@@ -21,7 +21,7 @@ function toBoolean(value: unknown): boolean | null {
 }
 
 export class PrismaEntitlementReader implements IEntitlementReader {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: Pick<PrismaClient, 'tenantEntitlement'>) {}
 
   async getNumber(tenantId: string, key: string): Promise<number | null> {
     const row = await this.prisma.tenantEntitlement.findUnique({
