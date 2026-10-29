@@ -29,7 +29,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 9 | 🔄 Rodízio de links | Um link único que distribui pessoas entre os grupos | `link-rotation` ([doc](rodizio-de-links.md)) | ✅ |
 | 10 | 📢 Disparo em massa | O que é postado num grupo é espelhado nos outros | `campaigns/broadcast-mirror` | ⏳ |
 | 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `campaigns/offer-story` | ⏳ |
-| 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` (novo módulo) | ⏳ |
+| 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` ([doc](pagina-de-ofertas.md)) | ✅ Página de Ofertas (Profissional/Business) |
 | 13 | 🎓 Conta | Aulas e suporte pelo WhatsApp | `tenants` (entitlements) + conteúdo externo | ⏳ |
 | 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
 | 15 | 🌐 Domínio personalizado | Site de ofertas e rodízio de links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |

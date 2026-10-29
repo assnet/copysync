@@ -113,16 +113,27 @@ Entitlements `link_rotations` e `link_rotation_groups`. Presets (data migration 
 
 ## Slug
 
-`slugRules.ts` (pura): normaliza (sem acento, minúsculo, espaço/`_` → hífen), regex 3–50 `[a-z0-9-]` sem hífen nas pontas.
+`slugRules.ts` (pura): normaliza (sem acento, minúsculo, espaço/`_` → hífen), regex `^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$`
+(3–50, `[a-z0-9-]`, sem hífen nas pontas; até a correção de 2026-10-29 o grupo opcional deixava passar 1 caractere).
 Reservados padrão: `www app api admin mail cdn static status hub probe` + `LinkDomain.reservedNames`. Trocar nome ou
 excluir reserva o antigo 30 dias para o mesmo tenant (`link_slug_reservations`). Ocupado → 409 `LINK_SLUG_TAKEN` com até
 5 sugestões em `meta.suggestions` (`-oficial`, `-vip`, `2`, `3`…), checadas numa consulta. Corrida no unique também ganha
 sugestões.
 
+### Registro único de subdomínio e nomes especiais
+
+Rodízio e Página de Ofertas dividem o mesmo `LinkDomain`. O dono de `<slug>.<domínio>` é `PublicSlugClaim`
+(`public_slug_claims`, unique `(domainId, slug)`, `kind`), via `IPublicSlugRegistry` (`check`/`claim`/`move`/`release`)
+na mesma transação de create/rename/delete do rodízio. `check` decide 6 estados (`decideSlugAvailability`); no rodízio
+`OWNED` → `LINK_SLUG_TAKEN` e `PREMIUM` → `LINK_SLUG_RESERVED`. `LinkDomain.premiumNames` (máx. 1000) são nomes
+especiais, liberados por concessão do super-admin (`/premium-grants`). O hook público tenta o rodízio primeiro e só no
+`not_found` renderiza a página. Detalhes e o que não fazer: [`pagina-de-ofertas.md`](pagina-de-ofertas.md).
+
 ## Admin de domínios (`/api/admin/link-domains`, super-admin)
 
 - CRUD. Hostname só ASCII, ≥ 2 rótulos. Host da plataforma ou subdomínio dele é recusado (400 `LINK_DOMAIN_INVALID`).
-  Duplicado → 409 `LINK_DOMAIN_TAKEN`; excluir com rotação → 409 `LINK_DOMAIN_IN_USE`.
+  Duplicado → 409 `LINK_DOMAIN_TAKEN`; excluir com subdomínio reivindicado (rodízio ou página) ou nome
+  especial concedido → 409 `LINK_DOMAIN_IN_USE`.
 - `landingUrl` opcional, só `https://`. Vazio = apex mostra o 404 da marca. Não fixar em código, seed ou env.
 - Probe (`POST /:id/probe`): `GET https://probe-<8hex>.<hostname>/.well-known/link-rotation?token=` espera 204. Token
   HMAC-SHA256 (`LINK_PROBE_SECRET`) sobre id + hostname + expiração, válido 5 min, comparação em tempo constante.

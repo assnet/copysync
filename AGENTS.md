@@ -23,6 +23,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Billing, checkout e e-mail via API central (hub, webhook HMAC, entitlements): [`docs/arquitetura-central-billing.md`](docs/arquitetura-central-billing.md). Sem cálculo de preço nem gateway no CopySync: só receiver de eventos, status do tenant e entitlements.
 - Gerador de ofertas (marketplaces, anti-SSRF, worker de envio e flag `OFFER_DISPATCH_WORKER_ENABLED`): [`docs/gerador-de-ofertas.md`](docs/gerador-de-ofertas.md). Worker só liga na Render.
 - Rodízio de links (subdomínio público por Host, estratégias, limites por plano, job de membros e flag `LINK_ROTATION_MEMBER_SYNC_ENABLED`): [`docs/rodizio-de-links.md`](docs/rodizio-de-links.md). Hook público nunca intercepta host da API/painel.
+- Botões/listas/enquetes em mensagem enviada (estado do Baileys, nó `<biz>`, fallback texto/enquete, fases): [`docs/mensagens-interativas.md`](docs/mensagens-interativas.md). `relayMessage`/`<biz>` só em `engines/baileys/interactive/`; nada de fork.
 - Provedores de IA (plataforma × chave do tenant, nunca os dois desligados): [`docs/ia-provedores.md`](docs/ia-provedores.md). Consumir só via `IAiTextGenerator`.
 - Conexão de sessão (assistente, `declaredPhone`, pareamento por código): [`docs/sessoes-conexao.md`](docs/sessoes-conexao.md). Termo de produto: sessão, nunca instância.
 - Plano mestre de lançamento (marcos, trilhas, rede de segurança do PulsoSocial): [`docs/plano-lancamento-hub-copysync.md`](docs/plano-lancamento-hub-copysync.md).

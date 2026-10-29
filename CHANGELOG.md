@@ -9,6 +9,51 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — storefront (api 0.46.0 · app 0.52.0) — Página de Ofertas por subdomínio
+
+Vitrine pública do tenant em `https://<nome>.<domínio de links>` (mesmo domínio do rodízio) com capa, foto, categorias e ofertas com link de afiliado. Só Profissional e Business (`storefront_enabled`). Doc: `docs/pagina-de-ofertas.md`.
+
+#### Backend — storefront
+
+- **Migration `20261029030000_add_storefront_and_public_slug_claims`** — `storefronts`, `storefront_offers`, `public_slug_claims` (dono único de `<slug>.<domínio>`, CHECK por `kind`), `premium_slug_grants`, `link_domains.premiumNames`; backfill de 1 claim por rodízio (`ON CONFLICT DO NOTHING`); preset `storefront_enabled` (Starter `false` explícito) + backfill em `tenant_entitlements`. **`20261029040000_add_premium_slug_audit_actions`** — ações de auditoria de concessão.
+- **`entitlementKeys.ts`**, **`planPresets.ts`** — `storefront_enabled` false/true/true, travado no teste contra a vitrine. Ausente = bloqueado.
+- **`storefront/domain/`** — entidades, `storefrontRules.ts` (nome 2–60, subtítulo ≤ 80, título ≤ 140, `#RRGGBB`, limites 200/60, presets de imagem) e `storefrontCategories.ts` (17 categorias com rótulo pt-BR).
+- **`SharpStorefrontImageProcessor.ts`**, **`StorefrontMediaStore.ts`** — foto 320×320, capa 1500×500, oferta ≤ 600 px, WebP q80 sem EXIF; formato pelo conteúdo, 40 MP no máximo; arquivos `storefront-<uuid>.webp` (só esse padrão é apagado). `sharp` 0.34.5 vira dependência direta.
+- **Use cases** (`Get`/`Save`/`CheckStorefrontSlug`/`Set`/`RemoveStorefrontImage`/`ExtractStorefrontOffer`/`Update`/`SetStatus`/`Reorder`/`DeleteStorefrontOffer`/`Preview`/`RenderPublicStorefront`/`ApplyPlanToStorefront`) — gate do plano, limites, ordem pelo conjunto exato da aba, Shopee com link gerado pela credencial ou colado com `attributionVerified = false`.
+- **`ResolveAffiliateProductUseCase.ts`** (campaigns) — passos de allowlist, expansão e dono do link extraídos de `GenerateOfferUseCase.ts`, usados pelo gerador e pela vitrine.
+- **`storefront.routes.ts`**, **`StorefrontPresenter.ts`**, **`storefront.schema.ts`** — `/api/storefront/*`; rate limit por tenant (`perTenantRateLimit`, presets `storefrontSlug`/`storefrontPreview`/`storefrontExtract` em `rateLimitPresets.ts`).
+- **`renderStorefrontPage.ts`**, **`storefrontPageTemplate.ts`** — página sem JS, tudo escapado, filtro por CSS, OG, imagens só de `S3_PUBLIC_URL`; mesmo template no preview.
+- **`StorefrontErrors.ts`** — `STOREFRONT_SLUG_PREMIUM`, `STOREFRONT_OFFER_LIMIT`, `STOREFRONT_PUBLISHED_LIMIT`, `STOREFRONT_NOT_FOUND`, `STOREFRONT_ORDER_INVALID`.
+- **`applyPlanSideEffects.ts`** — efeitos de plano numa função só (rodízio + página `PAUSED_BY_PLAN`/`ACTIVE`), chamada por `SyncTenantEntitlementsUseCase.ts` e `ApplyBillingEventUseCase.ts` na mesma tx.
+
+#### Backend — link-rotation
+
+- **`IPublicSlugRegistry.ts`**, **`PrismaPublicSlugRegistry.ts`**, **`decideSlugAvailability.ts`** — registro único de subdomínio (`check`/`claim`/`move`/`release`) com 6 estados; create/rename/delete do rodízio passam por ele na mesma transação.
+- **`GrantPremiumSlugUseCase.ts`**, **`RevokePremiumSlugUseCase.ts`**, **`ListPremiumSlugGrantsUseCase.ts`**, **`linkDomainAdmin.routes.ts`** — `premiumNames` no domínio (máx. 1000) e concessão pelo super-admin com `AuditLog`.
+- **`publicLink.routes.ts`**, **`publicLinkComposition.ts`**, **`app.ts`** — hook por Host tenta o rodízio e, no `not_found`, renderiza a página (`pageRenderers`); CSP com hash do `<style>` renderizado e `public, max-age=60` só na vitrine com ofertas.
+
+#### Frontend
+
+- **`AppLayout.tsx`**, **`NavItemBadge.tsx`** — selo "Profissional" no item Página de Ofertas (Tooltip no menu recolhido).
+- **`features/storefront/planGate.ts`** — redireciona para `/plans?feature=storefront` só em `PLAN_FEATURE_UNAVAILABLE`.
+- **`PlansFeatureNotice.tsx`**, **`PlansPage.tsx`**, **`plans/strings.ts`** — aviso de upgrade da Página de Ofertas.
+- **`catalog.ts`** — benefício "Página de Ofertas" em Profissional/Business e `PREMIUM_SLUG_OFFER` (placeholder, fora de `PLAN_CATALOG`).
+- **`PremiumGrantsDialog.tsx`**, **`NamesField.tsx`**, **`LinkDomainDialog.tsx`**, **`usePremiumGrants.ts`** — nomes especiais e concessões na tela admin de domínios.
+- **`privacyFlags.ts`** — tela `storefront` (nome, foto, capa, endereço, título e imagem de oferta).
+
+### Fixed — link-rotation
+
+- **`slugRules.ts`** — o grupo opcional da regex aceitava slug de 1 caractere; agora `^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$` (mín. 3).
+
+### Changed — docs
+
+- **`docs/pagina-de-ofertas.md`** (novo), **`docs/rodizio-de-links.md`** (registro único, nomes especiais, regex), **`docs/produto-roadmap.md`** (item 12 ✅), **`docs/planos.md`**, **`AGENTS.md`**.
+
+#### Operação (após o deploy)
+
+- Rodar de novo o backfill idempotente de `public_slug_claims` (janela de deploy, design §3).
+- `S3_PUBLIC_URL` precisa estar configurado para as imagens aparecerem na página pública.
+
 ### Changed — link-rotation (api 0.45.1 · app 0.51.1) — identidade na página pública do link
 
 - **`publicLinkLayout.ts`**, **`publicLinkPages.ts`** — grupo numa linha com a foto à esquerda (ou a inicial do nome), como na lista do WhatsApp; favicon, logo no rodapé e imagem de prévia (`og:image`: foto do grupo ou ícone da marca). Arquivos vêm do painel (`PANEL_URL`) e a foto do armazenamento de mídia (`S3_PUBLIC_URL`): o navegador baixa direto deles, a API não serve imagem. CSP libera imagem só dessas duas origens; foto de outra origem é ignorada.
