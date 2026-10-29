@@ -37,7 +37,6 @@ export function DnsSetupGuide() {
         expandIcon={<AppIcon icon={ChevronDown} size="sm" />}
         aria-controls="dns-guide-content"
         id="dns-guide-header"
-        aria-label={t.toggle}
       >
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{t.title}</Typography>

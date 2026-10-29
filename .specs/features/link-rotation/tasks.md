@@ -103,7 +103,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 ### T22 Docs, CHANGELOG, versões  ✅
 **What**: `docs/rodizio-de-links.md` (fluxo, DNS passo a passo, o que não fazer, única consulta sem tenantId), roadmap item 9 ✅, `docs/planos.md`, AGENTS.md linha de referência, `CHANGELOG.md` `[Unreleased]`, `api/package.json` 0.44.0, `app/package.json` 0.50.0. **Depends**: tudo. **Requirement**: LROT-16. **Commit**: `docs(link-rotation): documentação, changelog e versões`.
 
-### T23 QA
+### T23 QA  ✅
 **What**: agent-browser: criar rodízio, copiar link, selecionar grupos acima do limite (banner), trocar nome, pausar; abrir host público via `curl -H Host:` local nos 5 estados; claro/escuro; i18n sem string solta. Sem commit (relatório em `.specs/features/link-rotation/qa.md`).
 
 ### T24 Infra (owner, fora do código)

@@ -77,6 +77,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
   const [refreshed, setRefreshed] = useState<Record<string, RotationGroup>>({});
   const [refreshing, setRefreshing] = useState<ReadonlySet<string>>(new Set());
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+  const [refreshErrors, setRefreshErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [bannerLimit, setBannerLimit] = useState<number | null>(null);
@@ -166,16 +167,23 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
     if ('manualInviteUrl' in p || 'linkSource' in p) clearItemError(jid);
   };
 
+  const clearRefreshError = (jid: string) =>
+    setRefreshErrors((prev) => {
+      if (!(jid in prev)) return prev;
+      const { [jid]: _gone, ...rest } = prev;
+      return rest;
+    });
+
   const refresh = async (jid: string) => {
     const group = saved.get(jid);
     if (!group) return;
     setRefreshing((s) => new Set(s).add(jid));
-    clearItemError(jid);
+    clearRefreshError(jid);
     try {
       const fresh = await linkRotationService.refreshGroup(rotation.id, group.id);
       setRefreshed((r) => ({ ...r, [jid]: fresh }));
     } catch (e) {
-      setItemErrors((prev) => ({ ...prev, [jid]: linkRotationErrorMessage(e) }));
+      setRefreshErrors((prev) => ({ ...prev, [jid]: linkRotationErrorMessage(e) }));
     } finally {
       setRefreshing((s) => {
         const n = new Set(s);
@@ -287,14 +295,18 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
                       strategy={rotation.strategy}
                       status={g?.status ?? null}
                       memberCount={g?.memberCount ?? null}
+                      clicksSinceSync={g?.clicksSinceSync ?? 0}
+                      atCapacity={g ? g.memberCount !== null && g.memberCount + g.clicksSinceSync >= g.capacity : false}
                       canRefresh={Boolean(g)}
                       refreshing={refreshing.has(item.groupJid)}
                       error={itemErrors[item.groupJid] ?? null}
+                      refreshError={refreshErrors[item.groupJid] ?? null}
                       onChange={(p) => patch(item.groupJid, p)}
                       onMove={(dir) => move(i, dir)}
                       onRemove={() => {
                         setItems((items) => items.filter((x) => x.groupJid !== item.groupJid));
                         clearItemError(item.groupJid);
+                        clearRefreshError(item.groupJid);
                       }}
                       onRefresh={() => void refresh(item.groupJid)}
                     />

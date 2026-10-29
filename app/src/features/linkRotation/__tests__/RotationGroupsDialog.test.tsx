@@ -70,7 +70,7 @@ describe('RotationGroupsDialog', () => {
     fireEvent.click(await checkbox(1));
     fireEvent.click(await checkbox(2));
     const second = screen.getByTestId('rotation-group-g2@g.us');
-    fireEvent.click(within(second).getByRole('button', { name: t.moveUp }));
+    fireEvent.click(within(second).getByRole('button', { name: t.moveUpAria('Grupo 2') }));
     svc.saveGroups.mockResolvedValue([]);
     fireEvent.click(screen.getByRole('button', { name: t.save }));
     await waitFor(() => expect(svc.saveGroups).toHaveBeenCalled());
@@ -133,8 +133,50 @@ describe('RotationGroupsDialog', () => {
     setup(rotation([saved(1)]), 3, [cand(1, { selected: true })]);
     await checkbox(1);
     svc.refreshGroup.mockResolvedValue(saved(1, { status: 'FULL', memberCount: 1000 }));
-    fireEvent.click(screen.getByRole('button', { name: t.refresh }));
+    fireEvent.click(screen.getByRole('button', { name: t.refreshAria('Grupo 1') }));
     expect(await screen.findByText(s.groupStatus.FULL)).toBeInTheDocument();
     expect(svc.refreshGroup).toHaveBeenCalledWith('r1', 'rg1');
+  });
+
+  it('erro do atualizar fica no aviso do item, sem marcar o campo de convite', async () => {
+    setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbC123' })]), 3, [cand(1, { selected: true })]);
+    await checkbox(1);
+    svc.refreshGroup.mockRejectedValue({ code: 'SESSION_NOT_CONNECTED' });
+    fireEvent.click(screen.getByRole('button', { name: t.refreshAria('Grupo 1') }));
+    expect(await screen.findByText(s.errors.sessionNotConnected)).toBeInTheDocument();
+    const field = screen.getByLabelText(t.manualInviteUrl);
+    expect(field).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText(t.manualInviteHelp)).toBeInTheDocument();
+  });
+
+  it('estimado no teto mostra "No limite" em vez de "Recebendo cliques"', async () => {
+    setup(rotation([saved(1, { capacity: 50, memberCount: 49, clicksSinceSync: 1 })]), 3, [cand(1, { selected: true })]);
+    await checkbox(1);
+    expect(screen.getByText(t.atCapacity)).toBeInTheDocument();
+    expect(screen.queryByText(s.groupStatus.ACTIVE)).not.toBeInTheDocument();
+    expect(screen.getByText(t.membersEstimated(50, 50))).toBeInTheDocument();
+  });
+
+  it('abaixo do teto segue "Recebendo cliques"', async () => {
+    setup(rotation([saved(1, { capacity: 50, memberCount: 48, clicksSinceSync: 1 })]), 3, [cand(1, { selected: true })]);
+    await checkbox(1);
+    expect(screen.getByText(s.groupStatus.ACTIVE)).toBeInTheDocument();
+  });
+
+  it('flag inviteLink borra o texto do link de convite', async () => {
+    localStorage.setItem('privacy.blur', JSON.stringify(['linkRotation.inviteLink']));
+    try {
+      setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbC123' })]), 3, [cand(1, { selected: true })]);
+      await checkbox(1);
+      expect(screen.getByLabelText(t.manualInviteUrl)).toHaveStyle({ filter: 'blur(5px)' });
+    } finally {
+      localStorage.removeItem('privacy.blur');
+    }
+  });
+
+  it('sem a flag o link de convite fica legível', async () => {
+    setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbC123' })]), 3, [cand(1, { selected: true })]);
+    await checkbox(1);
+    expect(screen.getByLabelText(t.manualInviteUrl)).not.toHaveStyle({ filter: 'blur(5px)' });
   });
 });

@@ -44,6 +44,7 @@ export const PRIVACY_SCREENS = [
       { id: 'linkRotation.sessionName', label: 'Nome da sessão' },
       { id: 'linkRotation.groupName', label: 'Nomes dos grupos' },
       { id: 'linkRotation.groupAvatar', label: 'Fotos dos grupos' },
+      { id: 'linkRotation.inviteLink', label: 'Link de convite dos grupos' },
     ],
   },
 ] as const;

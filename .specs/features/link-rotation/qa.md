@@ -171,3 +171,20 @@ Pasta: `/private/tmp/claude-501/-Users-adrielss-www-copysync/1e9a83ea-6d3c-4d38-
 - Página pública: `42-publica-404-escuro.png`, `43-publica-404-claro.png`, `44-publica-pausado-claro.png`,
   `45-publica-pausado-escuro.png`, `46-publica-redirect-escuro.png`, `47-publica-redirect-claro.png`,
   `48-publica-lotado-claro.png`, `49-publica-lotado-escuro.png`
+
+## Correções após o QA (2026-10-29)
+
+| Bug | Situação |
+| --- | --- |
+| B1, B2 | Corrigidos no QA |
+| B3 | Corrigido: "Mais ações" → "Excluir link" com confirmação |
+| B4 | Corrigido: flag `linkRotation.inviteLink` |
+| B5 | Corrigido: 429 do host público é página HTML da marca |
+| B6 | Corrigido: aviso de até 1 minuto na tela admin |
+| B7 | Corrigido: apex com 302 |
+| B8 | Corrigido: `www.<domínio>` segue o domínio puro |
+| B9, B10, B11, B12 | Corrigidos |
+| B13 | Spec alinhada ao contrato (401) |
+
+Não testado localmente (precisa de WhatsApp e DNS reais): convite automático, contagem de membros pelo job,
+probe real, estratégias ao vivo além da sequencial, tenant suspenso e rebaixo de plano ponta a ponta.

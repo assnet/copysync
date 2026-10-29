@@ -28,7 +28,7 @@ const CARDS_GRID = { display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr'
 
 export function LinkRotationPage() {
   const navigate = useNavigate();
-  const { overview, loading, failed, reload, upsert } = useLinkRotationOverview();
+  const { overview, loading, failed, reload, upsert, drop } = useLinkRotationOverview();
   const [dialog, setDialog, clearDialog] = usePersistedState<OpenDialog | null>('linkRotation.dialog', null, { scope: 'tab' });
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
@@ -56,6 +56,17 @@ export function LinkRotationPage() {
       const info = linkRotationError(err);
       if (info.limitKind && info.limit !== null) setDialog({ kind: 'limit', limitKind: info.limitKind, limit: info.limit });
       else setToast({ message: info.message, severity: 'error' });
+    }
+  };
+
+  const removeRotation = async (rotation: Rotation) => {
+    try {
+      await linkRotationService.remove(rotation.id);
+      drop(rotation.id);
+      if (dialog && 'rotationId' in dialog && dialog.rotationId === rotation.id) clearDialog();
+      setToast({ message: linkRotationStrings.toast.removed, severity: 'success' });
+    } catch (err) {
+      setToast({ message: linkRotationError(err).message, severity: 'error' });
     }
   };
 
@@ -135,6 +146,7 @@ export function LinkRotationPage() {
               onToggleStatus={(next) => toggleStatus(r, next)}
               onConfigure={() => setDialog({ kind: 'config', rotationId: r.id })}
               onManageGroups={() => setDialog({ kind: 'groups', rotationId: r.id })}
+              onRemove={() => removeRotation(r)}
               onCopyFailed={() => setToast({ message: linkRotationStrings.card.copyFailed, severity: 'error' })}
             />
           ))}

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Button, Chip, IconButton, Stack, Switch, Tooltip, Typography, alpha, type ChipProps } from '@mui/material';
-import { Check, Copy, ExternalLink, Link2, Settings2, Smartphone, UsersRound } from 'lucide-react';
-import { AppIcon, SectionCard } from '@/components';
+import {
+  Box, Button, Chip, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Stack, Switch, Tooltip, Typography, alpha, type ChipProps,
+} from '@mui/material';
+import { Check, Copy, ExternalLink, Link2, MoreVertical, Settings2, Smartphone, Trash2, UsersRound } from 'lucide-react';
+import { AppIcon, ConfirmDialog, SectionCard } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { sessionStrings } from '@/features/sessions/strings';
 import { linkRotationStrings } from '../strings';
@@ -27,16 +29,21 @@ export interface RotationCardProps {
   onToggleStatus: (next: 'ACTIVE' | 'PAUSED') => Promise<void>;
   onConfigure: () => void;
   onManageGroups: () => void;
+  /** Exclui o link (após a confirmação do card); quem chama trata erro e atualiza a lista. */
+  onRemove: () => Promise<void>;
   /** Falha ao copiar (clipboard bloqueado): quem chama mostra o aviso. */
   onCopyFailed?: () => void;
 }
 
 /** Um rodízio: link público + copiar, status, sessão, estratégia, grupos e cliques. */
-export function RotationCard({ rotation, session, groupLimit, onToggleStatus, onConfigure, onManageGroups, onCopyFailed }: RotationCardProps) {
+export function RotationCard({ rotation, session, groupLimit, onToggleStatus, onConfigure, onManageGroups, onRemove, onCopyFailed }: RotationCardProps) {
   const blurLink = useBlur('linkRotation.rotationLink');
   const blurSession = useBlur('linkRotation.sessionName');
   const [copied, setCopied] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -58,6 +65,16 @@ export function RotationCard({ rotation, session, groupLimit, onToggleStatus, on
       await onToggleStatus(checked ? 'ACTIVE' : 'PAUSED');
     } finally {
       setToggling(false);
+    }
+  };
+
+  const remove = async () => {
+    setConfirmRemove(false);
+    setRemoving(true);
+    try {
+      await onRemove();
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -153,16 +170,12 @@ export function RotationCard({ rotation, session, groupLimit, onToggleStatus, on
           </Tooltip>
         </Stack>
 
-        {rotation.groups.length === 0 && (
-          <Typography variant="body2" color="text.secondary">{t.noGroups}</Typography>
-        )}
-
         <RotationStatsCard
           rotationId={rotation.id}
           refreshKey={`${rotation.status}|${rotation.groups.map((g) => `${g.id}:${g.status}:${g.capacity}:${g.memberCount}`).join(',')}`}
         />
 
-        <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
           <Tooltip title={t.configureTooltip} arrow describeChild>
             <Button size="small" startIcon={<AppIcon icon={Settings2} size="sm" />} onClick={onConfigure}>{t.configure}</Button>
           </Tooltip>
@@ -171,8 +184,47 @@ export function RotationCard({ rotation, session, groupLimit, onToggleStatus, on
               {t.manageGroups}
             </Button>
           </Tooltip>
+          <Tooltip title={t.moreActions} arrow>
+            <span>
+              <IconButton
+                size="small"
+                aria-label={t.moreActions}
+                aria-haspopup="menu"
+                aria-expanded={menuAnchor ? 'true' : undefined}
+                disabled={removing}
+                onClick={(e) => setMenuAnchor(e.currentTarget)}
+              >
+                <AppIcon icon={MoreVertical} size="sm" />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
       </Stack>
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={() => setMenuAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); setConfirmRemove(true); }}
+          sx={{ color: 'error.main' }}
+        >
+          <ListItemIcon sx={{ color: 'inherit' }}><AppIcon icon={Trash2} size="sm" /></ListItemIcon>
+          <ListItemText>{t.remove}</ListItemText>
+        </MenuItem>
+      </Menu>
+      <ConfirmDialog
+        open={confirmRemove}
+        title={t.removeConfirmTitle}
+        description={t.removeConfirmBody}
+        confirmLabel={t.removeConfirm}
+        cancelLabel={t.removeCancel}
+        confirmColor="error"
+        onConfirm={() => void remove()}
+        onClose={() => setConfirmRemove(false)}
+      />
     </SectionCard>
   );
 }

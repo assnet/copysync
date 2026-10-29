@@ -29,13 +29,13 @@ O tenant ganha um link fixo (`https://<nome>.copysync.com.br`) para divulgar nas
 
 #### Frontend
 
-- **`LinkRotationPage.tsx`**, **`RotationCard.tsx`** — página no menu após Monitoramento: link com copiar, status, sessão, estratégia e estatísticas. Estado vazio guiado.
+- **`LinkRotationPage.tsx`**, **`RotationCard.tsx`** — página no menu após Monitoramento: link com copiar, status, sessão, estratégia e estatísticas; excluir pelo menu "Mais ações" com confirmação. Estado vazio guiado.
 - **`RotationConfigDialog.tsx`**, **`ConfirmRenameDialog.tsx`** — nome com prévia ao vivo, sugestões clicáveis, estratégia com descrição, confirmação de troca de nome.
 - **`RotationGroupsDialog.tsx`**, **`RotationGroupItem.tsx`** — seleção com limite do plano, ordem, teto de pessoas (50–1024), peso, link manual e atualizar.
 - **`PlanLimitBanner.tsx`**, **`planUpsell.ts`** — aviso animado de upgrade com o próximo plano do catálogo; sem movimento com `prefers-reduced-motion`.
 - **`RotationStatsCard.tsx`** — cliques totais e de 7 dias, ocupação por grupo.
 - **`AdminLinkDomainsPage.tsx`** — domínios da plataforma (super-admin), teste de DNS com motivo traduzido e passo a passo de DNS.
-- **`privacyFlags.ts`** — tela `linkRotation` (link e apelido, sessão, nome e foto de grupo).
+- **`privacyFlags.ts`** — tela `linkRotation` (link e apelido, sessão, nome e foto de grupo, link de convite).
 - **`catalog.ts`** — limites do rodízio na vitrine e hint corrigido (falava de credenciais).
 
 #### Operação (antes de liberar aos tenants)

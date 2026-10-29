@@ -7,6 +7,7 @@ export const linkDomainsAdminStrings = {
   retry: 'Tentar de novo',
   add: 'Adicionar domínio',
   listTitle: 'Domínios cadastrados',
+  propagationNote: 'Mudanças nos domínios (pausa, endereço do domínio puro, domínio novo) podem levar até 1 minuto para valer na página pública.',
   empty: 'Nenhum domínio cadastrado',
   emptyHint: 'Configure o DNS seguindo o passo a passo abaixo e depois cadastre o domínio aqui.',
 
@@ -87,7 +88,6 @@ export const linkDomainsAdminStrings = {
   dns: {
     title: 'Como preparar um domínio novo',
     subtitle: 'Faça uma vez por domínio, antes de cadastrar aqui.',
-    toggle: 'Mostrar ou esconder o passo a passo',
     steps: [
       'Cloudflare: adicione o domínio no plano Free. Em "AI training & search policies", bloqueie Search, Agent e Training.',
       'Registrador (ex.: registro.br): troque os nameservers pelo par que a Cloudflare indicar. Não ative DNSSEC. Domínio .br leva cerca de 2 horas.',

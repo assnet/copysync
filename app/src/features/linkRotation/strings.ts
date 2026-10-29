@@ -15,7 +15,7 @@ export const linkRotationStrings = {
 
   page: {
     title: 'Rodízio de links',
-    subtitle: 'Um link fixo para divulgar nas redes que leva cada pessoa a um grupo com vaga',
+    subtitle: 'Um link fixo para divulgar nas redes que leva cada pessoa a um grupo com vaga.',
     create: 'Criar link',
     createTooltip: 'Escolha o nome, a sessão e os grupos do novo link',
     limitReachedTooltip: 'Você já usa todos os links do seu plano. Veja como ter mais.',
@@ -56,13 +56,17 @@ export const linkRotationStrings = {
         : `${count(used)} de ${count(limit)} ${plural(limit, 'grupo', 'grupos')}`,
     groupsTooltip: 'Grupos que recebem os cliques deste link e o limite do seu plano',
     clicks: (n: number) => `${count(n)} ${plural(n, 'clique', 'cliques')}`,
-    noGroups: 'Nenhum grupo escolhido. Sem grupos, quem clica vê um aviso de indisponível.',
     configure: 'Configurar',
     configureTooltip: 'Nome do link, sessão e estratégia',
     manageGroups: 'Grupos',
     manageGroupsTooltip: 'Escolha os grupos, a ordem e o limite de cada um',
     moreActions: 'Mais ações',
     remove: 'Excluir link',
+    removeConfirmTitle: 'Excluir este link?',
+    removeConfirmBody:
+      'O link para de funcionar na hora: quem clicar verá uma página de link inexistente. O nome fica guardado só para você por 30 dias, caso queira criá-lo de novo.',
+    removeConfirm: 'Excluir link',
+    removeCancel: 'Cancelar',
   },
 
   status: {
@@ -112,7 +116,7 @@ export const linkRotationStrings = {
     slugHelp: 'Letras minúsculas, números e hífen. De 3 a 50 caracteres.',
     slugCounter: (n: number, max: number) => `${n}/${max}`,
     preview: 'Seu link vai ficar assim',
-    suggestions: 'Esse nome já está em uso. Que tal um destes?',
+    suggestions: 'Que tal um destes?',
     strategy: 'Como distribuir os cliques',
     title: 'Apelido (opcional)',
     titleHelp: 'Aparece no topo da página do link. Deixe em branco para não mostrar.',
@@ -168,6 +172,15 @@ export const linkRotationStrings = {
     emptySearch: 'Nenhum grupo com esse nome.',
     moveUp: 'Subir na ordem',
     moveDown: 'Descer na ordem',
+    moveUpAria: (name: string) => `Subir ${name} na ordem`,
+    moveDownAria: (name: string) => `Descer ${name} na ordem`,
+    removeAria: (name: string) => `Tirar ${name} do link`,
+    refreshAria: (name: string) => `Atualizar ${name} agora`,
+    atCapacity: 'No limite',
+    atCapacityHelp:
+      'Pelos cliques desde a última leitura, o grupo já chegou ao limite de membros. Ele sai do rodízio até a próxima leitura de membros.',
+    membersEstimatedHelp: (read: number, clicks: number) =>
+      `Estimativa: ${count(read)} na última leitura + ${count(clicks)} ${plural(clicks, 'clique', 'cliques')} desde então.`,
     weight: 'Peso',
     weightHelp: 'Quanto maior, mais cliques o grupo recebe. Peso 3 recebe cerca de três vezes mais que peso 1.',
     weightValue: (n: number) => `Peso ${count(n)}`,
@@ -189,6 +202,7 @@ export const linkRotationStrings = {
     refreshTooltip: 'Relê o link de convite e o número de membros',
     members: (n: number | null, capacity: number) =>
       n === null ? `? de ${count(capacity)} membros` : `${count(n)} de ${count(capacity)} membros`,
+    membersEstimated: (n: number, capacity: number) => `cerca de ${count(n)} de ${count(capacity)} membros`,
     cancel: 'Cancelar',
     save: 'Salvar grupos',
     close: 'Fechar',
@@ -250,7 +264,7 @@ export const linkRotationStrings = {
       const mo = Math.round(d / 30);
       return Math.abs(mo) < 12 ? rtf.format(mo, 'month') : rtf.format(Math.round(d / 365), 'year');
     },
-    noGroups: 'Nenhum grupo neste link ainda.',
+    noGroups: 'Nenhum grupo escolhido. Sem grupos, quem clica vê um aviso de indisponível.',
     untitledGroup: 'Grupo sem nome',
     groupClicks7d: (n: number) => `${count(n)} em 7 dias`,
     groupClicksTooltip: (total: number) => `Cliques nos últimos 7 dias. Desde o início: ${count(total)}.`,

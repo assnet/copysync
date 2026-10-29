@@ -34,6 +34,6 @@ describe('linkRotationStrings', () => {
 
   it('flags de privacidade da tela registradas', () => {
     const ids = PRIVACY_SCREENS.find((s) => s.id === 'linkRotation')?.flags.map((f) => f.id);
-    expect(ids).toEqual(expect.arrayContaining(['linkRotation.rotationLink', 'linkRotation.groupName', 'linkRotation.groupAvatar']));
+    expect(ids).toEqual(expect.arrayContaining(['linkRotation.rotationLink', 'linkRotation.groupName', 'linkRotation.groupAvatar', 'linkRotation.inviteLink']));
   });
 });

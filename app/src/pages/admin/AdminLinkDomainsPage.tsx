@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Snackbar } from '@mui/material';
-import { Globe, Plus } from 'lucide-react';
+import { Alert, Box, Button, CircularProgress, Snackbar, Stack, Typography } from '@mui/material';
+import { Clock, Globe, Plus } from 'lucide-react';
 import { AppIcon, ConfirmDialog, EmptyState, PageHeader, SectionCard } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { DnsSetupGuide } from '@/features/linkDomainsAdmin/components/DnsSetupGuide';
@@ -74,6 +74,13 @@ export function AdminLinkDomainsPage() {
             />
           )}
         </SectionCard>
+      )}
+
+      {!ld.loading && !ld.loadError && (
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 1.5, color: 'text.secondary' }}>
+          <AppIcon icon={Clock} size="sm" aria-hidden />
+          <Typography variant="caption">{t.propagationNote}</Typography>
+        </Stack>
       )}
 
       <DnsSetupGuide />

@@ -1,5 +1,5 @@
 import {
-  Box, Chip, CircularProgress, IconButton, Slider, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+  Alert, Box, Chip, CircularProgress, IconButton, Slider, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
   type ChipProps,
 } from '@mui/material';
 import { ArrowDown, ArrowUp, Info, RefreshCw, X } from 'lucide-react';
@@ -44,9 +44,16 @@ export interface RotationGroupItemProps {
   /** `null` = grupo novo, ainda não salvo. */
   status: RotationGroupStatus | null;
   memberCount: number | null;
+  /** Cliques desde a última leitura de membros (estimativa de entradas). */
+  clicksSinceSync: number;
+  /** Estimado (membros + cliques desde a leitura) já no teto salvo: o redirect não escolhe o grupo. */
+  atCapacity: boolean;
   canRefresh: boolean;
   refreshing: boolean;
+  /** Erro de validação do link de convite (pinta o campo). */
   error: string | null;
+  /** Falha de "Atualizar agora": aviso próprio do item, não marca o campo de convite. */
+  refreshError: string | null;
   onChange: (patch: Partial<RotationGroupDraft>) => void;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
@@ -65,9 +72,14 @@ function HelpIcon({ title }: { title: string }) {
 
 /** Um grupo escolhido: posição, situação, teto de membros, peso (só WEIGHTED) e origem do convite. */
 export function RotationGroupItem({
-  item, index, total, strategy, status, memberCount, canRefresh, refreshing, error, onChange, onMove, onRemove, onRefresh,
+  item, index, total, strategy, status, memberCount, clicksSinceSync, atCapacity, canRefresh, refreshing, error, refreshError, onChange, onMove, onRemove, onRefresh,
 }: RotationGroupItemProps) {
   const blurName = useBlur('linkRotation.groupName');
+  const blurInvite = useBlur('linkRotation.inviteLink');
+  // Campo editável não usa <Blurred> (bloquearia o clique); borra só o texto digitado.
+  const blurInviteSx = blurInvite ? { '& .MuiInputBase-input': { filter: 'blur(5px)', userSelect: 'none' } } : undefined;
+  const limited = status === 'ACTIVE' && atCapacity;
+  const estimated = memberCount !== null && clicksSinceSync > 0 ? memberCount + clicksSinceSync : null;
   const name = item.title?.trim() || t.untitled;
   const { capacity, weight } = ROTATION_RANGES;
 
@@ -83,14 +95,20 @@ export function RotationGroupItem({
           <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
             <Blurred when={blurName} inline>{name}</Blurred>
           </Typography>
-          {status && <Typography variant="caption" color="text.secondary">{t.members(memberCount, item.capacity)}</Typography>}
+          {status && (estimated !== null ? (
+            <Tooltip title={t.membersEstimatedHelp(memberCount ?? 0, clicksSinceSync)} arrow describeChild>
+              <Typography variant="caption" color="text.secondary" tabIndex={0} sx={{ cursor: 'help' }}>{t.membersEstimated(estimated, item.capacity)}</Typography>
+            </Tooltip>
+          ) : (
+            <Typography variant="caption" color="text.secondary">{t.members(memberCount, item.capacity)}</Typography>
+          ))}
         </Box>
-        <Tooltip title={status ? linkRotationStrings.groupStatusHelp[status] : t.statusNewHelp} arrow describeChild>
+        <Tooltip title={limited ? t.atCapacityHelp : status ? linkRotationStrings.groupStatusHelp[status] : t.statusNewHelp} arrow describeChild>
           <Chip
             size="small"
             variant="outlined"
-            color={status ? STATUS_COLOR[status] : 'info'}
-            label={status ? linkRotationStrings.groupStatus[status] : t.statusNew}
+            color={limited ? 'warning' : status ? STATUS_COLOR[status] : 'info'}
+            label={limited ? t.atCapacity : status ? linkRotationStrings.groupStatus[status] : t.statusNew}
             tabIndex={0}
           />
         </Tooltip>
@@ -99,25 +117,25 @@ export function RotationGroupItem({
       <Stack direction="row" spacing={0.5} justifyContent="flex-end" sx={{ mt: 0.5 }}>
         <Tooltip title={t.moveUp} arrow>
           <span>
-            <IconButton size="small" aria-label={t.moveUp} disabled={index === 0} onClick={() => onMove(-1)}><AppIcon icon={ArrowUp} size="sm" /></IconButton>
+            <IconButton size="small" aria-label={t.moveUpAria(name)} disabled={index === 0} onClick={() => onMove(-1)}><AppIcon icon={ArrowUp} size="sm" /></IconButton>
           </span>
         </Tooltip>
         <Tooltip title={t.moveDown} arrow>
           <span>
-            <IconButton size="small" aria-label={t.moveDown} disabled={index === total - 1} onClick={() => onMove(1)}><AppIcon icon={ArrowDown} size="sm" /></IconButton>
+            <IconButton size="small" aria-label={t.moveDownAria(name)} disabled={index === total - 1} onClick={() => onMove(1)}><AppIcon icon={ArrowDown} size="sm" /></IconButton>
           </span>
         </Tooltip>
         {canRefresh && (
           <Tooltip title={t.refreshTooltip} arrow>
             <span>
-              <IconButton size="small" aria-label={t.refresh} disabled={refreshing} onClick={onRefresh}>
+              <IconButton size="small" aria-label={t.refreshAria(name)} disabled={refreshing} onClick={onRefresh}>
                 {refreshing ? <CircularProgress size={16} aria-hidden /> : <AppIcon icon={RefreshCw} size="sm" />}
               </IconButton>
             </span>
           </Tooltip>
         )}
         <Tooltip title={t.remove} arrow>
-          <IconButton size="small" aria-label={t.remove} onClick={onRemove}><AppIcon icon={X} size="sm" /></IconButton>
+          <IconButton size="small" aria-label={t.removeAria(name)} onClick={onRemove}><AppIcon icon={X} size="sm" /></IconButton>
         </Tooltip>
       </Stack>
 
@@ -186,7 +204,7 @@ export function RotationGroupItem({
         <TextField
           fullWidth
           size="small"
-          sx={{ mt: 1.5 }}
+          sx={{ mt: 1.5, ...blurInviteSx }}
           label={t.manualInviteUrl}
           placeholder="https://chat.whatsapp.com/…"
           value={item.manualInviteUrl}
@@ -198,6 +216,9 @@ export function RotationGroupItem({
       )}
       {error && !needsInviteField(item, status) && (
         <Typography variant="caption" color="error" component="p" sx={{ mt: 1 }}>{error}</Typography>
+      )}
+      {refreshError && (
+        <Alert severity="error" variant="outlined" role="alert" sx={{ mt: 1, py: 0 }}>{refreshError}</Alert>
       )}
     </Box>
   );

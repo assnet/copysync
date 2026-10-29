@@ -34,5 +34,10 @@ export function useLinkRotationOverview() {
     });
   }, []);
 
-  return { overview, loading, failed, reload: load, upsert };
+  /** Tira da lista um rodízio excluído, sem recarregar tudo. */
+  const drop = useCallback((id: string) => {
+    setOverview((prev) => (prev ? { ...prev, rotations: prev.rotations.filter((r) => r.id !== id) } : prev));
+  }, []);
+
+  return { overview, loading, failed, reload: load, upsert, drop };
 }
