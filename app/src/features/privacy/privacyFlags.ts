@@ -36,6 +36,16 @@ export const PRIVACY_SCREENS = [
       { id: 'monitoring.capturedImages', label: 'Imagens das ofertas capturadas' },
     ],
   },
+  {
+    id: 'linkRotation',
+    label: 'Rodízio de links',
+    flags: [
+      { id: 'linkRotation.rotationLink', label: 'Link público e apelido' },
+      { id: 'linkRotation.sessionName', label: 'Nome da sessão' },
+      { id: 'linkRotation.groupName', label: 'Nomes dos grupos' },
+      { id: 'linkRotation.groupAvatar', label: 'Fotos dos grupos' },
+    ],
+  },
 ] as const;
 
 export type PrivacyScreenId = (typeof PRIVACY_SCREENS)[number]['id'];
