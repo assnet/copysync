@@ -55,7 +55,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 **What**: CRUD de domínio + `ProbeLinkDomain` (token HMAC `LINK_PROBE_SECRET`, 5 min, anti-SSRF: só `https://probe-<rand>.<hostname>/…`, timeout 5 s, sem redirect). Env novas em `env.ts` (`LINK_CLICK_SALT`, `LINK_PROBE_SECRET`, `LINK_ROTATION_MEMBER_SYNC_ENABLED`).
 **Where**: `link-rotation/application/use-cases/admin/*`, `shared/config/env.ts`. **Depends**: T3,T6. **Requirement**: LROT-01,02. **Done when**: testes: delete com rotação → 409; probe hostname diferente do registro → erro. **Commit**: `feat(link-rotation): domínios da plataforma (admin)`.
 
-### T9 Resolução pública
+### T9 Resolução pública  ✅
 **What**: `ResolvePublicLinkUseCase` (`design.md` §4.2) + hash de IP (`sha256(ip+dia+salt)`); `ALL_FULL` 1×/h. Testes: apex→landing; bot não conta; teto 1 → 1º A, 2º B; tenant suspenso → unavailable; pausado → paused.
 **Where**: `link-rotation/application/use-cases/ResolvePublicLinkUseCase.ts`. **Depends**: T4,T6. **Requirement**: LROT-09,10,11,14. **Commit**: `feat(link-rotation): resolução pública do link`.
 
@@ -70,11 +70,11 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 ### T12 Rotas admin
 **What**: `linkDomainAdmin.routes.ts` `[authHook, superAdminHook]` em `/admin/link-domains` (CRUD + probe), schemas, presenter. **Depends**: T8. **Requirement**: LROT-01,02. **Done when**: teste 403 sem super-admin. **Commit**: `feat(link-rotation): rotas admin de domínios`.
 
-### T13 Job de membros + retenção [P]
+### T13 Job de membros + retenção [P]  ✅
 **What**: `SyncLinkRotationMembersUseCase` + `LinkRotationMemberSyncJob` (tick 60 s, lease `JobLease` `link-rotation-member-sync`, flag env, `unref`, stop com timeout) registrado em `server.ts` ao lado do worker de ofertas; retenção `LinkClick` 90 d. Testes: só grupos vencidos (15 min ou ≥25 cliques); FULL ↔ ACTIVE; sessão desconectada pula.
 **Depends**: T5,T6. **Requirement**: LROT-12. **Commit**: `feat(link-rotation): sincronização de membros por sessão`.
 
-### T14 Rebaixo de plano e sessão removida [P]
+### T14 Rebaixo de plano e sessão removida [P]  ✅
 **What**: `ApplyPlanLimitsToLinkRotationsUseCase` chamado em `SyncTenantEntitlementsUseCase`; exclusão de sessão (use case existente em `sessions`) pausa rotações da sessão (`PAUSED`, motivo); tenant `SUSPENDED` já coberto em T9.
 **Depends**: T6. **Requirement**: LROT-14. **Commit**: `feat(link-rotation): limites por plano e sessão removida`.
 
