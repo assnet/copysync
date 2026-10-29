@@ -77,6 +77,7 @@ CREATE TABLE "storefront_offers" (
     "provider" "AffiliateProvider" NOT NULL,
     "sourceUrl" TEXT NOT NULL,
     "affiliateUrl" TEXT NOT NULL,
+    "attributionVerified" BOOLEAN NOT NULL DEFAULT false,
     "title" TEXT NOT NULL,
     "priceCents" INTEGER,
     "originalPriceCents" INTEGER,

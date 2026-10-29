@@ -1430,22 +1430,23 @@ model Storefront {
 }
 
 model StorefrontOffer {
-  id                 String                @id @default(cuid())
-  tenantId           String
-  storefrontId       String
-  status             StorefrontOfferStatus @default(DRAFT)
-  position           Int
-  provider           AffiliateProvider
-  sourceUrl          String
-  affiliateUrl       String
-  title              String
-  priceCents         Int?
-  originalPriceCents Int?
-  imageUrl           String?
-  category           String?
-  publishedAt        DateTime?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  id                  String                @id @default(cuid())
+  tenantId            String
+  storefrontId        String
+  status              StorefrontOfferStatus @default(DRAFT)
+  position            Int
+  provider            AffiliateProvider
+  sourceUrl           String
+  affiliateUrl        String
+  attributionVerified Boolean               @default(false)
+  title               String
+  priceCents          Int?
+  originalPriceCents  Int?
+  imageUrl            String?
+  category            String?
+  publishedAt         DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 
   storefront Storefront @relation(fields: [storefrontId], references: [id], onDelete: Cascade)
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
