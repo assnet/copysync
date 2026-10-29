@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
 import { internalEventBus } from '../../../shared/events/InternalEventBus';
+import { applyLinkRotationPlanLimits } from '../../link-rotation/infrastructure/linkRotationPlanLimits';
 
 const log = logger.child({ module: 'ApplyBillingEventUseCase' });
 
@@ -127,6 +128,9 @@ export class ApplyBillingEventUseCase {
               update: { value: preset.value ?? 'false' },
             });
           }
+
+          // Limites do rodízio de links no mesmo commit dos entitlements (LROT-14)
+          await applyLinkRotationPlanLimits(tx, tenant.id);
         }
 
         // Reactivate if not active

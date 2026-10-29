@@ -13,6 +13,11 @@ export const rateLimitPresets = {
     max: 60,
     timeWindow: '1 minute',
   },
+  /** Página pública do rodízio de links (por IP). */
+  publicLink: {
+    max: 60,
+    timeWindow: '1 minute',
+  },
   general: {
     max: 120,
     timeWindow: '1 minute',

@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import {
   ArrowLeftRight, Bot, ChevronLeft, ChevronRight, Crown, LayoutDashboard, LogOut, Menu as MenuIcon, MessagesSquare,
-  EyeOff, Moon, Settings, Sun, Tag,
+  EyeOff, Globe, Link2, Moon, Settings, Sun, Tag,
 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { MODULE_ICONS } from '@/pages/modules';
@@ -25,6 +25,8 @@ import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { aiStrings } from '@/features/ai/strings';
 import { plansStrings } from '@/features/plans/strings';
+import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
+import { linkRotationStrings } from '@/features/linkRotation/strings';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -51,6 +53,7 @@ const NAV_ITEMS = [
   { label: 'Chat', path: '/chat', icon: <AppIcon icon={MessagesSquare} size="md" /> },
   { label: 'Gerador de ofertas', path: '/offers', icon: <AppIcon icon={Tag} size="md" /> },
   { label: 'Monitoramento', path: '/monitoring', icon: <AppIcon icon={MODULE_ICONS.monitoring} size="md" /> },
+  { label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: <AppIcon icon={Link2} size="md" /> },
   { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
   { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
   { label: 'Página de ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" /> },
@@ -63,6 +66,7 @@ const NAV_ITEMS = [
 /** Plataforma: só super admin vê (a rota também redireciona os demais). */
 const NAV_ADMIN_ITEMS = [
   { label: aiStrings.admin.navLabel, path: '/admin/ai', icon: <AppIcon icon={Bot} size="md" /> },
+  { label: linkDomainsAdminStrings.navLabel, path: '/admin/link-domains', icon: <AppIcon icon={Globe} size="md" /> },
 ];
 
 // Itens futuros ("Em breve") — ocultos do menu até cada módulo existir. Para reativar, descomente

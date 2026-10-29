@@ -34,6 +34,7 @@ import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogReposito
 import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
 import { offersContainer } from '../modules/campaigns/infrastructure/offersContainer';
 import { OfferDispatchWorker } from '../modules/campaigns/infrastructure/worker/OfferDispatchWorker';
+import { createLinkRotationMemberSyncJob, type LinkRotationMemberSyncJob } from '../modules/link-rotation/infrastructure/jobs/LinkRotationMemberSyncJob';
 import { automationContainer } from '../modules/automation/infrastructure/automationContainer';
 import { registerGroupMonitoringListener } from '../modules/automation/infrastructure/listeners/GroupMonitoringMessageListener';
 import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
@@ -188,6 +189,16 @@ async function start(): Promise<void> {
     logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false, GROUP_MONITORING_ENABLED=false)');
   }
 
+  // ── Rodízio de links: membros dos grupos + retenção de cliques ─────────────
+  // Só com LINK_ROTATION_MEMBER_SYNC_ENABLED (escreve no banco e chama o WhatsApp; AGENTS §22).
+  // Lease `link-rotation-member-sync`: 1 processo por tick (.specs/features/link-rotation/design.md §4.5).
+  let linkRotationMemberSyncJob: LinkRotationMemberSyncJob | null = null;
+  if (env.LINK_ROTATION_MEMBER_SYNC_ENABLED) {
+    linkRotationMemberSyncJob = createLinkRotationMemberSyncJob(prisma);
+    linkRotationMemberSyncJob.start();
+    logger.info('Link rotation member sync job started');
+  }
+
   // ── Hub outbox worker + retention ─────────────────────────────────────────
   let hubOutboxWorker: HubOutboxWorker | null = null;
   let extensionRetentionJob: ExtensionRetentionJob | null = null;
@@ -305,6 +316,11 @@ async function start(): Promise<void> {
       await offerDispatchWorker?.stop();
     } catch (err) {
       logger.error({ err }, 'Offer dispatch worker stop failed during shutdown');
+    }
+    try {
+      await linkRotationMemberSyncJob?.stop();
+    } catch (err) {
+      logger.error({ err }, 'Link rotation member sync job stop failed during shutdown');
     }
     try {
       await hubOutboxWorker?.stop();

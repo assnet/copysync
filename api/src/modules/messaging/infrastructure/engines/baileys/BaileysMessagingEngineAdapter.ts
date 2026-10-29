@@ -49,6 +49,7 @@ import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import {
   translateDisconnect,
   translateEngineError,
+  translateGroupInviteError,
   translatePairingError,
   translateSendError,
 } from './BaileysErrorTranslator';
@@ -62,6 +63,7 @@ import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { buildBaileysMediaContent } from './buildBaileysMediaContent';
 import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { MediaTooLargeError } from '../../../../../shared/errors/internal/MediaErrors';
+import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 import {
   SessionNotFoundError,
   SessionNotConnectedError,
@@ -93,6 +95,8 @@ const GROUP_AVATAR_CONCURRENCY = 8;
 /** Validade do cache de fotos de participante. A URL do WhatsApp é temporária. */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 const PARTICIPATING_GROUPS_TTL_MS = 60_000;
+/** Validade do resumo de grupo (membros/admin) lido do snapshot de metadata. */
+const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
 /** Tempo de vida de cada QR de pareamento. */
 const QR_TIMEOUT_MS = 120_000;
 /** Tempo máximo para descobrir o LID do autor citado; estourou, a citação sai pelo número. */
@@ -473,6 +477,58 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       this.participatingGroupsCache.set(sessionId, { groups, at: Date.now() });
       return groups;
     } catch (err) { throw translateEngineError(err); }
+  }
+
+  async getGroupInviteLink(sessionId: string, groupJid: string): Promise<{ inviteCode: string }> {
+    const entry = this.requireConnectedEntry(sessionId);
+    const remoteJid = groupJid.endsWith('@g.us') ? groupJid : `${groupJid}@g.us`;
+    let code: string | undefined;
+    try {
+      code = await entry.socket.groupInviteCode(remoteJid);
+    } catch (err) {
+      throw translateGroupInviteError(err);
+    }
+    // Sem `<invite code>` na resposta: o WhatsApp não liberou o link para esta conta.
+    if (!code) throw new GroupInviteNotAllowedError();
+    return { inviteCode: code };
+  }
+
+  async getGroupSummary(
+    sessionId: string,
+    groupJid: string,
+  ): Promise<{ name: string; memberCount: number; isSelfAdmin: boolean }> {
+    const entry = this.requireConnectedEntry(sessionId);
+    const remoteJid = groupJid.endsWith('@g.us') ? groupJid : `${groupJid}@g.us`;
+    const bareJid = remoteJid.split('@')[0]!;
+    const cacheKey = `${sessionId}:${bareJid}`;
+
+    const cached = this.groupMetadataCache.get(cacheKey);
+    if (cached?.summary && Date.now() - cached.summary.fetchedAt < GROUP_SUMMARY_TTL_MS) {
+      return { name: cached.groupName ?? '', memberCount: cached.summary.size, isSelfAdmin: cached.summary.selfIsAdmin };
+    }
+
+    try {
+      const metadata = await (entry.socket as BaileysSocketWithGroupHelpers).groupMetadata?.(remoteJid);
+      const participants = metadata?.participants ?? [];
+      const summary = {
+        size: metadata?.size ?? participants.length,
+        selfIsAdmin: isSelfGroupAdmin(participants, entry.socket.user),
+        fetchedAt: Date.now(),
+      };
+      const groupName = metadata?.subject?.trim() || null;
+      // Mesma regra do snapshot das mensagens: sem nome não entra no cache.
+      if (groupName) {
+        this.groupMetadataCache.set(cacheKey, {
+          groupName,
+          addressingMode: metadata?.addressingMode ?? null,
+          lidToPhone: buildLidToPhoneMap(participants),
+          summary,
+        });
+      }
+      return { name: groupName ?? '', memberCount: summary.size, isSelfAdmin: summary.selfIsAdmin };
+    } catch (err) {
+      throw translateEngineError(err);
+    }
   }
 
   async getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]> {
@@ -1366,6 +1422,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           groupName: metadata?.subject?.trim() || null,
           addressingMode: metadata?.addressingMode ?? null,
           lidToPhone: buildLidToPhoneMap(metadata?.participants as BaileysGroupParticipant[] | undefined),
+          summary: {
+            size: metadata?.size ?? metadata?.participants?.length ?? 0,
+            selfIsAdmin: isSelfGroupAdmin(metadata?.participants ?? [], socket.user),
+            fetchedAt: Date.now(),
+          },
         };
         this.groupMetadataCache.set(cacheKey, snapshot);
         if (!snapshot.groupName) {
@@ -1664,6 +1725,25 @@ interface GroupMetadataSnapshot {
    * chaves com a sessão; o metadata cobre o grupo inteiro.
    */
   lidToPhone: Readonly<Record<string, string>>;
+  /**
+   * Resumo para o rodízio de links. Vale `GROUP_SUMMARY_TTL_MS` a partir de `fetchedAt`
+   * (só `getGroupSummary` olha o prazo; o restante do snapshot segue sem TTL, limpo por
+   * `clearSessionGroupMetadata`).
+   */
+  summary?: { size: number; selfIsAdmin: boolean; fetchedAt: number };
+}
+
+/** A própria conta (PN ou LID) aparece como admin/superadmin entre os participantes. */
+export function isSelfGroupAdmin(
+  participants: readonly BaileysGroupParticipant[],
+  self: { id?: string; lid?: string } | undefined,
+): boolean {
+  const norm = (jid?: string | null) => (jid ? jidNormalizedUser(jid) : '');
+  const selfIds = new Set([norm(self?.id), norm(self?.lid)].filter(Boolean));
+  if (!selfIds.size) return false;
+  return participants.some((p) =>
+    (p.admin === 'admin' || p.admin === 'superadmin')
+    && [p.id, p.phoneNumber, p.lid].some((jid) => selfIds.has(norm(jid))));
 }
 
 function buildLidToPhoneMap(participants: readonly BaileysGroupParticipant[] | undefined): Record<string, string> {
@@ -1693,6 +1773,8 @@ type BaileysSocketWithGroupHelpers = ReturnType<typeof makeWASocket> & {
     subject?: string | null;
     participants?: BaileysGroupParticipant[];
     addressingMode?: 'lid' | 'pn';
+    /** Total informado pelo WhatsApp; ausente cai em `participants.length`. */
+    size?: number;
   } | null | undefined>;
   signalRepository?: {
     lidMapping?: {

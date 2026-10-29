@@ -15,6 +15,10 @@ export const ENTITLEMENT_KEYS = {
   AI_REQUESTS_PER_DAY: 'ai_requests_per_day',
   /** Grupo de disparo em sessão diferente de onde a oferta nasce (Business). Ausente = bloqueado. */
   CROSS_SESSION_DISPATCH: 'cross_session_dispatch',
+  /** Rodízios de link (subdomínio público) por tenant. */
+  LINK_ROTATIONS: 'link_rotations',
+  /** Grupos por rodízio. */
+  LINK_ROTATION_GROUPS: 'link_rotation_groups',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

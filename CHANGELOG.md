@@ -9,6 +9,41 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — link-rotation (api 0.45.0 · app 0.51.0) — rodízio de links por subdomínio
+
+O tenant ganha um link fixo (`https://<nome>.copysync.com.br`) para divulgar nas redes. Quem clica cai num grupo de WhatsApp dele com vaga, pela estratégia escolhida; grupo cheio sai do rodízio. Limites por plano: 1/1/2 links e 3/5/10 grupos (Starter/Profissional/Business). Doc: `docs/rodizio-de-links.md`.
+
+#### Backend
+
+- **Migration `20261029020000_create_link_rotation`** — `link_domains` (plataforma, sem `tenantId`), `link_rotations` (slug único por domínio), `link_rotation_groups`, `link_slug_reservations` (30 dias), `link_clicks` (90 dias). Data migration dos presets `link_rotations` e `link_rotation_groups`. FK da sessão em `NO ACTION` para o cascade do tenant passar.
+- **`entitlementKeys.ts`**, **`planPresets.ts`** — chaves e presets novos, travados no teste contra a vitrine. Chave ausente = ilimitado (convenção do projeto).
+- **`slugRules.ts`**, **`pickGroup.ts`**, **`classifyUserAgent.ts`**, **`publicHost.ts`**, **`hashClickIp.ts`** — regras puras: nome do link e sugestões, estratégias `BALANCED`/`SEQUENTIAL`/`WEIGHTED`/`RANDOM`, bot × webview × navegador, Host → domínio + nome, hash diário salgado do IP.
+- **`IMessagingEngine.ts`**, **`BaileysMessagingEngineAdapter.ts`**, **`BaileysErrorTranslator.ts`** — `getGroupInviteLink` e `getGroupSummary` (membros e se a sessão é admin, cache de 15 min); 401/403 do WhatsApp vira `GROUP_INVITE_NOT_ALLOWED`.
+- **Use cases do tenant** (`Create`/`Rename`/`Update`/`Delete`/`SaveLinkRotationGroups`/`Refresh`/`Stats`/`Overview`) — limite do plano, sugestões de nome livre, reserva de 30 dias, convite automático com `NEEDS_LINK` e link manual. Toda volta para `ACTIVE` respeita o plano.
+- **Use cases do admin** — CRUD de domínio (hosts da plataforma recusados, `landingUrl` opcional só https) e teste de DNS com token HMAC, hostname do registro, anti-SSRF e sem seguir redirect.
+- **`ResolvePublicLinkUseCase.ts`**, **`publicLink.routes.ts`**, **`templates/`** — página pública por Host: só subdomínio de domínio ativo (cache de 60 s), nunca host da API ou do painel. Só `/` e o probe; páginas HTML com CSP por hash, `no-store`, `noindex`. Bot recebe só a prévia; falha ao contar não bloqueia o redirecionamento.
+- **`LinkRotationMemberSyncJob.ts`** — contagem de membros por sessão sob lease no banco, retenção de cliques 1×/h. Flag `LINK_ROTATION_MEMBER_SYNC_ENABLED` (padrão `false`).
+- **`ApplyPlanLimitsToLinkRotationsUseCase.ts`** — rebaixo de plano pausa por plano o excedente; subida reativa. Ligado em `SyncTenantEntitlementsUseCase` e `ApplyBillingEventUseCase` (na transação). Sessão excluída pausa as rotações dela.
+- **`linkRotation.routes.ts`**, **`linkDomainAdmin.routes.ts`** — `/api/link-rotation` e `/api/admin/link-domains`. Contrato em `.specs/features/link-rotation/api-contract.md`.
+- **`env.ts`** — `LINK_CLICK_SALT`, `LINK_PROBE_SECRET` (≥ 32). Ausentes em produção desligam o recurso sem derrubar o boot.
+
+#### Frontend
+
+- **`LinkRotationPage.tsx`**, **`RotationCard.tsx`** — página no menu após Monitoramento: link com copiar, status, sessão, estratégia e estatísticas; excluir pelo menu "Mais ações" com confirmação. Estado vazio guiado.
+- **`RotationConfigDialog.tsx`**, **`ConfirmRenameDialog.tsx`** — nome com prévia ao vivo, sugestões clicáveis, estratégia com descrição, confirmação de troca de nome.
+- **`RotationGroupsDialog.tsx`**, **`RotationGroupItem.tsx`** — seleção com limite do plano, ordem, teto de pessoas (50–1024), peso, link manual e atualizar.
+- **`PlanLimitBanner.tsx`**, **`planUpsell.ts`** — aviso animado de upgrade com o próximo plano do catálogo; sem movimento com `prefers-reduced-motion`.
+- **`RotationStatsCard.tsx`** — cliques totais e de 7 dias, ocupação por grupo.
+- **`AdminLinkDomainsPage.tsx`** — domínios da plataforma (super-admin), teste de DNS com motivo traduzido e passo a passo de DNS.
+- **`privacyFlags.ts`** — tela `linkRotation` (link e apelido, sessão, nome e foto de grupo, link de convite).
+- **`catalog.ts`** — limites do rodízio na vitrine e hint corrigido (falava de credenciais).
+
+#### Operação (antes de liberar aos tenants)
+
+- Render: criar `LINK_CLICK_SALT` e `LINK_PROBE_SECRET` (32+ caracteres aleatórios) e `LINK_ROTATION_MEMBER_SYNC_ENABLED=true`.
+- Super-admin: cadastrar `copysync.com.br` em Domínios de links e rodar o teste.
+- Depois do deploy, `https://<qualquer>.copysync.com.br/health` passa a dar 404: o host público só serve o link.
+
 ### Added — campaigns/automation (api 0.44.0 · app 0.50.0) — janela em todo envio, pausa global e captura fora do horário
 
 Monitoramento com janela 06:00–20:00 enviou das 17:00 às 23:00: a janela só ancorava o início de cada oferta e 36 capturas × 11 grupos formaram 6 h de fila. Docs: `docs/fila-de-envio.md` §2.5–2.6, `docs/monitoramento-grupos.md` §2.2.
