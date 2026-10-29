@@ -168,6 +168,10 @@ model Tenant {
   linkRotationGroups   LinkRotationGroup[]
   linkSlugReservations LinkSlugReservation[]
   linkClicks           LinkClick[]
+  publicSlugClaims     PublicSlugClaim[]
+  premiumSlugGrants    PremiumSlugGrant[]
+  storefront           Storefront?
+  storefrontOffers     StorefrontOffer[]
 
   @@index([slug])
   @@map("tenants")
@@ -188,13 +192,13 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  userTenants               UserTenant[]
-  refreshTokens             RefreshToken[]
-  auditLogs                 AuditLog[]
-  assignedConversations     ChatConversation[] @relation("AssignedConversations")
-  createdOffers             Offer[]
-  extensionSessions         ExtensionSession[]
-  extensionInstallations    ExtensionInstallation[]
+  userTenants            UserTenant[]
+  refreshTokens          RefreshToken[]
+  auditLogs              AuditLog[]
+  assignedConversations  ChatConversation[]      @relation("AssignedConversations")
+  createdOffers          Offer[]
+  extensionSessions      ExtensionSession[]
+  extensionInstallations ExtensionInstallation[]
 
   @@index([email])
   @@map("users")
@@ -281,15 +285,15 @@ model Session {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  authState             SessionAuthState?
-  messages              Message[]
-  chatConversations     ChatConversation[]
-  authKeys              SessionAuthKey[]
-  offerGeneratorConfigs OfferGeneratorConfig[]
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authState                    SessionAuthState?
+  messages                     Message[]
+  chatConversations            ChatConversation[]
+  authKeys                     SessionAuthKey[]
+  offerGeneratorConfigs        OfferGeneratorConfig[]
   offerGeneratorConfigSessions OfferGeneratorConfigSession[]
-  groupMonitorConfigs   GroupMonitorConfig[]
-  linkRotations         LinkRotation[]
+  groupMonitorConfigs          GroupMonitorConfig[]
+  linkRotations                LinkRotation[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -450,14 +454,14 @@ model ChatConversation {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  session           Session?           @relation(fields: [sessionId], references: [id])
-  contact           ChatContact?       @relation(fields: [contactId], references: [id])
-  assignedUser      User?              @relation("AssignedConversations", fields: [assignedUserId], references: [id])
-  messages          ChatMessage[]
-  offerDispatches   OfferDispatch[]
-  offerDestinations OfferDestination[]
-  monitoredGroups   MonitoredGroup[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session            Session?            @relation(fields: [sessionId], references: [id])
+  contact            ChatContact?        @relation(fields: [contactId], references: [id])
+  assignedUser       User?               @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  messages           ChatMessage[]
+  offerDispatches    OfferDispatch[]
+  offerDestinations  OfferDestination[]
+  monitoredGroups    MonitoredGroup[]
   broadcastGroups    BroadcastGroup[]
   linkRotationGroups LinkRotationGroup[]
 
@@ -582,19 +586,19 @@ enum AffiliateCredentialStatus {
 }
 
 model AffiliateCredential {
-  id                String                    @id @default(cuid())
-  tenantId          String
-  provider          AffiliateProvider
-  publicIdentifier  String? // null quando a linha nasce da extensão sem tag
-  secretCiphertext  Bytes? // AES-256-GCM; AAD = tenantId:provider:secret
-  secretIv          Bytes?
-  secretTag         Bytes?
-  keyVersion        Int                       @default(1) // versão da chave do secret
-  status            AffiliateCredentialStatus @default(ACTIVE)
-  sessionCiphertext Bytes? // sessão do marketplace vinda da extensão; AAD = tenantId:provider:session
-  sessionIv         Bytes?
-  sessionTag        Bytes?
-  sessionKeyVersion Int?
+  id                       String                    @id @default(cuid())
+  tenantId                 String
+  provider                 AffiliateProvider
+  publicIdentifier         String? // null quando a linha nasce da extensão sem tag
+  secretCiphertext         Bytes? // AES-256-GCM; AAD = tenantId:provider:secret
+  secretIv                 Bytes?
+  secretTag                Bytes?
+  keyVersion               Int                       @default(1) // versão da chave do secret
+  status                   AffiliateCredentialStatus @default(ACTIVE)
+  sessionCiphertext        Bytes? // sessão do marketplace vinda da extensão; AAD = tenantId:provider:session
+  sessionIv                Bytes?
+  sessionTag               Bytes?
+  sessionKeyVersion        Int?
   sessionSyncedAt          DateTime?
   sessionInvalidAt         DateTime?
   sessionAccountHash       String?
@@ -681,9 +685,9 @@ model Offer {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy  User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  dispatches OfferDispatch[]
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  dispatches    OfferDispatch[]
   monitorConfig GroupMonitorConfig? @relation(fields: [monitorConfigId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt(sort: Desc)])
@@ -718,14 +722,14 @@ enum OfferDispatchOrder {
 }
 
 model OfferGeneratorConfig {
-  tenantId                  String             @id
+  tenantId           String             @id
   /// Legado: primeira sessão escolhida. Fonte de verdade: `sessions` (OfferGeneratorConfigSession).
-  sessionId                 String?
+  sessionId          String?
   /// Pausa entre dois envios consecutivos, da mesma sessão ou não (segundos).
-  intervalMinSeconds        Int                @default(120)
-  intervalMaxSeconds        Int                @default(300)
-  dispatchOrder             OfferDispatchOrder @default(SEQUENTIAL)
-  updatedAt                 DateTime           @updatedAt
+  intervalMinSeconds Int                @default(120)
+  intervalMaxSeconds Int                @default(300)
+  dispatchOrder      OfferDispatchOrder @default(SEQUENTIAL)
+  updatedAt          DateTime           @updatedAt
 
   tenant   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   session  Session?                      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
@@ -839,26 +843,26 @@ model AiUsageLog {
 }
 
 model OfferDispatch {
-  id             String              @id @default(cuid())
-  tenantId       String
-  offerId        String
-  conversationId String
+  id                  String              @id @default(cuid())
+  tenantId            String
+  offerId             String
+  conversationId      String
   /// Faixa de envio: cópia de `conversation.sessionId` (sem join no claim). null só em envio antigo
   /// cuja conversa não tinha sessão. Ver docs/fila-de-envio.md.
-  sessionId      String?
+  sessionId           String?
   /// Intervalo mínimo (s) entre o início do último envio da mesma sessão e este (claim).
-  gapSeconds     Int                 @default(0)
+  gapSeconds          Int                 @default(0)
   /// Sessão estava fora do ar na vez deste envio: voltou para a fila e segura a vez da sessão até
   /// reconectar (desde quando espera). null = nunca esperou. Ver docs/fila-de-envio.md.
   waitingSessionSince DateTime?
-  status         OfferDispatchStatus @default(QUEUED)
-  notBefore      DateTime
-  claimedAt      DateTime?
+  status              OfferDispatchStatus @default(QUEUED)
+  notBefore           DateTime
+  claimedAt           DateTime?
   /// Posse do worker: novo uuid a cada claim; resultado só grava com o token da posse.
-  claimToken     String?
-  chatMessageId  String?
-  failureReason  String?
-  updatedAt      DateTime            @updatedAt
+  claimToken          String?
+  chatMessageId       String?
+  failureReason       String?
+  updatedAt           DateTime            @updatedAt
 
   tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   offer        Offer            @relation(fields: [offerId], references: [id], onDelete: Cascade)
@@ -965,7 +969,7 @@ model ExtensionInstallation {
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
 
-  user            User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user            User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
   sessions        ExtensionSession[]
   lifecycleEvents ExtensionLifecycleEvent[]
 
@@ -1063,34 +1067,34 @@ enum CapturedOfferStatus {
 
 /// Configuração do monitoramento de UMA sessão. Janela em minutos do dia (America/Sao_Paulo).
 model GroupMonitorConfig {
-  id                  String   @id @default(cuid())
-  tenantId            String
-  sessionId           String
-  enabled             Boolean  @default(false)
+  id                   String          @id @default(cuid())
+  tenantId             String
+  sessionId            String
+  enabled              Boolean         @default(false)
   /// 0..1440; start=0 e end=1440 = sem restrição; end < start = cruza a meia-noite. Padrão 06:00–18:00.
-  windowStartMinute   Int      @default(360)
-  windowEndMinute     Int      @default(1080)
+  windowStartMinute    Int             @default(360)
+  windowEndMinute      Int             @default(1080)
   /// Fora da janela: true = captura continua e acumula a fila (sai quando a janela abrir); false = não captura.
-  captureOutsideWindow Boolean @default(true)
+  captureOutsideWindow Boolean         @default(true)
   /// Padrão 15–40 min: repostagem de oferta capturada é mais espaçada que o gerador (2–5 min).
-  intervalMinSeconds  Int      @default(900)
-  intervalMaxSeconds  Int      @default(2400)
+  intervalMinSeconds   Int             @default(900)
+  intervalMaxSeconds   Int             @default(2400)
   /// Espera depois da captura antes do 1º envio.
-  startDelaySeconds   Int      @default(0)
+  startDelaySeconds    Int             @default(0)
   /// Validade sem cupom / com cupom (minutos desde a captura).
-  maxOfferAgeMinutes  Int      @default(180)
-  couponMaxAgeMinutes Int      @default(60)
-  mentionAll          Boolean  @default(false)
-  simulateTyping      Boolean  @default(false)
-  typingSeconds       Int      @default(15)
+  maxOfferAgeMinutes   Int             @default(180)
+  couponMaxAgeMinutes  Int             @default(60)
+  mentionAll           Boolean         @default(false)
+  simulateTyping       Boolean         @default(false)
+  typingSeconds        Int             @default(15)
   /// Como montar o texto enviado (docs/monitoramento-grupos.md §2.4).
-  textMode            MonitorTextMode @default(ORIGINAL)
+  textMode             MonitorTextMode @default(ORIGINAL)
   /// Público da IA (só com textMode AI; STANDARD = modelo fixo).
-  audience            OfferAudience   @default(STANDARD)
+  audience             OfferAudience   @default(STANDARD)
   /// Captura só com link vira oferta montada mesmo em ORIGINAL.
-  enrichLinkOnly      Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  enrichLinkOnly       Boolean         @default(true)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   session         Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -1234,13 +1238,16 @@ model LinkDomain {
   status        LinkDomainStatus @default(ACTIVE)
   landingUrl    String? // destino 301 do apex
   reservedNames String[]         @default([]) // além dos padrão (www, app, api, admin…)
+  premiumNames  String[]         @default([]) // só com PremiumSlugGrant do tenant
   lastProbeAt   DateTime?
   lastProbeOk   Boolean?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  rotations        LinkRotation[]
-  slugReservations LinkSlugReservation[]
+  rotations         LinkRotation[]
+  slugReservations  LinkSlugReservation[]
+  publicSlugClaims  PublicSlugClaim[]
+  premiumSlugGrants PremiumSlugGrant[]
 
   @@map("link_domains")
 }
@@ -1265,6 +1272,7 @@ model LinkRotation {
   domain  LinkDomain          @relation(fields: [domainId], references: [id], onDelete: Restrict)
   groups  LinkRotationGroup[]
   clicks  LinkClick[]
+  claim   PublicSlugClaim?
 
   @@unique([domainId, slug])
   @@index([tenantId])
@@ -1333,4 +1341,116 @@ model LinkClick {
 
   @@index([rotationId, createdAt])
   @@map("link_clicks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PÁGINA DE OFERTAS (storefront) + NAMESPACE PÚBLICO <slug>.<domínio>
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PublicSlugKind {
+  LINK_ROTATION
+  STOREFRONT
+}
+
+enum PremiumSlugGrantSource {
+  MANUAL
+  BILLING
+}
+
+/// Dono único de <slug>.<domínio>. Rodízio e página disputam o mesmo namespace.
+/// Exatamente um de linkRotationId/storefrontId (CHECK no SQL da migration, coerente com `kind`).
+model PublicSlugClaim {
+  id             String         @id @default(cuid())
+  domainId       String
+  slug           String
+  kind           PublicSlugKind
+  tenantId       String
+  linkRotationId String?        @unique
+  storefrontId   String?        @unique
+  createdAt      DateTime       @default(now())
+
+  domain       LinkDomain    @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  linkRotation LinkRotation? @relation(fields: [linkRotationId], references: [id], onDelete: Cascade)
+  storefront   Storefront?   @relation(fields: [storefrontId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, slug])
+  @@index([tenantId])
+  @@map("public_slug_claims")
+}
+
+/// Liberação de um nome premium (LinkDomain.premiumNames) para um tenant.
+model PremiumSlugGrant {
+  id        String                 @id @default(cuid())
+  domainId  String
+  slug      String
+  tenantId  String
+  source    PremiumSlugGrantSource
+  expiresAt DateTime?
+  createdAt DateTime               @default(now())
+
+  domain LinkDomain @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, slug])
+  @@map("premium_slug_grants")
+}
+
+enum StorefrontStatus {
+  ACTIVE
+  PAUSED_BY_PLAN
+}
+
+enum StorefrontOfferStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// Uma página por tenant. Domínio e slug vêm do PublicSlugClaim (sem cópia aqui, sem drift).
+model Storefront {
+  id              String           @id @default(cuid())
+  tenantId        String           @unique
+  title           String
+  subtitle        String?
+  avatarUrl       String?
+  coverUrl        String?
+  colorPrimary    String           @default("#2563EB")
+  colorBackground String           @default("#F5F5F5")
+  colorCard       String           @default("#FFFFFF")
+  categories      String[]         @default([])
+  status          StorefrontStatus @default(ACTIVE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim  PublicSlugClaim?
+  offers StorefrontOffer[]
+
+  @@map("storefronts")
+}
+
+model StorefrontOffer {
+  id                 String                @id @default(cuid())
+  tenantId           String
+  storefrontId       String
+  status             StorefrontOfferStatus @default(DRAFT)
+  position           Int
+  provider           AffiliateProvider
+  sourceUrl          String
+  affiliateUrl       String
+  title              String
+  priceCents         Int?
+  originalPriceCents Int?
+  imageUrl           String?
+  category           String?
+  publishedAt        DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  storefront Storefront @relation(fields: [storefrontId], references: [id], onDelete: Cascade)
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([storefrontId, status, position])
+  @@index([tenantId])
+  @@map("storefront_offers")
 }

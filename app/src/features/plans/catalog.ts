@@ -50,12 +50,15 @@ export interface PlanCatalogItem {
   fit: string;
 }
 
+/** Benefício da Página de Ofertas (`storefront_enabled`: só Profissional e Business). */
+export const STOREFRONT_BENEFIT_LABEL = 'Página de Ofertas para a bio';
+
 const HINTS = {
   monitoredGroups: 'Grupos de onde as ofertas são capturadas: cada anúncio novo é lido, reescrito e ganha o seu link.',
   broadcastGroups: 'Grupos que recebem os disparos, na ordem e nos horários que você definir.',
   linkRotation: 'Um link fixo para divulgar nas redes. Nunca expira e leva cada visitante a um grupo com vaga.',
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
-  customDomain: 'Sua página de ofertas no seu próprio domínio, em vez do endereço padrão.',
+  storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
   crossSession: 'Monitore grupos em um WhatsApp e dispare nos grupos de outro WhatsApp conectado na mesma conta.',
 };
@@ -98,7 +101,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: '10 grupos de disparo por canal', hint: HINTS.broadcastGroups },
       { label: linkRotationLimitLabel(1, 5), hint: HINTS.linkRotation },
       { label: 'Menção a todos os participantes', hint: HINTS.mentionAll },
-      { label: 'Página de ofertas para a bio com domínio personalizado', hint: HINTS.customDomain },
+      { label: STOREFRONT_BENEFIT_LABEL, hint: HINTS.storefront },
       { label: 'Suporte prioritário 24/7' },
     ],
     fit: 'quem posta todo dia e quer escalar sem contratar.',
@@ -118,12 +121,33 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: '40 grupos de disparo por canal', hint: HINTS.broadcastGroups },
       { label: linkRotationLimitLabel(2, 10), hint: HINTS.linkRotation },
       { label: 'Monitorar em um WhatsApp e disparar em outro', hint: HINTS.crossSession, exclusive: true },
+      { label: STOREFRONT_BENEFIT_LABEL, hint: HINTS.storefront },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
     ],
     fit: 'equipes e operações com mais de um número ou nicho.',
   },
 ];
+
+/**
+ * Nome especial (premium) da Página de Ofertas: compra avulsa, fora dos planos. Só texto de vitrine
+ * (placeholder); sem `checkoutUrl` o painel mostra "Em breve" desabilitado.
+ */
+export const PREMIUM_SLUG_OFFER: {
+  title: string;
+  benefits: string[];
+  priceLabel: string;
+  checkoutUrl: string | null;
+} = {
+  title: 'Garanta um nome especial',
+  benefits: [
+    'Endereço curto e fácil de lembrar',
+    'Mais confiança para quem visita a sua página',
+    'Nome exclusivo: ninguém mais usa enquanto for seu',
+  ],
+  priceLabel: 'Preço em breve',
+  checkoutUrl: null,
+};
 
 /** Preço exibido (R$/mês) no período escolhido. */
 export function priceFor(plan: PlanCatalogItem, period: BillingPeriod): number {

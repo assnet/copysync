@@ -59,6 +59,9 @@ importers:
       pino-pretty:
         specifier: ^11.3.0
         version: 11.3.0
+      sharp:
+        specifier: 0.34.5
+        version: 0.34.5
       ws:
         specifier: ^8.19.0
         version: 8.20.0

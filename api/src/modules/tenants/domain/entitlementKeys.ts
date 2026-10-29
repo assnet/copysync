@@ -19,6 +19,8 @@ export const ENTITLEMENT_KEYS = {
   LINK_ROTATIONS: 'link_rotations',
   /** Grupos por rodízio. */
   LINK_ROTATION_GROUPS: 'link_rotation_groups',
+  /** Página de Ofertas (Profissional e Business). `false` explícito no Starter. */
+  STOREFRONT_ENABLED: 'storefront_enabled',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

@@ -4,9 +4,9 @@ import { ENTITLEMENT_KEYS as K } from './entitlementKeys';
 
 /** Mesmos números da vitrine (`app/src/features/plans/catalog.ts` → `limits`) e do roadmap. Mudou lá, muda aqui. */
 const CATALOG_LIMITS = {
-  COPYSYNC_STARTER: { whatsappSessions: 1, monitoredGroups: 1, broadcastGroups: 5, mentionAll: false, crossSession: false, linkRotations: 1, linkRotationGroups: 3 },
-  COPYSYNC_PROFISSIONAL: { whatsappSessions: 1, monitoredGroups: 2, broadcastGroups: 10, mentionAll: true, crossSession: false, linkRotations: 1, linkRotationGroups: 5 },
-  COPYSYNC_BUSINESS: { whatsappSessions: 2, monitoredGroups: 6, broadcastGroups: 40, mentionAll: true, crossSession: true, linkRotations: 2, linkRotationGroups: 10 },
+  COPYSYNC_STARTER: { storefront: false, whatsappSessions: 1, monitoredGroups: 1, broadcastGroups: 5, mentionAll: false, crossSession: false, linkRotations: 1, linkRotationGroups: 3 },
+  COPYSYNC_PROFISSIONAL: { storefront: true, whatsappSessions: 1, monitoredGroups: 2, broadcastGroups: 10, mentionAll: true, crossSession: false, linkRotations: 1, linkRotationGroups: 5 },
+  COPYSYNC_BUSINESS: { storefront: true, whatsappSessions: 2, monitoredGroups: 6, broadcastGroups: 40, mentionAll: true, crossSession: true, linkRotations: 2, linkRotationGroups: 10 },
 } as const;
 
 describe('PLAN_PRESETS', () => {
@@ -20,6 +20,7 @@ describe('PLAN_PRESETS', () => {
       [K.CROSS_SESSION_DISPATCH]: c.crossSession,
       [K.LINK_ROTATIONS]: c.linkRotations,
       [K.LINK_ROTATION_GROUPS]: c.linkRotationGroups,
+      [K.STOREFRONT_ENABLED]: c.storefront,
     });
   });
 
@@ -27,6 +28,13 @@ describe('PLAN_PRESETS', () => {
     const rows = planPresetRows();
     const cross = rows.filter((r) => r.key === K.CROSS_SESSION_DISPATCH && r.value === true).map((r) => r.planSlug);
     expect(cross).toEqual(['COPYSYNC_BUSINESS']);
+    // booleano de verdade (JSON boolean na coluna), e `false` explícito no Starter: ausência não desliga rebaixado
+    const store = rows.filter((r) => r.key === K.STOREFRONT_ENABLED);
+    expect(store.map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_STARTER', false],
+      ['COPYSYNC_PROFISSIONAL', true],
+      ['COPYSYNC_BUSINESS', true],
+    ]);
     expect(new Set(rows.map((r) => r.planSlug)).size).toBe(3);
   });
 });
