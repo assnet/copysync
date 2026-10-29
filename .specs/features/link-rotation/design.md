@@ -160,7 +160,7 @@ adicionar `limits.linkRotations/linkRotationGroups`.
 | `ApplyPlanLimitsToLinkRotationsUseCase` | chamado por `SyncTenantEntitlementsUseCase` (hook de rebaixo): excedentes → `PAUSED_BY_PLAN` por ordem |
 
 Erros novos (`shared/errors/internal/LinkRotationErrors.ts`): `LINK_DOMAIN_IN_USE` 409, `LINK_DOMAIN_INVALID` 400,
-`LINK_SLUG_INVALID` 400, `LINK_SLUG_RESERVED` 409, `LINK_SLUG_TAKEN` 409 (details `suggestions`), `LINK_ROTATION_NOT_FOUND` 404,
+`LINK_SLUG_INVALID` 400, `LINK_SLUG_RESERVED` 409, `LINK_SLUG_TAKEN` 409 (`meta.suggestions`; o errorHandler só expõe `meta`), `LINK_ROTATION_NOT_FOUND` 404,
 `LINK_GROUP_INVALID` 400, `LINK_INVITE_URL_INVALID` 400. Messaging: `GROUP_INVITE_NOT_ALLOWED` 403 (`GroupErrors.ts`).
 
 ### 4.3 Porta do engine (messaging)

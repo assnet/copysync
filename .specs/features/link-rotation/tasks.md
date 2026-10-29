@@ -20,25 +20,25 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 
 ## Tarefas
 
-### T1 Entitlements e presets
+### T1 Entitlements e presets ✅
 **What**: chaves `LINK_ROTATIONS`/`LINK_ROTATION_GROUPS` em `entitlementKeys.ts`; presets 1/1/2 e 3/5/10 em `planPresets.ts`; seed já lê `planPresetRows()`.
 **Where**: `api/src/modules/tenants/domain/{entitlementKeys,planPresets}.ts`, `planPresets.test.ts`.
 **Requirement**: LROT-15. **Done when**: teste atualizado passa; `tsc` ok. **Commit**: `feat(link-rotation): entitlements link_rotations e link_rotation_groups`.
 
-### T2 Schema Prisma + migration
+### T2 Schema Prisma + migration  ✅
 **What**: modelos/enums da `design.md` §3; migration `create_link_rotation` com comentário PT; relações em `Tenant`, `Session`, `ChatConversation` (onDelete: Session → rotação fica sem sessão? Não: `sessionId` NOT NULL, `onDelete: Restrict` + use case de exclusão de sessão pausa rotação — ver T14).
 **Where**: `api/prisma/schema.prisma`, `api/prisma/migrations/<ts>_create_link_rotation/migration.sql`.
 **Requirement**: LROT-01,03,06,08,10. **Done when**: `prisma migrate dev` em Postgres descartável (memória: teste local com Postgres descartável) aplica; `prisma generate` ok. **Commit**: `feat(link-rotation): schema e migration`.
 
-### T3 Erros internos
+### T3 Erros internos  ✅
 **What**: `LinkRotationErrors.ts` (códigos da `design.md` §4.2) e `GroupInviteNotAllowedError` em `GroupErrors.ts`; registrar no mapeamento HTTP se houver tabela central.
 **Where**: `api/src/shared/errors/internal/`. **Requirement**: LROT-03,07. **Done when**: `tsc`; teste de status code. **Commit**: `feat(link-rotation): erros internos`.
 
-### T4 Domínio puro [P]
+### T4 Domínio puro [P]  ✅
 **What**: `slugRules.ts` (normaliza, valida, reservados, sugestões), `pickGroup.ts` (4 estratégias, elegibilidade), `classifyUserAgent.ts`; testes unitários (vitest) cobrindo: slug inválido/reservado/sugestões; BALANCED empate; SEQUENTIAL pula cheio; WEIGHTED com rng fixo; RANDOM; nenhum elegível → null; bot/webview/browser.
 **Where**: `api/src/modules/link-rotation/domain/{entities,enums,services,contracts}`. **Requirement**: LROT-03,08,09,10. **Done when**: testes verdes. **Commit**: `feat(link-rotation): regras puras de slug, escolha de grupo e UA`.
 
-### T5 Porta do engine + adapter [P]
+### T5 Porta do engine + adapter [P]  ✅
 **What**: `getGroupInviteLink` e `getGroupSummary` em `IMessagingEngine`; implementação Baileys (`groupInviteCode`, `groupMetadata.size`, `isSelfAdmin` por PN/LID); snapshot com `size/selfIsAdmin/fetchedAt` TTL 15 min; `translateGroupInviteError`; tipagem `BaileysSocketWithGroupHelpers` com `size?`/`groupInviteCode`.
 **Where**: `messaging/domain/contracts/IMessagingEngine.ts:244`, `engines/baileys/BaileysMessagingEngineAdapter.ts:478,1348-1385,1657-1703`, `BaileysErrorTranslator.ts`.
 **Requirement**: LROT-07,12. **Done when**: `tsc`; teste do tradutor (Boom `data:403` → `GROUP_INVITE_NOT_ALLOWED`); nada de Baileys fora do adapter. **Commit**: `feat(messaging): invite link e resumo de grupo na porta do engine`.
