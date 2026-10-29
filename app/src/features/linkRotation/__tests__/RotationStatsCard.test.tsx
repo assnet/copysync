@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { ThemeProvider } from '@mui/material';
+import { buildTheme } from '@/theme/theme';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
 import type { RotationGroupStats, RotationStats } from '../types';
@@ -41,6 +43,19 @@ describe('RotationStatsCard', () => {
     const bar = screen.getByRole('progressbar', { name: t.occupancyAria(500, 1000, 50) });
     expect(bar).toHaveAttribute('aria-valuenow', '50');
     expect(screen.queryByText(linkRotationStrings.groupStatus.ACTIVE)).not.toBeInTheDocument();
+  });
+
+  it('refreshKey novo recarrega os números sem voltar ao esqueleto', async () => {
+    getStats.mockResolvedValueOnce(stats({ groups: [] })).mockResolvedValueOnce(stats());
+    const ui = (key: string) => (
+      <ThemeProvider theme={buildTheme('light')}><PrivacyProvider><RotationStatsCard rotationId="r1" refreshKey={key} /></PrivacyProvider></ThemeProvider>
+    );
+    const view = render(ui('a'));
+    expect(await screen.findByText(t.noGroups)).toBeInTheDocument();
+    view.rerender(ui('b'));
+    expect(screen.queryByTestId('rotation-stats-loading')).not.toBeInTheDocument();
+    expect(await screen.findByText('Ofertas 1')).toBeInTheDocument();
+    expect(getStats).toHaveBeenCalledTimes(2);
   });
 
   it('sem clique e memberCount null: "ainda sem cliques" e "ainda não medido"', async () => {

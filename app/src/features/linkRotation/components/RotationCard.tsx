@@ -157,7 +157,10 @@ export function RotationCard({ rotation, session, groupLimit, onToggleStatus, on
           <Typography variant="body2" color="text.secondary">{t.noGroups}</Typography>
         )}
 
-        <RotationStatsCard rotationId={rotation.id} />
+        <RotationStatsCard
+          rotationId={rotation.id}
+          refreshKey={`${rotation.status}|${rotation.groups.map((g) => `${g.id}:${g.status}:${g.capacity}:${g.memberCount}`).join(',')}`}
+        />
 
         <Stack direction="row" spacing={1} justifyContent="flex-end">
           <Tooltip title={t.configureTooltip} arrow describeChild>

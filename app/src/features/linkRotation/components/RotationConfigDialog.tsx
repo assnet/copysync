@@ -84,6 +84,8 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
   };
   const blurLink = useBlur('linkRotation.rotationLink');
   const blurSession = useBlur('linkRotation.sessionName');
+  // Campo editável não usa <Blurred> (bloquearia o clique); borra só o texto digitado.
+  const blurInputSx = blurLink ? { '& .MuiInputBase-input': { filter: 'blur(5px)', userSelect: 'none' } } : undefined;
 
   const [draft, setDraft, clearDraft] = usePersistedState<Draft>(
     `linkRotation.config.${rotation?.id ?? 'new'}`,
@@ -243,7 +245,7 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
                       startAdornment: <InputAdornment position="start"><AppIcon icon={Link2} size="sm" /></InputAdornment>,
                       endAdornment: counter(draft.slug.length, SLUG.max),
                     }}
-                    sx={{ flex: 3 }}
+                    sx={{ flex: 3, ...blurInputSx }}
                   />
                   <TextField
                     select
@@ -385,6 +387,7 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
                 helperText={t.titleHelp}
                 inputProps={{ maxLength: ROTATION_RANGES.titleMax }}
                 InputProps={{ endAdornment: counter(draft.title.length, ROTATION_RANGES.titleMax) }}
+                sx={blurInputSx}
               />
 
               {/* Status: só na edição; pausado pelo plano não se liga daqui */}

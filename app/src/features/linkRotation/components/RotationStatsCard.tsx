@@ -32,6 +32,8 @@ export function occupancyColor(pct: number): LinearProgressProps['color'] {
 export interface RotationStatsCardProps {
   /** Id do rodízio; o card busca `GET /link-rotation/:id/stats` por conta própria. */
   rotationId: string;
+  /** Muda quando os grupos/estado do rodízio mudam no painel: recarrega sem piscar o esqueleto. */
+  refreshKey?: string;
 }
 
 type LoadState =
@@ -40,7 +42,7 @@ type LoadState =
   | { kind: 'ready'; stats: RotationStats };
 
 /** Área de cliques do card: total, 7 dias, último clique e ocupação/cliques por grupo. */
-export function RotationStatsCard({ rotationId }: RotationStatsCardProps) {
+export function RotationStatsCard({ rotationId, refreshKey }: RotationStatsCardProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
   // Só a resposta do pedido mais recente vale (troca de rotationId ou cliques seguidos).
@@ -64,6 +66,14 @@ export function RotationStatsCard({ rotationId }: RotationStatsCardProps) {
     void load(false);
     return () => { reqId.current++; };
   }, [load]);
+
+  // Salvar grupos/pausar atualiza o overview; os números por grupo vêm de outra rota.
+  const lastKey = useRef(refreshKey);
+  useEffect(() => {
+    if (lastKey.current === refreshKey) return;
+    lastKey.current = refreshKey;
+    void load(true);
+  }, [refreshKey, load]);
 
   return (
     <Box component="section" aria-label={t.title}>
