@@ -29,12 +29,13 @@ antes das rotas da API (`app.ts`):
    outro caminho, **inclusive `/health`, `/docs` e `/api/...`**, recebe o 404 HTML da marca sem chegar ao handler.
    Em host da API essas duas rotas dão o 404 padrão (`callNotFound`).
 
-`matchPublicHost` (função pura): host = domínio → apex; exatamente um rótulo antes → slug; `www.slug.dom` → 404.
+`matchPublicHost` (função pura): host = domínio ou `www.` + domínio → apex; exatamente um rótulo antes → slug; `www.slug.dom` → 404.
 Com domínios aninhados vence o mais longo. Domínio `PAUSED` sai do cache em até 60 s e deixa de ser interceptado.
 
 | Situação (`ResolvePublicLinkUseCase`) | HTTP | Página |
 | --- | --- | --- |
-| Apex com `landingUrl` | 301 | redirect para a landing |
+| Apex com `landingUrl` | 302 | redirect para a landing (302: destino editável, 301 ficaria no cache do navegador) |
+| Rate limit (60/min por IP) | 429 | página "Muitos acessos" em HTML |
 | Apex sem `landingUrl`, slug inexistente, `www.slug.dom` | 404 | 404 da marca |
 | Segredos ausentes, tenant não `ACTIVE`, erro inesperado | 503 | indisponível |
 | Rotação `PAUSED` ou `PAUSED_BY_PLAN` | 200 | pausado |

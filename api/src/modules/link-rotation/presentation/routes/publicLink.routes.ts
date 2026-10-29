@@ -10,6 +10,7 @@ import {
   allFullPage,
   botPreviewPage,
   notFoundPage,
+  tooManyRequestsPage,
   pausedPage,
   redirectPage,
   unavailablePage,
@@ -73,7 +74,8 @@ function presentResult(reply: FastifyReply, out: ResolvePublicLinkOutput): Fasti
     case 'unavailable': return sendHtml(reply, 503, unavailablePage());
     case 'apex':
       if (!out.landingUrl) return sendHtml(reply, 404, notFoundPage());
-      return reply.header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').redirect(out.landingUrl, 301);
+      // 302: o destino é editável no admin; 301 ficaria preso no cache do navegador.
+      return reply.header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').redirect(out.landingUrl, 302);
     case 'not_found':
     default: return sendHtml(reply, 404, notFoundPage());
   }
@@ -111,31 +113,41 @@ export function registerPublicLinkRoutes(app: FastifyInstance, deps: PublicLinkD
     config: { rateLimit: rateLimitPresets.publicLink },
   };
 
-  app.get(PUBLIC_LINK_PATHS.root, routeOptions, async (request, reply) => {
-    const state = publicHosts.get(request);
-    if (!state) return reply.callNotFound();
-    if (!state.match) return sendHtml(reply, 404, notFoundPage());
-    try {
-      const out = await deps.resolver.execute({
-        hostname: request.headers.host ?? '',
-        ip: request.ip,
-        userAgent: request.headers['user-agent'],
-        now: now(),
-      });
-      return presentResult(reply, out);
-    } catch (err) {
-      request.log.warn({ err: (err as Error)?.name }, 'public link not resolved');
-      return sendHtml(reply, 503, unavailablePage());
-    }
-  });
+  // Rotas num escopo filho: o 429 do rate limit vira página HTML só aqui; o resto sobe para o handler da API.
+  void app.register(async (scope) => {
+    scope.setErrorHandler((error, request, reply) => {
+      if (error.statusCode === 429 && publicHosts.has(request)) {
+        return sendHtml(reply, 429, tooManyRequestsPage());
+      }
+      throw error;
+    });
 
-  app.get<{ Querystring: { token?: string } }>(PUBLIC_LINK_PATHS.probe, routeOptions, async (request, reply) => {
-    const state = publicHosts.get(request);
-    if (!state) return reply.callNotFound();
-    const domain = state.match?.domain;
-    const token = request.query.token;
-    const ok = !!domain && !!deps.probeSecret && typeof token === 'string'
-      && verifyProbeToken(token, { domainId: domain.id, hostname: domain.hostname }, now(), deps.probeSecret);
-    return ok ? sendEmpty(reply, 204) : sendHtml(reply, 404, notFoundPage());
+    scope.get(PUBLIC_LINK_PATHS.root, routeOptions, async (request, reply) => {
+      const state = publicHosts.get(request);
+      if (!state) return reply.callNotFound();
+      if (!state.match) return sendHtml(reply, 404, notFoundPage());
+      try {
+        const out = await deps.resolver.execute({
+          hostname: request.headers.host ?? '',
+          ip: request.ip,
+          userAgent: request.headers['user-agent'],
+          now: now(),
+        });
+        return presentResult(reply, out);
+      } catch (err) {
+        request.log.warn({ err: (err as Error)?.name }, 'public link not resolved');
+        return sendHtml(reply, 503, unavailablePage());
+      }
+    });
+
+    scope.get<{ Querystring: { token?: string } }>(PUBLIC_LINK_PATHS.probe, routeOptions, async (request, reply) => {
+      const state = publicHosts.get(request);
+      if (!state) return reply.callNotFound();
+      const domain = state.match?.domain;
+      const token = request.query.token;
+      const ok = !!domain && !!deps.probeSecret && typeof token === 'string'
+        && verifyProbeToken(token, { domainId: domain.id, hostname: domain.hostname }, now(), deps.probeSecret);
+      return ok ? sendEmpty(reply, 204) : sendHtml(reply, 404, notFoundPage());
+    });
   });
 }

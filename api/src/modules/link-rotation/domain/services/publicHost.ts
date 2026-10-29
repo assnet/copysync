@@ -1,7 +1,7 @@
 /**
  * Separa o Host público em domínio + slug. Função pura (sem banco).
  * - Normaliza: trim, minúsculo, sem porta (`:443`, `[::1]:80`) e sem ponto final.
- * - Host igual a um domínio → apex. Exatamente um rótulo antes do domínio → slug.
+ * - Host igual a um domínio, ou `www.` + domínio → apex. Exatamente um rótulo antes do domínio → slug.
  * - Mais de um rótulo (`www.slug.dom`), rótulo vazio ou nenhum domínio casado → null (404).
  * Vários domínios casando (ex.: `dom` e `sub.dom`): vence o mais longo.
  */
@@ -30,7 +30,9 @@ export function matchPublicHost<D extends { hostname: string }>(
       bestLength = name.length;
     } else if (host.endsWith(`.${name}`)) {
       const prefix = host.slice(0, -(name.length + 1));
-      best = prefix && !prefix.includes('.') ? { kind: 'slug', domain, slug: prefix } : null;
+      // `www.<domínio>` (o guia de DNS cria o CNAME) é o domínio puro; `www` é nome reservado.
+      if (prefix === 'www') best = { kind: 'apex', domain };
+      else best = prefix && !prefix.includes('.') ? { kind: 'slug', domain, slug: prefix } : null;
       bestLength = name.length;
     }
   }

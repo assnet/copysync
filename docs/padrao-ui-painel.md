@@ -60,7 +60,7 @@ compartilhar a tela sem expor clientes, grupos e produtos.
 4. Teste com a flag ligada: o layout não pode mudar (o desfoque mantém o espaço).
 
 Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
-Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão, fotos e nomes de grupos, texto e imagens das ofertas capturadas) e Rodízio de links (link público e apelido, sessão, fotos e nomes de grupos). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
+Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão, fotos e nomes de grupos, texto e imagens das ofertas capturadas) e Rodízio de links (link público e apelido, sessão, fotos e nomes de grupos, link de convite dos grupos). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
 
 ## ToggleOption
 

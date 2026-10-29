@@ -15,6 +15,8 @@ export const PUBLIC_LINK_TEXT = {
   unavailable: 'Não conseguimos abrir este link agora. Tente de novo em alguns minutos.',
   notFoundHeading: 'Link não encontrado',
   notFound: 'Confira o endereço e tente de novo.',
+  tooManyHeading: 'Muitos acessos',
+  tooMany: 'Recebemos muitos acessos da sua rede agora. Espere um minuto e tente de novo.',
 } as const;
 
 const T = PUBLIC_LINK_TEXT;
@@ -51,4 +53,9 @@ export function unavailablePage(): string {
 
 export function notFoundPage(): string {
   return renderPublicPage({ title: T.notFoundHeading, heading: T.notFoundHeading, bodyHtml: p(T.notFound) });
+}
+
+/** 429 do rate limit em host público: página da marca em vez do JSON da API. */
+export function tooManyRequestsPage(): string {
+  return renderPublicPage({ title: T.tooManyHeading, heading: T.tooManyHeading, bodyHtml: p(T.tooMany) });
 }

@@ -107,10 +107,10 @@ describe('página pública por Host', () => {
     expect(res.body).not.toContain('http-equiv="refresh"');
   });
 
-  it('apex: 301 para landingUrl; sem landingUrl → 404 da marca', async () => {
+  it('apex: 302 para landingUrl; sem landingUrl → 404 da marca', async () => {
     next = { kind: 'apex', landingUrl: 'https://exemplo.com/' };
     const res = await get('/', 'copysync.com.br');
-    expect(res.statusCode).toBe(301);
+    expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('https://exemplo.com/');
     next = { kind: 'apex', landingUrl: null };
     const none = await get('/', 'copysync.com.br');
@@ -217,7 +217,11 @@ describe('rate limit', () => {
     expect(rateLimitPresets.publicLink).toEqual({ max: 60, timeWindow: '1 minute' });
     next = { kind: 'paused', title: 'P' };
     for (let i = 0; i < 60; i++) expect((await get('/')).statusCode).toBe(200);
-    expect((await get('/')).statusCode).toBe(429);
+    const limited = await get('/');
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['content-type']).toMatch(/text\/html/);
+    expect(limited.headers['cache-control']).toBe('no-store');
+    expect(limited.body).toContain('Muitos acessos');
   });
 });
 

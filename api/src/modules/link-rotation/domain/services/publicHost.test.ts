@@ -13,6 +13,7 @@ describe('publicHost', () => {
     expect(matchPublicHost('copysync.app', DOMAINS)).toEqual({ kind: 'apex', domain: DOMAINS[0] });
     expect(matchPublicHost('PROMO.copysync.app:8080', DOMAINS)).toEqual({ kind: 'slug', domain: DOMAINS[0], slug: 'promo' });
     expect(matchPublicHost('www.promo.copysync.app', DOMAINS)).toBeNull();
+    expect(matchPublicHost('www.copysync.app', DOMAINS)).toEqual({ kind: 'apex', domain: DOMAINS[0] });
     expect(matchPublicHost('outro.com', DOMAINS)).toBeNull();
     expect(matchPublicHost('xcopysync.app', DOMAINS)).toBeNull();
   });

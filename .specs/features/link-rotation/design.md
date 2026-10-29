@@ -44,7 +44,7 @@ model LinkDomain {            // plataforma, sem tenantId
   id            String   @id @default(cuid())
   hostname      String   @unique            // "copysync.app", minúsculo, sem ponto final
   status        LinkDomainStatus @default(ACTIVE)
-  landingUrl    String?                     // 301 do apex
+  landingUrl    String?                     // 302 do apex
   reservedNames String[]                    // além dos padrão (www, app, api, admin, mail, cdn, static, status, hub, probe)
   lastProbeAt   DateTime?
   lastProbeOk   Boolean?
@@ -219,7 +219,7 @@ via `theme.palette`.
 ## 6. Fluxo público (sequência)
 
 1. Cloudflare → Render → Fastify; hook lê `Host`, remove porta, casa sufixo com cache de domínios.
-2. Apex (`host === hostname`) → 301 `landingUrl` (ou 404 da marca se vazio). `www.<slug>.<dom>` → 404.
+2. Apex (`host === hostname` ou `www.` + hostname) → 302 `landingUrl` (ou 404 da marca se vazio). `www.<slug>.<dom>` → 404.
 3. `/.well-known/link-rotation` → valida token → 204.
 4. `ResolvePublicLinkUseCase`: `findPublicByHost` (índice `@@unique([domainId, slug])`), tenant `ACTIVE`, rotação
    `ACTIVE`, `pickGroup`. Transação: `UPDATE link_rotation_groups SET click_count = click_count+1,

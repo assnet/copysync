@@ -40,7 +40,7 @@ escolham subdomínios neles.
 2. WHEN domínio é pausado (`PAUSED`) THEN novos rodízios SHALL não oferecê-lo e links existentes SHALL continuar
    servindo.
 3. WHEN domínio tem rodízios ativos THEN exclusão SHALL ser recusada (`LINK_DOMAIN_IN_USE`, 409).
-4. WHEN usuário não super-admin chama `/admin/link-domains` THEN SHALL 403.
+4. WHEN usuário não super-admin chama `/admin/link-domains` THEN SHALL 401 (hook compartilhado com `/admin/ai`).
 5. WHEN admin abre a tela THEN SHALL ver instrução de DNS (CNAME `*` proxied no Cloudflare → host da API) e
    resultado da última verificação (`GET https://_probe.<dominio>/.well-known/link-rotation` responde 204).
 
