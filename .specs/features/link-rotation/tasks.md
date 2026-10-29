@@ -78,11 +78,11 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 **What**: `ApplyPlanLimitsToLinkRotationsUseCase` chamado em `SyncTenantEntitlementsUseCase`; exclusão de sessão (use case existente em `sessions`) pausa rotações da sessão (`PAUSED`, motivo); tenant `SUSPENDED` já coberto em T9.
 **Depends**: T6. **Requirement**: LROT-14. **Commit**: `feat(link-rotation): limites por plano e sessão removida`.
 
-### T15 App: service, strings, erros, privacidade
+### T15 App: service, strings, erros, privacidade  ✅
 **What**: `services/linkRotation.service.ts`, `services/adminLinkDomains.service.ts`, `features/linkRotation/strings.ts` (pt-BR completo, inclusive textos do banner), `utils/linkRotationErrors.ts`, tipos; `PRIVACY_SCREENS.linkRotation` com flags `rotationLink`, `groupName`, `groupAvatar`.
 **Where**: `app/src/{services,features/linkRotation,features/privacy/privacyFlags.ts}`. **Depends**: T10 (contrato). **Requirement**: LROT-13,16. **Commit**: `feat(link-rotation): serviço, textos e privacidade no painel`.
 
-### T16 App: página e card
+### T16 App: página e card  ✅
 **What**: rota `/link-rotation`, item de menu (`Link2`) após Monitoramento, `LinkRotationPage` com `PageHeader`, estado vazio, `RotationCard` (link + Copiar com feedback 2 s, status `Switch`, sessão, chips, botões Configurar/Grupos, `Blurred`). **Depends**: T15. **Requirement**: LROT-13. **Done when**: agent-browser screenshot claro/escuro. **Commit**: `feat(link-rotation): página e card do rodízio`.
 
 ### T17 App: diálogo de configuração
@@ -94,7 +94,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 ### T19 App: estatísticas [P]
 **What**: `RotationStatsCard` (total, 7 dias, por grupo com barra, estados FULL/NEEDS_LINK com Tooltip). **Depends**: T16. **Requirement**: LROT-13. **Commit**: `feat(link-rotation): estatísticas do rodízio`.
 
-### T20 App: admin de domínios [P]
+### T20 App: admin de domínios [P]  ✅
 **What**: `AdminLinkDomainsPage` (tabela, form, status, probe com resultado, instruções DNS colapsáveis), item em `NAV_ADMIN_ITEMS`, rota sob `SuperAdminRoute`. **Depends**: T15,T12. **Requirement**: LROT-01,02. **Commit**: `feat(link-rotation): tela admin de domínios`.
 
 ### T21 Catálogo de planos [P]  ✅
