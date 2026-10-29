@@ -13,10 +13,12 @@ import { AffiliateCredentialsPage } from '@/pages/settings/AffiliateCredentialsP
 import { AiSettingsPage } from '@/pages/settings/AiSettingsPage';
 import { ExtensionSettingsPage } from '@/pages/settings/ExtensionSettingsPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
+import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage, StorefrontPage } from '@/pages/modules';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
+import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
 
 function LegacySessionsRedirect() {
@@ -41,6 +43,7 @@ export function AppRoutes() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/offers" element={<OfferGeneratorPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
+          <Route path="/link-rotation" element={<LinkRotationPage />} />
           <Route path="/mirroring" element={<MirroringPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
@@ -56,6 +59,7 @@ export function AppRoutes() {
           </Route>
           <Route element={<SuperAdminRoute />}>
             <Route path="/admin/ai" element={<AdminAiPage />} />
+            <Route path="/admin/link-domains" element={<AdminLinkDomainsPage />} />
           </Route>
         </Route>
       </Route>
