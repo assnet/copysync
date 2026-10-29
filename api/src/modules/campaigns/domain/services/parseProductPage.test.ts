@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeHtmlEntities, parseMercadoLivreSocialPage, parsePriceToCents, parseProductPage } from './parseProductPage';
+import { decodeHtmlEntities, isGenericSiteTitle, parseMercadoLivreSocialPage, parsePriceToCents, parseProductPage } from './parseProductPage';
 
 describe('parsePriceToCents', () => {
   it.each([
@@ -24,7 +24,25 @@ describe('decodeHtmlEntities', () => {
   });
 });
 
+describe('isGenericSiteTitle', () => {
+  it.each(['Mercado Livre', 'Mercado Libre', 'mercado livre - brasil', 'Amazon.com.br', 'Amazon.com.br: Amazon', 'Shopee Brasil', 'Shopee | Shopee Brasil', ' MERCADO  LIVRE '])(
+    '"%s" é só o nome do site',
+    (t) => expect(isGenericSiteTitle(t)).toBe(true),
+  );
+  it.each(['Fone Bluetooth | Mercado Livre', 'Kit 3-em-1 Amazon', 'Shopee Brasil Camiseta', 'Echo Dot - Amazon.com.br'])(
+    '"%s" é título real',
+    (t) => expect(isGenericSiteTitle(t)).toBe(false),
+  );
+});
+
 describe('parseProductPage', () => {
+  it('título só com o nome do site é ignorado e cai na próxima fonte', () => {
+    const generic = `<head><meta property="og:title" content="Mercado Livre"><title>Mercado Livre - Brasil</title></head>`;
+    expect(parseProductPage('MERCADO_LIVRE', generic).title).toBeNull();
+    const fallback = `<head><meta property="og:title" content="Shopee Brasil"><title>Tênis Corrida | Shopee Brasil</title></head>`;
+    expect(parseProductPage('SHOPEE', fallback).title).toBe('Tênis Corrida | Shopee Brasil');
+  });
+
   it('og:* + product:price:amount', () => {
     const html = `<head><meta content="Fone &amp; Cia" property="og:title"><meta property="og:image" content="https://m.media-amazon.com/i.jpg"><meta property="product:price:amount" content="59.90"></head>`;
     expect(parseProductPage('AMAZON', html)).toEqual({

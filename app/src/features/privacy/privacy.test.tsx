@@ -34,6 +34,14 @@ describe('PrivacyProvider', () => {
     expect(readStoredFlags().size).toBe(0);
   });
 
+  it('Página de Ofertas tem uma flag por tipo de dado', () => {
+    const screen = PRIVACY_SCREENS.find((s) => s.id === 'storefront')!;
+    expect(screen.flags.map((f) => f.id)).toEqual([
+      'storefront.name', 'storefront.photo', 'storefront.cover',
+      'storefront.subdomain', 'storefront.offerTitle', 'storefront.offerImage',
+    ]);
+  });
+
   it('useBlur fora do provider devolve false (prévias e testes não quebram)', () => {
     const { result } = renderHook(() => useBlur('offers.groupNames'));
     expect(result.current).toBe(false);

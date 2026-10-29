@@ -47,6 +47,18 @@ export const PRIVACY_SCREENS = [
       { id: 'linkRotation.inviteLink', label: 'Link de convite dos grupos' },
     ],
   },
+  {
+    id: 'storefront',
+    label: 'Página de Ofertas',
+    flags: [
+      { id: 'storefront.name', label: 'Nome da página' },
+      { id: 'storefront.photo', label: 'Foto de perfil' },
+      { id: 'storefront.cover', label: 'Imagem de capa' },
+      { id: 'storefront.subdomain', label: 'Endereço (subdomínio)' },
+      { id: 'storefront.offerTitle', label: 'Título das ofertas' },
+      { id: 'storefront.offerImage', label: 'Imagens das ofertas' },
+    ],
+  },
 ] as const;
 
 export type PrivacyScreenId = (typeof PRIVACY_SCREENS)[number]['id'];

@@ -6,6 +6,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { DnsSetupGuide } from '@/features/linkDomainsAdmin/components/DnsSetupGuide';
 import { LinkDomainDialog } from '@/features/linkDomainsAdmin/components/LinkDomainDialog';
 import { LinkDomainsTable } from '@/features/linkDomainsAdmin/components/LinkDomainsTable';
+import { PremiumGrantsDialog } from '@/features/linkDomainsAdmin/components/PremiumGrantsDialog';
 import { useAdminLinkDomains } from '@/features/linkDomainsAdmin/hooks/useAdminLinkDomains';
 import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
 import type { LinkDomain } from '@/features/linkDomainsAdmin/types';
@@ -13,7 +14,7 @@ import type { LinkDomain } from '@/features/linkDomainsAdmin/types';
 const t = linkDomainsAdminStrings;
 
 /** Diálogo aberto sobrevive a reload; o domínio em edição é relido da API pelo id. */
-type DialogState = { mode: 'create' } | { mode: 'edit'; id: string } | null;
+type DialogState = { mode: 'create' } | { mode: 'edit'; id: string } | { mode: 'grants'; id: string } | null;
 
 export function AdminLinkDomainsPage() {
   const ld = useAdminLinkDomains();
@@ -23,6 +24,7 @@ export function AdminLinkDomainsPage() {
 
   const editing = dialog?.mode === 'edit' ? ld.domains.find((d) => d.id === dialog.id) : undefined;
   const dialogReady = dialog?.mode === 'create' || Boolean(editing);
+  const granting = dialog?.mode === 'grants' ? ld.domains.find((d) => d.id === dialog.id) : undefined;
 
   const probe = async (d: LinkDomain) => {
     const result = await ld.probe(d.id);
@@ -70,6 +72,7 @@ export function AdminLinkDomainsPage() {
               onToggle={(d, v) => void ld.setActive(d.id, v)}
               onProbe={(d) => void probe(d)}
               onEdit={(d) => setDialog({ mode: 'edit', id: d.id })}
+              onGrants={(d) => setDialog({ mode: 'grants', id: d.id })}
               onRemove={setRemoving}
             />
           )}
@@ -93,6 +96,10 @@ export function AdminLinkDomainsPage() {
           onUpdate={ld.update}
           onClose={clearDialog}
         />
+      )}
+
+      {!ld.loading && granting && (
+        <PremiumGrantsDialog key={granting.id} domain={granting} onClose={clearDialog} onNotice={setNotice} />
       )}
 
       <ConfirmDialog

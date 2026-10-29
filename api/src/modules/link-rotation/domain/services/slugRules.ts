@@ -8,7 +8,7 @@
  */
 
 /** 3–50 caracteres, a-z0-9 e hífen, sem hífen nas pontas. */
-export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$/;
+export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/;
 export const SLUG_MIN_LENGTH = 3;
 export const SLUG_MAX_LENGTH = 50;
 export const MAX_SLUG_SUGGESTIONS = 5;
@@ -48,7 +48,7 @@ export function validateSlug(raw: string, extraReserved: readonly string[] = [])
   return { kind: 'ok', slug };
 }
 
-const WORD_SUFFIXES = ['oficial', 'vip'] as const;
+const WORD_SUFFIXES = ['oficial', 'vip', 'achados'] as const;
 const MAX_NUMERIC_SUFFIX = 99;
 
 /** Corta a base para caber o sufixo e remove hífen que sobrar na ponta. */
@@ -59,7 +59,7 @@ function withSuffix(base: string, suffix: string): string {
 
 /**
  * Até `limit` variações válidas, não reservadas, únicas e diferentes da base:
- * `<base>-oficial`, `<base>-vip`, `<base>2`, `<base>3`… `isTaken` (opcional) descarta as ocupadas.
+ * `<base>-oficial`, `<base>-vip`, `<base>-achados` (exceto palavra já contida na base), `<base>2`, `<base>3`… `isTaken` (opcional) descarta as ocupadas.
  */
 export function suggestSlugs(
   base: string,
@@ -72,7 +72,8 @@ export function suggestSlugs(
   const { isTaken, extraReserved = [], limit = MAX_SLUG_SUGGESTIONS } = options;
   const root = normalizeSlug(base).replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '') || 'link';
   const candidates = [
-    ...WORD_SUFFIXES.map((word) => withSuffix(root, `-${word}`)),
+    // Palavra já contida na base vira redundância (`vip-vip`): fica de fora.
+    ...WORD_SUFFIXES.filter((word) => !root.includes(word)).map((word) => withSuffix(root, `-${word}`)),
     ...Array.from({ length: MAX_NUMERIC_SUFFIX - 1 }, (_, i) => withSuffix(root, String(i + 2))),
   ];
   const out: string[] = [];

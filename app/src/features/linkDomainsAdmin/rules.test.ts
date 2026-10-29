@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatRelativeTime, isValidHostname, isValidLandingUrl, mergeReservedNames, normalizeHostname, normalizeReservedName,
+  formatRelativeTime, grantExpiryToIso, isValidHostname, isValidLandingUrl, mergeReservedNames, normalizeHostname, normalizeReservedName,
   RESERVED_NAMES_MAX,
 } from './rules';
 
@@ -74,5 +74,23 @@ describe('formatRelativeTime', () => {
   });
   it('data inválida vira vazio', () => {
     expect(formatRelativeTime('x', now, 'agora')).toBe('');
+  });
+});
+
+describe('grantExpiryToIso', () => {
+  const now = new Date('2026-10-29T12:00:00').getTime();
+
+  it('vazio = sem validade', () => {
+    expect(grantExpiryToIso('', now)).toBeNull();
+    expect(grantExpiryToIso('  ', now)).toBeNull();
+  });
+
+  it('data futura vira fim do dia em ISO; hoje ainda vale', () => {
+    expect(grantExpiryToIso('2027-01-31', now)).toBe(new Date('2027-01-31T23:59:59.999').toISOString());
+    expect(grantExpiryToIso('2026-10-29', now)).toBe(new Date('2026-10-29T23:59:59.999').toISOString());
+  });
+
+  it.each(['2026-10-28', '31/01/2027', '2027-13-45x'])('"%s" é inválida', (v) => {
+    expect(grantExpiryToIso(v, now)).toBe('invalid');
   });
 });

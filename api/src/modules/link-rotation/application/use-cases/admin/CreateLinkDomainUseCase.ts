@@ -8,6 +8,8 @@ export interface CreateLinkDomainCommand {
   /** Opcional: o apex responde 404 da marca até o super-admin cadastrar (context.md #14). */
   landingUrl?: string | null;
   reservedNames?: string[];
+  /** Nomes especiais (só com grant do tenant); mesma regra de `reservedNames`. */
+  premiumNames?: string[];
 }
 
 /** Super-admin cadastra domínio base (ex.: copysync.com.br). `platformHosts` = painel/API, recusados. */
@@ -27,7 +29,9 @@ export class CreateLinkDomainUseCase {
     if (landingUrl === undefined) throw new LinkDomainInvalidError('Invalid landing URL');
     const reservedNames = parseReservedNames(cmd.reservedNames);
     if (!reservedNames) throw new LinkDomainInvalidError('Invalid reserved names');
+    const premiumNames = parseReservedNames(cmd.premiumNames);
+    if (!premiumNames) throw new LinkDomainInvalidError('Invalid premium names');
     if (await this.domains.findByHostname(hostname)) throw new LinkDomainTakenError(hostname);
-    return this.domains.create({ hostname, landingUrl, reservedNames });
+    return this.domains.create({ hostname, landingUrl, reservedNames, premiumNames });
   }
 }

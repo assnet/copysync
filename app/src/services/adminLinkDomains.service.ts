@@ -1,9 +1,11 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
+  CreatePremiumGrantRequest,
   CreateLinkDomainRequest,
   LinkDomain,
   LinkDomainProbeResult,
+  PremiumSlugGrant,
   UpdateLinkDomainRequest,
 } from '@/features/linkDomainsAdmin/types';
 
@@ -34,5 +36,20 @@ export const adminLinkDomainsService = {
   async probe(id: string): Promise<LinkDomainProbeResult> {
     const res = await apiClient.post<ApiSuccess<LinkDomainProbeResult>>(`${BASE}/${encodeURIComponent(id)}/probe`, {});
     return res.data.data;
+  },
+
+  async listGrants(id: string): Promise<PremiumSlugGrant[]> {
+    const res = await apiClient.get<ApiSuccess<{ items: PremiumSlugGrant[] }>>(`${BASE}/${encodeURIComponent(id)}/premium-grants`);
+    return res.data.data.items;
+  },
+
+  /** Libera um nome especial do domínio para um cliente (grava auditoria na API). */
+  async grant(id: string, body: CreatePremiumGrantRequest): Promise<PremiumSlugGrant> {
+    const res = await apiClient.post<ApiSuccess<PremiumSlugGrant>>(`${BASE}/${encodeURIComponent(id)}/premium-grants`, body);
+    return res.data.data;
+  },
+
+  async revokeGrant(id: string, grantId: string): Promise<void> {
+    await apiClient.delete(`${BASE}/${encodeURIComponent(id)}/premium-grants/${encodeURIComponent(grantId)}`);
   },
 };

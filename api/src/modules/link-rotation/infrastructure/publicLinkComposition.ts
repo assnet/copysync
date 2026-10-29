@@ -10,10 +10,10 @@ import { linkRotationContainer } from './linkRotationContainer';
 import { PrismaLinkRotationPublicStore } from './repositories/PrismaLinkRotationPublicStore';
 
 /**
- * Monta a página pública por Host (design.md §4.4). Nada toca o banco aqui: o cache de
+ * Monta a página pública por Host (design.md §4.4; storefront §4.2). Nada toca o banco aqui: o cache de
  * domínios carrega na 1ª requisição e os repositórios do container são lazy.
  */
-export function createPublicLinkDeps(): PublicLinkDeps {
+export function createPublicLinkDeps(input: Pick<PublicLinkDeps, 'pageRenderers'> = {}): PublicLinkDeps {
   // Favicon e logo vêm do painel; foto do grupo, do armazenamento de mídia. Zero arquivo servido pela API.
   configurePublicPageBranding({ panelUrl: env.PANEL_URL, mediaUrl: env.S3_PUBLIC_URL });
   const domains = new ActiveLinkDomainCache(() => linkRotationContainer.domainRepository.listActive(), {
@@ -32,5 +32,7 @@ export function createPublicLinkDeps(): PublicLinkDeps {
     resolver,
     probeSecret: env.LINK_PROBE_SECRET ?? null,
     platformHosts: platformHostnames(env.PANEL_URL),
+    // Donos do namespace além do rodízio (página de ofertas), injetados por `app.ts`.
+    pageRenderers: input.pageRenderers,
   };
 }

@@ -18,6 +18,16 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 (hero com coroa, selo de garantia, card recomendado com moldura em gradiente, faixa de confiança); cores só do tema
 (`primary` → `secondary` no gradiente, `alpha()`), sem hex fixo fora do selo dourado.
 
+## Página de Ofertas (app 0.52.0)
+
+- Benefício "Página de Ofertas" (`STOREFRONT_BENEFIT_LABEL`) só em Profissional e Business, espelhando
+  `storefront_enabled` false/true/true (travado em `planPresets.test.ts`). Nunca no Starter.
+- `PREMIUM_SLUG_OFFER` (`catalog.ts`): texto do banner de nome especial (título, benefícios, `priceLabel`,
+  `checkoutUrl: null` → "Em breve"). Fica **fora** de `PLAN_CATALOG` (o teste conta 3 planos). Compra é placeholder.
+- `/plans?feature=storefront` mostra o aviso de upgrade (`PlansFeatureNotice`); o painel redireciona para lá no
+  `403 PLAN_FEATURE_UNAVAILABLE` da vitrine. Selo "Profissional" no item do menu (`NavItemBadge`,
+  `plansStrings.badgeProfessional`). Ver [`pagina-de-ofertas.md`](pagina-de-ofertas.md).
+
 ## Decisões
 
 - **Preço é texto de marketing.** Vive só em `catalog.ts`. Nada no banco, nenhum cálculo de desconto/cupom

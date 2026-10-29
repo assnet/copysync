@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANNUAL_DISCOUNT, PLAN_CATALOG, priceFor, savingsFor } from './catalog';
+import { ANNUAL_DISCOUNT, PLAN_CATALOG, PREMIUM_SLUG_OFFER, STOREFRONT_BENEFIT_LABEL, priceFor, savingsFor } from './catalog';
 import { formatPrice, linkRotationLimitLabel } from './strings';
 
 describe('catálogo de planos (vitrine)', () => {
@@ -52,5 +52,16 @@ describe('catálogo de planos (vitrine)', () => {
     expect(linkRotationLimitLabel(1, 3)).toBe('1 link de rodízio · até 3 grupos');
     expect(linkRotationLimitLabel(2, 10)).toBe('2 links de rodízio · até 10 grupos');
     expect(linkRotationLimitLabel(1, 1)).toBe('1 link de rodízio · até 1 grupo');
+  });
+
+  it('Página de Ofertas só no Profissional e Business (storefront_enabled false/true/true na API)', () => {
+    const com = PLAN_CATALOG.filter((p) => p.benefits.some((b) => b.label === STOREFRONT_BENEFIT_LABEL)).map((p) => p.slug);
+    expect(com).toEqual(['profissional', 'business']);
+  });
+
+  it('oferta do nome especial fica fora dos planos e sem checkout por ora', () => {
+    expect(PREMIUM_SLUG_OFFER.checkoutUrl).toBeNull();
+    expect(PREMIUM_SLUG_OFFER.title).not.toBe('');
+    expect(PREMIUM_SLUG_OFFER.benefits.length).toBeGreaterThan(0);
   });
 });

@@ -1,14 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-  Alert, Autocomplete, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
-  Stack, TextField,
+  Alert, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField,
 } from '@mui/material';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { linkDomainErrorMessage } from '../errors';
-import {
-  isValidHostname, isValidLandingUrl, mergeReservedNames, normalizeHostname,
-} from '../rules';
+import { isValidHostname, isValidLandingUrl, normalizeHostname } from '../rules';
 import { linkDomainsAdminStrings } from '../strings';
+import { NamesField } from './NamesField';
 import type { CreateLinkDomainRequest, LinkDomain, UpdateLinkDomainRequest } from '../types';
 
 const t = linkDomainsAdminStrings.form;
@@ -17,6 +15,8 @@ interface Draft {
   hostname: string;
   landingUrl: string;
   reservedNames: string[];
+  /** Ausente em rascunho salvo antes do campo existir. */
+  premiumNames?: string[];
 }
 
 interface Props {
@@ -39,10 +39,11 @@ export function LinkDomainDialog({ domain, onCreate, onUpdate, onClose }: Props)
       hostname: domain?.hostname ?? '',
       landingUrl: domain?.landingUrl ?? '',
       reservedNames: domain?.reservedNames ?? [],
+      premiumNames: domain?.premiumNames ?? [],
     }),
   );
-  const [reservedInput, setReservedInput] = useState('');
-  const [reservedError, setReservedError] = useState<string | null>(null);
+  const flushReserved = useRef<(() => string[] | null) | null>(null);
+  const flushPremium = useRef<(() => string[] | null) | null>(null);
   const [touched, setTouched] = useState({ hostname: false, landingUrl: false });
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -57,35 +58,24 @@ export function LinkDomainDialog({ domain, onCreate, onUpdate, onClose }: Props)
     onClose();
   };
 
-  /** Converte o texto digitado em chips; devolve a lista nova ou `null` se algo for inválido. */
-  const addReserved = (raw: string): string[] | null => {
-    const r = mergeReservedNames(draft.reservedNames, raw);
-    if (!r.ok) {
-      setReservedError('invalid' in r ? t.reservedInvalid(r.invalid) : t.reservedTooMany);
-      return null;
-    }
-    setReservedError(null);
-    setDraft((d) => ({ ...d, reservedNames: r.names }));
-    setReservedInput('');
-    return r.names;
-  };
-
   const submit = async () => {
     setTouched({ hostname: true, landingUrl: true });
     if (hostnameInvalid || landingInvalid) return;
-    const reservedNames = reservedInput.trim() ? addReserved(reservedInput) : draft.reservedNames;
-    if (!reservedNames) return;
+    const reservedNames = flushReserved.current?.() ?? null;
+    const premiumNames = flushPremium.current?.() ?? null;
+    if (!reservedNames || !premiumNames) return;
     const landing = draft.landingUrl.trim();
     setSaving(true);
     setSubmitError(null);
     try {
       if (domain) {
-        await onUpdate(domain.id, { landingUrl: landing || null, reservedNames });
+        await onUpdate(domain.id, { landingUrl: landing || null, reservedNames, premiumNames });
       } else {
         await onCreate({
           hostname: normalizeHostname(draft.hostname),
           ...(landing ? { landingUrl: landing } : {}),
           reservedNames,
+          premiumNames,
         });
       }
       clearDraft();
@@ -146,43 +136,21 @@ export function LinkDomainDialog({ domain, onCreate, onUpdate, onClose }: Props)
               error={showLandingError}
               helperText={showLandingError ? t.landingInvalid : t.landingHelp}
             />
-            <Autocomplete<string, true, false, true>
-              multiple
-              freeSolo
-              options={[]}
+            <NamesField
+              label={t.reservedNames}
+              helper={t.reservedHelp}
+              tooManyMessage={t.reservedTooMany}
               value={draft.reservedNames}
-              inputValue={reservedInput}
-              onInputChange={(_, v, reason) => {
-                if (reason === 'reset') return;
-                if (/[\s,;]$/.test(v)) addReserved(v);
-                else setReservedInput(v);
-              }}
-              onChange={(_, value, reason) => {
-                if (reason === 'createOption') {
-                  addReserved(String(value[value.length - 1] ?? ''));
-                  return;
-                }
-                setReservedError(null);
-                setDraft((d) => ({ ...d, reservedNames: value.map(String) }));
-              }}
-              renderTags={(value, getTagProps) =>
-                value.map((name, index) => {
-                  const { key, ...tagProps } = getTagProps({ index });
-                  return <Chip key={key} label={name} size="small" {...tagProps} />;
-                })
-              }
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={t.reservedNames}
-                  placeholder={draft.reservedNames.length ? undefined : t.reservedPlaceholder}
-                  error={Boolean(reservedError)}
-                  helperText={reservedError ?? t.reservedHelp}
-                  onBlur={() => {
-                    if (reservedInput.trim()) addReserved(reservedInput);
-                  }}
-                />
-              )}
+              onChange={(reservedNames) => setDraft((d) => ({ ...d, reservedNames }))}
+              flushRef={flushReserved}
+            />
+            <NamesField
+              label={t.premiumNames}
+              helper={t.premiumHelp}
+              tooManyMessage={t.premiumTooMany}
+              value={draft.premiumNames ?? []}
+              onChange={(premiumNames) => setDraft((d) => ({ ...d, premiumNames }))}
+              flushRef={flushPremium}
             />
           </Stack>
         </DialogContent>

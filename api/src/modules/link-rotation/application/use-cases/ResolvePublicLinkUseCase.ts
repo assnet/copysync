@@ -73,11 +73,11 @@ export class ResolvePublicLinkUseCase {
     if (!match) return { kind: 'not_found' };
     if (match.kind === 'apex') return { kind: 'apex', landingUrl: match.domain.landingUrl || null };
 
-    const salt = deps.clickSalt;
-    if (!salt) return { kind: 'unavailable' };
-
     const found = await deps.rotations.findPublicByHost(match.domain.hostname, match.slug);
     if (!found) return { kind: 'not_found' };
+    // Sal só depois da busca: nome que não é rodízio segue para a página de ofertas (design §4.2).
+    const salt = deps.clickSalt;
+    if (!salt) return { kind: 'unavailable' };
     if (!found.tenantActive) return { kind: 'unavailable' };
     const { rotation } = found;
 

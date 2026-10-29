@@ -59,13 +59,13 @@ const originOf = (url: string | null | undefined): string | null => {
 };
 
 let branding: PublicPageBranding = { assetBaseUrl: null, mediaOrigin: null };
-let csp = buildCsp();
+let csp = buildCsp(`sha256-${CSS_HASH}`);
 
-function buildCsp(): string {
+function buildCsp(styleHash: string): string {
   const img = [branding.assetBaseUrl, branding.mediaOrigin].filter((o): o is string => !!o);
   return [
     "default-src 'none'",
-    `style-src 'sha256-${CSS_HASH}'`,
+    `style-src '${styleHash}'`,
     `img-src ${img.length ? [...new Set(img)].join(' ') : "'none'"}`,
     "base-uri 'none'",
     "form-action 'none'",
@@ -76,12 +76,20 @@ function buildCsp(): string {
 /** Chamado uma vez na composição. Só origens https são aceitas. */
 export function configurePublicPageBranding(input: { panelUrl?: string | null; mediaUrl?: string | null }): void {
   branding = { assetBaseUrl: originOf(input.panelUrl), mediaOrigin: originOf(input.mediaUrl) };
-  csp = buildCsp();
+  csp = buildCsp(`sha256-${CSS_HASH}`);
 }
 
 /** CSP só desta página: nenhum script, estilo só pelo hash, imagem só das origens de marca e mídia. */
 export function publicPageCsp(): string {
   return csp;
+}
+
+/**
+ * Mesma CSP com o hash do `<style>` de outra página por Host (ex.: página de ofertas, cujo CSS
+ * muda com as cores). `styleHash` = `sha256-<base64>`. Origens: as da composição.
+ */
+export function publicPageCspForStyle(styleHash: string): string {
+  return buildCsp(styleHash);
 }
 
 /** Foto do grupo só se vier do armazenamento de mídia (a CSP bloquearia qualquer outra). */

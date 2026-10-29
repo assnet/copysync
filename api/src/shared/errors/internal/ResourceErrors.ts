@@ -26,3 +26,13 @@ export class TooManyRequestsError extends AppError {
     super('TOO_MANY_REQUESTS', message, 429);
   }
 }
+
+/**
+ * Limite por rota do `@fastify/rate-limit` estourado (`perTenantRateLimit`). `retryAfterSeconds`
+ * deixa o painel mostrar "aguarde" sem ler header.
+ */
+export class RateLimitedError extends AppError {
+  constructor(retryAfterSeconds: number) {
+    super('RATE_LIMITED', 'Too many requests, try again later', 429, { retryAfterSeconds });
+  }
+}

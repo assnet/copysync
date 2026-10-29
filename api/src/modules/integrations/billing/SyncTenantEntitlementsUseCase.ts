@@ -1,6 +1,6 @@
 import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
-import { applyLinkRotationPlanLimits } from '../../link-rotation/infrastructure/linkRotationPlanLimits';
+import { applyPlanSideEffects } from './applyPlanSideEffects';
 
 const log = logger.child({ module: 'SyncTenantEntitlementsUseCase' });
 
@@ -20,17 +20,18 @@ export class SyncTenantEntitlementsUseCase {
       return;
     }
 
-    for (const preset of presets) {
-      await prisma.tenantEntitlement.upsert({
-        where: { tenantId_key: { tenantId, key: preset.key } },
-        create: { tenantId, key: preset.key, value: preset.value ?? 'false' },
-        update: { value: preset.value ?? 'false' },
-      });
-    }
+    // Upserts + efeitos do plano no mesmo commit: rodízio (LROT-14) e Página de Ofertas (STORE-02)
+    const effects = await prisma.$transaction(async (tx) => {
+      for (const preset of presets) {
+        await tx.tenantEntitlement.upsert({
+          where: { tenantId_key: { tenantId, key: preset.key } },
+          create: { tenantId, key: preset.key, value: preset.value ?? 'false' },
+          update: { value: preset.value ?? 'false' },
+        });
+      }
+      return applyPlanSideEffects(tx, tenantId);
+    });
 
-    // Rebaixo/subida de plano: rodízios e grupos excedentes ↔ PAUSED_BY_PLAN (LROT-14)
-    const linkRotations = await applyLinkRotationPlanLimits(prisma, tenantId);
-
-    log.info({ tenantId, planSlug, count: presets.length, linkRotations }, 'Tenant entitlements synced');
+    log.info({ tenantId, planSlug, count: presets.length, ...effects }, 'Tenant entitlements synced');
   }
 }

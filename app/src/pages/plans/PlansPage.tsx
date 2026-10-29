@@ -1,7 +1,8 @@
 import { Box, Grid, Typography } from '@mui/material';
+import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { PLAN_CATALOG, PlanCard, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod } from '@/features/plans';
+import { PLAN_CATALOG, PlanCard, PlansFeatureNotice, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod } from '@/features/plans';
 
 /**
  * Vitrine de planos. Só visual por enquanto: o botão aponta para `#` até o checkout da central
@@ -10,11 +11,14 @@ import { PLAN_CATALOG, PlanCard, PlansHero, PlansTrustStrip, plansStrings as t, 
 export function PlansPage() {
   // Anual é o padrão (como no Pulso); a escolha sobrevive a reload na aba
   const [period, setPeriod] = usePersistedState<BillingPeriod>('plans.period', 'annual');
+  // `?feature=` vem do redirect de um recurso bloqueado pelo plano (ex.: Página de Ofertas)
+  const [searchParams] = useSearchParams();
   return (
     <Box>
       <PageHeader title={t.page.title} subtitle={t.page.subtitle} />
 
       <Box sx={{ maxWidth: 1120, mx: 'auto' }}>
+        <PlansFeatureNotice feature={searchParams.get('feature')} />
         <PlansHero period={period} onPeriodChange={setPeriod} />
 
         <Grid container spacing={2.5} alignItems="stretch" sx={{ mt: 2 }}>

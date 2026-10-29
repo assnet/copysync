@@ -3,9 +3,10 @@ import { rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
 import type { ResolvePublicLinkInput, ResolvePublicLinkOutput } from '../../application/use-cases/ResolvePublicLinkUseCase';
 import { verifyProbeToken } from '../../application/use-cases/admin/probeToken';
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
+import { PublicSlugKind } from '../../domain/enums/LinkRotationEnums';
 import { matchPublicHost, normalizeHost, type PublicHostMatch } from '../../domain/services/publicHost';
 import { isPlatformHostname, PLATFORM_HOSTNAMES } from '../../application/use-cases/admin/linkDomainRules';
-import { publicPageCsp } from '../templates/publicLinkLayout';
+import { publicPageCsp, publicPageCspForStyle } from '../templates/publicLinkLayout';
 import {
   allFullPage,
   botPreviewPage,
@@ -15,6 +16,21 @@ import {
   redirectPage,
   unavailablePage,
 } from '../templates/publicLinkPages';
+
+/**
+ * Página servida por subdomínio além do rodízio (ex.: página de ofertas). Tipo estrutural: o
+ * dono implementa sem este módulo importar a implementação. null = nome não é dele (→ 404).
+ */
+export interface PublicPageRenderer {
+  render(address: { domainId: string; slug: string }): Promise<{
+    status: number;
+    html: string;
+    /** `sha256-<base64>` do `<style>` da resposta (vai para a CSP). */
+    styleHash: string;
+    /** true = `Cache-Control: public, max-age=60`; senão `no-store`. */
+    cacheable?: boolean;
+  } | null>;
+}
 
 export interface PublicLinkDeps {
   /** Domínios ACTIVE em cache (TTL); null = não carregou → nada é interceptado. */
@@ -27,6 +43,8 @@ export interface PublicLinkDeps {
    * domínio pai (ex. `copysync.app`) for cadastrado como domínio de link. Sem isto a API cai.
    */
   platformHosts?: readonly string[];
+  /** Fallback quando o nome não é rodízio (`not_found`), por dono do namespace (design §4.2). */
+  pageRenderers?: Partial<Record<PublicSlugKind, PublicPageRenderer>>;
   now?: () => Date;
 }
 
@@ -53,6 +71,25 @@ function sendHtml(reply: FastifyReply, status: number, html: string): FastifyRep
     .header('Content-Security-Policy', publicPageCsp())
     .type('text/html; charset=utf-8')
     .send(html);
+}
+
+const STYLE_HASH = /^sha256-[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * Envio da página de outro dono: CSP com o hash do `<style>` desta resposta (cores mudam o hash)
+ * e cache curto só quando o renderer diz que pode (página com ofertas). Sem `noindex` no
+ * cacheável: é a página que o tenant divulga.
+ */
+function sendRenderedPage(reply: FastifyReply, page: NonNullable<Awaited<ReturnType<PublicPageRenderer['render']>>>): FastifyReply {
+  if (!STYLE_HASH.test(page.styleHash)) return sendHtml(reply, 503, unavailablePage());
+  const cacheable = page.cacheable === true && page.status === 200;
+  reply
+    .code(page.status)
+    .header('Cache-Control', cacheable ? 'public, max-age=60' : 'no-store')
+    .header('Referrer-Policy', 'no-referrer')
+    .header('Content-Security-Policy', publicPageCspForStyle(page.styleHash));
+  if (!cacheable) reply.header('X-Robots-Tag', 'noindex, nofollow');
+  return reply.type('text/html; charset=utf-8').send(page.html);
 }
 
 function sendEmpty(reply: FastifyReply, status: number): FastifyReply {
@@ -133,6 +170,12 @@ export function registerPublicLinkRoutes(app: FastifyInstance, deps: PublicLinkD
           userAgent: request.headers['user-agent'],
           now: now(),
         });
+        // Rodízio primeiro (clique sem custo extra); nome livre no rodízio → página de ofertas.
+        const storefront = deps.pageRenderers?.[PublicSlugKind.STOREFRONT];
+        if (out.kind === 'not_found' && state.match.kind === 'slug' && storefront) {
+          const page = await storefront.render({ domainId: state.match.domain.id, slug: state.match.slug });
+          if (page) return sendRenderedPage(reply, page);
+        }
         return presentResult(reply, out);
       } catch (err) {
         request.log.warn({ err: (err as Error)?.name }, 'public link not resolved');

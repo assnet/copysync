@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
 import { internalEventBus } from '../../../shared/events/InternalEventBus';
-import { applyLinkRotationPlanLimits } from '../../link-rotation/infrastructure/linkRotationPlanLimits';
+import { applyPlanSideEffects } from './applyPlanSideEffects';
 
 const log = logger.child({ module: 'ApplyBillingEventUseCase' });
 
@@ -129,8 +129,8 @@ export class ApplyBillingEventUseCase {
             });
           }
 
-          // Limites do rodízio de links no mesmo commit dos entitlements (LROT-14)
-          await applyLinkRotationPlanLimits(tx, tenant.id);
+          // Rodízio (LROT-14) e Página de Ofertas (STORE-02) no mesmo commit dos entitlements
+          await applyPlanSideEffects(tx, tenant.id);
         }
 
         // Reactivate if not active

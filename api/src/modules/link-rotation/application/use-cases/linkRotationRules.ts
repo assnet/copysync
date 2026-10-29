@@ -1,7 +1,6 @@
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
-import type { ILinkRotationRepository } from '../../domain/contracts/ILinkRotationRepository';
+import type { IPublicSlugRegistry } from '../../domain/contracts/IPublicSlugRegistry';
 import { LinkDomainStatus } from '../../domain/enums/LinkRotationEnums';
-import { MAX_SLUG_SUGGESTIONS, suggestSlugs, validateSlug } from '../../domain/services/slugRules';
 import {
   LinkDomainInvalidError,
   LinkSlugInvalidError,
@@ -10,10 +9,7 @@ import {
 } from '../../../../shared/errors/internal/LinkRotationErrors';
 import type { LinkDomainReader } from './linkRotationUseCaseDeps';
 
-/** Candidatas checadas de uma vez no banco; as primeiras livres viram sugestão. */
-const SUGGESTION_POOL = 30;
-
-type SlugRepo = Pick<ILinkRotationRepository, 'isSlugAvailable' | 'findUnavailableSlugs'>;
+type SlugReader = Pick<IPublicSlugRegistry, 'check' | 'suggest'>;
 
 /** Domínio existente e ACTIVE (rodízio novo ou troca de domínio). */
 export async function requireActiveDomain(domains: LinkDomainReader, domainId: string): Promise<LinkDomain> {
@@ -24,38 +20,41 @@ export async function requireActiveDomain(domains: LinkDomainReader, domainId: s
   return domain;
 }
 
-/** `LinkSlugTakenError` com até 5 nomes livres (uma consulta para todas as candidatas). */
-export async function slugTakenError(
-  rotations: SlugRepo,
-  domain: LinkDomain,
-  slug: string,
-  tenantId: string,
-): Promise<LinkSlugTakenError> {
-  const pool = suggestSlugs(slug, { extraReserved: domain.reservedNames, limit: SUGGESTION_POOL });
-  const taken = new Set(await rotations.findUnavailableSlugs(domain.id, pool, tenantId));
-  return new LinkSlugTakenError(pool.filter((s) => !taken.has(s)).slice(0, MAX_SLUG_SUGGESTIONS));
-}
-
-/** Normaliza, valida (formato/reservado) e confere disponibilidade. Devolve o slug normalizado. */
+/**
+ * Normaliza e confere o nome no namespace público (§4.1). Mapeamento do rodízio, sem contrato
+ * novo: `OWNED` → TAKEN (outro link do tenant já usa); `PREMIUM` → RESERVED (nome especial é da
+ * página); reserva de 30 dias de outro tenant → TAKEN (como antes). Devolve o slug normalizado.
+ */
 export async function requireAvailableSlug(
-  rotations: SlugRepo,
+  slugs: SlugReader,
   domain: LinkDomain,
   raw: string,
   tenantId: string,
 ): Promise<string> {
-  const result = validateSlug(raw, domain.reservedNames);
-  if (result.kind === 'invalid') throw new LinkSlugInvalidError();
-  if (result.kind === 'reserved') throw new LinkSlugReservedError(result.slug);
-  if (!(await rotations.isSlugAvailable(domain.id, result.slug, tenantId))) {
-    throw await slugTakenError(rotations, domain, result.slug, tenantId);
+  const result = await slugs.check(tenantId, domain.id, raw);
+  switch (result.status) {
+    case 'AVAILABLE':
+      return result.slug;
+    case 'INVALID':
+      throw new LinkSlugInvalidError();
+    case 'PREMIUM':
+      throw new LinkSlugReservedError(result.slug);
+    case 'RESERVED':
+      if (result.reservedReason === 'NAME') throw new LinkSlugReservedError(result.slug);
+      throw new LinkSlugTakenError(result.suggestions);
+    case 'TAKEN':
+    case 'OWNED':
+      throw new LinkSlugTakenError(result.suggestions);
   }
-  return result.slug;
 }
 
-/** Corrida no unique (domínio, slug): repositório lança sem sugestões; aqui elas entram. */
+/**
+ * Corrida no unique (domínio, slug): o tx foi desfeito e o erro chega sem sugestões; aqui, já
+ * fora da transação, elas entram. `run` deve envolver o `runInSlugTransaction` inteiro.
+ */
 export async function withSlugSuggestions<T>(
   run: () => Promise<T>,
-  rotations: SlugRepo,
+  slugs: SlugReader,
   domain: LinkDomain,
   slug: string,
   tenantId: string,
@@ -63,7 +62,7 @@ export async function withSlugSuggestions<T>(
   try {
     return await run();
   } catch (err) {
-    if (err instanceof LinkSlugTakenError) throw await slugTakenError(rotations, domain, slug, tenantId);
+    if (err instanceof LinkSlugTakenError) throw new LinkSlugTakenError(await slugs.suggest(tenantId, domain.id, slug));
     throw err;
   }
 }

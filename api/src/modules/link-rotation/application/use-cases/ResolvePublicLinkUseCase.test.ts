@@ -158,6 +158,11 @@ describe('ResolvePublicLinkUseCase', () => {
     expect(clicks.items).toHaveLength(0);
   });
 
+  it('sem salt e sem rodízio no nome → not_found (o hook tenta a página de ofertas)', async () => {
+    deps.clickSalt = null;
+    expect(await resolve()).toEqual({ kind: 'not_found' });
+  });
+
   it('pausado (manual ou por plano) → paused', async () => {
     const r = seedRotation({ status: LinkRotationStatus.PAUSED });
     repo.seedGroup(r.id);

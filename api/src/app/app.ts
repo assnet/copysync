@@ -16,6 +16,8 @@ import { serverTimeHook, storageDispositionHook } from './onSendHooks';
 import { registerRoutes } from './routes';
 import { registerPublicLinkRoutes } from '../modules/link-rotation/presentation/routes/publicLink.routes';
 import { createPublicLinkDeps } from '../modules/link-rotation/infrastructure/publicLinkComposition';
+import { PublicSlugKind } from '../modules/link-rotation/domain/enums/LinkRotationEnums';
+import { storefrontContainer } from '../modules/storefront/infrastructure/storefrontContainer';
 import { affiliateCredentialItemSchema } from '../modules/integrations/presentation/schemas/affiliateCredential.schema';
 
 function normalizeOrigin(origin: string): string {
@@ -306,8 +308,11 @@ export async function buildApp() {
 
   // ── Routes ────────────────────────────────────────────────────────────────
   // Página pública do rodízio de links: hook por Host antes das rotas da API (host público
-  // só vê `/` e `/.well-known/link-rotation`). Ver publicLink.routes.ts.
-  registerPublicLinkRoutes(app, createPublicLinkDeps());
+  // só vê `/` e `/.well-known/link-rotation`). Ver publicLink.routes.ts. Nome livre no rodízio
+  // cai na página de ofertas (mesmo namespace `<slug>.<domínio>`).
+  registerPublicLinkRoutes(app, createPublicLinkDeps({
+    pageRenderers: { [PublicSlugKind.STOREFRONT]: storefrontContainer.publicRenderer },
+  }));
   await registerRoutes(app);
 
   return app;
