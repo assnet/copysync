@@ -6,6 +6,7 @@ import type {
 } from '../../domain/contracts/ILinkDomainRepository';
 import type { LinkDomain } from '../../domain/entities/LinkDomain';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { LinkDomainInUseError } from '../../../../shared/errors/internal/LinkRotationErrors';
 import { PrismaLinkDomainMapper } from '../mappers/PrismaLinkDomainMapper';
 
 /** Hostname sempre minúsculo e sem ponto final (formato validado no use case). */
@@ -68,8 +69,14 @@ export class PrismaLinkDomainRepository implements ILinkDomainRepository {
 
   /** onDelete: Restrict nas rotações; o use case checa `countRotations` antes (LINK_DOMAIN_IN_USE). */
   async delete(id: string): Promise<void> {
-    const { count } = await this.prisma.linkDomain.deleteMany({ where: { id } });
-    if (count === 0) throw new NotFoundError('LinkDomain', id);
+    try {
+      const { count } = await this.prisma.linkDomain.deleteMany({ where: { id } });
+      if (count === 0) throw new NotFoundError('LinkDomain', id);
+    } catch (err) {
+      // Rotação criada entre a contagem do use case e o delete: FK Restrict (P2003) vira 409.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') throw new LinkDomainInUseError(id);
+      throw err;
+    }
   }
 
   async countRotations(id: string): Promise<number> {

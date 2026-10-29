@@ -59,3 +59,17 @@ export class LinkInviteUrlInvalidError extends AppError {
     super('LINK_INVITE_URL_INVALID', reason, 400);
   }
 }
+
+/** Hostname já cadastrado como domínio de links. */
+export class LinkDomainTakenError extends AppError {
+  constructor(hostname: string) {
+    super('LINK_DOMAIN_TAKEN', 'Link domain already registered', 409, { hostname });
+  }
+}
+
+/** Segredos do rodízio ausentes neste ambiente (`isLinkRotationConfigured()` false): recurso desligado. */
+export class LinkRotationNotConfiguredError extends AppError {
+  constructor() {
+    super('LINK_ROTATION_NOT_CONFIGURED', 'Link rotation is not configured', 503);
+  }
+}

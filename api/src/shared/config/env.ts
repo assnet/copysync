@@ -205,7 +205,43 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().optional(),
   ),
+
+  // ── Rodízio de links (.specs/features/link-rotation/design.md §4.5) ──────────
+  // Segredos com ≥ 32 caracteres. Em produção NÃO derrubam o boot quando ausentes/curtos
+  // (a Render quebraria até alguém criar a variável): o recurso fica desligado
+  // (`isLinkRotationConfigured()` false) e o boot loga aviso. Fora de produção, valor
+  // sintético fixo. Ver `resolveLinkRotationSecret`.
+  LINK_CLICK_SALT: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  LINK_PROBE_SECRET: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  // Job de contagem de membros dos grupos. Desligado por padrão: `.env` aponta para produção.
+  // `true` só na Render ou com banco local.
+  LINK_ROTATION_MEMBER_SYNC_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
 });
+
+export const LINK_ROTATION_SECRET_MIN_LENGTH = 32;
+
+/**
+ * Segredo do rodízio de links já resolvido. Produção: só o valor configurado com tamanho
+ * mínimo, senão `undefined` (recurso desligado). Dev/test: o valor válido ou `devDefault`.
+ */
+export function resolveLinkRotationSecret(
+  value: string | undefined,
+  nodeEnv: 'development' | 'production' | 'test',
+  devDefault: string,
+): string | undefined {
+  const valid = value && value.length >= LINK_ROTATION_SECRET_MIN_LENGTH ? value : undefined;
+  if (nodeEnv === 'production') return valid;
+  return valid ?? devDefault;
+}
 
 /**
  * Teto de ids de eco guardados por sessão — derivado, nunca configurado à parte.
@@ -241,7 +277,14 @@ const envWithDerivedSchema = envSchema.transform((e) => ({
     .map((s: string) => s.trim())
     .filter(Boolean),
   HUB_EVENTS_CONFIGURED: !!(e.HUB_EVENTS_URL && e.HUB_EVENTS_APPLICATION_KEY && e.HUB_EVENTS_SECRET),
+  ...linkRotationSecrets(e),
 }));
+
+function linkRotationSecrets(e: z.infer<typeof envSchema>) {
+  const LINK_CLICK_SALT = resolveLinkRotationSecret(e.LINK_CLICK_SALT, e.NODE_ENV, 'dev-only-link-click-salt-not-for-production');
+  const LINK_PROBE_SECRET = resolveLinkRotationSecret(e.LINK_PROBE_SECRET, e.NODE_ENV, 'dev-only-link-probe-secret-not-for-production');
+  return { LINK_CLICK_SALT, LINK_PROBE_SECRET, LINK_ROTATION_CONFIGURED: !!(LINK_CLICK_SALT && LINK_PROBE_SECRET) };
+}
 
 export type Env = z.infer<typeof envWithDerivedSchema>;
 
@@ -264,9 +307,19 @@ function loadEnv(): Env {
     if (missing.length > 0) {
       console.warn(`[env] WARN: production without ${missing.join(', ')} — CORS will reject all origins until configured`);
     }
+    if (!data.LINK_ROTATION_CONFIGURED) {
+      console.warn(
+        `[env] WARN: LINK_CLICK_SALT/LINK_PROBE_SECRET missing or shorter than ${LINK_ROTATION_SECRET_MIN_LENGTH} chars — link rotation disabled`,
+      );
+    }
   }
 
   return data;
 }
 
 export const env = loadEnv();
+
+/** Segredos do rodízio de links presentes: rotas públicas/admin do recurso só operam com true. */
+export function isLinkRotationConfigured(): boolean {
+  return env.LINK_ROTATION_CONFIGURED;
+}
