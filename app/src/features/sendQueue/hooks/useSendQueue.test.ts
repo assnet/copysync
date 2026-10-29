@@ -7,7 +7,7 @@ vi.mock('@/services/sendQueue.service', () => ({ sendQueueService: { get: (id?: 
 
 import { useSendQueue } from './useSendQueue';
 
-const resp = (name: string): SendQueueResponse => ({ serverTime: '2026-10-28T12:00:00.000Z', sessions: [{
+const resp = (name: string): SendQueueResponse => ({ serverTime: '2026-10-28T12:00:00.000Z', sendingPausedAt: null, sessions: [{
   sessionId: name, name, status: 'CONNECTED', running: null, waiting: [], recent: [],
   counts: { waiting: 0, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 },
 }] });

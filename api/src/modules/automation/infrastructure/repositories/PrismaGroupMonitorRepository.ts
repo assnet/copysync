@@ -12,7 +12,7 @@ type ConfigRow = GroupMonitorSettings & { id: string; tenantId: string; sessionI
 function toConfig(r: ConfigRow): GroupMonitorConfig {
   return {
     id: r.id, tenantId: r.tenantId, sessionId: r.sessionId, enabled: r.enabled,
-    windowStartMinute: r.windowStartMinute, windowEndMinute: r.windowEndMinute,
+    windowStartMinute: r.windowStartMinute, windowEndMinute: r.windowEndMinute, captureOutsideWindow: r.captureOutsideWindow,
     intervalMinSeconds: r.intervalMinSeconds, intervalMaxSeconds: r.intervalMaxSeconds,
     startDelaySeconds: r.startDelaySeconds, maxOfferAgeMinutes: r.maxOfferAgeMinutes, couponMaxAgeMinutes: r.couponMaxAgeMinutes,
     mentionAll: r.mentionAll, simulateTyping: r.simulateTyping, typingSeconds: r.typingSeconds,
@@ -106,8 +106,11 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
   async findActiveMonitoredGroup(tenantId: string, sessionId: string, groupJid: string): Promise<ActiveMonitoredGroup | null> {
     const r = await this.prisma.monitoredGroup.findFirst({
       where: { sessionId, groupJid, tenantId, config: { enabled: true } },
-      select: { id: true, tenantId: true, configId: true, keywords: true },
+      select: {
+        id: true, tenantId: true, configId: true, keywords: true,
+        config: { select: { windowStartMinute: true, windowEndMinute: true, captureOutsideWindow: true } },
+      },
     });
-    return r;
+    return r && { id: r.id, tenantId: r.tenantId, configId: r.configId, keywords: r.keywords, ...r.config };
   }
 }

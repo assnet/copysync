@@ -20,10 +20,11 @@ export interface MonitorSettingsDraft {
   textMode: MonitorTextMode;
   audience: OfferAudience;
   enrichLinkOnly: boolean;
+  captureOutsideWindow: boolean;
 }
 
 /** Mude ao alterar `MonitorSettingsDraft`: rascunho salvo em outro formato é descartado. */
-export const SETTINGS_DRAFT_VERSION = 3;
+export const SETTINGS_DRAFT_VERSION = 4;
 
 export const LIMITS = {
   intervalMinutes: { min: 1, max: 60 },
@@ -59,6 +60,7 @@ export function settingsToDraft(s: GroupMonitorSettings): MonitorSettingsDraft {
     textMode: s.textMode,
     audience: s.audience,
     enrichLinkOnly: s.enrichLinkOnly,
+    captureOutsideWindow: s.captureOutsideWindow,
   };
 }
 
@@ -78,6 +80,7 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
     // Público só faz sentido com IA; fora dela volta ao padrão para não salvar escolha invisível
     audience: d.textMode === 'AI' ? d.audience : 'STANDARD',
     enrichLinkOnly: d.enrichLinkOnly,
+    captureOutsideWindow: d.captureOutsideWindow,
   };
 }
 

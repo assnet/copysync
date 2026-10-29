@@ -83,3 +83,14 @@ describe('EnqueueOfferUseCase — sessão cruzada', () => {
     ]);
   });
 });
+
+describe('EnqueueOfferUseCase — encaixe na janela', () => {
+  it('fitSlot é aplicado em cadeia, preservando o espaçamento (2º envio parte do 1º já encaixado)', async () => {
+    const s = setup();
+    const open = new Date(NOW.getTime() + 3_600_000); // "janela abre" daqui a 1 h
+    const fit = (at: Date) => (at.getTime() < open.getTime() ? open : at);
+    const out = await s.uc.execute(input({ fitSlot: fit, expiresAt: new Date(NOW.getTime() + 7_200_000) }));
+    expect(out).toMatchObject({ kind: 'queued', firstSendAt: open });
+    expect(s.dispatches.items.map((d) => d.notBefore.getTime() - open.getTime())).toEqual([0, 90_000]);
+  });
+});

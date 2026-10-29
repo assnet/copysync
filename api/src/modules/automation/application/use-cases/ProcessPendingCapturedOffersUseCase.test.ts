@@ -47,6 +47,18 @@ describe('RegisterCapturedMessageUseCase', () => {
     expect(s.captured.items).toHaveLength(0);
   });
 
+  it('fora da janela: captura por padrão (acumula a fila); com "capturar fora do horário" desligado, não captura', async () => {
+    // NOW = 12:00 em São Paulo; janela 14:00–20:00 deixa o agora de fora
+    const window = { windowStartMinute: 840, windowEndMinute: 1200 };
+    const a = await setup({ settings: window });
+    expect(await a.msg()).toBe('captured');
+    const b = await setup({ settings: { ...window, captureOutsideWindow: false } });
+    expect(await b.msg()).toBe('outside_window');
+    expect(b.captured.items).toHaveLength(0);
+    const c = await setup({ settings: { ...window, captureOutsideWindow: false, windowStartMinute: 600 } });
+    expect(await c.msg()).toBe('captured');
+  });
+
   it('monitoramento desligado não captura', async () => {
     const s = await setup({ settings: { enabled: false } });
     expect(await s.msg()).toBe('ignored');
@@ -293,5 +305,17 @@ describe('ProcessPendingCapturedOffersUseCase — credencial recusada', () => {
     await s.process.execute();
     expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'CREDENTIAL_REJECTED', marketplace: 'SHOPEE' });
     expect(s.queue.inputs).toHaveLength(0);
+  });
+});
+
+describe('ProcessPendingCapturedOffersUseCase — janela em todos os envios', () => {
+  it('passa o encaixe na janela para a fila: horário fora da janela vai para o próximo início', async () => {
+    const s = await setup({ settings: { windowStartMinute: 840, windowEndMinute: 1200, maxOfferAgeMinutes: 1440, couponMaxAgeMinutes: 1440 } });
+    await s.msg();
+    await s.process.execute();
+    const fit = s.queue.inputs[0]!.fitSlot!;
+    // 19:59 em São Paulo fica; 20:01 vai para 14:00 do dia seguinte
+    expect(fit(new Date('2026-10-28T22:59:00.000Z'))).toEqual(new Date('2026-10-28T22:59:00.000Z'));
+    expect(fit(new Date('2026-10-28T23:01:00.000Z'))).toEqual(new Date('2026-10-29T17:00:00.000Z'));
   });
 });

@@ -18,6 +18,7 @@ export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   enabled: false,
   windowStartMinute: 6 * 60,
   windowEndMinute: 18 * 60,
+  captureOutsideWindow: true,
   intervalMinSeconds: 15 * 60,
   intervalMaxSeconds: 40 * 60,
   startDelaySeconds: 0,

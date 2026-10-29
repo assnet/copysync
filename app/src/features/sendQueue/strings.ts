@@ -78,6 +78,17 @@ export const sendQueueStrings = {
     rowScope: (n: number) => (n === 1 ? 'esta oferta · 1 grupo' : `esta oferta · ${n} grupos`),
   },
   controlError: 'Não foi possível alterar a oferta. Atualize a fila e tente de novo.',
+  /** Pausa global: todos os envios da conta, de todas as sessões e origens. */
+  global: {
+    pauseAll: 'Pausar todos os envios',
+    resumeAll: 'Retomar envios',
+    pauseAllTooltip: 'Segura TODOS os envios da conta, de todas as sessões e origens. A captura do monitoramento continua acumulando a fila. Dá para retomar a qualquer momento.',
+    resumeAllTooltip: 'A fila volta a sair na ordem, com a cadência normal. O que venceu durante a pausa é ignorado.',
+    pausedSince: (time: string) => `Envios pausados desde ${time}. Nada sai até você retomar; o monitoramento continua capturando e colocando na fila.`,
+    pausedChip: 'Pausado (conta)',
+    pausedChipTooltip: 'Todos os envios da conta estão pausados: este sai quando você retomar.',
+    error: 'Não foi possível alterar a pausa dos envios. Atualize a fila e tente de novo.',
+  },
   stopConfirmTitle: 'Parar esta oferta?',
   stopConfirmDescription: 'Os envios que ainda não saíram serão cancelados em todos os grupos desta oferta. Os que já saíram ficam como estão. Não dá para desfazer.',
   stopConfirm: 'Parar oferta',

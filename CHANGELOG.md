@@ -9,6 +9,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — campaigns/automation (api 0.44.0 · app 0.50.0) — janela em todo envio, pausa global e captura fora do horário
+
+Monitoramento com janela 06:00–20:00 enviou das 17:00 às 23:00: a janela só ancorava o início de cada oferta e 36 capturas × 11 grupos formaram 6 h de fila. Docs: `docs/fila-de-envio.md` §2.5–2.6, `docs/monitoramento-grupos.md` §2.2.
+
+#### Backend
+
+- **`PrismaOfferDispatchRepository.ts`** (`claimDue`) — oferta do monitoramento só sai dentro da janela da sessão (minuto do dia em São Paulo em SQL, janela noturna inclusive), seja quando for agendada; tenant com pausa global não sai. Filtro no candidato: captura fora da janela não prende o gerador. `openSessionIds`. Testado em Postgres real (`*.int.test.ts`).
+- **`EnqueueOfferUseCase.ts`** — `fitSlot` encaixa cada horário em cadeia, preservando o espaçamento; o monitoramento passa a janela (fila mostra horários reais).
+- **`SendQueueControlUseCases.ts`**, **`ISendingPauseStore.ts`**, **`PrismaSendingPauseStore.ts`**, migration `20261029010000_send_window_and_global_pause` — `tenants.sendingPausedAt`; `POST /campaigns/send-queue/pause|resume`; retomar reespalha a fila de cada sessão a partir de agora (`respreadLane`, sem rajada). `GET` devolve `sendingPausedAt`.
+- **`GroupMonitorConfig.captureOutsideWindow`** (padrão `true`) — desligado, mensagem fora da janela não é capturada (`RegisterCapturedMessageUseCase` → `outside_window`). `findActiveMonitoredGroup` devolve a janela.
+
+#### Frontend
+
+- **`SendQueuePanel.tsx`**, **`sendQueue.service.ts`** — botão "Pausar todos os envios / Retomar envios" no cabeçalho da fila (gerador e monitoramento), faixa de aviso enquanto pausado, itens como "Pausado (conta)".
+- **`MonitoringSettingsForm.tsx`**, **`settingsDraft.ts`** — toggle "Capturar fora do horário" no card do horário; ajuda do horário diz que a janela vale para todos os envios.
+
 ### Added — automation/integrations (api 0.43.0) — aviso de credencial de afiliado recusada
 
 Spec: `.specs/features/affiliate-credential-alerts/`. Sessão ML expirada (ou chave Shopee recusada) virava "Não foi

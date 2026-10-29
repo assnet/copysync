@@ -137,6 +137,8 @@ model Tenant {
   planSlug            String?
   lastBillingEventSeq Int?
   suspendedAt         DateTime?
+  /// Pausa global de envios (fila de envio): nada sai enquanto não for null; captura continua.
+  sendingPausedAt     DateTime?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
@@ -1057,6 +1059,8 @@ model GroupMonitorConfig {
   /// 0..1440; start=0 e end=1440 = sem restrição; end < start = cruza a meia-noite. Padrão 06:00–18:00.
   windowStartMinute   Int      @default(360)
   windowEndMinute     Int      @default(1080)
+  /// Fora da janela: true = captura continua e acumula a fila (sai quando a janela abrir); false = não captura.
+  captureOutsideWindow Boolean @default(true)
   /// Padrão 15–40 min: repostagem de oferta capturada é mais espaçada que o gerador (2–5 min).
   intervalMinSeconds  Int      @default(900)
   intervalMaxSeconds  Int      @default(2400)

@@ -99,6 +99,25 @@ Intervalo: o da configuração do gerador (mesma simplificação da retomada).
 FIFO por `notBefore`. Oferta manual não fura o que já está na fila. Se o produto pedir:
 `Offer.priority` e `ORDER BY priority DESC, notBefore` no claim.
 
+### 2.5 Pausa global de envios (api 0.44.0)
+
+`tenants.sendingPausedAt`: enquanto não for null, o claim ignora todos os envios do tenant, de
+qualquer sessão ou origem (gerador e monitoramento). Captura e enfileiramento continuam normalmente;
+o que vencer durante a pausa sai `SKIPPED/OFFER_EXPIRED` no envio. Retomar
+(`ResumeAllSendsUseCase`) zera o campo e reespalha a fila de cada sessão a partir de agora
+(`respreadLane`, intervalo da configuração do gerador): os vencidos saem na ordem, cada um pelo
+menos o intervalo mínimo depois do anterior (buraco maior que o máximo vira uma folga); horário
+ainda futuro fica. A cadência real continua garantida pelo claim. Pausar é idempotente (mantém o instante original).
+Rotas: `POST /campaigns/send-queue/pause` e `/resume`; o `GET` devolve `sendingPausedAt`. Painel:
+botão no cabeçalho da fila (gerador e monitoramento) e faixa de aviso enquanto pausado.
+
+### 2.6 Janela de operação no claim
+
+Oferta de origem `MONITORING` só é reivindicada dentro da janela da sessão
+(`group_monitor_configs`), calculada em SQL em `America/Sao_Paulo` a partir do `now` do tick,
+inclusive janela noturna. O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
+a janela não prende o gerador atrás dela. Ver `docs/monitoramento-grupos.md` §2.2.
+
 ## 3. Leitura: `GET /campaigns/send-queue`
 
 ```json

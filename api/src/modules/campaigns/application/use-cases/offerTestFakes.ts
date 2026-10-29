@@ -118,6 +118,10 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
       .reduce<Date | null>((m, d) => (!m || d.claimedAt! > m ? d.claimedAt! : m), null);
     return { open, lastClaimedAt: last };
   }
+  async openSessionIds(tenantId: string) {
+    const ids = this.items.filter((d) => d.tenantId === tenantId && d.status === 'QUEUED' && d.sessionId && this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING').map((d) => d.sessionId!);
+    return [...new Set(ids)];
+  }
   async rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]) {
     let n = 0;
     for (const s of slots) { const d = this.items.find((x) => x.id === s.id && x.tenantId === tenantId && x.status === 'QUEUED'); if (d) { d.notBefore = s.notBefore; n++; } }

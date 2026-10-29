@@ -9,6 +9,8 @@ export interface GroupMonitorSettings {
   enabled: boolean;
   windowStartMinute: number;
   windowEndMinute: number;
+  /** Fora da janela: true = captura e acumula a fila (sai quando a janela abrir); false = não captura. */
+  captureOutsideWindow: boolean;
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   startDelaySeconds: number;

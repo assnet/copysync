@@ -15,6 +15,7 @@ const settingsProperties = {
   enabled: { type: 'boolean' },
   windowStartMinute: int(0, MINUTES_PER_DAY),
   windowEndMinute: int(0, MINUTES_PER_DAY),
+  captureOutsideWindow: { type: 'boolean' },
   intervalMinSeconds: int(MONITOR_LIMITS.intervalSeconds.min, MONITOR_LIMITS.intervalSeconds.max),
   intervalMaxSeconds: int(MONITOR_LIMITS.intervalSeconds.min, MONITOR_LIMITS.intervalSeconds.max),
   startDelaySeconds: int(MONITOR_LIMITS.startDelaySeconds.min, MONITOR_LIMITS.startDelaySeconds.max),

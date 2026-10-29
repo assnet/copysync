@@ -167,6 +167,8 @@ export class ProcessPendingCapturedOffersUseCase {
       intervalMaxSeconds: config.intervalMaxSeconds,
       // Queda entre criar a oferta e marcar QUEUED: o reprocessamento reaproveita a oferta
       sourceKey: `captured:${c.id}`,
+      // Todos os envios dentro da janela (o fim empurra para o próximo início); o claim garante no envio
+      fitSlot: (at) => resolveStartWithinWindow(at, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute }),
     });
     if (res.kind === 'expired') return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: res.firstSendAt } };
     return { status: 'QUEUED', data: { ...base, startsAt: res.firstSendAt, offerId: res.offerId } };

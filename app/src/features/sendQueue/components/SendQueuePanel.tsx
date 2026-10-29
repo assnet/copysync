@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
-  Alert, Avatar, Box, Button, Chip, IconButton, LinearProgress, List, ListItem, ListItemAvatar,
+  Alert, Avatar, Box, Button, Chip, CircularProgress, IconButton, LinearProgress, List, ListItem, ListItemAvatar,
   Skeleton, Stack, Tab, Tabs, Tooltip, Typography, type ChipProps,
 } from '@mui/material';
-import { ExternalLink, ListOrdered, RefreshCw, Users } from 'lucide-react';
+import { ExternalLink, ListOrdered, Pause, Play, RefreshCw, Users } from 'lucide-react';
 import { AppIcon, CooldownBar, EmptyState, SectionCard } from '@/components';
 import { serverNow, serverToLocal } from '@/services/serverClock';
 import { Blurred, useBlur, type PrivacyFlag } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { offerStrings } from '@/features/offers/strings';
+import { sendQueueService } from '@/services/sendQueue.service';
 import type { OfferDispatchStatus, SendQueueItem, SendQueueSession } from '@/types/api.types';
 import { useSendQueue } from '../hooks/useSendQueue';
 import { laneCooldown } from '../utils/laneCooldown';
@@ -60,19 +61,46 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
   const { data, loading, failed, refresh } = useSendQueue(sessionId);
   const sessions = (data?.sessions ?? []).filter((s) => s.running || s.waiting.length > 0 || s.recent.length > 0);
   const control = useOfferControl(refresh);
+  const pausedAt = data?.sendingPausedAt ?? null;
+  const globalPause = useGlobalPause(refresh);
 
   return (
     <SectionCard
       title={t.title}
       subtitle={t.subtitle}
       action={
-        <Tooltip title={t.refresh} arrow>
-          <IconButton size="small" aria-label={t.refresh} onClick={() => void refresh()}>
-            <AppIcon icon={RefreshCw} size="sm" />
-          </IconButton>
-        </Tooltip>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          {data && (
+            <Tooltip title={pausedAt ? t.global.resumeAllTooltip : t.global.pauseAllTooltip} arrow describeChild>
+              <span>
+                <Button
+                  size="small"
+                  variant={pausedAt ? 'contained' : 'outlined'}
+                  color={pausedAt ? 'warning' : 'inherit'}
+                  disabled={globalPause.busy}
+                  onClick={() => globalPause.toggle(pausedAt !== null)}
+                  startIcon={globalPause.busy ? <CircularProgress size={14} color="inherit" /> : <AppIcon icon={pausedAt ? Play : Pause} size="sm" />}
+                  sx={{ whiteSpace: 'nowrap' }}
+                >
+                  {pausedAt ? t.global.resumeAll : t.global.pauseAll}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+          <Tooltip title={t.refresh} arrow>
+            <IconButton size="small" aria-label={t.refresh} onClick={() => void refresh()}>
+              <AppIcon icon={RefreshCw} size="sm" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       }
     >
+      {pausedAt && (
+        <Alert severity="warning" role="status" sx={{ mb: 2 }}>{t.global.pausedSince(timeOf(pausedAt))}</Alert>
+      )}
+      {globalPause.error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={globalPause.dismissError}>{t.global.error}</Alert>
+      )}
       {loading && !data ? (
         <Stack spacing={1}>
           <Skeleton variant="rounded" height={48} />
@@ -87,7 +115,7 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
       ) : (
         <Stack spacing={2}>
           {sessions.map((s) => (
-            <LanePanel key={s.sessionId ?? 'none'} session={s} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} control={control} />
+            <LanePanel key={s.sessionId ?? 'none'} session={s} privacy={privacy} onOpenOffer={onOpenOffer} currentOfferId={currentOfferId} control={control} accountPaused={pausedAt !== null} />
           ))}
         </Stack>
       )}
@@ -96,15 +124,35 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
   );
 }
 
+/**
+ * Pausa global da conta: um clique segura todos os envios (todas as sessões e origens); outro
+ * retoma. Reversível, por isso sem confirmação. Depois de cada chamada recarrega a fila.
+ */
+function useGlobalPause(refresh: () => Promise<void>) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const toggle = useCallback((paused: boolean) => {
+    setBusy(true);
+    setError(false);
+    (paused ? sendQueueService.resumeAll() : sendQueueService.pauseAll())
+      .catch(() => setError(true))
+      .then(() => refresh())
+      .finally(() => setBusy(false));
+  }, [refresh]);
+  return { busy, error, toggle, dismissError: () => setError(false) };
+}
+
 interface LaneProps {
   session: SendQueueSession;
   privacy: SendQueuePrivacyFlags;
   onOpenOffer?: (offerId: string) => void;
   currentOfferId: string | null;
   control: OfferControl;
+  /** Pausa global da conta: sem contagem de "Próximo" e itens aguardando como "Pausado (conta)". */
+  accountPaused: boolean;
 }
 
-function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control }: LaneProps) {
+function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control, accountPaused }: LaneProps) {
   const laneKey = session.sessionId ?? 'none';
   // Uma chave por sessão: duas faixas gravando o mesmo mapa se sobrescreviam
   const [tab, setTab] = usePersistedState<'waiting' | 'done'>(`sendQueue.tab.${laneKey}`, 'waiting');
@@ -126,7 +174,7 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control }: L
   const controlRow = new Map<string, string>();
   for (const i of live) if (!controlRow.has(i.offerId)) controlRow.set(i.offerId, i.dispatchId);
   const rowProps = (item: SendQueueItem) => ({
-    item, privacy, onOpenOffer, currentOfferId, control,
+    item, privacy, onOpenOffer, currentOfferId, control, accountPaused,
     controls: controlRow.get(item.offerId) === item.dispatchId,
     waitingCount: waitingByOffer.get(item.offerId) ?? 0,
   });
@@ -167,10 +215,10 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control }: L
         </Box>
       )}
 
-      {cooldown && next && !session.running && !offline && overdue && (
+      {cooldown && next && !session.running && !offline && !accountPaused && overdue && (
         <Typography variant="body2" color="warning.main" sx={{ mb: 1.5 }}>{t.overdue}</Typography>
       )}
-      {cooldown && next && !session.running && !offline && !overdue && (
+      {cooldown && next && !session.running && !offline && !accountPaused && !overdue && (
         <Box sx={{ mb: 1.5 }}>
           <LaneCooldownBar
             key={next.dispatchId}
@@ -243,14 +291,17 @@ interface RowProps {
   /** Esta linha carrega os botões da oferta. */
   controls: boolean;
   waitingCount: number;
+  accountPaused: boolean;
 }
 
-function QueueRow({ item, privacy, onOpenOffer, currentOfferId, control, controls, waitingCount }: RowProps) {
+function QueueRow({ item, privacy, onOpenOffer, currentOfferId, control, controls, waitingCount, accountPaused }: RowProps) {
   const blurNames = useBlur(privacy.groupNames);
   const blurAvatars = useBlur(privacy.groupAvatars);
   const blurText = useBlur(privacy.productText);
   const done = item.status !== 'QUEUED' && item.status !== 'SENDING';
   const pausedRow = item.status === 'QUEUED' && item.offerStatus === 'PAUSED';
+  // Pausa da conta: o item aguardando aparece pausado mesmo com a oferta em SENDING
+  const accountPausedRow = item.status === 'QUEUED' && !pausedRow && accountPaused;
   const failure = item.status === 'FAILED' || item.status === 'SKIPPED'
     ? (item.failureReason && offerStrings.progress.failureReasons[item.failureReason])
       || (item.status === 'SKIPPED' ? offerStrings.progress.failureReasons.skipped : offerStrings.progress.failureReasons.generic)
@@ -308,12 +359,17 @@ function QueueRow({ item, privacy, onOpenOffer, currentOfferId, control, control
               <Chip size="small" variant="outlined" color="warning" label={t.paused} sx={{ height: 20, fontSize: 11 }} />
             </Tooltip>
           )}
-          {item.waitingSession && !pausedRow && (
+          {accountPausedRow && (
+            <Tooltip title={t.global.pausedChipTooltip} arrow>
+              <Chip size="small" variant="outlined" color="warning" label={t.global.pausedChip} sx={{ height: 20, fontSize: 11 }} />
+            </Tooltip>
+          )}
+          {item.waitingSession && !pausedRow && !accountPausedRow && (
             <Tooltip title={t.waitingSessionTooltip} arrow>
               <Chip size="small" variant="outlined" color="warning" label={t.waitingSession} sx={{ height: 20, fontSize: 11 }} />
             </Tooltip>
           )}
-          {!pausedRow && (
+          {!pausedRow && !accountPausedRow && (
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               {done ? t.finishedAt(timeOf(item.updatedAt)) : t.at(timeOf(item.notBefore))}
             </Typography>

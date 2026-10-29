@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
   IOfferDispatchRepository,
   NewOfferDispatchItem,
@@ -11,6 +11,8 @@ import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '.
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
 export const LANE_GAP_TOLERANCE_SECONDS = 5;
+/** Fuso da janela de operação do monitoramento (mesmo de `startOfDayInZone`/`operatingWindow`). */
+const WINDOW_TIME_ZONE = 'America/Sao_Paulo';
 /** Envio em SEND_TIMEOUT segura a faixa ao menos isso: timeout (60 s) + digitação (até 30 s), com folga. */
 export const LANE_TIMEOUT_HOLD_SECONDS = 120;
 
@@ -70,9 +72,17 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * DISTINCT ON não combina com FOR UPDATE: claims concorrentes são serializados pelo advisory
    * lock da transação, o que também impede dois workers de abrirem a mesma faixa.
    * `gen_random_uuid()` (nativo no PG ≥ 13) é volátil: um token por linha.
+   *
+   * Dois filtros no candidato (docs/fila-de-envio.md): tenant com pausa global não sai; oferta do
+   * monitoramento só sai dentro da janela de operação da sessão (minuto do dia em São Paulo,
+   * inclusive janela que cruza a meia-noite). Filtrar no candidato, e não na cabeça, deixa a
+   * cabeça da faixa ser o próximo elegível (o gerador não fica preso atrás de uma captura fora da janela).
    */
   async claimDue(now: Date, limit: number): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
+    // `now` chega como timestamp sem fuso em UTC (padrão das colunas); vira minuto do dia no fuso
+    const zoneMinute = Prisma.sql`(EXTRACT(HOUR FROM ((${now}::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${WINDOW_TIME_ZONE}))::int * 60
+      + EXTRACT(MINUTE FROM ((${now}::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${WINDOW_TIME_ZONE}))::int)`;
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('offer_dispatch_claim'))`;
       const rows = await tx.$queryRaw<OfferDispatchRawRow[]>`
@@ -87,6 +97,21 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                  FROM "offer_dispatches" d
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
                   AND d."offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
+                  -- Pausa global do tenant
+                  AND d."tenantId" NOT IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NOT NULL)
+                  -- Oferta do monitoramento fora da janela de operação da sessão espera a janela abrir
+                  AND NOT EXISTS (
+                    SELECT 1 FROM "offers" mo
+                      JOIN "group_monitor_configs" g ON g."sessionId" = d."sessionId" AND g."tenantId" = d."tenantId"
+                     WHERE mo."id" = d."offerId" AND mo."origin" = 'MONITORING'::"OfferOrigin"
+                       AND NOT (
+                         (g."windowStartMinute" = 0 AND g."windowEndMinute" = 1440)
+                         OR ((g."windowStartMinute" % 1440) <= g."windowEndMinute"
+                             AND ${zoneMinute} >= (g."windowStartMinute" % 1440) AND ${zoneMinute} < g."windowEndMinute")
+                         OR ((g."windowStartMinute" % 1440) > g."windowEndMinute"
+                             AND (${zoneMinute} >= (g."windowStartMinute" % 1440) OR ${zoneMinute} < g."windowEndMinute"))
+                       )
+                  )
                 -- Quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
                 ORDER BY COALESCE(d."sessionId", d."id"), (d."waitingSessionSince" IS NULL), d."notBefore"
              ) heads
@@ -163,6 +188,15 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
       }),
     ]);
     return { open: open.map(Mapper.toDomain), lastClaimedAt: last._max.claimedAt ?? null };
+  }
+
+  async openSessionIds(tenantId: string): Promise<string[]> {
+    const rows = await this.prisma.offerDispatch.findMany({
+      where: { tenantId, status: 'QUEUED', sessionId: { not: null }, offer: { status: 'SENDING' } },
+      distinct: ['sessionId'],
+      select: { sessionId: true },
+    });
+    return rows.flatMap((r) => (r.sessionId ? [r.sessionId] : []));
   }
 
   async rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]): Promise<number> {

@@ -59,6 +59,8 @@ export interface IOfferDispatchRepository {
   laneState(tenantId: string, sessionId: string, now: Date): Promise<{ open: OfferDispatch[]; lastClaimedAt: Date | null }>;
   /** Grava `notBefore` novo em envios ainda QUEUED (os que já saíram ficam). Retorna quantos. */
   rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]): Promise<number>;
+  /** Sessões do tenant com envio QUEUED de oferta SENDING (retomada global compacta cada uma). */
+  openSessionIds(tenantId: string): Promise<string[]>;
   /**
    * Renova a posse logo antes de enviar (`claimedAt = now`). false = envio já não é deste
    * token (devolvido à fila e reivindicado por outro): não envia.

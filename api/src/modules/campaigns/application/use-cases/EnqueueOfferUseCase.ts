@@ -32,6 +32,12 @@ export interface EnqueueOfferInput {
    * cria outra (reprocessar depois de uma queda não posta duas vezes).
    */
   sourceKey?: string;
+  /**
+   * Encaixa cada horário previsto (ex.: na janela de operação do monitoramento). Aplicado em ordem,
+   * preservando o espaçamento entre envios: `t_i = fit(t_{i-1} + gap_i)`. O claim do worker garante
+   * a regra no envio; isto deixa a fila mostrar horários reais.
+   */
+  fitSlot?: (at: Date) => Date;
 }
 
 export type EnqueueOfferResult =
@@ -51,6 +57,16 @@ export interface EnqueueOfferDeps {
  * (docs/fila-de-envio.md); destinos de sessões diferentes caem cada um na sua faixa. Quem envia é
  * o worker; validade checada lá também.
  */
+/** Reaplica `fit` em cadeia: cada horário parte do anterior já encaixado, mantendo o espaçamento. */
+function fitSlots(slots: readonly Date[], fit: (at: Date) => Date): Date[] {
+  const out: Date[] = [];
+  for (let i = 0; i < slots.length; i++) {
+    const gap = i === 0 ? 0 : slots[i]!.getTime() - slots[i - 1]!.getTime();
+    out.push(fit(i === 0 ? slots[0]! : new Date(out[i - 1]!.getTime() + gap)));
+  }
+  return out;
+}
+
 export class EnqueueOfferUseCase {
   constructor(private readonly deps: EnqueueOfferDeps) {}
 
@@ -75,9 +91,10 @@ export class EnqueueOfferUseCase {
     // Uma faixa por sessão: a oferta inteira entra depois do que já está à frente em qualquer delas
     const sessionIds = [...new Set(destinations.map((d) => d.sessionId))];
     const tails = await this.deps.dispatches.laneTails(tenantId, sessionIds, planned[0]!);
-    const slots = tails.size === 0
+    const laned = tails.size === 0
       ? planned
       : appendToLanes(destinations.map((d, i) => ({ sessionId: d.sessionId, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
+    const slots = input.fitSlot ? fitSlots(laned, input.fitSlot) : laned;
     const firstSendAt = slots[0]!;
     if (input.expiresAt && firstSendAt.getTime() >= input.expiresAt.getTime()) return { kind: 'expired', firstSendAt };
 
