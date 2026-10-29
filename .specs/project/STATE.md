@@ -105,6 +105,12 @@ Memória entre sessões: decisões, bloqueios, lições.
   terceiro quando a loja expõe a etiqueta (Amazon `tag`, ML `matt_word`). Dados de ML usam a sessão da extensão
   (mesmo mecanismo das extensões do mercado).
 
+- **2026-10-29 — Página de Ofertas divide o namespace de subdomínio com o rodízio.** Render só tem 2
+  domínios custom (decisão #12 do rodízio), então vitrine e rodízio usam o mesmo `LinkDomain`. Dono único
+  de `<slug>.<domínio>` é `PublicSlugClaim` (unique no banco); hook público despacha por fallback
+  (rodízio primeiro, vitrine em `not_found`). Plano revisado contra o código em 4 rodadas.
+  Ver `.specs/features/storefront/`.
+
 ## Bloqueios
 
 - **Exclusão de `/integrations/*` do log de corpo na central** contraria a decisão de
@@ -170,6 +176,14 @@ Memória entre sessões: decisões, bloqueios, lições.
   caso voltar, não porque ele esteja ativo.
 
 ## Dívidas assumidas
+- **Página de Ofertas (plano, 2026-10-29) — riscos aceitos:** (1) os 4 tenants de produção estão sem
+  `planSlug` → vitrine bloqueada até evento do hub ou concessão; (2) compra do nome especial é placeholder,
+  hub não tem add-on (concessão manual pelo super-admin); (3) rate limit em memória por instância; (4) janela
+  de deploy pode criar rodízio sem claim → rodar backfill idempotente de novo após o deploy (T31);
+  (5) `MEDIA_STORAGE_DRIVER=local` não mostra imagens na página pública; (6) `catalog.ts:101` promete
+  "domínio personalizado", fora da v1 (roadmap 15); (7) decisões 4 e 5 de `context.md` são propostas a
+  confirmar com o dono; (8) nome de plano rebaixado não é liberado (sem job na v1).
+
 
 - **Anexos — revisão de 2026-09-25, não corrigido de propósito.** (1) Nome de arquivo recebido
   de Office/quicktime/text/plain/octet-stream ganhou extensão curta: uma mensagem antiga
