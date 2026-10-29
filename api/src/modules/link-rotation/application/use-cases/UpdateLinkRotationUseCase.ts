@@ -34,9 +34,8 @@ export class UpdateLinkRotationUseCase {
 
     if (input.status !== undefined && input.status !== current.status) {
       if (!TENANT_STATUSES.includes(input.status)) throw new ValidationError('Invalid link rotation status');
-      if (current.status === LinkRotationStatus.PAUSED_BY_PLAN && input.status === LinkRotationStatus.ACTIVE) {
-        await this.assertFitsPlan(tenantId, rotationId);
-      }
+      // Qualquer volta para ACTIVE (pausa manual ou por plano) precisa caber no plano.
+      if (input.status === LinkRotationStatus.ACTIVE) await this.assertFitsPlan(tenantId, rotationId);
       patch.status = input.status;
     }
     if (input.strategy !== undefined) {
@@ -62,7 +61,8 @@ export class UpdateLinkRotationUseCase {
     const limit = await this.deps.entitlements.getNumber(tenantId, ENTITLEMENT_KEYS.LINK_ROTATIONS);
     if (limit === null) return;
     const all = await this.deps.rotations.listByTenant(tenantId);
-    const live = all.filter((r) => r.id !== rotationId && r.status !== LinkRotationStatus.PAUSED_BY_PLAN).length;
+    // Mesma regra do ApplyPlanLimitsToLinkRotationsUseCase: só ACTIVE ocupa vaga.
+    const live = all.filter((r) => r.id !== rotationId && r.status === LinkRotationStatus.ACTIVE).length;
     if (live >= limit) throw new PlanLimitReachedError(ENTITLEMENT_KEYS.LINK_ROTATIONS, limit);
   }
 }

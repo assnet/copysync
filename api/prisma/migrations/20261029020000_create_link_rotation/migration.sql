@@ -2,7 +2,7 @@
 -- rotações por tenant com slug único por domínio (link_rotations), grupos de cada rotação com
 -- convite, capacidade e contadores (link_rotation_groups), reserva de slug por 30 dias após
 -- troca/exclusão (link_slug_reservations) e registro de cliques para estatística de 7 dias e
--- dedupe (link_clicks, retenção 90 dias pelo job). Sessão dona da rotação: ON DELETE RESTRICT.
+-- dedupe (link_clicks, retenção 90 dias pelo job). Sessão dona da rotação: ON DELETE NO ACTION (checado no fim do comando, para o cascade do tenant passar; sessão é soft delete).
 -- No fim, presets de plano link_rotations / link_rotation_groups (não sobrescreve existentes).
 
 -- CreateEnum
@@ -130,7 +130,7 @@ CREATE INDEX "link_clicks_rotationId_createdAt_idx" ON "link_clicks"("rotationId
 ALTER TABLE "link_rotations" ADD CONSTRAINT "link_rotations_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "link_rotations" ADD CONSTRAINT "link_rotations_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "sessions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "link_rotations" ADD CONSTRAINT "link_rotations_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "sessions"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "link_rotations" ADD CONSTRAINT "link_rotations_domainId_fkey" FOREIGN KEY ("domainId") REFERENCES "link_domains"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

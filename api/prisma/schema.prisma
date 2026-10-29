@@ -1261,7 +1261,7 @@ model LinkRotation {
   updatedAt         DateTime             @updatedAt
 
   tenant  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  session Session             @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  session Session             @relation(fields: [sessionId], references: [id], onDelete: NoAction)
   domain  LinkDomain          @relation(fields: [domainId], references: [id], onDelete: Restrict)
   groups  LinkRotationGroup[]
   clicks  LinkClick[]

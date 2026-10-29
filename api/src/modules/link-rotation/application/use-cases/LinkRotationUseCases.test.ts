@@ -149,6 +149,18 @@ describe('UpdateLinkRotationUseCase', () => {
     await expect(uc.execute({ tenantId: TENANT, rotationId: paused.id, status: LinkRotationStatus.ACTIVE }))
       .resolves.toMatchObject({ status: 'ACTIVE' });
   });
+
+  it('tirar da pausa manual também respeita o plano; rotação pausada não ocupa vaga', async () => {
+    deps.entitlements.numbers[ENTITLEMENT_KEYS.LINK_ROTATIONS] = 1;
+    const active = deps.rotations.seed();
+    const paused = deps.rotations.seed({ status: LinkRotationStatus.PAUSED });
+    const uc = new UpdateLinkRotationUseCase(deps);
+    await expect(uc.execute({ tenantId: TENANT, rotationId: paused.id, status: LinkRotationStatus.ACTIVE }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
+    await uc.execute({ tenantId: TENANT, rotationId: active.id, status: LinkRotationStatus.PAUSED });
+    await expect(uc.execute({ tenantId: TENANT, rotationId: paused.id, status: LinkRotationStatus.ACTIVE }))
+      .resolves.toMatchObject({ status: 'ACTIVE' });
+  });
 });
 
 describe('SaveLinkRotationGroupsUseCase', () => {

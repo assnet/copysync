@@ -217,3 +217,14 @@ describe('PrismaLinkClickRepository', () => {
     expect(await clicks.countLast7Days(tenantA, r.id, now)).toBe(2);
   });
 });
+
+describe('exclusão de tenant', () => {
+  it('cascade do tenant apaga sessão e rotações sem esbarrar na FK da sessão', async () => {
+    const t = (await prisma.tenant.create({ data: { name: 'int-c', slug: `int-lr-c-${stamp}` } })).id;
+    const s = (await prisma.session.create({ data: { tenantId: t, name: 's' } })).id;
+    await repo.create({ tenantId: t, sessionId: s, domainId, slug: `cascade-${stamp}` });
+    await prisma.tenant.delete({ where: { id: t } });
+    expect(await prisma.linkRotation.count({ where: { tenantId: t } })).toBe(0);
+    expect(await prisma.session.count({ where: { tenantId: t } })).toBe(0);
+  });
+});
