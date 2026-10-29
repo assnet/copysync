@@ -47,11 +47,11 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 **What**: `PrismaLinkDomainRepository`, `PrismaLinkRotationRepository` (`findPublicByHost`, `incrementClick` em transação com `UPDATE … +1`, `isSlugAvailable` considerando reserva de outro tenant, `reserveSlug`), `PrismaLinkClickRepository` (insert, `countLast7Days`, `deleteOlderThan`); `linkRotationContainer.ts`.
 **Where**: `link-rotation/infrastructure/{repositories,mappers,linkRotationContainer.ts}`. **Requirement**: LROT-03,10,13. **Done when**: teste de integração em Postgres descartável para `incrementClick` concorrente (10 em paralelo = +10) e `isSlugAvailable`. **Commit**: `feat(link-rotation): repositórios Prisma`.
 
-### T7 Use cases do tenant
+### T7 Use cases do tenant  ✅
 **What**: `GetLinkRotationOverview`, `CreateLinkRotation`, `RenameLinkRotation`, `UpdateLinkRotation`, `DeleteLinkRotation`, `SaveLinkRotationGroups`, `RefreshLinkRotationGroup` (regras `design.md` §4.2), DTOs. Testes unitários com fakes: limite `link_rotations`, slug tomado com sugestões, reserva 30 d, limite grupos, AUTO→NEEDS_LINK quando engine lança `GROUP_INVITE_NOT_ALLOWED`, manual inválido.
 **Where**: `link-rotation/application/{use-cases,dtos}`. **Depends**: T3,T4,T5,T6. **Requirement**: LROT-03..08. **Commit**: `feat(link-rotation): use cases do tenant`.
 
-### T8 Use cases do admin
+### T8 Use cases do admin  ✅
 **What**: CRUD de domínio + `ProbeLinkDomain` (token HMAC `LINK_PROBE_SECRET`, 5 min, anti-SSRF: só `https://probe-<rand>.<hostname>/…`, timeout 5 s, sem redirect). Env novas em `env.ts` (`LINK_CLICK_SALT`, `LINK_PROBE_SECRET`, `LINK_ROTATION_MEMBER_SYNC_ENABLED`).
 **Where**: `link-rotation/application/use-cases/admin/*`, `shared/config/env.ts`. **Depends**: T3,T6. **Requirement**: LROT-01,02. **Done when**: testes: delete com rotação → 409; probe hostname diferente do registro → erro. **Commit**: `feat(link-rotation): domínios da plataforma (admin)`.
 
