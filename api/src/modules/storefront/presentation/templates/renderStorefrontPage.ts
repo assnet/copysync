@@ -92,7 +92,7 @@ const safeHref = (url: string): string | null => {
 const sha256 = (css: string): string => `sha256-${createHash('sha256').update(css).digest('base64')}`;
 
 /** Hash do primeiro `<style>` de um HTML já renderizado (páginas de estado do rodízio). */
-function styleHashOf(html: string): string {
+export function styleHashOf(html: string): string {
   return sha256(/<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '');
 }
 

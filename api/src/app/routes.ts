@@ -20,6 +20,7 @@ import { billingRoutes } from '../modules/integrations/billing/billing.routes';
 import { extensionRoutes } from '../modules/extension/presentation/routes/extension.routes';
 import { linkRotationRoutes } from '../modules/link-rotation/presentation/routes/linkRotation.routes';
 import { linkDomainAdminRoutes } from '../modules/link-rotation/presentation/routes/linkDomainAdmin.routes';
+import { storefrontRoutes } from '../modules/storefront/presentation/routes/storefront.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -104,6 +105,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── Rodízio de links: painel do tenant e domínios (super admin) ─────────────
   await app.register(linkRotationRoutes, { prefix: `${env.API_PREFIX}/link-rotation` });
   await app.register(linkDomainAdminRoutes, { prefix: `${env.API_PREFIX}/admin/link-domains` });
+
+  // ── Página de Ofertas do tenant (a pública sai pelo hook do rodízio, app.ts) ──
+  await app.register(storefrontRoutes, { prefix: `${env.API_PREFIX}/storefront` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
   if (env.BILLING_ENABLED) {

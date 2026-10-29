@@ -8,7 +8,9 @@ import type { LinkDomain } from '../../domain/entities/LinkDomain';
 import { makeDomain, NOW } from '../../application/use-cases/linkRotationTestFakes';
 import { ActiveLinkDomainCache } from '../../infrastructure/cache/ActiveLinkDomainCache';
 import { configurePublicPageBranding, publicPageCsp } from '../templates/publicLinkLayout';
-import { registerPublicLinkRoutes } from './publicLink.routes';
+import { createHash } from 'node:crypto';
+import { PublicSlugKind } from '../../domain/enums/LinkRotationEnums';
+import { registerPublicLinkRoutes, type PublicPageRenderer } from './publicLink.routes';
 
 const SECRET = 'probe-secret-de-teste-com-32-chars!!';
 const HOST = 'promo.copysync.com.br';
@@ -256,5 +258,100 @@ describe('cache de domínios', () => {
     await get('/health', 'api.copysync.app');
     await get('/', HOST);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('página de ofertas no mesmo namespace (pageRenderers)', () => {
+  const CSS = 'body{color:#111}';
+  let pageApp: FastifyInstance;
+  let render: ReturnType<typeof vi.fn<PublicPageRenderer['render']>>;
+
+  const page = (over: Partial<NonNullable<Awaited<ReturnType<PublicPageRenderer['render']>>>> = {}) => ({
+    status: 200,
+    html: `<!doctype html><html><head><style>${CSS}</style></head><body>Vitrine da Ana</body></html>`,
+    styleHash: `sha256-${createHash('sha256').update(CSS).digest('base64')}`,
+    cacheable: true,
+    ...over,
+  });
+
+  beforeEach(async () => {
+    render = vi.fn<PublicPageRenderer['render']>(async () => page());
+    pageApp = Fastify();
+    registerPublicLinkRoutes(pageApp, {
+      domains: new ActiveLinkDomainCache(load),
+      resolver,
+      probeSecret: null,
+      pageRenderers: { [PublicSlugKind.STOREFRONT]: { render } },
+      now: () => NOW,
+    });
+    await pageApp.ready();
+  });
+
+  afterEach(async () => { await pageApp.close(); });
+
+  const open = (host = HOST) =>
+    pageApp.inject({ method: 'GET', url: '/', headers: { host, 'user-agent': 'Mozilla/5.0' } });
+
+  it('nome sem rodízio → HTML da página com CSP do hash do <style> e cache de 60 s', async () => {
+    const res = await open();
+    expect(render).toHaveBeenCalledWith({ domainId: DOMAIN.id, slug: 'promo' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.body).toContain('Vitrine da Ana');
+    expect(res.headers['content-security-policy']).toContain(`style-src '${page().styleHash}'`);
+    expect(res.headers['content-security-policy']).not.toContain('unsafe-inline');
+    expect(res.headers['cache-control']).toBe('public, max-age=60');
+    expect(res.headers['x-robots-tag']).toBeUndefined();
+  });
+
+  it('página não cacheável (em breve/pausada/503) → no-store e noindex', async () => {
+    render.mockResolvedValueOnce(page({ cacheable: false }));
+    const soon = await open();
+    expect(soon.headers['cache-control']).toBe('no-store');
+    expect(soon.headers['x-robots-tag']).toBe('noindex, nofollow');
+    render.mockResolvedValueOnce(page({ status: 503, cacheable: true }));
+    const down = await open();
+    expect(down.statusCode).toBe(503);
+    expect(down.headers['cache-control']).toBe('no-store');
+  });
+
+  it('hash fora do formato não vira header (503 da marca)', async () => {
+    render.mockResolvedValueOnce(page({ styleHash: "x'; script-src *" }));
+    const res = await open();
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['content-security-policy']).toBe(publicPageCsp());
+  });
+
+  it('nome é rodízio → resposta do rodízio, sem chamar a página', async () => {
+    next = { kind: 'paused', title: 'Promo' };
+    const res = await open();
+    expect(res.body).toContain('Link em pausa');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it('apex segue a landing sem chamar a página', async () => {
+    next = { kind: 'apex', landingUrl: 'https://exemplo.com/' };
+    const res = await open('copysync.com.br');
+    expect(res.statusCode).toBe(302);
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it('renderer sem página (null) → 404 da marca', async () => {
+    render.mockResolvedValueOnce(null);
+    const res = await open();
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toContain('Link não encontrado');
+  });
+
+  it('erro do renderer → 503 HTML', async () => {
+    render.mockRejectedValueOnce(new Error('db down'));
+    expect((await open()).statusCode).toBe(503);
+  });
+
+  it('sem renderer registrado → 404 como hoje', async () => {
+    const res = await get('/');
+    expect(res.statusCode).toBe(404);
+    expect(render).not.toHaveBeenCalled();
   });
 });
