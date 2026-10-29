@@ -107,7 +107,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 **What**: agent-browser: criar rodízio, copiar link, selecionar grupos acima do limite (banner), trocar nome, pausar; abrir host público via `curl -H Host:` local nos 5 estados; claro/escuro; i18n sem string solta. Sem commit (relatório em `.specs/features/link-rotation/qa.md`).
 
 ### T24 Infra (owner, fora do código)
-Cloudflare + Render por domínio conforme `design.md` §7; validar com `copysync.app` antes de liberar aos tenants; `LINK_CLICK_SALT`/`LINK_PROBE_SECRET`/`LINK_ROTATION_MEMBER_SYNC_ENABLED=true` na Render.
+Cloudflare + Render por domínio conforme `design.md` §7; domínio `copysync.com.br` já validado em 2026-10-29 (DNS + certificado); falta proxy laranja, WAF e rate limit de borda antes de liberar aos tenants; `LINK_CLICK_SALT`/`LINK_PROBE_SECRET`/`LINK_ROTATION_MEMBER_SYNC_ENABLED=true` na Render.
 
 ## Rastreabilidade
 | Req | Tarefas |

@@ -21,7 +21,8 @@ export function createPublicLinkDeps(): PublicLinkDeps {
     rotations: linkRotationContainer.rotationRepository,
     clicks: linkRotationContainer.clickRepository,
     store: new PrismaLinkRotationPublicStore(prisma),
-    clickSalt: env.LINK_CLICK_SALT && env.LINK_ROTATION_CONFIGURED ? env.LINK_CLICK_SALT : null,
+    // Página pública depende só do sal; sem LINK_PROBE_SECRET apenas o teste de DNS fica desligado.
+    clickSalt: env.LINK_CLICK_SALT ?? null,
   });
   return {
     domains,
