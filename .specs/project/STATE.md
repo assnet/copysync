@@ -183,6 +183,10 @@ Memória entre sessões: decisões, bloqueios, lições.
   (5) `MEDIA_STORAGE_DRIVER=local` não mostra imagens na página pública; (6) `catalog.ts:101` promete
   "domínio personalizado", fora da v1 (roadmap 15); (7) decisões 4 e 5 de `context.md` são propostas a
   confirmar com o dono; (8) nome de plano rebaixado não é liberado (sem job na v1).
+  Executado em 2026-10-29 (api 0.46.0, app 0.52.0). Achados do QA local ainda abertos: imagens só aparecem
+  com `S3_PUBLIC_URL` (conferir na Render); extração externa da Amazon/ML devolveu título vazio/genérico no
+  ambiente local (títulos só com nome do site agora viram ausentes; rascunho sem título não publica);
+  `PrismaLinkRotationPublicStore.int.test.ts` já falhava antes (espera objeto sem `groupAvatarUrl`).
 
 
 - **Anexos — revisão de 2026-09-25, não corrigido de propósito.** (1) Nome de arquivo recebido

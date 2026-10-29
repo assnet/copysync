@@ -160,7 +160,8 @@ export function StorefrontPreview({ draft, viewport, onViewportChange, revision 
       sx={{ p: 2, borderRadius: 3, position: { md: 'sticky' }, top: { md: 88 }, minWidth: 0 }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+        {/* Título não encolhe: sem espaço, os controles descem para a linha de baixo. */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: '1 0 auto' }}>
           <Box
             aria-hidden
             sx={{
@@ -168,7 +169,7 @@ export function StorefrontPreview({ draft, viewport, onViewportChange, revision 
               boxShadow: `0 0 0 3px ${alpha(theme.palette.success.main, 0.2)}`,
             }}
           />
-          <Typography variant="subtitle2" fontWeight={700} noWrap>{t.title}</Typography>
+          <Typography variant="subtitle2" fontWeight={700}>{t.title}</Typography>
           {loading && <CircularProgress size={14} aria-label={t.loading} />}
           {error && !loading && (
             <Tooltip title={t.error}>

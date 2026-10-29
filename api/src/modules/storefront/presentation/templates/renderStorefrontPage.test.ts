@@ -133,6 +133,11 @@ describe('renderStorefrontPage', () => {
     expect(renderStorefrontPage(model(), OPTS).html).toContain('<div class="cv ci"><img');
   });
 
+  it('cabeçalho tem respiro antes da grade, mesmo sem chips de categoria', () => {
+    const css = styleOf(renderStorefrontPage(model({ categories: [] }), OPTS).html);
+    expect(css).toContain('header{text-align:center;margin-bottom:20px}');
+  });
+
   it('imagem fora do mediaOrigin cai no fallback (iniciais / sem imagem)', () => {
     const { html } = renderStorefrontPage(
       model({

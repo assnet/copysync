@@ -126,22 +126,22 @@ Fora da v1: evento de add-on do hub cria `PremiumSlugGrant(source = BILLING)`; c
 
 | ID | História | Status |
 | --- | --- | --- |
-| STORE-01 | Acesso por plano (gate API + redirect + aviso) | Pending |
-| STORE-02 | Pausa/reativação por mudança de plano | Pending |
-| STORE-03 | Namespace único de subdomínio com o rodízio | Pending |
-| STORE-04 | Disponibilidade com 6 estados + sugestões | Pending |
-| STORE-05 | Banner de nome especial (placeholder) | Pending |
-| STORE-06 | Salvar configuração (nome, slug, subtítulo, categorias, cores) | Pending |
-| STORE-07 | Foto e capa (formato, tamanho, recorte WebP) | Pending |
-| STORE-08 | Preview mobile/desktop pelo mesmo template | Pending |
-| STORE-09 | Extrair oferta pelo link (allowlist + regra de afiliado do gerador) | Pending |
-| STORE-10 | Rascunho → publicada, limites 200/60 | Pending |
-| STORE-11 | Ordenar, editar, apagar | Pending |
-| STORE-12 | Página pública por Host (HTML sem JS, OG, escape) | Pending |
-| STORE-13 | Copiar/abrir endereço | Pending |
-| STORE-14 | Nome premium por concessão do super-admin | Pending |
-| STORE-15 | Privacidade (borrar) e persistência contra reload | Pending |
-| STORE-16 | Documentação, CHANGELOG, versão | Pending |
+| STORE-01 | Acesso por plano (gate API + redirect + aviso) | Verified |
+| STORE-02 | Pausa/reativação por mudança de plano | Verified |
+| STORE-03 | Namespace único de subdomínio com o rodízio | Verified |
+| STORE-04 | Disponibilidade com 6 estados + sugestões | Verified |
+| STORE-05 | Banner de nome especial (placeholder) | Verified |
+| STORE-06 | Salvar configuração (nome, slug, subtítulo, categorias, cores) | Verified |
+| STORE-07 | Foto e capa (formato, tamanho, recorte WebP) | Verified |
+| STORE-08 | Preview mobile/desktop pelo mesmo template | Verified |
+| STORE-09 | Extrair oferta pelo link (allowlist + regra de afiliado do gerador) | Verified |
+| STORE-10 | Rascunho → publicada, limites 200/60 | Verified |
+| STORE-11 | Ordenar, editar, apagar | Verified |
+| STORE-12 | Página pública por Host (HTML sem JS, OG, escape) | Verified |
+| STORE-13 | Copiar/abrir endereço | Verified |
+| STORE-14 | Nome premium por concessão do super-admin | Verified |
+| STORE-15 | Privacidade (borrar) e persistência contra reload | Verified |
+| STORE-16 | Documentação, CHANGELOG, versão | Verified |
 
 ## Critérios de sucesso
 

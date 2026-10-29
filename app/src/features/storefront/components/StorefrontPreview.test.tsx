@@ -33,6 +33,12 @@ describe('StorefrontPreview', () => {
     localStorage.clear();
   });
 
+  it('título da prévia aparece inteiro, sem reticências (controles quebram linha)', () => {
+    setup();
+    expect(screen.getByText(t.title)).not.toHaveClass('MuiTypography-noWrap');
+    vi.useRealTimers();
+  });
+
   it('iframe com sandbox vazio e o html da API em srcdoc', async () => {
     setup();
     await act(async () => { vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS); });

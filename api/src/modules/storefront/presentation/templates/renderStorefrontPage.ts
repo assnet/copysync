@@ -133,7 +133,8 @@ const BASE_CSS = [
   '.vd .cv{height:160px}',
   '.cv.ci{height:auto;aspect-ratio:3/1;max-height:320px}',
   '.cv img{display:block;width:100%;height:100%;object-fit:cover}',
-  'header{text-align:center}',
+  // Respiro antes da grade quando não há chips (com chips a margem colapsa nos 20px deles).
+  'header{text-align:center;margin-bottom:20px}',
   '.av{display:flex;align-items:center;justify-content:center;width:96px;height:96px;margin:-48px auto 12px;border-radius:50%;border:4px solid var(--bg);background:var(--p);color:var(--on-p);font-weight:700;font-size:2rem;object-fit:cover;position:relative}',
   'h1{margin:0;font-size:1.5rem;line-height:1.25;overflow-wrap:anywhere}',
   '.sub{margin:4px 0 0;opacity:.75;overflow-wrap:anywhere}',

@@ -1,6 +1,6 @@
 # Página de Ofertas — Tasks
 
-**Design**: `design.md` · **Status**: Draft (revisado contra código, 4 rodadas, 2026-10-29)
+**Design**: `design.md` · **Status**: Done (T1–T31 executadas em 2026-10-29; ver commits da branch `feature/storefront`)
 Branch: `feature/storefront` a partir de `feature/rebranding-app` (memória: branch de integração).
 Gates (`.specs/codebase/TESTING.md`): `quick` = `pnpm test` no app tocado; `full` = typecheck + test nos dois.
 Nunca rodar `prisma migrate deploy`/`start:migrate` local (`api/.env` = produção); `prisma migrate dev --create-only` contra Postgres descartável (memória: teste local).
