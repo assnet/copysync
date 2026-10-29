@@ -17,6 +17,7 @@ import { HttpOfferImageFetcher } from './http/HttpOfferImageFetcher';
 import { HttpProductPageReader } from './http/HttpProductPageReader';
 import { LazyAiTextGenerator } from './adapters/LazyAiTextGenerator';
 import { ResolveProductDataUseCase } from '../application/use-cases/ResolveProductDataUseCase';
+import { ResolveAffiliateProductUseCase } from '../application/use-cases/ResolveAffiliateProductUseCase';
 import { OfferTextComposer } from '../application/services/OfferTextComposer';
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
@@ -118,6 +119,10 @@ const enqueue     = lazy(() => new EnqueueOfferUseCase({ offers: offers(), dispa
 const products    = lazy(() => new ResolveProductDataUseCase({
   shopee: new ShopeeAffiliateClient(), pageReader: new HttpProductPageReader(), imageFetcher: new HttpOfferImageFetcher(), mediaStore: mediaStore(),
 }));
+// Link colado → marketplace, dono e dados do produto, sem foto (página de ofertas)
+const affiliateProduct = lazy(() => new ResolveAffiliateProductUseCase({
+  expander: new HttpShortLinkExpander(), credentials: credentials(), mercadoLivre: new MercadoLivreAffiliateClient(), products: products(),
+}));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),
 }));
@@ -145,6 +150,8 @@ export const offersContainer = {
   enqueueOffer:         enqueue,
   entitlements:         entitlements,
   resolveProductData:   products,
+  // Usado pela página de ofertas (módulo storefront)
+  resolveAffiliateProduct: affiliateProduct,
   offerTexts:           texts,
   credentials:          credentials,
   credentialRepo:       credentialRepo,

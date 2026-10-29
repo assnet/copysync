@@ -6,31 +6,18 @@ import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMerca
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
-import type {
-  IAffiliateCredentialResolver,
-  OfferAffiliateCredential,
-} from '../../domain/contracts/IAffiliateCredentialResolver';
-import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { IAffiliateCredentialResolver } from '../../domain/contracts/IAffiliateCredentialResolver';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
-import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
-import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
-import { verifyAffiliateLink, type AffiliateLinkCheck } from '../../domain/services/verifyAffiliateLink';
 import { startOfDayInZone } from '../../domain/services/startOfDayInZone';
-import {
-  OfferInvalidInputError,
-  OfferLinkNotAffiliateError,
-  OfferLinkNotOwnedError,
-  OfferUrlUnsupportedError,
-} from '../../../../shared/errors/internal/OfferErrors';
+import { OfferInvalidInputError } from '../../../../shared/errors/internal/OfferErrors';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
-import { AppError } from '../../../../shared/errors/AppError';
-import { logger } from '../../../../shared/logger/logger';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import type { OfferTextComposer } from '../services/OfferTextComposer';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
+import { ResolveAffiliateProductUseCase } from './ResolveAffiliateProductUseCase';
 
 export const OFFER_GENERATIONS_PER_DAY = ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY;
 
@@ -75,11 +62,16 @@ export class GenerateOfferUseCase {
   private readonly now: () => Date;
   /** Dados do produto e foto: o mesmo caminho do monitoramento (`ResolveProductDataUseCase`). */
   private readonly products: ResolveProductDataUseCase;
+  /** Passos 2–4 (URL, dono do link, dados): o mesmo caminho da página de ofertas. */
+  private readonly affiliateProducts: ResolveAffiliateProductUseCase;
 
   constructor(private readonly deps: GenerateOfferDeps) {
     this.now = deps.now ?? (() => new Date());
     this.products = new ResolveProductDataUseCase({
       shopee: deps.shopee, pageReader: deps.pageReader, imageFetcher: deps.imageFetcher, mediaStore: deps.mediaStore,
+    });
+    this.affiliateProducts = new ResolveAffiliateProductUseCase({
+      expander: deps.expander, credentials: deps.credentials, mercadoLivre: deps.mercadoLivre, products: this.products,
     });
   }
 
@@ -98,40 +90,9 @@ export class GenerateOfferUseCase {
       if (used >= limit) throw new PlanLimitReachedError(OFFER_GENERATIONS_PER_DAY, limit);
     }
 
-    // 2. URL: allowlist antes de qualquer requisição; expande e revalida
-    const source = parseUrl(input.url);
-    if (!isSupportedProductUrl(source)) throw new OfferUrlUnsupportedError();
-    const final = await this.deps.expander.expand(source);
-    const provider = detectMarketplace(final);
-    if (!provider) throw new OfferUrlUnsupportedError();
-    const ref = parseProductRef(provider, final);
-    const mlSocial = provider === 'MERCADO_LIVRE' && final.pathname.startsWith('/social/');
-    if (!ref && !mlSocial) throw new OfferUrlUnsupportedError('Product not recognized');
-
-    // 3. Dono do link. Sem credencial do marketplace: não bloqueia, só não verifica
-    const cred = await this.deps.credentials.execute(tenantId, provider);
-    const check = this.checkOwnership(provider, source, final, cred);
-    if (check === 'not_owned') throw new OfferLinkNotOwnedError(provider);
-
-    let affiliateUrl = source.toString();
-    let attributionVerified = check === 'verified';
-
-    if (check === 'not_affiliate') {
-      if (provider === 'MERCADO_LIVRE' && cred?.session?.cookies) {
-        const generated = await this.generateMlAffiliateLink(cred, final);
-        if (generated) {
-          affiliateUrl = generated;
-          attributionVerified = true;
-        } else {
-          throw new OfferLinkNotAffiliateError(provider);
-        }
-      } else {
-        throw new OfferLinkNotAffiliateError(provider);
-      }
-    }
-
-    // 4. Dados do produto (melhor esforço) + foto no store
-    const data = await this.products.resolve(provider, ref, final, cred);
+    // 2–4. URL, dono do link e dados do produto (melhor esforço); foto no store
+    const { provider, sourceUrl, affiliateUrl, attributionVerified, product: data } =
+      await this.affiliateProducts.execute(tenantId, input.url);
     const imageUrl = data.imageSourceUrl ? await this.products.storeImage(data.imageSourceUrl) : null;
 
     // 5. Texto (modelo ou IA) e grava
@@ -147,7 +108,7 @@ export class GenerateOfferUseCase {
     const row: CreateOfferInput = {
       tenantId,
       provider,
-      sourceUrl: source.toString(),
+      sourceUrl,
       productRef: data.productRef,
       title: data.title,
       priceCents: data.priceCents,
@@ -177,43 +138,5 @@ export class GenerateOfferUseCase {
       aiFallback: composed.aiFallback,
       ...(composed.aiErrorCode ? { aiErrorCode: composed.aiErrorCode } : {}),
     };
-  }
-
-  private async generateMlAffiliateLink(
-    cred: OfferAffiliateCredential,
-    productUrl: URL,
-  ): Promise<string | null> {
-    if (!cred.session?.cookies) return null;
-    try {
-      const result = await this.deps.mercadoLivre.createAffiliateLinks(
-        cred.session.cookies,
-        [productUrl.toString()],
-        cred.publicIdentifier || undefined,
-      );
-      return result.success[0]?.shortUrl ?? null;
-    } catch (err) {
-      if (!(err instanceof AppError)) throw err;
-      logger.warn({ code: err.code, provider: 'MERCADO_LIVRE' }, 'ML affiliate link generation failed');
-      return null;
-    }
-  }
-
-  /** Confere URL colada e final juntas: qualquer identificador divergente entre elas é `not_owned`. */
-  private checkOwnership(
-    provider: AffiliateProvider,
-    source: URL,
-    final: URL,
-    cred: OfferAffiliateCredential | null,
-  ): AffiliateLinkCheck {
-    return verifyAffiliateLink(provider, final === source ? [final] : [source, final], cred?.publicIdentifier ?? null);
-  }
-
-}
-
-function parseUrl(raw: string): URL {
-  try {
-    return new URL(raw.trim());
-  } catch {
-    throw new OfferUrlUnsupportedError();
   }
 }
