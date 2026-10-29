@@ -4,3 +4,4 @@ export { plansStrings, formatPrice } from './strings';
 export { PlansHero } from './components/PlansHero';
 export { PlanCard } from './components/PlanCard';
 export { PlansTrustStrip } from './components/PlansTrustStrip';
+export { PlansFeatureNotice } from './components/PlansFeatureNotice';

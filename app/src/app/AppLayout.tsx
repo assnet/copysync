@@ -27,6 +27,7 @@ import { aiStrings } from '@/features/ai/strings';
 import { plansStrings } from '@/features/plans/strings';
 import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
 import { linkRotationStrings } from '@/features/linkRotation/strings';
+import { NavItemBadge, NavItemTooltip } from './NavItemBadge';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -48,6 +49,7 @@ function persistSidebarCollapsed(collapsed: boolean): void {
   }
 }
 
+// `badge` (opcional): selo após o rótulo; no menu recolhido vai para o Tooltip do ícone.
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <AppIcon icon={LayoutDashboard} size="md" /> },
   { label: 'Chat', path: '/chat', icon: <AppIcon icon={MessagesSquare} size="md" /> },
@@ -56,7 +58,7 @@ const NAV_ITEMS = [
   { label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: <AppIcon icon={Link2} size="md" /> },
   { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
   { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
-  { label: 'Página de ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" /> },
+  { label: 'Página de Ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" />, badge: plansStrings.badgeProfessional },
   { label: plansStrings.menuLabel, path: '/plans', icon: <AppIcon icon={Crown} size="md" /> },
   // Ação (abre o diálogo de privacidade), não rota — ver features/privacy
   { label: privacyStrings.menuLabel, action: 'privacy' as const, icon: <AppIcon icon={EyeOff} size="md" /> },
@@ -189,6 +191,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
         <List disablePadding sx={{ px: 1 }}>
           {[...NAV_ITEMS, ...(user?.isSuperAdmin ? NAV_ADMIN_ITEMS : [])].map((item) => {
             const isAction = 'action' in item;
+            const badge = 'badge' in item ? item.badge : undefined;
             const active = isAction
               ? false
               : 'matchPrefix' in item && item.matchPrefix
@@ -208,16 +211,17 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
                 {!collapsed && (
                   <ListItemText
                     primary={item.label}
-                    primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500 }}
+                    primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500, noWrap: true }}
                   />
                 )}
+                {!collapsed && <NavItemBadge badge={badge} />}
               </ListItemButton>
             );
 
             return (
               <ListItem key={'action' in item ? item.action : item.path} disablePadding sx={{ mb: 0.25 }}>
                 {collapsed ? (
-                  <Tooltip title={item.label} placement="right">
+                  <Tooltip title={<NavItemTooltip label={item.label} badge={badge} />} placement="right">
                     {button}
                   </Tooltip>
                 ) : (

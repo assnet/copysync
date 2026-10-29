@@ -19,6 +19,13 @@ export function linkRotationLimitLabel(links: number, groups: number): string {
 
 export const plansStrings = {
   menuLabel: 'Planos',
+  /** Selo no item de menu de recurso exclusivo dos planos pagos maiores. */
+  badgeProfessional: 'Profissional',
+
+  /** Aviso no topo de `/plans?feature=<chave>` quando o usuário chega barrado por um recurso. */
+  featureNotice: {
+    storefront: 'Faça upgrade agora mesmo e acesse a Página de Ofertas, exclusiva dos planos Profissional e Business',
+  },
 
   page: {
     title: 'Planos',
