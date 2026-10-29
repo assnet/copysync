@@ -85,13 +85,13 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 ### T16 App: página e card  ✅
 **What**: rota `/link-rotation`, item de menu (`Link2`) após Monitoramento, `LinkRotationPage` com `PageHeader`, estado vazio, `RotationCard` (link + Copiar com feedback 2 s, status `Switch`, sessão, chips, botões Configurar/Grupos, `Blurred`). **Depends**: T15. **Requirement**: LROT-13. **Done when**: agent-browser screenshot claro/escuro. **Commit**: `feat(link-rotation): página e card do rodízio`.
 
-### T17 App: diálogo de configuração
+### T17 App: diálogo de configuração  ✅
 **What**: `RotationConfigDialog` (sessão, domínio, slug com preview/contador/regras, estratégia com descrições, título), `usePersistedState` scope tab + `clear()`; 409 mostra sugestões clicáveis; rename com `ConfirmRenameDialog`; limite `link_rotations` → `PlanLimitBanner` (de T18, criar aqui se T18 ainda não existir). **Depends**: T16. **Requirement**: LROT-03,04,05. **Commit**: `feat(link-rotation): configuração de subdomínio`.
 
-### T18 App: diálogo de grupos + banner de upgrade
+### T18 App: diálogo de grupos + banner de upgrade  ✅
 **What**: `RotationGroupsDialog` (busca `x de y`, checkbox bloqueia acima do limite, ordem por setas, peso `RangeSlider` em WEIGHTED, teto `RangeSlider` 50–1024, link AUTO/MANUAL, estado `NEEDS_LINK`, botão atualizar), `PlanLimitBanner` animado (gradiente do tema, `Sparkles`, `prefers-reduced-motion`, CTA `/plans`), ui-ux-pro-max para o banner. **Depends**: T16. **Requirement**: LROT-06,07,08. **Commit**: `feat(link-rotation): seleção de grupos e aviso de upgrade`.
 
-### T19 App: estatísticas [P]
+### T19 App: estatísticas [P]  ✅
 **What**: `RotationStatsCard` (total, 7 dias, por grupo com barra, estados FULL/NEEDS_LINK com Tooltip). **Depends**: T16. **Requirement**: LROT-13. **Commit**: `feat(link-rotation): estatísticas do rodízio`.
 
 ### T20 App: admin de domínios [P]  ✅
@@ -100,7 +100,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 ### T21 Catálogo de planos [P]  ✅
 **What**: `catalog.ts` `limits.linkRotations/linkRotationGroups`, benefício e hint corrigidos (hoje descreve credenciais), `catalog.test.ts` e `planPresets.test.ts` travando os números; `PlanCard` exibe novos limites. **Depends**: T1. **Requirement**: LROT-15. **Commit**: `feat(plans): limites de rodízio de links na vitrine`.
 
-### T22 Docs, CHANGELOG, versões
+### T22 Docs, CHANGELOG, versões  ✅
 **What**: `docs/rodizio-de-links.md` (fluxo, DNS passo a passo, o que não fazer, única consulta sem tenantId), roadmap item 9 ✅, `docs/planos.md`, AGENTS.md linha de referência, `CHANGELOG.md` `[Unreleased]`, `api/package.json` 0.44.0, `app/package.json` 0.50.0. **Depends**: tudo. **Requirement**: LROT-16. **Commit**: `docs(link-rotation): documentação, changelog e versões`.
 
 ### T23 QA

@@ -26,7 +26,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ⏳ |
 | 7 | 🤖 Reescrita com IA | Reescreve o texto de cada oferta automaticamente | `assistants` (`docs/ia-provedores.md`) | ✅ gerador e monitoramento (`textMode: AI`) |
 | 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offers` (`docs/gerador-de-ofertas.md`) | ✅ v2: link do próprio afiliado, cupom, público-alvo com IA, marcar todos (`docs/gerador-de-ofertas.md`) |
-| 9 | 🔄 Rodízio de links | Um link único que distribui pessoas entre os grupos | `campaigns/link-rotation` | ⏳ |
+| 9 | 🔄 Rodízio de links | Um link único que distribui pessoas entre os grupos | `link-rotation` ([doc](rodizio-de-links.md)) | ✅ |
 | 10 | 📢 Disparo em massa | O que é postado num grupo é espelhado nos outros | `campaigns/broadcast-mirror` | ⏳ |
 | 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `campaigns/offer-story` | ⏳ |
 | 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` (novo módulo) | ⏳ |
