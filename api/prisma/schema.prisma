@@ -164,6 +164,10 @@ model Tenant {
   BillingEventReceipt  BillingEventReceipt[]
   extensionSessions    ExtensionSession[]
   groupMonitorConfigs  GroupMonitorConfig[]
+  linkRotations        LinkRotation[]
+  linkRotationGroups   LinkRotationGroup[]
+  linkSlugReservations LinkSlugReservation[]
+  linkClicks           LinkClick[]
 
   @@index([slug])
   @@map("tenants")
@@ -285,6 +289,7 @@ model Session {
   offerGeneratorConfigs OfferGeneratorConfig[]
   offerGeneratorConfigSessions OfferGeneratorConfigSession[]
   groupMonitorConfigs   GroupMonitorConfig[]
+  linkRotations         LinkRotation[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -453,7 +458,8 @@ model ChatConversation {
   offerDispatches   OfferDispatch[]
   offerDestinations OfferDestination[]
   monitoredGroups   MonitoredGroup[]
-  broadcastGroups   BroadcastGroup[]
+  broadcastGroups    BroadcastGroup[]
+  linkRotationGroups LinkRotationGroup[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastMessageAt])
@@ -1182,4 +1188,149 @@ model CapturedOffer {
   @@index([tenantId, status, capturedAt])
   @@index([tenantId, sessionId, capturedAt(sort: Desc)])
   @@map("captured_offers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINK ROTATION — rodízio de links de convite de grupos (docs: .specs/features/link-rotation)
+// ─────────────────────────────────────────────────────────────────────────────
+// Domínio curto (plataforma, sem tenantId) → rotação (slug do tenant) → grupos da sessão.
+// O clique público escolhe um grupo elegível e redireciona para o convite.
+
+enum LinkDomainStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum LinkRotationStatus {
+  ACTIVE
+  PAUSED
+  PAUSED_BY_PLAN
+}
+
+enum LinkRotationStrategy {
+  BALANCED
+  SEQUENTIAL
+  WEIGHTED
+  RANDOM
+}
+
+enum LinkRotationGroupStatus {
+  ACTIVE
+  PAUSED
+  FULL
+  NEEDS_LINK
+  PAUSED_BY_PLAN
+}
+
+enum LinkRotationGroupLinkSource {
+  AUTO
+  MANUAL
+}
+
+/// Domínio de links da plataforma (sem tenantId; gerido pelo super-admin).
+model LinkDomain {
+  id            String           @id @default(cuid())
+  hostname      String           @unique // minúsculo, sem ponto final (ex.: "copysync.app")
+  status        LinkDomainStatus @default(ACTIVE)
+  landingUrl    String? // destino 301 do apex
+  reservedNames String[]         @default([]) // além dos padrão (www, app, api, admin…)
+  lastProbeAt   DateTime?
+  lastProbeOk   Boolean?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  rotations        LinkRotation[]
+  slugReservations LinkSlugReservation[]
+
+  @@map("link_domains")
+}
+
+model LinkRotation {
+  id                String               @id @default(cuid())
+  tenantId          String
+  sessionId         String // sessão dona dos grupos
+  domainId          String
+  slug              String
+  status            LinkRotationStatus   @default(ACTIVE)
+  strategy          LinkRotationStrategy @default(BALANCED)
+  title             String? // nome exibido na página pública (default: nome da sessão)
+  clickCount        Int                  @default(0)
+  lastClickAt       DateTime?
+  allFullNotifiedAt DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  tenant  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session Session             @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  domain  LinkDomain          @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  groups  LinkRotationGroup[]
+  clicks  LinkClick[]
+
+  @@unique([domainId, slug])
+  @@index([tenantId])
+  @@index([sessionId])
+  @@map("link_rotations")
+}
+
+model LinkRotationGroup {
+  id              String                       @id @default(cuid())
+  tenantId        String
+  rotationId      String
+  conversationId  String // ChatConversation (isGroup)
+  groupJid        String // sem @g.us, cópia para o job
+  position        Int // ordem (SEQUENTIAL)
+  weight          Int                          @default(1) // 1–100 (WEIGHTED)
+  capacity        Int                          @default(1000) // teto 50–1024
+  inviteCode      String? // só o code; link = https://chat.whatsapp.com/<code>
+  linkSource      LinkRotationGroupLinkSource?
+  status          LinkRotationGroupStatus      @default(ACTIVE)
+  memberCount     Int? // última leitura via sessão
+  memberCountAt   DateTime?
+  clicksSinceSync Int                          @default(0)
+  clickCount      Int                          @default(0)
+  lastClickAt     DateTime?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  rotation     LinkRotation     @relation(fields: [rotationId], references: [id], onDelete: Cascade)
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  clicks       LinkClick[]
+
+  @@unique([rotationId, conversationId])
+  @@index([tenantId])
+  @@map("link_rotation_groups")
+}
+
+/// Nome trocado/excluído fica reservado ao tenant por 30 dias.
+model LinkSlugReservation {
+  id        String   @id @default(cuid())
+  domainId  String
+  slug      String
+  tenantId  String
+  expiresAt DateTime
+
+  domain LinkDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, slug])
+  @@map("link_slug_reservations")
+}
+
+/// Uma linha por clique contado; base para "7 dias" e dedupe. Retenção 90 dias (job).
+model LinkClick {
+  id             String   @id @default(cuid())
+  tenantId       String
+  rotationId     String
+  groupId        String?
+  ipHash         String // sha256(ip + dia + LINK_CLICK_SALT)
+  userAgentClass String // 'webview' | 'browser' | 'bot'
+  createdAt      DateTime @default(now())
+
+  rotation LinkRotation       @relation(fields: [rotationId], references: [id], onDelete: Cascade)
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  group    LinkRotationGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([rotationId, createdAt])
+  @@map("link_clicks")
 }
