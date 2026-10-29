@@ -147,6 +147,7 @@ export function LinkRotationPage() {
           onClose={clearDialog}
           rotation={configRotation}
           overview={overview}
+          onPlanLimit={(limitKind, limit) => setDialog({ kind: 'limit', limitKind, limit })}
           onSaved={(rotation) => {
             upsert(rotation);
             setToast({ message: configRotation ? linkRotationStrings.toast.saved : linkRotationStrings.toast.created, severity: 'success' });

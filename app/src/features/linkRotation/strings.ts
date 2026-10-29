@@ -115,37 +115,76 @@ export const linkRotationStrings = {
     suggestions: 'Esse nome já está em uso. Que tal um destes?',
     strategy: 'Como distribuir os cliques',
     title: 'Apelido (opcional)',
-    titleHelp: 'Só você vê. Ajuda a diferenciar seus links.',
+    titleHelp: 'Aparece no topo da página do link. Deixe em branco para não mostrar.',
     renameConfirmTitle: 'Trocar o nome do link?',
-    renameConfirmBody: (oldUrl: string) =>
-      `O link antigo (${oldUrl}) para de funcionar. Atualize o link em todos os lugares onde ele foi divulgado. O nome antigo fica reservado para você por 30 dias.`,
+    renameConfirmBody:
+      'O link atual para de funcionar na hora. Troque-o em todos os lugares onde ele foi divulgado. O nome antigo fica reservado só para você por 30 dias, caso queira voltar.',
     renameConfirm: 'Trocar nome',
     cancel: 'Cancelar',
     save: 'Salvar',
     create: 'Criar link',
     close: 'Fechar',
+    slugPlaceholder: 'ex.: ofertas-da-ana',
+    slugRulesTooltip: 'Maiúsculas, acentos e espaços são ajustados enquanto você digita.',
+    slugRequired: 'Escolha um nome para o link.',
+    slugTooShort: (min: number) => `Use pelo menos ${min} caracteres.`,
+    previewPlaceholder: 'seu-nome',
+    suggestionUse: (slug: string) => `Usar o nome ${slug}`,
+    domainHelp: 'Endereço que vem depois do nome do link.',
+    sessionUntitled: 'Sessão sem nome',
+    sessionStatusTooltip: 'Situação da conexão desta sessão com o WhatsApp',
+    sessionDisconnected: 'Esta sessão não está conectada. Você pode salvar, mas os grupos e os links de convite só são lidos com ela conectada.',
+    sessionChangeWarning: (n: number) =>
+      `Ao trocar a sessão, ${n === 1 ? 'o grupo escolhido sai' : `os ${n.toLocaleString('pt-BR')} grupos escolhidos saem`} do link. Depois você escolhe os grupos da nova sessão.`,
+    titlePlaceholder: 'ex.: Ofertas da semana',
+    statusLabel: 'Link ativo',
+    renameOld: 'Link atual',
+    renameNew: 'Novo link',
+    saving: 'Salvando…',
+    partialSaved: 'O nome do link foi trocado, mas as outras alterações não foram salvas. Tente de novo.',
   },
 
   groups: {
     title: 'Grupos do link',
     subtitle: 'Quem clica no link entra em um destes grupos, conforme a estratégia escolhida.',
     search: 'Buscar grupo',
-    selectedCount: (selected: number, limit: number | null) =>
-      limit === null ? `${count(selected)} ${plural(selected, 'selecionado', 'selecionados')}` : `${count(selected)} de ${count(limit)} selecionados`,
+    selectedCount: (selected: number, total: number) =>
+      `${count(selected)} de ${count(total)} ${plural(total, 'selecionado', 'selecionados')}`,
+    planLimit: (limit: number | null) =>
+      limit === null ? 'Sem limite de grupos no plano' : `Limite do plano: ${count(limit)} ${plural(limit, 'grupo', 'grupos')}`,
+    planLimitTooltip: 'Quantos grupos cada link pode ter no seu plano. Pode usar menos, se quiser.',
+    strategyLine: (label: string, description: string) => `${label}: ${description}`,
+    selectedTitle: 'Ordem dos grupos',
+    availableTitle: 'Grupos da sessão',
+    noneSelected: 'Marque abaixo os grupos que vão receber as pessoas.',
+    orderHelp: 'No modo "Um de cada vez", o primeiro da lista enche antes de passar ao próximo. Nas outras estratégias a ordem só organiza a lista.',
+    untitled: 'Grupo sem nome',
+    selectAria: (name: string) => `Usar ${name} no link`,
+    remove: 'Tirar do link',
+    loadError: 'Não foi possível carregar os grupos da sessão.',
+    retry: 'Tentar de novo',
     partial: 'A lista pode estar incompleta: a sessão ainda está carregando os grupos.',
-    empty: 'Nenhum grupo encontrado nesta sessão.',
+    empty: 'Nenhum grupo encontrado nesta sessão. A sessão precisa participar dos grupos: adicione o número dela aos grupos que você quer usar.',
     emptySearch: 'Nenhum grupo com esse nome.',
     moveUp: 'Subir na ordem',
     moveDown: 'Descer na ordem',
     weight: 'Peso',
-    weightHelp: 'Quanto maior, mais cliques o grupo recebe.',
+    weightHelp: 'Quanto maior, mais cliques o grupo recebe. Peso 3 recebe cerca de três vezes mais que peso 1.',
+    weightValue: (n: number) => `Peso ${count(n)}`,
     capacity: 'Limite de membros',
-    capacityHelp: 'Ao chegar aqui, o grupo para de receber cliques até abrir vaga.',
+    capacityHelp:
+      'O WhatsApp aceita até 1.024 pessoas por grupo. Deixe uma folga (ex.: 1.000) para admins e quem entra por outro caminho. Ao chegar no limite, o grupo sai do rodízio até abrir vaga.',
     capacityValue: (n: number) => `${count(n)} membros`,
-    linkAuto: 'Link de convite automático',
-    linkManual: 'Link de convite manual',
+    linkSource: 'Origem do link de convite',
+    linkAuto: 'Automático',
+    linkAutoHelp: 'A sessão gera o link de convite sozinha. Ela precisa ser admin do grupo.',
+    linkManual: 'Manual',
+    linkManualHelp: 'Você cola o link de convite do grupo. Use quando a sessão não é admin.',
     manualInviteUrl: 'Link de convite do grupo',
     manualInviteHelp: 'Cole o link no formato https://chat.whatsapp.com/…',
+    manualInviteRequired: 'Cole o link de convite do grupo.',
+    statusNew: 'Novo',
+    statusNewHelp: 'Salve para o grupo entrar no rodízio.',
     refresh: 'Atualizar agora',
     refreshTooltip: 'Relê o link de convite e o número de membros',
     members: (n: number | null, capacity: number) =>
@@ -157,8 +196,8 @@ export const linkRotationStrings = {
 
   upgrade: {
     eyebrow: 'Hora de crescer',
-    rotationsTitle: 'Você usou todos os links do seu plano',
-    groupsTitle: 'Seu link já tem todos os grupos do plano',
+    rotationsTitle: 'Seus links estão a todo vapor!',
+    groupsTitle: 'Seu link está pronto para mais gente!',
     rotationsBody: (limit: number) =>
       `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio. Com um plano maior você divulga mais links ao mesmo tempo.`,
     groupsBody: (limit: number) =>
@@ -167,6 +206,21 @@ export const linkRotationStrings = {
       kind === 'rotations'
         ? `No ${planName} são ${count(limit)} ${plural(limit, 'link', 'links')}.`
         : `No ${planName} são até ${count(limit)} grupos por link.`,
+    rotationsBenefit: 'Um link para cada rede, campanha ou nicho, todos funcionando ao mesmo tempo.',
+    groupsBenefit: 'Mais vagas no mesmo link, sem trocar nada do que você já divulgou.',
+    compareNow: 'Seu plano',
+    unit: (n: number, kind: 'rotations' | 'groups') =>
+      kind === 'rotations' ? plural(n, 'link', 'links') : plural(n, 'grupo', 'grupos'),
+    compareAria: (now: number, planName: string, next: number, kind: 'rotations' | 'groups') =>
+      kind === 'rotations'
+        ? `Hoje: ${count(now)} ${plural(now, 'link', 'links')}. No ${planName}: ${count(next)} ${plural(next, 'link', 'links')}.`
+        : `Hoje: ${count(now)} ${plural(now, 'grupo', 'grupos')} por link. No ${planName}: ${count(next)} grupos por link.`,
+    topPlanTitle: 'Você já está no maior plano',
+    topPlanBody: (limit: number, kind: 'rotations' | 'groups') =>
+      kind === 'rotations'
+        ? `Você usa os ${count(limit)} ${plural(limit, 'link', 'links')} disponíveis. Para criar outro, exclua um link que não usa mais.`
+        : `Seu link já usa os ${count(limit)} grupos disponíveis. Para alcançar mais gente, crie outro link ou troque um grupo por outro.`,
+    topPlanDismiss: 'Entendi',
     cta: 'Ver planos',
     dismiss: 'Agora não',
   },
@@ -179,6 +233,34 @@ export const linkRotationStrings = {
     never: 'Ainda sem cliques',
     perGroup: 'Por grupo',
     loadError: 'Não foi possível carregar os cliques.',
+    retry: 'Tentar de novo',
+    refresh: 'Atualizar cliques',
+    refreshTooltip: 'Busca os números mais recentes deste link',
+    /** `diffMs` = horário do clique − agora no servidor (negativo = passado). */
+    lastClickRelative: (diffMs: number) => {
+      const rtf = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+      const s = Math.round(diffMs / 1000);
+      if (Math.abs(s) < 60) return 'agora mesmo';
+      const m = Math.round(s / 60);
+      if (Math.abs(m) < 60) return rtf.format(m, 'minute');
+      const h = Math.round(m / 60);
+      if (Math.abs(h) < 24) return rtf.format(h, 'hour');
+      const d = Math.round(h / 24);
+      if (Math.abs(d) < 30) return rtf.format(d, 'day');
+      const mo = Math.round(d / 30);
+      return Math.abs(mo) < 12 ? rtf.format(mo, 'month') : rtf.format(Math.round(d / 365), 'year');
+    },
+    noGroups: 'Nenhum grupo neste link ainda.',
+    untitledGroup: 'Grupo sem nome',
+    groupClicks7d: (n: number) => `${count(n)} em 7 dias`,
+    groupClicksTooltip: (total: number) => `Cliques nos últimos 7 dias. Desde o início: ${count(total)}.`,
+    occupancy: (members: number, capacity: number) => `${count(members)}/${count(capacity)}`,
+    occupancyAria: (members: number, capacity: number, pct: number) =>
+      `Ocupação: ${count(members)} de ${count(capacity)} membros (${count(pct)}%)`,
+    occupancyTooltip: 'Membros do grupo em relação ao limite que você definiu',
+    notMeasured: 'Ainda não medido',
+    notMeasuredAria: 'Ocupação ainda não medida',
+    notMeasuredHelp: 'O número de membros ainda não foi lido. Ele é atualizado sozinho em alguns minutos.',
   },
 
   toast: {
