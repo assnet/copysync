@@ -59,15 +59,15 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 **What**: `ResolvePublicLinkUseCase` (`design.md` §4.2) + hash de IP (`sha256(ip+dia+salt)`); `ALL_FULL` 1×/h. Testes: apex→landing; bot não conta; teto 1 → 1º A, 2º B; tenant suspenso → unavailable; pausado → paused.
 **Where**: `link-rotation/application/use-cases/ResolvePublicLinkUseCase.ts`. **Depends**: T4,T6. **Requirement**: LROT-09,10,11,14. **Commit**: `feat(link-rotation): resolução pública do link`.
 
-### T10 Rotas do tenant
+### T10 Rotas do tenant  ✅
 **What**: `linkRotation.routes.ts` + schemas + presenter; registro em `routes.ts` prefixo `/link-rotation`; `GET /:id/groups` reaproveita listagem de grupos da sessão (`offer.routes.ts:115` → extrair use case comum se duplicar).
 **Depends**: T7. **Requirement**: LROT-03..08,13. **Done when**: teste de rota (padrão `chat.routes.test.ts`): 403 `PLAN_LIMIT_REACHED` com `limit`; 409 `LINK_SLUG_TAKEN` com `suggestions`. **Commit**: `feat(link-rotation): rotas do painel`.
 
-### T11 Rota pública por Host
+### T11 Rota pública por Host  ✅
 **What**: `publicLink.routes.ts` fora do `API_PREFIX`; hook em `app.ts` que ativa só para hosts cujo sufixo está no cache (60 s) de `link_domains`; preset `rateLimitPresets.publicLink` 60/min; headers `no-store`, `X-Robots-Tag: noindex`; templates HTML (redirect, lotado, pausado, indisponível, 404) com `APP_NAME`, OG, meta refresh, botão, CSS inline claro/escuro via `prefers-color-scheme`; `/.well-known/link-rotation` 204; CORS não se aplica (sem credencial).
 **Depends**: T9. **Requirement**: LROT-09,10,11. **Done when**: teste com `inject({ headers: { host: 'promo.copysync.app' } })` cobre os 5 estados; host `api.copysync.app` não é interceptado. **Commit**: `feat(link-rotation): página pública de redirecionamento`.
 
-### T12 Rotas admin
+### T12 Rotas admin  ✅
 **What**: `linkDomainAdmin.routes.ts` `[authHook, superAdminHook]` em `/admin/link-domains` (CRUD + probe), schemas, presenter. **Depends**: T8. **Requirement**: LROT-01,02. **Done when**: teste 403 sem super-admin. **Commit**: `feat(link-rotation): rotas admin de domínios`.
 
 ### T13 Job de membros + retenção [P]  ✅
