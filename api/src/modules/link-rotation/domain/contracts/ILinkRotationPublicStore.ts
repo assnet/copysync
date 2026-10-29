@@ -2,6 +2,8 @@
 export interface LinkRotationPublicLabels {
   sessionName: string | null;
   groupName: string | null;
+  /** URL pública da foto do grupo (armazenamento de mídia), ou null. */
+  groupAvatarUrl: string | null;
 }
 
 /**

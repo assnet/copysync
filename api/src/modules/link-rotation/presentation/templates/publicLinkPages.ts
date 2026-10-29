@@ -1,9 +1,10 @@
-import { escapeHtml, renderPublicPage } from './publicLinkLayout';
+import { allowedMediaUrl, escapeHtml, renderPublicPage } from './publicLinkLayout';
 
 /** Textos da página pública (pt-BR). Chaves semânticas; nenhum nome de produto aqui. */
 export const PUBLIC_LINK_TEXT = {
   join: 'Entrar no grupo',
-  joining: (group: string) => `Você está entrando em <strong>${group}</strong>.`,
+  joining: 'Você vai entrar no grupo',
+  groupKind: 'Grupo do WhatsApp',
   ready: 'Seu convite está pronto.',
   hint: 'Se nada acontecer, toque no botão.',
   preview: 'Toque no link para entrar no grupo.',
@@ -22,12 +23,29 @@ export const PUBLIC_LINK_TEXT = {
 const T = PUBLIC_LINK_TEXT;
 const p = (html: string) => `<p>${html}</p>`;
 
-export function redirectPage(input: { title: string; groupName: string | null; inviteUrl: string }): string {
+/** Grupo numa linha, foto à esquerda (ou inicial do nome), como na lista do WhatsApp. */
+function groupRow(name: string, avatarUrl: string | null): string {
+  const initial = escapeHtml((Array.from(name.trim())[0] ?? '#').toUpperCase());
+  const avatar = avatarUrl
+    ? `<img class="av" src="${escapeHtml(avatarUrl)}" width="52" height="52" alt="" referrerpolicy="no-referrer">`
+    : `<span class="av av-i" aria-hidden="true">${initial}</span>`;
+  const label = escapeHtml(name);
+  return `<div class="grp">${avatar}<span class="gi"><span class="gn" title="${label}">${label}</span><span class="gs">${T.groupKind}</span></span></div>`;
+}
+
+export function redirectPage(input: {
+  title: string;
+  groupName: string | null;
+  groupAvatarUrl?: string | null;
+  inviteUrl: string;
+}): string {
+  const avatar = allowedMediaUrl(input.groupAvatarUrl);
   return renderPublicPage({
     title: input.title,
     heading: input.title,
     description: T.preview,
-    bodyHtml: p(input.groupName ? T.joining(escapeHtml(input.groupName)) : T.ready),
+    image: avatar,
+    bodyHtml: input.groupName ? p(T.joining) + groupRow(input.groupName, avatar) : p(T.ready),
     action: { href: input.inviteUrl, label: T.join },
     refreshUrl: input.inviteUrl,
     hint: T.hint,

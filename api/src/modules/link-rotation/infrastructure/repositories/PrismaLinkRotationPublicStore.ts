@@ -33,9 +33,13 @@ export class PrismaLinkRotationPublicStore implements ILinkRotationPublicStore {
     const [session, conversation] = await Promise.all([
       this.prisma.session.findFirst({ where: { id: sessionId, tenantId }, select: { name: true } }),
       conversationId
-        ? this.prisma.chatConversation.findFirst({ where: { id: conversationId, tenantId }, select: { groupName: true } })
+        ? this.prisma.chatConversation.findFirst({ where: { id: conversationId, tenantId }, select: { groupName: true, groupAvatarUrl: true } })
         : Promise.resolve(null),
     ]);
-    return { sessionName: session?.name ?? null, groupName: conversation?.groupName ?? null };
+    return {
+      sessionName: session?.name ?? null,
+      groupName: conversation?.groupName ?? null,
+      groupAvatarUrl: conversation?.groupAvatarUrl ?? null,
+    };
   }
 }

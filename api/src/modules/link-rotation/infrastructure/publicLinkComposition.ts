@@ -2,6 +2,7 @@ import { env } from '../../../shared/config/env';
 import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
 import { platformHostnames } from '../application/use-cases/admin/linkDomainRules';
+import { configurePublicPageBranding } from '../presentation/templates/publicLinkLayout';
 import { ResolvePublicLinkUseCase } from '../application/use-cases/ResolvePublicLinkUseCase';
 import type { PublicLinkDeps } from '../presentation/routes/publicLink.routes';
 import { ActiveLinkDomainCache } from './cache/ActiveLinkDomainCache';
@@ -13,6 +14,8 @@ import { PrismaLinkRotationPublicStore } from './repositories/PrismaLinkRotation
  * domínios carrega na 1ª requisição e os repositórios do container são lazy.
  */
 export function createPublicLinkDeps(): PublicLinkDeps {
+  // Favicon e logo vêm do painel; foto do grupo, do armazenamento de mídia. Zero arquivo servido pela API.
+  configurePublicPageBranding({ panelUrl: env.PANEL_URL, mediaUrl: env.S3_PUBLIC_URL });
   const domains = new ActiveLinkDomainCache(() => linkRotationContainer.domainRepository.listActive(), {
     onError: (err) => logger.warn({ err: (err as Error)?.name }, 'link domains not loaded; public host routing off'),
   });

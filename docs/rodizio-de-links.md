@@ -217,3 +217,11 @@ há valor sintético fixo. Telas do tenant e do admin seguem funcionando.
 | Painel tenant | `app/src/pages/link-rotation/LinkRotationPage.tsx` · `app/src/features/linkRotation/` · `services/linkRotation.service.ts` · `/link-rotation` |
 | Painel admin | `app/src/pages/admin/AdminLinkDomainsPage.tsx` · `app/src/features/linkDomainsAdmin/` · `services/adminLinkDomains.service.ts` |
 | Privacidade | `privacyFlags.ts`: `linkRotation.rotationLink`, `.sessionName`, `.groupName`, `.groupAvatar` |
+
+## Identidade da página pública
+
+Favicon, logo do rodapé e ícone de prévia saem de `PANEL_URL/assets/brand/`; a foto do grupo, de
+`ChatConversation.groupAvatarUrl` no armazenamento (`S3_PUBLIC_URL`). A API só escreve as URLs: nenhum arquivo
+servido por ela. `img-src` da CSP = essas duas origens. Foto fora do armazenamento vira a inicial do nome.
+Não embutir imagem em base64 no HTML nem servir arquivo pela API (peso por clique).
+
