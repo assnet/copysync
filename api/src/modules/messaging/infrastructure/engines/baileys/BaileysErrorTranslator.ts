@@ -17,6 +17,7 @@ import {
   SessionExpiredError,
   SessionNotConnectedError,
 } from '../../../../../shared/errors/internal/SessionErrors';
+import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 
 // Duck-typed Boom shape — avoids importing @hapi/boom as a direct dependency.
 type BoomLike = { output: { statusCode: number } };
@@ -195,4 +196,24 @@ export function translatePairingError(err: unknown): AppError {
   const translated = translateEngineError(err);
   if (err instanceof AppError || !(translated instanceof EngineNotReadyError)) return translated;
   return new PairingFailedError('pairing_code_request_failed');
+}
+
+/** Códigos que o WhatsApp devolve no IQ `<invite/>` quando a conta não pode ver o link. */
+const GROUP_INVITE_DENIED_CODES = new Set([401, 403]);
+
+/**
+ * Traduz a falha ao pedir o link de convite do grupo.
+ *
+ * O Boom do IQ leva o código do WhatsApp em `data` (o `statusCode` fica 500): 401/403 ou
+ * texto `forbidden`/`not-authorized` vira GROUP_INVITE_NOT_ALLOWED. O resto segue o
+ * tradutor padrão.
+ */
+export function translateGroupInviteError(err: unknown): AppError {
+  if (err instanceof AppError) return err;
+  const code = isBoomLike(err) ? Number((err as { data?: unknown }).data) : NaN;
+  const msg = err instanceof Error ? err.message.toLowerCase() : '';
+  if (GROUP_INVITE_DENIED_CODES.has(code) || /forbidden|not-authorized/.test(msg)) {
+    return new GroupInviteNotAllowedError();
+  }
+  return translateEngineError(err);
 }

@@ -243,6 +243,20 @@ export interface IMessagingEngine {
    */
   listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]>;
   /**
+   * Código do link de convite do grupo (link = `https://chat.whatsapp.com/<inviteCode>`).
+   * `groupJid` com ou sem `@g.us`. Lança `SessionNotConnectedError` sem sessão conectada e
+   * `GroupInviteNotAllowedError` quando a conta não pode ver o link (em geral, não é admin).
+   */
+  getGroupInviteLink(sessionId: string, groupJid: string): Promise<{ inviteCode: string }>;
+  /**
+   * Nome, total de membros e se a própria conta é admin do grupo. `groupJid` com ou sem
+   * `@g.us`. Pode vir de cache curto (minutos). Lança `SessionNotConnectedError` sem sessão.
+   */
+  getGroupSummary(
+    sessionId: string,
+    groupJid: string,
+  ): Promise<{ name: string; memberCount: number; isSelfAdmin: boolean }>;
+  /**
    * Baixa a foto de perfil de um contato ou grupo e devolve uma URL servida por nós.
    *
    * A URL que o WhatsApp fornece é temporária; persisti-la deixaria avatares quebrados
