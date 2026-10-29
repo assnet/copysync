@@ -10,6 +10,9 @@ export interface RenderedPublicPage {
   html: string;
   /** `sha256-…` do `<style>` inline, para a CSP da resposta. */
   styleHash: string;
+  // SPEC_DEVIATION: §4.2 não lista o campo. Reason: o hook não distingue 200 pausada/em breve de 200 com ofertas só pelo status.
+  /** true só no 200 com ofertas (`Cache-Control: public, max-age=60`, §4.2); demais = no-store. */
+  cacheable?: boolean;
 }
 
 /**

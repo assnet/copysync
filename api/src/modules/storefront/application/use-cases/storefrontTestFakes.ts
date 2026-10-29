@@ -25,13 +25,33 @@ import type { ResolvedAffiliateProduct } from '../../../campaigns/application/us
 import type { TenantAffiliateLink } from '../../../campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { StorefrontNotFoundError } from '../../../../shared/errors/internal/StorefrontErrors';
-import type { StorefrontUploadStore, StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
+import type { StorefrontSlugTransaction, StorefrontUploadStore, StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
+import type {
+  IStorefrontPageTemplate,
+  StorefrontTemplateModel,
+  StorefrontTemplateOptions,
+} from '../../domain/contracts/IStorefrontPageTemplate';
+import {
+  FakeDomains,
+  InMemoryLinkRotationRepository,
+  InMemoryPublicSlugRegistry,
+  makeDomain,
+} from '../../../link-rotation/application/use-cases/linkRotationTestFakes';
 
 export const TENANT = 'tenant-1';
 export const OTHER_TENANT = 'tenant-2';
 export const USER = 'user-1';
 export const NOW = new Date('2026-10-29T12:00:00.000Z');
 export const MEDIA_URL = 'https://media.example/storefront-';
+export const STOREFRONT_DOMAIN = 'dom-1';
+export const STOREFRONT_HOST = 'ofertas.example';
+
+/** Página + claim do endereço no registry (o repo em memória não deriva um do outro). */
+export function seedPageWithClaim(fakes: Pick<StorefrontFakes, 'storefronts' | 'slugs'>, over: Partial<Storefront> = {}): Storefront {
+  const page = fakes.storefronts.seed(over);
+  if (page.address) fakes.slugs.storefronts.push({ tenantId: page.tenantId, ...page.address, ownerId: page.id });
+  return page;
+}
 
 export function makeStorefront(over: Partial<Storefront> = {}): Storefront {
   return {
@@ -43,6 +63,10 @@ export function makeStorefront(over: Partial<Storefront> = {}): Storefront {
 
 export class InMemoryStorefrontRepository implements IStorefrontRepository {
   pages: Storefront[] = [];
+  /** Quantas transações abertas (`fakeStorefrontSlugTransaction`). */
+  txCalls = 0;
+  /** Resposta da rota pública (`findPublicByAddress`), indexada por `domainId/slug`. */
+  publicByAddress = new Map<string, PublicStorefront>();
   /** Próximo `update` lança (simula falha ao gravar). */
   failUpdateOnce = false;
 
@@ -71,7 +95,9 @@ export class InMemoryStorefrontRepository implements IStorefrontRepository {
     return status;
   }
   async delete(tenantId: string) { this.pages = this.pages.filter((x) => x.tenantId !== tenantId); }
-  async findPublicByAddress(): Promise<PublicStorefront | null> { return null; }
+  async findPublicByAddress(domainId: string, slug: string): Promise<PublicStorefront | null> {
+    return this.publicByAddress.get(`${domainId}/${slug}`) ?? null;
+  }
 }
 
 export class InMemoryStorefrontOfferRepository implements IStorefrontOfferRepository {
@@ -238,6 +264,41 @@ export class FakeImageFetcher implements IOfferImageFetcher {
   async fetch(url: string) { this.calls.push(url); return this.result; }
 }
 
+/** Template que grava o que recebeu; o HTML só identifica a variante. */
+export class FakePageTemplate implements IStorefrontPageTemplate {
+  pages: Array<{ model: StorefrontTemplateModel; opts: StorefrontTemplateOptions }> = [];
+  page(model: StorefrontTemplateModel, opts: StorefrontTemplateOptions) {
+    this.pages.push({ model, opts });
+    return { html: `<page>${model.title}</page>`, styleHash: 'sha256-page' };
+  }
+  comingSoon(title: string) { return { html: `<soon>${title}</soon>`, styleHash: 'sha256-soon' }; }
+  paused(title: string) { return { html: `<paused>${title}</paused>`, styleHash: 'sha256-paused' }; }
+  unavailable() { return { html: '<unavailable>', styleHash: 'sha256-unavailable' }; }
+}
+
+/** "Transação" em memória: erro restaura páginas, ofertas, claims de página e reservas. */
+export function fakeStorefrontSlugTransaction(fakes: Pick<StorefrontFakes, 'storefronts' | 'offers' | 'slugs' | 'rotations'>): StorefrontSlugTransaction {
+  return async (fn) => {
+    const { storefronts, offers, slugs, rotations } = fakes;
+    const snap = {
+      pages: storefronts.pages.map((p) => ({ ...p })),
+      offers: offers.offers.map((o) => ({ ...o })),
+      claims: slugs.storefronts.map((c) => ({ ...c })),
+      reservations: rotations.reservations.map((r) => ({ ...r })),
+    };
+    fakes.storefronts.txCalls++;
+    try {
+      return await fn({ slugs, storefronts, offers });
+    } catch (err) {
+      storefronts.pages = snap.pages;
+      offers.offers = snap.offers;
+      slugs.storefronts = snap.claims;
+      rotations.reservations = snap.reservations;
+      throw err;
+    }
+  };
+}
+
 export interface StorefrontFakes {
   storefronts: InMemoryStorefrontRepository;
   offers: InMemoryStorefrontOfferRepository;
@@ -249,19 +310,27 @@ export interface StorefrontFakes {
   buildAffiliateLink: FakeBuildAffiliateLink;
   imageFetcher: FakeImageFetcher;
   files: Map<string, Buffer>;
+  domains: FakeDomains;
+  rotations: InMemoryLinkRotationRepository;
+  slugs: InMemoryPublicSlugRegistry;
+  template: FakePageTemplate;
 }
 
 /** Deps completas com fakes; cada teste usa o subconjunto do seu use case. */
 export function makeStorefrontDeps(): { deps: Required<StorefrontUseCaseDeps>; fakes: StorefrontFakes } {
   const files = new Map<string, Buffer>([['/tmp/up-1.bin', Buffer.from('png')]]);
+  const domains = new FakeDomains([makeDomain({ id: STOREFRONT_DOMAIN, hostname: STOREFRONT_HOST })]);
+  const rotations = new InMemoryLinkRotationRepository();
+  const slugs = new InMemoryPublicSlugRegistry(rotations, domains, NOW);
   const fakes: StorefrontFakes = {
     storefronts: new InMemoryStorefrontRepository(), offers: new InMemoryStorefrontOfferRepository(),
     entitlements: new FakeEntitlementReader(), images: new FakeImageProcessor(), media: new FakeMediaStore(),
     uploads: new FakeUploadStore(), resolveProduct: new FakeResolveProduct(), buildAffiliateLink: new FakeBuildAffiliateLink(),
-    imageFetcher: new FakeImageFetcher(), files,
+    imageFetcher: new FakeImageFetcher(), files, domains, rotations, slugs, template: new FakePageTemplate(),
   };
   const deps: Required<StorefrontUseCaseDeps> = {
     ...fakes,
+    runInSlugTransaction: fakeStorefrontSlugTransaction(fakes),
     readFile: async (path) => {
       const f = files.get(path);
       if (!f) throw new Error('ENOENT');
