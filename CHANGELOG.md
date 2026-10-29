@@ -23,7 +23,7 @@ Monitoramento com janela 06:00–20:00 enviou das 17:00 às 23:00: a janela só 
 
 #### Frontend
 
-- **`SendQueuePanel.tsx`**, **`sendQueue.service.ts`** — botão "Pausar todos os envios / Retomar envios" no cabeçalho da fila (gerador e monitoramento), faixa de aviso enquanto pausado, itens como "Pausado (conta)". **`useSendQueue.ts`** — `refresh` espera o poll em voo e busca de novo (não vira no-op); troca de sessão durante a espera descarta o pedido; a promessa em voo só é limpa pelo próprio `load`.
+- **`SendQueuePanel.tsx`**, **`sendQueue.service.ts`** — botão "Pausar todos os envios / Retomar envios" no cabeçalho da fila (gerador e monitoramento), faixa de aviso enquanto pausado, itens como "Pausado (conta)". **`useSendQueue.ts`** — `refresh` espera o poll em voo e busca de novo (não vira no-op); troca de sessão durante a espera descarta o pedido; a promessa em voo só é limpa pelo próprio `load`. Pedido durante poll em voo marca nova busca ao terminar (não fica com dado anterior à mutação). **`sendQueue.service.ts`** — GET da fila com timeout de 15 s: requisição que nunca responde não mata o polling encadeado.
 - **`MonitoringSettingsForm.tsx`**, **`settingsDraft.ts`** — toggle "Capturar fora do horário" no card do horário; ajuda do horário diz que a janela vale para todos os envios.
 
 ### Added — automation/integrations (api 0.43.0) — aviso de credencial de afiliado recusada

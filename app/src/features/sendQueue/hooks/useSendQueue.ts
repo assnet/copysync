@@ -23,10 +23,12 @@ export function useSendQueue(sessionId?: string) {
   const generation = useRef(0);
   const inFlight = useRef<number | null>(null);
   const pending = useRef<Promise<void> | null>(null);
+  // Pedido explícito chegou com poll em voo: ao terminar, busca de novo em vez de esperar o próximo tick
+  const refetch = useRef(false);
 
   const load = useCallback(async () => {
     const gen = generation.current;
-    if (inFlight.current === gen) return;
+    if (inFlight.current === gen) { refetch.current = true; return; }
     inFlight.current = gen;
     clearTimeout(timer.current);
     let next: SendQueueResponse | null = null;
@@ -45,7 +47,10 @@ export function useSendQueue(sessionId?: string) {
       release();
       if (gen === generation.current) {
         setLoading(false);
-        if (!document.hidden) {
+        if (refetch.current) {
+          refetch.current = false;
+          void load();
+        } else if (!document.hidden) {
           const delay = hasActivity(next) ? SEND_QUEUE_ACTIVE_POLL_MS : SEND_QUEUE_IDLE_POLL_MS;
           timer.current = setTimeout(() => void load(), delay);
         }
@@ -56,6 +61,7 @@ export function useSendQueue(sessionId?: string) {
   useEffect(() => {
     generation.current++;
     inFlight.current = null;
+    refetch.current = false;
     setData(null);
     setLoading(true);
     void load();
