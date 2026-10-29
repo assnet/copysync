@@ -53,6 +53,8 @@ export const storefrontStrings = {
     saving: 'Salvando…',
     saved: 'Página salva',
     create: 'Criar minha Página',
+    addressLabel: 'ENDEREÇO',
+    changeTitle: 'O endereço vai mudar',
   },
 
   fields: {
@@ -79,6 +81,8 @@ export const storefrontStrings = {
       replace: 'Trocar foto',
       remove: 'Remover foto',
       uploading: 'Enviando…',
+      clickToChange: 'Clique para trocar',
+      confirmRemove: { title: 'Remover foto?', message: 'A página volta a usar o visual padrão neste ponto.', confirm: 'Remover', cancel: 'Cancelar' },
     },
     cover: {
       label: 'CAPA',
@@ -87,6 +91,8 @@ export const storefrontStrings = {
       replace: 'Trocar capa',
       remove: 'Remover capa',
       uploading: 'Enviando…',
+      clickToChange: 'Clique para trocar',
+      confirmRemove: { title: 'Remover capa?', message: 'A página volta a usar o visual padrão neste ponto.', confirm: 'Remover', cancel: 'Cancelar' },
     },
     subtitle: {
       label: 'SUBTÍTULO',
@@ -94,6 +100,10 @@ export const storefrontStrings = {
       help: `Opcional, até ${STOREFRONT_RANGES.subtitleMax} caracteres.`,
       suggestionsLabel: 'Sugestões:',
       invalid: `O subtítulo pode ter até ${STOREFRONT_RANGES.subtitleMax} caracteres.`,
+      counter: (n: number) => `${count(n)}/${count(STOREFRONT_RANGES.subtitleMax)}`,
+    },
+    images: {
+      afterSave: 'Salve a página para adicionar a foto e a capa.',
     },
     categories: {
       label: 'CATEGORIAS',
@@ -103,6 +113,8 @@ export const storefrontStrings = {
       primary: 'PRINCIPAL',
       background: 'FUNDO',
       card: 'CARDS',
+      label: 'CORES',
+      picker: (name: string) => `Escolher a cor ${name.toLowerCase()}`,
       invalid: 'Use uma cor no formato #RRGGBB.',
     },
   },
@@ -152,12 +164,22 @@ export const storefrontStrings = {
     moveUp: 'Mover para cima',
     moveDown: 'Mover para baixo',
     dragHandle: 'Arrastar para reordenar',
+    /** Avisos do arrastar para leitor de tela (padrão da lib é em inglês). */
+    dnd: {
+      instructions: 'Para reordenar, foque a alça e aperte espaço. Use as setas para mover e espaço de novo para soltar. Esc cancela.',
+      start: (pos: number) => `Oferta pega na posição ${count(pos)}.`,
+      over: (pos: number) => `Oferta sobre a posição ${count(pos)}.`,
+      end: (pos: number) => `Oferta solta na posição ${count(pos)}.`,
+      cancel: 'Reordenação cancelada.',
+    },
     openLink: 'Abrir link da oferta',
     noPrice: 'Sem preço',
     provider: (p: StorefrontOfferProvider) => PROVIDER_LABELS[p],
     confirmDelete: {
       title: 'Apagar oferta?',
       message: (title: string) => `"${title}" sai da página e não pode ser recuperada.`,
+      /** Sem o título: usado quando a privacidade borra títulos de oferta. */
+      messageHidden: 'A oferta sai da página e não pode ser recuperada.',
       confirm: 'Apagar',
       cancel: 'Cancelar',
     },
@@ -189,6 +211,7 @@ export const storefrontStrings = {
     title: 'Preview em tempo real',
     mobile: 'Mobile',
     desktop: 'Desktop',
+    viewportGroup: 'Tamanho da prévia',
     loading: 'Atualizando prévia…',
     error: 'Não foi possível atualizar a prévia.',
     frameTitle: 'Prévia da Página de Ofertas',
