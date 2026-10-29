@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { storefrontStrings as t } from './strings';
-import type { Storefront, StorefrontOverview } from './types';
+import type { Storefront, StorefrontOffer, StorefrontOverview } from './types';
 import {
   SLUG_STATUSES,
   STOREFRONT_FORM_DEFAULTS,
@@ -9,6 +9,7 @@ import {
   isFormDirty,
   isFormValid,
   normalizeHexColor,
+  previewRevision,
   slugChange,
   slugStatusView,
   toPreviewDraft,
@@ -124,6 +125,26 @@ describe('payloads', () => {
     expect(draft).not.toHaveProperty('slug');
     expect(draft).not.toHaveProperty('domainId');
     expect(toPreviewDraft({ ...form, slug: 'Promo', domainId: 'd1' })).toMatchObject({ slug: 'promo', domainId: 'd1' });
+  });
+});
+
+describe('previewRevision', () => {
+  const offer = { id: 'o1', updatedAt: '2026-10-01T00:00:00.000Z' } as StorefrontOffer;
+  const withOffers = (published: StorefrontOffer[], drafts: StorefrontOffer[] = []): StorefrontOverview => ({ ...overview(page), offers: { drafts, published } });
+
+  it('muda quando a foto, a capa ou as publicadas mudam (a prévia usa o salvo)', () => {
+    const base = previewRevision(withOffers([offer]));
+    expect(previewRevision(withOffers([offer]))).toBe(base);
+    expect(previewRevision({ ...withOffers([offer]), storefront: { ...page, avatarUrl: 'https://m.test/a.webp' } })).not.toBe(base);
+    expect(previewRevision({ ...withOffers([offer]), storefront: { ...page, coverUrl: 'https://m.test/c.webp' } })).not.toBe(base);
+    expect(previewRevision(withOffers([]))).not.toBe(base);
+    expect(previewRevision(withOffers([{ ...offer, updatedAt: '2026-10-02T00:00:00.000Z' }]))).not.toBe(base);
+    expect(previewRevision(withOffers([offer, { ...offer, id: 'o2' }]))).not.toBe(previewRevision(withOffers([{ ...offer, id: 'o2' }, offer])));
+  });
+
+  it('rascunho de oferta não pede prévia nova (não aparece na página)', () => {
+    expect(previewRevision(withOffers([offer], [{ ...offer, id: 'd1' }]))).toBe(previewRevision(withOffers([offer])));
+    expect(previewRevision(null)).toBe('');
   });
 });
 

@@ -100,4 +100,18 @@ describe('useStorefrontPreview', () => {
     await act(async () => { vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS * 2); });
     expect(preview).toHaveBeenCalledTimes(1);
   });
+
+  it('mesmo rascunho com revisão nova (foto, publicadas) pede a prévia de novo', async () => {
+    preview.mockResolvedValue('<p>ok</p>');
+    const draft = form('mesmo');
+    const { rerender } = renderHook(
+      ({ revision }: { revision: string }) => useStorefrontPreview(draft, 'mobile', revision),
+      { initialProps: { revision: 'r1' } },
+    );
+    await act(async () => { vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS); });
+    expect(preview).toHaveBeenCalledTimes(1);
+    rerender({ revision: 'r2' });
+    await act(async () => { vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS); });
+    expect(preview).toHaveBeenCalledTimes(2);
+  });
 });

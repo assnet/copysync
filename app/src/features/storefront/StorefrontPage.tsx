@@ -8,6 +8,7 @@ import { StorefrontConfigCard } from './components/StorefrontConfigCard';
 import { StorefrontHeader } from './components/StorefrontHeader';
 import { StorefrontPreview } from './components/StorefrontPreview';
 import { useStorefrontPage } from './hooks/useStorefrontPage';
+import { previewRevision } from './storefrontForm';
 import { storefrontStrings } from './strings';
 
 const t = storefrontStrings;
@@ -80,7 +81,7 @@ export function StorefrontPage() {
             </Box>
 
             <Box sx={{ gridArea: 'preview', minWidth: 0, position: { md: 'sticky' }, top: { md: 88 } }}>
-              <StorefrontPreview draft={s.form} viewport={s.viewport} onViewportChange={s.setViewport} />
+              <StorefrontPreview draft={s.form} viewport={s.viewport} onViewportChange={s.setViewport} revision={previewRevision(s.overview)} />
             </Box>
 
             <Stack spacing={3} sx={{ gridArea: 'offers', minWidth: 0 }}>

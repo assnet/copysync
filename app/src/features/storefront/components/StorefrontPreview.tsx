@@ -49,16 +49,18 @@ interface Props {
   draft: StorefrontFormState;
   viewport: StorefrontViewport;
   onViewportChange: (viewport: StorefrontViewport) => void;
+  /** `previewRevision` do salvo: muda após upload, publicar, reordenar ou editar publicada. */
+  revision?: string;
 }
 
 /**
  * Prévia em tempo real da Página de Ofertas. O html vem da API (mesmo renderizador da página
  * pública) e roda num iframe `sandbox=""` — sem script, sem mesma origem, sem formulário.
  */
-export function StorefrontPreview({ draft, viewport, onViewportChange }: Props) {
+export function StorefrontPreview({ draft, viewport, onViewportChange, revision }: Props) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
-  const { html, loading, error } = useStorefrontPreview(draft, viewport);
+  const { html, loading, error } = useStorefrontPreview(draft, viewport, revision);
   const blurred = useAnyStorefrontBlur();
   const { ref, width: available } = useAvailableWidth();
 

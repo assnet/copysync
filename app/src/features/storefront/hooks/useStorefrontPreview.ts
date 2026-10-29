@@ -17,11 +17,12 @@ export interface StorefrontPreviewState {
 /**
  * Prévia do rascunho (`POST /storefront/preview`): debounce, uma chamada por rascunho distinto e
  * só a resposta mais recente vale — resposta atrasada de um rascunho anterior é descartada.
+ * `revision` (`previewRevision`) entra na chave: foto/capa/publicadas vêm do salvo, não do rascunho.
  */
-export function useStorefrontPreview(draft: StorefrontFormState, viewport: StorefrontViewport): StorefrontPreviewState {
+export function useStorefrontPreview(draft: StorefrontFormState, viewport: StorefrontViewport, revision = ''): StorefrontPreviewState {
   const body = useMemo(() => toPreviewDraft(draft), [draft]);
   // chave por valor: rerender com objeto novo e mesmo conteúdo não pede de novo
-  const key = JSON.stringify([body, viewport]);
+  const key = JSON.stringify([body, viewport, revision]);
   const [state, setState] = useState<StorefrontPreviewState>({ html: null, loading: false, error: false });
   const seq = useRef(0);
   const latest = useRef({ body, viewport });

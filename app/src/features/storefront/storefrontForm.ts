@@ -120,6 +120,16 @@ export function toPreviewDraft(form: StorefrontFormState): StorefrontPreviewDraf
   };
 }
 
+/**
+ * O que a prévia lê do salvo e não está no rascunho: foto, capa e publicadas (ordem e edição).
+ * Muda a revisão → a prévia é pedida de novo; sem isso ela fica velha após upload/publicar.
+ */
+export function previewRevision(overview: StorefrontOverview | null): string {
+  if (!overview) return '';
+  const page = overview.storefront;
+  return JSON.stringify([page?.avatarUrl ?? null, page?.coverUrl ?? null, overview.offers.published.map((o) => [o.id, o.updatedAt])]);
+}
+
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 /** Mudou em relação ao salvo? Sem página salva, sempre true (é uma criação). */
