@@ -12,6 +12,11 @@ export function formatPrice(value: number): string {
   return (Number.isInteger(value) ? whole : cents).format(value);
 }
 
+/** Limite do rodízio na vitrine: "1 link de rodízio · até 3 grupos" (plural pelo número). */
+export function linkRotationLimitLabel(links: number, groups: number): string {
+  return `${links} ${links === 1 ? 'link' : 'links'} de rodízio · até ${groups} ${groups === 1 ? 'grupo' : 'grupos'}`;
+}
+
 export const plansStrings = {
   menuLabel: 'Planos',
 

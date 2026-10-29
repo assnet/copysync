@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ANNUAL_DISCOUNT, PLAN_CATALOG, priceFor, savingsFor } from './catalog';
-import { formatPrice } from './strings';
+import { formatPrice, linkRotationLimitLabel } from './strings';
 
 describe('catálogo de planos (vitrine)', () => {
   it('tem 3 planos, 1 recomendado, slugs únicos', () => {
@@ -34,5 +34,23 @@ describe('catálogo de planos (vitrine)', () => {
       expect(savingsFor(p, 'annual')).toEqual({ value: (p.price - p.priceAnnualMonthly) * 12, per: 'year' });
       expect(savingsFor(p, 'monthly')).toEqual({ value: p.priceFrom - p.price, per: 'month' });
     }
+  });
+
+  it('limites de rodízio iguais a api/src/modules/tenants/domain/planPresets.ts', () => {
+    const bySlug = Object.fromEntries(PLAN_CATALOG.map((p) => [p.slug, [p.limits.linkRotations, p.limits.linkRotationGroups]]));
+    expect(bySlug).toEqual({ starter: [1, 3], profissional: [1, 5], business: [2, 10] });
+  });
+
+  it('cada plano exibe o próprio limite de rodízio, com hint do recurso', () => {
+    for (const p of PLAN_CATALOG) {
+      const row = p.benefits.find((b) => b.label === linkRotationLimitLabel(p.limits.linkRotations, p.limits.linkRotationGroups));
+      expect(row?.hint).toMatch(/nunca expira/i);
+    }
+  });
+
+  it('rótulo do rodízio com plural correto', () => {
+    expect(linkRotationLimitLabel(1, 3)).toBe('1 link de rodízio · até 3 grupos');
+    expect(linkRotationLimitLabel(2, 10)).toBe('2 links de rodízio · até 10 grupos');
+    expect(linkRotationLimitLabel(1, 1)).toBe('1 link de rodízio · até 1 grupo');
   });
 });

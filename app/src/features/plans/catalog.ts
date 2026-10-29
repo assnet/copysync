@@ -6,6 +6,8 @@
  * este arquivo fica só com o texto de vitrine. Nenhum cálculo de desconto ou cupom aqui.
  */
 
+import { linkRotationLimitLabel } from './strings';
+
 export type PlanSlug = 'starter' | 'profissional' | 'business';
 export type BillingPeriod = 'monthly' | 'annual';
 
@@ -34,7 +36,16 @@ export interface PlanCatalogItem {
   priceAnnualMonthly: number;
   recommended?: boolean;
   /** Limites numéricos exibidos; devem bater com `PlanEntitlementPreset` da API. */
-  limits: { whatsappSessions: number; telegramSessions: number; monitoredGroups: number; broadcastGroups: number };
+  limits: {
+    whatsappSessions: number;
+    telegramSessions: number;
+    monitoredGroups: number;
+    broadcastGroups: number;
+    /** Links públicos de rodízio (`link_rotations`). */
+    linkRotations: number;
+    /** Grupos por link de rodízio (`link_rotation_groups`). */
+    linkRotationGroups: number;
+  };
   benefits: PlanBenefit[];
   fit: string;
 }
@@ -42,7 +53,7 @@ export interface PlanCatalogItem {
 const HINTS = {
   monitoredGroups: 'Grupos de onde as ofertas são capturadas: cada anúncio novo é lido, reescrito e ganha o seu link.',
   broadcastGroups: 'Grupos que recebem os disparos, na ordem e nos horários que você definir.',
-  linkRotation: 'Cada envio sai com o seu link de afiliado refeito, alternando entre as credenciais cadastradas.',
+  linkRotation: 'Um link fixo para divulgar nas redes. Nunca expira e leva cada visitante a um grupo com vaga.',
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
   customDomain: 'Sua página de ofertas no seu próprio domínio, em vez do endereço padrão.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
@@ -57,13 +68,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     priceFrom: 161.9,
     price: 97,
     priceAnnualMonthly: 77,
-    limits: { whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5 },
+    limits: { whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, linkRotations: 1, linkRotationGroups: 3 },
     benefits: [
       { label: '1 conexão de WhatsApp' },
       { label: '1 grupo monitorado', hint: HINTS.monitoredGroups },
       { label: '5 grupos de disparo', hint: HINTS.broadcastGroups },
       { label: 'Disparo em massa com agendamento de horários' },
-      { label: 'Rodízio de links inteligentes', hint: HINTS.linkRotation },
+      { label: linkRotationLimitLabel(1, 3), hint: HINTS.linkRotation },
       { label: 'Gerador de ofertas' },
       { label: 'Envio "digitando…" antes de cada oferta', hint: HINTS.typing },
       { label: 'Shopee, Amazon e Mercado Livre' },
@@ -79,12 +90,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     price: 167,
     priceAnnualMonthly: 133,
     recommended: true,
-    limits: { whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10 },
+    limits: { whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, linkRotations: 1, linkRotationGroups: 5 },
     benefits: [
       { label: 'Tudo do Starter', strong: true },
       { label: '1 WhatsApp + 1 Telegram' },
       { label: '2 grupos monitorados por canal', hint: HINTS.monitoredGroups },
       { label: '10 grupos de disparo por canal', hint: HINTS.broadcastGroups },
+      { label: linkRotationLimitLabel(1, 5), hint: HINTS.linkRotation },
       { label: 'Menção a todos os participantes', hint: HINTS.mentionAll },
       { label: 'Página de ofertas para a bio com domínio personalizado', hint: HINTS.customDomain },
       { label: 'Suporte prioritário 24/7' },
@@ -98,12 +110,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     priceFrom: 411.9,
     price: 247,
     priceAnnualMonthly: 197,
-    limits: { whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40 },
+    limits: { whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, linkRotations: 2, linkRotationGroups: 10 },
     benefits: [
       { label: 'Tudo do Profissional', strong: true },
       { label: '2 WhatsApp + 2 Telegram' },
       { label: '6 grupos monitorados por canal', hint: HINTS.monitoredGroups },
       { label: '40 grupos de disparo por canal', hint: HINTS.broadcastGroups },
+      { label: linkRotationLimitLabel(2, 10), hint: HINTS.linkRotation },
       { label: 'Monitorar em um WhatsApp e disparar em outro', hint: HINTS.crossSession, exclusive: true },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
