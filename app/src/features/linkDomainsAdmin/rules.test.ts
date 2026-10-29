@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatRelativeTime, isValidHostname, isValidLandingUrl, mergeReservedNames, normalizeHostname, normalizeReservedName,
+  RESERVED_NAMES_MAX,
 } from './rules';
 
 describe('isValidLandingUrl', () => {
@@ -55,8 +56,9 @@ describe('nomes reservados', () => {
     expect(mergeReservedNames([], 'ok, ru_im')).toEqual({ ok: false, invalid: 'ru_im' });
   });
 
-  it('limita a 100', () => {
-    const many = Array.from({ length: 100 }, (_, i) => `n${i}`);
+  it('limita a RESERVED_NAMES_MAX (1000)', () => {
+    expect(RESERVED_NAMES_MAX).toBe(1000);
+    const many = Array.from({ length: RESERVED_NAMES_MAX }, (_, i) => `n${i}`);
     expect(mergeReservedNames(many, 'mais')).toEqual({ ok: false, tooMany: true });
   });
 });

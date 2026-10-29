@@ -9,10 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
-### Changed — link-rotation (api 0.45.1) — identidade na página pública do link
+### Changed — link-rotation (api 0.45.1 · app 0.51.1) — identidade na página pública do link
 
 - **`publicLinkLayout.ts`**, **`publicLinkPages.ts`** — grupo numa linha com a foto à esquerda (ou a inicial do nome), como na lista do WhatsApp; favicon, logo no rodapé e imagem de prévia (`og:image`: foto do grupo ou ícone da marca). Arquivos vêm do painel (`PANEL_URL`) e a foto do armazenamento de mídia (`S3_PUBLIC_URL`): o navegador baixa direto deles, a API não serve imagem. CSP libera imagem só dessas duas origens; foto de outra origem é ignorada.
 - **`ResolvePublicLinkUseCase.ts`**, **`PrismaLinkRotationPublicStore.ts`** — resolução devolve `groupAvatarUrl` do grupo escolhido.
+- **`linkDomainRules.ts`**, **`linkDomainAdmin.schema.ts`**, **`rules.ts`** (painel) — nomes reservados extras por domínio: limite de 100 para 1000 (conferidos só ao criar/renomear link). Aviso do painel lê a constante.
 
 ### Added — link-rotation (api 0.45.0 · app 0.51.0) — rodízio de links por subdomínio
 

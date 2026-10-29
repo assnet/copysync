@@ -16,7 +16,8 @@ export const PLATFORM_HOSTNAMES: readonly string[] = ['app.copysync.app', 'api.c
 
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const MAX_HOSTNAME_LENGTH = 253;
-const MAX_RESERVED_NAMES = 100;
+/** Conferido só ao criar/renomear link; a lista vive numa coluna `text[]` do domínio. */
+export const MAX_RESERVED_NAMES = 1000;
 const RESERVED_NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 /** Minúsculo, sem esquema, credencial, porta, caminho, query nem ponto final. */

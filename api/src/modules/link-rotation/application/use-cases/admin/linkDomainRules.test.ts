@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPlatformHostname, parseHostname, parseLandingUrl, parseReservedNames, platformHostnames } from './linkDomainRules';
+import { isPlatformHostname, MAX_RESERVED_NAMES, parseHostname, parseLandingUrl, parseReservedNames, platformHostnames } from './linkDomainRules';
 
 describe('linkDomainRules', () => {
   it('normaliza hostname', () => {
@@ -32,5 +32,9 @@ describe('linkDomainRules', () => {
     expect(parseReservedNames([' Promo VIP ', 'promo-vip', '', 'Ação'])).toEqual(['promo-vip', 'acao']);
     expect(parseReservedNames(['a'.repeat(51)])).toBeNull();
     expect(parseReservedNames(['a!b'])).toBeNull();
+    const names = (n: number) => Array.from({ length: n }, (_, i) => `nome${i}`);
+    expect(MAX_RESERVED_NAMES).toBe(1000);
+    expect(parseReservedNames(names(1000))).toHaveLength(1000);
+    expect(parseReservedNames(names(1001))).toBeNull();
   });
 });
