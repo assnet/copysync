@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { PrismaLinkRotationRepository } from './PrismaLinkRotationRepository';
 import { PrismaLinkClickRepository } from './PrismaLinkClickRepository';
+import { PrismaLinkRotationSessionReader } from './PrismaLinkRotationSessionReader';
+import { PrismaLinkRotationGroupCatalog } from './PrismaLinkRotationGroupCatalog';
 import {
   LinkRotationGroupLinkSource,
   LinkRotationGroupStatus,
@@ -139,6 +141,65 @@ describe('PrismaLinkRotationRepository', () => {
     await prisma.linkDomain.update({ where: { id: domainId }, data: { status: 'PAUSED' } });
     expect(await repo.findPublicByHost(`int-${stamp}.test`, 'paralelo')).toBeNull();
     await prisma.linkDomain.update({ where: { id: domainId }, data: { status: 'ACTIVE' } });
+  });
+});
+
+describe('PrismaLinkRotationRepository (T7)', () => {
+  it('update com outra sessão apaga os grupos; mesma sessão mantém', async () => {
+    const sessionA2 = (await prisma.session.create({ data: { tenantId: tenantA, name: 's2' } })).id;
+    const r = await repo.create({ tenantId: tenantA, sessionId: sessionA, domainId, slug: 'troca-sessao' });
+    await repo.replaceGroups(tenantA, r.id, [group(convs[0]!, 0)]);
+    await repo.update(tenantA, r.id, { sessionId: sessionA, title: 't' });
+    expect((await repo.findById(tenantA, r.id))!.groups).toHaveLength(1);
+    const out = await repo.update(tenantA, r.id, { sessionId: sessionA2 });
+    expect(out.sessionId).toBe(sessionA2);
+    expect((await repo.findById(tenantA, r.id))!.groups).toHaveLength(0);
+    await repo.delete(tenantA, r.id);
+  });
+
+  it('update para slug ocupado → LINK_SLUG_TAKEN', async () => {
+    const r = await repo.create({ tenantId: tenantA, sessionId: sessionA, domainId, slug: 'vai-colidir' });
+    await expect(repo.update(tenantA, r.id, { slug: 'paralelo' })).rejects.toMatchObject({ code: 'LINK_SLUG_TAKEN' });
+    await repo.delete(tenantA, r.id);
+  });
+
+  it('findUnavailableSlugs: ocupados e reservados de outro tenant, sem duplicar', async () => {
+    await repo.reserveSlug(domainId, 'lote-reservado', tenantB, new Date(Date.now() + 86_400_000));
+    const out = await repo.findUnavailableSlugs(domainId, ['paralelo', 'lote-livre', 'lote-reservado', 'paralelo'], tenantA);
+    expect(out.sort()).toEqual(['lote-reservado', 'paralelo']);
+    expect(await repo.findUnavailableSlugs(domainId, ['lote-reservado'], tenantB)).toEqual([]);
+    expect(await repo.findUnavailableSlugs(domainId, [], tenantA)).toEqual([]);
+  });
+
+  it('updateGroup: patch parcial e tenant-aware', async () => {
+    const r = await repo.create({ tenantId: tenantA, sessionId: sessionA, domainId, slug: 'patch-grupo' });
+    const [g] = await repo.replaceGroups(tenantA, r.id, [group(convs[2]!, 0)]);
+    const at = new Date('2026-10-29T12:00:00.000Z');
+    const out = await repo.updateGroup(tenantA, r.id, g!.id, {
+      memberCount: 77, memberCountAt: at, clicksSinceSync: 0, status: LinkRotationGroupStatus.FULL, inviteCode: null, linkSource: null,
+    });
+    expect(out).toMatchObject({ id: g!.id, memberCount: 77, memberCountAt: at, status: 'FULL', inviteCode: null, weight: 1, capacity: 500 });
+    await expect(repo.updateGroup(tenantB, r.id, g!.id, { memberCount: 1 })).rejects.toMatchObject({ code: 'LINK_ROTATION_NOT_FOUND' });
+    await repo.delete(tenantA, r.id);
+  });
+});
+
+describe('PrismaLinkRotationSessionReader / PrismaLinkRotationGroupCatalog', () => {
+  it('sessões do tenant sem as excluídas; grupos só isGroup do tenant', async () => {
+    const sessions = new PrismaLinkRotationSessionReader(prisma);
+    const deleted = (await prisma.session.create({ data: { tenantId: tenantA, name: 'del', deletedAt: new Date() } })).id;
+    const list = await sessions.listByTenant(tenantA);
+    expect(list.map((s) => s.id)).toContain(sessionA);
+    expect(list.map((s) => s.id)).not.toContain(deleted);
+    expect(await sessions.findById(tenantA, deleted)).toBeNull();
+    expect(await sessions.findById(tenantB, sessionA)).toBeNull();
+    expect(await sessions.findById(tenantA, sessionA)).toMatchObject({ id: sessionA, name: 's', status: 'PENDING' });
+
+    const catalog = new PrismaLinkRotationGroupCatalog(prisma);
+    const contact = (await prisma.chatConversation.create({ data: { tenantId: tenantA, sessionId: sessionA, isGroup: false } })).id;
+    const found = await catalog.findGroups(tenantA, [convs[0]!, contact]);
+    expect(found).toEqual([{ conversationId: convs[0], sessionId: sessionA, groupJid: 'g0', name: null }]);
+    expect(await catalog.findGroups(tenantB, [convs[0]!])).toEqual([]);
   });
 });
 

@@ -4,6 +4,7 @@ import type {
   ILinkRotationRepository,
   PublicLinkRotation,
   SaveLinkRotationGroupInput,
+  UpdateLinkRotationGroupInput,
   UpdateLinkRotationInput,
 } from '../../domain/contracts/ILinkRotationRepository';
 import type { LinkRotation, LinkRotationWithGroups } from '../../domain/entities/LinkRotation';
@@ -67,25 +68,33 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
     }
   }
 
+  /** Trocar `sessionId` apaga os grupos na mesma transação (pertencem à sessão antiga). */
   async update(tenantId: string, id: string, input: UpdateLinkRotationInput): Promise<LinkRotation> {
     try {
-      const { count } = await this.prisma.linkRotation.updateMany({
-        where: { id, tenantId },
-        data: {
-          ...(input.slug !== undefined && { slug: input.slug }),
-          ...(input.domainId !== undefined && { domainId: input.domainId }),
-          ...(input.status !== undefined && { status: input.status }),
-          ...(input.strategy !== undefined && { strategy: input.strategy }),
-          ...(input.title !== undefined && { title: input.title }),
-        },
+      const row = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.linkRotation.findFirst({ where: { id, tenantId }, select: { sessionId: true } });
+        if (!current) throw new LinkRotationNotFoundError(id);
+        if (input.sessionId !== undefined && input.sessionId !== current.sessionId) {
+          await tx.linkRotationGroup.deleteMany({ where: { rotationId: id, tenantId } });
+        }
+        await tx.linkRotation.updateMany({
+          where: { id, tenantId },
+          data: {
+            ...(input.sessionId !== undefined && { sessionId: input.sessionId }),
+            ...(input.slug !== undefined && { slug: input.slug }),
+            ...(input.domainId !== undefined && { domainId: input.domainId }),
+            ...(input.status !== undefined && { status: input.status }),
+            ...(input.strategy !== undefined && { strategy: input.strategy }),
+            ...(input.title !== undefined && { title: input.title }),
+          },
+        });
+        return tx.linkRotation.findFirst({ where: { id, tenantId } });
       });
-      if (count === 0) throw new LinkRotationNotFoundError(id);
+      if (!row) throw new LinkRotationNotFoundError(id);
+      return PrismaLinkRotationMapper.toDomain(row);
     } catch (err) {
       rethrowSlugTaken(err);
     }
-    const row = await this.prisma.linkRotation.findFirst({ where: { id, tenantId } });
-    if (!row) throw new LinkRotationNotFoundError(id);
-    return PrismaLinkRotationMapper.toDomain(row);
   }
 
   /** Grupos e cliques caem por cascade. A reserva do slug é do use case (`reserveSlug`). */
@@ -194,6 +203,43 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
       }),
     ]);
     return used === 0 && reserved === 0;
+  }
+
+  async findUnavailableSlugs(domainId: string, slugs: readonly string[], tenantId: string): Promise<string[]> {
+    if (slugs.length === 0) return [];
+    const list = [...new Set(slugs)];
+    const [used, reserved] = await Promise.all([
+      this.prisma.linkRotation.findMany({ where: { domainId, slug: { in: list } }, select: { slug: true } }),
+      this.prisma.linkSlugReservation.findMany({
+        where: { domainId, slug: { in: list }, tenantId: { not: tenantId }, expiresAt: { gt: new Date() } },
+        select: { slug: true },
+      }),
+    ]);
+    const taken = new Set([...used, ...reserved].map((r) => r.slug));
+    return list.filter((slug) => taken.has(slug));
+  }
+
+  async updateGroup(
+    tenantId: string,
+    rotationId: string,
+    groupId: string,
+    input: UpdateLinkRotationGroupInput,
+  ): Promise<LinkRotationGroup> {
+    const { count } = await this.prisma.linkRotationGroup.updateMany({
+      where: { id: groupId, rotationId, tenantId },
+      data: {
+        ...(input.inviteCode !== undefined && { inviteCode: input.inviteCode }),
+        ...(input.linkSource !== undefined && { linkSource: input.linkSource }),
+        ...(input.status !== undefined && { status: input.status }),
+        ...(input.memberCount !== undefined && { memberCount: input.memberCount }),
+        ...(input.memberCountAt !== undefined && { memberCountAt: input.memberCountAt }),
+        ...(input.clicksSinceSync !== undefined && { clicksSinceSync: input.clicksSinceSync }),
+      },
+    });
+    if (count === 0) throw new LinkRotationNotFoundError(rotationId);
+    const row = await this.prisma.linkRotationGroup.findFirst({ where: { id: groupId, rotationId, tenantId } });
+    if (!row) throw new LinkRotationNotFoundError(rotationId);
+    return PrismaLinkRotationMapper.groupToDomain(row);
   }
 
   /** Upsert por (domainId, slug): reserva vencida de outro tenant é tomada pelo novo dono. */

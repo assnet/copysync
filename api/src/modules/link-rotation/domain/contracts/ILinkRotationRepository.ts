@@ -18,6 +18,8 @@ export interface CreateLinkRotationInput {
 }
 
 export interface UpdateLinkRotationInput {
+  /** Sessão diferente da atual apaga os grupos na mesma transação (são da sessão antiga). */
+  sessionId?: string;
   slug?: string;
   domainId?: string;
   status?: LinkRotationStatus;
@@ -34,6 +36,16 @@ export interface SaveLinkRotationGroupInput {
   inviteCode: string | null;
   linkSource: LinkRotationGroupLinkSource | null;
   status: LinkRotationGroupStatus;
+}
+
+/** Atualização pontual de um grupo (refresh sob demanda / sync de membros). */
+export interface UpdateLinkRotationGroupInput {
+  inviteCode?: string | null;
+  linkSource?: LinkRotationGroupLinkSource | null;
+  status?: LinkRotationGroupStatus;
+  memberCount?: number | null;
+  memberCountAt?: Date | null;
+  clicksSinceSync?: number;
 }
 
 /** Leitura da rota pública: rotação + grupos + domínio + se o tenant pode servir o link. */
@@ -64,6 +76,18 @@ export interface ILinkRotationRepository {
   incrementClick(rotationId: string, groupId: string, at: Date): Promise<void>;
   /** Livre = sem rotação no (domínio, slug) e sem reserva vigente de outro tenant. */
   isSlugAvailable(domainId: string, slug: string, tenantId: string): Promise<boolean>;
+  /**
+   * Versão em lote de `isSlugAvailable`: devolve, dentre `slugs`, os indisponíveis (ocupados ou
+   * reservados para outro tenant). Uma ida ao banco para filtrar sugestões.
+   */
+  findUnavailableSlugs(domainId: string, slugs: readonly string[], tenantId: string): Promise<string[]>;
+  /** Grupo da rotação do tenant; `LinkRotationNotFoundError` se não pertencer. */
+  updateGroup(
+    tenantId: string,
+    rotationId: string,
+    groupId: string,
+    input: UpdateLinkRotationGroupInput,
+  ): Promise<LinkRotationGroup>;
   /** Guarda o nome trocado/excluído com o tenant até `expiresAt` (30 dias). */
   reserveSlug(domainId: string, slug: string, tenantId: string, expiresAt: Date): Promise<void>;
 }
