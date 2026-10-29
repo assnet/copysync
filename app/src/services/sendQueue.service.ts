@@ -17,11 +17,11 @@ export const sendQueueService = {
     return res.data.data;
   },
   async pauseAll(): Promise<SendQueuePauseResponse> {
-    const res = await apiClient.post<ApiSuccess<SendQueuePauseResponse>>('/campaigns/send-queue/pause');
+    const res = await apiClient.post<ApiSuccess<SendQueuePauseResponse>>('/campaigns/send-queue/pause', undefined, { timeout: SEND_QUEUE_REQUEST_TIMEOUT_MS });
     return res.data.data;
   },
   async resumeAll(): Promise<SendQueuePauseResponse> {
-    const res = await apiClient.post<ApiSuccess<SendQueuePauseResponse>>('/campaigns/send-queue/resume');
+    const res = await apiClient.post<ApiSuccess<SendQueuePauseResponse>>('/campaigns/send-queue/resume', undefined, { timeout: SEND_QUEUE_REQUEST_TIMEOUT_MS });
     return res.data.data;
   },
 };

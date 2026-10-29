@@ -26,9 +26,8 @@ export class PauseAllSendsUseCase {
   constructor(private readonly deps: Pick<SendQueueControlDeps, 'pauses' | 'now'>) {}
 
   async execute(input: { tenantId: string }): Promise<SendingPauseStateDTO> {
-    const current = await this.deps.pauses.get(input.tenantId);
-    const at = current ?? (this.deps.now ?? (() => new Date()))();
-    if (!current) await this.deps.pauses.set(input.tenantId, at);
+    // Atômico no banco: dois "pausar" concorrentes (duas abas) ficam com o mesmo instante
+    const at = await this.deps.pauses.pauseIfActive(input.tenantId, (this.deps.now ?? (() => new Date()))());
     return { sendingPausedAt: at.toISOString() };
   }
 }

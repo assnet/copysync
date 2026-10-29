@@ -7,7 +7,7 @@ function setup() {
   const dispatches = new InMemoryOfferDispatchRepository(offers);
   const configs = new InMemoryOfferGeneratorConfigRepository([], []);
   configs.configs.set(TENANT, { tenantId: TENANT, sessionIds: ['s1'], intervalMinSeconds: 100, intervalMaxSeconds: 200, dispatchOrder: 'SEQUENTIAL', updatedAt: NOW });
-  const pauses = { pausedAt: null as Date | null, async get() { return this.pausedAt; }, async set(_t: string, at: Date | null) { this.pausedAt = at; } };
+  const pauses = { pausedAt: null as Date | null, async get() { return this.pausedAt; }, async set(_t: string, at: Date | null) { this.pausedAt = at; }, async pauseIfActive(_t: string, at: Date) { this.pausedAt ??= at; return this.pausedAt; } };
   const deps = { pauses, dispatches, configs, now: () => NOW, rand: () => 0.5 };
   return { offers, dispatches, pauses, pause: new PauseAllSendsUseCase(deps), resume: new ResumeAllSendsUseCase(deps) };
 }

@@ -115,8 +115,10 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
       .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime())
       .map((d) => ({ ...d }));
     const last = this.items
-      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && (d.status === 'SENDING' || d.status === 'SENT') && d.claimedAt)
-      .reduce<Date | null>((m, d) => (!m || d.claimedAt! > m ? d.claimedAt! : m), null);
+      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.claimedAt
+        && (d.status === 'SENDING' || d.status === 'SENT' || (d.status === 'FAILED' && d.failureReason === 'SEND_TIMEOUT')))
+      .map((d) => (d.status === 'FAILED' ? new Date(d.claimedAt!.getTime() + Math.max(0, 120 - d.gapSeconds) * 1000) : d.claimedAt!))
+      .reduce<Date | null>((m, t) => (!m || t > m ? t : m), null);
     return { open, lastClaimedAt: last };
   }
   async openSessionIds(tenantId: string) {
@@ -154,6 +156,14 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     if (!d) return false;
     d.claimedAt = NOW;
     return true;
+  }
+  async skipExpired(now: Date) {
+    let n = 0;
+    for (const d of this.items) {
+      const o = this.offers.items.find((x) => x.id === d.offerId);
+      if (d.status === 'QUEUED' && o?.expiresAt && o.expiresAt <= now) { d.status = 'SKIPPED'; d.failureReason = 'OFFER_EXPIRED'; n++; }
+    }
+    return n;
   }
   async releaseStale(olderThan: Date) {
     const stale = this.items.filter(

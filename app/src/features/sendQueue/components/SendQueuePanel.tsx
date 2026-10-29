@@ -58,11 +58,11 @@ interface Props {
  * Igual em qualquer aba ou navegador; o envio segue no servidor com o painel fechado.
  */
 export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, privacy = OFFER_FLAGS }: Props) {
-  const { data, loading, failed, refresh } = useSendQueue(sessionId);
+  const { data, loading, failed, refresh, patch } = useSendQueue(sessionId);
   const sessions = (data?.sessions ?? []).filter((s) => s.running || s.waiting.length > 0 || s.recent.length > 0);
   const control = useOfferControl(refresh);
   const pausedAt = data?.sendingPausedAt ?? null;
-  const globalPause = useGlobalPause(refresh);
+  const globalPause = useGlobalPause(refresh, patch);
 
   return (
     <SectionCard
@@ -128,17 +128,17 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
  * Pausa global da conta: um clique segura todos os envios (todas as sessões e origens); outro
  * retoma. Reversível, por isso sem confirmação. Depois de cada chamada recarrega a fila.
  */
-function useGlobalPause(refresh: () => Promise<void>) {
+function useGlobalPause(refresh: () => Promise<void>, patch: (p: { sendingPausedAt: string | null }) => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const toggle = useCallback((paused: boolean) => {
     setBusy(true);
     setError(false);
     (paused ? sendQueueService.resumeAll() : sendQueueService.pauseAll())
-      .catch(() => setError(true))
+      .then((r) => patch({ sendingPausedAt: r.sendingPausedAt }), () => setError(true))
       .then(() => refresh())
       .finally(() => setBusy(false));
-  }, [refresh]);
+  }, [refresh, patch]);
   return { busy, error, toggle, dismissError: () => setError(false) };
 }
 

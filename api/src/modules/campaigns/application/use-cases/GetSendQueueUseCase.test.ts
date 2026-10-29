@@ -17,7 +17,7 @@ function setup(snap: Partial<SendQueueSnapshot>) {
       return { sessions: [], open: [], recent: [], openCounts: [], finishedToday: [], ...snap };
     },
   };
-  const pauses = { pausedAt: null as Date | null, async get() { return this.pausedAt; }, async set(_t: string, at: Date | null) { this.pausedAt = at; } };
+  const pauses = { pausedAt: null as Date | null, async get() { return this.pausedAt; }, async set(_t: string, at: Date | null) { this.pausedAt = at; }, async pauseIfActive(_t: string, at: Date) { this.pausedAt ??= at; return this.pausedAt; } };
   return { uc: new GetSendQueueUseCase({ reader, pauses, now: () => NOW }), calls, pauses };
 }
 

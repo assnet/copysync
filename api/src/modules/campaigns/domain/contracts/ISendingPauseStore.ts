@@ -6,4 +6,6 @@ export interface ISendingPauseStore {
   /** Instante em que os envios foram pausados; null = ativos. */
   get(tenantId: string): Promise<Date | null>;
   set(tenantId: string, pausedAt: Date | null): Promise<void>;
+  /** Grava `at` só se ainda ativo e devolve o instante vigente (atômico: dois pausar concorrentes ficam com o mesmo). */
+  pauseIfActive(tenantId: string, at: Date): Promise<Date>;
 }

@@ -143,3 +143,29 @@ describe('openNotBefore', () => {
     expect(await repo.openNotBefore(tenantId, 'outra', spToUtc(8, 5))).toEqual([]);
   });
 });
+
+describe('laneState — piso após SEND_TIMEOUT', () => {
+  it('SEND_TIMEOUT conta como último envio deslocado: lastClaimedAt + gap = liberação do claim (120 s)', async () => {
+    await reset();
+    const a = await offer('GENERATOR');
+    const d = await queued(a.id, convGen, spToUtc(8));
+    await prisma.offerDispatch.update({ where: { id: d.id }, data: { status: 'FAILED', failureReason: 'SEND_TIMEOUT', claimedAt: spToUtc(8), gapSeconds: 60 } });
+    const st = await repo.laneState(tenantId, sessionId, spToUtc(8, 1));
+    expect(st.lastClaimedAt).toEqual(new Date(spToUtc(8).getTime() + 60_000)); // + (120 − 60) s
+  });
+});
+
+describe('skipExpired', () => {
+  it('fecha em lote QUEUED de oferta vencida; válida fica', async () => {
+    await reset();
+    const old = await offer('MONITORING');
+    await prisma.offer.update({ where: { id: old.id }, data: { expiresAt: spToUtc(7) } });
+    await queued(old.id, convMon, spToUtc(6));
+    await queued(old.id, convGen, spToUtc(6, 2));
+    const ok = await offer('GENERATOR');
+    await queued(ok.id, convGen, spToUtc(6, 4));
+    expect(await repo.skipExpired(spToUtc(8))).toBe(2);
+    const rows = await prisma.offerDispatch.findMany({ where: { tenantId }, orderBy: { notBefore: 'asc' } });
+    expect(rows.map((r) => [r.status, r.failureReason])).toEqual([['SKIPPED', 'OFFER_EXPIRED'], ['SKIPPED', 'OFFER_EXPIRED'], ['QUEUED', null]]);
+  });
+});

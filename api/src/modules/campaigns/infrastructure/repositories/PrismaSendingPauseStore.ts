@@ -10,6 +10,11 @@ export class PrismaSendingPauseStore implements ISendingPauseStore {
     return t?.sendingPausedAt ?? null;
   }
 
+  async pauseIfActive(tenantId: string, at: Date): Promise<Date> {
+    await this.prisma.tenant.updateMany({ where: { id: tenantId, sendingPausedAt: null }, data: { sendingPausedAt: at } });
+    return (await this.get(tenantId)) ?? at;
+  }
+
   async set(tenantId: string, pausedAt: Date | null): Promise<void> {
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { sendingPausedAt: pausedAt } });
   }

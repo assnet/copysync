@@ -86,5 +86,10 @@ export function useSendQueue(sessionId?: string) {
     await load();
   }, [load]);
 
-  return { data, loading, failed, refresh };
+  /** Resposta de uma mutação aplicada já (ex.: `sendingPausedAt` do pausar/retomar): se o GET seguinte falhar, a tela não fica com o estado anterior. */
+  const patch = useCallback((partial: Partial<SendQueueResponse>) => {
+    setData((cur) => (cur ? { ...cur, ...partial } : cur));
+  }, []);
+
+  return { data, loading, failed, refresh, patch };
 }

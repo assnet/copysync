@@ -72,6 +72,12 @@ export interface IOfferDispatchRepository {
    */
   releaseStale(olderThan: Date): Promise<number>;
   /**
+   * Fecha em lote (SKIPPED/OFFER_EXPIRED) todo QUEUED de oferta já vencida (`expiresAt` ≤ now), em
+   * qualquer tenant. Sem isso cada vencido viraria cabeça da faixa por um tick, atrasando os válidos
+   * (ex.: fila acumulada durante a pausa global). A oferta é finalizada pelo sweep de órfãs.
+   */
+  skipExpired(now: Date): Promise<number>;
+  /**
    * Sessão fora do ar na vez do envio: SENDING (com o token da posse, oferta SENDING/PAUSED) →
    * QUEUED com `notBefore = retryAt` e `waitingSessionSince` (mantém o primeiro). O claim dá prioridade a ele e não abre
    * outro envio da sessão antes: a ordem se mantém. false = posse perdida.
