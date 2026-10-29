@@ -14,6 +14,8 @@ import { errorHandler } from '../shared/http/errorHandler';
 import { contentDispositionFor, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
 import { serverTimeHook, storageDispositionHook } from './onSendHooks';
 import { registerRoutes } from './routes';
+import { registerPublicLinkRoutes } from '../modules/link-rotation/presentation/routes/publicLink.routes';
+import { createPublicLinkDeps } from '../modules/link-rotation/infrastructure/publicLinkComposition';
 import { affiliateCredentialItemSchema } from '../modules/integrations/presentation/schemas/affiliateCredential.schema';
 
 function normalizeOrigin(origin: string): string {
@@ -303,6 +305,9 @@ export async function buildApp() {
   app.setErrorHandler(errorHandler as Parameters<typeof app.setErrorHandler>[0]);
 
   // ── Routes ────────────────────────────────────────────────────────────────
+  // Página pública do rodízio de links: hook por Host antes das rotas da API (host público
+  // só vê `/` e `/.well-known/link-rotation`). Ver publicLink.routes.ts.
+  registerPublicLinkRoutes(app, createPublicLinkDeps());
   await registerRoutes(app);
 
   return app;
