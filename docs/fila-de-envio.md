@@ -117,8 +117,10 @@ botão no cabeçalho da fila (gerador e monitoramento) e faixa de aviso enquanto
 Oferta de origem `MONITORING` só é reivindicada dentro da janela da configuração **de origem**
 (`offers.monitorConfigId` → `group_monitor_configs`; com sessão cruzada a sessão que envia é outra
 e sua configuração não vale), calculada em SQL em `America/Sao_Paulo` a partir do `now` do tick,
-inclusive janela noturna. Oferta antiga sem `monitorConfigId` usa a configuração da sessão que
-envia. Oferta vencida pela validade não ocupa lugar no reespalhar/compactar (`laneState`). O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
+inclusive janela noturna. Oferta sem `monitorConfigId` (antiga, ou cuja configuração foi apagada)
+usa a configuração da sessão que envia; sem configuração em lugar nenhum, a oferta do monitoramento
+sai **sem janela** (decisão: sem configuração não há janela definida; o filtro é no candidato, não
+prende a faixa). Oferta vencida pela validade não ocupa lugar no reespalhar/compactar (`laneState`). O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
 a janela não prende o gerador atrás dela. Ver `docs/monitoramento-grupos.md` §2.2.
 
 ## 3. Leitura: `GET /campaigns/send-queue`

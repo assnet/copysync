@@ -96,16 +96,23 @@ export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
   }
 }
 
+/** `captureOutsideWindow` pode faltar (cliente anterior ao campo): mantém o valor salvo, senão o padrão. */
+export type GroupMonitorSettingsInput = Omit<GroupMonitorSettings, 'captureOutsideWindow'> & { captureOutsideWindow?: boolean };
+
 export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
-  async execute(input: SessionInput & { settings: GroupMonitorSettings }): Promise<GroupMonitorConfigDTO> {
+  async execute(input: SessionInput & { settings: GroupMonitorSettingsInput }): Promise<GroupMonitorConfigDTO> {
     await this.assertSession(input);
-    const problem = monitorSettingsProblem(input.settings);
+    const current = input.settings.captureOutsideWindow === undefined
+      ? (await this.deps.monitors.findConfig(input.tenantId, input.sessionId))?.captureOutsideWindow ?? DEFAULT_MONITOR_SETTINGS.captureOutsideWindow
+      : input.settings.captureOutsideWindow;
+    const settings: GroupMonitorSettings = { ...input.settings, captureOutsideWindow: current };
+    const problem = monitorSettingsProblem(settings);
     if (problem) throw new GroupMonitorInvalidInputError(problem.reason, problem.field);
     // Ausente = permitido; só `false` explícito bloqueia (mesma regra do gerador)
-    if (input.settings.mentionAll && (await this.deps.entitlements.getBoolean(input.tenantId, MENTION_ALL_ENABLED)) === false) {
+    if (settings.mentionAll && (await this.deps.entitlements.getBoolean(input.tenantId, MENTION_ALL_ENABLED)) === false) {
       throw new PlanFeatureUnavailableError(MENTION_ALL_ENABLED);
     }
-    await this.deps.monitors.saveSettings(input.tenantId, input.sessionId, input.settings);
+    await this.deps.monitors.saveSettings(input.tenantId, input.sessionId, settings);
     return this.load(input);
   }
 }

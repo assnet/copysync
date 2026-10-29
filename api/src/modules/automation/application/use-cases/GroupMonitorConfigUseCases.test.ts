@@ -45,6 +45,14 @@ describe('GroupMonitorConfigUseCases', () => {
       .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
   });
 
+  it('captureOutsideWindow ausente (cliente antigo) mantém o valor salvo; sem config salva vale o padrão', async () => {
+    const s = setup();
+    const { captureOutsideWindow: _omit, ...without } = DEFAULT_MONITOR_SETTINGS;
+    expect((await s.settings.execute({ ...base, settings: without })).settings.captureOutsideWindow).toBe(true);
+    await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, captureOutsideWindow: false } });
+    expect((await s.settings.execute({ ...base, settings: without })).settings.captureOutsideWindow).toBe(false);
+  });
+
   it('grupos monitorados: garante conversa, liga download de mídia e normaliza palavras-chave', async () => {
     const s = setup();
     const out = await s.monitored.execute({ ...base, groups: [{ groupJid: 'a', keywords: [' Fone ', 'fone'] }] });

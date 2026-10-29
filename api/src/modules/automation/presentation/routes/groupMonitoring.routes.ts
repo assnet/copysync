@@ -4,7 +4,6 @@ import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { automationContainer } from '../../infrastructure/automationContainer';
 import type { GroupMonitorSettings } from '../../domain/entities/GroupMonitor';
-import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
 import {
   capturedIdParamSchema, capturedListResponse, capturedQuerySchema, capturedResponse, configResponse,
   saveBroadcastBodySchema, saveMonitoredBodySchema, saveSettingsBodySchema, sessionQuerySchema,
@@ -31,8 +30,9 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     '/config',
     { preHandler, schema: { tags, summary: 'Salvar horário, envio e validade', body: saveSettingsBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
-      const { sessionId, captureOutsideWindow = DEFAULT_MONITOR_SETTINGS.captureOutsideWindow, ...rest } = request.body;
-      const result = await automationContainer.saveSettings().execute({ tenantId: request.tenantContext.tenantId, sessionId, settings: { ...rest, captureOutsideWindow } });
+      // `captureOutsideWindow` ausente (cliente antigo): o use case mantém o valor salvo
+      const { sessionId, ...settings } = request.body;
+      const result = await automationContainer.saveSettings().execute({ tenantId: request.tenantContext.tenantId, sessionId, settings });
       httpResponse.ok(reply, result);
     },
   );

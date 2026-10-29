@@ -683,6 +683,7 @@ model Offer {
   @@index([tenantId, createdAt(sort: Desc)])
   // Varredura do worker: ofertas SENDING sem envio aberto
   @@index([status])
+  @@index([monitorConfigId])
   @@map("offers")
 }
 

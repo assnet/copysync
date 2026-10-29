@@ -126,7 +126,8 @@ mostrar horários reais. O gerador de ofertas não é afetado pela janela.
 **Capturar fora do horário** (`captureOutsideWindow`, padrão ligado): fora da janela a captura
 continua e as ofertas acumulam na fila, saindo quando ela abrir (a validade conta da captura).
 Desligado, mensagem fora da janela não é capturada nem entra na fila (`outside_window` no
-listener, sem linha no banco). Sem efeito com janela de dia inteiro.
+listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia inteiro. No
+`PUT /config` o campo é opcional: ausente (cliente anterior a app 0.50.0) mantém o valor salvo.
 
 ## 3. Regras e limites
 
