@@ -102,7 +102,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                   -- Oferta do monitoramento fora da janela de operação da sessão espera a janela abrir
                   AND NOT EXISTS (
                     SELECT 1 FROM "offers" mo
-                      JOIN "group_monitor_configs" g ON g."sessionId" = d."sessionId" AND g."tenantId" = d."tenantId"
+                      -- Janela da configuração de ORIGEM (sessão cruzada envia por outra); oferta antiga sem
+                      -- monitorConfigId cai na configuração da sessão que envia
+                      JOIN "group_monitor_configs" g
+                        ON g."id" = COALESCE(mo."monitorConfigId",
+                             (SELECT c."id" FROM "group_monitor_configs" c WHERE c."sessionId" = d."sessionId" AND c."tenantId" = d."tenantId" LIMIT 1))
                      WHERE mo."id" = d."offerId" AND mo."origin" = 'MONITORING'::"OfferOrigin"
                        AND NOT (
                          (g."windowStartMinute" = 0 AND g."windowEndMinute" = 1440)
@@ -178,7 +182,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
       this.prisma.offerDispatch.findMany({
         where: {
           tenantId, sessionId, status: 'QUEUED',
-          offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: now } }] },
+          // Oferta vencida pela validade não ocupa lugar no reespalhar/compactar: o worker a pula no envio
+          offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: now } }], AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] },
         },
         orderBy: { notBefore: 'asc' },
       }),

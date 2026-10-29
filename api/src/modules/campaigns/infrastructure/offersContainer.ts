@@ -105,7 +105,7 @@ const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: co
 const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
 const pauses      = lazy(() => new PrismaSendingPauseStore(prisma));
 const sendQueue   = lazy(() => new GetSendQueueUseCase({ reader: new PrismaSendQueueReader(prisma), pauses: pauses() }));
-const pauseAll    = lazy(() => new PauseAllSendsUseCase({ pauses: pauses(), dispatches: dispatches(), configs: configs() }));
+const pauseAll    = lazy(() => new PauseAllSendsUseCase({ pauses: pauses() }));
 const resumeAll   = lazy(() => new ResumeAllSendsUseCase({ pauses: pauses(), dispatches: dispatches(), configs: configs() }));
 const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
   expander: new HttpShortLinkExpander(),

@@ -107,15 +107,18 @@ o que vencer durante a pausa sai `SKIPPED/OFFER_EXPIRED` no envio. Retomar
 (`ResumeAllSendsUseCase`) zera o campo e reespalha a fila de cada sessão a partir de agora
 (`respreadLane`, intervalo da configuração do gerador): os vencidos saem na ordem, cada um pelo
 menos o intervalo mínimo depois do anterior (buraco maior que o máximo vira uma folga); horário
-ainda futuro fica. A cadência real continua garantida pelo claim. Pausar é idempotente (mantém o instante original).
+ainda futuro fica, salvo se o reespalhar o alcançou. Retomar sem pausa ativa é no-op (botão
+desatualizado em outra aba não mexe na fila). A cadência real continua garantida pelo claim. Pausar é idempotente (mantém o instante original).
 Rotas: `POST /campaigns/send-queue/pause` e `/resume`; o `GET` devolve `sendingPausedAt`. Painel:
 botão no cabeçalho da fila (gerador e monitoramento) e faixa de aviso enquanto pausado.
 
 ### 2.6 Janela de operação no claim
 
-Oferta de origem `MONITORING` só é reivindicada dentro da janela da sessão
-(`group_monitor_configs`), calculada em SQL em `America/Sao_Paulo` a partir do `now` do tick,
-inclusive janela noturna. O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
+Oferta de origem `MONITORING` só é reivindicada dentro da janela da configuração **de origem**
+(`offers.monitorConfigId` → `group_monitor_configs`; com sessão cruzada a sessão que envia é outra
+e sua configuração não vale), calculada em SQL em `America/Sao_Paulo` a partir do `now` do tick,
+inclusive janela noturna. Oferta antiga sem `monitorConfigId` usa a configuração da sessão que
+envia. Oferta vencida pela validade não ocupa lugar no reespalhar/compactar (`laneState`). O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
 a janela não prende o gerador atrás dela. Ver `docs/monitoramento-grupos.md` §2.2.
 
 ## 3. Leitura: `GET /campaigns/send-queue`

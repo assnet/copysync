@@ -14,7 +14,7 @@ export function registerGroupMonitoringListener(): void {
   internalEventBus.on<MessageReceivedEvent>('MESSAGE_RECEIVED', async (e) => {
     if (!e.isGroup || e.fromMe) return;
     try {
-      await automationContainer.registerMessage().execute({
+      const result = await automationContainer.registerMessage().execute({
         tenantId: e.tenantId,
         sessionId: e.sessionId,
         isGroup: e.isGroup,
@@ -26,6 +26,8 @@ export function registerGroupMonitoringListener(): void {
         mediaUrl: e.mediaUrl,
         mimeType: e.mimeType,
       });
+      // Sem texto da mensagem: só o fato, para a operação saber que a flag está agindo
+      if (result === 'outside_window') logger.info({ sessionId: e.sessionId, tenantId: e.tenantId, groupJid: e.groupJid }, 'group message outside operating window; not captured');
     } catch (err) {
       // Sem texto da mensagem no log
       logger.error({ err: (err as Error)?.name, sessionId: e.sessionId, tenantId: e.tenantId }, 'group monitoring capture failed');

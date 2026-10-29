@@ -13,8 +13,9 @@ export interface RespreadLaneOptions {
 /**
  * Retomada global: a fila da sessão ficou parada e muitos horários venceram. Reespalha a partir de
  * agora, na mesma ordem: o primeiro sai agora (ou uma folga depois do último envio, se foi há pouco;
- * ou no horário marcado, se ainda é futuro); cada seguinte mantém o espaçamento original, nunca
- * menor que o mínimo (sem rajada na prévia) nem maior que o máximo (buracos viram uma folga).
+ * ou no horário marcado, se ainda é futuro); cada vencido seguinte mantém o espaçamento original,
+ * nunca menor que o mínimo (sem rajada na prévia) nem maior que o máximo (buracos viram uma folga).
+ * Horário ainda futuro fica como está, salvo se o reespalhar o alcançou (aí entra na cadeia).
  * Devolve só o que muda. A cadência real continua garantida pelo claim do worker.
  */
 export function respreadLane(entries: readonly LaneEntry[], opts: RespreadLaneOptions): LaneEntry[] {
@@ -26,7 +27,12 @@ export function respreadLane(entries: readonly LaneEntry[], opts: RespreadLaneOp
   const first = sorted[0]!.notBefore.getTime();
   const times: number[] = [first < nowMs ? floor : Math.max(first, floor)];
   for (let i = 1; i < sorted.length; i++) {
-    const delta = sorted[i]!.notBefore.getTime() - sorted[i - 1]!.notBefore.getTime();
+    const original = sorted[i]!.notBefore.getTime();
+    if (original >= nowMs && original >= times[i - 1]! + opts.interval.minMs) {
+      times.push(original);
+      continue;
+    }
+    const delta = original - sorted[i - 1]!.notBefore.getTime();
     const step = delta > opts.interval.maxMs ? laneGapMs(opts.interval, rand) : Math.max(delta, opts.interval.minMs);
     times.push(times[i - 1]! + step);
   }

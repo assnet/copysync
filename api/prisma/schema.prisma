@@ -667,6 +667,9 @@ model Offer {
   expiresAt           DateTime?
   /// Chave idempotente de quem criou fora do gerador (ex.: `captured:<id>`): reprocessar não duplica.
   sourceKey           String?           @unique
+  /// Oferta do monitoramento: configuração (sessão de ORIGEM) cuja janela de operação vale no envio,
+  /// mesmo quando o disparo sai por outra sessão (sessão cruzada). null = sem janela própria.
+  monitorConfigId     String?
   status              OfferStatus       @default(DRAFT)
   createdById         String? // null se o usuário for removido
   createdAt           DateTime          @default(now())
@@ -675,6 +678,7 @@ model Offer {
   tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy  User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
   dispatches OfferDispatch[]
+  monitorConfig GroupMonitorConfig? @relation(fields: [monitorConfigId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt(sort: Desc)])
   // Varredura do worker: ofertas SENDING sem envio aberto
@@ -1086,6 +1090,7 @@ model GroupMonitorConfig {
   monitoredGroups MonitoredGroup[]
   broadcastGroups BroadcastGroup[]
   capturedOffers  CapturedOffer[]
+  offers          Offer[]
 
   @@unique([tenantId, sessionId])
   @@index([sessionId])

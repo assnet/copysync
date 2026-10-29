@@ -169,6 +169,7 @@ export class ProcessPendingCapturedOffersUseCase {
       sourceKey: `captured:${c.id}`,
       // Todos os envios dentro da janela (o fim empurra para o próximo início); o claim garante no envio
       fitSlot: (at) => resolveStartWithinWindow(at, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute }),
+      monitorConfigId: config.id,
     });
     if (res.kind === 'expired') return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: res.firstSendAt } };
     return { status: 'QUEUED', data: { ...base, startsAt: res.firstSendAt, offerId: res.offerId } };

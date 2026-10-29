@@ -29,7 +29,7 @@ export function makeOffer(overrides: Partial<Offer> = {}): Offer {
     id: 'offer-1', tenantId: TENANT, provider: 'AMAZON', sourceUrl: 'https://amazon.com.br/dp/B0ABCDEFGH',
     productRef: 'B0ABCDEFGH', title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
     affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', attributionVerified: true,
-    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, sourceKey: null, status: 'DRAFT',
+    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, sourceKey: null, monitorConfigId: null, status: 'DRAFT',
     createdById: USER, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
@@ -108,9 +108,10 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     return queued.length;
   }
   async laneState(tenantId: string, sessionId: string, now: Date) {
+    const alive = (offerId: string) => { const o = this.offers.items.find((x) => x.id === offerId); return o?.status === 'SENDING' && (!o.expiresAt || o.expiresAt > now); };
     const open = this.items
       .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.status === 'QUEUED')
-      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!o.scheduledAt || o.scheduledAt <= now); })
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return alive(d.offerId) && (!o?.scheduledAt || o.scheduledAt <= now); })
       .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime())
       .map((d) => ({ ...d }));
     const last = this.items

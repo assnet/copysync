@@ -38,6 +38,8 @@ export interface EnqueueOfferInput {
    * a regra no envio; isto deixa a fila mostrar horários reais.
    */
   fitSlot?: (at: Date) => Date;
+  /** Configuração do monitoramento de origem: o claim aplica a janela dela, seja qual for a sessão que envia. */
+  monitorConfigId?: string;
 }
 
 export type EnqueueOfferResult =
@@ -120,6 +122,7 @@ export class EnqueueOfferUseCase {
       simulateTyping: input.simulateTyping,
       typingSeconds: input.typingSeconds,
       sourceKey: input.sourceKey ?? null,
+      monitorConfigId: input.monitorConfigId ?? null,
     });
     const created = await this.deps.dispatches.startSending(
       offer.id,

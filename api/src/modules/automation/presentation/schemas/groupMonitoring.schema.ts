@@ -28,7 +28,9 @@ const settingsProperties = {
   audience: { type: 'string', enum: [...OFFER_AUDIENCES] },
   enrichLinkOnly: { type: 'boolean' },
 } as const;
-const settingsKeys = Object.keys(settingsProperties);
+// `captureOutsideWindow` entrou depois (app 0.50.0): cliente antigo salva sem ele → padrão no handler
+const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow']);
+const settingsKeys = Object.keys(settingsProperties).filter((k) => !OPTIONAL_SETTINGS.has(k));
 
 export const sessionQuerySchema = {
   type: 'object', required: ['sessionId'], additionalProperties: false, properties: { sessionId },

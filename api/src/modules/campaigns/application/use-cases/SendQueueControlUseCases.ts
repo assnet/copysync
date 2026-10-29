@@ -23,7 +23,7 @@ export interface SendingPauseStateDTO {
  * Idempotente: pausar de novo mantém o instante original.
  */
 export class PauseAllSendsUseCase {
-  constructor(private readonly deps: SendQueueControlDeps) {}
+  constructor(private readonly deps: Pick<SendQueueControlDeps, 'pauses' | 'now'>) {}
 
   async execute(input: { tenantId: string }): Promise<SendingPauseStateDTO> {
     const current = await this.deps.pauses.get(input.tenantId);
@@ -43,6 +43,8 @@ export class ResumeAllSendsUseCase {
 
   async execute(input: { tenantId: string }): Promise<SendingPauseStateDTO> {
     const { tenantId } = input;
+    // Já ativo (botão desatualizado em outra aba): não reespalha uma fila que está andando
+    if (!(await this.deps.pauses.get(tenantId))) return { sendingPausedAt: null };
     await this.deps.pauses.set(tenantId, null);
     const now = (this.deps.now ?? (() => new Date()))();
     const config = await this.deps.configs.find(tenantId);

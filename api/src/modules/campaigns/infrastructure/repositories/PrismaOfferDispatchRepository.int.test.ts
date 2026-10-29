@@ -76,6 +76,30 @@ describe('claimDue — janela de operação', () => {
   });
 });
 
+describe('claimDue — janela da configuração de ORIGEM (sessão cruzada)', () => {
+  it('oferta capturada na sessão A (06–20) disparada pela sessão B: vale a janela de A; B sem config não libera', async () => {
+    await reset();
+    const b = await prisma.session.create({ data: { tenantId, name: 'B', status: 'CONNECTED' } });
+    const convB = (await prisma.chatConversation.create({ data: { tenantId, sessionId: b.id, isGroup: true, groupJid: 'b' } })).id;
+    const cfgA = await prisma.groupMonitorConfig.findFirstOrThrow({ where: { tenantId, sessionId } });
+    const mon = await prisma.offer.create({ data: { tenantId, provider: 'AMAZON', sourceUrl: 'x', affiliateUrl: 'x', text: 'x', status: 'SENDING', origin: 'MONITORING', monitorConfigId: cfgA.id } });
+    await prisma.offerDispatch.create({ data: { tenantId, offerId: mon.id, conversationId: convB, sessionId: b.id, notBefore: spToUtc(5), status: 'QUEUED', gapSeconds: 0 } });
+    expect(await repo.claimDue(spToUtc(21, 30), 10)).toEqual([]);
+    expect((await repo.claimDue(spToUtc(9), 10)).map((d) => d.offerId)).toEqual([mon.id]);
+    await prisma.offerDispatch.deleteMany({ where: { sessionId: b.id } });
+    await prisma.chatConversation.delete({ where: { id: convB } });
+    await prisma.session.delete({ where: { id: b.id } });
+  });
+
+  it('oferta antiga sem monitorConfigId usa a configuração da sessão que envia', async () => {
+    await reset();
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(5));
+    expect(await repo.claimDue(spToUtc(21, 30), 10)).toEqual([]);
+    expect((await repo.claimDue(spToUtc(9), 10)).map((d) => d.offerId)).toEqual([mon.id]);
+  });
+});
+
 describe('claimDue — pausa global', () => {
   it('tenant pausado não sai; retomado sai', async () => {
     await reset();

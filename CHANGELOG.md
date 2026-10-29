@@ -15,10 +15,10 @@ Monitoramento com janela 06:00–20:00 enviou das 17:00 às 23:00: a janela só 
 
 #### Backend
 
-- **`PrismaOfferDispatchRepository.ts`** (`claimDue`) — oferta do monitoramento só sai dentro da janela da sessão (minuto do dia em São Paulo em SQL, janela noturna inclusive), seja quando for agendada; tenant com pausa global não sai. Filtro no candidato: captura fora da janela não prende o gerador. `openSessionIds`. Testado em Postgres real (`*.int.test.ts`).
+- **`PrismaOfferDispatchRepository.ts`** (`claimDue`) — oferta do monitoramento só sai dentro da janela da configuração de ORIGEM (`Offer.monitorConfigId`, novo; sessão cruzada envia por outra sessão), minuto do dia em São Paulo em SQL, janela noturna inclusive, seja quando for agendada; tenant com pausa global não sai. `laneState` ignora oferta vencida. Filtro no candidato: captura fora da janela não prende o gerador. `openSessionIds`. Testado em Postgres real (`*.int.test.ts`).
 - **`EnqueueOfferUseCase.ts`** — `fitSlot` encaixa cada horário em cadeia, preservando o espaçamento; o monitoramento passa a janela (fila mostra horários reais).
 - **`SendQueueControlUseCases.ts`**, **`ISendingPauseStore.ts`**, **`PrismaSendingPauseStore.ts`**, migration `20261029010000_send_window_and_global_pause` — `tenants.sendingPausedAt`; `POST /campaigns/send-queue/pause|resume`; retomar reespalha a fila de cada sessão a partir de agora (`respreadLane`, sem rajada). `GET` devolve `sendingPausedAt`.
-- **`GroupMonitorConfig.captureOutsideWindow`** (padrão `true`) — desligado, mensagem fora da janela não é capturada (`RegisterCapturedMessageUseCase` → `outside_window`). `findActiveMonitoredGroup` devolve a janela.
+- **`GroupMonitorConfig.captureOutsideWindow`** (padrão `true`) — desligado, mensagem fora da janela não é capturada (`RegisterCapturedMessageUseCase` → `outside_window`, logado sem texto). Opcional no `PUT /config` (cliente antigo segue salvando). `findActiveMonitoredGroup` devolve a janela.
 
 #### Frontend
 

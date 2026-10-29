@@ -4,6 +4,7 @@ import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { automationContainer } from '../../infrastructure/automationContainer';
 import type { GroupMonitorSettings } from '../../domain/entities/GroupMonitor';
+import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
 import {
   capturedIdParamSchema, capturedListResponse, capturedQuerySchema, capturedResponse, configResponse,
   saveBroadcastBodySchema, saveMonitoredBodySchema, saveSettingsBodySchema, sessionQuerySchema,
@@ -26,12 +27,12 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  app.put<{ Body: GroupMonitorSettings & { sessionId: string } }>(
+  app.put<{ Body: Omit<GroupMonitorSettings, 'captureOutsideWindow'> & { captureOutsideWindow?: boolean; sessionId: string } }>(
     '/config',
     { preHandler, schema: { tags, summary: 'Salvar horário, envio e validade', body: saveSettingsBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
-      const { sessionId, ...settings } = request.body;
-      const result = await automationContainer.saveSettings().execute({ tenantId: request.tenantContext.tenantId, sessionId, settings });
+      const { sessionId, captureOutsideWindow = DEFAULT_MONITOR_SETTINGS.captureOutsideWindow, ...rest } = request.body;
+      const result = await automationContainer.saveSettings().execute({ tenantId: request.tenantContext.tenantId, sessionId, settings: { ...rest, captureOutsideWindow } });
       httpResponse.ok(reply, result);
     },
   );

@@ -35,6 +35,8 @@ export interface Offer {
   expiresAt: Date | null;
   /** Chave idempotente de origem externa (ex.: captura do monitoramento). */
   sourceKey: string | null;
+  /** Oferta do monitoramento: configuração de origem cuja janela vale no envio. */
+  monitorConfigId: string | null;
   status: OfferStatus;
   createdById: string | null;
   createdAt: Date;

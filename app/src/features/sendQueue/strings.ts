@@ -83,7 +83,7 @@ export const sendQueueStrings = {
     pauseAll: 'Pausar todos os envios',
     resumeAll: 'Retomar envios',
     pauseAllTooltip: 'Segura TODOS os envios da conta, de todas as sessões e origens. A captura do monitoramento continua acumulando a fila. Dá para retomar a qualquer momento.',
-    resumeAllTooltip: 'A fila volta a sair na ordem, com a cadência normal. O que venceu durante a pausa é ignorado.',
+    resumeAllTooltip: 'A fila volta a sair na ordem, com a cadência normal. Envios de oferta que venceu a validade são ignorados; os demais saem a partir de agora.',
     pausedSince: (time: string) => `Envios pausados desde ${time}. Nada sai até você retomar; o monitoramento continua capturando e colocando na fila.`,
     pausedChip: 'Pausado (conta)',
     pausedChipTooltip: 'Todos os envios da conta estão pausados: este sai quando você retomar.',

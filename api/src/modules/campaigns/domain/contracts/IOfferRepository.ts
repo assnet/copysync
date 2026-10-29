@@ -25,6 +25,8 @@ export interface CreateOfferInput {
   expiresAt?: Date | null;
   /** Única: criar duas vezes com a mesma chave falha. */
   sourceKey?: string | null;
+  /** Janela de operação que vale no envio (monitoramento). */
+  monitorConfigId?: string | null;
   mentionAll?: boolean;
   simulateTyping?: boolean;
   typingSeconds?: number;

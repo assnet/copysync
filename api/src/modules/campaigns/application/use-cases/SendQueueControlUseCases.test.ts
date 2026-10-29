@@ -22,6 +22,24 @@ describe('PauseAllSendsUseCase', () => {
 });
 
 describe('ResumeAllSendsUseCase', () => {
+  it('sem pausa ativa é no-op: não mexe na fila', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'a', status: 'SENDING' }));
+    s.dispatches.add({ offerId: 'a', conversationId: 'c1', sessionId: 's1', notBefore: new Date(NOW.getTime() - 60_000) });
+    expect(await s.resume.execute({ tenantId: TENANT })).toEqual({ sendingPausedAt: null });
+    expect(s.dispatches.items[0]!.notBefore).toEqual(new Date(NOW.getTime() - 60_000));
+  });
+
+  it('oferta vencida pela validade não ocupa lugar no reespalhar', async () => {
+    const s = setup();
+    s.pauses.pausedAt = new Date(NOW.getTime() - 3_600_000);
+    s.offers.items.push(makeOffer({ id: 'old', status: 'SENDING', expiresAt: new Date(NOW.getTime() - 1000) }), makeOffer({ id: 'b', status: 'SENDING' }));
+    s.dispatches.add({ offerId: 'old', conversationId: 'x1', sessionId: 's1', notBefore: new Date(NOW.getTime() - 120_000) });
+    s.dispatches.add({ offerId: 'b', conversationId: 'c1', sessionId: 's1', notBefore: new Date(NOW.getTime() - 60_000) });
+    await s.resume.execute({ tenantId: TENANT });
+    expect(s.dispatches.items.find((d) => d.conversationId === 'c1')!.notBefore).toEqual(NOW);
+  });
+
   it('libera e compacta a fila de cada sessão a partir de agora, na ordem, sem rajada', async () => {
     const s = setup();
     s.pauses.pausedAt = new Date(NOW.getTime() - 3_600_000);
