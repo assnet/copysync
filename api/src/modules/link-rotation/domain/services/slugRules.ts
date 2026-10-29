@@ -8,7 +8,7 @@
  */
 
 /** 3–50 caracteres, a-z0-9 e hífen, sem hífen nas pontas. */
-export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$/;
+export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/;
 export const SLUG_MIN_LENGTH = 3;
 export const SLUG_MAX_LENGTH = 50;
 export const MAX_SLUG_SUGGESTIONS = 5;

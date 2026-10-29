@@ -7,7 +7,7 @@ describe('slugRules', () => {
     expect(normalizeSlug('-Ofertas-')).toBe('ofertas');
   });
 
-  it.each(['ab', 'a'.repeat(51), 'promo!', 'promo.top', '', '---'])('"%s" é inválido', (raw) => {
+  it.each(['a', '7', 'ab', 'a'.repeat(51), 'promo!', 'promo.top', '', '---'])('"%s" é inválido', (raw) => {
     expect(validateSlug(raw).kind).toBe('invalid');
   });
 
