@@ -35,9 +35,17 @@ describe('slugRules', () => {
   it('sugestões pulam ocupadas e reservadas e cabem em 50', () => {
     const taken = new Set(['promo-oficial', 'promo2']);
     const out = suggestSlugs('promo', { isTaken: (s) => taken.has(s), extraReserved: ['promo-vip'] });
-    expect(out).toEqual(['promo3', 'promo4', 'promo5', 'promo6', 'promo7']);
+    expect(out).toEqual(['promo-achados', 'promo3', 'promo4', 'promo5', 'promo6']);
     const long = suggestSlugs('a'.repeat(50));
     for (const s of long) expect(s.length).toBeLessThanOrEqual(50);
+  });
+
+  it('não repete a palavra que a base já contém (vip-vip, promocoes-vip-vip)', () => {
+    expect(suggestSlugs('vip')).toEqual(['vip-oficial', 'vip-achados', 'vip2', 'vip3', 'vip4']);
+    const out = suggestSlugs('promocoes-vip');
+    expect(out).not.toContain('promocoes-vip-vip');
+    expect(out.slice(0, 2)).toEqual(['promocoes-vip-oficial', 'promocoes-vip-achados']);
+    expect(suggestSlugs('oficial')[0]).toBe('oficial-vip');
   });
 
   it('base curta ou vazia ainda gera sugestão válida', () => {

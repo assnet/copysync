@@ -122,6 +122,17 @@ describe('renderStorefrontPage', () => {
     expect(Buffer.byteLength(html, 'utf8')).toBeLessThan(60 * 1024);
   });
 
+  it('sem capa a faixa é baixa (120/160px); com capa mantém 3:1 com altura máxima', () => {
+    const semCapa = renderStorefrontPage(model({ coverUrl: null }), OPTS).html;
+    expect(semCapa).toContain('<div class="cv"></div>');
+    const css = styleOf(semCapa);
+    expect(css).toContain('.cv{height:120px;');
+    expect(css).toContain('@media (min-width:641px){.cv{height:160px}}');
+    expect(css).toContain('.cv.ci{height:auto;aspect-ratio:3/1;max-height:320px}');
+    expect(css).not.toMatch(/\.cv\{aspect-ratio/);
+    expect(renderStorefrontPage(model(), OPTS).html).toContain('<div class="cv ci"><img');
+  });
+
   it('imagem fora do mediaOrigin cai no fallback (iniciais / sem imagem)', () => {
     const { html } = renderStorefrontPage(
       model({

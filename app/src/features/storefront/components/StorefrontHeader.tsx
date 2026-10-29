@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Button, Stack, Tooltip, Typography, alpha, useTheme } from '@mui/material';
+import { Box, Button, IconButton, Stack, Tooltip, Typography, alpha, useMediaQuery, useTheme } from '@mui/material';
 import { Check, Copy, ExternalLink, Store } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
@@ -19,6 +19,7 @@ export interface StorefrontHeaderProps {
 export function StorefrontHeader({ publicUrl, onCopyFailed }: StorefrontHeaderProps) {
   const theme = useTheme();
   const dark = theme.palette.mode === 'dark';
+  const compact = useMediaQuery(theme.breakpoints.down('sm'));
   const blurAddress = useBlur('storefront.subdomain');
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -48,7 +49,7 @@ export function StorefrontHeader({ publicUrl, onCopyFailed }: StorefrontHeaderPr
       }}
     >
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ md: 'center' }} justifyContent="space-between">
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0, flex: { md: 1 } }}>
           <Box
             aria-hidden
             sx={{
@@ -66,34 +67,55 @@ export function StorefrontHeader({ publicUrl, onCopyFailed }: StorefrontHeaderPr
         </Stack>
 
         {publicUrl && (
+          // Celular: endereço em linha própria (quebra em qualquer ponto) e ações só ícone.
+          // Desktop: endereço em fonte menor, quebrando por caractere em vez de cortar o host.
           <Stack
-            direction="row" spacing={1} alignItems="center" role="group" aria-label={t.address.label}
+            direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}
+            role="group" aria-label={t.address.label}
             sx={{
-              minWidth: 0, maxWidth: '100%', pl: 1.75, pr: 0.75, py: 0.75, borderRadius: 999,
+              minWidth: 0, maxWidth: { xs: '100%', md: '50%' }, flex: { md: '0 1 auto' },
+              pl: 1.75, pr: 0.75, py: 0.75, borderRadius: 2.5,
               bgcolor: alpha(theme.palette.background.paper, dark ? 0.6 : 0.85), border: '1px solid', borderColor: 'divider',
             }}
           >
-            <Typography variant="body2" noWrap sx={{ fontFamily: 'monospace', minWidth: 0, flex: 1 }} title={blurAddress ? undefined : publicUrl}>
+            <Typography
+              variant="body2" title={blurAddress ? undefined : publicUrl}
+              sx={{ fontFamily: 'monospace', fontSize: '0.8125rem', lineHeight: 1.4, overflowWrap: 'anywhere', minWidth: 0, flex: 1, pt: { xs: 0.5, sm: 0 } }}
+            >
               <Blurred when={blurAddress} inline radius={5}>{publicUrl.replace(/^https?:\/\//, '')}</Blurred>
             </Typography>
-            <Tooltip title={copied ? t.address.copied : t.address.copy} arrow>
-              <Button
-                size="small" variant={copied ? 'outlined' : 'contained'} color={copied ? 'success' : 'primary'} disableElevation
-                onClick={() => void copy()} aria-label={t.address.copy}
-                startIcon={<AppIcon icon={copied ? Check : Copy} size="sm" />}
-                sx={{ borderRadius: 999, flexShrink: 0, minHeight: 36 }}
-              >
-                <Box component="span" aria-live="polite">{copied ? t.address.copied : t.address.copy}</Box>
-              </Button>
-            </Tooltip>
-            <Tooltip title={t.address.openTooltip} arrow>
-              <Button
-                size="small" variant="text" component="a" href={publicUrl} target="_blank" rel="noopener noreferrer"
-                startIcon={<AppIcon icon={ExternalLink} size="sm" />} sx={{ borderRadius: 999, flexShrink: 0, minHeight: 36 }}
-              >
-                {t.address.open}
-              </Button>
-            </Tooltip>
+            <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" sx={{ flexShrink: 0 }}>
+              <Tooltip title={copied ? t.address.copied : t.address.copy} arrow>
+                {compact ? (
+                  <IconButton size="small" color={copied ? 'success' : 'primary'} onClick={() => void copy()} aria-label={t.address.copy} sx={{ width: 40, height: 40 }}>
+                    <AppIcon icon={copied ? Check : Copy} size="sm" />
+                  </IconButton>
+                ) : (
+                  <Button
+                    size="small" variant={copied ? 'outlined' : 'contained'} color={copied ? 'success' : 'primary'} disableElevation
+                    onClick={() => void copy()} aria-label={t.address.copy}
+                    startIcon={<AppIcon icon={copied ? Check : Copy} size="sm" />}
+                    sx={{ borderRadius: 999, flexShrink: 0, minHeight: 36, whiteSpace: 'nowrap' }}
+                  >
+                    <Box component="span" aria-live="polite">{copied ? t.address.copied : t.address.copy}</Box>
+                  </Button>
+                )}
+              </Tooltip>
+              <Tooltip title={t.address.openTooltip} arrow>
+                {compact ? (
+                  <IconButton size="small" component="a" href={publicUrl} target="_blank" rel="noopener noreferrer" aria-label={t.address.open} sx={{ width: 40, height: 40 }}>
+                    <AppIcon icon={ExternalLink} size="sm" />
+                  </IconButton>
+                ) : (
+                  <Button
+                    size="small" variant="text" component="a" href={publicUrl} target="_blank" rel="noopener noreferrer"
+                    startIcon={<AppIcon icon={ExternalLink} size="sm" />} sx={{ borderRadius: 999, flexShrink: 0, minHeight: 36, whiteSpace: 'nowrap' }}
+                  >
+                    {t.address.open}
+                  </Button>
+                )}
+              </Tooltip>
+            </Stack>
           </Stack>
         )}
       </Stack>

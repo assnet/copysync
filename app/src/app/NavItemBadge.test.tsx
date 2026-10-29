@@ -8,6 +8,12 @@ describe('NavItemBadge', () => {
     expect(screen.getByText('Profissional')).toBeTruthy();
   });
 
+  it('empilhado vai sem recuo lateral, abaixo do rótulo', () => {
+    render(<NavItemBadge badge="Profissional" stacked />);
+    const chip = screen.getByText('Profissional').closest('.MuiChip-root') as HTMLElement;
+    expect(getComputedStyle(chip).marginLeft).not.toBe('8px');
+  });
+
   it('não renderiza nada sem badge', () => {
     const { container } = render(<NavItemBadge />);
     expect(container.innerHTML).toBe('');

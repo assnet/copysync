@@ -209,12 +209,15 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
                   ) : item.icon}
                 </ListItemIcon>
                 {!collapsed && (
+                  // Com selo: rótulo pode quebrar e o selo desce para linha própria (não corta o rótulo).
                   <ListItemText
                     primary={item.label}
-                    primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500, noWrap: true }}
+                    primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500, noWrap: !badge, sx: badge ? { lineHeight: 1.3 } : undefined }}
+                    secondary={badge ? <NavItemBadge badge={badge} stacked /> : undefined}
+                    secondaryTypographyProps={{ component: 'div' }}
+                    sx={badge ? { my: 0.25 } : undefined}
                   />
                 )}
-                {!collapsed && <NavItemBadge badge={badge} />}
               </ListItemButton>
             );
 

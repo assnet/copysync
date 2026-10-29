@@ -54,6 +54,21 @@ describe('StorefrontPreview', () => {
     vi.useRealTimers();
   });
 
+  it('"Ampliar" abre dialog largo com o mesmo iframe sandbox (mobile e desktop)', async () => {
+    setup('desktop', 'dark');
+    await act(async () => { vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS); });
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: t.expand }));
+    const dialog = screen.getByRole('dialog', { name: t.expandTitle });
+    const big = dialog.querySelector('iframe') as HTMLIFrameElement;
+    expect(big).toHaveAttribute('sandbox', '');
+    expect(big.getAttribute('srcdoc')).toBe('<h1>vitrine</h1>');
+    expect(big.style.width).toBe(`${PREVIEW_WIDTHS.desktop}px`);
+    expect(screen.getAllByTitle(t.frameTitle)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: t.close }));
+    vi.useRealTimers();
+  });
+
   it('qualquer flag storefront ligada borra a prévia inteira', () => {
     localStorage.setItem('privacy.blur', JSON.stringify(['storefront.offerImage']));
     const { container } = setup();

@@ -30,6 +30,27 @@ function clean(text: string | null | undefined): string | null {
   return out ? out.slice(0, TITLE_MAX) : null;
 }
 
+// Nomes de site que a loja põe no `<title>`/`og:title` quando a página não é de produto
+// (bloqueio, perfil, erro). Gravar isso como título seria um título falso.
+const SITE_NAMES = new Set([
+  'mercado livre', 'mercado libre', 'mercadolivre', 'mercadolibre', 'mercado livre brasil',
+  'amazon', 'amazon.com', 'amazon.com.br', 'amazon brasil', 'amazon.com.br amazon',
+  'shopee', 'shopee brasil', 'shopee brazil', 'shopee.com.br', 'brasil', 'brazil',
+]);
+
+/** Título que é só o nome do site, inteiro ou em pedaços separados por ` | `, ` - `, `:`, `–`, `—`. */
+export function isGenericSiteTitle(title: string): boolean {
+  const norm = title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const parts = norm.split(/\s*[|:–—]\s*|\s+-\s+/).filter(Boolean);
+  return parts.length > 0 && parts.every((part) => SITE_NAMES.has(part));
+}
+
+/** Título limpo, ou null se vazio ou genérico (só o nome do site). */
+function productTitle(text: string | null | undefined): string | null {
+  const out = clean(text);
+  return out && !isGenericSiteTitle(out) ? out : null;
+}
+
 /** `<meta property|name="key" content="…">` em qualquer ordem de atributos. */
 function meta(html: string, key: string): string | null {
   const re = /<meta\b[^>]*>/gi;
@@ -100,7 +121,7 @@ function jsonLdData(product: Record<string, Json> | null): Partial<ProductPageDa
   const imageUrl =
     typeof image === 'string' ? image : image && typeof image === 'object' ? (image as Record<string, Json>).url : null;
   return {
-    title: typeof product.name === 'string' ? clean(product.name) : null,
+    title: typeof product.name === 'string' ? productTitle(product.name) : null,
     imageUrl: typeof imageUrl === 'string' ? imageUrl : null,
     priceCents: price,
     originalPriceCents: high != null && price != null && high > price ? high : null,
@@ -130,7 +151,7 @@ function mercadoLivrePrices(html: string): { current: number | null; previous: n
 
 /** Amazon: `#productTitle`, primeiro `a-offscreen`, preço riscado em `a-text-price`, foto `data-old-hires`. */
 function amazonData(html: string): Partial<ProductPageData> {
-  const title = clean(/<span\b[^>]*id\s*=\s*"productTitle"[^>]*>([\s\S]*?)<\/span>/i.exec(html)?.[1]);
+  const title = productTitle(/<span\b[^>]*id\s*=\s*"productTitle"[^>]*>([\s\S]*?)<\/span>/i.exec(html)?.[1]);
   const price = parsePriceToCents(clean(/class\s*=\s*"a-offscreen"[^>]*>([^<]+)</i.exec(html)?.[1]));
   const strike = /class\s*=\s*"a-price a-text-price[^"]*"[\s\S]{0,300}?class\s*=\s*"a-offscreen"[^>]*>([^<]+)</i.exec(html)?.[1];
   const original = parsePriceToCents(clean(strike));
@@ -204,7 +225,7 @@ export function parseMercadoLivreSocialPage(html: string): ProductPageData {
     : null;
   const productId = typeof meta.product_id === 'string' && /^MLB\d+$/i.test(meta.product_id) ? meta.product_id.toUpperCase() : null;
   return {
-    title: typeof titleNode?.text === 'string' ? clean(titleNode.text) : null,
+    title: typeof titleNode?.text === 'string' ? productTitle(titleNode.text) : null,
     imageUrl: imageUrl?.startsWith('https://http2.mlstatic.com/') ? imageUrl : null,
     priceCents: current,
     originalPriceCents: previous != null && current != null && previous > current ? previous : null,
@@ -222,7 +243,7 @@ export function parseProductPage(provider: AffiliateProvider, html: string): Pro
   const ml = provider === 'MERCADO_LIVRE' ? mercadoLivrePrices(html) : { current: null, previous: null };
 
   const title =
-    clean(meta(html, 'og:title')) ?? ld.title ?? store.title ?? clean(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]);
+    productTitle(meta(html, 'og:title')) ?? ld.title ?? store.title ?? productTitle(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]);
   const imageUrl = meta(html, 'og:image') ?? ld.imageUrl ?? store.imageUrl ?? null;
   const priceCents =
     ld.priceCents ?? parsePriceToCents(meta(html, 'product:price:amount')) ??

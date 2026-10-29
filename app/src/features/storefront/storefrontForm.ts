@@ -217,3 +217,21 @@ export function errorMessage(err: unknown): string {
   if (code === 'RATE_LIMITED' && typeof seconds === 'number' && seconds > 0) return t.errors.rateLimitedSeconds(seconds);
   return t.errors[code];
 }
+
+/**
+ * Troca do nome da página. Na criação, o endereço acompanha o nome enquanto o usuário não o editou:
+ * "não editado" = vazio ou igual ao derivado do nome anterior. Editou → para de acompanhar.
+ */
+export function withTitle(form: StorefrontFormState, title: string, creating: boolean): StorefrontFormState {
+  if (!creating) return { ...form, title };
+  const following = form.slug === '' || finalizeSlug(form.slug) === finalizeSlug(form.title);
+  return { ...form, title, slug: following ? finalizeSlug(title) : form.slug };
+}
+
+/**
+ * Rascunho restaurado (reload) igual ao salvo: o modo editar seria fantasma — descarta.
+ * Só faz sentido na 1ª carga; depois, "Editar" começa justamente com rascunho igual ao salvo.
+ */
+export function isStaleDraft(draft: StorefrontFormState | null, overview: StorefrontOverview): boolean {
+  return draft !== null && overview.storefront !== null && !isFormDirty(draft, overview);
+}

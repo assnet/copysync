@@ -70,5 +70,29 @@ describe('StorefrontPage', () => {
     first.unmount();
     renderPage();
     await waitFor(() => expect(screen.getByRole('textbox', { name: new RegExp(t.fields.name.label) })).toHaveValue('Achadinhos'));
+    // o subdomínio acompanhou o nome (não foi editado)
+    expect(screen.getByRole('textbox', { name: new RegExp(t.fields.subdomain.label) })).toHaveValue('achadinhos');
+  });
+
+  it('reload com rascunho igual ao salvo sai do modo editar e limpa a chave', async () => {
+    const created: StorefrontOverview = {
+      ...overview,
+      publicUrl: 'https://achadinhos.ofertas.test',
+      storefront: {
+        id: 'p1', title: 'Achadinhos', subtitle: null, avatarUrl: null, coverUrl: null,
+        colorPrimary: '#2563EB', colorBackground: '#F5F5F5', colorCard: '#FFFFFF', categories: [],
+        status: 'ACTIVE', domainId: 'd1', slug: 'achadinhos',
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+      },
+    };
+    svc.getStorefront.mockResolvedValue(created);
+    const first = renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: t.config.edit }));
+    expect(screen.getByRole('textbox', { name: new RegExp(t.fields.name.label) })).toBeInTheDocument();
+    first.unmount();
+    renderPage();
+    expect(await screen.findByRole('button', { name: t.config.edit })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: new RegExp(t.fields.name.label) })).not.toBeInTheDocument();
+    expect(Object.keys(sessionStorage).some((k) => k.includes('storefront.form'))).toBe(false);
   });
 });

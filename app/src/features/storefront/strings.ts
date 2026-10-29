@@ -227,6 +227,9 @@ export const storefrontStrings = {
     error: 'Não foi possível atualizar a prévia.',
     frameTitle: 'Prévia da Página de Ofertas',
     blurred: 'Prévia oculta pela privacidade',
+    expand: 'Ampliar prévia',
+    expandTitle: 'Prévia ampliada',
+    close: 'Fechar prévia ampliada',
   },
 
   errors: {

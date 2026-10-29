@@ -126,7 +126,12 @@ const BASE_CSS = [
   '*{box-sizing:border-box}',
   'body{margin:0;background:var(--bg);color:var(--on-bg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}',
   'main{max-width:1040px;margin:0 auto;padding:0 16px 32px}',
-  '.cv{aspect-ratio:3/1;margin:0 -16px;background:var(--p);overflow:hidden}',
+  // Sem capa: faixa baixa na cor principal; com capa (`.ci`): 3:1 limitado em altura.
+  '.cv{height:120px;margin:0 -16px;background:var(--p);overflow:hidden}',
+  '@media (min-width:641px){.cv{height:160px}}',
+  '.vm .cv{height:120px}',
+  '.vd .cv{height:160px}',
+  '.cv.ci{height:auto;aspect-ratio:3/1;max-height:320px}',
   '.cv img{display:block;width:100%;height:100%;object-fit:cover}',
   'header{text-align:center}',
   '.av{display:flex;align-items:center;justify-content:center;width:96px;height:96px;margin:-48px auto 12px;border-radius:50%;border:4px solid var(--bg);background:var(--p);color:var(--on-p);font-weight:700;font-size:2rem;object-fit:cover;position:relative}',
@@ -238,7 +243,7 @@ export function renderStorefrontPage(model: StorefrontPageModel, opts: Storefron
     `<style>${css}</style>`,
   ].filter(Boolean).join('');
 
-  const coverHtml = `<div class="cv">${cover ? `<img src="${escapeHtml(cover)}" alt="" referrerpolicy="no-referrer">` : ''}</div>`;
+  const coverHtml = `<div class="cv${cover ? ' ci' : ''}">${cover ? `<img src="${escapeHtml(cover)}" alt="" referrerpolicy="no-referrer">` : ''}</div>`;
   const avatarHtml = avatar
     ? `<img class="av" src="${escapeHtml(avatar)}" width="96" height="96" alt="" referrerpolicy="no-referrer">`
     : `<span class="av" aria-hidden="true">${escapeHtml(initials(model.title))}</span>`;

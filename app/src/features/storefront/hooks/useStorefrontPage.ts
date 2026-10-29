@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { storefrontService } from '@/services/storefront.service';
@@ -9,6 +9,8 @@ import {
   STOREFRONT_FORM_DEFAULTS,
   errorMessage,
   formFromOverview,
+  isStaleDraft,
+  withTitle,
   slugChange as computeSlugChange,
   toSavePayload,
   validateForm,
@@ -117,6 +119,14 @@ export function useStorefrontPage() {
     notify(errorMessage(err), 'error');
   };
 
+  // Reload com rascunho persistido igual ao salvo: sai do modo editar (só na 1ª carga).
+  const draftChecked = useRef(false);
+  useEffect(() => {
+    if (!overview || draftChecked.current) return;
+    draftChecked.current = true;
+    if (isStaleDraft(draft, overview)) clearDraft();
+  }, [overview, draft, clearDraft]);
+
   const saved = useMemo(() => (overview ? formFromOverview(overview) : STOREFRONT_FORM_DEFAULTS), [overview]);
   const editing = draft !== null;
   const form = draft ?? saved;
@@ -143,8 +153,14 @@ export function useStorefrontPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [editing, slugValid, unchanged, finalSlug, form.domainId]);
 
+  const creating = overview !== null && !overview.storefront;
   const changeField = <K extends keyof StorefrontFormState>(field: K, value: StorefrontFormState[K]) =>
-    setDraft((d) => (d ? { ...d, [field]: value } : d));
+    setDraft((d) => {
+      if (!d) return d;
+      // Na criação o endereço acompanha o nome até ser editado (`withTitle`).
+      if (field === 'title') return withTitle(d, value as string, creating);
+      return { ...d, [field]: value };
+    });
 
   const startEdit = () => {
     setSubmitted(false);

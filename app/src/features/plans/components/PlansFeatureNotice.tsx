@@ -14,7 +14,8 @@ function isNoticeFeature(value: string | null): value is NoticeFeature {
 export function PlansFeatureNotice({ feature }: { feature: string | null }) {
   if (!isNoticeFeature(feature)) return null;
   return (
-    <Alert severity="info" variant="outlined" sx={{ mb: 2.5, borderRadius: 2 }}>
+    // md+: o selo de garantia do hero sobe ~28px acima dele; o respiro evita sobrepor a borda do aviso.
+    <Alert severity="info" variant="outlined" sx={{ mb: { xs: 2.5, md: 6 }, borderRadius: 2 }}>
       {t.featureNotice[feature]}
     </Alert>
   );

@@ -67,6 +67,8 @@ um de `linkRotationId`/`storefrontId` por CHECK). Unicidade no banco, não na ap
 | Capa (`cover`) | JPEG/PNG/WebP ≤ 4 MiB, mín. 1200×400 | WebP 1500×500, recorte 3:1 |
 | Oferta | baixada do marketplace (`IOfferImageFetcher`, ≤ 5 MiB, `image/*`) | WebP lado maior 600 px |
 
+- Na página pública, com capa a faixa é 3:1 limitada a 320 px de altura; sem capa vira faixa baixa (120 px
+  celular / 160 px desktop) na cor principal, nunca um bloco 3:1 vazio.
 - Upload de foto/capa por `chunkedUpload` → `PUT /api/storefront/images/:kind {uploadId}` (`SetStorefrontImageUseCase`
   consome a sessão de upload direto, sem gravar o bruto).
 - `SharpStorefrontImageProcessor` (`sharp` é dependência direta da API): formato pelo **conteúdo**, nunca pelo mime

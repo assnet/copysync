@@ -15,6 +15,8 @@ import {
   toPreviewDraft,
   toSavePayload,
   validateForm,
+  isStaleDraft,
+  withTitle,
 } from './storefrontForm';
 
 const page: Storefront = {
@@ -222,5 +224,39 @@ describe('errorMessage', () => {
     expect(errorMessage({ code: 'X', message: 'stack' })).toBe(t.errors.generic);
     expect(errorMessage(null)).toBe(t.errors.generic);
     expect(errorMessage('toString')).toBe(t.errors.generic);
+  });
+});
+
+describe('withTitle', () => {
+  const blank = { ...STOREFRONT_FORM_DEFAULTS, domainId: 'd1' };
+
+  it('na criação, o endereço acompanha o nome enquanto não foi editado', () => {
+    let f = withTitle(blank, 'Ofer', true);
+    expect(f.slug).toBe('ofer');
+    f = withTitle(f, 'Ofertas da Ana ', true);
+    expect(f.slug).toBe('ofertas-da-ana');
+    f = withTitle(f, 'Promoção Mãe', true);
+    expect(f.slug).toBe('promocao-mae');
+  });
+
+  it('para de acompanhar quando o usuário edita o endereço', () => {
+    const f = { ...withTitle(blank, 'Ofertas', true), slug: 'minha-loja' };
+    expect(withTitle(f, 'Ofertas da Ana', true).slug).toBe('minha-loja');
+  });
+
+  it('página já criada: só troca o nome', () => {
+    const f = { ...blank, title: 'Achadinhos', slug: 'achadinhos' };
+    expect(withTitle(f, 'Achadinhos VIP', false)).toEqual({ ...f, title: 'Achadinhos VIP' });
+  });
+});
+
+describe('isStaleDraft', () => {
+  it('rascunho igual ao salvo é fantasma; diferente ou criação, não', () => {
+    const ov = overview(page);
+    expect(isStaleDraft(formFromOverview(ov), ov)).toBe(true);
+    expect(isStaleDraft({ ...formFromOverview(ov), title: 'Outro nome' }, ov)).toBe(false);
+    expect(isStaleDraft(null, ov)).toBe(false);
+    const none = overview(null);
+    expect(isStaleDraft(formFromOverview(none), none)).toBe(false);
   });
 });

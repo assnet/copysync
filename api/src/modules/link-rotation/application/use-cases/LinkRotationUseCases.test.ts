@@ -58,7 +58,7 @@ describe('CreateLinkRotationUseCase', () => {
     deps.rotations.seed({ tenantId: OTHER_TENANT, slug: 'promodemae-oficial' });
     const err = await create().catch((e) => e);
     expect(err.code).toBe('LINK_SLUG_TAKEN');
-    expect(err.meta.suggestions).toEqual(['promodemae-vip', 'promodemae2', 'promodemae3', 'promodemae4', 'promodemae5']);
+    expect(err.meta.suggestions).toEqual(['promodemae-vip', 'promodemae-achados', 'promodemae2', 'promodemae3', 'promodemae4']);
   });
 
   it('slug reservado (30 d) para outro tenant → TAKEN; o próprio tenant reusa', async () => {
