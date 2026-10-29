@@ -20,7 +20,7 @@ const config = (over: Partial<GroupMonitorConfigResponse> = {}): GroupMonitorCon
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600, startDelaySeconds: 0,
     maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: false, typingSeconds: 5,
-    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true,
+    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   },
   monitoredGroups: [], broadcastGroups: [],
   limits: { monitoredGroups: null, broadcastGroups: null, mentionAllEnabled: true, crossSessionDispatch: false },

@@ -137,15 +137,18 @@ export class ProcessPendingCapturedOffersUseCase {
       return { status: 'FAILED', reason: 'LINK_RESOLVE_FAILED', data: { marketplace: first.provider } };
     }
     const coupon = detectCoupon(c.sourceText);
-    const expiresAt = captureExpiresAt(c.capturedAt, coupon !== null, config);
+    // Validade conta do início previsto a partir da CAPTURA (captura fora da janela acumula e vale a
+    // partir da abertura); atraso de processamento não renova a validade
+    const window = { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute };
+    const plannedFromCapture = new Date(c.capturedAt.getTime() + config.startDelaySeconds * 1000);
+    const expiresAt = captureExpiresAt(resolveStartWithinWindow(plannedFromCapture, window), coupon !== null, config);
+    const earliest = new Date(Math.max(now.getTime(), plannedFromCapture.getTime()));
+    const startAt = resolveStartWithinWindow(earliest, window);
     const built = await this.buildText(c, config, first, coupon, finalText, tenantLinks);
     const base: CapturedOfferResolution = {
       marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon,
       finalText: built.text, textSource: built.textSource, aiErrorCode: built.aiErrorCode, expiresAt, startsAt: null,
     };
-    const earliest = new Date(Math.max(now.getTime(), c.capturedAt.getTime() + config.startDelaySeconds * 1000));
-    const startAt = resolveStartWithinWindow(earliest, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute });
-    if (startAt.getTime() >= expiresAt.getTime()) return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: startAt } };
 
     const mentionAll = config.mentionAll && (await entitlements.getBoolean(c.tenantId, MENTION_ALL_ENABLED)) !== false;
     const res = await queue.enqueue({
@@ -167,6 +170,9 @@ export class ProcessPendingCapturedOffersUseCase {
       intervalMaxSeconds: config.intervalMaxSeconds,
       // Queda entre criar a oferta e marcar QUEUED: o reprocessamento reaproveita a oferta
       sourceKey: `captured:${c.id}`,
+      // Todos os envios dentro da janela (o fim empurra para o próximo início); o claim garante no envio
+      fitSlot: (at) => resolveStartWithinWindow(at, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute }),
+      monitorConfigId: config.id,
     });
     if (res.kind === 'expired') return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: res.firstSendAt } };
     return { status: 'QUEUED', data: { ...base, startsAt: res.firstSendAt, offerId: res.offerId } };

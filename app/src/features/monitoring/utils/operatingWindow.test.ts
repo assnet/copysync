@@ -67,7 +67,7 @@ describe('rascunho da configuração', () => {
   const saved: GroupMonitorSettings = {
     enabled: true, windowStartMinute: 1320, windowEndMinute: 360, intervalMinSeconds: 300, intervalMaxSeconds: 900,
     startDelaySeconds: 600, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: true, typingSeconds: 5,
-    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true,
+    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   };
 
   it('converte unidades da API para a tela e de volta', () => {
@@ -88,6 +88,14 @@ describe('rascunho da configuração', () => {
   it('validade com cupom nunca passa da sem cupom', () => {
     const d = { ...settingsToDraft(saved), maxOfferAgeMinutes: 30, couponMaxAgeMinutes: 120 };
     expect(draftToSettings(d).couponMaxAgeMinutes).toBe(30);
+  });
+
+  it('capturar fora do horário vai e volta no rascunho e marca dirty', () => {
+    expect(settingsToDraft(saved).captureOutsideWindow).toBe(true);
+    const d = { ...settingsToDraft(saved), captureOutsideWindow: false };
+    expect(draftToSettings(d).captureOutsideWindow).toBe(false);
+    expect(isDraftDirty(d, saved)).toBe(true);
+    expect(draftToSettings(settingsToDraft({ ...saved, captureOutsideWindow: false })).captureOutsideWindow).toBe(false);
   });
 
   it('dirty só quando difere do salvo', () => {

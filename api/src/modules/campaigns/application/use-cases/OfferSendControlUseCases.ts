@@ -2,7 +2,7 @@ import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
-import { appendToLanes, laneGapMs } from '../../domain/services/appendToLanes';
+import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { compactLane } from '../../domain/services/compactLane';
 import { dispatchStartAt } from '../../domain/offerSchedule';
 import { OfferInvalidStateError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
@@ -98,7 +98,10 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
     const planned = scheduleDispatches(queued.length, start, interval, this.deps.rand);
     // Volta para o fim da fila das suas sessões: o que entrou durante a pausa não é atropelado
     const sessionIds = [...new Set(queued.flatMap((d) => (d.sessionId ? [d.sessionId] : [])))];
-    const tails = await this.deps.dispatches.laneTails(input.tenantId, sessionIds, planned[0] ?? start);
+    // Fim do bloco ocupado de cada sessão (a própria oferta ainda está PAUSED: não conta)
+    const openBySession = new Map<string, Date[]>();
+    for (const sessionId of sessionIds) openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(input.tenantId, sessionId, planned[0] ?? start));
+    const tails = laneTailsFromOpen(openBySession, planned[0] ?? start, interval.maxMs);
     const slots = tails.size === 0
       ? planned
       : appendToLanes(queued.map((d, i) => ({ sessionId: d.sessionId ?? d.id, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));

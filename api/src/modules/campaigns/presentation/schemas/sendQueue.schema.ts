@@ -53,13 +53,21 @@ const sessionSchema = {
   },
 } as const;
 
+export const sendingPauseResponse = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+    data: { type: 'object', properties: { sendingPausedAt: { type: ['string', 'null'], format: 'date-time' } } },
+  },
+} as const;
+
 export const sendQueueResponse = {
   type: 'object',
   properties: {
     success: { type: 'boolean' },
     data: {
       type: 'object',
-      properties: { serverTime: dateTime, sessions: { type: 'array', items: sessionSchema } },
+      properties: { serverTime: dateTime, sendingPausedAt: { type: ['string', 'null'], format: 'date-time' }, sessions: { type: 'array', items: sessionSchema } },
     },
   },
 } as const;

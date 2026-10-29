@@ -8,7 +8,7 @@ import {
 
 const TEXT = '🔥 Fone JBL por R$ 99\nhttps://amzn.to/abc?tag=concorrente-20\nCupom: PROMO10\n👉 Grupo: https://chat.whatsapp.com/XYZ';
 
-async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>; broadcast?: string[]; entitlements?: Record<string, unknown> } = {}) {
+async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>; broadcast?: string[]; entitlements?: Record<string, unknown>; processNow?: () => Date } = {}) {
   const monitors = new InMemoryGroupMonitorRepository();
   const captured = new InMemoryCapturedOfferRepository();
   const links = new FakeLinkBuilder();
@@ -21,7 +21,7 @@ async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>
   await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j, sessionId: SESSION })));
   const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: () => NOW });
   const process = new ProcessPendingCapturedOffersUseCase({
-    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: () => NOW, products, texts, images,
+    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: opts.processNow ?? (() => NOW), products, texts, images,
   });
   const msg = (o = {}) => register.execute({
     tenantId: TENANT, sessionId: SESSION, isGroup: true, fromMe: false, groupJid: '120363-src', externalMessageId: 'm1',
@@ -45,6 +45,18 @@ describe('RegisterCapturedMessageUseCase', () => {
     expect(await s.msg({ groupJid: 'outro' })).toBe('ignored');
     expect(await s.msg({ body: 'bom dia grupo' })).toBe('ignored');
     expect(s.captured.items).toHaveLength(0);
+  });
+
+  it('fora da janela: captura por padrão (acumula a fila); com "capturar fora do horário" desligado, não captura', async () => {
+    // NOW = 12:00 em São Paulo; janela 14:00–20:00 deixa o agora de fora
+    const window = { windowStartMinute: 840, windowEndMinute: 1200 };
+    const a = await setup({ settings: window });
+    expect(await a.msg()).toBe('captured');
+    const b = await setup({ settings: { ...window, captureOutsideWindow: false } });
+    expect(await b.msg()).toBe('outside_window');
+    expect(b.captured.items).toHaveLength(0);
+    const c = await setup({ settings: { ...window, captureOutsideWindow: false, windowStartMinute: 600 } });
+    expect(await c.msg()).toBe('captured');
   });
 
   it('monitoramento desligado não captura', async () => {
@@ -91,12 +103,24 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.queue.inputs[0]!.startAt).toEqual(new Date('2026-10-28T17:00:00.000Z'));
   });
 
-  it('cupom venceria antes da janela abrir: descarta (EXPIRED) sem enfileirar', async () => {
+  it('captura fora da janela acumula: a validade conta da abertura da janela, não da captura', async () => {
+    // 12:00 em SP, janela 14:00–20:00, cupom com validade de 60 min → sai às 14:00 e vale até 15:00
     const s = await setup({ settings: { windowStartMinute: 840, windowEndMinute: 1200 } });
     await s.msg();
     await s.process.execute();
-    expect(s.queue.inputs).toHaveLength(0);
-    expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'EXPIRED' });
+    expect(s.queue.inputs).toHaveLength(1);
+    expect(s.queue.inputs[0]!.startAt).toEqual(new Date('2026-10-28T17:00:00.000Z'));
+    expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date('2026-10-28T18:00:00.000Z'));
+  });
+
+  it('processamento atrasado não renova a validade: conta da captura, início é agora', async () => {
+    // Capturada 12:00 (validade do cupom 60 min → 13:00); processada só às 12:40: sai agora, vence 13:00
+    const late = new Date(NOW.getTime() + 40 * 60_000);
+    const s = await setup({ processNow: () => late });
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]!.startAt).toEqual(late);
+    expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date(NOW.getTime() + 60 * 60_000));
   });
 
   it('fila da sessão empurra para depois da validade: EXPIRED', async () => {
@@ -293,5 +317,17 @@ describe('ProcessPendingCapturedOffersUseCase — credencial recusada', () => {
     await s.process.execute();
     expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'CREDENTIAL_REJECTED', marketplace: 'SHOPEE' });
     expect(s.queue.inputs).toHaveLength(0);
+  });
+});
+
+describe('ProcessPendingCapturedOffersUseCase — janela em todos os envios', () => {
+  it('passa o encaixe na janela para a fila: horário fora da janela vai para o próximo início', async () => {
+    const s = await setup({ settings: { windowStartMinute: 840, windowEndMinute: 1200, maxOfferAgeMinutes: 1440, couponMaxAgeMinutes: 1440 } });
+    await s.msg();
+    await s.process.execute();
+    const fit = s.queue.inputs[0]!.fitSlot!;
+    // 19:59 em São Paulo fica; 20:01 vai para 14:00 do dia seguinte
+    expect(fit(new Date('2026-10-28T22:59:00.000Z'))).toEqual(new Date('2026-10-28T22:59:00.000Z'));
+    expect(fit(new Date('2026-10-28T23:01:00.000Z'))).toEqual(new Date('2026-10-29T17:00:00.000Z'));
   });
 });

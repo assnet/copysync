@@ -161,9 +161,10 @@ describe('ResumeOfferUseCase — fila por sessão', () => {
     const { deps, offers, dispatches, byConv, input } = setup({ status: 'PAUSED' });
     for (const d of dispatches.items) d.sessionId = 's1';
     offers.items.push(makeOffer({ id: 'other', status: 'SENDING' }));
-    dispatches.add({ offerId: 'other', conversationId: 'o1', sessionId: 's1', notBefore: sec(500) });
+    // Bloco contíguo (passos ≤ intervalo máximo de 200 s): a faixa está ocupada até 500 s
+    for (const [i, at] of [100, 300, 500].entries()) dispatches.add({ offerId: 'other', conversationId: `o${i}`, sessionId: 's1', notBefore: sec(at) });
     await new ResumeOfferUseCase(deps).execute(input);
-    // fim da faixa (500 s) + folga 150 s; depois intervalo 150 s
+    // fim do bloco (500 s) + folga 150 s; depois intervalo 150 s
     expect(byConv('c3').notBefore).toEqual(sec(650));
     expect(byConv('c4').notBefore).toEqual(sec(800));
   });

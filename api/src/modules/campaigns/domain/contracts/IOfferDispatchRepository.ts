@@ -40,11 +40,11 @@ export interface IOfferDispatchRepository {
    */
   claimDue(now: Date, limit: number): Promise<OfferDispatch[]>;
   /**
-   * Fim de cada faixa: por sessão, o maior `notBefore` aberto (QUEUED/SENDING) de ofertas SENDING
-   * que já começaram até `startAt` (sem início agendado ou agendado até lá). Oferta agendada para
-   * depois não segura quem entra antes. Sessão sem nada à frente não aparece no mapa.
+   * Horários (`notBefore`) dos envios abertos (QUEUED/SENDING) da sessão em ofertas SENDING que já
+   * começaram até `from` (`scheduledAt` nulo ou ≤ from) e não vencidas. Só horários, ordenados: é a
+   * entrada de `laneBusyUntil` (fim do bloco ocupado da faixa).
    */
-  laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date): Promise<Map<string, Date>>;
+  openNotBefore(tenantId: string, sessionId: string, from: Date): Promise<Date[]>;
   /**
    * Retomar: QUEUED da oferta, na ordem de `notBefore`, recebem `slots[i]`. Slot a menos que
    * envio mantém o `notBefore` antigo. Retorna quantos mudaram.
@@ -59,6 +59,8 @@ export interface IOfferDispatchRepository {
   laneState(tenantId: string, sessionId: string, now: Date): Promise<{ open: OfferDispatch[]; lastClaimedAt: Date | null }>;
   /** Grava `notBefore` novo em envios ainda QUEUED (os que já saíram ficam). Retorna quantos. */
   rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]): Promise<number>;
+  /** Sessões do tenant com envio QUEUED de oferta SENDING (retomada global compacta cada uma). */
+  openSessionIds(tenantId: string): Promise<string[]>;
   /**
    * Renova a posse logo antes de enviar (`claimedAt = now`). false = envio já não é deste
    * token (devolvido à fila e reivindicado por outro): não envia.
@@ -69,6 +71,13 @@ export interface IOfferDispatchRepository {
    * token zerado. Retorna quantos.
    */
   releaseStale(olderThan: Date): Promise<number>;
+  /**
+   * Fecha em lote (SKIPPED/OFFER_EXPIRED) todo QUEUED de oferta SENDING já vencida (`expiresAt` ≤ now),
+   * em qualquer tenant (PAUSED fica intacta: retomar continua válido). Custo O(QUEUED) por tick: a fila
+   * aberta é pequena por natureza (centenas), não precisa de índice em `expiresAt`. Sem isso cada vencido viraria cabeça da faixa por um tick, atrasando os válidos
+   * (ex.: fila acumulada durante a pausa global). A oferta é finalizada pelo sweep de órfãs.
+   */
+  skipExpired(now: Date): Promise<number>;
   /**
    * Sessão fora do ar na vez do envio: SENDING (com o token da posse, oferta SENDING/PAUSED) →
    * QUEUED com `notBefore = retryAt` e `waitingSessionSince` (mantém o primeiro). O claim dá prioridade a ele e não abre

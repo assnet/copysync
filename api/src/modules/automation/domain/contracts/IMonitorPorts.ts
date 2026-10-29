@@ -34,6 +34,10 @@ export interface QueueOfferInput {
   intervalMaxSeconds: number;
   /** Idempotência: a mesma captura nunca vira duas ofertas. */
   sourceKey: string;
+  /** Encaixa cada horário previsto na janela de operação (em cadeia, preservando o espaçamento). */
+  fitSlot?: (at: Date) => Date;
+  /** Configuração de origem: a janela dela vale no envio, mesmo por sessão cruzada. */
+  monitorConfigId?: string;
 }
 
 export type QueueOfferResult =

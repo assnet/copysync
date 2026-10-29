@@ -229,7 +229,14 @@ export interface SendQueueSession {
 
 export interface SendQueueResponse {
   serverTime: string;
+  /** Pausa global da conta (ISO). null = envios ativos. Vale para todas as sessões e origens. */
+  sendingPausedAt: string | null;
   sessions: SendQueueSession[];
+}
+
+/** `POST /campaigns/send-queue/pause` → data; `/resume` devolve `sendingPausedAt: null`. */
+export interface SendQueuePauseResponse {
+  sendingPausedAt: string | null;
 }
 
 /** Público-alvo do texto. `STANDARD` = modelo fixo (sem IA); os demais passam pela IA. */
@@ -521,6 +528,8 @@ export interface GroupMonitorSettings {
   audience: OfferAudience;
   /** Captura só com link vira oferta montada mesmo em `ORIGINAL`. */
   enrichLinkOnly: boolean;
+  /** Fora do horário de operação: true = captura e enfileira para a janela abrir; false = ignora. Padrão true. */
+  captureOutsideWindow: boolean;
 }
 
 export type MonitorTextMode = 'ORIGINAL' | 'TEMPLATE' | 'AI';

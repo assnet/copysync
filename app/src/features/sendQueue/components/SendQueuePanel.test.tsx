@@ -3,7 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { SendQueueItem, SendQueueResponse } from '@/types/api.types';
 
 const get = vi.fn<(sessionId?: string) => Promise<SendQueueResponse>>();
-vi.mock('@/services/sendQueue.service', () => ({ sendQueueService: { get: (id?: string) => get(id) } }));
+const pauseAll = vi.fn(); const resumeAll = vi.fn();
+vi.mock('@/services/sendQueue.service', () => ({ sendQueueService: { get: (id?: string) => get(id), pauseAll: () => pauseAll(), resumeAll: () => resumeAll() } }));
 const pause = vi.fn(); const resume = vi.fn(); const cancel = vi.fn();
 vi.mock('@/services/offer.service', () => ({ offerService: { pause: (id: string) => pause(id), resume: (id: string) => resume(id), cancel: (id: string) => cancel(id) } }));
 
@@ -17,14 +18,14 @@ const item = (o: Partial<SendQueueItem>): SendQueueItem => ({
 });
 
 beforeEach(() => {
-  get.mockReset(); pause.mockReset(); resume.mockReset(); cancel.mockReset();
+  get.mockReset(); pause.mockReset(); resume.mockReset(); cancel.mockReset(); pauseAll.mockReset(); resumeAll.mockReset();
   // Aba persistida (usePersistedState) não pode vazar de um teste para o outro
   sessionStorage.clear(); localStorage.clear();
 });
 
 describe('SendQueuePanel', () => {
   it('fila vazia mostra o estado vazio', async () => {
-    get.mockResolvedValue({ serverTime: soon, sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running: null, waiting: [], recent: [], counts: { waiting: 0, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }] });
+    get.mockResolvedValue({ serverTime: soon, sendingPausedAt: null, sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running: null, waiting: [], recent: [], counts: { waiting: 0, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }] });
     render(<SendQueuePanel />);
     expect(await screen.findByText('Nada na fila agora')).toBeInTheDocument();
   });
@@ -32,6 +33,7 @@ describe('SendQueuePanel', () => {
   it('mostra sessão, envio em curso, aguardando com origem e abre oferta de outra aba', async () => {
     get.mockResolvedValue({
       serverTime: soon,
+      sendingPausedAt: null,
       sessions: [{
         sessionId: 's1', name: 'Loja', status: 'CONNECTED',
         running: item({ dispatchId: 'r', status: 'SENDING', groupName: 'Promo 0', claimedAt: soon }),
@@ -57,6 +59,7 @@ describe('SendQueuePanel', () => {
   it('sessão desconectada com fila avisa que espera', async () => {
     get.mockResolvedValue({
       serverTime: soon,
+      sendingPausedAt: null,
       sessions: [{ sessionId: 's1', name: 'Loja', status: 'DISCONNECTED', running: null, waiting: [item({})], recent: [], counts: { waiting: 1, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
     });
     render(<SendQueuePanel />);
@@ -74,6 +77,7 @@ describe('SendQueuePanel — sessão fora do ar', () => {
   it('envio devolvido por sessão desconectada aparece como "Aguardando a sessão"', async () => {
     get.mockResolvedValue({
       serverTime: soon,
+      sendingPausedAt: null,
       sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running: null, waiting: [item({ waitingSession: true })], recent: [], counts: { waiting: 1, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
     });
     render(<SendQueuePanel />);
@@ -81,7 +85,7 @@ describe('SendQueuePanel — sessão fora do ar', () => {
   });
 
   const lane = (waiting: SendQueueItem[], running: SendQueueItem | null = null): SendQueueResponse => ({
-    serverTime: soon,
+    serverTime: soon, sendingPausedAt: null,
     sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running, waiting, recent: [], counts: { waiting: waiting.length, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
   });
 
@@ -144,5 +148,58 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     expect(screen.getAllByLabelText('Pausar oferta')).toHaveLength(1);
     expect(screen.getAllByLabelText('Parar oferta')).toHaveLength(1);
     expect(screen.getByText('esta oferta · 3 grupos')).toBeInTheDocument();
+  });
+});
+
+describe('SendQueuePanel — pausa global da conta', () => {
+  const lane = (sendingPausedAt: string | null, waiting: SendQueueItem[]): SendQueueResponse => ({
+    serverTime: soon, sendingPausedAt,
+    sessions: [{ sessionId: 's1', name: 'Loja', status: 'CONNECTED', running: null, waiting, recent: [], counts: { waiting: waiting.length, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
+  });
+
+  it('"Pausar todos os envios" chama pauseAll e recarrega a fila', async () => {
+    get.mockResolvedValue(lane(null, [item({})]));
+    pauseAll.mockResolvedValue({ sendingPausedAt: soon });
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    expect(screen.queryByText(/Envios pausados desde/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Tempo até o próximo envio desta sessão')).toBeInTheDocument();
+    const calls = get.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar todos os envios' }));
+    await vi.waitFor(() => expect(pauseAll).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
+  });
+
+  it('pausado: alerta, "Retomar envios", sem "Próximo", itens como "Pausado (conta)"; retomar chama resumeAll', async () => {
+    get.mockResolvedValue(lane(soon, [item({})]));
+    resumeAll.mockResolvedValue({ sendingPausedAt: null });
+    render(<SendQueuePanel sessionId="s1" />);
+    expect(await screen.findByText(/Envios pausados desde/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pausar todos os envios' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Tempo até o próximo envio desta sessão')).not.toBeInTheDocument();
+    expect(screen.getByText('Pausado (conta)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retomar envios' }));
+    await vi.waitFor(() => expect(resumeAll).toHaveBeenCalledTimes(1));
+  });
+
+  it('falha ao pausar mostra erro próprio', async () => {
+    get.mockResolvedValue(lane(null, [item({})]));
+    pauseAll.mockRejectedValue(new Error('x'));
+    render(<SendQueuePanel sessionId="s1" />);
+    await screen.findByText('Loja');
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar todos os envios' }));
+    expect(await screen.findByText(/Não foi possível alterar a pausa/)).toBeInTheDocument();
+  });
+});
+
+describe('SendQueuePanel — pausa da conta com sessão fora do ar', () => {
+  it('mostra "Aguardando a sessão" além de "Pausado (conta)"', async () => {
+    get.mockResolvedValue({
+      serverTime: soon, sendingPausedAt: soon,
+      sessions: [{ sessionId: 's1', name: 'Loja', status: 'DISCONNECTED', running: null, waiting: [item({ waitingSession: true })], recent: [], counts: { waiting: 1, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 } }],
+    });
+    render(<SendQueuePanel />);
+    expect(await screen.findByText('Aguardando a sessão')).toBeInTheDocument();
+    expect(screen.getByText('Pausado (conta)')).toBeInTheDocument();
   });
 });

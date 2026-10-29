@@ -22,23 +22,38 @@ export function useSendQueue(sessionId?: string) {
   // Geração: troca de sessão ou desmontagem invalida respostas e timers da geração anterior
   const generation = useRef(0);
   const inFlight = useRef<number | null>(null);
+  const pending = useRef<Promise<void> | null>(null);
+  // Pedido explícito chegou com poll em voo: ao terminar, busca de novo em vez de esperar o próximo tick
+  const refetch = useRef(false);
+  // Instante da última mutação aplicada por `patch`: poll iniciado antes dela não sobrescreve o estado
+  const mutatedAt = useRef(0);
 
   const load = useCallback(async () => {
     const gen = generation.current;
-    if (inFlight.current === gen) return;
+    if (inFlight.current === gen) { refetch.current = true; return; }
     inFlight.current = gen;
     clearTimeout(timer.current);
     let next: SendQueueResponse | null = null;
+    let release!: () => void;
+    const p = new Promise<void>((r) => { release = r; });
+    pending.current = p;
+    const startedAt = performance.now();
     try {
       next = await sendQueueService.get(sessionId);
-      if (gen === generation.current) { setData(next); setFailed(false); }
+      if (gen === generation.current && startedAt >= mutatedAt.current) { setData(next); setFailed(false); }
     } catch {
       if (gen === generation.current) setFailed(true);
     } finally {
       if (inFlight.current === gen) inFlight.current = null;
+      // Só limpa a própria promessa: um `load` de geração nova pode já ter registrado a dele
+      if (pending.current === p) pending.current = null;
+      release();
       if (gen === generation.current) {
         setLoading(false);
-        if (!document.hidden) {
+        if (refetch.current) {
+          refetch.current = false;
+          void load();
+        } else if (!document.hidden) {
           const delay = hasActivity(next) ? SEND_QUEUE_ACTIVE_POLL_MS : SEND_QUEUE_IDLE_POLL_MS;
           timer.current = setTimeout(() => void load(), delay);
         }
@@ -49,6 +64,7 @@ export function useSendQueue(sessionId?: string) {
   useEffect(() => {
     generation.current++;
     inFlight.current = null;
+    refetch.current = false;
     setData(null);
     setLoading(true);
     void load();
@@ -64,5 +80,20 @@ export function useSendQueue(sessionId?: string) {
     };
   }, [load]);
 
-  return { data, loading, failed, refresh: load };
+  /** Pedido explícito (botão, após pausar/retomar): espera o poll em voo e busca de novo, nunca vira no-op. */
+  const refresh = useCallback(async () => {
+    const gen = generation.current;
+    if (pending.current) await pending.current;
+    // Sessão trocada / desmontado enquanto esperava: a geração nova já carrega sozinha
+    if (gen !== generation.current) return;
+    await load();
+  }, [load]);
+
+  /** Resposta de uma mutação aplicada já (ex.: `sendingPausedAt` do pausar/retomar): se o GET seguinte falhar, a tela não fica com o estado anterior. */
+  const patch = useCallback((partial: Partial<SendQueueResponse>) => {
+    mutatedAt.current = performance.now();
+    setData((cur) => (cur ? { ...cur, ...partial } : cur));
+  }, []);
+
+  return { data, loading, failed, refresh, patch };
 }

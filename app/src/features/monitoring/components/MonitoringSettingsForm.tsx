@@ -8,7 +8,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import type { GroupMonitorConfigResponse, GroupMonitorSettings, MonitorTextMode } from '@/types/api.types';
 import { AudiencePicker } from '@/features/offers/components/AudiencePicker';
 import { formatDuration, monitoringStrings } from '../strings';
-import { isWindowValid } from '../utils/operatingWindow';
+import { isFullDay, isWindowValid } from '../utils/operatingWindow';
 import {
   LIMITS, SETTINGS_DRAFT_VERSION, draftToSettings, isDraftDirty, secondsToSliderMinutes, settingsToDraft, sliderMinutesToSeconds,
   type MonitorSettingsDraft,
@@ -99,6 +99,7 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
   const value = draft ?? settingsToDraft(config.settings);
   const dirty = isDraftDirty(draft, config.settings);
   const windowValid = isWindowValid(value.window);
+  const fullDay = isFullDay(value.window);
   const mentionAllEnabled = config.limits.mentionAllEnabled;
   const missingGroups = config.monitoredGroups.length === 0 || config.broadcastGroups.length === 0;
 
@@ -132,7 +133,20 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
       {value.enabled && missingGroups && <Alert severity="warning">{t.enabledMissingGroups}</Alert>}
 
       <SectionCard title={t.windowTitle} subtitle={t.windowSubtitle}>
-        <OperatingWindowField value={value.window} onChange={(window) => patch({ window })} />
+        <Stack spacing={2.5}>
+          <OperatingWindowField value={value.window} onChange={(window) => patch({ window })} />
+          <Tooltip title={fullDay ? t.captureOutsideFullDay : ''} arrow placement="top">
+            <Box>
+              <ToggleOption
+                checked={value.captureOutsideWindow}
+                onChange={(captureOutsideWindow) => patch({ captureOutsideWindow })}
+                title={t.captureOutsideTitle}
+                description={fullDay ? t.captureOutsideFullDay : value.captureOutsideWindow ? t.captureOutsideOn : t.captureOutsideOff}
+                disabled={fullDay}
+              />
+            </Box>
+          </Tooltip>
+        </Stack>
       </SectionCard>
 
       <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' } }}>

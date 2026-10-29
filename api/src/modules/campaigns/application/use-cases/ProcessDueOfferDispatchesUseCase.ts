@@ -58,6 +58,8 @@ export class ProcessDueOfferDispatchesUseCase {
     const now = (this.deps.now ?? (() => new Date()))();
 
     await dispatches.releaseStale(new Date(now.getTime() - STALE_DISPATCH_MS));
+    // Vencidos fecham em lote antes do claim: não ocupam a cabeça da faixa um por tick
+    await dispatches.skipExpired(now);
     const due = await dispatches.claimDue(now, this.deps.batchSize ?? DISPATCH_BATCH_SIZE);
 
     for (const dispatch of due) {

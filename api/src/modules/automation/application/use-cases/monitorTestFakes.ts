@@ -52,7 +52,9 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   async findActiveMonitoredGroup(tenantId: string, sessionId: string, groupJid: string): Promise<ActiveMonitoredGroup | null> {
     const cfg = await this.findConfig(tenantId, sessionId);
     const g = this.monitored.find((x) => x.tenantId === tenantId && x.sessionId === sessionId && x.groupJid === groupJid);
-    return cfg?.enabled && g ? { id: g.id, tenantId, configId: cfg.id, keywords: g.keywords } : null;
+    return cfg?.enabled && g
+      ? { id: g.id, tenantId, configId: cfg.id, keywords: g.keywords, windowStartMinute: cfg.windowStartMinute, windowEndMinute: cfg.windowEndMinute, captureOutsideWindow: cfg.captureOutsideWindow }
+      : null;
   }
 }
 

@@ -26,10 +26,11 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  app.put<{ Body: GroupMonitorSettings & { sessionId: string } }>(
+  app.put<{ Body: Omit<GroupMonitorSettings, 'captureOutsideWindow'> & { captureOutsideWindow?: boolean; sessionId: string } }>(
     '/config',
     { preHandler, schema: { tags, summary: 'Salvar horário, envio e validade', body: saveSettingsBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
+      // `captureOutsideWindow` ausente (cliente antigo): o use case mantém o valor salvo
       const { sessionId, ...settings } = request.body;
       const result = await automationContainer.saveSettings().execute({ tenantId: request.tenantContext.tenantId, sessionId, settings });
       httpResponse.ok(reply, result);

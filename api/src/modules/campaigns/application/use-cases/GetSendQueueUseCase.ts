@@ -2,6 +2,7 @@ import type { ISendQueueReader, SendQueueEntry } from '../../domain/contracts/IS
 import type { OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
 import type { OfferStatus } from '../../domain/enums/OfferStatus';
+import type { ISendingPauseStore } from '../../domain/contracts/ISendingPauseStore';
 import { startOfDayInZone } from '../../domain/services/startOfDayInZone';
 
 /** Envios abertos listados por sessão (os contadores são exatos, sem esse teto). */
@@ -45,6 +46,8 @@ export interface SendQueueSessionDTO {
 
 export interface SendQueueDTO {
   serverTime: string;
+  /** Pausa global de envios (ISO); null = ativos. */
+  sendingPausedAt: string | null;
   sessions: SendQueueSessionDTO[];
 }
 
@@ -81,10 +84,11 @@ function toItem(e: SendQueueEntry): SendQueueItemDTO {
  * hoje. Fonte = banco; qualquer aba ou navegador vê o mesmo. Ver docs/fila-de-envio.md.
  */
 export class GetSendQueueUseCase {
-  constructor(private readonly deps: { reader: ISendQueueReader; now?: () => Date }) {}
+  constructor(private readonly deps: { reader: ISendQueueReader; pauses: ISendingPauseStore; now?: () => Date }) {}
 
   async execute(input: GetSendQueueInput): Promise<SendQueueDTO> {
     const now = (this.deps.now ?? (() => new Date()))();
+    const pausedAt = await this.deps.pauses.get(input.tenantId);
     const snap = await this.deps.reader.read(input.tenantId, {
       sessionId: input.sessionId,
       since: startOfDayInZone(now),
@@ -122,6 +126,6 @@ export class GetSendQueueUseCase {
 
     // Sessões do tenant primeiro (ordem de criação); grupo sem sessão só se tiver algo
     const sessions = [...groups.values()].filter((g) => g.sessionId !== null || g.running || g.waiting.length || g.recent.length);
-    return { serverTime: now.toISOString(), sessions };
+    return { serverTime: now.toISOString(), sendingPausedAt: pausedAt?.toISOString() ?? null, sessions };
   }
 }

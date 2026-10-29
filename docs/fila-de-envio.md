@@ -13,7 +13,7 @@ fila** (qualquer aba ou navegador) e **origem/validade** da oferta.
 |---|---|
 | Migration | `api/prisma/migrations/20261028010000_add_send_queue_lanes/` |
 | Agenda que encosta no fim da faixa | `campaigns/domain/services/appendToLanes.ts` |
-| Claim com série por sessão + `laneTails` | `campaigns/infrastructure/repositories/PrismaOfferDispatchRepository.ts` |
+| Claim com série por sessão + `openNotBefore`/`laneState` | `campaigns/infrastructure/repositories/PrismaOfferDispatchRepository.ts` |
 | Envio e retomada usando a faixa | `SendOfferUseCase.ts`, `OfferSendControlUseCases.ts` (`ResumeOfferUseCase`) |
 | Validade no envio | `ProcessDueOfferDispatchesUseCase.ts` (`OFFER_EXPIRED`) |
 | Leitura | `GetSendQueueUseCase.ts`, `PrismaSendQueueReader.ts`, `ISendQueueReader.ts` |
@@ -78,9 +78,12 @@ calculada como antes (`scheduleDispatches`) e depois deslocada por `appendToLane
 deslocamento que põe o primeiro envio de cada sessão pelo menos uma folga (sorteada no intervalo da
 configuração) depois do fim da faixa. Ordem e espaçamento internos não mudam.
 
-Fim da faixa (`laneTails`): maior `notBefore` aberto (`QUEUED`/`SENDING`) de ofertas `SENDING` que
-**já começaram até o início desta** (`scheduledAt` nulo ou ≤ início). Oferta agendada para amanhã
-não segura um envio de agora. Oferta pausada não conta; ao retomar, vai para o fim.
+Fim da faixa (`laneBusyUntil` sobre `openNotBefore`, só os horários dos abertos `QUEUED`/`SENDING`;
+`laneState` carrega os envios inteiros e fica para compactar/reespalhar): fim do **bloco contíguo** de envios abertos a
+partir do início da oferta nova; um buraco maior que o intervalo máximo libera a faixa, então a
+captura do monitoramento jogada para a abertura da janela de amanhã não prende o gerador de agora.
+Só ofertas `SENDING` já começadas (`scheduledAt` nulo ou ≤ início) e não vencidas contam. Oferta
+pausada não conta; ao retomar (`ResumeOfferUseCase`), vai para o fim do bloco pela mesma regra.
 
 O enfileirar não usa lock: duas ofertas disparadas no mesmo instante podem prever horários que se
 sobrepõem. O claim (2.2) garante o espaçamento real; só a previsão fica otimista.
@@ -99,10 +102,45 @@ Intervalo: o da configuração do gerador (mesma simplificação da retomada).
 FIFO por `notBefore`. Oferta manual não fura o que já está na fila. Se o produto pedir:
 `Offer.priority` e `ORDER BY priority DESC, notBefore` no claim.
 
+### 2.5 Pausa global de envios (api 0.44.0)
+
+`tenants.sendingPausedAt`: enquanto não for null, o claim ignora todos os envios do tenant, de
+qualquer sessão ou origem (gerador e monitoramento). Captura e enfileiramento continuam normalmente;
+o que vencer durante a pausa é fechado em lote pelo worker (`skipExpired`, antes de cada claim:
+`SKIPPED/OFFER_EXPIRED`, só oferta `SENDING`; a `PAUSED` fica intacta e retomar segue válido),
+sem ocupar a cabeça da faixa um por tick na frente dos válidos. Retomar
+(`ResumeAllSendsUseCase`) zera o campo e reespalha a fila de cada sessão a partir de agora
+(`respreadLane`, intervalo da configuração do gerador): os vencidos saem na ordem, cada um pelo
+menos o intervalo mínimo depois do anterior (buraco maior que o máximo vira uma folga); horário
+ainda futuro fica, salvo se o reespalhar o alcançou. Retomar sem pausa ativa é no-op (botão
+desatualizado em outra aba não mexe na fila). A cadência real continua garantida pelo claim; o piso do reespalhar
+(`laneState.lastClaimedAt`) conta `SEND_TIMEOUT` como último envio em `claimedAt + 120 s`
+(hold do claim): a prévia nunca fica antes da liberação real, no máximo um pouco depois. Pausar é
+idempotente e atômico no banco (`pauseIfActive`: um `UPDATE … RETURNING`; duas abas ficam com o
+mesmo instante; tenant inexistente → 404).
+Rotas: `POST /campaigns/send-queue/pause` e `/resume`; o `GET` devolve `sendingPausedAt`. Painel:
+botão no cabeçalho da fila (gerador e monitoramento) e faixa de aviso enquanto pausado.
+
+Retomada global, pausa e parar por oferta (`respreadLane`/`compactLane`) **não** encaixam os
+horários na janela do monitoramento; só o enfileiramento faz isso. A prévia pode mostrar um envio
+do monitoramento às 18:10 que o claim só libera às 06:00 (decisão: o claim é a garantia; o encaixe
+nesses caminhos fica para quando houver demanda).
+
+### 2.6 Janela de operação no claim
+
+Oferta de origem `MONITORING` só é reivindicada dentro da janela da configuração **de origem**
+(`offers.monitorConfigId` → `group_monitor_configs`; com sessão cruzada a sessão que envia é outra
+e sua configuração não vale), calculada em SQL em `America/Sao_Paulo` a partir do `now` do tick,
+inclusive janela noturna. Oferta sem `monitorConfigId` (antiga, ou cuja configuração foi apagada)
+usa a configuração da sessão que envia; sem configuração em lugar nenhum, a oferta do monitoramento
+sai **sem janela** (decisão: sem configuração não há janela definida; o filtro é no candidato, não
+prende a faixa). Oferta vencida pela validade não ocupa lugar no reespalhar/compactar (`laneState`). O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
+a janela não prende o gerador atrás dela. Ver `docs/monitoramento-grupos.md` §2.2.
+
 ## 3. Leitura: `GET /campaigns/send-queue`
 
 ```json
-{ "serverTime": "…",
+{ "serverTime": "…", "sendingPausedAt": null,
   "sessions": [{
     "sessionId": "…", "name": "…", "status": "CONNECTED",
     "running": { "dispatchId", "offerId", "origin", "offerStatus", "title", "textPreview", "groupName", "status": "SENDING", "claimedAt", … } | null,

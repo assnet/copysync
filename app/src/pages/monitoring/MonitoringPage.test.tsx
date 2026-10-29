@@ -33,7 +33,7 @@ const config = (sessionId: string): GroupMonitorConfigResponse => ({
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600,
     startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: true, typingSeconds: 5,
-    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true,
+    textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   },
   monitoredGroups: [{ conversationId: 'c1', groupJid: 'g1@g.us', title: 'Promo Rival', avatarUrl: null, keywords: ['fone'] }],
   broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', sessionId, title: 'Meu Grupo', avatarUrl: null, position: 0 }],
@@ -89,6 +89,10 @@ describe('MonitoringPage', () => {
     expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Carregar mais' })).toBeInTheDocument();
     expect(screen.getByText('fila s1')).toBeInTheDocument();
+    // Janela 24 h: "Capturar fora do horário" aparece ligado, mas travado (não faz diferença)
+    const capture = screen.getByRole('checkbox', { name: /Capturar fora do horário/ });
+    expect(capture).toBeChecked();
+    expect(capture).toBeDisabled();
   });
 
   it('?sessionId= escolhe a sessão e sai da URL', async () => {
@@ -105,7 +109,7 @@ describe('MonitoringPage', () => {
     const bar = await screen.findByText('Alterações não salvas');
     fireEvent.click(within(bar.parentElement!).getByRole('button', { name: 'Salvar' }));
     expect(await screen.findByText('Configuração salva.')).toBeInTheDocument();
-    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1', enabled: true, windowStartMinute: 0, windowEndMinute: 1440 }));
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1', enabled: true, windowStartMinute: 0, windowEndMinute: 1440, captureOutsideWindow: true }));
     expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
   });
 

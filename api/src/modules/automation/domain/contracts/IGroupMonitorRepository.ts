@@ -19,6 +19,10 @@ export interface ActiveMonitoredGroup {
   tenantId: string;
   configId: string;
   keywords: string[];
+  /** Janela e a regra de captura fora dela (o listener decide sem outra consulta). */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  captureOutsideWindow: boolean;
 }
 
 export interface TenantGroupJids {

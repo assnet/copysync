@@ -59,8 +59,10 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
      fora não pausam; erro da API →
      `FAILED/LINK_RESOLVE_FAILED`; nenhum link de produto → `UNSUPPORTED_MARKETPLACE`;
    - cupom detectado no texto (`detectCoupon`) → validade menor;
-   - início = captura + atraso, empurrado para o próximo início da janela; se cair depois da
-     validade → `SKIPPED/EXPIRED` (oferta/cupom vencido não é distribuído);
+   - início = captura + atraso, empurrado para o próximo início da janela; a validade conta desse
+     início **calculado da captura** (processamento atrasado não a renova; o envio em si começa de
+     agora); se a fila da sessão empurrar o 1º envio para depois da validade → `SKIPPED/EXPIRED`
+     (oferta/cupom vencido não é distribuído);
    - entra na fila de envio da sessão (`EnqueueOfferUseCase`, origem `MONITORING`, `expiresAt`,
      `sourceKey = captured:<id>` único: captura reprocessada depois de uma queda reaproveita a
      oferta em vez de postar duas vezes; se a queda foi antes de enfileirar, a oferta ficou DRAFT e
@@ -114,9 +116,24 @@ decisão do owner 2026-10-28: IA em todos os planos por enquanto). Limite diári
 
 Minutos do dia em `America/Sao_Paulo`, 0..1440. **Padrão 06:00–18:00** (`360–1080`). `0–1440` = sem
 restrição. `fim < início` = cruza a
-meia-noite (`22:00 → 06:00`); `1440` como início equivale a 00:00 do dia seguinte. A janela só
-ancora o **início**: com muitos destinos, os envios seguintes podem passar do fim (a validade
-limita). Recorte completo fica para a fase 2.
+meia-noite (`22:00 → 06:00`); `1440` como início equivale a 00:00 do dia seguinte.
+
+A janela vale para **todos os envios** (api 0.44.0): o claim do worker não reivindica envio de
+oferta do monitoramento fora da janela da sessão (minuto do dia em São Paulo, calculado em SQL),
+não importa quando foi agendado nem se a configuração mudou depois. Às 20:00 o envio para e os
+que faltam saem a partir das 06:00; o que vencer esperando sai `SKIPPED/OFFER_EXPIRED`. O
+agendamento também encaixa cada horário na janela (`fitSlot` no `EnqueueOfferUseCase`), para a fila
+mostrar horários reais. O gerador de ofertas não é afetado pela janela.
+
+**Capturar fora do horário** (`captureOutsideWindow`, padrão ligado): fora da janela a captura
+continua e as ofertas acumulam na fila, saindo quando ela abrir. **A validade conta do início
+previsto a partir da captura** (`captureExpiresAt(janela(captura + atraso))`, independente de quando
+o processamento rodou): capturado às 19:00 com janela até 18:00 e
+validade de 180 min, vale das 06:00 às 09:00 do dia seguinte; se contasse da captura, nunca sairia.
+Dentro da janela, início ≈ captura (+ atraso configurado).
+Desligado, mensagem fora da janela não é capturada nem entra na fila (`outside_window` no
+listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia inteiro. No
+`PUT /config` o campo é opcional: ausente (cliente anterior a app 0.50.0) mantém o valor salvo.
 
 ## 3. Regras e limites
 
@@ -205,5 +222,4 @@ limita). Recorte completo fica para a fase 2.
 
 - "Imagem das ofertas" (original × gerada).
 - Fila BullMQ `monitoring.inbound` quando a escala chegar (`arquitetura-escala.md` §3.6).
-- Recorte dos envios pelo fim da janela.
 - Telegram como origem/destino (`messaging` engine `telegram`).

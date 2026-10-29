@@ -29,7 +29,7 @@ export function makeOffer(overrides: Partial<Offer> = {}): Offer {
     id: 'offer-1', tenantId: TENANT, provider: 'AMAZON', sourceUrl: 'https://amazon.com.br/dp/B0ABCDEFGH',
     productRef: 'B0ABCDEFGH', title: null, priceCents: null, originalPriceCents: null, imageUrl: null,
     affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', attributionVerified: true,
-    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, sourceKey: null, status: 'DRAFT',
+    text: '🛒 https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', textEdited: false, coupon: null, audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null, sourceKey: null, monitorConfigId: null, status: 'DRAFT',
     createdById: USER, createdAt: NOW, updatedAt: NOW, ...overrides,
   };
 }
@@ -108,15 +108,22 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     return queued.length;
   }
   async laneState(tenantId: string, sessionId: string, now: Date) {
+    const alive = (offerId: string) => { const o = this.offers.items.find((x) => x.id === offerId); return o?.status === 'SENDING' && (!o.expiresAt || o.expiresAt > now); };
     const open = this.items
       .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.status === 'QUEUED')
-      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!o.scheduledAt || o.scheduledAt <= now); })
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return alive(d.offerId) && (!o?.scheduledAt || o.scheduledAt <= now); })
       .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime())
       .map((d) => ({ ...d }));
     const last = this.items
-      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && (d.status === 'SENDING' || d.status === 'SENT') && d.claimedAt)
-      .reduce<Date | null>((m, d) => (!m || d.claimedAt! > m ? d.claimedAt! : m), null);
+      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && d.claimedAt
+        && (d.status === 'SENDING' || d.status === 'SENT' || (d.status === 'FAILED' && d.failureReason === 'SEND_TIMEOUT')))
+      .map((d) => (d.status === 'FAILED' ? new Date(d.claimedAt!.getTime() + 120_000) : d.claimedAt!))
+      .reduce<Date | null>((m, t) => (!m || t > m ? t : m), null);
     return { open, lastClaimedAt: last };
+  }
+  async openSessionIds(tenantId: string) {
+    const ids = this.items.filter((d) => d.tenantId === tenantId && d.status === 'QUEUED' && d.sessionId && this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING').map((d) => d.sessionId!);
+    return [...new Set(ids)];
   }
   async rescheduleMany(tenantId: string, slots: readonly { id: string; notBefore: Date }[]) {
     let n = 0;
@@ -136,24 +143,27 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });
     return due.map((d) => ({ ...d }));
   }
-  /** Mesma regra do Prisma: abertos de ofertas SENDING sem início agendado depois de `startAt`. */
-  async laneTails(tenantId: string, sessionIds: readonly string[], startAt: Date) {
-    const out = new Map<string, Date>();
-    for (const d of this.items) {
-      if (d.tenantId !== tenantId || !d.sessionId || !sessionIds.includes(d.sessionId)) continue;
-      if (d.status !== 'QUEUED' && d.status !== 'SENDING') continue;
-      const o = this.offers.items.find((x) => x.id === d.offerId);
-      if (o?.status !== 'SENDING' || (o.scheduledAt && o.scheduledAt > startAt)) continue;
-      const cur = out.get(d.sessionId);
-      if (!cur || d.notBefore > cur) out.set(d.sessionId, d.notBefore);
-    }
-    return out;
+  /** Mesma regra do Prisma: horários dos abertos de ofertas SENDING já iniciadas até `from`, não vencidas. */
+  async openNotBefore(tenantId: string, sessionId: string, from: Date) {
+    return this.items
+      .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && (d.status === 'QUEUED' || d.status === 'SENDING'))
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!o.scheduledAt || o.scheduledAt <= from) && (!o.expiresAt || o.expiresAt > from); })
+      .map((d) => d.notBefore)
+      .sort((a, b) => a.getTime() - b.getTime());
   }
   async touchClaim(id: string, claimToken: string) {
     const d = this.items.find((x) => x.id === id && x.claimToken === claimToken && x.status === 'SENDING');
     if (!d) return false;
     d.claimedAt = NOW;
     return true;
+  }
+  async skipExpired(now: Date) {
+    let n = 0;
+    for (const d of this.items) {
+      const o = this.offers.items.find((x) => x.id === d.offerId);
+      if (d.status === 'QUEUED' && o?.status === 'SENDING' && o.expiresAt && o.expiresAt <= now) { d.status = 'SKIPPED'; d.failureReason = 'OFFER_EXPIRED'; n++; }
+    }
+    return n;
   }
   async releaseStale(olderThan: Date) {
     const stale = this.items.filter(

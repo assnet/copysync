@@ -32,9 +32,11 @@ describe('EnqueueOfferUseCase', () => {
   it('entra depois do que já está na fila da sessão', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'gen', status: 'SENDING' }));
-    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 600_000) });
+    // bloco contíguo a partir de agora (intervalo máximo 120 s): entra depois do fim dele + folga de 90 s
+    s.dispatches.add({ offerId: 'gen', conversationId: 'x0', sessionId: 's1', notBefore: NOW });
+    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 100_000) });
     const out = await s.uc.execute(input());
-    expect(out.kind === 'queued' && out.firstSendAt.getTime() - NOW.getTime()).toBe(690_000);
+    expect(out.kind === 'queued' && out.firstSendAt.getTime() - NOW.getTime()).toBe(190_000);
   });
 
   it('mesma chave idempotente: devolve a oferta existente e não cria outra', async () => {
@@ -67,8 +69,9 @@ describe('EnqueueOfferUseCase', () => {
   it('fila empurraria para depois da validade: não cria nada', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'gen', status: 'SENDING' }));
-    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 7_200_000) });
-    const out = await s.uc.execute(input());
+    s.dispatches.add({ offerId: 'gen', conversationId: 'x', sessionId: 's1', notBefore: new Date(NOW.getTime() + 100_000) });
+    // 1º envio cairia em +190 s, depois da validade de +150 s
+    const out = await s.uc.execute(input({ expiresAt: new Date(NOW.getTime() + 150_000) }));
     expect(out.kind).toBe('expired');
     expect(s.offers.items).toHaveLength(1);
   });
@@ -81,5 +84,16 @@ describe('EnqueueOfferUseCase — sessão cruzada', () => {
     expect(s.dispatches.items.map((d) => [d.conversationId, d.sessionId, d.notBefore.getTime() - NOW.getTime()])).toEqual([
       ['g1', 's1', 0], ['g9', 's2', 90_000], ['g2', 's1', 180_000],
     ]);
+  });
+});
+
+describe('EnqueueOfferUseCase — encaixe na janela', () => {
+  it('fitSlot é aplicado em cadeia, preservando o espaçamento (2º envio parte do 1º já encaixado)', async () => {
+    const s = setup();
+    const open = new Date(NOW.getTime() + 3_600_000); // "janela abre" daqui a 1 h
+    const fit = (at: Date) => (at.getTime() < open.getTime() ? open : at);
+    const out = await s.uc.execute(input({ fitSlot: fit, expiresAt: new Date(NOW.getTime() + 7_200_000) }));
+    expect(out).toMatchObject({ kind: 'queued', firstSendAt: open });
+    expect(s.dispatches.items.map((d) => d.notBefore.getTime() - open.getTime())).toEqual([0, 90_000]);
   });
 });

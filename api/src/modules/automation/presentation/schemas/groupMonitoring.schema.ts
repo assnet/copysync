@@ -15,6 +15,7 @@ const settingsProperties = {
   enabled: { type: 'boolean' },
   windowStartMinute: int(0, MINUTES_PER_DAY),
   windowEndMinute: int(0, MINUTES_PER_DAY),
+  captureOutsideWindow: { type: 'boolean' },
   intervalMinSeconds: int(MONITOR_LIMITS.intervalSeconds.min, MONITOR_LIMITS.intervalSeconds.max),
   intervalMaxSeconds: int(MONITOR_LIMITS.intervalSeconds.min, MONITOR_LIMITS.intervalSeconds.max),
   startDelaySeconds: int(MONITOR_LIMITS.startDelaySeconds.min, MONITOR_LIMITS.startDelaySeconds.max),
@@ -27,7 +28,9 @@ const settingsProperties = {
   audience: { type: 'string', enum: [...OFFER_AUDIENCES] },
   enrichLinkOnly: { type: 'boolean' },
 } as const;
-const settingsKeys = Object.keys(settingsProperties);
+// `captureOutsideWindow` entrou depois (app 0.50.0): cliente antigo salva sem ele → padrão no handler
+const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow']);
+const settingsKeys = Object.keys(settingsProperties).filter((k) => !OPTIONAL_SETTINGS.has(k));
 
 export const sessionQuerySchema = {
   type: 'object', required: ['sessionId'], additionalProperties: false, properties: { sessionId },

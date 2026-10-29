@@ -17,7 +17,8 @@ function setup(snap: Partial<SendQueueSnapshot>) {
       return { sessions: [], open: [], recent: [], openCounts: [], finishedToday: [], ...snap };
     },
   };
-  return { uc: new GetSendQueueUseCase({ reader, now: () => NOW }), calls };
+  const pauses = { pausedAt: null as Date | null, async get() { return this.pausedAt; }, async set(_t: string, at: Date | null) { this.pausedAt = at; }, async pauseIfActive(_t: string, at: Date) { this.pausedAt ??= at; return this.pausedAt; } };
+  return { uc: new GetSendQueueUseCase({ reader, pauses, now: () => NOW }), calls, pauses };
 }
 
 describe('GetSendQueueUseCase', () => {
@@ -67,5 +68,14 @@ describe('GetSendQueueUseCase', () => {
     const out = await uc.execute({ tenantId: TENANT });
     expect(out.sessions).toHaveLength(1);
     expect(out.sessions[0]!.sessionId).toBeNull();
+  });
+});
+
+describe('GetSendQueueUseCase — pausa global', () => {
+  it('devolve o instante da pausa (null = ativos)', async () => {
+    const s = setup({});
+    expect((await s.uc.execute({ tenantId: TENANT })).sendingPausedAt).toBeNull();
+    s.pauses.pausedAt = NOW;
+    expect((await s.uc.execute({ tenantId: TENANT })).sendingPausedAt).toBe(NOW.toISOString());
   });
 });
