@@ -30,14 +30,3 @@ export function MembersPage() {
     />
   );
 }
-
-export function StorefrontPage() {
-  return (
-    <UpcomingModulePage
-      icon={MODULE_ICONS.storefront}
-      title="Página de ofertas"
-      subtitle="Sua vitrine pública para colocar na bio"
-      description="Uma página com as suas ofertas ativas, atualizada sozinha a cada disparo, pronta para o link da bio e para domínio próprio."
-    />
-  );
-}

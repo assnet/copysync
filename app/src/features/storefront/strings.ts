@@ -43,6 +43,17 @@ export const storefrontStrings = {
     open: 'Abrir',
     openTooltip: 'Abrir a página numa nova aba',
     missing: 'Endereço indisponível. Salve a página de novo para recuperar o endereço.',
+    copyFailed: 'Não foi possível copiar. Selecione o endereço e copie manualmente.',
+    label: 'Endereço público',
+  },
+
+  /** Avisos de sucesso das ações da página. */
+  toast: {
+    published: 'Oferta publicada',
+    unpublished: 'Oferta voltou para os rascunhos',
+    deleted: 'Oferta apagada',
+    imageSaved: 'Imagem atualizada',
+    imageRemoved: 'Imagem removida',
   },
 
   config: {
