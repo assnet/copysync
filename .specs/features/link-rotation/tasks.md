@@ -43,7 +43,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 **Where**: `messaging/domain/contracts/IMessagingEngine.ts:244`, `engines/baileys/BaileysMessagingEngineAdapter.ts:478,1348-1385,1657-1703`, `BaileysErrorTranslator.ts`.
 **Requirement**: LROT-07,12. **Done when**: `tsc`; teste do tradutor (Boom `data:403` → `GROUP_INVITE_NOT_ALLOWED`); nada de Baileys fora do adapter. **Commit**: `feat(messaging): invite link e resumo de grupo na porta do engine`.
 
-### T6 Repositórios Prisma + mappers + container [P]
+### T6 Repositórios Prisma + mappers + container [P]  ✅
 **What**: `PrismaLinkDomainRepository`, `PrismaLinkRotationRepository` (`findPublicByHost`, `incrementClick` em transação com `UPDATE … +1`, `isSlugAvailable` considerando reserva de outro tenant, `reserveSlug`), `PrismaLinkClickRepository` (insert, `countLast7Days`, `deleteOlderThan`); `linkRotationContainer.ts`.
 **Where**: `link-rotation/infrastructure/{repositories,mappers,linkRotationContainer.ts}`. **Requirement**: LROT-03,10,13. **Done when**: teste de integração em Postgres descartável para `incrementClick` concorrente (10 em paralelo = +10) e `isSlugAvailable`. **Commit**: `feat(link-rotation): repositórios Prisma`.
 
@@ -97,7 +97,7 @@ Fase 5                T21 catálogo/planos · T22 docs+changelog+versões · T23
 ### T20 App: admin de domínios [P]
 **What**: `AdminLinkDomainsPage` (tabela, form, status, probe com resultado, instruções DNS colapsáveis), item em `NAV_ADMIN_ITEMS`, rota sob `SuperAdminRoute`. **Depends**: T15,T12. **Requirement**: LROT-01,02. **Commit**: `feat(link-rotation): tela admin de domínios`.
 
-### T21 Catálogo de planos [P]
+### T21 Catálogo de planos [P]  ✅
 **What**: `catalog.ts` `limits.linkRotations/linkRotationGroups`, benefício e hint corrigidos (hoje descreve credenciais), `catalog.test.ts` e `planPresets.test.ts` travando os números; `PlanCard` exibe novos limites. **Depends**: T1. **Requirement**: LROT-15. **Commit**: `feat(plans): limites de rodízio de links na vitrine`.
 
 ### T22 Docs, CHANGELOG, versões
