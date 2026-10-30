@@ -35,6 +35,24 @@ describe('SatoriOfferStoryRenderer', () => {
     await expectStoryJpeg((await renderer.render(input)).buffer);
   }, 20_000);
 
+  // Pega regressão de layout em qualquer template (ex.: sombra grande faz o resvg abortar o processo).
+  it.each(OFFER_STORY_TEMPLATES.map((t) => [t.id, t] as const))('%s aguenta casos extremos', async (_id, template) => {
+    const input = await sampleRenderInput(template);
+    await expectStoryJpeg(
+      (
+        await renderer.render({
+          ...input,
+          headline: 'Kit Panelas Antiaderentes Alumínio Revestimento Interno e Externo Cerâmica',
+          coupon: { code: 'ABCDEFGHIJKLMNOPQRST', discountPercent: 90 },
+          price: { fromCents: 1_299_990, toCents: 999_990 },
+        })
+      ).buffer,
+    );
+    await expectStoryJpeg(
+      (await renderer.render({ ...input, productImage: null, price: { fromCents: null, toCents: null }, coupon: null })).buffer,
+    );
+  }, 20_000);
+
   it('sem foto, sem preço e sem cupom', async () => {
     const input = await sampleRenderInput(first);
     const out = await renderer.render({

@@ -3,7 +3,7 @@ import type { StoryPrice } from '../services/computeStoryPrice';
 
 export interface OfferStoryRenderInput {
   template: OfferStoryTemplate;
-  /** Título final (IA ou original); o renderer corta em 3 linhas. */
+  /** Título final (IA ou original); o renderer corta em 2 linhas (`lineClamp`). */
   headline: string;
   /** Bytes crus da foto do produto (qualquer formato que o sharp abra) ou null = card sem foto. */
   productImage: Buffer | null;
