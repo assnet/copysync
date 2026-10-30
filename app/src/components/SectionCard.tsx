@@ -8,22 +8,27 @@ interface Props {
   children: ReactNode;
   noPadding?: boolean;
   sx?: SxProps<Theme>;
+  /** Ajustes do cabeçalho (título + ação), ex.: empilhar no celular. */
+  headerSx?: SxProps<Theme>;
 }
 
-export function SectionCard({ title, subtitle, action, children, noPadding, sx }: Props) {
+export function SectionCard({ title, subtitle, action, children, noPadding, sx, headerSx }: Props) {
   return (
     <Card sx={sx}>
       {(title || action) && (
         <>
           <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              px: 2.5,
-              py: 2,
-              gap: 2,
-            }}
+            sx={[
+              {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 2.5,
+                py: 2,
+                gap: 2,
+              },
+              ...(Array.isArray(headerSx) ? headerSx : [headerSx]),
+            ]}
           >
             <Box>
               {title && <Typography variant="subtitle1">{title}</Typography>}

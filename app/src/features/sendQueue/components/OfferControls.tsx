@@ -6,6 +6,9 @@ import { offerService } from '@/services/offer.service';
 import type { OfferItem, OfferStatus } from '@/types/api.types';
 import { sendQueueStrings as t } from '../strings';
 
+/** Spinner parado com movimento reduzido (a raiz gira e o círculo pulsa). */
+const SPINNER_SX = { '@media (prefers-reduced-motion: reduce)': { animation: 'none', '& .MuiCircularProgress-circle': { animation: 'none' } } };
+
 export type OfferControlAction = 'pause' | 'resume' | 'cancel';
 
 export interface OfferControl {
@@ -107,7 +110,7 @@ export function OfferControlButtons({ offerId, offerStatus, control, variant, wa
           color={color}
           onClick={a.onClick}
           disabled={busy}
-          startIcon={busy ? <CircularProgress size={14} color="inherit" /> : <AppIcon icon={a.icon} size="sm" />}
+          startIcon={busy ? <CircularProgress size={14} color="inherit" sx={SPINNER_SX} /> : <AppIcon icon={a.icon} size="sm" />}
         >
           {a.label}
         </Button>
