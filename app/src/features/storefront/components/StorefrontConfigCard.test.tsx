@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
 import { PREMIUM_SLUG_OFFER } from '@/features/plans/catalog';
@@ -28,6 +28,7 @@ const setup = (props: Partial<StorefrontConfigCardProps> = {}, mode: 'light' | '
   const overview = props.overview ?? base;
   const handlers = {
     onChange: vi.fn(), onEdit: vi.fn(), onCancel: vi.fn(), onSave: vi.fn(), onImageUploaded: vi.fn(), onImageRemove: vi.fn(),
+    onCopyFailed: vi.fn(),
   };
   renderWithTheme(
     <PrivacyProvider>
@@ -49,6 +50,23 @@ describe('StorefrontConfigCard', () => {
     expect(screen.getByText('https://ana.ofertas.app')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: t.config.edit }));
     expect(onEdit).toHaveBeenCalled();
+  });
+
+  it('resumo copia o endereço com feedback', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    setup();
+    const button = screen.getByRole('button', { name: t.address.copy });
+    fireEvent.click(button);
+    expect(writeText).toHaveBeenCalledWith('https://ana.ofertas.app');
+    await waitFor(() => expect(button).toHaveClass('MuiIconButton-colorSuccess'));
+  });
+
+  it('cópia bloqueada avisa quem chama', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => { throw new Error('x'); }) }, configurable: true });
+    const { onCopyFailed } = setup();
+    fireEvent.click(screen.getByRole('button', { name: t.address.copy }));
+    await waitFor(() => expect(onCopyFailed).toHaveBeenCalled());
   });
 
   it('sem página convida a criar (modo escuro)', () => {

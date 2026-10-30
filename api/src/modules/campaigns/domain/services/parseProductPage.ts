@@ -36,9 +36,12 @@ const SITE_NAMES = new Set([
   'mercado livre', 'mercado libre', 'mercadolivre', 'mercadolibre', 'mercado livre brasil',
   'amazon', 'amazon.com', 'amazon.com.br', 'amazon brasil', 'amazon.com.br amazon',
   'shopee', 'shopee brasil', 'shopee brazil', 'shopee.com.br', 'brasil', 'brazil',
+  // Página de verificação/anti-bot ("Segurança — Mercado Livre"): não é produto
+  'seguranca', 'seguridad', 'security', 'verificacao', 'verificacao de seguranca', 'verificacion',
+  'account verification', 'captcha',
 ]);
 
-/** Título que é só o nome do site, inteiro ou em pedaços separados por ` | `, ` - `, `:`, `–`, `—`. */
+/** Título que é só o nome do site (ou da página de verificação), inteiro ou em pedaços separados por ` | `, ` - `, `:`, `–`, `—`. */
 export function isGenericSiteTitle(title: string): boolean {
   const norm = title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   const parts = norm.split(/\s*[|:–—]\s*|\s+-\s+/).filter(Boolean);

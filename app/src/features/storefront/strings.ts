@@ -185,6 +185,8 @@ export const storefrontStrings = {
     },
     openLink: 'Abrir link da oferta',
     noPrice: 'Sem preço',
+    /** Oferta sem título (página do produto não lida): nunca linha vazia. */
+    untitled: 'Sem título — edite antes de publicar',
     provider: (p: StorefrontOfferProvider) => PROVIDER_LABELS[p],
     confirmDelete: {
       title: 'Apagar oferta?',

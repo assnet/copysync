@@ -80,6 +80,31 @@ describe('HttpProductPageReader', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  it('catálogo ML com slug e query de carrinho é lido pela URL canônica', async () => {
+    const fn = stubFetch(async () => html());
+    const url = new URL('https://www.mercadolivre.com.br/cadeira-x/p/MLB43901062?pdp_filters=item_id%3AMLB6889253880&sid=cart&quantity=1');
+    await new HttpProductPageReader().read({ url });
+    expect(fn.mock.calls[0][0].toString()).toBe('https://www.mercadolivre.com.br/p/MLB43901062');
+    expect(url.search).not.toBe('');
+  });
+
+  it('redirect para a verificação do ML → null sem buscar a página', async () => {
+    const fn = stubFetch(async () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: 'https://www.mercadolivre.com.br/gz/account-verification?go=https%3A%2F%2Fwww.mercadolivre.com.br%2Fp%2FMLB1&tid=x' },
+      }),
+    );
+    expect(await new HttpProductPageReader().read({ url: new URL('https://www.mercadolivre.com.br/p/MLB1') })).toBeNull();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('verificação do ML servida direto (sem redirect) → null', async () => {
+    stubFetch(async () => html('<title>Segurança — Mercado Livre</title>'));
+    const url = new URL('https://www.mercadolivre.com.br/gz/account-verification?go=x');
+    expect(await new HttpProductPageReader().read({ url })).toBeNull();
+  });
+
   it('muitos redirects → null', async () => {
     const fn = stubFetch(async () => new Response(null, { status: 302, headers: { location: ML.href } }));
     expect(await new HttpProductPageReader().read({ url: ML })).toBeNull();

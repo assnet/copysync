@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — storefront/campaigns (api 0.46.1 · app 0.52.1) — oferta ML "Segurança", copiar endereço
+
+#### Backend — campaigns
+
+- **`mercadoLivreProductUrl.ts`** (novo, domain/services) — `canonicalMercadoLivreProductUrl`: catálogo `[/slug]/p/MLB…` com query de carrinho/filtro (`pdp_filters`, `sid=cart`…) é lido como `https://www.mercadolivre.com.br/p/MLB…`; item `MLB-…` perde só query/fragment. Só a leitura muda: `sourceUrl` e link de afiliado seguem como colados. `isMercadoLivreChallengeUrl`: `/gz/account-verification`, `/gz/webdevice`, captcha.
+- **`HttpProductPageReader.ts`** — lê a URL canônica do ML; redirect para a verificação do ML (ou página servida nela) → página ausente (`reason: challenge`), sem buscar o corpo. Causa raiz: a ML responde 302 para `/gz/account-verification?go=…` a fetch de servidor (confirmado inclusive com a URL limpa); o leitor seguia o salto (mesmo host, allowlist) e gravava o título da página de verificação.
+- **`parseProductPage.ts`** — `isGenericSiteTitle` também reconhece título de verificação (`Segurança — Mercado Livre`, `Verificação de segurança`, `captcha`…): nunca vira título de oferta. Vale para o gerador e a vitrine.
+- API pública `api.mercadolibre.com` (`/products/{id}`, `/items/{id}`) exige token (401/403 sem `Authorization`): **não** usada como fallback.
+
+#### Frontend — storefront
+
+- **`useCopyToClipboard.ts`** (novo) — cópia com feedback de 2 s e aviso de falha; usado por `StorefrontHeader.tsx` e `StorefrontConfigCard.tsx`.
+- **`StorefrontConfigCard.tsx`** — ícone de copiar ao lado do endereço no resumo (Tooltip "Copiar endereço"/"Copiado", `aria-label`); prop `onCopyFailed`.
+- **`OfferRow.tsx`**, **`strings.ts`** — oferta sem título mostra "Sem título — edite antes de publicar" em vez de linha vazia (também na confirmação de apagar).
+
 ### Added — storefront (api 0.46.0 · app 0.52.0) — Página de Ofertas por subdomínio
 
 Vitrine pública do tenant em `https://<nome>.<domínio de links>` (mesmo domínio do rodízio) com capa, foto, categorias e ofertas com link de afiliado. Só Profissional e Business (`storefront_enabled`). Doc: `docs/pagina-de-ofertas.md`.

@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
 import { Box, Button, IconButton, Stack, Tooltip, Typography, alpha, useMediaQuery, useTheme } from '@mui/material';
 import { Check, Copy, ExternalLink, Store } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { storefrontStrings } from '../strings';
 
 const t = storefrontStrings;
-const COPIED_MS = 2000;
 
 export interface StorefrontHeaderProps {
   /** null = página ainda sem endereço (não criada ou janela inconsistente). */
@@ -21,21 +20,10 @@ export function StorefrontHeader({ publicUrl, onCopyFailed }: StorefrontHeaderPr
   const dark = theme.palette.mode === 'dark';
   const compact = useMediaQuery(theme.breakpoints.down('sm'));
   const blurAddress = useBlur('storefront.subdomain');
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
+  const clipboard = useCopyToClipboard(onCopyFailed);
+  const copied = clipboard.copied;
   const copy = async () => {
-    if (!publicUrl) return;
-    try {
-      await navigator.clipboard.writeText(publicUrl);
-      setCopied(true);
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), COPIED_MS);
-    } catch {
-      onCopyFailed();
-    }
+    if (publicUrl) await clipboard.copy(publicUrl);
   };
 
   const { primary, secondary } = theme.palette;

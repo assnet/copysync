@@ -47,6 +47,11 @@ describe('OfferTabs', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
   });
 
+  it('oferta sem título mostra o aviso em vez de linha vazia', () => {
+    setup({ drafts: [offer('a', { title: '  ' })] });
+    expect(screen.getByText(t.untitled)).toBeInTheDocument();
+  });
+
   it('aba vazia mostra o texto de estado vazio', () => {
     setup({ published: [], tab: 'published' });
     expect(screen.getByText(t.emptyPublished.title)).toBeInTheDocument();

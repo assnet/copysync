@@ -1,10 +1,11 @@
 import type { FormEvent, ReactNode } from 'react';
 import {
-  Alert, AlertTitle, Avatar, Box, Button, Card, CardContent, Divider, Stack, TextField, Typography,
+  Alert, AlertTitle, Avatar, Box, Button, Card, CardContent, Divider, IconButton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { Pencil, Settings2, Store } from 'lucide-react';
+import { Check, Copy, Pencil, Settings2, Store } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import type { StorefrontFormErrors, StorefrontFormState } from '../storefrontForm';
 import { storefrontStrings } from '../strings';
 import type { SlugAvailabilityStatus, StorefrontImageKind, StorefrontOverview } from '../types';
@@ -42,6 +43,8 @@ export interface StorefrontConfigCardProps {
   onImageUploaded: (kind: StorefrontImageKind, uploadId: string) => void | Promise<void>;
   onImageRemove: (kind: StorefrontImageKind) => void | Promise<void>;
   imageErrors?: Partial<Record<StorefrontImageKind, string | null>>;
+  /** Clipboard bloqueado ao copiar o endereço: quem chama mostra o aviso. */
+  onCopyFailed: () => void;
 }
 
 function CardHeader({ action }: { action?: ReactNode }) {
@@ -61,6 +64,7 @@ export function StorefrontConfigCard(props: StorefrontConfigCardProps) {
   const blurName = useBlur('storefront.name');
   const blurAddress = useBlur('storefront.subdomain');
   const blurPhoto = useBlur('storefront.photo');
+  const { copied, copy } = useCopyToClipboard(props.onCopyFailed);
 
   if (!editing && !page) {
     return (
@@ -96,11 +100,23 @@ export function StorefrontConfigCard(props: StorefrontConfigCardProps) {
                 <Blurred when={blurName} inline radius={5}>{page.title}</Blurred>
               </Typography>
               <Typography variant="caption" color="text.secondary" component="p">{t.config.addressLabel}</Typography>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                {overview.publicUrl
-                  ? <Blurred when={blurAddress} inline radius={5}>{overview.publicUrl}</Blurred>
-                  : <Box component="span" sx={{ color: 'warning.main' }}>{t.address.missing}</Box>}
-              </Typography>
+              {overview.publicUrl ? (
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all', minWidth: 0 }}>
+                    <Blurred when={blurAddress} inline radius={5}>{overview.publicUrl}</Blurred>
+                  </Typography>
+                  <Tooltip title={copied ? t.address.copied : t.address.copy} arrow>
+                    <IconButton
+                      size="small" color={copied ? 'success' : 'default'} aria-label={t.address.copy}
+                      onClick={() => void copy(overview.publicUrl!)} sx={{ flexShrink: 0 }}
+                    >
+                      <AppIcon icon={copied ? Check : Copy} size="sm" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              ) : (
+                <Typography variant="body2" sx={{ color: 'warning.main' }}>{t.address.missing}</Typography>
+              )}
             </Box>
           </Stack>
         </CardContent>

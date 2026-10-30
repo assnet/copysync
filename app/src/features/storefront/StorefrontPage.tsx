@@ -37,10 +37,11 @@ export function StorefrontPage() {
   const s = useStorefrontPage();
   const { overview } = s;
   const page = overview?.storefront ?? null;
+  const onCopyFailed = () => s.notify(t.address.copyFailed, 'error');
 
   return (
     <Box>
-      <StorefrontHeader publicUrl={overview?.publicUrl ?? null} onCopyFailed={() => s.notify(t.address.copyFailed, 'error')} />
+      <StorefrontHeader publicUrl={overview?.publicUrl ?? null} onCopyFailed={onCopyFailed} />
 
       {s.loading && !overview ? (
         <LoadingSkeleton />
@@ -77,6 +78,7 @@ export function StorefrontPage() {
                 onImageUploaded={s.uploadImage}
                 onImageRemove={s.removeImage}
                 imageErrors={s.imageErrors}
+                onCopyFailed={onCopyFailed}
               />
             </Box>
 

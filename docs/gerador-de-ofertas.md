@@ -62,6 +62,10 @@ Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body o
 - Shopee: Affiliate Open API (`productOfferV2`) quando há credencial com secret; erro na API cai para a leitura da página.
 - ML / Amazon: `HttpProductPageReader` — UA de navegador, 8 s, HTML cortado em 2 MB, só `text/html`, até 5 redirects
   revalidados; lê `og:*`, JSON-LD, `product:price:amount`, `andes-money-amount` (ML), `#productTitle`/`a-offscreen` (Amazon).
+  ML é lido pela URL canônica (`canonicalMercadoLivreProductUrl`: `/p/MLB…` sem slug/query; `sourceUrl` não muda).
+  Redirect para `/gz/account-verification`/captcha (`isMercadoLivreChallengeUrl`) = página ausente; título de
+  verificação ("Segurança — Mercado Livre") é genérico em `isGenericSiteTitle`. Não fazer: gravar título dessa página,
+  contornar a verificação, usar `api.mercadolibre.com` sem token (401/403).
 - **Sessão da extensão (ML)**: se o tenant sincronizou a sessão pela extensão, a leitura vai com `Cookie: ssid=…` (só para
   `*.mercadolivre.com.br`; token validado contra injeção de cookie). Mesmo mecanismo das extensões do mercado: requisição
   logada é bloqueada bem menos. Rotas não documentadas do ML podem mudar sem aviso.
