@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 import { authService } from '@/services/auth.service';
 import { reactionDispatcher } from '@/features/chat/reactionDispatcher';
 import { mediaAccountScope } from '@/features/chat/media/mediaAccountScope';
+import { clearOfferStoryState } from '@/features/offerStory/sessionState';
 import type { AuthUser, LoginRequest, TenantRef } from '@/types/api.types';
 
 interface AuthState {
@@ -55,6 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Nada agendado pode sair depois com o token de outro usuário.
     reactionDispatcher.reset();
     mediaAccountScope.reset();
+    // Estado de trabalho por conta (arte, link de afiliado) não sobrevive à troca de usuário na aba.
+    clearOfferStoryState();
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) {
       try {

@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePersistedState } from '@/hooks/usePersistedState';
+import { clearPersisted, readPersisted, usePersistedState, writePersisted } from '@/hooks/usePersistedState';
 import { isPlanFeatureUnavailable } from '@/features/plans/planGate';
 import { offerStoryService } from '@/services/offerStory.service';
 import { offerStoryUpgradePath } from '../planGate';
@@ -15,25 +15,60 @@ import {
   type ProductFormState,
 } from '../productForm';
 import type { OfferStoryResult } from '../types';
+import { RESULT_KEY, WIZARD_KEY } from '../sessionState';
+
+export { RESULT_KEY, WIZARD_KEY };
 
 /** 0 = template, 1 = produto, 2 = compartilhar. */
 export type OfferStoryStep = 0 | 1 | 2;
 
-/** Estado de trabalho persistido na aba. A arte (resultado) nunca é salva. */
+/** Estado de trabalho persistido na aba. A arte fica em chave própria (`RESULT_KEY`). */
 export interface OfferStoryDraft extends ProductFormState {
   step: OfferStoryStep;
   templateId: string;
 }
 
-export const WIZARD_KEY = 'offerStory.wizard';
 export const WIZARD_VERSION = 1;
 export const WIZARD_DEFAULTS: OfferStoryDraft = { step: 0, templateId: '', ...PRODUCT_FORM_DEFAULTS };
 
-/** Passo 3 sem arte (reload) volta ao 2: os campos continuam lá para gerar de novo. */
+/** Passo 2 sem template volta ao 1. Passo 3 sem arte salva vira 2 no hook (`step` derivado). */
 export function restoreDraft(raw: unknown): OfferStoryDraft {
   const d = { ...WIZARD_DEFAULTS, ...((raw && typeof raw === 'object' ? raw : {}) as Partial<OfferStoryDraft>) };
-  const step: OfferStoryStep = d.step === 2 ? 1 : d.step === 1 && d.templateId ? 1 : 0;
+  const step: OfferStoryStep = d.templateId && (d.step === 1 || d.step === 2) ? d.step : 0;
   return { ...d, step };
+}
+
+/** Arte gerada (data URL ~100–250 KB) na aba, separada do rascunho: falha de cota não afeta o resto. */
+export const RESULT_VERSION = 1;
+const JPEG_PREFIX = 'data:image/jpeg;base64,';
+
+/** Valida a forma do resultado salvo; qualquer divergência descarta (volta ao passo 2). */
+export function restoreResult(raw: unknown): OfferStoryResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<OfferStoryResult>;
+  const ok =
+    typeof r.image === 'string' && r.image.startsWith(JPEG_PREFIX) && r.image.length > JPEG_PREFIX.length &&
+    typeof r.templateId === 'string' && r.templateId !== '' &&
+    typeof r.headline === 'string' && typeof r.affiliateUrl === 'string' && typeof r.provider === 'string' &&
+    typeof r.width === 'number' && typeof r.height === 'number' && typeof r.attributionVerified === 'boolean' &&
+    !!r.price && typeof r.price === 'object' && Array.isArray(r.warnings) &&
+    (r.coupon === null || (!!r.coupon && typeof r.coupon.code === 'string'));
+  return ok ? (r as OfferStoryResult) : null;
+}
+
+const RESULT_OPTS = { version: RESULT_VERSION, deserialize: restoreResult };
+
+/**
+ * Resultado persistido com degradação: apaga o salvo antes de gravar o novo, então se a cota estourar
+ * (`writePersisted` engole o erro) não sobra arte antiga — a nova vale só em memória e o reload cai no passo 2.
+ */
+function usePersistedResult() {
+  const [result, setResult] = useState<OfferStoryResult | null>(() => readPersisted(RESULT_KEY, RESULT_OPTS) ?? null);
+  useEffect(() => {
+    clearPersisted(RESULT_KEY);
+    if (result) writePersisted(RESULT_KEY, result, RESULT_OPTS);
+  }, [result]);
+  return [result, setResult] as const;
 }
 
 /**
@@ -46,7 +81,7 @@ export function useOfferStoryWizard() {
     version: WIZARD_VERSION,
     deserialize: restoreDraft,
   });
-  const [result, setResult] = useState<OfferStoryResult | null>(null);
+  const [result, setResult] = usePersistedResult();
   const [generating, setGenerating] = useState(false);
   const [errors, setErrors] = useState<ProductFormErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -91,13 +126,18 @@ export function useOfferStoryWizard() {
     } finally {
       setGenerating(false);
     }
-  }, [draft, generating, navigate, setDraft]);
+  }, [draft, generating, navigate, setDraft, setResult]);
+
+  /** Arte salva cujo template saiu do catálogo: descarta (a página chama com os ids carregados). */
+  const dropStaleResult = useCallback((ids: readonly string[]) => {
+    setResult((r) => (r && !ids.includes(r.templateId) ? null : r));
+  }, [setResult]);
 
   /** "Editar": volta ao passo 2 com os campos; a arte anterior é descartada. */
   const edit = useCallback(() => {
     setResult(null);
     goTo(1);
-  }, [goTo]);
+  }, [goTo, setResult]);
 
   /** "Nova arte": limpa tudo e volta ao passo 1. */
   const reset = useCallback(() => {
@@ -105,7 +145,7 @@ export function useOfferStoryWizard() {
     setErrors({});
     setGeneralError(null);
     clearDraft();
-  }, [clearDraft]);
+  }, [clearDraft, setResult]);
 
   return {
     step,
@@ -122,5 +162,6 @@ export function useOfferStoryWizard() {
     generate,
     edit,
     reset,
+    dropStaleResult,
   };
 }

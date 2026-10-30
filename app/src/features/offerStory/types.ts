@@ -20,7 +20,7 @@ export interface RenderOfferStoryInput {
 }
 
 export interface OfferStoryResult {
-  /** `data:image/jpeg;base64,…` (1080×1920). Só em memória: nunca persistir. */
+  /** `data:image/jpeg;base64,…` (1080×1920). Só na aba (`offerStory.result`); nunca no servidor. */
   image: string;
   width: number;
   height: number;

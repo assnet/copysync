@@ -42,11 +42,14 @@ describe('OfferStoryPage', () => {
     renderPage('dark');
     const continueBtn = await screen.findByRole('button', { name: t.template.continue });
     expect((continueBtn as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector('header [aria-current="step"]')?.textContent).toContain(t.page.steps[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Oferta relâmpago' }));
     fireEvent.click(continueBtn);
     fireEvent.change(screen.getByLabelText(new RegExp(t.product.linkLabel)), { target: { value: 'https://shopee.com.br/p-i.1.2' } });
     fireEvent.click(screen.getByRole('button', { name: t.product.generate }));
     expect(await screen.findByText(t.result.title)).toBeTruthy();
+    expect(document.querySelector('header [aria-current="step"]')?.textContent).toContain(t.page.steps[2]);
+    expect(screen.getByRole('button', { name: t.result.download })).toBeTruthy();
     expect(screen.getByText(t.result.unverified)).toBeTruthy();
     expect(screen.getByText(t.result.warnings.NO_PRICE)).toBeTruthy();
     expect(screen.queryByRole('button', { name: t.result.share })).toBeNull();
