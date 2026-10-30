@@ -1,8 +1,9 @@
-import { Box, Typography } from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import { Clock, MoonStar } from 'lucide-react';
+import { Box, IconButton, Tooltip, Typography } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import { Clock, Info, Moon } from 'lucide-react';
 import { AppIcon, RangeSlider, ToggleOption } from '@/components';
 import { formatDuration, monitoringStrings } from '../strings';
+import { glassPillSx, toneText } from '../monitoringStyle';
 import {
   DAY_MINUTES, WINDOW_MARKS, WINDOW_STEP, activeMinutes, formatMinuteOfDay, isFullDay, isWindowValid, windowBounds,
   type OperatingWindow,
@@ -22,6 +23,7 @@ interface Props {
 /**
  * Janela de operação só por slider (00:00–24:00, passo 15 min). O slider sempre recebe `lo <= hi`;
  * com a noturna ligada a janela ativa é o complemento — a faixa colorida inverte para mostrar isso.
+ * Resumo numa pílula de vidro (relógio de dia, lua de noite); a regra completa fica no tooltip.
  */
 export function OperatingWindowField({ value, onChange, disabled }: Props) {
   const theme = useTheme();
@@ -29,7 +31,6 @@ export function OperatingWindowField({ value, onChange, disabled }: Props) {
   const full = isFullDay(value);
   const { start, end } = windowBounds(value);
   const duration = formatDuration(activeMinutes(value));
-  const accent = valid ? theme.palette.primary.main : theme.palette.error.main;
   const summary = full ? t.windowFullDay : t.windowRange(formatMinuteOfDay(start), formatMinuteOfDay(end), duration);
   const summaryAria = full ? t.windowFullDay : t.windowRangeAria(formatMinuteOfDay(start), formatMinuteOfDay(end), duration);
 
@@ -45,46 +46,52 @@ export function OperatingWindowField({ value, onChange, disabled }: Props) {
         aria-live="polite"
         aria-label={summaryAria}
         sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.25,
-          px: 2,
-          py: 1.25,
-          mb: 2,
-          borderRadius: 2,
-          color: accent,
-          backgroundColor: alpha(accent, theme.palette.mode === 'dark' ? 0.16 : 0.08),
-          border: '1px solid',
-          borderColor: alpha(accent, 0.35),
+          ...glassPillSx(theme),
+          gap: 1,
+          px: 1.75,
+          py: 0.875,
+          mb: 2.5,
+          maxWidth: '100%',
+          whiteSpace: 'normal',
+          color: valid ? 'text.primary' : toneText(theme, 'error'),
+          borderColor: valid ? undefined : 'error.main',
         }}
       >
-        <AppIcon icon={value.overnight ? MoonStar : Clock} size="md" />
-        <Typography component="span" sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, fontVariantNumeric: 'tabular-nums', color: 'inherit' }}>
+        <Box component="span" sx={{ display: 'inline-flex', color: valid ? 'primary.main' : 'inherit' }}>
+          <AppIcon icon={value.overnight ? Moon : Clock} size="md" />
+        </Box>
+        <Typography component="span" variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums', color: 'inherit' }}>
           {summary}
         </Typography>
       </Box>
 
-      <Box>
-        <RangeSlider
-          value={[value.lo, value.hi]}
-          onChange={([lo, hi]) => onChange({ ...value, lo, hi })}
-          min={0}
-          max={DAY_MINUTES}
-          step={WINDOW_STEP}
-          minDistance={WINDOW_STEP}
-          ariaLabel={t.windowAria}
-          minLabel={value.overnight ? t.windowEnd : t.windowStart}
-          maxLabel={value.overnight ? t.windowStart : t.windowEnd}
-          formatValue={formatMinuteOfDay}
-          marks={WINDOW_MARKS}
-          disabled={disabled}
-          error={!valid}
-          inverted={value.overnight}
-        />
+      <RangeSlider
+        value={[value.lo, value.hi]}
+        onChange={([lo, hi]) => onChange({ ...value, lo, hi })}
+        min={0}
+        max={DAY_MINUTES}
+        step={WINDOW_STEP}
+        minDistance={WINDOW_STEP}
+        ariaLabel={t.windowAria}
+        minLabel={value.overnight ? t.windowEnd : t.windowStart}
+        maxLabel={value.overnight ? t.windowStart : t.windowEnd}
+        formatValue={formatMinuteOfDay}
+        marks={WINDOW_MARKS}
+        disabled={disabled}
+        error={!valid}
+        inverted={value.overnight}
+      />
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: 0.75, mb: 1.5 }}>
+        <Typography variant="caption" component="p" sx={{ color: valid ? 'text.secondary' : toneText(theme, 'error') }}>
+          {valid ? t.windowHelpShort : t.windowEmpty}
+        </Typography>
+        <Tooltip title={t.windowHelp} describeChild arrow enterTouchDelay={0} leaveTouchDelay={4000}>
+          <IconButton size="small" aria-label={t.windowHelpAria} sx={{ color: 'text.secondary', flexShrink: 0 }}>
+            <AppIcon icon={Info} size="sm" />
+          </IconButton>
+        </Tooltip>
       </Box>
-      <Typography variant="caption" color={valid ? 'text.secondary' : 'error'} component="p" sx={{ mt: 1, mb: 1.5 }}>
-        {valid ? t.windowHelp : t.windowEmpty}
-      </Typography>
 
       <ToggleOption
         checked={value.overnight}

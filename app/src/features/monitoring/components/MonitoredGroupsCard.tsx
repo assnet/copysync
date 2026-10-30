@@ -1,10 +1,14 @@
 import { Box, Button, Chip, Stack, Tooltip, Typography } from '@mui/material';
-import { Settings2 } from 'lucide-react';
-import { AppIcon, SectionCard } from '@/components';
-import { GroupChip } from '@/features/offers/components/GroupChip';
+import { useTheme } from '@mui/material/styles';
+import { Ear, Plus, Settings2 } from 'lucide-react';
+import { AppIcon } from '@/components';
+import { GroupAvatar } from '@/features/offers/components/GroupChip';
+import { Blurred, useBlur } from '@/features/privacy';
 import type { MonitoredGroupItem } from '@/types/api.types';
+import { INNER_RADIUS, focusRingSx, iconTileSx, toneSurface } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 import { GroupUsageChip } from './GroupUsageChip';
+import { MonitorCard } from './MonitorCard';
 
 const t = monitoringStrings.groups;
 
@@ -15,47 +19,85 @@ interface Props {
   onConfigure: () => void;
 }
 
-/** Grupos de concorrentes escutados nesta sessão, com as palavras-chave de cada um. */
+/** Origem: grupos de concorrentes escutados nesta sessão, com as palavras-chave de cada um. */
 export function MonitoredGroupsCard({ groups, used, max, onConfigure }: Props) {
+  const theme = useTheme();
+  const blurNames = useBlur('monitoring.groupNames');
+  const blurKeywords = useBlur('monitoring.keywords');
+  const empty = groups.length === 0;
+  const neutral = toneSurface(theme, 'neutral');
+
   return (
-    <SectionCard
+    <MonitorCard
+      icon={Ear}
+      tone="info"
       title={t.monitoredTitle}
       subtitle={t.monitoredSubtitle}
       action={<GroupUsageChip used={used} max={max} />}
-      sx={{ height: '100%', display: 'flex', flexDirection: 'column', '& > .MuiCardContent-root': { flex: 1, display: 'flex', flexDirection: 'column' } }}
+      footer={
+        <Tooltip title={t.configureTooltip} arrow describeChild>
+          <Button
+            variant={empty ? 'contained' : 'outlined'}
+            startIcon={<AppIcon icon={empty ? Plus : Settings2} size="sm" />}
+            onClick={onConfigure}
+          >
+            {empty ? t.choose : t.edit}
+          </Button>
+        </Tooltip>
+      }
     >
-      <Box sx={{ flex: 1 }}>
-        {groups.length === 0 ? (
+      {empty ? (
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', py: 1 }}>
+          <Box aria-hidden sx={iconTileSx(theme, 'info')}><AppIcon icon={Ear} size="sm" /></Box>
           <Typography variant="body2" color="text.secondary">{t.monitoredEmpty}</Typography>
-        ) : (
-          <Stack spacing={1}>
-            {groups.map((g) => (
-              <Box key={g.groupJid} sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                <GroupChip
-                  title={g.title}
-                  avatarUrl={g.avatarUrl}
-                  untitled={t.untitled}
-                  nameFlag="monitoring.groupNames"
-                  avatarFlag="monitoring.groupAvatars"
-                  sx={{ maxWidth: '65%' }}
-                />
+        </Stack>
+      ) : (
+        <Stack component="ul" spacing={0.5} sx={{ m: 0, p: 0, listStyle: 'none' }}>
+          {groups.map((g) => {
+            const title = g.title || t.untitled;
+            return (
+              <Box
+                component="li"
+                key={g.groupJid}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0, minHeight: 48, px: 1, py: 0.5,
+                  borderRadius: INNER_RADIUS,
+                  transition: theme.transitions.create('background-color', { duration: 200 }),
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
+                <GroupAvatar title={blurNames ? null : g.title} avatarUrl={g.avatarUrl} size={32} blurFlag="monitoring.groupAvatars" />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Blurred when={blurNames} inline radius={5}>
+                    <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{title}</Typography>
+                  </Blurred>
+                </Box>
                 {g.keywords.length === 0 ? (
-                  <Typography variant="caption" color="text.secondary" noWrap>{t.keywordsAll}</Typography>
+                  <Chip size="small" label={t.keywordsAll} sx={{ ...neutral, border: 1, flexShrink: 0 }} />
                 ) : (
-                  <Tooltip title={t.keywordsTooltip(g.keywords.join(', '))} arrow>
-                    <Chip size="small" variant="outlined" label={t.keywordsCount(g.keywords.length)} />
+                  <Tooltip
+                    title={<Blurred when={blurKeywords} inline radius={5}>{t.keywordsTooltip(g.keywords.join(', '))}</Blurred>}
+                    arrow
+                    enterTouchDelay={0}
+                    leaveTouchDelay={4000}
+                  >
+                    {/* Contagem (igual ao seletor): nunca corta a palavra; a lista fica no tooltip */}
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      tabIndex={0}
+                      role="group"
+                      aria-label={blurKeywords ? t.keywordsLabel(title) : `${t.keywordsLabel(title)}: ${g.keywords.join(', ')}`}
+                      label={t.keywordsCount(g.keywords.length)}
+                      sx={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', ...focusRingSx(theme) }}
+                    />
                   </Tooltip>
                 )}
               </Box>
-            ))}
-          </Stack>
-        )}
-      </Box>
-      <Tooltip title={t.configureTooltip} arrow describeChild>
-        <Button variant="outlined" startIcon={<AppIcon icon={Settings2} size="sm" />} onClick={onConfigure} sx={{ mt: 2, alignSelf: 'flex-start' }}>
-          {t.configure}
-        </Button>
-      </Tooltip>
-    </SectionCard>
+            );
+          })}
+        </Stack>
+      )}
+    </MonitorCard>
   );
 }
