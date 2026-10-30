@@ -9,6 +9,41 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — monitoring (app 0.54.0) — telas do Monitoramento redesenhadas
+
+Página sem hierarquia (cards iguais, liga/desliga no meio, alertas dominando o topo) virou hero com status + fluxo
+origem → destino. Doc: `docs/monitoramento-grupos.md` §5.
+
+#### Frontend — monitoring
+
+- **`MonitoringHero.tsx`** (novo), **`MonitoringPage.tsx`** — hero com anel de radar, status "Ativo · capturando" e
+  etapas (sessão, monitorados, disparo, lojas) com ação direta; estado vazio explica o recurso (copy "nenhuma sessão"
+  correta). Trocar de sessão fecha o seletor e limpa o rascunho dele da sessão anterior (`clearPickerDraft`).
+- **`MonitorCard.tsx`**, **`monitoringStyle.ts`** (novos) — cards sem borda, sombra do tema, pílulas de vidro, tons
+  semânticos; `focusRingSx` (anel de foco) e `REDUCED_MOTION` (pulso e transições param com
+  `prefers-reduced-motion`).
+- **`CredentialAlerts.tsx`** — alertas em linhas compactas (ícone + 1 frase + ação); `aria-label` da região dizia
+  "Ofertas capturadas", corrigido.
+- **`BroadcastGroupsCard.tsx`**, **`MonitoredGroupsCard.tsx`**, **`GroupUsageChip.tsx`** — desfazer remoção
+  reinsere na lista atual (`reinsertGroup`), não restaura cópia velha; nomes resolvidos por jid após reload; avatar
+  sem iniciais e com blur; contador "n/max no plano".
+- **`GroupPickerDialog.tsx`** — duas colunas (md+) / abas (xs) para disponíveis × selecionados; motivo de item
+  bloqueado visível (não só no tooltip); busca, aba e keywords abertas persistidas por sessão.
+- **`MonitoringSettingsForm.tsx`**, **`OperatingWindowField.tsx`**, **`FieldLabel.tsx`**, **`settingsDraft.ts`** —
+  card mestre "Monitoramento ativo"; modo de texto em `radiogroup` com setas/Home/End (`textModeForKey`) no lugar do
+  `ToggleButtonGroup`; barra de salvar com `aria-live`; "marcar todos" travado pelo plano conta como desligado
+  (`effectiveDraft`), sem rascunho "sujo" fantasma.
+- **`CapturedOffersList.tsx`**, **`useCapturedOffers.ts`** — filtros persistidos (Todas · Precisa de ação · Na fila ·
+  Em andamento · Ignoradas) com contagem parcial sinalizada; horário relativo pt-BR pelo relógio do servidor
+  (`serverNow`), com data quando não é hoje; corrida entre polling e "Carregar mais" corrigida; menos chips por
+  linha; "foto indisponível" (`ImageOff`) só quando `imageUnavailable`.
+- **`privacyFlags.ts`** — flags `monitoring.sessionAvatar` e `monitoring.keywords`.
+- **`OperatingWindowField.tsx`** — janela noturna sem o ícone `MoonStar` (estrela); nenhum ícone/efeito de brilho
+  (`Sparkles`) na tela.
+- **`SendQueuePanel.tsx`**, **`OfferControls.tsx`** — Fila de envio no xs: título em cima e ações em linha embaixo
+  (descrição não vira 1 palavra por linha); spinners param com `prefers-reduced-motion`.
+- **`strings.ts`** — textos novos; testes novos para hero, cards, seletor, formulário, lista e `settingsDraft`.
+
 ### Changed — offer-story (app 0.53.1) — telas do Story de Oferta mais atraentes
 
 - **`templates/layouts/*.ts`**, **`storyParts.ts`**, **`storyLayoutModel.ts`** (api 0.47.1) — 8 templates redesenhados com identidade própria: foto em sticker grande, preço dominante, selo `-X% OFF`, cupom em ticket e chamada "Toque no link" com área do sticker; zonas seguras do Instagram; fontes Poppins, Archivo Black, Caveat Brush e DM Serif Display. `boxShadow` limitado a blur 50 px (panic do resvg acima disso).

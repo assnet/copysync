@@ -14,6 +14,10 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
 | Grupo de WhatsApp em lista/chip | `GroupAvatar` / `GroupChip` (`features/offers/components/GroupChip.tsx`): foto, senão iniciais, senão ícone | `Chip` só com texto; ícone genérico quando há foto |
 
+Estilo visual de uma tela redesenhada fica num módulo da feature (`features/<x>/<x>Style.ts`, ex.:
+`monitoring/monitoringStyle.ts`, `offerStory/storyStyle.ts`): tokens e helpers só com `theme`/`alpha()`
+(`focusRingSx`, `REDUCED_MOTION`, superfícies, tons). Promover a `components/` só quando 2+ features usarem.
+
 ## Switch (padrão iOS)
 
 - Trilho 36×20, azul primário (`#4f70e0`) ligado, cinza desligado; bolinha branca 16 px com
@@ -60,7 +64,7 @@ compartilhar a tela sem expor clientes, grupos e produtos.
 4. Teste com a flag ligada: o layout não pode mudar (o desfoque mantém o espaço).
 
 Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
-Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão, fotos e nomes de grupos, texto e imagens das ofertas capturadas), Rodízio de links (link público e apelido, sessão, fotos e nomes de grupos, link de convite dos grupos) e Página de Ofertas (nome da página, foto de perfil, capa, endereço/subdomínio, título e imagens das ofertas; o preview inteiro borra se qualquer flag da tela estiver ligada). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
+Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão e foto da sessão, fotos e nomes de grupos, palavras-chave, texto e imagens das ofertas capturadas), Rodízio de links (link público e apelido, sessão, fotos e nomes de grupos, link de convite dos grupos) e Página de Ofertas (nome da página, foto de perfil, capa, endereço/subdomínio, título e imagens das ofertas; o preview inteiro borra se qualquer flag da tela estiver ligada). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
 
 ## ToggleOption
 

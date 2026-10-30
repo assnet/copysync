@@ -174,30 +174,54 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 
 ## 5. Painel
 
-- Seletor de sessão (persistido em `monitoring.sessionId`). "Conectar nova sessão" leva a
-  `/settings/sessions?create=1&returnTo=/monitoring`; ao fechar o assistente volta para
-  `/monitoring?sessionId=<nova>` já selecionada (`safeReturnPath` só aceita caminho interno).
-- Cards Sessão / Grupos monitorados n/max / Grupos de disparo n/max; seletor de grupos com busca e
-  palavras-chave; grupo já usado no outro papel aparece bloqueado.
-- Regras: horário (só `RangeSlider` com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"),
-  envio (intervalo, digitando, marcar todos), depois da captura (atraso, validades). Rascunho por
-  sessão (`monitoring.settings.<sessionId>`, formulário com `key={sessionId}`), Salvar/Descartar só
-  com alteração. Card "Texto da oferta": Original / Modelo / Reescrita com IA (`ToggleButtonGroup`),
-  `AudiencePicker` do gerador quando IA, switch "Montar a oferta quando chegar só o link".
-  "Imagem das ofertas" segue "Em breve".
-- Captura mostra chip "Texto original / do modelo / da IA" (`textSource`) e "IA indisponível" com o
-  código no tooltip (`aiErrorCode`).
-- `CredentialAlerts` no topo: um `Alert` por loja (sem credencial = aviso; recusada = erro, com data) e
-  botão "Configurar credencial" → `/settings/affiliate-credentials?returnTo=/monitoring` (lá, "Voltar ao
-  monitoramento"). Só nome da loja e data: sem flag de privacidade nova.
-- Grupos de disparo: com `limits.crossSessionDispatch` o seletor lista os grupos de todas as sessões
-  conectadas (nome da sessão em cada um) e o card mostra "Envia por <sessão>" no grupo de outra sessão;
-  sem a feature, só a sessão atual e um aviso "exclusivo do plano Business" com link para `/plans`.
-- Ofertas capturadas (status, motivo, cupom, foto indisponível, "Tentar de novo") e a fila de envio
-  da sessão (`SendQueuePanel`). Captura `QUEUED` traz `offerStatus`, `sentCount`/`totalCount` e os
-  botões Pausar / Retomar / Parar **da oferta** (`OfferControlButtons`, `features/sendQueue`): é o
-  lugar natural do controle, um por oferta. Na fila os mesmos botões aparecem só na 1ª linha da oferta.
-- Privacidade: flags `monitoring.*` (sessão, nomes e fotos de grupos, texto e imagens capturados).
+Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
+`features/monitoring/monitoringStyle.ts` (tons, `focusRingSx`, `REDUCED_MOTION`, pílulas de vidro) e
+`MonitorCard.tsx`; cor só do tema.
+
+- **Hero** (`MonitoringHero.tsx`): status (Ativo/Pausado, ponto pulsando só sem reduced-motion), seletor
+  de sessão e etapas sessão → monitorados → disparo → lojas, cada uma com ação. Estado vazio explica o recurso.
+  "Conectar nova sessão" leva a `/settings/sessions?create=1&returnTo=/monitoring`; volta com
+  `/monitoring?sessionId=<nova>` (`safeReturnPath` só aceita caminho interno).
+- **`CredentialAlerts`**: linha compacta por loja (sem credencial = aviso; recusada = erro, com data) +
+  "Configurar credencial" → `/settings/affiliate-credentials?returnTo=/monitoring`.
+- **Grupos** (`MonitoredGroupsCard`, `BroadcastGroupsCard`): contador "n/max no plano"; nome resolvido por
+  jid; avatar com foto ou ícone (sem iniciais), sempre com blur. Remover tem "Desfazer" via `reinsertGroup`.
+  Com `limits.crossSessionDispatch` o disparo lista grupos de todas as sessões ("Envia por <sessão>");
+  sem a feature, aviso "exclusivo do plano Business" → `/plans`.
+- **Seletor** (`GroupPickerDialog`): disponíveis × selecionados em 2 colunas (md+) ou abas (xs); grupo usado
+  no outro papel aparece bloqueado com o motivo visível; palavras-chave por grupo monitorado.
+- **Configurações** (`MonitoringSettingsForm`): card mestre "Monitoramento ativo"; horário (`RangeSlider`
+  com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"); envio; depois da captura; texto da oferta em
+  `radiogroup` Original / Modelo / IA (setas, Home/End: `textModeForKey`) com `AudiencePicker` quando IA.
+  Barra Salvar/Descartar só com alteração, `aria-live`. "Marcar todos" travado pelo plano conta como
+  desligado (`effectiveDraft`). "Imagem das ofertas" segue "Em breve".
+- **Capturadas** (`CapturedOffersList`): filtros `all`/`action` (Precisa de ação)/`queued`/`working`/`skipped`
+  com contagem (marcada parcial enquanto há mais páginas); horário relativo pt-BR pelo `serverNow()`, com
+  data quando não é hoje; chips de `textSource`, "IA indisponível" (`aiErrorCode` no tooltip), foto
+  indisponível só com `imageUnavailable`. Captura `QUEUED` traz `offerStatus`, `sentCount`/`totalCount` e
+  Pausar / Retomar / Parar **da oferta** (`OfferControlButtons`, `features/sendQueue`); na fila
+  (`SendQueuePanel`) os mesmos botões só na 1ª linha da oferta.
+
+**Chaves persistidas** (`usePersistedState`, escopo aba):
+
+| Chave | O quê |
+|---|---|
+| `monitoring.sessionId` | sessão escolhida |
+| `monitoring.picker` | seletor aberto (`monitored`/`broadcast`) |
+| `monitoring.picker.<mode>.<sessionId>` | rascunho de grupos do seletor |
+| `monitoring.picker.search.<mode>.<sessionId>` | busca do seletor |
+| `monitoring.picker.tab.<mode>.<sessionId>` | aba do seletor (xs) |
+| `monitoring.picker.openKeywords.<sessionId>` | grupo com palavras-chave abertas |
+| `monitoring.settings.<sessionId>` | rascunho das configurações (form com `key={sessionId}`) |
+| `monitoring.captured.filter.<sessionId>` | filtro das capturadas |
+| `monitoring.captured.expanded.<sessionId>` | linhas expandidas |
+
+Trocar de sessão fecha o seletor e apaga as chaves `monitoring.picker.*` da sessão anterior
+(`clearPickerDraft` em `MonitoringPage.tsx`, mesmas chaves do `GroupPickerDialog`). Chave nova do
+seletor entra nos dois lugares.
+
+**Privacidade**: flags `monitoring.*` (sessão, `sessionAvatar`, nomes e fotos de grupos, `keywords`,
+texto e imagens capturados). Credenciais: só nome da loja e data, sem flag.
 
 ## 6. O que não fazer
 
@@ -212,6 +236,11 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 - Mandar texto do concorrente para a IA: só JSON de dados (`buildOfferTextPrompt`). Não criar segundo
   compositor nem segundo leitor de produto: `OfferTextComposer` e `ResolveProductDataUseCase` são únicos.
 - Ler página de produto ML com cookie do servidor (captcha) ou bloquear a captura por falta de dados.
+- Painel: ícone/efeito de brilho (`Sparkles`, `MoonStar`, "twinkle"); cor crua fora do tema; animação sem
+  `REDUCED_MOTION`.
+- Painel: comparar `Date.now()` com horário da API; usar `serverNow()`.
+- Painel: "Desfazer" restaurar cópia antiga da lista; reinserir no estado atual (`reinsertGroup`), senão
+  apaga o que mudou entre remover e desfazer.
 
 ## 7. Incidentes
 
