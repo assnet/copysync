@@ -68,8 +68,10 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
     <SectionCard
       title={t.title}
       subtitle={t.subtitle}
+      // Celular: título/descrição em cima e ações embaixo (lado a lado a descrição vira 1 palavra por linha)
+      headerSx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: { xs: 1.5, sm: 2 } }}
       action={
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: { xs: 'space-between', sm: 'flex-end' }, flexShrink: 0 }}>
           {data && (
             <Tooltip title={pausedAt ? t.global.resumeAllTooltip : t.global.pauseAllTooltip} arrow describeChild>
               <span>
@@ -79,7 +81,7 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
                   color={pausedAt ? 'warning' : 'inherit'}
                   disabled={globalPause.busy}
                   onClick={() => globalPause.toggle(pausedAt !== null)}
-                  startIcon={globalPause.busy ? <CircularProgress size={14} color="inherit" /> : <AppIcon icon={pausedAt ? Play : Pause} size="sm" />}
+                  startIcon={globalPause.busy ? <CircularProgress size={14} color="inherit" sx={{ '@media (prefers-reduced-motion: reduce)': { animation: 'none', '& .MuiCircularProgress-circle': { animation: 'none' } } }} /> : <AppIcon icon={pausedAt ? Play : Pause} size="sm" />}
                   sx={{ whiteSpace: 'nowrap' }}
                 >
                   {pausedAt ? t.global.resumeAll : t.global.pauseAll}

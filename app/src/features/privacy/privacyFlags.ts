@@ -30,6 +30,8 @@ export const PRIVACY_SCREENS = [
     label: 'Monitoramento',
     flags: [
       { id: 'monitoring.sessionName', label: 'Nome e número da sessão' },
+      { id: 'monitoring.sessionAvatar', label: 'Foto da sessão' },
+      { id: 'monitoring.keywords', label: 'Palavras-chave dos grupos' },
       { id: 'monitoring.groupAvatars', label: 'Fotos dos grupos' },
       { id: 'monitoring.groupNames', label: 'Nomes dos grupos' },
       { id: 'monitoring.capturedText', label: 'Texto das ofertas capturadas' },

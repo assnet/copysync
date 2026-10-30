@@ -84,12 +84,43 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
   };
 }
 
-/** Rascunho difere do salvo? Compara no formato da API. */
-export function isDraftDirty(draft: MonitorSettingsDraft | null, saved: GroupMonitorSettings): boolean {
+/** Valor que vale de fato: "mencionar todos" travado pelo plano conta como desligado (é o que a tela mostra e o que se salva). */
+export function effectiveDraft(d: MonitorSettingsDraft, mentionAllEnabled: boolean): MonitorSettingsDraft {
+  return mentionAllEnabled || !d.mentionAll ? d : { ...d, mentionAll: false };
+}
+
+/** Rascunho difere do salvo? Compara no formato da API, com os dois lados no valor efetivo. */
+export function isDraftDirty(draft: MonitorSettingsDraft | null, saved: GroupMonitorSettings, mentionAllEnabled = true): boolean {
   if (!draft) return false;
-  const a = draftToSettings(draft);
-  const b = draftToSettings(settingsToDraft(saved));
+  const a = draftToSettings(effectiveDraft(draft, mentionAllEnabled));
+  const b = draftToSettings(effectiveDraft(settingsToDraft(saved), mentionAllEnabled));
   return (Object.keys(a) as (keyof GroupMonitorSettings)[]).some((k) => a[k] !== b[k]);
+}
+
+/** Ordem dos modos de texto no seletor (radiogroup): é também a ordem das setas. */
+export const TEXT_MODES: readonly MonitorTextMode[] = ['ORIGINAL', 'TEMPLATE', 'AI'];
+
+/**
+ * Modo escolhido pela tecla no radiogroup (padrão WAI-ARIA: setas circulam, Home/End vão às
+ * pontas). `null` = tecla não muda a seleção.
+ */
+export function textModeForKey(current: MonitorTextMode, key: string): MonitorTextMode | null {
+  const i = Math.max(0, TEXT_MODES.indexOf(current));
+  const n = TEXT_MODES.length;
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return TEXT_MODES[(i + 1) % n]!;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return TEXT_MODES[(i - 1 + n) % n]!;
+    case 'Home':
+      return TEXT_MODES[0]!;
+    case 'End':
+      return TEXT_MODES[n - 1]!;
+    default:
+      return null;
+  }
 }
 
 /** Motivos que a API aceita reprocessar ("Tentar de novo" depois de corrigir a causa). */

@@ -19,6 +19,7 @@ vi.mock('@/services/monitoring.service', () => ({
     retryCaptured: (id: string) => retryCaptured(id),
   },
 }));
+vi.mock('@/services/offer.service', () => ({ offerService: { listSessionGroups: vi.fn(async () => ({ groups: [], total: 0 })) } }));
 vi.mock('@/features/sendQueue/components/SendQueuePanel', () => ({ SendQueuePanel: ({ sessionId }: { sessionId: string }) => <div>fila {sessionId}</div> }));
 
 import { MonitoringPage } from './MonitoringPage';
@@ -117,5 +118,37 @@ describe('MonitoringPage', () => {
     renderAt();
     fireEvent.click(await screen.findByRole('button', { name: 'Conectar nova sessão' }));
     expect(screen.getByTestId('where')).toHaveTextContent('/settings/sessions?create=1&returnTo=/monitoring');
+  });
+
+  it('etapa "Grupos de disparo" pendente no topo abre o seletor de disparo', async () => {
+    getConfig.mockImplementation(async (id: string) => ({ ...config(id), broadcastGroups: [], usage: { monitoredGroups: 1, broadcastGroups: 0 } }));
+    renderAt();
+    const steps = await screen.findByRole('list', { name: 'O que falta para o monitoramento funcionar' });
+    expect(screen.getByRole('status', { name: /Falta configurar/ })).toBeInTheDocument();
+    fireEvent.click(within(steps).getByRole('button', { name: /Escolher grupos de disparo/ }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(JSON.parse(sessionStorage.getItem('ui.monitoring.picker')!).d).toBe('broadcast');
+  });
+
+  it('sem nenhuma sessão: explica o recurso e oferece conectar', async () => {
+    listSessions.mockResolvedValue({ sessions: [], total: 0 });
+    renderAt();
+    expect(await screen.findByRole('heading', { name: 'Conecte uma sessão para começar' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Monitoramento' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Conectar sessão' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings/sessions?create=1&returnTo=/monitoring');
+  });
+
+  it('trocar de sessão descarta o rascunho do seletor da sessão anterior', async () => {
+    const keys = ['monitored.s1', 'broadcast.s1', 'search.monitored.s1', 'tab.broadcast.s1', 'openKeywords.s1'].map((k) => `ui.monitoring.picker.${k}`);
+    keys.forEach((k) => sessionStorage.setItem(k, JSON.stringify({ v: 0, d: 'x' })));
+    sessionStorage.setItem('ui.monitoring.picker.monitored.s2', JSON.stringify({ v: 0, d: 'y' }));
+    renderAt();
+    expect(await screen.findByText('fila s1')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: /Loja B/ }));
+    expect(await screen.findByText('fila s2')).toBeInTheDocument();
+    keys.forEach((k) => expect(sessionStorage.getItem(k)).toBeNull());
+    expect(sessionStorage.getItem('ui.monitoring.picker.monitored.s2')).not.toBeNull();
   });
 });
