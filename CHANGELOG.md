@@ -9,6 +9,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — offer-story (app 0.53.1) — telas do Story de Oferta mais atraentes
+
+- **`templates/layouts/*.ts`**, **`storyParts.ts`**, **`storyLayoutModel.ts`** (api 0.47.1) — 8 templates redesenhados com identidade própria: foto em sticker grande, preço dominante, selo `-X% OFF`, cupom em ticket e chamada "Toque no link" com área do sticker; zonas seguras do Instagram; fontes Poppins, Archivo Black, Caveat Brush e DM Serif Display. `boxShadow` limitado a blur 50 px (panic do resvg acima disso).
+
+#### Frontend — offerStory
+
+- **`OfferStoryHero.tsx`** (novo) — cabeçalho com anel de story, indicador de etapas acessível (`<ol>`,
+  `aria-current`) no lugar do `Stepper` e leque de miniaturas (md+).
+- **`TemplateCard.tsx`**, **`TemplateStep.tsx`** — miniaturas sem a moldura escura grossa: cantos 16px, sombra,
+  elevação/zoom no hover, seleção por anel em gradiente + check, estrela em vidro; abas em pílula com contagem;
+  barra de ação com o template escolhido.
+- **`ProductStep.tsx`** — duas colunas no md+ com prévia do template (sem metade vazia), cupom em cartão.
+- **`GeneratingOverlay.tsx`** — etapas animadas ("Lendo o produto", "Escrevendo o título", "Montando a arte").
+- **`ResultStep.tsx`**, **`DeviceFrame.tsx`** (substitui `PhoneFrame.tsx`) — celebração, celular de bezel fino sem
+  entalhe sobre a arte, botão "Compartilhar no Stories" em gradiente, passo a passo "Como postar"; ações acima da
+  dobra em 390px.
+- **`storyStyle.ts`** (novo), **`strings.ts`** — gradientes/sombras só com tokens do tema; textos novos.
+- **`useOfferStoryWizard.ts`** — arte do passo 3 + metadados persistidos na aba (`offerStory.result`, v1, separado do
+  rascunho): reload no passo 3 mantém a arte. `restoreResult` valida a forma; `dropStaleResult` descarta arte de
+  template fora do catálogo; cota estourada não quebra (salvo apagado antes de gravar → reload volta ao passo 2).
+- **`ResultStep.tsx`**, **`ProductStep.tsx`**, **`storyStyle.ts`** — sem ícones/efeitos sparkles: sucesso com
+  `CircleCheckBig`, "Gerar arte" com `ImagePlus`, removidos os brilhos CSS (`twinkle`) em volta do celular.
+
 ### Added — offer-story (api 0.47.0 · app 0.53.0) — Story de Oferta
 
 Cola o link do produto → arte 1080×1920 JPEG para o story do Instagram (foto, título curto por IA, preço, cupom). Só
