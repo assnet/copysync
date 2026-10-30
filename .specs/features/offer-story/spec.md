@@ -63,11 +63,14 @@ minutos por oferta e erra preço. Colar o link e receber a arte pronta, no padr�
    "comissão não verificada"
 5. Avisos não bloqueantes: sem foto do produto, sem preço, título por IA indisponível (usou o original)
 6. "Editar" volta ao passo 2 com campos; "Nova arte" limpa tudo e volta ao passo 1
+7. WHEN reload no passo 3 THEN SHALL mostrar a mesma arte e ações (arte salva na aba, `sessionStorage`); WHEN a arte
+   salva for inválida, de template fora do catálogo ou não couber na cota THEN SHALL voltar ao passo 2 com os campos,
+   sem erro
 
 ### P2: Título curto com IA
 
 1. WHEN IA disponível THEN título SHALL ser encurtado (≤ 60, sem preço/emoji/aspas)
-2. WHEN IA indisponível, com erro ou resposta inválida THEN SHALL usar o título original com corte em 3 linhas,
+2. WHEN IA indisponível, com erro ou resposta inválida THEN SHALL usar o título original com corte em 2 linhas,
    `warnings` contém `AI_FALLBACK`, arte gerada mesmo assim
 
 ## Regras de preço (função pura, testada)

@@ -9,13 +9,11 @@ import type {
 import { MediaProcessingFailedError, MediaProcessorUnavailableError } from '../../../../shared/errors/internal/MediaErrors';
 import { loadOfferStoryFonts } from './offerStoryFonts';
 import { OFFER_STORY_LAYOUTS } from './templates/offerStoryLayouts';
-import { STORY_IMAGE_BOX, type StoryLayoutModel } from './templates/storyLayoutModel';
-import { formatStoryCents } from './templates/storyPrimitives';
+import { STORY_IMAGE_MAX, buildStoryLayoutModel, type StoryLayoutModel } from './templates/storyLayoutModel';
 
 const MAX_CONCURRENT_RENDERS = 2;
 /** Fila máxima por processo: cada espera segura a foto (até 5 MiB) e a requisição aberta. */
 const MAX_WAITING_RENDERS = 8;
-const PRODUCT_IMAGE_MAX = 800;
 
 /**
  * Fila simples de vagas. Limita CPU por processo; não é estado operacional (nada a persistir).
@@ -50,19 +48,14 @@ export class RenderSlots {
 
 type PreparedImage = StoryLayoutModel['image'];
 
-/** Abre qualquer formato do sharp, corrige EXIF, limita a 800px e encaixa (contain) na caixa do card. */
+/** Abre qualquer formato do sharp, corrige EXIF e limita a `STORY_IMAGE_MAX`; cada layout encaixa a foto. */
 async function prepareProductImage(buf: Buffer): Promise<PreparedImage> {
   const { data, info } = await sharp(buf, { limitInputPixels: 40e6 })
     .rotate()
-    .resize(PRODUCT_IMAGE_MAX, PRODUCT_IMAGE_MAX, { fit: 'inside' })
+    .resize(STORY_IMAGE_MAX, STORY_IMAGE_MAX, { fit: 'inside', withoutEnlargement: true })
     .png()
     .toBuffer({ resolveWithObject: true });
-  const scale = Math.min(STORY_IMAGE_BOX.width / info.width, STORY_IMAGE_BOX.height / info.height);
-  return {
-    src: `data:image/png;base64,${data.toString('base64')}`,
-    width: Math.max(1, Math.round(info.width * scale)),
-    height: Math.max(1, Math.round(info.height * scale)),
-  };
+  return { src: `data:image/png;base64,${data.toString('base64')}`, width: info.width, height: info.height };
 }
 
 /** Nome + código (ex.: `Error:ENOENT` de fonte ausente), sem mensagem nem caminho de disco. */
@@ -94,21 +87,15 @@ export class SatoriOfferStoryRenderer implements IOfferStoryRenderer {
       }
     }
 
-    const { fromCents, toCents } = input.price;
-    const model: StoryLayoutModel = {
+    const model = buildStoryLayoutModel({
       width: template.width,
       height: template.height,
-      title: input.headline.trim(),
+      title: input.headline,
       image,
-      toLabel: toCents !== null ? formatStoryCents(toCents) : null,
-      fromLabel: toCents !== null && fromCents !== null && fromCents > toCents ? formatStoryCents(fromCents) : null,
-      coupon: input.coupon
-        ? {
-            code: input.coupon.code,
-            discountLabel: input.coupon.discountPercent !== null ? `-${input.coupon.discountPercent}%` : null,
-          }
-        : null,
-    };
+      fromCents: input.price.fromCents,
+      toCents: input.price.toCents,
+      coupon: input.coupon,
+    });
 
     try {
       const fonts = await loadOfferStoryFonts();

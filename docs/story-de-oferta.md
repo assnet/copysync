@@ -5,7 +5,7 @@ Roadmap item 11. Specs: `.specs/features/offer-story/` (`context`, `spec`, `desi
 **Story de Oferta** (vitrine de planos: "Template para Instagram"). Nome técnico: `offer-story` (módulo
 `api/src/modules/offer-story/`), `offerStory` (painel `app/src/features/offerStory/`).
 
-A arte **não é salva** (nem banco nem storage) e **não leva link**: o story usa o sticker de link do Instagram; a
+A arte **não é salva no servidor** (nem banco nem storage; só na aba do painel, ver Persistência) e **não leva link**: o story usa o sticker de link do Instagram; a
 resposta devolve `affiliateUrl` para o botão "Copiar link".
 
 ## Planos
@@ -36,12 +36,16 @@ resposta devolve `affiliateUrl` para o botão "Copiar link".
 `@resvg/resvg-js` (SVG→PNG) → `sharp` JPEG q85 mozjpeg, sem EXIF. Foto normalizada antes (`limitInputPixels` 40 MP,
 `rotate`, ≤ 800×800).
 
-- Fontes OFL versionadas em `api/assets/offer-story/fonts/` (Inter 400/700/800, Anton, Pacifico + `OFL-*.txt`),
+- Fontes OFL versionadas em `api/assets/offer-story/fonts/` (Inter 400/700/800, Anton, Pacifico, Poppins 700/900, Archivo Black,
+  Caveat Brush, DM Serif Display normal/itálico + `OFL-*.txt`; `.woff` latin),
   lidas uma vez (lazy) de `OFFER_STORY_FONTS_DIR` (`offerStoryFonts.ts`), resolvido por `__dirname` (mesma
   profundidade em `src/` e `dist/`), não por `process.cwd()`.
 - `api/Dockerfile` (runner): `COPY assets ./assets`. Sem isso a arte quebra em produção.
 - `RenderSlots`: **2 renders simultâneos** + fila de no máx. **8 à espera** por processo (CPU; não é estado
   operacional). Ao liberar, o slot passa direto ao próximo da fila. Fila cheia → `503 MEDIA_PROCESSOR_UNAVAILABLE`.
+- **`boxShadow` com blur ≤ 50 px.** Blur maior faz o `resvg` 2.6.2 dar panic (`geom.rs` unwrap), que não é
+  capturável e derruba o processo da API. Regra em `StickerOptions` (`storyParts.ts`); teste roda os casos extremos
+  dos 8 templates.
 - Plano B se `satori`/`resvg` falhar no Alpine: `@napi-rs/canvas` atrás da mesma porta.
 
 ## Templates
@@ -49,7 +53,10 @@ resposta devolve `affiliateUrl` para o botão "Copiar link".
 - Catálogo no domínio: `offer-story/domain/offerStoryTemplates.ts` (`OFFER_STORY_TEMPLATES`, ids estáveis:
   `flash-night`, `blue-burst`, `pink-week`, `gold-neon`, `fresh-mint`, `hot-deal`, `clean-light`, `news-violet`).
   Arte original em código (gradientes, formas, fontes OFL); texto da arte em pt-BR.
-- Layout de cada template em `offer-story/infrastructure/adapters/templates/`.
+- Layout de cada template em `offer-story/infrastructure/adapters/templates/layouts/<id>.ts`; peças comuns (foto em
+  sticker, preço, selo `-X% OFF`, cupom, chamada "Toque no link" com área do sticker) em `storyParts.ts`; dados
+  derivados (`offPercent`) em `storyLayoutModel.ts`. Conteúdo só entre y 220 e 1720 (zonas seguras do Instagram).
+  Sem estrelas de 4 pontas/brilhinhos.
 - Thumbnails 360×640 em `app/public/assets/offer-story/<id>.webp`, gerados pelo mesmo renderer:
   `pnpm story:thumbs` (na `api/`). `offerStoryTemplates.test.ts` exige 1 arquivo por id.
 - Template novo: id no catálogo + layout + `pnpm story:thumbs`.
@@ -78,7 +85,7 @@ Preço nunca é inventado: vem do produto extraído ou do desconto digitado.
 
 `IAiTextGenerator` (purpose `offer_story_headline`) encurta o título; `sanitizeStoryHeadline` tira aspas/emoji/
 quebras, corta em 60 e rejeita vazio ou com preço. Erro/inválido/IA indisponível → título original com `lineClamp` de
-3 linhas e aviso `AI_FALLBACK`; a arte sai mesmo assim. Gasto em `ai_usage_logs` e no teto diário existente.
+2 linhas e aviso `AI_FALLBACK`; a arte sai mesmo assim. Gasto em `ai_usage_logs` e no teto diário existente.
 Imagem e título rodam em paralelo.
 
 ## Resposta
@@ -124,15 +131,33 @@ Novos em `shared/errors/internal/OfferStoryErrors.ts`; o resto é reuso.
 
 ## Painel (`/offer-story`, 3 passos)
 
-1. **Template**: grade 9:16, abas Todos/Favoritos com contagem, estrela (favorito), seleção.
-2. **Produto**: link, `Switch` "Tem cupom?", código, desconto; erro por código no campo. "Gerar arte" abre overlay
-   "Gerando sua arte…".
-3. **Compartilhar**: arte em moldura de celular, avisos (`Alert`), "Compartilhar no Stories" só com
-   `navigator.canShare({ files })`, "Baixar imagem" sempre (`story-oferta-<data>.jpg`), "Copiar link"; "Editar" volta
-   ao 2, "Nova arte" limpa e volta ao 1.
+Cabeçalho `OfferStoryHero`: ícone no "anel de story", promessa curta, indicador de etapas (`<ol>` com
+`aria-current="step"`; no xs só a etapa atual mostra o nome) e leque decorativo de 3 miniaturas (md+).
 
-- Persistência: `usePersistedState('offerStory.wizard')` escopo `tab` (passo, template, link, cupom); resultado só em
-  memória → reload no passo 3 volta ao 2 com campos preenchidos. `clear()` em "Nova arte".
+1. **Template**: galeria sem moldura (cantos 16px, sombra, elevação no hover; 2/3/4/6 colunas xs/sm/md/lg), seleção =
+   anel em gradiente + selo de check, estrela em pílula de vidro, abas Todos/Favoritos em pílula com contagem. Barra
+   de ação mostra o template escolhido; fixa no rodapé no xs.
+2. **Produto**: md+ em duas colunas — formulário à esquerda, prévia do template em `DeviceFrame` à direita (com
+   "Trocar visual" e os campos que entram na arte). Link, cartão "Tem cupom?" (`Switch`), código, desconto; erro por
+   código no campo. "Gerar arte" abre `GeneratingOverlay` com 3 etapas visuais (ritmo fixo de 1,6 s; a API não
+   reporta progresso, a última fica girando até a resposta).
+3. **Compartilhar**: título de sucesso com ícone `CircleCheckBig` (sem sparkles/brilhos — pedido do dono), lavagem
+   suave atrás do celular, arte em `DeviceFrame`
+   (bezel fino; a "ilha" fica no bezel, nunca sobre a arte), "Compartilhar no Stories" (botão em gradiente) só com
+   `navigator.canShare({ files })`, "Baixar imagem" sempre (`story-oferta-<data>.jpg`; ícone no xs quando há
+   compartilhar), cartão do link com "Copiar link", passo a passo "Como postar"; "Editar" volta ao 2, "Nova arte"
+   limpa e volta ao 1. Em 390×844 as ações ficam acima da dobra (celular limitado a ~38dvh).
+
+- Visual: gradiente "anel de story" e lavagens em `storyStyle.ts`, montados só com tokens do tema
+  (`warning`/`error`/`secondary`/`primary` + `alpha`). Não usar hex fixo nem moldura grossa em volta das miniaturas.
+- Persistência (aba, `sessionStorage`): `usePersistedState('offerStory.wizard')` v1 (passo, template, link, cupom,
+  código, desconto) e, em chave própria, a arte gerada + metadados `offerStory.result` v1 (`usePersistedResult` no
+  `useOfferStoryWizard`). Reload no passo 3 mostra a mesma arte e ações. Restauração valida a forma (`restoreResult`:
+  `data:image/jpeg;base64,`, campos tipados) e a página descarta arte de template fora do catálogo
+  (`dropStaleResult`) → cai no passo 2 com os campos. Cota estourada: o salvo é apagado antes de gravar, então a arte
+  nova vale só em memória e o reload volta ao passo 2 (sem arte antiga, sem erro). Reload durante a geração volta ao
+  passo 2. "Editar" descarta a arte e mantém os campos; nova geração substitui; "Nova arte" limpa rascunho e arte.
+  Não usar `localStorage` para a arte nem salvá-la no servidor.
 - Favoritos: `usePersistedState('offerStory.favorites', [], { scope: 'browser' })`; ids fora do catálogo ignorados.
   Perde ao trocar de navegador (aceito).
 - Aba da grade (Todos/Favoritos): `usePersistedState('offerStory.templateTab')` escopo `tab`.

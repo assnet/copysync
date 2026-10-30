@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { Alert, Box, Card, CardContent, Step, StepLabel, Stepper, Typography, alpha, useTheme } from '@mui/material';
-import { AppIcon } from '@/components';
-import { MODULE_ICONS } from '@/pages/modules';
+import { Alert, Box, Card, CardContent, Typography } from '@mui/material';
+import { OfferStoryHero } from './components/OfferStoryHero';
 import { GeneratingOverlay } from './components/GeneratingOverlay';
 import { ProductStep } from './components/ProductStep';
 import { ResultStep } from './components/ResultStep';
@@ -15,55 +14,41 @@ const t = offerStoryStrings;
 
 /** Story de Oferta (exclusivo Business): template → produto → compartilhar. Estado em hooks. */
 export function OfferStoryPage() {
-  const theme = useTheme();
   const catalog = useOfferStoryTemplates();
   const ids = useMemo(() => catalog.templates?.map((tpl) => tpl.id) ?? null, [catalog.templates]);
   const favorites = useOfferStoryFavorites(ids);
   const w = useOfferStoryWizard();
-  const { selectTemplate, goTo } = w;
+  const { selectTemplate, goTo, dropStaleResult } = w;
 
-  // Template salvo que saiu do catálogo: volta a escolher.
+  // Template salvo (rascunho ou arte) que saiu do catálogo: descarta e volta a escolher.
   useEffect(() => {
+    if (ids) dropStaleResult(ids);
     if (ids && w.templateId && !ids.includes(w.templateId)) {
       selectTemplate('');
       goTo(0);
     }
-  }, [ids, w.templateId, selectTemplate, goTo]);
+  }, [ids, w.templateId, selectTemplate, goTo, dropStaleResult]);
 
   const heading = w.step === 0 ? t.template : w.step === 1 ? t.product : null;
-  const { primary, secondary } = theme.palette;
+  const picked = catalog.templates?.find((tpl) => tpl.id === w.templateId) ?? null;
+  // Leque do hero: o escolhido no centro, quando houver.
+  const showcase = useMemo(() => {
+    const list = ids ?? [];
+    if (!w.templateId || !list.includes(w.templateId)) return list.slice(0, 3);
+    const rest = list.filter((id) => id !== w.templateId);
+    return [rest[0], w.templateId, rest[1]].filter(Boolean) as string[];
+  }, [ids, w.templateId]);
 
   return (
     <Box>
-      <Box component="header" sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Box
-          aria-hidden
-          sx={{
-            width: 48, height: 48, borderRadius: 2.5, display: 'grid', placeItems: 'center', flexShrink: 0,
-            color: primary.contrastText, backgroundImage: `linear-gradient(135deg, ${primary.main}, ${secondary.main})`,
-            boxShadow: `0 8px 20px -8px ${alpha(primary.main, 0.6)}`,
-          }}
-        >
-          <AppIcon icon={MODULE_ICONS.offerStory} size="lg" />
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 800 }}>{t.page.title}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 620 }}>{t.page.subtitle}</Typography>
-        </Box>
-      </Box>
+      <OfferStoryHero step={w.step} showcaseIds={showcase} />
 
       {/* overflow visível: senão o Card vira contêiner de rolagem e quebra o `sticky` do passo 1. */}
-      <Card sx={{ overflow: 'visible' }}>
-        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-          <Stepper activeStep={w.step} alternativeLabel sx={{ mb: 4 }}>
-            {t.page.steps.map((label) => (
-              <Step key={label}><StepLabel>{label}</StepLabel></Step>
-            ))}
-          </Stepper>
-
+      <Card sx={{ overflow: 'visible', borderRadius: '20px' }}>
+        <CardContent sx={{ p: { xs: 2, sm: 3.5 } }}>
           {heading && (
-            <Box sx={{ mb: 2.5 }}>
-              <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>{heading.title}</Typography>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>{heading.title}</Typography>
               <Typography variant="body2" color="text.secondary">{heading.subtitle}</Typography>
             </Box>
           )}
@@ -90,6 +75,7 @@ export function OfferStoryPage() {
               generalError={w.generalError}
               onDismissError={w.dismissError}
               generating={w.generating}
+              template={picked}
               onChange={w.setField}
               onBack={() => w.goTo(0)}
               onGenerate={() => void w.generate()}

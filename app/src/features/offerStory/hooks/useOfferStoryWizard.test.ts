@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { writePersisted, readPersisted } from '@/hooks/usePersistedState';
 import type { OfferStoryResult } from '../types';
@@ -8,7 +8,7 @@ const navigate = vi.hoisted(() => vi.fn());
 vi.mock('@/services/offerStory.service', () => ({ offerStoryService: { render } }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 
-import { WIZARD_KEY, WIZARD_VERSION, restoreDraft, useOfferStoryWizard, type OfferStoryDraft } from './useOfferStoryWizard';
+import { RESULT_KEY, RESULT_VERSION, WIZARD_KEY, WIZARD_VERSION, restoreDraft, useOfferStoryWizard, type OfferStoryDraft } from './useOfferStoryWizard';
 
 const URL_OK = 'https://shopee.com.br/produto-i.1.2';
 const RESULT: OfferStoryResult = {
@@ -21,6 +21,55 @@ const saved = (patch: Partial<OfferStoryDraft>) =>
 
 describe('useOfferStoryWizard', () => {
   beforeEach(() => { sessionStorage.clear(); render.mockReset(); navigate.mockReset(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+  const savedResult = (r: unknown) => writePersisted(RESULT_KEY, r, { version: RESULT_VERSION });
+
+  it('reload no passo 3 com arte salva mantém a arte e o passo', () => {
+    saved({ step: 2, templateId: 'flash-night', url: URL_OK });
+    savedResult(RESULT);
+    const { result } = renderHook(() => useOfferStoryWizard());
+    expect(result.current.step).toBe(2);
+    expect(result.current.result).toEqual(RESULT);
+  });
+
+  it('arte salva corrompida é descartada e cai no passo 2', () => {
+    saved({ step: 2, templateId: 'flash-night', url: URL_OK });
+    savedResult({ ...RESULT, image: 'data:text/html;base64,AAAA' });
+    const { result } = renderHook(() => useOfferStoryWizard());
+    expect(result.current.step).toBe(1);
+    expect(result.current.result).toBeNull();
+    expect(readPersisted(RESULT_KEY, { version: RESULT_VERSION })).toBeUndefined();
+  });
+
+  it('arte de template fora do catálogo é descartada', () => {
+    saved({ step: 2, templateId: 'flash-night', url: URL_OK });
+    savedResult(RESULT);
+    const { result } = renderHook(() => useOfferStoryWizard());
+    act(() => result.current.dropStaleResult(['outro']));
+    expect(result.current.result).toBeNull();
+    expect(result.current.step).toBe(1);
+  });
+
+  it('cota estourada ao salvar a arte não quebra: fica em memória e não sobra arte antiga', async () => {
+    saved({ step: 1, templateId: 'flash-night', url: URL_OK });
+    savedResult({ ...RESULT, headline: 'Antiga' });
+    const { result } = renderHook(() => useOfferStoryWizard());
+    act(() => result.current.edit());
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, k: string, v: string) {
+      if (k.endsWith(RESULT_KEY)) throw new DOMException('full', 'QuotaExceededError');
+      setItem.call(this, k, v);
+    });
+    render.mockResolvedValue(RESULT);
+    await act(() => result.current.generate());
+    expect(result.current.step).toBe(2);
+    expect(result.current.result).toBe(RESULT);
+    expect(readPersisted(RESULT_KEY, { version: RESULT_VERSION })).toBeUndefined();
+    vi.restoreAllMocks();
+    const reloaded = renderHook(() => useOfferStoryWizard());
+    expect(reloaded.result.current.step).toBe(1);
+    expect(reloaded.result.current.form.url).toBe(URL_OK);
+  });
 
   it('reload no passo 3 (sem arte) volta ao passo 2 com os campos', () => {
     saved({ step: 2, templateId: 'flash-night', url: URL_OK, couponEnabled: true, code: 'OFF10' });
@@ -36,7 +85,7 @@ describe('useOfferStoryWizard', () => {
     expect(restoreDraft(null).step).toBe(0);
   });
 
-  it('gera, vai ao passo 3 e não persiste a arte', async () => {
+  it('gera, vai ao passo 3 e salva a arte só na chave própria', async () => {
     saved({ step: 1, templateId: 'flash-night', url: URL_OK });
     render.mockResolvedValue(RESULT);
     const { result } = renderHook(() => useOfferStoryWizard());
@@ -45,6 +94,7 @@ describe('useOfferStoryWizard', () => {
     expect(result.current.step).toBe(2);
     expect(result.current.result).toBe(RESULT);
     expect(JSON.stringify(readPersisted(WIZARD_KEY, { version: WIZARD_VERSION }))).not.toContain('base64');
+    expect(readPersisted(RESULT_KEY, { version: RESULT_VERSION })).toEqual(RESULT);
   });
 
   it('erro de link fica no campo e no passo 2; sem plano redireciona', async () => {
@@ -82,5 +132,6 @@ describe('useOfferStoryWizard', () => {
     expect(result.current.templateId).toBe('');
     expect(result.current.form.url).toBe('');
     expect(result.current.result).toBeNull();
+    expect(readPersisted(RESULT_KEY, { version: RESULT_VERSION })).toBeUndefined();
   });
 });

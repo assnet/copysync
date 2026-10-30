@@ -38,5 +38,5 @@ com o dono antes da task citada.
 | 7 | Arte | 1080×1920 JPEG q85, sem EXIF. Imagem do produto via `IOfferImageFetcher` (≤ 5 MiB, allowlist de CDN); falha → card sem foto + aviso |
 | 8 | Templates v1 | 8 originais **(proposta)**; texto da arte em pt-BR (como a página pública) |
 | 9 | Limite | `perTenantRateLimit` `offerStoryRender` 60/hora por tenant por instância (store em memória, `rateLimitPresets.ts:44-47`) **(proposta)**; render com no máx. 2 em paralelo por instância |
-| 10 | Persistência | Arte não é salva. Assistente (passo, template, link, cupom) em `usePersistedState` escopo `tab`; reload no passo 3 volta ao 2 com campos preenchidos |
+| 10 | Persistência | Arte nunca vai ao servidor. Assistente (passo, template, link, cupom) em `usePersistedState` escopo `tab`; arte + metadados em `offerStory.result` (escopo `tab`, v1) → reload no passo 3 mantém a arte. Arte inválida/fora do catálogo ou cota estourada → passo 2 com campos, sem erro (revisado 2026-10-29; antes: reload no 3 voltava ao 2) |
 | 11 | Downgrade | Nada a pausar (sem dado persistido); sem mudança em `applyPlanSideEffects` |

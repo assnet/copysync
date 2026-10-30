@@ -10,13 +10,15 @@ export const offerStoryStrings = {
     title: 'Story de Oferta',
     subtitle: 'Cole o link do produto e receba a arte pronta para o Stories, com foto, preço e cupom.',
     steps: ['Template', 'Produto', 'Compartilhar'],
+    stepsLabel: 'Etapas do story',
+    stepDone: 'concluído',
   },
 
   template: {
     title: 'Escolha o visual',
     subtitle: 'O template define cores e layout. Foto, título e preço vêm do produto.',
-    tabAll: (n: number) => `Todos (${n})`,
-    tabFavorites: (n: number) => `Favoritos (${n})`,
+    tabAll: 'Todos',
+    tabFavorites: 'Favoritos',
     tabsLabel: 'Filtrar templates',
     favorite: 'Adicionar aos favoritos',
     unfavorite: 'Remover dos favoritos',
@@ -27,6 +29,8 @@ export const offerStoryStrings = {
     retry: 'Tentar de novo',
     continue: 'Continuar',
     continueHint: 'Escolha um template para continuar',
+    pickedLabel: 'Template escolhido',
+    nonePicked: 'Toque em um visual para escolher',
   },
 
   product: {
@@ -43,16 +47,21 @@ export const offerStoryStrings = {
     discountHelp: `Opcional. De ${OFFER_STORY_RULES.discountMin} a ${OFFER_STORY_RULES.discountMax}; o preço "Por" já sai com o desconto.`,
     back: 'Voltar',
     generate: 'Gerar arte',
+    previewTitle: 'Prévia do visual',
+    previewHint: 'A foto, o título e o preço do anúncio entram neste visual.',
+    previewSlots: ['Foto do produto', 'Título curto', 'Preço e cupom'],
+    changeTemplate: 'Trocar visual',
   },
 
   generating: {
-    title: 'Gerando sua arte…',
-    subtitle: 'Analisando o produto e montando o story',
+    title: 'Criando seu story…',
+    subtitle: 'Leva poucos segundos.',
+    steps: ['Lendo o produto', 'Escrevendo o título', 'Montando a arte'],
   },
 
   result: {
-    title: 'Sua arte está pronta',
-    subtitle: 'Poste no Stories e cole o link no sticker de link.',
+    title: 'Seu story está pronto',
+    subtitle: 'Poste agora e leve seus seguidores direto para a oferta.',
     imageAlt: (headline: string) => `Arte do story: ${headline}`,
     /** Com `offerStory.art` ligado o alt não expõe o título do produto. */
     imageAltHidden: 'Arte do story',
@@ -66,6 +75,8 @@ export const offerStoryStrings = {
     linkLabel: 'Link de afiliado',
     unverified: 'comissão não verificada',
     unverifiedTooltip: 'Não confirmamos a sua identificação de afiliado neste link. Confira antes de postar.',
+    tipsTitle: 'Como postar',
+    tips: ['Compartilhe ou baixe a arte e abra o Stories.', 'Toque em Figurinhas e escolha Link.', 'Cole o link de afiliado copiado acima.'],
     edit: 'Editar',
     newArt: 'Nova arte',
     warnings: {
