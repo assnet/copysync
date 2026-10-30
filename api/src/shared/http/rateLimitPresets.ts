@@ -34,6 +34,14 @@ export const rateLimitPresets = {
     max: 60,
     timeWindow: '1 hour',
   },
+  /**
+   * Story de Oferta: gerar arte (extração + IA + render na CPU). Por tenant por instância; teto
+   * efetivo = 60 × instâncias http (risco aceito, como a vitrine).
+   */
+  offerStoryRender: {
+    max: 60,
+    timeWindow: '1 hour',
+  },
   general: {
     max: 120,
     timeWindow: '1 minute',
