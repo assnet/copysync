@@ -33,6 +33,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/dist ./dist
 COPY scripts ./scripts
+# Fontes e assets do renderer do story de oferta (lidos por __dirname em offerStoryFonts.ts).
+COPY assets ./assets
 
 EXPOSE 3333
 

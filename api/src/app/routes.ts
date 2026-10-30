@@ -21,6 +21,7 @@ import { extensionRoutes } from '../modules/extension/presentation/routes/extens
 import { linkRotationRoutes } from '../modules/link-rotation/presentation/routes/linkRotation.routes';
 import { linkDomainAdminRoutes } from '../modules/link-rotation/presentation/routes/linkDomainAdmin.routes';
 import { storefrontRoutes } from '../modules/storefront/presentation/routes/storefront.routes';
+import { offerStoryRoutes } from '../modules/offer-story/presentation/routes/offerStory.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -108,6 +109,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Página de Ofertas do tenant (a pública sai pelo hook do rodízio, app.ts) ──
   await app.register(storefrontRoutes, { prefix: `${env.API_PREFIX}/storefront` });
+
+  // ── Story de Oferta (arte 1080×1920 para Instagram, só Business) ────────────
+  await app.register(offerStoryRoutes, { prefix: `${env.API_PREFIX}/offer-story` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
   if (env.BILLING_ENABLED) {

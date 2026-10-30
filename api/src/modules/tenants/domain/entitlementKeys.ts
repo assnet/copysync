@@ -21,6 +21,8 @@ export const ENTITLEMENT_KEYS = {
   LINK_ROTATION_GROUPS: 'link_rotation_groups',
   /** Página de Ofertas (Profissional e Business). `false` explícito no Starter. */
   STOREFRONT_ENABLED: 'storefront_enabled',
+  /** Story de Oferta (arte para Instagram, só Business). Ausente = bloqueado. */
+  OFFER_STORY_ENABLED: 'offer_story_enabled',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

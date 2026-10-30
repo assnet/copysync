@@ -59,6 +59,14 @@ export const PRIVACY_SCREENS = [
       { id: 'storefront.offerImage', label: 'Imagens das ofertas' },
     ],
   },
+  {
+    id: 'offerStory',
+    label: 'Story de Oferta',
+    flags: [
+      { id: 'offerStory.art', label: 'Arte gerada' },
+      { id: 'offerStory.link', label: 'Links do produto e de afiliado' },
+    ],
+  },
 ] as const;
 
 export type PrivacyScreenId = (typeof PRIVACY_SCREENS)[number]['id'];

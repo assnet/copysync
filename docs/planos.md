@@ -28,6 +28,14 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
   `403 PLAN_FEATURE_UNAVAILABLE` da vitrine. Selo "Profissional" no item do menu (`NavItemBadge`,
   `plansStrings.badgeProfessional`). Ver [`pagina-de-ofertas.md`](pagina-de-ofertas.md).
 
+## Story de Oferta (app 0.53.0)
+
+- Benefício "Template para Instagram" só no Business, espelhando `offer_story_enabled` false/false/true (travado em
+  `planPresets.test.ts`).
+- `/plans?feature=offerStory` mostra o aviso (`featureNotice.offerStory`); o painel redireciona para lá no
+  `403 PLAN_FEATURE_UNAVAILABLE` do story. Selo "Business" no menu (`plansStrings.badgeBusiness`).
+  `isPlanFeatureUnavailable` vive em `features/plans/planGate.ts`. Ver [`story-de-oferta.md`](story-de-oferta.md).
+
 ## Decisões
 
 - **Preço é texto de marketing.** Vive só em `catalog.ts`. Nada no banco, nenhum cálculo de desconto/cupom

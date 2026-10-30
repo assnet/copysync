@@ -9,6 +9,44 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — offer-story (api 0.47.0 · app 0.53.0) — Story de Oferta
+
+Cola o link do produto → arte 1080×1920 JPEG para o story do Instagram (foto, título curto por IA, preço, cupom). Só
+Business (`offer_story_enabled`). Arte não é salva nem leva link. Doc: `docs/story-de-oferta.md`.
+
+#### Backend — offer-story
+
+- **Migration `20261030000000_add_offer_story_entitlement`** (só dados) — presets Starter/Profissional `false`
+  explícito e Business `true` + backfill em `tenant_entitlements` por `planSlug` (`ON CONFLICT DO NOTHING`).
+- **`entitlementKeys.ts`**, **`planPresets.ts`** — `offer_story_enabled` false/false/true, travado no teste. Ausente = bloqueado.
+- **`offer-story/domain/`** — `offerStoryTemplates.ts` (8 templates originais), `offerStoryRules.ts` (cupom ≤ 20,
+  desconto 1–90, título ≤ 60), `computeStoryPrice.ts` (tabela de preço pura), `storyHeadline.ts`, `IOfferStoryRenderer.ts`.
+- **`ListOfferStoryTemplatesUseCase.ts`**, **`RenderOfferStoryUseCase.ts`** — gate, extração por
+  `ResolveAffiliateProductUseCase`, foto via `IOfferImageFetcher` e título via `IAiTextGenerator`
+  (`offer_story_headline`) em paralelo com fallback; avisos `NO_IMAGE`/`NO_PRICE`/`AI_FALLBACK`.
+- **`SatoriOfferStoryRenderer.ts`**, **`offerStoryFonts.ts`**, **`adapters/templates/`** — satori → resvg → sharp
+  (JPEG q85 mozjpeg); `RenderSlots` (2 simultâneos + até 8 na fila por processo, fila cheia → `503
+  MEDIA_PROCESSOR_UNAVAILABLE`); fontes por `__dirname` (`OFFER_STORY_FONTS_DIR`); desconto que zera o preço → sem preço (`NO_PRICE`). Dependências `satori` e `@resvg/resvg-js`.
+- **`api/assets/offer-story/fonts/`**, **`api/Dockerfile`** — fontes OFL (Inter, Anton, Pacifico) e `COPY assets ./assets` no runner.
+- **`offerStory.routes.ts`**, **`offerStoryContainer.ts`**, **`rateLimitPresets.ts`** — `GET /api/offer-story/templates`,
+  `POST /api/offer-story/render` (JSON com data URL base64, para o painel manter o `code` do erro); `offerStoryRender` 60/h por tenant.
+- **`OfferStoryErrors.ts`** — `OFFER_STORY_TEMPLATE_NOT_FOUND` (400), `OFFER_STORY_PRODUCT_INCOMPLETE` (422).
+- **`renderOfferStoryThumbnails.ts`** — `pnpm story:thumbs` gera os thumbnails do painel com o mesmo renderer.
+
+#### Frontend — offerStory
+
+- **`features/offerStory/`** — `OfferStoryPage.tsx` (Stepper em 3 passos), `TemplateStep`/`TemplateCard` (favoritos),
+  `ProductStep`, `GeneratingOverlay`, `ResultStep`/`PhoneFrame` (compartilhar, baixar, copiar link), `shareImage.ts`,
+  `productForm.ts`, `useOfferStoryWizard.ts` (`usePersistedState` escopo `tab`), `useOfferStoryFavorites.ts` (escopo `browser`).
+- **`app/public/assets/offer-story/<id>.webp`** — thumbnails 360×640.
+- **`features/plans/planGate.ts`** — `isPlanFeatureUnavailable` movido da vitrine (compartilhado).
+- **`features/offerStory/planGate.ts`** — `offerStoryUpgradePath`.
+- **`offerStory/productForm.ts`**, **`strings.ts`** — mensagens para `AFFILIATE_API_ACCESS_DENIED`/`AFFILIATE_CREDENTIAL_REJECTED`
+  (no campo do link), `AFFILIATE_API_RATE_LIMITED`, `AFFILIATE_API_UNAVAILABLE` e `MEDIA_PROCESSOR_UNAVAILABLE` (aviso geral).
+- **`AppLayout.tsx`**, **`AppRoutes.tsx`**, **`plans/strings.ts`** — rota `/offer-story`, menu com selo "Business",
+  aviso `featureNotice.offerStory` em `/plans`.
+- **`privacyFlags.ts`** — tela `offerStory` (`offerStory.art`, `offerStory.link`).
+
 ### Fixed — storefront/campaigns (api 0.46.1 · app 0.52.1) — oferta ML "Segurança", copiar endereço
 
 #### Backend — campaigns

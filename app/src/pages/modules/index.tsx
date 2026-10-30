@@ -1,4 +1,4 @@
-import { Radar, Repeat2, Store, UsersRound } from 'lucide-react';
+import { ImagePlus, Radar, Repeat2, Store, UsersRound } from 'lucide-react';
 import { UpcomingModulePage } from './UpcomingModulePage';
 
 /** Módulos do roadmap (docs/produto-roadmap.md) já com rota e item de menu. Ícones = os do menu. */
@@ -7,6 +7,7 @@ export const MODULE_ICONS = {
   mirroring: Repeat2,
   members: UsersRound,
   storefront: Store,
+  offerStory: ImagePlus,
 } as const;
 
 export function MirroringPage() {

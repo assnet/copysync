@@ -18,6 +18,7 @@ import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage } from '@/pages/modules';
 import { StorefrontPage } from '@/features/storefront/StorefrontPage';
+import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
@@ -48,6 +49,7 @@ export function AppRoutes() {
           <Route path="/mirroring" element={<MirroringPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
+          <Route path="/offer-story" element={<OfferStoryPage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="/settings/sessions" replace />} />
