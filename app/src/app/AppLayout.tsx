@@ -59,6 +59,7 @@ const NAV_ITEMS = [
   { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
   { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
   { label: 'Página de Ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" />, badge: plansStrings.badgeProfessional },
+  { label: 'Story de Oferta', path: '/offer-story', icon: <AppIcon icon={MODULE_ICONS.offerStory} size="md" />, badge: plansStrings.badgeBusiness },
   { label: plansStrings.menuLabel, path: '/plans', icon: <AppIcon icon={Crown} size="md" /> },
   // Ação (abre o diálogo de privacidade), não rota — ver features/privacy
   { label: privacyStrings.menuLabel, action: 'privacy' as const, icon: <AppIcon icon={EyeOff} size="md" /> },

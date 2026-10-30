@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { storefrontService } from '@/services/storefront.service';
 import type { AddOfferDraft } from '../components/AddOfferCard';
-import { isPlanFeatureUnavailable, storefrontUpgradePath } from '../planGate';
+import { isPlanFeatureUnavailable } from '@/features/plans/planGate';
+import { storefrontUpgradePath } from '../planGate';
 import type { StorefrontOfferTab } from '../reorder';
 import {
   STOREFRONT_FORM_DEFAULTS,

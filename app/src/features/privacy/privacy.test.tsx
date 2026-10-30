@@ -42,6 +42,11 @@ describe('PrivacyProvider', () => {
     ]);
   });
 
+  it('Story de Oferta tem uma flag por tipo de dado', () => {
+    const screen = PRIVACY_SCREENS.find((s) => s.id === 'offerStory')!;
+    expect(screen.flags.map((f) => f.id)).toEqual(['offerStory.art', 'offerStory.link']);
+  });
+
   it('useBlur fora do provider devolve false (prévias e testes não quebram)', () => {
     const { result } = renderHook(() => useBlur('offers.groupNames'));
     expect(result.current).toBe(false);
