@@ -4,9 +4,9 @@ import { ENTITLEMENT_KEYS as K } from './entitlementKeys';
 
 /** Mesmos números da vitrine (`app/src/features/plans/catalog.ts` → `limits`) e do roadmap. Mudou lá, muda aqui. */
 const CATALOG_LIMITS = {
-  COPYSYNC_STARTER: { storefront: false, whatsappSessions: 1, monitoredGroups: 1, broadcastGroups: 5, mentionAll: false, crossSession: false, linkRotations: 1, linkRotationGroups: 3 },
-  COPYSYNC_PROFISSIONAL: { storefront: true, whatsappSessions: 1, monitoredGroups: 2, broadcastGroups: 10, mentionAll: true, crossSession: false, linkRotations: 1, linkRotationGroups: 5 },
-  COPYSYNC_BUSINESS: { storefront: true, whatsappSessions: 2, monitoredGroups: 6, broadcastGroups: 40, mentionAll: true, crossSession: true, linkRotations: 2, linkRotationGroups: 10 },
+  COPYSYNC_STARTER: { storefront: false, offerStory: false, whatsappSessions: 1, monitoredGroups: 1, broadcastGroups: 5, mentionAll: false, crossSession: false, linkRotations: 1, linkRotationGroups: 3 },
+  COPYSYNC_PROFISSIONAL: { storefront: true, offerStory: false, whatsappSessions: 1, monitoredGroups: 2, broadcastGroups: 10, mentionAll: true, crossSession: false, linkRotations: 1, linkRotationGroups: 5 },
+  COPYSYNC_BUSINESS: { storefront: true, offerStory: true, whatsappSessions: 2, monitoredGroups: 6, broadcastGroups: 40, mentionAll: true, crossSession: true, linkRotations: 2, linkRotationGroups: 10 },
 } as const;
 
 describe('PLAN_PRESETS', () => {
@@ -21,6 +21,7 @@ describe('PLAN_PRESETS', () => {
       [K.LINK_ROTATIONS]: c.linkRotations,
       [K.LINK_ROTATION_GROUPS]: c.linkRotationGroups,
       [K.STOREFRONT_ENABLED]: c.storefront,
+      [K.OFFER_STORY_ENABLED]: c.offerStory,
     });
   });
 
@@ -33,6 +34,12 @@ describe('PLAN_PRESETS', () => {
     expect(store.map((r) => [r.planSlug, r.value])).toEqual([
       ['COPYSYNC_STARTER', false],
       ['COPYSYNC_PROFISSIONAL', true],
+      ['COPYSYNC_BUSINESS', true],
+    ]);
+    // Story de Oferta só no Business, com `false` explícito nos outros dois
+    expect(rows.filter((r) => r.key === K.OFFER_STORY_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_STARTER', false],
+      ['COPYSYNC_PROFISSIONAL', false],
       ['COPYSYNC_BUSINESS', true],
     ]);
     expect(new Set(rows.map((r) => r.planSlug)).size).toBe(3);
