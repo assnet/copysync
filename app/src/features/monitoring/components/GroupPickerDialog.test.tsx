@@ -73,7 +73,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     render(dialog(false));
     expect(await screen.findByText('Meu grupo')).toBeInTheDocument();
     expect(listSessionGroups.mock.calls.map((c) => c[0])).toEqual(['s1']);
-    expect(screen.getByText(/exclusivo do plano Business/)).toBeInTheDocument();
+    expect(screen.getByText(/exclusivo do plano MAX/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ver planos' })).toHaveAttribute('href', '/plans');
   });
 
@@ -83,7 +83,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     expect(await screen.findByText('Grupo s2')).toBeInTheDocument();
     expect(listSessionGroups.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 's2']);
     expect(screen.getByText('Suporte')).toBeInTheDocument();
-    expect(screen.queryByText(/exclusivo do plano Business/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/exclusivo do plano MAX/)).not.toBeInTheDocument();
   });
 });
 

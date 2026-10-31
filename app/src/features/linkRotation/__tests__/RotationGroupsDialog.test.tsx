@@ -50,7 +50,7 @@ describe('RotationGroupsDialog', () => {
     expect(screen.getByText(t.planLimit(3))).toBeInTheDocument();
     fireEvent.click(fourth);
     expect(await screen.findByText(s.upgrade.groupsTitle)).toBeInTheDocument();
-    expect(screen.getByText(s.upgrade.nextPlan('Profissional', 5, 'groups'))).toBeInTheDocument();
+    expect(screen.getByText(s.upgrade.nextPlan('PRO', 5, 'groups'))).toBeInTheDocument();
     expect(fourth).not.toBeChecked();
     expect(screen.queryByTestId('rotation-group-g4@g.us')).not.toBeInTheDocument();
   });
