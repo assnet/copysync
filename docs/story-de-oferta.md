@@ -10,14 +10,14 @@ resposta devolve `affiliateUrl` para o botão "Copiar link".
 
 ## Planos
 
-- Entitlement booleano **`offer_story_enabled`**: Starter `false`, Profissional `false`, Business `true`
+- Entitlement booleano **`offer_story_enabled`**: LITE `false`, PRO `false`, MAX `true`
   (`tenants/domain/planPresets.ts`, travado em `planPresets.test.ts`).
 - **Ausente = bloqueado**. Gate só com `getBoolean(...) === true` (`requireOfferStoryEnabled`).
 - Migration de dados `20261030000000_add_offer_story_entitlement`: presets das 3 linhas (`false` **explícito** no
-  Starter/Profissional, porque o sync só faz upsert; `true` no Business) + backfill de `tenant_entitlements` por
-  `planSlug`, `ON CONFLICT DO NOTHING`. Sem a linha Business o JOIN não casa e o tenant fica 403.
+  LITE/PRO, porque o sync só faz upsert; `true` no MAX) + backfill de `tenant_entitlements` por
+  `planSlug`, `ON CONFLICT DO NOTHING`. Sem a linha MAX o JOIN não casa e o tenant fica 403.
 - Sem o entitlement, toda rota `/api/offer-story/*` → `403 PLAN_FEATURE_UNAVAILABLE`; painel redireciona para
-  `/plans?feature=offerStory` (aviso `featureNotice.offerStory`). Menu visível para todos com selo "Business".
+  `/plans?feature=offerStory` (aviso `featureNotice.offerStory`). Menu visível para todos com selo "MAX".
 - Downgrade: nada a pausar (sem dado persistido); `applyPlanSideEffects` não muda.
 
 ## Extração

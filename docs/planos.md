@@ -20,20 +20,20 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 
 ## Página de Ofertas (app 0.52.0)
 
-- Benefício "Página de Ofertas" (`STOREFRONT_BENEFIT_LABEL`) só em Profissional e Business, espelhando
-  `storefront_enabled` false/true/true (travado em `planPresets.test.ts`). Nunca no Starter.
+- Benefício "Página de Ofertas" (`STOREFRONT_BENEFIT_LABEL`) só em PRO e MAX, espelhando
+  `storefront_enabled` false/true/true (travado em `planPresets.test.ts`). Nunca no LITE.
 - `PREMIUM_SLUG_OFFER` (`catalog.ts`): texto do banner de nome especial (título, benefícios, `priceLabel`,
   `checkoutUrl: null` → "Em breve"). Fica **fora** de `PLAN_CATALOG` (o teste conta 3 planos). Compra é placeholder.
 - `/plans?feature=storefront` mostra o aviso de upgrade (`PlansFeatureNotice`); o painel redireciona para lá no
-  `403 PLAN_FEATURE_UNAVAILABLE` da vitrine. Selo "Profissional" no item do menu (`NavItemBadge`,
+  `403 PLAN_FEATURE_UNAVAILABLE` da vitrine. Selo "PRO" no item do menu (`NavItemBadge`,
   `plansStrings.badgeProfessional`). Ver [`pagina-de-ofertas.md`](pagina-de-ofertas.md).
 
 ## Story de Oferta (app 0.53.0)
 
-- Benefício "Template para Instagram" só no Business, espelhando `offer_story_enabled` false/false/true (travado em
+- Benefício "Template para Instagram" só no MAX, espelhando `offer_story_enabled` false/false/true (travado em
   `planPresets.test.ts`).
 - `/plans?feature=offerStory` mostra o aviso (`featureNotice.offerStory`); o painel redireciona para lá no
-  `403 PLAN_FEATURE_UNAVAILABLE` do story. Selo "Business" no menu (`plansStrings.badgeBusiness`).
+  `403 PLAN_FEATURE_UNAVAILABLE` do story. Selo "MAX" no menu (`plansStrings.badgeBusiness`).
   `isPlanFeatureUnavailable` vive em `features/plans/planGate.ts`. Ver [`story-de-oferta.md`](story-de-oferta.md).
 
 ## Decisões
@@ -53,7 +53,7 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 2. `VITE_BILLING_CHECKOUT_URL` + `buildCheckoutUrl(slug, period, search)` → botão sai do `#`. Spec T3/T10.
 3. `VITE_SUPPORT_WHATSAPP_NUMBER` → CTA de suporte quando checkout ausente. Spec T3.
 4. Confirmar preço anual por plano (hoje ≈ −20% arredondado) e se o "de" riscado no anual mostra o mensal (atual) ou o preço cheio.
-5. ~~Teste de consistência dos `limits` do catálogo com o seed de `PlanEntitlementPreset`.~~ Feito (api 0.42.0): `tenants/domain/planPresets.ts` + `planPresets.test.ts` travam os números da vitrine; o seed lê de lá. Rodízio de links (`link_rotations`/`link_rotation_groups`): 1/1/2 links e 3/5/10 grupos por link (Starter/Profissional/Business), presets na migration `create_link_rotation` — ver `rodizio-de-links.md`.
+5. ~~Teste de consistência dos `limits` do catálogo com o seed de `PlanEntitlementPreset`.~~ Feito (api 0.42.0): `tenants/domain/planPresets.ts` + `planPresets.test.ts` travam os números da vitrine; o seed lê de lá. Rodízio de links (`link_rotations`/`link_rotation_groups`): 1/1/2 links e 3/5/10 grupos por link (LITE/PRO/MAX), presets na migration `create_link_rotation` — ver `rodizio-de-links.md`.
 
 ## O que não fazer
 

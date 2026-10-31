@@ -64,13 +64,13 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 
 | Trilha | Entrega |
 | --- | --- |
-| H3 | **Checkout por aplicação**: cada `Application` tem seu checkout (domínio, marca, planos, remetente, webhook) servido pelo mesmo código da central. `VITE_APPLICATION_KEY` no front, `GET /plans?app=`, `checkout/process` grava `applicationId`; um deploy estático por aplicação. Para o CopySync: cadastrar `Application copysync`, planos Starter/Profissional/Business e deploy do checkout dele |
+| H3 | **Checkout por aplicação**: cada `Application` tem seu checkout (domínio, marca, planos, remetente, webhook) servido pelo mesmo código da central. `VITE_APPLICATION_KEY` no front, `GET /plans?app=`, `checkout/process` grava `applicationId`; um deploy estático por aplicação. Para o CopySync: cadastrar `Application copysync`, planos LITE/PRO/MAX e deploy do checkout dele |
 | H4 | E-mail por aplicação + `POST /integrations/email/send` (`SET_PASSWORD`, `TEAM_INVITE`) |
 | B | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para `Application.checkoutUrl` |
 | E2 | Lease de sessão + `version` no auth state (deploy sem 440, failover) |
 | P | Grupos de disparo + horário de postagem |
 
-Gate: venda real do Starter ponta a ponta. `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.
+Gate: venda real do LITE ponta a ponta. `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.
 
 ### M3 — Escala real + núcleo do produto (semanas 10–14)
 
@@ -83,7 +83,7 @@ Gate: venda real do Starter ponta a ponta. `OUTBOUND_EVENTS_MODE=on` só para `c
 | H6 | Admin: seletor de aplicação, CRUD `Application`, replay de eventos |
 | B | Enforcement `PLAN_LIMIT_REACHED` em sessões, grupos monitorados, grupos de disparo ("Planos e limites" do roadmap); worker de envio checa `Tenant.status` |
 
-Gate: 2 workers em produção com failover testado; 1 tenant Business com 2 números.
+Gate: 2 workers em produção com failover testado; 1 tenant MAX com 2 números.
 
 ### M4 — Diferenciais e endurecimento (a partir da semana 15)
 

@@ -148,7 +148,7 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 - Só grupo de que a sessão participa (mesma regra do gerador); a conversa do chat é criada se faltar.
 - **Sessão cruzada** (api 0.42.0): grupo de disparo pode ser de **outra sessão do tenant**
   (`groups[].sessionId` no `PUT /config/broadcast-groups`), com o entitlement `cross_session_dispatch`
-  (Business; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
+  (MAX; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
   no tenant (404). O limite `broadcast_groups` conta por monitoramento (config), não pela sessão dona
   do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (422). No envio,
   cada destino entra na faixa da **sua** sessão (`EnqueueOfferUseCase` multi-sessão); plano rebaixado
@@ -187,7 +187,7 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
 - **Grupos** (`MonitoredGroupsCard`, `BroadcastGroupsCard`): contador "n/max no plano"; nome resolvido por
   jid; avatar com foto ou ícone (sem iniciais), sempre com blur. Remover tem "Desfazer" via `reinsertGroup`.
   Com `limits.crossSessionDispatch` o disparo lista grupos de todas as sessões ("Envia por <sessão>");
-  sem a feature, aviso "exclusivo do plano Business" → `/plans`.
+  sem a feature, aviso "exclusivo do plano MAX" → `/plans`.
 - **Seletor** (`GroupPickerDialog`): disponíveis × selecionados em 2 colunas (md+) ou abas (xs); grupo usado
   no outro papel aparece bloqueado com o motivo visível; palavras-chave por grupo monitorado.
 - **Configurações** (`MonitoringSettingsForm`): card mestre "Monitoramento ativo"; horário (`RangeSlider`

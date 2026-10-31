@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — planos LITE / PRO / MAX (api 0.48.0 · app 0.54.1)
+
+#### Backend — slugs de plano
+
+- **`tenants/domain/planPresets.ts`** — `PLAN_SLUGS` passa a `COPYSYNC_LITE`, `COPYSYNC_PRO`, `COPYSYNC_MAX` (eram `STARTER`, `PROFISSIONAL`, `BUSINESS`), alinhados aos nomes da vitrine.
+- **`20261031000000_rename_plan_slugs`** — data migration renomeia `plan_entitlement_presets.planSlug` e `tenants.planSlug`. Produção sem tenant com plano nem evento de billing na data; o hub deve emitir os slugs novos.
+
+#### Frontend — nomes exibidos
+
+- **`features/plans/catalog.ts`**, **`plans/strings.ts`**, **`offers/strings.ts`**, **`monitoring/strings.ts`** — Starter → LITE, Profissional → PRO, Business → MAX no banner de planos, selos do menu e avisos de upgrade.
+
+### Breaking Changes
+
+- Contrato com o hub: `planSlug` dos eventos da CopySync agora é `COPYSYNC_LITE | COPYSYNC_PRO | COPYSYNC_MAX`. Slug antigo cai em preset inexistente (sem entitlements).
+
 ### Changed — monitoring (app 0.54.0) — telas do Monitoramento redesenhadas
 
 Página sem hierarquia (cards iguais, liga/desliga no meio, alertas dominando o topo) virou hero com status + fluxo
