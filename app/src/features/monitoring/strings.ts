@@ -148,9 +148,12 @@ export const monitoringStrings = {
     limitReached: 'Limite do plano atingido',
     availableAll: 'Grupos das sessões conectadas',
     crossHelp: 'Grupos de qualquer WhatsApp conectado. Quem envia em cada grupo é a sessão dona dele.',
-    crossLocked: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano Business. Aqui aparecem só os grupos desta sessão.',
+    crossLocked: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano MAX. Aqui aparecem só os grupos desta sessão.',
     crossLockedLink: 'Ver planos',
     sessionOf: (name: string) => `Sessão ${name}`,
+    sessionFilterLabel: 'Filtrar grupos por sessão',
+    sessionFilterAll: 'Todas',
+    sessionFilterAria: (name: string) => `Mostrar só os grupos de ${name}`,
     keywords: 'Palavras-chave (opcional)',
     keywordsPlaceholder: 'Digite e tecle Enter',
     keywordsHelp: 'Vazio captura toda mensagem com link suportado. Com palavras, só as que tiverem alguma delas.',
@@ -276,7 +279,7 @@ export const monitoringStrings = {
         ? 'Limite do plano atingido.'
         : `Seu plano permite até ${max} grupos somando todas as sessões. Remova algum ou fale com o suporte para ampliar.`,
     planFeature: 'Seu plano não inclui este recurso.',
-    crossSessionUnavailable: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano Business. Escolha grupos desta sessão ou faça upgrade.',
+    crossSessionUnavailable: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano MAX. Escolha grupos desta sessão ou faça upgrade.',
     notRetryable: 'Esta oferta não pode ser tentada de novo (já foi processada ou o motivo não é recuperável).',
     fields: {
       enabled: 'Monitoramento ativo',

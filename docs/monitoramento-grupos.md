@@ -38,8 +38,10 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
    unique. Mensagem que não bate com as palavras-chave não é gravada.
 2. **Foto**: só imagem JPEG/PNG/WebP (`image/jpg` normalizado) do **media store**. O `mediaUrl`
    do evento só existe com `autoDownloadMedia` ligado na conversa; salvar grupos monitorados liga
-   isso (remover o grupo não desliga). Vídeo, GIF ou foto sem download → oferta só com texto; foto
-   que falhou fica marcada `imageUnavailable`.
+   isso (remover o grupo não desliga). Vídeo, GIF, link com prévia ou foto sem download → foto do
+   produto (em qualquer modo de texto, inclusive `ORIGINAL`); sem ela, oferta só com texto. Foto
+   que falhou fica marcada `imageUnavailable`. Grupos de Shopee postam quase sempre texto com
+   prévia do link (sem imagem anexada): sem esse fallback a oferta sai sem foto.
 3. **Processamento** (no tick do `OfferDispatchWorker`, flag `GROUP_MONITORING_ENABLED`): uma
    captura por vez, até 3 por tick e 10 s de orçamento; `PROCESSING` parado há 5 min é
    reivindicado de novo. Para cada captura:
@@ -105,7 +107,7 @@ Config por sessão: `textMode` (`ORIGINAL` padrão | `TEMPLATE` | `AI`), `audien
    concorrente. `textSource = AI` só quando a IA respondeu; `aiErrorCode` guarda o `AI_*` do fallback.
 3. Degradação: sem dados do produto → texto original (captura segue `QUEUED`, log
    `captured offer product data unavailable`); texto composto com link que não é do tenant → original.
-4. Foto: a da mensagem; sem ela, a do produto via `IMonitorImageStore` (fetcher + media store do gerador,
+4. Foto: a da mensagem; sem ela, a do produto via `IMonitorImageStore` (também no `ORIGINAL`, só a foto, `productImageOnly`) (fetcher + media store do gerador,
    allowlist `mlstatic.com`/`susercontent.com`/`media-amazon.com`).
 
 Entitlement de IA: o mesmo do gerador (`ai_rewrite_enabled`, resolvido dentro do `IAiTextGenerator`;
@@ -148,12 +150,17 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 - Só grupo de que a sessão participa (mesma regra do gerador); a conversa do chat é criada se faltar.
 - **Sessão cruzada** (api 0.42.0): grupo de disparo pode ser de **outra sessão do tenant**
   (`groups[].sessionId` no `PUT /config/broadcast-groups`), com o entitlement `cross_session_dispatch`
-  (Business; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
+  (MAX; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
   no tenant (404). O limite `broadcast_groups` conta por monitoramento (config), não pela sessão dona
   do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (422). No envio,
   cada destino entra na faixa da **sua** sessão (`EnqueueOfferUseCase` multi-sessão); plano rebaixado
   depois de salvar → só os grupos da própria sessão saem. Chaves de entitlement centralizadas em
   `tenants/domain/entitlementKeys.ts`; presets por plano em `tenants/domain/planPresets.ts` (seed).
+  **Liberar manualmente** (conta interna/teste, sem plano MAX): upsert em `tenant_entitlements`
+  `(tenantId, 'cross_session_dispatch', 'true'::jsonb)` com `ON CONFLICT ("tenantId", key)`, em transação,
+  por usuário com permissão de escrita (nunca o read-only do AGENTS.md). Vale para o **tenant** inteiro,
+  não para o usuário; o super admin é membro de todos os tenants, então filtrar por e-mail da equipe.
+  O próximo evento de plano do hub (`SyncTenantEntitlementsUseCase`) sobrescreve com o preset do plano.
 - Tentar de novo (`POST /captured/:id/retry`): só `SKIPPED`/`FAILED` com motivo recuperável
   (`CREDENTIAL_MISSING`, `CREDENTIAL_REJECTED`, `LINK_RESOLVE_FAILED`, `NO_BROADCAST_GROUPS`, `MONITOR_DISABLED`,
   `INTERNAL_ERROR`). A validade continua contando da captura original.
@@ -187,9 +194,12 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
 - **Grupos** (`MonitoredGroupsCard`, `BroadcastGroupsCard`): contador "n/max no plano"; nome resolvido por
   jid; avatar com foto ou ícone (sem iniciais), sempre com blur. Remover tem "Desfazer" via `reinsertGroup`.
   Com `limits.crossSessionDispatch` o disparo lista grupos de todas as sessões ("Envia por <sessão>");
-  sem a feature, aviso "exclusivo do plano Business" → `/plans`.
+  sem a feature, aviso "exclusivo do plano MAX" → `/plans`.
 - **Seletor** (`GroupPickerDialog`): disponíveis × selecionados em 2 colunas (md+) ou abas (xs); grupo usado
   no outro papel aparece bloqueado com o motivo visível; palavras-chave por grupo monitorado.
+  Com sessão cruzada (disparo): cada grupo mostra a sessão dona com a foto dela em 16 px (altura do texto,
+  ícone de aparelho sem foto, blur `monitoring.sessionAvatar`) e há chips de filtro "Todas" + uma por sessão
+  conectada (filtra só os disponíveis; sessão que desconecta volta para "Todas").
 - **Configurações** (`MonitoringSettingsForm`): card mestre "Monitoramento ativo"; horário (`RangeSlider`
   com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"); envio; depois da captura; texto da oferta em
   `radiogroup` Original / Modelo / IA (setas, Home/End: `textModeForKey`) com `AudiencePicker` quando IA.
@@ -212,6 +222,7 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
 | `monitoring.picker.search.<mode>.<sessionId>` | busca do seletor |
 | `monitoring.picker.tab.<mode>.<sessionId>` | aba do seletor (xs) |
 | `monitoring.picker.openKeywords.<sessionId>` | grupo com palavras-chave abertas |
+| `monitoring.picker.sessionFilter.<mode>.<sessionId>` | filtro de sessão do seletor (`all` ou id) |
 | `monitoring.settings.<sessionId>` | rascunho das configurações (form com `key={sessionId}`) |
 | `monitoring.captured.filter.<sessionId>` | filtro das capturadas |
 | `monitoring.captured.expanded.<sessionId>` | linhas expandidas |

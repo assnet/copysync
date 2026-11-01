@@ -4,13 +4,13 @@ import { NavItemBadge, NavItemTooltip } from './NavItemBadge';
 
 describe('NavItemBadge', () => {
   it('renderiza o selo quando há badge', () => {
-    render(<NavItemBadge badge="Profissional" />);
-    expect(screen.getByText('Profissional')).toBeTruthy();
+    render(<NavItemBadge badge="PRO" />);
+    expect(screen.getByText('PRO')).toBeTruthy();
   });
 
   it('empilhado vai sem recuo lateral, abaixo do rótulo', () => {
-    render(<NavItemBadge badge="Profissional" stacked />);
-    const chip = screen.getByText('Profissional').closest('.MuiChip-root') as HTMLElement;
+    render(<NavItemBadge badge="PRO" stacked />);
+    const chip = screen.getByText('PRO').closest('.MuiChip-root') as HTMLElement;
     expect(getComputedStyle(chip).marginLeft).not.toBe('8px');
   });
 
@@ -20,8 +20,8 @@ describe('NavItemBadge', () => {
   });
 
   it('título do tooltip recolhido leva o selo junto do rótulo', () => {
-    render(<NavItemTooltip label="Página de Ofertas" badge="Profissional" />);
+    render(<NavItemTooltip label="Página de Ofertas" badge="PRO" />);
     expect(screen.getByText('Página de Ofertas')).toBeTruthy();
-    expect(screen.getByText('Profissional')).toBeTruthy();
+    expect(screen.getByText('PRO')).toBeTruthy();
   });
 });

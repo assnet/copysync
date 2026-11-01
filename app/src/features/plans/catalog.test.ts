@@ -13,7 +13,7 @@ describe('catálogo de planos (vitrine)', () => {
     for (const p of PLAN_CATALOG) expect(p.price).toBeLessThan(p.priceFrom);
   });
 
-  it('limites crescem do Starter ao Business (docs/produto-roadmap.md)', () => {
+  it('limites crescem do LITE ao MAX (docs/produto-roadmap.md)', () => {
     const [s, p, b] = PLAN_CATALOG;
     expect(s!.limits.monitoredGroups).toBeLessThanOrEqual(p!.limits.monitoredGroups);
     expect(p!.limits.monitoredGroups).toBeLessThanOrEqual(b!.limits.monitoredGroups);
@@ -54,7 +54,7 @@ describe('catálogo de planos (vitrine)', () => {
     expect(linkRotationLimitLabel(1, 1)).toBe('1 link de rodízio · até 1 grupo');
   });
 
-  it('Página de Ofertas só no Profissional e Business (storefront_enabled false/true/true na API)', () => {
+  it('Página de Ofertas só no PRO e MAX (storefront_enabled false/true/true na API)', () => {
     const com = PLAN_CATALOG.filter((p) => p.benefits.some((b) => b.label === STOREFRONT_BENEFIT_LABEL)).map((p) => p.slug);
     expect(com).toEqual(['profissional', 'business']);
   });

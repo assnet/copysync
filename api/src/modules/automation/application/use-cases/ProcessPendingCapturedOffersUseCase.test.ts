@@ -214,13 +214,34 @@ describe('ProcessPendingCapturedOffersUseCase — oferta montada e reescrita com
     expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'TEMPLATE', finalText: q.text });
   });
 
-  it('só link com enrichLinkOnly desligado: sai só o link do tenant, ORIGINAL', async () => {
+  it('só link com enrichLinkOnly desligado: sai só o link do tenant, ORIGINAL, com a foto do produto', async () => {
     const s = await setup({ settings: { enrichLinkOnly: false } });
     await s.msg({ body: LINK_ONLY, msgType: 'TEXT', mediaUrl: null, mimeType: null });
     await s.process.execute();
-    expect(s.products.calls).toHaveLength(0);
+    expect(s.texts.inputs).toHaveLength(0);
     expect(s.queue.inputs[0]!.text).toBe(TENANT_LINK);
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
     expect(s.captured.items[0]).toMatchObject({ textSource: 'ORIGINAL' });
+  });
+
+  it('ORIGINAL com texto e sem foto na mensagem (link com prévia): texto original + foto do produto', async () => {
+    const s = await setup();
+    await s.msg({ msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.texts.inputs).toHaveLength(0);
+    expect(s.queue.inputs[0]!.text).toContain('Fone JBL por R$ 99');
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
+    expect(s.images.stored).toEqual(['https://m.media-amazon.com/images/I/fone.jpg']);
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
+  });
+
+  it('ORIGINAL sem foto e leitura do produto falha: segue só com texto', async () => {
+    const s = await setup();
+    s.products.read = async () => { throw new Error('boom'); };
+    await s.msg({ msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.queue.inputs[0]!.imageUrl).toBeNull();
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
   });
 
   it('modo AI com público: compõe pela IA, textSource AI; foto da mensagem tem prioridade', async () => {

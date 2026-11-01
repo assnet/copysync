@@ -1,6 +1,6 @@
 import { ENTITLEMENT_KEYS } from './entitlementKeys';
 
-export const PLAN_SLUGS = ['COPYSYNC_STARTER', 'COPYSYNC_PROFISSIONAL', 'COPYSYNC_BUSINESS'] as const;
+export const PLAN_SLUGS = ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'] as const;
 export type PlanSlug = (typeof PLAN_SLUGS)[number];
 
 /**
@@ -9,7 +9,7 @@ export type PlanSlug = (typeof PLAN_SLUGS)[number];
  * Numérico ausente = ilimitado; por isso `offer_generations_per_day` não entra (sem limite hoje).
  */
 export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = {
-  COPYSYNC_STARTER: {
+  COPYSYNC_LITE: {
     [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 1,
     [ENTITLEMENT_KEYS.MONITORED_GROUPS]: 1,
     [ENTITLEMENT_KEYS.BROADCAST_GROUPS]: 5,
@@ -22,7 +22,7 @@ export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = 
     [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: false,
     [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED]: false,
   },
-  COPYSYNC_PROFISSIONAL: {
+  COPYSYNC_PRO: {
     [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 1,
     [ENTITLEMENT_KEYS.MONITORED_GROUPS]: 2,
     [ENTITLEMENT_KEYS.BROADCAST_GROUPS]: 10,
@@ -35,7 +35,7 @@ export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = 
     [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: true,
     [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED]: false,
   },
-  COPYSYNC_BUSINESS: {
+  COPYSYNC_MAX: {
     [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 2,
     [ENTITLEMENT_KEYS.MONITORED_GROUPS]: 6,
     [ENTITLEMENT_KEYS.BROADCAST_GROUPS]: 40,

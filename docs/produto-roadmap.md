@@ -28,8 +28,8 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offers` (`docs/gerador-de-ofertas.md`) | ✅ v2: link do próprio afiliado, cupom, público-alvo com IA, marcar todos (`docs/gerador-de-ofertas.md`) |
 | 9 | 🔄 Rodízio de links | Um link único que distribui pessoas entre os grupos | `link-rotation` ([doc](rodizio-de-links.md)) | ✅ |
 | 10 | 📢 Disparo em massa | O que é postado num grupo é espelhado nos outros | `campaigns/broadcast-mirror` | ⏳ |
-| 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `offer-story` ([doc](story-de-oferta.md)) | ✅ Business |
-| 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` ([doc](pagina-de-ofertas.md)) | ✅ Página de Ofertas (Profissional/Business) |
+| 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `offer-story` ([doc](story-de-oferta.md)) | ✅ MAX |
+| 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` ([doc](pagina-de-ofertas.md)) | ✅ Página de Ofertas (PRO/MAX) |
 | 13 | 🎓 Conta | Aulas e suporte pelo WhatsApp | `tenants` (entitlements) + conteúdo externo | ⏳ |
 | 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
 | 15 | 🌐 Domínio personalizado | Site de ofertas e rodízio de links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
@@ -42,7 +42,7 @@ ver `arquitetura-central-billing.md`), nunca hardcoded em use case. Enforcement 
 `PLAN_LIMIT_REACHED` (a criar em `shared/errors`). Preço "de/por" é só marketing; o sistema
 guarda o plano, não o preço.
 
-| Limite | 🟢 Starter — R$ 97/mês (de 161,90) | 🔵 Profissional — R$ 167/mês (de 278,90) ⭐ | 🟣 Business — R$ 247/mês (de 411,90) |
+| Limite | 🟢 LITE — R$ 97/mês (de 161,90) | 🔵 PRO — R$ 167/mês (de 278,90) ⭐ | 🟣 MAX — R$ 247/mês (de 411,90) |
 |---|---|---|---|
 | Conexões WhatsApp | 1 | 1 | 2 |
 | Conexões Telegram | — | 1 | 2 |
@@ -64,17 +64,17 @@ guarda o plano, não o preço.
 
 Não aparecem na tabela de venda e ficam como entitlement interno, default ligado nos três:
 reescrita com IA (`ai_rewrite_enabled`), limite diário do gerador (`offer_generations_per_day`,
-`null` = ilimitado; sugerido 20 no Profissional e `null` no Business).
+`null` = ilimitado; sugerido 20 no PRO e `null` no MAX).
 
 Versão anterior (Básico/Plus/Pro, R$ 99/169/299) fica substituída por esta. Telegram no
-Profissional e Business repete os mesmos limites de grupos do WhatsApp ("monitora 2 + 10 de
+PRO e MAX repete os mesmos limites de grupos do WhatsApp ("monitora 2 + 10 de
 envio" por canal).
 
 ### Carga por plano (entrada do estudo de arquitetura)
 
 Base para [`arquitetura-escala.md`](arquitetura-escala.md). Estimativas, não medições.
 
-| Por tenant | Starter | Profissional | Business |
+| Por tenant | LITE | PRO | MAX |
 |---|---|---|---|
 | Sessões WhatsApp (Baileys) | 1 | 1 | 2 |
 | Sessões Telegram (engine leve, Bot API/MTProto) | 0 | 1 | 2 |
@@ -102,7 +102,7 @@ API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 2. **Grupos de disparo** + **Horário de postagem** + **Disparo em massa** — base de distribuição.
 3. **Monitoramento** com troca de link — núcleo do produto, depende de 1 e 2.
 4. **Reescrita com IA** — plug no pipeline de 3.
-5. **Rodízio de links**, **Story**, **Site de ofertas**, **Domínio personalizado** — diferenciais Profissional/Business (Story só Business).
+5. **Rodízio de links**, **Story**, **Site de ofertas**, **Domínio personalizado** — diferenciais PRO/MAX (Story só MAX).
 5b. **Menção a todos** — depende de `cachedGroupMetadata` com TTL (doc de escala, seção 7).
 6. **Telegram** — segundo engine atrás de `MessagingEngine`.
 7. **Planos e limites** — pode entrar cedo como tabela, com enforcement crescendo por feature.

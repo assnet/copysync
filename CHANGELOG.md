@@ -9,6 +9,31 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — monitoring (app 0.55.0) — sessão de cada grupo no seletor de disparo
+
+- **`features/monitoring/components/GroupPickerDialog.tsx`** — com sessão cruzada, a linha da sessão dona de cada grupo ganha a foto da sessão em 16 px (`SessionAvatar`, blur `monitoring.sessionAvatar`), e a lista de disponíveis ganha chips de filtro "Todas" + uma por sessão conectada (tooltip com o nome, `aria-pressed`), persistidos em `monitoring.picker.sessionFilter.<mode>.<sessionId>`.
+- **`features/monitoring/strings.ts`** — `sessionFilterLabel`, `sessionFilterAll`, `sessionFilterAria`.
+
+### Fixed — monitoring (api 0.48.1) — oferta Shopee saindo só com texto
+
+- **`automation/application/use-cases/ProcessPendingCapturedOffersUseCase.ts`** — no modo `ORIGINAL` com texto além do link, o produto nunca era lido, então captura sem foto na mensagem (link com prévia, vídeo) saía só com texto. Era a maioria das ofertas Shopee (94 de 121 em 3 dias eram `TEXT`). Agora, sem foto na mensagem, a foto do produto (`IMonitorProductReader` + `IMonitorImageStore`) entra como fallback, melhor esforço (`productImageOnly`: falha vira só texto, log `captured offer product image unavailable`). "Sem dados do produto" também aproveita a foto se vier.
+- **`ProcessPendingCapturedOffersUseCase.test.ts`** — casos de texto sem foto, leitura do produto falhando e só link com `enrichLinkOnly` desligado.
+
+### Changed — planos LITE / PRO / MAX (api 0.48.0 · app 0.54.1)
+
+#### Backend — slugs de plano
+
+- **`tenants/domain/planPresets.ts`** — `PLAN_SLUGS` passa a `COPYSYNC_LITE`, `COPYSYNC_PRO`, `COPYSYNC_MAX` (eram `STARTER`, `PROFISSIONAL`, `BUSINESS`), alinhados aos nomes da vitrine.
+- **`20261031000000_rename_plan_slugs`** — data migration renomeia `plan_entitlement_presets.planSlug` e `tenants.planSlug`. Produção sem tenant com plano nem evento de billing na data; o hub deve emitir os slugs novos.
+
+#### Frontend — nomes exibidos
+
+- **`features/plans/catalog.ts`**, **`plans/strings.ts`**, **`offers/strings.ts`**, **`monitoring/strings.ts`** — Starter → LITE, Profissional → PRO, Business → MAX no banner de planos, selos do menu e avisos de upgrade.
+
+### Breaking Changes
+
+- Contrato com o hub: `planSlug` dos eventos da CopySync agora é `COPYSYNC_LITE | COPYSYNC_PRO | COPYSYNC_MAX`. Slug antigo cai em preset inexistente (sem entitlements).
+
 ### Changed — monitoring (app 0.54.0) — telas do Monitoramento redesenhadas
 
 Página sem hierarquia (cards iguais, liga/desliga no meio, alertas dominando o topo) virou hero com status + fluxo

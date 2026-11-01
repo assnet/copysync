@@ -7,14 +7,14 @@ Nome técnico: `storefront` (módulo `api/src/modules/storefront/`, painel `app/
 
 ## Planos
 
-- Entitlement booleano **`storefront_enabled`**: Starter `false`, Profissional `true`, Business `true`
+- Entitlement booleano **`storefront_enabled`**: LITE `false`, PRO `true`, MAX `true`
   (`tenants/domain/planPresets.ts`, travado no teste contra `features/plans/catalog.ts`). Data migration grava `false`
-  **explícito** no Starter: o sync só faz upsert do que existe, então ausência não desligaria tenant rebaixado.
+  **explícito** no LITE: o sync só faz upsert do que existe, então ausência não desligaria tenant rebaixado.
 - **Ausente = bloqueado** (diferente dos limites numéricos, onde ausente = ilimitado). Gate só com
   `getBoolean(...) === true` (`requireStorefrontEnabled`).
 - Sem o entitlement, toda rota `/api/storefront/*` → `403 PLAN_FEATURE_UNAVAILABLE`. O painel redireciona para
   `/plans?feature=storefront` só nesse código (`features/storefront/planGate.ts`; `PLAN_LIMIT_REACHED` também é 403 e
-  não redireciona) e `/plans` mostra o aviso (`PlansFeatureNotice`). Menu visível para todos com selo "Profissional".
+  não redireciona) e `/plans` mostra o aviso (`PlansFeatureNotice`). Menu visível para todos com selo "PRO".
 - Limites (200/60/rate limit) são **constantes de domínio**, não entitlement.
 
 ## Namespace compartilhado com o rodízio

@@ -1,12 +1,12 @@
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  Alert, Autocomplete, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
+  Alert, Autocomplete, Avatar, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
   DialogTitle, IconButton, InputAdornment, LinearProgress, Skeleton, Stack, Tab, Tabs, TextField, Tooltip,
   Typography, useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
-import { ChevronDown, Ear, Info, Lock, Plus, Search, Send, X } from 'lucide-react';
+import { ChevronDown, Ear, Info, Lock, Plus, Search, Send, Smartphone, X } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
@@ -91,6 +91,24 @@ const BLUR_INPUT = { '& input:not(:placeholder-shown)': BLUR } as const;
 /** Sem busca, a lista principal já é completa: o lookup de nome/foto não busca nada. */
 const NO_SESSIONS: readonly string[] = [];
 
+/** Foto da sessão no tamanho do texto ao lado (`size` em px); sem foto, ícone de aparelho. */
+function SessionAvatar({ url, size, blur }: { url: string | null | undefined; size: number; blur: boolean }) {
+  return (
+    <Avatar
+      src={url ?? undefined}
+      alt=""
+      aria-hidden
+      sx={{
+        width: size, height: size, flexShrink: 0, bgcolor: 'action.selected', color: 'text.secondary',
+        '& svg': { width: size * 0.7, height: size * 0.7 },
+        ...(blur && { filter: 'blur(4px)' }),
+      }}
+    >
+      <Smartphone />
+    </Avatar>
+  );
+}
+
 /** Aviso compacto tintado; o texto quebra linha (nunca corta). */
 function InfoLine({ text, action }: { text: string; action?: ReactNode }) {
   const theme = useTheme();
@@ -115,6 +133,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
   const blurNames = useBlur('monitoring.groupNames');
   const blurSession = useBlur('monitoring.sessionName');
+  const blurSessionAvatar = useBlur('monitoring.sessionAvatar');
   const blurKeywords = useBlur('monitoring.keywords');
   const [draft, setDraft, clearDraft] = usePersistedState<DraftGroup[]>(
     `monitoring.picker.${mode}.${sessionId}`,
@@ -123,6 +142,8 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   );
   const [search, setSearch, clearSearch] = usePersistedState<string>(`monitoring.picker.search.${mode}.${sessionId}`, '');
   const [tab, setTab, clearTab] = usePersistedState<PickerTab>(`monitoring.picker.tab.${mode}.${sessionId}`, 'available');
+  // 'all' ou id da sessão: filtra a lista de disponíveis (só com sessão cruzada)
+  const [sessionFilter, setSessionFilter, clearSessionFilter] = usePersistedState<string>(`monitoring.picker.sessionFilter.${mode}.${sessionId}`, 'all');
   const [openKw, setOpenKw, clearOpenKw] = usePersistedState<string | null>(`monitoring.picker.openKeywords.${sessionId}`, null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -139,6 +160,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     () => (multi ? sessions!.filter((s) => s.status === 'CONNECTED').map((s) => s.id) : [sessionId]),
     [multi, sessions, sessionId],
   );
+  const sessionOf = (id: string) => sessions?.find((s) => s.id === id);
   const sessionName = (id: string) => sessions?.find((s) => s.id === id)?.name || t.sessionOf(id.slice(-4));
   const crossLocked = mode === 'broadcast' && !crossSession && (sessions?.length ?? 0) > 1;
   const groups = useSessionGroups(sessionIds, search);
@@ -157,8 +179,10 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const selectedKeys = useMemo(() => new Set(draft.map(keyOf)), [draft]);
   const full = max !== null && selected.length >= max;
   // Bloqueados (usados na outra lista) vão para o fim; `sort` é estável e mantém a ordem do servidor
+  // Sessão filtrada que desconectou volta para "Todas"
+  const activeFilter = multi && sessionIds.includes(sessionFilter) ? sessionFilter : 'all';
   const available = groups.items
-    .filter((g) => !selectedKeys.has(keyOf(g)))
+    .filter((g) => !selectedKeys.has(keyOf(g)) && (activeFilter === 'all' || g.sessionId === activeFilter))
     .sort((a, b) => Number(excluded.has(a.groupJid)) - Number(excluded.has(b.groupJid)));
   const baseId = useId();
   const titleId = `monitoring-picker-${mode}`;
@@ -172,6 +196,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     clearDraft();
     clearSearch();
     clearTab();
+    clearSessionFilter();
     clearOpenKw();
   };
 
@@ -218,10 +243,47 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     [REDUCED_MOTION]: { transition: 'none' },
   } as const;
 
+  // Avatar com a altura da linha do texto (caption ≈ 16px), alinhado ao nome da sessão
   const sessionLine = (id: string) => (
-    <Blurred when={blurSession} inline radius={5}>
-      <Typography variant="caption" color="text.secondary" noWrap component="span" sx={{ display: 'block' }}>{sessionName(id)}</Typography>
-    </Blurred>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, mt: 0.25 }}>
+      <SessionAvatar url={sessionOf(id)?.avatarUrl} size={16} blur={blurSessionAvatar} />
+      <Blurred when={blurSession} inline radius={5} sx={{ minWidth: 0 }}>
+        <Typography variant="caption" color="text.secondary" noWrap component="span" sx={{ display: 'block' }}>{sessionName(id)}</Typography>
+      </Blurred>
+    </Box>
+  );
+
+  const sessionFilterChips = multi && (
+    <Box role="group" aria-label={t.sessionFilterLabel} sx={{ display: 'flex', gap: 0.75, overflowX: 'auto', pb: 0.25, flexShrink: 0, scrollbarWidth: 'thin' }}>
+      <Chip
+        size="small"
+        label={t.sessionFilterAll}
+        color={activeFilter === 'all' ? 'primary' : 'default'}
+        variant={activeFilter === 'all' ? 'filled' : 'outlined'}
+        onClick={() => setSessionFilter('all')}
+        aria-pressed={activeFilter === 'all'}
+        sx={{ fontWeight: 600, flexShrink: 0 }}
+      />
+      {sessionIds.map((id) => {
+        const on = activeFilter === id;
+        const name = sessionName(id);
+        return (
+          <Tooltip key={id} title={blurSession ? '' : name} arrow>
+            <Chip
+              size="small"
+              avatar={<SessionAvatar url={sessionOf(id)?.avatarUrl} size={18} blur={blurSessionAvatar} />}
+              label={<Blurred when={blurSession} inline radius={5}>{name}</Blurred>}
+              color={on ? 'primary' : 'default'}
+              variant={on ? 'filled' : 'outlined'}
+              onClick={() => setSessionFilter(on ? 'all' : id)}
+              aria-pressed={on}
+              aria-label={t.sessionFilterAria(blurSession ? t.sessionOf(id.slice(-4)) : name)}
+              sx={{ fontWeight: 600, flexShrink: 0, maxWidth: 200 }}
+            />
+          </Tooltip>
+        );
+      })}
+    </Box>
   );
 
   // Bloco próprio: o que vem abaixo (sessão, palavras-chave) fica sempre na linha de baixo, com ou sem borrão
@@ -245,6 +307,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
         sx={blurNames ? BLUR_INPUT : undefined}
         slotProps={{ input: { startAdornment: <InputAdornment position="start"><AppIcon icon={Search} size="sm" /></InputAdornment> } }}
       />
+      {sessionFilterChips}
       {groups.partial && <InfoLine text={t.partial} />}
       <Typography variant="subtitle2" component="h3" color="text.secondary">{multi ? t.availableAll : t.available}</Typography>
       <Box sx={{ flex: 1, minHeight: 0, overflowY: wide ? 'auto' : 'visible', mx: -1, px: 1 }}>

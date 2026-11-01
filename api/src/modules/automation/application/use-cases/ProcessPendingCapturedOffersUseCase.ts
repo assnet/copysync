@@ -205,12 +205,16 @@ async function buildMonitorText(
   const original: BuiltText = { text: originalText, textSource: 'ORIGINAL', aiErrorCode: null, imageUrl: c.sourceMediaUrl };
   const linkOnly = !hasTextBeyondLinks(c.sourceText);
   const wantsProduct = config.textMode !== 'ORIGINAL' || (config.enrichLinkOnly && linkOnly);
-  if (!wantsProduct) return original;
+  if (!wantsProduct) {
+    // Texto original sem foto na mensagem (link com prévia, vídeo): a foto vem do produto
+    return c.sourceMediaUrl ? original : { ...original, imageUrl: await productImageOnly(deps, c, link) };
+  }
 
   const product = await deps.products.read(c.tenantId, link.provider, link.sourceUrl);
   if (!product || (!product.title && product.priceCents == null)) {
     logger.info({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: link.provider }, 'captured offer product data unavailable');
-    return original;
+    if (c.sourceMediaUrl || !product?.imageUrl) return original;
+    return { ...original, imageUrl: await deps.images.store(product.imageUrl) };
   }
   const audience = config.textMode === 'AI' ? config.audience : 'STANDARD';
   const composed = await deps.texts.compose({
@@ -225,6 +229,21 @@ async function buildMonitorText(
   const imageUrl = c.sourceMediaUrl ?? (product.imageUrl ? await deps.images.store(product.imageUrl) : null);
   const usedAi = audience !== 'STANDARD' && !composed.aiFallback;
   return { text: composed.text, textSource: usedAi ? 'AI' : 'TEMPLATE', aiErrorCode: composed.aiErrorCode ?? null, imageUrl };
+}
+
+/** Só a foto do produto (modo original): melhor esforço, falha vira oferta só com texto. */
+async function productImageOnly(
+  deps: Pick<ProcessPendingCapturedOffersDeps, 'products' | 'images'>,
+  c: CapturedOffer,
+  link: Extract<TenantLinkResult, { kind: 'ok' }>,
+): Promise<string | null> {
+  try {
+    const product = await deps.products.read(c.tenantId, link.provider, link.sourceUrl);
+    return product?.imageUrl ? await deps.images.store(product.imageUrl) : null;
+  } catch (err) {
+    logger.warn({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: link.provider, err: (err as Error)?.name }, 'captured offer product image unavailable');
+    return null;
+  }
 }
 
 /** 1ª linha com texto (sem links), para identificar a oferta na fila. */

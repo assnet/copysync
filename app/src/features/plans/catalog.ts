@@ -16,7 +16,7 @@ export const ANNUAL_DISCOUNT = 0.2;
 
 export interface PlanBenefit {
   label: string;
-  /** Linha de destaque (ex.: "Tudo do Starter"). */
+  /** Linha de destaque (ex.: "Tudo do LITE"). */
   strong?: boolean;
   /** Explicação curta no Tooltip; só em termo que precisa de contexto. */
   hint?: string;
@@ -50,7 +50,7 @@ export interface PlanCatalogItem {
   fit: string;
 }
 
-/** Benefício da Página de Ofertas (`storefront_enabled`: só Profissional e Business). */
+/** Benefício da Página de Ofertas (`storefront_enabled`: só PRO e MAX). */
 export const STOREFRONT_BENEFIT_LABEL = 'Página de Ofertas para a bio';
 
 const HINTS = {
@@ -66,7 +66,7 @@ const HINTS = {
 export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
   {
     slug: 'starter',
-    name: 'Starter',
+    name: 'LITE',
     tagline: 'Para começar a monetizar seus grupos',
     priceFrom: 161.9,
     price: 97,
@@ -87,7 +87,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
   },
   {
     slug: 'profissional',
-    name: 'Profissional',
+    name: 'PRO',
     tagline: 'Para quem já vive de afiliado',
     priceFrom: 278.9,
     price: 167,
@@ -95,7 +95,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     recommended: true,
     limits: { whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, linkRotations: 1, linkRotationGroups: 5 },
     benefits: [
-      { label: 'Tudo do Starter', strong: true },
+      { label: 'Tudo do LITE', strong: true },
       { label: '1 WhatsApp + 1 Telegram' },
       { label: '2 grupos monitorados por canal', hint: HINTS.monitoredGroups },
       { label: '10 grupos de disparo por canal', hint: HINTS.broadcastGroups },
@@ -108,14 +108,14 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
   },
   {
     slug: 'business',
-    name: 'Business',
+    name: 'MAX',
     tagline: 'Para operações com vários canais',
     priceFrom: 411.9,
     price: 247,
     priceAnnualMonthly: 197,
     limits: { whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, linkRotations: 2, linkRotationGroups: 10 },
     benefits: [
-      { label: 'Tudo do Profissional', strong: true },
+      { label: 'Tudo do PRO', strong: true },
       { label: '2 WhatsApp + 2 Telegram' },
       { label: '6 grupos monitorados por canal', hint: HINTS.monitoredGroups },
       { label: '40 grupos de disparo por canal', hint: HINTS.broadcastGroups },

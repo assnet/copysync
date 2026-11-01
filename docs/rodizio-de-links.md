@@ -85,7 +85,7 @@ Lease `link-rotation-member-sync` em `job_leases` (5 min): um processo por tick 
 ## Limites por plano
 
 Entitlements `link_rotations` e `link_rotation_groups`. Presets (data migration `20261029020000_create_link_rotation`,
-`ON CONFLICT DO NOTHING`): Starter 1/3, Profissional 1/5, Business 2/10. Travados em `tenants/domain/planPresets.ts` e
+`ON CONFLICT DO NOTHING`): LITE 1/3, PRO 1/5, MAX 2/10. Travados em `tenants/domain/planPresets.ts` e
 `features/plans/catalog.ts`.
 
 - **Chave ausente = ilimitado** (convenção do projeto). Em 2026-10-29 os tenants estão sem `planSlug`, logo sem limite.

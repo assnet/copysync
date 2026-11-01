@@ -21,10 +21,10 @@ function stubReducedMotion(reduce: boolean) {
 
 describe('nextPlanFor', () => {
   it('próximo plano pelo catálogo', () => {
-    expect(nextPlanFor('groups', 3)).toEqual({ name: 'Profissional', limit: 5 });
-    expect(nextPlanFor('groups', 5)).toEqual({ name: 'Business', limit: 10 });
+    expect(nextPlanFor('groups', 3)).toEqual({ name: 'PRO', limit: 5 });
+    expect(nextPlanFor('groups', 5)).toEqual({ name: 'MAX', limit: 10 });
     expect(nextPlanFor('groups', 10)).toBeNull();
-    expect(nextPlanFor('rotations', 1)).toEqual({ name: 'Business', limit: 2 });
+    expect(nextPlanFor('rotations', 1)).toEqual({ name: 'MAX', limit: 2 });
     expect(nextPlanFor('rotations', 2)).toBeNull();
   });
 });
@@ -35,8 +35,8 @@ describe('PlanLimitBanner', () => {
   it('grupos: mostra o próximo plano, o número e o CTA para /plans', () => {
     show('groups', 3, 'dark');
     expect(screen.getByText(t.groupsTitle)).toBeInTheDocument();
-    expect(screen.getByText(t.nextPlan('Profissional', 5, 'groups'))).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: t.compareAria(3, 'Profissional', 5, 'groups') })).toBeInTheDocument();
+    expect(screen.getByText(t.nextPlan('PRO', 5, 'groups'))).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: t.compareAria(3, 'PRO', 5, 'groups') })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: t.cta })).toHaveAttribute('href', '/plans');
     expect(screen.getByRole('button', { name: t.dismiss })).toBeInTheDocument();
   });
@@ -44,7 +44,7 @@ describe('PlanLimitBanner', () => {
   it('rodízios: próximo plano com mais links', () => {
     show('rotations', 1);
     expect(screen.getByText(t.rotationsTitle)).toBeInTheDocument();
-    expect(screen.getByText(t.nextPlan('Business', 2, 'rotations'))).toBeInTheDocument();
+    expect(screen.getByText(t.nextPlan('MAX', 2, 'rotations'))).toBeInTheDocument();
   });
 
   it('no maior plano não oferece upgrade', () => {
