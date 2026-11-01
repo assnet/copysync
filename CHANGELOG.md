@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — monitoring (app 0.55.0) — sessão de cada grupo no seletor de disparo
+
+- **`features/monitoring/components/GroupPickerDialog.tsx`** — com sessão cruzada, a linha da sessão dona de cada grupo ganha a foto da sessão em 16 px (`SessionAvatar`, blur `monitoring.sessionAvatar`), e a lista de disponíveis ganha chips de filtro "Todas" + uma por sessão conectada (tooltip com o nome, `aria-pressed`), persistidos em `monitoring.picker.sessionFilter.<mode>.<sessionId>`.
+- **`features/monitoring/strings.ts`** — `sessionFilterLabel`, `sessionFilterAll`, `sessionFilterAria`.
+
 ### Fixed — monitoring (api 0.48.1) — oferta Shopee saindo só com texto
 
 - **`automation/application/use-cases/ProcessPendingCapturedOffersUseCase.ts`** — no modo `ORIGINAL` com texto além do link, o produto nunca era lido, então captura sem foto na mensagem (link com prévia, vídeo) saía só com texto. Era a maioria das ofertas Shopee (94 de 121 em 3 dias eram `TEXT`). Agora, sem foto na mensagem, a foto do produto (`IMonitorProductReader` + `IMonitorImageStore`) entra como fallback, melhor esforço (`productImageOnly`: falha vira só texto, log `captured offer product image unavailable`). "Sem dados do produto" também aproveita a foto se vier.

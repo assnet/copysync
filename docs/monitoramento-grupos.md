@@ -197,6 +197,9 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
   sem a feature, aviso "exclusivo do plano MAX" → `/plans`.
 - **Seletor** (`GroupPickerDialog`): disponíveis × selecionados em 2 colunas (md+) ou abas (xs); grupo usado
   no outro papel aparece bloqueado com o motivo visível; palavras-chave por grupo monitorado.
+  Com sessão cruzada (disparo): cada grupo mostra a sessão dona com a foto dela em 16 px (altura do texto,
+  ícone de aparelho sem foto, blur `monitoring.sessionAvatar`) e há chips de filtro "Todas" + uma por sessão
+  conectada (filtra só os disponíveis; sessão que desconecta volta para "Todas").
 - **Configurações** (`MonitoringSettingsForm`): card mestre "Monitoramento ativo"; horário (`RangeSlider`
   com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"); envio; depois da captura; texto da oferta em
   `radiogroup` Original / Modelo / IA (setas, Home/End: `textModeForKey`) com `AudiencePicker` quando IA.
@@ -219,6 +222,7 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
 | `monitoring.picker.search.<mode>.<sessionId>` | busca do seletor |
 | `monitoring.picker.tab.<mode>.<sessionId>` | aba do seletor (xs) |
 | `monitoring.picker.openKeywords.<sessionId>` | grupo com palavras-chave abertas |
+| `monitoring.picker.sessionFilter.<mode>.<sessionId>` | filtro de sessão do seletor (`all` ou id) |
 | `monitoring.settings.<sessionId>` | rascunho das configurações (form com `key={sessionId}`) |
 | `monitoring.captured.filter.<sessionId>` | filtro das capturadas |
 | `monitoring.captured.expanded.<sessionId>` | linhas expandidas |
