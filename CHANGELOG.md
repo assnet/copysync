@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — monitoring (api 0.48.1) — oferta Shopee saindo só com texto
+
+- **`automation/application/use-cases/ProcessPendingCapturedOffersUseCase.ts`** — no modo `ORIGINAL` com texto além do link, o produto nunca era lido, então captura sem foto na mensagem (link com prévia, vídeo) saía só com texto. Era a maioria das ofertas Shopee (94 de 121 em 3 dias eram `TEXT`). Agora, sem foto na mensagem, a foto do produto (`IMonitorProductReader` + `IMonitorImageStore`) entra como fallback, melhor esforço (`productImageOnly`: falha vira só texto, log `captured offer product image unavailable`). "Sem dados do produto" também aproveita a foto se vier.
+- **`ProcessPendingCapturedOffersUseCase.test.ts`** — casos de texto sem foto, leitura do produto falhando e só link com `enrichLinkOnly` desligado.
+
 ### Changed — planos LITE / PRO / MAX (api 0.48.0 · app 0.54.1)
 
 #### Backend — slugs de plano
