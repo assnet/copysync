@@ -157,6 +157,7 @@ export function MonitoringPage() {
   };
 
   const sessionNameOf = (id: string) => sessions.sessions.find((s) => s.id === id)?.name ?? null;
+  const sessionAvatarOf = (id: string) => sessions.sessions.find((s) => s.id === id)?.avatarUrl ?? null;
   const saveBroadcast = async (groups: { groupJid: string; sessionId: string }[], picked: readonly PickedGroup[] = []) => {
     try {
       await cfg.saveBroadcastGroups(groups);
@@ -242,6 +243,7 @@ export function MonitoringPage() {
                     max={config.limits.broadcastGroups}
                     monitorSessionId={selected.id}
                     sessionNameOf={sessionNameOf}
+                    sessionAvatarOf={sessionAvatarOf}
                     onAdd={() => setPicker('broadcast')}
                     onChange={(groups) => saveBroadcast(groups)}
                   />

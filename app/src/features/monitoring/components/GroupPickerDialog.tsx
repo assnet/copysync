@@ -1,12 +1,12 @@
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  Alert, Autocomplete, Avatar, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
+  Alert, Autocomplete, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
   DialogTitle, IconButton, InputAdornment, LinearProgress, Skeleton, Stack, Tab, Tabs, TextField, Tooltip,
   Typography, useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ChevronDown, Ear, Info, Lock, Plus, Search, Send, Smartphone, TriangleAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Ear, Info, Lock, Plus, Search, Send, TriangleAlert, X } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
@@ -16,6 +16,7 @@ import type { SessionItem, TakenBroadcastGroup } from '@/types/api.types';
 import { INNER_RADIUS, REDUCED_MOTION, REDUCED_MOTION_QUERY, focusRingScopeSx, iconTileSx, toneSurface, toneText } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 import { uiErrorMessage } from '../utils/apiErrors';
+import { SessionAvatar } from './SessionAvatar';
 
 const t = monitoringStrings.picker;
 const tg = monitoringStrings.groups;
@@ -93,24 +94,6 @@ const BLUR_INPUT = { '& input:not(:placeholder-shown)': BLUR } as const;
 /** Sem busca, a lista principal já é completa: o lookup de nome/foto não busca nada. */
 const NO_SESSIONS: readonly string[] = [];
 const NO_TAKEN: readonly TakenBroadcastGroup[] = [];
-
-/** Foto da sessão no tamanho do texto ao lado (`size` em px); sem foto, ícone de aparelho. */
-function SessionAvatar({ url, size, blur }: { url: string | null | undefined; size: number; blur: boolean }) {
-  return (
-    <Avatar
-      src={url ?? undefined}
-      alt=""
-      aria-hidden
-      sx={{
-        width: size, height: size, flexShrink: 0, bgcolor: 'action.selected', color: 'text.secondary',
-        '& svg': { width: size * 0.7, height: size * 0.7 },
-        ...(blur && { filter: 'blur(4px)' }),
-      }}
-    >
-      <Smartphone />
-    </Avatar>
-  );
-}
 
 /** Aviso compacto tintado; o texto quebra linha (nunca corta). */
 function InfoLine({ text, action }: { text: string; action?: ReactNode }) {

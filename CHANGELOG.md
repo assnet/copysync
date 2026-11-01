@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — monitoring (app 0.56.1) — foto da sessão no chip "Envia por"
+
+- **`features/monitoring/components/SessionAvatar.tsx`** — foto da sessão (ícone sem foto, blur `monitoring.sessionAvatar`) extraída do seletor para uso comum.
+- **`BroadcastGroupsCard.tsx`** — chip "Envia por <sessão>" ganha a foto da sessão em 16 px, na altura do texto; **`MonitoringPage.tsx`** repassa `sessionAvatarOf`.
+
 ### Fixed — monitoring (api 0.49.0 · app 0.56.0) — salvar grupos de disparo com "Valor fora do permitido"
 
 Causa: grupo (sessão + JID) que já é destino do monitoramento de outra sessão voltava 422
