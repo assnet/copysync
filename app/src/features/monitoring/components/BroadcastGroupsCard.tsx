@@ -10,6 +10,7 @@ import { INNER_RADIUS, REDUCED_MOTION, REDUCED_MOTION_QUERY, VISUALLY_HIDDEN, ic
 import { monitoringStrings } from '../strings';
 import { GroupUsageChip } from './GroupUsageChip';
 import { MonitorCard } from './MonitorCard';
+import { SessionAvatar } from './SessionAvatar';
 import { uiErrorMessage } from '../utils/apiErrors';
 
 const t = monitoringStrings.groups;
@@ -38,16 +39,19 @@ interface Props {
   /** Sessão do monitoramento: grupo de outra sessão ganha o chip "Envia por …". */
   monitorSessionId: string;
   sessionNameOf: (sessionId: string) => string | null;
+  /** Foto da sessão dona do grupo (chip "Envia por …"). */
+  sessionAvatarOf?: (sessionId: string) => string | null;
   onAdd: () => void;
   /** Salva a nova ordem/lista (cada grupo com a sessão que envia); lança em erro. */
   onChange: (groups: GroupRef[]) => Promise<void>;
 }
 
 /** Destino: grupos que recebem as ofertas, na ordem de envio; reordenar e remover salvam na hora. */
-export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessionNameOf, onAdd, onChange }: Props) {
+export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessionNameOf, sessionAvatarOf, onAdd, onChange }: Props) {
   const theme = useTheme();
   const blurNames = useBlur('monitoring.groupNames');
   const blurSession = useBlur('monitoring.sessionName');
+  const blurSessionAvatar = useBlur('monitoring.sessionAvatar');
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -180,10 +184,13 @@ export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessi
                     <Tooltip title={t.otherSessionTooltip} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
                       <Chip
                         size="small"
+                        avatar={<SessionAvatar url={sessionAvatarOf?.(g.sessionId)} size={16} blur={blurSessionAvatar} />}
                         label={<Blurred when={blurSession} inline radius={5}>{t.otherSession(sessionNameOf(g.sessionId) || t.untitled)}</Blurred>}
                         sx={{
                           ...primaryTint, border: 1, mt: 0.25, maxWidth: '100%', height: 'auto', minHeight: 20,
-                          '& .MuiChip-label': { typography: 'caption', fontWeight: 600, px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
+                          '& .MuiChip-label': { typography: 'caption', fontWeight: 600, px: 1, pl: 0.75, overflow: 'hidden', textOverflow: 'ellipsis' },
+                          // Avatar na altura do texto (caption): o tamanho padrão do Chip small é maior
+                          '& .MuiChip-avatar': { width: 16, height: 16, ml: 0.5, mr: 0 },
                         }}
                       />
                     </Tooltip>

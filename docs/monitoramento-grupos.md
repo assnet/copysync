@@ -197,7 +197,9 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
   "Configurar credencial" → `/settings/affiliate-credentials?returnTo=/monitoring`.
 - **Grupos** (`MonitoredGroupsCard`, `BroadcastGroupsCard`): contador "n/max no plano"; nome resolvido por
   jid; avatar com foto ou ícone (sem iniciais), sempre com blur. Remover tem "Desfazer" via `reinsertGroup`.
-  Com `limits.crossSessionDispatch` o disparo lista grupos de todas as sessões ("Envia por <sessão>");
+  Com `limits.crossSessionDispatch` o disparo lista grupos de todas as sessões ("Envia por <sessão>", com a
+  foto da sessão em 16 px no chip; app 0.56.1). Foto de sessão sempre por `SessionAvatar` (ícone de aparelho
+  sem foto, blur `monitoring.sessionAvatar`), no card e no seletor;
   sem a feature, aviso "exclusivo do plano MAX" → `/plans`.
 - **Seletor** (`GroupPickerDialog`): disponíveis × selecionados em 2 colunas (md+) ou abas (xs); grupo usado
   no outro papel aparece bloqueado com o motivo visível; palavras-chave por grupo monitorado.
