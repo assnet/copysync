@@ -292,6 +292,7 @@ export function MonitoringPage() {
               excludeJids={config.monitoredGroups.map((g) => g.groupJid)}
               sessions={sessions.sessions}
               crossSession={config.limits.crossSessionDispatch}
+              takenBroadcast={config.takenBroadcastGroups}
               onClose={() => setPicker(null)}
               onSave={(groups) => saveBroadcast(groups.map((g) => ({ groupJid: g.groupJid, sessionId: g.sessionId })), groups)}
             />

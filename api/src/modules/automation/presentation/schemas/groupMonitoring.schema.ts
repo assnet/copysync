@@ -103,6 +103,10 @@ const configSchema = {
       items: { type: 'object', properties: { provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] }, kind: { type: 'string', enum: ['MISSING', 'REJECTED'] }, since: nullableDate, code: nullableString } },
     },
     usage: { type: 'object', properties: { monitoredGroups: { type: 'integer' }, broadcastGroups: { type: 'integer' } } },
+    takenBroadcastGroups: {
+      type: 'array',
+      items: { type: 'object', properties: { groupJid: { type: 'string' }, sessionId: { type: 'string' }, monitorSessionId: { type: 'string' } } },
+    },
   },
 } as const;
 

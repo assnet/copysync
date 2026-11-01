@@ -543,6 +543,14 @@ export interface MonitoredGroupItem {
   keywords: string[];
 }
 
+export interface TakenBroadcastGroup {
+  groupJid: string;
+  /** Sessão dona do grupo (a que envia). */
+  sessionId: string;
+  /** Sessão do monitoramento que já usa o grupo como destino. */
+  monitorSessionId: string;
+}
+
 export interface BroadcastGroupItem {
   conversationId: string;
   groupJid: string;
@@ -562,6 +570,8 @@ export interface GroupMonitorConfigResponse {
   limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
   /** Uso atual no tenant (todas as sessões). */
   usage: { monitoredGroups: number; broadcastGroups: number };
+  /** Destinos (sessão + JID) dos monitoramentos de outras sessões: não podem entrar na lista deste. */
+  takenBroadcastGroups?: TakenBroadcastGroup[];
   /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */
   credentialAlerts?: CredentialAlertItem[];
 }

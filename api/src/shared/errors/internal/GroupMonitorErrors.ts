@@ -19,6 +19,23 @@ export class GroupMonitorGroupConflictError extends AppError {
   }
 }
 
+/**
+ * Grupo (sessão + JID) já é destino do monitoramento de outra sessão: a unique do banco recusaria e
+ * o grupo receberia a oferta duas vezes. `monitorSessionId` = sessão do monitoramento que já o usa.
+ */
+export class GroupMonitorBroadcastTakenError extends AppError {
+  constructor(groupJid: string, sessionId: string, monitorSessionId: string) {
+    super('GROUP_MONITOR_BROADCAST_TAKEN', `Broadcast group already used by another monitor: ${groupJid}`, 409, { groupJid, sessionId, monitorSessionId });
+  }
+}
+
+/** O mesmo grupo (JID) escolhido por duas sessões na mesma lista: postaria a oferta duas vezes nele. */
+export class GroupMonitorDuplicateGroupError extends AppError {
+  constructor(groupJid: string) {
+    super('GROUP_MONITOR_DUPLICATE_GROUP', `Same group selected from two sessions: ${groupJid}`, 422, { groupJid });
+  }
+}
+
 export class CapturedOfferNotFoundError extends AppError {
   constructor(id: string) {
     super('CAPTURED_OFFER_NOT_FOUND', `Captured offer not found: ${id}`, 404);
