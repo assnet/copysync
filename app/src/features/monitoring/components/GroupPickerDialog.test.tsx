@@ -82,8 +82,58 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     render(dialog(true));
     expect(await screen.findByText('Grupo s2')).toBeInTheDocument();
     expect(listSessionGroups.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 's2']);
-    expect(screen.getByText('Suporte')).toBeInTheDocument();
+    // Linha da sessão do grupo + chip de filtro
+    expect(screen.getAllByText('Suporte')).toHaveLength(2);
     expect(screen.queryByText(/exclusivo do plano MAX/)).not.toBeInTheDocument();
+  });
+
+  it('filtro por sessão mostra só os grupos dela; "Todas" volta', async () => {
+    listSessionGroups.mockImplementation(async (id: string) => ({ groups: [{ groupJid: `g-${id}`, title: `Grupo ${id}`, avatarUrl: null }], partial: false }));
+    render(dialog(true));
+    await screen.findByText('Grupo s2');
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar só os grupos de Suporte' }));
+    expect(screen.queryByText('Grupo s1')).not.toBeInTheDocument();
+    expect(screen.getByText('Grupo s2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Todas' }));
+    expect(screen.getByText('Grupo s1')).toBeInTheDocument();
+  });
+
+  it('destino de outro monitoramento e mesmo grupo por outra sessão ficam bloqueados com o motivo', async () => {
+    listSessionGroups.mockImplementation(async () => ({ groups: [{ groupJid: 'shared', title: 'Compartilhado', avatarUrl: null }], partial: false }));
+    render(
+      <MemoryRouter>
+        <GroupPickerDialog
+          mode="broadcast" sessionId="s1" initial={[]} max={null} excludeJids={[]} sessions={sessions} crossSession
+          takenBroadcast={[{ groupJid: 'shared', sessionId: 's2', monitorSessionId: 's2' }]}
+          onClose={() => undefined} onSave={async () => undefined}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Já recebe as ofertas do monitoramento de Suporte')).toBeInTheDocument();
+    const add = screen.getAllByRole('button', { name: 'Adicionar Compartilhado' });
+    const enabled = add.filter((b) => !(b as HTMLButtonElement).disabled);
+    expect(enabled).toHaveLength(1);
+    fireEvent.click(enabled[0]!);
+    expect(screen.getAllByText(/Já escolhido por outra sessão|Já recebe as ofertas/).length).toBeGreaterThan(0);
+  });
+
+  it('setas reordenam os selecionados (ordem de envio) e o salvar manda a nova ordem', async () => {
+    listSessionGroups.mockResolvedValue({ groups: [], partial: false });
+    const onSave = vi.fn(async () => undefined);
+    render(
+      <MemoryRouter>
+        <GroupPickerDialog
+          mode="broadcast" sessionId="s9" max={null} excludeJids={[]} onClose={() => undefined} onSave={onSave}
+          initial={[{ groupJid: 'a', sessionId: 's9', title: 'A', avatarUrl: null, keywords: [] }, { groupJid: 'b', sessionId: 's9', title: 'B', avatarUrl: null, keywords: [] }]}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Selecionados/ }));
+    expect(screen.getByRole('button', { name: 'Enviar antes: A' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar depois: A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect((onSave.mock.calls[0] as unknown as [PickedGroup[]])[0].map((g) => g.groupJid)).toEqual(['b', 'a']);
   });
 });
 
@@ -142,8 +192,8 @@ describe('GroupPickerDialog — busca, bloqueio e privacidade', () => {
         </MemoryRouter>
       </PrivacyProvider>,
     );
-    const name = await screen.findByText('Suporte');
-    expect(name.closest('[data-blurred="true"]')).not.toBeNull();
+    await screen.findByText('Grupo s2');
+    for (const name of screen.getAllByText('Suporte')) expect(name.closest('[data-blurred="true"]')).not.toBeNull();
     expect(screen.getByText('Grupo s2').closest('[data-blurred="true"]')).toBeNull();
   });
 });

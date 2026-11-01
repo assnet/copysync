@@ -151,6 +151,9 @@ export const monitoringStrings = {
     crossLocked: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano MAX. Aqui aparecem só os grupos desta sessão.',
     crossLockedLink: 'Ver planos',
     sessionOf: (name: string) => `Sessão ${name}`,
+    takenByMonitor: (name: string) => `Já recebe as ofertas do monitoramento de ${name}`,
+    sameGroupOtherSession: 'Já escolhido por outra sessão: o grupo receberia a oferta duas vezes',
+    selectionProblems: 'Tire os grupos marcados em amarelo para salvar.',
     sessionFilterLabel: 'Filtrar grupos por sessão',
     sessionFilterAll: 'Todas',
     sessionFilterAria: (name: string) => `Mostrar só os grupos de ${name}`,
@@ -160,7 +163,7 @@ export const monitoringStrings = {
     keywordsCounter: (n: number, max: number) => `${n}/${max} palavras-chave`,
     keywordsFull: (max: number) => `Limite de ${max} palavras-chave por grupo.`,
     keywordTooLong: (max: number) => `Cada palavra-chave tem até ${max} caracteres.`,
-    orderHelp: 'A ordem da lista é a ordem de envio. Reordene depois no card.',
+    orderHelp: 'A ordem da lista é a ordem de envio. Use as setas para reordenar.',
     cancel: 'Cancelar',
     save: 'Salvar',
     close: 'Fechar',
@@ -279,6 +282,8 @@ export const monitoringStrings = {
         ? 'Limite do plano atingido.'
         : `Seu plano permite até ${max} grupos somando todas as sessões. Remova algum ou fale com o suporte para ampliar.`,
     planFeature: 'Seu plano não inclui este recurso.',
+    broadcastTaken: 'Um dos grupos já recebe as ofertas do monitoramento de outra sessão. Tire-o daqui ou de lá.',
+    duplicateGroup: 'O mesmo grupo foi escolhido por duas sessões. Deixe só uma, senão a oferta sai duas vezes nele.',
     crossSessionUnavailable: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano MAX. Escolha grupos desta sessão ou faça upgrade.',
     notRetryable: 'Esta oferta não pode ser tentada de novo (já foi processada ou o motivo não é recuperável).',
     fields: {

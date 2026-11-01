@@ -152,7 +152,11 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
   (`groups[].sessionId` no `PUT /config/broadcast-groups`), com o entitlement `cross_session_dispatch`
   (MAX; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
   no tenant (404). O limite `broadcast_groups` conta por monitoramento (config), não pela sessão dona
-  do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (422). No envio,
+  do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (409
+  `GROUP_MONITOR_BROADCAST_TAKEN`, meta `groupJid`/`sessionId`/`monitorSessionId`; api 0.49.0) e o mesmo
+  JID não entra duas vezes na lista por sessões diferentes (422 `GROUP_MONITOR_DUPLICATE_GROUP`: a oferta
+  sairia duas vezes no grupo). O GET devolve `takenBroadcastGroups` (destinos dos monitoramentos das outras
+  sessões) para o seletor bloquear antes de salvar. No envio,
   cada destino entra na faixa da **sua** sessão (`EnqueueOfferUseCase` multi-sessão); plano rebaixado
   depois de salvar → só os grupos da própria sessão saem. Chaves de entitlement centralizadas em
   `tenants/domain/entitlementKeys.ts`; presets por plano em `tenants/domain/planPresets.ts` (seed).
@@ -200,6 +204,10 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
   Com sessão cruzada (disparo): cada grupo mostra a sessão dona com a foto dela em 16 px (altura do texto,
   ícone de aparelho sem foto, blur `monitoring.sessionAvatar`) e há chips de filtro "Todas" + uma por sessão
   conectada (filtra só os disponíveis; sessão que desconecta volta para "Todas").
+  Disparo (app 0.56.0): setas ↑↓ por selecionado definem a ordem de envio já no seletor; grupo de
+  `takenBroadcastGroups` ("Já recebe as ofertas do monitoramento de <sessão>") e o mesmo JID por outra
+  sessão já escolhida ficam bloqueados com o motivo; selecionado com problema ganha aviso amarelo e o
+  Salvar fica desligado até tirá-lo. Não troque esses bloqueios por "Valor fora do permitido".
 - **Configurações** (`MonitoringSettingsForm`): card mestre "Monitoramento ativo"; horário (`RangeSlider`
   com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"); envio; depois da captura; texto da oferta em
   `radiogroup` Original / Modelo / IA (setas, Home/End: `textModeForKey`) com `AudiencePicker` quando IA.

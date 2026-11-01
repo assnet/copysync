@@ -43,6 +43,10 @@ export function monitoringErrorMessage(err: unknown, ctx: MonitoringErrorContext
       // Sem o nome do grupo: o alerta não passa pelo borrão de privacidade
       return t.groupConflict(null, role);
     }
+    case 'GROUP_MONITOR_BROADCAST_TAKEN':
+      return t.broadcastTaken;
+    case 'GROUP_MONITOR_DUPLICATE_GROUP':
+      return t.duplicateGroup;
     case 'GROUP_MONITOR_INVALID_INPUT': {
       const field = typeof meta.field === 'string' ? meta.field : typeof e.field === 'string' ? e.field : null;
       return t.invalidInput(field ? t.fields[field] ?? null : null);

@@ -6,7 +6,9 @@ import type { ICapturedOfferRepository } from '../../domain/contracts/ICapturedO
 import { AFFILIATE_PROVIDERS } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { GroupMonitorSettings } from '../../domain/entities/GroupMonitor';
 import { DEFAULT_MONITOR_SETTINGS, MONITOR_LIMITS, monitorSettingsProblem, normalizeKeywords } from '../../domain/services/monitorSettings';
-import { GroupMonitorGroupConflictError, GroupMonitorInvalidInputError } from '../../../../shared/errors/internal/GroupMonitorErrors';
+import {
+  GroupMonitorBroadcastTakenError, GroupMonitorDuplicateGroupError, GroupMonitorGroupConflictError, GroupMonitorInvalidInputError,
+} from '../../../../shared/errors/internal/GroupMonitorErrors';
 import { PlanFeatureUnavailableError, PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
@@ -63,6 +65,9 @@ abstract class GroupMonitorConfigBase {
       broadcastGroups: broadcast.map((g) => ({ conversationId: g.conversationId, groupJid: g.groupJid, sessionId: g.sessionId, title: g.title, avatarUrl: g.avatarUrl, position: g.position })),
       limits: { monitoredGroups: monitoredLimit, broadcastGroups: broadcastLimit, mentionAllEnabled: mentionAll !== false, crossSessionDispatch: crossSession === true },
       usage: { monitoredGroups: jids.monitored.length, broadcastGroups: jids.broadcast.length },
+      takenBroadcastGroups: jids.broadcast
+        .filter((b) => b.monitorSessionId !== sessionId)
+        .map((b) => ({ groupJid: b.groupJid, sessionId: b.sessionId, monitorSessionId: b.monitorSessionId })),
     };
   }
 }
@@ -133,6 +138,12 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
     await this.assertSession(input);
     const unique = [...new Map(refs.map((r) => [refKey(r), r])).values()];
     if (unique.length !== refs.length) throw new GroupMonitorInvalidInputError('duplicated group', 'groups');
+    // Mesmo grupo por duas sessões: a oferta sairia duas vezes nele
+    const seenJids = new Set<string>();
+    for (const r of unique) {
+      if (seenJids.has(r.groupJid)) throw new GroupMonitorDuplicateGroupError(r.groupJid);
+      seenJids.add(r.groupJid);
+    }
     if (unique.length > MONITOR_LIMITS.groupsPerSession) throw new GroupMonitorInvalidInputError('too many groups', 'groups');
 
     // Destino em outra sessão do tenant: feature do plano (Business); a sessão precisa existir no tenant
@@ -153,8 +164,10 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
     if (clash) throw new GroupMonitorGroupConflictError(clash.groupJid, role === 'monitored' ? 'broadcast' : 'monitored');
     // Mesmo grupo (sessão + JID) como destino de outro monitoramento: a unique do banco recusaria
     if (role === 'broadcast') {
-      const taken = unique.find((r) => jids.broadcast.some((b) => b.monitorSessionId !== sessionId && b.sessionId === r.sessionId && b.groupJid === r.groupJid));
-      if (taken) throw new GroupMonitorInvalidInputError('group already used by another session monitor', 'groups');
+      for (const r of unique) {
+        const taken = jids.broadcast.find((b) => b.monitorSessionId !== sessionId && b.sessionId === r.sessionId && b.groupJid === r.groupJid);
+        if (taken) throw new GroupMonitorBroadcastTakenError(r.groupJid, r.sessionId, taken.monitorSessionId);
+      }
     }
 
     const key = role === 'monitored' ? MONITORED_GROUPS : BROADCAST_GROUPS;

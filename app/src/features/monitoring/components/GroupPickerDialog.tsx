@@ -6,13 +6,13 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
-import { ChevronDown, Ear, Info, Lock, Plus, Search, Send, Smartphone, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Ear, Info, Lock, Plus, Search, Send, Smartphone, TriangleAlert, X } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
 import { Blurred, useBlur } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import type { SessionItem } from '@/types/api.types';
+import type { SessionItem, TakenBroadcastGroup } from '@/types/api.types';
 import { INNER_RADIUS, REDUCED_MOTION, REDUCED_MOTION_QUERY, focusRingScopeSx, iconTileSx, toneSurface, toneText } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 import { uiErrorMessage } from '../utils/apiErrors';
@@ -51,6 +51,8 @@ interface Props {
   sessions?: readonly SessionItem[];
   /** Entitlement `cross_session_dispatch`. Sem ele, só a sessão atual; com 2+ sessões mostra o aviso do plano. */
   crossSession?: boolean;
+  /** Disparo: destinos já usados pelo monitoramento de outra sessão (bloqueados aqui). */
+  takenBroadcast?: readonly TakenBroadcastGroup[];
   onClose: () => void;
   /** Lança em erro; a mensagem aparece no diálogo. */
   onSave: (groups: PickedGroup[]) => Promise<void>;
@@ -90,6 +92,7 @@ const BLUR = { filter: 'blur(5px)', userSelect: 'none' } as const;
 const BLUR_INPUT = { '& input:not(:placeholder-shown)': BLUR } as const;
 /** Sem busca, a lista principal já é completa: o lookup de nome/foto não busca nada. */
 const NO_SESSIONS: readonly string[] = [];
+const NO_TAKEN: readonly TakenBroadcastGroup[] = [];
 
 /** Foto da sessão no tamanho do texto ao lado (`size` em px); sem foto, ícone de aparelho. */
 function SessionAvatar({ url, size, blur }: { url: string | null | undefined; size: number; blur: boolean }) {
@@ -126,7 +129,7 @@ function InfoLine({ text, action }: { text: string; action?: ReactNode }) {
  * item com palavras-chave aberto são persistidos na aba por sessão e modo, apagados ao salvar ou cancelar.
  * md+: duas colunas (disponíveis | selecionados); menor: abas.
  */
-export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, sessions, crossSession = false, onClose, onSave }: Props) {
+export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, sessions, crossSession = false, takenBroadcast = NO_TAKEN, onClose, onSave }: Props) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const wide = useMediaQuery(theme.breakpoints.up('md'));
@@ -177,7 +180,31 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const selected: PickedGroup[] = draft.map((d) => ({ ...d, ...pick(metaOf(d)) }));
   const excluded = useMemo(() => new Set(excludeJids), [excludeJids]);
   const selectedKeys = useMemo(() => new Set(draft.map(keyOf)), [draft]);
+  const monitored = mode === 'monitored';
   const full = max !== null && selected.length >= max;
+  // Destino de outro monitoramento → sessão desse monitoramento
+  const takenBy = useMemo(() => new Map(takenBroadcast.map((g) => [keyOf(g), g.monitorSessionId])), [takenBroadcast]);
+  const selectedJidOwner = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of draft) if (!m.has(d.groupJid)) m.set(d.groupJid, keyOf(d));
+    return m;
+  }, [draft]);
+  const takenReason = (g: { sessionId: string; groupJid: string }) => {
+    const owner = takenBy.get(keyOf(g));
+    return owner ? t.takenByMonitor(blurSession ? t.sessionOf(owner.slice(-4)) : sessionName(owner)) : null;
+  };
+  /** Problema de um selecionado: destino de outro monitoramento ou JID repetido (2ª sessão em diante). */
+  const selectedProblem = (g: { sessionId: string; groupJid: string }) =>
+    takenReason(g) ?? (selectedJidOwner.get(g.groupJid) !== keyOf(g) ? t.sameGroupOtherSession : null);
+  const hasProblems = !monitored && selected.some((g) => selectedProblem(g) !== null);
+  const move = (i: number, dir: -1 | 1) =>
+    setDraft((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j]!, next[i]!];
+      return next;
+    });
   // Bloqueados (usados na outra lista) vão para o fim; `sort` é estável e mantém a ordem do servidor
   // Sessão filtrada que desconectou volta para "Todas"
   const activeFilter = multi && sessionIds.includes(sessionFilter) ? sessionFilter : 'all';
@@ -189,7 +216,6 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const subtitleId = `${titleId}-subtitle`;
   const tabId = (k: PickerTab) => `${baseId}-tab-${k}`;
   const panelId = (k: PickerTab) => `${baseId}-panel-${k}`;
-  const monitored = mode === 'monitored';
   const tone = monitored ? 'info' : 'success';
 
   const clearAll = () => {
@@ -321,8 +347,10 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
           <Stack component="ul" spacing={0.25} sx={{ m: 0, p: 0, listStyle: 'none' }} aria-busy={saving}>
             {available.map((g) => {
               const usedElsewhere = excluded.has(g.groupJid);
-              const disabled = usedElsewhere || full;
-              const reason = usedElsewhere ? (monitored ? t.usedElsewhereMonitored : t.usedElsewhereBroadcast) : full ? t.limitReached : '';
+              const blocked = usedElsewhere ? (monitored ? t.usedElsewhereMonitored : t.usedElsewhereBroadcast)
+                : !monitored ? (takenReason(g) ?? (selectedJidOwner.has(g.groupJid) ? t.sameGroupOtherSession : null)) : null;
+              const disabled = blocked !== null || full;
+              const reason = blocked ?? (full ? t.limitReached : '');
               const title = g.title || tg.untitled;
               return (
                 <Box component="li" key={keyOf(g)} sx={rowSx}>
@@ -363,6 +391,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minHeight: 0, height: '100%' }}>
       {wide && <Typography variant="subtitle2" component="h3" color="text.secondary">{t.selectedTitle}</Typography>}
       {!monitored && selected.length > 0 && <Typography variant="caption" color="text.secondary">{t.orderHelp}</Typography>}
+      {hasProblems && <Alert severity="warning" sx={{ borderRadius: INNER_RADIUS, py: 0 }}>{t.selectionProblems}</Alert>}
       <Box sx={{ flex: 1, minHeight: 0, overflowY: wide ? 'auto' : 'visible', mx: -1, px: 1 }}>
         {selected.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>{t.selectedEmpty}</Typography>
@@ -374,6 +403,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
               const open = openKw === key;
               const kwId = `${baseId}-kw-${i}`;
               const kwPanelId = `${baseId}-kwp-${i}`;
+              const problem = monitored ? null : selectedProblem(g);
               return (
                 <Box component="li" key={key} sx={{ borderRadius: INNER_RADIUS, bgcolor: open ? 'action.hover' : 'transparent' }}>
                   <Box sx={rowSx}>
@@ -393,6 +423,12 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       {groupName(g.title)}
                       {multi && sessionLine(g.sessionId)}
+                      {problem && (
+                        <Typography variant="caption" component="p" sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, color: toneText(theme, 'warning'), mt: 0.25 }}>
+                          <Box component="span" sx={{ display: 'inline-flex', pt: 0.25, flexShrink: 0 }}><AppIcon icon={TriangleAlert} size="inline" aria-hidden /></Box>
+                          <span>{problem}</span>
+                        </Typography>
+                      )}
                       {monitored && (
                         <Button
                           size="small"
@@ -412,6 +448,24 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
                         </Button>
                       )}
                     </Box>
+                    {!monitored && (
+                      <Box role="group" aria-label={tg.actionsLabel(title)} sx={{ display: 'flex', flexShrink: 0 }}>
+                        <Tooltip title={tg.moveUp} arrow>
+                          <span>
+                            <IconButton aria-label={tg.moveUpAria(title)} onClick={() => move(i, -1)} disabled={saving || i === 0} sx={{ width: 36, height: 36 }}>
+                              <AppIcon icon={ArrowUp} size="sm" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title={tg.moveDown} arrow>
+                          <span>
+                            <IconButton aria-label={tg.moveDownAria(title)} onClick={() => move(i, 1)} disabled={saving || i === selected.length - 1} sx={{ width: 36, height: 36 }}>
+                              <AppIcon icon={ArrowDown} size="sm" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Box>
+                    )}
                     <Tooltip title={tg.remove} arrow>
                       <IconButton aria-label={t.removeAria(title)} onClick={() => toggle(g)} disabled={saving} sx={{ width: 40, height: 40 }}>
                         <AppIcon icon={X} size="sm" />
@@ -573,7 +627,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
         <Button
           variant="contained"
           onClick={() => void save()}
-          disabled={saving || (max !== null && selected.length > max)}
+          disabled={saving || hasProblems || (max !== null && selected.length > max)}
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
         >
           {t.save}

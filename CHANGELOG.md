@@ -9,6 +9,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — monitoring (api 0.49.0 · app 0.56.0) — salvar grupos de disparo com "Valor fora do permitido"
+
+Causa: grupo (sessão + JID) que já é destino do monitoramento de outra sessão voltava 422
+`GROUP_MONITOR_INVALID_INPUT` (campo `groups`), e o painel não tinha como saber qual grupo nem por quê.
+
+#### Backend
+
+- **`shared/errors/internal/GroupMonitorErrors.ts`** — `GroupMonitorBroadcastTakenError` (409 `GROUP_MONITOR_BROADCAST_TAKEN`, meta com a sessão do outro monitoramento) e `GroupMonitorDuplicateGroupError` (422 `GROUP_MONITOR_DUPLICATE_GROUP`: mesmo JID por duas sessões na lista, a oferta sairia duas vezes no grupo).
+- **`GroupMonitorConfigUseCases.ts`**, **`GroupMonitorDTO.ts`**, **`groupMonitoring.schema.ts`** — config devolve `takenBroadcastGroups`; validação usa os erros novos.
+
+#### Frontend
+
+- **`GroupPickerDialog.tsx`** — setas ↑↓ nos selecionados (ordem de envio); grupos tomados por outro monitoramento ou já escolhidos por outra sessão ficam bloqueados com o motivo; selecionado com problema mostra aviso e desliga o Salvar.
+- **`utils/apiErrors.ts`**, **`strings.ts`**, **`api.types.ts`**, **`MonitoringPage.tsx`** — mensagens dos códigos novos e `takenBroadcastGroups` repassado ao seletor.
+
+### Breaking Changes
+
+- `PUT /config/broadcast-groups`: destino de outro monitoramento passa de 422 `GROUP_MONITOR_INVALID_INPUT` para 409 `GROUP_MONITOR_BROADCAST_TAKEN`; mesmo JID por duas sessões, antes aceito, agora é 422 `GROUP_MONITOR_DUPLICATE_GROUP`.
+
 ### Added — monitoring (app 0.55.0) — sessão de cada grupo no seletor de disparo
 
 - **`features/monitoring/components/GroupPickerDialog.tsx`** — com sessão cruzada, a linha da sessão dona de cada grupo ganha a foto da sessão em 16 px (`SessionAvatar`, blur `monitoring.sessionAvatar`), e a lista de disponíveis ganha chips de filtro "Todas" + uma por sessão conectada (tooltip com o nome, `aria-pressed`), persistidos em `monitoring.picker.sessionFilter.<mode>.<sessionId>`.

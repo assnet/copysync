@@ -111,11 +111,19 @@ describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'b', sessionId: 'session-2' }] })).resolves.toBeTruthy();
   });
 
-  it('mesmo grupo como destino de dois monitoramentos → 422', async () => {
+  it('mesmo grupo como destino de dois monitoramentos → 409 com a sessão do outro monitoramento; GET lista o grupo tomado', async () => {
     const s = setup({ cross_session_dispatch: true });
     await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'shared' }] });
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'shared', sessionId: 'session-2' }] }))
-      .rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT' });
+      .rejects.toMatchObject({ code: 'GROUP_MONITOR_BROADCAST_TAKEN', meta: { groupJid: 'shared', sessionId: 'session-2', monitorSessionId: 'session-2' } });
+    const out = await s.get.execute(base);
+    expect(out.takenBroadcastGroups).toEqual([{ groupJid: 'shared', sessionId: 'session-2', monitorSessionId: 'session-2' }]);
+  });
+
+  it('mesmo grupo (JID) por duas sessões na mesma lista → 422 GROUP_MONITOR_DUPLICATE_GROUP', async () => {
+    const s = setup({ cross_session_dispatch: true });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'g', sessionId: 'session-2' }, { groupJid: 'g' }] }))
+      .rejects.toMatchObject({ code: 'GROUP_MONITOR_DUPLICATE_GROUP', meta: { groupJid: 'g' } });
   });
 });
 

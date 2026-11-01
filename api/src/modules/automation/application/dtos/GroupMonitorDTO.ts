@@ -23,6 +23,8 @@ export interface GroupMonitorConfigDTO {
   /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */
   credentialAlerts?: CredentialAlertDTO[];
   usage: { monitoredGroups: number; broadcastGroups: number };
+  /** Destinos (sessão + JID) de monitoramentos de outras sessões: não podem entrar nesta lista. */
+  takenBroadcastGroups: { groupJid: string; sessionId: string; monitorSessionId: string }[];
 }
 
 export interface CapturedOfferDTO {
