@@ -235,6 +235,33 @@ describe('ProcessPendingCapturedOffersUseCase — oferta montada e reescrita com
     expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
   });
 
+  it('ORIGINAL sem foto e link já trouxe o produto (vitrine social ML): foto da vitrine, sem reler a página', async () => {
+    const s = await setup();
+    s.links.resolve = () => ({
+      kind: 'ok', provider: 'MERCADO_LIVRE', sourceUrl: 'https://produto.mercadolivre.com.br/MLB-1010954920', affiliateUrl: 'https://meli.la/meu',
+      product: { title: 'Kit 6 Cuecas', priceCents: 12519, originalPriceCents: 28863, imageUrl: 'https://http2.mlstatic.com/D_NQ_NP_2X_1-F.webp' },
+    });
+    await s.msg({ msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(0);
+    expect(s.images.stored).toEqual(['https://http2.mlstatic.com/D_NQ_NP_2X_1-F.webp']);
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
+  });
+
+  it('modelo com produto vindo do link: compõe com os dados da vitrine, sem reler a página', async () => {
+    const s = await setup({ settings: { textMode: 'TEMPLATE' } });
+    s.links.resolve = () => ({
+      kind: 'ok', provider: 'MERCADO_LIVRE', sourceUrl: 'https://produto.mercadolivre.com.br/MLB-1', affiliateUrl: 'https://meli.la/meu',
+      product: { title: 'Kit 6 Cuecas', priceCents: 12519, originalPriceCents: 28863, imageUrl: null },
+    });
+    await s.msg({ msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(0);
+    expect(s.texts.inputs[0]).toMatchObject({ title: 'Kit 6 Cuecas', priceCents: 12519 });
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'TEMPLATE' });
+  });
+
   it('ORIGINAL sem foto e leitura do produto falha: segue só com texto', async () => {
     const s = await setup();
     s.products.read = async () => { throw new Error('boom'); };

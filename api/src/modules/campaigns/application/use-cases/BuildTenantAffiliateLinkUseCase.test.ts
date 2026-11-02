@@ -62,10 +62,11 @@ describe('BuildTenantAffiliateLinkUseCase', () => {
   it('Mercado Livre social com item fora de catálogo: link pelo anúncio `produto…/MLB-`', async () => {
     const s = setup();
     s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/concorrente?matt_word=concorrente&ref=abc'));
-    s.deps.pageReader.read.mockResolvedValueOnce({ title: 'Kit', imageUrl: null, priceCents: 1, originalPriceCents: null, productRef: 'MLB1010954920', productRefCatalog: false });
+    s.deps.pageReader.read.mockResolvedValueOnce({ title: 'Kit', imageUrl: 'https://http2.mlstatic.com/x.webp', priceCents: 1, originalPriceCents: null, productRef: 'MLB1010954920', productRefCatalog: false });
     const out = await s.uc.execute('t1', 'https://meli.la/1vF5mAU');
     expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://produto.mercadolivre.com.br/MLB-1010954920'], 'minhaetq');
-    expect(out).toMatchObject({ kind: 'ok' });
+    // Dados da vitrine seguem com o link: o monitoramento não relê a página do produto (captcha)
+    expect(out).toMatchObject({ kind: 'ok', product: { title: 'Kit', priceCents: 1, originalPriceCents: null, imageUrl: 'https://http2.mlstatic.com/x.webp' } });
   });
 
   it('convite de grupo e site fora da allowlist: unsupported, sem rede', async () => {

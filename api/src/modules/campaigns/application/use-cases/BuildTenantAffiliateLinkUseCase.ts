@@ -17,7 +17,20 @@ export type TenantAffiliateLink =
   /** Loja recusou a credencial (agora ou antes): nada é pedido à loja até o usuário reconfigurar. */
   | { kind: 'credential_rejected'; provider: AffiliateProvider; since: Date }
   | { kind: 'failed'; provider: AffiliateProvider | null; code: string }
-  | { kind: 'ok'; provider: AffiliateProvider; sourceUrl: string; affiliateUrl: string };
+  | { kind: 'ok'; provider: AffiliateProvider; sourceUrl: string; affiliateUrl: string; product?: TenantLinkProductData };
+
+/**
+ * Dados do produto que já vieram na página lida para achar o id (vitrine social do ML). Quem
+ * consome usa antes de reler a página do produto: a página `/p/MLB…` cai no captcha do ML para
+ * o servidor na maior parte das vezes, e a vitrine já trouxe título, preços e foto.
+ */
+export interface TenantLinkProductData {
+  title: string | null;
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  /** URL externa (mlstatic), ainda fora do media store. */
+  imageUrl: string | null;
+}
 
 export interface BuildTenantAffiliateLinkDeps {
   expander: IShortLinkExpander;
@@ -89,7 +102,9 @@ export class BuildTenantAffiliateLinkUseCase {
         case 'MERCADO_LIVRE': {
           const cookies = cred.session?.cookies;
           if (!cookies) return { kind: 'credential_missing', provider };
-          const ref = parseProductRef(provider, final) ?? (await this.mlRefFromPage(final, cookies));
+          let ref = parseProductRef(provider, final);
+          let product: TenantLinkProductData | undefined;
+          if (!ref) ({ ref, product } = await this.mlRefFromPage(final, cookies));
           if (ref?.provider !== 'MERCADO_LIVRE') return { kind: 'unsupported' };
           const sourceUrl = ref.catalog
             ? `https://www.mercadolivre.com.br/p/${ref.itemId}`
@@ -103,7 +118,7 @@ export class BuildTenantAffiliateLinkUseCase {
             logger.warn({ code, provider }, 'tenant affiliate link not built');
             return { kind: 'failed', provider, code };
           }
-          return { kind: 'ok', provider, sourceUrl, affiliateUrl: link };
+          return { kind: 'ok', provider, sourceUrl, affiliateUrl: link, ...(product ? { product } : {}) };
         }
       }
     } catch (err) {
@@ -123,11 +138,19 @@ export class BuildTenantAffiliateLinkUseCase {
    * `metadata.id` e vira `produto…/MLB-<id>`.
    * A vitrine é pública: lida sem cookie (página com cookie do servidor cai no captcha, spike §7).
    */
-  private async mlRefFromPage(final: URL, _cookies: Record<string, string>): Promise<ProductRef | null> {
-    if (!final.pathname.startsWith('/social/')) return null;
+  private async mlRefFromPage(
+    final: URL,
+    _cookies: Record<string, string>,
+  ): Promise<{ ref: ProductRef | null; product?: TenantLinkProductData }> {
+    if (!final.pathname.startsWith('/social/')) return { ref: null };
     const page = await this.deps.pageReader.read({ url: final });
     const id = page?.productRef ? /MLB-?(\d+)/i.exec(page.productRef)?.[1] : null;
-    return id ? { provider: 'MERCADO_LIVRE', itemId: `MLB${id}`, catalog: page?.productRefCatalog !== false } : null;
+    if (!id || !page) return { ref: null };
+    const hasData = page.title != null || page.priceCents != null || page.imageUrl != null;
+    return {
+      ref: { provider: 'MERCADO_LIVRE', itemId: `MLB${id}`, catalog: page.productRefCatalog !== false },
+      ...(hasData ? { product: { title: page.title, priceCents: page.priceCents, originalPriceCents: page.originalPriceCents, imageUrl: page.imageUrl } } : {}),
+    };
   }
 
   private failure(provider: AffiliateProvider | null, err: unknown, fallback: string): TenantAffiliateLink {

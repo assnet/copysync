@@ -91,7 +91,10 @@ página (com o `ref` da query a ML põe o produto do link em primeiro). Dois for
 URL enviada ao `createLink` é `/p/<product_id>` (`produto…/MLB-<product_id>` não existe, ML 100);
 `product_id` vazio = anúncio fora de catálogo, id em `metadata.id`, URL `produto.mercadolivre.com.br/MLB-<id>`.
 Até 2026-11-02 só o 1º formato era lido: todo `meli.la` de item virava "Loja não suportada" (226 capturas
-em 14 dias). A vitrine é pública e é lida **sem** cookie (com cookie do servidor a ML manda para o captcha). Rede só dentro da allowlist
+em 14 dias). Título, preços e foto do 1º card seguem junto com o link (`TenantLinkResult.ok.product`) e o
+processador usa isso antes de reler a página do produto: `/p/MLB…` e `produto…/MLB-…` caem no captcha do ML
+para o servidor em ~90% dos casos (14 dias: 57 ofertas ML sem foto na mensagem, só 5 com foto do produto), e a
+vitrine já tinha os dados. Vale para a foto em modo original e para o texto em modelo/IA. A vitrine é pública e é lida **sem** cookie (com cookie do servidor a ML manda para o captcha). Rede só dentro da allowlist
 (`isSupportedProductUrl`, expansor e leitor de página). Diferente do gerador, que exige o link já
 ser do operador, aqui o link é sempre gerado.
 

@@ -8,7 +8,8 @@ export type TenantLinkResult =
   /** Loja recusou a credencial: pausada até o usuário reconfigurar (sem rede). */
   | { kind: 'credential_rejected'; provider: AffiliateProvider; since: Date }
   | { kind: 'failed'; provider: AffiliateProvider | null; code: string }
-  | { kind: 'ok'; provider: AffiliateProvider; sourceUrl: string; affiliateUrl: string };
+  /** `product`: dados já lidos ao resolver o link (vitrine social ML); poupa reler a página do produto. */
+  | { kind: 'ok'; provider: AffiliateProvider; sourceUrl: string; affiliateUrl: string; product?: MonitorProductData };
 
 export interface ITenantLinkBuilder {
   build(tenantId: string, href: string): Promise<TenantLinkResult>;

@@ -210,7 +210,8 @@ async function buildMonitorText(
     return c.sourceMediaUrl ? original : { ...original, imageUrl: await productImageOnly(deps, c, link) };
   }
 
-  const product = await deps.products.read(c.tenantId, link.provider, link.sourceUrl);
+  // Vitrine social do ML já trouxe o produto junto com o link: reler `/p/MLB…` costuma dar captcha
+  const product = link.product ?? (await deps.products.read(c.tenantId, link.provider, link.sourceUrl));
   if (!product || (!product.title && product.priceCents == null)) {
     logger.info({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: link.provider }, 'captured offer product data unavailable');
     if (c.sourceMediaUrl || !product?.imageUrl) return original;
@@ -238,7 +239,7 @@ async function productImageOnly(
   link: Extract<TenantLinkResult, { kind: 'ok' }>,
 ): Promise<string | null> {
   try {
-    const product = await deps.products.read(c.tenantId, link.provider, link.sourceUrl);
+    const product = link.product?.imageUrl ? link.product : await deps.products.read(c.tenantId, link.provider, link.sourceUrl);
     return product?.imageUrl ? await deps.images.store(product.imageUrl) : null;
   } catch (err) {
     logger.warn({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: link.provider, err: (err as Error)?.name }, 'captured offer product image unavailable');
