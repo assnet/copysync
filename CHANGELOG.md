@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.57.0 — Política de Privacidade pública
+
+- **`features/privacy-policy/strings.ts`**, **`pages/PrivacyPolicyPage.tsx`** (app 0.57.0, novos) — Política de Privacidade como rota pública `/politicas-de-privacidade` (sem login, light/dark, marca só via `APP_NAME`): coleta (cookies de sessão do Mercado Livre, cookie de login, logs), permissões `cookies`/`storage`/`alarms`, uso, compartilhamento (infra, marketplaces, mensageria, IA, billing), tratamento/segurança, direitos LGPD e contato. É a URL declarada na Chrome Web Store.
+- **`pages/LoginPage.tsx`** — link discreto "Política de Privacidade" no rodapé, abre em nova aba (`rel=noopener noreferrer`).
 ### Changed — monitoring (app 0.56.1) — foto da sessão no chip "Envia por"
 
 - **`features/monitoring/components/SessionAvatar.tsx`** — foto da sessão (ícone sem foto, blur `monitoring.sessionAvatar`) extraída do seletor para uso comum.

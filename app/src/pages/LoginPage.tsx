@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
   CircularProgress, InputAdornment, IconButton, Chip, Tooltip,
-  Stack, alpha, useTheme,
+  Stack, Link, alpha, useTheme,
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -18,6 +18,7 @@ import { LoginShowcasePanel } from './login/LoginShowcasePanel';
 import { LoginMobileBanner } from './login/LoginMobileBanner';
 import { LOGIN_COPY } from './login/loginContent';
 import { GOLDEN_SPACE, GOLDEN_SPLIT, GOLDEN_TYPE } from './login/goldenRatio';
+import { PRIVACY_POLICY_PATH, privacyPolicyLinkLabel } from '@/features/privacy-policy/strings';
 
 const DEV_CREDENTIALS = [
   { label: 'Super Admin', email: import.meta.env.VITE_DEV_EMAIL || '', password: import.meta.env.VITE_DEV_PASSWORD || '' },
@@ -260,6 +261,17 @@ export function LoginPage() {
 
           <Typography sx={{ fontSize: GOLDEN_TYPE.caption, color: 'text.disabled', textAlign: 'center', mt: `${GOLDEN_SPACE.s3}px` }}>
             © {new Date().getFullYear()} {APP_NAME} · Todos os direitos reservados
+            {' · '}
+            <Link
+              href={PRIVACY_POLICY_PATH}
+              target="_blank"
+              rel="noopener noreferrer"
+              color="inherit"
+              underline="hover"
+              sx={{ '&:hover': { color: 'text.secondary' } }}
+            >
+              {privacyPolicyLinkLabel}
+            </Link>
           </Typography>
         </Box>
       </Box>

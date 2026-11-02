@@ -3,6 +3,8 @@ import { PrivateRoute } from './PrivateRoute';
 import { AppLayout } from '@/app/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
 import { InvitePage } from '@/pages/InvitePage';
+import { PrivacyPolicyPage } from '@/pages/PrivacyPolicyPage';
+import { PRIVACY_POLICY_PATH } from '@/features/privacy-policy/strings';
 import { DashboardPage } from '@/pages/DashboardPage';
 import SessionsPage from '@/pages/SessionsPage';
 import ChatPage from '@/pages/ChatPage';
@@ -34,6 +36,8 @@ export function AppRoutes() {
       {/* Públicas */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/invite/:token" element={<InvitePage />} />
+      {/* URL declarada na Chrome Web Store: precisa abrir sem login */}
+      <Route path={PRIVACY_POLICY_PATH} element={<PrivacyPolicyPage />} />
 
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>

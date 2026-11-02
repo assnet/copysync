@@ -69,4 +69,6 @@ Se alguma URL já estiver indexada, usar remoção no Google Search Console / Bi
 - Não criar `sitemap.xml` para o painel.
 - Não adicionar `<meta name="robots">` com `index` em nenhuma página do `app/` — nem na de login.
 - Não aplicar estas regras à landing/site público (`copysync.app`), que **deve** ser indexado.
+- `/politicas-de-privacidade` é pública (sem login) mas segue `noindex` como o resto do painel: a Chrome
+  Web Store só exige que a URL abra, não que seja indexada.
 - `X-Robots-Tag` só na Render; se o host mudar, recriar o header no novo host.
