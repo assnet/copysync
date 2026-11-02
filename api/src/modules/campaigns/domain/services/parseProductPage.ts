@@ -6,8 +6,10 @@ export interface ProductPageData {
   imageUrl: string | null;
   priceCents: number | null;
   originalPriceCents: number | null;
-  /** Id do produto achado na página (ML social: primeiro `"product_id":"MLB…"`). */
+  /** Id do produto achado na página (ML social: `product_id` do 1º card, senão `metadata.id`). */
   productRef: string | null;
+  /** Só ML social: `true` = id de catálogo (`/p/MLB…`), `false` = item (`produto…/MLB-…`). */
+  productRefCatalog?: boolean;
 }
 
 const TITLE_MAX = 300;
@@ -226,13 +228,19 @@ export function parseMercadoLivreSocialPage(html: string): ProductPageData {
   const imageUrl = typeof pictureId === 'string' && template && /^[A-Za-z0-9_-]+$/.test(pictureId)
     ? template.replace('{square}', 'NQ').replace('{2x}', '_2X').replace('{id}', pictureId).replace('{size}', 'F').replace('{sanitized_title}', '')
     : null;
-  const productId = typeof meta.product_id === 'string' && /^MLB\d+$/i.test(meta.product_id) ? meta.product_id.toUpperCase() : null;
+  // Card de catálogo traz `product_id` (`/p/MLB…`); item fora de catálogo vem com `product_id` vazio e o
+  // id do anúncio em `metadata.id` (`produto…/MLB-…`). Sem isso todo `meli.la` de item era "loja não suportada"
+  const mlId = (v: Json) => (typeof v === 'string' && /^MLB\d+$/i.test(v) ? v.toUpperCase() : null);
+  const catalogId = mlId(meta.product_id);
+  const itemId = catalogId ? null : mlId(meta.id);
+  const productId = catalogId ?? itemId;
   return {
     title: typeof titleNode?.text === 'string' ? productTitle(titleNode.text) : null,
     imageUrl: imageUrl?.startsWith('https://http2.mlstatic.com/') ? imageUrl : null,
     priceCents: current,
     originalPriceCents: previous != null && current != null && previous > current ? previous : null,
     productRef: productId,
+    ...(productId ? { productRefCatalog: catalogId !== null } : {}),
   };
 }
 

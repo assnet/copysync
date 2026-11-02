@@ -118,15 +118,16 @@ export class BuildTenantAffiliateLinkUseCase {
   }
 
   /**
-   * Página "social" (vitrine de afiliado): o produto vem do `product_id` da página, que é id de
-   * **catálogo** (`/p/MLB…`); `produto.mercadolivre.com.br/MLB-<product_id>` não existe (ML 100).
+   * Página "social" (vitrine de afiliado): o produto vem do 1º card. `product_id` é id de **catálogo**
+   * (`/p/MLB…`; `produto…/MLB-<product_id>` não existe, ML 100); item fora de catálogo vem só com
+   * `metadata.id` e vira `produto…/MLB-<id>`.
    * A vitrine é pública: lida sem cookie (página com cookie do servidor cai no captcha, spike §7).
    */
   private async mlRefFromPage(final: URL, _cookies: Record<string, string>): Promise<ProductRef | null> {
     if (!final.pathname.startsWith('/social/')) return null;
     const page = await this.deps.pageReader.read({ url: final });
     const id = page?.productRef ? /MLB-?(\d+)/i.exec(page.productRef)?.[1] : null;
-    return id ? { provider: 'MERCADO_LIVRE', itemId: `MLB${id}`, catalog: true } : null;
+    return id ? { provider: 'MERCADO_LIVRE', itemId: `MLB${id}`, catalog: page?.productRefCatalog !== false } : null;
   }
 
   private failure(provider: AffiliateProvider | null, err: unknown, fallback: string): TenantAffiliateLink {

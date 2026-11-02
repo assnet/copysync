@@ -59,6 +59,15 @@ describe('BuildTenantAffiliateLinkUseCase', () => {
     expect(out).toMatchObject({ kind: 'ok' });
   });
 
+  it('Mercado Livre social com item fora de catálogo: link pelo anúncio `produto…/MLB-`', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/concorrente?matt_word=concorrente&ref=abc'));
+    s.deps.pageReader.read.mockResolvedValueOnce({ title: 'Kit', imageUrl: null, priceCents: 1, originalPriceCents: null, productRef: 'MLB1010954920', productRefCatalog: false });
+    const out = await s.uc.execute('t1', 'https://meli.la/1vF5mAU');
+    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://produto.mercadolivre.com.br/MLB-1010954920'], 'minhaetq');
+    expect(out).toMatchObject({ kind: 'ok' });
+  });
+
   it('convite de grupo e site fora da allowlist: unsupported, sem rede', async () => {
     const s = setup();
     expect(await s.uc.execute('t1', 'https://chat.whatsapp.com/ABC')).toEqual({ kind: 'unsupported' });

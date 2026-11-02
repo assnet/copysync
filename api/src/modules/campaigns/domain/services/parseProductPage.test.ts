@@ -111,7 +111,16 @@ describe('parseMercadoLivreSocialPage', () => {
       priceCents: 33111,
       originalPriceCents: 69990,
       productRef: 'MLB44022021',
+      productRefCatalog: true,
     });
+  });
+
+  it('item fora de catálogo: `product_id` vazio, id do anúncio em `metadata.id` (vitrine com `ref`, 2026-11-02)', () => {
+    const page = PAGE.replace('"id":"MLB4886745619","product_id":"MLB44022021"', '"id":"MLB1010954920","product_id":""');
+    const out = parseMercadoLivreSocialPage(page);
+    expect(out.productRef).toBe('MLB1010954920');
+    expect(out.productRefCatalog).toBe(false);
+    expect(out.title).toContain('Wella');
   });
 
   it('sem polycards ou JSON quebrado: tudo null', () => {

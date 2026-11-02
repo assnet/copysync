@@ -85,10 +85,13 @@ tenant. Nada da origem (`tag`, `matt_word`, `matt_tool`, `af_*`, `utm_*`…) sob
 | Shopee | `https://shopee.com.br/product/<shop>/<item>` | `generateShortLink` com AppID/secret do tenant |
 | Mercado Livre | `/p/MLB…` ou `produto.mercadolivre.com.br/MLB-…` | `createAffiliateLinks` com a sessão (cookies) e etiqueta do tenant |
 
-Mercado Livre "social" (vitrine `meli.la` → `/social/<etiqueta>?…&ref=…`): o produto vem do `product_id`
-da página (1º card; com o `ref` da query a ML abre o produto do link). É id de **catálogo**, logo a
-URL enviada ao `createLink` é `/p/<product_id>`, nunca `produto…/MLB-` (ML devolve 100). A vitrine
-é pública e é lida **sem** cookie (com cookie do servidor a ML manda para o captcha). Rede só dentro da allowlist
+Mercado Livre "social" (vitrine `meli.la` → `/social/<etiqueta>?…&ref=…`): o produto vem do 1º card da
+página (com o `ref` da query a ML põe o produto do link em primeiro). Dois formatos de card
+(`parseMercadoLivreSocialPage`, `productRefCatalog`): `metadata.product_id` preenchido = id de **catálogo**,
+URL enviada ao `createLink` é `/p/<product_id>` (`produto…/MLB-<product_id>` não existe, ML 100);
+`product_id` vazio = anúncio fora de catálogo, id em `metadata.id`, URL `produto.mercadolivre.com.br/MLB-<id>`.
+Até 2026-11-02 só o 1º formato era lido: todo `meli.la` de item virava "Loja não suportada" (226 capturas
+em 14 dias). A vitrine é pública e é lida **sem** cookie (com cookie do servidor a ML manda para o captcha). Rede só dentro da allowlist
 (`isSupportedProductUrl`, expansor e leitor de página). Diferente do gerador, que exige o link já
 ser do operador, aqui o link é sempre gerado.
 
