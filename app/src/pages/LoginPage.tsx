@@ -19,6 +19,7 @@ import { LoginMobileBanner } from './login/LoginMobileBanner';
 import { LOGIN_COPY } from './login/loginContent';
 import { GOLDEN_SPACE, GOLDEN_SPLIT, GOLDEN_TYPE } from './login/goldenRatio';
 import { PRIVACY_POLICY_PATH, privacyPolicyLinkLabel } from '@/features/privacy-policy/strings';
+import { SUPPORT_PATH, supportLinkLabel } from '@/features/support/strings';
 
 const DEV_CREDENTIALS = [
   { label: 'Super Admin', email: import.meta.env.VITE_DEV_EMAIL || '', password: import.meta.env.VITE_DEV_PASSWORD || '' },
@@ -271,6 +272,17 @@ export function LoginPage() {
               sx={{ '&:hover': { color: 'text.secondary' } }}
             >
               {privacyPolicyLinkLabel}
+            </Link>
+            {' · '}
+            <Link
+              href={SUPPORT_PATH}
+              target="_blank"
+              rel="noopener noreferrer"
+              color="inherit"
+              underline="hover"
+              sx={{ '&:hover': { color: 'text.secondary' } }}
+            >
+              {supportLinkLabel}
             </Link>
           </Typography>
         </Box>

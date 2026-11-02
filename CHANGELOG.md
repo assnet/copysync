@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.58.0 — página pública de Suporte
+
+- **`features/support/strings.ts`**, **`pages/SupportPage.tsx`** (novos) — rota pública `/suporte` (sem login): canais de atendimento, FAQ da extensão (não encontrada, ML "Não logado", desconectar, dados lidos), conta/plano/sessões, LGPD. É a "URL do suporte" declarada na Chrome Web Store.
+- **`components/PublicDocumentPage.tsx`** (novo) — layout compartilhado das páginas públicas (cabeçalho com marca, alternância de tema, seções com `**prefixo:**`, links automáticos para e-mail/URL/rota). `PrivacyPolicyPage` passou a usá-lo; `PolicySection` virou alias de `DocumentSection`.
+- **`pages/LoginPage.tsx`** — link "Suporte" no rodapé, ao lado da Política de Privacidade.
+
 ### Added — extension 3.2.1 — recursos gráficos da loja
 
 - **`scripts/store-assets.mjs`** (`pnpm store:assets`) — gera em `store-assets/` o ícone 128 (arte 96 px + margem), o bloco promocional 440×280 e o letreiro 1400×560 a partir de `app/public/assets/brand/logo-512.png`, via `sharp` da API. Pasta ignorada pelo git.

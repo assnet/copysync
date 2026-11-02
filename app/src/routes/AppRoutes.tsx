@@ -5,6 +5,8 @@ import { LoginPage } from '@/pages/LoginPage';
 import { InvitePage } from '@/pages/InvitePage';
 import { PrivacyPolicyPage } from '@/pages/PrivacyPolicyPage';
 import { PRIVACY_POLICY_PATH } from '@/features/privacy-policy/strings';
+import { SupportPage } from '@/pages/SupportPage';
+import { SUPPORT_PATH } from '@/features/support/strings';
 import { DashboardPage } from '@/pages/DashboardPage';
 import SessionsPage from '@/pages/SessionsPage';
 import ChatPage from '@/pages/ChatPage';
@@ -38,6 +40,7 @@ export function AppRoutes() {
       <Route path="/invite/:token" element={<InvitePage />} />
       {/* URL declarada na Chrome Web Store: precisa abrir sem login */}
       <Route path={PRIVACY_POLICY_PATH} element={<PrivacyPolicyPage />} />
+      <Route path={SUPPORT_PATH} element={<SupportPage />} />
 
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>

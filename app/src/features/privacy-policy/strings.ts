@@ -5,19 +5,10 @@
  * É a fonte da verdade da política: a URL da Chrome Web Store aponta para esta página
  * (ver docs/extensao-publicacao-chrome-web-store.md §8 e §10).
  */
-export interface PolicySection {
-  title: string;
-  /** Parágrafos antes das listas. */
-  intro?: readonly string[];
-  /** Blocos: subtítulo opcional + parágrafos e/ou itens. Item `**x:** y` vira negrito no prefixo. */
-  blocks?: readonly {
-    subtitle?: string;
-    paragraphs?: readonly string[];
-    items?: readonly string[];
-  }[];
-  /** Parágrafos depois das listas. */
-  outro?: readonly string[];
-}
+import type { DocumentSection } from '@/components/PublicDocumentPage';
+
+/** Mantido por compatibilidade: seção de documento público. */
+export type PolicySection = DocumentSection;
 
 export const privacyPolicyStrings = {
   pageTitle: 'Políticas de Privacidade',
