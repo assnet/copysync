@@ -18,7 +18,9 @@ const packageVersion = JSON.parse(readFileSync(path.join(__dirname, 'package.jso
  * - `--env envFile=.env.dev` (pnpm dev) ou `.env` (pnpm build) é a ÚNICA fonte
  *   de URL/nome/flags: `Dotenv` substitui `process.env.X` no bundle. Nada de
  *   URL literal em `src/`.
- * - `--env store=true` (pnpm build:store): remove `key` do manifest (Web Store).
+ * - `--env store=true` (pnpm build:store): remove `key` do manifest (Web Store) e grava em
+ *   `dist-store/`, nunca em `dist/`: `dist/` é o que está carregado sem compactação no Chrome,
+ *   e um manifest sem `key` ali faz o Chrome derivar outro ID (incidente 2026-11-02).
  * - Produção: Terser remove `console.*` e `debugger` (cinto e suspensório do
  *   guard `devLog`), sem comentários, sem source map.
  * - Desenvolvimento: source map barato, sem minificação, logs visíveis.
@@ -28,6 +30,7 @@ export default (env = {}, argv = {}) => {
   const isProduction = mode === 'production';
   const isStoreBuild = env.store === 'true' || env.store === true;
   const envFile = env.envFile || '.env';
+  const outDir = isStoreBuild ? 'dist-store' : 'dist';
 
   const parsed = dotenv.config({ path: path.resolve(__dirname, envFile) }).parsed || {};
   const panelUrl = (parsed.PANEL_URL || '').replace(/\/+$/, '');
@@ -85,7 +88,7 @@ export default (env = {}, argv = {}) => {
       background: path.resolve(srcDir, 'background', 'index.ts'),
     },
     output: {
-      path: path.resolve(__dirname, 'dist'),
+      path: path.resolve(__dirname, outDir),
       filename: '[name].js',
       clean: true,
     },

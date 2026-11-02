@@ -1,19 +1,26 @@
 {
   "name": "copysync-extension",
-  "version": "3.2.0",
-  "description": "Extensão Chrome MV3 — sincroniza a sessão de afiliado do Mercado Livre com o painel",
+  "version": "3.2.1",
+  "description": "Extens\u00e3o Chrome MV3 \u2014 sincroniza a sess\u00e3o de afiliado do Mercado Livre com o painel",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "node ./node_modules/webpack/bin/webpack.js --watch --progress --config webpack.js --stats-error-details --mode development --env envFile=.env.dev",
     "build": "node ./node_modules/webpack/bin/webpack.js --progress --config webpack.js --stats-error-details --mode production --env envFile=.env && node scripts/check-dist.mjs",
-    "build:store": "node ./node_modules/webpack/bin/webpack.js --progress --config webpack.js --stats-error-details --mode production --env envFile=.env --env store=true && node scripts/check-dist.mjs",
+    "build:store": "node ./node_modules/webpack/bin/webpack.js --progress --config webpack.js --stats-error-details --mode production --env envFile=.env --env store=true && DIST_DIR=dist-store STORE_BUILD=true node scripts/check-dist.mjs",
     "type-check": "tsc --noEmit && node scripts/check-cookie-scope.mjs && node scripts/check-i18n.mjs && node scripts/check-contract-sync.mjs",
     "check:contract-sync": "node scripts/check-contract-sync.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "check:cookie-scope": "node scripts/check-cookie-scope.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "keys:generate": "node scripts/keys-generate.mjs",
+    "keys:id": "node scripts/extension-id.mjs",
+    "pack:crx": "pnpm build && node scripts/pack-crx.mjs",
+    "pack:store": "pnpm build:store && node scripts/pack-store.mjs",
+    "pack:store:first": "pnpm build:store && node scripts/pack-store.mjs --with-key",
+    "release": "pnpm type-check && pnpm test && pnpm pack:crx && pnpm pack:store",
+    "store:assets": "node scripts/store-assets.mjs"
   },
   "dependencies": {
     "tippy.js": "^6.3.7"

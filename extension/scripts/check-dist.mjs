@@ -6,13 +6,13 @@
  * Confere o artefato, não a intenção: invariante que ninguém vê de olho
  * é promessa esquecida (mesmo raciocínio de `check-cookie-scope.mjs`).
  *
- * Uso: `pnpm check:dist` (automático no final de `pnpm build`).
+ * Uso: `pnpm check:dist` (automático no final de `pnpm build`). Build de loja: `DIST_DIR=dist-store STORE_BUILD=true`.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
 
-const DIST = 'dist';
+const DIST = process.env.DIST_DIR ?? 'dist';
 const failures = [];
 
 const DEV_MARKS = [
@@ -108,6 +108,9 @@ for (const hp of hostPerms) {
 // Store build: no key
 if (process.env.STORE_BUILD === 'true' && manifest.key) {
   failures.push('manifest.json contém "key" no build de loja — webpack deveria ter removido.');
+}
+if (process.env.STORE_BUILD !== 'true' && !manifest.key) {
+  failures.push('dist/manifest.json SEM "key" — carregado sem compactação, o Chrome derivaria outro ID. Rode `pnpm build`.');
 }
 
 if (failures.length) {

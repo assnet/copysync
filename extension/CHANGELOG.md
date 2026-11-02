@@ -1,5 +1,24 @@
 # Changelog — CopySync Extension
 
+## [3.2.1] — 2026-11-02 — Empacotamento de produção (CRX + Web Store)
+
+### Added
+
+- **`scripts/extension-id.mjs`** — ID a partir da `.pem`/`manifest.key`, com checagem de paridade (`pnpm keys:id`)
+- **`scripts/keys-generate.mjs`** — par RSA 2048 PKCS#8 em `.keys/`, nunca sobrescreve (`pnpm keys:generate`)
+- **`scripts/pack-crx.mjs`** — CRX3 assinado via `chrome --pack-extension` → `release/` (`pnpm pack:crx`)
+- **`scripts/pack-store.mjs`** — zip de loja sem `key`, `--with-key` para o primeiro upload (`pnpm pack:store`, `pack:store:first`)
+- **`package.json`** — `pnpm release` = type-check → test → pack:store → pack:crx
+- **`scripts/store-assets.mjs`** — ícone 128, tile 440×280 e letreiro 1400×560 da listagem (`pnpm store:assets`, saída em `store-assets/`, fora do git)
+- **`.gitignore`** — `release/`, `*.crx`, `*.pem`
+- Doc: `docs/extensao-publicacao-chrome-web-store.md`
+
+### Fixed
+
+- **`build:store`** — passa `STORE_BUILD=true` ao `check-dist` (a checagem "sem key no build de loja" nunca rodava)
+- **`webpack.js`**, **`check-dist.mjs`**, **`pack-store.mjs`** — build de loja sai em `dist-store/`; `dist/` (carregado sem compactação) nunca fica sem `key`. Causa raiz: extensão carregada de `dist/` durante um build de loja recebeu ID derivado do caminho e o painel não a encontrava. `check-dist` agora falha se `dist/manifest.json` estiver sem `key`
+- **`README.md`** — removidas referências a popup, login por senha e content script (fora desde a 3.0.0)
+
 ## [3.0.0] — 2026-10-27 — Cookie-based auth + channel architecture
 
 ### Breaking Changes

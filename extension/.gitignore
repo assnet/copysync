@@ -5,3 +5,9 @@ dist/
 .keys/*.pem
 *.zip
 .DS_Store
+dist_bkp/
+release/
+*.crx
+*.pem
+store-assets/
+dist-store/
