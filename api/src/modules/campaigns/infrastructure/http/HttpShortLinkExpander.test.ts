@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpShortLinkExpander } from './HttpShortLinkExpander';
+import { HttpShortLinkExpander, isShortLink } from './HttpShortLinkExpander';
 
 function redirect(to: string, status = 302): Response {
   return new Response(null, { status, headers: { location: to } });
@@ -62,6 +62,14 @@ describe('HttpShortLinkExpander', () => {
     expect(out.href).toBe(PRODUCT);
     await expect(new HttpShortLinkExpander().expand(new URL('https://evil.example.com/x'))).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('isShortLink: encurtadores das três lojas, inclusive br.shp.ee; produto não é curto', () => {
+    for (const h of ['https://br.shp.ee/8pq7D1kb', 'https://shope.ee/x', 'https://s.shopee.com.br/x', 'https://meli.la/x', 'https://amzn.to/x', 'https://a.co/d/x', 'https://mercadolivre.com/sec/x', 'https://click1.mercadolivre.com.br/mclics/clicks/external/MLB/count?x=1']) {
+      expect(isShortLink(new URL(h))).toBe(true);
+    }
+    expect(isShortLink(new URL(PRODUCT))).toBe(false);
+    expect(isShortLink(new URL('https://www.mercadolivre.com.br/social/etq?ref=x'))).toBe(false);
   });
 
   it('falha de rede → indisponível', async () => {

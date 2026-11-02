@@ -39,8 +39,15 @@ Dados do produto (título, preços, foto) e foto no store: `ResolveProductDataUs
 não produto: `HttpProductPageReader` usa `parseMercadoLivreSocialPage` (1º `polycard`: `title.text`,
 `price.current_price/previous_price.value`, `pictures[0].id` + `picture_template` → `D_NQ_NP_2X_<id>-F.webp`).
 
-Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos: `shopee.com.br`,
-`shope.ee`, `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`, `amazon.com.br`, `amzn.to`.
+Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos
+(`detectMarketplace.ts`, subdomínio entra por sufixo): `shopee.com.br`, `shope.ee`, `shp.ee` (`br.shp.ee`, encurtador
+atual do app/painel Shopee BR), `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`,
+`amazon.com.br`, `amzn.to`, `a.co` (Compartilhar do app Amazon; só vale se o redirect cair em `amazon.com.br`).
+Encurtadores que vão à rede (`isShortLink`): os mesmos curtos + `mercadolivre.com/sec|social` + `click1.mercadolivre.com.br`
+(rastreio). Pesquisa de variantes 2026-11-02: `collshp.com` (coleção Shopee, vários itens), `invl.io` (rede Involve Asia),
+`lista.`/`ofertas.mercadolivre` (busca/ofertas, ML proíbe afiliar), `amzn.eu` (Europa) ficam fora de propósito.
+Link curto que cai em página sem produto (ex.: `s.shopee.com.br/…` → `shopee.com.br/m/cupom-de-desconto`) é
+"não suportado" de propósito: não há item para afiliar. Host novo entra nos dois lugares + teste.
 
 ## Geração automática de link ML (F4)
 

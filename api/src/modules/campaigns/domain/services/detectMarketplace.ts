@@ -2,9 +2,11 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 
 /** Hosts aceitos por marketplace. Subdomínios entram por sufixo `.<host>`. */
 const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> = {
-  SHOPEE: ['shopee.com.br', 'shope.ee'],
+  // `shp.ee` cobre `br.shp.ee` (encurtador atual do app/painel de afiliados Shopee BR)
+  SHOPEE: ['shopee.com.br', 'shope.ee', 'shp.ee'],
   MERCADO_LIVRE: ['mercadolivre.com.br', 'mercadolivre.com', 'mercadolibre.com', 'meli.la'],
-  AMAZON: ['amazon.com.br', 'amzn.to'],
+  // `a.co` = botão Compartilhar do app/site Amazon; só passa se o redirect cair em `amazon.com.br`
+  AMAZON: ['amazon.com.br', 'amzn.to', 'a.co'],
 };
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;

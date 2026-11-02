@@ -8,10 +8,12 @@ describe('detectMarketplace', () => {
     expect(detectMarketplace(u('https://shopee.com.br/x'))).toBe('SHOPEE');
     expect(detectMarketplace(u('https://s.shopee.com.br/abc'))).toBe('SHOPEE');
     expect(detectMarketplace(u('https://shope.ee/abc'))).toBe('SHOPEE');
+    expect(detectMarketplace(u('https://br.shp.ee/8pq7D1kb'))).toBe('SHOPEE');
     expect(detectMarketplace(u('https://produto.mercadolivre.com.br/MLB-1'))).toBe('MERCADO_LIVRE');
     expect(detectMarketplace(u('https://mercadolibre.com/x'))).toBe('MERCADO_LIVRE');
     expect(detectMarketplace(u('https://www.amazon.com.br/dp/X'))).toBe('AMAZON');
     expect(detectMarketplace(u('https://amzn.to/abc'))).toBe('AMAZON');
+    expect(detectMarketplace(u('https://a.co/d/abc'))).toBe('AMAZON');
   });
 
   it('ignora caixa e ponto final do host', () => {
