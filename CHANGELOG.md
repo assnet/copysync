@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.49.1 — monitoramento: links `meli.la` e `br.shp.ee` caíam em "Loja não suportada"
+
+- **`campaigns/domain/services/parseProductPage.ts`** — vitrine social do ML (`meli.la` → `/social/<etq>?ref=…`): card de anúncio fora de catálogo vem com `product_id` vazio e o id em `metadata.id`; o parser só lia `product_id` e devolvia `productRef: null` (226 capturas ignoradas em 14 dias em produção). Agora cai para `metadata.id` e expõe `productRefCatalog` (`true` = `/p/MLB…`, `false` = `produto…/MLB-…`).
+- **`campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase.ts`** — `mlRefFromPage` monta a URL do `createAffiliateLinks` conforme `productRefCatalog`, em vez de assumir catálogo sempre.
+- **`campaigns/domain/services/detectMarketplace.ts`**, **`infrastructure/http/HttpShortLinkExpander.ts`** — `shp.ee`/`br.shp.ee` (encurtador atual da Shopee BR) e `a.co` (Compartilhar da Amazon) na allowlist e na lista de curtos; `click1.mercadolivre.com.br` (rastreio) na lista de curtos. Antes o link era recusado antes de qualquer rede.
+- Testes: `parseProductPage`, `detectMarketplace`, `HttpShortLinkExpander.isShortLink`, `BuildTenantAffiliateLinkUseCase` (item fora de catálogo). Docs: `monitoramento-grupos.md`, `gerador-de-ofertas.md`.
+
 ### Added — app 0.58.0 — página pública de Suporte
 
 - **`features/support/strings.ts`**, **`pages/SupportPage.tsx`** (novos) — rota pública `/suporte` (sem login): canais de atendimento, FAQ da extensão (não encontrada, ML "Não logado", desconectar, dados lidos), conta/plano/sessões, LGPD. É a "URL do suporte" declarada na Chrome Web Store.
