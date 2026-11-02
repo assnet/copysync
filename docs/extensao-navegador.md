@@ -138,7 +138,7 @@ manual (popup), channel (`ml.syncSession`), startup.
 - **Cookie-based auth** → HttpOnly, Secure, SameSite=Strict
 - **Channel pipeline** → envelope tipado, guard, anti-replay, sanitize
 - **`key` no manifest** → ID estável. Chave privada em `extension/.keys/extension-private.pem`
-  (ignorada pelo git)
+  (ignorada pelo git). Geração/conferência: `pnpm keys:generate` / `pnpm keys:id`
 - **Terser** remove `console.*` e `debugger` em produção
 - **Guard scripts**:
   - `check-dist.mjs` — no content_scripts, no scripting/tabs, externally_connectable, no .ar/.mx,
@@ -167,11 +167,12 @@ Nunca editar `version` em `public/manifest.json` à mão. SemVer igual ao resto 
 
 ## Publicação na Chrome Web Store
 
-1. `pnpm type-check && pnpm build` (o `check-dist` roda no fim)
-2. Zipar o **conteúdo** de `dist/` (`cd dist && zip -r ../extension-<versão>.zip .`)
-3. Enviar na listagem nova do CopySync (não reaproveitar listagem do legado)
-4. Para build de loja: `pnpm build:store` (strip `key` do manifest)
-5. Bump de `extension/package.json` + entrada no `CHANGELOG.md` antes de cada envio
+Passo a passo completo (chaves, ID, `.crx`, zip de loja, textos da listagem, práticas de
+privacidade, pendências): [`extensao-publicacao-chrome-web-store.md`](extensao-publicacao-chrome-web-store.md).
+
+Resumo: bump em `extension/package.json` + CHANGELOG → `pnpm release` (type-check, test,
+`pack:store`, `pack:crx`) → `release/*-store.zip` na loja; `release/*.crx` só para teste/política.
+`pnpm keys:id` imprime o ID (`nokcbnoicaebghagbhlfcbepheohdgnd`) e falha se `manifest.key` ≠ `.pem`.
 
 ## Pendências
 
@@ -181,6 +182,6 @@ Nunca editar `version` em `public/manifest.json` à mão. SemVer igual ao resto 
 | ~~F4~~ | ~~MercadoLivreAffiliateClient (bootstrap + createLink)~~ | ~~`api/src/modules/campaigns/infrastructure/http/`~~ | ✅ `25578e7` |
 | 1 | Smoke test com extensão carregada (`pnpm dev` → `dist/` em `chrome://extensions`): canal com painel, cookie sync, heartbeat, geração de link ML | `extension/README.md` | Fechamento da feature |
 | 2 | F6 — Worker Outbox → Hub (lifecycle events, HMAC M2M, retention) | `api/src/modules/extension/infrastructure/worker/` | Hub integration |
-| 3 | Publicação na Chrome Web Store: nova listagem (F8) | seção *Publicação* | Distribuição |
+| 3 | Publicação na Chrome Web Store: nova listagem (F8). Build/zip/CRX prontos (3.2.1); faltam política de privacidade pública, capturas e conta — ver pendências em `extensao-publicacao-chrome-web-store.md` §9 | seção *Publicação* | Distribuição |
 | 4 | Expiração da sessão do marketplace: API sinaliza via heartbeat `resyncRequested` | API + `syncSession.ts` | Confiabilidade |
 | 5 | Outros marketplaces (Shopee, Amazon) — só ML exige sessão por extensão | roadmap item 3 | — |

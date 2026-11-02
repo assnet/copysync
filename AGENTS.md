@@ -113,7 +113,7 @@ https://github.com/nsiregar/shpee
 - **Scripts utilitários** em `scripts/`
   - **Python**
 
-- **Extensão Chrome** em `extension/` — webpack + TypeScript; doc em [`docs/extensao-navegador.md`](docs/extensao-navegador.md)
+- **Extensão Chrome** em `extension/` — webpack + TypeScript; doc em [`docs/extensao-navegador.md`](docs/extensao-navegador.md); build de produção, chaves do CRX e publicação na Web Store em [`docs/extensao-publicacao-chrome-web-store.md`](docs/extensao-publicacao-chrome-web-store.md). Chave privada só em `extension/.keys/` (fora do git); trocar a chave troca o ID
 
 ### MCP (Cursor — desenvolvimento local)
 

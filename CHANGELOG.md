@@ -9,10 +9,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — extension 3.2.1 — recursos gráficos da loja
+
+- **`scripts/store-assets.mjs`** (`pnpm store:assets`) — gera em `store-assets/` o ícone 128 (arte 96 px + margem), o bloco promocional 440×280 e o letreiro 1400×560 a partir de `app/public/assets/brand/logo-512.png`, via `sharp` da API. Pasta ignorada pelo git.
+- **`docs/extensao-publicacao-chrome-web-store.md`** — textos da aba Privacidade prontos para colar (≤1.000 caracteres por campo), categoria correta, URLs de política e suporte, pendências atualizadas, nota sobre suporte × hub central.
+
 ### Added — app 0.57.0 — Política de Privacidade pública
 
 - **`features/privacy-policy/strings.ts`**, **`pages/PrivacyPolicyPage.tsx`** (app 0.57.0, novos) — Política de Privacidade como rota pública `/politicas-de-privacidade` (sem login, light/dark, marca só via `APP_NAME`): coleta (cookies de sessão do Mercado Livre, cookie de login, logs), permissões `cookies`/`storage`/`alarms`, uso, compartilhamento (infra, marketplaces, mensageria, IA, billing), tratamento/segurança, direitos LGPD e contato. É a URL declarada na Chrome Web Store.
 - **`pages/LoginPage.tsx`** — link discreto "Política de Privacidade" no rodapé, abre em nova aba (`rel=noopener noreferrer`).
+### Added — extension 3.2.1 — empacotamento de produção (CRX + Chrome Web Store)
+
+- **`scripts/extension-id.mjs`** (novo) — calcula o ID da extensão a partir da `.pem` (ou do `key` do manifest) e falha se os dois divergem. `pnpm keys:id`.
+- **`scripts/keys-generate.mjs`** (novo) — gera par RSA 2048 PKCS#8 em `.keys/` sem sobrescrever; imprime `key` e ID. `pnpm keys:generate`.
+- **`scripts/pack-crx.mjs`** (novo) — `chrome --pack-extension` assinado com a `.pem` → `release/<name>-<versão>.crx` (CRX3). Recusa `dist/` de loja e `key` divergente. `pnpm pack:crx`.
+- **`scripts/pack-store.mjs`** (novo) — zip do conteúdo de `dist/` sem `key` → `release/*-store.zip`; `--with-key` só no primeiro upload. `pnpm pack:store` / `pack:store:first`; `pnpm release` encadeia tudo.
+- **`docs/extensao-publicacao-chrome-web-store.md`** (novo) — chaves, ID, build, CRX, zip, passo a passo do painel do desenvolvedor, textos da listagem (pt-BR/en), práticas de privacidade, política de privacidade (URL oficial `https://app.copysync.app/politicas-de-privacidade`), pendências.
+
+### Fixed — extension 3.2.1
+
+- **`package.json`** — `build:store` não exportava `STORE_BUILD=true`, então o `check-dist` nunca validava a remoção do `key` no build de loja.
+- **`webpack.js`**, **`scripts/check-dist.mjs`**, **`scripts/pack-store.mjs`** — build de loja em `dist-store/`; `dist/` nunca fica sem `key`. Extensão carregada sem compactação de `dist/` durante um build de loja ganhava ID derivado do caminho (`hhbecpm…`) e o painel não a detectava. `check-dist` falha se `dist/manifest.json` estiver sem `key`.
+- **`README.md`** (extensão) — descrevia popup, login por senha e content script removidos na 3.0.0; alinhado à arquitetura atual e aos comandos de empacotamento.
+
 ### Changed — monitoring (app 0.56.1) — foto da sessão no chip "Envia por"
 
 - **`features/monitoring/components/SessionAvatar.tsx`** — foto da sessão (ícone sem foto, blur `monitoring.sessionAvatar`) extraída do seletor para uso comum.
