@@ -18,6 +18,7 @@ import { IngestHistorySyncUseCase } from '../../../chat/application/use-cases/In
 import { prisma } from '../../../../shared/database/prisma.client';
 import { setActiveEngine } from '../../../../shared/engine/activeEngine';
 import { CreateSessionUseCase } from '../../application/use-cases/CreateSessionUseCase';
+import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { ListSessionsUseCase } from '../../application/use-cases/ListSessionsUseCase';
 import { GetSessionByIdUseCase } from '../../application/use-cases/GetSessionByIdUseCase';
 import { GetSessionStatusUseCase } from '../../application/use-cases/GetSessionStatusUseCase';
@@ -59,7 +60,7 @@ const engine = MessagingEngineFactory.create(
 setActiveEngine(engine);
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
-const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo);
+const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo, new PrismaEntitlementReader(prisma));
 const listSessionsUseCase = new ListSessionsUseCase(sessionRepo, engine);
 const getSessionByIdUseCase = new GetSessionByIdUseCase(sessionRepo);
 const getSessionStatusUseCase = new GetSessionStatusUseCase(sessionRepo);

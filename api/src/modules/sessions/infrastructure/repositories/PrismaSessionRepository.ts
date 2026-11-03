@@ -1,9 +1,11 @@
 import { prisma } from '../../../../shared/database/prisma.client';
 import { PrismaSessionMapper } from '../mappers/PrismaSessionMapper';
 import { SessionNotFoundError } from '../../../../shared/errors/internal/SessionErrors';
+import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import type {
   ISessionRepository,
   SessionCreateData,
+  SessionLimit,
   SessionStatusUpdate,
 } from '../../domain/contracts/ISessionRepository';
 import type { Session } from '../../domain/entities/Session';
@@ -18,6 +20,25 @@ export class PrismaSessionRepository implements ISessionRepository {
         declaredPhone: data.declaredPhone ?? null,
         status: 'PENDING',
       },
+    });
+    return PrismaSessionMapper.toDomain(raw);
+  }
+
+  async createWithinLimit(data: SessionCreateData, limit: SessionLimit): Promise<Session> {
+    const raw = await prisma.$transaction(async (tx) => {
+      // Chave própria: não disputa o lock da cota de ofertas do mesmo tenant
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'session-limit:' + data.tenantId}::text))`;
+      const used = await tx.session.count({ where: { tenantId: data.tenantId, deletedAt: null } });
+      if (used >= limit.limit) throw new PlanLimitReachedError(limit.key, limit.limit);
+      return tx.session.create({
+        data: {
+          tenantId: data.tenantId,
+          name: data.name,
+          engine: data.engine,
+          declaredPhone: data.declaredPhone ?? null,
+          status: 'PENDING',
+        },
+      });
     });
     return PrismaSessionMapper.toDomain(raw);
   }

@@ -15,8 +15,19 @@ export interface SessionStatusUpdate {
   lastDisconnectedAt?: Date;
 }
 
+/** Limite do plano para sessões não excluídas do tenant. */
+export interface SessionLimit {
+  key: string;
+  limit: number;
+}
+
 export interface ISessionRepository {
   create(data: SessionCreateData): Promise<Session>;
+  /**
+   * Cria só se o tenant ainda está abaixo do limite: contagem + criação serializadas por tenant
+   * (lock transacional). Limite atingido → PlanLimitReachedError(key, limit).
+   */
+  createWithinLimit(data: SessionCreateData, limit: SessionLimit): Promise<Session>;
   findById(id: string, tenantId: string): Promise<Session | null>;
   findAllByTenant(tenantId: string): Promise<Session[]>;
   /**
