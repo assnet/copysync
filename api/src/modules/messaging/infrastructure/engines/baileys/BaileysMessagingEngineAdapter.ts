@@ -61,6 +61,7 @@ import { isOwnOutboundEcho } from './isOwnOutboundEcho';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { buildBaileysMediaContent } from './buildBaileysMediaContent';
+import { buildBaileysLinkPreview } from './buildBaileysLinkPreview';
 import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { MediaTooLargeError } from '../../../../../shared/errors/internal/MediaErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
@@ -272,17 +273,43 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   }
 
   async sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult> {
-    const entry = this.requireConnectedEntry(input.sessionId);
+    const { sessionId } = input;
+    const entry = this.requireConnectedEntry(sessionId);
     try {
       const jid = this.normalizeJid(input.to);
-      const quoted = await this.buildQuoted(entry.socket, entry.tenantId, input.quotedMessage, jid, input.sessionId);
+      const quoted = await this.buildQuoted(entry.socket, entry.tenantId, input.quotedMessage, jid, sessionId);
       const mentions = input.mentions?.length ? input.mentions.map((phone) => this.normalizeJid(phone)) : undefined;
+
+      // Sem prévia: `null` explícito impede a lib de buscar a página (`undefined` chamaria getUrlInfo).
+      if (!input.linkPreview) {
+        const result = await entry.socket.sendMessage(
+          jid,
+          { text: input.body, linkPreview: null, ...(mentions ? { mentions } : {}) },
+          quoted ? { quoted } : undefined,
+        );
+        return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
+      }
+
+      // Com prévia: id gerado aqui (valida socket.user) e eco marcado ANTES do envio, como a mídia:
+      // o eco sai como `append` e seria gravado de novo (e a miniatura baixada de volta).
+      const messageId = this.createOutboundMessageId(sessionId);
+      outboundEchoRegistries().media.register(sessionId, messageId);
+      const linkPreview = await buildBaileysLinkPreview(input.linkPreview, {
+        upload: entry.socket.waUploadToServer,
+        uploadTimeoutMs: env.MEDIA_UPLOAD_IDLE_TIMEOUT_MS,
+        // Sem URL nem título no log: dado do produto/cliente.
+        onUploadFailed: (err) =>
+          baileysLogger.warn({ sessionId, messageId, err }, 'Link preview image upload failed — sent with small thumbnail'),
+      });
       const result = await entry.socket.sendMessage(
         jid,
-        { text: input.body, ...(mentions ? { mentions } : {}) },
-        quoted ? { quoted } : undefined,
+        { text: input.body, linkPreview, ...(mentions ? { mentions } : {}) },
+        { messageId, ...(quoted ? { quoted } : {}) },
       );
-      return { messageId: result?.key?.id ?? crypto.randomUUID(), sentAt: new Date() };
+      const sentId = result?.key?.id ?? messageId;
+      // Pedido de reenvio (getMessage) de aparelho de grupo: sem o conteúdo o cartão não chega.
+      if (result?.message) sentMediaCache().set(sessionId, sentId, result.message);
+      return { messageId: sentId, sentAt: new Date() };
     } catch (err) { throw translateEngineError(err); }
   }
 
@@ -697,8 +724,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       // mesmo tempo (QR_TTL_MS em app/src/features/sessions/utils.ts): mudar aqui = mudar lá.
       qrTimeout: QR_TIMEOUT_MS,
       syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
-      // Responde o pedido de reenvio de criptografia da nossa mídia (aparelho de grupo que não
-      // decifrou). Texto, reação e o resto seguem undefined: não são reenviados.
+      // Responde o pedido de reenvio de criptografia da nossa mídia e do texto com prévia de link
+      // (aparelho de grupo que não decifrou). Texto puro, reação e o resto seguem undefined.
       getMessage: async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> =>
         key.id ? sentMediaCache().get(sessionId, key.id) : undefined,
     });
