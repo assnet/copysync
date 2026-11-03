@@ -6,6 +6,7 @@ import type { IChatMessageRepository } from '../../domain/contracts/IChatMessage
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
+import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFileStore';
 
 const TENANT = 'tenant-1';
 const CONVERSA = 'conv-1';
@@ -25,6 +26,7 @@ function makeDeps(overrides?: {
   conversation?: Record<string, unknown>;
   quoted?: Record<string, unknown> | null;
   engine?: IMessagingEngine | null;
+  files?: IMediaFileStore | null;
 }) {
   const conversation = {
     id: CONVERSA, tenantId: TENANT, sessionId: 'sess-1',
@@ -41,6 +43,7 @@ function makeDeps(overrides?: {
       externalMessageId: data.externalMessageId ?? null, status: 'SENT', isDeleted: false,
       quotedMessageId: data.quotedMessageId ?? null, sentAt: NOW,
       fromParticipant: null, fromParticipantName: null, createdAt: NOW,
+      linkPreview: data.linkPreview ?? null,
     })),
   } as unknown as IChatMessageRepository;
   const conversationRepo = {
@@ -55,7 +58,9 @@ function makeDeps(overrides?: {
     ? ({ sendTextMessage: vi.fn().mockResolvedValue({ messageId: 'EXT-NOVA', sentAt: NOW }) } as unknown as IMessagingEngine)
     : overrides.engine;
 
-  const useCase = new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, engine);
+  const useCase = overrides?.files === undefined
+    ? new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, engine)
+    : new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, engine, overrides.files);
   return { useCase, messageRepo, engine };
 }
 
@@ -183,5 +188,58 @@ describe('SendMessageUseCase — envio (comportamento mantido)', () => {
     await enviar(d, null);
 
     expect(created(d).externalMessageId).toBeNull();
+  });
+});
+
+describe('SendMessageUseCase — prévia de link', () => {
+  const preview = {
+    url: 'https://amzn.to/x', title: 'Fone X', description: null,
+    thumbnailJpeg: Buffer.from('thumb'), imageJpeg: Buffer.from('big'),
+  };
+  const enviarComPrevia = (d: ReturnType<typeof makeDeps>) =>
+    d.useCase.execute({ conversationId: CONVERSA, tenantId: TENANT, content: 'oferta https://amzn.to/x', linkPreview: preview });
+  const store = (saveBuffer = vi.fn(async (_b: Buffer, name: string) => `https://cdn/media/${name}`)) =>
+    ({ files: { saveBuffer } as unknown as IMediaFileStore, saveBuffer });
+
+  it('com store: envia a prévia, grava a imagem com o id externo e cria com os campos', async () => {
+    const { files, saveBuffer } = store();
+    const d = makeDeps({ files });
+    const dto = await enviarComPrevia(d);
+
+    expect(engineInput(d).linkPreview).toBe(preview);
+    expect(saveBuffer).toHaveBeenCalledWith(preview.imageJpeg, 'sess-1_EXT-NOVA_lp.jpg');
+    const lp = { url: 'https://amzn.to/x', title: 'Fone X', description: null, thumbnailUrl: 'https://cdn/media/sess-1_EXT-NOVA_lp.jpg' };
+    expect(created(d).linkPreview).toEqual(lp);
+    expect(dto.linkPreview).toEqual(lp);
+  });
+
+  it('falha ao gravar a imagem: envio segue, prévia sem miniatura', async () => {
+    const { files } = store(vi.fn().mockRejectedValue(new Error('disk')));
+    const d = makeDeps({ files });
+    await expect(enviarComPrevia(d)).resolves.toMatchObject({ externalMessageId: 'EXT-NOVA' });
+    expect(created(d).linkPreview).toMatchObject({ url: 'https://amzn.to/x', thumbnailUrl: null });
+  });
+
+  it('sem store: prévia gravada sem miniatura', async () => {
+    const d = makeDeps();
+    await enviarComPrevia(d);
+    expect(created(d).linkPreview).toMatchObject({ title: 'Fone X', thumbnailUrl: null });
+  });
+
+  it('sem envio real (sem engine): grava sem prévia', async () => {
+    const { files, saveBuffer } = store();
+    const d = makeDeps({ engine: null, files });
+    await enviarComPrevia(d);
+    expect(saveBuffer).not.toHaveBeenCalled();
+    expect(created(d)).not.toHaveProperty('linkPreview');
+  });
+
+  it('sem linkPreview: engine e create sem campo de prévia, store intocado', async () => {
+    const { files, saveBuffer } = store();
+    const d = makeDeps({ files });
+    await enviar(d, null);
+    expect(engineInput(d)).not.toHaveProperty('linkPreview');
+    expect(created(d)).not.toHaveProperty('linkPreview');
+    expect(saveBuffer).not.toHaveBeenCalled();
   });
 });

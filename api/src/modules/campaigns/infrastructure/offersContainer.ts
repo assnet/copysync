@@ -82,7 +82,10 @@ const mediaStore   = lazy(
 const previewImage = lazy(
   () => new OfferPreviewImage({ files: () => mediaContainer.mediaFileStore, images: () => mediaContainer.imageTranscoder }),
 );
-const sender       = lazy(() => new ChatOfferMessageSender());
+const sender       = lazy(() => new ChatOfferMessageSender(undefined, {
+  previewImage: previewImage,
+  files:        () => mediaContainer.mediaFileStore,
+}));
 const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator()));
 
 const generate = lazy(() => new GenerateOfferUseCase({

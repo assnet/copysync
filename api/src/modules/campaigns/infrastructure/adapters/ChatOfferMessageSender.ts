@@ -15,6 +15,10 @@ import { logger } from '../../../../shared/logger/logger';
 import { resolveConversationTarget } from '../../../chat/application/use-cases/resolveConversationTarget';
 import { OFFER_TYPING_SECONDS_MAX } from '../../domain/offerTyping';
 import type { ChatConversation } from '../../../chat/domain/entities/ChatConversation';
+import type { IOfferPreviewImage } from '../../domain/contracts/IOfferPreviewImage';
+import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFileStore';
+import type { OutboundLinkPreview } from '../../../messaging/domain/contracts/IMessagingEngine';
+import { pickPreviewUrl } from '../../domain/services/pickPreviewUrl';
 
 const log = logger.child({ module: 'ChatOfferMessageSender' });
 
@@ -23,20 +27,29 @@ export const PRESENCE_REFRESH_MS = 8_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Dependências da prévia de link. Ausentes: LINK_PREVIEW sai como texto puro / sem miniatura no chat. */
+export interface ChatOfferMessageSenderDeps {
+  previewImage?: () => IOfferPreviewImage;
+  files?: () => IMediaFileStore;
+}
+
 /**
- * Envia a oferta pelo chat. Com foto: mídia armazenada (PENDING + fila, como o painel).
- * Sem foto: o mesmo `SendMessageUseCase` da rota do painel. Use cases montados por envio
+ * Envia a oferta pelo chat. Com foto em MEDIA: mídia armazenada (PENDING + fila, como o painel).
+ * Sem foto ou em LINK_PREVIEW: o mesmo `SendMessageUseCase` da rota do painel (com `linkPreview`
+ * quando há link, título e imagem; senão texto puro). Use cases montados por envio
  * para pegar a engine ativa na hora; repositórios e fila são os singletons do chat.
  *
  * Pré-checa conversa/sessão/engine: o `SendMessageUseCase` grava sem enviar quando falta
  * engine ou `sessionId` — aqui isso vira erro, nunca SENT falso.
  */
 export class ChatOfferMessageSender implements IOfferMessageSender {
-  constructor(private readonly sleep: (ms: number) => Promise<void> = defaultSleep) {}
+  constructor(
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
+    private readonly deps: ChatOfferMessageSenderDeps = {},
+  ) {}
 
   async send(input: SendOfferMessageInput): Promise<{ chatMessageId: string }> {
-    // imageMode/title/affiliateUrl: ramo LINK_PREVIEW entra na T7 (docs/mensagens-previa-de-link.md)
-    const { tenantId, conversationId, text, imageUrl, mentionAll, simulateTyping, typingSeconds } = input;
+    const { tenantId, conversationId, text, imageUrl, imageMode, mentionAll, simulateTyping, typingSeconds } = input;
 
     const conv = await chatMediaContainer.conversationRepo.findById(conversationId, tenantId);
     if (!conv || !conv.sessionId) throw new OfferDestinationUnavailableError(conversationId);
@@ -51,7 +64,10 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
 
     if (simulateTyping) await this.showTyping(engine, conv, tenantId, typingSeconds);
 
-    if (imageUrl) {
+    // LINK_PREVIEW: texto com cartão de prévia (docs/mensagens-previa-de-link.md). Faltou peça = texto puro.
+    const linkPreview = imageMode === 'LINK_PREVIEW' ? await this.buildLinkPreview(input) : null;
+
+    if (imageUrl && imageMode !== 'LINK_PREVIEW') {
       // Menção só no job da fila: reenvio manual/recuperação sai sem marcar (ver OutboundMediaJob)
       const { message } = await chatMediaContainer.sendStoredMediaMessage().execute({
         tenantId,
@@ -72,11 +88,25 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
       chatMediaContainer.conversationRepo,
       chatMediaContainer.contactRepo,
       engine,
-    ).execute({ tenantId, conversationId, content: text, mentions });
+      this.deps.files?.() ?? null,
+    ).execute({ tenantId, conversationId, content: text, mentions, ...(linkPreview ? { linkPreview } : {}) });
     if (!message.externalMessageId || message.status === ChatMessageStatus.FAILED) {
       throw new MessageSendFailedError('no external message id');
     }
     return { chatMessageId: message.id };
+  }
+
+  /** Link, título e imagens da prévia; qualquer um ausente → null (oferta sai como texto puro). */
+  private async buildLinkPreview(input: SendOfferMessageInput): Promise<OutboundLinkPreview | null> {
+    const url = pickPreviewUrl(input.text, input.affiliateUrl);
+    const title = input.title?.trim() || null;
+    const img = url && title && input.imageUrl ? await this.deps.previewImage?.().build(input.imageUrl) ?? null : null;
+    if (!url || !title || !img) {
+      const reason = !url ? 'no link' : !title ? 'no title' : 'no image';
+      log.info({ conversationId: input.conversationId, reason }, 'offer link preview skipped, sending plain text');
+      return null;
+    }
+    return { url, title, description: null, thumbnailJpeg: img.thumbnailJpeg, imageJpeg: img.imageJpeg };
   }
 
   /**
