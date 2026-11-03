@@ -2,8 +2,10 @@ import type { IUploadSessionStore } from '../domain/contracts/IUploadSessionStor
 import type { IMediaProcessor } from '../domain/contracts/IMediaProcessor';
 import type { IMediaFileStore } from '../domain/contracts/IMediaFileStore';
 import type { MediaCapabilities } from '../domain/contracts/MediaCapabilities';
+import type { IImageTranscoder } from '../domain/contracts/IImageTranscoder';
 import { DiskUploadSessionStore } from './uploads/DiskUploadSessionStore';
 import { FfmpegMediaProcessor } from './ffmpeg/FfmpegMediaProcessor';
+import { SharpImageTranscoder } from './sharp/SharpImageTranscoder';
 import { LocalMediaFileStore } from './storage/LocalMediaFileStore';
 import { S3MediaFileStore } from './storage/S3MediaFileStore';
 import { env } from '../../../shared/config/env';
@@ -13,6 +15,7 @@ import { mediaFilePath } from '../../../shared/storage/MediaStorage';
 let uploadStore: DiskUploadSessionStore | null = null;
 let mediaProcessor: FfmpegMediaProcessor | null = null;
 let mediaFileStore: IMediaFileStore | null = null;
+let imageTranscoder: IImageTranscoder | null = null;
 let initialization: Promise<void> | null = null;
 
 function getUploadStore(): DiskUploadSessionStore {
@@ -55,6 +58,11 @@ export const mediaContainer = {
   },
   get mediaFileStore(): IMediaFileStore {
     return getMediaFileStore();
+  },
+  /** WebP → JPEG antes do envio como foto (ver `inlineImageFormat`). */
+  get imageTranscoder(): IImageTranscoder {
+    imageTranscoder ??= new SharpImageTranscoder();
+    return imageTranscoder;
   },
   capabilities(): MediaCapabilities {
     return getMediaProcessor().capabilities();
