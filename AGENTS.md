@@ -23,12 +23,13 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Billing, checkout e e-mail via API central (hub, webhook HMAC, entitlements): [`docs/arquitetura-central-billing.md`](docs/arquitetura-central-billing.md). Sem cálculo de preço nem gateway no CopySync: só receiver de eventos, status do tenant e entitlements.
 - Gerador de ofertas (marketplaces, anti-SSRF, worker de envio e flag `OFFER_DISPATCH_WORKER_ENABLED`): [`docs/gerador-de-ofertas.md`](docs/gerador-de-ofertas.md). Worker só liga na Render.
 - Rodízio de links (subdomínio público por Host, estratégias, limites por plano, job de membros e flag `LINK_ROTATION_MEMBER_SYNC_ENABLED`): [`docs/rodizio-de-links.md`](docs/rodizio-de-links.md). Hook público nunca intercepta host da API/painel.
+- Página de Ofertas (vitrine pública por subdomínio, `storefront_enabled` só Profissional/Business, namespace único com o rodízio via `PublicSlugClaim`/`IPublicSlugRegistry`, nomes especiais, imagens sharp, limites 200/60): [`docs/pagina-de-ofertas.md`](docs/pagina-de-ofertas.md). Sem rota pública nova nem JS na página; extração só via `ResolveAffiliateProductUseCase`; imagem só do storage.
 - Story de Oferta (arte 1080×1920 para Instagram, Business, `offer_story_enabled`, renderer satori/resvg/sharp, fontes em `api/assets`): [`docs/story-de-oferta.md`](docs/story-de-oferta.md). Extração só via `ResolveAffiliateProductUseCase`; arte não é salva.
-- Botões/listas/enquetes em mensagem enviada (estado do Baileys, nó `<biz>`, fallback texto/enquete, fases): [`docs/mensagens-interativas.md`](docs/mensagens-interativas.md). `relayMessage`/`<biz>` só em `engines/baileys/interactive/`; nada de fork.
 - Provedores de IA (plataforma × chave do tenant, nunca os dois desligados): [`docs/ia-provedores.md`](docs/ia-provedores.md). Consumir só via `IAiTextGenerator`.
 - Conexão de sessão (assistente, `declaredPhone`, pareamento por código): [`docs/sessoes-conexao.md`](docs/sessoes-conexao.md). Termo de produto: sessão, nunca instância.
 - Plano mestre de lançamento (marcos, trilhas, rede de segurança do PulsoSocial): [`docs/plano-lancamento-hub-copysync.md`](docs/plano-lancamento-hub-copysync.md).
 - Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá.
+- Botões/listas/enquetes em mensagem enviada (estado do Baileys, nó `<biz>`, fallback texto/enquete, fases): [`docs/mensagens-interativas.md`](docs/mensagens-interativas.md). `relayMessage`/`<biz>` só em `engines/baileys/interactive/`; nada de fork.
 - Vitrine de planos no painel (`/plans`, catálogo de vitrine, o que não fazer): [`docs/planos.md`](docs/planos.md). Preço é texto de marketing em `features/plans/catalog.ts`; nunca no banco.
 
 ###
@@ -46,6 +47,9 @@ https://gist.github.com/JulioBorges/8291d6cf8a32ace8099ce66d9ff26bd1
 https://github.com/gabrieldamasse-01/bot-de-automacao
 https://botdoafiliado.com/blog/api-de-afiliados-do-mercado-livre/
 https://github.com/Raskinkamar/geralink-afiliado-mercadolivre
+
+Cupons: https://kit.otechlead.cloud/modulo-cupons
+
 Obs: para entender como a copysync deve buscar no ML
 
 ## MODELO INSPIRACAO SHOPEE PARA BACKEND
