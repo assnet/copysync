@@ -3,6 +3,7 @@ import { EDITABLE_OFFER_STATUSES } from '../../domain/contracts/IOfferRepository
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import { renderOfferText } from '../../domain/services/renderOfferText';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
+import { OFFER_IMAGE_MODES, type OfferImageMode } from '../../domain/enums/OfferImageMode';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import {
@@ -31,6 +32,7 @@ export interface UpdateOfferInput {
   coupon?: string | null;
   audience?: OfferAudience;
   mentionAll?: boolean;
+  imageMode?: OfferImageMode;
   simulateTyping?: boolean;
   typingSeconds?: number;
   /** Início agendado (ISO); null remove o agendamento. */
@@ -66,6 +68,7 @@ export class UpdateOfferUseCase {
     if (input.coupon !== undefined) patch.coupon = normalizeCoupon(input.coupon);
     if (input.audience !== undefined) patch.audience = input.audience;
     if (input.mentionAll !== undefined) patch.mentionAll = input.mentionAll;
+    if (input.imageMode !== undefined) patch.imageMode = input.imageMode;
     if (input.simulateTyping !== undefined) patch.simulateTyping = input.simulateTyping;
     if (input.typingSeconds !== undefined) patch.typingSeconds = input.typingSeconds;
     const scheduledAt = parseOfferSchedule(input.scheduledAt, (this.deps.now ?? (() => new Date()))());
@@ -147,6 +150,9 @@ function changesTextData(
 function validate(input: UpdateOfferInput): void {
   if (input.audience !== undefined && !OFFER_AUDIENCES.includes(input.audience)) {
     throw new OfferInvalidInputError('Unknown audience', 'audience');
+  }
+  if (input.imageMode !== undefined && !OFFER_IMAGE_MODES.includes(input.imageMode)) {
+    throw new OfferInvalidInputError('Unknown image mode', 'imageMode');
   }
   if (input.coupon !== undefined) normalizeCoupon(input.coupon);
   if (input.typingSeconds !== undefined && !isValidTypingSeconds(input.typingSeconds)) {

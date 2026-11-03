@@ -3,6 +3,7 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 import type { Offer } from '../entities/Offer';
 import type { OfferStatus } from '../enums/OfferStatus';
 import type { OfferAudience } from '../enums/OfferAudience';
+import type { OfferImageMode } from '../enums/OfferImageMode';
 
 export interface CreateOfferInput {
   tenantId: string;
@@ -28,6 +29,8 @@ export interface CreateOfferInput {
   /** Janela de operação que vale no envio (monitoramento). */
   monitorConfigId?: string | null;
   mentionAll?: boolean;
+  /** Padrão MEDIA. */
+  imageMode?: OfferImageMode;
   simulateTyping?: boolean;
   typingSeconds?: number;
 }
@@ -41,7 +44,7 @@ export interface DailyQuota {
 
 /** Campos editáveis pelo operador antes do envio. */
 export type OfferPatch = Partial<
-  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'coupon' | 'audience' | 'mentionAll' | 'simulateTyping' | 'typingSeconds' | 'scheduledAt'>
+  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'coupon' | 'audience' | 'mentionAll' | 'imageMode' | 'simulateTyping' | 'typingSeconds' | 'scheduledAt'>
 >;
 
 export type UpdateOfferResult =

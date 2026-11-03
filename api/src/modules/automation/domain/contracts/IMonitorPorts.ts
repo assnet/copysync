@@ -1,5 +1,6 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferAudience } from '../../../campaigns/domain/enums/OfferAudience';
+import type { OfferImageMode } from '../../../campaigns/domain/enums/OfferImageMode';
 
 /** Link de afiliado DO TENANT para um link de produto de terceiro (adapter: módulo campaigns). */
 export type TenantLinkResult =
@@ -27,6 +28,8 @@ export interface QueueOfferInput {
   imageUrl: string | null;
   coupon: string | null;
   mentionAll: boolean;
+  /** Foto como mídia ou prévia do link (copiado da configuração). */
+  imageMode: OfferImageMode;
   simulateTyping: boolean;
   typingSeconds: number;
   startAt: Date;

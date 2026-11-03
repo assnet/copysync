@@ -35,6 +35,7 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
   constructor(private readonly sleep: (ms: number) => Promise<void> = defaultSleep) {}
 
   async send(input: SendOfferMessageInput): Promise<{ chatMessageId: string }> {
+    // imageMode/title/affiliateUrl: ramo LINK_PREVIEW entra na T7 (docs/mensagens-previa-de-link.md)
     const { tenantId, conversationId, text, imageUrl, mentionAll, simulateTyping, typingSeconds } = input;
 
     const conv = await chatMediaContainer.conversationRepo.findById(conversationId, tenantId);

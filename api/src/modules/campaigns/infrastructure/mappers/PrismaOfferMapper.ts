@@ -21,6 +21,7 @@ export class PrismaOfferMapper {
       coupon: raw.coupon,
       audience: raw.audience,
       mentionAll: raw.mentionAll,
+      imageMode: raw.imageMode,
       simulateTyping: raw.simulateTyping,
       typingSeconds: raw.typingSeconds,
       scheduledAt: raw.scheduledAt,

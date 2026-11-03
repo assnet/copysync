@@ -168,16 +168,19 @@ describe('/:id', () => {
     const update = vi.spyOn(UpdateOfferUseCase.prototype, 'execute').mockResolvedValue(dto());
     const ok = await app.inject({
       method: 'PATCH', url: `${PREFIX}/offer-1`,
-      payload: { priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID, coupon: 'X', audience: 'MEN', mentionAll: true },
+      payload: { priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID, coupon: 'X', audience: 'MEN', mentionAll: true, imageMode: 'LINK_PREVIEW' },
     });
     const neg = await app.inject({ method: 'PATCH', url: `${PREFIX}/offer-1`, payload: { priceCents: -1 } });
     const up = await app.inject({ method: 'PATCH', url: `${PREFIX}/offer-1`, payload: { imageUploadId: '../x' } });
+    const mode = await app.inject({ method: 'PATCH', url: `${PREFIX}/offer-1`, payload: { imageMode: 'GIF' } });
     expect(ok.statusCode).toBe(200);
     expect(neg.statusCode).toBe(400);
     expect(up.statusCode).toBe(400);
+    expect(mode.statusCode).toBe(400);
+    expect(ok.json().data.imageMode).toBe('MEDIA');
     expect(update).toHaveBeenCalledWith({
       tenantId: 'tenant-a', userId: 'user-a', offerId: 'offer-1',
-      priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID, coupon: 'X', audience: 'MEN', mentionAll: true,
+      priceCents: null, text: 'oi', imageUploadId: UPLOAD_ID, coupon: 'X', audience: 'MEN', mentionAll: true, imageMode: 'LINK_PREVIEW',
     });
   });
 

@@ -4,6 +4,7 @@ import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { offersContainer } from '../../infrastructure/offersContainer';
 import type { OfferAudience } from '../../domain/enums/OfferAudience';
+import type { OfferImageMode } from '../../domain/enums/OfferImageMode';
 import {
   generateOfferBodySchema,
   generateOfferResponse,
@@ -37,6 +38,7 @@ type UpdateBody = {
   coupon?: string | null;
   audience?: OfferAudience;
   mentionAll?: boolean;
+  imageMode?: OfferImageMode;
   simulateTyping?: boolean;
   typingSeconds?: number;
   scheduledAt?: string | null;

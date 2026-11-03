@@ -1,4 +1,5 @@
 import type { OfferAudience } from '../../../campaigns/domain/enums/OfferAudience';
+import type { OfferImageMode } from '../../../campaigns/domain/enums/OfferImageMode';
 
 /** Texto enviado: ORIGINAL = do grupo com links trocados; TEMPLATE = modelo fixo com dados do produto; AI = reescrito. */
 export const MONITOR_TEXT_MODES = ['ORIGINAL', 'TEMPLATE', 'AI'] as const;
@@ -24,6 +25,8 @@ export interface GroupMonitorSettings {
   audience: OfferAudience;
   /** Captura sem texto além de links vira oferta montada, mesmo em `ORIGINAL`. */
   enrichLinkOnly: boolean;
+  /** Foto das ofertas criadas: mídia com legenda ou prévia do link. */
+  imageMode: OfferImageMode;
 }
 
 export interface GroupMonitorConfig extends GroupMonitorSettings {

@@ -25,7 +25,8 @@ vi.mock('../../../chat/application/use-cases/SendMessageUseCase', () => ({
 import { ChatOfferMessageSender } from './ChatOfferMessageSender';
 
 const base = {
-  tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null, mentionAll: true,
+  tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null as string | null, mentionAll: true,
+  imageMode: 'MEDIA' as const, title: null, affiliateUrl: 'https://amzn.to/x',
   simulateTyping: false, typingSeconds: 15, scheduledAt: null,
 };
 const group = { id: 'c1', sessionId: 's1', isGroup: true, groupJid: '1203@g.us' };

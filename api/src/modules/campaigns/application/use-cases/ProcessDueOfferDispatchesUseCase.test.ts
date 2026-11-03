@@ -27,10 +27,20 @@ describe('ProcessDueOfferDispatchesUseCase', () => {
     expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({ mentionAll: true }));
   });
 
+  it('repassa imageMode, título e link de afiliado ao sender (prévia do link)', async () => {
+    const s = setup(['c1']);
+    Object.assign(s.offers.items[0]!, { imageMode: 'LINK_PREVIEW', title: 'Fone' });
+    await s.uc.execute();
+    expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({
+      imageMode: 'LINK_PREVIEW', title: 'Fone', affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20',
+    }));
+  });
+
   it('envia vencidos com texto e foto; todos SENT → oferta SENT', async () => {
     const s = setup();
     expect(await s.uc.execute()).toEqual({ processed: 2 });
     expect(s.sender.send).toHaveBeenCalledWith({ tenantId: TENANT, conversationId: 'c1', text: 'oferta', imageUrl: 'store://1.jpg', mentionAll: false,
+      imageMode: 'MEDIA', title: null, affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20',
       simulateTyping: false, typingSeconds: 15,
     });
     expect(statuses(s)).toEqual([['SENT', 'm1'], ['SENT', 'm1']]);

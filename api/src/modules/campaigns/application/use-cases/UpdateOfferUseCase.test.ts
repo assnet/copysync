@@ -51,6 +51,13 @@ describe('UpdateOfferUseCase — v2 (cupom, público, marcar todos)', () => {
     expect(dto).toMatchObject({ mentionAll: true, text: before });
   });
 
+  it('imageMode grava sem mexer no texto; valor desconhecido → OFFER_INVALID_INPUT (imageMode)', async () => {
+    const s = setup();
+    const before = s.offers.items[0]!.text;
+    expect(await s.uc.execute({ ...base, imageMode: 'LINK_PREVIEW' })).toMatchObject({ imageMode: 'LINK_PREVIEW', text: before });
+    await expect(s.uc.execute({ ...base, imageMode: 'X' as never })).rejects.toMatchObject({ meta: { field: 'imageMode' } });
+  });
+
   it('cupom inválido → OFFER_INVALID_INPUT (coupon)', async () => {
     const s = setup();
     await expect(s.uc.execute({ ...base, coupon: 'a\nb' })).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'coupon' } });

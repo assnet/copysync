@@ -5,6 +5,7 @@ import type { OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus
 import type { OfferStatus } from '../../domain/enums/OfferStatus';
 import type { OfferAudience } from '../../domain/enums/OfferAudience';
 import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
+import type { OfferImageMode } from '../../domain/enums/OfferImageMode';
 
 export interface OfferDispatchDTO {
   id: string;
@@ -35,6 +36,7 @@ export interface OfferDTO {
   coupon: string | null;
   audience: OfferAudience;
   mentionAll: boolean;
+  imageMode: OfferImageMode;
   simulateTyping: boolean;
   typingSeconds: number;
   scheduledAt: string | null;
@@ -76,6 +78,7 @@ export function toOfferDto(offer: Offer, dispatches?: OfferDispatch[]): OfferDTO
     coupon: offer.coupon,
     audience: offer.audience,
     mentionAll: offer.mentionAll,
+    imageMode: offer.imageMode,
     simulateTyping: offer.simulateTyping,
     typingSeconds: offer.typingSeconds,
     scheduledAt: offer.scheduledAt?.toISOString() ?? null,
