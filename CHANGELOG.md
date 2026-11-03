@@ -9,6 +9,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.49.3 — foto WebP não aparecia no WhatsApp Android
+
+- **`media/domain/services/inlineImageFormat.ts`**, **`media/domain/contracts/IImageTranscoder.ts`**, **`media/infrastructure/sharp/SharpImageTranscoder.ts`** (novos) — fotos de oferta do ML (896 em 7 dias) saíam como imagem `image/webp`: o iPhone exibe, o WhatsApp Android descarta a mensagem inteira e o envio fica SENT. O app oficial sempre manda JPEG. Regra de domínio decide quem converte (só WebP); sharp gera JPEG com orientação EXIF, fundo branco e sem metadados.
+- **`chat/application/use-cases/SendStoredMediaMessageUseCase.ts`** — ofertas (gerador e monitoramento): a cópia por mensagem sai em JPEG e a mensagem grava `image/jpeg`; a foto no store não muda, então ofertas já enfileiradas também saem corrigidas.
+- **`chat/application/use-cases/SendMediaMessageUseCase.ts`** — foto WebP enviada pelo Chat do painel vira JPEG antes da promoção (mesmo caminho da nota de voz; original apagado após `CONSUMED`).
+- **`media/infrastructure/mediaContainer.ts`**, **`chat/infrastructure/chatMediaContainer.ts`**, **`chat/presentation/routes/chat.routes.ts`** — injeção do `imageTranscoder`. Nada muda no adapter do Baileys.
+- Testes: `inlineImageFormat`, `SharpImageTranscoder` (sharp real), `SendStoredMediaMessageUseCase` e `SendMediaMessageUseCase` (WebP, PNG/JPEG intactos, falha na conversão). Docs: `chat-midias-anexos.md` ("Foto WebP"), `gerador-de-ofertas.md`.
+
 ### Fixed — api 0.49.1 — monitoramento: links `meli.la` e `br.shp.ee` caíam em "Loja não suportada"
 
 - **`campaigns/domain/services/parseProductPage.ts`** — vitrine social do ML (`meli.la` → `/social/<etq>?ref=…`): card de anúncio fora de catálogo vem com `product_id` vazio e o id em `metadata.id`; o parser só lia `product_id` e devolvia `productRef: null` (226 capturas ignoradas em 14 dias em produção). Agora cai para `metadata.id` e expõe `productRefCatalog` (`true` = `/p/MLB…`, `false` = `produto…/MLB-…`).
