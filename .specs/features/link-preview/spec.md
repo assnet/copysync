@@ -1,6 +1,6 @@
 # Prévia de link — envio de ofertas e exibição no chat — Specification
 
-Status: **em implementação** (2026-11-03). Roadmap: item Gerador de ofertas + Monitoramento (`docs/produto-roadmap.md`).
+Status: **implementado** (api 0.50.0 · app 0.60.0, 2026-11-03). P3 (validação em aparelhos) pendente.
 Docs base: `docs/gerador-de-ofertas.md`, `docs/monitoramento-grupos.md`, `docs/chat-midias-anexos.md`.
 Escopo: **gerador de ofertas, monitoramento e chat**. Página de ofertas e story ficam fora.
 
