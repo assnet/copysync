@@ -23,7 +23,27 @@ const TENANT_USERS = [
   { email: 'eu.israeldaywis@gmail.com', name: 'Israel Daywis', tenantSlug: 'israel-daywis', role: 'ADMIN', exclusive: true },
 ] as const;
 
+/** Hosts aceitos sem `SEED_ALLOW_REMOTE=1`: máquina local e serviços do docker-compose. */
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'postgres', 'db']);
+
+/** Seed grava contas com senha conhecida: banco remoto (ex.: Render) só com opt-in explícito. */
+function assertLocalDatabase(): void {
+  const url = process.env.DATABASE_URL ?? '';
+  let host = '';
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    host = '';
+  }
+  if (LOCAL_DB_HOSTS.has(host) || process.env.SEED_ALLOW_REMOTE === '1') return;
+  throw new Error(
+    `Seed abortado: DATABASE_URL aponta para "${host || 'host desconhecido'}", que não é banco local. ` +
+      'Use um banco local ou defina SEED_ALLOW_REMOTE=1 se tiver certeza.',
+  );
+}
+
 async function main(): Promise<void> {
+  assertLocalDatabase();
   console.log('🌱  Starting seed...\n');
 
   const passwordHash = await hash(PASSWORD, 10);
@@ -31,7 +51,8 @@ async function main(): Promise<void> {
   // ── Super Admin (acesso global, associado a todos os tenants) ─────────────
   const superAdmin = await prisma.user.upsert({
     where: { email: 'copysyncapp@gmail.com' },
-    update: { passwordHash },
+    // Senha só na criação: rodar o seed de novo não redefine a senha de conta existente
+    update: {},
     create: {
       email: 'copysyncapp@gmail.com',
       name: 'Super Admin',
@@ -68,7 +89,8 @@ async function main(): Promise<void> {
 
     const user = await prisma.user.upsert({
       where: { email: a.email },
-      update: { passwordHash },
+      // Senha só na criação (idem)
+      update: {},
       create: {
         email: a.email,
         name: a.name,
@@ -124,7 +146,7 @@ async function main(): Promise<void> {
   }
   console.log(`✅  Plan presets: marketplace_extension → STARTER, PROFISSIONAL, BUSINESS`);
 
-  console.log(`\n🎯  Seed concluído. Senha padrão: ${PASSWORD}`);
+  console.log(`\n🎯  Seed concluído. Senha padrão (só contas criadas agora): ${PASSWORD}`);
   console.log('    Super admin: copysyncapp@gmail.com (vê todos os tenants)');
   console.log('    Admin Acme:  admin-acme@copysync.app (só Acme Corp)');
   console.log('    Admin Beta:  admin-beta@copysync.app (só Beta Labs)');
