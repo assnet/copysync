@@ -48,7 +48,7 @@ function mensagem(over: Partial<ChatMessageDto> = {}): ChatMessageDto {
     status: ChatMessageStatus.PENDING, isDeleted: false, quotedMessageId: null, quotedMessage: null,
     sentAt: null, createdAt: '2026-09-25T12:00:00.000Z',
     fromParticipant: null, fromParticipantName: null, fromParticipantAvatarUrl: null,
-    reactionsRevision: null, reactions: [],
+    linkPreview: null, reactionsRevision: null, reactions: [],
     ...over,
   };
 }
@@ -261,5 +261,13 @@ describe('Listas — /lists', () => {
     expect(porNome.statusCode).toBe(204);
     expect(execute).toHaveBeenNthCalledWith(1, { tenantId: 'tenant-a', target: { id: 'list-1' } });
     expect(execute).toHaveBeenNthCalledWith(2, { tenantId: 'tenant-a', target: { name: 'Clientes VIP' } });
+  });
+});
+
+describe('ChatPresenter.presentMessage — prévia de link', () => {
+  it('inclui linkPreview (null ou o cartão) na resposta', () => {
+    const preview = { url: 'https://amzn.to/x', title: 'Fone', description: 'desc', thumbnailUrl: null };
+    expect(apresentada(mensagem())).toMatchObject({ linkPreview: null });
+    expect(apresentada(mensagem({ type: ChatMessageType.TEXT, linkPreview: preview }))).toMatchObject({ linkPreview: preview });
   });
 });

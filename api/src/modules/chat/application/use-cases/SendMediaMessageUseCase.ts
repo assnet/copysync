@@ -372,6 +372,8 @@ function toDto(message: ChatMessage, quoted: ChatMessage | null): ChatMessageDto
     fromParticipantName: message.fromParticipantName,
     // Mensagem enviada por nós: não há avatar de participante de grupo.
     fromParticipantAvatarUrl: null,
+    // Mídia não tem prévia de link.
+    linkPreview:       null,
     // Mensagem recém-enviada ainda não tem reações (reação é recusada em PENDING/FAILED).
     reactionsRevision: null,
     reactions:         [],

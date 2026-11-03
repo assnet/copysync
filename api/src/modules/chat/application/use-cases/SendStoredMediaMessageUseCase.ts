@@ -202,6 +202,7 @@ function toDto(message: ChatMessage): ChatMessageDto {
     fromParticipant:     message.fromParticipant,
     fromParticipantName: message.fromParticipantName,
     fromParticipantAvatarUrl: null,
+    linkPreview:       null,
     reactionsRevision: null,
     reactions:         [],
   };

@@ -116,6 +116,7 @@ export class RetryOutboundMediaUseCase {
       fromParticipantName: pending.fromParticipantName,
       // Enviada por nós: sem avatar de participante. Não entregue: sem reações (T28 bloqueia).
       fromParticipantAvatarUrl: null,
+      linkPreview:       null,
       reactionsRevision: null,
       reactions:         [],
     };

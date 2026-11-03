@@ -66,6 +66,7 @@ export function registerChatIncomingMessageListener(
             createdAt: result.message.createdAt.toISOString(),
             fromParticipant: result.message.fromParticipant,
             fromParticipantName: result.message.fromParticipantName,
+            linkPreview: result.message.linkPreview,
             externalMessageId: result.message.externalMessageId,
           },
           unreadCount: result.unreadCount,

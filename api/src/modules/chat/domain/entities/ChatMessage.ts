@@ -4,6 +4,15 @@ import {
   ChatMessageType,
 } from '../enums/ChatMessageEnums';
 
+/** Cartão de prévia de link da mensagem (docs/mensagens-previa-de-link.md). */
+export interface ChatMessageLinkPreview {
+  url: string | null;
+  title: string | null;
+  description: string | null;
+  /** URL do media store; null = cartão sem imagem. */
+  thumbnailUrl: string | null;
+}
+
 export interface ChatMessageProps {
   id: string;
   tenantId: string;
@@ -24,6 +33,8 @@ export interface ChatMessageProps {
   fromParticipant: string | null;
   /** Nome exibido do remetente dentro de um grupo */
   fromParticipantName: string | null;
+  /** Ausente = sem prévia. */
+  linkPreview?: ChatMessageLinkPreview | null;
   createdAt: Date;
 }
 
@@ -45,6 +56,7 @@ export class ChatMessage {
   readonly sentAt: Date | null;
   readonly fromParticipant: string | null;
   readonly fromParticipantName: string | null;
+  readonly linkPreview: ChatMessageLinkPreview | null;
   readonly createdAt: Date;
 
   constructor(props: ChatMessageProps) {
@@ -65,6 +77,7 @@ export class ChatMessage {
     this.sentAt = props.sentAt;
     this.fromParticipant = props.fromParticipant;
     this.fromParticipantName = props.fromParticipantName;
+    this.linkPreview = props.linkPreview ?? null;
     this.createdAt = props.createdAt;
   }
 

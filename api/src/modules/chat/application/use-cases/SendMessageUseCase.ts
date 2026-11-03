@@ -137,6 +137,7 @@ export class SendMessageUseCase {
       fromParticipantName: message.fromParticipantName,
       // Mensagem enviada por nós: não há avatar de participante de grupo.
       fromParticipantAvatarUrl: null,
+      linkPreview:       message.linkPreview,
       // Mensagem recém-enviada ainda não tem reações.
       reactionsRevision: null,
       reactions:         [],

@@ -22,6 +22,10 @@ function row(overrides: Partial<PrismaChatMessage> = {}): PrismaChatMessage {
     sentAt: new Date('2026-09-25T10:00:00.000Z'),
     fromParticipant: null,
     fromParticipantName: null,
+    linkPreviewUrl: null,
+    linkPreviewTitle: null,
+    linkPreviewDescription: null,
+    linkPreviewThumbUrl: null,
     createdAt: new Date('2026-09-25T10:00:01.000Z'),
     ...overrides,
   };
@@ -44,5 +48,15 @@ describe('PrismaChatMessageMapper', () => {
     const message = PrismaChatMessageMapper.toDomain(row({ status: null }));
 
     expect(message.status).toBeNull();
+  });
+
+  it('sem URL e sem título não há prévia; com eles agrupa os quatro campos', () => {
+    expect(PrismaChatMessageMapper.toDomain(row({ linkPreviewDescription: 'só descrição' })).linkPreview).toBeNull();
+    const message = PrismaChatMessageMapper.toDomain(row({
+      linkPreviewUrl: 'https://amzn.to/x', linkPreviewTitle: 'Fone', linkPreviewThumbUrl: '/media/s_x_lp.jpg',
+    }));
+    expect(message.linkPreview).toEqual({
+      url: 'https://amzn.to/x', title: 'Fone', description: null, thumbnailUrl: '/media/s_x_lp.jpg',
+    });
   });
 });

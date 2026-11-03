@@ -3,6 +3,7 @@ import type { IChatConversationRepository } from '../../domain/contracts/IChatCo
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { IChatMessageReactionRepository } from '../../domain/contracts/IChatMessageReactionRepository';
 import type { ChatMessageReaction } from '../../domain/entities/ChatMessageReaction';
+import type { ChatMessageLinkPreview } from '../../domain/entities/ChatMessage';
 import { aggregateReactions, type ReactionSummary } from '../../domain/services/aggregateReactions';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import type { ChatMessageDirection, ChatMessageStatus, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
@@ -49,6 +50,8 @@ export interface ChatMessageDto {
   fromParticipantName: string | null;
   /** Foto do remetente em mensagens de grupo, quando o contato é conhecido. */
   fromParticipantAvatarUrl: string | null;
+  /** Cartão de prévia de link; null = sem prévia. */
+  linkPreview: ChatMessageLinkPreview | null;
   /** Revisão do agregado de reações (ISO); `null` quando a mensagem nunca teve reação. */
   reactionsRevision: string | null;
   /** Chips de reação; `[]` quando não há. */
@@ -129,6 +132,7 @@ export class ListMessagesUseCase {
       fromParticipantAvatarUrl: m.fromParticipant
         ? (contactByPhone.get(m.fromParticipant)?.avatarUrl ?? null)
         : null,
+      linkPreview: m.linkPreview,
       ...this.reactionFields(reactionsByMessage.get(m.id), contactByPhone),
     }));
   }
