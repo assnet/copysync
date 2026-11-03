@@ -103,6 +103,11 @@ export function OfferSendPanel(props: Props) {
           disabled={imageModeSaving || busy}
           onChange={props.onImageMode}
         />
+        {(offer.imageMode ?? DEFAULT_IMAGE_MODE) === 'LINK_PREVIEW' && !offer.imageUrl && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -1.25 }}>
+            {offerStrings.imageMode.noImageWarning}
+          </Typography>
+        )}
         <ToggleOption
           checked={offer.mentionAll}
           disabled={mentionSaving || busy}

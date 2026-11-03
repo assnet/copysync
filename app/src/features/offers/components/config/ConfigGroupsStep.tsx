@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import {
-  Alert, Avatar, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
+  Alert, Avatar, Box, Button, Card, CardActionArea, type CardActionAreaProps, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import { Search, X } from 'lucide-react';
-import { AppIcon, OverflowTooltipText } from '@/components';
+import { AppIcon, useIsTruncated } from '@/components';
 import { GroupAvatar } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
@@ -15,6 +15,30 @@ import { offerStrings } from '../../strings';
 import { sessionColor } from './DispatchOrderPicker';
 
 const t = offerStrings.wizard.groups;
+
+interface GroupCardActionProps extends Omit<CardActionAreaProps, 'children'> {
+  /** Nome completo do grupo: conteúdo do tooltip quando o título está cortado. */
+  title: string;
+  /** Flag de borrar ligada: nunca mostra o tooltip (não vaza o nome). */
+  tooltipOff: boolean;
+  /** Recebe a ref do título para medir o corte. */
+  children: (titleRef: RefObject<HTMLElement | null>) => ReactNode;
+}
+
+/**
+ * Área clicável do cartão com o tooltip do nome nela mesma: o foco de teclado fica no botão
+ * e abre o tooltip quando o título está cortado.
+ */
+function GroupCardAction({ title, tooltipOff, children, ...areaProps }: GroupCardActionProps) {
+  const titleRef = useRef<HTMLElement>(null);
+  const truncated = useIsTruncated(titleRef, `${title}|${tooltipOff}`);
+  const show = !tooltipOff && truncated && !areaProps.disabled;
+  return (
+    <Tooltip title={show ? title : ''} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+      <CardActionArea {...areaProps}>{children(titleRef)}</CardActionArea>
+    </Tooltip>
+  );
+}
 
 export interface SelectedGroup {
   title: string | null;
@@ -204,7 +228,9 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
                   transition: 'border-color 150ms ease, background-color 150ms ease',
                 }}
               >
-                <CardActionArea
+                <GroupCardAction
+                  title={title}
+                  tooltipOff={blurNames}
                   role="checkbox"
                   aria-checked={checked}
                   aria-disabled={blocked}
@@ -213,11 +239,12 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
                   onClick={() => void toggle(g)}
                   sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'flex-start', minHeight: 60 }}
                 >
+                  {(titleRef) => (<>
                   <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <OverflowTooltipText text={title} disabled={blurNames} focusable={false} typographyProps={{ variant: 'body2', sx: { fontWeight: 500 } }}>
+                    <Typography ref={titleRef} variant="body2" noWrap sx={{ fontWeight: 500 }}>
                       <Blurred when={blurNames} inline radius={5}>{title}</Blurred>
-                    </OverflowTooltipText>
+                    </Typography>
                     {multi && session && (
                       <Typography variant="caption" noWrap component="p" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
                         <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: sessionColor(sessionIndex(g.sessionId)), flexShrink: 0 }} />
@@ -230,7 +257,8 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
                   ) : (
                     <Checkbox checked={checked} tabIndex={-1} disableRipple size="small" sx={{ p: 0.5 }} slotProps={{ input: { 'aria-hidden': true } }} />
                   )}
-                </CardActionArea>
+                  </>)}
+                </GroupCardAction>
               </Card>
             );
             return blocked && limit != null ? (

@@ -64,4 +64,12 @@ describe('formato da imagem', () => {
     fireEvent.click(screen.getByRole('button', { name: /Prévia do link/ }));
     expect(onImageMode).toHaveBeenCalledWith('LINK_PREVIEW');
   });
+
+  it('prévia do link sem foto avisa que sai como texto; com foto, não', () => {
+    const { unmount } = render(panel(offer({ imageMode: 'LINK_PREVIEW' })));
+    expect(screen.getByText('Sem foto: a oferta sai como texto, sem prévia.')).toBeTruthy();
+    unmount();
+    render(panel(offer({ imageMode: 'LINK_PREVIEW', imageUrl: 'https://cdn/p.jpg' })));
+    expect(screen.queryByText(/Sem foto: a oferta sai como texto/)).toBeNull();
+  });
 });

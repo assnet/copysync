@@ -231,6 +231,7 @@ export const offerStrings = {
       MEDIA: { label: 'Imagem com legenda', hint: 'A foto chega inteira; quem abrir baixa o arquivo para o celular.' },
       LINK_PREVIEW: { label: 'Prévia do link', hint: 'Cartão leve com a imagem acima do link. Não ocupa a galeria de quem recebe.' },
     },
+    noImageWarning: 'Sem foto: a oferta sai como texto, sem prévia.',
   },
 
   editor: {

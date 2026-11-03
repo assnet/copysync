@@ -122,20 +122,26 @@ export function useOfferGenerator() {
     }
   }, [offer, fail]);
 
-  /** Troca o formato da imagem na hora (como "marcar todos"); volta ao anterior se a API recusar. */
+  /**
+   * Troca o formato da imagem na hora (como "marcar todos"). Só a resposta da última troca vale;
+   * se a API recusar, volta apenas o campo (sem desfazer outros PATCHs concluídos no meio).
+   */
+  const imageModeSeq = useRef(0);
   const setImageMode = useCallback(async (value: OfferImageMode) => {
     if (!offer) return;
-    const previous = offer;
-    setOffer({ ...offer, imageMode: value });
+    const previousMode = offer.imageMode;
+    const seq = ++imageModeSeq.current;
+    setOffer((o) => o && { ...o, imageMode: value });
     setImageModeSaving(true);
     setError(null);
     try {
-      setOffer(await offerService.update(offer.id, { imageMode: value }));
+      const saved = await offerService.update(offer.id, { imageMode: value });
+      if (seq === imageModeSeq.current) setOffer(saved);
     } catch (err) {
-      setOffer(previous);
+      if (seq === imageModeSeq.current) setOffer((o) => o && { ...o, imageMode: previousMode });
       fail(err);
     } finally {
-      setImageModeSaving(false);
+      if (seq === imageModeSeq.current) setImageModeSaving(false);
     }
   }, [offer, fail]);
 
