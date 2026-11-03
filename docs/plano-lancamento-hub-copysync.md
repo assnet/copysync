@@ -78,7 +78,7 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 | --- | --- |
 | H3 | **Checkout por aplicação**: cada `Application` tem seu checkout (domínio, marca, planos, remetente, webhook) servido pelo mesmo código da central. `VITE_APPLICATION_KEY` no front, `GET /plans?app=`, `checkout/process` grava `applicationId`; um deploy estático por aplicação. Para o CopySync: cadastrar `Application copysync`, planos LITE/PRO/MAX e deploy do checkout dele |
 | H4 | E-mail por aplicação com **SMTP e domínio próprios** (H10: `EmailSenderConfig` de aplicação, transporter por aplicação; PulsoSocial segue no transporter atual) + `POST /integrations/email/send` (`SET_PASSWORD`, `TEAM_INVITE`) |
-| Infra | Conta de envio no domínio do CopySync (provedor a escolher: Workspace, Zoho, SES, Resend, Postmark) com SPF, DKIM e DMARC no DNS; pré-requisito de H4 |
+| Infra | **Resend** (decidido 2026-11-03, mesma conta do PulsoSocial): verificar o domínio do CopySync, publicar SPF/DKIM do Resend e DMARC no DNS, criar API key só de envio restrita a esse domínio; pré-requisito de H4 |
 | B | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para `Application.checkoutUrl` |
 | E2 | Lease de sessão + `version` no auth state (deploy sem 440, failover) |
 | P | Grupos de disparo + horário de postagem |

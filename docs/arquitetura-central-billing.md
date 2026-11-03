@@ -102,7 +102,7 @@ usar `POST /credits/authorize` da central com `app=copysync`, depois de a cartei
 1. Central fases 0–2 (banco separado, `Application`, eventos de saída, M2M).
 2. CopySync: service-desk P1.0 + USR-01 + `resolveMembership` + `TenantSuspendedError` (pré-requisito), depois migration desta integração + receiver + `ApplyBillingEventUseCase`.
 3. Central fase 3 (checkout da aplicação `copysync`) → primeira venda.
-4. Conta SMTP do domínio do CopySync com SPF, DKIM e DMARC (pré-requisito externo, provedor a escolher); `EmailSenderConfig` de aplicação
+4. Domínio do CopySync verificado no **Resend** (SMTP `smtp.resend.com`, API key só de envio restrita ao domínio), com SPF, DKIM e DMARC; `EmailSenderConfig` de aplicação
    na central (H10); `HubEmailSender`; `SET_PASSWORD`; convite de equipe pela central.
 5. Enforcement de `PLAN_LIMIT_REACHED` cresce por feature do roadmap; worker checa `Tenant.status`.
 
