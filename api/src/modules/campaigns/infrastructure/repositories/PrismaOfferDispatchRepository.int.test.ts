@@ -110,6 +110,17 @@ describe('claimDue — pausa global', () => {
     await prisma.tenant.update({ where: { id: tenantId }, data: { sendingPausedAt: null } });
     expect((await repo.claimDue(spToUtc(9), 10)).map((d) => d.offerId)).toEqual([gen.id]);
   });
+
+  it('tenant suspenso pelo billing não sai e o envio continua QUEUED; reativado sai', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    const d = await queued(gen.id, convGen, spToUtc(8));
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
+    expect(await repo.claimDue(spToUtc(9), 10)).toEqual([]);
+    expect((await prisma.offerDispatch.findUnique({ where: { id: d.id } }))?.status).toBe('QUEUED');
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } });
+    expect((await repo.claimDue(spToUtc(9), 10)).map((x) => x.offerId)).toEqual([gen.id]);
+  });
 });
 
 describe('openSessionIds', () => {

@@ -97,8 +97,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                  FROM "offer_dispatches" d
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
                   AND d."offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
-                  -- Pausa global do tenant
-                  AND d."tenantId" NOT IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NOT NULL)
+                  -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
+                  AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
                   -- Oferta do monitoramento fora da janela de operação da sessão espera a janela abrir
                   AND NOT EXISTS (
                     SELECT 1 FROM "offers" mo
