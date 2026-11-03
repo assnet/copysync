@@ -37,7 +37,7 @@ describe('PlanLimitBanner', () => {
     expect(screen.getByText(t.groupsTitle)).toBeInTheDocument();
     expect(screen.getByText(t.nextPlan('PRO', 5, 'groups'))).toBeInTheDocument();
     expect(screen.getByRole('img', { name: t.compareAria(3, 'PRO', 5, 'groups') })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: t.cta })).toHaveAttribute('href', '/plans');
+    expect(screen.getByRole('link', { name: t.cta })).toHaveAttribute('href', '/affiliates/plans');
     expect(screen.getByRole('button', { name: t.dismiss })).toBeInTheDocument();
   });
 

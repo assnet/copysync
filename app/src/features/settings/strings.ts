@@ -19,7 +19,6 @@ export const settingsStrings = {
     title: 'Configurações',
     navSessions: 'Sessões',
     navAccount: 'Minha conta',
-    navAffiliateCredentials: 'Credenciais de afiliado',
     navAi: 'Inteligência artificial',
   },
 

@@ -16,7 +16,7 @@ const renderPage = (mode: 'light' | 'dark' = 'light') =>
       <PrivacyProvider>
         <Routes>
           <Route path="/offer-story" element={<OfferStoryPage />} />
-          <Route path="/plans" element={<p>tela de planos</p>} />
+          <Route path="/affiliates/plans" element={<p>tela de planos</p>} />
         </Routes>
       </PrivacyProvider>
     </MemoryRouter>,
@@ -26,7 +26,7 @@ const renderPage = (mode: 'light' | 'dark' = 'light') =>
 describe('OfferStoryPage', () => {
   beforeEach(() => { sessionStorage.clear(); localStorage.clear(); svc.listTemplates.mockReset(); svc.render.mockReset(); });
 
-  it('sem plano cai em /plans', async () => {
+  it('sem plano cai em /affiliates/plans', async () => {
     svc.listTemplates.mockRejectedValue({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE' });
     renderPage();
     expect(await screen.findByText('tela de planos')).toBeTruthy();

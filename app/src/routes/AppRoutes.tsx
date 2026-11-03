@@ -26,6 +26,17 @@ import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
+import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH } from '@/features/navigation';
+
+function LegacyAffiliateCredentialsRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`${AFFILIATE_CREDENTIALS_PATH}${search}`} replace />;
+}
+
+function LegacyPlansRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`${AFFILIATE_PLANS_PATH}${search}`} replace />;
+}
 
 function LegacySessionsRedirect() {
   const { search } = useLocation();
@@ -56,13 +67,17 @@ export function AppRoutes() {
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
           <Route path="/offer-story" element={<OfferStoryPage />} />
-          <Route path="/plans" element={<PlansPage />} />
+          <Route path={AFFILIATE_CREDENTIALS_PATH} element={<AffiliateCredentialsPage />} />
+          <Route path={AFFILIATE_PLANS_PATH} element={<PlansPage />} />
+          {/* Caminho antigo: planos agora são por produto; mantém query (?feature=…) */}
+          <Route path="/plans" element={<LegacyPlansRedirect />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="/settings/sessions" replace />} />
             <Route path="sessions" element={<SessionsPage />} />
             <Route path="account" element={<SettingsAccountPage />} />
             <Route path="account/password" element={<ChangePasswordPage />} />
-            <Route path="affiliate-credentials" element={<AffiliateCredentialsPage />} />
+            {/* Caminho antigo: credenciais agora ficam em Afiliados; mantém query (?returnTo=…) */}
+            <Route path="affiliate-credentials" element={<LegacyAffiliateCredentialsRedirect />} />
             <Route path="ai" element={<AiSettingsPage />} />
             <Route path="extension" element={<ExtensionSettingsPage />} />
           </Route>

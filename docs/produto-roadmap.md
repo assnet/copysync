@@ -53,6 +53,10 @@ por plano, não por produto. Plano, permissões e configurações por produto: e
 
 ## Planos (rascunho 2026-10-13)
 
+Esta tabela é o conjunto de planos do produto **Afiliados**. Cada produto do menu (CRM & Automação,
+Gestor de Grupos, Saver, Aquecedor de Chip) terá o seu próprio conjunto de planos, definido quando
+o produto nascer; não existe plano global.
+
 Limites são **entitlements por tenant**: devem viver em dado (`Tenant.planSlug` + `TenantEntitlement`,
 ver `arquitetura-central-billing.md`), nunca hardcoded em use case. Enforcement no `application` layer, com erro interno
 `PLAN_LIMIT_REACHED` (a criar em `shared/errors`). Preço "de/por" é só marketing; o sistema

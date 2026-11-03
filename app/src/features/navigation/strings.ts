@@ -26,6 +26,7 @@ export const navigationStrings = {
     monitoring: 'Monitoramento',
     storefront: 'Página de Ofertas',
     offerStory: 'Story de Oferta',
+    affiliateCredentials: 'Credenciais de afiliado',
     chat: 'Chat',
     settings: 'Configurações',
   },

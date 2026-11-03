@@ -107,7 +107,7 @@ describe('useOfferStoryWizard', () => {
 
     render.mockRejectedValueOnce({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE' });
     await act(() => result.current.generate());
-    expect(navigate).toHaveBeenCalledWith('/plans?feature=offerStory', { replace: true });
+    expect(navigate).toHaveBeenCalledWith('/affiliates/plans?feature=offerStory', { replace: true });
   });
 
   it('validação local não chama a API', async () => {

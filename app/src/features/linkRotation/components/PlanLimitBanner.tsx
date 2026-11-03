@@ -1,3 +1,4 @@
+import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { useId } from 'react';
 import { Box, Button, Dialog, DialogActions, DialogContent, Stack, Typography, useMediaQuery } from '@mui/material';
 import { alpha, keyframes, useTheme } from '@mui/material/styles';
@@ -222,7 +223,7 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
             <Button
               variant="contained"
               component={RouterLink}
-              to="/plans"
+              to={AFFILIATE_PLANS_PATH}
               onClick={onClose}
               endIcon={<AppIcon icon={ArrowRight} />}
               sx={{

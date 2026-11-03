@@ -8,7 +8,7 @@ para o cliente já ver o que vem. Catálogo e status dos produtos: seção "Prod
 ## Estrutura
 
 Fora dos produtos: **Dashboard** (`/dashboard`) no topo; seção **Plataforma** só super admin
-(`/admin/ai`, `/admin/link-domains`); bloco inferior **Planos** (`/plans`), **Privacidade**
+(`/admin/ai`, `/admin/link-domains`); bloco inferior **Privacidade**
 (ação: abre o diálogo, não é rota), **Configurações** (`/settings/*`, `matchPrefix`).
 
 | Produto | `status` | Filhos | Rota | Selo |
@@ -18,6 +18,8 @@ Fora dos produtos: **Dashboard** (`/dashboard`) no topo; seção **Plataforma** 
 | | | Rodízio de links | `/link-rotation` | |
 | | | Página de Ofertas | `/storefront` | PRO |
 | | | Story de Oferta | `/offer-story` | MAX |
+| | | Credenciais de afiliado | `/affiliates/credentials` | |
+| | | Planos | `/affiliates/plans` | |
 | CRM & Automação | `soon` | Chat (só super admin) | `/chat` | |
 | Gestor de Grupos | `soon` | — | — | |
 | Saver | `soon` | — | — | |
@@ -85,6 +87,15 @@ Produto `soon` com filho visível para o usuário atual (CRM para super admin) a
 - Selo de plano e "Em breve" são texto (não só cor), sempre inline à direita numa linha; rótulos
   `noWrap` com drawer de 272 px (nunca truncar nome de produto). Títulos de seção e chips em
   `text.secondary` (contraste ≥ 4.5:1 nos dois temas; `text.disabled` não passa).
+
+## Planos e configurações por produto
+
+Cada produto tem **seu próprio conjunto de planos** e suas configurações, como itens do próprio
+submenu. A vitrine que existe hoje é a do Afiliados (`/affiliates/plans`, `PlansPage`); `/plans`
+redireciona mantendo `?feature=`. Produto novo nasce com `/<produto>/plans` próprio: não há
+"Planos" global no bloco inferior. Credenciais de afiliado seguem a mesma regra
+(`/affiliates/credentials`; `/settings/affiliate-credentials` redireciona). Caminhos canônicos
+só em `features/navigation/model.ts` (`AFFILIATE_PLANS_PATH`, `AFFILIATE_CREDENTIALS_PATH`).
 
 ## Persistência
 

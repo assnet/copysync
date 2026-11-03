@@ -1,13 +1,14 @@
 import { Box, Button, Typography, useTheme } from '@mui/material';
 import { KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
 import { AppIcon } from '@/components';
 import type { CredentialAlertItem } from '@/types/api.types';
 import { INNER_RADIUS, focusRingScopeSx, iconTileSx, toneSurface } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 
 const t = monitoringStrings.credentialAlerts;
-const CREDENTIALS_PATH = '/settings/affiliate-credentials?returnTo=/monitoring';
+const CREDENTIALS_PATH = `${AFFILIATE_CREDENTIALS_PATH}?returnTo=/monitoring`;
 /** Âncora usada pela etapa "Credenciais" do hero. */
 export const CREDENTIAL_ALERTS_ID = 'monitoring-credentials';
 

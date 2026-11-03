@@ -32,7 +32,7 @@ const renderPage = (mode: 'light' | 'dark' = 'light') =>
       <PrivacyProvider>
         <Routes>
           <Route path="/storefront" element={<StorefrontPage />} />
-          <Route path="/plans" element={<p>tela de planos</p>} />
+          <Route path="/affiliates/plans" element={<p>tela de planos</p>} />
         </Routes>
       </PrivacyProvider>
     </MemoryRouter>,

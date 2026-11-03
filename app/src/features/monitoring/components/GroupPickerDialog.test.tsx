@@ -74,7 +74,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     expect(await screen.findByText('Meu grupo')).toBeInTheDocument();
     expect(listSessionGroups.mock.calls.map((c) => c[0])).toEqual(['s1']);
     expect(screen.getByText(/exclusivo do plano MAX/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver planos' })).toHaveAttribute('href', '/plans');
+    expect(screen.getByRole('link', { name: 'Ver planos' })).toHaveAttribute('href', '/affiliates/plans');
   });
 
   it('com a feature: grupos das duas sessões, cada um com o nome da sessão', async () => {

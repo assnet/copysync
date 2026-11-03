@@ -10,13 +10,14 @@ describe('buildNavigation', () => {
     expect(model.products[0].status).toBe('available');
     expect(model.products[0].children.map((c) => c.path)).toEqual([
       '/offers', '/monitoring', '/link-rotation', '/storefront', '/offer-story',
+      '/affiliates/credentials', '/affiliates/plans',
     ]);
   });
 
   it('Dashboard no topo; bloco inferior com planos, privacidade e configurações', () => {
     const model = buildNavigation({ isSuperAdmin: false });
     expect(model.top.map((l) => l.path)).toEqual(['/dashboard']);
-    expect(model.bottom.map((e) => e.key)).toEqual(['plans', 'privacy', 'settings']);
+    expect(model.bottom.map((e) => e.key)).toEqual(['privacy', 'settings']);
   });
 
   it('usuário comum: CRM & Automação é "soon", sem Chat, e não vê Plataforma', () => {

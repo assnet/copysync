@@ -23,7 +23,7 @@ export const plansStrings = {
   badgeProfessional: 'PRO',
   badgeBusiness: 'MAX',
 
-  /** Aviso no topo de `/plans?feature=<chave>` quando o usuário chega barrado por um recurso. */
+  /** Aviso no topo de `/affiliates/plans?feature=<chave>` quando o usuário chega barrado por um recurso. */
   featureNotice: {
     storefront: 'Faça upgrade agora mesmo e acesse a Página de Ofertas, exclusiva dos planos PRO e MAX',
     offerStory: 'Faça upgrade e crie stories de oferta para o Instagram, exclusivo do plano MAX.',

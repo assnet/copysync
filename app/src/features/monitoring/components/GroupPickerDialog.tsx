@@ -1,3 +1,4 @@
+import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert, Autocomplete, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
@@ -573,7 +574,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
         {crossLocked && (
           <InfoLine
             text={t.crossLocked}
-            action={<Button color="inherit" size="small" component={RouterLink} to="/plans" sx={{ flexShrink: 0 }}>{t.crossLockedLink}</Button>}
+            action={<Button color="inherit" size="small" component={RouterLink} to={AFFILIATE_PLANS_PATH} sx={{ flexShrink: 0 }}>{t.crossLockedLink}</Button>}
           />
         )}
         {multi && <InfoLine text={t.crossHelp} />}

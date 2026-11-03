@@ -3,6 +3,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
 import ChatOutlinedIcon from '@mui/icons-material/ChatOutlined';
 import { ConfirmDialog, EmptyState, PageHeader } from '@/components';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
 import { useOfferConfig } from '@/features/offers/hooks/useOfferConfig';
 import { useOfferGenerator } from '@/features/offers/hooks/useOfferGenerator';
 import { useOfferDraft } from '@/features/offers/hooks/useOfferDraft';
@@ -21,7 +22,7 @@ import type { OfferErrorView } from '@/features/offers/utils/offerErrors';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
 const t = offerStrings;
-const CREDENTIALS_PATH = '/settings/affiliate-credentials';
+const CREDENTIALS_PATH = AFFILIATE_CREDENTIALS_PATH;
 const ignore = () => undefined;
 
 export function OfferGeneratorPage() {

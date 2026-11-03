@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  MessagesSquare, Settings, Tag, Users, Workflow,
+  KeyRound, MessagesSquare, Settings, Tag, Users, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
 import { plansStrings } from '@/features/plans/strings';
@@ -71,6 +71,11 @@ export function linkMatches(link: NavLink, pathname: string): boolean {
   return pathname === link.matchPrefix || pathname.startsWith(`${link.matchPrefix}/`);
 }
 
+/** Credenciais de afiliado moram no produto Afiliados (antes em Configurações; rota antiga redireciona). */
+export const AFFILIATE_CREDENTIALS_PATH = '/affiliates/credentials';
+/** Planos são por produto: a vitrine atual é a do Afiliados (rota antiga `/plans` redireciona). */
+export const AFFILIATE_PLANS_PATH = '/affiliates/plans';
+
 export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): NavigationModel {
   const onlyAllowed = (links: NavLink[]) => links.filter((l) => !l.superAdminOnly || isSuperAdmin);
 
@@ -86,6 +91,8 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
       { key: 'link-rotation', label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: Link2 },
       { key: 'storefront', label: s.links.storefront, path: '/storefront', icon: MODULE_ICONS.storefront, badge: plansStrings.badgeProfessional },
       { key: 'offer-story', label: s.links.offerStory, path: '/offer-story', icon: MODULE_ICONS.offerStory, badge: plansStrings.badgeBusiness },
+      { key: 'affiliate-credentials', label: s.links.affiliateCredentials, path: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
+      { key: 'affiliate-plans', label: plansStrings.menuLabel, path: AFFILIATE_PLANS_PATH, icon: Crown },
     ],
   };
 
@@ -122,7 +129,6 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
         ]
       : [],
     bottom: [
-      { key: 'plans', label: plansStrings.menuLabel, path: '/plans', icon: Crown },
       { key: 'privacy', label: privacyStrings.menuLabel, action: 'privacy', icon: EyeOff },
       { key: 'settings', label: s.links.settings, path: '/settings/sessions', icon: Settings, matchPrefix: '/settings' },
     ],

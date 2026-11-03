@@ -29,6 +29,8 @@ import { CollapsedProductNavItem } from './nav/CollapsedProductNavItem';
 import { navSectionTitleSx } from './nav/navStyles';
 
 const DRAWER_WIDTH = 272;
+// Mobile: 8 px a mais para o rótulo mais longo + chip não encostarem; sobra fundo escurecido na tela.
+const DRAWER_WIDTH_MOBILE = 280;
 const DRAWER_WIDTH_COLLAPSED = 72;
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed';
 
@@ -165,6 +167,8 @@ function DrawerContent({ model, nav, idPrefix, collapsed = false, onToggleCollap
           overflowX: 'hidden',
           outline: 'none',
           maskImage: 'linear-gradient(to bottom, #000 calc(100% - 20px), transparent)',
+          // No toque a barra de rolagem só polui: o fade já avisa que há mais itens.
+          '@media (pointer: coarse)': { scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } },
         }}
       >
         <List disablePadding sx={{ px: 1 }}>
@@ -400,7 +404,7 @@ export function AppLayout() {
         onClose={() => setMobileOpen(false)}
         // keepMounted evita remontar o menu a cada abertura no mobile
         ModalProps={{ keepMounted: true }}
-        sx={{ display: { xs: 'block', sm: 'none' }, '& .MuiDrawer-paper': { width: DRAWER_WIDTH } }}
+        sx={{ display: { xs: 'block', sm: 'none' }, '& .MuiDrawer-paper': { width: DRAWER_WIDTH_MOBILE } }}
       >
         <DrawerContent model={navModel} nav={nav} idPrefix="mobile" onClose={() => setMobileOpen(false)} />
       </Drawer>

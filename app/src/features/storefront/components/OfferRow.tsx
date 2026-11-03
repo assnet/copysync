@@ -10,7 +10,8 @@ import type { MoveDirection } from '../reorder';
 import { formatCents } from '../offerForm';
 
 const t = storefrontStrings.offers;
-export const AFFILIATE_CREDENTIALS_PATH = '/settings/affiliate-credentials';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
+export { AFFILIATE_CREDENTIALS_PATH };
 
 /** Ligação com o arrastar (`useSortable` em `OfferTabs`); a linha não conhece a lib. */
 export interface OfferRowDrag {
