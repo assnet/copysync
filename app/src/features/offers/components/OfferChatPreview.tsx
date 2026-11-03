@@ -1,4 +1,5 @@
 import { Avatar, Box, Stack, Typography, alpha, useTheme } from '@mui/material';
+import { OverflowTooltipText } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import GroupsIcon from '@mui/icons-material/Groups';
 import ImageNotSupportedOutlinedIcon from '@mui/icons-material/ImageNotSupportedOutlined';
@@ -54,7 +55,9 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
           <GroupsIcon fontSize="small" />
         </Avatar>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" noWrap><Blurred when={blurNames} inline radius={5}>{groupTitle || t.groupFallback}</Blurred></Typography>
+          <OverflowTooltipText text={groupTitle || t.groupFallback} disabled={blurNames} typographyProps={{ variant: 'subtitle2' }}>
+            <Blurred when={blurNames} inline radius={5}>{groupTitle || t.groupFallback}</Blurred>
+          </OverflowTooltipText>
           <Typography variant="caption" color="text.secondary" noWrap component="p">{t.groupMembers(groupCount)}</Typography>
         </Box>
       </Stack>

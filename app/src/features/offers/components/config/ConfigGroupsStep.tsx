@@ -4,7 +4,7 @@ import {
   Alert, Avatar, Box, Button, Card, CardActionArea, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import { Search, X } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
@@ -215,9 +215,9 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
                 >
                   <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap title={blurNames ? undefined : title}>
+                    <OverflowTooltipText text={title} disabled={blurNames} focusable={false} typographyProps={{ variant: 'body2', sx: { fontWeight: 500 } }}>
                       <Blurred when={blurNames} inline radius={5}>{title}</Blurred>
-                    </Typography>
+                    </OverflowTooltipText>
                     {multi && session && (
                       <Typography variant="caption" noWrap component="p" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
                         <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: sessionColor(sessionIndex(g.sessionId)), flexShrink: 0 }} />

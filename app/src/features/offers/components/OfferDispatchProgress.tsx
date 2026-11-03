@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Box, Button, Chip, LinearProgress, List, ListItem, ListItemText, Stack, Tooltip, Typography, type ChipProps } from '@mui/material';
 import { CalendarClock, Pause, Play, Square } from 'lucide-react';
-import { AppIcon, ConfirmDialog, CooldownBar, SectionCard } from '@/components';
+import { AppIcon, ConfirmDialog, CooldownBar, OverflowTooltipText, SectionCard } from '@/components';
 import { serverToLocal } from '@/services/serverClock';
 import { nextDispatchCooldown } from '../utils/dispatchCooldown';
 import { isPendingSchedule } from '../utils/offerSchedule';
@@ -53,6 +53,7 @@ export function OfferDispatchProgress({ status, dispatches, scheduledAt = null, 
   };
   const multi = sessions.length > 1;
   const blurSession = useBlur('offers.sessionName');
+  const blurNames = useBlur('offers.groupNames');
   const [stopOpen, setStopOpen] = useState(false);
   const done = dispatches.filter((d) => DONE.has(d.status)).length;
   const sent = dispatches.filter((d) => d.status === 'SENT').length;
@@ -168,7 +169,15 @@ export function OfferDispatchProgress({ status, dispatches, scheduledAt = null, 
             sx={{ pr: 14, opacity: d.status === 'CANCELLED' ? 0.6 : 1 }}
           >
             <ListItemText
-              primary={titles.get(d.conversationId) || t.unknownDestination}
+              primary={
+                <OverflowTooltipText
+                  text={titles.get(d.conversationId) || t.unknownDestination}
+                  disabled={blurNames}
+                  typographyProps={{ variant: 'body1', component: 'span', sx: { display: 'block' } }}
+                >
+                  <Blurred when={blurNames} inline radius={5}>{titles.get(d.conversationId) || t.unknownDestination}</Blurred>
+                </OverflowTooltipText>
+              }
               secondary={
                 d.status === 'FAILED' || d.status === 'SKIPPED'
                   ? (d.failureReason && t.failureReasons[d.failureReason])
@@ -179,7 +188,6 @@ export function OfferDispatchProgress({ status, dispatches, scheduledAt = null, 
                     ? <Blurred when={blurSession} inline radius={4}>{t.viaSession(sessionOf(d.conversationId)!)}</Blurred>
                     : undefined
               }
-              slotProps={{ primary: { noWrap: true } }}
             />
           </ListItem>
         ))}

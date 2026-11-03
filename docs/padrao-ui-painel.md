@@ -12,6 +12,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Espera/cooldown com fim conhecido | `CooldownBar` + `serverNow()` | `LinearProgress` com `setInterval` |
 | Ícone | `AppIcon` (Lucide) | emoji, `@mui/icons-material` em tela nova |
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
+| Texto de uma linha cortado com reticências (nome de grupo, sessão, produto) | `OverflowTooltipText`; em `Chip`/elemento próprio, `useIsTruncated` + `Tooltip` | atributo nativo `title`; tooltip fixo que aparece mesmo com o texto inteiro |
 | Grupo de WhatsApp em lista/chip | `GroupAvatar` / `GroupChip` (`features/offers/components/GroupChip.tsx`): foto, senão iniciais, senão ícone | `Chip` só com texto; ícone genérico quando há foto |
 
 Estilo visual de uma tela redesenhada fica num módulo da feature (`features/<x>/<x>Style.ts`, ex.:
@@ -100,3 +101,20 @@ Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (se
 
 Ver [`gerador-de-ofertas.md`](gerador-de-ofertas.md) ("Espera até o próximo envio") e
 `CooldownBar.tsx`. Relógio sempre do servidor (`X-Server-Time`).
+
+## OverflowTooltipText / useIsTruncated
+
+Texto cortado com reticências mostra o conteúdo inteiro no hover, foco e toque, **só quando está
+cortado**. `OverflowTooltipText` = `Typography noWrap` + `Tooltip` (`arrow`, `describeChild`,
+`enterTouchDelay={0}`, `leaveTouchDelay={4000}`); `useIsTruncated(ref)` mede `scrollWidth > clientWidth`
+e recalcula por `ResizeObserver`.
+
+- Visual não muda: passe a mesma tipografia em `typographyProps` (`variant`, `color`, `sx`, `component`).
+- `disabled` = flag de borrar da tela. Borrado ligado → sem tooltip (senão vaza o nome).
+- `children` para o `<Blurred>` dentro; `text` é sempre o texto completo do tooltip.
+- `focusable={false}` dentro de botão/área clicável (o foco já é do pai). Fora disso, texto cortado
+  ganha `tabIndex=0` para o teclado abrir o tooltip.
+- `alwaysShow` quando a linha resume algo maior que ela ("A, B e mais 3").
+- Chip: `useIsTruncated(ref, conteúdo, el => el.querySelector('.MuiChip-label'))` + `Tooltip` em volta
+  (ver `GroupChip`).
+- Não usar `title` nativo: aparência fora do tema e aparece com o texto inteiro.

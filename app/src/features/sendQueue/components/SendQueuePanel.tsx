@@ -4,7 +4,7 @@ import {
   Skeleton, Stack, Tab, Tabs, Tooltip, Typography, type ChipProps,
 } from '@mui/material';
 import { ExternalLink, ListOrdered, Pause, Play, RefreshCw, Users } from 'lucide-react';
-import { AppIcon, CooldownBar, EmptyState, SectionCard } from '@/components';
+import { AppIcon, CooldownBar, EmptyState, OverflowTooltipText, SectionCard } from '@/components';
 import { serverNow, serverToLocal } from '@/services/serverClock';
 import { Blurred, useBlur, type PrivacyFlag } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -343,9 +343,9 @@ function QueueRow({ item, privacy, onOpenOffer, currentOfferId, control, control
         </Avatar>
       </ListItemAvatar>
       <Box sx={{ minWidth: 0, flex: 1, py: 0.75, pr: actionCount * 4.5 }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+        <OverflowTooltipText text={item.groupName || t.untitledGroup} disabled={blurNames} typographyProps={{ variant: 'body2', sx: { fontWeight: 500 } }}>
           <Blurred when={blurNames} inline radius={5}>{item.groupName || t.untitledGroup}</Blurred>
-        </Typography>
+        </OverflowTooltipText>
         <Typography variant="body2" color="text.secondary" noWrap>
           <Blurred when={blurText} inline radius={5}>{item.title || item.textPreview || t.untitledOffer}</Blurred>
         </Typography>
