@@ -1,13 +1,20 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import sharp from 'sharp';
 import { MediaOfferStore } from './MediaOfferStore';
+import { SharpImageTranscoder } from '../../../media/infrastructure/sharp/SharpImageTranscoder';
 import { offerImageMimeFromUrl } from './offerImageTypes';
 import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFileStore';
 import type { BeginConsumeResult, IUploadSessionStore, UploadSessionRecord } from '../../../media/domain/contracts/IUploadSessionStore';
 
-const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]);
+// JPEG real (o saveImage passa pelo sharp); gerado no beforeAll.
+let JPEG: Buffer;
 const PDF = Buffer.from('%PDF-1.4');
 
-function record(sizeBytes = JPEG.length): UploadSessionRecord {
+beforeAll(async () => {
+  JPEG = await sharp({ create: { width: 10, height: 10, channels: 3, background: '#000' } }).jpeg().toBuffer();
+});
+
+function record(sizeBytes = 1024): UploadSessionRecord {
   return {
     uploadId: 'u1', tenantId: 't', userId: 'usr', purpose: 'media', fileName: 'a.jpg', declaredMimeType: 'image/jpeg',
     sizeBytes, chunkSizeBytes: 8, totalParts: 1, receivedParts: [0], state: 'CONSUMING',
@@ -27,6 +34,7 @@ function setup(begin: BeginConsumeResult, content: Buffer = JPEG) {
   const store = new MediaOfferStore({
     files: () => ({ saveBuffer } as unknown as IMediaFileStore),
     uploads: () => uploads as unknown as IUploadSessionStore,
+    images: () => new SharpImageTranscoder(),
     readFile: async () => content,
   });
   return { store, saveBuffer, uploads };
@@ -35,12 +43,39 @@ function setup(begin: BeginConsumeResult, content: Buffer = JPEG) {
 const input = { tenantId: 't', userId: 'usr', uploadId: 'u1' };
 
 describe('MediaOfferStore', () => {
-  it('saveImage grava offer-<uuid>.<ext>; tipo fora da lista → 415', async () => {
+  it('saveImage grava offer-<uuid>.jpg; tipo fora da lista → 415', async () => {
     const { store, saveBuffer } = setup({ outcome: 'not_found' });
     const url = await store.saveImage(JPEG, 'image/jpeg');
     expect(url).toMatch(/\/offer-[0-9a-f-]{36}\.jpg$/);
     expect(saveBuffer).toHaveBeenCalledOnce();
     await expect(store.saveImage(JPEG, 'image/gif')).rejects.toMatchObject({ code: 'UNSUPPORTED_MEDIA_TYPE' });
+  });
+
+  it('saveImage reduz PNG/WebP grande para JPEG com lado ≤ 600', async () => {
+    const { store, saveBuffer } = setup({ outcome: 'not_found' });
+    const png = await sharp({ create: { width: 2000, height: 1000, channels: 4, background: '#09f' } }).png().toBuffer();
+    const webp = await sharp({ create: { width: 900, height: 1800, channels: 3, background: '#f90' } }).webp().toBuffer();
+    expect(await store.saveImage(png, 'image/png')).toMatch(/\.jpg$/);
+    expect(await store.saveImage(webp, 'image/webp')).toMatch(/\.jpg$/);
+    const metas = await Promise.all(saveBuffer.mock.calls.map(([b]) => sharp(b).metadata()));
+    expect(metas.map((m) => [m.format, m.width, m.height])).toEqual([['jpeg', 600, 300], ['jpeg', 300, 600]]);
+  });
+
+  it('saveImage: acima de 5 MB recusa antes do sharp; bytes inválidos → MEDIA_PROCESSING_FAILED', async () => {
+    const resizeJpeg = vi.fn();
+    const saveBuffer = vi.fn();
+    const store = new MediaOfferStore({
+      files: () => ({ saveBuffer } as unknown as IMediaFileStore),
+      uploads: () => ({}) as IUploadSessionStore,
+      images: () => ({ toJpeg: vi.fn(), resizeJpeg }),
+    });
+    await expect(store.saveImage(Buffer.alloc(5 * 1024 * 1024 + 1), 'image/jpeg')).rejects.toMatchObject({ code: 'MEDIA_TOO_LARGE' });
+    expect(resizeJpeg).not.toHaveBeenCalled();
+
+    const { store: real, saveBuffer: saved } = setup({ outcome: 'not_found' });
+    await expect(real.saveImage(Buffer.from('lixo'), 'image/png')).rejects.toMatchObject({ code: 'MEDIA_PROCESSING_FAILED' });
+    expect(saved).not.toHaveBeenCalled();
+    expect(saveBuffer).not.toHaveBeenCalled();
   });
 
   it('upload de imagem: salva e descarta o upload', async () => {
@@ -86,6 +121,7 @@ describe('MediaOfferStore', () => {
     const store = new MediaOfferStore({
       files: () => ({ remove, resolveLocalPath } as unknown as IMediaFileStore),
       uploads: () => ({}) as IUploadSessionStore,
+      images: () => new SharpImageTranscoder(),
     });
     const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
     await store.removeImage(`https://cdn/media/offer-${id}.jpg`);

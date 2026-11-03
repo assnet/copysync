@@ -4,6 +4,7 @@ import type {
   ConsumeOfferImageUploadInput,
   IOfferMediaStore,
 } from '../../domain/contracts/IOfferMediaStore';
+import type { IImageTranscoder } from '../../../media/domain/contracts/IImageTranscoder';
 import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFileStore';
 import type { IUploadSessionStore } from '../../../media/domain/contracts/IUploadSessionStore';
 import { sniffMediaType } from '../../../media/domain/services/sniffMediaType';
@@ -18,17 +19,21 @@ import { logger } from '../../../../shared/logger/logger';
 import { OFFER_IMAGE_EXT, OFFER_IMAGE_MAX_BYTES } from './offerImageTypes';
 
 const SNIFF_BYTES = 4096;
-/** Nome que `saveImage` grava; só ele pode ser apagado por `removeImage`. */
+/** Foto gravada: JPEG com lado maior ≤ 600 px (serve à mídia e ao cartão da prévia de link). */
+const OFFER_IMAGE_MAX_SIDE = 600;
+const OFFER_IMAGE_QUALITY = 75;
+/** Nome que `saveImage` grava; png/webp ficam para fotos antigas (antes da redução). */
 const OFFER_IMAGE_NAME = /\/offer-[0-9a-f-]{36}\.(jpg|png|webp)$/i;
 
 export interface MediaOfferStoreDeps {
   files: () => IMediaFileStore;
   uploads: () => IUploadSessionStore;
+  images: () => IImageTranscoder;
   readFile?: (filePath: string) => Promise<Buffer>;
 }
 
 /**
- * Foto da oferta no media store (`offer-<uuid>.<ext>`). A origem nunca é movida: cada envio
+ * Foto da oferta no media store (`offer-<uuid>.jpg`, reduzida a 600 px). A origem nunca é movida: cada envio
  * copia (ver `SendStoredMediaMessageUseCase`).
  *
  * Upload do operador: não vira mensagem, então não há `messageId` para o `finishConsume`.
@@ -39,10 +44,13 @@ export class MediaOfferStore implements IOfferMediaStore {
   constructor(private readonly deps: MediaOfferStoreDeps) {}
 
   async saveImage(buffer: Buffer, mimeType: string): Promise<string> {
-    const ext = OFFER_IMAGE_EXT[mimeType.toLowerCase()];
-    if (!ext) throw new UnsupportedMediaTypeError('Only JPEG, PNG or WebP images are accepted');
+    if (!OFFER_IMAGE_EXT[mimeType.toLowerCase()]) {
+      throw new UnsupportedMediaTypeError('Only JPEG, PNG or WebP images are accepted');
+    }
     if (buffer.length > OFFER_IMAGE_MAX_BYTES) throw new MediaTooLargeError();
-    return this.deps.files().saveBuffer(buffer, `offer-${randomUUID()}.${ext}`);
+    // Erro do sharp sobe como MediaProcessingFailedError (foto inválida, como o chamador já trata).
+    const jpeg = await this.deps.images().resizeJpeg(buffer, OFFER_IMAGE_MAX_SIDE, OFFER_IMAGE_QUALITY);
+    return this.deps.files().saveBuffer(jpeg.buffer, `offer-${randomUUID()}.jpg`);
   }
 
   /** Store local exige caminho (`resolveLocalPath`); o remoto aceita a URL (resolve null). */

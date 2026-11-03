@@ -71,7 +71,11 @@ const credentialGateway = lazy((): IAffiliateCredentialGateway => {
   };
 });
 const mediaStore   = lazy(
-  () => new MediaOfferStore({ files: () => mediaContainer.mediaFileStore, uploads: () => mediaContainer.uploadStore }),
+  () => new MediaOfferStore({
+    files:   () => mediaContainer.mediaFileStore,
+    uploads: () => mediaContainer.uploadStore,
+    images:  () => mediaContainer.imageTranscoder,
+  }),
 );
 const sender       = lazy(() => new ChatOfferMessageSender());
 const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator()));
