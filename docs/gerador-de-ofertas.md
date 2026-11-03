@@ -12,7 +12,7 @@ Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/feat
 | Use cases | `campaigns/application/use-cases/` (Generate, Update, Regenerate, Send, ProcessDue, Config, Get, Usage) · `application/services/OfferTextComposer.ts` |
 | HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `HttpShortLinkExpander`, `HttpProductPageReader`, `HttpOfferImageFetcher`) |
 | IA | porta `IAiTextGenerator` via `LazyAiTextGenerator` → `docs/ia-provedores.md` |
-| Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem) / `SendMessageUseCase` (texto), com `mentions` |
+| Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem; WebP do ML sai como JPEG, ver `chat-midias-anexos.md` "Foto WebP") / `SendMessageUseCase` (texto), com `mentions` |
 | Worker | `campaigns/infrastructure/worker/OfferDispatchWorker.ts`, ligado em `app/server.ts` |
 | Tabelas | `offers`, `offer_dispatches`, `offer_destinations`, `offer_generator_configs` |
 | Painel | `app/src/features/offers/` (`components/config/` = assistente) · `app/src/pages/offers/OfferGeneratorPage.tsx` · `/offers` |

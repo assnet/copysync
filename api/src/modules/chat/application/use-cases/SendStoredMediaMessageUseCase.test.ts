@@ -7,7 +7,7 @@ import {
 } from '../../domain/enums/ChatMessageEnums';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
-import { MediaNotFoundError, UnsupportedMediaTypeError } from '../../../../shared/errors/internal/MediaErrors';
+import { MediaNotFoundError, MediaProcessingFailedError, UnsupportedMediaTypeError } from '../../../../shared/errors/internal/MediaErrors';
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
@@ -31,6 +31,7 @@ function makeDeps(o: {
   createError?: Error;
   promoteError?: Error;
   enqueued?: boolean;
+  transcodeError?: Error;
 } = {}) {
   const release = vi.fn(async () => undefined);
   const messageRepo = {
@@ -67,7 +68,10 @@ function makeDeps(o: {
   const queue = { enqueue: vi.fn(() => o.enqueued ?? true), inFlightIds: vi.fn(() => []), drain: vi.fn() };
   const copyFile = vi.fn(async () => undefined);
   const removeTmp = vi.fn(async () => undefined);
-  const tmpPathFor = vi.fn(() => TMP);
+  const tmpPathFor = vi.fn((ext: string) => TMP.replace(/jpg$/, ext));
+  const images = {
+    toJpeg: vi.fn(async () => { if (o.transcodeError) throw o.transcodeError; }),
+  };
 
   const useCase = new SendStoredMediaMessageUseCase({
     messageRepo: messageRepo as unknown as IChatMessageRepository,
@@ -79,8 +83,9 @@ function makeDeps(o: {
     tmpPathFor,
     copyFile,
     removeTmp,
+    images,
   });
-  return { useCase, messageRepo, conversationRepo, files, queue, copyFile, removeTmp, release };
+  return { useCase, messageRepo, conversationRepo, files, queue, copyFile, removeTmp, release, images };
 }
 
 type Deps = ReturnType<typeof makeDeps>;
@@ -177,5 +182,32 @@ describe('SendStoredMediaMessageUseCase', () => {
     expect(d.files.remove).toHaveBeenCalledWith('/media/sess-1_EXT-1.jpg');
     expect(d.release).toHaveBeenCalledOnce();
     expect(d.queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('WebP vira JPEG na cópia (origem intacta) e a mensagem grava image/jpeg', async () => {
+    const d = makeDeps();
+    await enviar(d, { mimeType: 'image/webp' });
+
+    expect(d.images.toJpeg).toHaveBeenCalledWith(SRC_PATH, TMP);
+    expect(d.copyFile).not.toHaveBeenCalled();
+    expect(d.files.promote).toHaveBeenCalledWith(expect.objectContaining({ srcPath: TMP, mimeType: 'image/jpeg' }));
+    expect(d.messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({ mimeType: 'image/jpeg' }));
+    expect(d.files.remove).not.toHaveBeenCalledWith(SRC_PATH);
+  });
+
+  it('PNG segue sem conversão', async () => {
+    const d = makeDeps();
+    await enviar(d, { mimeType: 'image/png' });
+    expect(d.images.toJpeg).not.toHaveBeenCalled();
+    expect(d.messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({ mimeType: 'image/png' }));
+  });
+
+  it('falha na conversão não grava mensagem e libera a origem', async () => {
+    const d = makeDeps({ transcodeError: new MediaProcessingFailedError() });
+    await expect(enviar(d, { mimeType: 'image/webp' })).rejects.toBeInstanceOf(MediaProcessingFailedError);
+    expect(d.files.promote).not.toHaveBeenCalled();
+    expect(d.messageRepo.create).not.toHaveBeenCalled();
+    expect(d.removeTmp).toHaveBeenCalledWith(TMP);
+    expect(d.release).toHaveBeenCalledOnce();
   });
 });

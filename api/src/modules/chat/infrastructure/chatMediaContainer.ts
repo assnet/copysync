@@ -77,7 +77,7 @@ export const chatMediaContainer = {
   outboundLimits(): OutboundMediaLimits {
     return buildMediaUploadConfig(env, mediaContainer.capabilities()).limits;
   },
-  /** Saída do transcode de voz: pasta de uploads, reconhecida pela varredura e pelo descarte. */
+  /** Saída do transcode (voz ou foto WebP→JPEG): pasta de uploads, reconhecida pela varredura e pelo descarte. */
   voiceTmpPath(uploadId: string, ext: string): string {
     return uploadVoiceFilePath(env.MEDIA_UPLOAD_TMP_PATH, uploadId, ext);
   },
@@ -96,6 +96,7 @@ export const chatMediaContainer = {
       tmpPathFor: (ext) => path.join(os.tmpdir(), `stored-media-${randomUUID()}.${ext}`),
       copyFile:   (src, dest) => fs.copyFile(src, dest),
       removeTmp:  (filePath) => fs.rm(filePath, { force: true }),
+      images:     mediaContainer.imageTranscoder,
     });
   },
 };

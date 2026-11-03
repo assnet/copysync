@@ -11,6 +11,8 @@ import type {
 import type { IMediaProcessor } from '../../../media/domain/contracts/IMediaProcessor';
 import type { IMediaFileStore, PromotedMediaFile } from '../../../media/domain/contracts/IMediaFileStore';
 import type { IOutboundMediaQueue } from '../contracts/IOutboundMediaQueue';
+import type { IImageTranscoder } from '../../../media/domain/contracts/IImageTranscoder';
+import { INLINE_IMAGE_TARGET_MIME, needsInlineImageTranscode } from '../../../media/domain/services/inlineImageFormat';
 import {
   ChatMessageDirection,
   ChatMessageStatus,
@@ -63,8 +65,10 @@ export interface SendMediaMessageDeps {
   files: IMediaFileStore;
   queue: IOutboundMediaQueue;
   limits: OutboundMediaLimits;
-  /** Caminho na pasta temporária (mesmo disco da mídia) para a saída do transcode. */
+  /** Caminho na pasta temporária (mesmo disco da mídia) para a saída do transcode (voz ou foto). */
   tmpPathFor: (uploadId: string, ext: string) => string;
+  /** Foto WebP vira JPEG: o app Android não exibe foto WebP (ver `inlineImageFormat`). */
+  images: IImageTranscoder;
 }
 
 /** Arquivo pronto e promovido, com o que a mensagem precisa gravar. */
@@ -75,6 +79,8 @@ interface PreparedMedia {
   mimeType: string;
   durationSeconds: number | null;
   file: PromotedMediaFile;
+  /** Promoveu uma saída convertida (voz ou foto): o `.bin` original sobra na pasta. */
+  transcoded: boolean;
 }
 
 const SNIFF_BYTES = 4096;
@@ -157,9 +163,9 @@ export class SendMediaMessageUseCase {
 
     // 8–9. Mensagem já existe: falha aqui não pode impedir o envio (reconciliação cobre o lateral)
     await this.quietly('Falha ao concluir upload', uploadId, () => uploads.finishConsume(uploadId, message.id));
-    // Voz promoveu o transcodificado: o original ficaria na pasta até o TTL. Só age em `CONSUMED`
-    if (isVoice) {
-      await this.quietly('Falha ao apagar o original da nota de voz', uploadId, () => uploads.dropBinary(uploadId));
+    // Promoveu o convertido (voz ou foto): o original ficaria na pasta até o TTL. Só age em `CONSUMED`
+    if (prepared.transcoded) {
+      await this.quietly('Falha ao apagar o original convertido', uploadId, () => uploads.dropBinary(uploadId));
     }
     await this.quietly('Falha ao atualizar prévia da conversa', uploadId, () =>
       conversationRepo.updateLastMessage(conversationId, tenantId, {
@@ -221,7 +227,12 @@ export class SendMediaMessageUseCase {
     if (kind === 'voice') {
       if (!sniffed.demuxer) throw new UnsupportedMediaTypeError('Voice notes must be an audio recording');
       const voice = await this.transcodeAndPromoteVoice(uploadId, srcPath, sniffed.demuxer, target);
-      return { ...target, type: ChatMessageType.AUDIO, ...voice };
+      return { ...target, type: ChatMessageType.AUDIO, ...voice, transcoded: true };
+    }
+    if (kind === 'image' && needsInlineImageTranscode(mimeType)) {
+      const photo = { ...target, mimeType: INLINE_IMAGE_TARGET_MIME };
+      const file = await this.transcodeAndPromotePhoto(uploadId, srcPath, photo);
+      return { ...photo, type: ChatMessageType.IMAGE, durationSeconds: null, file, transcoded: true };
     }
     const file = await files.promote({ srcPath, ...target });
     return {
@@ -229,6 +240,7 @@ export class SendMediaMessageUseCase {
       type: TYPE_BY_KIND[kind],
       durationSeconds: kind === 'video' ? probe?.durationSeconds ?? null : null,
       file,
+      transcoded: false,
     };
   }
 
@@ -269,6 +281,23 @@ export class SendMediaMessageUseCase {
       return { durationSeconds, file };
     } catch (err) {
       await this.quietly('Falha ao apagar nota de voz transcodificada', uploadId, () => files.remove(outPath));
+      throw err;
+    }
+  }
+
+  /** Foto WebP → JPEG e promove a saída; a saída parcial é apagada se algo falhar. */
+  private async transcodeAndPromotePhoto(
+    uploadId: string,
+    srcPath: string,
+    target: { sessionId: string; externalMessageId: string; mimeType: string },
+  ): Promise<PromotedMediaFile> {
+    const { images, files, tmpPathFor } = this.deps;
+    const outPath = tmpPathFor(uploadId, 'jpg');
+    try {
+      await images.toJpeg(srcPath, outPath);
+      return await files.promote({ srcPath: outPath, ...target });
+    } catch (err) {
+      await this.quietly('Falha ao apagar foto convertida', uploadId, () => files.remove(outPath));
       throw err;
     }
   }

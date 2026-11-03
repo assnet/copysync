@@ -256,6 +256,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         queue:            chatMediaContainer.queue,
         limits:           chatMediaContainer.outboundLimits(),
         tmpPathFor:       chatMediaContainer.voiceTmpPath,
+        images:           mediaContainer.imageTranscoder,
       });
       const { message, replayed } = await useCase.execute({
         tenantId,

@@ -5,6 +5,8 @@ import type { ChatMessage } from '../../domain/entities/ChatMessage';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import type { IMediaFileStore, PromotedMediaFile } from '../../../media/domain/contracts/IMediaFileStore';
 import type { IOutboundMediaQueue } from '../contracts/IOutboundMediaQueue';
+import type { IImageTranscoder } from '../../../media/domain/contracts/IImageTranscoder';
+import { INLINE_IMAGE_TARGET_MIME, needsInlineImageTranscode } from '../../../media/domain/services/inlineImageFormat';
 import {
   ChatMessageDirection,
   ChatMessageStatus,
@@ -43,6 +45,8 @@ export interface SendStoredMediaMessageDeps {
   /** Caminho temporário único para a cópia (a promoção pode mover o arquivo). */
   tmpPathFor: (ext: string) => string;
   copyFile: (srcPath: string, destPath: string) => Promise<void>;
+  /** WebP vira JPEG na cópia: o app Android não exibe foto WebP (ver `inlineImageFormat`). */
+  images: IImageTranscoder;
   /** Remove um arquivo temporário; não falha se ele já não existir. */
   removeTmp: (filePath: string) => Promise<void>;
 }
@@ -69,9 +73,12 @@ export class SendStoredMediaMessageUseCase {
     const { messageRepo, conversationRepo, contactRepo, engine, files, queue } = this.deps;
 
     // 1. Tipo antes de qualquer I/O
-    const mimeType = input.mimeType.toLowerCase();
-    const ext = IMAGE_EXT[mimeType];
-    if (!ext) throw new UnsupportedMediaTypeError('Only JPEG, PNG or WebP images can be sent');
+    const sourceMime = input.mimeType.toLowerCase();
+    if (!IMAGE_EXT[sourceMime]) throw new UnsupportedMediaTypeError('Only JPEG, PNG or WebP images can be sent');
+    // A cópia já sai no formato que vai ao WhatsApp; a origem continua como está
+    const transcode = needsInlineImageTranscode(sourceMime);
+    const mimeType = transcode ? INLINE_IMAGE_TARGET_MIME : sourceMime;
+    const ext = IMAGE_EXT[mimeType]!;
 
     // 2. Conversa do tenant com destino válido
     const conv = await conversationRepo.findById(conversationId, tenantId);
@@ -85,7 +92,7 @@ export class SendStoredMediaMessageUseCase {
     const externalMessageId = engine.createOutboundMessageId(sessionId);
 
     // 4. Cópia própria da origem → promoção
-    const file = await this.copyAndPromote(sourceMediaUrl, { sessionId, externalMessageId, mimeType }, ext);
+    const file = await this.copyAndPromote(sourceMediaUrl, { sessionId, externalMessageId, mimeType }, ext, transcode);
 
     // 5. Grava PENDING; falha de banco apaga o arquivo promovido
     const caption = input.caption || null;
@@ -134,20 +141,25 @@ export class SendStoredMediaMessageUseCase {
     return { message: toDto(message) };
   }
 
-  /** Materializa a origem, copia para um temporário e promove a cópia. Sempre libera a origem. */
+  /**
+   * Materializa a origem, copia (ou converte para JPEG) para um temporário e promove a cópia.
+   * Sempre libera a origem.
+   */
   private async copyAndPromote(
     sourceMediaUrl: string,
     target: { sessionId: string; externalMessageId: string; mimeType: string },
     ext: string,
+    transcode: boolean,
   ): Promise<PromotedMediaFile> {
-    const { files, tmpPathFor, copyFile, removeTmp } = this.deps;
+    const { files, tmpPathFor, copyFile, removeTmp, images } = this.deps;
     const acquired = await files.acquireLocalFile(sourceMediaUrl);
     // Código próprio: não confundir com conversa ausente (NOT_FOUND)
     if (!acquired) throw new MediaNotFoundError();
 
     const tmpPath = tmpPathFor(ext);
     try {
-      await copyFile(acquired.filePath, tmpPath);
+      if (transcode) await images.toJpeg(acquired.filePath, tmpPath);
+      else await copyFile(acquired.filePath, tmpPath);
       return await files.promote({ srcPath: tmpPath, ...target });
     } finally {
       // Promoção local move a cópia; a remota faz upload e apaga. Sobra só em falha

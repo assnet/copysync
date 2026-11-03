@@ -22,7 +22,7 @@ Spec, contexto (D1–D8) e design: `.specs/features/chat-media-attachments/`.
    atômica) em `MEDIA_UPLOAD_TMP_PATH` — mesmo disco da mídia, **fora** da raiz estática.
 3. Confirmação → `SendMediaMessageUseCase`: conversa → `beginConsume` → id externo pré-gerado
    (exige socket aberto; senão 409 e nada é gravado) → sniff + probe → `classifyOutboundMedia` →
-   voz: transcodifica → promove para `media/` (`rename`) → grava **`PENDING`** → `finishConsume` →
+   voz: transcodifica; foto WebP: vira JPEG → promove para `media/` (`rename`) → grava **`PENDING`** → `finishConsume` →
    fila → **202**. Confirmação repetida → 200 com a mesma mensagem.
 4. `InMemoryOutboundMediaQueue`: serial **por conversa** (ordem do lote), até 2 por sessão e 2 no total.
 5. `DispatchOutboundMediaUseCase` (tudo em `try/finally` — erro nunca deixa `PENDING`): confere
@@ -41,7 +41,7 @@ Spec, contexto (D1–D8) e design: `.specs/features/chat-media-attachments/`.
 | Finalidade | Condição | Vira |
 |---|---|---|
 | `voice` | sniff de áudio/webm/mp4 **e** probe com áudio | nota de voz (Ogg/Opus); senão 415 |
-| `media` | JPEG/PNG/WebP ≤ 16 MB | imagem |
+| `media` | JPEG/PNG/WebP ≤ 16 MB | imagem (WebP sai como JPEG, ver "Foto WebP") |
 | `media` | MP4/3GP H.264 `yuv420p` ≤ 180 MB | vídeo |
 | `media` | HEIC, GIF, imagem > limite, MOV/WebM, HEVC/10 bits, vídeo sem probe | documento |
 | `document` | qualquer ≤ 180 MB | documento |
@@ -49,6 +49,21 @@ Spec, contexto (D1–D8) e design: `.specs/features/chat-media-attachments/`.
 O codec só a API conhece: o 202 traz o tipo final e a bolha reflete. Nome no disco:
 `${sessionId}_${externalId}.${ext}` pela mesma regra do download (`shared/storage/mediaFileExtension.ts`);
 o nome original vai só em `fileName`.
+
+## Foto WebP
+
+Foto `image/webp` aparece no iPhone, mas o WhatsApp Android **não exibe a mensagem** (some
+inteira, legenda junto, e o envio fica `SENT`). O app oficial sempre manda foto em JPEG; WebP no
+protocolo é figurinha. Por isso toda foto WebP vira JPEG **antes** de chegar ao motor:
+
+- Regra: `media/domain/services/inlineImageFormat.ts` (`needsInlineImageTranscode`; PNG segue).
+- Porta: `IImageTranscoder` (`media/domain/contracts`); sharp em `media/infrastructure/sharp/`
+  (orientação EXIF, fundo branco na transparência, sem metadados, 1ª página de animada).
+- Onde: `SendMediaMessageUseCase` (upload do painel; saída em `<uploadId>.voice.jpg`, o `.bin`
+  é apagado como na voz) e `SendStoredMediaMessageUseCase` (ofertas: a **cópia** sai em JPEG, a
+  foto da oferta no store continua WebP). A mensagem grava `image/jpeg`.
+- Falha na conversão = `MEDIA_PROCESSING_FAILED`; nada é gravado nem enviado.
+- Mensagem já gravada como WebP (reenvio/recuperação) segue como está.
 
 ## Voz
 
@@ -172,3 +187,5 @@ Os limites de disco relativos vêm do `statfs` a cada criação: aumentar o disc
 - Boot escrevendo em massa no banco sem flag: `api/.env` aponta para **produção**.
 - `useVoiceRecorder` no `ChatPage`: cada quadro de onda re-renderiza a lista.
 - Logar no painel de produção para conferência visual — usar banco local.
+- Converter formato no adapter do motor ou enviar foto WebP como imagem: a conversão é da
+  preparação da mídia (`IImageTranscoder`), antes de gravar a mensagem.

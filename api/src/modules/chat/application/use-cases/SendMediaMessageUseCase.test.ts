@@ -44,6 +44,8 @@ const LIMITS = { imageBytes: 16_000, inlineVideoBytes: 180_000, documentBytes: 2
 
 const ascii = (text: string) => Uint8Array.from(text, (ch) => ch.charCodeAt(0));
 const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]);
+const WEBP = Uint8Array.from([...ascii('RIFF'), 0, 0, 0, 0, ...ascii('WEBP')]);
+const FOTO_JPG = '/uploads/up-1.voice.jpg';
 const MP4 = Uint8Array.from([0, 0, 0, 0x18, ...ascii('ftypisom')]);
 const WEBM = Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3]);
 const PDF = ascii('%PDF-1.7');
@@ -99,6 +101,7 @@ function makeDeps(o: {
   createError?: Error;
   promoteError?: Error;
   enqueued?: boolean;
+  transcodeError?: Error;
 } = {}) {
   const calls: string[] = [];
   const track = <A extends unknown[], R>(name: string, impl: (...args: A) => R) =>
@@ -174,6 +177,9 @@ function makeDeps(o: {
     drain: vi.fn(async () => undefined),
   };
   const tmpPathFor = vi.fn((uploadId: string, ext: string) => `/uploads/${uploadId}.voice.${ext}`);
+  const images = {
+    toJpeg: track('toJpeg', async () => { if (o.transcodeError) throw o.transcodeError; }),
+  };
 
   const useCase = new SendMediaMessageUseCase({
     messageRepo: messageRepo as unknown as IChatMessageRepository,
@@ -186,8 +192,9 @@ function makeDeps(o: {
     queue: queue as unknown as IOutboundMediaQueue,
     limits: LIMITS,
     tmpPathFor,
+    images,
   });
-  return { useCase, calls, messageRepo, conversationRepo, uploads, processor, files, queue, engine };
+  return { useCase, calls, messageRepo, conversationRepo, uploads, processor, files, queue, engine, images };
 }
 
 type Deps = ReturnType<typeof makeDeps>;
@@ -571,5 +578,35 @@ describe('SendMediaMessageUseCase — citação e prévia', () => {
 
     expect(gravado(d).content).toBeNull();
     expect(d.conversationRepo.updateLastMessage.mock.calls[0][2].lastMessagePreview).toBe(rotulo);
+  });
+});
+
+describe('SendMediaMessageUseCase — foto WebP', () => {
+  it('converte para JPEG, promove a saída, grava image/jpeg e apaga o original', async () => {
+    const d = makeDeps({ head: WEBP });
+    await enviar(d, { caption: 'oferta' });
+
+    expect(d.images.toJpeg).toHaveBeenCalledWith(BIN, FOTO_JPG);
+    expect(d.files.promote).toHaveBeenCalledWith({
+      srcPath: FOTO_JPG, sessionId: SESSAO, externalMessageId: EXT, mimeType: 'image/jpeg',
+    });
+    expect(gravado(d)).toMatchObject({ type: ChatMessageType.IMAGE, mimeType: 'image/jpeg', content: 'oferta' });
+    expect(d.uploads.dropBinary).toHaveBeenCalledWith(UPLOAD);
+  });
+
+  it('JPEG não passa pela conversão nem apaga o original', async () => {
+    const d = makeDeps();
+    await enviar(d);
+    expect(d.images.toJpeg).not.toHaveBeenCalled();
+    expect(d.uploads.dropBinary).not.toHaveBeenCalled();
+  });
+
+  it('falha na conversão apaga a saída parcial e devolve o upload a OPEN', async () => {
+    const d = makeDeps({ head: WEBP, transcodeError: new MediaProcessingFailedError() });
+    await expect(enviar(d)).rejects.toBeInstanceOf(MediaProcessingFailedError);
+    expect(d.files.remove).toHaveBeenCalledWith(FOTO_JPG);
+    expect(d.files.promote).not.toHaveBeenCalled();
+    expect(d.messageRepo.create).not.toHaveBeenCalled();
+    expect(d.uploads.releaseConsume).toHaveBeenCalledWith(UPLOAD);
   });
 });
