@@ -7,7 +7,7 @@ checkout, suporte): `.specs/features/plans-modal/spec.md`. Este doc registra o q
 
 | Peça | Onde | Nota |
 | --- | --- | --- |
-| Item "Planos" no menu | `app/src/app/AppLayout.tsx` (`NAV_ITEMS`, ícone `Crown`) | Rota, não ação. Fica acima de Privacidade |
+| Item "Planos" no menu | `app/src/features/navigation/model.ts` (bloco inferior, ícone `Crown`; ver `docs/navegacao-produtos.md`) | Rota, não ação. Fica acima de Privacidade |
 | Página `/plans` | `app/src/pages/plans/PlansPage.tsx` | Hero (banner) + 3 cards + faixa de confiança + nota |
 | Catálogo de vitrine | `app/src/features/plans/catalog.ts` | Slug, nome, tagline, preço de/por, benefícios (com `hint` para Tooltip), limites |
 | Textos | `app/src/features/plans/strings.ts` | pt-BR, chaves semânticas; `formatPrice` com `Intl.NumberFormat` |

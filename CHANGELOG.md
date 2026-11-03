@@ -9,6 +9,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.61.0 — menu por produtos
+
+Doc: `docs/navegacao-produtos.md`.
+
+- **`features/navigation/model.ts`** — `buildNavigation({ isSuperAdmin })` e `findActiveEntry`: o menu deixa de ser lista plana e passa a ser Dashboard, produtos (Afiliados disponível; CRM & Automação, Gestor de Grupos, Saver e Aquecedor de Chip "em breve"), Plataforma (super admin) e bloco inferior (Planos, Privacidade, Configurações). `NavProduct.status` prepara visibilidade por entitlement.
+- **`features/navigation/strings.ts`** — rótulos, selos e textos de acessibilidade do menu num só lugar (padrão i18n do painel).
+- **`features/navigation/useNavigationState.ts`** — produtos expandidos persistidos em `navigation.expandedProducts` (escopo `browser`); produto do filho ativo abre sozinho.
+- **`app/nav/ProductNavItem.tsx`** + **`app/nav/CollapsedProductNavItem.tsx`** + **`app/nav/NavLinkItem.tsx`** + **`app/nav/navStyles.ts`** — acordeão na sidebar aberta e popover `MenuList` (setas, Esc) na recolhida; `aria-expanded`, `aria-current`, ids por drawer, alvo de 44 px, `prefers-reduced-motion`, selos sempre inline, contraste em `text.secondary`.
+- **`features/navigation/icons.ts`** — `MODULE_ICONS` sai de `pages/modules` (que só reexporta): a feature não depende de `pages/`.
+- **`app/AppLayout.tsx`** — passa a consumir o modelo; `NAV_ITEMS`/`NAV_ADMIN_ITEMS` saem do layout. Drawer 272 px, logo e botão de recolher na mesma linha, rodapé compacto (avatar + e-mail + Sair), `<nav aria-label>`, `document.title` por seção, textos restantes via `navigationStrings`. Chat continua só para super admin, agora dentro de CRM & Automação.
+- **`docs/produto-roadmap.md`** — seção "Produtos (menu)" com os 5 produtos e as funcionalidades de cada um; decisão: sessão é do tenant, compartilhável entre produtos.
+
 ### Added — api 0.50.0 · app 0.60.0 — prévia de link em ofertas e no chat
 
 Doc: `docs/mensagens-previa-de-link.md`. Spec: `.specs/features/link-preview/`.

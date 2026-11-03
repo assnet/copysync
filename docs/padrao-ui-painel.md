@@ -14,6 +14,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
 | Texto de uma linha cortado com reticências (nome de grupo, sessão, produto) | `OverflowTooltipText`; em `Chip`/elemento próprio, `useIsTruncated` + `Tooltip` | atributo nativo `title`; tooltip fixo que aparece mesmo com o texto inteiro |
 | Grupo de WhatsApp em lista/chip | `GroupAvatar` / `GroupChip` (`features/offers/components/GroupChip.tsx`): foto, senão iniciais, senão ícone | `Chip` só com texto; ícone genérico quando há foto |
+| Item ou produto no menu lateral | entrada em `features/navigation/model.ts` + rótulo em `strings.ts` (ver [`navegacao-produtos.md`](navegacao-produtos.md)) | item declarado em `AppLayout.tsx`; acordeão/popover próprio |
 
 Estilo visual de uma tela redesenhada fica num módulo da feature (`features/<x>/<x>Style.ts`, ex.:
 `monitoring/monitoringStyle.ts`, `offerStory/storyStyle.ts`): tokens e helpers só com `theme`/`alpha()`
@@ -118,3 +119,10 @@ e recalcula por `ResizeObserver`.
 - Chip: `useIsTruncated(ref, conteúdo, el => el.querySelector('.MuiChip-label'))` + `Tooltip` em volta
   (ver `GroupChip`).
 - Não usar `title` nativo: aparência fora do tema e aparece com o texto inteiro.
+
+## Navegação
+
+Menu lateral agrupado por produto (acordeão aberto / popover recolhido): modelo em
+`features/navigation/model.ts`, textos em `strings.ts`, expandidos persistidos em
+`navigation.expandedProducts` (escopo `browser`). Tela nova entra como filho do produto no modelo,
+nunca no `AppLayout.tsx`. Detalhes e o que não fazer: [`navegacao-produtos.md`](navegacao-produtos.md).

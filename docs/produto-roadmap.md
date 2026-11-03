@@ -35,6 +35,22 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 15 | 🌐 Domínio personalizado | Site de ofertas e rodízio de links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
 
+## Produtos (menu)
+
+Desde app 0.61.0 o painel agrupa as telas por produto ([`navegacao-produtos.md`](navegacao-produtos.md)).
+Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela acima.
+
+| Produto | Status | Funcionalidades |
+|---|---|---|
+| Afiliados | disponível | 3, 4, 8, 9, 11, 12 |
+| CRM & Automação | em breve | chat/atendimento, fluxos por blocos, assistentes de IA (`/chat` já existe, só super admin) |
+| Gestor de Grupos | em breve | 5, 10, 14 |
+| Saver | em breve | a definir |
+| Aquecedor de Chip | em breve | a definir |
+
+Sessão (número conectado, item 1) é do tenant: a mesma sessão serve mais de um produto; limite segue
+por plano, não por produto. Plano, permissões e configurações por produto: etapa futura.
+
 ## Planos (rascunho 2026-10-13)
 
 Limites são **entitlements por tenant**: devem viver em dado (`Tenant.planSlug` + `TenantEntitlement`,
