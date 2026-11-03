@@ -81,7 +81,8 @@ export class EnqueueOfferUseCase {
     if (input.sourceKey) {
       const existing = await this.deps.offers.findBySourceKey(tenantId, input.sourceKey);
       // Queda entre criar a oferta e enfileirar: ela ficou DRAFT sem envios; enfileira agora
-      // Mesma captura: os campos gravados valem (o mentionAll esperado é o da linha, senão startSending recusa)
+      // Mesma captura: os campos gravados valem (o mentionAll esperado é o da linha, senão startSending recusa).
+      // imageMode idem: o input é ignorado e o worker lê o da linha (formato decidido na captura).
       if (existing?.status === 'DRAFT') draft = { id: existing.id, mentionAll: existing.mentionAll };
       else if (existing) {
         const first = (await this.deps.dispatches.listByOffer(existing.id, tenantId))

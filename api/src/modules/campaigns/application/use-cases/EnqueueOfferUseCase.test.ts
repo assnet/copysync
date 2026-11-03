@@ -66,6 +66,15 @@ describe('EnqueueOfferUseCase', () => {
     expect(s.offers.items[0]!.status).toBe('SENDING');
   });
 
+  it('DRAFT órfã com imageMode diferente do atual: enfileira com o valor salvo, como o marcar todos', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'orfa', status: 'DRAFT', sourceKey: 'captured:7', imageMode: 'LINK_PREVIEW' }));
+    const out = await s.uc.execute(input({ sourceKey: 'captured:7', imageMode: 'MEDIA' }));
+    expect(out).toMatchObject({ kind: 'queued', offerId: 'orfa' });
+    expect(s.offers.items).toHaveLength(1);
+    expect(s.offers.items[0]).toMatchObject({ status: 'SENDING', imageMode: 'LINK_PREVIEW' });
+  });
+
   it('fila empurraria para depois da validade: não cria nada', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'gen', status: 'SENDING' }));
