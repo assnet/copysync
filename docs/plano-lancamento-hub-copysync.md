@@ -1,6 +1,6 @@
 # Plano de lançamento — hub central + CopySync escalável
 
-Plano mestre que amarra quatro trilhas em marcos. Atualizado em 2026-10-26. Fontes:
+Plano mestre que amarra quatro trilhas em marcos. Criado em 2026-10-26; estado revisado contra o código em 2026-11-02. Fontes:
 [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (integração),
 [`arquitetura-escala.md`](arquitetura-escala.md) (escala), [`produto-roadmap.md`](produto-roadmap.md) (produto),
 `pulsosocial_api/.specs/features/multi-application-hub/spec.md` (repositório irmão; hub).
@@ -9,6 +9,18 @@ Objetivos, nesta ordem de prioridade:
 1. **Zero regressão no PulsoSocial** (produção, 1 instância, 500+ assinaturas Cakto).
 2. CopySync vendendo e operando escalado o mais cedo possível.
 3. Respeitar a arquitetura definida (hub de billing, CopySync com identidade própria, lease/shard/filas).
+
+## Estado em 2026-11-02 (verificado no código)
+
+O CopySync andou na frente da central: o lado B de M1 foi entregue em `c44341e` e o produto quase todo já existe. A central não
+começou (spec sem commit). **O caminho crítico agora é a central.**
+
+| Trilha | Entregue | Pendente |
+| --- | --- | --- |
+| **B** CopySync | provisionamento, convite, `resolveMembership`, `TENANT_SUSPENDED`, senha nula → 401, receiver HMAC, entitlements, presets LITE/PRO/MAX, desconexão de sessões em suspensão, limites de grupos e rodízio. Correções de 2026-11-02 (`0.49.4`): contrato de eventos alinhado à central, provisionamento em `subscription.activated`, `X-Application-Key`, receipt e seq na mesma transação, P2002 → 200, `planSlug` validado, limite `whatsapp_sessions`, worker de envio respeita tenant suspenso, seed sem reset de senha | `HubEmailSender` (H4), corpo de `ReconcileSubscriptionsUseCase` (hoje só o lease, sem consulta à central: depende de H2), tela "Assinatura" com link para o checkout |
+| **E** Escala | E0 flush no shutdown (`server.ts:344`), adapters Baileys unificados (`MessagingEngineFactory.ts:26`), E1 mídia em S3/R2 no código (`S3_ENABLED`) | `connection_limit` na `DATABASE_URL` da Render (conferir); E2 lease de sessão e CAS no `version` do auth state (hoje só incrementa); E3 `PROCESS_ROLE`/BullMQ/Redis; E4 shard; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
+| **P** Produto | gerador, disparo em massa, grupos de disparo, horário, monitoramento com troca de link, IA, rodízio, story, página de ofertas, menção a todos, sessão cruzada, vitrine de planos | Telegram; domínio personalizado (não verificado) |
+| **H** Hub | — | tudo; ver "O que falta para iniciar a fase 0" na spec da central |
 
 ## Trilhas
 
@@ -37,18 +49,18 @@ Estado em 2026-10-26: central **sem testes, sem CI, sem staging**. CopySync tem 
 
 ## Marcos
 
-### M0 — Fundação (semanas 1–3)
+### M0 — Fundação (semanas 1–3) — CopySync ✅; central ❌ (não iniciada)
 
 | Trilha | Entrega |
 | --- | --- |
 | H | S1, S2, S3 (rede de segurança) |
-| H0 | Postgres do CopySync separado do da central na Render (hoje compartilhado, Basic-256mb). **Adiado por decisão do owner (2026-10-26)**: em produção do CopySync só há sessões de teste; os testes seguem no compartilhado e o banco dedicado (Virginia, 0.1c-256mb, `connection_limit=5`) é criado quando uma fase precisar dele. Gatilho: antes de E1 (R2) ou antes de qualquer teste de carga, o que vier primeiro; avisar o owner com antecedência. **Sem dump**: banco novo nasce vazio com `prisma migrate deploy`, sessões de teste são pareadas de novo; isso dispensa o runbook de cutover e o flush de E0 como pré-requisito (o flush continua em E0 por mérito próprio). Tabelas do CopySync no banco compartilhado são apagadas 7 dias depois |
-| E0 | **Flush síncrono do auth state no shutdown** (`server.ts:212-233` não limpa `flushTimer` de `BaileysAuthStatePersistence.ts:152-155`; a última janela de 750 ms se perde → 440 ao religar em todo deploy da Render); `connection_limit` por processo; unificar os 2 adapters Baileys. Medição de RAM/CPU com 50/100/200 sessões fica para o gate de M2 (exige o banco dedicado em 0.5c-1g ou acima) |
+| H0 | Postgres do CopySync separado do da central na Render (hoje compartilhado, Basic-256mb). **Gatilho atualizado em 2026-11-02**: E1 já está no código, então o banco dedicado sobe junto com o **início de H1 na central** (primeira migration da central rodando no mesmo Postgres do CopySync). **Adiado por decisão do owner (2026-10-26)**: em produção do CopySync só há sessões de teste; os testes seguem no compartilhado e o banco dedicado (Virginia, 0.1c-256mb, `connection_limit=5`) é criado quando uma fase precisar dele. Gatilho: antes de E1 (R2) ou antes de qualquer teste de carga, o que vier primeiro; avisar o owner com antecedência. **Sem dump**: banco novo nasce vazio com `prisma migrate deploy`, sessões de teste são pareadas de novo; isso dispensa o runbook de cutover e o flush de E0 como pré-requisito (o flush continua em E0 por mérito próprio). Tabelas do CopySync no banco compartilhado são apagadas 7 dias depois |
+| E0 | ✅ **Flush síncrono do auth state no shutdown** (`server.ts:344` chama `flushAllAuthStates()`; `BaileysAuthStatePersistence.ts:326-339`); `connection_limit` por processo; unificar os 2 adapters Baileys. Medição de RAM/CPU com 50/100/200 sessões fica para o gate de M2 (exige o banco dedicado em 0.5c-1g ou acima) |
 | B | **Início da service-desk P1.0 + USR-01** (4 + 1 requisitos; design §10 tem 6+ use cases, hook novo, endpoint de reemissão e UI de primeiro acesso: 4–6 semanas, atravessa M0 e M1). Em M0: migration do design §4 (`billingCustomerId`, `suspendedAt`, `passwordHash?`, `passwordSetAt`, `UserInvite`; sem `planSnapshot`), `resolveMembership` em `tenantHook` e `sseAuthHook`, `TenantSuspendedError`, login com `passwordHash` nulo respondendo credenciais inválidas |
 
 Gate: smoke S4 verde no PulsoSocial; API religa após deploy sem 440; `tenantHook` nega tenant `SUSPENDED` com `TENANT_SUSPENDED`.
 
-### M1 — Hub mínimo + CopySync recebendo (semanas 4–7)
+### M1 — Hub mínimo + CopySync recebendo (semanas 4–7) — CopySync ✅ (B, E1, P); central ❌
 
 | Trilha | Entrega |
 | --- | --- |
@@ -60,7 +72,7 @@ Gate: smoke S4 verde no PulsoSocial; API religa após deploy sem 440; `tenantHoo
 
 Gate: em staging, compra sandbox na central → tenant provisionado no CopySync → owner entra pelo link → cancelamento → tenant `CANCELLED` e sessões desconectadas. PulsoSocial S2 verde.
 
-### M2 — Primeira venda (semanas 8–9)
+### M2 — Primeira venda (semanas 8–9) — bloqueado pela central (H1–H3)
 
 | Trilha | Entrega |
 | --- | --- |
@@ -72,7 +84,7 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 
 Gate: venda real do LITE ponta a ponta. `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.
 
-### M3 — Escala real + núcleo do produto (semanas 10–14)
+### M3 — Escala real + núcleo do produto (semanas 10–14) — produto ✅; E3/E4 ❌
 
 | Trilha | Entrega |
 | --- | --- |

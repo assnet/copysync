@@ -9,8 +9,13 @@ Trabalho do lado da central: `pulsosocial_api/.specs/features/multi-application-
 **Contrato de provisionamento, status de tenant, convite e e-mail é o da service-desk**
 ([`design.md`](../.specs/features/service-desk/design.md) §4, §10, §11; requisitos PROV-01..04 e USR-01 em
 [`spec.md`](../.specs/features/service-desk/spec.md)). Este doc não redefine nada disso: só diz como o webhook da central entra
-por essas portas. Em 2026-10-26 a service-desk está desenhada e **não implementada**; a integração depende de P1.0 (provisionar),
-USR-01 (convite) e `resolveMembership` (§10) existirem primeiro.
+por essas portas. Estado em 2026-10-28: P1.0 (`ProvisionTenantUseCase`, `POST /provisioning/tenants` só super-admin),
+USR-01 (convite, `/auth/invites/:token/accept`), `resolveMembership`, receiver HMAC e entitlements **entregues** (commit `c44341e`,
+M1-B). Em 2026-11-02 (`0.49.4`) o receiver foi alinhado a este contrato: provisiona em `subscription.activated` de cliente
+desconhecido, valida `X-Application-Key` e `planSlug`, grava receipt e watermark na mesma transação com lock da linha do tenant.
+**Pendente**: M2 (`HubEmailSender`, painel "Assinatura") e o corpo da reconciliação (depende de H2 na central). Sem as três
+`BILLING_HUB_URL`, `BILLING_APPLICATION_KEY`, `BILLING_APPLICATION_SECRET` a rota não é registrada (404); em produção com
+`EMAIL_SENDER=noop` ou `hub` (ainda sem adapter) ela também não é registrada e o boot loga erro. Não há signup público: conta nova nasce pela compra no hub ou por provisionamento do super-admin.
 
 ## Decisão
 
@@ -34,15 +39,16 @@ Reconciliação diária: GET /integrations/subscriptions?externalUserId=  (M2M, 
 | Evento da central | `Tenant.status` | Entitlements | Observação |
 | --- | --- | --- | --- |
 | `subscription.activated` (1ª vez) | provisiona `ACTIVE` | preset do `planSlug` | e-mail já cadastrado → só `UserTenant` (PROV-01, regra 11); conta com senha → sem convite (PROV-02) |
+| `subscription.activated` (1ª vez) sem `email` ou com `planSlug` fora de `PLAN_SLUGS` | nada; **422** sem receipt, log `error` | | a central marca o evento `DEAD` na hora (422 não é retentado) e ele fica na fila com replay no admin: cliente pagante sem conta nunca some em silêncio |
 | `subscription.activated` (reativação) / `subscription.renewed` | `ACTIVE`, limpa `suspendedAt` | preset do `planSlug` | plano pode ter mudado: ressincroniza |
 | `subscription.updated` (só `expiresAt` mudou: edição manual, cortesia) | mantém | ressincroniza `expiresAt` | sem mudança de status |
 | `subscription.payment_failed` | `SUSPENDED` | mantém | |
 | `subscription.canceled`, `subscription.expired` | `CANCELLED` | mantém | login preservado (PROV-03) |
 | `subscription.refunded`, `subscription.chargedback` | `CANCELLED` | mantém | |
-| `subscription.trial_ended` | sem efeito, 200 | | CopySync não tem trial próprio |
-| tipo desconhecido | sem efeito, 200, `AuditLog` | | nunca 4xx/5xx: a central reenviaria |
+| `subscription.trial_ended` | sem efeito, 200, avança o watermark | | CopySync não tem trial próprio |
+| tipo desconhecido | sem efeito, 200, receipt `IGNORED`, avança o watermark | | nunca 4xx/5xx: a central reenviaria |
 | evento com `eventId` já visto | sem efeito, 200 | | `BillingEventReceipt` |
-| `seq` ≤ `Tenant.lastBillingEventSeq` (fora de ordem ou repetido) | sem efeito, 200, `AuditLog` | | `seq` é a sequência global da central (autoincrement), crescente; só se compara **dentro do mesmo cliente**. Tenant ↔ `billingCustomerId` é 1:1, então o watermark por tenant basta. A central nunca envia um `seq` maior do cliente enquanto um menor dele está pendente. Avanço do watermark é condicional: `UPDATE … SET lastBillingEventSeq=$s WHERE id=$t AND (lastBillingEventSeq IS NULL OR lastBillingEventSeq < $s)`; 0 linhas = outro evento passou na frente, sem efeito |
+| `seq` ≤ `Tenant.lastBillingEventSeq` (fora de ordem ou repetido) | sem efeito, 200, receipt `OUT_OF_ORDER` (o `BillingEventReceipt` é a trilha de auditoria do receiver) | | `seq` é a sequência global da central (autoincrement), crescente; só se compara **dentro do mesmo cliente**. Tenant ↔ `billingCustomerId` é 1:1, então o watermark por tenant basta. A central nunca envia um `seq` maior do cliente enquanto um menor dele está pendente. Avanço do watermark é condicional: `UPDATE … SET lastBillingEventSeq=$s WHERE id=$t AND (lastBillingEventSeq IS NULL OR lastBillingEventSeq < $s)`; 0 linhas = outro evento passou na frente, sem efeito |
 
 Efeitos de `SUSPENDED`/`CANCELLED` além do HTTP (`resolveMembership` nega com `TENANT_SUSPENDED` 403): o módulo `sessions`
 assina `TENANT_SUSPENDED` no bus (publicado em design §10, tipo definido em §12; precedente de listener:
@@ -61,7 +67,7 @@ listener continua funcionando sem mudança. Até E3, processo único (`all`) e o
 | --- | --- |
 | Prisma (service-desk §4, migration única da service-desk) | `Tenant.billingCustomerId @unique`, `Tenant.suspendedAt`, `User.passwordHash String?`, `User.passwordSetAt`, `UserInvite` (`planSnapshot Json?` sai do design: substituído por `planSlug` tipado, AGENTS §26) |
 | Prisma (esta integração) | `Tenant.planSlug String?`, `Tenant.lastBillingEventSeq Int?`; `TenantEntitlement { tenantId, key, value Json?, @@unique([tenantId,key]) }` (`null` = ilimitado, cf. roadmap); `PlanEntitlementPreset { planSlug, key, value Json? }`; `BillingEventReceipt { eventId @id, billingCustomerId @index, type, seq, receivedAt, outcome }`; `JobLease { name @id, ownerId, expiresAt }` |
-| Módulo `integrations/billing` | plugin Fastify encapsulado **sem `authHook`** (precedente público: `auth.routes.ts:25`), `addContentTypeParser` com `parseAs: 'buffer'` para ter o corpo bruto (precedente: `media.upload.routes.ts:108-110`), verificação de `X-Signature: sha256=<hmac>` com `crypto.timingSafeEqual` (precedente: `OpaqueCursor.ts:54`) sobre `canonical = X-Timestamp + "." + corpo bruto` (mesmo formato do Cakto em `pulsosocial_api/api/src/modules/cakto/webhook-signature.ts:51-55`; validar com vetor de teste compartilhado entre os dois repos antes de codar) com `X-Timestamp` ±5 min, `X-Event-Id` e `X-Application-Key` (deve ser `copysync`); `BillingEventReceipt` gravado **na mesma `runInTransaction`** que aplica o evento (crash entre receipt e tenant deixaria o evento "visto" sem efeito); `P2002` no receipt = entrega duplicada concorrente → 200 sem efeito; tradução para os use cases da service-desk |
+| Módulo `integrations/billing` | plugin Fastify encapsulado **sem `authHook`** (precedente público: `auth.routes.ts:25`), `addContentTypeParser` com `parseAs: 'buffer'` para ter o corpo bruto (precedente: `media.upload.routes.ts:108-110`), verificação de `X-Signature: sha256=<hmac>` com `crypto.timingSafeEqual` (precedente: `OpaqueCursor.ts:54`) sobre `canonical = X-Timestamp + "." + corpo bruto` (mesmo formato do Cakto em `pulsosocial_api/api/src/modules/cakto/webhook-signature.ts:51-55`; validar com vetor de teste compartilhado entre os dois repos antes de codar) com `X-Timestamp` ±5 min, `X-Event-Id` e `X-Application-Key` (deve ser `copysync`); `BillingEventReceipt` gravado **na mesma `runInTransaction`** que aplica o evento (crash entre receipt e tenant deixaria o evento "visto" sem efeito); `P2002` no receipt = entrega duplicada concorrente → 200 sem efeito; `X-Event-Id` diferente do `eventId` do corpo → 400; tradução para os use cases da service-desk |
 | Use cases novos | `ApplyBillingEventUseCase` (tabela acima), `SyncTenantEntitlementsUseCase`, `ReconcileSubscriptionsUseCase` |
 | Use cases reusados | `ProvisionTenantUseCase`, `UpdateTenantStatusUseCase`, `InviteUserUseCase` (service-desk §10), com `origin: 'SUPER_ADMIN' \| 'BILLING_WEBHOOK'` |
 | Erros | `TenantSuspendedError` (403, `TENANT_SUSPENDED`) substitui o `ForbiddenError` genérico de `tenantHook.ts:56` e `sseAuthHook.ts:39,50`; é mudança de contrato: painel passa a tratar `TENANT_SUSPENDED`. `PlanLimitReachedError` (403, `PLAN_LIMIT_REACHED`, com `key` e `limit`) lido de `TenantEntitlement` no application layer |
