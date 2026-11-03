@@ -3,6 +3,7 @@ import { OFFER_STATUSES } from '../../../campaigns/domain/enums/OfferStatus';
 import { CAPTURED_OFFER_STATUSES } from '../../domain/entities/CapturedOffer';
 import { MONITOR_TEXT_MODES } from '../../domain/entities/GroupMonitor';
 import { OFFER_AUDIENCES } from '../../../campaigns/domain/enums/OfferAudience';
+import { OFFER_IMAGE_MODES } from '../../../campaigns/domain/enums/OfferImageMode';
 import { MONITOR_LIMITS } from '../../domain/services/monitorSettings';
 import { MINUTES_PER_DAY } from '../../domain/services/operatingWindow';
 
@@ -27,9 +28,11 @@ const settingsProperties = {
   textMode: { type: 'string', enum: [...MONITOR_TEXT_MODES] },
   audience: { type: 'string', enum: [...OFFER_AUDIENCES] },
   enrichLinkOnly: { type: 'boolean' },
+  imageMode: { type: 'string', enum: [...OFFER_IMAGE_MODES] },
 } as const;
-// `captureOutsideWindow` entrou depois (app 0.50.0): cliente antigo salva sem ele → padrão no handler
-const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow']);
+// Campos que entraram depois (`captureOutsideWindow` app 0.50.0, `imageMode`): cliente antigo salva sem
+// eles → o use case mantém o valor salvo
+const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow', 'imageMode']);
 const settingsKeys = Object.keys(settingsProperties).filter((k) => !OPTIONAL_SETTINGS.has(k));
 
 export const sessionQuerySchema = {

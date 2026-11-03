@@ -53,6 +53,16 @@ describe('GroupMonitorConfigUseCases', () => {
     expect((await s.settings.execute({ ...base, settings: without })).settings.captureOutsideWindow).toBe(false);
   });
 
+  it('imageMode ausente (cliente antigo) mantém o valor salvo; desconhecido vira 422', async () => {
+    const s = setup();
+    const { imageMode: _omit, ...without } = DEFAULT_MONITOR_SETTINGS;
+    expect((await s.settings.execute({ ...base, settings: without })).settings.imageMode).toBe('MEDIA');
+    await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, imageMode: 'LINK_PREVIEW' } });
+    expect((await s.settings.execute({ ...base, settings: without })).settings.imageMode).toBe('LINK_PREVIEW');
+    await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, imageMode: 'X' as never } }))
+      .rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT', meta: { field: 'imageMode' } });
+  });
+
   it('grupos monitorados: garante conversa, liga download de mídia e normaliza palavras-chave', async () => {
     const s = setup();
     const out = await s.monitored.execute({ ...base, groups: [{ groupJid: 'a', keywords: [' Fone ', 'fone'] }] });

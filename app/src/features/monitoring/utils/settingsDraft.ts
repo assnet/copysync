@@ -1,4 +1,4 @@
-import type { GroupMonitorSettings, MonitorTextMode, OfferAudience } from '@/types/api.types';
+import type { GroupMonitorSettings, MonitorTextMode, OfferAudience, OfferImageMode } from '@/types/api.types';
 import { windowFromSettings, windowToSettings, type OperatingWindow } from './operatingWindow';
 
 /**
@@ -15,6 +15,7 @@ export interface MonitorSettingsDraft {
   maxOfferAgeMinutes: number;
   couponMaxAgeMinutes: number;
   mentionAll: boolean;
+  imageMode: OfferImageMode;
   simulateTyping: boolean;
   typingSeconds: number;
   textMode: MonitorTextMode;
@@ -24,7 +25,7 @@ export interface MonitorSettingsDraft {
 }
 
 /** Mude ao alterar `MonitorSettingsDraft`: rascunho salvo em outro formato é descartado. */
-export const SETTINGS_DRAFT_VERSION = 4;
+export const SETTINGS_DRAFT_VERSION = 5;
 
 export const LIMITS = {
   intervalMinutes: { min: 1, max: 60 },
@@ -55,6 +56,8 @@ export function settingsToDraft(s: GroupMonitorSettings): MonitorSettingsDraft {
     maxOfferAgeMinutes: s.maxOfferAgeMinutes,
     couponMaxAgeMinutes: s.couponMaxAgeMinutes,
     mentionAll: s.mentionAll,
+    // API anterior ao campo não o devolve: vale o padrão
+    imageMode: s.imageMode ?? 'MEDIA',
     simulateTyping: s.simulateTyping,
     typingSeconds: s.typingSeconds,
     textMode: s.textMode,
@@ -74,6 +77,7 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
     maxOfferAgeMinutes: d.maxOfferAgeMinutes,
     couponMaxAgeMinutes: Math.min(d.couponMaxAgeMinutes, d.maxOfferAgeMinutes),
     mentionAll: d.mentionAll,
+    imageMode: d.imageMode,
     simulateTyping: d.simulateTyping,
     typingSeconds: d.typingSeconds,
     textMode: d.textMode,

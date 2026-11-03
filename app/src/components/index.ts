@@ -12,3 +12,6 @@ export { RangeSlider, clampRange } from './RangeSlider';
 export type { RangeSliderMark, RangeSliderProps, RangeValue } from './RangeSlider';
 export { ToggleOption } from './ToggleOption';
 export type { ToggleOptionProps } from './ToggleOption';
+export { OverflowTooltipText } from './OverflowTooltipText';
+export type { OverflowTooltipTextProps } from './OverflowTooltipText';
+export { useIsTruncated, isElementTruncated } from './useIsTruncated';

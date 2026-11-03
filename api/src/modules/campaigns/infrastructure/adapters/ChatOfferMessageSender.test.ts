@@ -25,7 +25,8 @@ vi.mock('../../../chat/application/use-cases/SendMessageUseCase', () => ({
 import { ChatOfferMessageSender } from './ChatOfferMessageSender';
 
 const base = {
-  tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null, mentionAll: true,
+  tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null as string | null, mentionAll: true,
+  imageMode: 'MEDIA' as const, title: null, affiliateUrl: 'https://amzn.to/x',
   simulateTyping: false, typingSeconds: 15, scheduledAt: null,
 };
 const group = { id: 'c1', sessionId: 's1', isGroup: true, groupJid: '1203@g.us' };
@@ -110,5 +111,52 @@ describe('ChatOfferMessageSender — digitando', () => {
     await expect(new ChatOfferMessageSender(sleep).send({ ...base, mentionAll: false, simulateTyping: true }))
       .resolves.toEqual({ chatMessageId: 'm1' });
     expect(sleep).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatOfferMessageSender — formato da imagem', () => {
+  const img = { imageJpeg: Buffer.from('big'), thumbnailJpeg: Buffer.from('thumb') };
+  const build = vi.fn();
+  const files = {} as never;
+  const sender = () => new ChatOfferMessageSender(undefined, { previewImage: () => ({ build }), files: () => files });
+  const lp = {
+    ...base, mentionAll: false, imageMode: 'LINK_PREVIEW' as const, title: '  Fone X  ',
+    text: 'Fone X por R$ 10\n🛒https://amzn.to/x', imageUrl: 'https://cdn/media/offer-1.jpg',
+  };
+  beforeEach(() => { build.mockReset().mockResolvedValue(img); });
+
+  it('MEDIA com foto: mídia armazenada, sem prévia', async () => {
+    await sender().send({ ...base, mentionAll: false, imageUrl: 'https://cdn/media/offer-1.jpg' });
+    expect(h.sendStored).toHaveBeenCalledOnce();
+    expect(build).not.toHaveBeenCalled();
+    expect(h.sendText).not.toHaveBeenCalled();
+  });
+
+  it('LINK_PREVIEW completo: texto com prévia, sem mídia armazenada', async () => {
+    await expect(sender().send(lp)).resolves.toEqual({ chatMessageId: 'm1' });
+    expect(build).toHaveBeenCalledWith('https://cdn/media/offer-1.jpg');
+    expect(h.sendStored).not.toHaveBeenCalled();
+    expect(h.sendText).toHaveBeenCalledWith(expect.objectContaining({
+      content: lp.text,
+      linkPreview: { url: 'https://amzn.to/x', title: 'Fone X', description: null, thumbnailJpeg: img.thumbnailJpeg, imageJpeg: img.imageJpeg },
+    }));
+  });
+
+  it.each([
+    ['sem título', { title: '   ' }],
+    ['sem link', { text: 'Fone X sem link' }],
+    ['sem foto', { imageUrl: null }],
+  ])('LINK_PREVIEW %s: texto puro', async (_n, over) => {
+    await sender().send({ ...lp, ...over });
+    expect(h.sendStored).not.toHaveBeenCalled();
+    expect(h.sendText).toHaveBeenCalledOnce();
+    expect(h.sendText.mock.calls[0][0]).not.toHaveProperty('linkPreview');
+  });
+
+  it('LINK_PREVIEW com imagem indisponível: texto puro', async () => {
+    build.mockResolvedValue(null);
+    await sender().send(lp);
+    expect(h.sendStored).not.toHaveBeenCalled();
+    expect(h.sendText.mock.calls[0][0]).not.toHaveProperty('linkPreview');
   });
 });

@@ -1,6 +1,7 @@
-import { Avatar, Chip, type ChipProps } from '@mui/material';
+import { useRef } from 'react';
+import { Avatar, Chip, Tooltip, type ChipProps } from '@mui/material';
 import { Users } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, useIsTruncated } from '@/components';
 import { Blurred, useBlur, type PrivacyFlag } from '@/features/privacy';
 
 /** Iniciais das duas primeiras palavras que começam com letra ou número (emoji no início é pulado). */
@@ -53,12 +54,29 @@ export function GroupChip({
   title, avatarUrl, untitled, nameFlag = 'offers.groupNames', avatarFlag = 'offers.groupAvatars', ...chip
 }: GroupChipProps) {
   const blurNames = useBlur(nameFlag);
+  const name = title || untitled;
+  const ref = useRef<HTMLDivElement>(null);
+  const truncated = useIsTruncated(ref, `${name}|${blurNames}`, chipLabel);
   return (
-    <Chip
-      size="small"
-      avatar={<GroupAvatar title={title} avatarUrl={avatarUrl} size={18} blurFlag={avatarFlag} />}
-      label={<Blurred when={blurNames} inline radius={5}>{title || untitled}</Blurred>}
-      {...chip}
-    />
+    <Tooltip
+      title={truncated && !blurNames ? name : ''}
+      arrow
+      describeChild
+      enterTouchDelay={0}
+      leaveTouchDelay={4000}
+    >
+      <Chip
+        ref={ref}
+        size="small"
+        avatar={<GroupAvatar title={title} avatarUrl={avatarUrl} size={18} blurFlag={avatarFlag} />}
+        label={<Blurred when={blurNames} inline radius={5}>{name}</Blurred>}
+        {...chip}
+      />
+    </Tooltip>
   );
+}
+
+/** O `Chip` corta o texto no `.MuiChip-label`, não na raiz. */
+function chipLabel(el: HTMLElement): HTMLElement | null {
+  return el.querySelector<HTMLElement>('.MuiChip-label');
 }

@@ -21,6 +21,7 @@ import { ResolveAffiliateProductUseCase } from '../application/use-cases/Resolve
 import { OfferTextComposer } from '../application/services/OfferTextComposer';
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
+import { OfferPreviewImage } from './adapters/OfferPreviewImage';
 import { GenerateOfferUseCase } from '../application/use-cases/GenerateOfferUseCase';
 import { GetOfferUseCase } from '../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../application/use-cases/GetOfferUsageUseCase';
@@ -71,9 +72,20 @@ const credentialGateway = lazy((): IAffiliateCredentialGateway => {
   };
 });
 const mediaStore   = lazy(
-  () => new MediaOfferStore({ files: () => mediaContainer.mediaFileStore, uploads: () => mediaContainer.uploadStore }),
+  () => new MediaOfferStore({
+    files:   () => mediaContainer.mediaFileStore,
+    uploads: () => mediaContainer.uploadStore,
+    images:  () => mediaContainer.imageTranscoder,
+  }),
 );
-const sender       = lazy(() => new ChatOfferMessageSender());
+// Prévia de link da oferta: imagens geradas da foto já armazenada
+const previewImage = lazy(
+  () => new OfferPreviewImage({ files: () => mediaContainer.mediaFileStore, images: () => mediaContainer.imageTranscoder }),
+);
+const sender       = lazy(() => new ChatOfferMessageSender(undefined, {
+  previewImage: previewImage,
+  files:        () => mediaContainer.mediaFileStore,
+}));
 const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator()));
 
 const generate = lazy(() => new GenerateOfferUseCase({

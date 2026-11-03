@@ -1,7 +1,7 @@
 import { Box, Button, Chip, Stack, Tooltip, Typography } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Ear, Plus, Settings2 } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { MonitoredGroupItem } from '@/types/api.types';
@@ -69,7 +69,7 @@ export function MonitoredGroupsCard({ groups, used, max, onConfigure }: Props) {
                 <GroupAvatar title={blurNames ? null : g.title} avatarUrl={g.avatarUrl} size={32} blurFlag="monitoring.groupAvatars" />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Blurred when={blurNames} inline radius={5}>
-                    <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{title}</Typography>
+                    <OverflowTooltipText text={title} disabled={blurNames} typographyProps={{ variant: 'body2', sx: { fontWeight: 600 } }} />
                   </Blurred>
                 </Box>
                 {g.keywords.length === 0 ? (

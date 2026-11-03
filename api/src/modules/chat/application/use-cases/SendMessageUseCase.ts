@@ -1,7 +1,9 @@
 import type { IChatMessageRepository } from '../../domain/contracts/IChatMessageRepository';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
-import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
+import type { IMessagingEngine, OutboundLinkPreview } from '../../../messaging/domain/contracts/IMessagingEngine';
+import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFileStore';
+import type { ChatMessageLinkPreview } from '../../domain/entities/ChatMessage';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { logger } from '../../../../shared/logger/logger';
@@ -15,6 +17,8 @@ export interface SendMessageInput {
   quotedMessageId?: string | null;
   /** Telefones (dígitos) dos participantes marcados com @ no texto — menção estruturada. */
   mentions?: string[] | null;
+  /** Prévia de link montada pelo sistema (oferta). A rota do painel não envia. */
+  linkPreview?: OutboundLinkPreview | null;
 }
 
 export class SendMessageUseCase {
@@ -23,6 +27,8 @@ export class SendMessageUseCase {
     private readonly conversationRepo: IChatConversationRepository,
     private readonly contactRepo: IChatContactRepository,
     private readonly engine: IMessagingEngine | null,
+    /** Opcional: grava a imagem da prévia de link enviada. Sem ele, a prévia fica sem miniatura. */
+    private readonly files: IMediaFileStore | null = null,
   ) {}
 
   async execute(input: SendMessageInput): Promise<ChatMessageDto> {
@@ -69,6 +75,7 @@ export class SendMessageUseCase {
             ? buildEngineMessageRef(target, quotedEntity)
             : null,
           mentions: input.mentions,
+          ...(input.linkPreview ? { linkPreview: input.linkPreview } : {}),
         });
         externalMessageId = result.messageId;
       } catch (err) {
@@ -82,6 +89,12 @@ export class SendMessageUseCase {
       );
     }
 
+    // Prévia só para mensagem realmente enviada: sem envio (sem engine/sessão) não há id externo
+    // para nomear a imagem nem cartão no WhatsApp, então grava sem prévia.
+    const linkPreview = input.linkPreview && externalMessageId && conv.sessionId
+      ? await this.persistLinkPreview(input.linkPreview, conv.sessionId, externalMessageId, input.conversationId)
+      : null;
+
     // ── Persiste com o externalMessageId já resolvido ─────────────────────
     const message = await this.messageRepo.create({
       tenantId:          input.tenantId,
@@ -91,6 +104,7 @@ export class SendMessageUseCase {
       content:           input.content,
       quotedMessageId,
       externalMessageId,
+      ...(linkPreview ? { linkPreview } : {}),
     });
 
     // Atualiza preview da última mensagem na conversa
@@ -137,9 +151,31 @@ export class SendMessageUseCase {
       fromParticipantName: message.fromParticipantName,
       // Mensagem enviada por nós: não há avatar de participante de grupo.
       fromParticipantAvatarUrl: null,
+      linkPreview:       message.linkPreview,
       // Mensagem recém-enviada ainda não tem reações.
       reactionsRevision: null,
       reactions:         [],
     };
+  }
+
+  /**
+   * Grava a imagem da prévia (`<sessionId>_<externalId>_lp.jpg`, mesmo nome do recebimento) depois
+   * do envio. Falha ao gravar = prévia sem miniatura; o envio já aconteceu e não falha.
+   */
+  private async persistLinkPreview(
+    preview: OutboundLinkPreview,
+    sessionId: string,
+    externalMessageId: string,
+    conversationId: string,
+  ): Promise<ChatMessageLinkPreview> {
+    let thumbnailUrl: string | null = null;
+    if (this.files && preview.imageJpeg) {
+      try {
+        thumbnailUrl = await this.files.saveBuffer(preview.imageJpeg, `${sessionId}_${externalMessageId}_lp.jpg`);
+      } catch (err) {
+        logger.warn({ conversationId, err: (err as Error)?.name }, 'link preview image not saved');
+      }
+    }
+    return { url: preview.url, title: preview.title, description: preview.description ?? null, thumbnailUrl };
   }
 }

@@ -2,6 +2,7 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 import type { OfferStatus } from '../enums/OfferStatus';
 import type { OfferAudience } from '../enums/OfferAudience';
 import type { OfferOrigin } from '../enums/OfferOrigin';
+import type { OfferImageMode } from '../enums/OfferImageMode';
 
 /** Oferta gerada a partir de um link de produto. Preços em centavos; `imageUrl` aponta pro media store. */
 export interface Offer {
@@ -23,6 +24,8 @@ export interface Offer {
   audience: OfferAudience;
   /** Menciona todos os participantes ao enviar em grupo. */
   mentionAll: boolean;
+  /** Foto como mídia com legenda ou como prévia do link. */
+  imageMode: OfferImageMode;
   /** Envia "digitando…" antes da mensagem. */
   simulateTyping: boolean;
   /** Segundos de "digitando…" (1–30). */

@@ -133,4 +133,20 @@ describe('IngestHistorySyncUseCase', () => {
 
     expect(deps.messageRepo.create).not.toHaveBeenCalled();
   });
+
+  it('grava a prévia de link do item (texto mesmo sem miniatura)', async () => {
+    const deps = makeDeps({ conversaExistente: true });
+    const useCase = new IngestHistorySyncUseCase(deps.contactRepo, deps.conversationRepo, deps.messageRepo);
+
+    useCase.execute({
+      tenantId: TENANT,
+      sessionId: SESSION,
+      messages: [makeItem({ linkPreview: { url: 'https://loja.com/p', title: 'Produto', description: 'D', thumbnailUrl: null } })],
+    });
+    await aguardarChamada(deps.messageRepo.create);
+
+    expect(deps.messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      linkPreview: { url: 'https://loja.com/p', title: 'Produto', description: 'D', thumbnailUrl: null },
+    }));
+  });
 });

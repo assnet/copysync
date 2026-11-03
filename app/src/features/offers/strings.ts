@@ -222,6 +222,18 @@ export const offerStrings = {
     moreGroups: (n: number) => `+${n}`,
   },
 
+  /** Formato da foto no envio (gerador e monitoramento). */
+  imageMode: {
+    label: 'Formato da imagem',
+    infoAria: 'Entenda a diferença entre os formatos',
+    help: 'Imagem com legenda: a foto chega inteira e o membro baixa o arquivo. Prévia do link: um cartão leve com a imagem acima do link, que não vai para a galeria.',
+    options: {
+      MEDIA: { label: 'Imagem com legenda', hint: 'A foto chega inteira; quem abrir baixa o arquivo para o celular.' },
+      LINK_PREVIEW: { label: 'Prévia do link', hint: 'Cartão leve com a imagem acima do link. Não ocupa a galeria de quem recebe.' },
+    },
+    noImageWarning: 'Sem foto: a oferta sai como texto, sem prévia.',
+  },
+
   editor: {
     title: 'Editar oferta',
     titleLabel: 'Título',

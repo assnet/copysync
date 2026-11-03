@@ -5,13 +5,14 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { CalendarClock } from 'lucide-react';
 import { AppIcon, SectionCard, ToggleOption } from '@/components';
-import type { OfferConfigGroup, OfferItem } from '@/types/api.types';
+import type { OfferConfigGroup, OfferImageMode, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
+import { DEFAULT_IMAGE_MODE, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
 import {
   SCHEDULE_MAX_DAYS, defaultScheduleInput, fromLocalInput, isPendingSchedule, scheduleProblem, toLocalInput,
 } from '../utils/offerSchedule';
 import { GroupChip } from './GroupChip';
+import { ImageModePicker } from './ImageModePicker';
 import { OfferScheduleField } from './OfferScheduleField';
 
 const t = offerStrings.actions;
@@ -25,6 +26,7 @@ interface Props {
   busy: boolean;
   sending: boolean;
   mentionSaving: boolean;
+  imageModeSaving: boolean;
   /** Plano recusou "marcar todos": mostra o aviso de upgrade sob a chave. */
   mentionUnavailable: boolean;
   /** Bloqueia o disparo (sessão desconectada, sem grupos…). */
@@ -33,6 +35,7 @@ interface Props {
   /** Editor da prévia aberto: segura o disparo. */
   editing: boolean;
   onMentionAll: (value: boolean) => void;
+  onImageMode: (value: OfferImageMode) => void;
   onTyping: (patch: { simulateTyping?: boolean; typingSeconds?: number }) => void;
   /** Grava o início agendado (ISO) ou remove (null). */
   onSchedule: (scheduledAt: string | null) => Promise<void>;
@@ -40,11 +43,11 @@ interface Props {
 }
 
 /**
- * Card "Envio" da oferta em rascunho: marcar todos, digitando, início agendado, destinos e
+ * Card "Envio" da oferta em rascunho: formato da imagem, marcar todos, digitando, início agendado, destinos e
  * disparo. Depois do disparo o lugar dele é do progresso (`OfferDispatchProgress`).
  */
 export function OfferSendPanel(props: Props) {
-  const { offer, groups, busy, sending, mentionSaving, mentionUnavailable, sendBlocked, textTooLong, editing } = props;
+  const { offer, groups, busy, sending, mentionSaving, imageModeSaving, mentionUnavailable, sendBlocked, textTooLong, editing } = props;
   const [scheduleOn, setScheduleOn] = useState(offer.scheduledAt != null);
   const [scheduleValue, setScheduleValue] = useState(offer.scheduledAt ? toLocalInput(new Date(offer.scheduledAt)) : '');
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -95,6 +98,16 @@ export function OfferSendPanel(props: Props) {
     <SectionCard title={offerStrings.send.title}>
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">{offerStrings.send.idle}</Typography>
+        <ImageModePicker
+          value={offer.imageMode ?? DEFAULT_IMAGE_MODE}
+          disabled={imageModeSaving || busy}
+          onChange={props.onImageMode}
+        />
+        {(offer.imageMode ?? DEFAULT_IMAGE_MODE) === 'LINK_PREVIEW' && !offer.imageUrl && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -1.25 }}>
+            {offerStrings.imageMode.noImageWarning}
+          </Typography>
+        )}
         <ToggleOption
           checked={offer.mentionAll}
           disabled={mentionSaving || busy}

@@ -505,25 +505,31 @@ model ChatList {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ChatMessage {
-  id                  String               @id @default(cuid())
-  tenantId            String
-  conversationId      String
-  direction           ChatMessageDirection
-  type                ChatMessageType      @default(TEXT)
-  content             String?              @db.Text
-  mediaUrl            String?
-  mimeType            String?
-  fileName            String? // Nome do arquivo (documentos)
-  durationSeconds     Int? // Duração em segundos (áudio/vídeo)
-  externalMessageId   String? // ID externo (ex: messageId do WhatsApp)
-  status              ChatMessageStatus?
-  isDeleted           Boolean              @default(false)
-  quotedMessageId     String? // ID da mensagem citada (reply)
-  sentAt              DateTime?
+  id                     String               @id @default(cuid())
+  tenantId               String
+  conversationId         String
+  direction              ChatMessageDirection
+  type                   ChatMessageType      @default(TEXT)
+  content                String?              @db.Text
+  mediaUrl               String?
+  mimeType               String?
+  fileName               String? // Nome do arquivo (documentos)
+  durationSeconds        Int? // Duração em segundos (áudio/vídeo)
+  externalMessageId      String? // ID externo (ex: messageId do WhatsApp)
+  status                 ChatMessageStatus?
+  isDeleted              Boolean              @default(false)
+  quotedMessageId        String? // ID da mensagem citada (reply)
+  sentAt                 DateTime?
   // ── Grupos ──────────────────────────────────────────────────────────────
-  fromParticipant     String? // phone do remetente dentro do grupo
-  fromParticipantName String? // nome exibido do remetente no grupo
-  createdAt           DateTime             @default(now())
+  fromParticipant        String? // phone do remetente dentro do grupo
+  fromParticipantName    String? // nome exibido do remetente no grupo
+  // ── Prévia de link (docs/mensagens-previa-de-link.md) ───────────────────
+  linkPreviewUrl         String?              @db.Text
+  linkPreviewTitle       String?
+  linkPreviewDescription String?              @db.Text
+  /// URL do media store (miniatura gravada); null = cartão sem imagem.
+  linkPreviewThumbUrl    String?
+  createdAt              DateTime             @default(now())
 
   tenant        Tenant                @relation(fields: [tenantId], references: [id])
   conversation  ChatConversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -667,6 +673,8 @@ model Offer {
   coupon              String?
   audience            OfferAudience     @default(STANDARD)
   mentionAll          Boolean           @default(false)
+  /// Formato da foto no envio (docs/mensagens-previa-de-link.md).
+  imageMode           OfferImageMode    @default(MEDIA)
   /// Envia "digitando…" antes da mensagem, por um tempo proporcional ao texto.
   simulateTyping      Boolean           @default(false)
   /// Duração do "digitando…" em segundos (limites em campaigns/domain/offerTyping.ts).
@@ -697,6 +705,12 @@ model Offer {
   @@index([status])
   @@index([monitorConfigId])
   @@map("offers")
+}
+
+/// Como a foto da oferta vai no WhatsApp: MEDIA = imagem com legenda; LINK_PREVIEW = texto com prévia do link.
+enum OfferImageMode {
+  MEDIA
+  LINK_PREVIEW
 }
 
 enum OfferAudience {
@@ -1095,6 +1109,8 @@ model GroupMonitorConfig {
   audience             OfferAudience   @default(STANDARD)
   /// Captura só com link vira oferta montada mesmo em ORIGINAL.
   enrichLinkOnly       Boolean         @default(true)
+  /// Formato da foto nas ofertas criadas por esta configuração (copiado para Offer.imageMode).
+  imageMode            OfferImageMode  @default(MEDIA)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 

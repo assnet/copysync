@@ -68,6 +68,7 @@ export class ChatPresenter {
       createdAt: dto.createdAt,
       fromParticipant: dto.fromParticipant,
       fromParticipantName: dto.fromParticipantName,
+      linkPreview: dto.linkPreview,
       // Id da mensagem no WhatsApp: o painel só oferece reagir quando ele existe.
       externalMessageId: dto.externalMessageId,
       reactionsRevision: dto.reactionsRevision,

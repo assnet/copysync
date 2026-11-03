@@ -162,6 +162,7 @@ export class ProcessPendingCapturedOffersUseCase {
       imageUrl: built.imageUrl,
       coupon,
       mentionAll,
+      imageMode: config.imageMode,
       simulateTyping: config.simulateTyping,
       typingSeconds: config.typingSeconds,
       startAt,

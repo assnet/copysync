@@ -4,6 +4,8 @@ import type { IChatMessageRepository } from '../../domain/contracts/IChatMessage
 import type { ChatMessage } from '../../domain/entities/ChatMessage';
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { buildMessagePreview } from '../../domain/services/buildMessagePreview';
+import type { MessageLinkPreview } from '../../../../shared/events/InternalMessagingEvent';
+import { toChatLinkPreview } from '../../domain/services/toChatLinkPreview';
 
 export interface IngestIncomingMessageInput {
   tenantId: string;
@@ -35,6 +37,8 @@ export interface IngestIncomingMessageInput {
   participant?: string;
   /** Nome do participante que enviou, em grupos */
   participantName?: string;
+  /** Prévia de link recebida; miniatura já gravada no media store pelo adapter */
+  linkPreview?: MessageLinkPreview | null;
 }
 
 export interface IngestIncomingMessageResult {
@@ -139,6 +143,7 @@ export class IngestIncomingMessageUseCase {
       externalMessageId: externalMessageId ?? null,
       fromParticipant: input.participant ?? null,
       fromParticipantName: input.participantName ?? null,
+      linkPreview: toChatLinkPreview(input.linkPreview),
     });
 
     // 5 — Update conversation metadata

@@ -1,6 +1,6 @@
 import { AvatarGroup, Box, Button, Card, Chip, Tooltip, Typography } from '@mui/material';
 import { Pencil, Smartphone, TriangleAlert } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, OverflowTooltipText } from '@/components';
 import type { OfferConfigGroup, OfferDispatchOrder, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
 import { GroupAvatar } from './GroupChip';
@@ -90,17 +90,16 @@ export function OfferConfigSummary({ sessions, missing, groups, dispatchOrder, o
         </AvatarGroup>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>{t.groups(groups.length)}</Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            noWrap
-            component="p"
-            title={blurNames ? undefined : groups.map((g) => g.title || untitled).join(', ')}
+          <OverflowTooltipText
+            text={groups.map((g) => g.title || untitled).join(', ')}
+            disabled={blurNames}
+            alwaysShow={restNames > 0}
+            typographyProps={{ variant: 'caption', color: 'text.secondary', component: 'p' }}
           >
             <Blurred when={blurNames} inline radius={4}>
               {names.join(', ')}{restNames > 0 ? ` ${t.andMore(restNames)}` : ''}
             </Blurred>
-          </Typography>
+          </OverflowTooltipText>
         </Box>
       </Box>
     </Card>

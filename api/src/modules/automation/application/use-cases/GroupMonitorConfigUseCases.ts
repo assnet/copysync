@@ -101,16 +101,22 @@ export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
   }
 }
 
-/** `captureOutsideWindow` pode faltar (cliente anterior ao campo): mantém o valor salvo, senão o padrão. */
-export type GroupMonitorSettingsInput = Omit<GroupMonitorSettings, 'captureOutsideWindow'> & { captureOutsideWindow?: boolean };
+/** Campos opcionais (cliente anterior a eles): mantém o valor salvo, senão o padrão. */
+export type GroupMonitorSettingsInput = Omit<GroupMonitorSettings, 'captureOutsideWindow' | 'imageMode'>
+  & Partial<Pick<GroupMonitorSettings, 'captureOutsideWindow' | 'imageMode'>>;
 
 export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
   async execute(input: SessionInput & { settings: GroupMonitorSettingsInput }): Promise<GroupMonitorConfigDTO> {
     await this.assertSession(input);
-    const current = input.settings.captureOutsideWindow === undefined
-      ? (await this.deps.monitors.findConfig(input.tenantId, input.sessionId))?.captureOutsideWindow ?? DEFAULT_MONITOR_SETTINGS.captureOutsideWindow
-      : input.settings.captureOutsideWindow;
-    const settings: GroupMonitorSettings = { ...input.settings, captureOutsideWindow: current };
+    const { captureOutsideWindow, imageMode } = input.settings;
+    const saved = captureOutsideWindow === undefined || imageMode === undefined
+      ? await this.deps.monitors.findConfig(input.tenantId, input.sessionId)
+      : null;
+    const settings: GroupMonitorSettings = {
+      ...input.settings,
+      captureOutsideWindow: captureOutsideWindow ?? saved?.captureOutsideWindow ?? DEFAULT_MONITOR_SETTINGS.captureOutsideWindow,
+      imageMode: imageMode ?? saved?.imageMode ?? DEFAULT_MONITOR_SETTINGS.imageMode,
+    };
     const problem = monitorSettingsProblem(settings);
     if (problem) throw new GroupMonitorInvalidInputError(problem.reason, problem.field);
     // Ausente = permitido; só `false` explícito bloqueia (mesma regra do gerador)

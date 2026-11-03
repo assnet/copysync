@@ -2,6 +2,7 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
+import type { OfferImageMode } from '../../domain/enums/OfferImageMode';
 import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { OfferAlreadySentError } from '../../../../shared/errors/internal/OfferErrors';
@@ -19,6 +20,7 @@ export interface EnqueueOfferInput {
   imageUrl: string | null;
   coupon: string | null;
   mentionAll: boolean;
+  imageMode: OfferImageMode;
   simulateTyping: boolean;
   typingSeconds: number;
   /** 1º envio não antes disso (a fila da sessão pode empurrar para depois). */
@@ -79,7 +81,8 @@ export class EnqueueOfferUseCase {
     if (input.sourceKey) {
       const existing = await this.deps.offers.findBySourceKey(tenantId, input.sourceKey);
       // Queda entre criar a oferta e enfileirar: ela ficou DRAFT sem envios; enfileira agora
-      // Mesma captura: os campos gravados valem (o mentionAll esperado é o da linha, senão startSending recusa)
+      // Mesma captura: os campos gravados valem (o mentionAll esperado é o da linha, senão startSending recusa).
+      // imageMode idem: o input é ignorado e o worker lê o da linha (formato decidido na captura).
       if (existing?.status === 'DRAFT') draft = { id: existing.id, mentionAll: existing.mentionAll };
       else if (existing) {
         const first = (await this.deps.dispatches.listByOffer(existing.id, tenantId))
@@ -124,6 +127,7 @@ export class EnqueueOfferUseCase {
       origin: input.origin,
       expiresAt: input.expiresAt,
       mentionAll: input.mentionAll,
+      imageMode: input.imageMode,
       simulateTyping: input.simulateTyping,
       typingSeconds: input.typingSeconds,
       sourceKey: input.sourceKey ?? null,

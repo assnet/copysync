@@ -9,6 +9,26 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.50.0 · app 0.60.0 — prévia de link em ofertas e no chat
+
+Doc: `docs/mensagens-previa-de-link.md`. Spec: `.specs/features/link-preview/`.
+
+#### Backend
+
+- **`prisma/migrations/20261103000000_add_offer_image_mode`** — enum `OfferImageMode` (`MEDIA`, `LINK_PREVIEW`) em `offers.imageMode` e `group_monitor_configs.imageMode`, padrão `MEDIA`. Gerador grava pelo PATCH da oferta; monitoramento copia da configuração para cada oferta.
+- **`prisma/migrations/20261103000001_add_chat_message_link_preview`** — `chat_messages.linkPreviewUrl/Title/Description/ThumbUrl`; `ChatMessageDto.linkPreview` na listagem, nos envios, no presenter e no WS.
+- **`MediaOfferStore.ts`** + **`SharpImageTranscoder.resizeJpeg`** — foto de oferta nova gravada uma vez em JPEG 600 px q75 (antes: arquivo como veio, até 5 MiB).
+- **`IMessagingEngine.ts`** — `SendTextMessageInput.linkPreview` (tipo neutro). **`buildBaileysLinkPreview.ts`** + `sendTextMessage`: prévia montada com a foto armazenada (miniatura 192 px embutida + 600 px como `thumbnail-link`, timeout `LINK_PREVIEW_UPLOAD_TIMEOUT_MS` 15 s; falha = só a pequena). Id gerado no adapter, eco registrado antes do envio, mensagem no `sentMediaCache`. Texto sem prévia vai com `linkPreview: null` (a busca automática do Baileys nunca funcionou: `link-preview-js` não instalado).
+- **`ChatOfferMessageSender.ts`**, **`OfferPreviewImage.ts`**, **`pickPreviewUrl.ts`**, **`SendMessageUseCase.ts`** — oferta `LINK_PREVIEW` sai como texto com prévia, sem cópia de mídia no chat; sem foto/título/link sai texto puro. Miniatura gravada como `<sessionId>_<externalId>_lp.jpg` depois do envio. Rota de texto do painel inalterada.
+- **`pickInboundLinkPreview.ts`**, **`storeInboundLinkPreview.ts`**, **`downloadLinkPreviewThumb.ts`** — mensagem recebida com link ganha prévia no chat (tempo real e histórico/`append`). Miniatura pequena sempre (já vem na mensagem); grande sob `autoDownloadMedia` (contato sempre), teto 1 MiB no stream, timeout 10 s; histórico só dentro de 30 min. A URL nunca é acessada. Evento `MESSAGE_RECEIVED.linkPreview`.
+
+#### Frontend
+
+- **`ImageModePicker.tsx`** — "Formato da imagem" (Imagem com legenda × Prévia do link) no card Envio do gerador e na configuração do monitoramento; prévia da oferta mostra o cartão; aviso quando a oferta não tem foto.
+- **`LinkPreviewCard.tsx`** + **`MessageBubble.tsx`** — cartão de prévia em mensagem de texto (miniatura grande/pequena/sem), link só http(s) com `noopener`. Privacidade: nova tela `chat` com `chat.linkPreviewImages` e `chat.linkPreviewText`.
+- **`OverflowTooltipText.tsx`** + **`useIsTruncated.ts`** — nome completo do grupo no hover/foco quando cortado, em 11 pontos do gerador, monitoramento e fila; desligado com borrar nomes. `OfferDispatchProgress` passa a borrar o nome do grupo.
+
+
 ### Changed — app 0.59.0 — menu: chat só para super admin; espelhamento e gestor de membros fora
 
 - **`app/AppLayout.tsx`** — "Espelhamento" e "Gestor de membros" (telas "em breve") saem do menu. "Chat" ganha `superAdminOnly` e só aparece para super admin. Gerador, monitoramento, página de ofertas e story não dependem da tela do chat: o envio usa o módulo `chat` só no backend.

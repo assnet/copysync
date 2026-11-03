@@ -1,5 +1,6 @@
 import { MONITOR_TEXT_MODES, type GroupMonitorSettings } from '../entities/GroupMonitor';
 import { OFFER_AUDIENCES } from '../../../campaigns/domain/enums/OfferAudience';
+import { OFFER_IMAGE_MODES } from '../../../campaigns/domain/enums/OfferImageMode';
 import { MINUTES_PER_DAY } from './operatingWindow';
 
 export const MONITOR_LIMITS = {
@@ -30,6 +31,7 @@ export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   textMode: 'ORIGINAL',
   audience: 'STANDARD',
   enrichLinkOnly: true,
+  imageMode: 'MEDIA',
 };
 
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;
@@ -55,6 +57,7 @@ export function monitorSettingsProblem(s: GroupMonitorSettings): { field: keyof 
   if (!inRange(s.typingSeconds, MONITOR_LIMITS.typingSeconds)) return { field: 'typingSeconds', reason: 'out of range' };
   if (!MONITOR_TEXT_MODES.includes(s.textMode)) return { field: 'textMode', reason: 'unknown' };
   if (!OFFER_AUDIENCES.includes(s.audience)) return { field: 'audience', reason: 'unknown' };
+  if (!OFFER_IMAGE_MODES.includes(s.imageMode)) return { field: 'imageMode', reason: 'unknown' };
   return null;
 }
 

@@ -5,6 +5,7 @@ import {
   ChatMessageStatus,
   ChatMessageType,
 } from '../../domain/enums/ChatMessageEnums';
+import { linkPreviewFromFields } from '../../domain/services/linkPreviewFromFields';
 
 export class PrismaChatMessageMapper {
   static toDomain(raw: PrismaChatMessage): ChatMessage {
@@ -26,6 +27,7 @@ export class PrismaChatMessageMapper {
       sentAt: raw.sentAt,
       fromParticipant: raw.fromParticipant,
       fromParticipantName: raw.fromParticipantName,
+      linkPreview: linkPreviewFromFields(raw),
       createdAt: raw.createdAt,
     });
   }

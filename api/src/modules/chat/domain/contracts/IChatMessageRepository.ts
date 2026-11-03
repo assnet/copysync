@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../entities/ChatMessage';
+import type { ChatMessage, ChatMessageLinkPreview } from '../entities/ChatMessage';
 import type { ChatMessageDirection, ChatMessageStatus, ChatMessageType } from '../enums/ChatMessageEnums';
 
 export interface ListMessagesFilter {
@@ -40,6 +40,8 @@ export interface ChatMessageCreateData {
   fromParticipant?: string | null;
   /** Nome do remetente dentro de um grupo */
   fromParticipantName?: string | null;
+  /** Prévia de link; null/ausente = sem prévia (colunas nulas). */
+  linkPreview?: ChatMessageLinkPreview | null;
   /** Status inicial; se omitido, SENT. Mídia do painel nasce PENDING até o WhatsApp aceitar. */
   status?: ChatMessageStatus;
 }

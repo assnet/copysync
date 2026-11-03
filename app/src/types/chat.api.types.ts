@@ -113,6 +113,15 @@ export interface ChatMessageApiDto {
   /** Ausentes em API antiga (deploy em andamento): o adapter trata como sem reações. */
   reactionsRevision?: string | null;
   reactions?: ReactionSummaryApiDto[];
+  /** Prévia de link (texto com URL). Ausente em API antiga; `thumbnailUrl` relativo como `mediaUrl`. */
+  linkPreview?: ChatLinkPreviewApiDto | null;
+}
+
+export interface ChatLinkPreviewApiDto {
+  url: string;
+  title: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
 }
 
 /** Resposta do `PUT /chat/messages/:messageId/reaction`: agregado final da mensagem. */
@@ -298,6 +307,9 @@ export function apiMessageToFrontend(dto: ChatMessageApiDto): ChatMessage {
     fromParticipantAvatarUrl: resolveMediaUrl(dto.fromParticipantAvatarUrl),
     externalMessageId: dto.externalMessageId ?? null,
     reactions:         (dto.reactions ?? []).map(apiReactionToFrontend),
+    linkPreview:       dto.linkPreview
+      ? { ...dto.linkPreview, thumbnailUrl: resolveMediaUrl(dto.linkPreview.thumbnailUrl) }
+      : null,
     reactionsRevision: dto.reactionsRevision ?? null,
   };
 }

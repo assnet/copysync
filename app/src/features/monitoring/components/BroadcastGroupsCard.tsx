@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Chip, IconButton, Snackbar, Stack, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import { ArrowDown, ArrowUp, Plus, Send, X } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { BroadcastGroupItem } from '@/types/api.types';
@@ -178,7 +178,7 @@ export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessi
                 <GroupAvatar title={blurNames ? null : g.title} avatarUrl={g.avatarUrl} size={32} blurFlag="monitoring.groupAvatars" />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Blurred when={blurNames} inline radius={5}>
-                    <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{title}</Typography>
+                    <OverflowTooltipText text={title} disabled={blurNames} typographyProps={{ variant: 'body2', sx: { fontWeight: 600 } }} />
                   </Blurred>
                   {other && (
                     <Tooltip title={t.otherSessionTooltip} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>

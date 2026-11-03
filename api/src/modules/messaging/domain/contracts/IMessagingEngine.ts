@@ -66,6 +66,23 @@ export interface SendTextMessageInput {
   quotedMessage?: QuotedMessageRef | null;
   /** Telefones (dígitos) dos participantes marcados com @ no corpo — menção estruturada. */
   mentions?: string[] | null;
+  /**
+   * Cartão de prévia montado pelo sistema (a engine nunca busca a página). Ausente/null =
+   * texto sem prévia. O id da mensagem com prévia é gerado dentro da engine.
+   */
+  linkPreview?: OutboundLinkPreview | null;
+}
+
+/** Prévia de link de envio, em tipos neutros. Imagens já em JPEG, reduzidas por quem chama. */
+export interface OutboundLinkPreview {
+  /** Texto exato do link dentro de `body` (vira matchedText). */
+  url: string;
+  title: string;
+  description?: string | null;
+  /** JPEG ≤ 192 px, embutido na mensagem. */
+  thumbnailJpeg?: Buffer | null;
+  /** JPEG ≤ 600 px, enviado ao servidor de mídia (cartão grande). */
+  imageJpeg?: Buffer | null;
 }
 
 /**

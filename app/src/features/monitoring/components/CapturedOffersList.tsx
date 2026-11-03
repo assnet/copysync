@@ -8,7 +8,7 @@ import {
   AlertTriangle, CheckCheck, ChevronDown, CircleSlash, Clock, ImageOff, Inbox, Loader, Pause, Radar, RefreshCw, RotateCcw, Send, Square, Tag,
   type LucideIcon,
 } from 'lucide-react';
-import { AppIcon, CooldownBar } from '@/components';
+import { AppIcon, CooldownBar, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -353,7 +353,11 @@ function CapturedOfferRow({ item, now, expanded, compact, onToggle, onRetry, con
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, maxWidth: '100%' }}>
             <GroupAvatar title={item.sourceGroupTitle} avatarUrl={item.sourceGroupAvatarUrl} size={20} blurFlag="monitoring.groupAvatars" />
             <Blurred when={blurGroup} inline radius={5} sx={{ minWidth: 0 }}>
-              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{item.sourceGroupTitle || t.unknownGroup}</Typography>
+              <OverflowTooltipText
+                text={item.sourceGroupTitle || t.unknownGroup}
+                disabled={blurGroup}
+                typographyProps={{ variant: 'caption', color: 'text.secondary', sx: { display: 'block' } }}
+              />
             </Blurred>
           </Box>
         </Box>

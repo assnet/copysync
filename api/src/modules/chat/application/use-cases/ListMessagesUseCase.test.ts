@@ -10,12 +10,12 @@ const TENANT = 'tenant-1';
 const CONV = 'conv-1';
 const T = new Date('2026-09-24T12:00:00.000Z');
 
-function message(id: string, fromParticipant: string | null) {
+function message(id: string, fromParticipant: string | null, linkPreview: unknown = null) {
   return {
     id, conversationId: CONV, tenantId: TENANT, direction: 'INBOUND', type: 'TEXT',
     content: 'oi', mediaUrl: null, mimeType: null, fileName: null, durationSeconds: null,
     externalMessageId: `ext-${id}`, status: null, isDeleted: false, quotedMessageId: null,
-    sentAt: T, createdAt: T, fromParticipant, fromParticipantName: null,
+    sentAt: T, createdAt: T, fromParticipant, fromParticipantName: null, linkPreview,
   };
 }
 
@@ -110,5 +110,17 @@ describe('ListMessagesUseCase — reações', () => {
 
     expect(out).toEqual([]);
     expect(deps.reactionRepo.findByMessageIds).not.toHaveBeenCalled();
+  });
+});
+
+describe('ListMessagesUseCase — prévia de link', () => {
+  it('devolve linkPreview null sem prévia e o cartão agrupado quando há', async () => {
+    const preview = { url: 'https://amzn.to/x', title: 'Fone', description: null, thumbnailUrl: '/media/s_x_lp.jpg' };
+    const deps = makeDeps({ messages: [message('m-1', null), message('m-2', null, preview)], reactions: [] });
+
+    const [sem, com] = await deps.useCase.execute({ conversationId: CONV, tenantId: TENANT });
+
+    expect(sem!.linkPreview).toBeNull();
+    expect(com!.linkPreview).toEqual(preview);
   });
 });

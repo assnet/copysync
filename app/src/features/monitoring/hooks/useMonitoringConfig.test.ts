@@ -19,7 +19,7 @@ const config = (over: Partial<GroupMonitorConfigResponse> = {}): GroupMonitorCon
   sessionId: 's1',
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600, startDelaySeconds: 0,
-    maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: false, typingSeconds: 5,
+    maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: false, typingSeconds: 5,
     textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   },
   monitoredGroups: [], broadcastGroups: [],

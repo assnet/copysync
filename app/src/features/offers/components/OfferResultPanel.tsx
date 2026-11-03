@@ -123,6 +123,8 @@ export function OfferResultPanel(props: Props) {
             title={draft.title}
             text={draft.text}
             at={offer.updatedAt}
+            imageMode={offer.imageMode}
+            linkUrl={offer.affiliateUrl}
           />
         </Box>
 

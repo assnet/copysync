@@ -3,6 +3,7 @@ import { OFFER_STATUSES } from '../../domain/enums/OfferStatus';
 import { OFFER_DISPATCH_STATUSES } from '../../domain/enums/OfferDispatchStatus';
 import { OFFER_AUDIENCES } from '../../domain/enums/OfferAudience';
 import { OFFER_ORIGINS } from '../../domain/enums/OfferOrigin';
+import { OFFER_IMAGE_MODES } from '../../domain/enums/OfferImageMode';
 import { OFFER_COUPON_MAX } from '../../application/use-cases/offerCoupon';
 import {
   OFFER_GROUPS_HARD_MAX,
@@ -18,6 +19,7 @@ const UPLOAD_ID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{
 
 const priceCents = { type: ['integer', 'null'], minimum: 0, maximum: 1_000_000_000 } as const;
 const audience = { type: 'string', enum: [...OFFER_AUDIENCES] } as const;
+const imageMode = { type: 'string', enum: [...OFFER_IMAGE_MODES] } as const;
 /** Formato fino (caracteres) é 422 `coupon` no use case. */
 const coupon = { type: ['string', 'null'], maxLength: OFFER_COUPON_MAX } as const;
 /** Formato no schema; futuro e teto de dias no use case (422 `scheduledAt`). */
@@ -51,6 +53,7 @@ export const updateOfferBodySchema = {
     coupon,
     audience,
     mentionAll: { type: 'boolean' },
+    imageMode,
     simulateTyping: { type: 'boolean' },
     typingSeconds: { type: 'integer', minimum: OFFER_TYPING_SECONDS_MIN, maximum: OFFER_TYPING_SECONDS_MAX },
     scheduledAt,
@@ -124,6 +127,7 @@ const offerSchema = {
     coupon: nullableString,
     audience,
     mentionAll: { type: 'boolean' },
+    imageMode,
     simulateTyping: { type: 'boolean' },
     typingSeconds: { type: 'integer' },
     scheduledAt: { type: ['string', 'null'], format: 'date-time' },

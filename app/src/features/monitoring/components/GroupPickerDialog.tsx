@@ -7,7 +7,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronDown, Ear, Info, Lock, Plus, Search, Send, TriangleAlert, X } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
 import { Blurred, useBlur } from '@/features/privacy';
@@ -299,7 +299,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const groupName = (title: string | null) => (
     <Box sx={{ minWidth: 0 }}>
       <Blurred when={blurNames} inline radius={5} sx={{ maxWidth: '100%', verticalAlign: 'top' }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{title || tg.untitled}</Typography>
+        <OverflowTooltipText text={title || tg.untitled} disabled={blurNames} typographyProps={{ variant: 'body2', sx: { fontWeight: 600 } }} />
       </Blurred>
     </Box>
   );

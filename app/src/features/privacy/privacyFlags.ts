@@ -14,6 +14,14 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'chat',
+    label: 'Chat',
+    flags: [
+      { id: 'chat.linkPreviewImages', label: 'Miniaturas das prévias de link' },
+      { id: 'chat.linkPreviewText', label: 'Título, descrição e domínio das prévias de link' },
+    ],
+  },
+  {
     id: 'offers',
     label: 'Gerador de ofertas',
     flags: [

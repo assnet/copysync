@@ -6,7 +6,7 @@ const input = (o: Partial<EnqueueOfferInput> = {}): EnqueueOfferInput => ({
   tenantId: TENANT, destinations: [{ conversationId: 'g1', sessionId: 's1' }, { conversationId: 'g2', sessionId: 's1' }], origin: 'MONITORING', provider: 'AMAZON',
   sourceUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH', affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20',
   title: 'Fone', text: 'Fone https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20', imageUrl: 'store://1.jpg', coupon: 'PROMO10',
-  mentionAll: true, simulateTyping: true, typingSeconds: 10, startAt: NOW, expiresAt: new Date(NOW.getTime() + 3_600_000),
+  mentionAll: true, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 10, startAt: NOW, expiresAt: new Date(NOW.getTime() + 3_600_000),
   intervalMinSeconds: 60, intervalMaxSeconds: 120, ...o,
 });
 
@@ -22,7 +22,7 @@ describe('EnqueueOfferUseCase', () => {
     const out = await s.uc.execute(input());
     expect(out).toMatchObject({ kind: 'queued', firstSendAt: NOW });
     const offer = s.offers.items[0]!;
-    expect(offer).toMatchObject({ status: 'SENDING', origin: 'MONITORING', coupon: 'PROMO10', mentionAll: true, simulateTyping: true, typingSeconds: 10 });
+    expect(offer).toMatchObject({ status: 'SENDING', origin: 'MONITORING', coupon: 'PROMO10', mentionAll: true, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 10 });
     expect(offer.expiresAt).toEqual(new Date(NOW.getTime() + 3_600_000));
     expect(s.dispatches.items.map((d) => [d.conversationId, d.sessionId, d.gapSeconds, d.notBefore.getTime() - NOW.getTime()])).toEqual([
       ['g1', 's1', 60, 0], ['g2', 's1', 60, 90_000],
@@ -64,6 +64,15 @@ describe('EnqueueOfferUseCase', () => {
     const out = await s.uc.execute(input({ sourceKey: 'captured:8', mentionAll: false }));
     expect(out).toMatchObject({ kind: 'queued', offerId: 'orfa' });
     expect(s.offers.items[0]!.status).toBe('SENDING');
+  });
+
+  it('DRAFT órfã com imageMode diferente do atual: enfileira com o valor salvo, como o marcar todos', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'orfa', status: 'DRAFT', sourceKey: 'captured:7', imageMode: 'LINK_PREVIEW' }));
+    const out = await s.uc.execute(input({ sourceKey: 'captured:7', imageMode: 'MEDIA' }));
+    expect(out).toMatchObject({ kind: 'queued', offerId: 'orfa' });
+    expect(s.offers.items).toHaveLength(1);
+    expect(s.offers.items[0]).toMatchObject({ status: 'SENDING', imageMode: 'LINK_PREVIEW' });
   });
 
   it('fila empurraria para depois da validade: não cria nada', async () => {

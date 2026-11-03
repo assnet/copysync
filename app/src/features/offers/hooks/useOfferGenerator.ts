@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { offerService } from '@/services/offer.service';
 import { mediaService } from '@/services/media.service';
 import { uploadInParts } from '@/features/chat/media/chunkedUpload';
-import type { GenerateOfferRequest, OfferAudience, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
+import type { GenerateOfferRequest, OfferAudience, OfferImageMode, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
 import { toOfferError, type OfferErrorView } from '../utils/offerErrors';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
@@ -25,6 +25,7 @@ export function useOfferGenerator() {
   const [generating, setGenerating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [mentionSaving, setMentionSaving] = useState(false);
+  const [imageModeSaving, setImageModeSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [imageProgress, setImageProgress] = useState<number | null>(null);
@@ -118,6 +119,29 @@ export function useOfferGenerator() {
     } catch (err) {
       if (seq === typingSeq.current) setOffer(previous);
       fail(err);
+    }
+  }, [offer, fail]);
+
+  /**
+   * Troca o formato da imagem na hora (como "marcar todos"). Só a resposta da última troca vale;
+   * se a API recusar, volta apenas o campo (sem desfazer outros PATCHs concluídos no meio).
+   */
+  const imageModeSeq = useRef(0);
+  const setImageMode = useCallback(async (value: OfferImageMode) => {
+    if (!offer) return;
+    const previousMode = offer.imageMode;
+    const seq = ++imageModeSeq.current;
+    setOffer((o) => o && { ...o, imageMode: value });
+    setImageModeSaving(true);
+    setError(null);
+    try {
+      const saved = await offerService.update(offer.id, { imageMode: value });
+      if (seq === imageModeSeq.current) setOffer(saved);
+    } catch (err) {
+      if (seq === imageModeSeq.current) setOffer((o) => o && { ...o, imageMode: previousMode });
+      fail(err);
+    } finally {
+      if (seq === imageModeSeq.current) setImageModeSaving(false);
     }
   }, [offer, fail]);
 
@@ -280,6 +304,7 @@ export function useOfferGenerator() {
     generating,
     regenerating,
     mentionSaving,
+    imageModeSaving,
     saving,
     sending,
     imageProgress,
@@ -288,6 +313,7 @@ export function useOfferGenerator() {
     generate,
     regenerate,
     setMentionAll,
+    setImageMode,
     setTyping,
     update,
     replaceImage,

@@ -63,6 +63,13 @@ export interface QuotedMessagePreview {
   isDeleted?: boolean;
 }
 
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -94,6 +101,8 @@ export interface ChatMessage {
   reactions?: MessageReaction[];
   /** Versão do agregado no servidor (descarta atualização fora de ordem). */
   reactionsRevision?: string | null;
+  /** Cartão de prévia de link (mensagem de texto). `thumbnailUrl` já resolvido como `mediaUrl`. */
+  linkPreview?: LinkPreview | null;
   /**
    * Só do painel — a API nunca envia. Presente apenas na bolha otimista (`tmp-<uuid>`)
    * enquanto a mídia sobe (`uploading`) ou aguarda o servidor aceitar o envio (`confirming`).

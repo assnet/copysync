@@ -4,7 +4,8 @@ import type { IChatMessageRepository } from '../../domain/contracts/IChatMessage
 import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMessageEnums';
 import { logger } from '../../../../shared/logger/logger';
 import { initialStateFromRemote } from '../../domain/services/initialStateFromRemote';
-import type { RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
+import type { MessageLinkPreview, RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
+import { toChatLinkPreview } from '../../domain/services/toChatLinkPreview';
 
 export interface HistoryMessageItem {
   /** ID externo da mensagem (Baileys key.id) — necessário para deduplicação */
@@ -39,6 +40,8 @@ export interface HistoryMessageItem {
   participant?: string;
   /** Nome do participante que enviou, em grupos */
   participantName?: string;
+  /** Prévia de link; miniatura só quando a mensagem é recente (janela de 30 min do adapter) */
+  linkPreview?: MessageLinkPreview | null;
 }
 
 export interface IngestHistorySyncInput {
@@ -196,6 +199,7 @@ export class IngestHistorySyncUseCase {
           sentAt: item.timestamp,
           fromParticipant: item.participant ?? null,
           fromParticipantName: item.participantName ?? null,
+          linkPreview: toChatLinkPreview(item.linkPreview),
         });
 
         // Mantém apenas a mensagem mais recente por conversa

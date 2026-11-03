@@ -177,6 +177,13 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.queue.inputs[0]).toMatchObject({ mentionAll: false });
   });
 
+  it('copia o formato da imagem da configuração para a oferta', async () => {
+    const s = await setup({ settings: { imageMode: 'LINK_PREVIEW' } });
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]).toMatchObject({ imageMode: 'LINK_PREVIEW' });
+  });
+
   it('erro inesperado vira FAILED INTERNAL_ERROR e não derruba o tick', async () => {
     const s = await setup();
     s.queue.result = () => { throw new TypeError('bug'); };

@@ -179,6 +179,7 @@ function makeDeps(o: {
   const tmpPathFor = vi.fn((uploadId: string, ext: string) => `/uploads/${uploadId}.voice.${ext}`);
   const images = {
     toJpeg: track('toJpeg', async () => { if (o.transcodeError) throw o.transcodeError; }),
+    resizeJpeg: vi.fn(),
   };
 
   const useCase = new SendMediaMessageUseCase({

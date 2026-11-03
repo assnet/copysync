@@ -71,6 +71,7 @@ function makeDeps(o: {
   const tmpPathFor = vi.fn((ext: string) => TMP.replace(/jpg$/, ext));
   const images = {
     toJpeg: vi.fn(async () => { if (o.transcodeError) throw o.transcodeError; }),
+    resizeJpeg: vi.fn(),
   };
 
   const useCase = new SendStoredMediaMessageUseCase({

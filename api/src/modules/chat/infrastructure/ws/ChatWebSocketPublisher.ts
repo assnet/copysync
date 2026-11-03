@@ -1,6 +1,7 @@
 import type { WebSocket } from 'ws';
 import { logger } from '../../../../shared/logger/logger';
 import type { ReactionSummary } from '../../domain/services/aggregateReactions';
+import type { ChatMessageLinkPreview } from '../../domain/entities/ChatMessage';
 
 /**
  * Typed WebSocket event contract.
@@ -29,6 +30,8 @@ export type ChatWsEvent =
           createdAt: string;
           fromParticipant?: string | null;
           fromParticipantName?: string | null;
+          /** Cartão de prévia de link; null = sem prévia. */
+          linkPreview?: ChatMessageLinkPreview | null;
           /** Id no WhatsApp: o painel só oferece reagir quando ele existe. */
           externalMessageId: string | null;
         };

@@ -296,6 +296,7 @@ export const monitoringStrings = {
       maxOfferAgeMinutes: 'Validade da oferta sem cupom',
       couponMaxAgeMinutes: 'Validade da oferta com cupom',
       mentionAll: 'Marcar todos',
+      imageMode: 'Formato da imagem',
       simulateTyping: 'Mostrar "digitando…"',
       typingSeconds: 'Tempo digitando',
       captureOutsideWindow: 'Capturar fora do horário',

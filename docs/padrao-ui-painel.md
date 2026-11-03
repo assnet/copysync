@@ -12,6 +12,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Espera/cooldown com fim conhecido | `CooldownBar` + `serverNow()` | `LinearProgress` com `setInterval` |
 | Ícone | `AppIcon` (Lucide) | emoji, `@mui/icons-material` em tela nova |
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
+| Texto de uma linha cortado com reticências (nome de grupo, sessão, produto) | `OverflowTooltipText`; em `Chip`/elemento próprio, `useIsTruncated` + `Tooltip` | atributo nativo `title`; tooltip fixo que aparece mesmo com o texto inteiro |
 | Grupo de WhatsApp em lista/chip | `GroupAvatar` / `GroupChip` (`features/offers/components/GroupChip.tsx`): foto, senão iniciais, senão ícone | `Chip` só com texto; ícone genérico quando há foto |
 
 Estilo visual de uma tela redesenhada fica num módulo da feature (`features/<x>/<x>Style.ts`, ex.:
@@ -64,7 +65,7 @@ compartilhar a tela sem expor clientes, grupos e produtos.
 4. Teste com a flag ligada: o layout não pode mudar (o desfoque mantém o espaço).
 
 Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
-Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão e foto da sessão, fotos e nomes de grupos, palavras-chave, texto e imagens das ofertas capturadas), Rodízio de links (link público e apelido, sessão, fotos e nomes de grupos, link de convite dos grupos) e Página de Ofertas (nome da página, foto de perfil, capa, endereço/subdomínio, título e imagens das ofertas; o preview inteiro borra se qualquer flag da tela estiver ligada). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
+Telas cobertas: Painel/menu (e-mail e papel do usuário), Chat (miniaturas e textos da prévia de link: título, descrição e domínio, com o tooltip do domínio desligado; o corpo da mensagem fica fora), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão e foto da sessão, fotos e nomes de grupos, palavras-chave, texto e imagens das ofertas capturadas), Rodízio de links (link público e apelido, sessão, fotos e nomes de grupos, link de convite dos grupos) e Página de Ofertas (nome da página, foto de perfil, capa, endereço/subdomínio, título e imagens das ofertas; o preview inteiro borra se qualquer flag da tela estiver ligada). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
 
 ## ToggleOption
 
@@ -100,3 +101,20 @@ Telas cobertas: Painel/menu (e-mail e papel do usuário), Gerador de ofertas (se
 
 Ver [`gerador-de-ofertas.md`](gerador-de-ofertas.md) ("Espera até o próximo envio") e
 `CooldownBar.tsx`. Relógio sempre do servidor (`X-Server-Time`).
+
+## OverflowTooltipText / useIsTruncated
+
+Texto cortado com reticências mostra o conteúdo inteiro no hover, foco e toque, **só quando está
+cortado**. `OverflowTooltipText` = `Typography noWrap` + `Tooltip` (`arrow`, `describeChild`,
+`enterTouchDelay={0}`, `leaveTouchDelay={4000}`); `useIsTruncated(ref)` mede `scrollWidth > clientWidth`
+e recalcula por `ResizeObserver`.
+
+- Visual não muda: passe a mesma tipografia em `typographyProps` (`variant`, `color`, `sx`, `component`).
+- `disabled` = flag de borrar da tela. Borrado ligado → sem tooltip (senão vaza o nome).
+- `children` para o `<Blurred>` dentro; `text` é sempre o texto completo do tooltip.
+- `focusable={false}` dentro de botão/área clicável (o foco já é do pai). Fora disso, texto cortado
+  ganha `tabIndex=0` para o teclado abrir o tooltip.
+- `alwaysShow` quando a linha resume algo maior que ela ("A, B e mais 3").
+- Chip: `useIsTruncated(ref, conteúdo, el => el.querySelector('.MuiChip-label'))` + `Tooltip` em volta
+  (ver `GroupChip`).
+- Não usar `title` nativo: aparência fora do tema e aparece com o texto inteiro.
