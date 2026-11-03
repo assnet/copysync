@@ -220,7 +220,9 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
   com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"); envio; depois da captura; texto da oferta em
   `radiogroup` Original / Modelo / IA (setas, Home/End: `textModeForKey`) com `AudiencePicker` quando IA.
   Barra Salvar/Descartar só com alteração, `aria-live`. "Marcar todos" travado pelo plano conta como
-  desligado (`effectiveDraft`). "Imagem das ofertas" segue "Em breve".
+  desligado (`effectiveDraft`). "Formato da imagem" (`ImageModePicker`, `GroupMonitorConfig.imageMode`,
+  padrão `MEDIA`) é copiado para cada `Offer` criada; `LINK_PREVIEW` envia texto + cartão de prévia, com título =
+  1ª linha do texto capturado (limitação do MVP). Ver `docs/mensagens-previa-de-link.md`.
 - **Capturadas** (`CapturedOffersList`): filtros `all`/`action` (Precisa de ação)/`queued`/`working`/`skipped`
   com contagem (marcada parcial enquanto há mais páginas); horário relativo pt-BR pelo `serverNow()`, com
   data quando não é hoje; chips de `textSource`, "IA indisponível" (`aiErrorCode` no tooltip), foto

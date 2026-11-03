@@ -12,7 +12,7 @@ Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/feat
 | Use cases | `campaigns/application/use-cases/` (Generate, Update, Regenerate, Send, ProcessDue, Config, Get, Usage) · `application/services/OfferTextComposer.ts` |
 | HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `HttpShortLinkExpander`, `HttpProductPageReader`, `HttpOfferImageFetcher`) |
 | IA | porta `IAiTextGenerator` via `LazyAiTextGenerator` → `docs/ia-provedores.md` |
-| Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem; WebP do ML sai como JPEG, ver `chat-midias-anexos.md` "Foto WebP") / `SendMessageUseCase` (texto), com `mentions` |
+| Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem, `imageMode = MEDIA`; WebP do ML sai como JPEG, ver `chat-midias-anexos.md` "Foto WebP") / `SendMessageUseCase` (texto, ou texto + prévia do link com `imageMode = LINK_PREVIEW`), com `mentions` |
 | Worker | `campaigns/infrastructure/worker/OfferDispatchWorker.ts`, ligado em `app/server.ts` |
 | Tabelas | `offers`, `offer_dispatches`, `offer_destinations`, `offer_generator_configs` |
 | Painel | `app/src/features/offers/` (`components/config/` = assistente) · `app/src/pages/offers/OfferGeneratorPage.tsx` · `/offers` |
@@ -78,6 +78,7 @@ Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body o
   logada é bloqueada bem menos. Rotas não documentadas do ML podem mudar sem aviso.
 - Faltou título, preço ou foto → `needsManualData: true` e o painel pede os campos.
 - Fotos: `*.susercontent.com`, `*.shopee.com.br`, `*.mlstatic.com`, `*.media-amazon.com`, `*.ssl-images-amazon.com`.
+- Foto gravada (`MediaOfferStore.saveImage`, fetch/upload/foto do produto): JPEG lado ≤ 600 px, q75, sem metadados.
 
 ## Texto
 
@@ -122,6 +123,9 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 - **Termômetro do intervalo** (`utils/offerConfig.ts#intervalRisk`, só painel): score pela MÉDIA da pausa, curva em raiz, 0 em 1 min e 1 a partir de 10 min de média (`INTERVAL_SAFE_MEAN_SECONDS`); níveis <0,25 alto risco, <0,5 elevado, <0,75 moderado, senão seguro. Renderizado pelo `RangeSlider` (`status`): cor contínua vermelho→âmbar→verde na faixa e rótulo centralizado. Não é regra da API: é orientação de UX.
 - **Espera até o próximo envio**: barra de energia (`CooldownBar`) no card "Envio". Janela = `notBefore` do envio anterior → `notBefore` do próximo QUEUED (`utils/dispatchCooldown.ts`), ou seja, o intervalo sorteado entre mínimo e máximo. Relógio do servidor via `X-Server-Time`; zerada mostra "Enviando…" até o polling trazer o novo estado.
 - **Simular digitação** (`simulateTyping` + `typingSeconds`, padrão 15 s, 1–30): `ChatOfferMessageSender` manda `sendPresence('composing')` a cada 8 s (o WhatsApp apaga em ~10 s), espera o tempo escolhido, manda `paused` (sempre, mesmo em falha) e envia. O adapter Baileys sobe a conta para `available` no 1º `composing` e volta a `unavailable` no `paused`: o socket conecta com `markOnlineOnConnect: false` (celular segue notificando) e o WhatsApp não exibe o "digitando…" de conta offline — texto ou foto. Em grupo o adapter reenvia o chatstate com `from = me.lid` (`sendNode`): a lib só manda com o JID de telefone, que o grupo LID não exibe. Diagnóstico no log: `typing indicator start` (sender) e `Presence sent` (adapter; `name:false` = sem pushName, a lib ignora `available`). Melhor esforço: falha na presença envia na hora. O worker soma o tempo de digitação ao timeout de 60 s. Teto de 30 s em `campaigns/domain/offerTyping.ts` (o painel espelha em `utils/offerConfig.ts`). Não é entitlement de plano.
+- **Formato da imagem** (`Offer.imageMode`, PATCH como `mentionAll`): `MEDIA` (padrão, imagem com legenda) ou
+  `LINK_PREVIEW` (texto + cartão de prévia montado com a foto armazenada, sem anexo). Painel: `ImageModePicker` no
+  card "Envio" do rascunho (`OfferSendPanel`). Regras, tamanhos e fallback: `docs/mensagens-previa-de-link.md`.
 - Flag **`OFFER_DISPATCH_WORKER_ENABLED`** (padrão `false`; ligar só na Render — `api/.env` e `.env.dev` apontam para o banco real).
 
 ### Limites conhecidos
@@ -138,6 +142,7 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 - Gerar link de afiliado sem sessão válida da extensão (a geração automática exige sessão do ML sincronizada).
 - Ligar o worker com banco de produção fora da Render.
 - Enviar sem passar por `OfferDispatch` com `notBefore`.
+- Buscar a página/og:image do produto para montar prévia de link (ver `mensagens-previa-de-link.md`).
 
 ## Deploy
 

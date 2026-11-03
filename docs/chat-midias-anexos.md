@@ -36,6 +36,14 @@ Spec, contexto (D1–D8) e design: `.specs/features/chat-media-attachments/`.
 8. Eco `append` (`fromMe`) com id registrado → descartado antes de qualquer download. Mídia
    enviada pelo celular não está no registro e é baixada como antes.
 
+## Prévia de link × mídia
+
+- Texto com prévia enviado por nós (oferta `LINK_PREVIEW`) usa o **mesmo** registro de eco (`outboundEchoRegistries().media`,
+  antes do envio) e o mesmo `sentMediaCache`; o eco é pulado sem gravar nem baixar a miniatura.
+- Recebido: miniatura pequena (vem na mensagem) grava sempre, sem `autoDownloadMedia`; a grande (`thumbnail-link`)
+  segue `shouldAutoDownloadGroupMedia` (contato sempre) com teto de 1 MiB no stream; histórico só até 30 min.
+  Arquivo `<sessionId>_<msgId>_lp.jpg`. Detalhes: `docs/mensagens-previa-de-link.md`.
+
 ## Classificação (tipo pelo conteúdo)
 
 | Finalidade | Condição | Vira |

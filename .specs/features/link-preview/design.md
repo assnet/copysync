@@ -133,8 +133,9 @@ resizeJpeg(input: string | Buffer, maxSide: number, quality: number): Promise<{ 
 ## §6 Recebimento (adapter)
 
 `pickInboundLinkPreview(extendedTextMessage)` — função pura em `engines/baileys/`:
-`{ url: canonicalUrl || matchedText, title, description, inlineThumb: Buffer | null, hq: { directPath, mediaKey } | null }`.
-Validações da AC P2.6 aqui (http/https, cortes de tamanho, magic JPEG e ≤ 100 KB na pequena). Sem título e sem URL
+`{ url: matchedText, title, description, inlineThumb: Buffer | null, hq: { directPath, mediaKey } | null }`.
+O proto não tem `canonicalUrl` (o `canonical-url` do Baileys não vai para a mensagem): a URL vem só do `matchedText`.
+Validações da AC P2.6 aqui (http/https, cortes de tamanho, magic JPEG e ≤ 100 KB na pequena). Sem URL válida
 = `null`. Só o ramo `extendedTextMessage` (`extractBaileysMessage`, `:1871`); `conversation` nunca traz prévia.
 
 `BaileysExtracted` ganha `linkPreview`. Dois caminhos usam (os dois na T12):
