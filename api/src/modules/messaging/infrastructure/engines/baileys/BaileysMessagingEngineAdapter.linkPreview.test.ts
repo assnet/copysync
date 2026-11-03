@@ -12,7 +12,7 @@ vi.mock('./BaileysAuthStatePersistence', () => ({
   discardAuthState: async () => undefined,
 }));
 vi.mock('../../../../media/infrastructure/mediaContainer', () => ({
-  mediaContainer: { mediaFileStore: { saveBuffer } },
+  mediaContainer: { mediaFileStore: { saveBuffer, mediaExists: async () => false, publicUrl: (n: string) => `/media/${n}` } },
 }));
 vi.mock('./downloadLinkPreviewThumb', () => ({ downloadLinkPreviewThumb: downloadHq }));
 

@@ -9,6 +9,8 @@ function make(over: Partial<StoreInboundLinkPreviewInput> = {}, preview: Partial
   const saveBuffer = vi.fn(async (buf: Buffer, name: string) => `/media/${name}#${buf.length}`);
   const downloadHq = vi.fn(async () => BIG);
   const allowHq = vi.fn(async () => true);
+  const mediaExists = vi.fn(async () => false);
+  const publicUrl = vi.fn((name: string) => `/media/${name}`);
   const logger = { warn: vi.fn() };
   const input: StoreInboundLinkPreviewInput = {
     preview: {
@@ -23,12 +25,12 @@ function make(over: Partial<StoreInboundLinkPreviewInput> = {}, preview: Partial
     msgId: 'M1',
     saveThumbs: true,
     allowHq,
-    store: { saveBuffer },
+    store: { saveBuffer, mediaExists, publicUrl },
     downloadHq,
     logger,
     ...over,
   };
-  return { input, saveBuffer, downloadHq, allowHq, logger };
+  return { input, saveBuffer, downloadHq, allowHq, logger, mediaExists };
 }
 
 describe('storeInboundLinkPreview', () => {
@@ -77,6 +79,17 @@ describe('storeInboundLinkPreview', () => {
     const { input, saveBuffer, allowHq } = make({}, { inlineThumb: null, hq: null });
     expect((await storeInboundLinkPreview(input)).thumbnailUrl).toBeNull();
     expect(saveBuffer).not.toHaveBeenCalled();
+    expect(allowHq).not.toHaveBeenCalled();
+  });
+
+  it('arquivo já existe: devolve a URL dele sem gravar nem baixar', async () => {
+    const { input, saveBuffer, downloadHq, allowHq, mediaExists } = make();
+    mediaExists.mockResolvedValueOnce(true);
+    const out = await storeInboundLinkPreview(input);
+    expect(mediaExists).toHaveBeenCalledWith('s1_M1_lp.jpg');
+    expect(out.thumbnailUrl).toBe('/media/s1_M1_lp.jpg');
+    expect(saveBuffer).not.toHaveBeenCalled();
+    expect(downloadHq).not.toHaveBeenCalled();
     expect(allowHq).not.toHaveBeenCalled();
   });
 });

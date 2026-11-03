@@ -11,6 +11,8 @@ Cartão com miniatura, título e domínio acima de uma mensagem de texto com lin
 - **Não buscamos a página** do marketplace: Amazon bloqueia, Shopee renderiza no cliente, `meli.la` redireciona para
   outro host; seria acesso externo sem anti-SSRF e +3 s por envio. Por isso nada de `link-preview-js` nem og:image.
 - Texto sem prévia vai com `linkPreview: null` explícito (sem isso o Baileys tenta `getUrlInfo` e loga aviso).
+  Isso desliga **de propósito** a busca automática do Baileys em todo texto: ela nunca funcionou aqui
+  (`link-preview-js` não está instalado) e seria fetch externo sem anti-SSRF.
 - Texto digitado no painel continua sem prévia (exigiria buscar a página).
 
 ## Formato da imagem (`imageMode`)
@@ -44,14 +46,18 @@ borra e o WhatsApp tende a cair na miniatura lateral. Fotos antigas não são re
 adapter (`buildBaileysLinkPreview.ts` + `sendTextMessage`).
 
 - **Fallback**: sem imagem, título ou link no texto → texto puro (motivo em log). Upload da grande falhou ou passou
-  de `MEDIA_UPLOAD_IDLE_TIMEOUT_MS` → envia só com a pequena; o envio não falha.
+  de `LINK_PREVIEW_UPLOAD_TIMEOUT_MS` (env, padrão 15 s) → envia só com a pequena; o envio não falha.
+  Esse teto tem de ficar **abaixo** de `DISPATCH_SEND_TIMEOUT_MS` (60 s, worker de ofertas): com 60 s o disparo
+  virava `SEND_TIMEOUT` antes do fallback. Não usar `MEDIA_UPLOAD_IDLE_TIMEOUT_MS` aqui.
 - **Eco**: o adapter gera o id (`createOutboundMessageId`) e registra em `outboundEchoRegistries().media` **antes**
   do envio. O eco `append` é pulado inteiro: não grava arquivo nem baixa de volta a miniatura.
 - **Reenvio de criptografia**: toda mensagem com prévia vai para o `sentMediaCache` (lido pelo `getMessage`).
+  Guarda a mensagem com `jpegThumbnail` (~8 KB): até 200 por sessão, TTL 1 h ≈ 1,6 MB/sessão no pior caso.
 - **Registro**: depois do retorno da engine, o use case grava a grande em `<sessionId>_<externalId>_lp.jpg` e cria a
   mensagem com os campos de prévia. Falha ao gravar o arquivo = mensagem sem miniatura.
 - Limitações (MVP): no monitoramento o título do cartão é `Offer.title` = 1ª linha do texto capturado. Se o `create`
-  falhar depois do envio, a mensagem fica fora do chat (o eco é ignorado e não regrava).
+  falhar depois do envio, a mensagem fica fora do chat (o eco é ignorado e não regrava) e a oferta pode ser
+  reenviada no retry — mesmo comportamento do texto puro hoje.
 
 ## Recebimento (adapter)
 
@@ -64,6 +70,10 @@ adapter (`buildBaileysLinkPreview.ts` + `sendTextMessage`).
 - Miniatura pequena: grava sempre, **sem** olhar `autoDownloadMedia` (já veio na mensagem).
 - Miniatura grande: baixa (`thumbnail-link`) só se `shouldAutoDownloadGroupMedia` (contato = sempre; grupo =
   `autoDownloadMedia`). Teto de 1 MiB **contado no stream**; falha = fica a pequena.
+  Tempo-limite `LINK_PREVIEW_HQ_DOWNLOAD_TIMEOUT_MS` (10 s, constante em `downloadLinkPreviewThumb.ts`): o download
+  roda com await no `messages.upsert` antes do `MESSAGE_RECEIVED` e o fetch do Baileys não tem signal; estourou →
+  stream destruído, fica a pequena.
+- Arquivo `_lp.jpg` já existe (reentrega, histórico repetido) → devolve `publicUrl` sem regravar nem baixar.
 - Histórico/`append` (inclui entrega offline): textos sempre; miniaturas só com até 30 min (mesma janela da mídia).
 - Arquivo: `<sessionId>_<msgId>_lp.jpg` (a grande sobrescreve a pequena).
 - **Nunca** acessar a URL da prévia.

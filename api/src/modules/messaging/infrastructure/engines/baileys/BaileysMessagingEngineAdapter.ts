@@ -298,7 +298,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       outboundEchoRegistries().media.register(sessionId, messageId);
       const linkPreview = await buildBaileysLinkPreview(input.linkPreview, {
         upload: entry.socket.waUploadToServer,
-        uploadTimeoutMs: env.MEDIA_UPLOAD_IDLE_TIMEOUT_MS,
+        uploadTimeoutMs: env.LINK_PREVIEW_UPLOAD_TIMEOUT_MS,
         // Sem URL nem título no log: dado do produto/cliente.
         onUploadFailed: (err) =>
           baileysLogger.warn({ sessionId, messageId, err }, 'Link preview image upload failed — sent with small thumbnail'),

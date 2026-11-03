@@ -10,7 +10,11 @@ export interface StoreInboundLinkPreviewInput {
   saveThumbs: boolean;
   /** Regra de download de mídia (contato = sempre; grupo = `autoDownloadMedia`). Só consultada se houver `hq`. */
   allowHq: () => Promise<boolean>;
-  store: { saveBuffer(buffer: Buffer, filename: string): Promise<string> };
+  store: {
+    saveBuffer(buffer: Buffer, filename: string): Promise<string>;
+    mediaExists(filename: string): Promise<boolean>;
+    publicUrl(filename: string): string;
+  };
   downloadHq?: (hq: NonNullable<InboundLinkPreview['hq']>) => Promise<Buffer | null>;
   logger: { warn(obj: object, msg: string): void };
 }
@@ -25,6 +29,11 @@ export async function storeInboundLinkPreview(input: StoreInboundLinkPreviewInpu
   const { preview, sessionId, msgId, store, logger } = input;
   const filename = `${sessionId}_${msgId}_lp.jpg`;
   let thumbnailUrl: string | null = null;
+
+  // Já gravada (reentrega/histórico repetido): reaproveita sem regravar nem baixar de novo.
+  if (input.saveThumbs && (preview.inlineThumb || preview.hq) && await store.mediaExists(filename)) {
+    return { url: preview.url, title: preview.title, description: preview.description, thumbnailUrl: store.publicUrl(filename) };
+  }
 
   if (input.saveThumbs && preview.inlineThumb) {
     try {

@@ -91,6 +91,10 @@ const envSchema = z.object({
   MEDIA_PROCESS_CONCURRENCY: z.coerce.number().int().positive().default(2),
   // Mídia enviada: ociosidade do socket no upload ao WhatsApp — não é tempo total.
   MEDIA_UPLOAD_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // Prévia de link enviada: teto do upload da miniatura grande. Fica ABAIXO do timeout do
+  // disparo de oferta (DISPATCH_SEND_TIMEOUT_MS = 60 s) para o envio cair na miniatura pequena
+  // antes de o disparo virar SEND_TIMEOUT.
+  LINK_PREVIEW_UPLOAD_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   // Mídia enviada: janela e teto do registro de eco da própria mídia.
   MEDIA_ECHO_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
   MEDIA_ECHO_MAX_PER_SESSION: z.coerce.number().int().positive().default(200),

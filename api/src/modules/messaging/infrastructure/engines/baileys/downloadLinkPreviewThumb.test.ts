@@ -58,4 +58,21 @@ describe('downloadLinkPreviewThumb', () => {
     expect(await downloadLinkPreviewThumb(hq, async () => stream)).toBeNull();
     expect(state.destroy).toHaveBeenCalled();
   });
+
+  it('stream que nunca termina: estoura o tempo, destrói o stream e rejeita', async () => {
+    const destroy = vi.fn();
+    const stream = {
+      destroy,
+      async *[Symbol.asyncIterator]() {
+        yield jpeg(10);
+        await new Promise(() => undefined);
+      },
+    };
+    await expect(downloadLinkPreviewThumb(hq, async () => stream, 20)).rejects.toThrow(/timed out/);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('download que nunca entrega o stream: estoura o tempo e rejeita', async () => {
+    await expect(downloadLinkPreviewThumb(hq, () => new Promise(() => undefined), 20)).rejects.toThrow(/timed out/);
+  });
 });

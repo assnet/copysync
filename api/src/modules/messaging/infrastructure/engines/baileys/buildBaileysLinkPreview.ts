@@ -4,7 +4,10 @@ import type { OutboundLinkPreview } from '../../../domain/contracts/IMessagingEn
 export interface BuildBaileysLinkPreviewDeps {
   /** `socket.waUploadToServer`; injetado para teste. */
   upload: WAMediaUploadFunction;
-  /** Sem ele upload travado prende o envio até o timeout do disparo (env.MEDIA_UPLOAD_IDLE_TIMEOUT_MS). */
+  /**
+   * `env.LINK_PREVIEW_UPLOAD_TIMEOUT_MS` (15 s). Tem de ficar abaixo de `DISPATCH_SEND_TIMEOUT_MS`
+   * (60 s): senão o disparo estoura antes de cair na miniatura pequena.
+   */
   uploadTimeoutMs: number;
   /** Chamado quando a miniatura grande não subiu; o envio segue só com a pequena. */
   onUploadFailed?: (err: unknown) => void;
