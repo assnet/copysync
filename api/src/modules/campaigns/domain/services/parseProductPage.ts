@@ -154,10 +154,34 @@ function mercadoLivrePrices(html: string): { current: number | null; previous: n
   return { current, previous };
 }
 
-/** Amazon: `#productTitle`, primeiro `a-offscreen`, preço riscado em `a-text-price`, foto `data-old-hires`. */
+/** Preço de um bloco `a-price`: `a-offscreen` se tiver valor, senão `a-price-whole` + `a-price-fraction`. */
+function amazonPriceIn(block: string): number | null {
+  const offscreen = parsePriceToCents(clean(/class\s*=\s*"a-offscreen"[^>]*>([^<]*)</i.exec(block)?.[1]));
+  if (offscreen != null) return offscreen;
+  const whole = /class\s*=\s*"a-price-whole"[^>]*>(\d[\d.]*)/i.exec(block)?.[1];
+  const fraction = /class\s*=\s*"a-price-fraction"[^>]*>(\d{1,2})</i.exec(block)?.[1];
+  return whole ? parsePriceToCents(`${whole},${fraction ?? '00'}`) : null;
+}
+
+/**
+ * Preço a pagar da Amazon: bloco `priceToPay` (livros e ofertas trazem o `a-offscreen` vazio e o
+ * valor em `a-price-whole`/`a-price-fraction`), senão o primeiro `a-offscreen` com valor.
+ */
+function amazonPrice(html: string): number | null {
+  const toPay = /class\s*=\s*"a-price\b[^"]*\b(?:priceToPay|apex-pricetopay-value)\b/i.exec(html);
+  const fromBlock = toPay ? amazonPriceIn(html.slice(toPay.index, toPay.index + 800)) : null;
+  if (fromBlock != null) return fromBlock;
+  for (const m of html.matchAll(/class\s*=\s*"a-offscreen"[^>]*>([^<]+)</gi)) {
+    const cents = parsePriceToCents(clean(m[1]));
+    if (cents != null) return cents;
+  }
+  return null;
+}
+
+/** Amazon: `#productTitle`, preço a pagar, preço riscado em `a-text-price`, foto `data-old-hires`. */
 function amazonData(html: string): Partial<ProductPageData> {
   const title = productTitle(/<span\b[^>]*id\s*=\s*"productTitle"[^>]*>([\s\S]*?)<\/span>/i.exec(html)?.[1]);
-  const price = parsePriceToCents(clean(/class\s*=\s*"a-offscreen"[^>]*>([^<]+)</i.exec(html)?.[1]));
+  const price = amazonPrice(html);
   const strike = /class\s*=\s*"a-price a-text-price[^"]*"[\s\S]{0,300}?class\s*=\s*"a-offscreen"[^>]*>([^<]+)</i.exec(html)?.[1];
   const original = parsePriceToCents(clean(strike));
   const image =

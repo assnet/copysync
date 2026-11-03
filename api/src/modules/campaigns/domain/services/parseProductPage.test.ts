@@ -85,6 +85,17 @@ describe('parseProductPage', () => {
     });
   });
 
+  it('Amazon: priceToPay com a-offscreen vazio usa a-price-whole + a-price-fraction', () => {
+    const html = `<span class="a-price aok-align-center priceToPay apex-pricetopay-value" data-a-size="xl"><span class="a-offscreen"> </span><span aria-hidden="true"><span class="a-price-symbol">R$</span><span class="a-price-whole">1.016<span class="a-price-decimal">,</span></span><span class="a-price-fraction">64</span></span></span>
+      <span class="a-price a-text-price apex-basisprice-value" data-a-strike="true"><span class="a-offscreen">R$1.059,90</span></span>`;
+    expect(parseProductPage('AMAZON', html)).toMatchObject({ priceCents: 101664, originalPriceCents: 105990 });
+  });
+
+  it('Amazon sem priceToPay: primeiro a-offscreen com valor', () => {
+    const html = '<span class="a-price"><span class="a-offscreen"> </span></span><span class="a-price"><span class="a-offscreen">R$ 16,64</span></span>';
+    expect(parseProductPage('AMAZON', html)).toMatchObject({ priceCents: 1664 });
+  });
+
   it('preço anterior ≤ atual é descartado; imagem não-https descartada', () => {
     const html = '<meta property="og:image" content="http://x/a.jpg"><script type="application/ld+json">{"@type":"Product","name":"A","offers":{"price":10,"highPrice":10}}</script>';
     expect(parseProductPage('SHOPEE', html)).toMatchObject({ priceCents: 1000, originalPriceCents: null, imageUrl: null });

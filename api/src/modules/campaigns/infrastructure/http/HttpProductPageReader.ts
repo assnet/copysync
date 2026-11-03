@@ -83,6 +83,8 @@ export class HttpProductPageReader implements IProductPageReader {
         }
         const html = await readLimited(res.body);
         const finalProvider = detectMarketplace(current) ?? provider;
+        // Anti-bot da Amazon (IP de datacenter): 200 com formulário de captcha, sem dado de produto
+        if (finalProvider === 'AMAZON' && /\/errors\/validateCaptcha/i.test(html)) return this.fail(current, 'challenge');
         // Vitrine social é perfil, não produto: os dados vêm do 1º card, não dos og:*
         if (finalProvider === 'MERCADO_LIVRE' && current.pathname.startsWith('/social/')) return parseMercadoLivreSocialPage(html);
         return parseProductPage(finalProvider, html);

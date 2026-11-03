@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.49.5 — gerador: preço da Amazon vinha vazio
+
+- **`campaigns/domain/services/parseProductPage.ts`** — o preço era o primeiro `a-offscreen` da página; em livros e ofertas com desconto a Amazon deixa esse span vazio no bloco `priceToPay` e põe o valor em `a-price-whole` + `a-price-fraction`, então o preço saía null (ex.: `amzn.to/48wxa2U`). Agora lê o bloco `priceToPay` (offscreen ou inteiro + centavos) e, sem ele, o primeiro `a-offscreen` com valor.
+- **`campaigns/infrastructure/http/HttpProductPageReader.ts`** — página de captcha da Amazon (`/errors/validateCaptcha`, comum em IP de datacenter) passa a ser registrada como `reason: challenge` no log, em vez de virar página vazia sem rastro.
+- Testes: `parseProductPage` (priceToPay com offscreen vazio, fallback para o primeiro `a-offscreen` com valor).
+
 ### Fixed — api 0.49.4 — billing: webhook alinhado ao contrato do hub central e limites do plano
 
 - **`integrations/billing/billing.routes.ts`** — a rota esperava tipos antigos (`subscription.created`/`cancelled`, `payment.*`) e lia `eventType`/`data.customerId`, que o hub não envia: todo evento real cairia em IGNORED. Agora lê `type` e `externalUserId` do corpo, valida `X-Application-Key` contra `BILLING_APPLICATION_KEY` (tempo constante, 401) antes do HMAC, e repassa tipo desconhecido ao use case (200 + recibo IGNORED).
