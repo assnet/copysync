@@ -1,4 +1,5 @@
 import { env } from '../shared/config/env';
+import { logger } from '../shared/logger/logger';
 import { authRoutes } from '../modules/auth/presentation/routes/auth.routes';
 import { inviteRoutes } from '../modules/auth/presentation/routes/invite.routes';
 import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.routes';
@@ -17,6 +18,7 @@ import { groupMonitoringRoutes } from '../modules/automation/presentation/routes
 import { provisioningRoutes } from '../modules/tenants/presentation/routes/provisioning.routes';
 import { aiAdminRoutes, aiTenantRoutes } from '../modules/assistants/presentation/routes/ai.routes';
 import { billingRoutes } from '../modules/integrations/billing/billing.routes';
+import { billingWebhookBlockReason } from '../modules/integrations/billing/billingWebhookGuard';
 import { extensionRoutes } from '../modules/extension/presentation/routes/extension.routes';
 import { linkRotationRoutes } from '../modules/link-rotation/presentation/routes/linkRotation.routes';
 import { linkDomainAdminRoutes } from '../modules/link-rotation/presentation/routes/linkDomainAdmin.routes';
@@ -114,7 +116,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(offerStoryRoutes, { prefix: `${env.API_PREFIX}/offer-story` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
-  if (env.BILLING_ENABLED) {
+  const billingBlock = billingWebhookBlockReason(env);
+  if (billingBlock) {
+    logger.error(billingBlock);
+  } else if (env.BILLING_ENABLED) {
     await app.register(billingRoutes, {
       prefix: `${env.API_PREFIX}/integrations/billing`,
     });

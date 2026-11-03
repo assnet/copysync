@@ -10,6 +10,7 @@ const db = vi.hoisted(() => {
     calls: [] as Array<{ op: string; inTx: boolean }>,
   };
   const make = (inTx: boolean) => ({
+    $queryRaw: async () => [{ id: 'tenant-1', status: 'ACTIVE', lastBillingEventSeq: null }],
     billingEventReceipt: { findUnique: async () => null, create: async () => ({}) },
     tenant: {
       findUnique: async () => ({ id: 'tenant-1', status: 'ACTIVE', lastBillingEventSeq: null }),
@@ -76,7 +77,7 @@ describe('applyPlanSideEffects', () => {
 describe('efeito da vitrine nos dois caminhos do billing', () => {
   it('evento de assinatura: pausa a página dentro da transação', async () => {
     await new ApplyBillingEventUseCase().execute({
-      eventId: 'ev-1', billingCustomerId: 'cus-1', eventType: 'subscription.updated', seq: 1, payload: { planSlug: 'starter' },
+      eventId: 'ev-1', billingCustomerId: 'cus-1', eventType: 'subscription.updated', seq: 1, payload: { planSlug: 'COPYSYNC_LITE' },
     });
     expect(db.state.storefrontStatus).toBe('PAUSED_BY_PLAN');
     expect(db.state.calls).toEqual([{ op: 'storefront.updateMany', inTx: true }]);

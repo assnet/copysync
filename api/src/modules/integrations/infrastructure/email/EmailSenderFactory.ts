@@ -21,7 +21,9 @@ export function createEmailSender(opts: {
       return new SmtpEmailSender(opts.smtpUrl, opts.from);
     }
     case 'hub':
-      throw new Error('EMAIL_SENDER=hub not implemented yet (planned for M2)');
+      // Não lança: o provisionamento inteiro responderia 500
+      log.error('EMAIL_SENDER=hub ainda não implementado (fase H4); usando noop');
+      return new NoopEmailSender();
     case 'noop':
     default:
       log.warn('Email sender: Noop (emails will not be delivered)');

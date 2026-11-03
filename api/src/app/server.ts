@@ -32,6 +32,7 @@ import { flushAllAuthStates } from '../modules/messaging/infrastructure/engines/
 import { registerTenantSuspendedSessionListener } from '../modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener';
 import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogRepository';
 import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
+import { billingWebhookBlockReason } from '../modules/integrations/billing/billingWebhookGuard';
 import { offersContainer } from '../modules/campaigns/infrastructure/offersContainer';
 import { OfferDispatchWorker } from '../modules/campaigns/infrastructure/worker/OfferDispatchWorker';
 import { createLinkRotationMemberSyncJob, type LinkRotationMemberSyncJob } from '../modules/link-rotation/infrastructure/jobs/LinkRotationMemberSyncJob';
@@ -223,13 +224,15 @@ async function start(): Promise<void> {
   }
 
   // ── Billing warnings ───────────────────────────────────────────────────────
-  if (env.BILLING_ENABLED && env.EMAIL_SENDER === 'noop') {
+  // Produção com noop/hub: a rota do webhook nem sobe (routes.ts loga o erro)
+  if (env.BILLING_ENABLED && env.NODE_ENV !== 'production' && env.EMAIL_SENDER === 'noop') {
     logger.warn('Billing enabled but EMAIL_SENDER=noop — invite and provision emails will not be delivered');
   }
 
   // ── Billing reconciliation interval ───────────────────────────────────────
   let billingReconcileInterval: NodeJS.Timeout | null = null;
-  if (env.BILLING_ENABLED && env.BILLING_RECONCILE_INTERVAL_MS > 0) {
+  // Webhook bloqueado (produção sem e-mail real) → reconciliação também fica parada
+  if (env.BILLING_ENABLED && env.BILLING_RECONCILE_INTERVAL_MS > 0 && billingWebhookBlockReason(env) === null) {
     const reconcileUseCase = new ReconcileSubscriptionsUseCase();
     billingReconcileInterval = setInterval(() => {
       void reconcileUseCase.execute().catch((err) => {
