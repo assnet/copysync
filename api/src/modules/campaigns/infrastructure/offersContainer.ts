@@ -21,6 +21,7 @@ import { ResolveAffiliateProductUseCase } from '../application/use-cases/Resolve
 import { OfferTextComposer } from '../application/services/OfferTextComposer';
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
+import { OfferPreviewImage } from './adapters/OfferPreviewImage';
 import { GenerateOfferUseCase } from '../application/use-cases/GenerateOfferUseCase';
 import { GetOfferUseCase } from '../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../application/use-cases/GetOfferUsageUseCase';
@@ -76,6 +77,10 @@ const mediaStore   = lazy(
     uploads: () => mediaContainer.uploadStore,
     images:  () => mediaContainer.imageTranscoder,
   }),
+);
+// Prévia de link da oferta: imagens geradas da foto já armazenada
+const previewImage = lazy(
+  () => new OfferPreviewImage({ files: () => mediaContainer.mediaFileStore, images: () => mediaContainer.imageTranscoder }),
 );
 const sender       = lazy(() => new ChatOfferMessageSender());
 const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator()));
