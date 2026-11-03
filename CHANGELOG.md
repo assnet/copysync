@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.59.0 — menu: chat só para super admin; espelhamento e gestor de membros fora
+
+- **`app/AppLayout.tsx`** — "Espelhamento" e "Gestor de membros" (telas "em breve") saem do menu. "Chat" ganha `superAdminOnly` e só aparece para super admin. Gerador, monitoramento, página de ofertas e story não dependem da tela do chat: o envio usa o módulo `chat` só no backend.
+- **`routes/AppRoutes.tsx`** — `/chat` passa para dentro de `SuperAdminRoute`: os demais voltam ao dashboard mesmo digitando a URL. Rotas `/mirroring` e `/members` continuam existindo, só sem item no menu.
+
 ### Changed — app 0.58.1 — credenciais de afiliado: diálogo da Amazon e da Shopee com guia
 
 - **`features/settings/components/AffiliateCredentialDialog.tsx`** — o diálogo era só título e campo. Agora tem cabeçalho com logo e faixa da marca (mesma linguagem do card), guia "Onde encontrar" com passos numerados e botão para o painel oficial (nova aba), link de liberação da Open API da Shopee, sinal de formato válido no campo, prévia do link da Amazon com o ID digitado, nota de segurança, botão fechar e ícones Lucide via `AppIcon`. Claro e escuro conferidos.

@@ -49,7 +49,6 @@ export function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           {/* Caminho antigo: sessões agora ficam em Configurações; mantém query (?create=1&returnTo=…) */}
           <Route path="/sessions" element={<LegacySessionsRedirect />} />
-          <Route path="/chat" element={<ChatPage />} />
           <Route path="/offers" element={<OfferGeneratorPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/link-rotation" element={<LinkRotationPage />} />
@@ -68,6 +67,8 @@ export function AppRoutes() {
             <Route path="extension" element={<ExtensionSettingsPage />} />
           </Route>
           <Route element={<SuperAdminRoute />}>
+            {/* Chat: só super admin por enquanto (fora do menu dos demais) */}
+            <Route path="/chat" element={<ChatPage />} />
             <Route path="/admin/ai" element={<AdminAiPage />} />
             <Route path="/admin/link-domains" element={<AdminLinkDomainsPage />} />
           </Route>

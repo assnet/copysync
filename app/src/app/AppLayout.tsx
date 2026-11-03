@@ -52,12 +52,11 @@ function persistSidebarCollapsed(collapsed: boolean): void {
 // `badge` (opcional): selo após o rótulo; no menu recolhido vai para o Tooltip do ícone.
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: <AppIcon icon={LayoutDashboard} size="md" /> },
-  { label: 'Chat', path: '/chat', icon: <AppIcon icon={MessagesSquare} size="md" /> },
+  // Só super admin: chat ainda não é produto dos planos (rota também redireciona os demais).
+  { label: 'Chat', path: '/chat', icon: <AppIcon icon={MessagesSquare} size="md" />, superAdminOnly: true },
   { label: 'Gerador de ofertas', path: '/offers', icon: <AppIcon icon={Tag} size="md" /> },
   { label: 'Monitoramento', path: '/monitoring', icon: <AppIcon icon={MODULE_ICONS.monitoring} size="md" /> },
   { label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: <AppIcon icon={Link2} size="md" /> },
-  { label: 'Espelhamento', path: '/mirroring', icon: <AppIcon icon={MODULE_ICONS.mirroring} size="md" /> },
-  { label: 'Gestor de membros', path: '/members', icon: <AppIcon icon={MODULE_ICONS.members} size="md" /> },
   { label: 'Página de Ofertas', path: '/storefront', icon: <AppIcon icon={MODULE_ICONS.storefront} size="md" />, badge: plansStrings.badgeProfessional },
   { label: 'Story de Oferta', path: '/offer-story', icon: <AppIcon icon={MODULE_ICONS.offerStory} size="md" />, badge: plansStrings.badgeBusiness },
   { label: plansStrings.menuLabel, path: '/plans', icon: <AppIcon icon={Crown} size="md" /> },
@@ -190,7 +189,7 @@ function DrawerContent({ collapsed = false, onToggleCollapse, onClose }: DrawerC
           </Typography>
         )}
         <List disablePadding sx={{ px: 1 }}>
-          {[...NAV_ITEMS, ...(user?.isSuperAdmin ? NAV_ADMIN_ITEMS : [])].map((item) => {
+          {[...NAV_ITEMS.filter((i) => !('superAdminOnly' in i) || user?.isSuperAdmin), ...(user?.isSuperAdmin ? NAV_ADMIN_ITEMS : [])].map((item) => {
             const isAction = 'action' in item;
             const badge = 'badge' in item ? item.badge : undefined;
             const active = isAction
