@@ -190,6 +190,15 @@ export const chatStrings = {
       sizeLabel ? `Documento ${fileName}, ${sizeLabel}` : `Documento ${fileName}`,
   },
 
+  /** Cartão de prévia de link acima do texto da mensagem. */
+  linkPreview: {
+    /** `aria-label` do cartão (abre a URL em nova aba); sem domínio legível, só a ação. */
+    openLink: (domain: string | null): string =>
+      domain ? `Abrir link em nova aba: ${domain}` : 'Abrir link em nova aba',
+    /** Rótulo da miniatura para leitor de tela. */
+    thumbnailAlt: 'Miniatura do link',
+  },
+
   reactions: {
     react: 'Reagir',
     /** `aria-label` do botão de reagir no cluster de ações da bolha. */

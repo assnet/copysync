@@ -22,6 +22,7 @@ import { CallLogMessage } from './messages/CallLogMessage';
 import { DeletedMessage } from './messages/DeletedMessage';
 import { QuotedMessage } from './messages/QuotedMessage';
 import { RichMessageText } from './messages/RichMessageText';
+import { LinkPreviewCard } from './messages/LinkPreviewCard';
 import { ReactionBar } from './messages/ReactionBar';
 import { MessageReactions } from './messages/MessageReactions';
 import { UploadProgressOverlay } from './messages/UploadProgressOverlay';
@@ -126,12 +127,20 @@ function MessageContent({ message, isOut, textColor, senderAvatarUrl }: ContentP
       return null;
     case 'text':
     case 'event':
-    default:
-      return message.body ? (
-        <Box sx={{ lineHeight: 1.55 }}>
-          <RichMessageText text={message.body} textColor={textColor} />
-        </Box>
-      ) : null;
+    default: {
+      const preview = message.type === 'text' ? message.linkPreview : null;
+      if (!message.body && !preview) return null;
+      return (
+        <>
+          {preview && <LinkPreviewCard preview={preview} isOut={isOut} textColor={textColor} />}
+          {message.body && (
+            <Box sx={{ lineHeight: 1.55 }}>
+              <RichMessageText text={message.body} textColor={textColor} />
+            </Box>
+          )}
+        </>
+      );
+    }
   }
 }
 
