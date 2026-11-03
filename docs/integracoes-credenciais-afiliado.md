@@ -30,6 +30,16 @@ verdade e o painel só repete as regras, para dar retorno ao operador.
 
 Assim que houver valores reais do cliente, confira as regras com eles antes de restringi-las.
 
+### Diálogo de configuração (Shopee e Amazon)
+
+`AffiliateCredentialDialog` é um só para os marketplaces com campo digitado (o Mercado Livre usa
+`BrowserSessionCredentialDialog`). Cabeçalho com logo e faixa da marca (`brandColor`, só acento),
+guia "Onde encontrar" com passos (`strings.ts` → `guideSteps`) e botão para o painel oficial
+(`spec.setup.url`, nova aba), sinal de formato válido no campo, prévia do link quando o spec tem
+`linkPreview` (Amazon) e nota de segurança (`dialogNote`). Marketplace novo: preencher `setup`,
+`guideSteps`, `dialogSubtitle` e `dialogNote`; sem eles o diálogo só mostra os campos.
+Sem `usePersistedState`: o Secret nunca vai para o storage.
+
 ## Rotas
 
 Prefixo `/api/integrations/affiliate-credentials`, com `authHook` e `tenantHook` (exige o header

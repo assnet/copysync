@@ -9,6 +9,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.58.1 — credenciais de afiliado: diálogo da Amazon e da Shopee com guia
+
+- **`features/settings/components/AffiliateCredentialDialog.tsx`** — o diálogo era só título e campo. Agora tem cabeçalho com logo e faixa da marca (mesma linguagem do card), guia "Onde encontrar" com passos numerados e botão para o painel oficial (nova aba), link de liberação da Open API da Shopee, sinal de formato válido no campo, prévia do link da Amazon com o ID digitado, nota de segurança, botão fechar e ícones Lucide via `AppIcon`. Claro e escuro conferidos.
+- **`features/settings/affiliateProviders.ts`** — specs ganham `setup` (programa, painel oficial, ajuda) e `linkPreview`.
+- **`features/settings/strings.ts`** — textos do guia, subtítulo, prévia e nota por marketplace.
+- **`docs/integracoes-credenciais-afiliado.md`** — seção do diálogo e o que preencher para marketplace novo.
+- Testes: `AffiliateCredentialDialog` (guia, link oficial, prévia e sinal de válido).
+
 ### Fixed — api 0.49.5 — gerador: preço da Amazon vinha vazio
 
 - **`campaigns/domain/services/parseProductPage.ts`** — o preço era o primeiro `a-offscreen` da página; em livros e ofertas com desconto a Amazon deixa esse span vazio no bloco `priceToPay` e põe o valor em `a-price-whole` + `a-price-fraction`, então o preço saía null (ex.: `amzn.to/48wxa2U`). Agora lê o bloco `priceToPay` (offscreen ou inteiro + centavos) e, sem ele, o primeiro `a-offscreen` com valor.

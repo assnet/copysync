@@ -46,6 +46,10 @@ export interface AffiliateProviderSpec {
   secretField?: AffiliateFieldSpec;
   /** Sessão vem da extensão do navegador (Mercado Livre). */
   usesBrowserSession: boolean;
+  /** Guia do diálogo: programa de afiliados (nome e painel oficial) e, se houver, link de ajuda. */
+  setup?: { program: string; url: string; helpUrl?: string };
+  /** Prévia do link de afiliado com o identificador digitado (só quando o formato é válido). */
+  linkPreview?: (publicIdentifier: string) => string;
 }
 
 const { fields, providerDescriptions, providerHighlights: hl } = settingsStrings.affiliate;
@@ -65,6 +69,11 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     publicField: { label: fields.shopeeAppId, helper: fields.shopeeAppIdHelp, pattern: /^\d{5,20}$/ },
     secretField: { label: fields.shopeeSecret, helper: fields.shopeeSecretHelp, pattern: /^[A-Za-z0-9]{16,128}$/ },
     usesBrowserSession: false,
+    setup: {
+      program: 'Shopee Afiliados',
+      url: 'https://affiliate.shopee.com.br/open_api',
+      helpUrl: 'https://help.shopee.com.br/portal/webform/bbce78695c364ba18c9cbceb74ec9091',
+    },
   },
   {
     provider: 'MERCADO_LIVRE',
@@ -102,6 +111,8 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
       placeholder: 'minhaloja-20',
     },
     usesBrowserSession: false,
+    setup: { program: 'Amazon Associados', url: 'https://associados.amazon.com.br/' },
+    linkPreview: (tag) => `amazon.com.br/dp/B0XXXXXXXX?tag=${tag}`,
   },
 ];
 

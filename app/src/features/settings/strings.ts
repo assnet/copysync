@@ -104,6 +104,37 @@ export const settingsStrings = {
     fieldRequired: (label: string) => `Informe ${label.toLowerCase()}.`,
     fieldInvalid: (label: string) => `${label} em formato inválido.`,
     closeDialog: 'Fechar',
+    fieldValid: 'Formato válido',
+    dialogSubtitle: {
+      SHOPEE: 'Informe o App ID e o Secret da Open API para gerar links curtos com a sua comissão.',
+      AMAZON: 'Informe o seu ID de rastreamento para os links da Amazon saírem com a sua comissão.',
+    } as Record<string, string>,
+    guideTitle: (marketplace: string) => `Onde encontrar na ${marketplace}`,
+    guideSteps: {
+      SHOPEE: [
+        'Entre no painel de afiliados da Shopee.',
+        'Abra o menu Open API e crie (ou escolha) o seu app.',
+        'Copie o App ID e o Secret do app.',
+        'Cole nos campos abaixo e salve.',
+      ],
+      AMAZON: [
+        'Entre no Amazon Associados com a sua conta.',
+        'O ID padrão aparece no topo da página, ao lado do seu e-mail.',
+        'Para usar outro, abra Gerenciar IDs de rastreamento.',
+        'Copie o ID (formato minhaloja-20) e cole abaixo.',
+      ],
+    } as Record<string, readonly string[]>,
+    guideOpen: (program: string) => `Abrir ${program}`,
+    guideOpenTooltip: 'Abre em uma nova aba',
+    guideHelp: {
+      SHOPEE: 'Sem acesso à Open API? Peça a liberação ao suporte da Shopee.',
+    } as Record<string, string>,
+    guideHelpLink: 'Pedir liberação',
+    linkPreviewLabel: 'Seus links ficam assim',
+    dialogNote: {
+      SHOPEE: 'O Secret só é usado no servidor, para assinar cada chamada à API da Shopee.',
+      AMAZON: 'Não precisa de chave secreta: o ID só é adicionado aos links que você publica.',
+    } as Record<string, string>,
 
     fields: {
       shopeeAppId: 'App ID',

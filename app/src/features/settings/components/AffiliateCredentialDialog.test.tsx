@@ -35,6 +35,19 @@ describe('AffiliateCredentialDialog', () => {
     expect(screen.getByText('Informe secret.')).toBeInTheDocument();
   });
 
+  it('mostra o guia com link oficial e a prévia do link com o ID válido', async () => {
+    renderWithTheme(<AffiliateCredentialDialog open spec={amazon} onSubmit={vi.fn()} onClose={vi.fn()} />, 'light');
+
+    expect(screen.getByRole('heading', { name: 'Onde encontrar na Amazon' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Abrir Amazon Associados/ })).toHaveAttribute('href', 'https://associados.amazon.com.br/');
+    expect(screen.queryByText('Seus links ficam assim')).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/ID de rastreamento/), 'minhaloja-20');
+
+    expect(screen.getByText('amazon.com.br/dp/B0XXXXXXXX?tag=minhaloja-20')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Formato válido' })).toBeInTheDocument();
+  });
+
   it('recusa identificador fora do formato do marketplace', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithTheme(<AffiliateCredentialDialog open spec={amazon} onSubmit={onSubmit} onClose={vi.fn()} />, 'dark');
