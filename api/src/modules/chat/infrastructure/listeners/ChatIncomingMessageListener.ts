@@ -40,6 +40,7 @@ export function registerChatIncomingMessageListener(
         groupName: payload.groupName,
         participant: payload.participant,
         participantName: payload.participantName,
+        linkPreview: payload.linkPreview,
       });
 
       if (!result) return; // duplicate — already processed

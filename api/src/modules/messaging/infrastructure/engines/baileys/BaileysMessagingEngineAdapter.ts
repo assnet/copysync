@@ -62,6 +62,8 @@ import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { buildBaileysMediaContent } from './buildBaileysMediaContent';
 import { buildBaileysLinkPreview } from './buildBaileysLinkPreview';
+import { pickInboundLinkPreview, type InboundLinkPreview } from './pickInboundLinkPreview';
+import { storeInboundLinkPreview } from './storeInboundLinkPreview';
 import { MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { MediaTooLargeError } from '../../../../../shared/errors/internal/MediaErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
@@ -930,6 +932,19 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
         }
 
+        // Prévia de link: pequena sempre (já veio na mensagem), grande sob a regra de download.
+        const linkPreview = extracted.linkPreview && msg.key.id
+          ? await storeInboundLinkPreview({
+            preview: extracted.linkPreview,
+            sessionId,
+            msgId: msg.key.id,
+            saveThumbs: true,
+            allowHq: () => this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId),
+            store: mediaContainer.mediaFileStore,
+            logger: baileysLogger,
+          })
+          : null;
+
         internalEventBus.emit('MESSAGE_RECEIVED', {
           type: 'MESSAGE_RECEIVED',
           sessionId,
@@ -951,6 +966,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           participant: routing.participant,
           participantName: routing.participantName,
           externalMessageId: msg.key.id ?? undefined,
+          linkPreview,
           raw: msg,
         });
 
@@ -1273,6 +1289,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
       }
 
+      // Prévia: textos sempre; miniaturas só na janela de 30 min (igual à mídia), a grande
+      // também sob a regra de download — histórico completo não grava um arquivo por link antigo.
+      const linkPreview = extracted.linkPreview
+        ? await storeInboundLinkPreview({
+          preview: extracted.linkPreview,
+          sessionId,
+          msgId: id,
+          saveThumbs: (now - timestamp.getTime()) < THIRTY_MIN_MS,
+          allowHq: () => this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId),
+          store: mediaContainer.mediaFileStore,
+          logger: baileysLogger,
+        })
+        : null;
+
       items.push({
         externalMessageId: id,
         from: routing.from,
@@ -1292,6 +1322,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
         groupName: routing.groupName,
         participant: routing.participant,
         participantName: routing.participantName,
+        linkPreview,
       });
     }
     return items;
@@ -1856,7 +1887,7 @@ async function downloadBaileysMedia(
  * Extrai tipo, corpo e metadados de um objeto de mensagem Baileys (message.*).
  * Retorna null se o tipo não for suportado ou reconhecido.
  */
-interface BaileysExtracted {
+export interface BaileysExtracted {
   msgType: ChatMessageType;
   body: string | null;
   mimeType?: string | null;
@@ -1865,10 +1896,12 @@ interface BaileysExtracted {
   isDeleted?: boolean;
   quotedMessageId?: string | null;
   mentionedJids?: string[] | null;
+  /** Só no ramo `extendedTextMessage`; `conversation` nunca traz prévia. */
+  linkPreview?: InboundLinkPreview | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null {
+export function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null {
   if (!m) return null;
   const content = unwrapBaileysMessageContent(m);
 
@@ -1902,6 +1935,7 @@ function extractBaileysMessage(m: Record<string, any>): BaileysExtracted | null 
       quotedMessageId,
       isDeleted,
       mentionedJids,
+      linkPreview: pickInboundLinkPreview(content.extendedTextMessage),
     };
   }
 

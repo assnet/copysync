@@ -1,4 +1,15 @@
 /**
+ * Prévia de link de mensagem recebida (docs/mensagens-previa-de-link.md). `thumbnailUrl` é do
+ * media store; null = cartão sem imagem. O sistema nunca acessa `url`.
+ */
+export interface MessageLinkPreview {
+  url: string;
+  title: string | null;
+  description?: string | null;
+  thumbnailUrl?: string | null;
+}
+
+/**
  * All internal events emitted by the messaging subsystem.
  * The rest of the application ONLY consumes these — never raw engine events.
  */
@@ -47,6 +58,8 @@ export type InternalMessagingEvent =
       participant?: string;
       /** Nome exibido do membro do grupo que enviou a mensagem */
       participantName?: string;
+      /** Prévia de link (só texto com link); null/ausente = sem cartão */
+      linkPreview?: MessageLinkPreview | null;
       /** Raw engine payload — never use outside the adapter */
       raw?: unknown;
     }
