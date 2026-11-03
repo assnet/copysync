@@ -66,7 +66,7 @@ describe('formatDuration', () => {
 describe('rascunho da configuração', () => {
   const saved: GroupMonitorSettings = {
     enabled: true, windowStartMinute: 1320, windowEndMinute: 360, intervalMinSeconds: 300, intervalMaxSeconds: 900,
-    startDelaySeconds: 600, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: true, typingSeconds: 5,
+    startDelaySeconds: 600, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 5,
     textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   };
 

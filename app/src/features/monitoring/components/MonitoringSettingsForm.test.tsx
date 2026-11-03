@@ -9,7 +9,7 @@ const config: GroupMonitorConfigResponse = {
   sessionId: 's1',
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600,
-    startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: true, typingSeconds: 5,
+    startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 5,
     textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   },
   monitoredGroups: [],
@@ -40,7 +40,7 @@ describe('MonitoringSettingsForm', () => {
     expect(screen.getByText('Alterações não salvas')).toHaveAttribute('role', 'status');
 
     const stored = JSON.parse(sessionStorage.getItem('ui.monitoring.settings.s1')!) as { v: number; d: { textMode: string } };
-    expect(stored).toMatchObject({ v: 4, d: { textMode: 'TEMPLATE' } });
+    expect(stored).toMatchObject({ v: 5, d: { textMode: 'TEMPLATE' } });
   });
 
   it('clique em IA mostra o público; Descartar volta ao salvo', () => {
@@ -79,7 +79,7 @@ describe('MonitoringSettingsForm', () => {
   });
 
   it('"mencionar todos" travado: rascunho com true não mostra "não salvo"; salvar envia false', async () => {
-    sessionStorage.setItem('ui.monitoring.settings.s1', JSON.stringify({ v: 4, d: { ...settingsToDraft(config.settings), mentionAll: true } }));
+    sessionStorage.setItem('ui.monitoring.settings.s1', JSON.stringify({ v: 5, d: { ...settingsToDraft(config.settings), mentionAll: true } }));
     const onSave = vi.fn().mockResolvedValue(config);
     renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={onSave} />);
     expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();

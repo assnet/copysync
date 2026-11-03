@@ -10,6 +10,7 @@ import { AppIcon, RangeSlider, ToggleOption } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import type { GroupMonitorConfigResponse, GroupMonitorSettings, MonitorTextMode } from '@/types/api.types';
 import { AudiencePicker } from '@/features/offers/components/AudiencePicker';
+import { ImageModePicker } from '@/features/offers/components/ImageModePicker';
 import { formatDuration, monitoringStrings } from '../strings';
 import {
   INNER_RADIUS, REDUCED_MOTION, floatShadow, glassPillSx, iconTileSx, surfaceSx, toneSurface, toneText,
@@ -409,6 +410,7 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
           {value.textMode === 'AI' && (
             <AudiencePicker value={value.audience} onChange={(audience) => patch({ audience })} label={t.audienceLabel} />
           )}
+          <ImageModePicker value={value.imageMode} onChange={(imageMode) => patch({ imageMode })} />
           <ToggleOption
             checked={value.enrichLinkOnly}
             onChange={(enrichLinkOnly) => patch({ enrichLinkOnly })}

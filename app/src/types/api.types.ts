@@ -273,6 +273,8 @@ export interface OfferItem {
   audience: OfferAudience;
   /** Menciona todos os participantes de cada grupo no envio. */
   mentionAll: boolean;
+  /** Imagem com legenda (padrão) ou texto com prévia do link. */
+  imageMode: OfferImageMode;
   /** Mostra "digitando…" por `typingSeconds` antes de cada envio. */
   simulateTyping: boolean;
   typingSeconds: number;
@@ -323,6 +325,7 @@ export interface UpdateOfferRequest {
   coupon?: string | null;
   audience?: OfferAudience;
   mentionAll?: boolean;
+  imageMode?: OfferImageMode;
   simulateTyping?: boolean;
   typingSeconds?: number;
   /** null remove o agendamento. */
@@ -519,6 +522,8 @@ export interface GroupMonitorSettings {
   /** Validade da oferta com cupom (min), 15..maxOfferAgeMinutes. */
   couponMaxAgeMinutes: number;
   mentionAll: boolean;
+  /** Formato da foto em cada oferta criada pelo monitoramento. */
+  imageMode: OfferImageMode;
   simulateTyping: boolean;
   /** 1..30. */
   typingSeconds: number;
@@ -531,6 +536,9 @@ export interface GroupMonitorSettings {
   /** Fora do horário de operação: true = captura e enfileira para a janela abrir; false = ignora. Padrão true. */
   captureOutsideWindow: boolean;
 }
+
+/** `MEDIA` = foto com legenda; `LINK_PREVIEW` = texto com cartão de prévia do link. */
+export type OfferImageMode = 'MEDIA' | 'LINK_PREVIEW';
 
 export type MonitorTextMode = 'ORIGINAL' | 'TEMPLATE' | 'AI';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { OfferDispatchItem, OfferItem } from '@/types/api.types';
 import { OfferDispatchProgress } from './OfferDispatchProgress';
 import { OfferSendPanel } from './OfferSendPanel';
@@ -10,7 +10,7 @@ const future = new Date(Date.now() + 2 * HOUR).toISOString();
 const offer = (over: Partial<OfferItem> = {}): OfferItem => ({
   id: 'o1', provider: 'AMAZON', sourceUrl: 'https://a', productRef: null, title: 'Fone', priceCents: null,
   originalPriceCents: null, imageUrl: null, affiliateUrl: 'https://a', attributionVerified: true, coupon: null,
-  audience: 'STANDARD', mentionAll: false, simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null,
+  audience: 'STANDARD', mentionAll: false, imageMode: 'MEDIA', simulateTyping: false, typingSeconds: 15, scheduledAt: null, origin: 'GENERATOR', expiresAt: null,
   text: 'oferta', textEdited: false, status: 'DRAFT', createdAt: future, updatedAt: new Date().toISOString(), ...over,
 });
 
@@ -22,9 +22,9 @@ const group = { conversationId: 'c-1', title: 'Grupo', avatarUrl: null, sessionI
 
 const panel = (o: OfferItem) => (
   <OfferSendPanel
-    offer={o} groups={[group, { ...group, conversationId: 'c-2' }]} busy={false} sending={false} mentionSaving={false}
+    offer={o} groups={[group, { ...group, conversationId: 'c-2' }]} busy={false} sending={false} mentionSaving={false} imageModeSaving={false}
     mentionUnavailable={false} sendBlocked={false} textTooLong={false} editing={false}
-    onMentionAll={vi.fn()} onTyping={vi.fn()} onSchedule={vi.fn().mockResolvedValue(undefined)} onSend={vi.fn()}
+    onMentionAll={vi.fn()} onImageMode={vi.fn()} onTyping={vi.fn()} onSchedule={vi.fn().mockResolvedValue(undefined)} onSend={vi.fn()}
   />
 );
 
@@ -47,5 +47,21 @@ describe('agendamento do início', () => {
     expect(screen.getByText(/Envio agendado/)).toBeTruthy();
     expect(screen.getByLabelText('Tempo até o início do envio')).toBeTruthy();
     expect(screen.queryByLabelText('Tempo até o próximo envio')).toBeNull();
+  });
+});
+
+describe('formato da imagem', () => {
+  it('mostra o formato salvo e avisa a troca para prévia do link', () => {
+    const onImageMode = vi.fn();
+    render(
+      <OfferSendPanel
+        offer={offer()} groups={[group]} busy={false} sending={false} mentionSaving={false} imageModeSaving={false}
+        mentionUnavailable={false} sendBlocked={false} textTooLong={false} editing={false}
+        onMentionAll={vi.fn()} onImageMode={onImageMode} onTyping={vi.fn()} onSchedule={vi.fn()} onSend={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Imagem com legenda/ }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Prévia do link/ }));
+    expect(onImageMode).toHaveBeenCalledWith('LINK_PREVIEW');
   });
 });

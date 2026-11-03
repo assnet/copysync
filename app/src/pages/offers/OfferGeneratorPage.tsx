@@ -206,11 +206,13 @@ export function OfferGeneratorPage() {
                     busy={offerBusy}
                     sending={gen.sending}
                     mentionSaving={gen.mentionSaving}
+                    imageModeSaving={gen.imageModeSaving}
                     mentionUnavailable={mentionUnavailable}
                     sendBlocked={groupCount === 0 || sessionOffline}
                     textTooLong={form.textTooLong}
                     editing={editing}
                     onMentionAll={(value) => { gen.setMentionAll(value).catch(markPlanError); }}
+                    onImageMode={(value) => { gen.setImageMode(value).catch(() => { /* erro já exibido pelo hook */ }); }}
                     onTyping={(patch) => { void gen.setTyping(patch); }}
                     onSchedule={async (scheduledAt) => { await gen.update({ scheduledAt }); }}
                     onSend={() => setConfirmOpen(true)}

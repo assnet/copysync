@@ -1,5 +1,5 @@
-import { Baby, CookingPot, Dumbbell, PawPrint, Shirt, Tag, User, type LucideIcon } from 'lucide-react';
-import type { OfferAudience } from '@/types/api.types';
+import { Baby, CookingPot, Dumbbell, Image, Link2, PawPrint, Shirt, Tag, User, type LucideIcon } from 'lucide-react';
+import type { OfferAudience, OfferImageMode } from '@/types/api.types';
 
 /** Ordem dos cartões de público-alvo. */
 export const OFFER_AUDIENCES: readonly OfferAudience[] = [
@@ -16,6 +16,11 @@ export const AUDIENCE_ICONS: Record<OfferAudience, LucideIcon> = {
   FITNESS: Dumbbell,
   HOME_KITCHEN: CookingPot,
 };
+
+/** Formatos da foto no envio, na ordem do seletor. `MEDIA` é o padrão. */
+export const OFFER_IMAGE_MODES: readonly OfferImageMode[] = ['MEDIA', 'LINK_PREVIEW'];
+export const DEFAULT_IMAGE_MODE: OfferImageMode = 'MEDIA';
+export const IMAGE_MODE_ICONS: Record<OfferImageMode, LucideIcon> = { MEDIA: Image, LINK_PREVIEW: Link2 };
 
 /** "Digitando…" antes do envio. Espelha `campaigns/domain/offerTyping.ts` da API. */
 export const TYPING_SECONDS_MIN = 1;

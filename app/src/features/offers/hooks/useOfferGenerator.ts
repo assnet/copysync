@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { offerService } from '@/services/offer.service';
 import { mediaService } from '@/services/media.service';
 import { uploadInParts } from '@/features/chat/media/chunkedUpload';
-import type { GenerateOfferRequest, OfferAudience, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
+import type { GenerateOfferRequest, OfferAudience, OfferImageMode, OfferItem, OfferUsage, UpdateOfferRequest } from '@/types/api.types';
 import { toOfferError, type OfferErrorView } from '../utils/offerErrors';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
@@ -25,6 +25,7 @@ export function useOfferGenerator() {
   const [generating, setGenerating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [mentionSaving, setMentionSaving] = useState(false);
+  const [imageModeSaving, setImageModeSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [imageProgress, setImageProgress] = useState<number | null>(null);
@@ -118,6 +119,23 @@ export function useOfferGenerator() {
     } catch (err) {
       if (seq === typingSeq.current) setOffer(previous);
       fail(err);
+    }
+  }, [offer, fail]);
+
+  /** Troca o formato da imagem na hora (como "marcar todos"); volta ao anterior se a API recusar. */
+  const setImageMode = useCallback(async (value: OfferImageMode) => {
+    if (!offer) return;
+    const previous = offer;
+    setOffer({ ...offer, imageMode: value });
+    setImageModeSaving(true);
+    setError(null);
+    try {
+      setOffer(await offerService.update(offer.id, { imageMode: value }));
+    } catch (err) {
+      setOffer(previous);
+      fail(err);
+    } finally {
+      setImageModeSaving(false);
     }
   }, [offer, fail]);
 
@@ -280,6 +298,7 @@ export function useOfferGenerator() {
     generating,
     regenerating,
     mentionSaving,
+    imageModeSaving,
     saving,
     sending,
     imageProgress,
@@ -288,6 +307,7 @@ export function useOfferGenerator() {
     generate,
     regenerate,
     setMentionAll,
+    setImageMode,
     setTyping,
     update,
     replaceImage,

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { GroupMonitorSettings } from '@/types/api.types';
 import {
-  LIMITS, TEXT_MODES, isDraftDirty, settingsToDraft, sliderMinutesToSeconds, textModeForKey,
+  LIMITS, TEXT_MODES, draftToSettings, isDraftDirty, settingsToDraft, sliderMinutesToSeconds, textModeForKey,
 } from './settingsDraft';
 
 const saved: GroupMonitorSettings = {
   enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 90, intervalMaxSeconds: 600,
-  startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, simulateTyping: true, typingSeconds: 5,
+  startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 5,
   textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
 };
 
@@ -36,5 +36,13 @@ describe('settingsDraft', () => {
     expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, saved, false)).toBe(false);
     expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, { ...saved, mentionAll: true }, false)).toBe(false);
     expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, saved, true)).toBe(true);
+  });
+
+  it('formato da imagem: padrão MEDIA quando a API não manda; troca deixa o rascunho sujo e vai no envio', () => {
+    const { imageMode: _omit, ...legacy } = saved;
+    expect(settingsToDraft(legacy as GroupMonitorSettings).imageMode).toBe('MEDIA');
+    const draft = { ...settingsToDraft(saved), imageMode: 'LINK_PREVIEW' as const };
+    expect(isDraftDirty(draft, saved)).toBe(true);
+    expect(draftToSettings(draft).imageMode).toBe('LINK_PREVIEW');
   });
 });
