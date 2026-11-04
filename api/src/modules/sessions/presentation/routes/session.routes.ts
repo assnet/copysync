@@ -13,13 +13,7 @@ import {
 import { PrismaSessionRepository } from '../../infrastructure/repositories/PrismaSessionRepository';
 import { PrismaSessionAuthStateRepository } from '../../infrastructure/repositories/PrismaSessionAuthStateRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
-import { MessagingEngineFactory } from '../../../messaging/infrastructure/MessagingEngineFactory';
-import { PrismaChatContactRepository } from '../../../chat/infrastructure/repositories/PrismaChatContactRepository';
-import { PrismaChatConversationRepository } from '../../../chat/infrastructure/repositories/PrismaChatConversationRepository';
-import { PrismaChatMessageRepository } from '../../../chat/infrastructure/repositories/PrismaChatMessageRepository';
-import { IngestHistorySyncUseCase } from '../../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { prisma } from '../../../../shared/database/prisma.client';
-import { setActiveEngine } from '../../../../shared/engine/activeEngine';
 import { CreateSessionUseCase } from '../../application/use-cases/CreateSessionUseCase';
 import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { ListSessionsUseCase } from '../../application/use-cases/ListSessionsUseCase';
@@ -40,6 +34,7 @@ import {
   SubmitSessionLoginPasswordUseCase,
 } from '../../application/use-cases/SessionLoginByCodeUseCases';
 import { sessionLeaseContainer } from '../../infrastructure/lease/sessionLeaseContainer';
+import { localEngine } from '../../../messaging/infrastructure/localEngineContainer';
 import { PrismaLinkRotationPlanEnforcementStore } from '../../../link-rotation/infrastructure/repositories/PrismaLinkRotationPlanEnforcementStore';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
@@ -47,33 +42,12 @@ const sessionRepo = new PrismaSessionRepository();
 const authStateRepo = new PrismaSessionAuthStateRepository();
 const auditRepo = new PrismaAuditLogRepository();
 
-// Chat deps required by the engine (history sync + contacts upsert)
-const chatContactRepo      = new PrismaChatContactRepository(prisma);
-const chatConversationRepo = new PrismaChatConversationRepository(prisma);
-const chatMessageRepo      = new PrismaChatMessageRepository(prisma);
-const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
-  chatContactRepo,
-  chatConversationRepo,
-  chatMessageRepo,
-);
-
-// Lease de sessão (LEASE-03/05): gate nas engines, release nos fluxos que fecham socket.
+// Lease de sessão (LEASE-03/05): release nos fluxos que fecham socket.
 const lease = sessionLeaseContainer();
 
-// Engine singleton (roteador por engine da sessão) — wired once, shared across all requests.
-// Único `createRouter` do processo: qualquer outro deve receber o mesmo `leaseGate`.
-const engine = MessagingEngineFactory.createRouter({
-  sessionRepo,
-  authStateRepo,
-  chatContactRepo,
-  chatConversationRepo,
-  historySyncUseCase: ingestHistorySyncUseCase,
-  leaseGate: lease.acquire,
-});
-// Renovação do lease derruba sockets pelo roteador (o keeper é iniciado em `server.ts`).
-lease.bindSocketControl(engine);
-// Disponibiliza para outros módulos (e.g. chat routes para read receipts)
-setActiveEngine(engine);
+// Engine local (WROLE-02): montada aqui, no registro das rotas, antes de `server.ts` ler
+// `getActiveEngine()`. Composição (createRouter + bindSocketControl + setActiveEngine) no container.
+const engine = localEngine();
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
 const entitlementReader = new PrismaEntitlementReader(prisma);
