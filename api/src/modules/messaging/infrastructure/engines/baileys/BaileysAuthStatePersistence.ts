@@ -25,6 +25,7 @@ import {
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { env } from '../../../../../shared/config/env';
 import { logger } from '../../../../../shared/logger/logger';
+import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 
 const CREDS_KEY = '__creds__';
 const PROVIDER = 'baileys';
@@ -38,6 +39,11 @@ export interface BaileysAuthStateDeps {
   flushDebounceMs?: number;
   maxRetries?: number;
   retryDelayMs?: number;
+  /**
+   * CAS perdido (LEASE-06): outro dono gravou o auth state. Chamado uma vez por handle, sem
+   * esperar (o adapter derruba o socket com `abortSession`, que espera este handle assentar).
+   */
+  onVersionConflict?: (sessionId: string) => void | Promise<void>;
 }
 
 export interface BaileysAuthStateHandle {
@@ -169,10 +175,29 @@ async function buildHandle(
   const carried: DirtyMap = orphanDirty.get(sessionId) ?? new Map();
   orphanDirty.delete(sessionId);
 
-  // ── Carga: chaves da tabela nova; sessão ainda no blob legado é migrada ───────
+  let conflicted = false;
+  /** CAS perdido: loga, avisa o dono do socket uma vez; o pendente vai fora (nunca vira órfão). */
+  function reportConflict(): void {
+    if (conflicted) return;
+    conflicted = true;
+    log.warn({ sessionId }, 'Auth state version conflict; another owner wrote it — pending keys discarded');
+    if (!deps.onVersionConflict) return;
+    try {
+      void Promise.resolve(deps.onVersionConflict(sessionId)).catch((err) =>
+        log.error({ err, sessionId }, 'Auth state version conflict handler failed'));
+    } catch (err) {
+      log.error({ err, sessionId }, 'Auth state version conflict handler failed');
+    }
+  }
+
+  // ── Carga: chaves + versão (base do CAS); sessão ainda no blob legado é migrada ─
   const stateMap = new Map<string, StoredValue>();
+  /** Versão de `session_auth_states` que este handle viu por último; toda escrita a confere. */
+  let version: number | null;
   try {
-    for (const [key, value] of Object.entries(await authStateRepo.findAllKeys(sessionId))) {
+    const loaded = await authStateRepo.findAllKeysVersioned(sessionId);
+    version = loaded.version;
+    for (const [key, value] of Object.entries(loaded.keys)) {
       stateMap.set(key, fromDb(value));
     }
     if (stateMap.size === 0) {
@@ -180,13 +205,20 @@ async function buildHandle(
       const payload = legacy?.statePayload;
       if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
         const upserts = payload as Record<string, unknown>;
-        await authStateRepo.writeKeys({ sessionId, tenantId, provider: PROVIDER, upserts, deletes: [] });
+        const res = await authStateRepo.writeKeys({
+          sessionId, tenantId, provider: PROVIDER, upserts, deletes: [], expectedVersion: version,
+        });
+        if (!res.ok) {
+          reportConflict();
+          throw new SessionLeaseHeldError(sessionId);
+        }
+        version = res.version;
         for (const [key, value] of Object.entries(upserts)) stateMap.set(key, fromDb(value));
         log.info({ sessionId, keys: stateMap.size }, 'Auth state migrated from legacy blob to per-key rows');
       }
     }
   } catch (err) {
-    stashOrphans(sessionId, carried);
+    if (!conflicted) stashOrphans(sessionId, carried);
     throw err;
   }
   for (const [key, value] of carried) {
@@ -221,11 +253,16 @@ async function buildHandle(
     return true;
   }
 
-  async function writeWithRetry(upserts: Record<string, unknown>, deletes: string[]): Promise<void> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  /** `false` = CAS perdido (sem retry: re-tentar regravaria por cima do dono novo). */
+  async function writeWithRetry(upserts: Record<string, unknown>, deletes: string[]): Promise<boolean> {
+    for (let attempt = 1; ; attempt++) {
       try {
-        await authStateRepo.writeKeys({ sessionId, tenantId, provider: PROVIDER, upserts, deletes });
-        return;
+        const res = await authStateRepo.writeKeys({
+          sessionId, tenantId, provider: PROVIDER, upserts, deletes, expectedVersion: version,
+        });
+        if (!res.ok) return false;
+        version = res.version;
+        return true;
       } catch (err) {
         if (attempt >= maxRetries) throw err;
         log.warn({ err, sessionId, attempt, nextAttemptInMs: retryDelayMs }, 'Failed to persist Baileys auth keys; retrying');
@@ -253,11 +290,17 @@ async function buildHandle(
             if (value === null) deletes.push(key);
             else upserts[key] = value;
           }
+          let written: boolean;
           try {
-            await writeWithRetry(upserts, deletes);
+            written = await writeWithRetry(upserts, deletes);
           } catch (err) {
             for (const [key, value] of snapshot) if (!dirty.has(key)) dirty.set(key, value);
             throw err;
+          }
+          if (!written) {
+            dispose(); // pendente vai fora: nada de órfão para o próximo handle
+            reportConflict();
+            return;
           }
         }
       } finally {

@@ -796,7 +796,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       return false;
     }
     const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo);
+    const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
+      onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
+    });
 
     const socket = makeWASocket({
       version,

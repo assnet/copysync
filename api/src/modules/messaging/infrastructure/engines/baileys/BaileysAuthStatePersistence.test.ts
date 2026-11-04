@@ -16,6 +16,9 @@ class InMemoryAuthRepo implements ISessionAuthStateRepository {
   legacy: SessionAuthStateRecord | null = null;
   batches: SessionAuthKeyBatch[] = [];
   failNext = 0;
+  /** `session_auth_states.version` (null = linha-mãe não existe; o blob legado conta como linha). */
+  version: number | null = null;
+  get rowVersion(): number | null { return this.version ?? this.legacy?.version ?? null; }
 
   async findBySessionId(_sessionId: string) { return this.legacy; }
   async upsert(data: SessionAuthStateUpsertData) {
@@ -24,12 +27,18 @@ class InMemoryAuthRepo implements ISessionAuthStateRepository {
   async findAllKeys(_sessionId: string) { return Object.fromEntries(this.keys); }
   async writeKeys(batch: SessionAuthKeyBatch) {
     if (this.failNext > 0) { this.failNext--; throw new Error('db down'); }
+    const { expectedVersion } = batch;
+    if (expectedVersion !== undefined && expectedVersion !== this.rowVersion) {
+      return { ok: false as const, reason: 'VERSION_CONFLICT' as const };
+    }
     this.batches.push(structuredClone(batch));
     for (const [k, v] of Object.entries(batch.upserts)) this.keys.set(k, v);
     for (const k of batch.deletes) this.keys.delete(k);
-    return { ok: true as const, version: this.batches.length };
+    this.version = this.rowVersion === null ? 0 : this.rowVersion + 1;
+    return { ok: true as const, version: this.version };
   }
-  async findAllKeysVersioned(_sessionId: string) { return { keys: Object.fromEntries(this.keys), version: null }; }
+  /** Delega ao findAllKeys: os spies dos testes de carga valem para os dois. */
+  async findAllKeysVersioned(sessionId: string) { return { keys: await this.findAllKeys(sessionId), version: this.rowVersion }; }
   async clearCredentials(_sessionId: string) { this.keys.clear(); }
   async deleteBySessionId(_sessionId: string) { this.keys.clear(); this.legacy = null; }
 }
@@ -361,5 +370,73 @@ describe('buildBaileysAuthState — concorrência (revisão)', () => {
     await b.forceFlush();
     expect(repo.batches).toHaveLength(1);
     b.dispose();
+  });
+});
+
+describe('buildBaileysAuthState — CAS da versão (LEASE-06)', () => {
+  it('toda escrita leva a versão lida e a atualiza no sucesso', async () => {
+    const repo = new InMemoryAuthRepo();
+    const h = await build(repo);
+    await h.saveCreds();
+    await h.forceFlush();
+    await h.state.keys.set({ 'pre-key': { '1': kp1(1) } });
+    await h.forceFlush();
+    expect(repo.batches.map((b) => b.expectedVersion)).toEqual([null, 0]);
+    expect(repo.version).toBe(1);
+  });
+
+  it('conflito: não re-tenta, não vira órfão, chama o callback uma vez e o handle para de escrever', async () => {
+    const repo = new InMemoryAuthRepo();
+    const onVersionConflict = vi.fn();
+    const h = await buildBaileysAuthState(SESSION, TENANT, repo, { ...fast, maxRetries: 3, onVersionConflict });
+    await h.saveCreds();
+    await h.forceFlush();
+    repo.version = 9; // outro processo gravou
+    const spy = vi.spyOn(repo, 'writeKeys');
+    await h.state.keys.set({ 'pre-key': { '1': kp1(1) } });
+    await h.forceFlush();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(onVersionConflict).toHaveBeenCalledTimes(1);
+    expect(onVersionConflict).toHaveBeenCalledWith(SESSION);
+    expect(repo.keys.has('pre-key__1')).toBe(false);
+    // handle morto: nada mais grava nem chama o callback de novo
+    await h.state.keys.set({ 'pre-key': { '2': kp1(2) } });
+    await h.forceFlush();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(onVersionConflict).toHaveBeenCalledTimes(1);
+    // o próximo handle não herda o pendente descartado
+    const next = await build(repo);
+    await next.forceFlush();
+    expect(repo.keys.has('pre-key__1')).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('migração do blob passa expectedVersion; conflito nela derruba o build e chama o callback', async () => {
+    const repo = new InMemoryAuthRepo();
+    repo.legacy = {
+      sessionId: SESSION, tenantId: TENANT, provider: 'baileys', version: 3,
+      statePayload: { 'pre-key__1': { public: { type: 'Buffer', data: 'AQ==' }, private: { type: 'Buffer', data: 'Ag==' } } },
+    };
+    const original = repo.writeKeys.bind(repo);
+    vi.spyOn(repo, 'writeKeys').mockImplementationOnce(async (b) => {
+      expect(b.expectedVersion).toBe(3);
+      repo.version = 4; // outro dono migrou antes
+      return original(b);
+    });
+    const onVersionConflict = vi.fn();
+    await expect(buildBaileysAuthState(SESSION, TENANT, repo, { ...fast, onVersionConflict })).rejects.toThrow();
+    expect(onVersionConflict).toHaveBeenCalledTimes(1);
+    expect(repo.keys.size).toBe(0);
+  });
+
+  it('callback que rejeita não derruba o flush', async () => {
+    const repo = new InMemoryAuthRepo();
+    const onVersionConflict = vi.fn().mockRejectedValue(new Error('boom'));
+    const h = await buildBaileysAuthState(SESSION, TENANT, repo, { ...fast, onVersionConflict });
+    repo.version = 5;
+    await h.saveCreds();
+    await expect(h.forceFlush()).resolves.toBeUndefined();
+    await tick();
+    expect(onVersionConflict).toHaveBeenCalledTimes(1);
   });
 });
