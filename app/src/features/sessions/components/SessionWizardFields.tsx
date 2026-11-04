@@ -1,12 +1,28 @@
-import { Alert, Box, TextField, Typography, alpha, useTheme } from '@mui/material';
-import { Info } from 'lucide-react';
+import { Alert, Box, InputAdornment, TextField, Typography } from '@mui/material';
+import { Phone } from 'lucide-react';
 import { AppIcon } from '@/components';
+import { Blurred, useBlur } from '@/features/privacy';
 import { sessionStrings } from '../strings';
-import { SESSION_NAME_MAX } from '../utils';
+import { SESSION_NAME_MAX, type SessionChannel } from '../utils';
+import { ChannelBridge } from './ChannelBridge';
+import { SessionChannelChip } from './SessionChannelChip';
+
+/** Título do passo (h2) + subtítulo opcional. */
+function StepHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <Box>
+      <Typography variant="h6" component="h2" fontWeight={700}>{title}</Typography>
+      {subtitle && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{subtitle}</Typography>}
+    </Box>
+  );
+}
 
 interface PhoneFormProps {
   formId: string;
+  /** Canal da sessão (ponte e cores). Padrão: whatsapp. */
+  channel?: SessionChannel;
   title: string;
+  subtitle?: string;
   label: string;
   placeholder: string;
   howTo: { title: string; body: string; format: string };
@@ -19,11 +35,11 @@ interface PhoneFormProps {
   autoComplete: string;
 }
 
-/** Passo "Número/Telefone": caixa de ajuda + campo. Igual para WhatsApp e Telegram, só os textos mudam. */
+/** Passo "Número/Telefone": ponte celular ↔ canal, dica de formato e campo. Só os textos mudam por canal. */
 export function SessionPhoneForm({
-  formId, title, label, placeholder, howTo, value, onChange, onBlur, onSubmit, error, helperText, autoComplete,
+  formId, channel = 'whatsapp', title, subtitle, label, placeholder, howTo, value, onChange, onBlur, onSubmit,
+  error, helperText, autoComplete,
 }: PhoneFormProps) {
-  const theme = useTheme();
   return (
     <Box
       component="form"
@@ -32,15 +48,9 @@ export function SessionPhoneForm({
       id={formId}
       sx={{ display: 'grid', gap: 2.5 }}
     >
-      <Typography variant="h6" component="h2" fontWeight={700}>{title}</Typography>
-      <Box
-        sx={{
-          display: 'flex', gap: 1.5, p: 2, borderRadius: 2,
-          bgcolor: alpha(theme.palette.info.main, 0.08),
-          border: '1px solid', borderColor: alpha(theme.palette.info.main, 0.25),
-        }}
-      >
-        <Box sx={{ color: 'info.main', mt: 0.25, display: 'flex' }}><AppIcon icon={Info} size="md" /></Box>
+      <StepHeading title={title} subtitle={subtitle} />
+      <Box sx={{ display: 'grid', justifyItems: 'center', gap: 1.25, textAlign: 'center', py: 0.5 }}>
+        <ChannelBridge channel={channel} state="idle" size="sm" />
         <Box>
           <Typography variant="subtitle2">{howTo.title}</Typography>
           <Typography variant="body2" color="text.secondary">{howTo.body}</Typography>
@@ -57,8 +67,16 @@ export function SessionPhoneForm({
         fullWidth
         autoComplete={autoComplete}
         inputProps={{ inputMode: 'tel' }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start" sx={{ color: error ? 'error.main' : 'text.secondary' }}>
+              <AppIcon icon={Phone} size="md" aria-hidden />
+            </InputAdornment>
+          ),
+        }}
         error={error}
         helperText={helperText}
+        sx={{ '& .MuiFormHelperText-root': { fontVariantNumeric: 'tabular-nums' } }}
       />
     </Box>
   );
@@ -66,7 +84,10 @@ export function SessionPhoneForm({
 
 interface NameFormProps {
   formId: string;
+  /** Canal da sessão (chip da prévia). Padrão: whatsapp. */
+  channel?: SessionChannel;
   title: string;
+  subtitle?: string;
   placeholder: string;
   helper: string;
   value: string;
@@ -78,11 +99,14 @@ interface NameFormProps {
   createError: string | null;
 }
 
-/** Passo "Nome": campo com contador e erro de criação. */
+/** Passo "Nome": prévia viva do cartão, campo com contador e erro de criação. */
 export function SessionNameForm({
-  formId, title, placeholder, helper, value, onChange, onBlur, onSubmit, invalid, disabled, createError,
+  formId, channel = 'whatsapp', title, subtitle, placeholder, helper, value, onChange, onBlur, onSubmit,
+  invalid, disabled, createError,
 }: NameFormProps) {
   const t = sessionStrings.wizard.name;
+  const blurName = useBlur('sessions.sessionName');
+  const typed = value.trim();
   return (
     <Box
       component="form"
@@ -91,8 +115,30 @@ export function SessionNameForm({
       id={formId}
       sx={{ display: 'grid', gap: 2.5 }}
     >
-      <Typography variant="h6" component="h2" fontWeight={700}>{title}</Typography>
+      <StepHeading title={title} subtitle={subtitle} />
       {createError && <Alert severity="error">{createError}</Alert>}
+      <Box
+        aria-hidden
+        sx={{
+          display: 'grid', gap: 1, p: 2, borderRadius: '14px',
+          border: '1px dashed', borderColor: 'divider', bgcolor: 'action.hover',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Typography variant="caption" color="text.secondary">{t.previewLabel}</Typography>
+          <SessionChannelChip channel={channel} />
+        </Box>
+        <Blurred when={blurName && Boolean(typed)}>
+          <Typography
+            variant="subtitle1"
+            fontWeight={700}
+            noWrap
+            color={typed ? 'text.primary' : 'text.disabled'}
+          >
+            {typed || placeholder}
+          </Typography>
+        </Blurred>
+      </Box>
       <TextField
         label={t.label}
         value={value}
@@ -106,7 +152,7 @@ export function SessionNameForm({
         helperText={invalid ? t.tooShort : helper}
         InputProps={{
           endAdornment: (
-            <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+            <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
               {t.counter(value.length, SESSION_NAME_MAX)}
             </Typography>
           ),

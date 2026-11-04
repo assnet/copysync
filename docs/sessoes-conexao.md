@@ -19,6 +19,17 @@ O mesmo passo 3 é usado para reconectar uma sessão existente (`ConnectSessionD
 | Rota | `/settings/sessions` — primeiro item do submenu de Configurações (`SettingsLayout`); `/sessions` só redireciona, mantendo a query. Links novos usam o caminho novo |
 | Painel | `app/src/features/sessions/` (`CreateSessionWizard`, `SessionConnectPanel`, `SessionConnectedPanel`, `useSessionConnection`, `utils.ts`, `strings.ts`) |
 
+## Visual dos assistentes
+
+- Casca única `SessionWizardDialog` com `channel` obrigatório (logo e cor do canal no cabeçalho e no indicador de
+  passos). Sem `steps` vira a casca do "conectar sessão existente" (`ConnectSessionDialog`). Uma ação só fica à direita;
+  com duas, secundária à esquerda e principal (`contained`) à direita.
+- Tokens em `app/src/features/sessions/sessionWizardStyle.ts` (`brand`, `onBrand`, `brandWash`, `brandRing`,
+  `focusRing`, `REDUCED_MOTION`, keyframes `stepIn`/`dashFlow`/`ring`). Cor só por tema + `brandColor`; nada de hex.
+- `ChannelBridge` (celular ↔ logo do canal, decorativo): `idle` tracejado parado, `waiting` tracejado fluindo (parado em
+  reduced-motion), `done` linha cheia com check. O estado sempre é dito também em texto.
+- Não fazer: animação com framer-motion, ícone de brilho/estrela, texto fora de `strings.ts`.
+
 ## API
 
 - `POST /sessions` `{ name, declaredPhone? }` → 422 `SESSION_PHONE_INVALID` (`meta.field`).

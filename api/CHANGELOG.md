@@ -59,6 +59,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Assistentes de nova sessão redesenhados (`sessions`) — app 0.66.0
+
+- **`sessionWizardStyle.ts`**, **`ChannelBridge.tsx`** — tokens por canal (cor da marca por modo, wash, foco, keyframes com `prefers-reduced-motion`) e a "ponte" celular ↔ canal (parada, aguardando, conectado)
+- **`SessionWizardDialog.tsx`** — cabeçalho com logo do canal, "Passo n de N", stepper próprio, transição entre passos, rodapé fixo no celular; `actions` `null` omite o rodapé
+- **`ChannelPickerDialog.tsx`**, **`SessionWizardFields.tsx`** — cartões de canal com barra de uso do plano e estado bloqueado acessível; prévia viva do cartão da sessão (com borrar)
+- **`SessionConnectPanel.tsx`**, **`TelegramConnectPanel.tsx`**, **`SessionConnectedPanel.tsx`** — QR com cantoneiras, código de pareamento por casas, código/2FA do Telegram com mostrar senha e nota de segurança; Pronto com celebração (sem brilhos) e atalho para o Monitoramento no WhatsApp. Corrige o título do Pronto do Telegram (mostrava "WhatsApp conectado")
+- **`strings.ts`** — textos revistos (subtítulos por passo, erros com próximo passo)
+
+#### Frontend — Logos de marca dos canais — app 0.65.0
+
+- **`components/brandIcons.tsx`** — `WhatsAppIcon`/`TelegramIcon` (Simple Icons, CC0) com assinatura `LucideIcon` para `AppIcon`; `brandColor(canal, modo)`. `CHANNEL_ICON` usa os logos; chip do canal na cor da marca. Regra em `docs/padrao-icones.md`
+
 #### Backend — Sessões Telegram (`sessions`, `messaging`) — api 0.51.0
 
 - **`engines/telegram/TelegramMessagingEngineAdapter.ts`** — segundo engine atrás de `IMessagingEngine`, conta de usuário via MTProto (lib `telegram`/GramJS). Login por telefone → código no app → senha 2FA, ou por QR (`tg://login?token=`); mensagens recebidas viram `MESSAGE_RECEIVED` (texto; mídia ainda sem download); envio de texto/mídia/reação/typing; grupos (`listParticipatingGroups`, resumo, convite, participantes). Sem número da plataforma e sem segundo número do usuário. Doc: `docs/sessoes-telegram.md`

@@ -81,7 +81,7 @@ describe('SessionsPage com create/returnTo', () => {
     await screen.findByText('WhatsApp 0/1');
     fireEvent.click(screen.getByRole('button', { name: 'Nova sessão' }));
     const picker = await screen.findByRole('dialog');
-    expect(picker).toHaveTextContent('Qual canal você quer conectar?');
+    expect(picker).toHaveTextContent('Onde você quer postar suas ofertas?');
     fireEvent.click(screen.getByRole('button', { name: 'WhatsApp' }));
     expect(await screen.findByText('criar')).toBeInTheDocument();
   });

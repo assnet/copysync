@@ -84,6 +84,7 @@ export function CreateTelegramSessionWizard({ open, onClose, onCreated, onStatus
     <SessionWizardDialog
       open={open}
       onClose={handleClose}
+      channel="telegram"
       title={tg.title}
       steps={tg.steps}
       step={step}
@@ -111,14 +112,16 @@ export function CreateTelegramSessionWizard({ open, onClose, onCreated, onStatus
             </>
           )}
           {step === 2 && <Button onClick={handleClose}>{t.close}</Button>}
-          {step === 3 && <Button variant="contained" onClick={handleClose}>{t.finish}</Button>}
+          {step === 3 && <Button variant="contained" onClick={handleClose} sx={{ ml: 'auto' }}>{t.finish}</Button>}
         </>
       }
     >
       {step === 0 && (
         <SessionPhoneForm
           formId="telegram-phone-form"
+          channel="telegram"
           title={tg.phone.title}
+          subtitle={tg.phone.subtitle}
           label={tg.phone.label}
           placeholder={tg.phone.placeholder}
           howTo={{ title: tg.phone.howToTitle, body: tg.phone.howToBody, format: tg.phone.howToFormat }}
@@ -137,7 +140,9 @@ export function CreateTelegramSessionWizard({ open, onClose, onCreated, onStatus
       {step === 1 && (
         <SessionNameForm
           formId="telegram-name-form"
+          channel="telegram"
           title={tg.name.title}
+          subtitle={tg.name.subtitle}
           placeholder={tg.name.placeholder}
           helper={tg.name.helper}
           value={name}

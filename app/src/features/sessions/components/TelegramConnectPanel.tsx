@@ -1,14 +1,22 @@
 import { useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Link, TextField, Typography, alpha, useTheme } from '@mui/material';
-import { KeyRound, Send } from 'lucide-react';
+import {
+  Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Link, TextField, Tooltip, Typography, useTheme,
+} from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { Eye, EyeOff, KeyRound, Send, ShieldCheck } from 'lucide-react';
 import { AppIcon, CooldownBar } from '@/components';
+import { Blurred, useBlur } from '@/features/privacy';
 import { sessionStrings } from '../strings';
 import { TELEGRAM_CODE_LENGTH, formatInternationalPhone, onlyDigits } from '../utils';
+import { brand, focusRing } from '../sessionWizardStyle';
 import type { SessionConnection } from '../hooks/useSessionConnection';
 import type { TelegramLogin } from '../hooks/useTelegramLogin';
 import { SessionConnectPanel } from './SessionConnectPanel';
+import { ChannelBridge } from './ChannelBridge';
 
 const t = sessionStrings.telegram.connect;
+const CHANNEL = 'telegram' as const;
+const PHONE_SLOT = '\u0000';
 
 interface Props {
   conn: SessionConnection;
@@ -23,24 +31,31 @@ interface Props {
  */
 export function TelegramConnectPanel({ conn, login, phone }: Props) {
   const theme = useTheme();
+  const blurPhone = useBlur('sessions.sessionPhone');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   if (conn.mode === 'qr') {
-    return <SessionConnectPanel conn={conn} channel="telegram" onUseCode={conn.switchToCode} />;
+    return <SessionConnectPanel conn={conn} channel={CHANNEL} onUseCode={conn.switchToCode} />;
   }
 
+  const color = brand(theme, CHANNEL);
   const floodActive = Boolean(login.flood);
   const canSend = !login.busy && !floodActive && !login.resend;
   const codeReady = onlyDigits(code).length === TELEGRAM_CODE_LENGTH;
+  const [sentBefore, sentAfter = ''] = t.sentTo(PHONE_SLOT).split(PHONE_SLOT);
 
   const floodBanner = login.flood && (
-    <Alert severity="warning" icon={false}>
+    // Texto fora do CooldownBar: o rótulo dele é `noWrap` e estourava a largura no celular.
+    <Alert severity="warning" icon={false} sx={{ '& .MuiAlert-message': { flex: 1, minWidth: 0 } }}>
+      <Typography variant="body2" sx={{ mb: 0.5 }}>
+        {t.floodWait(Math.max(1, Math.ceil((login.flood.endAt - login.flood.startAt) / 60_000)))}
+      </Typography>
       <CooldownBar
         startAt={login.flood.startAt}
         endAt={login.flood.endAt}
         ariaLabel={t.floodWaitAria}
-        label={t.floodWait(Math.max(1, Math.ceil((login.flood.endAt - login.flood.startAt) / 60_000)))}
         doneLabel={t.floodWaitDone}
         onComplete={login.clearFlood}
         size="small"
@@ -48,24 +63,15 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
     </Alert>
   );
 
+  const bigButton = { minHeight: 48, '&.Mui-focusVisible': focusRing(theme, CHANNEL) } as const;
+
   return (
     <Box sx={{ display: 'grid', gap: 2.5 }}>
-      <Typography variant="h6" component="h2" fontWeight={700}>{t.title}</Typography>
+      <Typography variant="h6" component="h2" fontWeight={700} textAlign={login.phase === 'idle' ? 'center' : 'left'}>
+        {t.title}
+      </Typography>
       {login.error && <Alert severity="error">{login.error}</Alert>}
       {floodBanner}
-
-      {login.phase === 'idle' && (
-        <Box
-          sx={{
-            display: 'flex', gap: 1.5, p: 2, borderRadius: 2,
-            bgcolor: alpha(theme.palette.info.main, 0.08),
-            border: '1px solid', borderColor: alpha(theme.palette.info.main, 0.25),
-          }}
-        >
-          <Box sx={{ color: 'info.main', mt: 0.25, display: 'flex' }}><AppIcon icon={Send} size="md" /></Box>
-          <Typography variant="body2" color="text.secondary">{t.codeIntro}</Typography>
-        </Box>
-      )}
 
       {login.phase === 'password' ? (
         <Box
@@ -74,13 +80,24 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
           onSubmit={(e) => { e.preventDefault(); if (password) void login.submitPassword(password); }}
           sx={{ display: 'grid', gap: 2 }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box sx={{ color: 'warning.main', display: 'flex' }}><AppIcon icon={KeyRound} size="md" /></Box>
-            <Typography variant="subtitle2">{t.passwordTitle}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+            <Box
+              aria-hidden
+              sx={{
+                width: 40, height: 40, borderRadius: 2, flexShrink: 0, display: 'grid', placeItems: 'center',
+                bgcolor: alpha(theme.palette.warning.main, 0.14), color: 'warning.main',
+              }}
+            >
+              <AppIcon icon={KeyRound} size="md" />
+            </Box>
+            <Box sx={{ display: 'grid', gap: 0.5 }}>
+              <Typography variant="subtitle2" component="h3">{t.passwordTitle}</Typography>
+              <Typography variant="body2" color="text.secondary">{t.passwordIntro}</Typography>
+            </Box>
           </Box>
           <TextField
             label={t.passwordLabel}
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => { setPassword(e.target.value); login.clearPasswordError(); }}
             autoFocus
@@ -89,15 +106,41 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
             disabled={login.busy !== null}
             error={Boolean(login.passwordError)}
             helperText={login.passwordError ?? t.passwordHelper}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Tooltip title={showPassword ? t.hidePassword : t.showPassword}>
+                    <IconButton
+                      aria-label={showPassword ? t.hidePassword : t.showPassword}
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((v) => !v)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      edge="end"
+                      sx={{ width: 44, height: 44, '&.Mui-focusVisible': focusRing(theme, CHANNEL) }}
+                    >
+                      <AppIcon icon={showPassword ? EyeOff : Eye} size="sm" />
+                    </IconButton>
+                  </Tooltip>
+                </InputAdornment>
+              ),
+            }}
           />
           <Button
             type="submit"
             variant="contained"
+            size="large"
             disabled={!password || login.busy !== null}
             startIcon={login.busy === 'password' ? <CircularProgress size={16} color="inherit" /> : undefined}
+            sx={bigButton}
           >
             {login.busy === 'password' ? t.checking : t.passwordSubmit}
           </Button>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', color: 'text.secondary' }}>
+            <Box aria-hidden sx={{ display: 'flex', mt: '2px', color: 'success.main' }}>
+              <AppIcon icon={ShieldCheck} size="sm" />
+            </Box>
+            <Typography variant="caption" color="text.secondary">{t.securityNote}</Typography>
+          </Box>
         </Box>
       ) : login.phase === 'code' ? (
         <Box
@@ -106,7 +149,17 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
           onSubmit={(e) => { e.preventDefault(); if (codeReady) void login.signIn(onlyDigits(code)); }}
           sx={{ display: 'grid', gap: 2 }}
         >
-          {phone && <Typography variant="body2" color="text.secondary">{t.sentTo(formatInternationalPhone(phone))}</Typography>}
+          {phone && (
+            <Typography variant="body2" color="text.secondary">
+              {sentBefore}
+              <Blurred when={blurPhone} inline>
+                <Box component="span" sx={{ fontWeight: 600, color: 'text.primary', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatInternationalPhone(phone)}
+                </Box>
+              </Blurred>
+              {sentAfter}
+            </Typography>
+          )}
           <TextField
             label={t.codeLabel}
             value={code}
@@ -114,16 +167,29 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
             autoFocus
             fullWidth
             autoComplete="one-time-code"
-            inputProps={{ inputMode: 'numeric', maxLength: TELEGRAM_CODE_LENGTH, style: { letterSpacing: 6, fontSize: 24, textAlign: 'center' } }}
+            inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: TELEGRAM_CODE_LENGTH }}
             disabled={login.busy !== null}
             error={Boolean(login.codeError)}
             helperText={login.codeError ?? t.codeHelper(TELEGRAM_CODE_LENGTH)}
+            sx={{
+              '& .MuiInputBase-input': {
+                fontSize: 28, letterSpacing: 10, textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+                fontWeight: 600, py: 1.75,
+              },
+              ...(!code && !login.codeError && {
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(color, 0.4) },
+              }),
+              '& .MuiOutlinedInput-root.Mui-focused:not(.Mui-error) .MuiOutlinedInput-notchedOutline': { borderColor: color },
+              '& .MuiInputLabel-root.Mui-focused:not(.Mui-error)': { color },
+            }}
           />
           <Button
             type="submit"
             variant="contained"
+            size="large"
             disabled={!codeReady || login.busy !== null}
             startIcon={login.busy === 'signIn' ? <CircularProgress size={16} color="inherit" /> : undefined}
+            sx={bigButton}
           >
             {login.busy === 'signIn' ? t.checking : t.signIn}
           </Button>
@@ -140,22 +206,30 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
                 />
               </Box>
             ) : (
-              <Button size="small" onClick={() => void login.sendCode()} disabled={!canSend}>
+              <Button onClick={() => void login.sendCode()} disabled={!canSend} sx={{ minHeight: 44 }}>
                 {login.busy === 'send' ? t.sending : t.resend}
               </Button>
             )}
           </Box>
         </Box>
       ) : (
-        <Button
-          variant="contained"
-          size="large"
-          onClick={() => void login.sendCode()}
-          disabled={!canSend}
-          startIcon={login.busy === 'send' ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={Send} />}
-        >
-          {login.busy === 'send' ? t.sending : t.sendCode}
-        </Button>
+        <Box sx={{ display: 'grid', justifyItems: 'center', gap: 2.5, pt: 1 }}>
+          <ChannelBridge channel={CHANNEL} state="idle" />
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ maxWidth: 420 }}>
+            {t.codeIntro}
+          </Typography>
+          <Button
+            variant="contained"
+            size="large"
+            fullWidth
+            onClick={() => void login.sendCode()}
+            disabled={!canSend}
+            startIcon={login.busy === 'send' ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={Send} size="md" />}
+            sx={bigButton}
+          >
+            {login.busy === 'send' ? t.sending : t.sendCode}
+          </Button>
+        </Box>
       )}
 
       <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -165,7 +239,7 @@ export function TelegramConnectPanel({ conn, login, phone }: Props) {
           variant="body2"
           onClick={() => conn.switchToQr()}
           disabled={login.busy !== null || conn.busy}
-          sx={{ fontWeight: 600 }}
+          sx={{ fontWeight: 600, minHeight: 44, px: 1, borderRadius: 1, '&:focus-visible': focusRing(theme, CHANNEL) }}
         >
           {t.useQr}
         </Link>

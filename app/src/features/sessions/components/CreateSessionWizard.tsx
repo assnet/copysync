@@ -95,11 +95,13 @@ export function CreateSessionWizard({ open, onClose, onCreated, onStatusChange, 
     <SessionWizardDialog
       open={open}
       onClose={handleClose}
+      channel="whatsapp"
       title={t.title}
       steps={t.steps}
       step={step}
       closeDisabled={creating}
-      actions={
+      // Passo 3: as ações ficam no painel Pronto (Ir para o Monitoramento / Fazer isso depois).
+      actions={step === 3 ? null : (
         <>
           {step === 0 && (
             <>
@@ -121,15 +123,22 @@ export function CreateSessionWizard({ open, onClose, onCreated, onStatusChange, 
               </Button>
             </>
           )}
-          {step === 2 && <Button onClick={handleClose}>{t.close}</Button>}
-          {step === 3 && <Button variant="contained" onClick={handleClose}>{t.finish}</Button>}
+          {/* Passo 2: uma ação só, à esquerda (o span vazio ocupa a direita do space-between). */}
+          {step === 2 && (
+            <>
+              <Button onClick={handleClose}>{t.close}</Button>
+              <span aria-hidden />
+            </>
+          )}
         </>
-      }
+      )}
     >
       {step === 0 && (
         <SessionPhoneForm
           formId="session-phone-form"
+          channel="whatsapp"
           title={t.phone.title}
+          subtitle={t.phone.subtitle}
           label={t.phone.label}
           placeholder={t.phone.placeholder}
           howTo={{ title: t.phone.howToTitle, body: t.phone.howToBody, format: t.phone.howToFormat }}
@@ -148,7 +157,9 @@ export function CreateSessionWizard({ open, onClose, onCreated, onStatusChange, 
       {step === 1 && (
         <SessionNameForm
           formId="session-name-form"
+          channel="whatsapp"
           title={t.name.title}
+          subtitle={t.name.subtitle}
           placeholder={t.name.placeholder}
           helper={t.name.helper}
           value={name}
@@ -160,8 +171,8 @@ export function CreateSessionWizard({ open, onClose, onCreated, onStatusChange, 
           createError={createError}
         />
       )}
-      {step === 2 && <SessionConnectPanel conn={conn} />}
-      {step === 3 && <SessionConnectedPanel session={conn.session} />}
+      {step === 2 && <SessionConnectPanel conn={conn} channel="whatsapp" />}
+      {step === 3 && <SessionConnectedPanel session={conn.session} channel="whatsapp" onDone={handleClose} />}
     </SessionWizardDialog>
   );
 }
