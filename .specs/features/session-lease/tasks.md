@@ -81,7 +81,11 @@ ALTER TABLE "sessions"
 -- CreateIndex
 CREATE INDEX "sessions_ownerWorkerId_idx" ON "sessions"("ownerWorkerId");
 CREATE INDEX "sessions_connectRequestedAt_idx" ON "sessions"("connectRequestedAt");
+
+-- Backfill (D3): sessões já conectadas contam como pedido de conexão, para a E4 readotá-las
+UPDATE "sessions" SET "connectRequestedAt" = NOW() WHERE "status" = 'CONNECTED' AND "deletedAt" IS NULL;
 ```
+(confirmar nomes reais de `status`/`deletedAt` e o valor do enum no schema)
 **Done when**:
 - [ ] Model com os 6 campos (comentário curto em cada) e `@@index([ownerWorkerId])`, `@@index([connectRequestedAt])`
 - [ ] `pnpm prisma migrate diff --from-schema-datamodel <schema antes> --to-schema-datamodel prisma/schema.prisma --script` (offline) bate com o SQL

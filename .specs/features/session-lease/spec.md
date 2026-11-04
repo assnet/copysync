@@ -21,7 +21,7 @@ lease derruba o socket sem gravar, e escrita de auth state com versão velha é 
 
 | ID | Requisito |
 | --- | --- |
-| LEASE-01 | Migration `add-session-lease` em `sessions`: `ownerWorkerId TEXT`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt` (`TIMESTAMP(3)` nulos), `adoptFailures INT NOT NULL DEFAULT 0`, `shard TEXT`; índices em `ownerWorkerId` e `connectRequestedAt`. Só ADD COLUMN; sem backfill (ver D3) |
+| LEASE-01 | Migration `add-session-lease` em `sessions`: `ownerWorkerId TEXT`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt` (`TIMESTAMP(3)` nulos), `adoptFailures INT NOT NULL DEFAULT 0`, `shard TEXT`; índices em `ownerWorkerId` e `connectRequestedAt`. ADD COLUMN + backfill de `connectRequestedAt = NOW()` só nas sessões `CONNECTED` não apagadas (D3, decidido) |
 | LEASE-02 | Identidade do processo `WORKER_ID` = env ou `${HOSTNAME ?? os.hostname()}-${pid}-${nonce8}`, única por boot (restart não herda lease) |
 | LEASE-03 | Nenhum socket (Baileys `openSocket`, Telegram `openClient`) abre sem lease: `UPDATE … SET ownerWorkerId=$me, leaseUntil=now()+60s WHERE id=$id AND (leaseUntil IS NULL OR leaseUntil < now() OR ownerWorkerId=$me)`. Vale para connect, reconnect, pareamento, login Telegram, bootstrap e reconexão automática. Zero linhas: caminho do usuário recebe `ENGINE_TEMPORARILY_UNAVAILABLE` (503); caminho automático só loga e não abre |
 | LEASE-04 | Renovação a cada 20 s só das sessões com socket local e lease no razão local: `WHERE id = ANY($ids) AND ownerWorkerId=$me AND leaseUntil > now()`. Sessão fora do retorno = perdeu: derruba já. Erro/timeout (5 s) = fence: derruba quando `now > lastRenewOkAt + 55 s`. Derrubar = fechar socket sem gravar auth state e sem gravar status |
@@ -60,3 +60,15 @@ compilar sozinha; a tarefa de composição liga tudo.
 2. Matar o banco do 1º por > 55 s (ou forçar `leaseUntil` no passado com outro dono): o 1º derruba o socket sem gravar chave.
 3. `SIGTERM` no 1º: log mostra sockets fechados → flush → leases soltos; o 2º conecta em seguida sem 440.
 4. Desconectar/excluir/sair: `connectRequestedAt` e lease nulos no banco.
+
+## Decisões (2026-11-04, tomadas pelo orquestrador no padrão mais seguro; o dono pode rever)
+
+| # | Decisão |
+| --- | --- |
+| D1 | Soltar lease no shutdown entra na E2 (T4/T22): sem isso o deploy deixa a sessão "CONNECTED" sem socket por até 60 s |
+| D2 | Bootstrap no deploy pula sessão com lease de outro processo; aceito na E2 (flag hoje `false` em produção); readoção vem na E4 |
+| D3 | Migration preenche `connectRequestedAt = NOW()` nas sessões `CONNECTED` com `deletedAt IS NULL`, para a E4 readotá-las |
+| D4 | Renovação com zero linhas (lease tomado) derruba o socket na hora, sem gravar; o fence de 55 s cobre a falha de renovar |
+| D5 | Lease de outro processo → `ENGINE_TEMPORARILY_UNAVAILABLE` (503), sem i18n novo |
+| D6 | Sem `SESSION_LEASE_ENABLED`: rollback = voltar a versão (a migration só adiciona colunas) |
+| D7 | `WORKER_ADOPTION_ENABLED`/`WORKER_MAX_SESSIONS` na E4; filtro de lease no `FailOrphanPendingMediaUseCase` na E3; CAS do auth state Telegram fora |
