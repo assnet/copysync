@@ -1,6 +1,6 @@
 import { Box, Grid, Typography } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
-import { PageHeader } from '@/components';
+import { PageHeader, SwipeCards } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { PLAN_CATALOG, PlanCard, PlansFeatureNotice, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod } from '@/features/plans';
 
@@ -21,13 +21,25 @@ export function PlansPage() {
         <PlansFeatureNotice feature={searchParams.get('feature')} />
         <PlansHero period={period} onPeriodChange={setPeriod} />
 
-        <Grid container spacing={2.5} alignItems="stretch" sx={{ mt: 2 }}>
-          {PLAN_CATALOG.map((plan) => (
-            <Grid item xs={12} md={4} key={plan.slug} sx={{ pt: { xs: 2, md: 0 } }}>
-              <PlanCard plan={plan} period={period} checkoutHref="#" />
+        {/* Mobile: um card por deslize, começando no recomendado; sm+: grade */}
+        <SwipeCards
+          ariaLabel={t.page.carouselLabel}
+          initialKey={PLAN_CATALOG.find((p) => p.recommended)?.slug}
+          items={PLAN_CATALOG.map((plan) => ({
+            key: plan.slug,
+            label: plan.name,
+            content: <PlanCard plan={plan} period={period} checkoutHref="#" />,
+          }))}
+          renderGrid={(items) => (
+            <Grid container spacing={2.5} alignItems="stretch" sx={{ mt: 2 }}>
+              {items.map((item) => (
+                <Grid item xs={12} md={4} key={item.key} sx={{ pt: { xs: 2, md: 0 } }}>
+                  {item.content}
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
+          )}
+        />
 
         <Box sx={{ mt: 4 }}>
           <PlansTrustStrip />

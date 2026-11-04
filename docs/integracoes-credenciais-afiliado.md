@@ -13,7 +13,7 @@ Gerador de ofertas trocar o link do concorrente pelo do cliente. Spec, design e 
 | Prisma | `api/src/modules/integrations/infrastructure/` · tabela `affiliate_credentials` · migration `add_affiliate_credentials` |
 | HTTP | `api/src/modules/integrations/presentation/` |
 | Cifra | `api/src/shared/security/` (`ISecretCipher`, `AesGcmSecretCipher`, `SecretCipherFactory`) |
-| Painel | `app/src/features/settings/` (card, resumo de progresso `AffiliateConnectionSummary`, `MarketplaceLogo`, diálogo, hook, `strings.ts`, `affiliateProviders.ts`; logos em `app/public/assets/marketplaces/`, licenças no `LICENSE.md` da pasta) · `app/src/pages/settings/AffiliateCredentialsPage.tsx` · rota `/affiliates/credentials` (item do produto Afiliados; `/settings/affiliate-credentials` redireciona e mantém a query) |
+| Painel | `app/src/features/settings/` (card, resumo de progresso `AffiliateConnectionSummary`, `MarketplaceLogo`, diálogo, hook, `strings.ts`, `affiliateProviders.ts`; logos em `app/public/assets/marketplaces/`, licenças no `LICENSE.md` da pasta) · `app/src/pages/settings/AffiliateCredentialsPage.tsx` (no celular os cards de marketplace viram carrossel por deslize via `SwipeCards`, indicador configurado/pendente) · rota `/affiliates/credentials` (item do produto Afiliados; `/settings/affiliate-credentials` redireciona e mantém a query) |
 | Extensão | `extension/` sincroniza a sessão do Mercado Livre (`docs/extensao-navegador.md`) |
 
 ## Campos por marketplace

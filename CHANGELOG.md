@@ -9,6 +9,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.62.0 — cards por deslize no mobile
+
+Doc: `docs/padrao-ui-painel.md` (seção "SwipeCards").
+
+- **`components/SwipeCards.tsx`** — em `xs`, lista de cards vira carrossel por deslize com CSS `scroll-snap` nativo (um empurrão = um card, `scroll-snap-stop: always`, peek de ~8 % dos vizinhos, ativo em escala 1 e vizinhos 0.96/opacidade 0.7, `prefers-reduced-motion` desliga); indicadores em pílula (rótulo + `done`/`pending`, toque rola até o card); a11y (`aria-roledescription` carousel/slide, "Card n de total", `tablist`/`tab`, setas ←/→). Em `sm+` devolve `renderGrid(items)` sem wrapper. Sem lib.
+- **`pages/plans/PlansPage.tsx`** — 3 cards de plano no carrossel no celular, abrindo no plano `recommended` (PRO); diálogos ficam fora do carrossel.
+- **`pages/settings/AffiliateCredentialsPage.tsx`** — cards de marketplace no carrossel no celular; indicador mostra configurado/pendente por marketplace.
+- **`docs/padrao-ui-painel.md`** + **`docs/planos.md`** + **`docs/integracoes-credenciais-afiliado.md`** — linha na tabela de casos, seção `SwipeCards` (quando usar, quando não, regras) e menção nas telas que usam.
+
 ### Changed — app 0.61.0 — menu por produtos
 
 Doc: `docs/navegacao-produtos.md`.

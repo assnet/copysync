@@ -14,6 +14,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
 | Texto de uma linha cortado com reticências (nome de grupo, sessão, produto) | `OverflowTooltipText`; em `Chip`/elemento próprio, `useIsTruncated` + `Tooltip` | atributo nativo `title`; tooltip fixo que aparece mesmo com o texto inteiro |
 | Grupo de WhatsApp em lista/chip | `GroupAvatar` / `GroupChip` (`features/offers/components/GroupChip.tsx`): foto, senão iniciais, senão ícone | `Chip` só com texto; ícone genérico quando há foto |
+| Cards lado a lado (planos, credenciais) no celular | `SwipeCards`: carrossel por deslize em `xs`, grade normal em `sm+` | lib de carrossel; `Stack` horizontal com `overflow: auto` solto; pilha vertical de 3 cards altos |
 | Item ou produto no menu lateral | entrada em `features/navigation/model.ts` + rótulo em `strings.ts` (ver [`navegacao-produtos.md`](navegacao-produtos.md)) | item declarado em `AppLayout.tsx`; acordeão/popover próprio |
 
 Estilo visual de uma tela redesenhada fica num módulo da feature (`features/<x>/<x>Style.ts`, ex.:
@@ -97,6 +98,28 @@ Telas cobertas: Painel/menu (e-mail e papel do usuário), Chat (miniaturas e tex
   `features/monitoring/components/OperatingWindowField`).
 - Sem balão de valor ao arrastar (`valueLabelDisplay="off"`, em todas as telas): o valor já aparece
   nos extremos e no rótulo, e o balão cobria os rótulos.
+
+## SwipeCards
+
+Lista de 2–5 cards altos e comparáveis (planos, marketplaces) vira carrossel por deslize **só em
+`xs`**; em `sm+` devolve `renderGrid(items)` sem wrapper. `items: { key, label, status?, content }[]`,
+`initialKey`, `ariaLabel`, `renderGrid`. Sem lib: CSS `scroll-snap` nativo.
+
+- Um empurrão = um card (`scroll-snap-stop: always`); peek de ~11 % dos vizinhos (card 78 %) por pseudo-elementos
+  `::before/::after` (mesma base de largura do card, pontas simétricas); ativo em escala 1, vizinhos
+  0.96 + `saturate(0.85)`, **nunca opacidade** (texto perderia contraste); `prefers-reduced-motion`
+  desliga escala e rolagem suave.
+- `initialKey` no item recomendado/mais relevante (PRO em `PlansPage`); a tela abre nele sem flash.
+- Indicadores em pílula **acima** do trilho (cards altos deixariam o indicador fora da dobra): rótulo +
+  `status` `done` (check) / `paused` (pausa) / `pending` (ponto); toque rola até o card; botões
+  simples, todos tabuláveis, ativo com `aria-current`.
+- A11y: `aria-roledescription` "carrossel"/"card" (pt-BR via `swipeCardsStrings`), "n de total",
+  setas ←/→ no trilho focado trocam o card; setas vindas de controle interno são ignoradas.
+- Altura do carrossel = card mais alto (os cards não encolhem). **Sem `touch-action`** no card:
+  `pan-y` bloquearia o deslize horizontal.
+- Diálogos e formulários abrem **fora** do carrossel (o `Dialog` já é portal).
+- Não usar em: lista longa (> 5), cards com formulário inline aberto, qualquer tela em `sm+`
+  (desktop nunca vira carrossel).
 
 ## CooldownBar
 

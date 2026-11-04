@@ -3,12 +3,12 @@
 Item do roadmap: **7. Planos e limites** (`produto-roadmap.md`). Plano de implementação completo (modal, plano atual,
 checkout, suporte): `.specs/features/plans-modal/spec.md`. Este doc registra o que **está** no código.
 
-## O que existe (app 0.44.0)
+## O que existe (app 0.62.0)
 
 | Peça | Onde | Nota |
 | --- | --- | --- |
 | Item "Planos" no menu | `app/src/features/navigation/model.ts` (filho do produto Afiliados, `AFFILIATE_PLANS_PATH`, ícone `Crown`; ver `docs/navegacao-produtos.md`) | Planos são por produto; cada produto novo terá a própria vitrine |
-| Página `/affiliates/plans` (`/plans` redireciona com a query) | `app/src/pages/plans/PlansPage.tsx` | Hero (banner) + 3 cards + faixa de confiança + nota |
+| Página `/affiliates/plans` (`/plans` redireciona com a query) | `app/src/pages/plans/PlansPage.tsx` | Hero (banner) + 3 cards + faixa de confiança + nota; no celular os cards viram carrossel por deslize (`SwipeCards`, `app/src/components/`) abrindo no PRO (`recommended`) |
 | Catálogo de vitrine | `app/src/features/plans/catalog.ts` | Slug, nome, tagline, preço de/por, benefícios (com `hint` para Tooltip), limites |
 | Textos | `app/src/features/plans/strings.ts` | pt-BR, chaves semânticas; `formatPrice` com `Intl.NumberFormat` |
 | Componentes | `features/plans/components/` | `PlansHero`, `PlanCard`, `PlansTrustStrip`, `GuaranteeSeal` |

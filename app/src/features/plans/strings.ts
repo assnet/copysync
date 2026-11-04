@@ -32,6 +32,8 @@ export const plansStrings = {
   page: {
     title: 'Planos',
     subtitle: 'Escolha o plano que acompanha o tamanho da sua operação.',
+    /** Nome do carrossel de planos no mobile (leitor de tela). */
+    carouselLabel: 'Planos disponíveis',
   },
 
   hero: {

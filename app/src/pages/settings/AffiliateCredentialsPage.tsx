@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, Grid, Snackbar } from '@mui/material';
 import { ArrowLeft } from 'lucide-react';
-import { AppIcon, PageHeader } from '@/components';
+import { AppIcon, PageHeader, SwipeCards } from '@/components';
 import { safeReturnPath } from '@/features/sessions/utils';
 import type { AffiliateProvider } from '@/types/api.types';
 import { AffiliateCredentialCard } from '@/features/settings/components/AffiliateCredentialCard';
@@ -58,9 +58,15 @@ export function AffiliateCredentialsPage() {
       ) : (
         <>
           <AffiliateConnectionSummary entries={entries} />
-          <Grid container spacing={3}>
-            {entries.map(({ spec, item }) => (
-              <Grid item xs={12} md={4} key={spec.provider} sx={{ display: 'flex', '& > *': { flexGrow: 1 } }}>
+          {/* Mobile: um marketplace por deslize; sm+: grade. Diálogos de edição ficam fora (modais) */}
+          <SwipeCards
+            ariaLabel={t.carouselLabel}
+            items={entries.map(({ spec, item }) => ({
+              key: spec.provider,
+              label: spec.name,
+              // Ativa = configurado; existe mas inativa = pausado; sem credencial = pendente
+              status: !item ? 'pending' : item.status === 'ACTIVE' ? 'done' : 'paused',
+              content: (
                 <AffiliateCredentialCard
                   spec={spec}
                   item={item}
@@ -69,9 +75,18 @@ export function AffiliateCredentialsPage() {
                   onRemove={() => void remove(spec.provider)}
                   onStatusChange={(status) => void setStatus(spec.provider, status)}
                 />
+              ),
+            }))}
+            renderGrid={(items) => (
+              <Grid container spacing={3}>
+                {items.map((card) => (
+                  <Grid item xs={12} md={4} key={card.key} sx={{ display: 'flex', '& > *': { flexGrow: 1 } }}>
+                    {card.content}
+                  </Grid>
+                ))}
               </Grid>
-            ))}
-          </Grid>
+            )}
+          />
         </>
       )}
 

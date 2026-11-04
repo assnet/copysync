@@ -15,3 +15,5 @@ export type { ToggleOptionProps } from './ToggleOption';
 export { OverflowTooltipText } from './OverflowTooltipText';
 export type { OverflowTooltipTextProps } from './OverflowTooltipText';
 export { useIsTruncated, isElementTruncated } from './useIsTruncated';
+export { SwipeCards } from './SwipeCards';
+export type { SwipeCardsItem, SwipeCardsProps, SwipeCardsStatus } from './SwipeCards';

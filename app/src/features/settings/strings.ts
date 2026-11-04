@@ -52,6 +52,8 @@ export const settingsStrings = {
   affiliate: {
     pageTitle: 'Credenciais de afiliado',
     pageSubtitle: 'Conecte suas contas de afiliado para gerar links com a sua comissão',
+    /** Nome do carrossel de marketplaces no mobile (leitor de tela). */
+    carouselLabel: 'Marketplaces',
     pageNotice:
       'A ferramenta usa estas chaves para converter links de produtos em links de afiliado da sua conta. '
       + 'Os valores secretos são guardados cifrados e não voltam a ser exibidos depois de salvos.',
