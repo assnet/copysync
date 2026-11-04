@@ -1,4 +1,4 @@
-import { Chip, type ChipProps } from '@mui/material';
+import { Chip, Tooltip, type ChipProps } from '@mui/material';
 import type { SessionStatus } from '@/types/api.types';
 import { sessionStrings } from '../strings';
 
@@ -20,7 +20,21 @@ const STATUS_CONFIG: Record<SessionStatus, StatusConfig> = {
   FAILED:           { color: 'error',    variant: 'filled'   },
 };
 
-export function SessionStatusChip({ status }: { status: SessionStatus }) {
+interface SessionStatusChipProps {
+  status: SessionStatus;
+  /** Sem servidor com vaga: mostra "Aguardando capacidade" no lugar do status. */
+  awaitingCapacity?: boolean;
+}
+
+export function SessionStatusChip({ status, awaitingCapacity = false }: SessionStatusChipProps) {
+  if (awaitingCapacity) {
+    const t = sessionStrings.awaitingCapacity;
+    return (
+      <Tooltip title={t.tooltip} arrow>
+        <Chip label={t.label} color="warning" variant="outlined" size="small" />
+      </Tooltip>
+    );
+  }
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
   return <Chip label={sessionStrings.status[status] ?? sessionStrings.status.PENDING} color={cfg.color} variant={cfg.variant} size="small" />;
 }

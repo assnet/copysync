@@ -85,6 +85,8 @@ export interface SessionItem {
   declaredPhone?: string | null;
   /** O WhatsApp conectado é de outro número que o informado. */
   phoneMismatch?: boolean;
+  /** Pedido de conexão vivo sem nenhum servidor com vaga para assumir a sessão. */
+  awaitingCapacity?: boolean;
 }
 
 export interface CreateSessionRequest {

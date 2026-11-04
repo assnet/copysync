@@ -194,7 +194,7 @@ export function DashboardPage() {
                         )}
                       </Box>
                     </Box>
-                    <SessionStatusChip status={s.status} />
+                    <SessionStatusChip status={s.status} awaitingCapacity={s.awaitingCapacity} />
                   </Box>
                 ))}
                 {total > 5 && (

@@ -69,6 +69,12 @@ export const sessionStrings = {
     FAILED: 'Falha',
   } satisfies Record<SessionStatus, string>,
 
+  /** Pedido de conexão sem servidor com vaga; substitui o status no chip. */
+  awaitingCapacity: {
+    label: 'Aguardando capacidade',
+    tooltip: 'Sem vaga nos servidores; conecta sozinha assim que houver',
+  },
+
   card: {
     connect: 'Conectar',
     reconnect: 'Reconectar nesta mesma sessão — mantém histórico e mídia',

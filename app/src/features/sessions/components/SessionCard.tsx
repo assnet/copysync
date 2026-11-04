@@ -158,7 +158,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               </Blurred>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 <SessionChannelChip channel={channelOf(session.engine)} />
-                <SessionStatusChip status={status} />
+                <SessionStatusChip status={status} awaitingCapacity={session.awaitingCapacity} />
                 {session.phoneMismatch && (
                   <Tooltip
                     title={(telegram ? t.mismatchTooltipTelegram : t.mismatchTooltip)(
