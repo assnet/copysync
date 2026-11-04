@@ -20,21 +20,21 @@ Regras comuns a toda task:
 | T2 | Identidade `WORKER_ID` | — | P | ✅ 403acef |
 | T3 | Política do lease (constantes + fence pura) | — | P | ✅ 1e35503 |
 | T4 | `ISessionLeaseRepository` + Prisma + `SessionLeaseHeldError` | T1, T3 | | ✅ 80e3627 |
-| T5 | Razão local + `Acquire`/`ReleaseSessionLeaseUseCase` | T4 | | ⏳ |
+| T5 | Razão local + `Acquire`/`ReleaseSessionLeaseUseCase` | T4 | | ✅ 4027648 |
 | T6 | `ISessionSocketControl` + implementação Baileys | — | P | ✅ f5a3180 |
 | T7 | `ISessionSocketControl` no Telegram | T6 | | ✅ bc90c0d |
-| T8 | Router implementa `ISessionSocketControl` | T6, T7 | | ⏳ |
+| T8 | Router implementa `ISessionSocketControl` | T6, T7 | | ✅ 23f98c1 |
 | T9 | `RenewSessionLeaseUseCase` (fence) + `SessionLeaseKeeper` | T5, T6 | P | ⏳ |
-| T10 | Baileys: lease antes de `openSocket` | T4, T6 | P | ⏳ |
-| T11 | Telegram: lease antes de `openClient` | T4, T7 | P | ⏳ |
+| T10 | Baileys: lease antes de `openSocket` | T4, T6 | P | ✅ 12672a5 |
+| T11 | Telegram: lease antes de `openClient` | T4, T7 | P | ✅ faf207b |
 | T12 | CAS no repositório do auth state | — | P | ✅ bc525a7 |
 | T13 | CAS no `BaileysAuthStatePersistence` + conflito derruba socket | T10, T12 | | ⏳ |
 | T14 | Repositório de sessão: marcar/limpar `connectRequestedAt` | T1 | | ✅ b62fa5e |
-| T15 | Helper `markConnectRequested` + connect/reconnect | T14 | | ⏳ |
+| T15 | Helper `markConnectRequested` + connect/reconnect | T14 | | ✅ eb42c9b |
 | T16 | `markConnectRequested` em pairing-code e login Telegram | T15 | P | ⏳ |
 | T17 | Disconnect/Logout/Delete: limpa pedido + solta lease | T5, T14 | P | ⏳ |
 | T18 | Suspensão de tenant: limpa pedido + solta lease | T5, T14 | P | ⏳ |
-| T19 | Consulta de sessões ativas sem lease vivo | T14 | | ⏳ |
+| T19 | Consulta de sessões ativas sem lease vivo | T14 | | ✅ 53e295a |
 | T20 | Reconciler e bootstrap cientes do lease | T10, T11, T19 | P | ⏳ |
 | T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ⏳ |
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ⏳ |
@@ -49,6 +49,13 @@ Regras comuns a toda task:
 - T4: `ISessionLeaseRepository` (`tryAcquire`/`renew`/`release`/`releaseAllOwned`) + porta `ISessionLeaseGate`; SQL usa `now() AT TIME ZONE 'UTC'`; `SessionLeaseHeldError` (503). Lease sem `tenantId` de propósito (processo, `sessionId` único).
 - T7: Telegram implementa `ISessionSocketControl`; `shutdown()` antigo usa `Promise.all`, T22 decide trocar por `closeAllSockets`.
 - T14: `markConnectRequested(id, tenantId)` (não sobrescreve pedido anterior, zero linhas não é erro: validar posse antes com `findById`); limpar via `updateStatus({ clearConnectRequest: true })`.
+- T5: `SessionLeaseLedger` (`markOk`/`drop`/`ids`/`lastOk`); `AcquireSessionLeaseUseCase` implementa `ISessionLeaseGate` (erro de banco = `false` + warn); `ReleaseSessionLeaseUseCase.execute(id)` nunca lança.
+- T8: `MessagingEngineRouter` implementa `ISessionSocketControl` (detecção em runtime; `closeAllSockets` só loga falha).
+- T10: Baileys `openSocket(..., origin 'user'|'auto')`; lease negado: user → `SessionLeaseHeldError`, auto → warn + `false`. **Bootstrap chama `connectSession` (origem user) → T20 deve tratar `SessionLeaseHeldError` como caminho automático.** Reabertura pós-limpeza de credenciais (≈L1680) grava `CONNECTING` antes do acquire.
+- T11: Telegram `openClient` faz acquire antes de tudo; negado não derruba cliente local (T9/D4 derruba).
+- T15: helper em `sessions/application/services/markConnectRequested.ts`; marca antes do `updateStatus`; T16 cobre pairing + 3 do Telegram.
+- T19: `findActiveSessionsWithoutLiveLease()` (constante `ACTIVE_STATUSES` compartilhada com bootstrap); T20 liga no reconciler/bootstrap.
+- Gate integrado após onda 3: `tsc` ok, vitest sessions+messaging+shared 437/437.
 
 ## Execution Plan
 
