@@ -125,4 +125,29 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(registry.has('s1')).toBe(false);
   });
+
+  it('renovação durante a abertura vê a sessão como local (entre acquire e registry.set)', async () => {
+    const { adapter } = make(true);
+    let release!: () => void;
+    let seen: string[] = [];
+    auth.build.mockImplementationOnce(async () => {
+      seen = adapter.listLocalSessionIds();
+      await new Promise<void>((r) => { release = r; });
+      return { state: { creds: {}, keys: {} }, saveCreds: async () => undefined };
+    });
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(seen).toEqual(['s1']);
+    expect(registry.has('s1')).toBe(false);
+    release();
+    await p;
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('falha na abertura tira a sessão do conjunto "abrindo"', async () => {
+    const { adapter } = make(true);
+    auth.build.mockImplementationOnce(async () => { throw new Error('auth state down'); });
+    await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toThrow('auth state down');
+    expect(adapter.listLocalSessionIds()).toEqual([]);
+  });
 });

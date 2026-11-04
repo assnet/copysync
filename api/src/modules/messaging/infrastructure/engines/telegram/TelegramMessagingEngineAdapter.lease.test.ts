@@ -34,7 +34,7 @@ function make(granted: boolean) {
     { findActiveByGroupAndSession: vi.fn() } as never,
     leaseGate,
   );
-  return { adapter, sessionRepo, leaseGate };
+  return { adapter, sessionRepo, leaseGate, auth };
 }
 
 describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () => {
@@ -75,5 +75,30 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     expect(leaseGate.acquire).toHaveBeenCalledTimes(1);
     expect(fake.created).toBe(1);
     expect(sessionRepo.updateStatus).toHaveBeenCalledWith('s1', T, { status: 'CONNECTING' });
+  });
+
+  it('renovação durante a abertura vê a sessão como local (entre acquire e registry.set)', async () => {
+    const { adapter, auth } = make(true);
+    let release!: () => void;
+    let seen: string[] = [];
+    auth.load.mockImplementationOnce(async () => {
+      seen = adapter.listLocalSessionIds();
+      await new Promise<void>((r) => { release = r; });
+      return null;
+    });
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(seen).toEqual(['s1']);
+    expect(fake.created).toBe(0);
+    release();
+    await p;
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('falha na abertura tira a sessão do conjunto "abrindo"', async () => {
+    const { adapter, auth } = make(true);
+    auth.load.mockRejectedValueOnce(new Error('cipher down'));
+    await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toThrow();
+    expect(adapter.listLocalSessionIds()).toEqual([]);
   });
 });

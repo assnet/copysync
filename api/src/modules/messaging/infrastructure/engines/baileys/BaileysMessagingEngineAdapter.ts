@@ -163,6 +163,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
   private readonly suspended = new Map<string, string>();
+  /** Sessões entre `leaseGate.acquire` e `registry.set` (contagem): a renovação as trata como locais. */
+  private readonly opening = new Map<string, number>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -283,7 +285,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   }
 
   listLocalSessionIds(): string[] {
-    return this.registry.getAll().map(({ sessionId }) => sessionId);
+    const ids = new Set(this.registry.getAll().map(({ sessionId }) => sessionId));
+    for (const id of this.opening.keys()) ids.add(id);
+    return [...ids];
+  }
+
+  /** Marca a sessão como "abrindo" enquanto `open` roda (sai no fim, com sucesso ou falha). */
+  private async whileOpening<T>(sessionId: string, open: () => Promise<T>): Promise<T> {
+    this.opening.set(sessionId, (this.opening.get(sessionId) ?? 0) + 1);
+    try {
+      return await open();
+    } finally {
+      const n = (this.opening.get(sessionId) ?? 1) - 1;
+      if (n > 0) this.opening.set(sessionId, n);
+      else this.opening.delete(sessionId);
+    }
   }
 
   private cancelReconnect(sessionId: string): void {
@@ -830,34 +846,38 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       baileysLogger.warn({ sessionId, attempt }, 'Socket not opened — session lease held by another process');
       return false;
     }
-    const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
-      onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
-    });
+    // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
+    const { socket, state, saveCreds, epoch } = await this.whileOpening(sessionId, async () => {
+      const { version } = await fetchLatestBaileysVersion();
+      const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
+        onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
+      });
 
-    const socket = makeWASocket({
-      version,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, baileysLogger as never),
-      },
-      browser: Browsers.ubuntu('Chrome'),
-      logger: baileysLogger as never,
-      // printQRInTerminal foi deprecado na 7.0.0-rc14 e só emite aviso: o QR já é lido
-      // do evento connection.update e publicado via SESSION_QR_UPDATED.
-      markOnlineOnConnect: false,
-      // Cada QR vive 2 min (padrão da lib: 60 s no 1º e 20 s nos seguintes). O painel conta o
-      // mesmo tempo (QR_TTL_MS em app/src/features/sessions/utils.ts): mudar aqui = mudar lá.
-      qrTimeout: QR_TIMEOUT_MS,
-      syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
-      // Responde o pedido de reenvio de criptografia da nossa mídia e do texto com prévia de link
-      // (aparelho de grupo que não decifrou). Texto puro, reação e o resto seguem undefined.
-      getMessage: async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> =>
-        key.id ? sentMediaCache().get(sessionId, key.id) : undefined,
-    });
+      const socket = makeWASocket({
+        version,
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, baileysLogger as never),
+        },
+        browser: Browsers.ubuntu('Chrome'),
+        logger: baileysLogger as never,
+        // printQRInTerminal foi deprecado na 7.0.0-rc14 e só emite aviso: o QR já é lido
+        // do evento connection.update e publicado via SESSION_QR_UPDATED.
+        markOnlineOnConnect: false,
+        // Cada QR vive 2 min (padrão da lib: 60 s no 1º e 20 s nos seguintes). O painel conta o
+        // mesmo tempo (QR_TTL_MS em app/src/features/sessions/utils.ts): mudar aqui = mudar lá.
+        qrTimeout: QR_TIMEOUT_MS,
+        syncFullHistory: env.BAILEYS_SYNC_FULL_HISTORY,
+        // Responde o pedido de reenvio de criptografia da nossa mídia e do texto com prévia de link
+        // (aparelho de grupo que não decifrou). Texto puro, reação e o resto seguem undefined.
+        getMessage: async (key: proto.IMessageKey): Promise<proto.IMessage | undefined> =>
+          key.id ? sentMediaCache().get(sessionId, key.id) : undefined,
+      });
 
-    const epoch = this.registry.nextEpoch();
-    this.registry.set(sessionId, { socket, tenantId, epoch, reconnectAttempt: attempt });
+      const epoch = this.registry.nextEpoch();
+      this.registry.set(sessionId, { socket, tenantId, epoch, reconnectAttempt: attempt });
+      return { socket, state, saveCreds, epoch };
+    });
     internalEventBus.emit('SESSION_CONNECTING', { type: 'SESSION_CONNECTING', sessionId, tenantId });
 
     /** True once this socket has been replaced by a newer one — its events must be ignored. */

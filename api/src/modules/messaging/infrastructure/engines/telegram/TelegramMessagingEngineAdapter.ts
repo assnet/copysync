@@ -160,6 +160,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   private readonly registry = new TelegramSessionRegistry();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
   private readonly suspended = new Map<string, string>();
+  /** Sessões entre `leaseGate.acquire` e `registry.set` (contagem): a renovação as trata como locais. */
+  private readonly opening = new Map<string, number>();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
   /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
@@ -415,31 +417,35 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       telegramLogger.warn({ sessionId, tenantId }, 'lease da sessão com outro processo; cliente não aberto');
       throw new SessionLeaseHeldError(sessionId);
     }
-    const existing = this.registry.get(sessionId);
-    if (existing) await this.teardown(sessionId, existing);
+    // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
+    const entry = await this.whileOpening(sessionId, async () => {
+      const existing = this.registry.get(sessionId);
+      if (existing) await this.teardown(sessionId, existing);
 
-    const saved = savedSession === undefined ? await this.auth.load(sessionId, tenantId) : savedSession;
-    const client = new TelegramClient(new StringSession(saved ?? ''), this.config.apiId, this.config.apiHash, {
-      connectionRetries: 5,
-      autoReconnect: true,
-      baseLogger: new Logger(LogLevel.ERROR),
-      deviceModel: 'CopySync Web',
-      appVersion: '1.0',
+      const saved = savedSession === undefined ? await this.auth.load(sessionId, tenantId) : savedSession;
+      const client = new TelegramClient(new StringSession(saved ?? ''), this.config.apiId, this.config.apiHash, {
+        connectionRetries: 5,
+        autoReconnect: true,
+        baseLogger: new Logger(LogLevel.ERROR),
+        deviceModel: 'CopySync Web',
+        appVersion: '1.0',
+      });
+      const entry: TelegramSessionEntry = {
+        client,
+        tenantId,
+        epoch: this.registry.nextEpoch(),
+        pending: null,
+        latestQr: null,
+        phone: null,
+        sentIds: new Set(),
+      };
+      this.registry.set(sessionId, entry);
+      return entry;
     });
-    const entry: TelegramSessionEntry = {
-      client,
-      tenantId,
-      epoch: this.registry.nextEpoch(),
-      pending: null,
-      latestQr: null,
-      phone: null,
-      sentIds: new Set(),
-    };
-    this.registry.set(sessionId, entry);
     await this.updateStatus(sessionId, tenantId, 'CONNECTING');
     internalEventBus.emit('SESSION_CONNECTING', { type: 'SESSION_CONNECTING', sessionId, tenantId });
     try {
-      await client.connect();
+      await entry.client.connect();
     } catch (err) {
       this.registry.delete(sessionId);
       await this.updateStatus(sessionId, tenantId, 'FAILED');
@@ -951,7 +957,21 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   listLocalSessionIds(): string[] {
-    return this.registry.all().map(([id]) => id);
+    const ids = new Set(this.registry.all().map(([id]) => id));
+    for (const id of this.opening.keys()) ids.add(id);
+    return [...ids];
+  }
+
+  /** Marca a sessão como "abrindo" enquanto `open` roda (sai no fim, com sucesso ou falha). */
+  private async whileOpening<T>(sessionId: string, open: () => Promise<T>): Promise<T> {
+    this.opening.set(sessionId, (this.opening.get(sessionId) ?? 0) + 1);
+    try {
+      return await open();
+    } finally {
+      const n = (this.opening.get(sessionId) ?? 1) - 1;
+      if (n > 0) this.opening.set(sessionId, n);
+      else this.opening.delete(sessionId);
+    }
   }
 
   /** Encerra todos os clientes (shutdown do processo). */
