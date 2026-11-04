@@ -124,9 +124,10 @@ export class PrismaSessionRepository implements ISessionRepository {
 
   async markConnectRequested(id: string, tenantId: string): Promise<void> {
     // COALESCE atômico: só grava quando ainda não há pedido (preserva o horário original).
+    // Pedido novo zera o backoff de adoção (ADOPT-04); pedido vivo não mexe no contador.
     await prisma.session.updateMany({
       where: { id, tenantId, deletedAt: null, connectRequestedAt: null },
-      data: { connectRequestedAt: new Date() },
+      data: { connectRequestedAt: new Date(), adoptFailures: 0, nextAdoptAt: null },
     });
   }
 

@@ -51,3 +51,30 @@ describe('findActiveSessionsWithoutLiveLease', () => {
     expect(s).toMatchObject({ id, tenantId, name: 'mapeada', status: 'CONNECTED' });
   });
 });
+
+describe('markConnectRequested — backoff de adoção (ADOPT-04)', () => {
+  const read = async (id: string) =>
+    prisma.session.findUniqueOrThrow({ where: { id }, select: { connectRequestedAt: true, adoptFailures: true, nextAdoptAt: true } });
+
+  it('pedido nulo → grava pedido e zera contador e próxima tentativa', async () => {
+    const id = await newSession({ status: 'FAILED', adoptFailures: 5, nextAdoptAt: new Date(Date.now() + 60_000) });
+    await repo.markConnectRequested(id, tenantId);
+    const s = await read(id);
+    expect(s.connectRequestedAt).toBeInstanceOf(Date);
+    expect(s).toMatchObject({ adoptFailures: 0, nextAdoptAt: null });
+  });
+
+  it('pedido vivo → horário, contador e próxima tentativa intactos', async () => {
+    const requestedAt = new Date(Date.now() - 120_000);
+    const nextAdoptAt = new Date(Date.now() + 60_000);
+    const id = await newSession({ connectRequestedAt: requestedAt, adoptFailures: 3, nextAdoptAt });
+    await repo.markConnectRequested(id, tenantId);
+    expect(await read(id)).toEqual({ connectRequestedAt: requestedAt, adoptFailures: 3, nextAdoptAt });
+  });
+
+  it('outro tenant não é afetado', async () => {
+    const id = await newSession({ adoptFailures: 2 });
+    await repo.markConnectRequested(id, 'outro-tenant');
+    expect(await read(id)).toEqual({ connectRequestedAt: null, adoptFailures: 2, nextAdoptAt: null });
+  });
+});

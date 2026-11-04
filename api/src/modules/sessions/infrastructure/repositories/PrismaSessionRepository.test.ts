@@ -78,6 +78,7 @@ describe('PrismaSessionRepository.markConnectRequested', () => {
     const [{ where, data: set }] = db.state.updates;
     expect(where).toEqual({ id: 's1', tenantId: 't1', deletedAt: null, connectRequestedAt: null });
     expect(set.connectRequestedAt).toBeInstanceOf(Date);
+    expect(set).toMatchObject({ adoptFailures: 0, nextAdoptAt: null });
   });
 
   it('pedido já existente (zero linhas) não lança nem sobrescreve', async () => {
