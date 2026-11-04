@@ -96,6 +96,7 @@ export class PrismaSessionRepository implements ISessionRepository {
         ...(update.lastDisconnectedAt !== undefined && {
           lastDisconnectedAt: update.lastDisconnectedAt,
         }),
+        ...(update.clearConnectRequest === true && { connectRequestedAt: null }),
       },
     });
 
@@ -103,6 +104,14 @@ export class PrismaSessionRepository implements ISessionRepository {
 
     const raw = await prisma.session.findUniqueOrThrow({ where: { id } });
     return PrismaSessionMapper.toDomain(raw);
+  }
+
+  async markConnectRequested(id: string, tenantId: string): Promise<void> {
+    // COALESCE atômico: só grava quando ainda não há pedido (preserva o horário original).
+    await prisma.session.updateMany({
+      where: { id, tenantId, deletedAt: null, connectRequestedAt: null },
+      data: { connectRequestedAt: new Date() },
+    });
   }
 
   async updatePhone(id: string, tenantId: string, phone: string): Promise<Session> {

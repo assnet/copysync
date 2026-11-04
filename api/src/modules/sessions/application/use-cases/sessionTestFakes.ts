@@ -32,7 +32,9 @@ export function makeSessionRepo(session: Session | null = makeSession()) {
     findById: vi.fn(async () => session),
     updateStatus: vi.fn(async () => session),
     createWithinLimit: vi.fn(async (data) => makeSession({ ...data })),
-  } as unknown as ISessionRepository & Record<'create' | 'findById' | 'updateStatus' | 'createWithinLimit', ReturnType<typeof vi.fn>>;
+    markConnectRequested: vi.fn(async () => undefined),
+  } as unknown as ISessionRepository &
+    Record<'create' | 'findById' | 'updateStatus' | 'createWithinLimit' | 'markConnectRequested', ReturnType<typeof vi.fn>>;
 }
 
 export function makeAuditRepo() {

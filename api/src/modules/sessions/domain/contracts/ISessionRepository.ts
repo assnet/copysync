@@ -13,6 +13,8 @@ export interface SessionStatusUpdate {
   status: SessionStatus;
   lastConnectedAt?: Date;
   lastDisconnectedAt?: Date;
+  /** true grava `connectRequestedAt = null` na mesma escrita do status (desconectar/sair/excluir). */
+  clearConnectRequest?: boolean;
 }
 
 /** Limite do plano para sessões não excluídas do tenant, contadas por engine (canal). */
@@ -46,6 +48,11 @@ export interface ISessionRepository {
    * Callers must pre-validate tenantId ownership via findById.
    */
   updateStatus(id: string, tenantId: string, update: SessionStatusUpdate): Promise<Session>;
+  /**
+   * Marca pedido de conexão ativo: `connectRequestedAt = COALESCE(atual, now())`.
+   * Idempotente (não sobrescreve pedido anterior); filtra `tenantId` e ignora sessão excluída.
+   */
+  markConnectRequested(id: string, tenantId: string): Promise<void>;
   updatePhone(id: string, tenantId: string, phone: string): Promise<Session>;
   updateExternalRef(id: string, tenantId: string, externalRef: string): Promise<Session>;
   softDelete(id: string, tenantId: string): Promise<void>;
