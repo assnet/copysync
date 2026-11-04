@@ -29,6 +29,11 @@ export interface UpsertAffiliateSessionInput {
   affiliateTag?: string;
   /** Relógio do navegador: só vai para a auditoria; `sessionSyncedAt` usa o do servidor. */
   capturedAt: string;
+  /**
+   * Resultado da checagem da sessão na loja feita no sync. VALID libera a loja mesmo com o
+   * mesmo token; REJECTED grava a rejeição; ausente (loja fora do ar) = só token novo libera.
+   */
+  sessionCheck?: 'VALID' | 'REJECTED';
 }
 
 /** Sessão do marketplace decifrada — nunca sai por HTTP. */

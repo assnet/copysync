@@ -108,4 +108,37 @@ describe('UpsertAffiliateSessionUseCase — rejeição', () => {
     await fresh.useCase.execute(input());
     expect(fresh.repo.upsertSession.mock.calls[0]![0]).toMatchObject({ clearRejection: true });
   });
+
+  const rejectedRecord = () => ({
+    ...record(cipher.encrypt(JSON.stringify({ cookies: { ssid: 'ssid-abc' } }), AAD)),
+    rejectedAt: new Date('2026-11-01T00:00:00.000Z'),
+    rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED',
+  });
+
+  it('loja aceitou (VALID): libera mesmo com o mesmo token', async () => {
+    const d = makeDeps(rejectedRecord());
+    await d.useCase.execute(input({ sessionCheck: 'VALID' }));
+    const call = d.repo.upsertSession.mock.calls[0]![0];
+    expect(call).toMatchObject({ clearRejection: true });
+    expect(call.rejectWith).toBeUndefined();
+  });
+
+  it('loja recusou (REJECTED): grava a rejeição e audita, mesmo com token novo', async () => {
+    const d = makeDeps(record(cipher.encrypt(JSON.stringify({ cookies: { ssid: 'old' } }), AAD)));
+    await d.useCase.execute(input({ sessionCheck: 'REJECTED' }));
+    expect(d.repo.upsertSession.mock.calls[0]![0]).toMatchObject({
+      clearRejection: false,
+      rejectWith: { at: NOW, code: 'AFFILIATE_CREDENTIAL_REJECTED' },
+    });
+    expect(d.audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_CREDENTIAL_REJECTED' }));
+  });
+
+  it('já recusada e loja recusa de novo: mantém a data original, sem nova auditoria de recusa', async () => {
+    const d = makeDeps(rejectedRecord());
+    await d.useCase.execute(input({ sessionCheck: 'REJECTED' }));
+    const call = d.repo.upsertSession.mock.calls[0]![0];
+    expect(call).toMatchObject({ clearRejection: false });
+    expect(call.rejectWith).toBeUndefined();
+    expect(d.audit.create).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_CREDENTIAL_REJECTED' }));
+  });
 });

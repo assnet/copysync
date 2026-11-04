@@ -114,9 +114,29 @@ e audita `AFFILIATE_CREDENTIAL_REJECTED` (só `provider` e `code`). A partir da�
 `SKIPPED/CREDENTIAL_REJECTED` sem rede. O gerador segue usando `execute` (não muda).
 
 Quem limpa: `UpsertAffiliateCredentialUseCase` quando o que foi recusado muda (secret novo ou ID público diferente;
-ML pelo painel só troca etiqueta e **não** limpa); `UpsertAffiliateSessionUseCase` só com token novo (sync do mesmo
-token pela extensão mantém); `clearSession` zera junto. `setStatus` (reativar) **não** limpa. Rate limit e API fora
+ML pelo painel só troca etiqueta e **não** limpa); `UpsertAffiliateSessionUseCase` conforme a checagem do sync (abaixo);
+`clearSession` zera junto. `setStatus` (reativar) **não** limpa. Rate limit e API fora
 não marcam rejeição. O presenter expõe `rejectedAt`/`rejectedCode`; o card mostra "Recusada" com a dica da loja.
+
+### Checagem da sessão no sync (`sessionCheck`)
+
+O `PUT /extension/marketplaces/ml/session` já chama `getActiveTag`, que faz o bootstrap no ML com os cookies
+recebidos. O resultado vira `sessionCheck` do `UpsertAffiliateSessionUseCase`:
+
+| Bootstrap no ML | `sessionCheck` | Rejeição |
+|---|---|---|
+| passou (com ou sem etiqueta) | `VALID` | limpa, **mesmo com o mesmo token** |
+| 401/403 ou redirect para login | `REJECTED` | grava `AFFILIATE_CREDENTIAL_REJECTED` e audita; se já recusada, mantém a data original |
+| fora do ar, timeout, rate limit | ausente | só token novo limpa (regra antiga) |
+
+Por quê: o navegador pode seguir logado com o **mesmo** `ssid` que a loja recusou pelo servidor. Com a regra
+antiga (só token novo limpa), sincronizar não tirava o "Recusada" nunca; o usuário precisava apagar a credencial.
+A resposta do PUT traz `sessionRejected`; o painel lê `rejectedAt` da credencial após o sync e mostra
+`errors.mlSessionRejected`.
+
+Mensagens do painel (`features/extension/strings.ts`): cada `SyncErrorCode` da extensão tem a sua.
+Só `ml_not_logged` fala em login no ML; falha desconhecida vira `syncFailed` (servidor). Se a extensão desistir
+(timeout) mas o `sessionSyncedAt` já for posterior ao clique (relógio `serverNow()`), o painel trata como sucesso.
 
 Testes com banco: `api/scripts/postgres-descartavel.sh start` → `INTEGRATION_DATABASE_URL=… pnpm -C api test:int`
 (`*.int.test.ts`, fora do `pnpm test` e do CI; gate manual de release) → `stop`.
@@ -130,7 +150,9 @@ Testes com banco: `api/scripts/postgres-descartavel.sh start` → `INTEGRATION_D
 - Não cifrar o `publicIdentifier`. Ele aparece na URL gerada, e cifrá-lo impediria buscas.
 - Não acessar Prisma fora de `infrastructure/`, e não criar consulta sem `tenantId`.
 - Nunca gravar em `rejectedCode` (nem na auditoria) corpo da resposta da loja, cookie ou chave: só o código interno.
-- Não limpar a rejeição ao reativar (`setStatus`) nem em sync do mesmo token: a chave recusada continua a mesma.
+- Não limpar a rejeição ao reativar (`setStatus`), nem em sync do mesmo token **sem** checagem `VALID` da loja.
+- Não reaproveitar `syncFailed` para "verifique o login": a extensão já informa se há login (`ml.status`); culpar o
+  login em erro de servidor faz o usuário refazer um login que está certo.
 
 ## Smoke (T8, executado em 2026-10-22, banco local)
 

@@ -96,6 +96,7 @@ export function AffiliateCredentialsPage() {
             open
             spec={editingEntry.spec}
             onClose={() => { setEditing(null); void reload(); }}
+            onSynced={() => { void reload(); }}
           />
         ) : (
           <AffiliateCredentialDialog

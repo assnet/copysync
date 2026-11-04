@@ -12,12 +12,18 @@ import { affiliateCipherAad } from './affiliateCipherAad';
 /** Só o Mercado Livre depende de sessão logada para gerar link. */
 const SESSION_PROVIDERS = new Set(['MERCADO_LIVRE']);
 
+/** Mesmo código gravado pelo monitor quando a loja recusa (`BuildTenantAffiliateLinkUseCase`). */
+const SESSION_REJECTED_CODE = 'AFFILIATE_CREDENTIAL_REJECTED';
+
 /**
  * Grava a sessão do marketplace capturada pela extensão (renovada a cada ~30 min).
  *
  * - Tag inválida é descartada, nunca recusa a sessão (a renovação não pode travar).
  * - Tag só preenche ID vazio: o valor do painel sempre vence.
  * - Audita só quando o token muda; blob atual indecifrável conta como mudança (regrava, sem 500).
+ * - Rejeição: checagem da loja no sync decide (VALID libera, REJECTED recusa). Sem checagem,
+ *   só token novo libera — o navegador pode seguir logado com o mesmo token que a loja recusou
+ *   no servidor, então "mesmo token" sozinho nunca prova nada.
  */
 export class UpsertAffiliateSessionUseCase {
   constructor(
@@ -43,15 +49,27 @@ export class UpsertAffiliateSessionUseCase {
     const changed = this.tokenChanged(existing?.session ?? null, aad, input.cookies.ssid ?? '', cipher);
 
     const payload: AffiliateSessionSecret = { cookies: input.cookies, csrf: input.csrf };
+    const now = this.now();
+    // Recusa já gravada mantém a data original ("recusada desde")
+    const newlyRejected = input.sessionCheck === 'REJECTED' && !existing?.rejectedAt;
     const credential = await this.repo.upsertSession({
       tenantId: input.tenantId,
       provider: input.provider,
       session: cipher.encrypt(JSON.stringify(payload), aad),
       ...(tag && { publicIdentifierIfEmpty: tag }),
-      syncedAt: this.now(),
-      // Token novo libera a loja de novo; sync do mesmo token (alarme/startup) mantém a rejeição
-      clearRejection: changed,
+      syncedAt: now,
+      clearRejection: input.sessionCheck === 'VALID' || (input.sessionCheck === undefined && changed),
+      ...(newlyRejected && { rejectWith: { at: now, code: SESSION_REJECTED_CODE } }),
     });
+
+    if (newlyRejected) {
+      await this.auditRepo.create({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        action: 'AFFILIATE_CREDENTIAL_REJECTED',
+        meta: { provider: input.provider, code: SESSION_REJECTED_CODE, source: 'session-sync' },
+      });
+    }
 
     if (changed) {
       await this.auditRepo.create({

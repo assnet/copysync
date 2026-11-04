@@ -3,6 +3,7 @@ import { sendOp, detectExtension, isExtensionApiAvailable, getCachedExtId, clear
 import { extensionApi, type MlCredentialStatus } from '../services/extensionApi';
 import type { HandshakePayload, MlStatusPayload, MlSyncSessionPayload, ChannelError } from '../contract/channel';
 import { extensionStrings } from '../strings';
+import { serverNow } from '@/services/serverClock';
 
 export class ExtensionSyncError extends Error {
   constructor(readonly code: string) {
@@ -11,12 +12,28 @@ export class ExtensionSyncError extends Error {
   }
 }
 
+/** Código da extensão (`SyncErrorCode`) ou do painel → mensagem. Só `ml_not_logged` fala de login no ML. */
+const SYNC_ERROR_MESSAGES: Record<string, string> = {
+  forbidden: extensionStrings.errors.forbidden,
+  FORBIDDEN: extensionStrings.errors.forbidden,
+  NEEDS_LOGIN: extensionStrings.errors.needsLogin,
+  session_expired: extensionStrings.errors.needsLogin,
+  plan_unavailable: extensionStrings.errors.planRequired,
+  consent_required: extensionStrings.errors.consentRequired,
+  ml_not_logged: extensionStrings.errors.mlNotLogged,
+  ml_account_mismatch: extensionStrings.errors.mlAccountMismatch,
+  ml_session_rejected: extensionStrings.errors.mlSessionRejected,
+  api_unreachable: extensionStrings.errors.apiUnreachable,
+  rate_limited: extensionStrings.errors.rateLimited,
+};
+
 export function syncErrorMessage(error: unknown): string {
   const code = error instanceof ExtensionSyncError ? error.code : '';
-  if (code === 'forbidden' || code === 'FORBIDDEN') return extensionStrings.errors.forbidden;
-  if (code === 'NEEDS_LOGIN' || code === 'session_expired') return extensionStrings.errors.needsLogin;
-  return extensionStrings.errors.syncFailed;
+  return SYNC_ERROR_MESSAGES[code] ?? extensionStrings.errors.syncFailed;
 }
+
+/** Folga entre o clique e o `sessionSyncedAt` do servidor (relógio do servidor dos dois lados). */
+const SYNC_SAVED_TOLERANCE_MS = 5_000;
 
 export type ExtensionStatus =
   | 'unavailable'
@@ -78,20 +95,22 @@ export function useExtension() {
       }
     }
 
-    let mlCredential: MlCredentialStatus | null = null;
+    // undefined = falha ao consultar: mantém o último valor em vez de mostrar "não sincronizada"
+    let mlCredential: MlCredentialStatus | null | undefined = null;
     if (isConnected) {
-      mlCredential = await extensionApi.getMlCredentialStatus();
+      mlCredential = await extensionApi.getMlCredentialStatus().catch(() => undefined);
     }
 
-    if (!mountedRef.current) return;
-    setState({
+    if (!mountedRef.current) return mlCredential;
+    setState(prev => ({
       status: isConnected ? 'connected' : 'detected',
       handshake,
       mlStatus,
-      mlCredential,
+      mlCredential: mlCredential === undefined ? prev.mlCredential : mlCredential,
       error: null,
       loading: false,
-    });
+    }));
+    return mlCredential;
   }, []);
 
   const connect = useCallback(async (installationId: string, extVersion: string, consent: boolean) => {
@@ -105,11 +124,17 @@ export function useExtension() {
   const syncMl = useCallback(async () => {
     // Clicking sync is explicit consent; also restores it after "Desconectar Mercado Livre".
     if (installationId) await extensionApi.grantMlConsent(installationId);
+    const startedAt = serverNow();
     const result = await sendOp('ml.syncSession');
-    await refresh();
+    const cred = await refresh();
     if (!result.ok) throw new ExtensionSyncError(result.error.code);
     const payload = (result as { ok: true; payload: MlSyncSessionPayload }).payload;
-    if (payload.result === 'FAILED') throw new ExtensionSyncError(payload.errorCode ?? 'unknown');
+    // A extensão pode desistir (timeout) depois de o servidor já ter gravado: vale o que está salvo
+    const savedNow = !!cred?.lastSyncAt
+      && new Date(cred.lastSyncAt).getTime() >= startedAt - SYNC_SAVED_TOLERANCE_MS;
+    if (payload.result === 'FAILED' && !savedNow) throw new ExtensionSyncError(payload.errorCode ?? 'unknown');
+    // Sessão gravada, mas a loja recusou no servidor: monitoramento segue pausado
+    if (savedNow && cred?.rejectedAt) throw new ExtensionSyncError('ml_session_rejected');
     return payload;
   }, [refresh, installationId]);
 

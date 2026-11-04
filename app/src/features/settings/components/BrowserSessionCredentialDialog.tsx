@@ -21,6 +21,8 @@ interface Props {
   open: boolean;
   spec: AffiliateProviderSpec;
   onClose: () => void;
+  /** Após cada tentativa de sync: a página recarrega o card sem esperar o diálogo fechar. */
+  onSynced?: () => void;
 }
 
 /**
@@ -28,7 +30,7 @@ interface Props {
  * Substitui o AffiliateCredentialDialog genérico: embute o wizard da extensão e exibe
  * status de sincronização ML ao invés do campo de etiqueta manual.
  */
-export function BrowserSessionCredentialDialog({ open, spec, onClose }: Props) {
+export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }: Props) {
   const ext = useExtension();
   const navigate = useNavigate();
   const [wizardDone, setWizardDone] = useState(false);
@@ -44,8 +46,9 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose }: Props) {
       setSyncError(syncErrorMessage(err));
     } finally {
       setSyncing(false);
+      onSynced?.();
     }
-  }, [ext]);
+  }, [ext, onSynced]);
 
   const isConnected = ext.status === 'connected';
   const hasSession = !!ext.mlCredential?.lastSyncAt;

@@ -9,6 +9,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.57.1 + app 0.76.1 — Mercado Livre "Recusada" com navegador logado
+
+Doc: `docs/integracoes-credenciais-afiliado.md` (seção "Checagem da sessão no sync").
+
+#### api/
+
+- **`extension.routes.ts`** — `PUT /extension/marketplaces/ml/session` usa o bootstrap de `getActiveTag` como checagem da sessão no ML (`sessionCheck` VALID/REJECTED; loja fora do ar = ausente) e devolve `sessionRejected`. Causa raiz: a rejeição só limpava com token novo; o navegador seguia logado com o mesmo `ssid` que o ML recusou pelo servidor e o card ficava "Recusada" até apagar a credencial.
+- **`UpsertAffiliateSessionUseCase.ts`** — VALID limpa a rejeição mesmo com o mesmo token; REJECTED grava `AFFILIATE_CREDENTIAL_REJECTED` e audita (mantém a data se já recusada); sem checagem, regra antiga.
+- **`AffiliateCredentialRecords.ts`** + **`PrismaAffiliateCredentialRepository.ts`** + **`AffiliateCredentialDTO.ts`** — `rejectWith` no upsert de sessão e `sessionCheck` no input.
+
+#### app/
+
+- **`useExtension.ts`** — mensagem por código de erro da extensão; antes todo erro virava "Verifique se está logado no Mercado Livre", mesmo com a extensão mostrando "Logado". Sync que a extensão deu por falha (timeout) mas o servidor gravou após o clique (`serverNow()`) conta como sucesso; sessão gravada e recusada pela loja vira `ml_session_rejected`. Falha ao consultar a credencial mantém o último valor em vez de mostrar "Ainda não sincronizada".
+- **`extensionApi.ts`** — `getMlCredentialStatus` traz `rejectedAt` e propaga erro (não devolve `null` em falha).
+- **`strings.ts`** (extension) — textos `mlNotLogged`, `mlSessionRejected`, `apiUnreachable`, `rateLimited`, `consentRequired`, `mlAccountMismatch`; `syncFailed` passa a falar do servidor.
+- **`BrowserSessionCredentialDialog.tsx`** + **`AffiliateCredentialsPage.tsx`** — `onSynced` recarrega o card logo após a sync, sem esperar o diálogo fechar.
+
 ### Added — app 0.63.0 — produto "Lotar Grupos" no menu
 
 - **`features/navigation/model.ts`** + **`strings.ts`** — produto Lotar Grupos (`group-filler`, ícone `UserRoundPlus`) como sexto item de Produtos, "em breve"; roadmap e doc de navegação atualizados.

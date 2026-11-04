@@ -30,6 +30,8 @@ export interface UpsertAffiliateSessionRecord {
   session: EncryptedBlob;
   publicIdentifierIfEmpty?: string;
   syncedAt: Date;
-  /** true = token novo: zera a rejeição. Sync do mesmo token mantém (senão cada alarme liberaria a loja). */
+  /** true = loja aceitou a sessão agora (ou token novo sem checagem): zera a rejeição. */
   clearRejection?: boolean;
+  /** Loja recusou a sessão na checagem do sync: grava a rejeição. Exclusivo com `clearRejection`. */
+  rejectWith?: { at: Date; code: string };
 }

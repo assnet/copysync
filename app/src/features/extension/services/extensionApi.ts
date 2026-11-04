@@ -15,6 +15,8 @@ export interface MlCredentialStatus {
   sessionInvalidAt: string | null;
   publicIdentifier: string | null;
   lastSyncAt: string | null;
+  /** Loja recusou a sessão (no sync ou no monitor): loja pausada até um sync aceito. */
+  rejectedAt: string | null;
 }
 
 export const extensionApi = {
@@ -47,29 +49,28 @@ export const extensionApi = {
     await apiClient.delete(`/extension/sessions/${id}`);
   },
 
+  /** Lança em falha de rede/HTTP: quem chama decide (nunca confundir com "sem credencial"). */
   async getMlCredentialStatus(): Promise<MlCredentialStatus | null> {
-    try {
-      const { data } = await apiClient.get('/integrations/affiliate-credentials');
-      const items = (data.data ?? []) as Array<{
-        provider: string;
-        status: 'ACTIVE' | 'INACTIVE';
-        hasSession: boolean;
-        publicIdentifier: string | null;
-        sessionSyncedAt: string | null;
-      }>;
-      const ml = items.find(i => i.provider === 'MERCADO_LIVRE');
-      if (!ml) return null;
-      return {
-        provider: ml.provider,
-        status: ml.status,
-        hasSession: ml.hasSession,
-        sessionInvalidAt: null,
-        publicIdentifier: ml.publicIdentifier,
-        lastSyncAt: ml.sessionSyncedAt,
-      };
-    } catch {
-      return null;
-    }
+    const { data } = await apiClient.get('/integrations/affiliate-credentials');
+    const items = (data.data ?? []) as Array<{
+      provider: string;
+      status: 'ACTIVE' | 'INACTIVE';
+      hasSession: boolean;
+      publicIdentifier: string | null;
+      sessionSyncedAt: string | null;
+      rejectedAt: string | null;
+    }>;
+    const ml = items.find(i => i.provider === 'MERCADO_LIVRE');
+    if (!ml) return null;
+    return {
+      provider: ml.provider,
+      status: ml.status,
+      hasSession: ml.hasSession,
+      sessionInvalidAt: null,
+      publicIdentifier: ml.publicIdentifier,
+      lastSyncAt: ml.sessionSyncedAt,
+      rejectedAt: ml.rejectedAt ?? null,
+    };
   },
 
   async disconnectMl(): Promise<void> {

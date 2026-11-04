@@ -96,13 +96,16 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
   async upsertSession(input: UpsertAffiliateSessionRecord): Promise<AffiliateCredential> {
     const session = Mapper.sessionColumns(input.session, input.syncedAt);
     const key = { tenantId: input.tenantId, provider: input.provider };
+    const rejection = input.rejectWith
+      ? { rejectedAt: input.rejectWith.at, rejectedCode: input.rejectWith.code }
+      : input.clearRejection ? REJECTION_CLEARED : {};
 
     // (1) Só as colunas de sessão; a linha nasce com a tag da extensão, se houver.
     let raw = await withUniqueRetry(() =>
       prisma.affiliateCredential.upsert({
         where: { tenantId_provider: key },
-        create: { ...key, publicIdentifier: input.publicIdentifierIfEmpty ?? null, ...session, rejectedAt: null, rejectedCode: null },
-        update: { ...session, ...(input.clearRejection ? REJECTION_CLEARED : {}) },
+        create: { ...key, publicIdentifier: input.publicIdentifierIfEmpty ?? null, ...session, ...REJECTION_CLEARED, ...rejection },
+        update: { ...session, ...rejection },
       }),
     );
 

@@ -12,6 +12,7 @@ import { UpsertAffiliateSessionUseCase } from '../../../integrations/application
 import { ClearAffiliateSessionUseCase } from '../../../integrations/application/use-cases/ClearAffiliateSessionUseCase';
 import { PrismaAffiliateCredentialRepository } from '../../../integrations/infrastructure/repositories/PrismaAffiliateCredentialRepository';
 import { MercadoLivreAffiliateClient } from '../../../campaigns/infrastructure/http/MercadoLivreAffiliateClient';
+import { AffiliateCredentialRejectedError } from '../../../../shared/errors/internal/OfferErrors';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { SecretCipherFactory } from '../../../../shared/security/SecretCipherFactory';
 import { logger } from '../../../../shared/logger/logger';
@@ -126,7 +127,10 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
               success: { type: 'boolean' },
               data: {
                 type: 'object',
-                properties: { affiliateTag: { type: ['string', 'null'] } },
+                properties: {
+                  affiliateTag: { type: ['string', 'null'] },
+                  sessionRejected: { type: 'boolean' },
+                },
               },
             },
           },
@@ -150,10 +154,15 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Tag is best-effort: an ML outage must never block storing the session.
+      // The same call checks the session on ML: it decides the store rejection
+      // (the browser may stay logged in with a token ML refuses server-side).
       let affiliateTag: string | null = null;
+      let sessionCheck: 'VALID' | 'REJECTED' | undefined;
       try {
         affiliateTag = await mlClient.getActiveTag(cookies);
+        sessionCheck = 'VALID';
       } catch (err) {
+        if (err instanceof AffiliateCredentialRejectedError) sessionCheck = 'REJECTED';
         log.warn({ reason: (err as Error)?.name }, 'ML active tag lookup failed');
       }
 
@@ -164,9 +173,10 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
         cookies,
         ...(affiliateTag && { affiliateTag }),
         capturedAt: body.capturedAt,
+        ...(sessionCheck && { sessionCheck }),
       });
 
-      return reply.send({ success: true, data: { affiliateTag } });
+      return reply.send({ success: true, data: { affiliateTag, sessionRejected: sessionCheck === 'REJECTED' } });
     },
   );
 
