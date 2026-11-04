@@ -44,10 +44,11 @@ Regras comuns a toda task:
 | F2 | Fence por erro de banco preserva chaves e se recupera | T23 | P | ✅ 45afcd8 |
 | F3 | Socket em abertura conta como local na renovação | F2 | | ✅ abadce9 |
 | F4 | Migration em UTC e `renew` ignora sessão apagada | T23 | P | ✅ fda7636 |
-| F5 | Abertura cancelável: abort/suspend durante a abertura | F3 | P | ⏳ |
-| F6 | Chaves órfãs só voltam com a mesma versão | F3 | P | ⏳ |
-| F7 | Resume sem `release` e com nova tentativa | F3 | P | ⏳ |
-| F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ⏳ |
+| F5 | Abertura cancelável: abort/suspend durante a abertura | F3 | P | ✅ f7c0bff |
+| F6 | Chaves órfãs só voltam com a mesma versão | F3 | P | ✅ 7691e65 |
+| F7 | Resume sem `release` e com nova tentativa | F3 | P | ✅ 14527c4 |
+| F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ✅ 557f8c6 |
+| F9 | Resume no adapter mantém suspensa em erro | F8 | | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -506,6 +507,16 @@ No mesmo contrato, a porta estreita `ISessionLeaseGate { acquire(sessionId): Pro
 **Tests**: unit + int
 **Gate**: unit + int + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): shutdown espera reconciliação e update condicional`
+
+### F9: Resume no adapter mantém suspensa em erro
+
+**What**: `BaileysMessagingEngineAdapter.resumeSession` e `TelegramMessagingEngineAdapter.resumeSession` fazem `suspended.delete` antes de reabrir; se `fetchLatestBaileysVersion`/`auth.load`/connect lançar, a próxima rodada da F7 recebe `false` ("não estava suspensa") e a marca some: retry real só existe para erro de banco no acquire. Correção: no `catch` do reopen, devolver o tenant ao mapa `suspended` e relançar (o use case da F7 conta a tentativa). Sucesso ou lease de outro dono continuam removendo.
+**Where**: `BaileysMessagingEngineAdapter.ts`, `TelegramMessagingEngineAdapter.ts` (+ `.socketControl.test.ts`/`.lease.test.ts`)
+**Depends on**: F8
+**Done when**: testes: erro no reopen mantém suspensa e relança; 2ª chamada reabre; `SessionLeaseHeldError` limpa
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): resume que falha mantém a sessão suspensa`
 
 ## Diagram-Definition Cross-Check
 
