@@ -5,6 +5,7 @@ import type { SessionStatus } from '../../domain/enums/SessionStatus';
 import {
   SessionNotFoundError,
   InvalidSessionStateError,
+  SessionLeaseHeldError,
 } from '../../../../shared/errors/internal/SessionErrors';
 import { markConnectRequested } from '../services/markConnectRequested';
 
@@ -49,7 +50,17 @@ export class ConnectSessionUseCase {
     });
 
     // Initiate real connection — QR/status arrive asynchronously via InternalEventBus
-    await this.engine.connectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
+    try {
+      await this.engine.connectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
+    } catch (err) {
+      // Lease de outro processo: o status é do dono; desfaz o CONNECTING e o 503 sobe
+      if (err instanceof SessionLeaseHeldError) {
+        await this.sessionRepo
+          .updateStatus(input.sessionId, input.tenantId, { status: session.status })
+          .catch(() => undefined);
+      }
+      throw err;
+    }
 
     return { sessionId: input.sessionId, status: 'CONNECTING' };
   }

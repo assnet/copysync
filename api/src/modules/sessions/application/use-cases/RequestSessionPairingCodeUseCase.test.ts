@@ -5,6 +5,7 @@ import {
   SessionAlreadyConnectedError,
   SessionNotFoundError,
   SessionPhoneInvalidError,
+  SessionLeaseHeldError,
 } from '../../../../shared/errors/internal/SessionErrors';
 
 const input = { sessionId: 's1', tenantId: 't1', userId: 'u1' };
@@ -113,5 +114,26 @@ describe('RequestSessionPairingCodeUseCase', () => {
       await expect(uc.execute(input)).rejects.toThrow('db');
       expect(engine.requestPairingCode).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('RequestSessionPairingCodeUseCase — lease de outro processo', () => {
+  it('restaura o status anterior, mantém connectRequestedAt e propaga o 503', async () => {
+    const { repo, engine, uc } = build(makeSession({ declaredPhone: '5511987654321', status: 'DISCONNECTED' }));
+    engine.requestPairingCode.mockRejectedValueOnce(new SessionLeaseHeldError('s1'));
+    const err = await uc.execute(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SessionLeaseHeldError);
+    expect((err as SessionLeaseHeldError).statusCode).toBe(503);
+    expect(repo.updateStatus).toHaveBeenNthCalledWith(1, 's1', 't1', { status: 'CONNECTING' });
+    expect(repo.updateStatus).toHaveBeenLastCalledWith('s1', 't1', { status: 'DISCONNECTED' });
+    expect(repo.updateStatus).toHaveBeenCalledTimes(2);
+    expect(repo.markConnectRequested).toHaveBeenCalledTimes(1);
+  });
+
+  it('socket já ativo (AWAITING_QR): lease negado não grava status', async () => {
+    const { repo, engine, uc } = build(makeSession({ declaredPhone: '5511987654321', status: 'AWAITING_QR' }));
+    engine.requestPairingCode.mockRejectedValueOnce(new SessionLeaseHeldError('s1'));
+    await expect(uc.execute(input)).rejects.toBeInstanceOf(SessionLeaseHeldError);
+    expect(repo.updateStatus).not.toHaveBeenCalled();
   });
 });

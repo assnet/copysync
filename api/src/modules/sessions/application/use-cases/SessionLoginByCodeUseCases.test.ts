@@ -10,6 +10,7 @@ import type { SessionProps } from '../../domain/entities/Session';
 import {
   SessionAlreadyConnectedError,
   SessionPhoneInvalidError,
+  SessionLeaseHeldError,
 } from '../../../../shared/errors/internal/SessionErrors';
 import { EngineOperationUnsupportedError } from '../../../../shared/errors/internal/MessagingErrors';
 
@@ -93,5 +94,16 @@ describe('SessionLoginByCodeUseCases — pedido de conexão (LEASE-07)', () => {
     c.repo.markConnectRequested.mockRejectedValueOnce(new Error('db'));
     await expect(c.signIn.execute({ ...base, code: '1' })).rejects.toThrow('db');
     expect(c.engine.submitLoginCode).not.toHaveBeenCalled();
+  });
+});
+
+describe('login por código — lease de outro processo', () => {
+  it.each(steps)('$name: não grava status e propaga o 503', async ({ method, run }) => {
+    const ctx = build();
+    ctx.engine[method].mockRejectedValueOnce(new SessionLeaseHeldError('s1'));
+    const err = await run(ctx).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SessionLeaseHeldError);
+    expect((err as SessionLeaseHeldError).statusCode).toBe(503);
+    expect(ctx.repo.updateStatus).not.toHaveBeenCalled();
   });
 });

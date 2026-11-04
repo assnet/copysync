@@ -6,6 +6,7 @@ import type { SessionStatus } from '../../domain/enums/SessionStatus';
 import {
   InvalidSessionStateError,
   SessionNotFoundError,
+  SessionLeaseHeldError,
 } from '../../../../shared/errors/internal/SessionErrors';
 
 const input = { sessionId: 's1', tenantId: 't1', userId: 'u1' };
@@ -56,5 +57,34 @@ describe('ReconnectSessionUseCase — pedido de conexão', () => {
     repo.markConnectRequested.mockRejectedValueOnce(new Error('db'));
     await expect(uc.execute(input)).rejects.toThrow('db');
     expect(engine.reconnectSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReconnectSessionUseCase — lease de outro processo', () => {
+  it('restaura o status anterior, mantém connectRequestedAt e propaga o 503', async () => {
+    const { calls, repo, engine, uc } = build('LOGGED_OUT');
+    engine.reconnectSession.mockRejectedValueOnce(new SessionLeaseHeldError('s1'));
+    const err = await uc.execute(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SessionLeaseHeldError);
+    expect((err as SessionLeaseHeldError).statusCode).toBe(503);
+    expect(repo.updateStatus).toHaveBeenNthCalledWith(1, 's1', 't1', { status: 'CONNECTING' });
+    expect(repo.updateStatus).toHaveBeenLastCalledWith('s1', 't1', { status: 'LOGGED_OUT' });
+    expect(repo.updateStatus).toHaveBeenCalledTimes(2);
+    expect(repo.markConnectRequested).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['mark', 'status', 'status']);
+  });
+
+  it('falha ao restaurar não troca o erro de lease', async () => {
+    const { repo, engine, uc } = build();
+    engine.reconnectSession.mockRejectedValueOnce(new SessionLeaseHeldError('s1'));
+    repo.updateStatus.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('db'));
+    await expect(uc.execute(input)).rejects.toBeInstanceOf(SessionLeaseHeldError);
+  });
+
+  it('outro erro da engine não mexe no status (caminho inalterado)', async () => {
+    const { repo, engine, uc } = build();
+    engine.reconnectSession.mockRejectedValueOnce(new Error('boom'));
+    await expect(uc.execute(input)).rejects.toThrow('boom');
+    expect(repo.updateStatus).toHaveBeenCalledTimes(1);
   });
 });
