@@ -17,7 +17,18 @@ export interface SessionProps {
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Pedido de conexão vivo (lease/adoção); null = não reconectar. */
+  connectRequestedAt?: Date | null;
+  /** Validade do lease do socket; null ou passado = sem dono vivo. */
+  leaseUntil?: Date | null;
 }
+
+/** Status em que a sessão com pedido vivo espera um processo com vaga. */
+const AWAITING_CAPACITY_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
+  'PENDING',
+  'DISCONNECTED',
+  'CONNECTING',
+]);
 
 /**
  * Session domain entity — pure, no Prisma or engine dependency.
@@ -37,6 +48,8 @@ export class Session {
   public readonly deletedAt: Date | null;
   public readonly createdAt: Date;
   public readonly updatedAt: Date;
+  public readonly connectRequestedAt: Date | null;
+  public readonly leaseUntil: Date | null;
 
   constructor(props: SessionProps) {
     this.id = props.id;
@@ -53,11 +66,23 @@ export class Session {
     this.deletedAt = props.deletedAt;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+    this.connectRequestedAt = props.connectRequestedAt ?? null;
+    this.leaseUntil = props.leaseUntil ?? null;
   }
 
   /** O aparelho conectado não é o número que o operador declarou. */
   hasPhoneMismatch(): boolean {
     return hasPhoneMismatch(this.phone, this.declaredPhone);
+  }
+
+  /**
+   * Pedido de conexão vivo, nenhum processo com lease vivo e status que ainda não
+   * abriu socket útil: a sessão espera vaga (adoção por capacidade).
+   */
+  isAwaitingCapacity(now: Date): boolean {
+    if (this.connectRequestedAt === null) return false;
+    if (this.leaseUntil !== null && this.leaseUntil.getTime() > now.getTime()) return false;
+    return AWAITING_CAPACITY_STATUSES.has(this.status);
   }
 
   isConnected(): boolean {

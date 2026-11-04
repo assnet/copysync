@@ -20,6 +20,8 @@ export interface SessionItemDto {
   phoneMismatch: boolean;
   externalRef: string | null;
   status: SessionStatus;
+  /** Pedido vivo sem lease vivo, com a adoção ligada (aditivo). */
+  awaitingCapacity: boolean;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
   lastSeenAt: string | null;

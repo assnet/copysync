@@ -19,6 +19,8 @@ export class PrismaSessionMapper {
       deletedAt: raw.deletedAt,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
+      connectRequestedAt: raw.connectRequestedAt ?? null,
+      leaseUntil: raw.leaseUntil ?? null,
     });
   }
 }

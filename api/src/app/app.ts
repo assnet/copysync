@@ -18,6 +18,7 @@ import { registerPublicLinkRoutes } from '../modules/link-rotation/presentation/
 import { createPublicLinkDeps } from '../modules/link-rotation/infrastructure/publicLinkComposition';
 import { PublicSlugKind } from '../modules/link-rotation/domain/enums/LinkRotationEnums';
 import { storefrontContainer } from '../modules/storefront/infrastructure/storefrontContainer';
+import { sessionItemSchema, sessionStatusSchema } from '../modules/sessions/presentation/schemas/sessionItem.schema';
 import { affiliateCredentialItemSchema } from '../modules/integrations/presentation/schemas/affiliateCredential.schema';
 
 function normalizeOrigin(origin: string): string {
@@ -252,35 +253,8 @@ export async function buildApp() {
   });
 
   // Sessions
-  app.addSchema({
-    $id: 'SessionStatus',
-    type: 'string',
-    enum: ['PENDING', 'CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD', 'CONNECTED', 'DISCONNECTED', 'LOGGED_OUT', 'FAILED'],
-  });
-
-  app.addSchema({
-    $id: 'SessionItem',
-    type: 'object',
-    properties: {
-      id: { type: 'string' },
-      tenantId: { type: 'string' },
-      name: { type: 'string' },
-      engine: { type: 'string' },
-      phone: { type: 'string', nullable: true },
-      declaredPhone: { type: 'string', nullable: true },
-      phoneMismatch: { type: 'boolean' },
-      externalRef: { type: 'string', nullable: true },
-      status: { $ref: 'SessionStatus#' },
-      lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
-      lastDisconnectedAt: { type: 'string', format: 'date-time', nullable: true },
-      lastSeenAt: { type: 'string', format: 'date-time', nullable: true },
-      // Foto do número conectado. Sem declarar aqui, o serializer do Fastify
-      // descarta o campo silenciosamente, mesmo o presenter devolvendo-o.
-      avatarUrl: { type: 'string', nullable: true },
-      createdAt: { type: 'string', format: 'date-time' },
-      updatedAt: { type: 'string', format: 'date-time' },
-    },
-  });
+  app.addSchema(sessionStatusSchema);
+  app.addSchema(sessionItemSchema);
 
   app.addSchema(affiliateCredentialItemSchema);
 

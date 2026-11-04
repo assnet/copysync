@@ -7,8 +7,20 @@ import type { GetSessionQrOutput } from '../../application/use-cases/GetSessionQ
 import type { GetSessionPairingCodeOutput } from '../../application/use-cases/GetSessionPairingCodeUseCase';
 import type { RequestSessionPairingCodeOutput } from '../../application/use-cases/RequestSessionPairingCodeUseCase';
 
+export interface SessionItemOptions {
+  /** `WORKER_ADOPTION_ENABLED`; desligada, `awaitingCapacity` é sempre `false`. */
+  adoptionEnabled?: boolean;
+  now?: Date;
+}
+
 export class SessionPresenter {
-  static toSessionItem(session: Session, avatarUrl: string | null = null) {
+  static toSessionItem(
+    session: Session,
+    avatarUrl: string | null = null,
+    options: SessionItemOptions = {},
+  ) {
+    const awaitingCapacity =
+      options.adoptionEnabled === true && session.isAwaitingCapacity(options.now ?? new Date());
     return {
       avatarUrl,
       id: session.id,
@@ -20,6 +32,7 @@ export class SessionPresenter {
       phoneMismatch: session.hasPhoneMismatch(),
       externalRef: session.externalRef,
       status: session.status,
+      awaitingCapacity,
       lastConnectedAt: session.lastConnectedAt?.toISOString() ?? null,
       lastDisconnectedAt: session.lastDisconnectedAt?.toISOString() ?? null,
       lastSeenAt: session.lastSeenAt?.toISOString() ?? null,
@@ -28,9 +41,15 @@ export class SessionPresenter {
     };
   }
 
-  static toSessionList(items: Array<{ session: Session; avatarUrl: string | null }>) {
+  static toSessionList(
+    items: Array<{ session: Session; avatarUrl: string | null }>,
+    options: SessionItemOptions = {},
+  ) {
+    const now = options.now ?? new Date();
     return {
-      sessions: items.map((item) => SessionPresenter.toSessionItem(item.session, item.avatarUrl)),
+      sessions: items.map((item) =>
+        SessionPresenter.toSessionItem(item.session, item.avatarUrl, { ...options, now }),
+      ),
       total: items.length,
     };
   }
