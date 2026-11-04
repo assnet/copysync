@@ -314,6 +314,23 @@ model Session {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WORKER HEARTBEAT  (processos vivos e ocupação; docs/arquitetura-escala.md §3.1)
+// Sem tenantId: dado operacional da plataforma, não do tenant.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model WorkerHeartbeat {
+  workerId    String   @id // id do processo (o mesmo do lease)
+  role        String // papel do processo: all | worker
+  sessions    Int // sessões com socket aberto neste processo
+  maxSessions Int // teto do processo (WORKER_MAX_SESSIONS)
+  rssMb       Int // memória residente em MB
+  seenAt      DateTime // último batimento (horário do banco, UTC)
+
+  @@index([seenAt])
+  @@map("worker_heartbeats")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SESSION AUTH STATE  (persists engine credentials — one record per session)
 // ─────────────────────────────────────────────────────────────────────────────
 
