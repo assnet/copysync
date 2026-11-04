@@ -1,5 +1,5 @@
 import { Baby, CookingPot, Dumbbell, Image, Link2, PawPrint, Shirt, Tag, User, type LucideIcon } from 'lucide-react';
-import type { OfferAudience, OfferImageMode } from '@/types/api.types';
+import type { LimitChannel, OfferAudience, OfferImageMode } from '@/types/api.types';
 
 /** Ordem dos cartões de público-alvo. */
 export const OFFER_AUDIENCES: readonly OfferAudience[] = [
@@ -58,4 +58,14 @@ export function intervalRisk(minSeconds: number, maxSeconds: number): IntervalRi
 export function intervalValid(min: number, max: number): boolean {
   return Number.isInteger(min) && Number.isInteger(max)
     && min >= INTERVAL_MIN_SECONDS && max <= INTERVAL_MAX_SECONDS && min <= max;
+}
+
+/** Canais com limite próprio no plano, na ordem de exibição. */
+export const CHANNELS: readonly LimitChannel[] = ['whatsapp', 'telegram'];
+
+/** Quantos itens por canal (canal da sessão; o de um grupo é o da sessão dona). */
+export function countByChannel(channels: readonly LimitChannel[]): Record<LimitChannel, number> {
+  const out: Record<LimitChannel, number> = { whatsapp: 0, telegram: 0 };
+  for (const ch of channels) out[ch]++;
+  return out;
 }

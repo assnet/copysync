@@ -8,15 +8,15 @@ const groups = [{ conversationId: 'c1', groupJid: 'g1', title: 'Promo Rival', av
 
 describe('MonitoredGroupsCard', () => {
   it('palavras-chave viram contagem (sem cortar) e uso diz "no plano"', () => {
-    renderWithTheme(<MonitoredGroupsCard groups={groups} used={3} max={40} onConfigure={() => undefined} />);
+    renderWithTheme(<MonitoredGroupsCard groups={groups} usage={[{ channel: 'whatsapp', used: 3, max: 40 }]} onConfigure={() => undefined} />);
     expect(screen.getByText('3 palavras-chave')).toBeInTheDocument();
     expect(screen.getByRole('group', { name: /Palavras-chave de Promo Rival: fone, notebook gamer, tv/ })).toBeInTheDocument();
-    expect(screen.getByText('3/40 no plano')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'WhatsApp: 3 de 40 grupos do plano em uso, somando todas as sessões' })).toHaveTextContent('3/40');
   });
 
   it('nomes borrados: avatar não mostra as iniciais do grupo', () => {
     localStorage.setItem('privacy.blur', JSON.stringify(['monitoring.groupNames']));
-    renderWithTheme(<PrivacyProvider><MonitoredGroupsCard groups={groups} used={1} max={5} onConfigure={() => undefined} /></PrivacyProvider>);
+    renderWithTheme(<PrivacyProvider><MonitoredGroupsCard groups={groups} usage={[{ channel: 'whatsapp', used: 1, max: 5 }]} onConfigure={() => undefined} /></PrivacyProvider>);
     expect(screen.queryByText('PR')).toBeNull();
     localStorage.clear();
   });

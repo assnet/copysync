@@ -32,7 +32,7 @@ export const monitoringStrings = {
     emptyTitle: 'Conecte uma sessão para começar',
     emptyDescription: 'O monitoramento escuta grupos de concorrentes e reposta as ofertas nos seus grupos, já com o seu link de afiliado.',
     emptySteps: [
-      { title: 'Conecte um WhatsApp', body: 'A sessão escuta os grupos e envia as ofertas.' },
+      { title: 'Conecte uma conta', body: 'WhatsApp ou Telegram: a sessão escuta os grupos e envia as ofertas.' },
       { title: 'Escolha quem escutar', body: 'Grupos de concorrentes, com palavras-chave se quiser filtrar.' },
       { title: 'Escolha onde enviar', body: 'Os seus grupos recebem a oferta com o seu link.' },
     ],
@@ -66,11 +66,17 @@ export const monitoringStrings = {
 
   usage: {
     aria: (used: number, max: number | null) => (max === null ? `${used} grupos em uso, sem limite no plano` : `${used} de ${max} grupos do plano em uso, somando todas as sessões`),
+    /** Pílula por canal: o nome do canal vai junto (o logo é decorativo). */
+    channelAria: (channel: string, used: number, max: number | null) =>
+      max === null
+        ? `${channel}: ${used} ${plural(used, 'grupo', 'grupos')} em uso, sem limite no plano`
+        : `${channel}: ${used} de ${max} grupos do plano em uso, somando todas as sessões`,
+    groupAria: 'Uso do plano por canal',
   },
 
   session: {
     title: 'Sessão',
-    subtitle: 'WhatsApp que escuta e envia',
+    subtitle: 'Conta que escuta e envia',
     noPhone: 'Número ainda não conectado',
     connect: 'Conectar',
     manage: 'Ver sessão',
@@ -87,6 +93,12 @@ export const monitoringStrings = {
       max === null
         ? `${used} em uso somando todas as sessões da conta. Seu plano não tem limite.`
         : `${used} de ${max} do seu plano, somando todas as sessões da conta (não só esta).`,
+    /** Contador de um canal: "3/10" (o logo do canal fica ao lado). */
+    channelUsage: (used: number, max: number | null) => (max === null ? `${used}` : `${used}/${max}`),
+    channelUsageTooltip: (channel: string, used: number, max: number | null) =>
+      max === null
+        ? `${channel}: ${used} em uso somando todas as sessões. Seu plano não tem limite neste canal.`
+        : `${channel}: ${used} de ${max} do seu plano, somando todas as sessões deste canal (não só esta).`,
     monitoredTitle: 'Grupos monitorados',
     monitoredSubtitle: 'Grupos de onde as ofertas são capturadas',
     monitoredEmpty: 'Escolha grupos de concorrentes para capturar as ofertas deles.',
@@ -104,7 +116,7 @@ export const monitoringStrings = {
     add: 'Adicionar',
     addTooltip: 'Escolher os grupos que recebem as ofertas',
     otherSession: (name: string) => `Envia por ${name}`,
-    otherSessionTooltip: 'Grupo de outro WhatsApp da sua conta: a oferta sai por essa sessão (sessão cruzada).',
+    otherSessionTooltip: (channel: string) => `Grupo de outra sessão da sua conta (${channel}): a oferta sai por ela.`,
     moveUp: 'Enviar antes',
     moveDown: 'Enviar depois',
     remove: 'Remover da lista',
@@ -141,14 +153,18 @@ export const monitoringStrings = {
     available: 'Grupos da sessão',
     noResults: 'Nenhum grupo encontrado.',
     loadError: 'Não foi possível carregar os grupos da sessão.',
-    partial: 'O WhatsApp não respondeu: a lista mostra só os grupos que já têm conversa.',
+    partial: 'A conta da sessão não respondeu: a lista mostra só os grupos que já têm conversa.',
     retry: 'Tentar de novo',
     usedElsewhereMonitored: 'Já é grupo de disparo: um grupo não pode ser origem e destino ao mesmo tempo',
     usedElsewhereBroadcast: 'Já é grupo monitorado: um grupo não pode ser origem e destino ao mesmo tempo',
     limitReached: 'Limite do plano atingido',
+    limitReachedChannel: (channel: string) => `Limite de grupos do ${channel} no plano atingido`,
+    usageChannelAria: (channel: string, n: number, max: number) => `${channel}: ${n} de ${max} grupos usados`,
     availableAll: 'Grupos das sessões conectadas',
-    crossHelp: 'Grupos de qualquer WhatsApp conectado. Quem envia em cada grupo é a sessão dona dele.',
-    crossLocked: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano MAX. Aqui aparecem só os grupos desta sessão.',
+    crossHelp: 'Grupos de todas as sessões conectadas. Quem envia em cada grupo é a sessão dona dele.',
+    crossLocked: 'Usar duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Aqui aparecem os grupos desta sessão e de uma sessão de cada outro canal.',
+    otherChannelHelp: 'Os grupos das suas sessões de outro canal também podem receber as ofertas. Quem envia em cada grupo é a sessão dona dele.',
+    sameChannelLocked: (channel: string) => `Já há outra sessão do ${channel} nesta lista. Duas sessões do mesmo canal é exclusivo do plano MAX.`,
     crossLockedLink: 'Ver planos',
     sessionOf: (name: string) => `Sessão ${name}`,
     takenByMonitor: (name: string) => `Já recebe as ofertas do monitoramento de ${name}`,
@@ -211,6 +227,7 @@ export const monitoringStrings = {
     mentionAllTitle: 'Marcar todos',
     mentionAllHelp: 'Notifica todos os participantes do grupo a cada oferta.',
     mentionAllLocked: 'Seu plano não inclui marcar todos.',
+    mentionAllTelegram: 'No Telegram não existe marcar todos: nos grupos do Telegram a oferta sai sem a marcação.',
 
     afterTitle: 'Depois da captura',
     afterSubtitle: 'Quando começar e até quando a oferta vale',
@@ -265,8 +282,8 @@ export const monitoringStrings = {
 
   errors: {
     generic: 'Não foi possível concluir agora. Tente de novo em instantes.',
-    sessionNotConnected: 'A sessão não está conectada. Conecte o WhatsApp dela e tente de novo.',
-    engineUnavailable: 'O WhatsApp da sessão não respondeu. Aguarde alguns segundos e tente de novo.',
+    sessionNotConnected: 'A sessão não está conectada. Conecte a conta dela e tente de novo.',
+    engineUnavailable: 'A conta da sessão não respondeu. Aguarde alguns segundos e tente de novo.',
     groupNotFound: 'Grupo não encontrado nesta sessão. Atualize a lista e escolha de novo.',
     sessionNotFound: 'Sessão não encontrada. Ela pode ter sido excluída.',
     capturedNotFound: 'Esta oferta não está mais disponível.',
@@ -281,10 +298,16 @@ export const monitoringStrings = {
       max === null
         ? 'Limite do plano atingido.'
         : `Seu plano permite até ${max} grupos somando todas as sessões. Remova algum ou fale com o suporte para ampliar.`,
+    planLimitChannel: (kind: 'monitoredGroups' | 'broadcastGroups' | 'sessions', channel: string, max: number | null) => {
+      const what = kind === 'sessions' ? 'sessões' : kind === 'monitoredGroups' ? 'grupos monitorados' : 'grupos de disparo';
+      return max === null
+        ? `Você chegou ao limite de ${what} do ${channel} no seu plano.`
+        : `Seu plano permite até ${max} ${what} no ${channel}, somando todas as sessões. Remova algum ou veja os planos.`;
+    },
     planFeature: 'Seu plano não inclui este recurso.',
     broadcastTaken: 'Um dos grupos já recebe as ofertas do monitoramento de outra sessão. Tire-o daqui ou de lá.',
     duplicateGroup: 'O mesmo grupo foi escolhido por duas sessões. Deixe só uma, senão a oferta sai duas vezes nele.',
-    crossSessionUnavailable: 'Disparar nos grupos de outro WhatsApp é exclusivo do plano MAX. Escolha grupos desta sessão ou faça upgrade.',
+    crossSessionUnavailable: 'Usar duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Escolha grupos desta sessão ou de outro canal, ou faça upgrade.',
     notRetryable: 'Esta oferta não pode ser tentada de novo (já foi processada ou o motivo não é recuperável).',
     fields: {
       enabled: 'Monitoramento ativo',

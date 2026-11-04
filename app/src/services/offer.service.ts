@@ -102,6 +102,8 @@ interface OfferConfigApiDto {
   groupLimit: number | null;
   sessionLimit: number | null;
   crossSessionDispatch?: boolean;
+  limits?: OfferConfigResponse['limits'];
+  usage?: OfferConfigResponse['usage'];
   configured: boolean;
 }
 
@@ -119,5 +121,11 @@ function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
     groupLimit: dto.groupLimit,
     sessionLimit: dto.sessionLimit,
     crossSessionDispatch: dto.crossSessionDispatch ?? false,
+    // API anterior sem `limits`: o legado vale como WhatsApp e o Telegram fica sem limite
+    limits: dto.limits ?? {
+      whatsapp: { sessions: dto.sessionLimit, broadcastGroups: dto.groupLimit },
+      telegram: { sessions: null, broadcastGroups: null },
+    },
+    usage: dto.usage ?? { whatsapp: { sessions: 0, broadcastGroups: 0 }, telegram: { sessions: 0, broadcastGroups: 0 } },
   };
 }

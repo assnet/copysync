@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Skeleton, Stack, Tooltip, Typography, useTheme } from '@mui/material';
 import { ArrowDown, ArrowRight, Plus, Radar, Send, Smartphone } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -17,7 +17,13 @@ import { useMonitoringConfig } from '@/features/monitoring/hooks/useMonitoringCo
 import { useMonitoringSessions } from '@/features/monitoring/hooks/useMonitoringSessions';
 import { CARD_RADIUS, VISUALLY_HIDDEN, glassPillSx, iconTileSx, surfaceSx } from '@/features/monitoring/monitoringStyle';
 import { monitoringStrings } from '@/features/monitoring/strings';
-import { MonitoringUiError, monitoringErrorMessage, sessionGroupCap } from '@/features/monitoring/utils/apiErrors';
+import { MonitoringUiError, monitoringErrorMessage } from '@/features/monitoring/utils/apiErrors';
+import {
+  channelCaps, channelLimit, channelUsage, countByChannel, planLimitHit, sessionChannel, upsellKindOf, visibleChannels, type GroupKind,
+} from '@/features/monitoring/utils/channelLimits';
+import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
+import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
+import { channelOf } from '@/features/sessions/utils';
 import { SendQueuePanel } from '@/features/sendQueue/components/SendQueuePanel';
 import { clearPersisted, usePersistedState } from '@/hooks/usePersistedState';
 
@@ -140,9 +146,28 @@ export function MonitoringPage() {
     </Tooltip>
   );
 
-  const monitoredCap = config ? sessionGroupCap(config.limits.monitoredGroups, config.usage.monitoredGroups, config.monitoredGroups.length) : null;
-  const broadcastCap = config ? sessionGroupCap(config.limits.broadcastGroups, config.usage.broadcastGroups, config.broadcastGroups.length) : null;
+  // Aviso de upgrade quando a API recusa por limite do plano (por canal); efêmero, não persiste
+  const [planLimit, setPlanLimit] = useState<{ kind: PlanLimitKind; limit: number } | null>(null);
+  // Canal: o do monitor vem da API; o de cada grupo de disparo, da sessão dona dele
+  const monitorChannel = config?.channel ?? channelOf(selected?.engine);
+  const chOfSession = (id: string) => (id === selected?.id ? monitorChannel : sessionChannel(sessions.sessions, id));
   const broadcastSorted = config ? [...config.broadcastGroups].sort((a, b) => a.position - b.position) : [];
+  const monitoredCaps = config
+    ? channelCaps(config, 'monitoredGroups', countByChannel(config.monitoredGroups, () => monitorChannel))
+    : null;
+  const broadcastCaps = config
+    ? channelCaps(config, 'broadcastGroups', countByChannel(config.broadcastGroups, (g) => chOfSession(g.sessionId)))
+    : null;
+  const channels = visibleChannels(sessions.sessions, monitorChannel);
+  const usageItems = (kind: GroupKind) =>
+    config ? channels.map((c) => ({ channel: c, used: channelUsage(config, c, kind), max: channelLimit(config, c, kind) })) : [];
+  const telegramInvolved = monitorChannel === 'telegram' || broadcastSorted.some((g) => chOfSession(g.sessionId) === 'telegram');
+
+  /** Erro de limite por canal: abre o aviso de upgrade (com o limite) além da mensagem. */
+  const offerUpgrade = (err: unknown) => {
+    const hit = planLimitHit(err);
+    if (hit && hit.limit !== null) setPlanLimit({ kind: upsellKindOf(hit), limit: hit.limit });
+  };
 
   // Nome do grupo citado num erro de conflito: o que está sendo salvo, senão o da configuração
   const titleLookup = (extra: readonly PickedGroup[] = []) => (jid: string) =>
@@ -152,7 +177,8 @@ export function MonitoringPage() {
     try {
       await cfg.saveMonitoredGroups(groups.map((g) => ({ groupJid: g.groupJid, keywords: g.keywords })));
     } catch (err) {
-      throw new MonitoringUiError(monitoringErrorMessage(err, { scope: 'groups', max: config?.limits.monitoredGroups ?? null, groupTitle: titleLookup(groups) }));
+      offerUpgrade(err);
+      throw new MonitoringUiError(monitoringErrorMessage(err, { scope: 'groups', max: config ? channelLimit(config, monitorChannel, 'monitoredGroups') : null, groupTitle: titleLookup(groups) }));
     }
   };
 
@@ -162,7 +188,8 @@ export function MonitoringPage() {
     try {
       await cfg.saveBroadcastGroups(groups);
     } catch (err) {
-      throw new MonitoringUiError(monitoringErrorMessage(err, { scope: 'groups', max: config?.limits.broadcastGroups ?? null, groupTitle: titleLookup(picked) }));
+      offerUpgrade(err);
+      throw new MonitoringUiError(monitoringErrorMessage(err, { scope: 'groups', max: null, groupTitle: titleLookup(picked) }));
     }
   };
 
@@ -231,19 +258,18 @@ export function MonitoringPage() {
               <>
                 <MonitoredGroupsCard
                   groups={config.monitoredGroups}
-                  used={config.usage.monitoredGroups}
-                  max={config.limits.monitoredGroups}
+                  usage={usageItems('monitoredGroups')}
                   onConfigure={() => setPicker('monitored')}
                 />
                 <Box sx={{ position: 'relative', minWidth: 0 }}>
                   <FlowConnector />
                   <BroadcastGroupsCard
                     groups={broadcastSorted}
-                    used={config.usage.broadcastGroups}
-                    max={config.limits.broadcastGroups}
+                    usage={usageItems('broadcastGroups')}
                     monitorSessionId={selected.id}
                     sessionNameOf={sessionNameOf}
                     sessionAvatarOf={sessionAvatarOf}
+                    sessionChannelOf={chOfSession}
                     onAdd={() => setPicker('broadcast')}
                     onChange={(groups) => saveBroadcast(groups)}
                   />
@@ -263,7 +289,7 @@ export function MonitoringPage() {
 
           {config && config.sessionId === selected.id && (
             <Box id={SETTINGS_ANCHOR_ID} tabIndex={-1} sx={{ scrollMarginTop: 96, '&:focus': { outline: 'none' } }}>
-              <MonitoringSettingsForm key={selected.id} sessionId={selected.id} config={config} onSave={cfg.saveSettings} />
+              <MonitoringSettingsForm key={selected.id} sessionId={selected.id} config={config} onSave={cfg.saveSettings} telegramInvolved={telegramInvolved} />
             </Box>
           )}
 
@@ -279,7 +305,8 @@ export function MonitoringPage() {
               mode="monitored"
               sessionId={selected.id}
               initial={config.monitoredGroups.map((g) => ({ groupJid: g.groupJid, sessionId: selected.id, title: g.title, avatarUrl: g.avatarUrl, keywords: g.keywords }))}
-              max={monitoredCap}
+              channel={monitorChannel}
+              caps={monitoredCaps!}
               excludeJids={config.broadcastGroups.map((g) => g.groupJid)}
               onClose={() => setPicker(null)}
               onSave={saveMonitored}
@@ -290,7 +317,8 @@ export function MonitoringPage() {
               mode="broadcast"
               sessionId={selected.id}
               initial={broadcastSorted.map((g) => ({ groupJid: g.groupJid, sessionId: g.sessionId, title: g.title, avatarUrl: g.avatarUrl, keywords: [] }))}
-              max={broadcastCap}
+              channel={monitorChannel}
+              caps={broadcastCaps!}
               excludeJids={config.monitoredGroups.map((g) => g.groupJid)}
               sessions={sessions.sessions}
               crossSession={config.limits.crossSessionDispatch}
@@ -301,6 +329,7 @@ export function MonitoringPage() {
           )}
         </Stack>
       ) : null}
+      {planLimit && <PlanLimitBanner open onClose={() => setPlanLimit(null)} kind={planLimit.kind} limit={planLimit.limit} />}
     </Box>
   );
 }

@@ -12,11 +12,15 @@ import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
 import { Blurred, useBlur } from '@/features/privacy';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
+import { channelOf, type SessionChannel } from '@/features/sessions/utils';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import type { SessionItem, TakenBroadcastGroup } from '@/types/api.types';
 import { INNER_RADIUS, REDUCED_MOTION, REDUCED_MOTION_QUERY, focusRingScopeSx, iconTileSx, toneSurface, toneText } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 import { uiErrorMessage } from '../utils/apiErrors';
+import { CHANNELS, countByChannel } from '../utils/channelLimits';
 import { SessionAvatar } from './SessionAvatar';
 
 const t = monitoringStrings.picker;
@@ -45,13 +49,21 @@ interface Props {
   sessionId: string;
   /** Seleção salva; vira o ponto de partida (um rascunho da aba tem prioridade). */
   initial: PickedGroup[];
-  /** Máximo para esta sessão (limite do plano menos o uso das outras). null = sem limite. */
-  max: number | null;
+  /** Canal da sessão do monitor (grupos monitorados contam nele). */
+  channel?: SessionChannel;
+  /**
+   * Máximo desta lista por canal (limite do plano no canal menos o uso das outras sessões).
+   * null = sem limite. Canal do grupo = canal da sessão dona dele.
+   */
+  caps: Record<SessionChannel, number | null>;
   /** Grupos usados na outra lista (origem ≠ destino). */
   excludeJids: readonly string[];
   /** Disparo: sessões do tenant; com `crossSession`, os grupos de todas as conectadas entram. */
   sessions?: readonly SessionItem[];
-  /** Entitlement `cross_session_dispatch`. Sem ele, só a sessão atual; com 2+ sessões mostra o aviso do plano. */
+  /**
+   * Entitlement `cross_session_dispatch`: 2+ sessões do MESMO canal. Sem ele, a sessão atual e uma
+   * sessão de cada outro canal; com 2+ sessões num canal mostra o aviso do plano.
+   */
   crossSession?: boolean;
   /** Disparo: destinos já usados pelo monitoramento de outra sessão (bloqueados aqui). */
   takenBroadcast?: readonly TakenBroadcastGroup[];
@@ -113,7 +125,7 @@ function InfoLine({ text, action }: { text: string; action?: ReactNode }) {
  * item com palavras-chave aberto são persistidos na aba por sessão e modo, apagados ao salvar ou cancelar.
  * md+: duas colunas (disponíveis | selecionados); menor: abas.
  */
-export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, sessions, crossSession = false, takenBroadcast = NO_TAKEN, onClose, onSave }: Props) {
+export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initial, caps, excludeJids, sessions, crossSession = false, takenBroadcast = NO_TAKEN, onClose, onSave }: Props) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const wide = useMediaQuery(theme.breakpoints.up('md'));
@@ -141,15 +153,21 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Disparo com sessão cruzada: grupos de todas as sessões conectadas; senão, só a sessão atual
-  const multi = mode === 'broadcast' && crossSession && (sessions?.length ?? 0) > 1;
-  const sessionIds = useMemo(
-    () => (multi ? sessions!.filter((s) => s.status === 'CONNECTED').map((s) => s.id) : [sessionId]),
-    [multi, sessions, sessionId],
-  );
+  // Disparo: com sessão cruzada, grupos de todas as sessões conectadas; sem ela, a sessão atual e as
+  // conectadas de outro canal (canais diferentes nunca exigem o recurso). Monitorados: só a atual.
+  const sessionIds = useMemo(() => {
+    if (mode !== 'broadcast' || !sessions) return [sessionId];
+    const connected = sessions.filter((s) => s.status === 'CONNECTED' && s.id !== sessionId);
+    const others = crossSession ? connected : connected.filter((s) => channelOf(s.engine) !== channel);
+    return [sessionId, ...others.map((s) => s.id)];
+  }, [mode, sessions, sessionId, crossSession, channel]);
+  const multi = sessionIds.length > 1;
   const sessionOf = (id: string) => sessions?.find((s) => s.id === id);
+  const chOf = (id: string): SessionChannel => (id === sessionId ? channel : channelOf(sessionOf(id)?.engine));
   const sessionName = (id: string) => sessions?.find((s) => s.id === id)?.name || t.sessionOf(id.slice(-4));
-  const crossLocked = mode === 'broadcast' && !crossSession && (sessions?.length ?? 0) > 1;
+  // Sem o recurso e com 2+ sessões num mesmo canal: avisa que só uma por canal entra
+  const crossLocked = mode === 'broadcast' && !crossSession
+    && CHANNELS.some((c) => (sessions ?? []).filter((s) => channelOf(s.engine) === c).length > 1);
   const groups = useSessionGroups(sessionIds, search);
   // Com busca, a lista principal vem filtrada: lista completa só para achar nome/foto dos selecionados.
   // Carrega uma vez por conjunto de sessões (na 1ª busca) e não some quando a busca é limpa.
@@ -165,7 +183,28 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const excluded = useMemo(() => new Set(excludeJids), [excludeJids]);
   const selectedKeys = useMemo(() => new Set(draft.map(keyOf)), [draft]);
   const monitored = mode === 'monitored';
-  const full = max !== null && selected.length >= max;
+  const countBy = countByChannel(draft, (d) => chOf(d.sessionId));
+  const fullIn = (c: SessionChannel) => caps[c] !== null && countBy[c] >= caps[c]!;
+  const overAny = CHANNELS.some((c) => caps[c] !== null && countBy[c] > caps[c]!);
+  // Canais desta lista (contadores do cabeçalho): o do monitor e os das sessões listadas
+  const listChannels = CHANNELS.filter((c) => c === channel || sessionIds.some((id) => chOf(id) === c));
+  const cappedChannels = listChannels.filter((c) => caps[c] !== null);
+  const singleCap = listChannels.length === 1 ? caps[listChannels[0]!] : null;
+  // Sem sessão cruzada: a 1ª sessão de cada canal na lista (a do monitor no canal dele) fica com o canal
+  const channelOwner = useMemo(() => {
+    const m = new Map<SessionChannel, string>([[channel, sessionId]]);
+    for (const d of draft) {
+      const c = d.sessionId === sessionId ? channel : channelOf(sessions?.find((s) => s.id === d.sessionId)?.engine);
+      if (!m.has(c)) m.set(c, d.sessionId);
+    }
+    return m;
+  }, [draft, channel, sessionId, sessions]);
+  const sameChannelReason = (g: { sessionId: string }) => {
+    if (crossSession || mode !== 'broadcast') return null;
+    const c = chOf(g.sessionId);
+    const owner = channelOwner.get(c);
+    return owner && owner !== g.sessionId ? t.sameChannelLocked(channelLabel(c)) : null;
+  };
   // Destino de outro monitoramento → sessão desse monitoramento
   const takenBy = useMemo(() => new Map(takenBroadcast.map((g) => [keyOf(g), g.monitorSessionId])), [takenBroadcast]);
   const selectedJidOwner = useMemo(() => {
@@ -179,7 +218,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   };
   /** Problema de um selecionado: destino de outro monitoramento ou JID repetido (2ª sessão em diante). */
   const selectedProblem = (g: { sessionId: string; groupJid: string }) =>
-    takenReason(g) ?? (selectedJidOwner.get(g.groupJid) !== keyOf(g) ? t.sameGroupOtherSession : null);
+    takenReason(g) ?? (selectedJidOwner.get(g.groupJid) !== keyOf(g) ? t.sameGroupOtherSession : null) ?? sameChannelReason(g);
   const hasProblems = !monitored && selected.some((g) => selectedProblem(g) !== null);
   const move = (i: number, dir: -1 | 1) =>
     setDraft((prev) => {
@@ -257,6 +296,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
   const sessionLine = (id: string) => (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, mt: 0.25 }}>
       <SessionAvatar url={sessionOf(id)?.avatarUrl} size={16} blur={blurSessionAvatar} />
+      <ChannelLogo channel={chOf(id)} labelled />
       <Blurred when={blurSession} inline radius={5} sx={{ minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary" noWrap component="span" sx={{ display: 'block' }}>{sessionName(id)}</Typography>
       </Blurred>
@@ -282,7 +322,12 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
             <Chip
               size="small"
               avatar={<SessionAvatar url={sessionOf(id)?.avatarUrl} size={18} blur={blurSessionAvatar} />}
-              label={<Blurred when={blurSession} inline radius={5}>{name}</Blurred>}
+              label={
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                  <ChannelLogo channel={chOf(id)} />
+                  <Blurred when={blurSession} inline radius={5}>{name}</Blurred>
+                </Box>
+              }
               color={on ? 'primary' : 'default'}
               variant={on ? 'filled' : 'outlined'}
               onClick={() => setSessionFilter(on ? 'all' : id)}
@@ -332,9 +377,10 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
             {available.map((g) => {
               const usedElsewhere = excluded.has(g.groupJid);
               const blocked = usedElsewhere ? (monitored ? t.usedElsewhereMonitored : t.usedElsewhereBroadcast)
-                : !monitored ? (takenReason(g) ?? (selectedJidOwner.has(g.groupJid) ? t.sameGroupOtherSession : null)) : null;
+                : !monitored ? (takenReason(g) ?? (selectedJidOwner.has(g.groupJid) ? t.sameGroupOtherSession : null) ?? sameChannelReason(g)) : null;
+              const full = fullIn(chOf(g.sessionId));
               const disabled = blocked !== null || full;
-              const reason = blocked ?? (full ? t.limitReached : '');
+              const reason = blocked ?? (full ? (listChannels.length > 1 ? t.limitReachedChannel(channelLabel(chOf(g.sessionId))) : t.limitReached) : '');
               const title = g.title || tg.untitled;
               return (
                 <Box component="li" key={keyOf(g)} sx={rowSx}>
@@ -531,20 +577,26 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
           <Typography id={subtitleId} variant="body2" color="text.secondary">
             {monitored ? t.monitoredSubtitle : t.broadcastSubtitle}
           </Typography>
-          {max !== null && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 1, maxWidth: 360 }}>
-              <LinearProgress
-                variant="determinate"
-                value={Math.min(100, max === 0 ? 100 : (selected.length / max) * 100)}
-                color={selected.length > max ? 'error' : full ? 'warning' : 'primary'}
-                aria-label={t.usageAria(selected.length, max)}
-                sx={{ flex: 1, height: 6, borderRadius: 999 }}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }} aria-hidden>
-                {selected.length}/{max}
-              </Typography>
-            </Box>
-          )}
+          {cappedChannels.map((c) => {
+            const max = caps[c]!;
+            const n = countBy[c];
+            const labelled = listChannels.length > 1;
+            return (
+              <Box key={c} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 1, maxWidth: 360 }}>
+                {labelled && <ChannelLogo channel={c} labelled />}
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.min(100, max === 0 ? 100 : (n / max) * 100)}
+                  color={n > max ? 'error' : fullIn(c) ? 'warning' : 'primary'}
+                  aria-label={labelled ? t.usageChannelAria(channelLabel(c), n, max) : t.usageAria(n, max)}
+                  sx={{ flex: 1, height: 6, borderRadius: 999 }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }} aria-hidden>
+                  {n}/{max}
+                </Typography>
+              </Box>
+            );
+          })}
         </Box>
         <Tooltip title={t.close} arrow>
           <IconButton aria-label={t.close} onClick={close} disabled={saving} edge="end">
@@ -577,7 +629,7 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
             action={<Button color="inherit" size="small" component={RouterLink} to={AFFILIATE_PLANS_PATH} sx={{ flexShrink: 0 }}>{t.crossLockedLink}</Button>}
           />
         )}
-        {multi && <InfoLine text={t.crossHelp} />}
+        {multi && <InfoLine text={crossSession ? t.crossHelp : t.otherChannelHelp} />}
 
         {wide ? (
           <Box sx={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 3 }}>
@@ -605,13 +657,13 @@ export function GroupPickerDialog({ mode, sessionId, initial, max, excludeJids, 
 
       <DialogActions sx={{ px: 3, py: 1.5, gap: 1, borderTop: wide ? 0 : 1, borderColor: 'divider' }}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1, fontVariantNumeric: 'tabular-nums' }} role="status">
-          {t.selected(selected.length, max)}
+          {t.selected(selected.length, singleCap)}
         </Typography>
         <Button onClick={close} disabled={saving}>{t.cancel}</Button>
         <Button
           variant="contained"
           onClick={() => void save()}
-          disabled={saving || hasProblems || (max !== null && selected.length > max)}
+          disabled={saving || hasProblems || overAny}
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
         >
           {t.save}

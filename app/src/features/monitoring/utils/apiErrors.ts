@@ -1,4 +1,6 @@
+import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
 import { monitoringStrings } from '../strings';
+import { planLimitHit } from './channelLimits';
 
 const t = monitoringStrings.errors;
 
@@ -52,6 +54,9 @@ export function monitoringErrorMessage(err: unknown, ctx: MonitoringErrorContext
       return t.invalidInput(field ? t.fields[field] ?? null : null);
     }
     case 'PLAN_LIMIT_REACHED': {
+      // Chave por canal (`telegram_monitored_groups`, `broadcast_groups`…): diz o que e onde estourou
+      const hit = planLimitHit(err);
+      if (hit) return t.planLimitChannel(hit.kind, channelLabel(hit.channel), hit.limit ?? ctx.max ?? null);
       const limit = typeof meta.limit === 'number' ? meta.limit : ctx.max ?? null;
       return t.planLimit(limit);
     }

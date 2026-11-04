@@ -7,6 +7,7 @@ import { settingsToDraft } from '../utils/settingsDraft';
 
 const config: GroupMonitorConfigResponse = {
   sessionId: 's1',
+  channel: 'whatsapp',
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600,
     startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 5,
@@ -14,8 +15,8 @@ const config: GroupMonitorConfigResponse = {
   },
   monitoredGroups: [],
   broadcastGroups: [],
-  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false },
-  usage: { monitoredGroups: 0, broadcastGroups: 0 },
+  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
+  usage: { monitoredGroups: 0, broadcastGroups: 0, whatsapp: { monitoredGroups: 0, broadcastGroups: 0 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } },
 };
 
 const renderForm = (mode: 'light' | 'dark' = 'light') =>

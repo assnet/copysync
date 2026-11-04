@@ -21,6 +21,12 @@ export const sessionStrings = {
     limitsError: 'Não foi possível consultar os limites do plano.',
   },
 
+  /** Cartão de sessões do painel inicial. */
+  dashboard: {
+    title: 'Sessões',
+    subtitle: 'Suas contas de WhatsApp e Telegram e o estado de cada conexão',
+  },
+
   channel: {
     whatsapp: 'WhatsApp',
     telegram: 'Telegram',

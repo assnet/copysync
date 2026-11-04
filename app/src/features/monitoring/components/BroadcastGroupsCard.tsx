@@ -5,10 +5,13 @@ import { ArrowDown, ArrowUp, Plus, Send, X } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
+import type { SessionChannel } from '@/features/sessions/utils';
 import type { BroadcastGroupItem } from '@/types/api.types';
 import { INNER_RADIUS, REDUCED_MOTION, REDUCED_MOTION_QUERY, VISUALLY_HIDDEN, iconTileSx, toneSurface } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
-import { GroupUsageChip } from './GroupUsageChip';
+import { ChannelUsageChips, type ChannelUsageItem } from './GroupUsageChip';
 import { MonitorCard } from './MonitorCard';
 import { SessionAvatar } from './SessionAvatar';
 import { uiErrorMessage } from '../utils/apiErrors';
@@ -34,20 +37,22 @@ export function reinsertGroup(current: readonly GroupRef[], group: GroupRef, ind
 interface Props {
   /** Já na ordem de envio. */
   groups: BroadcastGroupItem[];
-  used: number;
-  max: number | null;
+  /** Uso × limite do plano por canal (tenant inteiro). */
+  usage: readonly ChannelUsageItem[];
   /** Sessão do monitoramento: grupo de outra sessão ganha o chip "Envia por …". */
   monitorSessionId: string;
   sessionNameOf: (sessionId: string) => string | null;
   /** Foto da sessão dona do grupo (chip "Envia por …"). */
   sessionAvatarOf?: (sessionId: string) => string | null;
+  /** Canal da sessão dona do grupo (logo no chip "Envia por …"). */
+  sessionChannelOf?: (sessionId: string) => SessionChannel;
   onAdd: () => void;
   /** Salva a nova ordem/lista (cada grupo com a sessão que envia); lança em erro. */
   onChange: (groups: GroupRef[]) => Promise<void>;
 }
 
 /** Destino: grupos que recebem as ofertas, na ordem de envio; reordenar e remover salvam na hora. */
-export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessionNameOf, sessionAvatarOf, onAdd, onChange }: Props) {
+export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNameOf, sessionAvatarOf, sessionChannelOf = () => 'whatsapp', onAdd, onChange }: Props) {
   const theme = useTheme();
   const blurNames = useBlur('monitoring.groupNames');
   const blurSession = useBlur('monitoring.sessionName');
@@ -118,7 +123,7 @@ export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessi
       tone="success"
       title={t.broadcastTitle}
       subtitle={t.broadcastSubtitle}
-      action={<GroupUsageChip used={used} max={max} />}
+      action={<ChannelUsageChips items={usage} />}
       footer={
         <Tooltip title={t.addTooltip} arrow describeChild>
           <Box component="span">
@@ -146,6 +151,7 @@ export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessi
           {groups.map((g, i) => {
             const title = g.title || t.untitled;
             const other = g.sessionId !== monitorSessionId;
+            const channel = sessionChannelOf(g.sessionId);
             return (
               <Box
                 component="li"
@@ -181,11 +187,16 @@ export function BroadcastGroupsCard({ groups, used, max, monitorSessionId, sessi
                     <OverflowTooltipText text={title} disabled={blurNames} typographyProps={{ variant: 'body2', sx: { fontWeight: 600 } }} />
                   </Blurred>
                   {other && (
-                    <Tooltip title={t.otherSessionTooltip} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+                    <Tooltip title={t.otherSessionTooltip(channelLabel(channel))} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
                       <Chip
                         size="small"
                         avatar={<SessionAvatar url={sessionAvatarOf?.(g.sessionId)} size={16} blur={blurSessionAvatar} />}
-                        label={<Blurred when={blurSession} inline radius={5}>{t.otherSession(sessionNameOf(g.sessionId) || t.untitled)}</Blurred>}
+                        label={
+                          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, maxWidth: '100%', minWidth: 0 }}>
+                            <Blurred when={blurSession} inline radius={5}>{t.otherSession(sessionNameOf(g.sessionId) || t.untitled)}</Blurred>
+                            <ChannelLogo channel={channel} />
+                          </Box>
+                        }
                         sx={{
                           ...primaryTint, border: 1, mt: 0.25, maxWidth: '100%', height: 'auto', minHeight: 20,
                           '& .MuiChip-label': { typography: 'caption', fontWeight: 600, px: 1, pl: 0.75, overflow: 'hidden', textOverflow: 'ellipsis' },

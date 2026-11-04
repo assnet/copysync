@@ -205,6 +205,16 @@ Redesenho app 0.54.0 (conceito "radar": fluxo origem → destino). Estilo em
 `features/monitoring/monitoringStyle.ts` (tons, `focusRingSx`, `REDUCED_MOTION`, pílulas de vidro) e
 `MonitorCard.tsx`; cor só do tema.
 
+**Canais (WhatsApp × Telegram)** — limites por canal em `features/monitoring/utils/channelLimits.ts`
+(funções puras: `channelLimit`/`channelUsage` leem `limits[canal]`/`usage[canal]`, raiz = WhatsApp só
+como fallback; `channelCaps` = limite do canal − uso das outras sessões; `planLimitHit`/`upsellKindOf`
+traduzem `PLAN_LIMIT_REACHED` `meta.key` → texto por canal + `PlanLimitBanner`). Canal do grupo = canal
+da sessão dona (`config.channel` para o monitor). Cards mostram uma pílula por canal das sessões do
+tenant (`ChannelUsageChips`); o seletor bloqueia por canal. Sem `crossSessionDispatch`, o seletor de
+disparo lista a sessão atual + sessões conectadas de outro canal, e trava a 2ª sessão do mesmo canal.
+Logo do canal só via `ChannelLogo` (`features/sessions/components/`). Monitor ou destino no Telegram
+com "Marcar todos" ligado → nota discreta (no Telegram não existe). Não somar canais num contador só.
+
 - **Hero** (`MonitoringHero.tsx`): status (Ativo/Pausado, ponto pulsando só sem reduced-motion), seletor
   de sessão e etapas sessão → monitorados → disparo → lojas, cada uma com ação. Estado vazio explica o recurso.
   "Conectar nova sessão" leva a `/settings/sessions?create=1&returnTo=/monitoring`; volta com

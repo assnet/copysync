@@ -17,14 +17,15 @@ import { useMonitoringConfig } from './useMonitoringConfig';
 
 const config = (over: Partial<GroupMonitorConfigResponse> = {}): GroupMonitorConfigResponse => ({
   sessionId: 's1',
+  channel: 'whatsapp',
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600, startDelaySeconds: 0,
     maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: false, typingSeconds: 5,
     textMode: 'ORIGINAL', audience: 'STANDARD', enrichLinkOnly: true, captureOutsideWindow: true,
   },
   monitoredGroups: [], broadcastGroups: [],
-  limits: { monitoredGroups: null, broadcastGroups: null, mentionAllEnabled: true, crossSessionDispatch: false },
-  usage: { monitoredGroups: 0, broadcastGroups: 0 },
+  limits: { monitoredGroups: null, broadcastGroups: null, mentionAllEnabled: true, crossSessionDispatch: false, whatsapp: { monitoredGroups: null, broadcastGroups: null }, telegram: { monitoredGroups: null, broadcastGroups: null } },
+  usage: { monitoredGroups: 0, broadcastGroups: 0, whatsapp: { monitoredGroups: 0, broadcastGroups: 0 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } },
   ...over,
 });
 

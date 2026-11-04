@@ -33,7 +33,7 @@ describe('GroupPickerDialog', () => {
         mode="monitored"
         sessionId="s1"
         initial={[{ groupJid: 'g1@g.us', sessionId: 's1', title: 'Promo Rival', avatarUrl: 'https://x/a.jpg', keywords: ['fone'] }]}
-        max={5}
+        caps={{ whatsapp: 5, telegram: 5 }}
         excludeJids={[]}
         onClose={() => undefined}
         onSave={async () => undefined}
@@ -64,7 +64,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
   const sessions = [session('s1', 'Loja'), session('s2', 'Suporte')];
   const dialog = (crossSession: boolean) => (
     <MemoryRouter>
-      <GroupPickerDialog mode="broadcast" sessionId="s1" initial={[]} max={null} excludeJids={[]} sessions={sessions} crossSession={crossSession} onClose={() => undefined} onSave={async () => undefined} />
+      <GroupPickerDialog mode="broadcast" sessionId="s1" initial={[]} caps={{ whatsapp: null, telegram: null }} excludeJids={[]} sessions={sessions} crossSession={crossSession} onClose={() => undefined} onSave={async () => undefined} />
     </MemoryRouter>
   );
 
@@ -87,6 +87,30 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     expect(screen.queryByText(/exclusivo do plano MAX/)).not.toBeInTheDocument();
   });
 
+  it('sem a feature, sessão de outro canal entra e o limite é contado por canal', async () => {
+    const tg: SessionItem = { ...session('t1', 'Canal TG'), engine: 'telegram' };
+    listSessionGroups.mockImplementation(async (id: string) => ({
+      groups: [{ groupJid: `g-${id}`, title: `Grupo ${id}`, avatarUrl: null }, { groupJid: `h-${id}`, title: `Outro ${id}`, avatarUrl: null }],
+      partial: false,
+    }));
+    render(
+      <MemoryRouter>
+        <GroupPickerDialog
+          mode="broadcast" sessionId="s1" initial={[]} caps={{ whatsapp: 5, telegram: 1 }} excludeJids={[]}
+          sessions={[...sessions, tg]} crossSession={false} onClose={() => undefined} onSave={async () => undefined}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Grupo t1')).toBeInTheDocument();
+    expect(listSessionGroups.mock.calls.map((c) => c[0]).sort()).toEqual(['s1', 't1']);
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar Grupo t1' }));
+    // Telegram cheio (1/1): o outro grupo do Telegram trava; os do WhatsApp seguem livres
+    expect(screen.getByRole('button', { name: 'Adicionar Outro t1' })).toBeDisabled();
+    expect(screen.getByText('Limite de grupos do Telegram no plano atingido')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Adicionar Grupo s1' })).toBeEnabled();
+    expect(screen.getByRole('progressbar', { name: 'Telegram: 1 de 1 grupos usados' })).toBeInTheDocument();
+  });
+
   it('filtro por sessão mostra só os grupos dela; "Todas" volta', async () => {
     listSessionGroups.mockImplementation(async (id: string) => ({ groups: [{ groupJid: `g-${id}`, title: `Grupo ${id}`, avatarUrl: null }], partial: false }));
     render(dialog(true));
@@ -103,7 +127,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     render(
       <MemoryRouter>
         <GroupPickerDialog
-          mode="broadcast" sessionId="s1" initial={[]} max={null} excludeJids={[]} sessions={sessions} crossSession
+          mode="broadcast" sessionId="s1" initial={[]} caps={{ whatsapp: null, telegram: null }} excludeJids={[]} sessions={sessions} crossSession
           takenBroadcast={[{ groupJid: 'shared', sessionId: 's2', monitorSessionId: 's2' }]}
           onClose={() => undefined} onSave={async () => undefined}
         />
@@ -123,7 +147,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     render(
       <MemoryRouter>
         <GroupPickerDialog
-          mode="broadcast" sessionId="s9" max={null} excludeJids={[]} onClose={() => undefined} onSave={onSave}
+          mode="broadcast" sessionId="s9" caps={{ whatsapp: null, telegram: null }} excludeJids={[]} onClose={() => undefined} onSave={onSave}
           initial={[{ groupJid: 'a', sessionId: 's9', title: 'A', avatarUrl: null, keywords: [] }, { groupJid: 'b', sessionId: 's9', title: 'B', avatarUrl: null, keywords: [] }]}
         />
       </MemoryRouter>,
@@ -138,7 +162,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
 });
 
 describe('GroupPickerDialog — busca, bloqueio e privacidade', () => {
-  const base = { sessionId: 's1', initial: [] as PickedGroup[], max: 5, onSave: async () => undefined };
+  const base = { sessionId: 's1', initial: [] as PickedGroup[], caps: { whatsapp: 5, telegram: 5 }, onSave: async () => undefined };
 
   it('busca persiste na aba e é limpa ao cancelar', async () => {
     const onClose = vi.fn();
@@ -188,7 +212,7 @@ describe('GroupPickerDialog — busca, bloqueio e privacidade', () => {
     render(
       <PrivacyProvider>
         <MemoryRouter>
-          <GroupPickerDialog {...base} mode="broadcast" max={null} excludeJids={[]} sessions={sessions} crossSession onClose={() => undefined} />
+          <GroupPickerDialog {...base} mode="broadcast" caps={{ whatsapp: null, telegram: null }} excludeJids={[]} sessions={sessions} crossSession onClose={() => undefined} />
         </MemoryRouter>
       </PrivacyProvider>,
     );
@@ -205,7 +229,7 @@ describe('GroupPickerDialog — rascunho após reload', () => {
     sessionStorage.setItem('ui.monitoring.picker.search.monitored.s1', JSON.stringify({ v: 0, d: 'xyz' }));
     listSessionGroups.mockImplementation(async (_id: string, q?: string) =>
       ({ groups: q ? [] : [{ groupJid: 'g9', title: 'Grupo Recuperado', avatarUrl: null }], partial: false }));
-    render(<GroupPickerDialog mode="monitored" sessionId="s1" initial={[]} max={5} excludeJids={[]} onClose={() => undefined} onSave={async () => undefined} />);
+    render(<GroupPickerDialog mode="monitored" sessionId="s1" initial={[]} caps={{ whatsapp: 5, telegram: 5 }} excludeJids={[]} onClose={() => undefined} onSave={async () => undefined} />);
     expect(await screen.findByText('Grupo Recuperado')).toBeInTheDocument();
     expect(sessionStorage.getItem('ui.monitoring.picker.monitored.s1')).not.toContain('Grupo Recuperado');
   });
@@ -218,7 +242,7 @@ describe('GroupPickerDialog — rascunho após reload', () => {
     });
     render(
       <PrivacyProvider>
-        <GroupPickerDialog mode="monitored" sessionId="s1" initial={[]} max={5} excludeJids={['g1']} onClose={() => undefined} onSave={async () => undefined} />
+        <GroupPickerDialog mode="monitored" sessionId="s1" initial={[]} caps={{ whatsapp: 5, telegram: 5 }} excludeJids={['g1']} onClose={() => undefined} onSave={async () => undefined} />
       </PrivacyProvider>,
     );
     const free = await screen.findByText('Alfa Livre');

@@ -11,6 +11,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import type { GroupMonitorConfigResponse, GroupMonitorSettings, MonitorTextMode } from '@/types/api.types';
 import { AudiencePicker } from '@/features/offers/components/AudiencePicker';
 import { ImageModePicker } from '@/features/offers/components/ImageModePicker';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { formatDuration, monitoringStrings } from '../strings';
 import {
   INNER_RADIUS, REDUCED_MOTION, floatShadow, glassPillSx, iconTileSx, surfaceSx, toneSurface, toneText,
@@ -247,13 +248,15 @@ interface Props {
   config: GroupMonitorConfigResponse;
   /** Lança em erro. */
   onSave: (settings: GroupMonitorSettings) => Promise<unknown>;
+  /** Monitor ou algum destino no Telegram: "marcar todos" não se aplica lá (nota discreta). */
+  telegramInvolved?: boolean;
 }
 
 /**
  * Configuração do monitoramento da sessão. Monte com `key={sessionId}`: o rascunho é lido do
  * storage só no mount (chave por sessão); `null` = sem alteração, vale o salvo.
  */
-export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
+export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvolved = false }: Props) {
   const theme = useTheme();
   const textHelpId = useId();
   const [draft, setDraft, clearDraft] = usePersistedState<MonitorSettingsDraft | null>(
@@ -362,6 +365,12 @@ export function MonitoringSettingsForm({ sessionId, config, onSave }: Props) {
                 />
               </Box>
             </Tooltip>
+            {telegramInvolved && mentionAllEnabled && value.mentionAll && (
+              <Typography variant="caption" color="text.secondary" component="p" sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75, mt: -1 }}>
+                <Box component="span" sx={{ display: 'inline-flex', pt: 0.25 }}><ChannelLogo channel="telegram" /></Box>
+                <span>{t.mentionAllTelegram}</span>
+              </Typography>
+            )}
           </Stack>
         </MonitorCard>
 

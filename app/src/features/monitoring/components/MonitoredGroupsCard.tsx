@@ -7,20 +7,20 @@ import { Blurred, useBlur } from '@/features/privacy';
 import type { MonitoredGroupItem } from '@/types/api.types';
 import { INNER_RADIUS, focusRingSx, iconTileSx, toneSurface } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
-import { GroupUsageChip } from './GroupUsageChip';
+import { ChannelUsageChips, type ChannelUsageItem } from './GroupUsageChip';
 import { MonitorCard } from './MonitorCard';
 
 const t = monitoringStrings.groups;
 
 interface Props {
   groups: MonitoredGroupItem[];
-  used: number;
-  max: number | null;
+  /** Uso × limite do plano por canal (tenant inteiro). */
+  usage: readonly ChannelUsageItem[];
   onConfigure: () => void;
 }
 
 /** Origem: grupos de concorrentes escutados nesta sessão, com as palavras-chave de cada um. */
-export function MonitoredGroupsCard({ groups, used, max, onConfigure }: Props) {
+export function MonitoredGroupsCard({ groups, usage, onConfigure }: Props) {
   const theme = useTheme();
   const blurNames = useBlur('monitoring.groupNames');
   const blurKeywords = useBlur('monitoring.keywords');
@@ -33,7 +33,7 @@ export function MonitoredGroupsCard({ groups, used, max, onConfigure }: Props) {
       tone="info"
       title={t.monitoredTitle}
       subtitle={t.monitoredSubtitle}
-      action={<GroupUsageChip used={used} max={max} />}
+      action={<ChannelUsageChips items={usage} />}
       footer={
         <Tooltip title={t.configureTooltip} arrow describeChild>
           <Button

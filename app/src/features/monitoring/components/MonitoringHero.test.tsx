@@ -11,6 +11,7 @@ const session = (status: SessionStatus = 'CONNECTED'): SessionItem => ({
 
 const config = (over: Partial<GroupMonitorConfigResponse> = {}, enabled = true): GroupMonitorConfigResponse => ({
   sessionId: 's1',
+  channel: 'whatsapp',
   settings: {
     enabled, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600,
     startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 5,
@@ -21,8 +22,8 @@ const config = (over: Partial<GroupMonitorConfigResponse> = {}, enabled = true):
     { conversationId: 'c3', groupJid: 'g3@g.us', title: 'B', avatarUrl: null, keywords: [] },
   ],
   broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', sessionId: 's1', title: 'C', avatarUrl: null, position: 0 }],
-  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false },
-  usage: { monitoredGroups: 2, broadcastGroups: 1 },
+  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
+  usage: { monitoredGroups: 2, broadcastGroups: 1, whatsapp: { monitoredGroups: 2, broadcastGroups: 1 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } },
   credentialAlerts: [],
   ...over,
 });

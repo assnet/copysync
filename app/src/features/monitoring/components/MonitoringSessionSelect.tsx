@@ -2,9 +2,12 @@ import { Avatar, Box, MenuItem, TextField, Typography, useTheme } from '@mui/mat
 import { Smartphone } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
 import { sessionStrings } from '@/features/sessions/strings';
+import { channelOf } from '@/features/sessions/utils';
 import type { SessionItem } from '@/types/api.types';
-import { toneMain } from '../monitoringStyle';
+import { VISUALLY_HIDDEN, toneMain } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 import { SESSION_STATUS_TONE } from './SessionSummaryCard';
 
@@ -46,6 +49,8 @@ export function MonitoringSessionSelect({ sessions, value, onChange }: Props) {
             return (
               <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
                 <StatusDot session={s} />
+                <ChannelLogo channel={channelOf(s.engine)} />
+                <Box component="span" sx={VISUALLY_HIDDEN}>{channelLabel(channelOf(s.engine))}</Box>
                 <Blurred when={blurName} inline radius={5}>
                   <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(s)}</Box>
                 </Blurred>
@@ -71,6 +76,9 @@ export function MonitoringSessionSelect({ sessions, value, onChange }: Props) {
             <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
               <StatusDot session={s} />
               <Typography variant="caption" color="text.secondary">{sessionStrings.status[s.status]}</Typography>
+              <Typography variant="caption" color="text.secondary" aria-hidden>·</Typography>
+              <ChannelLogo channel={channelOf(s.engine)} />
+              <Typography variant="caption" color="text.secondary">{channelLabel(channelOf(s.engine))}</Typography>
             </Box>
           </Box>
         </MenuItem>

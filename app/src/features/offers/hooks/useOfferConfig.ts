@@ -4,6 +4,11 @@ import { sessionService } from '@/services/session.service';
 import type { OfferConfigResponse, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
 import { toOfferError } from '../utils/offerErrors';
 
+const NO_LIMITS: OfferConfigResponse['limits'] = {
+  whatsapp: { sessions: null, broadcastGroups: null },
+  telegram: { sessions: null, broadcastGroups: null },
+};
+
 /**
  * Configuração do gerador (sessão, grupos, intervalo) e as sessões do tenant.
  * As sessões servem ao assistente (só as conectadas) e à barra de resumo (nome e status).
@@ -65,6 +70,9 @@ export function useOfferConfig() {
     groupLimit: data?.groupLimit ?? null,
     sessionLimit: data?.sessionLimit ?? null,
     crossSessionDispatch: data?.crossSessionDispatch ?? false,
+    /** Limites por canal (null = sem limite); sem dados ainda, nada é limitado. */
+    limits: data?.limits ?? NO_LIMITS,
+    usage: data?.usage ?? null,
     configured: (config?.sessionIds.length ?? 0) > 0 && groups.length > 0,
     selectedSessions,
     missingSessions,

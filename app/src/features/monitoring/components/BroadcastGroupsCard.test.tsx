@@ -11,7 +11,7 @@ const refs = (...jids: string[]) => jids.map((groupJid) => ({ groupJid, sessionI
 
 function setup(initial: BroadcastGroupItem[]) {
   const onChange = vi.fn(async () => undefined);
-  const props = { used: initial.length, max: 10, monitorSessionId: 's1', sessionNameOf: () => null, onAdd: vi.fn(), onChange };
+  const props = { usage: [{ channel: 'whatsapp' as const, used: initial.length, max: 10 }], monitorSessionId: 's1', sessionNameOf: () => null, onAdd: vi.fn(), onChange };
   // `wrapper` mantém o tema no rerender (sem remontar o card e perder o estado do desfazer)
   const wrapper = ({ children }: { children: ReactNode }) => <ThemeProvider theme={buildTheme('light')}>{children}</ThemeProvider>;
   const view = render(<BroadcastGroupsCard {...props} groups={initial} />, { wrapper });

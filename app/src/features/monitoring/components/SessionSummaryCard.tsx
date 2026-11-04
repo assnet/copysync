@@ -4,7 +4,8 @@ import { Link as RouterLink } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { sessionStrings } from '@/features/sessions/strings';
-import { formatBrazilPhone } from '@/features/sessions/utils';
+import { SessionChannelChip } from '@/features/sessions/components/SessionChannelChip';
+import { channelOf, formatBrazilPhone } from '@/features/sessions/utils';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
 import { INNER_RADIUS, toneMain, toneSurface, toneText, type MonitorTone } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
@@ -89,15 +90,18 @@ export function SessionSummaryCard({ session }: { session: SessionItem }) {
               {phone || t.noPhone}
             </Typography>
           </Blurred>
+          <Box sx={{ mt: 0.75, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
           <Box
             component="span"
             sx={{
-              mt: 0.75, display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.25, borderRadius: 999,
+              display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.25, borderRadius: 999,
               typography: 'caption', fontWeight: 700, color: surface.color, bgcolor: surface.backgroundColor,
             }}
           >
             <AppIcon icon={STATUS_ICON[tone]} size="inline" />
             {sessionStrings.status[session.status]}
+          </Box>
+          <SessionChannelChip channel={channelOf(session.engine)} />
           </Box>
         </Box>
       </Box>

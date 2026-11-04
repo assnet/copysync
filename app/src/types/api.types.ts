@@ -392,15 +392,28 @@ export interface OfferConfigSettings {
   dispatchOrder: OfferDispatchOrder;
 }
 
+/** Canal de limite do plano: o de uma sessão vem da engine; o de um grupo, da sessão dona dele. */
+export type LimitChannel = 'whatsapp' | 'telegram';
+
+/** Limites do gerador num canal; null = sem limite do plano. */
+export interface OfferChannelLimits { sessions: number | null; broadcastGroups: number | null }
+/** Uso da configuração salva num canal (sessões configuradas e grupos delas). */
+export interface OfferChannelUsage { sessions: number; broadcastGroups: number }
+
 /** `config: null` = nunca configurado; `groupLimit: null` = sem limite de grupos no plano. */
 export interface OfferConfigResponse {
   config: OfferConfigSettings | null;
   groups: OfferConfigGroup[];
+  /** Legado = `limits.whatsapp.broadcastGroups`. */
   groupLimit: number | null;
-  /** Entitlement `whatsapp_sessions`; null = sem limite do plano. */
+  /** Legado = `limits.whatsapp.sessions` (entitlement `whatsapp_sessions`); null = sem limite do plano. */
   sessionLimit: number | null;
-  /** Entitlement `cross_session_dispatch`: 2+ sessões disparando (Business). */
+  /** Entitlement `cross_session_dispatch`: 2+ sessões do MESMO canal disparando (Business). */
   crossSessionDispatch: boolean;
+  /** Limites por canal (null = sem limite). */
+  limits: Record<LimitChannel, OfferChannelLimits>;
+  /** Uso da configuração salva por canal. */
+  usage: Record<LimitChannel, OfferChannelUsage>;
 }
 
 export interface SaveOfferConfigRequest {
@@ -599,15 +612,30 @@ export interface BroadcastGroupItem {
   position: number;
 }
 
+/** Limite (null = ilimitado) de grupos num canal. */
+export interface ChannelGroupLimits { monitoredGroups: number | null; broadcastGroups: number | null }
+/** Uso de grupos num canal (tenant inteiro, todas as sessões). */
+export interface ChannelGroupUsage { monitoredGroups: number; broadcastGroups: number }
+
 export interface GroupMonitorConfigResponse {
   sessionId: string;
+  /** Canal da sessão do monitor: os grupos monitorados contam nele. */
+  channel: LimitChannel;
   settings: GroupMonitorSettings;
   monitoredGroups: MonitoredGroupItem[];
   broadcastGroups: BroadcastGroupItem[];
-  /** Limites do plano (todas as sessões do tenant somadas). null = ilimitado. */
-  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
-  /** Uso atual no tenant (todas as sessões). */
-  usage: { monitoredGroups: number; broadcastGroups: number };
+  /**
+   * Limites do plano (todas as sessões do tenant somadas) por canal; null = ilimitado. Raiz =
+   * WhatsApp (legado). `crossSessionDispatch` só vale para 2+ sessões do mesmo canal.
+   */
+  limits: ChannelGroupLimits & {
+    mentionAllEnabled: boolean;
+    crossSessionDispatch: boolean;
+    whatsapp: ChannelGroupLimits;
+    telegram: ChannelGroupLimits;
+  };
+  /** Uso atual no tenant (todas as sessões) por canal; raiz = WhatsApp (legado). */
+  usage: ChannelGroupUsage & { whatsapp: ChannelGroupUsage; telegram: ChannelGroupUsage };
   /** Destinos (sessão + JID) dos monitoramentos de outras sessões: não podem entrar na lista deste. */
   takenBroadcastGroups?: TakenBroadcastGroup[];
   /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */

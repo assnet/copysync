@@ -15,7 +15,9 @@ import { StatCard, SectionCard } from '@/components';
 import { SessionStatusChip } from '@/features/sessions/components/SessionStatusChip';
 import { formatPhone } from '@/features/chat/utils';
 import type { SessionItem } from '@/types/api.types';
-import { isAwaitingStatus } from '@/features/sessions/utils';
+import { channelOf, isAwaitingStatus } from '@/features/sessions/utils';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { sessionStrings } from '@/features/sessions/strings';
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -108,8 +110,8 @@ export function DashboardPage() {
       <Grid container spacing={2.5}>
         <Grid item xs={12} md={7}>
           <SectionCard
-            title="Sessões WhatsApp"
-            subtitle="Gerencie conexões e QR codes em tempo real"
+            title={sessionStrings.dashboard.title}
+            subtitle={sessionStrings.dashboard.subtitle}
             action={
               <Button
                 size="small"
@@ -179,9 +181,12 @@ export function DashboardPage() {
                       </Box>
                       {/* Nome acima, número abaixo — centrados na linha média do avatar */}
                       <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap sx={{ lineHeight: 1.3 }}>
-                          {s.name}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                          <ChannelLogo channel={channelOf(s.engine)} size="sm" labelled />
+                          <Typography variant="body2" fontWeight={600} noWrap sx={{ lineHeight: 1.3 }}>
+                            {s.name}
+                          </Typography>
+                        </Box>
                         {s.phone && (
                           <Typography variant="caption" color="text.secondary" noWrap sx={{ lineHeight: 1.3 }}>
                             {formatPhone(s.phone)}

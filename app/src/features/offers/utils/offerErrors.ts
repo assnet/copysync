@@ -1,3 +1,5 @@
+import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
+import type { LimitChannel } from '@/types/api.types';
 import { offerStrings as t } from '../strings';
 
 /** O que a tela faz com o erro além de mostrar a mensagem. */
@@ -9,7 +11,17 @@ export interface OfferErrorView {
   action: OfferErrorAction;
   /** Erro do campo de link: aparece sob o campo, não num alerta. */
   isLinkField: boolean;
+  /** Limite do plano por canal (sessões ou grupos de disparo): abre o aviso de upgrade. */
+  planLimit?: { kind: PlanLimitKind; limit: number };
 }
+
+/** Chave de entitlement (`meta.key` do 403) → canal, o que estourou e o aviso de upgrade. */
+const CHANNEL_LIMIT_KEYS: Record<string, { channel: LimitChannel; what: 'sessions' | 'groups'; kind: PlanLimitKind }> = {
+  whatsapp_sessions: { channel: 'whatsapp', what: 'sessions', kind: 'whatsappSessions' },
+  telegram_sessions: { channel: 'telegram', what: 'sessions', kind: 'telegramSessions' },
+  broadcast_groups: { channel: 'whatsapp', what: 'groups', kind: 'whatsappBroadcastGroups' },
+  telegram_broadcast_groups: { channel: 'telegram', what: 'groups', kind: 'telegramBroadcastGroups' },
+};
 
 const CREDENTIAL_CODES = new Set(['AFFILIATE_CREDENTIAL_NOT_FOUND', 'AFFILIATE_CREDENTIAL_REJECTED']);
 const CONFIG_CODES = new Set(['OFFER_CONFIG_MISSING', 'OFFER_NO_DESTINATIONS']);
@@ -30,8 +42,11 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
 
   if (code === 'PLAN_LIMIT_REACHED') {
     const limit = typeof e?.meta?.limit === 'number' ? e.meta.limit : null;
-    if (e?.meta?.key === 'broadcast_groups') {
-      return { code, message: limit != null ? t.groupLimit(limit) : t.errors.generic, action: 'none', isLinkField: false };
+    const channelKey = typeof e?.meta?.key === 'string' ? CHANNEL_LIMIT_KEYS[e.meta.key] : undefined;
+    if (channelKey) {
+      if (limit == null) return { code, message: t.errors.generic, action: 'none', isLinkField: false };
+      const message = channelKey.what === 'groups' ? t.channelGroupLimit(channelKey.channel, limit) : t.channelSessionLimit(channelKey.channel, limit);
+      return { code, message, action: 'none', isLinkField: false, planLimit: { kind: channelKey.kind, limit } };
     }
     const daily = limit ?? fallbackLimit;
     return { code, message: daily != null ? t.planLimit(daily) : t.planLimitNoValue, action: 'none', isLinkField: false };

@@ -2,7 +2,11 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Alert, Avatar, Box, Button, Card, CardActionArea, Checkbox, Chip, Skeleton, Stack, Tooltip, Typography } from '@mui/material';
 import { Smartphone } from 'lucide-react';
 import { AppIcon, EmptyState } from '@/components';
-import type { SessionItem } from '@/types/api.types';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { channelOf } from '@/features/sessions/utils';
+import type { OfferConfigResponse, SessionItem } from '@/types/api.types';
+import { CHANNELS, countByChannel } from '../../utils/offerConfig';
+import { ChannelCounterChips } from './ChannelCounterChips';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
 import { Blurred, useBlur } from '@/features/privacy';
@@ -16,16 +20,19 @@ interface Props {
   failed: boolean;
   /** Na ordem de escolha = ordem de envio. */
   selectedIds: readonly string[];
-  /** Entitlement `whatsapp_sessions`; null = sem limite. */
-  limit: number | null;
+  /** Limites por canal (`whatsapp_sessions`, `telegram_sessions`); null = sem limite. */
+  limits: OfferConfigResponse['limits'];
   onToggle: (id: string) => void;
   onRetry: () => void;
 }
 
 /** Passo 1: sessões conectadas em cartões de escolha múltipla; o número mostra a ordem de envio. */
-export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limit, onToggle, onRetry }: Props) {
+export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limits, onToggle, onRetry }: Props) {
   const blurSession = useBlur('offers.sessionName');
-  const atLimit = limit != null && selectedIds.length >= limit;
+  const channelOfId = (id: string) => channelOf(sessions.find((s) => s.id === id)?.engine);
+  const count = countByChannel(selectedIds.map(channelOfId));
+  const channels = CHANNELS.filter((ch) => sessions.some((s) => channelOf(s.engine) === ch));
+  const sessionLimits = { whatsapp: limits.whatsapp.sessions, telegram: limits.telegram.sessions };
 
   if (failed) {
     return (
@@ -57,14 +64,12 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limi
   return (
     <Stack spacing={1.5}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-        <Chip
-          role="status"
-          aria-live="polite"
-          aria-label={t.counterAria(selectedIds.length, limit)}
-          color={atLimit ? 'warning' : selectedIds.length > 0 ? 'primary' : 'default'}
-          variant={selectedIds.length > 0 ? 'filled' : 'outlined'}
-          label={t.counter(selectedIds.length, limit)}
-          sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+        <ChannelCounterChips
+          channels={channels}
+          count={count}
+          limits={sessionLimits}
+          label={t.channelCounter}
+          ariaLabel={t.channelCounterAria}
         />
       </Box>
 
@@ -72,7 +77,9 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limi
         {sessions.map((s) => {
           const position = selectedIds.indexOf(s.id);
           const selected = position >= 0;
-          const blocked = !selected && atLimit;
+          const channel = channelOf(s.engine);
+          const limit = sessionLimits[channel];
+          const blocked = !selected && limit != null && count[channel] >= limit;
           const card = (
             <Card
               variant="outlined"
@@ -95,7 +102,10 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limi
                   <Blurred when={blurSession} inline radius={4}>{s.name.slice(0, 1).toUpperCase()}</Blurred>
                 </Avatar>
                 <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                  <Typography variant="subtitle2" noWrap><Blurred when={blurSession} inline radius={5}>{s.name}</Blurred></Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                    <ChannelLogo channel={channel} size="sm" labelled />
+                    <Typography variant="subtitle2" noWrap><Blurred when={blurSession} inline radius={5}>{s.name}</Blurred></Typography>
+                  </Box>
                   <Typography variant="body2" color="text.secondary" noWrap><Blurred when={blurSession} inline radius={5}>{s.phone ?? t.noPhone}</Blurred></Typography>
                 </Box>
                 <Stack alignItems="flex-end" spacing={0.5}>
@@ -114,7 +124,7 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limi
             </Card>
           );
           return blocked && limit != null ? (
-            <Tooltip key={s.id} title={t.limitTooltip(limit)} arrow>
+            <Tooltip key={s.id} title={t.channelLimitTooltip(channel, limit)} arrow>
               <Box component="span" sx={{ display: 'block' }}>{card}</Box>
             </Tooltip>
           ) : (

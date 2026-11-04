@@ -59,6 +59,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Monitoramento e Gerador por canal (`monitoring`, `offers`) — app 0.68.0
+
+- **`features/monitoring/utils/channelLimits.ts`**, **`GroupUsageChip.tsx`**, **`GroupPickerDialog.tsx`** — uso e limite de grupos monitorados e de disparo por canal ("WhatsApp 3/10 · Telegram 1/10"), bloqueio por canal no seletor, logo do canal nas sessões e chips "Envia por"; aviso de "marcar todos" sem efeito no Telegram; erro de limite por canal abre o aviso de upgrade certo
+- **`ConfigSessionStep.tsx`**, **`ConfigGroupsStep.tsx`**, **`ChannelCounterChips.tsx`**, **`offerErrors.ts`** — gerador conta sessões e grupos por canal; sessão cruzada só avisa com 2+ sessões do mesmo canal
+- **`ChannelLogo.tsx`**, **`DashboardPage.tsx`** — logo do canal reutilizável; dashboard com "Sessões" de ambos os canais
+
+#### Frontend — Planos com limites por canal (`plans`) — app 0.67.0
+
+- **`ChannelLimitsTable.tsx`**, **`catalog.ts`** — cartão de plano com tabela canal × sessões/monitorados/disparo (Telegram "A partir do PRO" no LITE); teste trava catálogo × presets da API; regra de sessão cruzada por canal no texto
+- **`planUpsell.ts`** — tipos de upgrade para grupos monitorados e de disparo por canal
+
 #### Backend — Monitoramento e gerador de ofertas pelo Telegram (`messaging`, `chat`, `campaigns`) — api 0.53.0
 
 - **`engines/telegram/telegramMessageId.ts`** — id de mensagem `<peerId>_<msgId>` (o id do Telegram é único só por chat; colidia na captura e no dedupe do chat); citação, reação e leitura extraem o msgId

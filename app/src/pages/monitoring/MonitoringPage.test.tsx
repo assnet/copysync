@@ -31,6 +31,7 @@ const session = (id: string, name: string): SessionItem => ({
 
 const config = (sessionId: string): GroupMonitorConfigResponse => ({
   sessionId,
+  channel: 'whatsapp',
   settings: {
     enabled: false, windowStartMinute: 0, windowEndMinute: 1440, intervalMinSeconds: 300, intervalMaxSeconds: 600,
     startDelaySeconds: 0, maxOfferAgeMinutes: 240, couponMaxAgeMinutes: 60, mentionAll: false, imageMode: 'MEDIA', simulateTyping: true, typingSeconds: 5,
@@ -38,8 +39,8 @@ const config = (sessionId: string): GroupMonitorConfigResponse => ({
   },
   monitoredGroups: [{ conversationId: 'c1', groupJid: 'g1@g.us', title: 'Promo Rival', avatarUrl: null, keywords: ['fone'] }],
   broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', sessionId, title: 'Meu Grupo', avatarUrl: null, position: 0 }],
-  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false },
-  usage: { monitoredGroups: 1, broadcastGroups: 1 },
+  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
+  usage: { monitoredGroups: 1, broadcastGroups: 1, whatsapp: { monitoredGroups: 1, broadcastGroups: 1 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } },
 });
 
 const captured: CapturedOffersResponse = {
@@ -121,7 +122,7 @@ describe('MonitoringPage', () => {
   });
 
   it('etapa "Grupos de disparo" pendente no topo abre o seletor de disparo', async () => {
-    getConfig.mockImplementation(async (id: string) => ({ ...config(id), broadcastGroups: [], usage: { monitoredGroups: 1, broadcastGroups: 0 } }));
+    getConfig.mockImplementation(async (id: string) => ({ ...config(id), broadcastGroups: [], usage: { monitoredGroups: 1, broadcastGroups: 0, whatsapp: { monitoredGroups: 1, broadcastGroups: 0 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } } }));
     renderAt();
     const steps = await screen.findByRole('list', { name: 'O que falta para o monitoramento funcionar' });
     expect(screen.getByRole('status', { name: /Falta configurar/ })).toBeInTheDocument();

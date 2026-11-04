@@ -5,10 +5,12 @@
  * - frase com variável é função tipada; componente nunca concatena pedaços
  * - sem nome de marca do produto (usar "a ferramenta")
  */
-import type { OfferAudience, OfferDispatchStatus } from '@/types/api.types';
+import type { LimitChannel, OfferAudience, OfferDispatchStatus } from '@/types/api.types';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const groupsLabel = (n: number) => `${n} ${plural(n, 'grupo', 'grupos')}`;
+const sessionsLabel = (n: number) => `${n} ${plural(n, 'sessão', 'sessões')}`;
+const CHANNEL_NAME: Record<LimitChannel, string> = { whatsapp: 'WhatsApp', telegram: 'Telegram' };
 
 export const offerStrings = {
   page: {
@@ -46,25 +48,35 @@ export const offerStrings = {
     saved: 'Configuração salva. Agora é só gerar sua oferta.',
     session: {
       title: 'Escolha as sessões',
-      subtitle: 'Os números de WhatsApp que vão enviar. A ordem em que você marca é a ordem de envio.',
+      subtitle: 'As contas de WhatsApp ou Telegram que vão enviar. A ordem em que você marca é a ordem de envio.',
       counter: (n: number, limit: number | null) =>
         limit != null ? `${n} / ${limit}` : `${n} ${plural(n, 'selecionada', 'selecionadas')}`,
       counterAria: (n: number, limit: number | null) =>
         limit != null ? `${n} de ${limit} sessões selecionadas` : `${n} ${plural(n, 'sessão selecionada', 'sessões selecionadas')}`,
-      limitTooltip: (limit: number) => `Seu plano permite disparar por até ${limit} ${plural(limit, 'sessão', 'sessões')}. Desmarque uma para escolher outra.`,
+      /** Contador por canal: "WhatsApp 1/1"; sem limite, só o marcado. */
+      channelCounter: (channel: LimitChannel, n: number, limit: number | null) =>
+        limit != null ? `${CHANNEL_NAME[channel]} ${n}/${limit}` : `${CHANNEL_NAME[channel]} ${n}`,
+      channelCounterAria: (channel: LimitChannel, n: number, limit: number | null) =>
+        limit != null
+          ? `${CHANNEL_NAME[channel]}: ${n} de ${limit} ${plural(limit, 'sessão selecionada', 'sessões selecionadas')}`
+          : `${CHANNEL_NAME[channel]}: ${n} ${plural(n, 'sessão selecionada', 'sessões selecionadas')}, sem limite no plano`,
+      channelLimitTooltip: (channel: LimitChannel, limit: number) =>
+        limit === 0
+          ? `Seu plano não inclui disparo pelo ${CHANNEL_NAME[channel]}.`
+          : `Seu plano permite disparar por até ${sessionsLabel(limit)} de ${CHANNEL_NAME[channel]}. Desmarque uma para escolher outra.`,
       orderBadge: (n: number) => `${n}ª`,
-      crossLocked: 'Disparar por mais de um WhatsApp é exclusivo do plano MAX. Deixe uma sessão marcada ou faça upgrade.',
+      crossLocked: 'Disparar por duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Deixe uma sessão por canal ou faça upgrade.',
       crossLockedLink: 'Ver planos',
       loadError: 'Não foi possível carregar as sessões.',
       emptyTitle: 'Nenhuma sessão conectada',
-      emptyDescription: 'Conecte um número de WhatsApp para disparar ofertas nos seus grupos.',
+      emptyDescription: 'Conecte uma conta de WhatsApp ou Telegram para disparar ofertas nos seus grupos.',
       emptyAction: 'Conectar uma sessão',
       connected: 'Conectada',
       noPhone: 'Número não informado',
     },
     groups: {
       title: 'Selecione os grupos',
-      subtitle: 'Todos os grupos de que o WhatsApp de cada sessão participa.',
+      subtitle: 'Todos os grupos de que a conta de cada sessão participa.',
       filterAll: 'Todas',
       filterAria: 'Filtrar por sessão',
       excludeLabel: 'Excluir',
@@ -72,7 +84,7 @@ export const offerStrings = {
       excludeHelper: 'Esconde grupos cujo nome contenha estas palavras (separe por vírgula).',
       emptyFiltered: 'Nenhum grupo com estes filtros.',
       viaSession: (name: string) => `via ${name}`,
-      partial: 'O WhatsApp da sessão não respondeu: mostrando só os grupos que já têm conversa. Reconecte a sessão para ver todos.',
+      partial: 'A conta da sessão não respondeu: mostrando só os grupos que já têm conversa. Reconecte a sessão para ver todos.',
       ensureError: 'Não foi possível selecionar este grupo. Tente novamente.',
       searchLabel: 'Buscar grupo',
       loadError: 'Não foi possível carregar os grupos.',
@@ -83,8 +95,16 @@ export const offerStrings = {
         limit != null ? `${n} / ${limit}` : `${n} ${plural(n, 'selecionado', 'selecionados')}`,
       counterAria: (n: number, limit: number | null) =>
         limit != null ? `${n} de ${limit} grupos selecionados` : `${groupsLabel(n)} selecionados`,
-      limitTooltip: (limit: number) =>
-        `Seu plano permite até ${groupsLabel(limit)}. Desmarque um para escolher outro.`,
+      channelCounter: (channel: LimitChannel, n: number, limit: number | null) =>
+        limit != null ? `${CHANNEL_NAME[channel]} ${n}/${limit}` : `${CHANNEL_NAME[channel]} ${n}`,
+      channelCounterAria: (channel: LimitChannel, n: number, limit: number | null) =>
+        limit != null
+          ? `${CHANNEL_NAME[channel]}: ${n} de ${limit} grupos selecionados`
+          : `${CHANNEL_NAME[channel]}: ${groupsLabel(n)} selecionados, sem limite no plano`,
+      channelLimitTooltip: (channel: LimitChannel, limit: number) =>
+        limit === 0
+          ? `Seu plano não inclui grupos de disparo no ${CHANNEL_NAME[channel]}.`
+          : `Seu plano permite até ${groupsLabel(limit)} de ${CHANNEL_NAME[channel]}. Desmarque um para escolher outro.`,
       clear: 'Limpar seleção',
       showAll: (hidden: number) => `Ver todos (+${hidden})`,
       showLess: 'Esconder',
@@ -328,7 +348,7 @@ export const offerStrings = {
       OFFER_NOT_FOUND: 'A oferta não existe mais',
       MESSAGE_SEND_FAILED: 'O envio falhou',
       OFFER_DESTINATION_UNAVAILABLE: 'O grupo ou a sessão não existe mais',
-      SEND_TIMEOUT: 'O WhatsApp demorou demais para responder',
+      SEND_TIMEOUT: 'A conta da sessão demorou demais para responder',
       MEDIA_NOT_FOUND: 'A foto da oferta não foi encontrada',
       OFFER_EXPIRED: 'A oferta venceu antes de chegar a vez deste grupo',
       generic: 'O envio falhou',
@@ -382,8 +402,15 @@ export const offerStrings = {
   planLimit: (limit: number) =>
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
-  crossSessionUnavailable: 'Disparar por mais de um WhatsApp é exclusivo do plano MAX. Deixe uma sessão na configuração ou faça upgrade.',
-  groupLimit: (limit: number) => `Seu plano permite até ${groupsLabel(limit)}. Desmarque alguns e salve de novo.`,
+  crossSessionUnavailable: 'Disparar por duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Deixe uma sessão por canal ou faça upgrade.',
+  channelGroupLimit: (channel: LimitChannel, limit: number) =>
+    limit === 0
+      ? `Seu plano não inclui grupos de disparo no ${CHANNEL_NAME[channel]}. Desmarque esses grupos e salve de novo.`
+      : `Seu plano permite até ${groupsLabel(limit)} de ${CHANNEL_NAME[channel]}. Desmarque alguns e salve de novo.`,
+  channelSessionLimit: (channel: LimitChannel, limit: number) =>
+    limit === 0
+      ? `Seu plano não inclui disparo pelo ${CHANNEL_NAME[channel]}. Desmarque essas sessões e salve de novo.`
+      : `Seu plano permite disparar por até ${sessionsLabel(limit)} de ${CHANNEL_NAME[channel]}. Desmarque alguma e salve de novo.`,
   goToCredentials: 'Conectar conta de afiliado',
   editCredentials: 'Revisar credencial',
   openConfig: 'Configurar grupos',

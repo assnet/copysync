@@ -5,9 +5,12 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { Alert, Box, Button, CircularProgress, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
 import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
-import type { OfferConfigGroup, OfferConfigResponse, OfferConfigSettings, OfferDispatchOrder, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
+import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
+import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
+import { channelOf } from '@/features/sessions/utils';
+import type { LimitChannel, OfferConfigGroup, OfferConfigResponse, OfferConfigSettings, OfferDispatchOrder, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../../strings';
-import { DEFAULT_INTERVAL, intervalValid } from '../../utils/offerConfig';
+import { CHANNELS, DEFAULT_INTERVAL, countByChannel, intervalValid } from '../../utils/offerConfig';
 import type { OfferErrorView } from '../../utils/offerErrors';
 import { ConfigSessionStep } from './ConfigSessionStep';
 import { ConfigGroupsStep, type SelectedGroup } from './ConfigGroupsStep';
@@ -27,9 +30,9 @@ interface WizardDraft {
 interface Props {
   config: OfferConfigSettings | null;
   groups: OfferConfigGroup[];
-  groupLimit: number | null;
-  sessionLimit: number | null;
-  /** Entitlement `cross_session_dispatch`: sem ele, 2+ sessões não salvam (403). */
+  /** Limites do plano por canal (sessões e grupos de disparo); null = sem limite. */
+  limits: OfferConfigResponse['limits'];
+  /** Entitlement `cross_session_dispatch`: sem ele, 2+ sessões do mesmo canal não salvam (403). */
   crossSessionDispatch: boolean;
   sessions: SessionItem[];
   sessionsLoading: boolean;
@@ -43,7 +46,7 @@ interface Props {
 
 /** Assistente Sessões → Grupos → Confirmar. Abre preenchido com a configuração atual ao editar. */
 export function OfferConfigWizard({
-  config, groups, groupLimit, sessionLimit, crossSessionDispatch, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
+  config, groups, limits, crossSessionDispatch, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
 }: Props) {
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
   // Todo o rascunho do assistente sobrevive a reload (passo, sessões, grupos, intervalo, ordem);
@@ -75,9 +78,17 @@ export function OfferConfigWizard({
     () => sessionIds.flatMap((id) => connected.find((s) => s.id === id) ?? []),
     [sessionIds, connected],
   );
-  const overGroupLimit = groupLimit != null && selected.size > groupLimit;
-  const overSessionLimit = sessionLimit != null && chosen.length > sessionLimit;
-  const crossLocked = chosen.length > 1 && !crossSessionDispatch;
+  // Canal da sessão = engine; o do grupo = o da sessão dona (limites do plano são por canal)
+  const channelOfSession = (id: string): LimitChannel => channelOf(sessions.find((s) => s.id === id)?.engine);
+  const sessionCount = countByChannel(chosen.map((s) => channelOf(s.engine)));
+  const groupCount = countByChannel([...selected.values()].map((g) => channelOfSession(g.sessionId)));
+  const over = (count: Record<LimitChannel, number>, kind: 'sessions' | 'broadcastGroups') =>
+    CHANNELS.some((ch) => limits[ch][kind] != null && count[ch] > limits[ch][kind]!);
+  const overGroupLimit = over(groupCount, 'broadcastGroups');
+  const overSessionLimit = over(sessionCount, 'sessions');
+  // Sessão cruzada só é exigida para 2+ sessões do MESMO canal
+  const crossLocked = !crossSessionDispatch && CHANNELS.some((ch) => sessionCount[ch] > 1);
+  const [planLimit, setPlanLimit] = useState<{ kind: PlanLimitKind; limit: number } | null>(null);
 
   const canNext = step === 0
     ? chosen.length > 0 && !overSessionLimit && !crossLocked
@@ -87,7 +98,9 @@ export function OfferConfigWizard({
   const toggleSession = (id: string) => {
     setSessionIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (sessionLimit != null && prev.length >= sessionLimit) return prev;
+      const ch = channelOfSession(id);
+      const limit = limits[ch].sessions;
+      if (limit != null && prev.filter((x) => channelOfSession(x) === ch).length >= limit) return prev;
       return [...prev, id];
     });
     // Grupos da sessão removida saem da seleção
@@ -99,7 +112,11 @@ export function OfferConfigWizard({
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(id)) next.delete(id);
-      else if (groupLimit == null || next.size < groupLimit) next.set(id, group);
+      else {
+        const ch = channelOfSession(group.sessionId);
+        const limit = limits[ch].broadcastGroups;
+        if (limit == null || [...next.values()].filter((g) => channelOfSession(g.sessionId) === ch).length < limit) next.set(id, group);
+      }
       return next;
     });
     setError(null);
@@ -120,7 +137,9 @@ export function OfferConfigWizard({
       clearDraft();
       onSaved();
     } catch (err) {
-      setError((err as OfferErrorView).message ?? offerStrings.errors.generic);
+      const view = err as OfferErrorView;
+      setError(view.message ?? offerStrings.errors.generic);
+      if (view.planLimit) setPlanLimit(view.planLimit);
     } finally {
       setSaving(false);
     }
@@ -153,7 +172,7 @@ export function OfferConfigWizard({
             loading={sessionsLoading}
             failed={sessionsFailed}
             selectedIds={chosen.map((s) => s.id)}
-            limit={sessionLimit}
+            limits={limits}
             onToggle={toggleSession}
             onRetry={onRetrySessions}
           />
@@ -162,7 +181,7 @@ export function OfferConfigWizard({
           <ConfigGroupsStep
             sessions={chosen}
             selected={selected}
-            limit={groupLimit}
+            limits={limits}
             onToggle={toggleGroup}
             onClear={() => setSelected(() => new Map())}
           />
@@ -181,6 +200,7 @@ export function OfferConfigWizard({
       </Box>
 
       {error && <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      {planLimit && <PlanLimitBanner open onClose={() => setPlanLimit(null)} kind={planLimit.kind} limit={planLimit.limit} />}
 
       <Stack direction="row" spacing={1.5} sx={{ mt: 3, justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 1 }}>
         <Box>

@@ -9,7 +9,11 @@ import { GroupAvatar } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
 import { offerService } from '@/services/offer.service';
-import type { SessionGroupWithSession, SessionItem } from '@/types/api.types';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { channelOf } from '@/features/sessions/utils';
+import type { OfferConfigResponse, SessionGroupWithSession, SessionItem } from '@/types/api.types';
+import { CHANNELS, countByChannel } from '../../utils/offerConfig';
+import { ChannelCounterChips } from './ChannelCounterChips';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
 import { sessionColor } from './DispatchOrderPicker';
@@ -51,7 +55,8 @@ interface Props {
   sessions: SessionItem[];
   /** id → grupo, mantido fora da lista para a seleção sobreviver à busca. */
   selected: ReadonlyMap<string, SelectedGroup>;
-  limit: number | null;
+  /** Limites por canal; o canal do grupo é o da sessão dona. null = sem limite. */
+  limits: OfferConfigResponse['limits'];
   onToggle: (id: string, group: SelectedGroup) => void;
   onClear: () => void;
 }
@@ -64,7 +69,7 @@ export function parseExcludeTerms(raw: string): string[] {
 }
 
 /** Passo 2: grupos de todas as sessões, com busca, filtro por sessão, exclusão por palavra e contador × limite. */
-export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear }: Props) {
+export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear }: Props) {
   // Filtros sobrevivem a reload junto com o rascunho do assistente
   const [filters, setFilters] = usePersistedState('offers.groupsFilters', { search: '', exclude: '', sessionFilter: null as string | null });
   const { search, exclude, sessionFilter } = filters;
@@ -76,7 +81,10 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
   const multi = sessions.length > 1;
   const blurNames = useBlur('offers.groupNames');
   const blurSession = useBlur('offers.sessionName');
-  const atLimit = limit != null && selected.size >= limit;
+  const channelOfId = (id: string) => channelOf(sessions.find((s) => s.id === id)?.engine);
+  const count = countByChannel([...selected.values()].map((g) => channelOfId(g.sessionId)));
+  const channels = CHANNELS.filter((ch) => sessions.some((s) => channelOf(s.engine) === ch));
+  const groupLimits = { whatsapp: limits.whatsapp.broadcastGroups, telegram: limits.telegram.broadcastGroups };
   // Abre sempre resumido: a busca procura em todos; a tela mostra VISIBLE_GROUPS até "Ver todos"
   const [expanded, setExpanded] = useState(false);
   // Grupo sem conversa ganha uma ao ser marcado; guarda aqui para a lista refletir sem recarregar.
@@ -170,7 +178,12 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
                 key={s.id}
                 size="small"
                 avatar={<Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ bgcolor: sessionColor(i), color: '#fff', fontWeight: 700 }}>{s.name.slice(0, 1).toUpperCase()}</Avatar>}
-                label={<Blurred when={blurSession} inline radius={4}>{`${s.name}${countBySession.has(s.id) ? ` · ${countBySession.get(s.id)}` : ''}`}</Blurred>}
+                label={
+                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <ChannelLogo channel={channelOf(s.engine)} labelled />
+                    <Blurred when={blurSession} inline radius={4}>{`${s.name}${countBySession.has(s.id) ? ` · ${countBySession.get(s.id)}` : ''}`}</Blurred>
+                  </Box>
+                }
                 color={sessionFilter === s.id ? 'primary' : 'default'}
                 variant={sessionFilter === s.id ? 'filled' : 'outlined'}
                 onClick={() => setSessionFilter(sessionFilter === s.id ? null : s.id)}
@@ -178,15 +191,15 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
             ))}
           </Box>
         )}
-        <Chip
-          role="status"
-          aria-live="polite"
-          aria-label={t.counterAria(selected.size, limit)}
-          color={atLimit ? 'warning' : selected.size > 0 ? 'primary' : 'default'}
-          variant={selected.size > 0 ? 'filled' : 'outlined'}
-          label={t.counter(selected.size, limit)}
-          sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', ml: 'auto' }}
-        />
+        <Box sx={{ ml: 'auto' }}>
+          <ChannelCounterChips
+            channels={channels}
+            count={count}
+            limits={groupLimits}
+            label={t.channelCounter}
+            ariaLabel={t.channelCounterAria}
+          />
+        </Box>
         {selected.size > 0 && (
           <Button size="small" color="inherit" onClick={onClear}>{t.clear}</Button>
         )}
@@ -213,11 +226,13 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
         <Box sx={{ ...gridSx, opacity: loading ? 0.6 : 1, transition: 'opacity 150ms ease' }} aria-busy={loading}>
           {shown.map((g) => {
             const id = idOf(g);
+            const session = sessionOf(g.sessionId);
             const checked = id != null && selected.has(id);
             const pending = pendingKey === keyOf(g);
-            const blocked = !checked && atLimit;
+            const channel = channelOf(session?.engine);
+            const limit = groupLimits[channel];
+            const blocked = !checked && limit != null && count[channel] >= limit;
             const title = g.title || t.untitled;
-            const session = sessionOf(g.sessionId);
             const card = (
               <Card
                 variant="outlined"
@@ -262,7 +277,7 @@ export function ConfigGroupsStep({ sessions, selected, limit, onToggle, onClear 
               </Card>
             );
             return blocked && limit != null ? (
-              <Tooltip key={keyOf(g)} title={t.limitTooltip(limit)} arrow>
+              <Tooltip key={keyOf(g)} title={t.channelLimitTooltip(channel, limit)} arrow>
                 {/* span: o Tooltip precisa de um filho que receba eventos mesmo com o cartão desabilitado */}
                 <Box component="span" sx={{ display: 'block' }}>{card}</Box>
               </Tooltip>

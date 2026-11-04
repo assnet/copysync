@@ -110,8 +110,7 @@ export function OfferGeneratorPage() {
         <OfferConfigWizard
           config={cfg.config}
           groups={cfg.groups}
-          groupLimit={cfg.groupLimit}
-          sessionLimit={cfg.sessionLimit}
+          limits={cfg.limits}
           crossSessionDispatch={cfg.crossSessionDispatch}
           sessions={cfg.sessions}
           sessionsLoading={cfg.sessionsLoading}
