@@ -2,6 +2,10 @@
 
 ## [3.2.2] — 2026-11-04 — Revalidação da sessão do ML
 
+### Added
+
+- **`scripts/pack-crx.mjs`** — modo `--upload` (`pnpm pack:upload`): assina `dist-store/` com `.keys/verified-upload-private.pem` (par separado da chave do item) → `release/<name>-<versão>-upload.crx`, o pacote aceito pela loja com "uploads de CRX verificados" ativo; `pnpm release` passa a gerá-lo.
+
 ### Fixed
 
 - **`syncSession.ts`** — alarme de reserva (60 min) envia a sessão mesmo sem mudança no hash; antes o servidor ficava dias sem revalidar e o card mostrava "Recusada" com o navegador logado. Hash só pula em `cookie-changed`/`startup`.

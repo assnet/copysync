@@ -133,7 +133,21 @@ Se vier outro ID, a loja ignorou a chave: atualizar `EXTENSION_ORIGINS` e `VITE_
 com o ID da loja e manter o `key` do manifest local igual ao da loja (copiar de
 `chrome://extensions` → detalhes → ou do `manifest.json` instalado).
 
-`pnpm release` faz tudo em sequência: `type-check` → `test` → `pack:crx` → `pack:store`.
+`pnpm release` faz tudo em sequência: `type-check` → `test` → `pack:crx` → `pack:store` → `pack:upload`.
+
+### Uploads de CRX verificados (ativo desde 2026-11-04)
+
+Com a opção ativa no painel (Pacote → "Uploads de CRX verificados"), a loja só aceita `.crx` assinado
+com a chave de upload cadastrada; zip deixa de ser aceito.
+
+- **Par separado da chave do item.** A loja recusa a chave pública atual do item ("Não use a chave
+  pública atual deste item"). Chave de upload: `.keys/verified-upload-private.pem` (fora do git);
+  pública em `.keys/verified-upload-public.pem` (é a que foi colada no painel).
+- **Pacote:** `pnpm pack:upload` = `build:store` + `pack-crx.mjs --upload` → assina `dist-store/`
+  (sem `key`) → `release/copysync-extension-<versão>-upload.crx`. Esse é o arquivo do upload.
+- **Backup obrigatório** da `verified-upload-private.pem` em gerenciador de senhas. Perdeu = sem
+  atualização até o suporte da Chrome Web Store desativar. Nunca gerar outra por cima.
+- A chave privada nunca é colada em site nem em nota sem senha; o painel só pede a **pública**.
 
 ## 6. Publicar — passo a passo no painel do desenvolvedor
 

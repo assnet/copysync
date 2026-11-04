@@ -18,8 +18,9 @@
     "keys:id": "node scripts/extension-id.mjs",
     "pack:crx": "pnpm build && node scripts/pack-crx.mjs",
     "pack:store": "pnpm build:store && node scripts/pack-store.mjs",
+    "pack:upload": "pnpm build:store && node scripts/pack-crx.mjs --upload",
     "pack:store:first": "pnpm build:store && node scripts/pack-store.mjs --with-key",
-    "release": "pnpm type-check && pnpm test && pnpm pack:crx && pnpm pack:store",
+    "release": "pnpm type-check && pnpm test && pnpm pack:crx && pnpm pack:store && pnpm pack:upload",
     "store:assets": "node scripts/store-assets.mjs"
   },
   "dependencies": {
