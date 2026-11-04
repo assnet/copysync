@@ -76,6 +76,32 @@ const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
     topPlanBody: (limit) =>
       `Seu link já usa os ${count(limit)} grupos disponíveis. Para alcançar mais gente, crie outro link ou troque um grupo por outro.`,
   },
+  telegramLinkRotations: {
+    title: 'Rodízio de links também no Telegram',
+    body: (limit) =>
+      limit === 0
+        ? 'Seu plano atual não inclui rodízio de links no Telegram. Com um plano maior você divulga um link fixo que distribui as pessoas entre seus grupos e canais.'
+        : `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio no Telegram. Com um plano maior você divulga mais links ao mesmo tempo.`,
+    benefit: 'Um link fixo nas redes que leva cada pessoa a um grupo ou canal do Telegram com vaga.',
+    nextPlan: (planName, limit) => `No ${planName} são ${count(limit)} ${plural(limit, 'link', 'links')} no Telegram.`,
+    unit: (n) => plural(n, 'link', 'links'),
+    compareAria: (now, planName, next) =>
+      `Hoje: ${count(now)} ${plural(now, 'link', 'links')} no Telegram. No ${planName}: ${count(next)} ${plural(next, 'link', 'links')}.`,
+    topPlanBody: (limit) =>
+      `Você usa os ${count(limit)} ${plural(limit, 'link', 'links')} do Telegram disponíveis. Para criar outro, exclua um link que não usa mais.`,
+  },
+  telegramLinkRotationGroups: {
+    title: 'Seu link do Telegram está pronto para mais gente!',
+    body: (limit) =>
+      `Seu plano permite até ${count(limit)} ${plural(limit, 'grupo', 'grupos')} por link no Telegram. Com mais grupos, cabe mais gente sem o link lotar.`,
+    benefit: 'Mais vagas no mesmo link, sem trocar nada do que você já divulgou.',
+    nextPlan: (planName, limit) => `No ${planName} são até ${count(limit)} grupos por link no Telegram.`,
+    unit: (n) => plural(n, 'grupo', 'grupos'),
+    compareAria: (now, planName, next) =>
+      `Hoje: ${count(now)} ${plural(now, 'grupo', 'grupos')} por link no Telegram. No ${planName}: ${count(next)} grupos por link.`,
+    topPlanBody: (limit) =>
+      `Seu link do Telegram já usa os ${count(limit)} grupos disponíveis. Para alcançar mais gente, crie outro link ou troque um grupo por outro.`,
+  },
   whatsappSessions: sessionsCopy('WhatsApp', 'Monitore e dispare em mais números, cada um com seus grupos.'),
   telegramSessions: sessionsCopy('Telegram', 'Leve suas ofertas também para os grupos e canais do Telegram.'),
   whatsappMonitoredGroups: channelGroupsCopy('WhatsApp', 'monitorados', 'Mais fontes de ofertas, capturadas e reescritas com o seu link.'),

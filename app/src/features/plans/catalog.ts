@@ -6,7 +6,7 @@
  * este arquivo fica só com o texto de vitrine. Nenhum cálculo de desconto ou cupom aqui.
  */
 
-import { linkRotationLimitLabel } from './strings';
+import { TELEGRAM_LINK_ROTATION_LABEL, linkRotationLimitLabel } from './strings';
 
 export type PlanSlug = 'starter' | 'profissional' | 'business';
 export type BillingPeriod = 'monthly' | 'annual';
@@ -18,6 +18,8 @@ export interface PlanBenefit {
   label: string;
   /** Linha de destaque (ex.: "Tudo do LITE"). */
   strong?: boolean;
+  /** Segunda linha, mais discreta (ex.: o limite "1 link · até 5 grupos"). */
+  detail?: string;
   /** Explicação curta no Tooltip; só em termo que precisa de contexto. */
   hint?: string;
   /** Exclusivo deste plano (chip ao lado do texto). */
@@ -53,12 +55,16 @@ export interface PlanCatalogItem {
     telegramMonitoredGroups: number;
     /** Grupos de disparo no Telegram (`telegram_broadcast_groups`). */
     telegramBroadcastGroups: number;
-    /** Links públicos de rodízio (`link_rotations`). */
+    /** Links de rodízio no WhatsApp (`link_rotations`, chave sem prefixo = WhatsApp). */
     linkRotations: number;
-    /** Grupos por link de rodízio (`link_rotation_groups`). */
+    /** Grupos por link de rodízio no WhatsApp (`link_rotation_groups`). */
     linkRotationGroups: number;
+    /** Links de rodízio no Telegram (`telegram_link_rotations`). */
+    telegramLinkRotations: number;
+    /** Grupos/canais por link de rodízio no Telegram (`telegram_link_rotation_groups`). */
+    telegramLinkRotationGroups: number;
   };
-  /** Itens além dos limites por canal (estes o `PlanCard` monta a partir de `limits`). */
+  /** Itens além dos limites por canal (estes o `PlanCard` monta a partir de `limits`, inclusive o rodízio). */
   benefits: PlanBenefit[];
   fit: string;
 }
@@ -77,6 +83,8 @@ export const PLAN_HINTS = {
   monitoredGroups: 'Grupos de onde as ofertas são capturadas: cada anúncio novo é lido, reescrito e ganha o seu link.',
   broadcastGroups: 'Grupos que recebem os disparos, na ordem e nos horários que você definir.',
   linkRotation: 'Um link fixo para divulgar nas redes. Nunca expira e leva cada visitante a um grupo com vaga.',
+  telegramLinkRotation:
+    'Um link fixo para divulgar nas redes que distribui os visitantes entre os seus grupos e canais do Telegram, sempre para um com vaga. Para gerar o convite ou colar o link, sua conta precisa ser admin do grupo ou canal.',
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
   storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
@@ -88,6 +96,11 @@ export const PLAN_HINTS = {
   telegramGroupsChannels:
     'Capture ofertas de grupos e canais do Telegram, inclusive canais em que você só é inscrito, e envie para os grupos e canais em que você pode postar.',
 };
+
+/** Destaque do rodízio no Telegram (PRO e MAX), com o limite do plano no texto. */
+function telegramLinkRotation(links: number, groups: number): PlanBenefit {
+  return { label: TELEGRAM_LINK_ROTATION_LABEL, detail: linkRotationLimitLabel(links, groups), hint: PLAN_HINTS.telegramLinkRotation, channel: 'telegram' };
+}
 
 /** Destaque do Telegram nos planos com Telegram (PRO e MAX). */
 const TELEGRAM_GROUPS_CHANNELS: PlanBenefit = {
@@ -106,11 +119,10 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     priceAnnualMonthly: 77,
     limits: {
       whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, telegramMonitoredGroups: 0, telegramBroadcastGroups: 0,
-      linkRotations: 1, linkRotationGroups: 3,
+      linkRotations: 1, linkRotationGroups: 3, telegramLinkRotations: 0, telegramLinkRotationGroups: 0,
     },
     benefits: [
       { label: 'Disparo em massa com agendamento de horários' },
-      { label: linkRotationLimitLabel(1, 3), hint: PLAN_HINTS.linkRotation },
       { label: 'Gerador de ofertas' },
       { label: 'Envio "digitando…" antes de cada oferta', hint: PLAN_HINTS.typing },
       { label: 'Shopee, Amazon e Mercado Livre' },
@@ -128,13 +140,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     recommended: true,
     limits: {
       whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, telegramMonitoredGroups: 2, telegramBroadcastGroups: 10,
-      linkRotations: 1, linkRotationGroups: 5,
+      linkRotations: 1, linkRotationGroups: 5, telegramLinkRotations: 1, telegramLinkRotationGroups: 5,
     },
     benefits: [
       { label: 'Tudo do LITE', strong: true },
       TELEGRAM_GROUPS_CHANNELS,
+      telegramLinkRotation(1, 5),
       { label: 'Ofertas circulando entre WhatsApp e Telegram', hint: PLAN_HINTS.bothChannels },
-      { label: linkRotationLimitLabel(1, 5), hint: PLAN_HINTS.linkRotation },
       { label: 'Menção a todos os participantes', hint: PLAN_HINTS.mentionAll },
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Suporte prioritário 24/7' },
@@ -150,7 +162,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     priceAnnualMonthly: 197,
     limits: {
       whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, telegramMonitoredGroups: 6, telegramBroadcastGroups: 40,
-      linkRotations: 2, linkRotationGroups: 10,
+      linkRotations: 2, linkRotationGroups: 10, telegramLinkRotations: 2, telegramLinkRotationGroups: 10,
     },
     benefits: [
       { label: 'Tudo do PRO', strong: true },
@@ -168,7 +180,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
         featureIcon: 'channels',
       },
       TELEGRAM_GROUPS_CHANNELS,
-      { label: linkRotationLimitLabel(2, 10), hint: PLAN_HINTS.linkRotation },
+      telegramLinkRotation(2, 10),
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },

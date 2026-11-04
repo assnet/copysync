@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ANNUAL_DISCOUNT, PLAN_CATALOG, PREMIUM_SLUG_OFFER, STOREFRONT_BENEFIT_LABEL, priceFor, savingsFor } from './catalog';
-import { formatPrice, linkRotationLimitLabel } from './strings';
+import { TELEGRAM_LINK_ROTATION_LABEL, formatPrice, linkRotationLimitLabel } from './strings';
 
 describe('catálogo de planos (vitrine)', () => {
   it('tem 3 planos, 1 recomendado, slugs únicos', () => {
@@ -40,9 +40,18 @@ describe('catálogo de planos (vitrine)', () => {
     }
   });
 
-  it('limites de rodízio iguais a api/src/modules/tenants/domain/planPresets.ts', () => {
-    const bySlug = Object.fromEntries(PLAN_CATALOG.map((p) => [p.slug, [p.limits.linkRotations, p.limits.linkRotationGroups]]));
-    expect(bySlug).toEqual({ starter: [1, 3], profissional: [1, 5], business: [2, 10] });
+  it('limites de rodízio por canal iguais a api/src/modules/tenants/domain/planPresets.ts', () => {
+    const bySlug = Object.fromEntries(
+      PLAN_CATALOG.map(({ slug, limits: l }) => [
+        slug,
+        { whatsapp: [l.linkRotations, l.linkRotationGroups], telegram: [l.telegramLinkRotations, l.telegramLinkRotationGroups] },
+      ]),
+    );
+    expect(bySlug).toEqual({
+      starter: { whatsapp: [1, 3], telegram: [0, 0] },
+      profissional: { whatsapp: [1, 5], telegram: [1, 5] },
+      business: { whatsapp: [2, 10], telegram: [2, 10] },
+    });
   });
 
   it('limites por canal iguais a api/src/modules/tenants/domain/planPresets.ts', () => {
@@ -64,8 +73,8 @@ describe('catálogo de planos (vitrine)', () => {
 
   it('canal sem sessão não tem grupos (o card mostra "A partir do …" no lugar dos números)', () => {
     for (const { limits: l } of PLAN_CATALOG) {
-      if (l.telegramSessions === 0) expect(l.telegramMonitoredGroups + l.telegramBroadcastGroups).toBe(0);
-      if (l.whatsappSessions === 0) expect(l.monitoredGroups + l.broadcastGroups).toBe(0);
+      if (l.telegramSessions === 0) expect(l.telegramMonitoredGroups + l.telegramBroadcastGroups + l.telegramLinkRotations).toBe(0);
+      if (l.whatsappSessions === 0) expect(l.monitoredGroups + l.broadcastGroups + l.linkRotations).toBe(0);
     }
   });
 
@@ -73,17 +82,28 @@ describe('catálogo de planos (vitrine)', () => {
     for (const p of PLAN_CATALOG) for (const b of p.benefits) expect(b.label).not.toMatch(/grupos? (monitorados?|de disparo)/i);
   });
 
-  it('cada plano exibe o próprio limite de rodízio, com hint do recurso', () => {
+  it('rodízio do WhatsApp fica só na tabela de canais, não nos benefícios', () => {
+    for (const p of PLAN_CATALOG) for (const b of p.benefits) expect(b.label).not.toMatch(/links? (de rodízio )?· até/i);
+  });
+
+  it('destaque "Rodízio de links no Telegram" só onde há rodízio no Telegram, com o limite do plano e hint de admin', () => {
     for (const p of PLAN_CATALOG) {
-      const row = p.benefits.find((b) => b.label === linkRotationLimitLabel(p.limits.linkRotations, p.limits.linkRotationGroups));
-      expect(row?.hint).toMatch(/nunca expira/i);
+      const { telegramLinkRotations: links, telegramLinkRotationGroups: groups } = p.limits;
+      const rows = p.benefits.filter((b) => b.label === TELEGRAM_LINK_ROTATION_LABEL);
+      if (links === 0) {
+        expect(rows).toHaveLength(0);
+        continue;
+      }
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ detail: linkRotationLimitLabel(links, groups), channel: 'telegram' });
+      expect(rows[0]!.hint).toMatch(/admin/i);
     }
   });
 
   it('rótulo do rodízio com plural correto', () => {
-    expect(linkRotationLimitLabel(1, 3)).toBe('1 link de rodízio · até 3 grupos');
-    expect(linkRotationLimitLabel(2, 10)).toBe('2 links de rodízio · até 10 grupos');
-    expect(linkRotationLimitLabel(1, 1)).toBe('1 link de rodízio · até 1 grupo');
+    expect(linkRotationLimitLabel(1, 3)).toBe('1 link · até 3 grupos');
+    expect(linkRotationLimitLabel(2, 10)).toBe('2 links · até 10 grupos');
+    expect(linkRotationLimitLabel(1, 1)).toBe('1 link · até 1 grupo');
   });
 
   it('Página de Ofertas só no PRO e MAX (storefront_enabled false/true/true na API)', () => {

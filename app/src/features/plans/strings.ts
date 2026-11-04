@@ -12,10 +12,19 @@ export function formatPrice(value: number): string {
   return (Number.isInteger(value) ? whole : cents).format(value);
 }
 
-/** Limite do rodízio na vitrine: "1 link de rodízio · até 3 grupos" (plural pelo número). */
-export function linkRotationLimitLabel(links: number, groups: number): string {
-  return `${links} ${links === 1 ? 'link' : 'links'} de rodízio · até ${groups} ${groups === 1 ? 'grupo' : 'grupos'}`;
+/** Partes do limite do rodízio (plural pelo número): `{ links: '1 link', groups: 'até 5 grupos' }`. */
+export function linkRotationLimitParts(links: number, groups: number): { links: string; groups: string } {
+  return { links: `${links} ${links === 1 ? 'link' : 'links'}`, groups: `até ${groups} ${groups === 1 ? 'grupo' : 'grupos'}` };
 }
+
+/** Limite do rodízio numa linha: "1 link · até 5 grupos". */
+export function linkRotationLimitLabel(links: number, groups: number): string {
+  const p = linkRotationLimitParts(links, groups);
+  return `${p.links} · ${p.groups}`;
+}
+
+/** Destaque do rodízio no Telegram (PRO e MAX); o limite vai em `detail` ("1 link · até 5 grupos"). */
+export const TELEGRAM_LINK_ROTATION_LABEL = 'Rodízio de links no Telegram';
 
 export const plansStrings = {
   menuLabel: 'Planos',
@@ -81,6 +90,9 @@ export const plansStrings = {
     sessions: 'Sessões',
     monitoredGroups: 'Grupos monitorados',
     broadcastGroups: 'Grupos de disparo',
+    linkRotation: 'Rodízio de links',
+    /** Leitor de tela da célula do rodízio: "1 link, até 5 grupos por link". */
+    linkRotationAria: (links: string, groups: string) => `${links}, ${groups} por link`,
     /** Canal fora do plano: convite, não negativa. */
     availableFrom: (planName: string) => `A partir do ${planName}`,
   },

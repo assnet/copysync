@@ -120,6 +120,11 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
         {benefit.exclusive && (
           <Chip label={t.card.exclusive} size="small" color="secondary" variant="outlined" sx={{ ml: 1, height: 18, fontSize: 10, fontWeight: 700, verticalAlign: 'middle' }} />
         )}
+        {benefit.detail && (
+          <Box component="span" sx={{ display: 'block', fontWeight: 600, color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+            {benefit.detail}
+          </Box>
+        )}
       </Typography>
       {benefit.hint && (
         <Box sx={{ color: 'text.disabled', display: 'flex', mt: '3px' }}>
