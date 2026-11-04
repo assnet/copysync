@@ -46,6 +46,7 @@ import type {
   ParticipatingGroupInfo,
   UpdateChatStateInput,
 } from '../../../domain/contracts/IMessagingEngine';
+import type { ISessionSocketControl } from '../../../domain/contracts/ISessionSocketControl';
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
@@ -131,7 +132,7 @@ const RECONNECT_BASE_DELAY_MS = 3_000;
 const THIRTY_MIN_MS = 30 * 60 * 1_000;
 const baileysLogger = appLogger.child({ module: 'baileys' });
 
-export class BaileysMessagingEngineAdapter implements IMessagingEngine {
+export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISessionSocketControl {
   private readonly registry = BaileysSessionRegistry.get();
   private readonly groupMetadataCache = new Map<string, GroupMetadataSnapshot>();
   private readonly groupMetadataPending = new Map<string, Promise<GroupMetadataSnapshot | null>>();
@@ -154,6 +155,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
   private readonly participatingGroupsCache = new Map<string, { groups: ParticipatingGroupInfo[]; at: number }>();
   /** Sessões que estão "disponíveis" só para mostrar "digitando…" (ver sendPresence). */
   private readonly typingOnline = new Set<string>();
+  /** Reconexão automática agendada por sessão: abort/shutdown cancelam para não reabrir o socket. */
+  private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -204,6 +207,50 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     await releaseAuthState(sessionId);
     this.clearSessionGroupMetadata(sessionId);
     await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
+  }
+
+  /** Lease perdido: fecha o socket sem gravar status nem chaves (o pendente é descartado). */
+  async abortSession(sessionId: string): Promise<void> {
+    this.cancelReconnect(sessionId);
+    this.pairingRestarts.delete(sessionId);
+    this.pairingPhones.delete(sessionId);
+    this.typingOnline.delete(sessionId);
+    const entry = this.registry.get(sessionId);
+    if (entry) {
+      this.detachSocket(entry.socket);
+      try { entry.socket.end(undefined); } catch (err) {
+        baileysLogger.warn({ err, sessionId }, 'Error closing socket on abort');
+      }
+      this.registry.delete(sessionId);
+      baileysLogger.warn({ sessionId }, 'Session socket aborted (lease lost)');
+    }
+    await discardAuthState(sessionId);
+    this.clearSessionGroupMetadata(sessionId);
+  }
+
+  /** Shutdown: fecha todos os sockets; os handles de auth ficam para o flushAllAuthStates. */
+  async closeAllSockets(): Promise<void> {
+    for (const sessionId of Array.from(this.reconnectTimers.keys())) this.cancelReconnect(sessionId);
+    for (const { sessionId } of this.registry.getAll()) {
+      const entry = this.registry.get(sessionId);
+      if (!entry) continue;
+      this.detachSocket(entry.socket);
+      try { entry.socket.end(undefined); } catch (err) {
+        baileysLogger.warn({ err, sessionId }, 'Error closing socket on shutdown');
+      }
+      this.registry.delete(sessionId);
+    }
+  }
+
+  listLocalSessionIds(): string[] {
+    return this.registry.getAll().map(({ sessionId }) => sessionId);
+  }
+
+  private cancelReconnect(sessionId: string): void {
+    const timer = this.reconnectTimers.get(sessionId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.reconnectTimers.delete(sessionId);
   }
 
   async reconnectSession(input: ReconnectSessionInput): Promise<void> {
@@ -868,7 +915,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
           if (nextAttempt <= RECONNECT_MAX_ATTEMPTS) {
             const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, currentAttempt);
             baileysLogger.info({ sessionId, nextAttempt, delayMs: delay }, 'Scheduling auto-reconnect');
-            setTimeout(() => {
+            this.cancelReconnect(sessionId);
+            this.reconnectTimers.set(sessionId, setTimeout(() => {
+              this.reconnectTimers.delete(sessionId);
               // A manual connect/reconnect may have already opened a new socket meanwhile.
               if (this.registry.has(sessionId)) {
                 baileysLogger.debug({ sessionId }, 'Auto-reconnect skipped — session already active');
@@ -877,7 +926,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
               this.openSocket(sessionId, tenantId, nextAttempt).catch((err) => {
                 baileysLogger.error({ err, sessionId }, 'Auto-reconnect failed');
               });
-            }, delay);
+            }, delay));
           } else {
             baileysLogger.error({ sessionId }, 'Max reconnect attempts - marking FAILED');
             this.pairingPhones.delete(sessionId);
