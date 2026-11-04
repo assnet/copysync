@@ -4,6 +4,7 @@ import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
 import type { OfferImageMode } from '../../domain/enums/OfferImageMode';
 import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
+import { fitSlots } from '../../domain/services/fitSlots';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { OfferAlreadySentError } from '../../../../shared/errors/internal/OfferErrors';
 
@@ -61,16 +62,6 @@ export interface EnqueueOfferDeps {
  * (docs/fila-de-envio.md); destinos de sessões diferentes caem cada um na sua faixa. Quem envia é
  * o worker; validade checada lá também.
  */
-/** Reaplica `fit` em cadeia: cada horário parte do anterior já encaixado, mantendo o espaçamento. */
-function fitSlots(slots: readonly Date[], fit: (at: Date) => Date): Date[] {
-  const out: Date[] = [];
-  for (let i = 0; i < slots.length; i++) {
-    const gap = i === 0 ? 0 : slots[i]!.getTime() - slots[i - 1]!.getTime();
-    out.push(fit(i === 0 ? slots[0]! : new Date(out[i - 1]!.getTime() + gap)));
-  }
-  return out;
-}
-
 export class EnqueueOfferUseCase {
   constructor(private readonly deps: EnqueueOfferDeps) {}
 
