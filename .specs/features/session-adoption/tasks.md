@@ -24,11 +24,11 @@ Regras comuns:
 | T6 | Pedido novo zera backoff (`markConnectRequested`) | — | P | ✅ 179d0c4 |
 | T7 | Gate do lease com teto (`CapacityLimitedLeaseGate`) | T2 | P | ✅ 12b7569 |
 | T8 | Repositório de heartbeat | T3 | P | ✅ fa7207b |
-| T9 | `AdoptNextSessionUseCase` + `SessionAdoptionTicker` | T5, E2 F3 | | ⏳ |
-| T10 | `SESSION_CONNECTED` zera backoff | T5 | P | ⏳ |
-| T11 | Jobs de heartbeat e alerta de capacidade | T2, T4, T5, T8 | | ⏳ |
+| T9 | `AdoptNextSessionUseCase` + `SessionAdoptionTicker` | T5, E2 F3 | | ✅ e1e3ac1 |
+| T10 | `SESSION_CONNECTED` zera backoff | T5 | P | ✅ 752e2f1 |
+| T11 | Jobs de heartbeat e alerta de capacidade | T2, T4, T5, T8 | | ✅ 60744e1 |
 | T12 | Sessão expõe `awaitingCapacity` | — | P | ✅ 177bf63 |
-| T13 | `GET /admin/workers` | T5, T8 | P | ⏳ |
+| T13 | `GET /admin/workers` | T5, T8 | P | ✅ 72dd2c1 |
 | T14 | Composição `sessionAdoptionContainer` | T1, T7, T9, T10, T11 | | ⏳ |
 | T15 | `server.ts` + jobs por papel: ticker, bootstrap, shutdown | T14, E3 T19 | | ⏳ |
 | T16 | `session-open` pausa com worker cheio | T14, E3 T18 | P | ⏳ |
@@ -370,3 +370,7 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T7: `CapacityLimitedLeaseGate(inner, listLocal, max, log?)` não ligado ainda (T14).
 - T8: `IWorkerHeartbeatRepository` (`beat`, `listAlive`, `remove`), limpeza best-effort > 1 dia.
 - T17: chip "Aguardando capacidade" (`SessionStatusChip`, `strings.ts`), também em `SessionCard`/`DashboardPage`; dialogs de conexão/rodízio ainda sem o flag.
+- T9: `AdoptNextSessionUseCase` + `SessionAdoptionTicker`; FAILED auditado como `SESSION_DISCONNECTED` com `reason: ADOPTION_EXHAUSTED` (sem migration de enum). Não ligado.
+- T10: `registerSessionAdoptionResetListener(repo)` devolve `off`; registrar na T14.
+- T11: `WorkerHeartbeatJob`, `WorkerCapacityAlertJob` (lease 59 s não solto = 1 alerta/min no cluster; e-mail só com `ICapacityAlertNotifier`, hoje ausente).
+- T13: `GET /admin/workers` (superAdminHook responde **401**, não 403 como a spec; ajustar spec ou hook à parte). T14 deve passar a rota a usar o container.
