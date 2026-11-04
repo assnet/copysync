@@ -22,7 +22,8 @@ export class SessionStatusReconciler {
   async markActiveSessionsAsDisconnected(): Promise<void> {
     let sessions;
     try {
-      sessions = await this.sessionRepo.findActiveSessionsForBootstrap();
+      // Só sessões sem lease vivo: socket de outro worker (deploy sobreposto) não é tocado (LEASE-10).
+      sessions = await this.sessionRepo.findActiveSessionsWithoutLiveLease();
     } catch (err) {
       reconcilerLogger.error({ err }, 'Failed to query sessions for status reconciliation — skipping');
       return;

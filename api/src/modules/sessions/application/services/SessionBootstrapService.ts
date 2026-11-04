@@ -1,6 +1,7 @@
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
 import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import { logger } from '../../../../shared/logger/logger';
+import { SessionLeaseHeldError } from '../../../../shared/errors/internal/SessionErrors';
 
 const bootstrapLogger = logger.child({ module: 'SessionBootstrapService' });
 
@@ -59,6 +60,14 @@ export class SessionBootstrapService {
             });
             bootstrapLogger.info({ sessionId: session.id, tenantId: session.tenantId }, 'Session bootstrapped');
           } catch (err) {
+            if (err instanceof SessionLeaseHeldError) {
+              // Socket vive em outro worker: pula sem gravar status (LEASE-10, D2).
+              bootstrapLogger.info(
+                { sessionId: session.id, tenantId: session.tenantId },
+                'Session lease held by another worker — skipped',
+              );
+              return;
+            }
             bootstrapLogger.warn({ err, sessionId: session.id }, 'Failed to bootstrap session');
             // Mark as DISCONNECTED so the user knows it needs a manual reconnect
             try {
