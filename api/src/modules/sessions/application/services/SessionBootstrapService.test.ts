@@ -11,6 +11,7 @@ function setup(errors: Record<string, Error> = {}) {
   ];
   const repo = {
     findActiveSessionsForBootstrap: vi.fn().mockResolvedValue(sessions),
+    findActiveSessionsWithoutLiveLease: vi.fn().mockResolvedValue([sessions[1]]),
     updateStatus: vi.fn().mockResolvedValue(undefined),
   };
   const engine = {
@@ -53,5 +54,13 @@ describe('SessionBootstrapService', () => {
     await svc.bootstrap();
     expect(engine.reconnectSession).toHaveBeenCalledTimes(2);
     expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('2ª passada: só sessões sem lease vivo, sem a lista completa', async () => {
+    const { repo, engine, svc } = setup();
+    await expect(svc.bootstrap({ onlyWithoutLiveLease: true })).resolves.toBe(1);
+    expect(repo.findActiveSessionsForBootstrap).not.toHaveBeenCalled();
+    expect(engine.reconnectSession).toHaveBeenCalledTimes(1);
+    expect(engine.reconnectSession).toHaveBeenCalledWith({ sessionId: 's2', tenantId: 't2' });
   });
 });

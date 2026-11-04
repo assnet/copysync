@@ -1,5 +1,6 @@
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
 import { logger } from '../../../../shared/logger/logger';
+import { LEASE_FENCE_MARGIN_MS, LEASE_TTL_MS } from '../../domain/services/sessionLeasePolicy';
 
 const reconcilerLogger = logger.child({ module: 'SessionStatusReconciler' });
 
@@ -19,17 +20,18 @@ const reconcilerLogger = logger.child({ module: 'SessionStatusReconciler' });
 export class SessionStatusReconciler {
   constructor(private readonly sessionRepo: ISessionRepository) {}
 
-  async markActiveSessionsAsDisconnected(): Promise<void> {
+  /** Devolve quantas sessões foram marcadas DISCONNECTED. */
+  async markActiveSessionsAsDisconnected(): Promise<number> {
     let sessions;
     try {
       // Só sessões sem lease vivo: socket de outro worker (deploy sobreposto) não é tocado (LEASE-10).
       sessions = await this.sessionRepo.findActiveSessionsWithoutLiveLease();
     } catch (err) {
       reconcilerLogger.error({ err }, 'Failed to query sessions for status reconciliation — skipping');
-      return;
+      return 0;
     }
 
-    if (sessions.length === 0) return;
+    if (sessions.length === 0) return 0;
 
     let reconciled = 0;
     for (const session of sessions) {
@@ -48,5 +50,27 @@ export class SessionStatusReconciler {
       { reconciled, total: sessions.length },
       'Sessions marked DISCONNECTED — no socket survives a restart and bootstrap is disabled',
     );
+    return reconciled;
   }
+}
+
+/** Espera da 2ª passada do boot: o lease visto vivo na 1ª já venceu (TTL + folga do fence). */
+export const LEASE_EXPIRY_RECHECK_DELAY_MS = LEASE_TTL_MS + LEASE_FENCE_MARGIN_MS;
+
+/**
+ * Agenda a 2ª passada do boot (F1). Crash/SIGKILL não solta o lease, então a 1ª passada pula
+ * a sessão do processo morto; depois do TTL ela é tratada. Timer `unref` (não segura o
+ * processo); a função devolvida cancela e é chamada no shutdown.
+ */
+export function scheduleLeaseExpiryRecheck(
+  pass: () => Promise<number>,
+  delayMs: number = LEASE_EXPIRY_RECHECK_DELAY_MS,
+): () => void {
+  const timer = setTimeout(() => {
+    void pass()
+      .then((handled) => reconcilerLogger.info({ handled }, 'Boot recheck after lease TTL done'))
+      .catch((err) => reconcilerLogger.error({ err }, 'Boot recheck after lease TTL failed'));
+  }, delayMs);
+  timer.unref?.();
+  return () => clearTimeout(timer);
 }

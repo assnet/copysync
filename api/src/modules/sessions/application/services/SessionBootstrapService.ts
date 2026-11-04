@@ -9,6 +9,14 @@ export interface SessionBootstrapOptions {
   maxConcurrent?: number;
 }
 
+export interface SessionBootstrapRunOptions {
+  /**
+   * 2ª passada do boot (F1): só sessões sem lease vivo. A lista completa reconectaria as
+   * sessões que este processo já abriu; as do processo morto entram com o lease vencido.
+   */
+  onlyWithoutLiveLease?: boolean;
+}
+
 /**
  * SessionBootstrapService
  *
@@ -27,18 +35,21 @@ export class SessionBootstrapService {
     private readonly options: SessionBootstrapOptions = {},
   ) {}
 
-  async bootstrap(): Promise<void> {
+  /** Devolve quantas sessões foram tentadas (reconectadas, puladas por lease ou com falha). */
+  async bootstrap(run: SessionBootstrapRunOptions = {}): Promise<number> {
     let sessions;
     try {
-      sessions = await this.sessionRepo.findActiveSessionsForBootstrap();
+      sessions = run.onlyWithoutLiveLease
+        ? await this.sessionRepo.findActiveSessionsWithoutLiveLease()
+        : await this.sessionRepo.findActiveSessionsForBootstrap();
     } catch (err) {
       bootstrapLogger.error({ err }, 'Failed to query sessions for bootstrap — skipping');
-      return;
+      return 0;
     }
 
     if (sessions.length === 0) {
       bootstrapLogger.info('No sessions to bootstrap');
-      return;
+      return 0;
     }
 
     const maxConcurrent = Math.max(1, this.options.maxConcurrent ?? 1);
@@ -88,5 +99,6 @@ export class SessionBootstrapService {
     } else {
       bootstrapLogger.info({ total: sessions.length }, 'All sessions bootstrapped successfully');
     }
+    return sessions.length;
   }
 }

@@ -5,7 +5,10 @@ import { prisma } from '../shared/database/prisma.client';
 import { PrismaSessionRepository } from '../modules/sessions/infrastructure/repositories/PrismaSessionRepository';
 import { SessionBootstrapService } from '../modules/sessions/application/services/SessionBootstrapService';
 import { getActiveEngine } from '../shared/engine/activeEngine';
-import { SessionStatusReconciler } from '../modules/sessions/application/services/SessionStatusReconciler';
+import {
+  SessionStatusReconciler,
+  scheduleLeaseExpiryRecheck,
+} from '../modules/sessions/application/services/SessionStatusReconciler';
 import { PrismaChatContactRepository } from '../modules/chat/infrastructure/repositories/PrismaChatContactRepository';
 import { PrismaChatConversationRepository } from '../modules/chat/infrastructure/repositories/PrismaChatConversationRepository';
 import { PrismaChatMessageRepository } from '../modules/chat/infrastructure/repositories/PrismaChatMessageRepository';
@@ -297,6 +300,8 @@ async function start(): Promise<void> {
   // Disabled by default in production because reconnecting WhatsApp sessions on
   // every deploy can generate large Baileys auth-state writes and overload small
   // PostgreSQL instances. Sessions can still be connected manually via API/UI.
+  // F1: crash/SIGKILL não solta o lease; a 2ª passada (após o TTL) trata as sessões puladas.
+  let cancelBootRecheck: (() => void) | null = null;
   if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
     try {
       const engine = getActiveEngine();
@@ -305,6 +310,9 @@ async function start(): Promise<void> {
         maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
       });
       await bootstrapService.bootstrap();
+      cancelBootRecheck = scheduleLeaseExpiryRecheck(() =>
+        bootstrapService.bootstrap({ onlyWithoutLiveLease: true }),
+      );
     } catch (err) {
       logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
     }
@@ -317,6 +325,7 @@ async function start(): Promise<void> {
     try {
       const reconciler = new SessionStatusReconciler(new PrismaSessionRepository());
       await reconciler.markActiveSessionsAsDisconnected();
+      cancelBootRecheck = scheduleLeaseExpiryRecheck(() => reconciler.markActiveSessionsAsDisconnected());
     } catch (err) {
       logger.error({ err }, 'Failed to reconcile session statuses on startup');
     }
@@ -330,6 +339,7 @@ async function start(): Promise<void> {
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutdown signal received');
+    cancelBootRecheck?.();
     // LEASE-09: primeiro o keeper — nenhuma renovação concorre com o fechamento dos sockets.
     try {
       await lease.keeper.stop();
