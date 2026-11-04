@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   createRouter: vi.fn(),
   bindSocketControl: vi.fn(),
-  acquire: { acquire: vi.fn() },
+  gate: { acquire: vi.fn(), release: vi.fn() },
 }));
 
 vi.mock('../../../shared/database/prisma.client', () => ({ prisma: {} }));
@@ -18,7 +18,7 @@ vi.mock('../../chat/infrastructure/repositories/PrismaChatConversationRepository
 vi.mock('../../chat/infrastructure/repositories/PrismaChatMessageRepository', () => ({ PrismaChatMessageRepository: class {} }));
 vi.mock('../../chat/application/use-cases/IngestHistorySyncUseCase', () => ({ IngestHistorySyncUseCase: class {} }));
 vi.mock('../../sessions/infrastructure/lease/sessionLeaseContainer', () => ({
-  sessionLeaseContainer: () => ({ acquire: h.acquire, bindSocketControl: h.bindSocketControl }),
+  sessionLeaseContainer: () => ({ gate: h.gate, bindSocketControl: h.bindSocketControl }),
 }));
 vi.mock('./MessagingEngineFactory', () => ({ MessagingEngineFactory: { createRouter: h.createRouter } }));
 
@@ -42,7 +42,7 @@ describe('localEngine', () => {
     expect(b).toBe(a);
     expect(getActiveEngine()).toBe(a);
     expect(h.createRouter).toHaveBeenCalledTimes(1);
-    expect(h.createRouter.mock.calls[0][0].leaseGate).toBe(h.acquire);
+    expect(h.createRouter.mock.calls[0][0].leaseGate).toBe(h.gate);
     expect(h.bindSocketControl).toHaveBeenCalledTimes(1);
     expect(h.bindSocketControl).toHaveBeenCalledWith(router);
   });

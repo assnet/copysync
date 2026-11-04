@@ -108,6 +108,14 @@ const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 const PARTICIPATING_GROUPS_TTL_MS = 60_000;
 /** Gate padrão sem lease: sempre permite abrir o socket. */
 const ALWAYS_LEASED: ISessionLeaseGate = { acquire: async () => true };
+
+/**
+ * Uma abertura de socket em curso (entre `leaseGate.acquire` e `registry.set`). Abort/suspend
+ * nesse intervalo marcam `cancelled`; a abertura fecha o socket sem registrar (abort vence suspend).
+ */
+interface OpeningToken {
+  cancelled: 'abort' | 'suspend' | null;
+}
 /** Validade do resumo de grupo (membros/admin) lido do snapshot de metadata. */
 const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
 /** Tempo de vida de cada QR de pareamento. */
@@ -163,8 +171,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
   private readonly suspended = new Map<string, string>();
-  /** Sessões entre `leaseGate.acquire` e `registry.set` (contagem): a renovação as trata como locais. */
-  private readonly opening = new Map<string, number>();
+  /** Aberturas entre `leaseGate.acquire` e `registry.set`: a renovação as trata como locais. */
+  private readonly opening = new Map<string, Set<OpeningToken>>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -228,6 +236,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
     this.typingOnline.delete(sessionId);
+    this.cancelOpening(sessionId, 'abort');
     const entry = this.registry.get(sessionId);
     if (entry) {
       this.detachSocket(entry.socket);
@@ -246,6 +255,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
    * próximo handle deste processo (`suspendAuthState`) e lembra o tenant para `resumeSession`.
    */
   async suspendSession(sessionId: string): Promise<void> {
+    // Em abertura: a própria abertura fecha, guarda as chaves e marca suspensa (ver openSocket)
+    this.cancelOpening(sessionId, 'suspend');
     const entry = this.registry.get(sessionId);
     if (!entry) return;
     this.cancelReconnect(sessionId);
@@ -290,16 +301,64 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     return [...ids];
   }
 
-  /** Marca a sessão como "abrindo" enquanto `open` roda (sai no fim, com sucesso ou falha). */
-  private async whileOpening<T>(sessionId: string, open: () => Promise<T>): Promise<T> {
-    this.opening.set(sessionId, (this.opening.get(sessionId) ?? 0) + 1);
+  /**
+   * Marca a sessão como "abrindo" enquanto `open` roda (sai no fim, com sucesso ou falha). Erro
+   * não cancelado depois do acquire solta o lease (best-effort), se nada mais desta sessão
+   * estiver aberto ou abrindo aqui; sem isso o lease ficaria preso até o TTL.
+   */
+  private async whileOpening<T>(sessionId: string, open: (token: OpeningToken) => Promise<T>): Promise<T> {
+    const token: OpeningToken = { cancelled: null };
+    const tokens = this.opening.get(sessionId) ?? new Set<OpeningToken>();
+    tokens.add(token);
+    this.opening.set(sessionId, tokens);
     try {
-      return await open();
+      return await open(token);
+    } catch (err) {
+      if (!token.cancelled && tokens.size === 1 && !this.registry.has(sessionId)) {
+        await this.releaseLeaseAfterFailedOpen(sessionId);
+      }
+      throw err;
     } finally {
-      const n = (this.opening.get(sessionId) ?? 1) - 1;
-      if (n > 0) this.opening.set(sessionId, n);
-      else this.opening.delete(sessionId);
+      tokens.delete(token);
+      if (tokens.size === 0 && this.opening.get(sessionId) === tokens) this.opening.delete(sessionId);
     }
+  }
+
+  /** Abort/suspend durante a abertura: a abertura em curso fecha o socket sem registrar. */
+  private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
+    for (const token of this.opening.get(sessionId) ?? []) {
+      if (kind === 'abort' || !token.cancelled) token.cancelled = kind;
+    }
+  }
+
+  private async releaseLeaseAfterFailedOpen(sessionId: string): Promise<void> {
+    try {
+      await this.leaseGate.release?.(sessionId);
+    } catch (err) {
+      baileysLogger.warn({ err, sessionId }, 'Failed to release session lease after failed open');
+    }
+  }
+
+  /**
+   * Abertura cancelada por abort/suspend: fecha o socket recém-criado (sem listeners, sem
+   * registro, sem status). Abort descarta as chaves pendentes; suspend as guarda e marca a
+   * sessão para `resumeSession`.
+   */
+  private async finishCancelledOpen(
+    sessionId: string, tenantId: string, kind: 'abort' | 'suspend', socket?: WASocket,
+  ): Promise<void> {
+    if (socket) {
+      try { socket.end(undefined); } catch (err) {
+        baileysLogger.warn({ err, sessionId }, 'Error closing socket on cancelled open');
+      }
+    }
+    if (kind === 'abort') {
+      await discardAuthState(sessionId);
+    } else {
+      await suspendAuthState(sessionId);
+      this.suspended.set(sessionId, tenantId);
+    }
+    baileysLogger.warn({ sessionId, kind }, 'Session socket open cancelled by lease');
   }
 
   private cancelReconnect(sessionId: string): void {
@@ -847,8 +906,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       return false;
     }
     // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
-    const { socket, state, saveCreds, epoch } = await this.whileOpening(sessionId, async () => {
+    const opened = await this.whileOpening(sessionId, async (token) => {
       const { version } = await fetchLatestBaileysVersion();
+      if (token.cancelled) {
+        await this.finishCancelledOpen(sessionId, tenantId, token.cancelled);
+        return null;
+      }
       const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
         onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
       });
@@ -874,10 +937,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
           key.id ? sentMediaCache().get(sessionId, key.id) : undefined,
       });
 
+      // Abort/suspend chegou enquanto abria: fecha antes de expor (sem lease no razão, dois donos)
+      if (token.cancelled) {
+        await this.finishCancelledOpen(sessionId, tenantId, token.cancelled, socket);
+        return null;
+      }
       const epoch = this.registry.nextEpoch();
       this.registry.set(sessionId, { socket, tenantId, epoch, reconnectAttempt: attempt });
       return { socket, state, saveCreds, epoch };
     });
+    if (!opened) {
+      if (origin === 'user') throw new SessionLeaseHeldError(sessionId);
+      return false;
+    }
+    const { socket, state, saveCreds, epoch } = opened;
     internalEventBus.emit('SESSION_CONNECTING', { type: 'SESSION_CONNECTING', sessionId, tenantId });
 
     /** True once this socket has been replaced by a newer one — its events must be ignored. */

@@ -25,4 +25,9 @@ export interface ISessionLeaseRepository {
 /** Porta estreita que os adapters de engine recebem: `false` = outro processo é dono. */
 export interface ISessionLeaseGate {
   acquire(sessionId: string): Promise<boolean>;
+  /**
+   * Abertura que falhou depois do `acquire` (sem socket): solta o lease só se este worker for o
+   * dono e tira do razão. Best-effort, nunca lança. Ausente (teste, boot sem lease): vence no TTL.
+   */
+  release?(sessionId: string): Promise<void>;
 }

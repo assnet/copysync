@@ -32,7 +32,7 @@ export function localEngine(): MessagingEngineRouter {
     chatContactRepo,
     chatConversationRepo,
     historySyncUseCase: new IngestHistorySyncUseCase(chatContactRepo, chatConversationRepo, chatMessageRepo),
-    leaseGate: lease.acquire,
+    leaseGate: lease.gate,
   });
   lease.bindSocketControl(engine);
   setActiveEngine(engine);

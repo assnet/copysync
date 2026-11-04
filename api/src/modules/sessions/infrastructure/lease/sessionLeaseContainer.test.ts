@@ -47,6 +47,16 @@ describe('sessionLeaseContainer', () => {
     expect(c.ledger.ids()).toEqual([]);
   });
 
+  it('gate das engines: acquire e release usam o mesmo razão', async () => {
+    const repo = fakeRepo();
+    const c = buildSessionLeaseContainer(repo, 'w1');
+    expect(await c.gate.acquire('s1')).toBe(true);
+    expect(c.ledger.ids()).toEqual(['s1']);
+    await c.gate.release!('s1');
+    expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
+    expect(c.ledger.ids()).toEqual([]);
+  });
+
   it('renovação sem socket ligado não faz nada; ligado, usa o controle de socket', async () => {
     const repo = fakeRepo();
     const c = buildSessionLeaseContainer(repo, 'w1');

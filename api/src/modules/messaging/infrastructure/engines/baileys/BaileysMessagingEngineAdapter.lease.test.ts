@@ -36,6 +36,7 @@ const auth = vi.hoisted(() => ({
   build: vi.fn(async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => undefined })),
   release: vi.fn(async () => undefined),
   discard: vi.fn(async () => undefined),
+  suspend: vi.fn(async () => undefined),
   flush: vi.fn(async () => undefined),
 }));
 vi.mock('./BaileysAuthStatePersistence', () => ({
@@ -43,6 +44,7 @@ vi.mock('./BaileysAuthStatePersistence', () => ({
   flushAllAuthStates: auth.flush,
   releaseAuthState: auth.release,
   discardAuthState: auth.discard,
+  suspendAuthState: auth.suspend,
 }));
 vi.mock('./BaileysErrorTranslator', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./BaileysErrorTranslator')>();
@@ -59,12 +61,23 @@ const registry = BaileysSessionRegistry.get();
 
 function make(...answers: boolean[]) {
   const acquire = vi.fn(async () => (answers.length > 1 ? answers.shift()! : answers[0] ?? true));
+  const release = vi.fn(async () => undefined);
   const sessionRepo = { updateStatus: vi.fn(async () => undefined), updatePhone: vi.fn() };
   const adapter = new BaileysMessagingEngineAdapter(
     sessionRepo as never, { clearCredentials: vi.fn() } as never, {} as never, {} as never, {} as never,
-    { acquire },
+    { acquire, release },
   );
-  return { adapter, sessionRepo, acquire };
+  return { adapter, sessionRepo, acquire, release };
+}
+
+/** auth.build fica parado até `go()`: janela entre o acquire e o registry.set. */
+function holdBuild() {
+  let go!: () => void;
+  auth.build.mockImplementationOnce(async () => {
+    await new Promise<void>((r) => { go = r; });
+    return { state: { creds: {}, keys: {} }, saveCreds: async () => undefined };
+  });
+  return { go: () => go(), started: () => vi.waitFor(() => expect(go).toBeTypeOf('function')) };
 }
 
 beforeEach(() => {
@@ -149,5 +162,99 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     auth.build.mockImplementationOnce(async () => { throw new Error('auth state down'); });
     await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toThrow('auth state down');
     expect(adapter.listLocalSessionIds()).toEqual([]);
+  });
+
+  it('abort durante a abertura: socket fechado, não registrado, sem gravar status nem chaves', async () => {
+    const { adapter, sessionRepo, release } = make(true);
+    const hold = holdBuild();
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
+    await hold.started();
+    await adapter.abortSession('s1');
+    auth.discard.mockClear();
+    hold.go();
+    expect(await p).toBeInstanceOf(SessionLeaseHeldError);
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]!.end).toHaveBeenCalledTimes(1);
+    expect(sockets[0]!.handlers['connection.update']).toBeUndefined();
+    expect(registry.has('s1')).toBe(false);
+    expect(adapter.listLocalSessionIds()).toEqual([]);
+    expect(auth.discard).toHaveBeenCalledWith('s1');
+    expect(auth.suspend).not.toHaveBeenCalled();
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled(); // lease é de outro: não solta
+    expect(await adapter.resumeSession('s1')).toBe(false);
+  });
+
+  it('suspend durante a abertura: socket fechado, não registrado, chaves guardadas e retomável', async () => {
+    const { adapter, sessionRepo, release } = make(true);
+    const hold = holdBuild();
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
+    await hold.started();
+    await adapter.suspendSession('s1');
+    expect(auth.suspend).not.toHaveBeenCalled(); // quem guarda é a abertura, depois do build
+    hold.go();
+    expect(await p).toBeInstanceOf(SessionLeaseHeldError);
+    expect(sockets[0]!.end).toHaveBeenCalledTimes(1);
+    expect(registry.has('s1')).toBe(false);
+    expect(auth.suspend).toHaveBeenCalledWith('s1');
+    expect(auth.discard).not.toHaveBeenCalled();
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(registry.has('s1')).toBe(true);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it('abort depois de suspend na mesma abertura: abort vence (descarta, não retoma)', async () => {
+    const { adapter } = make(true);
+    const hold = holdBuild();
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
+    await hold.started();
+    await adapter.suspendSession('s1');
+    await adapter.abortSession('s1');
+    auth.discard.mockClear();
+    hold.go();
+    await p;
+    expect(auth.discard).toHaveBeenCalledWith('s1');
+    expect(auth.suspend).not.toHaveBeenCalled();
+    expect(await adapter.resumeSession('s1')).toBe(false);
+  });
+
+  it('abertura automática cancelada não lança', async () => {
+    const { adapter } = make(true);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    const hold = holdBuild();
+    const p = adapter.resumeSession('s1');
+    await hold.started();
+    await adapter.abortSession('s1');
+    hold.go();
+    expect(await p).toBe(false);
+    expect(registry.has('s1')).toBe(false);
+  });
+
+  it('erro depois do acquire solta o lease', async () => {
+    const { adapter, release } = make(true);
+    auth.build.mockImplementationOnce(async () => { throw new Error('auth state down'); });
+    await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toThrow('auth state down');
+    expect(release).toHaveBeenCalledWith('s1');
+  });
+
+  it('erro depois do acquire não solta o lease se outra abertura da sessão segue em curso', async () => {
+    const { adapter, release } = make(true);
+    const hold = holdBuild();
+    const ok = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await hold.started();
+    auth.build.mockImplementationOnce(async () => { throw new Error('auth state down'); });
+    await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toThrow('auth state down');
+    expect(release).not.toHaveBeenCalled();
+    hold.go();
+    await ok;
+  });
+
+  it('sem lease (acquire falso) não chama release', async () => {
+    const { adapter, release } = make(false);
+    await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toBeInstanceOf(SessionLeaseHeldError);
+    expect(release).not.toHaveBeenCalled();
   });
 });

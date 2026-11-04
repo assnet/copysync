@@ -160,8 +160,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   private readonly registry = new TelegramSessionRegistry();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
   private readonly suspended = new Map<string, string>();
-  /** Sessões entre `leaseGate.acquire` e `registry.set` (contagem): a renovação as trata como locais. */
-  private readonly opening = new Map<string, number>();
+  /**
+   * Aberturas entre `leaseGate.acquire` e `registry.set`: a renovação as trata como locais.
+   * Abort/suspend nesse intervalo marcam `cancelled` (abort vence suspend) e a abertura desiste.
+   */
+  private readonly opening = new Map<string, Set<{ cancelled: 'abort' | 'suspend' | null }>>();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
   /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
@@ -418,7 +421,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       throw new SessionLeaseHeldError(sessionId);
     }
     // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
-    const entry = await this.whileOpening(sessionId, async () => {
+    const opened = await this.whileOpening(sessionId, async (token) => {
       const existing = this.registry.get(sessionId);
       if (existing) await this.teardown(sessionId, existing);
 
@@ -430,6 +433,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
         deviceModel: 'CopySync Web',
         appVersion: '1.0',
       });
+      // Abort/suspend chegou enquanto abria: descarta o cliente (nunca conectado) antes de expor
+      if (token.cancelled) {
+        try { await client.destroy(); } catch { /* best-effort */ }
+        return token.cancelled;
+      }
       const entry: TelegramSessionEntry = {
         client,
         tenantId,
@@ -442,13 +450,25 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       this.registry.set(sessionId, entry);
       return entry;
     });
+    if (typeof opened === 'string') {
+      // Sem status nem StringSession; suspensa volta pelo resumeSession
+      if (opened === 'suspend') this.suspended.set(sessionId, tenantId);
+      telegramLogger.warn({ sessionId, kind: opened }, 'Telegram client open cancelled by lease');
+      throw new SessionLeaseHeldError(sessionId);
+    }
+    const entry = opened;
+    // Abort/suspend logo após o registro já derrubou o cliente: nada de status
+    if (!this.registry.isCurrent(sessionId, entry.epoch)) throw new SessionLeaseHeldError(sessionId);
     await this.updateStatus(sessionId, tenantId, 'CONNECTING');
     internalEventBus.emit('SESSION_CONNECTING', { type: 'SESSION_CONNECTING', sessionId, tenantId });
     try {
       await entry.client.connect();
     } catch (err) {
+      // Cliente derrubado por abort/suspend durante o connect: não grava FAILED nem mexe no lease
+      if (!this.registry.isCurrent(sessionId, entry.epoch)) throw new SessionLeaseHeldError(sessionId);
       this.registry.delete(sessionId);
       await this.updateStatus(sessionId, tenantId, 'FAILED');
+      if (!this.opening.has(sessionId)) await this.releaseLeaseAfterFailedOpen(sessionId);
       throw translateTelegramLoginError(err);
     }
     return entry;
@@ -917,6 +937,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   async abortSession(sessionId: string): Promise<void> {
     this.suspended.delete(sessionId);
     this.dialogsCache.delete(sessionId);
+    this.cancelOpening(sessionId, 'abort');
     const entry = this.registry.get(sessionId);
     if (!entry) return;
     await this.teardown(sessionId, entry);
@@ -929,6 +950,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    */
   async suspendSession(sessionId: string): Promise<void> {
     this.dialogsCache.delete(sessionId);
+    // Em abertura: a própria abertura desiste e marca suspensa (ver openClient)
+    this.cancelOpening(sessionId, 'suspend');
     const entry = this.registry.get(sessionId);
     if (!entry) return;
     this.suspended.set(sessionId, entry.tenantId);
@@ -962,15 +985,42 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     return [...ids];
   }
 
-  /** Marca a sessão como "abrindo" enquanto `open` roda (sai no fim, com sucesso ou falha). */
-  private async whileOpening<T>(sessionId: string, open: () => Promise<T>): Promise<T> {
-    this.opening.set(sessionId, (this.opening.get(sessionId) ?? 0) + 1);
+  /**
+   * Marca a sessão como "abrindo" enquanto `open` roda (sai no fim, com sucesso ou falha). Erro
+   * não cancelado depois do acquire solta o lease (best-effort), se nada mais desta sessão
+   * estiver aberto ou abrindo aqui; sem isso o lease ficaria preso até o TTL.
+   */
+  private async whileOpening<T>(
+    sessionId: string, open: (token: { cancelled: 'abort' | 'suspend' | null }) => Promise<T>,
+  ): Promise<T> {
+    const token: { cancelled: 'abort' | 'suspend' | null } = { cancelled: null };
+    const tokens = this.opening.get(sessionId) ?? new Set();
+    tokens.add(token);
+    this.opening.set(sessionId, tokens);
     try {
-      return await open();
+      return await open(token);
+    } catch (err) {
+      if (!token.cancelled && tokens.size === 1 && !this.registry.get(sessionId)) {
+        await this.releaseLeaseAfterFailedOpen(sessionId);
+      }
+      throw err;
     } finally {
-      const n = (this.opening.get(sessionId) ?? 1) - 1;
-      if (n > 0) this.opening.set(sessionId, n);
-      else this.opening.delete(sessionId);
+      tokens.delete(token);
+      if (tokens.size === 0 && this.opening.get(sessionId) === tokens) this.opening.delete(sessionId);
+    }
+  }
+
+  private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
+    for (const token of this.opening.get(sessionId) ?? []) {
+      if (kind === 'abort' || !token.cancelled) token.cancelled = kind;
+    }
+  }
+
+  private async releaseLeaseAfterFailedOpen(sessionId: string): Promise<void> {
+    try {
+      await this.leaseGate.release?.(sessionId);
+    } catch (err) {
+      telegramLogger.warn({ err, sessionId }, 'falha ao soltar lease após abertura com erro');
     }
   }
 
