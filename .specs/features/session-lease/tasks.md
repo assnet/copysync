@@ -44,6 +44,10 @@ Regras comuns a toda task:
 | F2 | Fence por erro de banco preserva chaves e se recupera | T23 | P | ✅ 45afcd8 |
 | F3 | Socket em abertura conta como local na renovação | F2 | | ✅ abadce9 |
 | F4 | Migration em UTC e `renew` ignora sessão apagada | T23 | P | ✅ fda7636 |
+| F5 | Abertura cancelável: abort/suspend durante a abertura | F3 | P | ⏳ |
+| F6 | Chaves órfãs só voltam com a mesma versão | F3 | P | ⏳ |
+| F7 | Resume sem `release` e com nova tentativa | F3 | P | ⏳ |
+| F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -464,6 +468,44 @@ No mesmo contrato, a porta estreita `ISessionLeaseGate { acquire(sessionId): Pro
 **Tests**: int
 **Gate**: int + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): backfill em UTC e renew ignora sessão apagada`
+
+## Correções da 2ª revisão (2026-11-04)
+
+### F5: Abertura cancelável: abort/suspend durante a abertura [P]
+
+**What**: `abortSession`/`suspendSession` fazem `if (!entry) return` e ignoram sessão em abertura (entre `leaseGate.acquire` e `registry.set`); depois o socket registra sem lease no razão, nunca renova e outro processo adquire (dois donos). Correção: token de abertura por sessão (mapa `opening` da F3 vira registro com `cancelled`); abort/suspend marcam cancelado; logo após criar o socket e antes de `registry.set`/expor, se cancelado: `end()` sem gravar status nem chaves e não registra. No catch de erro depois do `acquire` (ex.: `fetchLatestBaileysVersion`, `buildBaileysAuthState`), `release` best-effort do lease (só se dono = este worker; usar a porta de release injetada ou `ISessionLeaseGate` estendido). Telegram `openClient` idem.
+**Where**: `BaileysMessagingEngineAdapter.ts`, `TelegramMessagingEngineAdapter.ts` (+ testes `.lease.test.ts`), `ISessionLeaseRepository.ts`/gate se precisar de `release` no gate
+**Done when**: testes: abort durante abertura → socket fechado, não registrado, sem gravar; suspend durante abertura idem; erro após acquire solta o lease
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): abertura de socket cancelável pelo lease`
+
+### F6: Chaves órfãs só voltam com a mesma versão [P]
+
+**What**: `stashOrphans`/`suspendAuthState` guardam o pendente sem a versão CAS vista; se outro dono gravou no meio, o `buildHandle` reaplica o `carried` antigo por cima das chaves novas e o CAS passa. Correção: guardar `version` junto do órfão; no `buildHandle`, descartar `carried` (e logar warn) se a versão carregada ≠ guardada.
+**Where**: `BaileysAuthStatePersistence.ts` (+ teste)
+**Done when**: teste: órfão com versão igual é reaplicado; com versão diferente é descartado e não grava
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): chave órfã descartada se outro dono gravou`
+
+### F7: Resume sem `release` e com nova tentativa [P]
+
+**What**: `resumeAll` em `RenewSessionLeaseUseCase` chama `release` antes de `resumeSession` (abre janela para outro processo) e qualquer erro limpa a marca: a sessão fica CONNECTED sem socket e sem retry. Correção: não chamar `release` (`tryAcquire` já aceita `ownerWorkerId = $me`); `acquire` passa a distinguir "outro dono" de "erro de banco" (resultado tipado, ex.: `'acquired' | 'held' | 'error'`, mantendo `ISessionLeaseGate` compatível para os adapters); em `held` limpar a marca; em erro transitório (banco, `fetchLatestBaileysVersion`, `auth.load`) manter na `fenced` para a próxima rodada, com limite de tentativas (ex.: 10) e depois limpar + log error.
+**Where**: `RenewSessionLeaseUseCase.ts`, `AcquireSessionLeaseUseCase.ts`, `SessionLeaseLedger.ts` (+ testes)
+**Done when**: testes: erro transitório mantém e tenta de novo; `held` limpa; sucesso limpa; sem chamada a `release` no resume; limite de tentativas
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): sessão suspensa volta com nova tentativa`
+
+### F8: Shutdown espera 2ª passada; reconciler condicional [P]
+
+**What**: (a) `cancelBootRecheck` só cancela o timer; passada em curso pode abrir socket depois de `releaseAllOwned`. Guardar a promessa da passada e `await` no shutdown antes de `closeAllSockets`. (b) `SessionStatusReconciler` grava `DISCONNECTED` incondicional depois do SELECT; connect local no meio fica DISCONNECTED com socket vivo. Correção: método de repositório `markDisconnectedIfNoLiveLease(id, tenantId)` com `UPDATE … WHERE status ativo AND (leaseUntil IS NULL OR leaseUntil < now() AT TIME ZONE 'UTC')`.
+**Where**: `api/src/app/server.ts`, `SessionStatusReconciler.ts` (+ teste), `ISessionRepository.ts` + `PrismaSessionRepository.ts` (+ `.int.test.ts`)
+**Done when**: unit: shutdown aguarda passada em curso; reconciler usa o update condicional; int: update não toca sessão com lease vivo
+**Tests**: unit + int
+**Gate**: unit + int + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): shutdown espera reconciliação e update condicional`
 
 ## Diagram-Definition Cross-Check
 

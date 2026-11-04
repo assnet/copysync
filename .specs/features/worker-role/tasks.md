@@ -20,19 +20,19 @@ Regras comuns a toda task:
 | T2 | Engine local fora de `session.routes.ts` | — | P | ✅ 79c61cd |
 | T3 | Redis: dependências, conexões lazy, script descartável | — | P | ✅ 89b1364 |
 | T4 | Erro interno ↔ formato de fio | — | P | ✅ 52092c0 |
-| T5 | `findLiveOwner` no repositório de lease | — | P | ⏳ |
-| T6 | `createOutboundMessageId` assíncrono | — | P | ⏳ |
+| T5 | `findLiveOwner` no repositório de lease | — | P | ✅ 09accd1 |
+| T6 | `createOutboundMessageId` assíncrono | — | P | ✅ 133391b |
 | T7 | Plano de chamadas da engine + codec + portas | T6 | | ⏳ |
 | T8 | Transporte RPC no Redis | T3, T7 | P | ⏳ |
 | T9 | Filas BullMQ de comando (`engine-cmd-{id}`, `session-open`) | T3, T7 | P | ⏳ |
 | T10 | `EngineCommandServer` (worker) | T4, T7 | P | ⏳ |
 | T11 | `RemoteMessagingEngineAdapter` (http) | T4, T5, T7 | P | ⏳ |
 | T12 | Mídia de envio entre processos | T10, T11 | | ⏳ |
-| T13 | Fan-out de WS pelo Redis | T3 | P | ⏳ |
-| T14 | `FailOrphanPendingMedia` poupa lease vivo de outro processo | — | P | ⏳ |
-| T15 | Remover SSE `GET /chat/events` + `useChatSSE` | — | P | ⏳ |
-| T16 | Tabela de jobs por papel + gate no `server.ts` | T1 | | ⏳ |
-| T17 | Fastify mínimo do worker + `/health` com papel | T1, T3 | P | ⏳ |
+| T13 | Fan-out de WS pelo Redis | T3 | P | ✅ 9c7ac87 |
+| T14 | `FailOrphanPendingMedia` poupa lease vivo de outro processo | — | P | ✅ 78be0ed |
+| T15 | Remover SSE `GET /chat/events` + `useChatSSE` | — | P | ✅ 3373d2e |
+| T16 | Tabela de jobs por papel + gate no `server.ts` | T1 | | ✅ 43e7614 |
+| T17 | Fastify mínimo do worker + `/health` com papel | T1, T3 | P | ✅ c0c31f2 |
 | T18 | Composição por papel (engine, servidor de comandos, relay) | T2, T8, T9, T10, T11, T12, T13 | | ⏳ |
 | T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ⏳ |
 | T20 | Smoke `all` e `http`+`worker` | T19 | | ⏳ |
@@ -438,3 +438,11 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 - T2: `localEngine()` (lazy, idempotente) em `messaging/infrastructure/localEngineContainer.ts`; `session.routes.ts` chama no nível do módulo (mesma ordem de antes).
 - T3: bullmq 6.3.19 + ioredis 5.11.1; `redisConnections.ts` recebe papel/URL por `bindRedisAccess({ enabled, url, onError })` — **T17/T18 precisam chamar** `bindRedisAccess({ enabled: () => usesRedis(currentRole()), url: () => env.REDIS_URL, ... })`; sem isso todo getter lança (= `all`). `scripts/redis-descartavel.sh` (porta ≥ 56379 ou `REDIS_INT_PORT`).
 - T4: fio de erro `{ code, message, statusCode, meta?, name?, fields? }` (`name` desempata `SessionLeaseHeldError`); `SessionNotOwnedError` (409, interno).
+- T5: `findLiveOwner(sessionId)` não filtra `deletedAt` (lease vence sozinho).
+- T6: `createOutboundMessageId` async; router usa só cache (`resolveSync`), T7/T11 decidem `resolve`.
+- T13: `ChatEventRelay` + `RedisChatEventRelay` (publish/deliver); ligar por papel na T18. Int pula sem `INTEGRATION_REDIS_URL`.
+- T14: `FailOrphanPendingMedia` aceita `workerId` (boot); **ligar `workerId` no server.ts na T19**.
+- T15: SSE removido (api + `app/src/hooks/useChatSSE.ts`); `docs/arquitetura-escala.md:249` atualizar na T21; **app precisa bump de versão na T21**.
+- T16: `jobsFor(role)` em `app/processJobs.ts`; em `all` logs iguais.
+- T17: `buildWorkerApp(probe)` em `app/workerApp.ts`; `/health` ganhou `role`.
+- Gate integrado após onda 2: api tsc ok, vitest completo 2848/2848; app tsc ok.
