@@ -2,6 +2,7 @@ import type { ISessionRepository } from '../../domain/contracts/ISessionReposito
 import type { ISessionAuthStateRepository } from '../../domain/contracts/ISessionAuthStateRepository';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
+import type { ReleaseSessionLeaseUseCase } from './ReleaseSessionLeaseUseCase';
 import { SessionNotFoundError } from '../../../../shared/errors/internal/SessionErrors';
 
 /** Recursos de outros módulos presos à sessão (ex.: rodízio de links → PAUSED). */
@@ -17,7 +18,7 @@ export interface DeleteSessionInput {
 
 /**
  * Soft-deletes a session.
- * - Disconnects/logouts from the engine if still active.
+ * - Clears the connect request, disconnects from the engine if still active, releases the lease.
  * - Removes auth state from DB.
  * - Pauses resources tied to the session (link rotations → PAUSED) before the soft delete.
  * - Marks the session as deleted (soft delete).
@@ -29,6 +30,7 @@ export class DeleteSessionUseCase {
     private readonly auditRepo: IAuditLogRepository,
     private readonly engine: IMessagingEngine,
     private readonly linkedResources: SessionLinkedResources[] = [],
+    private readonly leaseRelease?: Pick<ReleaseSessionLeaseUseCase, 'execute'>,
   ) {}
 
   async execute(input: DeleteSessionInput): Promise<void> {
@@ -37,13 +39,25 @@ export class DeleteSessionUseCase {
 
     // Gracefully disconnect from engine if the session is active
     const activeStatuses = ['CONNECTED', 'CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD'];
-    if (activeStatuses.includes(session.status)) {
+    const active = activeStatuses.includes(session.status);
+
+    // Fim do pedido de conexão antes de desconectar (LEASE-08): nenhum worker readota no meio
+    await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, {
+      status: active ? 'DISCONNECTED' : session.status,
+      ...(active ? { lastDisconnectedAt: new Date() } : {}),
+      clearConnectRequest: true,
+    });
+
+    if (active) {
       try {
         await this.engine.disconnectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
       } catch {
         // Best-effort — proceed with deletion even if engine fails
       }
     }
+
+    // Solta o lease mesmo com falha da engine (LEASE-05); sem dono, a escrita condicional não muda nada
+    await this.leaseRelease?.execute(input.sessionId);
 
     // Remove stored credentials
     await this.authStateRepo.deleteBySessionId(input.sessionId);

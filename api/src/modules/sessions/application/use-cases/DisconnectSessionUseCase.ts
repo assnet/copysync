@@ -2,6 +2,7 @@ import type { ISessionRepository } from '../../domain/contracts/ISessionReposito
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../domain/enums/SessionStatus';
+import type { ReleaseSessionLeaseUseCase } from './ReleaseSessionLeaseUseCase';
 import {
   SessionNotFoundError,
   InvalidSessionStateError,
@@ -23,6 +24,7 @@ export class DisconnectSessionUseCase {
     private readonly sessionRepo: ISessionRepository,
     private readonly auditRepo: IAuditLogRepository,
     private readonly engine: IMessagingEngine,
+    private readonly leaseRelease?: Pick<ReleaseSessionLeaseUseCase, 'execute'>,
   ) {}
 
   async execute(input: DisconnectSessionInput): Promise<DisconnectSessionOutput> {
@@ -33,13 +35,17 @@ export class DisconnectSessionUseCase {
       throw new InvalidSessionStateError(input.sessionId, session.status);
     }
 
-    // Engine closes the socket; adapter also updates DB — we update here for safety
-    await this.engine.disconnectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
-
+    // Status + fim do pedido de conexão antes da engine (LEASE-08): nenhum worker readota no meio
     await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, {
       status: 'DISCONNECTED',
       lastDisconnectedAt: new Date(),
+      clearConnectRequest: true,
     });
+
+    await this.engine.disconnectSession({ sessionId: input.sessionId, tenantId: input.tenantId });
+
+    // Socket fechado: solta o lease deste worker (LEASE-05)
+    await this.leaseRelease?.execute(input.sessionId);
 
     await this.auditRepo.create({
       tenantId: input.tenantId,
