@@ -59,6 +59,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Cross Session nos planos (`plans`) — app 0.72.0
+
+- **`catalog.ts`**, **`PlanCard.tsx`** — recurso de monitorar em uma sessão e disparar em outra do mesmo canal passa a se chamar **Cross Session** (`CROSS_SESSION_NAME`); benefício com `featureName` vira bloco em destaque (moldura em gradiente, ícone, nome, chip Exclusivo) no MAX
+
 #### Rodízio de links com Telegram (`link-rotation`, `messaging`) — api 0.55.0 · app 0.71.0
 
 - **`link-rotation/domain/services/inviteUrl.ts`** — link de convite por canal (canal = engine da sessão do rodízio): WhatsApp `chat.whatsapp.com/<code>`; Telegram `t.me/+<code>`, `t.me/joinchat/<code>`, `t.me/<username>`. Antes um grupo Telegram geraria `chat.whatsapp.com/+…` quebrado

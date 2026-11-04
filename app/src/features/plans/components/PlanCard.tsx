@@ -1,5 +1,5 @@
 import { Box, Button, Chip, Divider, Paper, Tooltip, Typography, alpha, useTheme } from '@mui/material';
-import { Check, Crown, Info } from 'lucide-react';
+import { ArrowLeftRight, Check, Crown, Info } from 'lucide-react';
 import { AppIcon, TelegramIcon, WhatsAppIcon, brandColor } from '@/components';
 import { priceFor, savingsFor, type BillingPeriod, type PlanBenefit, type PlanCatalogItem } from '../catalog';
 import { formatPrice, plansStrings as t } from '../strings';
@@ -15,8 +15,79 @@ interface Props {
 
 const CHANNEL_LOGO = { whatsapp: WhatsAppIcon, telegram: TelegramIcon } as const;
 
+/**
+ * Recurso com nome próprio (ex.: Cross Session): bloco com moldura em gradiente, ícone do recurso,
+ * nome em destaque e a descrição embaixo. Sem brilhos: o destaque vem da moldura e do peso.
+ */
+function FeatureRow({ benefit }: { benefit: PlanBenefit }) {
+  const theme = useTheme();
+  const gradient = ctaGradient(theme);
+  // No escuro, primary/secondary .main ficam abaixo de 4.5:1 sobre o papel; o nome usa os tons claros.
+  const { primary, secondary } = theme.palette;
+  const nameGradient = theme.palette.mode === 'dark'
+    ? `linear-gradient(135deg, ${primary.light} 0%, ${secondary.light} 100%)`
+    : gradient;
+  const row = (
+    <Box
+      component="li"
+      sx={{
+        position: 'relative', borderRadius: '10px', p: '1.5px', background: gradient, cursor: benefit.hint ? 'help' : 'default',
+        mx: -1, my: 0.25,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex', alignItems: 'flex-start', gap: 1.25, borderRadius: '8.5px', px: 1.25, py: 1,
+          bgcolor: 'background.paper',
+          backgroundImage: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 100%)`,
+        }}
+      >
+        <Box
+          aria-hidden
+          sx={{
+            width: 32, height: 32, borderRadius: '9px', flexShrink: 0, display: 'grid', placeItems: 'center',
+            background: gradient, color: theme.palette.getContrastText(theme.palette.primary.main),
+          }}
+        >
+          <AppIcon icon={ArrowLeftRight} size="sm" strokeWidth={2.5} />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+            <Typography
+              component="span"
+              sx={{
+                fontWeight: 800, fontSize: theme.typography.pxToRem(15), letterSpacing: '-0.01em', lineHeight: 1.3,
+                background: nameGradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+              }}
+            >
+              {benefit.featureName}
+            </Typography>
+            {benefit.exclusive && (
+              <Chip label={t.card.exclusive} size="small" color="secondary" variant="outlined" sx={{ height: 18, fontSize: 10, fontWeight: 700 }} />
+            )}
+          </Box>
+          <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.4, mt: 0.25 }}>
+            {benefit.label}
+          </Typography>
+        </Box>
+        {benefit.hint && (
+          <Box sx={{ color: 'text.disabled', display: 'flex', mt: '3px' }}>
+            <AppIcon icon={Info} size="sm" />
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+  return benefit.hint ? (
+    <Tooltip title={benefit.hint} enterTouchDelay={0} arrow placement="top">
+      {row}
+    </Tooltip>
+  ) : row;
+}
+
 function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string }) {
   const theme = useTheme();
+  if (benefit.featureName) return <FeatureRow benefit={benefit} />;
   const channelColor = benefit.channel ? brandColor(benefit.channel, theme.palette.mode) : null;
   const row = (
     <Box

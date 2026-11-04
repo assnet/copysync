@@ -24,6 +24,8 @@ export interface PlanBenefit {
   exclusive?: boolean;
   /** Recurso de um canal: linha em destaque com o logo do canal no lugar do check. */
   channel?: 'whatsapp' | 'telegram';
+  /** Recurso com nome próprio (ex.: "Cross Session"): bloco em destaque; `label` vira a descrição. */
+  featureName?: string;
 }
 
 export interface PlanCatalogItem {
@@ -59,6 +61,9 @@ export interface PlanCatalogItem {
   fit: string;
 }
 
+/** Nome do recurso de monitorar numa sessão e disparar noutra do mesmo canal (`cross_session_dispatch`). */
+export const CROSS_SESSION_NAME = 'Cross Session';
+
 /** Benefício da Página de Ofertas (`storefront_enabled`: só PRO e MAX). */
 export const STOREFRONT_BENEFIT_LABEL = 'Página de Ofertas para a bio';
 
@@ -71,7 +76,7 @@ export const PLAN_HINTS = {
   storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
   crossSession:
-    'Com duas sessões do mesmo canal, monitore grupos em uma e dispare nos grupos da outra. Entre WhatsApp e Telegram isso já vale em todo plano que tem os dois canais.',
+    'Cross Session: com duas sessões do mesmo canal (ex.: dois WhatsApp), monitore grupos em uma e dispare nos grupos da outra. Entre WhatsApp e Telegram isso já vale em todo plano que tem os dois canais.',
   bothChannels: 'Monitore grupos no WhatsApp e dispare no Telegram, ou o contrário: as ofertas circulam entre os dois canais.',
   telegramGroupsChannels:
     'Capture ofertas de grupos e canais do Telegram, inclusive canais em que você só é inscrito, e envie para os grupos e canais em que você pode postar.',
@@ -142,9 +147,14 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     },
     benefits: [
       { label: 'Tudo do PRO', strong: true },
+      {
+        featureName: CROSS_SESSION_NAME,
+        label: 'Monitore em uma sessão e dispare em outra do mesmo canal',
+        hint: PLAN_HINTS.crossSession,
+        exclusive: true,
+      },
       TELEGRAM_GROUPS_CHANNELS,
       { label: linkRotationLimitLabel(2, 10), hint: PLAN_HINTS.linkRotation },
-      { label: 'Monitorar em uma sessão e disparar em outra do mesmo canal', hint: PLAN_HINTS.crossSession, exclusive: true },
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
