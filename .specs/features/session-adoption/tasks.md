@@ -16,18 +16,18 @@ Regras comuns:
 
 | ID | Título | Deps | [P] | Status |
 | --- | --- | --- | --- | --- |
-| T1 | Envs `WORKER_ADOPTION_ENABLED`/`WORKER_MAX_SESSIONS`/`WORKER_SHARD` | — | P | ⏳ |
-| T2 | Política pura da adoção | — | P | ⏳ |
-| T3 | Migration `create-worker-heartbeats` | — | P | ⏳ |
-| T4 | `JobLease` genérico em `shared/jobs` | — | P | ⏳ |
+| T1 | Envs `WORKER_ADOPTION_ENABLED`/`WORKER_MAX_SESSIONS`/`WORKER_SHARD` | — | P | ✅ 28f33f3 |
+| T2 | Política pura da adoção | — | P | ✅ a3d791b |
+| T3 | Migration `create-worker-heartbeats` | — | P | ✅ 9aaf3c9 |
+| T4 | `JobLease` genérico em `shared/jobs` | — | P | ✅ 1906c67 |
 | T5 | Repositório de adoção (SQL `SKIP LOCKED`, backoff, esgotadas) | T2 | P | ⏳ |
-| T6 | Pedido novo zera backoff (`markConnectRequested`) | — | P | ⏳ |
+| T6 | Pedido novo zera backoff (`markConnectRequested`) | — | P | ✅ 179d0c4 |
 | T7 | Gate do lease com teto (`CapacityLimitedLeaseGate`) | T2 | P | ⏳ |
 | T8 | Repositório de heartbeat | T3 | P | ⏳ |
 | T9 | `AdoptNextSessionUseCase` + `SessionAdoptionTicker` | T5, E2 F3 | | ⏳ |
 | T10 | `SESSION_CONNECTED` zera backoff | T5 | P | ⏳ |
 | T11 | Jobs de heartbeat e alerta de capacidade | T2, T4, T5, T8 | | ⏳ |
-| T12 | Sessão expõe `awaitingCapacity` | — | P | ⏳ |
+| T12 | Sessão expõe `awaitingCapacity` | — | P | ✅ 177bf63 |
 | T13 | `GET /admin/workers` | T5, T8 | P | ⏳ |
 | T14 | Composição `sessionAdoptionContainer` | T1, T7, T9, T10, T11 | | ⏳ |
 | T15 | `server.ts` + jobs por papel: ticker, bootstrap, shutdown | T14, E3 T19 | | ⏳ |
@@ -357,3 +357,12 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 | T16 | transporte Redis | nenhum | int | ✅ |
 | T17, T18 | app | unit | unit + agent-browser | ✅ |
 | T19, T20 | smoke / docs | nenhum | smoke / none | ✅ |
+
+## Notas de execução
+
+- T1: `workerAdoptionConfig()` em `shared/config/workerAdoption.ts`; só `'true'` liga.
+- T2: `sessionAdoptionPolicy.ts`; `awaitingOverMs: number | null` (T11/T13 fornecem); ocupação vence espera quando ambos.
+- T3: migration `20261104160000_create_worker_heartbeats` (sem tenantId: dado de plataforma).
+- T4: `shared/jobs/IJobLease` + `PrismaJobLease`; rodízio reexporta.
+- T6: `markConnectRequested` zera `adoptFailures`/`nextAdoptAt` só quando não havia pedido.
+- T12: `awaitingCapacity` no item de sessão (false com flag desligada); schemas `SessionStatus`/`SessionItem` movidos para `sessions/presentation/schemas/sessionItem.schema.ts`.
