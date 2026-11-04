@@ -143,6 +143,19 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().optional(),
   ),
+  // ── Adoção por capacidade (.specs/features/session-adoption) ─────────────
+  // Desligada por padrão: sem a flag nada muda. Liga só na Render (`api/.env` local = produção).
+  WORKER_ADOPTION_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Teto de sessões ativas neste processo (inclui sockets abrindo).
+  WORKER_MAX_SESSIONS: z.coerce.number().int().positive().default(40),
+  // Filtro de shard da adoção. Vazio = sem shard (`null`).
+  WORKER_SHARD: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
   MEDIA_PENDING_STALE_MINUTES: z.coerce.number().int().positive().default(60),
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),
