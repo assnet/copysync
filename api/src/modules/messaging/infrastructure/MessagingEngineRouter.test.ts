@@ -10,6 +10,8 @@ function fakeEngine(name: string) {
     createOutboundMessageId: vi.fn(() => `${name}-id`),
     getSessionStatus: vi.fn(async () => 'CONNECTED'),
     abortSession: vi.fn(async () => undefined),
+    suspendSession: vi.fn(async () => undefined),
+    resumeSession: vi.fn(async () => true),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [`${name}-s`]),
   } as unknown as IMessagingEngine & {
@@ -17,6 +19,8 @@ function fakeEngine(name: string) {
     connectSession: ReturnType<typeof vi.fn>;
     createOutboundMessageId: ReturnType<typeof vi.fn>;
     abortSession: ReturnType<typeof vi.fn>;
+    suspendSession: ReturnType<typeof vi.fn>;
+    resumeSession: ReturnType<typeof vi.fn>;
     closeAllSockets: ReturnType<typeof vi.fn>;
     listLocalSessionIds: ReturnType<typeof vi.fn>;
   };
@@ -68,6 +72,25 @@ describe('MessagingEngineRouter', () => {
     await router.abortSession('gone');
     expect(telegram.abortSession).toHaveBeenCalledWith('gone');
     expect(baileys.abortSession).toHaveBeenCalledWith('gone');
+  });
+
+  it('suspendSession/resumeSession vão só para a engine da sessão', async () => {
+    const { router, baileys, telegram } = build({ s1: 'telegram' });
+    await router.suspendSession('s1');
+    expect(await router.resumeSession('s1')).toBe(true);
+    expect(telegram.suspendSession).toHaveBeenCalledWith('s1');
+    expect(telegram.resumeSession).toHaveBeenCalledWith('s1');
+    expect(baileys.suspendSession).not.toHaveBeenCalled();
+    expect(baileys.resumeSession).not.toHaveBeenCalled();
+  });
+
+  it('sessão sem engine conhecida: suspende em todas, não reabre', async () => {
+    const { router, baileys, telegram } = build({});
+    await router.suspendSession('gone');
+    expect(baileys.suspendSession).toHaveBeenCalledWith('gone');
+    expect(telegram.suspendSession).toHaveBeenCalledWith('gone');
+    expect(await router.resumeSession('gone')).toBe(false);
+    expect(baileys.resumeSession).not.toHaveBeenCalled();
   });
 
   it('closeAllSockets espera todas mesmo se uma falhar', async () => {

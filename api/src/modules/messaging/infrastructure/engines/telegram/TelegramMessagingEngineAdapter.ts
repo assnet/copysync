@@ -158,6 +158,8 @@ function mediaInfo(media: Api.TypeMessageMedia | undefined): { mimeType: string 
 
 export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessionSocketControl {
   private readonly registry = new TelegramSessionRegistry();
+  /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
+  private readonly suspended = new Map<string, string>();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
   /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
@@ -185,6 +187,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
 
   /** Abre o cliente; com credenciais salvas conecta direto, sem elas inicia o login por QR. */
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
+    this.suspended.delete(input.sessionId);
     const entry = await this.openClient(input.sessionId, input.tenantId);
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
@@ -214,6 +217,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
+    this.suspended.delete(input.sessionId);
     const entry = this.registry.get(input.sessionId);
     if (entry) await this.teardown(input.sessionId, entry);
     await this.sessionRepo
@@ -223,6 +227,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async logoutSession(input: LogoutSessionInput): Promise<void> {
+    this.suspended.delete(input.sessionId);
     const entry = this.registry.get(input.sessionId);
     if (entry) {
       try {
@@ -904,11 +909,40 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * StringSession (o fluxo de login sai pelo `isCurrent` falso). Sem cliente local: nada.
    */
   async abortSession(sessionId: string): Promise<void> {
+    this.suspended.delete(sessionId);
     this.dialogsCache.delete(sessionId);
     const entry = this.registry.get(sessionId);
     if (!entry) return;
     await this.teardown(sessionId, entry);
     telegramLogger.warn({ sessionId }, 'Telegram client aborted (lease lost)');
+  }
+
+  /**
+   * Fence por erro de banco: destrói o cliente sem `auth.clear` nem gravar status (a
+   * StringSession salva continua valendo) e lembra o tenant para `resumeSession`.
+   */
+  async suspendSession(sessionId: string): Promise<void> {
+    this.dialogsCache.delete(sessionId);
+    const entry = this.registry.get(sessionId);
+    if (!entry) return;
+    this.suspended.set(sessionId, entry.tenantId);
+    await this.teardown(sessionId, entry);
+    telegramLogger.warn({ sessionId }, 'Telegram client suspended (lease fence, database unavailable)');
+  }
+
+  /** Banco de volta: reabre a sessão suspensa pelo caminho de reconexão (lease → cliente). */
+  async resumeSession(sessionId: string): Promise<boolean> {
+    const tenantId = this.suspended.get(sessionId);
+    if (tenantId === undefined) return false;
+    this.suspended.delete(sessionId);
+    if (this.registry.get(sessionId)) return true;
+    try {
+      await this.reconnectSession({ sessionId, tenantId });
+      return true;
+    } catch (err) {
+      if (err instanceof SessionLeaseHeldError) return false;
+      throw err;
+    }
   }
 
   /** Shutdown: destrói todos os clientes em paralelo; falha de um não segura os outros. */

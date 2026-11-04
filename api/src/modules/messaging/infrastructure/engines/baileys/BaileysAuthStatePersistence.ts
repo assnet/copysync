@@ -55,6 +55,8 @@ export interface BaileysAuthStateHandle {
   dispose: () => DirtyMap;
   /** Resolve quando não há mais escrita em voo (nunca rejeita). */
   settled: () => Promise<void>;
+  /** CAS perdido neste handle (outro dono gravou): o pendente dele é lixo. */
+  conflicted: () => boolean;
 }
 
 /**
@@ -112,6 +114,24 @@ export async function discardAuthState(sessionId: string): Promise<void> {
   if (!h) return;
   h.dispose();
   await h.settled();
+}
+
+/**
+ * Suspende o handle SEM gravar (fence por erro de banco, ninguém provou outro dono): para de
+ * escrever e guarda o pendente — inclusive o de uma escrita em voo que falhar — em `orphanDirty`,
+ * para o próximo handle da sessão neste processo gravar. CAS perdido: o pendente vai fora.
+ */
+export async function suspendAuthState(sessionId: string): Promise<void> {
+  await buildChain.get(sessionId)?.catch(() => undefined);
+  const h = activeHandles.get(sessionId);
+  if (!h) return;
+  const pending = h.dispose();
+  await h.settled();
+  // Escrita em voo que falhou devolveu o lote a sujo depois do dispose: é mais antigo que `pending`
+  const leftover = h.dispose();
+  for (const [k, v] of pending) leftover.set(k, v);
+  if (h.conflicted()) return;
+  stashOrphans(sessionId, leftover);
 }
 
 /** Texto canônico (chaves ordenadas) para comparar valores: o jsonb do Postgres reordena as chaves. */
@@ -391,7 +411,9 @@ async function buildHandle(
     if (inFlight) await inFlight.catch(() => undefined);
   }
 
-  const handle: BaileysAuthStateHandle = { state: { creds, keys }, saveCreds, forceFlush, dispose, settled };
+  const handle: BaileysAuthStateHandle = {
+    state: { creds, keys }, saveCreds, forceFlush, dispose, settled, conflicted: () => conflicted,
+  };
   activeHandles.set(sessionId, handle);
   if (dirty.size > 0) schedulePersist();
   return handle;

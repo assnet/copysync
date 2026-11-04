@@ -37,18 +37,22 @@ vi.mock('telegram', async (importOriginal) => {
   return { ...actual, TelegramClient: FakeClient };
 });
 
+// StringSession real valida o formato; aqui basta guardar o texto salvo
+vi.mock('telegram/sessions', () => ({ StringSession: class { constructor(readonly value: string) {} } }));
+
 const T = 'tenant-1';
 
-function make() {
+function make(gate = { acquire: vi.fn(async () => true) }) {
   const sessionRepo = { updateStatus: vi.fn(async () => undefined), updatePhone: vi.fn(async () => undefined) };
-  const auth = { load: vi.fn(async () => null), save: vi.fn(async () => undefined), clear: vi.fn(async () => undefined) };
+  const auth = { load: vi.fn(async (): Promise<string | null> => null), save: vi.fn(async () => undefined), clear: vi.fn(async () => undefined) };
   const adapter = new TelegramMessagingEngineAdapter(
     { apiId: 1, apiHash: 'h' },
     sessionRepo as never,
     auth as unknown as TelegramAuthStatePersistence,
     { findActiveByGroupAndSession: vi.fn() } as never,
+    gate,
   );
-  return { adapter, sessionRepo, auth };
+  return { adapter, sessionRepo, auth, gate };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -102,6 +106,44 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
     await adapter.abortSession('nope');
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(auth.save).not.toHaveBeenCalled();
+  });
+
+  it('suspendSession destrói o cliente sem auth.clear nem status; resumeSession reconecta pelo caminho normal', async () => {
+    fake.authorized = true;
+    const { adapter, sessionRepo, auth, gate } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    sessionRepo.updateStatus.mockClear();
+    auth.save.mockClear();
+
+    await adapter.suspendSession('s1');
+    expect(fake.clients[0].destroy).toHaveBeenCalledTimes(1);
+    expect(adapter.listLocalSessionIds()).toEqual([]);
+    expect(auth.clear).not.toHaveBeenCalled();
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+
+    auth.load.mockResolvedValueOnce('STRING_SESSION');
+    gate.acquire.mockClear();
+    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(gate.acquire).toHaveBeenCalledWith('s1');
+    expect(fake.clients).toHaveLength(2);
+    expect(sessionRepo.updateStatus).toHaveBeenCalledWith('s1', T, expect.objectContaining({ status: 'CONNECTED' }));
+    expect(await adapter.resumeSession('s1')).toBe(false);
+  });
+
+  it('resumeSession com lease de outro processo devolve false; abort apaga a suspensão', async () => {
+    fake.authorized = true;
+    const { adapter, auth, gate } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    auth.load.mockResolvedValueOnce('STRING_SESSION');
+    gate.acquire.mockResolvedValueOnce(false);
+    expect(await adapter.resumeSession('s1')).toBe(false);
+
+    await adapter.connectSession({ sessionId: 's2', tenantId: T });
+    await adapter.suspendSession('s2');
+    await adapter.abortSession('s2');
+    expect(await adapter.resumeSession('s2')).toBe(false);
+    expect(await adapter.resumeSession('nope')).toBe(false);
   });
 
   it('closeAllSockets destrói todos em paralelo, mesmo com falha de um, sem gravar nada', async () => {

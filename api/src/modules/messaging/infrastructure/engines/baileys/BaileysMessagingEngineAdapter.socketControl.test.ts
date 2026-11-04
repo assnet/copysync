@@ -34,6 +34,7 @@ vi.mock('@whiskeysockets/baileys', async (importOriginal) => {
 const auth = vi.hoisted(() => ({
   release: vi.fn(async () => undefined),
   discard: vi.fn(async () => undefined),
+  suspend: vi.fn(async () => undefined),
   flush: vi.fn(async () => undefined),
 }));
 vi.mock('./BaileysAuthStatePersistence', () => ({
@@ -41,6 +42,7 @@ vi.mock('./BaileysAuthStatePersistence', () => ({
   flushAllAuthStates: auth.flush,
   releaseAuthState: auth.release,
   discardAuthState: auth.discard,
+  suspendAuthState: auth.suspend,
 }));
 vi.mock('./BaileysErrorTranslator', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./BaileysErrorTranslator')>();
@@ -55,12 +57,12 @@ vi.mock('./BaileysErrorTranslator', async (importOriginal) => {
 const T = 'tenant-1';
 const registry = BaileysSessionRegistry.get();
 
-function make() {
+function make(gate = { acquire: vi.fn(async () => true) }) {
   const sessionRepo = { updateStatus: vi.fn(async () => undefined), updatePhone: vi.fn() };
   const adapter = new BaileysMessagingEngineAdapter(
-    sessionRepo as never, { clearCredentials: vi.fn() } as never, {} as never, {} as never, {} as never,
+    sessionRepo as never, { clearCredentials: vi.fn() } as never, {} as never, {} as never, {} as never, gate,
   );
-  return { adapter, sessionRepo };
+  return { adapter, sessionRepo, gate };
 }
 
 beforeEach(() => {
@@ -106,6 +108,59 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     await adapter.abortSession('nada');
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(auth.release).not.toHaveBeenCalled();
+  });
+
+  it('suspendSession fecha o socket preservando as chaves (suspend, não discard) sem gravar status', async () => {
+    const { adapter, sessionRepo } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    sessionRepo.updateStatus.mockClear();
+    const sock = sockets[0]!;
+
+    await adapter.suspendSession('s1');
+
+    expect(sock.end).toHaveBeenCalledTimes(1);
+    expect(registry.has('s1')).toBe(false);
+    expect(auth.suspend).toHaveBeenCalledWith('s1');
+    expect(auth.discard).not.toHaveBeenCalled();
+    expect(auth.release).not.toHaveBeenCalled();
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('resumeSession reabre a suspensa pela origem auto (lease → socket novo)', async () => {
+    const { adapter, gate } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    gate.acquire.mockClear();
+
+    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(gate.acquire).toHaveBeenCalledWith('s1');
+    expect(sockets).toHaveLength(2);
+    expect(registry.get('s1')?.tenantId).toBe(T);
+    expect(await adapter.resumeSession('s1')).toBe(false); // uma vez só
+  });
+
+  it('resumeSession com lease de outro processo devolve false sem lançar nem abrir socket', async () => {
+    const { adapter, gate } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    gate.acquire.mockResolvedValueOnce(false);
+
+    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(sockets).toHaveLength(1);
+  });
+
+  it('abort, disconnect ou sessão nunca suspensa: resumeSession não reabre', async () => {
+    const { adapter } = make();
+    expect(await adapter.resumeSession('nada')).toBe(false);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    await adapter.abortSession('s1');
+    expect(await adapter.resumeSession('s1')).toBe(false);
+    await adapter.connectSession({ sessionId: 's2', tenantId: T });
+    await adapter.suspendSession('s2');
+    await adapter.disconnectSession({ sessionId: 's2', tenantId: T });
+    expect(await adapter.resumeSession('s2')).toBe(false);
+    expect(sockets).toHaveLength(2);
   });
 
   it('closeAllSockets fecha todos sem descartar handles (o flush seguinte ainda grava)', async () => {

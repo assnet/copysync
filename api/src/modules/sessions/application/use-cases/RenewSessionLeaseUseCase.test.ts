@@ -19,6 +19,8 @@ function makeRepo(renew: ISessionLeaseRepository['renew']): ISessionLeaseReposit
 function makeSockets(local: string[]): ISessionSocketControl {
   return {
     abortSession: vi.fn(async () => undefined),
+    suspendSession: vi.fn(async () => undefined),
+    resumeSession: vi.fn(async () => true),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [...local]),
   };
@@ -72,11 +74,13 @@ describe('RenewSessionLeaseUseCase', () => {
     expect(ledger.ids()).toEqual(['s2']);
   });
 
-  it('zero linhas → derruba todas', async () => {
+  it('zero linhas → derruba todas (abort descarta, sem suspender nem marcar fence)', async () => {
     const { ledger, sockets, uc } = setup(async () => []);
     await uc.execute();
     expect(sockets.abortSession).toHaveBeenCalledTimes(2);
+    expect(sockets.suspendSession).not.toHaveBeenCalled();
     expect(ledger.ids()).toEqual([]);
+    expect(ledger.fencedIds()).toEqual([]);
   });
 
   it('banco fora há 54 s → mantém; 56 s → derruba (fence antes do banco)', async () => {
@@ -92,8 +96,10 @@ describe('RenewSessionLeaseUseCase', () => {
     vi.setSystemTime(T0 + 56_000);
     await uc.execute();
     expect(repo.renew).toHaveBeenCalledTimes(1);
-    expect(sockets.abortSession).toHaveBeenCalledTimes(2);
+    expect(sockets.abortSession).not.toHaveBeenCalled();
+    expect(sockets.suspendSession).toHaveBeenCalledTimes(2);
     expect(ledger.ids()).toEqual([]);
+    expect(ledger.fencedIds().sort()).toEqual(['s1', 's2']);
   });
 
   it('timeout do renew vale como falha: fence checado depois da espera', async () => {
@@ -103,8 +109,10 @@ describe('RenewSessionLeaseUseCase', () => {
     await vi.advanceTimersByTimeAsync(LEASE_RENEW_TIMEOUT_MS);
     await run;
     expect(log.warn).toHaveBeenCalled();
-    expect(sockets.abortSession).toHaveBeenCalledTimes(2);
+    expect(sockets.abortSession).not.toHaveBeenCalled();
+    expect(sockets.suspendSession).toHaveBeenCalledTimes(2);
     expect(ledger.ids()).toEqual([]);
+    expect(ledger.fencedIds().sort()).toEqual(['s1', 's2']);
   });
 
   it('timeout com fence ainda válido mantém o socket', async () => {
@@ -114,6 +122,7 @@ describe('RenewSessionLeaseUseCase', () => {
     await vi.advanceTimersByTimeAsync(LEASE_RENEW_TIMEOUT_MS);
     await run;
     expect(sockets.abortSession).not.toHaveBeenCalled();
+    expect(sockets.suspendSession).not.toHaveBeenCalled();
     expect(ledger.lastOk('s1')).toEqual(new Date(T0));
   });
 
@@ -129,5 +138,89 @@ describe('RenewSessionLeaseUseCase', () => {
     const { repo, uc } = setup(async (ids) => [...ids], []);
     await uc.execute();
     expect(repo.renew).not.toHaveBeenCalled();
+  });
+
+  describe('fence por erro de banco', () => {
+    function downThenUp() {
+      let down = true;
+      const env = setup(async (ids) => {
+        if (down) throw new Error('db down');
+        return [...ids];
+      });
+      return { ...env, up: () => { down = false; } };
+    }
+
+    it('erro de banco 2 rodadas → suspende (preserva chaves) sem abortar', async () => {
+      const { sockets, ledger, uc } = downThenUp();
+      vi.setSystemTime(T0 + 20_000);
+      await uc.execute();
+      vi.setSystemTime(T0 + 40_000);
+      await uc.execute();
+      expect(sockets.suspendSession).not.toHaveBeenCalled();
+      vi.setSystemTime(T0 + 60_000);
+      await uc.execute();
+      expect(sockets.suspendSession).toHaveBeenCalledTimes(2);
+      expect(sockets.abortSession).not.toHaveBeenCalled();
+      expect(ledger.fencedIds().sort()).toEqual(['s1', 's2']);
+    });
+
+    it('banco ainda fora: suspensa fica marcada e não reabre', async () => {
+      const { sockets, ledger, repo, uc } = downThenUp();
+      vi.setSystemTime(T0 + 56_000);
+      await uc.execute(); // suspende antes do banco
+      vi.mocked(sockets.listLocalSessionIds).mockReturnValue([]);
+      await uc.execute(); // sonda falha
+      expect(repo.renew).toHaveBeenLastCalledWith(['s1', 's2'], 'w1', LEASE_TTL_MS);
+      expect(sockets.resumeSession).not.toHaveBeenCalled();
+      expect(ledger.fencedIds().sort()).toEqual(['s1', 's2']);
+    });
+
+    it('renovação volta → release best-effort e reabre via resume; marca limpa', async () => {
+      const { sockets, ledger, repo, uc, up } = downThenUp();
+      vi.setSystemTime(T0 + 56_000);
+      await uc.execute();
+      vi.mocked(sockets.listLocalSessionIds).mockReturnValue([]);
+      vi.mocked(repo.release).mockRejectedValueOnce(new Error('flaky'));
+      up();
+      await uc.execute();
+      expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
+      expect(repo.release).toHaveBeenCalledWith('s2', 'w1');
+      expect(sockets.resumeSession).toHaveBeenCalledWith('s1');
+      expect(sockets.resumeSession).toHaveBeenCalledWith('s2');
+      expect(ledger.fencedIds()).toEqual([]);
+    });
+
+    it('resume sem lease (outro dono) ou com erro → só limpa a marca', async () => {
+      const { sockets, ledger, uc, up } = downThenUp();
+      vi.setSystemTime(T0 + 56_000);
+      await uc.execute();
+      vi.mocked(sockets.listLocalSessionIds).mockReturnValue([]);
+      vi.mocked(sockets.resumeSession).mockResolvedValueOnce(false).mockRejectedValueOnce(new Error('boom'));
+      up();
+      await expect(uc.execute()).resolves.toBeUndefined();
+      expect(sockets.resumeSession).toHaveBeenCalledTimes(2);
+      expect(ledger.fencedIds()).toEqual([]);
+      expect(sockets.abortSession).not.toHaveBeenCalled();
+    });
+
+    it('suspensa que já tem socket de novo (reconexão manual) não é reaberta', async () => {
+      const { sockets, ledger, repo, uc, up } = downThenUp();
+      vi.setSystemTime(T0 + 56_000);
+      await uc.execute();
+      up();
+      await uc.execute(); // listLocal ainda devolve s1/s2
+      expect(sockets.resumeSession).not.toHaveBeenCalled();
+      expect(repo.release).not.toHaveBeenCalled();
+      expect(ledger.fencedIds()).toEqual([]);
+    });
+
+    it('lease perdido de sessão viva continua abortando enquanto a suspensa reabre', async () => {
+      const { sockets, ledger, uc } = setup(async () => []);
+      ledger.markFenced('s9');
+      await uc.execute();
+      expect(sockets.abortSession).toHaveBeenCalledTimes(2);
+      expect(sockets.resumeSession).toHaveBeenCalledExactlyOnceWith('s9');
+      expect(ledger.fencedIds()).toEqual([]);
+    });
   });
 });

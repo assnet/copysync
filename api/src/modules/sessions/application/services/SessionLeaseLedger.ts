@@ -4,10 +4,27 @@
  */
 export class SessionLeaseLedger {
   private readonly entries = new Map<string, Date>();
+  /** Sessões derrubadas por fence de erro de banco (sem prova de outro dono): reabrir quando o banco voltar. */
+  private readonly fenced = new Set<string>();
 
-  /** Registra aquisição/renovação bem-sucedida. */
+  /** Registra aquisição/renovação bem-sucedida (lease de novo nosso: deixa de ser derrubada por fence). */
   markOk(sessionId: string, at: Date): void {
     this.entries.set(sessionId, at);
+    this.fenced.delete(sessionId);
+  }
+
+  /** Tira do razão e marca como derrubada por fence. */
+  markFenced(sessionId: string): void {
+    this.entries.delete(sessionId);
+    this.fenced.add(sessionId);
+  }
+
+  clearFenced(sessionId: string): void {
+    this.fenced.delete(sessionId);
+  }
+
+  fencedIds(): string[] {
+    return [...this.fenced];
   }
 
   drop(sessionId: string): void {

@@ -41,7 +41,8 @@ const CACHE_MAX = 10_000;
  */
 function hasSocketControl(engine: IMessagingEngine): engine is IMessagingEngine & ISessionSocketControl {
   const e = engine as Partial<ISessionSocketControl>;
-  return typeof e.abortSession === 'function' && typeof e.closeAllSockets === 'function' && typeof e.listLocalSessionIds === 'function';
+  return typeof e.abortSession === 'function' && typeof e.suspendSession === 'function' && typeof e.resumeSession === 'function'
+    && typeof e.closeAllSockets === 'function' && typeof e.listLocalSessionIds === 'function';
 }
 
 export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketControl {
@@ -98,6 +99,31 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
       return;
     }
     if (hasSocketControl(engine)) await engine.abortSession(sessionId);
+  }
+
+  /** Suspende na engine da sessão; sem engine conhecida pede a todas (cada uma ignora sem socket local). */
+  async suspendSession(sessionId: string): Promise<void> {
+    let engine: IMessagingEngine;
+    try {
+      engine = await this.resolve(sessionId);
+    } catch (err) {
+      if (!(err instanceof SessionNotFoundError)) throw err;
+      await Promise.all(this.socketControls().map(([, control]) => control.suspendSession(sessionId)));
+      return;
+    }
+    if (hasSocketControl(engine)) await engine.suspendSession(sessionId);
+  }
+
+  /** Reabre na engine da sessão; sessão apagada no banco não reabre. */
+  async resumeSession(sessionId: string): Promise<boolean> {
+    let engine: IMessagingEngine;
+    try {
+      engine = await this.resolve(sessionId);
+    } catch (err) {
+      if (err instanceof SessionNotFoundError) return false;
+      throw err;
+    }
+    return hasSocketControl(engine) ? engine.resumeSession(sessionId) : false;
   }
 
   /** Fecha os sockets de todas as engines; espera todas mesmo se uma falhar (shutdown segue). */

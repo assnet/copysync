@@ -55,7 +55,9 @@ describe('sessionLeaseContainer', () => {
 
     await c.acquire.acquire('s1');
     const abortSession = vi.fn().mockResolvedValue(undefined);
-    c.bindSocketControl({ abortSession, closeAllSockets: vi.fn(), listLocalSessionIds: () => ['s1'] });
+    c.bindSocketControl({
+      abortSession, suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(), listLocalSessionIds: () => ['s1'],
+    });
     await c.renew.execute(); // renew devolve [] = lease perdido → derruba
     expect(repo.renew).toHaveBeenCalledWith(['s1'], 'w1', expect.any(Number));
     expect(abortSession).toHaveBeenCalledWith('s1');

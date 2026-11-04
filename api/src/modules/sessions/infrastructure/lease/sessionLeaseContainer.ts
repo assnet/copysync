@@ -34,6 +34,8 @@ export function buildSessionLeaseContainer(
   let bound: ISessionSocketControl | undefined;
   const sockets: ISessionSocketControl = {
     abortSession: async (id) => bound?.abortSession(id),
+    suspendSession: async (id) => bound?.suspendSession(id),
+    resumeSession: async (id) => (await bound?.resumeSession(id)) ?? false,
     closeAllSockets: async () => bound?.closeAllSockets(),
     listLocalSessionIds: () => bound?.listLocalSessionIds() ?? [],
   };

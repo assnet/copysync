@@ -226,6 +226,66 @@ describe('buildBaileysAuthState — ciclo de vida do handle', () => {
     expect(repo.batches).toHaveLength(0);
   });
 
+  it('suspendAuthState (fence de banco): não grava, para de escrever e o próximo handle herda o pendente', async () => {
+    const { suspendAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    const h = await build(repo);
+    await h.state.keys.set({ session: { 'jid-s': Buffer.from([7]) } });
+    await suspendAuthState(SESSION);
+    expect(repo.batches).toHaveLength(0);
+    await h.state.keys.set({ session: { 'jid-s': Buffer.from([8]) } });
+    await h.forceFlush();
+    expect(repo.batches).toHaveLength(0); // handle suspenso não escreve mais
+
+    const next = await build(repo); // reopen: orphanDirty reaproveitado
+    expect(Buffer.from((await next.state.keys.get('session', ['jid-s']))['jid-s'] as Uint8Array).equals(Buffer.from([7]))).toBe(true);
+    await next.forceFlush();
+    expect(Object.keys(repo.batches[0]!.upserts)).toEqual(['session__jid-s']);
+    next.dispose();
+  });
+
+  it('suspendAuthState com escrita em voo que falha: o lote dela também vira órfão', async () => {
+    const { suspendAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    const h = await build(repo);
+    await h.state.keys.set({ session: { 'jid-a': Buffer.from([1]) } });
+    repo.failNext = 2; // esgota os retries
+    const flushing = h.forceFlush().catch(() => undefined);
+    await h.state.keys.set({ session: { 'jid-b': Buffer.from([2]) } });
+    await suspendAuthState(SESSION);
+    await flushing;
+    expect(repo.batches).toHaveLength(0);
+
+    const next = await build(repo);
+    await next.forceFlush();
+    expect(Object.keys(repo.batches[0]!.upserts).sort()).toEqual(['session__jid-a', 'session__jid-b']);
+    next.dispose();
+  });
+
+  it('suspendAuthState após CAS perdido: pendente vai fora (não vira órfão)', async () => {
+    const { suspendAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    const h = await buildBaileysAuthState(SESSION, TENANT, repo, { ...fast, onVersionConflict: () => undefined });
+    await h.state.keys.set({ session: { 'jid-c': Buffer.from([1]) } });
+    let open!: () => void;
+    const gate = new Promise<void>((r) => { open = r; });
+    const write = repo.writeKeys.bind(repo);
+    repo.writeKeys = async (batch) => { await gate; return write(batch); };
+    repo.version = 9; // outro dono gravou
+    const flushing = h.forceFlush();
+    await h.state.keys.set({ session: { 'jid-d': Buffer.from([2]) } });
+    const suspending = suspendAuthState(SESSION);
+    open();
+    await flushing;
+    await suspending;
+    repo.writeKeys = write;
+
+    const next = await build(repo);
+    await next.forceFlush();
+    expect(repo.batches).toHaveLength(0);
+    next.dispose();
+  });
+
   it('releaseAuthState: grava o pendente e solta o handle (desconexão)', async () => {
     const { releaseAuthState } = await import('./BaileysAuthStatePersistence');
     const repo = new InMemoryAuthRepo();
