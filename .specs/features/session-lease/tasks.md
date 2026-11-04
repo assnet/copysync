@@ -16,18 +16,18 @@ Regras comuns a toda task:
 
 | ID | Título | Deps | [P] | Status |
 | --- | --- | --- | --- | --- |
-| T1 | Migration `add-session-lease` + schema | — | P | ⏳ |
-| T2 | Identidade `WORKER_ID` | — | P | ⏳ |
-| T3 | Política do lease (constantes + fence pura) | — | P | ⏳ |
+| T1 | Migration `add-session-lease` + schema | — | P | ✅ fb1a4f2 |
+| T2 | Identidade `WORKER_ID` | — | P | ✅ 403acef |
+| T3 | Política do lease (constantes + fence pura) | — | P | ✅ 1e35503 |
 | T4 | `ISessionLeaseRepository` + Prisma + `SessionLeaseHeldError` | T1, T3 | | ⏳ |
 | T5 | Razão local + `Acquire`/`ReleaseSessionLeaseUseCase` | T4 | | ⏳ |
-| T6 | `ISessionSocketControl` + implementação Baileys | — | P | ⏳ |
+| T6 | `ISessionSocketControl` + implementação Baileys | — | P | ✅ f5a3180 |
 | T7 | `ISessionSocketControl` no Telegram | T6 | | ⏳ |
 | T8 | Router implementa `ISessionSocketControl` | T6, T7 | | ⏳ |
 | T9 | `RenewSessionLeaseUseCase` (fence) + `SessionLeaseKeeper` | T5, T6 | P | ⏳ |
 | T10 | Baileys: lease antes de `openSocket` | T4, T6 | P | ⏳ |
 | T11 | Telegram: lease antes de `openClient` | T4, T7 | P | ⏳ |
-| T12 | CAS no repositório do auth state | — | P | ⏳ |
+| T12 | CAS no repositório do auth state | — | P | ✅ bc525a7 |
 | T13 | CAS no `BaileysAuthStatePersistence` + conflito derruba socket | T10, T12 | | ⏳ |
 | T14 | Repositório de sessão: marcar/limpar `connectRequestedAt` | T1 | | ⏳ |
 | T15 | Helper `markConnectRequested` + connect/reconnect | T14 | | ⏳ |
@@ -39,6 +39,13 @@ Regras comuns a toda task:
 | T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ⏳ |
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ⏳ |
 | T23 | Docs, CHANGELOG e versão | T22 | | ⏳ |
+
+## Notas de execução (passagem entre tarefas)
+
+- T2: id do processo só por `currentWorkerId()` (`shared/config/workerIdentity.ts`), nunca recalcular.
+- T3: `isLeaseFenceExpired(lastRenewOkAt: Date, now: Date)`; T5/T9 passam `Date`, não ms.
+- T6: `abortSession` espera `discardAuthState` (inclusive escrita em voo). Na T13, chamar como `onVersionConflict` **sem `await`** dentro do caminho de escrita, senão trava na própria escrita. Timers de reconexão já são cancelados no abort/closeAll.
+- T12: `writeKeys(..., { expectedVersion })` devolve `{ ok, version } | VERSION_CONFLICT`; `findAllKeysVersioned` lê em REPEATABLE READ; sem `expectedVersion` = upsert antigo.
 
 ## Execution Plan
 
