@@ -129,6 +129,12 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Identidade deste processo no lease de sessão. Vazio = gerado por boot
+  // (`host-pid-nonce8`, ver `workerIdentity.ts`); restart nunca herda o lease anterior.
+  WORKER_ID: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
   MEDIA_PENDING_STALE_MINUTES: z.coerce.number().int().positive().default(60),
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),
