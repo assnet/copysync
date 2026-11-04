@@ -732,3 +732,26 @@ export interface CapturedOffersResponse {
   /** Cursor opaco da próxima página; null = fim. */
   nextCursor: string | null;
 }
+
+// ── Grupos de disparo (catálogo do tenant) ──────────────────────────────────────
+
+/** Uso de um grupo de disparo: `generator` ou `monitor:<sessionId>` (monitoramento daquela sessão). */
+export type BroadcastGroupUse = 'generator' | `monitor:${string}`;
+
+/** Grupo de disparo distinto (sessão + grupo) do tenant, somando gerador e monitoramentos. Sem texto de mensagem. */
+export interface BroadcastGroupCatalogItem {
+  conversationId: string;
+  /** Sessão que envia no grupo. */
+  sessionId: string;
+  channel: LimitChannel;
+  title: string | null;
+  avatarUrl: string | null;
+  usedBy: BroadcastGroupUse[];
+}
+
+/** `GET /campaigns/broadcast-groups`: limite do plano (null = sem limite) × uso pela união, por canal. */
+export interface BroadcastGroupsResponse {
+  items: BroadcastGroupCatalogItem[];
+  limits: Record<LimitChannel, { broadcastGroups: number | null }>;
+  usage: Record<LimitChannel, { broadcastGroups: number }>;
+}
