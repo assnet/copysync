@@ -36,7 +36,7 @@ Regras comuns a toda task:
 | T18 | Suspensão de tenant: limpa pedido + solta lease | T5, T14 | P | ✅ 5c8315b |
 | T19 | Consulta de sessões ativas sem lease vivo | T14 | | ✅ 53e295a |
 | T20 | Reconciler e bootstrap cientes do lease | T10, T11, T19 | P | ✅ 626881e |
-| T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ⏳ |
+| T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ✅ f3ecacf |
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ⏳ |
 | T23 | Docs, CHANGELOG e versão | T22 | | ⏳ |
 
@@ -61,6 +61,8 @@ Regras comuns a toda task:
 - T17/T18: Disconnect/Logout/Delete e `TenantSuspendedSessionListener` aceitam `leaseRelease?` opcional. **T21 precisa passar `leaseRelease` nos 3 use cases (`session.routes.ts`) e no listener (`server.ts:275`).**
 - T20: reconciler usa `findActiveSessionsWithoutLiveLease`; bootstrap pula `SessionLeaseHeldError`. Atenção T21/T22: no boot, `reconnectSession` com origem auto devolve `false` sem lançar e o bootstrap loga "Session bootstrapped" sem socket (só log enganoso; status não muda).
 - Gate integrado após onda 4: `tsc` ok, vitest sessions+messaging+shared 499/499.
+- T21: `sessionLeaseContainer()` (lazy, 1 por processo: `workerId`, `repo`, `ledger`, `acquire`, `renew`, `release`, `keeper` parado, `bindSocketControl`). Factory recebe `leaseGate`; rotas passam `release` a Disconnect/Logout/Delete. **NÃO fazer deploy entre T21 e T22**: sem `keeper.start()` o lease vence em 60 s.
+- Pendências para T22: `keeper.start()` no boot e `stop()` primeiro no shutdown; `registerTenantSuspendedSessionListener` com `release` (`server.ts:275`); bootstrap: não logar "Session bootstrapped" quando a reconexão auto devolver `false` (lease de outro processo).
 
 ## Execution Plan
 
