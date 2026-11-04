@@ -43,6 +43,8 @@ export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
   body?: unknown;
+  /** Default `FETCH_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
 
 export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
@@ -61,7 +63,7 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
       headers,
       credentials: 'include',
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? FETCH_TIMEOUT_MS),
     });
   } catch (error) {
     throw new SyncError('api_unreachable', error instanceof Error ? error.message : String(error));

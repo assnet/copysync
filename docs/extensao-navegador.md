@@ -121,6 +121,14 @@ SHA-256 hash para detecção de mudança. Rate limit 15 minutos entre syncs.
 Triggers: `chrome.cookies.onChanged` (debounce 60s via alarm), alarm reserve (60min),
 manual (popup), channel (`ml.syncSession`), startup.
 
+Hash igual só pula envio em `cookie-changed` e `startup`. Alarm reserve, manual e channel enviam
+sempre: o servidor revalida a sessão na loja a cada PUT e é isso que limpa "Recusada" quando o
+token não mudou (ver `integracoes-credenciais-afiliado.md`, "Checagem da sessão no sync").
+Não voltar a pular o alarme por hash: o servidor fica dias sem revalidar.
+
+Timeout do PUT da sessão: 25s (`SYNC_TIMEOUT_MS`), acima do caminho do servidor (bootstrap 8s +
+etiqueta 8s). Demais chamadas: 10s.
+
 `assertNoSecrets` strip todos cookies ML, csrf, auth headers dos payloads de resposta do canal.
 
 ## Sistema de proteção

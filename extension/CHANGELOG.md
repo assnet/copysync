@@ -1,5 +1,12 @@
 # Changelog — CopySync Extension
 
+## [3.2.2] — 2026-11-04 — Revalidação da sessão do ML
+
+### Fixed
+
+- **`syncSession.ts`** — alarme de reserva (60 min) envia a sessão mesmo sem mudança no hash; antes o servidor ficava dias sem revalidar e o card mostrava "Recusada" com o navegador logado. Hash só pula em `cookie-changed`/`startup`.
+- **`syncSession.ts`** + **`apiFetch.ts`** — PUT da sessão com timeout de 25s (`timeoutMs`); os 10s padrão desistiam antes do servidor terminar (bootstrap + etiqueta no ML) e o painel mostrava falha com a sessão gravada.
+
 ## [3.2.1] — 2026-11-02 — Empacotamento de produção (CRX + Web Store)
 
 ### Added
