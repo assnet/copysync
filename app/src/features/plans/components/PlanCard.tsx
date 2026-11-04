@@ -1,6 +1,6 @@
 import { Box, Button, Chip, Divider, Paper, Tooltip, Typography, alpha, useTheme } from '@mui/material';
 import { Check, Crown, Info } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, TelegramIcon, WhatsAppIcon, brandColor } from '@/components';
 import { priceFor, savingsFor, type BillingPeriod, type PlanBenefit, type PlanCatalogItem } from '../catalog';
 import { formatPrice, plansStrings as t } from '../strings';
 import { ctaGradient } from './PlansHero';
@@ -13,13 +13,28 @@ interface Props {
   checkoutHref: string;
 }
 
+const CHANNEL_LOGO = { whatsapp: WhatsAppIcon, telegram: TelegramIcon } as const;
+
 function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string }) {
+  const theme = useTheme();
+  const channelColor = benefit.channel ? brandColor(benefit.channel, theme.palette.mode) : null;
   const row = (
-    <Box component="li" sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, cursor: benefit.hint ? 'help' : 'default' }}>
-      <Box sx={{ color: accent, mt: '3px', display: 'flex' }}>
-        <AppIcon icon={Check} size="sm" strokeWidth={3} />
+    <Box
+      component="li"
+      sx={{
+        display: 'flex', alignItems: 'flex-start', gap: 1, cursor: benefit.hint ? 'help' : 'default',
+        // Recurso de canal: faixa leve na cor da marca destaca a linha sem competir com o preço
+        ...(channelColor && {
+          mx: -1, px: 1, py: 0.75, borderRadius: 1.5,
+          bgcolor: alpha(channelColor, theme.palette.mode === 'dark' ? 0.14 : 0.08),
+          border: 1, borderColor: alpha(channelColor, 0.3),
+        }),
+      }}
+    >
+      <Box sx={{ color: channelColor ?? accent, mt: '3px', display: 'flex' }}>
+        <AppIcon icon={benefit.channel ? CHANNEL_LOGO[benefit.channel] : Check} size="sm" strokeWidth={3} />
       </Box>
-      <Typography component="div" variant="body2" sx={{ fontWeight: benefit.strong ? 700 : 400, color: benefit.strong ? 'text.primary' : 'text.secondary', lineHeight: 1.45, flex: 1 }}>
+      <Typography component="div" variant="body2" sx={{ fontWeight: benefit.strong || benefit.channel ? 700 : 400, color: benefit.strong || benefit.channel ? 'text.primary' : 'text.secondary', lineHeight: 1.45, flex: 1 }}>
         {benefit.label}
         {benefit.exclusive && (
           <Chip label={t.card.exclusive} size="small" color="secondary" variant="outlined" sx={{ ml: 1, height: 18, fontSize: 10, fontWeight: 700, verticalAlign: 'middle' }} />
@@ -98,7 +113,10 @@ export function PlanCard({ plan, period, checkoutHref }: Props) {
 
       <Divider />
 
-      <ChannelLimitsTable plan={plan} />
+      {/* Contém o texto só-leitor-de-tela da tabela: sem isso ele estoura a largura no celular */}
+      <Box sx={{ position: 'relative', overflow: 'hidden' }}>
+        <ChannelLimitsTable plan={plan} />
+      </Box>
 
       <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 1.25 }}>
         {plan.benefits.map((b) => <BenefitRow key={b.label} benefit={b} accent={accent} />)}

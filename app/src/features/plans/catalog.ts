@@ -22,6 +22,8 @@ export interface PlanBenefit {
   hint?: string;
   /** Exclusivo deste plano (chip ao lado do texto). */
   exclusive?: boolean;
+  /** Recurso de um canal: linha em destaque com o logo do canal no lugar do check. */
+  channel?: 'whatsapp' | 'telegram';
 }
 
 export interface PlanCatalogItem {
@@ -71,6 +73,15 @@ export const PLAN_HINTS = {
   crossSession:
     'Com duas sessões do mesmo canal, monitore grupos em uma e dispare nos grupos da outra. Entre WhatsApp e Telegram isso já vale em todo plano que tem os dois canais.',
   bothChannels: 'Monitore grupos no WhatsApp e dispare no Telegram, ou o contrário: as ofertas circulam entre os dois canais.',
+  telegramGroupsChannels:
+    'Capture ofertas de grupos e canais do Telegram, inclusive canais em que você só é inscrito, e envie para os grupos e canais em que você pode postar.',
+};
+
+/** Destaque do Telegram nos planos com Telegram (PRO e MAX). */
+const TELEGRAM_GROUPS_CHANNELS: PlanBenefit = {
+  label: 'Telegram: monitore e envie em grupos e canais',
+  hint: PLAN_HINTS.telegramGroupsChannels,
+  channel: 'telegram',
 };
 
 export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
@@ -109,6 +120,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     },
     benefits: [
       { label: 'Tudo do LITE', strong: true },
+      TELEGRAM_GROUPS_CHANNELS,
       { label: 'Ofertas circulando entre WhatsApp e Telegram', hint: PLAN_HINTS.bothChannels },
       { label: linkRotationLimitLabel(1, 5), hint: PLAN_HINTS.linkRotation },
       { label: 'Menção a todos os participantes', hint: PLAN_HINTS.mentionAll },
@@ -130,6 +142,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     },
     benefits: [
       { label: 'Tudo do PRO', strong: true },
+      TELEGRAM_GROUPS_CHANNELS,
       { label: linkRotationLimitLabel(2, 10), hint: PLAN_HINTS.linkRotation },
       { label: 'Monitorar em uma sessão e disparar em outra do mesmo canal', hint: PLAN_HINTS.crossSession, exclusive: true },
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },

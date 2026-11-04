@@ -59,6 +59,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Destaque do Telegram nos planos (`plans`) — app 0.70.0
+
+- **`catalog.ts`**, **`PlanCard.tsx`** — benefício com `channel`: linha em destaque com logo e faixa na cor da marca. PRO e MAX ganham "Telegram: monitore e envie em grupos e canais". Corrige rolagem lateral no celular (`srOnly` da `ChannelLimitsTable` com `width: 1` = 100% no MUI)
+
 #### Telegram — monitorar canais só inscritos (`messaging`, `campaigns`, `automation`) — api 0.54.0 · app 0.69.0
 
 - **`TelegramMessagingEngineAdapter.listParticipatingGroups`** — lista todos os grupos e canais ativos com `canPost` (antes escondia canais sem permissão de postar, e o canal do concorrente não podia ser monitorado)
