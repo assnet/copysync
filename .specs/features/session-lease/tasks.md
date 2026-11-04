@@ -37,7 +37,8 @@ Regras comuns a toda task:
 | T19 | Consulta de sessões ativas sem lease vivo | T14 | | ✅ 53e295a |
 | T20 | Reconciler e bootstrap cientes do lease | T10, T11, T19 | P | ✅ 626881e |
 | T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ✅ f3ecacf |
-| T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ⏳ |
+| T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ✅ 2ad709b |
+| T22b | Lease negado não sobrescreve status do dono | T22 | | ⏳ |
 | T23 | Docs, CHANGELOG e versão | T22 | | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
@@ -63,6 +64,7 @@ Regras comuns a toda task:
 - Gate integrado após onda 4: `tsc` ok, vitest sessions+messaging+shared 499/499.
 - T21: `sessionLeaseContainer()` (lazy, 1 por processo: `workerId`, `repo`, `ledger`, `acquire`, `renew`, `release`, `keeper` parado, `bindSocketControl`). Factory recebe `leaseGate`; rotas passam `release` a Disconnect/Logout/Delete. **NÃO fazer deploy entre T21 e T22**: sem `keeper.start()` o lease vence em 60 s.
 - Pendências para T22: `keeper.start()` no boot e `stop()` primeiro no shutdown; `registerTenantSuspendedSessionListener` com `release` (`server.ts:275`); bootstrap: não logar "Session bootstrapped" quando a reconexão auto devolver `false` (lease de outro processo).
+- T22: smoke 2 processos ok (503 no 2º, lease perdido derruba sem gravar, SIGTERM solta lease e o 2º conecta sem 440). `api/.env.dev` tem `DATABASE_URL` de produção: smoke só com env sintético fora de `api/`.
 
 ## Execution Plan
 
@@ -385,10 +387,20 @@ No mesmo contrato, a porta estreita `ISessionLeaseGate { acquire(sessionId): Pro
 **Requirement**: LEASE-04, LEASE-09, LEASE-10
 **Done when**:
 - [ ] Ordem acima no código; falha de um passo não pula os seguintes
-- [ ] Smoke 1–4 da spec no Postgres descartável com 2 processos (`node --env-file=.env.dev dist/app/server.js`, nunca `api/.env`)
+- [ ] Smoke 1–4 da spec no Postgres descartável com 2 processos (`node --env-file=<env sintético com DATABASE_URL do Postgres descartável> (NUNCA `api/.env.dev`: aponta para produção) dist/app/server.js`, nunca `api/.env`)
 **Tests**: none (matriz: bootstrap não tem teste; validado pelo smoke)
 **Gate**: `pnpm tsc --noEmit` + `pnpm vitest run` + smoke
 **Commit**: `feat(sessions): shutdown fecha sockets antes do flush e solta leases`
+
+### T22b: Lease negado não sobrescreve status do dono
+
+**What**: `ConnectSessionUseCase`, `ReconnectSessionUseCase` e `RequestSessionPairingCodeUseCase` gravam `CONNECTING` antes da engine; se a engine lança `SessionLeaseHeldError` (lease de outro processo), o status do dono (ex.: `CONNECTED`) fica sobrescrito. Corrigir: em `SessionLeaseHeldError`, restaurar o status lido no início (`updateStatus` com o status anterior, sem mexer em `connectRequestedAt`) e relançar o erro (503). Login Telegram (`SessionLoginByCodeUseCases`) idem se gravar status antes da engine.
+**Where**: os use cases acima em `api/src/modules/sessions/application/use-cases/` + testes co-localizados
+**Depends on**: T22
+**Done when**: teste por use case: lease negado → status final = status anterior, erro 503 propagado, `connectRequestedAt` mantido; caminho feliz inalterado
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): lease de outro processo não sobrescreve status`
 
 ### T23: Docs, CHANGELOG e versão
 
