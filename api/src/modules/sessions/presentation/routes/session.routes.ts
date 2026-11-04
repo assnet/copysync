@@ -39,6 +39,7 @@ import {
   SubmitSessionLoginCodeUseCase,
   SubmitSessionLoginPasswordUseCase,
 } from '../../application/use-cases/SessionLoginByCodeUseCases';
+import { sessionLeaseContainer } from '../../infrastructure/lease/sessionLeaseContainer';
 import { PrismaLinkRotationPlanEnforcementStore } from '../../../link-rotation/infrastructure/repositories/PrismaLinkRotationPlanEnforcementStore';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
@@ -56,14 +57,21 @@ const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
   chatMessageRepo,
 );
 
-// Engine singleton (roteador por engine da sessão) — wired once, shared across all requests
+// Lease de sessão (LEASE-03/05): gate nas engines, release nos fluxos que fecham socket.
+const lease = sessionLeaseContainer();
+
+// Engine singleton (roteador por engine da sessão) — wired once, shared across all requests.
+// Único `createRouter` do processo: qualquer outro deve receber o mesmo `leaseGate`.
 const engine = MessagingEngineFactory.createRouter({
   sessionRepo,
   authStateRepo,
   chatContactRepo,
   chatConversationRepo,
   historySyncUseCase: ingestHistorySyncUseCase,
+  leaseGate: lease.acquire,
 });
+// Renovação do lease derruba sockets pelo roteador (o keeper é iniciado em `server.ts`).
+lease.bindSocketControl(engine);
 // Disponibiliza para outros módulos (e.g. chat routes para read receipts)
 setActiveEngine(engine);
 
@@ -78,15 +86,15 @@ const listSessionsUseCase = new ListSessionsUseCase(sessionRepo, engine);
 const getSessionByIdUseCase = new GetSessionByIdUseCase(sessionRepo);
 const getSessionStatusUseCase = new GetSessionStatusUseCase(sessionRepo);
 const connectSessionUseCase = new ConnectSessionUseCase(sessionRepo, auditRepo, engine);
-const disconnectSessionUseCase = new DisconnectSessionUseCase(sessionRepo, auditRepo, engine);
+const disconnectSessionUseCase = new DisconnectSessionUseCase(sessionRepo, auditRepo, engine, lease.release);
 const reconnectSessionUseCase = new ReconnectSessionUseCase(sessionRepo, auditRepo, engine);
-const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine);
+const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, lease.release);
 const getSessionQrUseCase = new GetSessionQrUseCase(sessionRepo, engine);
 const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRepo, engine);
 const requestSessionPairingCodeUseCase = new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine);
 const deleteSessionUseCase = new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, [
   new PrismaLinkRotationPlanEnforcementStore(prisma),
-]);
+], lease.release);
 
 // Both auth + tenant context required for all session routes
 const preHandler = [authHook, tenantHook];
