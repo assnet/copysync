@@ -57,6 +57,8 @@ export interface BaileysAuthStateHandle {
   settled: () => Promise<void>;
   /** CAS perdido neste handle (outro dono gravou): o pendente dele é lixo. */
   conflicted: () => boolean;
+  /** Versão CAS que este handle viu por último (o órfão dele só vale contra ela). */
+  version: () => number | null;
 }
 
 /**
@@ -67,14 +69,26 @@ export interface BaileysAuthStateHandle {
  */
 const activeHandles = new Map<string, BaileysAuthStateHandle>();
 const buildChain = new Map<string, Promise<unknown>>();
-/** Pendente que um handle morto não conseguiu gravar (banco fora): o próximo handle da sessão herda. */
-const orphanDirty = new Map<string, DirtyMap>();
+/** Pendente sem dono vivo + a versão CAS contra a qual ele foi feito. */
+interface OrphanKeys {
+  keys: DirtyMap;
+  version: number | null;
+}
 
-function stashOrphans(sessionId: string, leftover: DirtyMap): void {
+/**
+ * Pendente que um handle morto não conseguiu gravar (banco fora): o próximo handle da sessão
+ * herda — só se ainda ler a mesma versão; outra versão = outro dono gravou no meio e o pendente
+ * regravaria chaves velhas por cima das novas (o CAS passaria, a versão base já é a nova).
+ */
+const orphanDirty = new Map<string, OrphanKeys>();
+
+function stashOrphans(sessionId: string, leftover: DirtyMap, version: number | null): void {
   if (leftover.size === 0) return;
-  const merged = orphanDirty.get(sessionId) ?? new Map<string, unknown | null>();
+  const prev = orphanDirty.get(sessionId);
+  // Versões diferentes: o pendente antigo foi feito contra outro estado; fica só o mais novo
+  const merged = prev && prev.version === version ? prev.keys : new Map<string, unknown | null>();
   for (const [k, v] of leftover) merged.set(k, v);
-  orphanDirty.set(sessionId, merged);
+  orphanDirty.set(sessionId, { keys: merged, version });
   log.warn({ sessionId, keys: merged.size }, 'Auth keys pending without a live handle; next handle will persist them');
 }
 
@@ -99,7 +113,7 @@ export async function releaseAuthState(sessionId: string): Promise<void> {
   } catch (err) {
     log.error({ err, sessionId }, 'Auth state flush before release failed; carrying pending keys over');
   }
-  stashOrphans(sessionId, h.dispose());
+  stashOrphans(sessionId, h.dispose(), h.version());
 }
 
 /**
@@ -131,7 +145,7 @@ export async function suspendAuthState(sessionId: string): Promise<void> {
   const leftover = h.dispose();
   for (const [k, v] of pending) leftover.set(k, v);
   if (h.conflicted()) return;
-  stashOrphans(sessionId, leftover);
+  stashOrphans(sessionId, leftover, h.version());
 }
 
 /** Texto canônico (chaves ordenadas) para comparar valores: o jsonb do Postgres reordena as chaves. */
@@ -192,8 +206,9 @@ async function buildHandle(
   // Reconexão: o handle anterior grava o pendente e morre ANTES de lermos o banco; o que ele não
   // conseguiu gravar entra como pendente deste (e volta a órfão se esta carga falhar)
   await releaseAuthState(sessionId);
-  const carried: DirtyMap = orphanDirty.get(sessionId) ?? new Map();
+  const orphan = orphanDirty.get(sessionId);
   orphanDirty.delete(sessionId);
+  let carried: DirtyMap = orphan?.keys ?? new Map();
 
   let conflicted = false;
   /** CAS perdido: loga, avisa o dono do socket uma vez; o pendente vai fora (nunca vira órfão). */
@@ -217,6 +232,13 @@ async function buildHandle(
   try {
     const loaded = await authStateRepo.findAllKeysVersioned(sessionId);
     version = loaded.version;
+    if (orphan && carried.size > 0 && orphan.version !== loaded.version) {
+      log.warn(
+        { sessionId, keys: carried.size, orphanVersion: orphan.version, loadedVersion: loaded.version },
+        'Auth state changed since pending keys were stashed; another owner wrote it — pending keys discarded',
+      );
+      carried = new Map();
+    }
     for (const [key, value] of Object.entries(loaded.keys)) {
       stateMap.set(key, fromDb(value));
     }
@@ -238,7 +260,7 @@ async function buildHandle(
       }
     }
   } catch (err) {
-    if (!conflicted) stashOrphans(sessionId, carried);
+    if (!conflicted && orphan) stashOrphans(sessionId, carried, orphan.version);
     throw err;
   }
   for (const [key, value] of carried) {
@@ -413,6 +435,7 @@ async function buildHandle(
 
   const handle: BaileysAuthStateHandle = {
     state: { creds, keys }, saveCreds, forceFlush, dispose, settled, conflicted: () => conflicted,
+    version: () => version,
   };
   activeHandles.set(sessionId, handle);
   if (dirty.size > 0) schedulePersist();

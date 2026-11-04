@@ -500,3 +500,59 @@ describe('buildBaileysAuthState — CAS da versão (LEASE-06)', () => {
     expect(onVersionConflict).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('buildBaileysAuthState — órfão preso à versão CAS', () => {
+  it('órfão com a mesma versão é reaplicado e gravado', async () => {
+    const { suspendAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    repo.version = 3;
+    const h = await build(repo);
+    await h.state.keys.set({ session: { 'jid-o': Buffer.from([1]) } });
+    await suspendAuthState(SESSION);
+
+    const next = await build(repo);
+    expect((await next.state.keys.get('session', ['jid-o']))['jid-o']).toBeDefined();
+    await next.forceFlush();
+    expect(repo.batches).toHaveLength(1);
+    expect(repo.batches[0]!.expectedVersion).toBe(3);
+    expect(Object.keys(repo.batches[0]!.upserts)).toEqual(['session__jid-o']);
+    next.dispose();
+  });
+
+  it('órfão com versão diferente (outro dono gravou) é descartado e não grava', async () => {
+    const { suspendAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    repo.version = 3;
+    const h = await build(repo);
+    await h.state.keys.set({ session: { 'jid-o': Buffer.from([1]) } });
+    await suspendAuthState(SESSION);
+    // Outro dono gravou a chave nova no meio
+    repo.keys.set('session__jid-o', { new: true });
+    repo.version = 4;
+
+    const next = await build(repo);
+    expect((await next.state.keys.get('session', ['jid-o']))['jid-o']).toEqual({ new: true });
+    await next.forceFlush();
+    expect(repo.batches).toHaveLength(0);
+    expect(repo.keys.get('session__jid-o')).toEqual({ new: true });
+    next.dispose();
+  });
+
+  it('carga falha: órfão volta guardado com a versão original', async () => {
+    const { suspendAuthState } = await import('./BaileysAuthStatePersistence');
+    const repo = new InMemoryAuthRepo();
+    repo.version = 3;
+    const h = await build(repo);
+    await h.state.keys.set({ session: { 'jid-o': Buffer.from([1]) } });
+    await suspendAuthState(SESSION);
+    const spy = vi.spyOn(repo, 'findAllKeys').mockRejectedValueOnce(new Error('db down'));
+    await expect(build(repo)).rejects.toThrow('db down');
+    spy.mockRestore();
+    repo.version = 4; // outro dono gravou depois da falha
+
+    const next = await build(repo);
+    await next.forceFlush();
+    expect(repo.batches).toHaveLength(0);
+    next.dispose();
+  });
+});
