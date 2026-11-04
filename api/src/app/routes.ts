@@ -1,4 +1,5 @@
 import { env } from '../shared/config/env';
+import { currentRole } from '../shared/config/processRole';
 import { logger } from '../shared/logger/logger';
 import { authRoutes } from '../modules/auth/presentation/routes/auth.routes';
 import { inviteRoutes } from '../modules/auth/presentation/routes/invite.routes';
@@ -51,6 +52,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
               status: { type: 'string', example: 'ok' },
               timestamp: { type: 'string', format: 'date-time' },
               environment: { type: 'string' },
+              role: { type: 'string', enum: ['http', 'worker', 'all'] },
             },
           },
         },
@@ -61,6 +63,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
         status: 'ok',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV ?? 'unknown',
+        role: currentRole(),
       });
     },
   );
