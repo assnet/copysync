@@ -96,6 +96,13 @@ export const PRIVACY_SCREENS = [
       { id: 'offerStory.link', label: 'Links do produto e de afiliado' },
     ],
   },
+  {
+    id: 'subscription',
+    label: 'Assinatura',
+    flags: [
+      { id: 'subscription.tenantName', label: 'Nome da conta' },
+    ],
+  },
 ] as const;
 
 export type PrivacyScreenId = (typeof PRIVACY_SCREENS)[number]['id'];
