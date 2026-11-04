@@ -1,9 +1,11 @@
 import { currentWorkerId } from '../../../../shared/config/workerIdentity';
+import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 import type { ISessionLeaseGate, ISessionLeaseRepository } from '../../domain/contracts/ISessionLeaseRepository';
 import type { ISessionSocketControl } from '../../../messaging/domain/contracts/ISessionSocketControl';
 import { PrismaSessionLeaseRepository } from '../repositories/PrismaSessionLeaseRepository';
 import { SessionLeaseLedger } from '../../application/services/SessionLeaseLedger';
 import { SessionLeaseKeeper } from '../../application/services/SessionLeaseKeeper';
+import { CapacityLimitedLeaseGate } from '../../application/services/CapacityLimitedLeaseGate';
 import { AcquireSessionLeaseUseCase } from '../../application/use-cases/AcquireSessionLeaseUseCase';
 import { RenewSessionLeaseUseCase } from '../../application/use-cases/RenewSessionLeaseUseCase';
 import { ReleaseSessionLeaseUseCase } from '../../application/use-cases/ReleaseSessionLeaseUseCase';
@@ -15,8 +17,13 @@ export interface SessionLeaseContainer {
   acquire: AcquireSessionLeaseUseCase;
   renew: RenewSessionLeaseUseCase;
   release: ReleaseSessionLeaseUseCase;
-  /** Porta das engines: `acquire` antes de abrir e `release` se a abertura falhar depois dele. */
+  /**
+   * Gate efetivo das engines: `acquire` antes de abrir e `release` se a abertura falhar depois
+   * dele. Com teto (adoção ligada, ADOPT-06) nega sessão nova com o processo cheio.
+   */
   gate: ISessionLeaseGate;
+  /** Sessões com socket local (aberto ou abrindo); vazio antes de `bindSocketControl`. */
+  listLocal(): string[];
   /** Keeper criado parado: `server.ts` chama `start()` depois do boot das sessões. */
   keeper: SessionLeaseKeeper;
   /** Liga o controle de socket (o roteador de engines) usado pela renovação. */
@@ -28,9 +35,15 @@ export interface SessionLeaseContainer {
  * é compartilhado entre o gate das engines, a renovação e o release. Importar não toca
  * banco. Antes de `bindSocketControl` a renovação vê zero sockets locais (não faz nada).
  */
+export interface SessionLeaseCapacity {
+  /** Teto de sessões do processo (`WORKER_MAX_SESSIONS`). */
+  maxSessions: number;
+}
+
 export function buildSessionLeaseContainer(
   repo: ISessionLeaseRepository,
   workerId: string,
+  capacity?: SessionLeaseCapacity,
 ): SessionLeaseContainer {
   const ledger = new SessionLeaseLedger();
   let bound: ISessionSocketControl | undefined;
@@ -44,6 +57,15 @@ export function buildSessionLeaseContainer(
   const acquire = new AcquireSessionLeaseUseCase(repo, ledger, workerId);
   const renew = new RenewSessionLeaseUseCase(repo, ledger, sockets, acquire, workerId);
   const release = new ReleaseSessionLeaseUseCase(repo, ledger, workerId);
+  const listLocal = (): string[] => sockets.listLocalSessionIds();
+  const baseGate: ISessionLeaseGate = {
+    acquire: (id) => acquire.acquire(id),
+    release: (id) => release.execute(id),
+  };
+  // Sem teto (flag desligada) o gate é exatamente o de antes (E3).
+  const gate = capacity
+    ? withRelease(new CapacityLimitedLeaseGate(baseGate, listLocal, capacity.maxSessions), baseGate)
+    : baseGate;
   return {
     workerId,
     repo,
@@ -51,10 +73,8 @@ export function buildSessionLeaseContainer(
     acquire,
     renew,
     release,
-    gate: {
-      acquire: (id) => acquire.acquire(id),
-      release: (id) => release.execute(id),
-    },
+    gate,
+    listLocal,
     keeper: new SessionLeaseKeeper(renew),
     bindSocketControl(next) {
       bound = next;
@@ -62,10 +82,25 @@ export function buildSessionLeaseContainer(
   };
 }
 
+/** O decorador de teto só decide o `acquire`; o `release` segue o do gate base. */
+function withRelease(capped: CapacityLimitedLeaseGate, base: ISessionLeaseGate): ISessionLeaseGate {
+  return { acquire: (id) => capped.acquire(id), release: base.release };
+}
+
 let instance: SessionLeaseContainer | undefined;
 
-/** Singleton preguiçoso do processo; o `workerId` vem de `currentWorkerId()` (T2). */
+/**
+ * Singleton preguiçoso do processo; o `workerId` vem de `currentWorkerId()` (T2). Teto no gate
+ * só com `WORKER_ADOPTION_ENABLED` (ADOPT-06); desligada, nada muda em relação à E3.
+ */
 export function sessionLeaseContainer(): SessionLeaseContainer {
-  instance ??= buildSessionLeaseContainer(new PrismaSessionLeaseRepository(), currentWorkerId());
+  if (!instance) {
+    const adoption = workerAdoptionConfig();
+    instance = buildSessionLeaseContainer(
+      new PrismaSessionLeaseRepository(),
+      currentWorkerId(),
+      adoption.enabled ? { maxSessions: adoption.maxSessions } : undefined,
+    );
+  }
   return instance;
 }

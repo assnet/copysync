@@ -10,6 +10,8 @@ vi.mock('../repositories/PrismaSessionLeaseRepository', () => ({
   },
 }));
 vi.mock('../../../../shared/config/workerIdentity', () => ({ currentWorkerId: () => 'worker-test' }));
+const adoptionCfg = vi.hoisted(() => ({ enabled: false, maxSessions: 1, shard: null as string | null }));
+vi.mock('../../../../shared/config/workerAdoption', () => ({ workerAdoptionConfig: () => adoptionCfg }));
 
 import { buildSessionLeaseContainer, sessionLeaseContainer } from './sessionLeaseContainer';
 import type { ISessionLeaseRepository } from '../../domain/contracts/ISessionLeaseRepository';
@@ -73,5 +75,51 @@ describe('sessionLeaseContainer', () => {
     await c.renew.execute(); // renew devolve [] = lease perdido → derruba
     expect(repo.renew).toHaveBeenCalledWith(['s1'], 'w1', expect.any(Number));
     expect(abortSession).toHaveBeenCalledWith('s1');
+  });
+
+  it('flag off: gate é o de antes, sem teto (nega nada com sockets cheios)', async () => {
+    const repo = fakeRepo();
+    const c = buildSessionLeaseContainer(repo, 'w1');
+    c.bindSocketControl({
+      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(),
+      listLocalSessionIds: () => ['a', 'b', 'c'],
+    });
+    expect(c.gate.constructor).toBe(Object);
+    expect(await c.gate.acquire('s1')).toBe(true);
+    expect(repo.tryAcquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('com teto: cheio nega sessão nova, aceita a local; release segue o base', async () => {
+    const repo = fakeRepo();
+    const c = buildSessionLeaseContainer(repo, 'w1', { maxSessions: 2 });
+    let local = ['a'];
+    c.bindSocketControl({
+      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(),
+      listLocalSessionIds: () => local,
+    });
+    expect(c.listLocal()).toEqual(['a']);
+    expect(await c.gate.acquire('s1')).toBe(true);
+    local = ['a', 's1'];
+    expect(await c.gate.acquire('s2')).toBe(false);
+    expect(await c.gate.acquire('a')).toBe(true);
+    expect(repo.tryAcquire).toHaveBeenCalledTimes(2);
+    await c.gate.release!('s1');
+    expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
+  });
+
+  it('singleton lê a flag: ligada monta o gate com o teto da env', async () => {
+    vi.resetModules();
+    adoptionCfg.enabled = true;
+    try {
+      const mod = await import('./sessionLeaseContainer');
+      const c = mod.sessionLeaseContainer();
+      c.bindSocketControl({
+        abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(),
+        listLocalSessionIds: () => ['x'],
+      });
+      expect(await c.gate.acquire('nova')).toBe(false);
+    } finally {
+      adoptionCfg.enabled = false;
+    }
   });
 });
