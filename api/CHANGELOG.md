@@ -59,6 +59,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — Monitoramento e gerador de ofertas pelo Telegram (`messaging`, `chat`, `campaigns`) — api 0.53.0
+
+- **`engines/telegram/telegramMessageId.ts`** — id de mensagem `<peerId>_<msgId>` (o id do Telegram é único só por chat; colidia na captura e no dedupe do chat); citação, reação e leitura extraem o msgId
+- **`engines/telegram/whatsappToTelegramHtml.ts`** — texto de oferta (sintaxe WhatsApp) vira HTML do Telegram, protegendo links de afiliado; envio com `parseMode: 'html'`
+- **`TelegramMessagingEngineAdapter.ts`** — `msgType` no enum do Baileys (a captura testava `IMAGE` e recebia `image`); mídia recebida baixada para o storage com a regra do WhatsApp (contato sempre, grupo com download automático); prévia de link nativa; menções ignoradas
+- **`chat/domain/services/conversationChannel.ts`** — conversa grava `channel: 'telegram'` quando a sessão é Telegram (ingestão, nova conversa, grupo escolhido como destino)
+- **`ProcessDueOfferDispatchesUseCase.ts`** — `TELEGRAM_FLOOD_WAIT` reagenda o envio (`notBefore` = agora + espera) em vez de falhar; espera ≥ 6 h falha
+- **`offer.schema.ts`** — `groupJid` aceita ids de grupo do Telegram (`-…`, `-100…`)
+
 #### Backend — Limites do plano por canal (`tenants`, `automation`, `campaigns`, `sessions`) — api 0.52.0
 
 - **`tenants/domain/channelLimits.ts`** — regras puras: chave de limite por (tipo, engine), contagem/corte por canal, `requiresCrossSession` (só 2+ sessões do mesmo canal). Novas chaves `telegram_monitored_groups` e `telegram_broadcast_groups` (LITE 0/0, PRO 2/10, MAX 6/40); `monitored_groups`/`broadcast_groups` passam a ser do WhatsApp

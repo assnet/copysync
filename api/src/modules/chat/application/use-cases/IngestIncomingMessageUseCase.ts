@@ -6,6 +6,8 @@ import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMe
 import { buildMessagePreview } from '../../domain/services/buildMessagePreview';
 import type { MessageLinkPreview } from '../../../../shared/events/InternalMessagingEvent';
 import { toChatLinkPreview } from '../../domain/services/toChatLinkPreview';
+import { channelForEngine, type ConversationChannel } from '../../domain/services/conversationChannel';
+import type { ISessionRepository } from '../../../sessions/domain/contracts/ISessionRepository';
 
 export interface IngestIncomingMessageInput {
   tenantId: string;
@@ -66,7 +68,15 @@ export class IngestIncomingMessageUseCase {
     private readonly contactRepo: IChatContactRepository,
     private readonly conversationRepo: IChatConversationRepository,
     private readonly messageRepo: IChatMessageRepository,
+    /** Engine da sessão → canal da conversa criada. Ausente = WhatsApp (testes, legado). */
+    private readonly sessionEngines?: Pick<ISessionRepository, 'findEngineById'>,
   ) {}
+
+  /** Consultado só ao criar conversa: mensagem em conversa existente não paga a consulta. */
+  private async channelOf(sessionId: string): Promise<ConversationChannel> {
+    if (!this.sessionEngines) return 'whatsapp';
+    return channelForEngine(await this.sessionEngines.findEngineById(sessionId));
+  }
 
   async execute(input: IngestIncomingMessageInput): Promise<IngestIncomingMessageResult | null> {
     const { tenantId, sessionId, from, fromName, body, externalMessageId, fromMe } = input;
@@ -89,7 +99,7 @@ export class IngestIncomingMessageUseCase {
           isGroup: true,
           groupJid: input.groupJid,
           groupName: input.groupName,
-          channel: 'whatsapp',
+          channel: await this.channelOf(sessionId),
         });
         isNewConversation = true;
       }
@@ -113,7 +123,7 @@ export class IngestIncomingMessageUseCase {
           tenantId,
           sessionId,
           contactId: contact.id,
-          channel: 'whatsapp',
+          channel: await this.channelOf(sessionId),
         });
         isNewConversation = true;
       }

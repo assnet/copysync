@@ -2,6 +2,7 @@ import type { IChatConversationRepository } from '../../domain/contracts/IChatCo
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import type { ISessionRepository } from '../../../sessions/domain/contracts/ISessionRepository';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { channelForEngine } from '../../domain/services/conversationChannel';
 
 export interface StartConversationInput {
   tenantId: string;
@@ -56,7 +57,7 @@ export class StartConversationUseCase {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       contactId: contact.id,
-      channel: 'whatsapp',
+      channel: channelForEngine(session.engine),
       isGroup: false,
     });
 

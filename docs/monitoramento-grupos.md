@@ -42,6 +42,8 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
    produto (em qualquer modo de texto, inclusive `ORIGINAL`); sem ela, oferta só com texto. Foto
    que falhou fica marcada `imageUnavailable`. Grupos de Shopee postam quase sempre texto com
    prévia do link (sem imagem anexada): sem esse fallback a oferta sai sem foto.
+   **Telegram**: a engine baixa a foto (`msgType: 'IMAGE'`, `image/jpeg`) sob a mesma regra
+   `autoDownloadMedia`, e o id externo é `<peerId>_<msgId>` (único por sessão; ver `sessoes-telegram.md` §5).
 3. **Processamento** (no tick do `OfferDispatchWorker`, flag `GROUP_MONITORING_ENABLED`): uma
    captura por vez, até 3 por tick e 10 s de orçamento; `PROCESSING` parado há 5 min é
    reivindicado de novo. Para cada captura:
@@ -148,15 +150,22 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 - Faixas: intervalo 0–3600 s (min ≤ max; 0 = sem espera entre envios; **padrão 15–40 min**, mais espaçado que o gerador),
   atraso 0–7200 s, validade 15–1440 min, validade com
   cupom ≤ validade sem cupom, "digitando…" 1–30 s. 422 `GROUP_MONITOR_INVALID_INPUT` com `field`.
-- Plano: `monitored_groups` e `broadcast_groups` somam **todas as sessões do tenant**
-  (`PLAN_LIMIT_REACHED`); `mention_all_enabled=false` bloqueia "marcar todos"
+- Plano, **por canal** (`tenants/domain/channelLimits.ts`): canal do grupo = engine da sessão dona
+  (monitorado: sessão do monitor; disparo: `BroadcastGroup.sessionId`). WhatsApp = `monitored_groups` /
+  `broadcast_groups`; Telegram = `telegram_monitored_groups` / `telegram_broadcast_groups`. Cada canal soma
+  **todas as sessões do tenant** daquele canal e só é checado se a lista pedida tem grupo nele
+  (`PLAN_LIMIT_REACHED` 403, `meta.key` = chave do canal). O GET expõe `channel` (canal da sessão do monitor),
+  `limits.whatsapp|telegram.{monitoredGroups,broadcastGroups}` e `usage.whatsapp|telegram.{…}`;
+  `limits.monitoredGroups`/`broadcastGroups` e `usage.*` na raiz = WhatsApp (legado). No processamento, plano
+  rebaixado corta **por canal** na ordem da lista (`sliceByChannel`); `mention_all_enabled=false` bloqueia "marcar todos"
   (`PLAN_FEATURE_UNAVAILABLE`) e o worker envia sem marcar.
 - O mesmo grupo não pode ser monitorado e de disparo no tenant (409
   `GROUP_MONITOR_GROUP_CONFLICT`): a oferta postada voltaria como captura.
 - Só grupo de que a sessão participa (mesma regra do gerador); a conversa do chat é criada se faltar.
 - **Sessão cruzada** (api 0.42.0): grupo de disparo pode ser de **outra sessão do tenant**
-  (`groups[].sessionId` no `PUT /config/broadcast-groups`), com o entitlement `cross_session_dispatch`
-  (MAX; ausente = bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`). A sessão de destino tem de existir
+  (`groups[].sessionId` no `PUT /config/broadcast-groups`). `cross_session_dispatch` (MAX; ausente =
+  bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`) só é exigido quando monitor + destinos usam **2+ sessões do
+  mesmo canal** (`requiresCrossSession`); WhatsApp → Telegram (ou o inverso) sempre pode. A sessão de destino tem de existir
   no tenant (404). O limite `broadcast_groups` conta por monitoramento (config), não pela sessão dona
   do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (409
   `GROUP_MONITOR_BROADCAST_TAKEN`, meta `groupJid`/`sessionId`/`monitorSessionId`; api 0.49.0) e o mesmo
@@ -164,7 +173,8 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
   sairia duas vezes no grupo). O GET devolve `takenBroadcastGroups` (destinos dos monitoramentos das outras
   sessões) para o seletor bloquear antes de salvar. No envio,
   cada destino entra na faixa da **sua** sessão (`EnqueueOfferUseCase` multi-sessão); plano rebaixado
-  depois de salvar → só os grupos da própria sessão saem. Chaves de entitlement centralizadas em
+  depois de salvar → uma sessão por canal (`keepOneSessionPerChannel`: a do monitor no canal dela; nos outros,
+  a 1ª da lista). Chaves de entitlement centralizadas em
   `tenants/domain/entitlementKeys.ts`; presets por plano em `tenants/domain/planPresets.ts` (seed).
   **Liberar manualmente** (conta interna/teste, sem plano MAX): upsert em `tenant_entitlements`
   `(tenantId, 'cross_session_dispatch', 'true'::jsonb)` com `ON CONFLICT ("tenantId", key)`, em transação,
@@ -280,4 +290,5 @@ texto e imagens capturados). Credenciais: só nome da loja e data, sem flag.
 
 - "Imagem das ofertas" (original × gerada).
 - Fila BullMQ `monitoring.inbound` quando a escala chegar (`arquitetura-escala.md` §3.6).
-- Telegram como origem/destino (`messaging` engine `telegram`).
+- Telegram como origem/destino (`messaging` engine `telegram`): captura (foto, id composto, `msgType`) e
+  envio (HTML, `FLOOD_WAIT` reagendado) prontos; falta teste contra o Telegram real (`sessoes-telegram.md` §8).

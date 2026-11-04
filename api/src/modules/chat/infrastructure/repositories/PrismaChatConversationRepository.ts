@@ -189,6 +189,7 @@ export class PrismaChatConversationRepository implements IChatConversationReposi
         sessionId: data.sessionId ?? null,
         contactId: data.contactId ?? null,
         externalChatId: data.externalChatId ?? null,
+        // Quem cria passa o canal da engine da sessão (`channelForEngine`); sem ele, WhatsApp
         channel: data.channel ?? 'whatsapp',
         isGroup: data.isGroup ?? false,
         groupJid: data.groupJid ?? null,

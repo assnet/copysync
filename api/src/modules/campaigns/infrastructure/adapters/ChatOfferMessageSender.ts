@@ -56,8 +56,8 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
     const engine = getActiveEngine();
     if (!engine) throw new SessionNotConnectedError(conv.sessionId);
 
-    // Menção a todos só existe em grupo
-    const wantsMentions = mentionAll && conv.isGroup && !!conv.groupJid;
+    // Menção a todos só existe em grupo do WhatsApp: o Telegram ignora menções (não busca participantes)
+    const wantsMentions = mentionAll && conv.isGroup && !!conv.groupJid && conv.channel !== 'telegram';
     const mentions = wantsMentions
       ? await this.groupMentions(engine, conv.sessionId, conv.groupJid!, conversationId)
       : null;

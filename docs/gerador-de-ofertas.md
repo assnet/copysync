@@ -20,8 +20,8 @@ Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/feat
 ## Configuração
 
 `GET/PUT /campaigns/offers/config` `{ sessionId, intervalMinSeconds, intervalMaxSeconds, conversationIds }`. Sessão do
-tenant; só grupos dessa sessão; total ≤ entitlement `broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com
-`meta.key='broadcast_groups'`); 60 ≤ min ≤ max ≤ 3600 s (painel: 1–60 min inteiros; padrão 2–5 min). Config e destinos gravam numa transação. Os destinos usados no
+tenant; só grupos dessa sessão; total **por canal** (canal do grupo = engine da sessão dele) ≤ `broadcast_groups`
+(WhatsApp) / `telegram_broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com `meta.key` do canal); 60 ≤ min ≤ max ≤ 3600 s (painel: 1–60 min inteiros; padrão 2–5 min). Config e destinos gravam numa transação. Os destinos usados no
 envio são os grupos da configuração **no momento do envio**.
 
 ## Link do usuário e verificação de dono
@@ -117,7 +117,9 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 - Tick de 2 s, `claimDue` com `FOR UPDATE SKIP LOCKED` + `claimToken`; `touchClaim` antes de enviar; `releaseStale` só sem `chatMessageId`; timeout 60 s → `SEND_TIMEOUT`.
 - **Marcar todos**: participantes via `getGroupParticipants`; `mentions` leva o `jid` de cada um **como o grupo o endereça** (`@lid` em grupo com privacidade de número — padrão no Baileys 7 —, senão `@s.whatsapp.net`). Menção por JID de telefone em grupo LID é ignorada pelo WhatsApp (bug até 0.34.0). Menção oculta: o texto não precisa de `@`.
 - **Foto do grupo**: `avatarUrl` nos grupos da configuração e da busca vem de `chat_conversations.groupAvatarUrl` (alimentado pelo listener de avatar do chat); grupo sem conversa não tem foto → iniciais do nome (`groupInitials`, pula emoji inicial) ou ícone.
-- **Várias sessões** (`OfferGeneratorConfigSession`, `dispatchOrder`): a configuração guarda as sessões que disparam, na ordem escolhida (entitlement `whatsapp_sessions` limita quantas; `sessionLimit` no `GET /config`). Cada grupo sai pela sessão a que pertence. Um envio por vez; o **mesmo intervalo** vale entre quaisquer dois envios consecutivos, dentro ou entre sessões. Ordem (`orderDispatchTargets`, regra pura): `SEQUENTIAL` = todos os grupos da 1ª sessão, depois a 2ª…; `INTERLEAVED` = um grupo de cada sessão por vez (quem acaba sai da rodada). Sessão desconectada bloqueia o disparo inteiro (envio parcial silencioso esconderia grupos sem oferta). `sessionId` na tabela é legado = 1ª sessão. **2+ sessões exigem `cross_session_dispatch`** (api 0.42.0): salvar sem a feature é 403 `PLAN_FEATURE_UNAVAILABLE` (`crossSessionDispatch` no `GET /config`; o assistente bloqueia o passo com aviso e link `/plans`); plano rebaixado depois de salvar → só a 1ª sessão dispara.
+- **Várias sessões** (`OfferGeneratorConfigSession`, `dispatchOrder`): a configuração guarda as sessões que disparam, na ordem escolhida (limite **por canal**: `whatsapp_sessions` / `telegram_sessions`; `PLAN_LIMIT_REACHED` com a key do canal).
+`GET /config` devolve `limits.{whatsapp,telegram}.{sessions,broadcastGroups}` e `usage.{whatsapp,telegram}.{sessions,broadcastGroups}`
+(uso da config salva); `sessionLimit`/`groupLimit` = WhatsApp (legado). Cada grupo sai pela sessão a que pertence. Um envio por vez; o **mesmo intervalo** vale entre quaisquer dois envios consecutivos, dentro ou entre sessões. Ordem (`orderDispatchTargets`, regra pura): `SEQUENTIAL` = todos os grupos da 1ª sessão, depois a 2ª…; `INTERLEAVED` = um grupo de cada sessão por vez (quem acaba sai da rodada). Sessão desconectada bloqueia o disparo inteiro (envio parcial silencioso esconderia grupos sem oferta). `sessionId` na tabela é legado = 1ª sessão. **2+ sessões do mesmo canal exigem `cross_session_dispatch`** (api 0.42.0; por canal desde os limites por canal): salvar sem a feature é 403 `PLAN_FEATURE_UNAVAILABLE` (`crossSessionDispatch` no `GET /config`; o assistente bloqueia o passo com aviso e link `/plans`); WhatsApp + Telegram juntos sempre podem; plano rebaixado depois de salvar → só a 1ª sessão de cada canal dispara. Grupos acima do limite do canal no envio → `PLAN_LIMIT_REACHED`.
 - **Passo Grupos**: busca em todas as sessões (uma chamada por sessão, em paralelo), filtro por sessão (chips), campo "Excluir" (palavras separadas por vírgula, sem acento/caixa, só no painel) e etiqueta "via <sessão>" em cada cartão quando há mais de uma. Passo Confirmar: `DispatchOrderPicker` (rádio com linha do tempo animada; decorativa, some sob `prefers-reduced-motion`).
 - **Grupos disponíveis** (`GET /campaigns/offers/config/groups?sessionId&search`): vêm do WhatsApp via `IMessagingEngine.listParticipatingGroups` (todos os grupos de que a sessão participa, não só os com mensagem no chat), cruzados com as conversas existentes (`mergeSessionGroups`, regra pura; busca sem acento/caixa). Sessão fora do ar → `partial: true` e só os grupos que o chat conhece. Marcar grupo sem conversa chama `POST …/config/groups/ensure` (só grupo da sessão), que cria a conversa no formato da ingestão (`groupJid` sem `@g.us`); listar nunca cria. Conversa sem mensagem fica no fim da lista do chat (`lastMessageAt` nulls last). Cache de 60 s por sessão no adapter Baileys.
 - **Termômetro do intervalo** (`utils/offerConfig.ts#intervalRisk`, só painel): score pela MÉDIA da pausa, curva em raiz, 0 em 1 min e 1 a partir de 10 min de média (`INTERVAL_SAFE_MEAN_SECONDS`); níveis <0,25 alto risco, <0,5 elevado, <0,75 moderado, senão seguro. Renderizado pelo `RangeSlider` (`status`): cor contínua vermelho→âmbar→verde na faixa e rótulo centralizado. Não é regra da API: é orientação de UX.
@@ -126,6 +128,12 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 - **Formato da imagem** (`Offer.imageMode`, PATCH como `mentionAll`): `MEDIA` (padrão, imagem com legenda) ou
   `LINK_PREVIEW` (texto + cartão de prévia montado com a foto armazenada, sem anexo). Painel: `ImageModePicker` no
   card "Envio" do rascunho (`OfferSendPanel`). Regras, tamanhos e fallback: `docs/mensagens-previa-de-link.md`.
+- **Telegram como destino**: `groupJid` do Telegram é o peer id negativo (`-<id>` / `-100<id>`), aceito por
+  `GROUP_JID_PATTERN` (`offer.schema.ts`) junto do formato do WhatsApp; a conversa nasce com `channel = telegram`.
+  Texto/legenda saem em HTML do Telegram (convertido do formato WhatsApp no adapter), `LINK_PREVIEW` vira prévia
+  nativa, "Marcar todos" não marca. `TELEGRAM_FLOOD_WAIT` no envio de texto reagenda o envio (`notBefore =
+  agora + seconds + 1 s`, mesma vez da sessão) em vez de falhar; espera ≥ 6 h → `FAILED`. Detalhes:
+  `sessoes-telegram.md` §5.
 - Flag **`OFFER_DISPATCH_WORKER_ENABLED`** (padrão `false`; ligar só na Render — `api/.env` e `.env.dev` apontam para o banco real).
 
 ### Limites conhecidos
@@ -133,6 +141,7 @@ Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/S
 - At-least-once: queda entre envio e `markResult` pode repetir o envio após 5 min.
 - Falha assíncrona da fila de mídia após enfileirar deixa o envio `SENT`.
 - Retry/recuperação de mídia pendente reenvia sem menções.
+- `FLOOD_WAIT` do Telegram na fila de mídia (oferta `MEDIA` com foto) não reagenda: a mensagem fica `FAILED`.
 - Parser de página não validado contra HTML real de ML/Amazon em produção: conferir no smoke.
 
 ## O que não fazer

@@ -248,6 +248,7 @@ async function start(): Promise<void> {
     chatContactRepo,
     chatConversationRepo,
     chatMessageRepo,
+    new PrismaSessionRepository(),
   );
   const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
     chatContactRepo,

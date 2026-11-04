@@ -9,6 +9,10 @@
  * (`"123456"` usuário, `"-123456"` grupo pequeno, `"-100123456"` supergrupo/canal). Sufixo
  * `@g.us`/`@s.whatsapp.net` que o chat anexa é descartado.
  *
+ * Mensagens: id externo `<peerId>_<msgId>` (`telegramMessageId.ts`); `msgType` no enum do chat
+ * (`ChatMessageType`, igual ao Baileys); texto/legenda no formato do WhatsApp convertido para HTML
+ * do Telegram (`whatsappToTelegramHtml.ts`). Detalhes em docs/sessoes-telegram.md §5.
+ *
  * Login: `client.start` (telefone → código → senha 2FA) ou `signInUserWithQrCode`, ambos em
  * background esperando o operador por `Deferred`s (ver `TelegramSessionRegistry.PendingLogin`).
  */
@@ -46,6 +50,9 @@ import type {
 } from '../../../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
+import type { IChatConversationRepository } from '../../../../chat/domain/contracts/IChatConversationRepository';
+import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
+import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
 import { EngineOperationUnsupportedError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { TelegramLoginNotPendingError } from '../../../../../shared/errors/internal/TelegramErrors';
@@ -54,6 +61,8 @@ import type { TelegramAuthStatePersistence } from './TelegramAuthStatePersistenc
 import { Deferred } from './deferred';
 import { mediaContainer } from '../../../../media/infrastructure/mediaContainer';
 import { isAuthCancel, isLoggedOutError, translateTelegramLoginError, translateTelegramSendError } from './TelegramErrorTranslator';
+import { composeTelegramMessageId, parseTelegramMessageId } from './telegramMessageId';
+import { whatsappToTelegramHtml } from './whatsappToTelegramHtml';
 
 const telegramLogger = appLogger.child({ module: 'TelegramEngine' });
 const ENGINE = 'telegram';
@@ -61,6 +70,9 @@ const ENGINE = 'telegram';
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 /** Quanto a listagem de grupos espera pelas fotos que ainda faltam baixar. */
 const GROUP_AVATAR_WAIT_MS = 3_000;
+/** Mídia recebida acima disso não é baixada (vídeo/arquivo grande): a mensagem entra sem `mediaUrl`. */
+export const TELEGRAM_INBOUND_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
+const PARSE_MODE = 'html';
 
 export interface TelegramEngineConfig {
   apiId: number;
@@ -80,6 +92,15 @@ function peerString(peer: Api.TypePeer | undefined | null): string | null {
   }
 }
 
+/** Peer marcado do destino já resolvido: é o mesmo que `msg.peerId` traz no eco (id composto). */
+function sentPeerId(peer: Api.TypeInputPeer, to: string): string {
+  try {
+    return getPeerId(peer, true);
+  } catch {
+    return stripSuffix(to);
+  }
+}
+
 function displayName(entity: unknown): string | undefined {
   const e = entity as { firstName?: string; lastName?: string; username?: string; title?: string } | undefined;
   if (!e) return undefined;
@@ -88,21 +109,46 @@ function displayName(entity: unknown): string | undefined {
   return name || e.username || undefined;
 }
 
-function mediaType(media: Api.TypeMessageMedia | undefined): string {
-  if (!media) return 'text';
-  if (media instanceof Api.MessageMediaPhoto) return 'image';
+/** Tipo no mesmo enum que o Baileys emite (`ChatMessageType`): captura e chat comparam por ele. */
+export function mediaType(media: Api.TypeMessageMedia | undefined): ChatMessageType {
+  if (!media) return ChatMessageType.TEXT;
+  if (media instanceof Api.MessageMediaPhoto) return ChatMessageType.IMAGE;
   if (media instanceof Api.MessageMediaDocument) {
     const doc = media.document instanceof Api.Document ? media.document : null;
     const mime = doc?.mimeType ?? '';
     const attrs = doc?.attributes ?? [];
-    if (attrs.some((a) => a instanceof Api.DocumentAttributeAudio && a.voice)) return 'audio';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('audio/')) return 'audio';
-    return 'document';
+    if (attrs.some((a) => a instanceof Api.DocumentAttributeSticker)) return ChatMessageType.STICKER;
+    if (attrs.some((a) => a instanceof Api.DocumentAttributeAudio && a.voice)) return ChatMessageType.AUDIO;
+    if (mime.startsWith('video/')) return ChatMessageType.VIDEO;
+    if (mime.startsWith('image/')) return ChatMessageType.IMAGE;
+    if (mime.startsWith('audio/')) return ChatMessageType.AUDIO;
+    return ChatMessageType.DOCUMENT;
   }
-  if (media instanceof Api.MessageMediaWebPage) return 'text';
-  return 'text';
+  return ChatMessageType.TEXT; // prévia de link (MessageMediaWebPage) e o resto: texto
+}
+
+/** Metadados da mídia recebida: MIME, nome, duração e tamanho (para o limite de download). */
+function mediaInfo(media: Api.TypeMessageMedia | undefined): { mimeType: string | null; fileName: string | null; durationSeconds: number | null; size: number | null } {
+  if (media instanceof Api.MessageMediaPhoto) {
+    const photo = media.photo instanceof Api.Photo ? media.photo : null;
+    let size = 0;
+    for (const s of photo?.sizes ?? []) {
+      if (s instanceof Api.PhotoSize) size = Math.max(size, s.size);
+      else if (s instanceof Api.PhotoSizeProgressive) size = Math.max(size, ...s.sizes);
+    }
+    return { mimeType: 'image/jpeg', fileName: null, durationSeconds: null, size: size || null };
+  }
+  if (media instanceof Api.MessageMediaDocument && media.document instanceof Api.Document) {
+    const doc = media.document;
+    let fileName: string | null = null;
+    let duration: number | null = null;
+    for (const a of doc.attributes) {
+      if (a instanceof Api.DocumentAttributeFilename) fileName = a.fileName;
+      else if (a instanceof Api.DocumentAttributeVideo || a instanceof Api.DocumentAttributeAudio) duration = Math.round(a.duration);
+    }
+    return { mimeType: doc.mimeType || null, fileName, durationSeconds: duration, size: Number(doc.size.toString()) };
+  }
+  return { mimeType: null, fileName: null, durationSeconds: null, size: null };
 }
 
 export class TelegramMessagingEngineAdapter implements IMessagingEngine {
@@ -119,6 +165,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     private readonly config: TelegramEngineConfig,
     private readonly sessionRepo: ISessionRepository,
     private readonly auth: TelegramAuthStatePersistence,
+    /** Regra de download de mídia em grupo (`autoDownloadMedia` da conversa), a mesma do Baileys. */
+    private readonly chatConversationRepo: Pick<IChatConversationRepository, 'findActiveByGroupAndSession'>,
   ) {}
 
   // ── Ciclo de vida ──────────────────────────────────────────────────────────
@@ -447,12 +495,12 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
   private async onNewMessage(sessionId: string, entry: TelegramSessionEntry, event: NewMessageEvent): Promise<void> {
     if (!this.registry.isCurrent(sessionId, entry.epoch)) return;
     const msg = event.message;
-    const externalMessageId = String(msg.id);
+    const chatId = peerString(msg.peerId);
+    if (!chatId) return;
+    const externalMessageId = composeTelegramMessageId(chatId, msg.id);
     const fromMe = Boolean(msg.out);
     if (fromMe && entry.sentIds.has(externalMessageId)) return; // eco do que acabamos de enviar
 
-    const chatId = peerString(msg.peerId);
-    if (!chatId) return;
     const isGroup = chatId.startsWith('-');
     const senderId = peerString(msg.fromId) ?? (fromMe ? entry.phone ?? 'me' : chatId);
 
@@ -466,10 +514,16 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
 
     const msgType = mediaType(msg.media ?? undefined);
     const body = msg.message?.trim() ? msg.message : null;
-    if (!body && msgType === 'text') return; // serviço/ação sem texto
+    if (!body && msgType === ChatMessageType.TEXT) return; // serviço/ação sem texto
 
-    const quotedMessageId = msg.replyTo instanceof Api.MessageReplyHeader && msg.replyTo.replyToMsgId
-      ? String(msg.replyTo.replyToMsgId)
+    const reply = msg.replyTo instanceof Api.MessageReplyHeader ? msg.replyTo : null;
+    const quotedMessageId = reply?.replyToMsgId
+      ? composeTelegramMessageId(peerString(reply.replyToPeerId) ?? chatId, reply.replyToMsgId)
+      : null;
+
+    const info = mediaInfo(msg.media ?? undefined);
+    const mediaUrl = msgType !== ChatMessageType.TEXT && await this.shouldDownloadMedia(sessionId, entry.tenantId, isGroup ? chatId : null)
+      ? await this.downloadInboundMedia(sessionId, entry, msg, externalMessageId, info)
       : null;
 
     internalEventBus.emit('MESSAGE_RECEIVED', {
@@ -480,10 +534,10 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
       fromName: senderName,
       body,
       msgType,
-      mediaUrl: null, // mídia do Telegram ainda não é baixada (docs/sessoes-telegram.md)
-      mimeType: null,
-      fileName: null,
-      durationSeconds: null,
+      mediaUrl,
+      mimeType: info.mimeType,
+      fileName: info.fileName,
+      durationSeconds: info.durationSeconds,
       isDeleted: false,
       quotedMessageId,
       fromMe,
@@ -497,6 +551,46 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     });
   }
 
+  /** Contato: sempre; grupo: só com `autoDownloadMedia` na conversa (monitorados ligam). Igual ao Baileys. */
+  private async shouldDownloadMedia(sessionId: string, tenantId: string, groupJid: string | null): Promise<boolean> {
+    if (!groupJid) return true;
+    try {
+      const conv = await this.chatConversationRepo.findActiveByGroupAndSession(groupJid, sessionId, tenantId);
+      return conv?.autoDownloadMedia ?? false;
+    } catch (err) {
+      telegramLogger.warn({ err, sessionId }, 'Failed to read autoDownloadMedia; skipping Telegram media download');
+      return false;
+    }
+  }
+
+  /**
+   * Baixa a mídia recebida (foto no maior tamanho; documento/vídeo/áudio até o limite) para o
+   * `mediaFileStore`. Falha ou acima do limite → `null`: a mensagem entra sem mídia.
+   */
+  private async downloadInboundMedia(
+    sessionId: string,
+    entry: TelegramSessionEntry,
+    msg: Api.Message,
+    externalMessageId: string,
+    info: { mimeType: string | null; size: number | null },
+  ): Promise<string | null> {
+    if (info.size !== null && info.size > TELEGRAM_INBOUND_MEDIA_MAX_BYTES) {
+      telegramLogger.info({ sessionId, size: info.size }, 'Telegram media above download limit; persisted without mediaUrl');
+      return null;
+    }
+    const store = mediaContainer.mediaFileStore;
+    const filename = `${sessionId}_tg_${externalMessageId.replace(/[^0-9A-Za-z_]/g, 'n')}.${mimeTypeToExt(info.mimeType)}`;
+    try {
+      if (await store.mediaExists(filename)) return store.publicUrl(filename);
+      const buf = await entry.client.downloadMedia(msg, {});
+      if (!Buffer.isBuffer(buf) || buf.length === 0 || buf.length > TELEGRAM_INBOUND_MEDIA_MAX_BYTES) return null;
+      return await store.saveBuffer(buf, filename);
+    } catch (err) {
+      telegramLogger.warn({ err, sessionId }, 'Failed to download Telegram media; message will be persisted without mediaUrl');
+      return null;
+    }
+  }
+
   // ── Envio ──────────────────────────────────────────────────────────────────
 
   private async inputPeer(entry: TelegramSessionEntry, to: string) {
@@ -508,15 +602,15 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.requireConnected(input.sessionId);
     try {
       const peer = await this.inputPeer(entry, input.to);
-      const replyTo = input.quotedMessage?.externalId && /^\d+$/.test(input.quotedMessage.externalId)
-        ? Number(input.quotedMessage.externalId)
-        : undefined;
+      // Prévia nativa do Telegram (1º link do texto) só quando quem chama pediu prévia, como no
+      // WhatsApp; a miniatura montada por nós não é usada aqui. Menções são ignoradas no Telegram.
       const sent = await entry.client.sendMessage(peer, {
-        message: input.body,
-        replyTo,
-        linkPreview: input.linkPreview !== null,
+        message: whatsappToTelegramHtml(input.body),
+        parseMode: PARSE_MODE,
+        replyTo: this.replyToId(input.quotedMessage?.externalId),
+        linkPreview: Boolean(input.linkPreview),
       });
-      const messageId = String(sent.id);
+      const messageId = composeTelegramMessageId(sentPeerId(peer, input.to), sent.id);
       this.registry.rememberSent(entry, messageId);
       internalEventBus.emit('MESSAGE_SENT', { type: 'MESSAGE_SENT', sessionId: input.sessionId, tenantId: input.tenantId, messageId });
       return { messageId, sentAt: new Date() };
@@ -524,6 +618,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
       if (isLoggedOutError(err)) void this.handleRevoked(input.sessionId, entry);
       throw translateTelegramSendError(err);
     }
+  }
+
+  /** `msg.id` do Telegram a citar; id provisório (`tg-…`) ou de outro formato → sem citação. */
+  private replyToId(externalId: string | null | undefined): number | undefined {
+    return parseTelegramMessageId(externalId)?.msgId;
   }
 
   /** O Telegram atribui o id no envio; este é um id provisório que o chat grava antes. */
@@ -539,12 +638,14 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
       const peer = await this.inputPeer(entry, input.to);
       const sent = await entry.client.sendFile(peer, {
         file: media.filePath,
-        caption: media.caption ?? undefined,
+        caption: media.caption ? whatsappToTelegramHtml(media.caption) : undefined,
+        parseMode: PARSE_MODE,
+        replyTo: this.replyToId(input.quotedMessage?.externalId),
         forceDocument: media.kind === 'document',
         voiceNote: media.kind === 'voice',
         supportsStreaming: media.kind === 'video',
       });
-      this.registry.rememberSent(entry, String(sent.id));
+      this.registry.rememberSent(entry, composeTelegramMessageId(sentPeerId(peer, input.to), sent.id));
       internalEventBus.emit('MESSAGE_SENT', { type: 'MESSAGE_SENT', sessionId: input.sessionId, tenantId: input.tenantId, messageId: input.messageId });
       // Mantém o id pré-gerado: é o que o chat já persistiu
       return { messageId: input.messageId, sentAt: new Date() };
@@ -559,10 +660,12 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
   async sendReaction(input: SendReactionInput): Promise<SendMessageResult> {
     const entry = this.requireConnected(input.sessionId);
     try {
+      const target = parseTelegramMessageId(input.target.externalId);
+      if (!target) throw new MessageSendFailedError('telegram: reaction target has no Telegram message id');
       const peer = await this.inputPeer(entry, input.target.remoteJid);
       await entry.client.invoke(new Api.messages.SendReaction({
         peer,
-        msgId: Number(input.target.externalId),
+        msgId: target.msgId,
         reaction: input.emoji ? [new Api.ReactionEmoji({ emoticon: input.emoji })] : [],
       }));
       return { messageId: input.target.externalId, sentAt: input.reactedAt };
@@ -573,7 +676,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
 
   async markMessagesRead(input: MarkMessagesReadInput): Promise<void> {
     const entry = this.requireConnected(input.sessionId);
-    const maxId = Math.max(...input.messageIds.map(Number).filter(Number.isFinite), 0);
+    const maxId = Math.max(...input.messageIds.map((id) => parseTelegramMessageId(id)?.msgId ?? 0), 0);
     try {
       const peer = await this.inputPeer(entry, input.remoteJid);
       await entry.client.markAsRead(peer, maxId || undefined);

@@ -44,6 +44,7 @@ export class MessagingEngineFactory {
           { apiId: env.TELEGRAM_API_ID, apiHash: env.TELEGRAM_API_HASH },
           deps.sessionRepo,
           new TelegramAuthStatePersistence(deps.authStateRepo, () => SecretCipherFactory.get()),
+          deps.chatConversationRepo,
         );
       }
       default:

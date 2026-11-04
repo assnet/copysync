@@ -75,10 +75,39 @@ pede código de novo (como o pareamento do WhatsApp).
 - `to`, `from`, `groupJid`: **peer id marcado** do Telegram em texto — `"123456"` usuário, `"-123456"` grupo
   pequeno, `"-100123456"` supergrupo/canal. Sufixo `@g.us`/`@s.whatsapp.net` anexado pelo chat é descartado
   no adapter. `isGroup` = id começa com `-`.
-- `MESSAGE_RECEIVED`: texto e legenda; `msgType` image/video/audio/document pelo tipo da mídia, **`mediaUrl`
-  sempre `null`** (download fica para F3). Eco de envio próprio é filtrado por `sentIds` (últimos 500 ids).
+- **Id externo de mensagem = `<peerId>_<msgId>`** (`telegramMessageId.ts`; ex.: `-1001234567890_42`). O `msg.id`
+  do Telegram só é único no chat (supergrupo/canal) ou na caixa da conta; sem o peer colidiria na unique da
+  captura (`[sessionId, sourceExternalMessageId]`) e no dedupe do chat (`findByExternalId`). Vale para
+  `MESSAGE_RECEIVED`, `quotedMessageId` (peer de `replyToPeerId` quando a citação é de outro chat), o id
+  devolvido por `sendTextMessage`, `MESSAGE_SENT` e o eco (`sentIds`, últimos 500, com o peer **resolvido**
+  pelo `getInputEntity`, igual ao `msg.peerId` do eco). Tudo que volta à engine (citação, reação, lidas) passa
+  por `parseTelegramMessageId`, que aceita também o id legado só numérico. Id provisório `tg-<hex>` não faz
+  parse: citar/reagir a mídia enviada pelo painel não cita (reação → `MESSAGE_SEND_FAILED`).
+- `MESSAGE_RECEIVED`: texto e legenda; **`msgType` no enum do chat (`TEXT`/`IMAGE`/`VIDEO`/`AUDIO`/`DOCUMENT`/
+  `STICKER`)**, igual ao Baileys — a captura do monitoramento compara `=== 'IMAGE'`. `mimeType`, `fileName` e
+  `durationSeconds` vêm do documento (foto = `image/jpeg`).
+- **Mídia recebida** vai para o `mediaFileStore` (`<sessionId>_tg_<id>.<ext>`) com a mesma regra do Baileys:
+  contato sempre; grupo só com `autoDownloadMedia` na conversa (salvar grupo monitorado liga). Foto no maior
+  tamanho; vídeo/áudio/documento/figurinha até **20 MiB** (`TELEGRAM_INBOUND_MEDIA_MAX_BYTES`, checado pelo
+  tamanho declarado e pelo buffer). Acima do limite ou falha → `mediaUrl: null`, a mensagem entra igual.
+  Download em memória (buffer), como o Baileys; prévia de link recebida (`linkPreview`) ainda é `null`.
+- **Formatação de envio**: texto e legenda chegam no formato do WhatsApp (`*negrito*`, `_itálico_`, `~riscado~`,
+  `` `mono` ``, ```` ``` ````) e saem como HTML do Telegram (`parseMode: 'html'`) via `whatsappToTelegramHtml.ts`
+  (função pura, testada): escapa `&<>`, separa links antes da marcação (`_`/`*` em link de afiliado ficam
+  intactos), marca só fora de palavra (`snake_case` não vira itálico).
+- **Prévia de link**: com `linkPreview` no envio (oferta `LINK_PREVIEW`), o Telegram gera a **prévia nativa**
+  do 1º link do texto; o cartão/miniatura montado por nós não é usado. Sem `linkPreview` → sem prévia (igual
+  ao WhatsApp). **Menções** (`mentions`, "Marcar todos") são ignoradas sem erro; o `ChatOfferMessageSender`
+  nem busca participantes em conversa `channel = telegram`.
 - `createOutboundMessageId` devolve id provisório `tg-<hex>` (o Telegram atribui o id real no envio);
-  `sendMediaMessage` devolve o id pré-gerado, como o Baileys.
+  `sendMediaMessage` devolve o id pré-gerado, como o Baileys, e registra o id real composto em `sentIds`.
+- **Canal da conversa**: conversas criadas para sessão Telegram gravam `channel = 'telegram'`
+  (`chat/domain/services/conversationChannel.ts`, pela `Session.engine`: ingestão via
+  `ISessionRepository.findEngineById` só ao criar, `StartConversationUseCase`, `ChatSessionGroupDirectory`).
+  Conversas criadas antes ficam `whatsapp`.
+- `FLOOD_WAIT` no envio vira `TELEGRAM_FLOOD_WAIT` (429, `meta.seconds`). No worker de ofertas o envio volta à
+  fila com `notBefore = agora + seconds + 1 s`, segurando a vez da sessão (`deferForOfflineSession`); espera ≥ 6 h
+  ou envio sem `sessionId` → `FAILED TELEGRAM_FLOOD_WAIT`.
 - `getGroupInviteLink.inviteCode` é o que vem depois de `https://t.me/` (ex.: `+AbCd…`): quem monta a URL
   precisa saber o canal.
 - `fetchProfilePicture`: foto da própria conta (quando `jid` é o telefone da sessão, como pede a listagem de
@@ -115,9 +144,20 @@ num tenant: o par identifica a aplicação, não a conta.
   (monitoramento, disparo) resolvem o canal pela `Session.engine`.
 - Não disparar em rajada: `FLOOD_WAIT` do Telegram vira 429 e pode banir conta nova. Telegram entra
   na fila por sessão (`fila-de-envio.md`) com intervalo próprio quando chegar a F3.
+- Não usar `String(msg.id)` como id externo nem `Number(externalId)` de volta: sempre
+  `composeTelegramMessageId`/`parseTelegramMessageId`.
+- Não emitir `msgType` em minúsculas nem fora do `ChatMessageType`.
+- Não mandar texto do WhatsApp cru ao Telegram nem com `parseMode` markdown: só `whatsappToTelegramHtml` + `html`.
+- Não baixar mídia de grupo sem `autoDownloadMedia` nem sem limite de bytes.
+- Não gravar `channel: 'whatsapp'` fixo ao criar conversa: usar `channelForEngine`.
 
 ## 8. Verificado × não verificado
 
-- ✅ `tsc`, testes unitários (roteador, use cases, repositório, presets, telefone internacional).
+- ✅ `tsc`, testes unitários (roteador, use cases, repositório, presets, telefone internacional, id composto,
+  conversor HTML, `msgType`, canal da conversa, `FLOOD_WAIT` reagendado, `GROUP_JID_PATTERN`).
+- ⏳ Pendente: `FLOOD_WAIT` na **fila de mídia** (oferta `MEDIA` com foto) — o erro acontece no job depois de
+  enfileirar e a mensagem fica `FAILED` com o envio `SENT` (mesmo limite da falha assíncrona de mídia);
+  citação/reação a mídia enviada pelo painel (id provisório `tg-…`); prévia de link recebida.
 - ❌ Não testado contra o Telegram real (sem `api_id`/`api_hash` no momento da entrega): envio do código,
-  2FA, QR, recepção em grupo, `FLOOD_WAIT`. Primeiro teste real deve cobrir esses cinco pontos.
+  2FA, QR, recepção em grupo, `FLOOD_WAIT`, download de foto recebida, HTML na legenda/texto, prévia nativa.
+  Primeiro teste real deve cobrir esses pontos.

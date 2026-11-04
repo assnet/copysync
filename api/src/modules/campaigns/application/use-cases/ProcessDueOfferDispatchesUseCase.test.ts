@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OFFLINE_MAX_WAIT_MS, OFFLINE_RETRY_MS, ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
+import { FLOOD_WAIT_MARGIN_MS, OFFLINE_MAX_WAIT_MS, OFFLINE_RETRY_MS, ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
+import { TelegramFloodWaitError } from '../../../../shared/errors/internal/TelegramErrors';
 import { AppError } from '../../../../shared/errors/AppError';
 import { InMemoryOfferDispatchRepository, InMemoryOfferRepository, makeOffer, NOW, TENANT } from './offerTestFakes';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
@@ -274,5 +275,32 @@ describe('ProcessDueOfferDispatchesUseCase — sessão fora do ar', () => {
     s.sender.send.mockRejectedValue(new AppError('RECOVERABLE_CONNECTION_ERROR', 'x', 503));
     await s.uc.execute();
     expect(statuses(s)).toEqual([['FAILED', 'RECOVERABLE_CONNECTION_ERROR']]);
+  });
+});
+
+describe('ProcessDueOfferDispatchesUseCase — FLOOD_WAIT (Telegram)', () => {
+  it('reagenda para depois da espera pedida, sem falhar nem fechar a oferta', async () => {
+    const s = setup(['c1']);
+    s.dispatches.items[0]!.sessionId = 's1';
+    s.sender.send.mockRejectedValueOnce(new TelegramFloodWaitError(30));
+    await s.uc.execute();
+    const d = s.dispatches.items[0]!;
+    expect(d).toMatchObject({ status: 'QUEUED', claimToken: null, failureReason: null });
+    expect(d.notBefore).toEqual(new Date(NOW.getTime() + 30_000 + FLOOD_WAIT_MARGIN_MS));
+    expect(s.offers.items[0]!.status).toBe('SENDING');
+    // passada a espera, sai
+    d.notBefore = NOW;
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['SENT', 'm1']]);
+  });
+
+  it('espera acima do teto (6 h) ou sem sessão registrada → FAILED TELEGRAM_FLOOD_WAIT', async () => {
+    const s = setup(['c1', 'c2']);
+    s.dispatches.items[0]!.sessionId = 's1';
+    s.sender.send
+      .mockRejectedValueOnce(new TelegramFloodWaitError(OFFLINE_MAX_WAIT_MS / 1000))
+      .mockRejectedValueOnce(new TelegramFloodWaitError(5));
+    await s.uc.execute();
+    expect(statuses(s)).toEqual([['FAILED', 'TELEGRAM_FLOOD_WAIT'], ['FAILED', 'TELEGRAM_FLOOD_WAIT']]);
   });
 });
