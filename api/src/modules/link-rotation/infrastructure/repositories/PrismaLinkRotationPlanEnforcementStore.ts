@@ -5,6 +5,7 @@ import type {
   StatusChange,
 } from '../../domain/contracts/ILinkRotationPlanEnforcementStore';
 import { LinkRotationStatus, type LinkRotationGroupStatus } from '../../domain/enums/LinkRotationEnums';
+import { channelForEngine } from '../../domain/services/inviteUrl';
 
 /** Client normal ou de transação (`TransactionClient`): só os modelos usados aqui. */
 export type PlanEnforcementClient = Pick<PrismaClient, 'linkRotation' | 'linkRotationGroup'>;
@@ -26,6 +27,7 @@ export class PrismaLinkRotationPlanEnforcementStore implements ILinkRotationPlan
         id: true,
         status: true,
         createdAt: true,
+        session: { select: { engine: true } },
         groups: {
           where: { tenantId },
           select: { id: true, position: true, status: true, inviteCode: true, memberCount: true, capacity: true },
@@ -35,6 +37,7 @@ export class PrismaLinkRotationPlanEnforcementStore implements ILinkRotationPlan
     return rows.map((r) => ({
       id: r.id,
       status: r.status as LinkRotationStatus,
+      channel: channelForEngine(r.session.engine),
       createdAt: r.createdAt,
       groups: r.groups.map((g) => ({ ...g, status: g.status as LinkRotationGroupStatus })),
     }));

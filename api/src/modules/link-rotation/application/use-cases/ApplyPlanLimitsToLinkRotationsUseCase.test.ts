@@ -6,6 +6,7 @@ import type {
   PlanEnforcementGroup,
   PlanEnforcementRotation,
 } from '../../domain/contracts/ILinkRotationPlanEnforcementStore';
+import type { LinkRotationChannel } from '../../domain/services/inviteUrl';
 
 /** Fake em memória; `tenantOf` garante que nada de outro tenant é tocado. */
 function makeStore(rows: (PlanEnforcementRotation & { tenantId: string; sessionId: string })[]) {
@@ -32,13 +33,19 @@ const grp = (id: string, position: number, over: Partial<PlanEnforcementGroup> =
   id, position, status: G.ACTIVE, inviteCode: `c-${id}`, memberCount: 10, capacity: 1000, ...over,
 });
 const rot = (id: string, day: number, over: Partial<PlanEnforcementRotation & { sessionId: string }> = {}, tenantId = 't1') => ({
-  id, tenantId, sessionId: 's1', status: R.ACTIVE, createdAt: new Date(Date.UTC(2026, 9, day)), groups: [] as PlanEnforcementGroup[], ...over,
+  id, tenantId, sessionId: 's1', status: R.ACTIVE, channel: 'whatsapp' as LinkRotationChannel, createdAt: new Date(Date.UTC(2026, 9, day)), groups: [] as PlanEnforcementGroup[], ...over,
 });
 const tenGroups = (prefix: string) => Array.from({ length: 10 }, (_, i) => grp(`${prefix}${i}`, i));
 
-const STARTER = { linkRotations: 1, linkRotationGroups: 3 };
-const BUSINESS = { linkRotations: 2, linkRotationGroups: 10 };
-const UNLIMITED = { linkRotations: null, linkRotationGroups: null };
+type ChannelLimits = { linkRotations: number | null; linkRotationGroups: number | null };
+/** Mesmo limite nos dois canais. */
+const both = (l: ChannelLimits) => ({ whatsapp: l, telegram: l });
+const STARTER = both({ linkRotations: 1, linkRotationGroups: 3 });
+const BUSINESS = both({ linkRotations: 2, linkRotationGroups: 10 });
+const UNLIMITED = both({ linkRotations: null, linkRotationGroups: null });
+/** Presets reais (planPresets.ts): Lite sem Telegram. */
+const LITE = { whatsapp: { linkRotations: 1, linkRotationGroups: 3 }, telegram: { linkRotations: 0, linkRotationGroups: 0 } };
+const PRO = { whatsapp: { linkRotations: 1, linkRotationGroups: 5 }, telegram: { linkRotations: 1, linkRotationGroups: 5 } };
 
 describe('ApplyPlanLimitsToLinkRotationsUseCase', () => {
   it('rebaixo Business→Starter: 2 rotações → 1 ativa (mais antiga) + 1 PAUSED_BY_PLAN; 10 grupos → 3', async () => {
@@ -69,7 +76,7 @@ describe('ApplyPlanLimitsToLinkRotationsUseCase', () => {
     const { store, rows } = makeStore([
       rot('manual', 1, { status: R.PAUSED, groups }), rot('b', 2), rot('c', 3),
     ]);
-    await new ApplyPlanLimitsToLinkRotationsUseCase(store).execute({ tenantId: 't1', limits: { linkRotations: 1, linkRotationGroups: 1 } });
+    await new ApplyPlanLimitsToLinkRotationsUseCase(store).execute({ tenantId: 't1', limits: both({ linkRotations: 1, linkRotationGroups: 1 }) });
     expect(rows.map((r) => r.status)).toEqual([R.PAUSED, R.ACTIVE, R.PAUSED_BY_PLAN]);
     expect(rows[0]!.groups.map((g) => g.status)).toEqual([G.ACTIVE, G.PAUSED, G.PAUSED]);
   });
@@ -94,8 +101,31 @@ describe('ApplyPlanLimitsToLinkRotationsUseCase', () => {
 
   it('tenant-aware: rotações de outro tenant não mudam', async () => {
     const { store, rows } = makeStore([rot('a', 1), rot('b', 2), rot('x', 3, {}, 't2'), rot('y', 4, {}, 't2')]);
-    await new ApplyPlanLimitsToLinkRotationsUseCase(store).execute({ tenantId: 't1', limits: { linkRotations: 0, linkRotationGroups: 0 } });
+    await new ApplyPlanLimitsToLinkRotationsUseCase(store).execute({ tenantId: 't1', limits: both({ linkRotations: 0, linkRotationGroups: 0 }) });
     expect(rows.map((r) => r.status)).toEqual([R.PAUSED_BY_PLAN, R.PAUSED_BY_PLAN, R.ACTIVE, R.ACTIVE]);
+  });
+
+  it('limites independentes por canal: Telegram não ocupa vaga do WhatsApp (Pro 1+1)', async () => {
+    const tg = { channel: 'telegram' as LinkRotationChannel, sessionId: 'st' };
+    const { store, rows } = makeStore([
+      rot('wa1', 1, { groups: tenGroups('w') }), rot('tg1', 2, { ...tg, groups: tenGroups('t') }),
+      rot('wa2', 3), rot('tg2', 4, tg),
+    ]);
+    await new ApplyPlanLimitsToLinkRotationsUseCase(store).execute({ tenantId: 't1', limits: PRO });
+    expect(rows.map((r) => [r.id, r.status])).toEqual([
+      ['wa1', R.ACTIVE], ['tg1', R.ACTIVE], ['wa2', R.PAUSED_BY_PLAN], ['tg2', R.PAUSED_BY_PLAN],
+    ]);
+    for (const r of rows.slice(0, 2)) expect(r.groups.filter((g) => g.status === G.ACTIVE)).toHaveLength(5);
+  });
+
+  it('rebaixo para Lite: Telegram inteiro PAUSED_BY_PLAN (0/0), WhatsApp segue o limite dele', async () => {
+    const tg = { channel: 'telegram' as LinkRotationChannel, sessionId: 'st' };
+    const { store, rows } = makeStore([rot('tg', 1, { ...tg, groups: tenGroups('t') }), rot('wa', 2, { groups: tenGroups('w') })]);
+    await new ApplyPlanLimitsToLinkRotationsUseCase(store).execute({ tenantId: 't1', limits: LITE });
+    expect(rows[0]!.status).toBe(R.PAUSED_BY_PLAN);
+    expect(rows[0]!.groups.every((g) => g.status === G.PAUSED_BY_PLAN)).toBe(true);
+    expect(rows[1]!.status).toBe(R.ACTIVE);
+    expect(rows[1]!.groups.filter((g) => g.status === G.ACTIVE).map((g) => g.position)).toEqual([0, 1, 2]);
   });
 
   it('sessão removida: rotações da sessão → PAUSED (inclusive PAUSED_BY_PLAN); outras sessões intactas', async () => {

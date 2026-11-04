@@ -1,4 +1,4 @@
-import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
+import { limitKeyOfChannel } from '../../../tenants/domain/channelLimits';
 import type { SaveLinkRotationGroupInput } from '../../domain/contracts/ILinkRotationRepository';
 import type { LinkRotationGroup } from '../../domain/entities/LinkRotationGroup';
 import { LinkRotationGroupLinkSource } from '../../domain/enums/LinkRotationEnums';
@@ -25,7 +25,8 @@ export const GROUP_WEIGHT = { min: 1, max: 100, default: 1 } as const;
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;
 
 /**
- * Substitui os grupos do rodízio (menos que o limite é aceito; acima → PlanLimitReachedError).
+ * Substitui os grupos do rodízio (menos que o limite do canal é aceito; acima → PlanLimitReachedError
+ * com `link_rotation_groups` no WhatsApp ou `telegram_link_rotation_groups` no Telegram).
  * Cada grupo tem de ser conversa `isGroup` do tenant **na sessão do rodízio**. Formato do link e
  * faixa do teto seguem o canal da sessão (`rotation.channel`).
  *
@@ -48,10 +49,9 @@ export class SaveLinkRotationGroupsUseCase {
     const rotation = await rotations.findById(tenantId, rotationId);
     if (!rotation) throw new LinkRotationNotFoundError(rotationId);
 
-    const limit = await entitlements.getNumber(tenantId, ENTITLEMENT_KEYS.LINK_ROTATION_GROUPS);
-    if (limit !== null && input.groups.length > limit) {
-      throw new PlanLimitReachedError(ENTITLEMENT_KEYS.LINK_ROTATION_GROUPS, limit);
-    }
+    const key = limitKeyOfChannel('linkRotationGroups', rotation.channel);
+    const limit = await entitlements.getNumber(tenantId, key);
+    if (limit !== null && input.groups.length > limit) throw new PlanLimitReachedError(key, limit);
 
     const { channel } = rotation;
     const ordered = validateAndOrder(input.groups, channel);

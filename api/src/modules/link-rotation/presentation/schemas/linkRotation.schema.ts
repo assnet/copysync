@@ -149,6 +149,16 @@ const rotation = {
 } as const;
 
 const nullableLimit = { type: ['integer', 'null'] } as const;
+const channelLimits = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { rotations: nullableLimit, groupsPerRotation: nullableLimit },
+} as const;
+const channelUsage = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { rotations: { type: 'integer' } },
+} as const;
 
 export const overviewResponse = envelope({
   type: 'object',
@@ -166,7 +176,18 @@ export const overviewResponse = envelope({
     limits: {
       type: 'object',
       additionalProperties: false,
-      properties: { linkRotations: nullableLimit, linkRotationGroups: nullableLimit },
+      properties: {
+        // Legado: iguais aos do WhatsApp.
+        linkRotations: nullableLimit,
+        linkRotationGroups: nullableLimit,
+        whatsapp: channelLimits,
+        telegram: channelLimits,
+      },
+    },
+    usage: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { whatsapp: channelUsage, telegram: channelUsage },
     },
     sessions: {
       type: 'array',

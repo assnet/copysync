@@ -123,7 +123,7 @@ describe('PrismaLinkRotationRepository', () => {
     await expect(repo.update(tenantB, r.id, { title: 'x' })).rejects.toMatchObject({ code: 'LINK_ROTATION_NOT_FOUND' });
     await expect(repo.delete(tenantB, r.id)).rejects.toMatchObject({ code: 'LINK_ROTATION_NOT_FOUND' });
     await expect(repo.replaceGroups(tenantB, r.id, [])).rejects.toMatchObject({ code: 'LINK_ROTATION_NOT_FOUND' });
-    expect(await repo.countByTenant(tenantB)).toBe(0);
+    expect(await repo.countByChannel(tenantB, 'whatsapp')).toBe(0);
     await repo.delete(tenantA, r.id);
     expect(await repo.findById(tenantA, r.id)).toBeNull();
   });

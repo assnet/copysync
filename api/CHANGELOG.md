@@ -59,6 +59,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Rodízio de links com limites por canal (`link-rotation`, `tenants`, `plans`) — api 0.57.0 · app 0.75.0
+
+- **`channelLimits.ts`**, **`planPresets.ts`** — `telegram_link_rotations` / `telegram_link_rotation_groups` (LITE 0/0, PRO 1/5, MAX 2/10); `link_rotations`/`link_rotation_groups` passam a ser do WhatsApp
+- **Use cases do rodízio** — criar, reativar, trocar sessão de canal, salvar grupos e plano rebaixado contam e limitam pelo canal do rodízio; `GET /link-rotation` devolve `limits`/`usage` por canal
+- **Migration `20261104130000_add_telegram_link_rotation_entitlement_presets`** — presets das chaves do rodízio nos três planos + backfill
+- **Planos** — linha "Rodízio de links" por canal na tabela; destaque "Rodízio de links no Telegram" com o limite no PRO e no MAX
+
 #### Grupos onde a sessão pode postar/convidar (`messaging`, `campaigns`, `automation`, `link-rotation`) — api 0.56.0 · app 0.74.0
 
 - **`BaileysMessagingEngineAdapter.listParticipatingGroups`** — WhatsApp passa a marcar `canPost` (grupo só-admins e sessão não admin → `false`, `ADMINS_ONLY`) e `canInvite` (só admin), do metadado já buscado; destino sem permissão → `GROUP_NOT_POSTABLE` também no WhatsApp

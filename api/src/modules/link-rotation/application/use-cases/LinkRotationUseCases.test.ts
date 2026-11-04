@@ -356,7 +356,11 @@ describe('GetLinkRotationOverviewUseCase', () => {
     expect(out.rotations).toHaveLength(1);
     expect(out.rotations[0]).toMatchObject({ publicUrl: 'https://meu.pausado.app', groups: [{ groupName: 'Grupo a' }] });
     expect(out.domains).toEqual([{ id: 'dom-1', hostname: 'copysync.com.br' }]);
-    expect(out.limits).toEqual({ linkRotations: 2, linkRotationGroups: null });
+    expect(out.limits).toEqual({
+      linkRotations: 2, linkRotationGroups: null,
+      whatsapp: { rotations: 2, groupsPerRotation: null }, telegram: { rotations: null, groupsPerRotation: null },
+    });
+    expect(out.usage).toEqual({ whatsapp: { rotations: 1 }, telegram: { rotations: 0 } });
     expect(out.sessions.map((s) => s.id)).toEqual([SESSION, OTHER_SESSION]);
     expect(out.rotations[0]!.channel).toBe('whatsapp');
   });

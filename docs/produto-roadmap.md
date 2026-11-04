@@ -71,7 +71,8 @@ guarda o plano, não o preço.
 | Grupos de disparo — WhatsApp / Telegram | 5 / — | 10 / 10 | 40 / 40 |
 | Disparo em massa | ✅ | ✅ | ✅ |
 | Agendamento de horários | ✅ | ✅ | ✅ |
-| Rodízio de links inteligentes | ✅ | ✅ | ✅ |
+| Rodízio de links — WhatsApp (links · grupos por link) | 1 · 3 | 1 · 5 | 2 · 10 |
+| Rodízio de links — Telegram (links · grupos por link) | — | 1 · 5 | 2 · 10 |
 | Menção a todos os participantes | — | ✅ | ✅ |
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
@@ -96,7 +97,9 @@ envio" por canal).
 monitor; disparo: `BroadcastGroup.sessionId`; gerador: sessão do grupo). Chaves: `whatsapp_sessions` /
 `telegram_sessions`, `monitored_groups` / `telegram_monitored_groups`, `broadcast_groups` /
 `telegram_broadcast_groups` (as sem prefixo são do WhatsApp; não renomear). Presets Telegram: LITE 0/0,
-PRO 2/10, MAX 6/40. Cada canal conta e corta sozinho; `PLAN_LIMIT_REACHED` (403) leva `meta.key` do canal.
+PRO 2/10, MAX 6/40. Rodízio de links (canal = engine da sessão do rodízio): `link_rotations` /
+`telegram_link_rotations` e `link_rotation_groups` / `telegram_link_rotation_groups` (Telegram LITE 0/0,
+PRO 1/5, MAX 2/10). Cada canal conta e corta sozinho; `PLAN_LIMIT_REACHED` (403) leva `meta.key` do canal.
 `cross_session_dispatch` só é exigido com **2+ sessões do mesmo canal**; WhatsApp + Telegram juntos
 sempre podem. Nada de chave literal em use case: `channelLimitKey(kind, engine)` / `limitKeyOfChannel`.
 
@@ -120,7 +123,8 @@ escuta: fila por sessão com rate limit é obrigatória (item 3.6 do doc de esca
 Chaves de entitlement sugeridas (snake_case, estáveis):
 `whatsapp_sessions`, `telegram_sessions`, `monitored_groups`, `broadcast_groups`,
 `telegram_monitored_groups`, `telegram_broadcast_groups`,
-`offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `ai_rewrite_enabled`,
+`offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `link_rotation_groups`,
+`telegram_link_rotations`, `telegram_link_rotation_groups`, `ai_rewrite_enabled`,
 `offer_story_enabled`, `storefront_enabled`, `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).
 

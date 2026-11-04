@@ -6,18 +6,23 @@ import { ENTITLEMENT_KEYS, type EntitlementKey } from './entitlementKeys';
  */
 export const LIMIT_CHANNELS = ['whatsapp', 'telegram'] as const;
 export type LimitChannel = (typeof LIMIT_CHANNELS)[number];
-export type ChannelLimitKind = 'sessions' | 'monitoredGroups' | 'broadcastGroups';
+/** `linkRotations` = rodízios por tenant; `linkRotationGroups` = grupos por rodízio (canal = engine da sessão do rodízio). */
+export type ChannelLimitKind = 'sessions' | 'monitoredGroups' | 'broadcastGroups' | 'linkRotations' | 'linkRotationGroups';
 
 const KEYS: Record<LimitChannel, Record<ChannelLimitKind, EntitlementKey>> = {
   whatsapp: {
     sessions: ENTITLEMENT_KEYS.WHATSAPP_SESSIONS,
     monitoredGroups: ENTITLEMENT_KEYS.MONITORED_GROUPS,
     broadcastGroups: ENTITLEMENT_KEYS.BROADCAST_GROUPS,
+    linkRotations: ENTITLEMENT_KEYS.LINK_ROTATIONS,
+    linkRotationGroups: ENTITLEMENT_KEYS.LINK_ROTATION_GROUPS,
   },
   telegram: {
     sessions: ENTITLEMENT_KEYS.TELEGRAM_SESSIONS,
     monitoredGroups: ENTITLEMENT_KEYS.TELEGRAM_MONITORED_GROUPS,
     broadcastGroups: ENTITLEMENT_KEYS.TELEGRAM_BROADCAST_GROUPS,
+    linkRotations: ENTITLEMENT_KEYS.TELEGRAM_LINK_ROTATIONS,
+    linkRotationGroups: ENTITLEMENT_KEYS.TELEGRAM_LINK_ROTATION_GROUPS,
   },
 };
 

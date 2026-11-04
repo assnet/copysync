@@ -27,6 +27,7 @@ import {
   type SlugAvailability,
   type SlugFacts,
 } from '../../domain/services/decideSlugAvailability';
+import type { LinkRotationChannel } from '../../domain/services/inviteUrl';
 import { MAX_SLUG_SUGGESTIONS, normalizeSlug, suggestSlugs } from '../../domain/services/slugRules';
 import {
   LinkDomainInvalidError,
@@ -63,6 +64,8 @@ export class InMemoryLinkRotationRepository implements ILinkRotationRepository {
   reservations: Reservation[] = [];
   /** Simula corrida no unique: próximo create/update lança LinkSlugTakenError([]). */
   raceOnce = false;
+  /** Canal por sessão (create/update de sessão); ausente = WhatsApp, como no Prisma. */
+  sessionChannels: Record<string, LinkRotationChannel> = {};
   private seq = 0;
 
   private withGroups(r: LinkRotation): LinkRotationWithGroups {
@@ -94,7 +97,9 @@ export class InMemoryLinkRotationRepository implements ILinkRotationRepository {
     const r = this.rotations.find((x) => x.id === id && x.tenantId === tenantId);
     return r ? this.withGroups(r) : null;
   }
-  async countByTenant(tenantId: string) { return this.rotations.filter((r) => r.tenantId === tenantId).length; }
+  async countByChannel(tenantId: string, channel: LinkRotationChannel) {
+    return this.rotations.filter((r) => r.tenantId === tenantId && r.channel === channel).length;
+  }
 
   private slugUsed(domainId: string, slug: string, exceptId?: string) {
     return this.rotations.some((r) => r.domainId === domainId && r.slug === slug && r.id !== exceptId);
@@ -102,7 +107,7 @@ export class InMemoryLinkRotationRepository implements ILinkRotationRepository {
 
   async create(input: CreateLinkRotationInput) {
     if (this.raceOnce || this.slugUsed(input.domainId, input.slug)) { this.raceOnce = false; throw new LinkSlugTakenError([]); }
-    return this.seed({ ...input, strategy: input.strategy ?? LinkRotationStrategy.BALANCED, title: input.title ?? null });
+    return this.seed({ ...input, channel: this.sessionChannels[input.sessionId] ?? 'whatsapp', strategy: input.strategy ?? LinkRotationStrategy.BALANCED, title: input.title ?? null });
   }
 
   async update(tenantId: string, id: string, input: UpdateLinkRotationInput) {
@@ -114,6 +119,7 @@ export class InMemoryLinkRotationRepository implements ILinkRotationRepository {
     }
     if (input.sessionId !== undefined && input.sessionId !== r.sessionId) {
       this.groups = this.groups.filter((g) => g.rotationId !== id);
+      r.channel = this.sessionChannels[input.sessionId] ?? 'whatsapp';
     }
     const { sessionId, slug, domainId, status, strategy, title } = input;
     Object.assign(r, Object.fromEntries(Object.entries({ sessionId, slug, domainId, status, strategy, title }).filter(([, v]) => v !== undefined)));

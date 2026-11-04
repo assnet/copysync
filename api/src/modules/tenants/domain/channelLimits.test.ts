@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelLimitKey, channelOfEngine, keepOneSessionPerChannel, requiresCrossSession, sliceByChannel } from './channelLimits';
+import { channelLimitKey, channelOfEngine, limitKeyOfChannel, keepOneSessionPerChannel, requiresCrossSession, sliceByChannel } from './channelLimits';
 
 describe('channelLimits', () => {
   it('chave por tipo e engine; engine desconhecida = WhatsApp', () => {
@@ -9,6 +9,10 @@ describe('channelLimits', () => {
     expect(channelLimitKey('monitoredGroups', 'telegram')).toBe('telegram_monitored_groups');
     expect(channelLimitKey('broadcastGroups', 'telegram')).toBe('telegram_broadcast_groups');
     expect(channelOfEngine(undefined)).toBe('whatsapp');
+    expect(limitKeyOfChannel('linkRotations', 'whatsapp')).toBe('link_rotations');
+    expect(limitKeyOfChannel('linkRotations', 'telegram')).toBe('telegram_link_rotations');
+    expect(limitKeyOfChannel('linkRotationGroups', 'whatsapp')).toBe('link_rotation_groups');
+    expect(limitKeyOfChannel('linkRotationGroups', 'telegram')).toBe('telegram_link_rotation_groups');
   });
 
   it('sessão cruzada só com 2+ sessões do mesmo canal', () => {

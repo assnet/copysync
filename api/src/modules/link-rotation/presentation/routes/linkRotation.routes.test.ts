@@ -5,6 +5,7 @@ import { linkDomainAdminRoutes } from './linkDomainAdmin.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
 import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { PrismaLinkRotationRepository } from '../../infrastructure/repositories/PrismaLinkRotationRepository';
+import { PrismaLinkRotationSessionReader } from '../../infrastructure/repositories/PrismaLinkRotationSessionReader';
 import { PrismaLinkDomainRepository } from '../../infrastructure/repositories/PrismaLinkDomainRepository';
 import { PrismaLinkClickRepository } from '../../infrastructure/repositories/PrismaLinkClickRepository';
 import { PrismaLinkRotationGroupCatalog } from '../../infrastructure/repositories/PrismaLinkRotationGroupCatalog';
@@ -46,7 +47,7 @@ const T0 = new Date('2026-10-29T12:00:00.000Z');
 
 function rotationOf(tenantId: string, over: Partial<LinkRotationWithGroups> = {}): LinkRotationWithGroups {
   return {
-    id: 'rot-1', tenantId, sessionId: 'sess-1', domainId: 'dom-1', slug: 'promo',
+    id: 'rot-1', tenantId, sessionId: 'sess-1', channel: 'whatsapp', domainId: 'dom-1', slug: 'promo',
     status: LinkRotationStatus.ACTIVE, strategy: LinkRotationStrategy.BALANCED, title: null,
     clickCount: 12, lastClickAt: T0, allFullNotifiedAt: null, createdAt: T0, updatedAt: T0,
     groups: [{
@@ -85,7 +86,10 @@ afterEach(async () => {
 describe('POST /link-rotation', () => {
   it('no limite do plano responde 403 PLAN_LIMIT_REACHED com key e limit', async () => {
     vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(1);
-    vi.spyOn(PrismaLinkRotationRepository.prototype, 'countByTenant').mockResolvedValue(1);
+    vi.spyOn(PrismaLinkRotationSessionReader.prototype, 'findById').mockResolvedValue({
+      id: 'sess-1', name: 'Principal', status: 'CONNECTED', channel: 'whatsapp', phone: null,
+    });
+    vi.spyOn(PrismaLinkRotationRepository.prototype, 'countByChannel').mockResolvedValue(1);
     const create = vi.spyOn(PrismaLinkRotationRepository.prototype, 'create');
 
     const res = await app.inject({

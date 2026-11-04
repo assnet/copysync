@@ -87,21 +87,37 @@ Lease `link-rotation-member-sync` em `job_leases` (5 min): um processo por tick 
 
 ## Limites por plano
 
-Entitlements `link_rotations` e `link_rotation_groups`. Presets (data migration `20261029020000_create_link_rotation`,
-`ON CONFLICT DO NOTHING`): LITE 1/3, PRO 1/5, MAX 2/10. Travados em `tenants/domain/planPresets.ts` e
-`features/plans/catalog.ts`.
+Limites **por canal** (canal = engine da sessão do rodízio, `LinkRotation.channel`):
+
+| Canal | Links por tenant | Grupos por link | LITE | PRO | MAX |
+|---|---|---|---|---|---|
+| WhatsApp | `link_rotations` | `link_rotation_groups` | 1 · 3 | 1 · 5 | 2 · 10 |
+| Telegram | `telegram_link_rotations` | `telegram_link_rotation_groups` | 0 · 0 | 1 · 5 | 2 · 10 |
+
+Presets: `20261029020000_create_link_rotation` (WhatsApp) e `20261104130000_add_telegram_link_rotation_entitlement_presets`
+(Telegram + backfill para tenants com plano; `ON CONFLICT DO NOTHING`). Travados em `tenants/domain/planPresets.ts` e
+`features/plans/catalog.ts`. Chave sempre via `limitKeyOfChannel('linkRotations' | 'linkRotationGroups', canal)`
+(`tenants/domain/channelLimits.ts`), nunca literal. Um canal nunca ocupa vaga do outro.
 
 - **Chave ausente = ilimitado** (convenção do projeto). Em 2026-10-29 os tenants estão sem `planSlug`, logo sem limite.
   Os presets chegam no próximo evento de plano do hub.
 - Rebaixo: `applyLinkRotationPlanLimits` roda em `SyncTenantEntitlementsUseCase` e, no mesmo commit, em
-  `ApplyBillingEventUseCase`. Idempotente. Rotações não `PAUSED` ordenadas por `createdAt`: as N mais antigas ficam
+  `ApplyBillingEventUseCase`. Idempotente, por canal. Rotações não `PAUSED` do canal por `createdAt`: as N mais antigas ficam
   `ACTIVE`, o resto `PAUSED_BY_PLAN`. Grupos por `position`: os N primeiros mantêm o status, o resto `PAUSED_BY_PLAN`;
   quem volta a caber recebe o status calculado (`NEEDS_LINK`/`FULL`/`ACTIVE`).
 - Pausa manual (`PAUSED`) de rotação ou grupo nunca é tocada e não ocupa vaga.
-- Reativar (`PATCH status=ACTIVE`, inclusive de `PAUSED_BY_PLAN`) checa o plano: só `ACTIVE` ocupa vaga.
-- Criar conta **todas** as rotações do tenant, inclusive pausadas: o limite é de links que o tenant possui. Pausar
-  não libera vaga para criar outro; excluir libera. Ativas nunca passam do limite.
-- Salvar grupos acima de `link_rotation_groups` → 403 `PLAN_LIMIT_REACHED` (`meta.key`); painel mostra `PlanLimitBanner`.
+- Reativar (`PATCH status=ACTIVE`, inclusive de `PAUSED_BY_PLAN`) checa o plano do canal: só `ACTIVE` do canal ocupa vaga.
+- Trocar a sessão para outra de **outro canal** com o rodízio `ACTIVE` exige vaga no canal novo (403 com a chave do
+  canal novo). Pausado pode mudar de canal; volta a `ACTIVE` só se couber.
+- Criar conta **todas** as rotações do tenant no canal da sessão, inclusive pausadas (`countByChannel`): o limite é de
+  links que o tenant possui. Pausar não libera vaga para criar outro; excluir libera. Ativas nunca passam do limite.
+- Salvar grupos acima do limite do canal → 403 `PLAN_LIMIT_REACHED` com `meta.key` do canal (`link_rotation_groups` ou
+  `telegram_link_rotation_groups`); painel mostra `PlanLimitBanner`.
+- `GET /link-rotation` (overview) devolve `limits: { linkRotations, linkRotationGroups, whatsapp: { rotations,
+  groupsPerRotation }, telegram: { rotations, groupsPerRotation } }` (null = ilimitado; os dois primeiros são legado =
+  WhatsApp) e `usage: { whatsapp: { rotations }, telegram: { rotations } }` (inclui pausadas, igual à regra de criar).
+- Não fazer: somar canais num limite só, ler `LINK_ROTATIONS` direto em use case novo ou remover os campos legados
+  enquanto o painel os usar.
 - Sessão excluída (`DeleteSessionUseCase`) → rotações dela viram `PAUSED` (`pauseBySession`). FK de sessão é `NO ACTION`.
 
 ## Convite

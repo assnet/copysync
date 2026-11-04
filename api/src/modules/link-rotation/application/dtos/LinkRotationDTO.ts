@@ -122,12 +122,28 @@ export interface LinkRotationSessionDTO {
   avatarUrl: string | null;
 }
 
+/** Limites de um canal; null = ilimitado. */
+export interface LinkRotationChannelLimitsDTO {
+  rotations: number | null;
+  groupsPerRotation: number | null;
+}
+
 export interface LinkRotationOverviewDTO {
   rotations: LinkRotationOutputDTO[];
   /** Só ACTIVE: os que podem receber rodízio novo. */
   domains: LinkDomainOptionDTO[];
-  /** null = ilimitado. */
-  limits: { linkRotations: number | null; linkRotationGroups: number | null };
+  /**
+   * Limites por canal (canal = engine da sessão do rodízio); null = ilimitado.
+   * `linkRotations`/`linkRotationGroups` são legado e repetem os do WhatsApp.
+   */
+  limits: {
+    linkRotations: number | null;
+    linkRotationGroups: number | null;
+    whatsapp: LinkRotationChannelLimitsDTO;
+    telegram: LinkRotationChannelLimitsDTO;
+  };
+  /** Rodízios do tenant por canal (inclusive pausados: é o que conta para criar). */
+  usage: Record<LinkRotationChannel, { rotations: number }>;
   sessions: LinkRotationSessionDTO[];
 }
 

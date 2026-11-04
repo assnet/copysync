@@ -1,3 +1,4 @@
+import type { LinkRotationChannel } from '../services/inviteUrl';
 import type { LinkDomain } from '../entities/LinkDomain';
 import type { LinkRotation, LinkRotationWithGroups } from '../entities/LinkRotation';
 import type { LinkRotationGroup } from '../entities/LinkRotationGroup';
@@ -60,7 +61,8 @@ export interface PublicLinkRotation {
 export interface ILinkRotationRepository {
   listByTenant(tenantId: string): Promise<LinkRotationWithGroups[]>;
   findById(tenantId: string, id: string): Promise<LinkRotationWithGroups | null>;
-  countByTenant(tenantId: string): Promise<number>;
+  /** Rotações do tenant no canal (engine da sessão do rodízio), inclusive pausadas. */
+  countByChannel(tenantId: string, channel: LinkRotationChannel): Promise<number>;
   create(input: CreateLinkRotationInput): Promise<LinkRotation>;
   update(tenantId: string, id: string, input: UpdateLinkRotationInput): Promise<LinkRotation>;
   delete(tenantId: string, id: string): Promise<void>;

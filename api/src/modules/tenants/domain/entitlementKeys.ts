@@ -23,10 +23,14 @@ export const ENTITLEMENT_KEYS = {
   AI_REQUESTS_PER_DAY: 'ai_requests_per_day',
   /** Grupo de disparo em sessão diferente de onde a oferta nasce (Business). Ausente = bloqueado. */
   CROSS_SESSION_DISPATCH: 'cross_session_dispatch',
-  /** Rodízios de link (subdomínio público) por tenant. */
+  /** Rodízios de link no WhatsApp (canal = engine da sessão do rodízio; `channelLimits.ts`). */
   LINK_ROTATIONS: 'link_rotations',
-  /** Grupos por rodízio. */
+  /** Grupos por rodízio no WhatsApp. */
   LINK_ROTATION_GROUPS: 'link_rotation_groups',
+  /** Rodízios de link no Telegram. 0 no Lite, 1 no Pro, 2 no Max. */
+  TELEGRAM_LINK_ROTATIONS: 'telegram_link_rotations',
+  /** Grupos por rodízio no Telegram. 0 no Lite, 5 no Pro, 10 no Max. */
+  TELEGRAM_LINK_ROTATION_GROUPS: 'telegram_link_rotation_groups',
   /** Página de Ofertas (Profissional e Business). `false` explícito no Starter. */
   STOREFRONT_ENABLED: 'storefront_enabled',
   /** Story de Oferta (arte para Instagram, só Business). Ausente = bloqueado. */

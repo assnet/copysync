@@ -1,4 +1,5 @@
 import type { LinkRotationGroupStatus, LinkRotationStatus } from '../enums/LinkRotationEnums';
+import type { LinkRotationChannel } from '../services/inviteUrl';
 
 /** Grupo com o mínimo para decidir o status sob o limite do plano. */
 export interface PlanEnforcementGroup {
@@ -14,6 +15,8 @@ export interface PlanEnforcementGroup {
 export interface PlanEnforcementRotation {
   id: string;
   status: LinkRotationStatus;
+  /** Canal da sessão do rodízio (engine): os limites valem por canal. */
+  channel: LinkRotationChannel;
   createdAt: Date;
   groups: PlanEnforcementGroup[];
 }

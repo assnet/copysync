@@ -1,4 +1,4 @@
-import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
+import { limitKeyOfChannel } from '../../../tenants/domain/channelLimits';
 import type { ILinkRotationGroupDirectory } from '../../domain/contracts/ILinkRotationGroupDirectory';
 import {
   LinkGroupInvalidError,
@@ -33,10 +33,9 @@ export class SelectLinkRotationGroupsUseCase {
     const rotation = await this.deps.rotations.findById(tenantId, rotationId);
     if (!rotation) throw new LinkRotationNotFoundError(rotationId);
 
-    const limit = await this.deps.entitlements.getNumber(tenantId, ENTITLEMENT_KEYS.LINK_ROTATION_GROUPS);
-    if (limit !== null && input.groups.length > limit) {
-      throw new PlanLimitReachedError(ENTITLEMENT_KEYS.LINK_ROTATION_GROUPS, limit);
-    }
+    const key = limitKeyOfChannel('linkRotationGroups', rotation.channel);
+    const limit = await this.deps.entitlements.getNumber(tenantId, key);
+    if (limit !== null && input.groups.length > limit) throw new PlanLimitReachedError(key, limit);
 
     const groups: LinkRotationGroupInputDTO[] = [];
     for (const { groupJid, conversationId, ...rest } of input.groups) {

@@ -10,6 +10,7 @@ import type {
 } from '../../domain/contracts/ILinkRotationRepository';
 import type { LinkRotation, LinkRotationWithGroups } from '../../domain/entities/LinkRotation';
 import type { LinkRotationGroup } from '../../domain/entities/LinkRotationGroup';
+import type { LinkRotationChannel } from '../../domain/services/inviteUrl';
 import { LinkRotationNotFoundError, LinkSlugTakenError } from '../../../../shared/errors/internal/LinkRotationErrors';
 import { PrismaLinkDomainMapper } from '../mappers/PrismaLinkDomainMapper';
 import { PrismaLinkRotationMapper, ROTATION_SESSION_ENGINE } from '../mappers/PrismaLinkRotationMapper';
@@ -56,8 +57,10 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
     return row ? PrismaLinkRotationMapper.toDomainWithGroups(row) : null;
   }
 
-  async countByTenant(tenantId: string): Promise<number> {
-    return this.prisma.linkRotation.count({ where: { tenantId } });
+  async countByChannel(tenantId: string, channel: LinkRotationChannel): Promise<number> {
+    // Mesma regra de `channelForEngine`: só `telegram` é Telegram; o resto conta como WhatsApp.
+    const engine = channel === 'telegram' ? 'telegram' : { not: 'telegram' };
+    return this.prisma.linkRotation.count({ where: { tenantId, session: { engine } } });
   }
 
   async create(input: CreateLinkRotationInput): Promise<LinkRotation> {
