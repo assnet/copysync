@@ -1,7 +1,7 @@
 # Handoff — 2026-11-04 (sessão até 21:00)
 
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
-`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: 536/536).
+`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: 598/598).
 
 ## CopySync (`feature/rebranding-app`)
 
@@ -20,7 +20,7 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 | --- | --- | --- |
 | S1 CI | `test/char-prod-base` (`9ee0609`) | ✅ validado local; 1º run no GitHub só após push (decisão do dono) |
 | S2 vitest + caracterização | `test/char-prod-base` (`c695428`) + `test/char-prod-<área>` | 6 áreas verdes; integração em `test/char-prod` + `riscos-caracterizacao.md` (em andamento) |
-| S3 staging | `chore/staging-runbook` (`c0b2d12`) | anonimizador testado; revisão independente em andamento; **dono executa** `docs/staging.md` |
+| S3 staging | `chore/staging-runbook` (`c0b2d12`) | revisão achou 4🔴 (restore sem trava real, Cakto sem sandbox, senha única p/ todos, sandbox EFI no campo errado) + 8🟡; correção em andamento no mesmo branch. **NÃO executar o roteiro antes da correção e de nova revisão** |
 | H1 | plano ✅ `docs/multi-application-hub` (`tasks-h1.md`, 31 tarefas + 6 adiadas) | dono decide D1 (recomendado: `NOT NULL DEFAULT` constante, Postgres 18.6 confirmado → sem trigger/backfill) e D8 (branch de destino); executar após S2 integrado |
 | H2, H3a+H4 | `docs/hub-h2-plan`, `docs/hub-h3h4-plan` (se prontos) | juntar no branch docs |
 | Branches obsoletos (base develop) | `chore/ci-safety-net`, `test/characterization`, `test/char-<área>` | podem ser apagados |
