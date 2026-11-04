@@ -755,3 +755,37 @@ export interface BroadcastGroupsResponse {
   limits: Record<LimitChannel, { broadcastGroups: number | null }>;
   usage: Record<LimitChannel, { broadcastGroups: number }>;
 }
+
+// ── Assinatura (GET /subscription) ────────────────────────────────────────────
+
+export type SubscriptionStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
+export type SubscriptionPlanSlug = 'starter' | 'profissional' | 'business';
+export type SubscriptionLimitChannel = 'whatsapp' | 'telegram';
+/** `count` = total atual; `daily` = uso de hoje; `feature` = recurso liga/desliga. */
+export type SubscriptionLimitKind = 'count' | 'daily' | 'feature';
+
+export interface SubscriptionLimitItem {
+  /** Chave de `ENTITLEMENT_KEYS` na API. */
+  key: string;
+  channel: SubscriptionLimitChannel | null;
+  kind: SubscriptionLimitKind;
+  /** `feature` = null. */
+  used: number | null;
+  /** null = ilimitado. */
+  limit: number | null;
+  /** feature: valor; count/daily: `limit !== 0`. */
+  enabled: boolean;
+}
+
+/** Contrato fixo em `.specs/features/subscription-page/spec.md` §Contrato. */
+export interface SubscriptionResponse {
+  tenantName: string;
+  /** null = sem plano (ou slug fora do catálogo). */
+  planSlug: SubscriptionPlanSlug | null;
+  status: SubscriptionStatus;
+  /** ISO. */
+  suspendedAt: string | null;
+  /** ISO; null = vencimento desconhecido (não mostrar). */
+  expiresAt: string | null;
+  limits: SubscriptionLimitItem[];
+}
