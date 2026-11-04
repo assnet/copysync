@@ -17,3 +17,5 @@ export type { OverflowTooltipTextProps } from './OverflowTooltipText';
 export { useIsTruncated, isElementTruncated } from './useIsTruncated';
 export { SwipeCards } from './SwipeCards';
 export type { SwipeCardsItem, SwipeCardsProps, SwipeCardsStatus } from './SwipeCards';
+export { WhatsAppIcon, TelegramIcon, BRAND_COLORS, brandColor } from './brandIcons';
+export type { BrandChannel } from './brandIcons';

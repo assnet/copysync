@@ -48,6 +48,16 @@ em `APP_ICON_SIZES` e nesta tabela.
 - Mapas de ícone por domínio ficam na config da feature (ex.: `AUDIENCE_ICONS` em
   `features/offers/utils/offerConfig.ts`), não em `strings.ts` — strings é só texto (i18n).
 
+## Logos de marca (canais)
+
+Lucide não tem logos de terceiros. Logo de canal (WhatsApp, Telegram) vem de
+`app/src/components/brandIcons.tsx` (`WhatsAppIcon`, `TelegramIcon`, path do Simple Icons, CC0):
+mesma assinatura `LucideIcon`, então passa por `AppIcon` com os mesmos tokens. Cor da marca por
+modo do tema via `brandColor(canal, palette.mode)` (modo claro usa o tom escuro da marca para
+contraste), aplicada na cor do pai/slot do ícone. Mapa canal → logo: `CHANNEL_ICON` em
+`features/sessions/components/SessionChannelChip.tsx`. Não usar logo de marca como ícone genérico
+de "mensagem"; logo novo entra nesse arquivo, nunca SVG solto em tela.
+
 ## Migração
 
 `@mui/icons-material` ainda aparece em telas antigas. Regra: **ícone novo é sempre Lucide**, e
