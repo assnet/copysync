@@ -6,7 +6,7 @@ usuário** (MTProto, lib [`telegram`/GramJS](https://gram.js.org/)) como segunda
 
 Status: **F1 + F2 (api 0.51.0 · app 0.64.0, 2026-11-04)** — criar, conectar (código ou QR),
 listar, limite por canal, receber texto e enviar texto/mídia. **Pendente (F3):** Telegram como
-origem/destino no Monitoramento e nos grupos de disparo (inclui foto dos grupos na listagem); download de mídia recebida.
+origem/destino no Monitoramento e nos grupos de disparo; download de mídia recebida.
 
 Termos: **sessão** (nunca instância), **canal** (WhatsApp × Telegram), **código de login** (o que o
 Telegram manda ao app do usuário), **senha de duas etapas** (2FA da conta).
@@ -84,6 +84,11 @@ pede código de novo (como o pareamento do WhatsApp).
 - `fetchProfilePicture`: foto da própria conta (quando `jid` é o telefone da sessão, como pede a listagem de
   sessões), de grupo/canal ou contato (peer id). Baixada (`downloadProfilePhoto`, pequena) e salva no
   `mediaFileStore` (`avatar_tg_*.jpg`), cache 6 h por sessão+peer — mesmo modelo do WhatsApp. Sem foto → `null`.
+- `listParticipatingGroups` devolve `avatarUrl` (campo opcional da porta): foto pequena do grupo no storage como
+  `avatar_tg_<id>_<photoId>.jpg` (foto nova = arquivo novo). Já salva → URL na hora; faltando → download em **fila
+  única** (sem rajada, evita `FLOOD_WAIT`), a listagem espera até 3 s e o resto entra na próxima. Cada download
+  emite `GROUP_AVATAR_UPDATED`, que grava `groupAvatarUrl` nas conversas do grupo (monitorados/disparo).
+  `mergeSessionGroups` usa a foto da conversa e, sem ela, a da engine.
 - `checkNumberExists` → `null`; `updateChatState`, `presenceSubscribe` → no-op.
 
 ## 6. Configuração

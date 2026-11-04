@@ -84,6 +84,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+- **`TelegramMessagingEngineAdapter.listParticipatingGroups`**, **`mergeSessionGroups.ts`** — grupos do Telegram apareciam só com iniciais: a foto de grupo vinha apenas da conversa do chat (preenchida pela sincronização do WhatsApp). A listagem do Telegram agora traz `avatarUrl` (storage, por `photoId`, download em fila) e grava a foto nas conversas via `GROUP_AVATAR_UPDATED` (api 0.51.3)
+
 - **`engines/telegram/TelegramMessagingEngineAdapter.ts`** — sessão Telegram ficava sem avatar em todo o painel (cards de sessão, seletor e resumo do Monitoramento, chips de grupos de disparo): `fetchProfilePicture` devolvia `null`. Agora baixa a foto da conta (ou de grupo/contato), salva no storage e cacheia 6 h, como o WhatsApp (api 0.51.2)
 
 #### Monitoramento — intervalo entre envios a partir de 0 (api 0.51.1 · app 0.64.1)

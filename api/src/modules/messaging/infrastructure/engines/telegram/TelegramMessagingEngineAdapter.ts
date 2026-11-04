@@ -59,6 +59,8 @@ const telegramLogger = appLogger.child({ module: 'TelegramEngine' });
 const ENGINE = 'telegram';
 /** Foto baixada e servida pelo nosso storage; revalida a cada 6 h (como no WhatsApp). */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
+/** Quanto a listagem de grupos espera pelas fotos que ainda faltam baixar. */
+const GROUP_AVATAR_WAIT_MS = 3_000;
 
 export interface TelegramEngineConfig {
   apiId: number;
@@ -106,6 +108,12 @@ function mediaType(media: Api.TypeMessageMedia | undefined): string {
 export class TelegramMessagingEngineAdapter implements IMessagingEngine {
   private readonly registry = new TelegramSessionRegistry();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
+  /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
+  private readonly knownGroupAvatars = new Set<string>();
+  /** Downloads de foto de grupo em andamento, por arquivo (sem repetir o mesmo). */
+  private readonly groupAvatarJobs = new Map<string, Promise<string | null>>();
+  /** Fila única: um download por vez, para não provocar FLOOD_WAIT na listagem. */
+  private groupAvatarQueue: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly config: TelegramEngineConfig,
@@ -597,6 +605,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     const entry = this.requireConnected(sessionId);
     const dialogs = await entry.client.getDialogs({ limit: 500 });
     const out: ParticipatingGroupInfo[] = [];
+    const avatarOf = new Map<number, Promise<string | null>>();
     for (const d of dialogs) {
       if (!d.isGroup && !d.isChannel) continue;
       const ent = d.entity as Api.Channel | Api.Chat | undefined;
@@ -605,9 +614,52 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
       if (ent instanceof Api.Chat && (ent.left || ent.deactivated)) continue;
       if (ent instanceof Api.Channel && ent.left) continue;
       if (!d.id) continue;
-      out.push({ groupJid: d.id.toString(), name: d.title ?? null });
+      out.push({ groupJid: d.id.toString(), name: d.title ?? null, avatarUrl: null });
+      avatarOf.set(out.length - 1, this.groupAvatar(sessionId, entry, d.id.toString(), ent));
     }
-    return out;
+    // Fotos que já estão no storage voltam agora; as que faltam baixam em fila e, se terminarem
+    // dentro do prazo, entram nesta resposta — senão na próxima (e na conversa, via evento).
+    const filled = [...avatarOf].map(([i, p]) => p.then((url) => { out[i]!.avatarUrl = url; }));
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.all(filled),
+      new Promise<void>((r) => { timer = setTimeout(r, GROUP_AVATAR_WAIT_MS); }),
+    ]);
+    clearTimeout(timer);
+    return out.map((g) => ({ ...g }));
+  }
+
+  /** URL da foto do grupo no storage; agenda o download quando ainda não foi salva. */
+  private async groupAvatar(sessionId: string, entry: TelegramSessionEntry, groupJid: string, ent: unknown): Promise<string | null> {
+    const photo = (ent as { photo?: unknown } | undefined)?.photo;
+    if (!(photo instanceof Api.ChatPhoto)) return null;
+    const store = mediaContainer.mediaFileStore;
+    const filename = `avatar_tg_${groupJid.replace('-', 'n')}_${photo.photoId.toString()}.jpg`;
+    if (this.knownGroupAvatars.has(filename)) return store.publicUrl(filename);
+    if (await store.mediaExists(filename).catch(() => false)) {
+      this.knownGroupAvatars.add(filename);
+      return store.publicUrl(filename);
+    }
+    const running = this.groupAvatarJobs.get(filename);
+    if (running) return running;
+    const job = this.groupAvatarQueue.then(async () => {
+      try {
+        const buf = await entry.client.downloadProfilePhoto(ent as Api.Chat, { isBig: false });
+        if (!Buffer.isBuffer(buf) || buf.length === 0) return null;
+        const url = await store.saveBuffer(buf, filename);
+        this.knownGroupAvatars.add(filename);
+        internalEventBus.emit('GROUP_AVATAR_UPDATED', { type: 'GROUP_AVATAR_UPDATED', tenantId: entry.tenantId, groupJid, avatarUrl: url });
+        return url;
+      } catch (err) {
+        telegramLogger.debug({ err, sessionId }, 'Failed to download Telegram group photo');
+        return null;
+      } finally {
+        this.groupAvatarJobs.delete(filename);
+      }
+    });
+    this.groupAvatarQueue = job.catch(() => undefined);
+    this.groupAvatarJobs.set(filename, job);
+    return job;
   }
 
   async getGroupInviteLink(sessionId: string, groupJid: string): Promise<{ inviteCode: string }> {

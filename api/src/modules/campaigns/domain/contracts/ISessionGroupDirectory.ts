@@ -4,6 +4,8 @@ export interface DirectoryGroup {
   /** Sem `@g.us`, como no chat. */
   groupJid: string;
   name: string | null;
+  /** Foto vinda da engine na listagem; vale quando a conversa do chat não tem. */
+  avatarUrl?: string | null;
 }
 
 export interface ISessionGroupDirectory {

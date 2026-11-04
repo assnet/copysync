@@ -4,7 +4,7 @@ import type { SessionGroupConversation } from '../contracts/IOfferGeneratorConfi
 export interface SessionGroupItem {
   groupJid: string;
   title: string | null;
-  /** Foto vem da conversa do chat; grupo sem conversa não tem. */
+  /** Foto da conversa do chat; sem ela, a que a engine trouxe na listagem (Telegram). */
   avatarUrl: string | null;
   /** null = grupo ainda sem conversa no chat (criada ao ser escolhido). */
   conversationId: string | null;
@@ -28,7 +28,7 @@ export function mergeSessionGroups(
   const items: SessionGroupItem[] = live
     ? live.map((g) => {
         const k = byJid.get(g.groupJid);
-        return { groupJid: g.groupJid, title: g.name ?? k?.title ?? null, avatarUrl: k?.avatarUrl ?? null, conversationId: k?.conversationId ?? null };
+        return { groupJid: g.groupJid, title: g.name ?? k?.title ?? null, avatarUrl: k?.avatarUrl ?? g.avatarUrl ?? null, conversationId: k?.conversationId ?? null };
       })
     : [...byJid.values()].map((k) => ({ groupJid: k.groupJid, title: k.title, avatarUrl: k.avatarUrl, conversationId: k.conversationId }));
 

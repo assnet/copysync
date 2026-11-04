@@ -357,6 +357,8 @@ export interface ParticipatingGroupInfo {
   /** Sem `@g.us`. */
   groupJid: string;
   name: string | null;
+  /** Foto já servida pelo nosso storage, quando a engine a obtém na listagem (Telegram). */
+  avatarUrl?: string | null;
 }
 
 export interface GroupParticipantInfo {

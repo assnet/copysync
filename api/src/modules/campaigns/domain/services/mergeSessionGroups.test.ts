@@ -22,6 +22,16 @@ describe('mergeSessionGroups', () => {
     ]);
   });
 
+  it('foto da engine (Telegram) vale quando a conversa não tem; a da conversa tem prioridade', () => {
+    const tg = [
+      { groupJid: '-100555', name: 'Canal', avatarUrl: 'https://x/tg.jpg' },
+      { groupJid: '111', name: 'Promoções Ágeis', avatarUrl: 'https://x/outra.jpg' },
+    ];
+    const out = mergeSessionGroups(tg, known);
+    expect(out.find((g) => g.groupJid === '-100555')?.avatarUrl).toBe('https://x/tg.jpg');
+    expect(out.find((g) => g.groupJid === '111')?.avatarUrl).toBe('https://x/p.jpg');
+  });
+
   it('sem WhatsApp (sessão fora): cai no que o chat conhece', () => {
     expect(mergeSessionGroups(null, known).map((g) => g.conversationId)).toEqual(['c9', 'c1']);
   });
