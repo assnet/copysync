@@ -7,12 +7,22 @@ import type { TenantContext } from '../../types/TenantContext';
  * Resolves membership for a (userId, tenantId) pair.
  * Single source of truth for tenant status + membership validation.
  * Used by tenantHook (HTTP) and sseAuthHook (WS/SSE).
+ *
+ * `allowInactive` pula só a checagem de status (SUSPENDED/CANCELLED); a membership
+ * continua obrigatória. Usado apenas por `tenantAnyStatusHook` (tela de assinatura).
  */
+export interface ResolveMembershipOptions {
+  allowInactive?: boolean;
+}
+
 export async function resolveMembership(
   userId: string,
   tenantId: string,
   isSuperAdmin: boolean,
+  options: ResolveMembershipOptions = {},
 ): Promise<TenantContext> {
+  const allowInactive = options.allowInactive === true;
+
   if (isSuperAdmin) {
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -22,7 +32,7 @@ export async function resolveMembership(
     if (!tenant) {
       throw new ForbiddenError(`Tenant not found: ${tenantId}`);
     }
-    if (tenant.status !== 'ACTIVE') {
+    if (!allowInactive && tenant.status !== 'ACTIVE') {
       throw new TenantSuspendedError();
     }
 
@@ -43,7 +53,7 @@ export async function resolveMembership(
     throw new ForbiddenError('You do not have access to this tenant');
   }
 
-  if (membership.tenant.status !== 'ACTIVE') {
+  if (!allowInactive && membership.tenant.status !== 'ACTIVE') {
     throw new TenantSuspendedError();
   }
 
