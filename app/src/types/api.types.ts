@@ -379,6 +379,10 @@ export interface OfferConfigGroup {
   title: string | null;
   avatarUrl: string | null;
   sessionId: string | null;
+  /** A sessão consegue postar no grupo; null = desconhecido (sessão fora/lista indisponível). */
+  canPost: boolean | null;
+  /** Motivo de `canPost === false`. */
+  postBlockedReason: PostBlockedReason | null;
 }
 
 export type OfferDispatchOrder = 'SEQUENTIAL' | 'INTERLEAVED';
@@ -534,9 +538,14 @@ export interface SessionGroupItem {
   title: string | null;
   avatarUrl: string | null;
   conversationId: string | null;
-  /** A sessão pode postar; false = canal só de leitura (Telegram), serve só para monitorar. Ausente = true. */
+  /** A sessão pode postar; false = grupo só-admins ou canal só de leitura (serve só para monitorar). Ausente = true. */
   canPost?: boolean;
+  /** Motivo de `canPost === false`. */
+  postBlockedReason?: PostBlockedReason | null;
 }
+
+/** Por que a sessão não posta no grupo: só admins enviam (e ela não é) ou canal do Telegram sem permissão. */
+export type PostBlockedReason = 'ADMINS_ONLY' | 'CHANNEL_READONLY';
 
 /** Grupo etiquetado com a sessão de origem (o painel junta a busca de várias sessões). */
 export interface SessionGroupWithSession extends SessionGroupItem {
@@ -612,6 +621,9 @@ export interface BroadcastGroupItem {
   title: string | null;
   avatarUrl: string | null;
   position: number;
+  /** null = desconhecido (sessão fora ou lista indisponível); false = envio bloqueado. Ausente = desconhecido. */
+  canPost?: boolean | null;
+  postBlockedReason?: PostBlockedReason | null;
 }
 
 /** Limite (null = ilimitado) de grupos num canal. */

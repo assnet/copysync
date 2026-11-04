@@ -10,9 +10,9 @@ describe('toOfferError — limite por canal', () => {
     expect(v.planLimit).toEqual({ kind: 'telegramBroadcastGroups', limit: 5 });
   });
 
-  it('canal só de leitura como destino: mensagem própria, sem ação', () => {
+  it('destino sem permissão de postar: mensagem própria, sem ação', () => {
     const v = toOfferError({ code: 'GROUP_NOT_POSTABLE' });
-    expect(v.message).toMatch(/só de leitura/);
+    expect(v.message).toBe('Não dá para postar neste grupo. Escolha outro.');
     expect(v.action).toBe('none');
   });
 

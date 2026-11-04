@@ -4,18 +4,19 @@ import {
   Alert, Avatar, Box, Button, Card, CardActionArea, type CardActionAreaProps, Checkbox, Chip, CircularProgress, InputAdornment, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import { Search, X } from 'lucide-react';
-import { AppIcon, useIsTruncated } from '@/components';
+import { AppIcon, HideUnavailableSwitch, UnavailableReason, useIsTruncated } from '@/components';
 import { GroupAvatar } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { useSessionGroups } from '../../hooks/useSessionGroups';
 import { offerService } from '@/services/offer.service';
 import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { channelOf } from '@/features/sessions/utils';
-import type { OfferConfigResponse, SessionGroupWithSession, SessionItem } from '@/types/api.types';
+import type { OfferConfigResponse, PostBlockedReason, SessionGroupWithSession, SessionItem } from '@/types/api.types';
 import { CHANNELS, countByChannel } from '../../utils/offerConfig';
 import { ChannelCounterChips } from './ChannelCounterChips';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
+import { isUnpostable, postBlockedText } from '../../utils/postBlocked';
 import { sessionColor } from './DispatchOrderPicker';
 
 const t = offerStrings.wizard.groups;
@@ -25,6 +26,8 @@ interface GroupCardActionProps extends Omit<CardActionAreaProps, 'children'> {
   title: string;
   /** Flag de borrar ligada: nunca mostra o tooltip (não vaza o nome). */
   tooltipOff: boolean;
+  /** Motivo de indisponível: vira o tooltip da linha (não contém o nome). */
+  reason?: string;
   /** Recebe a ref do título para medir o corte. */
   children: (titleRef: RefObject<HTMLElement | null>) => ReactNode;
 }
@@ -33,12 +36,12 @@ interface GroupCardActionProps extends Omit<CardActionAreaProps, 'children'> {
  * Área clicável do cartão com o tooltip do nome nela mesma: o foco de teclado fica no botão
  * e abre o tooltip quando o título está cortado.
  */
-function GroupCardAction({ title, tooltipOff, children, ...areaProps }: GroupCardActionProps) {
+function GroupCardAction({ title, tooltipOff, reason, children, ...areaProps }: GroupCardActionProps) {
   const titleRef = useRef<HTMLElement>(null);
   const truncated = useIsTruncated(titleRef, `${title}|${tooltipOff}`);
   const show = !tooltipOff && truncated && !areaProps.disabled;
   return (
-    <Tooltip title={show ? title : ''} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+    <Tooltip title={reason ?? (show ? title : '')} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
       <CardActionArea {...areaProps}>{children(titleRef)}</CardActionArea>
     </Tooltip>
   );
@@ -48,6 +51,9 @@ export interface SelectedGroup {
   title: string | null;
   avatarUrl: string | null;
   sessionId: string;
+  /** Do grupo salvo/listado; false = sessão não posta nele. Ausente/null = desconhecido. */
+  canPost?: boolean | null;
+  postBlockedReason?: PostBlockedReason | null;
 }
 
 interface Props {
@@ -78,8 +84,8 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
   const setSessionFilter = (v: string | null) => setFilters((f) => ({ ...f, sessionFilter: v }));
   const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
   const { items: allItems, partial, loading, failed, retry } = useSessionGroups(sessionIds, search);
-  // Destino de envio: canal só de leitura (canPost false) não entra
-  const items = useMemo(() => allItems.filter((g) => g.canPost !== false), [allItems]);
+  // Grupo onde a sessão não posta: oculto (padrão) ou visível, com motivo e nunca marcável
+  const [hideUnpostable, setHideUnpostable] = usePersistedState('offers.groups.hideUnpostable', true);
   const multi = sessions.length > 1;
   const blurNames = useBlur('offers.groupNames');
   const blurSession = useBlur('offers.sessionName');
@@ -94,8 +100,27 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [ensureFailed, setEnsureFailed] = useState(false);
 
+  const keyOf = (g: SessionGroupWithSession) => `${g.sessionId}:${g.groupJid}`;
+  const idOf = (g: SessionGroupWithSession) => g.conversationId ?? ensured.get(keyOf(g)) ?? null;
+  // Marcado continua à vista mesmo bloqueado: é por ele que o usuário desmarca
+  const isChecked = (g: SessionGroupWithSession) => { const id = idOf(g); return id != null && selected.has(id); };
+  const items = useMemo(
+    () => (hideUnpostable ? allItems.filter((g) => !isUnpostable(g) || isChecked(g)) : allItems),
+    [allItems, hideUnpostable, selected, ensured],
+  );
+
   const excludeTerms = useMemo(() => parseExcludeTerms(exclude), [exclude]);
-  const filtered = useMemo(() => items.filter((g) => {
+  const matches = (g: SessionGroupWithSession) => {
+    if (sessionFilter && g.sessionId !== sessionFilter) return false;
+    if (excludeTerms.length > 0) {
+      const name = fold(g.title ?? '');
+      if (excludeTerms.some((term) => name.includes(term))) return false;
+    }
+    return true;
+  };
+  // Ocultos agora, já com busca e filtros aplicados
+  const hiddenCount = hideUnpostable ? allItems.filter((g) => isUnpostable(g) && !isChecked(g) && matches(g)).length : 0;
+  const filteredRaw = useMemo(() => items.filter((g) => {
     if (sessionFilter && g.sessionId !== sessionFilter) return false;
     if (excludeTerms.length > 0) {
       const name = fold(g.title ?? '');
@@ -103,18 +128,22 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
     }
     return true;
   }), [items, sessionFilter, excludeTerms]);
+  // Indisponíveis no fim da lista
+  const filtered = useMemo(
+    () => [...filteredRaw.filter((g) => !isUnpostable(g)), ...filteredRaw.filter(isUnpostable)],
+    [filteredRaw],
+  );
   const shown = expanded ? filtered : filtered.slice(0, VISIBLE_GROUPS);
   const hidden = filtered.length - shown.length;
 
-  const keyOf = (g: SessionGroupWithSession) => `${g.sessionId}:${g.groupJid}`;
-  const idOf = (g: SessionGroupWithSession) => g.conversationId ?? ensured.get(keyOf(g)) ?? null;
   const sessionIndex = (id: string) => sessionIds.indexOf(id);
   const sessionOf = (id: string) => sessions.find((s) => s.id === id);
 
   const toggle = async (g: SessionGroupWithSession) => {
     const id = idOf(g);
+    const group: SelectedGroup = { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId, canPost: g.canPost ?? null, postBlockedReason: g.postBlockedReason ?? null };
     if (id) {
-      onToggle(id, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId });
+      onToggle(id, group);
       return;
     }
     setPendingKey(keyOf(g));
@@ -122,7 +151,7 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
     try {
       const { conversationId } = await offerService.ensureSessionGroup(g.sessionId, g.groupJid);
       setEnsured((prev) => new Map(prev).set(keyOf(g), conversationId));
-      onToggle(conversationId, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId });
+      onToggle(conversationId, group);
     } catch {
       setEnsureFailed(true);
     } finally {
@@ -164,6 +193,15 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
           }}
         />
       </Box>
+
+      <HideUnavailableSwitch
+        checked={hideUnpostable}
+        onChange={setHideUnpostable}
+        label={t.hideUnpostable}
+        tooltip={t.hideUnpostableTooltip}
+        hiddenCount={hiddenCount}
+        hiddenCountLabel={t.hiddenCount}
+      />
 
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         {multi && (
@@ -220,6 +258,11 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
         <Box sx={gridSx}>
           {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} variant="rounded" height={64} />)}
         </Box>
+      ) : filtered.length === 0 && hiddenCount > 0 ? (
+        <Box sx={{ py: 4, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t.allHiddenUnpostable(hiddenCount)}</Typography>
+          <Button size="small" onClick={() => setHideUnpostable(false)}>{t.showHidden}</Button>
+        </Box>
       ) : filtered.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
           {items.length > 0 ? t.emptyFiltered : search.trim() ? t.emptySearch : t.empty}
@@ -235,6 +278,11 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
             const limit = groupLimits[channel];
             const blocked = !checked && limit != null && count[channel] >= limit;
             const title = g.title || t.untitled;
+            // Sem permissão de postar: nunca marcável; se já marcado, o clique só desmarca
+            const unpostable = isUnpostable(g);
+            const locked = unpostable && !checked;
+            const reason = unpostable ? postBlockedText(g.postBlockedReason) : null;
+            const reasonId = `offer-group-reason-${keyOf(g).replace(/[^\w-]/g, '_')}`;
             const card = (
               <Card
                 variant="outlined"
@@ -242,24 +290,33 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
                   borderColor: checked ? 'primary.main' : 'divider',
                   bgcolor: checked ? 'action.selected' : 'background.paper',
                   opacity: blocked ? 0.55 : 1,
+                  borderStyle: unpostable ? 'dashed' : 'solid',
                   transition: 'border-color 150ms ease, background-color 150ms ease',
                 }}
               >
                 <GroupCardAction
                   title={title}
                   tooltipOff={blurNames}
+                  reason={reason ? (checked ? `${reason.long} ${t.unpostableSelectedHint}` : reason.long) : undefined}
                   role="checkbox"
                   aria-checked={checked}
-                  aria-disabled={blocked}
+                  aria-disabled={blocked || locked}
+                  aria-describedby={reason ? reasonId : undefined}
                   aria-busy={pending}
+                  // Bloqueado por permissão: sem `disabled` (mantém foco e tooltip), só sem clique
                   disabled={blocked || pendingKey !== null}
-                  onClick={() => void toggle(g)}
-                  sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'flex-start', minHeight: 60 }}
+                  onClick={locked ? undefined : () => void toggle(g)}
+                  sx={{
+                    px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'flex-start', minHeight: 60,
+                    ...(locked && { cursor: 'not-allowed', '&:hover .MuiCardActionArea-focusHighlight': { opacity: 0 } }),
+                  }}
                 >
                   {(titleRef) => (<>
-                  <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
+                  <Box sx={{ opacity: unpostable ? 0.6 : 1, display: 'flex' }}>
+                    <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
+                  </Box>
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography ref={titleRef} variant="body2" noWrap sx={{ fontWeight: 500 }}>
+                    <Typography ref={titleRef} variant="body2" noWrap sx={{ fontWeight: 500, opacity: unpostable ? 0.6 : 1 }}>
                       <Blurred when={blurNames} inline radius={5}>{title}</Blurred>
                     </Typography>
                     {multi && session && (
@@ -268,11 +325,12 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
                         <Blurred when={blurSession} inline radius={4}>{t.viaSession(session.name)}</Blurred>
                       </Typography>
                     )}
+                    {reason && <UnavailableReason id={reasonId} text={reason.short} />}
                   </Box>
                   {pending ? (
                     <CircularProgress size={18} sx={{ m: 0.75 }} aria-hidden />
                   ) : (
-                    <Checkbox checked={checked} tabIndex={-1} disableRipple size="small" sx={{ p: 0.5 }} slotProps={{ input: { 'aria-hidden': true } }} />
+                    <Checkbox checked={checked} disabled={locked} tabIndex={-1} disableRipple size="small" sx={{ p: 0.5 }} slotProps={{ input: { 'aria-hidden': true } }} />
                   )}
                   </>)}
                 </GroupCardAction>

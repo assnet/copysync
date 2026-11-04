@@ -56,7 +56,7 @@ export function OfferConfigWizard({
     sessionIds: config?.sessionIds ?? [],
     selected: groups
       .filter((g): g is OfferConfigGroup & { sessionId: string } => g.sessionId != null && (config?.sessionIds ?? []).includes(g.sessionId))
-      .map((g) => [g.conversationId, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId }]),
+      .map((g) => [g.conversationId, { title: g.title, avatarUrl: g.avatarUrl, sessionId: g.sessionId, canPost: g.canPost, postBlockedReason: g.postBlockedReason }]),
     intervalMin: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
     intervalMax: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
     dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
@@ -189,7 +189,8 @@ export function OfferConfigWizard({
         {step === 2 && (
           <ConfigConfirmStep
             sessions={chosen}
-            groups={[...selected.values()]}
+            groups={[...selected.entries()].map(([id, g]) => ({ ...g, id }))}
+            onRemoveGroup={(id) => setSelected((m) => { const next = new Map(m); next.delete(id); return next; })}
             intervalMin={intervalMin}
             intervalMax={intervalMax}
             onInterval={(min, max) => { setIntervalMin(min); setIntervalMax(max); }}

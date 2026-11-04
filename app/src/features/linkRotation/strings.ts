@@ -5,7 +5,7 @@
  * - frase com variável é função tipada; componente nunca concatena pedaços
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
-import type { RotationChannel, RotationGroupStatus, RotationStatus, RotationStrategy } from './types';
+import type { RotationChannel, RotationGroupStatus, RotationInviteBlockedReason, RotationStatus, RotationStrategy } from './types';
 import type { PlanLimitKind } from './planUpsell';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -244,9 +244,22 @@ export const linkRotationStrings = {
     partial: 'A lista pode estar incompleta: a sessão ainda está carregando os grupos.',
     empty: {
       whatsapp: 'Nenhum grupo encontrado nesta sessão. A sessão precisa participar dos grupos: adicione o número dela aos grupos que você quer usar.',
-      telegram: 'Nenhum grupo ou canal encontrado. No Telegram, só aparecem os grupos e canais em que a sessão é admin com permissão de convidar.',
+      telegram: 'Nenhum grupo ou canal encontrado. A sessão precisa participar dos grupos e canais que você quer usar.',
     } satisfies Record<RotationChannel, string>,
     emptySearch: 'Nenhum grupo com esse nome.',
+    hideUninvitable: 'Ocultar grupos onde não posso gerar convite',
+    hideUninvitableTooltip: 'Para gerar o link de convite, a sessão precisa ser admin do grupo. Desligue para ver todos: eles entram no rodízio só com link manual.',
+    hiddenCount: (n: number) => `${count(n)} ${plural(n, 'oculto', 'ocultos')}`,
+    allHiddenUninvitable: (n: number) =>
+      n === 1
+        ? 'O grupo encontrado está oculto porque esta sessão não é admin dele.'
+        : `Os ${count(n)} grupos encontrados estão ocultos porque esta sessão não é admin deles.`,
+    showHidden: 'Mostrar ocultos',
+    inviteBlocked: { NOT_ADMIN: 'Precisa ser admin: só com link manual' } satisfies Record<RotationInviteBlockedReason, string>,
+    inviteBlockedTooltip: {
+      NOT_ADMIN: 'Só administradores geram link de convite. Torne esta sessão admin ou use o grupo com link manual (você cola o convite).',
+    } satisfies Record<RotationInviteBlockedReason, string>,
+    inviteBlockedAuto: 'Esta sessão não é admin: o link automático não vai funcionar. Use Manual e cole o convite.',
     moveUp: 'Subir na ordem',
     moveDown: 'Descer na ordem',
     moveUpAria: (name: string) => `Subir ${name} na ordem`,
@@ -387,7 +400,7 @@ export const linkRotationStrings = {
     domainTaken: (hostname: string | null) => (hostname ? `O domínio ${hostname} já está cadastrado.` : 'Esse domínio já está cadastrado.'),
     domainInUse: 'Este domínio está em uso por links de clientes e não pode ser removido.',
     notConfigured: 'O rodízio de links está temporariamente indisponível. Tente mais tarde.',
-    inviteNotAllowed: 'A sessão não consegue gerar o convite deste grupo (precisa ser admin; no Telegram, com permissão de convidar). Torne-a admin ou cole o link manualmente.',
+    inviteNotAllowed: 'Esta sessão precisa ser admin para gerar convite.',
     engineNotReady: 'A sessão está iniciando. Tente de novo em alguns segundos.',
     sessionNotConnected: 'A sessão está desconectada. Conecte-a para continuar.',
   },

@@ -5,7 +5,7 @@
  * - frase com variável é função tipada; componente nunca concatena pedaços
  * - sem nome de marca do produto (usar "a ferramenta")
  */
-import type { LimitChannel, OfferAudience, OfferDispatchStatus } from '@/types/api.types';
+import type { LimitChannel, OfferAudience, OfferDispatchStatus, PostBlockedReason } from '@/types/api.types';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const groupsLabel = (n: number) => `${n} ${plural(n, 'grupo', 'grupos')}`;
@@ -109,6 +109,16 @@ export const offerStrings = {
       showAll: (hidden: number) => `Ver todos (+${hidden})`,
       showLess: 'Esconder',
       required: 'Selecione ao menos um grupo.',
+      hideUnpostable: 'Ocultar grupos onde não posso postar',
+      hideUnpostableTooltip: 'Esconde grupos e canais em que esta sessão não consegue enviar mensagens. Desligue para ver todos, com o motivo.',
+      hiddenCount: (n: number) => `${n} ${plural(n, 'oculto', 'ocultos')}`,
+      allHiddenUnpostable: (n: number) =>
+        n === 1
+          ? 'O grupo encontrado está oculto porque você não pode postar nele.'
+          : `Os ${n} grupos encontrados estão ocultos porque você não pode postar neles.`,
+      showHidden: 'Mostrar ocultos',
+      /** Grupo já marcado que perdeu a permissão: o clique só desmarca. */
+      unpostableSelectedHint: 'Clique para tirar da seleção.',
     },
     confirm: {
       title: 'Confira e salve',
@@ -146,7 +156,30 @@ export const offerStrings = {
         safe: 'Seguro',
       } satisfies Record<import('./utils/offerConfig').IntervalRiskLevel, string>,
       more: (n: number) => `+${n}`,
+      removeGroup: 'Remover',
     },
+  },
+
+  /** Grupo onde a sessão não posta: motivo curto (visível) e longo (tooltip). */
+  postBlocked: {
+    short: {
+      ADMINS_ONLY: 'Só admins podem enviar',
+      CHANNEL_READONLY: 'Canal sem permissão para postar',
+    } satisfies Record<PostBlockedReason, string>,
+    long: {
+      ADMINS_ONLY: 'Neste grupo só administradores enviam mensagens, e esta sessão não é admin.',
+      CHANNEL_READONLY: 'Esta sessão não tem permissão para publicar neste canal.',
+    } satisfies Record<PostBlockedReason, string>,
+    /** Motivo não informado pela API. */
+    unknownShort: 'Sem permissão para postar',
+    unknownLong: 'Esta sessão não tem permissão para enviar mensagens neste grupo.',
+    savedChip: 'Envio bloqueado',
+    savedHint: 'Peça para virar admin ou remova o grupo da lista.',
+    savedAlert: (n: number) =>
+      n === 1
+        ? '1 grupo não vai receber envios. Remova ou troque esse grupo.'
+        : `${n} grupos não vão receber envios. Remova ou troque esses grupos.`,
+    reviewGroups: 'Revisar grupos',
   },
 
   summary: {
@@ -375,7 +408,7 @@ export const offerStrings = {
   },
 
   errors: {
-    GROUP_NOT_POSTABLE: 'Esta sessão não pode postar neste grupo (canal só de leitura). Escolha outro destino.',
+    GROUP_NOT_POSTABLE: 'Não dá para postar neste grupo. Escolha outro.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use um link da Shopee, Amazon ou Mercado Livre.',
     OFFER_LINK_NOT_OWNED: 'Este link é de outro afiliado. Gere o link na sua conta e cole aqui.',
     OFFER_LINK_NOT_AFFILIATE: 'Esse não é um link de afiliado. Gere o link pela sua conta de afiliado da loja.',

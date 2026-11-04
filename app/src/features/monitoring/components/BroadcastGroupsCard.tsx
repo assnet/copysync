@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Alert, Box, Button, Chip, IconButton, Snackbar, Stack, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
-import { ArrowDown, ArrowUp, Plus, Send, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Lock, Plus, Send, X } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
@@ -17,6 +17,7 @@ import { SessionAvatar } from './SessionAvatar';
 import { uiErrorMessage } from '../utils/apiErrors';
 
 const t = monitoringStrings.groups;
+const tp = monitoringStrings.postBlocked;
 /** Tempo para desfazer a remoção de um grupo. */
 const UNDO_MS = 6000;
 
@@ -71,6 +72,15 @@ export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNa
     if (undo && currentSig !== undo.after && currentSig !== undo.before) setUndo(null);
   }, [currentSig, undo]);
   const empty = groups.length === 0;
+  const baseId = useId();
+  const rowId = (i: number) => `${baseId}-row-${i}`;
+  // Salvo onde a sessão não posta (canPost null = desconhecido: nada)
+  const unpostable = groups.flatMap((g, i) => (g.canPost === false ? [i] : []));
+  const reviewGroups = () => {
+    const el = document.getElementById(rowId(unpostable[0]!));
+    el?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    el?.focus({ preventScroll: true });
+  };
   const primaryTint = toneSurface(theme, 'primary');
 
   const commit = async (next: GroupRef[], done?: string): Promise<boolean> => {
@@ -141,6 +151,15 @@ export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNa
     >
       <Box role="status" aria-live="polite" sx={VISUALLY_HIDDEN}>{announce}</Box>
       {error && <Alert severity="error" sx={{ mb: 1.5, borderRadius: INNER_RADIUS }} onClose={() => setError(null)}>{error}</Alert>}
+      {unpostable.length > 0 && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 1.5, borderRadius: INNER_RADIUS, alignItems: 'center', '& .MuiAlert-action': { pt: 0 } }}
+          action={<Button color="inherit" size="small" onClick={reviewGroups} sx={{ minHeight: 44 }}>{t.reviewGroups}</Button>}
+        >
+          {t.savedUnpostableAlert(unpostable.length)}
+        </Alert>
+      )}
       {empty ? (
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', py: 1 }}>
           <Box aria-hidden sx={iconTileSx(theme, 'success')}><AppIcon icon={Send} size="sm" /></Box>
@@ -152,11 +171,15 @@ export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNa
             const title = g.title || t.untitled;
             const other = g.sessionId !== monitorSessionId;
             const channel = sessionChannelOf(g.sessionId);
+            const blocked = g.canPost === false ? (g.postBlockedReason ?? 'ADMINS_ONLY') : null;
             return (
               <Box
                 component="li"
+                id={rowId(i)}
+                tabIndex={blocked ? -1 : undefined}
                 key={`${g.sessionId}:${g.groupJid}`}
                 sx={{
+                  scrollMarginTop: 80, '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
                   display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0, minHeight: 48, px: 1, py: 0.5,
                   borderRadius: INNER_RADIUS,
                   transition: theme.transitions.create('background-color', { duration: 200 }),
@@ -168,7 +191,7 @@ export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNa
                     [REDUCED_MOTION]: { transition: 'none' },
                     '@media (hover: none)': { opacity: 1 },
                   },
-                  '&:hover [data-row-actions], &:focus-within [data-row-actions]': { opacity: 1 },
+                  '&:hover [data-row-actions], &:focus-within [data-row-actions], & [data-row-actions][data-blocked]': { opacity: 1 },
                 }}
               >
                 <Box
@@ -206,9 +229,27 @@ export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNa
                       />
                     </Tooltip>
                   )}
+                  {blocked && (
+                    <Tooltip title={`${tp.long[blocked]} ${t.savedUnpostableHint}`} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+                      <Chip
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        icon={<AppIcon icon={Lock} size="inline" />}
+                        label={t.savedUnpostableChip}
+                        tabIndex={0}
+                        sx={{
+                          mt: 0.25, ml: other ? 0.5 : 0, maxWidth: '100%', height: 'auto', minHeight: 20,
+                          '& .MuiChip-icon': { ml: 0.5, mr: -0.25, fontSize: 12 },
+                          '& .MuiChip-label': { typography: 'caption', fontWeight: 600, px: 0.5, overflow: 'hidden', textOverflow: 'ellipsis' },
+                        }}
+                      />
+                    </Tooltip>
+                  )}
                 </Box>
                 <Stack
                   data-row-actions
+                  data-blocked={blocked ? '' : undefined}
                   direction="row"
                   role="group"
                   aria-label={t.actionsLabel(title)}

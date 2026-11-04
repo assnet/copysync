@@ -25,6 +25,10 @@ describe('linkRotationError', () => {
     expect(linkRotationError({ code: 'LINK_INVITE_URL_INVALID' }).message).toBe(linkRotationStrings.errors.inviteUrlInvalid.whatsapp);
   });
 
+  it('GROUP_INVITE_NOT_ALLOWED pede sessão admin', () => {
+    expect(linkRotationError({ code: 'GROUP_INVITE_NOT_ALLOWED' }).message).toBe('Esta sessão precisa ser admin para gerar convite.');
+  });
+
   it('LINK_SLUG_TAKEN devolve só sugestões em texto', () => {
     expect(linkRotationError({ code: 'LINK_SLUG_TAKEN', meta: { suggestions: ['promo-2', 3, 'promo-3'] } }).suggestions).toEqual(['promo-2', 'promo-3']);
   });

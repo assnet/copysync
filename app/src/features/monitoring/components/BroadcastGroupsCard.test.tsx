@@ -55,3 +55,19 @@ describe('BroadcastGroupsCard — desfazer remoção', () => {
     await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Desfazer' })).toBeNull());
   });
 });
+
+describe('BroadcastGroupsCard — grupo salvo onde não posso postar', () => {
+  it('canPost false: chip na linha, alerta no topo e "Remover" disponível', () => {
+    setup([g('a', 0), { ...g('b', 1), canPost: false, postBlockedReason: 'CHANNEL_READONLY' }]);
+    expect(screen.getByText('Envio bloqueado')).toBeInTheDocument();
+    expect(screen.getByText('1 grupo não vai receber envios. Remova ou troque esse grupo.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revisar grupos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover da lista: Grupo b' })).toBeEnabled();
+  });
+
+  it('canPost null (desconhecido) não mostra aviso', () => {
+    setup([{ ...g('a', 0), canPost: null, postBlockedReason: null }]);
+    expect(screen.queryByText('Envio bloqueado')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Revisar grupos' })).toBeNull();
+  });
+});

@@ -1,9 +1,10 @@
-import { AvatarGroup, Box, Button, Card, Chip, Tooltip, Typography } from '@mui/material';
+import { Alert, AvatarGroup, Box, Button, Card, Chip, Tooltip, Typography } from '@mui/material';
 import { Pencil, Smartphone, TriangleAlert } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
 import type { OfferConfigGroup, OfferDispatchOrder, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
 import { GroupAvatar } from './GroupChip';
+import { isUnpostable } from '../utils/postBlocked';
 import { Blurred, useBlur } from '@/features/privacy';
 
 const t = offerStrings.summary;
@@ -31,6 +32,8 @@ export function OfferConfigSummary({ sessions, missing, groups, dispatchOrder, o
   const anyOffline = sessions.some((s) => s.status !== 'CONNECTED');
   const names = groups.slice(0, MAX_NAMES).map((g) => g.title || untitled);
   const restNames = groups.length - names.length;
+  // Grupos salvos onde a sessão perdeu a permissão de postar (null = desconhecido, sem aviso)
+  const unpostable = groups.filter(isUnpostable);
 
   return (
     <Card
@@ -39,6 +42,17 @@ export function OfferConfigSummary({ sessions, missing, groups, dispatchOrder, o
       aria-label={t.label}
       sx={{ px: 2, py: 1.5, mb: 3, display: 'flex', flexDirection: 'column', gap: 1.25 }}
     >
+      {unpostable.length > 0 && (
+        <Alert
+          severity="warning"
+          action={<Button color="inherit" size="small" onClick={onEdit}>{offerStrings.postBlocked.reviewGroups}</Button>}
+        >
+          {offerStrings.postBlocked.savedAlert(unpostable.length)}
+          <Typography variant="caption" component="p" sx={{ mt: 0.25 }}>
+            <Blurred when={blurNames} inline radius={4}>{unpostable.map((g) => g.title || untitled).join(', ')}</Blurred>
+          </Typography>
+        </Alert>
+      )}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         {sessions.map((s) => {
           const offline = s.status !== 'CONNECTED';

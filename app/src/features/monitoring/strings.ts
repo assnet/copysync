@@ -5,7 +5,7 @@
  * - frase com variável é função tipada; componente nunca concatena pedaços
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
-import type { AffiliateProvider, CapturedOfferReason, CapturedOfferStatus, MonitorTextMode } from '@/types/api.types';
+import type { AffiliateProvider, CapturedOfferReason, CapturedOfferStatus, MonitorTextMode, PostBlockedReason } from '@/types/api.types';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -129,6 +129,20 @@ export const monitoringStrings = {
     orderSaved: 'Ordem salva',
     listSaved: 'Lista salva',
     position: (n: number) => `${n}º`,
+    savedUnpostableChip: 'Envio bloqueado',
+    savedUnpostableHint: 'Peça para virar admin ou remova o grupo da lista.',
+    savedUnpostableAlert: (n: number) =>
+      n === 1 ? '1 grupo não vai receber envios. Remova ou troque esse grupo.' : `${n} grupos não vão receber envios. Remova ou troque esses grupos.`,
+    reviewGroups: 'Revisar grupos',
+  },
+
+  /** Motivo de a sessão não postar no grupo: curto (na linha) e longo (Tooltip). */
+  postBlocked: {
+    short: { ADMINS_ONLY: 'Só admins podem enviar', CHANNEL_READONLY: 'Canal sem permissão para postar' } satisfies Record<PostBlockedReason, string>,
+    long: {
+      ADMINS_ONLY: 'Neste grupo só administradores enviam mensagens, e esta sessão não é admin.',
+      CHANNEL_READONLY: 'Esta sessão não tem permissão para publicar neste canal.',
+    } satisfies Record<PostBlockedReason, string>,
   },
 
   picker: {
@@ -180,6 +194,12 @@ export const monitoringStrings = {
     keywordsFull: (max: number) => `Limite de ${max} palavras-chave por grupo.`,
     keywordTooLong: (max: number) => `Cada palavra-chave tem até ${max} caracteres.`,
     orderHelp: 'A ordem da lista é a ordem de envio. Use as setas para reordenar.',
+    hideUnpostable: 'Ocultar grupos onde não posso postar',
+    hideUnpostableTooltip: 'Esconde grupos e canais em que esta sessão não consegue enviar mensagens. Desligue para ver todos, com o motivo.',
+    hiddenCount: (n: number) => `${n} ${plural(n, 'oculto', 'ocultos')}`,
+    allHiddenUnpostable: (n: number) =>
+      n === 1 ? 'O grupo encontrado está oculto porque você não pode postar nele.' : `Os ${n} grupos encontrados estão ocultos porque você não pode postar neles.`,
+    showHidden: 'Mostrar ocultos',
     cancel: 'Cancelar',
     save: 'Salvar',
     close: 'Fechar',
@@ -305,7 +325,7 @@ export const monitoringStrings = {
         : `Seu plano permite até ${max} ${what} no ${channel}, somando todas as sessões. Remova algum ou veja os planos.`;
     },
     planFeature: 'Seu plano não inclui este recurso.',
-    groupNotPostable: 'Esta sessão não pode postar em um dos grupos escolhidos (canal só de leitura). Ele serve para monitorar, não para receber ofertas.',
+    groupNotPostable: 'Não dá para postar em um dos grupos escolhidos (só admins enviam ou canal sem permissão). Escolha outro.',
     broadcastTaken: 'Um dos grupos já recebe as ofertas do monitoramento de outra sessão. Tire-o daqui ou de lá.',
     duplicateGroup: 'O mesmo grupo foi escolhido por duas sessões. Deixe só uma, senão a oferta sai duas vezes nele.',
     crossSessionUnavailable: 'Usar duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Escolha grupos desta sessão ou de outro canal, ou faça upgrade.',

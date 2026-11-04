@@ -110,6 +110,38 @@ describe('RotationGroupsDialog', () => {
     expect(svc.saveGroups.mock.calls[0]![1][0].manualInviteUrl).toBe('https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv');
   });
 
+  it('sem convite: oculto por padrão, "Mostrar ocultos" revela com motivo e entra como manual', async () => {
+    setup(rotation(), 3, [cand(1, { canInvite: false, inviteBlockedReason: 'NOT_ADMIN' })]);
+    expect(await screen.findByText(t.allHiddenUninvitable(1))).toBeInTheDocument();
+    expect(screen.getByText(t.hiddenCount(1))).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: t.selectAria('Grupo 1') })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: t.showHidden }));
+    const box = await checkbox(1);
+    expect(screen.getByText(t.inviteBlocked.NOT_ADMIN)).toBeInTheDocument();
+    fireEvent.click(box);
+    expect(screen.getByRole('button', { name: t.linkManual })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText(t.manualInviteUrl)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: t.linkAuto }));
+    expect(screen.getByText(t.inviteBlockedAuto)).toBeInTheDocument();
+  });
+
+  it('sem convite já marcado continua visível com o filtro ligado', async () => {
+    setup(rotation([saved(1)]), 3, [cand(1, { selected: true, canInvite: false }), cand(2)]);
+    expect(await checkbox(1)).toBeChecked();
+    expect(screen.queryByText(t.hiddenCount(1))).not.toBeInTheDocument();
+  });
+
+  it('indisponíveis vão para o fim da lista', async () => {
+    sessionStorage.clear();
+    setup(rotation(), 3, [cand(1, { canInvite: false }), cand(2)]);
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Ocultar grupos/i }));
+    await checkbox(1);
+    const names = screen.getAllByRole('checkbox', { name: /^Usar / }).map((c) => c.getAttribute('aria-label'));
+    expect(names).toEqual([t.selectAria('Grupo 2'), t.selectAria('Grupo 1')]);
+  });
+
   it('NEEDS_LINK mostra o campo para colar o convite', async () => {
     setup(rotation([saved(1, { status: 'NEEDS_LINK' })]), 3, [cand(1, { selected: true, status: 'NEEDS_LINK' })]);
     await checkbox(1);

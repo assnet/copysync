@@ -18,7 +18,7 @@ const dispatch = (id: string, notBefore: string): OfferDispatchItem => ({
   id, conversationId: `c-${id}`, status: 'QUEUED', notBefore, chatMessageId: null, failureReason: null, waitingSession: false, updatedAt: notBefore,
 });
 
-const group = { conversationId: 'c-1', title: 'Grupo', avatarUrl: null, sessionId: 's1' };
+const group = { conversationId: 'c-1', title: 'Grupo', avatarUrl: null, sessionId: 's1', canPost: true, postBlockedReason: null };
 
 const panel = (o: OfferItem) => (
   <OfferSendPanel

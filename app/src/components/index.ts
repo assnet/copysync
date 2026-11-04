@@ -19,3 +19,7 @@ export { SwipeCards } from './SwipeCards';
 export type { SwipeCardsItem, SwipeCardsProps, SwipeCardsStatus } from './SwipeCards';
 export { WhatsAppIcon, TelegramIcon, BRAND_COLORS, brandColor } from './brandIcons';
 export type { BrandChannel } from './brandIcons';
+export { HideUnavailableSwitch } from './HideUnavailableSwitch';
+export type { HideUnavailableSwitchProps } from './HideUnavailableSwitch';
+export { UnavailableReason } from './UnavailableReason';
+export type { UnavailableReasonProps } from './UnavailableReason';

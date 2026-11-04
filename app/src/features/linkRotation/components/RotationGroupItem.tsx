@@ -4,7 +4,7 @@ import {
   type ChipProps,
 } from '@mui/material';
 import { ArrowDown, ArrowUp, Info, RefreshCw, X } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, UnavailableReason } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { linkRotationStrings } from '../strings';
@@ -52,6 +52,8 @@ export interface RotationGroupItemProps {
   inviteUrl: string | null;
   /** `null` = grupo novo, ainda não salvo. */
   status: RotationGroupStatus | null;
+  /** A sessão não gera convite deste grupo (não é admin): só funciona com link manual. */
+  inviteBlocked?: boolean;
   memberCount: number | null;
   /** Cliques desde a última leitura de membros (estimativa de entradas). */
   clicksSinceSync: number;
@@ -127,7 +129,7 @@ function CapacityControl({ value, channel, labelId, onChange }: {
 
 /** Um grupo escolhido: posição, situação, teto de membros, peso (só WEIGHTED) e origem do convite. */
 export function RotationGroupItem({
-  item, index, total, strategy, channel, inviteUrl, status, memberCount, clicksSinceSync, atCapacity, canRefresh, refreshing, error, refreshError, onChange, onMove, onRemove, onRefresh,
+  item, index, total, strategy, channel, inviteUrl, status, inviteBlocked = false, memberCount, clicksSinceSync, atCapacity, canRefresh, refreshing, error, refreshError, onChange, onMove, onRemove, onRefresh,
 }: RotationGroupItemProps) {
   const blurName = useBlur('linkRotation.groupName');
   const blurInvite = useBlur('linkRotation.inviteLink');
@@ -243,6 +245,8 @@ export function RotationGroupItem({
           </Tooltip>
         </ToggleButtonGroup>
       </Stack>
+
+      {inviteBlocked && item.linkSource === 'AUTO' && <UnavailableReason text={t.inviteBlockedAuto} />}
 
       {needsInviteField(item, status) && (
         <TextField

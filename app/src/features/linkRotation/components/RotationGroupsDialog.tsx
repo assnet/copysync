@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Info, Search, X } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, HideUnavailableSwitch, UnavailableReason } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -69,6 +69,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
     () => draftFromRotation(rotation),
     { scope: 'tab', version: 1 },
   );
+  const [hideUninvitable, setHideUninvitable] = usePersistedState<boolean>('linkRotation.groups.hideUninvitable', true, { scope: 'tab' });
   const [candidates, setCandidates] = useState<RotationGroupCandidates | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +110,11 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
     return map;
   }, [candidates]);
 
+  const inviteBlockedJids = useMemo(
+    () => new Set((candidates?.groups ?? []).filter((c) => c.canInvite === false).map((c) => c.groupJid)),
+    [candidates],
+  );
+
   const selected = useMemo(() => new Set(draft.items.map((i) => i.groupJid)), [draft.items]);
   const total = candidates?.groups.length ?? draft.items.length;
 
@@ -117,6 +123,15 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
     const list = candidates?.groups ?? [];
     return q ? list.filter((c) => normalize(c.title ?? '').includes(q)) : list;
   }, [candidates, draft.search]);
+
+  // Sem convite (sessão não é admin): oculto pelo filtro, salvo se já marcado (para poder tirar).
+  // Visível: entra no fim da lista e só com link manual (a API aceita; AUTO viraria NEEDS_LINK).
+  const { visible, hiddenCount } = useMemo(() => {
+    const blocked = (c: RotationGroupCandidate) => c.canInvite === false && !selected.has(c.groupJid);
+    const ok = filtered.filter((c) => !blocked(c));
+    const rest = filtered.filter(blocked);
+    return hideUninvitable ? { visible: ok, hiddenCount: rest.length } : { visible: [...ok, ...rest], hiddenCount: 0 };
+  }, [filtered, hideUninvitable, selected]);
 
   const setItems = (fn: (items: RotationGroupDraft[]) => RotationGroupDraft[]) => setDraft((d) => ({ ...d, items: fn(d.items) }));
 
@@ -146,7 +161,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
         avatarUrl: c.avatarUrl,
         capacity: ROTATION_CAPACITY[channel].default,
         weight: ROTATION_RANGES.weight.min,
-        linkSource: 'AUTO',
+        linkSource: c.canInvite === false ? 'MANUAL' : 'AUTO',
         manualInviteUrl: '',
       },
     ]);
@@ -295,6 +310,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
                       channel={channel}
                       inviteUrl={g?.inviteUrl ?? null}
                       status={g?.status ?? null}
+                      inviteBlocked={inviteBlockedJids.has(item.groupJid)}
                       memberCount={g?.memberCount ?? null}
                       clicksSinceSync={g?.clicksSinceSync ?? 0}
                       atCapacity={g ? g.memberCount !== null && g.memberCount + g.clicksSinceSync >= g.capacity : false}
@@ -327,8 +343,18 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
               onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))}
               inputProps={{ 'aria-label': t.search }}
               InputProps={{ startAdornment: <InputAdornment position="start"><AppIcon icon={Search} /></InputAdornment> }}
-              sx={{ mt: 0.5, mb: 1 }}
+              sx={{ mt: 0.5, mb: 0.5 }}
             />
+            <Box sx={{ mb: 1 }}>
+              <HideUnavailableSwitch
+                checked={hideUninvitable}
+                onChange={setHideUninvitable}
+                label={t.hideUninvitable}
+                tooltip={t.hideUninvitableTooltip}
+                hiddenCount={hiddenCount}
+                hiddenCountLabel={t.hiddenCount}
+              />
+            </Box>
             {candidates?.partial && <Alert severity="warning" sx={{ mb: 1 }}>{t.partial}</Alert>}
             {loading && !candidates && (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} aria-label={t.availableTitle} /></Box>
@@ -340,24 +366,45 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
             {!showEmpty && candidates && filtered.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>{t.emptySearch}</Typography>
             )}
-            {filtered.length > 0 && (
+            {filtered.length > 0 && visible.length === 0 && (
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ py: 1 }}>
+                <Typography variant="body2" color="text.secondary">{t.allHiddenUninvitable(hiddenCount)}</Typography>
+                <Button size="small" onClick={() => setHideUninvitable(false)}>{t.showHidden}</Button>
+              </Stack>
+            )}
+            {visible.length > 0 && (
               <List dense disablePadding sx={{ border: 1, borderColor: 'divider', borderRadius: 2, maxHeight: 320, overflowY: 'auto' }}>
-                {filtered.map((c) => {
+                {visible.map((c) => {
                   const name = c.title?.trim() || t.untitled;
                   const checked = selected.has(c.groupJid);
-                  return (
-                    <ListItemButton key={c.groupJid} onClick={() => toggle(c)} selected={checked}>
+                  const reason = c.canInvite === false ? (c.inviteBlockedReason ?? 'NOT_ADMIN') : null;
+                  const reasonId = reason ? `rotation-invite-blocked-${c.groupJid}` : undefined;
+                  const row = (
+                    <ListItemButton key={c.groupJid} onClick={() => toggle(c)} selected={checked} aria-describedby={reasonId} sx={{ minHeight: 48 }}>
                       <ListItemIcon sx={{ minWidth: 40 }}>
                         <Checkbox edge="start" checked={checked} tabIndex={-1} disableRipple inputProps={{ 'aria-label': t.selectAria(name) }} />
                       </ListItemIcon>
-                      <Box sx={{ mr: 1.5 }}><GroupAvatar title={c.title} avatarUrl={c.avatarUrl} size={32} blurFlag="linkRotation.groupAvatar" /></Box>
+                      <Box sx={{ mr: 1.5, opacity: reason ? 0.6 : 1 }}><GroupAvatar title={c.title} avatarUrl={c.avatarUrl} size={32} blurFlag="linkRotation.groupAvatar" /></Box>
                       <ListItemText
                         primary={<Blurred when={blurName} inline>{name}</Blurred>}
-                        secondary={c.status ? linkRotationStrings.groupStatus[c.status] : undefined}
-                        primaryTypographyProps={{ noWrap: true }}
+                        secondary={
+                          reason ? (
+                            <>
+                              {c.status && <Box component="span" sx={{ display: 'block' }}>{linkRotationStrings.groupStatus[c.status]}</Box>}
+                              <UnavailableReason id={reasonId} text={t.inviteBlocked[reason]} />
+                            </>
+                          ) : c.status ? linkRotationStrings.groupStatus[c.status] : undefined
+                        }
+                        primaryTypographyProps={{ noWrap: true, sx: reason ? { opacity: 0.6 } : undefined }}
+                        secondaryTypographyProps={reason ? { component: 'div' } : undefined}
                       />
                     </ListItemButton>
                   );
+                  return reason ? (
+                    <Tooltip key={c.groupJid} title={t.inviteBlockedTooltip[reason]} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000} placement="top">
+                      {row}
+                    </Tooltip>
+                  ) : row;
                 })}
               </List>
             )}

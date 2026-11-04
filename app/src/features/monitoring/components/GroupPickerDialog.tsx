@@ -8,7 +8,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronDown, Ear, Info, Lock, Plus, Search, Send, TriangleAlert, X } from 'lucide-react';
-import { AppIcon, OverflowTooltipText } from '@/components';
+import { AppIcon, HideUnavailableSwitch, OverflowTooltipText, UnavailableReason } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
 import { Blurred, useBlur } from '@/features/privacy';
@@ -16,7 +16,7 @@ import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
 import { channelOf, type SessionChannel } from '@/features/sessions/utils';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import type { SessionItem, TakenBroadcastGroup } from '@/types/api.types';
+import type { PostBlockedReason, SessionItem, TakenBroadcastGroup } from '@/types/api.types';
 import { INNER_RADIUS, REDUCED_MOTION, REDUCED_MOTION_QUERY, focusRingScopeSx, iconTileSx, toneSurface, toneText } from '../monitoringStyle';
 import { monitoringStrings } from '../strings';
 import { uiErrorMessage } from '../utils/apiErrors';
@@ -25,6 +25,7 @@ import { SessionAvatar } from './SessionAvatar';
 
 const t = monitoringStrings.picker;
 const tg = monitoringStrings.groups;
+const tp = monitoringStrings.postBlocked;
 
 export interface PickedGroup {
   groupJid: string;
@@ -144,6 +145,8 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
   // 'all' ou id da sessão: filtra a lista de disponíveis (só com sessão cruzada)
   const [sessionFilter, setSessionFilter, clearSessionFilter] = usePersistedState<string>(`monitoring.picker.sessionFilter.${mode}.${sessionId}`, 'all');
   const [openKw, setOpenKw, clearOpenKw] = usePersistedState<string | null>(`monitoring.picker.openKeywords.${sessionId}`, null);
+  // Disparo: esconde grupos onde a sessão não posta (preferência da tela, não é limpa ao fechar)
+  const [hideUnpostable, setHideUnpostable] = usePersistedState<boolean>('monitoring.picker.hideUnpostable', true);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   // Nome/foto em memória (nunca no storage): os salvos (`initial`) e os escolhidos nesta tela.
@@ -216,9 +219,18 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
     const owner = takenBy.get(keyOf(g));
     return owner ? t.takenByMonitor(blurSession ? t.sessionOf(owner.slice(-4)) : sessionName(owner)) : null;
   };
-  /** Problema de um selecionado: destino de outro monitoramento ou JID repetido (2ª sessão em diante). */
-  const selectedProblem = (g: { sessionId: string; groupJid: string }) =>
-    takenReason(g) ?? (selectedJidOwner.get(g.groupJid) !== keyOf(g) ? t.sameGroupOtherSession : null) ?? sameChannelReason(g);
+  /** Disparo: motivo de a sessão não postar no grupo (null = posta ou desconhecido). */
+  const postBlockOf = (g: { canPost?: boolean; postBlockedReason?: PostBlockedReason | null }): PostBlockedReason | null =>
+    mode === 'broadcast' && g.canPost === false ? (g.postBlockedReason ?? 'ADMINS_ONLY') : null;
+  const selectedPostBlock = (g: { sessionId: string; groupJid: string }) => {
+    const item = findIn(groups.items, g) ?? findIn(lookup.items, g);
+    return item ? postBlockOf(item) : null;
+  };
+  /** Problema de um selecionado: sem permissão de postar, destino de outro monitoramento ou JID repetido (2ª sessão em diante). */
+  const selectedProblem = (g: { sessionId: string; groupJid: string }) => {
+    const pb = selectedPostBlock(g);
+    return (pb ? tp.short[pb] : null) ?? takenReason(g) ?? (selectedJidOwner.get(g.groupJid) !== keyOf(g) ? t.sameGroupOtherSession : null) ?? sameChannelReason(g);
+  };
   const hasProblems = !monitored && selected.some((g) => selectedProblem(g) !== null);
   const move = (i: number, dir: -1 | 1) =>
     setDraft((prev) => {
@@ -231,10 +243,15 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
   // Bloqueados (usados na outra lista) vão para o fim; `sort` é estável e mantém a ordem do servidor
   // Sessão filtrada que desconectou volta para "Todas"
   const activeFilter = multi && sessionIds.includes(sessionFilter) ? sessionFilter : 'all';
-  // Disparo: canal só de leitura (canPost false) não aparece; monitorados mostram todos
-  const available = groups.items
-    .filter((g) => (mode !== 'broadcast' || g.canPost !== false) && !selectedKeys.has(keyOf(g)) && (activeFilter === 'all' || g.sessionId === activeFilter))
-    .sort((a, b) => Number(excluded.has(a.groupJid)) - Number(excluded.has(b.groupJid)));
+  // Disparo: onde a sessão não posta some com o filtro ligado; desligado, aparece no fim, sem poder marcar.
+  // Monitorados mostram todos (ler basta).
+  const candidates = groups.items
+    .filter((g) => !selectedKeys.has(keyOf(g)) && (activeFilter === 'all' || g.sessionId === activeFilter));
+  const hiddenCount = hideUnpostable ? candidates.filter((g) => postBlockOf(g) !== null).length : 0;
+  const rank = (g: (typeof candidates)[number]) => (postBlockOf(g) ? 2 : excluded.has(g.groupJid) ? 1 : 0);
+  const available = candidates
+    .filter((g) => !hideUnpostable || postBlockOf(g) === null)
+    .sort((a, b) => rank(a) - rank(b));
   const baseId = useId();
   const titleId = `monitoring-picker-${mode}`;
   const subtitleId = `${titleId}-subtitle`;
@@ -363,6 +380,16 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
         sx={blurNames ? BLUR_INPUT : undefined}
         slotProps={{ input: { startAdornment: <InputAdornment position="start"><AppIcon icon={Search} size="sm" /></InputAdornment> } }}
       />
+      {mode === 'broadcast' && (
+        <HideUnavailableSwitch
+          checked={hideUnpostable}
+          onChange={setHideUnpostable}
+          label={t.hideUnpostable}
+          tooltip={t.hideUnpostableTooltip}
+          hiddenCount={hiddenCount}
+          hiddenCountLabel={t.hiddenCount}
+        />
+      )}
       {sessionFilterChips}
       {groups.partial && <InfoLine text={t.partial} />}
       <Typography variant="subtitle2" component="h3" color="text.secondary">{multi ? t.availableAll : t.available}</Typography>
@@ -371,18 +398,56 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
           <Alert severity="error" sx={{ borderRadius: INNER_RADIUS }} action={<Button color="inherit" size="small" onClick={groups.retry}>{t.retry}</Button>}>{t.loadError}</Alert>
         ) : groups.loading && groups.items.length === 0 ? (
           <Stack spacing={1}>{[0, 1, 2].map((k) => <Skeleton key={k} variant="rounded" height={52} sx={{ borderRadius: INNER_RADIUS }} />)}</Stack>
+        ) : available.length === 0 && hiddenCount > 0 ? (
+          <Box sx={{ py: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">{t.allHiddenUnpostable(hiddenCount)}</Typography>
+            <Button size="small" variant="text" onClick={() => setHideUnpostable(false)} sx={{ minHeight: 44, ml: -1 }}>{t.showHidden}</Button>
+          </Box>
         ) : available.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>{t.noResults}</Typography>
         ) : (
           <Stack component="ul" spacing={0.25} sx={{ m: 0, p: 0, listStyle: 'none' }} aria-busy={saving}>
-            {available.map((g) => {
+            {available.map((g, idx) => {
+              const postBlock = postBlockOf(g);
               const usedElsewhere = excluded.has(g.groupJid);
               const blocked = usedElsewhere ? (monitored ? t.usedElsewhereMonitored : t.usedElsewhereBroadcast)
                 : !monitored ? (takenReason(g) ?? (selectedJidOwner.has(g.groupJid) ? t.sameGroupOtherSession : null) ?? sameChannelReason(g)) : null;
               const full = fullIn(chOf(g.sessionId));
-              const disabled = blocked !== null || full;
+              const disabled = postBlock !== null || blocked !== null || full;
               const reason = blocked ?? (full ? (listChannels.length > 1 ? t.limitReachedChannel(channelLabel(chOf(g.sessionId))) : t.limitReached) : '');
               const title = g.title || tg.untitled;
+              const reasonId = `${baseId}-pb-${idx}`;
+              const addButton = (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AppIcon icon={Plus} size="sm" />}
+                  disabled={disabled || saving}
+                  onClick={() => toggle(g)}
+                  aria-label={t.addAria(title)}
+                  sx={{ flexShrink: 0, minHeight: 36, borderRadius: 999 }}
+                >
+                  {t.add}
+                </Button>
+              );
+              if (postBlock) {
+                // Indisponível: linha focável (Tooltip com o motivo longo), nunca marcável
+                return (
+                  <Tooltip key={keyOf(g)} title={tp.long[postBlock]} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+                    <Box component="li" tabIndex={0} aria-describedby={reasonId} data-unpostable sx={{ ...rowSx, cursor: 'not-allowed', outline: 'none', '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 } }}>
+                      <Box sx={{ opacity: 0.6, display: 'flex' }}>
+                        <GroupAvatar title={blurNames ? null : g.title} avatarUrl={g.avatarUrl} size={32} blurFlag="monitoring.groupAvatars" />
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ opacity: 0.6 }}>{groupName(g.title)}</Box>
+                        {multi && sessionLine(g.sessionId)}
+                        <UnavailableReason id={reasonId} text={tp.short[postBlock]} />
+                      </Box>
+                      <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}>{addButton}</Box>
+                    </Box>
+                  </Tooltip>
+                );
+              }
               return (
                 <Box component="li" key={keyOf(g)} sx={rowSx}>
                   <Box sx={{ opacity: disabled ? 0.6 : 1, display: 'flex' }}>
@@ -398,17 +463,7 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
                       </Typography>
                     )}
                   </Box>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AppIcon icon={Plus} size="sm" />}
-                    disabled={disabled || saving}
-                    onClick={() => toggle(g)}
-                    aria-label={t.addAria(title)}
-                    sx={{ flexShrink: 0, minHeight: 36, borderRadius: 999 }}
-                  >
-                    {t.add}
-                  </Button>
+                  {addButton}
                 </Box>
               );
             })}

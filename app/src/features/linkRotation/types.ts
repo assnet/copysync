@@ -12,6 +12,8 @@ export type RotationStatus = 'ACTIVE' | 'PAUSED' | 'PAUSED_BY_PLAN';
 export type RotationStrategy = 'BALANCED' | 'SEQUENTIAL' | 'WEIGHTED' | 'RANDOM';
 export type RotationGroupStatus = 'ACTIVE' | 'PAUSED' | 'FULL' | 'NEEDS_LINK' | 'PAUSED_BY_PLAN';
 export type RotationLinkSource = 'AUTO' | 'MANUAL';
+/** Por que a sessão não gera convite do grupo. */
+export type RotationInviteBlockedReason = 'NOT_ADMIN';
 
 export const ROTATION_STRATEGIES: readonly RotationStrategy[] = ['BALANCED', 'SEQUENTIAL', 'WEIGHTED', 'RANDOM'];
 
@@ -125,6 +127,10 @@ export interface RotationGroupCandidate {
   title: string | null;
   avatarUrl: string | null;
   conversationId: string | null;
+  /** A sessão gera o convite sozinha (admin). `false` = só entra com link manual. Ausente = true. */
+  canInvite?: boolean;
+  /** Motivo de `canInvite === false`. */
+  inviteBlockedReason?: RotationInviteBlockedReason | null;
   selected: boolean;
   rotationGroupId: string | null;
   status: RotationGroupStatus | null;

@@ -252,3 +252,51 @@ describe('GroupPickerDialog — rascunho após reload', () => {
     expect(screen.queryByText('ZB')).toBeNull();
   });
 });
+
+describe('GroupPickerDialog — grupos onde não posso postar (disparo)', () => {
+  const groups = [
+    { groupJid: 'g1', title: 'Só Admins', avatarUrl: null, canPost: false, postBlockedReason: 'ADMINS_ONLY' as const },
+    { groupJid: 'g2', title: 'Meu Grupo', avatarUrl: null, canPost: true, postBlockedReason: null },
+  ];
+  const dialog = (mode: 'broadcast' | 'monitored' = 'broadcast') => (
+    <MemoryRouter>
+      <GroupPickerDialog mode={mode} sessionId="s1" initial={[]} caps={{ whatsapp: null, telegram: null }} excludeJids={[]} onClose={() => undefined} onSave={async () => undefined} />
+    </MemoryRouter>
+  );
+
+  it('switch ligado por padrão esconde; desligado mostra a linha com motivo, sem poder adicionar', async () => {
+    listSessionGroups.mockResolvedValue({ groups, partial: false });
+    render(dialog());
+    expect(await screen.findByText('Meu Grupo')).toBeInTheDocument();
+    expect(screen.queryByText('Só Admins')).toBeNull();
+    expect(screen.getByText('1 oculto')).toBeInTheDocument();
+    const sw = screen.getByLabelText('Ocultar grupos onde não posso postar', { selector: 'input' });
+    expect(sw).toBeChecked();
+    await act(async () => fireEvent.click(sw));
+    expect(screen.getByText('Só Admins')).toBeInTheDocument();
+    expect(screen.getByText('Só admins podem enviar')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Adicionar Só Admins' })).toBeDisabled();
+    const row = screen.getByText('Só Admins').closest('li')!;
+    expect(row).toHaveAttribute('tabindex', '0');
+    // Indisponível vai para o fim
+    expect(screen.getByText('Meu Grupo').compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(JSON.parse(sessionStorage.getItem('ui.monitoring.picker.hideUnpostable') ?? '{}').d).toBe(false);
+  });
+
+  it('tudo oculto: aviso e "Mostrar ocultos" desliga o filtro', async () => {
+    listSessionGroups.mockResolvedValue({ groups: [groups[0]], partial: false });
+    render(dialog());
+    expect(await screen.findByText('O grupo encontrado está oculto porque você não pode postar nele.')).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Mostrar ocultos' })));
+    expect(screen.getByText('Só Admins')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ocultar grupos onde não posso postar', { selector: 'input' })).not.toBeChecked();
+  });
+
+  it('monitorados: sem filtro nem switch', async () => {
+    listSessionGroups.mockResolvedValue({ groups, partial: false });
+    render(dialog('monitored'));
+    expect(await screen.findByText('Só Admins')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Ocultar grupos onde não posso postar')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Adicionar Só Admins' })).toBeEnabled();
+  });
+});

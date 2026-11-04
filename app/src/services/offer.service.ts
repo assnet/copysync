@@ -13,6 +13,7 @@ import type {
   UpdateOfferRequest,
   SessionGroupsResponse,
   OfferDispatchOrder,
+  PostBlockedReason,
 } from '@/types/api.types';
 
 const BASE = '/campaigns/offers';
@@ -98,7 +99,10 @@ interface OfferConfigApiDto {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
-  groups: { id: string; title: string | null; avatarUrl?: string | null; sessionId: string | null }[];
+  groups: {
+    id: string; title: string | null; avatarUrl?: string | null; sessionId: string | null;
+    canPost?: boolean | null; postBlockedReason?: PostBlockedReason | null;
+  }[];
   groupLimit: number | null;
   sessionLimit: number | null;
   crossSessionDispatch?: boolean;
@@ -117,7 +121,11 @@ function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
           dispatchOrder: dto.dispatchOrder,
         }
       : null,
-    groups: dto.groups.map((g) => ({ conversationId: g.id, title: g.title, avatarUrl: g.avatarUrl ?? null, sessionId: g.sessionId })),
+    groups: dto.groups.map((g) => ({
+      conversationId: g.id, title: g.title, avatarUrl: g.avatarUrl ?? null, sessionId: g.sessionId,
+      // API anterior sem o campo: desconhecido, nada de aviso
+      canPost: g.canPost ?? null, postBlockedReason: g.postBlockedReason ?? null,
+    })),
     groupLimit: dto.groupLimit,
     sessionLimit: dto.sessionLimit,
     crossSessionDispatch: dto.crossSessionDispatch ?? false,

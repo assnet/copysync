@@ -10,6 +10,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Opção com título, texto auxiliar e/ou controles filhos | `ToggleOption` (linha inteira clicável, realce quando ligada, filhos revelados abaixo alinhados ao título) | `FormControlLabel` + `Typography` soltos; filhos com `ml` fixo |
 | Faixa "entre X e Y" (intervalo, janela, preço) | `RangeSlider` | dois `TextField` numéricos |
 | Espera/cooldown com fim conhecido | `CooldownBar` + `serverNow()` | `LinearProgress` com `setInterval` |
+| Item indisponível em lista de seleção (grupo onde a sessão não posta / não convida) | `HideUnavailableSwitch` (ligado por padrão, `usePersistedState`) + `UnavailableReason` na linha | esconder sem contador; linha desabilitada sem motivo; deixar marcar e falhar no envio |
 | Ícone | `AppIcon` (Lucide) | emoji, `@mui/icons-material` em tela nova |
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
 | Texto de uma linha cortado com reticências (nome de grupo, sessão, produto) | `OverflowTooltipText`; em `Chip`/elemento próprio, `useIsTruncated` + `Tooltip` | atributo nativo `title`; tooltip fixo que aparece mesmo com o texto inteiro |
