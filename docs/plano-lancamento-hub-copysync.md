@@ -76,10 +76,10 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 
 | Trilha | Entrega |
 | --- | --- |
-| H3 | **Checkout por aplicação**: cada `Application` tem seu checkout (domínio, marca, planos, remetente, webhook) servido pelo mesmo código da central. `VITE_APPLICATION_KEY` no front, `GET /plans?app=`, `checkout/process` grava `applicationId`; um deploy estático por aplicação. Para o CopySync: cadastrar `Application copysync`, planos LITE/PRO/MAX e deploy do checkout dele |
+| H3 | **Venda pela Cakto** (decisão do owner 2026-11-04; o checkout próprio por aplicação fica para depois da escala, ver seção "Checkout por aplicação"): cadastrar `Application copysync` e planos LITE/PRO/MAX com `applicationId`; produtos do CopySync na Cakto com webhook numa URL própria da aplicação (`/webhook/app/copysync/cakto`, só essa parte do H8 é antecipada; o PulsoSocial segue na rota legada, sem mudança); match de plano filtrado pela aplicação da rota. Sem front de checkout, sem `ALLOWED_ORIGINS` |
 | H4 | E-mail por aplicação com **SMTP e domínio próprios** (H10: `EmailSenderConfig` de aplicação, transporter por aplicação; PulsoSocial segue no transporter atual) + `POST /integrations/email/send` (`SET_PASSWORD`, `TEAM_INVITE`) |
 | Infra | **Resend** (decidido 2026-11-03, mesma conta do PulsoSocial): verificar o domínio do CopySync, publicar SPF/DKIM do Resend e DMARC no DNS, criar API key só de envio restrita a esse domínio; pré-requisito de H4 |
-| B | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para `Application.checkoutUrl` |
+| B | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para a página de venda da Cakto (`Application.checkoutUrl`) |
 | E2 | Migration `add-session-lease` (`ownerWorkerId`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt`, `adoptFailures`, `shard`); lease com fence local e teardown; CAS em `writeKeys`; helper `markConnectRequested` nas 6 rotas de conexão e limpeza em disconnect/logout/delete/suspensão; `closeAllSockets()` antes do flush no shutdown (deploy sem 440, failover) |
 | P | Grupos de disparo + horário de postagem |
 
@@ -121,7 +121,8 @@ Não é função do hub. Três responsabilidades, três lugares:
 ## O que bloqueia o quê
 
 ```
-S1–S3 ──► H1 ──► H2 ──► H3 (checkout por aplicação) ──► primeira venda
+S1–S3 ──► H1 ──► H2 ──► H3 (venda pela Cakto) ──► primeira venda
+E4 (escala pronta) ──► checkout próprio por aplicação (estudo + fase própria)
 H0 ──► E1 ──► E2 ──► E3 ──► E4 ──► E5
 H0 (banco dedicado) ──► E1 e testes de carga
 service-desk P1.0 + USR-01 (M0–M1) ──► B(M1 receiver) ──► B(M2)        (B depende de H2 só para teste ponta a ponta; desconexão por evento entre processos e reconciliação restrita a worker dependem de E3)
@@ -129,6 +130,10 @@ gerador ──► disparo/horário ──► massa ──► monitoramento ─�
 ```
 
 ## Checkout por aplicação (vale para toda aplicação, não só CopySync)
+
+**Adiado (decisão do owner 2026-11-04).** Até a escala do CopySync estar pronta (E4), toda aplicação vende pela Cakto, como o
+PulsoSocial já faz. O checkout da central por aplicação (marca, cores, logo e domínio próprios) vira fase própria depois disso e
+ainda precisa de estudo. O desenho abaixo é o ponto de partida desse estudo, não compromisso do M2.
 
 Um checkout **por `Application`**, mesmo código e mesmo processo da central. O que é por aplicação é dado:
 
