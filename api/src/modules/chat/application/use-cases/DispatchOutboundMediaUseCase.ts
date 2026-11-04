@@ -67,6 +67,7 @@ export class DispatchOutboundMediaUseCase {
     // Desfecho padrão é FAILED: qualquer exceção chega ao `finally` com ele.
     let status: ChatMessageStatus | null = ChatMessageStatus.FAILED;
     let sentAt: Date | undefined;
+    let realExternalId: string | undefined;
     try {
       const message = await this.messageRepo.findById(job.messageId, job.tenantId);
       // Fora de PENDING (retry duplicado, recuperação, apagada): nada a fazer.
@@ -74,7 +75,10 @@ export class DispatchOutboundMediaUseCase {
         status = null;
         return;
       }
-      await this.send(job, message);
+      const sentId = await this.send(job, message);
+      // Engine que só conhece o id real após o envio (Telegram) devolve outro: grava o real,
+      // senão citação/reação e status posteriores não acham a mensagem.
+      if (sentId && sentId !== message.externalMessageId) realExternalId = sentId;
       status = ChatMessageStatus.SENT;
       sentAt = this.now();
     } catch (err) {
@@ -83,11 +87,12 @@ export class DispatchOutboundMediaUseCase {
         'Falha ao despachar mídia',
       );
     } finally {
-      if (status) await this.settle(job, status, sentAt);
+      if (status) await this.settle(job, status, sentAt, realExternalId);
     }
   }
 
-  private async send(job: OutboundMediaJob, message: ChatMessage): Promise<void> {
+  /** Devolve o id externo informado pela engine (pode diferir do pré-gerado). */
+  private async send(job: OutboundMediaJob, message: ChatMessage): Promise<string | undefined> {
     if (!this.engine) throw new SessionNotConnectedError(job.sessionId);
     const kind = KIND_BY_TYPE[message.type];
     if (!kind || !message.mimeType) {
@@ -108,7 +113,7 @@ export class DispatchOutboundMediaUseCase {
       const { filePath, sizeBytes } = acquired;
       await this.assertTmpSpace(message.id, sizeBytes);
 
-      await this.engine.sendMediaMessage({
+      const result = await this.engine.sendMediaMessage({
         sessionId: job.sessionId,
         tenantId:  job.tenantId,
         to:        target.recipientPhone,
@@ -126,6 +131,7 @@ export class DispatchOutboundMediaUseCase {
         // Só no job em memória: retry/recuperação chegam sem menção (ver OutboundMediaJob)
         ...(job.mentions?.length ? { mentions: job.mentions } : {}),
       });
+      return result?.messageId;
     } finally {
       await acquired.release();
     }
@@ -186,11 +192,16 @@ export class DispatchOutboundMediaUseCase {
   }
 
   /** Grava o desfecho e publica só se a transição ocorreu. Nunca lança. */
-  private async settle(job: OutboundMediaJob, status: ChatMessageStatus, sentAt?: Date): Promise<void> {
+  private async settle(
+    job: OutboundMediaJob, status: ChatMessageStatus, sentAt?: Date, externalMessageId?: string,
+  ): Promise<void> {
     try {
-      const updated = await this.messageRepo.transitionStatus(
-        job.messageId, job.tenantId, [ChatMessageStatus.PENDING], status, ...(sentAt ? [sentAt] : []),
-      );
+      const from = [ChatMessageStatus.PENDING];
+      const updated = !sentAt
+        ? await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status)
+        : externalMessageId
+          ? await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status, sentAt, externalMessageId)
+          : await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status, sentAt);
       if (!updated) return;
       this.publisher.publishStatusUpdated({
         tenantId:       updated.tenantId,

@@ -157,11 +157,12 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
     from: ChatMessageStatus[],
     to: ChatMessageStatus,
     sentAt?: Date,
+    externalMessageId?: string,
   ): Promise<ChatMessage | null> {
     // A condição no WHERE torna a troca atômica: quem chegar depois não sobrescreve.
     const { count } = await this.prisma.chatMessage.updateMany({
       where: { id, tenantId, status: { in: from } },
-      data: { status: to, ...(sentAt ? { sentAt } : {}) },
+      data: { status: to, ...(sentAt ? { sentAt } : {}), ...(externalMessageId ? { externalMessageId } : {}) },
     });
     if (count !== 1) return null;
     return this.findById(id, tenantId);

@@ -82,7 +82,8 @@ export interface IChatMessageRepository {
    * Troca o status só se o atual estiver em `from` (e grava `sentAt`, se informado).
    * Devolve `null` quando nada mudou: outro processo ou transição já passou por ela
    * (ex.: o `DELIVERED` chegou antes do `SENT` do despacho). Torna retry e recuperação
-   * idempotentes.
+   * idempotentes. `externalMessageId`, se informado, troca o id externo provisório pelo
+   * definitivo na mesma escrita (engine que só conhece o id real depois do envio, ex.: Telegram).
    */
   transitionStatus(
     id: string,
@@ -90,6 +91,7 @@ export interface IChatMessageRepository {
     from: ChatMessageStatus[],
     to: ChatMessageStatus,
     sentAt?: Date,
+    externalMessageId?: string,
   ): Promise<ChatMessage | null>;
   /**
    * Marca como `FAILED` as mensagens `PENDING` criadas antes de `olderThan`, fora de

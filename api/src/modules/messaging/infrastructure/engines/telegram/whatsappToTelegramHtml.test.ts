@@ -42,6 +42,13 @@ describe('whatsappToTelegramHtml', () => {
     expect(html('```CUPOM```')).toBe('<code>CUPOM</code>');
   });
 
+  it('link colado em código não engole o placeholder', () => {
+    const out = html('https://x.com/a`CUPOM`');
+    expect(out).toBe('https://x.com/a<code>CUPOM</code>');
+    expect(out).not.toContain('\u0001');
+    expect(html('```X```shopee.com.br/p_1')).toBe('<code>X</code>shopee.com.br/p_1');
+  });
+
   it('texto sem marcação sai igual', () => {
     expect(html('Olá, tudo bem?')).toBe('Olá, tudo bem?');
   });

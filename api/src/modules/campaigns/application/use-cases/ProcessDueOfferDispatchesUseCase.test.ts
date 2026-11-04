@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { FLOOD_WAIT_MARGIN_MS, OFFLINE_MAX_WAIT_MS, OFFLINE_RETRY_MS, ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
+import { FLOOD_MAX_WAIT_MS, FLOOD_WAIT_MARGIN_MS, OFFLINE_MAX_WAIT_MS, OFFLINE_RETRY_MS, ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
 import { TelegramFloodWaitError } from '../../../../shared/errors/internal/TelegramErrors';
 import { AppError } from '../../../../shared/errors/AppError';
 import { InMemoryOfferDispatchRepository, InMemoryOfferRepository, makeOffer, NOW, TENANT } from './offerTestFakes';
@@ -285,7 +285,8 @@ describe('ProcessDueOfferDispatchesUseCase — FLOOD_WAIT (Telegram)', () => {
     s.sender.send.mockRejectedValueOnce(new TelegramFloodWaitError(30));
     await s.uc.execute();
     const d = s.dispatches.items[0]!;
-    expect(d).toMatchObject({ status: 'QUEUED', claimToken: null, failureReason: null });
+    // motivo marca o relógio como flood (não é queda de sessão); a UI só o lê em FAILED/SKIPPED
+    expect(d).toMatchObject({ status: 'QUEUED', claimToken: null, failureReason: 'TELEGRAM_FLOOD_WAIT', waitingSessionSince: NOW });
     expect(d.notBefore).toEqual(new Date(NOW.getTime() + 30_000 + FLOOD_WAIT_MARGIN_MS));
     expect(s.offers.items[0]!.status).toBe('SENDING');
     // passada a espera, sai
@@ -302,5 +303,37 @@ describe('ProcessDueOfferDispatchesUseCase — FLOOD_WAIT (Telegram)', () => {
       .mockRejectedValueOnce(new TelegramFloodWaitError(5));
     await s.uc.execute();
     expect(statuses(s)).toEqual([['FAILED', 'TELEGRAM_FLOOD_WAIT'], ['FAILED', 'TELEGRAM_FLOOD_WAIT']]);
+  });
+
+  it('flood acumulado passa do teto (FLOOD repetido) → FAILED e atrasados da sessão juntos', async () => {
+    const s = setup(['c1', 'c2']);
+    for (const d of s.dispatches.items) d.sessionId = 's1';
+    Object.assign(s.dispatches.items[0]!, {
+      waitingSessionSince: new Date(NOW.getTime() - FLOOD_MAX_WAIT_MS + 60_000), failureReason: 'TELEGRAM_FLOOD_WAIT',
+    });
+    s.sender.send.mockRejectedValueOnce(new TelegramFloodWaitError(120));
+    const uc = new ProcessDueOfferDispatchesUseCase({ offers: s.offers, dispatches: s.dispatches, sender: s.sender, now: () => NOW, batchSize: 1 });
+    await uc.execute();
+    expect(statuses(s)).toEqual([['FAILED', 'TELEGRAM_FLOOD_WAIT'], ['FAILED', 'TELEGRAM_FLOOD_WAIT']]);
+  });
+
+  it('flood longo seguido de queda: a sessão fora do ar ganha a própria janela de 6 h', async () => {
+    const s = setup(['c1']);
+    s.dispatches.items[0]!.sessionId = 's1';
+    s.sender.send.mockRejectedValue(new SessionNotConnectedError('s1'));
+    Object.assign(s.dispatches.items[0]!, {
+      waitingSessionSince: new Date(NOW.getTime() - 5 * 3_600_000), failureReason: 'TELEGRAM_FLOOD_WAIT',
+    });
+    await s.uc.execute();
+    expect(s.dispatches.items[0]).toMatchObject({ status: 'QUEUED', waitingSessionSince: NOW, failureReason: null });
+  });
+
+  it('queda longa seguida de flood: o relógio do flood começa agora', async () => {
+    const s = setup(['c1']);
+    s.dispatches.items[0]!.sessionId = 's1';
+    s.dispatches.items[0]!.waitingSessionSince = new Date(NOW.getTime() - 5 * 3_600_000);
+    s.sender.send.mockRejectedValueOnce(new TelegramFloodWaitError(3_600));
+    await s.uc.execute();
+    expect(s.dispatches.items[0]).toMatchObject({ status: 'QUEUED', waitingSessionSince: NOW, failureReason: 'TELEGRAM_FLOOD_WAIT' });
   });
 });

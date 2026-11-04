@@ -267,7 +267,9 @@ export interface IMessagingEngine {
   createOutboundMessageId(sessionId: string): string;
   /**
    * Envia mídia a partir de um arquivo em disco, com o id pré-gerado. Arquivo acima do limite
-   * do WhatsApp falha antes de subir (`MediaTooLargeError`).
+   * do WhatsApp falha antes de subir (`MediaTooLargeError`). `messageId` do resultado é o id
+   * real: igual ao pré-gerado no WhatsApp; no Telegram (id só existe após o envio) é outro, e o
+   * chat troca o provisório por ele ao gravar SENT.
    */
   sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult>;
   /** Aplica ou remove nossa reação em uma mensagem. `emoji: null` remove. */

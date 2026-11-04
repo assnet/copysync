@@ -23,10 +23,14 @@ const OFFLINE_CODES = new Set(['SESSION_NOT_CONNECTED']);
 /**
  * Conta pediu para esperar (Telegram `FLOOD_WAIT`, `meta.seconds`): recusado antes de sair, então
  * reenviar não duplica. Volta à fila com `notBefore = agora + seconds` (+ folga) segurando a vez da
- * sessão, pelo mesmo caminho da sessão fora do ar. Espera maior que OFFLINE_MAX_WAIT_MS → FAILED.
+ * sessão, pelo mesmo caminho da sessão fora do ar, mas com relógio próprio: `failureReason` =
+ * FLOOD_WAIT_REASON enquanto QUEUED marca que `waitingSessionSince` conta o flood, não a queda.
+ * Flood acumulado (desde o 1º, incluindo a espera pedida) ≥ FLOOD_MAX_WAIT_MS → FAILED.
  */
-const FLOOD_WAIT_CODES = new Set(['TELEGRAM_FLOOD_WAIT']);
+const FLOOD_WAIT_REASON = 'TELEGRAM_FLOOD_WAIT';
+const FLOOD_WAIT_CODES = new Set([FLOOD_WAIT_REASON]);
 export const FLOOD_WAIT_MARGIN_MS = 1_000;
+export const FLOOD_MAX_WAIT_MS = 6 * 3_600_000;
 
 /** Ofertas SENDING órfãs finalizadas por tick. */
 export const FINALIZE_SWEEP_LIMIT = 20;
@@ -127,10 +131,7 @@ export class ProcessDueOfferDispatchesUseCase {
         return;
       }
       const floodMs = err instanceof AppError && FLOOD_WAIT_CODES.has(err.code) ? floodWaitMs(err) : null;
-      if (floodMs !== null && dispatch.sessionId && floodMs < OFFLINE_MAX_WAIT_MS) {
-        await this.waitForFlood(dispatch, now, floodMs);
-        return;
-      }
+      if (floodMs !== null && dispatch.sessionId && (await this.waitForFlood(dispatch, now, floodMs))) return;
       result = toFailure(err);
       // Sem texto da oferta no log
       logger.warn({ dispatchId: id, offerId, tenantId, code: result.failureReason }, 'offer dispatch not sent');
@@ -150,7 +151,8 @@ export class ProcessDueOfferDispatchesUseCase {
   private async waitForSession(dispatch: OfferDispatch, now: Date): Promise<void> {
     const { dispatches } = this.deps;
     const { id, tenantId, offerId, claimToken, sessionId } = dispatch;
-    const since = dispatch.waitingSessionSince ?? now;
+    // Vinha esperando flood: a queda começa a contar agora (o flood não consome a janela de 6 h)
+    const since = isFloodWait(dispatch) ? now : dispatch.waitingSessionSince ?? now;
     if (now.getTime() - since.getTime() >= OFFLINE_MAX_WAIT_MS) {
       await dispatches.markResult(id, tenantId, claimToken!, { status: 'FAILED', failureReason: 'SESSION_NOT_CONNECTED' });
       // Vencidos da sessão e o resto desta oferta: nenhum ganha outra janela de 6 h
@@ -164,13 +166,26 @@ export class ProcessDueOfferDispatchesUseCase {
     if (deferred) logger.info({ dispatchId: id, offerId, tenantId, sessionId }, 'offer dispatch waiting for session to reconnect');
   }
 
-  /** Rate limit da conta: volta à fila para depois da espera pedida, mantendo a vez da sessão. */
-  private async waitForFlood(dispatch: OfferDispatch, now: Date, waitMs: number): Promise<void> {
+  /**
+   * Rate limit da conta: volta à fila para depois da espera pedida, mantendo a vez da sessão.
+   * false = teto de flood acumulado estourado (quem chama grava FAILED TELEGRAM_FLOOD_WAIT e os
+   * atrasados da sessão falham junto, como na desistência da sessão fora do ar).
+   */
+  private async waitForFlood(dispatch: OfferDispatch, now: Date, waitMs: number): Promise<boolean> {
     const { id, tenantId, offerId, claimToken, sessionId } = dispatch;
     const sendNow = (this.deps.now ?? (() => new Date()))();
-    const retryAt = new Date(Math.max(now.getTime(), sendNow.getTime()) + waitMs + FLOOD_WAIT_MARGIN_MS);
-    const deferred = await this.deps.dispatches.deferForOfflineSession(id, tenantId, claimToken!, retryAt, dispatch.waitingSessionSince ?? now);
+    const at = Math.max(now.getTime(), sendNow.getTime());
+    // Relógio do flood: só herda `waitingSessionSince` se a espera anterior também era flood
+    const since = isFloodWait(dispatch) && dispatch.waitingSessionSince ? dispatch.waitingSessionSince : new Date(at);
+    if (at - since.getTime() + waitMs >= FLOOD_MAX_WAIT_MS) {
+      const failed = await this.deps.dispatches.failOverdueInSession(tenantId, sessionId!, now, FLOOD_WAIT_REASON, offerId);
+      logger.warn({ dispatchId: id, offerId, tenantId, sessionId, waitMs, failed }, 'offer dispatch gave up on rate limit');
+      return false;
+    }
+    const retryAt = new Date(at + waitMs + FLOOD_WAIT_MARGIN_MS);
+    const deferred = await this.deps.dispatches.deferForOfflineSession(id, tenantId, claimToken!, retryAt, since, FLOOD_WAIT_REASON);
     if (deferred) logger.info({ dispatchId: id, offerId, tenantId, sessionId, waitMs }, 'offer dispatch rate limited, rescheduled');
+    return true;
   }
 
   /** O envio pode seguir em segundo plano após o timeout; por isso SEND_TIMEOUT não reenvia. */
@@ -214,6 +229,11 @@ export class ProcessDueOfferDispatchesUseCase {
     const counts = await dispatches.countByStatus(offerId, tenantId);
     await offers.transitionStatus(offerId, tenantId, ['SENDING', 'PAUSED'], counts.SENT > 0 ? 'SENT' : 'FAILED');
   }
+}
+
+/** Na fila esperando flood (motivo gravado no defer); o resto é espera de sessão fora do ar. */
+function isFloodWait(d: OfferDispatch): boolean {
+  return d.waitingSessionSince !== null && d.failureReason === FLOOD_WAIT_REASON;
 }
 
 /** Espera pedida pelo canal, em ms; ausente/inválida = null (vira falha comum). */

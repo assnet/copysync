@@ -81,9 +81,13 @@ export interface IOfferDispatchRepository {
   /**
    * Sessão fora do ar na vez do envio: SENDING (com o token da posse, oferta SENDING/PAUSED) →
    * QUEUED com `notBefore = retryAt` e `waitingSessionSince` (mantém o primeiro). O claim dá prioridade a ele e não abre
-   * outro envio da sessão antes: a ordem se mantém. false = posse perdida.
+   * outro envio da sessão antes: a ordem se mantém. false = posse perdida. `waitReason` vai para
+   * `failureReason` enquanto QUEUED (null = sessão fora do ar; `TELEGRAM_FLOOD_WAIT` = espera pedida
+   * pela conta): separa o relógio de cada espera sem coluna nova. A UI só lê o motivo em FAILED/SKIPPED.
    */
-  deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date): Promise<boolean>;
+  deferForOfflineSession(
+    id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date, waitReason?: string | null,
+  ): Promise<boolean>;
   /**
    * Desistência (sessão fora do ar tempo demais), só em ofertas SENDING: QUEUED da sessão vencidos
    * (`notBefore <= now`) ou da oferta `offerId` → FAILED com o motivo. Retorna quantos.

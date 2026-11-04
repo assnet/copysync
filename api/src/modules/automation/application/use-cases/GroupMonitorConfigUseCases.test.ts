@@ -144,6 +144,16 @@ describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
       .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_broadcast_groups', limit: 0 } });
   });
 
+  it('grupos de sessão apagada não ocupam a cota do canal', async () => {
+    const s = setup({ monitored_groups: 1 });
+    await s.monitored.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'antigo', keywords: [] }] });
+    await expect(s.monitored.execute({ ...base, groups: [{ groupJid: 'wa', keywords: [] }] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
+    s.monitors.deleted.add('session-2');
+    const out = await s.monitored.execute({ ...base, groups: [{ groupJid: 'wa', keywords: [] }] });
+    expect(out.usage.whatsapp.monitoredGroups).toBe(1);
+  });
+
   it('cross_session_dispatch só para 2+ sessões do mesmo canal', async () => {
     const s = setup();
     s.monitors.sessions.add(`${TENANT}:tg-1`).add(`${TENANT}:tg-2`);

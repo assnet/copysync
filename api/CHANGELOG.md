@@ -100,6 +100,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+- **`TelegramMessagingEngineAdapter.sendMediaMessage`**, **`DispatchOutboundMediaUseCase.ts`** — mídia enviada pelo painel no Telegram ficava com o id provisório `tg-…` (eco descartado): citação e reação a ela quebravam. Agora grava o id real `<peer>_<msgId>` junto com o `SENT` (api 0.53.1)
+- **`ProcessDueOfferDispatchesUseCase.ts`** — espera de `FLOOD_WAIT` usava o mesmo relógio da sessão offline (queda depois de flood derrubava envios na hora) e não tinha teto acumulado; agora relógios separados e 6 h de flood → `FAILED`
+- **`whatsappToTelegramHtml.ts`** — URL colada em trecho de código vazava caractere de controle
+- **`PrismaGroupMonitorRepository.tenantGroupJids`** — grupos de sessão apagada contavam na cota do canal
+
 - **`TelegramMessagingEngineAdapter.listParticipatingGroups`**, **`mergeSessionGroups.ts`** — grupos do Telegram apareciam só com iniciais: a foto de grupo vinha apenas da conversa do chat (preenchida pela sincronização do WhatsApp). A listagem do Telegram agora traz `avatarUrl` (storage, por `photoId`, download em fila) e grava a foto nas conversas via `GROUP_AVATAR_UPDATED` (api 0.51.3)
 
 - **`engines/telegram/TelegramMessagingEngineAdapter.ts`** — sessão Telegram ficava sem avatar em todo o painel (cards de sessão, seletor e resumo do Monitoramento, chips de grupos de disparo): `fetchProfilePicture` devolvia `null`. Agora baixa a foto da conta (ou de grupo/contato), salva no storage e cacheia 6 h, como o WhatsApp (api 0.51.2)

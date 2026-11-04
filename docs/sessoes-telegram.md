@@ -100,14 +100,18 @@ pede código de novo (como o pareamento do WhatsApp).
   ao WhatsApp). **Menções** (`mentions`, "Marcar todos") são ignoradas sem erro; o `ChatOfferMessageSender`
   nem busca participantes em conversa `channel = telegram`.
 - `createOutboundMessageId` devolve id provisório `tg-<hex>` (o Telegram atribui o id real no envio);
-  `sendMediaMessage` devolve o id pré-gerado, como o Baileys, e registra o id real composto em `sentIds`.
+  `sendMediaMessage` devolve o id real composto (`<peer>_<msgId>`) e o registra em `sentIds` (eco descartado);
+  o `DispatchOutboundMediaUseCase` troca o provisório pelo real na mesma escrita do `SENT`
+  (`transitionStatus(..., externalMessageId)`). Não voltar a devolver o provisório: citação/reação/status quebram.
 - **Canal da conversa**: conversas criadas para sessão Telegram gravam `channel = 'telegram'`
   (`chat/domain/services/conversationChannel.ts`, pela `Session.engine`: ingestão via
   `ISessionRepository.findEngineById` só ao criar, `StartConversationUseCase`, `ChatSessionGroupDirectory`).
   Conversas criadas antes ficam `whatsapp`.
 - `FLOOD_WAIT` no envio vira `TELEGRAM_FLOOD_WAIT` (429, `meta.seconds`). No worker de ofertas o envio volta à
-  fila com `notBefore = agora + seconds + 1 s`, segurando a vez da sessão (`deferForOfflineSession`); espera ≥ 6 h
-  ou envio sem `sessionId` → `FAILED TELEGRAM_FLOOD_WAIT`.
+  fila com `notBefore = agora + seconds + 1 s`, segurando a vez da sessão (`deferForOfflineSession` com
+  `failureReason = TELEGRAM_FLOOD_WAIT` enquanto QUEUED: marca que `waitingSessionSince` conta o flood, não a
+  queda — sem coluna nova). Flood acumulado (desde o 1º + espera pedida) ≥ 6 h ou envio sem `sessionId` →
+  `FAILED TELEGRAM_FLOOD_WAIT` (atrasados da sessão juntos). Queda depois de flood ganha janela própria de 6 h.
 - `getGroupInviteLink.inviteCode` é o que vem depois de `https://t.me/` (ex.: `+AbCd…`): quem monta a URL
   precisa saber o canal.
 - `fetchProfilePicture`: foto da própria conta (quando `jid` é o telefone da sessão, como pede a listagem de
@@ -157,7 +161,7 @@ num tenant: o par identifica a aplicação, não a conta.
   conversor HTML, `msgType`, canal da conversa, `FLOOD_WAIT` reagendado, `GROUP_JID_PATTERN`).
 - ⏳ Pendente: `FLOOD_WAIT` na **fila de mídia** (oferta `MEDIA` com foto) — o erro acontece no job depois de
   enfileirar e a mensagem fica `FAILED` com o envio `SENT` (mesmo limite da falha assíncrona de mídia);
-  citação/reação a mídia enviada pelo painel (id provisório `tg-…`); prévia de link recebida.
+  prévia de link recebida.
 - ❌ Não testado contra o Telegram real (sem `api_id`/`api_hash` no momento da entrega): envio do código,
   2FA, QR, recepção em grupo, `FLOOD_WAIT`, download de foto recebida, HTML na legenda/texto, prévia nativa.
   Primeiro teste real deve cobrir esses pontos.

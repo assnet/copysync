@@ -25,11 +25,15 @@ export interface ActiveMonitoredGroup {
   captureOutsideWindow: boolean;
 }
 
-/** `engine` = engine da sessão dona do grupo (`sessionId`): define o canal do limite do plano. */
+/**
+ * `engine` = engine da sessão dona do grupo (`sessionId`): define o canal do limite do plano.
+ * `live` = false quando a sessão dona ou a do monitoramento foi apagada (soft delete): não conta no
+ * limite do plano nem no conflito monitorado × disparo, mas segue na lista (a unique do disparo existe).
+ */
 export interface TenantGroupJids {
-  monitored: { sessionId: string; groupJid: string; engine: string }[];
+  monitored: { sessionId: string; groupJid: string; engine: string; live: boolean }[];
   /** `sessionId` = sessão dona do grupo; `monitorSessionId` = sessão cujo monitoramento o usa. */
-  broadcast: { sessionId: string; groupJid: string; monitorSessionId: string; engine: string }[];
+  broadcast: { sessionId: string; groupJid: string; monitorSessionId: string; engine: string; live: boolean }[];
 }
 
 /** Persistência do monitoramento. Toda consulta filtra por `tenantId` (o listener também). */

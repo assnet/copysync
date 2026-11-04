@@ -172,11 +172,11 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     for (const d of stale) Object.assign(d, { status: 'QUEUED', claimedAt: null, claimToken: null });
     return stale.length;
   }
-  async deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date) {
+  async deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date, waitReason: string | null = null) {
     const d = this.items.find((x) => x.id === id && x.tenantId === tenantId && x.claimToken === claimToken && x.status === 'SENDING');
     const offer = d && this.offers.items.find((o) => o.id === d.offerId);
     if (!d || !offer || !['SENDING', 'PAUSED'].includes(offer.status)) return false;
-    Object.assign(d, { status: 'QUEUED', claimToken: null, claimedAt: null, notBefore: retryAt, waitingSessionSince: waitingSince });
+    Object.assign(d, { status: 'QUEUED', claimToken: null, claimedAt: null, notBefore: retryAt, waitingSessionSince: waitingSince, failureReason: waitReason });
     return true;
   }
   async failOverdueInSession(tenantId: string, sessionId: string, now: Date, failureReason: string, offerId: string) {
@@ -190,7 +190,8 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
       (x) => x.id === id && x.tenantId === tenantId && x.claimToken === claimToken && x.status === 'SENDING',
     );
     if (!d) return false;
-    Object.assign(d, result);
+    // Como no Prisma: SENT limpa o motivo (ex.: marca de flood gravada enquanto QUEUED)
+    Object.assign(d, result.status === 'SENT' ? { ...result, failureReason: null } : result);
     return true;
   }
   async findSendingWithoutOpenDispatches(limit: number) {

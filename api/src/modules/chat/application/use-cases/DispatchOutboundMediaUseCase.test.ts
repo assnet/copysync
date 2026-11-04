@@ -162,6 +162,16 @@ describe('DispatchOutboundMediaUseCase', () => {
     });
   });
 
+  it('engine devolve id real diferente do provisório (Telegram): grava o real com o SENT', async () => {
+    const d = makeDeps();
+    vi.mocked(d.engine!.sendMediaMessage).mockResolvedValue({ messageId: '-100123_42', sentAt: NOW });
+    await d.useCase.execute(JOB);
+
+    expect(d.messageRepo.transitionStatus).toHaveBeenCalledWith(
+      'msg-1', TENANT, [ChatMessageStatus.PENDING], ChatMessageStatus.SENT, NOW, '-100123_42',
+    );
+  });
+
   it('job com menções: repassa à engine; sem menções, o campo não vai', async () => {
     const d = makeDeps();
     await d.useCase.execute({ ...JOB, mentions: ['5511999990001'] });

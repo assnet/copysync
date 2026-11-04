@@ -11,7 +11,8 @@
  * - `&`, `<`, `>` são escapados; código não recebe outra formatação.
  */
 const CTRL = '\u0001';
-const URL_RE = /(?:https?:\/\/|www\.)[^\s<>]+|(?<![\p{L}\p{N}_@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>]*/giu;
+// Link para no placeholder (CTRL): sem isso URL colada a `código` engoliria o slot e o controle vazaria
+const URL_RE = /(?:https?:\/\/|www\.)[^\s<>\u0001]+|(?<![\p{L}\p{N}_@.-])(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>\u0001]*/giu;
 const TRAILING_PUNCT = /[.,!?;:'")\]}]+$/;
 const MARKERS = new Set(['*', '_', '~']);
 

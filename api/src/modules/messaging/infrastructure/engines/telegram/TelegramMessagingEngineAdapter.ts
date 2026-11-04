@@ -645,10 +645,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
         voiceNote: media.kind === 'voice',
         supportsStreaming: media.kind === 'video',
       });
-      this.registry.rememberSent(entry, composeTelegramMessageId(sentPeerId(peer, input.to), sent.id));
+      const messageId = composeTelegramMessageId(sentPeerId(peer, input.to), sent.id);
+      // Eco descartado por sentIds: o chat troca o provisório (`tg-…`) por este id ao gravar SENT
+      this.registry.rememberSent(entry, messageId);
       internalEventBus.emit('MESSAGE_SENT', { type: 'MESSAGE_SENT', sessionId: input.sessionId, tenantId: input.tenantId, messageId: input.messageId });
-      // Mantém o id pré-gerado: é o que o chat já persistiu
-      return { messageId: input.messageId, sentAt: new Date() };
+      return { messageId, sentAt: new Date() };
     } catch (err) {
       internalEventBus.emit('MESSAGE_FAILED', {
         type: 'MESSAGE_FAILED', sessionId: input.sessionId, tenantId: input.tenantId, messageId: input.messageId, reason: 'send_failed',

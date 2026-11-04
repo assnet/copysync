@@ -258,10 +258,12 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     return count;
   }
 
-  async deferForOfflineSession(id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date): Promise<boolean> {
+  async deferForOfflineSession(
+    id: string, tenantId: string, claimToken: string, retryAt: Date, waitingSince: Date, waitReason: string | null = null,
+  ): Promise<boolean> {
     const { count } = await this.prisma.offerDispatch.updateMany({
       where: { id, tenantId, claimToken, status: 'SENDING', offer: { status: { in: ['SENDING', 'PAUSED'] } } },
-      data: { status: 'QUEUED', claimToken: null, claimedAt: null, notBefore: retryAt, waitingSessionSince: waitingSince },
+      data: { status: 'QUEUED', claimToken: null, claimedAt: null, notBefore: retryAt, waitingSessionSince: waitingSince, failureReason: waitReason },
     });
     return count > 0;
   }

@@ -14,6 +14,8 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   sessions = new Set([`${TENANT}:${SESSION}`, `${TENANT}:session-2`]);
   /** Engine por sessão; ausente = `baileys` (WhatsApp). */
   engines: Record<string, string> = {};
+  /** Sessões apagadas (soft delete): grupos delas não contam no limite. */
+  deleted = new Set<string>();
   configs: GroupMonitorConfig[] = [];
   monitored: (MonitoredGroup & { tenantId: string; sessionId: string })[] = [];
   broadcast: (BroadcastGroup & { tenantId: string; monitorSessionId: string })[] = [];
@@ -50,9 +52,13 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   }
   async tenantGroupJids(tenantId: string): Promise<TenantGroupJids> {
     return {
-      monitored: this.monitored.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid }) => ({ sessionId, groupJid, engine: this.engines[sessionId] ?? 'baileys' })),
+      monitored: this.monitored.filter((g) => g.tenantId === tenantId)
+        .map(({ sessionId, groupJid }) => ({ sessionId, groupJid, engine: this.engines[sessionId] ?? 'baileys', live: !this.deleted.has(sessionId) })),
       broadcast: this.broadcast.filter((g) => g.tenantId === tenantId)
-        .map(({ sessionId, groupJid, monitorSessionId }) => ({ sessionId, groupJid, monitorSessionId, engine: this.engines[sessionId] ?? 'baileys' })),
+        .map(({ sessionId, groupJid, monitorSessionId }) => ({
+          sessionId, groupJid, monitorSessionId, engine: this.engines[sessionId] ?? 'baileys',
+          live: !this.deleted.has(sessionId) && !this.deleted.has(monitorSessionId),
+        })),
     };
   }
   async findActiveMonitoredGroup(tenantId: string, sessionId: string, groupJid: string): Promise<ActiveMonitoredGroup | null> {

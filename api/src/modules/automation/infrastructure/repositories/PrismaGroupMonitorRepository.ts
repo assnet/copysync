@@ -106,12 +106,20 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
       this.prisma.monitoredGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true } }),
       this.prisma.broadcastGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true, config: { select: { sessionId: true } } } }),
     ]);
-    // Grupo não tem relação com Session no schema: engine numa consulta só (sessão sumida = WhatsApp)
-    const engines = await this.sessionEngines(tenantId, [...monitored, ...broadcast].map((g) => g.sessionId));
-    const engineOf = (id: string) => engines.get(id) ?? 'baileys';
+    // Grupo não tem relação com Session no schema: engine e soft delete numa consulta só (sessão sumida = WhatsApp, apagada)
+    const ids = [...new Set([...monitored, ...broadcast].map((g) => g.sessionId).concat(broadcast.map((b) => b.config.sessionId)))];
+    const rows = ids.length === 0 ? [] : await this.prisma.session.findMany({
+      where: { tenantId, id: { in: ids } }, select: { id: true, engine: true, deletedAt: true },
+    });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const engineOf = (id: string) => byId.get(id)?.engine ?? 'baileys';
+    const alive = (id: string) => byId.get(id)?.deletedAt === null;
     return {
-      monitored: monitored.map((m) => ({ ...m, engine: engineOf(m.sessionId) })),
-      broadcast: broadcast.map((b) => ({ sessionId: b.sessionId, groupJid: b.groupJid, monitorSessionId: b.config.sessionId, engine: engineOf(b.sessionId) })),
+      monitored: monitored.map((m) => ({ ...m, engine: engineOf(m.sessionId), live: alive(m.sessionId) })),
+      broadcast: broadcast.map((b) => ({
+        sessionId: b.sessionId, groupJid: b.groupJid, monitorSessionId: b.config.sessionId, engine: engineOf(b.sessionId),
+        live: alive(b.sessionId) && alive(b.config.sessionId),
+      })),
     };
   }
 

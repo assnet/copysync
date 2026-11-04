@@ -66,8 +66,9 @@ abstract class GroupMonitorConfigBase {
     const settings: GroupMonitorSettings = config
       ? (({ id: _id, tenantId: _t, sessionId: _s, ...rest }) => rest)(config)
       : { ...DEFAULT_MONITOR_SETTINGS };
-    const mon = countByChannel(jids.monitored, (g) => g.engine);
-    const bc = countByChannel(jids.broadcast, (g) => g.engine);
+    // Grupos de sessão apagada não ocupam cota
+    const mon = countByChannel(jids.monitored.filter((g) => g.live), (g) => g.engine);
+    const bc = countByChannel(jids.broadcast.filter((g) => g.live), (g) => g.engine);
     const whatsapp = { monitoredGroups: waMon, broadcastGroups: waBc };
     const usageWa = { monitoredGroups: mon.whatsapp, broadcastGroups: bc.whatsapp };
     return {
@@ -183,7 +184,7 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
 
     const jids = await this.deps.monitors.tenantGroupJids(tenantId);
     // Outro papel no tenant inteiro: oferta postada voltaria como captura (laço)
-    const other = role === 'monitored' ? jids.broadcast : jids.monitored;
+    const other = (role === 'monitored' ? jids.broadcast : jids.monitored).filter((g) => g.live);
     const clash = unique.find((r) => other.some((o) => o.groupJid === r.groupJid));
     if (clash) throw new GroupMonitorGroupConflictError(clash.groupJid, role === 'monitored' ? 'broadcast' : 'monitored');
     // Mesmo grupo (sessão + JID) como destino de outro monitoramento: a unique do banco recusaria
@@ -197,8 +198,8 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
     // Limite por canal (canal do grupo = engine da sessão dona); só canais com grupo pedido são checados
     const kind = role === 'monitored' ? 'monitoredGroups' : 'broadcastGroups';
     const elsewhere = role === 'monitored'
-      ? jids.monitored.filter((g) => g.sessionId !== sessionId)
-      : jids.broadcast.filter((g) => g.monitorSessionId !== sessionId);
+      ? jids.monitored.filter((g) => g.live && g.sessionId !== sessionId)
+      : jids.broadcast.filter((g) => g.live && g.monitorSessionId !== sessionId);
     const used = countByChannel(elsewhere, (g) => g.engine);
     const asked = countByChannel(unique, (r) => engineOf(r.sessionId));
     for (const ch of LIMIT_CHANNELS) {
