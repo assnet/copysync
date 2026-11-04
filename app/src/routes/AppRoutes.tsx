@@ -18,6 +18,7 @@ import { AiSettingsPage } from '@/pages/settings/AiSettingsPage';
 import { ExtensionSettingsPage } from '@/pages/settings/ExtensionSettingsPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
+import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage } from '@/pages/modules';
@@ -86,6 +87,7 @@ export function AppRoutes() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/admin/ai" element={<AdminAiPage />} />
             <Route path="/admin/link-domains" element={<AdminLinkDomainsPage />} />
+            <Route path="/admin/workers" element={<AdminWorkersPage />} />
           </Route>
         </Route>
       </Route>

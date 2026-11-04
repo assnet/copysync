@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  KeyRound, MessagesSquare, Settings, Tag, UserRoundPlus, Users, Workflow,
+  KeyRound, MessagesSquare, Server, Settings, Tag, UserRoundPlus, Users, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
 import { plansStrings } from '@/features/plans/strings';
@@ -9,6 +9,7 @@ import { privacyStrings } from '@/features/privacy/strings';
 import { linkRotationStrings } from '@/features/linkRotation/strings';
 import { aiStrings } from '@/features/ai/strings';
 import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
+import { workersAdminStrings } from '@/features/workersAdmin/strings';
 import { navigationStrings as s } from './strings';
 
 /**
@@ -127,6 +128,7 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
       ? [
           { key: 'admin-ai', label: aiStrings.admin.navLabel, path: '/admin/ai', icon: Bot },
           { key: 'admin-link-domains', label: linkDomainsAdminStrings.navLabel, path: '/admin/link-domains', icon: Globe },
+          { key: 'admin-workers', label: workersAdminStrings.navLabel, path: '/admin/workers', icon: Server },
         ]
       : [],
     bottom: [
