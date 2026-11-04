@@ -47,6 +47,8 @@ import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/
 import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
+import { currentRole } from '../shared/config/processRole';
+import { jobsFor } from './processJobs';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -85,6 +87,8 @@ async function connectDatabaseWithRetry(): Promise<void> {
 
 async function start(): Promise<void> {
   const app = await buildApp();
+  // Jobs de boot deste papel (§3.3). `all` (default) = todos, na ordem de sempre.
+  const jobs = jobsFor(currentRole());
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
@@ -119,19 +123,23 @@ async function start(): Promise<void> {
     enabled:      env.MEDIA_PENDING_RECOVERY_ENABLED,
     staleMinutes: env.MEDIA_PENDING_STALE_MINUTES,
   });
-  try {
-    await failOrphanPendingMedia.runBoot();
-  } catch (err) {
-    logger.error({ err }, 'Pending media recovery failed on startup');
+  if (jobs.has('pendingMediaBoot')) {
+    try {
+      await failOrphanPendingMedia.runBoot();
+    } catch (err) {
+      logger.error({ err }, 'Pending media recovery failed on startup');
+    }
   }
 
   // ── Uploads interrompidos no meio do consumo ───────────────────────────────
   // Antes da varredura de uploads (que apagaria um CONSUMING vencido sem olhar se virou
   // mensagem). No banco, só leitura — seguro sem flag.
-  try {
-    await new ReconcileInterruptedUploadsUseCase(mediaContainer.uploadStore, chatMessageRepo).execute();
-  } catch (err) {
-    logger.error({ err }, 'Interrupted upload reconciliation failed on startup');
+  if (jobs.has('interruptedUploads')) {
+    try {
+      await new ReconcileInterruptedUploadsUseCase(mediaContainer.uploadStore, chatMessageRepo).execute();
+    } catch (err) {
+      logger.error({ err }, 'Interrupted upload reconciliation failed on startup');
+    }
   }
 
   // ── Start HTTP server ──────────────────────────────────────────────────────
@@ -147,23 +155,25 @@ async function start(): Promise<void> {
   // Só disco, nenhum banco. Falha aqui só loga: a API sobe sem a varredura.
   // Mesmo store das rotas (pasta preparada no `initMediaModule`).
   let uploadSweeper: UploadSessionSweeper | null = null;
-  try {
-    uploadSweeper = new UploadSessionSweeper({
-      store: mediaContainer.uploadStore,
-      ttlMs: env.MEDIA_UPLOAD_TTL_MINUTES * 60_000,
-      reserveFor: (totalBytes) =>
-        diskBudget({ totalBytes, reserveBytes: env.MEDIA_DISK_RESERVE_BYTES }).reserveBytes,
-    });
-    uploadSweeper.start();
-  } catch (err) {
-    logger.error({ err }, 'Upload sweeper failed to start — expired uploads will not be removed');
+  if (jobs.has('uploadSweeper')) {
+    try {
+      uploadSweeper = new UploadSessionSweeper({
+        store: mediaContainer.uploadStore,
+        ttlMs: env.MEDIA_UPLOAD_TTL_MINUTES * 60_000,
+        reserveFor: (totalBytes) =>
+          diskBudget({ totalBytes, reserveBytes: env.MEDIA_DISK_RESERVE_BYTES }).reserveBytes,
+      });
+      uploadSweeper.start();
+    } catch (err) {
+      logger.error({ err }, 'Upload sweeper failed to start — expired uploads will not be removed');
+    }
   }
 
   // ── Varredura de mídia pendente ────────────────────────────────────────────
   // Só com MEDIA_PENDING_RECOVERY_ENABLED (mesmo motivo do boot). Poupa o que a fila ainda
   // tem; `runPeriodic` nunca lança. `unref`: o intervalo não segura o processo vivo.
   let pendingMediaSweep: NodeJS.Timeout | null = null;
-  if (env.MEDIA_PENDING_RECOVERY_ENABLED) {
+  if (jobs.has('pendingMediaSweep') && env.MEDIA_PENDING_RECOVERY_ENABLED) {
     pendingMediaSweep = setInterval(() => {
       // A consulta, não a foto: o repositório a chama entre a seleção e a escrita
       void failOrphanPendingMedia.runPeriodic(() => chatMediaContainer.queue.inFlightIds());
@@ -177,35 +187,37 @@ async function start(): Promise<void> {
   // Mesmo worker processa as capturas do monitoramento (GROUP_MONITORING_ENABLED): sem
   // setInterval novo. Cada parte isolada: erro numa não derruba a outra (docs/monitoramento-grupos.md).
   let offerDispatchWorker: OfferDispatchWorker | null = null;
-  if (env.OFFER_DISPATCH_WORKER_ENABLED || env.GROUP_MONITORING_ENABLED) {
-    const safe = async (name: string, run: () => Promise<{ processed: number }>) => {
-      try {
-        return (await run()).processed;
-      } catch (err) {
-        logger.error({ err: (err as Error)?.name, part: name }, 'worker tick part failed');
-        return 0;
-      }
-    };
-    offerDispatchWorker = new OfferDispatchWorker({
-      tick: () => ({
-        execute: async () => ({
-          processed:
-            (env.OFFER_DISPATCH_WORKER_ENABLED ? await safe('offer-dispatch', () => offersContainer.processDueDispatches().execute()) : 0)
-            + (env.GROUP_MONITORING_ENABLED ? await safe('group-monitoring', () => automationContainer.processCaptured().execute()) : 0),
+  if (jobs.has('offerDispatch')) {
+    if (env.OFFER_DISPATCH_WORKER_ENABLED || env.GROUP_MONITORING_ENABLED) {
+      const safe = async (name: string, run: () => Promise<{ processed: number }>) => {
+        try {
+          return (await run()).processed;
+        } catch (err) {
+          logger.error({ err: (err as Error)?.name, part: name }, 'worker tick part failed');
+          return 0;
+        }
+      };
+      offerDispatchWorker = new OfferDispatchWorker({
+        tick: () => ({
+          execute: async () => ({
+            processed:
+              (env.OFFER_DISPATCH_WORKER_ENABLED ? await safe('offer-dispatch', () => offersContainer.processDueDispatches().execute()) : 0)
+              + (env.GROUP_MONITORING_ENABLED ? await safe('group-monitoring', () => automationContainer.processCaptured().execute()) : 0),
+          }),
         }),
-      }),
-    });
-    offerDispatchWorker.start();
-    logger.info({ offerDispatch: env.OFFER_DISPATCH_WORKER_ENABLED, groupMonitoring: env.GROUP_MONITORING_ENABLED }, 'Offer dispatch worker started');
-  } else {
-    logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false, GROUP_MONITORING_ENABLED=false)');
+      });
+      offerDispatchWorker.start();
+      logger.info({ offerDispatch: env.OFFER_DISPATCH_WORKER_ENABLED, groupMonitoring: env.GROUP_MONITORING_ENABLED }, 'Offer dispatch worker started');
+    } else {
+      logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false, GROUP_MONITORING_ENABLED=false)');
+    }
   }
 
   // ── Rodízio de links: membros dos grupos + retenção de cliques ─────────────
   // Só com LINK_ROTATION_MEMBER_SYNC_ENABLED (escreve no banco e chama o WhatsApp; AGENTS §22).
   // Lease `link-rotation-member-sync`: 1 processo por tick (.specs/features/link-rotation/design.md §4.5).
   let linkRotationMemberSyncJob: LinkRotationMemberSyncJob | null = null;
-  if (env.LINK_ROTATION_MEMBER_SYNC_ENABLED) {
+  if (jobs.has('linkRotationSync') && env.LINK_ROTATION_MEMBER_SYNC_ENABLED) {
     linkRotationMemberSyncJob = createLinkRotationMemberSyncJob(prisma);
     linkRotationMemberSyncJob.start();
     logger.info('Link rotation member sync job started');
@@ -215,21 +227,25 @@ async function start(): Promise<void> {
   let hubOutboxWorker: HubOutboxWorker | null = null;
   let extensionRetentionJob: ExtensionRetentionJob | null = null;
   if (env.HUB_EVENTS_ENABLED && env.HUB_EVENTS_CONFIGURED) {
-    hubOutboxWorker = new HubOutboxWorker({
-      repository: extensionContainer.outboxRepository,
-      hubUrl: env.HUB_EVENTS_URL!,
-      applicationKey: env.HUB_EVENTS_APPLICATION_KEY!,
-      secret: env.HUB_EVENTS_SECRET!,
-    });
-    hubOutboxWorker.start();
-    logger.info('Hub outbox worker started');
+    if (jobs.has('hubOutbox')) {
+      hubOutboxWorker = new HubOutboxWorker({
+        repository: extensionContainer.outboxRepository,
+        hubUrl: env.HUB_EVENTS_URL!,
+        applicationKey: env.HUB_EVENTS_APPLICATION_KEY!,
+        secret: env.HUB_EVENTS_SECRET!,
+      });
+      hubOutboxWorker.start();
+      logger.info('Hub outbox worker started');
+    }
 
-    extensionRetentionJob = new ExtensionRetentionJob({
-      prisma,
-      outbox: extensionContainer.outboxRepository,
-    });
-    extensionRetentionJob.start();
-    logger.info('Extension retention job started');
+    if (jobs.has('extensionRetention')) {
+      extensionRetentionJob = new ExtensionRetentionJob({
+        prisma,
+        outbox: extensionContainer.outboxRepository,
+      });
+      extensionRetentionJob.start();
+      logger.info('Extension retention job started');
+    }
   } else {
     logger.info('Hub outbox worker disabled (HUB_EVENTS_ENABLED=false or not configured)');
   }
@@ -243,7 +259,7 @@ async function start(): Promise<void> {
   // ── Billing reconciliation interval ───────────────────────────────────────
   let billingReconcileInterval: NodeJS.Timeout | null = null;
   // Webhook bloqueado (produção sem e-mail real) → reconciliação também fica parada
-  if (env.BILLING_ENABLED && env.BILLING_RECONCILE_INTERVAL_MS > 0 && billingWebhookBlockReason(env) === null) {
+  if (jobs.has('billingReconcile') && env.BILLING_ENABLED && env.BILLING_RECONCILE_INTERVAL_MS > 0 && billingWebhookBlockReason(env) === null) {
     const reconcileUseCase = new ReconcileSubscriptionsUseCase();
     billingReconcileInterval = setInterval(() => {
       void reconcileUseCase.execute().catch((err) => {
@@ -303,20 +319,22 @@ async function start(): Promise<void> {
   // F1: crash/SIGKILL não solta o lease; a 2ª passada (após o TTL) trata as sessões puladas.
   let cancelBootRecheck: (() => void) | null = null;
   if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
-    try {
-      const engine = getActiveEngine();
-      if (!engine) throw new Error('MessagingEngine not initialized — session routes must register before bootstrap');
-      const bootstrapService = new SessionBootstrapService(new PrismaSessionRepository(), engine, {
-        maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
-      });
-      await bootstrapService.bootstrap();
-      cancelBootRecheck = scheduleLeaseExpiryRecheck(() =>
-        bootstrapService.bootstrap({ onlyWithoutLiveLease: true }),
-      );
-    } catch (err) {
-      logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
+    if (jobs.has('sessionBootstrap')) {
+      try {
+        const engine = getActiveEngine();
+        if (!engine) throw new Error('MessagingEngine not initialized — session routes must register before bootstrap');
+        const bootstrapService = new SessionBootstrapService(new PrismaSessionRepository(), engine, {
+          maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
+        });
+        await bootstrapService.bootstrap();
+        cancelBootRecheck = scheduleLeaseExpiryRecheck(() =>
+          bootstrapService.bootstrap({ onlyWithoutLiveLease: true }),
+        );
+      } catch (err) {
+        logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
+      }
     }
-  } else {
+  } else if (jobs.has('sessionReconciler')) {
     logger.warn(
       'Session bootstrap disabled; WhatsApp sessions will remain disconnected until manually connected',
     );
@@ -333,8 +351,10 @@ async function start(): Promise<void> {
 
   // ── Renovação do lease (LEASE-04) ──────────────────────────────────────────
   // Depois do boot das sessões: renova a cada 20 s só as sessões com socket local.
-  lease.keeper.start();
-  logger.info({ workerId: lease.workerId }, 'Session lease keeper started');
+  if (jobs.has('leaseKeeper')) {
+    lease.keeper.start();
+    logger.info({ workerId: lease.workerId }, 'Session lease keeper started');
+  }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
