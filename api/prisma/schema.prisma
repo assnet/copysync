@@ -286,6 +286,12 @@ model Session {
   lastDisconnectedAt DateTime? // when the session last reached DISCONNECTED
   lastSeenAt         DateTime? // timestamp of last inbound/outbound message
   deletedAt          DateTime? // soft-delete
+  ownerWorkerId      String? // processo dono do socket (lease); null = sem dono
+  leaseUntil         DateTime? // validade do lease; vencido = sessão adotável
+  connectRequestedAt DateTime? // pedido de conexão ativo; null = não reconectar
+  nextAdoptAt        DateTime? // próxima tentativa de adoção (backoff)
+  adoptFailures      Int           @default(0) // falhas seguidas de adoção
+  shard              String? // shard que pode adotar; null = qualquer
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -302,6 +308,8 @@ model Session {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, deletedAt])
+  @@index([ownerWorkerId])
+  @@index([connectRequestedAt])
   @@map("sessions")
 }
 
