@@ -43,3 +43,10 @@ describe('operatingWindow', () => {
     expect(resolveStartWithinWindow(sp(14), { startMinute: 1320, endMinute: 360 })).toEqual(sp(22));
   });
 });
+
+describe('operatingWindow delega ao postingWindow', () => {
+  it('weekdaysMask opcional pula dias fora do mask', () => {
+    // 2026-10-28 = quarta; só sexta (bit 5) → 30/10 08:00
+    expect(resolveStartWithinWindow(sp(10), { startMinute: 480, endMinute: 1200, weekdaysMask: 1 << 5 })).toEqual(sp(8, 0, 30));
+  });
+});
