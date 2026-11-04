@@ -11,6 +11,12 @@ export interface PendingMediaRecoveryConfig {
   enabled: boolean;
   /** `MEDIA_PENDING_STALE_MINUTES`: idade a partir da qual a varredura falha um `PENDING`. */
   staleMinutes: number;
+  /**
+   * Id deste processo (`WORKER_ID`). Presente, o boot poupa `PENDING` de sessão com lease vivo
+   * de outro processo: ele ainda pode estar enviando (vários processos). Ausente, o boot falha
+   * todo `PENDING`, como num processo único.
+   */
+  workerId?: string;
 }
 
 /**
@@ -27,17 +33,25 @@ export class FailOrphanPendingMediaUseCase {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  /** Boot, antes do `listen`: nada deste processo está na fila, então todo `PENDING` é órfão. */
+  /**
+   * Boot, antes do `listen`: nada deste processo está na fila, então todo `PENDING` é órfão —
+   * menos o de sessão com lease vivo de outro processo, quando `workerId` vem na config.
+   */
   async runBoot(): Promise<void> {
     if (!this.config.enabled) {
       logger.info('Recuperação de mídia pendente desligada — nenhuma mensagem alterada no boot');
       return;
     }
-    await this.failAndPublish('boot', { olderThan: this.now() });
+    const { workerId } = this.config;
+    await this.failAndPublish('boot', {
+      olderThan: this.now(),
+      ...(workerId !== undefined && { spareLiveLeaseOtherThan: workerId }),
+    });
   }
 
   /**
-   * Varredura periódica: só os antigos, poupando o que a fila ainda está enviando.
+   * Varredura periódica: só os antigos, poupando o que a fila ainda está enviando. Sem filtro
+   * de lease: o órfão de outro processo passa de `staleMinutes` e cai aqui.
    *
    * Recebe a consulta à fila, não a lista: o repositório a chama entre a seleção e a escrita.
    * Uma foto tirada aqui deixaria de fora o reenvio que entra na fila durante a seleção — a

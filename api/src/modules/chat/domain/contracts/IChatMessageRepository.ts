@@ -55,6 +55,12 @@ export interface FailPendingInput {
    * durante a leitura (ex.: reenvio de mensagem antiga). Uma lista é uma foto e não cobre isso.
    */
   excludeIds?: readonly string[] | (() => readonly string[]);
+  /**
+   * Id deste processo. Presente, poupa a mensagem cuja sessão tem lease vivo (`leaseUntil` >
+   * agora, no relógio do banco) de outro dono: aquele processo ainda pode estar enviando.
+   * Lease próprio, vencido ou nulo não poupa. Ausente, a consulta não olha lease.
+   */
+  spareLiveLeaseOtherThan?: string;
 }
 
 export interface FailedPendingMessage {
@@ -95,7 +101,8 @@ export interface IChatMessageRepository {
   ): Promise<ChatMessage | null>;
   /**
    * Marca como `FAILED` as mensagens `PENDING` criadas antes de `olderThan`, fora de
-   * `excludeIds` (consultado entre a seleção e a escrita), e devolve as que mudaram. Varredura do processo (boot e rotina
+   * `excludeIds` (consultado entre a seleção e a escrita) e, com `spareLiveLeaseOtherThan`, fora
+   * de sessão com lease vivo de outro processo, e devolve as que mudaram. Varredura do processo (boot e rotina
    * periódica): atravessa todos os tenants por natureza, por isso não recebe `tenantId`
    * — exceção explícita ao AGENTS.md §36.8. Não use em fluxo de requisição.
    */

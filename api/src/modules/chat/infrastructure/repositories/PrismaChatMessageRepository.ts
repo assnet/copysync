@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type {
   ChatMessageCreateData,
   FailedPendingMessage,
@@ -172,10 +172,34 @@ export class PrismaChatMessageRepository implements IChatMessageRepository {
     // Sem `tenantId` de propósito: varredura do processo sobre todos os tenants
     // (boot e rotina periódica), exceção explícita ao AGENTS.md §36.8. Não expor em rota.
     const select = { id: true, tenantId: true, conversationId: true } as const;
-    const selected = await this.prisma.chatMessage.findMany({
-      where: { status: 'PENDING', createdAt: { lt: input.olderThan } },
-      select,
-    });
+    const where: Prisma.ChatMessageWhereInput = { status: 'PENDING', createdAt: { lt: input.olderThan } };
+    if (input.spareLiveLeaseOtherThan !== undefined) {
+      // Lease vivo de outro processo: ele ainda pode estar enviando. Relógio do banco, como o
+      // lease (`now()` é timestamptz → Date absoluto; o Prisma compara em UTC).
+      const [{ now }] = await this.prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+      // Condição positiva, não `NOT`: com colunas nulas o `NOT (…)` vira NULL e pouparia
+      // a mensagem de sessão sem lease.
+      where.conversation = {
+        is: {
+          OR: [
+            { sessionId: null },
+            {
+              session: {
+                is: {
+                  OR: [
+                    { leaseUntil: null },
+                    { leaseUntil: { lte: now } },
+                    { ownerWorkerId: null },
+                    { ownerWorkerId: input.spareLiveLeaseOtherThan },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      };
+    }
+    const selected = await this.prisma.chatMessage.findMany({ where, select });
     // Exclusão avaliada só agora, depois da seleção e logo antes da escrita: um reenvio que
     // entrou na fila enquanto o `findMany` rodava também é poupado. Sem `await` entre a
     // consulta e o `updateMany`, nada entra na fila no meio.

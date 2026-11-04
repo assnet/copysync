@@ -22,6 +22,7 @@ function makeUseCase(opts: {
   enabled: boolean;
   afetadas?: FailedPendingMessage[];
   falhaBanco?: boolean;
+  workerId?: string;
   /** Implementação própria do repositório, para emular a ordem seleção → escrita. */
   failPending?: IChatMessageRepository['failPending'];
 }) {
@@ -42,7 +43,7 @@ function makeUseCase(opts: {
   const useCase = new FailOrphanPendingMediaUseCase(
     messageRepo,
     publisher,
-    { enabled: opts.enabled, staleMinutes: 60 },
+    { enabled: opts.enabled, staleMinutes: 60, ...(opts.workerId && { workerId: opts.workerId }) },
     () => NOW,
   );
   return { useCase, failPending, acessos, publisher };
@@ -79,6 +80,34 @@ describe('FailOrphanPendingMediaUseCase', () => {
 
       expect(failPending).toHaveBeenCalledTimes(1);
       expect(failPending).toHaveBeenCalledWith({ olderThan: NOW });
+    });
+
+    it('com workerId, o boot poupa sessão com lease vivo de outro processo', async () => {
+      const { useCase, failPending } = makeUseCase({ enabled: true, workerId: 'worker-a' });
+
+      await useCase.runBoot();
+
+      expect(failPending).toHaveBeenCalledWith({ olderThan: NOW, spareLiveLeaseOtherThan: 'worker-a' });
+    });
+
+    it('com workerId, a varredura periódica não filtra por lease', async () => {
+      const { useCase, failPending } = makeUseCase({ enabled: true, workerId: 'worker-a' });
+      const emEnvio = vi.fn(() => []);
+
+      await useCase.runPeriodic(emEnvio);
+
+      expect(failPending).toHaveBeenCalledWith({
+        olderThan: new Date('2026-09-25T11:00:00.000Z'),
+        excludeIds: emEnvio,
+      });
+    });
+
+    it('com workerId e a flag desligada, o boot não toca o banco', async () => {
+      const { useCase, acessos } = makeUseCase({ enabled: false, workerId: 'worker-a' });
+
+      await useCase.runBoot();
+
+      expect(acessos).toEqual([]);
     });
 
     it('no boot publica FAILED para cada mensagem afetada, no tenant dela', async () => {
