@@ -1,4 +1,5 @@
 import { AppError } from '../AppError';
+import { EngineTemporarilyUnavailableError } from './MessagingErrors';
 
 // ── Session errors ───────────────────────────────────────────────────────────
 
@@ -40,5 +41,15 @@ export class InvalidSessionStateError extends AppError {
 export class SessionPhoneInvalidError extends AppError {
   constructor(field: 'declaredPhone' | 'phone' = 'declaredPhone') {
     super('SESSION_PHONE_INVALID', 'Invalid WhatsApp phone number', 422, { field });
+  }
+}
+
+/**
+ * Lease da sessão com outro processo vivo (LEASE-03, D5): o socket não abre aqui.
+ * Mesmo código/HTTP de `EngineTemporarilyUnavailableError` (sem i18n novo), distinguível por `instanceof`.
+ */
+export class SessionLeaseHeldError extends EngineTemporarilyUnavailableError {
+  constructor(public readonly sessionId: string) {
+    super();
   }
 }
