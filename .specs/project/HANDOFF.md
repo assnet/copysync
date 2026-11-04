@@ -1,7 +1,7 @@
 # Handoff — 2026-11-04 (sessão até 21:00)
 
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
-`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: suíte completa 2911/2911).
+`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: suíte completa 2940/2940).
 
 ## CopySync (`feature/rebranding-app`)
 
@@ -10,7 +10,7 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 | Limite do gerador (5/20/ilimitado) | ✅ `ba85963`, api 0.58.0 | deploy aplica migration de presets |
 | E2 lease de sessão | ✅ T1–T23 + F1–F4; F5–F8 ✅ juntadas; F9 em `e2/f9` | juntar F9; 3ª revisão até convergir (`/caveman-review`) até só nits; **não fazer deploy antes** |
 | E3 http × worker | T1–T6, T13–T17 ✅ juntadas (vitest completo 2848/2848) + T7 em `e3/t7` | juntar T7; depois T8–T12→T8–T12→T18→T19→T20→T21; D1–D11 propostas, Redis ~US$10 só ao separar |
-| E4 adoção | plano ✅ (`.specs/features/session-adoption/`, D1–D8 propostas); T1–T8, T12, T17 ✅ juntadas (vitest 2911/2911); onda 3 (T9, T10, T11, T13) em `e4/t*` | juntar; depois T14, T18 |
+| E4 adoção | plano ✅ (`.specs/features/session-adoption/`, D1–D8 propostas); T1–T13, T17 ✅ juntadas (vitest 2940/2940); T14, T18 em `e4/t14`, `e4/t18` | juntar; depois T15 (precisa E3 T19), T16 (E3 T18), T19, T20 |
 | Tela Assinatura | plano ✅ (`.specs/features/subscription-page/`) | dono decide D1–D6 (recomendações no arquivo); executar |
 | Grupos de disparo + horário | plano ✅ (`.specs/features/broadcast-schedule/`) | dono decide D1–D5; executar |
 
