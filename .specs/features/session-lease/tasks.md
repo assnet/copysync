@@ -38,7 +38,7 @@ Regras comuns a toda task:
 | T20 | Reconciler e bootstrap cientes do lease | T10, T11, T19 | P | ✅ 626881e |
 | T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ✅ f3ecacf |
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ✅ 2ad709b |
-| T22b | Lease negado não sobrescreve status do dono | T22 | | ⏳ |
+| T22b | Lease negado não sobrescreve status do dono | T22 | | ✅ afbc869 |
 | T23 | Docs, CHANGELOG e versão | T22 | | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
