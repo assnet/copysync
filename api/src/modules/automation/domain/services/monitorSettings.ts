@@ -4,7 +4,7 @@ import { OFFER_IMAGE_MODES } from '../../../campaigns/domain/enums/OfferImageMod
 import { MINUTES_PER_DAY } from './operatingWindow';
 
 export const MONITOR_LIMITS = {
-  intervalSeconds: { min: 60, max: 3600 },
+  intervalSeconds: { min: 0, max: 3600 },
   startDelaySeconds: { min: 0, max: 7200 },
   offerAgeMinutes: { min: 15, max: 1440 },
   typingSeconds: { min: 1, max: 30 },

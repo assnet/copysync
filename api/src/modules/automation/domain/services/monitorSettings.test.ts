@@ -14,7 +14,7 @@ describe('monitorSettingsProblem', () => {
   it.each([
     [{ windowStartMinute: 600, windowEndMinute: 600 }, 'windowEndMinute'],
     [{ windowStartMinute: 1440, windowEndMinute: 0 }, 'windowEndMinute'],
-    [{ intervalMinSeconds: 30 }, 'intervalMinSeconds'],
+    [{ intervalMinSeconds: -1 }, 'intervalMinSeconds'],
     [{ intervalMinSeconds: 400, intervalMaxSeconds: 300 }, 'intervalMaxSeconds'],
     [{ couponMaxAgeMinutes: 200 }, 'couponMaxAgeMinutes'],
     [{ typingSeconds: 0 }, 'typingSeconds'],

@@ -28,7 +28,7 @@ export interface MonitorSettingsDraft {
 export const SETTINGS_DRAFT_VERSION = 5;
 
 export const LIMITS = {
-  intervalMinutes: { min: 1, max: 60 },
+  intervalMinutes: { min: 0, max: 60 },
   typingSeconds: { min: 1, max: 30 },
   startDelayMinutes: { min: 0, max: 120 },
   offerAgeMinutes: { min: 15, max: 1440, step: 15 },

@@ -145,7 +145,7 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 
 ## 3. Regras e limites
 
-- Faixas: intervalo 60–3600 s (min ≤ max; **padrão 15–40 min**, mais espaçado que o gerador),
+- Faixas: intervalo 0–3600 s (min ≤ max; 0 = sem espera entre envios; **padrão 15–40 min**, mais espaçado que o gerador),
   atraso 0–7200 s, validade 15–1440 min, validade com
   cupom ≤ validade sem cupom, "digitando…" 1–30 s. 422 `GROUP_MONITOR_INVALID_INPUT` com `field`.
 - Plano: `monitored_groups` e `broadcast_groups` somam **todas as sessões do tenant**

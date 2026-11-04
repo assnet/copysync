@@ -72,6 +72,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+#### Monitoramento — intervalo entre envios a partir de 0 (api 0.51.1 · app 0.64.1)
+
+- **`automation/domain/services/monitorSettings.ts`**, **`app/.../monitoring/utils/settingsDraft.ts`** — a faixa do intervalo começava em 1 min (60 s) e não permitia envio sem espera; piso agora é 0 (API e slider). Padrão 15–40 min mantido; fila já tratava gap 0 (`GREATEST(..., 0)`).
+
 - **`PrismaSessionRepository.createWithinLimit`** — contava todas as sessões do tenant contra `whatsapp_sessions`; agora conta por engine (`SessionLimit.engine`), senão a 1ª sessão Telegram estouraria o limite do WhatsApp
 
 ### Changed
