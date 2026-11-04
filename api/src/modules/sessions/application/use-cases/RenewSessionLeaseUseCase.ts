@@ -6,10 +6,16 @@ import {
   isLeaseFenceExpired,
 } from '../../domain/services/sessionLeasePolicy';
 import type { SessionLeaseLedger } from '../services/SessionLeaseLedger';
-import type { LeaseLogger } from './AcquireSessionLeaseUseCase';
+import type { AcquireSessionLeaseUseCase } from './AcquireSessionLeaseUseCase';
 import { logger } from '../../../../shared/logger/logger';
 
 const RENEW_TIMEOUT = Symbol('renew-timeout');
+
+/** Rodadas seguidas com erro transitório ao reabrir uma suspensa antes de desistir (log error). */
+export const MAX_RESUME_ATTEMPTS = 10;
+
+export type RenewLeaseLogger = Pick<typeof logger, 'warn' | 'error'>;
+type LeaseAcquirer = Pick<AcquireSessionLeaseUseCase, 'acquireResult'>;
 
 /**
  * Rodada de renovação do lease (LEASE-04, D4). Só renova sessões no razão local **e** com
@@ -17,17 +23,20 @@ const RENEW_TIMEOUT = Symbol('renew-timeout');
  * gravar status nem chaves). Erro/timeout = vale o fence (`isLeaseFenceExpired`): quem passou
  * de TTL − margem sem renovar é **suspenso** (`suspendSession`: fecha preservando as chaves
  * pendentes, ninguém provou outro dono) e marcado no razão. Quando uma renovação volta a
- * funcionar, cada suspensa: `release` best-effort → `resumeSession` (acquire → reconnect auto);
- * lease de outro processo → só limpa a marca.
+ * funcionar, cada suspensa: `acquireResult` (sem `release` antes: o lease já é nosso, soltar
+ * abriria janela para outro processo) → `held` limpa a marca; `acquired` → `resumeSession`
+ * (reconnect auto). Erro transitório (banco, versão do WhatsApp, auth state) mantém a marca para
+ * a próxima rodada, até `MAX_RESUME_ATTEMPTS`; depois limpa e loga error.
  */
 export class RenewSessionLeaseUseCase {
   constructor(
     private readonly repo: ISessionLeaseRepository,
     private readonly ledger: SessionLeaseLedger,
     private readonly sockets: ISessionSocketControl,
+    private readonly acquirer: LeaseAcquirer,
     private readonly workerId: string,
     private readonly now: () => Date = () => new Date(),
-    private readonly log: LeaseLogger = logger.child({ module: 'RenewSessionLease' }),
+    private readonly log: RenewLeaseLogger = logger.child({ module: 'RenewSessionLease' }),
   ) {}
 
   async execute(): Promise<void> {
@@ -113,25 +122,39 @@ export class RenewSessionLeaseUseCase {
     );
   }
 
-  /** Banco de volta: solta (best-effort) e reabre pela origem automática; falha = só limpa. */
+  /** Banco de volta: reabre cada suspensa sem soltar o lease antes. */
   private async resumeAll(ids: readonly string[]): Promise<void> {
-    await Promise.all(
-      ids.map(async (id) => {
-        try {
-          await this.repo.release(id, this.workerId);
-        } catch (err) {
-          this.log.warn({ err, sessionId: id }, 'falha ao soltar lease antes de reabrir');
-        }
-        try {
-          const reopened = await this.sockets.resumeSession(id);
-          if (!reopened) this.log.warn({ sessionId: id }, 'sessão suspensa por fence não reaberta (lease de outro processo)');
-        } catch (err) {
-          this.log.warn({ err, sessionId: id }, 'falha ao reabrir sessão suspensa por fence');
-        } finally {
-          this.ledger.clearFenced(id);
-        }
-      }),
-    );
+    await Promise.all(ids.map((id) => this.resumeOne(id)));
+  }
+
+  private async resumeOne(id: string): Promise<void> {
+    const attempts = this.ledger.fenceAttempts(id);
+    const lease = await this.acquirer.acquireResult(id);
+    if (lease === 'held') {
+      this.ledger.clearFenced(id);
+      this.log.warn({ sessionId: id }, 'sessão suspensa por fence não reaberta (lease de outro processo)');
+      return;
+    }
+    let failure: unknown;
+    if (lease === 'acquired') {
+      try {
+        const reopened = await this.sockets.resumeSession(id);
+        this.ledger.clearFenced(id);
+        if (!reopened) this.log.warn({ sessionId: id }, 'sessão suspensa por fence não reaberta');
+        return;
+      } catch (err) {
+        failure = err;
+      }
+    }
+    const next = attempts + 1;
+    if (next >= MAX_RESUME_ATTEMPTS) {
+      this.ledger.clearFenced(id);
+      this.ledger.drop(id);
+      this.log.error({ err: failure, sessionId: id, attempts: next }, 'sessão suspensa por fence não reaberta após o limite de tentativas');
+      return;
+    }
+    this.ledger.markFenced(id, next);
+    this.log.warn({ err: failure, sessionId: id, attempt: next }, 'falha transitória ao reabrir sessão suspensa; nova tentativa na próxima rodada');
   }
 
   private async renewWithTimeout(ids: readonly string[]): Promise<string[]> {

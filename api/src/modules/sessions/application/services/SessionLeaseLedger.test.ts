@@ -19,4 +19,21 @@ describe('SessionLeaseLedger', () => {
     expect(l.ids()).toEqual([]);
     expect(l.lastOk('s1')).toBeUndefined();
   });
+
+  it('fence guarda tentativas; markOk e clearFenced zeram', () => {
+    const l = new SessionLeaseLedger();
+    l.markOk('s1', new Date(1000));
+    l.markFenced('s1');
+    expect(l.ids()).toEqual([]);
+    expect(l.fenceAttempts('s1')).toBe(0);
+    l.markFenced('s1', 3);
+    expect(l.fencedIds()).toEqual(['s1']);
+    expect(l.fenceAttempts('s1')).toBe(3);
+    l.markOk('s1', new Date(2000));
+    expect(l.fencedIds()).toEqual([]);
+    expect(l.fenceAttempts('s1')).toBe(0);
+    l.markFenced('s2', 1);
+    l.clearFenced('s2');
+    expect(l.fencedIds()).toEqual([]);
+  });
 });

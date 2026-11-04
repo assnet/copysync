@@ -41,8 +41,8 @@ export function buildSessionLeaseContainer(
     closeAllSockets: async () => bound?.closeAllSockets(),
     listLocalSessionIds: () => bound?.listLocalSessionIds() ?? [],
   };
-  const renew = new RenewSessionLeaseUseCase(repo, ledger, sockets, workerId);
   const acquire = new AcquireSessionLeaseUseCase(repo, ledger, workerId);
+  const renew = new RenewSessionLeaseUseCase(repo, ledger, sockets, acquire, workerId);
   const release = new ReleaseSessionLeaseUseCase(repo, ledger, workerId);
   return {
     workerId,

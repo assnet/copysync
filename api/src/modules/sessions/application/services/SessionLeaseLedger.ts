@@ -5,7 +5,8 @@
 export class SessionLeaseLedger {
   private readonly entries = new Map<string, Date>();
   /** Sessões derrubadas por fence de erro de banco (sem prova de outro dono): reabrir quando o banco voltar. */
-  private readonly fenced = new Set<string>();
+  /** Valor = tentativas de reabrir que falharam por erro transitório (limite em `RenewSessionLeaseUseCase`). */
+  private readonly fenced = new Map<string, number>();
 
   /** Registra aquisição/renovação bem-sucedida (lease de novo nosso: deixa de ser derrubada por fence). */
   markOk(sessionId: string, at: Date): void {
@@ -13,10 +14,15 @@ export class SessionLeaseLedger {
     this.fenced.delete(sessionId);
   }
 
-  /** Tira do razão e marca como derrubada por fence. */
-  markFenced(sessionId: string): void {
+  /** Tira do razão e marca como derrubada por fence (`attempts` = falhas de reabrir já contadas). */
+  markFenced(sessionId: string, attempts = 0): void {
     this.entries.delete(sessionId);
-    this.fenced.add(sessionId);
+    this.fenced.set(sessionId, attempts);
+  }
+
+  /** Falhas de reabrir já contadas da suspensa; `0` se não está marcada. */
+  fenceAttempts(sessionId: string): number {
+    return this.fenced.get(sessionId) ?? 0;
   }
 
   clearFenced(sessionId: string): void {
@@ -24,7 +30,7 @@ export class SessionLeaseLedger {
   }
 
   fencedIds(): string[] {
-    return [...this.fenced];
+    return [...this.fenced.keys()];
   }
 
   drop(sessionId: string): void {

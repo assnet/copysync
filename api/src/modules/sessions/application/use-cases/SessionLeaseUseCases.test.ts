@@ -48,6 +48,21 @@ describe('AcquireSessionLeaseUseCase', () => {
   });
 });
 
+describe('AcquireSessionLeaseUseCase.acquireResult', () => {
+  it('distingue acquired / held / error', async () => {
+    const ledger = new SessionLeaseLedger();
+    const tryAcquire = vi.fn<ISessionLeaseRepository['tryAcquire']>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error('db down'));
+    const uc = new AcquireSessionLeaseUseCase(makeRepo({ tryAcquire }), ledger, 'w1', () => NOW, makeLog());
+    await expect(uc.acquireResult('s1')).resolves.toBe('acquired');
+    await expect(uc.acquireResult('s2')).resolves.toBe('held');
+    await expect(uc.acquireResult('s3')).resolves.toBe('error');
+    expect(ledger.ids()).toEqual(['s1']);
+  });
+});
+
 describe('ReleaseSessionLeaseUseCase', () => {
   it('tira do razão e solta no banco com o workerId', async () => {
     const repo = makeRepo();
