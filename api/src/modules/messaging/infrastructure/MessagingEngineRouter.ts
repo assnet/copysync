@@ -23,7 +23,9 @@ import type {
 } from '../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../sessions/domain/contracts/ISessionRepository';
+import type { ISessionSocketControl } from '../domain/contracts/ISessionSocketControl';
 import { SessionNotFoundError } from '../../../shared/errors/internal/SessionErrors';
+import { logger } from '../../../shared/logger/logger';
 
 const DEFAULT_ENGINE = 'baileys';
 const CACHE_MAX = 10_000;
@@ -37,7 +39,12 @@ const CACHE_MAX = 10_000;
  * conexão/reconexão que necessariamente veio antes de qualquer envio neste processo; sem
  * entrada, cai na engine padrão (comportamento anterior).
  */
-export class MessagingEngineRouter implements IMessagingEngine {
+function hasSocketControl(engine: IMessagingEngine): engine is IMessagingEngine & ISessionSocketControl {
+  const e = engine as Partial<ISessionSocketControl>;
+  return typeof e.abortSession === 'function' && typeof e.closeAllSockets === 'function' && typeof e.listLocalSessionIds === 'function';
+}
+
+export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketControl {
   private readonly engineBySession = new Map<string, string>();
 
   constructor(
@@ -71,6 +78,39 @@ export class MessagingEngineRouter implements IMessagingEngine {
     if (!engine) throw new SessionNotFoundError(sessionId);
     this.remember(sessionId, engine);
     return this.pick(engine);
+  }
+
+  private socketControls(): Array<[string, ISessionSocketControl]> {
+    return Array.from(this.engines).filter((pair): pair is [string, IMessagingEngine & ISessionSocketControl] => hasSocketControl(pair[1]));
+  }
+
+  /**
+   * Derruba o socket local na engine da sessão. Sessão sem engine conhecida (apagada no banco):
+   * pede a todas, pois cada uma ignora sessão sem socket local.
+   */
+  async abortSession(sessionId: string): Promise<void> {
+    let engine: IMessagingEngine;
+    try {
+      engine = await this.resolve(sessionId);
+    } catch (err) {
+      if (!(err instanceof SessionNotFoundError)) throw err;
+      await Promise.all(this.socketControls().map(([, control]) => control.abortSession(sessionId)));
+      return;
+    }
+    if (hasSocketControl(engine)) await engine.abortSession(sessionId);
+  }
+
+  /** Fecha os sockets de todas as engines; espera todas mesmo se uma falhar (shutdown segue). */
+  async closeAllSockets(): Promise<void> {
+    const controls = this.socketControls();
+    const results = await Promise.allSettled(controls.map(([, control]) => control.closeAllSockets()));
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') logger.warn({ engine: controls[i][0], err: result.reason }, 'closeAllSockets failed for engine');
+    });
+  }
+
+  listLocalSessionIds(): string[] {
+    return this.socketControls().flatMap(([, control]) => control.listLocalSessionIds());
   }
 
   private resolveSync(sessionId: string): IMessagingEngine {

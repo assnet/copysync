@@ -9,7 +9,17 @@ function fakeEngine(name: string) {
     connectSession: vi.fn(async () => ({})),
     createOutboundMessageId: vi.fn(() => `${name}-id`),
     getSessionStatus: vi.fn(async () => 'CONNECTED'),
-  } as unknown as IMessagingEngine & { name: string; connectSession: ReturnType<typeof vi.fn>; createOutboundMessageId: ReturnType<typeof vi.fn> };
+    abortSession: vi.fn(async () => undefined),
+    closeAllSockets: vi.fn(async () => undefined),
+    listLocalSessionIds: vi.fn(() => [`${name}-s`]),
+  } as unknown as IMessagingEngine & {
+    name: string;
+    connectSession: ReturnType<typeof vi.fn>;
+    createOutboundMessageId: ReturnType<typeof vi.fn>;
+    abortSession: ReturnType<typeof vi.fn>;
+    closeAllSockets: ReturnType<typeof vi.fn>;
+    listLocalSessionIds: ReturnType<typeof vi.fn>;
+  };
 }
 
 function build(engineOf: Record<string, string>) {
@@ -44,5 +54,37 @@ describe('MessagingEngineRouter', () => {
 
   it('exige a engine padrão', () => {
     expect(() => new MessagingEngineRouter(new Map([['telegram', fakeEngine('telegram')]]), { findEngineById: async () => null })).toThrow();
+  });
+
+  it('abortSession vai só para a engine da sessão', async () => {
+    const { router, telegram, baileys } = build({ s1: 'telegram' });
+    await router.abortSession('s1');
+    expect(telegram.abortSession).toHaveBeenCalledWith('s1');
+    expect(baileys.abortSession).not.toHaveBeenCalled();
+  });
+
+  it('abortSession de sessão sem engine conhecida pede a todas', async () => {
+    const { router, telegram, baileys } = build({});
+    await router.abortSession('gone');
+    expect(telegram.abortSession).toHaveBeenCalledWith('gone');
+    expect(baileys.abortSession).toHaveBeenCalledWith('gone');
+  });
+
+  it('closeAllSockets espera todas mesmo se uma falhar', async () => {
+    const { router, telegram, baileys } = build({});
+    let telegramDone = false;
+    baileys.closeAllSockets.mockRejectedValueOnce(new Error('boom'));
+    telegram.closeAllSockets.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      telegramDone = true;
+    });
+    await expect(router.closeAllSockets()).resolves.toBeUndefined();
+    expect(baileys.closeAllSockets).toHaveBeenCalledTimes(1);
+    expect(telegramDone).toBe(true);
+  });
+
+  it('listLocalSessionIds junta os ids das duas engines', () => {
+    const { router } = build({});
+    expect(router.listLocalSessionIds().sort()).toEqual(['baileys-s', 'telegram-s']);
   });
 });
