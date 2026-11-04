@@ -39,7 +39,7 @@ Telegram manda ao app do usuário), **senha de duas etapas** (2FA da conta).
 | Migration | `20261103120000_add_telegram_session_statuses` (`AWAITING_CODE`, `AWAITING_PASSWORD`) |
 | Erros | `shared/errors/internal/TelegramErrors.ts`, `MessagingErrors.ts` (`ENGINE_DISABLED`, `ENGINE_OPERATION_UNSUPPORTED`) |
 | Painel | `app/src/features/sessions/` (wizard Telegram, painel de código/QR, contadores por canal), `pages/SessionsPage.tsx` |
-| Rodízio de links | canal do rodízio = engine da sessão; convite `t.me/<code>`, teto até 200.000, só grupos/canais com `canInvite` — ver [`rodizio-de-links.md`](rodizio-de-links.md#por-canal) |
+| Rodízio de links | canal do rodízio = engine da sessão; convite `t.me/<code>`, teto até 200.000, grupos/canais sem `canInvite` vêm marcados (não filtrados) — ver [`rodizio-de-links.md`](rodizio-de-links.md#por-canal) |
 
 ## 3. API
 
@@ -128,7 +128,10 @@ pede código de novo (como o pareamento do WhatsApp).
   não manda): canal broadcast → `creator || adminRights.postMessages`; grupo/supergrupo → false só com
   `defaultBannedRights.sendMessages` e a conta sem creator/admin. Canal só de leitura serve para **monitorar**;
   como destino (`EnsureSessionGroupUseCase` com `purpose: 'send'`, padrão) → 422 `GROUP_NOT_POSTABLE`. O painel
-  esconde `canPost === false` nos seletores de destino (gerador, disparo) e o rodízio de links filtra no adapter.
+  esconde `canPost === false` nos seletores de destino (gerador, disparo) por padrão (switch "ocultar"; desligado =
+  desabilitado com o motivo). Motivos na porta: `postBlockedReason` `CHANNEL_READONLY` (canal broadcast) ou
+  `ADMINS_ONLY` (envio banido por padrão); `inviteBlockedReason` `NOT_ADMIN` (`telegramGroupPermissions`).
+  `getDialogs` tem cache de 60 s por sessão (`DIALOGS_TTL_MS`): a lista é lida também pelas configs salvas.
   Não voltar a remover canais da listagem: o seletor de monitorados depende deles.
 - `checkNumberExists` → `null`; `updateChatState`, `presenceSubscribe` → no-op.
 

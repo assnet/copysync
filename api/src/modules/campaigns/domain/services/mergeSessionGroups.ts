@@ -1,4 +1,4 @@
-import type { DirectoryGroup } from '../contracts/ISessionGroupDirectory';
+import type { DirectoryGroup, GroupInviteBlockedReason, GroupPostBlockedReason } from '../contracts/ISessionGroupDirectory';
 import type { SessionGroupConversation } from '../contracts/IOfferGeneratorConfigRepository';
 
 export interface SessionGroupItem {
@@ -8,10 +8,12 @@ export interface SessionGroupItem {
   avatarUrl: string | null;
   /** null = grupo ainda sem conversa no chat (criada ao ser escolhido). */
   conversationId: string | null;
-  /** A sessão pode postar no grupo; false = só monitorar (canal do Telegram só de leitura). */
+  /** A sessão pode postar no grupo; false = só monitorar (só-admins ou canal só de leitura). */
   canPost: boolean;
-  /** A sessão consegue gerar convite (Telegram: admin com permissão de convidar). Desconhecido = true. */
+  postBlockedReason: GroupPostBlockedReason | null;
+  /** A sessão consegue gerar convite (WhatsApp/Telegram: admin). Desconhecido = true. */
   canInvite: boolean;
+  inviteBlockedReason: GroupInviteBlockedReason | null;
 }
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
@@ -32,9 +34,18 @@ export function mergeSessionGroups(
   const items: SessionGroupItem[] = live
     ? live.map((g) => {
         const k = byJid.get(g.groupJid);
-        return { groupJid: g.groupJid, title: g.name ?? k?.title ?? null, avatarUrl: k?.avatarUrl ?? g.avatarUrl ?? null, conversationId: k?.conversationId ?? null, canPost: g.canPost ?? true, canInvite: g.canInvite ?? true };
+        const canPost = g.canPost ?? true;
+        const canInvite = g.canInvite ?? true;
+        return {
+          groupJid: g.groupJid, title: g.name ?? k?.title ?? null, avatarUrl: k?.avatarUrl ?? g.avatarUrl ?? null, conversationId: k?.conversationId ?? null,
+          canPost, postBlockedReason: canPost ? null : (g.postBlockedReason ?? 'ADMINS_ONLY'),
+          canInvite, inviteBlockedReason: canInvite ? null : (g.inviteBlockedReason ?? 'NOT_ADMIN'),
+        };
       })
-    : [...byJid.values()].map((k) => ({ groupJid: k.groupJid, title: k.title, avatarUrl: k.avatarUrl, conversationId: k.conversationId, canPost: true, canInvite: true }));
+    : [...byJid.values()].map((k) => ({
+        groupJid: k.groupJid, title: k.title, avatarUrl: k.avatarUrl, conversationId: k.conversationId,
+        canPost: true, postBlockedReason: null, canInvite: true, inviteBlockedReason: null,
+      }));
 
   const term = search ? fold(search) : '';
   const filtered = term ? items.filter((i) => i.title && fold(i.title).includes(term)) : items;

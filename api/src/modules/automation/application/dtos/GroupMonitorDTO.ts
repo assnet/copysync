@@ -4,6 +4,7 @@ import type { OfferStatus } from '../../../campaigns/domain/enums/OfferStatus';
 import type { GroupMonitorSettings, MonitorTextMode } from '../../domain/entities/GroupMonitor';
 import type { CapturedOfferListItem } from '../../domain/contracts/ICapturedOfferRepository';
 import type { LimitChannel } from '../../../tenants/domain/channelLimits';
+import type { GroupPostability } from '../../../campaigns/domain/services/groupPostability';
 import { previewText } from '../../domain/services/offerMessageText';
 
 export interface CredentialAlertDTO {
@@ -25,7 +26,7 @@ export interface GroupMonitorConfigDTO {
   settings: GroupMonitorSettings;
   monitoredGroups: { conversationId: string; groupJid: string; title: string | null; avatarUrl: string | null; keywords: string[] }[];
   /** `sessionId` = sessão que envia naquele grupo (igual à do monitor, ou outra com `crossSessionDispatch`). */
-  broadcastGroups: { conversationId: string; groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null; position: number }[];
+  broadcastGroups: ({ conversationId: string; groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null; position: number } & GroupPostability)[];
   /**
    * Por canal (canal do grupo = engine da sessão dona). `monitoredGroups`/`broadcastGroups` na raiz =
    * WhatsApp (legado, até o painel migrar para `whatsapp`/`telegram`). `crossSessionDispatch` só é

@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { LIVE_GROUPS_TIMEOUT_MS } from '../services/loadLiveGroups';
 import { GetOfferGeneratorConfigUseCase, SaveOfferGeneratorConfigUseCase } from './OfferGeneratorConfigUseCases';
 import { FakeEntitlementReader, InMemoryOfferGeneratorConfigRepository, TENANT } from './offerTestFakes';
 
@@ -42,8 +43,29 @@ describe('Offer generator config', () => {
     const out = await s.save.execute({ ...base, conversationIds: ['g1', 'g2', 'g1'] });
     expect(out).toMatchObject({ sessionIds: ['s1'], configured: true, groupLimit: null });
     expect(out.groups).toEqual([
-      { id: 'g1', title: 'Grupo 1', avatarUrl: null, sessionId: 's1' },
-      { id: 'g2', title: 'g2', avatarUrl: null, sessionId: 's1' },
+      { id: 'g1', title: 'Grupo 1', avatarUrl: null, sessionId: 's1', canPost: null, postBlockedReason: null },
+      { id: 'g2', title: 'g2', avatarUrl: null, sessionId: 's1', canPost: null, postBlockedReason: null },
+    ]);
+  });
+
+  it('anota canPost dos grupos salvos pela lista ao vivo; sessão fora ou engine travada → null', async () => {
+    const s = setup({ cross_session_dispatch: true });
+    for (const c of s.configs.conversations) c.groupJid = `j-${c.id}`;
+    const listParticipating = async (id: string) => {
+      if (id === 's1') return [{ groupJid: 'j-g1', name: 'A' }, { groupJid: 'j-g2', name: 'B', canPost: false, postBlockedReason: 'ADMINS_ONLY' as const }];
+      if (id === 't1') return new Promise<never>(() => {});
+      throw new Error('offline');
+    };
+    const deps = { configs: s.configs, entitlements: new FakeEntitlementReader({ cross_session_dispatch: true }), directory: { listParticipating } };
+    await new SaveOfferGeneratorConfigUseCase({ configs: s.configs, entitlements: deps.entitlements })
+      .execute({ ...base, sessionIds: ['s1', 's2', 't1'], conversationIds: ['g1', 'g2', 'g3', 'tg1'] });
+    vi.useFakeTimers();
+    const p = new GetOfferGeneratorConfigUseCase(deps).execute(TENANT);
+    await vi.advanceTimersByTimeAsync(LIVE_GROUPS_TIMEOUT_MS);
+    const out = await p;
+    vi.useRealTimers();
+    expect(out.groups.map((g) => [g.id, g.canPost, g.postBlockedReason])).toEqual([
+      ['g1', true, null], ['g2', false, 'ADMINS_ONLY'], ['g3', null, null], ['tg1', null, null],
     ]);
   });
 

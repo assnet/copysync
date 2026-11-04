@@ -241,7 +241,7 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
     return (this.selected.get(tenantId) ?? [])
       .map((id) => this.conversations.find((c) => c.id === id && c.tenantId === tenantId))
       .filter((c): c is FakeConversation => !!c)
-      .map((c) => ({ conversationId: c.id, title: c.title ?? c.id, avatarUrl: null, isGroup: c.isGroup, sessionId: c.sessionId }));
+      .map((c) => ({ conversationId: c.id, title: c.title ?? c.id, avatarUrl: null, isGroup: c.isGroup, sessionId: c.sessionId, groupJid: c.groupJid ?? null }));
   }
   async save(input: SaveOfferGeneratorConfigInput) {
     this.saves++;

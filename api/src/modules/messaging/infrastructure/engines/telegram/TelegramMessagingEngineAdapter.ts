@@ -69,6 +69,8 @@ const telegramLogger = appLogger.child({ module: 'TelegramEngine' });
 const ENGINE = 'telegram';
 /** Foto baixada e servida pelo nosso storage; revalida a cada 6 h (como no WhatsApp). */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
+/** Cache da lista de dialogs por sessão (listagem de grupos). */
+const DIALOGS_TTL_MS = 60_000;
 /** Quanto a listagem de grupos espera pelas fotos que ainda faltam baixar. */
 const GROUP_AVATAR_WAIT_MS = 3_000;
 /** Mídia recebida acima disso não é baixada (vídeo/arquivo grande): a mensagem entra sem `mediaUrl`. */
@@ -155,6 +157,7 @@ function mediaInfo(media: Api.TypeMessageMedia | undefined): { mimeType: string 
 export class TelegramMessagingEngineAdapter implements IMessagingEngine {
   private readonly registry = new TelegramSessionRegistry();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
+  private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
   /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
   private readonly knownGroupAvatars = new Set<string>();
   /** Downloads de foto de grupo em andamento, por arquivo (sem repetir o mesmo). */
@@ -708,7 +711,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
 
   async listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]> {
     const entry = this.requireConnected(sessionId);
-    const dialogs = await entry.client.getDialogs({ limit: 500 });
+    const dialogs = await this.cachedDialogs(sessionId, entry);
     const out: ParticipatingGroupInfo[] = [];
     const avatarOf = new Map<number, Promise<string | null>>();
     for (const d of dialogs) {
@@ -722,8 +725,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
         groupJid: d.id.toString(),
         name: d.title ?? null,
         avatarUrl: null,
-        canPost: telegramCanPost(ent),
-        canInvite: telegramCanInvite(ent),
+        ...telegramGroupPermissions(ent),
       });
       avatarOf.set(out.length - 1, this.groupAvatar(sessionId, entry, d.id.toString(), ent));
     }
@@ -737,6 +739,18 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     ]);
     clearTimeout(timer);
     return out.map((g) => ({ ...g }));
+  }
+
+  /**
+   * Dialogs da sessão com cache curto: a lista de grupos é lida por várias telas (seletor, configs
+   * salvas do monitor e do gerador) e não pode martelar o Telegram (FLOOD_WAIT).
+   */
+  private async cachedDialogs(sessionId: string, entry: TelegramSessionEntry) {
+    const hit = this.dialogsCache.get(sessionId);
+    if (hit && hit.client === entry.client && Date.now() - hit.at < DIALOGS_TTL_MS) return hit.dialogs;
+    const dialogs = await entry.client.getDialogs({ limit: 500 });
+    this.dialogsCache.set(sessionId, { dialogs, client: entry.client, at: Date.now() });
+    return dialogs;
   }
 
   /** URL da foto do grupo no storage; agenda o download quando ainda não foi salva. */
@@ -888,6 +902,19 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
 function telegramCanInvite(ent: unknown): boolean {
   if (ent instanceof Api.Channel || ent instanceof Api.Chat) return Boolean(ent.creator || ent.adminRights?.inviteUsers);
   return false;
+}
+
+/** Permissões com motivo: canal de transmissão → CHANNEL_READONLY; grupo com envio banido → ADMINS_ONLY. */
+export function telegramGroupPermissions(ent: unknown): Pick<ParticipatingGroupInfo, 'canPost' | 'postBlockedReason' | 'canInvite' | 'inviteBlockedReason'> {
+  const canPost = telegramCanPost(ent);
+  const canInvite = telegramCanInvite(ent);
+  const broadcast = ent instanceof Api.Channel && !!ent.broadcast;
+  return {
+    canPost,
+    postBlockedReason: canPost ? null : broadcast ? 'CHANNEL_READONLY' : 'ADMINS_ONLY',
+    canInvite,
+    inviteBlockedReason: canInvite ? null : 'NOT_ADMIN',
+  };
 }
 
 function telegramCanPost(ent: unknown): boolean {

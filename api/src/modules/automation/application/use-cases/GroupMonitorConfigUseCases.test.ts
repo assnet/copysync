@@ -193,6 +193,22 @@ describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
   });
 });
 
+describe('GroupMonitorConfig — canPost dos grupos de disparo', () => {
+  it('anota pela lista ao vivo; sessão fora → null; leitura não quebra', async () => {
+    const s = setup();
+    await s.broadcast.execute({ ...base, groups: [{ groupJid: 'g1' }, { groupJid: 'g2' }, { groupJid: 'g3' }] });
+    expect((await s.get.execute(base)).broadcastGroups.every((g) => g.canPost === null && g.postBlockedReason === null)).toBe(true);
+    s.directory.live.set(SESSION, [
+      { groupJid: 'g1', name: 'A' },
+      { groupJid: 'g2', name: 'B', canPost: false, postBlockedReason: 'CHANNEL_READONLY' },
+    ]);
+    const out = await s.get.execute(base);
+    expect(out.broadcastGroups.map((g) => [g.groupJid, g.canPost, g.postBlockedReason])).toEqual([
+      ['g1', true, null], ['g2', false, 'CHANNEL_READONLY'], ['g3', null, null],
+    ]);
+  });
+});
+
 describe('GetGroupMonitorConfigUseCase — credentialAlerts', () => {
   const REJ = new Date('2026-10-27T09:00:00.000Z');
   async function missingCapture(s: ReturnType<typeof setup>, marketplace: 'SHOPEE' | 'AMAZON' | 'MERCADO_LIVRE', daysAgo = 1) {

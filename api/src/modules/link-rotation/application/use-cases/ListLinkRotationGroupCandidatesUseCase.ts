@@ -12,6 +12,9 @@ export interface LinkRotationGroupCandidateDTO {
   title: string | null;
   avatarUrl: string | null;
   conversationId: string | null;
+  /** A sessão gera o convite; false = só com link manual. */
+  canInvite: boolean;
+  inviteBlockedReason: 'NOT_ADMIN' | null;
   /** Já está no rodízio. */
   selected: boolean;
   /** Id do grupo no rodízio (quando `selected`). */
@@ -65,6 +68,9 @@ export class ListLinkRotationGroupCandidatesUseCase {
           title: names.get(g.conversationId) ?? null,
           avatarUrl: null,
           conversationId: g.conversationId,
+          // Fora da lista ao vivo: permissão desconhecida (= true), como no restante da porta.
+          canInvite: true,
+          inviteBlockedReason: null,
           selected: true,
           rotationGroupId: g.id,
           status: g.status,

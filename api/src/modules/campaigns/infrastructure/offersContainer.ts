@@ -111,9 +111,9 @@ const controlDeps = () => ({ offers: offers(), dispatches: dispatches(), configs
 const pause     = lazy(() => new PauseOfferUseCase(controlDeps()));
 const resume    = lazy(() => new ResumeOfferUseCase(controlDeps()));
 const cancel    = lazy(() => new CancelOfferUseCase(controlDeps()));
-const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
-const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements() }));
 const groupDirectory = lazy(() => new ChatSessionGroupDirectory());
+const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements(), directory: groupDirectory() }));
+const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements(), directory: groupDirectory() }));
 const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: configs(), directory: groupDirectory() }));
 const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
 const pauses      = lazy(() => new PrismaSendingPauseStore(prisma));
@@ -153,6 +153,7 @@ export const offersContainer = {
   saveConfig:           saveConfig,
   listSessionGroups:    listSessionGroups,
   ensureSessionGroup:   ensureSessionGroup,
+  sessionGroupDirectory: groupDirectory,
   processDueDispatches: processDue,
   getSendQueue:         sendQueue,
   pauseAllSends:        pauseAll,

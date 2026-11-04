@@ -1,8 +1,22 @@
 import { offersContainer } from '../../../campaigns/infrastructure/offersContainer';
+import type { SessionGroupItem } from '../../../campaigns/domain/services/mergeSessionGroups';
 import type {
   ILinkRotationGroupDirectory,
+  LinkRotationSessionGroup,
   LinkRotationSessionGroupList,
 } from '../../domain/contracts/ILinkRotationGroupDirectory';
+
+/** Só os campos do rodízio (o item do gerador traz também `canPost`). */
+export function toLinkRotationSessionGroup(g: SessionGroupItem): LinkRotationSessionGroup {
+  return {
+    groupJid: g.groupJid,
+    title: g.title,
+    avatarUrl: g.avatarUrl,
+    conversationId: g.conversationId,
+    canInvite: g.canInvite,
+    inviteBlockedReason: g.canInvite ? null : (g.inviteBlockedReason ?? 'NOT_ADMIN'),
+  };
+}
 
 /**
  * Reaproveita a listagem de grupos da sessão do gerador de ofertas (engine + conversas do chat,
@@ -11,13 +25,14 @@ import type {
 export class OffersLinkRotationGroupDirectory implements ILinkRotationGroupDirectory {
   async listSessionGroups(tenantId: string, sessionId: string, search?: string): Promise<LinkRotationSessionGroupList> {
     const r = await offersContainer.listSessionGroups().execute({ tenantId, sessionId, search });
-    // O rodízio precisa do convite: no Telegram só entra grupo/canal em que a sessão é criadora ou
-    // admin com permissão de convidar (inclui canal de transmissão). WhatsApp não informa (= true).
-    return { ...r, groups: r.groups.filter((g) => g.canInvite) };
+    // Todos voltam, com `canInvite`: o painel decide ocultar ou mostrar desabilitado com o motivo.
+    // Sem convite o servidor não gera link (GROUP_INVITE_NOT_ALLOWED → NEEDS_LINK); só link manual.
+    return { partial: r.partial, groups: r.groups.map(toLinkRotationSessionGroup) };
   }
 
   async ensureConversation(tenantId: string, sessionId: string, groupJid: string): Promise<string> {
-    const { conversationId } = await offersContainer.ensureSessionGroup().execute({ tenantId, sessionId, groupJid });
+    // O rodízio não posta no grupo, só gera convite: 'monitor' não recusa grupo só-admins/canal.
+    const { conversationId } = await offersContainer.ensureSessionGroup().execute({ tenantId, sessionId, groupJid, purpose: 'monitor' });
     return conversationId;
   }
 }

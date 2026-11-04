@@ -1,4 +1,6 @@
 import { GroupNotPostableError } from '../../../../shared/errors/internal/GroupErrors';
+import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
+import type { DirectoryGroup } from '../../../campaigns/domain/contracts/ISessionGroupDirectory';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { ActiveMonitoredGroup, BroadcastGroupInput, IGroupMonitorRepository, MonitoredGroupInput, TenantGroupJids } from '../../domain/contracts/IGroupMonitorRepository';
 import type { CapturedOfferListItem, CapturedOfferResolution, ICapturedOfferRepository, NewCapturedOffer } from '../../domain/contracts/ICapturedOfferRepository';
@@ -170,6 +172,13 @@ export class FakeDirectory implements IMonitorGroupDirectory {
     return { conversationId: `conv-${groupJid}` };
   }
   async enableMediaDownload(_t: string, conversationId: string) { this.mediaEnabled.push(conversationId); }
+  /** Lista ao vivo por sessão; ausente = sessão fora (lança). */
+  live = new Map<string, DirectoryGroup[]>();
+  async listParticipating(sessionId: string): Promise<DirectoryGroup[]> {
+    const groups = this.live.get(sessionId);
+    if (!groups) throw new SessionNotConnectedError(sessionId);
+    return groups;
+  }
 }
 
 export class FakeEntitlements {

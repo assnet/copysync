@@ -362,14 +362,25 @@ export interface ParticipatingGroupInfo {
   name: string | null;
   /** Foto já servida pelo nosso storage, quando a engine a obtém na listagem (Telegram). */
   avatarUrl?: string | null;
-  /** A conta pode postar no grupo. Ausente = true (WhatsApp). Telegram: false em canal só de leitura. */
-  canPost?: boolean;
   /**
-   * A conta consegue gerar link de convite. Ausente = desconhecido (WhatsApp: só se sabe ao pedir).
+   * A conta pode postar no grupo. Ausente = true. WhatsApp: false em grupo só-admins (`announce`)
+   * sem a sessão ser admin. Telegram: false em canal só de leitura ou envio banido por padrão.
+   */
+  canPost?: boolean;
+  /** Motivo de `canPost === false`; null/ausente quando pode postar. */
+  postBlockedReason?: GroupPostBlockedReason | null;
+  /**
+   * A conta consegue gerar link de convite. Ausente = true. WhatsApp: sessão é admin.
    * Telegram: criador ou admin com permissão de convidar.
    */
   canInvite?: boolean;
+  /** Motivo de `canInvite === false`; null/ausente quando pode convidar. */
+  inviteBlockedReason?: GroupInviteBlockedReason | null;
 }
+
+/** ADMINS_ONLY = só admins postam e a sessão não é admin; CHANNEL_READONLY = canal de transmissão sem permissão. */
+export type GroupPostBlockedReason = 'ADMINS_ONLY' | 'CHANNEL_READONLY';
+export type GroupInviteBlockedReason = 'NOT_ADMIN';
 
 export interface GroupParticipantInfo {
   /**

@@ -1,3 +1,4 @@
+import type { DirectoryGroup } from '../../../campaigns/domain/contracts/ISessionGroupDirectory';
 import { parseProductRef } from '../../../campaigns/domain/services/parseProductRef';
 import { providerRequiresSecret, providerUsesSession } from '../../../integrations/domain/services/affiliateProviderFields';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
@@ -31,6 +32,10 @@ export class ChatMonitorGroupDirectory implements IMonitorGroupDirectory {
   async ensureGroup(tenantId: string, sessionId: string, groupJid: string, purpose: 'monitor' | 'send'): Promise<{ conversationId: string }> {
     const { conversationId } = await offersContainer.ensureSessionGroup().execute({ tenantId, sessionId, groupJid, purpose });
     return { conversationId };
+  }
+
+  listParticipating(sessionId: string): Promise<DirectoryGroup[]> {
+    return offersContainer.sessionGroupDirectory().listParticipating(sessionId);
   }
 
   async enableMediaDownload(tenantId: string, conversationId: string): Promise<void> {

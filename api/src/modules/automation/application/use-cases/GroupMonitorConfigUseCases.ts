@@ -14,6 +14,8 @@ import {
 } from '../../../../shared/errors/internal/GroupMonitorErrors';
 import { PlanFeatureUnavailableError, PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { postabilityOf } from '../../../campaigns/domain/services/groupPostability';
+import { loadLiveGroups } from '../../../campaigns/application/services/loadLiveGroups';
 import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
 
 /** WhatsApp; Telegram em `telegram_*`. Chave por canal: `limitKeyOfChannel` (tenants/domain/channelLimits). */
@@ -63,6 +65,9 @@ abstract class GroupMonitorConfigBase {
       entitlements.getBoolean(tenantId, MENTION_ALL_ENABLED),
       entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
     ]);
+    const live = broadcast.length > 0
+      ? await loadLiveGroups(broadcast.map((g) => g.sessionId), (id) => this.deps.directory.listParticipating(id))
+      : new Map();
     const settings: GroupMonitorSettings = config
       ? (({ id: _id, tenantId: _t, sessionId: _s, ...rest }) => rest)(config)
       : { ...DEFAULT_MONITOR_SETTINGS };
@@ -76,7 +81,9 @@ abstract class GroupMonitorConfigBase {
       channel: channelOfEngine(engines.get(sessionId)),
       settings,
       monitoredGroups: monitored.map((g) => ({ conversationId: g.conversationId, groupJid: g.groupJid, title: g.title, avatarUrl: g.avatarUrl, keywords: g.keywords })),
-      broadcastGroups: broadcast.map((g) => ({ conversationId: g.conversationId, groupJid: g.groupJid, sessionId: g.sessionId, title: g.title, avatarUrl: g.avatarUrl, position: g.position })),
+      broadcastGroups: broadcast.map((g) => ({ conversationId: g.conversationId, groupJid: g.groupJid, sessionId: g.sessionId, title: g.title, avatarUrl: g.avatarUrl, position: g.position,
+        ...postabilityOf(live, g.sessionId, g.groupJid),
+      })),
       limits: {
         ...whatsapp, mentionAllEnabled: mentionAll !== false, crossSessionDispatch: crossSession === true,
         whatsapp, telegram: { monitoredGroups: tgMon, broadcastGroups: tgBc },

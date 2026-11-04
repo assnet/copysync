@@ -59,6 +59,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Grupos onde a sessão pode postar/convidar (`messaging`, `campaigns`, `automation`, `link-rotation`) — api 0.56.0 · app 0.74.0
+
+- **`BaileysMessagingEngineAdapter.listParticipatingGroups`** — WhatsApp passa a marcar `canPost` (grupo só-admins e sessão não admin → `false`, `ADMINS_ONLY`) e `canInvite` (só admin), do metadado já buscado; destino sem permissão → `GROUP_NOT_POSTABLE` também no WhatsApp
+- **`TelegramMessagingEngineAdapter.ts`** — `postBlockedReason` (`CHANNEL_READONLY`/`ADMINS_ONLY`), `inviteBlockedReason`, cache de 60 s na lista de dialogs
+- **Configs do Monitoramento e do Gerador** — grupos salvos trazem `canPost`/`postBlockedReason` (lista ao vivo; sessão fora → `null`); lista do rodízio não filtra mais e traz `canInvite`
+- **Painel** — `HideUnavailableSwitch` + `UnavailableReason` (`app/src/components`): "Ocultar grupos onde não posso postar" ligado por padrão no disparo do Monitoramento e no Gerador, "…gerar convite" no Rodízio (grupo sem convite entra com link manual); grupo salvo bloqueado ganha chip "Envio bloqueado" e alerta
+
 #### Frontend — Cross Channel nos planos (`plans`) — app 0.73.0
 
 - **`catalog.ts`**, **`PlanCard.tsx`** — bloco em destaque **Cross Channel** no MAX (monitorar no Telegram e postar no WhatsApp e vice-versa), ícone com os logos dos dois canais (`featureIcon`)

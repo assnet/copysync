@@ -53,8 +53,8 @@ describe('ListLinkRotationGroupCandidatesUseCase', () => {
     const gone = deps.rotations.seedGroup(r.id, { groupJid: 'Z' });
     deps.groups.add(gone.conversationId, { name: 'Antigo' });
     const dir = directory([
-      { groupJid: 'A', title: 'Alfa', avatarUrl: null, conversationId: null },
-      { groupJid: 'B', title: 'Beta', avatarUrl: null, conversationId: 'conv-b' },
+      { groupJid: 'A', title: 'Alfa', avatarUrl: null, conversationId: null, canInvite: true, inviteBlockedReason: null },
+      { groupJid: 'B', title: 'Beta', avatarUrl: null, conversationId: 'conv-b', canInvite: false, inviteBlockedReason: 'NOT_ADMIN' },
     ], true);
 
     const out = await new ListLinkRotationGroupCandidatesUseCase({ ...deps, directory: dir }).execute({ tenantId: TENANT, rotationId: r.id });
@@ -63,8 +63,8 @@ describe('ListLinkRotationGroupCandidatesUseCase', () => {
     expect(out.partial).toBe(true);
     expect(out.groups).toEqual([
       expect.objectContaining({ groupJid: 'A', selected: true, rotationGroupId: kept.id, conversationId: kept.conversationId }),
-      expect.objectContaining({ groupJid: 'B', selected: false, rotationGroupId: null, status: null }),
-      expect.objectContaining({ groupJid: 'Z', selected: true, title: 'Antigo', conversationId: gone.conversationId }),
+      expect.objectContaining({ groupJid: 'B', selected: false, rotationGroupId: null, status: null, canInvite: false, inviteBlockedReason: 'NOT_ADMIN' }),
+      expect.objectContaining({ groupJid: 'Z', selected: true, title: 'Antigo', conversationId: gone.conversationId, canInvite: true, inviteBlockedReason: null }),
     ]);
   });
 

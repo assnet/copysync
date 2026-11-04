@@ -1,3 +1,4 @@
+import type { DirectoryGroup } from '../../../campaigns/domain/contracts/ISessionGroupDirectory';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferAudience } from '../../../campaigns/domain/enums/OfferAudience';
 import type { OfferImageMode } from '../../../campaigns/domain/enums/OfferImageMode';
@@ -105,6 +106,11 @@ export interface IMonitorGroupDirectory {
    * grupo em que a sessão não posta (GROUP_NOT_POSTABLE); 'monitor' aceita. Lança NotFound/Engine*.
    */
   ensureGroup(tenantId: string, sessionId: string, groupJid: string, purpose: 'monitor' | 'send'): Promise<{ conversationId: string }>;
+  /**
+   * Grupos ao vivo da sessão com a permissão de postar (anotar destinos salvos). Lança se a
+   * sessão estiver fora; quem chama trata como desconhecido.
+   */
+  listParticipating(sessionId: string): Promise<DirectoryGroup[]>;
   /** Liga o download automático de mídia da conversa (sem isso a foto não chega ao store). */
   enableMediaDownload(tenantId: string, conversationId: string): Promise<void>;
 }

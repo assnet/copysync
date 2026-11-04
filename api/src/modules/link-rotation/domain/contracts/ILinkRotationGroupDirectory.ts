@@ -6,6 +6,10 @@ export interface LinkRotationSessionGroup {
   avatarUrl: string | null;
   /** null = grupo ainda sem conversa no chat (criada ao ser escolhido). */
   conversationId: string | null;
+  /** A sessão consegue gerar o convite (é admin). Desconhecido = true. */
+  canInvite: boolean;
+  /** Motivo de `canInvite === false`. */
+  inviteBlockedReason: 'NOT_ADMIN' | null;
 }
 
 export interface LinkRotationSessionGroupList {

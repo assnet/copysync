@@ -210,6 +210,8 @@ export const groupCandidatesResponse = envelope({
           title: { type: ['string', 'null'] },
           avatarUrl: { type: ['string', 'null'] },
           conversationId: { type: ['string', 'null'] },
+          canInvite: { type: 'boolean' },
+          inviteBlockedReason: { type: ['string', 'null'], enum: ['NOT_ADMIN', null] },
           selected: { type: 'boolean' },
           rotationGroupId: { type: ['string', 'null'] },
           status: { type: ['string', 'null'], enum: [...Object.values(LinkRotationGroupStatus), null] },

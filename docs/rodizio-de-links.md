@@ -125,15 +125,16 @@ Entitlements `link_rotations` e `link_rotation_groups`. Presets (data migration 
 | Code guardado | `<code>` | o que vem depois de `t.me/`: `+<hash>` ou `<username>` |
 | Teto (`GROUP_CAPACITY`) | 50–1.024, padrão 1.000 | 50–200.000, padrão 10.000 |
 | Convite `AUTO` | sessão admin do grupo | criadora ou admin com `inviteUsers` (`ExportChatInvite`); `CHAT_ADMIN_REQUIRED` → `GROUP_INVITE_NOT_ALLOWED` |
-| Grupos listados no painel | todos os grupos da sessão | só onde `canInvite` (grupo, supergrupo ou canal de transmissão) |
+| Grupos listados no painel | todos, com `canInvite`/`inviteBlockedReason` (`NOT_ADMIN`) | idem |
 
 - Telegram: grupo básico vai até 200 membros e o próprio Telegram o converte em supergrupo ao crescer; supergrupo até
   200.000; canal (broadcast) não tem limite de inscritos. Em canal o teto é só o ponto em que o rodízio passa ao
   próximo — a API não distingue grupo de canal no teto (a faixa é a mesma) e o painel só explica no texto de ajuda.
-- `ParticipatingGroupInfo.canInvite` (opcional, ausente = desconhecido = `true`) vem do adapter Telegram;
-  `OffersLinkRotationGroupDirectory` filtra por ele (antes filtrava `canPost`, que excluía canal em que a sessão é admin
-  sem postar e incluía grupo em que ela não pode convidar). Consequência: no Telegram não dá para escolher grupo em que
-  a sessão não é admin e colar link manual; para isso ela precisa da permissão de convidar.
+- `ParticipatingGroupInfo.canInvite` (ausente = `true`): WhatsApp = sessão admin (participantes de
+  `groupFetchAllParticipating`, sem chamada extra); Telegram = criadora/admin com `inviteUsers`.
+  `OffersLinkRotationGroupDirectory` **não filtra**: devolve todos com `canInvite`/`inviteBlockedReason` e o painel
+  oculta (padrão) ou mostra desabilitado. Servidor: AUTO sem permissão → `GROUP_INVITE_NOT_ALLOWED` vira `NEEDS_LINK`
+  (nunca recebe clique); link manual continua aceito. O `ensure` do rodízio usa `purpose: 'monitor'` (não posta).
 
 ## Slug
 

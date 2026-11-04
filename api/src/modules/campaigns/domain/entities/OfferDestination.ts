@@ -7,4 +7,6 @@ export interface OfferDestinationView {
   avatarUrl: string | null;
   isGroup: boolean;
   sessionId: string | null;
+  /** JID do grupo (sem sufixo), para cruzar com a lista ao vivo da sessão. */
+  groupJid: string | null;
 }

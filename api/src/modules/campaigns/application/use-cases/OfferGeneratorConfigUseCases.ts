@@ -8,6 +8,9 @@ import {
   countByChannel, LIMIT_CHANNELS, limitKeyOfChannel, requiresCrossSession, type LimitChannel,
 } from '../../../tenants/domain/channelLimits';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import type { ISessionGroupDirectory } from '../../domain/contracts/ISessionGroupDirectory';
+import { postabilityOf, type GroupPostability, type LiveGroupsBySession } from '../../domain/services/groupPostability';
+import { loadLiveGroups } from '../services/loadLiveGroups';
 import { OFFER_DISPATCH_ORDERS, type OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
 
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
@@ -30,7 +33,8 @@ export interface OfferGeneratorConfigDTO {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
-  groups: { id: string; title: string | null; avatarUrl: string | null; sessionId: string | null }[];
+  /** `canPost`/`postBlockedReason` pela lista ao vivo da sessão dona; null = desconhecido. */
+  groups: ({ id: string; title: string | null; avatarUrl: string | null; sessionId: string | null } & GroupPostability)[];
   /** Legado = `limits.whatsapp.broadcastGroups` (`broadcast_groups`); null = sem limite do plano. */
   groupLimit: number | null;
   /** Legado = `limits.whatsapp.sessions` (`whatsapp_sessions`); null = sem limite do plano. */
@@ -60,10 +64,15 @@ export interface SaveOfferGeneratorConfigInput {
 interface Deps {
   configs: IOfferGeneratorConfigRepository;
   entitlements: IEntitlementReader;
+  /** Lista ao vivo para anotar `canPost`; ausente = tudo desconhecido. */
+  directory?: Pick<ISessionGroupDirectory, 'listParticipating'>;
 }
 
-function toGroups(views: OfferDestinationView[]): OfferGeneratorConfigDTO['groups'] {
-  return views.map((v) => ({ id: v.conversationId, title: v.title, avatarUrl: v.avatarUrl, sessionId: v.sessionId }));
+function toGroups(views: OfferDestinationView[], live: LiveGroupsBySession): OfferGeneratorConfigDTO['groups'] {
+  return views.map((v) => ({
+    id: v.conversationId, title: v.title, avatarUrl: v.avatarUrl, sessionId: v.sessionId,
+    ...postabilityOf(live, v.sessionId, v.groupJid),
+  }));
 }
 
 /** Configuração atual (GEN-01). Sem configuração: padrões, sem sessão nem grupos. */
@@ -85,13 +94,17 @@ export class GetOfferGeneratorConfigUseCase {
     const sessions = config?.sessionIds.length ? await configs.findSessions(tenantId, config.sessionIds) : [];
     const engineById = new Map(sessions.map((x) => [x.id, x.engine]));
     const sessionCount = countByChannel(sessions, (x) => x.engine);
+    const directory = this.deps.directory;
+    const live = directory && groups.length > 0
+      ? await loadLiveGroups(groups.map((g) => g.sessionId), (id) => directory.listParticipating(id))
+      : new Map();
     const groupCount = countByChannel(groups.filter((g) => g.sessionId != null && engineById.has(g.sessionId)), (g) => engineById.get(g.sessionId!));
     return {
       sessionIds: config?.sessionIds ?? [],
       intervalMinSeconds: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
       intervalMaxSeconds: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
       dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
-      groups: toGroups(groups),
+      groups: toGroups(groups, live),
       groupLimit: waGroups,
       sessionLimit: waSessions,
       crossSessionDispatch: crossSession === true,

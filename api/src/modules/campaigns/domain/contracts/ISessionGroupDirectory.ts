@@ -6,11 +6,17 @@ export interface DirectoryGroup {
   name: string | null;
   /** Foto vinda da engine na listagem; vale quando a conversa do chat não tem. */
   avatarUrl?: string | null;
-  /** A sessão pode postar no grupo. Ausente = true; false = canal só de leitura (serve só para monitorar). */
+  /** A sessão pode postar no grupo. Ausente = true; false = só monitorar (só-admins ou canal só de leitura). */
   canPost?: boolean;
-  /** A sessão consegue gerar convite. Ausente = desconhecido (tratado como true). */
+  postBlockedReason?: GroupPostBlockedReason | null;
+  /** A sessão consegue gerar convite. Ausente = true. */
   canInvite?: boolean;
+  inviteBlockedReason?: GroupInviteBlockedReason | null;
 }
+
+/** ADMINS_ONLY = só admins postam e a sessão não é admin; CHANNEL_READONLY = canal de transmissão sem permissão. */
+export type GroupPostBlockedReason = 'ADMINS_ONLY' | 'CHANNEL_READONLY';
+export type GroupInviteBlockedReason = 'NOT_ADMIN';
 
 export interface ISessionGroupDirectory {
   /** Grupos de que a sessão participa. Lança AppError interno se a sessão não estiver conectada. */

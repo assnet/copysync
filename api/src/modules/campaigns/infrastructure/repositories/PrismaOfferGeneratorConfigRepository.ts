@@ -36,7 +36,7 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
       orderBy: { createdAt: 'asc' },
       select: {
         conversationId: true,
-        conversation: { select: { isGroup: true, groupName: true, groupAvatarUrl: true, sessionId: true } },
+        conversation: { select: { isGroup: true, groupName: true, groupAvatarUrl: true, sessionId: true, groupJid: true } },
       },
     });
     return rows.map((r) => ({
@@ -45,6 +45,7 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
       avatarUrl: r.conversation.groupAvatarUrl ?? null,
       isGroup: r.conversation.isGroup,
       sessionId: r.conversation.sessionId,
+      groupJid: r.conversation.groupJid ?? null,
     }));
   }
 

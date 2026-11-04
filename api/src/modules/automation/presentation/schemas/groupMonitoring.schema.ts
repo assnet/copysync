@@ -103,7 +103,17 @@ const configSchema = {
     channel: { type: 'string', enum: ['whatsapp', 'telegram'] },
     settings: { type: 'object', properties: settingsProperties },
     monitoredGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, keywords: { type: 'array', items: { type: 'string' } } } } },
-    broadcastGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, sessionId: { type: 'string' }, position: { type: 'integer' } } } },
+    broadcastGroups: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          ...groupBase, sessionId: { type: 'string' }, position: { type: 'integer' },
+          canPost: { type: ['boolean', 'null'] },
+          postBlockedReason: { type: ['string', 'null'], enum: ['ADMINS_ONLY', 'CHANNEL_READONLY', null] },
+        },
+      },
+    },
     limits: {
       type: 'object',
       properties: {

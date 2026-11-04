@@ -148,7 +148,11 @@ const channelMapSchema = (properties: Record<string, object>) => {
 
 const configGroupSchema = {
   type: 'object',
-  properties: { id: { type: 'string' }, title: nullableString, avatarUrl: nullableString, sessionId: nullableString },
+  properties: {
+    id: { type: 'string' }, title: nullableString, avatarUrl: nullableString, sessionId: nullableString,
+    canPost: { type: ['boolean', 'null'] },
+    postBlockedReason: { type: ['string', 'null'], enum: ['ADMINS_ONLY', 'CHANNEL_READONLY', null] },
+  },
 } as const;
 
 const aiFlags = { aiFallback: { type: 'boolean' }, aiErrorCode: { type: 'string' } } as const;
@@ -225,6 +229,7 @@ export const sessionGroupsResponse = envelope({
           avatarUrl: nullableString,
           conversationId: nullableString,
           canPost: { type: 'boolean' },
+          postBlockedReason: { type: ['string', 'null'], enum: ['ADMINS_ONLY', 'CHANNEL_READONLY', null] },
         },
       },
     },

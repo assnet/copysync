@@ -25,8 +25,8 @@ describe('ListSessionGroupsUseCase', () => {
     const r = await new ListSessionGroupsUseCase(d).execute({ tenantId: T, sessionId: S });
     expect(r.partial).toBe(false);
     expect(r.groups).toEqual([
-      { groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1', canPost: true, canInvite: true },
-      { groupJid: '222', title: 'Novo', avatarUrl: null, conversationId: null, canPost: true, canInvite: true },
+      { groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1', canPost: true, postBlockedReason: null, canInvite: true, inviteBlockedReason: null },
+      { groupJid: '222', title: 'Novo', avatarUrl: null, conversationId: null, canPost: true, postBlockedReason: null, canInvite: true, inviteBlockedReason: null },
     ]);
   });
 
@@ -34,7 +34,7 @@ describe('ListSessionGroupsUseCase', () => {
     const d = setup();
     d.directory.listParticipating.mockRejectedValueOnce(new SessionNotConnectedError(S));
     const r = await new ListSessionGroupsUseCase(d).execute({ tenantId: T, sessionId: S });
-    expect(r).toEqual({ partial: true, groups: [{ groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1', canPost: true, canInvite: true }] });
+    expect(r).toEqual({ partial: true, groups: [{ groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1', canPost: true, postBlockedReason: null, canInvite: true, inviteBlockedReason: null }] });
   });
 
   it('sessão de outro tenant: 404', async () => {
@@ -59,6 +59,13 @@ describe('EnsureSessionGroupUseCase', () => {
     await expect(uc.execute({ tenantId: T, sessionId: S, groupJid: '-100555', purpose: 'send' })).rejects.toMatchObject({ code: 'GROUP_NOT_POSTABLE' });
     expect(d.directory.ensureConversation).not.toHaveBeenCalled();
     expect(await uc.execute({ tenantId: T, sessionId: S, groupJid: '-100555', purpose: 'monitor' })).toEqual({ conversationId: 'c-new', title: 'Canal' });
+  });
+
+  it('WhatsApp só-admins sem a sessão ser admin: GROUP_NOT_POSTABLE como destino', async () => {
+    const d = setup();
+    d.directory.listParticipating.mockResolvedValue([{ groupJid: '120363', name: 'Avisos', canPost: false, postBlockedReason: 'ADMINS_ONLY' }]);
+    await expect(new EnsureSessionGroupUseCase(d).execute({ tenantId: T, sessionId: S, groupJid: '120363', purpose: 'send' }))
+      .rejects.toMatchObject({ code: 'GROUP_NOT_POSTABLE', statusCode: 422 });
   });
 
   it('grupo de que a sessão não participa: 404 e nada criado', async () => {

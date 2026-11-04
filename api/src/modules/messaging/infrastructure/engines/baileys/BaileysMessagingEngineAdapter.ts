@@ -520,9 +520,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
     if (cached && Date.now() - cached.at < PARTICIPATING_GROUPS_TTL_MS) return cached.groups;
     try {
       const all = await entry.socket.groupFetchAllParticipating();
+      const self = entry.socket.user;
       const groups = Object.values(all).map((g) => ({
         groupJid: g.id.split('@')[0]!,
         name: g.subject?.trim() || null,
+        ...baileysGroupPermissions(g, self),
       }));
       this.participatingGroupsCache.set(sessionId, { groups, at: Date.now() });
       return groups;
@@ -1810,6 +1812,24 @@ interface GroupMetadataSnapshot {
    * `clearSessionGroupMetadata`).
    */
   summary?: { size: number; selfIsAdmin: boolean; fetchedAt: number };
+}
+
+/**
+ * Permissões da sessão no grupo, só com o que `groupFetchAllParticipating` já traz: posta se o
+ * grupo não é só-admins (`announce`) ou se ela é admin; convida só sendo admin.
+ */
+export function baileysGroupPermissions(
+  group: { announce?: boolean | null; participants?: readonly BaileysGroupParticipant[] | null },
+  self: { id?: string; lid?: string } | undefined,
+): Pick<ParticipatingGroupInfo, 'canPost' | 'postBlockedReason' | 'canInvite' | 'inviteBlockedReason'> {
+  const admin = isSelfGroupAdmin(group.participants ?? [], self);
+  const canPost = !group.announce || admin;
+  return {
+    canPost,
+    postBlockedReason: canPost ? null : 'ADMINS_ONLY',
+    canInvite: admin,
+    inviteBlockedReason: admin ? null : 'NOT_ADMIN',
+  };
 }
 
 /** A própria conta (PN ou LID) aparece como admin/superadmin entre os participantes. */
