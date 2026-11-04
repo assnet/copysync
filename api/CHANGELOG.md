@@ -84,6 +84,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Fixed
 
+- **`engines/telegram/TelegramMessagingEngineAdapter.ts`** — sessão Telegram ficava sem avatar em todo o painel (cards de sessão, seletor e resumo do Monitoramento, chips de grupos de disparo): `fetchProfilePicture` devolvia `null`. Agora baixa a foto da conta (ou de grupo/contato), salva no storage e cacheia 6 h, como o WhatsApp (api 0.51.2)
+
 #### Monitoramento — intervalo entre envios a partir de 0 (api 0.51.1 · app 0.64.1)
 
 - **`automation/domain/services/monitorSettings.ts`**, **`app/.../monitoring/utils/settingsDraft.ts`** — a faixa do intervalo começava em 1 min (60 s) e não permitia envio sem espera; piso agora é 0 (API e slider). Padrão 15–40 min mantido; fila já tratava gap 0 (`GREATEST(..., 0)`).

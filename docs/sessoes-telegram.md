@@ -6,7 +6,7 @@ usuário** (MTProto, lib [`telegram`/GramJS](https://gram.js.org/)) como segunda
 
 Status: **F1 + F2 (api 0.51.0 · app 0.64.0, 2026-11-04)** — criar, conectar (código ou QR),
 listar, limite por canal, receber texto e enviar texto/mídia. **Pendente (F3):** Telegram como
-origem/destino no Monitoramento e nos grupos de disparo; download de mídia recebida; foto de perfil.
+origem/destino no Monitoramento e nos grupos de disparo (inclui foto dos grupos na listagem); download de mídia recebida.
 
 Termos: **sessão** (nunca instância), **canal** (WhatsApp × Telegram), **código de login** (o que o
 Telegram manda ao app do usuário), **senha de duas etapas** (2FA da conta).
@@ -81,7 +81,10 @@ pede código de novo (como o pareamento do WhatsApp).
   `sendMediaMessage` devolve o id pré-gerado, como o Baileys.
 - `getGroupInviteLink.inviteCode` é o que vem depois de `https://t.me/` (ex.: `+AbCd…`): quem monta a URL
   precisa saber o canal.
-- `fetchProfilePicture`, `checkNumberExists` → `null`; `updateChatState`, `presenceSubscribe` → no-op.
+- `fetchProfilePicture`: foto da própria conta (quando `jid` é o telefone da sessão, como pede a listagem de
+  sessões), de grupo/canal ou contato (peer id). Baixada (`downloadProfilePhoto`, pequena) e salva no
+  `mediaFileStore` (`avatar_tg_*.jpg`), cache 6 h por sessão+peer — mesmo modelo do WhatsApp. Sem foto → `null`.
+- `checkNumberExists` → `null`; `updateChatState`, `presenceSubscribe` → no-op.
 
 ## 6. Configuração
 

@@ -52,10 +52,13 @@ import { TelegramLoginNotPendingError } from '../../../../../shared/errors/inter
 import { TelegramSessionRegistry, type PendingLogin, type TelegramSessionEntry } from './TelegramSessionRegistry';
 import type { TelegramAuthStatePersistence } from './TelegramAuthStatePersistence';
 import { Deferred } from './deferred';
+import { mediaContainer } from '../../../../media/infrastructure/mediaContainer';
 import { isAuthCancel, isLoggedOutError, translateTelegramLoginError, translateTelegramSendError } from './TelegramErrorTranslator';
 
 const telegramLogger = appLogger.child({ module: 'TelegramEngine' });
 const ENGINE = 'telegram';
+/** Foto baixada e servida pelo nosso storage; revalida a cada 6 h (como no WhatsApp). */
+const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 
 export interface TelegramEngineConfig {
   apiId: number;
@@ -102,6 +105,7 @@ function mediaType(media: Api.TypeMessageMedia | undefined): string {
 
 export class TelegramMessagingEngineAdapter implements IMessagingEngine {
   private readonly registry = new TelegramSessionRegistry();
+  private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
 
   constructor(
     private readonly config: TelegramEngineConfig,
@@ -646,8 +650,34 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     }));
   }
 
-  async fetchProfilePicture(): Promise<string | null> {
-    return null; // foto de perfil do Telegram: etapa futura (precisa do media store)
+  /**
+   * Foto de perfil: da própria conta (quando `jid` é o telefone da sessão), de grupo/canal ou de
+   * contato (peer id marcado). Baixada do Telegram e salva no storage, que serve a URL pública.
+   */
+  async fetchProfilePicture(sessionId: string, jid: string, isGroup: boolean): Promise<string | null> {
+    const entry = this.registry.get(sessionId);
+    if (!entry || entry.pending) return null;
+    const id = stripSuffix(jid);
+    const isSelf = !isGroup && (id === 'me' || (entry.phone !== null && id.replace(/\D/g, '') === entry.phone));
+    const cacheKey = `${sessionId}:${isSelf ? 'me' : id}`;
+    const cached = this.profilePictureCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < PROFILE_PICTURE_TTL_MS) return cached.url;
+
+    try {
+      const entity = isSelf ? await entry.client.getMe() : await entry.client.getEntity(await this.inputPeer(entry, id));
+      const photo = await entry.client.downloadProfilePhoto(entity, { isBig: false });
+      if (!Buffer.isBuffer(photo) || photo.length === 0) {
+        this.profilePictureCache.set(cacheKey, { url: null, at: Date.now() });
+        return null;
+      }
+      const key = isSelf ? `me_${sessionId}` : id.replace('-', 'n');
+      const url = await mediaContainer.mediaFileStore.saveBuffer(photo, `avatar_tg_${key}.jpg`);
+      this.profilePictureCache.set(cacheKey, { url, at: Date.now() });
+      return url;
+    } catch (err) {
+      telegramLogger.debug({ err, sessionId, isGroup }, 'Failed to fetch Telegram profile picture');
+      return null;
+    }
   }
 
   async checkNumberExists(): Promise<boolean | null> {
