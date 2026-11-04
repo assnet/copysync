@@ -53,3 +53,13 @@ export class SessionLeaseHeldError extends EngineTemporarilyUnavailableError {
     super();
   }
 }
+
+/**
+ * Worker recebeu chamada de sessão que não está nele (WROLE-09). Interno: só atravessa o fio
+ * worker → http, onde o adapter remoto re-resolve o dono; nunca é resposta HTTP.
+ */
+export class SessionNotOwnedError extends AppError {
+  constructor(public readonly sessionId: string) {
+    super('SESSION_NOT_OWNED', `Session is not owned by this process: ${sessionId}`, 409);
+  }
+}
