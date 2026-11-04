@@ -6,6 +6,7 @@ import {
   SessionNotFoundError,
   InvalidSessionStateError,
 } from '../../../../shared/errors/internal/SessionErrors';
+import { markConnectRequested } from '../services/markConnectRequested';
 
 export interface ConnectSessionInput {
   sessionId: string;
@@ -34,6 +35,8 @@ export class ConnectSessionUseCase {
     if (!session.canConnect()) {
       throw new InvalidSessionStateError(input.sessionId, session.status);
     }
+
+    await markConnectRequested(this.sessionRepo, input.sessionId, input.tenantId);
 
     // Update DB to CONNECTING before starting engine (so any crash doesn't leave PENDING)
     await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, { status: 'CONNECTING' });

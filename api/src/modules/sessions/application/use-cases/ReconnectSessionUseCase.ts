@@ -6,6 +6,7 @@ import {
   SessionNotFoundError,
   InvalidSessionStateError,
 } from '../../../../shared/errors/internal/SessionErrors';
+import { markConnectRequested } from '../services/markConnectRequested';
 
 export interface ReconnectSessionInput {
   sessionId: string;
@@ -29,6 +30,8 @@ export class ReconnectSessionUseCase {
     if (!session.canReconnect()) {
       throw new InvalidSessionStateError(input.sessionId, session.status);
     }
+
+    await markConnectRequested(this.sessionRepo, input.sessionId, input.tenantId);
 
     await this.sessionRepo.updateStatus(input.sessionId, input.tenantId, { status: 'CONNECTING' });
 
