@@ -1,0 +1,114 @@
+import { ENTITLEMENT_KEYS, type EntitlementKey } from '../entitlementKeys';
+import { LIMIT_CHANNELS, limitKeyOfChannel, type ChannelLimitKind, type LimitChannel } from '../channelLimits';
+
+/**
+ * Limites exibidos na tela "Assinatura" (`GET /subscription`, `.specs/features/subscription-page`).
+ * Função pura: recebe o snapshot cru dos entitlements e o uso do tenant, devolve os itens do contrato.
+ * Toda chave de `ENTITLEMENT_KEYS` é exibida aqui ou listada em `SUBSCRIPTION_HIDDEN_KEYS` (teste trava).
+ */
+export type SubscriptionLimitKind = 'count' | 'daily' | 'feature';
+
+export interface SubscriptionLimitItemDef {
+  key: EntitlementKey;
+  channel: LimitChannel | null;
+  kind: SubscriptionLimitKind;
+}
+
+/** Uso do tenant (preenchido por `ITenantUsageReader`). `null` = sem contador. */
+export interface SubscriptionUsage {
+  sessions: Record<LimitChannel, number>;
+  monitoredGroups: Record<LimitChannel, number>;
+  broadcastGroups: Record<LimitChannel, number>;
+  linkRotations: Record<LimitChannel, number>;
+  /** Ofertas geradas hoje (fuso de `startOfDayInZone`). */
+  offerGenerationsToday: number;
+  /** Pedidos de IA do dia; `null` se não houver contador. */
+  aiRequestsToday: number | null;
+}
+
+export interface SubscriptionLimitItem extends SubscriptionLimitItemDef {
+  /** feature = null; contador inexistente = null. */
+  used: number | null;
+  /** null = ilimitado (feature sempre null). */
+  limit: number | null;
+  /** feature: valor; count/daily: `limit !== 0`. */
+  enabled: boolean;
+}
+
+/** Limites por canal com contagem agregada do tenant (`linkRotationGroups` é por rodízio, fica à parte). */
+const COUNT_KINDS = ['sessions', 'monitoredGroups', 'broadcastGroups', 'linkRotations'] as const satisfies readonly ChannelLimitKind[];
+type CountKind = (typeof COUNT_KINDS)[number];
+
+/** Booleanos em que só `false` explícito bloqueia (ausente = liberado; `entitlementKeys.ts`). */
+const FEATURES_DEFAULT_ON: ReadonlySet<EntitlementKey> = new Set([
+  ENTITLEMENT_KEYS.MENTION_ALL_ENABLED,
+  ENTITLEMENT_KEYS.AI_REWRITE_ENABLED,
+]);
+
+/** Chaves que não aparecem na tela. Vazio hoje: chave nova entra na lista ou aqui, com motivo. */
+export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [];
+
+const channelItems = (kind: ChannelLimitKind): SubscriptionLimitItemDef[] =>
+  LIMIT_CHANNELS.map((channel) => ({ key: limitKeyOfChannel(kind, channel), channel, kind: 'count' as const }));
+
+const feature = (key: EntitlementKey): SubscriptionLimitItemDef => ({ key, channel: null, kind: 'feature' });
+
+/** Ordem de exibição. */
+export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
+  ...COUNT_KINDS.flatMap(channelItems),
+  /** Grupos por rodízio: limite por rodízio, sem uso agregado (`used` null). */
+  ...channelItems('linkRotationGroups'),
+  { key: ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY, channel: null, kind: 'daily' },
+  { key: ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY, channel: null, kind: 'daily' },
+  feature(ENTITLEMENT_KEYS.AI_REWRITE_ENABLED),
+  feature(ENTITLEMENT_KEYS.MENTION_ALL_ENABLED),
+  feature(ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH),
+  feature(ENTITLEMENT_KEYS.MARKETPLACE_EXTENSION),
+  feature(ENTITLEMENT_KEYS.STOREFRONT_ENABLED),
+  feature(ENTITLEMENT_KEYS.OFFER_STORY_ENABLED),
+];
+
+/** Mesma leitura do `PrismaEntitlementReader.getNumber`: número ou string numérica; resto = ausente. */
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Mesma leitura do `PrismaEntitlementReader.getBoolean`. */
+function toBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+  }
+  return null;
+}
+
+const KEY_TO_COUNT: ReadonlyMap<EntitlementKey, { kind: CountKind; channel: LimitChannel }> = new Map(
+  COUNT_KINDS.flatMap((kind) => LIMIT_CHANNELS.map((channel) => [limitKeyOfChannel(kind, channel), { kind, channel }] as const)),
+);
+
+function usedOf(def: SubscriptionLimitItemDef, usage: SubscriptionUsage): number | null {
+  if (def.kind === 'feature') return null;
+  if (def.key === ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY) return usage.offerGenerationsToday;
+  if (def.key === ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY) return usage.aiRequestsToday;
+  const c = KEY_TO_COUNT.get(def.key);
+  return c ? usage[c.kind][c.channel] : null;
+}
+
+/** `values` = snapshot cru (`IEntitlementSnapshotReader.readAll`). Ausente numérico = ilimitado. */
+export function buildSubscriptionLimits(values: Readonly<Record<string, unknown>>, usage: SubscriptionUsage): SubscriptionLimitItem[] {
+  return SUBSCRIPTION_LIMIT_ITEMS.map((def) => {
+    if (def.kind === 'feature') {
+      const v = toBoolean(values[def.key]);
+      return { ...def, used: null, limit: null, enabled: v ?? FEATURES_DEFAULT_ON.has(def.key) };
+    }
+    const limit = toNumber(values[def.key]);
+    return { ...def, used: usedOf(def, usage), limit, enabled: limit !== 0 };
+  });
+}
