@@ -40,6 +40,10 @@ Regras comuns a toda task:
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ✅ 2ad709b |
 | T22b | Lease negado não sobrescreve status do dono | T22 | | ✅ afbc869 |
 | T23 | Docs, CHANGELOG e versão | T22 | | ✅ este commit |
+| F1 | Boot: 2ª reconciliação após o TTL do lease | T23 | P | ⏳ |
+| F2 | Fence por erro de banco preserva chaves e se recupera | T23 | P | ⏳ |
+| F3 | Socket em abertura conta como local na renovação | F2 | | ⏳ |
+| F4 | Migration em UTC e `renew` ignora sessão apagada | T23 | P | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -416,6 +420,50 @@ No mesmo contrato, a porta estreita `ISessionLeaseGate { acquire(sessionId): Pro
 **Commit**: `docs(sessions): lease de sessão (E2) e versão 0.59.0`
 
 ---
+
+## Correções da revisão (2026-11-04)
+
+### F1: Boot: 2ª reconciliação após o TTL do lease [P]
+
+**What**: crash/SIGKILL não roda o shutdown, então o lease do processo morto fica vivo até 60 s. O `SessionStatusReconciler` do boot pula sessão com lease vivo e, sem E4, ela fica `CONNECTED` no painel sem socket (regressão com 1 instância e `SESSION_BOOTSTRAP_ON_STARTUP=false`). Correção: no boot, agendar uma 2ª passada do reconciler após `LEASE_TTL_MS + LEASE_FENCE_MARGIN_MS` (timer `unref`, cancelado no shutdown), que pega as sessões cujo lease venceu. Se o bootstrap estiver ligado, a 2ª passada reconecta como a 1ª. Logar quantas foram tratadas.
+**Where**: `api/src/app/server.ts`, `api/src/modules/sessions/application/services/SessionStatusReconciler.ts` (+ teste), `SessionBootstrapService.ts` se o bootstrap precisar da mesma 2ª passada
+**Depends on**: T23
+**Done when**: teste com relógio falso: sessão com lease vivo de outro worker é pulada na 1ª passada e tratada na 2ª; shutdown antes da 2ª cancela o timer; 1 instância sem lease órfão = comportamento de antes
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): boot reconcilia de novo após o TTL do lease`
+
+### F2: Fence por erro de banco preserva chaves e se recupera [P]
+
+**What**: hoje, falha/timeout de `renew` por ~55 s dispara o fence e `abortSession` em todos os sockets: não grava status (fica `CONNECTED`), não solta lease e `discardAuthState` descarta chaves pendentes (pode corromper a sessão WhatsApp). Antes do E2 um soluço de banco não derrubava nada. Separar os dois motivos:
+- **lease perdido** (`renew` volta sem a sessão = outro dono): manter como está (abort sem gravar, D4).
+- **fence por erro/timeout de banco** (ninguém provou outro dono): fechar o socket preservando as chaves pendentes no handle órfão (`orphanDirty`, já existente, para reusar no próximo handle do mesmo processo) em vez de descartar; marcar a sessão como "derrubada por fence" no razão; quando uma renovação voltar a funcionar, para cada derrubada por fence: `release` best-effort e reabrir pela origem `auto` (`acquire` → `reconnect`), que grava status pelo caminho normal. Se o `acquire` falhar (outro dono), só limpar.
+**Where**: `api/src/modules/sessions/application/use-cases/RenewSessionLeaseUseCase.ts` (+ teste), `api/src/modules/sessions/application/services/SessionLeaseLedger.ts`, `ISessionSocketControl` (novo método ou parâmetro: fechar preservando chaves) + Baileys adapter (`abortSession`/novo `suspendSession`) e Telegram adapter equivalente (Telegram: destruir cliente sem `auth.clear`), roteador
+**Depends on**: T23
+**Done when**: testes: erro de banco 2 rodadas → sockets fechados sem descartar pendentes; renovação volta → sessões reabertas via auto; lease perdido continua abortando e descartando; `orphanDirty` reaproveitado no reopen
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): fence por erro de banco preserva chaves e reabre`
+
+### F3: Socket em abertura conta como local na renovação
+
+**What**: entre `leaseGate.acquire` e `registry.set` (Baileys `openSocket`, awaits de versão/auth state) o socket não aparece em `listLocalSessionIds`; a renovação faz `drop` do razão e o socket nasce sem lease renovado (após 60 s outro processo adquire: dois donos). Correção: o adapter mantém um conjunto "abrindo" (add logo após o acquire, remove no `registry.set` ou na falha) e `listLocalSessionIds` devolve registry ∪ abrindo. Telegram idem em `openClient`.
+**Where**: `BaileysMessagingEngineAdapter.ts`, `TelegramMessagingEngineAdapter.ts` (+ testes)
+**Depends on**: F2 (mesmo arquivo)
+**Done when**: teste: renovação durante a abertura mantém o lease; falha na abertura tira do conjunto
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): socket em abertura mantém o lease`
+
+### F4: Migration em UTC e `renew` ignora sessão apagada [P]
+
+**What**: (a) backfill da migration `20261104150000_add_session_lease` usa `NOW()` em `timestamp(3)` sem fuso; trocar por `(now() AT TIME ZONE 'UTC')` (migration ainda não aplicada em produção: pode editar). (b) `PrismaSessionLeaseRepository.renew` passa a exigir `"deletedAt" IS NULL` (sessão apagada em outro processo deixa de ser renovada; o dono aborta pelo caminho de lease perdido). Status fica para a E3 (roteamento da ação ao dono).
+**Where**: `api/prisma/migrations/20261104150000_add_session_lease/migration.sql`, `PrismaSessionLeaseRepository.ts` (+ `.int.test.ts`)
+**Depends on**: T23
+**Done when**: int: renew de sessão apagada devolve sem a sessão; migration aplica limpa no Postgres descartável com `TimeZone` ≠ UTC e o backfill grava UTC
+**Tests**: int
+**Gate**: int + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): backfill em UTC e renew ignora sessão apagada`
 
 ## Diagram-Definition Cross-Check
 
