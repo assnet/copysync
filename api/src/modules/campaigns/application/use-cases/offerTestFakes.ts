@@ -228,7 +228,8 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
   saves = 0;
 
   constructor(
-    public sessions: (OfferSessionRef & { tenantId: string })[] = [],
+    /** `engine` ausente = `baileys` (WhatsApp). */
+    public sessions: (Omit<OfferSessionRef, 'engine'> & { engine?: string; tenantId: string })[] = [],
     public conversations: FakeConversation[] = [],
   ) {}
 
@@ -249,12 +250,12 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
   }
   async findSession(tenantId: string, sessionId: string) {
     const s = this.sessions.find((x) => x.id === sessionId && x.tenantId === tenantId);
-    return s ? { id: s.id, status: s.status } : null;
+    return s ? { id: s.id, status: s.status, engine: s.engine ?? 'baileys' } : null;
   }
   async findSessions(tenantId: string, sessionIds: string[]) {
     return sessionIds.flatMap((id) => {
       const s = this.sessions.find((x) => x.id === id && x.tenantId === tenantId);
-      return s ? [{ id: s.id, status: s.status }] : [];
+      return s ? [{ id: s.id, status: s.status, engine: s.engine ?? 'baileys' }] : [];
     });
   }
   async listSessionGroupConversations(tenantId: string, sessionId: string) {
@@ -264,9 +265,10 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
   }
 
   async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]) {
-    return ids.filter((id) =>
-      this.conversations.some((c) => c.id === id && c.tenantId === tenantId && c.sessionId != null && sessionIds.includes(c.sessionId) && c.isGroup),
-    );
+    return ids.flatMap((id) => {
+      const c = this.conversations.find((x) => x.id === id && x.tenantId === tenantId && x.sessionId != null && sessionIds.includes(x.sessionId) && x.isGroup);
+      return c ? [{ conversationId: c.id, sessionId: c.sessionId! }] : [];
+    });
   }
 }
 

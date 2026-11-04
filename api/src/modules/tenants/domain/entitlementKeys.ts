@@ -8,8 +8,14 @@ export const ENTITLEMENT_KEYS = {
   WHATSAPP_SESSIONS: 'whatsapp_sessions',
   /** Sessões Telegram (conta de usuário, MTProto). 0 no Lite, 1 no Pro, 2 no Max. */
   TELEGRAM_SESSIONS: 'telegram_sessions',
+  /** Grupos monitorados no WhatsApp (canal = engine da sessão; `tenants/domain/channelLimits.ts`). */
   MONITORED_GROUPS: 'monitored_groups',
+  /** Grupos de disparo no WhatsApp. */
   BROADCAST_GROUPS: 'broadcast_groups',
+  /** Grupos monitorados no Telegram. 0 no Lite, 2 no Pro, 6 no Max. */
+  TELEGRAM_MONITORED_GROUPS: 'telegram_monitored_groups',
+  /** Grupos de disparo no Telegram. 0 no Lite, 10 no Pro, 40 no Max. */
+  TELEGRAM_BROADCAST_GROUPS: 'telegram_broadcast_groups',
   MENTION_ALL_ENABLED: 'mention_all_enabled',
   OFFER_GENERATIONS_PER_DAY: 'offer_generations_per_day',
   MARKETPLACE_EXTENSION: 'marketplace_extension',

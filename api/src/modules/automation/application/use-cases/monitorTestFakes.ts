@@ -12,12 +12,17 @@ export const NOW = new Date('2026-10-28T15:00:00.000Z'); // 12:00 em São Paulo
 
 export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   sessions = new Set([`${TENANT}:${SESSION}`, `${TENANT}:session-2`]);
+  /** Engine por sessão; ausente = `baileys` (WhatsApp). */
+  engines: Record<string, string> = {};
   configs: GroupMonitorConfig[] = [];
   monitored: (MonitoredGroup & { tenantId: string; sessionId: string })[] = [];
   broadcast: (BroadcastGroup & { tenantId: string; monitorSessionId: string })[] = [];
   private seq = 0;
 
   async sessionExists(tenantId: string, sessionId: string) { return this.sessions.has(`${tenantId}:${sessionId}`); }
+  async sessionEngines(tenantId: string, sessionIds: string[]) {
+    return new Map(sessionIds.filter((id) => this.sessions.has(`${tenantId}:${id}`)).map((id) => [id, this.engines[id] ?? 'baileys']));
+  }
   async findConfig(tenantId: string, sessionId: string) {
     return this.configs.find((c) => c.tenantId === tenantId && c.sessionId === sessionId) ?? null;
   }
@@ -45,8 +50,9 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   }
   async tenantGroupJids(tenantId: string): Promise<TenantGroupJids> {
     return {
-      monitored: this.monitored.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid }) => ({ sessionId, groupJid })),
-      broadcast: this.broadcast.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid, monitorSessionId }) => ({ sessionId, groupJid, monitorSessionId })),
+      monitored: this.monitored.filter((g) => g.tenantId === tenantId).map(({ sessionId, groupJid }) => ({ sessionId, groupJid, engine: this.engines[sessionId] ?? 'baileys' })),
+      broadcast: this.broadcast.filter((g) => g.tenantId === tenantId)
+        .map(({ sessionId, groupJid, monitorSessionId }) => ({ sessionId, groupJid, monitorSessionId, engine: this.engines[sessionId] ?? 'baileys' })),
     };
   }
   async findActiveMonitoredGroup(tenantId: string, sessionId: string, groupJid: string): Promise<ActiveMonitoredGroup | null> {

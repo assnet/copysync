@@ -351,6 +351,37 @@ describe('ProcessPendingCapturedOffersUseCase — sessão cruzada', () => {
   });
 });
 
+describe('ProcessPendingCapturedOffersUseCase — limites por canal', () => {
+  async function mixed(entitlements: Record<string, unknown>) {
+    const s = await setup({ entitlements });
+    s.monitors.sessions.add(`${TENANT}:tg-1`).add(`${TENANT}:tg-2`);
+    Object.assign(s.monitors.engines, { 'tg-1': 'telegram', 'tg-2': 'telegram' });
+    const cfg = (await s.monitors.findConfig(TENANT, SESSION))!;
+    await s.monitors.replaceBroadcast(TENANT, SESSION, cfg.id, [
+      { conversationId: 'c-t1', groupJid: '-1', sessionId: 'tg-1' },
+      { conversationId: 'c-w1', groupJid: 'w1', sessionId: SESSION },
+      { conversationId: 'c-t2', groupJid: '-2', sessionId: 'tg-2' },
+      { conversationId: 'c-w2', groupJid: 'w2', sessionId: SESSION },
+      { conversationId: 'c-t3', groupJid: '-3', sessionId: 'tg-1' },
+    ]);
+    await s.msg();
+    await s.process.execute();
+    return s.queue.inputs[0]?.destinations.map((d) => d.conversationId);
+  }
+
+  it('corte por canal: cada canal até o próprio limite, na ordem da lista', async () => {
+    expect(await mixed({ cross_session_dispatch: true, broadcast_groups: 1, telegram_broadcast_groups: 2 })).toEqual(['c-t1', 'c-w1', 'c-t2']);
+  });
+
+  it('sem cross_session_dispatch: canal diferente segue; no Telegram, só a 1ª sessão', async () => {
+    expect(await mixed({})).toEqual(['c-t1', 'c-w1', 'c-w2', 'c-t3']);
+  });
+
+  it('limite 0 no Telegram (Lite): só o WhatsApp recebe', async () => {
+    expect(await mixed({ cross_session_dispatch: true, telegram_broadcast_groups: 0 })).toEqual(['c-w1', 'c-w2']);
+  });
+});
+
 describe('ProcessPendingCapturedOffersUseCase — credencial recusada', () => {
   const SINCE = new Date('2026-10-28T10:00:00.000Z');
 

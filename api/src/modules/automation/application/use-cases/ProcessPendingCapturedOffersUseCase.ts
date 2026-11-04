@@ -10,7 +10,8 @@ import { captureExpiresAt } from '../../domain/services/monitorSettings';
 import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from '../../domain/services/offerMessageText';
 import { resolveStartWithinWindow } from '../../domain/services/operatingWindow';
 import { logger } from '../../../../shared/logger/logger';
-import { BROADCAST_GROUPS, CROSS_SESSION_DISPATCH, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
+import { CROSS_SESSION_DISPATCH, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
+import { keepOneSessionPerChannel, limitKeyOfChannel, requiresCrossSession, sliceByChannel } from '../../../tenants/domain/channelLimits';
 
 /** Capturas por tick (cada uma pode ir à rede: expandir link, API do marketplace). */
 export const CAPTURE_BATCH_SIZE = 3;
@@ -98,13 +99,19 @@ export class ProcessPendingCapturedOffersUseCase {
     const config = await monitors.findConfig(c.tenantId, c.sessionId);
     if (!config?.enabled) return { status: 'SKIPPED', reason: 'MONITOR_DISABLED' };
     let targets = await monitors.listBroadcast(c.tenantId, c.sessionId);
-    // Plano rebaixado depois de salvar: sem sessão cruzada, só os grupos da própria sessão
-    if (targets.some((t) => t.sessionId !== c.sessionId) && (await entitlements.getBoolean(c.tenantId, CROSS_SESSION_DISPATCH)) !== true) {
-      targets = targets.filter((t) => t.sessionId === c.sessionId);
+    const engines = await monitors.sessionEngines(c.tenantId, [c.sessionId, ...targets.map((t) => t.sessionId)]);
+    const engineOf = (id: string) => engines.get(id) ?? 'baileys';
+    // Plano rebaixado depois de salvar: sem sessão cruzada, uma sessão por canal (a do monitor no canal dela)
+    const sessionsUsed = [c.sessionId, ...targets.map((t) => t.sessionId)].map((id) => ({ id, engine: engineOf(id) }));
+    if (requiresCrossSession(sessionsUsed) && (await entitlements.getBoolean(c.tenantId, CROSS_SESSION_DISPATCH)) !== true) {
+      targets = keepOneSessionPerChannel(targets, (t) => t.sessionId, engineOf, { id: c.sessionId, engine: engineOf(c.sessionId) });
     }
-    // Plano rebaixado depois de salvar: envia só até o limite atual
-    const limit = await entitlements.getNumber(c.tenantId, BROADCAST_GROUPS);
-    if (limit !== null) targets = targets.slice(0, Math.max(0, limit));
+    // Plano rebaixado depois de salvar: envia só até o limite atual de cada canal (ordem da lista)
+    const limits = {
+      whatsapp: await entitlements.getNumber(c.tenantId, limitKeyOfChannel('broadcastGroups', 'whatsapp')),
+      telegram: await entitlements.getNumber(c.tenantId, limitKeyOfChannel('broadcastGroups', 'telegram')),
+    };
+    targets = sliceByChannel(targets, (t) => engineOf(t.sessionId), (ch) => limits[ch]);
     if (targets.length === 0) return { status: 'SKIPPED', reason: 'NO_BROADCAST_GROUPS' };
 
     const urls = extractUrls(c.sourceText);

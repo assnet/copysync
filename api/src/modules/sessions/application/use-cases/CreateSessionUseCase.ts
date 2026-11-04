@@ -6,8 +6,8 @@ import { normalizeInternationalPhone } from '../../domain/services/normalizeInte
 import { SessionPhoneInvalidError } from '../../../../shared/errors/internal/SessionErrors';
 import { EngineDisabledError } from '../../../../shared/errors/internal/MessagingErrors';
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
-import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
-import { isSessionEngine, type SessionEngine } from '../../domain/sessionEngines';
+import { channelLimitKey } from '../../../tenants/domain/channelLimits';
+import { isSessionEngine } from '../../domain/sessionEngines';
 
 export interface CreateSessionInput {
   tenantId: string;
@@ -17,12 +17,6 @@ export interface CreateSessionInput {
   /** Número que será conectado; opcional, validado e normalizado aqui conforme o canal. */
   declaredPhone?: string | null;
 }
-
-/** Chave de limite do plano por engine. */
-export const SESSION_LIMIT_KEY_BY_ENGINE: Record<SessionEngine, string> = {
-  baileys: ENTITLEMENT_KEYS.WHATSAPP_SESSIONS,
-  telegram: ENTITLEMENT_KEYS.TELEGRAM_SESSIONS,
-};
 
 export class CreateSessionUseCase {
   constructor(
@@ -48,7 +42,7 @@ export class CreateSessionUseCase {
     const data = { tenantId: input.tenantId, name: input.name, engine, declaredPhone };
     // Limite do plano por canal; entitlement ausente = ilimitado (tenant sem plano sincronizado não regride).
     // Contagem + criação atômicas no repositório (lock por tenant): criações simultâneas não passam do limite.
-    const key = SESSION_LIMIT_KEY_BY_ENGINE[engine];
+    const key = channelLimitKey('sessions', engine);
     const limit = await this.entitlements.getNumber(input.tenantId, key);
     const session = limit === null
       ? await this.sessionRepo.create(data)

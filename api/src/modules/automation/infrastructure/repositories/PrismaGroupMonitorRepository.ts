@@ -28,6 +28,13 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
     return (await this.prisma.session.count({ where: { id: sessionId, tenantId, deletedAt: null } })) > 0;
   }
 
+  async sessionEngines(tenantId: string, sessionIds: string[]): Promise<Map<string, string>> {
+    const ids = [...new Set(sessionIds)];
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.session.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, engine: true } });
+    return new Map(rows.map((r) => [r.id, r.engine]));
+  }
+
   async findConfig(tenantId: string, sessionId: string): Promise<GroupMonitorConfig | null> {
     const r = await this.prisma.groupMonitorConfig.findUnique({ where: { tenantId_sessionId: { tenantId, sessionId } } });
     return r ? toConfig(r) : null;
@@ -99,7 +106,13 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
       this.prisma.monitoredGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true } }),
       this.prisma.broadcastGroup.findMany({ where: { tenantId }, select: { sessionId: true, groupJid: true, config: { select: { sessionId: true } } } }),
     ]);
-    return { monitored, broadcast: broadcast.map((b) => ({ sessionId: b.sessionId, groupJid: b.groupJid, monitorSessionId: b.config.sessionId })) };
+    // Grupo não tem relação com Session no schema: engine numa consulta só (sessão sumida = WhatsApp)
+    const engines = await this.sessionEngines(tenantId, [...monitored, ...broadcast].map((g) => g.sessionId));
+    const engineOf = (id: string) => engines.get(id) ?? 'baileys';
+    return {
+      monitored: monitored.map((m) => ({ ...m, engine: engineOf(m.sessionId) })),
+      broadcast: broadcast.map((b) => ({ sessionId: b.sessionId, groupJid: b.groupJid, monitorSessionId: b.config.sessionId, engine: engineOf(b.sessionId) })),
+    };
   }
 
   /** Índice (sessionId, groupJid); tenant e monitoramento ligado no mesmo filtro. */

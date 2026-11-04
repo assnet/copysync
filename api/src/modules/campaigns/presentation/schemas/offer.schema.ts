@@ -140,6 +140,12 @@ const offerSchema = {
   },
 } as const;
 
+/** `{ whatsapp: {...}, telegram: {...} }` com o mesmo formato nos dois canais (limites/uso). */
+const channelMapSchema = (properties: Record<string, object>) => {
+  const channel = { type: 'object', required: Object.keys(properties), properties };
+  return { type: 'object', required: ['whatsapp', 'telegram'], properties: { whatsapp: channel, telegram: channel } };
+};
+
 const configGroupSchema = {
   type: 'object',
   properties: { id: { type: 'string' }, title: nullableString, avatarUrl: nullableString, sessionId: nullableString },
@@ -185,12 +191,15 @@ export const offerConfigResponse = envelope({
     groupLimit: { type: ['number', 'null'] },
     sessionLimit: { type: ['number', 'null'] },
     crossSessionDispatch: { type: 'boolean' },
+    limits: channelMapSchema({ sessions: { type: ['number', 'null'] }, broadcastGroups: { type: ['number', 'null'] } }),
+    usage: channelMapSchema({ sessions: { type: 'integer' }, broadcastGroups: { type: 'integer' } }),
     configured: { type: 'boolean' },
   },
 });
 
-// Grupos da sessão (todos do WhatsApp, não só os com mensagem)
-const GROUP_JID_PATTERN = '^[0-9]{5,40}(-[0-9]{5,20})?$';
+// Grupos da sessão (todos, não só os com mensagem). WhatsApp: `<dígitos>` ou `<dígitos>-<dígitos>`
+// (sem `@g.us`). Telegram: peer id marcado negativo — `-<id>` grupo pequeno, `-100<id>` supergrupo/canal.
+export const GROUP_JID_PATTERN = '^(?:[0-9]{5,40}(?:-[0-9]{5,20})?|-[1-9][0-9]{3,19})$';
 
 export const sessionGroupsQuerySchema = {
   type: 'object',

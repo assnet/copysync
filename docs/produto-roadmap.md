@@ -67,8 +67,8 @@ guarda o plano, não o preço.
 |---|---|---|---|
 | Conexões WhatsApp | 1 | 1 | 2 |
 | Conexões Telegram | — | 1 | 2 |
-| Grupos monitorados (por canal) | 1 | 2 | 6 |
-| Grupos de disparo (por canal) | 5 | 10 | 40 |
+| Grupos monitorados — WhatsApp / Telegram | 1 / — | 2 / 2 | 6 / 6 |
+| Grupos de disparo — WhatsApp / Telegram | 5 / — | 10 / 10 | 40 / 40 |
 | Disparo em massa | ✅ | ✅ | ✅ |
 | Agendamento de horários | ✅ | ✅ | ✅ |
 | Rodízio de links inteligentes | ✅ | ✅ | ✅ |
@@ -76,7 +76,7 @@ guarda o plano, não o preço.
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
 | Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
-| Monitorar em um WhatsApp e disparar em outro (sessão cruzada) | — | — | ✅ (exclusivo) |
+| Monitorar numa sessão e disparar em outra do mesmo canal (sessão cruzada) | — | — | ✅ (exclusivo) |
 | Site pra bio | — | ✅ | ✅ |
 | Domínio personalizado | — | ✅ | ✅ |
 | Template Instagram | — | — | ✅ (exclusivo) |
@@ -90,6 +90,15 @@ reescrita com IA (`ai_rewrite_enabled`), limite diário do gerador (`offer_gener
 Versão anterior (Básico/Plus/Pro, R$ 99/169/299) fica substituída por esta. Telegram no
 PRO e MAX repete os mesmos limites de grupos do WhatsApp ("monitora 2 + 10 de
 envio" por canal).
+
+**Limites por canal** (`tenants/domain/channelLimits.ts`): o canal de uma sessão é a engine
+(`baileys` = WhatsApp, `telegram`); o de um grupo é a engine da **sessão dona** (monitorado: sessão do
+monitor; disparo: `BroadcastGroup.sessionId`; gerador: sessão do grupo). Chaves: `whatsapp_sessions` /
+`telegram_sessions`, `monitored_groups` / `telegram_monitored_groups`, `broadcast_groups` /
+`telegram_broadcast_groups` (as sem prefixo são do WhatsApp; não renomear). Presets Telegram: LITE 0/0,
+PRO 2/10, MAX 6/40. Cada canal conta e corta sozinho; `PLAN_LIMIT_REACHED` (403) leva `meta.key` do canal.
+`cross_session_dispatch` só é exigido com **2+ sessões do mesmo canal**; WhatsApp + Telegram juntos
+sempre podem. Nada de chave literal em use case: `channelLimitKey(kind, engine)` / `limitKeyOfChannel`.
 
 ### Carga por plano (entrada do estudo de arquitetura)
 
@@ -109,7 +118,8 @@ nas janelas agendadas). O gargalo é o **envio em rajada nas janelas de horário
 escuta: fila por sessão com rate limit é obrigatória (item 3.6 do doc de escala).
 
 Chaves de entitlement sugeridas (snake_case, estáveis):
-`whatsapp_sessions`, `telegram_enabled`, `monitored_groups`, `broadcast_groups`,
+`whatsapp_sessions`, `telegram_sessions`, `monitored_groups`, `broadcast_groups`,
+`telegram_monitored_groups`, `telegram_broadcast_groups`,
 `offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `ai_rewrite_enabled`,
 `offer_story_enabled`, `storefront_enabled`, `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).

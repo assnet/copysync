@@ -8,6 +8,8 @@ function setup(entitlements: Record<string, unknown> = {}) {
       { id: 's1', tenantId: TENANT, status: 'CONNECTED' },
       { id: 's2', tenantId: TENANT, status: 'CONNECTED' },
       { id: 'sx', tenantId: 'other', status: 'CONNECTED' },
+      { id: 't1', tenantId: TENANT, status: 'CONNECTED', engine: 'telegram' },
+      { id: 't2', tenantId: TENANT, status: 'CONNECTED', engine: 'telegram' },
     ],
     [
       { id: 'g1', tenantId: TENANT, sessionId: 's1', isGroup: true, title: 'Grupo 1' },
@@ -15,6 +17,8 @@ function setup(entitlements: Record<string, unknown> = {}) {
       { id: 'g3', tenantId: TENANT, sessionId: 's2', isGroup: true },
       { id: 'dm', tenantId: TENANT, sessionId: 's1', isGroup: false },
       { id: 'gx', tenantId: 'other', sessionId: 's1', isGroup: true },
+      { id: 'tg1', tenantId: TENANT, sessionId: 't1', isGroup: true },
+      { id: 'tg2', tenantId: TENANT, sessionId: 't1', isGroup: true },
     ],
   );
   const deps = { configs, entitlements: new FakeEntitlementReader(entitlements) };
@@ -28,6 +32,8 @@ describe('Offer generator config', () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
       sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, configured: false,
+      limits: { whatsapp: { sessions: null, broadcastGroups: 5 }, telegram: { sessions: null, broadcastGroups: null } },
+      usage: { whatsapp: { sessions: 0, broadcastGroups: 0 }, telegram: { sessions: 0, broadcastGroups: 0 } },
     });
   });
 
@@ -106,5 +112,30 @@ describe('Offer generator config — sessão cruzada', () => {
       .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'cross_session_dispatch' } });
     const ok = setup({ cross_session_dispatch: true });
     await expect(ok.save.execute({ ...base, sessionIds: ['s1', 's2'], conversationIds: [] })).resolves.toMatchObject({ sessionIds: ['s1', 's2'], crossSessionDispatch: true });
+  });
+});
+
+describe('Offer generator config — limites por canal', () => {
+  it('WhatsApp + Telegram juntos sem cross_session_dispatch; uso e limites por canal no GET', async () => {
+    const s = setup({ whatsapp_sessions: 1, telegram_sessions: 1, broadcast_groups: 1, telegram_broadcast_groups: 2 });
+    const out = await s.save.execute({ ...base, sessionIds: ['s1', 't1'], conversationIds: ['g1', 'tg1', 'tg2'] });
+    expect(out.crossSessionDispatch).toBe(false);
+    expect(out.limits).toEqual({ whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 1, broadcastGroups: 2 } });
+    expect(out.usage).toEqual({ whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 1, broadcastGroups: 2 } });
+  });
+
+  it('limite de sessões e de grupos por canal; key do erro indica o canal', async () => {
+    const s = setup({ telegram_sessions: 0, cross_session_dispatch: true });
+    await expect(s.save.execute({ ...base, sessionIds: ['s1', 't1'], conversationIds: [] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_sessions', limit: 0 } });
+    const g = setup({ broadcast_groups: 5, telegram_broadcast_groups: 1 });
+    await expect(g.save.execute({ ...base, sessionIds: ['s1', 't1'], conversationIds: ['g1', 'tg1', 'tg2'] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_broadcast_groups', limit: 1 } });
+  });
+
+  it('duas sessões Telegram exigem cross_session_dispatch', async () => {
+    const s = setup();
+    await expect(s.save.execute({ ...base, sessionIds: ['t1', 't2'], conversationIds: [] }))
+      .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'cross_session_dispatch' } });
   });
 });

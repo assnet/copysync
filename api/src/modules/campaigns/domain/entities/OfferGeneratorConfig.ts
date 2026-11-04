@@ -19,4 +19,6 @@ export interface OfferGeneratorConfig {
 export interface OfferSessionRef {
   id: string;
   status: string;
+  /** Engine da sessão (`baileys` | `telegram`): define o canal do limite do plano. */
+  engine: string;
 }

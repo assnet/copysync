@@ -28,12 +28,15 @@ function setup(
   offers.items.push(makeOffer(opts.offer));
   const dispatches = new InMemoryOfferDispatchRepository(offers);
   const configs = new InMemoryOfferGeneratorConfigRepository(
-    [{ id: 's1', tenantId: TENANT, status: opts.sessionStatus ?? 'CONNECTED' }, { id: 's2', tenantId: TENANT, status: 'CONNECTED' }],
+    [{ id: 's1', tenantId: TENANT, status: opts.sessionStatus ?? 'CONNECTED' }, { id: 's2', tenantId: TENANT, status: 'CONNECTED' },
+      { id: 't1', tenantId: TENANT, status: 'CONNECTED', engine: 'telegram' }],
     [
       ...GROUPS.map((id) => ({ id, tenantId: TENANT, sessionId: 's1', isGroup: true })),
       { id: 'old', tenantId: TENANT, sessionId: 's-old', isGroup: true },
       { id: 'd1', tenantId: TENANT, sessionId: 's2', isGroup: true },
       { id: 'd2', tenantId: TENANT, sessionId: 's2', isGroup: true },
+      { id: 'tg1', tenantId: TENANT, sessionId: 't1', isGroup: true },
+      { id: 'tg2', tenantId: TENANT, sessionId: 't1', isGroup: true },
     ],
   );
   if (opts.configured !== false) {
@@ -242,5 +245,18 @@ describe('SendOfferUseCase — sessão cruzada', () => {
     const s = setup({ sessionIds: ['s1', 's2'], selected: ['c1', 'd1'], entitlements: { cross_session_dispatch: true } });
     await s.uc.execute(input);
     expect(s.dispatches.items.map((d) => [d.conversationId, d.sessionId])).toEqual([['c1', 's1'], ['d1', 's2']]);
+  });
+});
+
+describe('SendOfferUseCase — canais', () => {
+  it('WhatsApp + Telegram disparam sem cross_session_dispatch; plano rebaixado corta a 2ª sessão do mesmo canal', async () => {
+    const s = setup({ sessionIds: ['s1', 's2', 't1'], selected: ['c1', 'd1', 'tg1'] });
+    await s.uc.execute(input);
+    expect(s.dispatches.items.map((d) => [d.conversationId, d.sessionId])).toEqual([['c1', 's1'], ['tg1', 't1']]);
+  });
+
+  it('grupos acima do limite do Telegram → PLAN_LIMIT_REACHED com a key do canal', async () => {
+    const s = setup({ sessionIds: ['s1', 't1'], selected: ['c1', 'tg1', 'tg2'], entitlements: { broadcast_groups: 5, telegram_broadcast_groups: 1 } });
+    await expect(s.uc.execute(input)).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_broadcast_groups', limit: 1 } });
   });
 });

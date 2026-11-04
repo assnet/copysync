@@ -83,9 +83,9 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
   async findSession(tenantId: string, sessionId: string): Promise<OfferSessionRef | null> {
     const row = await this.prisma.session.findFirst({
       where: { id: sessionId, tenantId, deletedAt: null },
-      select: { id: true, status: true },
+      select: { id: true, status: true, engine: true },
     });
-    return row ? { id: row.id, status: row.status } : null;
+    return row ? { id: row.id, status: row.status, engine: row.engine } : null;
   }
 
   async listSessionGroupConversations(tenantId: string, sessionId: string): Promise<SessionGroupConversation[]> {
@@ -102,19 +102,19 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
     if (unique.length === 0) return [];
     const rows = await this.prisma.session.findMany({
       where: { id: { in: unique }, tenantId, deletedAt: null },
-      select: { id: true, status: true },
+      select: { id: true, status: true, engine: true },
     });
-    const byId = new Map(rows.map((r) => [r.id, { id: r.id, status: r.status }]));
+    const byId = new Map(rows.map((r) => [r.id, { id: r.id, status: r.status, engine: r.engine }]));
     return unique.flatMap((id) => byId.get(id) ?? []);
   }
 
-  async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]): Promise<string[]> {
+  async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]): Promise<{ conversationId: string; sessionId: string }[]> {
     const unique = [...new Set(ids)];
     if (unique.length === 0 || sessionIds.length === 0) return [];
     const rows = await this.prisma.chatConversation.findMany({
       where: { tenantId, sessionId: { in: sessionIds }, isGroup: true, id: { in: unique } },
-      select: { id: true },
+      select: { id: true, sessionId: true },
     });
-    return rows.map((r) => r.id);
+    return rows.flatMap((r) => (r.sessionId ? [{ conversationId: r.id, sessionId: r.sessionId }] : []));
   }
 }

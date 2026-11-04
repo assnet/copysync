@@ -3,6 +3,7 @@ import type { CapturedOfferStatus } from '../../domain/entities/CapturedOffer';
 import type { OfferStatus } from '../../../campaigns/domain/enums/OfferStatus';
 import type { GroupMonitorSettings, MonitorTextMode } from '../../domain/entities/GroupMonitor';
 import type { CapturedOfferListItem } from '../../domain/contracts/ICapturedOfferRepository';
+import type { LimitChannel } from '../../../tenants/domain/channelLimits';
 import { previewText } from '../../domain/services/offerMessageText';
 
 export interface CredentialAlertDTO {
@@ -13,16 +14,33 @@ export interface CredentialAlertDTO {
   code: string | null;
 }
 
+/** Limite (null = sem limite do plano) ou uso de grupos num canal. */
+export interface ChannelGroupLimitsDTO { monitoredGroups: number | null; broadcastGroups: number | null }
+export interface ChannelGroupUsageDTO { monitoredGroups: number; broadcastGroups: number }
+
 export interface GroupMonitorConfigDTO {
   sessionId: string;
+  /** Canal da sessão do monitor (`whatsapp` | `telegram`): os grupos monitorados contam nele. */
+  channel: LimitChannel;
   settings: GroupMonitorSettings;
   monitoredGroups: { conversationId: string; groupJid: string; title: string | null; avatarUrl: string | null; keywords: string[] }[];
   /** `sessionId` = sessão que envia naquele grupo (igual à do monitor, ou outra com `crossSessionDispatch`). */
   broadcastGroups: { conversationId: string; groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null; position: number }[];
-  limits: { monitoredGroups: number | null; broadcastGroups: number | null; mentionAllEnabled: boolean; crossSessionDispatch: boolean };
+  /**
+   * Por canal (canal do grupo = engine da sessão dona). `monitoredGroups`/`broadcastGroups` na raiz =
+   * WhatsApp (legado, até o painel migrar para `whatsapp`/`telegram`). `crossSessionDispatch` só é
+   * exigido para 2+ sessões do mesmo canal.
+   */
+  limits: ChannelGroupLimitsDTO & {
+    mentionAllEnabled: boolean;
+    crossSessionDispatch: boolean;
+    whatsapp: ChannelGroupLimitsDTO;
+    telegram: ChannelGroupLimitsDTO;
+  };
   /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */
   credentialAlerts?: CredentialAlertDTO[];
-  usage: { monitoredGroups: number; broadcastGroups: number };
+  /** Uso no tenant inteiro por canal; raiz = WhatsApp (legado). */
+  usage: ChannelGroupUsageDTO & { whatsapp: ChannelGroupUsageDTO; telegram: ChannelGroupUsageDTO };
   /** Destinos (sessão + JID) de monitoramentos de outras sessões: não podem entrar nesta lista. */
   takenBroadcastGroups: { groupJid: string; sessionId: string; monitorSessionId: string }[];
 }

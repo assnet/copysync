@@ -1,6 +1,6 @@
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
-import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
+import { limitKeyOfChannel } from '../../../tenants/domain/channelLimits';
 
 export interface SessionChannelLimit {
   used: number;
@@ -24,8 +24,8 @@ export class GetSessionLimitsUseCase {
   async execute(input: { tenantId: string }): Promise<GetSessionLimitsOutput> {
     const [used, whatsappLimit, telegramLimit] = await Promise.all([
       this.sessionRepo.countByEngine(input.tenantId),
-      this.entitlements.getNumber(input.tenantId, ENTITLEMENT_KEYS.WHATSAPP_SESSIONS),
-      this.entitlements.getNumber(input.tenantId, ENTITLEMENT_KEYS.TELEGRAM_SESSIONS),
+      this.entitlements.getNumber(input.tenantId, limitKeyOfChannel('sessions', 'whatsapp')),
+      this.entitlements.getNumber(input.tenantId, limitKeyOfChannel('sessions', 'telegram')),
     ]);
     return {
       whatsapp: { used: used.baileys ?? 0, limit: whatsappLimit },

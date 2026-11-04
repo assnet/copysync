@@ -59,6 +59,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Backend — Limites do plano por canal (`tenants`, `automation`, `campaigns`, `sessions`) — api 0.52.0
+
+- **`tenants/domain/channelLimits.ts`** — regras puras: chave de limite por (tipo, engine), contagem/corte por canal, `requiresCrossSession` (só 2+ sessões do mesmo canal). Novas chaves `telegram_monitored_groups` e `telegram_broadcast_groups` (LITE 0/0, PRO 2/10, MAX 6/40); `monitored_groups`/`broadcast_groups` passam a ser do WhatsApp
+- **`GroupMonitorConfigUseCases.ts`**, **`ProcessPendingCapturedOffersUseCase.ts`** — grupos monitorados e de disparo contados e cortados por canal (canal = engine da sessão dona); DTO com `channel`, `limits`/`usage` por canal (campos da raiz = WhatsApp, legado)
+- **`OfferGeneratorConfigUseCases.ts`**, **`SendOfferUseCase.ts`**, **`offer.schema.ts`** — gerador limita sessões e grupos por canal; `GET /config` devolve `limits`/`usage` por canal
+- **Migration `20261104120000_add_channel_limit_entitlement_presets`** — presets de sessões, grupos por canal, menção, IA e sessão cruzada nos três planos (até aqui ausentes em produção = ilimitado) + backfill para tenants com plano
+
 #### Frontend — Assistentes de nova sessão redesenhados (`sessions`) — app 0.66.0
 
 - **`sessionWizardStyle.ts`**, **`ChannelBridge.tsx`** — tokens por canal (cor da marca por modo, wash, foco, keyframes com `prefers-reduced-motion`) e a "ponte" celular ↔ canal (parada, aguardando, conectado)

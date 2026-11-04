@@ -89,6 +89,9 @@ export const saveBroadcastBodySchema = {
 const nullableString = { type: ['string', 'null'] } as const;
 const nullableDate = { type: ['string', 'null'], format: 'date-time' } as const;
 const nullableInt = { type: ['integer', 'null'] } as const;
+/** Limites/uso de grupos num canal (`whatsapp` | `telegram`; canal = engine da sessão dona). */
+const channelLimitsSchema = { type: 'object', properties: { monitoredGroups: nullableInt, broadcastGroups: nullableInt } } as const;
+const channelUsageSchema = { type: 'object', properties: { monitoredGroups: { type: 'integer' }, broadcastGroups: { type: 'integer' } } } as const;
 const envelope = (data: object) => ({ type: 'object', properties: { success: { type: 'boolean' }, data } });
 
 const groupBase = { conversationId: { type: 'string' }, groupJid: { type: 'string' }, title: nullableString, avatarUrl: nullableString } as const;
@@ -97,15 +100,25 @@ const configSchema = {
   type: 'object',
   properties: {
     sessionId: { type: 'string' },
+    channel: { type: 'string', enum: ['whatsapp', 'telegram'] },
     settings: { type: 'object', properties: settingsProperties },
     monitoredGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, keywords: { type: 'array', items: { type: 'string' } } } } },
     broadcastGroups: { type: 'array', items: { type: 'object', properties: { ...groupBase, sessionId: { type: 'string' }, position: { type: 'integer' } } } },
-    limits: { type: 'object', properties: { monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' } } },
+    limits: {
+      type: 'object',
+      properties: {
+        monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' },
+        whatsapp: channelLimitsSchema, telegram: channelLimitsSchema,
+      },
+    },
     credentialAlerts: {
       type: 'array',
       items: { type: 'object', properties: { provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] }, kind: { type: 'string', enum: ['MISSING', 'REJECTED'] }, since: nullableDate, code: nullableString } },
     },
-    usage: { type: 'object', properties: { monitoredGroups: { type: 'integer' }, broadcastGroups: { type: 'integer' } } },
+    usage: {
+      type: 'object',
+      properties: { monitoredGroups: { type: 'integer' }, broadcastGroups: { type: 'integer' }, whatsapp: channelUsageSchema, telegram: channelUsageSchema },
+    },
     takenBroadcastGroups: {
       type: 'array',
       items: { type: 'object', properties: { groupJid: { type: 'string' }, sessionId: { type: 'string' }, monitorSessionId: { type: 'string' } } },

@@ -41,6 +41,8 @@ const UPLOAD_ID = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
 const CONFIG: OfferGeneratorConfigDTO = {
   sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
   groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1' }], groupLimit: null, sessionLimit: null, crossSessionDispatch: false, configured: true,
+  limits: { whatsapp: { sessions: null, broadcastGroups: null }, telegram: { sessions: null, broadcastGroups: null } },
+  usage: { whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 0, broadcastGroups: 0 } },
 };
 
 function dto(): OfferDTO {
@@ -125,6 +127,7 @@ describe('rotas estáticas antes de /:id', () => {
     const getOffer = vi.spyOn(GetOfferUseCase.prototype, 'execute');
     const res = await app.inject({ method: 'GET', url: `${PREFIX}/config` });
     expect(res.statusCode).toBe(200);
+    // Inclui `limits`/`usage` por canal: o schema de resposta não pode descartá-los
     expect(res.json()).toEqual({ success: true, data: CONFIG });
     expect(vi_).toHaveBeenCalledWith('tenant-a');
     expect(getOffer).not.toHaveBeenCalled();

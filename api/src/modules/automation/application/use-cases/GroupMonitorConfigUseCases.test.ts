@@ -27,7 +27,11 @@ describe('GroupMonitorConfigUseCases', () => {
     const s = setup({ monitored_groups: 2, broadcast_groups: 10 });
     const out = await s.get.execute(base);
     expect(out.settings).toEqual(DEFAULT_MONITOR_SETTINGS);
-    expect(out.limits).toEqual({ monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false });
+    expect(out.limits).toEqual({
+      monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false,
+      whatsapp: { monitoredGroups: 2, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null },
+    });
+    expect(out.channel).toBe('whatsapp');
   });
 
   it('sessão de outro tenant: 404', async () => {
@@ -119,6 +123,37 @@ describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'b', sessionId: 'session-2' }, { groupJid: 'c' }] }))
       .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'b', sessionId: 'session-2' }] })).resolves.toBeTruthy();
+  });
+
+  it('limites por canal são independentes; a key do erro indica o canal', async () => {
+    const s = setup({ monitored_groups: 1, telegram_monitored_groups: 1, broadcast_groups: 1, telegram_broadcast_groups: 0 });
+    s.monitors.sessions.add(`${TENANT}:tg-1`);
+    s.monitors.engines['tg-1'] = 'telegram';
+    await s.monitored.execute({ ...base, groups: [{ groupJid: 'wa', keywords: [] }] });
+    // WhatsApp cheio não impede o Telegram
+    const tg = await s.monitored.execute({ tenantId: TENANT, sessionId: 'tg-1', groups: [{ groupJid: '-100', keywords: [] }] });
+    expect(tg.channel).toBe('telegram');
+    expect(tg.usage).toEqual({
+      monitoredGroups: 1, broadcastGroups: 0,
+      whatsapp: { monitoredGroups: 1, broadcastGroups: 0 }, telegram: { monitoredGroups: 1, broadcastGroups: 0 },
+    });
+    await expect(s.monitored.execute({ tenantId: TENANT, sessionId: 'tg-1', groups: [{ groupJid: '-100', keywords: [] }, { groupJid: '-200', keywords: [] }] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_monitored_groups', limit: 1 } });
+    // Disparo no Telegram (canal diferente: sem cross_session) bate no limite do Telegram
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: '-300', sessionId: 'tg-1' }] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_broadcast_groups', limit: 0 } });
+  });
+
+  it('cross_session_dispatch só para 2+ sessões do mesmo canal', async () => {
+    const s = setup();
+    s.monitors.sessions.add(`${TENANT}:tg-1`).add(`${TENANT}:tg-2`);
+    Object.assign(s.monitors.engines, { 'tg-1': 'telegram', 'tg-2': 'telegram' });
+    // WhatsApp → Telegram: canais diferentes, permitido
+    const out = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'y' }, { groupJid: '-1', sessionId: 'tg-1' }] });
+    expect(out.broadcastGroups.map((g) => g.sessionId)).toEqual([SESSION, 'tg-1']);
+    // Duas sessões Telegram como destino: exige a feature
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: '-1', sessionId: 'tg-1' }, { groupJid: '-2', sessionId: 'tg-2' }] }))
+      .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'cross_session_dispatch' } });
   });
 
   it('mesmo grupo como destino de dois monitoramentos → 409 com a sessão do outro monitoramento; GET lista o grupo tomado', async () => {

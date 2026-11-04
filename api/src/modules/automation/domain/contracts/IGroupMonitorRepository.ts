@@ -25,15 +25,18 @@ export interface ActiveMonitoredGroup {
   captureOutsideWindow: boolean;
 }
 
+/** `engine` = engine da sessão dona do grupo (`sessionId`): define o canal do limite do plano. */
 export interface TenantGroupJids {
-  monitored: { sessionId: string; groupJid: string }[];
+  monitored: { sessionId: string; groupJid: string; engine: string }[];
   /** `sessionId` = sessão dona do grupo; `monitorSessionId` = sessão cujo monitoramento o usa. */
-  broadcast: { sessionId: string; groupJid: string; monitorSessionId: string }[];
+  broadcast: { sessionId: string; groupJid: string; monitorSessionId: string; engine: string }[];
 }
 
 /** Persistência do monitoramento. Toda consulta filtra por `tenantId` (o listener também). */
 export interface IGroupMonitorRepository {
   sessionExists(tenantId: string, sessionId: string): Promise<boolean>;
+  /** Engine (canal) de cada sessão do tenant entre `sessionIds`, inclusive apagadas; ausente = não achada. */
+  sessionEngines(tenantId: string, sessionIds: string[]): Promise<Map<string, string>>;
   findConfig(tenantId: string, sessionId: string): Promise<GroupMonitorConfig | null>;
   /** Cria com os valores dados ou atualiza. */
   saveSettings(tenantId: string, sessionId: string, settings: GroupMonitorSettings): Promise<GroupMonitorConfig>;

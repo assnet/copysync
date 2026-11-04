@@ -17,7 +17,8 @@ import {
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { SessionNotConnectedError } from '../../../../shared/errors/internal/SessionErrors';
 import { toOfferDispatchDto, toOfferDto, type OfferDispatchDTO, type OfferDTO } from '../dtos/OfferDTO';
-import { BROADCAST_GROUPS, CROSS_SESSION_DISPATCH } from './OfferGeneratorConfigUseCases';
+import { CROSS_SESSION_DISPATCH } from './OfferGeneratorConfigUseCases';
+import { countByChannel, keepOneSessionPerChannel, LIMIT_CHANNELS, limitKeyOfChannel, requiresCrossSession } from '../../../tenants/domain/channelLimits';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
 export const MENTION_ALL_ENABLED = ENTITLEMENT_KEYS.MENTION_ALL_ENABLED;
@@ -70,16 +71,25 @@ export class SendOfferUseCase {
     if (offline) throw new SessionNotConnectedError(offline.id);
 
     // Só grupos das sessões configuradas (defesa contra destino antigo de outra sessão). Plano
-    // rebaixado depois de salvar 2+ sessões: só a principal (a 1ª) dispara
-    const crossSession = config.sessionIds.length > 1 && (await entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH)) === true;
-    const allowed = new Set(crossSession ? config.sessionIds : config.sessionIds.slice(0, 1));
+    // rebaixado depois de salvar 2+ sessões do mesmo canal: só a 1ª de cada canal dispara
+    const engineById = new Map(sessions.map((s) => [s.id, s.engine]));
+    const crossSession = requiresCrossSession(sessions) && (await entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH)) === true;
+    const allowedIds = requiresCrossSession(sessions) && !crossSession
+      ? keepOneSessionPerChannel(config.sessionIds, (id) => id, (id) => engineById.get(id))
+      : config.sessionIds;
+    const allowed = new Set(allowedIds);
     const groups = (await configs.listGroups(tenantId))
       .filter((g): g is typeof g & { sessionId: string } => g.isGroup && g.sessionId != null && allowed.has(g.sessionId));
     const targets = orderDispatchTargets(groups, config.sessionIds, config.dispatchOrder);
     if (targets.length === 0) throw new OfferNoDestinationsError();
-    // Plano rebaixado depois de salvar a configuração
-    const limit = await entitlements.getNumber(tenantId, BROADCAST_GROUPS);
-    if (limit !== null && targets.length > limit) throw new PlanLimitReachedError(BROADCAST_GROUPS, limit);
+    // Plano rebaixado depois de salvar a configuração: limite de grupos por canal
+    const perChannel = countByChannel(targets, (t) => engineById.get(t.sessionId));
+    for (const ch of LIMIT_CHANNELS) {
+      if (perChannel[ch] === 0) continue;
+      const key = limitKeyOfChannel('broadcastGroups', ch);
+      const limit = await entitlements.getNumber(tenantId, key);
+      if (limit !== null && perChannel[ch] > limit) throw new PlanLimitReachedError(key, limit);
+    }
 
     const interval = { minMs: config.intervalMinSeconds * 1000, maxMs: config.intervalMaxSeconds * 1000 };
     const planned = scheduleDispatches(
