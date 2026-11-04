@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  KeyRound, MessagesSquare, Settings, Tag, Users, Workflow,
+  KeyRound, MessagesSquare, Settings, Tag, UserRoundPlus, Users, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
 import { plansStrings } from '@/features/plans/strings';
@@ -121,6 +121,7 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
       soon('group-manager', s.products.groupManager, Users),
       soon('saver', s.products.saver, Bookmark),
       soon('chip-warmer', s.products.chipWarmer, Flame),
+      soon('group-filler', s.products.groupFiller, UserRoundPlus),
     ],
     platform: isSuperAdmin
       ? [

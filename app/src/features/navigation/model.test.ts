@@ -5,7 +5,7 @@ describe('buildNavigation', () => {
   it('ordena os produtos com Afiliados primeiro e cinco no total', () => {
     const model = buildNavigation({ isSuperAdmin: false });
     expect(model.products.map((p) => p.key)).toEqual([
-      'affiliates', 'crm-automation', 'group-manager', 'saver', 'chip-warmer',
+      'affiliates', 'crm-automation', 'group-manager', 'saver', 'chip-warmer', 'group-filler',
     ]);
     expect(model.products[0].status).toBe('available');
     expect(model.products[0].children.map((c) => c.path)).toEqual([

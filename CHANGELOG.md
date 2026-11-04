@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.63.0 — produto "Lotar Grupos" no menu
+
+- **`features/navigation/model.ts`** + **`strings.ts`** — produto Lotar Grupos (`group-filler`, ícone `UserRoundPlus`) como sexto item de Produtos, "em breve"; roadmap e doc de navegação atualizados.
+
 ### Added — app 0.62.0 — cards por deslize no mobile
 
 Doc: `docs/padrao-ui-painel.md` (seção "SwipeCards").

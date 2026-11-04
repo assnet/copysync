@@ -19,6 +19,7 @@ export const navigationStrings = {
     groupManager: { label: 'Gestor de Grupos', tagline: 'Membros e regras dos seus grupos' },
     saver: { label: 'Saver', tagline: 'Guarde o que passa nos grupos' },
     chipWarmer: { label: 'Aquecedor de Chip', tagline: 'Prepare números novos com segurança' },
+    groupFiller: { label: 'Lotar Grupos', tagline: 'Encha seus grupos com novos membros' },
   },
 
   links: {

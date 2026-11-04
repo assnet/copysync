@@ -47,6 +47,7 @@ Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela a
 | Gestor de Grupos | em breve | 5, 10, 14 |
 | Saver | em breve | a definir |
 | Aquecedor de Chip | em breve | a definir |
+| Lotar Grupos | em breve | a definir (entrada de novos membros nos grupos do cliente) |
 
 Sessão (número conectado, item 1) é do tenant: a mesma sessão serve mais de um produto; limite segue
 por plano, não por produto. Plano, permissões e configurações por produto: etapa futura.
@@ -54,7 +55,7 @@ por plano, não por produto. Plano, permissões e configurações por produto: e
 ## Planos (rascunho 2026-10-13)
 
 Esta tabela é o conjunto de planos do produto **Afiliados**. Cada produto do menu (CRM & Automação,
-Gestor de Grupos, Saver, Aquecedor de Chip) terá o seu próprio conjunto de planos, definido quando
+Gestor de Grupos, Saver, Aquecedor de Chip, Lotar Grupos) terá o seu próprio conjunto de planos, definido quando
 o produto nascer; não existe plano global.
 
 Limites são **entitlements por tenant**: devem viver em dado (`Tenant.planSlug` + `TenantEntitlement`,

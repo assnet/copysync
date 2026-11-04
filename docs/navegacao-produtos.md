@@ -24,6 +24,7 @@ Fora dos produtos: **Dashboard** (`/dashboard`) no topo; seção **Plataforma** 
 | Gestor de Grupos | `soon` | — | — | |
 | Saver | `soon` | — | — | |
 | Aquecedor de Chip | `soon` | — | — | |
+| Lotar Grupos | `soon` | — | — | |
 
 Produto `soon` sem filho visível fica desabilitado (sem acordeão, `aria-disabled`, selo "Em breve").
 Produto `soon` com filho visível para o usuário atual (CRM para super admin) abre normalmente.
