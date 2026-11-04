@@ -13,6 +13,7 @@ function makeRepo(over: Partial<ISessionLeaseRepository> = {}): ISessionLeaseRep
     renew: vi.fn(async () => []),
     release: vi.fn(async () => undefined),
     releaseAllOwned: vi.fn(async () => 0),
+    findLiveOwner: vi.fn(async () => null),
     ...over,
   };
 }

@@ -13,6 +13,7 @@ function makeRepo(renew: ISessionLeaseRepository['renew']): ISessionLeaseReposit
     renew: vi.fn(renew),
     release: vi.fn(async () => undefined),
     releaseAllOwned: vi.fn(async () => 0),
+    findLiveOwner: vi.fn(async () => null),
   };
 }
 

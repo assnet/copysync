@@ -146,3 +146,20 @@ describe('releaseAllOwned', () => {
     expect(await repo.releaseAllOwned(ME)).toBe(0);
   });
 });
+
+describe('findLiveOwner', () => {
+  it('lease vivo → id do dono', async () => {
+    const id = await newSession();
+    await repo.tryAcquire(id, OTHER, TTL);
+    expect(await repo.findLiveOwner(id)).toBe(OTHER);
+  });
+
+  it('lease vencido, sem lease ou sessão inexistente → null', async () => {
+    const expired = await newSession();
+    await expire(expired);
+    const free = await newSession();
+    expect(await repo.findLiveOwner(expired)).toBeNull();
+    expect(await repo.findLiveOwner(free)).toBeNull();
+    expect(await repo.findLiveOwner('nao-existe')).toBeNull();
+  });
+});

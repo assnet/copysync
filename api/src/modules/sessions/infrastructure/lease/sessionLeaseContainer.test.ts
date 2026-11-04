@@ -6,6 +6,7 @@ vi.mock('../repositories/PrismaSessionLeaseRepository', () => ({
     renew = vi.fn();
     release = vi.fn();
     releaseAllOwned = vi.fn();
+    findLiveOwner = vi.fn();
   },
 }));
 vi.mock('../../../../shared/config/workerIdentity', () => ({ currentWorkerId: () => 'worker-test' }));
@@ -19,6 +20,7 @@ function fakeRepo(): ISessionLeaseRepository {
     renew: vi.fn().mockResolvedValue([]),
     release: vi.fn().mockResolvedValue(undefined),
     releaseAllOwned: vi.fn().mockResolvedValue(0),
+    findLiveOwner: vi.fn().mockResolvedValue(null),
   } as unknown as ISessionLeaseRepository;
 }
 

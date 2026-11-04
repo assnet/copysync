@@ -15,6 +15,11 @@ export interface ISessionLeaseRepository {
    * mantendo `connectRequestedAt`. Devolve quantas linhas foram soltas.
    */
   releaseAllOwned(workerId: string): Promise<number>;
+  /**
+   * Dono vivo (WROLE-05): `ownerWorkerId` se o lease não venceu no relógio do banco; vencido,
+   * sem dono ou sessão inexistente → `null`. Só leitura; o HTTP usa para rotear ao worker.
+   */
+  findLiveOwner(sessionId: string): Promise<string | null>;
 }
 
 /** Porta estreita que os adapters de engine recebem: `false` = outro processo é dono. */

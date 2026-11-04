@@ -47,4 +47,11 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
         "updatedAt" = ${NOW}
       WHERE "ownerWorkerId" = ${workerId}`;
   }
+
+  async findLiveOwner(sessionId: string): Promise<string | null> {
+    const rows = await prisma.$queryRaw<{ ownerWorkerId: string }[]>`
+      SELECT "ownerWorkerId" FROM "sessions"
+      WHERE "id" = ${sessionId} AND "ownerWorkerId" IS NOT NULL AND "leaseUntil" > ${NOW}`;
+    return rows[0]?.ownerWorkerId ?? null;
+  }
 }
