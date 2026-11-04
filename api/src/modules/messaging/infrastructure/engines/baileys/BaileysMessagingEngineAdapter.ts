@@ -50,6 +50,8 @@ import type { ISessionSocketControl } from '../../../domain/contracts/ISessionSo
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
+import type { ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
+import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 import { buildBaileysAuthState, discardAuthState, releaseAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import {
@@ -104,6 +106,8 @@ const GROUP_AVATAR_CONCURRENCY = 8;
 /** Validade do cache de fotos de participante. A URL do WhatsApp é temporária. */
 const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 const PARTICIPATING_GROUPS_TTL_MS = 60_000;
+/** Gate padrão sem lease: sempre permite abrir o socket. */
+const ALWAYS_LEASED: ISessionLeaseGate = { acquire: async () => true };
 /** Validade do resumo de grupo (membros/admin) lido do snapshot de metadata. */
 const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
 /** Tempo de vida de cada QR de pareamento. */
@@ -164,6 +168,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     private readonly chatContactRepo: IChatContactRepository,
     private readonly chatConversationRepo: IChatConversationRepository,
     private readonly historySyncUseCase: IngestHistorySyncUseCase,
+    /** Lease da sessão (LEASE-03): sem gate, sempre permite (teste e boot sem lease). */
+    private readonly leaseGate: ISessionLeaseGate = ALWAYS_LEASED,
   ) {}
 
   async createSession(input: CreateSessionInput): Promise<void> {
@@ -777,7 +783,18 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   // -- Private ------------------------------------------------------------------
 
-  private async openSocket(sessionId: string, tenantId: string, attempt: number): Promise<void> {
+  /**
+   * Abre o socket só com lease (LEASE-03). Lease de outro processo: caminho do usuário lança
+   * `SessionLeaseHeldError` (503); caminho automático só loga e devolve `false`, sem tocar status.
+   */
+  private async openSocket(
+    sessionId: string, tenantId: string, attempt: number, origin: 'user' | 'auto' = 'user',
+  ): Promise<boolean> {
+    if (!(await this.leaseGate.acquire(sessionId))) {
+      if (origin === 'user') throw new SessionLeaseHeldError(sessionId);
+      baileysLogger.warn({ sessionId, attempt }, 'Socket not opened — session lease held by another process');
+      return false;
+    }
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo);
 
@@ -923,7 +940,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
                 baileysLogger.debug({ sessionId }, 'Auto-reconnect skipped — session already active');
                 return;
               }
-              this.openSocket(sessionId, tenantId, nextAttempt).catch((err) => {
+              this.openSocket(sessionId, tenantId, nextAttempt, 'auto').catch((err) => {
                 baileysLogger.error({ err, sessionId }, 'Auto-reconnect failed');
               });
             }, delay));
@@ -1294,6 +1311,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         presence: entry.lastKnownPresence,
       });
     });
+    return true;
   }
 
   // -- Private ------------------------------------------------------------------
@@ -1666,7 +1684,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     await this.updateSessionStatus(sessionId, tenantId, 'CONNECTING');
 
     try {
-      await this.openSocket(sessionId, tenantId, 0);
+      if (!(await this.openSocket(sessionId, tenantId, 0, 'auto'))) {
+        this.pairingRestarts.delete(sessionId);
+        return;
+      }
       baileysLogger.info({ sessionId }, 'Socket reopened with clean credentials — awaiting QR');
     } catch (err) {
       this.pairingRestarts.delete(sessionId);
