@@ -20,10 +20,10 @@ Regras comuns:
 | T2 | Política pura da adoção | — | P | ✅ a3d791b |
 | T3 | Migration `create-worker-heartbeats` | — | P | ✅ 9aaf3c9 |
 | T4 | `JobLease` genérico em `shared/jobs` | — | P | ✅ 1906c67 |
-| T5 | Repositório de adoção (SQL `SKIP LOCKED`, backoff, esgotadas) | T2 | P | ⏳ |
+| T5 | Repositório de adoção (SQL `SKIP LOCKED`, backoff, esgotadas) | T2 | P | ✅ 9351867 |
 | T6 | Pedido novo zera backoff (`markConnectRequested`) | — | P | ✅ 179d0c4 |
-| T7 | Gate do lease com teto (`CapacityLimitedLeaseGate`) | T2 | P | ⏳ |
-| T8 | Repositório de heartbeat | T3 | P | ⏳ |
+| T7 | Gate do lease com teto (`CapacityLimitedLeaseGate`) | T2 | P | ✅ 12b7569 |
+| T8 | Repositório de heartbeat | T3 | P | ✅ fa7207b |
 | T9 | `AdoptNextSessionUseCase` + `SessionAdoptionTicker` | T5, E2 F3 | | ⏳ |
 | T10 | `SESSION_CONNECTED` zera backoff | T5 | P | ⏳ |
 | T11 | Jobs de heartbeat e alerta de capacidade | T2, T4, T5, T8 | | ⏳ |
@@ -32,7 +32,7 @@ Regras comuns:
 | T14 | Composição `sessionAdoptionContainer` | T1, T7, T9, T10, T11 | | ⏳ |
 | T15 | `server.ts` + jobs por papel: ticker, bootstrap, shutdown | T14, E3 T19 | | ⏳ |
 | T16 | `session-open` pausa com worker cheio | T14, E3 T18 | P | ⏳ |
-| T17 | Painel: "Aguardando capacidade" | T12 | P | ⏳ |
+| T17 | Painel: "Aguardando capacidade" | T12 | P | ✅ d616afb |
 | T18 | Painel: página `/admin/workers` | T13 | P | ⏳ |
 | T19 | Smoke | T15, T16, T17, T18 | | ⏳ |
 | T20 | Docs, CHANGELOG e versão | T19 | | ⏳ |
@@ -366,3 +366,7 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T4: `shared/jobs/IJobLease` + `PrismaJobLease`; rodízio reexporta.
 - T6: `markConnectRequested` zera `adoptFailures`/`nextAdoptAt` só quando não havia pedido.
 - T12: `awaitingCapacity` no item de sessão (false com flag desligada); schemas `SessionStatus`/`SessionItem` movidos para `sessions/presentation/schemas/sessionItem.schema.ts`.
+- T5: `ISessionAdoptionRepository` (`adoptNext` com `FOR UPDATE OF s2 SKIP LOCKED`, `failExhausted`, `resetFailures`, `countAwaitingCapacity(olderThanMs)`), relógio UTC.
+- T7: `CapacityLimitedLeaseGate(inner, listLocal, max, log?)` não ligado ainda (T14).
+- T8: `IWorkerHeartbeatRepository` (`beat`, `listAlive`, `remove`), limpeza best-effort > 1 dia.
+- T17: chip "Aguardando capacidade" (`SessionStatusChip`, `strings.ts`), também em `SessionCard`/`DashboardPage`; dialogs de conexão/rodízio ainda sem o flag.
