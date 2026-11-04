@@ -129,6 +129,14 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // ── Papel do processo (.specs/features/worker-role) ──────────────────────
+  // `all` (default) = comportamento de hoje, sem Redis. `http`/`worker` exigem `REDIS_URL`
+  // e `MEDIA_STORAGE_DRIVER=s3` (ver `processRoleIssues`). `all` ignora `REDIS_URL`.
+  PROCESS_ROLE: z.enum(['http', 'worker', 'all']).default('all'),
+  REDIS_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url('REDIS_URL must be a valid connection URL').optional(),
+  ),
   // Identidade deste processo no lease de sessão. Vazio = gerado por boot
   // (`host-pid-nonce8`, ver `workerIdentity.ts`); restart nunca herda o lease anterior.
   WORKER_ID: z.preprocess(
@@ -287,7 +295,35 @@ function mediaUploadTmpPath(e: z.infer<typeof envSchema>): string {
   return e.MEDIA_UPLOAD_TMP_PATH ?? path.join(path.dirname(e.STORAGE_PATH), 'media-uploads');
 }
 
-const envWithDerivedSchema = envSchema.transform((e) => ({
+type RawEnv = z.infer<typeof envSchema>;
+
+/**
+ * Pré-requisitos dos papéis separados (pura). `all` nunca falha: o default não muda nada.
+ * `http`/`worker` sem Redis não trocam comandos/eventos; com disco local o arquivo gravado
+ * por um processo não existe no outro (decisão D9).
+ */
+export function processRoleIssues(
+  e: Pick<RawEnv, 'PROCESS_ROLE' | 'REDIS_URL' | 'MEDIA_STORAGE_DRIVER'>,
+): { path: string; message: string }[] {
+  if (e.PROCESS_ROLE === 'all') return [];
+  const issues: { path: string; message: string }[] = [];
+  if (!e.REDIS_URL) {
+    issues.push({ path: 'REDIS_URL', message: `PROCESS_ROLE=${e.PROCESS_ROLE} requires REDIS_URL` });
+  }
+  if (e.MEDIA_STORAGE_DRIVER !== 's3') {
+    issues.push({
+      path: 'MEDIA_STORAGE_DRIVER',
+      message: `PROCESS_ROLE=${e.PROCESS_ROLE} requires MEDIA_STORAGE_DRIVER=s3 (got ${e.MEDIA_STORAGE_DRIVER})`,
+    });
+  }
+  return issues;
+}
+
+const envWithDerivedSchema = envSchema.superRefine((e, ctx) => {
+  for (const issue of processRoleIssues(e)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
+  }
+}).transform((e) => ({
   ...e,
   REACTION_ECHO_MAX_PER_SESSION: reactionEchoCap(e),
   MEDIA_UPLOAD_TMP_PATH: mediaUploadTmpPath(e),
@@ -310,8 +346,13 @@ function linkRotationSecrets(e: z.infer<typeof envSchema>) {
 
 export type Env = z.infer<typeof envWithDerivedSchema>;
 
+/** Valida um conjunto de variáveis sem efeito colateral (o `env` do processo usa a mesma). */
+export function parseEnv(source: NodeJS.ProcessEnv) {
+  return envWithDerivedSchema.safeParse(source);
+}
+
 function loadEnv(): Env {
-  const result = envWithDerivedSchema.safeParse(process.env);
+  const result = parseEnv(process.env);
 
   if (!result.success) {
     const formatted = result.error.errors
