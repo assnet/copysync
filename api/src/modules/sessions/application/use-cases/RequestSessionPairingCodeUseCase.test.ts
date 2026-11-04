@@ -76,4 +76,42 @@ describe('RequestSessionPairingCodeUseCase', () => {
     await expect(uc.execute(input)).rejects.toThrow('x');
     expect(repo.updateStatus).not.toHaveBeenCalled();
   });
+
+  describe('pedido de conexão (LEASE-07)', () => {
+    it('marca depois da validação e antes da engine', async () => {
+      const { repo, engine, uc } = build();
+      const calls: string[] = [];
+      repo.markConnectRequested.mockImplementation(async () => { calls.push('mark'); });
+      engine.requestPairingCode.mockImplementation(async () => { calls.push('engine'); return { pairingCode: null }; });
+      await uc.execute(input);
+      expect(repo.markConnectRequested).toHaveBeenCalledWith('s1', 't1');
+      expect(calls).toEqual(['mark', 'engine']);
+    });
+
+    it('telefone inválido não marca', async () => {
+      const { repo, uc } = build();
+      await expect(uc.execute({ ...input, phone: '999' })).rejects.toBeInstanceOf(SessionPhoneInvalidError);
+      expect(repo.markConnectRequested).not.toHaveBeenCalled();
+    });
+
+    it('sessão conectada não marca', async () => {
+      const { repo, uc } = build(makeSession({ declaredPhone: '5511987654321', status: 'CONNECTED' }));
+      await expect(uc.execute(input)).rejects.toBeInstanceOf(SessionAlreadyConnectedError);
+      expect(repo.markConnectRequested).not.toHaveBeenCalled();
+    });
+
+    it('falha da engine mantém a marca (não desfaz)', async () => {
+      const { repo, engine, uc } = build();
+      engine.requestPairingCode.mockRejectedValueOnce(new Error('engine down'));
+      await expect(uc.execute(input)).rejects.toThrow('engine down');
+      expect(repo.markConnectRequested).toHaveBeenCalledTimes(1);
+    });
+
+    it('falha ao marcar não chama a engine', async () => {
+      const { repo, engine, uc } = build();
+      repo.markConnectRequested.mockRejectedValueOnce(new Error('db'));
+      await expect(uc.execute(input)).rejects.toThrow('db');
+      expect(engine.requestPairingCode).not.toHaveBeenCalled();
+    });
+  });
 });

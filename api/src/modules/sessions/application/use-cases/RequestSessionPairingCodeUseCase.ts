@@ -3,6 +3,7 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../domain/enums/SessionStatus';
 import { normalizeBrazilPhone } from '../../domain/services/normalizeBrazilPhone';
+import { markConnectRequested } from '../services/markConnectRequested';
 import {
   SessionNotFoundError,
   SessionAlreadyConnectedError,
@@ -46,6 +47,8 @@ export class RequestSessionPairingCodeUseCase {
     const fromBody = input.phone != null && input.phone.trim() !== '';
     const phone = normalizeBrazilPhone(fromBody ? input.phone : session.declaredPhone);
     if (!phone) throw new SessionPhoneInvalidError(fromBody ? 'phone' : 'declaredPhone');
+
+    await markConnectRequested(this.sessionRepo, input.sessionId, input.tenantId);
 
     const previous: SessionStatus = session.status ?? 'FAILED';
     const markedConnecting = IDLE_STATUSES.includes(previous);

@@ -3,6 +3,7 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../domain/enums/SessionStatus';
 import { normalizeInternationalPhone } from '../../domain/services/normalizeInternationalPhone';
+import { markConnectRequested } from '../services/markConnectRequested';
 import {
   SessionAlreadyConnectedError,
   SessionNotFoundError,
@@ -43,6 +44,8 @@ export class RequestSessionLoginCodeUseCase extends SessionLoginStepUseCase {
     const phone = normalizeInternationalPhone(fromBody ? input.phone : session.declaredPhone);
     if (!phone) throw new SessionPhoneInvalidError(fromBody ? 'phone' : 'declaredPhone');
 
+    await markConnectRequested(this.sessionRepo, input.sessionId, input.tenantId);
+
     const { status } = await this.engine.requestLoginCode({ sessionId: input.sessionId, tenantId: input.tenantId, phone });
     await this.auditRepo.create({
       tenantId: input.tenantId,
@@ -57,6 +60,7 @@ export class RequestSessionLoginCodeUseCase extends SessionLoginStepUseCase {
 export class SubmitSessionLoginCodeUseCase extends SessionLoginStepUseCase {
   async execute(input: { sessionId: string; tenantId: string; code: string }): Promise<LoginStepOutput> {
     await this.loadPending(input.sessionId, input.tenantId, 'submitLoginCode');
+    await markConnectRequested(this.sessionRepo, input.sessionId, input.tenantId);
     const { status } = await this.engine.submitLoginCode({
       sessionId: input.sessionId,
       tenantId: input.tenantId,
@@ -69,6 +73,7 @@ export class SubmitSessionLoginCodeUseCase extends SessionLoginStepUseCase {
 export class SubmitSessionLoginPasswordUseCase extends SessionLoginStepUseCase {
   async execute(input: { sessionId: string; tenantId: string; password: string }): Promise<LoginStepOutput> {
     await this.loadPending(input.sessionId, input.tenantId, 'submitLoginPassword');
+    await markConnectRequested(this.sessionRepo, input.sessionId, input.tenantId);
     const { status } = await this.engine.submitLoginPassword({
       sessionId: input.sessionId,
       tenantId: input.tenantId,
