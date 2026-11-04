@@ -10,6 +10,8 @@ import type {
   SessionQrResponse,
   SessionPairingCodeResponse,
   StartPairingResponse,
+  SessionLimitsResponse,
+  TelegramAuthResponse,
 } from '@/types/api.types';
 
 export const sessionService = {
@@ -78,5 +80,34 @@ export const sessionService = {
 
   async delete(id: string): Promise<void> {
     await apiClient.delete(`/sessions/${id}`);
+  },
+
+  /** Uso × limite do plano por canal (WhatsApp e Telegram). */
+  async limits(): Promise<SessionLimitsResponse> {
+    const res = await apiClient.get<SessionLimitsResponse>('/sessions/limits');
+    return res.data;
+  },
+
+  // ── Telegram: login por telefone + código ───────────────────────────────────
+
+  /** Pede o código de login no app Telegram; sem `phone` a API usa o `declaredPhone`. */
+  async telegramSendCode(id: string, phone?: string): Promise<TelegramAuthResponse> {
+    const res = await apiClient.post<TelegramAuthResponse>(
+      `/sessions/${id}/telegram/send-code`,
+      phone ? { phone } : {},
+    );
+    return res.data;
+  },
+
+  /** Entrega o código digitado; pode voltar `AWAITING_PASSWORD` (verificação em duas etapas). */
+  async telegramSignIn(id: string, code: string): Promise<TelegramAuthResponse> {
+    const res = await apiClient.post<TelegramAuthResponse>(`/sessions/${id}/telegram/sign-in`, { code });
+    return res.data;
+  },
+
+  /** Senha da verificação em duas etapas. Nunca é guardada no painel. */
+  async telegramPassword(id: string, password: string): Promise<TelegramAuthResponse> {
+    const res = await apiClient.post<TelegramAuthResponse>(`/sessions/${id}/telegram/password`, { password });
+    return res.data;
   },
 };

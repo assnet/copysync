@@ -5,7 +5,8 @@ import type { SessionItem, SessionStatus } from '@/types/api.types';
 import { sessionStrings as t } from '../strings';
 import { QR_TTL_MS, isQrExpired, qrSecondsLeft } from '../utils';
 
-export type ConnectionMode = 'qr' | 'pairing';
+/** `qr` e `pairing` (WhatsApp) consultam o código no polling; `code` (Telegram) só o status. */
+export type ConnectionMode = 'qr' | 'pairing' | 'code';
 
 const POLL_MS = 2000;
 const TICK_MS = 500;
@@ -20,6 +21,10 @@ interface Options {
   /** Liga o polling; desligado, o estado é zerado. */
   enabled: boolean;
   onStatusChange?: (sessionId: string, status: SessionStatus) => void;
+  /** Validade de cada QR (WhatsApp 2 min; Telegram 30 s). */
+  qrTtlMs?: number;
+  /** Modo ao abrir (Telegram começa por `code`). */
+  initialMode?: ConnectionMode;
 }
 
 /**
@@ -27,11 +32,13 @@ interface Options {
  * contagem regressiva do QR atual e ações de "gerar novo código" / "conectar com código".
  * Usado pelo assistente de nova sessão e pelo "conectar" do cartão — mesmo comportamento.
  */
-export function useSessionConnection({ sessionId, enabled, onStatusChange }: Options) {
+export function useSessionConnection({
+  sessionId, enabled, onStatusChange, qrTtlMs = QR_TTL_MS, initialMode = 'qr',
+}: Options) {
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [mode, setMode] = useState<ConnectionMode>('qr');
+  const [mode, setMode] = useState<ConnectionMode>(initialMode);
   const [session, setSession] = useState<SessionItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,7 +48,7 @@ export function useSessionConnection({ sessionId, enabled, onStatusChange }: Opt
   const [pollKey, setPollKey] = useState(0);
 
   const statusRef = useRef<SessionStatus | null>(null);
-  const modeRef = useRef<ConnectionMode>('qr');
+  const modeRef = useRef<ConnectionMode>(initialMode);
   const lastQrRef = useRef<string | null>(null);
   const onStatusRef = useRef(onStatusChange);
   useEffect(() => { onStatusRef.current = onStatusChange; }, [onStatusChange]);
@@ -58,7 +65,9 @@ export function useSessionConnection({ sessionId, enabled, onStatusChange }: Opt
       sessionService.getStatus(id),
       modeRef.current === 'qr'
         ? sessionService.getQr(id).then((r) => ({ qr: r.qrCode, pairing: null }))
-        : sessionService.getPairingCode(id).then((r) => ({ qr: null, pairing: r.pairingCode })),
+        : modeRef.current === 'pairing'
+          ? sessionService.getPairingCode(id).then((r) => ({ qr: null, pairing: r.pairingCode }))
+          : Promise.resolve({ qr: null, pairing: null }),
     ]);
     applyStatus(id, st.status);
     if (modeRef.current === 'qr') {
@@ -110,8 +119,8 @@ export function useSessionConnection({ sessionId, enabled, onStatusChange }: Opt
     statusRef.current = null;
     lastQrRef.current = null;
     setStatus(null); setQrCode(null); setPairingCode(null); setSession(null);
-    setError(null); setMode('qr'); setQrIssuedAt(null); setBusy(false);
-  }, [enabled]);
+    setError(null); setMode(initialMode); modeRef.current = initialMode; setQrIssuedAt(null); setBusy(false);
+  }, [enabled, initialMode]);
 
   /** Garante uma tentativa de conexão viva (a API só aceita conectar a partir de certos estados). */
   const restart = useCallback(async (id: string) => {
@@ -171,12 +180,33 @@ export function useSessionConnection({ sessionId, enabled, onStatusChange }: Opt
     void regenerate();
   }, [regenerate]);
 
+  /** Telegram: volta ao login por código (quem pede o código é `useTelegramLogin`). */
+  const switchToCode = useCallback(() => {
+    modeRef.current = 'code';
+    lastQrRef.current = null;
+    setMode('code'); setError(null); setQrCode(null); setQrIssuedAt(null);
+    setPollKey((k) => k + 1);
+  }, []);
+
+  /** Status devolvido por uma ação fora do polling (ex.: `sign-in` do Telegram). */
+  const pushStatus = useCallback(async (next: SessionStatus) => {
+    if (!sessionId) return;
+    applyStatus(sessionId, next);
+    if (next === 'CONNECTED') {
+      try {
+        const full = await sessionService.getById(sessionId);
+        setSession({ ...full, avatarUrl: resolveMediaUrl(full.avatarUrl) });
+      } catch { /* o polling seguinte completa */ }
+    }
+    setPollKey((k) => k + 1);
+  }, [sessionId, applyStatus]);
+
   const isConnected = status === 'CONNECTED';
   // DISCONNECTED e PENDING não são falha: a engine reconecta e emite QR novo (polling segue)
   const isFailed = status === 'FAILED' || status === 'LOGGED_OUT';
-  const secondsLeft = qrIssuedAt ? qrSecondsLeft(qrIssuedAt, now) : null;
+  const secondsLeft = qrIssuedAt ? qrSecondsLeft(qrIssuedAt, now, qrTtlMs) : null;
   // Conectado vence expirado: o QR vence depois da leitura, enquanto o socket reinicia
-  const qrExpired = !isConnected && Boolean(qrIssuedAt && isQrExpired(qrIssuedAt, now));
+  const qrExpired = !isConnected && Boolean(qrIssuedAt && isQrExpired(qrIssuedAt, now, qrTtlMs));
 
   return {
     status,
@@ -189,11 +219,13 @@ export function useSessionConnection({ sessionId, enabled, onStatusChange }: Opt
     isConnected,
     isFailed,
     secondsLeft,
-    qrTtlSeconds: QR_TTL_MS / 1000,
+    qrTtlSeconds: qrTtlMs / 1000,
     qrExpired,
     regenerate,
     switchToPairing,
     switchToQr,
+    switchToCode,
+    pushStatus,
   };
 }
 

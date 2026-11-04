@@ -4,19 +4,15 @@ import {
   CircularProgress, Chip, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, Button, alpha, useTheme, Divider,
 } from '@mui/material';
-import QrCodeIcon from '@mui/icons-material/QrCode2';
-import LinkIcon from '@mui/icons-material/Link';
-import LinkOffIcon from '@mui/icons-material/LinkOff';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import LogoutIcon from '@mui/icons-material/Logout';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import PhoneIcon from '@mui/icons-material/PhoneIphone';
-import WarningIcon from '@mui/icons-material/WarningAmberRounded';
+import { Link2, LogOut, Phone, QrCode, RefreshCw, Trash2, TriangleAlert, Unlink } from 'lucide-react';
+import { AppIcon } from '@/components';
+import { Blurred, useBlur } from '@/features/privacy';
 import { sessionService } from '@/services/session.service';
 import { SessionStatusChip } from './SessionStatusChip';
+import { SessionChannelChip } from './SessionChannelChip';
 import type { SessionItem, SessionStatus } from '@/types/api.types';
 import { sessionStrings } from '../strings';
-import { formatBrazilPhone } from '../utils';
+import { channelOf, formatInternationalPhone, isAwaitingStatus, isTelegramSession } from '../utils';
 
 const t = sessionStrings.card;
 
@@ -32,7 +28,7 @@ type Action = 'connect' | 'disconnect' | 'reconnect' | 'logout';
 // Cor do dot de status
 function statusDotColor(status: SessionStatus): string {
   if (status === 'CONNECTED') return 'success.main';
-  if (status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING') return 'warning.main';
+  if (isAwaitingStatus(status)) return 'warning.main';
   if (status === 'FAILED' || status === 'LOGGED_OUT') return 'error.main';
   return 'text.disabled';
 }
@@ -46,6 +42,10 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
 
   const isBusy = loadingAction !== null || deleting;
   const { status } = session;
+  const telegram = isTelegramSession(session);
+  const blurName = useBlur('sessions.sessionName');
+  const blurPhone = useBlur('sessions.sessionPhone');
+  const blurAvatar = useBlur('sessions.sessionAvatar');
 
   async function handle(action: Action) {
     setLoadingAction(action);
@@ -97,7 +97,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
     }
   }
 
-  const isActive = status === 'CONNECTED' || status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING';
+  const isActive = status === 'CONNECTED' || isAwaitingStatus(status);
 
   return (
     <>
@@ -117,21 +117,23 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
           {/* Topo: nome + status dot */}
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
             <Box sx={{ position: 'relative', flexShrink: 0 }}>
-              <Avatar
-                src={session.avatarUrl ?? undefined}
-                variant="rounded"
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 2.5,
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  color: 'primary.main',
-                  fontWeight: 800,
-                  fontSize: 16,
-                }}
-              >
-                {session.name[0]?.toUpperCase() ?? '?'}
-              </Avatar>
+              <Blurred when={blurAvatar} radius={8} sx={{ borderRadius: 2.5 }}>
+                <Avatar
+                  src={session.avatarUrl ?? undefined}
+                  variant="rounded"
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 2.5,
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    color: 'primary.main',
+                    fontWeight: 800,
+                    fontSize: 16,
+                  }}
+                >
+                  {session.name[0]?.toUpperCase() ?? '?'}
+                </Avatar>
+              </Blurred>
               {/* Dot de status */}
               <Box
                 sx={{
@@ -149,18 +151,25 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
             </Box>
 
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="subtitle2" noWrap title={session.name}>
-                {session.name}
-              </Typography>
+              <Blurred when={blurName} inline>
+                <Typography variant="subtitle2" noWrap title={blurName ? undefined : session.name}>
+                  {session.name}
+                </Typography>
+              </Blurred>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                <SessionChannelChip channel={channelOf(session.engine)} />
                 <SessionStatusChip status={status} />
                 {session.phoneMismatch && (
-                  <Tooltip title={t.mismatchTooltip(formatBrazilPhone(session.declaredPhone))}>
+                  <Tooltip
+                    title={(telegram ? t.mismatchTooltipTelegram : t.mismatchTooltip)(
+                      formatInternationalPhone(session.declaredPhone),
+                    )}
+                  >
                     <Chip
                       size="small"
                       color="warning"
                       variant="outlined"
-                      icon={<WarningIcon />}
+                      icon={<AppIcon icon={TriangleAlert} size="sm" />}
                       label={t.mismatchChip}
                     />
                   </Tooltip>
@@ -173,10 +182,14 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             {session.phone && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <PhoneIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-                <Typography variant="caption" color="text.secondary">
-                  {formatBrazilPhone(session.phone)}
-                </Typography>
+                <Box sx={{ display: 'flex', color: 'text.disabled', fontSize: 12 }}>
+                  <AppIcon icon={Phone} />
+                </Box>
+                <Blurred when={blurPhone} inline radius={5}>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatInternationalPhone(session.phone)}
+                  </Typography>
+                </Blurred>
               </Box>
             )}
             {session.updatedAt && (
@@ -202,7 +215,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               <Tooltip title={t.connect}>
                 <span>
                   <IconButton size="small" color="primary" onClick={() => handle('connect')} disabled={isBusy}>
-                    {loadingAction === 'connect' ? <CircularProgress size={16} /> : <LinkIcon fontSize="small" />}
+                    {loadingAction === 'connect' ? <CircularProgress size={16} /> : <AppIcon icon={Link2} size="sm" />}
                   </IconButton>
                 </span>
               </Tooltip>
@@ -211,7 +224,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               <Tooltip title={t.reconnect}>
                 <span>
                   <IconButton size="small" onClick={() => handle('reconnect')} disabled={isBusy}>
-                    {loadingAction === 'reconnect' ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                    {loadingAction === 'reconnect' ? <CircularProgress size={16} /> : <AppIcon icon={RefreshCw} size="sm" />}
                   </IconButton>
                 </span>
               </Tooltip>
@@ -220,16 +233,16 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
               <Tooltip title={t.disconnect}>
                 <span>
                   <IconButton size="small" color="warning" onClick={() => handle('disconnect')} disabled={isBusy}>
-                    {loadingAction === 'disconnect' ? <CircularProgress size={16} /> : <LinkOffIcon fontSize="small" />}
+                    {loadingAction === 'disconnect' ? <CircularProgress size={16} /> : <AppIcon icon={Unlink} size="sm" />}
                   </IconButton>
                 </span>
               </Tooltip>
             )}
             {status !== 'PENDING' && status !== 'LOGGED_OUT' && (
-              <Tooltip title={t.logout}>
+              <Tooltip title={telegram ? t.logoutTelegram : t.logout}>
                 <span>
                   <IconButton size="small" color="error" onClick={() => handle('logout')} disabled={isBusy}>
-                    {loadingAction === 'logout' ? <CircularProgress size={16} /> : <LogoutIcon fontSize="small" />}
+                    {loadingAction === 'logout' ? <CircularProgress size={16} /> : <AppIcon icon={LogOut} size="sm" />}
                   </IconButton>
                 </span>
               </Tooltip>
@@ -238,11 +251,11 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
 
           {/* QR e delete */}
           <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
-            {(status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING') && (
+            {isAwaitingStatus(status) && (
               <Tooltip title={t.showConnection}>
                 <span>
                   <IconButton size="small" color="primary" onClick={() => onRequestQr(session)} disabled={isBusy}>
-                    <QrCodeIcon fontSize="small" />
+                    <AppIcon icon={QrCode} size="sm" />
                   </IconButton>
                 </span>
               </Tooltip>
@@ -255,7 +268,7 @@ export function SessionCard({ session, onRequestQr, onStatusChange, onDeleted }:
                   onClick={() => setConfirmDelete(true)}
                   disabled={isBusy}
                 >
-                  {deleting ? <CircularProgress size={16} color="error" /> : <DeleteOutlineIcon fontSize="small" />}
+                  {deleting ? <CircularProgress size={16} color="error" /> : <AppIcon icon={Trash2} size="sm" />}
                 </IconButton>
               </span>
             </Tooltip>

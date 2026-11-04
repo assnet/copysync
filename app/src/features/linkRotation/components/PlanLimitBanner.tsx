@@ -2,7 +2,7 @@ import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { useId } from 'react';
 import { Box, Button, Dialog, DialogActions, DialogContent, Stack, Typography, useMediaQuery } from '@mui/material';
 import { alpha, keyframes, useTheme } from '@mui/material/styles';
-import { ArrowRight, Check, Rocket, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, Rocket, TrendingUp } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { nextPlanFor, type PlanLimitKind } from '../planUpsell';
@@ -15,7 +15,7 @@ export interface PlanLimitBannerProps {
   open: boolean;
   /** Dispensar ("Agora não"). */
   onClose: () => void;
-  /** Qual limite foi atingido: rodízios do tenant ou grupos por rodízio. */
+  /** Qual limite foi atingido: rodízios, grupos por rodízio ou sessões por canal. */
   kind: PlanLimitKind;
   /** Limite atual do plano para o `kind` (número, nunca ilimitado: sem limite não há aviso). */
   limit: number;
@@ -70,8 +70,8 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
   const confettiColors = [theme.palette.primary.light, theme.palette.secondary.light, theme.palette.warning.light, theme.palette.success.light, onGradient];
   const motion = (value: string) => (reduced ? 'none' : value);
 
-  const title = next ? (kind === 'rotations' ? t.rotationsTitle : t.groupsTitle) : t.topPlanTitle;
-  const body = next ? (kind === 'rotations' ? t.rotationsBody(limit) : t.groupsBody(limit)) : t.topPlanBody(limit, kind);
+  const title = next ? t.title(kind) : t.topPlanTitle;
+  const body = next ? t.body(limit, kind) : t.topPlanBody(limit, kind);
 
   return (
     <Dialog
@@ -147,7 +147,7 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
             '& svg': { width: 36, height: 36 },
           }}
         >
-          <AppIcon icon={next ? Rocket : Sparkles} size="lg" />
+          <AppIcon icon={next ? Rocket : TrendingUp} size="lg" />
           <Box
             aria-hidden
             sx={{
@@ -157,7 +157,7 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
               '& svg': { width: 20, height: 20 },
             }}
           >
-            <AppIcon icon={Sparkles} size="md" />
+            <AppIcon icon={TrendingUp} size="md" />
           </Box>
         </Box>
       </Box>
@@ -210,7 +210,7 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
             <Typography variant="body2" sx={{ mt: 2, fontWeight: 600 }}>{t.nextPlan(next.name, next.limit, kind)}</Typography>
             <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mt: 0.75, color: 'success.main' }}>
               <AppIcon icon={Check} style={{ marginTop: 2 }} />
-              <Typography variant="body2" color="text.secondary">{kind === 'rotations' ? t.rotationsBenefit : t.groupsBenefit}</Typography>
+              <Typography variant="body2" color="text.secondary">{t.benefit(kind)}</Typography>
             </Stack>
           </>
         )}

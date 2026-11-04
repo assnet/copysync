@@ -1,21 +1,37 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, Button, Grid, CircularProgress, Alert, Snackbar } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DevicesIcon from '@mui/icons-material/Devices';
+import { Box, Button, Grid, CircularProgress, Alert, Snackbar, Typography } from '@mui/material';
+import { MonitorSmartphone, Plus } from 'lucide-react';
 import { sessionService } from '@/services/session.service';
 import { SessionCard } from '@/features/sessions/components/SessionCard';
 import { CreateSessionWizard } from '@/features/sessions/components/CreateSessionWizard';
+import { CreateTelegramSessionWizard } from '@/features/sessions/components/CreateTelegramSessionWizard';
 import { ConnectSessionDialog } from '@/features/sessions/components/ConnectSessionDialog';
+import { ChannelPickerDialog } from '@/features/sessions/components/ChannelPickerDialog';
+import { SessionLimitsChips } from '@/features/sessions/components/SessionLimitsChips';
+import { CHANNEL_ICON, channelLabel } from '@/features/sessions/components/SessionChannelChip';
+import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
+import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
 import { sessionStrings } from '@/features/sessions/strings';
-import { safeReturnPath, withSessionId } from '@/features/sessions/utils';
-import { PageHeader, EmptyState } from '@/components';
-import type { SessionItem, SessionStatus } from '@/types/api.types';
+import { channelOf, safeReturnPath, withSessionId, type SessionChannel } from '@/features/sessions/utils';
+import { usePersistedState } from '@/hooks/usePersistedState';
+import { PageHeader, EmptyState, AppIcon } from '@/components';
+import type { SessionItem, SessionLimitsResponse, SessionStatus } from '@/types/api.types';
 
 const t = sessionStrings.page;
+const CHANNELS: readonly SessionChannel[] = ['whatsapp', 'telegram'];
+const LIMIT_KIND: Record<SessionChannel, PlanLimitKind> = { whatsapp: 'whatsappSessions', telegram: 'telegramSessions' };
+
+/** `?create=1|whatsapp` abre o assistente do WhatsApp (telas de monitoramento/rodízio); `telegram`, o do Telegram. */
+function channelFromParam(value: string | null): SessionChannel | null {
+  if (value === '1' || value === 'whatsapp') return 'whatsapp';
+  if (value === 'telegram') return 'telegram';
+  return null;
+}
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [limits, setLimits] = useState<SessionLimitsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -23,9 +39,24 @@ export default function SessionsPage() {
   // `?create=1&returnTo=/tela`: outra tela pediu uma sessão nova e quer voltar com ela
   const returnToRef = useRef(safeReturnPath(searchParams.get('returnTo')));
   const createdRef = useRef<SessionItem | null>(null);
-  const [createOpen, setCreateOpen] = useState(() => searchParams.get('create') === '1');
+  // Assistente aberto (e de qual canal) sobrevive a reload; o passo fica no próprio assistente.
+  // Inicial sempre `null`: `clear()` volta ao inicial, e a URL só abre o assistente uma vez (efeito abaixo).
+  const [createChannel, setCreateChannel, clearCreateChannel] = usePersistedState<SessionChannel | null>(
+    'sessions.createChannel',
+    null,
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [planLimit, setPlanLimit] = useState<{ kind: PlanLimitKind; limit: number } | null>(null);
   const [qrSession, setQrSession] = useState<SessionItem | null>(null);
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
+
+  const loadLimits = useCallback(async () => {
+    try {
+      setLimits(await sessionService.limits());
+    } catch {
+      setLimits(null); // sem limites o seletor não bloqueia; a API ainda recusa com PLAN_LIMIT_REACHED
+    }
+  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -39,11 +70,13 @@ export default function SessionsPage() {
     }
   }, []);
 
-  useEffect(() => { loadSessions(); }, [loadSessions]);
+  useEffect(() => { void loadSessions(); void loadLimits(); }, [loadSessions, loadLimits]);
 
-  // Tira `create`/`returnTo` da URL: recarregar a página não reabre o assistente
+  // Tira `create`/`returnTo` da URL: recarregar a página não reabre o assistente pela URL
   useEffect(() => {
     if (!searchParams.has('create') && !searchParams.has('returnTo')) return;
+    const fromUrl = channelFromParam(searchParams.get('create'));
+    if (fromUrl) setCreateChannel(fromUrl);
     const next = new URLSearchParams(searchParams);
     next.delete('create');
     next.delete('returnTo');
@@ -60,12 +93,12 @@ export default function SessionsPage() {
   async function handleCreated(session: SessionItem) {
     createdRef.current = session;
     setToast({ message: t.created, severity: 'success' });
-    await loadSessions();
+    await Promise.all([loadSessions(), loadLimits()]);
   }
 
   // Com `returnTo`, fechar o assistente volta para a tela de origem (com a sessão criada, se houver)
   function handleWizardClose() {
-    setCreateOpen(false);
+    clearCreateChannel();
     const returnTo = returnToRef.current;
     if (returnTo) {
       returnToRef.current = null;
@@ -76,24 +109,42 @@ export default function SessionsPage() {
       return;
     }
     void loadSessions();
+    void loadLimits();
   }
 
   function handleDeleted(sessionId: string) {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     setToast({ message: t.deleted, severity: 'success' });
+    void loadLimits();
   }
+
+  function openPlanLimit(channel: SessionChannel, limit: number) {
+    setPickerOpen(false);
+    setPlanLimit({ kind: LIMIT_KIND[channel], limit });
+  }
+
+  const newSessionButton = (label: string) => (
+    <Button variant="contained" startIcon={<AppIcon icon={Plus} />} onClick={() => setPickerOpen(true)}>
+      {label}
+    </Button>
+  );
+
+  const groups = CHANNELS
+    .map((channel) => ({ channel, items: sessions.filter((s) => channelOf(s.engine) === channel) }))
+    .filter((g) => g.items.length > 0);
+  const showSectionHeaders = groups.length > 1;
+
+  const wizardProps = {
+    onClose: handleWizardClose,
+    onCreated: (session: SessionItem) => void handleCreated(session),
+    onStatusChange: handleStatusChange,
+  };
 
   return (
     <Box>
-      <PageHeader
-        title={t.title}
-        subtitle={t.subtitle}
-        action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            {t.newSession}
-          </Button>
-        }
-      />
+      <PageHeader title={t.title} subtitle={t.subtitle} action={newSessionButton(t.newSession)} />
+
+      {limits && <Box sx={{ mb: 3, mt: -1 }}><SessionLimitsChips limits={limits} /></Box>}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
@@ -109,37 +160,53 @@ export default function SessionsPage() {
 
       {!loading && sessions.length === 0 && (
         <EmptyState
-          icon={<DevicesIcon />}
+          icon={<AppIcon icon={MonitorSmartphone} size="lg" />}
           title={t.emptyTitle}
           description={t.emptyDescription}
-          action={
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-              {t.emptyAction}
-            </Button>
-          }
+          action={newSessionButton(t.emptyAction)}
         />
       )}
 
-      {!loading && sessions.length > 0 && (
-        <Grid container spacing={2.5}>
-          {sessions.map((session) => (
-            <Grid key={session.id} item xs={12} sm={6} md={4} xl={3}>
-              <SessionCard
-                session={session}
-                onRequestQr={setQrSession}
-                onStatusChange={handleStatusChange}
-                onDeleted={handleDeleted}
-              />
-            </Grid>
-          ))}
-        </Grid>
-      )}
+      {!loading && groups.map(({ channel, items }) => (
+        <Box key={channel} component="section" aria-label={sessionStrings.channel.sectionAria(channelLabel(channel))} sx={{ mb: 3 }}>
+          {showSectionHeaders && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, color: 'text.secondary' }}>
+              <AppIcon icon={CHANNEL_ICON[channel]} />
+              <Typography variant="subtitle2" component="h2" color="text.primary">{channelLabel(channel)}</Typography>
+              <Typography variant="caption">{items.length}</Typography>
+            </Box>
+          )}
+          <Grid container spacing={2.5}>
+            {items.map((session) => (
+              <Grid key={session.id} item xs={12} sm={6} md={4} xl={3}>
+                <SessionCard
+                  session={session}
+                  onRequestQr={setQrSession}
+                  onStatusChange={handleStatusChange}
+                  onDeleted={handleDeleted}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      ))}
 
+      <ChannelPickerDialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        limits={limits}
+        onPick={(channel) => { setPickerOpen(false); setCreateChannel(channel); }}
+        onAtLimit={openPlanLimit}
+      />
       <CreateSessionWizard
-        open={createOpen}
-        onClose={handleWizardClose}
-        onCreated={(session) => void handleCreated(session)}
-        onStatusChange={handleStatusChange}
+        open={createChannel === 'whatsapp'}
+        onPlanLimit={(limit) => setPlanLimit({ kind: 'whatsappSessions', limit })}
+        {...wizardProps}
+      />
+      <CreateTelegramSessionWizard
+        open={createChannel === 'telegram'}
+        onPlanLimit={(limit) => setPlanLimit({ kind: 'telegramSessions', limit })}
+        {...wizardProps}
       />
       <ConnectSessionDialog
         session={qrSession}
@@ -147,6 +214,9 @@ export default function SessionsPage() {
         onClose={() => { setQrSession(null); void loadSessions(); }}
         onStatusChange={handleStatusChange}
       />
+      {planLimit && (
+        <PlanLimitBanner open onClose={() => setPlanLimit(null)} kind={planLimit.kind} limit={planLimit.limit} />
+      )}
 
       <Snackbar
         open={Boolean(toast)}
@@ -163,4 +233,3 @@ export default function SessionsPage() {
     </Box>
   );
 }
-

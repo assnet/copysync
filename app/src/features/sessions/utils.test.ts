@@ -9,6 +9,11 @@ import {
   formatPairingCode,
   QR_TTL_MS,
   QR_EXPIRY_GRACE_MS,
+  normalizeInternationalPhone,
+  formatInternationalPhone,
+  channelOf,
+  engineOf,
+  isTelegramSession,
 } from './utils';
 
 describe('normalizeBrazilPhone', () => {
@@ -97,5 +102,40 @@ describe('safeReturnPath / withSessionId', () => {
     const { withSessionId } = await import('./utils');
     expect(withSessionId('/monitoring', 's 1')).toBe('/monitoring?sessionId=s%201');
     expect(withSessionId('/monitoring?tab=x', 's1')).toBe('/monitoring?tab=x&sessionId=s1');
+  });
+});
+
+describe('normalizeInternationalPhone (Telegram)', () => {
+  it('aceita +DDI com máscara e espaços', () => {
+    expect(normalizeInternationalPhone('+55 (11) 98765-4321')).toBe('5511987654321');
+    expect(normalizeInternationalPhone('+1 415 555 2671')).toBe('14155552671');
+  });
+  it('sem DDI e no padrão brasileiro, assume o Brasil', () => {
+    expect(normalizeInternationalPhone('11987654321')).toBe('5511987654321');
+    expect(normalizeInternationalPhone('5511987654321')).toBe('5511987654321');
+  });
+  it('recusa curto, longo ou começando com zero', () => {
+    expect(normalizeInternationalPhone('1234567')).toBeNull();
+    expect(normalizeInternationalPhone('+1234567890123456')).toBeNull();
+    expect(normalizeInternationalPhone('+0123456789')).toBeNull();
+  });
+});
+
+describe('formatInternationalPhone', () => {
+  it('brasileiro ganha máscara, estrangeiro só o +', () => {
+    expect(formatInternationalPhone('5511987654321')).toBe('+55 (11) 98765-4321');
+    expect(formatInternationalPhone('14155552671')).toBe('+14155552671');
+    expect(formatInternationalPhone(null)).toBe('');
+  });
+});
+
+describe('canal da sessão', () => {
+  it('engine → canal e volta', () => {
+    expect(channelOf('telegram')).toBe('telegram');
+    expect(channelOf('baileys')).toBe('whatsapp');
+    expect(channelOf(undefined)).toBe('whatsapp');
+    expect(engineOf('telegram')).toBe('telegram');
+    expect(engineOf('whatsapp')).toBe('baileys');
+    expect(isTelegramSession({ engine: 'telegram' })).toBe(true);
   });
 });

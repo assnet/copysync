@@ -15,6 +15,7 @@ import { StatCard, SectionCard } from '@/components';
 import { SessionStatusChip } from '@/features/sessions/components/SessionStatusChip';
 import { formatPhone } from '@/features/chat/utils';
 import type { SessionItem } from '@/types/api.types';
+import { isAwaitingStatus } from '@/features/sessions/utils';
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -35,9 +36,7 @@ export function DashboardPage() {
 
   const total = sessions.length;
   const connected = sessions.filter((s) => s.status === 'CONNECTED').length;
-  const waiting = sessions.filter(
-    (s) => s.status === 'AWAITING_QR' || s.status === 'AWAITING_PAIRING' || s.status === 'CONNECTING',
-  ).length;
+  const waiting = sessions.filter((s) => isAwaitingStatus(s.status)).length;
   const errors = sessions.filter(
     (s) => s.status === 'DISCONNECTED' || s.status === 'FAILED' || s.status === 'LOGGED_OUT',
   ).length;
@@ -172,7 +171,7 @@ export function DashboardPage() {
                             bgcolor:
                               s.status === 'CONNECTED'
                                 ? 'success.main'
-                                : s.status === 'AWAITING_QR' || s.status === 'CONNECTING' || s.status === 'AWAITING_PAIRING'
+                                : isAwaitingStatus(s.status)
                                 ? 'warning.main'
                                 : 'error.main',
                           }}

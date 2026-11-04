@@ -4,9 +4,11 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { SessionItem } from '@/types/api.types';
 
 const list = vi.fn();
-vi.mock('@/services/session.service', () => ({ sessionService: { list: () => list() } }));
+const limits = vi.fn();
+vi.mock('@/services/session.service', () => ({ sessionService: { list: () => list(), limits: () => limits() } }));
 vi.mock('@/features/sessions/components/SessionCard', () => ({ SessionCard: () => null }));
 vi.mock('@/features/sessions/components/ConnectSessionDialog', () => ({ ConnectSessionDialog: () => null }));
+vi.mock('@/features/sessions/components/CreateTelegramSessionWizard', () => ({ CreateTelegramSessionWizard: () => null }));
 
 const created = { id: 'new-1', name: 'Nova' } as SessionItem;
 // Assistente falso: "criar" dispara onCreated; "fechar" dispara onClose
@@ -38,8 +40,11 @@ const renderAt = (url: string) =>
   );
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   list.mockReset();
   list.mockResolvedValue({ sessions: [], total: 0 });
+  limits.mockReset();
+  limits.mockResolvedValue({ whatsapp: { used: 0, limit: 1 }, telegram: { used: 0, limit: 1, enabled: true } });
 });
 
 describe('SessionsPage com create/returnTo', () => {
@@ -63,5 +68,21 @@ describe('SessionsPage com create/returnTo', () => {
     renderAt('/sessions');
     await screen.findByTestId('where');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('create=telegram não abre o assistente do WhatsApp', async () => {
+    renderAt('/sessions?create=telegram');
+    await screen.findByTestId('where');
+    expect(screen.queryByText('criar')).not.toBeInTheDocument();
+  });
+
+  it('"Nova sessão" abre o seletor de canal com os contadores do plano', async () => {
+    renderAt('/sessions');
+    await screen.findByText('WhatsApp 0/1');
+    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão' }));
+    const picker = await screen.findByRole('dialog');
+    expect(picker).toHaveTextContent('Qual canal você quer conectar?');
+    fireEvent.click(screen.getByRole('button', { name: 'WhatsApp' }));
+    expect(await screen.findByText('criar')).toBeInTheDocument();
   });
 });

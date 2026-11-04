@@ -53,15 +53,23 @@ export type SessionStatus =
   | 'CONNECTING'
   | 'AWAITING_QR'
   | 'AWAITING_PAIRING'
+  /** Telegram: código enviado ao app, aguardando o usuário digitar. */
+  | 'AWAITING_CODE'
+  /** Telegram: conta com verificação em duas etapas, aguardando a senha. */
+  | 'AWAITING_PASSWORD'
   | 'CONNECTED'
   | 'DISCONNECTED'
   | 'LOGGED_OUT'
   | 'FAILED';
 
+/** Canal da sessão: `baileys` = WhatsApp, `telegram` = Telegram (conta de usuário). */
+export type SessionEngine = 'baileys' | 'telegram';
+
 export interface SessionItem {
   id: string;
   tenantId: string;
   name: string;
+  /** `SessionEngine`; fica `string` para tolerar engine desconhecida vinda do servidor. */
   engine: string;
   phone: string | null;
   externalRef: string | null;
@@ -81,9 +89,31 @@ export interface SessionItem {
 
 export interface CreateSessionRequest {
   name: string;
-  engine?: string;
-  /** Número do WhatsApp esperado; a API valida (422 `SESSION_PHONE_INVALID`). */
+  engine?: SessionEngine;
+  /**
+   * WhatsApp: número esperado (`55DDDNÚMERO`). Telegram: telefone da conta com DDI, só dígitos.
+   * A API valida (422 `SESSION_PHONE_INVALID`).
+   */
   declaredPhone?: string;
+}
+
+export interface SessionChannelLimit {
+  used: number;
+  /** `null` = ilimitado. */
+  limit: number | null;
+}
+
+/** `GET /sessions/limits`: uso × limite do plano por canal. */
+export interface SessionLimitsResponse {
+  whatsapp: SessionChannelLimit;
+  /** `enabled=false`: engine Telegram desligada no servidor (mostrar indisponível, não erro). */
+  telegram: SessionChannelLimit & { enabled: boolean };
+}
+
+/** Resposta dos passos de login do Telegram (`send-code`, `sign-in`, `password`). */
+export interface TelegramAuthResponse {
+  sessionId: string;
+  status: SessionStatus;
 }
 
 export interface SessionListResponse {

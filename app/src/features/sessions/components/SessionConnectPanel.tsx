@@ -3,15 +3,23 @@ import {
   Box, Typography, Button, CircularProgress, LinearProgress, Alert, IconButton, Tooltip,
   Link, alpha, useTheme,
 } from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CheckIcon from '@mui/icons-material/Check';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import { Check, Copy, RefreshCw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { AppIcon } from '@/components';
 import { sessionStrings } from '../strings';
-import { formatCountdown, formatPairingCode } from '../utils';
+import { formatCountdown, formatPairingCode, type SessionChannel } from '../utils';
 import type { SessionConnection } from '../hooks/useSessionConnection';
 
 const t = sessionStrings.connect;
+const tg = sessionStrings.telegram.connect;
+
+interface Props {
+  conn: SessionConnection;
+  /** Muda título, passos do QR e o link alternativo (Telegram: "Prefiro receber um código"). */
+  channel?: SessionChannel;
+  /** Telegram: voltar ao login por código. */
+  onUseCode?: () => void;
+}
 
 function NumberedSteps({ items }: { items: readonly string[] }) {
   return (
@@ -36,9 +44,13 @@ function NumberedSteps({ items }: { items: readonly string[] }) {
   );
 }
 
-/** Passo "Conecte seu WhatsApp": QR com contagem regressiva ou código de pareamento. */
-export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
+/**
+ * Passo "Conecte": QR com contagem regressiva ou código de pareamento (WhatsApp).
+ * Para o Telegram só o QR (`tg://login`, troca a cada 30 s) — o código fica em `TelegramConnectPanel`.
+ */
+export function SessionConnectPanel({ conn, channel = 'whatsapp', onUseCode }: Props) {
   const theme = useTheme();
+  const telegram = channel === 'telegram';
   const [copied, setCopied] = useState(false);
   const {
     mode, qrCode, pairingCode, status, error, busy, isFailed, isConnected,
@@ -73,7 +85,7 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
   const regenerateButton = (
     <Button
       variant="contained"
-      startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+      startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={RefreshCw} />}
       onClick={() => void conn.regenerate()}
       disabled={busy}
     >
@@ -83,7 +95,7 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
 
   return (
     <Box sx={{ display: 'grid', gap: 2.5 }}>
-      <Typography variant="h6" component="h2" fontWeight={700}>{t.title}</Typography>
+      <Typography variant="h6" component="h2" fontWeight={700}>{telegram ? tg.title : t.title}</Typography>
 
       {error && <Alert severity="error">{error}</Alert>}
 
@@ -93,7 +105,7 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
           gridTemplateColumns: { xs: '1fr', sm: '1fr auto' },
         }}
       >
-        <NumberedSteps items={mode === 'qr' ? t.qrSteps : t.pairingSteps} />
+        <NumberedSteps items={mode === 'qr' ? (telegram ? tg.qrSteps : t.qrSteps) : t.pairingSteps} />
 
         {/* Área do código */}
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, minWidth: 236 }}>
@@ -116,7 +128,7 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
                     fgColor={theme.palette.common.black}
                     bgColor={theme.palette.common.white}
                     role="img"
-                    aria-label={t.qrAlt}
+                    aria-label={telegram ? tg.qrAlt : t.qrAlt}
                   />
                 ) : needsNewCode ? (
                   <Typography variant="body2" sx={{ color: 'grey.700', textAlign: 'center', px: 2 }}>
@@ -163,7 +175,7 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
                   </Typography>
                   <Tooltip title={copied ? t.copied : t.copy}>
                     <IconButton onClick={() => void copy()} aria-label={t.copy} color={copied ? 'success' : 'default'}>
-                      {copied ? <CheckIcon /> : <ContentCopyIcon />}
+                      <AppIcon icon={copied ? Check : Copy} size="md" />
                     </IconButton>
                   </Tooltip>
                 </Box>
@@ -182,16 +194,24 @@ export function SessionConnectPanel({ conn }: { conn: SessionConnection }) {
 
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.25 }}>
         {needsNewCode && regenerateButton}
-        <Link
-          component="button"
-          type="button"
-          variant="body2"
-          onClick={() => void (mode === 'qr' ? conn.switchToPairing() : conn.switchToQr())}
-          disabled={busy}
-          sx={{ fontWeight: 600 }}
-        >
-          {mode === 'qr' ? t.usePairing : t.useQr}
-        </Link>
+        {telegram ? (
+          onUseCode && (
+            <Link component="button" type="button" variant="body2" onClick={onUseCode} disabled={busy} sx={{ fontWeight: 600 }}>
+              {tg.useCode}
+            </Link>
+          )
+        ) : (
+          <Link
+            component="button"
+            type="button"
+            variant="body2"
+            onClick={() => void (mode === 'qr' ? conn.switchToPairing() : conn.switchToQr())}
+            disabled={busy}
+            sx={{ fontWeight: 600 }}
+          >
+            {mode === 'qr' ? t.usePairing : t.useQr}
+          </Link>
+        )}
       </Box>
     </Box>
   );

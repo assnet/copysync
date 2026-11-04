@@ -1,4 +1,4 @@
-﻿import { Chip, type ChipProps } from '@mui/material';
+import { Chip, type ChipProps } from '@mui/material';
 import type { SessionStatus } from '@/types/api.types';
 import { sessionStrings } from '../strings';
 
@@ -12,6 +12,8 @@ const STATUS_CONFIG: Record<SessionStatus, StatusConfig> = {
   CONNECTING:       { color: 'info',     variant: 'filled'   },
   AWAITING_QR:      { color: 'warning',  variant: 'filled'   },
   AWAITING_PAIRING: { color: 'warning',  variant: 'filled'   },
+  AWAITING_CODE:    { color: 'warning',  variant: 'filled'   },
+  AWAITING_PASSWORD:{ color: 'warning',  variant: 'filled'   },
   CONNECTED:        { color: 'success',  variant: 'filled'   },
   DISCONNECTED:     { color: 'default',  variant: 'outlined' },
   LOGGED_OUT:       { color: 'error',    variant: 'outlined' },
@@ -22,4 +24,3 @@ export function SessionStatusChip({ status }: { status: SessionStatus }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
   return <Chip label={sessionStrings.status[status] ?? sessionStrings.status.PENDING} color={cfg.color} variant={cfg.variant} size="small" />;
 }
-

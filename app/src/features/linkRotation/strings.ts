@@ -6,9 +6,63 @@
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
 import type { RotationGroupStatus, RotationStatus, RotationStrategy } from './types';
+import type { PlanLimitKind } from './planUpsell';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const count = (n: number) => n.toLocaleString('pt-BR');
+
+interface UpgradeKindCopy {
+  title: string;
+  body: (limit: number) => string;
+  benefit: string;
+  nextPlan: (planName: string, limit: number) => string;
+  unit: (n: number) => string;
+  compareAria: (now: number, planName: string, next: number) => string;
+  topPlanBody: (limit: number) => string;
+}
+
+const sessionsCopy = (channel: string, benefit: string): UpgradeKindCopy => ({
+  title: `Mais contas de ${channel} para a sua operação`,
+  body: (limit) =>
+    limit === 0
+      ? `Seu plano atual não inclui sessões de ${channel}. Com um plano maior você conecta sua conta e usa o canal no painel.`
+      : `Seu plano inclui ${count(limit)} ${plural(limit, 'sessão', 'sessões')} de ${channel}. Com um plano maior você conecta mais contas ao mesmo tempo.`,
+  benefit,
+  nextPlan: (planName, limit) => `No ${planName} são ${count(limit)} ${plural(limit, 'sessão', 'sessões')} de ${channel}.`,
+  unit: (n) => plural(n, 'sessão', 'sessões'),
+  compareAria: (now, planName, next) =>
+    `Hoje: ${count(now)} ${plural(now, 'sessão', 'sessões')} de ${channel}. No ${planName}: ${count(next)} ${plural(next, 'sessão', 'sessões')}.`,
+  topPlanBody: (limit) =>
+    `Você usa as ${count(limit)} ${plural(limit, 'sessão', 'sessões')} de ${channel} disponíveis. Para conectar outra conta, exclua uma sessão que não usa mais.`,
+});
+
+const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
+  rotations: {
+    title: 'Seus links estão a todo vapor!',
+    body: (limit) =>
+      `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio. Com um plano maior você divulga mais links ao mesmo tempo.`,
+    benefit: 'Um link para cada rede, campanha ou nicho, todos funcionando ao mesmo tempo.',
+    nextPlan: (planName, limit) => `No ${planName} são ${count(limit)} ${plural(limit, 'link', 'links')}.`,
+    unit: (n) => plural(n, 'link', 'links'),
+    compareAria: (now, planName, next) =>
+      `Hoje: ${count(now)} ${plural(now, 'link', 'links')}. No ${planName}: ${count(next)} ${plural(next, 'link', 'links')}.`,
+    topPlanBody: (limit) =>
+      `Você usa os ${count(limit)} ${plural(limit, 'link', 'links')} disponíveis. Para criar outro, exclua um link que não usa mais.`,
+  },
+  groups: {
+    title: 'Seu link está pronto para mais gente!',
+    body: (limit) =>
+      `Seu plano permite até ${count(limit)} ${plural(limit, 'grupo', 'grupos')} por link. Com mais grupos, cabe mais gente sem o link lotar.`,
+    benefit: 'Mais vagas no mesmo link, sem trocar nada do que você já divulgou.',
+    nextPlan: (planName, limit) => `No ${planName} são até ${count(limit)} grupos por link.`,
+    unit: (n) => plural(n, 'grupo', 'grupos'),
+    compareAria: (now, planName, next) => `Hoje: ${count(now)} ${plural(now, 'grupo', 'grupos')} por link. No ${planName}: ${count(next)} grupos por link.`,
+    topPlanBody: (limit) =>
+      `Seu link já usa os ${count(limit)} grupos disponíveis. Para alcançar mais gente, crie outro link ou troque um grupo por outro.`,
+  },
+  whatsappSessions: sessionsCopy('WhatsApp', 'Monitore e dispare em mais números, cada um com seus grupos.'),
+  telegramSessions: sessionsCopy('Telegram', 'Leve suas ofertas também para os grupos e canais do Telegram.'),
+};
 
 export const linkRotationStrings = {
   menuLabel: 'Rodízio de links',
@@ -210,30 +264,24 @@ export const linkRotationStrings = {
 
   upgrade: {
     eyebrow: 'Hora de crescer',
-    rotationsTitle: 'Seus links estão a todo vapor!',
-    groupsTitle: 'Seu link está pronto para mais gente!',
-    rotationsBody: (limit: number) =>
-      `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio. Com um plano maior você divulga mais links ao mesmo tempo.`,
-    groupsBody: (limit: number) =>
-      `Seu plano permite até ${count(limit)} ${plural(limit, 'grupo', 'grupos')} por link. Com mais grupos, cabe mais gente sem o link lotar.`,
-    nextPlan: (planName: string, limit: number, kind: 'rotations' | 'groups') =>
-      kind === 'rotations'
-        ? `No ${planName} são ${count(limit)} ${plural(limit, 'link', 'links')}.`
-        : `No ${planName} são até ${count(limit)} grupos por link.`,
-    rotationsBenefit: 'Um link para cada rede, campanha ou nicho, todos funcionando ao mesmo tempo.',
-    groupsBenefit: 'Mais vagas no mesmo link, sem trocar nada do que você já divulgou.',
+    rotationsTitle: UPGRADE_KINDS.rotations.title,
+    groupsTitle: UPGRADE_KINDS.groups.title,
+    rotationsBody: UPGRADE_KINDS.rotations.body,
+    groupsBody: UPGRADE_KINDS.groups.body,
+    rotationsBenefit: UPGRADE_KINDS.rotations.benefit,
+    groupsBenefit: UPGRADE_KINDS.groups.benefit,
+    /** Textos por tipo de limite (rodízios, grupos, sessões por canal). */
+    kinds: UPGRADE_KINDS,
+    title: (kind: PlanLimitKind) => UPGRADE_KINDS[kind].title,
+    body: (limit: number, kind: PlanLimitKind) => UPGRADE_KINDS[kind].body(limit),
+    benefit: (kind: PlanLimitKind) => UPGRADE_KINDS[kind].benefit,
+    nextPlan: (planName: string, limit: number, kind: PlanLimitKind) => UPGRADE_KINDS[kind].nextPlan(planName, limit),
     compareNow: 'Seu plano',
-    unit: (n: number, kind: 'rotations' | 'groups') =>
-      kind === 'rotations' ? plural(n, 'link', 'links') : plural(n, 'grupo', 'grupos'),
-    compareAria: (now: number, planName: string, next: number, kind: 'rotations' | 'groups') =>
-      kind === 'rotations'
-        ? `Hoje: ${count(now)} ${plural(now, 'link', 'links')}. No ${planName}: ${count(next)} ${plural(next, 'link', 'links')}.`
-        : `Hoje: ${count(now)} ${plural(now, 'grupo', 'grupos')} por link. No ${planName}: ${count(next)} grupos por link.`,
+    unit: (n: number, kind: PlanLimitKind) => UPGRADE_KINDS[kind].unit(n),
+    compareAria: (now: number, planName: string, next: number, kind: PlanLimitKind) =>
+      UPGRADE_KINDS[kind].compareAria(now, planName, next),
     topPlanTitle: 'Você já está no maior plano',
-    topPlanBody: (limit: number, kind: 'rotations' | 'groups') =>
-      kind === 'rotations'
-        ? `Você usa os ${count(limit)} ${plural(limit, 'link', 'links')} disponíveis. Para criar outro, exclua um link que não usa mais.`
-        : `Seu link já usa os ${count(limit)} grupos disponíveis. Para alcançar mais gente, crie outro link ou troque um grupo por outro.`,
+    topPlanBody: (limit: number, kind: PlanLimitKind) => UPGRADE_KINDS[kind].topPlanBody(limit),
     topPlanDismiss: 'Entendi',
     cta: 'Ver planos',
     dismiss: 'Agora não',

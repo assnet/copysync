@@ -17,6 +17,8 @@ export const SESSION_STATUS_TONE: Record<SessionStatus, MonitorTone> = {
   CONNECTING: 'warning',
   AWAITING_QR: 'warning',
   AWAITING_PAIRING: 'warning',
+  AWAITING_CODE: 'warning',
+  AWAITING_PASSWORD: 'warning',
   PENDING: 'neutral',
   DISCONNECTED: 'neutral',
   LOGGED_OUT: 'error',

@@ -14,6 +14,15 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'sessions',
+    label: 'Sessões',
+    flags: [
+      { id: 'sessions.sessionName', label: 'Nome da sessão' },
+      { id: 'sessions.sessionPhone', label: 'Número ou telefone da sessão' },
+      { id: 'sessions.sessionAvatar', label: 'Foto da sessão' },
+    ],
+  },
+  {
     id: 'chat',
     label: 'Chat',
     flags: [

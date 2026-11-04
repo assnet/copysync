@@ -3,8 +3,32 @@
  * A API valida e normaliza o número de novo — aqui é só para orientar o usuário antes do envio.
  */
 
+import type { SessionEngine, SessionItem, SessionStatus } from '@/types/api.types';
+
 /** Tempo de vida de cada QR: igual ao `qrTimeout` do adapter Baileys na API (2 min). */
 export const QR_TTL_MS = 120_000;
+/** O token `tg://login` do Telegram troca a cada ~30 s; o polling pega o novo. */
+export const TELEGRAM_QR_TTL_MS = 30_000;
+/** Espera entre dois "Reenviar código" do Telegram (contagem local: não vem da API). */
+export const TELEGRAM_CODE_RESEND_MS = 60_000;
+/** Tamanho do código de login que chega no app Telegram. */
+export const TELEGRAM_CODE_LENGTH = 5;
+
+export type SessionChannel = 'whatsapp' | 'telegram';
+
+export const channelOf = (engine: string | null | undefined): SessionChannel =>
+  engine === 'telegram' ? 'telegram' : 'whatsapp';
+
+export const engineOf = (channel: SessionChannel): SessionEngine =>
+  channel === 'telegram' ? 'telegram' : 'baileys';
+
+/** Sessão no meio de um login (QR, pareamento, código ou senha do Telegram, ou conectando). */
+export const isAwaitingStatus = (status: SessionStatus): boolean =>
+  status === 'CONNECTING' || status === 'AWAITING_QR' || status === 'AWAITING_PAIRING'
+  || status === 'AWAITING_CODE' || status === 'AWAITING_PASSWORD';
+
+export const isTelegramSession = (session: Pick<SessionItem, 'engine'>): boolean =>
+  session.engine === 'telegram';
 /** Folga após zerar a contagem antes de declarar o QR expirado (o polling pode atrasar). */
 export const QR_EXPIRY_GRACE_MS = 8_000;
 
@@ -40,6 +64,32 @@ export function formatBrazilPhone(value: string | null | undefined): string {
   if (local.length === 11) return `+55 (${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
   if (local.length === 10) return `+55 (${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
   return value;
+}
+
+/**
+ * Telefone de conta Telegram: qualquer país, com DDI, só dígitos (`5511987654321`).
+ * Aceita `+55`, máscara e espaços. Sem DDI e com 10–11 dígitos válidos no padrão brasileiro,
+ * assume o Brasil. Devolve `null` quando não dá para confiar no número (E.164: 8–15 dígitos).
+ */
+export function normalizeInternationalPhone(input: string): string | null {
+  const trimmed = input.trim();
+  const digits = onlyDigits(trimmed);
+  if (!trimmed.startsWith('+')) {
+    const brazil = normalizeBrazilPhone(digits);
+    if (brazil) return brazil;
+  }
+  if (digits.length < 8 || digits.length > 15) return null;
+  if (digits[0] === '0') return null;
+  return digits;
+}
+
+/** Número com DDI para exibição: brasileiro ganha máscara; os demais só o `+`. */
+export function formatInternationalPhone(value: string | null | undefined): string {
+  if (!value) return '';
+  const formatted = formatBrazilPhone(value);
+  if (formatted !== value) return formatted;
+  const digits = onlyDigits(value);
+  return digits ? `+${digits}` : value;
 }
 
 export const isValidSessionName = (name: string) => {

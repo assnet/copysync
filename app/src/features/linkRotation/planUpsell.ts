@@ -1,11 +1,22 @@
-import { PLAN_CATALOG } from '@/features/plans/catalog';
+import { PLAN_CATALOG, type PlanCatalogItem } from '@/features/plans/catalog';
 
-export type PlanLimitKind = 'rotations' | 'groups';
+/**
+ * Limite de plano que pode acionar o aviso de upgrade: rodízios e grupos (rodízio de links) ou
+ * sessões por canal (tela de sessões).
+ */
+export type PlanLimitKind = 'rotations' | 'groups' | 'whatsappSessions' | 'telegramSessions';
 
 export interface NextPlanOffer {
   name: string;
   limit: number;
 }
+
+const LIMIT_OF: Record<PlanLimitKind, (plan: PlanCatalogItem) => number> = {
+  rotations: (p) => p.limits.linkRotations,
+  groups: (p) => p.limits.linkRotationGroups,
+  whatsappSessions: (p) => p.limits.whatsappSessions,
+  telegramSessions: (p) => p.limits.telegramSessions,
+};
 
 /**
  * Menor plano da vitrine (`features/plans/catalog.ts`, em ordem crescente) que permite mais que o
@@ -14,7 +25,7 @@ export interface NextPlanOffer {
  */
 export function nextPlanFor(kind: PlanLimitKind, currentLimit: number): NextPlanOffer | null {
   for (const plan of PLAN_CATALOG) {
-    const limit = kind === 'rotations' ? plan.limits.linkRotations : plan.limits.linkRotationGroups;
+    const limit = LIMIT_OF[kind](plan);
     if (limit > currentLimit) return { name: plan.name, limit };
   }
   return null;
