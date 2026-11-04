@@ -65,7 +65,7 @@ export class PrismaTenantRepository implements ITenantRepository {
     return PrismaTenantMapper.toDomain(raw);
   }
 
-  async updateBillingSeq(id: string, seq: number): Promise<number> {
+  async updateBillingSeq(id: string, seq: bigint): Promise<number> {
     const { count } = await this.db.tenant.updateMany({
       where: {
         id,

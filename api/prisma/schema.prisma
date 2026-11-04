@@ -139,7 +139,7 @@ model Tenant {
   status              TenantStatus @default(ACTIVE)
   billingCustomerId   String?      @unique
   planSlug            String?
-  lastBillingEventSeq Int?
+  lastBillingEventSeq BigInt?
   suspendedAt         DateTime?
   /// Pausa global de envios (fila de envio): nada sai enquanto não for null; captura continua.
   sendingPausedAt     DateTime?
@@ -970,7 +970,7 @@ model BillingEventReceipt {
   billingCustomerId String?
   tenantId          String?
   type              String
-  seq               Int
+  seq               BigInt
   payload           Json?
   outcome           BillingEventOutcome
   receivedAt        DateTime            @default(now())

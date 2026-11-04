@@ -7,7 +7,7 @@ export interface TenantProps {
   status: TenantStatus;
   billingCustomerId: string | null;
   planSlug: string | null;
-  lastBillingEventSeq: number | null;
+  lastBillingEventSeq: bigint | null;
   suspendedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -20,7 +20,7 @@ export class Tenant {
   public readonly status: TenantStatus;
   public readonly billingCustomerId: string | null;
   public readonly planSlug: string | null;
-  public readonly lastBillingEventSeq: number | null;
+  public readonly lastBillingEventSeq: bigint | null;
   public readonly suspendedAt: Date | null;
   public readonly createdAt: Date;
   public readonly updatedAt: Date;

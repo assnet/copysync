@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 
 /** Banco em memória: tenant único por `billingCustomerId`, recibos por `eventId`. */
 const db = vi.hoisted(() => {
-  type Tenant = { id: string; status: string; lastBillingEventSeq: number | null; planSlug: string | null; suspendedAt: Date | null };
+  type Tenant = { id: string; status: string; lastBillingEventSeq: bigint | null; planSlug: string | null; suspendedAt: Date | null };
   const state = {
     tenant: null as Tenant | null,
     receipts: new Map<string, { outcome: string; tenantId: string | null; type: string }>(),
@@ -31,7 +31,7 @@ const db = vi.hoisted(() => {
     tenant: {
       findUnique: async () => (state.tenant ? { id: state.tenant.id } : null),
       update: async ({ data }: { data: Partial<Tenant> }) => { Object.assign(state.tenant!, data); return {}; },
-      updateMany: async ({ data }: { data: { lastBillingEventSeq: number } }) => {
+      updateMany: async ({ data }: { data: { lastBillingEventSeq: bigint } }) => {
         const t = state.tenant!;
         if (t.lastBillingEventSeq === null || t.lastBillingEventSeq < data.lastBillingEventSeq) t.lastBillingEventSeq = data.lastBillingEventSeq;
         return { count: 1 };
@@ -69,7 +69,7 @@ import { ApplyBillingEventUseCase, type ApplyBillingEventInput } from './ApplyBi
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
 
 function makeTenant(over: Partial<NonNullable<typeof db.state.tenant>> = {}) {
-  db.state.tenant = { id: 'tenant-1', status: 'ACTIVE', lastBillingEventSeq: 10, planSlug: 'COPYSYNC_LITE', suspendedAt: null, ...over };
+  db.state.tenant = { id: 'tenant-1', status: 'ACTIVE', lastBillingEventSeq: 10n, planSlug: 'COPYSYNC_LITE', suspendedAt: null, ...over };
 }
 
 function ev(eventType: string, over: Partial<ApplyBillingEventInput> = {}): ApplyBillingEventInput {
@@ -77,7 +77,7 @@ function ev(eventType: string, over: Partial<ApplyBillingEventInput> = {}): Appl
     eventId: `ev-${eventType}`,
     billingCustomerId: 'user-central-1',
     eventType,
-    seq: 11,
+    seq: 11n,
     payload: { email: 'ana@exemplo.com', name: 'Ana Souza', planSlug: 'COPYSYNC_PRO' },
     ...over,
   };
@@ -113,7 +113,7 @@ describe('ApplyBillingEventUseCase', () => {
       slug: expect.stringMatching(/^ana-souza-[a-f0-9]{6}$/),
     }));
     expect(out).toEqual({ outcome: 'APPLIED', tenantId: 'tenant-1' });
-    expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 11 });
+    expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 11n });
     expect(db.state.entitlements.get('whatsapp_sessions')).toBe('1');
     expect(sideEffects).toHaveBeenCalled();
     expect(db.state.receipts.get('ev-subscription.activated')?.outcome).toBe('APPLIED');
@@ -177,7 +177,7 @@ describe('ApplyBillingEventUseCase', () => {
 
   it('seq menor ou igual à marca d’água vira OUT_OF_ORDER com recibo e sem efeito', async () => {
     makeTenant({ status: 'ACTIVE' });
-    const out = await run(ev('subscription.canceled', { seq: 10 }));
+    const out = await run(ev('subscription.canceled', { seq: 10n }));
     expect(out).toEqual({ outcome: 'OUT_OF_ORDER', tenantId: 'tenant-1' });
     expect(db.state.receipts.get('ev-subscription.canceled')?.outcome).toBe('OUT_OF_ORDER');
     expect(db.state.tenant!.status).toBe('ACTIVE');
@@ -202,7 +202,7 @@ describe('ApplyBillingEventUseCase', () => {
     makeTenant({ planSlug: 'COPYSYNC_PRO' });
     await run(ev('subscription.updated', { eventId: 'ev-pro', payload: { planSlug: 'COPYSYNC_PRO' } }));
     expect(db.state.entitlements.get('offer_generations_per_day')).toBe(20);
-    await run(ev('subscription.updated', { eventId: 'ev-max', seq: 12, payload: { planSlug: 'COPYSYNC_MAX' } }));
+    await run(ev('subscription.updated', { eventId: 'ev-max', seq: 12n, payload: { planSlug: 'COPYSYNC_MAX' } }));
     expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
   });
 
@@ -235,20 +235,27 @@ describe('ApplyBillingEventUseCase', () => {
   it('fim de trial não muda a conta, grava IGNORED e avança a marca d’água', async () => {
     makeTenant();
     expect((await run(ev('subscription.trial_ended'))).outcome).toBe('IGNORED');
-    expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_LITE', lastBillingEventSeq: 11 });
+    expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_LITE', lastBillingEventSeq: 11n });
   });
 
   it('tipo desconhecido grava IGNORED sem erro e avança a marca d’água', async () => {
     makeTenant();
     expect((await run(ev('invoice.created'))).outcome).toBe('IGNORED');
     expect(db.state.receipts.get('ev-invoice.created')).toMatchObject({ outcome: 'IGNORED', type: 'invoice.created' });
-    expect(db.state.tenant!.lastBillingEventSeq).toBe(11);
+    expect(db.state.tenant!.lastBillingEventSeq).toBe(11n);
+  });
+
+  it('seq acima de 2^53 compara e avança a marca d’água sem perder precisão', async () => {
+    makeTenant({ lastBillingEventSeq: 9_007_199_254_740_992n });
+    expect((await run(ev('subscription.renewed', { eventId: 'ev-big', seq: 9_007_199_254_740_993n }))).outcome).toBe('APPLIED');
+    expect(db.state.tenant!.lastBillingEventSeq).toBe(9_007_199_254_740_993n);
+    expect((await run(ev('subscription.canceled', { eventId: 'ev-big-old', seq: 9_007_199_254_740_993n }))).outcome).toBe('OUT_OF_ORDER');
   });
 
   it('tipo desconhecido com seq antigo vira OUT_OF_ORDER', async () => {
     makeTenant();
-    expect((await run(ev('invoice.created', { seq: 9 }))).outcome).toBe('OUT_OF_ORDER');
-    expect(db.state.tenant!.lastBillingEventSeq).toBe(10);
+    expect((await run(ev('invoice.created', { seq: 9n }))).outcome).toBe('OUT_OF_ORDER');
+    expect(db.state.tenant!.lastBillingEventSeq).toBe(10n);
   });
 
   it('cliente desconhecido em evento que não é ativação grava IGNORED', async () => {

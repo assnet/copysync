@@ -8,5 +8,5 @@ export interface ITenantRepository {
   create(tenant: Tenant): Promise<Tenant>;
   update(tenant: Tenant): Promise<Tenant>;
   updateStatus(id: string, status: Tenant['status'], suspendedAt: Date | null): Promise<Tenant>;
-  updateBillingSeq(id: string, seq: number): Promise<number>;
+  updateBillingSeq(id: string, seq: bigint): Promise<number>;
 }

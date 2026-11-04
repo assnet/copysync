@@ -49,7 +49,8 @@ export interface ApplyBillingEventInput {
   billingCustomerId: string;
   /** Texto cru do hub; tipo desconhecido vira recibo IGNORED. */
   eventType: string;
-  seq: number;
+  /** Sequência global da central (BigInt no hub e no banco): nunca `number`. */
+  seq: bigint;
   payload: BillingEventPayload;
 }
 
@@ -71,7 +72,7 @@ type TxClient = Prisma.TransactionClient;
 interface LockedTenantRow {
   id: string;
   status: string;
-  lastBillingEventSeq: number | null;
+  lastBillingEventSeq: bigint | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -131,7 +132,7 @@ export class ApplyBillingEventUseCase {
     if (result.suspended && result.tenantId) {
       internalEventBus.emit('TENANT_SUSPENDED', { type: 'TENANT_SUSPENDED', tenantId: result.tenantId });
     }
-    log.info({ eventId, eventType: input.eventType, seq, outcome: result.outcome, tenantId: result.tenantId }, 'Billing event handled');
+    log.info({ eventId, eventType: input.eventType, seq: seq.toString(), outcome: result.outcome, tenantId: result.tenantId }, 'Billing event handled');
     return { outcome: result.outcome, tenantId: result.tenantId };
   }
 
@@ -215,7 +216,7 @@ export class ApplyBillingEventUseCase {
       return { outcome: 'IGNORED' };
     }
     if (tenant.lastBillingEventSeq !== null && seq <= tenant.lastBillingEventSeq) {
-      log.info({ eventId, seq, lastSeq: tenant.lastBillingEventSeq }, 'Out-of-order billing event');
+      log.info({ eventId, seq: seq.toString(), lastSeq: tenant.lastBillingEventSeq.toString() }, 'Out-of-order billing event');
       await receipt('OUT_OF_ORDER');
       return { outcome: 'OUT_OF_ORDER', tenantId: tenant.id };
     }

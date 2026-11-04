@@ -61,7 +61,7 @@ describe('POST /integrations/billing/webhook', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true, outcome: 'APPLIED' });
     expect(execute).toHaveBeenCalledWith({
-      eventId: 'ev-1', billingCustomerId: 'user-central-1', eventType: 'subscription.activated', seq: 7,
+      eventId: 'ev-1', billingCustomerId: 'user-central-1', eventType: 'subscription.activated', seq: 7n,
       payload: { email: 'ana@exemplo.com', name: 'Ana', planSlug: 'COPYSYNC_PRO' },
     });
   });
@@ -99,6 +99,27 @@ describe('POST /integrations/billing/webhook', () => {
     const req = signed(BODY);
     delete (req.headers as Record<string, string>)['x-event-id'];
     expect((await app.inject(req)).statusCode).toBe(200);
+  });
+
+  it('seq em string acima de 2^53 chega ao use case sem perder precisão', async () => {
+    execute.mockResolvedValue({ outcome: 'APPLIED' });
+    const res = await app.inject(signed({ ...BODY, seq: '9007199254740993' }));
+    expect(res.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ seq: 9_007_199_254_740_993n }));
+  });
+
+  it('seq número acima de 2^31 é aceito como bigint', async () => {
+    execute.mockResolvedValue({ outcome: 'APPLIED' });
+    expect((await app.inject(signed({ ...BODY, seq: 2_147_483_648 }))).statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ seq: 2_147_483_648n }));
+  });
+
+  it('seq inválido (não inteiro seguro, negativo, texto) responde 400 sem processar', async () => {
+    for (const seq of [1.5, -1, 9007199254740993, 'abc', null]) {
+      const res = await app.inject(signed({ ...BODY, seq }));
+      expect(res.statusCode, String(seq)).toBe(400);
+    }
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it('sem externalUserId responde 400', async () => {

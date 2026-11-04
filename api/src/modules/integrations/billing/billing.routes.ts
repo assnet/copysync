@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { verifyBillingHmac } from './verifyBillingHmac';
+import { parseBillingSeq } from './parseBillingSeq';
 import { ApplyBillingEventUseCase } from './ApplyBillingEventUseCase';
 import type { ApplyBillingEventInput } from './ApplyBillingEventUseCase';
 import { env } from '../../../shared/config/env';
@@ -68,9 +69,9 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
       const eventId = str(body.eventId);
       const eventType = str(body.type);
       const billingCustomerId = str(body.externalUserId);
-      const seq = body.seq;
+      const seq = parseBillingSeq(body.seq);
 
-      if (!eventId || !eventType || !billingCustomerId || typeof seq !== 'number' || !Number.isInteger(seq)) {
+      if (!eventId || !eventType || !billingCustomerId || seq === null) {
         log.warn({ eventId }, 'Billing webhook missing eventId, type, externalUserId or seq');
         return reply.status(400).send({ error: 'missing_fields' });
       }
