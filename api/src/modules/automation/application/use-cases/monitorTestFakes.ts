@@ -1,3 +1,4 @@
+import { GroupNotPostableError } from '../../../../shared/errors/internal/GroupErrors';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { ActiveMonitoredGroup, BroadcastGroupInput, IGroupMonitorRepository, MonitoredGroupInput, TenantGroupJids } from '../../domain/contracts/IGroupMonitorRepository';
 import type { CapturedOfferListItem, CapturedOfferResolution, ICapturedOfferRepository, NewCapturedOffer } from '../../domain/contracts/ICapturedOfferRepository';
@@ -160,7 +161,14 @@ export class FakeCredentialStates implements ICredentialStateSource {
 
 export class FakeDirectory implements IMonitorGroupDirectory {
   mediaEnabled: string[] = [];
-  async ensureGroup(_t: string, _s: string, groupJid: string) { return { conversationId: `conv-${groupJid}` }; }
+  purposes: string[] = [];
+  /** JIDs só de leitura: 'send' lança GROUP_NOT_POSTABLE, como o diretório real. */
+  readOnly = new Set<string>();
+  async ensureGroup(_t: string, _s: string, groupJid: string, purpose: 'monitor' | 'send') {
+    this.purposes.push(`${purpose}:${groupJid}`);
+    if (purpose === 'send' && this.readOnly.has(groupJid)) throw new GroupNotPostableError(groupJid);
+    return { conversationId: `conv-${groupJid}` };
+  }
   async enableMediaDownload(_t: string, conversationId: string) { this.mediaEnabled.push(conversationId); }
 }
 

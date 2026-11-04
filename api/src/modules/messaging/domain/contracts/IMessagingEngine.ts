@@ -361,6 +361,8 @@ export interface ParticipatingGroupInfo {
   name: string | null;
   /** Foto já servida pelo nosso storage, quando a engine a obtém na listagem (Telegram). */
   avatarUrl?: string | null;
+  /** A conta pode postar no grupo. Ausente = true (WhatsApp). Telegram: false em canal só de leitura. */
+  canPost?: boolean;
 }
 
 export interface GroupParticipantInfo {

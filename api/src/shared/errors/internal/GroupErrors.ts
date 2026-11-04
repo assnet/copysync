@@ -8,3 +8,10 @@ export class GroupInviteNotAllowedError extends AppError {
     super('GROUP_INVITE_NOT_ALLOWED', message, 403);
   }
 }
+
+/** A sessão não pode postar no grupo (canal só de leitura): serve para monitorar, não como destino. */
+export class GroupNotPostableError extends AppError {
+  constructor(groupJid: string) {
+    super('GROUP_NOT_POSTABLE', `Session cannot post in group ${groupJid}`, 422);
+  }
+}

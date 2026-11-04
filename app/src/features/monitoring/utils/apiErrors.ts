@@ -47,6 +47,8 @@ export function monitoringErrorMessage(err: unknown, ctx: MonitoringErrorContext
     }
     case 'GROUP_MONITOR_BROADCAST_TAKEN':
       return t.broadcastTaken;
+    case 'GROUP_NOT_POSTABLE':
+      return t.groupNotPostable;
     case 'GROUP_MONITOR_DUPLICATE_GROUP':
       return t.duplicateGroup;
     case 'GROUP_MONITOR_INVALID_INPUT': {

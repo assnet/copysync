@@ -534,6 +534,8 @@ export interface SessionGroupItem {
   title: string | null;
   avatarUrl: string | null;
   conversationId: string | null;
+  /** A sessão pode postar; false = canal só de leitura (Telegram), serve só para monitorar. Ausente = true. */
+  canPost?: boolean;
 }
 
 /** Grupo etiquetado com a sessão de origem (o painel junta a busca de várias sessões). */

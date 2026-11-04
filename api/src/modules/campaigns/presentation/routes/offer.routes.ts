@@ -148,6 +148,7 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
       httpResponse.ok(reply, await offersContainer.ensureSessionGroup().execute({
         tenantId: request.tenantContext.tenantId,
         ...request.body,
+        purpose: 'send',
       }));
     },
   );

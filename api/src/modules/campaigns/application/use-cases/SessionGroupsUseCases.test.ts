@@ -25,8 +25,8 @@ describe('ListSessionGroupsUseCase', () => {
     const r = await new ListSessionGroupsUseCase(d).execute({ tenantId: T, sessionId: S });
     expect(r.partial).toBe(false);
     expect(r.groups).toEqual([
-      { groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1' },
-      { groupJid: '222', title: 'Novo', avatarUrl: null, conversationId: null },
+      { groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1', canPost: true },
+      { groupJid: '222', title: 'Novo', avatarUrl: null, conversationId: null, canPost: true },
     ]);
   });
 
@@ -34,7 +34,7 @@ describe('ListSessionGroupsUseCase', () => {
     const d = setup();
     d.directory.listParticipating.mockRejectedValueOnce(new SessionNotConnectedError(S));
     const r = await new ListSessionGroupsUseCase(d).execute({ tenantId: T, sessionId: S });
-    expect(r).toEqual({ partial: true, groups: [{ groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1' }] });
+    expect(r).toEqual({ partial: true, groups: [{ groupJid: '111', title: 'Antigo', avatarUrl: null, conversationId: 'c1', canPost: true }] });
   });
 
   it('sessão de outro tenant: 404', async () => {
@@ -49,6 +49,16 @@ describe('EnsureSessionGroupUseCase', () => {
     const r = await new EnsureSessionGroupUseCase(d).execute({ tenantId: T, sessionId: S, groupJid: '222' });
     expect(r).toEqual({ conversationId: 'c-new', title: 'Novo' });
     expect(d.directory.ensureConversation).toHaveBeenCalledWith(T, S, { groupJid: '222', name: 'Novo' });
+  });
+
+  it('canal só de leitura: recusado como destino (padrão send), aceito para monitorar', async () => {
+    const d = setup();
+    d.directory.listParticipating.mockResolvedValue([{ groupJid: '-100555', name: 'Canal', canPost: false }]);
+    const uc = new EnsureSessionGroupUseCase(d);
+    await expect(uc.execute({ tenantId: T, sessionId: S, groupJid: '-100555' })).rejects.toMatchObject({ code: 'GROUP_NOT_POSTABLE', statusCode: 422 });
+    await expect(uc.execute({ tenantId: T, sessionId: S, groupJid: '-100555', purpose: 'send' })).rejects.toMatchObject({ code: 'GROUP_NOT_POSTABLE' });
+    expect(d.directory.ensureConversation).not.toHaveBeenCalled();
+    expect(await uc.execute({ tenantId: T, sessionId: S, groupJid: '-100555', purpose: 'monitor' })).toEqual({ conversationId: 'c-new', title: 'Canal' });
   });
 
   it('grupo de que a sessão não participa: 404 e nada criado', async () => {

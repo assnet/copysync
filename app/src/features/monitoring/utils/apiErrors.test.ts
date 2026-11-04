@@ -21,6 +21,10 @@ describe('monitoringErrorMessage', () => {
     expect(monitoringErrorMessage(err('NOT_FOUND'), { scope: 'captured' })).toBe(monitoringStrings.errors.capturedNotFound);
   });
 
+  it('canal só de leitura como destino: mensagem própria', () => {
+    expect(monitoringErrorMessage(err('GROUP_NOT_POSTABLE'), { scope: 'groups' })).toBe(monitoringStrings.errors.groupNotPostable);
+  });
+
   it('conflito cita o papel, sem nome nem id do grupo (alerta não passa pelo borrão)', () => {
     const msg = monitoringErrorMessage(err('GROUP_MONITOR_GROUP_CONFLICT', { groupJid: 'g1@g.us', role: 'broadcast' }), {
       scope: 'groups', groupTitle: (jid) => (jid === 'g1@g.us' ? 'Promo' : null),

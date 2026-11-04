@@ -231,8 +231,9 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
   // Bloqueados (usados na outra lista) vão para o fim; `sort` é estável e mantém a ordem do servidor
   // Sessão filtrada que desconectou volta para "Todas"
   const activeFilter = multi && sessionIds.includes(sessionFilter) ? sessionFilter : 'all';
+  // Disparo: canal só de leitura (canPost false) não aparece; monitorados mostram todos
   const available = groups.items
-    .filter((g) => !selectedKeys.has(keyOf(g)) && (activeFilter === 'all' || g.sessionId === activeFilter))
+    .filter((g) => (mode !== 'broadcast' || g.canPost !== false) && !selectedKeys.has(keyOf(g)) && (activeFilter === 'all' || g.sessionId === activeFilter))
     .sort((a, b) => Number(excluded.has(a.groupJid)) - Number(excluded.has(b.groupJid)));
   const baseId = useId();
   const titleId = `monitoring-picker-${mode}`;

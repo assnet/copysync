@@ -375,6 +375,7 @@ export const offerStrings = {
   },
 
   errors: {
+    GROUP_NOT_POSTABLE: 'Esta sessão não pode postar neste grupo (canal só de leitura). Escolha outro destino.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use um link da Shopee, Amazon ou Mercado Livre.',
     OFFER_LINK_NOT_OWNED: 'Este link é de outro afiliado. Gere o link na sua conta e cole aqui.',
     OFFER_LINK_NOT_AFFILIATE: 'Esse não é um link de afiliado. Gere o link pela sua conta de afiliado da loja.',

@@ -713,12 +713,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     for (const d of dialogs) {
       if (!d.isGroup && !d.isChannel) continue;
       const ent = d.entity as Api.Channel | Api.Chat | undefined;
-      // Canal (broadcast) só entra se a conta pode postar nele
-      if (ent instanceof Api.Channel && ent.broadcast && !(ent.creator || ent.adminRights?.postMessages)) continue;
+      // Todos os grupos e canais ativos: canal só de leitura serve para monitorar (canPost=false)
       if (ent instanceof Api.Chat && (ent.left || ent.deactivated)) continue;
       if (ent instanceof Api.Channel && ent.left) continue;
       if (!d.id) continue;
-      out.push({ groupJid: d.id.toString(), name: d.title ?? null, avatarUrl: null });
+      out.push({ groupJid: d.id.toString(), name: d.title ?? null, avatarUrl: null, canPost: telegramCanPost(ent) });
       avatarOf.set(out.length - 1, this.groupAvatar(sessionId, entry, d.id.toString(), ent));
     }
     // Fotos que já estão no storage voltam agora; as que faltam baixam em fila e, se terminarem
@@ -856,4 +855,21 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
   async shutdown(): Promise<void> {
     await Promise.all(this.registry.all().map(([id, entry]) => this.teardown(id, entry)));
   }
+}
+
+/**
+ * A conta pode postar? Canal (broadcast): só criador ou admin com `postMessages`. Grupo/supergrupo:
+ * não só quando o envio está bloqueado por padrão e a conta não é criadora nem admin.
+ */
+function telegramCanPost(ent: unknown): boolean {
+  if (ent instanceof Api.Channel) {
+    if (ent.creator) return true;
+    if (ent.broadcast) return !!ent.adminRights?.postMessages;
+    return !ent.defaultBannedRights?.sendMessages || !!ent.adminRights;
+  }
+  if (ent instanceof Api.Chat) {
+    if (ent.creator || ent.adminRights) return true;
+    return !ent.defaultBannedRights?.sendMessages;
+  }
+  return true;
 }

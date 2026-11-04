@@ -28,8 +28,8 @@ export class CampaignsOfferQueue implements IOfferQueue {
  * do chat (mesmo campo que o painel liga em "Baixar mídia automaticamente").
  */
 export class ChatMonitorGroupDirectory implements IMonitorGroupDirectory {
-  async ensureGroup(tenantId: string, sessionId: string, groupJid: string): Promise<{ conversationId: string }> {
-    const { conversationId } = await offersContainer.ensureSessionGroup().execute({ tenantId, sessionId, groupJid });
+  async ensureGroup(tenantId: string, sessionId: string, groupJid: string, purpose: 'monitor' | 'send'): Promise<{ conversationId: string }> {
+    const { conversationId } = await offersContainer.ensureSessionGroup().execute({ tenantId, sessionId, groupJid, purpose });
     return { conversationId };
   }
 

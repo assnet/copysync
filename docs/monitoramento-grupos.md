@@ -162,6 +162,8 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 - O mesmo grupo não pode ser monitorado e de disparo no tenant (409
   `GROUP_MONITOR_GROUP_CONFLICT`): a oferta postada voltaria como captura.
 - Só grupo de que a sessão participa (mesma regra do gerador); a conversa do chat é criada se faltar.
+  `ensureGroup(…, purpose)`: monitorado = `'monitor'` (aceita canal do Telegram só de leitura, `canPost: false`);
+  disparo = `'send'` (422 `GROUP_NOT_POSTABLE`). O seletor de disparo esconde `canPost === false`.
 - **Sessão cruzada** (api 0.42.0): grupo de disparo pode ser de **outra sessão do tenant**
   (`groups[].sessionId` no `PUT /config/broadcast-groups`). `cross_session_dispatch` (MAX; ausente =
   bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`) só é exigido quando monitor + destinos usam **2+ sessões do

@@ -15,10 +15,10 @@ const live = [
 describe('mergeSessionGroups', () => {
   it('com WhatsApp: vale a lista dele, cruza conversationId e ordena por nome (sem título no fim)', () => {
     expect(mergeSessionGroups(live, known)).toEqual([
-      { groupJid: '444', title: 'Achados', avatarUrl: null, conversationId: null },
-      { groupJid: '222', title: 'beta ofertas', avatarUrl: null, conversationId: null },
-      { groupJid: '111', title: 'Promoções Ágeis', avatarUrl: 'https://x/p.jpg', conversationId: 'c1' },
-      { groupJid: '333', title: null, avatarUrl: null, conversationId: null },
+      { groupJid: '444', title: 'Achados', avatarUrl: null, conversationId: null, canPost: true },
+      { groupJid: '222', title: 'beta ofertas', avatarUrl: null, conversationId: null, canPost: true },
+      { groupJid: '111', title: 'Promoções Ágeis', avatarUrl: 'https://x/p.jpg', conversationId: 'c1', canPost: true },
+      { groupJid: '333', title: null, avatarUrl: null, conversationId: null, canPost: true },
     ]);
   });
 
@@ -30,6 +30,12 @@ describe('mergeSessionGroups', () => {
     const out = mergeSessionGroups(tg, known);
     expect(out.find((g) => g.groupJid === '-100555')?.avatarUrl).toBe('https://x/tg.jpg');
     expect(out.find((g) => g.groupJid === '111')?.avatarUrl).toBe('https://x/p.jpg');
+  });
+
+  it('canPost: vem da engine (ausente = true); sem engine, conhecidos valem true', () => {
+    const tg = [{ groupJid: '-100555', name: 'Canal', canPost: false }, { groupJid: '-100666', name: 'Grupo' }];
+    expect(mergeSessionGroups(tg, known).map((g) => [g.groupJid, g.canPost])).toEqual([['-100555', false], ['-100666', true]]);
+    expect(mergeSessionGroups(null, known).every((g) => g.canPost)).toBe(true);
   });
 
   it('sem WhatsApp (sessão fora): cai no que o chat conhece', () => {

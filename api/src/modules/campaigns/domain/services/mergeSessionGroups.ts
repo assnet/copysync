@@ -8,6 +8,8 @@ export interface SessionGroupItem {
   avatarUrl: string | null;
   /** null = grupo ainda sem conversa no chat (criada ao ser escolhido). */
   conversationId: string | null;
+  /** A sessão pode postar no grupo; false = só monitorar (canal do Telegram só de leitura). */
+  canPost: boolean;
 }
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
@@ -28,9 +30,9 @@ export function mergeSessionGroups(
   const items: SessionGroupItem[] = live
     ? live.map((g) => {
         const k = byJid.get(g.groupJid);
-        return { groupJid: g.groupJid, title: g.name ?? k?.title ?? null, avatarUrl: k?.avatarUrl ?? g.avatarUrl ?? null, conversationId: k?.conversationId ?? null };
+        return { groupJid: g.groupJid, title: g.name ?? k?.title ?? null, avatarUrl: k?.avatarUrl ?? g.avatarUrl ?? null, conversationId: k?.conversationId ?? null, canPost: g.canPost ?? true };
       })
-    : [...byJid.values()].map((k) => ({ groupJid: k.groupJid, title: k.title, avatarUrl: k.avatarUrl, conversationId: k.conversationId }));
+    : [...byJid.values()].map((k) => ({ groupJid: k.groupJid, title: k.title, avatarUrl: k.avatarUrl, conversationId: k.conversationId, canPost: true }));
 
   const term = search ? fold(search) : '';
   const filtered = term ? items.filter((i) => i.title && fold(i.title).includes(term)) : items;

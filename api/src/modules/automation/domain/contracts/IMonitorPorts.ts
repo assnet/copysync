@@ -100,8 +100,11 @@ export interface IOfferQueue {
 
 /** Grupos da sessão no WhatsApp + conversa do chat (adapter: campaigns + chat). */
 export interface IMonitorGroupDirectory {
-  /** Só grupo de que a sessão participa; cria a conversa se faltar. Lança NotFound/Engine*. */
-  ensureGroup(tenantId: string, sessionId: string, groupJid: string): Promise<{ conversationId: string }>;
+  /**
+   * Só grupo de que a sessão participa; cria a conversa se faltar. `purpose` 'send' (disparo) recusa
+   * grupo em que a sessão não posta (GROUP_NOT_POSTABLE); 'monitor' aceita. Lança NotFound/Engine*.
+   */
+  ensureGroup(tenantId: string, sessionId: string, groupJid: string, purpose: 'monitor' | 'send'): Promise<{ conversationId: string }>;
   /** Liga o download automático de mídia da conversa (sem isso a foto não chega ao store). */
   enableMediaDownload(tenantId: string, conversationId: string): Promise<void>;
 }

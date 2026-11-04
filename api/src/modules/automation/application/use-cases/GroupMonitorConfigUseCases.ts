@@ -211,8 +211,10 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
 
     const configId = await this.deps.monitors.ensureConfig(tenantId, sessionId);
     const conversations = new Map<string, string>();
+    // Monitorado só lê (canal só de leitura serve); destino precisa poder postar
+    const purpose = role === 'monitored' ? 'monitor' : 'send';
     for (const r of unique) {
-      const { conversationId } = await this.deps.directory.ensureGroup(tenantId, r.sessionId, r.groupJid);
+      const { conversationId } = await this.deps.directory.ensureGroup(tenantId, r.sessionId, r.groupJid, purpose);
       conversations.set(refKey(r), conversationId);
     }
     return { configId, conversations };

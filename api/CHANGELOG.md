@@ -59,6 +59,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Telegram — monitorar canais só inscritos (`messaging`, `campaigns`, `automation`) — api 0.54.0 · app 0.69.0
+
+- **`TelegramMessagingEngineAdapter.listParticipatingGroups`** — lista todos os grupos e canais ativos com `canPost` (antes escondia canais sem permissão de postar, e o canal do concorrente não podia ser monitorado)
+- **`EnsureSessionGroupUseCase`** — `purpose` `monitor` × `send`; destino sem permissão → `GROUP_NOT_POSTABLE` (422). Monitoramento usa `monitor` nos monitorados e `send` no disparo; rodízio de links filtra `canPost`
+- **`GroupPickerDialog.tsx`**, **`ConfigGroupsStep.tsx`** — seletor de monitorados mostra tudo; disparo e gerador escondem onde não dá para postar
+
 #### Frontend — Monitoramento e Gerador por canal (`monitoring`, `offers`) — app 0.68.0
 
 - **`features/monitoring/utils/channelLimits.ts`**, **`GroupUsageChip.tsx`**, **`GroupPickerDialog.tsx`** — uso e limite de grupos monitorados e de disparo por canal ("WhatsApp 3/10 · Telegram 1/10"), bloqueio por canal no seletor, logo do canal nas sessões e chips "Envia por"; aviso de "marcar todos" sem efeito no Telegram; erro de limite por canal abre o aviso de upgrade certo

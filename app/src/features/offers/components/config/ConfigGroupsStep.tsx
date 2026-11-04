@@ -77,7 +77,9 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
   const setExclude = (v: string) => setFilters((f) => ({ ...f, exclude: v }));
   const setSessionFilter = (v: string | null) => setFilters((f) => ({ ...f, sessionFilter: v }));
   const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
-  const { items, partial, loading, failed, retry } = useSessionGroups(sessionIds, search);
+  const { items: allItems, partial, loading, failed, retry } = useSessionGroups(sessionIds, search);
+  // Destino de envio: canal só de leitura (canPost false) não entra
+  const items = useMemo(() => allItems.filter((g) => g.canPost !== false), [allItems]);
   const multi = sessions.length > 1;
   const blurNames = useBlur('offers.groupNames');
   const blurSession = useBlur('offers.sessionName');

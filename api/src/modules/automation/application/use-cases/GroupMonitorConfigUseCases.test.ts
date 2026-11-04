@@ -74,6 +74,17 @@ describe('GroupMonitorConfigUseCases', () => {
     expect(out.monitoredGroups).toEqual([expect.objectContaining({ conversationId: 'conv-a', groupJid: 'a', keywords: ['Fone'] })]);
   });
 
+  it('canal só de leitura: monitorado aceito (monitor); como destino, GROUP_NOT_POSTABLE (send)', async () => {
+    const s = setup();
+    s.directory.readOnly.add('-100555');
+    await s.monitored.execute({ ...base, groups: [{ groupJid: '-100555', keywords: [] }] });
+    expect(s.directory.purposes).toEqual(['monitor:-100555']);
+    const t = setup();
+    t.directory.readOnly.add('-100777');
+    await expect(t.broadcast.execute({ ...base, groups: [{ groupJid: '-100777' }] })).rejects.toMatchObject({ code: 'GROUP_NOT_POSTABLE' });
+    expect(t.directory.purposes).toEqual(['send:-100777']);
+  });
+
   it('limite do plano soma as outras sessões do tenant', async () => {
     const s = setup({ monitored_groups: 2 });
     await s.monitored.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'x', keywords: [] }] });

@@ -224,6 +224,7 @@ export const sessionGroupsResponse = envelope({
           title: nullableString,
           avatarUrl: nullableString,
           conversationId: nullableString,
+          canPost: { type: 'boolean' },
         },
       },
     },

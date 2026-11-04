@@ -9,8 +9,10 @@ import type {
  * mesma busca e mesmo merge) e o `ensure` de conversa, sem duplicar regra.
  */
 export class OffersLinkRotationGroupDirectory implements ILinkRotationGroupDirectory {
-  listSessionGroups(tenantId: string, sessionId: string, search?: string): Promise<LinkRotationSessionGroupList> {
-    return offersContainer.listSessionGroups().execute({ tenantId, sessionId, search });
+  async listSessionGroups(tenantId: string, sessionId: string, search?: string): Promise<LinkRotationSessionGroupList> {
+    const r = await offersContainer.listSessionGroups().execute({ tenantId, sessionId, search });
+    // Canal só de leitura (Telegram) não é grupo de rodízio: mantém a lista de antes
+    return { ...r, groups: r.groups.filter((g) => g.canPost) };
   }
 
   async ensureConversation(tenantId: string, sessionId: string, groupJid: string): Promise<string> {

@@ -6,6 +6,8 @@ export interface DirectoryGroup {
   name: string | null;
   /** Foto vinda da engine na listagem; vale quando a conversa do chat não tem. */
   avatarUrl?: string | null;
+  /** A sessão pode postar no grupo. Ausente = true; false = canal só de leitura (serve só para monitorar). */
+  canPost?: boolean;
 }
 
 export interface ISessionGroupDirectory {

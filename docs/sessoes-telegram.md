@@ -122,6 +122,13 @@ pede código de novo (como o pareamento do WhatsApp).
   única** (sem rajada, evita `FLOOD_WAIT`), a listagem espera até 3 s e o resto entra na próxima. Cada download
   emite `GROUP_AVATAR_UPDATED`, que grava `groupAvatarUrl` nas conversas do grupo (monitorados/disparo).
   `mergeSessionGroups` usa a foto da conversa e, sem ela, a da engine.
+- `listParticipatingGroups` lista **todos** os grupos, supergrupos e canais ativos (sem `left`/`deactivated`),
+  inclusive canal em que a conta só é inscrita, e devolve `canPost` (opcional na porta; ausente = true, WhatsApp
+  não manda): canal broadcast → `creator || adminRights.postMessages`; grupo/supergrupo → false só com
+  `defaultBannedRights.sendMessages` e a conta sem creator/admin. Canal só de leitura serve para **monitorar**;
+  como destino (`EnsureSessionGroupUseCase` com `purpose: 'send'`, padrão) → 422 `GROUP_NOT_POSTABLE`. O painel
+  esconde `canPost === false` nos seletores de destino (gerador, disparo) e o rodízio de links filtra no adapter.
+  Não voltar a remover canais da listagem: o seletor de monitorados depende deles.
 - `checkNumberExists` → `null`; `updateChatState`, `presenceSubscribe` → no-op.
 
 ## 6. Configuração

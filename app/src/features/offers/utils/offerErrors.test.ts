@@ -10,6 +10,12 @@ describe('toOfferError — limite por canal', () => {
     expect(v.planLimit).toEqual({ kind: 'telegramBroadcastGroups', limit: 5 });
   });
 
+  it('canal só de leitura como destino: mensagem própria, sem ação', () => {
+    const v = toOfferError({ code: 'GROUP_NOT_POSTABLE' });
+    expect(v.message).toMatch(/só de leitura/);
+    expect(v.action).toBe('none');
+  });
+
   it('sessões de WhatsApp viram aviso de sessões', () => {
     const v = toOfferError(limitErr('whatsapp_sessions', 1));
     expect(v.message).toContain('WhatsApp');

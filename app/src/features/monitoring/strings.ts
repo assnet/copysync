@@ -305,6 +305,7 @@ export const monitoringStrings = {
         : `Seu plano permite até ${max} ${what} no ${channel}, somando todas as sessões. Remova algum ou veja os planos.`;
     },
     planFeature: 'Seu plano não inclui este recurso.',
+    groupNotPostable: 'Esta sessão não pode postar em um dos grupos escolhidos (canal só de leitura). Ele serve para monitorar, não para receber ofertas.',
     broadcastTaken: 'Um dos grupos já recebe as ofertas do monitoramento de outra sessão. Tire-o daqui ou de lá.',
     duplicateGroup: 'O mesmo grupo foi escolhido por duas sessões. Deixe só uma, senão a oferta sai duas vezes nele.',
     crossSessionUnavailable: 'Usar duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Escolha grupos desta sessão ou de outro canal, ou faça upgrade.',
