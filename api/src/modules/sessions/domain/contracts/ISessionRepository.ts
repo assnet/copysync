@@ -44,6 +44,12 @@ export interface ISessionRepository {
    * vencido no relógio do banco). Usado pelo reconciler do boot (LEASE-10).
    */
   findActiveSessionsWithoutLiveLease(): Promise<Session[]>;
+  /**
+   * Marca `DISCONNECTED` (com `lastDisconnectedAt`) só se a sessão do tenant ainda estiver ativa,
+   * não excluída e sem lease vivo no relógio do banco. Connect local entre o SELECT e o UPDATE
+   * (lease tomado) não é sobrescrito. Devolve se gravou.
+   */
+  markDisconnectedIfNoLiveLease(id: string, tenantId: string): Promise<boolean>;
   /** Sessões não excluídas do tenant, por engine (contador de limite do painel). */
   countByEngine(tenantId: string): Promise<Record<string, number>>;
   /** Engine de uma sessão (inclusive excluída), sem tenant: para o roteador de engines. null = inexistente. */

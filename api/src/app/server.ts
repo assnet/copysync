@@ -317,7 +317,7 @@ async function start(): Promise<void> {
   // every deploy can generate large Baileys auth-state writes and overload small
   // PostgreSQL instances. Sessions can still be connected manually via API/UI.
   // F1: crash/SIGKILL não solta o lease; a 2ª passada (após o TTL) trata as sessões puladas.
-  let cancelBootRecheck: (() => void) | null = null;
+  let cancelBootRecheck: (() => Promise<void>) | null = null;
   if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
     if (jobs.has('sessionBootstrap')) {
       try {
@@ -359,7 +359,8 @@ async function start(): Promise<void> {
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutdown signal received');
-    cancelBootRecheck?.();
+    // Cancela o timer já; a passada em curso é aguardada antes de fechar os sockets (F8).
+    const bootRecheckSettled = cancelBootRecheck?.() ?? Promise.resolve();
     // LEASE-09: primeiro o keeper — nenhuma renovação concorre com o fechamento dos sockets.
     try {
       await lease.keeper.stop();
@@ -400,6 +401,8 @@ async function start(): Promise<void> {
     } catch (err) {
       logger.error({ err }, 'Media send queue drain failed during shutdown');
     }
+    // F8: a 2ª passada do boot em curso pode abrir socket; termina antes de fechá-los.
+    await bootRecheckSettled;
     // LEASE-09: sockets fechados antes do flush (nenhuma chave nova chega depois dele).
     // Mídia × flush fica nesta ordem até a E4.
     try {

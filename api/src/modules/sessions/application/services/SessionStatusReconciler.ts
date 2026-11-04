@@ -36,11 +36,8 @@ export class SessionStatusReconciler {
     let reconciled = 0;
     for (const session of sessions) {
       try {
-        await this.sessionRepo.updateStatus(session.id, session.tenantId, {
-          status: 'DISCONNECTED',
-          lastDisconnectedAt: new Date(),
-        });
-        reconciled += 1;
+        // Condicional: connect local entre o SELECT e aqui (lease vivo) não vira DISCONNECTED (F8).
+        if (await this.sessionRepo.markDisconnectedIfNoLiveLease(session.id, session.tenantId)) reconciled += 1;
       } catch (err) {
         reconcilerLogger.warn({ err, sessionId: session.id }, 'Failed to reconcile session status');
       }
@@ -60,17 +57,23 @@ export const LEASE_EXPIRY_RECHECK_DELAY_MS = LEASE_TTL_MS + LEASE_FENCE_MARGIN_M
 /**
  * Agenda a 2ª passada do boot (F1). Crash/SIGKILL não solta o lease, então a 1ª passada pula
  * a sessão do processo morto; depois do TTL ela é tratada. Timer `unref` (não segura o
- * processo); a função devolvida cancela e é chamada no shutdown.
+ * processo). A função devolvida é chamada no shutdown: cancela o timer e devolve a promessa da
+ * passada em curso (ou resolvida, se nenhuma rodou), que nunca rejeita. O shutdown a aguarda
+ * antes de `closeAllSockets` para nenhuma passada abrir socket depois de soltar os leases (F8).
  */
 export function scheduleLeaseExpiryRecheck(
   pass: () => Promise<number>,
   delayMs: number = LEASE_EXPIRY_RECHECK_DELAY_MS,
-): () => void {
+): () => Promise<void> {
+  let running: Promise<void> = Promise.resolve();
   const timer = setTimeout(() => {
-    void pass()
+    running = pass()
       .then((handled) => reconcilerLogger.info({ handled }, 'Boot recheck after lease TTL done'))
       .catch((err) => reconcilerLogger.error({ err }, 'Boot recheck after lease TTL failed'));
   }, delayMs);
   timer.unref?.();
-  return () => clearTimeout(timer);
+  return () => {
+    clearTimeout(timer);
+    return running;
+  };
 }

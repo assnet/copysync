@@ -78,3 +78,39 @@ describe('markConnectRequested — backoff de adoção (ADOPT-04)', () => {
     expect(await read(id)).toEqual({ connectRequestedAt: null, adoptFailures: 2, nextAdoptAt: null });
   });
 });
+
+describe('markDisconnectedIfNoLiveLease', () => {
+  const read = (id: string) => prisma.session.findUniqueOrThrow({ where: { id } });
+
+  it('lease nulo ou vencido: marca DISCONNECTED com lastDisconnectedAt', async () => {
+    const free = await newSession();
+    const expired = await newSession({ ownerWorkerId: 'w-other', leaseUntil: new Date(Date.now() - 1_000) });
+    for (const id of [free, expired]) {
+      expect(await repo.markDisconnectedIfNoLiveLease(id, tenantId)).toBe(true);
+      const s = await read(id);
+      expect(s.status).toBe('DISCONNECTED');
+      expect(s.lastDisconnectedAt).not.toBeNull();
+    }
+  });
+
+  it('lease vivo (connect no meio): não toca a sessão', async () => {
+    const id = await newSession({ ownerWorkerId: 'w-local', leaseUntil: new Date(Date.now() + 60_000) });
+    const before = await read(id);
+    expect(await repo.markDisconnectedIfNoLiveLease(id, tenantId)).toBe(false);
+    const after = await read(id);
+    expect(after.status).toBe('CONNECTED');
+    expect(after.lastDisconnectedAt).toBeNull();
+    expect(after.updatedAt).toEqual(before.updatedAt);
+  });
+
+  it('outro tenant, excluída ou status inativo: não grava', async () => {
+    const a = await newSession();
+    expect(await repo.markDisconnectedIfNoLiveLease(a, 'outro-tenant')).toBe(false);
+    expect((await read(a)).status).toBe('CONNECTED');
+    const del = await newSession({ deletedAt: new Date() });
+    expect(await repo.markDisconnectedIfNoLiveLease(del, tenantId)).toBe(false);
+    const failed = await newSession({ status: 'FAILED' });
+    expect(await repo.markDisconnectedIfNoLiveLease(failed, tenantId)).toBe(false);
+    expect((await read(failed)).status).toBe('FAILED');
+  });
+});

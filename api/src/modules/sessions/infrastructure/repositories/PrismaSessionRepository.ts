@@ -98,6 +98,17 @@ export class PrismaSessionRepository implements ISessionRepository {
     return rows.map(PrismaSessionMapper.toDomain);
   }
 
+  async markDisconnectedIfNoLiveLease(id: string, tenantId: string): Promise<boolean> {
+    // Mesmo filtro do SELECT acima, reavaliado no UPDATE: lease tomado no meio vence.
+    const n = await prisma.$executeRaw`
+      UPDATE "sessions" SET "status" = 'DISCONNECTED'::"SessionStatus",
+        "lastDisconnectedAt" = (now() AT TIME ZONE 'UTC'), "updatedAt" = (now() AT TIME ZONE 'UTC')
+      WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+        AND "status"::text IN (${Prisma.join([...ACTIVE_STATUSES])})
+        AND ("leaseUntil" IS NULL OR "leaseUntil" < (now() AT TIME ZONE 'UTC'))`;
+    return n > 0;
+  }
+
   /**
    * Updates status and optional timestamps.
    * The caller (use case) must pre-validate tenantId ownership via findById.
