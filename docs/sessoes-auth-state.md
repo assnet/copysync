@@ -56,6 +56,11 @@ model SessionAuthKey {
 dona de `tenantId`, `provider`, `version` (lock otimista da Fase 2 da escala, §3.1) e da linha que
 `clearCredentials`/`deleteBySessionId` usam.
 
+CAS (E2, api 0.59.0): `findAllKeysVersioned` devolve chaves + `version`; `writeKeys(..., { expectedVersion })`
+grava `version` com `WHERE version = esperado` antes das chaves, na mesma transação, e devolve
+`VERSION_CONFLICT` sem gravar nada se divergir. No Baileys o conflito descarta o pendente, não re-tenta
+e derruba o socket (`abortSession`). Sem `expectedVersion` = upsert antigo (Telegram, migração legada).
+
 ### 3.2 Persistência (`BaileysAuthStatePersistence.ts`)
 
 - Boot da sessão: `findAllKeys(sessionId)` numa consulta → mapa em memória (como hoje). Se não
@@ -161,3 +166,4 @@ Total ≈ 2 dias. Versão: api minor (0.38.0).
 - Zerar o blob legado no mesmo deploy que começa a usar a tabela nova (perde o rollback).
 - Reduzir o debounce de volta sem o modelo por chave.
 - Rodar a migração lazy fora do boot da sessão (ex.: script com `api/.env` = produção).
+- Chamar `writeKeys` sem `expectedVersion` no Baileys, ou re-tentar depois de `VERSION_CONFLICT`.

@@ -156,7 +156,8 @@ Testes com banco: `api/scripts/postgres-descartavel.sh start` → `INTEGRATION_D
 
 ## Smoke (T8, executado em 2026-10-22, banco local)
 
-Feito com a API compilada (`node --env-file=.env.dev dist/app/server.js`). O `pnpm dev` não subiu
+Feito com a API compilada (`node --env-file=.env.dev dist/app/server.js`). **Hoje não repetir**: `api/.env.dev`
+tem `DATABASE_URL` de produção; usar env sintético apontando para `api/scripts/postgres-descartavel.sh`. O `pnpm dev` não subiu
 por causa de um problema que já existia no `tsx` com `whatsapp-rust-bridge`, dependência do Baileys.
 
 1. `GET /` devolveu `items: []`.

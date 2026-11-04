@@ -37,6 +37,9 @@ O mesmo passo 3 é usado para reconectar uma sessão existente (`ConnectSessionD
 - `POST /sessions/:id/pairing-code` `{ phone? }` (sem `phone` usa `declaredPhone`) → `{ sessionId, status, pairingCode|null }`;
   o código pode chegar depois: o painel consulta `GET /:id/pairing-code`. Erros: 404, 409 `SESSION_ALREADY_CONNECTED`,
   422 `SESSION_PHONE_INVALID`, 400 `PAIRING_FAILED`. As rotas de sessão respondem **sem** envelope `{ success, data }`.
+- `connect`, `reconnect` e `pairing-code` gravam `connectRequestedAt` (desejo de estar conectada; `disconnect`/`logout`/
+  `DELETE` limpam). Sessão com lease de outro processo: 503 `ENGINE_TEMPORARILY_UNAVAILABLE`, status do dono intacto
+  (ver `arquitetura-escala.md` §3.1).
 
 ## Regras e limites
 

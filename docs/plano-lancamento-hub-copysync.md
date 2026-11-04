@@ -18,7 +18,7 @@ começou (spec sem commit). **O caminho crítico agora é a central.**
 | Trilha | Entregue | Pendente |
 | --- | --- | --- |
 | **B** CopySync | provisionamento, convite, `resolveMembership`, `TENANT_SUSPENDED`, senha nula → 401, receiver HMAC, entitlements, presets LITE/PRO/MAX, desconexão de sessões em suspensão, limites de grupos e rodízio. Correções de 2026-11-02 (`0.49.4`): contrato de eventos alinhado à central, provisionamento em `subscription.activated`, `X-Application-Key`, receipt e seq na mesma transação, P2002 → 200, `planSlug` validado, limite `whatsapp_sessions`, worker de envio respeita tenant suspenso, seed sem reset de senha | `HubEmailSender` (H4), corpo de `ReconcileSubscriptionsUseCase` (hoje só o lease, sem consulta à central: depende de H2), tela "Assinatura" com link para o checkout |
-| **E** Escala | E0 flush no shutdown (`flushAllAuthStates` em `server.ts`), adapters Baileys unificados (`MessagingEngineFactory.ts:34`), E1 mídia em S3/R2 no código (`S3_ENABLED`) | `connection_limit` na `DATABASE_URL` da Render (conferir); E2 lease de sessão e CAS no `version` do auth state (hoje só incrementa); E3 `PROCESS_ROLE`/BullMQ/Redis; E4 teto por worker; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
+| **E** Escala | E0 flush no shutdown (`flushAllAuthStates` em `server.ts`), adapters Baileys unificados (`MessagingEngineFactory.ts:34`), E1 mídia em S3/R2 no código (`S3_ENABLED`), E2 lease de sessão + CAS no auth state (api 0.59.0) | `connection_limit` na `DATABASE_URL` da Render (conferir); E3 `PROCESS_ROLE`/BullMQ/Redis; E4 teto por worker; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
 | **P** Produto | gerador, disparo em massa, grupos de disparo, horário, monitoramento com troca de link, IA, rodízio, story, página de ofertas, menção a todos, sessão cruzada, vitrine de planos | Telegram; domínio personalizado (não verificado) |
 | **H** Hub | — | tudo; ver "O que falta para iniciar a fase 0" na spec da central |
 
@@ -72,7 +72,7 @@ Gate: smoke S4 verde no PulsoSocial; API religa após deploy sem 440; `tenantHoo
 
 Gate: em staging, compra sandbox na central → tenant provisionado no CopySync → owner entra pelo link → cancelamento → tenant `CANCELLED` e sessões desconectadas. PulsoSocial S2 verde.
 
-### M2 — Primeira venda (semanas 8–9) — bloqueado pela central (H1–H3)
+### M2 — Primeira venda (semanas 8–9) — bloqueado pela central (H1–H3); E2 ✅
 
 | Trilha | Entrega |
 | --- | --- |
@@ -80,7 +80,7 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 | H4 | E-mail por aplicação com **SMTP e domínio próprios** (H10: `EmailSenderConfig` de aplicação, transporter por aplicação; PulsoSocial segue no transporter atual) + `POST /integrations/email/send` (`SET_PASSWORD`, `TEAM_INVITE`) |
 | Infra | **Resend** (decidido 2026-11-03, mesma conta do PulsoSocial): verificar o domínio do CopySync, publicar SPF/DKIM do Resend e DMARC no DNS, criar API key só de envio restrita a esse domínio; pré-requisito de H4 |
 | B | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para a página de venda da Cakto (`Application.checkoutUrl`) |
-| E2 | Migration `add-session-lease` (`ownerWorkerId`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt`, `adoptFailures`, `shard`); lease com fence local e teardown; CAS em `writeKeys`; helper `markConnectRequested` nas 6 rotas de conexão e limpeza em disconnect/logout/delete/suspensão; `closeAllSockets()` antes do flush no shutdown (deploy sem 440, failover) |
+| E2 ✅ api 0.59.0 | Migration `add-session-lease` (`ownerWorkerId`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt`, `adoptFailures`, `shard`); lease com fence local e teardown; CAS em `writeKeys`; helper `markConnectRequested` nas 6 rotas de conexão e limpeza em disconnect/logout/delete/suspensão; `closeAllSockets()` antes do flush no shutdown (deploy sem 440, failover). Readoção no deploy e filtro de lease na mídia órfã ficam para E4/E3 |
 | P | Grupos de disparo + horário de postagem |
 
 Gate: venda real do LITE ponta a ponta. `Application.outboundEnabled=true` e `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.

@@ -2,7 +2,7 @@
 
 Fonte de verdade de **como** a plataforma cresce de 1 instância para milhares de sessões
 WhatsApp sem reescrever a arquitetura. Complementa [`../AGENTS.md`](../AGENTS.md) (regras de
-código) e [`produto-roadmap.md`](produto-roadmap.md) (o que é vendido). Atualizado em 2026-10-13.
+código) e [`produto-roadmap.md`](produto-roadmap.md) (o que é vendido). Atualizado em 2026-11-04 (E2 entregue, api 0.59.0).
 
 Meta de dimensionamento: **3.000 sessões Baileys** como teto (1.000 tenants × até 3 números).
 Pelos planos reais ([roadmap, "Carga por plano"](produto-roadmap.md)), 1.000 tenants no mix
@@ -20,8 +20,8 @@ operacional vive na memória do processo Node.
 | Componente | Onde | O que quebra com 2+ processos |
 |---|---|---|
 | Socket Baileys | `messaging/infrastructure/engines/baileys/BaileysSessionRegistry.ts` | Request cai no processo sem o socket → `SessionNotConnectedError`; QR só existe onde o socket abriu |
-| Dono da sessão | `prisma/schema.prisma` (`Session`) | Sem `ownerInstanceId`/lease. Boot em N processos abre N sockets, que se derrubam com 440 |
-| Auth state | `sessions/infrastructure/repositories/PrismaSessionAuthStateRepository.ts` | `writeKeys` incrementa `version` sem condição; dois sockets corrompem as chaves Signal |
+| Dono da sessão | `prisma/schema.prisma` (`Session`) | **Resolvido na E2**: lease `ownerWorkerId`/`leaseUntil` (3.1). Antes, N processos abriam N sockets (440) |
+| Auth state | `sessions/infrastructure/repositories/PrismaSessionAuthStateRepository.ts` | **Resolvido na E2** (Baileys): CAS por `version` em `writeKeys`. Telegram segue sem CAS (lease basta) |
 | WS / SSE do painel | `chat/infrastructure/ws/ChatWebSocketPublisher.ts`, `GET /events` | Evento nasce num processo e só chega aos clientes conectados nele |
 | Event bus, fila de mídia, throttle | `shared/events/InternalEventBus.ts`, `chat/infrastructure/queue/InMemoryOutboundMediaQueue.ts` | `EventEmitter` e fila in-memory; perdem tudo no restart |
 | Mídia | `shared/storage/MediaStorage.ts`, `media/infrastructure/uploads/DiskUploadSessionStore.ts` | Disco local. Arquivo de um processo não é servido por outro; partes de um upload podem cair em processos diferentes |
@@ -82,6 +82,27 @@ app (static) ──► API HTTP + WS  (N réplicas, stateless)
 
 ### 3.1 Dono da sessão (lease)
 
+**Feito na E2 (api 0.59.0)**, sem flag (D6: rollback = voltar versão; a migration
+`20261104150000_add_session_lease` só adiciona colunas). Peças: `sessionLeasePolicy.ts` (60 s TTL,
+renova a cada 20 s, fence 55 s, timeout 5 s, sem env), `PrismaSessionLeaseRepository`,
+`SessionLeaseLedger`, `Acquire/Renew/ReleaseSessionLeaseUseCase`, `SessionLeaseKeeper`,
+`ISessionSocketControl` (Baileys, Telegram, router), `sessionLeaseContainer`, `markConnectRequested`,
+`WORKER_ID` (`shared/config/workerIdentity.ts`). Comportamento:
+
+- Socket (Baileys `openSocket`, Telegram `openClient`) só abre com lease. Negado: rota do usuário
+  recebe `ENGINE_TEMPORARILY_UNAVAILABLE` 503 (`SessionLeaseHeldError`) e o status do dono é
+  restaurado; reconexão automática e bootstrap só logam, sem gravar status.
+- Lease perdido na renovação ou fence vencido: `abortSession` derruba sem gravar status nem chave.
+- CAS no Baileys: conflito de `version` descarta o pendente e derruba o socket.
+- Shutdown: keeper → jobs → drain de mídia → `closeAllSockets()` → `flushAllAuthStates()` →
+  `releaseAllOwned` (solta lease e marca `DISCONNECTED` as ativas, mantém `connectRequestedAt`) →
+  `app.close()`. Inverter mídia × flush fica para a E4.
+- Fica para depois: bootstrap pula sessão com lease de outro processo e **não readota** (D2, E4);
+  `FailOrphanPendingMediaUseCase` ainda sem filtro de lease (E3); `nextAdoptAt`/`adoptFailures`/`shard`
+  sem uso (E4).
+
+Desenho original abaixo; onde diverge, vale o bloco acima.
+
 Novos campos em `Session` (uma migration `add-session-lease`): `ownerWorkerId String?`,
 `leaseUntil DateTime?`, `connectRequestedAt DateTime?`, `nextAdoptAt DateTime?`,
 `adoptFailures Int @default(0)`, `shard String?`.
@@ -97,16 +118,17 @@ grava ou limpa esse campo (não existe), então E2 inclui:
   `TenantSuspendedSessionListener` (suspensão de tenant).
 
 - Adoção: `UPDATE sessions SET "ownerWorkerId"=$me, "leaseUntil"=now()+60s WHERE id=$id AND
-  ("leaseUntil" IS NULL OR "leaseUntil" < now())`. Zero linhas = outro worker é dono.
+  "deletedAt" IS NULL AND ("leaseUntil" IS NULL OR "leaseUntil" < now() OR "ownerWorkerId"=$me)`.
+  Zero linhas = outro worker é dono. Horário sempre `now() AT TIME ZONE 'UTC'`.
 - Renovação a cada 20 s, só das sessões com socket aberto neste processo, com
   `WHERE id = ANY($ids) AND "ownerWorkerId"=$me AND "leaseUntil" > now()`. Fence local: cada
   sessão guarda `lastRenewOkAt`; se `now() > lastRenewOkAt + 60 s − 5 s` por qualquer motivo
   (zero linhas, erro de banco, timeout), o worker **derruba o socket sem gravar auth state**
   antes de qualquer outra adoção. Sem isso dois workers abrem socket da mesma sessão (440 +
   chaves Signal corrompidas).
-- `SessionStatusReconciler.markActiveSessionsAsDisconnected()` (hoje só no boot com
-  `SESSION_BOOTSTRAP_ON_STARTUP=false`, `server.ts`) e `FailOrphanPendingMediaUseCase` só
-  tocam sessões com lease vencido ou do próprio worker.
+- `SessionStatusReconciler.markActiveSessionsAsDisconnected()` (só no boot com
+  `SESSION_BOOTSTRAP_ON_STARTUP=false`) só toca sessões sem lease vivo (feito).
+  `FailOrphanPendingMediaUseCase`: mesmo filtro, na E3.
 - Deploy da Render (sobe nova instância antes de matar a antiga) deixa de gerar 440 em cadeia.
 - Auth state: a escrita real é `PrismaSessionAuthStateRepository.writeKeys` (não `upsert`), que
   hoje faz `version+1` sem condição em `session_auth_states` (as chaves ficam em
@@ -260,7 +282,7 @@ sobre `setInterval` in-process.
 |---|---|---|---|
 | 0 | Medir RAM/CPU por sessão; `connection_limit` por processo (adapter já unificado) | decisões com número real | 1-2 dias |
 | 1 | Mídia em S3/R2 (3.5) | remover disco, qualquer multi-processo | 1 semana |
-| 2 | Lease + teardown ao perder lease + CAS em `writeKeys` (3.1); `connectRequestedAt` | deploy sem 440, failover, 2+ processos seguros | 1 semana |
+| 2 ✅ api 0.59.0 | Lease + teardown ao perder lease + CAS em `writeKeys` (3.1); `connectRequestedAt` | deploy sem 440, failover, 2+ processos seguros | 1 semana |
 | 3 | `PROCESS_ROLE` + dono por job + BullMQ comandos + RPC síncrono (3.3) + Redis pub/sub (3.4) | HTTP escalar separado do worker | 2-3 semanas |
 | 4 | `WORKER_ADOPTION_ENABLED` + teto + drain + heartbeat + alerta (3.2) | N réplicas, tenant dedicado | 1 semana |
 | 5 | Filas de produto (3.6) | monitoramento e disparo em escala | junto com as features |
@@ -382,7 +404,14 @@ não o servidor.
 ## 6. O que não fazer
 
 - Não criar container ou VM por tenant. Instância é uma linha no banco; um processo serve centenas.
-- Não ligar `SESSION_BOOTSTRAP_ON_STARTUP` em mais de um processo antes da Fase 2.
+- Não abrir socket sem passar pelo `ISessionLeaseGate` (lease), nem gravar status ou chave ao
+  abortar (`abortSession`) sessão que perdeu o lease.
+- Não chamar `writeKeys` sem `expectedVersion` no Baileys (sem CAS dois donos corrompem as chaves).
+- Não soltar lease antes de fechar o socket, nem mudar a ordem do shutdown em `server.ts`.
+- Não subir 2 processos com `SESSION_BOOTSTRAP_ON_STARTUP=true` esperando divisão: até a E4 o
+  segundo só pula as sessões do primeiro.
+- Smoke local só com env sintético apontando para o Postgres descartável
+  (`api/scripts/postgres-descartavel.sh`): `api/.env` **e** `api/.env.dev` têm `DATABASE_URL` de produção.
 - Não usar Kubernetes abaixo de milhares de sessões.
 - Não implementar monitoramento/disparo com `setInterval` in-process.
 - Não guardar sessão, fila, eco ou cache de decisão em memória sem equivalente externo

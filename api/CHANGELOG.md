@@ -59,6 +59,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Lease de sessão e CAS no auth state (`sessions`, `messaging`, escala E2) — api 0.59.0
+
+- **Migration `20261104150000_add_session_lease`** — `ownerWorkerId`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt`, `adoptFailures`, `shard` em `sessions` (só ADD COLUMN; backfill de `connectRequestedAt` nas `CONNECTED`)
+- **`sessionLeasePolicy.ts`**, **`workerIdentity.ts`**, **`env.ts`** (`WORKER_ID` opcional) — TTL 60 s, renovação 20 s, fence 55 s; id do processo único por boot
+- **`PrismaSessionLeaseRepository.ts`**, **`SessionLeaseLedger.ts`**, **`Acquire/Renew/ReleaseSessionLeaseUseCase.ts`**, **`SessionLeaseKeeper.ts`**, **`sessionLeaseContainer.ts`** — um dono por sessão; lease perdido ou fence vencido derruba o socket sem gravar
+- **`ISessionSocketControl.ts`**, **`BaileysMessagingEngineAdapter.ts`**, **`TelegramMessagingEngineAdapter.ts`**, **`MessagingEngineRouter.ts`** — `abortSession`/`closeAllSockets`/`listLocalSessionIds`; socket só abre com lease (`SessionLeaseHeldError` → 503)
+- **`PrismaSessionAuthStateRepository.ts`**, **`BaileysAuthStatePersistence.ts`** — CAS por `version` em `writeKeys`; conflito descarta e derruba o socket
+- **`markConnectRequested.ts`** — grava `connectRequestedAt` em connect, reconnect, pairing-code e login Telegram
+- **`Disconnect/Logout/DeleteSessionUseCase.ts`**, **`TenantSuspendedSessionListener.ts`** — limpam `connectRequestedAt` com o status antes da engine e soltam o lease depois
+- **`Connect/ReconnectSessionUseCase.ts`**, **`RequestSessionPairingCodeUseCase.ts`**, **`SessionLoginByCodeUseCases.ts`** — lease de outro processo restaura o status anterior e devolve 503
+- **`SessionStatusReconciler.ts`**, **`SessionBootstrapService.ts`** — boot só toca sessões sem lease vivo; lease de outro processo é pulado sem gravar (readoção na E4)
+- **`server.ts`** — keeper no boot; shutdown: keeper → jobs → drain de mídia → `closeAllSockets` → flush → `releaseAllOwned` → `app.close()`
+
 #### Limite diário do gerador de ofertas por plano (`tenants`, `billing`, `campaigns`) — api 0.58.0
 
 - **`planPresets.ts`** — `offer_generations_per_day`: LITE 5, PRO 20, MAX `null` (ilimitado explícito); tipo aceita `null` (só chave numérica)

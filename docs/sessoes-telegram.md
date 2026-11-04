@@ -59,6 +59,8 @@ Todas sob `/api/sessions`, mesmas regras das rotas de sessão (sem envelope).
 - Erros do login: `TELEGRAM_PHONE_INVALID`, `TELEGRAM_CODE_INVALID`, `TELEGRAM_CODE_EXPIRED`, `TELEGRAM_PASSWORD_INVALID` (422),
   `TELEGRAM_FLOOD_WAIT` (429, `meta.seconds`), `TELEGRAM_LOGIN_NOT_PENDING` (409), `PAIRING_FAILED` (400, outros RPC).
 - Em sessão WhatsApp, as rotas `telegram/*` respondem `ENGINE_OPERATION_UNSUPPORTED` 422.
+- `send-code`, `sign-in` e `password` gravam `connectRequestedAt`. Lease de outro processo: 503
+  `ENGINE_TEMPORARILY_UNAVAILABLE`, sem criar cliente (evita `AUTH_KEY_DUPLICATED`); ver `arquitetura-escala.md` §3.1.
 
 ## 4. Como o login funciona por dentro
 

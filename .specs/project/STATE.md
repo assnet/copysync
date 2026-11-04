@@ -321,3 +321,7 @@ registros DNS ficam em *DNS only*; proxy da Cloudflare fica para a T24, junto da
 Restrição que mudou o escopo: o plano da Render inclui 2 custom domains, agrupados por raiz, e os dois já estão
 usados. A v1 do gestor de links usa **um domínio base** com muitos subdomínios. Vários domínios base passam a ser
 decisão comercial, com custo por raiz.
+
+### 2026-11-04 — Lease de sessão (E2) concluído
+
+E2 entregue na api 0.59.0 (`.specs/features/session-lease/`): socket só com lease, fence 55 s, CAS em `writeKeys` do Baileys, `connectRequestedAt`, shutdown solta lease. Sem flag (rollback = versão). Readoção no deploy fica na E4; filtro de lease na mídia órfã na E3. `api/.env.dev` aponta para produção: smoke só com env sintético.

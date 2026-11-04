@@ -31,7 +31,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Conexão de sessão (assistente, `declaredPhone`, pareamento por código): [`docs/sessoes-conexao.md`](docs/sessoes-conexao.md). Termo de produto: sessão, nunca instância.
 - Sessões Telegram (conta de usuário MTProto/GramJS, login por código ou QR, `telegram_sessions` por plano, roteador por engine): [`docs/sessoes-telegram.md`](docs/sessoes-telegram.md). `telegram` só em `engines/telegram/`; sem Bot API, sem número da plataforma; StringSession só cifrada.
 - Plano mestre de lançamento (marcos, trilhas, rede de segurança do PulsoSocial): [`docs/plano-lancamento-hub-copysync.md`](docs/plano-lancamento-hub-copysync.md).
-- Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá.
+- Escala (lease de sessão, shard, worker × http, filas, servidores): [`docs/arquitetura-escala.md`](docs/arquitetura-escala.md). Nada de estado operacional novo em memória sem equivalente externo previsto lá. Socket só com lease (`ISessionLeaseGate`); `writeKeys` do Baileys sempre com `expectedVersion` (CAS).
 - Vitrine de planos no painel (`/plans`, catálogo de vitrine, o que não fazer): [`docs/planos.md`](docs/planos.md). Preço é texto de marketing em `features/plans/catalog.ts`; nunca no banco.
 - Navegação por produtos no painel (menu em acordeão, `buildNavigation`, `strings.ts`, estado `navigation.expandedProducts`, sessão é do tenant e não do produto): [`docs/navegacao-produtos.md`](docs/navegacao-produtos.md). Rota nova sem item no modelo, rótulo fora de `strings.ts` e produto fora de `docs/produto-roadmap.md` não entram.
 

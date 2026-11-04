@@ -1,7 +1,7 @@
 # Lease de sessão (E2) — Tasks
 
 **Spec**: `.specs/features/session-lease/spec.md` (design inline lá)
-**Status**: Draft
+**Status**: Concluído (2026-11-04, api 0.59.0)
 
 Regras comuns a toda task:
 
@@ -39,7 +39,7 @@ Regras comuns a toda task:
 | T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ✅ f3ecacf |
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ✅ 2ad709b |
 | T22b | Lease negado não sobrescreve status do dono | T22 | | ✅ afbc869 |
-| T23 | Docs, CHANGELOG e versão | T22 | | ⏳ |
+| T23 | Docs, CHANGELOG e versão | T22 | | ✅ este commit |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -65,6 +65,7 @@ Regras comuns a toda task:
 - T21: `sessionLeaseContainer()` (lazy, 1 por processo: `workerId`, `repo`, `ledger`, `acquire`, `renew`, `release`, `keeper` parado, `bindSocketControl`). Factory recebe `leaseGate`; rotas passam `release` a Disconnect/Logout/Delete. **NÃO fazer deploy entre T21 e T22**: sem `keeper.start()` o lease vence em 60 s.
 - Pendências para T22: `keeper.start()` no boot e `stop()` primeiro no shutdown; `registerTenantSuspendedSessionListener` com `release` (`server.ts:275`); bootstrap: não logar "Session bootstrapped" quando a reconexão auto devolver `false` (lease de outro processo).
 - T22: smoke 2 processos ok (503 no 2º, lease perdido derruba sem gravar, SIGTERM solta lease e o 2º conecta sem 440). `api/.env.dev` tem `DATABASE_URL` de produção: smoke só com env sintético fora de `api/`.
+- T23: docs (escala §1/§3.1/§4/§6, auth-state, conexão, Telegram, plano, credenciais-afiliado), AGENTS.md, CHANGELOG, api 0.59.0. Pendente: E3 (filtro de lease na mídia órfã), E4 (readoção no bootstrap, mídia × flush).
 
 ## Execution Plan
 
