@@ -3,7 +3,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { PrivacyProvider, readStoredFlags, useBlur, usePrivacy } from './PrivacyContext';
 import { Blurred } from './components/Blurred';
-import { PRIVACY_SCREENS } from './privacyFlags';
+import { ALL_PRIVACY_FLAGS, PRIVACY_SCREENS, isPrivacyFlag } from './privacyFlags';
 
 const wrapper = ({ children }: { children: ReactNode }) => <PrivacyProvider>{children}</PrivacyProvider>;
 
@@ -45,6 +45,16 @@ describe('PrivacyProvider', () => {
   it('Story de Oferta tem uma flag por tipo de dado', () => {
     const screen = PRIVACY_SCREENS.find((s) => s.id === 'offerStory')!;
     expect(screen.flags.map((f) => f.id)).toEqual(['offerStory.art', 'offerStory.link']);
+  });
+
+  it('Grupos de disparo tem uma flag por tipo de dado, todas registradas', () => {
+    const screen = PRIVACY_SCREENS.find((s) => s.id === 'broadcastGroups')!;
+    const ids = ['broadcastGroups.groupNames', 'broadcastGroups.groupAvatars', 'broadcastGroups.sessionName'];
+    expect(screen.flags.map((f) => f.id)).toEqual(ids);
+    for (const id of ids) {
+      expect(ALL_PRIVACY_FLAGS).toContain(id);
+      expect(isPrivacyFlag(id)).toBe(true);
+    }
   });
 
   it('useBlur fora do provider devolve false (prévias e testes não quebram)', () => {

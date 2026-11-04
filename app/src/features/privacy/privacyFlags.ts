@@ -56,6 +56,15 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'broadcastGroups',
+    label: 'Grupos de disparo',
+    flags: [
+      { id: 'broadcastGroups.groupNames', label: 'Nomes dos grupos' },
+      { id: 'broadcastGroups.groupAvatars', label: 'Fotos dos grupos' },
+      { id: 'broadcastGroups.sessionName', label: 'Nome e número da sessão' },
+    ],
+  },
+  {
     id: 'linkRotation',
     label: 'Rodízio de links',
     flags: [
