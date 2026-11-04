@@ -145,15 +145,32 @@ export type ChatWsEvent =
   | { event: 'ping' };
 
 /**
+ * Encaminha eventos a outro processo (worker → http). Sem relay, `publish` entrega local.
+ * Implementação: `RedisChatEventRelay` (modo `publish`).
+ */
+export interface ChatEventRelay {
+  publish(tenantId: string, payload: ChatWsEvent): void;
+}
+
+/**
  * Singleton that manages WebSocket client connections per tenant.
  *
  * Responsibilities:
  * - Subscribe a WS socket to a tenant channel
  * - Unsubscribe when the socket closes
  * - Publish typed events to all subscribers of a tenant
+ *
+ * Com relay (`setRelay`, papel `worker`), `publish` vai só ao relay: o processo não tem WS.
+ * No `http`, o relay em modo `deliver` chama `deliverLocal`. `pingAll` é sempre local.
  */
-class ChatWebSocketPublisher {
+export class ChatWebSocketPublisher {
   private readonly clients = new Map<string, Set<WebSocket>>();
+  private relay: ChatEventRelay | null = null;
+
+  /** Liga (ou desliga, com `null`) o encaminhamento entre processos. */
+  setRelay(relay: ChatEventRelay | null): void {
+    this.relay = relay;
+  }
 
   subscribe(tenantId: string, ws: WebSocket): void {
     if (!this.clients.has(tenantId)) {
@@ -172,6 +189,15 @@ class ChatWebSocketPublisher {
   }
 
   publish(tenantId: string, payload: ChatWsEvent): void {
+    if (this.relay) {
+      this.relay.publish(tenantId, payload);
+      return;
+    }
+    this.deliverLocal(tenantId, payload);
+  }
+
+  /** Entrega aos WS deste processo, ignorando o relay (destino do relay em modo `deliver`). */
+  deliverLocal(tenantId: string, payload: ChatWsEvent): void {
     const set = this.clients.get(tenantId);
     if (!set || set.size === 0) return;
 
