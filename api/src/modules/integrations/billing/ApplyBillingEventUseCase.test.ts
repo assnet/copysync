@@ -7,7 +7,7 @@ const db = vi.hoisted(() => {
   const state = {
     tenant: null as Tenant | null,
     receipts: new Map<string, { outcome: string; tenantId: string | null; type: string }>(),
-    entitlements: new Map<string, string>(),
+    entitlements: new Map<string, unknown>(),
     locked: 0,
     /** Força P2002 no create do recibo (outra requisição gravou o mesmo eventId). */
     receiptRace: false,
@@ -38,10 +38,16 @@ const db = vi.hoisted(() => {
       },
     },
     planEntitlementPreset: {
-      findMany: async ({ where }: { where: { planSlug: string } }) => [{ key: 'whatsapp_sessions', value: where.planSlug === 'COPYSYNC_MAX' ? '2' : '1' }],
+      findMany: async ({ where }: { where: { planSlug: string } }) => [
+        { key: 'whatsapp_sessions', value: where.planSlug === 'COPYSYNC_MAX' ? '2' : '1' },
+        { key: 'offer_generations_per_day', value: where.planSlug === 'COPYSYNC_MAX' ? null : 20 },
+      ],
     },
     tenantEntitlement: {
-      upsert: async ({ create }: { create: { key: string; value: string } }) => { state.entitlements.set(create.key, create.value); return {}; },
+      upsert: async ({ create, update }: { create: { key: string; value: unknown }; update: { value: unknown } }) => {
+        state.entitlements.set(create.key, state.entitlements.has(create.key) ? update.value : create.value);
+        return {};
+      },
     },
   };
   const txOptions: unknown[] = [];
@@ -190,6 +196,14 @@ describe('ApplyBillingEventUseCase', () => {
     expect(out.outcome).toBe('APPLIED');
     expect(db.state.tenant).toMatchObject({ status: 'CANCELLED', planSlug: 'COPYSYNC_MAX' });
     expect(db.state.entitlements.get('whatsapp_sessions')).toBe('2');
+  });
+
+  it('upgrade PRO→MAX sobrescreve o limite gravado com JSON null (ilimitado), não herda 20', async () => {
+    makeTenant({ planSlug: 'COPYSYNC_PRO' });
+    await run(ev('subscription.updated', { eventId: 'ev-pro', payload: { planSlug: 'COPYSYNC_PRO' } }));
+    expect(db.state.entitlements.get('offer_generations_per_day')).toBe(20);
+    await run(ev('subscription.updated', { eventId: 'ev-max', seq: 12, payload: { planSlug: 'COPYSYNC_MAX' } }));
+    expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
   });
 
   it('plano desconhecido em renovação: reativa mas não grava plano nem entitlements', async () => {

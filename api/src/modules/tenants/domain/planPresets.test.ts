@@ -49,4 +49,13 @@ describe('PLAN_PRESETS', () => {
     ]);
     expect(new Set(rows.map((r) => r.planSlug)).size).toBe(3);
   });
+
+  it('gerações de oferta por dia: LITE 5, PRO 20, MAX ilimitado (null explícito, não ausente)', () => {
+    const rows = planPresetRows().filter((r) => r.key === K.OFFER_GENERATIONS_PER_DAY);
+    expect(rows.map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', 5],
+      ['COPYSYNC_PRO', 20],
+      ['COPYSYNC_MAX', null],
+    ]);
+  });
 });

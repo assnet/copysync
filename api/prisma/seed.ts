@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { planPresetRows } from '../src/modules/tenants/domain/planPresets';
+import { entitlementJsonValue } from '../src/modules/integrations/billing/entitlementJsonValue';
 
 const prisma = new PrismaClient();
 
@@ -140,8 +141,8 @@ async function main(): Promise<void> {
   for (const p of PLAN_PRESETS) {
     await prisma.planEntitlementPreset.upsert({
       where: { planSlug_key: { planSlug: p.planSlug, key: p.key } },
-      update: { value: p.value },
-      create: { planSlug: p.planSlug, key: p.key, value: p.value },
+      update: { value: entitlementJsonValue(p.value) },
+      create: { planSlug: p.planSlug, key: p.key, value: entitlementJsonValue(p.value) },
     });
   }
   console.log(`✅  Plan presets: marketplace_extension → STARTER, PROFISSIONAL, BUSINESS`);

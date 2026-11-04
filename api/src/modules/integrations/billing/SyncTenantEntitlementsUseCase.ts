@@ -1,6 +1,7 @@
 import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
 import { applyPlanSideEffects } from './applyPlanSideEffects';
+import { entitlementJsonValue } from './entitlementJsonValue';
 
 const log = logger.child({ module: 'SyncTenantEntitlementsUseCase' });
 
@@ -25,8 +26,8 @@ export class SyncTenantEntitlementsUseCase {
       for (const preset of presets) {
         await tx.tenantEntitlement.upsert({
           where: { tenantId_key: { tenantId, key: preset.key } },
-          create: { tenantId, key: preset.key, value: preset.value ?? 'false' },
-          update: { value: preset.value ?? 'false' },
+          create: { tenantId, key: preset.key, value: entitlementJsonValue(preset.value) },
+          update: { value: entitlementJsonValue(preset.value) },
         });
       }
       return applyPlanSideEffects(tx, tenantId);

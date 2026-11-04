@@ -104,8 +104,12 @@ Ordem de checagem do envio: oferta (409 `OFFER_CHANGED` se `mentionAll` mudou du
 
 ## Limite diário
 
-Entitlement `offer_generations_per_day` (ausente = ilimitado), dia de `America/Sao_Paulo`, recontagem sob
-`pg_advisory_xact_lock` na gravação.
+Entitlement `offer_generations_per_day`: LITE 5, PRO 20, MAX ilimitado (decisão 2026-11-04; fora da vitrine).
+`null` ou ausente = ilimitado. Dia de `America/Sao_Paulo`, recontagem sob `pg_advisory_xact_lock` na gravação.
+
+- MAX grava **JSON null explícito** (`planPresets.ts` → `entitlementJsonValue` → `Prisma.JsonNull`): o sync de plano só
+  faz upsert das chaves do preset, então chave omitida deixaria o upgrade PRO→MAX com o `20` antigo.
+- Não usar fallback `'false'` na escrita do entitlement: apagaria o ilimitado.
 
 ## Envio (worker)
 

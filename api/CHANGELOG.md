@@ -59,6 +59,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Limite diário do gerador de ofertas por plano (`tenants`, `billing`, `campaigns`) — api 0.58.0
+
+- **`planPresets.ts`** — `offer_generations_per_day`: LITE 5, PRO 20, MAX `null` (ilimitado explícito); tipo aceita `null` (só chave numérica)
+- **`entitlementJsonValue.ts`**, **`ApplyBillingEventUseCase.ts`**, **`SyncTenantEntitlementsUseCase.ts`**, **`prisma/seed.ts`** — preset `null` grava `Prisma.JsonNull`; antes o `?? 'false'` virava string "false" e chave omitida fazia o upgrade PRO→MAX herdar o `20`
+- **Migration `20261104140000_add_offer_generations_entitlement_presets`** — presets nos três planos + backfill dos tenants com plano (`DO NOTHING`)
+- **Testes** — `planPresets.test.ts` trava 5/20/null; `ApplyBillingEventUseCase.test.ts` cobre upgrade PRO→MAX sobrescrevendo com JSON null
+
 #### Frontend — Rodízio de links com limites por canal (`linkRotation`) — app 0.76.0
 
 - **`channelLimits.ts`**, **`RotationChannelUsage.tsx`** — uso e limite de links por canal no cabeçalho ("WhatsApp 1/1 · Telegram 0/1"; "Telegram: a partir do PRO" no LITE); seletor de sessão trava canal sem vaga com motivo e "Ver planos"; limite de grupos por link segue o canal do rodízio; `PLAN_LIMIT_REACHED` das 4 chaves abre o upgrade certo

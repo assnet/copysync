@@ -86,7 +86,7 @@ guarda o plano, não o preço.
 
 Não aparecem na tabela de venda e ficam como entitlement interno, default ligado nos três:
 reescrita com IA (`ai_rewrite_enabled`), limite diário do gerador (`offer_generations_per_day`,
-`null` = ilimitado; hoje ausente dos presets = ilimitado nos três; sugestão a decidir: 20 no PRO, `null` no MAX).
+decisão 2026-11-04: LITE 5, PRO 20, MAX ilimitado = `null` explícito no preset).
 
 Versão anterior (Básico/Plus/Pro, R$ 99/169/299) fica substituída por esta. Telegram no
 PRO e MAX repete os mesmos limites de grupos do WhatsApp ("monitora 2 + 10 de

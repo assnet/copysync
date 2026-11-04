@@ -9,6 +9,7 @@ import type { ProvisionTenantInput, ProvisionTenantOutput } from '../../tenants/
 import { ProvisionTenantUseCase } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { createEmailSender } from '../infrastructure/email/EmailSenderFactory';
 import { applyPlanSideEffects } from './applyPlanSideEffects';
+import { entitlementJsonValue } from './entitlementJsonValue';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
 
 const log = logger.child({ module: 'ApplyBillingEventUseCase' });
@@ -258,8 +259,8 @@ export class ApplyBillingEventUseCase {
       for (const preset of presets) {
         await tx.tenantEntitlement.upsert({
           where: { tenantId_key: { tenantId: tenant.id, key: preset.key } },
-          create: { tenantId: tenant.id, key: preset.key, value: preset.value ?? 'false' },
-          update: { value: preset.value ?? 'false' },
+          create: { tenantId: tenant.id, key: preset.key, value: entitlementJsonValue(preset.value) },
+          update: { value: entitlementJsonValue(preset.value) },
         });
       }
       // Rodízio (LROT-14) e Página de Ofertas (STORE-02) no mesmo commit dos entitlements

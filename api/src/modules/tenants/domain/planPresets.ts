@@ -6,9 +6,13 @@ export type PlanSlug = (typeof PLAN_SLUGS)[number];
 /**
  * Entitlements por plano (`PlanEntitlementPreset`, seed). Espelha a tabela de `docs/produto-roadmap.md`
  * e os `limits` da vitrine (`app/src/features/plans/catalog.ts`); o teste ao lado trava os dois.
- * Numérico ausente = ilimitado; por isso `offer_generations_per_day` não entra (sem limite hoje).
+ * `null` = ilimitado (só chave numérica): grava JSON null explícito, senão o upgrade herdaria o limite
+ * do plano anterior (o sync só faz upsert das chaves do preset). Ex.: `offer_generations_per_day` no MAX.
+ * `offer_generations_per_day` é limite interno, fora da vitrine.
  */
-export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = {
+export type PlanPresetValue = number | boolean | null;
+
+export const PLAN_PRESETS: Record<PlanSlug, Record<string, PlanPresetValue>> = {
   COPYSYNC_LITE: {
     [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 1,
     [ENTITLEMENT_KEYS.TELEGRAM_SESSIONS]: 0,
@@ -26,6 +30,7 @@ export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = 
     [ENTITLEMENT_KEYS.TELEGRAM_LINK_ROTATION_GROUPS]: 0,
     [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: false,
     [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED]: false,
+    [ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY]: 5,
   },
   COPYSYNC_PRO: {
     [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 1,
@@ -44,6 +49,7 @@ export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = 
     [ENTITLEMENT_KEYS.TELEGRAM_LINK_ROTATION_GROUPS]: 5,
     [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: true,
     [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED]: false,
+    [ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY]: 20,
   },
   COPYSYNC_MAX: {
     [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 2,
@@ -62,10 +68,11 @@ export const PLAN_PRESETS: Record<PlanSlug, Record<string, number | boolean>> = 
     [ENTITLEMENT_KEYS.TELEGRAM_LINK_ROTATION_GROUPS]: 10,
     [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: true,
     [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED]: true,
+    [ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY]: null,
   },
 };
 
 /** Linhas para o seed (`planEntitlementPreset.upsert`). */
-export function planPresetRows(): { planSlug: PlanSlug; key: string; value: number | boolean }[] {
+export function planPresetRows(): { planSlug: PlanSlug; key: string; value: PlanPresetValue }[] {
   return PLAN_SLUGS.flatMap((planSlug) => Object.entries(PLAN_PRESETS[planSlug]).map(([key, value]) => ({ planSlug, key, value })));
 }
