@@ -54,8 +54,8 @@ describe('PrismaLinkRotationPublicStore', () => {
   });
 
   it('findLabels: sessão e grupo do tenant; outro tenant não lê', async () => {
-    expect(await store.findLabels(tenantA, sessionA, convId)).toEqual({ sessionName: 'Principal', groupName: 'Ofertas' });
-    expect(await store.findLabels(tenantA, sessionA, null)).toEqual({ sessionName: 'Principal', groupName: null });
-    expect(await store.findLabels(tenantB, sessionA, convId)).toEqual({ sessionName: null, groupName: null });
+    expect(await store.findLabels(tenantA, sessionA, convId)).toEqual({ sessionName: 'Principal', groupName: 'Ofertas', groupAvatarUrl: null });
+    expect(await store.findLabels(tenantA, sessionA, null)).toEqual({ sessionName: 'Principal', groupName: null, groupAvatarUrl: null });
+    expect(await store.findLabels(tenantB, sessionA, convId)).toEqual({ sessionName: null, groupName: null, groupAvatarUrl: null });
   });
 });
