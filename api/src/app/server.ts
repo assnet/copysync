@@ -41,6 +41,9 @@ import { registerGroupMonitoringListener } from '../modules/automation/infrastru
 import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
 import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
+import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
+import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
+import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -49,6 +52,11 @@ const MEDIA_QUEUE_DRAIN_TIMEOUT_MS = 25_000;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hasSocketControl(engine: IMessagingEngine | null): engine is IMessagingEngine & ISessionSocketControl {
+  const e = engine as Partial<ISessionSocketControl> | null;
+  return typeof e?.closeAllSockets === 'function' && typeof e.listLocalSessionIds === 'function';
 }
 
 async function connectDatabaseWithRetry(): Promise<void> {
@@ -268,6 +276,10 @@ async function start(): Promise<void> {
   registerChatSessionStatusListener();
   registerChatConversationStateListener(chatConversationRepo);
 
+  // ── Lease de sessão ────────────────────────────────────────────────────────
+  // Mesmo singleton que `session.routes.ts` já ligou (gate nas engines, socket control).
+  const lease = sessionLeaseContainer();
+
   // ── Session suspension listener ────────────────────────────────────────────
   {
     const activeEngine = getActiveEngine();
@@ -276,6 +288,7 @@ async function start(): Promise<void> {
         new PrismaSessionRepository(),
         activeEngine,
         new PrismaAuditLogRepository(),
+        lease.release,
       );
     }
   }
@@ -309,9 +322,21 @@ async function start(): Promise<void> {
     }
   }
 
+  // ── Renovação do lease (LEASE-04) ──────────────────────────────────────────
+  // Depois do boot das sessões: renova a cada 20 s só as sessões com socket local.
+  lease.keeper.start();
+  logger.info({ workerId: lease.workerId }, 'Session lease keeper started');
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutdown signal received');
+    // LEASE-09: primeiro o keeper — nenhuma renovação concorre com o fechamento dos sockets.
+    try {
+      await lease.keeper.stop();
+      logger.info('Session lease keeper stopped');
+    } catch (err) {
+      logger.error({ err }, 'Session lease keeper stop failed during shutdown');
+    }
     uploadSweeper?.stop();
     if (pendingMediaSweep) clearInterval(pendingMediaSweep);
     if (billingReconcileInterval) clearInterval(billingReconcileInterval);
@@ -339,14 +364,36 @@ async function start(): Promise<void> {
     // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
     // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).
     try {
+      const count = chatMediaContainer.queue.inFlightIds().length;
       await chatMediaContainer.queue.drain(MEDIA_QUEUE_DRAIN_TIMEOUT_MS);
+      logger.info({ count }, 'Media send queue drained');
     } catch (err) {
       logger.error({ err }, 'Media send queue drain failed during shutdown');
     }
+    // LEASE-09: sockets fechados antes do flush (nenhuma chave nova chega depois dele).
+    // Mídia × flush fica nesta ordem até a E4.
+    try {
+      const engine = getActiveEngine();
+      if (hasSocketControl(engine)) {
+        const count = engine.listLocalSessionIds().length;
+        await engine.closeAllSockets();
+        logger.info({ count }, 'Session sockets closed');
+      }
+    } catch (err) {
+      logger.error({ err }, 'Closing session sockets failed during shutdown');
+    }
     try {
       await flushAllAuthStates();
+      logger.info('Auth states flushed');
     } catch (err) {
       logger.error({ err }, 'Auth state flush failed during shutdown');
+    }
+    // D1: solta os leases deste worker e marca DISCONNECTED as ativas (mantém o pedido de conexão).
+    try {
+      const count = await lease.repo.releaseAllOwned(lease.workerId);
+      logger.info({ count, workerId: lease.workerId }, 'Session leases released');
+    } catch (err) {
+      logger.error({ err }, 'Session lease release failed during shutdown');
     }
     try {
       await app.close();
