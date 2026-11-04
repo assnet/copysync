@@ -6,6 +6,7 @@ import { inviteRoutes } from '../modules/auth/presentation/routes/invite.routes'
 import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.routes';
 import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
+import { workerAdminRoutes } from '../modules/sessions/presentation/routes/workerAdmin.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
 import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
 import {
@@ -111,6 +112,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── Rodízio de links: painel do tenant e domínios (super admin) ─────────────
   await app.register(linkRotationRoutes, { prefix: `${env.API_PREFIX}/link-rotation` });
   await app.register(linkDomainAdminRoutes, { prefix: `${env.API_PREFIX}/admin/link-domains` });
+
+  // ── Workers de sessão: ocupação e aguardando capacidade (super admin) ──────
+  await app.register(workerAdminRoutes, { prefix: `${env.API_PREFIX}/admin/workers` });
 
   // ── Página de Ofertas do tenant (a pública sai pelo hook do rodízio, app.ts) ──
   await app.register(storefrontRoutes, { prefix: `${env.API_PREFIX}/storefront` });
