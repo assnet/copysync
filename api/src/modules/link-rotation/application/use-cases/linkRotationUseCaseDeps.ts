@@ -6,8 +6,8 @@ import type { ILinkRotationRepository } from '../../domain/contracts/ILinkRotati
 import type { ILinkRotationSessionReader } from '../../domain/contracts/ILinkRotationSessionReader';
 import type { IPublicSlugRegistry } from '../../domain/contracts/IPublicSlugRegistry';
 
-/** Só o que o rodízio usa do engine (convite e resumo do grupo). */
-export type LinkRotationGroupEngine = Pick<IMessagingEngine, 'getGroupInviteLink' | 'getGroupSummary'>;
+/** Só o que o rodízio usa do engine (convite, resumo do grupo e foto da sessão no painel). */
+export type LinkRotationGroupEngine = Pick<IMessagingEngine, 'getGroupInviteLink' | 'getGroupSummary' | 'fetchProfilePicture'>;
 
 /** Domínios: o tenant só lê. */
 export type LinkDomainReader = Pick<ILinkDomainRepository, 'findById' | 'list' | 'listActive'>;

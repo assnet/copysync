@@ -19,8 +19,8 @@ const saved = (n: number, extra: Partial<RotationGroup> = {}): RotationGroup => 
   id: `rg${n}`, conversationId: `c${n}`, groupJid: `g${n}@g.us`, groupName: `Grupo ${n}`, position: n, weight: 1, capacity: 1000,
   inviteUrl: null, linkSource: 'AUTO', status: 'ACTIVE', memberCount: 10, memberCountAt: null, clicksSinceSync: 0, clickCount: 0, lastClickAt: null, ...extra,
 });
-const rotation = (groups: RotationGroup[] = [], strategy: RotationStrategy = 'BALANCED'): Rotation => ({
-  id: 'r1', sessionId: 's1', domainId: 'd1', hostname: 'x.app', slug: 'promo', publicUrl: 'https://promo.x.app', status: 'ACTIVE',
+const rotation = (groups: RotationGroup[] = [], strategy: RotationStrategy = 'BALANCED', channel: Rotation['channel'] = 'whatsapp'): Rotation => ({
+  id: 'r1', sessionId: 's1', channel, domainId: 'd1', hostname: 'x.app', slug: 'promo', publicUrl: 'https://promo.x.app', status: 'ACTIVE',
   strategy, title: null, clickCount: 0, lastClickAt: null, allFullNotifiedAt: null, createdAt: '', updatedAt: '', groups,
 });
 
@@ -100,14 +100,14 @@ describe('RotationGroupsDialog', () => {
     const field = screen.getByLabelText(t.manualInviteUrl);
     fireEvent.change(field, { target: { value: 'https://exemplo.com/x' } });
     fireEvent.click(screen.getByRole('button', { name: t.save }));
-    expect(await screen.findByText(s.errors.inviteUrlInvalid)).toBeInTheDocument();
+    expect(await screen.findByText(s.errors.inviteUrlInvalid.whatsapp)).toBeInTheDocument();
     expect(svc.saveGroups).not.toHaveBeenCalled();
 
-    fireEvent.change(field, { target: { value: 'https://chat.whatsapp.com/AbC123' } });
+    fireEvent.change(field, { target: { value: 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv' } });
     svc.saveGroups.mockResolvedValue([]);
     fireEvent.click(screen.getByRole('button', { name: t.save }));
     await waitFor(() => expect(svc.saveGroups).toHaveBeenCalled());
-    expect(svc.saveGroups.mock.calls[0]![1][0].manualInviteUrl).toBe('https://chat.whatsapp.com/AbC123');
+    expect(svc.saveGroups.mock.calls[0]![1][0].manualInviteUrl).toBe('https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv');
   });
 
   it('NEEDS_LINK mostra o campo para colar o convite', async () => {
@@ -126,7 +126,7 @@ describe('RotationGroupsDialog', () => {
 
   it('lista vazia explica que a sessão precisa estar nos grupos', async () => {
     setup(rotation(), 3, []);
-    expect(await screen.findByText(t.empty)).toBeInTheDocument();
+    expect(await screen.findByText(t.empty.whatsapp)).toBeInTheDocument();
   });
 
   it('atualizar relê o grupo', async () => {
@@ -138,15 +138,42 @@ describe('RotationGroupsDialog', () => {
     expect(svc.refreshGroup).toHaveBeenCalledWith('r1', 'rg1');
   });
 
+  it('Telegram: teto padrão 10.000, link t.me, faixa até 200.000 e convite atual no formato do canal', async () => {
+    setup(
+      rotation([saved(1, { inviteUrl: 'https://t.me/+AbCdEf_12-GhIjKl', capacity: 150_000 })], 'BALANCED', 'telegram'),
+      3,
+      [cand(1, { selected: true }), cand(2)],
+    );
+    fireEvent.click(await checkbox(2));
+    expect(within(screen.getByTestId('rotation-group-g1@g.us')).getByTestId('rotation-group-invite')).toHaveTextContent('https://t.me/+AbCdEf_12-GhIjKl');
+    const item2 = within(screen.getByTestId('rotation-group-g2@g.us'));
+    expect(item2.getByRole('slider')).toHaveAttribute('aria-valuemax', '200000');
+    expect(item2.getByRole('slider')).toHaveAttribute('aria-valuenow', '10000');
+
+    fireEvent.click(item2.getByRole('button', { name: t.linkManual }));
+    const field = item2.getByLabelText(t.manualInviteUrl);
+    expect(field).toHaveAttribute('placeholder', 'https://t.me/+…');
+    fireEvent.change(field, { target: { value: 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv' } });
+    fireEvent.click(screen.getByRole('button', { name: t.save }));
+    expect(await screen.findByText(s.errors.inviteUrlInvalid.telegram)).toBeInTheDocument();
+
+    fireEvent.change(field, { target: { value: 't.me/canal_ofertas' } });
+    fireEvent.change(item2.getByLabelText(t.capacityInput), { target: { value: '200000' } });
+    svc.saveGroups.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole('button', { name: t.save }));
+    await waitFor(() => expect(svc.saveGroups).toHaveBeenCalled());
+    expect(svc.saveGroups.mock.calls[0]![1][1]).toMatchObject({ capacity: 200_000, manualInviteUrl: 't.me/canal_ofertas' });
+  });
+
   it('erro do atualizar fica no aviso do item, sem marcar o campo de convite', async () => {
-    setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbC123' })]), 3, [cand(1, { selected: true })]);
+    setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv' })]), 3, [cand(1, { selected: true })]);
     await checkbox(1);
     svc.refreshGroup.mockRejectedValue({ code: 'SESSION_NOT_CONNECTED' });
     fireEvent.click(screen.getByRole('button', { name: t.refreshAria('Grupo 1') }));
     expect(await screen.findByText(s.errors.sessionNotConnected)).toBeInTheDocument();
     const field = screen.getByLabelText(t.manualInviteUrl);
     expect(field).not.toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByText(t.manualInviteHelp)).toBeInTheDocument();
+    expect(screen.getByText(t.manualInviteHelp.whatsapp)).toBeInTheDocument();
   });
 
   it('estimado no teto mostra "No limite" em vez de "Recebendo cliques"', async () => {
@@ -166,7 +193,7 @@ describe('RotationGroupsDialog', () => {
   it('flag inviteLink borra o texto do link de convite', async () => {
     localStorage.setItem('privacy.blur', JSON.stringify(['linkRotation.inviteLink']));
     try {
-      setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbC123' })]), 3, [cand(1, { selected: true })]);
+      setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv' })]), 3, [cand(1, { selected: true })]);
       await checkbox(1);
       expect(screen.getByLabelText(t.manualInviteUrl)).toHaveStyle({ filter: 'blur(5px)' });
     } finally {
@@ -175,7 +202,7 @@ describe('RotationGroupsDialog', () => {
   });
 
   it('sem a flag o link de convite fica legível', async () => {
-    setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbC123' })]), 3, [cand(1, { selected: true })]);
+    setup(rotation([saved(1, { linkSource: 'MANUAL', inviteUrl: 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrStUv' })]), 3, [cand(1, { selected: true })]);
     await checkbox(1);
     expect(screen.getByLabelText(t.manualInviteUrl)).not.toHaveStyle({ filter: 'blur(5px)' });
   });

@@ -39,6 +39,7 @@ Telegram manda ao app do usuário), **senha de duas etapas** (2FA da conta).
 | Migration | `20261103120000_add_telegram_session_statuses` (`AWAITING_CODE`, `AWAITING_PASSWORD`) |
 | Erros | `shared/errors/internal/TelegramErrors.ts`, `MessagingErrors.ts` (`ENGINE_DISABLED`, `ENGINE_OPERATION_UNSUPPORTED`) |
 | Painel | `app/src/features/sessions/` (wizard Telegram, painel de código/QR, contadores por canal), `pages/SessionsPage.tsx` |
+| Rodízio de links | canal do rodízio = engine da sessão; convite `t.me/<code>`, teto até 200.000, só grupos/canais com `canInvite` — ver [`rodizio-de-links.md`](rodizio-de-links.md#por-canal) |
 
 ## 3. API
 

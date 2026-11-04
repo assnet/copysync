@@ -60,6 +60,7 @@ function activeEngine() {
 const groupEngine: LinkRotationGroupEngine = {
   getGroupInviteLink: (sessionId, groupJid) => activeEngine().getGroupInviteLink(sessionId, groupJid),
   getGroupSummary: (sessionId, groupJid) => activeEngine().getGroupSummary(sessionId, groupJid),
+  fetchProfilePicture: (sessionId, jid, isGroup) => activeEngine().fetchProfilePicture(sessionId, jid, isGroup),
 };
 
 /**

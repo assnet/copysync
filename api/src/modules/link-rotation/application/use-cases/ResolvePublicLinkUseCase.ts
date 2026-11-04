@@ -7,7 +7,7 @@ import type { LinkRotationWithGroups } from '../../domain/entities/LinkRotation'
 import { LinkRotationStatus, type UserAgentClass } from '../../domain/enums/LinkRotationEnums';
 import { classifyUserAgent } from '../../domain/services/classifyUserAgent';
 import { hashClickIp } from '../../domain/services/hashClickIp';
-import { inviteUrlFromCode } from '../../domain/services/inviteUrl';
+import { type LinkRotationChannel, inviteUrlFromCode } from '../../domain/services/inviteUrl';
 import { pickGroup } from '../../domain/services/pickGroup';
 import { matchPublicHost } from '../../domain/services/publicHost';
 
@@ -20,7 +20,14 @@ export interface ResolvePublicLinkInput {
 }
 
 export type ResolvePublicLinkOutput =
-  | { kind: 'redirect'; inviteUrl: string; groupName: string | null; groupAvatarUrl: string | null; title: string }
+  | {
+      kind: 'redirect';
+      inviteUrl: string;
+      channel: LinkRotationChannel;
+      groupName: string | null;
+      groupAvatarUrl: string | null;
+      title: string;
+    }
   | { kind: 'all_full'; title: string }
   | { kind: 'paused'; title: string }
   | { kind: 'bot_preview'; title: string }
@@ -96,7 +103,8 @@ export class ResolvePublicLinkUseCase {
     const labels = await this.labels(rotation, group.conversationId);
     return {
       kind: 'redirect',
-      inviteUrl: inviteUrlFromCode(group.inviteCode),
+      inviteUrl: inviteUrlFromCode(group.inviteCode, rotation.channel),
+      channel: rotation.channel,
       groupName: labels.groupName,
       groupAvatarUrl: labels.groupAvatarUrl,
       title: rotation.title || labels.sessionName || rotation.slug,

@@ -1,9 +1,15 @@
+import type { LinkRotationChannel } from '../services/inviteUrl';
+
 /** Sessão vista pelo rodízio: só o que o painel e as regras precisam. */
 export interface LinkRotationSessionRef {
   id: string;
   name: string;
   /** Status de conexão (mesmos valores de `SessionStatus`). */
   status: string;
+  /** Canal da sessão (`Session.engine`). */
+  channel: LinkRotationChannel;
+  /** Número/conta conectada (foto da sessão); null antes de parear. */
+  phone: string | null;
 }
 
 /**

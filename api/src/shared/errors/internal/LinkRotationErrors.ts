@@ -53,10 +53,19 @@ export class LinkGroupInvalidError extends AppError {
   }
 }
 
-/** Link manual fora do formato `https://chat.whatsapp.com/<code>`. */
+/**
+ * Link manual fora do formato do canal do rodízio: WhatsApp `https://chat.whatsapp.com/<code>`;
+ * Telegram `https://t.me/+<code>`, `t.me/joinchat/<code>` ou `https://t.me/<username>`.
+ * `details.channel` deixa o painel mostrar o formato certo.
+ */
 export class LinkInviteUrlInvalidError extends AppError {
-  constructor(reason = 'Invalid group invite URL') {
-    super('LINK_INVITE_URL_INVALID', reason, 400);
+  constructor(channel?: 'whatsapp' | 'telegram') {
+    super(
+      'LINK_INVITE_URL_INVALID',
+      channel === 'telegram' ? 'Invalid Telegram invite URL' : 'Invalid group invite URL',
+      400,
+      channel ? { channel } : undefined,
+    );
   }
 }
 

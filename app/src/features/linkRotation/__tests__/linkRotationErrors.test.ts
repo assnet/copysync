@@ -20,6 +20,11 @@ describe('linkRotationError', () => {
     expect(linkRotationError({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'link_rotation_groups', limit: 5 } })).toMatchObject({ limitKind: 'groups', limit: 5 });
   });
 
+  it('LINK_INVITE_URL_INVALID mostra o formato do canal', () => {
+    expect(linkRotationError({ code: 'LINK_INVITE_URL_INVALID', meta: { channel: 'telegram' } }).message).toBe(linkRotationStrings.errors.inviteUrlInvalid.telegram);
+    expect(linkRotationError({ code: 'LINK_INVITE_URL_INVALID' }).message).toBe(linkRotationStrings.errors.inviteUrlInvalid.whatsapp);
+  });
+
   it('LINK_SLUG_TAKEN devolve só sugestões em texto', () => {
     expect(linkRotationError({ code: 'LINK_SLUG_TAKEN', meta: { suggestions: ['promo-2', 3, 'promo-3'] } }).suggestions).toEqual(['promo-2', 'promo-3']);
   });

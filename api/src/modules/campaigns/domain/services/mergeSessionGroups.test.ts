@@ -15,10 +15,10 @@ const live = [
 describe('mergeSessionGroups', () => {
   it('com WhatsApp: vale a lista dele, cruza conversationId e ordena por nome (sem título no fim)', () => {
     expect(mergeSessionGroups(live, known)).toEqual([
-      { groupJid: '444', title: 'Achados', avatarUrl: null, conversationId: null, canPost: true },
-      { groupJid: '222', title: 'beta ofertas', avatarUrl: null, conversationId: null, canPost: true },
-      { groupJid: '111', title: 'Promoções Ágeis', avatarUrl: 'https://x/p.jpg', conversationId: 'c1', canPost: true },
-      { groupJid: '333', title: null, avatarUrl: null, conversationId: null, canPost: true },
+      { groupJid: '444', title: 'Achados', avatarUrl: null, conversationId: null, canPost: true, canInvite: true },
+      { groupJid: '222', title: 'beta ofertas', avatarUrl: null, conversationId: null, canPost: true, canInvite: true },
+      { groupJid: '111', title: 'Promoções Ágeis', avatarUrl: 'https://x/p.jpg', conversationId: 'c1', canPost: true, canInvite: true },
+      { groupJid: '333', title: null, avatarUrl: null, conversationId: null, canPost: true, canInvite: true },
     ]);
   });
 
@@ -36,6 +36,12 @@ describe('mergeSessionGroups', () => {
     const tg = [{ groupJid: '-100555', name: 'Canal', canPost: false }, { groupJid: '-100666', name: 'Grupo' }];
     expect(mergeSessionGroups(tg, known).map((g) => [g.groupJid, g.canPost])).toEqual([['-100555', false], ['-100666', true]]);
     expect(mergeSessionGroups(null, known).every((g) => g.canPost)).toBe(true);
+  });
+
+  it('canInvite: vem da engine (ausente = true); sem engine, conhecidos valem true', () => {
+    const tg = [{ groupJid: '-100555', name: 'Canal', canInvite: true }, { groupJid: '-100666', name: 'Grupo', canInvite: false }, { groupJid: '-100777', name: 'Outro' }];
+    expect(mergeSessionGroups(tg, known).map((g) => [g.groupJid, g.canInvite])).toEqual([['-100555', true], ['-100666', false], ['-100777', true]]);
+    expect(mergeSessionGroups(null, known).every((g) => g.canInvite)).toBe(true);
   });
 
   it('sem WhatsApp (sessão fora): cai no que o chat conhece', () => {

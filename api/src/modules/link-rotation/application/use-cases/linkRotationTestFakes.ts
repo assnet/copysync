@@ -71,7 +71,7 @@ export class InMemoryLinkRotationRepository implements ILinkRotationRepository {
 
   seed(over: Partial<LinkRotation> = {}): LinkRotation {
     const r: LinkRotation = {
-      id: `rot-${++this.seq}`, tenantId: TENANT, sessionId: SESSION, domainId: 'dom-1', slug: `slug-${this.seq}`,
+      id: `rot-${++this.seq}`, tenantId: TENANT, sessionId: SESSION, channel: 'whatsapp', domainId: 'dom-1', slug: `slug-${this.seq}`,
       status: LinkRotationStatus.ACTIVE, strategy: LinkRotationStrategy.BALANCED, title: null, clickCount: 0,
       lastClickAt: null, allFullNotifiedAt: null, createdAt: NOW, updatedAt: NOW, ...over,
     };
@@ -285,16 +285,18 @@ export class FakeDomains implements LinkDomainReader {
 
 export class FakeSessions implements ILinkRotationSessionReader {
   constructor(public items: (LinkRotationSessionRef & { tenantId: string })[] = [
-    { id: SESSION, tenantId: TENANT, name: 'Principal', status: 'CONNECTED' },
-    { id: OTHER_SESSION, tenantId: TENANT, name: 'Reserva', status: 'DISCONNECTED' },
-    { id: 'session-x', tenantId: OTHER_TENANT, name: 'Alheia', status: 'CONNECTED' },
+    { id: SESSION, tenantId: TENANT, name: 'Principal', status: 'CONNECTED', channel: 'whatsapp', phone: '5511999990000' },
+    { id: OTHER_SESSION, tenantId: TENANT, name: 'Reserva', status: 'DISCONNECTED', channel: 'whatsapp', phone: null },
+    { id: 'session-x', tenantId: OTHER_TENANT, name: 'Alheia', status: 'CONNECTED', channel: 'whatsapp', phone: null },
   ]) {}
   async listByTenant(tenantId: string) {
     return this.items.filter((s) => s.tenantId === tenantId).map(({ tenantId: _t, ...s }) => s);
   }
   async findById(tenantId: string, id: string) {
     const s = this.items.find((x) => x.id === id && x.tenantId === tenantId);
-    return s ? { id: s.id, name: s.name, status: s.status } : null;
+    if (!s) return null;
+    const { tenantId: _t, ...ref } = s;
+    return ref;
   }
 }
 
@@ -328,6 +330,12 @@ export class FakeEngine implements LinkRotationGroupEngine {
   }
   async getGroupSummary(_sessionId: string, groupJid: string) {
     const v = this.summaries.get(groupJid) ?? { name: 'Grupo', memberCount: 10, isSelfAdmin: true };
+    if (v instanceof Error) throw v;
+    return v;
+  }
+  avatars = new Map<string, string | Error>();
+  async fetchProfilePicture(sessionId: string) {
+    const v = this.avatars.get(sessionId) ?? null;
     if (v instanceof Error) throw v;
     return v;
   }

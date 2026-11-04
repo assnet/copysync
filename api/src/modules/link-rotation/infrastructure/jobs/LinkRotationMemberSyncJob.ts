@@ -34,7 +34,7 @@ const DEFAULT_LEASE_TTL_MS = 5 * 60_000;
 /**
  * Membros dos grupos do rodízio + retenção de cliques (design.md §4.5). Tick de 60 s, um por vez
  * no processo; lease `link-rotation-member-sync` garante 1 processo por tick no cluster.
- * Só é ligado com `LINK_ROTATION_MEMBER_SYNC_ENABLED` (server.ts): escreve no banco e chama o WhatsApp.
+ * Só é ligado com `LINK_ROTATION_MEMBER_SYNC_ENABLED` (server.ts): escreve no banco e chama o engine da sessão (WhatsApp ou Telegram).
  */
 export class LinkRotationMemberSyncJob {
   private timer: NodeJS.Timeout | null = null;

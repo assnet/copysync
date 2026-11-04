@@ -44,7 +44,7 @@ export class RefreshLinkRotationGroupUseCase {
         ? group.status
         : groupStatusFor(!!link.inviteCode, summary.memberCount, group.capacity),
     });
-    return toLinkRotationGroupDTO(updated, summary.name || null);
+    return toLinkRotationGroupDTO(updated, rotation.channel, summary.name || null);
   }
 
   private async resolveLink(

@@ -12,7 +12,8 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { linkRotationService } from '@/services/linkRotation.service';
 import { linkRotationError, linkRotationErrorMessage } from '@/utils/linkRotationErrors';
 import { linkRotationStrings } from '../strings';
-import { ROTATION_RANGES, type Rotation, type RotationGroup, type RotationGroupCandidate, type RotationGroupCandidates, type SaveRotationGroupInput } from '../types';
+import { isValidInviteUrl } from '../inviteUrl';
+import { ROTATION_CAPACITY, ROTATION_RANGES, type Rotation, type RotationGroup, type RotationGroupCandidate, type RotationGroupCandidates, type SaveRotationGroupInput } from '../types';
 import { PlanLimitBanner } from './PlanLimitBanner';
 import { needsInviteField, RotationGroupItem, type RotationGroupDraft } from './RotationGroupItem';
 
@@ -35,9 +36,6 @@ interface Draft {
   search: string;
   items: RotationGroupDraft[];
 }
-
-/** Formato aceito pela API para convite colado à mão. */
-export const INVITE_URL_PATTERN = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+\/?$/;
 
 const normalize = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
@@ -81,6 +79,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [bannerLimit, setBannerLimit] = useState<number | null>(null);
+  const channel = rotation.channel ?? 'whatsapp';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,7 +144,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
         conversationId: c.conversationId,
         title: c.title,
         avatarUrl: c.avatarUrl,
-        capacity: ROTATION_RANGES.capacity.default,
+        capacity: ROTATION_CAPACITY[channel].default,
         weight: ROTATION_RANGES.weight.min,
         linkSource: 'AUTO',
         manualInviteUrl: '',
@@ -205,7 +204,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
       const url = item.manualInviteUrl.trim();
       const withField = needsInviteField(item, status);
       if (item.linkSource === 'MANUAL' && !url) errors[item.groupJid] = t.manualInviteRequired;
-      else if (withField && url && !INVITE_URL_PATTERN.test(url)) errors[item.groupJid] = linkRotationStrings.errors.inviteUrlInvalid;
+      else if (withField && url && !isValidInviteUrl(url, channel)) errors[item.groupJid] = linkRotationStrings.errors.inviteUrlInvalid[channel];
       return {
         ...(item.conversationId ? { conversationId: item.conversationId } : { groupJid: item.groupJid }),
         position,
@@ -293,6 +292,8 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
                       index={i}
                       total={draft.items.length}
                       strategy={rotation.strategy}
+                      channel={channel}
+                      inviteUrl={g?.inviteUrl ?? null}
                       status={g?.status ?? null}
                       memberCount={g?.memberCount ?? null}
                       clicksSinceSync={g?.clicksSinceSync ?? 0}
@@ -335,7 +336,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
             {loadError && (
               <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void load()}>{t.retry}</Button>}>{loadError}</Alert>
             )}
-            {showEmpty && <Alert severity="info">{t.empty}</Alert>}
+            {showEmpty && <Alert severity="info">{t.empty[channel]}</Alert>}
             {!showEmpty && candidates && filtered.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>{t.emptySearch}</Typography>
             )}

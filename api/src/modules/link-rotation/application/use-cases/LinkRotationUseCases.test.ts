@@ -288,6 +288,21 @@ describe('SaveLinkRotationGroupsUseCase', () => {
     await expect(save(r.id, [{ conversationId: 'a', weight: 101 }])).rejects.toMatchObject({ code: 'LINK_GROUP_INVALID' });
   });
 
+  it('sessão Telegram: link t.me (AUTO e manual), teto até 200.000 e erro com o canal', async () => {
+    deps.groups.add('a').add('b');
+    deps.engine.invites.set('jid-a', '+AbCdEf_12-GhIjKl');
+    const r = deps.rotations.seed({ channel: 'telegram' });
+    const out = await save(r.id, [
+      { conversationId: 'a', capacity: 200_000 },
+      { conversationId: 'b', manualInviteUrl: 't.me/joinchat/ZyXwVu98765_-abc' },
+    ]);
+    expect(out[0]).toMatchObject({ capacity: 200_000, linkSource: 'AUTO', inviteUrl: 'https://t.me/+AbCdEf_12-GhIjKl' });
+    expect(out[1]).toMatchObject({ capacity: 10_000, linkSource: 'MANUAL', inviteUrl: 'https://t.me/+ZyXwVu98765_-abc' });
+    await expect(save(r.id, [{ conversationId: 'a', capacity: 200_001 }])).rejects.toMatchObject({ code: 'LINK_GROUP_INVALID' });
+    await expect(save(r.id, [{ conversationId: 'a', manualInviteUrl: `https://chat.whatsapp.com/${CODE}` }]))
+      .rejects.toMatchObject({ code: 'LINK_INVITE_URL_INVALID', meta: { channel: 'telegram' } });
+  });
+
   it('lotado pela última contagem → FULL; rotação de outro tenant → NOT_FOUND', async () => {
     deps.groups.add('a');
     const r = deps.rotations.seed();
@@ -343,5 +358,18 @@ describe('GetLinkRotationOverviewUseCase', () => {
     expect(out.domains).toEqual([{ id: 'dom-1', hostname: 'copysync.com.br' }]);
     expect(out.limits).toEqual({ linkRotations: 2, linkRotationGroups: null });
     expect(out.sessions.map((s) => s.id)).toEqual([SESSION, OTHER_SESSION]);
+    expect(out.rotations[0]!.channel).toBe('whatsapp');
+  });
+
+  it('sessão conectada leva canal e foto; falha na foto não derruba', async () => {
+    deps.engine.avatars.set(SESSION, 'https://media.test/s.jpg');
+    let out = await new GetLinkRotationOverviewUseCase(deps).execute(TENANT);
+    expect(out.sessions).toEqual([
+      { id: SESSION, name: 'Principal', status: 'CONNECTED', channel: 'whatsapp', avatarUrl: 'https://media.test/s.jpg' },
+      { id: OTHER_SESSION, name: 'Reserva', status: 'DISCONNECTED', channel: 'whatsapp', avatarUrl: null },
+    ]);
+    deps.engine.avatars.set(SESSION, new Error('boom'));
+    out = await new GetLinkRotationOverviewUseCase(deps).execute(TENANT);
+    expect(out.sessions[0]!.avatarUrl).toBeNull();
   });
 });

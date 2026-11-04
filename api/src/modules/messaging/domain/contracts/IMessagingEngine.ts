@@ -297,7 +297,8 @@ export interface IMessagingEngine {
    */
   listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]>;
   /**
-   * Código do link de convite do grupo (link = `https://chat.whatsapp.com/<inviteCode>`).
+   * Código do link de convite do grupo: WhatsApp `https://chat.whatsapp.com/<inviteCode>`;
+   * Telegram o que vem depois de `https://t.me/` (ex.: `+AbC…`). Quem monta a URL sabe o canal.
    * `groupJid` com ou sem `@g.us`. Lança `SessionNotConnectedError` sem sessão conectada e
    * `GroupInviteNotAllowedError` quando a conta não pode ver o link (em geral, não é admin).
    */
@@ -363,6 +364,11 @@ export interface ParticipatingGroupInfo {
   avatarUrl?: string | null;
   /** A conta pode postar no grupo. Ausente = true (WhatsApp). Telegram: false em canal só de leitura. */
   canPost?: boolean;
+  /**
+   * A conta consegue gerar link de convite. Ausente = desconhecido (WhatsApp: só se sabe ao pedir).
+   * Telegram: criador ou admin com permissão de convidar.
+   */
+  canInvite?: boolean;
 }
 
 export interface GroupParticipantInfo {

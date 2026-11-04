@@ -2,7 +2,7 @@ import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import type { SaveLinkRotationGroupInput } from '../../domain/contracts/ILinkRotationRepository';
 import type { LinkRotationGroup } from '../../domain/entities/LinkRotationGroup';
 import { LinkRotationGroupLinkSource } from '../../domain/enums/LinkRotationEnums';
-import { parseInviteCode } from '../../domain/services/inviteUrl';
+import { GROUP_CAPACITY, type LinkRotationChannel, parseInviteCode } from '../../domain/services/inviteUrl';
 import {
   LinkGroupInvalidError,
   LinkInviteUrlInvalidError,
@@ -20,14 +20,14 @@ import type { LinkRotationUseCaseDeps } from './linkRotationUseCaseDeps';
 
 type Deps = Pick<LinkRotationUseCaseDeps, 'rotations' | 'groups' | 'entitlements' | 'engine'>;
 
-export const GROUP_CAPACITY = { min: 50, max: 1024, default: 1000 } as const;
 export const GROUP_WEIGHT = { min: 1, max: 100, default: 1 } as const;
 
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;
 
 /**
  * Substitui os grupos do rodízio (menos que o limite é aceito; acima → PlanLimitReachedError).
- * Cada grupo tem de ser conversa `isGroup` do tenant **na sessão do rodízio**.
+ * Cada grupo tem de ser conversa `isGroup` do tenant **na sessão do rodízio**. Formato do link e
+ * faixa do teto seguem o canal da sessão (`rotation.channel`).
  *
  * Link por grupo:
  * - `manualInviteUrl` preenchido → valida e guarda só o code (MANUAL).
@@ -53,7 +53,8 @@ export class SaveLinkRotationGroupsUseCase {
       throw new PlanLimitReachedError(ENTITLEMENT_KEYS.LINK_ROTATION_GROUPS, limit);
     }
 
-    const ordered = validateAndOrder(input.groups);
+    const { channel } = rotation;
+    const ordered = validateAndOrder(input.groups, channel);
     const candidates = await catalog.findGroups(tenantId, ordered.map((g) => g.conversationId));
     const byConversation = new Map(candidates.map((c) => [c.conversationId, c]));
     const existing = new Map(rotation.groups.map((g) => [g.conversationId, g]));
@@ -63,13 +64,13 @@ export class SaveLinkRotationGroupsUseCase {
       if (!candidate || candidate.sessionId !== rotation.sessionId) {
         throw new LinkGroupInvalidError('Group is not from the rotation session', g.conversationId);
       }
-      return { input: g, groupJid: candidate.groupJid, manualCode: manualCodeFor(g, existing.get(g.conversationId)) };
+      return { input: g, groupJid: candidate.groupJid, manualCode: manualCodeFor(g, existing.get(g.conversationId), channel) };
     });
 
     const rows: SaveLinkRotationGroupInput[] = [];
     for (const [position, p] of prepared.entries()) {
       const previous = existing.get(p.input.conversationId);
-      const capacity = p.input.capacity ?? GROUP_CAPACITY.default;
+      const capacity = p.input.capacity ?? GROUP_CAPACITY[channel].default;
       const weight = p.input.weight ?? GROUP_WEIGHT.default;
       let inviteCode: string | null = null;
       let linkSource: LinkRotationGroupLinkSource | null = null;
@@ -102,19 +103,23 @@ export class SaveLinkRotationGroupsUseCase {
 
     const saved = await rotations.replaceGroups(tenantId, rotationId, rows);
     const names = new Map(candidates.map((c) => [c.conversationId, c.name]));
-    return saved.map((g) => toLinkRotationGroupDTO(g, names.get(g.conversationId) ?? null));
+    return saved.map((g) => toLinkRotationGroupDTO(g, channel, names.get(g.conversationId) ?? null));
   }
 }
 
 /** Duplicadas e faixas (peso, teto, posição); ordena por `position` (estável) para renumerar 0..n-1. */
-function validateAndOrder(groups: LinkRotationGroupInputDTO[]): LinkRotationGroupInputDTO[] {
+function validateAndOrder(groups: LinkRotationGroupInputDTO[], channel: LinkRotationChannel): LinkRotationGroupInputDTO[] {
+  const capacityRange = GROUP_CAPACITY[channel];
   const seen = new Set<string>();
   for (const g of groups) {
     if (!g.conversationId) throw new LinkGroupInvalidError('Missing conversation');
     if (seen.has(g.conversationId)) throw new LinkGroupInvalidError('Duplicated group', g.conversationId);
     seen.add(g.conversationId);
-    if (g.capacity !== undefined && !inRange(g.capacity, GROUP_CAPACITY)) {
-      throw new LinkGroupInvalidError('Group capacity must be between 50 and 1024', g.conversationId);
+    if (g.capacity !== undefined && !inRange(g.capacity, capacityRange)) {
+      throw new LinkGroupInvalidError(
+        `Group capacity must be between ${capacityRange.min} and ${capacityRange.max}`,
+        g.conversationId,
+      );
     }
     if (g.weight !== undefined && !inRange(g.weight, GROUP_WEIGHT)) {
       throw new LinkGroupInvalidError('Group weight must be between 1 and 100', g.conversationId);
@@ -130,12 +135,16 @@ function validateAndOrder(groups: LinkRotationGroupInputDTO[]): LinkRotationGrou
 }
 
 /** Code manual a usar, ou null para AUTO. Valida antes de qualquer chamada ao engine. */
-function manualCodeFor(g: LinkRotationGroupInputDTO, previous: LinkRotationGroup | undefined): string | null {
+function manualCodeFor(
+  g: LinkRotationGroupInputDTO,
+  previous: LinkRotationGroup | undefined,
+  channel: LinkRotationChannel,
+): string | null {
   if (g.manualInviteUrl === undefined) {
     return previous?.linkSource === LinkRotationGroupLinkSource.MANUAL ? previous.inviteCode : null;
   }
   if (g.manualInviteUrl === null || g.manualInviteUrl.trim() === '') return null;
-  const code = parseInviteCode(g.manualInviteUrl);
-  if (!code) throw new LinkInviteUrlInvalidError();
+  const code = parseInviteCode(g.manualInviteUrl, channel);
+  if (!code) throw new LinkInviteUrlInvalidError(channel);
   return code;
 }

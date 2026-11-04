@@ -3,6 +3,10 @@
  * (`.specs/features/link-rotation/api-contract.md`). Nunca use model da API fora daqui.
  */
 import type { SessionStatus } from '@/types/api.types';
+import type { SessionChannel } from '@/features/sessions/utils';
+
+/** Canal do rodízio = canal da sessão escolhida (decide formato do convite e teto de membros). */
+export type RotationChannel = SessionChannel;
 
 export type RotationStatus = 'ACTIVE' | 'PAUSED' | 'PAUSED_BY_PLAN';
 export type RotationStrategy = 'BALANCED' | 'SEQUENTIAL' | 'WEIGHTED' | 'RANDOM';
@@ -11,9 +15,18 @@ export type RotationLinkSource = 'AUTO' | 'MANUAL';
 
 export const ROTATION_STRATEGIES: readonly RotationStrategy[] = ['BALANCED', 'SEQUENTIAL', 'WEIGHTED', 'RANDOM'];
 
-/** Faixas aceitas pela API. */
+/**
+ * Teto de membros por canal (mesma faixa da API). WhatsApp: limite real de 1.024. Telegram: grupo
+ * básico vira supergrupo ao crescer (até 200.000); canal não tem limite, o teto é o ponto em que o
+ * rodízio passa para o próximo grupo. `step` deixa o controle deslizante utilizável na faixa larga.
+ */
+export const ROTATION_CAPACITY: Record<RotationChannel, { min: number; max: number; default: number; step: number }> = {
+  whatsapp: { min: 50, max: 1024, default: 1000, step: 1 },
+  telegram: { min: 50, max: 200_000, default: 10_000, step: 50 },
+};
+
+/** Faixas aceitas pela API (teto de membros: `ROTATION_CAPACITY`, por canal). */
 export const ROTATION_RANGES = {
-  capacity: { min: 50, max: 1024, default: 1000 },
   weight: { min: 1, max: 100 },
   slug: { min: 3, max: 50, pattern: /^[a-z0-9-]+$/ },
   titleMax: 80,
@@ -41,6 +54,8 @@ export interface RotationGroup {
 export interface Rotation {
   id: string;
   sessionId: string;
+  /** Canal da sessão do rodízio. */
+  channel: RotationChannel;
   domainId: string;
   hostname: string;
   slug: string;
@@ -65,6 +80,9 @@ export interface RotationSessionOption {
   id: string;
   name: string;
   status: SessionStatus;
+  channel: RotationChannel;
+  /** Foto da conta conectada; null fora do ar ou sem foto. */
+  avatarUrl: string | null;
 }
 
 /** `null` = ilimitado. */

@@ -59,6 +59,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Rodízio de links com Telegram (`link-rotation`, `messaging`) — api 0.55.0 · app 0.71.0
+
+- **`link-rotation/domain/services/inviteUrl.ts`** — link de convite por canal (canal = engine da sessão do rodízio): WhatsApp `chat.whatsapp.com/<code>`; Telegram `t.me/+<code>`, `t.me/joinchat/<code>`, `t.me/<username>`. Antes um grupo Telegram geraria `chat.whatsapp.com/+…` quebrado
+- **Capacidade por canal** — WhatsApp 50–1.024 (padrão 1.000), Telegram 50–200.000 (padrão 10.000; canal de transmissão não tem teto real)
+- **`TelegramMessagingEngineAdapter.ts`** — `canInvite` na lista de grupos (rodízio filtra por ele), `GROUP_INVITE_NOT_ALLOWED` sem permissão de admin, contagem de membros de supergrupo/canal
+- **Painel** — seletor de sessão e chips com foto, logo do canal e flag de privacidade `linkRotation.sessionAvatar`; link e ajuda no formato do canal
+
 #### Frontend — Destaque do Telegram nos planos (`plans`) — app 0.70.0
 
 - **`catalog.ts`**, **`PlanCard.tsx`** — benefício com `channel`: linha em destaque com logo e faixa na cor da marca. PRO e MAX ganham "Telegram: monitore e envie em grupos e canais". Corrige rolagem lateral no celular (`srOnly` da `ChannelLimitsTable` com `width: 1` = 100% no MUI)

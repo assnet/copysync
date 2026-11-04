@@ -61,6 +61,7 @@ export const PRIVACY_SCREENS = [
     flags: [
       { id: 'linkRotation.rotationLink', label: 'Link público e apelido' },
       { id: 'linkRotation.sessionName', label: 'Nome da sessão' },
+      { id: 'linkRotation.sessionAvatar', label: 'Foto da sessão' },
       { id: 'linkRotation.groupName', label: 'Nomes dos grupos' },
       { id: 'linkRotation.groupAvatar', label: 'Fotos dos grupos' },
       { id: 'linkRotation.inviteLink', label: 'Link de convite dos grupos' },

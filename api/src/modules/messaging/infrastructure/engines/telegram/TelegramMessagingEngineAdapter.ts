@@ -55,6 +55,7 @@ import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums'
 import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
 import { EngineOperationUnsupportedError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
+import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 import { TelegramLoginNotPendingError } from '../../../../../shared/errors/internal/TelegramErrors';
 import { TelegramSessionRegistry, type PendingLogin, type TelegramSessionEntry } from './TelegramSessionRegistry';
 import type { TelegramAuthStatePersistence } from './TelegramAuthStatePersistence';
@@ -717,7 +718,13 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
       if (ent instanceof Api.Chat && (ent.left || ent.deactivated)) continue;
       if (ent instanceof Api.Channel && ent.left) continue;
       if (!d.id) continue;
-      out.push({ groupJid: d.id.toString(), name: d.title ?? null, avatarUrl: null, canPost: telegramCanPost(ent) });
+      out.push({
+        groupJid: d.id.toString(),
+        name: d.title ?? null,
+        avatarUrl: null,
+        canPost: telegramCanPost(ent),
+        canInvite: telegramCanInvite(ent),
+      });
       avatarOf.set(out.length - 1, this.groupAvatar(sessionId, entry, d.id.toString(), ent));
     }
     // Fotos que já estão no storage voltam agora; as que faltam baixam em fila e, se terminarem
@@ -771,23 +778,36 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
       const peer = await this.inputPeer(entry, groupJid);
       const res = await entry.client.invoke(new Api.messages.ExportChatInvite({ peer }));
       const link = res instanceof Api.ChatInviteExported ? res.link : '';
-      // Link do Telegram é `https://t.me/+<code>`; devolve só o código (quem monta a URL sabe o canal)
-      return { inviteCode: link.replace(/^https?:\/\/t\.me\//, '') };
+      // Link do Telegram é `https://t.me/+<code>`; devolve só o código (quem monta a URL sabe o
+      // canal). O formato antigo `t.me/joinchat/<code>` vira `+<code>` (mesmo convite).
+      const code = link.replace(/^https?:\/\/(?:www\.)?(?:t|telegram)\.me\//i, '').replace(/^joinchat\//i, '+');
+      if (!code) throw new GroupInviteNotAllowedError();
+      return { inviteCode: code };
     } catch (err) {
+      // Sem ser admin com permissão de convidar o Telegram responde CHAT_ADMIN_REQUIRED (ou
+      // CHAT_ADMIN_INVITE_REQUIRED): o rodízio pede o link manual em vez de tratar como queda.
+      if (/CHAT_ADMIN_(?:INVITE_)?REQUIRED|CHAT_WRITE_FORBIDDEN/.test(String((err as { errorMessage?: string })?.errorMessage ?? ''))) {
+        throw new GroupInviteNotAllowedError();
+      }
       throw translateTelegramSendError(err);
     }
   }
 
   async getGroupSummary(sessionId: string, groupJid: string): Promise<{ name: string; memberCount: number; isSelfAdmin: boolean }> {
     const entry = this.requireConnected(sessionId);
-    const ent = await entry.client.getEntity(await this.inputPeer(entry, groupJid));
-    if (ent instanceof Api.Channel) {
-      const full = await entry.client.invoke(new Api.channels.GetFullChannel({ channel: ent }));
-      const count = full.fullChat instanceof Api.ChannelFull ? full.fullChat.participantsCount ?? 0 : 0;
-      return { name: ent.title, memberCount: count, isSelfAdmin: Boolean(ent.creator || ent.adminRights) };
-    }
-    if (ent instanceof Api.Chat) {
-      return { name: ent.title, memberCount: ent.participantsCount, isSelfAdmin: Boolean(ent.creator || ent.adminRights) };
+    try {
+      const ent = await entry.client.getEntity(await this.inputPeer(entry, groupJid));
+      // Supergrupo e canal: contagem real vem do GetFullChannel (a entidade não traz)
+      if (ent instanceof Api.Channel) {
+        const full = await entry.client.invoke(new Api.channels.GetFullChannel({ channel: ent }));
+        const count = full.fullChat instanceof Api.ChannelFull ? full.fullChat.participantsCount ?? 0 : 0;
+        return { name: ent.title, memberCount: count, isSelfAdmin: Boolean(ent.creator || ent.adminRights) };
+      }
+      if (ent instanceof Api.Chat) {
+        return { name: ent.title, memberCount: ent.participantsCount, isSelfAdmin: Boolean(ent.creator || ent.adminRights) };
+      }
+    } catch (err) {
+      throw translateTelegramSendError(err);
     }
     throw new EngineOperationUnsupportedError(ENGINE, 'getGroupSummary:not-a-group');
   }
@@ -861,6 +881,15 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
  * A conta pode postar? Canal (broadcast): só criador ou admin com `postMessages`. Grupo/supergrupo:
  * não só quando o envio está bloqueado por padrão e a conta não é criadora nem admin.
  */
+/**
+ * Gerar link de convite (`ExportChatInvite`) exige ser criador ou admin com `inviteUsers`, em
+ * grupo, supergrupo ou canal. Sem isso o rodízio não consegue o convite sozinho.
+ */
+function telegramCanInvite(ent: unknown): boolean {
+  if (ent instanceof Api.Channel || ent instanceof Api.Chat) return Boolean(ent.creator || ent.adminRights?.inviteUsers);
+  return false;
+}
+
 function telegramCanPost(ent: unknown): boolean {
   if (ent instanceof Api.Channel) {
     if (ent.creator) return true;

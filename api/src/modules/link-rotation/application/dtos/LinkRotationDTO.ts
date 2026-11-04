@@ -8,7 +8,7 @@ import type {
   LinkRotationStrategy,
 } from '../../domain/enums/LinkRotationEnums';
 import type { LinkRotationSessionRef } from '../../domain/contracts/ILinkRotationSessionReader';
-import { inviteUrlFromCode } from '../../domain/services/inviteUrl';
+import { type LinkRotationChannel, inviteUrlFromCode } from '../../domain/services/inviteUrl';
 
 // ── Entrada ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export interface LinkRotationGroupInputDTO {
   position?: number;
   /** 1–100, default 1. */
   weight?: number;
-  /** 50–1024, default 1000. */
+  /** Faixa por canal (`GROUP_CAPACITY`): WhatsApp 50–1024, Telegram 50–200.000. */
   capacity?: number;
   /**
    * Link colado pelo usuário. `undefined` = mantém o manual já salvo (se houver), senão AUTO;
@@ -90,6 +90,7 @@ export interface LinkRotationGroupOutputDTO {
 export interface LinkRotationOutputDTO {
   id: string;
   sessionId: string;
+  channel: LinkRotationChannel;
   domainId: string;
   /** Hostname do domínio (null se o domínio sumiu da lista). */
   hostname: string | null;
@@ -116,6 +117,9 @@ export interface LinkRotationSessionDTO {
   id: string;
   name: string;
   status: string;
+  channel: LinkRotationChannel;
+  /** Foto da conta conectada (storage); null fora do ar ou sem foto. */
+  avatarUrl: string | null;
 }
 
 export interface LinkRotationOverviewDTO {
@@ -129,7 +133,11 @@ export interface LinkRotationOverviewDTO {
 
 // ── Mapeamento domínio → DTO ─────────────────────────────────────────────────
 
-export function toLinkRotationGroupDTO(g: LinkRotationGroup, groupName: string | null = null): LinkRotationGroupOutputDTO {
+export function toLinkRotationGroupDTO(
+  g: LinkRotationGroup,
+  channel: LinkRotationChannel,
+  groupName: string | null = null,
+): LinkRotationGroupOutputDTO {
   return {
     id: g.id,
     conversationId: g.conversationId,
@@ -138,7 +146,7 @@ export function toLinkRotationGroupDTO(g: LinkRotationGroup, groupName: string |
     position: g.position,
     weight: g.weight,
     capacity: g.capacity,
-    inviteUrl: g.inviteCode ? inviteUrlFromCode(g.inviteCode) : null,
+    inviteUrl: g.inviteCode ? inviteUrlFromCode(g.inviteCode, channel) : null,
     linkSource: g.linkSource,
     status: g.status,
     memberCount: g.memberCount,
@@ -159,6 +167,7 @@ export function toLinkRotationDTO(
   return {
     id: r.id,
     sessionId: r.sessionId,
+    channel: r.channel,
     domainId: r.domainId,
     hostname,
     slug: r.slug,
@@ -171,10 +180,10 @@ export function toLinkRotationDTO(
     allFullNotifiedAt: r.allFullNotifiedAt,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
-    groups: groups.map((g) => toLinkRotationGroupDTO(g, groupNames.get(g.conversationId) ?? null)),
+    groups: groups.map((g) => toLinkRotationGroupDTO(g, r.channel, groupNames.get(g.conversationId) ?? null)),
   };
 }
 
-export function toLinkRotationSessionDTO(s: LinkRotationSessionRef): LinkRotationSessionDTO {
-  return { id: s.id, name: s.name, status: s.status };
+export function toLinkRotationSessionDTO(s: LinkRotationSessionRef, avatarUrl: string | null = null): LinkRotationSessionDTO {
+  return { id: s.id, name: s.name, status: s.status, channel: s.channel, avatarUrl };
 }

@@ -5,9 +5,11 @@ import {
 import { Check, Copy, ExternalLink, Link2, MoreVertical, Settings2, Smartphone, Trash2, UsersRound } from 'lucide-react';
 import { AppIcon, ConfirmDialog, SectionCard } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
 import { sessionStrings } from '@/features/sessions/strings';
 import { linkRotationStrings } from '../strings';
 import type { Rotation, RotationSessionOption, RotationStatus } from '../types';
+import { RotationSessionAvatar } from './RotationSessionIdentity';
 import { RotationStatsCard } from './RotationStatsCard';
 
 const t = linkRotationStrings.card;
@@ -146,7 +148,10 @@ export function RotationCard({ rotation, session, groupLimit, onToggleStatus, on
           <Chip
             size="small"
             variant="outlined"
-            icon={<AppIcon icon={Smartphone} size="sm" />}
+            {...(session
+              ? { avatar: <RotationSessionAvatar session={session} size={20} /> }
+              : { icon: <AppIcon icon={Smartphone} size="sm" /> })}
+            aria-label={session ? `${session.name || linkRotationStrings.page.untitledSession} · ${channelLabel(session.channel)}` : undefined}
             label={
               <Blurred when={blurSession} inline radius={5}>
                 {session ? session.name || linkRotationStrings.page.untitledSession : linkRotationStrings.page.sessionRemoved}

@@ -13,9 +13,9 @@ export interface LinkRotationGroup {
   position: number;
   /** 1–100 (WEIGHTED). */
   weight: number;
-  /** Teto de membros, 50–1024. */
+  /** Teto de membros; faixa por canal (`GROUP_CAPACITY`). */
   capacity: number;
-  /** Só o code; link = https://chat.whatsapp.com/<code>. */
+  /** Só o code; link montado por `inviteUrlFromCode(code, rotation.channel)`. */
   inviteCode: string | null;
   linkSource: LinkRotationGroupLinkSource | null;
   status: LinkRotationGroupStatus;

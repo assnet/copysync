@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Alert, Box, Chip, CircularProgress, IconButton, Slider, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
   type ChipProps,
@@ -7,7 +8,11 @@ import { AppIcon } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import { linkRotationStrings } from '../strings';
-import { ROTATION_RANGES, type RotationGroupStatus, type RotationLinkSource, type RotationStrategy } from '../types';
+import { INVITE_URL_EXAMPLE } from '../inviteUrl';
+import {
+  ROTATION_CAPACITY, ROTATION_RANGES,
+  type RotationChannel, type RotationGroupStatus, type RotationLinkSource, type RotationStrategy,
+} from '../types';
 
 const t = linkRotationStrings.groups;
 
@@ -41,6 +46,10 @@ export interface RotationGroupItemProps {
   index: number;
   total: number;
   strategy: RotationStrategy;
+  /** Canal da sessão do rodízio: formato do convite e faixa do teto. */
+  channel: RotationChannel;
+  /** Convite salvo (montado pela API no formato do canal); null = sem link ainda. */
+  inviteUrl: string | null;
   /** `null` = grupo novo, ainda não salvo. */
   status: RotationGroupStatus | null;
   memberCount: number | null;
@@ -70,9 +79,55 @@ function HelpIcon({ title }: { title: string }) {
   );
 }
 
+/**
+ * Teto de membros: controle deslizante + número digitável (na faixa larga do Telegram o deslizante
+ * sozinho não acerta um valor). O número só é aplicado quando cabe na faixa; ao sair do campo volta
+ * ao valor válido.
+ */
+function CapacityControl({ value, channel, labelId, onChange }: {
+  value: number;
+  channel: RotationChannel;
+  labelId: string;
+  onChange: (n: number) => void;
+}) {
+  const range = ROTATION_CAPACITY[channel];
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const apply = (raw: string) => {
+    setText(raw);
+    const n = Number(raw);
+    if (Number.isInteger(n) && n >= range.min && n <= range.max) onChange(n);
+  };
+  return (
+    <Stack direction="row" spacing={1.5} alignItems="center">
+      <Slider
+        value={Math.min(Math.max(value, range.min), range.max)}
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        marks={[{ value: range.default }]}
+        valueLabelDisplay="off"
+        aria-labelledby={labelId}
+        getAriaValueText={t.capacityValue}
+        onChange={(_e, v) => typeof v === 'number' && onChange(v)}
+        sx={{ mx: 1, flex: 1 }}
+      />
+      <TextField
+        size="small"
+        type="number"
+        value={text}
+        onChange={(e) => apply(e.target.value)}
+        onBlur={() => setText(String(value))}
+        inputProps={{ min: range.min, max: range.max, step: 1, inputMode: 'numeric', 'aria-label': t.capacityInput }}
+        sx={{ width: 112, '& input': { fontVariantNumeric: 'tabular-nums' } }}
+      />
+    </Stack>
+  );
+}
+
 /** Um grupo escolhido: posição, situação, teto de membros, peso (só WEIGHTED) e origem do convite. */
 export function RotationGroupItem({
-  item, index, total, strategy, status, memberCount, clicksSinceSync, atCapacity, canRefresh, refreshing, error, refreshError, onChange, onMove, onRemove, onRefresh,
+  item, index, total, strategy, channel, inviteUrl, status, memberCount, clicksSinceSync, atCapacity, canRefresh, refreshing, error, refreshError, onChange, onMove, onRemove, onRefresh,
 }: RotationGroupItemProps) {
   const blurName = useBlur('linkRotation.groupName');
   const blurInvite = useBlur('linkRotation.inviteLink');
@@ -81,7 +136,7 @@ export function RotationGroupItem({
   const limited = status === 'ACTIVE' && atCapacity;
   const estimated = memberCount !== null && clicksSinceSync > 0 ? memberCount + clicksSinceSync : null;
   const name = item.title?.trim() || t.untitled;
-  const { capacity, weight } = ROTATION_RANGES;
+  const { weight } = ROTATION_RANGES;
 
   return (
     <Box
@@ -142,22 +197,11 @@ export function RotationGroupItem({
       <Box sx={{ mt: 1 }}>
         <Stack direction="row" spacing={0.75} alignItems="center">
           <Typography variant="caption" color="text.secondary" id={`cap-${item.groupJid}`}>{t.capacity}</Typography>
-          <HelpIcon title={t.capacityHelp} />
+          <HelpIcon title={t.capacityHelp[channel]} />
           <Box sx={{ flex: 1 }} />
           <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{t.capacityValue(item.capacity)}</Typography>
         </Stack>
-        <Slider
-          value={item.capacity}
-          min={capacity.min}
-          max={capacity.max}
-          step={1}
-          marks={[{ value: capacity.default }]}
-          valueLabelDisplay="off"
-          aria-labelledby={`cap-${item.groupJid}`}
-          getAriaValueText={t.capacityValue}
-          onChange={(_e, v) => typeof v === 'number' && onChange({ capacity: v })}
-          sx={{ mx: 1, width: 'calc(100% - 16px)' }}
-        />
+        <CapacityControl value={item.capacity} channel={channel} labelId={`cap-${item.groupJid}`} onChange={(capacity) => onChange({ capacity })} />
       </Box>
 
       {strategy === 'WEIGHTED' && (
@@ -206,13 +250,21 @@ export function RotationGroupItem({
           size="small"
           sx={{ mt: 1.5, ...blurInviteSx }}
           label={t.manualInviteUrl}
-          placeholder="https://chat.whatsapp.com/…"
+          placeholder={INVITE_URL_EXAMPLE[channel]}
           value={item.manualInviteUrl}
           onChange={(e) => onChange({ manualInviteUrl: e.target.value })}
           error={Boolean(error)}
-          helperText={error ?? t.manualInviteHelp}
+          helperText={error ?? t.manualInviteHelp[channel]}
           inputProps={{ inputMode: 'url', autoComplete: 'off', spellCheck: false }}
         />
+      )}
+      {inviteUrl && item.linkSource === 'AUTO' && !needsInviteField(item, status) && (
+        <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1, display: 'flex', gap: 0.75, minWidth: 0 }}>
+          <span>{t.currentInvite}</span>
+          <Blurred when={blurInvite} inline radius={4}>
+            <Box component="span" data-testid="rotation-group-invite" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{inviteUrl}</Box>
+          </Blurred>
+        </Typography>
       )}
       {error && !needsInviteField(item, status) && (
         <Typography variant="caption" color="error" component="p" sx={{ mt: 1 }}>{error}</Typography>

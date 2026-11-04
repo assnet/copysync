@@ -100,6 +100,9 @@ export const saveGroupsBodySchema = {
 
 // ── Saída ────────────────────────────────────────────────────────────────────
 
+/** Canal do rodízio = engine da sessão. */
+const channel = { type: 'string', enum: ['whatsapp', 'telegram'] } as const;
+
 const group = {
   type: 'object',
   additionalProperties: false,
@@ -128,6 +131,7 @@ const rotation = {
   properties: {
     id: { type: 'string' },
     sessionId: { type: 'string' },
+    channel,
     domainId: { type: 'string' },
     hostname: { type: ['string', 'null'] },
     slug: { type: 'string' },
@@ -169,7 +173,13 @@ export const overviewResponse = envelope({
       items: {
         type: 'object',
         additionalProperties: false,
-        properties: { id: { type: 'string' }, name: { type: 'string' }, status: { type: 'string' } },
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          status: { type: 'string' },
+          channel,
+          avatarUrl: { type: ['string', 'null'] },
+        },
       },
     },
   },

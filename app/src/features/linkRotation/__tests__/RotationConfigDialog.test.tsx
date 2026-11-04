@@ -18,8 +18,8 @@ const overview: RotationOverview = {
   domains: [{ id: 'd1', hostname: 'copysync.com.br' }],
   limits: { linkRotations: 3, linkRotationGroups: 5 },
   sessions: [
-    { id: 's1', name: 'Loja', status: 'CONNECTED' },
-    { id: 's2', name: 'Reserva', status: 'DISCONNECTED' },
+    { id: 's1', name: 'Loja', status: 'CONNECTED', channel: 'whatsapp', avatarUrl: null },
+    { id: 's2', name: 'Reserva', status: 'DISCONNECTED', channel: 'telegram', avatarUrl: null },
   ],
 };
 
@@ -29,7 +29,7 @@ const group = {
   clicksSinceSync: 0, clickCount: 0, lastClickAt: null,
 };
 const rotation: Rotation = {
-  id: 'r1', sessionId: 's1', domainId: 'd1', hostname: 'copysync.com.br', slug: 'promo',
+  id: 'r1', sessionId: 's1', channel: 'whatsapp', domainId: 'd1', hostname: 'copysync.com.br', slug: 'promo',
   publicUrl: 'https://promo.copysync.com.br', status: 'ACTIVE', strategy: 'BALANCED', title: null,
   clickCount: 0, lastClickAt: null, allFullNotifiedAt: null, createdAt: '', updatedAt: '', groups: [group, { ...group, id: 'g2' }],
 };
@@ -69,6 +69,17 @@ describe('RotationConfigDialog', () => {
     expect(slugInput()).toHaveValue('promocao-top');
     expect(screen.getByText('12/50')).toBeInTheDocument();
     expect(preview()).toHaveTextContent('https://promocao-top.copysync.com.br');
+  });
+
+  it('seletor de sessão mostra foto, logo e canal de cada sessão', async () => {
+    setup();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: new RegExp(t.session) }));
+    const options = await screen.findAllByRole('option');
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveTextContent('Loja');
+    expect(options[0]).toHaveTextContent('WhatsApp');
+    expect(options[1]).toHaveTextContent('Reserva');
+    expect(options[1]).toHaveTextContent('Telegram');
   });
 
   it('cria com o nome finalizado e limpa o rascunho', async () => {

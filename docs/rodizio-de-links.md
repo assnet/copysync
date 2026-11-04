@@ -1,7 +1,7 @@
 # Rodízio de links
 
 Um link fixo por tenant (`https://<slug>.<domínio>`) para divulgar nas redes. Cada visita cai numa página leve com o
-botão "Entrar no grupo", que leva a um grupo de WhatsApp da sessão com vaga. Quando um grupo enche, o próximo assume.
+botão "Entrar no grupo", que leva a um grupo da sessão com vaga (WhatsApp ou Telegram, conforme a sessão). Quando um grupo enche, o próximo assume.
 Roadmap item 9. Specs: `.specs/features/link-rotation/` (`spec`, `design`, `context`, `api-contract`, `tasks`).
 Termo de produto: **rodízio de links**. Nomes de código: `linkRotation`, `link-rotation`, `LinkDomain`.
 
@@ -10,6 +10,7 @@ Termo de produto: **rodízio de links**. Nomes de código: `linkRotation`, `link
 | Termo | O que é |
 | --- | --- |
 | Rotação (`LinkRotation`) | Um link público do tenant: sessão dona dos grupos, domínio, slug, estratégia, título |
+| Canal (`LinkRotation.channel`) | `whatsapp` ou `telegram`, derivado de `Session.engine` (não é coluna). Decide formato do convite e faixa do teto |
 | Domínio de link (`LinkDomain`) | Domínio da plataforma (sem `tenantId`) com wildcard apontando para a API. Hoje: `copysync.com.br` |
 | Slug | Rótulo do subdomínio (`promodemae1`). Único por domínio, entre todos os tenants |
 | Grupo (`LinkRotationGroup`) | Grupo da sessão dentro da rotação: convite, teto (`capacity`), peso, ordem, contadores |
@@ -41,7 +42,7 @@ Com domínios aninhados vence o mais longo. Domínio `PAUSED` sai do cache em at
 | Rotação `PAUSED` ou `PAUSED_BY_PLAN` | 200 | pausado |
 | Bot (`classifyUserAgent`) | 200 | só prévia (título, OG), **sem convite, não conta** |
 | Nenhum grupo elegível | 200 | lotado; grava `allFullNotifiedAt` no máx. 1×/h |
-| Grupo escolhido | 200 | botão + `meta refresh` de 1 s para `chat.whatsapp.com/<code>` |
+| Grupo escolhido | 200 | botão + `meta refresh` de 1 s para `inviteUrlFromCode(code, channel)` (`chat.whatsapp.com/<code>` ou `t.me/<code>`) |
 
 Página: templates em `presentation/templates/` (string, sem engine), tudo escapado, marca via `APP_NAME`, claro/escuro por
 `prefers-color-scheme`. CSP própria: `default-src 'none'`, estilo só pelo hash SHA-256 do CSS fixo, nenhum script, nenhuma
@@ -75,7 +76,9 @@ Lease `link-rotation-member-sync` em `job_leases` (5 min): um processo por tick 
 
 - Vencido: `memberCountAt` nulo ou > 15 min, **ou** `clicksSinceSync ≥ 25` com piso de 2 min da leitura anterior.
 - Só grupos `ACTIVE`/`FULL` de rotação `ACTIVE`, sessão `CONNECTED` não excluída, tenant `ACTIVE`.
-- Lote de 50 por tick (≤ 50 chamadas/min ao WhatsApp), mais antigos primeiro, agrupados por sessão, orçamento de 4 min.
+- Lote de 50 por tick (≤ 50 chamadas/min ao engine), mais antigos primeiro, agrupados por sessão, orçamento de 4 min.
+- Telegram: o roteador manda para o adapter `telegram`; supergrupo/canal contam por `channels.GetFullChannel`
+  (`participantsCount`), grupo básico pela própria entidade. Erro GramJS é traduzido (`FLOOD_WAIT` etc.).
 - `IMessagingEngine.getGroupSummary` → `memberCount`, zera `clicksSinceSync` (desconta só os cliques vistos) e ajusta
   `FULL ↔ ACTIVE` pelo teto. Sessão desconectada: pula o resto da sessão sem gravar.
 - Outra falha de leitura grava só a tentativa: **`memberCountAt` = última tentativa**, não última leitura boa (contagem
@@ -108,8 +111,29 @@ Entitlements `link_rotations` e `link_rotation_groups`. Presets (data migration 
 - `AUTO`: `engine.getGroupInviteLink` pela sessão. Exige a sessão admin do grupo.
 - Sem permissão (`GROUP_INVITE_NOT_ALLOWED`) → `NEEDS_LINK`, `linkSource` nulo. Engine/sessão fora → mantém o que tinha
   ou `NEEDS_LINK`, sem derrubar o salvamento. Outro erro sobe.
-- `MANUAL`: usuário cola o link; `parseInviteCode` aceita variações de `chat.whatsapp.com/<code>` (code 16–32
-  alfanumérico). Banco guarda só o code.
+- `MANUAL`: usuário cola o link; `parseInviteCode(raw, channel)` valida no formato do canal da rotação. Banco guarda só
+  o code; a URL é sempre remontada por `inviteUrlFromCode(code, channel)` (`domain/services/inviteUrl.ts`). Erro:
+  `LINK_INVITE_URL_INVALID` com `meta.channel` (o painel mostra o formato certo).
+- Trocar a sessão por outra de canal diferente já apaga os grupos (são da sessão antiga): não existe code de um canal
+  lido no outro.
+
+### Por canal
+
+| | WhatsApp | Telegram |
+| --- | --- | --- |
+| Link aceito no manual | `chat.whatsapp.com/<code>` (+ `invite/`, sem esquema, `www.`); code 16–32 alfanumérico | `t.me/+<hash>`, `t.me/joinchat/<hash>` (vira `+<hash>`), `t.me/<username>` público (5–32, letra no início); também `telegram.me`/`telegram.dog`, sem esquema, `www.` |
+| Code guardado | `<code>` | o que vem depois de `t.me/`: `+<hash>` ou `<username>` |
+| Teto (`GROUP_CAPACITY`) | 50–1.024, padrão 1.000 | 50–200.000, padrão 10.000 |
+| Convite `AUTO` | sessão admin do grupo | criadora ou admin com `inviteUsers` (`ExportChatInvite`); `CHAT_ADMIN_REQUIRED` → `GROUP_INVITE_NOT_ALLOWED` |
+| Grupos listados no painel | todos os grupos da sessão | só onde `canInvite` (grupo, supergrupo ou canal de transmissão) |
+
+- Telegram: grupo básico vai até 200 membros e o próprio Telegram o converte em supergrupo ao crescer; supergrupo até
+  200.000; canal (broadcast) não tem limite de inscritos. Em canal o teto é só o ponto em que o rodízio passa ao
+  próximo — a API não distingue grupo de canal no teto (a faixa é a mesma) e o painel só explica no texto de ajuda.
+- `ParticipatingGroupInfo.canInvite` (opcional, ausente = desconhecido = `true`) vem do adapter Telegram;
+  `OffersLinkRotationGroupDirectory` filtra por ele (antes filtrava `canPost`, que excluía canal em que a sessão é admin
+  sem postar e incluía grupo em que ela não pode convidar). Consequência: no Telegram não dá para escolher grupo em que
+  a sessão não é admin e colar link manual; para isso ela precisa da permissão de convidar.
 
 ## Slug
 
@@ -196,7 +220,9 @@ há valor sintético fixo. Telas do tenant e do admin seguem funcionando.
 - Não deixar `/health`, `/docs` ou `/api` responderem em host público.
 - Não afrouxar a CSP (`unsafe-inline`, script) nem pôr CSS dinâmico: o hash é do CSS fixo.
 - Não ligar `LINK_ROTATION_MEMBER_SYNC_ENABLED` fora da Render (`api/.env` = produção).
-- Não chamar o WhatsApp por clique: membros só pelo job/refresh.
+- Não chamar o engine (WhatsApp ou Telegram) por clique: membros só pelo job/refresh.
+- Não montar nem validar link de convite fora de `domain/services/inviteUrl.ts` (API) e `features/linkRotation/inviteUrl.ts`
+  (painel, espelho): nada de `chat.whatsapp.com`/`t.me` fixo em use case, template ou componente.
 - Não guardar estado operacional em memória sem TTL (o cache de domínios é TTL 60 s e descartável).
 - Não usar o nome do app em código, rota, chave ou evento (white label); marca só via `APP_NAME`.
 - No painel, não comparar `Date.now()` com horário do servidor: `serverNow()`.
@@ -227,7 +253,8 @@ há valor sintético fixo. Telas do tenant e do admin seguem funcionando.
 | Banco | `prisma/migrations/20261029020000_create_link_rotation` (`link_domains`, `link_rotations`, `link_rotation_groups`, `link_slug_reservations`, `link_clicks` + presets) |
 | Painel tenant | `app/src/pages/link-rotation/LinkRotationPage.tsx` · `app/src/features/linkRotation/` · `services/linkRotation.service.ts` · `/link-rotation` |
 | Painel admin | `app/src/pages/admin/AdminLinkDomainsPage.tsx` · `app/src/features/linkDomainsAdmin/` · `services/adminLinkDomains.service.ts` |
-| Privacidade | `privacyFlags.ts`: `linkRotation.rotationLink`, `.sessionName`, `.groupName`, `.groupAvatar` |
+| Privacidade | `privacyFlags.ts`: `linkRotation.rotationLink`, `.sessionName`, `.sessionAvatar`, `.groupName`, `.groupAvatar`, `.inviteLink` |
+| Sessão no painel | `RotationSessionIdentity`/`RotationSessionAvatar` (foto + logo do canal via `ChannelLogo`); foto vem do overview (`sessions[].avatarUrl`, lida pelo engine só para sessão conectada, como a lista de sessões) |
 
 ## Identidade da página pública
 

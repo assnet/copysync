@@ -11,8 +11,9 @@ import type {
 export class OffersLinkRotationGroupDirectory implements ILinkRotationGroupDirectory {
   async listSessionGroups(tenantId: string, sessionId: string, search?: string): Promise<LinkRotationSessionGroupList> {
     const r = await offersContainer.listSessionGroups().execute({ tenantId, sessionId, search });
-    // Canal só de leitura (Telegram) não é grupo de rodízio: mantém a lista de antes
-    return { ...r, groups: r.groups.filter((g) => g.canPost) };
+    // O rodízio precisa do convite: no Telegram só entra grupo/canal em que a sessão é criadora ou
+    // admin com permissão de convidar (inclui canal de transmissão). WhatsApp não informa (= true).
+    return { ...r, groups: r.groups.filter((g) => g.canInvite) };
   }
 
   async ensureConversation(tenantId: string, sessionId: string, groupJid: string): Promise<string> {

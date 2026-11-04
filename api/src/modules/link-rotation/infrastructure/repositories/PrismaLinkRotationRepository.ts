@@ -12,7 +12,7 @@ import type { LinkRotation, LinkRotationWithGroups } from '../../domain/entities
 import type { LinkRotationGroup } from '../../domain/entities/LinkRotationGroup';
 import { LinkRotationNotFoundError, LinkSlugTakenError } from '../../../../shared/errors/internal/LinkRotationErrors';
 import { PrismaLinkDomainMapper } from '../mappers/PrismaLinkDomainMapper';
-import { PrismaLinkRotationMapper } from '../mappers/PrismaLinkRotationMapper';
+import { PrismaLinkRotationMapper, ROTATION_SESSION_ENGINE } from '../mappers/PrismaLinkRotationMapper';
 
 const GROUPS_ORDER = { orderBy: { position: 'asc' as const } };
 
@@ -45,14 +45,14 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
   async listByTenant(tenantId: string): Promise<LinkRotationWithGroups[]> {
     const rows = await this.prisma.linkRotation.findMany({
       where: { tenantId },
-      include: { groups: GROUPS_ORDER },
+      include: { groups: GROUPS_ORDER, ...ROTATION_SESSION_ENGINE },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(PrismaLinkRotationMapper.toDomainWithGroups);
   }
 
   async findById(tenantId: string, id: string): Promise<LinkRotationWithGroups | null> {
-    const row = await this.prisma.linkRotation.findFirst({ where: { id, tenantId }, include: { groups: GROUPS_ORDER } });
+    const row = await this.prisma.linkRotation.findFirst({ where: { id, tenantId }, include: { groups: GROUPS_ORDER, ...ROTATION_SESSION_ENGINE } });
     return row ? PrismaLinkRotationMapper.toDomainWithGroups(row) : null;
   }
 
@@ -71,6 +71,7 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
           ...(input.strategy && { strategy: input.strategy }),
           title: input.title ?? null,
         },
+        include: ROTATION_SESSION_ENGINE,
       });
       return PrismaLinkRotationMapper.toDomain(row);
     } catch (err) {
@@ -98,7 +99,7 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
             ...(input.title !== undefined && { title: input.title }),
           },
         });
-        return tx.linkRotation.findFirst({ where: { id, tenantId } });
+        return tx.linkRotation.findFirst({ where: { id, tenantId }, include: ROTATION_SESSION_ENGINE });
       });
       if (!row) throw new LinkRotationNotFoundError(id);
       return PrismaLinkRotationMapper.toDomain(row);
@@ -175,7 +176,7 @@ export class PrismaLinkRotationRepository implements ILinkRotationRepository {
     if (!domain || domain.status !== 'ACTIVE') return null;
     const row = await this.prisma.linkRotation.findUnique({
       where: { domainId_slug: { domainId: domain.id, slug: slug.trim().toLowerCase() } },
-      include: { groups: GROUPS_ORDER, tenant: { select: { status: true } } },
+      include: { groups: GROUPS_ORDER, tenant: { select: { status: true } }, ...ROTATION_SESSION_ENGINE },
     });
     if (!row) return null;
     const { tenant, ...rotation } = row;

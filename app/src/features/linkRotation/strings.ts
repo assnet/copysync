@@ -5,7 +5,7 @@
  * - frase com variável é função tipada; componente nunca concatena pedaços
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
-import type { RotationGroupStatus, RotationStatus, RotationStrategy } from './types';
+import type { RotationChannel, RotationGroupStatus, RotationStatus, RotationStrategy } from './types';
 import type { PlanLimitKind } from './planUpsell';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -108,7 +108,7 @@ export const linkRotationStrings = {
     cta: 'Criar meu link',
     steps: ['Escolha o nome do link', 'Selecione os grupos', 'Copie e divulgue'],
     noDomain: 'Os links ainda não estão disponíveis. Assim que liberarmos um domínio, você poderá criar o seu.',
-    noSession: 'Conecte uma sessão do WhatsApp para escolher os grupos do link.',
+    noSession: 'Conecte uma sessão do WhatsApp ou do Telegram para escolher os grupos do link.',
     connectSession: 'Conectar sessão',
   },
 
@@ -161,7 +161,7 @@ export const linkRotationStrings = {
     ACTIVE: 'O grupo tem vaga e entra no rodízio.',
     PAUSED: 'Você pausou este grupo; ele não recebe cliques.',
     FULL: 'O grupo chegou ao limite de membros. Volta sozinho quando abrir vaga.',
-    NEEDS_LINK: 'A sessão não é admin do grupo. Torne-a admin ou cole o link de convite manualmente.',
+    NEEDS_LINK: 'A sessão não consegue gerar o convite: ela precisa ser admin (no Telegram, com permissão de convidar). Torne-a admin ou cole o link de convite manualmente.',
     PAUSED_BY_PLAN: 'Seu plano atual tem menos grupos. Faça upgrade para reativar.',
   } satisfies Record<RotationGroupStatus, string>,
 
@@ -184,7 +184,7 @@ export const linkRotationStrings = {
     createTitle: 'Criar link',
     editTitle: 'Configurar link',
     session: 'Sessão',
-    sessionHelp: 'A sessão precisa estar nos grupos. Se ela for admin, o link de convite é buscado sozinho.',
+    sessionHelp: 'A sessão precisa estar nos grupos. Se ela for admin, o link de convite é buscado sozinho. O canal da sessão (WhatsApp ou Telegram) define o tipo de grupo e de link.',
     domain: 'Domínio',
     slug: 'Nome do link',
     slugHelp: 'Letras minúsculas, números e hífen. De 3 a 50 caracteres.',
@@ -210,7 +210,7 @@ export const linkRotationStrings = {
     suggestionUse: (slug: string) => `Usar o nome ${slug}`,
     domainHelp: 'Endereço que vem depois do nome do link.',
     sessionUntitled: 'Sessão sem nome',
-    sessionStatusTooltip: 'Situação da conexão desta sessão com o WhatsApp',
+    sessionStatusTooltip: 'Situação da conexão desta sessão',
     sessionDisconnected: 'Esta sessão não está conectada. Você pode salvar, mas os grupos e os links de convite só são lidos com ela conectada.',
     sessionChangeWarning: (n: number) =>
       `Ao trocar a sessão, ${n === 1 ? 'o grupo escolhido sai' : `os ${n.toLocaleString('pt-BR')} grupos escolhidos saem`} do link. Depois você escolhe os grupos da nova sessão.`,
@@ -242,7 +242,10 @@ export const linkRotationStrings = {
     loadError: 'Não foi possível carregar os grupos da sessão.',
     retry: 'Tentar de novo',
     partial: 'A lista pode estar incompleta: a sessão ainda está carregando os grupos.',
-    empty: 'Nenhum grupo encontrado nesta sessão. A sessão precisa participar dos grupos: adicione o número dela aos grupos que você quer usar.',
+    empty: {
+      whatsapp: 'Nenhum grupo encontrado nesta sessão. A sessão precisa participar dos grupos: adicione o número dela aos grupos que você quer usar.',
+      telegram: 'Nenhum grupo ou canal encontrado. No Telegram, só aparecem os grupos e canais em que a sessão é admin com permissão de convidar.',
+    } satisfies Record<RotationChannel, string>,
     emptySearch: 'Nenhum grupo com esse nome.',
     moveUp: 'Subir na ordem',
     moveDown: 'Descer na ordem',
@@ -259,16 +262,25 @@ export const linkRotationStrings = {
     weightHelp: 'Quanto maior, mais cliques o grupo recebe. Peso 3 recebe cerca de três vezes mais que peso 1.',
     weightValue: (n: number) => `Peso ${count(n)}`,
     capacity: 'Limite de membros',
-    capacityHelp:
-      'O WhatsApp aceita até 1.024 pessoas por grupo. Deixe uma folga (ex.: 1.000) para admins e quem entra por outro caminho. Ao chegar no limite, o grupo sai do rodízio até abrir vaga.',
+    capacityHelp: {
+      whatsapp:
+        'O WhatsApp aceita até 1.024 pessoas por grupo. Deixe uma folga (ex.: 1.000) para admins e quem entra por outro caminho. Ao chegar no limite, o grupo sai do rodízio até abrir vaga.',
+      telegram:
+        'No Telegram, grupo vai até 200.000 membros (o Telegram converte grupos pequenos ao crescer) e canal não tem limite. Escolha até quantos membros este recebe antes de o rodízio passar para o próximo.',
+    } satisfies Record<RotationChannel, string>,
+    capacityInput: 'Limite de membros (número)',
     capacityValue: (n: number) => `${count(n)} membros`,
     linkSource: 'Origem do link de convite',
     linkAuto: 'Automático',
-    linkAutoHelp: 'A sessão gera o link de convite sozinha. Ela precisa ser admin do grupo.',
+    linkAutoHelp: 'A sessão gera o link de convite sozinha. Ela precisa ser admin do grupo (no Telegram, com permissão de convidar).',
     linkManual: 'Manual',
     linkManualHelp: 'Você cola o link de convite do grupo. Use quando a sessão não é admin.',
     manualInviteUrl: 'Link de convite do grupo',
-    manualInviteHelp: 'Cole o link no formato https://chat.whatsapp.com/…',
+    manualInviteHelp: {
+      whatsapp: 'Cole o link no formato https://chat.whatsapp.com/…',
+      telegram: 'Cole o link no formato https://t.me/+… ou, se for público, https://t.me/nome',
+    } satisfies Record<RotationChannel, string>,
+    currentInvite: 'Link de convite atual:',
     manualInviteRequired: 'Cole o link de convite do grupo.',
     statusNew: 'Novo',
     statusNewHelp: 'Salve para o grupo entrar no rodízio.',
@@ -367,12 +379,15 @@ export const linkRotationStrings = {
     slugInvalid: 'Use de 3 a 50 caracteres: letras minúsculas, números e hífen.',
     rotationNotFound: 'Este link não existe mais. Atualize a página.',
     groupInvalid: 'Um dos grupos escolhidos não pertence a esta sessão.',
-    inviteUrlInvalid: 'Link de convite inválido. Use o formato https://chat.whatsapp.com/…',
+    inviteUrlInvalid: {
+      whatsapp: 'Link de convite inválido. Use o formato https://chat.whatsapp.com/…',
+      telegram: 'Link de convite inválido. Use https://t.me/+… ou https://t.me/nome (grupo ou canal público).',
+    } satisfies Record<RotationChannel, string>,
     domainInvalid: 'Domínio inválido ou indisponível. Escolha outro.',
     domainTaken: (hostname: string | null) => (hostname ? `O domínio ${hostname} já está cadastrado.` : 'Esse domínio já está cadastrado.'),
     domainInUse: 'Este domínio está em uso por links de clientes e não pode ser removido.',
     notConfigured: 'O rodízio de links está temporariamente indisponível. Tente mais tarde.',
-    inviteNotAllowed: 'A sessão não é admin do grupo. Torne-a admin ou cole o link de convite manualmente.',
+    inviteNotAllowed: 'A sessão não consegue gerar o convite deste grupo (precisa ser admin; no Telegram, com permissão de convidar). Torne-a admin ou cole o link manualmente.',
     engineNotReady: 'A sessão está iniciando. Tente de novo em alguns segundos.',
     sessionNotConnected: 'A sessão está desconectada. Conecte-a para continuar.',
   },

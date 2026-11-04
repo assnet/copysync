@@ -3,8 +3,14 @@ import type {
   ILinkRotationSessionReader,
   LinkRotationSessionRef,
 } from '../../domain/contracts/ILinkRotationSessionReader';
+import { channelForEngine } from '../../domain/services/inviteUrl';
 
-const SELECT = { id: true, name: true, status: true } as const;
+const SELECT = { id: true, name: true, status: true, engine: true, phone: true } as const;
+
+type Row = { id: string; name: string; status: string; engine: string; phone: string | null };
+const toRef = (r: Row): LinkRotationSessionRef => ({
+  id: r.id, name: r.name, status: r.status, channel: channelForEngine(r.engine), phone: r.phone,
+});
 
 /** Sessões do tenant (sem as excluídas) para o rodízio. Sempre com `tenantId`. */
 export class PrismaLinkRotationSessionReader implements ILinkRotationSessionReader {
@@ -16,11 +22,11 @@ export class PrismaLinkRotationSessionReader implements ILinkRotationSessionRead
       select: SELECT,
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status }));
+    return rows.map(toRef);
   }
 
   async findById(tenantId: string, sessionId: string): Promise<LinkRotationSessionRef | null> {
     const r = await this.prisma.session.findFirst({ where: { id: sessionId, tenantId, deletedAt: null }, select: SELECT });
-    return r ? { id: r.id, name: r.name, status: r.status } : null;
+    return r ? toRef(r) : null;
   }
 }

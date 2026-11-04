@@ -72,7 +72,7 @@ export function linkRotationError(err: unknown): LinkRotationErrorInfo {
     case 'LINK_GROUP_INVALID':
       return { ...base, message: t.groupInvalid };
     case 'LINK_INVITE_URL_INVALID':
-      return { ...base, message: t.inviteUrlInvalid };
+      return { ...base, message: t.inviteUrlInvalid[meta.channel === 'telegram' ? 'telegram' : 'whatsapp'] };
     case 'LINK_DOMAIN_INVALID':
       return { ...base, message: t.domainInvalid };
     case 'LINK_DOMAIN_TAKEN':

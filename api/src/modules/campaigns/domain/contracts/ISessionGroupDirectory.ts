@@ -8,6 +8,8 @@ export interface DirectoryGroup {
   avatarUrl?: string | null;
   /** A sessão pode postar no grupo. Ausente = true; false = canal só de leitura (serve só para monitorar). */
   canPost?: boolean;
+  /** A sessão consegue gerar convite. Ausente = desconhecido (tratado como true). */
+  canInvite?: boolean;
 }
 
 export interface ISessionGroupDirectory {

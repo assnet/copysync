@@ -1,4 +1,4 @@
-/** Grupo de que a sessão participa (WhatsApp + conversas já conhecidas do chat). */
+/** Grupo de que a sessão participa (engine + conversas já conhecidas do chat). */
 export interface LinkRotationSessionGroup {
   /** Sem `@g.us`. */
   groupJid: string;
@@ -10,7 +10,7 @@ export interface LinkRotationSessionGroup {
 
 export interface LinkRotationSessionGroupList {
   groups: LinkRotationSessionGroup[];
-  /** true = WhatsApp não respondeu; só os grupos que o chat já conhece. */
+  /** true = engine não respondeu; só os grupos que o chat já conhece. */
   partial: boolean;
 }
 

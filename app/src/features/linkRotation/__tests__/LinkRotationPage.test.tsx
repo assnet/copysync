@@ -14,13 +14,13 @@ vi.mock('@/services/linkRotation.service', () => ({
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 
 const rotation: Rotation = {
-  id: 'r1', sessionId: 's1', domainId: 'd1', hostname: 'copysync.com.br', slug: 'promo',
+  id: 'r1', sessionId: 's1', channel: 'whatsapp', domainId: 'd1', hostname: 'copysync.com.br', slug: 'promo',
   publicUrl: 'https://promo.copysync.com.br', status: 'ACTIVE', strategy: 'BALANCED', title: null,
   clickCount: 3, lastClickAt: null, allFullNotifiedAt: null, createdAt: '', updatedAt: '', groups: [],
 };
 const base: RotationOverview = {
   rotations: [], domains: [{ id: 'd1', hostname: 'copysync.com.br' }],
-  limits: { linkRotations: 1, linkRotationGroups: 3 }, sessions: [{ id: 's1', name: 'Loja', status: 'CONNECTED' }],
+  limits: { linkRotations: 1, linkRotationGroups: 3 }, sessions: [{ id: 's1', name: 'Loja', status: 'CONNECTED', channel: 'whatsapp', avatarUrl: null }],
 };
 
 const renderPage = (mode: 'light' | 'dark' = 'light') =>

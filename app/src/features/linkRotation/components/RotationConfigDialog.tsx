@@ -3,9 +3,10 @@ import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, FormHelperText,
   InputAdornment, MenuItem, Radio, RadioGroup, Stack, Switch, TextField, Tooltip, Typography, alpha,
 } from '@mui/material';
-import { Globe, Info, Link2, Smartphone, Sparkles } from 'lucide-react';
+import { Globe, Info, Lightbulb, Link2 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
 import { SessionStatusChip } from '@/features/sessions/components/SessionStatusChip';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { linkRotationService } from '@/services/linkRotation.service';
@@ -17,6 +18,7 @@ import {
   type Rotation, type RotationOverview, type RotationStrategy, type UpdateRotationInput,
 } from '../types';
 import { ConfirmRenameDialog } from './ConfirmRenameDialog';
+import { RotationSessionIdentity } from './RotationSessionIdentity';
 
 const t = linkRotationStrings.config;
 const ts = linkRotationStrings.strategy;
@@ -83,7 +85,6 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
     suggestions: `${uid}-suggestions`, strategy: `${uid}-strategy`,
   };
   const blurLink = useBlur('linkRotation.rotationLink');
-  const blurSession = useBlur('linkRotation.sessionName');
   // Campo editável não usa <Blurred> (bloquearia o clique); borra só o texto digitado.
   const blurInputSx = blurLink ? { '& .MuiInputBase-input': { filter: 'blur(5px)', userSelect: 'none' } } : undefined;
 
@@ -284,7 +285,7 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
                               clickable
                               color="primary"
                               variant="outlined"
-                              icon={<AppIcon icon={Sparkles} size="sm" />}
+                              icon={<AppIcon icon={Lightbulb} size="sm" />}
                               aria-label={t.suggestionUse(s)}
                               onClick={() => set('slug', s)}
                             />
@@ -319,14 +320,18 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
                   value={sessionId}
                   onChange={(e) => set('sessionId', e.target.value)}
                   helperText={t.sessionHelp}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><AppIcon icon={Smartphone} size="sm" /></InputAdornment> }}
                   SelectProps={{
-                    renderValue: () => <Blurred when={blurSession} inline radius={5}>{session?.name || t.sessionUntitled}</Blurred>,
+                    renderValue: () => <RotationSessionIdentity session={session} size={24} />,
+                    SelectDisplayProps: { style: { display: 'flex', alignItems: 'center', paddingTop: 12, paddingBottom: 12 } },
                   }}
                 >
                   {overview.sessions.map((s) => (
-                    <MenuItem key={s.id} value={s.id} sx={{ justifyContent: 'space-between', gap: 2 }}>
-                      <Blurred when={blurSession} inline radius={5}>{s.name || t.sessionUntitled}</Blurred>
+                    <MenuItem key={s.id} value={s.id} sx={{ justifyContent: 'space-between', gap: 2, minHeight: 52 }}>
+                      <RotationSessionIdentity
+                        session={s}
+                        size={32}
+                        secondary={<Typography component="span" variant="caption" color="text.secondary" aria-hidden>{channelLabel(s.channel)}</Typography>}
+                      />
                       <Tooltip title={t.sessionStatusTooltip} arrow placement="left">
                         <span><SessionStatusChip status={s.status} /></span>
                       </Tooltip>
