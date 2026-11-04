@@ -11,5 +11,6 @@ ALTER TABLE "sessions"
 CREATE INDEX "sessions_ownerWorkerId_idx" ON "sessions"("ownerWorkerId");
 CREATE INDEX "sessions_connectRequestedAt_idx" ON "sessions"("connectRequestedAt");
 
--- Backfill (D3): sessões já conectadas contam como pedido de conexão, para a E4 readotá-las
-UPDATE "sessions" SET "connectRequestedAt" = NOW() WHERE "status" = 'CONNECTED' AND "deletedAt" IS NULL;
+-- Backfill (D3): sessões já conectadas contam como pedido de conexão, para a E4 readotá-las.
+-- Coluna `timestamp` sem fuso gravada em UTC (padrão do Prisma): `now()` convertido, nunca no fuso da sessão.
+UPDATE "sessions" SET "connectRequestedAt" = (now() AT TIME ZONE 'UTC') WHERE "status" = 'CONNECTED' AND "deletedAt" IS NULL;

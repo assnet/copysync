@@ -22,11 +22,13 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
     return n > 0;
   }
 
+  /** Sessão apagada (em qualquer processo) não renova: o dono a trata como lease perdido. */
   async renew(sessionIds: readonly string[], workerId: string, ttlMs: number): Promise<string[]> {
     if (sessionIds.length === 0) return [];
     const rows = await prisma.$queryRaw<{ id: string }[]>`
       UPDATE "sessions" SET "leaseUntil" = ${until(ttlMs)}
       WHERE "id" = ANY(${[...sessionIds]}::text[]) AND "ownerWorkerId" = ${workerId} AND "leaseUntil" > ${NOW}
+        AND "deletedAt" IS NULL
       RETURNING "id"`;
     return rows.map((r) => r.id);
   }

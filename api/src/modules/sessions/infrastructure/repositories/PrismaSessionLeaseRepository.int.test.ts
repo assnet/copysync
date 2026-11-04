@@ -94,6 +94,17 @@ describe('renew', () => {
     expect((await row(other)).ownerWorkerId).toBe(OTHER);
   });
 
+  it('sessão apagada com lease próprio vivo → não renova nem volta no retorno', async () => {
+    const live = await newSession();
+    const deleted = await newSession();
+    await repo.tryAcquire(live, ME, 5_000);
+    await repo.tryAcquire(deleted, ME, 5_000);
+    await prisma.session.update({ where: { id: deleted }, data: { deletedAt: new Date() } });
+    const before = (await row(deleted)).leaseUntil!;
+    expect(await repo.renew([live, deleted], ME, TTL)).toEqual([live]);
+    expect((await row(deleted)).leaseUntil).toEqual(before);
+  });
+
   it('lista vazia → [] sem consultar', async () => {
     expect(await repo.renew([], ME, TTL)).toEqual([]);
   });
