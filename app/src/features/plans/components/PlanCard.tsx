@@ -49,7 +49,17 @@ function FeatureRow({ benefit }: { benefit: PlanBenefit }) {
             background: gradient, color: theme.palette.getContrastText(theme.palette.primary.main),
           }}
         >
-          <AppIcon icon={ArrowLeftRight} size="sm" strokeWidth={2.5} />
+          {benefit.featureIcon === 'channels' ? (
+            // Dois logos sobrepostos: o recurso é a ponte entre os canais
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <AppIcon icon={WhatsAppIcon} size="sm" />
+              <Box sx={{ ml: '-5px', display: 'flex', borderRadius: '50%', boxShadow: `0 0 0 1.5px ${theme.palette.primary.main}` }}>
+                <AppIcon icon={TelegramIcon} size="sm" />
+              </Box>
+            </Box>
+          ) : (
+            <AppIcon icon={ArrowLeftRight} size="sm" strokeWidth={2.5} />
+          )}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>

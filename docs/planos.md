@@ -29,6 +29,7 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
   canal com logo (`WhatsAppIcon`/`TelegramIcon` via `AppIcon`, cor de `brandColor` por modo). Canal fora do plano
   vira uma célula única "A partir do PRO" (primeiro plano do catálogo que inclui o canal), sem traço nem "não incluso".
 - Por isso a lista `benefits` **não** repete sessões/grupos (o teste barra "grupos monitorados/de disparo" nela).
+- **Cross Channel** (`CROSS_CHANNEL_NAME`): monitorar no Telegram e postar no WhatsApp e vice-versa; bloco em destaque no MAX com ícone dos dois logos (`featureIcon: 'channels'`). Hoje a regra da API permite em qualquer plano com os dois canais.
 - **Cross Session** (nome de produto; `CROSS_SESSION_NAME` em `catalog.ts`): monitorar em uma sessão e disparar em outra do mesmo canal (`cross_session_dispatch`). Aparece como bloco em destaque (`featureName` no benefício, `FeatureRow` no `PlanCard`), é exclusivo do MAX e vale
   para 2+ sessões do mesmo canal; WhatsApp ↔ Telegram se cruzam em qualquer plano com os dois (benefício
   "Ofertas circulando entre WhatsApp e Telegram" no PRO, `PLAN_HINTS.bothChannels`).

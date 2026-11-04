@@ -26,6 +26,8 @@ export interface PlanBenefit {
   channel?: 'whatsapp' | 'telegram';
   /** Recurso com nome próprio (ex.: "Cross Session"): bloco em destaque; `label` vira a descrição. */
   featureName?: string;
+  /** Ícone do bloco do recurso: `sessions` = setas (Cross Session); `channels` = logos WhatsApp + Telegram. */
+  featureIcon?: 'sessions' | 'channels';
 }
 
 export interface PlanCatalogItem {
@@ -64,6 +66,9 @@ export interface PlanCatalogItem {
 /** Nome do recurso de monitorar numa sessão e disparar noutra do mesmo canal (`cross_session_dispatch`). */
 export const CROSS_SESSION_NAME = 'Cross Session';
 
+/** Nome do recurso de monitorar num canal e postar no outro (Telegram → WhatsApp e vice-versa). */
+export const CROSS_CHANNEL_NAME = 'Cross Channel';
+
 /** Benefício da Página de Ofertas (`storefront_enabled`: só PRO e MAX). */
 export const STOREFRONT_BENEFIT_LABEL = 'Página de Ofertas para a bio';
 
@@ -77,6 +82,8 @@ export const PLAN_HINTS = {
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
   crossSession:
     'Cross Session: com duas sessões do mesmo canal (ex.: dois WhatsApp), monitore grupos em uma e dispare nos grupos da outra. Entre WhatsApp e Telegram isso já vale em todo plano que tem os dois canais.',
+  crossChannel:
+    'Cross Channel: capture ofertas de grupos e canais do Telegram e poste nos seus grupos de WhatsApp, ou o contrário. Um só fluxo de ofertas alimenta os dois canais.',
   bothChannels: 'Monitore grupos no WhatsApp e dispare no Telegram, ou o contrário: as ofertas circulam entre os dois canais.',
   telegramGroupsChannels:
     'Capture ofertas de grupos e canais do Telegram, inclusive canais em que você só é inscrito, e envie para os grupos e canais em que você pode postar.',
@@ -152,6 +159,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
         label: 'Monitore em uma sessão e dispare em outra do mesmo canal',
         hint: PLAN_HINTS.crossSession,
         exclusive: true,
+        featureIcon: 'sessions',
+      },
+      {
+        featureName: CROSS_CHANNEL_NAME,
+        label: 'Monitore no Telegram e poste no WhatsApp, e vice-versa',
+        hint: PLAN_HINTS.crossChannel,
+        featureIcon: 'channels',
       },
       TELEGRAM_GROUPS_CHANNELS,
       { label: linkRotationLimitLabel(2, 10), hint: PLAN_HINTS.linkRotation },

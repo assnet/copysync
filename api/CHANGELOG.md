@@ -59,6 +59,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Cross Channel nos planos (`plans`) — app 0.73.0
+
+- **`catalog.ts`**, **`PlanCard.tsx`** — bloco em destaque **Cross Channel** no MAX (monitorar no Telegram e postar no WhatsApp e vice-versa), ícone com os logos dos dois canais (`featureIcon`)
+
 #### Frontend — Cross Session nos planos (`plans`) — app 0.72.0
 
 - **`catalog.ts`**, **`PlanCard.tsx`** — recurso de monitorar em uma sessão e disparar em outra do mesmo canal passa a se chamar **Cross Session** (`CROSS_SESSION_NAME`); benefício com `featureName` vira bloco em destaque (moldura em gradiente, ícone, nome, chip Exclusivo) no MAX
