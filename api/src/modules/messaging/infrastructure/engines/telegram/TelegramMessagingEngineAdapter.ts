@@ -160,6 +160,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   private readonly registry = new TelegramSessionRegistry();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
   private readonly suspended = new Map<string, string>();
+  /** Reabertura em curso por `resumeSession`: connect/disconnect/logout/abort a invalidam. */
+  private readonly resuming = new Map<string, object>();
   /**
    * Aberturas entre `leaseGate.acquire` e `registry.set`: a renovação as trata como locais.
    * Abort/suspend nesse intervalo marcam `cancelled` (abort vence suspend) e a abertura desiste.
@@ -192,7 +194,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
 
   /** Abre o cliente; com credenciais salvas conecta direto, sem elas inicia o login por QR. */
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
-    this.suspended.delete(input.sessionId);
+    this.forgetSuspension(input.sessionId);
     const entry = await this.openClient(input.sessionId, input.tenantId);
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
@@ -222,7 +224,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
-    this.suspended.delete(input.sessionId);
+    this.forgetSuspension(input.sessionId);
     const entry = this.registry.get(input.sessionId);
     if (entry) await this.teardown(input.sessionId, entry);
     await this.sessionRepo
@@ -232,7 +234,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async logoutSession(input: LogoutSessionInput): Promise<void> {
-    this.suspended.delete(input.sessionId);
+    this.forgetSuspension(input.sessionId);
     const entry = this.registry.get(input.sessionId);
     if (entry) {
       try {
@@ -935,7 +937,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * StringSession (o fluxo de login sai pelo `isCurrent` falso). Sem cliente local: nada.
    */
   async abortSession(sessionId: string): Promise<void> {
-    this.suspended.delete(sessionId);
+    this.forgetSuspension(sessionId);
     this.dialogsCache.delete(sessionId);
     this.cancelOpening(sessionId, 'abort');
     const entry = this.registry.get(sessionId);
@@ -965,13 +967,27 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     if (tenantId === undefined) return false;
     this.suspended.delete(sessionId);
     if (this.registry.get(sessionId)) return true;
+    const attempt = {};
+    this.resuming.set(sessionId, attempt);
     try {
       await this.reconnectSession({ sessionId, tenantId });
       return true;
     } catch (err) {
       if (err instanceof SessionLeaseHeldError) return false;
+      // Falha ao reabrir: segue suspensa para a próxima rodada (que conta a tentativa)
+      if (this.resuming.get(sessionId) === attempt && !this.registry.get(sessionId)) {
+        this.suspended.set(sessionId, tenantId);
+      }
       throw err;
+    } finally {
+      if (this.resuming.get(sessionId) === attempt) this.resuming.delete(sessionId);
     }
+  }
+
+  /** Ação explícita sobre a sessão: apaga a suspensão e invalida reabertura em curso. */
+  private forgetSuspension(sessionId: string): void {
+    this.suspended.delete(sessionId);
+    this.resuming.delete(sessionId);
   }
 
   /** Shutdown: destrói todos os clientes em paralelo; falha de um não segura os outros. */

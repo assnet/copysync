@@ -171,6 +171,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
   private readonly suspended = new Map<string, string>();
+  /** Reabertura em curso por `resumeSession`: connect/disconnect/logout/abort a invalidam. */
+  private readonly resuming = new Map<string, object>();
   /** Aberturas entre `leaseGate.acquire` e `registry.set`: a renovação as trata como locais. */
   private readonly opening = new Map<string, Set<OpeningToken>>();
 
@@ -194,7 +196,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
     const { sessionId, tenantId } = input;
-    this.suspended.delete(sessionId);
+    this.forgetSuspension(sessionId);
     // A user-initiated connect starts a fresh recovery cycle — in QR mode.
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
@@ -212,7 +214,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
-    this.suspended.delete(sessionId);
+    this.forgetSuspension(sessionId);
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
     const entry = this.registry.get(sessionId);
@@ -231,7 +233,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   /** Lease perdido: fecha o socket sem gravar status nem chaves (o pendente é descartado). */
   async abortSession(sessionId: string): Promise<void> {
-    this.suspended.delete(sessionId);
+    this.forgetSuspension(sessionId);
     this.cancelReconnect(sessionId);
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
@@ -278,7 +280,19 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     if (tenantId === undefined) return false;
     this.suspended.delete(sessionId);
     if (this.registry.has(sessionId)) return true;
-    return this.openSocket(sessionId, tenantId, 0, 'auto');
+    const attempt = {};
+    this.resuming.set(sessionId, attempt);
+    try {
+      return await this.openSocket(sessionId, tenantId, 0, 'auto');
+    } catch (err) {
+      // Falha ao reabrir: segue suspensa para a próxima rodada (que conta a tentativa)
+      if (this.resuming.get(sessionId) === attempt && !this.registry.has(sessionId)) {
+        this.suspended.set(sessionId, tenantId);
+      }
+      throw err;
+    } finally {
+      if (this.resuming.get(sessionId) === attempt) this.resuming.delete(sessionId);
+    }
   }
 
   /** Shutdown: fecha todos os sockets; os handles de auth ficam para o flushAllAuthStates. */
@@ -322,6 +336,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       tokens.delete(token);
       if (tokens.size === 0 && this.opening.get(sessionId) === tokens) this.opening.delete(sessionId);
     }
+  }
+
+  /** Ação explícita sobre a sessão: apaga a suspensão e invalida reabertura em curso. */
+  private forgetSuspension(sessionId: string): void {
+    this.suspended.delete(sessionId);
+    this.resuming.delete(sessionId);
   }
 
   /** Abort/suspend durante a abertura: a abertura em curso fecha o socket sem registrar. */
@@ -374,7 +394,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   async logoutSession(input: LogoutSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
-    this.suspended.delete(sessionId);
+    this.forgetSuspension(sessionId);
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
     const entry = this.registry.get(sessionId);

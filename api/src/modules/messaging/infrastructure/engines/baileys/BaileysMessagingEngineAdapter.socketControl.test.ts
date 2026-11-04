@@ -11,6 +11,7 @@ interface FakeSocket {
   ws: object;
 }
 const sockets: FakeSocket[] = [];
+const version = vi.hoisted(() => ({ fetch: vi.fn(async () => ({ version: [2, 3000, 0] })) }));
 
 vi.mock('@whiskeysockets/baileys', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -27,7 +28,7 @@ vi.mock('@whiskeysockets/baileys', async (importOriginal) => {
       sockets.push(s);
       return s;
     },
-    fetchLatestBaileysVersion: async () => ({ version: [2, 3000, 0] }),
+    fetchLatestBaileysVersion: () => version.fetch(),
     makeCacheableSignalKeyStore: (k: unknown) => k,
   };
 });
@@ -145,6 +146,40 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     await adapter.suspendSession('s1');
     gate.acquire.mockResolvedValueOnce(false);
 
+    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(sockets).toHaveLength(1);
+    expect(await adapter.resumeSession('s1')).toBe(false); // lease de outro dono limpa a marca
+    expect(gate.acquire).toHaveBeenCalledTimes(2);
+  });
+
+  it('resumeSession que falha ao reabrir mantém a suspensa e relança; a 2ª chamada reabre', async () => {
+    const { adapter } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    version.fetch.mockRejectedValueOnce(new Error('rede'));
+
+    await expect(adapter.resumeSession('s1')).rejects.toThrow('rede');
+    expect(registry.has('s1')).toBe(false);
+    expect(sockets).toHaveLength(1);
+
+    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(sockets).toHaveLength(2);
+    expect(registry.get('s1')?.tenantId).toBe(T);
+  });
+
+  it('abort durante o resume que falha não devolve a sessão à suspensão', async () => {
+    const { adapter } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    let fail!: (e: Error) => void;
+    version.fetch.mockImplementationOnce(() => new Promise((_, rej) => { fail = rej; }));
+
+    const p = adapter.resumeSession('s1');
+    await vi.waitFor(() => expect(fail).toBeDefined());
+    await adapter.abortSession('s1');
+    fail(new Error('rede'));
+
+    await expect(p).rejects.toThrow('rede');
     expect(await adapter.resumeSession('s1')).toBe(false);
     expect(sockets).toHaveLength(1);
   });

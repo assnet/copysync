@@ -138,12 +138,47 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
     auth.load.mockResolvedValueOnce('STRING_SESSION');
     gate.acquire.mockResolvedValueOnce(false);
     expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe(false); // SessionLeaseHeldError limpa a marca
+    expect(gate.acquire).toHaveBeenCalledTimes(2); // connect + 1 resume
 
     await adapter.connectSession({ sessionId: 's2', tenantId: T });
     await adapter.suspendSession('s2');
     await adapter.abortSession('s2');
     expect(await adapter.resumeSession('s2')).toBe(false);
     expect(await adapter.resumeSession('nope')).toBe(false);
+  });
+
+  it('resumeSession que falha ao reabrir mantém a suspensa e relança; a 2ª chamada reconecta', async () => {
+    fake.authorized = true;
+    const { adapter, auth } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    auth.load.mockRejectedValueOnce(new Error('db'));
+
+    await expect(adapter.resumeSession('s1')).rejects.toThrow('db');
+    expect(adapter.listLocalSessionIds()).toEqual([]);
+
+    auth.load.mockResolvedValueOnce('STRING_SESSION');
+    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(fake.clients).toHaveLength(2);
+  });
+
+  it('disconnect durante o resume que falha não devolve a sessão à suspensão', async () => {
+    fake.authorized = true;
+    const { adapter, auth } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    let fail!: (e: Error) => void;
+    auth.load.mockImplementationOnce(() => new Promise((_, rej) => { fail = rej; }));
+
+    const p = adapter.resumeSession('s1');
+    await vi.waitFor(() => expect(fail).toBeDefined());
+    await adapter.disconnectSession({ sessionId: 's1', tenantId: T });
+    fail(new Error('db'));
+
+    await expect(p).rejects.toThrow('db');
+    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(fake.clients).toHaveLength(1);
   });
 
   it('closeAllSockets destrói todos em paralelo, mesmo com falha de um, sem gravar nada', async () => {
