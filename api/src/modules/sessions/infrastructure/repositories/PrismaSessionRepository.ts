@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { PrismaSessionMapper } from '../mappers/PrismaSessionMapper';
 import { SessionNotFoundError } from '../../../../shared/errors/internal/SessionErrors';
@@ -9,6 +10,9 @@ import type {
   SessionStatusUpdate,
 } from '../../domain/contracts/ISessionRepository';
 import type { Session } from '../../domain/entities/Session';
+
+/** Status com socket aberto ou abrindo (sessão a restaurar no boot). */
+const ACTIVE_STATUSES = ['CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD', 'CONNECTED'] as const;
 
 export class PrismaSessionRepository implements ISessionRepository {
   async create(data: SessionCreateData): Promise<Session> {
@@ -76,9 +80,21 @@ export class PrismaSessionRepository implements ISessionRepository {
     const rows = await prisma.session.findMany({
       where: {
         deletedAt: null,
-        status: { in: ['CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD', 'CONNECTED'] },
+        status: { in: [...ACTIVE_STATUSES] },
       },
     });
+    return rows.map(PrismaSessionMapper.toDomain);
+  }
+
+  async findActiveSessionsWithoutLiveLease(): Promise<Session[]> {
+    // Relógio do banco em UTC (colunas `timestamp` sem fuso gravadas em UTC), como no lease.
+    const ids = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "sessions"
+      WHERE "deletedAt" IS NULL
+        AND "status"::text IN (${Prisma.join([...ACTIVE_STATUSES])})
+        AND ("leaseUntil" IS NULL OR "leaseUntil" < (now() AT TIME ZONE 'UTC'))`;
+    if (ids.length === 0) return [];
+    const rows = await prisma.session.findMany({ where: { id: { in: ids.map((r) => r.id) } } });
     return rows.map(PrismaSessionMapper.toDomain);
   }
 

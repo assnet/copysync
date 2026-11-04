@@ -39,6 +39,11 @@ export interface ISessionRepository {
    * when the process last ran.  Used only by SessionBootstrapService on startup.
    */
   findActiveSessionsForBootstrap(): Promise<Session[]>;
+  /**
+   * Mesmo filtro de `findActiveSessionsForBootstrap`, só as sem lease vivo (`leaseUntil` nulo ou
+   * vencido no relógio do banco). Usado pelo reconciler do boot (LEASE-10).
+   */
+  findActiveSessionsWithoutLiveLease(): Promise<Session[]>;
   /** Sessões não excluídas do tenant, por engine (contador de limite do painel). */
   countByEngine(tenantId: string): Promise<Record<string, number>>;
   /** Engine de uma sessão (inclusive excluída), sem tenant: para o roteador de engines. null = inexistente. */
