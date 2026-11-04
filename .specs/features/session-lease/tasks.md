@@ -24,18 +24,18 @@ Regras comuns a toda task:
 | T6 | `ISessionSocketControl` + implementação Baileys | — | P | ✅ f5a3180 |
 | T7 | `ISessionSocketControl` no Telegram | T6 | | ✅ bc90c0d |
 | T8 | Router implementa `ISessionSocketControl` | T6, T7 | | ✅ 23f98c1 |
-| T9 | `RenewSessionLeaseUseCase` (fence) + `SessionLeaseKeeper` | T5, T6 | P | ⏳ |
+| T9 | `RenewSessionLeaseUseCase` (fence) + `SessionLeaseKeeper` | T5, T6 | P | ✅ d6786ee |
 | T10 | Baileys: lease antes de `openSocket` | T4, T6 | P | ✅ 12672a5 |
 | T11 | Telegram: lease antes de `openClient` | T4, T7 | P | ✅ faf207b |
 | T12 | CAS no repositório do auth state | — | P | ✅ bc525a7 |
-| T13 | CAS no `BaileysAuthStatePersistence` + conflito derruba socket | T10, T12 | | ⏳ |
+| T13 | CAS no `BaileysAuthStatePersistence` + conflito derruba socket | T10, T12 | | ✅ 3f0c86e |
 | T14 | Repositório de sessão: marcar/limpar `connectRequestedAt` | T1 | | ✅ b62fa5e |
 | T15 | Helper `markConnectRequested` + connect/reconnect | T14 | | ✅ eb42c9b |
-| T16 | `markConnectRequested` em pairing-code e login Telegram | T15 | P | ⏳ |
-| T17 | Disconnect/Logout/Delete: limpa pedido + solta lease | T5, T14 | P | ⏳ |
-| T18 | Suspensão de tenant: limpa pedido + solta lease | T5, T14 | P | ⏳ |
+| T16 | `markConnectRequested` em pairing-code e login Telegram | T15 | P | ✅ 80d4185 |
+| T17 | Disconnect/Logout/Delete: limpa pedido + solta lease | T5, T14 | P | ✅ 9e0a2cc |
+| T18 | Suspensão de tenant: limpa pedido + solta lease | T5, T14 | P | ✅ 5c8315b |
 | T19 | Consulta de sessões ativas sem lease vivo | T14 | | ✅ 53e295a |
-| T20 | Reconciler e bootstrap cientes do lease | T10, T11, T19 | P | ⏳ |
+| T20 | Reconciler e bootstrap cientes do lease | T10, T11, T19 | P | ✅ 626881e |
 | T21 | Composição: `sessionLeaseContainer` + rotas + factory | T2, T5, T8, T9, T10, T11, T13, T15, T16, T17, T18 | | ⏳ |
 | T22 | `server.ts`: keeper, boot e ordem do shutdown | T20, T21 | | ⏳ |
 | T23 | Docs, CHANGELOG e versão | T22 | | ⏳ |
@@ -56,6 +56,11 @@ Regras comuns a toda task:
 - T15: helper em `sessions/application/services/markConnectRequested.ts`; marca antes do `updateStatus`; T16 cobre pairing + 3 do Telegram.
 - T19: `findActiveSessionsWithoutLiveLease()` (constante `ACTIVE_STATUSES` compartilhada com bootstrap); T20 liga no reconciler/bootstrap.
 - Gate integrado após onda 3: `tsc` ok, vitest sessions+messaging+shared 437/437.
+- T9: `RenewSessionLeaseUseCase` + `SessionLeaseKeeper` (setTimeout encadeado 20 s, `unref`, `stop()` espera tick em curso). Não ligado ainda.
+- T13: `BaileysAuthStatePersistence` com CAS; adapter passa `onVersionConflict: (id) => this.abortSession(id)`; conflito na migração do blob lança `SessionLeaseHeldError`.
+- T17/T18: Disconnect/Logout/Delete e `TenantSuspendedSessionListener` aceitam `leaseRelease?` opcional. **T21 precisa passar `leaseRelease` nos 3 use cases (`session.routes.ts`) e no listener (`server.ts:275`).**
+- T20: reconciler usa `findActiveSessionsWithoutLiveLease`; bootstrap pula `SessionLeaseHeldError`. Atenção T21/T22: no boot, `reconnectSession` com origem auto devolve `false` sem lançar e o bootstrap loga "Session bootstrapped" sem socket (só log enganoso; status não muda).
+- Gate integrado após onda 4: `tsc` ok, vitest sessions+messaging+shared 499/499.
 
 ## Execution Plan
 
