@@ -208,6 +208,11 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().optional(),
   ),
+  // Segredo anterior aceito só durante a rotação do segredo na central; remover depois da troca
+  BILLING_APPLICATION_SECRET_PREVIOUS: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
   BILLING_HMAC_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
   BILLING_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
   BILLING_RECONCILE_LEASE_TTL_MS: z.coerce.number().int().positive().default(600_000),

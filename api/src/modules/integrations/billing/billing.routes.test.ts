@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 const execute = vi.hoisted(() => vi.fn());
 vi.mock('../../../shared/config/env', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../../shared/config/env')>();
-  return { env: { ...mod.env, BILLING_APPLICATION_KEY: 'app-key', BILLING_APPLICATION_SECRET: 'app-secret', BILLING_HMAC_TOLERANCE_SECONDS: 300 } };
+  return { env: { ...mod.env, BILLING_APPLICATION_KEY: 'app-key', BILLING_APPLICATION_SECRET: 'app-secret', BILLING_APPLICATION_SECRET_PREVIOUS: 'old-secret', BILLING_HMAC_TOLERANCE_SECONDS: 300 } };
 });
 vi.mock('./ApplyBillingEventUseCase', () => ({
   ApplyBillingEventUseCase: class { execute = execute; },
@@ -20,10 +20,10 @@ const BODY = {
   permissions: [], expiresAt: null, paidCycles: 1, subscriptionIds: ['sub-1'],
 };
 
-function signed(body: unknown, key = 'app-key') {
+function signed(body: unknown, key = 'app-key', secret = 'app-secret') {
   const raw = JSON.stringify(body);
   const ts = String(Math.floor(Date.now() / 1000));
-  const sig = createHmac('sha256', 'app-secret').update(`${ts}.${raw}`).digest('hex');
+  const sig = createHmac('sha256', secret).update(`${ts}.${raw}`).digest('hex');
   return {
     method: 'POST' as const,
     url: '/billing/webhook',
@@ -53,6 +53,12 @@ describe('POST /integrations/billing/webhook', () => {
     const req = signed(BODY);
     req.headers['x-signature'] = 'sha256=00';
     expect((await app.inject(req)).statusCode).toBe(401);
+  });
+
+  it('durante a rotação o segredo anterior ainda é aceito', async () => {
+    execute.mockResolvedValue({ outcome: 'APPLIED', tenantId: 't1' });
+    expect((await app.inject(signed(BODY, 'app-key', 'old-secret'))).statusCode).toBe(200);
+    expect((await app.inject(signed(BODY, 'app-key', 'outro-segredo'))).statusCode).toBe(401);
   });
 
   it('evento válido chega ao use case com os campos do contrato', async () => {

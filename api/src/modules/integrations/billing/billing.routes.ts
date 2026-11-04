@@ -57,6 +57,11 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         log.warn({ reason: hmac.reason }, 'Billing webhook HMAC rejected');
         return reply.status(401).send({ error: 'unauthorized' });
       }
+      if (hmac.matched === 'previous') {
+        log.warn({ secret: 'previous' }, 'Billing webhook HMAC matched previous secret (rotation in progress)');
+      } else {
+        log.debug({ secret: 'current' }, 'Billing webhook HMAC matched current secret');
+      }
 
       let body: Record<string, unknown>;
       try {

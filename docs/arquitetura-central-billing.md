@@ -15,7 +15,8 @@ M1-B). Em 2026-11-02 (`0.49.4`) o receiver foi alinhado a este contrato: provisi
 desconhecido, valida `X-Application-Key` e `planSlug`, grava receipt e watermark na mesma transação com lock da linha do tenant.
 **Pendente**: M2 (`HubEmailSender`, painel "Assinatura") e o corpo da reconciliação (depende de H2 na central). Sem as três
 `BILLING_HUB_URL`, `BILLING_APPLICATION_KEY`, `BILLING_APPLICATION_SECRET` a rota não é registrada (404); em produção com
-`EMAIL_SENDER=noop` ou `hub` (ainda sem adapter) ela também não é registrada e o boot loga erro. Não há signup público: conta nova nasce pela compra no hub ou por provisionamento do super-admin.
+`EMAIL_SENDER=noop` ou `hub` (ainda sem adapter) ela também não é registrada e o boot loga erro.
+**Rotação do segredo**: `BILLING_APPLICATION_SECRET_PREVIOUS` (opcional) é aceita junto com a atual enquanto a central troca o segredo; `verifyBillingHmac` compara as duas sempre (tempo constante, sem curto-circuito) e o log diz só o rótulo que casou (`previous` em warn). Sem ela, só a atual vale. Apagar a env ao fim da rotação; nunca logar segredo. Não há signup público: conta nova nasce pela compra no hub ou por provisionamento do super-admin.
 
 ## Decisão
 
