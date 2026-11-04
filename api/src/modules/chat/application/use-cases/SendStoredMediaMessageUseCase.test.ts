@@ -54,7 +54,7 @@ function makeDeps(o: {
   };
   const contactRepo = { findById: vi.fn().mockResolvedValue({ id: 'contact-1', phone: '5511999999999' }) };
   const engine = o.engine === undefined
-    ? ({ createOutboundMessageId: vi.fn(() => EXT) } as unknown as IMessagingEngine)
+    ? ({ createOutboundMessageId: vi.fn(async () => EXT) } as unknown as IMessagingEngine)
     : o.engine;
   const files = {
     acquireLocalFile: vi.fn(async () =>

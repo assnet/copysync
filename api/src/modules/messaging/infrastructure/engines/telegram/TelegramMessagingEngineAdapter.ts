@@ -653,7 +653,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   /** O Telegram atribui o id no envio; este é um id provisório que o chat grava antes. */
-  createOutboundMessageId(sessionId: string): string {
+  async createOutboundMessageId(sessionId: string): Promise<string> {
     this.requireConnected(sessionId);
     return `tg-${randomBytes(8).toString('hex')}`;
   }

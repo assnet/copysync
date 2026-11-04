@@ -35,7 +35,7 @@ const CACHE_MAX = 10_000;
  * da sessão (`Session.engine`). Quem consome a porta não sabe quantas engines existem.
  *
  * O mapa sessionId → engine fica em memória (preenchido no primeiro uso e nas operações de
- * conexão). `createOutboundMessageId` é síncrono: usa só o cache, que já foi populado pela
+ * conexão). `createOutboundMessageId` usa só o cache (sem ida ao banco), que já foi populado pela
  * conexão/reconexão que necessariamente veio antes de qualquer envio neste processo; sem
  * entrada, cai na engine padrão (comportamento anterior).
  */
@@ -156,7 +156,7 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
   async submitLoginCode(input: SubmitLoginCodeInput): Promise<LoginStepResult> { return (await this.resolve(input.sessionId)).submitLoginCode(input); }
   async submitLoginPassword(input: SubmitLoginPasswordInput): Promise<LoginStepResult> { return (await this.resolve(input.sessionId)).submitLoginPassword(input); }
   async sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult> { return (await this.resolve(input.sessionId)).sendTextMessage(input); }
-  createOutboundMessageId(sessionId: string): string { return this.resolveSync(sessionId).createOutboundMessageId(sessionId); }
+  async createOutboundMessageId(sessionId: string): Promise<string> { return this.resolveSync(sessionId).createOutboundMessageId(sessionId); }
   async sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult> { return (await this.resolve(input.sessionId)).sendMediaMessage(input); }
   async sendReaction(input: SendReactionInput): Promise<SendMessageResult> { return (await this.resolve(input.sessionId)).sendReaction(input); }
   async markMessagesRead(input: MarkMessagesReadInput) { return (await this.resolve(input.sessionId)).markMessagesRead(input); }

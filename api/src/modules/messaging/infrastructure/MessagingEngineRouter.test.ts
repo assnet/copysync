@@ -7,7 +7,7 @@ function fakeEngine(name: string) {
   return {
     name,
     connectSession: vi.fn(async () => ({})),
-    createOutboundMessageId: vi.fn(() => `${name}-id`),
+    createOutboundMessageId: vi.fn(async () => `${name}-id`),
     getSessionStatus: vi.fn(async () => 'CONNECTED'),
     abortSession: vi.fn(async () => undefined),
     suspendSession: vi.fn(async () => undefined),
@@ -49,11 +49,11 @@ describe('MessagingEngineRouter', () => {
     await expect(router.getSessionStatus('nope')).rejects.toBeInstanceOf(SessionNotFoundError);
   });
 
-  it('id síncrono usa o cache; sem cache cai na engine padrão', async () => {
+  it('id de saída usa o cache; sem cache cai na engine padrão', async () => {
     const { router } = build({ s1: 'telegram' });
-    expect(router.createOutboundMessageId('s1')).toBe('baileys-id');
+    await expect(router.createOutboundMessageId('s1')).resolves.toBe('baileys-id');
     await router.getSessionStatus('s1');
-    expect(router.createOutboundMessageId('s1')).toBe('telegram-id');
+    await expect(router.createOutboundMessageId('s1')).resolves.toBe('telegram-id');
   });
 
   it('exige a engine padrão', () => {

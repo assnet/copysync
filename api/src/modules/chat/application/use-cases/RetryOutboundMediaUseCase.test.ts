@@ -74,7 +74,7 @@ function makeDeps(overrides?: {
   } as unknown as IMediaFileStore;
 
   const engine = overrides?.engine === undefined
-    ? ({ createOutboundMessageId: vi.fn().mockReturnValue('id-novo-descartado') } as unknown as IMessagingEngine)
+    ? ({ createOutboundMessageId: vi.fn().mockResolvedValue('id-novo-descartado') } as unknown as IMessagingEngine)
     : overrides.engine;
 
   const queue = {
@@ -150,7 +150,7 @@ describe('RetryOutboundMediaUseCase', () => {
 
   it('sessão desconectada: erro de sessão e a mensagem continua FAILED', async () => {
     const engine = {
-      createOutboundMessageId: vi.fn(() => { throw new SessionNotConnectedError('sess-1'); }),
+      createOutboundMessageId: vi.fn().mockRejectedValue(new SessionNotConnectedError('sess-1')),
     } as unknown as IMessagingEngine;
     const d = makeDeps({ engine });
 

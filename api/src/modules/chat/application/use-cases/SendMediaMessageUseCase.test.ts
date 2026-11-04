@@ -144,7 +144,7 @@ function makeDeps(o: {
     findById: vi.fn().mockResolvedValue({ id: 'contact-1', phone: '5511999999999' }),
   };
   const engine = o.engine === undefined
-    ? ({ createOutboundMessageId: track('createOutboundMessageId', () => EXT) } as unknown as IMessagingEngine)
+    ? ({ createOutboundMessageId: track('createOutboundMessageId', async () => EXT) } as unknown as IMessagingEngine)
     : o.engine;
 
   const uploads = {
@@ -467,7 +467,7 @@ describe('SendMediaMessageUseCase — confirmação repetida e estados do upload
 describe('SendMediaMessageUseCase — recusas antes de gravar', () => {
   it('sessão desconectada: erro antes de gravar e o upload volta a OPEN', async () => {
     const engine = {
-      createOutboundMessageId: vi.fn(() => { throw new SessionNotConnectedError(SESSAO); }),
+      createOutboundMessageId: vi.fn().mockRejectedValue(new SessionNotConnectedError(SESSAO)),
     } as unknown as IMessagingEngine;
     const d = makeDeps({ engine });
 

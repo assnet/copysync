@@ -403,7 +403,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
       // Com prévia: id gerado aqui (valida socket.user) e eco marcado ANTES do envio, como a mídia:
       // o eco sai como `append` e seria gravado de novo (e a miniatura baixada de volta).
-      const messageId = this.createOutboundMessageId(sessionId);
+      const messageId = await this.createOutboundMessageId(sessionId);
       outboundEchoRegistries().media.register(sessionId, messageId);
       const linkPreview = await buildBaileysLinkPreview(input.linkPreview, {
         upload: entry.socket.waUploadToServer,
@@ -424,7 +424,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     } catch (err) { throw translateEngineError(err); }
   }
 
-  createOutboundMessageId(sessionId: string): string {
+  async createOutboundMessageId(sessionId: string): Promise<string> {
     const entry = this.registry.get(sessionId);
     if (!entry || !entry.socket.user || !entry.socket.ws.isOpen) {
       throw new SessionNotConnectedError(sessionId);

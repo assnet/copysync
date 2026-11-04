@@ -201,7 +201,7 @@ export class SendMediaMessageUseCase {
 
     // 3. Sem sessão conectada, recusa antes de gravar (nada de "grava sem enviar")
     if (!engine || !sessionId) throw new SessionNotConnectedError(sessionId ?? conversationId);
-    const externalMessageId = engine.createOutboundMessageId(sessionId);
+    const externalMessageId = await engine.createOutboundMessageId(sessionId);
     await uploads.setExternalId(uploadId, externalMessageId);
 
     // Voz depende do ffmpeg (transcode) e do ffprobe (há áudio? duração)

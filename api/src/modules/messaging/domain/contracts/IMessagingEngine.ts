@@ -264,7 +264,7 @@ export interface IMessagingEngine {
    * Gera o id que a próxima mensagem da sessão terá no WhatsApp, para o chat gravar antes do
    * envio. Lança `SessionNotConnectedError` sem sessão conectada.
    */
-  createOutboundMessageId(sessionId: string): string;
+  createOutboundMessageId(sessionId: string): Promise<string>;
   /**
    * Envia mídia a partir de um arquivo em disco, com o id pré-gerado. Arquivo acima do limite
    * do WhatsApp falha antes de subir (`MediaTooLargeError`). `messageId` do resultado é o id

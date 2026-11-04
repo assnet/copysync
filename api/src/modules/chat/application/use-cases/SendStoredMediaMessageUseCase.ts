@@ -89,7 +89,7 @@ export class SendStoredMediaMessageUseCase {
     // 3. Sem sessão, recusa antes de gravar (nada de "grava sem enviar")
     const sessionId = conv.sessionId;
     if (!engine || !sessionId) throw new SessionNotConnectedError(sessionId ?? conversationId);
-    const externalMessageId = engine.createOutboundMessageId(sessionId);
+    const externalMessageId = await engine.createOutboundMessageId(sessionId);
 
     // 4. Cópia própria da origem → promoção
     const file = await this.copyAndPromote(sourceMediaUrl, { sessionId, externalMessageId, mimeType }, ext, transcode);

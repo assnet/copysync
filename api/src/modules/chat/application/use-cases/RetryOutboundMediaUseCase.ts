@@ -70,7 +70,7 @@ export class RetryOutboundMediaUseCase {
     if (!conv) throw new NotFoundError('Conversation', message.conversationId);
     if (!this.engine || !conv.sessionId) throw new SessionNotConnectedError(conv.sessionId ?? conv.id);
     const sessionId = conv.sessionId;
-    this.engine.createOutboundMessageId(sessionId);
+    await this.engine.createOutboundMessageId(sessionId);
 
     // 3. FAILED → PENDING condicional: com dois cliques/abas, só um vence; o outro recebe `null`.
     const pending = await this.messageRepo.transitionStatus(
