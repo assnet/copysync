@@ -48,6 +48,7 @@ import type {
   ParticipatingGroupInfo,
   UpdateChatStateInput,
 } from '../../../domain/contracts/IMessagingEngine';
+import type { ISessionSocketControl } from '../../../domain/contracts/ISessionSocketControl';
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { IChatConversationRepository } from '../../../../chat/domain/contracts/IChatConversationRepository';
@@ -154,7 +155,7 @@ function mediaInfo(media: Api.TypeMessageMedia | undefined): { mimeType: string 
   return { mimeType: null, fileName: null, durationSeconds: null, size: null };
 }
 
-export class TelegramMessagingEngineAdapter implements IMessagingEngine {
+export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessionSocketControl {
   private readonly registry = new TelegramSessionRegistry();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
@@ -448,6 +449,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     } catch (err) {
       telegramLogger.warn({ err, sessionId }, 'getMe failed after login');
     }
+    // Lease perdido (abortSession) durante o getMe: não marca CONNECTED nem escuta mensagens
+    if (!this.registry.isCurrent(sessionId, entry.epoch)) return;
     client.addEventHandler((event: NewMessageEvent) => {
       void this.onNewMessage(sessionId, entry, event);
     }, new NewMessage({}));
@@ -883,6 +886,29 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine {
     await this.auth.clear(sessionId);
     await this.updateStatus(sessionId, entry.tenantId, 'LOGGED_OUT');
     internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId, tenantId: entry.tenantId });
+  }
+
+  // ── Lease de sessão (ISessionSocketControl) ────────────────────────────────
+
+  /**
+   * Lease perdido: destrói o cliente e cancela o login pendente sem gravar status nem
+   * StringSession (o fluxo de login sai pelo `isCurrent` falso). Sem cliente local: nada.
+   */
+  async abortSession(sessionId: string): Promise<void> {
+    this.dialogsCache.delete(sessionId);
+    const entry = this.registry.get(sessionId);
+    if (!entry) return;
+    await this.teardown(sessionId, entry);
+    telegramLogger.warn({ sessionId }, 'Telegram client aborted (lease lost)');
+  }
+
+  /** Shutdown: destrói todos os clientes em paralelo; falha de um não segura os outros. */
+  async closeAllSockets(): Promise<void> {
+    await Promise.allSettled(this.registry.all().map(([id, entry]) => this.teardown(id, entry)));
+  }
+
+  listLocalSessionIds(): string[] {
+    return this.registry.all().map(([id]) => id);
   }
 
   /** Encerra todos os clientes (shutdown do processo). */
