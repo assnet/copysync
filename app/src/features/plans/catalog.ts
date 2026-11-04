@@ -39,13 +39,20 @@ export interface PlanCatalogItem {
   limits: {
     whatsappSessions: number;
     telegramSessions: number;
+    /** Grupos monitorados no WhatsApp (`monitored_groups`, chave sem prefixo = WhatsApp). */
     monitoredGroups: number;
+    /** Grupos de disparo no WhatsApp (`broadcast_groups`). */
     broadcastGroups: number;
+    /** Grupos monitorados no Telegram (`telegram_monitored_groups`). */
+    telegramMonitoredGroups: number;
+    /** Grupos de disparo no Telegram (`telegram_broadcast_groups`). */
+    telegramBroadcastGroups: number;
     /** Links públicos de rodízio (`link_rotations`). */
     linkRotations: number;
     /** Grupos por link de rodízio (`link_rotation_groups`). */
     linkRotationGroups: number;
   };
+  /** Itens além dos limites por canal (estes o `PlanCard` monta a partir de `limits`). */
   benefits: PlanBenefit[];
   fit: string;
 }
@@ -53,14 +60,17 @@ export interface PlanCatalogItem {
 /** Benefício da Página de Ofertas (`storefront_enabled`: só PRO e MAX). */
 export const STOREFRONT_BENEFIT_LABEL = 'Página de Ofertas para a bio';
 
-const HINTS = {
+/** Textos de Tooltip dos benefícios e das linhas da tabela de canais do `PlanCard`. */
+export const PLAN_HINTS = {
   monitoredGroups: 'Grupos de onde as ofertas são capturadas: cada anúncio novo é lido, reescrito e ganha o seu link.',
   broadcastGroups: 'Grupos que recebem os disparos, na ordem e nos horários que você definir.',
   linkRotation: 'Um link fixo para divulgar nas redes. Nunca expira e leva cada visitante a um grupo com vaga.',
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
   storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
-  crossSession: 'Monitore grupos em um WhatsApp e dispare nos grupos de outro WhatsApp conectado na mesma conta.',
+  crossSession:
+    'Com duas sessões do mesmo canal, monitore grupos em uma e dispare nos grupos da outra. Entre WhatsApp e Telegram isso já vale em todo plano que tem os dois canais.',
+  bothChannels: 'Monitore grupos no WhatsApp e dispare no Telegram, ou o contrário: as ofertas circulam entre os dois canais.',
 };
 
 export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
@@ -71,15 +81,15 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     priceFrom: 161.9,
     price: 97,
     priceAnnualMonthly: 77,
-    limits: { whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, linkRotations: 1, linkRotationGroups: 3 },
+    limits: {
+      whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, telegramMonitoredGroups: 0, telegramBroadcastGroups: 0,
+      linkRotations: 1, linkRotationGroups: 3,
+    },
     benefits: [
-      { label: '1 conexão de WhatsApp' },
-      { label: '1 grupo monitorado', hint: HINTS.monitoredGroups },
-      { label: '5 grupos de disparo', hint: HINTS.broadcastGroups },
       { label: 'Disparo em massa com agendamento de horários' },
-      { label: linkRotationLimitLabel(1, 3), hint: HINTS.linkRotation },
+      { label: linkRotationLimitLabel(1, 3), hint: PLAN_HINTS.linkRotation },
       { label: 'Gerador de ofertas' },
-      { label: 'Envio "digitando…" antes de cada oferta', hint: HINTS.typing },
+      { label: 'Envio "digitando…" antes de cada oferta', hint: PLAN_HINTS.typing },
       { label: 'Shopee, Amazon e Mercado Livre' },
       { label: 'Suporte 24/7 e aulas em vídeo' },
     ],
@@ -93,15 +103,16 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     price: 167,
     priceAnnualMonthly: 133,
     recommended: true,
-    limits: { whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, linkRotations: 1, linkRotationGroups: 5 },
+    limits: {
+      whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, telegramMonitoredGroups: 2, telegramBroadcastGroups: 10,
+      linkRotations: 1, linkRotationGroups: 5,
+    },
     benefits: [
       { label: 'Tudo do LITE', strong: true },
-      { label: '1 WhatsApp + 1 Telegram' },
-      { label: '2 grupos monitorados por canal', hint: HINTS.monitoredGroups },
-      { label: '10 grupos de disparo por canal', hint: HINTS.broadcastGroups },
-      { label: linkRotationLimitLabel(1, 5), hint: HINTS.linkRotation },
-      { label: 'Menção a todos os participantes', hint: HINTS.mentionAll },
-      { label: STOREFRONT_BENEFIT_LABEL, hint: HINTS.storefront },
+      { label: 'Ofertas circulando entre WhatsApp e Telegram', hint: PLAN_HINTS.bothChannels },
+      { label: linkRotationLimitLabel(1, 5), hint: PLAN_HINTS.linkRotation },
+      { label: 'Menção a todos os participantes', hint: PLAN_HINTS.mentionAll },
+      { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Suporte prioritário 24/7' },
     ],
     fit: 'quem posta todo dia e quer escalar sem contratar.',
@@ -113,15 +124,15 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     priceFrom: 411.9,
     price: 247,
     priceAnnualMonthly: 197,
-    limits: { whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, linkRotations: 2, linkRotationGroups: 10 },
+    limits: {
+      whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, telegramMonitoredGroups: 6, telegramBroadcastGroups: 40,
+      linkRotations: 2, linkRotationGroups: 10,
+    },
     benefits: [
       { label: 'Tudo do PRO', strong: true },
-      { label: '2 WhatsApp + 2 Telegram' },
-      { label: '6 grupos monitorados por canal', hint: HINTS.monitoredGroups },
-      { label: '40 grupos de disparo por canal', hint: HINTS.broadcastGroups },
-      { label: linkRotationLimitLabel(2, 10), hint: HINTS.linkRotation },
-      { label: 'Monitorar em um WhatsApp e disparar em outro', hint: HINTS.crossSession, exclusive: true },
-      { label: STOREFRONT_BENEFIT_LABEL, hint: HINTS.storefront },
+      { label: linkRotationLimitLabel(2, 10), hint: PLAN_HINTS.linkRotation },
+      { label: 'Monitorar em uma sessão e disparar em outra do mesmo canal', hint: PLAN_HINTS.crossSession, exclusive: true },
+      { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
     ],

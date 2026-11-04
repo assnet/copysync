@@ -19,6 +19,10 @@ describe('catálogo de planos (vitrine)', () => {
     expect(p!.limits.monitoredGroups).toBeLessThanOrEqual(b!.limits.monitoredGroups);
     expect(s!.limits.broadcastGroups).toBeLessThanOrEqual(p!.limits.broadcastGroups);
     expect(p!.limits.broadcastGroups).toBeLessThanOrEqual(b!.limits.broadcastGroups);
+    expect(s!.limits.telegramMonitoredGroups).toBeLessThanOrEqual(p!.limits.telegramMonitoredGroups);
+    expect(p!.limits.telegramMonitoredGroups).toBeLessThanOrEqual(b!.limits.telegramMonitoredGroups);
+    expect(s!.limits.telegramBroadcastGroups).toBeLessThanOrEqual(p!.limits.telegramBroadcastGroups);
+    expect(p!.limits.telegramBroadcastGroups).toBeLessThanOrEqual(b!.limits.telegramBroadcastGroups);
   });
 
   it('formata preço inteiro sem centavos e fracionado com 2 casas', () => {
@@ -39,6 +43,34 @@ describe('catálogo de planos (vitrine)', () => {
   it('limites de rodízio iguais a api/src/modules/tenants/domain/planPresets.ts', () => {
     const bySlug = Object.fromEntries(PLAN_CATALOG.map((p) => [p.slug, [p.limits.linkRotations, p.limits.linkRotationGroups]]));
     expect(bySlug).toEqual({ starter: [1, 3], profissional: [1, 5], business: [2, 10] });
+  });
+
+  it('limites por canal iguais a api/src/modules/tenants/domain/planPresets.ts', () => {
+    const bySlug = Object.fromEntries(
+      PLAN_CATALOG.map(({ slug, limits: l }) => [
+        slug,
+        {
+          whatsapp: [l.whatsappSessions, l.monitoredGroups, l.broadcastGroups],
+          telegram: [l.telegramSessions, l.telegramMonitoredGroups, l.telegramBroadcastGroups],
+        },
+      ]),
+    );
+    expect(bySlug).toEqual({
+      starter: { whatsapp: [1, 1, 5], telegram: [0, 0, 0] },
+      profissional: { whatsapp: [1, 2, 10], telegram: [1, 2, 10] },
+      business: { whatsapp: [2, 6, 40], telegram: [2, 6, 40] },
+    });
+  });
+
+  it('canal sem sessão não tem grupos (o card mostra "A partir do …" no lugar dos números)', () => {
+    for (const { limits: l } of PLAN_CATALOG) {
+      if (l.telegramSessions === 0) expect(l.telegramMonitoredGroups + l.telegramBroadcastGroups).toBe(0);
+      if (l.whatsappSessions === 0) expect(l.monitoredGroups + l.broadcastGroups).toBe(0);
+    }
+  });
+
+  it('limites por canal não ficam repetidos na lista de benefícios', () => {
+    for (const p of PLAN_CATALOG) for (const b of p.benefits) expect(b.label).not.toMatch(/grupos? (monitorados?|de disparo)/i);
   });
 
   it('cada plano exibe o próprio limite de rodízio, com hint do recurso', () => {

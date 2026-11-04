@@ -27,6 +27,19 @@ describe('nextPlanFor', () => {
     expect(nextPlanFor('rotations', 1)).toEqual({ name: 'MAX', limit: 2 });
     expect(nextPlanFor('rotations', 2)).toBeNull();
   });
+
+  it('grupos por canal: Telegram parte do zero no LITE', () => {
+    expect(nextPlanFor('telegramMonitoredGroups', 0)).toEqual({ name: 'PRO', limit: 2 });
+    expect(nextPlanFor('telegramBroadcastGroups', 10)).toEqual({ name: 'MAX', limit: 40 });
+    expect(nextPlanFor('whatsappMonitoredGroups', 1)).toEqual({ name: 'PRO', limit: 2 });
+    expect(nextPlanFor('whatsappBroadcastGroups', 5)).toEqual({ name: 'PRO', limit: 10 });
+    expect(nextPlanFor('whatsappBroadcastGroups', 40)).toBeNull();
+  });
+
+  it('textos de grupos por canal com plural e canal', () => {
+    expect(t.nextPlan('PRO', 2, 'telegramMonitoredGroups')).toBe('No PRO são 2 grupos monitorados no Telegram.');
+    expect(t.topPlanBody(40, 'whatsappBroadcastGroups')).toBe('Você já usa o máximo de 40 grupos de disparo no WhatsApp. Para incluir outro, remova um grupo que não usa mais.');
+  });
 });
 
 describe('PlanLimitBanner', () => {

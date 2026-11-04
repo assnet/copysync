@@ -11,12 +11,30 @@ checkout, suporte): `.specs/features/plans-modal/spec.md`. Este doc registra o q
 | Página `/affiliates/plans` (`/plans` redireciona com a query) | `app/src/pages/plans/PlansPage.tsx` | Hero (banner) + 3 cards + faixa de confiança + nota; no celular os cards viram carrossel por deslize (`SwipeCards`, `app/src/components/`) abrindo no PRO (`recommended`) |
 | Catálogo de vitrine | `app/src/features/plans/catalog.ts` | Slug, nome, tagline, preço de/por, benefícios (com `hint` para Tooltip), limites |
 | Textos | `app/src/features/plans/strings.ts` | pt-BR, chaves semânticas; `formatPrice` com `Intl.NumberFormat` |
-| Componentes | `features/plans/components/` | `PlansHero`, `PlanCard`, `PlansTrustStrip`, `GuaranteeSeal` |
-| Teste | `features/plans/catalog.test.ts` | 3 planos, 1 recomendado, preço por < de, limites crescentes |
+| Componentes | `features/plans/components/` | `PlansHero`, `PlanCard`, `ChannelLimitsTable`, `PlansTrustStrip`, `GuaranteeSeal` |
+| Teste | `features/plans/catalog.test.ts` | 3 planos, 1 recomendado, preço por < de, limites crescentes, limites por canal = presets da API |
 
 Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` e a extensão do Pulso. Estrutura copiada
 (hero com coroa, selo de garantia, card recomendado com moldura em gradiente, faixa de confiança); cores só do tema
 (`primary` → `secondary` no gradiente, `alpha()`), sem hex fixo fora do selo dourado.
+
+## Limites por canal (WhatsApp × Telegram)
+
+- `limits` do catálogo espelha `api/src/modules/tenants/domain/planPresets.ts` por canal: `whatsappSessions`,
+  `monitoredGroups`, `broadcastGroups` (sem prefixo = WhatsApp, como as chaves da API) e `telegramSessions`,
+  `telegramMonitoredGroups`, `telegramBroadcastGroups`. LITE 1/1/5 e Telegram 0/0/0; PRO 1/2/10 nos dois; MAX 2/6/40
+  nos dois. Travado em `catalog.test.ts` (e do lado da API em `planPresets.test.ts`).
+- O card mostra esses números em `ChannelLimitsTable` (`features/plans/components/`): `<table>` semântica com
+  `<caption>` oculta, linhas = Sessões / Grupos monitorados / Grupos de disparo (Tooltip com `PLAN_HINTS`), colunas =
+  canal com logo (`WhatsAppIcon`/`TelegramIcon` via `AppIcon`, cor de `brandColor` por modo). Canal fora do plano
+  vira uma célula única "A partir do PRO" (primeiro plano do catálogo que inclui o canal), sem traço nem "não incluso".
+- Por isso a lista `benefits` **não** repete sessões/grupos (o teste barra "grupos monitorados/de disparo" nela).
+- "Monitorar em uma sessão e disparar em outra do mesmo canal" (`cross_session_dispatch`) é exclusivo do MAX e vale
+  para 2+ sessões do mesmo canal; WhatsApp ↔ Telegram se cruzam em qualquer plano com os dois (benefício
+  "Ofertas circulando entre WhatsApp e Telegram" no PRO, `PLAN_HINTS.bothChannels`).
+- Avisos de limite: `PlanLimitKind` (`features/linkRotation/planUpsell.ts`) tem `whatsappMonitoredGroups`,
+  `telegramMonitoredGroups`, `whatsappBroadcastGroups`, `telegramBroadcastGroups` além de sessões e rodízio;
+  textos em `linkRotation/strings.ts` (`channelGroupsCopy`).
 
 ## Página de Ofertas (app 0.52.0)
 
@@ -61,3 +79,4 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 - Não usar hex fixo nos cards: `theme.palette` + `alpha()`.
 - Não criar segundo catálogo (LP, extensão): a vitrine do painel é `catalog.ts`.
 - Não mostrar a tabela do roadmap com emoji: ícones Lucide via `AppIcon`.
+- Não repetir limites de canal em `benefits` nem escrever "Telegram não incluso": a tabela de canais cobre os dois.

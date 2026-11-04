@@ -72,6 +72,19 @@ export const plansStrings = {
     everythingFrom: (planName: string) => `Tudo do ${planName}`,
   },
 
+  /** Tabela de limites por canal no card (linhas = recurso, colunas = canal). */
+  channels: {
+    caption: (planName: string) => `Limites por canal no plano ${planName}`,
+    resource: 'Recurso',
+    whatsapp: 'WhatsApp',
+    telegram: 'Telegram',
+    sessions: 'Sessões',
+    monitoredGroups: 'Grupos monitorados',
+    broadcastGroups: 'Grupos de disparo',
+    /** Canal fora do plano: convite, não negativa. */
+    availableFrom: (planName: string) => `A partir do ${planName}`,
+  },
+
   trust: {
     securePayment: 'Pagamento seguro e criptografado',
     cancelAnytime: 'Cancele quando quiser',

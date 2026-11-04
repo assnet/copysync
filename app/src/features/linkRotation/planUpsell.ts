@@ -1,10 +1,19 @@
 import { PLAN_CATALOG, type PlanCatalogItem } from '@/features/plans/catalog';
 
 /**
- * Limite de plano que pode acionar o aviso de upgrade: rodízios e grupos (rodízio de links) ou
- * sessões por canal (tela de sessões).
+ * Limite de plano que pode acionar o aviso de upgrade: rodízios e grupos (rodízio de links),
+ * sessões por canal (tela de sessões) e grupos monitorados/de disparo por canal (Monitoramento e
+ * Gerador de ofertas).
  */
-export type PlanLimitKind = 'rotations' | 'groups' | 'whatsappSessions' | 'telegramSessions';
+export type PlanLimitKind =
+  | 'rotations'
+  | 'groups'
+  | 'whatsappSessions'
+  | 'telegramSessions'
+  | 'whatsappMonitoredGroups'
+  | 'telegramMonitoredGroups'
+  | 'whatsappBroadcastGroups'
+  | 'telegramBroadcastGroups';
 
 export interface NextPlanOffer {
   name: string;
@@ -16,6 +25,10 @@ const LIMIT_OF: Record<PlanLimitKind, (plan: PlanCatalogItem) => number> = {
   groups: (p) => p.limits.linkRotationGroups,
   whatsappSessions: (p) => p.limits.whatsappSessions,
   telegramSessions: (p) => p.limits.telegramSessions,
+  whatsappMonitoredGroups: (p) => p.limits.monitoredGroups,
+  telegramMonitoredGroups: (p) => p.limits.telegramMonitoredGroups,
+  whatsappBroadcastGroups: (p) => p.limits.broadcastGroups,
+  telegramBroadcastGroups: (p) => p.limits.telegramBroadcastGroups,
 };
 
 /**

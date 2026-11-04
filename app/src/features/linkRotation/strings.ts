@@ -36,6 +36,22 @@ const sessionsCopy = (channel: string, benefit: string): UpgradeKindCopy => ({
     `Você usa as ${count(limit)} ${plural(limit, 'sessão', 'sessões')} de ${channel} disponíveis. Para conectar outra conta, exclua uma sessão que não usa mais.`,
 });
 
+const channelGroupsCopy = (channel: string, what: 'monitorados' | 'de disparo', benefit: string): UpgradeKindCopy => {
+  const groups = (n: number) => `${count(n)} ${plural(n, 'grupo', 'grupos')} ${what === 'monitorados' ? plural(n, 'monitorado', 'monitorados') : 'de disparo'}`;
+  return {
+    title: what === 'monitorados' ? `Mais grupos de ofertas no ${channel}` : `Leve suas ofertas a mais grupos do ${channel}`,
+    body: (limit) =>
+      limit === 0
+        ? `Seu plano atual não inclui grupos ${what} no ${channel}. Com um plano maior você usa o canal na sua operação.`
+        : `Seu plano inclui ${groups(limit)} no ${channel}. Com um plano maior você opera mais grupos ao mesmo tempo.`,
+    benefit,
+    nextPlan: (planName, limit) => `No ${planName} são ${groups(limit)} no ${channel}.`,
+    unit: (n) => plural(n, 'grupo', 'grupos'),
+    compareAria: (now, planName, next) => `Hoje: ${groups(now)} no ${channel}. No ${planName}: ${groups(next)}.`,
+    topPlanBody: (limit) => `Você já usa o máximo de ${groups(limit)} no ${channel}. Para incluir outro, remova um grupo que não usa mais.`,
+  };
+};
+
 const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
   rotations: {
     title: 'Seus links estão a todo vapor!',
@@ -62,6 +78,10 @@ const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
   },
   whatsappSessions: sessionsCopy('WhatsApp', 'Monitore e dispare em mais números, cada um com seus grupos.'),
   telegramSessions: sessionsCopy('Telegram', 'Leve suas ofertas também para os grupos e canais do Telegram.'),
+  whatsappMonitoredGroups: channelGroupsCopy('WhatsApp', 'monitorados', 'Mais fontes de ofertas, capturadas e reescritas com o seu link.'),
+  telegramMonitoredGroups: channelGroupsCopy('Telegram', 'monitorados', 'Mais fontes de ofertas, capturadas e reescritas com o seu link.'),
+  whatsappBroadcastGroups: channelGroupsCopy('WhatsApp', 'de disparo', 'Suas ofertas chegam a mais gente, nos horários que você definir.'),
+  telegramBroadcastGroups: channelGroupsCopy('Telegram', 'de disparo', 'Suas ofertas chegam a mais gente, nos horários que você definir.'),
 };
 
 export const linkRotationStrings = {

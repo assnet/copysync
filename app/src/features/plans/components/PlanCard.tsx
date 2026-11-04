@@ -4,6 +4,7 @@ import { AppIcon } from '@/components';
 import { priceFor, savingsFor, type BillingPeriod, type PlanBenefit, type PlanCatalogItem } from '../catalog';
 import { formatPrice, plansStrings as t } from '../strings';
 import { ctaGradient } from './PlansHero';
+import { ChannelLimitsTable } from './ChannelLimitsTable';
 
 interface Props {
   plan: PlanCatalogItem;
@@ -96,6 +97,8 @@ export function PlanCard({ plan, period, checkoutHref }: Props) {
       </Box>
 
       <Divider />
+
+      <ChannelLimitsTable plan={plan} />
 
       <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 1.25 }}>
         {plan.benefits.map((b) => <BenefitRow key={b.label} benefit={b} accent={accent} />)}
