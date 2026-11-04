@@ -27,7 +27,9 @@ class InMemoryAuthRepo implements ISessionAuthStateRepository {
     this.batches.push(structuredClone(batch));
     for (const [k, v] of Object.entries(batch.upserts)) this.keys.set(k, v);
     for (const k of batch.deletes) this.keys.delete(k);
+    return { ok: true as const, version: this.batches.length };
   }
+  async findAllKeysVersioned(_sessionId: string) { return { keys: Object.fromEntries(this.keys), version: null }; }
   async clearCredentials(_sessionId: string) { this.keys.clear(); }
   async deleteBySessionId(_sessionId: string) { this.keys.clear(); this.legacy = null; }
 }
