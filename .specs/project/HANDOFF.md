@@ -8,7 +8,7 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 | Frente | Estado | Próximo passo |
 | --- | --- | --- |
 | Limite do gerador (5/20/ilimitado) | ✅ `ba85963`, api 0.58.0 | deploy aplica migration de presets |
-| E2 lease de sessão | ✅ T1–T23 + F1, F2, F4; api 0.59.0 | juntar `e2/f3` se pronto; 2ª revisão (`/caveman-review`) até só nits; **não fazer deploy antes** |
+| E2 lease de sessão | ✅ T1–T23 + F1–F4; api 0.59.0 | 2ª revisão (`/caveman-review`) até só nits; **não fazer deploy antes** |
 | E3 http × worker | plano ✅; onda 1 T1–T4 ✅ juntada (594/594 verdes); onda 2 (T5, T6, T13–T17) em `e3/t*` | juntar onda 2; depois T7→T8–T12→T18→T19→T20→T21; D1–D11 propostas, Redis ~US$10 só ao separar |
 | E4 adoção | plano em `e4/plan` (se pronto) | juntar |
 | Tela Assinatura | plano em `assinatura/plan` (se pronto) | juntar e executar |

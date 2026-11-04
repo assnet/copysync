@@ -42,7 +42,7 @@ Regras comuns a toda task:
 | T23 | Docs, CHANGELOG e versão | T22 | | ✅ este commit |
 | F1 | Boot: 2ª reconciliação após o TTL do lease | T23 | P | ✅ 7cdcd47 |
 | F2 | Fence por erro de banco preserva chaves e se recupera | T23 | P | ✅ 45afcd8 |
-| F3 | Socket em abertura conta como local na renovação | F2 | | ⏳ |
+| F3 | Socket em abertura conta como local na renovação | F2 | | ✅ abadce9 |
 | F4 | Migration em UTC e `renew` ignora sessão apagada | T23 | P | ✅ fda7636 |
 
 ## Notas de execução (passagem entre tarefas)
