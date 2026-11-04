@@ -54,7 +54,8 @@ import type { ISessionRepository } from '../../../../sessions/domain/contracts/I
 import type { IChatConversationRepository } from '../../../../chat/domain/contracts/IChatConversationRepository';
 import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
 import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
-import { SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
+import { SessionLeaseHeldError, SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
+import type { ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
 import { EngineOperationUnsupportedError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 import { TelegramLoginNotPendingError } from '../../../../../shared/errors/internal/TelegramErrors';
@@ -172,6 +173,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     private readonly auth: TelegramAuthStatePersistence,
     /** Regra de download de mídia em grupo (`autoDownloadMedia` da conversa), a mesma do Baileys. */
     private readonly chatConversationRepo: Pick<IChatConversationRepository, 'findActiveByGroupAndSession'>,
+    /** Lease da sessão (LEASE-03): sem ele nenhum cliente abre. Padrão: sempre concede. */
+    private readonly leaseGate: ISessionLeaseGate = { acquire: async () => true },
   ) {}
 
   // ── Ciclo de vida ──────────────────────────────────────────────────────────
@@ -401,6 +404,12 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   private async openClient(sessionId: string, tenantId: string, savedSession?: string | null): Promise<TelegramSessionEntry> {
+    // Lease antes de tudo (LEASE-03): outro processo com a sessão → nenhum cliente nem status aqui
+    // (dois clientes com a mesma chave = AUTH_KEY_DUPLICATED)
+    if (!(await this.leaseGate.acquire(sessionId))) {
+      telegramLogger.warn({ sessionId, tenantId }, 'lease da sessão com outro processo; cliente não aberto');
+      throw new SessionLeaseHeldError(sessionId);
+    }
     const existing = this.registry.get(sessionId);
     if (existing) await this.teardown(sessionId, existing);
 
