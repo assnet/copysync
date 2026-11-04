@@ -19,7 +19,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | # | Funcionalidade | O que faz | Módulo sugerido (`api/src/modules/`) | Status |
 |---|---|---|---|---|
 | 1 | 📱 Conexão WhatsApp | Conecta números do cliente à ferramenta (QR / pairing code) | `sessions`, `messaging` (Baileys) | ✅ existe |
-| 2 | ✈️ Conexão Telegram | Conecta conta Telegram para monitorar e postar | `messaging` (novo engine `telegram` atrás de `MessagingEngine`) | ⏳ |
+| 2 | ✈️ Conexão Telegram | Conecta conta Telegram para monitorar e postar | `messaging` engine `telegram` ([doc](sessoes-telegram.md)) | 🟡 conexão e limite por plano (api 0.51.0 · app 0.64.0); falta monitorar/disparar por Telegram |
 | 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre e Amazon para gerar links | `integrations/affiliate-credentials` | ✅ |
 | 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` (`docs/monitoramento-grupos.md`) | 🟡 WhatsApp, oferta montada e IA prontos; falta imagem e Telegram |
 | 5 | 📤 Grupos de disparo | Grupos do cliente que recebem as ofertas | `campaigns/broadcast-groups` | ⏳ |
