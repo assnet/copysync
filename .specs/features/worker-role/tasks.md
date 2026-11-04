@@ -16,10 +16,10 @@ Regras comuns a toda task:
 
 | ID | Título | Deps | [P] | Status |
 | --- | --- | --- | --- | --- |
-| T1 | `PROCESS_ROLE` + `REDIS_URL` + `processRole` | — | P | ⏳ |
-| T2 | Engine local fora de `session.routes.ts` | — | P | ⏳ |
-| T3 | Redis: dependências, conexões lazy, script descartável | — | P | ⏳ |
-| T4 | Erro interno ↔ formato de fio | — | P | ⏳ |
+| T1 | `PROCESS_ROLE` + `REDIS_URL` + `processRole` | — | P | ✅ 869c3af |
+| T2 | Engine local fora de `session.routes.ts` | — | P | ✅ 79c61cd |
+| T3 | Redis: dependências, conexões lazy, script descartável | — | P | ✅ 89b1364 |
+| T4 | Erro interno ↔ formato de fio | — | P | ✅ 52092c0 |
 | T5 | `findLiveOwner` no repositório de lease | — | P | ⏳ |
 | T6 | `createOutboundMessageId` assíncrono | — | P | ⏳ |
 | T7 | Plano de chamadas da engine + codec + portas | T6 | | ⏳ |
@@ -431,3 +431,10 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 | T8, T9, T13 | transporte Redis | nenhum | int (Redis descartável) | ✅ |
 | T15, T21 | remoção / docs | nenhum | none | ✅ |
 | T19, T20 | `server.ts` / smoke | nenhum | smoke | ✅ |
+
+## Notas de execução
+
+- T1: `parseEnv(source)` puro em `env.ts`; `processRole.ts` (`currentRole`, `runsSessions`, `runsHttp`, `usesRedis`). Validação de `PROCESS_ROLE` só com a env definida.
+- T2: `localEngine()` (lazy, idempotente) em `messaging/infrastructure/localEngineContainer.ts`; `session.routes.ts` chama no nível do módulo (mesma ordem de antes).
+- T3: bullmq 6.3.19 + ioredis 5.11.1; `redisConnections.ts` recebe papel/URL por `bindRedisAccess({ enabled, url, onError })` — **T17/T18 precisam chamar** `bindRedisAccess({ enabled: () => usesRedis(currentRole()), url: () => env.REDIS_URL, ... })`; sem isso todo getter lança (= `all`). `scripts/redis-descartavel.sh` (porta ≥ 56379 ou `REDIS_INT_PORT`).
+- T4: fio de erro `{ code, message, statusCode, meta?, name?, fields? }` (`name` desempata `SessionLeaseHeldError`); `SessionNotOwnedError` (409, interno).
