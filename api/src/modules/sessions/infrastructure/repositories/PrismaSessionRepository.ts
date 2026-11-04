@@ -28,7 +28,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     const raw = await prisma.$transaction(async (tx) => {
       // Chave própria: não disputa o lock da cota de ofertas do mesmo tenant
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'session-limit:' + data.tenantId}::text))`;
-      const used = await tx.session.count({ where: { tenantId: data.tenantId, deletedAt: null } });
+      const used = await tx.session.count({ where: { tenantId: data.tenantId, engine: limit.engine, deletedAt: null } });
       if (used >= limit.limit) throw new PlanLimitReachedError(limit.key, limit.limit);
       return tx.session.create({
         data: {
@@ -58,11 +58,25 @@ export class PrismaSessionRepository implements ISessionRepository {
     return rows.map(PrismaSessionMapper.toDomain);
   }
 
+  async countByEngine(tenantId: string): Promise<Record<string, number>> {
+    const rows = await prisma.session.groupBy({
+      by: ['engine'],
+      where: { tenantId, deletedAt: null },
+      _count: { _all: true },
+    });
+    return Object.fromEntries(rows.map((r) => [r.engine, r._count._all]));
+  }
+
+  async findEngineById(id: string): Promise<string | null> {
+    const raw = await prisma.session.findUnique({ where: { id }, select: { engine: true } });
+    return raw?.engine ?? null;
+  }
+
   async findActiveSessionsForBootstrap(): Promise<Session[]> {
     const rows = await prisma.session.findMany({
       where: {
         deletedAt: null,
-        status: { in: ['CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'CONNECTED'] },
+        status: { in: ['CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD', 'CONNECTED'] },
       },
     });
     return rows.map(PrismaSessionMapper.toDomain);

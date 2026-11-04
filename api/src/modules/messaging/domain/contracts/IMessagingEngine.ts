@@ -34,6 +34,32 @@ export interface LogoutSessionInput {
   tenantId: string;
 }
 
+// ── Login por código (canais em que o código chega ao app do usuário, ex.: Telegram) ─────
+
+export interface RequestLoginCodeInput {
+  sessionId: string;
+  tenantId: string;
+  /** Telefone da conta, só dígitos com DDI (ex.: 5511987654321). */
+  phone: string;
+}
+
+export interface SubmitLoginCodeInput {
+  sessionId: string;
+  tenantId: string;
+  code: string;
+}
+
+export interface SubmitLoginPasswordInput {
+  sessionId: string;
+  tenantId: string;
+  password: string;
+}
+
+export interface LoginStepResult {
+  /** Estado após o passo: AWAITING_CODE, AWAITING_PASSWORD ou CONNECTED. */
+  status: SessionStatus;
+}
+
 export interface QuotedMessageRef {
   /** WhatsApp stanzaId da mensagem citada (key.id no Baileys) */
   externalId: string;
@@ -224,6 +250,15 @@ export interface IMessagingEngine {
    * posterior volta ao modo QR.
    */
   requestPairingCode(input: RequestPairingCodeInput): Promise<RequestPairingCodeResult>;
+  /**
+   * Login por código enviado ao app do usuário (Telegram). Pede o código para o telefone e deixa
+   * a sessão em AWAITING_CODE. Canal sem esse fluxo lança `EngineOperationUnsupportedError`.
+   */
+  requestLoginCode(input: RequestLoginCodeInput): Promise<LoginStepResult>;
+  /** Entrega o código digitado. Resultado: CONNECTED ou AWAITING_PASSWORD (verificação em duas etapas). */
+  submitLoginCode(input: SubmitLoginCodeInput): Promise<LoginStepResult>;
+  /** Entrega a senha de duas etapas. Resultado: CONNECTED. */
+  submitLoginPassword(input: SubmitLoginPasswordInput): Promise<LoginStepResult>;
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult>;
   /**
    * Gera o id que a próxima mensagem da sessão terá no WhatsApp, para o chat gravar antes do

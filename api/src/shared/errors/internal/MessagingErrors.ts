@@ -31,3 +31,17 @@ export class PairingFailedError extends AppError {
     super('PAIRING_FAILED', `Pairing failed: ${reason}`, 400);
   }
 }
+
+/** Engine existe no código mas está desligada por configuração (ex.: Telegram sem credenciais). */
+export class EngineDisabledError extends AppError {
+  constructor(engine: string) {
+    super('ENGINE_DISABLED', `Messaging engine is disabled: ${engine}`, 503, { engine });
+  }
+}
+
+/** Operação que este canal não oferece (ex.: código de login do Telegram numa sessão WhatsApp). */
+export class EngineOperationUnsupportedError extends AppError {
+  constructor(engine: string, operation: string) {
+    super('ENGINE_OPERATION_UNSUPPORTED', `Engine ${engine} does not support ${operation}`, 422, { engine, operation });
+  }
+}

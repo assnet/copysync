@@ -6,6 +6,8 @@
  */
 export const ENTITLEMENT_KEYS = {
   WHATSAPP_SESSIONS: 'whatsapp_sessions',
+  /** Sessões Telegram (conta de usuário, MTProto). 0 no Lite, 1 no Pro, 2 no Max. */
+  TELEGRAM_SESSIONS: 'telegram_sessions',
   MONITORED_GROUPS: 'monitored_groups',
   BROADCAST_GROUPS: 'broadcast_groups',
   MENTION_ALL_ENABLED: 'mention_all_enabled',

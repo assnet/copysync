@@ -57,6 +57,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added
+
+#### Backend — Sessões Telegram (`sessions`, `messaging`) — api 0.51.0
+
+- **`engines/telegram/TelegramMessagingEngineAdapter.ts`** — segundo engine atrás de `IMessagingEngine`, conta de usuário via MTProto (lib `telegram`/GramJS). Login por telefone → código no app → senha 2FA, ou por QR (`tg://login?token=`); mensagens recebidas viram `MESSAGE_RECEIVED` (texto; mídia ainda sem download); envio de texto/mídia/reação/typing; grupos (`listParticipatingGroups`, resumo, convite, participantes). Sem número da plataforma e sem segundo número do usuário. Doc: `docs/sessoes-telegram.md`
+- **`engines/telegram/TelegramAuthStatePersistence.ts`** — StringSession cifrada (`ISecretCipher`, AAD `tenantId:telegram:session`) em `SessionAuthKey` chave `session`, provider `telegram`
+- **`MessagingEngineRouter.ts`** — única porta para o resto do sistema; despacha pela `Session.engine` (cache sessionId → engine). `MessagingEngineFactory.createRouter` monta Baileys sempre e Telegram só com `TELEGRAM_ENGINE_ENABLED` + `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` + cifra
+- **`IMessagingEngine`** — `requestLoginCode`/`submitLoginCode`/`submitLoginPassword` (`LoginStepResult`); Baileys responde `ENGINE_OPERATION_UNSUPPORTED`
+- **`SessionLoginByCodeUseCases.ts`** / **`session.routes.ts`** — `POST /sessions/:id/telegram/send-code|sign-in|password`; `GET /sessions/limits` (usadas/limite por canal, `telegram.enabled`); `POST /sessions` aceita `engine: 'telegram'` (telefone internacional, `normalizeInternationalPhone`)
+- **`SessionStatus`** — `AWAITING_CODE`, `AWAITING_PASSWORD` (migration `20261103120000_add_telegram_session_statuses`)
+- **`entitlementKeys.ts`** / **`planPresets.ts`** — `telegram_sessions` 0 / 1 / 2 (Lite / Pro / Max)
+- **`TelegramErrors.ts`** / **`MessagingErrors.ts`** — `TELEGRAM_PHONE_INVALID`, `TELEGRAM_CODE_INVALID`, `TELEGRAM_CODE_EXPIRED`, `TELEGRAM_PASSWORD_INVALID`, `TELEGRAM_FLOOD_WAIT` (429, `meta.seconds`), `TELEGRAM_LOGIN_NOT_PENDING`, `ENGINE_DISABLED` (503), `ENGINE_OPERATION_UNSUPPORTED` (422)
+
+### Fixed
+
+- **`PrismaSessionRepository.createWithinLimit`** — contava todas as sessões do tenant contra `whatsapp_sessions`; agora conta por engine (`SessionLimit.engine`), senão a 1ª sessão Telegram estouraria o limite do WhatsApp
+
 ### Changed
 
 #### Backend — prisma/seed

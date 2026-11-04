@@ -15,10 +15,12 @@ export interface SessionStatusUpdate {
   lastDisconnectedAt?: Date;
 }
 
-/** Limite do plano para sessões não excluídas do tenant. */
+/** Limite do plano para sessões não excluídas do tenant, contadas por engine (canal). */
 export interface SessionLimit {
   key: string;
   limit: number;
+  /** Só sessões desta engine entram na contagem (`whatsapp_sessions` × `telegram_sessions`). */
+  engine: string;
 }
 
 export interface ISessionRepository {
@@ -35,6 +37,10 @@ export interface ISessionRepository {
    * when the process last ran.  Used only by SessionBootstrapService on startup.
    */
   findActiveSessionsForBootstrap(): Promise<Session[]>;
+  /** Sessões não excluídas do tenant, por engine (contador de limite do painel). */
+  countByEngine(tenantId: string): Promise<Record<string, number>>;
+  /** Engine de uma sessão (inclusive excluída), sem tenant: para o roteador de engines. null = inexistente. */
+  findEngineById(id: string): Promise<string | null>;
   /**
    * Updates status (and optional timestamps).
    * Callers must pre-validate tenantId ownership via findById.

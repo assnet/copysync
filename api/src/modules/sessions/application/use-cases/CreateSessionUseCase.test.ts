@@ -62,9 +62,25 @@ describe('CreateSessionUseCase', () => {
     await new CreateSessionUseCase(repo, makeAuditRepo(), entitlements(2)).execute(base);
     expect(repo.createWithinLimit).toHaveBeenCalledWith(
       { tenantId: 't1', name: 'Ofertas', engine: 'baileys', declaredPhone: null },
-      { key: 'whatsapp_sessions', limit: 2 },
+      { key: 'whatsapp_sessions', limit: 2, engine: 'baileys' },
     );
     expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('Telegram: telefone internacional, chave telegram_sessions e engine desligada → ENGINE_DISABLED', async () => {
+    const repo = makeSessionRepo();
+    const ent = entitlements(1);
+    const enabled = new Set(['baileys', 'telegram']);
+    await new CreateSessionUseCase(repo, makeAuditRepo(), ent, enabled).execute({
+      ...base, engine: 'telegram', declaredPhone: '+1 415 555 0100',
+    });
+    expect(ent.getNumber).toHaveBeenCalledWith('t1', 'telegram_sessions');
+    expect(repo.createWithinLimit).toHaveBeenCalledWith(
+      { tenantId: 't1', name: 'Ofertas', engine: 'telegram', declaredPhone: '14155550100' },
+      { key: 'telegram_sessions', limit: 1, engine: 'telegram' },
+    );
+    const err = await new CreateSessionUseCase(repo, makeAuditRepo(), ent).execute({ ...base, engine: 'telegram' }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'ENGINE_DISABLED', statusCode: 503 });
   });
 
   it('sem entitlement de sessões é ilimitado e cria direto', async () => {

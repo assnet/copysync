@@ -255,7 +255,7 @@ export async function buildApp() {
   app.addSchema({
     $id: 'SessionStatus',
     type: 'string',
-    enum: ['PENDING', 'CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'CONNECTED', 'DISCONNECTED', 'LOGGED_OUT', 'FAILED'],
+    enum: ['PENDING', 'CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD', 'CONNECTED', 'DISCONNECTED', 'LOGGED_OUT', 'FAILED'],
   });
 
   app.addSchema({

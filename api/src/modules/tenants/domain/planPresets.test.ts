@@ -4,9 +4,9 @@ import { ENTITLEMENT_KEYS as K } from './entitlementKeys';
 
 /** Mesmos números da vitrine (`app/src/features/plans/catalog.ts` → `limits`) e do roadmap. Mudou lá, muda aqui. */
 const CATALOG_LIMITS = {
-  COPYSYNC_LITE: { storefront: false, offerStory: false, whatsappSessions: 1, monitoredGroups: 1, broadcastGroups: 5, mentionAll: false, crossSession: false, linkRotations: 1, linkRotationGroups: 3 },
-  COPYSYNC_PRO: { storefront: true, offerStory: false, whatsappSessions: 1, monitoredGroups: 2, broadcastGroups: 10, mentionAll: true, crossSession: false, linkRotations: 1, linkRotationGroups: 5 },
-  COPYSYNC_MAX: { storefront: true, offerStory: true, whatsappSessions: 2, monitoredGroups: 6, broadcastGroups: 40, mentionAll: true, crossSession: true, linkRotations: 2, linkRotationGroups: 10 },
+  COPYSYNC_LITE: { storefront: false, offerStory: false, whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, mentionAll: false, crossSession: false, linkRotations: 1, linkRotationGroups: 3 },
+  COPYSYNC_PRO: { storefront: true, offerStory: false, whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, mentionAll: true, crossSession: false, linkRotations: 1, linkRotationGroups: 5 },
+  COPYSYNC_MAX: { storefront: true, offerStory: true, whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, mentionAll: true, crossSession: true, linkRotations: 2, linkRotationGroups: 10 },
 } as const;
 
 describe('PLAN_PRESETS', () => {
@@ -14,6 +14,7 @@ describe('PLAN_PRESETS', () => {
     const c = CATALOG_LIMITS[slug];
     expect(PLAN_PRESETS[slug]).toMatchObject({
       [K.WHATSAPP_SESSIONS]: c.whatsappSessions,
+      [K.TELEGRAM_SESSIONS]: c.telegramSessions,
       [K.MONITORED_GROUPS]: c.monitoredGroups,
       [K.BROADCAST_GROUPS]: c.broadcastGroups,
       [K.MENTION_ALL_ENABLED]: c.mentionAll,

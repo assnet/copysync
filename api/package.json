@@ -1,6 +1,6 @@
 {
   "name": "waioprime-api",
-  "version": "0.50.0",
+  "version": "0.51.0",
   "description": "WaioPrime API — Fastify + TypeScript + Prisma + PostgreSQL",
   "private": true,
   "scripts": {
@@ -36,12 +36,14 @@
     "@resvg/resvg-js": "2.6.2",
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "bcryptjs": "^3.0.3",
+    "big-integer": "^1.6.52",
     "fastify": "^4.28.1",
     "nodemailer": "^10.2.1",
     "pino": "^9.5.0",
     "pino-pretty": "^11.3.0",
     "satori": "0.63.2",
     "sharp": "0.34.5",
+    "telegram": "2.26.22",
     "ws": "^8.19.0",
     "zod": "^3.23.8"
   },

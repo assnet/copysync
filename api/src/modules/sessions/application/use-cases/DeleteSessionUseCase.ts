@@ -36,7 +36,7 @@ export class DeleteSessionUseCase {
     if (!session) throw new SessionNotFoundError(input.sessionId);
 
     // Gracefully disconnect from engine if the session is active
-    const activeStatuses = ['CONNECTED', 'CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING'];
+    const activeStatuses = ['CONNECTED', 'CONNECTING', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD'];
     if (activeStatuses.includes(session.status)) {
       try {
         await this.engine.disconnectSession({ sessionId: input.sessionId, tenantId: input.tenantId });

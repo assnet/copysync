@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** Transação em memória: registra a ordem lock → contagem → criação. */
 const db = vi.hoisted(() => {
-  const state = { used: 0, ops: [] as string[], lockArgs: [] as unknown[] };
+  const state = { used: 0, ops: [] as string[], lockArgs: [] as unknown[], countWhere: {} as Record<string, unknown> };
   const T0 = new Date('2026-11-02T12:00:00Z');
   const tx = {
     $executeRaw: async (_s: TemplateStringsArray, ...values: unknown[]) => { state.ops.push('lock'); state.lockArgs = values; return 1; },
     session: {
-      count: async () => { state.ops.push('count'); return state.used; },
+      count: async ({ where }: { where: Record<string, unknown> }) => { state.ops.push('count'); state.countWhere = where; return state.used; },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         state.ops.push('create');
         return {
@@ -26,7 +26,7 @@ import { PrismaSessionRepository } from './PrismaSessionRepository';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 
 const data = { tenantId: 't1', name: 'Ofertas', engine: 'baileys', declaredPhone: null };
-const limit = { key: 'whatsapp_sessions', limit: 2 };
+const limit = { key: 'whatsapp_sessions', limit: 2, engine: 'baileys' };
 
 beforeEach(() => {
   db.state.used = 0;
@@ -40,6 +40,7 @@ describe('PrismaSessionRepository.createWithinLimit', () => {
     const session = await new PrismaSessionRepository().createWithinLimit(data, limit);
     expect(db.state.ops).toEqual(['lock', 'count', 'create']);
     expect(db.state.lockArgs).toEqual(['session-limit:t1']);
+    expect(db.state.countWhere).toMatchObject({ tenantId: 't1', engine: 'baileys', deletedAt: null });
     expect(session).toMatchObject({ id: 's-new', tenantId: 't1', status: 'PENDING' });
   });
 

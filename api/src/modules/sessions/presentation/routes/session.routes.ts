@@ -6,6 +6,9 @@ import {
   createSessionBodySchema,
   requestPairingCodeBodySchema,
   sessionIdParamSchema,
+  loginCodeRequestBodySchema,
+  loginCodeSubmitBodySchema,
+  loginPasswordSubmitBodySchema,
 } from '../schemas/session.schema';
 import { PrismaSessionRepository } from '../../infrastructure/repositories/PrismaSessionRepository';
 import { PrismaSessionAuthStateRepository } from '../../infrastructure/repositories/PrismaSessionAuthStateRepository';
@@ -30,6 +33,12 @@ import { GetSessionQrUseCase } from '../../application/use-cases/GetSessionQrUse
 import { GetSessionPairingCodeUseCase } from '../../application/use-cases/GetSessionPairingCodeUseCase';
 import { RequestSessionPairingCodeUseCase } from '../../application/use-cases/RequestSessionPairingCodeUseCase';
 import { DeleteSessionUseCase } from '../../application/use-cases/DeleteSessionUseCase';
+import { GetSessionLimitsUseCase } from '../../application/use-cases/GetSessionLimitsUseCase';
+import {
+  RequestSessionLoginCodeUseCase,
+  SubmitSessionLoginCodeUseCase,
+  SubmitSessionLoginPasswordUseCase,
+} from '../../application/use-cases/SessionLoginByCodeUseCases';
 import { PrismaLinkRotationPlanEnforcementStore } from '../../../link-rotation/infrastructure/repositories/PrismaLinkRotationPlanEnforcementStore';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
@@ -47,20 +56,24 @@ const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
   chatMessageRepo,
 );
 
-// Engine singleton — wired once, shared across all requests
-const engine = MessagingEngineFactory.create(
-  'baileys',
+// Engine singleton (roteador por engine da sessão) — wired once, shared across all requests
+const engine = MessagingEngineFactory.createRouter({
   sessionRepo,
   authStateRepo,
   chatContactRepo,
   chatConversationRepo,
-  ingestHistorySyncUseCase,
-);
+  historySyncUseCase: ingestHistorySyncUseCase,
+});
 // Disponibiliza para outros módulos (e.g. chat routes para read receipts)
 setActiveEngine(engine);
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
-const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo, new PrismaEntitlementReader(prisma));
+const entitlementReader = new PrismaEntitlementReader(prisma);
+const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo, entitlementReader, engine.enabledEngines);
+const getSessionLimitsUseCase = new GetSessionLimitsUseCase(sessionRepo, entitlementReader, engine.enabledEngines);
+const requestSessionLoginCodeUseCase = new RequestSessionLoginCodeUseCase(sessionRepo, auditRepo, engine);
+const submitSessionLoginCodeUseCase = new SubmitSessionLoginCodeUseCase(sessionRepo, auditRepo, engine);
+const submitSessionLoginPasswordUseCase = new SubmitSessionLoginPasswordUseCase(sessionRepo, auditRepo, engine);
 const listSessionsUseCase = new ListSessionsUseCase(sessionRepo, engine);
 const getSessionByIdUseCase = new GetSessionByIdUseCase(sessionRepo);
 const getSessionStatusUseCase = new GetSessionStatusUseCase(sessionRepo);
@@ -121,6 +134,124 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
 
       const session = await createSessionUseCase.execute({ tenantId, userId, name, engine, declaredPhone });
       reply.status(201).send(SessionPresenter.toSessionItem(session));
+    },
+  );
+
+  // ── GET /sessions/limits — usadas/limite por canal ────────────────────────
+  app.get(
+    '/limits',
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Limites de sessões por canal',
+        description: 'Sessões usadas e limite do plano para WhatsApp e Telegram (`limit` null = ilimitado).',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              whatsapp: { type: 'object', properties: { used: { type: 'integer' }, limit: { type: 'integer', nullable: true } } },
+              telegram: {
+                type: 'object',
+                properties: { used: { type: 'integer' }, limit: { type: 'integer', nullable: true }, enabled: { type: 'boolean' } },
+              },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      reply.status(200).send(await getSessionLimitsUseCase.execute({ tenantId }));
+    },
+  );
+
+  const loginStepResponse = {
+    200: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' }, status: { $ref: 'SessionStatus#' } },
+    },
+    401: { $ref: 'ErrorResponse#' },
+    404: { $ref: 'ErrorResponse#' },
+    409: { $ref: 'ErrorResponse#' },
+    422: { $ref: 'ErrorResponse#' },
+    429: { $ref: 'ErrorResponse#' },
+  } as const;
+
+  // ── POST /sessions/:id/telegram/send-code — login por código (Telegram) ───
+  app.post(
+    '/:id/telegram/send-code',
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Telegram: enviar código de login',
+        description:
+          'Pede ao Telegram o código de login para o telefone informado (ou o declarado na criação). '
+          + 'O código chega no app Telegram do usuário; a sessão fica AWAITING_CODE.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        body: loginCodeRequestBodySchema,
+        response: loginStepResponse,
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      const body = (request.body ?? {}) as { phone?: string };
+      reply.status(200).send(await requestSessionLoginCodeUseCase.execute({ sessionId: id, tenantId, userId, phone: body.phone }));
+    },
+  );
+
+  // ── POST /sessions/:id/telegram/sign-in — entrega o código digitado ───────
+  app.post(
+    '/:id/telegram/sign-in',
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Telegram: confirmar código',
+        description: 'Entrega o código digitado. Resultado CONNECTED, ou AWAITING_PASSWORD se a conta tiver verificação em duas etapas.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        body: loginCodeSubmitBodySchema,
+        response: loginStepResponse,
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      const { code } = request.body as { code: string };
+      reply.status(200).send(await submitSessionLoginCodeUseCase.execute({ sessionId: id, tenantId, code }));
+    },
+  );
+
+  // ── POST /sessions/:id/telegram/password — senha de duas etapas ──────────
+  app.post(
+    '/:id/telegram/password',
+    {
+      preHandler,
+      schema: {
+        tags: ['Sessions'],
+        summary: 'Telegram: senha de duas etapas',
+        description: 'Entrega a senha de verificação em duas etapas quando a sessão está AWAITING_PASSWORD.',
+        security: [{ bearerAuth: [] }],
+        headers: tenantHeader,
+        params: sessionIdParamSchema,
+        body: loginPasswordSubmitBodySchema,
+        response: loginStepResponse,
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId } = request.tenantContext;
+      const { id } = request.params as IdParam;
+      const { password } = request.body as { password: string };
+      reply.status(200).send(await submitSessionLoginPasswordUseCase.execute({ sessionId: id, tenantId, password }));
     },
   );
 

@@ -21,6 +21,7 @@ import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension'
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { env } from '../../../../../shared/config/env';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
+import { EngineOperationUnsupportedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import type {
   IMessagingEngine,
   CreateSessionInput,
@@ -31,6 +32,10 @@ import type {
   LogoutSessionInput,
   RequestPairingCodeInput,
   RequestPairingCodeResult,
+  RequestLoginCodeInput,
+  SubmitLoginCodeInput,
+  SubmitLoginPasswordInput,
+  LoginStepResult,
   SendTextMessageInput,
   QuotedMessageRef,
   SendMediaMessageInput,
@@ -375,6 +380,22 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine {
       }
       throw translateSendError(err, 'media not accepted by engine');
     }
+  }
+
+  // WhatsApp não tem login por código enviado ao app: só QR e pareamento por número.
+  async requestLoginCode(input: RequestLoginCodeInput): Promise<LoginStepResult> {
+    void input;
+    throw new EngineOperationUnsupportedError('baileys', 'requestLoginCode');
+  }
+
+  async submitLoginCode(input: SubmitLoginCodeInput): Promise<LoginStepResult> {
+    void input;
+    throw new EngineOperationUnsupportedError('baileys', 'submitLoginCode');
+  }
+
+  async submitLoginPassword(input: SubmitLoginPasswordInput): Promise<LoginStepResult> {
+    void input;
+    throw new EngineOperationUnsupportedError('baileys', 'submitLoginPassword');
   }
 
   async sendReaction(input: SendReactionInput): Promise<SendMessageResult> {

@@ -46,6 +46,18 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default('false'),
   SESSION_BOOTSTRAP_MAX_CONCURRENT: z.coerce.number().int().positive().default(1),
+  // ── Telegram (engine `telegram`, conta de usuário via MTProto) ───────────
+  // Desligado por padrão: liga só com credenciais de app do my.telegram.org (uma por
+  // plataforma, nunca por tenant). Sem a flag, criar sessão Telegram responde 503 ENGINE_DISABLED.
+  TELEGRAM_ENGINE_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  TELEGRAM_API_ID: z.coerce.number().int().positive().optional(),
+  TELEGRAM_API_HASH: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
   BAILEYS_AUTH_FLUSH_DEBOUNCE_MS: z.coerce.number().int().nonnegative().default(750),
   BAILEYS_AUTH_PERSIST_MAX_RETRIES: z.coerce.number().int().positive().default(3),
   BAILEYS_AUTH_PERSIST_RETRY_DELAY_MS: z.coerce.number().int().positive().default(1_000),

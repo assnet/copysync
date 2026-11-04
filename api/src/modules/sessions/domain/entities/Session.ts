@@ -79,7 +79,9 @@ export class Session {
       this.status === 'CONNECTED' ||
       this.status === 'CONNECTING' ||
       this.status === 'AWAITING_QR' ||
-      this.status === 'AWAITING_PAIRING'
+      this.status === 'AWAITING_PAIRING' ||
+      this.status === 'AWAITING_CODE' ||
+      this.status === 'AWAITING_PASSWORD'
     );
   }
 
@@ -90,6 +92,10 @@ export class Session {
       this.status === 'FAILED' ||
       this.status === 'LOGGED_OUT'
     );
+  }
+
+  isTelegram(): boolean {
+    return this.engine === 'telegram';
   }
 
   isDeleted(): boolean {
