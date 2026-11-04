@@ -1,18 +1,18 @@
 # Handoff — 2026-11-04 (sessão até 21:00)
 
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
-`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: suíte completa 2940/2940).
+`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: suíte completa 2967/2967 às 20:56; depois disso só `tsc` api+app verificado, rodar vitest de novo).
 
 ## CopySync (`feature/rebranding-app`)
 
 | Frente | Estado | Próximo passo |
 | --- | --- | --- |
 | Limite do gerador (5/20/ilimitado) | ✅ `ba85963`, api 0.58.0 | deploy aplica migration de presets |
-| E2 lease de sessão | ✅ T1–T23 + F1–F4; F5–F8 ✅ juntadas; F9 em `e2/f9` | juntar F9; 3ª revisão até convergir (`/caveman-review`) até só nits; **não fazer deploy antes** |
-| E3 http × worker | T1–T6, T13–T17 ✅ juntadas (vitest completo 2848/2848) + T7 em `e3/t7` | juntar T7; depois T8–T12→T8–T12→T18→T19→T20→T21; D1–D11 propostas, Redis ~US$10 só ao separar |
-| E4 adoção | plano ✅ (`.specs/features/session-adoption/`, D1–D8 propostas); T1–T13, T17 ✅ juntadas (vitest 2940/2940); T14, T18 em `e4/t14`, `e4/t18` | juntar; depois T15 (precisa E3 T19), T16 (E3 T18), T19, T20 |
-| Tela Assinatura | plano ✅ (`.specs/features/subscription-page/`) | dono decide D1–D6 (recomendações no arquivo); executar |
-| Grupos de disparo + horário | plano ✅ (`.specs/features/broadcast-schedule/`) | dono decide D1–D5; executar |
+| E2 lease de sessão | ✅ T1–T23 + F1–F4; F1–F9 ✅ juntadas | 3ª revisão (`/caveman-review`) até convergir; **não fazer deploy antes** (`/caveman-review`) até só nits; **não fazer deploy antes** |
+| E3 http × worker | T1–T6, T13–T17 ✅ juntadas (vitest completo 2848/2848) + T7 ✅ | próximo: T8–T12 (usar `engineCallSessionId`, `EngineCallsOf<K>`, portas com `close()`)→T8–T12→T18→T19→T20→T21; D1–D11 propostas, Redis ~US$10 só ao separar |
+| E4 adoção | plano ✅ (`.specs/features/session-adoption/`, D1–D8 propostas); T1–T14, T17, T18 ✅ juntadas (T18 sem conferência visual) | T15 (precisa E3 T19), T16 (E3 T18), T19, T20; spec T13 diz 403 mas hook dá 401
+| Tela Assinatura | plano ✅ (`.specs/features/subscription-page/`) | T3, T4, T6, T11, T12 ✅ juntadas; **T10 em `sub/t10` deu conflito no cherry-pick** (`app/src/types/api.types.ts`, junto com bcast/T7): resolver à mão | dono decide D1–D6; depois T5, T7, T8, T13–T18 |
+| Grupos de disparo + horário | plano ✅ (`.specs/features/broadcast-schedule/`) | T1, T7, T8, T9, T11 ✅ juntadas | dono decide D1–D5; depois T2–T6, T22, T23, T10, T12–T19 |
 
 ## Central (`pulsosocial_api`) — produção = `feature/calibracao-backend` 1.86.0 (develop/main obsoletos)
 
@@ -27,8 +27,8 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 
 ## Outros branches em andamento
 
-- CopySync: `billing/seq-bigint` (seq BigInt + expiresAt), `billing/two-secrets` (segredo anterior na rotação).
-- Central: `hub/h2-pure-base` (padrão `*.hub.test.ts`) + `hub/h2-t5`, `h2-t6`, `h2-t7`, `h2-t8`, `h2-t13`, `h4-t26` (funções puras).
+- CopySync: `billing/seq-bigint` e `billing/two-secrets` ✅ juntados. `expiresAt` do `subscription.updated` NÃO aplicado: falta coluna de vencimento (cruza com Assinatura D1/T1–T2).
+- Central: `hub/h2-pure-base` (padrão `*.hub.test.ts`) + ✅ `hub/h2-t5`, `h2-t6`, `h2-t7`, `h2-t8`, `h2-t13`, `h4-t21`, `h4-t23`, `h4-t26` (cada um 1 commit sobre a base; juntar num branch de H2/H4 quando H1 existir). Staging rodada 2 e integração da caracterização (`test/char-prod`, `riscos-caracterizacao.md`) podem ter terminado após 21:00: conferir branches.
 
 ## Decisões do dia (detalhe em `STATE.md`)
 
