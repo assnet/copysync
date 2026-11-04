@@ -14,6 +14,8 @@ import { linkRotationError, linkRotationErrorMessage } from '@/utils/linkRotatio
 import { linkRotationStrings } from '../strings';
 import { isValidInviteUrl } from '../inviteUrl';
 import { ROTATION_CAPACITY, ROTATION_RANGES, type Rotation, type RotationGroup, type RotationGroupCandidate, type RotationGroupCandidates, type SaveRotationGroupInput } from '../types';
+import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
+import { groupsKindOf, type RotationLimitKind } from '../channelLimits';
 import { PlanLimitBanner } from './PlanLimitBanner';
 import { needsInviteField, RotationGroupItem, type RotationGroupDraft } from './RotationGroupItem';
 
@@ -26,7 +28,7 @@ export interface RotationGroupsDialogProps {
   onClose: () => void;
   /** Rodízio cujos grupos são editados (usa `sessionId`, `strategy` e `groups`). */
   rotation: Rotation;
-  /** Máximo de grupos por rodízio no plano (`limits.linkRotationGroups`); `null` = ilimitado. */
+  /** Máximo de grupos por link no canal do rodízio (`limits[canal].groupsPerRotation`); `null` = ilimitado. */
   limit: number | null;
   /** Chamado com a lista salva (resposta do PUT `/:id/groups`). */
   onSaved: (groups: RotationGroup[]) => void;
@@ -79,7 +81,8 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
   const [refreshErrors, setRefreshErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [bannerLimit, setBannerLimit] = useState<number | null>(null);
+  // Aviso de upgrade com o tipo do canal do rodízio (grupos por link no WhatsApp ou no Telegram)
+  const [banner, setBanner] = useState<{ kind: RotationLimitKind; limit: number } | null>(null);
   const channel = rotation.channel ?? 'whatsapp';
 
   const load = useCallback(async () => {
@@ -149,7 +152,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
       return;
     }
     if (limit !== null && draft.items.length >= limit) {
-      setBannerLimit(limit);
+      setBanner({ kind: groupsKindOf(channel), limit });
       return;
     }
     setItems((items) => [
@@ -240,7 +243,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
     } catch (e) {
       const info = linkRotationError(e);
       if (info.code === 'PLAN_LIMIT_REACHED') {
-        setBannerLimit(info.limit ?? limit ?? draft.items.length);
+        setBanner({ kind: info.limitKind ?? groupsKindOf(channel), limit: info.limit ?? limit ?? draft.items.length });
       } else if (info.code === 'LINK_INVITE_URL_INVALID') {
         const marked: Record<string, string> = {};
         for (const p of payload) {
@@ -281,7 +284,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip size="small" color="primary" variant="outlined" label={t.selectedCount(draft.items.length, total)} />
             <Tooltip title={t.planLimitTooltip} arrow describeChild>
-              <Chip size="small" variant="outlined" label={t.planLimit(limit)} tabIndex={0} />
+              <Chip size="small" variant="outlined" icon={<ChannelLogo channel={channel} size="sm" />} label={t.planLimit(limit)} tabIndex={0} sx={{ pl: 0.5 }} />
             </Tooltip>
           </Stack>
 
@@ -419,7 +422,7 @@ export function RotationGroupsDialog({ open, onClose, rotation, limit, onSaved }
         </Button>
       </DialogActions>
 
-      {bannerLimit !== null && <PlanLimitBanner open onClose={() => setBannerLimit(null)} kind="groups" limit={bannerLimit} />}
+      {banner && <PlanLimitBanner open onClose={() => setBanner(null)} kind={banner.kind} limit={banner.limit} />}
     </Dialog>
   );
 }

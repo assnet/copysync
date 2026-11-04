@@ -20,6 +20,13 @@ describe('linkRotationError', () => {
     expect(linkRotationError({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'link_rotation_groups', limit: 5 } })).toMatchObject({ limitKind: 'groups', limit: 5 });
   });
 
+  it('PLAN_LIMIT_REACHED do Telegram abre o aviso do canal', () => {
+    expect(linkRotationError({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_link_rotations', limit: 0 } })).toMatchObject({
+      limitKind: 'telegramLinkRotations', limit: 0, message: linkRotationStrings.errors.planLimitTelegramRotations(0),
+    });
+    expect(linkRotationError({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'telegram_link_rotation_groups', limit: 5 } })).toMatchObject({ limitKind: 'telegramLinkRotationGroups' });
+  });
+
   it('LINK_INVITE_URL_INVALID mostra o formato do canal', () => {
     expect(linkRotationError({ code: 'LINK_INVITE_URL_INVALID', meta: { channel: 'telegram' } }).message).toBe(linkRotationStrings.errors.inviteUrlInvalid.telegram);
     expect(linkRotationError({ code: 'LINK_INVITE_URL_INVALID' }).message).toBe(linkRotationStrings.errors.inviteUrlInvalid.whatsapp);

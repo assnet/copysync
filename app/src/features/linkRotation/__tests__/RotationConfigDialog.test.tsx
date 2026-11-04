@@ -4,6 +4,7 @@ import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
 import type { Rotation, RotationOverview } from '../types';
 import { linkRotationStrings } from '../strings';
+import { normalizeRotationOverview } from '../channelLimits';
 import { finalizeSlug, normalizeSlugInput } from '../slug';
 
 const svc = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), rename: vi.fn() }));
@@ -13,7 +14,7 @@ import { RotationConfigDialog } from '../components/RotationConfigDialog';
 
 const t = linkRotationStrings.config;
 
-const overview: RotationOverview = {
+const overview: RotationOverview = normalizeRotationOverview({
   rotations: [],
   domains: [{ id: 'd1', hostname: 'copysync.com.br' }],
   limits: { linkRotations: 3, linkRotationGroups: 5 },
@@ -21,7 +22,7 @@ const overview: RotationOverview = {
     { id: 's1', name: 'Loja', status: 'CONNECTED', channel: 'whatsapp', avatarUrl: null },
     { id: 's2', name: 'Reserva', status: 'DISCONNECTED', channel: 'telegram', avatarUrl: null },
   ],
-};
+});
 
 const group = {
   id: 'g1', conversationId: null, groupJid: '1@g.us', groupName: 'G', position: 0, weight: 1, capacity: 1000,
@@ -80,6 +81,20 @@ describe('RotationConfigDialog', () => {
     expect(options[0]).toHaveTextContent('WhatsApp');
     expect(options[1]).toHaveTextContent('Reserva');
     expect(options[1]).toHaveTextContent('Telegram');
+  });
+
+  it('sessão de canal fora do plano fica travada com motivo e abre o upgrade', async () => {
+    const lite = normalizeRotationOverview({
+      ...overview,
+      limits: { ...overview.limits, telegram: { rotations: 0, groupsPerRotation: 0 } },
+    });
+    const h = setup({ overview: lite });
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: new RegExp(t.session) }));
+    const options = await screen.findAllByRole('option');
+    expect(options[1]).toHaveAttribute('aria-disabled', 'true');
+    expect(options[1]).toHaveTextContent(t.sessionLockedNoPlan('Telegram', 'PRO'));
+    fireEvent.click(options[1]);
+    expect(h.onPlanLimit).toHaveBeenCalledWith('telegramLinkRotations', 0);
   });
 
   it('cria com o nome finalizado e limpa o rascunho', async () => {

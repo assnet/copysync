@@ -121,6 +121,19 @@ export const linkRotationStrings = {
     limitReachedTooltip: 'Você já usa todos os links do seu plano. Veja como ter mais.',
     usage: (used: number, limit: number | null) =>
       limit === null ? `${count(used)} ${plural(used, 'link', 'links')}` : `${count(used)} de ${count(limit)} ${plural(limit, 'link', 'links')}`,
+    /** Contador por canal no cabeçalho (o logo do canal vai ao lado, decorativo). */
+    channelUsage: (channel: string, used: number, limit: number | null) =>
+      limit === null ? `${channel} ${count(used)}` : `${channel} ${count(used)}/${count(limit)}`,
+    channelUnavailable: (channel: string, planName: string | null) =>
+      planName ? `${channel}: a partir do ${planName}` : `${channel}: fora do plano`,
+    channelUsageAria: (channel: string, used: number, limit: number | null) =>
+      limit === null
+        ? `${channel}: ${count(used)} ${plural(used, 'link', 'links')}, sem limite no plano`
+        : `${channel}: ${count(used)} de ${count(limit)} ${plural(limit, 'link', 'links')} do plano`,
+    channelUsageTooltip: 'Links do seu plano em cada canal. Links pausados também ocupam vaga; excluir um link libera a vaga.',
+    channelUnavailableTooltip: (channel: string, planName: string | null) =>
+      planName ? `Seu plano não inclui links no ${channel}. Disponível a partir do ${planName}.` : `Seu plano não inclui links no ${channel}.`,
+    channelUsageGroupAria: 'Links usados por canal',
     loadError: 'Não foi possível carregar seus links.',
     retry: 'Tentar de novo',
     untitledSession: 'Sessão sem nome',
@@ -238,6 +251,16 @@ export const linkRotationStrings = {
     sessionUntitled: 'Sessão sem nome',
     sessionStatusTooltip: 'Situação da conexão desta sessão',
     sessionDisconnected: 'Esta sessão não está conectada. Você pode salvar, mas os grupos e os links de convite só são lidos com ela conectada.',
+    sessionLockedFull: (channel: string, limit: number) =>
+      `Sem vaga no ${channel}: seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')}`,
+    sessionLockedNoPlan: (channel: string, planName: string | null) =>
+      planName ? `Disponível a partir do ${planName}` : `Seu plano não inclui links no ${channel}`,
+    sessionLockedAria: (name: string, reason: string) => `${name}: ${reason}. Abre as opções de upgrade.`,
+    sessionLockedTooltip: 'Toque para ver como liberar este canal',
+    sessionLockedAlert: (channel: string) =>
+      `O ${channel} não tem vaga no seu plano para este link. Escolha uma sessão de outro canal ou veja os planos.`,
+    sessionLockedSwitchHelp: 'Com o link ativo, trocar de canal exige vaga no canal novo. Pause o link para trocar livremente.',
+    sessionLockedCta: 'Ver planos',
     sessionChangeWarning: (n: number) =>
       `Ao trocar a sessão, ${n === 1 ? 'o grupo escolhido sai' : `os ${n.toLocaleString('pt-BR')} grupos escolhidos saem`} do link. Depois você escolhe os grupos da nova sessão.`,
     titlePlaceholder: 'ex.: Ofertas da semana',
@@ -413,6 +436,14 @@ export const linkRotationStrings = {
       limit === null ? 'Você chegou ao limite de links do seu plano.' : `Seu plano permite ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio.`,
     planLimitGroups: (limit: number | null) =>
       limit === null ? 'Você chegou ao limite de grupos do seu plano.' : `Seu plano permite até ${count(limit)} ${plural(limit, 'grupo', 'grupos')} por link.`,
+    planLimitTelegramRotations: (limit: number | null) =>
+      limit === null || limit === 0
+        ? 'Seu plano não inclui mais links de rodízio no Telegram.'
+        : `Seu plano permite ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio no Telegram.`,
+    planLimitTelegramGroups: (limit: number | null) =>
+      limit === null
+        ? 'Você chegou ao limite de grupos por link no Telegram.'
+        : `Seu plano permite até ${count(limit)} ${plural(limit, 'grupo', 'grupos')} por link no Telegram.`,
     slugTaken: 'Esse nome já está em uso. Escolha outro.',
     slugReserved: 'Esse nome é reservado. Escolha outro.',
     slugInvalid: 'Use de 3 a 50 caracteres: letras minúsculas, números e hífen.',

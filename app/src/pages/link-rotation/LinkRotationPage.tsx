@@ -3,8 +3,10 @@ import { Alert, Box, Button, Chip, Skeleton, Snackbar, Stack, Tooltip, Typograph
 import { Link2, Plus, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppIcon, EmptyState, PageHeader } from '@/components';
+import { createButtonLockOf, groupLimitOf, type RotationLimitKind } from '@/features/linkRotation/channelLimits';
 import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
 import { RotationCard } from '@/features/linkRotation/components/RotationCard';
+import { RotationChannelUsage } from '@/features/linkRotation/components/RotationChannelUsage';
 import { RotationConfigDialog } from '@/features/linkRotation/components/RotationConfigDialog';
 import { RotationGroupsDialog } from '@/features/linkRotation/components/RotationGroupsDialog';
 import { useLinkRotationOverview } from '@/features/linkRotation/hooks/useLinkRotationOverview';
@@ -21,7 +23,7 @@ const te = linkRotationStrings.empty;
 type OpenDialog =
   | { kind: 'config'; rotationId: string | null }
   | { kind: 'groups'; rotationId: string }
-  | { kind: 'limit'; limitKind: 'rotations' | 'groups'; limit: number };
+  | { kind: 'limit'; limitKind: RotationLimitKind; limit: number };
 
 const CONNECT_SESSION_PATH = '/settings/sessions?create=1&returnTo=/link-rotation';
 const CARDS_GRID = { display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' } } as const;
@@ -33,9 +35,9 @@ export function LinkRotationPage() {
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const rotations = overview?.rotations ?? [];
-  const limit = overview?.limits.linkRotations ?? null;
-  const groupLimit = overview?.limits.linkRotationGroups ?? null;
-  const atLimit = limit !== null && rotations.length >= limit;
+  // Todo canal com sessão está sem vaga: "Criar link" abre o aviso de upgrade do primeiro deles
+  const createLock = overview ? createButtonLockOf(overview) : null;
+  const atLimit = createLock !== null;
   const noDomain = overview !== null && overview.domains.length === 0;
   const noSession = overview !== null && overview.sessions.length === 0;
   const blocked = noDomain || noSession;
@@ -44,7 +46,7 @@ export function LinkRotationPage() {
   const sessionOf = (r: Rotation) => overview?.sessions.find((s) => s.id === r.sessionId) ?? null;
 
   const openCreate = () => {
-    if (atLimit && limit !== null) setDialog({ kind: 'limit', limitKind: 'rotations', limit });
+    if (createLock) setDialog({ kind: 'limit', limitKind: createLock.kind, limit: createLock.limit });
     else setDialog({ kind: 'config', rotationId: null });
   };
 
@@ -88,8 +90,8 @@ export function LinkRotationPage() {
         subtitle={t.subtitle}
         action={
           overview && rotations.length > 0 && !blocked && (
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <Chip size="small" variant="outlined" label={t.usage(rotations.length, limit)} />
+            <Stack direction="row" spacing={1.5} alignItems="center" useFlexGap flexWrap="wrap" justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
+              <RotationChannelUsage overview={overview} />
               {createButton}
             </Stack>
           )
@@ -142,7 +144,7 @@ export function LinkRotationPage() {
               key={r.id}
               rotation={r}
               session={sessionOf(r)}
-              groupLimit={groupLimit}
+              groupLimit={overview ? groupLimitOf(overview, r.channel) : null}
               onToggleStatus={(next) => toggleStatus(r, next)}
               onConfigure={() => setDialog({ kind: 'config', rotationId: r.id })}
               onManageGroups={() => setDialog({ kind: 'groups', rotationId: r.id })}
@@ -170,12 +172,12 @@ export function LinkRotationPage() {
         />
       )}
 
-      {groupsRotation && (
+      {overview && groupsRotation && (
         <RotationGroupsDialog
           open
           onClose={clearDialog}
           rotation={groupsRotation}
-          limit={groupLimit}
+          limit={groupLimitOf(overview, groupsRotation.channel)}
           onSaved={(groups) => {
             upsert({ ...groupsRotation, groups });
             setToast({ message: linkRotationStrings.toast.groupsSaved, severity: 'success' });

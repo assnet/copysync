@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { normalizeRotationOverview } from '@/features/linkRotation/channelLimits';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
   CreateRotationInput,
@@ -17,10 +18,10 @@ const one = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
 /** Rodízio de links do tenant (contrato em `.specs/features/link-rotation/api-contract.md`). */
 export const linkRotationService = {
-  /** Rodízios, domínios ativos, limites do plano e sessões do tenant. */
+  /** Rodízios, domínios ativos, limites/uso do plano por canal e sessões do tenant. */
   async getOverview(): Promise<RotationOverview> {
-    const res = await apiClient.get<ApiSuccess<RotationOverview>>(BASE);
-    return res.data.data;
+    const res = await apiClient.get<ApiSuccess<unknown>>(BASE);
+    return normalizeRotationOverview(res.data.data);
   },
 
   /** Recusa com `PLAN_LIMIT_REACHED` (limite de rodízios) ou `LINK_SLUG_*`. */

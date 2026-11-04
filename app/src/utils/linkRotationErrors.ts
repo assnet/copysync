@@ -1,3 +1,4 @@
+import { limitKindOfKey, type RotationLimitKind } from '@/features/linkRotation/channelLimits';
 import { linkRotationStrings } from '@/features/linkRotation/strings';
 
 const t = linkRotationStrings.errors;
@@ -26,11 +27,18 @@ export interface LinkRotationErrorInfo {
   code: LinkRotationErrorCode | null;
   message: string;
   /** `PLAN_LIMIT_REACHED`: qual limite estourou (abre o banner de upgrade). */
-  limitKind: 'rotations' | 'groups' | null;
+  limitKind: RotationLimitKind | null;
   limit: number | null;
   /** `LINK_SLUG_TAKEN`: nomes livres sugeridos pela API. */
   suggestions: string[];
 }
+
+const PLAN_LIMIT_MESSAGE: Record<RotationLimitKind, (limit: number | null) => string> = {
+  rotations: t.planLimitRotations,
+  groups: t.planLimitGroups,
+  telegramLinkRotations: t.planLimitTelegramRotations,
+  telegramLinkRotationGroups: t.planLimitTelegramGroups,
+};
 
 interface ApiErrorShape {
   code?: unknown;
@@ -51,13 +59,9 @@ export function linkRotationError(err: unknown): LinkRotationErrorInfo {
   switch (code) {
     case 'PLAN_LIMIT_REACHED': {
       const limit = typeof meta.limit === 'number' ? meta.limit : null;
-      const groups = meta.key === 'link_rotation_groups';
-      return {
-        ...base,
-        limit,
-        limitKind: groups ? 'groups' : 'rotations',
-        message: groups ? t.planLimitGroups(limit) : t.planLimitRotations(limit),
-      };
+      // Chave desconhecida (API antiga) = rodízios do WhatsApp, como antes dos limites por canal
+      const limitKind = limitKindOfKey(meta.key) ?? 'rotations';
+      return { ...base, limit, limitKind, message: PLAN_LIMIT_MESSAGE[limitKind](limit) };
     }
     case 'LINK_SLUG_TAKEN': {
       const suggestions = Array.isArray(meta.suggestions) ? meta.suggestions.filter((s): s is string => typeof s === 'string') : [];

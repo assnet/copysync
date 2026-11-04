@@ -87,16 +87,32 @@ export interface RotationSessionOption {
   avatarUrl: string | null;
 }
 
-/** `null` = ilimitado. */
+/** Limites de um canal (`null` = ilimitado; `0` = canal fora do plano). */
+export interface RotationChannelLimits {
+  rotations: number | null;
+  groupsPerRotation: number | null;
+}
+
+/**
+ * `null` = ilimitado. `linkRotations`/`linkRotationGroups` são o legado (= WhatsApp). Os blocos por
+ * canal sempre vêm preenchidos depois do serviço (`normalizeRotationOverview`): API antiga sem
+ * eles cai na raiz.
+ */
 export interface RotationLimits {
   linkRotations: number | null;
   linkRotationGroups: number | null;
+  whatsapp: RotationChannelLimits;
+  telegram: RotationChannelLimits;
 }
+
+/** Links que o tenant possui por canal, inclusive pausados (mesma regra de criar). */
+export type RotationUsage = Record<RotationChannel, { rotations: number }>;
 
 export interface RotationOverview {
   rotations: Rotation[];
   domains: RotationDomainOption[];
   limits: RotationLimits;
+  usage: RotationUsage;
   sessions: RotationSessionOption[];
 }
 

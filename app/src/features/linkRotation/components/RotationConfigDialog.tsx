@@ -3,7 +3,7 @@ import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, FormHelperText,
   InputAdornment, MenuItem, Radio, RadioGroup, Stack, Switch, TextField, Tooltip, Typography, alpha,
 } from '@mui/material';
-import { Globe, Info, Lightbulb, Link2 } from 'lucide-react';
+import { Globe, Info, Lightbulb, Link2, Lock } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { channelLabel } from '@/features/sessions/components/SessionChannelChip';
@@ -15,8 +15,9 @@ import { linkRotationStrings } from '../strings';
 import { finalizeSlug, normalizeSlugInput, previewUrl, slugProblem } from '../slug';
 import {
   ROTATION_RANGES, ROTATION_STRATEGIES,
-  type Rotation, type RotationOverview, type RotationStrategy, type UpdateRotationInput,
+  type Rotation, type RotationOverview, type RotationSessionOption, type RotationStrategy, type UpdateRotationInput,
 } from '../types';
+import { planUnlockingChannel, sessionLockOf, type ChannelLock, type RotationLimitKind } from '../channelLimits';
 import { ConfirmRenameDialog } from './ConfirmRenameDialog';
 import { RotationSessionIdentity } from './RotationSessionIdentity';
 
@@ -37,8 +38,11 @@ export interface RotationConfigDialogProps {
   overview: RotationOverview;
   /** Chamado com o rodízio devolvido pela API após criar/editar/renomear. */
   onSaved: (rotation: Rotation) => void;
-  /** `PLAN_LIMIT_REACHED`: a página troca o diálogo pelo aviso de upgrade. O rascunho fica salvo. */
-  onPlanLimit?: (kind: 'rotations' | 'groups', limit: number) => void;
+  /**
+   * `PLAN_LIMIT_REACHED` ou sessão de canal sem vaga escolhida: a página troca o diálogo pelo aviso
+   * de upgrade do canal. O rascunho fica salvo.
+   */
+  onPlanLimit?: (kind: RotationLimitKind, limit: number) => void;
 }
 
 /** Rascunho persistido na aba (estado de interface; o rodízio em si vem da API pelo id). */
@@ -69,8 +73,17 @@ function initialDraft(overview: RotationOverview, rotation?: Rotation): Draft {
       active: rotation.status === 'ACTIVE',
     };
   }
-  const session = overview.sessions.find((s) => s.status === 'CONNECTED') ?? overview.sessions[0];
+  // Criação: prefere sessão conectada de canal com vaga
+  const free = overview.sessions.filter((s) => !sessionLockOf(overview, s));
+  const session = free.find((s) => s.status === 'CONNECTED') ?? free[0] ?? overview.sessions[0];
   return { sessionId: session?.id ?? '', domainId: overview.domains[0]?.id ?? '', slug: '', strategy: 'BALANCED', title: '', active: true };
+}
+
+/** Motivo curto da trava do canal, exibido no item do seletor e no aviso. */
+function lockReason(lock: ChannelLock, channelName: string): string {
+  return lock.reason === 'noPlan'
+    ? t.sessionLockedNoPlan(channelName, planUnlockingChannel(lock))
+    : t.sessionLockedFull(channelName, lock.limit);
 }
 
 /**
@@ -115,6 +128,17 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
   const domainId = domains.some((d) => d.id === draft.domainId) ? draft.domainId : (domains[0]?.id ?? '');
   const hostname = domains.find((d) => d.id === domainId)?.hostname ?? '';
   const session = overview.sessions.find((s) => s.id === sessionId) ?? null;
+  // Edição: só o link ativo (ou sendo reativado) precisa de vaga ao mudar de canal
+  const willBeActive = !baseline || baseline.status === 'ACTIVE' || (baseline.status === 'PAUSED' && draft.active);
+  const lockOf = (s: RotationSessionOption) => sessionLockOf(overview, s, baseline, willBeActive);
+  const sessionLock = session ? lockOf(session) : null;
+  const openUpgrade = (lock: ChannelLock) => onPlanLimit?.(lock.kind, lock.limit);
+  const pickSession = (id: string) => {
+    const picked = overview.sessions.find((s) => s.id === id);
+    const lock = picked ? lockOf(picked) : null;
+    if (lock) openUpgrade(lock);
+    else set('sessionId', id);
+  };
 
   const slug = finalizeSlug(draft.slug);
   const problem = slugProblem(slug);
@@ -196,7 +220,7 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    if (problem || !sessionId || !domainId) return;
+    if (problem || !sessionId || !domainId || sessionLock) return;
     if (slug !== draft.slug) set('slug', slug);
     if (renaming) setConfirmRename(true);
     else void save(false);
@@ -318,26 +342,66 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
                   required
                   label={t.session}
                   value={sessionId}
-                  onChange={(e) => set('sessionId', e.target.value)}
+                  onChange={(e) => pickSession(e.target.value)}
                   helperText={t.sessionHelp}
                   SelectProps={{
                     renderValue: () => <RotationSessionIdentity session={session} size={24} />,
                     SelectDisplayProps: { style: { display: 'flex', alignItems: 'center', paddingTop: 12, paddingBottom: 12 } },
                   }}
                 >
-                  {overview.sessions.map((s) => (
-                    <MenuItem key={s.id} value={s.id} sx={{ justifyContent: 'space-between', gap: 2, minHeight: 52 }}>
-                      <RotationSessionIdentity
-                        session={s}
-                        size={32}
-                        secondary={<Typography component="span" variant="caption" color="text.secondary" aria-hidden>{channelLabel(s.channel)}</Typography>}
-                      />
-                      <Tooltip title={t.sessionStatusTooltip} arrow placement="left">
-                        <span><SessionStatusChip status={s.status} /></span>
-                      </Tooltip>
-                    </MenuItem>
-                  ))}
+                  {overview.sessions.map((s) => {
+                    const lock = s.id === sessionId ? null : lockOf(s);
+                    const reason = lock ? lockReason(lock, channelLabel(s.channel)) : null;
+                    // Travada continua clicável (abre o upgrade), mas com aparência de indisponível
+                    return (
+                      <MenuItem
+                        key={s.id}
+                        value={s.id}
+                        aria-disabled={lock ? true : undefined}
+                        data-locked={lock ? 'true' : undefined}
+                        sx={{ justifyContent: 'space-between', gap: 2, minHeight: 52 }}
+                      >
+                        <Box sx={{ minWidth: 0, opacity: lock ? 0.55 : 1 }}>
+                          <RotationSessionIdentity
+                            session={s}
+                            size={32}
+                            secondary={
+                              reason ? (
+                                <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                  <AppIcon icon={Lock} size="inline" aria-hidden />
+                                  {reason}
+                                </Typography>
+                              ) : (
+                                <Typography component="span" variant="caption" color="text.secondary" aria-hidden>{channelLabel(s.channel)}</Typography>
+                              )
+                            }
+                          />
+                        </Box>
+                        {lock ? (
+                          <Tooltip title={t.sessionLockedTooltip} arrow placement="left">
+                            <Chip size="small" color="primary" variant="outlined" label={t.sessionLockedCta} sx={{ flexShrink: 0 }} />
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title={t.sessionStatusTooltip} arrow placement="left">
+                            <span><SessionStatusChip status={s.status} /></span>
+                          </Tooltip>
+                        )}
+                      </MenuItem>
+                    );
+                  })}
                 </TextField>
+                {session && sessionLock && (
+                  <Alert
+                    severity="warning"
+                    role="alert"
+                    icon={<AppIcon icon={Lock} />}
+                    sx={{ mt: 1.5 }}
+                    action={onPlanLimit && <Button color="inherit" size="small" onClick={() => openUpgrade(sessionLock)}>{t.sessionLockedCta}</Button>}
+                  >
+                    {t.sessionLockedAlert(channelLabel(session.channel))}
+                    {baseline && ` ${t.sessionLockedSwitchHelp}`}
+                  </Alert>
+                )}
                 {session && session.status !== 'CONNECTED' && (
                   <Alert severity="info" sx={{ mt: 1.5 }}>{t.sessionDisconnected}</Alert>
                 )}
@@ -409,7 +473,7 @@ export function RotationConfigDialog({ open, onClose, rotation, overview, onSave
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>
             <Button onClick={cancel} color="inherit" disabled={saving}>{t.cancel}</Button>
-            <Button type="submit" variant="contained" disableElevation disabled={saving || !sessionId || !domainId}>
+            <Button type="submit" variant="contained" disableElevation disabled={saving || !sessionId || !domainId || Boolean(sessionLock)}>
               {saving && !confirmRename ? t.saving : baseline ? t.save : t.create}
             </Button>
           </DialogActions>

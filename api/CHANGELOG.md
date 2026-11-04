@@ -59,6 +59,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Frontend — Rodízio de links com limites por canal (`linkRotation`) — app 0.76.0
+
+- **`channelLimits.ts`**, **`RotationChannelUsage.tsx`** — uso e limite de links por canal no cabeçalho ("WhatsApp 1/1 · Telegram 0/1"; "Telegram: a partir do PRO" no LITE); seletor de sessão trava canal sem vaga com motivo e "Ver planos"; limite de grupos por link segue o canal do rodízio; `PLAN_LIMIT_REACHED` das 4 chaves abre o upgrade certo
+
 #### Rodízio de links com limites por canal (`link-rotation`, `tenants`, `plans`) — api 0.57.0 · app 0.75.0
 
 - **`channelLimits.ts`**, **`planPresets.ts`** — `telegram_link_rotations` / `telegram_link_rotation_groups` (LITE 0/0, PRO 1/5, MAX 2/10); `link_rotations`/`link_rotation_groups` passam a ser do WhatsApp
