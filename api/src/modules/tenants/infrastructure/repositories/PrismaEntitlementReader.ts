@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
+import type { IEntitlementSnapshotReader } from '../../domain/contracts/IEntitlementSnapshotReader';
 
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -20,7 +21,7 @@ function toBoolean(value: unknown): boolean | null {
   return null;
 }
 
-export class PrismaEntitlementReader implements IEntitlementReader {
+export class PrismaEntitlementReader implements IEntitlementReader, IEntitlementSnapshotReader {
   constructor(private readonly prisma: Pick<PrismaClient, 'tenantEntitlement'>) {}
 
   async getNumber(tenantId: string, key: string): Promise<number | null> {
@@ -37,5 +38,15 @@ export class PrismaEntitlementReader implements IEntitlementReader {
       select: { value: true },
     });
     return row ? toBoolean(row.value) : null;
+  }
+
+  async readAll(tenantId: string): Promise<Record<string, unknown>> {
+    const rows = await this.prisma.tenantEntitlement.findMany({
+      where: { tenantId },
+      select: { key: true, value: true },
+    });
+    const snapshot: Record<string, unknown> = {};
+    for (const row of rows) snapshot[row.key] = row.value;
+    return snapshot;
   }
 }
