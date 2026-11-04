@@ -21,7 +21,7 @@ operacional vive na memória do processo Node.
 |---|---|---|
 | Socket Baileys | `messaging/infrastructure/engines/baileys/BaileysSessionRegistry.ts` | Request cai no processo sem o socket → `SessionNotConnectedError`; QR só existe onde o socket abriu |
 | Dono da sessão | `prisma/schema.prisma` (`Session`) | Sem `ownerInstanceId`/lease. Boot em N processos abre N sockets, que se derrubam com 440 |
-| Auth state | `sessions/infrastructure/repositories/PrismaSessionAuthStateRepository.ts` | `upsert` ignora `version`; dois sockets corrompem as chaves Signal |
+| Auth state | `sessions/infrastructure/repositories/PrismaSessionAuthStateRepository.ts` | `writeKeys` incrementa `version` sem condição; dois sockets corrompem as chaves Signal |
 | WS / SSE do painel | `chat/infrastructure/ws/ChatWebSocketPublisher.ts`, `GET /events` | Evento nasce num processo e só chega aos clientes conectados nele |
 | Event bus, fila de mídia, throttle | `shared/events/InternalEventBus.ts`, `chat/infrastructure/queue/InMemoryOutboundMediaQueue.ts` | `EventEmitter` e fila in-memory; perdem tudo no restart |
 | Mídia | `shared/storage/MediaStorage.ts`, `media/infrastructure/uploads/DiskUploadSessionStore.ts` | Disco local. Arquivo de um processo não é servido por outro; partes de um upload podem cair em processos diferentes |
@@ -75,47 +75,149 @@ worker. Isso exige exatamente o mesmo trabalho de código que multi-instância. 
 app (static) ──► API HTTP + WS  (N réplicas, stateless)
                       │  BullMQ (comandos)   ▲ Redis pub/sub (eventos → WS)
                       ▼                      │
-                 Workers Baileys  (M processos, cada um dono de um shard de sessões)
+                 Workers Baileys  (M processos, cada um dono de até WORKER_MAX_SESSIONS sessões)
                       │
           Postgres (sessões, lease, auth state, mensagens)   S3/R2 (mídia)   Redis
 ```
 
 ### 3.1 Dono da sessão (lease)
 
-Novos campos em `Session`: `ownerWorkerId String?`, `leaseUntil DateTime?`.
+Novos campos em `Session` (uma migration `add-session-lease`): `ownerWorkerId String?`,
+`leaseUntil DateTime?`, `connectRequestedAt DateTime?`, `nextAdoptAt DateTime?`,
+`adoptFailures Int @default(0)`, `shard String?`.
 
-- Worker adota sessão com `UPDATE ... SET ownerWorkerId=$me, leaseUntil=now()+60s WHERE id=$id
-  AND (leaseUntil IS NULL OR leaseUntil < now())`. Zero linhas afetadas = outro worker é dono.
-- Worker renova o lease a cada 20-30 s enquanto o socket vive. Se o processo morre, o lease
-  vence e outro worker adota: **failover automático** sem intervenção.
-- `SessionStatusReconciler` e `FailOrphanPendingMediaUseCase` só tocam sessões cujo lease está
-  vencido ou é do próprio worker.
+`connectRequestedAt` é o único sinal de "deve estar conectada". Hoje **nenhum** use case
+grava ou limpa esse campo (não existe), então E2 inclui:
+
+- grava: `ConnectSessionUseCase`, `ReconnectSessionUseCase`, `RequestSessionPairingCodeUseCase`
+  e os três de login Telegram (`SessionLoginByCodeUseCases`: send-code, sign-in, password), por
+  um helper único `markConnectRequested(sessionId)` chamado antes de falar com a engine;
+- limpa (`null`, na mesma escrita do status, antes de chamar a engine): `DisconnectSessionUseCase`
+  (hoje só grava `DISCONNECTED`), `LogoutSessionUseCase`, `DeleteSessionUseCase` e o
+  `TenantSuspendedSessionListener` (suspensão de tenant).
+
+- Adoção: `UPDATE sessions SET "ownerWorkerId"=$me, "leaseUntil"=now()+60s WHERE id=$id AND
+  ("leaseUntil" IS NULL OR "leaseUntil" < now())`. Zero linhas = outro worker é dono.
+- Renovação a cada 20 s, só das sessões com socket aberto neste processo, com
+  `WHERE id = ANY($ids) AND "ownerWorkerId"=$me AND "leaseUntil" > now()`. Fence local: cada
+  sessão guarda `lastRenewOkAt`; se `now() > lastRenewOkAt + 60 s − 5 s` por qualquer motivo
+  (zero linhas, erro de banco, timeout), o worker **derruba o socket sem gravar auth state**
+  antes de qualquer outra adoção. Sem isso dois workers abrem socket da mesma sessão (440 +
+  chaves Signal corrompidas).
+- `SessionStatusReconciler.markActiveSessionsAsDisconnected()` (hoje só no boot com
+  `SESSION_BOOTSTRAP_ON_STARTUP=false`, `server.ts`) e `FailOrphanPendingMediaUseCase` só
+  tocam sessões com lease vencido ou do próprio worker.
 - Deploy da Render (sobe nova instância antes de matar a antiga) deixa de gerar 440 em cadeia.
-- Auth state: `upsert` passa a checar `version` (lock otimista). Conflito = log + descarta,
+- Auth state: a escrita real é `PrismaSessionAuthStateRepository.writeKeys` (não `upsert`), que
+  hoje faz `version+1` sem condição em `session_auth_states` (as chaves ficam em
+  `session_auth_keys`, sem versão). Passa a `WHERE version = esperado` em `session_auth_states`
+  na mesma transação das chaves; `findAllKeys` devolve a versão carregada. Conflito = log + descarta,
   nunca sobrescreve.
 
 Use cases novos: `AcquireSessionLeaseUseCase`, `RenewSessionLeaseUseCase`,
 `ReleaseSessionLeaseUseCase`. Repositório: `ISessionLeaseRepository` + `PrismaSessionLeaseRepository`.
+`JobLease` (tabela `job_leases`, `expiresAt`) é outro mecanismo, para jobs singleton, não para sessão.
 
-### 3.2 Shard
+### 3.2 Adoção por capacidade (teto por worker)
 
-Cada worker lê `WORKER_ID` e `WORKER_SHARD` / `WORKER_SHARD_COUNT`. Adota apenas sessões cujo
-`hash(sessionId) % WORKER_SHARD_COUNT === WORKER_SHARD`, ou cujo `Session.shard` (coluna
-explícita) bate. Coluna explícita permite tenant grande em worker dedicado. É o `clientName`
-do Evolution, só que com lease automático por cima.
+Decisão 2026-11-04: **sem shard por hash**. Envs novas (nenhuma existe hoje em `env.ts`):
+
+| Env | Default | Função |
+|---|---|---|
+| `WORKER_ADOPTION_ENABLED` | `false` | liga a adoção. **Só na Render.** `api/.env` local aponta para produção: `pnpm dev` com isso ligado roubaria lease e reconectaria sessões reais |
+| `WORKER_MAX_SESSIONS` | `40` | teto por processo = `0,7 × RAM ÷ MB por sessão` medido na Fase 0 (§2: 15–40 MB). A 40 MB: 2 GB → 35, 8 GB → 140, 16 GB → 280. Teto 200 exige medição ≤ 28 MB em 8 GB |
+| `WORKER_ID` | `${HOSTNAME ?? os.hostname()}-${pid}-${nonce8}` | identidade do dono, única por boot (restart no mesmo host não herda leases). `RENDER_INSTANCE_ID` não existe no código nem está confirmada; `HOSTNAME` não existe fora do Docker |
+| `WORKER_SHARD` | vazio | worker com valor só adota `Session.shard = x`; sem valor só adota `"shard" IS NULL` (tenant dedicado fica isolado). Coluna entra na migração de E2, sem uso até existir tenant dedicado |
+
+Adoção (tick de 5 s enquanto `ativas < WORKER_MAX_SESSIONS`; `ativas` = sessões com
+`ownerWorkerId = $me` **e** socket aberto neste processo), uma linha por tick:
+
+```sql
+UPDATE sessions s SET "ownerWorkerId"=$me, "leaseUntil"=now()+interval '60 s'
+WHERE s.id = (SELECT s2.id FROM sessions s2
+  JOIN tenants t ON t.id = s2."tenantId" AND t.status = 'ACTIVE'
+  WHERE s2."deletedAt" IS NULL AND s2."connectRequestedAt" IS NOT NULL
+    AND s2.status IN ('CONNECTED','CONNECTING','DISCONNECTED')
+    AND (s2."leaseUntil" IS NULL OR s2."leaseUntil" < now())
+    AND (s2."nextAdoptAt" IS NULL OR s2."nextAdoptAt" < now())
+    AND s2."shard" IS NOT DISTINCT FROM $shard
+  ORDER BY s2."connectRequestedAt" LIMIT 1 FOR UPDATE SKIP LOCKED)
+RETURNING s.id
+```
+
+Falha ao conectar depois de adotar (bootstrap e reconciler gravam `DISCONNECTED` com
+`connectRequestedAt` vivo): `adoptFailures+1`, `nextAdoptAt = now() + min(2^n, 30) min`,
+e após 5 falhas `FAILED` + `connectRequestedAt = null`. Sem isso a mesma sessão quebrada
+seria readotada a cada minuto na frente das outras.
+
+- Lista positiva de status: `PENDING` (rascunho nunca conectado), `AWAITING_QR/PAIRING/CODE/
+  PASSWORD` (login em andamento, estado em memória do dono) e `LOGGED_OUT/FAILED` ficam fora.
+  Sessão conta igual para WhatsApp e Telegram.
+- `CreateSessionUseCase` só insere `PENDING`, não abre socket (como hoje). As rotas que pedem
+  conexão (`connect`, `reconnect`, `pairing-code`, `telegram/send-code`, `telegram/sign-in`,
+  `telegram/password`) gravam `connectRequestedAt`; o dono (ou o próximo worker com vaga) conecta. Sem vaga em
+  nenhum worker, fica com `connectRequestedAt` e sem dono: painel mostra "aguardando
+  capacidade" e isso é o sinal para subir réplica.
+- `SESSION_BOOTSTRAP_ON_STARTUP=true` passa a usar o mesmo caminho de adoção (respeita o
+  teto); o `SessionBootstrapService` atual conecta todas as ativas sem limite.
+- Drain no `SIGTERM`, dentro dos 30 s da Render e **nesta ordem**: parar de adotar →
+  `closeAllSockets()` awaited (passo novo; hoje não existe e `app.ts` não fecha a engine no
+  `onClose`) → `flushAllAuthStates` (já existe) → um único
+  `UPDATE sessions SET "ownerWorkerId"=NULL,"leaseUntil"=NULL WHERE "ownerWorkerId"=$me` →
+  `app.close()`. Lease solto só depois do socket fechado, senão outro worker conecta com o
+  antigo vivo. A ordem atual de `server.ts` (parar jobs → drain de mídia até 25 s → flush →
+  close) muda: o drain de mídia é só do role `http` e, em `all`, vem **depois** do flush com
+  teto `30 s − tempo gasto − 3 s`. Flush interrompido por SIGKILL perde chaves Signal
+  (próximo dono reutiliza pre-key → bad MAC), então o flush tem prioridade sobre mídia.
+- Heartbeat: tabela `worker_heartbeats` (`workerId`, `role`, `sessions`, `maxSessions`,
+  `rssMb`, `seenAt`) atualizada a cada 20 s; super-admin lista workers e ocupação. Alerta
+  (log `warn` + e-mail ao super-admin, sob `JobLease` `worker-capacity-alert`) quando a soma
+  de sessões passa de 80% da soma dos tetos dos workers vivos (`seenAt` < 90 s) ou quando
+  existe sessão com `connectRequestedAt` há mais de 2 min sem dono.
+
+Por que não hash: hash exige `WORKER_SHARD_COUNT` igual em todos os workers e re-hash ao
+mudar N (todas as sessões trocam de dono = onda de reconexão). Capacidade só precisa de
+subir mais uma réplica com a mesma env. Réplicas necessárias = `ceil(sessões / (teto × 0,8))`.
+
+**Autoescala (diferido).** Subir worker é manual: aumentar réplicas do serviço `worker` na
+Render ou no Dokploy quando o alerta de 80% disparar. Controlador que chama a API da infra
+(com teto de instâncias, intervalo mínimo entre escaladas e descida só manual) fica para
+depois do primeiro worker extra em produção; não entra no plano atual.
 
 ### 3.3 Separação HTTP × worker
 
-Mesmo código, dois modos de boot via `PROCESS_ROLE=http|worker|all`:
+Mesmo código, dois modos de boot via `PROCESS_ROLE=http|worker|all` (env nova; hoje
+`server.ts` sobe `listen` e todos os jobs em qualquer processo):
 
-- `http`: Fastify, rotas, WS/SSE, upload. Não instancia `BaileysMessagingEngineAdapter`.
-- `worker`: sem rotas HTTP além de `/health`; roda `SessionBootstrapService`, consome fila.
-- `all`: comportamento atual (dev e instalação pequena).
+- `http`: Fastify, rotas, WS/SSE, upload. Não instancia engine. Não adota sessão.
+- `worker`: Fastify só com `/health` numa porta interna; adoção (§3.2), consome fila.
+- `all`: comportamento atual (dev e instalação pequena), com o teto de §3.2 se a flag ligar.
+
+**Dono de cada job de boot** (hoje nenhum checa role; só o rodízio usa `JobLease`):
+
+| Job (`server.ts`) | Role dono | Lease |
+|---|---|---|
+| `UploadSessionSweeper`, `ReconcileInterruptedUploadsUseCase` (boot), drain de mídia no shutdown, `failOrphanPendingMedia.runBoot()` e `pendingMediaSweep` periódico (`MEDIA_PENDING_RECOVERY_ENABLED`) | `http` | disco `/var/data` é de um processo só; worker com a flag mataria envios em voo do http |
+| `OfferDispatchWorker` (`OFFER_DISPATCH_WORKER_ENABLED`, `GROUP_MONITORING_ENABLED`) | `worker` | claim `pg_advisory_xact_lock('offer_dispatch_claim')` + `claimToken` em `PrismaOfferDispatchRepository.claimDue` (multi-instância segura; o comentário de `OfferDispatchWorker.ts:18` cita SKIP LOCKED por engano); lease opcional |
+| `HubOutboxWorker` (`HUB_EVENTS_ENABLED` + `HUB_EVENTS_CONFIGURED`), `ExtensionRetentionJob` | `worker` | já seguros: `PrismaHubOutboxRepository` usa `SKIP LOCKED`; `ExtensionRetentionJob` usa `pg_try_advisory_lock` (não copiar como modelo: `$queryRaw` no pool pode dar `unlock` em outra conexão; preferir `JobLease`) |
+| reconcile de billing (`ReconcileSubscriptionsUseCase`, `BILLING_ENABLED`, `BILLING_RECONCILE_INTERVAL_MS`) | `worker` | já usa `JobLease` (`BILLING_RECONCILE_LEASE_TTL_MS`) |
+| rodízio de links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | já usa `JobLease` |
+| `markActiveSessionsAsDisconnected()` no boot (só com `SESSION_BOOTSTRAP_ON_STARTUP=false`) | `worker`, só sessões sem lease válido | — |
+| `prisma migrate deploy` (`CMD pnpm start:migrate`) | todos; Prisma serializa por advisory lock | subir `http` antes das réplicas `worker` no deploy, para o código novo não rodar com schema velho |
 
 Comunicação HTTP → worker por **BullMQ** (fila por `sessionId`, só o dono consome):
-`session.connect`, `session.logout`, `message.send.text`, `message.send.media`. Resultado volta
-por evento no Redis. Unificar antes os dois `BaileysMessagingEngineAdapter` que existem hoje
-(`server.ts` e `session.routes.ts`) num único via `activeEngine`.
+`session.connect`, `session.disconnect`, `session.logout`, `message.send.text`,
+`message.send.media`. Resultado volta por evento no Redis.
+
+**Chamadas síncronas que dependem da memória do dono** (não cabem em fila): `GET /:id/qr`
+(`latestQr`), pairing code, login Telegram (`requestLoginCode` espera `codeSent` na mesma
+chamada; `submitLoginCode`/`submitLoginPassword` exigem `pending` em memória), listagem de
+grupos, reações, leitura. Em `http` elas viram RPC request/reply via Redis para o dono
+(`RemoteMessagingEngineAdapter` implementa `IMessagingEngine` e roteia por `ownerWorkerId`;
+timeout 10 s → `ENGINE_NOT_READY`). Login Telegram/QR/pairing de sessão **sem dono** exige adoção
+antes: a rota grava `connectRequestedAt` (helper de §3.1), espera adoção (até 15 s) e só
+então o RPC. Nenhuma dessas 6 rotas passa por `ConnectSessionUseCase` hoje; por isso o
+helper, não o use case, é o ponto único.
 
 ### 3.4 Fan-out de eventos
 
@@ -156,11 +258,11 @@ sobre `setInterval` in-process.
 
 | Fase | Entrega | Desbloqueia | Esforço |
 |---|---|---|---|
-| 0 | Medir RAM/CPU por sessão; `connection_limit` por processo; unificar adapter | decisões com número real | 1-2 dias |
+| 0 | Medir RAM/CPU por sessão; `connection_limit` por processo (adapter já unificado) | decisões com número real | 1-2 dias |
 | 1 | Mídia em S3/R2 (3.5) | remover disco, qualquer multi-processo | 1 semana |
-| 2 | Lease + `version` no auth state (3.1) | deploy sem 440, failover, 2+ processos seguros | 1 semana |
-| 3 | `PROCESS_ROLE` + BullMQ comandos (3.3) + Redis pub/sub (3.4) | HTTP escalar separado do worker | 1-2 semanas |
-| 4 | Shard (3.2) | N workers, tenant dedicado | 2-3 dias |
+| 2 | Lease + teardown ao perder lease + CAS em `writeKeys` (3.1); `connectRequestedAt` | deploy sem 440, failover, 2+ processos seguros | 1 semana |
+| 3 | `PROCESS_ROLE` + dono por job + BullMQ comandos + RPC síncrono (3.3) + Redis pub/sub (3.4) | HTTP escalar separado do worker | 2-3 semanas |
+| 4 | `WORKER_ADOPTION_ENABLED` + teto + drain + heartbeat + alerta (3.2) | N réplicas, tenant dedicado | 1 semana |
 | 5 | Filas de produto (3.6) | monitoramento e disparo em escala | junto com as features |
 
 Fase 1 antes da 2 porque disco local bloqueia tudo. Fase 2 antes da 3 porque protege até com
@@ -190,26 +292,33 @@ a central fica em Oregon e não deve ser seguida):
 |---|---|---|
 | Desenvolvimento e debug | 0.1c-256mb (US$ 6) | serve para poucas sessões; `connection_limit=5` na `DATABASE_URL` desde já |
 | Primeiro cliente pagante | 0.5c-1g (US$ 19) | mínimo para produção pequena |
-| ~50 sessões ou CPU/conexões > 70% | 1c-2g (US$ 40) | cobre até 150 sessões; daí em diante vale a tabela abaixo |
+| ~50 sessões ou CPU/conexões > 70% | 1c-2g (US$ 40) | cobre até 110 sessões; daí em diante vale a tabela abaixo |
 
 A medição da Fase 0 (RAM/CPU por sessão) só vale no 0.5c-1g ou acima; no 256 MB o gargalo medido é o Postgres, não o Node.
 Criação (decisão 2026-10-26: só sessões de teste em produção, então **sem dump**): banco vazio + `prisma migrate deploy`, trocar
 `DATABASE_URL`, subir, parear as sessões de teste de novo. Criado sob demanda, antes da Fase 1 (R2) ou do primeiro teste de carga.
 Apagar as tabelas do CopySync no banco compartilhado 7 dias depois. Storage 15 GB basta porque mídia vai para R2 (Fase 1).
 
-Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa de
+Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa de `WORKER_MAX_SESSIONS` igual à meta e de
 `NODE_OPTIONS=--max-old-space-size=<70% da RAM em MB>`, senão o heap padrão do Node
 (~2-4 GB) estoura antes do plano.
 
-Escada na Render (API em processo único + Postgres):
+Escada na Render (teto por réplica `worker` = `WORKER_MAX_SESSIONS`; réplicas = `ceil(sessões / (teto × 0,8))`):
 
-| Sessões | API (processo único, `PROCESS_ROLE=all`) | US$/mês | Postgres (dedicado ao CopySync) | US$/mês |
+| Sessões | Serviços | US$/mês | Postgres (dedicado ao CopySync) | US$/mês |
 |---|---|---|---|---|
-| até 150 | 2c-8g | 135 | 1c-2g | 40 |
-| até 300 | 4c-16g | 225 | 2c-4g | ~95 |
-| até 600 | 4c-16g + `PROCESS_ROLE` separado, 2 workers | 400 | 2c-4g | ~95 |
-| até 1.200 | 8c-32g, 6 workers | 450 | 4c-8g | ~185 |
-| até 3.000 | 3× 8c-32g (preferível) ou 1× 12c-96g | 1.350-1.500 | 4c-16g + HA | ~370+ |
+| até 110 | 1× `PROCESS_ROLE=all` 2c-8g, teto 140 | 135 | 1c-2g | 40 |
+| até 220 | 1× `all` 4c-16g, teto 280 | 225 | 2c-4g | ~95 |
+| até 448 | `http` 1c-2g + 4× `worker` 2c-8g (teto 140) | ~565 | 2c-4g | ~95 |
+| até 896 | `http` 1c-2g + 8× `worker` 2c-8g | ~1.100 | 4c-8g | ~185 |
+| 1.000+ | migrar para Hetzner/Dokploy (§5.3) | — | — | — |
+
+Serviço `worker` na Render é **Private Service** (porta interna + health check em `/health`
++ `SIGTERM` com grace), não Background Worker (sem porta nem health check). Mesma imagem e
+`CMD` do `copysync_api`; só a env muda. `NODE_OPTIONS=--max-old-space-size` vai na env de
+cada serviço (não está no `Dockerfile`, `render.yaml` nem `docker-compose.yml`). O `render.yaml`
+hoje só declara o static `copysync`; a env e o tipo de cada serviço ficam documentados aqui
+até entrarem no blueprint.
 
 Preços de Postgres acima de 1c-2g são aproximados; conferir nos 24 planos do painel.
 
@@ -246,7 +355,7 @@ Alternativa sem painel: `docker-compose.yml` com `api`, `worker`, `postgres`, `r
 | Fase | Sessões | Infra | Custo |
 |---|---|---|---|
 | A | 0-300 | Dedicado AX42 (64 GB) + Dokploy (Swarm + Traefik). `api`, `postgres`, `redis`, `minio` no mesmo nó. App no Cloudflare Pages | €99 |
-| B | 300-800 | Mesmo AX42. 1 serviço `api` (http) + 2-3 `worker` com `WORKER_SHARD`. Sobra RAM | €99 |
+| B | 300-800 | Mesmo AX42. 1 serviço `api` (http) + 2-3 réplicas `worker` com `WORKER_MAX_SESSIONS`. Sobra RAM | €99 |
 | C | 800-2.000 | Segundo nó AX42 ou AX102 via Dokploy (SSH). Workers no nó 2, Postgres/Redis no nó 1 | €200-360 |
 | D | 3.000+ | AX102 para workers; AX42 para Postgres com réplica | ~€360 |
 
@@ -297,7 +406,7 @@ ouvir grupos-fonte e postar em grupos-destino. Cortar o excesso reduz a carga po
 | `chats.*`, `contacts.upsert`, `messaging-history.set` (A:846-949) | rajada de upserts no pareamento | não |
 | `presence.update`, `messages.reaction`, receipts READ (A:747-812, 952) | N updates por leitor de grupo | não; só status "enviado" |
 | Foto de perfil (A:416) | até 200 participantes por grupo, cache 6 h sem limite, dispara em `ListSessions` | não |
-| Auth state (`BaileysAuthStatePersistence.ts:140`) | blob único reescrito a cada `keys.set` | sim, fatiar por chave |
+| Auth state (`BaileysAuthStatePersistence.ts`) | por chave (`writeKeys` com mapa `dirty`), sem CAS | CAS em `version` (§3.1) |
 | `fetchLatestBaileysVersion` (A:501) | HTTP a cada conexão | cachear 24 h |
 | `cachedGroupMetadata` ausente (A:504) | `groupMetadata` refeito em cada `sendMessage` de grupo | ligar com TTL |
 | Logger Baileys herda `info` (A:108) | log interno da lib por mensagem | `warn` |
@@ -313,7 +422,6 @@ Ordem por ganho/esforço (1-4 sem migration):
    `FULL` mantém o inbox para quem precisar; o módulo `chat` vira opcional.
 3. `cachedGroupMetadata` com TTL (reaproveita `groupMetadataCache`); versão do Baileys em cache 24 h.
 4. `BAILEYS_LOG_LEVEL=warn`.
-5. Auth state por chave: tabela `session_auth_keys (sessionId, type, id, value)`; grava só a
-   chave alterada (padrão Evolution). Migration + mapper.
+5. Auth state por chave: feito (`session_auth_keys`, mapa `dirty` em `BaileysAuthStatePersistence`). Resta o CAS (§3.1).
 6. Retenção: job apaga `ChatMessage` > N dias e mídia órfã; índice em `ChatMessage.status`.
 7. Remover SSE e o model `Message` legado.

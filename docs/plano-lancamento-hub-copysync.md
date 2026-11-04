@@ -8,7 +8,7 @@ Plano mestre que amarra quatro trilhas em marcos. Criado em 2026-10-26; estado r
 Objetivos, nesta ordem de prioridade:
 1. **Zero regressão no PulsoSocial** (produção, 1 instância, 500+ assinaturas Cakto).
 2. CopySync vendendo e operando escalado o mais cedo possível.
-3. Respeitar a arquitetura definida (hub de billing, CopySync com identidade própria, lease/shard/filas).
+3. Respeitar a arquitetura definida (hub de billing, CopySync com identidade própria, lease/teto por worker/filas).
 
 ## Estado em 2026-11-02 (verificado no código)
 
@@ -18,7 +18,7 @@ começou (spec sem commit). **O caminho crítico agora é a central.**
 | Trilha | Entregue | Pendente |
 | --- | --- | --- |
 | **B** CopySync | provisionamento, convite, `resolveMembership`, `TENANT_SUSPENDED`, senha nula → 401, receiver HMAC, entitlements, presets LITE/PRO/MAX, desconexão de sessões em suspensão, limites de grupos e rodízio. Correções de 2026-11-02 (`0.49.4`): contrato de eventos alinhado à central, provisionamento em `subscription.activated`, `X-Application-Key`, receipt e seq na mesma transação, P2002 → 200, `planSlug` validado, limite `whatsapp_sessions`, worker de envio respeita tenant suspenso, seed sem reset de senha | `HubEmailSender` (H4), corpo de `ReconcileSubscriptionsUseCase` (hoje só o lease, sem consulta à central: depende de H2), tela "Assinatura" com link para o checkout |
-| **E** Escala | E0 flush no shutdown (`server.ts:344`), adapters Baileys unificados (`MessagingEngineFactory.ts:26`), E1 mídia em S3/R2 no código (`S3_ENABLED`) | `connection_limit` na `DATABASE_URL` da Render (conferir); E2 lease de sessão e CAS no `version` do auth state (hoje só incrementa); E3 `PROCESS_ROLE`/BullMQ/Redis; E4 shard; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
+| **E** Escala | E0 flush no shutdown (`flushAllAuthStates` em `server.ts`), adapters Baileys unificados (`MessagingEngineFactory.ts:34`), E1 mídia em S3/R2 no código (`S3_ENABLED`) | `connection_limit` na `DATABASE_URL` da Render (conferir); E2 lease de sessão e CAS no `version` do auth state (hoje só incrementa); E3 `PROCESS_ROLE`/BullMQ/Redis; E4 teto por worker; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
 | **P** Produto | gerador, disparo em massa, grupos de disparo, horário, monitoramento com troca de link, IA, rodízio, story, página de ofertas, menção a todos, sessão cruzada, vitrine de planos | Telegram; domínio personalizado (não verificado) |
 | **H** Hub | — | tudo; ver "O que falta para iniciar a fase 0" na spec da central |
 
@@ -55,7 +55,7 @@ Estado em 2026-10-26: central **sem testes, sem CI, sem staging**. CopySync tem 
 | --- | --- |
 | H | S1, S2, S3 (rede de segurança) |
 | H0 | Postgres do CopySync separado do da central na Render (hoje compartilhado, Basic-256mb). **Gatilho atualizado em 2026-11-02**: E1 já está no código, então o banco dedicado sobe junto com o **início de H1 na central** (primeira migration da central rodando no mesmo Postgres do CopySync). **Adiado por decisão do owner (2026-10-26)**: em produção do CopySync só há sessões de teste; os testes seguem no compartilhado e o banco dedicado (Virginia, 0.1c-256mb, `connection_limit=5`) é criado quando uma fase precisar dele. Gatilho: antes de E1 (R2) ou antes de qualquer teste de carga, o que vier primeiro; avisar o owner com antecedência. **Sem dump**: banco novo nasce vazio com `prisma migrate deploy`, sessões de teste são pareadas de novo; isso dispensa o runbook de cutover e o flush de E0 como pré-requisito (o flush continua em E0 por mérito próprio). Tabelas do CopySync no banco compartilhado são apagadas 7 dias depois |
-| E0 | ✅ **Flush síncrono do auth state no shutdown** (`server.ts:344` chama `flushAllAuthStates()`; `BaileysAuthStatePersistence.ts:326-339`); `connection_limit` por processo; unificar os 2 adapters Baileys. Medição de RAM/CPU com 50/100/200 sessões fica para o gate de M2 (exige o banco dedicado em 0.5c-1g ou acima) |
+| E0 | ✅ **Flush síncrono do auth state no shutdown** (`server.ts:347` chama `flushAllAuthStates()`; `BaileysAuthStatePersistence.ts:326-339`); `connection_limit` por processo; adapters já unificados Baileys. Medição de RAM/CPU com 50/100/200 sessões fica para o gate de M2 (exige o banco dedicado em 0.5c-1g ou acima) |
 | B | **Início da service-desk P1.0 + USR-01** (4 + 1 requisitos; design §10 tem 6+ use cases, hook novo, endpoint de reemissão e UI de primeiro acesso: 4–6 semanas, atravessa M0 e M1). Em M0: migration do design §4 (`billingCustomerId`, `suspendedAt`, `passwordHash?`, `passwordSetAt`, `UserInvite`; sem `planSnapshot`), `resolveMembership` em `tenantHook` e `sseAuthHook`, `TenantSuspendedError`, login com `passwordHash` nulo respondendo credenciais inválidas |
 
 Gate: smoke S4 verde no PulsoSocial; API religa após deploy sem 440; `tenantHook` nega tenant `SUSPENDED` com `TENANT_SUSPENDED`.
@@ -65,7 +65,7 @@ Gate: smoke S4 verde no PulsoSocial; API religa após deploy sem 440; `tenantHoo
 | Trilha | Entrega |
 | --- | --- |
 | H1 | `Application` + `applicationId` nas tabelas + backfill `socialpulse` + seeds (`socialpulse`, `copysync`) |
-| H2 | `OutboundEvent` + dispatcher (`OUTBOUND_EVENTS_MODE=off` no 1º deploy) + auth M2M + `GET /integrations/subscriptions` |
+| H2 | `OutboundEvent` + dispatcher (`Application.outboundEnabled=false` no trigger e `OUTBOUND_EVENTS_MODE=off` no dispatcher no 1º deploy; migrations só `ADD COLUMN` nulo + trigger de default `socialpulse`, backfill por script) + auth M2M + `GET /integrations/subscriptions` |
 | B | Fim da service-desk P1.0 + USR-01 (`ProvisionTenantUseCase`, `UpdateTenantStatusUseCase`, `InviteUserUseCase`, `IEmailSender` + Smtp/Noop, tela de primeiro acesso no painel). Depois: migration da integração (`planSlug`, `lastBillingEventSeq`, `TenantEntitlement`, `PlanEntitlementPreset`, `BillingEventReceipt`); módulo `integrations/billing` (plugin sem `authHook`, corpo bruto, HMAC com `timingSafeEqual`, receipt na mesma transação); `ApplyBillingEventUseCase` com a tabela evento→status e ordem por `seq`; `SyncTenantEntitlementsUseCase`; `ReconcileSubscriptionsUseCase` sob lease em tabela (`JobLease`); `sessions` desconecta ao receber `TENANT_SUSPENDED` (bus in-process até E3; Redis depois) |
 | E1 | Mídia em S3/R2 (`S3MediaFileStore`) |
 | P | Gerador de ofertas (credenciais de afiliado já entregues em 2026-10-22) |
@@ -80,17 +80,17 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 | H4 | E-mail por aplicação com **SMTP e domínio próprios** (H10: `EmailSenderConfig` de aplicação, transporter por aplicação; PulsoSocial segue no transporter atual) + `POST /integrations/email/send` (`SET_PASSWORD`, `TEAM_INVITE`) |
 | Infra | **Resend** (decidido 2026-11-03, mesma conta do PulsoSocial): verificar o domínio do CopySync, publicar SPF/DKIM do Resend e DMARC no DNS, criar API key só de envio restrita a esse domínio; pré-requisito de H4 |
 | B | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para `Application.checkoutUrl` |
-| E2 | Lease de sessão + `version` no auth state (deploy sem 440, failover) |
+| E2 | Migration `add-session-lease` (`ownerWorkerId`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt`, `adoptFailures`, `shard`); lease com fence local e teardown; CAS em `writeKeys`; helper `markConnectRequested` nas 6 rotas de conexão e limpeza em disconnect/logout/delete/suspensão; `closeAllSockets()` antes do flush no shutdown (deploy sem 440, failover) |
 | P | Grupos de disparo + horário de postagem |
 
-Gate: venda real do LITE ponta a ponta. `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.
+Gate: venda real do LITE ponta a ponta. `Application.outboundEnabled=true` e `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.
 
 ### M3 — Escala real + núcleo do produto (semanas 10–14) — produto ✅; E3/E4 ❌
 
 | Trilha | Entrega |
 | --- | --- |
-| E3 | `PROCESS_ROLE=http\|worker\|all`, BullMQ comandos, Redis pub/sub → WS |
-| E4 | Shard (`WORKER_SHARD`), N workers |
+| E3 | `PROCESS_ROLE=http\|worker\|all`, dono por job de boot (tabela §3.3 do doc de escala; `JobLease` já em reconcile e rodízio; disparo e outbox já têm claim próprio), BullMQ `session.connect/disconnect/logout`, `message.send.*`, RPC síncrono para QR/pairing/login Telegram/grupos, Redis pub/sub → WS |
+| E4 | `WORKER_ADOPTION_ENABLED` (off por default, só Render) + `WORKER_MAX_SESSIONS` (adoção por capacidade, bootstrap com teto), drain no `SIGTERM` (sockets → flush → soltar lease), heartbeat + alerta 80%; N réplicas `worker` como Private Service (doc de escala §3.2, §5.1) |
 | P | Disparo em massa; monitoramento com troca de link |
 | H5 | `creditsEnabled` nos hooks (sem efeito para `socialpulse`) |
 | H6 | Admin: seletor de aplicação, CRUD `Application`, replay de eventos |
@@ -114,7 +114,7 @@ Não é função do hub. Três responsabilidades, três lugares:
 
 | Onde | O quê |
 | --- | --- |
-| Infra (Render / Dokploy) | subir e descer workers, RAM, réplicas; depois automatizado por API da infra conforme contagem de tenants |
+| Infra (Render / Dokploy) | subir e descer réplicas `worker` manualmente ao alerta de 80%. Autoescala pela API da infra: diferida, fora deste plano (decisão 2026-11-04) |
 | Super-admin do CopySync | workers vivos, lease por sessão, sessões por worker, RAM, filas (doc de escala §3) |
 | Admin do hub | leitura: tenants e assinaturas por aplicação, receita. Opcional: card "saúde" lendo `GET /integrations/health` do CopySync |
 
@@ -137,7 +137,7 @@ Um checkout **por `Application`**, mesmo código e mesmo processo da central. O 
 | Domínio e deploy do front | deploy estático próprio (`conta.copysync.app`, `studio.pulsosocial.app`), `VITE_APPLICATION_KEY` |
 | Marca (nome, logo, cores, suporte) | `Application.brand`; `VITE_BRAND_*` no front |
 | Planos e permissões | `Plan.applicationId`; `GET /plans?app=` |
-| Remetente e templates de e-mail | `Application.senderConfigId`, `templates/<applicationKey>/` |
+| Remetente e templates de e-mail | `EmailSenderConfig.applicationId` (único, uma direção), `templates/<applicationKey>/` |
 | Webhook de saída e segredo | `Application.webhookUrl`, `secretHash` |
 | Créditos | `Application.creditsEnabled` |
 | Gateways | compartilhados por padrão (`Gateway.applicationId = null`); podem ser próprios |

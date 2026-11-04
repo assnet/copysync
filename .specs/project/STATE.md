@@ -4,6 +4,7 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Decisões
 
+- 2026-11-04 — Escala E4: adoção por capacidade (`WORKER_MAX_SESSIONS`, default 200) em vez de shard por hash; drain no `SIGTERM`; heartbeat + alerta 80%. Autoescala pela API da Render/Dokploy **diferida** (manual até 1º worker extra em produção). Doc: `docs/arquitetura-escala.md` §3.2.
 - **2026-09-21 — A sincronização de estado vinda de outro aparelho é somente de consumo.**
   O painel reflete o que o socket já entrega (`chats.update`) e não origina nem amplia chamada ao
   WhatsApp para isso. Motivo: volume de saída fora do padrão humano é sinal de automação e arrisca o
