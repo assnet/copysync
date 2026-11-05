@@ -55,6 +55,8 @@ import { buildWorkerApp } from './workerApp';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
+/** Varredura das chaves órfãs de `outbound-tmp/` (worker): boot + a cada 1 h. */
+const OUTBOUND_TMP_SWEEP_INTERVAL_MS = 60 * 60_000;
 /** Espera dos envios de mídia em andamento no shutdown: a Render dá 30 s entre SIGTERM e SIGKILL. */
 const MEDIA_QUEUE_DRAIN_TIMEOUT_MS = 25_000;
 
@@ -221,6 +223,18 @@ async function start(): Promise<void> {
       void failOrphanPendingMedia.runPeriodic(() => chatMediaContainer.queue.inFlightIds());
     }, PENDING_MEDIA_SWEEP_INTERVAL_MS);
     pendingMediaSweep.unref();
+  }
+
+  // ── Mídia temporária de envio (outbound-tmp/) ──────────────────────────────
+  // Só no `worker` (`all` não sobe chave ao storage: composição sem `outboundMedia`). Apaga chaves com mais de
+  // 1 h que o `finally` do envio não removeu (processo morto no meio). `sweepExpired` nunca lança. Alternativa:
+  // regra de lifecycle do bucket (docs/arquitetura-escala.md §3.3).
+  let outboundTmpSweep: NodeJS.Timeout | null = null;
+  const outboundMedia = composition.outboundMedia;
+  if (jobs.has('outboundTmpSweep') && outboundMedia) {
+    void outboundMedia.sweepExpired();
+    outboundTmpSweep = setInterval(() => void outboundMedia.sweepExpired(), OUTBOUND_TMP_SWEEP_INTERVAL_MS);
+    outboundTmpSweep.unref();
   }
 
   // ── Envios do gerador de ofertas ───────────────────────────────────────────
@@ -439,6 +453,7 @@ async function start(): Promise<void> {
     }
     uploadSweeper?.stop();
     if (pendingMediaSweep) clearInterval(pendingMediaSweep);
+    if (outboundTmpSweep) clearInterval(outboundTmpSweep);
     if (billingReconcileInterval) clearInterval(billingReconcileInterval);
     // Antes do drain: o tick em curso termina de enfileirar; nada novo entra na fila depois.
     try {

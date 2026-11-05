@@ -22,7 +22,9 @@ export type ProcessJob =
   /** Batimento em `worker_heartbeats` (ADOPT-10); só com a flag. */
   | 'workerHeartbeat'
   /** Alerta de capacidade dos workers (ADOPT-11); só com a flag. */
-  | 'capacityAlert';
+  | 'capacityAlert'
+  /** Chaves órfãs de `outbound-tmp/` no storage; só onde há composição `worker` (em `all` não há `stage`). */
+  | 'outboundTmpSweep';
 
 /** Uploads em partes e mídia pendente: disco/fila do processo que recebe o upload. */
 const HTTP_JOBS: readonly ProcessJob[] = ['uploadSweeper', 'interruptedUploads', 'pendingMediaBoot', 'pendingMediaSweep'];
@@ -40,6 +42,7 @@ const WORKER_JOBS: readonly ProcessJob[] = [
   'sessionAdoption',
   'workerHeartbeat',
   'capacityAlert',
+  'outboundTmpSweep',
 ];
 
 /** Jobs que este papel liga. `all` = todos (comportamento de hoje). */

@@ -9,22 +9,33 @@ import { SessionNotConnectedError } from '../../../../shared/errors/internal/Ses
 import { decodeEngineCall, encodeEngineCall } from './engineCallCodec';
 import type { EngineCall } from './engineCallPlan';
 import { EngineCommandServer } from './EngineCommandServer';
-import { OutboundMediaTransfer, isStagedMediaKey, type OutboundObjectStore } from './outboundMediaTransfer';
+import { OUTBOUND_TMP_MAX_AGE_MS, OutboundMediaTransfer, isStagedMediaKey, type OutboundObjectStore } from './outboundMediaTransfer';
 import { RemoteMessagingEngineAdapter } from './RemoteMessagingEngineAdapter';
 
 /** Store dublê em memória. */
 function memoryStore() {
   const objects = new Map<string, Buffer>();
+  const modified = new Map<string, Date>();
   const store: OutboundObjectStore = {
-    upload: vi.fn(async (key: string, filePath: string) => { objects.set(key, await fs.readFile(filePath)); }),
+    upload: vi.fn(async (key: string, filePath: string) => {
+      objects.set(key, await fs.readFile(filePath));
+      modified.set(key, new Date());
+    }),
     download: vi.fn(async (key: string, dest: string) => {
       const b = objects.get(key);
       if (!b) throw new Error('NoSuchKey');
       await fs.writeFile(dest, b);
     }),
     delete: vi.fn(async (key: string) => { objects.delete(key); }),
+    list: vi.fn(async function* (prefix: string) {
+      for (const key of [...objects.keys()]) {
+        if (key.startsWith(prefix)) yield { key, lastModified: modified.get(key) ?? new Date() };
+      }
+    }),
   };
-  return { objects, store };
+  /** Objeto direto no store com data de modificação `at`. */
+  const put = (key: string, at: Date) => { objects.set(key, Buffer.from('x')); modified.set(key, at); };
+  return { objects, store, put };
 }
 
 let dir: string;
@@ -114,6 +125,48 @@ function pipelineSetup(engineSend: (input: SendMediaMessageInput) => Promise<unk
   };
   return { objects, store, adapter, engine, seen, sent, input };
 }
+
+describe('OutboundMediaTransfer.sweepExpired', () => {
+  const NOW = Date.parse('2026-11-04T12:00:00.000Z');
+  const HOUR = 60 * 60_000;
+  const uuid = (n: number) => `0000000${n}-0000-4000-8000-000000000000`;
+
+  it('apaga só chaves outbound-tmp/ do formato de stage acima da idade', async () => {
+    const { objects, store, put } = memoryStore();
+    put(`outbound-tmp/${uuid(1)}.jpg`, new Date(NOW - HOUR - 1));   // velha → sai
+    put(`outbound-tmp/${uuid(2)}`, new Date(NOW - 3 * HOUR));        // velha sem ext → sai
+    put(`outbound-tmp/${uuid(3)}.mp4`, new Date(NOW - HOUR + 1000)); // recente → fica
+    put('outbound-tmp/nao-e-uuid.jpg', new Date(NOW - 5 * HOUR));     // fora do formato → fica
+    put(`media/${uuid(4)}.jpg`, new Date(NOW - 5 * HOUR));            // outro prefixo → fica
+    const removed = await new OutboundMediaTransfer(store).sweepExpired(HOUR, NOW);
+    expect(removed).toBe(2);
+    expect(store.list).toHaveBeenCalledWith('outbound-tmp/');
+    expect([...objects.keys()].sort()).toEqual([
+      'media/' + uuid(4) + '.jpg', 'outbound-tmp/nao-e-uuid.jpg', `outbound-tmp/${uuid(3)}.mp4`,
+    ].sort());
+  });
+
+  it('padrão de 1 h; falha de listagem ou de delete nunca lança', async () => {
+    const { objects, store, put } = memoryStore();
+    put(`outbound-tmp/${uuid(1)}.jpg`, new Date(NOW - OUTBOUND_TMP_MAX_AGE_MS - 1));
+    put(`outbound-tmp/${uuid(2)}.jpg`, new Date(NOW - OUTBOUND_TMP_MAX_AGE_MS - 1));
+    vi.mocked(store.delete).mockRejectedValueOnce(new Error('S3 fora'));
+    const t = new OutboundMediaTransfer(store);
+    await expect(t.sweepExpired(undefined, NOW)).resolves.toBe(1);
+    expect(objects.size).toBe(1);
+    vi.mocked(store.list).mockImplementationOnce(async function* () { throw new Error('S3 fora'); });
+    await expect(t.sweepExpired(undefined, NOW)).resolves.toBe(0);
+  });
+
+  it('passada concorrente não roda em paralelo', async () => {
+    const { store, put } = memoryStore();
+    put(`outbound-tmp/${uuid(1)}.jpg`, new Date(NOW - 2 * HOUR));
+    const t = new OutboundMediaTransfer(store);
+    const [a, b] = await Promise.all([t.sweepExpired(HOUR, NOW), t.sweepExpired(HOUR, NOW)]);
+    expect([a, b].sort()).toEqual([0, 1]);
+    expect(store.list).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('mídia de envio entre processos (WROLE-11)', () => {
   it('sucesso: chave criada, consumida pelo worker e apagada; tmp do worker apagado; arquivo do http intocado', async () => {

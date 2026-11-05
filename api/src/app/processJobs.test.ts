@@ -5,11 +5,11 @@ const ALL: ProcessJob[] = [
   'uploadSweeper', 'interruptedUploads', 'pendingMediaBoot', 'pendingMediaSweep',
   'offerDispatch', 'hubOutbox', 'extensionRetention', 'billingReconcile',
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
-  'sessionAdoption', 'workerHeartbeat', 'capacityAlert',
+  'sessionAdoption', 'workerHeartbeat', 'capacityAlert', 'outboundTmpSweep',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 15 jobs', () => {
+  it('all liga os 16 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -31,6 +31,11 @@ describe('jobsFor', () => {
     for (const j of ['sessionBootstrap', 'sessionReconciler', 'leaseKeeper', 'offerDispatch'] as const) {
       expect(worker.has(j)).toBe(true);
     }
+  });
+
+  it('varredura de outbound-tmp/ é job do worker, nunca do http', () => {
+    expect(jobsFor('worker').has('outboundTmpSweep')).toBe(true);
+    expect(jobsFor('http').has('outboundTmpSweep')).toBe(false);
   });
 
   it('adoção, heartbeat e alerta só nos papéis com sessões (worker/all)', () => {

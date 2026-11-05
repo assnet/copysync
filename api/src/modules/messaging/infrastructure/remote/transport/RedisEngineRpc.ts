@@ -16,8 +16,11 @@ export const ENGINE_RPC_TIMEOUT_MS = 10_000;
 
 export const engineRpcChannel = (workerId: string): string => `${ENGINE_RPC_CHANNEL_PREFIX}${workerId}`;
 
-/** Pedido no fio. `call` é o JSON do `engineCallCodec` (preserva Buffer/Date). */
-interface RpcRequest { id: string; replyTo: string; call: string }
+/**
+ * Pedido no fio. `call` é o JSON do `engineCallCodec` (preserva Buffer/Date). `deadline` = epoch ms em que o
+ * cliente desiste (agora + timeout): o servidor descarta pedido vencido sem executar (sem efeito tardio).
+ */
+interface RpcRequest { id: string; replyTo: string; call: string; deadline: number }
 /** Resposta no fio. `value` é o JSON do `engineCallCodec`; erro só como `WireError` (WROLE-10). */
 type RpcReply = { id: string; ok: true; value: string } | { id: string; ok: false; error: WireError };
 
@@ -92,7 +95,7 @@ export class RedisEngineRpcClient implements IEngineRpcClient {
       this.pending.set(id, { resolve, reject, timer });
     });
 
-    const request: RpcRequest = { id, replyTo: this.replyChannel, call: payload };
+    const request: RpcRequest = { id, replyTo: this.replyChannel, call: payload, deadline: Date.now() + this.timeoutMs };
     let receivers: number;
     try {
       receivers = await this.options.publisher.publish(engineRpcChannel(workerId), JSON.stringify(request));
@@ -160,7 +163,9 @@ export interface RedisEngineRpcServerOptions {
 
 /**
  * Worker: assina `engine-rpc:{workerId}`, executa só chamadas `rpc` do plano na engine local e responde no
- * `replyTo` do pedido com o resultado ou `toWireError`. Pedido malformado sem `replyTo` é descartado.
+ * `replyTo` do pedido com o resultado ou `toWireError`. Pedido malformado sem `replyTo` é descartado; pedido
+ * com `deadline` vencido também (o cliente já desistiu: `sendReaction`, `submitLogin*` etc. não rodam tarde).
+ * Sem `deadline` (cliente anterior ao campo, deploy escalonado) executa como antes.
  */
 export class RedisEngineRpcServer {
   private readonly channel: string;
@@ -212,6 +217,10 @@ export class RedisEngineRpcServer {
     if (!request || typeof request.id !== 'string' || typeof request.replyTo !== 'string'
       || !request.replyTo.startsWith(ENGINE_RPC_REPLY_PREFIX)) {
       logger.warn({ channel }, 'RPC da engine: pedido sem id/replyTo descartado');
+      return;
+    }
+    if (typeof request.deadline === 'number' && Date.now() > request.deadline) {
+      logger.warn({ channel, lateMs: Date.now() - request.deadline }, 'RPC da engine: pedido vencido descartado');
       return;
     }
     const task = this.process(request.id, request.replyTo, request.call);

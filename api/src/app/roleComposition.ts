@@ -1,5 +1,6 @@
 import { usesRedis, type ProcessRole } from '../shared/config/processRole';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
+import type { IOutboundMediaTransfer } from '../modules/messaging/infrastructure/remote/outboundMediaTransfer';
 import { env } from '../shared/config/env';
 import { logger } from '../shared/logger/logger';
 
@@ -12,6 +13,8 @@ export interface RoleComposition {
    * Redis (`closeAllSockets`/`closeAllRedis` são do shutdown, WROLE-15). Idempotente; nunca lança.
    */
   stop(): Promise<void>;
+  /** Só `worker`: varredura das chaves órfãs de `outbound-tmp/` (job `outboundTmpSweep`, `server.ts`). */
+  outboundMedia?: Pick<IOutboundMediaTransfer, 'sweepExpired'>;
 }
 
 type Stopper = () => Promise<unknown>;
@@ -79,7 +82,8 @@ async function composeWorker(): Promise<RoleComposition> {
   const engine = localEngine();
   const adoption = workerAdoptionConfig();
   const lease = sessionLeaseContainer();
-  const handler = new EngineCommandServer(engine, engine, lease.release, await outboundMediaTransfer());
+  const mediaTransfer = await outboundMediaTransfer();
+  const handler = new EngineCommandServer(engine, engine, lease.release, mediaTransfer);
   const rpcServer = new RedisEngineRpcServer({
     workerId: lease.workerId,
     subscriber: redis.redisSubscriber(),
@@ -108,7 +112,7 @@ async function composeWorker(): Promise<RoleComposition> {
   // Relay fica ligado depois do `stop()`: o fechamento dos sockets ainda publica status.
   ws.chatWsPublisher.setRelay(new RedisChatEventRelay({ mode: 'publish', client: redis.redisCommand() }));
   logger.info({ role: 'worker', workerId: lease.workerId }, 'Engine local atendendo RPC e filas de comando');
-  return { engine, stop: once(() => stopAll(stoppers)) };
+  return { engine, stop: once(() => stopAll(stoppers)), outboundMedia: mediaTransfer };
 }
 
 async function composeHttp(): Promise<RoleComposition> {

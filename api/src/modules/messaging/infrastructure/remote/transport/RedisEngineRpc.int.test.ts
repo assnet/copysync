@@ -5,9 +5,10 @@ import {
   EngineTemporarilyUnavailableError,
 } from '../../../../../shared/errors/internal/MessagingErrors';
 import { SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
+import { encodeEngineCall } from '../engineCallCodec';
 import { engineCall, type EngineCall, type RpcEngineCall } from '../engineCallPlan';
 import type { IEngineCallHandler } from '../ports';
-import { RedisEngineRpcClient, RedisEngineRpcServer } from './RedisEngineRpc';
+import { ENGINE_RPC_REPLY_PREFIX, RedisEngineRpcClient, RedisEngineRpcServer, engineRpcChannel } from './RedisEngineRpc';
 
 /**
  * Redis LOCAL descartável (`scripts/redis-descartavel.sh start`): INTEGRATION_REDIS_URL=redis://127.0.0.1:<porta>.
@@ -136,5 +137,39 @@ describe.skipIf(!url)('RedisEngineRpc com Redis real', () => {
     await expect(client.call(workerId, engineCall('getSessionQr', 's1'))).resolves.toBe('ok');
     await server.stop();
     await expect(client.call(workerId, engineCall('getSessionQr', 's1'))).rejects.toBeInstanceOf(EngineNotReadyError);
+  });
+  it('pedido leva deadline = agora + timeout do cliente', async () => {
+    const { workerId, client } = await setup({ handle: async () => 'ok' }, 3000);
+    const spy = redis();
+    const seen: Array<{ deadline?: number }> = [];
+    spy.on('message', (_c: string, m: string) => seen.push(JSON.parse(m) as { deadline?: number }));
+    await spy.subscribe(engineRpcChannel(workerId));
+    const before = Date.now();
+    await expect(client.call(workerId, engineCall('getSessionQr', 's1'))).resolves.toBe('ok');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.deadline).toBeGreaterThanOrEqual(before + 3000);
+    expect(seen[0]!.deadline).toBeLessThanOrEqual(Date.now() + 3000);
+  });
+
+  it('pedido vencido não executa nem responde; no prazo ou sem deadline executa', async () => {
+    const handled: string[] = [];
+    const { workerId } = await setup({
+      handle: async (call) => { handled.push((call.args[0] as { sessionId: string }).sessionId); return 'ok'; },
+    });
+    const replyTo = `${ENGINE_RPC_REPLY_PREFIX}t-${Date.now()}`;
+    const replies: Array<{ id: string }> = [];
+    const sub = redis();
+    sub.on('message', (_c: string, m: string) => replies.push(JSON.parse(m) as { id: string }));
+    await sub.subscribe(replyTo);
+    const pub = redis();
+    const send = (id: string, deadline?: number) => pub.publish(engineRpcChannel(workerId), JSON.stringify({
+      id, replyTo, call: encodeEngineCall({ method: 'sendReaction', args: [{ sessionId: id, tenantId: 't1', emoji: '👍' }] } as unknown as EngineCall), ...(deadline !== undefined && { deadline }),
+    }));
+    await send('vencido', Date.now() - 1);
+    await send('no-prazo', Date.now() + 5000);
+    await send('sem-deadline');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(handled.sort()).toEqual(['no-prazo', 'sem-deadline']);
+    expect(replies.map((r) => r.id).sort()).toEqual(['no-prazo', 'sem-deadline']);
   });
 });

@@ -176,6 +176,8 @@ describe('composeForRole', () => {
     expect(h.queues.startConsumers).toHaveBeenCalledWith('w-1', expect.anything());
     expect(h.ctor.relay).toHaveBeenCalledWith({ mode: 'publish', client: h.clients.command });
     expect(h.setRelay).toHaveBeenCalledTimes(1);
+    expect(c.outboundMedia).toMatchObject({ kind: 'transfer' }); // mesma instância do servidor de comandos
+    expect(c.outboundMedia).toBe(h.ctor.commandServer.mock.calls[0][3]);
 
     await c.stop();
     expect(h.rpcServer.stop).toHaveBeenCalledTimes(1);

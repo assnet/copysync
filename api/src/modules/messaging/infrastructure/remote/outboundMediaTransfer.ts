@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { S3MediaFileStoreConfig } from '../../../media/infrastructure/storage/S3MediaFileStore';
 import { logger } from '../../../../shared/logger/logger';
 
@@ -13,6 +13,11 @@ const log = logger.child({ module: 'outboundMediaTransfer' });
 
 /** Prefixo das chaves temporárias de envio no storage (WROLE-11). Nunca coincide com `filePath` local (absoluto). */
 export const OUTBOUND_TMP_PREFIX = 'outbound-tmp/';
+/**
+ * Idade a partir da qual uma chave temporária é órfã: o envio mais longo espera 300 s e job em espera é
+ * removido no timeout, então nada legítimo passa de 1 h. Varredura no worker (boot + a cada 1 h).
+ */
+export const OUTBOUND_TMP_MAX_AGE_MS = 60 * 60_000;
 const KEY_RE = /^outbound-tmp\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[a-z0-9]{1,10})?$/;
 const EXT_RE = /^\.[a-z0-9]{1,10}$/;
 
@@ -26,6 +31,8 @@ export interface OutboundObjectStore {
   upload(key: string, filePath: string, contentType: string): Promise<void>;
   download(key: string, destPath: string): Promise<void>;
   delete(key: string): Promise<void>;
+  /** Lista as chaves sob o prefixo com a data de modificação (paginado pelo store). */
+  list(prefix: string): AsyncIterable<{ key: string; lastModified: Date }>;
 }
 
 export interface FetchedOutboundMedia {
@@ -42,9 +49,13 @@ export interface IOutboundMediaTransfer {
   fetch(key: string): Promise<FetchedOutboundMedia>;
   /** Apaga a chave. Idempotente; nunca lança. */
   discard(key: string): Promise<void>;
+  /** Apaga chaves `outbound-tmp/` (só o formato de `stage`) com mais de `maxAgeMs`. Devolve quantas; nunca lança. */
+  sweepExpired(maxAgeMs?: number, now?: number): Promise<number>;
 }
 
 export class OutboundMediaTransfer implements IOutboundMediaTransfer {
+  private sweeping = false;
+
   constructor(private readonly store: OutboundObjectStore) {}
 
   async stage(filePath: string, mimeType: string): Promise<string> {
@@ -78,6 +89,29 @@ export class OutboundMediaTransfer implements IOutboundMediaTransfer {
       log.warn({ err, key }, 'outbound media: chave não removida');
     }
   }
+
+  async sweepExpired(maxAgeMs = OUTBOUND_TMP_MAX_AGE_MS, now = Date.now()): Promise<number> {
+    if (this.sweeping) return 0; // passada anterior ainda em curso
+    this.sweeping = true;
+    let removed = 0;
+    try {
+      for await (const { key, lastModified } of this.store.list(OUTBOUND_TMP_PREFIX)) {
+        if (!isStagedMediaKey(key) || now - lastModified.getTime() <= maxAgeMs) continue;
+        try {
+          await this.store.delete(key);
+          removed++;
+        } catch (err) {
+          log.warn({ err, key }, 'outbound media: chave órfã não removida');
+        }
+      }
+    } catch (err) {
+      log.warn({ err }, 'outbound media: varredura de outbound-tmp/ falhou');
+    } finally {
+      this.sweeping = false;
+    }
+    if (removed > 0) log.info({ removed }, 'outbound media: chaves órfãs removidas');
+    return removed;
+  }
 }
 
 /** `OutboundObjectStore` no mesmo bucket do `S3MediaFileStore` (mesma config). */
@@ -106,5 +140,16 @@ export class S3OutboundObjectStore implements OutboundObjectStore {
 
   async delete(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.config.bucket, Key: key }));
+  }
+
+  async *list(prefix: string): AsyncIterable<{ key: string; lastModified: Date }> {
+    let token: string | undefined;
+    do {
+      const res = await this.client.send(new ListObjectsV2Command({ Bucket: this.config.bucket, Prefix: prefix, ContinuationToken: token }));
+      for (const o of res.Contents ?? []) {
+        if (o.Key && o.LastModified) yield { key: o.Key, lastModified: o.LastModified };
+      }
+      token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (token);
   }
 }

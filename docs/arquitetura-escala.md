@@ -246,6 +246,13 @@ do desenho abaixo:
   alheia (`SESSION_NOT_OWNED`) e o adapter re-resolve o dono uma vez. Erro atravessa como
   `{code,message,meta}` (`engineErrorWire`).
 - Mídia do envio vai por objeto temporário (`outbound-tmp/`), por isso `http`/`worker` exigem S3 (D9).
+  Chave órfã (processo morto antes do `finally`): o worker varre `outbound-tmp/` no boot e a cada 1 h
+  (job `outboundTmpSweep`, `sweepExpired`) e apaga só chaves no formato de `stage` com mais de 1 h (envio
+  mais longo: 300 s). Alternativa sem job: regra de lifecycle do bucket expirando `outbound-tmp/` em 1 dia
+  (granularidade mínima do S3); se adotada, o job pode ficar como reforço. Nunca varrer outro prefixo.
+- RPC leva `deadline` (agora + timeout do cliente): o worker descarta pedido vencido sem executar nem
+  responder (sem `sendReaction`/`submitLogin*`/`markMessagesRead` tardio). Pedido sem `deadline` (cliente
+  antigo em deploy escalonado) executa. Depende de relógio sincronizado (NTP) entre `http` e worker.
 - Worker sobe só `GET /health` na `PORT` (`role`, `workerId`, sessões, Redis, banco); `/health` do `http`/
   `all` ganhou `role`. Worker também drena a fila de mídia antes dos sockets (D8). `http` em 1 réplica (D5).
 - `TENANT_SUSPENDED`: listener em todo papel; no `http` o `disconnect` vai ao dono pela fila.
