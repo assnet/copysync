@@ -325,3 +325,7 @@ decisão comercial, com custo por raiz.
 ### 2026-11-04 — Lease de sessão (E2) concluído
 
 E2 entregue na api 0.59.0 (`.specs/features/session-lease/`): socket só com lease, fence 55 s, CAS em `writeKeys` do Baileys, `connectRequestedAt`, shutdown solta lease. Sem flag (rollback = versão). Readoção no deploy fica na E4; filtro de lease na mídia órfã na E3. `api/.env.dev` aponta para produção: smoke só com env sintético.
+
+### 2026-11-04 — Escala E3 e E4 em código
+
+E3 (`PROCESS_ROLE`, BullMQ/RPC/Redis) e E4 (adoção por capacidade, heartbeat, alerta) documentadas na api 0.62.0 / app 0.79.0; produção segue em `all` com adoção off. Ligar só após o checklist de `docs/arquitetura-escala.md` §5.1 (Key Value, S3, `DATABASE_SOCKET_TIMEOUT_S`, Private Service, smoke com sessão real); dono decide timeout do texto (60 s) e vaga presa por QR.

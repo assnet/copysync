@@ -18,7 +18,7 @@ começou (spec sem commit). **O caminho crítico agora é a central.**
 | Trilha | Entregue | Pendente |
 | --- | --- | --- |
 | **B** CopySync | provisionamento, convite, `resolveMembership`, `TENANT_SUSPENDED`, senha nula → 401, receiver HMAC, entitlements, presets LITE/PRO/MAX, desconexão de sessões em suspensão, limites de grupos e rodízio. Correções de 2026-11-02 (`0.49.4`): contrato de eventos alinhado à central, provisionamento em `subscription.activated`, `X-Application-Key`, receipt e seq na mesma transação, P2002 → 200, `planSlug` validado, limite `whatsapp_sessions`, worker de envio respeita tenant suspenso, seed sem reset de senha | `HubEmailSender` (H4), corpo de `ReconcileSubscriptionsUseCase` (hoje só o lease, sem consulta à central: depende de H2), tela "Assinatura" com link para o checkout |
-| **E** Escala | E0 flush no shutdown (`flushAllAuthStates` em `server.ts`), adapters Baileys unificados (`MessagingEngineFactory.ts:34`), E1 mídia em S3/R2 no código (`S3_ENABLED`), E2 lease de sessão + CAS no auth state (api 0.59.0) | `connection_limit` na `DATABASE_URL` da Render (conferir); E3 `PROCESS_ROLE`/BullMQ/Redis; E4 teto por worker; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
+| **E** Escala | E0 flush no shutdown (`flushAllAuthStates` em `server.ts`), adapters Baileys unificados (`MessagingEngineFactory.ts:34`), E1 mídia em S3/R2 no código (`S3_ENABLED`), E2 lease de sessão + CAS no auth state (api 0.59.0), E3 `PROCESS_ROLE`/BullMQ/RPC/Redis e E4 adoção por capacidade + heartbeat + alerta em código (api 0.62.0; produção em `all`, adoção off) | `connection_limit` na `DATABASE_URL` da Render (conferir); ligar E3/E4 na Render só após o checklist do doc de escala §5.1 (Key Value, S3, `DATABASE_SOCKET_TIMEOUT_S`, worker Private Service, smoke com sessão real); decisões do dono: timeout do comando de texto (60 s × "≤ 10 s") e vaga presa por QR sem leitura; E5 filas de produto (hoje tabela + `SKIP LOCKED`) |
 | **P** Produto | gerador, disparo em massa, grupos de disparo, horário, monitoramento com troca de link, IA, rodízio, story, página de ofertas, menção a todos, sessão cruzada, vitrine de planos | Telegram; domínio personalizado (não verificado) |
 | **H** Hub | — | tudo; ver "O que falta para iniciar a fase 0" na spec da central |
 
@@ -85,12 +85,12 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 
 Gate: venda real do LITE ponta a ponta. `Application.outboundEnabled=true` e `OUTBOUND_EVENTS_MODE=on` só para `copysync`. Postgres do CopySync em 0.5c-1g e medição de RAM/CPU por sessão anotada no doc de escala.
 
-### M3 — Escala real + núcleo do produto (semanas 10–14) — produto ✅; E3/E4 ❌
+### M3 — Escala real + núcleo do produto (semanas 10–14) — produto ✅; E3/E4 ✅ em código (api 0.62.0), não ligadas na Render
 
 | Trilha | Entrega |
 | --- | --- |
-| E3 | `PROCESS_ROLE=http\|worker\|all`, dono por job de boot (tabela §3.3 do doc de escala; `JobLease` já em reconcile e rodízio; disparo e outbox já têm claim próprio), BullMQ `session.connect/disconnect/logout`, `message.send.*`, RPC síncrono para QR/pairing/login Telegram/grupos, Redis pub/sub → WS |
-| E4 | `WORKER_ADOPTION_ENABLED` (off por default, só Render) + `WORKER_MAX_SESSIONS` (adoção por capacidade, bootstrap com teto), drain no `SIGTERM` (sockets → flush → soltar lease), heartbeat + alerta 80%; N réplicas `worker` como Private Service (doc de escala §3.2, §5.1) |
+| E3 ✅ código | `PROCESS_ROLE=http\|worker\|all`, dono por job de boot (tabela §3.3 do doc de escala; `JobLease` já em reconcile e rodízio; disparo e outbox já têm claim próprio), BullMQ `session.connect/disconnect/logout`, `message.send.*`, RPC síncrono para QR/pairing/login Telegram/grupos, Redis pub/sub → WS |
+| E4 ✅ código | `WORKER_ADOPTION_ENABLED` (off por default, só Render) + `WORKER_MAX_SESSIONS` (adoção por capacidade, bootstrap com teto), drain no `SIGTERM` (sockets → flush → soltar lease), heartbeat + alerta 80%; N réplicas `worker` como Private Service (doc de escala §3.2, §5.1) |
 | P | Disparo em massa; monitoramento com troca de link |
 | H5 | `creditsEnabled` nos hooks (sem efeito para `socialpulse`) |
 | H6 | Admin: seletor de aplicação, CRUD `Application`, replay de eventos |

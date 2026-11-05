@@ -36,8 +36,8 @@ Regras comuns a toda task:
 | T18 | Composição por papel (engine, servidor de comandos, relay) | T2, T8, T9, T10, T11, T12, T13 | | ✅ e01910e |
 | T18b | Rotas usam a engine ativa; concorrência das filas por env | T18 | | ✅ 2182861 |
 | T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ✅ 8330cbf |
-| T20 | Smoke `all` e `http`+`worker` | T19 | | 🟡 parcial |
-| T21 | Docs, CHANGELOG e versão | T20 | | ⏳ |
+| T20 | Smoke `all` e `http`+`worker` | T19 | | 🟡 parcial (sessão real pendente) |
+| T21 | Docs, CHANGELOG e versão (com E4 T20; api 0.62.0, app 0.79.0) | T20 | | ✅ este commit |
 
 ### T18b: Rotas usam a engine ativa; concorrência das filas por env
 
@@ -473,3 +473,4 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
   - Critério 3: 🟡 RPC com worker morto → 503 imediato ✅; **comando de texto pela fila → 503 só após 60,17 s** (`commandMs` padrão 60 s; mídia 300 s), contra "≤ 10 s" da spec. Nada enviado após o timeout ✅. **Decisão do dono:** ajustar a spec ou baixar `commandMs` de texto (sugestão: 15 s; a simulação de digitação roda no worker, não pela fila).
   - Critério 4: ✅ SIGTERM no worker na ordem keeper → composição → drain → sockets → flush → leases → Redis → close; outro worker readotou pela `session-open`.
   - Riscos: Redis fora no boot de `http`/`worker` = reconexão infinita sem `/health`; `disconnect` manual não emite `SESSION_DISCONNECTED` (igual em `all`); `scripts/redis-descartavel.sh` usa nome de contêiner fixo — jobs paralelos precisam de `REDIS_INT_NAME` próprio.
+- T21 (com E4 T20, este commit): docs de escala §3.2/§3.3/§5.1/§6, plano trilha E, `sessoes-conexao.md`, AGENTS.md, CHANGELOG; api 0.62.0, app 0.79.0 (o 0.60.0 do plano já fora usado). Pendências do dono seguem no doc §3.3 e checklist §5.1.

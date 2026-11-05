@@ -59,6 +59,32 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Separação HTTP × worker (`messaging`, `sessions`, `chat`, escala E3) e adoção por capacidade (escala E4) — api 0.62.0 · app 0.79.0
+
+Doc: `docs/arquitetura-escala.md` §3.2, §3.3, §5.1, §6. Com HTTP e sockets em processos diferentes rotas, WS e suspensão de tenant não funcionavam, e sessão órfã só voltava com clique do usuário, sem teto por processo. Defaults (`PROCESS_ROLE=all`, `WORKER_ADOPTION_ENABLED=false`) = comportamento anterior (smokes com log idêntico). Breaking: nenhum. Migration: sim (`worker_heartbeats`). Pendências: smoke com sessão real, timeout do comando de texto (60 s), vaga presa por QR sem leitura.
+
+- **`env.ts`** + **`processRole.ts`** — `PROCESS_ROLE` (`http|worker|all`), `REDIS_URL`, `ENGINE_COMMAND_CONCURRENCY` (2); `http`/`worker` exigem Redis e `MEDIA_STORAGE_DRIVER=s3`; `all` nunca abre Redis
+- **`localEngineContainer.ts`** + **`roleComposition.ts`** + **`session.routes.ts`** — engine montada fora das rotas; rotas leem `getActiveEngine()` (remota no `http`, sem Baileys/GramJS)
+- **`redisConnections.ts`** + **`scripts/redis-descartavel.sh`** — ioredis/BullMQ lazy, fechados no shutdown
+- **`engineCallPlan.ts`** + **`engineCallCodec.ts`** + **`engineErrorWire.ts`** + **`ports.ts`** — método → local/rpc/command/open; erro interno atravessa como `{code,message,meta}`
+- **`RedisEngineRpc.ts`** + **`BullEngineCommandQueues.ts`** — RPC 10 s; filas `engine-cmd-{workerId}` e `session-open`, sem retry
+- **`EngineCommandServer.ts`** + **`RemoteMessagingEngineAdapter.ts`** + **`outboundMediaTransfer.ts`** — worker valida posse e solta lease após disconnect/logout; `http` resolve o dono pelo lease; mídia por objeto temporário
+- **`createOutboundMessageId`** async nos chamadores — id do Baileys exige o socket do dono
+- **`RedisChatEventRelay.ts`** — WS entre processos por `tenant:{id}`; SSE `GET /chat/events` removido
+- **`FailOrphanPendingMediaUseCase.ts`** — boot poupa mídia de sessão com lease vivo de outro processo
+- **`processJobs.ts`** + **`workerApp.ts`** + **`server.ts`** — jobs, boot e shutdown por papel; worker só com `/health`; `/health` com `role`
+- **`workerAdoption.ts`** + **`sessionAdoptionPolicy.ts`** — `WORKER_ADOPTION_ENABLED`, `WORKER_MAX_SESSIONS` (40), `WORKER_SHARD`; tick 5 s, backoff até 30 min, 5 tentativas, heartbeat 20 s, alerta > 80 %
+- **Migration `20261104160000_create_worker_heartbeats`** + **`PrismaWorkerHeartbeatRepository.ts`** — ocupação por processo
+- **`PrismaSessionAdoptionRepository.ts`** — adoção `FOR UPDATE SKIP LOCKED` (inclui `AWAITING_*` órfã), tentativa contada na adoção, esgotadas → `FAILED` auditado
+- **`CapacityLimitedLeaseGate.ts`** — teto no gate do lease (rota, `session-open`, bootstrap, ticker); cheio → 503
+- **`AdoptNextSessionUseCase.ts`** + **`SessionAdoptionTicker.ts`** + **`sessionAdoptionContainer.ts`** — readoção; com a flag o bootstrap vira ticker
+- **`markConnectRequested.ts`** + listener de `SESSION_CONNECTED` — zeram o backoff
+- **`WorkerHeartbeatJob.ts`** + **`WorkerCapacityAlertJob.ts`** + **`shared/jobs/PrismaJobLease.ts`** — heartbeat e alerta sob `JobLease` (só log; e-mail adiado)
+- **`GET /admin/workers`** + **`awaitingCapacity`** no item de sessão — super-admin vê ocupação; sessão sem vaga sinalizada
+- **`server.ts`** — shutdown com adoção: ticker/heartbeat → jobs → mídia com teto → sockets → flush → leases → heartbeat apagado
+- **app `useChatSSE.ts`** (removido), **`SessionStatusChip.tsx`** + **`sessions/strings.ts`** (chip "Aguardando capacidade"), **`workersAdmin/`** (página `/admin/workers`)
+- **Docs** — `arquitetura-escala.md` (fases 3/4, envs, checklist multi-processo, o que não fazer), `plano-lancamento-hub-copysync.md` (trilha E), `sessoes-conexao.md`, linha no `AGENTS.md`
+
 #### Grupos de disparo e horário de postagem (`campaigns`, `automation`, app `broadcastGroups`/`offers`/`monitoring`) — api 0.61.0 · app 0.78.0
 
 Doc: `docs/grupos-de-disparo-e-horario.md`. O limite de grupos de disparo era contado separado no gerador e em cada monitoramento (LITE chegava a 10 com limite 5), não havia tela única dos grupos e o horário não tinha dias da semana nem valia para o gerador. Breaking: nenhum. Migration: sim.

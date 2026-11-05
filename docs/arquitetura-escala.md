@@ -2,7 +2,7 @@
 
 Fonte de verdade de **como** a plataforma cresce de 1 instância para milhares de sessões
 WhatsApp sem reescrever a arquitetura. Complementa [`../AGENTS.md`](../AGENTS.md) (regras de
-código) e [`produto-roadmap.md`](produto-roadmap.md) (o que é vendido). Atualizado em 2026-11-04 (E2 entregue, api 0.59.0).
+código) e [`produto-roadmap.md`](produto-roadmap.md) (o que é vendido). Atualizado em 2026-11-04 (E2 api 0.59.0; E3 e E4 em código na api 0.62.0, produção em `all` com adoção desligada).
 
 Meta de dimensionamento: **3.000 sessões Baileys** como teto (1.000 tenants × até 3 números).
 Pelos planos reais ([roadmap, "Carga por plano"](produto-roadmap.md)), 1.000 tenants no mix
@@ -96,10 +96,10 @@ renova a cada 20 s, fence 55 s, timeout 5 s, sem env), `PrismaSessionLeaseReposi
 - CAS no Baileys: conflito de `version` descarta o pendente e derruba o socket.
 - Shutdown: keeper → jobs → drain de mídia → `closeAllSockets()` → `flushAllAuthStates()` →
   `releaseAllOwned` (solta lease e marca `DISCONNECTED` as ativas, mantém `connectRequestedAt`) →
-  `app.close()`. Inverter mídia × flush fica para a E4.
-- Fica para depois: bootstrap pula sessão com lease de outro processo e **não readota** (D2, E4);
-  `FailOrphanPendingMediaUseCase` ainda sem filtro de lease (E3); `nextAdoptAt`/`adoptFailures`/`shard`
-  sem uso (E4).
+  `app.close()`. E4 manteve mídia antes dos sockets, com teto que reserva o fim ao flush (D4).
+- Fechado depois: readoção pelo ticker da E4 (§3.2, com a flag); `FailOrphanPendingMediaUseCase.runBoot`
+  poupa `PENDING` de sessão com lease vivo de outro processo (E3); `nextAdoptAt`/`adoptFailures` usados
+  pela E4; `shard` só como filtro (ninguém grava).
 
 Desenho original abaixo; onde diverge, vale o bloco acima.
 
@@ -142,7 +142,30 @@ Use cases novos: `AcquireSessionLeaseUseCase`, `RenewSessionLeaseUseCase`,
 
 ### 3.2 Adoção por capacidade (teto por worker)
 
-Decisão 2026-11-04: **sem shard por hash**. Envs novas (nenhuma existe hoje em `env.ts`):
+**Feito na E4 (api 0.62.0), atrás de `WORKER_ADOPTION_ENABLED=false`** (desligada = E3 idêntica, nenhuma
+escrita em `worker_heartbeats`). Spec: `.specs/features/session-adoption/`. Onde diverge do desenho abaixo:
+
+- Teto no gate: `CapacityLimitedLeaseGate` nega `acquire` de sessão alheia com `ativas >= WORKER_MAX_SESSIONS`
+  (`ativas` = `listLocalSessionIds()`, inclui socket abrindo). Vale para rota, `session-open`, bootstrap e
+  ticker. Rota recebe 503 `ENGINE_TEMPORARILY_UNAVAILABLE`; o item da sessão traz `awaitingCapacity` e o
+  painel mostra o chip "Aguardando capacidade".
+- Tentativa conta **na adoção** (`adoptFailures+1` e `nextAdoptAt` no mesmo `UPDATE`, D1); zera no
+  `SESSION_CONNECTED` e em pedido novo (`markConnectRequested`). 5 tentativas → `FAILED`, pedido nulo,
+  auditoria `SESSION_DISCONNECTED` `reason: ADOPTION_EXHAUSTED`.
+- Status adotáveis: `CONNECTED`, `CONNECTING`, `DISCONNECTED` e `AWAITING_*` com lease vencido (órfã de
+  SIGKILL; a adoção reconecta e gera QR novo).
+- `SessionAdoptionTicker`: 1 adoção por tick de 5 s (D2). Flag ligada + `SESSION_BOOTSTRAP_ON_STARTUP=true`
+  = bootstrap delegado ao ticker (D8). Flag ligada **sem** bootstrap: o ticker reconecta quem tem pedido vivo.
+- Worker cheio pausa o consumo de `session-open` (vigia 5 s; job pego na corrida volta atrasado).
+- `WorkerHeartbeatJob` (20 s, tabela `worker_heartbeats`, apagada no shutdown) e `WorkerCapacityAlertJob`
+  (`JobLease` `worker-capacity-alert`, 1 log `warn`/min no cluster). E-mail ao super-admin adiado (D5: sem
+  template na central). `GET /admin/workers` (super-admin) + página `/admin/workers` no painel.
+- Shutdown: drain de mídia **antes** dos sockets, com teto que reserva o fim para close+flush+release (D4).
+- Pendentes do dono: sessão em QR sem leitura prende a vaga (QR rotaciona, socket não fecha; sugestão:
+  N min sem leitura → `DISCONNECTED` mantendo o pedido); heartbeat de worker morto só é limpo após 1 dia
+  (`listAlive` já filtra 90 s); índice de candidatas (D7) não medido; "sem 440" na readoção só com sessão real.
+
+Decisão 2026-11-04: **sem shard por hash**. Envs (todas em `env.ts` desde a E4):
 
 | Env | Default | Função |
 |---|---|---|
@@ -208,8 +231,28 @@ depois do primeiro worker extra em produção; não entra no plano atual.
 
 ### 3.3 Separação HTTP × worker
 
-Mesmo código, dois modos de boot via `PROCESS_ROLE=http|worker|all` (env nova; hoje
-`server.ts` sobe `listen` e todos os jobs em qualquer processo):
+**Feito na E3 (api 0.62.0); produção segue em `all`.** Spec: `.specs/features/worker-role/`. Onde diverge
+do desenho abaixo:
+
+- Engine só via `getActiveEngine()`: em `all`/`worker` é a local (`localEngineContainer`); em `http` é
+  `RemoteMessagingEngineAdapter` (não carrega Baileys/GramJS). Composição em `app/roleComposition.ts`,
+  chamada antes de `buildApp`; jobs por papel em `app/processJobs.ts`.
+- Fila BullMQ **por worker** (`engine-cmd-{workerId}`), não por sessão (D2: cada fila consumida custa uma
+  conexão bloqueante), mais `session-open` compartilhada para abrir sessão sem dono (D3: qualquer worker
+  consome, o lease decide). Comandos: `disconnect`, `logout`, `sendText/MediaMessage`, sem retry (D11).
+  Timeout: texto 60 s, mídia 300 s; job ainda em espera é removido (não envia depois).
+- RPC request/reply no Redis (`engine-rpc:{workerId}`) para QR, pairing, status, grupos, reações, leitura,
+  login Telegram, `createOutboundMessageId`; timeout 10 s → 503 `ENGINE_NOT_READY`. Worker recusa sessão
+  alheia (`SESSION_NOT_OWNED`) e o adapter re-resolve o dono uma vez. Erro atravessa como
+  `{code,message,meta}` (`engineErrorWire`).
+- Mídia do envio vai por objeto temporário (`outbound-tmp/`), por isso `http`/`worker` exigem S3 (D9).
+- Worker sobe só `GET /health` na `PORT` (`role`, `workerId`, sessões, Redis, banco); `/health` do `http`/
+  `all` ganhou `role`. Worker também drena a fila de mídia antes dos sockets (D8). `http` em 1 réplica (D5).
+- `TENANT_SUSPENDED`: listener em todo papel; no `http` o `disconnect` vai ao dono pela fila.
+- Pendente do dono: comando de texto com worker morto só vira 503 após 60 s (spec dizia ≤ 10 s; sugestão
+  baixar para 15 s); sessão real (QR lido, código, envio, recebimento, grupos) não testada no smoke.
+
+Mesmo código, três modos de boot via `PROCESS_ROLE=http|worker|all`:
 
 - `http`: Fastify, rotas, WS/SSE, upload. Não instancia engine. Não adota sessão.
 - `worker`: Fastify só com `/health` numa porta interna; adoção (§3.2), consome fila.
@@ -246,14 +289,15 @@ helper, não o use case, é o ponto único.
 Decisão: **WS puro (`@fastify/websocket`) permanece**; não migrar para Socket.IO. Socket.IO
 custa ~2x por conexão (engine.io, heartbeat próprio, ack buffer) e serve a fallback de polling
 que nenhum navegador ou proxy atual precisa. Salas já existem no `Map<tenantId, Set<WebSocket>>`.
-Remover o SSE (`GET /events`, `useChatSSE`): hoje cada painel segura 1 WS + 1 SSE e recebe
+SSE (`GET /chat/events`, `useChatSSE`) removido na E3: cada painel segurava 1 WS + 1 SSE e recebia
 `MESSAGE_RECEIVED` duas vezes. Webhooks ficam para API pública de integradores, com fila e
 retry, item separado no roadmap.
 
 `InternalEventBus` ganha implementação `RedisInternalEventBus` atrás da mesma interface.
 Worker publica em canal `tenant:{tenantId}`; cada réplica HTTP assina e repassa aos seus WS/SSE.
-`ChatWebSocketPublisher` não muda de contrato. Registro de eco e throttle de reação migram
-para Redis com TTL.
+`ChatWebSocketPublisher` não muda de contrato. **Feito na E3** com `RedisChatEventRelay` (só o fan-out do WS;
+`InternalEventBus` segue local). Eco fica em memória: envio e eco ocorrem no mesmo dono (D6). Throttle de
+reação segue em memória, por isso `http` tem 1 réplica.
 
 ### 3.5 Mídia em objeto
 
@@ -283,8 +327,10 @@ sobre `setInterval` in-process.
 | 0 | Medir RAM/CPU por sessão; `connection_limit` por processo (adapter já unificado) | decisões com número real | 1-2 dias |
 | 1 | Mídia em S3/R2 (3.5) | remover disco, qualquer multi-processo | 1 semana |
 | 2 ✅ api 0.59.0 | Lease + teardown ao perder lease + CAS em `writeKeys` (3.1); `connectRequestedAt` | deploy sem 440, failover, 2+ processos seguros | 1 semana |
-| 3 | `PROCESS_ROLE` + dono por job + BullMQ comandos + RPC síncrono (3.3) + Redis pub/sub (3.4) | HTTP escalar separado do worker | 2-3 semanas |
-| 4 | `WORKER_ADOPTION_ENABLED` + teto + drain + heartbeat + alerta (3.2) | N réplicas, tenant dedicado | 1 semana |
+| 3 ✅ código, api 0.62.0 | `PROCESS_ROLE` + dono por job + BullMQ comandos + RPC síncrono (3.3) + Redis pub/sub (3.4) | HTTP escalar separado do worker | 2-3 semanas |
+| 4 ✅ código, api 0.62.0 | `WORKER_ADOPTION_ENABLED` + teto + drain + heartbeat + alerta (3.2) | N réplicas, tenant dedicado | 1 semana |
+
+Fases 3 e 4 estão no código, não ligadas na Render: falta o checklist de §5.1 e o smoke com sessão real.
 | 5 | Filas de produto (3.6) | monitoramento e disparo em escala | junto com as features |
 
 Fase 1 antes da 2 porque disco local bloqueia tudo. Fase 2 antes da 3 porque protege até com
@@ -341,6 +387,27 @@ Serviço `worker` na Render é **Private Service** (porta interna + health check
 cada serviço (não está no `Dockerfile`, `render.yaml` nem `docker-compose.yml`). O `render.yaml`
 hoje só declara o static `copysync`; a env e o tipo de cada serviço ficam documentados aqui
 até entrarem no blueprint.
+
+Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` local, que aponta para produção):
+
+| Env | Default | Quando ligar |
+|---|---|---|
+| `PROCESS_ROLE` | `all` | `http` no `copysync_api` e `worker` no Private Service, só após o checklist abaixo. `http`/`worker` sem `REDIS_URL` ou sem `MEDIA_STORAGE_DRIVER=s3` falham o boot |
+| `REDIS_URL` | vazio | com o Key Value da Render; `all` ignora |
+| `ENGINE_COMMAND_CONCURRENCY` | `2` | comandos simultâneos por fila do worker; subir só medindo |
+| `WORKER_ADOPTION_ENABLED` | `false` | no worker (ou `all`) quando houver mais de um processo de sessão ou para readotar no deploy |
+| `WORKER_MAX_SESSIONS` | `40` | teto medido na Fase 0 (§3.2), junto com `NODE_OPTIONS` |
+| `WORKER_SHARD` | vazio | só com tenant dedicado (ninguém grava `Session.shard` ainda) |
+| `DATABASE_SOCKET_TIMEOUT_S` | vazio | em todo serviço antes de ligar o 2º processo (ex.: 30; §6) |
+
+**Antes de ligar mais de um processo na Render:**
+
+- [ ] Key Value (Redis) criado na mesma região; `REDIS_URL` nos dois serviços.
+- [ ] Mídia em S3/R2 (`MEDIA_STORAGE_DRIVER=s3` + `S3_*`) e disco `/var/data` fora do caminho.
+- [ ] `DATABASE_SOCKET_TIMEOUT_S` e `connection_limit` na `DATABASE_URL` de cada serviço.
+- [ ] Worker como **Private Service** (health em `/health`, `PORT`), mesma imagem e `CMD`.
+- [ ] Decisão do timeout de comando de texto (60 s hoje) e da vaga presa por QR sem leitura.
+- [ ] Smoke com sessão real autorizada: QR lido, código, envio texto/mídia, recebimento, grupos, readoção sem 440.
 
 Preços de Postgres acima de 1c-2g são aproximados; conferir nos 24 planos do painel.
 
@@ -408,8 +475,15 @@ não o servidor.
   abortar (`abortSession`) sessão que perdeu o lease.
 - Não chamar `writeKeys` sem `expectedVersion` no Baileys (sem CAS dois donos corrompem as chaves).
 - Não soltar lease antes de fechar o socket, nem mudar a ordem do shutdown em `server.ts`.
-- Não subir 2 processos com `SESSION_BOOTSTRAP_ON_STARTUP=true` esperando divisão: até a E4 o
-  segundo só pula as sessões do primeiro.
+- Não subir 2 processos com `SESSION_BOOTSTRAP_ON_STARTUP=true` e adoção desligada esperando divisão:
+  o segundo só pula as sessões do primeiro. Divisão = `WORKER_ADOPTION_ENABLED=true`.
+- Não ligar `PROCESS_ROLE` nem `WORKER_ADOPTION_ENABLED` local (`pnpm dev` com `api/.env` = produção
+  roubaria lease e reconectaria sessões reais), nem na Render antes do checklist de §5.1.
+- Não chamar a engine local no `http` (`localEngine()` só em `roleComposition`/`localEngineContainer`;
+  o resto usa `getActiveEngine()`), nem usar pub/sub para comando que precisa de entrega (BullMQ).
+- Não ligar retry automático no envio (duplica mensagem no grupo) nem subir `http` para N réplicas
+  (upload em disco e throttle de reação são por processo).
+- Não subir `WORKER_MAX_SESSIONS` sem medir RAM (Fase 0), nem gravar `Session.shard` sem tenant dedicado.
 - Smoke local só com env sintético apontando para o Postgres descartável
   (`api/scripts/postgres-descartavel.sh`): `api/.env` **e** `api/.env.dev` têm `DATABASE_URL` de produção.
 - Não usar Kubernetes abaixo de milhares de sessões.

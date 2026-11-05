@@ -40,6 +40,9 @@ O mesmo passo 3 é usado para reconectar uma sessão existente (`ConnectSessionD
 - `connect`, `reconnect` e `pairing-code` gravam `connectRequestedAt` (desejo de estar conectada; `disconnect`/`logout`/
   `DELETE` limpam). Sessão com lease de outro processo: 503 `ENGINE_TEMPORARILY_UNAVAILABLE`, status do dono intacto
   (ver `arquitetura-escala.md` §3.1).
+- Worker cheio (adoção ligada): 503 `ENGINE_TEMPORARILY_UNAVAILABLE` e o item traz `awaitingCapacity: true` (chip
+  "Aguardando capacidade"); o ticker conecta quando abrir vaga. Em `PROCESS_ROLE=http`, worker que não responde: 503
+  `ENGINE_NOT_READY` (RPC 10 s; comando de texto 60 s). Ver `arquitetura-escala.md` §3.2–§3.3.
 
 ## Regras e limites
 

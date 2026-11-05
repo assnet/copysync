@@ -36,7 +36,7 @@ Regras comuns:
 | T18 | Painel: página `/admin/workers` | T13 | P | ✅ 7f7a7d8 |
 | T19 | Smoke | T15, T16, T17, T18 | | 🟡 parcial |
 | T19b | Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável | T19 | | ✅ 0d09a9e |
-| T20 | Docs, CHANGELOG e versão | T19 | | ⏳ |
+| T20 | Docs, CHANGELOG e versão (com E3 T21; api 0.62.0, app 0.79.0) | T19 | | ✅ este commit |
 
 ### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
 
@@ -388,3 +388,4 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T16: `session-open` pausa com worker cheio (vigia 5 s; job pego na corrida volta com `moveToDelayed`).
 - T19 (smoke 2026-11-04; Postgres 55539, Redis 56539, s3mock; logs `/private/tmp/claude-501/smoke-e4-t19/`): crit.1 ✅ flag off = logs idênticos ao baseline `927f89f` em all/worker/http, 0 escrita em `worker_heartbeats`. crit.2 🟡 teto 1 × 2 workers × 3 sessões: 2 adotadas, 1 aguardando; `/admin/workers` ok; alerta 1/min no cluster com failover; `session-open` pausa/retoma ✅; **`awaitingCapacity` sempre false → T19b**. crit.3 🟡 SIGKILL + TTL: worker cheio não adota ✅, vaga liberada adota em < 5 s ✅; "sem 440" pendente (sessão real). crit.4 ✅ (simulado) backoff 2/4/8/16/30 min → FAILED + auditoria; connect manual zera. crit.5 ✅ ordem do SIGTERM ok, 18 ms.
 - Achados: sessão `AWAITING_*` órfã após SIGKILL → T19b. **Decisão do dono:** sessão em QR sem leitura prende a vaga indefinidamente (QR rotaciona, socket não fecha) — sugestão: QR sem leitura por N min → DISCONNECTED mantendo o pedido + backoff. Heartbeat de worker morto só limpa após 1 dia (listAlive filtra em 90 s, sem efeito). D7 (índice) não medido.
+- T20 (com E3 T21, este commit): ver T21 da E3; pendências (QR prende vaga, heartbeat 1 dia, D7, sem 440 real) no doc §3.2.
