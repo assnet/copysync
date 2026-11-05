@@ -208,3 +208,14 @@ Onda 7: T23(T22) → T24 → T25
 - T16: link `/broadcast-groups` no painel só funciona após T23 (página/rota).
 - T15: `PostingWindowField` (`value: { window, weekdaysMask }`, um `onChange`); conversão mask↔lista com `maskToWeekdays`/`weekdaysToMask` fica em quem chama (T20/T21).
 - T20: monitoramento usa `PostingWindowField` (rascunho v6, `OperatingWindowField` apagado). T21: passo Horário no assistente do gerador (rascunho v2; Confirmar sem resumo do horário). T21/T22/T23 sem conferência visual.
+
+### T26: Chip do passo Grupos do gerador conta a união [P] ⏳
+
+**What**: no assistente do gerador (passo Grupos, `ConfigGroupsStep`/`ChannelCounterChips`), o chip mostra só os grupos do próprio gerador (ex.: 3/10) enquanto o monitoramento mostra a soma (6/10): contraria BG-03. Usar `usage.<canal>.broadcastGroups` da API (já é a união, T3) somando os grupos marcados no rascunho que ainda não estão em uso, sem contar duas vezes o mesmo sessão+JID.
+**Where**: `app/src/features/offers/components/config/ConfigGroupsStep.tsx`, `ChannelCounterChips.tsx`, `features/offers/utils/offerConfig.ts` (+ testes)
+**Done when**: teste: com 3 no gerador + 3 só no monitoramento, chip 6/10; marcar 1 novo → 7/10; marcar 1 já usado no monitoramento → continua 6/10
+**Tests**: unit
+**Gate**: `pnpm vitest run` + `pnpm tsc --noEmit` em `app/`
+**Commit**: `fix(app): chip de grupos do gerador conta a união`
+
+- Visual (`341726b`): 7 defeitos corrigidos; capturas em `/private/tmp/claude-501/shots-disparo/`. Não corrigidos: chip do passo Grupos (→ T26), Confirmar sem resumo do horário, botão "Close" em inglês e cards do público-alvo cortados a 1280 px (pré-existentes). T25: smoke com sessão real LITE pendente.
