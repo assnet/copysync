@@ -1,14 +1,14 @@
 # Handoff — 2026-11-04 (sessão até 21:00)
 
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
-`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: suíte completa 2967/2967 às 20:56; depois disso só `tsc` api+app verificado, rodar vitest de novo).
+`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: api 3088/3088, app 1218/1218).
 
 ## CopySync (`feature/rebranding-app`)
 
 | Frente | Estado | Próximo passo |
 | --- | --- | --- |
 | Limite do gerador (5/20/ilimitado) | ✅ `ba85963`, api 0.58.0 | deploy aplica migration de presets |
-| E2 lease de sessão | ✅ T1–T23 + F1–F4; F1–F9 ✅ juntadas | 3ª revisão (`/caveman-review`) até convergir; **não fazer deploy antes** (`/caveman-review`) até só nits; **não fazer deploy antes** |
+| E2 lease de sessão | ✅ T1–T23 + F1–F4; F1–F9 ✅; 3ª revisão: 3🔴 (estado de retomada dividido) → F10 em `e2/f10`, depois F11 | juntar F10, rodar F11, 4ª revisão; **não fazer deploy antes** (`/caveman-review`) até só nits; **não fazer deploy antes** |
 | E3 http × worker | T1–T6, T13–T17 ✅ juntadas (vitest completo 2848/2848) + T7 ✅ | próximo: T8–T12 (usar `engineCallSessionId`, `EngineCallsOf<K>`, portas com `close()`)→T8–T12→T18→T19→T20→T21; D1–D11 propostas, Redis ~US$10 só ao separar |
 | E4 adoção | plano ✅ (`.specs/features/session-adoption/`, D1–D8 propostas); T1–T14, T17, T18 ✅ juntadas (T18 sem conferência visual) | T15 (precisa E3 T19), T16 (E3 T18), T19, T20; spec T13 diz 403 mas hook dá 401
 | Tela Assinatura | plano ✅ (`.specs/features/subscription-page/`) | T3, T4, T6, T11, T12 ✅ juntadas; **T10 em `sub/t10` deu conflito no cherry-pick** (`app/src/types/api.types.ts`, junto com bcast/T7): resolver à mão | dono decide D1–D6; depois T5, T7, T8, T13–T18 |
@@ -20,7 +20,7 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 | --- | --- | --- |
 | S1 CI | `test/char-prod-base` (`9ee0609`) | ✅ validado local; 1º run no GitHub só após push (decisão do dono) |
 | S2 vitest + caracterização | `test/char-prod-base` (`c695428`) + `test/char-prod-<área>` | 6 áreas verdes; integração em `test/char-prod` + `riscos-caracterizacao.md` (em andamento) |
-| S3 staging | `chore/staging-runbook` (`c0b2d12`) | 12 achados da revisão corrigidos (`0bc0478`: script com trava real, senhas aleatórias, admin por variável, Cakto sem credencial, EFI sandbox); 2ª revisão: 1🔴 9🟡, correção em andamento (`chore/staging-runbook`). **Só executar depois de convergir** |
+| S3 staging | `chore/staging-runbook` (`be5cc95`) | 3 rodadas de revisão; sem 🔴; 2 🟡 finais corrigidos. **Pronto para o dono executar `docs/staging.md`** (Basic Auth/Private antes de liberar, inclusive `/webhook/*`) |
 | H1 | plano ✅ `docs/multi-application-hub` (`tasks-h1.md`, 31 tarefas + 6 adiadas) | dono decide D1 (recomendado: `NOT NULL DEFAULT` constante, Postgres 18.6 confirmado → sem trigger/backfill) e D8 (branch de destino); executar após S2 integrado |
 | H2, H3a+H4 | planos ✅ `docs/hub-h2-plan` (`3826d8b`), `docs/hub-h3h4-plan` (`ca43dae`) | juntar no branch docs; follow-ups CopySync: `Tenant.lastBillingEventSeq` Int→BigInt, receiver aplicar `expiresAt` de `subscription.updated`, aceitar 2 segredos na rotação |
 | Branches obsoletos (base develop) | `chore/ci-safety-net`, `test/characterization`, `test/char-<área>` | podem ser apagados |
