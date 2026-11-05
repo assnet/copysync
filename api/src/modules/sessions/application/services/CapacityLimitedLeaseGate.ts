@@ -40,6 +40,7 @@ type SlotKind = 'session' | 'login';
 interface Reservation {
   kind: SlotKind;
   timer: ReturnType<typeof setTimeout> | null;
+  seenLocal: boolean;
 }
 type Slot = SlotKind | 'pass' | 'denied';
 
@@ -146,20 +147,41 @@ export class CapacityLimitedLeaseGate implements ISessionLeaseGate {
   }
 
   private hold(sessionId: string, kind: SlotKind): SlotKind {
-    this.reserved.set(sessionId, { kind, timer: null });
+    if (kind === 'login') this.pendingSeenAt.set(sessionId, this.now());
+    this.reserved.set(sessionId, { kind, timer: this.armTtl(sessionId), seenLocal: false });
     return kind;
   }
 
   private settle(slot: Exclude<Slot, 'denied'>, sessionId: string, ok: boolean): void {
     if (slot === 'pass' || this.reserved.get(sessionId)?.kind !== slot) return;
-    if (!ok) return this.freeSlot(sessionId);
+    if (!ok) {
+      // Login que não abriu não é "login em andamento": sem isso, uma reabertura com credencial passaria pelo teto.
+      if (slot === 'login') this.pendingSeenAt.delete(sessionId);
+      return this.freeSlot(sessionId);
+    }
     const { local, auth } = this.snapshot();
     if ((slot === 'session' && auth.has(sessionId)) || (slot === 'login' && local.has(sessionId))) {
       return this.freeSlot(sessionId);
     }
-    const timer = setTimeout(() => this.reserved.delete(sessionId), this.reservationTtlMs);
+    const r = this.reserved.get(sessionId);
+    if (!r) return;
+    if (r.timer) clearTimeout(r.timer);
+    r.timer = this.armTtl(sessionId);
+  }
+
+  private armTtl(sessionId: string): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => this.expire(sessionId), this.reservationTtlMs);
     timer.unref?.();
-    this.reserved.set(sessionId, { kind: slot, timer });
+    return timer;
+  }
+
+  /** TTL: teto de segurança. Reserva `session` já vista local segue até autenticar ou sair de `listLocal`. */
+  private expire(sessionId: string): void {
+    const r = this.reserved.get(sessionId);
+    if (!r) return;
+    r.timer = null;
+    this.snapshot();
+    if (this.reserved.get(sessionId) === r && !(r.kind === 'session' && r.seenLocal)) this.reserved.delete(sessionId);
   }
 
   /**
@@ -170,7 +192,9 @@ export class CapacityLimitedLeaseGate implements ISessionLeaseGate {
     const local = new Set(this.source.listLocal());
     const auth = new Set(this.source.listAuthenticated());
     for (const [id, r] of this.reserved) {
-      if ((r.kind === 'session' && auth.has(id)) || (r.kind === 'login' && local.has(id))) this.freeSlot(id);
+      if (r.kind === 'session' && local.has(id)) r.seenLocal = true;
+      const sessionDone = r.kind === 'session' && (auth.has(id) || (r.seenLocal && !local.has(id)));
+      if (sessionDone || (r.kind === 'login' && local.has(id))) this.freeSlot(id);
     }
     const now = this.now();
     for (const id of local) {

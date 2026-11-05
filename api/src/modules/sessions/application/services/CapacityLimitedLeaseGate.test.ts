@@ -243,4 +243,59 @@ describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', (
     expect(await gate.acquire('a')).toBe(true);
     expect(hasStoredCredentials).not.toHaveBeenCalled();
   });
+
+  it('QR lido antes de qualquer snapshot: reinício com o teto de sessões cheio é aceito', async () => {
+    vi.useFakeTimers();
+    try {
+      let now = 0;
+      const creds = new Set<string>();
+      const { gate } = build({ local: ['a'], auth: ['a'], creds, now: () => now });
+      expect(await gate.acquire('qr')).toBe(true);
+      vi.advanceTimersByTime(15_000); // reserva de login vence sem a sessão ter sido vista local
+      creds.add('qr');
+      now += 16_000;
+      expect(await gate.acquire('qr')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reserva session com sessão local não autenticada não expira pelo TTL e libera ao autenticar', async () => {
+    vi.useFakeTimers();
+    try {
+      const local: string[] = [];
+      const auth: string[] = [];
+      const { gate } = build({ local, auth, creds: new Set(['r1', 'r2']) });
+      expect(await gate.acquire('r1')).toBe(true);
+      local.push('r1');
+      vi.advanceTimersByTime(15_000);
+      expect(gate.occupancy()).toEqual({ sessions: 1, pendingLogins: 0 });
+      expect(await gate.acquire('r2')).toBe(false);
+      auth.push('r1');
+      expect(gate.occupancy()).toEqual({ sessions: 1, pendingLogins: 0 });
+      auth.length = 0; // reserva já saiu: não volta a contar como sessão
+      expect(gate.occupancy()).toEqual({ sessions: 0, pendingLogins: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('acquire que nunca assenta libera a reserva após o TTL', async () => {
+    vi.useFakeTimers();
+    try {
+      const acquire = vi
+        .fn<() => Promise<boolean>>()
+        .mockImplementationOnce(() => new Promise<boolean>(() => {}))
+        .mockResolvedValue(true);
+      const gate = new CapacityLimitedLeaseGate(
+        { acquire }, source([]), { maxSessions: 1, maxPendingLogins: 50 }, { warn: vi.fn() } as never, 1_000,
+      );
+      void gate.acquire('a');
+      expect(await gate.acquire('b')).toBe(false);
+      vi.advanceTimersByTime(1_000);
+      expect(await gate.acquire('b')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
