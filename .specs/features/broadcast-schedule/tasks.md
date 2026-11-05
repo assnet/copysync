@@ -160,13 +160,13 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** — · **Reqs:** PS-06
 - **Tests:** unit Testing Library · **Gate:** quick
 
-### T20: Painel — monitoramento usa o campo novo [P] ⏳
+### T20: Painel — monitoramento usa o campo novo [P] ✅ 67093e7
 - **What:** `MonitoringSettingsForm` troca `OperatingWindowField` por `PostingWindowField`; `settingsDraft` (persistido) e tipos com `weekdays`; apagar o campo antigo se ficar sem uso.
 - **Where:** `app/src/features/monitoring/components/MonitoringSettingsForm.tsx`, `app/src/features/monitoring/utils/settingsDraft.ts`, `app/src/types/api.types.ts` (+ testes)
 - **Depends on:** T7 (`api.types.ts`), T14, T15 · **Reqs:** PS-06
 - **Tests:** unit · **Gate:** quick
 
-### T21: Painel — passo "Horário" no assistente do gerador [P] ⏳
+### T21: Painel — passo "Horário" no assistente do gerador [P] ✅ 38bfd86
 - **What:** `ConfigScheduleStep` no `OfferConfigWizard` (passo e escolhas em `usePersistedState`, limpo ao concluir); `useOfferConfig` envia os campos.
 - **Where:** `app/src/features/offers/components/config/ConfigScheduleStep.tsx` (+ teste), `OfferConfigWizard.tsx`, `app/src/features/offers/hooks/useOfferConfig.ts` (+ `offers/strings.ts`)
 - **Depends on:** T15, T19 · **Reqs:** PS-06
@@ -207,3 +207,4 @@ Onda 7: T23(T22) → T24 → T25
 - T13: claim do gerador sem `scheduledAt` respeita janela/dias do `offer_generator_configs`; `scheduledAt` explícito ignora (D3).
 - T16: link `/broadcast-groups` no painel só funciona após T23 (página/rota).
 - T15: `PostingWindowField` (`value: { window, weekdaysMask }`, um `onChange`); conversão mask↔lista com `maskToWeekdays`/`weekdaysToMask` fica em quem chama (T20/T21).
+- T20: monitoramento usa `PostingWindowField` (rascunho v6, `OperatingWindowField` apagado). T21: passo Horário no assistente do gerador (rascunho v2; Confirmar sem resumo do horário). T21/T22/T23 sem conferência visual.
