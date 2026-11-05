@@ -1,9 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
+import { ThemeModeSelector } from './ThemeModeSelector';
 import { Link as RouterLink } from 'react-router-dom';
-import { Box, Container, Link, Typography, IconButton, Tooltip } from '@mui/material';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import { useColorMode } from '@/contexts/ThemeContext';
+import { Box, Container, Link, Typography } from '@mui/material';
 import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 
@@ -107,7 +105,6 @@ export interface PublicDocumentPageProps {
  * Política de Privacidade e pela página de Suporte — URLs declaradas na Chrome Web Store.
  */
 export function PublicDocumentPage({ pageTitle, title, subtitle, intro, sections, backToLogin, children }: PublicDocumentPageProps) {
-  const { mode, toggleColorMode } = useColorMode();
 
   useEffect(() => {
     const prev = document.title;
@@ -123,11 +120,7 @@ export function PublicDocumentPage({ pageTitle, title, subtitle, intro, sections
             <BrandLogo size={36} />
             <Typography fontWeight={700}>{APP_NAME}</Typography>
           </Link>
-          <Tooltip title={mode === 'dark' ? 'Tema claro' : 'Tema escuro'}>
-            <IconButton size="small" onClick={toggleColorMode} aria-label={mode === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <ThemeModeSelector />
         </Box>
 
         <Typography component="h1" variant="h4" fontWeight={800} sx={{ letterSpacing: -0.5, mb: 0.5 }}>

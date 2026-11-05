@@ -25,3 +25,5 @@ export { UnavailableReason } from './UnavailableReason';
 export type { UnavailableReasonProps } from './UnavailableReason';
 export { PostingWindowField } from './PostingWindowField';
 export type { PostingWindowFieldProps, PostingWindowValue } from './PostingWindowField';
+export { ThemeModeSelector } from './ThemeModeSelector';
+export { themeModeStrings } from './themeModeStrings';

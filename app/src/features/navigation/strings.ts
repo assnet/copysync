@@ -47,11 +47,6 @@ export const navigationStrings = {
   openMenu: 'Abrir menu',
   logout: 'Sair',
 
-  theme: {
-    toLight: 'Tema claro',
-    toDark: 'Tema escuro',
-  },
-
   user: {
     superAdmin: 'Super Admin',
     regular: 'Usuário',

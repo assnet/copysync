@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ThemeModeSelector } from '@/components/ThemeModeSelector';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
@@ -8,11 +9,8 @@ import {
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
-import { useColorMode } from '@/contexts/ThemeContext';
 import { APP_NAME } from '@/shared/branding/brand';
 import { LoginShowcasePanel } from './login/LoginShowcasePanel';
 import { LoginMobileBanner } from './login/LoginMobileBanner';
@@ -40,7 +38,6 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { loadTenants } = useTenant();
-  const { mode, toggleColorMode } = useColorMode();
   const theme = useTheme();
 
   const [email, setEmail] = useState('');
@@ -112,11 +109,7 @@ export function LoginPage() {
       >
         {/* Toggle tema */}
         <Box sx={{ position: 'absolute', top: `${GOLDEN_SPACE.s3}px`, right: `${GOLDEN_SPACE.s3}px` }}>
-          <Tooltip title={mode === 'dark' ? 'Tema claro' : 'Tema escuro'}>
-            <IconButton size="small" onClick={toggleColorMode} aria-label={mode === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <ThemeModeSelector />
         </Box>
 
         <Box sx={{ width: '100%', maxWidth: GOLDEN_TYPE.lead * 16 /* ≈ 416 px */ }}>

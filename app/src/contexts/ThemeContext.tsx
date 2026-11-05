@@ -1,32 +1,60 @@
-import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ThemeProvider, CssBaseline, type PaletteMode } from '@mui/material';
 import { buildTheme } from '@/theme/theme';
+import {
+  DARK_SCHEME_QUERY,
+  readStoredThemePreference,
+  resolveThemeMode,
+  storeThemePreference,
+  systemPrefersDark,
+  type ThemePreference,
+} from './themePreference';
+
+export type { ThemePreference } from './themePreference';
 
 interface ThemeContextValue {
+  /** Modo aplicado (já resolvido quando a preferência é `system`). */
   mode: PaletteMode;
-  toggleColorMode: () => void;
+  /** Escolha do usuário: sistema, claro ou escuro. */
+  preference: ThemePreference;
+  setPreference: (preference: ThemePreference) => void;
 }
 
 const ThemeCtx = createContext<ThemeContextValue | null>(null);
 
 export function ColorModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<PaletteMode>(() => {
-    const stored = localStorage.getItem('colorMode');
-    return stored === 'dark' ? 'dark' : 'light';
-  });
+  const [preference, setPreferenceState] = useState<ThemePreference>(readStoredThemePreference);
+  const [prefersDark, setPrefersDark] = useState<boolean>(systemPrefersDark);
 
-  const toggleColorMode = () => {
-    setMode((prev) => {
-      const next = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem('colorMode', next);
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const query = window.matchMedia(DARK_SCHEME_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    setPrefersDark(query.matches);
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    }
+    // Safari < 14
+    query.addListener(onChange);
+    return () => query.removeListener(onChange);
+  }, []);
 
+  const setPreference = useCallback((next: ThemePreference) => {
+    storeThemePreference(next);
+    setPreferenceState(next);
+  }, []);
+
+  const mode = resolveThemeMode(preference, prefersDark);
   const theme = useMemo(() => buildTheme(mode), [mode]);
+  const value = useMemo(() => ({ mode, preference, setPreference }), [mode, preference, setPreference]);
+
+  useEffect(() => {
+    document.documentElement.style.colorScheme = mode;
+  }, [mode]);
 
   return (
-    <ThemeCtx.Provider value={{ mode, toggleColorMode }}>
+    <ThemeCtx.Provider value={value}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         {children}

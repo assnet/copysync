@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ThemeModeSelector } from '@/components/ThemeModeSelector';
 import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
@@ -7,12 +8,9 @@ import {
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import { useColorMode } from '@/contexts/ThemeContext';
 import { APP_NAME } from '@/shared/branding/brand';
 import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { GOLDEN_SPACE, GOLDEN_TYPE } from './login/goldenRatio';
@@ -42,7 +40,6 @@ const STRENGTH_COLORS = ['error', 'warning', 'success'] as const;
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  const { mode, toggleColorMode } = useColorMode();
   const theme = useTheme();
 
   const [pageState, setPageState] = useState<PageState>('loading');
@@ -153,11 +150,7 @@ export function InvitePage() {
     >
       {/* Toggle tema */}
       <Box sx={{ position: 'fixed', top: `${GOLDEN_SPACE.s3}px`, right: `${GOLDEN_SPACE.s3}px`, zIndex: 10 }}>
-        <Tooltip title={mode === 'dark' ? 'Tema claro' : 'Tema escuro'}>
-          <IconButton size="small" onClick={toggleColorMode} aria-label={mode === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}>
-            {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-          </IconButton>
-        </Tooltip>
+        <ThemeModeSelector />
       </Box>
 
       <Box sx={{ width: '100%', maxWidth: 440 }}>

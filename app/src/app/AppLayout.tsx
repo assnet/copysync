@@ -7,13 +7,12 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  ArrowLeftRight, ChevronLeft, ChevronRight, LogOut, Menu as MenuIcon, Moon, Sun,
+  ArrowLeftRight, ChevronLeft, ChevronRight, LogOut, Menu as MenuIcon,
 } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, ThemeModeSelector } from '@/components';
 import { Blurred, PrivacyDialog, privacyStrings, useBlur, usePrivacy } from '@/features/privacy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
-import { useColorMode } from '@/contexts/ThemeContext';
 import { useUiGuards } from '@/security/useUiGuards';
 import { OutgoingMediaProvider } from '@/features/chat/media/OutgoingMediaProvider';
 import { VoiceRecorderHost } from '@/features/chat/media/VoiceRecorderProvider';
@@ -313,7 +312,6 @@ export function AppLayout() {
     if (tenants.length === 0) void loadTenants().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { mode, toggleColorMode } = useColorMode();
   const theme = useTheme();
 
   const location = useLocation();
@@ -443,12 +441,8 @@ export function AppLayout() {
             minHeight: 52,
           }}
         >
-          {/* Toggle de tema */}
-          <Tooltip title={mode === 'dark' ? navigationStrings.theme.toLight : navigationStrings.theme.toDark}>
-            <IconButton size="small" onClick={toggleColorMode} aria-label={mode === 'dark' ? navigationStrings.theme.toLight : navigationStrings.theme.toDark}>
-              <AppIcon icon={mode === 'dark' ? Sun : Moon} size="md" />
-            </IconButton>
-          </Tooltip>
+          {/* Seletor de tema: sistema, claro ou escuro */}
+          <ThemeModeSelector />
 
           {activeTenantName && (
             <>

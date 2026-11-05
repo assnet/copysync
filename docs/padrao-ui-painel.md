@@ -144,6 +144,18 @@ e recalcula por `ResizeObserver`.
   (ver `GroupChip`).
 - Não usar `title` nativo: aparência fora do tema e aparece com o texto inteiro.
 
+## Tema (sistema, claro, escuro)
+
+- Preferência `system | light | dark` em `contexts/ThemeContext.tsx` (regras puras em
+  `contexts/themePreference.ts`). Padrão `system`, resolvido por
+  `matchMedia('(prefers-color-scheme: dark)')` com listener: muda junto com o aparelho.
+- Gravada em `localStorage['colorMode']` (mesma chave de antes; `light`/`dark` antigos valem).
+  É preferência do aparelho, não estado de tela: por isso não usa `usePersistedState`.
+- Troca só pelo `ThemeModeSelector` (`components/`): botão com Tooltip, ícone Lucide
+  `Monitor`/`Sun`/`Moon` e menu de 3 opções; textos em `components/themeModeStrings.ts`.
+- `useColorMode().mode` é o modo já resolvido; tela que precisa saber se está escura usa
+  `theme.palette.mode`. Não criar toggle claro/escuro por tela.
+
 ## Navegação
 
 Menu lateral agrupado por produto (acordeão aberto / popover recolhido): modelo em
