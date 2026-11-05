@@ -2,7 +2,7 @@ import { prisma } from '../../../../shared/database/prisma.client';
 import { workerAdoptionConfig, type WorkerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 import { currentRole } from '../../../../shared/config/processRole';
 import type { IJobLease } from '../../../../shared/jobs/IJobLease';
-import { PrismaJobLease } from '../../../../shared/jobs/PrismaJobLease';
+import { PrismaJobLease } from '../../../../shared/infrastructure/jobs/PrismaJobLease';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';

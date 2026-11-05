@@ -36,6 +36,15 @@ const AWAITING_CAPACITY_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionSt
 ]);
 
 /**
+ * Login por código/senha (2FA) só é reaberto sozinho no Baileys. No Telegram esses estados
+ * dependem do usuário digitar o código/senha: sem pedido dele, a sessão não volta a abrir.
+ */
+const BAILEYS_ONLY_AWAITING_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
+  'AWAITING_CODE',
+  'AWAITING_PASSWORD',
+]);
+
+/**
  * Session domain entity — pure, no Prisma or engine dependency.
  */
 export class Session {
@@ -87,6 +96,7 @@ export class Session {
   isAwaitingCapacity(now: Date): boolean {
     if (this.connectRequestedAt === null) return false;
     if (this.leaseUntil !== null && this.leaseUntil.getTime() > now.getTime()) return false;
+    if (BAILEYS_ONLY_AWAITING_STATUSES.has(this.status) && this.engine !== 'baileys') return false;
     return AWAITING_CAPACITY_STATUSES.has(this.status);
   }
 

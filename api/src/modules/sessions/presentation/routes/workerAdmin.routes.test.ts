@@ -8,6 +8,10 @@ import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
+const adoption = vi.hoisted(() => ({ enabled: true }));
+vi.mock('../../../../shared/config/workerAdoption', () => ({
+  workerAdoptionConfig: () => ({ enabled: adoption.enabled, maxSessions: 40, shard: null }),
+}));
 vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
 vi.mock('../../../../shared/http/hooks/authHook', () => ({
   authHook: async (request: { user?: unknown }) => {
@@ -21,6 +25,7 @@ let app: FastifyInstance;
 
 beforeEach(async () => {
   auth.isSuperAdmin = false;
+  adoption.enabled = true;
   app = Fastify();
   app.setErrorHandler(errorHandler);
   await app.register(workerAdminRoutes, { prefix: URL });
@@ -69,5 +74,20 @@ describe('GET /admin/workers', () => {
       success: true,
       data: { workers: [], totals: { workers: 0, sessions: 0, maxSessions: 0 }, awaiting: 0 },
     });
+  });
+
+  it('flag de adoção desligada: resposta vazia sem consultar o banco', async () => {
+    auth.isSuperAdmin = true;
+    adoption.enabled = false;
+    const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive');
+    const awaiting = vi.spyOn(PrismaSessionAdoptionRepository.prototype, 'countAwaitingCapacity');
+    const res = await app.inject({ method: 'GET', url: URL });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: { workers: [], totals: { workers: 0, sessions: 0, maxSessions: 0 }, awaiting: 0 },
+    });
+    expect(alive).not.toHaveBeenCalled();
+    expect(awaiting).not.toHaveBeenCalled();
   });
 });

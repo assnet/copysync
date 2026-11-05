@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import type { IJobLease } from './IJobLease';
+import type { IJobLease } from '../../jobs/IJobLease';
 
 /**
  * Lease em `job_leases` (tabela do `billing-reconcile`). Um único upsert condicional: sem

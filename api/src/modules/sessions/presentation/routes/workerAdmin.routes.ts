@@ -6,6 +6,7 @@ import { ListWorkersUseCase, type ListWorkersOutput } from '../../application/us
 import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositories/PrismaWorkerHeartbeatRepository';
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
 import { workerListResponse } from '../schemas/workerAdmin.schema';
+import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 
 const preHandler = [authHook, superAdminHook];
 const tags = ['Workers (admin)'];
@@ -13,6 +14,9 @@ const tags = ['Workers (admin)'];
 let listWorkers: ListWorkersUseCase | null = null;
 const uc = () =>
   (listWorkers ??= new ListWorkersUseCase(new PrismaWorkerHeartbeatRepository(), new PrismaSessionAdoptionRepository()));
+
+/** Flag desligada: nada de heartbeat nem adoção — resposta vazia sem consultar o banco. */
+const EMPTY: ListWorkersOutput = { workers: [], totals: { workers: 0, sessions: 0, maxSessions: 0 }, awaiting: 0 };
 
 const present = (out: ListWorkersOutput) => ({
   workers: out.workers.map((w) => ({ ...w, seenAt: w.seenAt.toISOString() })),
@@ -26,6 +30,7 @@ export async function workerAdminRoutes(app: FastifyInstance): Promise<void> {
     preHandler,
     schema: { tags, summary: 'Workers vivos, ocupação e sessões aguardando capacidade', response: { 200: workerListResponse } },
   }, async (_request, reply) => {
-    httpResponse.ok(reply, present(await uc().execute()));
+    const out = workerAdoptionConfig().enabled ? await uc().execute() : EMPTY;
+    httpResponse.ok(reply, present(out));
   });
 }

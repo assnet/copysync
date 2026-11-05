@@ -7,7 +7,7 @@ vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
 vi.mock('../../../../shared/config/workerAdoption', () => ({ workerAdoptionConfig: () => cfg }));
 vi.mock('../../../../shared/config/processRole', () => ({ currentRole: () => 'worker' }));
 vi.mock('../../../../shared/audit/PrismaAuditLogRepository', () => ({ PrismaAuditLogRepository: class { create = vi.fn(); } }));
-vi.mock('../../../../shared/jobs/PrismaJobLease', () => ({
+vi.mock('../../../../shared/infrastructure/jobs/PrismaJobLease', () => ({
   PrismaJobLease: class { tryAcquire = vi.fn().mockResolvedValue(false); release = vi.fn(); },
 }));
 vi.mock('../../../../shared/engine/activeEngine', () => ({

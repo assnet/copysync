@@ -15,19 +15,28 @@ const NOW = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
 const until = (ttlMs: number) => Prisma.sql`${NOW} + (${Math.max(0, Math.trunc(ttlMs))}::int * interval '1 millisecond')`;
 
 /**
- * Status adotáveis (sempre com lease nulo/vencido). `AWAITING_*`: o worker que abriu o login morreu
- * (SIGKILL/OOM) com o pedido vivo; sem lease vivo ninguém segura o socket, e a adoção reconecta pelo
- * caminho `auto` (gera QR/código novo como hoje).
+ * Status adotáveis nas duas engines (sempre com lease nulo/vencido). `AWAITING_*`: o worker que abriu
+ * o login morreu (SIGKILL/OOM) com o pedido vivo; sem lease vivo ninguém segura o socket, e a adoção
+ * reconecta pelo caminho `auto` (gera QR/código novo como hoje).
  */
-const ADOPTABLE_STATUSES = [
-  'CONNECTED',
-  'CONNECTING',
-  'DISCONNECTED',
-  'AWAITING_QR',
-  'AWAITING_PAIRING',
-  'AWAITING_CODE',
-  'AWAITING_PASSWORD',
-];
+const ADOPTABLE_STATUSES = ['CONNECTED', 'CONNECTING', 'DISCONNECTED', 'AWAITING_QR', 'AWAITING_PAIRING'];
+
+/**
+ * Login por código/senha (2FA): só o Baileys reabre sozinho. No Telegram esses estados esperam o
+ * usuário digitar o código/senha; sem pedido dele a sessão não é adotada, contada nem esgotada.
+ */
+const BAILEYS_ONLY_STATUSES = ['AWAITING_CODE', 'AWAITING_PASSWORD'];
+
+const ADOPTABLE = (alias: string) => {
+  const a = Prisma.raw(alias);
+  return Prisma.sql`(${a}."status"::text = ANY(${ADOPTABLE_STATUSES}::text[])
+    OR (${a}."status"::text = ANY(${BAILEYS_ONLY_STATUSES}::text[]) AND ${a}."engine" = 'baileys'))`;
+};
+
+const NOT_USER_LOGIN = (alias: string) => {
+  const a = Prisma.raw(alias);
+  return Prisma.sql`NOT (${a}."status"::text = ANY(${BAILEYS_ONLY_STATUSES}::text[]) AND ${a}."engine" <> 'baileys')`;
+};
 
 const LEASE_FREE = (alias: string) =>
   Prisma.sql`(${Prisma.raw(alias)}."leaseUntil" IS NULL OR ${Prisma.raw(alias)}."leaseUntil" < ${NOW})`;
@@ -43,7 +52,7 @@ export class PrismaSessionAdoptionRepository implements ISessionAdoptionReposito
         SELECT s2."id" FROM "sessions" s2
         JOIN "tenants" t ON t."id" = s2."tenantId" AND t."status" = 'ACTIVE'
         WHERE s2."deletedAt" IS NULL AND s2."connectRequestedAt" IS NOT NULL
-          AND s2."status"::text = ANY(${ADOPTABLE_STATUSES}::text[])
+          AND ${ADOPTABLE('s2')}
           AND ${LEASE_FREE('s2')}
           AND (s2."nextAdoptAt" IS NULL OR s2."nextAdoptAt" < ${NOW})
           AND s2."adoptFailures" < ${MAX_ADOPT_ATTEMPTS}::int
@@ -66,7 +75,7 @@ export class PrismaSessionAdoptionRepository implements ISessionAdoptionReposito
     return prisma.$queryRaw<AdoptedSessionRef[]>`
       UPDATE "sessions" s SET "status" = 'FAILED'::"SessionStatus", "connectRequestedAt" = NULL, "updatedAt" = ${NOW}
       WHERE s."adoptFailures" >= ${MAX_ADOPT_ATTEMPTS}::int AND s."connectRequestedAt" IS NOT NULL
-        AND s."deletedAt" IS NULL AND ${LEASE_FREE('s')}
+        AND s."deletedAt" IS NULL AND ${LEASE_FREE('s')} AND ${NOT_USER_LOGIN('s')}
       RETURNING s."id", s."tenantId"`;
   }
 
@@ -85,7 +94,7 @@ export class PrismaSessionAdoptionRepository implements ISessionAdoptionReposito
       SELECT COUNT(*)::int AS n FROM "sessions" s
       JOIN "tenants" t ON t."id" = s."tenantId" AND t."status" = 'ACTIVE'
       WHERE s."deletedAt" IS NULL AND s."connectRequestedAt" IS NOT NULL
-        AND s."status"::text = ANY(${ADOPTABLE_STATUSES}::text[])
+        AND ${ADOPTABLE('s')}
         AND ${LEASE_FREE('s')} ${older}`;
     return rows[0]?.n ?? 0;
   }

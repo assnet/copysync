@@ -37,6 +37,16 @@ describe('Session.isAwaitingCapacity', () => {
     expect(at(new Date(NOW.getTime() - 60_000))).toBe(true);
   });
 
+  it.each<SessionStatus>(['AWAITING_CODE', 'AWAITING_PASSWORD'])('%s no Telegram → false (espera o usuário)', (status) => {
+    const s = makeSession({ engine: 'telegram', status, connectRequestedAt: REQ, leaseUntil: null });
+    expect(s.isAwaitingCapacity(NOW)).toBe(false);
+  });
+
+  it.each<SessionStatus>(['DISCONNECTED', 'CONNECTING', 'AWAITING_QR'])('%s no Telegram → true', (status) => {
+    const s = makeSession({ engine: 'telegram', status, connectRequestedAt: REQ, leaseUntil: null });
+    expect(s.isAwaitingCapacity(NOW)).toBe(true);
+  });
+
   it('AWAITING_QR com lease vivo (worker vivo segurando o login) → false', () => {
     const s = makeSession({ status: 'AWAITING_QR', connectRequestedAt: REQ, leaseUntil: new Date(NOW.getTime() + 1) });
     expect(s.isAwaitingCapacity(NOW)).toBe(false);

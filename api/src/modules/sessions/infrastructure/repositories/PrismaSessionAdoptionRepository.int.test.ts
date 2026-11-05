@@ -135,6 +135,16 @@ describe('adoptNext', () => {
       expect(r.status).toBe(status);
     },
   );
+
+  it.each(['AWAITING_CODE', 'AWAITING_PASSWORD'])('%s do Telegram órfã não é adotada', async (status) => {
+    await newSession({ engine: 'telegram', status, ownerWorkerId: OTHER, leaseUntil: past() });
+    expect(await repo.adoptNext(ME, null, TTL)).toBeNull();
+  });
+
+  it.each(['DISCONNECTED', 'AWAITING_QR'])('%s do Telegram órfã é adotada', async (status) => {
+    const id = await newSession({ engine: 'telegram', status, ownerWorkerId: OTHER, leaseUntil: past() });
+    expect(await repo.adoptNext(ME, null, TTL)).toEqual({ id, tenantId });
+  });
 });
 
 describe('failExhausted', () => {
@@ -158,6 +168,17 @@ describe('failExhausted', () => {
     ];
     expect(await repo.failExhausted()).toEqual([]);
     for (const id of ids) expect((await row(id)).status).toBe('DISCONNECTED');
+  });
+
+  it('Telegram em AWAITING_CODE/PASSWORD não é esgotado; Baileys e Telegram DISCONNECTED são', async () => {
+    const tgCode = await newSession({ engine: 'telegram', status: 'AWAITING_CODE', adoptFailures: 5 });
+    const tgPass = await newSession({ engine: 'telegram', status: 'AWAITING_PASSWORD', adoptFailures: 5 });
+    const bCode = await newSession({ status: 'AWAITING_CODE', adoptFailures: 5 });
+    const tgDisc = await newSession({ engine: 'telegram', adoptFailures: 5 });
+    const out = (await repo.failExhausted()).map((r) => r.id).sort();
+    expect(out).toEqual([bCode, tgDisc].sort());
+    expect((await row(tgCode)).status).toBe('AWAITING_CODE');
+    expect((await row(tgPass)).status).toBe('AWAITING_PASSWORD');
   });
 });
 
@@ -229,5 +250,13 @@ describe('countAwaitingCapacity', () => {
     await newSession({ status: 'AWAITING_PASSWORD', ownerWorkerId: OTHER, leaseUntil: future(TTL) });
     await newSession({ status: 'AWAITING_QR', ownerWorkerId: OTHER, leaseUntil: future(TTL) });
     expect(await repo.countAwaitingCapacity()).toBe(3);
+  });
+
+  it('Telegram: AWAITING_CODE/PASSWORD não conta; AWAITING_QR e DISCONNECTED contam', async () => {
+    await newSession({ engine: 'telegram', status: 'AWAITING_CODE' });
+    await newSession({ engine: 'telegram', status: 'AWAITING_PASSWORD', ownerWorkerId: OTHER, leaseUntil: past() });
+    await newSession({ engine: 'telegram', status: 'AWAITING_QR' });
+    await newSession({ engine: 'telegram' });
+    expect(await repo.countAwaitingCapacity()).toBe(2);
   });
 });
