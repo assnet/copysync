@@ -35,7 +35,7 @@ Regras comuns:
 | T17 | Painel: "Aguardando capacidade" | T12 | P | ✅ d616afb |
 | T18 | Painel: página `/admin/workers` | T13 | P | ✅ 7f7a7d8 |
 | T19 | Smoke | T15, T16, T17, T18 | | 🟡 parcial |
-| T19b | Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável | T19 | | ⏳ |
+| T19b | Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável | T19 | | ✅ 0d09a9e |
 | T20 | Docs, CHANGELOG e versão | T19 | | ⏳ |
 
 ### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
