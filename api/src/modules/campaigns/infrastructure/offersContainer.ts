@@ -44,6 +44,7 @@ import { PauseAllSendsUseCase, ResumeAllSendsUseCase } from '../application/use-
 import { BuildTenantAffiliateLinkUseCase } from '../application/use-cases/BuildTenantAffiliateLinkUseCase';
 import { EnqueueOfferUseCase } from '../application/use-cases/EnqueueOfferUseCase';
 import { ListBroadcastGroupsUseCase } from '../application/use-cases/ListBroadcastGroupsUseCase';
+import { RemoveBroadcastGroupUseCase } from '../application/use-cases/RemoveBroadcastGroupUseCase';
 
 /*
  * Composição do gerador de ofertas: rotas e worker usam as MESMAS instâncias. Tudo lazy —
@@ -120,6 +121,7 @@ const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: con
 const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: configs(), directory: groupDirectory() }));
 const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
 const listBroadcastGroups = lazy(() => new ListBroadcastGroupsUseCase({ groupUsage: groupUsage(), entitlements: entitlements() }));
+const removeBroadcastGroup = lazy(() => new RemoveBroadcastGroupUseCase({ groupRemover: groupUsage() }));
 const pauses      = lazy(() => new PrismaSendingPauseStore(prisma));
 const sendQueue   = lazy(() => new GetSendQueueUseCase({ reader: new PrismaSendQueueReader(prisma), pauses: pauses() }));
 const pauseAll    = lazy(() => new PauseAllSendsUseCase({ pauses: pauses() }));
@@ -162,6 +164,7 @@ export const offersContainer = {
   getSendQueue:         sendQueue,
   pauseAllSends:        pauseAll,
   listBroadcastGroups:  listBroadcastGroups,
+  removeBroadcastGroup: removeBroadcastGroup,
   resumeAllSends:       resumeAll,
   // Usados pelo monitoramento de grupos (módulo automation)
   buildTenantAffiliateLink: tenantLinks,

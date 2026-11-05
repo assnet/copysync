@@ -97,3 +97,30 @@ describe('listCatalog', () => {
     expect(b[0]).toMatchObject({ conversationId: ids.gB, usedBy: ['generator', `monitor:${ids.waB}`] });
   });
 });
+
+describe('removeEverywhere', () => {
+  it('conversa de outro tenant → found false e nada muda', async () => {
+    expect(await reader.removeEverywhere(ids.b, ids.g1)).toEqual({ found: false, removed: 0 });
+    expect(await prisma.broadcastGroup.count({ where: { conversationId: ids.g1 } })).toBe(1);
+    expect(await prisma.offerDestination.count({ where: { conversationId: ids.g1 } })).toBe(1);
+  });
+
+  it('conversa que não é grupo → found false', async () => {
+    const dm = await prisma.chatConversation.create({
+      data: { tenantId: ids.a, sessionId: ids.waA, isGroup: false, externalChatId: `5511999${stamp}@s.whatsapp.net` },
+    });
+    expect(await reader.removeEverywhere(ids.a, dm.id)).toEqual({ found: false, removed: 0 });
+  });
+
+  it('tira do gerador e do monitor numa vez; segunda chamada é idempotente', async () => {
+    expect(await reader.removeEverywhere(ids.a, ids.g1)).toEqual({ found: true, removed: 2 });
+    expect(await prisma.broadcastGroup.count({ where: { tenantId: ids.a, conversationId: ids.g1 } })).toBe(0);
+    expect(await prisma.offerDestination.count({ where: { tenantId: ids.a, conversationId: ids.g1 } })).toBe(0);
+    expect(await reader.removeEverywhere(ids.a, ids.g1)).toEqual({ found: true, removed: 0 });
+
+    const items = await reader.listCatalog(ids.a);
+    expect(items.map((i) => i.title)).toEqual(['Canal TG', 'Ofertas 2']);
+    // tenant B com o mesmo JID intocado
+    expect((await reader.listCatalog(ids.b))[0]?.usedBy).toEqual(['generator', `monitor:${ids.waB}`]);
+  });
+});

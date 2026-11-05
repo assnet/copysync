@@ -45,7 +45,7 @@ const listResponse = {
 } as const;
 
 /**
- * Grupos de disparo do tenant (BG-04): catálogo da união gerador ⋃ monitoramentos.
+ * Grupos de disparo do tenant (BG-04/BG-05): catálogo da união gerador ⋃ monitoramentos e remoção de todos os usos.
  * Registrado em /api/campaigns/broadcast-groups.
  */
 export async function broadcastGroupsRoutes(app: FastifyInstance): Promise<void> {
@@ -61,6 +61,30 @@ export async function broadcastGroupsRoutes(app: FastifyInstance): Promise<void>
     },
     async (request, reply) => {
       httpResponse.ok(reply, await offersContainer.listBroadcastGroups().execute(request.tenantContext.tenantId));
+    },
+  );
+
+  app.delete<{ Params: { conversationId: string } }>(
+    '/:conversationId',
+    {
+      preHandler: [authHook, tenantHook],
+      schema: {
+        tags: ['Offers'],
+        summary: 'Tira o grupo do gerador e de todos os monitoramentos do tenant (idempotente)',
+        params: {
+          type: 'object',
+          required: ['conversationId'],
+          properties: { conversationId: { type: 'string', minLength: 1, maxLength: 64 } },
+        },
+        response: { 204: { type: 'null' } },
+      },
+    },
+    async (request, reply) => {
+      await offersContainer.removeBroadcastGroup().execute({
+        tenantId: request.tenantContext.tenantId,
+        conversationId: request.params.conversationId,
+      });
+      httpResponse.noContent(reply);
     },
   );
 }

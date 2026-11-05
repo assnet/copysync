@@ -5,6 +5,7 @@ import type {
   IBroadcastGroupUsageReader,
   ListBroadcastGroupRowsOptions,
 } from '../../domain/contracts/IBroadcastGroupUsageReader';
+import type { IBroadcastGroupRemover, RemoveBroadcastGroupResult } from '../../domain/contracts/IBroadcastGroupRemover';
 
 interface LoadedRow extends BroadcastGroupUsageRow {
   sessionName: string;
@@ -30,7 +31,7 @@ const conversationSelect = {
  * União `offer_destinations` ⋃ `broadcast_groups` (docs da spec broadcast-schedule, BG-01/BG-04).
  * Sessão apagada (do grupo ou do monitoramento) não conta. Toda consulta filtra `tenantId`.
  */
-export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageReader {
+export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageReader, IBroadcastGroupRemover {
   constructor(private readonly prisma: PrismaClient) {}
 
   async listRows(tenantId: string, options: ListBroadcastGroupRowsOptions = {}): Promise<BroadcastGroupUsageRow[]> {
@@ -56,6 +57,27 @@ export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageRead
     for (const i of items) i.usedBy.sort((a, b) => (a === 'generator' ? -1 : b === 'generator' ? 1 : a.localeCompare(b)));
     return items.sort((a, b) =>
       a.sessionName.localeCompare(b.sessionName) || (a.title ?? '').localeCompare(b.title ?? '') || a.groupJid.localeCompare(b.groupJid));
+  }
+
+  /**
+   * BG-05: apaga o grupo do gerador e de todos os monitoramentos do tenant, numa transação.
+   * O grupo é a mesma chave do catálogo (sessão + JID), então conversa duplicada do mesmo grupo sai junto.
+   * Conversa que não é grupo do tenant → `found: false` (404 no use case). Sessão apagada não impede a limpeza.
+   */
+  async removeEverywhere(tenantId: string, conversationId: string): Promise<RemoveBroadcastGroupResult> {
+    return this.prisma.$transaction(async (tx) => {
+      const conv = await tx.chatConversation.findFirst({
+        where: { id: conversationId, tenantId, isGroup: true },
+        select: { sessionId: true, groupJid: true },
+      });
+      if (!conv) return { found: false, removed: 0 };
+      const sameGroup = conv.sessionId && conv.groupJid
+        ? { tenantId, sessionId: conv.sessionId, groupJid: conv.groupJid }
+        : { tenantId, id: conversationId };
+      const gen = await tx.offerDestination.deleteMany({ where: { tenantId, conversation: sameGroup } });
+      const mon = await tx.broadcastGroup.deleteMany({ where: { tenantId, conversation: sameGroup } });
+      return { found: true, removed: gen.count + mon.count };
+    });
   }
 
   private async load(tenantId: string, options: ListBroadcastGroupRowsOptions): Promise<LoadedRow[]> {
