@@ -133,18 +133,20 @@ enum ChatMessageStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id                  String       @id @default(cuid())
-  name                String
-  slug                String       @unique
-  status              TenantStatus @default(ACTIVE)
-  billingCustomerId   String?      @unique
-  planSlug            String?
-  lastBillingEventSeq BigInt?
-  suspendedAt         DateTime?
+  id                    String       @id @default(cuid())
+  name                  String
+  slug                  String       @unique
+  status                TenantStatus @default(ACTIVE)
+  billingCustomerId     String?      @unique
+  planSlug              String?
+  lastBillingEventSeq   BigInt?
+  suspendedAt           DateTime?
+  /// Vencimento da assinatura vindo do hub (`expiresAt`); null = sem vencimento conhecido.
+  subscriptionExpiresAt DateTime?
   /// Pausa global de envios (fila de envio): nada sai enquanto não for null; captura continua.
-  sendingPausedAt     DateTime?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  sendingPausedAt       DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   userTenants          UserTenant[]
   sessions             Session[]

@@ -9,6 +9,8 @@ export interface TenantProps {
   planSlug: string | null;
   lastBillingEventSeq: bigint | null;
   suspendedAt: Date | null;
+  /** Vencimento da assinatura informado pelo hub; null = desconhecido. */
+  subscriptionExpiresAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +24,7 @@ export class Tenant {
   public readonly planSlug: string | null;
   public readonly lastBillingEventSeq: bigint | null;
   public readonly suspendedAt: Date | null;
+  public readonly subscriptionExpiresAt: Date | null;
   public readonly createdAt: Date;
   public readonly updatedAt: Date;
 
@@ -34,6 +37,7 @@ export class Tenant {
     this.planSlug = props.planSlug;
     this.lastBillingEventSeq = props.lastBillingEventSeq;
     this.suspendedAt = props.suspendedAt;
+    this.subscriptionExpiresAt = props.subscriptionExpiresAt;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

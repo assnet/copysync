@@ -65,6 +65,7 @@ export class ProvisionTenantUseCase {
           planSlug: input.planSlug ?? null,
           lastBillingEventSeq: null,
           suspendedAt: null,
+          subscriptionExpiresAt: null,
           createdAt: now,
           updatedAt: now,
         });

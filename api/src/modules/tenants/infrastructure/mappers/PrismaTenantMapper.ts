@@ -12,6 +12,7 @@ export class PrismaTenantMapper {
       planSlug: raw.planSlug,
       lastBillingEventSeq: raw.lastBillingEventSeq,
       suspendedAt: raw.suspendedAt,
+      subscriptionExpiresAt: raw.subscriptionExpiresAt,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

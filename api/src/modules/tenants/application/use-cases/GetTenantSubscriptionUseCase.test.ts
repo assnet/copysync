@@ -15,12 +15,11 @@ const USAGE: SubscriptionUsage = {
   aiRequestsToday: null,
 };
 
-function tenant(over: Partial<TenantProps> = {}, extra: Record<string, unknown> = {}): Tenant {
-  const t = new Tenant({
+function tenant(over: Partial<TenantProps> = {}): Tenant {
+  return new Tenant({
     id: 't1', name: 'Loja', slug: 'loja', status: 'ACTIVE', billingCustomerId: null, planSlug: 'profissional',
-    lastBillingEventSeq: null, suspendedAt: null, createdAt: new Date(0), updatedAt: new Date(0), ...over,
+    lastBillingEventSeq: null, suspendedAt: null, subscriptionExpiresAt: null, createdAt: new Date(0), updatedAt: new Date(0), ...over,
   });
-  return Object.assign(t, extra);
 }
 
 function build(found: Tenant | null, values: Record<string, unknown> = {}, usage = USAGE) {
@@ -65,7 +64,7 @@ describe('GetTenantSubscriptionUseCase', () => {
 
   it('repassa o vencimento quando o tenant tem', async () => {
     const exp = new Date('2026-12-01T00:00:00Z');
-    const { uc } = build(tenant({}, { subscriptionExpiresAt: exp }));
+    const { uc } = build(tenant({ subscriptionExpiresAt: exp }));
     expect((await uc.execute('t1')).expiresAt).toBe(exp);
   });
 
