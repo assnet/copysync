@@ -36,7 +36,7 @@ Regras comuns a toda task:
 | T18 | Composição por papel (engine, servidor de comandos, relay) | T2, T8, T9, T10, T11, T12, T13 | | ✅ e01910e |
 | T18b | Rotas usam a engine ativa; concorrência das filas por env | T18 | | ✅ 2182861 |
 | T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ✅ 8330cbf |
-| T20 | Smoke `all` e `http`+`worker` | T19 | | ⏳ |
+| T20 | Smoke `all` e `http`+`worker` | T19 | | 🟡 parcial |
 | T21 | Docs, CHANGELOG e versão | T20 | | ⏳ |
 
 ### T18b: Rotas usam a engine ativa; concorrência das filas por env
@@ -466,3 +466,10 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 - T18: `composeForRole(role)` async `{ engine, stop() }`; `all` só carrega `localEngineContainer`; http/worker exigem `S3_ENABLED` e chamam `bindRedisAccess`. **Boot deve chamar `composeForRole` antes de `buildApp` (T18b/T19).**
 - T18b: rotas e adoção leem `getActiveEngine()`; `server.start()` faz `await composeForRole(currentRole())` antes de `buildApp`; env `ENGINE_COMMAND_CONCURRENCY` (default 2). **T19 liga `composition.stop()` no shutdown**; smoke T20 confere `all` idêntico.
 - T19: boot/shutdown por papel em `server.ts` (worker usa `buildWorkerApp`; `composition.stop()` no shutdown; `closeAllRedis` fora de `all`; `flushAllAuthStates` por import dinâmico; worker drena mídia antes dos sockets). Em `all`, recuperação de mídia do boot passa a filtrar por lease (só com `MEDIA_PENDING_RECOVERY_ENABLED`).
+- T20 (smoke, 2026-11-04; Postgres/Redis descartáveis, `adobe/s3mock`, env sintético fora de `api/`; logs em `/private/tmp/claude-501/smoke-t20/`):
+  - Critério 1 (`all`): ✅ log de boot/shutdown normalizado idêntico ao baseline `c00323b` (35 linhas, diff vazio); `all` com `REDIS_URL` não abre conexão no Redis; `/health` ganhou `role`.
+  - Boot por papel: `http` sem `REDIS_URL` e `worker` com storage local falham com mensagem; `http` não carrega Baileys/GramJS (hook em `Module._load`); worker responde só `/health`.
+  - Critério 2: 🟡 QR via `session-open`, QR/status por RPC, `disconnect` pela fila soltando lease, WS do http via Redis, suspensão de tenant fechando socket no worker ✅. **Pendente (precisa sessão real autorizada pelo dono):** QR lido no celular, pareamento por código, envio texto/mídia, recebimento, listagem de grupos.
+  - Critério 3: 🟡 RPC com worker morto → 503 imediato ✅; **comando de texto pela fila → 503 só após 60,17 s** (`commandMs` padrão 60 s; mídia 300 s), contra "≤ 10 s" da spec. Nada enviado após o timeout ✅. **Decisão do dono:** ajustar a spec ou baixar `commandMs` de texto (sugestão: 15 s; a simulação de digitação roda no worker, não pela fila).
+  - Critério 4: ✅ SIGTERM no worker na ordem keeper → composição → drain → sockets → flush → leases → Redis → close; outro worker readotou pela `session-open`.
+  - Riscos: Redis fora no boot de `http`/`worker` = reconexão infinita sem `/health`; `disconnect` manual não emite `SESSION_DISCONNECTED` (igual em `all`); `scripts/redis-descartavel.sh` usa nome de contêiner fixo — jobs paralelos precisam de `REDIS_INT_NAME` próprio.
