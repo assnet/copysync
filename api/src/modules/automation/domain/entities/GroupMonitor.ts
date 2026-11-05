@@ -33,6 +33,8 @@ export interface GroupMonitorConfig extends GroupMonitorSettings {
   id: string;
   tenantId: string;
   sessionId: string;
+  /** Dias de postagem (0 = domingo … 6 = sábado), ordenados; persistidos como `weekdaysMask`. */
+  weekdays: number[];
 }
 
 /** Grupo de origem (concorrente). */

@@ -7,7 +7,8 @@ import type { CapturedOfferListItem, CapturedOfferResolution, ICapturedOfferRepo
 import type { IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOfferInput, QueueOfferResult, TenantLinkResult, IMonitorImageStore, IMonitorProductReader, IMonitorTextComposer, MonitorComposeInput, MonitorProductData, CredentialState, ICredentialStateSource } from '../../domain/contracts/IMonitorPorts';
 import type { BroadcastGroup, GroupMonitorConfig, GroupMonitorSettings, MonitoredGroup } from '../../domain/entities/GroupMonitor';
 import type { CapturedOffer, CapturedOfferReason } from '../../domain/entities/CapturedOffer';
-import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
+import { DEFAULT_MONITOR_SETTINGS, DEFAULT_MONITOR_WEEKDAYS, type MonitorSettingsWithWeekdays } from '../../domain/services/monitorSettings';
+import { weekdaysMask } from '../../../campaigns/domain/services/postingWindow';
 import type { BroadcastGroupUsageRow, IBroadcastGroupUsageReader, ListBroadcastGroupRowsOptions } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
 
 export const TENANT = 'tenant-1';
@@ -32,10 +33,10 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
   async findConfig(tenantId: string, sessionId: string) {
     return this.configs.find((c) => c.tenantId === tenantId && c.sessionId === sessionId) ?? null;
   }
-  async saveSettings(tenantId: string, sessionId: string, settings: GroupMonitorSettings) {
+  async saveSettings(tenantId: string, sessionId: string, { weekdays, ...settings }: MonitorSettingsWithWeekdays) {
     const found = await this.findConfig(tenantId, sessionId);
-    if (found) { Object.assign(found, settings); return found; }
-    const c = { id: `cfg-${++this.seq}`, tenantId, sessionId, ...settings };
+    if (found) { Object.assign(found, settings, weekdays && { weekdays: [...weekdays].sort((a, b) => a - b) }); return found; }
+    const c = { id: `cfg-${++this.seq}`, tenantId, sessionId, ...settings, weekdays: [...(weekdays ?? DEFAULT_MONITOR_WEEKDAYS)].sort((a, b) => a - b) };
     this.configs.push(c);
     return c;
   }
@@ -69,7 +70,7 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
     const cfg = await this.findConfig(tenantId, sessionId);
     const g = this.monitored.find((x) => x.tenantId === tenantId && x.sessionId === sessionId && x.groupJid === groupJid);
     return cfg?.enabled && g
-      ? { id: g.id, tenantId, configId: cfg.id, keywords: g.keywords, windowStartMinute: cfg.windowStartMinute, windowEndMinute: cfg.windowEndMinute, captureOutsideWindow: cfg.captureOutsideWindow }
+      ? { id: g.id, tenantId, configId: cfg.id, keywords: g.keywords, windowStartMinute: cfg.windowStartMinute, windowEndMinute: cfg.windowEndMinute, weekdaysMask: weekdaysMask(cfg.weekdays), captureOutsideWindow: cfg.captureOutsideWindow }
       : null;
   }
 }

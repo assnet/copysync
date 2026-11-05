@@ -1,4 +1,5 @@
-import type { BroadcastGroup, GroupMonitorConfig, GroupMonitorSettings, MonitoredGroup } from '../entities/GroupMonitor';
+import type { BroadcastGroup, GroupMonitorConfig, MonitoredGroup } from '../entities/GroupMonitor';
+import type { MonitorSettingsWithWeekdays } from '../services/monitorSettings';
 
 export interface MonitoredGroupInput {
   conversationId: string;
@@ -22,6 +23,8 @@ export interface ActiveMonitoredGroup {
   /** Janela e a regra de captura fora dela (o listener decide sem outra consulta). */
   windowStartMinute: number;
   windowEndMinute: number;
+  /** Dias de postagem (bit 0 = domingo; 127 = todos), para a regra `postingWindow`. */
+  weekdaysMask: number;
   captureOutsideWindow: boolean;
 }
 
@@ -42,8 +45,8 @@ export interface IGroupMonitorRepository {
   /** Engine (canal) de cada sessão do tenant entre `sessionIds`, inclusive apagadas; ausente = não achada. */
   sessionEngines(tenantId: string, sessionIds: string[]): Promise<Map<string, string>>;
   findConfig(tenantId: string, sessionId: string): Promise<GroupMonitorConfig | null>;
-  /** Cria com os valores dados ou atualiza. */
-  saveSettings(tenantId: string, sessionId: string, settings: GroupMonitorSettings): Promise<GroupMonitorConfig>;
+  /** Cria com os valores dados ou atualiza; `weekdays` ausente mantém o salvo (na criação: todos). */
+  saveSettings(tenantId: string, sessionId: string, settings: MonitorSettingsWithWeekdays): Promise<GroupMonitorConfig>;
   /** Garante a linha de configuração (padrões) e devolve o id. */
   ensureConfig(tenantId: string, sessionId: string): Promise<string>;
   listMonitored(tenantId: string, sessionId: string): Promise<MonitoredGroup[]>;

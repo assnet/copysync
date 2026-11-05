@@ -2,23 +2,12 @@ import type { PrismaClient } from '@prisma/client';
 import type {
   ActiveMonitoredGroup, BroadcastGroupInput, IGroupMonitorRepository, MonitoredGroupInput, TenantGroupJids,
 } from '../../domain/contracts/IGroupMonitorRepository';
-import type { BroadcastGroup, GroupMonitorConfig, GroupMonitorSettings, MonitoredGroup } from '../../domain/entities/GroupMonitor';
-import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
+import type { BroadcastGroup, GroupMonitorConfig, MonitoredGroup } from '../../domain/entities/GroupMonitor';
+import { DEFAULT_MONITOR_SETTINGS, type MonitorSettingsWithWeekdays } from '../../domain/services/monitorSettings';
+import { PrismaGroupMonitorMapper } from '../mappers/PrismaGroupMonitorMapper';
 
 const groupView = { select: { groupName: true, groupAvatarUrl: true } } as const;
-
-type ConfigRow = GroupMonitorSettings & { id: string; tenantId: string; sessionId: string };
-
-function toConfig(r: ConfigRow): GroupMonitorConfig {
-  return {
-    id: r.id, tenantId: r.tenantId, sessionId: r.sessionId, enabled: r.enabled,
-    windowStartMinute: r.windowStartMinute, windowEndMinute: r.windowEndMinute, captureOutsideWindow: r.captureOutsideWindow,
-    intervalMinSeconds: r.intervalMinSeconds, intervalMaxSeconds: r.intervalMaxSeconds,
-    startDelaySeconds: r.startDelaySeconds, maxOfferAgeMinutes: r.maxOfferAgeMinutes, couponMaxAgeMinutes: r.couponMaxAgeMinutes,
-    mentionAll: r.mentionAll, simulateTyping: r.simulateTyping, typingSeconds: r.typingSeconds,
-    textMode: r.textMode, audience: r.audience, enrichLinkOnly: r.enrichLinkOnly, imageMode: r.imageMode,
-  };
-}
+const { toConfig } = PrismaGroupMonitorMapper;
 
 /** Monitoramento de grupos. Toda consulta filtra por `tenantId`. */
 export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
@@ -40,11 +29,12 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
     return r ? toConfig(r) : null;
   }
 
-  async saveSettings(tenantId: string, sessionId: string, settings: GroupMonitorSettings): Promise<GroupMonitorConfig> {
+  async saveSettings(tenantId: string, sessionId: string, settings: MonitorSettingsWithWeekdays): Promise<GroupMonitorConfig> {
+    const data = PrismaGroupMonitorMapper.toSettingsData(settings);
     const r = await this.prisma.groupMonitorConfig.upsert({
       where: { tenantId_sessionId: { tenantId, sessionId } },
-      create: { tenantId, sessionId, ...settings },
-      update: settings,
+      create: { tenantId, sessionId, ...data },
+      update: data,
     });
     return toConfig(r);
   }
@@ -129,7 +119,7 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
       where: { sessionId, groupJid, tenantId, config: { enabled: true } },
       select: {
         id: true, tenantId: true, configId: true, keywords: true,
-        config: { select: { windowStartMinute: true, windowEndMinute: true, captureOutsideWindow: true } },
+        config: { select: { windowStartMinute: true, windowEndMinute: true, weekdaysMask: true, captureOutsideWindow: true } },
       },
     });
     return r && { id: r.id, tenantId: r.tenantId, configId: r.configId, keywords: r.keywords, ...r.config };
