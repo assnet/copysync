@@ -43,7 +43,8 @@ Checklist antes de ligar mais de um processo na Render: `docs/arquitetura-escala
 | S1 CI + S2 caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas; 19 riscos em `riscos-caracterizacao.md` |
 | S3 staging | `chore/staging-runbook` (`be5cc95`) | ✅ 3 revisões; dono executa `docs/staging.md` |
 | H1 | `feature/hub-h1` (`5824ea3`) | T01–T05, T10, T26 ✅; **D1 decidido (2026-11-05): `NOT NULL DEFAULT` socialpulse** (sem trigger/backfill; default sai antes do H3); **D8: `feature/hub-h1`**; plano sendo reescrito, depois ondas de execução |
-| H2 / H3a / H4 | planos em `docs/multi-application-hub`; funções puras em `hub/h2-t5..t13`, `hub/h4-t17`, `hub/h4-overrides` (T21–T25) | esperam H1 |
+| H1 filtros + H1-c | `hub/h1-t11`..`t21` (onda em andamento), `hub/h1-t32` (writers) | juntar no `feature/hub-h1` ao fim da onda, com gate completo |
+| H2 / H3a / H4 | `hub/h2-schema` (OutboundEvent, IntegrationNonce, triggers; socialpulse sem evento), `hub/h3a-base` (COPYSYNC_*, seed de planos em dry-run), `hub/h4-t16` (remetente por aplicação); funções puras em `hub/h2-t5..t13`, `hub/h4-t17`, `hub/h4-overrides` | branches empilhados sobre o H1, não juntar no H1. Dono: D3 do H2 (segredo anterior); regras do trigger (restauração, TRIAL_ACTIVE/NULL sem evento) |
 
 ## Pendências do dono
 
