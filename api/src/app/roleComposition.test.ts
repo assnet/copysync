@@ -29,6 +29,8 @@ const h = vi.hoisted(() => {
     setRelay: vi.fn(),
     deliverLocal: vi.fn(),
     release: { execute: vi.fn() },
+    adoption: { enabled: false, maxSessions: 2, shard: null as string | null },
+    local: [] as string[],
     repo: { findLiveOwner: vi.fn() },
     rpcServer: { start: vi.fn(async () => undefined), stop: vi.fn(async () => undefined) },
     rpcClient: { close: vi.fn(async () => undefined) },
@@ -57,7 +59,7 @@ vi.mock('../shared/redis/redisConnections', () => track('redis', {
   bullConnection: () => h.clients.bull,
 }));
 vi.mock('../modules/sessions/infrastructure/lease/sessionLeaseContainer', () => track('lease', {
-  sessionLeaseContainer: () => ({ workerId: 'w-1', release: h.release, repo: h.repo }),
+  sessionLeaseContainer: () => ({ workerId: 'w-1', release: h.release, repo: h.repo, listLocal: () => h.local }),
 }));
 vi.mock('../modules/messaging/infrastructure/remote/EngineCommandServer', () => track('remote', {
   EngineCommandServer: class { constructor(...a: unknown[]) { h.ctor.commandServer(...a); } },
@@ -100,6 +102,7 @@ vi.mock('../modules/chat/infrastructure/ws/RedisChatEventRelay', () => track('re
 }));
 vi.mock('../shared/engine/activeEngine', () => ({ setActiveEngine: h.setActiveEngine }));
 vi.mock('../shared/security/SecretCipherFactory', () => ({ SecretCipherFactory: { check: () => null } }));
+vi.mock('../shared/config/workerAdoption', () => ({ workerAdoptionConfig: () => h.adoption }));
 vi.mock('../shared/config/workerIdentity', () => ({ currentWorkerId: () => 'http-1' }));
 
 import { composeForRole } from './roleComposition';
@@ -108,6 +111,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.loaded.clear();
   h.env.S3_ENABLED = true;
+  h.adoption.enabled = false;
+  h.local = [];
 });
 
 describe('composeForRole', () => {
@@ -174,6 +179,18 @@ describe('composeForRole', () => {
     expect(h.rpcServer.stop).toHaveBeenCalledTimes(1);
     expect(h.queues.close).toHaveBeenCalledTimes(1);
     expect(h.setRelay).toHaveBeenCalledTimes(1);
+  });
+
+  it('worker com adoção ligada: session-open recebe a vaga do processo (ADOPT-09)', async () => {
+    h.adoption.enabled = true;
+    await composeForRole('worker');
+    const opts = h.ctor.queues.mock.calls[0][0];
+    expect(opts).toMatchObject({ connection: h.clients.bull, concurrency: 3 });
+    expect(opts.sessionOpenHasCapacity()).toBe(true);
+    h.local = ['s1'];
+    expect(opts.sessionOpenHasCapacity()).toBe(true);
+    h.local = ['s1', 's2'];
+    expect(opts.sessionOpenHasCapacity()).toBe(false);
   });
 
   it('stop continua mesmo se um componente falhar', async () => {

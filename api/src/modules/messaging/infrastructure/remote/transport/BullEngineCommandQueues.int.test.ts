@@ -5,7 +5,11 @@ import { SessionNotFoundError } from '../../../../../shared/errors/internal/Sess
 import { EngineNotReadyError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { engineCall } from '../engineCallPlan';
 import { SESSION_OPEN_TARGET, type IEngineCallHandler } from '../ports';
-import { BullEngineCommandQueues, engineCommandQueueName } from './BullEngineCommandQueues';
+import {
+  BullEngineCommandQueues,
+  engineCommandQueueName,
+  type BullEngineCommandQueuesOptions,
+} from './BullEngineCommandQueues';
 
 /**
  * Redis LOCAL descartável (`scripts/redis-descartavel.sh start`): INTEGRATION_REDIS_URL=redis://127.0.0.1:<porta>.
@@ -23,10 +27,10 @@ const prefix = `int-cmd-${Date.now()}`;
 const connections: Redis[] = [];
 const opened: BullEngineCommandQueues[] = [];
 
-function queues(): BullEngineCommandQueues {
+function queues(extra: Partial<BullEngineCommandQueuesOptions> = {}): BullEngineCommandQueues {
   const connection = new Redis(url!, { maxRetriesPerRequest: null });
   connections.push(connection);
-  const q = new BullEngineCommandQueues({ connection, prefix });
+  const q = new BullEngineCommandQueues({ connection, prefix, ...extra });
   opened.push(q);
   return q;
 }
@@ -122,5 +126,59 @@ describe.skipIf(!url)('BullEngineCommandQueues com Redis real', () => {
     await closing;
     expect(finished).toBe(true);
     await expect(pending).resolves.toEqual({ messageId: 'm2' });
+  });
+
+  describe('teto do processo em session-open (ADOPT-09)', () => {
+    const openCall = (i: number) => engineCall('connectSession', { sessionId: `s${i}`, tenantId: 't1' });
+    const counter = () => {
+      const seen: string[] = [];
+      const handler: IEngineCallHandler = {
+        handle: vi.fn(async (c) => { seen.push((c.args[0] as { sessionId: string }).sessionId); return { status: 'CONNECTING' }; }),
+      };
+      return { seen, handler };
+    };
+
+    it('2 consumidores, um cheio: todos os jobs vão ao outro', async () => {
+      const full = counter();
+      const free = counter();
+      queues({ sessionOpenHasCapacity: () => false, sessionOpenCheckMs: 50 }).startConsumers('cap-full', full.handler);
+      queues({ sessionOpenHasCapacity: () => true, sessionOpenCheckMs: 50 }).startConsumers('cap-free', free.handler);
+
+      const producer = queues();
+      await Promise.all([1, 2, 3, 4, 5, 6].map((i) => producer.send(SESSION_OPEN_TARGET, openCall(i), 5000)));
+      expect(full.seen).toEqual([]);
+      expect(free.seen.sort()).toEqual(['s1', 's2', 's3', 's4', 's5', 's6']);
+    });
+
+    it('cheio depois de consumir: pausa e os jobs seguintes vão ao outro', async () => {
+      let capacity = true;
+      const a = counter();
+      const b = counter();
+      queues({ sessionOpenHasCapacity: () => capacity, sessionOpenCheckMs: 50 }).startConsumers('cap-a', a.handler);
+      const producer = queues();
+      await producer.send(SESSION_OPEN_TARGET, openCall(1), 5000);
+      expect(a.seen).toEqual(['s1']);
+
+      capacity = false;
+      await new Promise((r) => setTimeout(r, 200));
+      queues({ sessionOpenHasCapacity: () => true, sessionOpenCheckMs: 50 }).startConsumers('cap-b', b.handler);
+      await Promise.all([2, 3, 4].map((i) => producer.send(SESSION_OPEN_TARGET, openCall(i), 5000)));
+      expect(a.seen).toEqual(['s1']);
+      expect(b.seen.sort()).toEqual(['s2', 's3', 's4']);
+    });
+
+    it('retoma ao liberar vaga', async () => {
+      let capacity = false;
+      const w = counter();
+      queues({ sessionOpenHasCapacity: () => capacity, sessionOpenCheckMs: 50 }).startConsumers('cap-r', w.handler);
+
+      const pending = queues().send(SESSION_OPEN_TARGET, openCall(9), 5000);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(w.seen).toEqual([]);
+
+      capacity = true;
+      await expect(pending).resolves.toEqual({ status: 'CONNECTING' });
+      expect(w.seen).toEqual(['s9']);
+    });
   });
 });

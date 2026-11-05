@@ -1,4 +1,4 @@
-import { Job, Queue, QueueEvents, Worker } from 'bullmq';
+import { DelayedError, Job, Queue, QueueEvents, Worker } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { AppError } from '../../../../../shared/errors/AppError';
 import {
@@ -22,6 +22,11 @@ export const SESSION_OPEN_QUEUE = 'session-open';
 export const ENGINE_COMMAND_QUEUE_PREFIX = 'engine-cmd-';
 /** Conservador (poucos envios simultâneos por fila); a composição (T18) passa o valor do env. */
 export const DEFAULT_ENGINE_COMMAND_CONCURRENCY = 2;
+
+/** Vigia do teto (ADOPT-09): mesmo passo do ticker de adoção. */
+export const DEFAULT_SESSION_OPEN_CHECK_MS = 5_000;
+/** Job pego com o processo cheio volta à fila com este atraso (outro worker o pega). */
+const SESSION_OPEN_REQUEUE_MS = 50;
 
 const JOB_NAME = 'engine-call';
 /** Estados em que o job ainda não começou: no timeout é removido para o envio não sair depois. */
@@ -50,6 +55,13 @@ export interface BullEngineCommandQueuesOptions {
   prefix?: string;
   /** Jobs simultâneos por fila consumida. */
   concurrency?: number;
+  /**
+   * Teto do processo (ADOPT-09, só com a adoção ligada): `false` pausa o consumo local de
+   * `session-open` (a fila fica para outro worker) e `true` retoma. Ausente = consome sempre (E3).
+   */
+  sessionOpenHasCapacity?: () => boolean;
+  /** Intervalo do vigia do teto (teste encurta). */
+  sessionOpenCheckMs?: number;
 }
 
 interface ProducerChannel {
@@ -61,11 +73,16 @@ interface ProducerChannel {
 /**
  * Transporte BullMQ dos comandos duráveis da engine (WROLE-06/08). Produtor (`http`): `send` põe o job na fila
  * do dono ou em `session-open` e espera o resultado; `attempts: 1` (D11, sem retry de envio). Consumidor
- * (`worker`): `startConsumers` nas duas filas; `close()` espera os jobs ativos.
+ * (`worker`): `startConsumers` nas duas filas; `close()` espera os jobs ativos. Com `sessionOpenHasCapacity`
+ * (ADOPT-09) um vigia pausa `session-open` com o processo cheio; job pego mesmo assim volta à fila.
  */
 export class BullEngineCommandQueues implements IEngineCommandProducer {
   private readonly channels = new Map<string, ProducerChannel>();
   private readonly workers: Worker<CommandJobData, string>[] = [];
+  private sessionOpenWorker: Worker<CommandJobData, string> | undefined;
+  private sessionOpenPaused = true;
+  private sessionOpenStarted = false;
+  private capacityTimer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
 
   constructor(private readonly options: BullEngineCommandQueuesOptions) {}
@@ -100,14 +117,64 @@ export class BullEngineCommandQueues implements IEngineCommandProducer {
     if (this.closed) throw new Error('BullEngineCommandQueues fechado');
     if (this.workers.length) throw new Error('consumidores já iniciados');
     const concurrency = this.options.concurrency ?? DEFAULT_ENGINE_COMMAND_CONCURRENCY;
+    const gated = this.options.sessionOpenHasCapacity;
     for (const name of [engineCommandQueueName(workerId), SESSION_OPEN_QUEUE]) {
+      const isOpen = name === SESSION_OPEN_QUEUE;
       const worker = new Worker<CommandJobData, string>(
         name,
-        (job) => this.process(name, job, handler),
-        { connection: this.options.connection, prefix: this.options.prefix, concurrency },
+        (job, token) => this.process(name, job, handler, token),
+        {
+          connection: this.options.connection,
+          prefix: this.options.prefix,
+          concurrency,
+          // Com teto, `session-open` só começa a consumir depois da 1ª checagem de vaga.
+          autorun: !(isOpen && gated),
+        },
       );
       worker.on('error', (err) => logger.warn({ err, queue: name }, 'Fila de comando da engine: erro do consumidor'));
       this.workers.push(worker);
+      if (isOpen) this.sessionOpenWorker = worker;
+    }
+    if (gated) {
+      void this.syncSessionOpen();
+      this.capacityTimer = setInterval(
+        () => void this.syncSessionOpen(),
+        this.options.sessionOpenCheckMs ?? DEFAULT_SESSION_OPEN_CHECK_MS,
+      );
+      this.capacityTimer.unref?.();
+    }
+  }
+
+  /** Pausa/retoma o consumo local de `session-open` conforme a vaga (ADOPT-09). Nunca lança. */
+  private async syncSessionOpen(): Promise<void> {
+    const worker = this.sessionOpenWorker;
+    const hasCapacity = this.options.sessionOpenHasCapacity;
+    if (!worker || !hasCapacity || this.closed) return;
+    let full: boolean;
+    try {
+      full = !hasCapacity();
+    } catch (err) {
+      logger.warn({ err }, 'Fila session-open: falha ao ler a vaga do processo');
+      return;
+    }
+    try {
+      if (full && !this.sessionOpenPaused) {
+        this.sessionOpenPaused = true;
+        // Sem esperar os jobs ativos: o que já começou termina no gate (503 na corrida, como hoje).
+        await worker.pause(true);
+        logger.info({ queue: SESSION_OPEN_QUEUE }, 'Processo cheio: consumo local de session-open pausado');
+      } else if (!full && this.sessionOpenPaused) {
+        this.sessionOpenPaused = false;
+        if (!this.sessionOpenStarted) {
+          this.sessionOpenStarted = true;
+          worker.run().catch((err) => logger.warn({ err, queue: SESSION_OPEN_QUEUE }, 'Fila session-open: consumidor parou'));
+        } else {
+          await worker.resume();
+          logger.info({ queue: SESSION_OPEN_QUEUE }, 'Vaga liberada: consumo local de session-open retomado');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, queue: SESSION_OPEN_QUEUE }, 'Fila session-open: falha ao pausar/retomar');
     }
   }
 
@@ -115,6 +182,9 @@ export class BullEngineCommandQueues implements IEngineCommandProducer {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.capacityTimer) clearInterval(this.capacityTimer);
+    this.capacityTimer = undefined;
+    this.sessionOpenWorker = undefined;
     const workers = this.workers.splice(0);
     await Promise.allSettled(workers.map((w) => w.close()));
     const channels = [...this.channels.values()];
@@ -160,6 +230,16 @@ export class BullEngineCommandQueues implements IEngineCommandProducer {
     return new EngineNotReadyError();
   }
 
+  private isSessionOpenFull(): boolean {
+    const hasCapacity = this.options.sessionOpenHasCapacity;
+    if (!hasCapacity) return false;
+    try {
+      return !hasCapacity();
+    } catch {
+      return false;
+    }
+  }
+
   private unwrap(raw: unknown): unknown {
     let envelope: CommandEnvelope;
     try {
@@ -172,8 +252,19 @@ export class BullEngineCommandQueues implements IEngineCommandProducer {
     throw new EngineTemporarilyUnavailableError();
   }
 
-  private async process(queueName: string, job: Job<CommandJobData, string>, handler: IEngineCallHandler): Promise<string> {
+  private async process(
+    queueName: string,
+    job: Job<CommandJobData, string>,
+    handler: IEngineCallHandler,
+    token?: string,
+  ): Promise<string> {
     const reply = (envelope: CommandEnvelope) => JSON.stringify(envelope);
+    if (queueName === SESSION_OPEN_QUEUE && token && this.isSessionOpenFull()) {
+      // Pego numa espera bloqueante iniciada antes da pausa: devolve à fila para outro worker.
+      await job.moveToDelayed(Date.now() + SESSION_OPEN_REQUEUE_MS, token);
+      void this.syncSessionOpen();
+      throw new DelayedError();
+    }
     try {
       if (typeof job.data?.deadline === 'number' && Date.now() > job.data.deadline) {
         return reply({ ok: false, error: toWireError(new EngineNotReadyError()) });

@@ -20,7 +20,8 @@ type Stopper = () => Promise<unknown>;
  * Composição de engine e eventos do painel por papel (WROLE-02/05/12).
  * - `all`: `localEngine()` como hoje; não importa Redis nem módulos remotos.
  * - `worker`: `localEngine()` + `EngineCommandServer` atendendo RPC (`engine-rpc:{workerId}`) e as filas
- *   BullMQ (`engine-cmd-{workerId}`, `session-open`); WS vira `PUBLISH tenant:{id}`.
+ *   BullMQ (`engine-cmd-{workerId}`, `session-open`); WS vira `PUBLISH tenant:{id}`. Com a adoção ligada,
+ *   `session-open` pausa enquanto o processo está no teto (ADOPT-09).
  * - `http`: `RemoteMessagingEngineAdapter` como engine ativa (nunca chama `localEngine()`, nem carrega
  *   Baileys/GramJS); `PSUBSCRIBE tenant:*` entrega aos WS locais.
  * Módulos por `import()` dinâmico: cada papel só carrega o que usa.
@@ -61,7 +62,7 @@ async function outboundMediaTransfer() {
 }
 
 async function composeWorker(): Promise<RoleComposition> {
-  const [{ localEngine }, { sessionLeaseContainer }, redis, { EngineCommandServer }, { RedisEngineRpcServer }, { BullEngineCommandQueues }, ws, { RedisChatEventRelay }] =
+  const [{ localEngine }, { sessionLeaseContainer }, redis, { EngineCommandServer }, { RedisEngineRpcServer }, { BullEngineCommandQueues }, ws, { RedisChatEventRelay }, { workerAdoptionConfig }, { hasCapacity }] =
     await Promise.all([
       import('../modules/messaging/infrastructure/localEngineContainer'),
       import('../modules/sessions/infrastructure/lease/sessionLeaseContainer'),
@@ -71,9 +72,12 @@ async function composeWorker(): Promise<RoleComposition> {
       import('../modules/messaging/infrastructure/remote/transport/BullEngineCommandQueues'),
       import('../modules/chat/infrastructure/ws/ChatWebSocketPublisher'),
       import('../modules/chat/infrastructure/ws/RedisChatEventRelay'),
+      import('../shared/config/workerAdoption'),
+      import('../modules/sessions/domain/services/sessionAdoptionPolicy'),
     ]);
 
   const engine = localEngine();
+  const adoption = workerAdoptionConfig();
   const lease = sessionLeaseContainer();
   const handler = new EngineCommandServer(engine, engine, lease.release, await outboundMediaTransfer());
   const rpcServer = new RedisEngineRpcServer({
@@ -85,6 +89,10 @@ async function composeWorker(): Promise<RoleComposition> {
   const queues = new BullEngineCommandQueues({
     connection: redis.bullConnection(),
     concurrency: env.ENGINE_COMMAND_CONCURRENCY,
+    // ADOPT-09: cheio, este worker para de puxar `session-open` (sem a flag, nada muda).
+    ...(adoption.enabled && {
+      sessionOpenHasCapacity: () => hasCapacity(lease.listLocal().length, adoption.maxSessions),
+    }),
   });
 
   const stoppers: Stopper[] = [];
