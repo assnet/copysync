@@ -47,7 +47,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `tenants/domain/contracts/IEntitlementSnapshotReader.ts`, `tenants/infrastructure/repositories/PrismaEntitlementReader.ts`.
 **Depends on**: — **Req**: SUB-04 **Tests**: none **Gate**: quick
 
-### T7: `GetTenantSubscriptionUseCase` ⏳
+### T7: `GetTenantSubscriptionUseCase` ✅ c7a0a09
 **What**: tenant (repo) + snapshot + uso em paralelo → `GetTenantSubscriptionOutput` (DTO); tenant inexistente → `NotFoundError` (404).
 **Where**: `tenants/application/use-cases/GetTenantSubscriptionUseCase.ts`, `tenants/application/dtos/TenantSubscriptionDto.ts` (+ teste com fakes).
 **Depends on**: T1, T4, T5, T6 **Req**: SUB-01, 04 **Done when**: teste: plano nulo, SUSPENDED com `suspendedAt`, ilimitado, Telegram 0. **Tests**: unit **Gate**: quick
@@ -124,3 +124,8 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 - `VITE_BILLING_CHECKOUT_URL` e as 6 linhas `RedirectConfig` na central são operação (`plans-modal` T10): sem elas o CTA cai na vitrine `/affiliates/plans`.
 - Chave de entitlement nova sem linha na tela: teste de T4 falha de propósito.
 - Redirect de suspenso em loop ou derrubando sessão: teste de T16; nunca `clearSessionAndRedirect` nesse código.
+
+## Notas de execução
+
+- T7: `GetTenantSubscriptionUseCase` lê vencimento via alias `TenantWithExpiry` (opcional) e devolve `expiresAt: null` até a T1; remover o alias quando a T1 entrar.
+- D1 (guardar vencimento) seguido pela recomendação em 2026-11-04 para destravar T1/T2 e o follow-up do receiver (`expiresAt` de `subscription.updated`); dono pode rever.
