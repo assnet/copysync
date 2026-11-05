@@ -53,7 +53,7 @@ Regras comuns a toda task:
 | F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
 | F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ✅ 75ff1bb |
 | F13 | Banco mudo: prazos restantes e escopo do abort de desistência | F12 | | ✅ 7740637 |
-| F14 | Fila do lease libera no prazo; connect do usuário com prazo; socket_timeout opcional | F13 | | ⏳ |
+| F14 | Fila do lease libera no prazo; connect do usuário com prazo; socket_timeout opcional | F13 | | ✅ e8f42ef |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -603,6 +603,8 @@ Causa raiz das rodadas 3–6: consulta que nunca responde (TCP mudo). Prazos no 
 **Tests**: unit
 **Gate**: `pnpm vitest run src` + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): fila do lease libera no prazo e socket_timeout opcional`
+
+- F14: fila do lease libera no prazo da própria op; connect do usuário com prazo de 60 s (503); env opcional `DATABASE_SOCKET_TIMEOUT_S` → `socket_timeout` no `datasourceUrl` (sem a env, URL idêntica). **Pré-requisito para ligar mais de um processo: definir `DATABASE_SOCKET_TIMEOUT_S`** (docs/arquitetura-escala.md §6). Ciclo de revisão encerrado.
 
 ## Diagram-Definition Cross-Check
 
