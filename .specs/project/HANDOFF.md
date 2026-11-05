@@ -1,8 +1,8 @@
 # Handoff — 2026-11-04
 
 Retomar por aqui. Tudo em branches locais, nada com push. Juntar no CopySync = `git cherry-pick <branch>` na
-`feature/rebranding-app` + `tsc --noEmit` e `vitest run` em `api/` e `app/` (último verde: api 3334/3334, app 1330/1330;
-versões api 0.64.0 · app 0.82.0). `git add` só com caminhos explícitos (o dono tem rascunhos não rastreados em `.specs/` e `docs/`).
+`feature/rebranding-app` + `tsc --noEmit` e `vitest run` em `api/` e `app/` (último verde: api 3337/3337, app 1330/1330;
+versões api 0.64.0 · app 0.82.1). `git add` só com caminhos explícitos (o dono tem rascunhos não rastreados em `.specs/` e `docs/`).
 
 ## 🔴 Segurança — PulsoSocial em produção (central 1.86.0)
 
@@ -43,7 +43,7 @@ Checklist antes de ligar mais de um processo na Render: `docs/arquitetura-escala
 | S1 CI + S2 caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas; 19 riscos em `riscos-caracterizacao.md` |
 | S3 staging | `chore/staging-runbook` (`be5cc95`) | ✅ 3 revisões; dono executa `docs/staging.md` |
 | H1 | `feature/hub-h1` (`5824ea3`) | T01–T05, T10, T26 ✅; **D1 decidido (2026-11-05): `NOT NULL DEFAULT` socialpulse** (sem trigger/backfill; default sai antes do H3); **D8: `feature/hub-h1`**; plano sendo reescrito, depois ondas de execução |
-| H1 filtros + H1-c | `hub/h1-t11`..`t21` (onda em andamento), `hub/h1-t32` (writers) | juntar no `feature/hub-h1` ao fim da onda, com gate completo |
+| H1 filtros + H1-c | ✅ juntados no `feature/hub-h1` (`bc0621b`: T11–T13, T17–T21, T32; gate completo 555 db + 84 unit); onda 3 (T14, T15, T22, T23, T33–T35) em andamento | depois T16, T24, T25, T29, T31, T38. Contrato: com `X-Application-Key` desconhecida, `GET /plans`, `POST /checkout/sessions` e cancelamento de trial → 404; sem header nada muda |
 | H2 / H3a / H4 | `hub/h2-schema` (OutboundEvent, IntegrationNonce, triggers; socialpulse sem evento), `hub/h3a-base` (COPYSYNC_*, seed de planos em dry-run), `hub/h4-t16` (remetente por aplicação); funções puras em `hub/h2-t5..t13`, `hub/h4-t17`, `hub/h4-overrides` | branches empilhados sobre o H1, não juntar no H1. Dono: D3 do H2 (segredo anterior); regras do trigger (restauração, TRIAL_ACTIVE/NULL sem evento) |
 
 ## Pendências do dono

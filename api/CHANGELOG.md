@@ -57,6 +57,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.82.1 — Conferência visual e testes estáveis
+
+- **`app/AppLayout.tsx`, `pages/DashboardPage.tsx`** — seletor de tema no cabeçalho mobile; tenant e sessões do dashboard borram pelas flags de privacidade; chip do tenant com largura máxima; botão "Gerenciar" não vaza a 375 px.
+- **`components/PostingWindowField.tsx`, `ConfigConfirmStep.tsx`, `SessionStatusChip.tsx`, `AdminWorkersPage.tsx`** — contraste dos dias, ícone ao lado do resumo do horário, rótulo de capacidade sem corte, coluna do worker com largura mínima.
+- **`OfferGeneratorForm.tsx`, `SettingsLayout.tsx`, `AiSettingsPage.tsx`** — ícone de brilhinhos trocado (regra sem sparkles).
+- **Testes do painel** — corrida real em `MonitoringPage.test.tsx`; `waitFor` do Testing Library; relógio real restaurado no `afterEach`; prazos de teste maiores sob carga.
+- **API (testes)** — testes de integração só-Redis rodam sem banco; Redis descartável com nome único por porta.
+
 ### Changed — api 0.64.0 · app 0.82.0 — Só login concluído ocupa vaga do worker (E4 T24)
 
 - **`CapacityLimitedLeaseGate.ts`, `ISessionSocketControl.ts`, adapters Baileys/Telegram, `sessionLeaseContainer.ts`, `AdoptNextSessionUseCase.ts`, `WorkerHeartbeatJob.ts`** — decisão do dono: sessão em QR/pareamento/código/senha não ocupa vaga de `WORKER_MAX_SESSIONS`; teto próprio `WORKER_MAX_PENDING_LOGINS` (padrão 50); login concluído com o worker cheio fica; adoção para com autenticadas ≥ teto. Sem efeito com `WORKER_ADOPTION_ENABLED=false`.
