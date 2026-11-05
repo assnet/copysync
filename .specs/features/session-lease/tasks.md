@@ -53,6 +53,7 @@ Regras comuns a toda task:
 | F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
 | F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ✅ 75ff1bb |
 | F13 | Banco mudo: prazos restantes e escopo do abort de desistência | F12 | | ✅ 7740637 |
+| F14 | Fila do lease libera no prazo; connect do usuário com prazo; socket_timeout opcional | F13 | | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -586,6 +587,22 @@ Tendência das revisões: 5🔴 → 3🔴 → 3🔴 → 1🔴 → 1🔴; todos o
 **Commit**: `fix(sessions): banco mudo não prende retomada nem pool`
 
 - F13: desistência com abort `onlyAuto` e prazo, release/DISCONNECTED sempre; 1 transação de lease em voo por processo; release após abertura cancelada por abort; prazo de 15 s do auth state só em `auto` (Baileys e Telegram). 🟡 aceito: connect do usuário exatamente durante a desistência pode ter o socket derrubado uma vez (reconectar resolve).
+
+## Correções da 6ª revisão (2026-11-04) — fim do ciclo de revisão
+
+Causa raiz das rodadas 3–6: consulta que nunca responde (TCP mudo). Prazos no código só deslocam o ponto de espera; a correção de fundo é o driver desistir (`socket_timeout` do Prisma). Ciclo de revisão encerrado após F14 (memória "revisão sem loop").
+
+### F14: Fila do lease libera no prazo; connect do usuário com prazo; socket_timeout opcional
+
+**What**:
+- 🔴 `PrismaSessionLeaseRepository`: a cauda da fila (`tail`) assenta também no prazo da própria operação (`Promise.race([work.catch(() => undefined), prazo])`), de modo que uma transação que nunca assenta não bloqueia as seguintes para sempre; teste "anterior nunca assenta → a próxima roda depois do prazo".
+- 🟡 Connect/pareamento do usuário: prazo de 60 s no build do auth state (Baileys) e no `auth.load` (Telegram) na origem `user`, mapeado para 503 (`EngineTemporarilyUnavailableError`); `auto` mantém 15 s.
+- Env opcional `DATABASE_SOCKET_TIMEOUT_S` (inteiro positivo; ausente = comportamento atual): quando definida, o `PrismaClient` é criado com `datasourceUrl` = `DATABASE_URL` + `socket_timeout=<n>` (sem duplicar se a URL já tiver o parâmetro). Documentar em `docs/arquitetura-escala.md` §6 como pré-requisito para ligar mais de um processo.
+**Where**: `PrismaSessionLeaseRepository.ts` (+ teste), Baileys e Telegram adapters (+ testes), `shared/config/env.ts`, criação do `PrismaClient` (`shared/database/…`) (+ teste da montagem da URL), `docs/arquitetura-escala.md`
+**Done when**: testes acima verdes; sem a env, a URL do Prisma é idêntica à de hoje
+**Tests**: unit
+**Gate**: `pnpm vitest run src` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): fila do lease libera no prazo e socket_timeout opcional`
 
 ## Diagram-Definition Cross-Check
 
