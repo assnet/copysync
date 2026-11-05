@@ -86,7 +86,9 @@ describe('MonitoringPage', () => {
     expect(getConfig).toHaveBeenCalledWith('s1');
     expect(screen.getAllByText('Promo Rival').length).toBeGreaterThan(0);
     expect(screen.getByRole('status', { name: /Dia inteiro — 24 h\. Todos os dias/ })).toBeInTheDocument();
-    expect(screen.getByText('Falta a sua credencial de afiliado desta loja')).toBeInTheDocument();
+    // Capturadas vêm de outra requisição (useCapturedOffers): o card de grupos pronto não
+    // garante a lista; esperar por ela em vez de supor a ordem das promessas.
+    expect(await screen.findByText('Falta a sua credencial de afiliado desta loja')).toBeInTheDocument();
     expect(screen.getByText('Imagem indisponível')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Carregar mais' })).toBeInTheDocument();

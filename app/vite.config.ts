@@ -44,6 +44,13 @@ export default defineConfig(({ mode }) => {
       css: false,
       clearMocks: true,
       restoreMocks: true,
+      // Teste de tela (jsdom + MUI + user-event) é limitado por CPU: isolado, o mais lento
+      // já leva ~5 s, o padrão do Vitest. Sob a suíte em paralelo leva 3–6× isso. Estourar o
+      // limite não só falha o teste: o corpo dele segue rodando e digita/clica na tela do
+      // teste seguinte, gerando falhas em cascata longe da causa. 30 s cobre a carga sem
+      // esconder travamento real (um await que nunca resolve ainda falha).
+      testTimeout: 30_000,
+      hookTimeout: 30_000,
     },
   };
 });

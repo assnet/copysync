@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { PrivacyProvider } from '@/features/privacy';
 import type { SessionItem } from '@/types/api.types';
@@ -156,7 +156,7 @@ describe('GroupPickerDialog — sessão cruzada', () => {
     expect(screen.getByRole('button', { name: 'Enviar antes: A' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Enviar depois: A' }));
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
-    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect((onSave.mock.calls[0] as unknown as [PickedGroup[]])[0].map((g) => g.groupJid)).toEqual(['b', 'a']);
   });
 });

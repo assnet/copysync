@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { SendQueueItem, SendQueueResponse } from '@/types/api.types';
 
 const get = vi.fn<(sessionId?: string) => Promise<SendQueueResponse>>();
@@ -96,10 +96,10 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     await screen.findByText('Loja');
     const calls = get.mock.calls.length;
     fireEvent.click(screen.getAllByLabelText('Pausar oferta')[0]);
-    await vi.waitFor(() => expect(pause).toHaveBeenCalledWith('o2'));
-    await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
+    await waitFor(() => expect(pause).toHaveBeenCalledWith('o2'));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
     fireEvent.click(screen.getByLabelText('Retomar oferta'));
-    await vi.waitFor(() => expect(resume).toHaveBeenCalledWith('o3'));
+    await waitFor(() => expect(resume).toHaveBeenCalledWith('o3'));
     expect(screen.queryByLabelText('Abrir oferta')).not.toBeInTheDocument();
   });
 
@@ -111,7 +111,7 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     fireEvent.click(screen.getByLabelText('Parar oferta'));
     expect(cancel).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: 'Parar oferta' }));
-    await vi.waitFor(() => expect(cancel).toHaveBeenCalledWith('o2'));
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith('o2'));
   });
 
   it('409 OFFER_INVALID_STATE não mostra erro; outra falha mostra', async () => {
@@ -120,9 +120,9 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     render(<SendQueuePanel sessionId="s1" />);
     await screen.findByText('Loja');
     fireEvent.click(screen.getByLabelText('Pausar oferta'));
-    await vi.waitFor(() => expect(pause).toHaveBeenCalled());
+    await waitFor(() => expect(pause).toHaveBeenCalled());
     expect(screen.queryByText(/Não foi possível alterar/)).not.toBeInTheDocument();
-    await vi.waitFor(() => expect(screen.getByLabelText('Pausar oferta')).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByLabelText('Pausar oferta')).not.toBeDisabled());
     pause.mockRejectedValueOnce(new Error('x'));
     fireEvent.click(screen.getByLabelText('Pausar oferta'));
     expect(await screen.findByText(/Não foi possível alterar/)).toBeInTheDocument();
@@ -166,8 +166,8 @@ describe('SendQueuePanel — pausa global da conta', () => {
     expect(screen.getByLabelText('Tempo até o próximo envio desta sessão')).toBeInTheDocument();
     const calls = get.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Pausar todos os envios' }));
-    await vi.waitFor(() => expect(pauseAll).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
+    await waitFor(() => expect(pauseAll).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(calls));
   });
 
   it('pausado: alerta, "Retomar envios", sem "Próximo", itens como "Pausado (conta)"; retomar chama resumeAll', async () => {
@@ -179,7 +179,7 @@ describe('SendQueuePanel — pausa global da conta', () => {
     expect(screen.queryByLabelText('Tempo até o próximo envio desta sessão')).not.toBeInTheDocument();
     expect(screen.getByText('Pausado (conta)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retomar envios' }));
-    await vi.waitFor(() => expect(resumeAll).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(resumeAll).toHaveBeenCalledTimes(1));
   });
 
   it('falha ao pausar mostra erro próprio', async () => {

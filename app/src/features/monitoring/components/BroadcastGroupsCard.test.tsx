@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { ThemeProvider } from '@mui/material';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { buildTheme } from '@/theme/theme';
 import type { BroadcastGroupItem } from '@/types/api.types';
 import { BroadcastGroupsCard, reinsertGroup } from './BroadcastGroupsCard';
@@ -43,7 +43,7 @@ describe('BroadcastGroupsCard — desfazer remoção', () => {
     rerender([g('a', 0)]);
     expect(await screen.findByRole('button', { name: 'Desfazer' })).toBeInTheDocument();
     rerender([g('a', 0), g('d', 1)]);
-    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Desfazer' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Desfazer' })).toBeNull());
   });
 
   it('reordenar depois de remover cancela o desfazer', async () => {
@@ -52,7 +52,7 @@ describe('BroadcastGroupsCard — desfazer remoção', () => {
     rerender([g('a', 0), g('c', 1)]);
     expect(await screen.findByRole('button', { name: 'Desfazer' })).toBeInTheDocument();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Enviar depois: Grupo a' })));
-    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Desfazer' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Desfazer' })).toBeNull());
   });
 });
 

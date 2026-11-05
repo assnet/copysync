@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/react';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
@@ -32,11 +32,13 @@ describe('StorefrontPreview', () => {
     preview.mockReset().mockResolvedValue('<h1>vitrine</h1>');
     localStorage.clear();
   });
+  // Restaura no afterEach: no fim do teste não roda se uma asserção falhar e o relógio
+  // falso vazaria para o próximo.
+  afterEach(() => { vi.useRealTimers(); });
 
   it('título da prévia aparece inteiro, sem reticências (controles quebram linha)', () => {
     setup();
     expect(screen.getByText(t.title)).not.toHaveClass('MuiTypography-noWrap');
-    vi.useRealTimers();
   });
 
   it('iframe com sandbox vazio e o html da API em srcdoc', async () => {
@@ -46,7 +48,6 @@ describe('StorefrontPreview', () => {
     expect(frame()).toHaveAttribute('sandbox', '');
     expect(frame().getAttribute('srcdoc')).toBe('<h1>vitrine</h1>');
     expect(screen.getByText(t.title)).toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('toggle muda a largura do iframe e avisa a página', () => {
@@ -57,7 +58,6 @@ describe('StorefrontPreview', () => {
     rerender(<PrivacyProvider><StorefrontPreview draft={draft} viewport="desktop" onViewportChange={onViewportChange} /></PrivacyProvider>);
     expect(frame().style.width).toBe(`${PREVIEW_WIDTHS.desktop}px`);
     expect(screen.getByRole('button', { name: t.desktop })).toHaveAttribute('aria-pressed', 'true');
-    vi.useRealTimers();
   });
 
   it('"Ampliar" abre dialog largo com o mesmo iframe sandbox (mobile e desktop)', async () => {
@@ -72,7 +72,6 @@ describe('StorefrontPreview', () => {
     expect(big.style.width).toBe(`${PREVIEW_WIDTHS.desktop}px`);
     expect(screen.getAllByTitle(t.frameTitle)).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: t.close }));
-    vi.useRealTimers();
   });
 
   it('qualquer flag storefront ligada borra a prévia inteira', () => {
@@ -80,20 +79,17 @@ describe('StorefrontPreview', () => {
     const { container } = setup();
     expect(container.querySelector('[data-blurred="true"] iframe')).not.toBeNull();
     expect(screen.getByText(t.blurred)).toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('sem flag storefront não borra', () => {
     localStorage.setItem('privacy.blur', JSON.stringify(['offers.groupNames']));
     const { container } = setup();
     expect(container.querySelector('[data-blurred="true"]')).toBeNull();
-    vi.useRealTimers();
   });
 
   it('renderiza no modo escuro', () => {
     setup('desktop', 'dark');
     expect(frame()).toHaveAttribute('sandbox', '');
     expect(screen.getByRole('button', { name: t.mobile })).toHaveAttribute('aria-pressed', 'false');
-    vi.useRealTimers();
   });
 });
