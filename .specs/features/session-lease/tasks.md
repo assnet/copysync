@@ -52,7 +52,7 @@ Regras comuns a toda task:
 | F10 | Estado de retomada com dono único | F9 | | ✅ b0ceb92 |
 | F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
 | F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ✅ 75ff1bb |
-| F13 | Banco mudo: prazos restantes e escopo do abort de desistência | F12 | | ⏳ |
+| F13 | Banco mudo: prazos restantes e escopo do abort de desistência | F12 | | ✅ 7740637 |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -584,6 +584,8 @@ Tendência das revisões: 5🔴 → 3🔴 → 3🔴 → 1🔴 → 1🔴; todos o
 **Tests**: unit (+ int do repo se mexer em transação)
 **Gate**: `pnpm vitest run src/modules/sessions src/modules/messaging` + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): banco mudo não prende retomada nem pool`
+
+- F13: desistência com abort `onlyAuto` e prazo, release/DISCONNECTED sempre; 1 transação de lease em voo por processo; release após abertura cancelada por abort; prazo de 15 s do auth state só em `auto` (Baileys e Telegram). 🟡 aceito: connect do usuário exatamente durante a desistência pode ter o socket derrubado uma vez (reconectar resolve).
 
 ## Diagram-Definition Cross-Check
 
