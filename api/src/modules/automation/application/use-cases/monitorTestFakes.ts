@@ -8,6 +8,7 @@ import type { IMonitorGroupDirectory, IOfferQueue, ITenantLinkBuilder, QueueOffe
 import type { BroadcastGroup, GroupMonitorConfig, GroupMonitorSettings, MonitoredGroup } from '../../domain/entities/GroupMonitor';
 import type { CapturedOffer, CapturedOfferReason } from '../../domain/entities/CapturedOffer';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
+import type { BroadcastGroupUsageRow, IBroadcastGroupUsageReader, ListBroadcastGroupRowsOptions } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
 
 export const TENANT = 'tenant-1';
 export const SESSION = 'session-1';
@@ -185,4 +186,21 @@ export class FakeEntitlements {
   constructor(public values: Record<string, unknown> = {}) {}
   async getNumber(_t: string, key: string) { const v = this.values[key]; return typeof v === 'number' ? v : null; }
   async getBoolean(_t: string, key: string) { const v = this.values[key]; return typeof v === 'boolean' ? v : null; }
+}
+
+/** União gerador ⋃ monitoramentos sobre o repositório em memória; `generator` = destinos do gerador por tenant. */
+export class FakeBroadcastGroupUsage implements IBroadcastGroupUsageReader {
+  generator: { tenantId: string; sessionId: string; groupJid: string }[] = [];
+  constructor(private readonly monitors: InMemoryGroupMonitorRepository) {}
+  async listRows(tenantId: string, options: ListBroadcastGroupRowsOptions = {}): Promise<BroadcastGroupUsageRow[]> {
+    const m = this.monitors;
+    const engine = (id: string) => m.engines[id] ?? 'baileys';
+    const gen = options.exceptGenerator ? [] : this.generator.filter((g) => g.tenantId === tenantId && !m.deleted.has(g.sessionId))
+      .map((g): BroadcastGroupUsageRow => ({ conversationId: `conv-${g.groupJid}`, sessionId: g.sessionId, groupJid: g.groupJid, engine: engine(g.sessionId), use: 'generator' }));
+    const mon = m.broadcast.filter((g) => g.tenantId === tenantId && g.monitorSessionId !== options.exceptMonitorSessionId
+      && !m.deleted.has(g.sessionId) && !m.deleted.has(g.monitorSessionId))
+      .map((g): BroadcastGroupUsageRow => ({ conversationId: g.conversationId, sessionId: g.sessionId, groupJid: g.groupJid, engine: engine(g.sessionId), use: `monitor:${g.monitorSessionId}` }));
+    return [...gen, ...mon];
+  }
+  async listCatalog(): Promise<never> { throw new Error('not used'); }
 }

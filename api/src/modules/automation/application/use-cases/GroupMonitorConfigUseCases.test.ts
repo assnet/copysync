@@ -3,16 +3,17 @@ import {
   GetGroupMonitorConfigUseCase, SaveBroadcastGroupsUseCase, SaveGroupMonitorSettingsUseCase, SaveMonitoredGroupsUseCase,
 } from './GroupMonitorConfigUseCases';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
-import { FakeCredentialStates, FakeDirectory, FakeEntitlements, InMemoryCapturedOfferRepository, InMemoryGroupMonitorRepository, SESSION, TENANT } from './monitorTestFakes';
+import { FakeBroadcastGroupUsage, FakeCredentialStates, FakeDirectory, FakeEntitlements, InMemoryCapturedOfferRepository, InMemoryGroupMonitorRepository, SESSION, TENANT } from './monitorTestFakes';
 
 function setup(entitlements: Record<string, unknown> = {}) {
   const monitors = new InMemoryGroupMonitorRepository();
   const directory = new FakeDirectory();
   const credentialStates = new FakeCredentialStates();
   const captured = new InMemoryCapturedOfferRepository();
-  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, now: () => NOW };
+  const broadcastUsage = new FakeBroadcastGroupUsage(monitors);
+  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, now: () => NOW };
   return {
-    monitors, directory, credentialStates, captured,
+    monitors, directory, credentialStates, captured, broadcastUsage,
     get: new GetGroupMonitorConfigUseCase(deps),
     settings: new SaveGroupMonitorSettingsUseCase(deps),
     monitored: new SaveMonitoredGroupsUseCase(deps),
@@ -254,5 +255,56 @@ describe('GetGroupMonitorConfigUseCase — credentialAlerts', () => {
     expect((await s.get.execute(base)).credentialAlerts).toEqual([{ provider: 'SHOPEE', kind: 'REJECTED', since: REJ.toISOString(), code: 'X' }]);
     const saved = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'g' }] });
     expect(saved.credentialAlerts).toBeUndefined();
+  });
+});
+
+describe('GroupMonitorConfig — limite de disparo pela união com o gerador', () => {
+  const gen = (s: ReturnType<typeof setup>, ...jids: string[]) =>
+    s.broadcastUsage.generator.push(...jids.map((groupJid) => ({ tenantId: TENANT, sessionId: SESSION, groupJid })));
+
+  it('LITE com 5 no gerador e 1 novo no monitoramento → PLAN_LIMIT_REACHED; nada salvo', async () => {
+    const s = setup({ broadcast_groups: 5 });
+    gen(s, 'g1', 'g2', 'g3', 'g4', 'g5');
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'novo' }] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'broadcast_groups', limit: 5 } });
+    expect(s.monitors.broadcast).toEqual([]);
+  });
+
+  it('mesmo grupo no gerador e no monitoramento conta 1; usage do GET = união', async () => {
+    const s = setup({ broadcast_groups: 5 });
+    gen(s, 'g1', 'g2', 'g3', 'g4', 'g5');
+    const out = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'g1' }, { groupJid: 'g2' }] });
+    expect(out.usage.whatsapp.broadcastGroups).toBe(5);
+    expect(out.usage.broadcastGroups).toBe(5);
+    expect((await s.get.execute(base)).usage.whatsapp.broadcastGroups).toBe(5);
+  });
+
+  it('lista atual do próprio monitoramento é substituída, não somada; outro tenant não conta', async () => {
+    const s = setup({ broadcast_groups: 2 });
+    s.broadcastUsage.generator.push({ tenantId: 'outro', sessionId: SESSION, groupJid: 'x1' }, { tenantId: 'outro', sessionId: SESSION, groupJid: 'x2' });
+    gen(s, 'g1');
+    await s.broadcast.execute({ ...base, groups: [{ groupJid: 'a' }] });
+    const out = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'b' }] });
+    expect(out.usage.whatsapp.broadcastGroups).toBe(2);
+  });
+
+  it('canais separados: gerador cheio no WhatsApp não trava Telegram', async () => {
+    const s = setup({ broadcast_groups: 1, telegram_broadcast_groups: 1 });
+    s.monitors.sessions.add(`${TENANT}:tg-1`);
+    s.monitors.engines['tg-1'] = 'telegram';
+    gen(s, 'g1');
+    const out = await s.broadcast.execute({ tenantId: TENANT, sessionId: 'tg-1', groups: [{ groupJid: '-100' }] });
+    expect(out.usage.whatsapp.broadcastGroups).toBe(1);
+    expect(out.usage.telegram.broadcastGroups).toBe(1);
+  });
+
+  it('conflito com monitorado e grupo tomado seguem iguais com o gerador somado', async () => {
+    const s = setup({ cross_session_dispatch: true, broadcast_groups: 10 });
+    gen(s, 'g1');
+    await s.monitored.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'mon', keywords: [] }] });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'mon' }] })).rejects.toMatchObject({ code: 'GROUP_MONITOR_GROUP_CONFLICT' });
+    await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'shared' }] });
+    await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'shared', sessionId: 'session-2' }] }))
+      .rejects.toMatchObject({ code: 'GROUP_MONITOR_BROADCAST_TAKEN' });
   });
 });

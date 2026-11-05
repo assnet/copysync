@@ -16,6 +16,8 @@ import { PlanFeatureUnavailableError, PlanLimitReachedError } from '../../../../
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { postabilityOf } from '../../../campaigns/domain/services/groupPostability';
 import { loadLiveGroups } from '../../../campaigns/application/services/loadLiveGroups';
+import { countDistinctBroadcastGroups } from '../../../campaigns/domain/services/broadcastGroupUnion';
+import type { IBroadcastGroupUsageReader } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
 import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
 
 /** WhatsApp; Telegram em `telegram_*`. Chave por canal: `limitKeyOfChannel` (tenants/domain/channelLimits). */
@@ -30,6 +32,8 @@ export interface GroupMonitorConfigDeps {
   entitlements: IEntitlementReader;
   credentialStates: ICredentialStateSource;
   captured: ICapturedOfferRepository;
+  /** União gerador ⋃ monitoramentos: limite e uso de grupos de disparo (BG-01/BG-03). */
+  broadcastUsage: IBroadcastGroupUsageReader;
   now?: () => Date;
 }
 
@@ -52,7 +56,7 @@ abstract class GroupMonitorConfigBase {
   protected async load({ tenantId, sessionId }: SessionInput): Promise<GroupMonitorConfigDTO> {
     const { monitors, entitlements } = this.deps;
     const num = (kind: 'monitoredGroups' | 'broadcastGroups', ch: LimitChannel) => entitlements.getNumber(tenantId, limitKeyOfChannel(kind, ch));
-    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession] = await Promise.all([
+    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, unionRows] = await Promise.all([
       monitors.findConfig(tenantId, sessionId),
       monitors.listMonitored(tenantId, sessionId),
       monitors.listBroadcast(tenantId, sessionId),
@@ -64,6 +68,7 @@ abstract class GroupMonitorConfigBase {
       num('broadcastGroups', 'telegram'),
       entitlements.getBoolean(tenantId, MENTION_ALL_ENABLED),
       entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
+      this.deps.broadcastUsage.listRows(tenantId),
     ]);
     const live = broadcast.length > 0
       ? await loadLiveGroups(broadcast.map((g) => g.sessionId), (id) => this.deps.directory.listParticipating(id))
@@ -73,7 +78,8 @@ abstract class GroupMonitorConfigBase {
       : { ...DEFAULT_MONITOR_SETTINGS };
     // Grupos de sessão apagada não ocupam cota
     const mon = countByChannel(jids.monitored.filter((g) => g.live), (g) => g.engine);
-    const bc = countByChannel(jids.broadcast.filter((g) => g.live), (g) => g.engine);
+    // Disparo: grupos distintos do gerador + todos os monitoramentos (D4: configurado conta, sem consulta à engine)
+    const bc = countDistinctBroadcastGroups(unionRows, (r) => r.engine);
     const whatsapp = { monitoredGroups: waMon, broadcastGroups: waBc };
     const usageWa = { monitoredGroups: mon.whatsapp, broadcastGroups: bc.whatsapp };
     return {
@@ -204,16 +210,22 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
 
     // Limite por canal (canal do grupo = engine da sessão dona); só canais com grupo pedido são checados
     const kind = role === 'monitored' ? 'monitoredGroups' : 'broadcastGroups';
-    const elsewhere = role === 'monitored'
-      ? jids.monitored.filter((g) => g.live && g.sessionId !== sessionId)
-      : jids.broadcast.filter((g) => g.live && g.monitorSessionId !== sessionId);
-    const used = countByChannel(elsewhere, (g) => g.engine);
     const asked = countByChannel(unique, (r) => engineOf(r.sessionId));
+    // Total após o save. Disparo: união distinta (sessão + JID) com o gerador e os outros monitoramentos (BG-01)
+    const total = role === 'monitored'
+      ? (() => {
+          const used = countByChannel(jids.monitored.filter((g) => g.live && g.sessionId !== sessionId), (g) => g.engine);
+          return { whatsapp: used.whatsapp + asked.whatsapp, telegram: used.telegram + asked.telegram };
+        })()
+      : countDistinctBroadcastGroups<{ sessionId: string; groupJid: string; engine: string }>([
+          ...(await this.deps.broadcastUsage.listRows(tenantId, { exceptMonitorSessionId: sessionId })),
+          ...unique.map((r) => ({ ...r, engine: engineOf(r.sessionId) })),
+        ], (r) => r.engine);
     for (const ch of LIMIT_CHANNELS) {
       if (asked[ch] === 0) continue;
       const key = limitKeyOfChannel(kind, ch);
       const limit = await this.deps.entitlements.getNumber(tenantId, key);
-      if (limit !== null && used[ch] + asked[ch] > limit) throw new PlanLimitReachedError(key, limit);
+      if (limit !== null && total[ch] > limit) throw new PlanLimitReachedError(key, limit);
     }
 
     const configId = await this.deps.monitors.ensureConfig(tenantId, sessionId);

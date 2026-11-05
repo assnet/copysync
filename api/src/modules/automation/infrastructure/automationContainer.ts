@@ -2,6 +2,7 @@ import { prisma } from '../../../shared/database/prisma.client';
 import { offersContainer } from '../../campaigns/infrastructure/offersContainer';
 import { PrismaGroupMonitorRepository } from './repositories/PrismaGroupMonitorRepository';
 import { PrismaCapturedOfferRepository } from './repositories/PrismaCapturedOfferRepository';
+import { PrismaBroadcastGroupUsageReader } from '../../campaigns/infrastructure/repositories/PrismaBroadcastGroupUsageReader';
 import {
   CampaignsCredentialStateSource, CampaignsMonitorImageStore, CampaignsMonitorProductReader, CampaignsMonitorTextComposer, CampaignsOfferQueue,
   CampaignsTenantLinkBuilder, ChatMonitorGroupDirectory,
@@ -22,9 +23,10 @@ function lazy<T>(make: () => T): () => T {
 const monitors  = lazy(() => new PrismaGroupMonitorRepository(prisma));
 const captured  = lazy(() => new PrismaCapturedOfferRepository(prisma));
 const directory = lazy(() => new ChatMonitorGroupDirectory());
+const broadcastUsage = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));
 const configDeps = () => ({
   monitors: monitors(), directory: directory(), entitlements: offersContainer.entitlements(),
-  credentialStates: new CampaignsCredentialStateSource(), captured: captured(),
+  credentialStates: new CampaignsCredentialStateSource(), captured: captured(), broadcastUsage: broadcastUsage(),
 });
 
 export const automationContainer = {
