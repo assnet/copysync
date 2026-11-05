@@ -12,7 +12,15 @@ export const MONITOR_LIMITS = {
   groupsPerSession: 100,
   keywordsPerGroup: 20,
   keywordLength: 40,
+  /** 0 = domingo … 6 = sábado. */
+  weekday: { min: 0, max: 6 },
 } as const;
+
+/** Dias de postagem padrão: todos (mask 127, espelha o `@default` do Prisma). */
+export const DEFAULT_MONITOR_WEEKDAYS: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
+
+/** Configuração com os dias de postagem (ausente = cliente anterior: mantém o salvo). */
+export type MonitorSettingsWithWeekdays = GroupMonitorSettings & { weekdays?: readonly number[] };
 
 /** Padrões (espelham os `@default` do Prisma): 06:00–18:00 e 15–40 min entre envios. */
 export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
@@ -37,7 +45,7 @@ export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;
 
 /** Primeiro problema encontrado (`field` + motivo), ou null. Faixas espelham o painel. */
-export function monitorSettingsProblem(s: GroupMonitorSettings): { field: keyof GroupMonitorSettings; reason: string } | null {
+export function monitorSettingsProblem(s: MonitorSettingsWithWeekdays): { field: keyof MonitorSettingsWithWeekdays; reason: string } | null {
   const minute = { min: 0, max: MINUTES_PER_DAY };
   if (!inRange(s.windowStartMinute, minute)) return { field: 'windowStartMinute', reason: 'out of range' };
   if (!inRange(s.windowEndMinute, minute)) return { field: 'windowEndMinute', reason: 'out of range' };
@@ -45,6 +53,10 @@ export function monitorSettingsProblem(s: GroupMonitorSettings): { field: keyof 
   const full = s.windowStartMinute === 0 && s.windowEndMinute === MINUTES_PER_DAY;
   if (!full && s.windowStartMinute % MINUTES_PER_DAY === s.windowEndMinute % MINUTES_PER_DAY) {
     return { field: 'windowEndMinute', reason: 'empty window' };
+  }
+  if (s.weekdays !== undefined) {
+    const reason = weekdaysProblem(s.weekdays);
+    if (reason) return { field: 'weekdays', reason };
   }
   if (!inRange(s.intervalMinSeconds, MONITOR_LIMITS.intervalSeconds)) return { field: 'intervalMinSeconds', reason: 'out of range' };
   if (!inRange(s.intervalMaxSeconds, MONITOR_LIMITS.intervalSeconds)) return { field: 'intervalMaxSeconds', reason: 'out of range' };
@@ -58,6 +70,14 @@ export function monitorSettingsProblem(s: GroupMonitorSettings): { field: keyof 
   if (!MONITOR_TEXT_MODES.includes(s.textMode)) return { field: 'textMode', reason: 'unknown' };
   if (!OFFER_AUDIENCES.includes(s.audience)) return { field: 'audience', reason: 'unknown' };
   if (!OFFER_IMAGE_MODES.includes(s.imageMode)) return { field: 'imageMode', reason: 'unknown' };
+  return null;
+}
+
+/** Lista de dias: ≥ 1, inteiros 0..6, sem repetição (mask 0 é inválido). */
+function weekdaysProblem(days: readonly number[]): string | null {
+  if (days.length === 0) return 'empty';
+  if (!days.every((d) => inRange(d, MONITOR_LIMITS.weekday))) return 'out of range';
+  if (new Set(days).size !== days.length) return 'duplicate';
   return null;
 }
 

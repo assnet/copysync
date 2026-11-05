@@ -16,6 +16,11 @@ const settingsProperties = {
   enabled: { type: 'boolean' },
   windowStartMinute: int(0, MINUTES_PER_DAY),
   windowEndMinute: int(0, MINUTES_PER_DAY),
+  /** Dias de postagem (0 = domingo … 6 = sábado), ao menos um. */
+  weekdays: {
+    type: 'array', minItems: 1, maxItems: 7, uniqueItems: true,
+    items: int(MONITOR_LIMITS.weekday.min, MONITOR_LIMITS.weekday.max),
+  },
   captureOutsideWindow: { type: 'boolean' },
   intervalMinSeconds: int(MONITOR_LIMITS.intervalSeconds.min, MONITOR_LIMITS.intervalSeconds.max),
   intervalMaxSeconds: int(MONITOR_LIMITS.intervalSeconds.min, MONITOR_LIMITS.intervalSeconds.max),
@@ -30,9 +35,9 @@ const settingsProperties = {
   enrichLinkOnly: { type: 'boolean' },
   imageMode: { type: 'string', enum: [...OFFER_IMAGE_MODES] },
 } as const;
-// Campos que entraram depois (`captureOutsideWindow` app 0.50.0, `imageMode`): cliente antigo salva sem
-// eles → o use case mantém o valor salvo
-const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow', 'imageMode']);
+// Campos que entraram depois (`captureOutsideWindow` app 0.50.0, `imageMode`, `weekdays`): cliente antigo
+// salva sem eles → o use case mantém o valor salvo
+const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow', 'imageMode', 'weekdays']);
 const settingsKeys = Object.keys(settingsProperties).filter((k) => !OPTIONAL_SETTINGS.has(k));
 
 export const sessionQuerySchema = {

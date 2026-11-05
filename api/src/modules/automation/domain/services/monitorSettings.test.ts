@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { captureExpiresAt, DEFAULT_MONITOR_SETTINGS, monitorSettingsProblem, normalizeKeywords } from './monitorSettings';
+import { captureExpiresAt, DEFAULT_MONITOR_SETTINGS, DEFAULT_MONITOR_WEEKDAYS, monitorSettingsProblem, normalizeKeywords } from './monitorSettings';
 
 const s = (o = {}) => ({ ...DEFAULT_MONITOR_SETTINGS, ...o });
 
@@ -19,8 +19,30 @@ describe('monitorSettingsProblem', () => {
     [{ couponMaxAgeMinutes: 200 }, 'couponMaxAgeMinutes'],
     [{ typingSeconds: 0 }, 'typingSeconds'],
     [{ startDelaySeconds: 1.5 }, 'startDelaySeconds'],
+    [{ weekdays: [] }, 'weekdays'],
+    [{ weekdays: [7] }, 'weekdays'],
+    [{ weekdays: [-1, 2] }, 'weekdays'],
+    [{ weekdays: [1.5] }, 'weekdays'],
+    [{ weekdays: [1, 1] }, 'weekdays'],
   ])('%o → %s', (o, field) => {
     expect(monitorSettingsProblem(s(o))?.field).toBe(field);
+  });
+});
+
+describe('weekdays', () => {
+  it('ausente (cliente anterior), um dia, fim de semana e todos são válidos', () => {
+    expect(monitorSettingsProblem(s())).toBeNull();
+    expect(monitorSettingsProblem(s({ weekdays: [3] }))).toBeNull();
+    expect(monitorSettingsProblem(s({ weekdays: [6, 0] }))).toBeNull();
+    expect(monitorSettingsProblem(s({ weekdays: [...DEFAULT_MONITOR_WEEKDAYS] }))).toBeNull();
+  });
+  it('motivo de cada recusa', () => {
+    expect(monitorSettingsProblem(s({ weekdays: [] }))?.reason).toBe('empty');
+    expect(monitorSettingsProblem(s({ weekdays: [0, 7] }))?.reason).toBe('out of range');
+    expect(monitorSettingsProblem(s({ weekdays: [2, 2] }))?.reason).toBe('duplicate');
+  });
+  it('janela inválida tem prioridade sobre os dias', () => {
+    expect(monitorSettingsProblem(s({ windowStartMinute: 600, windowEndMinute: 600, weekdays: [] }))?.field).toBe('windowEndMinute');
   });
 });
 

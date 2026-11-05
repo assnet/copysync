@@ -19,11 +19,14 @@ export interface CredentialAlertDTO {
 export interface ChannelGroupLimitsDTO { monitoredGroups: number | null; broadcastGroups: number | null }
 export interface ChannelGroupUsageDTO { monitoredGroups: number; broadcastGroups: number }
 
+/** Configuração devolvida: `weekdays` = dias de postagem (0 = domingo … 6 = sábado), ordenados; ausente = todos. */
+export type GroupMonitorSettingsDTO = GroupMonitorSettings & { weekdays?: number[] };
+
 export interface GroupMonitorConfigDTO {
   sessionId: string;
   /** Canal da sessão do monitor (`whatsapp` | `telegram`): os grupos monitorados contam nele. */
   channel: LimitChannel;
-  settings: GroupMonitorSettings;
+  settings: GroupMonitorSettingsDTO;
   monitoredGroups: { conversationId: string; groupJid: string; title: string | null; avatarUrl: string | null; keywords: string[] }[];
   /** `sessionId` = sessão que envia naquele grupo (igual à do monitor, ou outra com `crossSessionDispatch`). */
   broadcastGroups: ({ conversationId: string; groupJid: string; sessionId: string; title: string | null; avatarUrl: string | null; position: number } & GroupPostability)[];
