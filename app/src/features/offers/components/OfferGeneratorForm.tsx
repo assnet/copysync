@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
 import CloseIcon from '@mui/icons-material/Close';
-import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { SectionCard } from '@/components';
 import type { GenerateOfferRequest, OfferAudience } from '@/types/api.types';
@@ -212,7 +212,7 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
               disableElevation
               fullWidth
               disabled={busy}
-              startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeOutlinedIcon />}
+              startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <BoltOutlinedIcon />}
               aria-live="polite"
             >
               {generating ? t.generating : t.submit}

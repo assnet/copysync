@@ -127,7 +127,13 @@ export function PostingWindowField({ value, onChange, disabled }: PostingWindowF
         disabled={disabled}
         onChange={(_, next: number[]) => changeDays(next)}
         aria-labelledby={daysLabelId}
-        sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600, px: 0, py: 0.75, minWidth: 0 } }}
+        sx={{
+          '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 600, px: 0, py: 0.75, minWidth: 0 },
+          // primary.main sobre o fundo tingido do selecionado fica abaixo de 4,5:1 nos dois modos
+          '& .MuiToggleButton-root.Mui-selected': {
+            color: theme.palette.mode === 'dark' ? theme.palette.primary.light : theme.palette.primary.dark,
+          },
+        }}
       >
         {WEEKDAYS.map((day) => {
           const last = onlyOne && selected[0] === day;

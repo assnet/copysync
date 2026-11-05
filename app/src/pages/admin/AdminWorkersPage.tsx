@@ -55,7 +55,7 @@ function WorkersTable({ workers }: { workers: WorkerOccupancy[] }) {
         <TableBody>
           {sortWorkers(workers).map((w) => (
             <TableRow key={w.workerId}>
-              <TableCell sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{w.workerId}</TableCell>
+              <TableCell sx={{ fontFamily: 'monospace', wordBreak: 'break-all', minWidth: 120 }}>{w.workerId}</TableCell>
               <TableCell>{t.roles[w.role] ?? w.role}</TableCell>
               <TableCell><OccupancyCell worker={w} /></TableCell>
               <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{w.pendingLogins ?? 0}</TableCell>

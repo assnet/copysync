@@ -18,12 +18,17 @@ import type { SessionItem } from '@/types/api.types';
 import { channelOf, isAwaitingStatus } from '@/features/sessions/utils';
 import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { sessionStrings } from '@/features/sessions/strings';
+import { Blurred, useBlur } from '@/features/privacy';
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { activeTenantName } = useTenant();
   const theme = useTheme();
+  const blurTenant = useBlur('layout.tenantName');
+  const blurName = useBlur('sessions.sessionName');
+  const blurPhone = useBlur('sessions.sessionPhone');
+  const blurAvatar = useBlur('sessions.sessionAvatar');
 
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +68,7 @@ export function DashboardPage() {
             Tenant ativo:
           </Typography>
           {activeTenantName ? (
-            <Chip label={activeTenantName} size="small" color="primary" variant="outlined" />
+            <Chip label={<Blurred when={blurTenant} inline radius={4}>{activeTenantName}</Blurred>} size="small" color="primary" variant="outlined" />
           ) : (
             <Typography variant="body2" color="text.disabled">Nenhum tenant selecionado</Typography>
           )}
@@ -118,6 +123,8 @@ export function DashboardPage() {
                 variant="contained"
                 endIcon={<ArrowForwardIcon />}
                 onClick={() => navigate('/settings/sessions')}
+                // Sem isto o flex do cabeçalho espreme o botão a 375 px e o rótulo vaza do fundo
+                sx={{ flexShrink: 0 }}
               >
                 Gerenciar
               </Button>
@@ -154,12 +161,14 @@ export function DashboardPage() {
                       {/* Avatar com o ponto de status sobreposto: identidade da conexão,
                           como num chat, mas com o estado sempre visível */}
                       <Box sx={{ position: 'relative', flexShrink: 0 }}>
-                        <Avatar
-                          src={s.avatarUrl ?? undefined}
-                          sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 700 }}
-                        >
-                          {s.name[0]?.toUpperCase() ?? '?'}
-                        </Avatar>
+                        <Blurred when={blurAvatar || blurName} radius={8} sx={{ borderRadius: '50%' }}>
+                          <Avatar
+                            src={s.avatarUrl ?? undefined}
+                            sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 700 }}
+                          >
+                            {s.name[0]?.toUpperCase() ?? '?'}
+                          </Avatar>
+                        </Blurred>
                         <Box
                           sx={{
                             position: 'absolute',
@@ -183,14 +192,18 @@ export function DashboardPage() {
                       <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
                           <ChannelLogo channel={channelOf(s.engine)} size="sm" labelled />
-                          <Typography variant="body2" fontWeight={600} noWrap sx={{ lineHeight: 1.3 }}>
-                            {s.name}
-                          </Typography>
+                          <Blurred when={blurName} inline>
+                            <Typography variant="body2" fontWeight={600} noWrap sx={{ lineHeight: 1.3 }}>
+                              {s.name}
+                            </Typography>
+                          </Blurred>
                         </Box>
                         {s.phone && (
-                          <Typography variant="caption" color="text.secondary" noWrap sx={{ lineHeight: 1.3 }}>
-                            {formatPhone(s.phone)}
-                          </Typography>
+                          <Blurred when={blurPhone} inline radius={5}>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ lineHeight: 1.3 }}>
+                              {formatPhone(s.phone)}
+                            </Typography>
+                          </Blurred>
                         )}
                       </Box>
                     </Box>

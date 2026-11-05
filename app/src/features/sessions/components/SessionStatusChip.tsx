@@ -31,7 +31,14 @@ export function SessionStatusChip({ status, awaitingCapacity = false }: SessionS
     const t = sessionStrings.awaitingCapacity;
     return (
       <Tooltip title={t.tooltip} arrow>
-        <Chip label={t.label} color="warning" variant="outlined" size="small" />
+        {/* Rótulo longo: quebra em vez de cortar com reticências em card estreito */}
+        <Chip
+          label={t.label}
+          color="warning"
+          variant="outlined"
+          size="small"
+          sx={{ maxWidth: '100%', height: 'auto', minHeight: 24, '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
+        />
       </Tooltip>
     );
   }

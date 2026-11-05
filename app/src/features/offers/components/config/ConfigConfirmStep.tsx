@@ -89,12 +89,12 @@ export function ConfigConfirmStep({
           <Box
             aria-label={`${schedule.rangeAria}. ${schedule.days}`}
             role="group"
-            sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}
           >
             <Box component="span" aria-hidden sx={{ display: 'inline-flex', color: 'primary.main' }}>
               <AppIcon icon={postingWindow.window.overnight ? Moon : Clock} size="sm" />
             </Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
+            <Typography variant="subtitle1" sx={{ minWidth: 0, fontWeight: 600, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
               <Box component="span" sx={{ whiteSpace: 'nowrap' }}>{schedule.range}</Box>{' '}
               <Box component="span" sx={{ fontWeight: 500, color: 'text.secondary', whiteSpace: 'nowrap' }}>{`· ${schedule.days}`}</Box>
             </Typography>

@@ -372,12 +372,16 @@ export function AppLayout() {
           <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }} noWrap>
             {currentSectionLabel}
           </Typography>
+          {/* Seletor de tema também no mobile: a topbar desktop some abaixo de `sm` */}
+          <ThemeModeSelector />
           {activeTenantName && (
             <Chip
               label={<Blurred when={blurTenant} inline radius={4}>{activeTenantName}</Blurred>}
               size="small"
               color="primary"
               variant="outlined"
+              // Teto de largura: com o seletor de tema ao lado, o nome longo espremia o título da seção
+              sx={{ maxWidth: 128, ml: 0.5 }}
             />
           )}
         </Toolbar>

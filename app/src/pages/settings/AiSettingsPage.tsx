@@ -1,5 +1,5 @@
 import { Alert, AlertTitle, Box, Button, CircularProgress } from '@mui/material';
-import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import { PageHeader } from '@/components';
 import { TenantAiKeyForm } from '@/features/ai/components/TenantAiKeyForm';
 import { useTenantAi } from '@/features/ai/hooks/useTenantAi';
@@ -33,7 +33,7 @@ export function AiSettingsPage() {
           {ai.loadError ?? aiStrings.errors.generic}
         </Alert>
       ) : s.mode === 'PLATFORM' ? (
-        <Alert severity="success" icon={<AutoAwesomeOutlinedIcon />} variant="outlined">
+        <Alert severity="success" icon={<PsychologyOutlinedIcon />} variant="outlined">
           <AlertTitle sx={{ fontWeight: 700 }}>{t.includedTitle}</AlertTitle>
           {t.includedBody}
         </Alert>
