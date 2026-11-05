@@ -89,7 +89,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `app/src/pages/settings/SubscriptionPage.tsx`, `app/src/routes/AppRoutes.tsx`, `app/src/features/settings/components/SettingsLayout.tsx` (+ teste da página).
 **Depends on**: T13, T14 **Req**: SUB-10 **Tests**: unit **Gate**: quick
 
-### T16: Redirect em tenant suspenso ⏳
+### T16: Redirect em tenant suspenso ✅ 88e5523
 **What**: no interceptor, `code === 'TENANT_SUSPENDED'` → `/settings/subscription?suspended=1` (uma vez, nunca na própria rota; sem `clearSession`).
 **Where**: `app/src/services/apiClient.ts` (+ teste).
 **Depends on**: T15 **Req**: SUB-09 **Done when**: teste: redireciona de outra rota; não faz loop na tela. **Tests**: unit **Gate**: full
