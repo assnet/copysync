@@ -48,7 +48,7 @@ Regras comuns a toda task:
 | F6 | Chaves órfãs só voltam com a mesma versão | F3 | P | ✅ 7691e65 |
 | F7 | Resume sem `release` e com nova tentativa | F3 | P | ✅ 14527c4 |
 | F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ✅ 557f8c6 |
-| F9 | Resume no adapter mantém suspensa em erro | F8 | | ⏳ |
+| F9 | Resume no adapter mantém suspensa em erro | F8 | | ✅ 1b2a3bb |
 
 ## Notas de execução (passagem entre tarefas)
 

@@ -27,12 +27,12 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `integrations/billing/ApplyBillingEventUseCase.ts`, `billing.routes.ts` (+ `ApplyBillingEventUseCase.test.ts`, `billing.routes.test.ts`).
 **Depends on**: T1 **Req**: SUB-03 **Done when**: testes: renewed com data grava; payment_failed preserva; data inválida vira null. **Tests**: unit **Gate**: quick
 
-### T3 [P]: Hook tolerante a tenant inativo ⏳
+### T3 [P]: Hook tolerante a tenant inativo ✅ 5d3950a
 **What**: `resolveMembership(..., { allowInactive?: boolean })`; hook `tenantAnyStatusHook` (mesmo header `x-tenant-id`) que só pula a checagem de status. Membro inexistente segue 403.
 **Where**: `shared/http/hooks/resolveMembership.ts`, `shared/http/hooks/tenantAnyStatusHook.ts` (+ teste).
 **Depends on**: — **Req**: SUB-02 **Done when**: teste: SUSPENDED passa no hook novo e falha no `tenantHook`; não-membro 403 nos dois. **Tests**: unit **Gate**: quick
 
-### T4 [P]: Regra pura dos limites exibidos ⏳
+### T4 [P]: Regra pura dos limites exibidos ✅ 33ec2ee
 **What**: `SUBSCRIPTION_LIMIT_ITEMS` (chave, canal, kind) a partir de `ENTITLEMENT_KEYS`/`limitKeyOfChannel`; `buildSubscriptionLimits(values, usage)` → itens do contrato (ausente numérico = ilimitado; feature ausente = `false`, exceto `mention_all_enabled`/`ai_rewrite_enabled`, só `false` explícito bloqueia).
 **Where**: `tenants/domain/services/subscriptionLimits.ts` (+ `.test.ts`).
 **Depends on**: — **Req**: SUB-04 **Done when**: teste trava a lista contra `ENTITLEMENT_KEYS` (chave nova sem decisão falha) e as regras de ausente. **Tests**: unit **Gate**: quick
@@ -42,7 +42,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `tenants/domain/contracts/ITenantUsageReader.ts`, `tenants/infrastructure/repositories/PrismaTenantUsageReader.ts`.
 **Depends on**: T4 (tipo de uso) **Req**: SUB-05 **Done when**: `tsc`; conferido no descartável que bate com as telas de sessões, monitoramento, rodízio e gerador. **Tests**: none (infra Prisma) **Gate**: full
 
-### T6 [P]: Leitura de entitlements em lote ⏳
+### T6 [P]: Leitura de entitlements em lote ✅ 567372f
 **What**: porta nova `IEntitlementSnapshotReader.readAll(tenantId): Record<string, unknown>` (não muda `IEntitlementReader`, evita quebrar fakes) e impl em `PrismaEntitlementReader` (1 `findMany`).
 **Where**: `tenants/domain/contracts/IEntitlementSnapshotReader.ts`, `tenants/infrastructure/repositories/PrismaEntitlementReader.ts`.
 **Depends on**: — **Req**: SUB-04 **Tests**: none **Gate**: quick
@@ -59,17 +59,17 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 
 ## App
 
-### T10 [P]: Tipos + serviço ⏳
+### T10 [P]: Tipos + serviço ✅ 702015b
 **What**: `SubscriptionResponse` (contrato da spec) e `subscription.service.ts` (`getSubscription()` pelo `apiClient`).
 **Where**: `app/src/types/api.types.ts`, `app/src/services/subscription.service.ts` (+ `.test.ts`).
 **Depends on**: — (contrato fixo) **Req**: SUB-01 **Tests**: unit **Gate**: quick
 
-### T11 [P]: Link da página de venda ⏳
+### T11 [P]: Link da página de venda ✅ 1666d18
 **What**: `buildCheckoutUrl(slug, period, search)` do `plans-modal` T3: `VITE_BILLING_CHECKOUT_URL` + `/planos/copysync-{plano}-{periodo}`, repassa `utm_*`/`gclid`/`fbclid`, env ausente → `null`; documentar em `app/.env.example`.
 **Where**: `app/src/features/plans/checkout.ts` (+ `.test.ts`), `app/.env.example`.
 **Depends on**: — (D2) **Req**: SUB-07 **Tests**: unit **Gate**: quick
 
-### T12 [P]: Textos e privacidade ⏳
+### T12 [P]: Textos e privacidade ✅ 3bc9c14
 **What**: `features/subscription/strings.ts` (título, status, vencimento, rótulos/hints por chave, CTA, aviso de suspensão, "Ilimitado", "Incluso", "A partir do X" via `PLAN_CATALOG`); tela `subscription` em `PRIVACY_SCREENS` com flag `subscription.tenantName`.
 **Where**: `app/src/features/subscription/strings.ts`, `app/src/features/privacy/privacyFlags.ts` (+ `privacy.test.tsx` se contar telas).
 **Depends on**: — **Req**: SUB-10 **Tests**: unit **Gate**: quick

@@ -22,7 +22,7 @@ Regras comuns a toda task:
 | T4 | Erro interno ↔ formato de fio | — | P | ✅ 52092c0 |
 | T5 | `findLiveOwner` no repositório de lease | — | P | ✅ 09accd1 |
 | T6 | `createOutboundMessageId` assíncrono | — | P | ✅ 133391b |
-| T7 | Plano de chamadas da engine + codec + portas | T6 | | ⏳ |
+| T7 | Plano de chamadas da engine + codec + portas | T6 | | ✅ 20b57d0 |
 | T8 | Transporte RPC no Redis | T3, T7 | P | ⏳ |
 | T9 | Filas BullMQ de comando (`engine-cmd-{id}`, `session-open`) | T3, T7 | P | ⏳ |
 | T10 | `EngineCommandServer` (worker) | T4, T7 | P | ⏳ |

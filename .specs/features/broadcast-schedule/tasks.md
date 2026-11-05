@@ -19,7 +19,7 @@ Onda 7: T23(T22) → T24 → T25
 
 ## Grupos de disparo (BG)
 
-### T1: Regra pura da união de grupos [P] ⏳
+### T1: Regra pura da união de grupos [P] ✅ 91af3e3
 - **What:** `countDistinctBroadcastGroups(rows, engineOf)` → `Record<LimitChannel, number>`, chave `sessionId+groupJid`.
 - **Where:** `m/campaigns/domain/services/broadcastGroupUnion.ts` (+ `.test.ts`)
 - **Depends on:** — · **Reqs:** BG-01
@@ -62,13 +62,13 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** 404 para conversa de outro tenant; idempotente.
 - **Tests:** unit + int do método · **Gate:** int + quick
 
-### T7: Painel — serviço, tipos e hook [P] ⏳
+### T7: Painel — serviço, tipos e hook [P] ✅ fd2289a
 - **What:** `broadcastGroups.service.ts` (Axios central), tipos em `api.types.ts`, `useBroadcastGroups` (lista, remover, recarga por id).
 - **Where:** `app/src/services/broadcastGroups.service.ts`, `app/src/types/api.types.ts`, `app/src/features/broadcastGroups/hooks/useBroadcastGroups.ts` (+ `.test.ts`)
 - **Depends on:** T6 · **Reqs:** BG-04, BG-05
 - **Tests:** unit (hook) · **Gate:** quick
 
-### T8: Painel — strings e flags de privacidade [P] ⏳
+### T8: Painel — strings e flags de privacidade [P] ✅ 9a7c24a
 - **What:** `strings.ts` da feature (pt-BR, rótulos/tooltip/erros); tela `broadcastGroups` em `PRIVACY_SCREENS` (`groupNames`, `groupAvatars`, `sessionName`).
 - **Where:** `app/src/features/broadcastGroups/strings.ts`, `app/src/features/privacy/privacyFlags.ts` (+ teste existente)
 - **Depends on:** — · **Reqs:** BG-06
@@ -95,7 +95,7 @@ Onda 7: T23(T22) → T24 → T25
 
 ## Horário de postagem (PS)
 
-### T9: Regra pura com dias da semana [P] ⏳
+### T9: Regra pura com dias da semana [P] ✅ be96caa
 - **What:** `postingWindow.ts` (`weekdaysMask`, `weekdayInZone`, `isWithinPostingWindow(at,w)`, `resolveStartWithinPostingWindow` até 7 dias, madrugada = dia do início, mask 0 inválido); `operatingWindow.ts` passa a delegar (API atual preservada, mask padrão 127).
 - **Where:** `m/campaigns/domain/services/postingWindow.ts` (+ `.test.ts`), `m/automation/domain/services/operatingWindow.ts` (+ testes atuais verdes)
 - **Depends on:** — · **Reqs:** PS-01
@@ -135,7 +135,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** captura no domingo com mask seg–sex vai para segunda na abertura; validade continua contando da captura.
 - **Tests:** unit · **Gate:** quick
 
-### T11: Extrair `fitSlots` para o domínio [P] ⏳
+### T11: Extrair `fitSlots` para o domínio [P] ✅ cd14ca1
 - **What:** mover a função local de `EnqueueOfferUseCase` para `domain/services` sem mudar comportamento.
 - **Where:** `m/campaigns/domain/services/fitSlots.ts` (+ `.test.ts`), `m/campaigns/application/use-cases/EnqueueOfferUseCase.ts`
 - **Depends on:** — · **Reqs:** PS-05

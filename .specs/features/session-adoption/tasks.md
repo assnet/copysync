@@ -29,11 +29,11 @@ Regras comuns:
 | T11 | Jobs de heartbeat e alerta de capacidade | T2, T4, T5, T8 | | ✅ 60744e1 |
 | T12 | Sessão expõe `awaitingCapacity` | — | P | ✅ 177bf63 |
 | T13 | `GET /admin/workers` | T5, T8 | P | ✅ 72dd2c1 |
-| T14 | Composição `sessionAdoptionContainer` | T1, T7, T9, T10, T11 | | ⏳ |
+| T14 | Composição `sessionAdoptionContainer` | T1, T7, T9, T10, T11 | | ✅ 79c61cd |
 | T15 | `server.ts` + jobs por papel: ticker, bootstrap, shutdown | T14, E3 T19 | | ⏳ |
 | T16 | `session-open` pausa com worker cheio | T14, E3 T18 | P | ⏳ |
 | T17 | Painel: "Aguardando capacidade" | T12 | P | ✅ d616afb |
-| T18 | Painel: página `/admin/workers` | T13 | P | ⏳ |
+| T18 | Painel: página `/admin/workers` | T13 | P | ✅ 7f7a7d8 |
 | T19 | Smoke | T15, T16, T17, T18 | | ⏳ |
 | T20 | Docs, CHANGELOG e versão | T19 | | ⏳ |
 
