@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BaileysMessagingEngineAdapter } from './BaileysMessagingEngineAdapter';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
+import { EngineTemporarilyUnavailableError } from '../../../../../shared/errors/internal/MessagingErrors';
+import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 
 // Socket falso (mesmo molde do teste de pareamento): guarda handlers para disparar connection.update
 interface FakeSocket {
@@ -133,23 +135,51 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     await adapter.suspendSession('s1');
     gate.acquire.mockClear();
 
-    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
     expect(gate.acquire).toHaveBeenCalledWith('s1');
     expect(sockets).toHaveLength(2);
     expect(registry.get('s1')?.tenantId).toBe(T);
-    expect(await adapter.resumeSession('s1')).toBe(false); // uma vez só
+    expect(await adapter.resumeSession('s1')).toBe('gone'); // uma vez só
   });
 
-  it('resumeSession com lease de outro processo devolve false sem lançar nem abrir socket', async () => {
+  it('resumeSession com lease de outro processo devolve held sem abrir socket; a marca fica até forgetSuspension', async () => {
     const { adapter, gate } = make();
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
     await adapter.suspendSession('s1');
     gate.acquire.mockResolvedValueOnce(false);
 
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe('held');
     expect(sockets).toHaveLength(1);
-    expect(await adapter.resumeSession('s1')).toBe(false); // lease de outro dono limpa a marca
+    expect(await adapter.forgetSuspension('s1')).toBe(T);
+    expect(await adapter.forgetSuspension('s1')).toBeNull();
+    expect(await adapter.resumeSession('s1')).toBe('gone');
     expect(gate.acquire).toHaveBeenCalledTimes(2);
+  });
+
+  it('acquire com erro de banco na retomada lança (não é held), mantém a suspensa e a próxima reabre', async () => {
+    const gate = {
+      acquire: vi.fn(async () => true),
+      acquireResult: vi.fn(async (): Promise<'acquired' | 'held' | 'error'> => 'acquired'),
+    };
+    const { adapter, sessionRepo } = make(gate);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    sessionRepo.updateStatus.mockClear();
+    gate.acquireResult.mockResolvedValueOnce('error');
+
+    await expect(adapter.resumeSession('s1')).rejects.toBeInstanceOf(EngineTemporarilyUnavailableError);
+    expect(sockets).toHaveLength(1);
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
+    expect(sockets).toHaveLength(2);
+  });
+
+  it('acquire com erro de banco no connect do usuário dá 503 sem ser SessionLeaseHeldError', async () => {
+    const { adapter } = make({ acquire: vi.fn(async () => true), acquireResult: vi.fn(async () => 'error' as const) } as never);
+    const err = await adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(EngineTemporarilyUnavailableError);
+    expect(err).not.toBeInstanceOf(SessionLeaseHeldError);
+    expect(sockets).toHaveLength(0);
   });
 
   it('resumeSession que falha ao reabrir mantém a suspensa e relança; a 2ª chamada reabre', async () => {
@@ -162,12 +192,12 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     expect(registry.has('s1')).toBe(false);
     expect(sockets).toHaveLength(1);
 
-    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
     expect(sockets).toHaveLength(2);
     expect(registry.get('s1')?.tenantId).toBe(T);
   });
 
-  it('abort durante o resume que falha não devolve a sessão à suspensão', async () => {
+  it('abort durante o resume que falha devolve gone e não devolve a sessão à suspensão', async () => {
     const { adapter } = make();
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
     await adapter.suspendSession('s1');
@@ -179,22 +209,22 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     await adapter.abortSession('s1');
     fail(new Error('rede'));
 
-    await expect(p).rejects.toThrow('rede');
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await p).toBe('gone');
+    expect(await adapter.resumeSession('s1')).toBe('gone');
     expect(sockets).toHaveLength(1);
   });
 
   it('abort, disconnect ou sessão nunca suspensa: resumeSession não reabre', async () => {
     const { adapter } = make();
-    expect(await adapter.resumeSession('nada')).toBe(false);
+    expect(await adapter.resumeSession('nada')).toBe('gone');
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
     await adapter.suspendSession('s1');
     await adapter.abortSession('s1');
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe('gone');
     await adapter.connectSession({ sessionId: 's2', tenantId: T });
     await adapter.suspendSession('s2');
     await adapter.disconnectSession({ sessionId: 's2', tenantId: T });
-    expect(await adapter.resumeSession('s2')).toBe(false);
+    expect(await adapter.resumeSession('s2')).toBe('gone');
     expect(sockets).toHaveLength(2);
   });
 

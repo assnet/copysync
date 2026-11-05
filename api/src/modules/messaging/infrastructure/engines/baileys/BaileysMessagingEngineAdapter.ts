@@ -21,7 +21,7 @@ import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension'
 import { logger as appLogger } from '../../../../../shared/logger/logger';
 import { env } from '../../../../../shared/config/env';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
-import { EngineOperationUnsupportedError } from '../../../../../shared/errors/internal/MessagingErrors';
+import { EngineOperationUnsupportedError, EngineTemporarilyUnavailableError } from '../../../../../shared/errors/internal/MessagingErrors';
 import type {
   IMessagingEngine,
   CreateSessionInput,
@@ -50,7 +50,8 @@ import type { ISessionSocketControl } from '../../../domain/contracts/ISessionSo
 import type { SessionStatus } from '../../../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
-import type { ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
+import { acquireLeaseResult, type ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
+import type { SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 import { buildBaileysAuthState, discardAuthState, releaseAuthState, suspendAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
@@ -108,6 +109,9 @@ const PROFILE_PICTURE_TTL_MS = 6 * 60 * 60 * 1_000;
 const PARTICIPATING_GROUPS_TTL_MS = 60_000;
 /** Gate padrão sem lease: sempre permite abrir o socket. */
 const ALWAYS_LEASED: ISessionLeaseGate = { acquire: async () => true };
+
+/** `held` = acquire provou outro dono; `error` = acquire falhou no banco; `cancelled` = abort/suspend na abertura. */
+type OpenSocketResult = 'opened' | 'held' | 'error' | 'cancelled';
 
 /**
  * Uma abertura de socket em curso (entre `leaseGate.acquire` e `registry.set`). Abort/suspend
@@ -196,7 +200,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
     const { sessionId, tenantId } = input;
-    this.forgetSuspension(sessionId);
+    this.dropSuspension(sessionId);
     // A user-initiated connect starts a fresh recovery cycle — in QR mode.
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
@@ -214,7 +218,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
-    this.forgetSuspension(sessionId);
+    this.dropSuspension(sessionId);
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
     const entry = this.registry.get(sessionId);
@@ -233,7 +237,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   /** Lease perdido: fecha o socket sem gravar status nem chaves (o pendente é descartado). */
   async abortSession(sessionId: string): Promise<void> {
-    this.forgetSuspension(sessionId);
+    this.dropSuspension(sessionId);
     this.cancelReconnect(sessionId);
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
@@ -274,24 +278,36 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     this.clearSessionGroupMetadata(sessionId);
   }
 
-  /** Banco de volta: reabre a sessão suspensa pela origem automática (lease → socket). */
-  async resumeSession(sessionId: string): Promise<boolean> {
+  /**
+   * Banco de volta: reabre a sessão suspensa pela origem automática (lease → socket). A entrada de
+   * `suspended` só sai no sucesso; `held`/erro a mantêm para o use case decidir (ver contrato).
+   */
+  async resumeSession(sessionId: string): Promise<SessionResumeResult> {
     const tenantId = this.suspended.get(sessionId);
-    if (tenantId === undefined) return false;
-    this.suspended.delete(sessionId);
-    if (this.registry.has(sessionId)) return true;
+    if (tenantId === undefined) return 'gone';
+    if (this.registry.has(sessionId)) {
+      this.suspended.delete(sessionId);
+      return 'resumed';
+    }
     const attempt = {};
     this.resuming.set(sessionId, attempt);
+    // Abort/connect/disconnect/logout no meio invalidam a tentativa (forgetSuspension)
+    const current = (): boolean => this.resuming.get(sessionId) === attempt;
     try {
-      return await this.openSocket(sessionId, tenantId, 0, 'auto');
-    } catch (err) {
-      // Falha ao reabrir: segue suspensa para a próxima rodada (que conta a tentativa)
-      if (this.resuming.get(sessionId) === attempt && !this.registry.has(sessionId)) {
-        this.suspended.set(sessionId, tenantId);
+      const result = await this.openSocket(sessionId, tenantId, 0, 'auto');
+      if (!current()) return 'gone';
+      if (result === 'opened') {
+        this.suspended.delete(sessionId);
+        return 'resumed';
       }
+      if (result === 'held') return 'held';
+      // Erro de banco no acquire ou nova suspensão na abertura: transitório, segue suspensa
+      throw new EngineTemporarilyUnavailableError();
+    } catch (err) {
+      if (!current()) return 'gone';
       throw err;
     } finally {
-      if (this.resuming.get(sessionId) === attempt) this.resuming.delete(sessionId);
+      if (current()) this.resuming.delete(sessionId);
     }
   }
 
@@ -338,10 +354,17 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     }
   }
 
+  /** Desistência do use case (ver contrato). */
+  async forgetSuspension(sessionId: string): Promise<string | null> {
+    return this.dropSuspension(sessionId);
+  }
+
   /** Ação explícita sobre a sessão: apaga a suspensão e invalida reabertura em curso. */
-  private forgetSuspension(sessionId: string): void {
+  private dropSuspension(sessionId: string): string | null {
+    const tenantId = this.suspended.get(sessionId) ?? null;
     this.suspended.delete(sessionId);
     this.resuming.delete(sessionId);
+    return tenantId;
   }
 
   /** Abort/suspend durante a abertura: a abertura em curso fecha o socket sem registrar. */
@@ -394,7 +417,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   async logoutSession(input: LogoutSessionInput): Promise<void> {
     const { sessionId, tenantId } = input;
-    this.forgetSuspension(sessionId);
+    this.dropSuspension(sessionId);
     this.pairingRestarts.delete(sessionId);
     this.pairingPhones.delete(sessionId);
     const entry = this.registry.get(sessionId);
@@ -915,15 +938,19 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   /**
    * Abre o socket só com lease (LEASE-03). Lease de outro processo: caminho do usuário lança
-   * `SessionLeaseHeldError` (503); caminho automático só loga e devolve `false`, sem tocar status.
+   * `SessionLeaseHeldError` (503) e erro de banco no acquire `EngineTemporarilyUnavailableError`
+   * (503); caminho automático só loga e devolve o motivo (`held`/`error`), sem tocar status.
    */
   private async openSocket(
     sessionId: string, tenantId: string, attempt: number, origin: 'user' | 'auto' = 'user',
-  ): Promise<boolean> {
-    if (!(await this.leaseGate.acquire(sessionId))) {
-      if (origin === 'user') throw new SessionLeaseHeldError(sessionId);
-      baileysLogger.warn({ sessionId, attempt }, 'Socket not opened — session lease held by another process');
-      return false;
+  ): Promise<OpenSocketResult> {
+    const lease = await acquireLeaseResult(this.leaseGate, sessionId);
+    if (lease !== 'acquired') {
+      if (origin === 'user') {
+        throw lease === 'held' ? new SessionLeaseHeldError(sessionId) : new EngineTemporarilyUnavailableError();
+      }
+      baileysLogger.warn({ sessionId, attempt, lease }, 'Socket not opened — session lease not acquired');
+      return lease;
     }
     // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
     const opened = await this.whileOpening(sessionId, async (token) => {
@@ -968,7 +995,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     });
     if (!opened) {
       if (origin === 'user') throw new SessionLeaseHeldError(sessionId);
-      return false;
+      return 'cancelled';
     }
     const { socket, state, saveCreds, epoch } = opened;
     internalEventBus.emit('SESSION_CONNECTING', { type: 'SESSION_CONNECTING', sessionId, tenantId });
@@ -1461,7 +1488,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         presence: entry.lastKnownPresence,
       });
     });
-    return true;
+    return 'opened';
   }
 
   // -- Private ------------------------------------------------------------------
@@ -1834,7 +1861,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     await this.updateSessionStatus(sessionId, tenantId, 'CONNECTING');
 
     try {
-      if (!(await this.openSocket(sessionId, tenantId, 0, 'auto'))) {
+      if ((await this.openSocket(sessionId, tenantId, 0, 'auto')) !== 'opened') {
         this.pairingRestarts.delete(sessionId);
         return;
       }

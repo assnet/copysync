@@ -7,7 +7,8 @@ import { SessionLeaseLedger } from '../../application/services/SessionLeaseLedge
 import { SessionLeaseKeeper } from '../../application/services/SessionLeaseKeeper';
 import { CapacityLimitedLeaseGate } from '../../application/services/CapacityLimitedLeaseGate';
 import { AcquireSessionLeaseUseCase } from '../../application/use-cases/AcquireSessionLeaseUseCase';
-import { RenewSessionLeaseUseCase } from '../../application/use-cases/RenewSessionLeaseUseCase';
+import { RenewSessionLeaseUseCase, type ResumeGiveUpStatus } from '../../application/use-cases/RenewSessionLeaseUseCase';
+import { PrismaSessionRepository } from '../repositories/PrismaSessionRepository';
 import { ReleaseSessionLeaseUseCase } from '../../application/use-cases/ReleaseSessionLeaseUseCase';
 
 export interface SessionLeaseContainer {
@@ -40,26 +41,32 @@ export interface SessionLeaseCapacity {
   maxSessions: number;
 }
 
+/** Sem porta de status (testes): a desistência da retomada só loga. */
+const NO_STATUS: ResumeGiveUpStatus = { markDisconnectedIfNoLiveLease: async () => false };
+
 export function buildSessionLeaseContainer(
   repo: ISessionLeaseRepository,
   workerId: string,
   capacity?: SessionLeaseCapacity,
+  status: ResumeGiveUpStatus = NO_STATUS,
 ): SessionLeaseContainer {
   const ledger = new SessionLeaseLedger();
   let bound: ISessionSocketControl | undefined;
   const sockets: ISessionSocketControl = {
     abortSession: async (id) => bound?.abortSession(id),
     suspendSession: async (id) => bound?.suspendSession(id),
-    resumeSession: async (id) => (await bound?.resumeSession(id)) ?? false,
+    resumeSession: async (id) => (bound ? bound.resumeSession(id) : 'gone'),
+    forgetSuspension: async (id) => (bound ? bound.forgetSuspension(id) : null),
     closeAllSockets: async () => bound?.closeAllSockets(),
     listLocalSessionIds: () => bound?.listLocalSessionIds() ?? [],
   };
   const acquire = new AcquireSessionLeaseUseCase(repo, ledger, workerId);
-  const renew = new RenewSessionLeaseUseCase(repo, ledger, sockets, acquire, workerId);
+  const renew = new RenewSessionLeaseUseCase(repo, ledger, sockets, status, workerId);
   const release = new ReleaseSessionLeaseUseCase(repo, ledger, workerId);
   const listLocal = (): string[] => sockets.listLocalSessionIds();
   const baseGate: ISessionLeaseGate = {
     acquire: (id) => acquire.acquire(id),
+    acquireResult: (id) => acquire.acquireResult(id),
     release: (id) => release.execute(id),
   };
   // Sem teto (flag desligada) o gate é exatamente o de antes (E3).
@@ -84,7 +91,7 @@ export function buildSessionLeaseContainer(
 
 /** O decorador de teto só decide o `acquire`; o `release` segue o do gate base. */
 function withRelease(capped: CapacityLimitedLeaseGate, base: ISessionLeaseGate): ISessionLeaseGate {
-  return { acquire: (id) => capped.acquire(id), release: base.release };
+  return { acquire: (id) => capped.acquire(id), acquireResult: (id) => capped.acquireResult(id), release: base.release };
 }
 
 let instance: SessionLeaseContainer | undefined;
@@ -100,6 +107,7 @@ export function sessionLeaseContainer(): SessionLeaseContainer {
       new PrismaSessionLeaseRepository(),
       currentWorkerId(),
       adoption.enabled ? { maxSessions: adoption.maxSessions } : undefined,
+      new PrismaSessionRepository(),
     );
   }
   return instance;

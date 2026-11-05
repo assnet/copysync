@@ -3,18 +3,24 @@ import type { LeaseLogger } from '../use-cases/AcquireSessionLeaseUseCase';
 import { logger } from '../../../../shared/logger/logger';
 
 export interface LeaseRenewer {
-  execute(): Promise<void>;
+  /** Rodada de renovação; devolve as sessões suspensas a reabrir. */
+  execute(): Promise<readonly string[] | void>;
+  /** Reabre uma suspensa (chamado fora do tick). */
+  resume?(sessionId: string): Promise<void>;
 }
 
 /**
  * Keeper do lease (LEASE-04): `setTimeout` encadeado — o próximo tick só é agendado depois
- * que o atual termina, então rodadas nunca se sobrepõem. `stop` cancela o agendado e espera
- * o tick em curso (shutdown, LEASE-09).
+ * que o atual termina, então rodadas nunca se sobrepõem. As retomadas que a rodada devolve
+ * saem sem `await` (fila própria, uma por sessão por vez): retomada lenta não atrasa a
+ * renovação das outras. `stop` cancela o agendado e espera o tick em curso e as retomadas
+ * (estas no máximo `intervalMs`) (shutdown, LEASE-09).
  */
 export class SessionLeaseKeeper {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running: Promise<void> | undefined;
   private active = false;
+  private readonly resuming = new Map<string, Promise<void>>();
 
   constructor(
     private readonly renewer: LeaseRenewer,
@@ -34,6 +40,20 @@ export class SessionLeaseKeeper {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     await this.running;
+    await this.settleResumes();
+  }
+
+  private async settleResumes(): Promise<void> {
+    if (this.resuming.size === 0) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, this.intervalMs);
+    });
+    try {
+      await Promise.race([Promise.allSettled([...this.resuming.values()]), limit]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private schedule(): void {
@@ -50,9 +70,24 @@ export class SessionLeaseKeeper {
 
   private async tick(): Promise<void> {
     try {
-      await this.renewer.execute();
+      this.dispatchResumes((await this.renewer.execute()) ?? []);
     } catch (err) {
       this.log.warn({ err }, 'falha na rodada de renovação de lease');
+    }
+  }
+
+  /** Dispara sem `await`; sessão com retomada em curso fica para a próxima rodada. */
+  private dispatchResumes(ids: readonly string[]): void {
+    const resume = this.renewer.resume?.bind(this.renewer);
+    if (!resume || !this.active) return;
+    for (const id of ids) {
+      if (this.resuming.has(id)) continue;
+      const run = resume(id)
+        .catch((err: unknown) => this.log.warn({ err, sessionId: id }, 'falha ao retomar sessão suspensa'))
+        .finally(() => {
+          if (this.resuming.get(id) === run) this.resuming.delete(id);
+        });
+      this.resuming.set(id, run);
     }
   }
 }

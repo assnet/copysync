@@ -25,6 +25,10 @@ export class SessionLeaseLedger {
     return this.fenced.get(sessionId) ?? 0;
   }
 
+  isFenced(sessionId: string): boolean {
+    return this.fenced.has(sessionId);
+  }
+
   clearFenced(sessionId: string): void {
     this.fenced.delete(sessionId);
   }

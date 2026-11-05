@@ -182,7 +182,7 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     expect(auth.suspend).not.toHaveBeenCalled();
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(release).not.toHaveBeenCalled(); // lease é de outro: não solta
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe('gone');
   });
 
   it('suspend durante a abertura: socket fechado, não registrado, chaves guardadas e retomável', async () => {
@@ -200,7 +200,7 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     expect(auth.discard).not.toHaveBeenCalled();
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(release).not.toHaveBeenCalled();
-    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
     expect(registry.has('s1')).toBe(true);
     expect(sockets).toHaveLength(2);
   });
@@ -217,7 +217,7 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     await p;
     expect(auth.discard).toHaveBeenCalledWith('s1');
     expect(auth.suspend).not.toHaveBeenCalled();
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe('gone');
   });
 
   it('abertura automática cancelada não lança', async () => {
@@ -229,7 +229,7 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     await hold.started();
     await adapter.abortSession('s1');
     hold.go();
-    expect(await p).toBe(false);
+    expect(await p).toBe('gone');
     expect(registry.has('s1')).toBe(false);
   });
 

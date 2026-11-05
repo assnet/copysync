@@ -23,7 +23,7 @@ import type {
 } from '../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../sessions/domain/contracts/ISessionRepository';
-import type { ISessionSocketControl } from '../domain/contracts/ISessionSocketControl';
+import type { ISessionSocketControl, SessionResumeResult } from '../domain/contracts/ISessionSocketControl';
 import { SessionNotFoundError } from '../../../shared/errors/internal/SessionErrors';
 import { logger } from '../../../shared/logger/logger';
 
@@ -42,6 +42,7 @@ const CACHE_MAX = 10_000;
 function hasSocketControl(engine: IMessagingEngine): engine is IMessagingEngine & ISessionSocketControl {
   const e = engine as Partial<ISessionSocketControl>;
   return typeof e.abortSession === 'function' && typeof e.suspendSession === 'function' && typeof e.resumeSession === 'function'
+    && typeof e.forgetSuspension === 'function'
     && typeof e.closeAllSockets === 'function' && typeof e.listLocalSessionIds === 'function';
 }
 
@@ -114,16 +115,22 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
     if (hasSocketControl(engine)) await engine.suspendSession(sessionId);
   }
 
-  /** Reabre na engine da sessão; sessão apagada no banco não reabre. */
-  async resumeSession(sessionId: string): Promise<boolean> {
+  /** Reabre na engine da sessão; sessão apagada no banco = `gone` (erro transitório do banco lança). */
+  async resumeSession(sessionId: string): Promise<SessionResumeResult> {
     let engine: IMessagingEngine;
     try {
       engine = await this.resolve(sessionId);
     } catch (err) {
-      if (err instanceof SessionNotFoundError) return false;
+      if (err instanceof SessionNotFoundError) return 'gone';
       throw err;
     }
-    return hasSocketControl(engine) ? engine.resumeSession(sessionId) : false;
+    return hasSocketControl(engine) ? engine.resumeSession(sessionId) : 'gone';
+  }
+
+  /** Esquece a suspensão em todas as engines (só a da sessão tem entrada); devolve o tenant guardado. */
+  async forgetSuspension(sessionId: string): Promise<string | null> {
+    const tenants = await Promise.all(this.socketControls().map(([, control]) => control.forgetSuspension(sessionId)));
+    return tenants.find((t) => t !== null) ?? null;
   }
 
   /** Fecha os sockets de todas as engines; espera todas mesmo se uma falhar (shutdown segue). */

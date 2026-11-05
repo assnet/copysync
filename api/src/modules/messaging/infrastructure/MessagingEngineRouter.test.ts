@@ -11,7 +11,8 @@ function fakeEngine(name: string) {
     getSessionStatus: vi.fn(async () => 'CONNECTED'),
     abortSession: vi.fn(async () => undefined),
     suspendSession: vi.fn(async () => undefined),
-    resumeSession: vi.fn(async () => true),
+    resumeSession: vi.fn(async () => 'resumed'),
+    forgetSuspension: vi.fn(async () => (name === 'telegram' ? 't1' : null)),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [`${name}-s`]),
   } as unknown as IMessagingEngine & {
@@ -21,6 +22,7 @@ function fakeEngine(name: string) {
     abortSession: ReturnType<typeof vi.fn>;
     suspendSession: ReturnType<typeof vi.fn>;
     resumeSession: ReturnType<typeof vi.fn>;
+    forgetSuspension: ReturnType<typeof vi.fn>;
     closeAllSockets: ReturnType<typeof vi.fn>;
     listLocalSessionIds: ReturnType<typeof vi.fn>;
   };
@@ -77,7 +79,7 @@ describe('MessagingEngineRouter', () => {
   it('suspendSession/resumeSession vão só para a engine da sessão', async () => {
     const { router, baileys, telegram } = build({ s1: 'telegram' });
     await router.suspendSession('s1');
-    expect(await router.resumeSession('s1')).toBe(true);
+    expect(await router.resumeSession('s1')).toBe('resumed');
     expect(telegram.suspendSession).toHaveBeenCalledWith('s1');
     expect(telegram.resumeSession).toHaveBeenCalledWith('s1');
     expect(baileys.suspendSession).not.toHaveBeenCalled();
@@ -89,8 +91,16 @@ describe('MessagingEngineRouter', () => {
     await router.suspendSession('gone');
     expect(baileys.suspendSession).toHaveBeenCalledWith('gone');
     expect(telegram.suspendSession).toHaveBeenCalledWith('gone');
-    expect(await router.resumeSession('gone')).toBe(false);
+    expect(await router.resumeSession('gone')).toBe('gone');
     expect(baileys.resumeSession).not.toHaveBeenCalled();
+  });
+
+  it('forgetSuspension pede a todas sem ir ao banco e devolve o tenant guardado', async () => {
+    const { router, baileys, telegram, repo } = build({ s1: 'telegram' });
+    expect(await router.forgetSuspension('s1')).toBe('t1');
+    expect(baileys.forgetSuspension).toHaveBeenCalledWith('s1');
+    expect(telegram.forgetSuspension).toHaveBeenCalledWith('s1');
+    expect(repo.findEngineById).not.toHaveBeenCalled();
   });
 
   it('closeAllSockets espera todas mesmo se uma falhar', async () => {

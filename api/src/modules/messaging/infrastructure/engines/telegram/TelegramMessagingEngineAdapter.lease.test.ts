@@ -135,7 +135,7 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     expect(auth.save).not.toHaveBeenCalled();
     expect(auth.clear).not.toHaveBeenCalled();
     expect(leaseGate.release).not.toHaveBeenCalled();
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe('gone');
   });
 
   it('suspend durante a abertura: cliente descartado, não registrado, sem status e retomável', async () => {
@@ -151,7 +151,7 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(leaseGate.release).not.toHaveBeenCalled();
     // Retomável: a marca de suspensa ficou (sem StringSession, a reabertura cai no login por QR)
-    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
     expect(fake.created).toBe(2);
   });
 

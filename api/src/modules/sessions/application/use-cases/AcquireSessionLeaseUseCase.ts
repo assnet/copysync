@@ -1,12 +1,11 @@
-import type { ISessionLeaseGate, ISessionLeaseRepository } from '../../domain/contracts/ISessionLeaseRepository';
+import type { ISessionLeaseGate, ISessionLeaseRepository, LeaseAcquireResult } from '../../domain/contracts/ISessionLeaseRepository';
 import { LEASE_TTL_MS } from '../../domain/services/sessionLeasePolicy';
 import type { SessionLeaseLedger } from '../services/SessionLeaseLedger';
 import { logger } from '../../../../shared/logger/logger';
 
 export type LeaseLogger = Pick<typeof logger, 'warn'>;
 
-/** `held` = outro processo é dono (prova); `error` = banco falhou (sem prova, vale tentar de novo). */
-export type LeaseAcquireResult = 'acquired' | 'held' | 'error';
+export type { LeaseAcquireResult };
 
 /**
  * Adquire o lease antes de abrir socket (LEASE-03). `acquireResult` distingue outro dono de

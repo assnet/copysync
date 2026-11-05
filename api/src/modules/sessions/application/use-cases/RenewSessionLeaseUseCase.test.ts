@@ -4,7 +4,7 @@ import { AcquireSessionLeaseUseCase } from './AcquireSessionLeaseUseCase';
 import { SessionLeaseLedger } from '../services/SessionLeaseLedger';
 import { LEASE_RENEW_TIMEOUT_MS, LEASE_TTL_MS } from '../../domain/services/sessionLeasePolicy';
 import type { ISessionLeaseRepository } from '../../domain/contracts/ISessionLeaseRepository';
-import type { ISessionSocketControl } from '../../../messaging/domain/contracts/ISessionSocketControl';
+import type { ISessionSocketControl, SessionResumeResult } from '../../../messaging/domain/contracts/ISessionSocketControl';
 
 const T0 = new Date('2026-11-04T12:00:00Z').getTime();
 
@@ -22,11 +22,14 @@ function makeSockets(local: string[]): ISessionSocketControl {
   return {
     abortSession: vi.fn(async () => undefined),
     suspendSession: vi.fn(async () => undefined),
-    resumeSession: vi.fn(async () => true),
+    resumeSession: vi.fn(async (): Promise<SessionResumeResult> => 'resumed'),
+    forgetSuspension: vi.fn(async (): Promise<string | null> => 't1'),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [...local]),
   };
 }
+
+const RESUME_TIMEOUT_MS = 20_000;
 
 function setup(renew: ISessionLeaseRepository['renew'], local = ['s1', 's2']) {
   const repo = makeRepo(renew);
@@ -35,9 +38,21 @@ function setup(renew: ISessionLeaseRepository['renew'], local = ['s1', 's2']) {
   for (const id of ['s1', 's2']) ledger.markOk(id, new Date(T0));
   const log = { warn: vi.fn(), error: vi.fn() };
   const now = () => new Date(Date.now());
+  // Como o adapter: o acquire tipado fica dentro do resume (held → 'held', erro de banco → lança)
   const acquirer = new AcquireSessionLeaseUseCase(repo, ledger, 'w1', now, { warn: vi.fn() });
-  const uc = new RenewSessionLeaseUseCase(repo, ledger, sockets, acquirer, 'w1', now, log);
-  return { repo, sockets, ledger, log, uc };
+  vi.mocked(sockets.resumeSession).mockImplementation(async (id) => {
+    const lease = await acquirer.acquireResult(id);
+    if (lease === 'held') return 'held';
+    if (lease === 'error') throw new Error('lease acquire failed');
+    return 'resumed';
+  });
+  const status = { markDisconnectedIfNoLiveLease: vi.fn(async () => true) };
+  const uc = new RenewSessionLeaseUseCase(repo, ledger, sockets, status, 'w1', now, log, RESUME_TIMEOUT_MS);
+  /** Uma rodada + as retomadas que ela devolve (o keeper faz isso fora do tick). */
+  const round = async (): Promise<void> => {
+    for (const id of await uc.execute()) await uc.resume(id);
+  };
+  return { repo, sockets, ledger, log, uc, status, round };
 }
 
 describe('RenewSessionLeaseUseCase', () => {
@@ -133,7 +148,7 @@ describe('RenewSessionLeaseUseCase', () => {
   it('erro no abort é logado e a sessão sai do razão mesmo assim', async () => {
     const { ledger, sockets, log, uc } = setup(async () => []);
     vi.mocked(sockets.abortSession).mockRejectedValueOnce(new Error('boom'));
-    await expect(uc.execute()).resolves.toBeUndefined();
+    await expect(uc.execute()).resolves.toEqual([]);
     expect(ledger.ids()).toEqual([]);
     expect(log.warn).toHaveBeenCalled();
   });
@@ -188,70 +203,123 @@ describe('RenewSessionLeaseUseCase', () => {
       return env;
     }
 
-    it('renovação volta → adquire (sem release) e reabre via resume; marca limpa', async () => {
+    it('execute só devolve as suspensas (não reabre no tick); resume reabre sem release; marca limpa', async () => {
       const { sockets, ledger, repo, uc } = await suspendedBothThenUp();
-      await uc.execute();
+      expect((await uc.execute()).sort()).toEqual(['s1', 's2']);
+      expect(sockets.resumeSession).not.toHaveBeenCalled();
+      await uc.resume('s1');
+      await uc.resume('s2');
       expect(repo.release).not.toHaveBeenCalled();
       expect(repo.tryAcquire).toHaveBeenCalledWith('s1', 'w1', LEASE_TTL_MS);
-      expect(repo.tryAcquire).toHaveBeenCalledWith('s2', 'w1', LEASE_TTL_MS);
-      expect(sockets.resumeSession).toHaveBeenCalledWith('s1');
       expect(sockets.resumeSession).toHaveBeenCalledWith('s2');
       expect(ledger.fencedIds()).toEqual([]);
+      expect(sockets.forgetSuspension).not.toHaveBeenCalled();
     });
 
-    it('lease de outro processo (held) → limpa a marca sem chamar resume', async () => {
-      const { sockets, ledger, repo, uc } = await suspendedBothThenUp();
-      vi.mocked(repo.tryAcquire).mockResolvedValue(false);
-      await uc.execute();
+    it('banco ainda fora: execute não devolve suspensas', async () => {
+      const { uc, repo, sockets } = await suspendedBothThenUp();
+      vi.mocked(repo.renew).mockRejectedValue(new Error('db down'));
+      expect(await uc.execute()).toEqual([]);
       expect(sockets.resumeSession).not.toHaveBeenCalled();
-      expect(ledger.fencedIds()).toEqual([]);
-      expect(sockets.abortSession).not.toHaveBeenCalled();
     });
 
-    it('resume devolve false → limpa a marca', async () => {
-      const { sockets, ledger, uc } = await suspendedBothThenUp();
-      vi.mocked(sockets.resumeSession).mockResolvedValue(false);
-      await uc.execute();
-      expect(ledger.fencedIds()).toEqual([]);
-    });
-
-    it('erro transitório (acquire no banco ou resume) mantém a marca e tenta de novo', async () => {
-      const { sockets, ledger, repo, uc } = await suspendedBothThenUp();
+    it('(1) acquire com erro de banco no resume → mantém a marca e tenta de novo na próxima rodada', async () => {
+      const { sockets, ledger, repo, round } = await suspendedBothThenUp();
       vi.mocked(repo.tryAcquire).mockImplementation(async (id) => {
         if (id === 's1') throw new Error('db flaky');
         return true;
       });
-      vi.mocked(sockets.resumeSession).mockRejectedValueOnce(new Error('fetchLatestBaileysVersion'));
-      await expect(uc.execute()).resolves.toBeUndefined();
-      expect(sockets.resumeSession).toHaveBeenCalledExactlyOnceWith('s2');
-      expect(ledger.fencedIds().sort()).toEqual(['s1', 's2']);
+      await round();
+      expect(ledger.fencedIds()).toEqual(['s1']);
       expect(ledger.fenceAttempts('s1')).toBe(1);
-      expect(ledger.fenceAttempts('s2')).toBe(1);
-      expect(ledger.ids()).toEqual([]);
+      expect(sockets.forgetSuspension).not.toHaveBeenCalled();
 
       vi.mocked(repo.tryAcquire).mockResolvedValue(true);
-      await uc.execute();
-      expect(sockets.resumeSession).toHaveBeenCalledWith('s1');
-      expect(vi.mocked(sockets.resumeSession).mock.calls.filter(([id]) => id === 's2')).toHaveLength(2);
+      await round();
+      expect(vi.mocked(sockets.resumeSession).mock.calls.filter(([id]) => id === 's1')).toHaveLength(2);
       expect(ledger.fencedIds()).toEqual([]);
-      expect(repo.release).not.toHaveBeenCalled();
+      expect(ledger.ids()).toContain('s1');
     });
 
-    it(`limite de ${MAX_RESUME_ATTEMPTS} tentativas → limpa a marca e loga error`, async () => {
-      const { sockets, ledger, uc, log } = await suspendedBothThenUp();
+    it('(2) held → limpa a marca e esquece a suspensão no adapter', async () => {
+      const { sockets, ledger, repo, round } = await suspendedBothThenUp();
+      vi.mocked(repo.tryAcquire).mockResolvedValue(false);
+      await round();
+      expect(ledger.fencedIds()).toEqual([]);
+      expect(sockets.forgetSuspension).toHaveBeenCalledWith('s1');
+      expect(sockets.forgetSuspension).toHaveBeenCalledWith('s2');
+      expect(sockets.abortSession).not.toHaveBeenCalled();
+    });
+
+    it('(3) throw no reopen → mantém a marca (o adapter mantém a dele: sem forgetSuspension)', async () => {
+      const { sockets, ledger, round } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('fetchLatestBaileysVersion'));
+      await round();
+      expect(ledger.fencedIds().sort()).toEqual(['s1', 's2']);
+      expect(ledger.fenceAttempts('s2')).toBe(1);
+      expect(sockets.forgetSuspension).not.toHaveBeenCalled();
+    });
+
+    it('gone → limpa a marca sem forgetSuspension', async () => {
+      const { sockets, ledger, round } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockResolvedValue('gone');
+      await round();
+      expect(ledger.fencedIds()).toEqual([]);
+      expect(sockets.forgetSuspension).not.toHaveBeenCalled();
+    });
+
+    it(`(4) limite de ${MAX_RESUME_ATTEMPTS} tentativas → DISCONNECTED gravado, lease solto e mapas limpos`, async () => {
+      const { sockets, ledger, log, status, repo, round } = await suspendedBothThenUp();
       vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('auth.load'));
       for (let i = 1; i < MAX_RESUME_ATTEMPTS; i++) {
-        await uc.execute();
+        await round();
         expect(ledger.fenceAttempts('s1')).toBe(i);
       }
       expect(log.error).not.toHaveBeenCalled();
-      await uc.execute();
+      await round();
       expect(sockets.resumeSession).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS * 2);
+      expect(sockets.forgetSuspension).toHaveBeenCalledWith('s1');
+      expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
+      expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s1', 't1');
+      expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s2', 't1');
       expect(ledger.fencedIds()).toEqual([]);
       expect(ledger.ids()).toEqual([]);
       expect(log.error).toHaveBeenCalledTimes(2);
-      await uc.execute();
+      await round();
       expect(sockets.resumeSession).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS * 2);
+    });
+
+    it('resume que passa do timeout conta tentativa, mas só devolve quando a reabertura assenta', async () => {
+      const { sockets, ledger, uc } = await suspendedBothThenUp();
+      let finish!: (r: SessionResumeResult) => void;
+      vi.mocked(sockets.resumeSession).mockImplementationOnce(() => new Promise((r) => { finish = r; }));
+      await uc.execute();
+      let settled = false;
+      const p = uc.resume('s1').then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(RESUME_TIMEOUT_MS);
+      expect(ledger.fenceAttempts('s1')).toBe(1);
+      expect(settled).toBe(false);
+      finish('resumed');
+      await p;
+      expect(settled).toBe(true);
+    });
+
+    it('socket local de suspensa sem lease no razão (retomada tardia) entra na sonda e volta ao razão', async () => {
+      const { ledger, repo, uc } = setup(async (ids) => [...ids], ['s1']);
+      ledger.drop('s2');
+      ledger.markFenced('s1', 3);
+      expect(await uc.execute()).toEqual([]);
+      expect(repo.renew).toHaveBeenCalledWith(['s1'], 'w1', LEASE_TTL_MS);
+      expect(ledger.ids()).toEqual(['s1']);
+      expect(ledger.fencedIds()).toEqual([]);
+    });
+
+    it('socket local sem lease no razão e sem prova na sonda → abortado', async () => {
+      const { ledger, sockets, uc } = setup(async () => [], ['s1']);
+      ledger.drop('s2');
+      ledger.markFenced('s1');
+      await uc.execute();
+      expect(sockets.abortSession).toHaveBeenCalledExactlyOnceWith('s1');
     });
 
     it('suspensa que já tem socket de novo (reconexão manual) não é reaberta', async () => {
@@ -259,17 +327,18 @@ describe('RenewSessionLeaseUseCase', () => {
       vi.setSystemTime(T0 + 56_000);
       await uc.execute();
       up();
-      await uc.execute(); // listLocal ainda devolve s1/s2
+      expect(await uc.execute()).toEqual([]); // listLocal ainda devolve s1/s2
       expect(sockets.resumeSession).not.toHaveBeenCalled();
       expect(repo.release).not.toHaveBeenCalled();
       expect(ledger.fencedIds()).toEqual([]);
     });
 
-    it('lease perdido de sessão viva continua abortando enquanto a suspensa reabre', async () => {
+    it('lease perdido de sessão viva continua abortando enquanto a suspensa é devolvida para reabrir', async () => {
       const { sockets, ledger, uc } = setup(async () => []);
       ledger.markFenced('s9');
-      await uc.execute();
+      expect(await uc.execute()).toEqual(['s9']);
       expect(sockets.abortSession).toHaveBeenCalledTimes(2);
+      await uc.resume('s9');
       expect(sockets.resumeSession).toHaveBeenCalledExactlyOnceWith('s9');
       expect(ledger.fencedIds()).toEqual([]);
     });

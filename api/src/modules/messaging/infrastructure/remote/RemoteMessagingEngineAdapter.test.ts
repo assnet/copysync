@@ -209,7 +209,7 @@ describe('RemoteMessagingEngineAdapter', () => {
 
   it('não implementa ISessionSocketControl', () => {
     const { adapter } = setup();
-    for (const m of ['abortSession', 'suspendSession', 'resumeSession', 'closeAllSockets', 'listLocalSessionIds']) {
+    for (const m of ['abortSession', 'suspendSession', 'resumeSession', 'forgetSuspension', 'closeAllSockets', 'listLocalSessionIds']) {
       expect((adapter as unknown as Record<string, unknown>)[m]).toBeUndefined();
     }
   });

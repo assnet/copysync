@@ -1,4 +1,4 @@
-import type { ISessionLeaseGate } from '../../domain/contracts/ISessionLeaseRepository';
+import { acquireLeaseResult, type ISessionLeaseGate, type LeaseAcquireResult } from '../../domain/contracts/ISessionLeaseRepository';
 import { logger } from '../../../../shared/logger/logger';
 
 export type CapacityGateLogger = Pick<typeof logger, 'warn'>;
@@ -17,16 +17,25 @@ export class CapacityLimitedLeaseGate implements ISessionLeaseGate {
   ) {}
 
   async acquire(sessionId: string): Promise<boolean> {
-    const local = this.listLocal();
-    if (!local.includes(sessionId) && local.length >= this.max) {
-      this.log.warn({ sessionId, active: local.length, max: this.max }, 'teto de sessões atingido; lease negado');
-      return false;
-    }
+    if (this.atCapacity(sessionId)) return false;
     try {
       return await this.inner.acquire(sessionId);
     } catch (err) {
       this.log.warn({ err, sessionId }, 'falha ao adquirir lease de sessão');
       return false;
     }
+  }
+
+  /** Teto atingido conta como `held` (não é este processo que deve abrir); erro do gate interno = `error`. */
+  async acquireResult(sessionId: string): Promise<LeaseAcquireResult> {
+    if (this.atCapacity(sessionId)) return 'held';
+    return acquireLeaseResult(this.inner, sessionId);
+  }
+
+  private atCapacity(sessionId: string): boolean {
+    const local = this.listLocal();
+    if (local.includes(sessionId) || local.length < this.max) return false;
+    this.log.warn({ sessionId, active: local.length, max: this.max }, 'teto de sessões atingido; lease negado');
+    return true;
   }
 }

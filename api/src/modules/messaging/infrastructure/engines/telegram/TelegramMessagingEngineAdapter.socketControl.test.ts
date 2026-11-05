@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TelegramMessagingEngineAdapter } from './TelegramMessagingEngineAdapter';
+import { EngineTemporarilyUnavailableError } from '../../../../../shared/errors/internal/MessagingErrors';
 import type { TelegramAuthStatePersistence } from './TelegramAuthStatePersistence';
 
 // Cliente GramJS falso: `start` pede o código e fica preso até o destroy; `getMe` controlável
@@ -123,29 +124,44 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
 
     auth.load.mockResolvedValueOnce('STRING_SESSION');
     gate.acquire.mockClear();
-    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
     expect(gate.acquire).toHaveBeenCalledWith('s1');
     expect(fake.clients).toHaveLength(2);
     expect(sessionRepo.updateStatus).toHaveBeenCalledWith('s1', T, expect.objectContaining({ status: 'CONNECTED' }));
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await adapter.resumeSession('s1')).toBe('gone');
   });
 
-  it('resumeSession com lease de outro processo devolve false; abort apaga a suspensão', async () => {
+  it('resumeSession com lease de outro processo devolve held e mantém a suspensa até forgetSuspension', async () => {
     fake.authorized = true;
     const { adapter, auth, gate } = make();
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
     await adapter.suspendSession('s1');
-    auth.load.mockResolvedValueOnce('STRING_SESSION');
+    auth.load.mockResolvedValue('STRING_SESSION');
     gate.acquire.mockResolvedValueOnce(false);
-    expect(await adapter.resumeSession('s1')).toBe(false);
-    expect(await adapter.resumeSession('s1')).toBe(false); // SessionLeaseHeldError limpa a marca
+    expect(await adapter.resumeSession('s1')).toBe('held');
+    expect(fake.clients).toHaveLength(1);
+    expect(await adapter.forgetSuspension('s1')).toBe(T);
+    expect(await adapter.resumeSession('s1')).toBe('gone');
     expect(gate.acquire).toHaveBeenCalledTimes(2); // connect + 1 resume
 
     await adapter.connectSession({ sessionId: 's2', tenantId: T });
     await adapter.suspendSession('s2');
     await adapter.abortSession('s2');
-    expect(await adapter.resumeSession('s2')).toBe(false);
-    expect(await adapter.resumeSession('nope')).toBe(false);
+    expect(await adapter.resumeSession('s2')).toBe('gone');
+    expect(await adapter.resumeSession('nope')).toBe('gone');
+  });
+
+  it('acquire com erro de banco na retomada lança (não é held) e mantém a suspensa', async () => {
+    fake.authorized = true;
+    const gate = { acquire: vi.fn(async () => true), acquireResult: vi.fn(async (): Promise<'acquired' | 'held' | 'error'> => 'acquired') };
+    const { adapter, auth } = make(gate);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    auth.load.mockResolvedValue('STRING_SESSION');
+    gate.acquireResult.mockResolvedValueOnce('error');
+    await expect(adapter.resumeSession('s1')).rejects.toBeInstanceOf(EngineTemporarilyUnavailableError);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
+    expect(fake.clients).toHaveLength(2);
   });
 
   it('resumeSession que falha ao reabrir mantém a suspensa e relança; a 2ª chamada reconecta', async () => {
@@ -159,11 +175,11 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
     expect(adapter.listLocalSessionIds()).toEqual([]);
 
     auth.load.mockResolvedValueOnce('STRING_SESSION');
-    expect(await adapter.resumeSession('s1')).toBe(true);
+    expect(await adapter.resumeSession('s1')).toBe('resumed');
     expect(fake.clients).toHaveLength(2);
   });
 
-  it('disconnect durante o resume que falha não devolve a sessão à suspensão', async () => {
+  it('disconnect durante o resume que falha devolve gone e não devolve a sessão à suspensão', async () => {
     fake.authorized = true;
     const { adapter, auth } = make();
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
@@ -176,8 +192,8 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
     await adapter.disconnectSession({ sessionId: 's1', tenantId: T });
     fail(new Error('db'));
 
-    await expect(p).rejects.toThrow('db');
-    expect(await adapter.resumeSession('s1')).toBe(false);
+    expect(await p).toBe('gone');
+    expect(await adapter.resumeSession('s1')).toBe('gone');
     expect(fake.clients).toHaveLength(1);
   });
 

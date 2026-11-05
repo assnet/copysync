@@ -9,6 +9,11 @@ vi.mock('../repositories/PrismaSessionLeaseRepository', () => ({
     findLiveOwner = vi.fn();
   },
 }));
+vi.mock('../repositories/PrismaSessionRepository', () => ({
+  PrismaSessionRepository: class {
+    markDisconnectedIfNoLiveLease = vi.fn();
+  },
+}));
 vi.mock('../../../../shared/config/workerIdentity', () => ({ currentWorkerId: () => 'worker-test' }));
 const adoptionCfg = vi.hoisted(() => ({ enabled: false, maxSessions: 1, shard: null as string | null }));
 vi.mock('../../../../shared/config/workerAdoption', () => ({ workerAdoptionConfig: () => adoptionCfg }));
@@ -70,18 +75,38 @@ describe('sessionLeaseContainer', () => {
     await c.acquire.acquire('s1');
     const abortSession = vi.fn().mockResolvedValue(undefined);
     c.bindSocketControl({
-      abortSession, suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(), listLocalSessionIds: () => ['s1'],
+      abortSession, suspendSession: vi.fn(), resumeSession: vi.fn(), forgetSuspension: vi.fn(), closeAllSockets: vi.fn(), listLocalSessionIds: () => ['s1'],
     });
     await c.renew.execute(); // renew devolve [] = lease perdido → derruba
     expect(repo.renew).toHaveBeenCalledWith(['s1'], 'w1', expect.any(Number));
     expect(abortSession).toHaveBeenCalledWith('s1');
   });
 
+  it('gate expõe acquire tipado: erro de banco = error, outro dono = held (com e sem teto)', async () => {
+    for (const capacity of [undefined, { maxSessions: 5 }]) {
+      const repo = fakeRepo();
+      const c = buildSessionLeaseContainer(repo, 'w1', capacity);
+      vi.mocked(repo.tryAcquire).mockRejectedValueOnce(new Error('db')).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      expect(await c.gate.acquireResult!('s1')).toBe('error');
+      expect(await c.gate.acquireResult!('s1')).toBe('held');
+      expect(await c.gate.acquireResult!('s1')).toBe('acquired');
+    }
+  });
+
+  it('com teto cheio: acquire tipado de sessão nova = held', async () => {
+    const c = buildSessionLeaseContainer(fakeRepo(), 'w1', { maxSessions: 1 });
+    c.bindSocketControl({
+      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), forgetSuspension: vi.fn(), closeAllSockets: vi.fn(),
+      listLocalSessionIds: () => ['a'],
+    });
+    expect(await c.gate.acquireResult!('nova')).toBe('held');
+  });
+
   it('flag off: gate é o de antes, sem teto (nega nada com sockets cheios)', async () => {
     const repo = fakeRepo();
     const c = buildSessionLeaseContainer(repo, 'w1');
     c.bindSocketControl({
-      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(),
+      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), forgetSuspension: vi.fn(), closeAllSockets: vi.fn(),
       listLocalSessionIds: () => ['a', 'b', 'c'],
     });
     expect(c.gate.constructor).toBe(Object);
@@ -94,7 +119,7 @@ describe('sessionLeaseContainer', () => {
     const c = buildSessionLeaseContainer(repo, 'w1', { maxSessions: 2 });
     let local = ['a'];
     c.bindSocketControl({
-      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(),
+      abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), forgetSuspension: vi.fn(), closeAllSockets: vi.fn(),
       listLocalSessionIds: () => local,
     });
     expect(c.listLocal()).toEqual(['a']);
@@ -114,7 +139,7 @@ describe('sessionLeaseContainer', () => {
       const mod = await import('./sessionLeaseContainer');
       const c = mod.sessionLeaseContainer();
       c.bindSocketControl({
-        abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), closeAllSockets: vi.fn(),
+        abortSession: vi.fn(), suspendSession: vi.fn(), resumeSession: vi.fn(), forgetSuspension: vi.fn(), closeAllSockets: vi.fn(),
         listLocalSessionIds: () => ['x'],
       });
       expect(await c.gate.acquire('nova')).toBe(false);

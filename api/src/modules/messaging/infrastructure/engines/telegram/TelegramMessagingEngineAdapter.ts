@@ -55,8 +55,9 @@ import type { IChatConversationRepository } from '../../../../chat/domain/contra
 import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums';
 import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { SessionLeaseHeldError, SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
-import type { ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
-import { EngineOperationUnsupportedError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
+import { acquireLeaseResult, type ISessionLeaseGate, type LeaseAcquireResult } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
+import type { SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
+import { EngineOperationUnsupportedError, EngineTemporarilyUnavailableError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 import { TelegramLoginNotPendingError } from '../../../../../shared/errors/internal/TelegramErrors';
 import { TelegramSessionRegistry, type PendingLogin, type TelegramSessionEntry } from './TelegramSessionRegistry';
@@ -156,6 +157,11 @@ function mediaInfo(media: Api.TypeMessageMedia | undefined): { mimeType: string 
   return { mimeType: null, fileName: null, durationSeconds: null, size: null };
 }
 
+/** Recebe o resultado do acquire do lease em `openClient` (retomada distingue held de erro). */
+interface LeaseProbe {
+  lease?: LeaseAcquireResult;
+}
+
 export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessionSocketControl {
   private readonly registry = new TelegramSessionRegistry();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
@@ -194,7 +200,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
 
   /** Abre o cliente; com credenciais salvas conecta direto, sem elas inicia o login por QR. */
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
-    this.forgetSuspension(input.sessionId);
+    this.dropSuspension(input.sessionId);
     const entry = await this.openClient(input.sessionId, input.tenantId);
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
@@ -205,14 +211,20 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async reconnectSession(input: ReconnectSessionInput): Promise<void> {
+    this.dropSuspension(input.sessionId);
+    await this.reopen(input);
+  }
+
+  /** Reconexão (manual ou retomada pós-fence); `probe` recebe o resultado do acquire do lease. */
+  private async reopen(input: ReconnectSessionInput, probe?: LeaseProbe): Promise<void> {
     const saved = await this.auth.load(input.sessionId, input.tenantId);
     if (!saved) {
       // Nunca logou (ou saiu): como no WhatsApp, reconectar sem credencial abre o login por QR
-      const entry = await this.openClient(input.sessionId, input.tenantId, null);
+      const entry = await this.openClient(input.sessionId, input.tenantId, null, probe);
       this.startQrLogin(input.sessionId, entry);
       return;
     }
-    const entry = await this.openClient(input.sessionId, input.tenantId, saved);
+    const entry = await this.openClient(input.sessionId, input.tenantId, saved, probe);
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
       return;
@@ -224,7 +236,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
-    this.forgetSuspension(input.sessionId);
+    this.dropSuspension(input.sessionId);
     const entry = this.registry.get(input.sessionId);
     if (entry) await this.teardown(input.sessionId, entry);
     await this.sessionRepo
@@ -234,7 +246,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   async logoutSession(input: LogoutSessionInput): Promise<void> {
-    this.forgetSuspension(input.sessionId);
+    this.dropSuspension(input.sessionId);
     const entry = this.registry.get(input.sessionId);
     if (entry) {
       try {
@@ -415,12 +427,16 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     };
   }
 
-  private async openClient(sessionId: string, tenantId: string, savedSession?: string | null): Promise<TelegramSessionEntry> {
+  private async openClient(
+    sessionId: string, tenantId: string, savedSession?: string | null, probe?: LeaseProbe,
+  ): Promise<TelegramSessionEntry> {
     // Lease antes de tudo (LEASE-03): outro processo com a sessão → nenhum cliente nem status aqui
-    // (dois clientes com a mesma chave = AUTH_KEY_DUPLICATED)
-    if (!(await this.leaseGate.acquire(sessionId))) {
-      telegramLogger.warn({ sessionId, tenantId }, 'lease da sessão com outro processo; cliente não aberto');
-      throw new SessionLeaseHeldError(sessionId);
+    // (dois clientes com a mesma chave = AUTH_KEY_DUPLICATED). Erro de banco ≠ outro dono.
+    const lease = await acquireLeaseResult(this.leaseGate, sessionId);
+    if (probe) probe.lease = lease;
+    if (lease !== 'acquired') {
+      telegramLogger.warn({ sessionId, tenantId, lease }, 'lease da sessão não adquirido; cliente não aberto');
+      throw lease === 'held' ? new SessionLeaseHeldError(sessionId) : new EngineTemporarilyUnavailableError();
     }
     // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
     const opened = await this.whileOpening(sessionId, async (token) => {
@@ -937,7 +953,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * StringSession (o fluxo de login sai pelo `isCurrent` falso). Sem cliente local: nada.
    */
   async abortSession(sessionId: string): Promise<void> {
-    this.forgetSuspension(sessionId);
+    this.dropSuspension(sessionId);
     this.dialogsCache.delete(sessionId);
     this.cancelOpening(sessionId, 'abort');
     const entry = this.registry.get(sessionId);
@@ -961,33 +977,47 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     telegramLogger.warn({ sessionId }, 'Telegram client suspended (lease fence, database unavailable)');
   }
 
-  /** Banco de volta: reabre a sessão suspensa pelo caminho de reconexão (lease → cliente). */
-  async resumeSession(sessionId: string): Promise<boolean> {
+  /**
+   * Banco de volta: reabre a sessão suspensa pelo caminho de reconexão (lease → cliente). A entrada
+   * de `suspended` só sai no sucesso; `held` (só se o acquire disse held) e erro a mantêm.
+   */
+  async resumeSession(sessionId: string): Promise<SessionResumeResult> {
     const tenantId = this.suspended.get(sessionId);
-    if (tenantId === undefined) return false;
-    this.suspended.delete(sessionId);
-    if (this.registry.get(sessionId)) return true;
+    if (tenantId === undefined) return 'gone';
+    if (this.registry.get(sessionId)) {
+      this.suspended.delete(sessionId);
+      return 'resumed';
+    }
     const attempt = {};
     this.resuming.set(sessionId, attempt);
+    // Abort/connect/disconnect/logout no meio invalidam a tentativa (forgetSuspension)
+    const current = (): boolean => this.resuming.get(sessionId) === attempt;
+    const probe: LeaseProbe = {};
     try {
-      await this.reconnectSession({ sessionId, tenantId });
-      return true;
+      await this.reopen({ sessionId, tenantId }, probe);
+      if (!current()) return 'gone';
+      this.suspended.delete(sessionId);
+      return 'resumed';
     } catch (err) {
-      if (err instanceof SessionLeaseHeldError) return false;
-      // Falha ao reabrir: segue suspensa para a próxima rodada (que conta a tentativa)
-      if (this.resuming.get(sessionId) === attempt && !this.registry.get(sessionId)) {
-        this.suspended.set(sessionId, tenantId);
-      }
+      if (!current()) return 'gone';
+      if (probe.lease === 'held') return 'held';
       throw err;
     } finally {
-      if (this.resuming.get(sessionId) === attempt) this.resuming.delete(sessionId);
+      if (current()) this.resuming.delete(sessionId);
     }
   }
 
+  /** Desistência do use case (ver contrato); devolve o tenant que a suspensão guardava. */
+  async forgetSuspension(sessionId: string): Promise<string | null> {
+    return this.dropSuspension(sessionId);
+  }
+
   /** Ação explícita sobre a sessão: apaga a suspensão e invalida reabertura em curso. */
-  private forgetSuspension(sessionId: string): void {
+  private dropSuspension(sessionId: string): string | null {
+    const tenantId = this.suspended.get(sessionId) ?? null;
     this.suspended.delete(sessionId);
     this.resuming.delete(sessionId);
+    return tenantId;
   }
 
   /** Shutdown: destrói todos os clientes em paralelo; falha de um não segura os outros. */

@@ -86,4 +86,47 @@ describe('SessionLeaseKeeper', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     await keeper.stop();
   });
+
+  it('(6) retomada lenta sai fora do tick: renovação segue no ritmo e a sessão não ganha 2ª retomada', async () => {
+    const slow = deferred();
+    const execute = vi.fn(async () => ['s9', 's8']);
+    const resume = vi.fn((id: string) => (id === 's9' ? slow.promise : Promise.resolve()));
+    const keeper = new SessionLeaseKeeper({ execute, resume }, 1_000, { warn: vi.fn() });
+    keeper.start();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(execute).toHaveBeenCalledTimes(5);
+    expect(resume.mock.calls.filter(([id]) => id === 's9')).toHaveLength(1);
+    expect(resume.mock.calls.filter(([id]) => id === 's8')).toHaveLength(5);
+    slow.resolve();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(resume.mock.calls.filter(([id]) => id === 's9')).toHaveLength(2);
+    await keeper.stop();
+  });
+
+  it('erro na retomada é logado e não derruba o keeper', async () => {
+    const log = { warn: vi.fn() };
+    const execute = vi.fn(async () => ['s1']);
+    const resume = vi.fn(async () => { throw new Error('x'); });
+    const keeper = new SessionLeaseKeeper({ execute, resume }, 1_000, log);
+    keeper.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(log.warn).toHaveBeenCalledTimes(2);
+    await keeper.stop();
+  });
+
+  it('stop espera a retomada em curso no máximo um intervalo', async () => {
+    const never = deferred();
+    const execute = vi.fn(async () => ['s1']);
+    const keeper = new SessionLeaseKeeper({ execute, resume: () => never.promise }, 1_000, { warn: vi.fn() });
+    keeper.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    let stopped = false;
+    const stopping = keeper.stop().then(() => (stopped = true));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(stopped).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await stopping;
+    expect(stopped).toBe(true);
+  });
 });
