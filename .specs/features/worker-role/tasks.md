@@ -41,7 +41,7 @@ Regras comuns a toda task:
 | T22 | Fila de comando: resultado desconhecido, sem reexecução, prazo e shutdown com teto | T21 | P | ✅ b0b1c28 |
 | T23 | Boot por papel: falha encerra, S3 completo validado, porta antes do relay | T21 | P | ✅ 740b7b1 |
 | T24 | RPC com prazo no worker; limpeza de `outbound-tmp/` | T21 | P | ✅ 574c291 |
-| T25 | Painel: resultado desconhecido não oferece reenvio de mídia | T22 | P | ⏳ |
+| T25 | Painel: resultado desconhecido não oferece reenvio de mídia | T22 | P | ✅ bc1e5b1 |
 
 ### T18b: Rotas usam a engine ativa; concorrência das filas por env
 
