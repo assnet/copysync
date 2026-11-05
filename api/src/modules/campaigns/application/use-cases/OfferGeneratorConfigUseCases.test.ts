@@ -54,7 +54,8 @@ describe('Offer generator config', () => {
   it('sem configuração: padrões, sem grupos, limite do plano', async () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
-      sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, configured: false,
+      sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
+      windowStartMinute: 0, windowEndMinute: 1440, weekdays: [0, 1, 2, 3, 4, 5, 6], groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, configured: false,
       limits: { whatsapp: { sessions: null, broadcastGroups: 5 }, telegram: { sessions: null, broadcastGroups: null } },
       usage: { whatsapp: { sessions: 0, broadcastGroups: 0 }, telegram: { sessions: 0, broadcastGroups: 0 } },
     });
@@ -229,5 +230,44 @@ describe('Offer generator config — limite pela união com o monitoramento (BG-
     const s = setup({ broadcast_groups: 1 });
     s.groupUsage.monitor = [monitorRow('s1', 'm1'), monitorRow('s1', 'm2')];
     await expect(s.save.execute({ ...base, conversationIds: [] })).resolves.toMatchObject({ usage: { whatsapp: { broadcastGroups: 2 } } });
+  });
+});
+
+describe('Offer generator config — horário de postagem (PS-05)', () => {
+  it('salva faixa noturna + dias; GET devolve a lista de dias e o repo grava o mask', async () => {
+    const s = setup();
+    const out = await s.save.execute({ ...base, conversationIds: [], windowStartMinute: 1320, windowEndMinute: 120, weekdays: [6, 5] });
+    expect(out).toMatchObject({ windowStartMinute: 1320, windowEndMinute: 120, weekdays: [5, 6] });
+    expect(s.configs.configs.get(TENANT)).toMatchObject({ windowStartMinute: 1320, windowEndMinute: 120, weekdaysMask: 96 });
+    expect(await s.get.execute(TENANT)).toMatchObject({ windowStartMinute: 1320, windowEndMinute: 120, weekdays: [5, 6] });
+  });
+
+  it('cliente antigo sem os campos: sem config = dia inteiro e todos os dias; com config mantém o salvo', async () => {
+    const s = setup();
+    await s.save.execute({ ...base, conversationIds: [] });
+    expect(s.configs.configs.get(TENANT)).toMatchObject({ windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127 });
+    await s.save.execute({ ...base, conversationIds: [], windowStartMinute: 480, windowEndMinute: 1080, weekdays: [1, 2, 3, 4, 5] });
+    const out = await s.save.execute({ ...base, conversationIds: [], intervalMinSeconds: 60 });
+    expect(out).toMatchObject({ intervalMinSeconds: 60, windowStartMinute: 480, windowEndMinute: 1080, weekdays: [1, 2, 3, 4, 5] });
+  });
+
+  it('1440 → 360 é a janela 00:00–06:00 (válida)', async () => {
+    const out = await setup().save.execute({ ...base, conversationIds: [], windowStartMinute: 1440, windowEndMinute: 360 });
+    expect(out).toMatchObject({ windowStartMinute: 1440, windowEndMinute: 360 });
+  });
+
+  it.each([
+    [{ windowStartMinute: 600, windowEndMinute: 600 }, 'windowEndMinute'],
+    [{ windowStartMinute: 1440, windowEndMinute: 0 }, 'windowEndMinute'],
+    [{ windowStartMinute: -1 }, 'windowStartMinute'],
+    [{ windowEndMinute: 1441 }, 'windowEndMinute'],
+    [{ windowStartMinute: 10.5 }, 'windowStartMinute'],
+    [{ weekdays: [] }, 'weekdays'],
+    [{ weekdays: [7] }, 'weekdays'],
+    [{ weekdays: [1, 1] }, 'weekdays'],
+  ])('inválido %o → OFFER_INVALID_INPUT em %s e nada muda', async (window, field) => {
+    const s = setup();
+    await expect(s.save.execute({ ...base, conversationIds: [], ...window })).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field } });
+    expect(s.configs.saves).toBe(0);
   });
 });

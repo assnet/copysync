@@ -41,7 +41,7 @@ function setup(
   );
   if (opts.configured !== false) {
     configs.configs.set(TENANT, {
-      tenantId: TENANT, sessionIds: opts.sessionIds ?? ['s1'], intervalMinSeconds: 8, intervalMaxSeconds: 16,
+      tenantId: TENANT, sessionIds: opts.sessionIds ?? ['s1'], intervalMinSeconds: 8, intervalMaxSeconds: 16, windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127,
       dispatchOrder: opts.dispatchOrder ?? 'SEQUENTIAL', updatedAt: NOW,
     });
   }

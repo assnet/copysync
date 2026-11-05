@@ -50,6 +50,9 @@ type SaveConfigBody = {
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
   conversationIds: string[];
+  windowStartMinute?: number;
+  windowEndMinute?: number;
+  weekdays?: number[];
 };
 
 /**

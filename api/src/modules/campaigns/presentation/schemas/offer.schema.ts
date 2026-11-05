@@ -13,6 +13,7 @@ import {
 } from '../../application/use-cases/OfferGeneratorConfigUseCases';
 import { OFFER_TYPING_SECONDS_MIN, OFFER_TYPING_SECONDS_MAX } from '../../domain/offerTyping';
 import { OFFER_DISPATCH_ORDERS } from '../../domain/entities/OfferGeneratorConfig';
+import { MINUTES_PER_DAY } from '../../domain/services/postingWindow';
 
 /** Mesmo formato do `uploadId` gerado pelo store (`randomUUID` v4, minúsculo). */
 const UPLOAD_ID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$';
@@ -25,6 +26,9 @@ const coupon = { type: ['string', 'null'], maxLength: OFFER_COUPON_MAX } as cons
 /** Formato no schema; futuro e teto de dias no use case (422 `scheduledAt`). */
 const scheduledAt = { type: ['string', 'null'], format: 'date-time' } as const;
 const intervalSeconds = { type: 'integer', minimum: OFFER_INTERVAL_MIN_SECONDS, maximum: OFFER_INTERVAL_MAX_SECONDS } as const;
+const windowMinute = { type: 'integer', minimum: 0, maximum: MINUTES_PER_DAY } as const;
+/** Dias de postagem (0 = domingo … 6 = sábado), ao menos um. */
+const weekdays = { type: 'array', minItems: 1, maxItems: 7, uniqueItems: true, items: { type: 'integer', minimum: 0, maximum: 6 } } as const;
 
 // ── Entrada ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +71,11 @@ export const regenerateOfferBodySchema = {
   additionalProperties: false,
 } as const;
 
-/** Intervalo: 60–3600 s (1–60 min) no schema; `min ≤ max` e plano no use case. */
+/**
+ * Intervalo: 60–3600 s (1–60 min) no schema; `min ≤ max` e plano no use case.
+ * Horário (`windowStartMinute`/`windowEndMinute`/`weekdays`) opcional: cliente antigo salva sem ele e o
+ * use case mantém o salvo; janela vazia é 422.
+ */
 export const saveConfigBodySchema = {
   type: 'object',
   required: ['sessionIds', 'intervalMinSeconds', 'intervalMaxSeconds', 'dispatchOrder', 'conversationIds'],
@@ -81,6 +89,9 @@ export const saveConfigBodySchema = {
     intervalMinSeconds: intervalSeconds,
     intervalMaxSeconds: intervalSeconds,
     dispatchOrder: { type: 'string', enum: [...OFFER_DISPATCH_ORDERS] },
+    windowStartMinute: windowMinute,
+    windowEndMinute: windowMinute,
+    weekdays,
     conversationIds: {
       type: 'array',
       maxItems: OFFER_GROUPS_HARD_MAX,
@@ -191,6 +202,9 @@ export const offerConfigResponse = envelope({
     intervalMinSeconds: { type: 'integer' },
     intervalMaxSeconds: { type: 'integer' },
     dispatchOrder: { type: 'string', enum: [...OFFER_DISPATCH_ORDERS] },
+    windowStartMinute: { type: 'integer' },
+    windowEndMinute: { type: 'integer' },
+    weekdays: { type: 'array', items: { type: 'integer' } },
     groups: { type: 'array', items: configGroupSchema },
     groupLimit: { type: ['number', 'null'] },
     sessionLimit: { type: ['number', 'null'] },

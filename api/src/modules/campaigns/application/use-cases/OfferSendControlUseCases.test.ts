@@ -25,7 +25,7 @@ function setup(offer: Partial<Offer> = { status: 'SENDING' }) {
   dispatches.add({ offerId: 'offer-1', conversationId: 'c4', notBefore: new Date(NOW.getTime() + 20_000) });
   const configs = new InMemoryOfferGeneratorConfigRepository([], []);
   configs.configs.set(TENANT, {
-    tenantId: TENANT, sessionIds: ['s1'], intervalMinSeconds: 100, intervalMaxSeconds: 200, dispatchOrder: 'SEQUENTIAL', updatedAt: NOW,
+    tenantId: TENANT, sessionIds: ['s1'], intervalMinSeconds: 100, windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127, intervalMaxSeconds: 200, dispatchOrder: 'SEQUENTIAL', updatedAt: NOW,
   });
   const deps = { offers, dispatches, configs, now: () => LATER, rand: () => 0.5 };
   const byConv = (c: string) => dispatches.items.find((d) => d.conversationId === c)!;

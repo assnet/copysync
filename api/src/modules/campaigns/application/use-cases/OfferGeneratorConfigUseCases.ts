@@ -14,6 +14,9 @@ import { loadLiveGroups } from '../services/loadLiveGroups';
 import { OFFER_DISPATCH_ORDERS, type OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
 import type { IBroadcastGroupUsageReader } from '../../domain/contracts/IBroadcastGroupUsageReader';
 import { countDistinctBroadcastGroups, type BroadcastGroupRow } from '../../domain/services/broadcastGroupUnion';
+import {
+  ALL_WEEKDAYS_MASK, isFullDayRange, isValidWeekdaysMask, MINUTES_PER_DAY, weekdaysFromMask, weekdaysMask,
+} from '../../domain/services/postingWindow';
 
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
 export const OFFER_GROUPS_HARD_MAX = 200;
@@ -28,6 +31,8 @@ export const OFFER_SESSIONS_HARD_MAX = 10;
 export const OFFER_INTERVAL_MIN_SECONDS = 60;
 export const OFFER_INTERVAL_MAX_SECONDS = 3600;
 export const DEFAULT_INTERVAL = { min: 120, max: 300 } as const;
+/** Padrão do horário = comportamento anterior à janela: dia inteiro, todos os dias (PS-02). */
+export const DEFAULT_POSTING_WINDOW = { startMinute: 0, endMinute: MINUTES_PER_DAY, weekdaysMask: ALL_WEEKDAYS_MASK } as const;
 
 export interface OfferGeneratorConfigDTO {
   /** Na ordem de envio. Vazio = nunca configurado ou sessões apagadas. */
@@ -35,6 +40,11 @@ export interface OfferGeneratorConfigDTO {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
+  /** Horário de postagem (PS-05), fuso `America/Sao_Paulo`; fim < início cruza a meia-noite. */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  /** Dias de postagem (0 = domingo … 6 = sábado), ordenados, ao menos um. */
+  weekdays: number[];
   /** `canPost`/`postBlockedReason` pela lista ao vivo da sessão dona; null = desconhecido. */
   groups: ({ id: string; title: string | null; avatarUrl: string | null; sessionId: string | null } & GroupPostability)[];
   /** Legado = `limits.whatsapp.broadcastGroups` (`broadcast_groups`); null = sem limite do plano. */
@@ -61,6 +71,10 @@ export interface SaveOfferGeneratorConfigInput {
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
   conversationIds: string[];
+  /** Horário (PS-05). Ausente = mantém o salvo (cliente antigo); sem config salva = padrão. */
+  windowStartMinute?: number;
+  windowEndMinute?: number;
+  weekdays?: number[];
 }
 
 interface Deps {
@@ -108,6 +122,9 @@ export class GetOfferGeneratorConfigUseCase {
       intervalMinSeconds: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
       intervalMaxSeconds: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
       dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
+      windowStartMinute: config?.windowStartMinute ?? DEFAULT_POSTING_WINDOW.startMinute,
+      windowEndMinute: config?.windowEndMinute ?? DEFAULT_POSTING_WINDOW.endMinute,
+      weekdays: weekdaysFromMask(config?.weekdaysMask ?? DEFAULT_POSTING_WINDOW.weekdaysMask),
       groups: toGroups(groups, live),
       groupLimit: waGroups,
       sessionLimit: waSessions,
@@ -139,6 +156,8 @@ export class SaveOfferGeneratorConfigUseCase {
     if (!OFFER_DISPATCH_ORDERS.includes(input.dispatchOrder)) {
       throw new OfferInvalidInputError('Unknown dispatch order', 'dispatchOrder');
     }
+    const saved = await configs.find(tenantId);
+    const window = resolvePostingWindow(input, saved);
 
     const sessionIds = [...new Set(input.sessionIds.map((id) => id.trim()).filter(Boolean))];
     if (sessionIds.length === 0) throw new OfferInvalidInputError('At least one session', 'sessionIds');
@@ -195,6 +214,7 @@ export class SaveOfferGeneratorConfigUseCase {
       intervalMinSeconds: input.intervalMinSeconds,
       intervalMaxSeconds: input.intervalMaxSeconds,
       dispatchOrder: input.dispatchOrder,
+      ...window,
       conversationIds: ids,
     });
     return new GetOfferGeneratorConfigUseCase(this.deps).execute(tenantId);
@@ -213,4 +233,34 @@ function validateInterval(min: number, max: number): void {
   if (!ok(max) || max < min) {
     throw new OfferInvalidInputError(`Max interval must be ≥ min and ≤ ${OFFER_INTERVAL_MAX_SECONDS} s (60 min)`, 'intervalMaxSeconds');
   }
+}
+
+type PostingWindowFields = { windowStartMinute: number; windowEndMinute: number; weekdaysMask: number };
+
+/** Campo ausente = valor salvo (ou padrão); valida faixa 0..1440, janela não vazia e dias (mask ≥ 1). */
+function resolvePostingWindow(
+  input: Pick<SaveOfferGeneratorConfigInput, 'windowStartMinute' | 'windowEndMinute' | 'weekdays'>,
+  saved: PostingWindowFields | null,
+): PostingWindowFields {
+  const windowStartMinute = input.windowStartMinute ?? saved?.windowStartMinute ?? DEFAULT_POSTING_WINDOW.startMinute;
+  const windowEndMinute = input.windowEndMinute ?? saved?.windowEndMinute ?? DEFAULT_POSTING_WINDOW.endMinute;
+  const inMinutes = (v: number) => Number.isInteger(v) && v >= 0 && v <= MINUTES_PER_DAY;
+  if (!inMinutes(windowStartMinute)) throw new OfferInvalidInputError(`Window start must be 0–${MINUTES_PER_DAY}`, 'windowStartMinute');
+  if (!inMinutes(windowEndMinute)) throw new OfferInvalidInputError(`Window end must be 0–${MINUTES_PER_DAY}`, 'windowEndMinute');
+  // 1440 = meia-noite seguinte: só 0–1440 é dia inteiro; demais iguais (mod 1440) = janela vazia
+  if (!isFullDayRange({ startMinute: windowStartMinute, endMinute: windowEndMinute })
+    && windowStartMinute % MINUTES_PER_DAY === windowEndMinute % MINUTES_PER_DAY) {
+    throw new OfferInvalidInputError('Empty posting window', 'windowEndMinute');
+  }
+  let mask = saved?.weekdaysMask ?? DEFAULT_POSTING_WINDOW.weekdaysMask;
+  if (input.weekdays !== undefined) {
+    if (new Set(input.weekdays).size !== input.weekdays.length) throw new OfferInvalidInputError('Duplicate weekday', 'weekdays');
+    try {
+      mask = weekdaysMask(input.weekdays);
+    } catch {
+      throw new OfferInvalidInputError('Weekday must be 0–6', 'weekdays');
+    }
+  }
+  if (!isValidWeekdaysMask(mask)) throw new OfferInvalidInputError('At least one weekday', 'weekdays');
+  return { windowStartMinute, windowEndMinute, weekdaysMask: mask };
 }

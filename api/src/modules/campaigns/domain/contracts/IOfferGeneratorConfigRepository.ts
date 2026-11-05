@@ -15,6 +15,10 @@ export interface SaveOfferGeneratorConfigInput {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
+  /** Horário de postagem já validado (`postingWindow`). */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  weekdaysMask: number;
   /** Já validados (grupos das sessões e do tenant). */
   conversationIds: string[];
 }

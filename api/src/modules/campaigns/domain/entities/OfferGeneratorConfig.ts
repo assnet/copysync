@@ -12,6 +12,11 @@ export interface OfferGeneratorConfig {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
+  /** Horário de postagem (`postingWindow`): faixa 0..1440 no fuso da plataforma; 0–1440 = dia inteiro. */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  /** Bit 0 = domingo … bit 6 = sábado; 127 = todos. */
+  weekdaysMask: number;
   updatedAt: Date;
 }
 

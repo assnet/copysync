@@ -24,6 +24,9 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
           intervalMinSeconds: row.intervalMinSeconds,
           intervalMaxSeconds: row.intervalMaxSeconds,
           dispatchOrder: row.dispatchOrder,
+          windowStartMinute: row.windowStartMinute,
+          windowEndMinute: row.windowEndMinute,
+          weekdaysMask: row.weekdaysMask,
           updatedAt: row.updatedAt,
         }
       : null;
@@ -50,7 +53,7 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
   }
 
   async save(input: SaveOfferGeneratorConfigInput): Promise<void> {
-    const { tenantId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder } = input;
+    const { tenantId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder, windowStartMinute, windowEndMinute, weekdaysMask } = input;
     const sessionIds = [...new Set(input.sessionIds)];
     const unique = [...new Set(input.conversationIds)];
     // `sessionId` legado = primeira sessão, só para leitores antigos; a lista é a fonte de verdade
@@ -59,8 +62,8 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
       await this.prisma.$transaction([
         this.prisma.offerGeneratorConfig.upsert({
           where: { tenantId },
-          create: { tenantId, sessionId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder },
-          update: { sessionId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder },
+          create: { tenantId, sessionId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder, windowStartMinute, windowEndMinute, weekdaysMask },
+          update: { sessionId, intervalMinSeconds, intervalMaxSeconds, dispatchOrder, windowStartMinute, windowEndMinute, weekdaysMask },
         }),
         this.prisma.offerGeneratorConfigSession.deleteMany({ where: { tenantId } }),
         this.prisma.offerGeneratorConfigSession.createMany({
