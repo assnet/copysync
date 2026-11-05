@@ -1,4 +1,5 @@
-import { Box, Chip, Link, Tooltip } from '@mui/material';
+import { Box, Chip, Link, Tooltip, useTheme } from '@mui/material';
+import { brandColor } from '@/components';
 import { Link as RouterLink, useInRouterContext } from 'react-router-dom';
 import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import type { LimitChannel } from '@/types/api.types';
@@ -32,6 +33,7 @@ function SharedLimitTooltip() {
 
 /** Contadores "WhatsApp 1/1 · Telegram 0/1" com o logo de cada canal; aviso no limite. */
 export function ChannelCounterChips({ channels, count, limits, label, ariaLabel, sharedLimitHint = false }: Props) {
+  const { palette } = useTheme();
   return (
     <Box role="status" aria-live="polite" aria-atomic="true" sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
       {channels.map((ch) => {
@@ -49,8 +51,8 @@ export function ChannelCounterChips({ channels, count, limits, label, ariaLabel,
             label={label(ch, n, limit)}
             sx={{
               fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-              // Logo em fundo cheio: chip colorido usa a cor do texto para não sumir
-              '& .MuiChip-icon': { ml: 0.75, ...(n > 0 && { '& span': { color: 'inherit' } }) },
+              // Logo em fundo cheio usa a cor do texto para não sumir; contorno mantém a cor da marca
+              '& .MuiChip-icon': { ml: 0.75, color: n > 0 ? 'inherit' : brandColor(ch, palette.mode) },
             }}
           />
         );

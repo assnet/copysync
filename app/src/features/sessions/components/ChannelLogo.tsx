@@ -12,14 +12,17 @@ interface Props {
    * texto que já diz o canal, fica decorativo (`aria-hidden`).
    */
   labelled?: boolean;
+  /** Repassado ao elemento raiz: o `Chip` injeta `MuiChip-icon` (margem e cor) por aqui. */
+  className?: string;
 }
 
 /** Logo do canal (WhatsApp/Telegram) na cor da marca, legível no claro e no escuro. */
-export function ChannelLogo({ channel, size = 'inline', labelled = false }: Props) {
+export function ChannelLogo({ channel, size = 'inline', labelled = false, className }: Props) {
   const { palette } = useTheme();
   const logo = (
     <Box
       component="span"
+      className={className}
       role={labelled ? 'img' : undefined}
       aria-label={labelled ? channelLabel(channel) : undefined}
       aria-hidden={labelled ? undefined : true}

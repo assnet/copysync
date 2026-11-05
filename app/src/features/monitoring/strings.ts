@@ -216,7 +216,7 @@ export const monitoringStrings = {
     masterOff: 'Desligado',
     enabledMissingGroups: 'Escolha ao menos um grupo monitorado e um grupo de disparo para o monitoramento funcionar.',
 
-    windowTitle: 'Horário de operação',
+    windowTitle: 'Horário de postagem',
     windowSubtitle: 'Quando os envios acontecem (horário de Brasília). Fora dele, nada sai',
     captureOutsideTitle: 'Capturar fora do horário',
     captureOutsideOn: 'Fora do horário o monitoramento continua capturando; as ofertas ficam na fila e saem quando a janela abrir.',
@@ -323,9 +323,9 @@ export const monitoringStrings = {
     notRetryable: 'Esta oferta não pode ser tentada de novo (já foi processada ou o motivo não é recuperável).',
     fields: {
       enabled: 'Monitoramento ativo',
-      windowStartMinute: 'Horário de operação',
-      windowEndMinute: 'Horário de operação',
-      weekdays: 'Horário de operação',
+      windowStartMinute: 'Horário de postagem',
+      windowEndMinute: 'Horário de postagem',
+      weekdays: 'Horário de postagem',
       intervalMinSeconds: 'Intervalo entre envios',
       intervalMaxSeconds: 'Intervalo entre envios',
       startDelaySeconds: 'Esperar para começar',

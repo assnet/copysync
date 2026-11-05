@@ -79,7 +79,7 @@ export function BroadcastGroupsTable({ data, sessionNameOf, removing, onRemove }
     if (!g) return;
     try {
       await onRemove(g.conversationId);
-      setNotice({ severity: 'success', text: t.remove.success(blurNames ? t.untitledGroup : titleOf(g)) });
+      setNotice({ severity: 'success', text: t.remove.success(blurNames ? t.hiddenGroup : titleOf(g)) });
     } catch {
       setNotice({ severity: 'error', text: t.remove.error });
     }
@@ -150,7 +150,7 @@ export function BroadcastGroupsTable({ data, sessionNameOf, removing, onRemove }
                 const session = sessionOf(g.sessionId);
                 return (
                   <TableRow key={g.conversationId} hover>
-                    <TableCell sx={{ maxWidth: 0, width: '50%' }}>
+                    <TableCell sx={{ maxWidth: 0, width: { xs: '100%', sm: '50%' } }}>
                       <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
                         <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={32} blurFlag="broadcastGroups.groupAvatars" />
                         <Box sx={{ minWidth: 0 }}>
@@ -213,8 +213,8 @@ export function BroadcastGroupsTable({ data, sessionNameOf, removing, onRemove }
       <ConfirmDialog
         open={confirm != null}
         title={t.remove.confirmTitle}
-        description={confirm ? t.remove.confirmBody(blurNames ? t.untitledGroup : titleOf(confirm), confirm.usedBy.length) : ''}
-        confirmLabel={t.remove.confirm}
+        description={confirm ? t.remove.confirmBody(blurNames ? t.hiddenGroup : titleOf(confirm), confirm.usedBy.length) : ''}
+        confirmLabel={t.remove.confirm(confirm?.usedBy.length ?? 0)}
         cancelLabel={t.remove.cancel}
         confirmColor="error"
         onConfirm={() => void doRemove()}

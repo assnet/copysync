@@ -53,6 +53,8 @@ export const broadcastGroupsStrings = {
   },
 
   untitledGroup: 'Grupo sem nome',
+  /** Nome borrado pela privacidade: texto neutro, sem afirmar que o grupo não tem nome. */
+  hiddenGroup: 'Este grupo',
   unnamedSession: 'Sessão sem nome',
 
   remove: {
@@ -62,7 +64,7 @@ export const broadcastGroupsStrings = {
     confirmTitle: 'Remover grupo de disparo?',
     confirmBody: (group: string, uses: number) =>
       `${group} deixa de receber ofertas em ${uses === 1 ? 'seu único uso' : `todos os ${count(uses)} usos`}. Envios já na fila seguem as regras da fila.`,
-    confirm: 'Remover de todos',
+    confirm: (uses: number) => (uses === 1 ? 'Remover' : 'Remover de todos'),
     cancel: 'Cancelar',
     success: (group: string) => `${group} foi removido dos grupos de disparo.`,
     error: 'Não foi possível remover o grupo. Tente de novo.',

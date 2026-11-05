@@ -98,7 +98,7 @@ describe.each(['light', 'dark'] as const)('BroadcastGroupsTable (%s)', (mode) =>
     expect(onRemove).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'Remover o grupo Achadinhos de todos os usos' }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Remover de todos' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Remover' })));
     expect(await screen.findByText('Não foi possível remover o grupo. Tente de novo.')).toBeInTheDocument();
   });
 });

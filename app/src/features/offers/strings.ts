@@ -202,7 +202,7 @@ export const offerStrings = {
     sessionOfflineTooltip: 'Reconecte a sessão para conseguir disparar.',
     groups: (n: number) => groupsLabel(n),
     edit: 'Editar',
-    editTooltip: 'Mudar sessão, grupos e intervalo',
+    editTooltip: 'Mudar sessão, grupos, horário e intervalo',
   },
 
   form: {

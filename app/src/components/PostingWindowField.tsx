@@ -87,8 +87,8 @@ export function PostingWindowField({ value, onChange, disabled }: PostingWindowF
           <AppIcon icon={win.overnight ? Moon : Clock} size="md" />
         </Box>
         <Typography component="span" variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums', color: 'inherit' }}>
-          {range}
-          <Box component="span" sx={{ fontWeight: 500, color: valid ? 'text.secondary' : 'inherit' }}>{` · ${days}`}</Box>
+          <Box component="span" sx={{ whiteSpace: 'nowrap' }}>{range}</Box>{' '}
+          <Box component="span" sx={{ fontWeight: 500, color: valid ? 'text.secondary' : 'inherit', whiteSpace: 'nowrap' }}>{`· ${days}`}</Box>
         </Typography>
       </Box>
 
