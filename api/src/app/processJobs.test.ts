@@ -5,10 +5,11 @@ const ALL: ProcessJob[] = [
   'uploadSweeper', 'interruptedUploads', 'pendingMediaBoot', 'pendingMediaSweep',
   'offerDispatch', 'hubOutbox', 'extensionRetention', 'billingReconcile',
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
+  'sessionAdoption', 'workerHeartbeat', 'capacityAlert',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 12 jobs', () => {
+  it('all liga os 15 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -29,6 +30,14 @@ describe('jobsFor', () => {
     const worker = jobsFor('worker');
     for (const j of ['sessionBootstrap', 'sessionReconciler', 'leaseKeeper', 'offerDispatch'] as const) {
       expect(worker.has(j)).toBe(true);
+    }
+  });
+
+  it('adoção, heartbeat e alerta só nos papéis com sessões (worker/all)', () => {
+    for (const j of ['sessionAdoption', 'workerHeartbeat', 'capacityAlert'] as const) {
+      expect(jobsFor('worker').has(j)).toBe(true);
+      expect(jobsFor('all').has(j)).toBe(true);
+      expect(jobsFor('http').has(j)).toBe(false);
     }
   });
 });

@@ -44,10 +44,12 @@ import { extensionContainer } from '../modules/extension/infrastructure/extensio
 import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
 import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
+import { sessionAdoptionContainer } from '../modules/sessions/infrastructure/lease/sessionAdoptionContainer';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
 import { jobsFor } from './processJobs';
+import { mediaDrainBudgetMs } from './shutdownBudget';
 import { composeForRole } from './roleComposition';
 import { buildWorkerApp } from './workerApp';
 
@@ -124,6 +126,9 @@ async function start(): Promise<void> {
   const app = role === 'worker' ? buildWorkerHealthApp(composition.engine, lease.workerId) : await buildApp();
   // Jobs de boot deste papel (§3.3). `all` (default) = todos, na ordem de sempre.
   const jobs = jobsFor(role);
+  // Adoção por capacidade (E4): `null` com WORKER_ADOPTION_ENABLED desligada → boot/shutdown da E3.
+  // Só em `worker`/`all`: o `http` nunca monta repositório, listener nem timer da adoção.
+  const adoption = jobs.has('sessionAdoption') ? sessionAdoptionContainer() : null;
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
@@ -349,7 +354,11 @@ async function start(): Promise<void> {
   // F1: crash/SIGKILL não solta o lease; a 2ª passada (após o TTL) trata as sessões puladas.
   let cancelBootRecheck: (() => Promise<void>) | null = null;
   if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
-    if (jobs.has('sessionBootstrap')) {
+    if (adoption) {
+      // ADOPT-08/D8: com a adoção o ticker reconecta (com teto), inclusive as sessões puladas por
+      // lease de outro processo; sem `SessionBootstrapService` nem 2ª passada (F1).
+      logger.info('Session bootstrap delegated to adoption ticker');
+    } else if (jobs.has('sessionBootstrap')) {
       try {
         const engine = getActiveEngine();
         if (!engine) throw new Error('MessagingEngine not initialized — session routes must register before bootstrap');
@@ -386,12 +395,26 @@ async function start(): Promise<void> {
     logger.info({ workerId: lease.workerId }, 'Session lease keeper started');
   }
 
+  // ── Adoção por capacidade (ADOPT-07/10/11) ─────────────────────────────────
+  // Depois do keeper: sessão adotada já tem quem renove o lease. Timers `unref`, nascem parados.
+  if (adoption) {
+    if (jobs.has('sessionAdoption')) adoption.ticker.start();
+    if (jobs.has('workerHeartbeat')) adoption.heartbeat.start();
+    if (jobs.has('capacityAlert')) adoption.capacityAlert.start();
+    logger.info(
+      { workerId: lease.workerId, maxSessions: adoption.config.maxSessions, shard: adoption.config.shard },
+      'Session adoption started',
+    );
+  }
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   // WROLE-15. `all`: ordem de hoje. `http`: jobs → composição → mídia → Redis → app.
   // `worker`: keeper → jobs → consumidores BullMQ/RPC → mídia (ofertas, D8) → sockets → flush →
-  // leases → Redis → app. `stop()` da composição: no-op em `all`.
+  // leases → Redis → app. `stop()` da composição: no-op em `all`. Adoção ligada (ADOPT-14): ticker e
+  // alerta param com o keeper, drain com teto (`shutdownBudget`), heartbeat apagado após os leases.
   const sessions = runsSessions(role);
   const shutdown = async (signal: string): Promise<void> => {
+    const shutdownStartedAt = Date.now();
     logger.info({ signal }, 'Shutdown signal received');
     // Cancela o timer já; a passada em curso é aguardada antes de fechar os sockets (F8).
     const bootRecheckSettled = cancelBootRecheck?.() ?? Promise.resolve();
@@ -402,6 +425,16 @@ async function start(): Promise<void> {
         logger.info('Session lease keeper stopped');
       } catch (err) {
         logger.error({ err }, 'Session lease keeper stop failed during shutdown');
+      }
+    }
+    // ADOPT-14/D4: junto com o keeper param ticker (espera o tick em curso) e alerta. O heartbeat
+    // segue batendo até soltar os leases; `heartbeat.stop()` apaga a linha no fim.
+    if (adoption) {
+      try {
+        await Promise.all([adoption.ticker.stop(), adoption.capacityAlert.stop()]);
+        logger.info('Session adoption stopped');
+      } catch (err) {
+        logger.error({ err }, 'Session adoption stop failed during shutdown');
       }
     }
     uploadSweeper?.stop();
@@ -435,10 +468,12 @@ async function start(): Promise<void> {
     }
     // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
     // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).
+    // D4: com a adoção o drain tem teto que reserva o fim (close + flush + release) dentro de 27 s.
     try {
       const count = chatMediaContainer.queue.inFlightIds().length;
-      await chatMediaContainer.queue.drain(MEDIA_QUEUE_DRAIN_TIMEOUT_MS);
-      logger.info({ count }, 'Media send queue drained');
+      const drainMs = adoption ? mediaDrainBudgetMs(Date.now() - shutdownStartedAt) : MEDIA_QUEUE_DRAIN_TIMEOUT_MS;
+      await chatMediaContainer.queue.drain(drainMs);
+      logger.info({ count, ...(adoption && { drainMs }) }, 'Media send queue drained');
     } catch (err) {
       logger.error({ err }, 'Media send queue drain failed during shutdown');
     }
@@ -446,7 +481,7 @@ async function start(): Promise<void> {
     await bootRecheckSettled;
     if (sessions) {
       // LEASE-09: sockets fechados antes do flush (nenhuma chave nova chega depois dele).
-      // Mídia × flush fica nesta ordem até a E4.
+      // Mídia × flush (D4 da E4): o drain vem antes, com teto quando a adoção está ligada.
       try {
         const engine = getActiveEngine();
         if (hasSocketControl(engine)) {
@@ -471,6 +506,11 @@ async function start(): Promise<void> {
         logger.info({ count, workerId: lease.workerId }, 'Session leases released');
       } catch (err) {
         logger.error({ err }, 'Session lease release failed during shutdown');
+      }
+      // ADOPT-10: só depois de soltar os leases a linha some de `worker_heartbeats`. Nunca lança.
+      if (adoption) {
+        await adoption.heartbeat.stop();
+        logger.info({ workerId: lease.workerId }, 'Worker heartbeat removed');
       }
     }
     await closeRedis(role);
