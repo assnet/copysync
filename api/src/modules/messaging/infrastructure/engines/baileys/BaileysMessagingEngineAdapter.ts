@@ -114,11 +114,18 @@ const ALWAYS_LEASED: ISessionLeaseGate = { acquire: async () => true };
 type OpenSocketResult = 'opened' | 'held' | 'error' | 'cancelled';
 
 /**
- * Uma abertura de socket em curso (entre `leaseGate.acquire` e `registry.set`). Abort/suspend
- * nesse intervalo marcam `cancelled`; a abertura fecha o socket sem registrar (abort vence suspend).
+ * Uma abertura de socket em curso. Abort/suspend (entre `leaseGate.acquire` e `registry.set`) e
+ * uma abertura nova do usuário (`supersede`, desde o início) marcam `cancelled`; a abertura fecha
+ * o socket sem registrar. Precedência: abort > suspend > supersede.
  */
 interface OpeningToken {
-  cancelled: 'abort' | 'suspend' | null;
+  cancelled: 'abort' | 'suspend' | 'supersede' | null;
+}
+
+/** `openSocket` em curso por sessão: a próxima abertura espera (auto) ou a cancela (usuário). */
+interface OpenInFlight {
+  promise: Promise<OpenSocketResult>;
+  token: OpeningToken;
 }
 /** Validade do resumo de grupo (membros/admin) lido do snapshot de metadata. */
 const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
@@ -179,6 +186,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   private readonly resuming = new Map<string, object>();
   /** Aberturas entre `leaseGate.acquire` e `registry.set`: a renovação as trata como locais. */
   private readonly opening = new Map<string, Set<OpeningToken>>();
+  /** Uma abertura por sessão: sem isso duas aberturas registram dois sockets (o 1º sem `end()`). */
+  private readonly openInFlight = new Map<string, OpenInFlight>();
 
   constructor(
     private readonly sessionRepo: ISessionRepository,
@@ -336,8 +345,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
    * não cancelado depois do acquire solta o lease (best-effort), se nada mais desta sessão
    * estiver aberto ou abrindo aqui; sem isso o lease ficaria preso até o TTL.
    */
-  private async whileOpening<T>(sessionId: string, open: (token: OpeningToken) => Promise<T>): Promise<T> {
-    const token: OpeningToken = { cancelled: null };
+  private async whileOpening<T>(
+    sessionId: string, token: OpeningToken, open: (token: OpeningToken) => Promise<T>,
+  ): Promise<T> {
     const tokens = this.opening.get(sessionId) ?? new Set<OpeningToken>();
     tokens.add(token);
     this.opening.set(sessionId, tokens);
@@ -370,7 +380,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   /** Abort/suspend durante a abertura: a abertura em curso fecha o socket sem registrar. */
   private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
     for (const token of this.opening.get(sessionId) ?? []) {
-      if (kind === 'abort' || !token.cancelled) token.cancelled = kind;
+      if (kind === 'abort' || !token.cancelled || token.cancelled === 'supersede') token.cancelled = kind;
     }
   }
 
@@ -388,12 +398,17 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
    * sessão para `resumeSession`.
    */
   private async finishCancelledOpen(
-    sessionId: string, tenantId: string, kind: 'abort' | 'suspend', socket?: WASocket,
+    sessionId: string, tenantId: string, kind: 'abort' | 'suspend' | 'supersede', socket?: WASocket,
   ): Promise<void> {
     if (socket) {
       try { socket.end(undefined); } catch (err) {
         baileysLogger.warn({ err, sessionId }, 'Error closing socket on cancelled open');
       }
+    }
+    if (kind === 'supersede') {
+      // A abertura nova usa o mesmo estado de auth: nada a gravar nem descartar aqui
+      baileysLogger.info({ sessionId }, 'Session socket open superseded by a newer open');
+      return;
     }
     if (kind === 'abort') {
       await discardAuthState(sessionId);
@@ -940,9 +955,30 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
    * Abre o socket só com lease (LEASE-03). Lease de outro processo: caminho do usuário lança
    * `SessionLeaseHeldError` (503) e erro de banco no acquire `EngineTemporarilyUnavailableError`
    * (503); caminho automático só loga e devolve o motivo (`held`/`error`), sem tocar status.
+   *
+   * Uma abertura por sessão: com outra em curso, a automática espera e devolve o resultado dela;
+   * a do usuário a cancela (`supersede`), espera ela terminar e abre a sua.
    */
   private async openSocket(
     sessionId: string, tenantId: string, attempt: number, origin: 'user' | 'auto' = 'user',
+  ): Promise<OpenSocketResult> {
+    for (let running = this.openInFlight.get(sessionId); running; running = this.openInFlight.get(sessionId)) {
+      if (origin === 'auto') return running.promise.catch((): OpenSocketResult => 'error');
+      if (!running.token.cancelled) running.token.cancelled = 'supersede';
+      await running.promise.catch(() => undefined);
+    }
+    const token: OpeningToken = { cancelled: null };
+    const flight: OpenInFlight = { promise: this.openSocketOnce(sessionId, tenantId, attempt, origin, token), token };
+    this.openInFlight.set(sessionId, flight);
+    try {
+      return await flight.promise;
+    } finally {
+      if (this.openInFlight.get(sessionId) === flight) this.openInFlight.delete(sessionId);
+    }
+  }
+
+  private async openSocketOnce(
+    sessionId: string, tenantId: string, attempt: number, origin: 'user' | 'auto', token: OpeningToken,
   ): Promise<OpenSocketResult> {
     const lease = await acquireLeaseResult(this.leaseGate, sessionId);
     if (lease !== 'acquired') {
@@ -953,7 +989,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       return lease;
     }
     // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
-    const opened = await this.whileOpening(sessionId, async (token) => {
+    const opened = await this.whileOpening(sessionId, token, async () => {
       const { version } = await fetchLatestBaileysVersion();
       if (token.cancelled) {
         await this.finishCancelledOpen(sessionId, tenantId, token.cancelled);
@@ -989,12 +1025,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         await this.finishCancelledOpen(sessionId, tenantId, token.cancelled, socket);
         return null;
       }
+      // Entrada viva de outro socket (abertura que já tinha registrado): encerra antes de sobrescrever
+      const previous = this.registry.get(sessionId);
+      if (previous && previous.socket !== socket) {
+        this.detachSocket(previous.socket);
+        try { previous.socket.end(undefined); } catch (err) {
+          baileysLogger.warn({ err, sessionId }, 'Error closing replaced socket');
+        }
+      }
       const epoch = this.registry.nextEpoch();
       this.registry.set(sessionId, { socket, tenantId, epoch, reconnectAttempt: attempt });
       return { socket, state, saveCreds, epoch };
     });
     if (!opened) {
-      if (origin === 'user') throw new SessionLeaseHeldError(sessionId);
+      if (origin === 'user' && token.cancelled !== 'supersede') throw new SessionLeaseHeldError(sessionId);
       return 'cancelled';
     }
     const { socket, state, saveCreds, epoch } = opened;

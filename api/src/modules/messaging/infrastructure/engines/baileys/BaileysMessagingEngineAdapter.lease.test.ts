@@ -240,16 +240,71 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     expect(release).toHaveBeenCalledWith('s1');
   });
 
-  it('erro depois do acquire não solta o lease se outra abertura da sessão segue em curso', async () => {
+  it('connect do usuário com abertura em curso cancela a anterior: um socket só, lease mantido', async () => {
     const { adapter, release } = make(true);
     const hold = holdBuild();
-    const ok = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    const first = adapter.connectSession({ sessionId: 's1', tenantId: T });
     await hold.started();
-    auth.build.mockImplementationOnce(async () => { throw new Error('auth state down'); });
-    await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toThrow('auth state down');
-    expect(release).not.toHaveBeenCalled();
+    const second = adapter.connectSession({ sessionId: 's1', tenantId: T });
     hold.go();
-    await ok;
+    await expect(first).resolves.toEqual({});
+    await second;
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]!.end).toHaveBeenCalledTimes(1);
+    expect(sockets[0]!.handlers['connection.update']).toBeUndefined();
+    expect(registry.get('s1')?.socket).toBe(sockets[1]);
+    expect(auth.discard).not.toHaveBeenCalled();
+    expect(auth.suspend).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it('pareamento durante auto-reconnect: a abertura automática é cancelada, um socket só', async () => {
+    vi.useFakeTimers();
+    const { adapter } = make(true);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await sockets[0]!.handlers['connection.update']!({ connection: 'close', lastDisconnect: { error: new Error('x') } });
+    const hold = holdBuild();
+    await vi.advanceTimersByTimeAsync(3_000); // dispara o auto-reconnect, que para no build
+    vi.useRealTimers();
+    await hold.started();
+    const pairing = adapter.requestPairingCode({ sessionId: 's1', tenantId: T, phone: '5511999999999' });
+    hold.go();
+    await expect(pairing).resolves.toEqual({ pairingCode: null });
+    expect(sockets).toHaveLength(3);
+    expect(sockets[1]!.end).toHaveBeenCalledTimes(1); // socket do auto-reconnect: fechado, nunca exposto
+    expect(sockets[1]!.handlers['connection.update']).toBeUndefined();
+    expect(registry.get('s1')?.socket).toBe(sockets[2]);
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('abertura automática com outra em curso espera e devolve o resultado dela (sem 2º socket)', async () => {
+    const { adapter } = make(true);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    const hold = holdBuild();
+    const firstResume = adapter.resumeSession('s1');
+    await hold.started();
+    const secondResume = adapter.resumeSession('s1');
+    hold.go();
+    expect(await secondResume).toBe('resumed');
+    expect(await firstResume).toBe('gone'); // invalidada pela 2ª tentativa
+    expect(sockets).toHaveLength(2);
+    expect(auth.build).toHaveBeenCalledTimes(2);
+    expect(registry.get('s1')?.socket).toBe(sockets[1]);
+  });
+
+  it('registry.set sobre entrada viva de outro socket encerra o antigo antes', async () => {
+    const { adapter } = make(true);
+    const hold = holdBuild();
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await hold.started();
+    const old = { end: vi.fn(), ev: { on: vi.fn(), removeAllListeners: vi.fn() } };
+    registry.set('s1', { socket: old as never, tenantId: T, epoch: registry.nextEpoch(), reconnectAttempt: 0 });
+    hold.go();
+    await p;
+    expect(old.end).toHaveBeenCalledTimes(1);
+    expect(old.ev.removeAllListeners).toHaveBeenCalled();
+    expect(registry.get('s1')?.socket).toBe(sockets[0]);
   });
 
   it('sem lease (acquire falso) não chama release', async () => {

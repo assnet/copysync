@@ -189,4 +189,39 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     await expect(adapter.connectSession({ sessionId: 's1', tenantId: T })).rejects.toBeInstanceOf(SessionLeaseHeldError);
     expect(leaseGate.release).not.toHaveBeenCalled();
   });
+
+  it('duas aberturas da mesma sessão: a 2ª espera a 1ª e a derruba; um cliente vivo', async () => {
+    const { adapter, auth, leaseGate } = make(true);
+    fake.authorized = false; // login por QR: o cliente fica registrado
+    let go!: () => void;
+    auth.load.mockImplementationOnce(() => new Promise<null>((r) => { go = () => r(null); }));
+    const first = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+    const second = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await Promise.resolve();
+    expect(leaseGate.acquire).toHaveBeenCalledTimes(1); // a 2ª não começou
+    go();
+    await first;
+    await second;
+    expect(fake.created).toBe(2);
+    expect(fake.destroyed).toBe(1);
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('registry.set sobre entrada viva de outro cliente derruba o antigo antes', async () => {
+    const { adapter, auth } = make(true);
+    fake.authorized = false;
+    let go!: () => void;
+    auth.load.mockImplementationOnce(() => new Promise<null>((r) => { go = () => r(null); }));
+    const p = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+    const destroy = vi.fn(async () => undefined);
+    const registry = (adapter as unknown as { registry: { set: (id: string, e: unknown) => void; nextEpoch: () => number } }).registry;
+    registry.set('s1', { client: { destroy }, tenantId: T, epoch: registry.nextEpoch(), pending: null, latestQr: null, phone: null, sentIds: new Set() });
+    go();
+    await p;
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(fake.created).toBe(1);
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
 });

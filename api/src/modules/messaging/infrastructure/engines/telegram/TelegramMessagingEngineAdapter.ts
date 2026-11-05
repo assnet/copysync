@@ -173,6 +173,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * Abort/suspend nesse intervalo marcam `cancelled` (abort vence suspend) e a abertura desiste.
    */
   private readonly opening = new Map<string, Set<{ cancelled: 'abort' | 'suspend' | null }>>();
+  /** `openClient` em curso por sessão: a próxima espera ela terminar (nunca dois clientes abrindo). */
+  private readonly openInFlight = new Map<string, Promise<unknown>>();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
   /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
@@ -427,7 +429,26 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     };
   }
 
+  /**
+   * Uma abertura por sessão: com outra em curso, espera ela terminar (sucesso ou erro) e abre a sua,
+   * que derruba o cliente anterior. Sem isso o 2º `registry.set` sobrescrevia o 1º sem `destroy()`.
+   */
   private async openClient(
+    sessionId: string, tenantId: string, savedSession?: string | null, probe?: LeaseProbe,
+  ): Promise<TelegramSessionEntry> {
+    for (let running = this.openInFlight.get(sessionId); running; running = this.openInFlight.get(sessionId)) {
+      await running.catch(() => undefined);
+    }
+    const flight = this.openClientOnce(sessionId, tenantId, savedSession, probe);
+    this.openInFlight.set(sessionId, flight);
+    try {
+      return await flight;
+    } finally {
+      if (this.openInFlight.get(sessionId) === flight) this.openInFlight.delete(sessionId);
+    }
+  }
+
+  private async openClientOnce(
     sessionId: string, tenantId: string, savedSession?: string | null, probe?: LeaseProbe,
   ): Promise<TelegramSessionEntry> {
     // Lease antes de tudo (LEASE-03): outro processo com a sessão → nenhum cliente nem status aqui
@@ -451,6 +472,9 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
         deviceModel: 'CopySync Web',
         appVersion: '1.0',
       });
+      // Entrada viva de outro cliente (registrada durante a carga): derruba antes de sobrescrever
+      const stale = this.registry.get(sessionId);
+      if (stale) await this.teardown(sessionId, stale);
       // Abort/suspend chegou enquanto abria: descarta o cliente (nunca conectado) antes de expor
       if (token.cancelled) {
         try { await client.destroy(); } catch { /* best-effort */ }
