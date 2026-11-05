@@ -35,7 +35,7 @@ Regras comuns a toda task:
 | T17 | Fastify mínimo do worker + `/health` com papel | T1, T3 | P | ✅ c0c31f2 |
 | T18 | Composição por papel (engine, servidor de comandos, relay) | T2, T8, T9, T10, T11, T12, T13 | | ✅ e01910e |
 | T18b | Rotas usam a engine ativa; concorrência das filas por env | T18 | | ✅ 2182861 |
-| T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ⏳ |
+| T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ✅ 8330cbf |
 | T20 | Smoke `all` e `http`+`worker` | T19 | | ⏳ |
 | T21 | Docs, CHANGELOG e versão | T20 | | ⏳ |
 
@@ -465,3 +465,4 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 - T12: `OutboundMediaTransfer` (chave `outbound-tmp/{uuid}.ext`) + `S3OutboundObjectStore`; **T18 constrói `new OutboundMediaTransfer(new S3OutboundObjectStore(cfg))` e passa ao adapter remoto e ao `EngineCommandServer` (4º arg)**.
 - T18: `composeForRole(role)` async `{ engine, stop() }`; `all` só carrega `localEngineContainer`; http/worker exigem `S3_ENABLED` e chamam `bindRedisAccess`. **Boot deve chamar `composeForRole` antes de `buildApp` (T18b/T19).**
 - T18b: rotas e adoção leem `getActiveEngine()`; `server.start()` faz `await composeForRole(currentRole())` antes de `buildApp`; env `ENGINE_COMMAND_CONCURRENCY` (default 2). **T19 liga `composition.stop()` no shutdown**; smoke T20 confere `all` idêntico.
+- T19: boot/shutdown por papel em `server.ts` (worker usa `buildWorkerApp`; `composition.stop()` no shutdown; `closeAllRedis` fora de `all`; `flushAllAuthStates` por import dinâmico; worker drena mídia antes dos sockets). Em `all`, recuperação de mídia do boot passa a filtrar por lease (só com `MEDIA_PENDING_RECOVERY_ENABLED`).
