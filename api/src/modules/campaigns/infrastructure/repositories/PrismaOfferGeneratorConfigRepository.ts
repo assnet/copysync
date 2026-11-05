@@ -109,13 +109,13 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
     return unique.flatMap((id) => byId.get(id) ?? []);
   }
 
-  async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]): Promise<{ conversationId: string; sessionId: string }[]> {
+  async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]): Promise<{ conversationId: string; sessionId: string; groupJid: string | null }[]> {
     const unique = [...new Set(ids)];
     if (unique.length === 0 || sessionIds.length === 0) return [];
     const rows = await this.prisma.chatConversation.findMany({
       where: { tenantId, sessionId: { in: sessionIds }, isGroup: true, id: { in: unique } },
-      select: { id: true, sessionId: true },
+      select: { id: true, sessionId: true, groupJid: true },
     });
-    return rows.flatMap((r) => (r.sessionId ? [{ conversationId: r.id, sessionId: r.sessionId }] : []));
+    return rows.flatMap((r) => (r.sessionId ? [{ conversationId: r.id, sessionId: r.sessionId, groupJid: r.groupJid }] : []));
   }
 }

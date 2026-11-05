@@ -268,7 +268,7 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
   async filterSessionGroups(tenantId: string, sessionIds: string[], ids: string[]) {
     return ids.flatMap((id) => {
       const c = this.conversations.find((x) => x.id === id && x.tenantId === tenantId && x.sessionId != null && sessionIds.includes(x.sessionId) && x.isGroup);
-      return c ? [{ conversationId: c.id, sessionId: c.sessionId! }] : [];
+      return c ? [{ conversationId: c.id, sessionId: c.sessionId!, groupJid: c.groupJid ?? null }] : [];
     });
   }
 }

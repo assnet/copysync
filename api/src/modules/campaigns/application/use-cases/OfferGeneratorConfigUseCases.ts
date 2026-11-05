@@ -12,6 +12,8 @@ import type { ISessionGroupDirectory } from '../../domain/contracts/ISessionGrou
 import { postabilityOf, type GroupPostability, type LiveGroupsBySession } from '../../domain/services/groupPostability';
 import { loadLiveGroups } from '../services/loadLiveGroups';
 import { OFFER_DISPATCH_ORDERS, type OfferDispatchOrder } from '../../domain/entities/OfferGeneratorConfig';
+import type { IBroadcastGroupUsageReader } from '../../domain/contracts/IBroadcastGroupUsageReader';
+import { countDistinctBroadcastGroups, type BroadcastGroupRow } from '../../domain/services/broadcastGroupUnion';
 
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
 export const OFFER_GROUPS_HARD_MAX = 200;
@@ -43,7 +45,7 @@ export interface OfferGeneratorConfigDTO {
   crossSessionDispatch: boolean;
   /** Limites por canal (canal = engine da sessão; do grupo = da sessão dona). null = sem limite. */
   limits: Record<LimitChannel, OfferChannelLimitsDTO>;
-  /** Uso da configuração salva por canal (sessões configuradas e grupos delas). */
+  /** Uso por canal: sessões do gerador; grupos = união gerador ⋃ monitoramentos do tenant (BG-03). */
   usage: Record<LimitChannel, OfferChannelUsageDTO>;
   /** false = tenant nunca salvou (valores padrão). */
   configured: boolean;
@@ -64,6 +66,8 @@ export interface SaveOfferGeneratorConfigInput {
 interface Deps {
   configs: IOfferGeneratorConfigRepository;
   entitlements: IEntitlementReader;
+  /** União dos grupos de disparo do tenant (gerador ⋃ monitoramentos) para o limite por canal (BG-01). */
+  groupUsage: Pick<IBroadcastGroupUsageReader, 'listRows'>;
   /** Lista ao vivo para anotar `canPost`; ausente = tudo desconhecido. */
   directory?: Pick<ISessionGroupDirectory, 'listParticipating'>;
 }
@@ -82,9 +86,10 @@ export class GetOfferGeneratorConfigUseCase {
   async execute(tenantId: string): Promise<OfferGeneratorConfigDTO> {
     const { configs, entitlements } = this.deps;
     const num = (kind: 'sessions' | 'broadcastGroups', ch: LimitChannel) => entitlements.getNumber(tenantId, limitKeyOfChannel(kind, ch));
-    const [config, groups, waGroups, waSessions, tgGroups, tgSessions, crossSession] = await Promise.all([
+    const [config, groups, unionRows, waGroups, waSessions, tgGroups, tgSessions, crossSession] = await Promise.all([
       configs.find(tenantId),
       configs.listGroups(tenantId),
+      this.deps.groupUsage.listRows(tenantId),
       num('broadcastGroups', 'whatsapp'),
       num('sessions', 'whatsapp'),
       num('broadcastGroups', 'telegram'),
@@ -92,13 +97,12 @@ export class GetOfferGeneratorConfigUseCase {
       entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
     ]);
     const sessions = config?.sessionIds.length ? await configs.findSessions(tenantId, config.sessionIds) : [];
-    const engineById = new Map(sessions.map((x) => [x.id, x.engine]));
     const sessionCount = countByChannel(sessions, (x) => x.engine);
     const directory = this.deps.directory;
     const live = directory && groups.length > 0
       ? await loadLiveGroups(groups.map((g) => g.sessionId), (id) => directory.listParticipating(id))
       : new Map();
-    const groupCount = countByChannel(groups.filter((g) => g.sessionId != null && engineById.has(g.sessionId)), (g) => engineById.get(g.sessionId!));
+    const groupCount = countDistinctBroadcastGroups(unionRows, (r) => r.engine);
     return {
       sessionIds: config?.sessionIds ?? [],
       intervalMinSeconds: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
@@ -168,14 +172,20 @@ export class SaveOfferGeneratorConfigUseCase {
       const valid = await configs.filterSessionGroups(tenantId, sessionIds, ids);
       const invalid = ids.length - new Set(valid.map((v) => v.conversationId)).size;
       if (invalid > 0) throw new NotFoundError('Group conversation', `${invalid} of ${ids.length}`);
-      // Grupos por canal (canal do grupo = engine da sessão dona)
+      // Grupos por canal = união com os monitoramentos do tenant (BG-01): mesmo grupo (sessão + JID) conta 1.
+      // Canal do grupo = engine da sessão dona. Envio (`SendOfferUseCase`) segue contando só os alvos (BG-02)
       const engineById = new Map(sessions.map((x) => [x.id, x.engine]));
-      const groupsByChannel = countByChannel(valid, (v) => engineById.get(v.sessionId));
+      const requested: (BroadcastGroupRow & { engine: string | undefined })[] = valid.map((v) => ({
+        sessionId: v.sessionId, groupJid: v.groupJid ?? `conversation:${v.conversationId}`, engine: engineById.get(v.sessionId),
+      }));
+      const requestedByChannel = countByChannel(requested, (r) => r.engine);
+      const others = await this.deps.groupUsage.listRows(tenantId, { exceptGenerator: true });
+      const union = countDistinctBroadcastGroups<BroadcastGroupRow & { engine: string | undefined }>([...others, ...requested], (r) => r.engine);
       for (const ch of LIMIT_CHANNELS) {
-        if (groupsByChannel[ch] === 0) continue;
+        if (requestedByChannel[ch] === 0) continue;
         const key = limitKeyOfChannel('broadcastGroups', ch);
         const limit = await entitlements.getNumber(tenantId, key);
-        if (limit !== null && groupsByChannel[ch] > limit) throw new PlanLimitReachedError(key, limit);
+        if (limit !== null && union[ch] > limit) throw new PlanLimitReachedError(key, limit);
       }
     }
 

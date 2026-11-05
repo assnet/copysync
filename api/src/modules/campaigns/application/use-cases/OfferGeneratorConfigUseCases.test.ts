@@ -2,6 +2,27 @@ import { describe, it, expect, vi } from 'vitest';
 import { LIVE_GROUPS_TIMEOUT_MS } from '../services/loadLiveGroups';
 import { GetOfferGeneratorConfigUseCase, SaveOfferGeneratorConfigUseCase } from './OfferGeneratorConfigUseCases';
 import { FakeEntitlementReader, InMemoryOfferGeneratorConfigRepository, TENANT } from './offerTestFakes';
+import type {
+  BroadcastGroupUsageRow, IBroadcastGroupUsageReader, ListBroadcastGroupRowsOptions,
+} from '../../domain/contracts/IBroadcastGroupUsageReader';
+
+/** União em memória: destinos salvos do gerador (do repositório fake) ⋃ `monitor` (linhas prontas). */
+class FakeGroupUsage implements Pick<IBroadcastGroupUsageReader, 'listRows'> {
+  monitor: BroadcastGroupUsageRow[] = [];
+  constructor(private readonly configs: InMemoryOfferGeneratorConfigRepository) {}
+  async listRows(tenantId: string, options: ListBroadcastGroupRowsOptions = {}) {
+    const gen: BroadcastGroupUsageRow[] = options.exceptGenerator ? [] : (this.configs.selected.get(tenantId) ?? []).flatMap((id) => {
+      const c = this.configs.conversations.find((x) => x.id === id && x.tenantId === tenantId);
+      const s = this.configs.sessions.find((x) => x.id === c?.sessionId);
+      return c && s ? [{ conversationId: c.id, sessionId: s.id, groupJid: c.groupJid ?? `conversation:${c.id}`, engine: s.engine ?? 'baileys', use: 'generator' as const }] : [];
+    });
+    const mon = this.monitor.filter((r) => r.use !== `monitor:${options.exceptMonitorSessionId}`);
+    return [...gen, ...mon];
+  }
+}
+
+const monitorRow = (sessionId: string, groupJid: string, engine = 'baileys'): BroadcastGroupUsageRow =>
+  ({ conversationId: `c-${groupJid}`, sessionId, groupJid, engine, use: `monitor:${sessionId}` });
 
 function setup(entitlements: Record<string, unknown> = {}) {
   const configs = new InMemoryOfferGeneratorConfigRepository(
@@ -22,8 +43,9 @@ function setup(entitlements: Record<string, unknown> = {}) {
       { id: 'tg2', tenantId: TENANT, sessionId: 't1', isGroup: true },
     ],
   );
-  const deps = { configs, entitlements: new FakeEntitlementReader(entitlements) };
-  return { configs, get: new GetOfferGeneratorConfigUseCase(deps), save: new SaveOfferGeneratorConfigUseCase(deps) };
+  const groupUsage = new FakeGroupUsage(configs);
+  const deps = { configs, entitlements: new FakeEntitlementReader(entitlements), groupUsage };
+  return { configs, groupUsage, get: new GetOfferGeneratorConfigUseCase(deps), save: new SaveOfferGeneratorConfigUseCase(deps) };
 }
 
 const base = { tenantId: TENANT, sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL' as const };
@@ -56,8 +78,8 @@ describe('Offer generator config', () => {
       if (id === 't1') return new Promise<never>(() => {});
       throw new Error('offline');
     };
-    const deps = { configs: s.configs, entitlements: new FakeEntitlementReader({ cross_session_dispatch: true }), directory: { listParticipating } };
-    await new SaveOfferGeneratorConfigUseCase({ configs: s.configs, entitlements: deps.entitlements })
+    const deps = { configs: s.configs, entitlements: new FakeEntitlementReader({ cross_session_dispatch: true }), groupUsage: s.groupUsage, directory: { listParticipating } };
+    await new SaveOfferGeneratorConfigUseCase({ configs: s.configs, entitlements: deps.entitlements, groupUsage: s.groupUsage })
       .execute({ ...base, sessionIds: ['s1', 's2', 't1'], conversationIds: ['g1', 'g2', 'g3', 'tg1'] });
     vi.useFakeTimers();
     const p = new GetOfferGeneratorConfigUseCase(deps).execute(TENANT);
@@ -159,5 +181,53 @@ describe('Offer generator config — limites por canal', () => {
     const s = setup();
     await expect(s.save.execute({ ...base, sessionIds: ['t1', 't2'], conversationIds: [] }))
       .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'cross_session_dispatch' } });
+  });
+});
+
+describe('Offer generator config — limite pela união com o monitoramento (BG-01..03)', () => {
+  const lite = { broadcast_groups: 5, telegram_broadcast_groups: 0 };
+
+  it('LITE com 5 grupos no monitoramento e 1 novo no gerador → PLAN_LIMIT_REACHED e nada muda', async () => {
+    const s = setup(lite);
+    for (const c of s.configs.conversations) c.groupJid = `j-${c.id}`;
+    s.groupUsage.monitor = ['m1', 'm2', 'm3', 'm4', 'm5'].map((j) => monitorRow('s1', j));
+    await expect(s.save.execute({ ...base, conversationIds: ['g1'] })).rejects.toMatchObject({
+      code: 'PLAN_LIMIT_REACHED', meta: { key: 'broadcast_groups', limit: 5 },
+    });
+    expect(s.configs.saves).toBe(0);
+  });
+
+  it('mesmo grupo (sessão + JID) no gerador e no monitoramento conta 1; GET devolve a união', async () => {
+    const s = setup(lite);
+    for (const c of s.configs.conversations) c.groupJid = `j-${c.id}`;
+    s.groupUsage.monitor = [monitorRow('s1', 'j-g1'), monitorRow('s1', 'm2'), monitorRow('s1', 'm3'), monitorRow('s2', 'm4')];
+    const out = await s.save.execute({ ...base, conversationIds: ['g1', 'g2'] });
+    expect(out.usage.whatsapp.broadcastGroups).toBe(5);
+    expect((await s.get.execute(TENANT)).usage).toEqual({
+      whatsapp: { sessions: 1, broadcastGroups: 5 }, telegram: { sessions: 0, broadcastGroups: 0 },
+    });
+  });
+
+  it('mesmo JID em outra sessão é outro grupo; destinos antigos do gerador não contam no save', async () => {
+    const s = setup(lite);
+    for (const c of s.configs.conversations) c.groupJid = `j-${c.id}`;
+    s.configs.selected.set(TENANT, ['g1', 'g2']);
+    s.groupUsage.monitor = ['m1', 'm2', 'm3', 'm4'].map((j) => monitorRow('s1', j));
+    await expect(s.save.execute({ ...base, conversationIds: ['g1'] })).resolves.toMatchObject({ usage: { whatsapp: { broadcastGroups: 5 } } });
+    s.groupUsage.monitor = [...s.groupUsage.monitor, monitorRow('s2', 'j-g1')];
+    await expect(s.save.execute({ ...base, conversationIds: ['g1'] })).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
+  });
+
+  it('canais separados: monitoramento Telegram não consome o limite do WhatsApp', async () => {
+    const s = setup({ broadcast_groups: 1, telegram_broadcast_groups: 10 });
+    s.groupUsage.monitor = ['a', 'b', 'c'].map((j) => monitorRow('t1', j, 'telegram'));
+    const out = await s.save.execute({ ...base, conversationIds: ['g1'] });
+    expect(out.usage).toEqual({ whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 0, broadcastGroups: 3 } });
+  });
+
+  it('canal sem grupo pedido não é checado (D5: só bloqueia o save que adiciona no canal)', async () => {
+    const s = setup({ broadcast_groups: 1 });
+    s.groupUsage.monitor = [monitorRow('s1', 'm1'), monitorRow('s1', 'm2')];
+    await expect(s.save.execute({ ...base, conversationIds: [] })).resolves.toMatchObject({ usage: { whatsapp: { broadcastGroups: 2 } } });
   });
 });

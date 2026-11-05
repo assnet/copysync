@@ -9,6 +9,7 @@ import type { IAffiliateCredentialGateway } from '../domain/contracts/IAffiliate
 import { PrismaOfferRepository } from './repositories/PrismaOfferRepository';
 import { PrismaOfferDispatchRepository } from './repositories/PrismaOfferDispatchRepository';
 import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
+import { PrismaBroadcastGroupUsageReader } from './repositories/PrismaBroadcastGroupUsageReader';
 import { PrismaEntitlementReader } from './repositories/PrismaEntitlementReader';
 import { ShopeeAffiliateClient } from './http/ShopeeAffiliateClient';
 import { MercadoLivreAffiliateClient } from './http/MercadoLivreAffiliateClient';
@@ -56,6 +57,7 @@ const offers       = lazy(() => new PrismaOfferRepository(prisma));
 const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma));
 const configs      = lazy(() => new PrismaOfferGeneratorConfigRepository(prisma));
 const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
+const groupUsage   = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));
 const credentialRepo = lazy(() => new PrismaAffiliateCredentialRepository());
 // Cifra resolvida no uso: sem chave, só quem decifra falha.
 const credentials  = lazy(
@@ -112,8 +114,8 @@ const pause     = lazy(() => new PauseOfferUseCase(controlDeps()));
 const resume    = lazy(() => new ResumeOfferUseCase(controlDeps()));
 const cancel    = lazy(() => new CancelOfferUseCase(controlDeps()));
 const groupDirectory = lazy(() => new ChatSessionGroupDirectory());
-const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements(), directory: groupDirectory() }));
-const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements(), directory: groupDirectory() }));
+const getConfig  = lazy(() => new GetOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements(), groupUsage: groupUsage(), directory: groupDirectory() }));
+const saveConfig = lazy(() => new SaveOfferGeneratorConfigUseCase({ configs: configs(), entitlements: entitlements(), groupUsage: groupUsage(), directory: groupDirectory() }));
 const listSessionGroups  = lazy(() => new ListSessionGroupsUseCase({ configs: configs(), directory: groupDirectory() }));
 const ensureSessionGroup = lazy(() => new EnsureSessionGroupUseCase({ configs: configs(), directory: groupDirectory() }));
 const pauses      = lazy(() => new PrismaSendingPauseStore(prisma));
