@@ -4,6 +4,7 @@ import { logger } from '../shared/logger/logger';
 import { authRoutes } from '../modules/auth/presentation/routes/auth.routes';
 import { inviteRoutes } from '../modules/auth/presentation/routes/invite.routes';
 import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.routes';
+import { subscriptionRoutes } from '../modules/tenants/presentation/routes/subscription.routes';
 import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
 import { workerAdminRoutes } from '../modules/sessions/presentation/routes/workerAdmin.routes';
@@ -77,6 +78,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Tenant routes (auth required, no tenant scope) ─────────────────────────
   await app.register(tenantRoutes, { prefix: `${env.API_PREFIX}/tenants` });
+
+  // ── Assinatura (auth + tenant em qualquer status: tenant suspenso vê o plano) ──
+  await app.register(subscriptionRoutes, { prefix: `${env.API_PREFIX}/subscription` });
 
   // ── Me route (auth required, no tenant scope) ──────────────────────────────
   await app.register(meRoutes, { prefix: `${env.API_PREFIX}/me` });
