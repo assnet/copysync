@@ -52,6 +52,7 @@ Regras comuns a toda task:
 | F10 | Estado de retomada com dono único | F9 | | ✅ b0ceb92 |
 | F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
 | F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ✅ 75ff1bb |
+| F13 | Banco mudo: prazos restantes e escopo do abort de desistência | F12 | | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -564,6 +565,25 @@ Causa comum dos 3 🔴: o estado "suspensa" vive em dois lugares (marca `fenced`
 **Commit**: `fix(sessions): retomada com prazo e desistência que aborta antes`
 
 - F12: prazo `LEASE_RENEW_TIMEOUT_MS` no repo (`SET LOCAL statement_timeout` + `Promise.race`, `SessionLeaseDeadlineError` transitório); Baileys prazo acquire 10 s / build auth 15 s (503); `resume` não aguarda após timeout; desistência = forget → abort → release → DISCONNECTED; Telegram com supersede. Custo: BEGIN/SET/COMMIT por operação de lease.
+
+## Correções da 5ª revisão (2026-11-04)
+
+Tendência das revisões: 5🔴 → 3🔴 → 3🔴 → 1🔴 → 1🔴; todos os restantes são o cenário **banco mudo** (query que nunca responde). Medida global recomendada ao dono (fora do código): `socket_timeout`/`pool_timeout` na `DATABASE_URL` (ou `datasourceUrl` montada no `PrismaClient`) para que nenhuma query fique pendurada; afeta todas as queries de produção, por isso é decisão do dono.
+
+### F13: Banco mudo: prazos restantes e escopo do abort de desistência
+
+**What**:
+- 🔴 Desistência (`RenewSessionLeaseUseCase`, `MAX_RESUME_ATTEMPTS`): `abortSession` com prazo (`LEASE_RENEW_TIMEOUT_MS`); estourou → segue para `repo.release` + `markDisconnectedIfNoLiveLease` mesmo assim (o abort termina em background); o slot do keeper sempre libera.
+- 🟡 Abort de desistência cancela só abertura de origem `auto` (parâmetro/variante `abortSession(id, { onlyAuto: true })`); abertura do usuário em voo não vira 503.
+- 🟡 No máximo 1 operação de lease em voo por processo no `PrismaSessionLeaseRepository` (coalescer/serializar `renew` do tick; se a anterior não assentou, o tick novo não abre outra transação), para não esgotar o pool (`connection_limit=5`).
+- 🟡 Acquire que assenta depois de abertura cancelada por abort: soltar o lease (`release` condicionado ao dono) em `finishCancelledOpen`.
+- 🟡 Telegram `auth.load` com prazo igual ao do Baileys (erro transitório, lease solto).
+- 🟡 Prazo de 15 s do build do auth state só no caminho `auto` (retomada/adoção); connect/pareamento do usuário sem esse prazo (volta ao comportamento anterior).
+**Where**: `RenewSessionLeaseUseCase.ts`, `PrismaSessionLeaseRepository.ts`, `ISessionSocketControl.ts`, router, Baileys e Telegram adapters (+ testes)
+**Done when**: testes: abort pendurado na desistência → release e DISCONNECTED rodam no prazo, slot livre; desistência não cancela abertura `user`; tick com renew anterior pendurado não abre 2ª transação; acquire tardio após abort solta o lease; Telegram `auth.load` pendurado → erro no prazo; connect do usuário com build > 15 s não dá 503
+**Tests**: unit (+ int do repo se mexer em transação)
+**Gate**: `pnpm vitest run src/modules/sessions src/modules/messaging` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): banco mudo não prende retomada nem pool`
 
 ## Diagram-Definition Cross-Check
 
