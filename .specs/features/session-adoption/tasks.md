@@ -37,6 +37,9 @@ Regras comuns:
 | T19 | Smoke | T15, T16, T17, T18 | | 🟡 parcial |
 | T19b | Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável | T19 | | ✅ 0d09a9e |
 | T20 | Docs, CHANGELOG e versão (com E3 T21; api 0.62.0, app 0.79.0) | T19 | | ✅ este commit |
+| T21 | Adoção abre como `auto`, devolve vaga e contador ao perder | T20 | P | ⏳ |
+| T22 | Reserva síncrona de vaga no gate do teto | T20 | P | ⏳ |
+| T23 | Flag desligada sem consulta; AWAITING_* do Telegram fora; JobLease na infra | T20 | P | ⏳ |
 
 ### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
 
@@ -46,6 +49,31 @@ Regras comuns:
 **Tests**: unit + int
 **Gate**: `pnpm vitest run src/modules/sessions` + int + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): chip de capacidade e readoção de sessão aguardando QR`
+
+## Correções da revisão independente da E4 (2026-11-04)
+
+### T21: Adoção abre como `auto`, devolve vaga e contador ao perder [P]
+
+**What**: 🔴 `AdoptNextSessionUseCase` reconecta via `reconnectSession` → `connectSession` → `openSocket(…, 'user')`: negação por teto/lease vira `SessionLeaseHeldError` → `'failed'` com `adoptFailures` já +1 (5 corridas perdidas = FAILED indevido); `connectSession` devolve `{}` mesmo cancelada → log "adotada" falso; prazo do auth state de 60 s (origem user) estoura o orçamento de 27 s do shutdown. Correção: porta de adoção dedicada na engine (`ISessionSocketControl.adoptSession(id, tenantId)` ou `reconnectSession(…, { origin: 'auto' })`) que abre com origem `auto` (15 s) e devolve resultado tipado `'opened'|'held'|'full'|'error'`; `held`/`full` → soltar o lease que `adoptNext` gravou e reverter o `+1` (`repo.revertAdoptAttempt(id)` condicionado ao dono); log com o resultado real; `ticker.stop()` cancela a abertura em voo da adoção (token `supersede`/`cancelled`) em vez de esperar. Router e Telegram adapter implementam a mesma porta.
+**Where**: `AdoptNextSessionUseCase.ts`, `SessionAdoptionTicker.ts`, `ISessionAdoptionRepository`/`PrismaSessionAdoptionRepository` (+ int), `ISessionSocketControl.ts`, `MessagingEngineRouter.ts`, Baileys e Telegram adapters (+ testes)
+**Done when**: testes: teto cheio na adoção → lease solto e contador revertido, sessão não vai a FAILED; abertura cancelada não loga "adotada"; stop do ticker não espera abertura de 60 s
+**Gate**: `pnpm vitest run src/modules/sessions src/modules/messaging` + int + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): adoção abre como automática e devolve a vaga`
+
+### T22: Reserva síncrona de vaga no gate do teto [P]
+
+**What**: 🔴 `CapacityLimitedLeaseGate.atCapacity` lê `listLocal()` antes de a abertura entrar em `opening`; aberturas simultâneas (session-open concorrência 2, rota HTTP, ticker) passam com `local = max-1` e abrem `max+k`. Correção: contador síncrono de reservas em voo no gate (`reserved`), somado a `listLocal()`; reserva antes do `inner.acquire`, liberada ao assentar (em falha/negação na hora; em sucesso quando a sessão já aparece em `listLocal` ou após timeout curto), sem contar duas vezes a mesma sessão.
+**Where**: `CapacityLimitedLeaseGate.ts` (+ teste)
+**Done when**: teste: 5 acquires simultâneos com max=3 e local=2 → só 1 passa; sessão já local passa sem reservar
+**Gate**: `pnpm vitest run src/modules/sessions` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): teto de sessões com reserva síncrona`
+
+### T23: Flag desligada sem consulta; AWAITING_* do Telegram fora; JobLease na infra [P]
+
+**What**: 🟡 `workerAdmin.routes.ts`: com `WORKER_ADOPTION_ENABLED=false`, responder `{ workers: [], totals: {workers:0,sessions:0,maxSessions:0}, awaiting: 0 }` sem consultar o banco. 🟡 `PrismaSessionAdoptionRepository` (`adoptNext`, `countAwaitingCapacity`, `failExhausted`) e `Session.isAwaitingCapacity`: status `AWAITING_CODE`/`AWAITING_PASSWORD` só para `engine = 'baileys'` (Telegram nesses estados não é reaberto sem pedido do usuário); demais status valem para as duas engines. 🟡 mover `PrismaJobLease` para `api/src/shared/infrastructure/jobs/PrismaJobLease.ts` (mantendo `IJobLease` em `shared/jobs/`), atualizar imports/reexports. `markConnectRequested` zerando backoff com flag desligada: aceito (valores já 0/NULL), registrar nota.
+**Where**: `workerAdmin.routes.ts` (+ teste), `PrismaSessionAdoptionRepository.ts` (+ int), `Session.ts` (+ teste), `shared/jobs/*`, imports
+**Gate**: `pnpm vitest run src` + int + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): adoção não consulta com a flag desligada nem reabre login do Telegram`
 
 ## Notas de execução (passagem entre tarefas)
 
