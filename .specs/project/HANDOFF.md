@@ -27,8 +27,8 @@ no `/protect/global`; garantir que todo e-mail master já tenha conta. Notas em 
 | --- | --- | --- |
 | Limite do gerador 5/20/ilimitado | ✅ | deploy aplica a migration de presets |
 | E2 lease de sessão | ✅ T1–T23, F1–F14; 6 revisões, ciclo encerrado | `DATABASE_SOCKET_TIMEOUT_S` é pré-requisito para mais de um processo |
-| E3 http × worker | ✅ T1–T25 (revisão independente: `all` sem mudança; correções T22–T25) | sessão real no smoke; timeout do comando de texto (60 s × "≤ 10 s"); Redis ~US$ 10 só ao separar |
-| E4 adoção por capacidade | ✅ T1–T23 (revisão independente; correções T21–T23) | QR sem leitura prende vaga; Telegram `AWAITING_QR/PAIRING` ainda adotável |
+| E3 http × worker | ✅ T1–T25 (revisão independente: `all` sem mudança; correções T22–T25) | sessão real no smoke; Redis ~US$ 10 só ao separar (timeout de texto 60 s: decidido) |
+| E4 adoção por capacidade | ✅ T1–T23 (revisão independente; correções T21–T23) | T24 em andamento: só login concluído ocupa vaga (decidido); Telegram `AWAITING_QR/PAIRING` ainda adotável |
 | Tela Assinatura | ✅ T1–T20 (visual conferido; revisão independente; T19/T20) | D2–D6 com recomendações |
 | Grupos de disparo + horário | ✅ T1–T30 (visual conferido; revisão independente; T28–T30) | D1–D5 com recomendações; tenant acima do limite pela soma fica sem salvar novos destinos |
 | Receiver de cobrança | ✅ seq BigInt, 2 segredos na rotação, vencimento gravado, `expiresAt` malformado → 400 | hub manda `null` para limpar |
@@ -49,6 +49,4 @@ Checklist antes de ligar mais de um processo na Render: `docs/arquitetura-escala
 
 - Deploy dos hotfixes 1.86.1 → 1.86.3 e publicação da extensão 5.241.7.
 - D1 e D8 da H1; push/PR dos branches (CI só roda no GitHub).
-- `api/.env.dev` do CopySync aponta para produção.
-- Credencial "somente leitura" do AGENTS.md grava no banco (`default_transaction_read_only = off`) e está em texto no git.
 - Commit `5868258` contém por engano `.specs/features/plans-modal/spec.md` (já tirado do índice em `674cf50`); limpar do histórico antes do push, se quiser.
