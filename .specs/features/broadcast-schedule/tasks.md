@@ -154,7 +154,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** disparo às 23:00 com janela 08–22 prevê 08:00 do dia seguinte; padrão = hoje.
 - **Tests:** unit · **Gate:** quick
 
-### T15: Painel — `PostingWindowField` compartilhado [P] ⏳
+### T15: Painel — `PostingWindowField` compartilhado [P] ✅ 29cd092
 - **What:** evolui `OperatingWindowField` (slider existente) + chips de dias (`ToggleButtonGroup`), Tooltip, strings próprias, temas.
 - **Where:** `app/src/components/PostingWindowField.tsx` (+ `.test.tsx` claro/escuro), `app/src/components/postingWindowStrings.ts`, `app/src/features/monitoring/utils/operatingWindow.ts` (mask helpers + teste)
 - **Depends on:** — · **Reqs:** PS-06
@@ -206,3 +206,4 @@ Onda 7: T23(T22) → T24 → T25
 - T5: `GET /campaigns/broadcast-groups` (inclui `sessionName`); sem teste de rota HTTP.
 - T13: claim do gerador sem `scheduledAt` respeita janela/dias do `offer_generator_configs`; `scheduledAt` explícito ignora (D3).
 - T16: link `/broadcast-groups` no painel só funciona após T23 (página/rota).
+- T15: `PostingWindowField` (`value: { window, weekdaysMask }`, um `onChange`); conversão mask↔lista com `maskToWeekdays`/`weekdaysToMask` fica em quem chama (T20/T21).
