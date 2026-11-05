@@ -48,7 +48,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** teste espelho do T3; erro de conflito/`taken` inalterado.
 - **Tests:** unit · **Gate:** quick
 
-### T5: API — listar catálogo [P] ⏳
+### T5: API — listar catálogo [P] ✅ 6801e22
 - **What:** `ListBroadcastGroupsUseCase` + rota `GET /campaigns/broadcast-groups` (schema de resposta, presenter inline fino, auth/tenant hook).
 - **Where:** `m/campaigns/application/use-cases/ListBroadcastGroupsUseCase.ts` (+ `.test.ts`), `m/campaigns/presentation/routes/broadcastGroups.routes.ts`, `api/src/app/routes.ts` (+ wiring em `offersContainer.ts`)
 - **Depends on:** T2, T3 (`offersContainer.ts`) · **Reqs:** BG-04
@@ -74,7 +74,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** — · **Reqs:** BG-06
 - **Tests:** unit (flags no `ALL_PRIVACY_FLAGS`) · **Gate:** quick
 
-### T22: Painel — tabela de grupos [P] ⏳
+### T22: Painel — tabela de grupos [P] ✅ c12c8a2
 - **What:** `BroadcastGroupsTable` (filtro canal/busca via `usePersistedState` escopo `tab`, chips `n/limite` reaproveitando `ChannelCounterChips`, uso por item, remover com confirmação, `Blurred`, `AppIcon`, Tooltip).
 - **Where:** `app/src/features/broadcastGroups/components/BroadcastGroupsTable.tsx` (+ `.test.tsx` com `renderWithTheme` claro e escuro)
 - **Depends on:** T7, T8 · **Reqs:** BG-06
@@ -87,7 +87,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** agent-browser confere sistema/claro/escuro e 375 px; desfoque ligado esconde nomes.
 - **Tests:** unit (modelo do menu) · **Gate:** full
 
-### T16: Painel — dica "conta junto" nos assistentes [P] ⏳
+### T16: Painel — dica "conta junto" nos assistentes [P] ✅ f80efe3
 - **What:** tooltip nos chips de grupos do gerador e do monitoramento: "o limite soma gerador e monitoramento" + link para `/broadcast-groups`.
 - **Where:** `app/src/features/offers/components/config/ChannelCounterChips.tsx`, `app/src/features/monitoring/components/GroupUsageChip.tsx`, strings das duas features
 - **Depends on:** T8 · **Reqs:** BG-03
@@ -109,7 +109,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** SQL só `ADD COLUMN … DEFAULT`, sem backfill; `prisma generate` ok. **Proibido** `migrate dev`/`deploy`/`start:migrate` local.
 - **Tests:** none · **Gate:** typecheck api
 
-### T13: Claim respeita dia da semana e janela do gerador ⏳
+### T13: Claim respeita dia da semana e janela do gerador ✅ 51953fb
 - **What:** parâmetros `zoneWeekday`/`prevWeekday`; cláusula do monitor usa mask (hoje p/ trecho após o início, ontem p/ trecho após meia-noite); cláusula nova `origin=GENERATOR AND scheduledAt IS NULL` com `offer_generator_configs` do tenant.
 - **Where:** `m/campaigns/infrastructure/repositories/PrismaOfferDispatchRepository.ts` (+ `.int.test.ts`)
 - **Depends on:** T12 (regra espelha T9) · **Reqs:** PS-03
@@ -128,7 +128,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** T10, T12 · **Reqs:** PS-04
 - **Tests:** unit no mapper se extraído; senão none · **Gate:** quick + typecheck
 
-### T17: Monitoramento — captura e enfileiramento usam o dia [P] ⏳
+### T17: Monitoramento — captura e enfileiramento usam o dia [P] ✅ 690c374
 - **What:** `outside_window` e `fitSlot` passam o mask.
 - **Where:** `m/automation/application/use-cases/RegisterCapturedMessageUseCase.ts`, `m/automation/application/use-cases/ProcessPendingCapturedOffersUseCase.ts` (+ testes)
 - **Depends on:** T14 · **Reqs:** PS-04
@@ -141,7 +141,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** — · **Reqs:** PS-05
 - **Tests:** unit · **Gate:** quick
 
-### T18: Gerador — configuração do horário [P] ⏳
+### T18: Gerador — configuração do horário [P] ✅ 35c085d
 - **What:** `windowStartMinute/EndMinute/weekdays` no save/get (validação via `postingWindow`), schema HTTP e repo.
 - **Where:** `m/campaigns/application/use-cases/OfferGeneratorConfigUseCases.ts` (+ teste), `m/campaigns/presentation/schemas/offer.schema.ts`, `m/campaigns/infrastructure/repositories/PrismaOfferGeneratorConfigRepository.ts` (+ `IOfferGeneratorConfigRepository.ts`)
 - **Depends on:** T3 (mesmo arquivo), T9, T12 · **Reqs:** PS-05
@@ -203,3 +203,6 @@ Onda 7: T23(T22) → T24 → T25
 - T12: migration `20261104180000_add_posting_schedule_weekdays` (ADD COLUMN NOT NULL DEFAULT).
 - T3/T4: limite de grupos de disparo pela união gerador ∪ monitoramento (chave sessão+JID). **Efeito no deploy (D5 pendente):** tenant que já passa do limite pela soma fica impedido de salvar novos destinos até remover grupos. `filterSessionGroups` devolve `groupJid`.
 - T14: monitoramento grava/lê `weekdaysMask` via `PrismaGroupMonitorMapper`; T10 + T14 já estão juntas na branch.
+- T5: `GET /campaigns/broadcast-groups` (inclui `sessionName`); sem teste de rota HTTP.
+- T13: claim do gerador sem `scheduledAt` respeita janela/dias do `offer_generator_configs`; `scheduledAt` explícito ignora (D3).
+- T16: link `/broadcast-groups` no painel só funciona após T23 (página/rota).
