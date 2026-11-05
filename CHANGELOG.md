@@ -9,7 +9,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
-### Fixed — app 0.76.2 — Assinatura: verificação visual (T18)
+### Fixed — app 0.77.0 — Assinatura: verificação visual (T18)
 
 #### app/
 
