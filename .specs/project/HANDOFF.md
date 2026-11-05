@@ -5,7 +5,7 @@
 > 2. **Alta — LGPD**: `GET /checkout/customer-lookup/:email` público devolve nome, telefone e CPF/CNPJ completos (e enumera contas). Revisar também `GET /checkout/saved-cards/:email`.
 > 3. **Alta**: `checkout/process` público sobrescreve dados cadastrais de conta existente sem pagar.
 > 4. **Alta**: `GET /cakto/orders`, `/cakto/subscriptions`, `/cakto/balance` só exigem login, não ADMIN.
-> Hotfix sendo preparado no branch local `hotfix/seguranca-acesso-dados` (sem push/deploy). **Dono decide o deploy**; o fix 1 muda o 1º acesso (sem senha → fluxo de definir/esqueci a senha).
+> **Hotfix 1.86.1 pronto** no branch local `hotfix/seguranca-acesso-dados` da central (base 0906d9f; fixes `abe0b5a`, `ce43c96`, `be1f4e7`, `1493d74`; release notes `docs/releases/1.86.1.md`; sem migration; testes que falhavam antes passam). Contrato: sign-in de conta sem senha → 401 `PASSWORD_NOT_SET` + `withoutPassword`; customer-lookup com `docNumber`/`phone` vazios + `*Masked`; `/cakto/*` de leitura → 403 sem ADMIN. Revisão de segurança independente e ajuste da extensão (primeiro acesso → fluxo de código) em andamento. **Antes do deploy:** checar `LOGIN_EMAIL_OTP` na Render; se estava desligado, revisar logs `[sign-in] Senha criada para usuário`.
 
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
 `tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: api 3088/3088, app 1218/1218).
