@@ -8,7 +8,7 @@ import {
 
 const TEXT = '🔥 Fone JBL por R$ 99\nhttps://amzn.to/abc?tag=concorrente-20\nCupom: PROMO10\n👉 Grupo: https://chat.whatsapp.com/XYZ';
 
-async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>; broadcast?: string[]; entitlements?: Record<string, unknown>; processNow?: () => Date } = {}) {
+async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS> & { weekdays?: number[] }; broadcast?: string[]; entitlements?: Record<string, unknown>; processNow?: () => Date; captureNow?: () => Date } = {}) {
   const monitors = new InMemoryGroupMonitorRepository();
   const captured = new InMemoryCapturedOfferRepository();
   const links = new FakeLinkBuilder();
@@ -19,9 +19,9 @@ async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>
   const cfg = await monitors.saveSettings(TENANT, SESSION, { ...DEFAULT_MONITOR_SETTINGS, enabled: true, ...opts.settings });
   await monitors.replaceMonitored(TENANT, SESSION, cfg.id, [{ conversationId: 'c-src', groupJid: '120363-src', keywords: [] }]);
   await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j, sessionId: SESSION })));
-  const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: () => NOW });
+  const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: opts.captureNow ?? (() => NOW) });
   const process = new ProcessPendingCapturedOffersUseCase({
-    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: opts.processNow ?? (() => NOW), products, texts, images,
+    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: opts.processNow ?? opts.captureNow ?? (() => NOW), products, texts, images,
   });
   const msg = (o = {}) => register.execute({
     tenantId: TENANT, sessionId: SESSION, isGroup: true, fromMe: false, groupJid: '120363-src', externalMessageId: 'm1',
@@ -57,6 +57,16 @@ describe('RegisterCapturedMessageUseCase', () => {
     expect(b.captured.items).toHaveLength(0);
     const c = await setup({ settings: { ...window, captureOutsideWindow: false, windowStartMinute: 600 } });
     expect(await c.msg()).toBe('captured');
+  });
+
+  it('dia fora dos dias de postagem conta como fora do horário', async () => {
+    // Domingo 12:00 em SP, dia inteiro só seg–sex
+    const sunday = () => new Date('2026-11-01T15:00:00.000Z');
+    const weekdays = [1, 2, 3, 4, 5];
+    const a = await setup({ settings: { captureOutsideWindow: false, weekdays }, captureNow: sunday });
+    expect(await a.msg()).toBe('outside_window');
+    const b = await setup({ settings: { captureOutsideWindow: false, weekdays } });
+    expect(await b.msg()).toBe('captured');
   });
 
   it('monitoramento desligado não captura', async () => {
@@ -111,6 +121,19 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.queue.inputs).toHaveLength(1);
     expect(s.queue.inputs[0]!.startAt).toEqual(new Date('2026-10-28T17:00:00.000Z'));
     expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date('2026-10-28T18:00:00.000Z'));
+  });
+
+  it('dias da semana: captura no domingo com seg–sex vai para segunda na abertura; validade conta da captura', async () => {
+    // Domingo 12:00 em SP, janela 14:00–20:00 seg–sex, cupom 60 min → segunda 14:00, vale até 15:00
+    const sunday = () => new Date('2026-11-01T15:00:00.000Z');
+    const s = await setup({ settings: { windowStartMinute: 840, windowEndMinute: 1200, weekdays: [1, 2, 3, 4, 5] }, captureNow: sunday });
+    expect(await s.msg()).toBe('captured');
+    await s.process.execute();
+    const q = s.queue.inputs[0]!;
+    expect(q.startAt).toEqual(new Date('2026-11-02T17:00:00.000Z'));
+    expect(q.expiresAt).toEqual(new Date('2026-11-02T18:00:00.000Z'));
+    // Encaixe dos envios seguintes também pula o fim de semana: sexta 20:30 → segunda 14:00
+    expect(q.fitSlot!(new Date('2026-11-06T23:30:00.000Z'))).toEqual(new Date('2026-11-09T17:00:00.000Z'));
   });
 
   it('processamento atrasado não renova a validade: conta da captura, início é agora', async () => {

@@ -1,7 +1,7 @@
 import type { ICapturedOfferRepository } from '../../domain/contracts/ICapturedOfferRepository';
 import type { IGroupMonitorRepository } from '../../domain/contracts/IGroupMonitorRepository';
 import { extractUrls, matchesKeywords } from '../../domain/services/offerMessageText';
-import { isWithinWindow, minuteOfDayInZone } from '../../domain/services/operatingWindow';
+import { isWithinPostingWindow } from '../../../campaigns/domain/services/postingWindow';
 
 /** Fotos que o envio aceita (`SendStoredMediaMessageUseCase`). `image/jpg` vira `image/jpeg`. */
 const SENDABLE_IMAGE = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -37,9 +37,10 @@ export class RegisterCapturedMessageUseCase {
     const group = await this.deps.monitors.findActiveMonitoredGroup(m.tenantId, m.sessionId, m.groupJid);
     if (!group || !matchesKeywords(text, group.keywords)) return 'ignored';
     const capturedAt = (this.deps.now ?? (() => new Date()))();
-    // Fora da janela com "capturar fora do horário" desligado: nem entra na fila
-    if (!group.captureOutsideWindow
-      && !isWithinWindow(minuteOfDayInZone(capturedAt), { startMinute: group.windowStartMinute, endMinute: group.windowEndMinute })) {
+    // Fora da janela (faixa + dia da semana) com "capturar fora do horário" desligado: nem entra na fila
+    if (!group.captureOutsideWindow && !isWithinPostingWindow(capturedAt, {
+      startMinute: group.windowStartMinute, endMinute: group.windowEndMinute, weekdaysMask: group.weekdaysMask,
+    })) {
       return 'outside_window';
     }
 

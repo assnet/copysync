@@ -8,7 +8,8 @@ import type { GroupMonitorConfig, MonitorTextMode } from '../../domain/entities/
 import type { CapturedOffer } from '../../domain/entities/CapturedOffer';
 import { captureExpiresAt } from '../../domain/services/monitorSettings';
 import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from '../../domain/services/offerMessageText';
-import { resolveStartWithinWindow } from '../../domain/services/operatingWindow';
+import { resolveStartWithinWindow, type OperatingWindow } from '../../domain/services/operatingWindow';
+import { weekdaysMask } from '../../../campaigns/domain/services/postingWindow';
 import { logger } from '../../../../shared/logger/logger';
 import { CROSS_SESSION_DISPATCH, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
 import { keepOneSessionPerChannel, limitKeyOfChannel, requiresCrossSession, sliceByChannel } from '../../../tenants/domain/channelLimits';
@@ -146,7 +147,10 @@ export class ProcessPendingCapturedOffersUseCase {
     const coupon = detectCoupon(c.sourceText);
     // Validade conta do início previsto a partir da CAPTURA (captura fora da janela acumula e vale a
     // partir da abertura); atraso de processamento não renova a validade
-    const window = { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute };
+    // Faixa + dias da semana: captura no domingo com seg–sex abre na segunda
+    const window: OperatingWindow = {
+      startMinute: config.windowStartMinute, endMinute: config.windowEndMinute, weekdaysMask: weekdaysMask(config.weekdays),
+    };
     const plannedFromCapture = new Date(c.capturedAt.getTime() + config.startDelaySeconds * 1000);
     const expiresAt = captureExpiresAt(resolveStartWithinWindow(plannedFromCapture, window), coupon !== null, config);
     const earliest = new Date(Math.max(now.getTime(), plannedFromCapture.getTime()));
@@ -179,7 +183,7 @@ export class ProcessPendingCapturedOffersUseCase {
       // Queda entre criar a oferta e marcar QUEUED: o reprocessamento reaproveita a oferta
       sourceKey: `captured:${c.id}`,
       // Todos os envios dentro da janela (o fim empurra para o próximo início); o claim garante no envio
-      fitSlot: (at) => resolveStartWithinWindow(at, { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute }),
+      fitSlot: (at) => resolveStartWithinWindow(at, window),
       monitorConfigId: config.id,
     });
     if (res.kind === 'expired') return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: res.firstSendAt } };
