@@ -51,7 +51,7 @@ Regras comuns a toda task:
 | F9 | Resume no adapter mantém suspensa em erro | F8 | | ✅ 1b2a3bb |
 | F10 | Estado de retomada com dono único | F9 | | ✅ b0ceb92 |
 | F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
-| F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ⏳ |
+| F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ✅ 75ff1bb |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -562,6 +562,8 @@ Causa comum dos 3 🔴: o estado "suspensa" vive em dois lugares (marca `fenced`
 **Tests**: unit (+ int do prazo no repo)
 **Gate**: `pnpm vitest run src/modules/sessions src/modules/messaging` + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): retomada com prazo e desistência que aborta antes`
+
+- F12: prazo `LEASE_RENEW_TIMEOUT_MS` no repo (`SET LOCAL statement_timeout` + `Promise.race`, `SessionLeaseDeadlineError` transitório); Baileys prazo acquire 10 s / build auth 15 s (503); `resume` não aguarda após timeout; desistência = forget → abort → release → DISCONNECTED; Telegram com supersede. Custo: BEGIN/SET/COMMIT por operação de lease.
 
 ## Diagram-Definition Cross-Check
 
