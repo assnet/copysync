@@ -35,7 +35,7 @@ export interface SessionAdoptionContainer {
 
 export interface SessionAdoptionDeps {
   config: WorkerAdoptionConfig;
-  lease: Pick<SessionLeaseContainer, 'workerId' | 'listLocal'>;
+  lease: Pick<SessionLeaseContainer, 'workerId' | 'occupancy'>;
   /** Papel do processo (`worker`/`all`), gravado no heartbeat. */
   role: string;
   adoption: ISessionAdoptionRepository;
@@ -56,7 +56,7 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
     adoption,
     engine: deps.engine,
     audit: deps.audit,
-    listLocal: lease.listLocal,
+    occupiedSessions: () => lease.occupancy().sessions,
     workerId: lease.workerId,
     shard: config.shard,
     maxSessions: config.maxSessions,
@@ -72,7 +72,7 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
       workerId: lease.workerId,
       role: deps.role,
       maxSessions: config.maxSessions,
-      listLocal: lease.listLocal,
+      occupancy: lease.occupancy,
     }),
     // D5: sem template de e-mail na central, sem `notifier` (alerta só no log).
     capacityAlert: new WorkerCapacityAlertJob({ lease: deps.jobLease, heartbeats, adoption }),

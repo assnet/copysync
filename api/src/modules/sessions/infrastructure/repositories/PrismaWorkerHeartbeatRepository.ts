@@ -22,6 +22,7 @@ const toHeartbeat = (r: HeartbeatRow): WorkerHeartbeat => ({
   workerId: r.workerId,
   role: r.role,
   sessions: r.sessions,
+  pendingLogins: r.pendingLogins,
   maxSessions: r.maxSessions,
   rssMb: r.rssMb,
   seenAt: r.seenAt,
@@ -32,10 +33,10 @@ const int = (n: number) => Math.max(0, Math.trunc(n));
 export class PrismaWorkerHeartbeatRepository implements IWorkerHeartbeatRepository {
   async beat(row: WorkerHeartbeatInput): Promise<void> {
     await prisma.$executeRaw`
-      INSERT INTO "worker_heartbeats" ("workerId", "role", "sessions", "maxSessions", "rssMb", "seenAt")
-      VALUES (${row.workerId}, ${row.role}, ${int(row.sessions)}, ${int(row.maxSessions)}, ${int(row.rssMb)}, ${NOW})
+      INSERT INTO "worker_heartbeats" ("workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "seenAt")
+      VALUES (${row.workerId}, ${row.role}, ${int(row.sessions)}, ${int(row.pendingLogins)}, ${int(row.maxSessions)}, ${int(row.rssMb)}, ${NOW})
       ON CONFLICT ("workerId") DO UPDATE SET "role" = EXCLUDED."role", "sessions" = EXCLUDED."sessions",
-        "maxSessions" = EXCLUDED."maxSessions", "rssMb" = EXCLUDED."rssMb", "seenAt" = EXCLUDED."seenAt"`;
+        "pendingLogins" = EXCLUDED."pendingLogins", "maxSessions" = EXCLUDED."maxSessions", "rssMb" = EXCLUDED."rssMb", "seenAt" = EXCLUDED."seenAt"`;
     try {
       await prisma.$executeRaw`
         DELETE FROM "worker_heartbeats" WHERE "workerId" IN (
@@ -48,7 +49,7 @@ export class PrismaWorkerHeartbeatRepository implements IWorkerHeartbeatReposito
 
   async listAlive(maxAgeMs: number): Promise<WorkerHeartbeat[]> {
     const rows = await prisma.$queryRaw<HeartbeatRow[]>`
-      SELECT "workerId", "role", "sessions", "maxSessions", "rssMb", "seenAt" FROM "worker_heartbeats"
+      SELECT "workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "seenAt" FROM "worker_heartbeats"
       WHERE "seenAt" > ${NOW} - (${int(maxAgeMs)}::int * interval '1 millisecond')
       ORDER BY "workerId"`;
     return rows.map(toHeartbeat);

@@ -29,8 +29,9 @@ const h = vi.hoisted(() => {
     setRelay: vi.fn(),
     deliverLocal: vi.fn(),
     release: { execute: vi.fn() },
-    adoption: { enabled: false, maxSessions: 2, shard: null as string | null },
+    adoption: { enabled: false, maxSessions: 2, maxPendingLogins: 50, shard: null as string | null },
     local: [] as string[],
+    pending: 0,
     repo: { findLiveOwner: vi.fn() },
     rpcServer: { start: vi.fn(async () => undefined), stop: vi.fn(async () => undefined) },
     rpcClient: { close: vi.fn(async () => undefined) },
@@ -59,7 +60,7 @@ vi.mock('../shared/redis/redisConnections', () => track('redis', {
   bullConnection: () => h.clients.bull,
 }));
 vi.mock('../modules/sessions/infrastructure/lease/sessionLeaseContainer', () => track('lease', {
-  sessionLeaseContainer: () => ({ workerId: 'w-1', release: h.release, repo: h.repo, listLocal: () => h.local }),
+  sessionLeaseContainer: () => ({ workerId: 'w-1', release: h.release, repo: h.repo, listLocal: () => h.local, occupancy: () => ({ sessions: h.local.length, pendingLogins: h.pending }) }),
 }));
 vi.mock('../modules/messaging/infrastructure/remote/EngineCommandServer', () => track('remote', {
   EngineCommandServer: class { constructor(...a: unknown[]) { h.ctor.commandServer(...a); } },
@@ -115,6 +116,7 @@ beforeEach(() => {
   h.env.S3_ENABLED = true;
   h.adoption.enabled = false;
   h.local = [];
+  h.pending = 0;
 });
 
 describe('composeForRole', () => {
@@ -192,6 +194,8 @@ describe('composeForRole', () => {
     expect(opts).toMatchObject({ connection: h.clients.bull, concurrency: 3 });
     expect(opts.sessionOpenHasCapacity()).toBe(true);
     h.local = ['s1'];
+    expect(opts.sessionOpenHasCapacity()).toBe(true);
+    h.pending = 9; // logins pendentes (QR sem leitura) não ocupam vaga (T24)
     expect(opts.sessionOpenHasCapacity()).toBe(true);
     h.local = ['s1', 's2'];
     expect(opts.sessionOpenHasCapacity()).toBe(false);

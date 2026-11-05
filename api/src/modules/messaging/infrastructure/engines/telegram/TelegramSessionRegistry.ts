@@ -24,6 +24,8 @@ export interface TelegramSessionEntry {
   epoch: number;
   pending: PendingLogin | null;
   latestQr: string | null;
+  /** Login concluído neste cliente (`finishLogin`): só aí a sessão ocupa vaga do worker. */
+  authorized?: boolean;
   /** Telefone da conta logada (dígitos), quando conhecido. */
   phone: string | null;
   /** Ids de mensagens que esta engine enviou — o eco (`out`) não vira recebimento duplicado. */

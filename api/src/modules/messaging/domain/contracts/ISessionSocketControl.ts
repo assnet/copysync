@@ -53,6 +53,16 @@ export interface ISessionSocketControl {
   forgetSuspension(sessionId: string): Promise<string | null>;
   /** Fecha todos os sockets locais; os handles de auth state ficam para o flush seguinte. */
   closeAllSockets(): Promise<void>;
-  /** Ids das sessões com socket aberto neste processo. */
+  /** Ids das sessões com socket aberto (ou abrindo) neste processo; base do lease e da renovação. */
   listLocalSessionIds(): string[];
+  /**
+   * Subconjunto de `listLocalSessionIds` com login concluído (QR lido/código aceito ou credencial
+   * salva carregada). Só estas ocupam vaga do worker (`WORKER_MAX_SESSIONS`); QR sem leitura não.
+   */
+  listAuthenticatedSessionIds(): string[];
+  /**
+   * A sessão tem credencial salva que conecta sem QR/código (reabertura conta vaga). Lê o banco;
+   * sessão desconhecida = `false`. Erro transitório lança (quem chama decide).
+   */
+  hasStoredCredentials(sessionId: string): Promise<boolean>;
 }

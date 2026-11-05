@@ -1,11 +1,12 @@
 const worker = {
   type: 'object',
   additionalProperties: false,
-  required: ['workerId', 'role', 'sessions', 'maxSessions', 'rssMb', 'seenAt'],
+  required: ['workerId', 'role', 'sessions', 'pendingLogins', 'maxSessions', 'rssMb', 'seenAt'],
   properties: {
     workerId: { type: 'string' },
     role: { type: 'string' },
     sessions: { type: 'integer' },
+    pendingLogins: { type: 'integer' },
     maxSessions: { type: 'integer' },
     rssMb: { type: 'integer' },
     seenAt: { type: 'string', format: 'date-time' },
@@ -15,10 +16,11 @@ const worker = {
 const totals = {
   type: 'object',
   additionalProperties: false,
-  required: ['workers', 'sessions', 'maxSessions'],
+  required: ['workers', 'sessions', 'pendingLogins', 'maxSessions'],
   properties: {
     workers: { type: 'integer' },
     sessions: { type: 'integer' },
+    pendingLogins: { type: 'integer' },
     maxSessions: { type: 'integer' },
   },
 } as const;

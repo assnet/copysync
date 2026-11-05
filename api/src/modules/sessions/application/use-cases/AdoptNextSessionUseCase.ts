@@ -17,8 +17,8 @@ export interface AdoptNextSessionDeps {
   adoption: ISessionAdoptionRepository;
   engine: Pick<ISessionSocketControl, 'adoptSession' | 'abortSession'>;
   audit: IAuditLogRepository;
-  /** Sessões deste processo (inclui socket abrindo, F3 da E2). */
-  listLocal: () => string[];
+  /** Vagas ocupadas neste processo: login concluído + reservas (T24; QR sem leitura não conta). */
+  occupiedSessions: () => number;
   workerId: string;
   shard: string | null;
   maxSessions: number;
@@ -50,8 +50,8 @@ export class AdoptNextSessionUseCase {
     this.cancelRequested = false;
     await this.failExhausted();
 
-    const { adoption, listLocal, workerId, shard, maxSessions } = this.deps;
-    if (!hasCapacity(listLocal().length, maxSessions)) return 'full';
+    const { adoption, occupiedSessions, workerId, shard, maxSessions } = this.deps;
+    if (!hasCapacity(occupiedSessions(), maxSessions)) return 'full';
 
     const adopted = await adoption.adoptNext(workerId, shard, LEASE_TTL_MS);
     if (!adopted) return 'none';
@@ -112,7 +112,7 @@ export class AdoptNextSessionUseCase {
 
   /** `held`: outro dono ou teto (corrida com abertura local). Devolve a vaga e a tentativa. */
   private async giveBack(s: AdoptedSessionRef): Promise<void> {
-    const full = !hasCapacity(this.deps.listLocal().length, this.deps.maxSessions);
+    const full = !hasCapacity(this.deps.occupiedSessions(), this.deps.maxSessions);
     try {
       await this.deps.adoption.revertAdoptAttempt(s.id, this.deps.workerId);
     } catch (err) {

@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CapacityLimitedLeaseGate } from './CapacityLimitedLeaseGate';
+import { CapacityLimitedLeaseGate, LOGIN_RESTART_GRACE_MS, type SessionCapacitySource } from './CapacityLimitedLeaseGate';
+
+/** Fonte em que toda sessão local está autenticada e toda sessão nova tem credencial (comportamento pré-T24). */
+const source = (local: string[], over: Partial<SessionCapacitySource> = {}): SessionCapacitySource => ({
+  listLocal: () => local,
+  listAuthenticated: () => local,
+  hasStoredCredentials: async () => true,
+  ...over,
+});
 
 const setup = (local: string[], max: number, acquire = vi.fn(async () => true)) => {
   const log = { warn: vi.fn() };
-  const gate = new CapacityLimitedLeaseGate({ acquire }, () => local, max, log as never);
+  const gate = new CapacityLimitedLeaseGate({ acquire }, source(local), { maxSessions: max, maxPendingLogins: 50 }, log as never);
   return { gate, acquire, log };
 };
 
@@ -103,7 +111,9 @@ describe('CapacityLimitedLeaseGate — reserva síncrona (T22)', () => {
     vi.useFakeTimers();
     try {
       const log = { warn: vi.fn() };
-      const gate = new CapacityLimitedLeaseGate({ acquire: async () => true }, () => [], 1, log as never, 1_000);
+      const gate = new CapacityLimitedLeaseGate(
+        { acquire: async () => true }, source([]), { maxSessions: 1, maxPendingLogins: 50 }, log as never, 1_000,
+      );
       expect(await gate.acquire('a')).toBe(true);
       expect(await gate.acquire('b')).toBe(false);
       vi.advanceTimersByTime(1_000);
@@ -119,5 +129,118 @@ describe('CapacityLimitedLeaseGate — reserva síncrona (T22)', () => {
     const all = [gate.acquire('a'), gate.acquire('a'), gate.acquire('b')];
     d.resolve(true);
     expect(await Promise.all(all)).toEqual([true, true, true]);
+  });
+});
+
+describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', () => {
+  const build = (opts: { local: string[]; auth: string[]; creds?: Set<string>; max?: number; maxPending?: number; now?: () => number }) => {
+    const log = { warn: vi.fn() };
+    const acquire = vi.fn(async () => true);
+    const gate = new CapacityLimitedLeaseGate(
+      { acquire },
+      source(opts.local, {
+        listAuthenticated: () => opts.auth,
+        hasStoredCredentials: async (id) => opts.creds?.has(id) ?? false,
+      }),
+      { maxSessions: opts.max ?? 1, maxPendingLogins: opts.maxPending ?? 50 },
+      log as never,
+      15_000,
+      opts.now,
+    );
+    return { gate, acquire, log };
+  };
+
+  it('teto 1 com 1 autenticada: sessão nova em QR abre e não muda a contagem de sessões', async () => {
+    const local = ['a'];
+    const { gate, acquire } = build({ local, auth: ['a'] });
+    expect(await gate.acquire('qr')).toBe(true);
+    expect(acquire).toHaveBeenCalledWith('qr');
+    local.push('qr');
+    expect(gate.occupancy()).toEqual({ sessions: 1, pendingLogins: 1 });
+  });
+
+  it('QR lido → passa a contar como sessão (teto pode ser excedido)', async () => {
+    const local = ['a', 'qr'];
+    const auth = ['a'];
+    const { gate } = build({ local, auth });
+    expect(gate.occupancy()).toEqual({ sessions: 1, pendingLogins: 1 });
+    auth.push('qr');
+    expect(gate.occupancy()).toEqual({ sessions: 2, pendingLogins: 0 });
+  });
+
+  it('reabertura de sessão com credencial reserva vaga; cheio nega', async () => {
+    const local: string[] = [];
+    const { gate, log } = build({ local, auth: [], creds: new Set(['r1', 'r2']) });
+    expect(await gate.acquire('r1')).toBe(true);
+    expect(gate.occupancy()).toEqual({ sessions: 1, pendingLogins: 0 });
+    expect(await gate.acquire('r2')).toBe(false);
+    expect(log.warn).toHaveBeenCalledWith({ sessionId: 'r2', active: 1, max: 1 }, expect.any(String));
+  });
+
+  it('reabertura com credencial abrindo (local, ainda sem login) não conta como login pendente', async () => {
+    const local: string[] = [];
+    const { gate } = build({ local, auth: [], creds: new Set(['r1']) });
+    expect(await gate.acquire('r1')).toBe(true);
+    local.push('r1');
+    expect(gate.occupancy()).toEqual({ sessions: 1, pendingLogins: 0 });
+  });
+
+  it('sessão nova sem credencial não reserva vaga de sessão', async () => {
+    const { gate } = build({ local: [], auth: [], creds: new Set(['r1']) });
+    expect(await gate.acquire('qr')).toBe(true);
+    expect(gate.occupancy()).toEqual({ sessions: 0, pendingLogins: 1 });
+    expect(await gate.acquire('r1')).toBe(true);
+  });
+
+  it('teto de logins pendentes respeitado (reservas e locais sem login)', async () => {
+    const local = ['p1'];
+    const { gate, log } = build({ local, auth: [], maxPending: 2 });
+    expect(await gate.acquire('p2')).toBe(true);
+    expect(await gate.acquire('p3')).toBe(false);
+    expect(log.warn).toHaveBeenCalledWith({ sessionId: 'p3', pendingLogins: 2, max: 2 }, expect.any(String));
+    local.splice(0, 1);
+    expect(await gate.acquire('p3')).toBe(true);
+  });
+
+  it('login visto em andamento que reabre com credencial (reinício pós-QR) passa com o teto cheio', async () => {
+    let now = 0;
+    const local = ['a', 'qr'];
+    const creds = new Set<string>();
+    const { gate } = build({ local, auth: ['a'], creds, now: () => now });
+    expect(gate.occupancy().pendingLogins).toBe(1); // vê o login em andamento
+    local.splice(local.indexOf('qr'), 1); // socket fecha para reiniciar
+    creds.add('qr');
+    now += 3_000;
+    expect(await gate.acquire('qr')).toBe(true);
+  });
+
+  it('janela do reinício vence: credencial salva volta a passar pelo teto', async () => {
+    let now = 0;
+    const local = ['a', 'qr'];
+    const { gate } = build({ local, auth: ['a'], creds: new Set(['qr']), now: () => now });
+    gate.occupancy();
+    local.splice(local.indexOf('qr'), 1);
+    now += LOGIN_RESTART_GRACE_MS + 1;
+    expect(await gate.acquire('qr')).toBe(false);
+  });
+
+  it('erro ao checar credencial conta como sessão (lado seguro)', async () => {
+    const log = { warn: vi.fn() };
+    const gate = new CapacityLimitedLeaseGate(
+      { acquire: async () => true },
+      source(['a'], { hasStoredCredentials: async () => { throw new Error('db'); } }),
+      { maxSessions: 1, maxPendingLogins: 50 },
+      log as never,
+    );
+    expect(await gate.acquire('x')).toBe(false);
+  });
+
+  it('sessão já local não consulta credencial', async () => {
+    const hasStoredCredentials = vi.fn(async () => true);
+    const gate = new CapacityLimitedLeaseGate(
+      { acquire: async () => true }, source(['a'], { hasStoredCredentials }), { maxSessions: 1, maxPendingLogins: 1 },
+    );
+    expect(await gate.acquire('a')).toBe(true);
+    expect(hasStoredCredentials).not.toHaveBeenCalled();
   });
 });

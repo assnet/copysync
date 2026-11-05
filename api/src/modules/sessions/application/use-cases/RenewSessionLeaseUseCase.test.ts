@@ -27,6 +27,8 @@ function makeSockets(local: string[]): ISessionSocketControl {
     adoptSession: vi.fn(async () => 'opened' as const),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [...local]),
+    listAuthenticatedSessionIds: vi.fn(() => [...local]),
+    hasStoredCredentials: vi.fn(async () => true),
   };
 }
 

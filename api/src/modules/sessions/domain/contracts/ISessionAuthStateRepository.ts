@@ -51,6 +51,8 @@ export interface ISessionAuthStateRepository {
   upsert(data: SessionAuthStateUpsertData): Promise<void>;
   /** Todas as chaves da sessão (uma consulta, no boot da sessão). */
   findAllKeys(sessionId: string): Promise<Record<string, unknown>>;
+  /** Valor de uma chave (ou `null`), sem carregar as demais: checagem barata de credencial salva. */
+  findKey(sessionId: string, key: string): Promise<unknown | null>;
   /** Todas as chaves + `version` da linha-mãe, numa transação de leitura (base do CAS). */
   findAllKeysVersioned(sessionId: string): Promise<VersionedAuthKeys>;
   /**

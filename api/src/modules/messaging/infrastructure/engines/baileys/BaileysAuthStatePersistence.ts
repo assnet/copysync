@@ -177,6 +177,30 @@ function deserialize(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value), BufferJSON.reviver);
 }
 
+/**
+ * Credencial salva que conecta sem QR/código: `creds.registered` ou `creds.me` (QR lido). QR
+ * mostrado e não lido também grava `creds`, mas sem `me` — não conta. Lê só a chave `creds`
+ * (e o blob legado se a sessão ainda não migrou).
+ */
+export async function hasRegisteredCredentials(
+  authStateRepo: Pick<ISessionAuthStateRepository, 'findKey' | 'findBySessionId'>,
+  sessionId: string,
+): Promise<boolean> {
+  let raw = await authStateRepo.findKey(sessionId, CREDS_KEY);
+  if (raw == null) {
+    const legacy = (await authStateRepo.findBySessionId(sessionId))?.statePayload;
+    raw = legacy && typeof legacy === 'object' ? (legacy as Record<string, unknown>)[CREDS_KEY] : null;
+  }
+  return isRegisteredCreds(raw);
+}
+
+/** `creds` (JSON do banco ou objeto vivo do Baileys) com login concluído. */
+export function isRegisteredCreds(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const creds = raw as { registered?: unknown; me?: { id?: unknown } | null };
+  return creds.registered === true || typeof creds.me?.id === 'string';
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

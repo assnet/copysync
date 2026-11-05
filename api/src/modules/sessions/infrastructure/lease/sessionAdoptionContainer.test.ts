@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const cfg = vi.hoisted(() => ({ enabled: false, maxSessions: 3, shard: null as string | null }));
+const cfg = vi.hoisted(() => ({ enabled: false, maxSessions: 3, maxPendingLogins: 50, shard: null as string | null }));
 const spies = vi.hoisted(() => ({ adoptionRepo: 0, register: 0, lease: 0 }));
 
 vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
@@ -26,7 +26,7 @@ vi.mock('../listeners/SessionAdoptionResetListener', () => ({
   registerSessionAdoptionResetListener: () => { spies.register++; return () => undefined; },
 }));
 vi.mock('./sessionLeaseContainer', () => ({
-  sessionLeaseContainer: () => { spies.lease++; return { workerId: 'w-test', listLocal: () => [] }; },
+  sessionLeaseContainer: () => { spies.lease++; return { workerId: 'w-test', occupancy: () => ({ sessions: 0, pendingLogins: 0 }) }; },
 }));
 
 async function load() {
@@ -78,8 +78,8 @@ describe('sessionAdoptionContainer', () => {
     const registerReset = vi.fn().mockReturnValue(unregister);
     const adoption = { adoptNext: vi.fn(), failExhausted: vi.fn(), resetFailures: vi.fn(), countAwaitingCapacity: vi.fn() };
     const c = buildSessionAdoptionContainer({
-      config: { enabled: true, maxSessions: 2, shard: 'a' },
-      lease: { workerId: 'w1', listLocal: () => [] },
+      config: { enabled: true, maxSessions: 2, maxPendingLogins: 5, shard: 'a' },
+      lease: { workerId: 'w1', occupancy: () => ({ sessions: 0, pendingLogins: 0 }) },
       role: 'all',
       adoption: adoption as never,
       heartbeats: { beat: vi.fn(), listAlive: vi.fn(), remove: vi.fn() } as never,

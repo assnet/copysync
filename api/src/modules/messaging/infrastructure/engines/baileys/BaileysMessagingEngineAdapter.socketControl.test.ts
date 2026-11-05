@@ -7,7 +7,7 @@ import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/Ses
 // Socket falso (mesmo molde do teste de pareamento): guarda handlers para disparar connection.update
 interface FakeSocket {
   handlers: Record<string, (u: unknown) => Promise<void>>;
-  authState: { creds: { registered: boolean } };
+  authState: { creds: { registered: boolean; me?: { id: string } } };
   end: ReturnType<typeof vi.fn>;
   ev: { on: (e: string, h: (u: unknown) => Promise<void>) => void; removeAllListeners: ReturnType<typeof vi.fn> };
   ws: object;
@@ -41,7 +41,8 @@ const auth = vi.hoisted(() => ({
   suspend: vi.fn(async () => undefined),
   flush: vi.fn(async () => undefined),
 }));
-vi.mock('./BaileysAuthStatePersistence', () => ({
+vi.mock('./BaileysAuthStatePersistence', async (importOriginal) => ({
+  isRegisteredCreds: (await importOriginal<typeof import('./BaileysAuthStatePersistence')>()).isRegisteredCreds,
   buildBaileysAuthState: () => auth.build(),
   flushAllAuthStates: auth.flush,
   releaseAuthState: auth.release,
@@ -264,6 +265,17 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
     await adapter.connectSession({ sessionId: 's2', tenantId: T });
     expect(adapter.listLocalSessionIds().sort()).toEqual(['s1', 's2']);
+  });
+
+  it('listAuthenticatedSessionIds: só sockets com login concluído (QR sem leitura fica fora, T24)', async () => {
+    const { adapter } = make();
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.connectSession({ sessionId: 'qr', tenantId: T });
+    sockets[1]!.authState.creds.registered = false;
+    expect(adapter.listLocalSessionIds().sort()).toEqual(['qr', 's1']);
+    expect(adapter.listAuthenticatedSessionIds()).toEqual(['s1']);
+    sockets[1]!.authState.creds.me = { id: '5511999999999:1@s.whatsapp.net' }; // QR lido
+    expect(adapter.listAuthenticatedSessionIds().sort()).toEqual(['qr', 's1']);
   });
 
   describe('prazo da abertura (F12)', () => {

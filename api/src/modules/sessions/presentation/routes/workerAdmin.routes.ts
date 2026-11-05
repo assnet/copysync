@@ -16,7 +16,7 @@ const uc = () =>
   (listWorkers ??= new ListWorkersUseCase(new PrismaWorkerHeartbeatRepository(), new PrismaSessionAdoptionRepository()));
 
 /** Flag desligada: nada de heartbeat nem adoção — resposta vazia sem consultar o banco. */
-const EMPTY: ListWorkersOutput = { workers: [], totals: { workers: 0, sessions: 0, maxSessions: 0 }, awaiting: 0 };
+const EMPTY: ListWorkersOutput = { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 };
 
 const present = (out: ListWorkersOutput) => ({
   workers: out.workers.map((w) => ({ ...w, seenAt: w.seenAt.toISOString() })),

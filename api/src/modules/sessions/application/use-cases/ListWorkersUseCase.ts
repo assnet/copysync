@@ -5,8 +5,10 @@ import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 export interface WorkerOccupancyTotals {
   /** Workers vivos (batimento < 90 s). */
   workers: number;
-  /** Soma das sessões abertas ou abrindo nos workers vivos. */
+  /** Soma das sessões com login concluído (as que ocupam vaga) nos workers vivos. */
   sessions: number;
+  /** Soma dos logins em andamento (QR/código sem leitura) nos workers vivos. */
+  pendingLogins: number;
   /** Soma dos tetos (`WORKER_MAX_SESSIONS`) dos workers vivos. */
   maxSessions: number;
 }
@@ -31,8 +33,13 @@ export class ListWorkersUseCase {
       this.adoption.countAwaitingCapacity(),
     ]);
     const totals = workers.reduce<WorkerOccupancyTotals>(
-      (t, w) => ({ workers: t.workers + 1, sessions: t.sessions + w.sessions, maxSessions: t.maxSessions + w.maxSessions }),
-      { workers: 0, sessions: 0, maxSessions: 0 },
+      (t, w) => ({
+        workers: t.workers + 1,
+        sessions: t.sessions + w.sessions,
+        pendingLogins: t.pendingLogins + w.pendingLogins,
+        maxSessions: t.maxSessions + w.maxSessions,
+      }),
+      { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
     );
     return { workers, totals, awaiting };
   }

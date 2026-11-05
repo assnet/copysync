@@ -40,6 +40,12 @@ export class TelegramAuthStatePersistence {
     return this.cipher().decrypt(blob, aad(tenantId));
   }
 
+  /** Há StringSession salva (login concluído antes)? Lê só a chave, sem decifrar. */
+  async hasSaved(sessionId: string): Promise<boolean> {
+    const raw = (await this.authStateRepo.findKey(sessionId, SESSION_KEY)) as Partial<StoredBlob> | null;
+    return typeof raw?.ciphertext === 'string';
+  }
+
   async save(sessionId: string, tenantId: string, sessionString: string): Promise<void> {
     const blob = this.cipher().encrypt(sessionString, aad(tenantId));
     const stored: StoredBlob = {

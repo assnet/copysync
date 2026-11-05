@@ -1,6 +1,7 @@
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
 import { HEARTBEAT_MS } from '../../domain/services/sessionAdoptionPolicy';
 import { logger } from '../../../../shared/logger/logger';
+import type { SessionOccupancy } from '../../application/services/CapacityLimitedLeaseGate';
 
 export interface WorkerHeartbeatJobOptions {
   heartbeats: IWorkerHeartbeatRepository;
@@ -9,8 +10,8 @@ export interface WorkerHeartbeatJobOptions {
   role: string;
   /** Teto do processo (`WORKER_MAX_SESSIONS`). */
   maxSessions: number;
-  /** Sessões com socket local (aberto ou abrindo). */
-  listLocal: () => string[];
+  /** Ocupação do processo: sessões com login concluído e logins em andamento (T24). */
+  occupancy: () => SessionOccupancy;
   /** Memória residente em MB; padrão `process.memoryUsage().rss`. */
   rssMb?: () => number;
   intervalMs?: number;
@@ -58,12 +59,14 @@ export class WorkerHeartbeatJob {
   }
 
   private async beatOnce(): Promise<void> {
-    const { heartbeats, workerId, role, maxSessions, listLocal } = this.options;
+    const { heartbeats, workerId, role, maxSessions, occupancy } = this.options;
     try {
+      const { sessions, pendingLogins } = occupancy();
       await heartbeats.beat({
         workerId,
         role,
-        sessions: listLocal().length,
+        sessions,
+        pendingLogins,
         maxSessions,
         rssMb: (this.options.rssMb ?? defaultRssMb)(),
       });

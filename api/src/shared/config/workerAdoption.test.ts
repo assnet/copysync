@@ -6,6 +6,7 @@ const base = {
   ...process.env,
   WORKER_ADOPTION_ENABLED: undefined,
   WORKER_MAX_SESSIONS: undefined,
+  WORKER_MAX_PENDING_LOGINS: undefined,
   WORKER_SHARD: undefined,
 };
 
@@ -16,14 +17,15 @@ function config(over: NodeJS.ProcessEnv) {
 }
 
 describe('workerAdoptionConfig', () => {
-  it('sem env: desligada, teto 40, sem shard', () => {
-    expect(config({})).toEqual({ enabled: false, maxSessions: 40, shard: null });
+  it('sem env: desligada, teto 40, 50 logins pendentes, sem shard', () => {
+    expect(config({})).toEqual({ enabled: false, maxSessions: 40, maxPendingLogins: 50, shard: null });
   });
 
   it('lê os valores definidos', () => {
-    expect(config({ WORKER_ADOPTION_ENABLED: 'true', WORKER_MAX_SESSIONS: '12', WORKER_SHARD: ' sa-1 ' })).toEqual({
+    expect(config({ WORKER_ADOPTION_ENABLED: 'true', WORKER_MAX_SESSIONS: '12', WORKER_MAX_PENDING_LOGINS: '7', WORKER_SHARD: ' sa-1 ' })).toEqual({
       enabled: true,
       maxSessions: 12,
+      maxPendingLogins: 7,
       shard: 'sa-1',
     });
   });
@@ -42,6 +44,13 @@ describe('workerAdoptionConfig', () => {
     expect(r.success).toBe(false);
     if (r.success) return;
     expect(r.error.errors.map((e) => e.path.join('.'))).toEqual(['WORKER_MAX_SESSIONS']);
+  });
+
+  it.each(['0', '-1', '1.5', 'x'])('teto de logins pendentes inválido %s falha o parse', (v) => {
+    const r = parseEnv({ ...base, WORKER_MAX_PENDING_LOGINS: v });
+    expect(r.success).toBe(false);
+    if (r.success) return;
+    expect(r.error.errors.map((e) => e.path.join('.'))).toEqual(['WORKER_MAX_PENDING_LOGINS']);
   });
 
   it('sem argumento lê o env do processo', () => {

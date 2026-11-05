@@ -145,9 +145,14 @@ Use cases novos: `AcquireSessionLeaseUseCase`, `RenewSessionLeaseUseCase`,
 **Feito na E4 (api 0.62.0), atrás de `WORKER_ADOPTION_ENABLED=false`** (desligada = E3 idêntica, nenhuma
 escrita em `worker_heartbeats`). Spec: `.specs/features/session-adoption/`. Onde diverge do desenho abaixo:
 
-- Teto no gate: `CapacityLimitedLeaseGate` nega `acquire` de sessão alheia com `ativas >= WORKER_MAX_SESSIONS`
-  (`ativas` = `listLocalSessionIds()`, inclui socket abrindo). Vale para rota, `session-open`, bootstrap e
-  ticker. Rota recebe 503 `ENGINE_TEMPORARILY_UNAVAILABLE`; o item da sessão traz `awaitingCapacity` e o
+- Teto no gate: `CapacityLimitedLeaseGate` nega `acquire` de sessão alheia com `ativas >= WORKER_MAX_SESSIONS`.
+  **Só login concluído ocupa vaga (T24):** `ativas` = `listAuthenticatedSessionIds()` (Baileys `creds.registered`/
+  `creds.me`; Telegram após `finishLogin`) + reservas de reabertura com credencial salva (`hasStoredCredentials`).
+  Abertura sem credencial (QR/pareamento/código/senha) passa sem vaga, limitada por `WORKER_MAX_PENDING_LOGINS`.
+  `listLocalSessionIds()` segue com todas (lease e renovação não mudam). Login concluído com o worker cheio
+  **fica** (inclui o reinício do socket logo após o QR lido, janela de 60 s): o teto pode ser excedido
+  temporariamente; ticker e `session-open` só param de adotar enquanto `autenticadas ≥ teto`. Vale para rota,
+  `session-open`, bootstrap e ticker. Rota recebe 503 `ENGINE_TEMPORARILY_UNAVAILABLE`; o item da sessão traz `awaitingCapacity` e o
   painel mostra o chip "Aguardando capacidade".
 - Tentativa conta **na adoção** (`adoptFailures+1` e `nextAdoptAt` no mesmo `UPDATE`, D1); zera no
   `SESSION_CONNECTED` e em pedido novo (`markConnectRequested`). 5 tentativas → `FAILED`, pedido nulo,
@@ -161,8 +166,10 @@ escrita em `worker_heartbeats`). Spec: `.specs/features/session-adoption/`. Onde
   (`JobLease` `worker-capacity-alert`, 1 log `warn`/min no cluster). E-mail ao super-admin adiado (D5: sem
   template na central). `GET /admin/workers` (super-admin) + página `/admin/workers` no painel.
 - Shutdown: drain de mídia **antes** dos sockets, com teto que reserva o fim para close+flush+release (D4).
-- Pendentes do dono: sessão em QR sem leitura prende a vaga (QR rotaciona, socket não fecha; sugestão:
-  N min sem leitura → `DISCONNECTED` mantendo o pedido); heartbeat de worker morto só é limpo após 1 dia
+- QR sem leitura não prende mais vaga (T24); ainda ocupa memória e um lugar em `WORKER_MAX_PENDING_LOGINS`.
+  `worker_heartbeats.sessions` = autenticadas, `pendingLogins` = logins em andamento (`/admin/workers`
+  mostra a coluna "Aguardando login").
+- Pendentes do dono: heartbeat de worker morto só é limpo após 1 dia
   (`listAlive` já filtra 90 s); índice de candidatas (D7) não medido; "sem 440" na readoção só com sessão real.
 
 Decisão 2026-11-04: **sem shard por hash**. Envs (todas em `env.ts` desde a E4):
@@ -171,6 +178,7 @@ Decisão 2026-11-04: **sem shard por hash**. Envs (todas em `env.ts` desde a E4)
 |---|---|---|
 | `WORKER_ADOPTION_ENABLED` | `false` | liga a adoção. **Só na Render.** `api/.env` local aponta para produção: `pnpm dev` com isso ligado roubaria lease e reconectaria sessões reais |
 | `WORKER_MAX_SESSIONS` | `40` | teto por processo = `0,7 × RAM ÷ MB por sessão` medido na Fase 0 (§2: 15–40 MB). A 40 MB: 2 GB → 35, 8 GB → 140, 16 GB → 280. Teto 200 exige medição ≤ 28 MB em 8 GB |
+| `WORKER_MAX_PENDING_LOGINS` | `50` | teto separado de logins em andamento (QR/código sem leitura) por processo, só para proteger a memória; acima dele a abertura dá 503 como o teto de sessões |
 | `WORKER_ID` | `${HOSTNAME ?? os.hostname()}-${pid}-${nonce8}` | identidade do dono, única por boot (restart no mesmo host não herda leases). `RENDER_INSTANCE_ID` não existe no código nem está confirmada; `HOSTNAME` não existe fora do Docker |
 | `WORKER_SHARD` | vazio | worker com valor só adota `Session.shard = x`; sem valor só adota `"shard" IS NULL` (tenant dedicado fica isolado). Coluna entra na migração de E2, sem uso até existir tenant dedicado |
 
@@ -403,7 +411,8 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 | `REDIS_URL` | vazio | com o Key Value da Render; `all` ignora |
 | `ENGINE_COMMAND_CONCURRENCY` | `2` | comandos simultâneos por fila do worker; subir só medindo |
 | `WORKER_ADOPTION_ENABLED` | `false` | no worker (ou `all`) quando houver mais de um processo de sessão ou para readotar no deploy |
-| `WORKER_MAX_SESSIONS` | `40` | teto medido na Fase 0 (§3.2), junto com `NODE_OPTIONS` |
+| `WORKER_MAX_SESSIONS` | `40` | teto medido na Fase 0 (§3.2), junto com `NODE_OPTIONS`; conta só sessões com login concluído |
+| `WORKER_MAX_PENDING_LOGINS` | `50` | logins em andamento (QR/código) por processo; só baixar se a RAM apertar |
 | `WORKER_SHARD` | vazio | só com tenant dedicado (ninguém grava `Session.shard` ainda) |
 | `DATABASE_SOCKET_TIMEOUT_S` | vazio | em todo serviço antes de ligar o 2º processo (ex.: 30; §6) |
 

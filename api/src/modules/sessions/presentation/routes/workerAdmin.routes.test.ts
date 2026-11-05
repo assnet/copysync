@@ -10,7 +10,7 @@ import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
 const adoption = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../../../../shared/config/workerAdoption', () => ({
-  workerAdoptionConfig: () => ({ enabled: adoption.enabled, maxSessions: 40, shard: null }),
+  workerAdoptionConfig: () => ({ enabled: adoption.enabled, maxSessions: 40, maxPendingLogins: 50, shard: null }),
 }));
 vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
 vi.mock('../../../../shared/http/hooks/authHook', () => ({
@@ -49,18 +49,18 @@ describe('GET /admin/workers', () => {
   it('super-admin: workers vivos com totais e aguardando', async () => {
     auth.isSuperAdmin = true;
     const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([
-      { workerId: 'w1', role: 'worker', sessions: 3, maxSessions: 40, rssMb: 310, seenAt },
-      { workerId: 'w2', role: 'all', sessions: 40, maxSessions: 40, rssMb: 900, seenAt },
+      { workerId: 'w1', role: 'worker', sessions: 3, pendingLogins: 2, maxSessions: 40, rssMb: 310, seenAt },
+      { workerId: 'w2', role: 'all', sessions: 40, pendingLogins: 0, maxSessions: 40, rssMb: 900, seenAt },
     ]);
     vi.spyOn(PrismaSessionAdoptionRepository.prototype, 'countAwaitingCapacity').mockResolvedValue(4);
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
     expect(alive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
     const { data } = res.json();
-    expect(data.totals).toEqual({ workers: 2, sessions: 43, maxSessions: 80 });
+    expect(data.totals).toEqual({ workers: 2, sessions: 43, pendingLogins: 2, maxSessions: 80 });
     expect(data.awaiting).toBe(4);
     expect(data.workers[0]).toEqual({
-      workerId: 'w1', role: 'worker', sessions: 3, maxSessions: 40, rssMb: 310, seenAt: seenAt.toISOString(),
+      workerId: 'w1', role: 'worker', sessions: 3, pendingLogins: 2, maxSessions: 40, rssMb: 310, seenAt: seenAt.toISOString(),
     });
   });
 
@@ -72,7 +72,7 @@ describe('GET /admin/workers', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { workers: [], totals: { workers: 0, sessions: 0, maxSessions: 0 }, awaiting: 0 },
+      data: { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 },
     });
   });
 
@@ -85,7 +85,7 @@ describe('GET /admin/workers', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { workers: [], totals: { workers: 0, sessions: 0, maxSessions: 0 }, awaiting: 0 },
+      data: { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 },
     });
     expect(alive).not.toHaveBeenCalled();
     expect(awaiting).not.toHaveBeenCalled();

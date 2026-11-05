@@ -26,7 +26,7 @@ class ClockLease implements IJobLease {
 }
 
 const worker = (sessions: number, maxSessions: number): WorkerHeartbeat => ({
-  workerId: `w${sessions}-${maxSessions}`, role: 'worker', sessions, maxSessions, rssMb: 300, seenAt: new Date(0),
+  workerId: `w${sessions}-${maxSessions}`, role: 'worker', sessions, pendingLogins: 0, maxSessions, rssMb: 300, seenAt: new Date(0),
 });
 
 function setup(workers: WorkerHeartbeat[], awaiting = 0, withNotifier = true) {

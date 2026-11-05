@@ -587,6 +587,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
 
   private async finishLogin(sessionId: string, entry: TelegramSessionEntry): Promise<void> {
     if (!this.registry.isCurrent(sessionId, entry.epoch)) return;
+    entry.authorized = true;
     const { tenantId, client } = entry;
     const pending = entry.pending;
     entry.pending = null;
@@ -1149,6 +1150,15 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     const ids = new Set(this.registry.all().map(([id]) => id));
     for (const id of this.opening.keys()) ids.add(id);
     return [...ids];
+  }
+
+  /** Clientes com login concluído (`finishLogin`); login por QR/código em andamento fica fora. */
+  listAuthenticatedSessionIds(): string[] {
+    return this.registry.all().filter(([, entry]) => entry.authorized).map(([id]) => id);
+  }
+
+  async hasStoredCredentials(sessionId: string): Promise<boolean> {
+    return this.auth.hasSaved(sessionId);
   }
 
   /**

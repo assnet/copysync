@@ -321,12 +321,13 @@ model Session {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model WorkerHeartbeat {
-  workerId    String   @id // id do processo (o mesmo do lease)
-  role        String // papel do processo: all | worker
-  sessions    Int // sessões com socket aberto neste processo
-  maxSessions Int // teto do processo (WORKER_MAX_SESSIONS)
-  rssMb       Int // memória residente em MB
-  seenAt      DateTime // último batimento (horário do banco, UTC)
+  workerId      String   @id // id do processo (o mesmo do lease)
+  role          String // papel do processo: all | worker
+  sessions      Int // sessões com login concluído neste processo (ocupam vaga)
+  pendingLogins Int      @default(0) // logins em andamento (QR/código sem leitura); não ocupam vaga
+  maxSessions   Int // teto do processo (WORKER_MAX_SESSIONS)
+  rssMb         Int // memória residente em MB
+  seenAt        DateTime // último batimento (horário do banco, UTC)
 
   @@index([seenAt])
   @@map("worker_heartbeats")

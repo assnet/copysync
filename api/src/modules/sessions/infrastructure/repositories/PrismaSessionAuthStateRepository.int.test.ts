@@ -38,6 +38,15 @@ describe('findAllKeysVersioned', () => {
   });
 });
 
+describe('findKey (T24)', () => {
+  it('devolve só a chave pedida, ou null', async () => {
+    expect(await repo.findKey(sessionId, '__creds__')).toBeNull();
+    await repo.writeKeys(batch({ __creds__: { me: { id: 'x' } }, other: 1 }, { expectedVersion: null }));
+    expect(await repo.findKey(sessionId, '__creds__')).toEqual({ me: { id: 'x' } });
+    expect(await repo.findKey(sessionId, 'missing')).toBeNull();
+  });
+});
+
 describe('writeKeys com expectedVersion', () => {
   it('versão certa grava e devolve version+1', async () => {
     await repo.writeKeys(batch({ a: 1 }, { expectedVersion: null }));

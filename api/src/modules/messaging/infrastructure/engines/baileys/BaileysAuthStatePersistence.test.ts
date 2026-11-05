@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildBaileysAuthState } from './BaileysAuthStatePersistence';
+import { buildBaileysAuthState, hasRegisteredCredentials } from './BaileysAuthStatePersistence';
 import type {
   ISessionAuthStateRepository,
   SessionAuthKeyBatch,
@@ -25,6 +25,7 @@ class InMemoryAuthRepo implements ISessionAuthStateRepository {
     this.legacy = { sessionId: data.sessionId, tenantId: data.tenantId, provider: data.provider, statePayload: data.statePayload, version: 0 };
   }
   async findAllKeys(_sessionId: string) { return Object.fromEntries(this.keys); }
+  async findKey(_sessionId: string, key: string) { return this.keys.get(key) ?? null; }
   async writeKeys(batch: SessionAuthKeyBatch) {
     if (this.failNext > 0) { this.failNext--; throw new Error('db down'); }
     const { expectedVersion } = batch;
@@ -554,5 +555,28 @@ describe('buildBaileysAuthState — órfão preso à versão CAS', () => {
     await next.forceFlush();
     expect(repo.batches).toHaveLength(0);
     next.dispose();
+  });
+});
+
+describe('hasRegisteredCredentials (T24)', () => {
+  it('sem creds, ou creds de QR não lido (sem me/registered) = false', async () => {
+    const repo = new InMemoryAuthRepo();
+    expect(await hasRegisteredCredentials(repo, SESSION)).toBe(false);
+    repo.keys.set('__creds__', { registered: false, me: undefined, noiseKey: {} });
+    expect(await hasRegisteredCredentials(repo, SESSION)).toBe(false);
+  });
+
+  it('QR lido (me.id) ou registrado = true', async () => {
+    const repo = new InMemoryAuthRepo();
+    repo.keys.set('__creds__', { registered: false, me: { id: '5511999999999:1@s.whatsapp.net' } });
+    expect(await hasRegisteredCredentials(repo, SESSION)).toBe(true);
+    repo.keys.set('__creds__', { registered: true });
+    expect(await hasRegisteredCredentials(repo, SESSION)).toBe(true);
+  });
+
+  it('sessão ainda no blob legado lê as creds de lá', async () => {
+    const repo = new InMemoryAuthRepo();
+    repo.legacy = { sessionId: SESSION, tenantId: TENANT, provider: 'baileys', version: 0, statePayload: { __creds__: { me: { id: 'x@s.whatsapp.net' } } } };
+    expect(await hasRegisteredCredentials(repo, SESSION)).toBe(true);
   });
 });

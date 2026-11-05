@@ -2,8 +2,10 @@
 export interface WorkerOccupancy {
   workerId: string;
   role: string;
-  /** Sessões abertas ou abrindo neste worker. */
+  /** Sessões com login concluído neste worker (as que ocupam vaga do teto). */
   sessions: number;
+  /** Logins em andamento (QR Code/código sem leitura): não ocupam vaga. */
+  pendingLogins: number;
   /** Teto do worker (`WORKER_MAX_SESSIONS`). */
   maxSessions: number;
   rssMb: number;
@@ -14,6 +16,7 @@ export interface WorkerOccupancy {
 export interface WorkerOccupancyTotals {
   workers: number;
   sessions: number;
+  pendingLogins: number;
   maxSessions: number;
 }
 

@@ -16,6 +16,8 @@ function fakeEngine(name: string) {
     adoptSession: vi.fn(async () => 'held'),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [`${name}-s`]),
+    listAuthenticatedSessionIds: vi.fn(() => (name === 'telegram' ? ['telegram-s'] : [])),
+    hasStoredCredentials: vi.fn(async () => name === 'telegram'),
   } as unknown as IMessagingEngine & {
     name: string;
     connectSession: ReturnType<typeof vi.fn>;
@@ -27,6 +29,7 @@ function fakeEngine(name: string) {
     adoptSession: ReturnType<typeof vi.fn>;
     closeAllSockets: ReturnType<typeof vi.fn>;
     listLocalSessionIds: ReturnType<typeof vi.fn>;
+    hasStoredCredentials: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -141,5 +144,18 @@ describe('MessagingEngineRouter', () => {
   it('listLocalSessionIds junta os ids das duas engines', () => {
     const { router } = build({});
     expect(router.listLocalSessionIds().sort()).toEqual(['baileys-s', 'telegram-s']);
+  });
+
+  it('listAuthenticatedSessionIds junta as autenticadas das engines (T24)', () => {
+    expect(build({}).router.listAuthenticatedSessionIds()).toEqual(['telegram-s']);
+  });
+
+  it('hasStoredCredentials vai à engine da sessão; sessão apagada = false', async () => {
+    const { router, baileys, telegram } = build({ s1: 'telegram', s2: 'baileys' });
+    expect(await router.hasStoredCredentials('s1')).toBe(true);
+    expect(await router.hasStoredCredentials('s2')).toBe(false);
+    expect(await router.hasStoredCredentials('gone')).toBe(false);
+    expect(telegram.hasStoredCredentials).toHaveBeenCalledWith('s1');
+    expect(baileys.hasStoredCredentials).toHaveBeenCalledWith('s2');
   });
 });

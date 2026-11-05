@@ -42,6 +42,14 @@ export class PrismaSessionAuthStateRepository implements ISessionAuthStateReposi
     });
   }
 
+  async findKey(sessionId: string, key: string): Promise<unknown | null> {
+    const row = await prisma.sessionAuthKey.findUnique({
+      where: { sessionId_key: { sessionId, key } },
+      select: { value: true },
+    });
+    return row?.value ?? null;
+  }
+
   async findAllKeys(sessionId: string): Promise<Record<string, unknown>> {
     const rows = await prisma.sessionAuthKey.findMany({ where: { sessionId }, select: { key: true, value: true } });
     const out: Record<string, unknown> = {};

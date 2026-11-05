@@ -102,6 +102,16 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
     expect((fake.clients[0] as unknown as { addEventHandler: ReturnType<typeof vi.fn> }).addEventHandler).not.toHaveBeenCalled();
   });
 
+  it('listAuthenticatedSessionIds: login por código em andamento fica fora; autorizado entra (T24)', async () => {
+    const { adapter } = make();
+    await adapter.requestLoginCode({ sessionId: 'pend', tenantId: T, phone: '5511999' });
+    fake.authorized = true;
+    await adapter.connectSession({ sessionId: 'ok', tenantId: T });
+    expect(adapter.listLocalSessionIds().sort()).toEqual(['ok', 'pend']);
+    expect(adapter.listAuthenticatedSessionIds()).toEqual(['ok']);
+    await adapter.closeAllSockets();
+  });
+
   it('abortSession sem cliente local não faz nada', async () => {
     const { adapter, sessionRepo, auth } = make();
     await adapter.abortSession('nope');

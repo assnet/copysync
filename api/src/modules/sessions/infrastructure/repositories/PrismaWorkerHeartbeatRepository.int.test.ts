@@ -5,7 +5,7 @@ import { PrismaWorkerHeartbeatRepository } from './PrismaWorkerHeartbeatReposito
 /** Heartbeat dos workers (ADOPT-10/12) contra Postgres local: relógio do banco. */
 const repo = new PrismaWorkerHeartbeatRepository();
 const ALIVE_MS = 90_000;
-const base = { role: 'worker', sessions: 3, maxSessions: 40, rssMb: 512 };
+const base = { role: 'worker', sessions: 3, pendingLogins: 1, maxSessions: 40, rssMb: 512 };
 const ago = (ms: number) => new Date(Date.now() - ms);
 const plant = (workerId: string, seenAt: Date) =>
   prisma.workerHeartbeat.create({ data: { workerId, ...base, seenAt } });
@@ -23,10 +23,10 @@ describe('beat', () => {
     await repo.beat({ workerId: 'w1', ...base });
     const first = await prisma.workerHeartbeat.findUniqueOrThrow({ where: { workerId: 'w1' } });
     expect(Math.abs(first.seenAt.getTime() - Date.now())).toBeLessThan(10_000);
-    await repo.beat({ workerId: 'w1', ...base, role: 'all', sessions: 7, rssMb: 600 });
+    await repo.beat({ workerId: 'w1', ...base, role: 'all', sessions: 7, pendingLogins: 4, rssMb: 600 });
     const rows = await prisma.workerHeartbeat.findMany();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ workerId: 'w1', role: 'all', sessions: 7, maxSessions: 40, rssMb: 600 });
+    expect(rows[0]).toMatchObject({ workerId: 'w1', role: 'all', sessions: 7, pendingLogins: 4, maxSessions: 40, rssMb: 600 });
     expect(rows[0]!.seenAt.getTime()).toBeGreaterThanOrEqual(first.seenAt.getTime());
   });
 
@@ -45,7 +45,7 @@ describe('listAlive', () => {
     await plant('w-stale', ago(120_000));
     const alive = await repo.listAlive(ALIVE_MS);
     expect(alive.map((r) => r.workerId)).toEqual(['w-alive']);
-    expect(alive[0]).toMatchObject({ role: 'worker', sessions: 3, maxSessions: 40, rssMb: 512 });
+    expect(alive[0]).toMatchObject({ role: 'worker', sessions: 3, pendingLogins: 1, maxSessions: 40, rssMb: 512 });
     expect(alive[0]!.seenAt).toBeInstanceOf(Date);
   });
 

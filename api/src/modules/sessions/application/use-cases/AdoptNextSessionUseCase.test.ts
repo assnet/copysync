@@ -20,7 +20,7 @@ function setup(opts: { local?: string[]; max?: number; adopted?: { id: string; t
   const log = { info: vi.fn(), warn: vi.fn() };
   const uc = new AdoptNextSessionUseCase({
     adoption, engine, audit, log,
-    listLocal: () => local,
+    occupiedSessions: () => local.length,
     workerId: 'w1', shard: null, maxSessions: opts.max ?? 2,
   });
   return { uc, adoption, engine, audit, log, local };
@@ -29,6 +29,23 @@ function setup(opts: { local?: string[]; max?: number; adopted?: { id: string; t
 const msgs = (fn: ReturnType<typeof vi.fn>) => fn.mock.calls.map((c) => c[1]);
 
 describe('AdoptNextSessionUseCase', () => {
+  it('conta só as vagas ocupadas (login concluído), não os sockets locais (T24)', async () => {
+    const occupied = vi.fn(() => 1);
+    const uc = new AdoptNextSessionUseCase({
+      adoption: {
+        adoptNext: vi.fn(async () => null), failExhausted: vi.fn(async () => []), resetFailures: vi.fn(),
+        revertAdoptAttempt: vi.fn(), countAwaitingCapacity: vi.fn(async () => 0),
+      },
+      engine: { adoptSession: vi.fn(), abortSession: vi.fn() },
+      audit: { create: vi.fn() },
+      log: { info: vi.fn(), warn: vi.fn() },
+      occupiedSessions: occupied, workerId: 'w1', shard: null, maxSessions: 1,
+    });
+    expect(await uc.execute()).toBe('full');
+    occupied.mockReturnValue(0);
+    expect(await uc.execute()).toBe('none');
+  });
+
   it('cheio não chama adoptNext', async () => {
     const { uc, adoption, engine } = setup({ local: ['a', 'b'], max: 2 });
     expect(await uc.execute()).toBe('full');

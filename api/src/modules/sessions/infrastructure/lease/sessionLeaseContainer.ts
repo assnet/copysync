@@ -5,7 +5,7 @@ import type { ISessionSocketControl } from '../../../messaging/domain/contracts/
 import { PrismaSessionLeaseRepository } from '../repositories/PrismaSessionLeaseRepository';
 import { SessionLeaseLedger } from '../../application/services/SessionLeaseLedger';
 import { SessionLeaseKeeper } from '../../application/services/SessionLeaseKeeper';
-import { CapacityLimitedLeaseGate } from '../../application/services/CapacityLimitedLeaseGate';
+import { CapacityLimitedLeaseGate, type SessionOccupancy } from '../../application/services/CapacityLimitedLeaseGate';
 import { AcquireSessionLeaseUseCase } from '../../application/use-cases/AcquireSessionLeaseUseCase';
 import { RenewSessionLeaseUseCase, type ResumeGiveUpStatus } from '../../application/use-cases/RenewSessionLeaseUseCase';
 import { PrismaSessionRepository } from '../repositories/PrismaSessionRepository';
@@ -25,6 +25,11 @@ export interface SessionLeaseContainer {
   gate: ISessionLeaseGate;
   /** Sessões com socket local (aberto ou abrindo); vazio antes de `bindSocketControl`. */
   listLocal(): string[];
+  /**
+   * Ocupação para o teto (T24): `sessions` = login concluído + reservas; `pendingLogins` = QR/código
+   * sem leitura. Sem teto (flag desligada): `sessions` = sockets locais e `pendingLogins` = 0.
+   */
+  occupancy(): SessionOccupancy;
   /** Keeper criado parado: `server.ts` chama `start()` depois do boot das sessões. */
   keeper: SessionLeaseKeeper;
   /** Liga o controle de socket (o roteador de engines) usado pela renovação. */
@@ -37,8 +42,10 @@ export interface SessionLeaseContainer {
  * banco. Antes de `bindSocketControl` a renovação vê zero sockets locais (não faz nada).
  */
 export interface SessionLeaseCapacity {
-  /** Teto de sessões do processo (`WORKER_MAX_SESSIONS`). */
+  /** Teto de sessões com login concluído (`WORKER_MAX_SESSIONS`). */
   maxSessions: number;
+  /** Teto de logins em andamento (`WORKER_MAX_PENDING_LOGINS`). */
+  maxPendingLogins: number;
 }
 
 /** Sem porta de status (testes): a desistência da retomada só loga. */
@@ -60,6 +67,8 @@ export function buildSessionLeaseContainer(
     adoptSession: async (id, tenantId) => (bound ? bound.adoptSession(id, tenantId) : 'error'),
     closeAllSockets: async () => bound?.closeAllSockets(),
     listLocalSessionIds: () => bound?.listLocalSessionIds() ?? [],
+    listAuthenticatedSessionIds: () => bound?.listAuthenticatedSessionIds() ?? [],
+    hasStoredCredentials: async (id) => (bound ? bound.hasStoredCredentials(id) : false),
   };
   const acquire = new AcquireSessionLeaseUseCase(repo, ledger, workerId);
   const renew = new RenewSessionLeaseUseCase(repo, ledger, sockets, status, workerId);
@@ -71,9 +80,19 @@ export function buildSessionLeaseContainer(
     release: (id) => release.execute(id),
   };
   // Sem teto (flag desligada) o gate é exatamente o de antes (E3).
-  const gate = capacity
-    ? withRelease(new CapacityLimitedLeaseGate(baseGate, listLocal, capacity.maxSessions), baseGate)
-    : baseGate;
+  const capped = capacity
+    ? new CapacityLimitedLeaseGate(
+      baseGate,
+      {
+        listLocal,
+        listAuthenticated: () => sockets.listAuthenticatedSessionIds(),
+        hasStoredCredentials: (id) => sockets.hasStoredCredentials(id),
+      },
+      capacity,
+    )
+    : undefined;
+  const gate = capped ? withRelease(capped, baseGate) : baseGate;
+  const occupancy = (): SessionOccupancy => capped?.occupancy() ?? { sessions: listLocal().length, pendingLogins: 0 };
   return {
     workerId,
     repo,
@@ -83,6 +102,7 @@ export function buildSessionLeaseContainer(
     release,
     gate,
     listLocal,
+    occupancy,
     keeper: new SessionLeaseKeeper(renew),
     bindSocketControl(next) {
       bound = next;
@@ -107,7 +127,7 @@ export function sessionLeaseContainer(): SessionLeaseContainer {
     instance = buildSessionLeaseContainer(
       new PrismaSessionLeaseRepository(),
       currentWorkerId(),
-      adoption.enabled ? { maxSessions: adoption.maxSessions } : undefined,
+      adoption.enabled ? { maxSessions: adoption.maxSessions, maxPendingLogins: adoption.maxPendingLogins } : undefined,
       new PrismaSessionRepository(),
     );
   }

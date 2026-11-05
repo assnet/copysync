@@ -154,8 +154,10 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
-  // Teto de sessões ativas neste processo (inclui sockets abrindo).
+  // Teto de sessões com login concluído neste processo (QR lido/credencial salva). QR sem leitura não conta.
   WORKER_MAX_SESSIONS: z.coerce.number().int().positive().default(40),
+  // Teto separado de logins em andamento (QR/código sem leitura) neste processo, para proteger a memória.
+  WORKER_MAX_PENDING_LOGINS: z.coerce.number().int().positive().default(50),
   // Filtro de shard da adoção. Vazio = sem shard (`null`).
   WORKER_SHARD: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),

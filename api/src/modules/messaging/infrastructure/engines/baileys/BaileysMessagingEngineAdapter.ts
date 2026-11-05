@@ -54,7 +54,9 @@ import { acquireLeaseResult, type ISessionLeaseGate } from '../../../../sessions
 import { LEASE_RENEW_TIMEOUT_MS, openAuthStateTimeoutMs } from '../../../../sessions/domain/services/sessionLeasePolicy';
 import type { SessionAbortOptions, SessionAdoptResult, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
-import { buildBaileysAuthState, discardAuthState, releaseAuthState, suspendAuthState } from './BaileysAuthStatePersistence';
+import {
+  buildBaileysAuthState, discardAuthState, hasRegisteredCredentials, isRegisteredCreds, releaseAuthState, suspendAuthState,
+} from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import {
   translateDisconnect,
@@ -368,6 +370,17 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     const ids = new Set(this.registry.getAll().map(({ sessionId }) => sessionId));
     for (const id of this.opening.keys()) ids.add(id);
     return [...ids];
+  }
+
+  /** Sockets com login concluído (`creds.registered`/`me`): QR mostrado e não lido fica fora. */
+  listAuthenticatedSessionIds(): string[] {
+    return this.registry.getAll()
+      .map(({ sessionId }) => sessionId)
+      .filter((id) => isRegisteredCreds(this.registry.get(id)?.socket.authState?.creds));
+  }
+
+  async hasStoredCredentials(sessionId: string): Promise<boolean> {
+    return hasRegisteredCredentials(this.authStateRepo, sessionId);
   }
 
   /**

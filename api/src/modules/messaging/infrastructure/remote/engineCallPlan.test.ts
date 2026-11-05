@@ -14,6 +14,7 @@ import {
 /** Métodos do router que não são do contrato `IMessagingEngine` (ISessionSocketControl + internos). */
 const NOT_CONTRACT = new Set([
   'constructor', 'abortSession', 'suspendSession', 'resumeSession', 'forgetSuspension', 'adoptSession', 'closeAllSockets', 'listLocalSessionIds',
+  'listAuthenticatedSessionIds', 'hasStoredCredentials',
   'remember', 'pick', 'socketControls', 'resolve', 'resolveSync',
 ]);
 

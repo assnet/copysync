@@ -154,6 +154,22 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
     return this.socketControls().flatMap(([, control]) => control.listLocalSessionIds());
   }
 
+  listAuthenticatedSessionIds(): string[] {
+    return this.socketControls().flatMap(([, control]) => control.listAuthenticatedSessionIds());
+  }
+
+  /** Na engine da sessão; sessão apagada no banco = `false` (erro transitório do banco lança). */
+  async hasStoredCredentials(sessionId: string): Promise<boolean> {
+    let engine: IMessagingEngine;
+    try {
+      engine = await this.resolve(sessionId);
+    } catch (err) {
+      if (err instanceof SessionNotFoundError) return false;
+      throw err;
+    }
+    return hasSocketControl(engine) ? engine.hasStoredCredentials(sessionId) : false;
+  }
+
   private resolveSync(sessionId: string): IMessagingEngine {
     return this.pick(this.engineBySession.get(sessionId) ?? DEFAULT_ENGINE);
   }

@@ -6,8 +6,10 @@ export interface WorkerHeartbeatInput {
   workerId: string;
   /** Papel do processo: `all` | `worker`. */
   role: string;
-  /** Sessões com socket aberto ou abrindo neste processo. */
+  /** Sessões com login concluído (+ reservas) neste processo: as que ocupam vaga (T24). */
   sessions: number;
+  /** Logins em andamento (QR/código sem leitura): não ocupam vaga; teto `WORKER_MAX_PENDING_LOGINS`. */
+  pendingLogins: number;
   /** Teto do processo (`WORKER_MAX_SESSIONS`). */
   maxSessions: number;
   /** Memória residente em MB. */

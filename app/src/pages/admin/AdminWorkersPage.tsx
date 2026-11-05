@@ -43,6 +43,11 @@ function WorkersTable({ workers }: { workers: WorkerOccupancy[] }) {
             <TableCell>{t.columns.worker}</TableCell>
             <TableCell>{t.columns.role}</TableCell>
             <TableCell>{t.columns.sessions}</TableCell>
+            <TableCell align="right">
+              <Tooltip title={t.pendingLoginsHint}>
+                <span>{t.columns.pendingLogins}</span>
+              </Tooltip>
+            </TableCell>
             <TableCell align="right">{t.columns.memory}</TableCell>
             <TableCell>{t.columns.seen}</TableCell>
           </TableRow>
@@ -53,6 +58,7 @@ function WorkersTable({ workers }: { workers: WorkerOccupancy[] }) {
               <TableCell sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{w.workerId}</TableCell>
               <TableCell>{t.roles[w.role] ?? w.role}</TableCell>
               <TableCell><OccupancyCell worker={w} /></TableCell>
+              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{w.pendingLogins ?? 0}</TableCell>
               <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{t.memoryMb(w.rssMb)}</TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>
                 <Tooltip title={new Date(w.seenAt).toLocaleString('pt-BR')}>

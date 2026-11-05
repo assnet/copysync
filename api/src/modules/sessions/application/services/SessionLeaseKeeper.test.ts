@@ -143,6 +143,8 @@ describe('SessionLeaseKeeper', () => {
       adoptSession: vi.fn(async () => 'opened' as const),
       closeAllSockets: vi.fn(async () => undefined),
       listLocalSessionIds: vi.fn(() => [] as string[]),
+      listAuthenticatedSessionIds: vi.fn(() => [] as string[]),
+      hasStoredCredentials: vi.fn(async () => false),
     };
     const repo = {
       tryAcquire: vi.fn(async () => true),

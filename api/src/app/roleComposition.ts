@@ -95,7 +95,7 @@ async function composeWorker(): Promise<RoleComposition> {
     concurrency: env.ENGINE_COMMAND_CONCURRENCY,
     // ADOPT-09: cheio, este worker para de puxar `session-open` (sem a flag, nada muda).
     ...(adoption.enabled && {
-      sessionOpenHasCapacity: () => hasCapacity(lease.listLocal().length, adoption.maxSessions),
+      sessionOpenHasCapacity: () => hasCapacity(lease.occupancy().sessions, adoption.maxSessions),
     }),
   });
 
