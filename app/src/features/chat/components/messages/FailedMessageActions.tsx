@@ -17,18 +17,20 @@ const REASON: Record<FailedMessageKind, string> = {
   network: chatStrings.upload.errors.network,
   session: chatStrings.upload.errors.sessionDisconnected,
   rejected: chatStrings.upload.errors.rejected,
+  outcomeUnknown: chatStrings.upload.errors.outcomeUnknown,
   server: chatStrings.upload.errors.generic,
 };
 
 /**
  * Causa + ações de uma mídia que não foi enviada (design §14, tabela do estado otimista).
- * `rejected` não se resolve repetindo; `server` já está gravada — não há o que descartar no painel.
+ * `rejected` não se resolve repetindo; `outcomeUnknown` pode já ter saído (reenviar duplicaria), então
+ * só fecha o aviso; `server` já está gravada — não há o que descartar no painel.
  * Superfície própria (`background.paper`): a bolha enviada é `primary`, onde o vermelho não lê.
  */
 export function FailedMessageActions({ kind, onRetry, onDiscard }: Props) {
   const theme = useTheme();
   const t = chatStrings.upload;
-  const canRetry = kind !== 'rejected' && !!onRetry;
+  const canRetry = kind !== 'rejected' && kind !== 'outcomeUnknown' && !!onRetry;
   const canDiscard = kind !== 'server' && !!onDiscard;
 
   const btnSx = {
@@ -64,7 +66,7 @@ export function FailedMessageActions({ kind, onRetry, onDiscard }: Props) {
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 0.5 }}>
           {canDiscard && (
             <Button onClick={onDiscard} color="inherit" sx={{ ...btnSx, color: theme.palette.text.secondary }}>
-              {t.discard}
+              {kind === 'outcomeUnknown' ? t.dismiss : t.discard}
             </Button>
           )}
           {canRetry && (

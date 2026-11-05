@@ -169,6 +169,40 @@ describe('resposta da confirmação perdida', () => {
   });
 });
 
+describe('resultado desconhecido (504 ENGINE_COMMAND_OUTCOME_UNKNOWN)', () => {
+  it('não reenvia nem apaga o upload; fechar só tira a bolha', async () => {
+    const { runner, enviarVoz, itens, onConfirmed } = montar();
+    confirmar.mockRejectedValueOnce(erroApi(504, 'ENGINE_COMMAND_OUTCOME_UNKNOWN'));
+    consultar.mockResolvedValueOnce(statusUpload('OPEN'));
+
+    const tmpId = enviarVoz();
+    await esperar();
+    expect(itens()[0].error).toBe('outcomeUnknown');
+
+    runner.retry(tmpId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(confirmar).toHaveBeenCalledTimes(1);
+    expect(itens()[0].error).toBe('outcomeUnknown');
+
+    runner.discard(tmpId);
+    await esperar();
+    expect(itens()).toEqual([]);
+    expect(apagar).not.toHaveBeenCalled();
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('se o upload já virou mensagem, mostra a mensagem real', async () => {
+    const { enviarVoz, onConfirmed } = montar();
+    confirmar.mockRejectedValueOnce(erroApi(504, 'ENGINE_COMMAND_OUTCOME_UNKNOWN')).mockResolvedValueOnce(dto('m-1'));
+    consultar.mockResolvedValueOnce(statusUpload('CONSUMED', 'm-1'));
+
+    enviarVoz();
+    await esperar();
+
+    expect(onConfirmed).toHaveBeenCalledWith('c1', expect.objectContaining({ id: 'm-1' }));
+  });
+});
+
 describe('descartar e cancelar', () => {
   it('parado em rede durante o upload: apaga o upload no servidor', async () => {
     const { runner, enviarVoz, itens } = montar();

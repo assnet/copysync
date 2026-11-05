@@ -253,6 +253,11 @@ export function createMediaSendRunner({ commit, onConfirmed }: MediaSendRunnerOp
             if (job.session) mediaService.cancelUpload(job.session.uploadId).catch(ignore);
             return;
           }
+          if (kind === 'outcomeUnknown') {
+            // O envio pode estar saindo pelo worker: solta o `File` sem apagar o upload nem repetir.
+            jobs.delete(job.tmpId);
+            return;
+          }
           if (kind === 'not_found') job.session = undefined;
           if (kind === 'incomplete' || kind === 'not_found') {
             step = 'upload';

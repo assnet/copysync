@@ -41,6 +41,19 @@ describe('FailedMessageActions — falha local', () => {
     await userEvent.click(botao(t.discard)!);
     expect(onDiscard).toHaveBeenCalledTimes(1);
   });
+
+  it('resultado desconhecido: sem "Tentar de novo", só fechar o aviso', async () => {
+    const onRetry = vi.fn();
+    const onDiscard = vi.fn();
+    renderWithTheme(<FailedMessageActions kind="outcomeUnknown" onRetry={onRetry} onDiscard={onDiscard} />);
+
+    expect(screen.getByText(t.errors.outcomeUnknown)).toBeInTheDocument();
+    expect(botao(t.retry)).not.toBeInTheDocument();
+    expect(botao(t.discard)).not.toBeInTheDocument();
+    await userEvent.click(botao(t.dismiss)!);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
 });
 
 describe('FailedMessageActions — falha do servidor', () => {

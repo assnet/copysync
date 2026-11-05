@@ -108,7 +108,7 @@ export interface ChatMessage {
    * enquanto a mídia sobe (`uploading`) ou aguarda o servidor aceitar o envio (`confirming`).
    * `progress` em porcentagem, 0 a 100 (o `value` dos progressos do MUI).
    * `error`: `network` retoma pelo `uploadId`, `session` só reconfirma,
-   * `rejected` (413/415/422) só permite descartar.
+   * `rejected` (413/415/422) só permite descartar, `outcomeUnknown` (o envio pode ter saído) só fechar.
    */
   upload?: MessageUploadState;
 }
@@ -118,7 +118,7 @@ export interface MessageUploadState {
   phase: 'uploading' | 'confirming';
   progress: number;
   uploadId?: string;
-  error?: 'network' | 'session' | 'rejected' | null;
+  error?: 'network' | 'session' | 'rejected' | 'outcomeUnknown' | null;
 }
 
 /** Reações de uma mensagem com o mesmo emoji. */

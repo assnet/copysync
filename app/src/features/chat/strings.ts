@@ -161,6 +161,8 @@ export const chatStrings = {
     cancel: 'Cancelar envio',
     retry: 'Tentar de novo',
     discard: 'Descartar',
+    /** Fecha o aviso de envio com resultado desconhecido (a mensagem pode já estar na conversa). */
+    dismiss: 'Fechar',
     /** Confirmação do `beforeunload` com upload ativo. */
     leavePageWarning: 'Há arquivos sendo enviados. Se sair agora, o envio para.',
 

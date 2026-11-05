@@ -78,6 +78,9 @@ describe('failureKind — decisão por erro (design §14)', () => {
     ['processador indisponível', { status: 503, code: 'MEDIA_PROCESSOR_UNAVAILABLE' }, false, 'network'],
     ['disco sem folga', { status: 507, code: 'INSUFFICIENT_STORAGE' }, false, 'network'],
     ['muitas requisições', { status: 429, code: 'TOO_MANY_REQUESTS' }, false, 'network'],
+    ['resultado desconhecido (504)', { status: 504, code: 'ENGINE_COMMAND_OUTCOME_UNKNOWN' }, false, 'outcomeUnknown'],
+    ['504 sem esse código', { status: 504, code: 'GATEWAY_TIMEOUT' }, false, 'network'],
+    ['504 sem código', { status: 504 }, false, 'network'],
   ] as const)('%s', (_nome, error, aborted, esperado) => {
     expect(failureKind(error, aborted)).toBe(esperado);
   });
@@ -176,6 +179,15 @@ describe('estado das bolhas em envio — tabela do design §14', () => {
     const descartou = reduceOutgoingMedia(falhou, { type: 'CANCELED', tmpId: 'tmp-1' });
     expect(descartou.state.byConversation).toEqual({});
     expect(descartou.revoke).toEqual(['blob:http://localhost/tmp-1']);
+  });
+
+  it('resultado desconhecido: "outcomeUnknown", sem reenvio — só fechar', () => {
+    const falhou = run(confirmando, { type: 'FAILED', tmpId: 'tmp-1', kind: 'outcomeUnknown' });
+    expect(item(falhou, 'tmp-1')?.error).toBe('outcomeUnknown');
+    expect(run(falhou, { type: 'RETRY', tmpId: 'tmp-1' })).toBe(falhou);
+
+    const fechou = reduceOutgoingMedia(falhou, { type: 'CANCELED', tmpId: 'tmp-1' });
+    expect(fechou.state.byConversation).toEqual({});
   });
 
   it('cancelar: a bolha some e o blob é devolvido para revogar', () => {
@@ -317,5 +329,9 @@ describe('hasPendingSend — aviso ao fechar a aba', () => {
 
   it('só bolhas recusadas (resta descartar) não avisa', () => {
     expect(hasPendingSend(run(subindo, { type: 'FAILED', tmpId: 'tmp-1', kind: 'rejected' }))).toBe(false);
+  });
+
+  it('resultado desconhecido não avisa: não há o que reenviar', () => {
+    expect(hasPendingSend(run(confirmando, { type: 'FAILED', tmpId: 'tmp-1', kind: 'outcomeUnknown' }))).toBe(false);
   });
 });

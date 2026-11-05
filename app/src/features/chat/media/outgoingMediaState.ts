@@ -20,7 +20,9 @@ export type UploadFailureKind =
   | 'in_progress'
   | 'incomplete'
   | 'not_found'
-  | 'rejected';
+  | 'rejected'
+  /** `ENGINE_COMMAND_OUTCOME_UNKNOWN` (504): o envio pode ter saído; reenviar duplicaria. */
+  | 'outcomeUnknown';
 
 export interface OutgoingMediaItem {
   tmpId: string;
@@ -90,6 +92,9 @@ export function failureKind(error: { status?: number; code?: string } | null, ab
       return 'incomplete';
     case 'UPLOAD_NOT_FOUND':
       return 'not_found';
+    case 'ENGINE_COMMAND_OUTCOME_UNKNOWN':
+      // Decide pelo `code`, não pelo 504: outro 504 continua `network`.
+      return 'outcomeUnknown';
   }
   const status = error?.status;
   // 5xx (deploy, disco, ffmpeg), 408 e 429 passam com o tempo: "Tentar de novo".
@@ -123,7 +128,9 @@ export function shouldReportProgress(last: ReportedProgress | undefined, progres
 
 /** Envio que ainda pode seguir (inclui parado em `network`/`session`): fechar a aba perde o `File`. */
 export function hasPendingSend(state: OutgoingMediaState): boolean {
-  return Object.values(state.byConversation).some((items) => items.some((i) => i.error !== 'rejected'));
+  return Object.values(state.byConversation).some((items) =>
+    items.some((i) => i.error !== 'rejected' && i.error !== 'outcomeUnknown'),
+  );
 }
 
 /** Lista renderizada: servidor + bolhas ao fim, na ordem de criação (onde a mensagem real entrará). */
@@ -195,12 +202,13 @@ function update(state: OutgoingMediaState, tmpId: string, patch: (item: Outgoing
   return withoutEffects(replaceItem(state, at.conversationId, at.index, patchItem(item, p)));
 }
 
-/** Decisão por `kind` (tabela §14). Só `network`, `session` e `rejected` aparecem na bolha. */
+/** Decisão por `kind` (tabela §14). Só `network`, `session`, `rejected` e `outcomeUnknown` aparecem na bolha. */
 function failurePatch(kind: Exclude<UploadFailureKind, 'canceled'>): ItemPatch {
   switch (kind) {
     case 'network':
     case 'session':
     case 'rejected':
+    case 'outcomeUnknown':
       return { error: kind };
     case 'in_progress':
       // O hook reconfirma a cada 2 s até o 200 (idempotente).
@@ -263,7 +271,7 @@ export function reduceOutgoingMedia(state: OutgoingMediaState, event: OutgoingMe
       return remove(state, event.tmpId);
     case 'RETRY':
       return update(state, event.tmpId, (i) => {
-        // `network` retoma de onde parou; `session` só reconfirma; `rejected` só descarta.
+        // `network` retoma de onde parou; `session` só reconfirma; `rejected`/`outcomeUnknown` não repetem.
         if (i.error === 'network') return { error: null };
         if (i.error === 'session') return { phase: 'confirming', error: null };
         return null;
