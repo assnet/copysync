@@ -85,10 +85,10 @@ describe('adoptNext', () => {
     expect(new Set([(await row(a)).ownerWorkerId, (await row(b)).ownerWorkerId])).toEqual(new Set([ME, OTHER]));
   });
 
-  it('fora: tenant SUSPENDED, apagada, AWAITING_QR, sem pedido, lease vivo, nextAdoptAt futuro, adoptFailures=5, shard diferente', async () => {
+  it('fora: tenant SUSPENDED, apagada, AWAITING_QR com lease vivo, sem pedido, lease vivo, nextAdoptAt futuro, adoptFailures=5, shard diferente', async () => {
     await newSession({ tenantId: suspendedId });
     await newSession({ deletedAt: new Date() });
-    await newSession({ status: 'AWAITING_QR' });
+    await newSession({ status: 'AWAITING_QR', ownerWorkerId: OTHER, leaseUntil: future(TTL) });
     await newSession({ connectRequestedAt: null });
     await newSession({ ownerWorkerId: OTHER, leaseUntil: future(TTL) });
     await newSession({ nextAdoptAt: future() });
@@ -124,6 +124,17 @@ describe('adoptNext', () => {
     }
     expect(await repo.adoptNext(ME, null, TTL)).toBeNull();
   });
+
+  it.each(['AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD'])(
+    '%s órfã (worker morto, lease vencido, pedido vivo) é adotada; status não muda',
+    async (status) => {
+      const id = await newSession({ status, ownerWorkerId: OTHER, leaseUntil: past() });
+      expect(await repo.adoptNext(ME, null, TTL)).toEqual({ id, tenantId });
+      const r = await row(id);
+      expect(r.ownerWorkerId).toBe(ME);
+      expect(r.status).toBe(status);
+    },
+  );
 });
 
 describe('failExhausted', () => {
@@ -176,11 +187,20 @@ describe('countAwaitingCapacity', () => {
     await newSession({ connectRequestedAt: past(10_000) });
     await newSession({ tenantId: suspendedId });
     await newSession({ deletedAt: new Date() });
-    await newSession({ status: 'AWAITING_QR' });
+    await newSession({ status: 'AWAITING_QR', ownerWorkerId: OTHER, leaseUntil: future(TTL) });
     await newSession({ connectRequestedAt: null });
     await newSession({ ownerWorkerId: OTHER, leaseUntil: future(TTL) });
     expect(await repo.countAwaitingCapacity()).toBe(3);
     expect(await repo.countAwaitingCapacity(30_000)).toBe(2);
     expect(await repo.countAwaitingCapacity(10 * MIN)).toBe(0);
+  });
+
+  it('AWAITING_* órfã (lease vencido ou nulo) conta; com lease vivo, não', async () => {
+    await newSession({ status: 'AWAITING_QR', ownerWorkerId: OTHER, leaseUntil: past() });
+    await newSession({ status: 'AWAITING_PAIRING' });
+    await newSession({ status: 'AWAITING_CODE', ownerWorkerId: OTHER, leaseUntil: past() });
+    await newSession({ status: 'AWAITING_PASSWORD', ownerWorkerId: OTHER, leaseUntil: future(TTL) });
+    await newSession({ status: 'AWAITING_QR', ownerWorkerId: OTHER, leaseUntil: future(TTL) });
+    expect(await repo.countAwaitingCapacity()).toBe(3);
   });
 });

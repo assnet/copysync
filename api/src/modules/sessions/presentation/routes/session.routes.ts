@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
-import { SessionPresenter } from '../presenters/SessionPresenter';
+import { SessionPresenter, type SessionItemOptions } from '../presenters/SessionPresenter';
+import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 import {
   createSessionBodySchema,
   requestPairingCodeBodySchema,
@@ -82,6 +83,9 @@ function buildUseCases() {
     ], lease.release),
   };
 }
+
+/** Chip "aguardando capacidade" (ADOPT-13): flag da adoção + relógio da requisição. */
+const itemOptions = (): SessionItemOptions => ({ adoptionEnabled: workerAdoptionConfig().enabled, now: new Date() });
 
 // Both auth + tenant context required for all session routes
 const preHandler = [authHook, tenantHook];
@@ -278,7 +282,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const sessions = await useCases.listSessions.execute({ tenantId });
-      reply.status(200).send(SessionPresenter.toSessionList(sessions));
+      reply.status(200).send(SessionPresenter.toSessionList(sessions, itemOptions()));
     },
   );
 
@@ -304,7 +308,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const session = await useCases.getSessionById.execute({ sessionId: id, tenantId });
-      reply.status(200).send(SessionPresenter.toSessionItem(session));
+      reply.status(200).send(SessionPresenter.toSessionItem(session, null, itemOptions()));
     },
   );
 

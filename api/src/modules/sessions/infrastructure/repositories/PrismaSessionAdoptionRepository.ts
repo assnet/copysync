@@ -14,8 +14,20 @@ import { ADOPT_BACKOFF_CAP_MIN, MAX_ADOPT_ATTEMPTS } from '../../domain/services
 const NOW = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
 const until = (ttlMs: number) => Prisma.sql`${NOW} + (${Math.max(0, Math.trunc(ttlMs))}::int * interval '1 millisecond')`;
 
-/** Status adotáveis: com pedido vivo e sem socket esperando ação humana (QR/código). */
-const ADOPTABLE_STATUSES = ['CONNECTED', 'CONNECTING', 'DISCONNECTED'];
+/**
+ * Status adotáveis (sempre com lease nulo/vencido). `AWAITING_*`: o worker que abriu o login morreu
+ * (SIGKILL/OOM) com o pedido vivo; sem lease vivo ninguém segura o socket, e a adoção reconecta pelo
+ * caminho `auto` (gera QR/código novo como hoje).
+ */
+const ADOPTABLE_STATUSES = [
+  'CONNECTED',
+  'CONNECTING',
+  'DISCONNECTED',
+  'AWAITING_QR',
+  'AWAITING_PAIRING',
+  'AWAITING_CODE',
+  'AWAITING_PASSWORD',
+];
 
 const LEASE_FREE = (alias: string) =>
   Prisma.sql`(${Prisma.raw(alias)}."leaseUntil" IS NULL OR ${Prisma.raw(alias)}."leaseUntil" < ${NOW})`;

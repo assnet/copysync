@@ -6,11 +6,19 @@ const NOW = new Date('2026-11-04T12:00:00Z');
 const REQ = new Date('2026-11-04T11:00:00Z');
 
 describe('Session.isAwaitingCapacity', () => {
-  it.each<SessionStatus>(['PENDING', 'DISCONNECTED', 'CONNECTING'])('%s com pedido e sem lease → true', (status) => {
+  it.each<SessionStatus>([
+    'PENDING',
+    'DISCONNECTED',
+    'CONNECTING',
+    'AWAITING_QR',
+    'AWAITING_PAIRING',
+    'AWAITING_CODE',
+    'AWAITING_PASSWORD',
+  ])('%s com pedido e sem lease → true', (status) => {
     expect(makeSession({ status, connectRequestedAt: REQ, leaseUntil: null }).isAwaitingCapacity(NOW)).toBe(true);
   });
 
-  it.each<SessionStatus>(['CONNECTED', 'AWAITING_QR', 'AWAITING_PAIRING', 'AWAITING_CODE', 'AWAITING_PASSWORD', 'LOGGED_OUT', 'FAILED'])(
+  it.each<SessionStatus>(['CONNECTED', 'LOGGED_OUT', 'FAILED'])(
     '%s → false',
     (status) => {
       expect(makeSession({ status, connectRequestedAt: REQ, leaseUntil: null }).isAwaitingCapacity(NOW)).toBe(false);
@@ -27,5 +35,10 @@ describe('Session.isAwaitingCapacity', () => {
     expect(at(new Date(NOW.getTime() + 1))).toBe(false);
     expect(at(new Date(NOW.getTime()))).toBe(true);
     expect(at(new Date(NOW.getTime() - 60_000))).toBe(true);
+  });
+
+  it('AWAITING_QR com lease vivo (worker vivo segurando o login) → false', () => {
+    const s = makeSession({ status: 'AWAITING_QR', connectRequestedAt: REQ, leaseUntil: new Date(NOW.getTime() + 1) });
+    expect(s.isAwaitingCapacity(NOW)).toBe(false);
   });
 });

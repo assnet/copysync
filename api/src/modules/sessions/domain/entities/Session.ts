@@ -28,6 +28,11 @@ const AWAITING_CAPACITY_STATUSES: ReadonlySet<SessionStatus> = new Set<SessionSt
   'PENDING',
   'DISCONNECTED',
   'CONNECTING',
+  // Socket de login que morreu com o processo (SIGKILL/OOM): sem lease vivo, ninguém o segura.
+  'AWAITING_QR',
+  'AWAITING_PAIRING',
+  'AWAITING_CODE',
+  'AWAITING_PASSWORD',
 ]);
 
 /**
