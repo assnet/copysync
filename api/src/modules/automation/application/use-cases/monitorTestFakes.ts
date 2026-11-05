@@ -52,7 +52,9 @@ export class InMemoryGroupMonitorRepository implements IGroupMonitorRepository {
     for (const g of groups) this.monitored.push({ id: `mg-${++this.seq}`, tenantId, sessionId, title: null, avatarUrl: null, ...g });
   }
   async replaceBroadcast(tenantId: string, monitorSessionId: string, _configId: string, groups: BroadcastGroupInput[]) {
-    this.broadcast = this.broadcast.filter((g) => !(g.tenantId === tenantId && g.monitorSessionId === monitorSessionId));
+    const dead = (g: { sessionId: string; monitorSessionId: string }) => this.deleted.has(g.sessionId) || this.deleted.has(g.monitorSessionId);
+    this.broadcast = this.broadcast.filter((g) => !(g.tenantId === tenantId && (g.monitorSessionId === monitorSessionId
+      || (dead(g) && groups.some((n) => n.sessionId === g.sessionId && n.conversationId === g.conversationId)))));
     groups.forEach((g, position) => this.broadcast.push({ id: `bg-${++this.seq}`, tenantId, monitorSessionId, title: null, avatarUrl: null, position, ...g }));
   }
   async tenantGroupJids(tenantId: string): Promise<TenantGroupJids> {

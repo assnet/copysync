@@ -193,6 +193,18 @@ describe('GroupMonitorConfigUseCases — sessão cruzada', () => {
     expect(out.takenBroadcastGroups).toEqual([{ groupJid: 'shared', sessionId: 'session-2', monitorSessionId: 'session-2' }]);
   });
 
+  it('grupo preso a monitoramento de sessão apagada não bloqueia; o save apaga a linha órfã', async () => {
+    const s = setup({ cross_session_dispatch: true });
+    s.monitors.sessions.add(`${TENANT}:session-3`);
+    await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-3', groups: [{ groupJid: 'shared', sessionId: 'session-2' }, { groupJid: 'outro', sessionId: 'session-2' }] });
+    s.monitors.deleted.add('session-3');
+    expect((await s.get.execute(base)).takenBroadcastGroups).toEqual([]);
+    const out = await s.broadcast.execute({ ...base, groups: [{ groupJid: 'shared', sessionId: 'session-2' }] });
+    expect(out.broadcastGroups.map((g) => g.groupJid)).toEqual(['shared']);
+    // Só a linha do grupo pedido sai; a outra do monitoramento apagado fica
+    expect(s.monitors.broadcast.map((g) => `${g.monitorSessionId}:${g.groupJid}`).sort()).toEqual([`${SESSION}:shared`, 'session-3:outro']);
+  });
+
   it('mesmo grupo (JID) por duas sessões na mesma lista → 422 GROUP_MONITOR_DUPLICATE_GROUP', async () => {
     const s = setup({ cross_session_dispatch: true });
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'g', sessionId: 'session-2' }, { groupJid: 'g' }] }))

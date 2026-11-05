@@ -83,12 +83,25 @@ export class PrismaGroupMonitorRepository implements IGroupMonitorRepository {
   }
 
   async replaceBroadcast(tenantId: string, _monitorSessionId: string, configId: string, groups: BroadcastGroupInput[]): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.broadcastGroup.deleteMany({ where: { tenantId, configId } }),
-      this.prisma.broadcastGroup.createMany({
+    await this.prisma.$transaction(async (tx) => {
+      if (groups.length > 0) {
+        // Linhas dos mesmos grupos em outros monitoramentos; ficam só as de sessão apagada (dona ou do monitor)
+        const others = await tx.broadcastGroup.findMany({
+          where: { tenantId, configId: { not: configId }, OR: groups.map((g) => ({ sessionId: g.sessionId, conversationId: g.conversationId })) },
+          select: { id: true, sessionId: true, config: { select: { sessionId: true } } },
+        });
+        if (others.length > 0) {
+          const ids = [...new Set(others.flatMap((o) => [o.sessionId, o.config.sessionId]))];
+          const alive = new Set((await tx.session.findMany({ where: { tenantId, id: { in: ids }, deletedAt: null }, select: { id: true } })).map((r) => r.id));
+          const stale = others.filter((o) => !alive.has(o.sessionId) || !alive.has(o.config.sessionId)).map((o) => o.id);
+          if (stale.length > 0) await tx.broadcastGroup.deleteMany({ where: { tenantId, id: { in: stale } } });
+        }
+      }
+      await tx.broadcastGroup.deleteMany({ where: { tenantId, configId } });
+      await tx.broadcastGroup.createMany({
         data: groups.map((g, position) => ({ tenantId, sessionId: g.sessionId, configId, conversationId: g.conversationId, groupJid: g.groupJid, position })),
-      }),
-    ]);
+      });
+    });
   }
 
   async tenantGroupJids(tenantId: string): Promise<TenantGroupJids> {

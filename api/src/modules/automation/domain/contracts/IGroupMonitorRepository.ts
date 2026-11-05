@@ -54,7 +54,11 @@ export interface IGroupMonitorRepository {
   listBroadcast(tenantId: string, monitorSessionId: string): Promise<BroadcastGroup[]>;
   /** Substitui a lista inteira numa transação. */
   replaceMonitored(tenantId: string, sessionId: string, configId: string, groups: MonitoredGroupInput[]): Promise<void>;
-  /** Substitui a lista inteira numa transação; `position` = índice. */
+  /**
+   * Substitui a lista inteira numa transação; `position` = índice. Na mesma transação apaga, para os
+   * grupos pedidos, as linhas de outros monitoramentos cuja sessão (dona ou do monitoramento) foi
+   * apagada: senão a unique `(tenantId, sessionId, conversationId)` recusaria o grupo liberado.
+   */
   replaceBroadcast(tenantId: string, monitorSessionId: string, configId: string, groups: BroadcastGroupInput[]): Promise<void>;
   /** Grupos usados no tenant inteiro (limites do plano e conflito monitorado × disparo). */
   tenantGroupJids(tenantId: string): Promise<TenantGroupJids>;

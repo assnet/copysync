@@ -97,7 +97,8 @@ abstract class GroupMonitorConfigBase {
       },
       usage: { ...usageWa, whatsapp: usageWa, telegram: { monitoredGroups: mon.telegram, broadcastGroups: bc.telegram } },
       takenBroadcastGroups: jids.broadcast
-        .filter((b) => b.monitorSessionId !== sessionId)
+        // Monitoramento de sessão apagada não toma o grupo: o próximo save libera a linha
+        .filter((b) => b.live && b.monitorSessionId !== sessionId)
         .map((b) => ({ groupJid: b.groupJid, sessionId: b.sessionId, monitorSessionId: b.monitorSessionId })),
     };
   }
@@ -203,10 +204,11 @@ abstract class SaveGroupsBase extends GroupMonitorConfigBase {
     const other = (role === 'monitored' ? jids.broadcast : jids.monitored).filter((g) => g.live);
     const clash = unique.find((r) => other.some((o) => o.groupJid === r.groupJid));
     if (clash) throw new GroupMonitorGroupConflictError(clash.groupJid, role === 'monitored' ? 'broadcast' : 'monitored');
-    // Mesmo grupo (sessão + JID) como destino de outro monitoramento: a unique do banco recusaria
+    // Mesmo grupo (sessão + JID) como destino de outro monitoramento: a unique do banco recusaria.
+    // Linha de monitoramento apagado (`!live`) não toma: `replaceBroadcast` a apaga na mesma transação
     if (role === 'broadcast') {
       for (const r of unique) {
-        const taken = jids.broadcast.find((b) => b.monitorSessionId !== sessionId && b.sessionId === r.sessionId && b.groupJid === r.groupJid);
+        const taken = jids.broadcast.find((b) => b.live && b.monitorSessionId !== sessionId && b.sessionId === r.sessionId && b.groupJid === r.groupJid);
         if (taken) throw new GroupMonitorBroadcastTakenError(r.groupJid, r.sessionId, taken.monitorSessionId);
       }
     }
