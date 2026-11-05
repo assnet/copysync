@@ -33,10 +33,21 @@ Regras comuns a toda task:
 | T15 | Remover SSE `GET /chat/events` + `useChatSSE` | — | P | ✅ 3373d2e |
 | T16 | Tabela de jobs por papel + gate no `server.ts` | T1 | | ✅ 43e7614 |
 | T17 | Fastify mínimo do worker + `/health` com papel | T1, T3 | P | ✅ c0c31f2 |
-| T18 | Composição por papel (engine, servidor de comandos, relay) | T2, T8, T9, T10, T11, T12, T13 | | ⏳ |
+| T18 | Composição por papel (engine, servidor de comandos, relay) | T2, T8, T9, T10, T11, T12, T13 | | ✅ e01910e |
+| T18b | Rotas usam a engine ativa; concorrência das filas por env | T18 | | ⏳ |
 | T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ⏳ |
 | T20 | Smoke `all` e `http`+`worker` | T19 | | ⏳ |
 | T21 | Docs, CHANGELOG e versão | T20 | | ⏳ |
+
+### T18b: Rotas usam a engine ativa; concorrência das filas por env
+
+**What**: (1) `session.routes.ts` chama `localEngine()` no nível do módulo: no papel `http` isso carrega Baileys/GramJS e troca a engine ativa pela local (viola WROLE-02/05). Trocar por leitura de `getActiveEngine()` no registro das rotas (lazy, dentro do plugin) e garantir que o boot chame `composeForRole(role)` **antes** de `buildApp` (ordem documentada para a T19; em `all` o resultado tem de ser idêntico: `composeForRole('all')` = `localEngine()`). Conferir os outros consumidores que leem a engine no registro (`chat.routes`, containers) e que nenhum chame `localEngine()` direto fora de `roleComposition`/`localEngineContainer`. (2) env `ENGINE_COMMAND_CONCURRENCY` (int positivo, default 2) em `env.ts`, repassada pela `roleComposition` às filas.
+**Where**: `sessions/presentation/routes/session.routes.ts`, `app/roleComposition.ts`, `shared/config/env.ts` (+ testes; ajustar testes de rota que dependiam do efeito do import)
+**Depends on**: T18
+**Done when**: teste: importar `session.routes` não monta engine; em `all` a engine ativa é a local; grep sem `localEngine()` fora dos 2 arquivos; env com default 2
+**Tests**: unit
+**Gate**: `pnpm vitest run src` + `pnpm tsc --noEmit`
+**Commit**: `refactor(sessions): rotas leem a engine ativa do papel`
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -452,3 +463,4 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 - T11: `RemoteMessagingEngineAdapter` (sem dono: alguns métodos devolvem `null`/no-op como a engine local; validar).
 - Int tests só de Redis ainda exigem `INTEGRATION_DATABASE_URL` (setup.int.ts).
 - T12: `OutboundMediaTransfer` (chave `outbound-tmp/{uuid}.ext`) + `S3OutboundObjectStore`; **T18 constrói `new OutboundMediaTransfer(new S3OutboundObjectStore(cfg))` e passa ao adapter remoto e ao `EngineCommandServer` (4º arg)**.
+- T18: `composeForRole(role)` async `{ engine, stop() }`; `all` só carrega `localEngineContainer`; http/worker exigem `S3_ENABLED` e chamam `bindRedisAccess`. **Boot deve chamar `composeForRole` antes de `buildApp` (T18b/T19).**
