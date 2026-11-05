@@ -40,7 +40,7 @@ Regras comuns:
 | T21 | Adoção abre como `auto`, devolve vaga e contador ao perder | T20 | P | ✅ 8f656cb |
 | T22 | Reserva síncrona de vaga no gate do teto | T20 | P | ✅ 8cbf7b6 |
 | T23 | Flag desligada sem consulta; AWAITING_* do Telegram fora; JobLease na infra | T20 | P | ✅ 9c78128 |
-| T24 | Só sessão com login concluído ocupa vaga do worker | T23 | | ⏳ |
+| T24 | Só sessão com login concluído ocupa vaga do worker | T23 | | ✅ 5fa2cdc |
 
 ### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
 
@@ -435,3 +435,4 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T21: porta `adoptSession` (`opened|held|cancelled|error`, nunca lança); `held` → `revertAdoptAttempt` (solta lease, −1 no contador); `stop()` cancela tick em voo. Cancel no shutdown mantém o +1.
 - T22: reserva síncrona no gate (TTL 15 s); falha após acquire prende a vaga até o TTL.
 - T23: rota `/admin/workers` sem consulta com flag off; Telegram `AWAITING_CODE/PASSWORD` fora da adoção (AWAITING_QR/PAIRING do Telegram continuam adotáveis — dono pode rever); `PrismaJobLease` em `shared/infrastructure/jobs/`. `markConnectRequested` zerando backoff com flag off: aceito (valores já 0/NULL).
+- T24: só login concluído ocupa vaga (Baileys `creds.registered`/`me`, Telegram `authorized`); `WORKER_MAX_PENDING_LOGINS` (padrão 50); reabertura com credencial reserva vaga; reinício pós-QR passa pela janela de login (revisão: `hold('login')` semeia a marca); reserva `session` não expira enquanto local e não autenticada; TTL armado no `hold`; login que falha limpa a marca. Migration `20261105120000_add_worker_heartbeat_pending_logins` (aditiva). Não testado com sessão real.

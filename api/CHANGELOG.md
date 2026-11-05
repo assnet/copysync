@@ -57,6 +57,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — api 0.64.0 · app 0.82.0 — Só login concluído ocupa vaga do worker (E4 T24)
+
+- **`CapacityLimitedLeaseGate.ts`, `ISessionSocketControl.ts`, adapters Baileys/Telegram, `sessionLeaseContainer.ts`, `AdoptNextSessionUseCase.ts`, `WorkerHeartbeatJob.ts`** — decisão do dono: sessão em QR/pareamento/código/senha não ocupa vaga de `WORKER_MAX_SESSIONS`; teto próprio `WORKER_MAX_PENDING_LOGINS` (padrão 50); login concluído com o worker cheio fica; adoção para com autenticadas ≥ teto. Sem efeito com `WORKER_ADOPTION_ENABLED=false`.
+- **Migration `20261105120000_add_worker_heartbeat_pending_logins`** — coluna aditiva `worker_heartbeats.pendingLogins`.
+- **`/admin/workers`, `AdminWorkersPage.tsx`** — coluna "Aguardando login".
+
 ### Fixed — api 0.63.0 · app 0.81.0 — Correções das revisões independentes (E3, E4, Assinatura, disparo)
 
 #### Backend

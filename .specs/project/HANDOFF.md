@@ -1,8 +1,8 @@
 # Handoff — 2026-11-04
 
 Retomar por aqui. Tudo em branches locais, nada com push. Juntar no CopySync = `git cherry-pick <branch>` na
-`feature/rebranding-app` + `tsc --noEmit` e `vitest run` em `api/` e `app/` (último verde: api 3310/3310, app 1330/1330;
-versões api 0.63.0 · app 0.81.0). `git add` só com caminhos explícitos (o dono tem rascunhos não rastreados em `.specs/` e `docs/`).
+`feature/rebranding-app` + `tsc --noEmit` e `vitest run` em `api/` e `app/` (último verde: api 3334/3334, app 1330/1330;
+versões api 0.64.0 · app 0.82.0). `git add` só com caminhos explícitos (o dono tem rascunhos não rastreados em `.specs/` e `docs/`).
 
 ## 🔴 Segurança — PulsoSocial em produção (central 1.86.0)
 
@@ -28,7 +28,7 @@ no `/protect/global`; garantir que todo e-mail master já tenha conta. Notas em 
 | Limite do gerador 5/20/ilimitado | ✅ | deploy aplica a migration de presets |
 | E2 lease de sessão | ✅ T1–T23, F1–F14; 6 revisões, ciclo encerrado | `DATABASE_SOCKET_TIMEOUT_S` é pré-requisito para mais de um processo |
 | E3 http × worker | ✅ T1–T25 (revisão independente: `all` sem mudança; correções T22–T25) | sessão real no smoke; Redis ~US$ 10 só ao separar (timeout de texto 60 s: decidido) |
-| E4 adoção por capacidade | ✅ T1–T23 (revisão independente; correções T21–T23) | T24 em andamento: só login concluído ocupa vaga (decidido); Telegram `AWAITING_QR/PAIRING` ainda adotável |
+| E4 adoção por capacidade | ✅ T1–T23 (revisão independente; correções T21–T23) | ✅ T24 (só login concluído ocupa vaga, revisada); Telegram `AWAITING_QR/PAIRING` ainda adotável |
 | Tela Assinatura | ✅ T1–T20 (visual conferido; revisão independente; T19/T20) | D2–D6 com recomendações |
 | Grupos de disparo + horário | ✅ T1–T30 (visual conferido; revisão independente; T28–T30) | D1–D5 com recomendações; tenant acima do limite pela soma fica sem salvar novos destinos |
 | Receiver de cobrança | ✅ seq BigInt, 2 segredos na rotação, vencimento gravado, `expiresAt` malformado → 400 | hub manda `null` para limpar |
