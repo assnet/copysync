@@ -96,7 +96,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 
 ## Fechamento
 
-### T17: Docs, CHANGELOG e versão ⏳
+### T17: Docs, CHANGELOG e versão ✅
 **What**: `docs/assinatura.md` (o que é, contrato, hook tolerante, o que não fazer: preço, checkout próprio, chamada à central); linha no `AGENTS.md`; linha "Painel" de `docs/arquitetura-central-billing.md` aponta para lá; CHANGELOG; api 0.60.0 e app 0.77.0 (minor).
 **Where**: `docs/assinatura.md`, `AGENTS.md`, `docs/arquitetura-central-billing.md`, `CHANGELOG.md`, `api/package.json`, `app/package.json`.
 **Depends on**: T2, T8, T16 **Req**: SUB-11 **Tests**: none **Gate**: full
@@ -132,3 +132,4 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 - T1: `Tenant.subscriptionExpiresAt` (migration `20261105001005`); alias da T7 removido.
 - T8: `GET /subscription` com `tenantAnyStatusHook`; presenter traduz `COPYSYNC_LITE/PRO/MAX` → `starter/profissional/business` (registrar em docs na T17).
 - T18: agent-browser contra Postgres descartável (ACTIVE/PRO, SUSPENDED/LITE com `?suspended=1`, sem plano, OPERATOR), claro/escuro, 1280 e 390 px, borrar ligado, tooltips. Corrigidos tom de `0 de 1` e colunas da tabela (app 0.76.2). Fora do escopo: o painel não tem modo "sistema" (`ThemeContext` só claro/escuro; sem preferência salva abre claro mesmo com `prefers-color-scheme: dark`); nome do tenant no cabeçalho global não borra.
+- T17: `docs/assinatura.md` (slug do presenter, hook tolerante, redirect, o que não fazer); api 0.60.0 · app 0.77.0; CHANGELOG em `api/CHANGELOG.md` [Unreleased]. Manifest da extensão não muda (versão própria).

@@ -8,13 +8,18 @@ para o cliente já ver o que vem. Catálogo e status dos produtos: seção "Prod
 ## Estrutura
 
 Fora dos produtos: **Dashboard** (`/dashboard`) no topo; seção **Plataforma** só super admin
-(`/admin/ai`, `/admin/link-domains`); bloco inferior **Privacidade**
+(`/admin/ai`, `/admin/link-domains`, `/admin/workers`); bloco inferior **Privacidade**
 (ação: abre o diálogo, não é rota), **Configurações** (`/settings/*`, `matchPrefix`).
+
+Filhos de Configurações ficam no `SettingsLayout` (`features/settings/components/`), não em `model.ts`:
+Sessões (`/settings/sessions`), Assinatura (`/settings/subscription`, [`assinatura.md`](assinatura.md)),
+Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aqui e não num produto.
 
 | Produto | `status` | Filhos | Rota | Selo |
 |---|---|---|---|---|
 | Afiliados | `available` | Gerador de ofertas | `/offers` | |
 | | | Monitoramento | `/monitoring` | |
+| | | Grupos de disparo | `/broadcast-groups` | |
 | | | Rodízio de links | `/link-rotation` | |
 | | | Página de Ofertas | `/storefront` | PRO |
 | | | Story de Oferta | `/offer-story` | MAX |

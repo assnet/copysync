@@ -59,6 +59,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Tela Assinatura (`tenants`, `billing`, `auth`, app `subscription`) — api 0.60.0 · app 0.77.0
+
+Doc: `docs/assinatura.md`. O tenant não tinha onde ver plano, status, vencimento e uso × limite, e o suspenso ficava preso no `TENANT_SUSPENDED` sem acesso ao motivo.
+
+- **Migration `20261105001005_add_tenant_subscription_expires_at`** + **`Tenant.ts`** + **`PrismaTenantMapper.ts`** — `subscriptionExpiresAt` (nulo = vencimento desconhecido)
+- **`ApplyBillingEventUseCase.ts`** + **`billing.routes.ts`** — receiver grava `expiresAt` em `activated`/`renewed`/`updated` (ISO inválido → `null`); demais eventos preservam
+- **`resolveMembership.ts`** + **`tenantAnyStatusHook.ts`** — `allowInactive`; hook só para `GET /subscription` (não-membro segue 403)
+- **`subscriptionLimits.ts`** — itens exibidos a partir de `ENTITLEMENT_KEYS` (regras de ausente; chave nova sem linha falha o teste)
+- **`ITenantUsageReader.ts`** + **`PrismaTenantUsageReader.ts`** — uso por canal com `tenantId` em toda consulta
+- **`IEntitlementSnapshotReader.ts`** + **`PrismaEntitlementReader.ts`** — leitura em lote (1 `findMany`)
+- **`GetTenantSubscriptionUseCase.ts`** + **`TenantSubscriptionDto.ts`** — tenant + entitlements + uso em paralelo; 404 sem tenant
+- **`subscription.routes.ts`** + **`SubscriptionPresenter.ts`** + **`routes.ts`** — `GET /subscription`; slug `COPYSYNC_LITE/PRO/MAX` → `starter/profissional/business`
+- **app `subscription.service.ts`** + **`api.types.ts`** — `getSubscription()` e `SubscriptionResponse`
+- **app `features/plans/checkout.ts`** + **`.env.example`** — `buildCheckoutUrl` (`VITE_BILLING_CHECKOUT_URL`, repassa `utm_*`/`gclid`/`fbclid`; sem env → `null`)
+- **app `features/subscription/`** (`strings.ts`, `SubscriptionPlanCard.tsx`, `SubscriptionLimitsTable.tsx`, `usageTone.ts`) + **`privacyFlags.ts`** — card do plano (CTA só ADMIN), tabela de limites por canal, flag `subscription.tenantName`
+- **app `SubscriptionPage.tsx`** + **`AppRoutes.tsx`** + **`SettingsLayout.tsx`** — rota `/settings/subscription` em Configurações
+- **app `apiClient.ts`** — `TENANT_SUSPENDED` redireciona uma vez para `/settings/subscription?suspended=1` (sem loop, sem limpar sessão)
+- **Docs** — `docs/assinatura.md`, linha no `AGENTS.md`, `arquitetura-central-billing.md` (linha "Painel") e `navegacao-produtos.md` (Assinatura, Grupos de disparo, Workers)
+
 #### Lease de sessão e CAS no auth state (`sessions`, `messaging`, escala E2) — api 0.59.0
 
 - **Migration `20261104150000_add_session_lease`** — `ownerWorkerId`, `leaseUntil`, `connectRequestedAt`, `nextAdoptAt`, `adoptFailures`, `shard` em `sessions` (só ADD COLUMN; backfill de `connectRequestedAt` nas `CONNECTED`)
