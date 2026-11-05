@@ -23,10 +23,10 @@ Regras comuns a toda task:
 | T5 | `findLiveOwner` no repositório de lease | — | P | ✅ 09accd1 |
 | T6 | `createOutboundMessageId` assíncrono | — | P | ✅ 133391b |
 | T7 | Plano de chamadas da engine + codec + portas | T6 | | ✅ 20b57d0 |
-| T8 | Transporte RPC no Redis | T3, T7 | P | ⏳ |
-| T9 | Filas BullMQ de comando (`engine-cmd-{id}`, `session-open`) | T3, T7 | P | ⏳ |
-| T10 | `EngineCommandServer` (worker) | T4, T7 | P | ⏳ |
-| T11 | `RemoteMessagingEngineAdapter` (http) | T4, T5, T7 | P | ⏳ |
+| T8 | Transporte RPC no Redis | T3, T7 | P | ✅ 0a1135b |
+| T9 | Filas BullMQ de comando (`engine-cmd-{id}`, `session-open`) | T3, T7 | P | ✅ ce3450a |
+| T10 | `EngineCommandServer` (worker) | T4, T7 | P | ✅ 95e5f01 |
+| T11 | `RemoteMessagingEngineAdapter` (http) | T4, T5, T7 | P | ✅ 2c5ca91 |
 | T12 | Mídia de envio entre processos | T10, T11 | | ⏳ |
 | T13 | Fan-out de WS pelo Redis | T3 | P | ✅ 9c7ac87 |
 | T14 | `FailOrphanPendingMedia` poupa lease vivo de outro processo | — | P | ✅ 78be0ed |
@@ -446,3 +446,8 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 - T16: `jobsFor(role)` em `app/processJobs.ts`; em `all` logs iguais.
 - T17: `buildWorkerApp(probe)` em `app/workerApp.ts`; `/health` ganhou `role`.
 - Gate integrado após onda 2: api tsc ok, vitest completo 2848/2848; app tsc ok.
+- T8: `RedisEngineRpc` (canais `engine-rpc:{workerId}` / `engine-rpc-reply:{processId}`; clientes injetados, fechados por `closeAllRedis`).
+- T9: `BullEngineCommandQueues` (`concurrency` padrão 2 — T18 passa do env; `deadline` por job; `workerId` sem `:`).
+- T10: `EngineCommandServer` (rpc/command sem socket local → `SessionNotOwnedError`; disconnect/logout soltam lease em `finally`).
+- T11: `RemoteMessagingEngineAdapter` (sem dono: alguns métodos devolvem `null`/no-op como a engine local; validar).
+- Int tests só de Redis ainda exigem `INTEGRATION_DATABASE_URL` (setup.int.ts).

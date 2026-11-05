@@ -37,7 +37,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `tenants/domain/services/subscriptionLimits.ts` (+ `.test.ts`).
 **Depends on**: — **Req**: SUB-04 **Done when**: teste trava a lista contra `ENTITLEMENT_KEYS` (chave nova sem decisão falha) e as regras de ausente. **Tests**: unit **Gate**: quick
 
-### T5: Leitor de uso ⏳
+### T5: Leitor de uso ✅ df1c2c2
 **What**: porta `ITenantUsageReader.read(tenantId)` → contagens do §SUB-05; impl Prisma com `tenantId` em toda consulta: sessões por `engine`, `MonitoredGroup`/`BroadcastGroup` de sessões existentes por canal, `LinkRotation` por canal, `Offer` desde `startOfDayInZone(now)`, `AiUsageLog` do dia.
 **Where**: `tenants/domain/contracts/ITenantUsageReader.ts`, `tenants/infrastructure/repositories/PrismaTenantUsageReader.ts`.
 **Depends on**: T4 (tipo de uso) **Req**: SUB-05 **Done when**: `tsc`; conferido no descartável que bate com as telas de sessões, monitoramento, rodízio e gerador. **Tests**: none (infra Prisma) **Gate**: full
@@ -74,7 +74,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `app/src/features/subscription/strings.ts`, `app/src/features/privacy/privacyFlags.ts` (+ `privacy.test.tsx` se contar telas).
 **Depends on**: — **Req**: SUB-10 **Tests**: unit **Gate**: quick
 
-### T13: Card do plano ⏳
+### T13: Card do plano ✅ 452ef39
 **What**: `SubscriptionPlanCard`: nome/tagline do catálogo pelo slug (sem preço), chip de status, vencimento (`Intl.DateTimeFormat`), nome do tenant com `Blurred`, CTA (`AppIcon` `Crown`/`ExternalLink`) em nova aba ou `/affiliates/plans` quando `null`; aviso `warning` em SUSPENDED/CANCELLED.
 **Where**: `app/src/features/subscription/components/SubscriptionPlanCard.tsx` (+ teste).
 **Depends on**: T10, T11, T12 **Req**: SUB-06, 07, 09 **Done when**: teste nos 3 status + sem plano, claro e escuro, CTA com/sem env. **Tests**: unit **Gate**: quick

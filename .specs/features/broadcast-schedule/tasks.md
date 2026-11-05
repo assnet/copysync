@@ -26,7 +26,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** duplicata entre gerador e monitor conta 1; canais separados.
 - **Tests:** unit · **Gate:** quick
 
-### T2: Leitor da união (porta + Prisma) ⏳
+### T2: Leitor da união (porta + Prisma) ✅ 290182d
 - **What:** `IBroadcastGroupUsageReader.listRows(tenantId, { exceptGenerator?, exceptMonitorSessionId? })` e `listCatalog(tenantId)`;
   impl lê `offer_destinations` ⋃ `broadcast_groups` (join `chat_conversations`, sessão não apagada, `tenantId` em tudo), sem Prisma fora da infra.
 - **Where:** `m/campaigns/domain/contracts/IBroadcastGroupUsageReader.ts`, `m/campaigns/infrastructure/repositories/PrismaBroadcastGroupUsageReader.ts` (+ `.int.test.ts`)
@@ -102,7 +102,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** casos 23:59/00:00, sexta 22–02 cobre sábado 01:00, só fim de semana pula para sábado.
 - **Tests:** unit · **Gate:** quick
 
-### T12: Migration aditiva [P] ⏳
+### T12: Migration aditiva [P] ✅ b5e1bb5
 - **What:** campos do PS-02 no `schema.prisma` + `migrations/<ts>_add_posting_schedule_weekdays/migration.sql` gerada com `prisma migrate diff` contra Postgres descartável.
 - **Where:** `api/prisma/schema.prisma`, `api/prisma/migrations/…/migration.sql`
 - **Depends on:** — · **Reqs:** PS-02, CM-02
@@ -116,7 +116,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** int: dia fora do mask não reivindica; gerador padrão (0–1440/127) sai igual hoje; `scheduledAt` ignora janela (D3).
 - **Tests:** int (não paralelo) · **Gate:** int + full
 
-### T10: Monitoramento — contrato com dias [P] ⏳
+### T10: Monitoramento — contrato com dias [P] ✅ 78fc226
 - **What:** `weekdays: number[]` (0–6, ≥1) em schema HTTP, DTO e validação `monitorSettings`.
 - **Where:** `m/automation/presentation/schemas/groupMonitoring.schema.ts`, `m/automation/application/dtos/GroupMonitorDTO.ts`, `m/automation/domain/services/monitorSettings.ts` (+ teste)
 - **Depends on:** T9 · **Reqs:** PS-04
@@ -195,3 +195,9 @@ Onda 7: T23(T22) → T24 → T25
 | T12, T14 | ✅ | none (schema/repo) ✅ |
 | T7, T8, T16, T20, T21, T22, T23 | ✅ | unit app ✅; páginas sem teste + agent-browser |
 
+
+## Notas de execução
+
+- **T10 e T14 vão juntas para produção**: com T10 o schema aceita `weekdays`, mas sem a coluna (T14) um PUT com o campo falha no Prisma. Nenhum cliente envia hoje.
+- T2: `IBroadcastGroupUsageReader` (`listRows`, `listCatalog`); `exceptGenerator`/`exceptMonitorSessionId` para T3/T4.
+- T12: migration `20261104180000_add_posting_schedule_weekdays` (ADD COLUMN NOT NULL DEFAULT).
