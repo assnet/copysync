@@ -49,7 +49,7 @@ Regras comuns a toda task:
 | F7 | Resume sem `release` e com nova tentativa | F3 | P | ✅ 14527c4 |
 | F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ✅ 557f8c6 |
 | F9 | Resume no adapter mantém suspensa em erro | F8 | | ✅ 1b2a3bb |
-| F10 | Estado de retomada com dono único | F9 | | ⏳ |
+| F10 | Estado de retomada com dono único | F9 | | ✅ b0ceb92 |
 | F11 | Abertura dupla da mesma sessão | F9 | P | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
@@ -545,6 +545,8 @@ Causa comum dos 3 🔴: o estado "suspensa" vive em dois lugares (marca `fenced`
 **Tests**: unit
 **Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
 **Commit**: `fix(messaging): uma abertura de socket por sessão`
+
+- F10: `resumeSession` → `'resumed'|'held'|'gone'` (throw = transitório); `forgetSuspension`; keeper dispara retomadas fora do tick (timeout = intervalo); desistência grava DISCONNECTED via `markDisconnectedIfNoLiveLease` após `release`. Erro de banco no acquire do caminho do usuário agora é `EngineTemporarilyUnavailableError` (503, nome diferente de `SessionLeaseHeldError`).
 
 ## Diagram-Definition Cross-Check
 

@@ -22,7 +22,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `api/prisma/schema.prisma`, `api/prisma/migrations/<ts>_add_tenant_subscription_expires_at/`, `tenants/domain/entities/Tenant.ts`, `tenants/infrastructure/mappers/PrismaTenantMapper.ts`.
 **Depends on**: — (D1) **Req**: SUB-03 **Done when**: migration aplica no descartável; `tsc` verde. **Tests**: none **Gate**: full
 
-### T2: Receiver grava `expiresAt` ⏳
+### T2: Receiver grava `expiresAt` ✅ 548e196
 **What**: `BillingEventPayload.expiresAt?: string|null`; parse ISO em `billing.routes.ts:90-93` (inválido → `null`); `ApplyBillingEventUseCase` grava em `activated`/`renewed`/`updated`, mantém nos demais.
 **Where**: `integrations/billing/ApplyBillingEventUseCase.ts`, `billing.routes.ts` (+ `ApplyBillingEventUseCase.test.ts`, `billing.routes.test.ts`).
 **Depends on**: T1 **Req**: SUB-03 **Done when**: testes: renewed com data grava; payment_failed preserva; data inválida vira null. **Tests**: unit **Gate**: quick
@@ -79,7 +79,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `app/src/features/subscription/components/SubscriptionPlanCard.tsx` (+ teste).
 **Depends on**: T10, T11, T12 **Req**: SUB-06, 07, 09 **Done when**: teste nos 3 status + sem plano, claro e escuro, CTA com/sem env. **Tests**: unit **Gate**: quick
 
-### T14: Tabela de limites ⏳
+### T14: Tabela de limites ✅ e9489d3
 **What**: `SubscriptionLimitsTable`: `<table>` semântica por canal (logos via `AppIcon`), `LinearProgress` com cor da regra do `OfferUsageChip` (extrair `usageTone(used, limit)` para `features/subscription/usageTone.ts`), Tooltip com hint, linha `daily` com "hoje", feature como Incluso/A partir do X.
 **Where**: `app/src/features/subscription/components/SubscriptionLimitsTable.tsx`, `app/src/features/subscription/usageTone.ts` (+ testes).
 **Depends on**: T10, T12 **Req**: SUB-08 **Done when**: teste: ilimitado sem barra, 100% `error`, ≥80% `warning`, Telegram 0 = "A partir do PRO". **Tests**: unit **Gate**: quick
