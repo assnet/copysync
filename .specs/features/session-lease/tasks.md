@@ -51,6 +51,7 @@ Regras comuns a toda task:
 | F9 | Resume no adapter mantém suspensa em erro | F8 | | ✅ 1b2a3bb |
 | F10 | Estado de retomada com dono único | F9 | | ✅ b0ceb92 |
 | F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
+| F12 | Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram | F11 | | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -547,6 +548,20 @@ Causa comum dos 3 🔴: o estado "suspensa" vive em dois lugares (marca `fenced`
 **Commit**: `fix(messaging): uma abertura de socket por sessão`
 
 - F10: `resumeSession` → `'resumed'|'held'|'gone'` (throw = transitório); `forgetSuspension`; keeper dispara retomadas fora do tick (timeout = intervalo); desistência grava DISCONNECTED via `markDisconnectedIfNoLiveLease` após `release`. Erro de banco no acquire do caminho do usuário agora é `EngineTemporarilyUnavailableError` (503, nome diferente de `SessionLeaseHeldError`).
+
+## Correções da 4ª revisão (2026-11-04)
+
+### F12: Retomada com prazo; desistência aborta antes de soltar; supersede no Telegram
+
+**What**:
+- 🔴 `RenewSessionLeaseUseCase.resume` faz `await op.catch` depois do timeout: com banco mudo, a op (acquire em `PrismaSessionLeaseRepository.tryAcquire`, `resumeSession` do Baileys) nunca assenta, o slot `resuming` do keeper fica ocupado para sempre, sem nova tentativa nem desistência, e o connect do usuário espera a mesma promessa (`openInFlight`). Correção: prazo nas operações de banco do lease (`tryAcquire`/`renew`/`release`: `Promise.race` com `LEASE_RENEW_TIMEOUT_MS` ou `SET LOCAL statement_timeout` na transação; erro de prazo = transitório) e no `resumeSession` (acquire + build do auth state), de modo que a op sempre assente; o use case não aguarda a op depois do timeout (marca tentativa e segue; quando a op assentar tarde, o resultado é tratado pelo caminho de reclaim já existente).
+- 🟡 Desistência (`MAX_RESUME_ATTEMPTS`) chama `sockets.abortSession(id)` antes de `repo.release`, para que uma abertura em voo não registre socket sem lease.
+- 🟡 Telegram `openClient`: abertura de origem usuário usa `supersede` como o Baileys (não fila serial); cliques repetidos coalescem.
+**Where**: `RenewSessionLeaseUseCase.ts`, `SessionLeaseKeeper.ts`, `PrismaSessionLeaseRepository.ts` (+ int), `BaileysMessagingEngineAdapter.ts`, `TelegramMessagingEngineAdapter.ts` (+ testes)
+**Done when**: testes: repo que nunca responde → op assenta no prazo, tentativa contada, slot liberado, desistência após o limite grava DISCONNECTED; connect do usuário durante retomada pendurada não espera além do prazo; desistência aborta antes de soltar; Telegram: 2 opens de usuário seguidos = 1 cliente, sem fila
+**Tests**: unit (+ int do prazo no repo)
+**Gate**: `pnpm vitest run src/modules/sessions src/modules/messaging` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): retomada com prazo e desistência que aborta antes`
 
 ## Diagram-Definition Cross-Check
 
