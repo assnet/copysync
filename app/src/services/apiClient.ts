@@ -41,6 +41,19 @@ function clearSessionAndRedirect(): void {
   }
 }
 
+// Tenant suspenso/cancelado: a tela de assinatura é a única que a API ainda serve
+// (SUB-02). Redireciona uma vez por carga de página, nunca a partir da própria tela,
+// e sem limpar a sessão: o usuário precisa continuar logado para regularizar.
+export const SUBSCRIPTION_PATH = '/settings/subscription';
+let suspendedRedirectStarted = false;
+
+function redirectToSubscription(): void {
+  if (suspendedRedirectStarted) return;
+  if (window.location.pathname.startsWith(SUBSCRIPTION_PATH)) return;
+  suspendedRedirectStarted = true;
+  window.location.href = `${SUBSCRIPTION_PATH}?suspended=1`;
+}
+
 function getErrorMessage(error: AxiosError<ApiErrorPayload>): string {
   return (
     error.response?.data?.error?.message ??
@@ -164,6 +177,10 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401) {
       clearSessionAndRedirect();
+    }
+
+    if (error.response?.data?.error?.code === 'TENANT_SUSPENDED') {
+      redirectToSubscription();
     }
 
     // Tenant inválido (banco trocado, ID antigo no localStorage) → sessão morta
