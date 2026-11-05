@@ -27,7 +27,7 @@ Regras comuns a toda task:
 | T9 | Filas BullMQ de comando (`engine-cmd-{id}`, `session-open`) | T3, T7 | P | ✅ ce3450a |
 | T10 | `EngineCommandServer` (worker) | T4, T7 | P | ✅ 95e5f01 |
 | T11 | `RemoteMessagingEngineAdapter` (http) | T4, T5, T7 | P | ✅ 2c5ca91 |
-| T12 | Mídia de envio entre processos | T10, T11 | | ⏳ |
+| T12 | Mídia de envio entre processos | T10, T11 | | ✅ 5ad61e3 |
 | T13 | Fan-out de WS pelo Redis | T3 | P | ✅ 9c7ac87 |
 | T14 | `FailOrphanPendingMedia` poupa lease vivo de outro processo | — | P | ✅ 78be0ed |
 | T15 | Remover SSE `GET /chat/events` + `useChatSSE` | — | P | ✅ 3373d2e |
@@ -451,3 +451,4 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
 - T10: `EngineCommandServer` (rpc/command sem socket local → `SessionNotOwnedError`; disconnect/logout soltam lease em `finally`).
 - T11: `RemoteMessagingEngineAdapter` (sem dono: alguns métodos devolvem `null`/no-op como a engine local; validar).
 - Int tests só de Redis ainda exigem `INTEGRATION_DATABASE_URL` (setup.int.ts).
+- T12: `OutboundMediaTransfer` (chave `outbound-tmp/{uuid}.ext`) + `S3OutboundObjectStore`; **T18 constrói `new OutboundMediaTransfer(new S3OutboundObjectStore(cfg))` e passa ao adapter remoto e ao `EngineCommandServer` (4º arg)**.
