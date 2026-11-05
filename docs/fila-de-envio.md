@@ -137,6 +137,11 @@ sai **sem janela** (decisão: sem configuração não há janela definida; o fil
 prende a faixa). Oferta vencida pela validade não ocupa lugar no reespalhar/compactar (`laneState`). O filtro fica no candidato, não na cabeça da faixa: uma captura esperando
 a janela não prende o gerador atrás dela. Ver `docs/monitoramento-grupos.md` §2.2.
 
+Dia da semana (api 0.61.0): `weekdaysMask` da configuração vale para o trecho após o início (dia de hoje
+em São Paulo) e, em janela noturna, para o trecho após a meia-noite (dia de ontem). Oferta `GENERATOR`
+sem `scheduledAt` respeita a janela e os dias do `offer_generator_configs` do tenant; com `scheduledAt`
+explícito ignora a janela. Padrão (0–1440, 127) = sem filtro. Ver `docs/grupos-de-disparo-e-horario.md`.
+
 ## 3. Leitura: `GET /campaigns/send-queue`
 
 ```json

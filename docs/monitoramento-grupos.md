@@ -133,7 +133,12 @@ oferta do monitoramento fora da janela da sessão (minuto do dia em São Paulo, 
 não importa quando foi agendado nem se a configuração mudou depois. Às 20:00 o envio para e os
 que faltam saem a partir das 06:00; o que vencer esperando sai `SKIPPED/OFFER_EXPIRED`. O
 agendamento também encaixa cada horário na janela (`fitSlot` no `EnqueueOfferUseCase`), para a fila
-mostrar horários reais. O gerador de ofertas não é afetado pela janela.
+mostrar horários reais.
+
+**Dias da semana** (api 0.61.0): `weekdays` (lista 0–6, ≥ 1; coluna `weekdaysMask`, padrão 127 = todos).
+Faixa que cruza a meia-noite pertence ao dia do início. Dia fora da lista: claim não reivindica, captura
+fora do horário (`outside_window`) e `fitSlot` pulam para a próxima abertura. O gerador tem horário
+próprio (`offer_generator_configs`). Ver [`grupos-de-disparo-e-horario.md`](grupos-de-disparo-e-horario.md).
 
 **Capturar fora do horário** (`captureOutsideWindow`, padrão ligado): fora da janela a captura
 continua e as ofertas acumulam na fila, saindo quando ela abrir. **A validade conta do início
@@ -172,8 +177,8 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
   (`groups[].sessionId` no `PUT /config/broadcast-groups`). `cross_session_dispatch` (MAX; ausente =
   bloqueado, 403 `PLAN_FEATURE_UNAVAILABLE`) só é exigido quando monitor + destinos usam **2+ sessões do
   mesmo canal** (`requiresCrossSession`); WhatsApp → Telegram (ou o inverso) sempre pode. A sessão de destino tem de existir
-  no tenant (404). O limite `broadcast_groups` conta por monitoramento (config), não pela sessão dona
-  do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (409
+  no tenant (404). O limite `broadcast_groups` conta grupos distintos (sessão + JID) do tenant somando todos os monitoramentos
+  **e o gerador** (api 0.61.0, `grupos-de-disparo-e-horario.md`), não pela sessão dona do grupo. O mesmo grupo (sessão + JID) não pode ser destino de dois monitoramentos (409
   `GROUP_MONITOR_BROADCAST_TAKEN`, meta `groupJid`/`sessionId`/`monitorSessionId`; api 0.49.0) e o mesmo
   JID não entra duas vezes na lista por sessões diferentes (422 `GROUP_MONITOR_DUPLICATE_GROUP`: a oferta
   sairia duas vezes no grupo). O GET devolve `takenBroadcastGroups` (destinos dos monitoramentos das outras

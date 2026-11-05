@@ -59,6 +59,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### Grupos de disparo e horário de postagem (`campaigns`, `automation`, app `broadcastGroups`/`offers`/`monitoring`) — api 0.61.0 · app 0.78.0
+
+Doc: `docs/grupos-de-disparo-e-horario.md`. O limite de grupos de disparo era contado separado no gerador e em cada monitoramento (LITE chegava a 10 com limite 5), não havia tela única dos grupos e o horário não tinha dias da semana nem valia para o gerador. Breaking: nenhum. Migration: sim.
+
+- **`broadcastGroupUnion.ts`** + **`IBroadcastGroupUsageReader.ts`** + **`PrismaBroadcastGroupUsageReader.ts`** — união `offer_destinations` ∪ `broadcast_groups` por sessão + JID, `tenantId` em toda consulta
+- **`OfferGeneratorConfigUseCases.ts`** + **`GroupMonitorConfigUseCases.ts`** — limite `broadcast_groups`/`telegram_broadcast_groups` e `usage` pela união; envio intocado. **Deploy:** tenant já acima do limite pela soma não salva novos destinos até remover grupos
+- **`ListBroadcastGroupsUseCase.ts`** + **`RemoveBroadcastGroupUseCase.ts`** + **`IBroadcastGroupRemover.ts`** + **`broadcastGroups.routes.ts`** — `GET /campaigns/broadcast-groups` (catálogo com `usedBy`) e `DELETE /:conversationId` (remove de todos os usos, transação, idempotente)
+- **Migration `20261104180000_add_posting_schedule_weekdays`** — `group_monitor_configs.weekdaysMask` (127) e `offer_generator_configs.windowStartMinute`/`windowEndMinute`/`weekdaysMask` (0/1440/127); só ADD COLUMN DEFAULT
+- **`postingWindow.ts`** + **`operatingWindow.ts`** — regra pura com dias da semana (madrugada = dia do início, até 7 dias, mask 0 inválido)
+- **`PrismaOfferDispatchRepository.ts`** — claim respeita dia da semana do monitoramento e janela do gerador; `scheduledAt` explícito ignora a janela
+- **`groupMonitoring.schema.ts`** + **`monitorSettings.ts`** + **`PrismaGroupMonitorMapper.ts`** + **`RegisterCapturedMessageUseCase.ts`** + **`ProcessPendingCapturedOffersUseCase.ts`** — `weekdays` no monitoramento (contrato e coluna juntos), captura e `fitSlot` usam o dia
+- **`fitSlots.ts`** + **`offer.schema.ts`** + **`PrismaOfferGeneratorConfigRepository.ts`** + **`SendOfferUseCase.ts`** + **`OfferSendControlUseCases.ts`** — horário do gerador na config; disparo e retomada sem `scheduledAt` encaixam na janela
+- **app `broadcastGroups.service.ts`** + **`useBroadcastGroups.ts`** + **`BroadcastGroupsTable.tsx`** + **`BroadcastGroupsPage.tsx`** + **`AppRoutes.tsx`** + **`navigation/model.ts`** — página `/broadcast-groups` com filtro persistido, remoção com confirmação e item no menu Afiliados
+- **app `broadcastGroups/strings.ts`** + **`privacyFlags.ts`** — textos e flags `broadcastGroups.groupNames`/`groupAvatars`/`sessionName`
+- **app `ChannelCounterChips.tsx`** + **`GroupUsageChip.tsx`** — tooltip "o limite soma gerador e monitoramento"
+- **app `PostingWindowField.tsx`** + **`postingWindowStrings.ts`** — slider + dias da semana; usado em **`MonitoringSettingsForm.tsx`** (rascunho v6, `OperatingWindowField` removido) e no passo **`ConfigScheduleStep.tsx`** do **`OfferConfigWizard.tsx`** (rascunho v2)
+- **Docs** — `docs/grupos-de-disparo-e-horario.md`, linha no `AGENTS.md`, roadmap itens 5 e 6 ✅, `fila-de-envio.md` §2.6, `monitoramento-grupos.md` §2.2/§3, `gerador-de-ofertas.md`
+
 #### Tela Assinatura (`tenants`, `billing`, `auth`, app `subscription`) — api 0.60.0 · app 0.77.0
 
 Doc: `docs/assinatura.md`. O tenant não tinha onde ver plano, status, vencimento e uso × limite, e o suspenso ficava preso no `TENANT_SUSPENDED` sem acesso ao motivo.

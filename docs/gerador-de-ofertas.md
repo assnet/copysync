@@ -22,7 +22,13 @@ Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/feat
 `GET/PUT /campaigns/offers/config` `{ sessionId, intervalMinSeconds, intervalMaxSeconds, conversationIds }`. Sessão do
 tenant; só grupos dessa sessão; total **por canal** (canal do grupo = engine da sessão dele) ≤ `broadcast_groups`
 (WhatsApp) / `telegram_broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com `meta.key` do canal); 60 ≤ min ≤ max ≤ 3600 s (painel: 1–60 min inteiros; padrão 2–5 min). Config e destinos gravam numa transação. Os destinos usados no
-envio são os grupos da configuração **no momento do envio**.
+envio são os grupos da configuração **no momento do envio**. O limite de grupos conta a **união** com os
+monitoramentos (sessão + JID distintos; `usage` do GET idem); o envio só checa os próprios alvos.
+
+**Horário** (api 0.61.0, passo "Horário" do assistente): `windowStartMinute`/`windowEndMinute`/`weekdays`
+no PUT (ausente = mantém; padrão 0–1440, todos os dias). Sem `scheduledAt`, o disparo e a retomada encaixam
+os envios na janela (`fitSlots`) e o claim não reivindica fora dela; `scheduledAt` explícito ignora a janela.
+Ver [`grupos-de-disparo-e-horario.md`](grupos-de-disparo-e-horario.md).
 
 ## Link do usuário e verificação de dono
 

@@ -175,12 +175,12 @@ Onda 7: T23(T22) → T24 → T25
 
 ## Fechamento
 
-### T24: Documentação ⏳
+### T24: Documentação ✅
 - **What:** `docs/grupos-de-disparo-e-horario.md` (o que fazer/não fazer: união, sem tabela de catálogo, mask, D3); linha no AGENTS.md; roadmap itens 5/6 ✅; `fila-de-envio.md` §2.6; `monitoramento-grupos.md` §2.2; `gerador-de-ofertas.md`.
 - **Where:** os docs citados
 - **Depends on:** T13, T17, T19, T21, T23 · **Reqs:** CM-01 · **Gate:** —
 
-### T25: Versão e CHANGELOG ⏳
+### T25: Versão e CHANGELOG ✅
 - **What:** minor em `api/package.json` e `app/package.json` (+ manifest se houver); seção `[Unreleased]` por módulo; breaking: nenhum; migration: sim.
 - **Where:** `api/package.json`, `app/package.json`, `api/CHANGELOG.md`
 - **Depends on:** T24 · **Reqs:** CM-01 · **Gate:** full + smoke (sessão real, LITE)
