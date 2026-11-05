@@ -37,9 +37,9 @@ Regras comuns:
 | T19 | Smoke | T15, T16, T17, T18 | | 🟡 parcial |
 | T19b | Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável | T19 | | ✅ 0d09a9e |
 | T20 | Docs, CHANGELOG e versão (com E3 T21; api 0.62.0, app 0.79.0) | T19 | | ✅ este commit |
-| T21 | Adoção abre como `auto`, devolve vaga e contador ao perder | T20 | P | ⏳ |
-| T22 | Reserva síncrona de vaga no gate do teto | T20 | P | ⏳ |
-| T23 | Flag desligada sem consulta; AWAITING_* do Telegram fora; JobLease na infra | T20 | P | ⏳ |
+| T21 | Adoção abre como `auto`, devolve vaga e contador ao perder | T20 | P | ✅ 8f656cb |
+| T22 | Reserva síncrona de vaga no gate do teto | T20 | P | ✅ 8cbf7b6 |
+| T23 | Flag desligada sem consulta; AWAITING_* do Telegram fora; JobLease na infra | T20 | P | ✅ 9c78128 |
 
 ### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
 
@@ -136,7 +136,7 @@ Arquivos que forçam ordem: `env.ts` (só T1), `prisma/schema.prisma` (só T3), 
 
 **What**: mover contrato/implementação de `job_leases` para `IJobLease` + `PrismaJobLease` em `shared/jobs/`; `ILinkRotationJobLease` vira
 `type` alias e `PrismaLinkRotationJobLease` reexporta (sem mudar chamadas do rodízio). Billing (`ReconcileSubscriptionsUseCase`, Prisma direto) fica como está.
-**Where**: `shared/jobs/IJobLease.ts`, `shared/jobs/PrismaJobLease.ts`, `modules/link-rotation/infrastructure/repositories/PrismaLinkRotationJobLease.ts` (+ alias em `ILinkRotationJobLease.ts`)
+**Where**: `shared/jobs/IJobLease.ts`, `shared/infrastructure/jobs/PrismaJobLease.ts`, `modules/link-rotation/infrastructure/repositories/PrismaLinkRotationJobLease.ts` (+ alias em `ILinkRotationJobLease.ts`)
 **Depends on**: —
 **Requirement**: ADOPT-11
 **Done when**: testes do rodízio passam sem edição; `tsc` ok
@@ -417,3 +417,6 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T19 (smoke 2026-11-04; Postgres 55539, Redis 56539, s3mock; logs `/private/tmp/claude-501/smoke-e4-t19/`): crit.1 ✅ flag off = logs idênticos ao baseline `927f89f` em all/worker/http, 0 escrita em `worker_heartbeats`. crit.2 🟡 teto 1 × 2 workers × 3 sessões: 2 adotadas, 1 aguardando; `/admin/workers` ok; alerta 1/min no cluster com failover; `session-open` pausa/retoma ✅; **`awaitingCapacity` sempre false → T19b**. crit.3 🟡 SIGKILL + TTL: worker cheio não adota ✅, vaga liberada adota em < 5 s ✅; "sem 440" pendente (sessão real). crit.4 ✅ (simulado) backoff 2/4/8/16/30 min → FAILED + auditoria; connect manual zera. crit.5 ✅ ordem do SIGTERM ok, 18 ms.
 - Achados: sessão `AWAITING_*` órfã após SIGKILL → T19b. **Decisão do dono:** sessão em QR sem leitura prende a vaga indefinidamente (QR rotaciona, socket não fecha) — sugestão: QR sem leitura por N min → DISCONNECTED mantendo o pedido + backoff. Heartbeat de worker morto só limpa após 1 dia (listAlive filtra em 90 s, sem efeito). D7 (índice) não medido.
 - T20 (com E3 T21, este commit): ver T21 da E3; pendências (QR prende vaga, heartbeat 1 dia, D7, sem 440 real) no doc §3.2.
+- T21: porta `adoptSession` (`opened|held|cancelled|error`, nunca lança); `held` → `revertAdoptAttempt` (solta lease, −1 no contador); `stop()` cancela tick em voo. Cancel no shutdown mantém o +1.
+- T22: reserva síncrona no gate (TTL 15 s); falha após acquire prende a vaga até o TTL.
+- T23: rota `/admin/workers` sem consulta com flag off; Telegram `AWAITING_CODE/PASSWORD` fora da adoção (AWAITING_QR/PAIRING do Telegram continuam adotáveis — dono pode rever); `PrismaJobLease` em `shared/infrastructure/jobs/`. `markConnectRequested` zerando backoff com flag off: aceito (valores já 0/NULL).
