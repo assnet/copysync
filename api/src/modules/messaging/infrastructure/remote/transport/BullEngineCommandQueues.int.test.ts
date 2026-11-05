@@ -2,7 +2,10 @@ import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
-import { EngineNotReadyError } from '../../../../../shared/errors/internal/MessagingErrors';
+import {
+  EngineCommandOutcomeUnknownError,
+  EngineNotReadyError,
+} from '../../../../../shared/errors/internal/MessagingErrors';
 import { engineCall } from '../engineCallPlan';
 import { SESSION_OPEN_TARGET, type IEngineCallHandler } from '../ports';
 import {
@@ -179,6 +182,101 @@ describe.skipIf(!url)('BullEngineCommandQueues com Redis real', () => {
       capacity = true;
       await expect(pending).resolves.toEqual({ status: 'CONNECTING' });
       expect(w.seen).toEqual(['s9']);
+    });
+  });
+
+  describe('resultado desconhecido, sem reexecução, prazo e teto (T22)', () => {
+    const activeCount = async (workerId: string) => {
+      const c = new Queue(engineCommandQueueName(workerId), { connection: connections[0]!, prefix });
+      const counts = await c.getJobCounts('active', 'waiting', 'failed', 'completed');
+      await c.close();
+      return counts;
+    };
+
+    it('job ativo no prazo: OUTCOME_UNKNOWN e o envio sai uma vez só', async () => {
+      const handle = vi.fn(async () => { await new Promise((r) => setTimeout(r, 600)); return { messageId: 'm1' }; });
+      queues().startConsumers('wu', { handle });
+      const err = await queues().send('wu', send, 250).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(EngineCommandOutcomeUnknownError);
+      expect(err).toMatchObject({ code: 'ENGINE_COMMAND_OUTCOME_UNKNOWN', statusCode: 504 });
+      await vi.waitFor(async () => expect((await activeCount('wu')).completed).toBe(1), { timeout: 3000 });
+      expect(handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('job travado (consumidor morreu no meio) não reexecuta: vira falha e OUTCOME_UNKNOWN', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      const short = { lockDurationMs: 400, stalledIntervalMs: 200, closeTimeoutMs: 50 };
+      const first = vi.fn(async () => { await gate; return { messageId: 'a' }; });
+      const dying = queues(short);
+      dying.startConsumers('ws', { handle: first });
+      const pending = queues().send('ws', send, 8000).catch((e: unknown) => e);
+      await vi.waitFor(() => expect(first).toHaveBeenCalledTimes(1), { timeout: 3000 });
+
+      await dying.close(); // teto curto: fecha à força com o job ainda rodando (lock deixa de ser renovado)
+      const second = vi.fn(async () => ({ messageId: 'b' }));
+      queues(short).startConsumers('ws', { handle: second });
+
+      expect(await pending).toBeInstanceOf(EngineCommandOutcomeUnknownError);
+      expect(second).not.toHaveBeenCalled();
+      expect((await activeCount('ws')).failed).toBe(1);
+      release();
+    });
+
+    it('Redis fora: ENGINE_NOT_READY no prazo, sem acumular canal, close() com teto', async () => {
+      const dead = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: null, retryStrategy: () => 200 });
+      dead.on('error', () => undefined);
+      const q = new BullEngineCommandQueues({ connection: dead, prefix });
+      for (let i = 0; i < 3; i++) {
+        const started = Date.now();
+        const err = await q.send('w-dead', send, 300).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(EngineNotReadyError);
+        expect(Date.now() - started).toBeLessThan(1500);
+      }
+      expect((q as unknown as { channels: Map<string, unknown> }).channels.size).toBe(1);
+      const closing = Date.now();
+      await q.close();
+      expect(Date.now() - closing).toBeLessThan(3500);
+      dead.disconnect();
+    });
+
+    it('close() do consumidor respeita o teto e fecha à força', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      const worker = queues({ closeTimeoutMs: 200 });
+      const handle = vi.fn(async () => { await gate; return { messageId: 'x' }; });
+      worker.startConsumers('wt', { handle });
+      void queues().send('wt', send, 5000).catch(() => undefined);
+      await vi.waitFor(() => expect(handle).toHaveBeenCalledTimes(1), { timeout: 3000 });
+
+      const started = Date.now();
+      await worker.close();
+      const elapsed = Date.now() - started;
+      expect(elapsed).toBeGreaterThanOrEqual(150);
+      expect(elapsed).toBeLessThan(2000);
+      release();
+    });
+
+    it('shutdown do http com espera pendente: job ativo vira OUTCOME_UNKNOWN; job em espera, NOT_READY e sai', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      const handle = vi.fn(async () => { await gate; return { messageId: 'y' }; });
+      queues().startConsumers('wh', { handle });
+      const http = queues();
+      const active = http.send('wh', send, 10_000).catch((e: unknown) => e);
+      const idle = http.send('w-ninguem', send, 10_000).catch((e: unknown) => e);
+      await vi.waitFor(() => expect(handle).toHaveBeenCalledTimes(1), { timeout: 3000 });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const started = Date.now();
+      await http.close();
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(await active).toBeInstanceOf(EngineCommandOutcomeUnknownError);
+      expect(await idle).toBeInstanceOf(EngineNotReadyError);
+      expect((await activeCount('w-ninguem')).waiting).toBe(0);
+      release();
+      await vi.waitFor(async () => expect((await activeCount('wh')).completed).toBe(1), { timeout: 3000 });
+      expect(handle).toHaveBeenCalledTimes(1);
     });
   });
 });

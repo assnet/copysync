@@ -167,6 +167,8 @@ export const chatStrings = {
     errors: {
       network: 'Falha de conexão. Tente de novo para continuar de onde parou.',
       sessionDisconnected: 'Sessão desconectada. Reconecte para enviar.',
+      /** `ENGINE_COMMAND_OUTCOME_UNKNOWN`: o envio pode ter saído; reenviar duplicaria. */
+      outcomeUnknown: 'Não foi possível confirmar o envio; confira a conversa antes de reenviar.',
       rejected: 'Arquivo recusado. Confira o tipo e o tamanho.',
       storageFull: 'Sem espaço para receber o arquivo agora. Tente mais tarde.',
       confirmInProgress: 'Finalizando o envio. Aguarde.',

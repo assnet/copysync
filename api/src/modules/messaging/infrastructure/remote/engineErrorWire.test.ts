@@ -21,6 +21,7 @@ const samples: AppError[] = [
   new M.MessageSendFailedError('boom'),
   new M.EngineNotReadyError(),
   new M.EngineTemporarilyUnavailableError(),
+  new M.EngineCommandOutcomeUnknownError(),
   new M.RecoverableConnectionError('x'),
   new M.PairingFailedError('x'),
   new M.EngineDisabledError('telegram'),

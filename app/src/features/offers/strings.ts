@@ -388,6 +388,7 @@ export const offerStrings = {
       NOT_FOUND: 'O grupo não existe mais',
       OFFER_NOT_FOUND: 'A oferta não existe mais',
       MESSAGE_SEND_FAILED: 'O envio falhou',
+      ENGINE_COMMAND_OUTCOME_UNKNOWN: 'Não foi possível confirmar o envio; confira o grupo antes de reenviar',
       OFFER_DESTINATION_UNAVAILABLE: 'O grupo ou a sessão não existe mais',
       SEND_TIMEOUT: 'A conta da sessão demorou demais para responder',
       MEDIA_NOT_FOUND: 'A foto da oferta não foi encontrada',

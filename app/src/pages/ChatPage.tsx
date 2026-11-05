@@ -912,7 +912,9 @@ export default function ChatPage() {
         setErrorToast(
           code === 'SESSION_NOT_CONNECTED'
             ? chatStrings.upload.errors.sessionDisconnected
-            : chatStrings.upload.errors.generic,
+            : code === 'ENGINE_COMMAND_OUTCOME_UNKNOWN'
+              ? chatStrings.upload.errors.outcomeUnknown
+              : chatStrings.upload.errors.generic,
         );
       });
     },

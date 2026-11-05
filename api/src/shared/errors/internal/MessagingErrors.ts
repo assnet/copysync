@@ -14,6 +14,20 @@ export class EngineNotReadyError extends AppError {
   }
 }
 
+/**
+ * Comando já em execução no worker quando a espera acabou (prazo, shutdown ou job travado): pode ter
+ * saído. Quem chama não deve reenviar sem conferir a conversa (reenvio duplicaria).
+ */
+export class EngineCommandOutcomeUnknownError extends AppError {
+  constructor() {
+    super(
+      'ENGINE_COMMAND_OUTCOME_UNKNOWN',
+      'Não foi possível confirmar o envio; confira a conversa antes de reenviar',
+      504,
+    );
+  }
+}
+
 export class EngineTemporarilyUnavailableError extends AppError {
   constructor() {
     super('ENGINE_TEMPORARILY_UNAVAILABLE', 'Messaging engine temporarily unavailable', 503);
