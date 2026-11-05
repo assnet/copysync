@@ -6,6 +6,9 @@ import PhoneIphoneOutlinedIcon from '@mui/icons-material/PhoneIphoneOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined';
+import { CreditCard } from 'lucide-react';
+import { AppIcon } from '@/components';
+import { subscriptionStrings } from '@/features/subscription/strings';
 import { settingsStrings } from '../strings';
 import { extensionStrings } from '@/features/extension/strings';
 
@@ -13,6 +16,7 @@ const t = settingsStrings.layout;
 
 const SETTINGS_NAV = [
   { label: t.navSessions, path: '/settings/sessions', icon: <PhoneIphoneOutlinedIcon fontSize="small" /> },
+  { label: subscriptionStrings.menuLabel, path: '/settings/subscription', icon: <AppIcon icon={CreditCard} size="md" /> },
   { label: t.navAccount, path: '/settings/account', icon: <PersonOutlineIcon fontSize="small" /> },
   { label: t.navAi, path: '/settings/ai', icon: <AutoAwesomeOutlinedIcon fontSize="small" /> },
   { label: extensionStrings.nav.title, path: '/settings/extension', icon: <ExtensionOutlinedIcon fontSize="small" /> },

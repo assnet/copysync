@@ -16,6 +16,7 @@ import { ChangePasswordPage } from '@/pages/settings/ChangePasswordPage';
 import { AffiliateCredentialsPage } from '@/pages/settings/AffiliateCredentialsPage';
 import { AiSettingsPage } from '@/pages/settings/AiSettingsPage';
 import { ExtensionSettingsPage } from '@/pages/settings/ExtensionSettingsPage';
+import { SubscriptionPage } from '@/pages/settings/SubscriptionPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
@@ -83,6 +84,7 @@ export function AppRoutes() {
             <Route path="affiliate-credentials" element={<LegacyAffiliateCredentialsRedirect />} />
             <Route path="ai" element={<AiSettingsPage />} />
             <Route path="extension" element={<ExtensionSettingsPage />} />
+            <Route path="subscription" element={<SubscriptionPage />} />
           </Route>
           <Route element={<SuperAdminRoute />}>
             {/* Chat: só super admin por enquanto (fora do menu dos demais) */}
