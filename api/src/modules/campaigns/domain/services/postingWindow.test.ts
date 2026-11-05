@@ -3,6 +3,8 @@ import {
   ALL_WEEKDAYS_MASK,
   isValidWeekdaysMask,
   isWithinPostingWindow,
+  normalizePostingRange,
+  normalizeWindowStartMinute,
   resolveStartWithinPostingWindow,
   weekdayInZone,
   weekdaysFromMask,
@@ -86,5 +88,18 @@ describe('postingWindow', () => {
     const w = { startMinute: 480, endMinute: 1200, weekdaysMask: ALL_WEEKDAYS_MASK };
     expect(resolveStartWithinPostingWindow(sp(6, 6), w)).toEqual(sp(6, 8));
     expect(resolveStartWithinPostingWindow(sp(6, 21), w)).toEqual(sp(7, 8));
+  });
+
+  it('início 1440 = 00:00 do mesmo dia (espelho do claim SQL `start % 1440`)', () => {
+    expect(normalizePostingRange({ startMinute: 1440, endMinute: 360 })).toEqual({ startMinute: 0, endMinute: 360 });
+    expect(normalizePostingRange({ startMinute: 0, endMinute: 1440 })).toEqual({ startMinute: 0, endMinute: 1440 });
+    expect(normalizeWindowStartMinute(1320, 360)).toBe(1320);
+    // 24:00 → 06:00 só sexta: sexta 01:00 sai (dia de hoje, não quinta); sábado 01:00 não
+    const w = { startMinute: 1440, endMinute: 360, weekdaysMask: weekdaysMask([FRI]) };
+    expect(isWithinPostingWindow(sp(6, 1), w)).toBe(true);
+    expect(isWithinPostingWindow(sp(7, 1), w)).toBe(false);
+    expect(isWithinPostingWindow(sp(6, 7), w)).toBe(false);
+    // quinta 10:00 → próxima abertura sexta 00:00
+    expect(resolveStartWithinPostingWindow(sp(5, 10), w)).toEqual(sp(6, 0));
   });
 });

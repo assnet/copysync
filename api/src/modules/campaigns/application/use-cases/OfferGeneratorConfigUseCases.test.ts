@@ -251,9 +251,9 @@ describe('Offer generator config — horário de postagem (PS-05)', () => {
     expect(out).toMatchObject({ intervalMinSeconds: 60, windowStartMinute: 480, windowEndMinute: 1080, weekdays: [1, 2, 3, 4, 5] });
   });
 
-  it('1440 → 360 é a janela 00:00–06:00 (válida)', async () => {
+  it('1440 → 360 é a janela 00:00–06:00 (válida) e grava início 0 (mesmo dia, igual ao claim SQL)', async () => {
     const out = await setup().save.execute({ ...base, conversationIds: [], windowStartMinute: 1440, windowEndMinute: 360 });
-    expect(out).toMatchObject({ windowStartMinute: 1440, windowEndMinute: 360 });
+    expect(out).toMatchObject({ windowStartMinute: 0, windowEndMinute: 360 });
   });
 
   it.each([

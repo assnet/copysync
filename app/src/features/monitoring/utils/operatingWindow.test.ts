@@ -35,6 +35,10 @@ describe('janela noturna', () => {
     expect(windowToSettings({ lo: 480, hi: 1080, overnight: false })).toEqual({ windowStartMinute: 480, windowEndMinute: 1080 });
   });
 
+  it('noturna com hi = 24:00 envia início 0 (00:00–06:00 do mesmo dia)', () => {
+    expect(windowToSettings({ lo: 360, hi: 1440, overnight: true })).toEqual({ windowStartMinute: 0, windowEndMinute: 360 });
+  });
+
   it('ida e volta preservam a janela', () => {
     for (const [s, e] of [[1320, 360], [0, 1440], [540, 1020]] as const) {
       expect(windowToSettings(windowFromSettings(s, e))).toEqual({ windowStartMinute: s, windowEndMinute: e });

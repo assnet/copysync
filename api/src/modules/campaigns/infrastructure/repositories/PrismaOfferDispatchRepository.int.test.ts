@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
-import { PrismaOfferDispatchRepository } from './PrismaOfferDispatchRepository';
+import { Prisma } from '@prisma/client';
+import { PrismaOfferDispatchRepository, postingWindowOpenSql, zoneMinuteSql } from './PrismaOfferDispatchRepository';
+import { isWithinPostingWindow, weekdayInZone, type PostingWindow } from '../../domain/services/postingWindow';
 
 /**
  * `claimDue` contra o Postgres real (docs/fila-de-envio.md): janela de operação do monitoramento
@@ -268,5 +270,78 @@ describe('skipExpired', () => {
     expect(await repo.skipExpired(spToUtc(8))).toBe(2);
     const rows = await prisma.offerDispatch.findMany({ where: { tenantId }, orderBy: { notBefore: 'asc' } });
     expect(rows.map((r) => [r.status, r.failureReason])).toEqual([['SKIPPED', 'OFFER_EXPIRED'], ['SKIPPED', 'OFFER_EXPIRED'], ['QUEUED', null], ['QUEUED', null]]);
+  });
+});
+
+/** Sessão do Postgres em outro fuso: `ALTER DATABASE` + reconexão (o pool abre conexões novas). */
+async function sessionTimeZone(tz: string) {
+  await prisma.$executeRawUnsafe(`ALTER DATABASE "${'copysync_int'}" SET timezone = '${tz}'`);
+  await prisma.$disconnect();
+}
+
+/** Mesma janela e instante: o SQL do claim responde igual a `isWithinPostingWindow`. */
+async function sqlOpen(w: PostingWindow, now: Date): Promise<boolean> {
+  const wd = weekdayInZone(now);
+  const open = postingWindowOpenSql('g', zoneMinuteSql(now), 1 << wd, 1 << ((wd + 6) % 7));
+  const rows = await prisma.$queryRaw<{ open: boolean }[]>(Prisma.sql`SELECT ${open} AS "open"
+    FROM (VALUES (${w.startMinute}::int, ${w.endMinute}::int, ${w.weekdaysMask}::int)) AS g("windowStartMinute", "windowEndMinute", "weekdaysMask")`);
+  return rows[0]!.open;
+}
+
+describe('paridade TS × SQL da janela (virada de dia, início 0, início 1440, noturna)', () => {
+  afterAll(async () => {
+    await sessionTimeZone('UTC');
+  });
+
+  const FRI = 1 << 5;
+  const windows: PostingWindow[] = [
+    { startMinute: 1320, endMinute: 120, weekdaysMask: FRI },
+    { startMinute: 0, endMinute: 360, weekdaysMask: FRI },
+    { startMinute: 1440, endMinute: 360, weekdaysMask: FRI },
+    { startMinute: 1440, endMinute: 360, weekdaysMask: 127 },
+    { startMinute: 360, endMinute: 1440, weekdaysMask: FRI },
+    { startMinute: 1320, endMinute: 0, weekdaysMask: FRI },
+    { startMinute: 0, endMinute: 1440, weekdaysMask: FRI },
+  ];
+  // 29/10 = quinta, 30 = sexta, 31 = sábado (horário de SP)
+  const instants = [
+    spToUtc(23, 59, 29), spToUtc(0, 0, 30), spToUtc(0, 30, 30), spToUtc(1, 59, 30), spToUtc(2, 0, 30), spToUtc(5, 59, 30),
+    spToUtc(6, 0, 30), spToUtc(12, 0, 30), spToUtc(21, 59, 30), spToUtc(22, 0, 30), spToUtc(23, 59, 30), spToUtc(0, 0, 31),
+    spToUtc(1, 0, 31), spToUtc(5, 59, 31),
+  ];
+
+  it.each(['UTC', 'Asia/Tokyo', 'America/Los_Angeles'])('sessão em %s: mesmas entradas, mesmo resultado', async (tz) => {
+    await sessionTimeZone(tz);
+    const [{ zone }] = await prisma.$queryRaw<{ zone: string }[]>`SELECT current_setting('TimeZone') AS "zone"`;
+    expect(zone).toBe(tz);
+    for (const w of windows) {
+      for (const at of instants) {
+        expect({ w, at: at.toISOString(), open: await sqlOpen(w, at) }).toEqual({ w, at: at.toISOString(), open: isWithinPostingWindow(at, w) });
+      }
+    }
+  });
+
+  it('início 1440 (24:00 → 06:00 de sexta): sexta 01:00 abre nos dois, sábado 01:00 não', async () => {
+    const w = { startMinute: 1440, endMinute: 360, weekdaysMask: FRI };
+    expect([await sqlOpen(w, spToUtc(1, 0, 30)), isWithinPostingWindow(spToUtc(1, 0, 30), w)]).toEqual([true, true]);
+    expect([await sqlOpen(w, spToUtc(1, 0, 31)), isWithinPostingWindow(spToUtc(1, 0, 31), w)]).toEqual([false, false]);
+  });
+});
+
+describe('claimDue — sessão do Postgres fora de UTC', () => {
+  afterAll(async () => {
+    await sessionTimeZone('UTC');
+    await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { windowStartMinute: 360, windowEndMinute: 1200, weekdaysMask: 127 } });
+  });
+
+  it('janela 06–20 em SP vale igual com a sessão em Asia/Tokyo', async () => {
+    await sessionTimeZone('Asia/Tokyo');
+    await reset();
+    await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { windowStartMinute: 360, windowEndMinute: 1200, weekdaysMask: 127 } });
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(5, 0, 28));
+    // 05:30 em SP (= 17:30 em Tóquio, dentro de 06–20 se o fuso vazasse): fora
+    expect(await repo.claimDue(spToUtc(5, 30, 28), 10)).toEqual([]);
+    expect((await repo.claimDue(spToUtc(7, 0, 28), 10)).map((d) => d.offerId)).toEqual([mon.id]);
   });
 });

@@ -23,7 +23,7 @@ export const LANE_TIMEOUT_HOLD_SECONDS = 120;
  * meia-noite: o trecho após o início usa o bit de hoje; o trecho após 00:00, o bit de ontem (dia do início).
  * `alias` é sempre literal interno (nunca entrada do usuário).
  */
-function postingWindowOpenSql(alias: 'g' | 'c', zoneMinute: Prisma.Sql, todayBit: number, prevBit: number): Prisma.Sql {
+export function postingWindowOpenSql(alias: 'g' | 'c', zoneMinute: Prisma.Sql, todayBit: number, prevBit: number): Prisma.Sql {
   const start = Prisma.raw(`${alias}."windowStartMinute"`);
   const end = Prisma.raw(`${alias}."windowEndMinute"`);
   const mask = Prisma.raw(`${alias}."weekdaysMask"`);
@@ -35,6 +35,15 @@ function postingWindowOpenSql(alias: 'g' | 'c', zoneMinute: Prisma.Sql, todayBit
     OR ((${start} % 1440) > ${end}
       AND ((${zoneMinute} >= (${start} % 1440) AND ${today}) OR (${zoneMinute} < ${end} AND ${prev})))
   )`;
+}
+
+/**
+ * Minuto do dia de `now` em São Paulo. `now` é instante absoluto (`timestamptz`): o resultado não
+ * depende do `TimeZone` da sessão do Postgres (`::timestamp` dependia).
+ */
+export function zoneMinuteSql(now: Date): Prisma.Sql {
+  const local = Prisma.sql`(${now}::timestamptz AT TIME ZONE ${WINDOW_TIME_ZONE})`;
+  return Prisma.sql`(EXTRACT(HOUR FROM ${local})::int * 60 + EXTRACT(MINUTE FROM ${local})::int)`;
 }
 
 export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
@@ -103,9 +112,7 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    */
   async claimDue(now: Date, limit: number): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
-    // `now` chega como timestamp sem fuso em UTC (padrão das colunas); vira minuto do dia no fuso
-    const zoneMinute = Prisma.sql`(EXTRACT(HOUR FROM ((${now}::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${WINDOW_TIME_ZONE}))::int * 60
-      + EXTRACT(MINUTE FROM ((${now}::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${WINDOW_TIME_ZONE}))::int)`;
+    const zoneMinute = zoneMinuteSql(now);
     // Dia da semana no fuso (hoje e ontem) calculado aqui pela mesma regra do domínio
     const zoneWeekday = weekdayInZone(now, WINDOW_TIME_ZONE);
     const prevWeekday = (zoneWeekday + 6) % 7;

@@ -40,6 +40,12 @@ describe('GroupMonitorConfigUseCases', () => {
     await expect(s.get.execute({ tenantId: 'outro', sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('início 1440 (24:00 → 06:00) grava 0: mesmo dia na regra e no claim', async () => {
+    const s = setup();
+    const out = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, windowStartMinute: 1440, windowEndMinute: 360 } });
+    expect(out.settings).toMatchObject({ windowStartMinute: 0, windowEndMinute: 360 });
+  });
+
   it('salva configuração válida; inválida vira 422 com o campo; marcar todos respeita o plano', async () => {
     const s = setup({ mention_all_enabled: false });
     const ok = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, enabled: true, windowStartMinute: 1320, windowEndMinute: 360 } });

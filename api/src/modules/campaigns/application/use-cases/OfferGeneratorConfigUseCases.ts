@@ -15,7 +15,7 @@ import { OFFER_DISPATCH_ORDERS, type OfferDispatchOrder } from '../../domain/ent
 import type { IBroadcastGroupUsageReader } from '../../domain/contracts/IBroadcastGroupUsageReader';
 import { countDistinctBroadcastGroups, type BroadcastGroupRow } from '../../domain/services/broadcastGroupUnion';
 import {
-  ALL_WEEKDAYS_MASK, isFullDayRange, isValidWeekdaysMask, MINUTES_PER_DAY, weekdaysFromMask, weekdaysMask,
+  ALL_WEEKDAYS_MASK, isFullDayRange, isValidWeekdaysMask, MINUTES_PER_DAY, normalizeWindowStartMinute, weekdaysFromMask, weekdaysMask,
 } from '../../domain/services/postingWindow';
 
 /** Grupos por configuração quando o plano não define `broadcast_groups`: teto técnico. */
@@ -262,5 +262,6 @@ function resolvePostingWindow(
     }
   }
   if (!isValidWeekdaysMask(mask)) throw new OfferInvalidInputError('At least one weekday', 'weekdays');
-  return { windowStartMinute, windowEndMinute, weekdaysMask: mask };
+  // Início 24:00 grava 0 (mesmo dia): regra TS e claim SQL leem igual
+  return { windowStartMinute: normalizeWindowStartMinute(windowStartMinute, windowEndMinute), windowEndMinute, weekdaysMask: mask };
 }

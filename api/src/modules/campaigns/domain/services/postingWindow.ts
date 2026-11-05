@@ -59,8 +59,26 @@ export function minuteOfDayInZone(at: Date, timeZone = POSTING_TIME_ZONE): numbe
   return h * 60 + m;
 }
 
+type MinuteRange = Pick<PostingWindow, 'startMinute' | 'endMinute'>;
+
+/**
+ * Início 1440 (24:00) é o 00:00 do mesmo dia: `start % 1440`, espelho do claim SQL
+ * (`postingWindowOpenSql`). Sem isso a faixa 24:00→06:00 (lado noturno de 06–24 no painel) usaria
+ * o dia anterior aqui e o de hoje no envio. `0..1440` (dia inteiro) fica como está.
+ */
+export function normalizePostingRange<T extends MinuteRange>(w: T): T {
+  if (isFullDayRange(w) || w.startMinute !== MINUTES_PER_DAY) return w;
+  return { ...w, startMinute: 0 };
+}
+
+/** Início a gravar (1440 → 0, exceto dia inteiro): validadores do gerador e do monitoramento. */
+export function normalizeWindowStartMinute(startMinute: number, endMinute: number): number {
+  return normalizePostingRange({ startMinute, endMinute }).startMinute;
+}
+
 /** Só a faixa de minutos, sem dia da semana. */
-export function isMinuteWithinRange(minute: number, w: Pick<PostingWindow, 'startMinute' | 'endMinute'>): boolean {
+export function isMinuteWithinRange(minute: number, range: MinuteRange): boolean {
+  const w = normalizePostingRange(range);
   if (isFullDayRange(w)) return true;
   if (w.startMinute <= w.endMinute) return minute >= w.startMinute && minute < w.endMinute;
   return minute >= w.startMinute || minute < w.endMinute;
@@ -70,7 +88,8 @@ export function isMinuteWithinRange(minute: number, w: Pick<PostingWindow, 'star
  * `at` cai na janela? Faixa que cruza a meia-noite: o trecho até 23:59 usa o dia de hoje,
  * o trecho após 00:00 usa o dia anterior (dia do início). Mask inválido = nunca.
  */
-export function isWithinPostingWindow(at: Date, w: PostingWindow, timeZone = POSTING_TIME_ZONE): boolean {
+export function isWithinPostingWindow(at: Date, window: PostingWindow, timeZone = POSTING_TIME_ZONE): boolean {
+  const w = normalizePostingRange(window);
   if (!isValidWeekdaysMask(w.weekdaysMask)) return false;
   const minute = minuteOfDayInZone(at, timeZone);
   if (!isMinuteWithinRange(minute, w)) return false;
@@ -85,7 +104,8 @@ export function isWithinPostingWindow(at: Date, w: PostingWindow, timeZone = POS
  * (início da faixa num dia do mask), em até 7 dias. O fim só ancora o início.
  * Mask inválido lança `RangeError`.
  */
-export function resolveStartWithinPostingWindow(at: Date, w: PostingWindow, timeZone = POSTING_TIME_ZONE): Date {
+export function resolveStartWithinPostingWindow(at: Date, window: PostingWindow, timeZone = POSTING_TIME_ZONE): Date {
+  const w = normalizePostingRange(window);
   if (!isValidWeekdaysMask(w.weekdaysMask)) throw new RangeError(`weekdaysMask inválido: ${w.weekdaysMask}`);
   if (isWithinPostingWindow(at, w, timeZone)) return at;
   let midnight = startOfDayInZone(at, timeZone).getTime();

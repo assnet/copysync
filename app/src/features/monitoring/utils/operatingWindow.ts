@@ -33,8 +33,11 @@ export function windowFromSettings(start: number, end: number): OperatingWindow 
   return end < start ? { lo: end, hi: start, overnight: true } : { lo: start, hi: end, overnight: false };
 }
 
+/** Noturna com `hi` = 24:00 envia início 0 (00:00 do mesmo dia), igual à regra e ao claim da API. */
 export function windowToSettings(w: OperatingWindow): { windowStartMinute: number; windowEndMinute: number } {
-  return w.overnight ? { windowStartMinute: w.hi, windowEndMinute: w.lo } : { windowStartMinute: w.lo, windowEndMinute: w.hi };
+  return w.overnight
+    ? { windowStartMinute: w.hi % DAY_MINUTES, windowEndMinute: w.lo }
+    : { windowStartMinute: w.lo, windowEndMinute: w.hi };
 }
 
 /** Minutos por dia em que o envio pode acontecer. */

@@ -15,6 +15,7 @@ import {
 import { PlanFeatureUnavailableError, PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { postabilityOf } from '../../../campaigns/domain/services/groupPostability';
+import { normalizeWindowStartMinute } from '../../../campaigns/domain/services/postingWindow';
 import { loadLiveGroups } from '../../../campaigns/application/services/loadLiveGroups';
 import { countDistinctBroadcastGroups } from '../../../campaigns/domain/services/broadcastGroupUnion';
 import type { IBroadcastGroupUsageReader } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
@@ -153,6 +154,8 @@ export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
     if (settings.mentionAll && (await this.deps.entitlements.getBoolean(input.tenantId, MENTION_ALL_ENABLED)) === false) {
       throw new PlanFeatureUnavailableError(MENTION_ALL_ENABLED);
     }
+    // Início 24:00 grava 0 (mesmo dia): regra TS e claim SQL leem igual
+    settings.windowStartMinute = normalizeWindowStartMinute(settings.windowStartMinute, settings.windowEndMinute);
     await this.deps.monitors.saveSettings(input.tenantId, input.sessionId, settings);
     return this.load(input);
   }
