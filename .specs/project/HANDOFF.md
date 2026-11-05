@@ -1,6 +1,11 @@
 # Handoff — 2026-11-04 (sessão até 21:00)
 
-> **🔴 ALERTA DE SEGURANÇA — PulsoSocial em produção (central 1.86.0)**: a caracterização apontou 4 falhas: (1) `/session/sign-in` aceita qualquer senha via basic-auth quando o usuário não tem senha; (2) rota pública devolve CPF inteiro de qualquer e-mail; (3) `checkout/process` público altera nome/telefone/documento da conta de outra pessoa pelo e-mail; (4) `/cakto/orders` sem exigir ADMIN. Confirmação em leitura de código em andamento; correção depende de decisão e deploy do dono.
+> **🔴 ALERTA DE SEGURANÇA — PulsoSocial em produção (central 1.86.0), CONFIRMADO no código:**
+> 1. **Crítica — tomada de conta**: `module.ts:~367` aceita qualquer senha via basic-auth em conta sem senha e `session.ts` grava a senha enviada. Basta o e-mail. Expostas: contas criadas por checkout, checkout-sessions, checkout-security (OTP de cartão), free-tier, trial e Cakto antes do 1º login. Só mitigado se `LOGIN_EMAIL_OTP=true` na Render (verificar).
+> 2. **Alta — LGPD**: `GET /checkout/customer-lookup/:email` público devolve nome, telefone e CPF/CNPJ completos (e enumera contas). Revisar também `GET /checkout/saved-cards/:email`.
+> 3. **Alta**: `checkout/process` público sobrescreve dados cadastrais de conta existente sem pagar.
+> 4. **Alta**: `GET /cakto/orders`, `/cakto/subscriptions`, `/cakto/balance` só exigem login, não ADMIN.
+> Hotfix sendo preparado no branch local `hotfix/seguranca-acesso-dados` (sem push/deploy). **Dono decide o deploy**; o fix 1 muda o 1º acesso (sem senha → fluxo de definir/esqueci a senha).
 
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
 `tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: api 3088/3088, app 1218/1218).
