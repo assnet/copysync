@@ -31,7 +31,6 @@ import { UploadSessionSweeper } from '../modules/media/infrastructure/uploads/Up
 import { diskBudget } from '../modules/media/domain/services/diskBudget';
 import { initMediaModule, mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { SecretCipherFactory } from '../shared/security/SecretCipherFactory';
-import { flushAllAuthStates } from '../modules/messaging/infrastructure/engines/baileys/BaileysAuthStatePersistence';
 import { registerTenantSuspendedSessionListener } from '../modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener';
 import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogRepository';
 import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
@@ -47,9 +46,10 @@ import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/
 import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
-import { currentRole } from '../shared/config/processRole';
+import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
 import { jobsFor } from './processJobs';
 import { composeForRole } from './roleComposition';
+import { buildWorkerApp } from './workerApp';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -86,13 +86,44 @@ async function connectDatabaseWithRetry(): Promise<void> {
   }
 }
 
+/** `worker`: Fastify só com `/health` (WROLE-04). Redis por `import()`: `all`/`http` nunca carregam por aqui. */
+function buildWorkerHealthApp(engine: IMessagingEngine, workerId: string) {
+  return buildWorkerApp({
+    workerId,
+    localSessions: () => (hasSocketControl(engine) ? engine.listLocalSessionIds().length : 0),
+    redis: async () => {
+      const { redisCommand } = await import('../shared/redis/redisConnections');
+      return (await redisCommand().ping()) === 'PONG';
+    },
+    database: async () => {
+      await prisma.$queryRaw`SELECT 1`;
+      return true;
+    },
+  });
+}
+
+/** Fecha os clientes Redis do papel (WROLE-15). `all` não abre Redis (D1). */
+async function closeRedis(role: ProcessRole): Promise<void> {
+  if (role === 'all') return;
+  try {
+    const { closeAllRedis } = await import('../shared/redis/redisConnections');
+    await closeAllRedis();
+    logger.info('Redis connections closed');
+  } catch (err) {
+    logger.error({ err }, 'Closing Redis connections failed during shutdown');
+  }
+}
+
 async function start(): Promise<void> {
+  const role = currentRole();
   // Engine do papel ANTES de `buildApp`: as rotas leem `getActiveEngine()` no registro (WROLE-02/05).
-  // `all` = engine local, igual ao import de `session.routes` de antes. `stop()` entra no shutdown na T19.
-  await composeForRole(currentRole());
-  const app = await buildApp();
+  // `all` = engine local, igual ao import de `session.routes` de antes.
+  const composition = await composeForRole(role);
+  // Lease de sessão: mesmo singleton das engines (gate, socket control). `workerId` do processo.
+  const lease = sessionLeaseContainer();
+  const app = role === 'worker' ? buildWorkerHealthApp(composition.engine, lease.workerId) : await buildApp();
   // Jobs de boot deste papel (§3.3). `all` (default) = todos, na ordem de sempre.
-  const jobs = jobsFor(currentRole());
+  const jobs = jobsFor(role);
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
@@ -126,6 +157,8 @@ async function start(): Promise<void> {
   const failOrphanPendingMedia = new FailOrphanPendingMediaUseCase(chatMessageRepo, chatMediaContainer.statusPublisher, {
     enabled:      env.MEDIA_PENDING_RECOVERY_ENABLED,
     staleMinutes: env.MEDIA_PENDING_STALE_MINUTES,
+    // WROLE-14: o boot poupa PENDING de sessão com lease vivo de outro processo
+    workerId:     lease.workerId,
   });
   if (jobs.has('pendingMediaBoot')) {
     try {
@@ -149,7 +182,7 @@ async function start(): Promise<void> {
   // ── Start HTTP server ──────────────────────────────────────────────────────
   try {
     await app.listen({ port: env.PORT, host: env.HOST });
-    logger.info({ port: env.PORT, host: env.HOST, env: env.NODE_ENV }, 'Server started');
+    logger.info({ port: env.PORT, host: env.HOST, env: env.NODE_ENV, ...(role !== 'all' && { role }) }, 'Server started');
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');
     process.exit(1);
@@ -287,8 +320,9 @@ async function start(): Promise<void> {
     chatMessageRepo,
   );
   registerChatIncomingMessageListener(ingestUseCase);
-  // Grava capturas no banco: só com a flag (api/.env local aponta para produção, AGENTS §22)
-  if (env.GROUP_MONITORING_ENABLED) registerGroupMonitoringListener();
+  // Grava capturas no banco: só com a flag (api/.env local aponta para produção, AGENTS §22).
+  // Só onde há sessões: as mensagens de grupo nascem no processo dono do socket.
+  if (runsSessions(role) && env.GROUP_MONITORING_ENABLED) registerGroupMonitoringListener();
   registerChatMessageStatusListener(chatMessageRepo);
   registerChatMessageReactionListener(
     new IngestMessageReactionUseCase(chatMessageRepo, chatReactionRepo, chatContactRepo),
@@ -299,22 +333,14 @@ async function start(): Promise<void> {
   registerChatSessionStatusListener();
   registerChatConversationStateListener(chatConversationRepo);
 
-  // ── Lease de sessão ────────────────────────────────────────────────────────
-  // Mesmo singleton que `session.routes.ts` já ligou (gate nas engines, socket control).
-  const lease = sessionLeaseContainer();
-
   // ── Session suspension listener ────────────────────────────────────────────
-  {
-    const activeEngine = getActiveEngine();
-    if (activeEngine) {
-      registerTenantSuspendedSessionListener(
-        new PrismaSessionRepository(),
-        activeEngine,
-        new PrismaAuditLogRepository(),
-        lease.release,
-      );
-    }
-  }
+  // Todo papel (WROLE-13): no `http` a engine remota leva o `disconnect` ao dono por BullMQ.
+  registerTenantSuspendedSessionListener(
+    new PrismaSessionRepository(),
+    composition.engine,
+    new PrismaAuditLogRepository(),
+    lease.release,
+  );
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Disabled by default in production because reconnecting WhatsApp sessions on
@@ -361,16 +387,22 @@ async function start(): Promise<void> {
   }
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
+  // WROLE-15. `all`: ordem de hoje. `http`: jobs → composição → mídia → Redis → app.
+  // `worker`: keeper → jobs → consumidores BullMQ/RPC → mídia (ofertas, D8) → sockets → flush →
+  // leases → Redis → app. `stop()` da composição: no-op em `all`.
+  const sessions = runsSessions(role);
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutdown signal received');
     // Cancela o timer já; a passada em curso é aguardada antes de fechar os sockets (F8).
     const bootRecheckSettled = cancelBootRecheck?.() ?? Promise.resolve();
     // LEASE-09: primeiro o keeper — nenhuma renovação concorre com o fechamento dos sockets.
-    try {
-      await lease.keeper.stop();
-      logger.info('Session lease keeper stopped');
-    } catch (err) {
-      logger.error({ err }, 'Session lease keeper stop failed during shutdown');
+    if (sessions) {
+      try {
+        await lease.keeper.stop();
+        logger.info('Session lease keeper stopped');
+      } catch (err) {
+        logger.error({ err }, 'Session lease keeper stop failed during shutdown');
+      }
     }
     uploadSweeper?.stop();
     if (pendingMediaSweep) clearInterval(pendingMediaSweep);
@@ -396,6 +428,11 @@ async function start(): Promise<void> {
     } catch (err) {
       logger.error({ err }, 'Extension retention job stop failed during shutdown');
     }
+    // Consumidores BullMQ/RPC (worker) e cliente RPC/relay (http): nada novo chega à engine.
+    if (role !== 'all') {
+      await composition.stop();
+      logger.info({ role }, 'Role composition stopped');
+    }
     // Antes do `app.close()`: envios de mídia em andamento terminam; o que ficar PENDING a
     // recuperação do próximo boot resolve. Novos envios nesse intervalo são recusados (FAILED).
     try {
@@ -407,31 +444,36 @@ async function start(): Promise<void> {
     }
     // F8: a 2ª passada do boot em curso pode abrir socket; termina antes de fechá-los.
     await bootRecheckSettled;
-    // LEASE-09: sockets fechados antes do flush (nenhuma chave nova chega depois dele).
-    // Mídia × flush fica nesta ordem até a E4.
-    try {
-      const engine = getActiveEngine();
-      if (hasSocketControl(engine)) {
-        const count = engine.listLocalSessionIds().length;
-        await engine.closeAllSockets();
-        logger.info({ count }, 'Session sockets closed');
+    if (sessions) {
+      // LEASE-09: sockets fechados antes do flush (nenhuma chave nova chega depois dele).
+      // Mídia × flush fica nesta ordem até a E4.
+      try {
+        const engine = getActiveEngine();
+        if (hasSocketControl(engine)) {
+          const count = engine.listLocalSessionIds().length;
+          await engine.closeAllSockets();
+          logger.info({ count }, 'Session sockets closed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Closing session sockets failed during shutdown');
       }
-    } catch (err) {
-      logger.error({ err }, 'Closing session sockets failed during shutdown');
+      // `import()`: o `http` nunca carrega o Baileys (WROLE-05); nos papéis com sessão já está em cache.
+      try {
+        const { flushAllAuthStates } = await import('../modules/messaging/infrastructure/engines/baileys/BaileysAuthStatePersistence');
+        await flushAllAuthStates();
+        logger.info('Auth states flushed');
+      } catch (err) {
+        logger.error({ err }, 'Auth state flush failed during shutdown');
+      }
+      // D1: solta os leases deste worker e marca DISCONNECTED as ativas (mantém o pedido de conexão).
+      try {
+        const count = await lease.repo.releaseAllOwned(lease.workerId);
+        logger.info({ count, workerId: lease.workerId }, 'Session leases released');
+      } catch (err) {
+        logger.error({ err }, 'Session lease release failed during shutdown');
+      }
     }
-    try {
-      await flushAllAuthStates();
-      logger.info('Auth states flushed');
-    } catch (err) {
-      logger.error({ err }, 'Auth state flush failed during shutdown');
-    }
-    // D1: solta os leases deste worker e marca DISCONNECTED as ativas (mantém o pedido de conexão).
-    try {
-      const count = await lease.repo.releaseAllOwned(lease.workerId);
-      logger.info({ count, workerId: lease.workerId }, 'Session leases released');
-    } catch (err) {
-      logger.error({ err }, 'Session lease release failed during shutdown');
-    }
+    await closeRedis(role);
     try {
       await app.close();
       await prisma.$disconnect();
