@@ -41,6 +41,7 @@ Regras comuns a toda task:
 | T22 | Fila de comando: resultado desconhecido, sem reexecução, prazo e shutdown com teto | T21 | P | ✅ b0b1c28 |
 | T23 | Boot por papel: falha encerra, S3 completo validado, porta antes do relay | T21 | P | ✅ 740b7b1 |
 | T24 | RPC com prazo no worker; limpeza de `outbound-tmp/` | T21 | P | ✅ 574c291 |
+| T25 | Painel: resultado desconhecido não oferece reenvio de mídia | T22 | P | ⏳ |
 
 ### T18b: Rotas usam a engine ativa; concorrência das filas por env
 
@@ -82,6 +83,14 @@ Revisão: modo `all` sem achado (não importa Redis/BullMQ, mesma engine, ordem 
 **Tests**: int: pedido vencido não executa; unit: varredura apaga só o prefixo e só acima da idade
 **Gate**: `pnpm vitest run src/modules/messaging src/app` + int + `pnpm tsc --noEmit`
 **Commit**: `fix(messaging): RPC com prazo e limpeza da mídia temporária`
+
+### T25: Painel: resultado desconhecido não oferece reenvio de mídia [P]
+
+**What**: `app/src/features/chat/media/outgoingMediaState.ts` (`failureKind`) trata 504 como `network` e mostra "Tentar de novo"; com `ENGINE_COMMAND_OUTCOME_UNKNOWN` (504) o reenvio pode duplicar. Novo tipo `outcomeUnknown`: mensagem `upload.errors.outcomeUnknown` (já em `chat/strings.ts`), sem botão de reenvio automático; ação "Conferir conversa" ou só fechar. Decidir pelo `code` da resposta, não só pelo status.
+**Where**: `outgoingMediaState.ts` (+ teste), componente que renderiza o estado de falha da mídia
+**Done when**: teste: 504 com `ENGINE_COMMAND_OUTCOME_UNKNOWN` → sem "Tentar de novo"; 504 sem esse código continua `network`
+**Gate**: `pnpm vitest run` + `pnpm tsc --noEmit` em `app/`
+**Commit**: `fix(app): mídia com resultado desconhecido não oferece reenvio`
 
 ## Notas de execução (passagem entre tarefas)
 
