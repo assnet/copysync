@@ -17,7 +17,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 
 ## API
 
-### T1 [P]: Campo de vencimento ⏳
+### T1 [P]: Campo de vencimento ✅ 0bbc3f0
 **What**: `Tenant.subscriptionExpiresAt DateTime?` + migration `add_tenant_subscription_expires_at`; entidade e mapper.
 **Where**: `api/prisma/schema.prisma`, `api/prisma/migrations/<ts>_add_tenant_subscription_expires_at/`, `tenants/domain/entities/Tenant.ts`, `tenants/infrastructure/mappers/PrismaTenantMapper.ts`.
 **Depends on**: — (D1) **Req**: SUB-03 **Done when**: migration aplica no descartável; `tsc` verde. **Tests**: none **Gate**: full
@@ -52,7 +52,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `tenants/application/use-cases/GetTenantSubscriptionUseCase.ts`, `tenants/application/dtos/TenantSubscriptionDto.ts` (+ teste com fakes).
 **Depends on**: T1, T4, T5, T6 **Req**: SUB-01, 04 **Done when**: teste: plano nulo, SUSPENDED com `suspendedAt`, ilimitado, Telegram 0. **Tests**: unit **Gate**: quick
 
-### T8: Rota + presenter ⏳
+### T8: Rota + presenter ✅ 91cb93a
 **What**: `GET /subscription` com `[authHook, tenantAnyStatusHook]`, schema de resposta (OpenAPI), `SubscriptionPresenter` (datas ISO, slug fora de `PLAN_SLUGS` → `null`); registro em `routes.ts`.
 **Where**: `tenants/presentation/routes/subscription.routes.ts`, `tenants/presentation/presenters/SubscriptionPresenter.ts`, `api/src/app/routes.ts` (+ `subscription.routes.test.ts` com inject).
 **Depends on**: T3, T7 **Req**: SUB-01, 02 **Done when**: inject: 200 no ACTIVE e no SUSPENDED; 401 sem token; 403 não-membro. **Tests**: unit **Gate**: full
@@ -129,3 +129,5 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 
 - T7: `GetTenantSubscriptionUseCase` lê vencimento via alias `TenantWithExpiry` (opcional) e devolve `expiresAt: null` até a T1; remover o alias quando a T1 entrar.
 - D1 (guardar vencimento) seguido pela recomendação em 2026-11-04 para destravar T1/T2 e o follow-up do receiver (`expiresAt` de `subscription.updated`); dono pode rever.
+- T1: `Tenant.subscriptionExpiresAt` (migration `20261105001005`); alias da T7 removido.
+- T8: `GET /subscription` com `tenantAnyStatusHook`; presenter traduz `COPYSYNC_LITE/PRO/MAX` → `starter/profissional/business` (registrar em docs na T17).
