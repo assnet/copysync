@@ -1,4 +1,4 @@
-import { Box, Card, CardActionArea, Typography } from '@mui/material';
+import { Box, Card, CardActionArea, Tooltip, Typography } from '@mui/material';
 import { AppIcon } from '@/components';
 import type { OfferAudience } from '@/types/api.types';
 import { offerStrings } from '../strings';
@@ -21,15 +21,17 @@ export function AudiencePicker({ value, onChange, disabled, label }: Props) {
       sx={{
         display: 'grid',
         gap: 1,
-        gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' },
+                // Colunas pela largura real do formulário (não pelo breakpoint da janela): a 1280 px o
+        // formulário divide a tela e 4 colunas fixas cortavam "Beleza/Moda" e "Casa/Cozinha".
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr))',
       }}
     >
       {OFFER_AUDIENCES.map((key) => {
         const a = offerStrings.audiences[key];
         const selected = key === value;
         return (
+          <Tooltip key={key} title={`${a.label}: ${a.subtitle}`} placement="top" enterDelay={400}>
           <Card
-            key={key}
             variant="outlined"
             sx={{
               borderColor: selected ? 'primary.main' : 'divider',
@@ -43,18 +45,19 @@ export function AudiencePicker({ value, onChange, disabled, label }: Props) {
               aria-checked={selected}
               disabled={disabled}
               onClick={() => onChange(key)}
-              sx={{ p: 1.25, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}
+              sx={{ p: 1.25, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 0.25, minWidth: 0 }}
             >
               <Typography
                 variant="subtitle2"
-                sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.75, color: selected ? 'primary.main' : 'text.primary' }}
+                sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, color: selected ? 'primary.main' : 'text.primary' }}
               >
-                <AppIcon icon={AUDIENCE_ICONS[key]} />
-                {a.label}
+                <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}><AppIcon icon={AUDIENCE_ICONS[key]} /></Box>
+                <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</Box>
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>{a.subtitle}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3, overflowWrap: 'anywhere' }}>{a.subtitle}</Typography>
             </CardActionArea>
           </Card>
+          </Tooltip>
         );
       })}
     </Box>

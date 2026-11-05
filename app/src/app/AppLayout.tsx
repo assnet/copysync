@@ -305,6 +305,7 @@ export function AppLayout() {
   useUiGuards();
 
   const { activeTenantId, activeTenantName, tenants, switchTenant, loadTenants } = useTenant();
+  const blurTenant = useBlur('layout.tenantName');
   const [switchError, setSwitchError] = useState(false);
 
   // The list lives only in memory: after a page reload it is empty and the switcher disappears.
@@ -372,7 +373,12 @@ export function AppLayout() {
             {currentSectionLabel}
           </Typography>
           {activeTenantName && (
-            <Chip label={activeTenantName} size="small" color="primary" variant="outlined" />
+            <Chip
+              label={<Blurred when={blurTenant} inline radius={4}>{activeTenantName}</Blurred>}
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
           )}
         </Toolbar>
       </AppBar>
@@ -450,7 +456,7 @@ export function AppLayout() {
                 {navigationStrings.tenant.label}
               </Typography>
               <Chip
-                label={activeTenantName}
+                label={<Blurred when={blurTenant} inline radius={4}>{activeTenantName}</Blurred>}
                 size="small"
                 color="primary"
                 variant="outlined"
@@ -475,7 +481,7 @@ export function AppLayout() {
                       }
                     }}
                   >
-                    {t.name}
+                    <Blurred when={blurTenant} inline radius={4}>{t.name}</Blurred>
                   </MenuItem>
                 ))}
               </Menu>

@@ -1,4 +1,5 @@
 ﻿import { createTheme, type PaletteMode } from '@mui/material/styles';
+import { ptBR } from '@mui/material/locale';
 
 const FONT_STACK = [
   'Inter',
@@ -224,7 +225,9 @@ export function buildTheme(mode: PaletteMode) {
         },
       },
     },
-  });
+  },
+  // Textos padrão do MUI ("Fechar" do Alert, paginação, Autocomplete etc.) em pt-BR.
+  ptBR);
 }
 
 // Compatibilidade com imports legados

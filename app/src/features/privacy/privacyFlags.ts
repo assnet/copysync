@@ -11,6 +11,7 @@ export const PRIVACY_SCREENS = [
     label: 'Painel (menu)',
     flags: [
       { id: 'layout.userIdentity', label: 'E-mail e papel do usuário' },
+      { id: 'layout.tenantName', label: 'Nome do tenant no cabeçalho' },
     ],
   },
   {
