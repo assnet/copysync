@@ -134,7 +134,7 @@ const envSchema = z.object({
     .default('false'),
   // ── Papel do processo (.specs/features/worker-role) ──────────────────────
   // `all` (default) = comportamento de hoje, sem Redis. `http`/`worker` exigem `REDIS_URL`
-  // e `MEDIA_STORAGE_DRIVER=s3` (ver `processRoleIssues`). `all` ignora `REDIS_URL`.
+  // e `MEDIA_STORAGE_DRIVER=s3` com S3 completo (ver `processRoleIssues`). `all` ignora `REDIS_URL`.
   PROCESS_ROLE: z.enum(['http', 'worker', 'all']).default('all'),
   REDIS_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
@@ -320,13 +320,15 @@ function mediaUploadTmpPath(e: z.infer<typeof envSchema>): string {
 
 type RawEnv = z.infer<typeof envSchema>;
 
+const ROLE_S3_KEYS = ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const;
+
 /**
  * Pré-requisitos dos papéis separados (pura). `all` nunca falha: o default não muda nada.
  * `http`/`worker` sem Redis não trocam comandos/eventos; com disco local o arquivo gravado
  * por um processo não existe no outro (decisão D9).
  */
 export function processRoleIssues(
-  e: Pick<RawEnv, 'PROCESS_ROLE' | 'REDIS_URL' | 'MEDIA_STORAGE_DRIVER'>,
+  e: Pick<RawEnv, 'PROCESS_ROLE' | 'REDIS_URL' | 'MEDIA_STORAGE_DRIVER' | (typeof ROLE_S3_KEYS)[number]>,
 ): { path: string; message: string }[] {
   if (e.PROCESS_ROLE === 'all') return [];
   const issues: { path: string; message: string }[] = [];
@@ -338,6 +340,11 @@ export function processRoleIssues(
       path: 'MEDIA_STORAGE_DRIVER',
       message: `PROCESS_ROLE=${e.PROCESS_ROLE} requires MEDIA_STORAGE_DRIVER=s3 (got ${e.MEDIA_STORAGE_DRIVER})`,
     });
+  } else {
+    // Os campos que tornam `S3_ENABLED` verdadeiro: sem eles a composição do papel cairia depois.
+    for (const key of ROLE_S3_KEYS) {
+      if (!e[key]) issues.push({ path: key, message: `PROCESS_ROLE=${e.PROCESS_ROLE} requires ${key}` });
+    }
   }
   return issues;
 }

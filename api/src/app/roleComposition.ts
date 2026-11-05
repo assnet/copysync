@@ -23,7 +23,7 @@ type Stopper = () => Promise<unknown>;
  *   BullMQ (`engine-cmd-{workerId}`, `session-open`); WS vira `PUBLISH tenant:{id}`. Com a adoção ligada,
  *   `session-open` pausa enquanto o processo está no teto (ADOPT-09).
  * - `http`: `RemoteMessagingEngineAdapter` como engine ativa (nunca chama `localEngine()`, nem carrega
- *   Baileys/GramJS); `PSUBSCRIBE tenant:*` entrega aos WS locais.
+ *   Baileys/GramJS); `PSUBSCRIBE tenant:*` entrega aos WS locais, em background com retry (o boot não espera).
  * Módulos por `import()` dinâmico: cada papel só carrega o que usa.
  */
 export async function composeForRole(role: ProcessRole): Promise<RoleComposition> {
@@ -146,21 +146,71 @@ async function composeHttp(): Promise<RoleComposition> {
   });
   setActiveEngine(engine);
 
-  const stoppers: Stopper[] = [() => rpc.close(), () => commands.close()];
   const relay = new RedisChatEventRelay({
     mode: 'deliver',
     client: redis.redisSubscriber(),
     deliver: (tenantId, payload) => ws.chatWsPublisher.deliverLocal(tenantId, payload),
   });
-  try {
-    await relay.start();
-    stoppers.unshift(() => relay.stop());
-  } catch (err) {
-    await stopAll(stoppers);
-    throw err;
-  }
+  // O `listen` não espera o relay: até ele subir, os WS deste processo ficam sem eventos de outros.
+  const background = startRelayInBackground(relay);
+  const stoppers: Stopper[] = [() => background.stop(), () => rpc.close(), () => commands.close()];
   logger.info({ role: 'http' }, 'Engine remota: comandos ao worker dono por Redis');
   return { engine, stop: once(() => stopAll(stoppers)) };
+}
+
+/** Estado do relay `deliver` do `http` para o `/health`. `undefined` fora do `http`. */
+let relayUp: boolean | undefined;
+
+export function relayHealth(): 'up' | 'down' | undefined {
+  return relayUp === undefined ? undefined : relayUp ? 'up' : 'down';
+}
+
+/** Espera entre tentativas do relay: 1s, 2s, 4s… até 30s. */
+export const RELAY_RETRY_BASE_MS = 1_000;
+export const RELAY_RETRY_MAX_MS = 30_000;
+
+interface StartableRelay {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/**
+ * Sobe o relay sem bloquear o boot: tenta de novo com backoff até conseguir ou até `stop()`.
+ * Tentativa falha chama `relay.stop()` para soltar o listener e permitir o próximo `start()`.
+ */
+function startRelayInBackground(relay: StartableRelay): { stop(): Promise<void> } {
+  relayUp = false;
+  let stopped = false;
+  let attempt = 0;
+  let timer: NodeJS.Timeout | undefined;
+
+  const tryStart = async (): Promise<void> => {
+    attempt += 1;
+    try {
+      await relay.start();
+      // `stop()` chegou durante a tentativa: desfaz a assinatura que acabou de subir.
+      if (stopped) return void (await relay.stop().catch(() => undefined));
+      relayUp = true;
+      logger.info({ attempt }, 'Relay WS: assinatura entre processos ativa');
+    } catch (err) {
+      await relay.stop().catch(() => undefined);
+      if (stopped) return;
+      const delayMs = Math.min(RELAY_RETRY_BASE_MS * 2 ** (attempt - 1), RELAY_RETRY_MAX_MS);
+      logger.warn({ err, attempt, nextAttemptInMs: delayMs }, 'Relay WS: falha ao assinar; tentando de novo');
+      timer = setTimeout(() => void tryStart(), delayMs);
+      timer.unref?.();
+    }
+  };
+  void tryStart();
+
+  return {
+    stop: async () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      relayUp = false;
+      await relay.stop();
+    },
+  };
 }
 
 /** Em ordem; falha de um não impede os seguintes (shutdown não pode travar). */

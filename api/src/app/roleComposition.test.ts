@@ -35,7 +35,7 @@ const h = vi.hoisted(() => {
     rpcServer: { start: vi.fn(async () => undefined), stop: vi.fn(async () => undefined) },
     rpcClient: { close: vi.fn(async () => undefined) },
     queues: { startConsumers: vi.fn(), close: vi.fn(async () => undefined) },
-    relay: { start: vi.fn(async () => undefined), stop: vi.fn(async () => undefined), publish: vi.fn() },
+    relay: { start: vi.fn(async (): Promise<void> => undefined), stop: vi.fn(async () => undefined), publish: vi.fn() },
     ctor: {
       rpcServer: vi.fn(), rpcClient: vi.fn(), queues: vi.fn(), relay: vi.fn(),
       commandServer: vi.fn(), remote: vi.fn(), transfer: vi.fn(), s3: vi.fn(),
@@ -105,10 +105,12 @@ vi.mock('../shared/security/SecretCipherFactory', () => ({ SecretCipherFactory: 
 vi.mock('../shared/config/workerAdoption', () => ({ workerAdoptionConfig: () => h.adoption }));
 vi.mock('../shared/config/workerIdentity', () => ({ currentWorkerId: () => 'http-1' }));
 
-import { composeForRole } from './roleComposition';
+import { composeForRole, relayHealth, RELAY_RETRY_BASE_MS } from './roleComposition';
 
 beforeEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
+  h.relay.start.mockImplementation(async () => undefined);
   h.loaded.clear();
   h.env.S3_ENABLED = true;
   h.adoption.enabled = false;
@@ -205,6 +207,60 @@ describe('composeForRole', () => {
     await expect(composeForRole('worker')).rejects.toThrow('redis fora');
     expect(h.queues.startConsumers).not.toHaveBeenCalled();
     expect(h.setRelay).not.toHaveBeenCalled();
+  });
+
+  it('http: composição não espera o relay; /health mostra down → up', async () => {
+    let resolveStart!: () => void;
+    h.relay.start.mockImplementationOnce(() => new Promise<void>((r) => { resolveStart = r; }));
+    const c = await composeForRole('http');
+    expect(h.relay.start).toHaveBeenCalledTimes(1);
+    expect(relayHealth()).toBe('down');
+    resolveStart();
+    await vi.waitFor(() => expect(relayHealth()).toBe('up'));
+    await c.stop();
+    expect(relayHealth()).toBe('down');
+  });
+
+  it('http: relay que falha tenta de novo com backoff até subir', async () => {
+    vi.useFakeTimers();
+    h.relay.start
+      .mockRejectedValueOnce(new Error('redis fora'))
+      .mockRejectedValueOnce(new Error('redis fora'));
+    const c = await composeForRole('http');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.relay.start).toHaveBeenCalledTimes(1);
+    expect(h.relay.stop).toHaveBeenCalledTimes(1);
+    expect(relayHealth()).toBe('down');
+    await vi.advanceTimersByTimeAsync(RELAY_RETRY_BASE_MS);
+    expect(h.relay.start).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(RELAY_RETRY_BASE_MS);
+    expect(h.relay.start).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(RELAY_RETRY_BASE_MS);
+    expect(h.relay.start).toHaveBeenCalledTimes(3);
+    expect(relayHealth()).toBe('up');
+    await c.stop();
+  });
+
+  it('http: stop cancela o retry pendente', async () => {
+    vi.useFakeTimers();
+    h.relay.start.mockRejectedValue(new Error('redis fora'));
+    const c = await composeForRole('http');
+    await vi.advanceTimersByTimeAsync(0);
+    await c.stop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.relay.start).toHaveBeenCalledTimes(1);
+    expect(h.rpcClient.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('http: stop durante a tentativa desfaz a assinatura que subir depois', async () => {
+    let resolveStart!: () => void;
+    h.relay.start.mockImplementationOnce(() => new Promise<void>((r) => { resolveStart = r; }));
+    const c = await composeForRole('http');
+    await c.stop();
+    expect(h.relay.stop).toHaveBeenCalledTimes(1);
+    resolveStart();
+    await vi.waitFor(() => expect(h.relay.stop).toHaveBeenCalledTimes(2));
+    expect(relayHealth()).toBe('down');
   });
 
   it('http/worker sem S3 configurado falham no boot', async () => {

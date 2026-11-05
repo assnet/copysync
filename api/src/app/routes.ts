@@ -1,6 +1,7 @@
 import { env } from '../shared/config/env';
 import { currentRole } from '../shared/config/processRole';
 import { logger } from '../shared/logger/logger';
+import { relayHealth } from './roleComposition';
 import { authRoutes } from '../modules/auth/presentation/routes/auth.routes';
 import { inviteRoutes } from '../modules/auth/presentation/routes/invite.routes';
 import { tenantRoutes } from '../modules/tenants/presentation/routes/tenant.routes';
@@ -56,6 +57,8 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
               timestamp: { type: 'string', format: 'date-time' },
               environment: { type: 'string' },
               role: { type: 'string', enum: ['http', 'worker', 'all'] },
+              // Só no `http`: assinatura dos eventos de WS vindos do worker.
+              relay: { type: 'string', enum: ['up', 'down'] },
             },
           },
         },
@@ -67,6 +70,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV ?? 'unknown',
         role: currentRole(),
+        relay: relayHealth(),
       });
     },
   );

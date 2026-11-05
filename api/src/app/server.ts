@@ -542,4 +542,9 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-start();
+// Boot que lança (composição por papel, Redis, S3…) encerra com código 1: nada de processo
+// meio vivo sem porta nem consumidores. O Render reinicia.
+start().catch((err: unknown) => {
+  logger.fatal({ err }, 'Boot failed — exiting');
+  process.exit(1);
+});
