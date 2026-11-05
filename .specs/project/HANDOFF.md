@@ -43,8 +43,8 @@ Checkout pela Cakto até a escala; log de corpo igual ao PulsoSocial; gerador 5/
 
 ## Achados fora de escopo (backlog)
 
-- Painel **sem modo "sistema"** (`ThemeContext` só claro/escuro; AGENTS.md exige sistema/claro/escuro).
-- Nome do tenant no cabeçalho global não borra com privacidade ligada.
+- ✅ resolvido (app 0.80.0): modo sistema no tema; nome do tenant no cabeçalho borra; textos padrão do MUI em pt-BR; cards do público-alvo.
+- Visual a conferir com login local: cabeçalho com privacidade ligada e gerador a 1280 px.
 
 ## Pendências do dono
 

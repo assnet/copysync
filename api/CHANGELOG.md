@@ -57,6 +57,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.80.0 — Tema sistema/claro/escuro e ajustes do painel
+
+#### app
+
+- **`contexts/ThemeContext.tsx`, `contexts/themePreference.ts`, `components/ThemeModeSelector.tsx`** — tema com três opções (sistema, claro, escuro; padrão sistema, segue `prefers-color-scheme` e reage à mudança). Preferência na mesma chave `colorMode` (valores antigos respeitados); um seletor substitui os quatro toggles (layout, login, convite, páginas públicas).
+- **`app/AppLayout.tsx`, `features/privacy/privacyFlags.ts`** — nome do tenant no cabeçalho, na topbar e no menu de troca borra com a flag `layout.tenantName`.
+- **`theme/theme.ts`** — `ptBR` do MUI no tema: textos padrão (ex.: "Fechar" do Alert) em pt-BR.
+- **`features/offers/components/AudiencePicker.tsx`** — cards de público-alvo não cortam a 1280 px (grade pela largura do formulário, reticências + Tooltip).
+- **Assinatura, disparo, E3:** `features/chat/media/*` — envio com resultado desconhecido (`ENGINE_COMMAND_OUTCOME_UNKNOWN`) não oferece "Tentar de novo".
+
 ### Added
 
 #### Separação HTTP × worker (`messaging`, `sessions`, `chat`, escala E3) e adoção por capacidade (escala E4) — api 0.62.0 · app 0.79.0
