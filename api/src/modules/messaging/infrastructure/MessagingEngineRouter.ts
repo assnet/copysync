@@ -23,7 +23,9 @@ import type {
 } from '../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../sessions/domain/contracts/ISessionRepository';
-import type { ISessionSocketControl, SessionAbortOptions, SessionResumeResult } from '../domain/contracts/ISessionSocketControl';
+import type {
+  ISessionSocketControl, SessionAbortOptions, SessionAdoptResult, SessionResumeResult,
+} from '../domain/contracts/ISessionSocketControl';
 import { SessionNotFoundError } from '../../../shared/errors/internal/SessionErrors';
 import { logger } from '../../../shared/logger/logger';
 
@@ -125,6 +127,12 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
       throw err;
     }
     return hasSocketControl(engine) ? engine.resumeSession(sessionId) : 'gone';
+  }
+
+  /** Adota na engine da sessão; engine sem a porta = `error` (sessão apagada lança, o use case loga). */
+  async adoptSession(sessionId: string, tenantId: string): Promise<SessionAdoptResult> {
+    const engine = (await this.resolve(sessionId)) as IMessagingEngine & Partial<ISessionSocketControl>;
+    return typeof engine.adoptSession === 'function' ? engine.adoptSession(sessionId, tenantId) : 'error';
   }
 
   /** Esquece a suspensão em todas as engines (só a da sessão tem entrada); devolve o tenant guardado. */

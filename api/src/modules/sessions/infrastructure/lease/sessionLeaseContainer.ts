@@ -57,6 +57,7 @@ export function buildSessionLeaseContainer(
     suspendSession: async (id) => bound?.suspendSession(id),
     resumeSession: async (id) => (bound ? bound.resumeSession(id) : 'gone'),
     forgetSuspension: async (id) => (bound ? bound.forgetSuspension(id) : null),
+    adoptSession: async (id, tenantId) => (bound ? bound.adoptSession(id, tenantId) : 'error'),
     closeAllSockets: async () => bound?.closeAllSockets(),
     listLocalSessionIds: () => bound?.listLocalSessionIds() ?? [],
   };

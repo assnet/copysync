@@ -56,7 +56,7 @@ import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums'
 import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { SessionLeaseHeldError, SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
 import { acquireLeaseResult, type ISessionLeaseGate, type LeaseAcquireResult } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
-import type { SessionAbortOptions, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
+import type { SessionAbortOptions, SessionAdoptResult, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { openAuthStateTimeoutMs } from '../../../../sessions/domain/services/sessionLeasePolicy';
 import { EngineOperationUnsupportedError, EngineTemporarilyUnavailableError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
@@ -1104,6 +1104,26 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       throw err;
     } finally {
       if (current()) this.resuming.delete(sessionId);
+    }
+  }
+
+  /**
+   * Adoção (ADOPT-07): reabre pela origem automática (prazo de 15 s) sem lançar. `held` só se o
+   * acquire disse held (outro dono ou teto); cancelada (abort/suspend/usuário) sem cliente aqui.
+   */
+  async adoptSession(sessionId: string, tenantId: string): Promise<SessionAdoptResult> {
+    if (this.registry.get(sessionId)) return 'opened';
+    const probe: LeaseProbe = {};
+    try {
+      await this.reopen({ sessionId, tenantId }, 'auto', probe);
+      // Sem cliente aqui: cancelada por outra abertura, ou credencial revogada (LOGGED_OUT)
+      return this.registry.get(sessionId) ? 'opened' : 'cancelled';
+    } catch (err) {
+      if (probe.lease === 'held') return 'held';
+      // Acquire concedido e abertura cancelada por abort/suspend (lança held depois do acquire)
+      if (probe.lease === 'acquired' && err instanceof SessionLeaseHeldError) return 'cancelled';
+      telegramLogger.warn({ err, sessionId, tenantId }, 'abertura da sessão adotada falhou');
+      return 'error';
     }
   }
 

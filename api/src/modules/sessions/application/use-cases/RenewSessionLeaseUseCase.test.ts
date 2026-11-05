@@ -24,6 +24,7 @@ function makeSockets(local: string[]): ISessionSocketControl {
     suspendSession: vi.fn(async () => undefined),
     resumeSession: vi.fn(async (): Promise<SessionResumeResult> => 'resumed'),
     forgetSuspension: vi.fn(async (): Promise<string | null> => 't1'),
+    adoptSession: vi.fn(async () => 'opened' as const),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [...local]),
   };

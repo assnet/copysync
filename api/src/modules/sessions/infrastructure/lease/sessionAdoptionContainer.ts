@@ -6,6 +6,7 @@ import { PrismaJobLease } from '../../../../shared/jobs/PrismaJobLease';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
+import type { ISessionSocketControl } from '../../../messaging/domain/contracts/ISessionSocketControl';
 import { getActiveEngine } from '../../../../shared/engine/activeEngine';
 import type { ISessionAdoptionRepository } from '../../domain/contracts/ISessionAdoptionRepository';
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
@@ -41,7 +42,7 @@ export interface SessionAdoptionDeps {
   heartbeats: IWorkerHeartbeatRepository;
   jobLease: IJobLease;
   audit: IAuditLogRepository;
-  engine: Pick<IMessagingEngine, 'reconnectSession'>;
+  engine: Pick<ISessionSocketControl, 'adoptSession' | 'abortSession'>;
   registerReset?: (repo: Pick<ISessionAdoptionRepository, 'resetFailures'>) => () => void;
 }
 
@@ -101,13 +102,20 @@ export function sessionAdoptionContainer(): SessionAdoptionContainer | null {
     jobLease: new PrismaJobLease(prisma),
     audit: new PrismaAuditLogRepository(),
     // Engine do papel (local em `worker`/`all`), composta no boot por `composeForRole`; lida no tick.
-    engine: { reconnectSession: (input) => requireActiveEngine().reconnectSession(input) },
+    engine: {
+      adoptSession: (id, tenantId) => requireSocketControl().adoptSession(id, tenantId),
+      abortSession: (id, options) => requireSocketControl().abortSession(id, options),
+    },
   });
   return instance;
 }
 
-function requireActiveEngine(): IMessagingEngine {
-  const engine = getActiveEngine();
+/** Engine local do papel com a porta de adoção (o router em `worker`/`all`; a remota não tem). */
+function requireSocketControl(): Pick<ISessionSocketControl, 'adoptSession' | 'abortSession'> {
+  const engine = getActiveEngine() as (IMessagingEngine & Partial<ISessionSocketControl>) | null;
   if (!engine) throw new Error('MessagingEngine não composta: chamar composeForRole(role) no boot');
-  return engine;
+  if (typeof engine.adoptSession !== 'function' || typeof engine.abortSession !== 'function') {
+    throw new Error('MessagingEngine sem controle de socket local: adoção só em worker/all');
+  }
+  return engine as Pick<ISessionSocketControl, 'adoptSession' | 'abortSession'>;
 }

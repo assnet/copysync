@@ -314,3 +314,47 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     expect(release).not.toHaveBeenCalled();
   });
 });
+
+describe('BaileysMessagingEngineAdapter — adoptSession (origem auto)', () => {
+  it('com lease abre e devolve opened', async () => {
+    const { adapter } = make(true);
+    expect(await adapter.adoptSession('s1', T)).toBe('opened');
+    expect(registry.has('s1')).toBe(true);
+  });
+
+  it('lease negado (outro dono ou teto) devolve held sem lançar nem gravar status', async () => {
+    const { adapter, sessionRepo } = make(false);
+    expect(await adapter.adoptSession('s1', T)).toBe('held');
+    expect(sockets).toHaveLength(0);
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('abort no meio devolve cancelled (não opened)', async () => {
+    const { adapter } = make(true);
+    const hold = holdBuild();
+    const p = adapter.adoptSession('s1', T);
+    await hold.started();
+    await adapter.abortSession('s1', { onlyAuto: true });
+    hold.go();
+    expect(await p).toBe('cancelled');
+    expect(registry.has('s1')).toBe(false);
+  });
+
+  it('carga do auth state pendurada: error no prazo automático (15 s, não 60 s) e solta o lease', async () => {
+    vi.useFakeTimers();
+    const { adapter, release } = make(true);
+    auth.build.mockImplementationOnce(() => new Promise(() => undefined));
+    const p = adapter.adoptSession('s1', T);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await p).toBe('error');
+    expect(release).toHaveBeenCalledWith('s1');
+  });
+
+  it('já aberta aqui devolve opened sem novo acquire', async () => {
+    const { adapter, acquire } = make(true);
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    acquire.mockClear();
+    expect(await adapter.adoptSession('s1', T)).toBe('opened');
+    expect(acquire).not.toHaveBeenCalled();
+  });
+});

@@ -68,4 +68,25 @@ describe('SessionAdoptionTicker', () => {
     expect(execute).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it('stop durante tick chama cancel do tick (não espera a abertura) e assenta', async () => {
+    let settle!: () => void;
+    const execute = vi.fn(() => new Promise<void>((r) => { settle = r; }));
+    const cancel = vi.fn(() => settle());
+    const t = new SessionAdoptionTicker({ execute, cancel }, 1_000, { warn: vi.fn() });
+    t.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await t.stop();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('stop sem tick em curso não chama cancel', async () => {
+    const cancel = vi.fn();
+    const t = new SessionAdoptionTicker({ execute: vi.fn(async () => 'none'), cancel }, 1_000, { warn: vi.fn() });
+    t.start();
+    await t.stop();
+    expect(cancel).not.toHaveBeenCalled();
+  });
 });

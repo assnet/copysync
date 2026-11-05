@@ -140,6 +140,7 @@ describe('SessionLeaseKeeper', () => {
       suspendSession: vi.fn(async () => undefined),
       resumeSession: vi.fn(() => new Promise<never>(() => undefined)), // acquire/build nunca assentam
       forgetSuspension: vi.fn(async () => 't1'),
+      adoptSession: vi.fn(async () => 'opened' as const),
       closeAllSockets: vi.fn(async () => undefined),
       listLocalSessionIds: vi.fn(() => [] as string[]),
     };

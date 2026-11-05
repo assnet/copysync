@@ -274,3 +274,55 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     expect(adapter.listLocalSessionIds()).toEqual(['s1']);
   });
 });
+
+describe('TelegramMessagingEngineAdapter — adoptSession (origem auto)', () => {
+  beforeEach(() => {
+    fake.created = 0;
+    fake.destroyed = 0;
+    fake.authorized = true;
+    fake.connect = null;
+  });
+
+  it('com lease abre e devolve opened', async () => {
+    const { adapter } = make(true);
+    expect(await adapter.adoptSession('s1', T)).toBe('opened');
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('lease negado (outro dono ou teto) devolve held sem lançar nem gravar status', async () => {
+    const { adapter, sessionRepo } = make(false);
+    expect(await adapter.adoptSession('s1', T)).toBe('held');
+    expect(fake.created).toBe(0);
+    expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('abort durante o connect devolve cancelled (não opened)', async () => {
+    const { adapter } = make(true);
+    let fail!: (e: Error) => void;
+    fake.connect = () => new Promise<void>((_r, rej) => { fail = rej; });
+    const p = adapter.adoptSession('s1', T);
+    await vi.waitFor(() => expect(fail).toBeTypeOf('function'));
+    await adapter.abortSession('s1', { onlyAuto: true });
+    fail(new Error('destroyed'));
+    expect(await p).toBe('cancelled');
+  });
+
+  it('carga da StringSession com erro devolve error sem lançar', async () => {
+    const { adapter, auth } = make(true);
+    auth.load.mockRejectedValueOnce(new Error('cipher down'));
+    expect(await adapter.adoptSession('s1', T)).toBe('error');
+  });
+
+  it('carga pendurada: error no prazo automático (15 s)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, auth } = make(true);
+      auth.load.mockImplementationOnce(() => new Promise(() => undefined));
+      const p = adapter.adoptSession('s1', T);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(await p).toBe('error');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -13,6 +13,7 @@ function fakeEngine(name: string) {
     suspendSession: vi.fn(async () => undefined),
     resumeSession: vi.fn(async () => 'resumed'),
     forgetSuspension: vi.fn(async () => (name === 'telegram' ? 't1' : null)),
+    adoptSession: vi.fn(async () => 'held'),
     closeAllSockets: vi.fn(async () => undefined),
     listLocalSessionIds: vi.fn(() => [`${name}-s`]),
   } as unknown as IMessagingEngine & {
@@ -23,6 +24,7 @@ function fakeEngine(name: string) {
     suspendSession: ReturnType<typeof vi.fn>;
     resumeSession: ReturnType<typeof vi.fn>;
     forgetSuspension: ReturnType<typeof vi.fn>;
+    adoptSession: ReturnType<typeof vi.fn>;
     closeAllSockets: ReturnType<typeof vi.fn>;
     listLocalSessionIds: ReturnType<typeof vi.fn>;
   };
@@ -82,6 +84,18 @@ describe('MessagingEngineRouter', () => {
     expect(telegram.abortSession).toHaveBeenCalledWith('s1', { onlyAuto: true });
     await router.abortSession('gone', { onlyAuto: true });
     expect(baileys.abortSession).toHaveBeenCalledWith('gone', { onlyAuto: true });
+  });
+
+  it('adoptSession vai só para a engine da sessão e devolve o resultado dela', async () => {
+    const { router, baileys, telegram } = build({ s1: 'telegram' });
+    expect(await router.adoptSession('s1', 't1')).toBe('held');
+    expect(telegram.adoptSession).toHaveBeenCalledWith('s1', 't1');
+    expect(baileys.adoptSession).not.toHaveBeenCalled();
+  });
+
+  it('adoptSession de sessão apagada lança SESSION_NOT_FOUND', async () => {
+    const { router } = build({});
+    await expect(router.adoptSession('gone', 't1')).rejects.toBeInstanceOf(SessionNotFoundError);
   });
 
   it('suspendSession/resumeSession vão só para a engine da sessão', async () => {

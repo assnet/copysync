@@ -6,6 +6,13 @@
 export type SessionResumeResult = 'resumed' | 'held' | 'gone';
 
 /**
+ * Resultado de `adoptSession`: `opened` = socket aberto aqui (ou já aberto); `held` = o acquire foi
+ * negado (outro dono ou teto do processo); `cancelled` = abort/suspend/abertura do usuário no meio;
+ * `error` = erro transitório (banco, versão, auth state no prazo). Nunca lança.
+ */
+export type SessionAdoptResult = 'opened' | 'held' | 'cancelled' | 'error';
+
+/**
  * `onlyAuto` (desistência da retomada): cancela só abertura de origem automática. Com abertura do
  * usuário em voo (ou à espera de uma automática que ela já cancelou), não mexe em nada: ela segue.
  */
@@ -37,6 +44,11 @@ export interface ISessionSocketControl {
    * `forgetSuspension`; `held` e erro a mantêm (quem decide nova tentativa é o use case).
    */
   resumeSession(sessionId: string): Promise<SessionResumeResult>;
+  /**
+   * Adoção por capacidade (ADOPT-07): abre pela origem automática (prazo de auth state de 15 s,
+   * sem lançar) e devolve o resultado real. Não mexe em status quando não abre.
+   */
+  adoptSession(sessionId: string, tenantId: string): Promise<SessionAdoptResult>;
   /** Esquece a suspensão (desistência do use case); devolve o tenant que ela guardava, ou `null`. */
   forgetSuspension(sessionId: string): Promise<string | null>;
   /** Fecha todos os sockets locais; os handles de auth state ficam para o flush seguinte. */

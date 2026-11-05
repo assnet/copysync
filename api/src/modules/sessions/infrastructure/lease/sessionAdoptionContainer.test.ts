@@ -11,7 +11,7 @@ vi.mock('../../../../shared/jobs/PrismaJobLease', () => ({
   PrismaJobLease: class { tryAcquire = vi.fn().mockResolvedValue(false); release = vi.fn(); },
 }));
 vi.mock('../../../../shared/engine/activeEngine', () => ({
-  getActiveEngine: () => ({ reconnectSession: vi.fn() }),
+  getActiveEngine: () => ({ adoptSession: vi.fn(), abortSession: vi.fn() }),
 }));
 vi.mock('../repositories/PrismaSessionAdoptionRepository', () => ({
   PrismaSessionAdoptionRepository: class {
@@ -85,7 +85,7 @@ describe('sessionAdoptionContainer', () => {
       heartbeats: { beat: vi.fn(), listAlive: vi.fn(), remove: vi.fn() } as never,
       jobLease: { tryAcquire: vi.fn(), release: vi.fn() } as never,
       audit: { create: vi.fn() } as never,
-      engine: { reconnectSession: vi.fn() },
+      engine: { adoptSession: vi.fn(), abortSession: vi.fn() },
       registerReset,
     });
     expect(registerReset).toHaveBeenCalledWith(adoption);

@@ -54,6 +54,14 @@ export class PrismaSessionAdoptionRepository implements ISessionAdoptionReposito
     return rows[0] ?? null;
   }
 
+  async revertAdoptAttempt(sessionId: string, workerId: string): Promise<void> {
+    // `nextAdoptAt` era nulo ou passado (condição de `adoptNext`): nulo equivale ao anterior.
+    await prisma.$executeRaw`
+      UPDATE "sessions" SET "ownerWorkerId" = NULL, "leaseUntil" = NULL,
+        "adoptFailures" = GREATEST("adoptFailures" - 1, 0), "nextAdoptAt" = NULL
+      WHERE "id" = ${sessionId} AND "ownerWorkerId" = ${workerId}`;
+  }
+
   async failExhausted(): Promise<AdoptedSessionRef[]> {
     return prisma.$queryRaw<AdoptedSessionRef[]>`
       UPDATE "sessions" s SET "status" = 'FAILED'::"SessionStatus", "connectRequestedAt" = NULL, "updatedAt" = ${NOW}

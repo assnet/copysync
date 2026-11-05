@@ -180,6 +180,33 @@ describe('resetFailures', () => {
   });
 });
 
+describe('revertAdoptAttempt', () => {
+  it('desfaz a adoção do dono: lease solto, +1 e backoff revertidos; readotável na hora', async () => {
+    const id = await newSession({ adoptFailures: 2 });
+    await repo.adoptNext(ME, null, TTL);
+    await repo.revertAdoptAttempt(id, ME);
+    const r = await row(id);
+    expect(r.ownerWorkerId).toBeNull();
+    expect(r.leaseUntil).toBeNull();
+    expect(r.adoptFailures).toBe(2);
+    expect(r.nextAdoptAt).toBeNull();
+    expect((await repo.adoptNext(OTHER, null, TTL))?.id).toBe(id);
+  });
+
+  it('de outro dono não mexe em nada', async () => {
+    const id = await newSession({ ownerWorkerId: OTHER, leaseUntil: future(), adoptFailures: 1, nextAdoptAt: future() });
+    const before = await row(id);
+    await repo.revertAdoptAttempt(id, ME);
+    expect(await row(id)).toEqual(before);
+  });
+
+  it('contador nunca fica negativo', async () => {
+    const id = await newSession({ ownerWorkerId: ME, leaseUntil: future(), adoptFailures: 0 });
+    await repo.revertAdoptAttempt(id, ME);
+    expect((await row(id)).adoptFailures).toBe(0);
+  });
+});
+
 describe('countAwaitingCapacity', () => {
   it('conta pedido vivo, status da lista, tenant ACTIVE, sem lease vivo', async () => {
     await newSession();

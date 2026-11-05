@@ -52,7 +52,7 @@ import type { ISessionRepository } from '../../../../sessions/domain/contracts/I
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { acquireLeaseResult, type ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
 import { LEASE_RENEW_TIMEOUT_MS, openAuthStateTimeoutMs } from '../../../../sessions/domain/services/sessionLeasePolicy';
-import type { SessionAbortOptions, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
+import type { SessionAbortOptions, SessionAdoptResult, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 import { buildBaileysAuthState, discardAuthState, releaseAuthState, suspendAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
@@ -333,6 +333,20 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       throw err;
     } finally {
       if (current()) this.resuming.delete(sessionId);
+    }
+  }
+
+  /**
+   * Adoção (ADOPT-07): abre pela origem automática (prazo de auth state de 15 s; lease negado ou
+   * teto devolvem `held` sem lançar nem tocar status). Erro transitório vira `error`.
+   */
+  async adoptSession(sessionId: string, tenantId: string): Promise<SessionAdoptResult> {
+    if (this.registry.has(sessionId)) return 'opened';
+    try {
+      return await this.openSocket(sessionId, tenantId, 0, 'auto');
+    } catch (err) {
+      baileysLogger.warn({ err, sessionId }, 'Adopted session socket open failed');
+      return 'error';
     }
   }
 
