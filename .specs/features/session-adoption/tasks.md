@@ -30,8 +30,8 @@ Regras comuns:
 | T12 | Sessão expõe `awaitingCapacity` | — | P | ✅ 177bf63 |
 | T13 | `GET /admin/workers` | T5, T8 | P | ✅ 72dd2c1 |
 | T14 | Composição `sessionAdoptionContainer` | T1, T7, T9, T10, T11 | | ✅ 79c61cd |
-| T15 | `server.ts` + jobs por papel: ticker, bootstrap, shutdown | T14, E3 T19 | | ⏳ |
-| T16 | `session-open` pausa com worker cheio | T14, E3 T18 | P | ⏳ |
+| T15 | `server.ts` + jobs por papel: ticker, bootstrap, shutdown | T14, E3 T19 | | ✅ a3399f5 |
+| T16 | `session-open` pausa com worker cheio | T14, E3 T18 | P | ✅ d34138f |
 | T17 | Painel: "Aguardando capacidade" | T12 | P | ✅ d616afb |
 | T18 | Painel: página `/admin/workers` | T13 | P | ✅ 7f7a7d8 |
 | T19 | Smoke | T15, T16, T17, T18 | | ⏳ |
@@ -374,3 +374,5 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T10: `registerSessionAdoptionResetListener(repo)` devolve `off`; registrar na T14.
 - T11: `WorkerHeartbeatJob`, `WorkerCapacityAlertJob` (lease 59 s não solto = 1 alerta/min no cluster; e-mail só com `ICapacityAlertNotifier`, hoje ausente).
 - T13: `GET /admin/workers` (superAdminHook responde **401**, não 403 como a spec; ajustar spec ou hook à parte). T14 deve passar a rota a usar o container.
+- T15: boot/shutdown com adoção (flag ligada + bootstrap ligado = bootstrap delegado ao ticker; drain de mídia com teto `mediaDrainBudgetMs`; heartbeat apaga a linha depois do `releaseAllOwned`). Flag ligada sem bootstrap: ticker reconecta sessões com pedido vivo (muda o comportamento de hoje).
+- T16: `session-open` pausa com worker cheio (vigia 5 s; job pego na corrida volta com `moveToDelayed`).
