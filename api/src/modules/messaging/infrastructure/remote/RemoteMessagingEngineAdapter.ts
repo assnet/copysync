@@ -43,6 +43,7 @@ import {
   type RpcEngineCall,
 } from './engineCallPlan';
 import { SESSION_OPEN_TARGET, type IEngineCommandProducer, type IEngineRpcClient } from './ports';
+import type { IOutboundMediaTransfer } from './outboundMediaTransfer';
 
 export interface RemoteEngineTimeouts {
   /** Espera do resultado de `command`/`open` (exceto mídia). */
@@ -57,6 +58,8 @@ export interface RemoteMessagingEngineDeps {
   owners: Pick<ISessionLeaseRepository, 'findLiveOwner'>;
   rpc: IEngineRpcClient;
   commands: IEngineCommandProducer;
+  /** Arquivo local do envio de mídia vira chave no storage; o worker baixa e apaga (WROLE-11). */
+  mediaTransfer: Pick<IOutboundMediaTransfer, 'stage' | 'discard'>;
   /** Engines ligadas na plataforma, calculadas da env sem instanciar engine (`enabledEnginesFromEnv`). */
   enabledEngines: ReadonlySet<string>;
   timeouts?: Partial<RemoteEngineTimeouts>;
@@ -187,8 +190,15 @@ export class RemoteMessagingEngineAdapter implements IMessagingEngine {
   sendTextMessage(input: SendTextMessageInput): Promise<SendMessageResult> {
     return this.dispatch(engineCall('sendTextMessage', input));
   }
-  sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult> {
-    return this.dispatch(engineCall('sendMediaMessage', input));
+  /** Sobe o arquivo e manda a chave; erro aqui descarta a chave (sucesso: o worker já apagou). Arquivo local intocado. */
+  async sendMediaMessage(input: SendMediaMessageInput): Promise<SendMessageResult> {
+    const key = await this.deps.mediaTransfer.stage(input.media.filePath, input.media.mimeType);
+    try {
+      return await this.dispatch(engineCall('sendMediaMessage', { ...input, media: { ...input.media, filePath: key } }));
+    } catch (err) {
+      await this.deps.mediaTransfer.discard(key);
+      throw err;
+    }
   }
 
   // ── rpc ─────────────────────────────────────────────────────────────────────

@@ -16,7 +16,8 @@ function setup(local: string[] = ['s1']) {
   }) as IMessagingEngine;
   const fn = (name: string) => (engine as unknown as Record<string, ReturnType<typeof vi.fn>>)[name];
   const release = { execute: vi.fn().mockResolvedValue(undefined) };
-  const server = new EngineCommandServer(engine, { listLocalSessionIds: () => local }, release);
+  const media = { fetch: vi.fn(), discard: vi.fn() };
+  const server = new EngineCommandServer(engine, { listLocalSessionIds: () => local }, release, media);
   return { server, fn, release };
 }
 

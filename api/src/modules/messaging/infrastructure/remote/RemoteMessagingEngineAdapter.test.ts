@@ -55,6 +55,8 @@ function setup(owner: string | null = W) {
     owners,
     rpc: rpc as never,
     commands: commands as never,
+    // Identidade: o roteamento não depende da chave (fluxo de mídia em outboundMediaTransfer.test.ts).
+    mediaTransfer: { stage: async (p: string) => p, discard: async () => undefined },
     enabledEngines: new Set(['baileys']),
   });
   const invoke = (m: EngineMethod) =>
@@ -197,6 +199,7 @@ describe('RemoteMessagingEngineAdapter', () => {
       owners: { findLiveOwner: async () => W },
       rpc: { call: vi.fn(), close: vi.fn() } as never,
       commands: commands as never,
+      mediaTransfer: { stage: async (p: string) => p, discard: async () => undefined },
       enabledEngines: new Set(['baileys']),
       timeouts: { commandMs: 5 },
     });
