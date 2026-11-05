@@ -30,7 +30,8 @@ export type ResumeGiveUpStatus = Pick<ISessionRepository, 'markDisconnectedIfNoL
  * renovação volta a funcionar; o keeper chama `resume` de cada uma fora do tick. O acquire fica
  * dentro de `resumeSession` (tipado no adapter): `resumed`/`gone` limpam a marca; `held` limpa e
  * `forgetSuspension`; erro/timeout conta tentativa (`markFenced(n+1)`) e, no `MAX_RESUME_ATTEMPTS`,
- * desiste: `forgetSuspension`, sai do razão, solta o lease e grava `DISCONNECTED` (log error).
+ * desiste: `forgetSuspension`, `abortSession` (abertura em voo não registra socket sem lease), sai
+ * do razão, solta o lease e grava `DISCONNECTED` (log error).
  */
 export class RenewSessionLeaseUseCase {
   constructor(
@@ -96,20 +97,23 @@ export class RenewSessionLeaseUseCase {
   }
 
   /**
-   * Reabre uma suspensa (o keeper chama fora do tick, uma por sessão por vez). Timeout de
-   * `resumeTimeoutMs` conta a tentativa, mas só devolve quando a reabertura assenta, para a
-   * mesma sessão nunca ter duas retomadas em paralelo.
+   * Reabre uma suspensa (o keeper chama fora do tick). Timeout de `resumeTimeoutMs` conta a
+   * tentativa e devolve na hora, sem esperar a reabertura: com banco mudo ela pode nunca assentar e
+   * o slot do keeper ficaria preso. Reabertura que termina depois deixa socket local numa sessão
+   * ainda marcada, e a próxima rodada a trata pela sonda de reclaim (`execute`). Uma 2ª retomada da
+   * mesma sessão com a 1ª em voo reaproveita a abertura em curso no adapter (origem `auto`).
    */
   async resume(id: string): Promise<void> {
     if (!this.ledger.isFenced(id)) return;
     const attempts = this.ledger.fenceAttempts(id);
     const op = this.sockets.resumeSession(id);
+    // Rejeição tardia (depois do timeout) não pode virar rejeição não tratada
+    op.catch(() => undefined);
     let outcome: SessionResumeResult;
     try {
       outcome = await this.withResumeTimeout(op);
     } catch (err) {
       await this.resumeFailed(id, attempts, err);
-      await op.catch(() => undefined);
       return;
     }
     this.ledger.clearFenced(id);
@@ -128,9 +132,16 @@ export class RenewSessionLeaseUseCase {
       this.log.warn({ err, sessionId: id, attempt: next }, 'falha transitória ao reabrir sessão suspensa; nova tentativa na próxima rodada');
       return;
     }
+    // Tenant antes do abort (o abort apaga a suspensão); abort antes do release: abertura em voo
+    // que registrasse depois do release ficaria com socket sem lease
     const tenantId = await this.forget(id);
     this.ledger.clearFenced(id);
     this.ledger.drop(id);
+    try {
+      await this.sockets.abortSession(id);
+    } catch (abortErr) {
+      this.log.warn({ err: abortErr, sessionId: id }, 'falha ao derrubar abertura da sessão suspensa na desistência');
+    }
     try {
       await this.repo.release(id, this.workerId);
       if (tenantId) await this.status.markDisconnectedIfNoLiveLease(id, tenantId);

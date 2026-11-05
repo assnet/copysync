@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionLeaseKeeper } from './SessionLeaseKeeper';
 import { LEASE_RENEW_INTERVAL_MS } from '../../domain/services/sessionLeasePolicy';
+import { MAX_RESUME_ATTEMPTS, RenewSessionLeaseUseCase } from '../use-cases/RenewSessionLeaseUseCase';
+import { SessionLeaseLedger } from './SessionLeaseLedger';
 
 function deferred() {
   let resolve!: () => void;
@@ -128,5 +130,43 @@ describe('SessionLeaseKeeper', () => {
     await vi.advanceTimersByTimeAsync(1);
     await stopping;
     expect(stopped).toBe(true);
+  });
+
+  it('retomada pendurada (banco mudo) libera o slot no prazo e a sessão é tentada de novo até desistir', async () => {
+    const ledger = new SessionLeaseLedger();
+    ledger.markFenced('s1');
+    const sockets = {
+      abortSession: vi.fn(async () => undefined),
+      suspendSession: vi.fn(async () => undefined),
+      resumeSession: vi.fn(() => new Promise<never>(() => undefined)), // acquire/build nunca assentam
+      forgetSuspension: vi.fn(async () => 't1'),
+      closeAllSockets: vi.fn(async () => undefined),
+      listLocalSessionIds: vi.fn(() => [] as string[]),
+    };
+    const repo = {
+      tryAcquire: vi.fn(async () => true),
+      renew: vi.fn(async (ids: readonly string[]) => [...ids]),
+      release: vi.fn(async () => undefined),
+      releaseAllOwned: vi.fn(async () => 0),
+      findLiveOwner: vi.fn(async () => null),
+    };
+    const status = { markDisconnectedIfNoLiveLease: vi.fn(async () => true) };
+    const log = { warn: vi.fn(), error: vi.fn() };
+    const uc = new RenewSessionLeaseUseCase(repo, ledger, sockets, status, 'w1', () => new Date(), log, 500);
+    const keeper = new SessionLeaseKeeper(uc, 1_000, { warn: vi.fn() });
+    keeper.start();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(sockets.resumeSession).toHaveBeenCalledTimes(1);
+    expect(ledger.fenceAttempts('s1')).toBe(1); // contou e soltou o slot
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sockets.resumeSession).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1_000 * MAX_RESUME_ATTEMPTS);
+    expect(sockets.resumeSession).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS);
+    expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s1', 't1');
+    let stopped = false;
+    const stopping = keeper.stop().then(() => (stopped = true));
+    await vi.advanceTimersByTimeAsync(0);
+    await stopping;
+    expect(stopped).toBe(true); // nenhum slot preso segura o stop
   });
 });

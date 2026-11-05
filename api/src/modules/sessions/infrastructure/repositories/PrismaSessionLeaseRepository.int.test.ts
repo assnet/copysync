@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
-import { PrismaSessionLeaseRepository } from './PrismaSessionLeaseRepository';
+import { PrismaSessionLeaseRepository, SessionLeaseDeadlineError } from './PrismaSessionLeaseRepository';
 
 /** Lease de sessão (LEASE-03/04/05/09) contra Postgres local: relógio do banco. */
 const repo = new PrismaSessionLeaseRepository();
@@ -161,5 +161,55 @@ describe('findLiveOwner', () => {
     expect(await repo.findLiveOwner(expired)).toBeNull();
     expect(await repo.findLiveOwner(free)).toBeNull();
     expect(await repo.findLiveOwner('nao-existe')).toBeNull();
+  });
+});
+
+describe('prazo (F12)', () => {
+  /** Segura a linha com `FOR UPDATE` numa transação aberta até `free()`: o UPDATE do lease espera o lock. */
+  async function lockRow(id: string) {
+    let free!: () => void;
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => { locked = r; });
+    const tx = prisma.$transaction(async (t) => {
+      await t.$queryRaw`SELECT "id" FROM "sessions" WHERE "id" = ${id} FOR UPDATE`;
+      locked();
+      await new Promise<void>((r) => { free = r; });
+    }, { timeout: 15_000 });
+    await isLocked;
+    return { free: async () => { free(); await tx; } };
+  }
+
+  it.each([
+    ['tryAcquire', (r: PrismaSessionLeaseRepository, id: string) => r.tryAcquire(id, ME, TTL)],
+    ['renew', (r: PrismaSessionLeaseRepository, id: string) => r.renew([id], ME, TTL)],
+    ['release', (r: PrismaSessionLeaseRepository, id: string) => r.release(id, ME)],
+  ])('%s com a linha travada assenta no prazo com erro transitório e devolve a conexão', async (_n, op) => {
+    const id = await newSession();
+    await repo.tryAcquire(id, ME, TTL);
+    const lock = await lockRow(id);
+    const short = new PrismaSessionLeaseRepository(300);
+    const started = Date.now();
+    try {
+      await expect(op(short, id)).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      await lock.free();
+    }
+    // statement_timeout cancelou a espera no banco: a linha segue intacta e o repo volta a funcionar
+    expect((await row(id)).ownerWorkerId).toBe(ME);
+    expect(await short.renew([id], ME, TTL)).toEqual([id]);
+  });
+
+  it('banco mudo (nem o BEGIN responde): as três assentam no prazo com SessionLeaseDeadlineError', async () => {
+    const id = await newSession();
+    const mute = vi.spyOn(prisma, '$transaction').mockImplementation((() => new Promise(() => undefined)) as never);
+    const short = new PrismaSessionLeaseRepository(200);
+    try {
+      await expect(short.tryAcquire(id, ME, TTL)).rejects.toBeInstanceOf(SessionLeaseDeadlineError);
+      await expect(short.renew([id], ME, TTL)).rejects.toBeInstanceOf(SessionLeaseDeadlineError);
+      await expect(short.release(id, ME)).rejects.toBeInstanceOf(SessionLeaseDeadlineError);
+    } finally {
+      mute.mockRestore();
+    }
   });
 });

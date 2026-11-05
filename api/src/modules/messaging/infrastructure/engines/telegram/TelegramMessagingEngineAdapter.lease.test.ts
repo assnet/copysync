@@ -128,8 +128,7 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     await adapter.abortSession('s1');
     hold.go();
     expect(await p).toBeInstanceOf(SessionLeaseHeldError);
-    expect(fake.created).toBe(1);
-    expect(fake.destroyed).toBe(1);
+    expect(fake.created).toBe(0); // cancelada antes de criar o cliente
     expect(adapter.listLocalSessionIds()).toEqual([]);
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(auth.save).not.toHaveBeenCalled();
@@ -146,13 +145,13 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     await adapter.suspendSession('s1');
     hold.go();
     expect(await p).toBeInstanceOf(SessionLeaseHeldError);
-    expect(fake.destroyed).toBe(1);
+    expect(fake.created).toBe(0);
     expect(adapter.listLocalSessionIds()).toEqual([]);
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(leaseGate.release).not.toHaveBeenCalled();
     // Retomável: a marca de suspensa ficou (sem StringSession, a reabertura cai no login por QR)
     expect(await adapter.resumeSession('s1')).toBe('resumed');
-    expect(fake.created).toBe(2);
+    expect(fake.created).toBe(1);
   });
 
   it('abort durante o connect: não grava FAILED nem solta o lease', async () => {
@@ -190,7 +189,7 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     expect(leaseGate.release).not.toHaveBeenCalled();
   });
 
-  it('duas aberturas da mesma sessão: a 2ª espera a 1ª e a derruba; um cliente vivo', async () => {
+  it('2 opens de usuário seguidos (cliques repetidos) = 1 cliente: a 2ª cancela a 1ª, sem fila', async () => {
     const { adapter, auth, leaseGate } = make(true);
     fake.authorized = false; // login por QR: o cliente fica registrado
     let go!: () => void;
@@ -199,13 +198,62 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     await vi.waitFor(() => expect(go).toBeTypeOf('function'));
     const second = adapter.connectSession({ sessionId: 's1', tenantId: T });
     await Promise.resolve();
-    expect(leaseGate.acquire).toHaveBeenCalledTimes(1); // a 2ª não começou
+    expect(leaseGate.acquire).toHaveBeenCalledTimes(1); // a 2ª espera a 1ª assentar
     go();
-    await first;
+    expect(await first).toEqual({}); // cancelada sem erro
     await second;
-    expect(fake.created).toBe(2);
-    expect(fake.destroyed).toBe(1);
+    expect(fake.created).toBe(1);
+    expect(fake.destroyed).toBe(0);
     expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('3 cliques seguidos: só a última abre', async () => {
+    const { adapter, auth } = make(true);
+    fake.authorized = false;
+    let go!: () => void;
+    auth.load.mockImplementationOnce(() => new Promise<null>((r) => { go = () => r(null); }));
+    const calls = [adapter.connectSession({ sessionId: 's1', tenantId: T })];
+    await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+    calls.push(adapter.connectSession({ sessionId: 's1', tenantId: T }), adapter.connectSession({ sessionId: 's1', tenantId: T }));
+    go();
+    await Promise.all(calls);
+    expect(fake.created).toBe(1);
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('connect do usuário com retomada pendurada no acquire não fica na fila: cancela e abre o seu', async () => {
+    const { adapter, leaseGate } = make(true);
+    fake.authorized = false;
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    let free!: (v: boolean) => void;
+    leaseGate.acquire.mockImplementationOnce(() => new Promise<boolean>((r) => { free = r; }));
+    const resume = adapter.resumeSession('s1');
+    await vi.waitFor(() => expect(free).toBeTypeOf('function'));
+    const user = adapter.connectSession({ sessionId: 's1', tenantId: T });
+    free(true); // o acquire da retomada assenta (o repo tem prazo): a do usuário segue
+    await user;
+    expect(await resume).toBe('gone'); // o connect do usuário apagou a suspensão
+    expect(fake.created).toBe(2); // 1º connect + o do usuário; a retomada não criou cliente
+    expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+  });
+
+  it('retomada (auto) com abertura do usuário em curso espera e não abre 2º cliente', async () => {
+    const { adapter, auth, leaseGate } = make(true);
+    fake.authorized = false;
+    await adapter.connectSession({ sessionId: 's1', tenantId: T });
+    await adapter.suspendSession('s1');
+    let go!: () => void;
+    auth.load.mockImplementationOnce(() => new Promise<null>((r) => { go = () => r(null); })); // abertura do usuário
+    auth.load.mockImplementationOnce(async () => null); // load do reopen (auto)
+    const user = adapter.requestLoginCode({ sessionId: 's1', tenantId: T, phone: '5511999' }).catch(() => undefined);
+    await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+    const resume = adapter.resumeSession('s1');
+    go();
+    await user;
+    expect(await resume).toBe('resumed');
+    expect(leaseGate.acquire).toHaveBeenCalledTimes(2);
+    expect(fake.created).toBe(2);
   });
 
   it('registry.set sobre entrada viva de outro cliente derruba o antigo antes', async () => {

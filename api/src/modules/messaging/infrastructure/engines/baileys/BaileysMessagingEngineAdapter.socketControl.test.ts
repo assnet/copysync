@@ -35,13 +35,14 @@ vi.mock('@whiskeysockets/baileys', async (importOriginal) => {
   };
 });
 const auth = vi.hoisted(() => ({
+  build: vi.fn(async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => undefined })),
   release: vi.fn(async () => undefined),
   discard: vi.fn(async () => undefined),
   suspend: vi.fn(async () => undefined),
   flush: vi.fn(async () => undefined),
 }));
 vi.mock('./BaileysAuthStatePersistence', () => ({
-  buildBaileysAuthState: async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => undefined }),
+  buildBaileysAuthState: () => auth.build(),
   flushAllAuthStates: auth.flush,
   releaseAuthState: auth.release,
   discardAuthState: auth.discard,
@@ -263,5 +264,71 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
     await adapter.connectSession({ sessionId: 's1', tenantId: T });
     await adapter.connectSession({ sessionId: 's2', tenantId: T });
     expect(adapter.listLocalSessionIds().sort()).toEqual(['s1', 's2']);
+  });
+
+  describe('prazo da abertura (F12)', () => {
+    it('acquire pendurado na retomada: resume assenta no prazo (transitório) e o connect do usuário não espera além dele', async () => {
+      vi.useFakeTimers();
+      const gate = { acquire: vi.fn(async () => true) };
+      const { adapter } = make(gate);
+      await adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await adapter.suspendSession('s1');
+      gate.acquire.mockImplementationOnce(() => new Promise<boolean>(() => undefined));
+      const resume = adapter.resumeSession('s1').catch((e: unknown) => e);
+      let connected = false;
+      const user = adapter.connectSession({ sessionId: 's1', tenantId: T }).then(() => { connected = true; });
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(connected).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await user;
+      expect(connected).toBe(true);
+      expect(await resume).toBe('gone'); // o connect do usuário apagou a suspensão
+      expect(registry.has('s1')).toBe(true);
+      expect(sockets).toHaveLength(2);
+    });
+
+    it('acquire pendurado na retomada sem connect do usuário: lança transitório e segue suspensa', async () => {
+      vi.useFakeTimers();
+      const gate = { acquire: vi.fn(async () => true) };
+      const { adapter } = make(gate);
+      await adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await adapter.suspendSession('s1');
+      gate.acquire.mockImplementationOnce(() => new Promise<boolean>(() => undefined));
+      const resume = adapter.resumeSession('s1').catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await resume).toBeInstanceOf(EngineTemporarilyUnavailableError);
+      expect(await adapter.resumeSession('s1')).toBe('resumed');
+    });
+
+    it('carga do auth state pendurada: abertura assenta no prazo com 503 e solta o lease', async () => {
+      vi.useFakeTimers();
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter } = make(gate);
+      auth.build.mockImplementationOnce(() => new Promise(() => undefined));
+      const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(await p).toBeInstanceOf(EngineTemporarilyUnavailableError);
+      expect(gate.release).toHaveBeenCalledWith('s1');
+      expect(registry.has('s1')).toBe(false);
+      expect(adapter.listLocalSessionIds()).toEqual([]);
+    });
+
+    it('abort com a abertura ainda no acquire: ela não registra socket depois (desistência da retomada)', async () => {
+      const gate = { acquire: vi.fn(async () => true) };
+      const { adapter } = make(gate);
+      await adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await adapter.suspendSession('s1');
+      let free!: (v: boolean) => void;
+      gate.acquire.mockImplementationOnce(() => new Promise<boolean>((r) => { free = r; }));
+      const resume = adapter.resumeSession('s1');
+      await vi.waitFor(() => expect(free).toBeTypeOf('function'));
+      expect(await adapter.forgetSuspension('s1')).toBe(T);
+      await adapter.abortSession('s1');
+      free(true); // acquire tardio
+      expect(await resume).toBe('gone');
+      expect(registry.has('s1')).toBe(false);
+      expect(sockets).toHaveLength(1);
+      expect(adapter.listLocalSessionIds()).toEqual([]);
+    });
   });
 });

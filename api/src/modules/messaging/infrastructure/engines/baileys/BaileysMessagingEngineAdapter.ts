@@ -51,6 +51,7 @@ import type { SessionStatus } from '../../../../sessions/domain/enums/SessionSta
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { acquireLeaseResult, type ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
+import { LEASE_RENEW_TIMEOUT_MS } from '../../../../sessions/domain/services/sessionLeasePolicy';
 import type { SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 import { buildBaileysAuthState, discardAuthState, releaseAuthState, suspendAuthState } from './BaileysAuthStatePersistence';
@@ -127,6 +128,13 @@ interface OpenInFlight {
   promise: Promise<OpenSocketResult>;
   token: OpeningToken;
 }
+/**
+ * Prazos da abertura (F12): com banco mudo o acquire e a carga do auth state podiam nunca assentar,
+ * prendendo a retomada e quem espera a abertura em curso (`openInFlight`). Estourou = erro
+ * transitório. O repositório do lease já tem prazo próprio; o do acquire aqui é a rede de segurança.
+ */
+const OPEN_LEASE_ACQUIRE_TIMEOUT_MS = LEASE_RENEW_TIMEOUT_MS * 2;
+const OPEN_AUTH_STATE_TIMEOUT_MS = 15_000;
 /** Validade do resumo de grupo (membros/admin) lido do snapshot de metadata. */
 const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
 /** Tempo de vida de cada QR de pareamento. */
@@ -377,9 +385,16 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     return tenantId;
   }
 
-  /** Abort/suspend durante a abertura: a abertura em curso fecha o socket sem registrar. */
+  /**
+   * Abort/suspend durante a abertura: a abertura em curso fecha o socket sem registrar. Abort pega
+   * também a abertura ainda no acquire (`openInFlight`, fora de `opening`): sem isso, a desistência
+   * da retomada soltava o lease e o acquire tardio abria um socket depois dela.
+   */
   private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
-    for (const token of this.opening.get(sessionId) ?? []) {
+    const tokens = new Set(this.opening.get(sessionId) ?? []);
+    const inFlight = this.openInFlight.get(sessionId)?.token;
+    if (kind === 'abort' && inFlight) tokens.add(inFlight);
+    for (const token of tokens) {
       if (kind === 'abort' || !token.cancelled || token.cancelled === 'supersede') token.cancelled = kind;
     }
   }
@@ -980,7 +995,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   private async openSocketOnce(
     sessionId: string, tenantId: string, attempt: number, origin: 'user' | 'auto', token: OpeningToken,
   ): Promise<OpenSocketResult> {
-    const lease = await acquireLeaseResult(this.leaseGate, sessionId);
+    // Acquire que só assenta depois do prazo deixa o lease até o TTL (sem socket, a renovação o larga)
+    const lease = (await withTimeout(acquireLeaseResult(this.leaseGate, sessionId), OPEN_LEASE_ACQUIRE_TIMEOUT_MS)) ?? 'error';
     if (lease !== 'acquired') {
       if (origin === 'user') {
         throw lease === 'held' ? new SessionLeaseHeldError(sessionId) : new EngineTemporarilyUnavailableError();
@@ -995,9 +1011,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         await this.finishCancelledOpen(sessionId, tenantId, token.cancelled);
         return null;
       }
-      const { state, saveCreds } = await buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
+      // Carga que assenta depois do prazo deixa um handle sem socket: o próximo build o solta
+      const auth = await withTimeout(buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
         onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
-      });
+      }), OPEN_AUTH_STATE_TIMEOUT_MS);
+      if (!auth) {
+        baileysLogger.warn({ sessionId, timeoutMs: OPEN_AUTH_STATE_TIMEOUT_MS }, 'Auth state load timed out on socket open');
+        throw new EngineTemporarilyUnavailableError();
+      }
+      const { state, saveCreds } = auth;
 
       const socket = makeWASocket({
         version,

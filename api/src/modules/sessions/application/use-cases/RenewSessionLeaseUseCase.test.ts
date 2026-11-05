@@ -289,19 +289,81 @@ describe('RenewSessionLeaseUseCase', () => {
       expect(sockets.resumeSession).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS * 2);
     });
 
-    it('resume que passa do timeout conta tentativa, mas só devolve quando a reabertura assenta', async () => {
+    it('repo que nunca responde: resume assenta no prazo, conta a tentativa e não espera a reabertura', async () => {
+      const { sockets, ledger, repo, uc } = await suspendedBothThenUp();
+      vi.mocked(repo.tryAcquire).mockImplementation(() => new Promise<boolean>(() => undefined));
+      await uc.execute();
+      let settled = false;
+      const p = uc.resume('s1').then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(RESUME_TIMEOUT_MS - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await p;
+      expect(settled).toBe(true);
+      expect(ledger.fenceAttempts('s1')).toBe(1);
+      expect(ledger.isFenced('s1')).toBe(true);
+      expect(sockets.forgetSuspension).not.toHaveBeenCalled();
+    });
+
+    it(`repo que nunca responde: desistência após ${MAX_RESUME_ATTEMPTS} prazos grava DISCONNECTED`, async () => {
+      const { sockets, ledger, repo, status, uc } = await suspendedBothThenUp();
+      vi.mocked(repo.tryAcquire).mockImplementation(() => new Promise<boolean>(() => undefined));
+      for (let i = 1; i <= MAX_RESUME_ATTEMPTS; i++) {
+        await uc.execute();
+        const p = uc.resume('s1');
+        await vi.advanceTimersByTimeAsync(RESUME_TIMEOUT_MS);
+        await p;
+      }
+      expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s1', 't1');
+      expect(sockets.abortSession).toHaveBeenCalledWith('s1');
+      expect(ledger.isFenced('s1')).toBe(false);
+    });
+
+    it('reabertura que assenta depois do prazo não muda a tentativa já contada', async () => {
       const { sockets, ledger, uc } = await suspendedBothThenUp();
       let finish!: (r: SessionResumeResult) => void;
       vi.mocked(sockets.resumeSession).mockImplementationOnce(() => new Promise((r) => { finish = r; }));
       await uc.execute();
-      let settled = false;
-      const p = uc.resume('s1').then(() => { settled = true; });
+      const p = uc.resume('s1');
       await vi.advanceTimersByTimeAsync(RESUME_TIMEOUT_MS);
-      expect(ledger.fenceAttempts('s1')).toBe(1);
-      expect(settled).toBe(false);
-      finish('resumed');
       await p;
-      expect(settled).toBe(true);
+      finish('resumed');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ledger.fenceAttempts('s1')).toBe(1);
+    });
+
+    it('rejeição tardia da reabertura (depois do prazo) é descartada', async () => {
+      const { sockets, uc } = await suspendedBothThenUp();
+      let fail!: (e: Error) => void;
+      vi.mocked(sockets.resumeSession).mockImplementationOnce(() => new Promise((_r, rej) => { fail = rej; }));
+      await uc.execute();
+      const p = uc.resume('s1');
+      await vi.advanceTimersByTimeAsync(RESUME_TIMEOUT_MS);
+      await p;
+      fail(new Error('tarde'));
+      await vi.advanceTimersByTimeAsync(0); // sem unhandled rejection (vitest falharia)
+    });
+
+    it('desistência aborta antes de soltar o lease', async () => {
+      const { sockets, repo, status, round } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('auth.load'));
+      const order: string[] = [];
+      vi.mocked(sockets.forgetSuspension).mockImplementation(async (id) => { order.push(`forget:${id}`); return 't1'; });
+      vi.mocked(sockets.abortSession).mockImplementation(async (id) => { order.push(`abort:${id}`); });
+      vi.mocked(repo.release).mockImplementation(async (id) => { order.push(`release:${id}`); });
+      vi.mocked(status.markDisconnectedIfNoLiveLease as (id: string) => Promise<boolean>).mockImplementation(async (id: string) => { order.push(`status:${id}`); return true; });
+      for (let i = 0; i < MAX_RESUME_ATTEMPTS; i++) await round();
+      expect(order.filter((o) => o.endsWith(':s1'))).toEqual(['forget:s1', 'abort:s1', 'release:s1', 'status:s1']);
+    });
+
+    it('falha no abort da desistência é logada e o lease é solto mesmo assim', async () => {
+      const { sockets, repo, status, log, round } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('auth.load'));
+      vi.mocked(sockets.abortSession).mockRejectedValue(new Error('abort falhou'));
+      for (let i = 0; i < MAX_RESUME_ATTEMPTS; i++) await round();
+      expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
+      expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s1', 't1');
+      expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }), expect.stringContaining('desistência'));
     });
 
     it('socket local de suspensa sem lease no razão (retomada tardia) entra na sonda e volta ao razão', async () => {

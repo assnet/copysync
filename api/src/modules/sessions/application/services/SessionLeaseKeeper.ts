@@ -13,8 +13,9 @@ export interface LeaseRenewer {
  * Keeper do lease (LEASE-04): `setTimeout` encadeado — o próximo tick só é agendado depois
  * que o atual termina, então rodadas nunca se sobrepõem. As retomadas que a rodada devolve
  * saem sem `await` (fila própria, uma por sessão por vez): retomada lenta não atrasa a
- * renovação das outras. `stop` cancela o agendado e espera o tick em curso e as retomadas
- * (estas no máximo `intervalMs`) (shutdown, LEASE-09).
+ * renovação das outras. A retomada assenta no prazo do use case mesmo com banco mudo (F12), então o
+ * slot de `resuming` nunca fica preso. `stop` cancela o agendado e espera o tick em curso e as
+ * retomadas (estas no máximo `intervalMs`) (shutdown, LEASE-09).
  */
 export class SessionLeaseKeeper {
   private timer: ReturnType<typeof setTimeout> | undefined;

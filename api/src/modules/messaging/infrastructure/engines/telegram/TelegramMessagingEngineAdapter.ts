@@ -162,6 +162,21 @@ interface LeaseProbe {
   lease?: LeaseAcquireResult;
 }
 
+/**
+ * Uma abertura de cliente em curso. Abort/suspend (entre o acquire e o `registry.set`) e uma
+ * abertura nova do usuário (`supersede`, desde o início) marcam `cancelled`; a abertura desiste sem
+ * registrar. Precedência: abort > suspend > supersede.
+ */
+interface OpeningToken {
+  cancelled: 'abort' | 'suspend' | 'supersede' | null;
+}
+
+/** `openClient` em curso por sessão: a próxima abertura espera (auto) ou a cancela (usuário). */
+interface OpenInFlight {
+  promise: Promise<TelegramSessionEntry | null>;
+  token: OpeningToken;
+}
+
 export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessionSocketControl {
   private readonly registry = new TelegramSessionRegistry();
   /** Sessões suspensas por fence de banco → tenant, para `resumeSession` reabrir. */
@@ -172,9 +187,9 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * Aberturas entre `leaseGate.acquire` e `registry.set`: a renovação as trata como locais.
    * Abort/suspend nesse intervalo marcam `cancelled` (abort vence suspend) e a abertura desiste.
    */
-  private readonly opening = new Map<string, Set<{ cancelled: 'abort' | 'suspend' | null }>>();
-  /** `openClient` em curso por sessão: a próxima espera ela terminar (nunca dois clientes abrindo). */
-  private readonly openInFlight = new Map<string, Promise<unknown>>();
+  private readonly opening = new Map<string, Set<OpeningToken>>();
+  /** Uma abertura por sessão: nunca dois clientes abrindo (ver `openClient`). */
+  private readonly openInFlight = new Map<string, OpenInFlight>();
   private readonly profilePictureCache = new Map<string, { url: string | null; at: number }>();
   private readonly dialogsCache = new Map<string, { dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>; client: TelegramClient; at: number }>();
   /** Fotos de grupo já no storage (nome inclui o photoId: foto nova = arquivo novo). */
@@ -204,6 +219,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   async connectSession(input: ConnectSessionInput): Promise<ConnectSessionResult> {
     this.dropSuspension(input.sessionId);
     const entry = await this.openClient(input.sessionId, input.tenantId);
+    // Clique repetido: a abertura mais nova cancelou esta e segue sozinha
+    if (!entry) return {};
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
       return {};
@@ -217,24 +234,30 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     await this.reopen(input);
   }
 
-  /** Reconexão (manual ou retomada pós-fence); `probe` recebe o resultado do acquire do lease. */
-  private async reopen(input: ReconnectSessionInput, probe?: LeaseProbe): Promise<void> {
+  /**
+   * Reconexão (manual = `user`, retomada pós-fence = `auto`); `probe` recebe o resultado do acquire
+   * do lease. `false` = não abriu aqui (cancelada por abertura do usuário ou outra já em curso).
+   */
+  private async reopen(input: ReconnectSessionInput, origin: 'user' | 'auto' = 'user', probe?: LeaseProbe): Promise<boolean> {
     const saved = await this.auth.load(input.sessionId, input.tenantId);
     if (!saved) {
       // Nunca logou (ou saiu): como no WhatsApp, reconectar sem credencial abre o login por QR
-      const entry = await this.openClient(input.sessionId, input.tenantId, null, probe);
+      const entry = await this.openClient(input.sessionId, input.tenantId, null, probe, origin);
+      if (!entry) return false;
       this.startQrLogin(input.sessionId, entry);
-      return;
+      return true;
     }
-    const entry = await this.openClient(input.sessionId, input.tenantId, saved, probe);
+    const entry = await this.openClient(input.sessionId, input.tenantId, saved, probe, origin);
+    if (!entry) return false;
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
-      return;
+      return true;
     }
     await this.auth.clear(input.sessionId);
     await this.teardown(input.sessionId, entry);
     await this.updateStatus(input.sessionId, input.tenantId, 'LOGGED_OUT');
     internalEventBus.emit('SESSION_LOGGED_OUT', { type: 'SESSION_LOGGED_OUT', sessionId: input.sessionId, tenantId: input.tenantId });
+    return true;
   }
 
   async disconnectSession(input: DisconnectSessionInput): Promise<void> {
@@ -290,6 +313,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
 
   async requestLoginCode(input: RequestLoginCodeInput): Promise<LoginStepResult> {
     const entry = await this.openClient(input.sessionId, input.tenantId);
+    // Pedido mais novo cancelou este (mesmo efeito de hoje para o login trocado: cancelado)
+    if (!entry) throw translateTelegramLoginError(new Error('AUTH_USER_CANCEL'));
     if (await entry.client.checkAuthorization()) {
       await this.finishLogin(input.sessionId, entry);
       return { status: 'CONNECTED' };
@@ -430,27 +455,36 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   }
 
   /**
-   * Uma abertura por sessão: com outra em curso, espera ela terminar (sucesso ou erro) e abre a sua,
-   * que derruba o cliente anterior. Sem isso o 2º `registry.set` sobrescrevia o 1º sem `destroy()`.
+   * Uma abertura por sessão, como no Baileys: com outra em curso, a do usuário a cancela
+   * (`supersede`), espera ela assentar e abre a sua (cliques repetidos viram um cliente, sem fila
+   * serial atrás de uma retomada pendurada); a automática espera a em curso e devolve `null` (não
+   * abre um 2º cliente). `null` também = esta abertura foi cancelada por uma do usuário.
    */
   private async openClient(
     sessionId: string, tenantId: string, savedSession?: string | null, probe?: LeaseProbe,
-  ): Promise<TelegramSessionEntry> {
+    origin: 'user' | 'auto' = 'user',
+  ): Promise<TelegramSessionEntry | null> {
     for (let running = this.openInFlight.get(sessionId); running; running = this.openInFlight.get(sessionId)) {
-      await running.catch(() => undefined);
+      if (origin === 'auto') {
+        await running.promise.catch(() => undefined);
+        return null;
+      }
+      if (!running.token.cancelled) running.token.cancelled = 'supersede';
+      await running.promise.catch(() => undefined);
     }
-    const flight = this.openClientOnce(sessionId, tenantId, savedSession, probe);
+    const token: OpeningToken = { cancelled: null };
+    const flight: OpenInFlight = { promise: this.openClientOnce(sessionId, tenantId, token, savedSession, probe), token };
     this.openInFlight.set(sessionId, flight);
     try {
-      return await flight;
+      return await flight.promise;
     } finally {
       if (this.openInFlight.get(sessionId) === flight) this.openInFlight.delete(sessionId);
     }
   }
 
   private async openClientOnce(
-    sessionId: string, tenantId: string, savedSession?: string | null, probe?: LeaseProbe,
-  ): Promise<TelegramSessionEntry> {
+    sessionId: string, tenantId: string, token: OpeningToken, savedSession?: string | null, probe?: LeaseProbe,
+  ): Promise<TelegramSessionEntry | null> {
     // Lease antes de tudo (LEASE-03): outro processo com a sessão → nenhum cliente nem status aqui
     // (dois clientes com a mesma chave = AUTH_KEY_DUPLICATED). Erro de banco ≠ outro dono.
     const lease = await acquireLeaseResult(this.leaseGate, sessionId);
@@ -460,11 +494,14 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       throw lease === 'held' ? new SessionLeaseHeldError(sessionId) : new EngineTemporarilyUnavailableError();
     }
     // Entre o acquire e o registry.set a sessão conta como local, senão a renovação larga o lease
-    const opened = await this.whileOpening(sessionId, async (token) => {
+    const opened = await this.whileOpening(sessionId, token, async () => {
+      // Cancelada ainda no acquire (supersede/abort): nem carrega nem cria cliente
+      if (token.cancelled) return token.cancelled;
       const existing = this.registry.get(sessionId);
       if (existing) await this.teardown(sessionId, existing);
 
       const saved = savedSession === undefined ? await this.auth.load(sessionId, tenantId) : savedSession;
+      if (token.cancelled) return token.cancelled;
       const client = new TelegramClient(new StringSession(saved ?? ''), this.config.apiId, this.config.apiHash, {
         connectionRetries: 5,
         autoReconnect: true,
@@ -475,7 +512,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       // Entrada viva de outro cliente (registrada durante a carga): derruba antes de sobrescrever
       const stale = this.registry.get(sessionId);
       if (stale) await this.teardown(sessionId, stale);
-      // Abort/suspend chegou enquanto abria: descarta o cliente (nunca conectado) antes de expor
+      // Abort/suspend/supersede chegou enquanto abria: descarta o cliente (nunca conectado) antes de expor
       if (token.cancelled) {
         try { await client.destroy(); } catch { /* best-effort */ }
         return token.cancelled;
@@ -492,6 +529,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       this.registry.set(sessionId, entry);
       return entry;
     });
+    if (opened === 'supersede') {
+      // A abertura nova do usuário usa a mesma StringSession: nada a gravar nem soltar aqui
+      telegramLogger.info({ sessionId }, 'Telegram client open superseded by a newer open');
+      return null;
+    }
     if (typeof opened === 'string') {
       // Sem status nem StringSession; suspensa volta pelo resumeSession
       if (opened === 'suspend') this.suspended.set(sessionId, tenantId);
@@ -1018,8 +1060,10 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     const current = (): boolean => this.resuming.get(sessionId) === attempt;
     const probe: LeaseProbe = {};
     try {
-      await this.reopen({ sessionId, tenantId }, probe);
+      const opened = await this.reopen({ sessionId, tenantId }, 'auto', probe);
       if (!current()) return 'gone';
+      // Outra abertura cuidou (ou cancelou esta): só vale como retomada se deixou cliente aqui
+      if (!opened && !this.registry.get(sessionId)) throw new EngineTemporarilyUnavailableError();
       this.suspended.delete(sessionId);
       return 'resumed';
     } catch (err) {
@@ -1061,14 +1105,13 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * estiver aberto ou abrindo aqui; sem isso o lease ficaria preso até o TTL.
    */
   private async whileOpening<T>(
-    sessionId: string, open: (token: { cancelled: 'abort' | 'suspend' | null }) => Promise<T>,
+    sessionId: string, token: OpeningToken, open: () => Promise<T>,
   ): Promise<T> {
-    const token: { cancelled: 'abort' | 'suspend' | null } = { cancelled: null };
-    const tokens = this.opening.get(sessionId) ?? new Set();
+    const tokens = this.opening.get(sessionId) ?? new Set<OpeningToken>();
     tokens.add(token);
     this.opening.set(sessionId, tokens);
     try {
-      return await open(token);
+      return await open();
     } catch (err) {
       if (!token.cancelled && tokens.size === 1 && !this.registry.get(sessionId)) {
         await this.releaseLeaseAfterFailedOpen(sessionId);
@@ -1080,9 +1123,16 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     }
   }
 
+  /**
+   * Abort/suspend durante a abertura. Abort pega também a abertura ainda no acquire
+   * (`openInFlight`, fora de `opening`): a desistência da retomada solta o lease logo depois.
+   */
   private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
-    for (const token of this.opening.get(sessionId) ?? []) {
-      if (kind === 'abort' || !token.cancelled) token.cancelled = kind;
+    const tokens = new Set(this.opening.get(sessionId) ?? []);
+    const inFlight = this.openInFlight.get(sessionId)?.token;
+    if (kind === 'abort' && inFlight) tokens.add(inFlight);
+    for (const token of tokens) {
+      if (kind === 'abort' || !token.cancelled || token.cancelled === 'supersede') token.cancelled = kind;
     }
   }
 
