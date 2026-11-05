@@ -26,6 +26,7 @@ import { StorefrontPage } from '@/features/storefront/StorefrontPage';
 import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
+import { BroadcastGroupsPage } from '@/pages/broadcast-groups/BroadcastGroupsPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
 import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH } from '@/features/navigation';
 
@@ -64,6 +65,7 @@ export function AppRoutes() {
           <Route path="/offers" element={<OfferGeneratorPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/link-rotation" element={<LinkRotationPage />} />
+          <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
           <Route path="/mirroring" element={<MirroringPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />

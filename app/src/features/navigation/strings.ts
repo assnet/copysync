@@ -25,6 +25,7 @@ export const navigationStrings = {
   links: {
     offers: 'Gerador de ofertas',
     monitoring: 'Monitoramento',
+    broadcastGroups: 'Grupos de disparo',
     storefront: 'Página de Ofertas',
     offerStory: 'Story de Oferta',
     affiliateCredentials: 'Credenciais de afiliado',

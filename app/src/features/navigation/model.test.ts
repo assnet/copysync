@@ -9,7 +9,7 @@ describe('buildNavigation', () => {
     ]);
     expect(model.products[0].status).toBe('available');
     expect(model.products[0].children.map((c) => c.path)).toEqual([
-      '/offers', '/monitoring', '/link-rotation', '/storefront', '/offer-story',
+      '/offers', '/monitoring', '/broadcast-groups', '/link-rotation', '/storefront', '/offer-story',
       '/affiliates/credentials', '/affiliates/plans',
     ]);
   });
@@ -65,6 +65,12 @@ describe('findActiveEntry', () => {
   it('rota de filho devolve o link e o produto', () => {
     const entry = findActiveEntry(model, '/storefront');
     expect(entry?.link.key).toBe('storefront');
+    expect(entry?.product?.key).toBe('affiliates');
+  });
+
+  it('grupos de disparo ficam em Afiliados', () => {
+    const entry = findActiveEntry(model, '/broadcast-groups');
+    expect(entry?.link.label).toBe('Grupos de disparo');
     expect(entry?.product?.key).toBe('affiliates');
   });
 

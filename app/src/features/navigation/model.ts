@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  BadgePercent, Bookmark, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
+  BadgePercent, Bookmark, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
   KeyRound, MessagesSquare, Server, Settings, Tag, UserRoundPlus, Users, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
@@ -89,6 +89,7 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
     children: [
       { key: 'offers', label: s.links.offers, path: '/offers', icon: Tag },
       { key: 'monitoring', label: s.links.monitoring, path: '/monitoring', icon: MODULE_ICONS.monitoring },
+      { key: 'broadcast-groups', label: s.links.broadcastGroups, path: '/broadcast-groups', icon: Send },
       { key: 'link-rotation', label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: Link2 },
       { key: 'storefront', label: s.links.storefront, path: '/storefront', icon: MODULE_ICONS.storefront, badge: plansStrings.badgeProfessional },
       { key: 'offer-story', label: s.links.offerStory, path: '/offer-story', icon: MODULE_ICONS.offerStory, badge: plansStrings.badgeBusiness },
