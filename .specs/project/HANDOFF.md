@@ -42,8 +42,7 @@ Checklist antes de ligar mais de um processo na Render: `docs/arquitetura-escala
 | --- | --- | --- |
 | S1 CI + S2 caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas; 19 riscos em `riscos-caracterizacao.md` |
 | S3 staging | `chore/staging-runbook` (`be5cc95`) | ✅ 3 revisões; dono executa `docs/staging.md` |
-| H1 | `feature/hub-h1` (`5824ea3`) | T01–T05, T10, T26 ✅; **D1 decidido (2026-11-05): `NOT NULL DEFAULT` socialpulse** (sem trigger/backfill; default sai antes do H3); **D8: `feature/hub-h1`**; plano sendo reescrito, depois ondas de execução |
-| H1 filtros + H1-c | ✅ no `feature/hub-h1` (`f39d955`: T11–T15, T17–T23, T32–T35; gate completo 592 db + 84 unit); T16 e T38 (DROP DEFAULT nas 4 tabelas grandes) prontas, integração em andamento | depois T24, T25, T29, T31. **Ao empilhar o H4: renumerar a migration `20261105000006_email_sender_application` do `hub/h4-t16`** (colide com a da T38). Contrato: com `X-Application-Key` desconhecida, `GET /plans`, `POST /checkout/sessions` e cancelamento de trial → 404; sem header nada muda |
+| H1 (completo em código) | `feature/hub-h1` (`75f0c25`, api 1.87.0) | T01–T38 + T06b, T25b; gate 611 db + 84 unit; `api/docs/hub-application.md` e `docs/releases/1.87.0.md` (runbook). Sai DEPOIS dos hotfixes 1.86.1–1.86.3. Revisão independente em andamento. Após o deploy: dono roda `scripts/validate-application-constraints.ts --apply` fora do cron de renovação. **Ao empilhar o H4: renumerar a migration `20261105000006_email_sender_application`** |
 | H2 / H3a / H4 | `hub/h2-schema` (OutboundEvent, IntegrationNonce, triggers; socialpulse sem evento), `hub/h3a-base` (COPYSYNC_*, seed de planos em dry-run), `hub/h4-t16` (remetente por aplicação); funções puras em `hub/h2-t5..t13`, `hub/h4-t17`, `hub/h4-overrides` | branches empilhados sobre o H1, não juntar no H1. Dono: D3 do H2 (segredo anterior); regras do trigger (restauração, TRIAL_ACTIVE/NULL sem evento) |
 
 ## Pendências do dono
