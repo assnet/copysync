@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 
 /** Banco em memória: tenant único por `billingCustomerId`, recibos por `eventId`. */
 const db = vi.hoisted(() => {
-  type Tenant = { id: string; status: string; lastBillingEventSeq: bigint | null; planSlug: string | null; suspendedAt: Date | null };
+  type Tenant = { id: string; status: string; lastBillingEventSeq: bigint | null; planSlug: string | null; suspendedAt: Date | null; subscriptionExpiresAt?: Date | null };
   const state = {
     tenant: null as Tenant | null,
     receipts: new Map<string, { outcome: string; tenantId: string | null; type: string }>(),
@@ -277,5 +277,47 @@ describe('ApplyBillingEventUseCase', () => {
       throw new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x', meta: { target: ['billingCustomerId'] } });
     });
     expect((await run(ev('subscription.activated'))).outcome).toBe('APPLIED');
+  });
+
+  describe('vencimento (expiresAt)', () => {
+    const PREV = new Date('2026-11-01T00:00:00Z');
+
+    it('renovação com data grava o vencimento', async () => {
+      makeTenant({ subscriptionExpiresAt: PREV });
+      await run(ev('subscription.renewed', { payload: { planSlug: 'COPYSYNC_PRO', expiresAt: '2026-12-04T15:00:00.000Z' } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toEqual(new Date('2026-12-04T15:00:00.000Z'));
+    });
+
+    it.each(['subscription.activated', 'subscription.updated'])('%s com data grava mesmo sem plano válido', async (type) => {
+      makeTenant();
+      await run(ev(type, { payload: { planSlug: 'gold', expiresAt: '2027-01-10T00:00:00.000Z' } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toEqual(new Date('2027-01-10T00:00:00.000Z'));
+    });
+
+    it('falha de pagamento preserva o vencimento gravado', async () => {
+      makeTenant({ subscriptionExpiresAt: PREV });
+      await run(ev('subscription.payment_failed', { payload: { expiresAt: '2030-01-01T00:00:00.000Z' } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toBe(PREV);
+    });
+
+    it('cancelamento preserva o vencimento gravado', async () => {
+      makeTenant({ subscriptionExpiresAt: PREV });
+      await run(ev('subscription.canceled', { payload: { expiresAt: null } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toBe(PREV);
+    });
+
+    it('data inválida vira null', async () => {
+      makeTenant({ subscriptionExpiresAt: PREV });
+      await run(ev('subscription.renewed', { payload: { planSlug: 'COPYSYNC_PRO', expiresAt: 'não-é-data' } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toBeNull();
+    });
+
+    it('null explícito limpa; ausente mantém', async () => {
+      makeTenant({ subscriptionExpiresAt: PREV });
+      await run(ev('subscription.updated', { payload: { planSlug: 'COPYSYNC_PRO' } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toBe(PREV);
+      await run(ev('subscription.updated', { eventId: 'ev-2', seq: 12n, payload: { planSlug: 'COPYSYNC_PRO', expiresAt: null } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toBeNull();
+    });
   });
 });

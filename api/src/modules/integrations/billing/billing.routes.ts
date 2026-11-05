@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { verifyBillingHmac } from './verifyBillingHmac';
 import { parseBillingSeq } from './parseBillingSeq';
 import { ApplyBillingEventUseCase } from './ApplyBillingEventUseCase';
+import { parseExpiresAt } from './parseExpiresAt';
 import type { ApplyBillingEventInput } from './ApplyBillingEventUseCase';
 import { env } from '../../../shared/config/env';
 import { logger } from '../../../shared/logger/logger';
@@ -97,6 +98,8 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
           email: str(body.email),
           name: str(body.name),
           planSlug: str(body.planSlug) ?? null,
+          // Ausente = mantém; presente é normalizado (inválido → null)
+          ...('expiresAt' in body ? { expiresAt: parseExpiresAt(body.expiresAt)?.toISOString() ?? null } : {}),
         },
       };
 

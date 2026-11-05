@@ -68,8 +68,22 @@ describe('POST /integrations/billing/webhook', () => {
     expect(res.json()).toEqual({ ok: true, outcome: 'APPLIED' });
     expect(execute).toHaveBeenCalledWith({
       eventId: 'ev-1', billingCustomerId: 'user-central-1', eventType: 'subscription.activated', seq: 7n,
-      payload: { email: 'ana@exemplo.com', name: 'Ana', planSlug: 'COPYSYNC_PRO' },
+      payload: { email: 'ana@exemplo.com', name: 'Ana', planSlug: 'COPYSYNC_PRO', expiresAt: null },
     });
+  });
+
+  it('expiresAt ISO válido chega normalizado; inválido vira null; ausente não vai', async () => {
+    execute.mockResolvedValue({ outcome: 'APPLIED', tenantId: 't1' });
+    const payloadOf = () => execute.mock.calls.at(-1)![0].payload;
+    await app.inject(signed({ ...BODY, expiresAt: '2026-12-04T12:00:00-03:00' }));
+    expect(payloadOf().expiresAt).toBe('2026-12-04T15:00:00.000Z');
+    await app.inject(signed({ ...BODY, expiresAt: 'amanhã' }));
+    expect(payloadOf().expiresAt).toBeNull();
+    await app.inject(signed({ ...BODY, expiresAt: 1735689600 }));
+    expect(payloadOf().expiresAt).toBeNull();
+    const { expiresAt: _omit, ...withoutExpiry } = BODY;
+    await app.inject(signed(withoutExpiry));
+    expect('expiresAt' in payloadOf()).toBe(false);
   });
 
   it('tipo desconhecido segue para o use case (recibo IGNORED) e responde 200', async () => {

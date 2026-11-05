@@ -11,6 +11,7 @@ import { createEmailSender } from '../infrastructure/email/EmailSenderFactory';
 import { applyPlanSideEffects } from './applyPlanSideEffects';
 import { entitlementJsonValue } from './entitlementJsonValue';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
+import { parseExpiresAt } from './parseExpiresAt';
 
 const log = logger.child({ module: 'ApplyBillingEventUseCase' });
 
@@ -41,6 +42,8 @@ export interface BillingEventPayload {
   email?: string;
   name?: string;
   planSlug?: string | null;
+  /** Vencimento ISO do hub; `null` = sem vencimento; ausente = mantém o gravado. */
+  expiresAt?: string | null;
 }
 
 export interface ApplyBillingEventInput {
@@ -246,6 +249,11 @@ export class ApplyBillingEventUseCase {
       data.status = 'CANCELLED';
       data.suspendedAt = new Date();
       suspended = true;
+    }
+    // Vencimento só muda em ativação/renovação/atualização; demais eventos mantêm
+    const expiresAt = input.payload.expiresAt;
+    if (PLAN_SYNC.has(type) && expiresAt !== undefined) {
+      data.subscriptionExpiresAt = parseExpiresAt(expiresAt);
     }
     const syncPlan = planSlug !== null && PLAN_SYNC.has(type);
     if (syncPlan) data.planSlug = planSlug;
