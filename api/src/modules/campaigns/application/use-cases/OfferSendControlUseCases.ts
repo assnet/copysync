@@ -8,6 +8,8 @@ import { dispatchStartAt } from '../../domain/offerSchedule';
 import { OfferInvalidStateError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import { DEFAULT_INTERVAL } from './OfferGeneratorConfigUseCases';
+import { fitToGeneratorWindow } from './SendOfferUseCase';
+import type { OfferGeneratorConfig } from '../../domain/entities/OfferGeneratorConfig';
 
 export interface OfferControlInput {
   tenantId: string;
@@ -40,8 +42,8 @@ abstract class OfferControlUseCase {
     return toOfferDto(offer, await this.deps.dispatches.listByOffer(input.offerId, input.tenantId));
   }
 
-  protected async interval(tenantId: string) {
-    const config = await this.deps.configs.find(tenantId);
+  protected async interval(tenantId: string, loaded?: OfferGeneratorConfig | null) {
+    const config = loaded !== undefined ? loaded : await this.deps.configs.find(tenantId);
     return {
       minMs: (config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min) * 1000,
       maxMs: (config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max) * 1000,
@@ -82,14 +84,16 @@ export class PauseOfferUseCase extends OfferControlUseCase {
 /**
  * PAUSED → SENDING. Os QUEUED são reagendados a partir de agora (ou do início agendado, se
  * ainda não chegou) com o intervalo da
- * configuração atual, na mesma ordem: nada sai em rajada por causa do tempo parado.
+ * configuração atual, na mesma ordem: nada sai em rajada por causa do tempo parado. Oferta do
+ * gerador sem `scheduledAt` encaixa na janela de postagem atual do gerador.
  */
 export class ResumeOfferUseCase extends OfferControlUseCase {
   async execute(input: OfferControlInput): Promise<OfferDTO> {
     const offer = await this.load(input);
     if (offer.status !== 'PAUSED') throw new OfferInvalidStateError(offer.id, offer.status);
 
-    const interval = await this.interval(input.tenantId);
+    const config = await this.deps.configs.find(input.tenantId);
+    const interval = await this.interval(input.tenantId, config);
     const queued = (await this.deps.dispatches.listByOffer(offer.id, input.tenantId))
       .filter((d) => d.status === 'QUEUED')
       .sort((a, b) => a.notBefore.getTime() - b.notBefore.getTime());
@@ -102,9 +106,11 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
     const openBySession = new Map<string, Date[]>();
     for (const sessionId of sessionIds) openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(input.tenantId, sessionId, planned[0] ?? start));
     const tails = laneTailsFromOpen(openBySession, planned[0] ?? start, interval.maxMs);
-    const slots = tails.size === 0
+    const laned = tails.size === 0
       ? planned
       : appendToLanes(queued.map((d, i) => ({ sessionId: d.sessionId ?? d.id, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
+    // Oferta do gerador sem horário agendado: retomar fora da janela espera a próxima abertura
+    const slots = fitToGeneratorWindow(laned, offer, config);
     await this.deps.dispatches.rescheduleQueued(offer.id, input.tenantId, slots);
 
     if (!(await this.deps.offers.transitionStatus(offer.id, input.tenantId, ['PAUSED'], 'SENDING'))) {

@@ -78,6 +78,25 @@ describe('ResumeOfferUseCase', () => {
     expect(byConv('c4').notBefore).toEqual(sec(210));
   });
 
+  it('retomada fora da janela do gerador: QUEUED vão para a próxima abertura, mesmo espaçamento', async () => {
+    // LATER = 13:00 em São Paulo; janela 14:00–22:00 → hoje 14:00 (17:00Z)
+    const { deps, byConv, input } = setup({ status: 'PAUSED' });
+    Object.assign(deps.configs.configs.get(TENANT)!, { windowStartMinute: 840, windowEndMinute: 1320 });
+    await new ResumeOfferUseCase(deps).execute(input);
+    const open = new Date('2026-10-26T17:00:00.000Z');
+    expect(byConv('c3').notBefore).toEqual(open);
+    expect(byConv('c4').notBefore).toEqual(new Date(open.getTime() + 150_000));
+  });
+
+  it('retomada: oferta do monitoramento ou com scheduledAt não usa a janela do gerador', async () => {
+    for (const offer of [{ status: 'PAUSED' as const, origin: 'MONITORING' as const }, { status: 'PAUSED' as const, scheduledAt: new Date(NOW.getTime() - 60_000) }]) {
+      const { deps, byConv, input } = setup(offer);
+      Object.assign(deps.configs.configs.get(TENANT)!, { windowStartMinute: 840, windowEndMinute: 1320 });
+      await new ResumeOfferUseCase(deps).execute(input);
+      expect(byConv('c3').notBefore).toEqual(sec(0));
+    }
+  });
+
   it('fora de PAUSED → OFFER_INVALID_STATE', async () => {
     const { deps, input } = setup({ status: 'SENDING' });
     await expect(new ResumeOfferUseCase(deps).execute(input)).rejects.toMatchObject({ code: 'OFFER_INVALID_STATE' });

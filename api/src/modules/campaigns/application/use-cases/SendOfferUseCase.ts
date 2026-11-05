@@ -5,7 +5,11 @@ import type { IEntitlementReader } from '../../domain/contracts/IEntitlementRead
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { orderDispatchTargets } from '../../domain/services/orderDispatchTargets';
+import { fitSlots } from '../../domain/services/fitSlots';
+import { resolveStartWithinPostingWindow } from '../../domain/services/postingWindow';
 import { dispatchStartAt } from '../../domain/offerSchedule';
+import type { Offer } from '../../domain/entities/Offer';
+import type { OfferGeneratorConfig } from '../../domain/entities/OfferGeneratorConfig';
 import {
   OfferAlreadySentError,
   OfferChangedError,
@@ -22,6 +26,21 @@ import { countByChannel, keepOneSessionPerChannel, LIMIT_CHANNELS, limitKeyOfCha
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
 export const MENTION_ALL_ENABLED = ENTITLEMENT_KEYS.MENTION_ALL_ENABLED;
+
+/**
+ * Envios do gerador sem `scheduledAt` encaixam na janela de postagem da configuração (PS-05), igual
+ * ao claim do worker (D3: horário agendado explícito ignora a janela). Sem configuração ou janela
+ * padrão (dia inteiro, todos os dias) os horários não mudam.
+ */
+export function fitToGeneratorWindow(
+  slots: Date[],
+  offer: Pick<Offer, 'origin' | 'scheduledAt'>,
+  config: Pick<OfferGeneratorConfig, 'windowStartMinute' | 'windowEndMinute' | 'weekdaysMask'> | null,
+): Date[] {
+  if (!config || offer.origin !== 'GENERATOR' || offer.scheduledAt) return slots;
+  const window = { startMinute: config.windowStartMinute, endMinute: config.windowEndMinute, weekdaysMask: config.weekdaysMask };
+  return fitSlots(slots, (at) => resolveStartWithinPostingWindow(at, window));
+}
 
 export interface SendOfferInput {
   tenantId: string;
@@ -107,9 +126,11 @@ export class SendOfferUseCase {
       openBySession.set(sessionId, await dispatches.openNotBefore(tenantId, sessionId, planned[0]!));
     }
     const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
-    const slots = tails.size === 0
+    const laned = tails.size === 0
       ? planned
       : appendToLanes(targets.map((t, i) => ({ sessionId: t.sessionId, notBefore: planned[i]! })), tails, laneGapMs(interval, this.deps.rand));
+    // Fila mostra o horário real: fora da janela do gerador, cada envio espera a próxima abertura
+    const slots = fitToGeneratorWindow(laned, offer, config);
     const items = targets.map((t, i) => ({
       conversationId: t.conversationId,
       sessionId: t.sessionId,

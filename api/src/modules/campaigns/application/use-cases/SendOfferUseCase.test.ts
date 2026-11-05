@@ -197,6 +197,43 @@ describe('SendOfferUseCase — início agendado', () => {
   });
 });
 
+describe('SendOfferUseCase — janela de postagem do gerador', () => {
+  // NOW = 12:00 em São Paulo (UTC-3); 23:00 SP = 02:00Z do dia seguinte
+  const AT_23H = new Date('2026-10-27T02:00:00.000Z');
+  const withWindow = (s: ReturnType<typeof setup>, w: { start: number; end: number; mask?: number }, now = AT_23H) => {
+    Object.assign(s.configs.configs.get(TENANT)!, { windowStartMinute: w.start, windowEndMinute: w.end, weekdaysMask: w.mask ?? 127 });
+    return new SendOfferUseCase({ offers: s.offers, dispatches: s.dispatches, configs: s.configs, entitlements: new FakeEntitlementReader(), now: () => now, rand: () => 0.5 });
+  };
+
+  it('disparo às 23:00 com janela 08–22: 1º envio às 08:00 do dia seguinte, espaçamento mantido', async () => {
+    const s = setup();
+    const out = await withWindow(s, { start: 480, end: 1320 }).execute(input);
+    expect(out.dispatches[0]!.notBefore).toBe('2026-10-27T11:00:00.000Z');
+    expect(Date.parse(out.dispatches[1]!.notBefore)).toBe(Date.parse('2026-10-27T11:00:00.000Z') + 12_000);
+    expect(s.dispatches.items.map((d) => d.notBefore.toISOString())).toEqual(out.dispatches.map((d) => d.notBefore));
+  });
+
+  it('padrão (dia inteiro, todos os dias): começa agora', async () => {
+    const s = setup();
+    const out = await withWindow(s, { start: 0, end: 1440 }).execute(input);
+    expect(out.dispatches[0]!.notBefore).toBe(AT_23H.toISOString());
+  });
+
+  it('dia fora do mask: espera o próximo dia permitido', async () => {
+    const s = setup();
+    // 26/10/2026 é segunda; só quarta (bit 3)
+    const out = await withWindow(s, { start: 480, end: 1320, mask: 1 << 3 }, NOW).execute(input);
+    expect(out.dispatches[0]!.notBefore).toBe('2026-10-28T11:00:00.000Z');
+  });
+
+  it('scheduledAt explícito ignora a janela (D3)', async () => {
+    const at = new Date('2026-10-27T03:00:00.000Z');
+    const s = setup({ offer: { scheduledAt: at } });
+    const out = await withWindow(s, { start: 480, end: 1320 }).execute(input);
+    expect(out.dispatches[0]!.notBefore).toBe(at.toISOString());
+  });
+});
+
 describe('SendOfferUseCase — fila por sessão', () => {
   it('cada envio leva a sessão e o intervalo mínimo da configuração (faixa do worker)', async () => {
     const s = setup();
