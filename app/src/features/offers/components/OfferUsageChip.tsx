@@ -1,6 +1,7 @@
 import { Chip, Tooltip } from '@mui/material';
 import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
 import type { OfferUsage } from '@/types/api.types';
+import { usageTone } from '@/features/subscription/usageTone';
 import { offerStrings } from '../strings';
 
 const t = offerStrings.usage;
@@ -9,7 +10,7 @@ const t = offerStrings.usage;
 export function OfferUsageChip({ usage }: { usage: OfferUsage | null }) {
   if (!usage || usage.limit == null) return null;
   const remaining = Math.max(usage.limit - usage.used, 0);
-  const color = remaining === 0 ? 'error' : remaining <= Math.ceil(usage.limit * 0.2) ? 'warning' : 'default';
+  const color = usageTone(usage.used, usage.limit);
   return (
     <Tooltip title={t.tooltip(remaining)} arrow>
       <Chip
