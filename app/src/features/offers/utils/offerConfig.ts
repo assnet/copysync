@@ -1,5 +1,5 @@
 import { Baby, CookingPot, Dumbbell, Image, Link2, PawPrint, Shirt, Tag, User, type LucideIcon } from 'lucide-react';
-import type { LimitChannel, OfferAudience, OfferConfigSettings, OfferImageMode, SaveOfferConfigRequest } from '@/types/api.types';
+import type { BroadcastGroupsResponse, LimitChannel, OfferAudience, OfferConfigSettings, OfferImageMode, SaveOfferConfigRequest } from '@/types/api.types';
 import type { PostingWindowValue } from '@/components/PostingWindowField';
 import {
   ALL_WEEKDAYS_MASK, DAY_MINUTES, isWeekdaysMaskValid, isWindowValid, maskToWeekdays, weekdaysToMask, windowFromSettings, windowToSettings,
@@ -72,6 +72,32 @@ export function countByChannel(channels: readonly LimitChannel[]): Record<LimitC
   const out: Record<LimitChannel, number> = { whatsapp: 0, telegram: 0 };
   for (const ch of channels) out[ch]++;
   return out;
+}
+
+/**
+ * Grupos de disparo por canal no rascunho do gerador, pela união com o monitoramento (BG-03):
+ * parte de `usage.<canal>.broadcastGroups` do catálogo, tira o que só o gerador usava e saiu do
+ * rascunho e soma os marcados que ainda não estão em uso. A chave é o `conversationId`
+ * (sessão + grupo), então o mesmo grupo nunca conta duas vezes. Sem catálogo, conta só o rascunho.
+ */
+export function unionBroadcastCount(
+  draft: readonly { id: string; channel: LimitChannel }[],
+  catalog: Pick<BroadcastGroupsResponse, 'items' | 'usage'> | null,
+): Record<LimitChannel, number> {
+  if (!catalog) return countByChannel(draft.map((g) => g.channel));
+  const out: Record<LimitChannel, number> = { whatsapp: catalog.usage.whatsapp.broadcastGroups, telegram: catalog.usage.telegram.broadcastGroups };
+  const inDraft = new Set(draft.map((g) => g.id));
+  const inUse = new Set(catalog.items.map((i) => i.conversationId));
+  for (const item of catalog.items) {
+    if (!inDraft.has(item.conversationId) && item.usedBy.every((u) => u === 'generator')) out[item.channel]--;
+  }
+  const added = new Set<string>();
+  for (const g of draft) {
+    if (inUse.has(g.id) || added.has(g.id)) continue;
+    added.add(g.id);
+    out[g.channel]++;
+  }
+  return { whatsapp: Math.max(0, out.whatsapp), telegram: Math.max(0, out.telegram) };
 }
 
 /** Horário salvo do gerador → valor do `PostingWindowField`; sem configuração, dia inteiro e todos os dias. */

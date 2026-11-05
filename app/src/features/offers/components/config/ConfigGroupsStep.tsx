@@ -12,7 +12,8 @@ import { offerService } from '@/services/offer.service';
 import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { channelOf } from '@/features/sessions/utils';
 import type { OfferConfigResponse, PostBlockedReason, SessionGroupWithSession, SessionItem } from '@/types/api.types';
-import { CHANNELS, countByChannel } from '../../utils/offerConfig';
+import { CHANNELS, unionBroadcastCount } from '../../utils/offerConfig';
+import { useBroadcastGroups } from '@/features/broadcastGroups/hooks/useBroadcastGroups';
 import { ChannelCounterChips } from './ChannelCounterChips';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
@@ -90,7 +91,10 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
   const blurNames = useBlur('offers.groupNames');
   const blurSession = useBlur('offers.sessionName');
   const channelOfId = (id: string) => channelOf(sessions.find((s) => s.id === id)?.engine);
-  const count = countByChannel([...selected.values()].map((g) => channelOfId(g.sessionId)));
+  // Chip e bloqueio pela união com o monitoramento (catálogo do tenant), não só pelo rascunho
+  const { data: catalog } = useBroadcastGroups();
+  const inUseIds = useMemo(() => new Set(catalog?.items.map((i) => i.conversationId) ?? []), [catalog]);
+  const count = unionBroadcastCount([...selected].map(([id, g]) => ({ id, channel: channelOfId(g.sessionId) })), catalog);
   const channels = CHANNELS.filter((ch) => sessions.some((s) => channelOf(s.engine) === ch));
   const groupLimits = { whatsapp: limits.whatsapp.broadcastGroups, telegram: limits.telegram.broadcastGroups };
   // Abre sempre resumido: a busca procura em todos; a tela mostra VISIBLE_GROUPS até "Ver todos"
@@ -277,7 +281,8 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
             const pending = pendingKey === keyOf(g);
             const channel = channelOf(session?.engine);
             const limit = groupLimits[channel];
-            const blocked = !checked && limit != null && count[channel] >= limit;
+            // Já em uso (monitoramento ou gerador salvo) não soma ao marcar: não bloqueia
+            const blocked = !checked && !(id != null && inUseIds.has(id)) && limit != null && count[channel] >= limit;
             const title = g.title || t.untitled;
             // Sem permissão de postar: nunca marcável; se já marcado, o clique só desmarca
             const unpostable = isUnpostable(g);
