@@ -42,11 +42,11 @@ Checklist antes de ligar mais de um processo na Render: `docs/arquitetura-escala
 | --- | --- | --- |
 | S1 CI + S2 caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas; 19 riscos em `riscos-caracterizacao.md` |
 | S3 staging | `chore/staging-runbook` (`be5cc95`) | ✅ 3 revisões; dono executa `docs/staging.md` |
-| H1 | `feature/hub-h1` (`5824ea3`) | T01–T05, T10, T26 ✅; **bloqueado em D1** (recomendado `NOT NULL DEFAULT`, Postgres 18.6) e D8 (branch de destino) |
+| H1 | `feature/hub-h1` (`5824ea3`) | T01–T05, T10, T26 ✅; **D1 decidido (2026-11-05): `NOT NULL DEFAULT` socialpulse** (sem trigger/backfill; default sai antes do H3); **D8: `feature/hub-h1`**; plano sendo reescrito, depois ondas de execução |
 | H2 / H3a / H4 | planos em `docs/multi-application-hub`; funções puras em `hub/h2-t5..t13`, `hub/h4-t17`, `hub/h4-overrides` (T21–T25) | esperam H1 |
 
 ## Pendências do dono
 
 - Deploy dos hotfixes 1.86.1 → 1.86.3 e publicação da extensão 5.241.7.
-- D1 e D8 da H1; push/PR dos branches (CI só roda no GitHub).
+- Push/PR dos branches (CI só roda no GitHub).
 - Commit `5868258` contém por engano `.specs/features/plans-modal/spec.md` (já tirado do índice em `674cf50`); limpar do histórico antes do push, se quiser.
