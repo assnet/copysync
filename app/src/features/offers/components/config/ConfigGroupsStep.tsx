@@ -224,7 +224,7 @@ export function ConfigGroupsStep({ sessions, selected, limits, catalog, onToggle
               <Chip
                 key={s.id}
                 size="small"
-                avatar={<Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ bgcolor: sessionColor(i), color: '#fff', fontWeight: 700 }}>{s.name.slice(0, 1).toUpperCase()}</Avatar>}
+                avatar={<Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ bgcolor: sessionColor(i), color: '#fff', fontWeight: 700, ...(blurSession && { filter: 'blur(5px)', userSelect: 'none' }) }}>{s.name.slice(0, 1).toUpperCase()}</Avatar>}
                 label={
                   <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
                     <ChannelLogo channel={channelOf(s.engine)} labelled />
@@ -322,7 +322,7 @@ export function ConfigGroupsStep({ sessions, selected, limits, catalog, onToggle
                 >
                   {(titleRef) => (<>
                   <Box sx={{ opacity: unpostable ? 0.6 : 1, display: 'flex' }}>
-                    <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} />
+                    <GroupAvatar title={g.title} avatarUrl={g.avatarUrl} size={36} blurFlag="offers.groupAvatars" />
                   </Box>
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                     <Typography ref={titleRef} variant="body2" noWrap sx={{ fontWeight: 500, opacity: unpostable ? 0.6 : 1 }}>
