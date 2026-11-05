@@ -25,6 +25,17 @@ export function isLeaseFenceExpired(lastRenewOkAt: Date, now: Date): boolean {
 
 /**
  * Prazo da carga do auth state ao abrir pela origem automática (retomada/adoção), igual nas
- * engines (F12/F13). Estourou = erro transitório; o caminho do usuário não tem esse prazo.
+ * engines (F12/F13). Estourou = erro transitório.
  */
 export const OPEN_AUTH_STATE_TIMEOUT_MS = 15_000;
+
+/**
+ * Prazo da mesma carga no connect/pareamento do usuário (F14): mais folgado que o automático
+ * (banco lento não vira 503 cedo), mas finito (banco mudo não prende a requisição). Estourou = 503.
+ */
+export const USER_OPEN_AUTH_STATE_TIMEOUT_MS = 60_000;
+
+/** Prazo da carga do auth state na abertura conforme a origem. */
+export function openAuthStateTimeoutMs(origin: 'user' | 'auto'): number {
+  return origin === 'user' ? USER_OPEN_AUTH_STATE_TIMEOUT_MS : OPEN_AUTH_STATE_TIMEOUT_MS;
+}

@@ -30,8 +30,11 @@ export class SessionLeaseDeadlineError extends Error {
  *
  * Fila (F13): no máximo uma transação de lease em voo por repositório (um por processo, no
  * container). Operação nova espera a anterior assentar dentro do próprio prazo; se a anterior não
- * assentou até lá, falha com `SessionLeaseDeadlineError` sem abrir outra transação (banco mudo não
- * esgota o pool, `connection_limit=5`, com um tick a cada 20 s).
+ * assentou até lá, falha com `SessionLeaseDeadlineError` sem abrir outra transação.
+ *
+ * F14: a cauda assenta também no prazo da própria operação. Transação que nunca assenta não prende
+ * a fila para sempre: a próxima roda depois do prazo da anterior (no máximo uma transação perdida
+ * por prazo, um tick a cada 20 s; o `statement_timeout`/`socket_timeout` devolve a conexão).
  */
 export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
   /** Assenta quando a última transação de lease aberta assenta (nunca rejeita). */
@@ -42,17 +45,21 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
   private async withDeadline<T>(operation: string, query: () => Prisma.PrismaPromise<T>): Promise<T> {
     const ms = Math.max(1, Math.trunc(this.deadlineMs));
     let expired = false;
+    let releaseTail!: () => void;
+    const tailDeadline = new Promise<void>((resolve) => { releaseTail = resolve; });
     const work = this.tail.then(async () => {
       // A anterior só assentou depois do prazo desta: não abre transação para quem já desistiu
       if (expired) throw new SessionLeaseDeadlineError(operation, ms);
       const [, result] = await prisma.$transaction([prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = ${ms}`), query()]);
       return result;
     });
-    this.tail = work.catch(() => undefined); // perdeu a corrida: rejeição tardia descartada
+    // Assenta com a transação ou no prazo, o que vier antes (rejeição tardia descartada)
+    this.tail = Promise.race([work.catch(() => undefined), tailDeadline]);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         expired = true;
+        releaseTail();
         reject(new SessionLeaseDeadlineError(operation, ms));
       }, ms);
     });
@@ -60,6 +67,7 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
       return await Promise.race([work, deadline]);
     } finally {
       clearTimeout(timer);
+      releaseTail();
     }
   }
 

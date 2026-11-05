@@ -229,7 +229,7 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
       expect(adapter.listLocalSessionIds()).toEqual([]);
     });
 
-    it('connect do usuário com auth.load > 15 s não dá erro (sem prazo no caminho do usuário)', async () => {
+    it('connect do usuário com auth.load > 15 s não dá erro (prazo do usuário é 60 s)', async () => {
       fake.authorized = true;
       const { adapter, auth } = make();
       vi.useFakeTimers();
@@ -242,6 +242,22 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
       await p;
       expect(outcome).toBe('ok');
       expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+    });
+
+    it('connect do usuário com auth.load pendurado: 503 em 60 s (F14)', async () => {
+      fake.authorized = true;
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter, auth } = make(gate);
+      vi.useFakeTimers();
+      auth.load.mockImplementationOnce(() => new Promise<string | null>(() => undefined));
+      let outcome: unknown = 'pending';
+      const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).then(() => { outcome = 'ok'; }, (e: unknown) => { outcome = e; });
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1_000);
+      await p;
+      expect(outcome).toBeInstanceOf(EngineTemporarilyUnavailableError);
+      expect(adapter.listLocalSessionIds()).toEqual([]);
     });
 
     it('abort onlyAuto (desistência) não cancela abertura do usuário em voo', async () => {

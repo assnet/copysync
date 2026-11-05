@@ -315,7 +315,7 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
       expect(adapter.listLocalSessionIds()).toEqual([]);
     });
 
-    it('connect do usuário com carga do auth state > 15 s não dá 503 (sem prazo no caminho do usuário)', async () => {
+    it('connect do usuário com carga do auth state > 15 s não dá 503 (prazo do usuário é 60 s)', async () => {
       vi.useFakeTimers();
       const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
       const { adapter } = make(gate);
@@ -331,6 +331,23 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
       expect(outcome).toBe('ok');
       expect(registry.has('s1')).toBe(true);
       expect(gate.release).not.toHaveBeenCalled();
+    });
+
+    it('connect do usuário com carga do auth state pendurada: 503 em 60 s e solta o lease (F14)', async () => {
+      vi.useFakeTimers();
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter } = make(gate);
+      auth.build.mockImplementationOnce(() => new Promise(() => undefined));
+      let outcome: unknown = 'pending';
+      const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).then(() => { outcome = 'ok'; }, (e: unknown) => { outcome = e; });
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1_000);
+      await p;
+      expect(outcome).toBeInstanceOf(EngineTemporarilyUnavailableError);
+      expect(gate.release).toHaveBeenCalledWith('s1');
+      expect(registry.has('s1')).toBe(false);
+      expect(adapter.listLocalSessionIds()).toEqual([]);
     });
 
     it('abort onlyAuto (desistência) não cancela abertura do usuário em voo', async () => {

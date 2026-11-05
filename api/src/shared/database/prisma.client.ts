@@ -1,8 +1,12 @@
 import { PrismaClient } from '@prisma/client';
+import { env } from '../config/env';
 import { logger } from '../logger/logger';
+import { buildDatasourceUrl } from './datasourceUrl';
 
 function createPrismaClient(): PrismaClient {
+  const datasourceUrl = buildDatasourceUrl(env.DATABASE_URL, env.DATABASE_SOCKET_TIMEOUT_S);
   return new PrismaClient({
+    ...(datasourceUrl ? { datasourceUrl } : {}),
     log: [
       { emit: 'event', level: 'query' },
       { emit: 'event', level: 'error' },

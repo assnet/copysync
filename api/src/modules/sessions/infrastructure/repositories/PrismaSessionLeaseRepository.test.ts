@@ -14,25 +14,40 @@ import { PrismaSessionLeaseRepository, SessionLeaseDeadlineError } from './Prism
 
 const MS = 1_000;
 
-describe('PrismaSessionLeaseRepository (fila de transações, F13)', () => {
+describe('PrismaSessionLeaseRepository (fila de transações, F13/F14)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     prismaMock.$transaction.mockReset();
   });
   afterEach(() => vi.useRealTimers());
 
-  it('renew anterior pendurado: o tick novo falha no prazo sem abrir 2ª transação', async () => {
-    prismaMock.$transaction.mockImplementation(() => new Promise(() => undefined));
+  it('anterior nunca assenta → a próxima roda depois do prazo (F14)', async () => {
+    prismaMock.$transaction
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockImplementationOnce(async () => [0, [{ id: 's1' }]]);
     const repo = new PrismaSessionLeaseRepository(MS);
     const first = repo.renew(['s1'], 'w1', 60_000);
     const firstErr = expect(first).rejects.toBeInstanceOf(SessionLeaseDeadlineError);
     await vi.advanceTimersByTimeAsync(MS);
     await firstErr;
-    const second = repo.renew(['s1'], 'w1', 60_000);
-    const secondErr = expect(second).rejects.toBeInstanceOf(SessionLeaseDeadlineError);
-    await vi.advanceTimersByTimeAsync(MS);
-    await secondErr;
+    await expect(repo.renew(['s1'], 'w1', 60_000)).resolves.toEqual(['s1']);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('na fila atrás de uma pendurada: espera o prazo da anterior e então roda', async () => {
+    prismaMock.$transaction
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockImplementationOnce(async () => [0, 1]);
+    const repo = new PrismaSessionLeaseRepository(MS);
+    const first = repo.renew(['s1'], 'w1', 60_000);
+    first.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(MS / 2);
+    const second = repo.release('s1', 'w1');
+    await vi.advanceTimersByTimeAsync(MS / 4);
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(MS / 4);
+    await expect(second).resolves.toBeUndefined();
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
   });
 
   it('operação na fila corre quando a anterior assenta dentro do prazo dela', async () => {
@@ -48,26 +63,6 @@ describe('PrismaSessionLeaseRepository (fila de transações, F13)', () => {
     finish([0, 1]);
     await expect(first).resolves.toBe(true);
     await expect(second).resolves.toEqual(['s1']);
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
-  });
-
-  it('anterior que assenta depois do prazo da seguinte: a seguinte não abre transação', async () => {
-    let finish!: (v: unknown) => void;
-    prismaMock.$transaction.mockImplementationOnce(() => new Promise((r) => { finish = r; }));
-    const repo = new PrismaSessionLeaseRepository(MS);
-    const first = repo.renew(['s1'], 'w1', 60_000);
-    first.catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(MS / 2);
-    const second = repo.release('s1', 'w1');
-    const secondErr = expect(second).rejects.toBeInstanceOf(SessionLeaseDeadlineError);
-    await vi.advanceTimersByTimeAsync(MS);
-    await secondErr;
-    finish([0, []]);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    // Fila livre de novo: a próxima abre normalmente
-    prismaMock.$transaction.mockImplementationOnce(async () => [0, 1]);
-    await expect(repo.tryAcquire('s1', 'w1', 60_000)).resolves.toBe(true);
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
   });
 

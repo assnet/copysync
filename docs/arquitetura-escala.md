@@ -417,6 +417,12 @@ não o servidor.
 - Não guardar sessão, fila, eco ou cache de decisão em memória sem equivalente externo
   previsto. Cache de avatar e metadata de grupo pode ficar local (só desempenho).
 - Não subir pool Prisma padrão em 15 processos; estoura o limite de conexões do Postgres.
+- Não ligar mais de um processo sem `DATABASE_SOCKET_TIMEOUT_S` (inteiro, segundos; ex.: 30). Com
+  ela o `PrismaClient` usa a `DATABASE_URL` + `socket_timeout=<n>` (`shared/database/datasourceUrl.ts`;
+  não duplica se a URL já tiver o parâmetro): banco mudo devolve a conexão ao pool em vez de prendê-la.
+  Ausente = URL idêntica à de antes. A fila do lease (`PrismaSessionLeaseRepository`) libera no prazo
+  de cada operação, e o connect/pareamento do usuário tem prazo de 60 s na carga do auth state (503);
+  a origem automática segue com 15 s.
 
 ---
 

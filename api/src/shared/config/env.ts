@@ -22,6 +22,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid connection URL'),
   DATABASE_CONNECT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   DATABASE_CONNECT_RETRY_DELAY_MS: z.coerce.number().int().positive().default(3_000),
+  // Prazo (s) de leitura no socket do Postgres (`socket_timeout` na URL do Prisma). Ausente = como
+  // hoje. Pré-requisito para mais de um processo: banco mudo devolve a conexão ao pool (F14)
+  DATABASE_SOCKET_TIMEOUT_S: z.coerce.number().int().positive().optional(),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),

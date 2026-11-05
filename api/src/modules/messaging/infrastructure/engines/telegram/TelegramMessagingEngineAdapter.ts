@@ -57,7 +57,7 @@ import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension'
 import { SessionLeaseHeldError, SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
 import { acquireLeaseResult, type ISessionLeaseGate, type LeaseAcquireResult } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
 import type { SessionAbortOptions, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
-import { OPEN_AUTH_STATE_TIMEOUT_MS } from '../../../../sessions/domain/services/sessionLeasePolicy';
+import { openAuthStateTimeoutMs } from '../../../../sessions/domain/services/sessionLeasePolicy';
 import { EngineOperationUnsupportedError, EngineTemporarilyUnavailableError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 import { TelegramLoginNotPendingError } from '../../../../../shared/errors/internal/TelegramErrors';
@@ -175,15 +175,14 @@ interface OpeningToken {
 }
 
 /**
- * Carga da StringSession com prazo só na origem automática (o usuário espera, como no Baileys):
- * banco mudo vira erro transitório em vez de prender a retomada. A carga perdida é descartada.
+ * Carga da StringSession com prazo por origem (15 s automática, 60 s usuário, como no Baileys):
+ * banco mudo vira erro transitório em vez de prender a abertura. A carga perdida é descartada.
  */
 async function loadWithDeadline<T>(load: Promise<T>, origin: 'user' | 'auto'): Promise<T> {
-  if (origin === 'user') return load;
   load.catch(() => undefined);
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new EngineTemporarilyUnavailableError()), OPEN_AUTH_STATE_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new EngineTemporarilyUnavailableError()), openAuthStateTimeoutMs(origin));
   });
   try {
     return await Promise.race([load, timeout]);

@@ -51,7 +51,7 @@ import type { SessionStatus } from '../../../../sessions/domain/enums/SessionSta
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { acquireLeaseResult, type ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
-import { LEASE_RENEW_TIMEOUT_MS, OPEN_AUTH_STATE_TIMEOUT_MS } from '../../../../sessions/domain/services/sessionLeasePolicy';
+import { LEASE_RENEW_TIMEOUT_MS, openAuthStateTimeoutMs } from '../../../../sessions/domain/services/sessionLeasePolicy';
 import type { SessionAbortOptions, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 import { buildBaileysAuthState, discardAuthState, releaseAuthState, suspendAuthState } from './BaileysAuthStatePersistence';
@@ -1047,13 +1047,14 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         return null;
       }
       // Carga que assenta depois do prazo deixa um handle sem socket: o próximo build o solta.
-      // Prazo só na origem automática: o usuário espera a carga (sem 503 por banco lento)
+      // Prazo por origem: 15 s na automática, 60 s no usuário (banco mudo vira 503, não pendura)
+      const authTimeoutMs = openAuthStateTimeoutMs(origin);
       const build = buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
         onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
       });
-      const auth = origin === 'auto' ? await withTimeout(build, OPEN_AUTH_STATE_TIMEOUT_MS) : await build;
+      const auth = await withTimeout(build, authTimeoutMs);
       if (!auth) {
-        baileysLogger.warn({ sessionId, timeoutMs: OPEN_AUTH_STATE_TIMEOUT_MS }, 'Auth state load timed out on socket open');
+        baileysLogger.warn({ sessionId, origin, timeoutMs: authTimeoutMs }, 'Auth state load timed out on socket open');
         throw new EngineTemporarilyUnavailableError();
       }
       const { state, saveCreds } = auth;

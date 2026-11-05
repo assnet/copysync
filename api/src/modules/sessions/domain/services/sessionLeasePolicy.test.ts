@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  OPEN_AUTH_STATE_TIMEOUT_MS,
+  USER_OPEN_AUTH_STATE_TIMEOUT_MS,
+  openAuthStateTimeoutMs,
   LEASE_FENCE_MARGIN_MS,
   LEASE_RENEW_INTERVAL_MS,
   LEASE_RENEW_TIMEOUT_MS,
@@ -32,5 +35,14 @@ describe('sessionLeasePolicy', () => {
 
   it('logo após renovar é válido', () => {
     expect(isLeaseFenceExpired(last, last)).toBe(false);
+  });
+});
+
+describe('openAuthStateTimeoutMs (F14)', () => {
+  it('auto 15 s, usuário 60 s', () => {
+    expect(openAuthStateTimeoutMs('auto')).toBe(OPEN_AUTH_STATE_TIMEOUT_MS);
+    expect(OPEN_AUTH_STATE_TIMEOUT_MS).toBe(15_000);
+    expect(openAuthStateTimeoutMs('user')).toBe(USER_OPEN_AUTH_STATE_TIMEOUT_MS);
+    expect(USER_OPEN_AUTH_STATE_TIMEOUT_MS).toBe(60_000);
   });
 });
