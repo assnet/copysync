@@ -140,6 +140,7 @@ Só `ml_not_logged` fala em login no ML; falha desconhecida vira `syncFailed` (s
 
 Testes com banco: `api/scripts/postgres-descartavel.sh start` → `INTEGRATION_DATABASE_URL=… pnpm -C api test:int`
 (`*.int.test.ts`, fora do `pnpm test` e do CI; gate manual de release) → `stop`.
+Testes só-Redis (`*.redis.int.test.ts`, projeto `redis`, sem banco): ver [arquitetura-escala](arquitetura-escala.md) §6.
 
 ## O que não fazer
 

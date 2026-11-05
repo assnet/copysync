@@ -503,6 +503,15 @@ não o servidor.
 - Não subir `WORKER_MAX_SESSIONS` sem medir RAM (Fase 0), nem gravar `Session.shard` sem tenant dedicado.
 - Smoke local só com env sintético apontando para o Postgres descartável
   (`api/scripts/postgres-descartavel.sh`): `api/.env` **e** `api/.env.dev` têm `DATABASE_URL` de produção.
+- Testes de integração (`api/vitest.int.config.mts`, dois projetos, em sequência):
+  - `db` = `*.int.test.ts`: exige `INTEGRATION_DATABASE_URL` em localhost (`postgres-descartavel.sh`).
+  - `redis` = `*.redis.int.test.ts`: roda sem Postgres (`DATABASE_URL` forçada para localhost inexistente);
+    `INTEGRATION_REDIS_URL` só localhost, ausente = arquivos pulados. Teste que usa Redis **e** banco fica
+    no `db` (sem o sufixo `.redis`).
+  - `api/scripts/redis-descartavel.sh start` → `INTEGRATION_REDIS_URL=… pnpm -C api test:int:redis` → `stop`.
+    Container `copysync-redis-int-<porta>` (override `REDIS_INT_NAME`), nome salvo em
+    `$TMPDIR/copysync-redis-int/name`: o `stop` derruba o mesmo que o `start` subiu. Jobs paralelos usam
+    `TMPDIR` próprio; porta livre a partir de 56379 (ou `REDIS_INT_PORT`).
 - Não usar Kubernetes abaixo de milhares de sessões.
 - Não implementar monitoramento/disparo com `setInterval` in-process.
 - Não guardar sessão, fila, eco ou cache de decisão em memória sem equivalente externo
