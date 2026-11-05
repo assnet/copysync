@@ -220,7 +220,7 @@ Onda 7: T23(T22) → T24 → T25
 
 - Visual (`341726b`): 7 defeitos corrigidos; capturas em `/private/tmp/claude-501/shots-disparo/`. Não corrigidos: chip do passo Grupos (→ T26), Confirmar sem resumo do horário, botão "Close" em inglês e cards do público-alvo cortados a 1280 px (pré-existentes). T25: smoke com sessão real LITE pendente.
 
-### T27: Validação do assistente do gerador conta a união [P] ⏳
+### T27: Validação do assistente do gerador conta a união [P] ✅ ec28a9b
 
 **What**: `OfferConfigWizard.toggleGroup`, `overGroupLimit` e `canNext` ainda contam só o rascunho; passar a usar `unionBroadcastCount(draft, catalog)` (T26) para bloquear marcar/avançar acima do limite pela união; sem catálogo, comportamento antigo.
 **Where**: `app/src/features/offers/components/config/OfferConfigWizard.tsx` (+ teste)
@@ -228,3 +228,4 @@ Onda 7: T23(T22) → T24 → T25
 **Tests**: unit
 **Gate**: `pnpm vitest run` + `pnpm tsc --noEmit` em `app/`
 **Commit**: `fix(app): assistente do gerador valida limite pela união`
+- T27: assistente valida pela união (catálogo buscado 2x no passo Grupos: assistente + passo; otimização possível subindo o catálogo como prop).
