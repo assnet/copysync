@@ -34,14 +34,14 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** int cobre 2 tenants (sem vazamento) e grupo nos dois usos.
 - **Tests:** int (não paralelo: banco) · **Gate:** int + quick
 
-### T3: Limite pela união no gerador [P] ⏳
+### T3: Limite pela união no gerador [P] ✅ 51db773
 - **What:** `SaveOfferGeneratorConfigUseCase` conta `outros(monitor) ⋃ pedidos`; `GetOfferGeneratorConfigUseCase` devolve `usage` da união; envio intocado (BG-02).
 - **Where:** `m/campaigns/application/use-cases/OfferGeneratorConfigUseCases.ts` (+ `.test.ts`), `m/campaigns/infrastructure/offersContainer.ts`
 - **Depends on:** T1, T2 · **Reqs:** BG-01..03
 - **Done when:** LITE com 5 no monitor e 1 novo no gerador → `PLAN_LIMIT_REACHED`; mesmo grupo nos dois não soma.
 - **Tests:** unit · **Gate:** quick
 
-### T4: Limite pela união no monitoramento [P] ⏳
+### T4: Limite pela união no monitoramento [P] ✅ b5dcaf5
 - **What:** papel `broadcast` soma destinos do gerador ao `used`; `usage` do GET = união (regra D4).
 - **Where:** `m/automation/application/use-cases/GroupMonitorConfigUseCases.ts` (+ `.test.ts`, `monitorTestFakes.ts`), `m/automation/infrastructure/automationContainer.ts`
 - **Depends on:** T1, T2 · **Reqs:** BG-01, BG-03
@@ -122,7 +122,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** T9 · **Reqs:** PS-04
 - **Tests:** unit · **Gate:** quick
 
-### T14: Monitoramento — persistência do mask [P] ⏳
+### T14: Monitoramento — persistência do mask [P] ✅ cce355e
 - **What:** entidade + contrato + repo leem/gravam `weekdaysMask` (mask ↔ lista no mapper).
 - **Where:** `m/automation/domain/entities/GroupMonitor.ts`, `m/automation/domain/contracts/IGroupMonitorRepository.ts`, `m/automation/infrastructure/repositories/PrismaGroupMonitorRepository.ts`
 - **Depends on:** T10, T12 · **Reqs:** PS-04
@@ -201,3 +201,5 @@ Onda 7: T23(T22) → T24 → T25
 - **T10 e T14 vão juntas para produção**: com T10 o schema aceita `weekdays`, mas sem a coluna (T14) um PUT com o campo falha no Prisma. Nenhum cliente envia hoje.
 - T2: `IBroadcastGroupUsageReader` (`listRows`, `listCatalog`); `exceptGenerator`/`exceptMonitorSessionId` para T3/T4.
 - T12: migration `20261104180000_add_posting_schedule_weekdays` (ADD COLUMN NOT NULL DEFAULT).
+- T3/T4: limite de grupos de disparo pela união gerador ∪ monitoramento (chave sessão+JID). **Efeito no deploy (D5 pendente):** tenant que já passa do limite pela soma fica impedido de salvar novos destinos até remover grupos. `filterSessionGroups` devolve `groupJid`.
+- T14: monitoramento grava/lê `weekdaysMask` via `PrismaGroupMonitorMapper`; T10 + T14 já estão juntas na branch.
