@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Alert, Box, Button, Chip, Divider, Stack, Tooltip, Typography } from '@mui/material';
-import { Lock } from 'lucide-react';
-import { AppIcon, RangeSlider } from '@/components';
+import { Clock, Lock, Moon } from 'lucide-react';
+import { AppIcon, RangeSlider, postingWindowSummary, type PostingWindowValue } from '@/components';
 import { GroupChip } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { OfferDispatchOrder, SessionItem } from '@/types/api.types';
@@ -26,10 +26,15 @@ interface Props {
   onInterval: (min: number, max: number) => void;
   dispatchOrder: OfferDispatchOrder;
   onDispatchOrder: (order: OfferDispatchOrder) => void;
+  /** Horário escolhido no passo anterior: só revisão (faixa e dias, como no resumo do campo). */
+  postingWindow: PostingWindowValue;
 }
 
-/** Passo 3: resumo (sessões na ordem, grupos por sessão), intervalo entre envios e ordem com várias sessões. */
-export function ConfigConfirmStep({ sessions, groups, onRemoveGroup, intervalMin, intervalMax, onInterval, dispatchOrder, onDispatchOrder }: Props) {
+/** Passo 4: resumo (sessões na ordem, grupos por sessão, horário), intervalo entre envios e ordem com várias sessões. */
+export function ConfigConfirmStep({
+  sessions, groups, onRemoveGroup, intervalMin, intervalMax, onInterval, dispatchOrder, onDispatchOrder, postingWindow,
+}: Props) {
+  const schedule = postingWindowSummary(postingWindow);
   const invalid = !intervalValid(intervalMin, intervalMax);
   const risk = intervalRisk(intervalMin, intervalMax);
   const blurSession = useBlur('offers.sessionName');
@@ -78,6 +83,22 @@ export function ConfigConfirmStep({ sessions, groups, onRemoveGroup, intervalMin
         <Box>
           <Typography variant="caption" color="text.secondary">{t.total}</Typography>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{groups.length}</Typography>
+        </Box>
+        <Box sx={{ gridColumn: '1 / -1' }}>
+          <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 0.5 }}>{t.schedule}</Typography>
+          <Box
+            aria-label={`${schedule.rangeAria}. ${schedule.days}`}
+            role="group"
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}
+          >
+            <Box component="span" aria-hidden sx={{ display: 'inline-flex', color: 'primary.main' }}>
+              <AppIcon icon={postingWindow.window.overnight ? Moon : Clock} size="sm" />
+            </Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
+              <Box component="span" sx={{ whiteSpace: 'nowrap' }}>{schedule.range}</Box>{' '}
+              <Box component="span" sx={{ fontWeight: 500, color: 'text.secondary', whiteSpace: 'nowrap' }}>{`· ${schedule.days}`}</Box>
+            </Typography>
+          </Box>
         </Box>
       </Box>
 

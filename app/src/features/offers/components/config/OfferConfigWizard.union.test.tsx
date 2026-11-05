@@ -7,9 +7,12 @@ import { OfferConfigWizard } from './OfferConfigWizard';
 // Passos reduzidos a botões: o teste mira só a validação do assistente
 vi.mock('./ConfigSessionStep', () => ({ ConfigSessionStep: () => null }));
 vi.mock('./ConfigGroupsStep', () => ({
-  ConfigGroupsStep: ({ selected, onToggle }: { selected: ReadonlyMap<string, SelectedGroup>; onToggle: (id: string, g: SelectedGroup) => void }) => (
+  ConfigGroupsStep: ({ selected, catalog: cat, onToggle }: {
+    selected: ReadonlyMap<string, SelectedGroup>; catalog: BroadcastGroupsResponse | null; onToggle: (id: string, g: SelectedGroup) => void;
+  }) => (
     <div>
       <span data-testid="selected">{[...selected.keys()].sort().join(',')}</span>
+      <span data-testid="catalog">{cat ? String(cat.items.length) : 'none'}</span>
       {['n1', 'n2', 'm1'].map((id) => (
         <button key={id} type="button" onClick={() => onToggle(id, { title: id, avatarUrl: null, sessionId: 's1' })}>{`marcar ${id}`}</button>
       ))}
@@ -21,8 +24,9 @@ const used = (id: string, usedBy: BroadcastGroupsResponse['items'][number]['used
   ({ conversationId: id, sessionId: 's1', channel: 'whatsapp' as const, title: null, avatarUrl: null, usedBy });
 // 3 no gerador + 6 só no monitoramento = 9 em uso pela união
 let catalog: BroadcastGroupsResponse | null = null;
+const hookCalls = vi.fn();
 vi.mock('@/features/broadcastGroups/hooks/useBroadcastGroups', () => ({
-  useBroadcastGroups: () => ({ data: catalog, loading: false, failed: false, removing: null, reload: vi.fn(), remove: vi.fn() }),
+  useBroadcastGroups: () => { hookCalls(); return { data: catalog, loading: false, failed: false, removing: null, reload: vi.fn(), remove: vi.fn() }; },
 }));
 
 const session = { id: 's1', name: 'Sessão', engine: 'BAILEYS', status: 'CONNECTED', avatarUrl: null } as unknown as SessionItem;
@@ -91,5 +95,28 @@ describe('assistente do gerador valida o limite pela união', () => {
     fireEvent.click(screen.getByText('marcar m1'));
     expect(selectedIds()).toBe('g1,g2,g3,m1,n1,n2');
     expect(next().disabled).toBe(false);
+    expect(screen.getByTestId('catalog').textContent).toBe('none');
+  });
+
+  it('catálogo do assistente chega ao passo Grupos por prop', () => {
+    renderAtGroups(['g1']);
+    expect(screen.getByTestId('catalog').textContent).toBe('9');
+    expect(hookCalls).toHaveBeenCalled();
+  });
+
+  it('Confirmar mostra o horário escolhido junto do resumo', () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    render(
+      <OfferConfigWizard
+        config={{ ...config, windowStartMinute: 480, windowEndMinute: 1320, weekdays: [1, 2, 3, 4, 5] }}
+        groups={[group('g1')]} limits={limits} crossSessionDispatch sessions={[session]}
+        sessionsLoading={false} sessionsFailed={false} onRetrySessions={vi.fn()} onSave={vi.fn()} onSaved={vi.fn()}
+      />,
+    );
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    expect(screen.getByText('Horário de postagem')).toBeTruthy();
+    expect(screen.getByText('08:00 → 22:00 · 14 h')).toBeTruthy();
+    expect(screen.getByText('· Segunda a sexta')).toBeTruthy();
   });
 });

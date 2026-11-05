@@ -134,6 +134,7 @@ export const offerStrings = {
       session: 'Sessão',
       sessions: 'Sessões (ordem de envio)',
       total: 'Total de grupos',
+      schedule: 'Horário de postagem',
       groups: 'Grupos',
       groupsOf: (session: string, n: number) => `${session}: ${groupsLabel(n)}`,
       interval: 'Intervalo entre envios',

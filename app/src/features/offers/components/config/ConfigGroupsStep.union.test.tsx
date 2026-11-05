@@ -15,8 +15,9 @@ const catalog: BroadcastGroupsResponse = {
   limits: { whatsapp: { broadcastGroups: 10 }, telegram: { broadcastGroups: 0 } },
   usage: { whatsapp: { broadcastGroups: 6 }, telegram: { broadcastGroups: 0 } },
 };
+// O passo não busca o catálogo: recebe do assistente (uma busca só)
 vi.mock('@/features/broadcastGroups/hooks/useBroadcastGroups', () => ({
-  useBroadcastGroups: () => ({ data: catalog, loading: false, failed: false, removing: null, reload: vi.fn(), remove: vi.fn() }),
+  useBroadcastGroups: () => { throw new Error('ConfigGroupsStep não deve buscar o catálogo'); },
 }));
 
 const session = { id: 's1', name: 'Sessão', engine: 'BAILEYS', status: 'CONNECTED', avatarUrl: null } as unknown as SessionItem;
@@ -26,8 +27,8 @@ const limits: OfferConfigResponse['limits'] = {
 };
 const sel = (...ids: string[]) =>
   new Map<string, SelectedGroup>(ids.map((id) => [id, { title: id, avatarUrl: null, sessionId: 's1' }]));
-const chip = (selected: ReadonlyMap<string, SelectedGroup>) => {
-  render(<ConfigGroupsStep sessions={[session]} selected={selected} limits={limits} onToggle={vi.fn()} onClear={vi.fn()} />);
+const chip = (selected: ReadonlyMap<string, SelectedGroup>, cat: BroadcastGroupsResponse | null = catalog) => {
+  render(<ConfigGroupsStep sessions={[session]} selected={selected} limits={limits} catalog={cat} onToggle={vi.fn()} onClear={vi.fn()} />);
   return screen.getByText(/^WhatsApp \d+\/10$/).textContent;
 };
 
@@ -42,5 +43,8 @@ describe('chip de grupos do gerador pela união', () => {
   });
   it('marcar 1 já usado no monitoramento: continua 6/10', () => {
     expect(chip(sel('g1', 'g2', 'g3', 'm1'))).toBe('WhatsApp 6/10');
+  });
+  it('sem catálogo: conta só a seleção', () => {
+    expect(chip(sel('g1', 'g2', 'g3'), null)).toBe('WhatsApp 3/10');
   });
 });

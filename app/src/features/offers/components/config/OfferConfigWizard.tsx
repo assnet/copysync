@@ -89,7 +89,8 @@ export function OfferConfigWizard({
   // Canal da sessão = engine; o do grupo = o da sessão dona (limites do plano são por canal)
   const channelOfSession = (id: string): LimitChannel => channelOf(sessions.find((s) => s.id === id)?.engine);
   const sessionCount = countByChannel(chosen.map((s) => channelOf(s.engine)));
-  // Grupos de disparo pela união com o monitoramento (catálogo do tenant); sem catálogo, só o rascunho
+  // Grupos de disparo pela união com o monitoramento (catálogo do tenant); sem catálogo, só o rascunho.
+  // Buscado só aqui e passado ao passo Grupos (uma requisição por assistente).
   const { data: catalog } = useBroadcastGroups();
   const unionOf = (m: ReadonlyMap<string, SelectedGroup>) =>
     unionBroadcastCount([...m].map(([id, g]) => ({ id, channel: channelOfSession(g.sessionId) })), catalog);
@@ -198,6 +199,7 @@ export function OfferConfigWizard({
             sessions={chosen}
             selected={selected}
             limits={limits}
+            catalog={catalog}
             onToggle={toggleGroup}
             onClear={() => setSelected(() => new Map())}
           />
@@ -213,6 +215,7 @@ export function OfferConfigWizard({
             onInterval={(min, max) => { setIntervalMin(min); setIntervalMax(max); }}
             dispatchOrder={dispatchOrder}
             onDispatchOrder={setDispatchOrder}
+            postingWindow={postingWindow}
           />
         )}
       </Box>

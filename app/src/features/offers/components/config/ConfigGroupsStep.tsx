@@ -11,9 +11,8 @@ import { useSessionGroups } from '../../hooks/useSessionGroups';
 import { offerService } from '@/services/offer.service';
 import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { channelOf } from '@/features/sessions/utils';
-import type { OfferConfigResponse, PostBlockedReason, SessionGroupWithSession, SessionItem } from '@/types/api.types';
+import type { BroadcastGroupsResponse, OfferConfigResponse, PostBlockedReason, SessionGroupWithSession, SessionItem } from '@/types/api.types';
 import { CHANNELS, unionBroadcastCount } from '../../utils/offerConfig';
-import { useBroadcastGroups } from '@/features/broadcastGroups/hooks/useBroadcastGroups';
 import { ChannelCounterChips } from './ChannelCounterChips';
 import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../../strings';
@@ -64,6 +63,11 @@ interface Props {
   selected: ReadonlyMap<string, SelectedGroup>;
   /** Limites por canal; o canal do grupo é o da sessão dona. null = sem limite. */
   limits: OfferConfigResponse['limits'];
+  /**
+   * Catálogo de grupos de disparo do tenant (monitoramento + gerador), buscado uma vez pelo
+   * assistente. null = indisponível: chip e bloqueio contam só a seleção.
+   */
+  catalog: BroadcastGroupsResponse | null;
   onToggle: (id: string, group: SelectedGroup) => void;
   onClear: () => void;
 }
@@ -76,7 +80,7 @@ export function parseExcludeTerms(raw: string): string[] {
 }
 
 /** Passo 2: grupos de todas as sessões, com busca, filtro por sessão, exclusão por palavra e contador × limite. */
-export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear }: Props) {
+export function ConfigGroupsStep({ sessions, selected, limits, catalog, onToggle, onClear }: Props) {
   // Filtros sobrevivem a reload junto com o rascunho do assistente
   const [filters, setFilters] = usePersistedState('offers.groupsFilters', { search: '', exclude: '', sessionFilter: null as string | null });
   const { search, exclude, sessionFilter } = filters;
@@ -92,7 +96,6 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
   const blurSession = useBlur('offers.sessionName');
   const channelOfId = (id: string) => channelOf(sessions.find((s) => s.id === id)?.engine);
   // Chip e bloqueio pela união com o monitoramento (catálogo do tenant), não só pelo rascunho
-  const { data: catalog } = useBroadcastGroups();
   const inUseIds = useMemo(() => new Set(catalog?.items.map((i) => i.conversationId) ?? []), [catalog]);
   const count = unionBroadcastCount([...selected].map(([id, g]) => ({ id, channel: channelOfId(g.sessionId) })), catalog);
   const channels = CHANNELS.filter((ch) => sessions.some((s) => channelOf(s.engine) === ch));

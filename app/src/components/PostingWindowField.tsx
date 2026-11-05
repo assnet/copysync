@@ -8,14 +8,13 @@ import { ToggleOption } from './ToggleOption';
 import { postingWindowStrings as t } from './postingWindowStrings';
 import { glassPillSx, toneText } from '@/features/monitoring/monitoringStyle';
 import {
-  DAY_MINUTES, WEEKDAYS, WINDOW_MARKS, WINDOW_STEP, activeMinutes, formatMinuteOfDay, isAllWeekdays, isFullDay,
-  isWindowValid, maskToWeekdays, weekdaysToMask, windowBounds, type OperatingWindow,
+  DAY_MINUTES, WEEKDAYS, WINDOW_MARKS, WINDOW_STEP, formatMinuteOfDay, isFullDay,
+  isWindowValid, maskToWeekdays, weekdaysToMask, type OperatingWindow,
 } from '@/features/monitoring/utils/operatingWindow';
+import { postingWindowSummary } from './postingWindowSummary';
 
 /** Ao ligar a noturna a partir do dia inteiro: 22:00 → 06:00. */
 const OVERNIGHT_DEFAULT = { lo: 360, hi: 1320 };
-const WEEK_MASK = 62;
-const WEEKEND_MASK = 65;
 
 /** Faixa do dia + dias da semana (`weekdaysMask`: bit 0 = domingo; 127 = todos). */
 export interface PostingWindowValue {
@@ -29,13 +28,6 @@ export interface PostingWindowFieldProps {
   disabled?: boolean;
 }
 
-function daysSummary(mask: number): string {
-  if (isAllWeekdays(mask)) return t.daysAll;
-  if (mask === WEEK_MASK) return t.daysWeek;
-  if (mask === WEEKEND_MASK) return t.daysWeekend;
-  return t.daysList(maskToWeekdays(mask));
-}
-
 /**
  * Horário de postagem compartilhado (monitoramento e gerador): slider 00:00–24:00 (passo 15 min,
  * noturna = complemento) + chips de dias. Resumo numa pílula de vidro; a regra completa no tooltip.
@@ -47,11 +39,7 @@ export function PostingWindowField({ value, onChange, disabled }: PostingWindowF
   const { window: win, weekdaysMask } = value;
   const valid = isWindowValid(win);
   const full = isFullDay(win);
-  const { start, end } = windowBounds(win);
-  const duration = t.formatDuration(activeMinutes(win));
-  const days = daysSummary(weekdaysMask);
-  const range = full ? t.fullDay : t.range(formatMinuteOfDay(start), formatMinuteOfDay(end), duration);
-  const rangeAria = full ? t.fullDay : t.rangeAria(formatMinuteOfDay(start), formatMinuteOfDay(end), duration);
+  const { range, rangeAria, days } = postingWindowSummary(value);
   const selected = maskToWeekdays(weekdaysMask);
   const onlyOne = selected.length === 1;
 

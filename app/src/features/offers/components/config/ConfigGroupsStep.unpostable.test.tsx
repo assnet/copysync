@@ -20,7 +20,7 @@ const limits: OfferConfigResponse['limits'] = {
 };
 
 const renderStep = (onToggle = vi.fn()) =>
-  render(<ConfigGroupsStep sessions={[session]} selected={new Map()} limits={limits} onToggle={onToggle} onClear={vi.fn()} />);
+  render(<ConfigGroupsStep sessions={[session]} selected={new Map()} limits={limits} catalog={null} onToggle={onToggle} onClear={vi.fn()} />);
 
 describe('grupos onde a sessão não posta', () => {
   beforeEach(() => sessionStorage.clear());
@@ -50,6 +50,7 @@ describe('grupos onde a sessão não posta', () => {
         groups={[{ id: 'c2', title: 'Só admins', avatarUrl: null, sessionId: 's1', canPost: false, postBlockedReason: 'ADMINS_ONLY' }]}
         onRemoveGroup={onRemove}
         intervalMin={300} intervalMax={600} onInterval={vi.fn()} dispatchOrder="SEQUENTIAL" onDispatchOrder={vi.fn()}
+        postingWindow={{ window: { lo: 0, hi: 1440, overnight: false }, weekdaysMask: 127 }}
       />,
     );
     expect(screen.getByText(/1 grupo não vai receber envios/)).toBeTruthy();
@@ -65,6 +66,7 @@ describe('grupos onde a sessão não posta', () => {
         groups={[{ id: 'c3', title: 'X', avatarUrl: null, sessionId: 's1', canPost: null, postBlockedReason: null }]}
         onRemoveGroup={vi.fn()}
         intervalMin={300} intervalMax={600} onInterval={vi.fn()} dispatchOrder="SEQUENTIAL" onDispatchOrder={vi.fn()}
+        postingWindow={{ window: { lo: 0, hi: 1440, overnight: false }, weekdaysMask: 127 }}
       />,
     );
     expect(screen.queryByText('Envio bloqueado')).toBeNull();
