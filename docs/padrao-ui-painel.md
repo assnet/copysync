@@ -96,7 +96,7 @@ Telas cobertas: Painel/menu (e-mail e papel do usuário), Chat (miniaturas e tex
 - `inverted` (opcional): pinta como ativa a parte de FORA dos cursores e deixa neutro o trecho
   entre eles (janela noturna 22:00 → 06:00). Os cursores continuam com `lo <= hi` (`clampRange`
   colapsa faixa invertida); quem chama guarda "invertida" à parte e converte ao salvar (ver
-  `features/monitoring/components/OperatingWindowField`).
+  `components/PostingWindowField`).
 - Sem balão de valor ao arrastar (`valueLabelDisplay="off"`, em todas as telas): o valor já aparece
   nos extremos e no rótulo, e o balão cobria os rótulos.
 

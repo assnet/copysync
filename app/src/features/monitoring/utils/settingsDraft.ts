@@ -1,14 +1,19 @@
 import type { GroupMonitorSettings, MonitorTextMode, OfferAudience, OfferImageMode } from '@/types/api.types';
-import { windowFromSettings, windowToSettings, type OperatingWindow } from './operatingWindow';
+import {
+  ALL_WEEKDAYS_MASK, isWeekdaysMaskValid, maskToWeekdays, weekdaysToMask, windowFromSettings, windowToSettings,
+  type OperatingWindow,
+} from './operatingWindow';
 
 /**
  * Rascunho do formulário. Guarda as unidades da API (segundos) para não arredondar o que o usuário
  * não mexeu: 90 s aparece como "2 min" no slider, mas só vira 120 s se ele mover aquele cursor.
- * A janela fica no formato do slider (`lo <= hi` + noturna).
+ * A janela fica no formato do slider (`lo <= hi` + noturna); os dias, como `weekdaysMask`
+ * (bit 0 = domingo; 127 = todos), o formato do `PostingWindowField`.
  */
 export interface MonitorSettingsDraft {
   enabled: boolean;
   window: OperatingWindow;
+  weekdaysMask: number;
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   startDelaySeconds: number;
@@ -25,7 +30,7 @@ export interface MonitorSettingsDraft {
 }
 
 /** Mude ao alterar `MonitorSettingsDraft`: rascunho salvo em outro formato é descartado. */
-export const SETTINGS_DRAFT_VERSION = 5;
+export const SETTINGS_DRAFT_VERSION = 6;
 
 export const LIMITS = {
   intervalMinutes: { min: 0, max: 60 },
@@ -46,10 +51,21 @@ export function sliderMinutesToSeconds(minutes: number, previousSeconds: number,
   return minutes === secondsToSliderMinutes(previousSeconds, bounds) ? previousSeconds : minutes * 60;
 }
 
+/** Lista da API → mask; ausente (API antiga) ou vazia/inválida = todos os dias, o comportamento de antes. */
+function weekdaysFromSettings(weekdays: readonly number[] | undefined): number {
+  const mask = weekdays ? weekdaysToMask(weekdays) : ALL_WEEKDAYS_MASK;
+  return isWeekdaysMaskValid(mask) ? mask : ALL_WEEKDAYS_MASK;
+}
+
+/** Igualdade de um campo no formato da API (`weekdays` é lista; o resto, primitivo). */
+const sameField = (a: unknown, b: unknown) =>
+  Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((v, i) => v === b[i]) : a === b;
+
 export function settingsToDraft(s: GroupMonitorSettings): MonitorSettingsDraft {
   return {
     enabled: s.enabled,
     window: windowFromSettings(s.windowStartMinute, s.windowEndMinute),
+    weekdaysMask: weekdaysFromSettings(s.weekdays),
     intervalMinSeconds: s.intervalMinSeconds,
     intervalMaxSeconds: s.intervalMaxSeconds,
     startDelaySeconds: s.startDelaySeconds,
@@ -71,6 +87,7 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
   return {
     enabled: d.enabled,
     ...windowToSettings(d.window),
+    weekdays: maskToWeekdays(d.weekdaysMask),
     intervalMinSeconds: d.intervalMinSeconds,
     intervalMaxSeconds: d.intervalMaxSeconds,
     startDelaySeconds: d.startDelaySeconds,
@@ -98,7 +115,7 @@ export function isDraftDirty(draft: MonitorSettingsDraft | null, saved: GroupMon
   if (!draft) return false;
   const a = draftToSettings(effectiveDraft(draft, mentionAllEnabled));
   const b = draftToSettings(effectiveDraft(settingsToDraft(saved), mentionAllEnabled));
-  return (Object.keys(a) as (keyof GroupMonitorSettings)[]).some((k) => a[k] !== b[k]);
+  return (Object.keys(a) as (keyof GroupMonitorSettings)[]).some((k) => !sameField(a[k], b[k]));
 }
 
 /** Ordem dos modos de texto no seletor (radiogroup): é também a ordem das setas. */

@@ -45,4 +45,15 @@ describe('settingsDraft', () => {
     expect(isDraftDirty(draft, saved)).toBe(true);
     expect(draftToSettings(draft).imageMode).toBe('LINK_PREVIEW');
   });
+
+  it('dias da semana: lista ↔ mask; API sem o campo ou lista vazia = todos; troca suja o rascunho', () => {
+    expect(settingsToDraft(saved).weekdaysMask).toBe(127);
+    expect(settingsToDraft({ ...saved, weekdays: [] }).weekdaysMask).toBe(127);
+    expect(settingsToDraft({ ...saved, weekdays: [5, 1] }).weekdaysMask).toBe(34);
+    expect(draftToSettings(settingsToDraft(saved)).weekdays).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    const weekdays = { ...saved, weekdays: [1, 2, 3, 4, 5] };
+    expect(isDraftDirty(settingsToDraft(weekdays), weekdays)).toBe(false);
+    expect(isDraftDirty(settingsToDraft(saved), weekdays)).toBe(true);
+    expect(draftToSettings({ ...settingsToDraft(saved), weekdaysMask: 62 }).weekdays).toEqual([1, 2, 3, 4, 5]);
+  });
 });

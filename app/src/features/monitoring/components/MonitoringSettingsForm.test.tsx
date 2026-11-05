@@ -41,7 +41,7 @@ describe('MonitoringSettingsForm', () => {
     expect(screen.getByText('Alterações não salvas')).toHaveAttribute('role', 'status');
 
     const stored = JSON.parse(sessionStorage.getItem('ui.monitoring.settings.s1')!) as { v: number; d: { textMode: string } };
-    expect(stored).toMatchObject({ v: 5, d: { textMode: 'TEMPLATE' } });
+    expect(stored).toMatchObject({ v: 6, d: { textMode: 'TEMPLATE' } });
   });
 
   it('clique em IA mostra o público; Descartar volta ao salvo', () => {
@@ -67,7 +67,7 @@ describe('MonitoringSettingsForm', () => {
   it('textos congelados da página: janela 24 h, captura travada e barra Salvar → "Configuração salva."', async () => {
     const onSave = vi.fn().mockResolvedValue(config);
     renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={onSave} />);
-    expect(screen.getByText('Sem restrição — envio 24 h')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /Dia inteiro — 24 h\. Todos os dias/ })).toHaveTextContent('Dia inteiro — 24 h');
     const capture = screen.getByRole('checkbox', { name: /Capturar fora do horário/ });
     expect(capture).toBeChecked();
     expect(capture).toBeDisabled();
@@ -79,8 +79,20 @@ describe('MonitoringSettingsForm', () => {
     await waitFor(() => expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument());
   });
 
+  it('dias da semana: desmarcar domingo libera "capturar fora do horário", persiste o mask e envia a lista', async () => {
+    const onSave = vi.fn().mockResolvedValue(config);
+    renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={onSave} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Domingo' }));
+    expect(screen.getByRole('checkbox', { name: /Capturar fora do horário/ })).toBeEnabled();
+    const stored = JSON.parse(sessionStorage.getItem('ui.monitoring.settings.s1')!) as { v: number; d: { weekdaysMask: number } };
+    expect(stored).toMatchObject({ v: 6, d: { weekdaysMask: 126 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ weekdays: [1, 2, 3, 4, 5, 6], windowStartMinute: 0, windowEndMinute: 1440 });
+  });
+
   it('"mencionar todos" travado: rascunho com true não mostra "não salvo"; salvar envia false', async () => {
-    sessionStorage.setItem('ui.monitoring.settings.s1', JSON.stringify({ v: 5, d: { ...settingsToDraft(config.settings), mentionAll: true } }));
+    sessionStorage.setItem('ui.monitoring.settings.s1', JSON.stringify({ v: 6, d: { ...settingsToDraft(config.settings), mentionAll: true } }));
     const onSave = vi.fn().mockResolvedValue(config);
     renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={onSave} />);
     expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();

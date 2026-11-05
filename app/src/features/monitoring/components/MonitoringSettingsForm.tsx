@@ -6,7 +6,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import {
   AlertTriangle, Bot, Check, Clock, FileText, Hourglass, ImagePlus, Info, LayoutTemplate, Power, Quote, Timer, type LucideIcon,
 } from 'lucide-react';
-import { AppIcon, RangeSlider, ToggleOption } from '@/components';
+import { AppIcon, PostingWindowField, RangeSlider, ToggleOption } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import type { GroupMonitorConfigResponse, GroupMonitorSettings, MonitorTextMode } from '@/types/api.types';
 import { AudiencePicker } from '@/features/offers/components/AudiencePicker';
@@ -16,7 +16,7 @@ import { formatDuration, monitoringStrings } from '../strings';
 import {
   INNER_RADIUS, REDUCED_MOTION, floatShadow, glassPillSx, iconTileSx, surfaceSx, toneSurface, toneText,
 } from '../monitoringStyle';
-import { isFullDay, isWindowValid } from '../utils/operatingWindow';
+import { isAllWeekdays, isFullDay, isWindowValid } from '../utils/operatingWindow';
 import {
   LIMITS, SETTINGS_DRAFT_VERSION, TEXT_MODES, draftToSettings, effectiveDraft, isDraftDirty, secondsToSliderMinutes, settingsToDraft,
   sliderMinutesToSeconds, textModeForKey, type MonitorSettingsDraft,
@@ -24,7 +24,6 @@ import {
 import { uiErrorMessage } from '../utils/apiErrors';
 import { FieldLabel } from './FieldLabel';
 import { MonitorCard } from './MonitorCard';
-import { OperatingWindowField } from './OperatingWindowField';
 
 const t = monitoringStrings.form;
 
@@ -275,7 +274,8 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
   // Comparação e envio no valor efetivo: "mencionar todos" travado pelo plano não gera "não salvo" fantasma
   const dirty = isDraftDirty(draft, config.settings, mentionAllEnabled);
   const windowValid = isWindowValid(value.window);
-  const fullDay = isFullDay(value.window);
+  // Dia inteiro em todos os dias = nunca há "fora do horário"
+  const fullDay = isFullDay(value.window) && isAllWeekdays(value.weekdaysMask);
   const missingGroups = config.monitoredGroups.length === 0 || config.broadcastGroups.length === 0;
 
   const patch = (p: Partial<MonitorSettingsDraft>) => setDraft({ ...value, ...p });
@@ -304,7 +304,10 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
 
       <MonitorCard icon={Clock} title={t.windowTitle} subtitle={t.windowSubtitle}>
         <Stack spacing={2}>
-          <OperatingWindowField value={value.window} onChange={(window) => patch({ window })} />
+          <PostingWindowField
+            value={{ window: value.window, weekdaysMask: value.weekdaysMask }}
+            onChange={({ window, weekdaysMask }) => patch({ window, weekdaysMask })}
+          />
           <Tooltip title={fullDay ? t.captureOutsideFullDay : ''} arrow placement="top">
             <Box>
               <ToggleOption

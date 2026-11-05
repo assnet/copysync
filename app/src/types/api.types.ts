@@ -568,6 +568,8 @@ export interface GroupMonitorSettings {
   /** 0..1440. start=0 e end=1440 = sem restrição; end < start = janela que cruza a meia-noite. */
   windowStartMinute: number;
   windowEndMinute: number;
+  /** Dias de postagem (0 = domingo … 6 = sábado), ao menos um. API antiga não devolve: vale todos. */
+  weekdays?: number[];
   /** Pausa entre envios (s), 60..3600, min ≤ max. */
   intervalMinSeconds: number;
   intervalMaxSeconds: number;

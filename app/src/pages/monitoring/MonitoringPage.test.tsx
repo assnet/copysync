@@ -85,7 +85,7 @@ describe('MonitoringPage', () => {
     expect(await screen.findByText('Meu Grupo')).toBeInTheDocument();
     expect(getConfig).toHaveBeenCalledWith('s1');
     expect(screen.getAllByText('Promo Rival').length).toBeGreaterThan(0);
-    expect(screen.getByText('Sem restrição — envio 24 h')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /Dia inteiro — 24 h\. Todos os dias/ })).toBeInTheDocument();
     expect(screen.getByText('Falta a sua credencial de afiliado desta loja')).toBeInTheDocument();
     expect(screen.getByText('Imagem indisponível')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument();

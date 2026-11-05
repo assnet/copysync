@@ -74,7 +74,8 @@ describe('rascunho da configuração', () => {
   it('converte unidades da API para a tela e de volta', () => {
     const d = settingsToDraft(saved);
     expect(d).toMatchObject({ window: { lo: 360, hi: 1320, overnight: true }, intervalMinSeconds: 300, startDelaySeconds: 600 });
-    expect(draftToSettings(d)).toEqual(saved);
+    // API sem `weekdays` = todos os dias; o envio manda a lista explícita
+    expect(draftToSettings(d)).toEqual({ ...saved, weekdays: [0, 1, 2, 3, 4, 5, 6] });
   });
 
   it('segundos fora do minuto exato só mudam se o usuário mexer naquele cursor', () => {
