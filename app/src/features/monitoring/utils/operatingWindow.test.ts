@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  activeMinutes, formatMinuteOfDay, isFullDay, isWindowValid, parseMinuteOfDay, windowBounds, windowFromSettings, windowToSettings,
+  ALL_WEEKDAYS_MASK, WEEKDAYS, activeMinutes, formatMinuteOfDay, isAllWeekdays, isFullDay, isWeekdaysMaskValid, isWindowValid, maskToWeekdays,
+  parseMinuteOfDay, toggleWeekday, weekdaysToMask, windowBounds, windowFromSettings, windowToSettings,
 } from './operatingWindow';
 import { formatDuration } from '../strings';
 import { draftToSettings, isDraftDirty, secondsToSliderMinutes, settingsToDraft, sliderMinutesToSeconds } from './settingsDraft';
@@ -102,5 +103,31 @@ describe('rascunho da configuração', () => {
     expect(isDraftDirty(null, saved)).toBe(false);
     expect(isDraftDirty(settingsToDraft(saved), saved)).toBe(false);
     expect(isDraftDirty({ ...settingsToDraft(saved), typingSeconds: 6 }, saved)).toBe(true);
+  });
+});
+
+describe('dias da semana (mask)', () => {
+  it('lista ↔ mask com domingo no bit 0', () => {
+    expect(weekdaysToMask([0])).toBe(1);
+    expect(weekdaysToMask([1, 2, 3, 4, 5])).toBe(62);
+    expect(weekdaysToMask([...WEEKDAYS])).toBe(ALL_WEEKDAYS_MASK);
+    expect(weekdaysToMask([1, 1, 7, -1, 2.5])).toBe(2);
+    expect(maskToWeekdays(62)).toEqual([1, 2, 3, 4, 5]);
+    expect(maskToWeekdays(ALL_WEEKDAYS_MASK)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('mask 0 e fora de 1..127 são inválidos', () => {
+    expect(isWeekdaysMaskValid(0)).toBe(false);
+    expect(isWeekdaysMaskValid(128)).toBe(false);
+    expect(isWeekdaysMaskValid(1.5)).toBe(false);
+    expect(isWeekdaysMaskValid(65)).toBe(true);
+    expect(isAllWeekdays(127)).toBe(true);
+    expect(isAllWeekdays(126)).toBe(false);
+  });
+
+  it('toggle liga/desliga e nunca esvazia', () => {
+    expect(toggleWeekday(127, 0)).toBe(126);
+    expect(toggleWeekday(126, 0)).toBe(127);
+    expect(toggleWeekday(2, 1)).toBe(2);
   });
 });

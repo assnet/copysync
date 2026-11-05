@@ -58,3 +58,32 @@ export function windowBounds(w: OperatingWindow): { start: number; end: number }
 
 /** Rótulos 00/03/…/21/24 sob o slider. */
 export const WINDOW_MARKS = Array.from({ length: 9 }, (_, i) => ({ value: i * 180, label: String(i * 3).padStart(2, '0') }));
+
+/**
+ * Dias da semana da janela (`weekdaysMask`): bit 0 = domingo … bit 6 = sábado; 127 = todos.
+ * Mask 0 é inválido (nunca envia). A API recebe a lista `weekdays` (0–6); o banco guarda o mask.
+ */
+export const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+export const ALL_WEEKDAYS_MASK = 127;
+
+export function weekdaysToMask(days: readonly number[]): number {
+  return days.reduce((mask, d) => (Number.isInteger(d) && d >= 0 && d <= 6 ? mask | (1 << d) : mask), 0);
+}
+
+export function maskToWeekdays(mask: number): number[] {
+  return WEEKDAYS.filter((d) => (mask & (1 << d)) !== 0);
+}
+
+export function isWeekdaysMaskValid(mask: number): boolean {
+  return Number.isInteger(mask) && mask > 0 && mask <= ALL_WEEKDAYS_MASK;
+}
+
+export function isAllWeekdays(mask: number): boolean {
+  return (mask & ALL_WEEKDAYS_MASK) === ALL_WEEKDAYS_MASK;
+}
+
+/** Liga/desliga um dia; nunca deixa o mask vazio (o último dia não sai). */
+export function toggleWeekday(mask: number, day: number): number {
+  const next = mask ^ (1 << day);
+  return next & ALL_WEEKDAYS_MASK ? next & ALL_WEEKDAYS_MASK : mask;
+}

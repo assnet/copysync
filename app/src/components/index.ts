@@ -23,3 +23,5 @@ export { HideUnavailableSwitch } from './HideUnavailableSwitch';
 export type { HideUnavailableSwitchProps } from './HideUnavailableSwitch';
 export { UnavailableReason } from './UnavailableReason';
 export type { UnavailableReasonProps } from './UnavailableReason';
+export { PostingWindowField } from './PostingWindowField';
+export type { PostingWindowFieldProps, PostingWindowValue } from './PostingWindowField';
