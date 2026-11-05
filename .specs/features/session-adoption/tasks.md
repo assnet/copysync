@@ -40,6 +40,7 @@ Regras comuns:
 | T21 | Adoção abre como `auto`, devolve vaga e contador ao perder | T20 | P | ✅ 8f656cb |
 | T22 | Reserva síncrona de vaga no gate do teto | T20 | P | ✅ 8cbf7b6 |
 | T23 | Flag desligada sem consulta; AWAITING_* do Telegram fora; JobLease na infra | T20 | P | ✅ 9c78128 |
+| T24 | Só sessão com login concluído ocupa vaga do worker | T23 | | ⏳ |
 
 ### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
 
@@ -74,6 +75,20 @@ Regras comuns:
 **Where**: `workerAdmin.routes.ts` (+ teste), `PrismaSessionAdoptionRepository.ts` (+ int), `Session.ts` (+ teste), `shared/jobs/*`, imports
 **Gate**: `pnpm vitest run src` + int + `pnpm tsc --noEmit`
 **Commit**: `fix(sessions): adoção não consulta com a flag desligada nem reabre login do Telegram`
+
+### T24: Só sessão com login concluído ocupa vaga do worker
+
+**Decisão do dono (2026-11-04):** QR sem leitura não ocupa vaga; só sessão com QR lido (login concluído) conta para `WORKER_MAX_SESSIONS`.
+**What**:
+- `ISessionSocketControl` ganha `listAuthenticatedSessionIds()` (sessões locais com credenciais registradas: Baileys `creds.registered`/`me` presente após QR ou código; Telegram autorizado após `finishLogin`); `listLocalSessionIds()` continua com todas (lease/renovação não mudam).
+- `CapacityLimitedLeaseGate` e o cálculo de vaga (`sessionLeaseContainer.listLocal` para teto, `hasCapacity` do `session-open`, `AdoptNextSessionUseCase`, heartbeat `sessions`, alerta 80 %) passam a contar só autenticadas + reservas de sessões que já têm credenciais salvas (reabertura de sessão existente conta; sessão nova sem credencial não reserva vaga).
+- Abertura de sessão sem credencial (QR/pareamento/código/senha) passa pelo gate sem consumir vaga, limitada por teto separado `WORKER_MAX_PENDING_LOGINS` (env, inteiro positivo, padrão 50) para proteger memória; acima dele → 503 como hoje.
+- Login concluído com o worker já no teto: a sessão fica (não derrubar login recém-feito); ticker e `session-open` não adotam enquanto `autenticadas ≥ teto`. Documentar que o teto pode ser excedido temporariamente por logins concluídos.
+- `/admin/workers` mostra `sessions` (autenticadas) e `pendingLogins`.
+**Where**: `ISessionSocketControl.ts`, Baileys e Telegram adapters, `MessagingEngineRouter.ts`, `CapacityLimitedLeaseGate.ts`, `sessionLeaseContainer.ts`, `AdoptNextSessionUseCase.ts`, `WorkerHeartbeatJob.ts`/`WorkerCapacityAlertJob.ts`, `roleComposition.ts` (hasCapacity), `shared/config/env.ts`/`workerAdoption.ts`, `workerAdmin.routes.ts` (+ schema), painel `features/workersAdmin` (coluna "aguardando login"), testes; `docs/arquitetura-escala.md` §3.2/§5.1
+**Done when**: testes: com teto 1 e 1 sessão autenticada, uma sessão nova em QR abre e não muda a contagem; QR lido → conta; teto de logins pendentes respeitado; reabertura de sessão com credencial reserva vaga; adoção não ocorre com autenticadas ≥ teto; flag desligada sem mudança
+**Gate**: `pnpm vitest run src` + int + `pnpm tsc --noEmit` em `api/` e `app/`
+**Commit**: `feat(sessions): QR sem leitura não ocupa vaga do worker`
 
 ## Notas de execução (passagem entre tarefas)
 

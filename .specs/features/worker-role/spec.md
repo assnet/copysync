@@ -70,7 +70,7 @@ Redis. `http` e `worker` funcionam juntos com Redis (BullMQ + pub/sub) e mídia 
 1. `all` sem `REDIS_URL`: mesmo log de boot e shutdown de hoje; nenhuma conexão Redis.
 2. `http` + `worker` (Postgres e Redis descartáveis, S3 local/MinIO): conectar por QR e por código, enviar texto e
    mídia pelo painel, receber mensagem no WS, listar grupos, suspender tenant → socket fecha no worker.
-3. Matar o worker: chamadas viram 503 `ENGINE_NOT_READY` em ≤ 10 s; nenhum envio sai depois do timeout.
+3. Matar o worker: chamadas RPC viram 503 `ENGINE_NOT_READY` em ≤ 10 s; comandos de envio respondem no timeout do comando (texto 60 s, mídia 300 s — decisão do dono 2026-11-04); nenhum envio sai depois do timeout.
 4. `SIGTERM` no worker: sockets → flush → leases soltos; novo worker conecta pela `session-open`.
 
 ## Decisões

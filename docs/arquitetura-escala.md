@@ -256,8 +256,8 @@ do desenho abaixo:
 - Worker sobe só `GET /health` na `PORT` (`role`, `workerId`, sessões, Redis, banco); `/health` do `http`/
   `all` ganhou `role`. Worker também drena a fila de mídia antes dos sockets (D8). `http` em 1 réplica (D5).
 - `TENANT_SUSPENDED`: listener em todo papel; no `http` o `disconnect` vai ao dono pela fila.
-- Pendente do dono: comando de texto com worker morto só vira 503 após 60 s (spec dizia ≤ 10 s; sugestão
-  baixar para 15 s); sessão real (QR lido, código, envio, recebimento, grupos) não testada no smoke.
+- Decidido (dono, 2026-11-04): timeout do comando de texto fica em 60 s (mídia 300 s); RPC segue 10 s.
+- Pendente: sessão real (QR lido, código, envio, recebimento, grupos) não testada no smoke.
 
 Mesmo código, três modos de boot via `PROCESS_ROLE=http|worker|all`:
 
@@ -413,7 +413,8 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 - [ ] Mídia em S3/R2 (`MEDIA_STORAGE_DRIVER=s3` + `S3_*`) e disco `/var/data` fora do caminho.
 - [ ] `DATABASE_SOCKET_TIMEOUT_S` e `connection_limit` na `DATABASE_URL` de cada serviço.
 - [ ] Worker como **Private Service** (health em `/health`, `PORT`), mesma imagem e `CMD`.
-- [ ] Decisão do timeout de comando de texto (60 s hoje) e da vaga presa por QR sem leitura.
+- [x] Timeout de comando de texto: 60 s (decisão do dono 2026-11-04).
+- [x] QR sem leitura não ocupa vaga do worker (decisão do dono 2026-11-04; E4 T24).
 - [ ] Smoke com sessão real autorizada: QR lido, código, envio texto/mídia, recebimento, grupos, readoção sem 440.
 
 Preços de Postgres acima de 1c-2g são aproximados; conferir nos 24 planos do painel.
