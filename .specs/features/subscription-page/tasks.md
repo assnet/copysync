@@ -133,3 +133,21 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 - T8: `GET /subscription` com `tenantAnyStatusHook`; presenter traduz `COPYSYNC_LITE/PRO/MAX` → `starter/profissional/business` (registrar em docs na T17).
 - T18: agent-browser contra Postgres descartável (ACTIVE/PRO, SUSPENDED/LITE com `?suspended=1`, sem plano, OPERATOR), claro/escuro, 1280 e 390 px, borrar ligado, tooltips. Corrigidos tom de `0 de 1` e colunas da tabela (app 0.76.2). Fora do escopo: o painel não tem modo "sistema" (`ThemeContext` só claro/escuro; sem preferência salva abre claro mesmo com `prefers-color-scheme: dark`); nome do tenant no cabeçalho global não borra.
 - T17: `docs/assinatura.md` (slug do presenter, hook tolerante, redirect, o que não fazer); api 0.60.0 · app 0.77.0; CHANGELOG em `api/CHANGELOG.md` [Unreleased]. Manifest da extensão não muda (versão própria).
+
+## Correções da revisão independente (2026-11-04)
+
+### T19: Receiver recusa vencimento malformado [P] ⏳
+
+**What**: 🔴 `billing.routes.ts:~102` transforma `expiresAt` presente e inválido (string ruim, número, `""`) em `null`, e `ApplyBillingEventUseCase` grava `subscriptionExpiresAt = null` (= sem vencimento): payload malformado faz o tenant nunca expirar. Correção: campo presente e inválido → 400 `invalid_expires_at` (sem aplicar o evento nem avançar o watermark); só `null` explícito limpa e ISO válido grava; ausente preserva.
+**Where**: `api/src/modules/integrations/billing/billing.routes.ts`, `parseExpiresAt.ts` (+ testes de rota e do use case)
+**Done when**: testes: `"abc"`, `123`, `""` → 400 e nada gravado; `null` → limpa; ISO → grava; ausente → preserva
+**Gate**: `pnpm vitest run src/modules/integrations` + `pnpm tsc --noEmit`
+**Commit**: `fix(billing): vencimento malformado é recusado`
+
+### T20: Tela não mostra dados do tenant anterior nem CTA sem papel [P] ⏳
+
+**What**: 🟡 `SubscriptionPage.tsx:~48-58`: ao trocar de tenant, zerar `data` no início do `load()` (skeleton), sem exibir conta/plano/uso do anterior. 🟡 `canSubscribe` só com `role === 'ADMIN'` confirmado; papel desconhecido (lista de tenants carregando ou tenant fora dela) esconde o CTA.
+**Where**: `app/src/pages/settings/SubscriptionPage.tsx`, `features/subscription/components/SubscriptionPlanCard.tsx` (+ testes)
+**Done when**: testes: troca de tenant mostra skeleton e não o nome anterior; papel indefinido sem CTA; ADMIN com CTA
+**Gate**: `pnpm vitest run` + `pnpm tsc --noEmit` em `app/`
+**Commit**: `fix(app): assinatura limpa dados ao trocar de conta e só admin vê o CTA`
