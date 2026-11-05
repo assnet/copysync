@@ -57,6 +57,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.63.0 · app 0.81.0 — Correções das revisões independentes (E3, E4, Assinatura, disparo)
+
+#### Backend
+
+- **`remote/transport/BullEngineCommandQueues.ts`, `shared/errors/internal/MessagingErrors.ts`** — comando com job já ativo no timeout devolve `ENGINE_COMMAND_OUTCOME_UNKNOWN` (504) em vez de `ENGINE_NOT_READY` (reenvio manual duplicava); `maxStalledCount: 0`; ready+add dentro do prazo; close do worker com teto de 20 s.
+- **`app/server.ts`, `shared/config/env.ts`, `app/roleComposition.ts`** — falha de boot encerra o processo; `http`/`worker` exigem S3 completo; relay do `http` sobe em background (porta antes do Redis), `/health` com `relay`.
+- **`remote/transport/RedisEngineRpc.ts`, `remote/outboundMediaTransfer.ts`** — RPC com `deadline` (pedido vencido não executa); varredura de `outbound-tmp/` (> 1 h).
+- **`sessions/application/use-cases/AdoptNextSessionUseCase.ts`, `CapacityLimitedLeaseGate.ts`, `PrismaSessionAdoptionRepository.ts`** — adoção abre como automática e devolve vaga/contador ao perder (`revertAdoptAttempt`); reserva síncrona de vaga no teto; Telegram em `AWAITING_CODE/PASSWORD` fora da adoção; `/admin/workers` sem consulta com a flag desligada; `PrismaJobLease` em `shared/infrastructure/jobs/`.
+- **`integrations/billing/billing.routes.ts`, `parseExpiresAt.ts`** — `expiresAt` malformado → 400 `invalid_expires_at` (antes virava "sem vencimento").
+- **`campaigns/domain/services/postingWindow.ts`, `PrismaOfferDispatchRepository.ts`** — janela com início 24:00 normalizada (regra e SQL iguais); claim com fuso fixo `America/Sao_Paulo`.
+- **`automation/.../GroupMonitorConfigUseCases.ts`, `PrismaGroupMonitorRepository.ts`** — grupo de disparo preso a sessão apagada não bloqueia outro monitoramento.
+
+#### Frontend
+
+- **`features/chat/media/*`** — envio com resultado desconhecido não oferece "Tentar de novo".
+- **`pages/settings/SubscriptionPage.tsx`, `SubscriptionPlanCard.tsx`** — troca de tenant mostra skeleton; CTA só para ADMIN confirmado.
+- **`features/offers/components/config/*`** — resumo do horário no Confirmar; catálogo de grupos buscado uma vez; assistente valida limite pela união; foto do grupo e da sessão borram.
+
 ### Added — app 0.80.0 — Tema sistema/claro/escuro e ajustes do painel
 
 #### app

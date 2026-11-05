@@ -98,7 +98,7 @@ export function ConfigSessionStep({ sessions, loading, failed, selectedIds, limi
                 onClick={() => onToggle(s.id)}
                 sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: 'flex-start', minHeight: 72 }}
               >
-                <Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ width: 44, height: 44 }}>
+                <Avatar src={resolveMediaUrl(s.avatarUrl ?? null) ?? undefined} alt="" sx={{ width: 44, height: 44, ...(blurSession && { filter: 'blur(5px)', userSelect: 'none' }) }}>
                   <Blurred when={blurSession} inline radius={4}>{s.name.slice(0, 1).toUpperCase()}</Blurred>
                 </Avatar>
                 <Box sx={{ minWidth: 0, flexGrow: 1 }}>
