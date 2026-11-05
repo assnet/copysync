@@ -1,0 +1,77 @@
+import type { PrismaClient } from '@prisma/client';
+import type { ITenantUsageReader } from '../../domain/contracts/ITenantUsageReader';
+import type { SubscriptionUsage } from '../../domain/services/subscriptionLimits';
+import { channelOfEngine, countByChannel, type LimitChannel } from '../../domain/channelLimits';
+import { startOfDayInZone } from '../../../campaigns/domain/services/startOfDayInZone';
+
+type UsagePrisma = Pick<PrismaClient, 'session' | 'monitoredGroup' | 'broadcastGroup' | 'linkRotation' | 'offer' | 'aiUsageLog'>;
+
+/**
+ * Contagens com `tenantId` em toda consulta. Regras copiadas das telas de recurso:
+ * - sessões: `deletedAt: null`, canal pela engine (`GetSessionLimitsUseCase`);
+ * - grupos: sessão dona (e, no disparo, a do monitoramento) existe e não está apagada
+ *   (`PrismaGroupMonitorRepository.tenantGroupJids`); sessão sumida = WhatsApp, fora da conta;
+ * - rodízios: todos do tenant, canal pela engine da sessão (`PrismaLinkRotationRepository.countByChannel`);
+ * - ofertas: `createdAt >= startOfDayInZone(now)` (`GetOfferUsageUseCase`);
+ * - IA: só `source = PLATFORM`, a mesma base do teto diário (`PrismaAiUsageLogRepository`).
+ */
+export class PrismaTenantUsageReader implements ITenantUsageReader {
+  constructor(
+    private readonly prisma: UsagePrisma,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async read(tenantId: string): Promise<SubscriptionUsage> {
+    const since = startOfDayInZone(this.now());
+    const [sessions, groups, linkRotations, offerGenerationsToday, aiRequestsToday] = await Promise.all([
+      this.countSessions(tenantId),
+      this.countGroups(tenantId),
+      this.countLinkRotations(tenantId),
+      this.prisma.offer.count({ where: { tenantId, createdAt: { gte: since } } }),
+      this.prisma.aiUsageLog.count({ where: { tenantId, source: 'PLATFORM', createdAt: { gte: since } } }),
+    ]);
+    return { sessions, ...groups, linkRotations, offerGenerationsToday, aiRequestsToday };
+  }
+
+  private async countSessions(tenantId: string): Promise<Record<LimitChannel, number>> {
+    const rows = await this.prisma.session.groupBy({
+      by: ['engine'],
+      where: { tenantId, deletedAt: null },
+      _count: { _all: true },
+    });
+    const out: Record<LimitChannel, number> = { whatsapp: 0, telegram: 0 };
+    for (const r of rows) out[channelOfEngine(r.engine)] += r._count._all;
+    return out;
+  }
+
+  private async countGroups(tenantId: string): Promise<Pick<SubscriptionUsage, 'monitoredGroups' | 'broadcastGroups'>> {
+    const [monitored, broadcast] = await Promise.all([
+      this.prisma.monitoredGroup.findMany({ where: { tenantId }, select: { sessionId: true } }),
+      this.prisma.broadcastGroup.findMany({ where: { tenantId }, select: { sessionId: true, config: { select: { sessionId: true } } } }),
+    ]);
+    const ids = [...new Set([...monitored.map((m) => m.sessionId), ...broadcast.flatMap((b) => [b.sessionId, b.config.sessionId])])];
+    const live = new Map<string, string>();
+    if (ids.length > 0) {
+      const rows = await this.prisma.session.findMany({
+        where: { tenantId, id: { in: ids }, deletedAt: null },
+        select: { id: true, engine: true },
+      });
+      for (const r of rows) live.set(r.id, r.engine);
+    }
+    return {
+      monitoredGroups: countByChannel(monitored.filter((m) => live.has(m.sessionId)), (m) => live.get(m.sessionId)),
+      broadcastGroups: countByChannel(
+        broadcast.filter((b) => live.has(b.sessionId) && live.has(b.config.sessionId)),
+        (b) => live.get(b.sessionId),
+      ),
+    };
+  }
+
+  private async countLinkRotations(tenantId: string): Promise<Record<LimitChannel, number>> {
+    const [telegram, whatsapp] = await Promise.all([
+      this.prisma.linkRotation.count({ where: { tenantId, session: { engine: 'telegram' } } }),
+      this.prisma.linkRotation.count({ where: { tenantId, session: { engine: { not: 'telegram' } } } }),
+    ]);
+    return { whatsapp, telegram };
+  }
+}
