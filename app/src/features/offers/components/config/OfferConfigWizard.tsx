@@ -7,11 +7,12 @@ import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
 import { AppIcon, SectionCard, type PostingWindowValue } from '@/components';
 import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
 import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
+import { useBroadcastGroups } from '@/features/broadcastGroups/hooks/useBroadcastGroups';
 import { channelOf } from '@/features/sessions/utils';
 import type { LimitChannel, OfferConfigGroup, OfferConfigResponse, OfferConfigSettings, OfferDispatchOrder, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../../strings';
 import {
-  CHANNELS, DEFAULT_INTERVAL, countByChannel, intervalValid, postingWindowFromConfig, postingWindowToRequest, postingWindowValid,
+  CHANNELS, DEFAULT_INTERVAL, countByChannel, intervalValid, postingWindowFromConfig, postingWindowToRequest, postingWindowValid, unionBroadcastCount,
 } from '../../utils/offerConfig';
 import type { OfferErrorView } from '../../utils/offerErrors';
 import { ConfigSessionStep } from './ConfigSessionStep';
@@ -88,7 +89,11 @@ export function OfferConfigWizard({
   // Canal da sessão = engine; o do grupo = o da sessão dona (limites do plano são por canal)
   const channelOfSession = (id: string): LimitChannel => channelOf(sessions.find((s) => s.id === id)?.engine);
   const sessionCount = countByChannel(chosen.map((s) => channelOf(s.engine)));
-  const groupCount = countByChannel([...selected.values()].map((g) => channelOfSession(g.sessionId)));
+  // Grupos de disparo pela união com o monitoramento (catálogo do tenant); sem catálogo, só o rascunho
+  const { data: catalog } = useBroadcastGroups();
+  const unionOf = (m: ReadonlyMap<string, SelectedGroup>) =>
+    unionBroadcastCount([...m].map(([id, g]) => ({ id, channel: channelOfSession(g.sessionId) })), catalog);
+  const groupCount = unionOf(selected);
   const over = (count: Record<LimitChannel, number>, kind: 'sessions' | 'broadcastGroups') =>
     CHANNELS.some((ch) => limits[ch][kind] != null && count[ch] > limits[ch][kind]!);
   const overGroupLimit = over(groupCount, 'broadcastGroups');
@@ -123,7 +128,9 @@ export function OfferConfigWizard({
       else {
         const ch = channelOfSession(group.sessionId);
         const limit = limits[ch].broadcastGroups;
-        if (limit == null || [...next.values()].filter((g) => channelOfSession(g.sessionId) === ch).length < limit) next.set(id, group);
+        // Grupo já em uso (monitoramento ou gerador) não ocupa vaga nova
+        const inUse = catalog?.items.some((i) => i.conversationId === id) ?? false;
+        if (limit == null || inUse || unionOf(next)[ch] < limit) next.set(id, group);
       }
       return next;
     });
