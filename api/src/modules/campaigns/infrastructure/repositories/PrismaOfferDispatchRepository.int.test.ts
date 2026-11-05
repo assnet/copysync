@@ -38,6 +38,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await reset();
   await prisma.groupMonitorConfig.deleteMany({ where: { tenantId } });
+  await prisma.offerGeneratorConfig.deleteMany({ where: { tenantId } });
   await prisma.chatConversation.deleteMany({ where: { tenantId } });
   await prisma.session.deleteMany({ where: { tenantId } });
   await prisma.tenant.delete({ where: { id: tenantId } });
@@ -73,6 +74,92 @@ describe('claimDue — janela de operação', () => {
     await queued(any.id, convMon, spToUtc(1));
     expect((await repo.claimDue(spToUtc(3), 10)).map((d) => d.offerId)).toEqual([any.id]);
     await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { windowStartMinute: 360, windowEndMinute: 1200 } });
+  });
+});
+
+// 28/10/2026 = quarta (3), 30 = sexta (5), 31 = sábado (6), 32 → 01/11 = domingo (0)
+describe('claimDue — dias da semana do monitoramento', () => {
+  afterAll(async () => {
+    await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { windowStartMinute: 360, windowEndMinute: 1200, weekdaysMask: 127 } });
+  });
+
+  it('dia fora do mask não reivindica; dia do mask sai', async () => {
+    await reset();
+    // só fim de semana, 06–20
+    await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { weekdaysMask: 0b1000001 } });
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(5));
+    expect(await repo.claimDue(spToUtc(9, 0, 28), 10)).toEqual([]);
+    expect((await repo.claimDue(spToUtc(9, 0, 31), 10)).map((d) => d.offerId)).toEqual([mon.id]);
+  });
+
+  it('janela sexta 22–02: sábado 01:00 é de sexta (sai); sábado 23:00 não; sexta 00:30 é de quinta (não sai)', async () => {
+    await reset();
+    await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { windowStartMinute: 1320, windowEndMinute: 120, weekdaysMask: 1 << 5 } });
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(0, 0, 28));
+    expect(await repo.claimDue(spToUtc(0, 30, 30), 10)).toEqual([]);
+    expect(await repo.claimDue(spToUtc(23, 0, 31), 10)).toEqual([]);
+    expect((await repo.claimDue(spToUtc(1, 0, 31), 10)).map((d) => d.offerId)).toEqual([mon.id]);
+  });
+
+  it('virada 23:59 → 00:00 com janela 22–02 só de quarta', async () => {
+    await reset();
+    await prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { windowStartMinute: 1320, windowEndMinute: 120, weekdaysMask: 1 << 3 } });
+    const a = await offer('MONITORING');
+    await queued(a.id, convMon, spToUtc(0, 0, 28));
+    expect((await repo.claimDue(spToUtc(23, 59, 28), 10)).map((d) => d.offerId)).toEqual([a.id]);
+    await reset();
+    const b = await offer('MONITORING');
+    await queued(b.id, convMon, spToUtc(0, 0, 28));
+    expect((await repo.claimDue(spToUtc(0, 0, 29), 10)).map((d) => d.offerId)).toEqual([b.id]);
+    // terça 23:59 e quinta 23:59: fora (início não é quarta)
+    await reset();
+    const c = await offer('MONITORING');
+    await queued(c.id, convMon, spToUtc(0, 0, 27));
+    expect(await repo.claimDue(spToUtc(23, 59, 27), 10)).toEqual([]);
+    expect(await repo.claimDue(spToUtc(23, 59, 29), 10)).toEqual([]);
+  });
+});
+
+describe('claimDue — horário do gerador', () => {
+  afterAll(async () => {
+    await prisma.offerGeneratorConfig.deleteMany({ where: { tenantId } });
+  });
+
+  it('gerador padrão (0–1440, todos os dias) sai como hoje a qualquer hora', async () => {
+    await reset();
+    await prisma.offerGeneratorConfig.upsert({ where: { tenantId }, create: { tenantId }, update: { windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127 } });
+    const gen = await offer('GENERATOR');
+    await queued(gen.id, convGen, spToUtc(0, 0, 28));
+    expect((await repo.claimDue(spToUtc(3, 0, 32), 10)).map((d) => d.offerId)).toEqual([gen.id]);
+  });
+
+  it('fora da janela/dia do gerador não sai; dentro sai; monitoramento não é afetado pelo gerador', async () => {
+    await reset();
+    // 08–18 só dias úteis
+    await prisma.offerGeneratorConfig.upsert({ where: { tenantId }, create: { tenantId, windowStartMinute: 480, windowEndMinute: 1080, weekdaysMask: 0b0111110 }, update: { windowStartMinute: 480, windowEndMinute: 1080, weekdaysMask: 0b0111110 } });
+    const gen = await offer('GENERATOR');
+    await queued(gen.id, convGen, spToUtc(0, 0, 28));
+    expect(await repo.claimDue(spToUtc(19, 0, 28), 10)).toEqual([]);
+    expect(await repo.claimDue(spToUtc(10, 0, 31), 10)).toEqual([]);
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(0, 0, 28));
+    // sábado 10:00: monitoramento (06–20, todos os dias) sai; o gerador segue esperando
+    const sat = await repo.claimDue(spToUtc(10, 0, 31), 10);
+    expect(sat.map((d) => d.offerId)).toEqual([mon.id]);
+    await prisma.offerDispatch.update({ where: { id: sat[0]!.id }, data: { status: 'SENT', chatMessageId: 'm', claimedAt: spToUtc(10, 0, 31) } });
+    // segunda 10:00 (02/11): dia útil, dentro da faixa
+    expect((await repo.claimDue(spToUtc(10, 0, 33), 10)).map((d) => d.offerId)).toEqual([gen.id]);
+  });
+
+  it('scheduledAt explícito ignora a janela do gerador (D3)', async () => {
+    await reset();
+    await prisma.offerGeneratorConfig.upsert({ where: { tenantId }, create: { tenantId, windowStartMinute: 480, windowEndMinute: 1080, weekdaysMask: 0b0111110 }, update: { windowStartMinute: 480, windowEndMinute: 1080, weekdaysMask: 0b0111110 } });
+    const gen = await offer('GENERATOR');
+    await prisma.offer.update({ where: { id: gen.id }, data: { scheduledAt: spToUtc(22, 0, 31) } });
+    await queued(gen.id, convGen, spToUtc(22, 0, 31));
+    expect((await repo.claimDue(spToUtc(22, 0, 31), 10)).map((d) => d.offerId)).toEqual([gen.id]);
   });
 });
 

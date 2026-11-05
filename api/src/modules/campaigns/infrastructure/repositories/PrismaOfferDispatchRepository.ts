@@ -8,13 +8,34 @@ import type {
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
 import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '../mappers/PrismaOfferDispatchMapper';
+import { POSTING_TIME_ZONE, weekdayInZone } from '../../domain/services/postingWindow';
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
 export const LANE_GAP_TOLERANCE_SECONDS = 5;
-/** Fuso da janela de operação do monitoramento (mesmo de `startOfDayInZone`/`operatingWindow`). */
-const WINDOW_TIME_ZONE = 'America/Sao_Paulo';
+/** Fuso do horário de postagem (mesmo de `postingWindow`/`operatingWindow`). */
+const WINDOW_TIME_ZONE = POSTING_TIME_ZONE;
 /** Envio em SEND_TIMEOUT segura a faixa ao menos isso: timeout (60 s) + digitação (até 30 s), com folga. */
 export const LANE_TIMEOUT_HOLD_SECONDS = 120;
+
+/**
+ * SQL de "a janela da linha `alias` está aberta agora", espelho de `isWithinPostingWindow`
+ * (`postingWindow.ts`): faixa de minutos + `weekdaysMask` (bit 0 = domingo). Faixa que cruza a
+ * meia-noite: o trecho após o início usa o bit de hoje; o trecho após 00:00, o bit de ontem (dia do início).
+ * `alias` é sempre literal interno (nunca entrada do usuário).
+ */
+function postingWindowOpenSql(alias: 'g' | 'c', zoneMinute: Prisma.Sql, todayBit: number, prevBit: number): Prisma.Sql {
+  const start = Prisma.raw(`${alias}."windowStartMinute"`);
+  const end = Prisma.raw(`${alias}."windowEndMinute"`);
+  const mask = Prisma.raw(`${alias}."weekdaysMask"`);
+  const today = Prisma.sql`(${mask} & ${todayBit}::int) <> 0`;
+  const prev = Prisma.sql`(${mask} & ${prevBit}::int) <> 0`;
+  return Prisma.sql`(
+    ((${start} % 1440) <= ${end} AND ${today}
+      AND ((${start} = 0 AND ${end} = 1440) OR (${zoneMinute} >= (${start} % 1440) AND ${zoneMinute} < ${end})))
+    OR ((${start} % 1440) > ${end}
+      AND ((${zoneMinute} >= (${start} % 1440) AND ${today}) OR (${zoneMinute} < ${end} AND ${prev})))
+  )`;
+}
 
 export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -73,9 +94,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * lock da transação, o que também impede dois workers de abrirem a mesma faixa.
    * `gen_random_uuid()` (nativo no PG ≥ 13) é volátil: um token por linha.
    *
-   * Dois filtros no candidato (docs/fila-de-envio.md): tenant com pausa global não sai; oferta do
-   * monitoramento só sai dentro da janela de operação da sessão (minuto do dia em São Paulo,
-   * inclusive janela que cruza a meia-noite). Filtrar no candidato, e não na cabeça, deixa a
+   * Filtros no candidato (docs/fila-de-envio.md): tenant com pausa global não sai; oferta do
+   * monitoramento só sai dentro do horário de postagem da configuração (minuto do dia e dia da
+   * semana em São Paulo, inclusive janela que cruza a meia-noite); oferta do gerador sem `scheduledAt`
+   * só sai dentro do horário do gerador do tenant (com `scheduledAt` o operador escolheu a hora:
+   * ignora a janela; tenant sem configuração não tem janela). Filtrar no candidato, e não na cabeça, deixa a
    * cabeça da faixa ser o próximo elegível (o gerador não fica preso atrás de uma captura fora da janela).
    */
   async claimDue(now: Date, limit: number): Promise<OfferDispatch[]> {
@@ -83,6 +106,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     // `now` chega como timestamp sem fuso em UTC (padrão das colunas); vira minuto do dia no fuso
     const zoneMinute = Prisma.sql`(EXTRACT(HOUR FROM ((${now}::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${WINDOW_TIME_ZONE}))::int * 60
       + EXTRACT(MINUTE FROM ((${now}::timestamp AT TIME ZONE 'UTC') AT TIME ZONE ${WINDOW_TIME_ZONE}))::int)`;
+    // Dia da semana no fuso (hoje e ontem) calculado aqui pela mesma regra do domínio
+    const zoneWeekday = weekdayInZone(now, WINDOW_TIME_ZONE);
+    const prevWeekday = (zoneWeekday + 6) % 7;
+    const monitorOpen = postingWindowOpenSql('g', zoneMinute, 1 << zoneWeekday, 1 << prevWeekday);
+    const generatorOpen = postingWindowOpenSql('c', zoneMinute, 1 << zoneWeekday, 1 << prevWeekday);
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('offer_dispatch_claim'))`;
       const rows = await tx.$queryRaw<OfferDispatchRawRow[]>`
@@ -99,7 +127,7 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                   AND d."offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
-                  -- Oferta do monitoramento fora da janela de operação da sessão espera a janela abrir
+                  -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir
                   AND NOT EXISTS (
                     SELECT 1 FROM "offers" mo
                       -- Janela da configuração de ORIGEM (sessão cruzada envia por outra); oferta antiga sem
@@ -108,13 +136,14 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                         ON g."id" = COALESCE(mo."monitorConfigId",
                              (SELECT c."id" FROM "group_monitor_configs" c WHERE c."sessionId" = d."sessionId" AND c."tenantId" = d."tenantId" LIMIT 1))
                      WHERE mo."id" = d."offerId" AND mo."origin" = 'MONITORING'::"OfferOrigin"
-                       AND NOT (
-                         (g."windowStartMinute" = 0 AND g."windowEndMinute" = 1440)
-                         OR ((g."windowStartMinute" % 1440) <= g."windowEndMinute"
-                             AND ${zoneMinute} >= (g."windowStartMinute" % 1440) AND ${zoneMinute} < g."windowEndMinute")
-                         OR ((g."windowStartMinute" % 1440) > g."windowEndMinute"
-                             AND (${zoneMinute} >= (g."windowStartMinute" % 1440) OR ${zoneMinute} < g."windowEndMinute"))
-                       )
+                       AND NOT ${monitorOpen}
+                  )
+                  -- Oferta do gerador sem horário escolhido fora do horário do gerador espera a janela abrir
+                  AND NOT EXISTS (
+                    SELECT 1 FROM "offers" go
+                      JOIN "offer_generator_configs" c ON c."tenantId" = go."tenantId"
+                     WHERE go."id" = d."offerId" AND go."origin" = 'GENERATOR'::"OfferOrigin" AND go."scheduledAt" IS NULL
+                       AND NOT ${generatorOpen}
                   )
                 -- Quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
                 ORDER BY COALESCE(d."sessionId", d."id"), (d."waitingSessionSince" IS NULL), d."notBefore"

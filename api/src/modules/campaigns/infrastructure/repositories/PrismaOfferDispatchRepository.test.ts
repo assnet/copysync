@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { PrismaOfferDispatchRepository } from './PrismaOfferDispatchRepository';
 
 /** SQL do claim sem banco (o comportamento real está no `.int.test.ts`). */
@@ -7,8 +7,9 @@ function captureClaimSql() {
   const sqls: string[] = [];
   const tx = {
     $executeRaw: vi.fn(async () => 0),
-    $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
-      sqls.push(strings.join('?'));
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      // Fragmentos aninhados (Prisma.sql/raw) entram no texto; parâmetros viram $n
+      sqls.push(Prisma.sql(strings, ...(values as Prisma.Sql[])).sql);
       return [];
     }),
   };
@@ -22,5 +23,14 @@ describe('PrismaOfferDispatchRepository.claimDue', () => {
     expect(await repo.claimDue(new Date('2026-11-02T12:00:00Z'), 10)).toEqual([]);
     const sql = sqls.join('\n');
     expect(sql).toContain(`"sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus"`);
+  });
+
+  it('monitoramento usa weekdaysMask; gerador sem scheduledAt usa a janela do tenant', async () => {
+    const { repo, sqls } = captureClaimSql();
+    await repo.claimDue(new Date('2026-11-02T12:00:00Z'), 10);
+    const sql = sqls.join('\n');
+    expect(sql).toContain('g."weekdaysMask"');
+    expect(sql).toContain('JOIN "offer_generator_configs" c ON c."tenantId" = go."tenantId"');
+    expect(sql).toContain(`go."origin" = 'GENERATOR'::"OfferOrigin" AND go."scheduledAt" IS NULL`);
   });
 });
