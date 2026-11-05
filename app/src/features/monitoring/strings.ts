@@ -6,6 +6,7 @@
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
 import type { AffiliateProvider, CapturedOfferReason, CapturedOfferStatus, MonitorTextMode, PostBlockedReason } from '@/types/api.types';
+import { broadcastGroupsStrings } from '@/features/broadcastGroups/strings';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -88,6 +89,8 @@ export const monitoringStrings = {
 
   groups: {
     untitled: 'Grupo sem nome',
+    /** Dica do chip de grupos de disparo: limite somado com o gerador (BG-03). */
+    sharedLimit: broadcastGroupsStrings.sharedLimit,
     usage: (used: number, max: number | null) => (max === null ? `${used} · sem limite` : `${used}/${max} no plano`),
     usageTooltip: (used: number, max: number | null) =>
       max === null

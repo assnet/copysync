@@ -133,7 +133,7 @@ export function BroadcastGroupsCard({ groups, usage, monitorSessionId, sessionNa
       tone="success"
       title={t.broadcastTitle}
       subtitle={t.broadcastSubtitle}
-      action={<ChannelUsageChips items={usage} />}
+      action={<ChannelUsageChips items={usage} sharedLimit />}
       footer={
         <Tooltip title={t.addTooltip} arrow describeChild>
           <Box component="span">

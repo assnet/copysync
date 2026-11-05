@@ -238,6 +238,7 @@ export function ConfigGroupsStep({ sessions, selected, limits, onToggle, onClear
             limits={groupLimits}
             label={t.channelCounter}
             ariaLabel={t.channelCounterAria}
+            sharedLimitHint
           />
         </Box>
         {selected.size > 0 && (

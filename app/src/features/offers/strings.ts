@@ -6,6 +6,7 @@
  * - sem nome de marca do produto (usar "a ferramenta")
  */
 import type { LimitChannel, OfferAudience, OfferDispatchStatus, PostBlockedReason } from '@/types/api.types';
+import { broadcastGroupsStrings } from '@/features/broadcastGroups/strings';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const groupsLabel = (n: number) => `${n} ${plural(n, 'grupo', 'grupos')}`;
@@ -91,6 +92,8 @@ export const offerStrings = {
       empty: 'Nenhum grupo encontrado nesta sessão.',
       emptySearch: 'Nenhum grupo com esse nome.',
       untitled: 'Grupo sem nome',
+      /** Dica do chip: limite somado com o monitoramento (BG-03). */
+      sharedLimit: broadcastGroupsStrings.sharedLimit,
       counter: (n: number, limit: number | null) =>
         limit != null ? `${n} / ${limit}` : `${n} ${plural(n, 'selecionado', 'selecionados')}`,
       counterAria: (n: number, limit: number | null) =>
