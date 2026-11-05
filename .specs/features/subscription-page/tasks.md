@@ -84,7 +84,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `app/src/features/subscription/components/SubscriptionLimitsTable.tsx`, `app/src/features/subscription/usageTone.ts` (+ testes).
 **Depends on**: T10, T12 **Req**: SUB-08 **Done when**: teste: ilimitado sem barra, 100% `error`, ≥80% `warning`, Telegram 0 = "A partir do PRO". **Tests**: unit **Gate**: quick
 
-### T15: Página, rota e menu ⏳
+### T15: Página, rota e menu ✅ 6ddf4e1
 **What**: `SubscriptionPage` (carrega pelo serviço, skeleton, erro com retry; aba de canal em `usePersistedState` escopo `tab`); rota `/settings/subscription`; item no `SettingsLayout` (D3).
 **Where**: `app/src/pages/settings/SubscriptionPage.tsx`, `app/src/routes/AppRoutes.tsx`, `app/src/features/settings/components/SettingsLayout.tsx` (+ teste da página).
 **Depends on**: T13, T14 **Req**: SUB-10 **Tests**: unit **Gate**: quick

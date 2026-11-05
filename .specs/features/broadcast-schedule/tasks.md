@@ -55,7 +55,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Done when:** resposta `{ items:[{conversationId,sessionId,channel,title,avatarUrl,usedBy[]}], limits, usage }`; sem dado de outro tenant.
 - **Tests:** unit (use case) · **Gate:** quick
 
-### T6: API — remover de todos os usos ⏳
+### T6: API — remover de todos os usos ✅ 03b90ac
 - **What:** `RemoveBroadcastGroupUseCase` + `DELETE /campaigns/broadcast-groups/:conversationId`; remove em transação de `offer_destinations` e `broadcast_groups` do tenant.
 - **Where:** `ListBroadcastGroupsUseCase.ts` → arquivo irmão `RemoveBroadcastGroupUseCase.ts` (+ `.test.ts`), `PrismaBroadcastGroupUsageReader.ts` (método `removeEverywhere`; renomear porta para `IBroadcastGroupStore` se fizer sentido), `broadcastGroups.routes.ts`
 - **Depends on:** T5 · **Reqs:** BG-05
@@ -80,7 +80,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** T7, T8 · **Reqs:** BG-06
 - **Tests:** unit Testing Library · **Gate:** quick
 
-### T23: Painel — página, rota e menu ⏳
+### T23: Painel — página, rota e menu ✅ 24bf992
 - **What:** `BroadcastGroupsPage`; rota `/broadcast-groups`; item `broadcast-groups` em `buildNavigation` com rótulo em `navigation/strings.ts`.
 - **Where:** `app/src/pages/broadcast-groups/BroadcastGroupsPage.tsx`, `app/src/routes/AppRoutes.tsx`, `app/src/features/navigation/model.ts` (+ `strings.ts`, `model.test.ts`)
 - **Depends on:** T22 · **Reqs:** BG-06, BG-07
@@ -147,7 +147,7 @@ Onda 7: T23(T22) → T24 → T25
 - **Depends on:** T3 (mesmo arquivo), T9, T12 · **Reqs:** PS-05
 - **Tests:** unit · **Gate:** quick
 
-### T19: Gerador — disparo encaixa na janela [P] ⏳
+### T19: Gerador — disparo encaixa na janela [P] ✅ a9b5556
 - **What:** sem `scheduledAt`, `SendOfferUseCase` e retomada (`OfferSendControlUseCases`) aplicam `fitSlots` com a janela do gerador.
 - **Where:** `m/campaigns/application/use-cases/SendOfferUseCase.ts`, `m/campaigns/application/use-cases/OfferSendControlUseCases.ts` (+ testes)
 - **Depends on:** T11, T18 · **Reqs:** PS-05

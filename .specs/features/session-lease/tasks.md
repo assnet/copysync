@@ -50,7 +50,7 @@ Regras comuns a toda task:
 | F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ✅ 557f8c6 |
 | F9 | Resume no adapter mantém suspensa em erro | F8 | | ✅ 1b2a3bb |
 | F10 | Estado de retomada com dono único | F9 | | ✅ b0ceb92 |
-| F11 | Abertura dupla da mesma sessão | F9 | P | ⏳ |
+| F11 | Abertura dupla da mesma sessão | F9 | P | ✅ 565e836 |
 
 ## Notas de execução (passagem entre tarefas)
 
