@@ -89,6 +89,17 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'event_id_mismatch' });
       }
 
+      // Ausente = mantém; `null` limpa; ISO grava; presente e malformado é recusado (não aplica nem avança o seq)
+      let expiresAt: { expiresAt?: string | null } = {};
+      if ('expiresAt' in body) {
+        const parsed = parseExpiresAt(body.expiresAt);
+        if (!parsed.valid) {
+          log.warn({ eventId }, 'Billing webhook invalid expiresAt');
+          return reply.status(400).send({ error: 'invalid_expires_at' });
+        }
+        expiresAt = { expiresAt: parsed.value?.toISOString() ?? null };
+      }
+
       const input: ApplyBillingEventInput = {
         eventId,
         billingCustomerId,
@@ -98,8 +109,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
           email: str(body.email),
           name: str(body.name),
           planSlug: str(body.planSlug) ?? null,
-          // Ausente = mantém; presente é normalizado (inválido → null)
-          ...('expiresAt' in body ? { expiresAt: parseExpiresAt(body.expiresAt)?.toISOString() ?? null } : {}),
+          ...expiresAt,
         },
       };
 

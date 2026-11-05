@@ -72,18 +72,24 @@ describe('POST /integrations/billing/webhook', () => {
     });
   });
 
-  it('expiresAt ISO válido chega normalizado; inválido vira null; ausente não vai', async () => {
+  it('expiresAt ISO válido chega normalizado; null limpa; ausente não vai', async () => {
     execute.mockResolvedValue({ outcome: 'APPLIED', tenantId: 't1' });
     const payloadOf = () => execute.mock.calls.at(-1)![0].payload;
     await app.inject(signed({ ...BODY, expiresAt: '2026-12-04T12:00:00-03:00' }));
     expect(payloadOf().expiresAt).toBe('2026-12-04T15:00:00.000Z');
-    await app.inject(signed({ ...BODY, expiresAt: 'amanhã' }));
-    expect(payloadOf().expiresAt).toBeNull();
-    await app.inject(signed({ ...BODY, expiresAt: 1735689600 }));
+    await app.inject(signed({ ...BODY, expiresAt: null }));
     expect(payloadOf().expiresAt).toBeNull();
     const { expiresAt: _omit, ...withoutExpiry } = BODY;
     await app.inject(signed(withoutExpiry));
     expect('expiresAt' in payloadOf()).toBe(false);
+  });
+
+  it.each(['abc', 123, '', 'amanhã', true, {}])('expiresAt malformado %j responde 400 sem aplicar o evento', async (bad) => {
+    execute.mockClear();
+    const res = await app.inject(signed({ ...BODY, expiresAt: bad }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'invalid_expires_at' });
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it('tipo desconhecido segue para o use case (recibo IGNORED) e responde 200', async () => {

@@ -306,10 +306,10 @@ describe('ApplyBillingEventUseCase', () => {
       expect(db.state.tenant!.subscriptionExpiresAt).toBe(PREV);
     });
 
-    it('data inválida vira null', async () => {
+    it.each(['não-é-data', ''])('data malformada %j mantém o vencimento gravado (nunca vira null)', async (bad) => {
       makeTenant({ subscriptionExpiresAt: PREV });
-      await run(ev('subscription.renewed', { payload: { planSlug: 'COPYSYNC_PRO', expiresAt: 'não-é-data' } }));
-      expect(db.state.tenant!.subscriptionExpiresAt).toBeNull();
+      await run(ev('subscription.renewed', { payload: { planSlug: 'COPYSYNC_PRO', expiresAt: bad } }));
+      expect(db.state.tenant!.subscriptionExpiresAt).toBe(PREV);
     });
 
     it('null explícito limpa; ausente mantém', async () => {

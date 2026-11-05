@@ -253,7 +253,10 @@ export class ApplyBillingEventUseCase {
     // Vencimento só muda em ativação/renovação/atualização; demais eventos mantêm
     const expiresAt = input.payload.expiresAt;
     if (PLAN_SYNC.has(type) && expiresAt !== undefined) {
-      data.subscriptionExpiresAt = parseExpiresAt(expiresAt);
+      // A rota já recusa malformado; aqui, por defesa, malformado mantém o gravado (nunca vira "sem vencimento")
+      const parsed = parseExpiresAt(expiresAt);
+      if (parsed.valid) data.subscriptionExpiresAt = parsed.value;
+      else log.warn({ eventId: input.eventId }, 'Malformed expiresAt ignored');
     }
     const syncPlan = planSlug !== null && PLAN_SYNC.has(type);
     if (syncPlan) data.planSlug = planSlug;
