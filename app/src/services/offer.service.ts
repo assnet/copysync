@@ -99,6 +99,9 @@ interface OfferConfigApiDto {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
+  windowStartMinute?: number;
+  windowEndMinute?: number;
+  weekdays?: number[];
   groups: {
     id: string; title: string | null; avatarUrl?: string | null; sessionId: string | null;
     canPost?: boolean | null; postBlockedReason?: PostBlockedReason | null;
@@ -119,6 +122,10 @@ function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
           intervalMinSeconds: dto.intervalMinSeconds,
           intervalMaxSeconds: dto.intervalMaxSeconds,
           dispatchOrder: dto.dispatchOrder,
+          // API anterior sem horário: dia inteiro, todos os dias (comportamento de antes)
+          windowStartMinute: dto.windowStartMinute ?? 0,
+          windowEndMinute: dto.windowEndMinute ?? 1440,
+          weekdays: dto.weekdays?.length ? dto.weekdays : [0, 1, 2, 3, 4, 5, 6],
         }
       : null,
     groups: dto.groups.map((g) => ({

@@ -40,7 +40,7 @@ export const offerStrings = {
   wizard: {
     title: 'Configure seus disparos',
     subtitle: 'Faça isso uma vez. Toda oferta sai pela sessão e pelos grupos escolhidos aqui.',
-    steps: ['Sessão', 'Grupos', 'Confirmar'] as const,
+    steps: ['Sessão', 'Grupos', 'Horário', 'Confirmar'] as const,
     back: 'Voltar',
     next: 'Continuar',
     cancel: 'Cancelar',
@@ -122,6 +122,11 @@ export const offerStrings = {
       showHidden: 'Mostrar ocultos',
       /** Grupo já marcado que perdeu a permissão: o clique só desmarca. */
       unpostableSelectedHint: 'Clique para tirar da seleção.',
+    },
+    schedule: {
+      title: 'Defina o horário de postagem',
+      subtitle: 'Em que horas e dias as ofertas podem sair. Fora disso, a oferta espera na fila.',
+      scheduledNote: 'Oferta com horário agendado sai na hora escolhida, mesmo fora desta janela.',
     },
     confirm: {
       title: 'Confira e salve',

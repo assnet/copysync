@@ -396,6 +396,11 @@ export interface OfferConfigSettings {
   intervalMinSeconds: number;
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
+  /** Horário de postagem: minutos do dia em `America/Sao_Paulo` (end < start = cruza a meia-noite). */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  /** Dias com postagem (0 = domingo … 6 = sábado), ao menos um. */
+  weekdays: number[];
 }
 
 /** Canal de limite do plano: o de uma sessão vem da engine; o de um grupo, da sessão dona dele. */
@@ -428,6 +433,10 @@ export interface SaveOfferConfigRequest {
   intervalMaxSeconds: number;
   dispatchOrder: OfferDispatchOrder;
   conversationIds: string[];
+  /** Horário de postagem; ausente = API mantém o salvo. */
+  windowStartMinute?: number;
+  windowEndMinute?: number;
+  weekdays?: number[];
 }
 
 // ── API wrapper ───────────────────────────────────────────────────────────────

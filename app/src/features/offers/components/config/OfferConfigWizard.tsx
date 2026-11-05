@@ -4,16 +4,19 @@ import { Link as RouterLink } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Alert, Box, Button, CircularProgress, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
 import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
-import { AppIcon, SectionCard } from '@/components';
+import { AppIcon, SectionCard, type PostingWindowValue } from '@/components';
 import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
 import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
 import { channelOf } from '@/features/sessions/utils';
 import type { LimitChannel, OfferConfigGroup, OfferConfigResponse, OfferConfigSettings, OfferDispatchOrder, SaveOfferConfigRequest, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../../strings';
-import { CHANNELS, DEFAULT_INTERVAL, countByChannel, intervalValid } from '../../utils/offerConfig';
+import {
+  CHANNELS, DEFAULT_INTERVAL, countByChannel, intervalValid, postingWindowFromConfig, postingWindowToRequest, postingWindowValid,
+} from '../../utils/offerConfig';
 import type { OfferErrorView } from '../../utils/offerErrors';
 import { ConfigSessionStep } from './ConfigSessionStep';
 import { ConfigGroupsStep, type SelectedGroup } from './ConfigGroupsStep';
+import { ConfigScheduleStep } from './ConfigScheduleStep';
 import { ConfigConfirmStep } from './ConfigConfirmStep';
 
 const t = offerStrings.wizard;
@@ -25,6 +28,7 @@ interface WizardDraft {
   intervalMin: number;
   intervalMax: number;
   dispatchOrder: OfferDispatchOrder;
+  postingWindow: PostingWindowValue;
 }
 
 interface Props {
@@ -44,12 +48,12 @@ interface Props {
   onCancel?: () => void;
 }
 
-/** Assistente Sessões → Grupos → Confirmar. Abre preenchido com a configuração atual ao editar. */
+/** Assistente Sessões → Grupos → Horário → Confirmar. Abre preenchido com a configuração atual ao editar. */
 export function OfferConfigWizard({
   config, groups, limits, crossSessionDispatch, sessions, sessionsLoading, sessionsFailed, onRetrySessions, onSave, onSaved, onCancel,
 }: Props) {
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
-  // Todo o rascunho do assistente sobrevive a reload (passo, sessões, grupos, intervalo, ordem);
+  // Todo o rascunho do assistente sobrevive a reload (passo, sessões, grupos, horário, intervalo, ordem);
   // some ao salvar ou cancelar. Começa da configuração salva quando não há rascunho.
   const [draft, setDraft, clearDraft] = usePersistedState<WizardDraft>('offers.wizard', () => ({
     step: 0,
@@ -60,8 +64,9 @@ export function OfferConfigWizard({
     intervalMin: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
     intervalMax: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
     dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
-  }), { version: 1 });
-  const { step, sessionIds, intervalMin, intervalMax, dispatchOrder } = draft;
+    postingWindow: postingWindowFromConfig(config),
+  }), { version: 2 });
+  const { step, sessionIds, intervalMin, intervalMax, dispatchOrder, postingWindow } = draft;
   const selected = useMemo(() => new Map(draft.selected), [draft.selected]);
   const setStep = (fn: (s: number) => number) => setDraft((d) => ({ ...d, step: fn(d.step) }));
   const setSessionIds = (fn: (ids: string[]) => string[]) => setDraft((d) => ({ ...d, sessionIds: fn(d.sessionIds) }));
@@ -70,6 +75,8 @@ export function OfferConfigWizard({
   const setIntervalMin = (v: number) => setDraft((d) => ({ ...d, intervalMin: v }));
   const setIntervalMax = (v: number) => setDraft((d) => ({ ...d, intervalMax: v }));
   const setDispatchOrder = (v: OfferDispatchOrder) => setDraft((d) => ({ ...d, dispatchOrder: v }));
+  const setPostingWindow = (v: PostingWindowValue) => setDraft((d) => ({ ...d, postingWindow: v }));
+  const windowValid = postingWindowValid(postingWindow);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,8 +99,9 @@ export function OfferConfigWizard({
 
   const canNext = step === 0
     ? chosen.length > 0 && !overSessionLimit && !crossLocked
-    : step === 1 ? selected.size > 0 && !overGroupLimit : false;
-  const canSave = chosen.length > 0 && !overSessionLimit && !crossLocked && selected.size > 0 && !overGroupLimit && intervalValid(intervalMin, intervalMax);
+    : step === 1 ? selected.size > 0 && !overGroupLimit
+    : step === 2 ? windowValid : false;
+  const canSave = chosen.length > 0 && !overSessionLimit && !crossLocked && selected.size > 0 && !overGroupLimit && intervalValid(intervalMin, intervalMax) && windowValid;
 
   const toggleSession = (id: string) => {
     setSessionIds((prev) => {
@@ -133,6 +141,7 @@ export function OfferConfigWizard({
         intervalMaxSeconds: intervalMax,
         dispatchOrder,
         conversationIds: [...selected.keys()],
+        ...postingWindowToRequest(postingWindow),
       });
       clearDraft();
       onSaved();
@@ -145,7 +154,7 @@ export function OfferConfigWizard({
     }
   };
 
-  const heading = [t.session, t.groups, t.confirm][step];
+  const heading = [t.session, t.groups, t.schedule, t.confirm][step];
 
   return (
     <SectionCard title={t.title} subtitle={t.subtitle}>
@@ -186,7 +195,8 @@ export function OfferConfigWizard({
             onClear={() => setSelected(() => new Map())}
           />
         )}
-        {step === 2 && (
+        {step === 2 && <ConfigScheduleStep value={postingWindow} onChange={setPostingWindow} disabled={saving} />}
+        {step === 3 && (
           <ConfigConfirmStep
             sessions={chosen}
             groups={[...selected.entries()].map(([id, g]) => ({ ...g, id }))}
@@ -213,7 +223,7 @@ export function OfferConfigWizard({
             <Button color="inherit" onClick={() => { clearDraft(); onCancel(); }}>{t.cancel}</Button>
           ) : null}
         </Box>
-        {step < 2 ? (
+        {step < t.steps.length - 1 ? (
           <Button variant="contained" disableElevation endIcon={<AppIcon icon={ArrowRight} size="sm" />} disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
             {t.next}
           </Button>

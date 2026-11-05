@@ -10,7 +10,7 @@ const NO_LIMITS: OfferConfigResponse['limits'] = {
 };
 
 /**
- * Configuração do gerador (sessão, grupos, intervalo) e as sessões do tenant.
+ * Configuração do gerador (sessão, grupos, intervalo, horário de postagem) e as sessões do tenant.
  * As sessões servem ao assistente (só as conectadas) e à barra de resumo (nome e status).
  */
 export function useOfferConfig() {
@@ -46,7 +46,10 @@ export function useOfferConfig() {
     return () => { cancelled = true; };
   }, [attempt, loadSessions]);
 
-  /** Rejeita com `OfferErrorView` para o assistente mostrar a mensagem no passo atual. */
+  /**
+   * Envia o corpo inteiro, horário (`windowStartMinute`/`windowEndMinute`/`weekdays`) incluso.
+   * Rejeita com `OfferErrorView` para o assistente mostrar a mensagem no passo atual.
+   */
   const save = useCallback(async (body: SaveOfferConfigRequest) => {
     try {
       const res = await offerService.saveConfig(body);

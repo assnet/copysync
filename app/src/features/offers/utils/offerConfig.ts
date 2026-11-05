@@ -1,5 +1,9 @@
 import { Baby, CookingPot, Dumbbell, Image, Link2, PawPrint, Shirt, Tag, User, type LucideIcon } from 'lucide-react';
-import type { LimitChannel, OfferAudience, OfferImageMode } from '@/types/api.types';
+import type { LimitChannel, OfferAudience, OfferConfigSettings, OfferImageMode, SaveOfferConfigRequest } from '@/types/api.types';
+import type { PostingWindowValue } from '@/components/PostingWindowField';
+import {
+  ALL_WEEKDAYS_MASK, DAY_MINUTES, isWeekdaysMaskValid, isWindowValid, maskToWeekdays, weekdaysToMask, windowFromSettings, windowToSettings,
+} from '@/features/monitoring/utils/operatingWindow';
 
 /** Ordem dos cartões de público-alvo. */
 export const OFFER_AUDIENCES: readonly OfferAudience[] = [
@@ -68,4 +72,24 @@ export function countByChannel(channels: readonly LimitChannel[]): Record<LimitC
   const out: Record<LimitChannel, number> = { whatsapp: 0, telegram: 0 };
   for (const ch of channels) out[ch]++;
   return out;
+}
+
+/** Horário salvo do gerador → valor do `PostingWindowField`; sem configuração, dia inteiro e todos os dias. */
+export function postingWindowFromConfig(config: OfferConfigSettings | null): PostingWindowValue {
+  if (!config) return { window: windowFromSettings(0, DAY_MINUTES), weekdaysMask: ALL_WEEKDAYS_MASK };
+  const mask = weekdaysToMask(config.weekdays);
+  return {
+    window: windowFromSettings(config.windowStartMinute, config.windowEndMinute),
+    weekdaysMask: mask > 0 ? mask : ALL_WEEKDAYS_MASK,
+  };
+}
+
+/** Valor do `PostingWindowField` → campos do `PUT /offers/config`. */
+export function postingWindowToRequest(value: PostingWindowValue): Pick<SaveOfferConfigRequest, 'windowStartMinute' | 'windowEndMinute' | 'weekdays'> {
+  return { ...windowToSettings(value.window), weekdays: maskToWeekdays(value.weekdaysMask) };
+}
+
+/** Faixa com algum horário livre e ao menos um dia marcado. */
+export function postingWindowValid(value: PostingWindowValue): boolean {
+  return isWindowValid(value.window) && isWeekdaysMaskValid(value.weekdaysMask);
 }
