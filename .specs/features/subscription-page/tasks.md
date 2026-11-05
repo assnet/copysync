@@ -101,7 +101,7 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 **Where**: `docs/assinatura.md`, `AGENTS.md`, `docs/arquitetura-central-billing.md`, `CHANGELOG.md`, `api/package.json`, `app/package.json`.
 **Depends on**: T2, T8, T16 **Req**: SUB-11 **Tests**: none **Gate**: full
 
-### T18: Verificação visual ⏳
+### T18: Verificação visual ✅
 **What**: agent-browser contra API local com Postgres descartável: claro/escuro/sistema, 375 px e 1280 px, ACTIVE/SUSPENDED/sem plano, privacidade ligada.
 **Where**: — (screenshots no PR) **Depends on**: T17 **Req**: SUB-06..10 **Tests**: e2e manual **Gate**: full
 
@@ -131,3 +131,4 @@ F5:     T17 (T2,T8,T16) → T18 (T17)
 - D1 (guardar vencimento) seguido pela recomendação em 2026-11-04 para destravar T1/T2 e o follow-up do receiver (`expiresAt` de `subscription.updated`); dono pode rever.
 - T1: `Tenant.subscriptionExpiresAt` (migration `20261105001005`); alias da T7 removido.
 - T8: `GET /subscription` com `tenantAnyStatusHook`; presenter traduz `COPYSYNC_LITE/PRO/MAX` → `starter/profissional/business` (registrar em docs na T17).
+- T18: agent-browser contra Postgres descartável (ACTIVE/PRO, SUSPENDED/LITE com `?suspended=1`, sem plano, OPERATOR), claro/escuro, 1280 e 390 px, borrar ligado, tooltips. Corrigidos tom de `0 de 1` e colunas da tabela (app 0.76.2). Fora do escopo: o painel não tem modo "sistema" (`ThemeContext` só claro/escuro; sem preferência salva abre claro mesmo com `prefers-color-scheme: dark`); nome do tenant no cabeçalho global não borra.

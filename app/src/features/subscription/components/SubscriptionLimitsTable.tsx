@@ -34,7 +34,7 @@ function UsageCell({ item, label }: { item: SubscriptionLimitItem & { key: Subsc
   }
   const tone = usageTone(used, item.limit);
   return (
-    <Stack spacing={0.5} sx={{ minWidth: 140 }}>
+    <Stack spacing={0.5} sx={{ minWidth: { xs: 88, sm: 140 } }}>
       <Typography variant="body2" color={tone === 'default' ? 'text.primary' : `${tone}.main`}>
         {daily ? t.limits.usageToday(used, item.limit) : t.limits.usage(used, item.limit)}
       </Typography>
@@ -60,11 +60,13 @@ function limitText(item: SubscriptionLimitItem): string {
 function LimitsGrid({ items, caption }: { items: Array<SubscriptionLimitItem & { key: SubscriptionLimitKey }>; caption: string }) {
   return (
     <TableContainer>
-      <Table size="small" aria-label={caption}>
+      {/* Colunas fixas no desktop: as tabelas do canal e a geral alinham entre si e entre abas.
+          No celular, padding menor para as três colunas caberem sem rolagem lateral. */}
+      <Table size="small" aria-label={caption} sx={{ tableLayout: { sm: 'fixed' }, '& .MuiTableCell-root': { px: { xs: 1, sm: 2 } } }}>
         <TableHead>
           <TableRow>
-            <TableCell scope="col">{t.limits.column.resource}</TableCell>
-            <TableCell scope="col">{t.limits.column.usage}</TableCell>
+            <TableCell scope="col" sx={{ width: { sm: '42%' } }}>{t.limits.column.resource}</TableCell>
+            <TableCell scope="col" sx={{ width: { sm: '38%' } }}>{t.limits.column.usage}</TableCell>
             <TableCell scope="col" align="right">{t.limits.column.limit}</TableCell>
           </TableRow>
         </TableHead>
@@ -134,7 +136,7 @@ export function SubscriptionLimitsTable({ limits, channel, onChannelChange }: Su
         {channelItems.length > 0 && <LimitsGrid items={channelItems} caption={`${t.limits.title}: ${t.channel[channel]}`} />}
         {generalItems.length > 0 && (
           <Box>
-            <Typography variant="subtitle2" component="h3" sx={{ px: 2, pb: 1 }}>{t.limits.general}</Typography>
+            <Typography variant="subtitle2" component="h3" sx={{ px: { xs: 1, sm: 2 }, pb: 1 }}>{t.limits.general}</Typography>
             <LimitsGrid items={generalItems} caption={t.limits.general} />
           </Box>
         )}

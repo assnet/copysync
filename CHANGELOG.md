@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.76.2 — Assinatura: verificação visual (T18)
+
+#### app/
+
+- **`features/subscription/usageTone.ts`** — `0 de 1` saía em laranja (restante 1 ≤ 20% arredondado para cima): nada usado agora é sempre `default`; esgotado e ≥ 80% seguem iguais (chip do gerador incluso). Teste novo em `usageTone.test.ts`.
+- **`features/subscription/components/SubscriptionLimitsTable.tsx`** — colunas desalinhadas entre a tabela do canal e a geral (e entre abas): `table-layout: fixed` com larguras no desktop. No celular (390 px) a coluna "Limite" ficava fora da tela com rolagem lateral: padding menor e barra de uso com largura mínima de 88 px.
+
 ### Fixed — api 0.57.1 + app 0.76.1 — Mercado Livre "Recusada" com navegador logado
 
 Doc: `docs/integracoes-credenciais-afiliado.md` (seção "Checagem da sessão no sync").

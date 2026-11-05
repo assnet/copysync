@@ -16,5 +16,6 @@ describe('usageTone', () => {
   it('abaixo de 80% é default', () => {
     expect(usageTone(7, 10)).toBe('default');
     expect(usageTone(0, 5)).toBe('default');
+    expect(usageTone(0, 1)).toBe('default');
   });
 });
