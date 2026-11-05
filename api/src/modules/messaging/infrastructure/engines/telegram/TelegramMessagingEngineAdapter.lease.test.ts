@@ -120,7 +120,7 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     return { go: () => go(), started: () => vi.waitFor(() => expect(go).toBeTypeOf('function')) };
   }
 
-  it('abort durante a abertura: cliente descartado, não registrado, sem status nem lease solto', async () => {
+  it('abort durante a abertura: cliente descartado, não registrado, sem status; lease solto condicionado ao dono', async () => {
     const { adapter, sessionRepo, auth, leaseGate } = make(true);
     const hold = holdLoad(auth);
     const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
@@ -133,7 +133,8 @@ describe('TelegramMessagingEngineAdapter — lease antes de abrir cliente', () =
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
     expect(auth.save).not.toHaveBeenCalled();
     expect(auth.clear).not.toHaveBeenCalled();
-    expect(leaseGate.release).not.toHaveBeenCalled();
+    // Acquire que assentou antes do abort não fica preso até o TTL (no-op se o lease é de outro)
+    expect(leaseGate.release).toHaveBeenCalledExactlyOnceWith('s1');
     expect(await adapter.resumeSession('s1')).toBe('gone');
   });
 

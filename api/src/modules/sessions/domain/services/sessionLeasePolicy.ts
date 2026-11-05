@@ -22,3 +22,9 @@ export const LEASE_RENEW_TIMEOUT_MS = 5_000;
 export function isLeaseFenceExpired(lastRenewOkAt: Date, now: Date): boolean {
   return now.getTime() > lastRenewOkAt.getTime() + LEASE_TTL_MS - LEASE_FENCE_MARGIN_MS;
 }
+
+/**
+ * Prazo da carga do auth state ao abrir pela origem automática (retomada/adoção), igual nas
+ * engines (F12/F13). Estourou = erro transitório; o caminho do usuário não tem esse prazo.
+ */
+export const OPEN_AUTH_STATE_TIMEOUT_MS = 15_000;

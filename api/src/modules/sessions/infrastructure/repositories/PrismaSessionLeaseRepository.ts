@@ -27,19 +27,34 @@ export class SessionLeaseDeadlineError extends Error {
  * `SET LOCAL statement_timeout` na transação (o Postgres cancela a espera por lock e devolve a
  * conexão ao pool) e `Promise.race` (banco mudo: nem o BEGIN responde). A query que perde a corrida
  * segue no driver e é descartada.
+ *
+ * Fila (F13): no máximo uma transação de lease em voo por repositório (um por processo, no
+ * container). Operação nova espera a anterior assentar dentro do próprio prazo; se a anterior não
+ * assentou até lá, falha com `SessionLeaseDeadlineError` sem abrir outra transação (banco mudo não
+ * esgota o pool, `connection_limit=5`, com um tick a cada 20 s).
  */
 export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
+  /** Assenta quando a última transação de lease aberta assenta (nunca rejeita). */
+  private tail: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly deadlineMs: number = LEASE_RENEW_TIMEOUT_MS) {}
 
-  private async withDeadline<T>(operation: string, query: Prisma.PrismaPromise<T>): Promise<T> {
+  private async withDeadline<T>(operation: string, query: () => Prisma.PrismaPromise<T>): Promise<T> {
     const ms = Math.max(1, Math.trunc(this.deadlineMs));
-    const work = prisma
-      .$transaction([prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = ${ms}`), query])
-      .then(([, result]) => result);
-    work.catch(() => undefined); // perdeu a corrida: rejeição tardia descartada
+    let expired = false;
+    const work = this.tail.then(async () => {
+      // A anterior só assentou depois do prazo desta: não abre transação para quem já desistiu
+      if (expired) throw new SessionLeaseDeadlineError(operation, ms);
+      const [, result] = await prisma.$transaction([prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = ${ms}`), query()]);
+      return result;
+    });
+    this.tail = work.catch(() => undefined); // perdeu a corrida: rejeição tardia descartada
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new SessionLeaseDeadlineError(operation, ms)), ms);
+      timer = setTimeout(() => {
+        expired = true;
+        reject(new SessionLeaseDeadlineError(operation, ms));
+      }, ms);
     });
     try {
       return await Promise.race([work, deadline]);
@@ -49,7 +64,7 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
   }
 
   async tryAcquire(sessionId: string, workerId: string, ttlMs: number): Promise<boolean> {
-    const n = await this.withDeadline('tryAcquire', prisma.$executeRaw`
+    const n = await this.withDeadline('tryAcquire', () => prisma.$executeRaw`
       UPDATE "sessions" SET "ownerWorkerId" = ${workerId}, "leaseUntil" = ${until(ttlMs)}
       WHERE "id" = ${sessionId} AND "deletedAt" IS NULL
         AND ("leaseUntil" IS NULL OR "leaseUntil" < ${NOW} OR "ownerWorkerId" = ${workerId})`);
@@ -59,7 +74,7 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
   /** Sessão apagada (em qualquer processo) não renova: o dono a trata como lease perdido. */
   async renew(sessionIds: readonly string[], workerId: string, ttlMs: number): Promise<string[]> {
     if (sessionIds.length === 0) return [];
-    const rows = await this.withDeadline('renew', prisma.$queryRaw<{ id: string }[]>`
+    const rows = await this.withDeadline('renew', () => prisma.$queryRaw<{ id: string }[]>`
       UPDATE "sessions" SET "leaseUntil" = ${until(ttlMs)}
       WHERE "id" = ANY(${[...sessionIds]}::text[]) AND "ownerWorkerId" = ${workerId} AND "leaseUntil" > ${NOW}
         AND "deletedAt" IS NULL
@@ -68,7 +83,7 @@ export class PrismaSessionLeaseRepository implements ISessionLeaseRepository {
   }
 
   async release(sessionId: string, workerId: string): Promise<void> {
-    await this.withDeadline('release', prisma.$executeRaw`
+    await this.withDeadline('release', () => prisma.$executeRaw`
       UPDATE "sessions" SET "ownerWorkerId" = NULL, "leaseUntil" = NULL
       WHERE "id" = ${sessionId} AND "ownerWorkerId" = ${workerId}`);
   }

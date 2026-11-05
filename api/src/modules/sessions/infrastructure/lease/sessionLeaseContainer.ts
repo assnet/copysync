@@ -53,7 +53,7 @@ export function buildSessionLeaseContainer(
   const ledger = new SessionLeaseLedger();
   let bound: ISessionSocketControl | undefined;
   const sockets: ISessionSocketControl = {
-    abortSession: async (id) => bound?.abortSession(id),
+    abortSession: async (id, options) => bound?.abortSession(id, options),
     suspendSession: async (id) => bound?.suspendSession(id),
     resumeSession: async (id) => (bound ? bound.resumeSession(id) : 'gone'),
     forgetSuspension: async (id) => (bound ? bound.forgetSuspension(id) : null),

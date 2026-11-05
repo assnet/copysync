@@ -23,7 +23,7 @@ import type {
 } from '../domain/contracts/IMessagingEngine';
 import type { SessionStatus } from '../../sessions/domain/enums/SessionStatus';
 import type { ISessionRepository } from '../../sessions/domain/contracts/ISessionRepository';
-import type { ISessionSocketControl, SessionResumeResult } from '../domain/contracts/ISessionSocketControl';
+import type { ISessionSocketControl, SessionAbortOptions, SessionResumeResult } from '../domain/contracts/ISessionSocketControl';
 import { SessionNotFoundError } from '../../../shared/errors/internal/SessionErrors';
 import { logger } from '../../../shared/logger/logger';
 
@@ -90,16 +90,16 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
    * Derruba o socket local na engine da sessão. Sessão sem engine conhecida (apagada no banco):
    * pede a todas, pois cada uma ignora sessão sem socket local.
    */
-  async abortSession(sessionId: string): Promise<void> {
+  async abortSession(sessionId: string, options?: SessionAbortOptions): Promise<void> {
     let engine: IMessagingEngine;
     try {
       engine = await this.resolve(sessionId);
     } catch (err) {
       if (!(err instanceof SessionNotFoundError)) throw err;
-      await Promise.all(this.socketControls().map(([, control]) => control.abortSession(sessionId)));
+      await Promise.all(this.socketControls().map(([, control]) => control.abortSession(sessionId, options)));
       return;
     }
-    if (hasSocketControl(engine)) await engine.abortSession(sessionId);
+    if (hasSocketControl(engine)) await engine.abortSession(sessionId, options);
   }
 
   /** Suspende na engine da sessão; sem engine conhecida pede a todas (cada uma ignora sem socket local). */

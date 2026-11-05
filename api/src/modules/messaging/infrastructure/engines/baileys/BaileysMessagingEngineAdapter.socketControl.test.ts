@@ -300,12 +300,14 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
       expect(await adapter.resumeSession('s1')).toBe('resumed');
     });
 
-    it('carga do auth state pendurada: abertura assenta no prazo com 503 e solta o lease', async () => {
+    it('carga do auth state pendurada na retomada (auto): assenta no prazo com 503 e solta o lease', async () => {
       vi.useFakeTimers();
       const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
       const { adapter } = make(gate);
+      await adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await adapter.suspendSession('s1');
       auth.build.mockImplementationOnce(() => new Promise(() => undefined));
-      const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).catch((e: unknown) => e);
+      const p = adapter.resumeSession('s1').catch((e: unknown) => e);
       await vi.advanceTimersByTimeAsync(15_000);
       expect(await p).toBeInstanceOf(EngineTemporarilyUnavailableError);
       expect(gate.release).toHaveBeenCalledWith('s1');
@@ -313,8 +315,63 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
       expect(adapter.listLocalSessionIds()).toEqual([]);
     });
 
-    it('abort com a abertura ainda no acquire: ela não registra socket depois (desistência da retomada)', async () => {
-      const gate = { acquire: vi.fn(async () => true) };
+    it('connect do usuário com carga do auth state > 15 s não dá 503 (sem prazo no caminho do usuário)', async () => {
+      vi.useFakeTimers();
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter } = make(gate);
+      auth.build.mockImplementationOnce(() => new Promise((r) => {
+        setTimeout(() => r({ state: { creds: {}, keys: {} }, saveCreds: async () => undefined }), 20_000);
+      }));
+      let outcome: unknown = 'pending';
+      const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).then(() => { outcome = 'ok'; }, (e: unknown) => { outcome = e; });
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await p;
+      expect(outcome).toBe('ok');
+      expect(registry.has('s1')).toBe(true);
+      expect(gate.release).not.toHaveBeenCalled();
+    });
+
+    it('abort onlyAuto (desistência) não cancela abertura do usuário em voo', async () => {
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter } = make(gate);
+      let go!: () => void;
+      auth.build.mockImplementationOnce(async () => {
+        await new Promise<void>((r) => { go = r; });
+        return { state: { creds: {}, keys: {} }, saveCreds: async () => undefined };
+      });
+      const user = adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+      await adapter.abortSession('s1', { onlyAuto: true });
+      go();
+      await expect(user).resolves.toBeDefined();
+      expect(registry.has('s1')).toBe(true);
+      expect(auth.discard).not.toHaveBeenCalled();
+      expect(gate.release).not.toHaveBeenCalled();
+    });
+
+    it('abort onlyAuto sem abertura do usuário derruba a automática em voo', async () => {
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter } = make(gate);
+      await adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await adapter.suspendSession('s1');
+      let go!: () => void;
+      auth.build.mockImplementationOnce(async () => {
+        await new Promise<void>((r) => { go = r; });
+        return { state: { creds: {}, keys: {} }, saveCreds: async () => undefined };
+      });
+      const resume = adapter.resumeSession('s1');
+      await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+      await adapter.abortSession('s1', { onlyAuto: true });
+      go();
+      expect(await resume).toBe('gone');
+      expect(registry.has('s1')).toBe(false);
+      expect(gate.release).toHaveBeenCalledWith('s1');
+    });
+
+    it('abort com a abertura ainda no acquire: ela não registra socket depois e solta o lease tardio', async () => {
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
       const { adapter } = make(gate);
       await adapter.connectSession({ sessionId: 's1', tenantId: T });
       await adapter.suspendSession('s1');
@@ -329,6 +386,7 @@ describe('BaileysMessagingEngineAdapter — controle de socket (lease)', () => {
       expect(registry.has('s1')).toBe(false);
       expect(sockets).toHaveLength(1);
       expect(adapter.listLocalSessionIds()).toEqual([]);
+      expect(gate.release).toHaveBeenCalledExactlyOnceWith('s1'); // release condicionado ao dono
     });
   });
 });

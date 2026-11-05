@@ -315,8 +315,53 @@ describe('RenewSessionLeaseUseCase', () => {
         await p;
       }
       expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s1', 't1');
-      expect(sockets.abortSession).toHaveBeenCalledWith('s1');
+      expect(sockets.abortSession).toHaveBeenCalledWith('s1', { onlyAuto: true });
       expect(ledger.isFenced('s1')).toBe(false);
+    });
+
+    it('desistência cancela só abertura automática (onlyAuto)', async () => {
+      const { sockets, round } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('auth.load'));
+      for (let i = 0; i < MAX_RESUME_ATTEMPTS; i++) await round();
+      expect(sockets.abortSession).toHaveBeenCalledWith('s1', { onlyAuto: true });
+      expect(sockets.abortSession).toHaveBeenCalledWith('s2', { onlyAuto: true });
+    });
+
+    it('abort pendurado na desistência: release e DISCONNECTED rodam no prazo e o slot libera', async () => {
+      const { sockets, repo, status, log, uc } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('auth.load'));
+      vi.mocked(sockets.abortSession).mockImplementation(() => new Promise<void>(() => undefined));
+      for (let i = 1; i < MAX_RESUME_ATTEMPTS; i++) {
+        await uc.execute();
+        await uc.resume('s1');
+      }
+      await uc.execute();
+      let settled = false;
+      const p = uc.resume('s1').then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_TIMEOUT_MS - 1);
+      expect(settled).toBe(false);
+      expect(repo.release).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await p;
+      expect(settled).toBe(true);
+      expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
+      expect(status.markDisconnectedIfNoLiveLease).toHaveBeenCalledWith('s1', 't1');
+      expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }), expect.stringContaining('desistência'));
+    });
+
+    it('status pendurado na desistência assenta no prazo (slot do keeper livre)', async () => {
+      const { sockets, repo, status, uc } = await suspendedBothThenUp();
+      vi.mocked(sockets.resumeSession).mockRejectedValue(new Error('auth.load'));
+      vi.mocked(status.markDisconnectedIfNoLiveLease).mockImplementation(() => new Promise<boolean>(() => undefined));
+      for (let i = 1; i < MAX_RESUME_ATTEMPTS; i++) {
+        await uc.execute();
+        await uc.resume('s1');
+      }
+      await uc.execute();
+      const p = uc.resume('s1');
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_TIMEOUT_MS);
+      await p;
+      expect(repo.release).toHaveBeenCalledWith('s1', 'w1');
     });
 
     it('reabertura que assenta depois do prazo não muda a tentativa já contada', async () => {

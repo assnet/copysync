@@ -79,7 +79,7 @@ describe('sessionLeaseContainer', () => {
     });
     await c.renew.execute(); // renew devolve [] = lease perdido → derruba
     expect(repo.renew).toHaveBeenCalledWith(['s1'], 'w1', expect.any(Number));
-    expect(abortSession).toHaveBeenCalledWith('s1');
+    expect(abortSession).toHaveBeenCalledWith('s1', undefined);
   });
 
   it('gate expõe acquire tipado: erro de banco = error, outro dono = held (com e sem teto)', async () => {

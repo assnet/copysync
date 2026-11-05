@@ -56,7 +56,8 @@ import { ChatMessageType } from '../../../../chat/domain/enums/ChatMessageEnums'
 import { mimeTypeToExt } from '../../../../../shared/storage/mediaFileExtension';
 import { SessionLeaseHeldError, SessionNotConnectedError, SessionNotFoundError } from '../../../../../shared/errors/internal/SessionErrors';
 import { acquireLeaseResult, type ISessionLeaseGate, type LeaseAcquireResult } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
-import type { SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
+import type { SessionAbortOptions, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
+import { OPEN_AUTH_STATE_TIMEOUT_MS } from '../../../../sessions/domain/services/sessionLeasePolicy';
 import { EngineOperationUnsupportedError, EngineTemporarilyUnavailableError, MessageSendFailedError } from '../../../../../shared/errors/internal/MessagingErrors';
 import { GroupInviteNotAllowedError } from '../../../../../shared/errors/internal/GroupErrors';
 import { TelegramLoginNotPendingError } from '../../../../../shared/errors/internal/TelegramErrors';
@@ -169,6 +170,26 @@ interface LeaseProbe {
  */
 interface OpeningToken {
   cancelled: 'abort' | 'suspend' | 'supersede' | null;
+  /** Quem pediu a abertura: o abort `onlyAuto` (desistência da retomada) não cancela a do usuário. */
+  origin: 'user' | 'auto';
+}
+
+/**
+ * Carga da StringSession com prazo só na origem automática (o usuário espera, como no Baileys):
+ * banco mudo vira erro transitório em vez de prender a retomada. A carga perdida é descartada.
+ */
+async function loadWithDeadline<T>(load: Promise<T>, origin: 'user' | 'auto'): Promise<T> {
+  if (origin === 'user') return load;
+  load.catch(() => undefined);
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new EngineTemporarilyUnavailableError()), OPEN_AUTH_STATE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([load, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** `openClient` em curso por sessão: a próxima abertura espera (auto) ou a cancela (usuário). */
@@ -239,7 +260,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * do lease. `false` = não abriu aqui (cancelada por abertura do usuário ou outra já em curso).
    */
   private async reopen(input: ReconnectSessionInput, origin: 'user' | 'auto' = 'user', probe?: LeaseProbe): Promise<boolean> {
-    const saved = await this.auth.load(input.sessionId, input.tenantId);
+    const saved = await loadWithDeadline(this.auth.load(input.sessionId, input.tenantId), origin);
     if (!saved) {
       // Nunca logou (ou saiu): como no WhatsApp, reconectar sem credencial abre o login por QR
       const entry = await this.openClient(input.sessionId, input.tenantId, null, probe, origin);
@@ -472,7 +493,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       if (!running.token.cancelled) running.token.cancelled = 'supersede';
       await running.promise.catch(() => undefined);
     }
-    const token: OpeningToken = { cancelled: null };
+    const token: OpeningToken = { cancelled: null, origin };
     const flight: OpenInFlight = { promise: this.openClientOnce(sessionId, tenantId, token, savedSession, probe), token };
     this.openInFlight.set(sessionId, flight);
     try {
@@ -500,7 +521,10 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       const existing = this.registry.get(sessionId);
       if (existing) await this.teardown(sessionId, existing);
 
-      const saved = savedSession === undefined ? await this.auth.load(sessionId, tenantId) : savedSession;
+      // Prazo estourado lança aqui (não cancelado): o whileOpening solta o lease
+      const saved = savedSession === undefined
+        ? await loadWithDeadline(this.auth.load(sessionId, tenantId), token.origin)
+        : savedSession;
       if (token.cancelled) return token.cancelled;
       const client = new TelegramClient(new StringSession(saved ?? ''), this.config.apiId, this.config.apiHash, {
         connectionRetries: 5,
@@ -537,6 +561,10 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     if (typeof opened === 'string') {
       // Sem status nem StringSession; suspensa volta pelo resumeSession
       if (opened === 'suspend') this.suspended.set(sessionId, tenantId);
+      // Acquire que assentou depois do abort (a desistência já soltou): solta de novo, condicionado ao dono
+      if (opened === 'abort' && !this.registry.get(sessionId) && !this.hasLiveOpen(sessionId, token)) {
+        await this.releaseLeaseAfterFailedOpen(sessionId);
+      }
       telegramLogger.warn({ sessionId, kind: opened }, 'Telegram client open cancelled by lease');
       throw new SessionLeaseHeldError(sessionId);
     }
@@ -1018,7 +1046,12 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * Lease perdido: destrói o cliente e cancela o login pendente sem gravar status nem
    * StringSession (o fluxo de login sai pelo `isCurrent` falso). Sem cliente local: nada.
    */
-  async abortSession(sessionId: string): Promise<void> {
+  async abortSession(sessionId: string, options?: SessionAbortOptions): Promise<void> {
+    // Desistência da retomada: abertura do usuário em voo segue intacta
+    if (options?.onlyAuto && this.hasUserOpen(sessionId)) {
+      telegramLogger.info({ sessionId }, 'abort da desistência ignorado (abertura do usuário em voo)');
+      return;
+    }
     this.dropSuspension(sessionId);
     this.dialogsCache.delete(sessionId);
     this.cancelOpening(sessionId, 'abort');
@@ -1127,6 +1160,27 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
    * Abort/suspend durante a abertura. Abort pega também a abertura ainda no acquire
    * (`openInFlight`, fora de `opening`): a desistência da retomada solta o lease logo depois.
    */
+  /** Abertura do usuário em voo: token `user` não cancelado, ou automática já marcada `supersede`. */
+  private hasUserOpen(sessionId: string): boolean {
+    for (const token of this.openTokens(sessionId)) {
+      if (token.cancelled === 'supersede' || (token.origin === 'user' && !token.cancelled)) return true;
+    }
+    return false;
+  }
+
+  /** Outra abertura desta sessão ainda viva (não cancelada), além de `self`. */
+  private hasLiveOpen(sessionId: string, self: OpeningToken): boolean {
+    for (const token of this.openTokens(sessionId)) if (token !== self && !token.cancelled) return true;
+    return false;
+  }
+
+  private openTokens(sessionId: string): Set<OpeningToken> {
+    const tokens = new Set(this.opening.get(sessionId) ?? []);
+    const inFlight = this.openInFlight.get(sessionId)?.token;
+    if (inFlight) tokens.add(inFlight);
+    return tokens;
+  }
+
   private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
     const tokens = new Set(this.opening.get(sessionId) ?? []);
     const inFlight = this.openInFlight.get(sessionId)?.token;

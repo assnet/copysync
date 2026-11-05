@@ -51,8 +51,8 @@ import type { SessionStatus } from '../../../../sessions/domain/enums/SessionSta
 import type { ISessionRepository } from '../../../../sessions/domain/contracts/ISessionRepository';
 import type { ISessionAuthStateRepository } from '../../../../sessions/domain/contracts/ISessionAuthStateRepository';
 import { acquireLeaseResult, type ISessionLeaseGate } from '../../../../sessions/domain/contracts/ISessionLeaseRepository';
-import { LEASE_RENEW_TIMEOUT_MS } from '../../../../sessions/domain/services/sessionLeasePolicy';
-import type { SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
+import { LEASE_RENEW_TIMEOUT_MS, OPEN_AUTH_STATE_TIMEOUT_MS } from '../../../../sessions/domain/services/sessionLeasePolicy';
+import type { SessionAbortOptions, SessionResumeResult } from '../../../domain/contracts/ISessionSocketControl';
 import { SessionLeaseHeldError } from '../../../../../shared/errors/internal/SessionErrors';
 import { buildBaileysAuthState, discardAuthState, releaseAuthState, suspendAuthState } from './BaileysAuthStatePersistence';
 import { BaileysSessionRegistry } from './BaileysSessionRegistry';
@@ -121,6 +121,8 @@ type OpenSocketResult = 'opened' | 'held' | 'error' | 'cancelled';
  */
 interface OpeningToken {
   cancelled: 'abort' | 'suspend' | 'supersede' | null;
+  /** Quem pediu a abertura: o abort `onlyAuto` (desistência da retomada) não cancela a do usuário. */
+  origin: 'user' | 'auto';
 }
 
 /** `openSocket` em curso por sessão: a próxima abertura espera (auto) ou a cancela (usuário). */
@@ -134,7 +136,6 @@ interface OpenInFlight {
  * transitório. O repositório do lease já tem prazo próprio; o do acquire aqui é a rede de segurança.
  */
 const OPEN_LEASE_ACQUIRE_TIMEOUT_MS = LEASE_RENEW_TIMEOUT_MS * 2;
-const OPEN_AUTH_STATE_TIMEOUT_MS = 15_000;
 /** Validade do resumo de grupo (membros/admin) lido do snapshot de metadata. */
 const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
 /** Tempo de vida de cada QR de pareamento. */
@@ -252,8 +253,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     await this.updateSessionStatus(sessionId, tenantId, 'DISCONNECTED');
   }
 
-  /** Lease perdido: fecha o socket sem gravar status nem chaves (o pendente é descartado). */
-  async abortSession(sessionId: string): Promise<void> {
+  /**
+   * Lease perdido: fecha o socket sem gravar status nem chaves (o pendente é descartado).
+   * `onlyAuto` (desistência da retomada): com abertura do usuário em voo não mexe em nada.
+   */
+  async abortSession(sessionId: string, options?: SessionAbortOptions): Promise<void> {
+    if (options?.onlyAuto && this.hasUserOpen(sessionId)) {
+      baileysLogger.info({ sessionId }, 'Resume give-up abort skipped (user open in flight)');
+      return;
+    }
     this.dropSuspension(sessionId);
     this.cancelReconnect(sessionId);
     this.pairingRestarts.delete(sessionId);
@@ -390,6 +398,29 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
    * também a abertura ainda no acquire (`openInFlight`, fora de `opening`): sem isso, a desistência
    * da retomada soltava o lease e o acquire tardio abria um socket depois dela.
    */
+  /**
+   * Abertura do usuário em voo: token `user` não cancelado, ou automática já marcada `supersede`
+   * (o usuário espera ela assentar para abrir a sua).
+   */
+  private hasUserOpen(sessionId: string): boolean {
+    const tokens = new Set(this.opening.get(sessionId) ?? []);
+    const inFlight = this.openInFlight.get(sessionId)?.token;
+    if (inFlight) tokens.add(inFlight);
+    for (const token of tokens) {
+      if (token.cancelled === 'supersede' || (token.origin === 'user' && !token.cancelled)) return true;
+    }
+    return false;
+  }
+
+  /** Outra abertura desta sessão ainda viva (não cancelada), além de `self`. */
+  private hasLiveOpen(sessionId: string, self?: OpeningToken): boolean {
+    const tokens = new Set(this.opening.get(sessionId) ?? []);
+    const inFlight = this.openInFlight.get(sessionId)?.token;
+    if (inFlight) tokens.add(inFlight);
+    for (const token of tokens) if (token !== self && !token.cancelled) return true;
+    return false;
+  }
+
   private cancelOpening(sessionId: string, kind: 'abort' | 'suspend'): void {
     const tokens = new Set(this.opening.get(sessionId) ?? []);
     const inFlight = this.openInFlight.get(sessionId)?.token;
@@ -409,11 +440,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
   /**
    * Abertura cancelada por abort/suspend: fecha o socket recém-criado (sem listeners, sem
-   * registro, sem status). Abort descarta as chaves pendentes; suspend as guarda e marca a
-   * sessão para `resumeSession`.
+   * registro, sem status). Abort descarta as chaves pendentes e solta o lease (condicionado ao
+   * dono): o acquire que assentou depois do abort (desistência já soltou) não fica preso até o TTL.
+   * Suspend guarda as chaves e marca a sessão para `resumeSession`.
    */
   private async finishCancelledOpen(
-    sessionId: string, tenantId: string, kind: 'abort' | 'suspend' | 'supersede', socket?: WASocket,
+    sessionId: string, tenantId: string, kind: 'abort' | 'suspend' | 'supersede', token: OpeningToken, socket?: WASocket,
   ): Promise<void> {
     if (socket) {
       try { socket.end(undefined); } catch (err) {
@@ -427,6 +459,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     }
     if (kind === 'abort') {
       await discardAuthState(sessionId);
+      if (!this.registry.has(sessionId) && !this.hasLiveOpen(sessionId, token)) {
+        await this.releaseLeaseAfterFailedOpen(sessionId);
+      }
     } else {
       await suspendAuthState(sessionId);
       this.suspended.set(sessionId, tenantId);
@@ -982,7 +1017,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       if (!running.token.cancelled) running.token.cancelled = 'supersede';
       await running.promise.catch(() => undefined);
     }
-    const token: OpeningToken = { cancelled: null };
+    const token: OpeningToken = { cancelled: null, origin };
     const flight: OpenInFlight = { promise: this.openSocketOnce(sessionId, tenantId, attempt, origin, token), token };
     this.openInFlight.set(sessionId, flight);
     try {
@@ -1008,13 +1043,15 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     const opened = await this.whileOpening(sessionId, token, async () => {
       const { version } = await fetchLatestBaileysVersion();
       if (token.cancelled) {
-        await this.finishCancelledOpen(sessionId, tenantId, token.cancelled);
+        await this.finishCancelledOpen(sessionId, tenantId, token.cancelled, token);
         return null;
       }
-      // Carga que assenta depois do prazo deixa um handle sem socket: o próximo build o solta
-      const auth = await withTimeout(buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
+      // Carga que assenta depois do prazo deixa um handle sem socket: o próximo build o solta.
+      // Prazo só na origem automática: o usuário espera a carga (sem 503 por banco lento)
+      const build = buildBaileysAuthState(sessionId, tenantId, this.authStateRepo, {
         onVersionConflict: (id) => this.abortSession(id), // CAS perdido = outro dono: derruba sem gravar
-      }), OPEN_AUTH_STATE_TIMEOUT_MS);
+      });
+      const auth = origin === 'auto' ? await withTimeout(build, OPEN_AUTH_STATE_TIMEOUT_MS) : await build;
       if (!auth) {
         baileysLogger.warn({ sessionId, timeoutMs: OPEN_AUTH_STATE_TIMEOUT_MS }, 'Auth state load timed out on socket open');
         throw new EngineTemporarilyUnavailableError();
@@ -1044,7 +1081,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
       // Abort/suspend chegou enquanto abria: fecha antes de expor (sem lease no razão, dois donos)
       if (token.cancelled) {
-        await this.finishCancelledOpen(sessionId, tenantId, token.cancelled, socket);
+        await this.finishCancelledOpen(sessionId, tenantId, token.cancelled, token, socket);
         return null;
       }
       // Entrada viva de outro socket (abertura que já tinha registrado): encerra antes de sobrescrever

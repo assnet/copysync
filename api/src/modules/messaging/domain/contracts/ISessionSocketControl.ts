@@ -6,6 +6,14 @@
 export type SessionResumeResult = 'resumed' | 'held' | 'gone';
 
 /**
+ * `onlyAuto` (desistência da retomada): cancela só abertura de origem automática. Com abertura do
+ * usuário em voo (ou à espera de uma automática que ela já cancelou), não mexe em nada: ela segue.
+ */
+export interface SessionAbortOptions {
+  onlyAuto?: boolean;
+}
+
+/**
  * Controle de socket local para o lease de sessão (ver docs/arquitetura-escala.md §3.1).
  *
  * Só fecha sockets deste processo; nunca grava status nem chaves: quem perde o lease não
@@ -16,7 +24,7 @@ export interface ISessionSocketControl {
    * Derruba o socket local da sessão sem gravar status nem auth state (pendente vai fora)
    * e cancela a reconexão automática pendente. Sem socket local: não faz nada.
    */
-  abortSession(sessionId: string): Promise<void>;
+  abortSession(sessionId: string, options?: SessionAbortOptions): Promise<void>;
   /**
    * Fence por erro/timeout de banco (ninguém provou outro dono): fecha o socket local sem
    * gravar status, guardando o auth state pendente para o próximo handle deste processo, e

@@ -65,15 +65,23 @@ describe('MessagingEngineRouter', () => {
   it('abortSession vai só para a engine da sessão', async () => {
     const { router, telegram, baileys } = build({ s1: 'telegram' });
     await router.abortSession('s1');
-    expect(telegram.abortSession).toHaveBeenCalledWith('s1');
+    expect(telegram.abortSession).toHaveBeenCalledWith('s1', undefined);
     expect(baileys.abortSession).not.toHaveBeenCalled();
   });
 
   it('abortSession de sessão sem engine conhecida pede a todas', async () => {
     const { router, telegram, baileys } = build({});
     await router.abortSession('gone');
-    expect(telegram.abortSession).toHaveBeenCalledWith('gone');
-    expect(baileys.abortSession).toHaveBeenCalledWith('gone');
+    expect(telegram.abortSession).toHaveBeenCalledWith('gone', undefined);
+    expect(baileys.abortSession).toHaveBeenCalledWith('gone', undefined);
+  });
+
+  it('abortSession repassa onlyAuto (desistência da retomada) à engine e, sem engine, a todas', async () => {
+    const { router, telegram, baileys } = build({ s1: 'telegram' });
+    await router.abortSession('s1', { onlyAuto: true });
+    expect(telegram.abortSession).toHaveBeenCalledWith('s1', { onlyAuto: true });
+    await router.abortSession('gone', { onlyAuto: true });
+    expect(baileys.abortSession).toHaveBeenCalledWith('gone', { onlyAuto: true });
   });
 
   it('suspendSession/resumeSession vão só para a engine da sessão', async () => {

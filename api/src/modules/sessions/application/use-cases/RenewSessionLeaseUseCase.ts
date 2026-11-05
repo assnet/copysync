@@ -30,8 +30,10 @@ export type ResumeGiveUpStatus = Pick<ISessionRepository, 'markDisconnectedIfNoL
  * renovação volta a funcionar; o keeper chama `resume` de cada uma fora do tick. O acquire fica
  * dentro de `resumeSession` (tipado no adapter): `resumed`/`gone` limpam a marca; `held` limpa e
  * `forgetSuspension`; erro/timeout conta tentativa (`markFenced(n+1)`) e, no `MAX_RESUME_ATTEMPTS`,
- * desiste: `forgetSuspension`, `abortSession` (abertura em voo não registra socket sem lease), sai
- * do razão, solta o lease e grava `DISCONNECTED` (log error).
+ * desiste: `forgetSuspension`, `abortSession({ onlyAuto })` (abertura automática em voo não registra
+ * socket sem lease; a do usuário segue), sai do razão, solta o lease e grava `DISCONNECTED` (log
+ * error). O abort tem prazo (`LEASE_RENEW_TIMEOUT_MS`): estourou, segue para o release e o status e
+ * o abort termina em segundo plano, para o slot do keeper sempre liberar.
  */
 export class RenewSessionLeaseUseCase {
   constructor(
@@ -137,14 +139,22 @@ export class RenewSessionLeaseUseCase {
     const tenantId = await this.forget(id);
     this.ledger.clearFenced(id);
     this.ledger.drop(id);
+    const abort = Promise.resolve(this.sockets.abortSession(id, { onlyAuto: true }));
+    // Abort que só termina depois do prazo não pode virar rejeição não tratada
+    abort.catch(() => undefined);
     try {
-      await this.sockets.abortSession(id);
+      await this.withDeadline(abort, LEASE_RENEW_TIMEOUT_MS, 'abort da desistência');
     } catch (abortErr) {
       this.log.warn({ err: abortErr, sessionId: id }, 'falha ao derrubar abertura da sessão suspensa na desistência');
     }
     try {
       await this.repo.release(id, this.workerId);
-      if (tenantId) await this.status.markDisconnectedIfNoLiveLease(id, tenantId);
+      if (tenantId) {
+        // Banco mudo: o status também tem prazo (o slot do keeper não fica preso nele)
+        const mark = Promise.resolve(this.status.markDisconnectedIfNoLiveLease(id, tenantId));
+        mark.catch(() => undefined);
+        await this.withDeadline(mark, LEASE_RENEW_TIMEOUT_MS, 'status da desistência');
+      }
     } catch (writeErr) {
       this.log.warn({ err: writeErr, sessionId: id }, 'falha ao gravar desistência da sessão suspensa');
     }
@@ -160,10 +170,14 @@ export class RenewSessionLeaseUseCase {
     }
   }
 
-  private async withResumeTimeout(op: Promise<SessionResumeResult>): Promise<SessionResumeResult> {
+  private withResumeTimeout(op: Promise<SessionResumeResult>): Promise<SessionResumeResult> {
+    return this.withDeadline(op, this.resumeTimeoutMs, 'retomada');
+  }
+
+  private async withDeadline<T>(op: Promise<T>, ms: number, label: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`retomada excedeu ${this.resumeTimeoutMs} ms`)), this.resumeTimeoutMs);
+      timer = setTimeout(() => reject(new Error(`${label} excedeu ${ms} ms`)), ms);
     });
     try {
       return await Promise.race([op, timeout]);

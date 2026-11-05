@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TelegramMessagingEngineAdapter } from './TelegramMessagingEngineAdapter';
 import { EngineTemporarilyUnavailableError } from '../../../../../shared/errors/internal/MessagingErrors';
 import type { TelegramAuthStatePersistence } from './TelegramAuthStatePersistence';
@@ -195,6 +195,69 @@ describe('TelegramMessagingEngineAdapter — controle de socket (lease)', () => 
     expect(await p).toBe('gone');
     expect(await adapter.resumeSession('s1')).toBe('gone');
     expect(fake.clients).toHaveLength(1);
+  });
+
+  describe('prazo da carga da StringSession (F13)', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('auth.load pendurado na retomada: erro transitório no prazo, sem cliente', async () => {
+      fake.authorized = true;
+      const { adapter, auth } = make();
+      await adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await adapter.suspendSession('s1');
+      vi.useFakeTimers();
+      auth.load.mockImplementationOnce(() => new Promise<string | null>(() => undefined));
+      const p = adapter.resumeSession('s1').catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(await p).toBeInstanceOf(EngineTemporarilyUnavailableError);
+      expect(fake.clients).toHaveLength(1);
+      expect(adapter.listLocalSessionIds()).toEqual([]);
+    });
+
+    it('auth.load pendurado depois do acquire (auto): erro no prazo e lease solto', async () => {
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter, auth } = make(gate);
+      vi.useFakeTimers();
+      auth.load.mockImplementationOnce(() => new Promise<string | null>(() => undefined));
+      // Carga dentro da abertura (savedSession indefinido) pela origem automática
+      const open = (adapter as unknown as {
+        openClient: (id: string, t: string, saved?: string | null, probe?: object, origin?: 'user' | 'auto') => Promise<unknown>;
+      }).openClient('s1', T, undefined, undefined, 'auto').catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(await open).toBeInstanceOf(EngineTemporarilyUnavailableError);
+      expect(gate.release).toHaveBeenCalledWith('s1');
+      expect(adapter.listLocalSessionIds()).toEqual([]);
+    });
+
+    it('connect do usuário com auth.load > 15 s não dá erro (sem prazo no caminho do usuário)', async () => {
+      fake.authorized = true;
+      const { adapter, auth } = make();
+      vi.useFakeTimers();
+      auth.load.mockImplementationOnce(() => new Promise<string | null>((r) => { setTimeout(() => r('STRING_SESSION'), 20_000); }));
+      let outcome: unknown = 'pending';
+      const p = adapter.connectSession({ sessionId: 's1', tenantId: T }).then(() => { outcome = 'ok'; }, (e: unknown) => { outcome = e; });
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await p;
+      expect(outcome).toBe('ok');
+      expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+    });
+
+    it('abort onlyAuto (desistência) não cancela abertura do usuário em voo', async () => {
+      fake.authorized = true;
+      const gate = { acquire: vi.fn(async () => true), release: vi.fn(async () => undefined) };
+      const { adapter, auth } = make(gate);
+      let go!: (v: string | null) => void;
+      auth.load.mockImplementationOnce(() => new Promise<string | null>((r) => { go = r; }));
+      const user = adapter.connectSession({ sessionId: 's1', tenantId: T });
+      await vi.waitFor(() => expect(go).toBeTypeOf('function'));
+      await adapter.abortSession('s1', { onlyAuto: true });
+      go('STRING_SESSION');
+      await expect(user).resolves.toEqual({});
+      expect(adapter.listLocalSessionIds()).toEqual(['s1']);
+      expect(gate.release).not.toHaveBeenCalled();
+    });
   });
 
   it('closeAllSockets destrói todos em paralelo, mesmo com falha de um, sem gravar nada', async () => {

@@ -181,7 +181,8 @@ describe('BaileysMessagingEngineAdapter — lease antes de abrir o socket', () =
     expect(auth.discard).toHaveBeenCalledWith('s1');
     expect(auth.suspend).not.toHaveBeenCalled();
     expect(sessionRepo.updateStatus).not.toHaveBeenCalled();
-    expect(release).not.toHaveBeenCalled(); // lease é de outro: não solta
+    // Release condicionado ao dono (no-op se o lease é de outro); solta o acquire tardio (F13)
+    expect(release).toHaveBeenCalledWith('s1');
     expect(await adapter.resumeSession('s1')).toBe('gone');
   });
 
