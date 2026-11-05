@@ -1,5 +1,7 @@
 # Handoff — 2026-11-04 (sessão até 21:00)
 
+> **🔴 ALERTA DE SEGURANÇA — PulsoSocial em produção (central 1.86.0)**: a caracterização apontou 4 falhas: (1) `/session/sign-in` aceita qualquer senha via basic-auth quando o usuário não tem senha; (2) rota pública devolve CPF inteiro de qualquer e-mail; (3) `checkout/process` público altera nome/telefone/documento da conta de outra pessoa pelo e-mail; (4) `/cakto/orders` sem exigir ADMIN. Confirmação em leitura de código em andamento; correção depende de decisão e deploy do dono.
+
 Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
 `tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: api 3088/3088, app 1218/1218).
 
@@ -19,7 +21,7 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 | Frente | Branch | Estado |
 | --- | --- | --- |
 | S1 CI | `test/char-prod-base` (`9ee0609`) | ✅ validado local; 1º run no GitHub só após push (decisão do dono) |
-| S2 vitest + caracterização | `test/char-prod-base` (`c695428`) + `test/char-prod-<área>` | 6 áreas verdes; integração em `test/char-prod` + `riscos-caracterizacao.md` (em andamento) |
+| S2 vitest + caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas integradas; CI local verde; char:db 469/469 2x; riscos em `docs/multi-application-hub:.specs/features/multi-application-hub/riscos-caracterizacao.md` (`e2cc83e`, 19 riscos) |
 | S3 staging | `chore/staging-runbook` (`be5cc95`) | 3 rodadas de revisão; sem 🔴; 2 🟡 finais corrigidos. **Pronto para o dono executar `docs/staging.md`** (Basic Auth/Private antes de liberar, inclusive `/webhook/*`) |
 | H1 | plano ✅ `docs/multi-application-hub` (`tasks-h1.md`, 31 tarefas + 6 adiadas) | dono decide D1 (recomendado: `NOT NULL DEFAULT` constante, Postgres 18.6 confirmado → sem trigger/backfill) e D8 (branch de destino); executar após S2 integrado |
 | H2, H3a+H4 | planos ✅ `docs/hub-h2-plan` (`3826d8b`), `docs/hub-h3h4-plan` (`ca43dae`) | juntar no branch docs; follow-ups CopySync: `Tenant.lastBillingEventSeq` Int→BigInt, receiver aplicar `expiresAt` de `subscription.updated`, aceitar 2 segredos na rotação |
