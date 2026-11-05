@@ -28,7 +28,7 @@ Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <bra
 | S1 CI | `test/char-prod-base` (`9ee0609`) | ✅ validado local; 1º run no GitHub só após push (decisão do dono) |
 | S2 vitest + caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas integradas; CI local verde; char:db 469/469 2x; riscos em `docs/multi-application-hub:.specs/features/multi-application-hub/riscos-caracterizacao.md` (`e2cc83e`, 19 riscos) |
 | S3 staging | `chore/staging-runbook` (`be5cc95`) | 3 rodadas de revisão; sem 🔴; 2 🟡 finais corrigidos. **Pronto para o dono executar `docs/staging.md`** (Basic Auth/Private antes de liberar, inclusive `/webhook/*`) |
-| H1 | plano ✅; `feature/hub-h1` (provisório até D8) com T01–T03, T10, T04 (`703e6bf`, Application + socialpulse) | dono decide D1 (recomendado: `NOT NULL DEFAULT` constante, Postgres 18.6 confirmado → sem trigger/backfill) e D8 (branch de destino); executar após S2 integrado |
+| H1 | plano ✅; `feature/hub-h1` (provisório até D8) com T01–T05, T10, T26 (`5824ea3`: Application + socialpulse, constantes, `resolvePublicApplication`, seed `copysync`). **Bloqueado em D1** (T06+ dependem da forma de criar `applicationId`); H2/H3a esperam H1 | dono decide D1 (recomendado: `NOT NULL DEFAULT` constante, Postgres 18.6 confirmado → sem trigger/backfill) e D8 (branch de destino); executar após S2 integrado |
 | H2, H3a+H4 | planos ✅ `docs/hub-h2-plan` (`3826d8b`), `docs/hub-h3h4-plan` (`ca43dae`) | juntar no branch docs; follow-ups CopySync: `Tenant.lastBillingEventSeq` Int→BigInt, receiver aplicar `expiresAt` de `subscription.updated`, aceitar 2 segredos na rotação |
 | Branches obsoletos (base develop) | `chore/ci-safety-net`, `test/characterization`, `test/char-<área>` | podem ser apagados |
 
