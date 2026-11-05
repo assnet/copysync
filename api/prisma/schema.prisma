@@ -772,6 +772,11 @@ model OfferGeneratorConfig {
   intervalMinSeconds Int                @default(120)
   intervalMaxSeconds Int                @default(300)
   dispatchOrder      OfferDispatchOrder @default(SEQUENTIAL)
+  /// Janela de postagem do gerador: 0..1440; 0–1440 = dia inteiro; end < start = cruza a meia-noite.
+  windowStartMinute  Int                @default(0)
+  windowEndMinute    Int                @default(1440)
+  /// Dias da semana (bit 0 = domingo; 127 = todos). Fuso America/Sao_Paulo.
+  weekdaysMask       Int                @default(127)
   updatedAt          DateTime           @updatedAt
 
   tenant   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1117,6 +1122,8 @@ model GroupMonitorConfig {
   /// 0..1440; start=0 e end=1440 = sem restrição; end < start = cruza a meia-noite. Padrão 06:00–18:00.
   windowStartMinute    Int             @default(360)
   windowEndMinute      Int             @default(1080)
+  /// Dias da semana da janela (bit 0 = domingo; 127 = todos). Faixa que cruza a meia-noite pertence ao dia do início.
+  weekdaysMask         Int             @default(127)
   /// Fora da janela: true = captura continua e acumula a fila (sai quando a janela abrir); false = não captura.
   captureOutsideWindow Boolean         @default(true)
   /// Padrão 15–40 min: repostagem de oferta capturada é mais espaçada que o gerador (2–5 min).
