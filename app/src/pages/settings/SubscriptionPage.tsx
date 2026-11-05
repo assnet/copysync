@@ -31,6 +31,8 @@ export function SubscriptionPage() {
 
   const load = useCallback(async () => {
     const id = ++reqId.current;
+    // Zera antes de buscar: ao trocar de conta, nada do tenant anterior aparece (skeleton).
+    setData(null);
     setLoading(true);
     setFailed(false);
     try {
@@ -47,9 +49,9 @@ export function SubscriptionPage() {
     void load();
   }, [load, activeTenantId]);
 
-  // D4: só ADMIN vê o botão; papel desconhecido (lista de tenants ainda não carregada) não esconde.
+  // D4: só ADMIN confirmado vê o botão; papel desconhecido (lista carregando ou tenant fora dela) esconde.
   const role = tenants.find((x) => x.id === activeTenantId)?.role;
-  const canSubscribe = role === undefined || role === 'ADMIN';
+  const canSubscribe = role === 'ADMIN';
   const redirected = params.get('suspended') === '1' && data != null && data.status !== 'ACTIVE';
 
   return (

@@ -37,7 +37,7 @@ function expiryLine(sub: SubscriptionResponse): string | null {
 
 export interface SubscriptionPlanCardProps {
   subscription: SubscriptionResponse;
-  /** D4: só ADMIN assina; OPERATOR vê o aviso para falar com o administrador. */
+  /** D4: só ADMIN confirmado assina (padrão `false`); os demais veem o aviso para falar com o administrador. */
   canSubscribe?: boolean;
   /** Query da URL atual (repassa `utm_*`/`gclid`/`fbclid` ao checkout). */
   search?: string;
@@ -48,7 +48,7 @@ export interface SubscriptionPlanCardProps {
  * situação, vencimento em data local, conta (borrável) e botão para a página de venda. Sem
  * `VITE_BILLING_CHECKOUT_URL` ou sem plano, o botão leva à vitrine interna.
  */
-export function SubscriptionPlanCard({ subscription: sub, canSubscribe = true, search = window.location.search }: SubscriptionPlanCardProps) {
+export function SubscriptionPlanCard({ subscription: sub, canSubscribe = false, search = window.location.search }: SubscriptionPlanCardProps) {
   const blurTenant = useBlur('subscription.tenantName');
   const plan = PLAN_CATALOG.find((p) => p.slug === sub.planSlug) ?? null;
   const checkoutUrl = plan ? buildCheckoutUrl(plan.slug, 'monthly', search) : null;

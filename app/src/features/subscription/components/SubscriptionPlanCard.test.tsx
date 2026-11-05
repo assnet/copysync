@@ -22,7 +22,7 @@ const setup = (sub: Partial<SubscriptionResponse> = {}, mode: 'light' | 'dark' =
   renderWithTheme(
     <MemoryRouter>
       <PrivacyProvider>
-        <SubscriptionPlanCard subscription={{ ...base, ...sub }} search="?utm_source=x&foo=1" {...props} />
+        <SubscriptionPlanCard subscription={{ ...base, ...sub }} search="?utm_source=x&foo=1" canSubscribe {...props} />
       </PrivacyProvider>
     </MemoryRouter>,
     mode,
@@ -87,6 +87,17 @@ describe('SubscriptionPlanCard', () => {
     expect(screen.getByLabelText(`${t.status.label}: ${t.status.noPlan}`)).toHaveClass('MuiChip-colorDefault');
     expect(screen.queryByText(/Renova em|Venceu em/)).toBeNull();
     expect(cta()).toHaveAttribute('href', AFFILIATE_PLANS_PATH);
+  });
+
+  it('sem canSubscribe (papel indefinido) não mostra CTA', () => {
+    renderWithTheme(
+      <MemoryRouter>
+        <PrivacyProvider>
+          <SubscriptionPlanCard subscription={base} search="" />
+        </PrivacyProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
   });
 
   it('OPERATOR não vê CTA, vê o aviso do administrador', () => {
