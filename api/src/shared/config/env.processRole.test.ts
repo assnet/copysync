@@ -70,3 +70,17 @@ describe('funções de papel', () => {
     expect(usesRedis(role)).toBe(redis);
   });
 });
+
+describe('ENGINE_COMMAND_CONCURRENCY', () => {
+  const b = { ...base, ENGINE_COMMAND_CONCURRENCY: undefined };
+  it('default 2', () => {
+    const r = parseEnv(b);
+    expect(r.success && r.data.ENGINE_COMMAND_CONCURRENCY).toBe(2);
+  });
+  it('aceita inteiro positivo e recusa 0/fração', () => {
+    const r = parseEnv({ ...b, ENGINE_COMMAND_CONCURRENCY: '5' });
+    expect(r.success && r.data.ENGINE_COMMAND_CONCURRENCY).toBe(5);
+    expect(parseEnv({ ...b, ENGINE_COMMAND_CONCURRENCY: '0' }).success).toBe(false);
+    expect(parseEnv({ ...b, ENGINE_COMMAND_CONCURRENCY: '1.5' }).success).toBe(false);
+  });
+});

@@ -15,6 +15,7 @@ const h = vi.hoisted(() => {
     TELEGRAM_ENGINE_ENABLED: false,
     TELEGRAM_API_ID: undefined as number | undefined,
     TELEGRAM_API_HASH: undefined as string | undefined,
+    ENGINE_COMMAND_CONCURRENCY: 3,
   };
   const clients = { command: { name: 'command' }, subscriber: { name: 'subscriber' }, bull: { name: 'bull' } };
   return {
@@ -164,6 +165,7 @@ describe('composeForRole', () => {
       workerId: 'w-1', subscriber: h.clients.subscriber, publisher: h.clients.command,
     }));
     expect(h.rpcServer.start).toHaveBeenCalledTimes(1);
+    expect(h.ctor.queues).toHaveBeenCalledWith({ connection: h.clients.bull, concurrency: 3 });
     expect(h.queues.startConsumers).toHaveBeenCalledWith('w-1', expect.anything());
     expect(h.ctor.relay).toHaveBeenCalledWith({ mode: 'publish', client: h.clients.command });
     expect(h.setRelay).toHaveBeenCalledTimes(1);

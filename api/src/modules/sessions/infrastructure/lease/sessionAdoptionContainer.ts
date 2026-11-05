@@ -6,7 +6,7 @@ import { PrismaJobLease } from '../../../../shared/jobs/PrismaJobLease';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
-import { localEngine } from '../../../messaging/infrastructure/localEngineContainer';
+import { getActiveEngine } from '../../../../shared/engine/activeEngine';
 import type { ISessionAdoptionRepository } from '../../domain/contracts/ISessionAdoptionRepository';
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
 import { PrismaSessionAdoptionRepository } from '../repositories/PrismaSessionAdoptionRepository';
@@ -100,8 +100,14 @@ export function sessionAdoptionContainer(): SessionAdoptionContainer | null {
     heartbeats: new PrismaWorkerHeartbeatRepository(),
     jobLease: new PrismaJobLease(prisma),
     audit: new PrismaAuditLogRepository(),
-    // Lazy: a engine local só sobe no 1º tick que adota.
-    engine: { reconnectSession: (input) => localEngine().reconnectSession(input) },
+    // Engine do papel (local em `worker`/`all`), composta no boot por `composeForRole`; lida no tick.
+    engine: { reconnectSession: (input) => requireActiveEngine().reconnectSession(input) },
   });
   return instance;
+}
+
+function requireActiveEngine(): IMessagingEngine {
+  const engine = getActiveEngine();
+  if (!engine) throw new Error('MessagingEngine não composta: chamar composeForRole(role) no boot');
+  return engine;
 }

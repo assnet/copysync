@@ -82,7 +82,10 @@ async function composeWorker(): Promise<RoleComposition> {
     publisher: redis.redisCommand(),
     handler,
   });
-  const queues = new BullEngineCommandQueues({ connection: redis.bullConnection() });
+  const queues = new BullEngineCommandQueues({
+    connection: redis.bullConnection(),
+    concurrency: env.ENGINE_COMMAND_CONCURRENCY,
+  });
 
   const stoppers: Stopper[] = [];
   try {

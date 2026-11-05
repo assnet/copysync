@@ -49,6 +49,7 @@ import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMe
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole } from '../shared/config/processRole';
 import { jobsFor } from './processJobs';
+import { composeForRole } from './roleComposition';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -86,6 +87,9 @@ async function connectDatabaseWithRetry(): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  // Engine do papel ANTES de `buildApp`: as rotas leem `getActiveEngine()` no registro (WROLE-02/05).
+  // `all` = engine local, igual ao import de `session.routes` de antes. `stop()` entra no shutdown na T19.
+  await composeForRole(currentRole());
   const app = await buildApp();
   // Jobs de boot deste papel (§3.3). `all` (default) = todos, na ordem de sempre.
   const jobs = jobsFor(currentRole());

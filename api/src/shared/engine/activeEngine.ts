@@ -1,11 +1,8 @@
 import type { IMessagingEngine } from '../../modules/messaging/domain/contracts/IMessagingEngine';
 
 /**
- * Module-level store for the active IMessagingEngine instance.
- *
- * Set once at startup (session.routes.ts) so that other modules (e.g. chat
- * routes) can access the engine without creating circular imports or coupling
- * to a concrete implementation.
+ * Engine ativa do processo. Definida no boot por `composeForRole(role)` (local em `all`/`worker`,
+ * remota em `http`), antes de `buildApp`; rotas e containers leem por `getActiveEngine()`.
  */
 let _engine: IMessagingEngine | null = null;
 

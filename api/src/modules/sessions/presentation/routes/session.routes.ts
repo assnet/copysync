@@ -34,7 +34,8 @@ import {
   SubmitSessionLoginPasswordUseCase,
 } from '../../application/use-cases/SessionLoginByCodeUseCases';
 import { sessionLeaseContainer } from '../../infrastructure/lease/sessionLeaseContainer';
-import { localEngine } from '../../../messaging/infrastructure/localEngineContainer';
+import { getActiveEngine } from '../../../../shared/engine/activeEngine';
+import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import { PrismaLinkRotationPlanEnforcementStore } from '../../../link-rotation/infrastructure/repositories/PrismaLinkRotationPlanEnforcementStore';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
@@ -44,31 +45,43 @@ const auditRepo = new PrismaAuditLogRepository();
 
 // Lease de sessão (LEASE-03/05): release nos fluxos que fecham socket.
 const lease = sessionLeaseContainer();
-
-// Engine local (WROLE-02): montada aqui, no registro das rotas, antes de `server.ts` ler
-// `getActiveEngine()`. Composição (createRouter + bindSocketControl + setActiveEngine) no container.
-const engine = localEngine();
-
-// ── Use cases ─────────────────────────────────────────────────────────────────
 const entitlementReader = new PrismaEntitlementReader(prisma);
-const createSessionUseCase = new CreateSessionUseCase(sessionRepo, auditRepo, entitlementReader, engine.enabledEngines);
-const getSessionLimitsUseCase = new GetSessionLimitsUseCase(sessionRepo, entitlementReader, engine.enabledEngines);
-const requestSessionLoginCodeUseCase = new RequestSessionLoginCodeUseCase(sessionRepo, auditRepo, engine);
-const submitSessionLoginCodeUseCase = new SubmitSessionLoginCodeUseCase(sessionRepo, auditRepo, engine);
-const submitSessionLoginPasswordUseCase = new SubmitSessionLoginPasswordUseCase(sessionRepo, auditRepo, engine);
-const listSessionsUseCase = new ListSessionsUseCase(sessionRepo, engine);
-const getSessionByIdUseCase = new GetSessionByIdUseCase(sessionRepo);
-const getSessionStatusUseCase = new GetSessionStatusUseCase(sessionRepo);
-const connectSessionUseCase = new ConnectSessionUseCase(sessionRepo, auditRepo, engine);
-const disconnectSessionUseCase = new DisconnectSessionUseCase(sessionRepo, auditRepo, engine, lease.release);
-const reconnectSessionUseCase = new ReconnectSessionUseCase(sessionRepo, auditRepo, engine);
-const logoutSessionUseCase = new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, lease.release);
-const getSessionQrUseCase = new GetSessionQrUseCase(sessionRepo, engine);
-const getSessionPairingCodeUseCase = new GetSessionPairingCodeUseCase(sessionRepo, engine);
-const requestSessionPairingCodeUseCase = new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine);
-const deleteSessionUseCase = new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, [
-  new PrismaLinkRotationPlanEnforcementStore(prisma),
-], lease.release);
+
+/** Engines ligadas; a engine local e a remota expõem `enabledEngines`, o contrato não. */
+function enabledEnginesOf(engine: IMessagingEngine): ReadonlySet<string> {
+  const set = (engine as Partial<{ enabledEngines: ReadonlySet<string> }>).enabledEngines;
+  return set ?? new Set(['baileys']);
+}
+
+/**
+ * Use cases com a engine ativa do papel (WROLE-02/05), lida no registro das rotas: importar este
+ * módulo não monta engine nem carrega Baileys/GramJS. `composeForRole` roda antes de `buildApp`.
+ */
+function buildUseCases() {
+  const engine = getActiveEngine();
+  if (!engine) throw new Error('MessagingEngine não composta: chamar composeForRole(role) antes de buildApp');
+  const enabledEngines = enabledEnginesOf(engine);
+  return {
+    createSession: new CreateSessionUseCase(sessionRepo, auditRepo, entitlementReader, enabledEngines),
+    getSessionLimits: new GetSessionLimitsUseCase(sessionRepo, entitlementReader, enabledEngines),
+    requestSessionLoginCode: new RequestSessionLoginCodeUseCase(sessionRepo, auditRepo, engine),
+    submitSessionLoginCode: new SubmitSessionLoginCodeUseCase(sessionRepo, auditRepo, engine),
+    submitSessionLoginPassword: new SubmitSessionLoginPasswordUseCase(sessionRepo, auditRepo, engine),
+    listSessions: new ListSessionsUseCase(sessionRepo, engine),
+    getSessionById: new GetSessionByIdUseCase(sessionRepo),
+    getSessionStatus: new GetSessionStatusUseCase(sessionRepo),
+    connectSession: new ConnectSessionUseCase(sessionRepo, auditRepo, engine),
+    disconnectSession: new DisconnectSessionUseCase(sessionRepo, auditRepo, engine, lease.release),
+    reconnectSession: new ReconnectSessionUseCase(sessionRepo, auditRepo, engine),
+    logoutSession: new LogoutSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, lease.release),
+    getSessionQr: new GetSessionQrUseCase(sessionRepo, engine),
+    getSessionPairingCode: new GetSessionPairingCodeUseCase(sessionRepo, engine),
+    requestSessionPairingCode: new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine),
+    deleteSession: new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, [
+      new PrismaLinkRotationPlanEnforcementStore(prisma),
+    ], lease.release),
+  };
+}
 
 // Both auth + tenant context required for all session routes
 const preHandler = [authHook, tenantHook];
@@ -87,6 +100,8 @@ const tenantHeader = {
  * Registered under /api/sessions.
  */
 export async function sessionRoutes(app: FastifyInstance): Promise<void> {
+  const useCases = buildUseCases();
+
   // ── POST /sessions — create new session ────────────────────────────────────
   app.post(
     '/',
@@ -114,7 +129,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
         declaredPhone?: string;
       };
 
-      const session = await createSessionUseCase.execute({ tenantId, userId, name, engine, declaredPhone });
+      const session = await useCases.createSession.execute({ tenantId, userId, name, engine, declaredPhone });
       reply.status(201).send(SessionPresenter.toSessionItem(session));
     },
   );
@@ -147,7 +162,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
-      reply.status(200).send(await getSessionLimitsUseCase.execute({ tenantId }));
+      reply.status(200).send(await useCases.getSessionLimits.execute({ tenantId }));
     },
   );
 
@@ -185,7 +200,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const body = (request.body ?? {}) as { phone?: string };
-      reply.status(200).send(await requestSessionLoginCodeUseCase.execute({ sessionId: id, tenantId, userId, phone: body.phone }));
+      reply.status(200).send(await useCases.requestSessionLoginCode.execute({ sessionId: id, tenantId, userId, phone: body.phone }));
     },
   );
 
@@ -209,7 +224,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const { code } = request.body as { code: string };
-      reply.status(200).send(await submitSessionLoginCodeUseCase.execute({ sessionId: id, tenantId, code }));
+      reply.status(200).send(await useCases.submitSessionLoginCode.execute({ sessionId: id, tenantId, code }));
     },
   );
 
@@ -233,7 +248,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const { password } = request.body as { password: string };
-      reply.status(200).send(await submitSessionLoginPasswordUseCase.execute({ sessionId: id, tenantId, password }));
+      reply.status(200).send(await useCases.submitSessionLoginPassword.execute({ sessionId: id, tenantId, password }));
     },
   );
 
@@ -262,7 +277,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
-      const sessions = await listSessionsUseCase.execute({ tenantId });
+      const sessions = await useCases.listSessions.execute({ tenantId });
       reply.status(200).send(SessionPresenter.toSessionList(sessions));
     },
   );
@@ -288,7 +303,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const session = await getSessionByIdUseCase.execute({ sessionId: id, tenantId });
+      const session = await useCases.getSessionById.execute({ sessionId: id, tenantId });
       reply.status(200).send(SessionPresenter.toSessionItem(session));
     },
   );
@@ -325,7 +340,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await getSessionStatusUseCase.execute({ sessionId: id, tenantId });
+      const result = await useCases.getSessionStatus.execute({ sessionId: id, tenantId });
       reply.status(200).send(SessionPresenter.toSessionStatus(result));
     },
   );
@@ -361,7 +376,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await connectSessionUseCase.execute({ sessionId: id, tenantId, userId });
+      const result = await useCases.connectSession.execute({ sessionId: id, tenantId, userId });
       reply.status(200).send(SessionPresenter.toConnectResult(result));
     },
   );
@@ -393,7 +408,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await disconnectSessionUseCase.execute({ sessionId: id, tenantId, userId });
+      const result = await useCases.disconnectSession.execute({ sessionId: id, tenantId, userId });
       reply.status(200).send(SessionPresenter.toActionResult(result));
     },
   );
@@ -427,7 +442,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await reconnectSessionUseCase.execute({ sessionId: id, tenantId, userId });
+      const result = await useCases.reconnectSession.execute({ sessionId: id, tenantId, userId });
       reply.status(200).send(SessionPresenter.toConnectResult(result));
     },
   );
@@ -460,7 +475,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await logoutSessionUseCase.execute({ sessionId: id, tenantId, userId });
+      const result = await useCases.logoutSession.execute({ sessionId: id, tenantId, userId });
       reply.status(200).send(SessionPresenter.toActionResult(result));
     },
   );
@@ -493,7 +508,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await getSessionQrUseCase.execute({ sessionId: id, tenantId });
+      const result = await useCases.getSessionQr.execute({ sessionId: id, tenantId });
       reply.status(200).send(SessionPresenter.toQrResult(result));
     },
   );
@@ -526,7 +541,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      const result = await getSessionPairingCodeUseCase.execute({ sessionId: id, tenantId });
+      const result = await useCases.getSessionPairingCode.execute({ sessionId: id, tenantId });
       reply.status(200).send(SessionPresenter.toPairingCodeResult(result));
     },
   );
@@ -567,7 +582,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
       const body = (request.body ?? {}) as { phone?: string };
-      const result = await requestSessionPairingCodeUseCase.execute({
+      const result = await useCases.requestSessionPairingCode.execute({
         sessionId: id,
         tenantId,
         userId,
@@ -599,7 +614,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { tenantId, userId } = request.tenantContext;
       const { id } = request.params as IdParam;
-      await deleteSessionUseCase.execute({ sessionId: id, tenantId, userId });
+      await useCases.deleteSession.execute({ sessionId: id, tenantId, userId });
       reply.status(204).send();
     },
   );

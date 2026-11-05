@@ -10,8 +10,8 @@ vi.mock('../../../../shared/audit/PrismaAuditLogRepository', () => ({ PrismaAudi
 vi.mock('../../../../shared/jobs/PrismaJobLease', () => ({
   PrismaJobLease: class { tryAcquire = vi.fn().mockResolvedValue(false); release = vi.fn(); },
 }));
-vi.mock('../../../messaging/infrastructure/localEngineContainer', () => ({
-  localEngine: () => ({ reconnectSession: vi.fn() }),
+vi.mock('../../../../shared/engine/activeEngine', () => ({
+  getActiveEngine: () => ({ reconnectSession: vi.fn() }),
 }));
 vi.mock('../repositories/PrismaSessionAdoptionRepository', () => ({
   PrismaSessionAdoptionRepository: class {

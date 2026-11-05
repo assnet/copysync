@@ -137,6 +137,8 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url('REDIS_URL must be a valid connection URL').optional(),
   ),
+  // Jobs simultâneos por fila `engine-cmd-{workerId}`/`session-open` no worker (BullMQ).
+  ENGINE_COMMAND_CONCURRENCY: z.coerce.number().int().positive().default(2),
   // Identidade deste processo no lease de sessão. Vazio = gerado por boot
   // (`host-pid-nonce8`, ver `workerIdentity.ts`); restart nunca herda o lease anterior.
   WORKER_ID: z.preprocess(
