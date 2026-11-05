@@ -34,8 +34,18 @@ Regras comuns:
 | T16 | `session-open` pausa com worker cheio | T14, E3 T18 | P | ✅ d34138f |
 | T17 | Painel: "Aguardando capacidade" | T12 | P | ✅ d616afb |
 | T18 | Painel: página `/admin/workers` | T13 | P | ✅ 7f7a7d8 |
-| T19 | Smoke | T15, T16, T17, T18 | | ⏳ |
+| T19 | Smoke | T15, T16, T17, T18 | | 🟡 parcial |
+| T19b | Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável | T19 | | ⏳ |
 | T20 | Docs, CHANGELOG e versão | T19 | | ⏳ |
+
+### T19b: Chip de capacidade nas rotas; sessão AWAITING_* órfã readotável
+
+**What**: (1) `session.routes.ts` (~281, ~307) chama `SessionPresenter.toSessionList(sessions)` sem `{ adoptionEnabled, now }`: `awaitingCapacity` sempre `false` (ADOPT-13 quebrado). Passar `workerAdoptionConfig().enabled` e `now`. (2) Sessão que o worker deixou em `AWAITING_QR`/`AWAITING_PAIRING`/`AWAITING_CODE`/`AWAITING_PASSWORD`/`CONNECTING` após SIGKILL/OOM (lease vencido, pedido vivo) não é adotada (SQL só aceita `CONNECTED|CONNECTING|DISCONNECTED`) nem contada como aguardando. Correção no `PrismaSessionAdoptionRepository`: `adoptNext` e `countAwaitingCapacity` aceitam também os status `AWAITING_*` com lease vencido/nulo (a adoção reconecta pelo caminho `auto`, que gera QR novo como hoje); `Session.isAwaitingCapacity` idem.
+**Where**: `session.routes.ts`, `PrismaSessionAdoptionRepository.ts` (+ int), `Session.ts` (+ teste)
+**Done when**: teste de rota: flag ligada + sessão sem dono → `awaitingCapacity: true`; int: sessão `AWAITING_QR` com lease vencido e pedido vivo é adotada e contada; com lease vivo, não
+**Tests**: unit + int
+**Gate**: `pnpm vitest run src/modules/sessions` + int + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): chip de capacidade e readoção de sessão aguardando QR`
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -376,3 +386,5 @@ T13 é a única que toca `routes.ts`; T17/T18 no app sem arquivo comum.
 - T13: `GET /admin/workers` (superAdminHook responde **401**, não 403 como a spec; ajustar spec ou hook à parte). T14 deve passar a rota a usar o container.
 - T15: boot/shutdown com adoção (flag ligada + bootstrap ligado = bootstrap delegado ao ticker; drain de mídia com teto `mediaDrainBudgetMs`; heartbeat apaga a linha depois do `releaseAllOwned`). Flag ligada sem bootstrap: ticker reconecta sessões com pedido vivo (muda o comportamento de hoje).
 - T16: `session-open` pausa com worker cheio (vigia 5 s; job pego na corrida volta com `moveToDelayed`).
+- T19 (smoke 2026-11-04; Postgres 55539, Redis 56539, s3mock; logs `/private/tmp/claude-501/smoke-e4-t19/`): crit.1 ✅ flag off = logs idênticos ao baseline `927f89f` em all/worker/http, 0 escrita em `worker_heartbeats`. crit.2 🟡 teto 1 × 2 workers × 3 sessões: 2 adotadas, 1 aguardando; `/admin/workers` ok; alerta 1/min no cluster com failover; `session-open` pausa/retoma ✅; **`awaitingCapacity` sempre false → T19b**. crit.3 🟡 SIGKILL + TTL: worker cheio não adota ✅, vaga liberada adota em < 5 s ✅; "sem 440" pendente (sessão real). crit.4 ✅ (simulado) backoff 2/4/8/16/30 min → FAILED + auditoria; connect manual zera. crit.5 ✅ ordem do SIGTERM ok, 18 ms.
+- Achados: sessão `AWAITING_*` órfã após SIGKILL → T19b. **Decisão do dono:** sessão em QR sem leitura prende a vaga indefinidamente (QR rotaciona, socket não fecha) — sugestão: QR sem leitura por N min → DISCONNECTED mantendo o pedido + backoff. Heartbeat de worker morto só limpa após 1 dia (listAlive filtra em 90 s, sem efeito). D7 (índice) não medido.
