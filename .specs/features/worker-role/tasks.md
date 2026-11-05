@@ -38,9 +38,9 @@ Regras comuns a toda task:
 | T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ✅ 8330cbf |
 | T20 | Smoke `all` e `http`+`worker` | T19 | | 🟡 parcial (sessão real pendente) |
 | T21 | Docs, CHANGELOG e versão (com E4 T20; api 0.62.0, app 0.79.0) | T20 | | ✅ este commit |
-| T22 | Fila de comando: resultado desconhecido, sem reexecução, prazo e shutdown com teto | T21 | P | ⏳ |
-| T23 | Boot por papel: falha encerra, S3 completo validado, porta antes do relay | T21 | P | ⏳ |
-| T24 | RPC com prazo no worker; limpeza de `outbound-tmp/` | T21 | P | ⏳ |
+| T22 | Fila de comando: resultado desconhecido, sem reexecução, prazo e shutdown com teto | T21 | P | ✅ b0b1c28 |
+| T23 | Boot por papel: falha encerra, S3 completo validado, porta antes do relay | T21 | P | ✅ 740b7b1 |
+| T24 | RPC com prazo no worker; limpeza de `outbound-tmp/` | T21 | P | ✅ 574c291 |
 
 ### T18b: Rotas usam a engine ativa; concorrência das filas por env
 
@@ -508,3 +508,6 @@ Fase 3 (T8/T9/T10/T11 em arquivos novos distintos).
   - Critério 4: ✅ SIGTERM no worker na ordem keeper → composição → drain → sockets → flush → leases → Redis → close; outro worker readotou pela `session-open`.
   - Riscos: Redis fora no boot de `http`/`worker` = reconexão infinita sem `/health`; `disconnect` manual não emite `SESSION_DISCONNECTED` (igual em `all`); `scripts/redis-descartavel.sh` usa nome de contêiner fixo — jobs paralelos precisam de `REDIS_INT_NAME` próprio.
 - T21 (com E4 T20, este commit): docs de escala §3.2/§3.3/§5.1/§6, plano trilha E, `sessoes-conexao.md`, AGENTS.md, CHANGELOG; api 0.62.0, app 0.79.0 (o 0.60.0 do plano já fora usado). Pendências do dono seguem no doc §3.3 e checklist §5.1.
+- T22: `EngineCommandOutcomeUnknownError` (504) quando o job já estava ativo; `maxStalledCount: 0`; ready+add dentro do prazo; close do worker com teto 20 s. Pendência: `failureKind` do painel (`outgoingMediaState.ts`) trata 504 como rede e oferece "Tentar de novo" para mídia.
+- T23: `start().catch → exit(1)`; S3 completo exigido em http/worker; relay do http sobe em background com retry; `/health` com `relay`.
+- T24: RPC com `deadline` (pedido vencido não executa); varredura de `outbound-tmp/` (> 1 h) no boot e a cada 1 h no worker.
