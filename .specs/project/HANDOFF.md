@@ -1,57 +1,54 @@
-# Handoff — 2026-11-04 (sessão até 21:00)
+# Handoff — 2026-11-04
 
-> **🔴 ALERTA DE SEGURANÇA — PulsoSocial em produção (central 1.86.0), CONFIRMADO no código:**
-> 1. **Crítica — tomada de conta**: `module.ts:~367` aceita qualquer senha via basic-auth em conta sem senha e `session.ts` grava a senha enviada. Basta o e-mail. Expostas: contas criadas por checkout, checkout-sessions, checkout-security (OTP de cartão), free-tier, trial e Cakto antes do 1º login. Só mitigado se `LOGIN_EMAIL_OTP=true` na Render (verificar).
-> 2. **Alta — LGPD**: `GET /checkout/customer-lookup/:email` público devolve nome, telefone e CPF/CNPJ completos (e enumera contas). Revisar também `GET /checkout/saved-cards/:email`.
-> 3. **Alta**: `checkout/process` público sobrescreve dados cadastrais de conta existente sem pagar.
-> 4. **Alta**: `GET /cakto/orders`, `/cakto/subscriptions`, `/cakto/balance` só exigem login, não ADMIN.
-> **Hotfix 1.86.1 pronto** no branch local `hotfix/seguranca-acesso-dados` da central (base 0906d9f; fixes `abe0b5a`, `ce43c96`, `be1f4e7`, `1493d74`; release notes `docs/releases/1.86.1.md`; sem migration; testes que falhavam antes passam). Contrato: sign-in de conta sem senha → 401 `PASSWORD_NOT_SET` + `withoutPassword`; customer-lookup com `docNumber`/`phone` vazios + `*Masked`; `/cakto/*` de leitura → 403 sem ADMIN. **Revisão de segurança independente: pronto para deploy** (4 fixes corretos, sem contorno, sem regressão). A revisão achou mais falhas já em produção → **1.86.2 pronto** no branch `hotfix/seguranca-acesso-dados-2` (sobre o 1.86.1, topo `756b2e0`, `docs/releases/1.86.2.md`, sem migration; **revisão independente: pronto para deploy**): 🔴 `GET /checkout/address/:email` público com endereço completo; 🔴 `/admin/abandoned-checkouts*` e campanhas de abandono sem ADMIN (qualquer logado lista PII e dispara e-mail em massa); 🔴 rotas de `admin-gateway-recurrences` sem papel; 🟡 upsert de endereço, start-trial e free-tier sobrescrevendo dados; 🟡 token de change-password reusável/500. Achados extras confirmados 🔴 (anteriores ao hotfix): `GET /reviews` (e-mail/nome/texto de todos) e `GET /protect/global` (WhatsApp e dados de todos os assinantes Protect) para qualquer logado → **1.86.3 pronto e aprovado** no branch `hotfix/seguranca-acesso-dados-3` (topo `d70fd3a`, `docs/releases/1.86.3.md`, sem migration): Protect só para assinante com acesso válido (sem estornados/inadimplentes), 5 campos, sem os próprios números, amostra estável por chamador e por hora, candidatos vistos em 7 dias (teto 2000), conta sem log da extensão fora do pool. **Não rodar** `api/scripts/ops/create-index-loguserhardware-userid-updatedat.sql` sem `EXPLAIN (ANALYZE)` provando ganho (o filtro de 7 dias já usa `@@index([updatedAt])`; índice fora do schema gera drift no `migrate dev`). Risco aceito: assinante que consulta 1×/hora coleta os números ativos ao longo do dia (opcional: rate limit por conta/dia). Ordem de deploy: 1.86.1 (urgente) → 1.86.2 → 1.86.3 (Protect só para assinante, campos mínimos, sem os próprios números, limite 50; reviews só estatística para não-admin; dono do endereço por id; gravações atômicas). Risco residual: e-mail master sem conta pode ser criado por terceiro via checkout — garantir que todo e-mail master já tenha conta. Impacto: checkout anônimo só pré-preenche cidade/UF; endereço salvo não é sobrescrito; tokens de troca de senha emitidos até 10 min antes do deploy dão 401. **Decisão do dono (produto):** exigir OTP de checkout para `customer-lookup` (ainda devolve nome), `saved-cards` (id/final/validade) e `checkout/upgrade/check` (plano e valor de qualquer e-mail). **Extensão do PulsoSocial pronta** (`/Users/adrielss/www/pulsosocial_extension`, branch `fix/primeiro-acesso-sem-senha` `e6d1097`, base `feature/site` 5.241.5 → 5.241.7; inclui `return` faltando em 3 handlers de recuperação de senha do `legado0`): conta sem senha vai direto ao código por e-mail; corpo do sign-in nunca leva senha. Publicar junto ou logo após o 1.86.1 (antes disso, o 1º acesso na extensão antiga mostra a mensagem do 401 e o usuário usa "Esqueci a senha"). **Antes do deploy:** checar `LOGIN_EMAIL_OTP` na Render; se estava desligado, revisar logs `[sign-in] Senha criada para usuário`.
+Retomar por aqui. Tudo em branches locais, nada com push. Juntar no CopySync = `git cherry-pick <branch>` na
+`feature/rebranding-app` + `tsc --noEmit` e `vitest run` em `api/` e `app/` (último verde: api 3310/3310, app 1330/1330;
+versões api 0.63.0 · app 0.81.0). `git add` só com caminhos explícitos (o dono tem rascunhos não rastreados em `.specs/` e `docs/`).
 
-Retomar por aqui. Branches locais, nada com push. Juntar = `git cherry-pick <branch>` na `feature/rebranding-app` e rodar
-`tsc --noEmit` + `vitest run src/modules/sessions src/modules/messaging src/shared` em `api/` (último verde: api 3088/3088, app 1218/1218).
+## 🔴 Segurança — PulsoSocial em produção (central 1.86.0)
+
+Falhas confirmadas no código e hotfixes prontos na central (`/Users/adrielss/www/pulsosocial_api`), cada um com revisão
+independente aprovada, sem migration. **Ordem de deploy: 1.86.1 (urgente) → 1.86.2 → 1.86.3.**
+
+| Versão | Branch (topo) | Fecha |
+| --- | --- | --- |
+| 1.86.1 | `hotfix/seguranca-acesso-dados` (`4d3e28f`) | tomada de conta por basic-auth em conta sem senha; CPF/telefone no `customer-lookup`; checkout sobrescrevendo dados; `/cakto/*` sem ADMIN |
+| 1.86.2 | `hotfix/seguranca-acesso-dados-2` (`756b2e0`) | endereço completo público; abandoned-checkouts e campanhas sem ADMIN; recorrências de gateway sem papel; endereço/trial/free-tier sobrescrevendo; token de troca de senha reusável |
+| 1.86.3 | `hotfix/seguranca-acesso-dados-3` (`d70fd3a`) | `/protect/global` (só assinante válido, 5 campos, amostra estável por hora, teto) e `/reviews` (lista só ADMIN/master); dono do endereço por id; gravações atômicas |
+
+Antes do deploy: conferir `LOGIN_EMAIL_OTP` na Render (se estava desligado, revisar logs `[sign-in] Senha criada para usuário`).
+Extensão do PulsoSocial: `/Users/adrielss/www/pulsosocial_extension` branch `fix/primeiro-acesso-sem-senha` (`e6d1097`, 5.241.7),
+publicar junto ou logo após o 1.86.1. Não rodar `api/scripts/ops/create-index-loguserhardware-userid-updatedat.sql` sem `EXPLAIN`
+provando ganho. Decisões do dono: OTP de checkout para `customer-lookup`/`saved-cards`/`checkout/upgrade/check`; rate limit opcional
+no `/protect/global`; garantir que todo e-mail master já tenha conta. Notas em `docs/releases/1.86.{1,2,3}.md`.
 
 ## CopySync (`feature/rebranding-app`)
 
-| Frente | Estado | Próximo passo |
+| Frente | Estado | Pendência |
 | --- | --- | --- |
-| Limite do gerador (5/20/ilimitado) | ✅ `ba85963`, api 0.58.0 | deploy aplica migration de presets |
-| E2 lease de sessão | ✅ T1–T23 + F1–F4; F1–F9 ✅; 3ª revisão: 3🔴 (estado de retomada dividido) → F10 em `e2/f10`, depois F11 | juntar F10, rodar F11, 4ª revisão; **não fazer deploy antes** (`/caveman-review`) até só nits; **não fazer deploy antes** |
-| E3 http × worker | T1–T6, T13–T17 ✅ juntadas (vitest completo 2848/2848) + T7 ✅ | próximo: T8–T12 (usar `engineCallSessionId`, `EngineCallsOf<K>`, portas com `close()`)→T8–T12→T18→T19→T20→T21; D1–D11 propostas, Redis ~US$10 só ao separar |
-| E4 adoção | plano ✅ (`.specs/features/session-adoption/`, D1–D8 propostas); T1–T14, T17, T18 ✅ juntadas (T18 sem conferência visual) | T15 (precisa E3 T19), T16 (E3 T18), T19, T20; spec T13 diz 403 mas hook dá 401
-| Tela Assinatura | ✅ T1–T18 (api 0.60.0 · app 0.77.0); visual conferido (capturas em `/private/tmp/claude-501/shots-assinatura/`) | D1 seguido pela recomendação (vencimento guardado); D2–D6 com recomendações, dono pode rever |
-| Grupos de disparo + horário | plano ✅ (`.specs/features/broadcast-schedule/`) | T1, T7, T8, T9, T11 ✅ juntadas | dono decide D1–D5; depois T2–T6, T22, T23, T10, T12–T19 |
+| Limite do gerador 5/20/ilimitado | ✅ | deploy aplica a migration de presets |
+| E2 lease de sessão | ✅ T1–T23, F1–F14; 6 revisões, ciclo encerrado | `DATABASE_SOCKET_TIMEOUT_S` é pré-requisito para mais de um processo |
+| E3 http × worker | ✅ T1–T25 (revisão independente: `all` sem mudança; correções T22–T25) | sessão real no smoke; timeout do comando de texto (60 s × "≤ 10 s"); Redis ~US$ 10 só ao separar |
+| E4 adoção por capacidade | ✅ T1–T23 (revisão independente; correções T21–T23) | QR sem leitura prende vaga; Telegram `AWAITING_QR/PAIRING` ainda adotável |
+| Tela Assinatura | ✅ T1–T20 (visual conferido; revisão independente; T19/T20) | D2–D6 com recomendações |
+| Grupos de disparo + horário | ✅ T1–T30 (visual conferido; revisão independente; T28–T30) | D1–D5 com recomendações; tenant acima do limite pela soma fica sem salvar novos destinos |
+| Receiver de cobrança | ✅ seq BigInt, 2 segredos na rotação, vencimento gravado, `expiresAt` malformado → 400 | hub manda `null` para limpar |
+| Painel | ✅ tema sistema/claro/escuro, tenant borra no cabeçalho, MUI pt-BR | conferir visual com login local |
 
-## Central (`pulsosocial_api`) — produção = `feature/calibracao-backend` 1.86.0 (develop/main obsoletos)
+Checklist antes de ligar mais de um processo na Render: `docs/arquitetura-escala.md` §5.1.
+
+## Central — roadmap do hub
 
 | Frente | Branch | Estado |
 | --- | --- | --- |
-| S1 CI | `test/char-prod-base` (`9ee0609`) | ✅ validado local; 1º run no GitHub só após push (decisão do dono) |
-| S2 vitest + caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas integradas; CI local verde; char:db 469/469 2x; riscos em `docs/multi-application-hub:.specs/features/multi-application-hub/riscos-caracterizacao.md` (`e2cc83e`, 19 riscos) |
-| S3 staging | `chore/staging-runbook` (`be5cc95`) | 3 rodadas de revisão; sem 🔴; 2 🟡 finais corrigidos. **Pronto para o dono executar `docs/staging.md`** (Basic Auth/Private antes de liberar, inclusive `/webhook/*`) |
-| H1 | plano ✅; `feature/hub-h1` (provisório até D8) com T01–T05, T10, T26 (`5824ea3`: Application + socialpulse, constantes, `resolvePublicApplication`, seed `copysync`). **Bloqueado em D1** (T06+ dependem da forma de criar `applicationId`); H2/H3a esperam H1 | dono decide D1 (recomendado: `NOT NULL DEFAULT` constante, Postgres 18.6 confirmado → sem trigger/backfill) e D8 (branch de destino); executar após S2 integrado |
-| H2, H3a+H4 | planos ✅ `docs/hub-h2-plan` (`3826d8b`), `docs/hub-h3h4-plan` (`ca43dae`) | juntar no branch docs; follow-ups CopySync: `Tenant.lastBillingEventSeq` Int→BigInt, receiver aplicar `expiresAt` de `subscription.updated`, aceitar 2 segredos na rotação |
-| Branches obsoletos (base develop) | `chore/ci-safety-net`, `test/characterization`, `test/char-<área>` | podem ser apagados |
-
-## Outros branches em andamento
-
-- Central: `hub/h4-overrides` (`cd24927`) junta H4 T21+T22+T24+T25 (loader, guard, templates base, overrides CopySync pt_BR/en); `hub/h4-t17` (smtp-transport), `hub/h4-t23` (enum) separados.
-
-- CopySync: `billing/seq-bigint` e `billing/two-secrets` ✅ juntados. `expiresAt` do `subscription.updated` NÃO aplicado: falta coluna de vencimento (cruza com Assinatura D1/T1–T2).
-- Central: `hub/h2-pure-base` (padrão `*.hub.test.ts`) + ✅ `hub/h2-t5`, `h2-t6`, `h2-t7`, `h2-t8`, `h2-t13`, `h4-t21`, `h4-t23`, `h4-t26` (cada um 1 commit sobre a base; juntar num branch de H2/H4 quando H1 existir). Staging rodada 2 e integração da caracterização (`test/char-prod`, `riscos-caracterizacao.md`) podem ter terminado após 21:00: conferir branches.
-
-## Decisões do dia (detalhe em `STATE.md`)
-
-Checkout pela Cakto até a escala; log de corpo igual ao PulsoSocial; gerador 5/20/ilimitado; E2 D1–D7.
-
-## Achados fora de escopo (backlog)
-
-- ✅ resolvido (app 0.80.0): modo sistema no tema; nome do tenant no cabeçalho borra; textos padrão do MUI em pt-BR; cards do público-alvo.
-- Visual a conferir com login local: cabeçalho com privacidade ligada e gerador a 1280 px.
+| S1 CI + S2 caracterização | `test/char-prod` (`a7339bc`) | ✅ 6 áreas; 19 riscos em `riscos-caracterizacao.md` |
+| S3 staging | `chore/staging-runbook` (`be5cc95`) | ✅ 3 revisões; dono executa `docs/staging.md` |
+| H1 | `feature/hub-h1` (`5824ea3`) | T01–T05, T10, T26 ✅; **bloqueado em D1** (recomendado `NOT NULL DEFAULT`, Postgres 18.6) e D8 (branch de destino) |
+| H2 / H3a / H4 | planos em `docs/multi-application-hub`; funções puras em `hub/h2-t5..t13`, `hub/h4-t17`, `hub/h4-overrides` (T21–T25) | esperam H1 |
 
 ## Pendências do dono
 
-- Push e PR dos branches da central (CI só roda no GitHub).
-- Executar staging (`docs/staging.md` no branch `chore/staging-runbook`).
-- Banco dedicado do CopySync (Virginia) no início da H1.
-- `api/.env.dev` aponta para produção: trocar por env local seguro.
-- **Credencial "somente leitura" do AGENTS.md não é read-only** (`default_transaction_read_only = off`): criar usuário Postgres só com SELECT e trocar no AGENTS.md; a senha está em texto puro no git.
+- Deploy dos hotfixes 1.86.1 → 1.86.3 e publicação da extensão 5.241.7.
+- D1 e D8 da H1; push/PR dos branches (CI só roda no GitHub).
+- `api/.env.dev` do CopySync aponta para produção.
+- Credencial "somente leitura" do AGENTS.md grava no banco (`default_transaction_read_only = off`) e está em texto no git.
+- Commit `5868258` contém por engano `.specs/features/plans-modal/spec.md` (já tirado do índice em `674cf50`); limpar do histórico antes do push, se quiser.
