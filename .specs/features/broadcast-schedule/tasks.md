@@ -232,23 +232,24 @@ Onda 7: T23(T22) → T24 → T25
 
 ## Correções da revisão independente (2026-11-04)
 
-### T28: Janela que começa em 24:00 igual no TS e no SQL; fuso fixo no claim [P] ⏳
+### T28: Janela que começa em 24:00 igual no TS e no SQL; fuso fixo no claim [P] ✅ 17c4bf4
 
 **What**: 🔴 `domain/services/postingWindow.ts:~78`: janela com início 1440 (gerada pela faixa noturna lo=360, hi=1440 → start=1440, end=360) usa o dia anterior na regra TS, mas `postingWindowOpenSql` (`PrismaOfferDispatchRepository.ts:~26`) usa `start % 1440` e o dia de hoje → captura `outside_window` enquanto o envio sai. Correção: normalizar `startMinute % 1440` na regra TS (espelho do SQL) e no ponto em que a faixa é montada (painel e validadores), com teste de paridade TS × SQL (mesmas entradas, mesmo resultado) para virada de dia, início 0, início 1440 e faixa noturna. 🟡 `PrismaOfferDispatchRepository.ts:~107`: minuto/dia de São Paulo calculados sem fixar fuso (`${now}::timestamp`) dependem do TimeZone da sessão: usar `(${now}::timestamptz AT TIME ZONE 'America/Sao_Paulo')`; teste int com sessão em fuso ≠ UTC.
 **Where**: `api/src/modules/campaigns/domain/services/postingWindow.ts` (+ teste), `PrismaOfferDispatchRepository.ts` (+ int), validadores do gerador e do monitor se aceitarem 1440
 **Gate**: `pnpm vitest run src/modules/campaigns src/modules/automation` + int + `pnpm tsc --noEmit`
 **Commit**: `fix(campaigns): janela noturna igual na regra e no envio`
 
-### T29: Grupo preso a sessão apagada não bloqueia o monitoramento [P] ⏳
+### T29: Grupo preso a sessão apagada não bloqueia o monitoramento [P] ✅ 8402a42
 
 **What**: 🟡 `GroupMonitorConfigUseCases.ts:~206`: `taken` não filtra `live`; broadcast de monitor de sessão apagada bloqueia o grupo para outro monitor e a tela não mostra a linha; ao liberar, a unique `(tenantId, sessionId, conversationId)` de `broadcast_groups` estoura. Correção: no save, dentro da mesma transação, apagar as linhas de `broadcast_groups` de sessões apagadas do tenant para os grupos envolvidos e ignorar `!live` em `taken`.
 **Where**: `api/src/modules/automation/application/use-cases/GroupMonitorConfigUseCases.ts`, repositório do monitor (+ testes unit/int)
 **Gate**: `pnpm vitest run src/modules/automation` + int + `pnpm tsc --noEmit`
 **Commit**: `fix(automation): sessão apagada não prende grupo de disparo`
 
-### T30: Foto do grupo borra no passo Grupos do gerador [P] ⏳
+### T30: Foto do grupo borra no passo Grupos do gerador [P] ✅ 3b59e27
 
 **What**: 🟡 `ConfigGroupsStep.tsx:~325` `<GroupAvatar … />` sem `blurFlag`; usar `blurFlag="offers.groupAvatars"` (flag existente em `privacyFlags.ts`). Conferir outros `GroupAvatar`/avatares da feature (tabela de grupos de disparo, monitoramento) sem flag.
 **Where**: `app/src/features/offers/components/config/ConfigGroupsStep.tsx` (+ teste)
 **Gate**: `pnpm vitest run` + `pnpm tsc --noEmit` em `app/`
 **Commit**: `fix(app): foto do grupo borra no gerador`
+- T28: início 1440 normalizado para 0 (TS, validadores, painel); claim com `timestamptz AT TIME ZONE 'America/Sao_Paulo'`; paridade TS×SQL testada em 3 fusos de sessão. Linhas antigas com 1440 normalizadas na leitura. T29: sessão apagada não prende grupo; limpeza na mesma transação. T30: blurFlag explícito (já borrava); pendente: foto da sessão em `ConfigSessionStep.tsx:~101` não borra.
