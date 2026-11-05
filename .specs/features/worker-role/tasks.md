@@ -38,6 +38,9 @@ Regras comuns a toda task:
 | T19 | `server.ts`: boot e shutdown por papel | T14, T16, T17, T18 | | ✅ 8330cbf |
 | T20 | Smoke `all` e `http`+`worker` | T19 | | 🟡 parcial (sessão real pendente) |
 | T21 | Docs, CHANGELOG e versão (com E4 T20; api 0.62.0, app 0.79.0) | T20 | | ✅ este commit |
+| T22 | Fila de comando: resultado desconhecido, sem reexecução, prazo e shutdown com teto | T21 | P | ⏳ |
+| T23 | Boot por papel: falha encerra, S3 completo validado, porta antes do relay | T21 | P | ⏳ |
+| T24 | RPC com prazo no worker; limpeza de `outbound-tmp/` | T21 | P | ⏳ |
 
 ### T18b: Rotas usam a engine ativa; concorrência das filas por env
 
@@ -48,6 +51,37 @@ Regras comuns a toda task:
 **Tests**: unit
 **Gate**: `pnpm vitest run src` + `pnpm tsc --noEmit`
 **Commit**: `refactor(sessions): rotas leem a engine ativa do papel`
+
+## Correções da revisão independente da E3 (2026-11-04)
+
+Revisão: modo `all` sem achado (não importa Redis/BullMQ, mesma engine, ordem preservada). Achados só no modo `http`+`worker` (ainda desligado).
+
+### T22: Fila de comando: resultado desconhecido, sem reexecução, prazo e shutdown com teto [P]
+
+**What** (`BullEngineCommandQueues.ts`, `roleComposition.ts`):
+- 🔴 timeout com job já `active` devolve `ENGINE_NOT_READY` mas o worker envia → reenvio manual duplica. Novo erro interno `EngineCommandOutcomeUnknownError` (código `ENGINE_COMMAND_OUTCOME_UNKNOWN`, 504) quando o job estava ativo; só job `waiting`/`delayed` removido continua `ENGINE_NOT_READY`. Mapear no `engineErrorWire` e no erro HTTP; texto pt-BR "Não foi possível confirmar o envio; confira a conversa antes de reenviar" (strings do painel se houver mapeamento por código). Mesmo tratamento no shutdown do http com espera pendente.
+- 🟡 `maxStalledCount: 0` nos consumidores de comando (job travado vira falha, nunca reexecuta).
+- 🟡 `await channel.ready` + `queue.add` dentro do `timeoutMs` (race); canal que falhou é fechado (`close`) antes de sair do mapa; Redis fora → `EngineNotReadyError` no prazo.
+- 🟡 shutdown do worker: `queues.close()` com teto (~20 s, constante) e depois `close(true)`, para sobrar tempo a sockets/flush/leases dentro dos 30 s da Render.
+**Tests**: int com Redis descartável (`REDIS_INT_NAME` próprio): job ativo no timeout → `OUTCOME_UNKNOWN` e envio único; stalled não reexecuta; Redis fora → erro no prazo sem vazar canal; close com teto
+**Gate**: `pnpm vitest run src/modules/messaging src/app` + int + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): comando com resultado desconhecido não duplica envio`
+
+### T23: Boot por papel: falha encerra, S3 completo validado, porta antes do relay [P]
+
+**What**: 🟡 `server.ts`: `start().catch(err => { logger.fatal(...); process.exit(1) })`. 🟡 `env.ts` `processRoleIssues`: em `http`/`worker` exigir também `S3_ENDPOINT`, bucket e chaves (os que tornam `S3_ENABLED` verdadeiro). 🟡 `roleComposition`: no `http`, `app.listen` não espera `relay.start()`; relay sobe em background com retry e log (WS ficam sem eventos entre processos até o relay subir; `/health` mostra `relay: up|down`).
+**Where**: `server.ts`, `shared/config/env.ts` (+ teste), `app/roleComposition.ts` (+ teste), `workerApp`/`routes` se o health mudar
+**Tests**: unit: env recusa http/worker sem S3 completo; `all` sem mudança; composição http não bloqueia no relay
+**Gate**: `pnpm vitest run src/app src/shared` + `pnpm tsc --noEmit`
+**Commit**: `fix(api): boot por papel falha cedo e não depende do relay`
+
+### T24: RPC com prazo no worker; limpeza de `outbound-tmp/` [P]
+
+**What**: 🟡 `RedisEngineRpc`: pedido leva `deadline` (agora + timeout do cliente); servidor descarta pedido vencido antes de `handler.handle` (sem efeito tardio de `sendReaction`, `submitLogin*`, `markMessagesRead`). 🟡 `outboundMediaTransfer`: varredura do prefixo `outbound-tmp/` (objetos com mais de 1 h) no boot do worker e periódica (job leve em `processJobs` do worker, intervalo 1 h), via listagem do S3; documentar alternativa de lifecycle do bucket em `docs/arquitetura-escala.md`.
+**Where**: `remote/transport/RedisEngineRpc.ts` (+ int), `remote/outboundMediaTransfer.ts` (+ teste), `app/processJobs.ts`, `server.ts` (registro do job), doc
+**Tests**: int: pedido vencido não executa; unit: varredura apaga só o prefixo e só acima da idade
+**Gate**: `pnpm vitest run src/modules/messaging src/app` + int + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): RPC com prazo e limpeza da mídia temporária`
 
 ## Notas de execução (passagem entre tarefas)
 
