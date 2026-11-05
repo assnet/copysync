@@ -49,6 +49,8 @@ Regras comuns a toda task:
 | F7 | Resume sem `release` e com nova tentativa | F3 | P | ✅ 14527c4 |
 | F8 | Shutdown espera 2ª passada; reconciler condicional | F3 | P | ✅ 557f8c6 |
 | F9 | Resume no adapter mantém suspensa em erro | F8 | | ✅ 1b2a3bb |
+| F10 | Estado de retomada com dono único | F9 | | ⏳ |
+| F11 | Abertura dupla da mesma sessão | F9 | P | ⏳ |
 
 ## Notas de execução (passagem entre tarefas)
 
@@ -517,6 +519,32 @@ No mesmo contrato, a porta estreita `ISessionLeaseGate { acquire(sessionId): Pro
 **Tests**: unit
 **Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
 **Commit**: `fix(messaging): resume que falha mantém a sessão suspensa`
+
+## Correções da 3ª revisão (2026-11-04)
+
+Causa comum dos 3 🔴: o estado "suspensa" vive em dois lugares (marca `fenced` no `SessionLeaseLedger` e mapa `suspended` nos adapters) e cada lado limpa o seu em momentos diferentes; `false` ambíguo (`openSocket`, `acquire`, `SessionLeaseHeldError` → `false`) apaga a retomada sem nova tentativa.
+
+### F10: Estado de retomada com dono único
+
+**What**:
+- `ISessionSocketControl.resumeSession(id)` devolve `'resumed' | 'held' | 'gone'` e **lança** em erro transitório. `held` = lease de outro processo confirmado; `gone` = sessão não está mais suspensa (abort/connect/disconnect/logout no meio). `false` ambíguo deixa de existir no resume (Baileys: `openSocket` negado por acquire com erro de banco ≠ held; propagar o motivo; Telegram: `SessionLeaseHeldError` vira `held` só se o acquire disse held).
+- O adapter só remove a entrada de `suspended` em: sucesso, `gone`, abort/connect/disconnect/logout, ou `forgetSuspension(id)` chamado pelo use case. Nunca antes de reabrir.
+- `RenewSessionLeaseUseCase`: única fonte da nova tentativa. `resumed` → limpa; `held` → limpa + `forgetSuspension`; `gone` → limpa; throw → `markFenced(attempts+1)`; ao atingir `MAX_RESUME_ATTEMPTS` → `forgetSuspension`, drop do razão e gravar `DISCONNECTED` (porta de status já existente; sem tocar `connectRequestedAt`) + log error. `acquire` dentro do resume usa resultado tipado (`acquired|held|error`); `error` conta como tentativa.
+- Resume fora do tick de renovação: o keeper dispara `resumeAll` sem `await` no tick (fila própria, uma retomada por sessão por vez, timeout por retomada = `LEASE_RENEW_INTERVAL_MS`), para não atrasar a renovação das demais.
+**Where**: `RenewSessionLeaseUseCase.ts`, `AcquireSessionLeaseUseCase.ts`, `SessionLeaseLedger.ts`, `SessionLeaseKeeper.ts`, `ISessionSocketControl.ts`, `MessagingEngineRouter.ts`, `sessionLeaseContainer.ts`, Baileys e Telegram adapters (+ testes)
+**Done when**: testes: (1) acquire com erro de banco no resume → mantém e tenta de novo; (2) `held` → limpa os dois lados; (3) throw no reopen → mantém nos dois lados; (4) limite → DISCONNECTED gravado e mapas limpos; (5) abort no meio → `gone`; (6) resume lento não atrasa a renovação das outras sessões (relógio falso)
+**Tests**: unit
+**Gate**: `pnpm vitest run src/modules/sessions src/modules/messaging` + `pnpm tsc --noEmit`
+**Commit**: `fix(sessions): retomada com estado único e fora do tick`
+
+### F11: Abertura dupla da mesma sessão [P]
+
+**What**: pré-existente: `requestPairingCode` (e connect/reconnect) checam só `registry`, não `opening`; com auto-reconnect abrindo, `openSocket` roda duas vezes e o `registry.set` da 2ª sobrescreve a 1ª sem `end()` (socket antigo fica conectado). Correção: `openSocket` com token já em `opening` para a mesma sessão aguarda a abertura em curso (ou a cancela, se a nova for origem `user`) — nunca duas abertas; no `registry.set`, se já houver entrada viva diferente, `end()` na antiga antes. Telegram `openClient` idem.
+**Where**: Baileys e Telegram adapters (+ `.lease.test.ts`)
+**Done when**: teste: pareamento durante auto-reconnect → um socket só; sobrescrita encerra o antigo
+**Tests**: unit
+**Gate**: `pnpm vitest run <arquivos>` + `pnpm tsc --noEmit`
+**Commit**: `fix(messaging): uma abertura de socket por sessão`
 
 ## Diagram-Definition Cross-Check
 
