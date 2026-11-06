@@ -18,6 +18,7 @@
  */
 import { Api } from 'telegram';
 import { getPeerId } from 'telegram/Utils';
+import bigInt from 'big-integer';
 import type { IWatchedChannelSource } from '../../../domain/contracts/IWatchedChannelSource';
 
 export const CATCHUP_BASE_INTERVAL_MS = 60_000;
@@ -36,6 +37,7 @@ export interface CatchUpClient {
 
 export interface CatchUpLogger {
   debug(obj: object, msg: string): void;
+  info(obj: object, msg: string): void;
   warn(obj: object, msg: string): void;
 }
 
@@ -151,7 +153,11 @@ export class TelegramChannelCatchUp {
   private async refreshWatched(now: number): Promise<void> {
     if (now - this.watchedAt < CATCHUP_WATCH_REFRESH_MS) return;
     this.watchedAt = now;
+    const before = this.watched.join(',');
     this.watched = await this.opts.source.listWatchedChannels(this.opts.tenantId, this.opts.sessionId, CATCHUP_MAX_CHANNELS);
+    if (this.watched.join(',') !== before) {
+      this.opts.logger.info({ sessionId: this.opts.sessionId, channels: this.watched }, 'Telegram channel catch-up watching');
+    }
     const keep = new Set(this.watched);
     for (const jid of this.channels.keys()) if (!keep.has(jid)) this.channels.delete(jid);
     this.skipped.clear();
@@ -175,7 +181,9 @@ export class TelegramChannelCatchUp {
       }
       if (isChannelGone(err) || !state) this.skipped.add(jid);
       if (state) state.nextAt = nextPollAt(this.now(), undefined, this.baseMs);
-      this.opts.logger.debug({ err, sessionId: this.opts.sessionId, jid }, 'Telegram channel catch-up failed for channel');
+      // Falha ao iniciar tira o canal da rodada até a releitura: precisa aparecer no log de produção
+      const log = state ? this.opts.logger.debug : this.opts.logger.warn;
+      log.call(this.opts.logger, { err, sessionId: this.opts.sessionId, jid }, 'Telegram channel catch-up failed for channel');
     }
   }
 
@@ -186,12 +194,14 @@ export class TelegramChannelCatchUp {
     if (!(fullChat instanceof Api.ChannelFull)) throw new Error('NOT_A_CHANNEL');
     const now = this.now();
     this.channels.set(jid, { input, pts: fullChat.pts, since: now, nextAt: nextPollAt(now, undefined, this.baseMs) });
+    this.opts.logger.info({ sessionId: this.opts.sessionId, jid, pts: fullChat.pts }, 'Telegram channel catch-up tracking channel');
   }
 
   private async resolveInput(jid: string): Promise<Api.InputChannel> {
     const tryResolve = async (): Promise<Api.InputChannel | null> => {
       try {
-        const peer = await this.opts.client.getInputEntity(jid);
+        // Id numérico vai como bigInt: string a GramJS trata como username e não acha o canal
+        const peer = await this.opts.client.getInputEntity(bigInt(jid));
         return peer instanceof Api.InputPeerChannel
           ? new Api.InputChannel({ channelId: peer.channelId, accessHash: peer.accessHash })
           : null;
@@ -212,6 +222,7 @@ export class TelegramChannelCatchUp {
 
   private async fetchDifference(jid: string, state: ChannelState): Promise<void> {
     let timeout: number | undefined;
+    let emitted = 0;
     for (let page = 0; page < MAX_PAGES; page++) {
       const diff = await this.opts.client.invoke(new Api.updates.GetChannelDifference({
         channel: state.input,
@@ -229,19 +240,20 @@ export class TelegramChannelCatchUp {
         // Lacuna grande: recomeça do pts atual do dialog e entrega só o recente
         const dialog = diff.dialog;
         if (dialog instanceof Api.Dialog && dialog.pts) state.pts = dialog.pts;
-        await this.emit(state, diff.messages, diff.users, diff.chats);
+        emitted += await this.emit(state, diff.messages, diff.users, diff.chats);
         break;
       }
       state.pts = diff.pts;
-      await this.emit(state, diff.newMessages, diff.users, diff.chats);
+      emitted += await this.emit(state, diff.newMessages, diff.users, diff.chats);
       if (diff.final !== false) break;
     }
     state.nextAt = nextPollAt(this.now(), timeout, this.baseMs);
-    this.opts.logger.debug({ sessionId: this.opts.sessionId, jid, pts: state.pts }, 'Telegram channel catch-up polled');
+    if (emitted > 0) this.opts.logger.info({ sessionId: this.opts.sessionId, jid, emitted, pts: state.pts }, 'Telegram channel catch-up recovered messages');
+    else this.opts.logger.debug({ sessionId: this.opts.sessionId, jid, pts: state.pts }, 'Telegram channel catch-up polled');
   }
 
-  private async emit(state: ChannelState, messages: Api.TypeMessage[], users: Api.TypeUser[], chats: Api.TypeChat[]): Promise<void> {
-    if (messages.length === 0) return;
+  private async emit(state: ChannelState, messages: Api.TypeMessage[], users: Api.TypeUser[], chats: Api.TypeChat[]): Promise<number> {
+    if (messages.length === 0) return 0;
     const entities = new Map<string, unknown>();
     for (const x of [...users, ...chats]) {
       try { entities.set(getPeerId(x), x); } catch { /* entidade sem id */ }
@@ -249,10 +261,13 @@ export class TelegramChannelCatchUp {
     const sorted = messages
       .filter((m): m is Api.Message => m instanceof Api.Message && m.date * 1_000 >= state.since)
       .sort((a, b) => a.id - b.id);
+    let count = 0;
     for (const msg of sorted) {
-      if (this.stopped) return;
+      if (this.stopped) return count;
       (msg as unknown as { _finishInit(c: unknown, e: Map<string, unknown>, i: unknown): void })._finishInit(this.opts.client, entities, undefined);
       await this.opts.onMessage(msg);
+      count++;
     }
+    return count;
   }
 }

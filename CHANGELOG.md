@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.66.3 — recuperação de canal do Telegram não resolvia o canal
+
+#### api/
+
+- **`TelegramChannelCatchUp.ts`** — `getInputEntity` recebia o id `-100…` como string, que a GramJS trata como username: o canal nunca resolvia e saía da rodada com log só em `debug`. Agora vai como `bigInt` (igual ao resto do adapter). Logs em `info`: canais acompanhados, início por canal e mensagens recuperadas; falha ao iniciar canal em `warn`.
+- **`TelegramChannelCatchUp.test.ts`** — cobre o id como bigInt.
+
 ### Fixed — api 0.66.2 — canal do Telegram monitorado sem nenhuma captura
 
 Doc: `docs/sessoes-telegram.md` §5.1. Causa raiz: o Telegram não garante empurrar post de canal para conta de usuário ("may stop sending updates (or send fewer updates) for some channels") e a GramJS não recupera lacuna (`catchUp()` é TODO). Canal grande monitorado ficava com 0 mensagens no chat e 0 capturas.
