@@ -4,7 +4,7 @@ import bigInt from 'big-integer';
 import { TelegramChannelCatchUp, isChannelDue, nextPollAt, type CatchUpClient } from './TelegramChannelCatchUp';
 
 const JID = '-1002471713366';
-const logger = { debug: vi.fn(), warn: vi.fn() };
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
 
 function message(id: number, dateSec: number): Api.Message {
   return new Api.Message({ id, date: dateSec, message: `post ${id}`, peerId: new Api.PeerChannel({ channelId: bigInt(2471713366) }) });
@@ -25,7 +25,7 @@ function setup(responses: unknown[], now: { t: number }) {
   const onMessage = vi.fn(async () => undefined);
   const source = { listWatchedChannels: vi.fn(async () => [JID]) };
   const c = new TelegramChannelCatchUp({ sessionId: 's1', tenantId: 't1', client, source, onMessage, logger, now: () => now.t });
-  return { c, invoke, onMessage, source };
+  return { c, invoke, onMessage, source, client };
 }
 
 describe('regras de agenda', () => {
@@ -46,7 +46,7 @@ describe('TelegramChannelCatchUp', () => {
   it('1ª rodada só marca o pts; depois emite post novo e ignora o anterior ao início', async () => {
     const now = { t: 1_000_000_000 };
     const startSec = now.t / 1_000;
-    const { c, invoke, onMessage } = setup([
+    const { c, invoke, onMessage, client } = setup([
       new Api.updates.ChannelDifference({
         pts: 12, final: true, newMessages: [message(5, startSec - 10), message(6, startSec + 30)], otherUpdates: [], chats: [], users: [],
       }),
@@ -54,6 +54,10 @@ describe('TelegramChannelCatchUp', () => {
 
     await c.tick();
     expect(invoke).toHaveBeenCalledTimes(1); // GetFullChannel
+    // id numérico resolvido como bigInt (string vira username na GramJS)
+    const arg = (vi.mocked(client.getInputEntity).mock.calls[0] as unknown[])[0];
+    expect(typeof arg).not.toBe('string');
+    expect(String(arg)).toBe(JID);
     expect(onMessage).not.toHaveBeenCalled();
 
     now.t += 61_000;
