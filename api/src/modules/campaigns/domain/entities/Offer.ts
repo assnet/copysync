@@ -19,6 +19,8 @@ export interface Offer {
   attributionVerified: boolean;
   text: string;
   textEdited: boolean;
+  /** "Gerar novamente" já usado (uma vez por oferta); null = disponível. */
+  textRegeneratedAt: Date | null;
   /** Código do cupom (até 40 caracteres), ou null. */
   coupon: string | null;
   audience: OfferAudience;

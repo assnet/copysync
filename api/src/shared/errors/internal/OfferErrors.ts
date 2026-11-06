@@ -30,6 +30,13 @@ export class OfferAlreadySentError extends AppError {
 }
 
 /** Oferta mudou entre a leitura e a gravação (edição concorrente): nada foi sobrescrito. */
+/** "Gerar novamente" vale uma vez por oferta. */
+export class OfferRegenerateUsedError extends AppError {
+  constructor(offerId: string) {
+    super('OFFER_REGENERATE_USED', `Offer text already regenerated: ${offerId}`, 409);
+  }
+}
+
 export class OfferChangedError extends AppError {
   constructor(offerId: string) {
     super('OFFER_CHANGED', `Offer changed meanwhile: ${offerId}`, 409);

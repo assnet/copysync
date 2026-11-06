@@ -18,6 +18,7 @@ export class PrismaOfferMapper {
       attributionVerified: raw.attributionVerified,
       text: raw.text,
       textEdited: raw.textEdited,
+      textRegeneratedAt: raw.textRegeneratedAt,
       coupon: raw.coupon,
       audience: raw.audience,
       mentionAll: raw.mentionAll,

@@ -700,6 +700,8 @@ model Offer {
   attributionVerified Boolean           @default(true)
   text                String            @db.Text
   textEdited          Boolean           @default(false)
+  /// Quando o "Gerar novamente" foi usado (vale uma vez por oferta). null = ainda disponível.
+  textRegeneratedAt   DateTime?
   coupon              String?
   audience            OfferAudience     @default(STANDARD)
   mentionAll          Boolean           @default(false)

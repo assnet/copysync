@@ -24,6 +24,21 @@ describe('RegenerateOfferTextUseCase', () => {
     expect(out.aiErrorCode).toBeUndefined();
   });
 
+  it('uso único: a primeira vez gasta o uso e a segunda é recusada antes da IA', async () => {
+    const s = setup();
+    const first = await s.uc.execute({ ...input, audience: 'PET' });
+    expect(first.offer.canRegenerate).toBe(false);
+    s.ai.generate.mockClear();
+    await expect(s.uc.execute({ ...input, audience: 'PET' })).rejects.toMatchObject({ code: 'OFFER_REGENERATE_USED', statusCode: 409 });
+    expect(s.ai.generate).not.toHaveBeenCalled();
+  });
+
+  it('oferta nova (ou antiga, sem uso gravado) pode gerar novamente', async () => {
+    const s = setup();
+    expect((await s.uc.execute(input)).offer.canRegenerate).toBe(false);
+    expect(s.offers.items[0]!.textRegeneratedAt).toBeInstanceOf(Date);
+  });
+
   it('STANDARD → modelo fixo, sem IA', async () => {
     const s = setup();
     const out = await s.uc.execute(input);

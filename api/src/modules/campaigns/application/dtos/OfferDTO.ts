@@ -33,6 +33,8 @@ export interface OfferDTO {
   attributionVerified: boolean;
   text: string;
   textEdited: boolean;
+  /** "Gerar novamente" ainda disponível (vale uma vez por oferta). */
+  canRegenerate: boolean;
   coupon: string | null;
   audience: OfferAudience;
   mentionAll: boolean;
@@ -75,6 +77,7 @@ export function toOfferDto(offer: Offer, dispatches?: OfferDispatch[]): OfferDTO
     attributionVerified: offer.attributionVerified,
     text: offer.text,
     textEdited: offer.textEdited,
+    canRegenerate: offer.textRegeneratedAt === null,
     coupon: offer.coupon,
     audience: offer.audience,
     mentionAll: offer.mentionAll,

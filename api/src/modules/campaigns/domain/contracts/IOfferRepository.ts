@@ -44,7 +44,7 @@ export interface DailyQuota {
 
 /** Campos editáveis pelo operador antes do envio. */
 export type OfferPatch = Partial<
-  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'coupon' | 'audience' | 'mentionAll' | 'imageMode' | 'simulateTyping' | 'typingSeconds' | 'scheduledAt'>
+  Pick<Offer, 'title' | 'priceCents' | 'originalPriceCents' | 'imageUrl' | 'text' | 'textEdited' | 'textRegeneratedAt' | 'coupon' | 'audience' | 'mentionAll' | 'imageMode' | 'simulateTyping' | 'typingSeconds' | 'scheduledAt'>
 >;
 
 export type UpdateOfferResult =

@@ -135,6 +135,7 @@ const offerSchema = {
     attributionVerified: { type: 'boolean' },
     text: { type: 'string' },
     textEdited: { type: 'boolean' },
+    canRegenerate: { type: 'boolean' },
     coupon: nullableString,
     audience,
     mentionAll: { type: 'boolean' },

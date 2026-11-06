@@ -6,6 +6,7 @@ import {
   OfferChangedError,
   OfferInvalidInputError,
   OfferNotFoundError,
+  OfferRegenerateUsedError,
 } from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import type { OfferTextComposer } from '../services/OfferTextComposer';
@@ -24,8 +25,9 @@ export interface RegenerateOfferTextOutput {
 }
 
 /**
- * "Gerar novamente" (GEN-04): novo texto para a oferta em rascunho. Não conta no limite de
- * ofertas (o de IA é do gerador de texto). Descarta a edição manual: `textEdited = false`.
+ * "Gerar novamente" (GEN-04): novo texto para a oferta em rascunho, **uma vez por oferta**
+ * (`textRegeneratedAt`). Não conta no limite de ofertas (o de IA é do gerador de texto).
+ * Descarta a edição manual: `textEdited = false`.
  */
 export class RegenerateOfferTextUseCase {
   constructor(private readonly deps: { offers: IOfferRepository; texts: OfferTextComposer }) {}
@@ -39,6 +41,8 @@ export class RegenerateOfferTextUseCase {
     if (!offer) throw new OfferNotFoundError(offerId);
     // Antes da IA: oferta enviada não gasta chamada
     if (!EDITABLE_OFFER_STATUSES.includes(offer.status)) throw new OfferAlreadySentError(offerId);
+    // Antes da IA: o uso único já foi gasto
+    if (offer.textRegeneratedAt) throw new OfferRegenerateUsedError(offerId);
 
     const audience = input.audience ?? offer.audience;
     const readAt = offer.updatedAt;
@@ -52,8 +56,9 @@ export class RegenerateOfferTextUseCase {
       affiliateUrl: offer.affiliateUrl,
     });
 
-    // Condicional ao `updatedAt` lido antes da IA: edição no meio não é sobrescrita
-    const patch = { text: composed.text, textEdited: false, audience };
+    // Condicional ao `updatedAt` lido antes da IA: edição no meio não é sobrescrita, e dois
+    // cliques simultâneos não gastam o uso único duas vezes (o segundo recebe OFFER_CHANGED)
+    const patch = { text: composed.text, textEdited: false, textRegeneratedAt: new Date(), audience };
     const result = await this.deps.offers.update(offerId, tenantId, patch, readAt);
     if (result.outcome === 'not_found') throw new OfferNotFoundError(offerId);
     if (result.outcome === 'not_editable') throw new OfferAlreadySentError(offerId);
