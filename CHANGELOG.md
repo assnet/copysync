@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.82.2 — "Conectar nova sessão" no monitoramento pula a escolha de canal
+
+#### app/
+
+- **`pages/SessionsPage.tsx`** — `?create=1` (monitoramento e rodízio) abre o seletor WhatsApp/Telegram em vez de ir direto ao assistente do WhatsApp; `?create=whatsapp|telegram` segue direto. Fechar o seletor com `returnTo` volta para a tela de origem. Causa raiz: `channelFromParam` mapeava `1` para `whatsapp`, de quando só havia esse canal. Testes em `SessionsPage.test.tsx`; doc em `docs/sessoes-conexao.md`.
+
 ### Fixed — api 0.64.1 — Sessão WhatsApp em "Falha" com o celular conectado
 
 #### api/
