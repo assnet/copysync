@@ -16,8 +16,8 @@ independente aprovada, sem migration. **Ordem de deploy: 1.86.1 (urgente) → 1.
 | 1.86.3 | `hotfix/seguranca-acesso-dados-3` (`d70fd3a`) | `/protect/global` (só assinante válido, 5 campos, amostra estável por hora, teto) e `/reviews` (lista só ADMIN/master); dono do endereço por id; gravações atômicas |
 
 Antes do deploy: conferir `LOGIN_EMAIL_OTP` na Render (se estava desligado, revisar logs `[sign-in] Senha criada para usuário`).
-Extensão do PulsoSocial: `/Users/adrielss/www/pulsosocial_extension` branch `fix/primeiro-acesso-sem-senha` (`e6d1097`, 5.241.7),
-publicar junto ou logo após o 1.86.1. Não rodar `api/scripts/ops/create-index-loguserhardware-userid-updatedat.sql` sem `EXPLAIN`
+**Site** do PulsoSocial 5.241.7 (`pulsosocial_extension` `feature/site`, já com `e6d1097`) sai ANTES do 1.86.1: o login e o primeiro
+acesso são do site (`app/src/screens/Auth/`), não da extensão; a extensão da Web Store não é pré-requisito. Não rodar `api/scripts/ops/create-index-loguserhardware-userid-updatedat.sql` sem `EXPLAIN`
 provando ganho. Decisões do dono: OTP de checkout para `customer-lookup`/`saved-cards`/`checkout/upgrade/check`; rate limit opcional
 no `/protect/global`; garantir que todo e-mail master já tenha conta. Notas em `docs/releases/1.86.{1,2,3}.md`.
 
