@@ -59,6 +59,8 @@ export function OfferResultPanel(props: Props) {
   const [copied, setCopied] = useState(false);
   const isDraft = offer.status === 'DRAFT';
   const busy = saving || regenerating || sending || imageProgress != null;
+  // Uso único por oferta; API antiga sem o campo = disponível
+  const regenerateUsed = offer.canRegenerate === false;
 
   const copy = async () => {
     try {
@@ -166,7 +168,7 @@ export function OfferResultPanel(props: Props) {
                 size="small"
                 label={t.regenerateAudience}
                 value={audience}
-                disabled={busy}
+                disabled={busy || regenerateUsed}
                 onChange={(e) => setAudience(e.target.value as OfferAudience)}
                 sx={{ flex: 1, minWidth: 140, ...(blurAudience && { '& .MuiSelect-select': { filter: 'blur(5px)' } }) }}
               >
@@ -177,13 +179,13 @@ export function OfferResultPanel(props: Props) {
                   </MenuItem>
                 ))}
               </TextField>
-              <Tooltip title={t.regenerateTooltip} arrow>
+              <Tooltip title={regenerateUsed ? t.regenerateUsedTooltip : t.regenerateTooltip} arrow>
                 <span>
                   <Button
                     variant="outlined"
                     startIcon={regenerating ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
                     onClick={() => props.onRegenerate(audience)}
-                    disabled={busy}
+                    disabled={busy || regenerateUsed}
                     sx={{ whiteSpace: 'nowrap', height: 40 }}
                   >
                     {regenerating ? t.regenerating : t.regenerate}

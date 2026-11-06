@@ -96,6 +96,10 @@ export function useOfferGenerator() {
       setOffer(res.offer);
       setAiFallback(res.aiFallback);
     } catch (err) {
+      // Uso já gasto (outra aba, por exemplo): o botão desabilita sem recarregar
+      if ((err as { code?: unknown } | null)?.code === 'OFFER_REGENERATE_USED') {
+        setOffer((prev) => (prev ? { ...prev, canRegenerate: false } : prev));
+      }
       fail(err);
     } finally {
       setRegenerating(false);

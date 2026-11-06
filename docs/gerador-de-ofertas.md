@@ -92,6 +92,9 @@ Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body o
 `FITNESS`, `HOME_KITCHEN`) → IA com prompt por público; dados do produto vão delimitados e o system manda ignorar
 instruções vindas deles. Se a IA omitir o link, ele é anexado. Erro de IA, resposta vazia ou longa demais → modelo fixo e
 `aiFallback: true`. `POST /:id/regenerate` gera outra versão (não conta no limite de ofertas; conta no da IA).
+**Uma vez por oferta**: o uso fica em `offers.textRegeneratedAt` (null = disponível) e o DTO expõe `canRegenerate`;
+a 2ª chamada é recusada com 409 `OFFER_REGENERATE_USED` antes da IA. O painel desabilita botão e público quando
+`canRegenerate === false` (campo ausente = disponível). Depois do uso, só edição manual ou oferta nova.
 
 ## Rotas (`/api/campaigns/offers`, `authHook` + `tenantHook`)
 
@@ -102,7 +105,7 @@ instruções vindas deles. Se a IA omitir o link, ele é anexado. Erro de IA, re
 | GET / PUT | `/config` | configuração (acima) |
 | GET | `/:id` | oferta + `dispatches` |
 | PATCH | `/:id` | título, preços, texto, `imageUploadId`, `coupon`, `audience`, `mentionAll`. Só `DRAFT` |
-| POST | `/:id/regenerate` | `{ audience? }` → `{ offer, aiFallback }`; 409 `OFFER_CHANGED` se a oferta foi editada durante a geração |
+| POST | `/:id/regenerate` | `{ audience? }` → `{ offer, aiFallback }`; 409 `OFFER_CHANGED` se a oferta foi editada durante a geração; 409 `OFFER_REGENERATE_USED` se o uso único já foi gasto |
 | POST | `/:id/send` | 202; um envio por grupo, espaçado pelo intervalo da configuração |
 
 Ordem de checagem do envio: oferta (409 `OFFER_CHANGED` se `mentionAll` mudou durante a checagem) → `PLAN_FEATURE_UNAVAILABLE` (marcar todos sem `mention_all_enabled`) →
@@ -155,6 +158,8 @@ Entitlement `offer_generations_per_day`: LITE 5, PRO 20, MAX ilimitado (decisão
 - Parser de página não validado contra HTML real de ML/Amazon em produção: conferir no smoke.
 
 ## O que não fazer
+
+- Não liberar "Gerar novamente" de novo na mesma oferta (nem zerar `textRegeneratedAt` em edição): é uso único.
 
 - Buscar URL fora da allowlist ou seguir redirect automático.
 - Logar corpo, headers, cookie `ssid`, assinatura ou segredo.

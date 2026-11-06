@@ -319,6 +319,8 @@ export interface OfferItem {
   text: string;
   /** Texto editado à mão: mudar título/preço não o remonta mais. */
   textEdited: boolean;
+  /** "Gerar novamente" ainda disponível (vale uma vez por oferta). Ausente (API antiga) = disponível. */
+  canRegenerate?: boolean;
   status: OfferStatus;
   createdAt: string;
   updatedAt: string;
