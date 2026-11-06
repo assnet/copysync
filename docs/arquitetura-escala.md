@@ -367,10 +367,9 @@ Serviço `copysync_api` em Docker, plano 1c-2g, disco em `/var/data`. O `CMD` da
 migration commitada em `api/prisma/migrations/` é aplicada no boot de cada deploy, sem Pre-Deploy
 Command no painel. Migration falhando = container não sobe = Render mantém a versão anterior.
 Incidente 2026-10-27: API 0.33 no ar com migration `offer_config_multi_session` não aplicada
-porque o `CMD` subia o servidor direto. Postgres **compartilhado
-com o PulsoSocial** (plano Basic-256mb em 2026-10-13): não aguenta auth state de 100 sessões
-e qualquer pico de um produto derruba o outro. Mínimo 1c-2g (US$ 40); separar em instâncias
-distintas antes de 300 sessões.
+porque o `CMD` subia o servidor direto. Postgres: **dedicado ao CopySync desde ~2026-10-30**
+(informado pelo owner em 2026-11-06); até então era compartilhado com o PulsoSocial (Basic-256mb),
+que não aguentava auth state de 100 sessões e deixava um produto derrubar o outro.
 
 Escada do Postgres dedicado do CopySync (decisão 2026-10-26; região **Virginia**, mesma do `copysync_api` e do banco `waioprime`;
 a central fica em Oregon e não deve ser seguida):
@@ -384,7 +383,7 @@ a central fica em Oregon e não deve ser seguida):
 A medição da Fase 0 (RAM/CPU por sessão) só vale no 0.5c-1g ou acima; no 256 MB o gargalo medido é o Postgres, não o Node.
 Criação (decisão 2026-10-26: só sessões de teste em produção, então **sem dump**): banco vazio + `prisma migrate deploy`, trocar
 `DATABASE_URL`, subir, parear as sessões de teste de novo. Criado sob demanda, antes da Fase 1 (R2) ou do primeiro teste de carga.
-Apagar as tabelas do CopySync no banco compartilhado 7 dias depois. Storage 15 GB basta porque mídia vai para R2 (Fase 1).
+Apagar as tabelas do CopySync no banco compartilhado 7 dias depois (pendente; só com autorização do owner). Storage 15 GB basta porque mídia vai para R2 (Fase 1).
 
 Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa de `WORKER_MAX_SESSIONS` igual à meta e de
 `NODE_OPTIONS=--max-old-space-size=<70% da RAM em MB>`, senão o heap padrão do Node

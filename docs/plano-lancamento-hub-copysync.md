@@ -58,12 +58,12 @@ Ordem de deploy: 1.86.1 → 1.86.2 → 1.86.3 → 1.87.0 → 1.88.0.
 
 ## Marcos
 
-### M0 — Fundação (semanas 1–3) — CopySync ✅; central 🟡 (S1/S2 no H1, S3 só runbook, S4 ❌; sem deploy); H0 adiado
+### M0 — Fundação (semanas 1–3) — CopySync ✅; central 🟡 (S1/S2 no H1, S3 só runbook, S4 ❌; sem deploy); H0 ✅
 
 | Trilha | Entrega |
 | --- | --- |
 | H | S1, S2, S3 (rede de segurança); estado na tabela da rede acima |
-| H0 | Postgres do CopySync separado do da central na Render (hoje compartilhado, Basic-256mb). **Gatilho atualizado em 2026-11-02**: E1 já está no código, então o banco dedicado sobe junto com o **início de H1 na central** (primeira migration da central rodando no mesmo Postgres do CopySync). **Em 2026-11-05 o gatilho está vencendo**: as migrations do H1 (`20261105000000`–`…0010`) estão prontas e só falta o deploy do 1.87.0. **Adiado por decisão do owner (2026-10-26)**: em produção do CopySync só há sessões de teste; os testes seguem no compartilhado e o banco dedicado (Virginia, 0.1c-256mb, `connection_limit=5`) é criado quando uma fase precisar dele. Gatilho: antes de E1 (R2) ou antes de qualquer teste de carga, o que vier primeiro; avisar o owner com antecedência. **Sem dump**: banco novo nasce vazio com `prisma migrate deploy`, sessões de teste são pareadas de novo; isso dispensa o runbook de cutover e o flush de E0 como pré-requisito (o flush continua em E0 por mérito próprio). Tabelas do CopySync no banco compartilhado são apagadas 7 dias depois |
+| H0 ✅ | Postgres do CopySync separado do da central na Render: **feito** (informado pelo owner em 2026-11-06; banco próprio há cerca de uma semana, o CopySync não divide mais o Postgres do PulsoSocial). Nasceu vazio com `prisma migrate deploy` e as sessões de teste foram pareadas de novo. Pendente: conferir `connection_limit=5` na `DATABASE_URL` e apagar as tabelas do CopySync que ficaram no banco compartilhado (regra: 7 dias depois da troca; só com autorização do owner) |
 | E0 | ✅ **Flush síncrono do auth state no shutdown** (`server.ts:347` chama `flushAllAuthStates()`; `BaileysAuthStatePersistence.ts:326-339`); `connection_limit` por processo; adapters já unificados Baileys. Medição de RAM/CPU com 50/100/200 sessões fica para o gate de M2 (exige o banco dedicado em 0.5c-1g ou acima) |
 | B | **Início da service-desk P1.0 + USR-01** (4 + 1 requisitos; design §10 tem 6+ use cases, hook novo, endpoint de reemissão e UI de primeiro acesso: 4–6 semanas, atravessa M0 e M1). Em M0: migration do design §4 (`billingCustomerId`, `suspendedAt`, `passwordHash?`, `passwordSetAt`, `UserInvite`; sem `planSnapshot`), `resolveMembership` em `tenantHook` e `sseAuthHook`, `TenantSuspendedError`, login com `passwordHash` nulo respondendo credenciais inválidas |
 
@@ -131,7 +131,7 @@ Não é função do hub. Três responsabilidades, três lugares:
 
 ```
 hotfixes 1.86.1 → 1.86.2 → 1.86.3 ──► H1 1.87.0 ──► (24 h estável) 1.88.0 DROP DEFAULT ──► integrar H2/H3/H4 sobre o H1
-S1 (push + CI verde) e S3 (staging) ──► deploy do H1;  H0 (banco dedicado) antes do 1º deploy de migration da central
+S1 (push + CI verde) e S3 (staging) ──► deploy do H1;  H0 ✅ (banco dedicado do CopySync em uso)
 H2 (dispatcher + M2M + subscriptions) ──► H3 (venda pela Cakto) ──► primeira venda
 H4 (send + brand) ──► B HubEmailSender;  H2 subscriptions ──► B Reconcile
 E4 (escala pronta) ──► checkout próprio por aplicação (estudo + fase própria)
