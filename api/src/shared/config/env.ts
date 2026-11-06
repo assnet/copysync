@@ -239,6 +239,20 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().optional(),
   ),
+  // E-mail transacional pela central (EMAIL_SENDER=hub): POST {HUB_API_URL}/integrations/email/send, assinatura M2M.
+  // Segredo só aqui (env da Render); nunca logar. Ver docs/arquitetura-central-billing.md §E-mail.
+  HUB_API_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+  HUB_APPLICATION_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  HUB_M2M_SECRET: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
   PANEL_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional(),
@@ -372,6 +386,7 @@ const envWithDerivedSchema = envSchema.superRefine((e, ctx) => {
     .split(',')
     .map((s: string) => s.trim())
     .filter(Boolean),
+  HUB_EMAIL_CONFIGURED: !!(e.HUB_API_URL && e.HUB_APPLICATION_KEY && e.HUB_M2M_SECRET),
   HUB_EVENTS_CONFIGURED: !!(e.HUB_EVENTS_URL && e.HUB_EVENTS_APPLICATION_KEY && e.HUB_EVENTS_SECRET),
   ...linkRotationSecrets(e),
 }));
