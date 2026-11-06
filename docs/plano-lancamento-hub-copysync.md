@@ -85,7 +85,7 @@ Gate: em staging, compra sandbox na central → tenant provisionado no CopySync 
 
 | Trilha | Entrega |
 | --- | --- |
-| H3 🟡 local | **Feito** (`hub/h3a-base`): enum `COPYSYNC_LITE/PRO/MAX` nas chaves de permissão + `seed-application-copysync.ts` com slug único por aplicação. **Falta**: rota `/webhook/app/copysync/cakto`, match de plano pela aplicação da rota, `Application.checkoutUrl`, produtos na Cakto (fora do código). Plano: **Venda pela Cakto** (decisão do owner 2026-11-04; o checkout próprio por aplicação fica para depois da escala, ver seção "Checkout por aplicação"): cadastrar `Application copysync` e planos LITE/PRO/MAX com `applicationId`; produtos do CopySync na Cakto com webhook numa URL própria da aplicação (`/webhook/app/copysync/cakto`, só essa parte do H8 é antecipada; o PulsoSocial segue na rota legada, sem mudança); match de plano filtrado pela aplicação da rota. Sem front de checkout, sem `ALLOWED_ORIGINS` |
+| H3 🟡 local | **Ofertas na Cakto criadas** (2026-11-06, 6 ofertas mensal/anual; ver "Ofertas do CopySync na Cakto"). **Feito** (`hub/h3a-base`): enum `COPYSYNC_LITE/PRO/MAX` nas chaves de permissão + `seed-application-copysync.ts` com slug único por aplicação. **Falta**: rota `/webhook/app/copysync/cakto`, match de plano pela aplicação da rota, `Application.checkoutUrl`, produtos na Cakto (fora do código). Plano: **Venda pela Cakto** (decisão do owner 2026-11-04; o checkout próprio por aplicação fica para depois da escala, ver seção "Checkout por aplicação"): cadastrar `Application copysync` e planos LITE/PRO/MAX com `applicationId`; produtos do CopySync na Cakto com webhook numa URL própria da aplicação (`/webhook/app/copysync/cakto`, só essa parte do H8 é antecipada; o PulsoSocial segue na rota legada, sem mudança); match de plano filtrado pela aplicação da rota. Sem front de checkout, sem `ALLOWED_ORIGINS` |
 | H4 🟡 local | **Feito** (branches irmãos): `EmailSenderConfig.applicationId` único (`h4-t16`); `smtp-transport.ts` único (`h4-t17`), usado por e-mail marketing e fila de campanha, **não** pelo `modules/email/service.ts`; templates base dos tipos do hub + overrides `copysync` (`SET_PASSWORD`, `TEAM_INVITE`, `SESSION_DISCONNECTED`) e loader com `applicationKey` (`h4-overrides`), que nenhum caminho de envio chama; `buildIntegrationEmailVars` sem uso (`h4-t26`). **Falta**: `Application.brand`, `POST /integrations/email/send`, `MULTI_APP_EMAIL_BRAND`, ligar transporter/templates no envio. Plano: E-mail por aplicação com **SMTP e domínio próprios** (H10: `EmailSenderConfig` de aplicação, transporter por aplicação; PulsoSocial segue no transporter atual) + `POST /integrations/email/send` (`SET_PASSWORD`, `TEAM_INVITE`) |
 | Infra | **Resend** (decidido 2026-11-03, mesma conta do PulsoSocial): verificar o domínio do CopySync, publicar SPF/DKIM do Resend e DMARC no DNS, criar API key só de envio restrita a esse domínio; pré-requisito de H4 |
 | B ❌ | `HubEmailSender` (M2M) como terceiro adapter de `IEmailSender`, `EMAIL_SENDER=hub`; `SET_PASSWORD` com link do `UserInvite`; painel "Assinatura" com link para a página de venda da Cakto (`Application.checkoutUrl`). Hoje o painel usa `/planos/copysync-{plano}-{periodo}` da central (ver Estado) |
@@ -126,6 +126,24 @@ Não é função do hub. Três responsabilidades, três lugares:
 | Infra (Render / Dokploy) | subir e descer réplicas `worker` manualmente ao alerta de 80%. Autoescala pela API da infra: diferida, fora deste plano (decisão 2026-11-04) |
 | Super-admin do CopySync | workers vivos, lease por sessão, sessões por worker, RAM, filas (doc de escala §3) |
 | Admin do hub | leitura: tenants e assinaturas por aplicação, receita. Opcional: card "saúde" lendo `GET /integrations/health` do CopySync |
+
+## Ofertas do CopySync na Cakto
+
+| Plano | Período | Oferta na Cakto | URL de pagamento |
+| --- | --- | --- | --- |
+| LITE | mensal | Afiliados LITE Mensal | https://pay.cakto.com.br/8e4gepk_1291207 |
+| LITE | anual | Afiliados LITE Anual | https://pay.cakto.com.br/a92kn9k_1291217 |
+| PRO | mensal | Afiliados PRO Mensal | https://pay.cakto.com.br/fronsgu_1291227 |
+| PRO | anual | Afiliados PRO Anual | https://pay.cakto.com.br/f34qfgh_1291232 |
+| MAX | mensal | Afiliados MAX Mensal | https://pay.cakto.com.br/kzoagvc_1291239 |
+| MAX | anual | Afiliados MAX Anual | https://pay.cakto.com.br/97nqcb8_1291245 |
+
+Criadas pelo owner em 2026-11-06. **Não divulgar antes do H3 no ar**: sem a rota `/webhook/app/copysync/cakto`, a Cakto avisaria o webhook legado do PulsoSocial, e a venda viraria plano do PulsoSocial. Pendências:
+- seed H3a com os 3 anuais (hoje só `copysync-{lite|pro|max}-mensal`);
+- confirmar qual parte do código da URL (antes ou depois do `_`) chega no webhook como identificador, antes de gravar o `externalProductId`;
+- webhook das 6 ofertas apontando para a rota da aplicação;
+- preço anual;
+- slugs do painel (`starter|profissional|business`) × `lite|pro|max`.
 
 ## O que bloqueia o quê
 

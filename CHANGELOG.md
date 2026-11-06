@@ -9,6 +9,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.66.2 — canal do Telegram monitorado sem nenhuma captura
+
+Doc: `docs/sessoes-telegram.md` §5.1. Causa raiz: o Telegram não garante empurrar post de canal para conta de usuário ("may stop sending updates (or send fewer updates) for some channels") e a GramJS não recupera lacuna (`catchUp()` é TODO). Canal grande monitorado ficava com 0 mensagens no chat e 0 capturas.
+
+#### api/
+
+- **`TelegramChannelCatchUp.ts`** (novo) — consulta `updates.getChannelDifference` só dos canais monitorados da sessão (até 10), em série, a cada ≥60 s ou o `timeout` do Telegram; canal com push nos últimos 90 s é pulado; `FLOOD_WAIT` pausa a sessão; pts inicial por `GetFullChannel`, sem backfill.
+- **`TelegramMessagingEngineAdapter.ts`** — push e recuperação passam por `handleIncoming`, com dedupe por id (`markSeen`, últimos 2.000); recuperação sobe no `finishLogin` e para no `teardown`.
+- **`TelegramSessionRegistry.ts`** — `seenIds`, `catchUp`, `markSeen`.
+- **`IWatchedChannelSource.ts`** (novo) + **`PrismaWatchedChannelSource.ts`** (novo) — grupos monitorados `-100…` de config ligada, filtrados por `tenantId`.
+- **`MessagingEngineFactory.ts`** + **`localEngineContainer.ts`** — injetam a fonte de canais.
+- **`env.ts`** — `TELEGRAM_CHANNEL_CATCHUP_ENABLED` (padrão `true`; `false` desliga sem deploy).
+
 ### Fixed — api 0.66.1 — sessões ficavam desconectadas após deploy
 
 #### api/

@@ -83,7 +83,7 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 ## Pendências (fora deste entregável)
 
 1. `planSlug` no `GET /me` → destacar plano atual (card e chip no menu). Spec T1.
-2. `VITE_BILLING_CHECKOUT_URL` + `buildCheckoutUrl(slug, period, search)` → botão sai do `#`. Spec T3/T10.
+2. `VITE_BILLING_CHECKOUT_URL` + `buildCheckoutUrl(slug, period, search)` → botão sai do `#`. Spec T3/T10. As 6 ofertas da Cakto já existem (2026-11-06, tabela em [`plano-lancamento-hub-copysync.md`](plano-lancamento-hub-copysync.md#ofertas-do-copysync-na-cakto)); recomendação: botão direto para a URL da oferta por plano e período, sem `/planos/...` na central. Só ligar depois do H3 (webhook da aplicação).
 3. `VITE_SUPPORT_WHATSAPP_NUMBER` → CTA de suporte quando checkout ausente. Spec T3.
 4. Confirmar preço anual por plano (hoje ≈ −20% arredondado) e se o "de" riscado no anual mostra o mensal (atual) ou o preço cheio.
 5. ~~Teste de consistência dos `limits` do catálogo com o seed de `PlanEntitlementPreset`.~~ Feito (api 0.42.0): `tenants/domain/planPresets.ts` + `planPresets.test.ts` travam os números da vitrine; o seed lê de lá. Gestor de Links por canal: ver "Limites por canal" acima e `rodizio-de-links.md`.

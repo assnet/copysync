@@ -30,9 +30,14 @@ export interface TelegramSessionEntry {
   phone: string | null;
   /** Ids de mensagens que esta engine enviou — o eco (`out`) não vira recebimento duplicado. */
   sentIds: Set<string>;
+  /** Ids recebidos (push ou recuperação de canal): a mesma mensagem não é emitida duas vezes. */
+  seenIds?: Set<string>;
+  /** Recuperação de canais monitorados (`TelegramChannelCatchUp`); parada no teardown. */
+  catchUp?: { stop(): void; notePush(chatId: string): void } | null;
 }
 
 const SENT_IDS_MAX = 500;
+const SEEN_IDS_MAX = 2_000;
 
 export class TelegramSessionRegistry {
   private readonly entries = new Map<string, TelegramSessionEntry>();
@@ -64,6 +69,18 @@ export class TelegramSessionRegistry {
       if (first !== undefined) entry.sentIds.delete(first);
     }
     entry.sentIds.add(id);
+  }
+
+  /** Primeira vez que o id chega a esta entrada? Marca e devolve true; repetido devolve false. */
+  markSeen(entry: TelegramSessionEntry, id: string): boolean {
+    const seen = entry.seenIds ??= new Set();
+    if (seen.has(id)) return false;
+    if (seen.size >= SEEN_IDS_MAX) {
+      const first = seen.values().next().value;
+      if (first !== undefined) seen.delete(first);
+    }
+    seen.add(id);
+    return true;
   }
 
   all(): [string, TelegramSessionEntry][] {
