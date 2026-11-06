@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.66.0 + app 0.84.0 — "Gerar novamente" vale uma vez por oferta
+
+Doc: `docs/gerador-de-ofertas.md` (seção "Texto"). **Migration**: `20261106140000_add_offer_text_regenerated_at` (coluna nula, sem backfill: ofertas existentes ficam com o uso disponível).
+
+#### api/
+
+- **`RegenerateOfferTextUseCase.ts`** — recusa a 2ª chamada com 409 `OFFER_REGENERATE_USED` antes da IA e grava `textRegeneratedAt` junto com o texto, condicional ao `updatedAt` lido (cliques simultâneos não gastam duas vezes). Antes o recurso era ilimitado. Testes novos.
+- **`schema.prisma`** + **`Offer.ts`** + **`PrismaOfferMapper.ts`** + **`IOfferRepository.ts`** — campo `textRegeneratedAt`.
+- **`OfferDTO.ts`** + **`offer.schema.ts`** — `canRegenerate` na resposta. **`OfferErrors.ts`** — `OfferRegenerateUsedError`.
+
+#### app/
+
+- **`OfferResultPanel.tsx`** — botão e seletor de público desabilitados quando `canRegenerate === false`, com tooltip explicando; teste novo `OfferResultPanel.test.tsx`.
+- **`useOfferGenerator.ts`** — 409 `OFFER_REGENERATE_USED` desabilita o botão sem recarregar. **`strings.ts`** — tooltip e mensagem de erro.
+
 ### Changed — app 0.83.0 + api 0.65.0 — "Rodízio de links" passa a se chamar "Gestor de Links"
 
 Só texto exibido. Rotas, chaves de limite, códigos de erro, banco, flag e nomes de código não mudam (ver `docs/rodizio-de-links.md`, "Nome exibido × nomes técnicos").
