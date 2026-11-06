@@ -18,7 +18,7 @@ describe('signHubRequest', () => {
     expect(result['X-Application-Key']).toBe(applicationKey);
     expect(result['X-Timestamp']).toBeTruthy();
     expect(result['X-Nonce']).toMatch(/^[0-9a-f-]{36}$/);
-    expect(result['X-Signature']).toMatch(/^[0-9a-f]{64}$/);
+    expect(result['X-Signature']).toMatch(/^sha256=[0-9a-f]{64}$/);
 
     const bodyHash = createHash('sha256').update('{"type":"installed"}').digest('hex');
     const canonical = [
@@ -29,7 +29,7 @@ describe('signHubRequest', () => {
       result['X-Nonce'],
       bodyHash,
     ].join('\n');
-    const expected = createHmac('sha256', secret).update(canonical).digest('hex');
+    const expected = 'sha256=' + createHmac('sha256', secret).update(canonical).digest('hex');
     expect(result['X-Signature']).toBe(expected);
   });
 
@@ -50,7 +50,7 @@ describe('signHubRequest', () => {
       result['X-Nonce'],
       bodyHash,
     ].join('\n');
-    const expected = createHmac('sha256', secret).update(canonical).digest('hex');
+    const expected = 'sha256=' + createHmac('sha256', secret).update(canonical).digest('hex');
     expect(result['X-Signature']).toBe(expected);
   });
 
@@ -72,7 +72,7 @@ describe('signHubRequest', () => {
       result['X-Nonce'],
       bodyHash,
     ].join('\n');
-    const expected = createHmac('sha256', secret).update(canonical).digest('hex');
+    const expected = 'sha256=' + createHmac('sha256', secret).update(canonical).digest('hex');
     expect(result['X-Signature']).toBe(expected);
   });
 
@@ -94,8 +94,21 @@ describe('signHubRequest', () => {
       result['X-Nonce'],
       bodyHash,
     ].join('\n');
-    const expected = createHmac('sha256', secret).update(canonical).digest('hex');
+    const expected = 'sha256=' + createHmac('sha256', secret).update(canonical).digest('hex');
     expect(result['X-Signature']).toBe(expected);
+  });
+
+  it('X-Timestamp em segundos (canônica da central), não ISO', () => {
+    const before = Math.floor(Date.now() / 1000);
+    const result = signHubRequest({ method: 'POST', path: '/events', body: '{}', applicationKey, secret });
+    expect(result['X-Timestamp']).toMatch(/^\d{10}$/);
+    expect(Number(result['X-Timestamp'])).toBeGreaterThanOrEqual(before);
+  });
+
+  it('ordena a query na canônica', () => {
+    const a = signHubRequest({ method: 'GET', path: '/events', query: 'limit=10&after=abc', applicationKey, secret });
+    const canonical = ['GET', '/events', 'after=abc&limit=10', a['X-Timestamp'], a['X-Nonce'], createHash('sha256').update('').digest('hex')].join('\n');
+    expect(a['X-Signature']).toBe('sha256=' + createHmac('sha256', secret).update(canonical).digest('hex'));
   });
 
   it('generates unique nonce per call', () => {
