@@ -42,7 +42,7 @@ Hooks `[authHook, tenantAnyStatusHook]`; tenant do header `X-Tenant-Id`. `200 { 
 barra de uso com `usageTone` (≥80% `warning`, 100% `error`); aba de canal em `usePersistedState` (escopo `tab`);
 flag `subscription.tenantName`. CTA só para ADMIN (OPERATOR vê "fale com o administrador"): `buildCheckoutUrl`
 (`features/plans/checkout.ts`, `VITE_BILLING_CHECKOUT_URL` + `/planos/copysync-{plano}-{periodo}`), nova aba;
-env ausente → `/affiliates/plans`.
+env ausente → `/affiliates/plans`. Ofertas da Cakto criadas em 2026-11-06 (ver [`plano-lancamento-hub-copysync.md`](plano-lancamento-hub-copysync.md#ofertas-do-copysync-na-cakto)); o link do CTA muda para elas quando o H3 estiver no ar.
 
 ## O que não fazer
 
