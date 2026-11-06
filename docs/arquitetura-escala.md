@@ -97,6 +97,10 @@ renova a cada 20 s, fence 55 s, timeout 5 s, sem env), `PrismaSessionLeaseReposi
 - Shutdown: keeper → jobs → drain de mídia → `closeAllSockets()` → `flushAllAuthStates()` →
   `releaseAllOwned` (solta lease e marca `DISCONNECTED` as ativas, mantém `connectRequestedAt`) →
   `app.close()`. E4 manteve mídia antes dos sockets, com teto que reserva o fim ao flush (D4).
+- **Religar após deploy depende de `connectRequestedAt`, não do status.** O shutdown deixa `DISCONNECTED`; quem
+  religa precisa aceitar `DISCONNECTED` com pedido vivo: a adoção (E4) já aceita, e o bootstrap sem adoção
+  (`findActiveSessionsForBootstrap`) passou a aceitar na api 0.66.1. Sem isso, todo deploy desconectava todas as
+  sessões (incidente 2026-11-06). Não filtrar religação só por status ativo; não limpar `connectRequestedAt` no shutdown.
 - Fechado depois: readoção pelo ticker da E4 (§3.2, com a flag); `FailOrphanPendingMediaUseCase.runBoot`
   poupa `PENDING` de sessão com lease vivo de outro processo (E3); `nextAdoptAt`/`adoptFailures` usados
   pela E4; `shard` só como filtro (ninguém grava).
