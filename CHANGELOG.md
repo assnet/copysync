@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.66.1 — sessões ficavam desconectadas após deploy
+
+#### api/
+
+- **`PrismaSessionRepository.ts`** — `findActiveSessionsForBootstrap` inclui `DISCONNECTED` com `connectRequestedAt` vivo. Causa raiz: o shutdown gracioso (`releaseAllOwned`, `PrismaSessionLeaseRepository.ts`) grava `DISCONNECTED` mantendo o pedido de conexão, mas o bootstrap sem adoção (`role: all`) só buscava status ativos; todo deploy com shutdown completo deixava todas as sessões desconectadas até reconexão manual (incidente 2026-11-06). Desconectar/sair/excluir/suspender limpam o pedido e não religam; `FAILED`/`LOGGED_OUT` seguem fora. Teste de integração em `PrismaSessionRepository.int.test.ts`.
+- **`ISessionRepository.ts`** — contrato atualizado.
+
 ### Added — api 0.66.0 + app 0.84.0 — "Gerar novamente" vale uma vez por oferta
 
 Doc: `docs/gerador-de-ofertas.md` (seção "Texto"). **Migration**: `20261106140000_add_offer_text_regenerated_at` (coluna nula, sem backfill: ofertas existentes ficam com o uso disponível).
