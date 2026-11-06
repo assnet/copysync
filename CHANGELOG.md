@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.64.1 — Sessão WhatsApp em "Falha" com o celular conectado
+
+#### api/
+
+- **`BaileysErrorTranslator.ts`** — 500 (`badSession`) deixa de apagar credenciais e passa a reconectar. Causa raiz: o Baileys usa 500 como padrão para todo `stream:error` sem código ou com motivo desconhecido (`getErrorCodeFromStreamError`), falha passageira do servidor; o tradutor tratava como revogação, apagava as chaves (o aparelho seguia vinculado no celular), o socket reabria em QR, o QR expirava e a sessão caía em `FAILED`. Só 401/403/411 limpam credenciais. Teste em `BaileysErrorTranslator.test.ts`.
+- **`BaileysMessagingEngineAdapter.ts`** — reconexões esgotadas sem login concluído (QR/código não lido) estacionam em `LOGGED_OUT` ("Desvinculado") em vez de `FAILED`; `FAILED` fica para sessão vinculada que não volta.
+
 ### Fixed — app 0.77.0 — Assinatura: verificação visual (T18)
 
 #### app/
