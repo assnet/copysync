@@ -17,7 +17,7 @@ const USAGE: SubscriptionUsage = {
 
 function tenant(over: Partial<TenantProps> = {}): Tenant {
   return new Tenant({
-    id: 't1', name: 'Loja', slug: 'loja', status: 'ACTIVE', billingCustomerId: null, planSlug: 'profissional',
+    id: 't1', name: 'Loja', slug: 'loja', status: 'ACTIVE', billingCustomerId: null, planSlug: 'COPYSYNC_PRO',
     lastBillingEventSeq: null, suspendedAt: null, subscriptionExpiresAt: null, createdAt: new Date(0), updatedAt: new Date(0), ...over,
   });
 }

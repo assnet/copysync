@@ -3,6 +3,23 @@ import { ENTITLEMENT_KEYS } from './entitlementKeys';
 export const PLAN_SLUGS = ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'] as const;
 export type PlanSlug = (typeof PLAN_SLUGS)[number];
 
+const TIER_SLUG: Record<string, PlanSlug> = { lite: 'COPYSYNC_LITE', pro: 'COPYSYNC_PRO', max: 'COPYSYNC_MAX' };
+const BILLING_OFFER_SLUG = /^copysync-(lite|pro|max)-(mensal|anual)$/;
+
+/**
+ * `planSlug` vindo da central → slug do tenant. A central envia o slug da oferta
+ * (`copysync-{lite|pro|max}-{mensal|anual}`); o período não muda limites, então mensal e anual
+ * resolvem o mesmo preset. Aceita também o slug interno (`COPYSYNC_*`) por compatibilidade.
+ * Desconhecido = `null`.
+ */
+export function resolvePlanSlug(raw: string | null | undefined): PlanSlug | null {
+  if (!raw) return null;
+  const value = raw.trim();
+  if ((PLAN_SLUGS as readonly string[]).includes(value)) return value as PlanSlug;
+  const match = BILLING_OFFER_SLUG.exec(value.toLowerCase());
+  return match ? TIER_SLUG[match[1]] : null;
+}
+
 /**
  * Entitlements por plano (`PlanEntitlementPreset`, seed). Espelha a tabela de `docs/produto-roadmap.md`
  * e os `limits` da vitrine (`app/src/features/plans/catalog.ts`); o teste ao lado trava os dois.

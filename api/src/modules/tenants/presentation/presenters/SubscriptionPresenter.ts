@@ -2,10 +2,10 @@ import { PLAN_SLUGS, type PlanSlug } from '../../domain/planPresets';
 import type { GetTenantSubscriptionOutput } from '../../application/dtos/TenantSubscriptionDto';
 
 /** Slug do tenant (`PLAN_SLUGS`) → slug da vitrine do painel (`app/src/features/plans/catalog.ts`). */
-const CATALOG_SLUG: Record<PlanSlug, 'starter' | 'profissional' | 'business'> = {
-  COPYSYNC_LITE: 'starter',
-  COPYSYNC_PRO: 'profissional',
-  COPYSYNC_MAX: 'business',
+const CATALOG_SLUG: Record<PlanSlug, 'lite' | 'pro' | 'max'> = {
+  COPYSYNC_LITE: 'lite',
+  COPYSYNC_PRO: 'pro',
+  COPYSYNC_MAX: 'max',
 };
 
 const isPlanSlug = (slug: string | null): slug is PlanSlug =>

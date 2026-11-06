@@ -73,7 +73,7 @@ describe('GET /subscription', () => {
       success: true,
       data: {
         tenantName: 'Loja da Ana',
-        planSlug: 'profissional',
+        planSlug: 'pro',
         status: 'ACTIVE',
         suspendedAt: null,
         expiresAt: '2026-12-01T03:00:00.000Z',
@@ -89,7 +89,7 @@ describe('GET /subscription', () => {
     );
     const res = await get(member);
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toMatchObject({ status, suspendedAt: '2026-11-01T12:00:00.000Z', expiresAt: null, planSlug: 'starter' });
+    expect(res.json().data).toMatchObject({ status, suspendedAt: '2026-11-01T12:00:00.000Z', expiresAt: null, planSlug: 'lite' });
   });
 
   it.each([null, 'PLANO_ANTIGO'])('slug %s fora de PLAN_SLUGS vira null', async (planSlug) => {

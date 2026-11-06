@@ -127,6 +127,11 @@ describe('ApplyBillingEventUseCase', () => {
     expect(provisioner.execute.mock.calls[1]![0]).toMatchObject({ name: 'bia', slug: expect.stringMatching(/^bia-/) });
   });
 
+  it('planSlug da oferta da central (copysync-max-anual) provisiona com o tier interno', async () => {
+    await run(ev('subscription.activated', { payload: { email: 'bia@x.com', planSlug: 'copysync-max-anual' } }));
+    expect(provisioner.execute.mock.calls[0]![0]).toMatchObject({ planSlug: 'COPYSYNC_MAX' });
+  });
+
   it('slug ocupado nas 3 tentativas propaga o erro (hub reenvia)', async () => {
     provisioner.execute.mockRejectedValue(new SlugTakenError());
     await expect(run(ev('subscription.activated'))).rejects.toBeInstanceOf(SlugTakenError);

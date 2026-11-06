@@ -1,13 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/database/prisma.client';
-import { env } from '../../../shared/config/env';
 import { logger } from '../../../shared/logger/logger';
 import { internalEventBus } from '../../../shared/events/InternalEventBus';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
-import { PLAN_SLUGS, type PlanSlug } from '../../tenants/domain/planPresets';
+import { resolvePlanSlug, type PlanSlug } from '../../tenants/domain/planPresets';
 import type { ProvisionTenantInput, ProvisionTenantOutput } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { ProvisionTenantUseCase } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
-import { createEmailSender } from '../infrastructure/email/EmailSenderFactory';
+import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFactory';
 import { applyPlanSideEffects } from './applyPlanSideEffects';
 import { entitlementJsonValue } from './entitlementJsonValue';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
@@ -143,7 +142,8 @@ export class ApplyBillingEventUseCase {
   private resolvePlanSlug(input: ApplyBillingEventInput): PlanSlug | null {
     const raw = input.payload.planSlug;
     if (raw == null || raw === '') return null;
-    if ((PLAN_SLUGS as readonly string[]).includes(raw)) return raw as PlanSlug;
+    const slug = resolvePlanSlug(raw);
+    if (slug) return slug;
     log.warn({ eventId: input.eventId, planSlug: raw }, 'Billing event with unknown planSlug; plan not applied');
     return null;
   }
@@ -161,7 +161,7 @@ export class ApplyBillingEventUseCase {
     if (!planSlug) return 'invalid_plan_slug';
 
     const provisioner = this.provisioner ?? new ProvisionTenantUseCase(
-      createEmailSender({ mode: env.EMAIL_SENDER, smtpUrl: env.EMAIL_SMTP_URL, from: env.EMAIL_FROM }),
+      createEmailSenderFromEnv(),
     );
     const name = tenantNameFrom(input.payload.name, email);
 
