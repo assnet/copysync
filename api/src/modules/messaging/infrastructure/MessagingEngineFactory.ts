@@ -4,6 +4,7 @@ import type { ISessionAuthStateRepository } from '../../sessions/domain/contract
 import type { IChatContactRepository } from '../../chat/domain/contracts/IChatContactRepository';
 import type { IChatConversationRepository } from '../../chat/domain/contracts/IChatConversationRepository';
 import type { IngestHistorySyncUseCase } from '../../chat/application/use-cases/IngestHistorySyncUseCase';
+import type { IWatchedChannelSource } from '../domain/contracts/IWatchedChannelSource';
 import type { ISessionLeaseGate } from '../../sessions/domain/contracts/ISessionLeaseRepository';
 import { BaileysMessagingEngineAdapter } from './engines/baileys/BaileysMessagingEngineAdapter';
 import { TelegramMessagingEngineAdapter } from './engines/telegram/TelegramMessagingEngineAdapter';
@@ -23,6 +24,8 @@ export interface MessagingEngineDeps {
   historySyncUseCase: IngestHistorySyncUseCase;
   /** Lease da sessão (LEASE-03), repassado às duas engines. Ausente: sempre concede. */
   leaseGate?: ISessionLeaseGate;
+  /** Canais monitorados por sessão (recuperação de posts de canal no Telegram). */
+  watchedChannels?: IWatchedChannelSource;
 }
 
 /**
@@ -45,11 +48,12 @@ export class MessagingEngineFactory {
       case 'telegram': {
         if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) throw new Error('Telegram engine requires TELEGRAM_API_ID and TELEGRAM_API_HASH');
         return new TelegramMessagingEngineAdapter(
-          { apiId: env.TELEGRAM_API_ID, apiHash: env.TELEGRAM_API_HASH },
+          { apiId: env.TELEGRAM_API_ID, apiHash: env.TELEGRAM_API_HASH, channelCatchUp: env.TELEGRAM_CHANNEL_CATCHUP_ENABLED },
           deps.sessionRepo,
           new TelegramAuthStatePersistence(deps.authStateRepo, () => SecretCipherFactory.get()),
           deps.chatConversationRepo,
           deps.leaseGate,
+          deps.watchedChannels,
         );
       }
       default:

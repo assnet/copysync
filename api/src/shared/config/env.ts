@@ -56,6 +56,12 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Recuperação de posts de canal monitorado que o Telegram não empurrou (getChannelDifference,
+  // só canais monitorados, ≥60 s por canal). Ligada por padrão; `false` desliga sem deploy.
+  TELEGRAM_CHANNEL_CATCHUP_ENABLED: z
+    .string()
+    .transform((v) => v !== 'false')
+    .default('true'),
   TELEGRAM_API_ID: z.coerce.number().int().positive().optional(),
   TELEGRAM_API_HASH: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),

@@ -137,6 +137,27 @@ pede código de novo (como o pareamento do WhatsApp).
   Não voltar a remover canais da listagem: o seletor de monitorados depende deles.
 - `checkNumberExists` → `null`; `updateChatState`, `presenceSubscribe` → no-op.
 
+### 5.1 Recuperação de canal monitorado
+
+O Telegram **não garante** empurrar post de canal/supergrupo para conta de usuário (core.telegram.org/api/updates:
+"may stop sending updates (or send fewer updates) for some channels") e a GramJS não recupera lacuna. Sem
+recuperação, canal grande monitorado fica sem captura (caso real: 0 mensagens em 6 h).
+
+`TelegramChannelCatchUp.ts` (uma instância por cliente logado, criada no `finishLogin`, parada no `teardown`):
+
+- Só canais **monitorados** de config ligada (`IWatchedChannelSource` → `PrismaWatchedChannelSource`, id `-100…`,
+  até 10), relidos do banco a cada 5 min. Nunca todos os dialogs da conta.
+- 1ª rodada por canal: `channels.GetFullChannel` dá o pts; **sem backfill** (mensagem anterior não é reemitida).
+- Depois: `updates.getChannelDifference` em série, um canal por vez, a cada **≥60 s** ou o `timeout` que o
+  Telegram devolver (o maior). Canal que recebeu push nos últimos 90 s é pulado. Até 3 páginas de 100.
+- `FLOOD_WAIT` pausa a sessão inteira pelo prazo; canal privado/banido sai até a próxima releitura.
+- Push e recuperação entram por `handleIncoming`, com dedupe por id externo (`markSeen`, últimos 2.000).
+- Cache de entidades vazio após restart: uma `getDialogs` por cliente para resolver o access hash.
+- pts é só cache em memória (refeito do Telegram no restart): não é estado operacional novo.
+- Desligar sem deploy: `TELEGRAM_CHANNEL_CATCHUP_ENABLED=false` na Render.
+
+Custo: ocioso, ≤1 RPC/min por canal monitorado silencioso; resposta vazia só traz o pts.
+
 ## 6. Configuração
 
 | Variável | Padrão | Nota |
@@ -164,6 +185,7 @@ num tenant: o par identifica a aplicação, não a conta.
 - Não usar `String(msg.id)` como id externo nem `Number(externalId)` de volta: sempre
   `composeTelegramMessageId`/`parseTelegramMessageId`.
 - Não emitir `msgType` em minúsculas nem fora do `ChatMessageType`.
+- Não consultar todos os dialogs nem baixar histórico para recuperar canal: só `TelegramChannelCatchUp`, só monitorados.
 - Não mandar texto do WhatsApp cru ao Telegram nem com `parseMode` markdown: só `whatsappToTelegramHtml` + `html`.
 - Não baixar mídia de grupo sem `autoDownloadMedia` nem sem limite de bytes.
 - Não gravar `channel: 'whatsapp'` fixo ao criar conversa: usar `channelForEngine`.

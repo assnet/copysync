@@ -8,6 +8,7 @@ import { PrismaChatConversationRepository } from '../../chat/infrastructure/repo
 import { PrismaChatMessageRepository } from '../../chat/infrastructure/repositories/PrismaChatMessageRepository';
 import { IngestHistorySyncUseCase } from '../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { MessagingEngineFactory } from './MessagingEngineFactory';
+import { PrismaWatchedChannelSource } from './PrismaWatchedChannelSource';
 import type { MessagingEngineRouter } from './MessagingEngineRouter';
 
 let instance: MessagingEngineRouter | undefined;
@@ -33,6 +34,7 @@ export function localEngine(): MessagingEngineRouter {
     chatConversationRepo,
     historySyncUseCase: new IngestHistorySyncUseCase(chatContactRepo, chatConversationRepo, chatMessageRepo),
     leaseGate: lease.gate,
+    watchedChannels: new PrismaWatchedChannelSource(prisma),
   });
   lease.bindSocketControl(engine);
   setActiveEngine(engine);

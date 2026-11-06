@@ -68,6 +68,8 @@ import { mediaContainer } from '../../../../media/infrastructure/mediaContainer'
 import { isAuthCancel, isLoggedOutError, translateTelegramLoginError, translateTelegramSendError } from './TelegramErrorTranslator';
 import { composeTelegramMessageId, parseTelegramMessageId } from './telegramMessageId';
 import { whatsappToTelegramHtml } from './whatsappToTelegramHtml';
+import { TelegramChannelCatchUp } from './TelegramChannelCatchUp';
+import type { IWatchedChannelSource } from '../../../domain/contracts/IWatchedChannelSource';
 
 const telegramLogger = appLogger.child({ module: 'TelegramEngine' });
 const ENGINE = 'telegram';
@@ -84,6 +86,8 @@ const PARSE_MODE = 'html';
 export interface TelegramEngineConfig {
   apiId: number;
   apiHash: string;
+  /** Recuperação ativa de canais monitorados (`TELEGRAM_CHANNEL_CATCHUP_ENABLED`). Padrão: desligada. */
+  channelCatchUp?: boolean;
 }
 
 function stripSuffix(id: string): string {
@@ -227,6 +231,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     private readonly chatConversationRepo: Pick<IChatConversationRepository, 'findActiveByGroupAndSession'>,
     /** Lease da sessão (LEASE-03): sem ele nenhum cliente abre. Padrão: sempre concede. */
     private readonly leaseGate: ISessionLeaseGate = { acquire: async () => true },
+    /** Canais monitorados da sessão, para a recuperação de posts que o Telegram não empurrou. */
+    private readonly watchedChannels?: IWatchedChannelSource,
   ) {}
 
   // ── Ciclo de vida ──────────────────────────────────────────────────────────
@@ -606,6 +612,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     client.addEventHandler((event: NewMessageEvent) => {
       void this.onNewMessage(sessionId, entry, event);
     }, new NewMessage({}));
+    this.startChannelCatchUp(sessionId, entry);
 
     await this.sessionRepo
       .updateStatus(sessionId, tenantId, { status: 'CONNECTED', lastConnectedAt: new Date() })
@@ -616,7 +623,24 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     if (pending) pending.waiter = null;
   }
 
+  /** Canais monitorados que o Telegram deixou de empurrar: ver `TelegramChannelCatchUp`. */
+  private startChannelCatchUp(sessionId: string, entry: TelegramSessionEntry): void {
+    if (!this.config.channelCatchUp || !this.watchedChannels || entry.catchUp) return;
+    const catchUp = new TelegramChannelCatchUp({
+      sessionId,
+      tenantId: entry.tenantId,
+      client: entry.client,
+      source: this.watchedChannels,
+      logger: telegramLogger,
+      onMessage: (msg) => this.handleIncoming(sessionId, entry, msg, () => msg.getChat()),
+    });
+    entry.catchUp = catchUp;
+    catchUp.start();
+  }
+
   private async teardown(sessionId: string, entry: TelegramSessionEntry): Promise<void> {
+    entry.catchUp?.stop();
+    entry.catchUp = null;
     if (this.registry.get(sessionId) === entry) this.registry.delete(sessionId);
     const pending = entry.pending;
     entry.pending = null;
@@ -652,11 +676,18 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
   // ── Recebimento ────────────────────────────────────────────────────────────
 
   private async onNewMessage(sessionId: string, entry: TelegramSessionEntry, event: NewMessageEvent): Promise<void> {
+    const chatId = peerString(event.message.peerId);
+    if (chatId) entry.catchUp?.notePush(chatId);
+    await this.handleIncoming(sessionId, entry, event.message, () => event.getChat());
+  }
+
+  /** Push (`NewMessage`) e recuperação de canal entram aqui; o id repetido é descartado. */
+  private async handleIncoming(sessionId: string, entry: TelegramSessionEntry, msg: Api.Message, getChat: () => Promise<unknown>): Promise<void> {
     if (!this.registry.isCurrent(sessionId, entry.epoch)) return;
-    const msg = event.message;
     const chatId = peerString(msg.peerId);
     if (!chatId) return;
     const externalMessageId = composeTelegramMessageId(chatId, msg.id);
+    if (!this.registry.markSeen(entry, externalMessageId)) return;
     const fromMe = Boolean(msg.out);
     if (fromMe && entry.sentIds.has(externalMessageId)) return; // eco do que acabamos de enviar
 
@@ -666,7 +697,7 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     let chatName: string | undefined;
     let senderName: string | undefined;
     try {
-      chatName = displayName(await event.getChat());
+      chatName = displayName(await getChat());
       if (isGroup) senderName = displayName(await msg.getSender());
       else senderName = chatName;
     } catch { /* nome é opcional */ }
