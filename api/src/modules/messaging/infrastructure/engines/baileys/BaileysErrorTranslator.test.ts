@@ -31,6 +31,20 @@ describe('translateSendError — envio de mídia', () => {
   });
 });
 
+describe('translateDisconnect — erro de stream 500 (badSession)', () => {
+  it('reconecta e mantém as credenciais: é o padrão da lib para stream:error desconhecido', () => {
+    const info = translateDisconnect('s1', boom('Stream Errored (unknown)', DisconnectReason.badSession));
+    expect(info.shouldReconnect).toBe(true);
+    expect(info.shouldClearCredentials).toBe(false);
+  });
+
+  it('logout real (401) continua limpando as credenciais', () => {
+    const info = translateDisconnect('s1', boom('Intentional Logout', DisconnectReason.loggedOut));
+    expect(info.shouldReconnect).toBe(false);
+    expect(info.shouldClearCredentials).toBe(true);
+  });
+});
+
 describe('translateDisconnect — sessão tomada por outra instância (440)', () => {
   it('não reconecta, não apaga credenciais e deixa o status para quem tomou a sessão', () => {
     const info = translateDisconnect('s1', boom('replaced', DisconnectReason.connectionReplaced));

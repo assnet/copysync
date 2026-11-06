@@ -79,7 +79,6 @@ export function translateDisconnect(
     // ── Credentials revoked by WhatsApp — only a new pairing recovers the session ──
     case DisconnectReason.loggedOut:
     case DisconnectReason.forbidden:
-    case DisconnectReason.badSession:
       return {
         shouldReconnect: false,
         shouldClearCredentials: true,
@@ -114,6 +113,10 @@ export function translateDisconnect(
         error: new RecoverableConnectionError('restart required'),
       };
 
+    // 500 é o padrão da lib para todo `stream:error` sem código ou com motivo desconhecido
+    // (`getErrorCodeFromStreamError`): falha passageira do servidor, não revogação. O aparelho
+    // segue vinculado no celular; apagar as credenciais aqui matava uma sessão saudável.
+    case DisconnectReason.badSession:
     case DisconnectReason.connectionLost:
     case DisconnectReason.connectionClosed:
     case DisconnectReason.timedOut:
