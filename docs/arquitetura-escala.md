@@ -281,7 +281,7 @@ Mesmo código, três modos de boot via `PROCESS_ROLE=http|worker|all`:
 | `OfferDispatchWorker` (`OFFER_DISPATCH_WORKER_ENABLED`, `GROUP_MONITORING_ENABLED`) | `worker` | claim `pg_advisory_xact_lock('offer_dispatch_claim')` + `claimToken` em `PrismaOfferDispatchRepository.claimDue` (multi-instância segura; o comentário de `OfferDispatchWorker.ts:18` cita SKIP LOCKED por engano); lease opcional |
 | `HubOutboxWorker` (`HUB_EVENTS_ENABLED` + `HUB_EVENTS_CONFIGURED`), `ExtensionRetentionJob` | `worker` | já seguros: `PrismaHubOutboxRepository` usa `SKIP LOCKED`; `ExtensionRetentionJob` usa `pg_try_advisory_lock` (não copiar como modelo: `$queryRaw` no pool pode dar `unlock` em outra conexão; preferir `JobLease`) |
 | reconcile de billing (`ReconcileSubscriptionsUseCase`, `BILLING_ENABLED`, `BILLING_RECONCILE_INTERVAL_MS`) | `worker` | já usa `JobLease` (`BILLING_RECONCILE_LEASE_TTL_MS`) |
-| rodízio de links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | já usa `JobLease` |
+| Gestor de Links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | já usa `JobLease` |
 | `markActiveSessionsAsDisconnected()` no boot (só com `SESSION_BOOTSTRAP_ON_STARTUP=false`) | `worker`, só sessões sem lease válido | — |
 | `prisma migrate deploy` (`CMD pnpm start:migrate`) | todos; Prisma serializa por advisory lock | subir `http` antes das réplicas `worker` no deploy, para o código novo não rodar com schema velho |
 

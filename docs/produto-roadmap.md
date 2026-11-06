@@ -26,13 +26,13 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
 | 7 | 🤖 Reescrita com IA | Reescreve o texto de cada oferta automaticamente | `assistants` (`docs/ia-provedores.md`) | ✅ gerador e monitoramento (`textMode: AI`) |
 | 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offers` (`docs/gerador-de-ofertas.md`) | ✅ v2: link do próprio afiliado, cupom, público-alvo com IA, marcar todos (`docs/gerador-de-ofertas.md`) |
-| 9 | 🔄 Rodízio de links | Um link único que distribui pessoas entre os grupos | `link-rotation` ([doc](rodizio-de-links.md)) | ✅ |
+| 9 | 🔄 Gestor de Links | Um link único que distribui pessoas entre os grupos | `link-rotation` ([doc](rodizio-de-links.md)) | ✅ |
 | 10 | 📢 Disparo em massa | O que é postado num grupo é espelhado nos outros | `campaigns/broadcast-mirror` | ⏳ |
 | 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `offer-story` ([doc](story-de-oferta.md)) | ✅ MAX |
 | 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` ([doc](pagina-de-ofertas.md)) | ✅ Página de Ofertas (PRO/MAX) |
 | 13 | 🎓 Conta | Aulas e suporte pelo WhatsApp | `tenants` (entitlements) + conteúdo externo | ⏳ |
 | 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
-| 15 | 🌐 Domínio personalizado | Site de ofertas e rodízio de links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
+| 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
 
 ## Produtos (menu)
@@ -71,8 +71,8 @@ guarda o plano, não o preço.
 | Grupos de disparo — WhatsApp / Telegram | 5 / — | 10 / 10 | 40 / 40 |
 | Disparo em massa | ✅ | ✅ | ✅ |
 | Agendamento de horários | ✅ | ✅ | ✅ |
-| Rodízio de links — WhatsApp (links · grupos por link) | 1 · 3 | 1 · 5 | 2 · 10 |
-| Rodízio de links — Telegram (links · grupos por link) | — | 1 · 5 | 2 · 10 |
+| Gestor de Links — WhatsApp (links · grupos por link) | 1 · 3 | 1 · 5 | 2 · 10 |
+| Gestor de Links — Telegram (links · grupos por link) | — | 1 · 5 | 2 · 10 |
 | Menção a todos os participantes | — | ✅ | ✅ |
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
@@ -97,7 +97,7 @@ envio" por canal).
 monitor; disparo: `BroadcastGroup.sessionId`; gerador: sessão do grupo). Chaves: `whatsapp_sessions` /
 `telegram_sessions`, `monitored_groups` / `telegram_monitored_groups`, `broadcast_groups` /
 `telegram_broadcast_groups` (as sem prefixo são do WhatsApp; não renomear). Presets Telegram: LITE 0/0,
-PRO 2/10, MAX 6/40. Rodízio de links (canal = engine da sessão do rodízio): `link_rotations` /
+PRO 2/10, MAX 6/40. Gestor de Links (canal = engine da sessão do rodízio): `link_rotations` /
 `telegram_link_rotations` e `link_rotation_groups` / `telegram_link_rotation_groups` (Telegram LITE 0/0,
 PRO 1/5, MAX 2/10). Cada canal conta e corta sozinho; `PLAN_LIMIT_REACHED` (403) leva `meta.key` do canal.
 `cross_session_dispatch` só é exigido com **2+ sessões do mesmo canal**; WhatsApp + Telegram juntos
@@ -137,7 +137,7 @@ API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 2. **Grupos de disparo** + **Horário de postagem** + **Disparo em massa** — base de distribuição.
 3. **Monitoramento** com troca de link — núcleo do produto, depende de 1 e 2.
 4. **Reescrita com IA** — plug no pipeline de 3.
-5. **Rodízio de links**, **Story**, **Site de ofertas**, **Domínio personalizado** — diferenciais PRO/MAX (Story só MAX).
+5. **Gestor de Links**, **Story**, **Site de ofertas**, **Domínio personalizado** — diferenciais PRO/MAX (Story só MAX).
 5b. **Menção a todos** — depende de `cachedGroupMetadata` com TTL (doc de escala, seção 7).
 6. **Telegram** — segundo engine atrás de `MessagingEngine`.
 7. **Planos e limites** — pode entrar cedo como tabela, com enforcement crescendo por feature.
@@ -146,4 +146,4 @@ API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 
 - Promessa: *"Suas ofertas de afiliado publicadas no automático."*
 - Como: monitora grupos, troca o link pelo seu, reescreve com IA, dispara nos seus grupos.
-- Provas: WhatsApp + Telegram · Shopee, Mercado Livre e Amazon · horário programado · rodízio de links.
+- Provas: WhatsApp + Telegram · Shopee, Mercado Livre e Amazon · horário programado · Gestor de Links.

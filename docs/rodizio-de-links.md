@@ -1,9 +1,17 @@
-# Rodízio de links
+# Gestor de Links
 
 Um link fixo por tenant (`https://<slug>.<domínio>`) para divulgar nas redes. Cada visita cai numa página leve com o
 botão "Entrar no grupo", que leva a um grupo da sessão com vaga (WhatsApp ou Telegram, conforme a sessão). Quando um grupo enche, o próximo assume.
 Roadmap item 9. Specs: `.specs/features/link-rotation/` (`spec`, `design`, `context`, `api-contract`, `tasks`).
-Termo de produto: **rodízio de links**. Nomes de código: `linkRotation`, `link-rotation`, `LinkDomain`.
+Termo de produto: **Gestor de Links**. Nomes de código: `linkRotation`, `link-rotation`, `LinkDomain`.
+
+> **Nome exibido × nomes técnicos.** O produto se chamava "Rodízio de links"; desde app 0.83.0 o texto exibido é
+> **Gestor de Links** (menu, telas, planos, assinatura, privacidade, OpenAPI). Rotas (`/link-rotation`), chaves de
+> limite (`link_rotations`, `link_rotation_groups`, `telegram_*`), códigos de erro (`LINK_ROTATION_*`), enum
+> `PublicSlugKind.LINK_ROTATION`, tabelas, flag `LINK_ROTATION_MEMBER_SYNC_ENABLED`, lease e nomes de código **não
+> mudam** (white label: o nome técnico descreve o recurso). Este arquivo também mantém o nome: migration aplicada o
+> cita. "Rodízio" continua sendo o nome da estratégia de distribuição; texto sobre o grupo entrar/sair dela fala em
+> "distribuição". Não renomear chave de limite sem migration de dados: chave ausente = ilimitado.
 
 ## Termos
 

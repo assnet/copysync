@@ -20,7 +20,7 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 | Afiliados | `available` | Gerador de ofertas | `/offers` | |
 | | | Monitoramento | `/monitoring` | |
 | | | Grupos de disparo | `/broadcast-groups` | |
-| | | Rodízio de links | `/link-rotation` | |
+| | | Gestor de Links | `/link-rotation` | |
 | | | Página de Ofertas | `/storefront` | PRO |
 | | | Story de Oferta | `/offer-story` | MAX |
 | | | Credenciais de afiliado | `/affiliates/credentials` | |
