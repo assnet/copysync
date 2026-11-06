@@ -1252,6 +1252,12 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
                 baileysLogger.error({ err, sessionId }, 'Auto-reconnect failed');
               });
             }, delay));
+          } else if (!isRegisteredCreds(state.creds)) {
+            // Sem login concluído (QR/código não lido até expirar): nada falhou, falta
+            // vincular. LOGGED_OUT pede novo pareamento em vez de "Falha".
+            baileysLogger.warn({ sessionId }, 'Max reconnect attempts without pairing - parking LOGGED_OUT');
+            this.pairingRestarts.delete(sessionId);
+            await this.parkAsLoggedOut(sessionId, tenantId);
           } else {
             baileysLogger.error({ sessionId }, 'Max reconnect attempts - marking FAILED');
             this.pairingPhones.delete(sessionId);
