@@ -383,7 +383,7 @@ a central fica em Oregon e não deve ser seguida):
 A medição da Fase 0 (RAM/CPU por sessão) só vale no 0.5c-1g ou acima; no 256 MB o gargalo medido é o Postgres, não o Node.
 Criação (decisão 2026-10-26: só sessões de teste em produção, então **sem dump**): banco vazio + `prisma migrate deploy`, trocar
 `DATABASE_URL`, subir, parear as sessões de teste de novo. Criado sob demanda, antes da Fase 1 (R2) ou do primeiro teste de carga.
-Apagar as tabelas do CopySync no banco compartilhado 7 dias depois (pendente; só com autorização do owner). Storage 15 GB basta porque mídia vai para R2 (Fase 1).
+Tabelas antigas no banco compartilhado: verificado em 2026-11-06 que o Postgres do PulsoSocial não tem nenhuma tabela do CopySync; nada a apagar ali. Storage 15 GB basta porque mídia vai para R2 (Fase 1).
 
 Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa de `WORKER_MAX_SESSIONS` igual à meta e de
 `NODE_OPTIONS=--max-old-space-size=<70% da RAM em MB>`, senão o heap padrão do Node
