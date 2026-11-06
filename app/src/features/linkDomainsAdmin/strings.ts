@@ -5,7 +5,7 @@ export const linkDomainsAdminStrings = {
   navLabel: 'Domínios de links',
   pageTitle: 'Domínios de links',
   pageSubtitle:
-    'Domínios base onde os clientes criam os subdomínios do rodízio de links. Cada domínio novo tem custo na hospedagem: cadastre só o necessário.',
+    'Domínios base onde os clientes criam os subdomínios do Gestor de Links. Cada domínio novo tem custo na hospedagem: cadastre só o necessário.',
   retry: 'Tentar de novo',
   add: 'Adicionar domínio',
   listTitle: 'Domínios cadastrados',
@@ -77,7 +77,7 @@ export const linkDomainsAdminStrings = {
     reservedInvalid: (name: string) => `"${name}" não é válido: use letras minúsculas, números e hífen.`,
     reservedTooMany: `No máximo ${RESERVED_NAMES_MAX} nomes reservados.`,
     premiumNames: 'Nomes especiais',
-    premiumHelp: 'Nomes vendidos à parte para a Página de Ofertas: só o cliente com liberação usa. O rodízio de links nunca usa.',
+    premiumHelp: 'Nomes vendidos à parte para a Página de Ofertas: só o cliente com liberação usa. O Gestor de Links nunca usa.',
     premiumTooMany: `No máximo ${RESERVED_NAMES_MAX} nomes especiais.`,
     cancel: 'Cancelar',
     save: 'Salvar',
@@ -170,7 +170,7 @@ export const linkDomainsAdminStrings = {
     LINK_DOMAIN_TAKEN: 'Este domínio já está cadastrado.',
     LINK_DOMAIN_IN_USE: 'Há clientes com links, páginas ou nomes especiais neste domínio. Pause o domínio em vez de excluir.',
     LINK_ROTATION_NOT_CONFIGURED:
-      'O rodízio de links não está configurado no servidor (segredo do teste ausente). Configure o servidor e tente de novo.',
+      'O Gestor de Links não está configurado no servidor (segredo do teste ausente). Configure o servidor e tente de novo.',
     NOT_FOUND: 'Este domínio não existe mais. Recarregue a lista.',
     UNAUTHORIZED: 'Só o administrador da plataforma acessa esta tela.',
     FORBIDDEN: 'Só o administrador da plataforma acessa esta tela.',

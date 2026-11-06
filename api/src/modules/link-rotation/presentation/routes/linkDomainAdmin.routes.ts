@@ -61,7 +61,7 @@ export async function linkDomainAdminRoutes(app: FastifyInstance): Promise<void>
 
   app.delete<IdParams>('/:id', {
     preHandler,
-    schema: { tags, summary: 'Excluir domínio sem rodízios', params: linkDomainIdParamSchema },
+    schema: { tags, summary: 'Excluir domínio sem links do Gestor de Links', params: linkDomainIdParamSchema },
   }, async (request, reply) => {
     await uc().delete.execute(request.params.id);
     httpResponse.noContent(reply);

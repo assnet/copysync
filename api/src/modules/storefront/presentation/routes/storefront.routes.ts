@@ -58,7 +58,7 @@ export async function storefrontRoutes(app: FastifyInstance): Promise<void> {
     config: { rateLimit: perTenantRateLimit(rateLimitPresets.storefrontSlug) },
     schema: {
       tags,
-      summary: 'Disponibilidade do nome do endereço (namespace compartilhado com o rodízio)',
+      summary: 'Disponibilidade do nome do endereço (namespace compartilhado com o Gestor de Links)',
       querystring: slugAvailabilityQuerySchema,
       response: { 200: slugAvailabilityResponse },
     },

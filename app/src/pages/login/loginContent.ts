@@ -55,7 +55,7 @@ export const LOGIN_BENEFITS: readonly LoginBenefit[] = [
     hint: 'Escolha a janela de horários e as ofertas saem sozinhas.',
   },
   {
-    label: 'Rodízio de links',
+    label: 'Gestor de Links',
     hint: 'Um link só que distribui quem entra entre os seus grupos.',
   },
 ];

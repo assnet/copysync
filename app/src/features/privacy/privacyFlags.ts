@@ -67,7 +67,7 @@ export const PRIVACY_SCREENS = [
   },
   {
     id: 'linkRotation',
-    label: 'Rodízio de links',
+    label: 'Gestor de Links',
     flags: [
       { id: 'linkRotation.rotationLink', label: 'Link público e apelido' },
       { id: 'linkRotation.sessionName', label: 'Nome da sessão' },

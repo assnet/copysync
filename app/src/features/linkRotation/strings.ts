@@ -56,7 +56,7 @@ const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
   rotations: {
     title: 'Seus links estão a todo vapor!',
     body: (limit) =>
-      `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio. Com um plano maior você divulga mais links ao mesmo tempo.`,
+      `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} do Gestor de Links. Com um plano maior você divulga mais links ao mesmo tempo.`,
     benefit: 'Um link para cada rede, campanha ou nicho, todos funcionando ao mesmo tempo.',
     nextPlan: (planName, limit) => `No ${planName} são ${count(limit)} ${plural(limit, 'link', 'links')}.`,
     unit: (n) => plural(n, 'link', 'links'),
@@ -77,11 +77,11 @@ const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
       `Seu link já usa os ${count(limit)} grupos disponíveis. Para alcançar mais gente, crie outro link ou troque um grupo por outro.`,
   },
   telegramLinkRotations: {
-    title: 'Rodízio de links também no Telegram',
+    title: 'Gestor de Links também no Telegram',
     body: (limit) =>
       limit === 0
-        ? 'Seu plano atual não inclui rodízio de links no Telegram. Com um plano maior você divulga um link fixo que distribui as pessoas entre seus grupos e canais.'
-        : `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio no Telegram. Com um plano maior você divulga mais links ao mesmo tempo.`,
+        ? 'Seu plano atual não inclui o Gestor de Links no Telegram. Com um plano maior você divulga um link fixo que distribui as pessoas entre seus grupos e canais.'
+        : `Seu plano inclui ${count(limit)} ${plural(limit, 'link', 'links')} do Gestor de Links no Telegram. Com um plano maior você divulga mais links ao mesmo tempo.`,
     benefit: 'Um link fixo nas redes que leva cada pessoa a um grupo ou canal do Telegram com vaga.',
     nextPlan: (planName, limit) => `No ${planName} são ${count(limit)} ${plural(limit, 'link', 'links')} no Telegram.`,
     unit: (n) => plural(n, 'link', 'links'),
@@ -111,10 +111,10 @@ const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
 };
 
 export const linkRotationStrings = {
-  menuLabel: 'Rodízio de links',
+  menuLabel: 'Gestor de Links',
 
   page: {
-    title: 'Rodízio de links',
+    title: 'Gestor de Links',
     subtitle: 'Um link fixo para divulgar nas redes que leva cada pessoa a um grupo com vaga.',
     create: 'Criar link',
     createTooltip: 'Escolha o nome, a sessão e os grupos do novo link',
@@ -197,7 +197,7 @@ export const linkRotationStrings = {
   } satisfies Record<RotationGroupStatus, string>,
 
   groupStatusHelp: {
-    ACTIVE: 'O grupo tem vaga e entra no rodízio.',
+    ACTIVE: 'O grupo tem vaga e entra na distribuição.',
     PAUSED: 'Você pausou este grupo; ele não recebe cliques.',
     FULL: 'O grupo chegou ao limite de membros. Volta sozinho quando abrir vaga.',
     NEEDS_LINK: 'A sessão não consegue gerar o convite: ela precisa ser admin (no Telegram, com permissão de convidar). Torne-a admin ou cole o link de convite manualmente.',
@@ -297,7 +297,7 @@ export const linkRotationStrings = {
     } satisfies Record<RotationChannel, string>,
     emptySearch: 'Nenhum grupo com esse nome.',
     hideUninvitable: 'Ocultar grupos onde não posso gerar convite',
-    hideUninvitableTooltip: 'Para gerar o link de convite, a sessão precisa ser admin do grupo. Desligue para ver todos: eles entram no rodízio só com link manual.',
+    hideUninvitableTooltip: 'Para gerar o link de convite, a sessão precisa ser admin do grupo. Desligue para ver todos: eles entram na distribuição só com link manual.',
     hiddenCount: (n: number) => `${count(n)} ${plural(n, 'oculto', 'ocultos')}`,
     allHiddenUninvitable: (n: number) =>
       n === 1
@@ -317,7 +317,7 @@ export const linkRotationStrings = {
     refreshAria: (name: string) => `Atualizar ${name} agora`,
     atCapacity: 'No limite',
     atCapacityHelp:
-      'Pelos cliques desde a última leitura, o grupo já chegou ao limite de membros. Ele sai do rodízio até a próxima leitura de membros.',
+      'Pelos cliques desde a última leitura, o grupo já chegou ao limite de membros. Ele sai da distribuição até a próxima leitura de membros.',
     membersEstimatedHelp: (read: number, clicks: number) =>
       `Estimativa: ${count(read)} na última leitura + ${count(clicks)} ${plural(clicks, 'clique', 'cliques')} desde então.`,
     weight: 'Peso',
@@ -326,9 +326,9 @@ export const linkRotationStrings = {
     capacity: 'Limite de membros',
     capacityHelp: {
       whatsapp:
-        'O WhatsApp aceita até 1.024 pessoas por grupo. Deixe uma folga (ex.: 1.000) para admins e quem entra por outro caminho. Ao chegar no limite, o grupo sai do rodízio até abrir vaga.',
+        'O WhatsApp aceita até 1.024 pessoas por grupo. Deixe uma folga (ex.: 1.000) para admins e quem entra por outro caminho. Ao chegar no limite, o grupo sai da distribuição até abrir vaga.',
       telegram:
-        'No Telegram, grupo vai até 200.000 membros (o Telegram converte grupos pequenos ao crescer) e canal não tem limite. Escolha até quantos membros este recebe antes de o rodízio passar para o próximo.',
+        'No Telegram, grupo vai até 200.000 membros (o Telegram converte grupos pequenos ao crescer) e canal não tem limite. Escolha até quantos membros este recebe antes de a distribuição passar para o próximo.',
     } satisfies Record<RotationChannel, string>,
     capacityInput: 'Limite de membros (número)',
     capacityValue: (n: number) => `${count(n)} membros`,
@@ -345,7 +345,7 @@ export const linkRotationStrings = {
     currentInvite: 'Link de convite atual:',
     manualInviteRequired: 'Cole o link de convite do grupo.',
     statusNew: 'Novo',
-    statusNewHelp: 'Salve para o grupo entrar no rodízio.',
+    statusNewHelp: 'Salve para o grupo entrar na distribuição.',
     refresh: 'Atualizar agora',
     refreshTooltip: 'Relê o link de convite e o número de membros',
     members: (n: number | null, capacity: number) =>
@@ -433,13 +433,13 @@ export const linkRotationStrings = {
   errors: {
     generic: 'Algo deu errado. Tente de novo em instantes.',
     planLimitRotations: (limit: number | null) =>
-      limit === null ? 'Você chegou ao limite de links do seu plano.' : `Seu plano permite ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio.`,
+      limit === null ? 'Você chegou ao limite de links do seu plano.' : `Seu plano permite ${count(limit)} ${plural(limit, 'link', 'links')} do Gestor de Links.`,
     planLimitGroups: (limit: number | null) =>
       limit === null ? 'Você chegou ao limite de grupos do seu plano.' : `Seu plano permite até ${count(limit)} ${plural(limit, 'grupo', 'grupos')} por link.`,
     planLimitTelegramRotations: (limit: number | null) =>
       limit === null || limit === 0
-        ? 'Seu plano não inclui mais links de rodízio no Telegram.'
-        : `Seu plano permite ${count(limit)} ${plural(limit, 'link', 'links')} de rodízio no Telegram.`,
+        ? 'Seu plano não inclui mais links do Gestor de Links no Telegram.'
+        : `Seu plano permite ${count(limit)} ${plural(limit, 'link', 'links')} do Gestor de Links no Telegram.`,
     planLimitTelegramGroups: (limit: number | null) =>
       limit === null
         ? 'Você chegou ao limite de grupos por link no Telegram.'
@@ -456,7 +456,7 @@ export const linkRotationStrings = {
     domainInvalid: 'Domínio inválido ou indisponível. Escolha outro.',
     domainTaken: (hostname: string | null) => (hostname ? `O domínio ${hostname} já está cadastrado.` : 'Esse domínio já está cadastrado.'),
     domainInUse: 'Este domínio está em uso por links de clientes e não pode ser removido.',
-    notConfigured: 'O rodízio de links está temporariamente indisponível. Tente mais tarde.',
+    notConfigured: 'O Gestor de Links está temporariamente indisponível. Tente mais tarde.',
     inviteNotAllowed: 'Esta sessão precisa ser admin para gerar convite.',
     engineNotReady: 'A sessão está iniciando. Tente de novo em alguns segundos.',
     sessionNotConnected: 'A sessão está desconectada. Conecte-a para continuar.',

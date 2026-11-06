@@ -23,7 +23,7 @@ import {
 } from '../schemas/linkRotation.schema';
 
 const preHandler = [authHook, tenantHook];
-const tags = ['Link rotation'];
+const tags = ['Link manager'];
 const uc = () => linkRotationContainer.useCases();
 
 type IdParams = { Params: { id: string } };
@@ -38,7 +38,7 @@ type UpdateBody = { status?: LinkRotationStatus; strategy?: LinkRotationStrategy
 export async function linkRotationRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', {
     preHandler,
-    schema: { tags, summary: 'Rodízios, domínios, limites do plano e sessões', response: { 200: overviewResponse } },
+    schema: { tags, summary: 'Links do Gestor de Links, domínios, limites do plano e sessões', response: { 200: overviewResponse } },
   }, async (request, reply) => {
     const overview = await uc().overview.execute(request.tenantContext.tenantId);
     httpResponse.ok(reply, LinkRotationPresenter.overview(overview));
@@ -46,7 +46,7 @@ export async function linkRotationRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Body: CreateBody }>('/', {
     preHandler,
-    schema: { tags, summary: 'Criar rodízio de links', body: createRotationBodySchema, response: { 201: rotationResponse } },
+    schema: { tags, summary: 'Criar link do Gestor de Links', body: createRotationBodySchema, response: { 201: rotationResponse } },
   }, async (request, reply) => {
     const rotation = await uc().create.execute({ ...request.body, tenantId: request.tenantContext.tenantId });
     httpResponse.created(reply, LinkRotationPresenter.rotation(rotation));
@@ -90,7 +90,7 @@ export async function linkRotationRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<IdParams>('/:id', {
     preHandler,
-    schema: { tags, summary: 'Excluir rodízio (nome reservado por 30 dias)', params: rotationIdParamSchema },
+    schema: { tags, summary: 'Excluir link (nome reservado por 30 dias)', params: rotationIdParamSchema },
   }, async (request, reply) => {
     await uc().delete.execute(request.tenantContext.tenantId, request.params.id);
     httpResponse.noContent(reply);
@@ -100,7 +100,7 @@ export async function linkRotationRoutes(app: FastifyInstance): Promise<void> {
     preHandler,
     schema: {
       tags,
-      summary: 'Grupos da sessão do rodízio para escolher (inclui os já selecionados)',
+      summary: 'Grupos da sessão do link para escolher (inclui os já selecionados)',
       params: rotationIdParamSchema,
       querystring: groupCandidatesQuerySchema,
       response: { 200: groupCandidatesResponse },
@@ -117,7 +117,7 @@ export async function linkRotationRoutes(app: FastifyInstance): Promise<void> {
     preHandler,
     schema: {
       tags,
-      summary: 'Substituir os grupos do rodízio (conversa ou JID do grupo da sessão)',
+      summary: 'Substituir os grupos do link (conversa ou JID do grupo da sessão)',
       params: rotationIdParamSchema,
       body: saveGroupsBodySchema,
       response: { 200: groupsResponse },
