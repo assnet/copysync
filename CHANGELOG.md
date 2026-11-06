@@ -9,6 +9,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.83.0 + api 0.65.0 — "Rodízio de links" passa a se chamar "Gestor de Links"
+
+Só texto exibido. Rotas, chaves de limite, códigos de erro, banco, flag e nomes de código não mudam (ver `docs/rodizio-de-links.md`, "Nome exibido × nomes técnicos").
+
+#### app/
+
+- **`features/linkRotation/strings.ts`** — menu, título, avisos de limite e erro com "Gestor de Links"; "link de rodízio" vira "link do Gestor de Links"; grupo "entra/sai da distribuição" (a estratégia segue "Rodízio").
+- **`features/plans/strings.ts`**, **`features/subscription/strings.ts`**, **`features/privacy/privacyFlags.ts`**, **`pages/login/loginContent.ts`**, **`features/linkDomainsAdmin/strings.ts`** — rótulos e textos com o nome novo.
+
+#### api/
+
+- **`linkRotation.routes.ts`**, **`linkDomainAdmin.routes.ts`**, **`storefront.routes.ts`** — tag `Link manager` e resumos do OpenAPI com o nome novo.
+
 ### Fixed — app 0.82.2 — "Conectar nova sessão" no monitoramento pula a escolha de canal
 
 #### app/
