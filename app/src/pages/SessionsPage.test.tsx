@@ -48,17 +48,31 @@ beforeEach(() => {
 });
 
 describe('SessionsPage com create/returnTo', () => {
-  it('abre o assistente, limpa a URL e volta com a sessão criada', async () => {
+  it('create=1 abre o seletor de canal, limpa a URL e volta com a sessão criada', async () => {
     renderAt('/sessions?create=1&returnTo=/monitoring');
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Onde você quer postar suas ofertas?');
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/sessions$/);
-    fireEvent.click(screen.getByText('criar'));
+    expect(screen.queryByText('criar')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'WhatsApp' }));
+    fireEvent.click(await screen.findByText('criar'));
     fireEvent.click(screen.getByText('fechar'));
     expect(await screen.findByTestId('where')).toHaveTextContent('/monitoring?sessionId=new-1');
   });
 
+  it('desistir no seletor com returnTo volta para a tela de origem', async () => {
+    renderAt('/sessions?create=1&returnTo=/monitoring');
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(await screen.findByTestId('where')).toHaveTextContent(/^\/monitoring$/);
+  });
+
+  it('create=whatsapp abre direto o assistente do WhatsApp', async () => {
+    renderAt('/sessions?create=whatsapp');
+    expect(await screen.findByText('criar')).toBeInTheDocument();
+  });
+
   it('returnTo externo é ignorado: fecha e fica em sessões', async () => {
-    renderAt('/sessions?create=1&returnTo=//evil.com');
+    renderAt('/sessions?create=whatsapp&returnTo=//evil.com');
     fireEvent.click(await screen.findByText('fechar'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/sessions$/);

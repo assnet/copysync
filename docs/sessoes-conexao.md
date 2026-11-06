@@ -59,7 +59,7 @@ A tela `/settings/sessions` tem sessões de **WhatsApp** e **Telegram**, cada ca
 `telegram.enabled=false` = cartão "Indisponível no momento", nunca erro). "Nova sessão" abre o
 seletor de canal (`ChannelPickerDialog`); canal no limite abre `PlanLimitBanner` (kinds
 `whatsappSessions` / `telegramSessions` em `linkRotation/planUpsell.ts`, limites do catálogo).
-`?create=1|whatsapp` abre direto o assistente do WhatsApp (monitoramento/rodízio); `?create=telegram`, o do Telegram.
+`?create=1` (monitoramento/rodízio) abre o seletor de canal primeiro: essas telas aceitam WhatsApp e Telegram, então nunca pular a escolha. Fechar o seletor com `returnTo` volta para a origem. `?create=whatsapp` / `?create=telegram` abrem direto o assistente do canal.
 
 - Assistente `CreateTelegramSessionWizard`: telefone com DDI (`normalizeInternationalPhone`; sem DDI assume +55)
   → nome → conectar → pronto. Criar **não** chama `/connect` (isso iniciaria o login por QR).

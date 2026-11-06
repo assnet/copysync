@@ -22,10 +22,13 @@ const t = sessionStrings.page;
 const CHANNELS: readonly SessionChannel[] = ['whatsapp', 'telegram'];
 const LIMIT_KIND: Record<SessionChannel, PlanLimitKind> = { whatsapp: 'whatsappSessions', telegram: 'telegramSessions' };
 
-/** `?create=1|whatsapp` abre o assistente do WhatsApp (telas de monitoramento/rodízio); `telegram`, o do Telegram. */
-function channelFromParam(value: string | null): SessionChannel | null {
-  if (value === '1' || value === 'whatsapp') return 'whatsapp';
-  if (value === 'telegram') return 'telegram';
+/**
+ * `?create=whatsapp|telegram` abre direto o assistente do canal; `?create=1` (telas de
+ * monitoramento/rodízio, que aceitam os dois canais) abre o seletor de canal primeiro.
+ */
+function channelFromParam(value: string | null): SessionChannel | 'pick' | null {
+  if (value === 'whatsapp' || value === 'telegram') return value;
+  if (value === '1') return 'pick';
   return null;
 }
 
@@ -76,7 +79,8 @@ export default function SessionsPage() {
   useEffect(() => {
     if (!searchParams.has('create') && !searchParams.has('returnTo')) return;
     const fromUrl = channelFromParam(searchParams.get('create'));
-    if (fromUrl) setCreateChannel(fromUrl);
+    if (fromUrl === 'pick') setPickerOpen(true);
+    else if (fromUrl) setCreateChannel(fromUrl);
     const next = new URLSearchParams(searchParams);
     next.delete('create');
     next.delete('returnTo');
@@ -193,7 +197,8 @@ export default function SessionsPage() {
 
       <ChannelPickerDialog
         open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        // Com `returnTo`, desistir no seletor volta para a tela de origem, como fechar o assistente
+        onClose={() => { setPickerOpen(false); if (returnToRef.current) handleWizardClose(); }}
         limits={limits}
         onPick={(channel) => { setPickerOpen(false); setCreateChannel(channel); }}
         onAtLimit={openPlanLimit}
