@@ -13,9 +13,10 @@ por essas portas. Estado em 2026-10-28: P1.0 (`ProvisionTenantUseCase`, `POST /p
 USR-01 (convite, `/auth/invites/:token/accept`), `resolveMembership`, receiver HMAC e entitlements **entregues** (commit `c44341e`,
 M1-B). Em 2026-11-02 (`0.49.4`) o receiver foi alinhado a este contrato: provisiona em `subscription.activated` de cliente
 desconhecido, valida `X-Application-Key` e `planSlug`, grava receipt e watermark na mesma transação com lock da linha do tenant.
-**Pendente**: M2 (`HubEmailSender`; painel "Assinatura" entregue, ver [`assinatura.md`](assinatura.md)) e o corpo da reconciliação (depende de H2 na central). Sem as três
+`HubEmailSender` entregue em api 0.67.0 (seção [E-mail pela central](#e-mail-pela-central-hubemailsender)); painel "Assinatura" em [`assinatura.md`](assinatura.md).
+**Pendente**: o corpo da reconciliação (depende de H2 na central). Sem as três
 `BILLING_HUB_URL`, `BILLING_APPLICATION_KEY`, `BILLING_APPLICATION_SECRET` (`BILLING_ENABLED`, `env.ts:362`) a rota não é registrada (404); em produção com
-`EMAIL_SENDER=noop` ou `hub` (`hub` cai no noop, `EmailSenderFactory.ts:23-26`) ela também não é registrada e só loga erro
+`EMAIL_SENDER=noop`, ou `hub` sem `HUB_API_URL`/`HUB_APPLICATION_KEY`/`HUB_M2M_SECRET` (`HUB_EMAIL_CONFIGURED`), ela também não é registrada e só loga erro
 (`billingWebhookGuard.ts:11-14`, `routes.ts:135-142`); o boot segue e a reconciliação também fica parada (`server.ts:318`).
 Estado peça a peça: seção [Estado em 2026-11-05](#estado-em-2026-11-05).
 **Rotação do segredo**: `BILLING_APPLICATION_SECRET_PREVIOUS` (opcional) é aceita junto com a atual enquanto a central troca o segredo; `verifyBillingHmac` compara as duas sempre (tempo constante, sem curto-circuito) e o log diz só o rótulo que casou (`previous` em warn). Sem ela, só a atual vale. Apagar a env ao fim da rotação; nunca logar segredo. Não há signup público: conta nova nasce pela compra no hub ou por provisionamento do super-admin.
@@ -72,25 +73,45 @@ listener continua funcionando sem mudança. Até E3, processo único (`all`) e o
 | Camada | Item |
 | --- | --- |
 | Prisma (service-desk §4, migration única da service-desk) | `Tenant.billingCustomerId @unique`, `Tenant.suspendedAt`, `User.passwordHash String?`, `User.passwordSetAt`, `UserInvite` (`planSnapshot Json?` sai do design: substituído por `planSlug` tipado, AGENTS §26) |
-| Prisma (esta integração) | `Tenant.planSlug String?`, `Tenant.lastBillingEventSeq BigInt?` (seq da central é BIGINT; webhook aceita número inteiro seguro ou string de até 19 dígitos, `parseBillingSeq.ts`), `Tenant.subscriptionExpiresAt DateTime?`; `TenantEntitlement { tenantId, key, value Json?, @@unique([tenantId,key]) }` (`null` = ilimitado, cf. roadmap); `PlanEntitlementPreset { planSlug, key, value Json?, @@unique([planSlug,key]) }`; `BillingEventReceipt { eventId @id, billingCustomerId @index, tenantId?, type, seq BigInt, payload Json?, receivedAt, outcome }`; `JobLease { name @id, ownerId, expiresAt }`. `planSlug` aceito: `COPYSYNC_LITE\|PRO\|MAX` (`planPresets.ts:3`) |
+| Prisma (esta integração) | `Tenant.planSlug String?`, `Tenant.lastBillingEventSeq BigInt?` (seq da central é BIGINT; webhook aceita número inteiro seguro ou string de até 19 dígitos, `parseBillingSeq.ts`), `Tenant.subscriptionExpiresAt DateTime?`; `TenantEntitlement { tenantId, key, value Json?, @@unique([tenantId,key]) }` (`null` = ilimitado, cf. roadmap); `PlanEntitlementPreset { planSlug, key, value Json?, @@unique([planSlug,key]) }`; `BillingEventReceipt { eventId @id, billingCustomerId @index, tenantId?, type, seq BigInt, payload Json?, receivedAt, outcome }`; `JobLease { name @id, ownerId, expiresAt }`. `planSlug` aceito (`resolvePlanSlug`, `planPresets.ts`): slug da oferta da central `copysync-{lite\|pro\|max}-{mensal\|anual}` (mensal e anual = mesmo preset) e, por compatibilidade, o interno `COPYSYNC_LITE\|PRO\|MAX`; o tenant grava sempre o interno |
 | Módulo `integrations/billing` | `billing.routes.ts`: plugin sem `authHook`, `addContentTypeParser` `parseAs: 'buffer'` (corpo bruto). Ordem: `X-Application-Key` igual a `BILLING_APPLICATION_KEY` em tempo constante (senão 401) → `X-Signature: sha256=<hex>` sobre `${X-Timestamp}.${corpo bruto}`, `X-Timestamp` em segundos ±`BILLING_HMAC_TOLERANCE_SECONDS` (300), `timingSafeEqual` contra atual e anterior (`verifyBillingHmac.ts:39-63`; falha 401) → JSON inválido 400 → falta `eventId`/`type`/`externalUserId`/`seq` 400 → `X-Event-Id` opcional, se vier e divergir do corpo 400 → `expiresAt` malformado 400 → `ApplyBillingEventUseCase`; `UNPROVISIONABLE` 422; erro inesperado 500. Corpo lido: `eventId, type, externalUserId (= billingCustomerId), seq, email, name, planSlug, expiresAt`. `BillingEventReceipt` gravado **na mesma `$transaction`** que aplica o evento, com `SELECT … FOR UPDATE` na linha do tenant; `P2002` no receipt = entrega duplicada concorrente → 200 `DUPLICATE`. A canônica do webhook **ainda não existe na central** (dispatcher H2 não feito): fechar com vetor compartilhado quando ele nascer |
 | Use cases novos | `ApplyBillingEventUseCase` (tabela acima; faz o sync de entitlements + `applyPlanSideEffects` dentro da própria transação), `ReconcileSubscriptionsUseCase` (lease pronto, `reconcileTenant` vazio). `SyncTenantEntitlementsUseCase` existe mas **nenhum código de produção o chama** (lógica duplicada no Apply): reusar ou remover |
 | Use cases reusados | só `ProvisionTenantUseCase` com `origin: 'BILLING_WEBHOOK'` (cria o `UserInvite` direto pelo repositório, não via `InviteUserUseCase`). `UpdateTenantStatusUseCase` (que grava `AuditLog TENANT_STATUS_CHANGED`) **não** é usado pelo webhook: o status muda sem `AuditLog`; a trilha é só o `BillingEventReceipt` |
 | Erros | `TenantSuspendedError` (403, `TENANT_SUSPENDED`, `TeamErrors.ts:3`) lançado em `resolveMembership.ts:36,57`, usado por `tenantHook` e `sseAuthHook`; mudança de contrato: painel trata `TENANT_SUSPENDED`. `PlanLimitReachedError` (403, `PLAN_LIMIT_REACHED`, com `key` e `limit`, `PlanErrors.ts:4`) lido de `TenantEntitlement` no application layer |
-| E-mail | porta `IEmailSender.send({to, template, data, locale?})` → `{sent}`; adapters `SmtpEmailSender` (timeout 5 s, `sent:false` em falha) e `NoopEmailSender`. **`HubEmailSender` não existe**: `EMAIL_SENDER=hub` loga erro e usa noop. Previsto (H4): M2M `POST /integrations/email/send` na central, mapeando `data` → `vars`, assinado com a canônica M2M (método, path, query, timestamp, nonce, sha256 do corpo; `m2m-signature.ts` em `hub/h2-t13`). Envio em `afterCommit`, fora da transação: exceção documentada à regra "sem chamada síncrona à central". **Remetente com domínio próprio (H10)**: o hub envia o e-mail do CopySync pela conta SMTP do domínio do CopySync (`EmailSenderConfig` de aplicação, `hub/h4-t16`), nunca pela do PulsoSocial; falha dessa conta não cai para a do PulsoSocial |
+| E-mail | porta `IEmailSender.send({to, template, data, locale?})` → `{sent}`; adapters `SmtpEmailSender` (timeout 5 s, `sent:false` em falha), `NoopEmailSender` e `HubEmailSender` (M2M `POST {HUB_API_URL}/integrations/email/send`; ver seção abaixo). Fábrica: `createEmailSenderFromEnv()` (`EmailSenderFactory.ts`). Envio em `afterCommit`, fora da transação: exceção documentada à regra "sem chamada síncrona à central". **Remetente com domínio próprio (H10)**: o hub envia o e-mail do CopySync pela conta SMTP do domínio do CopySync (`EmailSenderConfig` de aplicação, `hub/h4-t16`), nunca pela do PulsoSocial; falha dessa conta não cai para a do PulsoSocial |
 | Agendamento | `ReconcileSubscriptionsUseCase` em `server.ts:316-326` (`setInterval` a cada `BILLING_RECONCILE_INTERVAL_MS`, padrão 1 h, + `unref` + `clearInterval` no shutdown, `server.ts:457`), só no papel `worker`/`all` (`processJobs.ts:37`) e só se o guard não bloquear. **Lease em tabela** `JobLease` `billing-reconcile` (TTL `BILLING_RECONCILE_LEASE_TTL_MS`, 10 min): `updateMany WHERE expiresAt < now()`, senão `create`; falha = outro processo tem o job; liberado no fim. Advisory lock de sessão não serve com pool do Prisma |
-| Painel | "Assinatura" (Configurações > Assinatura, ver [`assinatura.md`](assinatura.md)): `checkout.ts:18-41` monta `{VITE_BILLING_CHECKOUT_URL}/planos/copysync-{starter\|profissional\|business}-{mensal\|anual}` (`catalog.ts:11`) (`SubscriptionPlanCard.tsx:54` usa só mensal; repassa `utm_*`/`gclid`/`fbclid`); env vazia = botão leva à vitrine interna. Na central, a API `GET /planos/:slug` devolve **JSON** de `RedirectConfig` (A/B) e quem redireciona é o front do PulsoSocial (`App.jsx:216` → `RedirectHandler.jsx:179`), logo `VITE_BILLING_CHECKOUT_URL` = domínio do front da central; o prefill do plano ali é recortado em socialpulse (H1 T29). Os slugs divergem do seed H3a (`copysync-{lite\|pro\|max}-mensal`), e não há `RedirectConfig` `copysync-*` semeado (o seed H3a cria só `Plan` `copysync-*-mensal`): o link ainda não leva a checkout. Primeiro acesso = tela do convite (USR-01) |
-| Env (`env.ts:204-238`, todas opcionais; `BILLING_ENABLED` = as três primeiras presentes, `env.ts:362`; ausente = rota não registrada, 404, e reconciliação não roda) | `BILLING_HUB_URL`, `BILLING_APPLICATION_KEY`, `BILLING_APPLICATION_SECRET`, `BILLING_APPLICATION_SECRET_PREVIOUS`, `BILLING_HMAC_TOLERANCE_SECONDS` (300), `BILLING_RECONCILE_INTERVAL_MS` (3 600 000), `BILLING_RECONCILE_LEASE_TTL_MS` (600 000), `EMAIL_SENDER=noop\|smtp\|hub` (default `noop`; fora de produção, billing + noop = warn no boot; **em produção, `noop`/`hub` = rota não registrada + log `error`, o boot segue**: tenant criado sem e-mail ficaria sem link de senha; o hub reenvia depois), `EMAIL_SMTP_URL`, `EMAIL_FROM`, `PANEL_URL` (link do convite `{PANEL_URL}/invite/{token}`; sem ela não há link nem e-mail) |
-| Saída para o hub (extensão) | `HubOutboxWorker.ts:79-97` faz `POST {HUB_EVENTS_URL}/events` com `HUB_EVENTS_APPLICATION_KEY`/`HUB_EVENTS_SECRET` (segundo par de segredos, separado do `BILLING_*`), canônica M2M em `hmacSigner.ts`. **Não há receptor `/events` na central** em nenhuma branch hub; e o `X-Timestamp` sai em ISO (`hmacSigner.ts:18`) enquanto a canônica M2M da central espera segundos: alinhar antes de ligar `HUB_EVENTS_ENABLED` |
+| Painel | `/plans` e "Assinatura" abrem direto a oferta da Cakto do plano×período (`checkoutUrls` em `features/plans/catalog.ts`, `checkout.ts`; nova aba; repassa `utm_*`/`gclid`/`fbclid`); slugs da vitrine `lite\|pro\|max`. Sem `VITE_BILLING_CHECKOUT_URL` nem `/planos/...` da central (app 0.85.0). Ver [`planos.md`](planos.md). Primeiro acesso = tela do convite (USR-01) |
+| Env (`env.ts:204-238`, todas opcionais; `BILLING_ENABLED` = as três primeiras presentes, `env.ts:362`; ausente = rota não registrada, 404, e reconciliação não roda) | `BILLING_HUB_URL`, `BILLING_APPLICATION_KEY`, `BILLING_APPLICATION_SECRET`, `BILLING_APPLICATION_SECRET_PREVIOUS`, `BILLING_HMAC_TOLERANCE_SECONDS` (300), `BILLING_RECONCILE_INTERVAL_MS` (3 600 000), `BILLING_RECONCILE_LEASE_TTL_MS` (600 000), `EMAIL_SENDER=noop\|smtp\|hub` (default `noop`; fora de produção, billing + noop = warn no boot; **em produção, `noop`/`hub` = rota não registrada + log `error`, o boot segue**: tenant criado sem e-mail ficaria sem link de senha; o hub reenvia depois), `EMAIL_SMTP_URL`, `EMAIL_FROM`, `HUB_API_URL`, `HUB_APPLICATION_KEY` (`copysync`), `HUB_M2M_SECRET` (os três = `HUB_EMAIL_CONFIGURED`), `PANEL_URL` (link do convite `{PANEL_URL}/invite/{token}`; sem ela não há link nem e-mail) |
+| Saída para o hub (extensão) | `HubOutboxWorker.ts:79-97` faz `POST {HUB_EVENTS_URL}/events` com `HUB_EVENTS_APPLICATION_KEY`/`HUB_EVENTS_SECRET` (segundo par de segredos, separado do `BILLING_*`), canônica M2M em `hmacSigner.ts`. **Não há receptor `/events` na central** em nenhuma branch hub. Desde api 0.67.0 `hmacSigner.ts` delega a `shared/http/m2m/m2mSignature.ts`: `X-Timestamp` em segundos, query ordenada, `X-Signature: sha256=<hex>` (antes ISO e hex sem prefixo) |
 
 Chaves de entitlement: as do roadmap (`whatsapp_sessions`, `telegram_enabled`, `monitored_groups`, `broadcast_groups`, …).
 Fonte única: `PlanEntitlementPreset` por `planSlug` (dado: seed + tela super-admin). `permissions[]` do evento serve só para
 validar que `planSlug` e permissão batem; divergência = `AuditLog`, preset vence.
 
 Link "defina sua senha": token gerado **pelo CopySync** (`UserInvite.tokenHash`, design §10); a central só envia o e-mail com o
-link pronto em `vars.link`. Hoje o CopySync monta `data: { name, link, expiresAt }` (`ProvisionTenantUseCase.ts:130-137`); o
-`HubEmailSender` (previsto) mapeia para `{ to, locale, vars: { name, link, expiresAt } }`.
+link pronto. O CopySync monta `data: { name, link, expiresAt }` (`ProvisionTenantUseCase.ts`); o `HubEmailSender` mapeia para
+`{ template: 'SET_PASSWORD', to, vars: { name, setPasswordUrl, expiresInHours } }` (seção abaixo).
 `permissions[]` do evento ainda **não é lido** pelo receiver (nem validado, nem auditado).
+
+## E-mail pela central (`HubEmailSender`)
+
+`EMAIL_SENDER=hub` + `HUB_API_URL`, `HUB_APPLICATION_KEY`, `HUB_M2M_SECRET` (só env da Render; nunca logar).
+Faltando qualquer um, a fábrica usa noop (log `error`) e, em produção com billing, o guard não registra o webhook.
+
+- **Rota**: `POST {HUB_API_URL}/integrations/email/send`. A central registra a rota sem prefixo; se `HUB_API_URL` tiver path
+  base, ele entra na URL **e** na canônica (o path que a central recebe).
+- **Assinatura** (`shared/http/m2m/m2mSignature.ts`, vetor oficial copiado em `__fixtures__/m2m-vector.json`): headers
+  `X-Application-Key`, `X-Timestamp` (segundos, 10 dígitos), `X-Nonce` (uuid v4), `X-Signature: sha256=<hex HMAC>`,
+  `Content-Type: application/json`. Canônica = `METHOD\npath\nquery ordenada\ntimestamp\nnonce\nsha256(corpo exato)`.
+- **Corpo** `{ template, to, locale?, vars }` (`hubEmailMapping.ts`). Templates internos → central:
+  `SET_PASSWORD` (`link`→`setPasswordUrl`), `TEAM_INVITE` (`link`→`inviteUrl`, `tenantName`→`workspaceName`),
+  `SESSION_DISCONNECTED` (`link`→`reconnectUrl`); `expiresAt` vira `expiresInHours`. Só chaves da allowlist da central
+  (`email-vars.ts` dela; chave a mais = 400), só string/number/boolean, `<`/`>` removidos. Marca/suporte/links do painel
+  são chaves de sistema da central: nunca enviar. Template sem equivalente: não chama, `sent:false`.
+- **Respostas**: 2xx (`202 QUEUED`) = `sent:true`. 4xx (400/401/403/409/429) = `sent:false`, sem retry. 5xx, rede ou
+  timeout (5 s) = até 3 tentativas (300 ms, 1 s), cada uma com nonce/timestamp novos (senão 409).
+- **Log**: só template, status, `code` da central (`[A-Z0-9_]`) e id; nunca destinatário, vars, corpo ou segredo.
+- **Não fazer**: reaproveitar nonce no retry; enviar HTML nas vars; criar template novo sem liberar na central antes.
 
 ## Estado em 2026-11-05
 
@@ -102,15 +123,15 @@ sem nada do hub para o CopySync. ✅ pronto · 🟡 parcial · ❌ não existe.
 | --- | --- | --- |
 | CopySync | Receiver `POST {API_PREFIX}/integrations/billing/webhook` (HMAC, 2 segredos, receipt + watermark, provisiona, 422) | ✅ |
 | CopySync | `expiresAt` → `Tenant.subscriptionExpiresAt` | ✅ |
-| CopySync | Guard de produção (`noop`/`hub` não registra a rota) | ✅ |
+| CopySync | Guard de produção (`noop` ou `hub` sem credenciais não registra a rota) | ✅ |
 | CopySync | Listener `TENANT_SUSPENDED` desconecta sessões; worker só envia de tenant `ACTIVE` | ✅ |
 | CopySync | `AuditLog TENANT_STATUS_CHANGED` nas mudanças pelo webhook | ❌ (só receipt) |
 | CopySync | `SyncTenantEntitlementsUseCase` | 🟡 existe, sem uso |
 | CopySync | Reconciliação | 🟡 lease + job 1 h; `reconcileTenant` vazio |
-| CopySync | `HubEmailSender` | ❌ (`hub` = noop) |
+| CopySync | `HubEmailSender` (M2M, vetor oficial em teste) | ✅ api 0.67.0; depende da rota na central |
 | CopySync | Validação de `permissions[]` | ❌ |
-| CopySync | Link de checkout do painel | 🟡 monta a URL; destino não funciona na central |
-| CopySync | `HubOutboxWorker` → `/events` | 🟡 cliente pronto; sem receptor e timestamp ISO ≠ segundos |
+| CopySync | Link de checkout do painel | ✅ direto na Cakto por plano×período (app 0.85.0) |
+| CopySync | `HubOutboxWorker` → `/events` | 🟡 cliente pronto e assinatura alinhada (segundos); sem receptor |
 | Central | `Application` (key/name/status) + recorte por `X-Application-Key` (H1) | 🟡 sem `webhookUrl`, segredo de webhook, `checkoutUrl` nem `creditsEnabled` no H1 |
 | Central | `OutboundEvent` + triggers em `Subscription`/`SubscriptionRenewal`, `Application.webhookUrl`/`outboundEnabled`, `IntegrationNonce` (H2 schema) | 🟡 tabela e trigger; **sem dispatcher** que assine e envie ao CopySync; sem campo de segredo |
 | Central | Canônica M2M + vetor (`m2m-signature.ts`, `__fixtures__/m2m-vector.json`) | ✅ (só a função; nenhuma rota `/integrations/*`) |

@@ -11,7 +11,7 @@ Hooks `[authHook, tenantAnyStatusHook]`; tenant do header `X-Tenant-Id`. `200 { 
 ```ts
 {
   tenantName: string;
-  planSlug: 'starter' | 'profissional' | 'business' | null; // slug da vitrine
+  planSlug: 'lite' | 'pro' | 'max' | null; // slug da vitrine
   status: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
   suspendedAt: string | null;  // ISO
   expiresAt: string | null;    // ISO; null = vencimento desconhecido (não mostra)
@@ -22,7 +22,7 @@ Hooks `[authHook, tenantAnyStatusHook]`; tenant do header `X-Tenant-Id`. `200 { 
 
 | Peça | Onde | Regra |
 | --- | --- | --- |
-| Slug | `SubscriptionPresenter.ts` | `COPYSYNC_LITE/PRO/MAX` → `starter/profissional/business`; fora de `PLAN_SLUGS` → `null` |
+| Slug | `SubscriptionPresenter.ts` | `COPYSYNC_LITE/PRO/MAX` → `lite/pro/max` (api 0.67.0; antes `starter/profissional/business`); fora de `PLAN_SLUGS` → `null` |
 | Limites | `tenants/domain/services/subscriptionLimits.ts` | um item por chave de `ENTITLEMENT_KEYS`; numérico ausente = ilimitado; feature ausente = `false` (exceto `mention_all_enabled`/`ai_rewrite_enabled`: só `false` explícito bloqueia). Chave nova sem linha → teste falha |
 | Uso | `PrismaTenantUsageReader.ts` | contagem gravada (D5), `tenantId` em toda consulta: sessões por engine, grupos monitorados/de disparo de sessões existentes, rodízios, ofertas desde `startOfDayInZone`, `AiUsageLog` do dia |
 | Entitlements | `IEntitlementSnapshotReader.readAll` | 1 `findMany` |
@@ -41,8 +41,10 @@ Hooks `[authHook, tenantAnyStatusHook]`; tenant do header `X-Tenant-Id`. `200 { 
 `SubscriptionLimitsTable`, `usageTone.ts`). Nome/tagline do `PLAN_CATALOG` (sem preço); chip de status;
 barra de uso com `usageTone` (≥80% `warning`, 100% `error`); aba de canal em `usePersistedState` (escopo `tab`);
 flag `subscription.tenantName`. CTA só para ADMIN (OPERATOR vê "fale com o administrador"): `buildCheckoutUrl`
-(`features/plans/checkout.ts`, `VITE_BILLING_CHECKOUT_URL` + `/planos/copysync-{plano}-{periodo}`), nova aba;
-env ausente → `/affiliates/plans`. Ofertas da Cakto criadas em 2026-11-06 (ver [`plano-lancamento-hub-copysync.md`](plano-lancamento-hub-copysync.md#ofertas-do-copysync-na-cakto)); o link do CTA muda para elas quando o H3 estiver no ar.
+(`features/plans/checkout.ts`) abre direto o link de pagamento da Cakto do plano atual, período **mensal**
+(`checkoutUrls.monthly` em `features/plans/catalog.ts`), nova aba com `rel="noopener noreferrer"`, repassando
+`utm_*`/`gclid`/`fbclid`; sem plano → `/affiliates/plans`. Sem env (`VITE_BILLING_CHECKOUT_URL` removida no app 0.85.0).
+Ofertas: [`plano-lancamento-hub-copysync.md`](plano-lancamento-hub-copysync.md#ofertas-do-copysync-na-cakto).
 
 ## O que não fazer
 

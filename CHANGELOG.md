@@ -9,6 +9,32 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.67.0 · app 0.85.0 — primeira venda: e-mail pela central, links da Cakto e slugs lite/pro/max
+
+Doc: `docs/arquitetura-central-billing.md` (§E-mail pela central), `docs/planos.md`, `docs/assinatura.md`.
+
+#### api/
+
+- **`shared/http/m2m/m2mSignature.ts`** (novo) + teste com o vetor oficial da central (`__fixtures__/m2m-vector.json`) — canônica M2M (método, path, query ordenada, timestamp em segundos, nonce, sha256 do corpo) e `X-Signature: sha256=<hex>`.
+- **`HubEmailSender.ts`** (novo) + **`hubEmailMapping.ts`** — `EMAIL_SENDER=hub` passa a enviar por `POST {HUB_API_URL}/integrations/email/send`; mapeia `SET_PASSWORD`/`TEAM_INVITE`/`SESSION_DISCONNECTED` para a allowlist de vars da central; retry só em 5xx/rede com nonce novo; sem log de dado pessoal.
+- **`EmailSenderFactory.ts`** — `hub` monta o `HubEmailSender` (noop só sem credenciais); `createEmailSenderFromEnv()` usado no webhook e no provisionamento.
+- **`env.ts`** — `HUB_API_URL`, `HUB_APPLICATION_KEY`, `HUB_M2M_SECRET`, derivado `HUB_EMAIL_CONFIGURED`.
+- **`billingWebhookGuard.ts`** — produção aceita `hub` configurado; `noop` e `hub` sem credenciais seguem bloqueados.
+- **`planPresets.ts`** — `resolvePlanSlug`: `copysync-{lite|pro|max}-{mensal|anual}` (slug da oferta enviado pela central) → preset do tier; `COPYSYNC_*` continua aceito. Usado em `ApplyBillingEventUseCase.ts`. Antes o webhook com o slug da central caía em `invalid_plan_slug` (422).
+- **`SubscriptionPresenter.ts`** / **`subscription.routes.ts`** — `GET /subscription` devolve `planSlug` `lite|pro|max`.
+
+#### app/
+
+- **`features/plans/catalog.ts`** — slugs `lite|pro|max`; `checkoutUrls` (mensal/anual) com as ofertas da Cakto.
+- **`features/plans/checkout.ts`** — link vem do catálogo (repassa `utm_*`/`gclid`/`fbclid`); removida a `VITE_BILLING_CHECKOUT_URL` (`vite-env.d.ts`, `.env.example`).
+- **`PlanCard.tsx`** / **`PlansPage.tsx`** — "Assinar" abre a oferta do período em nova aba (`noopener noreferrer`), com nome acessível próprio (`plansStrings.card.ctaNewTab`).
+- **`SubscriptionPlanCard.tsx`** — CTA abre a oferta mensal do plano atual.
+- **`subscription/strings.ts`**, **`api.types.ts`** — slugs novos.
+
+### Fixed — api 0.67.0 — assinatura da saída para a central
+
+- **`hmacSigner.ts`** — `X-Timestamp` saía em ISO e a assinatura sem `sha256=`; agora delega ao assinador M2M (segundos, query ordenada, prefixo). O receiver do webhook (`verifyBillingHmac.ts`) não muda.
+
 ### Fixed — api 0.66.3 — recuperação de canal do Telegram não resolvia o canal
 
 #### api/
