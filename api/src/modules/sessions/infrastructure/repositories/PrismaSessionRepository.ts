@@ -80,7 +80,13 @@ export class PrismaSessionRepository implements ISessionRepository {
     const rows = await prisma.session.findMany({
       where: {
         deletedAt: null,
-        status: { in: [...ACTIVE_STATUSES] },
+        OR: [
+          { status: { in: [...ACTIVE_STATUSES] } },
+          // Shutdown gracioso (`releaseAllOwned`) grava DISCONNECTED e mantém o pedido de conexão:
+          // sem isto, todo deploy deixava todas as sessões desconectadas (incidente 2026-11-06).
+          // Desconectar/sair/excluir/suspender limpam o pedido, então não religam aqui.
+          { status: 'DISCONNECTED', connectRequestedAt: { not: null } },
+        ],
       },
     });
     return rows.map(PrismaSessionMapper.toDomain);

@@ -52,6 +52,24 @@ describe('findActiveSessionsWithoutLiveLease', () => {
   });
 });
 
+describe('findActiveSessionsForBootstrap — religar após deploy', () => {
+  const boot = async () => (await repo.findActiveSessionsForBootstrap()).filter((s) => s.tenantId === tenantId).map((s) => s.id).sort();
+
+  it('DISCONNECTED com pedido vivo (deixado pelo shutdown) entra; sem pedido fica fora', async () => {
+    const afterShutdown = await newSession({ status: 'DISCONNECTED', connectRequestedAt: new Date() });
+    await newSession({ status: 'DISCONNECTED', connectRequestedAt: null });
+    const connected = await newSession();
+    expect(await boot()).toEqual([afterShutdown, connected].sort());
+  });
+
+  it('FAILED/LOGGED_OUT com pedido vivo e excluída ficam fora', async () => {
+    await newSession({ status: 'FAILED', connectRequestedAt: new Date() });
+    await newSession({ status: 'LOGGED_OUT', connectRequestedAt: new Date() });
+    await newSession({ status: 'DISCONNECTED', connectRequestedAt: new Date(), deletedAt: new Date() });
+    expect(await boot()).toEqual([]);
+  });
+});
+
 describe('markConnectRequested — backoff de adoção (ADOPT-04)', () => {
   const read = async (id: string) =>
     prisma.session.findUniqueOrThrow({ where: { id }, select: { connectRequestedAt: true, adoptFailures: true, nextAdoptAt: true } });

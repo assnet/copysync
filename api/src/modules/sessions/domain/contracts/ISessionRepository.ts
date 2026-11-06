@@ -35,8 +35,9 @@ export interface ISessionRepository {
   findById(id: string, tenantId: string): Promise<Session | null>;
   findAllByTenant(tenantId: string): Promise<Session[]>;
   /**
-   * Returns all sessions across ALL tenants that were in an active state
-   * when the process last ran.  Used only by SessionBootstrapService on startup.
+   * Sessões de TODOS os tenants a religar no boot: status ativo, ou `DISCONNECTED` com pedido de
+   * conexão vivo (`connectRequestedAt`), que é o que o shutdown gracioso deixa. Só o
+   * SessionBootstrapService usa.
    */
   findActiveSessionsForBootstrap(): Promise<Session[]>;
   /**
