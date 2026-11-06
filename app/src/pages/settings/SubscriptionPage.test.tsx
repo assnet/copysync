@@ -18,11 +18,11 @@ vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => tenant.value }));
 import { SubscriptionPage } from './SubscriptionPage';
 import { SettingsLayout } from '@/features/settings/components/SettingsLayout';
 
-const pro = PLAN_CATALOG.find((p) => p.slug === 'profissional')!;
+const pro = PLAN_CATALOG.find((p) => p.slug === 'pro')!;
 
 const sub: SubscriptionResponse = {
   tenantName: 'Loja da Ana',
-  planSlug: 'profissional',
+  planSlug: 'pro',
   status: 'ACTIVE',
   suspendedAt: null,
   expiresAt: null,

@@ -45,8 +45,8 @@ export interface SubscriptionPlanCardProps {
 
 /**
  * Card do plano atual (SUB-06/07/09): nome e tagline do catálogo pelo slug (nunca preço), chip de
- * situação, vencimento em data local, conta (borrável) e botão para a página de venda. Sem
- * `VITE_BILLING_CHECKOUT_URL` ou sem plano, o botão leva à vitrine interna.
+ * situação, vencimento em data local, conta (borrável) e botão para o pagamento do plano atual
+ * (link mensal do catálogo, nova aba). Sem plano, o botão leva à vitrine interna.
  */
 export function SubscriptionPlanCard({ subscription: sub, canSubscribe = false, search = window.location.search }: SubscriptionPlanCardProps) {
   const blurTenant = useBlur('subscription.tenantName');

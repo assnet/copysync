@@ -3,7 +3,7 @@ import type { SubscriptionResponse } from '@/types/api.types';
 
 const sample: SubscriptionResponse = {
   tenantName: 'Loja',
-  planSlug: 'starter',
+  planSlug: 'lite',
   status: 'SUSPENDED',
   suspendedAt: '2026-11-01T12:00:00.000Z',
   expiresAt: null,

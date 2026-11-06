@@ -8,7 +8,7 @@
 
 import { TELEGRAM_LINK_ROTATION_LABEL, linkRotationLimitLabel } from './strings';
 
-export type PlanSlug = 'starter' | 'profissional' | 'business';
+export type PlanSlug = 'lite' | 'pro' | 'max';
 export type BillingPeriod = 'monthly' | 'annual';
 
 /** Desconto do anual, exibido no toggle. Valor anual por plano ainda não definido: segue o modelo do Pulso (−20%). */
@@ -43,6 +43,8 @@ export interface PlanCatalogItem {
   /** Preço mensal-equivalente no anual (R$/mês, cobrado por ano). ≈ `price × (1 − ANNUAL_DISCOUNT)`, arredondado. */
   priceAnnualMonthly: number;
   recommended?: boolean;
+  /** Página de pagamento do gateway por período (texto de vitrine, nunca no banco). Ver `docs/planos.md`. */
+  checkoutUrls: Record<BillingPeriod, string>;
   /** Limites numéricos exibidos; devem bater com `PlanEntitlementPreset` da API. */
   limits: {
     whatsappSessions: number;
@@ -111,12 +113,13 @@ const TELEGRAM_GROUPS_CHANNELS: PlanBenefit = {
 
 export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
   {
-    slug: 'starter',
+    slug: 'lite',
     name: 'LITE',
     tagline: 'Para começar a monetizar seus grupos',
     priceFrom: 161.9,
     price: 97,
     priceAnnualMonthly: 77,
+    checkoutUrls: { monthly: 'https://pay.cakto.com.br/8e4gepk_1291207', annual: 'https://pay.cakto.com.br/a92kn9k_1291217' },
     limits: {
       whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, telegramMonitoredGroups: 0, telegramBroadcastGroups: 0,
       linkRotations: 1, linkRotationGroups: 3, telegramLinkRotations: 0, telegramLinkRotationGroups: 0,
@@ -131,12 +134,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     fit: 'quem está começando ou mantém uma operação enxuta.',
   },
   {
-    slug: 'profissional',
+    slug: 'pro',
     name: 'PRO',
     tagline: 'Para quem já vive de afiliado',
     priceFrom: 278.9,
     price: 167,
     priceAnnualMonthly: 133,
+    checkoutUrls: { monthly: 'https://pay.cakto.com.br/fronsgu_1291227', annual: 'https://pay.cakto.com.br/f34qfgh_1291232' },
     recommended: true,
     limits: {
       whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, telegramMonitoredGroups: 2, telegramBroadcastGroups: 10,
@@ -154,12 +158,13 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     fit: 'quem posta todo dia e quer escalar sem contratar.',
   },
   {
-    slug: 'business',
+    slug: 'max',
     name: 'MAX',
     tagline: 'Para operações com vários canais',
     priceFrom: 411.9,
     price: 247,
     priceAnnualMonthly: 197,
+    checkoutUrls: { monthly: 'https://pay.cakto.com.br/kzoagvc_1291239', annual: 'https://pay.cakto.com.br/97nqcb8_1291245' },
     limits: {
       whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, telegramMonitoredGroups: 6, telegramBroadcastGroups: 40,
       linkRotations: 2, linkRotationGroups: 10, telegramLinkRotations: 2, telegramLinkRotationGroups: 10,

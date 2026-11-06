@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
@@ -9,13 +9,13 @@ import type { SubscriptionResponse } from '@/types/api.types';
 import { subscriptionStrings as t } from '../strings';
 import { SubscriptionPlanCard, type SubscriptionPlanCardProps } from './SubscriptionPlanCard';
 
-const pro = PLAN_CATALOG.find((p) => p.slug === 'profissional')!;
+const pro = PLAN_CATALOG.find((p) => p.slug === 'pro')!;
 const fmt = (iso: string) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' }).format(new Date(iso));
 const FUTURE = '2999-01-15T12:00:00.000Z';
 const PAST = '2001-01-15T12:00:00.000Z';
 
 const base: SubscriptionResponse = {
-  tenantName: 'Loja da Ana', planSlug: 'profissional', status: 'ACTIVE', suspendedAt: null, expiresAt: FUTURE, limits: [],
+  tenantName: 'Loja da Ana', planSlug: 'pro', status: 'ACTIVE', suspendedAt: null, expiresAt: FUTURE, limits: [],
 };
 
 const setup = (sub: Partial<SubscriptionResponse> = {}, mode: 'light' | 'dark' = 'light', props: Partial<SubscriptionPlanCardProps> = {}) =>
@@ -30,11 +30,9 @@ const setup = (sub: Partial<SubscriptionResponse> = {}, mode: 'light' | 'dark' =
 
 const cta = () => screen.getByRole('link', { name: new RegExp(t.cta.label) });
 
-afterEach(() => vi.unstubAllEnvs());
 
 describe('SubscriptionPlanCard', () => {
   it('ACTIVE: nome, tagline, chip success, renovação, conta e sem preço', () => {
-    vi.stubEnv('VITE_BILLING_CHECKOUT_URL', 'https://central.test/r');
     const { container } = setup();
     expect(screen.getByText(pro.name)).toBeInTheDocument();
     expect(screen.getByText(pro.tagline)).toBeInTheDocument();
@@ -45,21 +43,13 @@ describe('SubscriptionPlanCard', () => {
     expect(container.textContent).not.toMatch(/R\$/);
   });
 
-  it('CTA com env abre a página de venda em nova aba repassando utm', () => {
-    vi.stubEnv('VITE_BILLING_CHECKOUT_URL', 'https://central.test/r');
+  it('CTA abre o pagamento mensal do plano em nova aba repassando utm', () => {
     setup();
     const link = cta();
-    expect(link).toHaveAttribute('href', 'https://central.test/r/planos/copysync-profissional-mensal?utm_source=x');
+    expect(link).toHaveAttribute('href', `${pro.checkoutUrls.monthly}?utm_source=x`);
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     expect(link).toHaveAccessibleName(t.cta.newTab);
-  });
-
-  it('CTA sem env leva à vitrine interna', () => {
-    vi.stubEnv('VITE_BILLING_CHECKOUT_URL', '');
-    setup();
-    expect(cta()).toHaveAttribute('href', AFFILIATE_PLANS_PATH);
-    expect(cta()).not.toHaveAttribute('target');
   });
 
   it('SUSPENDED (escuro): chip warning, aviso e data da suspensão', () => {
@@ -79,8 +69,7 @@ describe('SubscriptionPlanCard', () => {
     expect(screen.getByText(t.expiry.expiredOn(fmt(PAST)))).toBeInTheDocument();
   });
 
-  it('sem plano (escuro): textos padrão, chip default, sem vencimento e CTA na vitrine mesmo com env', () => {
-    vi.stubEnv('VITE_BILLING_CHECKOUT_URL', 'https://central.test/r');
+  it('sem plano (escuro): textos padrão, chip default, sem vencimento e CTA na vitrine interna', () => {
     setup({ planSlug: null, expiresAt: null }, 'dark');
     expect(screen.getByRole('heading', { name: t.plan.noPlan })).toBeInTheDocument();
     expect(screen.getByText(t.plan.noPlanTagline)).toBeInTheDocument();

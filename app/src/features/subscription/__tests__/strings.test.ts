@@ -33,12 +33,12 @@ describe('subscriptionStrings', () => {
   });
 
   it('plano mínimo pelo catálogo', () => {
-    expect(minPlanFor('whatsapp_sessions')?.slug).toBe('starter');
-    expect(minPlanFor('telegram_sessions')?.slug).toBe('profissional');
-    expect(minPlanFor('telegram_link_rotations')?.slug).toBe('profissional');
-    expect(minPlanFor('storefront_enabled')?.slug).toBe('profissional');
-    expect(minPlanFor('offer_story_enabled')?.slug).toBe('business');
-    expect(minPlanFor('cross_session_dispatch')?.slug).toBe('business');
+    expect(minPlanFor('whatsapp_sessions')?.slug).toBe('lite');
+    expect(minPlanFor('telegram_sessions')?.slug).toBe('pro');
+    expect(minPlanFor('telegram_link_rotations')?.slug).toBe('pro');
+    expect(minPlanFor('storefront_enabled')?.slug).toBe('pro');
+    expect(minPlanFor('offer_story_enabled')?.slug).toBe('max');
+    expect(minPlanFor('cross_session_dispatch')?.slug).toBe('max');
   });
 
   it('"A partir do X" com nome de vitrine', () => {
@@ -47,7 +47,7 @@ describe('subscriptionStrings', () => {
   });
 
   it('nome do plano pelo slug; sem plano = null', () => {
-    expect(planNameOf('starter')).toBe('LITE');
+    expect(planNameOf('lite')).toBe('LITE');
     expect(planNameOf(null)).toBeNull();
   });
 

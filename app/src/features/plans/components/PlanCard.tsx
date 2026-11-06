@@ -10,6 +10,7 @@ interface Props {
   plan: PlanCatalogItem;
   period: BillingPeriod;
   /** Destino do botão. Enquanto o checkout não existe, `#`. */
+  /** Link de pagamento do gateway (abre em nova aba). */
   checkoutHref: string;
 }
 
@@ -188,6 +189,9 @@ export function PlanCard({ plan, period, checkoutHref }: Props) {
           size="large"
           variant={recommended ? 'contained' : 'outlined'}
           href={checkoutHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={t.card.ctaNewTab(plan.name)}
           sx={recommended ? { backgroundImage: gradient, boxShadow: 'none', '&:hover': { backgroundImage: gradient, filter: 'brightness(1.06)', boxShadow: 'none' } } : undefined}
         >
           {t.card.cta(plan.name)}

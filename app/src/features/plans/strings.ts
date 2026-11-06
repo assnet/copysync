@@ -76,6 +76,8 @@ export const plansStrings = {
     savingsPerMonth: (value: string) => `economize ${value}/mês`,
     savingsPerYear: (value: string) => `economize ${value}/ano`,
     cta: (planName: string) => `Assinar ${planName}`,
+    /** Nome acessível do botão: avisa que o pagamento abre em nova aba. */
+    ctaNewTab: (planName: string) => `Assinar ${planName} (abre o pagamento em nova aba)`,
     ctaHint: 'Sem fidelidade. Cancele quando quiser.',
     fit: 'Ideal para',
     everythingFrom: (planName: string) => `Tudo do ${planName}`,

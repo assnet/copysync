@@ -48,9 +48,9 @@ describe('catálogo de planos (vitrine)', () => {
       ]),
     );
     expect(bySlug).toEqual({
-      starter: { whatsapp: [1, 3], telegram: [0, 0] },
-      profissional: { whatsapp: [1, 5], telegram: [1, 5] },
-      business: { whatsapp: [2, 10], telegram: [2, 10] },
+      lite: { whatsapp: [1, 3], telegram: [0, 0] },
+      pro: { whatsapp: [1, 5], telegram: [1, 5] },
+      max: { whatsapp: [2, 10], telegram: [2, 10] },
     });
   });
 
@@ -65,9 +65,9 @@ describe('catálogo de planos (vitrine)', () => {
       ]),
     );
     expect(bySlug).toEqual({
-      starter: { whatsapp: [1, 1, 5], telegram: [0, 0, 0] },
-      profissional: { whatsapp: [1, 2, 10], telegram: [1, 2, 10] },
-      business: { whatsapp: [2, 6, 40], telegram: [2, 6, 40] },
+      lite: { whatsapp: [1, 1, 5], telegram: [0, 0, 0] },
+      pro: { whatsapp: [1, 2, 10], telegram: [1, 2, 10] },
+      max: { whatsapp: [2, 6, 40], telegram: [2, 6, 40] },
     });
   });
 
@@ -108,7 +108,7 @@ describe('catálogo de planos (vitrine)', () => {
 
   it('Página de Ofertas só no PRO e MAX (storefront_enabled false/true/true na API)', () => {
     const com = PLAN_CATALOG.filter((p) => p.benefits.some((b) => b.label === STOREFRONT_BENEFIT_LABEL)).map((p) => p.slug);
-    expect(com).toEqual(['profissional', 'business']);
+    expect(com).toEqual(['pro', 'max']);
   });
 
   it('oferta do nome especial fica fora dos planos e sem checkout por ora', () => {
