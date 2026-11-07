@@ -9,6 +9,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.88.1 / api 0.71.1 — "Marcar todos" do gerador travado pelo plano antes do envio
+
+Docs: `docs/gerador-de-ofertas.md` (Marcar todos travado pelo plano).
+
+#### api/
+
+- **`campaigns/application/use-cases/OfferGeneratorConfigUseCases.ts`** + teste, **`presentation/schemas/offer.schema.ts`** — `GET/PUT /campaigns/offers/config` devolve `mentionAllEnabled` (entitlement `mention_all_enabled`, só `false` trava), para o painel saber antes do envio.
+
+#### app/
+
+- **`features/offers/components/OfferSendPanel.tsx`** + `OfferSendPanel.mention.test.tsx` — no LITE a chave "Marcar todos" ficava ligável e só avisava após o 403 `PLAN_FEATURE_UNAVAILABLE`. Agora (prop `mentionLocked`) sai desligada e desabilitada, com cadeado, tooltip, texto de plano e link "Ver planos" (`/affiliates/plans`), como no monitoramento.
+- **`pages/offers/OfferGeneratorPage.tsx`** — trava = `cfg.mentionAllEnabled` falso ou erro de plano no envio (rede de segurança mantida); oferta antiga com `mentionAll` ligado (downgrade) envia `mentionAll: false` no PATCH antes do `send` em vez de falhar; confirmação não anuncia a marcação.
+- **`services/offer.service.ts`**, **`types/api.types.ts`**, **`features/offers/hooks/useOfferConfig.ts`**, **`features/offers/strings.ts`** — campo `mentionAllEnabled` (API antiga sem o campo = liberado) e textos `mentionAllLocked`/`mentionAllPlansLink`.
+
 ### Added — api 0.71.0 — reconciliação de assinaturas com a central e corte pela união das assinaturas
 
 Docs: `docs/arquitetura-central-billing.md` (§Reconciliação: regras, envs, concorrência, o que não faz, pendências; tabela evento → status: corte por "decisão pela união").

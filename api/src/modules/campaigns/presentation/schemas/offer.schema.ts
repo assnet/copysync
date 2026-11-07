@@ -210,6 +210,7 @@ export const offerConfigResponse = envelope({
     groupLimit: { type: ['number', 'null'] },
     sessionLimit: { type: ['number', 'null'] },
     crossSessionDispatch: { type: 'boolean' },
+    mentionAllEnabled: { type: 'boolean' },
     limits: channelMapSchema({ sessions: { type: ['number', 'null'] }, broadcastGroups: { type: ['number', 'null'] } }),
     usage: channelMapSchema({ sessions: { type: 'integer' }, broadcastGroups: { type: 'integer' } }),
     configured: { type: 'boolean' },

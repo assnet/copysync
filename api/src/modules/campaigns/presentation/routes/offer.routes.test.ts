@@ -41,7 +41,7 @@ const UPLOAD_ID = '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed';
 const CONFIG: OfferGeneratorConfigDTO = {
   sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
   windowStartMinute: 0, windowEndMinute: 1440, weekdays: [0, 1, 2, 3, 4, 5, 6],
-  groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1', canPost: false, postBlockedReason: 'ADMINS_ONLY' }], groupLimit: null, sessionLimit: null, crossSessionDispatch: false, configured: true,
+  groups: [{ id: 'g1', title: 'Grupo', avatarUrl: null, sessionId: 's1', canPost: false, postBlockedReason: 'ADMINS_ONLY' }], groupLimit: null, sessionLimit: null, crossSessionDispatch: false, mentionAllEnabled: true, configured: true,
   limits: { whatsapp: { sessions: null, broadcastGroups: null }, telegram: { sessions: null, broadcastGroups: null } },
   usage: { whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 0, broadcastGroups: 0 } },
 };

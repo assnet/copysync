@@ -275,6 +275,8 @@ export const offerStrings = {
     mentionAll: 'Marcar todos os membros',
     mentionAllHelper: 'Cada membro do grupo recebe uma notificação da oferta.',
     mentionAllUnavailable: 'Marcar todos os membros não está disponível no seu plano. Faça upgrade para liberar.',
+    mentionAllLocked: 'Seu plano não inclui marcar todos os membros. A oferta sai sem a marcação.',
+    mentionAllPlansLink: 'Ver planos',
     simulateTyping: 'Simular digitação',
     simulateTypingHelper: 'O grupo vê "digitando…" antes de cada oferta chegar.',
     typingDuration: 'Tempo digitando',

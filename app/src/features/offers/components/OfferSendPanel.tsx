@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
+import { Alert, Box, Button, Chip, CircularProgress, IconButton, Link, Stack, Tooltip, Typography } from '@mui/material';
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, Lock } from 'lucide-react';
+import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { AppIcon, SectionCard, ToggleOption } from '@/components';
 import type { OfferConfigGroup, OfferImageMode, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
@@ -27,8 +29,11 @@ interface Props {
   sending: boolean;
   mentionSaving: boolean;
   imageModeSaving: boolean;
-  /** Plano recusou "marcar todos": mostra o aviso de upgrade sob a chave. */
-  mentionUnavailable: boolean;
+  /**
+   * Plano sem "marcar todos" (entitlement `mention_all_enabled` false, ou o envio já recusou):
+   * a chave aparece desligada e travada, com tooltip e link para os planos.
+   */
+  mentionLocked: boolean;
   /** Bloqueia o disparo (sessão desconectada, sem grupos…). */
   sendBlocked: boolean;
   textTooLong: boolean;
@@ -47,7 +52,7 @@ interface Props {
  * disparo. Depois do disparo o lugar dele é do progresso (`OfferDispatchProgress`).
  */
 export function OfferSendPanel(props: Props) {
-  const { offer, groups, busy, sending, mentionSaving, imageModeSaving, mentionUnavailable, sendBlocked, textTooLong, editing } = props;
+  const { offer, groups, busy, sending, mentionSaving, imageModeSaving, mentionLocked, sendBlocked, textTooLong, editing } = props;
   const [scheduleOn, setScheduleOn] = useState(offer.scheduledAt != null);
   const [scheduleValue, setScheduleValue] = useState(offer.scheduledAt ? toLocalInput(new Date(offer.scheduledAt)) : '');
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -108,17 +113,29 @@ export function OfferSendPanel(props: Props) {
             {offerStrings.imageMode.noImageWarning}
           </Typography>
         )}
-        <ToggleOption
-          checked={offer.mentionAll}
-          disabled={mentionSaving || busy}
-          onChange={(v) => props.onMentionAll(v)}
-          title={t.mentionAll}
-          description={
-            <Box component="span" sx={{ color: mentionUnavailable ? 'warning.main' : undefined }}>
-              {mentionUnavailable ? t.mentionAllUnavailable : t.mentionAllHelper}
+        <Box>
+          <Tooltip title={mentionLocked ? t.mentionAllLocked : ''} arrow placement="top">
+            <Box>
+              <ToggleOption
+                checked={!mentionLocked && offer.mentionAll}
+                disabled={mentionLocked || mentionSaving || busy}
+                onChange={(v) => props.onMentionAll(v)}
+                title={t.mentionAll}
+                description={mentionLocked ? (
+                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <AppIcon icon={Lock} size="inline" />
+                    {t.mentionAllUnavailable}
+                  </Box>
+                ) : t.mentionAllHelper}
+              />
             </Box>
-          }
-        />
+          </Tooltip>
+          {mentionLocked && (
+            <Link component={RouterLink} to={AFFILIATE_PLANS_PATH} variant="caption" underline="hover" sx={{ display: 'inline-block', mt: 0.5, ml: 1.5 }}>
+              {t.mentionAllPlansLink}
+            </Link>
+          )}
+        </Box>
 
         <ToggleOption
           checked={offer.simulateTyping}

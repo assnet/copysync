@@ -73,6 +73,8 @@ export function useOfferConfig() {
     groupLimit: data?.groupLimit ?? null,
     sessionLimit: data?.sessionLimit ?? null,
     crossSessionDispatch: data?.crossSessionDispatch ?? false,
+    /** Sem dados ainda: liberado (o erro do envio segue como rede de segurança). */
+    mentionAllEnabled: data?.mentionAllEnabled !== false,
     /** Limites por canal (null = sem limite); sem dados ainda, nada é limitado. */
     limits: data?.limits ?? NO_LIMITS,
     usage: data?.usage ?? null,

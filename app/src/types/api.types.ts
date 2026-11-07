@@ -423,6 +423,8 @@ export interface OfferConfigResponse {
   sessionLimit: number | null;
   /** Entitlement `cross_session_dispatch`: 2+ sessões do MESMO canal disparando (Business). */
   crossSessionDispatch: boolean;
+  /** Entitlement `mention_all_enabled`: false = "marcar todos" travado pelo plano (LITE). */
+  mentionAllEnabled: boolean;
   /** Limites por canal (null = sem limite). */
   limits: Record<LimitChannel, OfferChannelLimits>;
   /** Uso da configuração salva por canal. */

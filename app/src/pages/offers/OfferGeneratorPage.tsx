@@ -54,6 +54,10 @@ export function OfferGeneratorPage() {
   // Lido na chegada do "Abrir oferta" (o clique já foi bloqueado se houvesse edição pendente)
   const busyRef = useRef(false);
   busyRef.current = form.dirty || offerBusy || editing;
+  // Plano sem "marcar todos" (sabido pela config ou pelo erro do envio): a chave fica travada
+  const mentionLocked = !cfg.mentionAllEnabled || mentionUnavailable;
+  // Oferta antiga com a marcação ligada (ex.: downgrade): desliga junto do envio em vez de falhar
+  const sendPatch = mentionLocked && offer?.mentionAll ? { ...form.patch, mentionAll: false } : form.patch;
   const scheduledWhen = offer && isPendingSchedule(offer.scheduledAt) ? t.send.formatWhen(offer.scheduledAt!) : null;
 
   const markPlanError = (err: unknown) => {
@@ -207,7 +211,7 @@ export function OfferGeneratorPage() {
                     sending={gen.sending}
                     mentionSaving={gen.mentionSaving}
                     imageModeSaving={gen.imageModeSaving}
-                    mentionUnavailable={mentionUnavailable}
+                    mentionLocked={mentionLocked}
                     sendBlocked={groupCount === 0 || sessionOffline}
                     textTooLong={form.textTooLong}
                     editing={editing}
@@ -254,13 +258,13 @@ export function OfferGeneratorPage() {
       <ConfirmDialog
         open={confirmOpen}
         title={scheduledWhen ? t.send.confirmScheduledTitle(groupCount) : t.send.confirmTitle(groupCount)}
-        description={t.send.confirmDescription(groupCount, intervalMin, intervalMax, Boolean(offer?.mentionAll), form.missingLink, form.dirty, scheduledWhen)}
+        description={t.send.confirmDescription(groupCount, intervalMin, intervalMax, !mentionLocked && Boolean(offer?.mentionAll), form.missingLink, form.dirty, scheduledWhen)}
         confirmLabel={scheduledWhen ? t.send.confirmScheduled : t.send.confirm}
         cancelLabel={t.send.cancel}
         onClose={() => setConfirmOpen(false)}
         onConfirm={() => {
           setConfirmOpen(false);
-          gen.send(form.patch).catch(markPlanError);
+          gen.send(sendPatch).catch(markPlanError);
         }}
       />
 

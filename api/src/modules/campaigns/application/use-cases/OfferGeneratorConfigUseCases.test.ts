@@ -55,7 +55,7 @@ describe('Offer generator config', () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
       sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
-      windowStartMinute: 0, windowEndMinute: 1440, weekdays: [0, 1, 2, 3, 4, 5, 6], groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, configured: false,
+      windowStartMinute: 0, windowEndMinute: 1440, weekdays: [0, 1, 2, 3, 4, 5, 6], groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, mentionAllEnabled: true, configured: false,
       limits: { whatsapp: { sessions: null, broadcastGroups: 5 }, telegram: { sessions: null, broadcastGroups: null } },
       usage: { whatsapp: { sessions: 0, broadcastGroups: 0 }, telegram: { sessions: 0, broadcastGroups: 0 } },
     });
@@ -165,6 +165,7 @@ describe('Offer generator config — limites por canal', () => {
     const s = setup({ whatsapp_sessions: 1, telegram_sessions: 1, broadcast_groups: 1, telegram_broadcast_groups: 2 });
     const out = await s.save.execute({ ...base, sessionIds: ['s1', 't1'], conversationIds: ['g1', 'tg1', 'tg2'] });
     expect(out.crossSessionDispatch).toBe(false);
+    expect(out.mentionAllEnabled).toBe(true);
     expect(out.limits).toEqual({ whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 1, broadcastGroups: 2 } });
     expect(out.usage).toEqual({ whatsapp: { sessions: 1, broadcastGroups: 1 }, telegram: { sessions: 1, broadcastGroups: 2 } });
   });
@@ -269,5 +270,12 @@ describe('Offer generator config — horário de postagem (PS-05)', () => {
     const s = setup();
     await expect(s.save.execute({ ...base, conversationIds: [], ...window })).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field } });
     expect(s.configs.saves).toBe(0);
+  });
+});
+
+describe('Offer generator config — marcar todos', () => {
+  it('mention_all_enabled=false explícito → mentionAllEnabled false no GET', async () => {
+    expect((await setup({ mention_all_enabled: false }).get.execute(TENANT)).mentionAllEnabled).toBe(false);
+    expect((await setup({ mention_all_enabled: true }).get.execute(TENANT)).mentionAllEnabled).toBe(true);
   });
 });

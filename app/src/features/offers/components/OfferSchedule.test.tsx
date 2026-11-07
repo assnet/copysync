@@ -23,7 +23,7 @@ const group = { conversationId: 'c-1', title: 'Grupo', avatarUrl: null, sessionI
 const panel = (o: OfferItem) => (
   <OfferSendPanel
     offer={o} groups={[group, { ...group, conversationId: 'c-2' }]} busy={false} sending={false} mentionSaving={false} imageModeSaving={false}
-    mentionUnavailable={false} sendBlocked={false} textTooLong={false} editing={false}
+    mentionLocked={false} sendBlocked={false} textTooLong={false} editing={false}
     onMentionAll={vi.fn()} onImageMode={vi.fn()} onTyping={vi.fn()} onSchedule={vi.fn().mockResolvedValue(undefined)} onSend={vi.fn()}
   />
 );
@@ -56,7 +56,7 @@ describe('formato da imagem', () => {
     render(
       <OfferSendPanel
         offer={offer()} groups={[group]} busy={false} sending={false} mentionSaving={false} imageModeSaving={false}
-        mentionUnavailable={false} sendBlocked={false} textTooLong={false} editing={false}
+        mentionLocked={false} sendBlocked={false} textTooLong={false} editing={false}
         onMentionAll={vi.fn()} onImageMode={onImageMode} onTyping={vi.fn()} onSchedule={vi.fn()} onSend={vi.fn()}
       />,
     );
