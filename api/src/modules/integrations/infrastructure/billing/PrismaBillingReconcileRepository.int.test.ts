@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import type { HubSubscriptionsResult, IHubSubscriptionsClient } from '../../application/ports/IHubSubscriptionsClient';
@@ -19,7 +21,7 @@ const sub = (o: Partial<HubSubscription> = {}): HubSubscription => ({
   id: `s-${stamp}`, planSlug: 'copysync-pro-mensal', billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null, ...o,
 });
 
-async function tenant(tag: string, data: { planSlug?: string | null; lastBillingEventSeq?: bigint | null; status?: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'; suspendedAt?: Date }) {
+async function tenant(tag: string, data: { planSlug?: string | null; lastBillingEventSeq?: bigint | null; status?: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'; suspendedAt?: Date; adminBlockedAt?: Date; subscriptionExpiresAt?: Date; billingReconciledAt?: Date }) {
   const customer = `int-rec-${tag}-${stamp}`;
   const t = await prisma.tenant.create({ data: { name: tag, slug: `int-rec-${tag}-${stamp}`, billingCustomerId: customer, ...data } });
   created.push(t.id);
@@ -62,8 +64,7 @@ describe('Reconciliação com Postgres', () => {
     const refunded = await tenant('refund', { planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 3n });
     snap(refunded.customer, [sub({ billingStatus: 'REFUNDED', expiresAt: '2099-01-01T00:00:00Z' })], 4n);
     const suspendedAt = new Date();
-    const admin = await tenant('admin', { planSlug: 'COPYSYNC_PRO', status: 'SUSPENDED', suspendedAt, lastBillingEventSeq: 1n });
-    await prisma.auditLog.create({ data: { tenantId: admin.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', previousStatus: 'ACTIVE', newStatus: 'SUSPENDED' } } });
+    const admin = await tenant('admin', { planSlug: 'COPYSYNC_PRO', status: 'SUSPENDED', suspendedAt, adminBlockedAt: suspendedAt, lastBillingEventSeq: 1n });
     snap(admin.customer, [sub()], 1n);
     await reconcile();
     expect(await read(refunded.id)).toMatchObject({ status: 'SUSPENDED', lastBillingEventSeq: 4n });
@@ -80,8 +81,8 @@ describe('Reconciliação com Postgres', () => {
     expect((await read(byEvent.id)).status).toBe('CANCELLED');
     snap(byEvent.customer, [sub({ id: 'novo' })], 5n);
 
-    const byAdmin = await tenant('cancel-adm', { planSlug: 'COPYSYNC_PRO', status: 'CANCELLED', suspendedAt: new Date(), lastBillingEventSeq: 1n });
-    await prisma.auditLog.create({ data: { tenantId: byAdmin.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', previousStatus: 'ACTIVE', newStatus: 'CANCELLED' } } });
+    const blockedAt = new Date();
+    const byAdmin = await tenant('cancel-adm', { planSlug: 'COPYSYNC_PRO', status: 'CANCELLED', suspendedAt: blockedAt, adminBlockedAt: blockedAt, lastBillingEventSeq: 1n });
     snap(byAdmin.customer, [sub()], 1n);
 
     await reconcile();
@@ -118,7 +119,9 @@ describe('Reconciliação com Postgres', () => {
   it('corrida com o Apply: em qualquer ordem o evento mais novo prevalece', async () => {
     const t = await tenant('race', { planSlug: null, lastBillingEventSeq: 4n });
     snap(t.customer, [sub()], 5n);
-    const apply = new ApplyBillingEventUseCase().execute({
+    // Central após o evento 6: nenhuma assinatura com acesso (o payment_failed corta pela união)
+    const hubAfter = { fetchByCustomer: async () => ({ ok: true as const, snapshot: { externalUserId: t.customer, subscriptions: [sub({ billingStatus: 'REFUNDED' })], lastSeq: 6n } }) };
+    const apply = new ApplyBillingEventUseCase(undefined, hubAfter).execute({
       eventId: `race-${stamp}`, billingCustomerId: t.customer, eventType: 'subscription.payment_failed', seq: 6n, payload: {},
     });
     const [applied] = await Promise.all([apply, reconcile()]);
@@ -140,5 +143,48 @@ describe('Reconciliação com Postgres', () => {
     expect(await up.execute(ev)).toEqual({ outcome: 'KEPT_ACTIVE', tenantId: t.id });
     expect(await read(t.id)).toMatchObject({ status: 'ACTIVE', lastBillingEventSeq: 11n, subscriptionExpiresAt: new Date(future) });
     expect((await prisma.billingEventReceipt.findUniqueOrThrow({ where: { eventId: ev.eventId } })).outcome).toBe('KEPT_ACTIVE');
+  });
+
+  it('lote: ACTIVE vencido além da tolerância entra antes do rodízio (até metade do lote)', async () => {
+    const recent = new Date();
+    const overdue = await tenant('overdue', { planSlug: 'COPYSYNC_PRO', billingReconciledAt: recent, subscriptionExpiresAt: new Date(Date.now() - 30 * 3_600_000) });
+    const inGrace = await tenant('in-grace', { planSlug: 'COPYSYNC_PRO', billingReconciledAt: recent, subscriptionExpiresAt: new Date(Date.now() - 2 * 3_600_000) });
+    const list = await repo.listCandidates(2, new Date(), 24 * 3_600_000);
+    expect(list).toHaveLength(2);
+    expect(list[0]!.tenantId).toBe(overdue.id);
+    expect(list.map((c) => c.tenantId)).not.toContain(inGrace.id);
+    expect((await repo.listCandidates(1000, new Date(), 24 * 3_600_000)).filter((c) => c.tenantId === overdue.id)).toHaveLength(1);
+  });
+
+  it('webhook: payment_failed na tolerância mantém; bloqueio do admin vence a renovação', async () => {
+    const t = await tenant('pf', { planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 1n });
+    const inGrace = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const hubGrace = { fetchByCustomer: async () => ({ ok: true as const, snapshot: { externalUserId: t.customer, subscriptions: [sub({ billingStatus: 'PAYMENT_FAILED', expiresAt: inGrace })], lastSeq: 2n } }) };
+    expect((await new ApplyBillingEventUseCase(undefined, hubGrace).execute({
+      eventId: `pf-${stamp}`, billingCustomerId: t.customer, eventType: 'subscription.payment_failed', seq: 2n, payload: {},
+    })).outcome).toBe('KEPT_ACTIVE');
+    expect((await read(t.id)).status).toBe('ACTIVE');
+
+    const blockedAt = new Date('2026-10-01T00:00:00Z');
+    const b = await tenant('blocked', { planSlug: 'COPYSYNC_LITE', status: 'SUSPENDED', suspendedAt: blockedAt, adminBlockedAt: blockedAt, lastBillingEventSeq: 1n });
+    expect((await new ApplyBillingEventUseCase(undefined, client).execute({
+      eventId: `blk-${stamp}`, billingCustomerId: b.customer, eventType: 'subscription.renewed', seq: 2n, payload: { planSlug: 'copysync-max-mensal' },
+    })).outcome).toBe('APPLIED');
+    expect(await read(b.id)).toMatchObject({ status: 'SUSPENDED', suspendedAt: blockedAt, planSlug: 'COPYSYNC_MAX', lastBillingEventSeq: 2n });
+  });
+
+  it('backfill da migration marca adminBlockedAt só onde a última auditoria de status é SUPER_ADMIN (idempotente)', async () => {
+    const since = new Date('2026-09-01T00:00:00Z');
+    const adm = await tenant('bf-adm', { status: 'CANCELLED', suspendedAt: since });
+    const bill = await tenant('bf-bill', { status: 'SUSPENDED', suspendedAt: since });
+    await prisma.auditLog.create({ data: { tenantId: adm.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', newStatus: 'CANCELLED' } } });
+    await prisma.auditLog.create({ data: { tenantId: bill.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', newStatus: 'SUSPENDED' }, createdAt: new Date('2026-08-01') } });
+    await prisma.auditLog.create({ data: { tenantId: bill.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'BILLING_RECONCILE', newStatus: 'SUSPENDED' } } });
+    const sql = readFileSync(join(__dirname, '../../../../../prisma/migrations/20261107170000_add_tenant_admin_blocked_at/migration.sql'), 'utf8');
+    const update = sql.slice(sql.indexOf('UPDATE'));
+    await prisma.$executeRawUnsafe(update);
+    await prisma.$executeRawUnsafe(update);
+    expect((await read(adm.id)).adminBlockedAt).toEqual(since);
+    expect((await read(bill.id)).adminBlockedAt).toBeNull();
   });
 });

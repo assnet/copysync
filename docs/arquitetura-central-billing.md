@@ -49,8 +49,7 @@ Reconciliação (padrão 1 h): GET /integrations/subscriptions?externalUserId=  
 | `subscription.activated` (reativação) / `subscription.renewed` | `ACTIVE`, limpa `suspendedAt` | preset do `planSlug` | plano pode ter mudado: ressincroniza; `planSlug` inválido = status aplica, plano não muda (warn) |
 | `subscription.updated` (edição manual, cortesia, troca de plano) | mantém | preset do `planSlug`, se válido | sem mudança de status |
 | `expiresAt` em activated/renewed/updated | | grava `Tenant.subscriptionExpiresAt` | ausente = mantém; `null` limpa; malformado = **400** sem aplicar nem avançar o seq; nos demais tipos é ignorado |
-| `subscription.payment_failed` | `SUSPENDED`, `suspendedAt=now` | mantém | emite `TENANT_SUSPENDED` |
-| `subscription.canceled`, `subscription.expired`, `subscription.refunded`, `subscription.chargedback` | **decisão pela união** (abaixo): alguma assinatura do cliente ainda dá acesso → `ACTIVE`, limpa `suspendedAt`, `subscriptionExpiresAt` e plano da assinatura escolhida, receipt `KEPT_ACTIVE`; nenhuma → `CANCELLED`, `suspendedAt=now`, receipt `APPLIED` | preset do plano escolhido (se mantém); senão mantém | central fora (401/403, 5xx, 404, timeout, rede, corpo inválido) = **503 sem receipt**, a central retenta; login preservado (PROV-03); corte emite `TENANT_SUSPENDED` |
+| `subscription.payment_failed`, `subscription.canceled`, `subscription.expired`, `subscription.refunded`, `subscription.chargedback` | **decisão pela união** (abaixo): alguma assinatura do cliente ainda dá acesso (PAYMENT_FAILED/EXPIRED dentro da tolerância inclusive) → `ACTIVE`, limpa `suspendedAt`, `subscriptionExpiresAt` e plano da assinatura escolhida, receipt `KEPT_ACTIVE`; nenhuma → `SUSPENDED` (payment_failed) ou `CANCELLED` (demais), `suspendedAt=now` só na saída de ACTIVE, receipt `APPLIED`. Tenant com `adminBlockedAt`: status e `suspendedAt` nunca mudam (só plano/vencimento/watermark) | preset do plano escolhido (se mantém); senão mantém | central fora (401/403, 5xx, 404, timeout, rede, corpo inválido) = **503 sem receipt**, a central retenta; login preservado (PROV-03); corte emite `TENANT_SUSPENDED` |
 | qualquer tipo ≠ `activated` de cliente sem tenant | sem efeito, 200, receipt `IGNORED` | | watermark não avança (não há tenant) |
 | `subscription.trial_ended` | sem efeito, 200, avança o watermark | | CopySync não tem trial próprio |
 | tipo desconhecido | sem efeito, 200, receipt `IGNORED`, avança o watermark | | nunca 4xx/5xx: a central reenviaria |
@@ -59,12 +58,22 @@ Reconciliação (padrão 1 h): GET /integrations/subscriptions?externalUserId=  
 
 **Decisão pela união nos eventos de corte (api 0.71.0).** Na Cakto a renovação cria linha nova (`activated`) e a antiga,
 ao vencer, vira EXPIRED pelo cron da central e emite `expired` com `seq` maior: cortar no evento cancelaria quem pagou o ciclo
-novo. Regra do PulsoSocial: o cliente tem acesso se **qualquer** assinatura dele dá acesso. Para canceled/expired/refunded/
-chargedback com efeito (sem receipt, tenant existe, `seq` acima do watermark), `ApplyBillingEventUseCase` consulta
+novo. Regra do PulsoSocial: o cliente tem acesso se **qualquer** assinatura dele dá acesso. Para payment_failed/canceled/
+expired/refunded/chargedback com efeito (sem receipt, tenant existe, `seq` acima do watermark), `ApplyBillingEventUseCase` consulta
 `GET /integrations/subscriptions` (o mesmo `IHubSubscriptionsClient` da reconciliação) **antes** da transação, sem segurar a
 trava, e na transação decide com `pickGrantingSubscription` (o mesmo critério da §Reconciliação). Duplicado, fora de ordem e
-cliente sem tenant não consultam. Lista vazia num evento de corte = corta (o evento é a prova). activated/renewed/updated/
-payment_failed não consultam (como antes).
+cliente sem tenant não consultam. Lista vazia num evento de corte = corta (o evento é a prova). activated/renewed/updated
+não consultam. Falha da consulta: 503 sem recibo (a central retenta); 401/403, 404, 400 e corpo inválido não se resolvem com
+retry e logam `error` (motivo, status e contador por motivo desde o boot, `failuresSinceBoot`; sem PII), timeout/rede/5xx logam
+`warn`. O contador é só observabilidade por processo, não decide nada.
+
+**Bloqueio do super-admin (`Tenant.adminBlockedAt`, api 0.71.0).** `UpdateTenantStatusUseCase` com origem SUPER_ADMIN grava
+`adminBlockedAt = agora` ao pôr SUSPENDED/CANCELLED e limpa ao pôr ACTIVE, **sempre** (inclusive sem mudança de status) e
+sempre audita (`meta.adminBlocked`); `suspendedAt` só é gravado na saída de ACTIVE. Webhook e reconciliação nunca mudam o
+status de tenant com `adminBlockedAt` (ativação, `KEPT_ACTIVE` e corte só atualizam plano/vencimento/watermark) e nunca
+regravam `suspendedAt` de tenant já não-ACTIVE. Backfill na migration `20261107170000_add_tenant_admin_blocked_at` (idempotente):
+tenant não-ACTIVE cuja última auditoria `TENANT_STATUS_CHANGED` tem `origin` SUPER_ADMIN recebe `adminBlockedAt = suspendedAt`.
+Novo caminho que bloqueie tenant por ação humana tem de gravar `adminBlockedAt`.
 
 **Vínculo pelo e-mail (cliente da central desconhecido em `subscription.activated`).** Tenant criado à mão pelo super-admin
 nasce sem `billingCustomerId`; quando o dono assina pela Cakto, o `externalUserId` é novo. Antes de provisionar (só se o evento
@@ -202,9 +211,11 @@ infra em `integrations/infrastructure/billing/` (`HubSubscriptionsClient` M2M, `
 `createReconcileSubscriptionsUseCase`). Entitlements + efeitos de plano pelo mesmo `billing/syncPlanEntitlements.ts` do webhook.
 
 **Passada** (a cada `BILLING_RECONCILE_INTERVAL_MS`, só em `PROCESS_ROLE` worker/all, sob lease `billing-reconcile`):
-até `BILLING_RECONCILE_BATCH_SIZE` tenants com `billingCustomerId` (ACTIVE, SUSPENDED ou CANCELLED), em ordem
-`billingReconciledAt` (nulos primeiro), `id`. Cada um examinado recebe o carimbo (SQL direto, sem `updatedAt`), então as
-passadas giram por todos. Um `GET {BILLING_HUB_URL}/integrations/subscriptions?externalUserId=` por tenant, assinado com
+até `BILLING_RECONCILE_BATCH_SIZE` tenants com `billingCustomerId`: primeiro (até metade do lote) os ACTIVE com
+`subscriptionExpiresAt` + tolerância já passado, vencidos há mais tempo primeiro, para o corte de vencido não esperar o rodízio
+(até ~39 h); o resto em ordem `billingReconciledAt` (nulos primeiro), `id`, entre ACTIVE/SUSPENDED/CANCELLED. Cada um
+examinado recebe o carimbo (SQL direto, sem `updatedAt`), então as passadas giram por todos. Vencido renovado sem evento
+sai da fila: o vencimento da central diferente do local é motivo de aplicar (`expiry_changed`). Um `GET {BILLING_HUB_URL}/integrations/subscriptions?externalUserId=` por tenant, assinado com
 `BILLING_APPLICATION_KEY`/`BILLING_APPLICATION_SECRET` (`m2mSignature.ts`; o `_PREVIOUS` não vale para saída), timeout
 `BILLING_RECONCILE_HTTP_TIMEOUT_MS`, sem retry (a próxima passada repete). Pior caso ≈ lote × timeout: manter abaixo de
 `BILLING_RECONCILE_LEASE_TTL_MS` (padrão 100 × 5 s < 10 min). `BILLING_GRACE_HOURS` (0–168, padrão 24) vale para a reconciliação e para os eventos de corte. Log por passada: `examined`, `corrected`, `suspended`,
@@ -220,7 +231,8 @@ retentar a cobrança:
 | `billingStatus` CANCELED (cancelamento de admin/suporte na central) ou REFUNDED (reembolso/chargeback) | **não**, na hora |
 | `billingStatus` null (legado), ACTIVE, TRIAL_ACTIVE | sim, sem vencimento ou enquanto `expiresAt` + tolerância ≥ agora |
 | `billingStatus` PAYMENT_FAILED ou EXPIRED (o cron da central marca logo após vencer) | sim, enquanto `expiresAt` + tolerância ≥ agora; sem vencimento = não |
-| PENDING_CANCELLATION, TRIAL_ENDED_PENDING, status desconhecido | não |
+| `billingStatus` PENDING_CANCELLATION (pedido de cancelamento aguardando aprovação; na central segue ativa) | sim, como ACTIVE; o corte vem quando o admin aprova (`canceledAt`/CANCELED) |
+| TRIAL_ENDED_PENDING, status desconhecido | não |
 
 Cancelar só a recorrência na Cakto não grava nada na central: a linha segue ACTIVE e dá acesso até o vencimento + tolerância.
 `canceledAt`/`refundedAt`/`chargedbackAt` (ISO|null) vêm na resposta desde a central 1.89.2 (junto com `status`, que o
@@ -232,26 +244,20 @@ cliente ignora); ausentes (central antiga) contam como nulos. Plano esperado = e
 | Situação | Ação |
 | --- | --- |
 | Watermark local > `lastSeq` (ou central sem evento e local com watermark) | `stale`: nada (evento mais novo já aplicado) |
-| Há assinatura com acesso e tenant sem plano, com plano diferente, SUSPENDED/CANCELLED por cobrança ou watermark < `lastSeq` | aplica: ACTIVE + `suspendedAt` null (se SUSPENDED/CANCELLED; `reasons` `billing_suspended`/`billing_cancelled`), `planSlug`, `subscriptionExpiresAt`, entitlements + efeitos; AuditLog (`TENANT_STATUS_CHANGED` se reativou, senão `TENANT_UPDATED`; `meta.origin = BILLING_RECONCILE`, `reasons`, antes/depois); watermark → `lastSeq` |
+| Há assinatura com acesso e tenant sem plano, com plano diferente, vencimento diferente, SUSPENDED/CANCELLED sem `adminBlockedAt` ou watermark < `lastSeq` | aplica: ACTIVE + `suspendedAt` null (se SUSPENDED/CANCELLED; `reasons` `billing_suspended`/`billing_cancelled`), `planSlug`, `subscriptionExpiresAt`, entitlements + efeitos; AuditLog (`TENANT_STATUS_CHANGED` se reativou, senão `TENANT_UPDATED`; `meta.origin = BILLING_RECONCILE`, `reasons`, antes/depois); watermark → `lastSeq` |
 | Há acesso, mas só com `planSlug` desconhecido | nada; warn + `unknownPlan` |
-| SUSPENDED/CANCELLED por super-admin (auditoria `TENANT_STATUS_CHANGED` com `origin` SUPER_ADMIN e `newStatus` = status atual, gravada desde o `suspendedAt`; sem `suspendedAt` = idem) | nada; `adminSuspended` |
+| Tenant com `adminBlockedAt` (bloqueio do super-admin) | nunca muda status (nem suspende nem reativa); com acesso e plano/vencimento/watermark diferentes, aplica só isso (`activate: false`); senão nada, `adminSuspended` |
 | Central lista assinaturas, nenhuma dá acesso, tenant ACTIVE (só resposta 200 bem formada) | suspende como o `payment_failed` do webhook: SUSPENDED + `suspendedAt`, plano/entitlements intactos, AuditLog `TENANT_STATUS_CHANGED` (`reasons: ['no_access']`), watermark → `lastSeq`; após o commit `TENANT_SUSPENDED` (desconecta sessões) |
 | Central responde 200 com lista vazia (cliente desconhecido) | nada; warn + `unknownCustomer` |
 | Iguais | nada |
 | 401/403, outro status (404/400/5xx), timeout, rede, corpo inválido (outro `externalUserId`, `lastSeq` não inteiro, item malformado) | nada; `errors`; segue para o próximo |
 
-Suspensão pela reconciliação não grava SUPER_ADMIN, então a passada seguinte reativa se o acesso voltar.
+Suspensão pela reconciliação não grava `adminBlockedAt`, então a passada seguinte reativa se o acesso voltar.
 
 **Concorrência com o webhook**: `reconcileLocked` faz `SELECT … FOR UPDATE` na linha do tenant (mesma trava do
 `ApplyBillingEventUseCase`) e só então decide, com o estado relido. Evento mais novo aplicado durante o GET deixa o
 watermark acima do `lastSeq` → `stale`. O watermark sobe com `updateMany … lastBillingEventSeq < seq`: nunca desce.
 Evento com `seq ≤ lastSeq` que chegue depois vira OUT_OF_ORDER (já refletido). Reconciliação não grava recibo.
-
-**Origem do bloqueio, sem migration**: o único caminho do super-admin (`PATCH` de status → `UpdateTenantStatusUseCase`)
-grava `suspendedAt` e depois a auditoria `TENANT_STATUS_CHANGED` `origin: SUPER_ADMIN`. O webhook (payment_failed e eventos de
-corte) e a reconciliação gravam `suspendedAt` sem essa auditoria (a reconciliação audita com `origin: BILLING_RECONCILE`). Logo,
-SUSPENDED/CANCELLED sem auditoria SUPER_ADMIN desde o `suspendedAt` = por cobrança, e a reconciliação reativa quando a central
-mostra acesso. Novo caminho que bloqueie tenant por ação humana tem de gravar essa auditoria, senão a reconciliação o desfaz.
 
 **O que não faz**: não reativa bloqueio de super-admin; não cria tenant (cliente sem tenant segue pelo webhook); não toca tenant sem
 `billingCustomerId`; não valida `permissions[]`; não usa o segredo anterior; não roda no papel `http`.

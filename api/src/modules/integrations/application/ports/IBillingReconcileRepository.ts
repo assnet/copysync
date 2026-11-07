@@ -14,8 +14,11 @@ export interface BillingReconcileOutcome {
 export interface IBillingReconcileRepository {
   acquireLease(ownerId: string, ttlMs: number): Promise<boolean>;
   releaseLease(ownerId: string): Promise<void>;
-  /** Tenants com cliente da central, ACTIVE/SUSPENDED, menos recentemente reconciliados primeiro (estável por id). */
-  listCandidates(limit: number): Promise<ReconcileCandidate[]>;
+  /**
+   * Tenants com cliente da central: primeiro ACTIVE vencidos além da tolerância (até metade do lote), depois
+   * ACTIVE/SUSPENDED/CANCELLED menos recentemente reconciliados (estável por id). Total ≤ `limit`.
+   */
+  listCandidates(limit: number, now: Date, graceMs: number): Promise<ReconcileCandidate[]>;
   /** Marca o tenant como examinado nesta passada (rodízio entre passadas). */
   markExamined(tenantId: string, at: Date): Promise<void>;
   /**

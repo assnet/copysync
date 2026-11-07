@@ -7,6 +7,7 @@ export interface ITenantRepository {
   listAll(): Promise<Tenant[]>;
   create(tenant: Tenant): Promise<Tenant>;
   update(tenant: Tenant): Promise<Tenant>;
-  updateStatus(id: string, status: Tenant['status'], suspendedAt: Date | null): Promise<Tenant>;
+  /** `adminBlockedAt`: undefined = mantém; Date = bloqueio do super-admin; null = limpa. */
+  updateStatus(id: string, status: Tenant['status'], suspendedAt: Date | null, adminBlockedAt?: Date | null): Promise<Tenant>;
   updateBillingSeq(id: string, seq: bigint): Promise<number>;
 }

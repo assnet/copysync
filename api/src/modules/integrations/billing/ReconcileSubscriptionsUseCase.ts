@@ -62,7 +62,7 @@ export class ReconcileSubscriptionsUseCase {
     const startedAt = Date.now();
     const summary = emptySummary();
     try {
-      const candidates = await this.repo.listCandidates(this.config.batchSize);
+      const candidates = await this.repo.listCandidates(this.config.batchSize, this.now(), this.config.graceMs);
       for (const candidate of candidates) {
         summary.examined++;
         try {

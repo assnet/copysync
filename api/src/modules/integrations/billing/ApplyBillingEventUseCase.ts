@@ -82,6 +82,8 @@ interface LockedTenantRow {
   id: string;
   status: string;
   lastBillingEventSeq: bigint | null;
+  /** Bloqueio do super-admin: o webhook nunca muda o status (só plano/vencimento/watermark). */
+  adminBlockedAt: Date | null;
 }
 
 /** Tenant existente (criado sem `billingCustomerId`) que recebe o cliente da central pelo e-mail do dono. */
@@ -104,6 +106,23 @@ const CANCELLING = new Set<BillingEventType>([
   'subscription.refunded',
   'subscription.chargedback',
 ]);
+/** Eventos que cortam acesso: decididos pela união das assinaturas na central (PAYMENT_FAILED tem tolerância). */
+const UNION_DECIDED = new Set<BillingEventType>([...CANCELLING, 'subscription.payment_failed']);
+/** Falha da consulta que não se resolve sozinha (credencial, cliente, contrato): log `error`. */
+const PERSISTENT_LOOKUP_FAILURES = new Set<string>(['unauthorized', 'invalid_response']);
+/** Contador por motivo, por processo, só para o log (observabilidade; não decide nada). */
+const lookupFailures = new Map<string, number>();
+
+/** Chave do contador e gravidade: 401/403, corpo inválido, 404 e 400 não se resolvem com retry. */
+export function classifyHubLookupFailure(reason: string, status?: number): { key: string; persistent: boolean } {
+  const clientError = status === 404 || status === 400;
+  return { key: clientError ? `${reason}_${status}` : reason, persistent: clientError || PERSISTENT_LOOKUP_FAILURES.has(reason) };
+}
+
+/** Cópia do contador por motivo desde o boot (teste/diagnóstico). */
+export function hubLookupFailureCounts(): Record<string, number> {
+  return Object.fromEntries(lookupFailures);
+}
 const MAX_SLUG_ATTEMPTS = 3;
 /** Teto explícito da transação (lock + entitlements + efeitos do plano). */
 const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
@@ -145,10 +164,15 @@ export class ApplyBillingEventUseCase {
 
     // Corte decidido pela união das assinaturas na central; consulta FORA da transação (sem segurar a trava)
     let snapshot: HubSubscriptionSnapshot | null = null;
-    if (type && CANCELLING.has(type) && (await this.needsUnionLookup(input))) {
+    if (type && UNION_DECIDED.has(type) && (await this.needsUnionLookup(input))) {
       const res = await (this.subscriptions ?? createHubSubscriptionsClientFromEnv()).fetchByCustomer(billingCustomerId);
       if (!res.ok) {
-        log.warn({ eventId, eventType: type, reason: res.reason, status: res.status }, 'Hub subscriptions lookup failed; cut event not applied, hub will retry');
+        const { key, persistent } = classifyHubLookupFailure(res.reason, res.status);
+        const count = (lookupFailures.get(key) ?? 0) + 1;
+        lookupFailures.set(key, count);
+        const ctx = { eventId, eventType: type, reason: res.reason, status: res.status, failuresSinceBoot: count };
+        if (persistent) log.error(ctx, 'Hub subscriptions lookup failing persistently (check credentials/customer/contract); cut event not applied, hub will retry');
+        else log.warn(ctx, 'Hub subscriptions lookup failed; cut event not applied, hub will retry');
         return { outcome: 'HUB_UNAVAILABLE', reason: res.reason };
       }
       snapshot = res.snapshot;
@@ -268,7 +292,7 @@ export class ApplyBillingEventUseCase {
   /** Trava o tenant do cliente da central (eventos do mesmo cliente serializam até o commit). */
   private lockByCustomer(tx: TxClient, billingCustomerId: string): Promise<LockedTenantRow[]> {
     return tx.$queryRaw<LockedTenantRow[]>`
-      SELECT "id", "status"::text AS "status", "lastBillingEventSeq"
+      SELECT "id", "status"::text AS "status", "lastBillingEventSeq", "adminBlockedAt"
         FROM "tenants" WHERE "billingCustomerId" = ${billingCustomerId}
        FOR UPDATE`;
   }
@@ -284,7 +308,7 @@ export class ApplyBillingEventUseCase {
     link: LinkCandidate,
   ): Promise<{ tenant: LockedTenantRow; linkPending: boolean }> {
     const rows = await tx.$queryRaw<LockedTenantRow[]>`
-      SELECT "id", "status"::text AS "status", "lastBillingEventSeq"
+      SELECT "id", "status"::text AS "status", "lastBillingEventSeq", "adminBlockedAt"
         FROM "tenants" WHERE "id" = ${link.tenantId} AND "billingCustomerId" IS NULL
        FOR UPDATE`;
     if (rows[0]) {
@@ -363,27 +387,35 @@ export class ApplyBillingEventUseCase {
     let suspended = false;
     let kept = false;
     let syncSlug: PlanSlug | null = planSlug !== null && PLAN_SYNC.has(type) ? planSlug : null;
-    if (ACTIVATING.has(type)) {
+    const adminBlocked = Boolean(tenant.adminBlockedAt);
+    const wasActive = tenant.status === 'ACTIVE';
+    // Bloqueio do super-admin vence sempre: status nunca muda; suspendedAt só é gravado na saída de ACTIVE
+    const block = (status: 'SUSPENDED' | 'CANCELLED') => {
+      if (adminBlocked) return;
+      data.status = status;
+      if (wasActive) {
+        data.suspendedAt = new Date();
+        suspended = true;
+      }
+    };
+    const unblock = () => {
+      if (adminBlocked) return;
       data.status = 'ACTIVE';
       data.suspendedAt = null;
-    } else if (type === 'subscription.payment_failed') {
-      data.status = 'SUSPENDED';
-      data.suspendedAt = new Date();
-      suspended = true;
-    } else if (CANCELLING.has(type)) {
-      // União (regra do PulsoSocial): outra assinatura do cliente ainda dá acesso → mantém ACTIVE
+    };
+    if (ACTIVATING.has(type)) {
+      unblock();
+    } else if (UNION_DECIDED.has(type)) {
+      // União (regra do PulsoSocial): alguma assinatura do cliente ainda dá acesso → mantém
       if (!snapshot) throw new UnionLookupRequiredError();
       const pick = pickGrantingSubscription(snapshot.subscriptions, new Date(), graceMsFromHours(env.BILLING_GRACE_HOURS));
       if (pick.grants) {
         kept = true;
-        data.status = 'ACTIVE';
-        data.suspendedAt = null;
+        unblock();
         if (pick.sub) data.subscriptionExpiresAt = pick.sub.expiresAt === null ? null : new Date(pick.sub.expiresAt);
         syncSlug = pick.planSlug;
       } else {
-        data.status = 'CANCELLED';
-        data.suspendedAt = new Date();
-        suspended = true;
+        block(type === 'subscription.payment_failed' ? 'SUSPENDED' : 'CANCELLED');
       }
     }
     // Vencimento só muda em ativação/renovação/atualização; demais eventos mantêm

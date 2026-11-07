@@ -33,11 +33,12 @@ export interface LocalBillingState {
   status: LocalTenantStatus;
   planSlug: string | null;
   lastBillingEventSeq: bigint | null;
-  /** SUSPENDED/CANCELLED por ação de super-admin (não por cobrança): a reconciliação não reativa. */
-  blockedByAdmin: boolean;
+  /** `Tenant.adminBlockedAt` preenchido: bloqueio do super-admin; a reconciliação nunca muda o status. */
+  adminBlocked: boolean;
+  subscriptionExpiresAt: Date | null;
 }
 
-export type ReconcileReason = 'no_plan' | 'plan_changed' | 'billing_suspended' | 'billing_cancelled' | 'watermark_behind';
+export type ReconcileReason = 'no_plan' | 'plan_changed' | 'expiry_changed' | 'billing_suspended' | 'billing_cancelled' | 'watermark_behind';
 
 export type ReconcileDecision =
   | {
@@ -68,7 +69,8 @@ const HOUR_MS = 3_600_000;
 export const graceMsFromHours = (hours: number) => hours * HOUR_MS;
 
 /** Dão acesso até `expiresAt` + tolerância (sem vencimento = acesso; null = legado, anterior ao campo). */
-const OPEN_BILLING_STATUSES = new Set(['ACTIVE', 'TRIAL_ACTIVE']);
+/** PENDING_CANCELLATION = pedido aguardando aprovação; na central a assinatura segue ativa até o admin aprovar. */
+const OPEN_BILLING_STATUSES = new Set(['ACTIVE', 'TRIAL_ACTIVE', 'PENDING_CANCELLATION']);
 /** Cobrança falhou ou o cron da central marcou vencida: acesso só até `expiresAt` + tolerância (vencimento obrigatório). */
 const GRACE_ONLY_BILLING_STATUSES = new Set(['PAYMENT_FAILED', 'EXPIRED']);
 
@@ -76,9 +78,9 @@ const GRACE_ONLY_BILLING_STATUSES = new Set(['PAYMENT_FAILED', 'EXPIRED']);
  * Assinatura dá acesso agora (decisões do dono, 2026-11-07):
  * - corta na hora, sem tolerância: `deletedAt`, `canceledAt`, `refundedAt` ou `chargedbackAt` preenchidos, ou
  *   `billingStatus` CANCELED (cancelamento de admin/suporte na central) ou REFUNDED (reembolso/chargeback);
- * - null | ACTIVE | TRIAL_ACTIVE: sem vencimento ou `expiresAt` + tolerância >= agora;
+ * - null | ACTIVE | TRIAL_ACTIVE | PENDING_CANCELLATION (pedido aguardando aprovação): sem vencimento ou `expiresAt` + tolerância >= agora;
  * - PAYMENT_FAILED | EXPIRED: `expiresAt` + tolerância >= agora (sem vencimento = sem acesso);
- * - qualquer outro (PENDING_CANCELLATION, TRIAL_ENDED_PENDING, desconhecido): sem acesso.
+ * - qualquer outro (TRIAL_ENDED_PENDING, desconhecido): sem acesso.
  * Cancelar só a recorrência na Cakto não grava nada na central: segue ACTIVE até o vencimento + tolerância.
  */
 export function subscriptionGrantsAccess(sub: HubSubscription, now: Date, graceMs: number): boolean {
@@ -126,6 +128,7 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   if (localSeq !== null && (lastSeq === null || localSeq > lastSeq)) return { kind: 'stale' };
   const pick = pickGrantingSubscription(snapshot.subscriptions, now, graceMs);
   if (!pick.grants) {
+    if (local.adminBlocked) return { kind: 'admin_suspended' };
     if (local.status !== 'ACTIVE') return { kind: 'noop' };
     return snapshot.subscriptions.length === 0 ? { kind: 'unknown_customer' } : { kind: 'suspend', advanceTo: lastSeq };
   }
@@ -134,20 +137,21 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   const reasons: ReconcileReason[] = [];
   if (local.planSlug === null) reasons.push('no_plan');
   else if (local.planSlug !== pick.planSlug) reasons.push('plan_changed');
-  if (local.status !== 'ACTIVE') {
-    if (local.blockedByAdmin) return { kind: 'admin_suspended' };
-    reasons.push(local.status === 'SUSPENDED' ? 'billing_suspended' : 'billing_cancelled');
-  }
+  const expected = pick.sub.expiresAt === null ? null : new Date(pick.sub.expiresAt);
+  if ((local.subscriptionExpiresAt?.getTime() ?? null) !== (expected?.getTime() ?? null)) reasons.push('expiry_changed');
+  // Bloqueio do super-admin vence: só plano/vencimento/watermark, nunca o status
+  const activate = local.status !== 'ACTIVE' && !local.adminBlocked;
+  if (activate) reasons.push(local.status === 'SUSPENDED' ? 'billing_suspended' : 'billing_cancelled');
   if (lastSeq !== null && (localSeq === null || localSeq < lastSeq)) reasons.push('watermark_behind');
-  if (reasons.length === 0) return { kind: 'noop' };
+  if (reasons.length === 0) return local.adminBlocked ? { kind: 'admin_suspended' } : { kind: 'noop' };
 
   return {
     kind: 'apply',
     reasons,
     planSlug: pick.planSlug,
     subscriptionId: pick.sub.id,
-    expiresAt: pick.sub.expiresAt === null ? null : new Date(pick.sub.expiresAt),
-    activate: local.status !== 'ACTIVE',
+    expiresAt: expected,
+    activate,
     advanceTo: lastSeq,
   };
 }

@@ -26,7 +26,8 @@ describe('subscriptionGrantsAccess (tolerância de 24 h; cancelamento/estorno co
     ['refundedAt', { refundedAt: hoursAgo(1) }, false],
     ['chargedbackAt', { chargedbackAt: hoursAgo(1) }, false],
     ['deletedAt', { deletedAt: hoursAgo(1) }, false],
-    ['PENDING_CANCELLATION', { billingStatus: 'PENDING_CANCELLATION', expiresAt: FUTURE }, false],
+    ['PENDING_CANCELLATION (aguardando aprovação) no ciclo', { billingStatus: 'PENDING_CANCELLATION', expiresAt: FUTURE }, true],
+    ['PENDING_CANCELLATION vencida há 25 h', { billingStatus: 'PENDING_CANCELLATION', expiresAt: hoursAgo(25) }, false],
     ['TRIAL_ENDED_PENDING', { billingStatus: 'TRIAL_ENDED_PENDING', expiresAt: FUTURE }, false],
     ['data inválida', { expiresAt: 'lixo' }, false],
   ] as Array<[string, Partial<HubSubscription>, boolean]>)('%s → %s', (_n, o, expected) => {
@@ -56,7 +57,7 @@ describe('pickGrantingSubscription', () => {
 });
 
 describe('decideReconcile', () => {
-  const local = { status: 'ACTIVE' as const, planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, blockedByAdmin: false };
+  const local = { status: 'ACTIVE' as const, planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, adminBlocked: false, subscriptionExpiresAt: null };
   const snap = (lastSeq: bigint | null, subscriptions = [sub()]) => ({ externalUserId: 'c', subscriptions, lastSeq });
 
   it('central sem evento e tenant com watermark: stale (não mexe)', () => {
@@ -77,18 +78,27 @@ describe('decideReconcile', () => {
     expect(decideReconcile({ ...local, lastBillingEventSeq: 7n }, snap(6n, [sub({ billingStatus: 'REFUNDED' })]), NOW, G)).toEqual({ kind: 'stale' });
   });
   it('vencida há 23 h mantém; há 25 h suspende', () => {
-    expect(decideReconcile(local, snap(5n, [sub({ expiresAt: hoursAgo(23) })]), NOW, G)).toEqual({ kind: 'noop' });
+    expect(decideReconcile({ ...local, subscriptionExpiresAt: new Date(hoursAgo(23)) }, snap(5n, [sub({ expiresAt: hoursAgo(23) })]), NOW, G)).toEqual({ kind: 'noop' });
     expect(decideReconcile(local, snap(5n, [sub({ expiresAt: hoursAgo(25) })]), NOW, G)).toEqual({ kind: 'suspend', advanceTo: 5n });
   });
   it('CANCELLED por cobrança com acesso: reativa com plano; por super-admin: não', () => {
     expect(decideReconcile({ ...local, status: 'CANCELLED', planSlug: 'COPYSYNC_LITE' }, snap(5n), NOW, G))
       .toMatchObject({ kind: 'apply', reasons: ['plan_changed', 'billing_cancelled'], activate: true, planSlug: 'COPYSYNC_PRO' });
-    expect(decideReconcile({ ...local, status: 'CANCELLED', blockedByAdmin: true }, snap(5n), NOW, G)).toEqual({ kind: 'admin_suspended' });
+    expect(decideReconcile({ ...local, status: 'CANCELLED', adminBlocked: true }, snap(5n), NOW, G)).toEqual({ kind: 'admin_suspended' });
   });
   it('canceledAt preenchido com billingStatus ACTIVE corta na hora (central 1.89.2)', () => {
     const s1 = sub({ billingStatus: 'ACTIVE', canceledAt: hoursAgo(0.5), refundedAt: null, chargedbackAt: null, expiresAt: FUTURE });
     expect(subscriptionGrantsAccess(s1, NOW, G)).toBe(false);
     expect(decideReconcile(local, snap(5n, [s1]), NOW, G)).toEqual({ kind: 'suspend', advanceTo: 5n });
+  });
+  it('vencimento local diferente do da central: expiry_changed (sai da fila de vencidos)', () => {
+    expect(decideReconcile({ ...local, subscriptionExpiresAt: new Date(hoursAgo(30)) }, snap(5n, [sub({ expiresAt: FUTURE })]), NOW, G))
+      .toMatchObject({ kind: 'apply', reasons: ['expiry_changed'], activate: false, expiresAt: new Date(FUTURE) });
+  });
+  it('bloqueio do admin: nunca suspende nem reativa', () => {
+    expect(decideReconcile({ ...local, status: 'SUSPENDED', adminBlocked: true }, snap(5n, [sub({ billingStatus: 'REFUNDED' })]), NOW, G)).toEqual({ kind: 'admin_suspended' });
+    expect(decideReconcile({ ...local, status: 'CANCELLED', adminBlocked: true, planSlug: null }, snap(5n), NOW, G))
+      .toMatchObject({ kind: 'apply', reasons: ['no_plan'], activate: false });
   });
   it('vencimento da assinatura escolhida vai junto', () => {
     const d = decideReconcile({ ...local, planSlug: null }, snap(5n, [sub({ expiresAt: FUTURE })]), NOW, G);

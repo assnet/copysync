@@ -57,10 +57,10 @@ export class PrismaTenantRepository implements ITenantRepository {
     return raw ? PrismaTenantMapper.toDomain(raw) : null;
   }
 
-  async updateStatus(id: string, status: Tenant['status'], suspendedAt: Date | null): Promise<Tenant> {
+  async updateStatus(id: string, status: Tenant['status'], suspendedAt: Date | null, adminBlockedAt?: Date | null): Promise<Tenant> {
     const raw = await this.db.tenant.update({
       where: { id },
-      data: { status, suspendedAt },
+      data: { status, suspendedAt, ...(adminBlockedAt !== undefined && { adminBlockedAt }) },
     });
     return PrismaTenantMapper.toDomain(raw);
   }

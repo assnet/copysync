@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 
 /** Banco em memória: tenant único por `billingCustomerId`, recibos por `eventId`. */
 const db = vi.hoisted(() => {
-  type Tenant = { id: string; status: string; lastBillingEventSeq: bigint | null; planSlug: string | null; suspendedAt: Date | null; subscriptionExpiresAt?: Date | null };
+  type Tenant = { id: string; status: string; lastBillingEventSeq: bigint | null; planSlug: string | null; suspendedAt: Date | null; subscriptionExpiresAt?: Date | null; adminBlockedAt?: Date | null };
   const state = {
     tenant: null as Tenant | null,
     receipts: new Map<string, { outcome: string; tenantId: string | null; type: string }>(),
@@ -19,7 +19,7 @@ const db = vi.hoisted(() => {
     /** Candidato vinculado a outro cliente entre a leitura e o lock. */
     candidateGone: false,
   };
-  const row = (t: Tenant) => ({ id: t.id, status: t.status, lastBillingEventSeq: t.lastBillingEventSeq });
+  const row = (t: Tenant) => ({ id: t.id, status: t.status, lastBillingEventSeq: t.lastBillingEventSeq, adminBlockedAt: t.adminBlockedAt ?? null });
   const client = {
     $queryRaw: async (sql: TemplateStringsArray, ...values: unknown[]) => {
       state.locked++;
@@ -97,7 +97,7 @@ vi.mock('../../../shared/database/prisma.client', () => ({ prisma: db.prisma }))
 vi.mock('../../../shared/events/InternalEventBus', () => ({ internalEventBus: { emit } }));
 vi.mock('./applyPlanSideEffects', () => ({ applyPlanSideEffects: sideEffects }));
 
-import { ApplyBillingEventUseCase, type ApplyBillingEventInput } from './ApplyBillingEventUseCase';
+import { ApplyBillingEventUseCase, classifyHubLookupFailure, hubLookupFailureCounts, type ApplyBillingEventInput } from './ApplyBillingEventUseCase';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
 
 function makeTenant(over: Partial<NonNullable<typeof db.state.tenant>> = {}) {
@@ -264,9 +264,10 @@ describe('ApplyBillingEventUseCase', () => {
     expect(db.state.entitlements.size).toBe(0);
   });
 
-  it('falha de pagamento suspende e emite TENANT_SUSPENDED depois do commit', async () => {
+  it('falha de pagamento sem assinatura válida suspende e emite TENANT_SUSPENDED depois do commit', async () => {
     makeTenant();
     const out = await run(ev('subscription.payment_failed', { payload: {} }));
+    expect(hub.fetchByCustomer).toHaveBeenCalledTimes(1);
     expect(out.outcome).toBe('APPLIED');
     expect(db.state.tenant!.status).toBe('SUSPENDED');
     expect(db.state.tenant!.suspendedAt).toBeInstanceOf(Date);
@@ -350,6 +351,52 @@ describe('ApplyBillingEventUseCase', () => {
       db.state.tenant = null;
       expect((await run(ev('subscription.expired'))).outcome).toBe('IGNORED');
       expect(hub.fetchByCustomer).not.toHaveBeenCalled();
+    });
+
+    it('payment_failed dentro da tolerância (vencida há 2 h) mantém ACTIVE', async () => {
+      makeTenant();
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'PAYMENT_FAILED', expiresAt: iso(-2 / 24) })]));
+      expect((await run(ev('subscription.payment_failed', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      expect(db.state.tenant!.status).toBe('ACTIVE');
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('bloqueio do super-admin vence: ativação e KEPT_ACTIVE só atualizam plano/vencimento; corte não mexe no status', async () => {
+      const blockedAt = new Date('2026-10-01');
+      makeTenant({ status: 'CANCELLED', suspendedAt: blockedAt, adminBlockedAt: blockedAt });
+      await run(ev('subscription.renewed', { payload: { planSlug: 'COPYSYNC_MAX', expiresAt: iso(30) } }));
+      expect(db.state.tenant).toMatchObject({ status: 'CANCELLED', suspendedAt: blockedAt, planSlug: 'COPYSYNC_MAX' });
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ expiresAt: iso(30) })]));
+      expect((await run(ev('subscription.expired', { eventId: 'ev-k', seq: 12n, payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      expect(db.state.tenant).toMatchObject({ status: 'CANCELLED', suspendedAt: blockedAt, planSlug: 'COPYSYNC_PRO' });
+      db.state.tenant!.status = 'SUSPENDED';
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'REFUNDED' })]));
+      await run(ev('subscription.refunded', { eventId: 'ev-r', seq: 13n, payload: {} }));
+      expect(db.state.tenant).toMatchObject({ status: 'SUSPENDED', suspendedAt: blockedAt, lastBillingEventSeq: 13n });
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('corte de tenant já não-ACTIVE não regrava suspendedAt nem reemite', async () => {
+      const since = new Date('2026-10-01');
+      makeTenant({ status: 'SUSPENDED', suspendedAt: since });
+      await run(ev('subscription.canceled', { payload: {} }));
+      expect(db.state.tenant).toMatchObject({ status: 'CANCELLED', suspendedAt: since });
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('falha persistente (401/404/invalid_response) = error; transitória = warn; contador por motivo', async () => {
+      expect(classifyHubLookupFailure('unauthorized', 401)).toEqual({ key: 'unauthorized', persistent: true });
+      expect(classifyHubLookupFailure('invalid_response', 200)).toEqual({ key: 'invalid_response', persistent: true });
+      expect(classifyHubLookupFailure('http_error', 404)).toEqual({ key: 'http_error_404', persistent: true });
+      expect(classifyHubLookupFailure('http_error', 503)).toEqual({ key: 'http_error', persistent: false });
+      expect(classifyHubLookupFailure('timeout')).toEqual({ key: 'timeout', persistent: false });
+      makeTenant();
+      const before = hubLookupFailureCounts()['http_error_404'] ?? 0;
+      hub.fetchByCustomer.mockResolvedValue({ ok: false, reason: 'http_error', status: 404 });
+      expect((await run(ev('subscription.expired', { payload: {} }))).outcome).toBe('HUB_UNAVAILABLE');
+      expect((await run(ev('subscription.expired', { payload: {} }))).outcome).toBe('HUB_UNAVAILABLE');
+      expect(hubLookupFailureCounts()['http_error_404']).toBe(before + 2);
+      expect(db.state.receipts.size).toBe(0);
     });
 
     it('renovação segue sem consultar a central', async () => {

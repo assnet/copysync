@@ -28,6 +28,11 @@ Docs: `docs/arquitetura-central-billing.md` (§Reconciliação: regras, envs, co
 
 #### api/
 
+- **`integrations/billing/ApplyBillingEventUseCase.ts`** + testes — `subscription.payment_failed` também decidido pela união (PAYMENT_FAILED dá acesso até `expiresAt` + tolerância; antes suspendia na hora); bloqueio do super-admin vence ativação/`KEPT_ACTIVE`/corte (só plano/vencimento/watermark); `suspendedAt` só é gravado na saída de ACTIVE; falha persistente da consulta (401/403/404/400/corpo inválido) loga `error` com motivo e contador por motivo (`classifyHubLookupFailure`).
+- **`tenants/application/use-cases/UpdateTenantStatusUseCase.ts`** + teste (novo) — origem SUPER_ADMIN grava/limpa `Tenant.adminBlockedAt` e audita sempre, inclusive sem mudança de status (antes retornava sem auditar).
+- **`prisma/migrations/20261107170000_add_tenant_admin_blocked_at`** — `Tenant.adminBlockedAt` (aditiva) + backfill idempotente pela última auditoria SUPER_ADMIN; substitui a heurística por auditoria na reconciliação.
+- **`integrations/domain/services/subscriptionReconcile.ts`** — PENDING_CANCELLATION dá acesso (pedido aguardando aprovação); reconciliação nunca muda status de tenant com `adminBlockedAt`; motivo `expiry_changed`.
+- **`PrismaBillingReconcileRepository.ts`** — lote prioriza ACTIVE vencidos além da tolerância (até metade) antes do rodízio.
 - **`integrations/billing/ApplyBillingEventUseCase.ts`** + testes — canceled/expired/refunded/chargedback deixavam o tenant CANCELLED na hora; na Cakto a renovação cria linha nova e o `expired` da linha antiga (seq maior) cortava quem pagou o ciclo novo. Agora o receiver consulta a central antes da transação e decide pela união (`pickGrantingSubscription`): alguma assinatura com acesso → mantém ACTIVE com vencimento/plano dela, receipt `KEPT_ACTIVE`; nenhuma → CANCELLED como antes. Central fora → `HUB_UNAVAILABLE` sem receipt.
 - **`integrations/billing/billing.routes.ts`** + teste — `HUB_UNAVAILABLE` responde 503 (a central retenta 5xx).
 - **`prisma/migrations/20261107160000_add_billing_outcome_kept_active`** — valor `KEPT_ACTIVE` em `BillingEventOutcome`.

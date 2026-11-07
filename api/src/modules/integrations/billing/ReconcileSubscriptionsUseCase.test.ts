@@ -12,7 +12,7 @@ const ok = (subscriptions: HubSubscription[], lastSeq: bigint | null = 5n): HubS
   ok: true, snapshot: { externalUserId: 'c', subscriptions, lastSeq },
 });
 const state = (o: Partial<LocalBillingState> = {}): LocalBillingState => ({
-  status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, blockedByAdmin: false, ...o,
+  status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, adminBlocked: false, subscriptionExpiresAt: new Date('2026-12-07T12:00:00Z'), ...o,
 });
 
 /** Repositório em memória: guarda o estado, chama `decide` e aplica como o Prisma (watermark só sobe). */
@@ -83,7 +83,7 @@ describe('ReconcileSubscriptionsUseCase', () => {
   });
 
   it('b) recorrência cancelada na Cakto (central segue ACTIVE) e vencida há 23 h: mantém', async () => {
-    const h = harness({ t1: state() }, { t1: ok([sub({ expiresAt: '2026-11-06T13:00:00Z' })]) });
+    const h = harness({ t1: state({ subscriptionExpiresAt: new Date('2026-11-06T13:00:00Z') }) }, { t1: ok([sub({ expiresAt: '2026-11-06T13:00:00Z' })]) });
     expect(await h.uc.execute()).toMatchObject({ corrected: 0, suspended: 0 });
   });
 
@@ -128,18 +128,26 @@ describe('ReconcileSubscriptionsUseCase', () => {
 
   it('suspenso por super-admin não reativa; plano desconhecido não aplica', async () => {
     const h = harness(
-      { t1: state({ status: 'SUSPENDED', blockedByAdmin: true }), t2: state({ planSlug: null }) },
+      { t1: state({ status: 'SUSPENDED', adminBlocked: true }), t2: state({ planSlug: null }) },
       { t1: ok([sub()]), t2: ok([sub({ planSlug: 'outro-produto' })]) },
     );
     expect(await h.uc.execute()).toMatchObject({ adminSuspended: 1, unknownPlan: 1, corrected: 0 });
   });
 
   it('CANCELLED por cobrança volta ACTIVE com plano; CANCELLED por super-admin não', async () => {
-    const states = { t1: state({ status: 'CANCELLED', planSlug: null }), t2: state({ status: 'CANCELLED', blockedByAdmin: true }) };
+    const states = { t1: state({ status: 'CANCELLED', planSlug: null }), t2: state({ status: 'CANCELLED', adminBlocked: true }) };
     const h = harness(states, { t1: ok([sub()]), t2: ok([sub()]) });
     expect(await h.uc.execute()).toMatchObject({ corrected: 1, adminSuspended: 1 });
     expect(states.t1).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_PRO' });
     expect(states.t2.status).toBe('CANCELLED');
+  });
+
+  it('bloqueio do super-admin: só plano/vencimento, nunca o status; sem nada a mudar conta adminSuspended', async () => {
+    const states = { t1: state({ status: 'CANCELLED', planSlug: 'COPYSYNC_LITE', adminBlocked: true }), t2: state({ status: 'SUSPENDED', adminBlocked: true }) };
+    const h = harness(states, { t1: ok([sub()]), t2: ok([sub()]) });
+    expect(await h.uc.execute()).toMatchObject({ corrected: 1, adminSuspended: 1 });
+    expect(h.applied[0]!.decision).toMatchObject({ activate: false, reasons: ['plan_changed'] });
+    expect(states.t1).toMatchObject({ status: 'CANCELLED', planSlug: 'COPYSYNC_PRO' });
   });
 
   it('d) erro HTTP/401/timeout: não muda nada, conta e segue para o próximo', async () => {
@@ -167,7 +175,7 @@ describe('ReconcileSubscriptionsUseCase', () => {
   it('lote limitado e lease com outro processo', async () => {
     const h = harness({ t1: state(), t2: state() }, { t1: ok([sub()]), t2: ok([sub()]) });
     await h.uc.execute();
-    expect(h.repo.listCandidates).toHaveBeenCalledWith(10);
+    expect(h.repo.listCandidates).toHaveBeenCalledWith(10, NOW, 24 * 3_600_000);
     const busy = harness({ t1: state() }, { t1: ok([sub()]) }, false);
     expect(await busy.uc.execute()).toBeNull();
     expect(busy.client.fetchByCustomer).not.toHaveBeenCalled();
