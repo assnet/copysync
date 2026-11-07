@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.72.1 — fila de eventos para a central falhava no Postgres
+
+- **`PrismaHubOutboxRepository.ts`** — `claimHeads` usava `DISTINCT ON` com `FOR UPDATE SKIP LOCKED`, que o Postgres recusa (`0A000`): com `HUB_EVENTS_ENABLED` ligado o worker falhava a cada 5 s. Cabeça agora = menor `seq` PENDING do cliente (`NOT EXISTS`), com `FOR UPDATE OF o SKIP LOCKED`; evento posterior nunca passa à frente de uma cabeça em retry. Teste de integração novo (`PrismaHubOutboxRepository.int.test.ts`).
+
 ### Added — api 0.72.0 · app 0.89.0 · extensão 3.3.0 — fluxo de instalação da extensão com rastreio de clique e ciclo de vida para a central
 
 Docs: `docs/extensao-navegador.md` (§Fluxo de instalação e ciclo de vida; §Eventos para a central: envelope, tipos e campos).

@@ -8,20 +8,24 @@ export class PrismaHubOutboxRepository implements IHubOutboxRepository {
     const now = new Date();
 
     const rows = await this.prisma.$queryRaw<OutboxHeadEvent[]>`
-      WITH blocked_clients AS (
-        SELECT DISTINCT "clientKey"
-        FROM hub_outbox_events
-        WHERE status = 'DEAD'
-      ),
-      heads AS (
-        SELECT DISTINCT ON ("clientKey") *
-        FROM hub_outbox_events
-        WHERE status = 'PENDING'
-          AND "clientKey" NOT IN (SELECT "clientKey" FROM blocked_clients)
-          AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
-          AND ("lockedUntil" IS NULL OR "lockedUntil" <= ${now})
-        ORDER BY "clientKey", seq ASC
-        FOR UPDATE SKIP LOCKED
+      -- Cabeça = menor seq PENDING do cliente (DISTINCT ON não pode ser usado com FOR UPDATE).
+      -- Se a cabeça ainda espera retry ou está com lock, nenhum evento posterior do cliente
+      -- passa à frente: a ordem por cliente é preservada.
+      WITH heads AS (
+        SELECT o.id
+        FROM hub_outbox_events o
+        WHERE o.status = 'PENDING'
+          AND (o."nextAttemptAt" IS NULL OR o."nextAttemptAt" <= ${now})
+          AND (o."lockedUntil" IS NULL OR o."lockedUntil" <= ${now})
+          AND NOT EXISTS (
+            SELECT 1 FROM hub_outbox_events d
+            WHERE d."clientKey" = o."clientKey" AND d.status = 'DEAD'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hub_outbox_events p
+            WHERE p."clientKey" = o."clientKey" AND p.status = 'PENDING' AND p.seq < o.seq
+          )
+        FOR UPDATE OF o SKIP LOCKED
       )
       UPDATE hub_outbox_events e
       SET "lockedUntil" = ${lockedUntil}
