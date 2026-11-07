@@ -9,8 +9,10 @@ import { ProvisionTenantUseCase } from '../../tenants/application/use-cases/Prov
 import { normalizeEmail } from '../../../shared/utils/normalizeEmail';
 import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
 import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFactory';
-import { applyPlanSideEffects } from './applyPlanSideEffects';
-import { entitlementJsonValue } from './entitlementJsonValue';
+import { syncPlanEntitlements } from './syncPlanEntitlements';
+import type { HubSubscriptionsFailure, IHubSubscriptionsClient } from '../application/ports/IHubSubscriptionsClient';
+import { pickGrantingSubscription, type HubSubscriptionSnapshot } from '../domain/services/subscriptionReconcile';
+import { createHubSubscriptionsClientFromEnv } from '../infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
 import { parseExpiresAt } from './parseExpiresAt';
 
@@ -58,15 +60,17 @@ export interface ApplyBillingEventInput {
   payload: BillingEventPayload;
 }
 
-/** Desfechos gravados no recibo. */
-export type BillingOutcome = 'APPLIED' | 'DUPLICATE' | 'OUT_OF_ORDER' | 'IGNORED';
+/** Desfechos gravados no recibo. `KEPT_ACTIVE` = evento de corte com outra assinatura válida (união). */
+export type BillingOutcome = 'APPLIED' | 'DUPLICATE' | 'OUT_OF_ORDER' | 'IGNORED' | 'KEPT_ACTIVE';
 
 /** Ativação de cliente novo que não dá para provisionar: sem recibo, o hub retém e reenvia (fila DEAD com replay). */
 export type UnprovisionableReason = 'missing_email' | 'invalid_plan_slug';
 
 export type ApplyResult =
   | { outcome: BillingOutcome; tenantId?: string }
-  | { outcome: 'UNPROVISIONABLE'; reason: UnprovisionableReason };
+  | { outcome: 'UNPROVISIONABLE'; reason: UnprovisionableReason }
+  /** Evento de corte sem resposta da central: sem recibo, a rota responde 503 e a central retenta. */
+  | { outcome: 'HUB_UNAVAILABLE'; reason: HubSubscriptionsFailure | 'lookup_required' };
 
 export interface TenantProvisioner {
   execute(input: ProvisionTenantInput): Promise<ProvisionTenantOutput>;
@@ -105,6 +109,9 @@ const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
 
 type TxResult = { outcome: BillingOutcome; tenantId?: string; suspended?: boolean };
 
+/** Evento de corte chegou à transação sem a consulta à central (tenant apareceu entre a leitura e a trava). */
+class UnionLookupRequiredError extends Error {}
+
 function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
@@ -114,7 +121,10 @@ function isUniqueViolation(err: unknown): boolean {
 /* ------------------------------------------------------------------ */
 
 export class ApplyBillingEventUseCase {
-  constructor(private readonly provisioner?: TenantProvisioner) {}
+  constructor(
+    private readonly provisioner?: TenantProvisioner,
+    private readonly subscriptions?: IHubSubscriptionsClient,
+  ) {}
 
   async execute(input: ApplyBillingEventInput): Promise<ApplyResult> {
     const { eventId, billingCustomerId, seq } = input;
@@ -132,10 +142,25 @@ export class ApplyBillingEventUseCase {
       link = decision.link;
     }
 
+    // Corte decidido pela união das assinaturas na central; consulta FORA da transação (sem segurar a trava)
+    let snapshot: HubSubscriptionSnapshot | null = null;
+    if (type && CANCELLING.has(type) && (await this.needsUnionLookup(input))) {
+      const res = await (this.subscriptions ?? createHubSubscriptionsClientFromEnv()).fetchByCustomer(billingCustomerId);
+      if (!res.ok) {
+        log.warn({ eventId, eventType: type, reason: res.reason, status: res.status }, 'Hub subscriptions lookup failed; cut event not applied, hub will retry');
+        return { outcome: 'HUB_UNAVAILABLE', reason: res.reason };
+      }
+      snapshot = res.snapshot;
+    }
+
     let result: TxResult;
     try {
-      result = await prisma.$transaction((tx) => this.applyInTx(tx, input, type, planSlug, link), TX_OPTIONS);
+      result = await prisma.$transaction((tx) => this.applyInTx(tx, input, type, planSlug, link, snapshot), TX_OPTIONS);
     } catch (err) {
+      if (err instanceof UnionLookupRequiredError) {
+        log.warn({ eventId }, 'Cut event reached transaction without hub lookup; hub will retry');
+        return { outcome: 'HUB_UNAVAILABLE', reason: 'lookup_required' };
+      }
       // Mesmo eventId gravado por requisição concorrente: a unique do recibo decide
       if (isUniqueViolation(err) && (await prisma.billingEventReceipt.findUnique({ where: { eventId } }))) {
         log.info({ eventId }, 'Duplicate billing event (concurrent)');
@@ -149,6 +174,16 @@ export class ApplyBillingEventUseCase {
     }
     log.info({ eventId, eventType: input.eventType, seq: seq.toString(), outcome: result.outcome, tenantId: result.tenantId }, 'Billing event handled');
     return { outcome: result.outcome, tenantId: result.tenantId };
+  }
+
+  /** Consulta só quando o evento vai ter efeito: sem recibo, com tenant e seq acima da marca d’água. */
+  private async needsUnionLookup(input: ApplyBillingEventInput): Promise<boolean> {
+    const [receipt, tenant] = await Promise.all([
+      prisma.billingEventReceipt.findUnique({ where: { eventId: input.eventId } }),
+      prisma.tenant.findUnique({ where: { billingCustomerId: input.billingCustomerId }, select: { id: true, lastBillingEventSeq: true } }),
+    ]);
+    if (receipt || !tenant) return false;
+    return tenant.lastBillingEventSeq === null || input.seq > tenant.lastBillingEventSeq;
   }
 
   /** planSlug válido ou null; inválido não grava plano nem entitlements. */
@@ -270,6 +305,7 @@ export class ApplyBillingEventUseCase {
     type: BillingEventType | null,
     planSlug: PlanSlug | null,
     link: LinkCandidate | null = null,
+    snapshot: HubSubscriptionSnapshot | null = null,
   ): Promise<TxResult> {
     const { eventId, billingCustomerId, seq } = input;
 
@@ -324,6 +360,8 @@ export class ApplyBillingEventUseCase {
 
     const data: Prisma.TenantUpdateInput = {};
     let suspended = false;
+    let kept = false;
+    let syncSlug: PlanSlug | null = planSlug !== null && PLAN_SYNC.has(type) ? planSlug : null;
     if (ACTIVATING.has(type)) {
       data.status = 'ACTIVE';
       data.suspendedAt = null;
@@ -332,9 +370,20 @@ export class ApplyBillingEventUseCase {
       data.suspendedAt = new Date();
       suspended = true;
     } else if (CANCELLING.has(type)) {
-      data.status = 'CANCELLED';
-      data.suspendedAt = new Date();
-      suspended = true;
+      // União (regra do PulsoSocial): outra assinatura do cliente ainda dá acesso → mantém ACTIVE
+      if (!snapshot) throw new UnionLookupRequiredError();
+      const pick = pickGrantingSubscription(snapshot.subscriptions, new Date());
+      if (pick.grants) {
+        kept = true;
+        data.status = 'ACTIVE';
+        data.suspendedAt = null;
+        if (pick.sub) data.subscriptionExpiresAt = pick.sub.expiresAt === null ? null : new Date(pick.sub.expiresAt);
+        syncSlug = pick.planSlug;
+      } else {
+        data.status = 'CANCELLED';
+        data.suspendedAt = new Date();
+        suspended = true;
+      }
     }
     // Vencimento só muda em ativação/renovação/atualização; demais eventos mantêm
     const expiresAt = input.payload.expiresAt;
@@ -344,29 +393,18 @@ export class ApplyBillingEventUseCase {
       if (parsed.valid) data.subscriptionExpiresAt = parsed.value;
       else log.warn({ eventId: input.eventId }, 'Malformed expiresAt ignored');
     }
-    const syncPlan = planSlug !== null && PLAN_SYNC.has(type);
-    if (syncPlan) data.planSlug = planSlug;
+    if (syncSlug) data.planSlug = syncSlug;
 
     if (Object.keys(data).length > 0) {
       await tx.tenant.update({ where: { id: tenant.id }, data });
     }
 
-    if (syncPlan) {
-      const presets = await tx.planEntitlementPreset.findMany({ where: { planSlug } });
-      if (presets.length === 0) log.warn({ tenantId: tenant.id, planSlug }, 'No entitlement presets found for plan');
-      for (const preset of presets) {
-        await tx.tenantEntitlement.upsert({
-          where: { tenantId_key: { tenantId: tenant.id, key: preset.key } },
-          create: { tenantId: tenant.id, key: preset.key, value: entitlementJsonValue(preset.value) },
-          update: { value: entitlementJsonValue(preset.value) },
-        });
-      }
-      // Rodízio (LROT-14) e Página de Ofertas (STORE-02) no mesmo commit dos entitlements
-      await applyPlanSideEffects(tx, tenant.id);
-    }
+    // Entitlements + rodízio (LROT-14) + Página de Ofertas (STORE-02) no mesmo commit
+    if (syncSlug) await syncPlanEntitlements(tx, tenant.id, syncSlug);
 
     await advanceWatermark();
-    await receipt('APPLIED');
-    return { outcome: 'APPLIED', tenantId: tenant.id, suspended };
+    const outcome: BillingOutcome = kept ? 'KEPT_ACTIVE' : 'APPLIED';
+    await receipt(outcome);
+    return { outcome, tenantId: tenant.id, suspended };
   }
 }

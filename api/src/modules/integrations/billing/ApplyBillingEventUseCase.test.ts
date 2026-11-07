@@ -54,7 +54,7 @@ const db = vi.hoisted(() => {
       },
     },
     tenant: {
-      findUnique: async () => (state.tenant ? { id: state.tenant.id } : null),
+      findUnique: async () => (state.tenant ? { id: state.tenant.id, lastBillingEventSeq: state.tenant.lastBillingEventSeq } : null),
       update: async ({ where, data }: { where: { id: string }; data: Partial<Tenant> & { billingCustomerId?: string } }) => {
         const other = state.others.get(where.id);
         if (other && data.billingCustomerId) {
@@ -116,6 +116,12 @@ function ev(eventType: string, over: Partial<ApplyBillingEventInput> = {}): Appl
 }
 
 const provisioner = { execute: vi.fn() };
+/** Central: `GET /integrations/subscriptions` (padrão: lista sem assinatura válida → corte). */
+const hub = { fetchByCustomer: vi.fn() };
+const NOW_ISO = Date.now();
+const iso = (days: number) => new Date(NOW_ISO + days * 86_400_000).toISOString();
+const hubSub = (o: Record<string, unknown> = {}) => ({ id: 's-old', planSlug: 'copysync-pro-mensal', billingStatus: 'ACTIVE', expiresAt: iso(10), deletedAt: null, ...o });
+const hubOk = (subscriptions: unknown[]) => ({ ok: true, snapshot: { externalUserId: 'user-central-1', subscriptions, lastSeq: 11n } });
 
 beforeEach(() => {
   db.state.tenant = null;
@@ -129,6 +135,8 @@ beforeEach(() => {
   db.state.audits.length = 0;
   db.state.candidateGone = false;
   db.txOptions.length = 0;
+  hub.fetchByCustomer.mockReset();
+  hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'REFUNDED' })]));
   provisioner.execute.mockReset();
   provisioner.execute.mockImplementation(async () => {
     makeTenant({ lastBillingEventSeq: null, planSlug: 'COPYSYNC_PRO' });
@@ -136,7 +144,7 @@ beforeEach(() => {
   });
 });
 
-const run = (input: ApplyBillingEventInput) => new ApplyBillingEventUseCase(provisioner).execute(input);
+const run = (input: ApplyBillingEventInput) => new ApplyBillingEventUseCase(provisioner, hub).execute(input);
 
 describe('ApplyBillingEventUseCase', () => {
   it('ativação de cliente desconhecido provisiona o tenant e aplica o plano', async () => {
@@ -224,6 +232,7 @@ describe('ApplyBillingEventUseCase', () => {
     expect(db.state.receipts.get('ev-subscription.canceled')?.outcome).toBe('OUT_OF_ORDER');
     expect(db.state.tenant!.status).toBe('ACTIVE');
     expect(emit).not.toHaveBeenCalled();
+    expect(hub.fetchByCustomer).not.toHaveBeenCalled();
   });
 
   it('trava a linha do tenant na transação', async () => {
@@ -265,14 +274,74 @@ describe('ApplyBillingEventUseCase', () => {
   });
 
   it.each(['subscription.canceled', 'subscription.expired', 'subscription.refunded', 'subscription.chargedback'])(
-    '%s cancela a conta e emite TENANT_SUSPENDED',
+    '%s sem assinatura válida na central cancela a conta e emite TENANT_SUSPENDED',
     async (type) => {
       makeTenant();
-      await run(ev(type, { payload: {} }));
+      expect((await run(ev(type, { payload: {} }))).outcome).toBe('APPLIED');
       expect(db.state.tenant!.status).toBe('CANCELLED');
       expect(emit).toHaveBeenCalledTimes(1);
+      expect(hub.fetchByCustomer).toHaveBeenCalledWith('user-central-1');
     },
   );
+
+  describe('evento de corte decidido pela união das assinaturas', () => {
+    it('renovação (linha nova) + expired da linha antiga: mantém ACTIVE com o vencimento novo', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_PRO' });
+      hub.fetchByCustomer.mockResolvedValue(hubOk([
+        hubSub({ billingStatus: 'EXPIRED', expiresAt: iso(-1) }),
+        hubSub({ id: 's-new', expiresAt: iso(30) }),
+      ]));
+      const out = await run(ev('subscription.expired', { payload: {} }));
+      expect(out).toEqual({ outcome: 'KEPT_ACTIVE', tenantId: 'tenant-1' });
+      expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 11n, subscriptionExpiresAt: new Date(iso(30)) });
+      expect(db.state.receipts.get('ev-subscription.expired')?.outcome).toBe('KEPT_ACTIVE');
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('reembolso de ciclo antigo com ciclo novo válido: mantém', async () => {
+      makeTenant();
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'REFUNDED' }), hubSub({ id: 's-new', expiresAt: iso(30) })]));
+      expect((await run(ev('subscription.refunded', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      expect(db.state.tenant!.status).toBe('ACTIVE');
+    });
+
+    it('reembolso da única assinatura: corta', async () => {
+      makeTenant();
+      expect((await run(ev('subscription.refunded', { payload: {} }))).outcome).toBe('APPLIED');
+      expect(db.state.tenant!.status).toBe('CANCELLED');
+    });
+
+    it('cancelamento da recorrência dentro do ciclo pago: mantém até o vencimento', async () => {
+      makeTenant({ status: 'SUSPENDED', suspendedAt: new Date() });
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'CANCELED', expiresAt: iso(5) })]));
+      expect((await run(ev('subscription.canceled', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', suspendedAt: null });
+    });
+
+    it.each(['unauthorized', 'timeout', 'http_error', 'network'])('central fora (%s): HUB_UNAVAILABLE sem recibo nem efeito', async (reason) => {
+      makeTenant();
+      hub.fetchByCustomer.mockResolvedValue({ ok: false, reason });
+      expect(await run(ev('subscription.expired', { payload: {} }))).toEqual({ outcome: 'HUB_UNAVAILABLE', reason });
+      expect(db.state.receipts.size).toBe(0);
+      expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', lastBillingEventSeq: 10n });
+      expect(db.txOptions).toHaveLength(0);
+    });
+
+    it('duplicado e tenant inexistente não consultam a central', async () => {
+      makeTenant();
+      db.state.receipts.set('ev-subscription.canceled', { outcome: 'APPLIED', tenantId: 'tenant-1', type: 'subscription.canceled' });
+      expect((await run(ev('subscription.canceled'))).outcome).toBe('DUPLICATE');
+      db.state.tenant = null;
+      expect((await run(ev('subscription.expired'))).outcome).toBe('IGNORED');
+      expect(hub.fetchByCustomer).not.toHaveBeenCalled();
+    });
+
+    it('renovação segue sem consultar a central', async () => {
+      makeTenant();
+      await run(ev('subscription.renewed'));
+      expect(hub.fetchByCustomer).not.toHaveBeenCalled();
+    });
+  });
 
   it('fim de trial não muda a conta, grava IGNORED e avança a marca d’água', async () => {
     makeTenant();

@@ -14,7 +14,7 @@ USR-01 (convite, `/auth/invites/:token/accept`), `resolveMembership`, receiver H
 M1-B). Em 2026-11-02 (`0.49.4`) o receiver foi alinhado a este contrato: provisiona em `subscription.activated` de cliente
 desconhecido, valida `X-Application-Key` e `planSlug`, grava receipt e watermark na mesma transação com lock da linha do tenant.
 `HubEmailSender` entregue em api 0.68.0 (seção [E-mail pela central](#e-mail-pela-central-hubemailsender)); painel "Assinatura" em [`assinatura.md`](assinatura.md).
-**Pendente**: o corpo da reconciliação (depende de H2 na central). Sem as três
+Reconciliação entregue em api 0.71.0 (seção [Reconciliação](#reconciliação)). Sem as três
 `BILLING_HUB_URL`, `BILLING_APPLICATION_KEY`, `BILLING_APPLICATION_SECRET` (`BILLING_ENABLED`, `env.ts:362`) a rota não é registrada (404); em produção com
 `EMAIL_SENDER=noop`, ou `hub` sem `HUB_API_URL`/`HUB_APPLICATION_KEY`/`HUB_M2M_SECRET` (`HUB_EMAIL_CONFIGURED`), ela também não é registrada e só loga erro
 (`billingWebhookGuard.ts:11-14`, `routes.ts:135-142`); o boot segue e a reconciliação também fica parada (`server.ts:318`).
@@ -36,7 +36,7 @@ Cliente → checkout (front da central, deploy da aplicação copysync) → paga
 eventos de status → ApplyBillingEventUseCase grava status/suspendedAt direto na transação (não usa UpdateTenantStatusUseCase,
   então hoje sem AuditLog TENANT_STATUS_CHANGED) → após o commit emite TENANT_SUSPENDED (em SUSPENDED e CANCELLED)
   → `sessions` (TenantSuspendedSessionListener) desconecta as sessões do tenant (AuditLog SESSION_DISCONNECTED, actor SYSTEM)
-Reconciliação (padrão 1 h): GET /integrations/subscriptions?externalUserId=  (previsto H2; M2M, 1 GET por tenant, sob lease em tabela; corpo vazio hoje)
+Reconciliação (padrão 1 h): GET /integrations/subscriptions?externalUserId=  (M2M, 1 GET por tenant, lote por passada, sob lease em tabela; ver §Reconciliação)
 ```
 
 ## Mapeamento evento → tenant (tabela única)
@@ -50,13 +50,21 @@ Reconciliação (padrão 1 h): GET /integrations/subscriptions?externalUserId=  
 | `subscription.updated` (edição manual, cortesia, troca de plano) | mantém | preset do `planSlug`, se válido | sem mudança de status |
 | `expiresAt` em activated/renewed/updated | | grava `Tenant.subscriptionExpiresAt` | ausente = mantém; `null` limpa; malformado = **400** sem aplicar nem avançar o seq; nos demais tipos é ignorado |
 | `subscription.payment_failed` | `SUSPENDED`, `suspendedAt=now` | mantém | emite `TENANT_SUSPENDED` |
-| `subscription.canceled`, `subscription.expired` | `CANCELLED`, `suspendedAt=now` | mantém | login preservado (PROV-03); emite `TENANT_SUSPENDED` |
-| `subscription.refunded`, `subscription.chargedback` | `CANCELLED`, `suspendedAt=now` | mantém | emite `TENANT_SUSPENDED` |
+| `subscription.canceled`, `subscription.expired`, `subscription.refunded`, `subscription.chargedback` | **decisão pela união** (abaixo): alguma assinatura do cliente ainda dá acesso → `ACTIVE`, limpa `suspendedAt`, `subscriptionExpiresAt` e plano da assinatura escolhida, receipt `KEPT_ACTIVE`; nenhuma → `CANCELLED`, `suspendedAt=now`, receipt `APPLIED` | preset do plano escolhido (se mantém); senão mantém | central fora (401/403, 5xx, 404, timeout, rede, corpo inválido) = **503 sem receipt**, a central retenta; login preservado (PROV-03); corte emite `TENANT_SUSPENDED` |
 | qualquer tipo ≠ `activated` de cliente sem tenant | sem efeito, 200, receipt `IGNORED` | | watermark não avança (não há tenant) |
 | `subscription.trial_ended` | sem efeito, 200, avança o watermark | | CopySync não tem trial próprio |
 | tipo desconhecido | sem efeito, 200, receipt `IGNORED`, avança o watermark | | nunca 4xx/5xx: a central reenviaria |
 | evento com `eventId` já visto | sem efeito, 200 | | `BillingEventReceipt` |
 | `seq` ≤ `Tenant.lastBillingEventSeq` (fora de ordem ou repetido) | sem efeito, 200, receipt `OUT_OF_ORDER` (o `BillingEventReceipt` é a trilha de auditoria do receiver) | | `seq` é a sequência global da central (autoincrement), crescente; só se compara **dentro do mesmo cliente**. Tenant ↔ `billingCustomerId` é 1:1, então o watermark por tenant basta. A central nunca envia um `seq` maior do cliente enquanto um menor dele está pendente. Avanço do watermark é condicional: `UPDATE … SET lastBillingEventSeq=$s WHERE id=$t AND (lastBillingEventSeq IS NULL OR lastBillingEventSeq < $s)`; 0 linhas = outro evento passou na frente, sem efeito |
+
+**Decisão pela união nos eventos de corte (api 0.71.0).** Na Cakto a renovação cria linha nova (`activated`) e a antiga,
+ao vencer, vira EXPIRED pelo cron da central e emite `expired` com `seq` maior: cortar no evento cancelaria quem pagou o ciclo
+novo. Regra do PulsoSocial: o cliente tem acesso se **qualquer** assinatura dele dá acesso. Para canceled/expired/refunded/
+chargedback com efeito (sem receipt, tenant existe, `seq` acima do watermark), `ApplyBillingEventUseCase` consulta
+`GET /integrations/subscriptions` (o mesmo `IHubSubscriptionsClient` da reconciliação) **antes** da transação, sem segurar a
+trava, e na transação decide com `pickGrantingSubscription` (o mesmo critério da §Reconciliação). Duplicado, fora de ordem e
+cliente sem tenant não consultam. Lista vazia num evento de corte = corta (o evento é a prova). activated/renewed/updated/
+payment_failed não consultam (como antes).
 
 **Vínculo pelo e-mail (cliente da central desconhecido em `subscription.activated`).** Tenant criado à mão pelo super-admin
 nasce sem `billingCustomerId`; quando o dono assina pela Cakto, o `externalUserId` é novo. Antes de provisionar (só se o evento
@@ -91,7 +99,7 @@ listener continua funcionando sem mudança. Até E3, processo único (`all`) e o
 | Prisma (service-desk §4, migration única da service-desk) | `Tenant.billingCustomerId @unique`, `Tenant.suspendedAt`, `User.passwordHash String?`, `User.passwordSetAt`, `UserInvite` (`planSnapshot Json?` sai do design: substituído por `planSlug` tipado, AGENTS §26) |
 | Prisma (esta integração) | `Tenant.planSlug String?`, `Tenant.lastBillingEventSeq BigInt?` (seq da central é BIGINT; webhook aceita número inteiro seguro ou string de até 19 dígitos, `parseBillingSeq.ts`), `Tenant.subscriptionExpiresAt DateTime?`; `TenantEntitlement { tenantId, key, value Json?, @@unique([tenantId,key]) }` (`null` = ilimitado, cf. roadmap); `PlanEntitlementPreset { planSlug, key, value Json?, @@unique([planSlug,key]) }`; `BillingEventReceipt { eventId @id, billingCustomerId @index, tenantId?, type, seq BigInt, payload Json?, receivedAt, outcome }`; `JobLease { name @id, ownerId, expiresAt }`. `planSlug` aceito (`resolvePlanSlug`, `planPresets.ts`): slug da oferta da central `copysync-{lite\|pro\|max}-{mensal\|anual}` (mensal e anual = mesmo preset) e, por compatibilidade, o interno `COPYSYNC_LITE\|PRO\|MAX`; o tenant grava sempre o interno |
 | Módulo `integrations/billing` | `billing.routes.ts`: plugin sem `authHook`, `addContentTypeParser` `parseAs: 'buffer'` (corpo bruto). Ordem: `X-Application-Key` igual a `BILLING_APPLICATION_KEY` em tempo constante (senão 401) → `X-Signature: sha256=<hex>` sobre `${X-Timestamp}.${corpo bruto}`, `X-Timestamp` em segundos ±`BILLING_HMAC_TOLERANCE_SECONDS` (300), `timingSafeEqual` contra atual e anterior (`verifyBillingHmac.ts:39-63`; falha 401) → JSON inválido 400 → falta `eventId`/`type`/`externalUserId`/`seq` 400 → `X-Event-Id` opcional, se vier e divergir do corpo 400 → `expiresAt` malformado 400 → `ApplyBillingEventUseCase`; `UNPROVISIONABLE` 422; erro inesperado 500. Corpo lido: `eventId, type, externalUserId (= billingCustomerId), seq, email, name, planSlug, expiresAt`. `BillingEventReceipt` gravado **na mesma `$transaction`** que aplica o evento, com `SELECT … FOR UPDATE` na linha do tenant; `P2002` no receipt = entrega duplicada concorrente → 200 `DUPLICATE`. A canônica do webhook **ainda não existe na central** (dispatcher H2 não feito): fechar com vetor compartilhado quando ele nascer |
-| Use cases novos | `ApplyBillingEventUseCase` (tabela acima; faz o sync de entitlements + `applyPlanSideEffects` dentro da própria transação), `ReconcileSubscriptionsUseCase` (lease pronto, `reconcileTenant` vazio). `SyncTenantEntitlementsUseCase` existe mas **nenhum código de produção o chama** (lógica duplicada no Apply): reusar ou remover |
+| Use cases novos | `ApplyBillingEventUseCase` (tabela acima; faz o sync de entitlements + `applyPlanSideEffects` dentro da própria transação), `ReconcileSubscriptionsUseCase` (ver §Reconciliação). `SyncTenantEntitlementsUseCase` existe mas **nenhum código de produção o chama** (lógica duplicada no Apply): reusar ou remover |
 | Use cases reusados | só `ProvisionTenantUseCase` com `origin: 'BILLING_WEBHOOK'` (cria o `UserInvite` direto pelo repositório, não via `InviteUserUseCase`). `UpdateTenantStatusUseCase` (que grava `AuditLog TENANT_STATUS_CHANGED`) **não** é usado pelo webhook: o status muda sem `AuditLog`; a trilha é só o `BillingEventReceipt`. Exceção: o vínculo pelo e-mail grava `AuditLog TENANT_UPDATED` |
 | Erros | `TenantSuspendedError` (403, `TENANT_SUSPENDED`, `TeamErrors.ts:3`) lançado em `resolveMembership.ts:36,57`, usado por `tenantHook` e `sseAuthHook`; mudança de contrato: painel trata `TENANT_SUSPENDED`. `PlanLimitReachedError` (403, `PLAN_LIMIT_REACHED`, com `key` e `limit`, `PlanErrors.ts:4`) lido de `TenantEntitlement` no application layer |
 | E-mail | porta `IEmailSender.send({to, template, data, locale?})` → `{sent}`; adapters `SmtpEmailSender` (timeout 5 s, `sent:false` em falha), `NoopEmailSender` e `HubEmailSender` (M2M `POST {HUB_API_URL}/integrations/email/send`; ver seção abaixo). Fábrica: `createEmailSenderFromEnv()` (`EmailSenderFactory.ts`). Envio em `afterCommit`, fora da transação: exceção documentada à regra "sem chamada síncrona à central". **Remetente com domínio próprio (H10)**: o hub envia o e-mail do CopySync pela conta SMTP do domínio do CopySync (`EmailSenderConfig` de aplicação, `hub/h4-t16`), nunca pela do PulsoSocial; falha dessa conta não cai para a do PulsoSocial |
@@ -171,7 +179,7 @@ sem nada do hub para o CopySync. ✅ pronto · 🟡 parcial · ❌ não existe.
 | CopySync | Listener `TENANT_SUSPENDED` desconecta sessões; worker só envia de tenant `ACTIVE` | ✅ |
 | CopySync | `AuditLog TENANT_STATUS_CHANGED` nas mudanças pelo webhook | ❌ (só receipt) |
 | CopySync | `SyncTenantEntitlementsUseCase` | 🟡 existe, sem uso |
-| CopySync | Reconciliação | 🟡 lease + job 1 h; `reconcileTenant` vazio |
+| CopySync | Reconciliação | ✅ api 0.71.0 (§Reconciliação); suspende sem acesso, não reativa CANCELLED |
 | CopySync | `HubEmailSender` (M2M, vetor oficial em teste) | ✅ api 0.68.0; depende da rota na central |
 | CopySync | Validação de `permissions[]` | ❌ |
 | CopySync | Link de checkout do painel | ✅ direto na Cakto por plano×período (app 0.86.0) |
@@ -182,6 +190,64 @@ sem nada do hub para o CopySync. ✅ pronto · 🟡 parcial · ❌ não existe.
 | Central | `GET /integrations/subscriptions`, `POST /integrations/email/send`, receptor `/events` | ❌ previsto (H2/H4) |
 | Central | Planos/permissões `COPYSYNC_*` e seed da aplicação `copysync` (H3a) | ✅ (Plan `copysync-*-mensal`; sem anual, sem `RedirectConfig`) |
 | Central | Templates de e-mail do hub + overrides copysync (H4) e `EmailSenderConfig` por aplicação (H4-t16) | ✅ código; sem rota que os use pelo CopySync |
+
+## Reconciliação
+
+Rede de segurança para evento perdido: sem ela, um `subscription.*` que não chegou deixa o tenant errado para sempre.
+
+**Peças**: `ReconcileSubscriptionsUseCase` (orquestra, sem Prisma/HTTP), regras puras em
+`integrations/domain/services/subscriptionReconcile.ts` (`subscriptionGrantsAccess`, `pickGrantingSubscription`,
+`decideReconcile`), portas em `integrations/application/ports/` (`IHubSubscriptionsClient`, `IBillingReconcileRepository`),
+infra em `integrations/infrastructure/billing/` (`HubSubscriptionsClient` M2M, `PrismaBillingReconcileRepository`,
+`createReconcileSubscriptionsUseCase`). Entitlements + efeitos de plano pelo mesmo `billing/syncPlanEntitlements.ts` do webhook.
+
+**Passada** (a cada `BILLING_RECONCILE_INTERVAL_MS`, só em `PROCESS_ROLE` worker/all, sob lease `billing-reconcile`):
+até `BILLING_RECONCILE_BATCH_SIZE` tenants com `billingCustomerId`, ACTIVE ou SUSPENDED, em ordem
+`billingReconciledAt` (nulos primeiro), `id`. Cada um examinado recebe o carimbo (SQL direto, sem `updatedAt`), então as
+passadas giram por todos. Um `GET {BILLING_HUB_URL}/integrations/subscriptions?externalUserId=` por tenant, assinado com
+`BILLING_APPLICATION_KEY`/`BILLING_APPLICATION_SECRET` (`m2mSignature.ts`; o `_PREVIOUS` não vale para saída), timeout
+`BILLING_RECONCILE_HTTP_TIMEOUT_MS`, sem retry (a próxima passada repete). Pior caso ≈ lote × timeout: manter abaixo de
+`BILLING_RECONCILE_LEASE_TTL_MS` (padrão 100 × 5 s < 10 min). Log por passada: `examined`, `corrected`, `suspended`,
+`unknownCustomer`, `unknownPlan`, `adminSuspended`, `stale`, `errors`, `durationMs` — só ids e contagens, nunca e-mail/nome.
+
+**Assinatura dá acesso** (decisão do dono 2026-11-07, comportamento do PulsoSocial): não excluída e
+`billingStatus` null/ACTIVE/TRIAL_ACTIVE com vencimento nulo ou futuro; CANCELED/PENDING_CANCELLATION (só a recorrência)
+até o `expiresAt` (sem vencimento = sem acesso); REFUNDED (reembolso/chargeback), PAYMENT_FAILED, EXPIRED,
+TRIAL_ENDED_PENDING ou status desconhecido = sem acesso. Plano esperado = entre as que dão acesso com `planSlug` conhecido
+(`resolvePlanSlug`), o maior (MAX > PRO > LITE); empate = vencimento mais distante, depois menor id.
+
+**Regras** (decididas com o tenant travado, ver Concorrência):
+
+| Situação | Ação |
+| --- | --- |
+| Watermark local > `lastSeq` (ou central sem evento e local com watermark) | `stale`: nada (evento mais novo já aplicado) |
+| Tenant CANCELLED | nada (fora da seleção; ver pendências) |
+| Há assinatura com acesso e tenant sem plano, com plano diferente, SUSPENDED por cobrança ou watermark < `lastSeq` | aplica: ACTIVE + `suspendedAt` null (se suspenso), `planSlug`, `subscriptionExpiresAt`, entitlements + efeitos; AuditLog (`TENANT_STATUS_CHANGED` se reativou, senão `TENANT_UPDATED`; `meta.origin = BILLING_RECONCILE`, `reasons`, antes/depois); watermark → `lastSeq` |
+| Há acesso, mas só com `planSlug` desconhecido | nada; warn + `unknownPlan` |
+| SUSPENDED por super-admin (auditoria `TENANT_STATUS_CHANGED` SUPER_ADMIN → SUSPENDED desde o `suspendedAt`; sem `suspendedAt` = idem) | nada; `adminSuspended` |
+| Central lista assinaturas, nenhuma dá acesso, tenant ACTIVE (só resposta 200 bem formada) | suspende como o `payment_failed` do webhook: SUSPENDED + `suspendedAt`, plano/entitlements intactos, AuditLog `TENANT_STATUS_CHANGED` (`reasons: ['no_access']`), watermark → `lastSeq`; após o commit `TENANT_SUSPENDED` (desconecta sessões) |
+| Central responde 200 com lista vazia (cliente desconhecido) | nada; warn + `unknownCustomer` |
+| Iguais | nada |
+| 401/403, outro status (404/400/5xx), timeout, rede, corpo inválido (outro `externalUserId`, `lastSeq` não inteiro, item malformado) | nada; `errors`; segue para o próximo |
+
+Suspensão pela reconciliação não grava SUPER_ADMIN, então a passada seguinte reativa se o acesso voltar.
+
+**Concorrência com o webhook**: `reconcileLocked` faz `SELECT … FOR UPDATE` na linha do tenant (mesma trava do
+`ApplyBillingEventUseCase`) e só então decide, com o estado relido. Evento mais novo aplicado durante o GET deixa o
+watermark acima do `lastSeq` → `stale`. O watermark sobe com `updateMany … lastBillingEventSeq < seq`: nunca desce.
+Evento com `seq ≤ lastSeq` que chegue depois vira OUT_OF_ORDER (já refletido). Reconciliação não grava recibo.
+
+**O que não faz**: não reativa CANCELLED; não cria tenant (cliente sem tenant segue pelo webhook); não toca tenant sem
+`billingCustomerId`; não valida `permissions[]`; não usa o segredo anterior; não roda no papel `http`.
+
+**Pendências**:
+- A resposta da central não traz `canceledAt`/`refundedAt`/`chargedbackAt`. Estorno que o webhook do gateway grava como
+  `billingStatus = CANCELED` + `refundedAt` (schema da central) só corta no `expiresAt`, não na hora; cancelamento manual de
+  admin que grava só `canceledAt` (`admin-subscriptions.ts`) fica com acesso até o vencimento. Pedir à central para expor esses
+  campos (ou gravar REFUNDED) e então cortar na hora.
+- O `subscriptionGrantsAccess` da própria central exige `canceledAt: null` (corta na hora o cancelamento da recorrência); a
+  regra acima segue a decisão do dono (acesso até o fim do ciclo). Alinhar os dois lados.
+- Reativar CANCELLED quando o cliente volta a ter acesso (evento `activated` perdido após cancelamento).
 
 ## O que não fazer
 

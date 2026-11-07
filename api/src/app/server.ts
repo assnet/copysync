@@ -33,7 +33,7 @@ import { initMediaModule, mediaContainer } from '../modules/media/infrastructure
 import { SecretCipherFactory } from '../shared/security/SecretCipherFactory';
 import { registerTenantSuspendedSessionListener } from '../modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener';
 import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogRepository';
-import { ReconcileSubscriptionsUseCase } from '../modules/integrations/billing/ReconcileSubscriptionsUseCase';
+import { createReconcileSubscriptionsUseCase } from '../modules/integrations/infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { billingWebhookBlockReason } from '../modules/integrations/billing/billingWebhookGuard';
 import { offersContainer } from '../modules/campaigns/infrastructure/offersContainer';
 import { OfferDispatchWorker } from '../modules/campaigns/infrastructure/worker/OfferDispatchWorker';
@@ -316,7 +316,7 @@ async function start(): Promise<void> {
   let billingReconcileInterval: NodeJS.Timeout | null = null;
   // Webhook bloqueado (produção sem e-mail real) → reconciliação também fica parada
   if (jobs.has('billingReconcile') && env.BILLING_ENABLED && env.BILLING_RECONCILE_INTERVAL_MS > 0 && billingWebhookBlockReason(env) === null) {
-    const reconcileUseCase = new ReconcileSubscriptionsUseCase();
+    const reconcileUseCase = createReconcileSubscriptionsUseCase();
     billingReconcileInterval = setInterval(() => {
       void reconcileUseCase.execute().catch((err) => {
         logger.error({ err }, 'Billing reconciliation failed');

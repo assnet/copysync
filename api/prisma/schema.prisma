@@ -143,6 +143,8 @@ model Tenant {
   suspendedAt           DateTime?
   /// Vencimento da assinatura vindo do hub (`expiresAt`); null = sem vencimento conhecido.
   subscriptionExpiresAt DateTime?
+  /// Última passada da reconciliação com a central (rodízio do lote; null = nunca examinado).
+  billingReconciledAt   DateTime?
   /// Pausa global de envios (fila de envio): nada sai enquanto não for null; captura continua.
   sendingPausedAt       DateTime?
   createdAt             DateTime     @default(now())
@@ -973,6 +975,8 @@ enum BillingEventOutcome {
   DUPLICATE
   OUT_OF_ORDER
   IGNORED
+  /// Evento de corte com outra assinatura válida do cliente na central (união): tenant mantido ACTIVE.
+  KEPT_ACTIVE
 }
 
 model BillingEventReceipt {

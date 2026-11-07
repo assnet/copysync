@@ -111,6 +111,18 @@ describe('POST /integrations/billing/webhook', () => {
     expect(res.json()).toEqual({ error: 'unprovisionable', reason: 'missing_email' });
   });
 
+  it('evento de corte com a central fora responde 503 (a central retenta)', async () => {
+    execute.mockResolvedValue({ outcome: 'HUB_UNAVAILABLE', reason: 'timeout' });
+    const res = await app.inject(signed(BODY));
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ error: 'hub_unavailable' });
+  });
+
+  it('desfecho KEPT_ACTIVE responde 200', async () => {
+    execute.mockResolvedValue({ outcome: 'KEPT_ACTIVE', tenantId: 't' });
+    expect((await app.inject(signed(BODY))).json()).toEqual({ ok: true, outcome: 'KEPT_ACTIVE' });
+  });
+
   it('X-Event-Id diferente do eventId do corpo responde 400 sem processar', async () => {
     const req = signed(BODY);
     req.headers['x-event-id'] = 'ev-outro';

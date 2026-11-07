@@ -119,6 +119,10 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         if (result.outcome === 'UNPROVISIONABLE') {
           return reply.status(422).send({ error: 'unprovisionable', reason: result.reason });
         }
+        // Corte sem resposta da central: sem recibo; 5xx faz a central retentar
+        if (result.outcome === 'HUB_UNAVAILABLE') {
+          return reply.status(503).send({ error: 'hub_unavailable' });
+        }
         return reply.send({ ok: true, outcome: result.outcome });
       } catch (err) {
         log.error({ err, eventId }, 'Billing webhook processing error');

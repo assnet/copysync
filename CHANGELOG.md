@@ -9,6 +9,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.71.0 — reconciliação de assinaturas com a central e corte pela união das assinaturas
+
+Docs: `docs/arquitetura-central-billing.md` (§Reconciliação: regras, envs, concorrência, o que não faz, pendências; tabela evento → status: corte por "decisão pela união").
+
+#### api/
+
+- **`integrations/domain/services/subscriptionReconcile.ts`** (novo) + teste — regras puras: assinatura dá acesso (decisão do dono: CANCELED/PENDING_CANCELLATION até o `expiresAt`, REFUNDED corta), escolha do plano esperado e `decideReconcile` (aplica, suspende, stale, cliente desconhecido, plano desconhecido, suspenso por admin, no-op).
+- **`integrations/application/ports/IHubSubscriptionsClient.ts`**, **`IBillingReconcileRepository.ts`** (novos) — portas do cliente M2M e da persistência sob trava.
+- **`integrations/infrastructure/billing/HubSubscriptionsClient.ts`** (novo) + teste — `GET /integrations/subscriptions?externalUserId=` assinado (vetor oficial), timeout curto, sem retry, valida o corpo; nunca lança nem devolve corpo.
+- **`integrations/infrastructure/billing/PrismaBillingReconcileRepository.ts`** (novo) + teste de integração — lease, lote por `billingReconciledAt`, `FOR UPDATE` (mesma trava do webhook), aplica/suspende com AuditLog `BILLING_RECONCILE`, watermark só sobe.
+- **`integrations/billing/ReconcileSubscriptionsUseCase.ts`** + teste — `reconcileTenant` implementado (antes vazio); resumo por passada; `TENANT_SUSPENDED` após o commit da suspensão.
+- **`integrations/billing/syncPlanEntitlements.ts`** (novo) — entitlements do preset + `applyPlanSideEffects`, extraído do `ApplyBillingEventUseCase` e usado pelos dois caminhos.
+- **`shared/config/env.ts`** — `BILLING_RECONCILE_BATCH_SIZE` (100) e `BILLING_RECONCILE_HTTP_TIMEOUT_MS` (5000).
+- **`prisma/migrations/20261107150000_add_tenant_billing_reconciled_at`** — `Tenant.billingReconciledAt` (nulo; rodízio do lote). Migration necessária (roda no boot).
+
+### Fixed — api 0.71.0 — evento de corte cancelava cliente que renovou
+
+#### api/
+
+- **`integrations/billing/ApplyBillingEventUseCase.ts`** + testes — canceled/expired/refunded/chargedback deixavam o tenant CANCELLED na hora; na Cakto a renovação cria linha nova e o `expired` da linha antiga (seq maior) cortava quem pagou o ciclo novo. Agora o receiver consulta a central antes da transação e decide pela união (`pickGrantingSubscription`): alguma assinatura com acesso → mantém ACTIVE com vencimento/plano dela, receipt `KEPT_ACTIVE`; nenhuma → CANCELLED como antes. Central fora → `HUB_UNAVAILABLE` sem receipt.
+- **`integrations/billing/billing.routes.ts`** + teste — `HUB_UNAVAILABLE` responde 503 (a central retenta 5xx).
+- **`prisma/migrations/20261107160000_add_billing_outcome_kept_active`** — valor `KEPT_ACTIVE` em `BillingEventOutcome`.
+
 ### Added — api 0.70.0 · app 0.88.0 — página de obrigado, primeiro acesso no convite e processos sem adoção na tela de Workers
 
 Docs: `docs/pagina-obrigado.md` (novo), `docs/arquitetura-central-billing.md` (§Primeiro acesso), `docs/arquitetura-escala.md`.

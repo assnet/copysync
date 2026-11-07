@@ -54,7 +54,9 @@ describe('ApplyBillingEventUseCase (vínculo pelo e-mail)', () => {
   const linkCustomer = `int-billing-link-${stamp}`;
   const email = `dono-${stamp}@exemplo.com`;
   const provisioner = { execute: async () => { throw new Error('não deveria provisionar'); } };
-  const linkUseCase = new ApplyBillingEventUseCase(provisioner);
+  // Central sem assinatura válida: o canceled do teste corta (união vazia)
+  const hub = { fetchByCustomer: async () => ({ ok: true as const, snapshot: { externalUserId: linkCustomer, subscriptions: [], lastSeq: 2n } }) };
+  const linkUseCase = new ApplyBillingEventUseCase(provisioner, hub);
   let manualId = '';
   let userId = '';
   const activated = (eventId: string, seq: bigint): ApplyBillingEventInput => ({

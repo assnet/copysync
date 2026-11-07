@@ -229,6 +229,10 @@ const envSchema = z.object({
   BILLING_HMAC_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
   BILLING_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
   BILLING_RECONCILE_LEASE_TTL_MS: z.coerce.number().int().positive().default(600_000),
+  // Tenants por passada (rodízio por `billingReconciledAt`) e timeout do GET à central.
+  // Pior caso da passada ≈ lote × timeout: manter abaixo do TTL do lease (100 × 5 s < 10 min).
+  BILLING_RECONCILE_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
+  BILLING_RECONCILE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
 
   EMAIL_SENDER: z.enum(['noop', 'smtp', 'hub']).default('noop'),
   EMAIL_SMTP_URL: z.preprocess(
