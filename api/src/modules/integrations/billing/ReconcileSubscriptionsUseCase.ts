@@ -118,7 +118,7 @@ export class ReconcileSubscriptionsUseCase {
         return;
       case 'admin_suspended':
         summary.adminSuspended++;
-        log.info({ tenantId }, 'Tenant suspended by super-admin; reconciliation does not reactivate');
+        log.info({ tenantId }, 'Tenant suspended or cancelled by super-admin; reconciliation does not reactivate');
         return;
       case 'stale':
         summary.stale++;

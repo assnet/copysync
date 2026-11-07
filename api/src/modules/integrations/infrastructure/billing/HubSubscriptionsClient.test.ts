@@ -50,6 +50,15 @@ describe('HubSubscriptionsClient', () => {
     expect(await client(vi.fn().mockResolvedValue(reply(200, bad))).fetchByCustomer(ID)).toMatchObject({ ok: false, reason: 'invalid_response' });
   });
 
+  it('formato da central 1.89.2 (status + campos de corte) é aceito; status extra é ignorado', async () => {
+    const body = okBody({ subscriptions: [{ ...okBody().subscriptions[0], status: 'active', canceledAt: '2026-11-07T10:00:00.000Z', refundedAt: null, chargedbackAt: null }] });
+    const r = await client(vi.fn().mockResolvedValue(reply(200, body))).fetchByCustomer(ID);
+    expect(r.ok && r.snapshot.subscriptions[0]).toEqual({
+      id: 's1', planSlug: 'copysync-pro-mensal', billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null,
+      canceledAt: '2026-11-07T10:00:00.000Z', refundedAt: null, chargedbackAt: null,
+    });
+  });
+
   it('lastSeq null aceito', async () => {
     const r = await client(vi.fn().mockResolvedValue(reply(200, okBody({ lastSeq: null })))).fetchByCustomer(ID);
     expect(r.ok && r.snapshot.lastSeq).toBeNull();

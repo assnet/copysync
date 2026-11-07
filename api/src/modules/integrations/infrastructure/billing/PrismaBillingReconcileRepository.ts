@@ -46,7 +46,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
 
   async listCandidates(limit: number): Promise<ReconcileCandidate[]> {
     const rows = await this.db.tenant.findMany({
-      where: { billingCustomerId: { not: null }, status: { in: ['ACTIVE', 'SUSPENDED'] } },
+      where: { billingCustomerId: { not: null }, status: { in: ['ACTIVE', 'SUSPENDED', 'CANCELLED'] } },
       select: { id: true, billingCustomerId: true },
       orderBy: [{ billingReconciledAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
       take: limit,
@@ -76,7 +76,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         status: row.status,
         planSlug: row.planSlug,
         lastBillingEventSeq: row.lastBillingEventSeq,
-        suspendedByAdmin: row.status === 'SUSPENDED' && (await this.suspendedByAdmin(tx, row)),
+        blockedByAdmin: row.status !== 'ACTIVE' && (await this.blockedByAdmin(tx, row)),
       });
       if (decision.kind === 'suspend') {
         // Mesmo efeito do `subscription.payment_failed` no webhook: entitlements e plano ficam
@@ -138,11 +138,13 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
   }
 
   /**
-   * SUSPENDED por super-admin = auditoria `TENANT_STATUS_CHANGED` de origem SUPER_ADMIN para SUSPENDED
-   * gravada a partir do `suspendedAt` atual (a suspensão por cobrança do webhook não grava essa auditoria).
+   * SUSPENDED/CANCELLED por super-admin = auditoria `TENANT_STATUS_CHANGED` de origem SUPER_ADMIN para o status
+   * atual, gravada a partir do `suspendedAt` atual. O único caminho do admin (`UpdateTenantStatusUseCase`) grava
+   * `suspendedAt` e depois essa auditoria; o webhook (payment_failed / eventos de corte) e a reconciliação gravam
+   * `suspendedAt` sem origem SUPER_ADMIN, então status por cobrança = sem essa auditoria.
    * Sem `suspendedAt`: origem desconhecida, tratada como admin (não reativa).
    */
-  private async suspendedByAdmin(tx: Prisma.TransactionClient, row: LockedRow): Promise<boolean> {
+  private async blockedByAdmin(tx: Prisma.TransactionClient, row: LockedRow): Promise<boolean> {
     if (!row.suspendedAt) return true;
     const audit = await tx.auditLog.findFirst({
       where: {
@@ -151,7 +153,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         createdAt: { gte: row.suspendedAt },
         AND: [
           { meta: { path: ['origin'], equals: 'SUPER_ADMIN' } },
-          { meta: { path: ['newStatus'], equals: 'SUSPENDED' } },
+          { meta: { path: ['newStatus'], equals: row.status } },
         ],
       },
       select: { id: true },

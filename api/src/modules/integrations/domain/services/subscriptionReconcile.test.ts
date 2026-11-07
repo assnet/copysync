@@ -56,7 +56,7 @@ describe('pickGrantingSubscription', () => {
 });
 
 describe('decideReconcile', () => {
-  const local = { status: 'ACTIVE' as const, planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, suspendedByAdmin: false };
+  const local = { status: 'ACTIVE' as const, planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, blockedByAdmin: false };
   const snap = (lastSeq: bigint | null, subscriptions = [sub()]) => ({ externalUserId: 'c', subscriptions, lastSeq });
 
   it('central sem evento e tenant com watermark: stale (não mexe)', () => {
@@ -68,7 +68,7 @@ describe('decideReconcile', () => {
       .toMatchObject({ kind: 'apply', reasons: ['no_plan'], advanceTo: null });
   });
   it('CANCELLED e SUSPENDED sem acesso: noop', () => {
-    expect(decideReconcile({ ...local, status: 'CANCELLED', planSlug: null }, snap(5n), NOW, G)).toEqual({ kind: 'noop' });
+    expect(decideReconcile({ ...local, status: 'CANCELLED', planSlug: null }, snap(5n, [sub({ billingStatus: 'REFUNDED' })]), NOW, G)).toEqual({ kind: 'noop' });
     expect(decideReconcile({ ...local, status: 'SUSPENDED' }, snap(5n, []), NOW, G)).toEqual({ kind: 'noop' });
   });
   it('ACTIVE sem acesso: suspende com watermark; lista vazia: unknown_customer; stale vence a suspensão', () => {
@@ -79,6 +79,16 @@ describe('decideReconcile', () => {
   it('vencida há 23 h mantém; há 25 h suspende', () => {
     expect(decideReconcile(local, snap(5n, [sub({ expiresAt: hoursAgo(23) })]), NOW, G)).toEqual({ kind: 'noop' });
     expect(decideReconcile(local, snap(5n, [sub({ expiresAt: hoursAgo(25) })]), NOW, G)).toEqual({ kind: 'suspend', advanceTo: 5n });
+  });
+  it('CANCELLED por cobrança com acesso: reativa com plano; por super-admin: não', () => {
+    expect(decideReconcile({ ...local, status: 'CANCELLED', planSlug: 'COPYSYNC_LITE' }, snap(5n), NOW, G))
+      .toMatchObject({ kind: 'apply', reasons: ['plan_changed', 'billing_cancelled'], activate: true, planSlug: 'COPYSYNC_PRO' });
+    expect(decideReconcile({ ...local, status: 'CANCELLED', blockedByAdmin: true }, snap(5n), NOW, G)).toEqual({ kind: 'admin_suspended' });
+  });
+  it('canceledAt preenchido com billingStatus ACTIVE corta na hora (central 1.89.2)', () => {
+    const s1 = sub({ billingStatus: 'ACTIVE', canceledAt: hoursAgo(0.5), refundedAt: null, chargedbackAt: null, expiresAt: FUTURE });
+    expect(subscriptionGrantsAccess(s1, NOW, G)).toBe(false);
+    expect(decideReconcile(local, snap(5n, [s1]), NOW, G)).toEqual({ kind: 'suspend', advanceTo: 5n });
   });
   it('vencimento da assinatura escolhida vai junto', () => {
     const d = decideReconcile({ ...local, planSlug: null }, snap(5n, [sub({ expiresAt: FUTURE })]), NOW, G);

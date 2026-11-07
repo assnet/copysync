@@ -12,7 +12,7 @@ const ok = (subscriptions: HubSubscription[], lastSeq: bigint | null = 5n): HubS
   ok: true, snapshot: { externalUserId: 'c', subscriptions, lastSeq },
 });
 const state = (o: Partial<LocalBillingState> = {}): LocalBillingState => ({
-  status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, suspendedByAdmin: false, ...o,
+  status: 'ACTIVE', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n, blockedByAdmin: false, ...o,
 });
 
 /** Repositório em memória: guarda o estado, chama `decide` e aplica como o Prisma (watermark só sobe). */
@@ -128,10 +128,18 @@ describe('ReconcileSubscriptionsUseCase', () => {
 
   it('suspenso por super-admin não reativa; plano desconhecido não aplica', async () => {
     const h = harness(
-      { t1: state({ status: 'SUSPENDED', suspendedByAdmin: true }), t2: state({ planSlug: null }) },
+      { t1: state({ status: 'SUSPENDED', blockedByAdmin: true }), t2: state({ planSlug: null }) },
       { t1: ok([sub()]), t2: ok([sub({ planSlug: 'outro-produto' })]) },
     );
     expect(await h.uc.execute()).toMatchObject({ adminSuspended: 1, unknownPlan: 1, corrected: 0 });
+  });
+
+  it('CANCELLED por cobrança volta ACTIVE com plano; CANCELLED por super-admin não', async () => {
+    const states = { t1: state({ status: 'CANCELLED', planSlug: null }), t2: state({ status: 'CANCELLED', blockedByAdmin: true }) };
+    const h = harness(states, { t1: ok([sub()]), t2: ok([sub()]) });
+    expect(await h.uc.execute()).toMatchObject({ corrected: 1, adminSuspended: 1 });
+    expect(states.t1).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_PRO' });
+    expect(states.t2.status).toBe('CANCELLED');
   });
 
   it('d) erro HTTP/401/timeout: não muda nada, conta e segue para o próximo', async () => {

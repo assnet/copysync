@@ -33,11 +33,11 @@ export interface LocalBillingState {
   status: LocalTenantStatus;
   planSlug: string | null;
   lastBillingEventSeq: bigint | null;
-  /** SUSPENDED por ação de super-admin (não por cobrança): a reconciliação não reativa. */
-  suspendedByAdmin: boolean;
+  /** SUSPENDED/CANCELLED por ação de super-admin (não por cobrança): a reconciliação não reativa. */
+  blockedByAdmin: boolean;
 }
 
-export type ReconcileReason = 'no_plan' | 'plan_changed' | 'billing_suspended' | 'watermark_behind';
+export type ReconcileReason = 'no_plan' | 'plan_changed' | 'billing_suspended' | 'billing_cancelled' | 'watermark_behind';
 
 export type ReconcileDecision =
   | {
@@ -46,7 +46,7 @@ export type ReconcileDecision =
       planSlug: PlanSlug;
       subscriptionId: string;
       expiresAt: Date | null;
-      /** SUSPENDED → ACTIVE. */
+      /** SUSPENDED/CANCELLED (por cobrança) → ACTIVE. */
       activate: boolean;
       /** Novo watermark (só sobe); null = central sem evento, mantém. */
       advanceTo: bigint | null;
@@ -124,8 +124,6 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   const { lastSeq } = snapshot;
   const localSeq = local.lastBillingEventSeq;
   if (localSeq !== null && (lastSeq === null || localSeq > lastSeq)) return { kind: 'stale' };
-  if (local.status === 'CANCELLED') return { kind: 'noop' };
-
   const pick = pickGrantingSubscription(snapshot.subscriptions, now, graceMs);
   if (!pick.grants) {
     if (local.status !== 'ACTIVE') return { kind: 'noop' };
@@ -136,9 +134,9 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   const reasons: ReconcileReason[] = [];
   if (local.planSlug === null) reasons.push('no_plan');
   else if (local.planSlug !== pick.planSlug) reasons.push('plan_changed');
-  if (local.status === 'SUSPENDED') {
-    if (local.suspendedByAdmin) return { kind: 'admin_suspended' };
-    reasons.push('billing_suspended');
+  if (local.status !== 'ACTIVE') {
+    if (local.blockedByAdmin) return { kind: 'admin_suspended' };
+    reasons.push(local.status === 'SUSPENDED' ? 'billing_suspended' : 'billing_cancelled');
   }
   if (lastSeq !== null && (localSeq === null || localSeq < lastSeq)) reasons.push('watermark_behind');
   if (reasons.length === 0) return { kind: 'noop' };
@@ -149,7 +147,7 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
     planSlug: pick.planSlug,
     subscriptionId: pick.sub.id,
     expiresAt: pick.sub.expiresAt === null ? null : new Date(pick.sub.expiresAt),
-    activate: local.status === 'SUSPENDED',
+    activate: local.status !== 'ACTIVE',
     advanceTo: lastSeq,
   };
 }
