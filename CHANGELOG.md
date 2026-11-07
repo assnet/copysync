@@ -9,6 +9,33 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.72.0 · app 0.89.0 · extensão 3.3.0 — fluxo de instalação da extensão com rastreio de clique e ciclo de vida para a central
+
+Docs: `docs/extensao-navegador.md` (§Fluxo de instalação e ciclo de vida; §Eventos para a central: envelope, tipos e campos).
+
+#### api/
+
+- **`prisma/migrations/20261108090000_add_extension_store_click_and_uninstall_feedback`** — aditiva: `extension_lifecycle_events.installationId` nulo + `tenantId`/`source` + índice `(userId, type, occurredAt)`; `hub_outbox_events.installationId` nulo; tabela `extension_uninstall_feedbacks`. Migration necessária (roda no boot).
+- **`extension/domain/lifecycleEvents.ts`**, **`domain/services/lifecycleOutboxPayload.ts`** (novos) — tipos de evento, motivos de desinstalação, janelas (dedupe 60 s, atribuição 7 d) e payload puro do outbox `extension.lifecycle`.
+- **`extension/infrastructure/repositories/PrismaExtensionLifecycleRepository.ts`** (novo) + teste de integração — evento + outbox na mesma transação, `seq` por `clientKey` em `hub_outbox_sequences`, dedupe de clique com advisory lock, atribuição condicional do clique, feedback por upsert.
+- **`RecordStoreClickUseCase.ts`** (novo) + rota `POST /extension/store-click` (Bearer + tenant) — clique na Chrome Web Store vira `STORE_CLICK`.
+- **`IssueExtensionSessionUseCase.ts`** — no primeiro vínculo do usuário grava `LINKED` e atribui o clique mais recente (clique → instalação → usuário); falha da telemetria não derruba o vínculo.
+- **`RecordLifecycleSignalUseCase.ts`** — sai o Prisma direto da camada de aplicação; valida tipo/UUID/versão; INSTALL de instalação desconhecida com `extensionId` válido cria linha sem dono (antes todo INSTALL era descartado por FK); linha com dono só muda status/lastSeenAt.
+- **`RecordUninstallUseCase.ts`** (novo) + rota pública `POST /extension/lifecycle/feedback` — desinstalação e pesquisa (motivos fixos, comentário ≤ 500 sem e-mail/telefone, só local).
+- **`IHubOutboxRepository.ts`** — `installationId` da cabeça pode ser nulo (STORE_CLICK). Envelope do `HubOutboxWorker` inalterado; `HUB_EVENTS_*` segue desligado em produção.
+
+#### app/
+
+- **`features/extension/config.ts`** (novo) — `EXTENSION_STORE_URL` (`VITE_EXTENSION_STORE_URL`, default a listagem publicada).
+- **`ExtensionInstallPanel.tsx`**, **`hooks/useExtensionInstallWatch.ts`** (novos) + testes — botão da loja com registro do clique, espera com polling do handshake (3 s, teto 3 min), "Já instalei, verificar de novo".
+- **`ExtensionSetupWizard.tsx`** — passo Instalar antes de Detectar; usado em Configurações → Extensão (sai o Alert de texto) e no modal "Configurar Mercado Livre" (`BrowserSessionCredentialDialog.tsx`).
+- **`ExtensionInstallBanner.tsx`** (novo) no `DashboardPage.tsx` — aviso de primeiro acesso, dispensa por usuário no localStorage.
+- **`pages/ExtensionRemovedPage.tsx`** (novo, rota pública `/extension-removed`) — registra a remoção e coleta motivos.
+
+#### extension/ (3.3.0 — exige nova publicação na Chrome Web Store)
+
+- **`store.ts`**, **`lifecycle.ts`**, **`index.ts`**, **`uninstallUrl.ts`**, **`panelTab.ts`** — `installationId` nasce no `onInstalled` (INSTALL deixa de ser descartado), body com `extensionId`, INSTALL pendente reenviado, `setUninstallURL` no boot do service worker, foco na aba do painel após instalar. Detalhes em `extension/CHANGELOG.md`.
+
 ### Added — api 0.71.0 — reconciliação de assinaturas com a central e corte pela união das assinaturas
 
 Docs: `docs/arquitetura-central-billing.md` (§Reconciliação: regras, envs, concorrência, o que não faz, pendências; tabela evento → status: corte por "decisão pela união").
