@@ -9,6 +9,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.73.0 · app 0.90.0 — proteção do login (bloqueio, Turnstile, código por e-mail)
+
+Docs: `docs/seguranca-login.md` (regras, envs, tabela modo × comportamento, o que não fazer). Migration aditiva `20261108100000_add_login_events_and_codes`.
+
+#### api/
+
+- **`auth/domain/services/loginGuardRules.ts`** (novo) — regras puras: janela 1 h, 3 falhas/e-mail e 10/IP bloqueiam com `retryAt`, e-mail suspeito, teto de 3 códigos/h + 60 s entre envios, 5 tentativas por código, `resolveLoginGuardPolicy`.
+- **`auth/application/services/LoginGuard.ts`** + **`LoginCodeChallenge.ts`** (novos) — bloqueio 429 `LOGIN_TOO_MANY_ATTEMPTS`, Turnstile, falha sem userId, código só após senha correta, envio pela central (`LOGIN_VERIFICATION`), envio falho não consome o teto (503 `LOGIN_CODE_DELIVERY_FAILED`).
+- **`LoginUseCase.ts`** (refeito) + **`CreateLoginSessionUseCase.ts`**, **`VerifyLoginCodeUseCase.ts`**, **`ResendLoginCodeUseCase.ts`** (novos) — login suspeito responde 202 `OTP_REQUIRED` com ticket; `POST /auth/login/verify` e `/auth/login/resend`.
+- **`PrismaLoginProtectionRepository.ts`**, **`CloudflareTurnstileVerifier.ts`**, **`HmacLoginSecurity.ts`** (novos) — `login_events`/`login_codes` (índices email+data, ip+data), tentativa/consumo atômicos, ticket HMAC e hash do código.
+- **`shared/http/clientIp.ts`** (novo) — IP via `cf-connecting-ip`, senão `request.ip`; nunca o 1º `X-Forwarded-For`.
+- **`shared/config/env.ts`** — `LOGIN_GUARD_MODE` (padrão `monitor`), `LOGIN_EMAIL_OTP` (padrão off), `TURNSTILE_SECRET_KEY`.
+- **`hubEmailMapping.ts`** — template `LOGIN_VERIFICATION` (`code`, `expiresInMinutes`, `name`).
+- **`errorHandler.ts`** — `Retry-After` em 429 com `meta.retryAt`.
+
+#### app/
+
+- **`features/login-protection/`** (novo) — `strings.ts`, `loginProtection.ts` (erro → mensagem, "Tente novamente às HH:MM" pelo relógio do servidor), `TurnstileWidget.tsx` (gerenciado, tema/idioma do painel), `LoginCodeStep.tsx` (campo `one-time-code`, reenvio com `CooldownBar`).
+- **`LoginPage.tsx`**, **`AuthContext.tsx`**, **`auth.service.ts`** — passo do código e bloqueio; ticket só em memória. **`apiClient.ts`** — `/auth/login/verify|resend` sem refresh em 401.
+- **`render.yaml`** — CSP do painel libera `https://challenges.cloudflare.com` (script/frame).
+
 ### Added — app 0.89.1 · extensão 3.3.0 — canal com a extensão por proxy no Orion (sem externally_connectable)
 
 Docs: `docs/extensao-navegador.md` (§Proxy para navegador sem `externally_connectable`). Mesmo contrato e ops; sem permissão nova.
