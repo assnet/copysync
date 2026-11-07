@@ -109,6 +109,24 @@ link pronto. O CopySync monta `data: { name, link, expiresAt }` (`ProvisionTenan
 `{ template: 'SET_PASSWORD', to, locale, vars: { name, setPasswordUrl, expiresInHours } }` (seção abaixo).
 `permissions[]` do evento ainda **não é lido** pelo receiver (nem validado, nem auditado).
 
+## Primeiro acesso
+
+O provisionamento cria `User` sem senha + `UserTenant ADMIN` **antes** do `UserInvite` (`invitedById: null`). O token do
+convite, que só chega ao e-mail do dono, é a prova de posse do e-mail: a tela `/invite/<token>` define a primeira senha,
+mesmo com o usuário já vinculado. Regra única em `users/domain/services/inviteAccess.ts` (`decideInviteAccess`), usada pelo
+`GET /auth/invites/:token` e pelo `AcceptInviteUseCase`:
+
+- com senha → login (`requiresLogin: true`, aceite devolve `REQUIRES_LOGIN`/`LOGIN_REQUIRED`);
+- sem senha + convite do sistema (`invitedById` null: cobrança ou super admin) → define senha;
+- sem senha + convite de pessoa → define senha só se a conta não estiver em outro tenant nem for super admin; senão
+  `REQUIRES_LOGIN`/`SET_PASSWORD_FIRST` (o cliente usa "esqueci a senha").
+- já membro do tenant do convite: aceitar grava hash + `passwordSetAt`, marca o convite e **não** duplica `UserTenant` nem
+  muda o papel.
+
+Não fazer: voltar a exigir login por "já tem tenant" (api ≤ 0.69.0 fazia isso e todo cliente novo caía no login sem senha);
+liberar convite de pessoa para conta sem senha de outro tenant (quem convida recebe o `inviteLink` na resposta de
+`InviteUserUseCase`: seria troca de senha de conta alheia). Teste: `invite.routes.test.ts`.
+
 ## E-mail pela central (`HubEmailSender`)
 
 `EMAIL_SENDER=hub` + `HUB_API_URL`, `HUB_APPLICATION_KEY`, `HUB_M2M_SECRET` (só env da Render; nunca logar).

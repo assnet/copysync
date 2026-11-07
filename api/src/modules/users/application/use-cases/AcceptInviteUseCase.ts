@@ -4,6 +4,7 @@ import { PrismaUserRepository } from '../../infrastructure/repositories/PrismaUs
 import { PrismaUserInviteRepository } from '../../infrastructure/repositories/PrismaUserInviteRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { User } from '../../domain/entities/User';
+import { decideInviteAccess } from '../../domain/services/inviteAccess';
 import { hashInviteToken } from '../../../../shared/utils/generateInviteToken';
 import { hashPassword } from '../../../../shared/utils/hash';
 import { validatePasswordPolicy } from '../../../../shared/utils/passwordPolicy';
@@ -72,14 +73,21 @@ export class AcceptInviteUseCase {
         return { status: 'ACCEPTED' as const, tenantId: invite.tenantId, userId: existingUser.id, isNewUser: false };
       }
 
-      // Path 2b: existing user WITHOUT password but has OTHER tenant links → requires login hint
+      // Path 2b: existing user WITHOUT password. The invite token is proof of e-mail ownership and
+      // sets the first password, even if the user is already linked (billing provisioning creates
+      // UserTenant before the invite). Exception: person-made invite for an account that reaches
+      // another tenant (or a super admin) → login. Rule in domain/services/inviteAccess.ts.
+      let memberTenantIds: string[] = [];
       if (existingUser && !existingUser.hasPassword()) {
-        const tenants = await userRepo.findTenantsForUser(existingUser.id);
-        if (tenants.some((t) => t.tenantId === invite.tenantId)) {
-          throw new AlreadyMemberError();
-        }
-
-        if (tenants.length > 0 && !input.authenticatedUserId) {
+        memberTenantIds = (await userRepo.findTenantsForUser(existingUser.id)).map((t) => t.tenantId);
+        const decision = decideInviteAccess({
+          hasPassword: false,
+          isSuperAdmin: existingUser.isSuperAdmin,
+          invitedById: invite.invitedById,
+          inviteTenantId: invite.tenantId,
+          memberTenantIds,
+        });
+        if (decision === 'LOGIN' && input.authenticatedUserId !== existingUser.id) {
           return { status: 'REQUIRES_LOGIN' as const, email, hint: 'SET_PASSWORD_FIRST' };
         }
       }
@@ -116,8 +124,8 @@ export class AcceptInviteUseCase {
         });
         await userRepo.update(updated);
 
-        const tenants = await userRepo.findTenantsForUser(existingUser.id);
-        if (!tenants.some((t) => t.tenantId === invite.tenantId)) {
+        // Idempotent: already a member (e.g. provisioned) keeps its link and role.
+        if (!memberTenantIds.includes(invite.tenantId)) {
           await userRepo.createUserTenant({
             userId: existingUser.id,
             tenantId: invite.tenantId,

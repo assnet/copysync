@@ -6,6 +6,7 @@ import { PrismaUserInviteRepository } from '../../../users/infrastructure/reposi
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 import { PrismaTenantRepository } from '../../../tenants/infrastructure/repositories/PrismaTenantRepository';
 import { AcceptInviteUseCase } from '../../../users/application/use-cases/AcceptInviteUseCase';
+import { decideInviteAccess } from '../../../users/domain/services/inviteAccess';
 import { InviteInvalidError } from '../../../../shared/errors/internal/TeamErrors';
 
 const inviteRepo = new PrismaUserInviteRepository();
@@ -58,12 +59,18 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
 
       const user = await userRepo.findByEmail(invite.email);
       const hasPassword = user?.hasPassword() ?? false;
-      let requiresLogin = false;
-
-      if (user && !hasPassword) {
-        const tenants = await userRepo.findTenantsForUser(user.id);
-        requiresLogin = tenants.length > 0;
-      }
+      const memberTenantIds = user && !hasPassword
+        ? (await userRepo.findTenantsForUser(user.id)).map((t) => t.tenantId)
+        : [];
+      const requiresLogin = user
+        ? decideInviteAccess({
+            hasPassword,
+            isSuperAdmin: user.isSuperAdmin,
+            invitedById: invite.invitedById,
+            inviteTenantId: invite.tenantId,
+            memberTenantIds,
+          }) === 'LOGIN'
+        : false;
 
       const tenant = await tenantRepo.findById(invite.tenantId);
       const tenantName = tenant?.name ?? invite.tenantId;
@@ -74,7 +81,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
         role: invite.role,
         expiresAt: invite.expiresAt.toISOString(),
         requiresPassword: !hasPassword,
-        requiresLogin: hasPassword || requiresLogin,
+        requiresLogin,
       });
     },
   );

@@ -9,6 +9,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.69.1 — primeiro acesso: cliente provisionado pela cobrança caía no login sem ter senha
+
+Doc: `docs/arquitetura-central-billing.md` (§Primeiro acesso).
+
+#### api/
+
+- **`users/domain/services/inviteAccess.ts`** (novo) + teste — função pura `decideInviteAccess`: sem senha + convite do sistema (`invitedById` null: provisionamento/super admin) define a primeira senha mesmo já vinculado; convite de pessoa só define senha se a conta não alcança outro tenant (nem é super admin); com senha, login.
+- **`invite.routes.ts`** — `GET /auth/invites/:token` usava `requiresLogin = tenants.length > 0`; o provisionamento cria o `UserTenant` antes do convite, então todo cliente novo recebia `requiresLogin: true` e caía no login ("Invalid email or password"). Agora usa `decideInviteAccess`.
+- **`AcceptInviteUseCase.ts`** — mesma regra; sem senha e já membro do tenant do convite grava a senha (hash, `passwordSetAt`) e marca o convite aceito, sem duplicar `UserTenant` nem mudar o papel (antes lançava `AlreadyMemberError`). Bypass por login agora exige que o usuário autenticado seja o dono do e-mail.
+- **`invite.routes.test.ts`** (novo) — contrato HTTP com repositórios em memória: provisionado (info/aceite/idempotência), com senha, proteção entre tenants, token expirado/aceito.
+
 ### Added — api 0.69.0 · app 0.87.0 — vitrine: botão sem prévia de URL, UTM interna e autopreenchimento do checkout
 
 Doc: `docs/planos.md` (Links de pagamento).
