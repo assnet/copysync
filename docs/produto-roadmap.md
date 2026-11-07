@@ -49,6 +49,14 @@ Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela a
 | Aquecedor de Chip | em breve | a definir |
 | Lotar Grupos | em breve | a definir (entrada de novos membros nos grupos do cliente) |
 
+## Ferramentas operacionais da plataforma
+
+Não são produto nem item de plano: só o super-admin usa, fora do menu dos tenants (seção Plataforma).
+
+| Ferramenta | O que faz | Módulo | Status |
+|---|---|---|---|
+| Links de redirecionamento | Links curtos da plataforma (`/redirect/<slug>`) para suporte, loja, vídeos e Web Store, com divisão A/B e cliques | `redirect-links` ([doc](redirect-links.md)) | ✅ api 0.67.0 · app 0.85.0 |
+
 Sessão (número conectado, item 1) é do tenant: a mesma sessão serve mais de um produto; limite segue
 por plano, não por produto. Plano, permissões e configurações por produto: etapa futura.
 

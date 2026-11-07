@@ -8,7 +8,7 @@ para o cliente já ver o que vem. Catálogo e status dos produtos: seção "Prod
 ## Estrutura
 
 Fora dos produtos: **Dashboard** (`/dashboard`) no topo; seção **Plataforma** só super admin
-(`/admin/ai`, `/admin/link-domains`, `/admin/workers`); bloco inferior **Privacidade**
+(`/admin/ai`, `/admin/link-domains`, `/admin/workers`, `/admin/redirect-links` — [`redirect-links.md`](redirect-links.md)); bloco inferior **Privacidade**
 (ação: abre o diálogo, não é rota), **Configurações** (`/settings/*`, `matchPrefix`).
 
 Filhos de Configurações ficam no `SettingsLayout` (`features/settings/components/`), não em `model.ts`:

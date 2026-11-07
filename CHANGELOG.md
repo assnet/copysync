@@ -9,6 +9,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.67.0 · app 0.85.0 — links de redirecionamento da plataforma
+
+Doc: `docs/redirect-links.md`. Links curtos de marketing/suporte da plataforma (`https://app.copysync.app/redirect/<slug>`), geridos só pelo super-admin, com divisão A/B opcional e cliques por lado.
+
+#### api/
+
+- **`prisma/migrations/20261107120000_create_platform_redirect_links`** (nova, aditiva) — tabela `redirect_links` sem `tenantId` (recurso da plataforma), `slug` único, `percentA` inteiro com CHECK 0–100, contadores `hitsA`/`hitsB`.
+- **`modules/redirect-links/domain/services/redirectLinkRules.ts`** — regras puras: slug `[a-z0-9.-]` 1–100; destino só `https://`, sem `user:pass@`, até 2048, sem loop para `/redirect` ou `/public/redirects` em host da plataforma.
+- **`pickRedirectSide.ts`** — sorteio A/B com RNG injetável (sem B = sempre A).
+- **`Create/Update/List/Delete/ResolveRedirectLinkUseCase.ts`** + **`redirectLinkInput.ts`** — validação e mescla; slug editável (o antigo para de responder); contador incrementado sem bloquear a resposta.
+- **`PrismaRedirectLinkRepository.ts`** + **`PrismaRedirectLinkMapper.ts`** — `UPDATE … SET "hitsX" = "hitsX" + 1` atômico sem tocar `updatedAt`; P2002/P2025 traduzidos.
+- **`redirectLinkAdmin.routes.ts`** — CRUD em `/api/admin/redirect-links` com `authHook` + `superAdminHook` (401 para quem não é super-admin, como as demais rotas `/admin`).
+- **`publicRedirect.routes.ts`** — `GET /api/public/redirects/:slug` (`{ success, data: { url } }`) e `/:slug/go` (302); 404 `REDIRECT_LINK_NOT_FOUND` sem detalhe; `no-store`, `noindex`; rate limit `publicRedirect` (60/min por IP).
+- **`RedirectLinkErrors.ts`** — `REDIRECT_LINK_INVALID` (400, `meta.field`/`meta.reason`), `REDIRECT_LINK_SLUG_TAKEN` (409), `REDIRECT_LINK_NOT_FOUND` (404).
+
+#### app/
+
+- **`pages/RedirectPage.tsx`** — rota pública `/redirect/:slug` fora do login e do layout: "Redirecionando…" com a marca, `location.replace` só para `https://`, "Link indisponível" no 404, tentar de novo em falha de rede; uma resolução por slug (StrictMode não conta 2 cliques).
+- **`pages/admin/AdminRedirectLinksPage.tsx`** + **`features/redirectLinks/`** — tela de super-admin: endereço completo copiável, destinos A/B, divisão, ativo (`Switch`), cliques A/B e total, criar/editar (aviso ao trocar o slug) e apagar com confirmação; rascunho e diálogo em `usePersistedState`.
+- **`features/navigation/model.ts`** — item "Links de redirecionamento" na seção Plataforma (só super-admin).
+
 ### Fixed — api 0.66.3 — recuperação de canal do Telegram não resolvia o canal
 
 #### api/

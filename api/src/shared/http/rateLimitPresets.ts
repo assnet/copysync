@@ -42,6 +42,11 @@ export const rateLimitPresets = {
     max: 60,
     timeWindow: '1 hour',
   },
+  /** Links de redirecionamento da plataforma (`/public/redirects/:slug`), por IP. */
+  publicRedirect: {
+    max: 60,
+    timeWindow: '1 minute',
+  },
   general: {
     max: 120,
     timeWindow: '1 minute',

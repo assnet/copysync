@@ -20,6 +20,9 @@ import { SubscriptionPage } from '@/pages/settings/SubscriptionPage';
 import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
+import { AdminRedirectLinksPage } from '@/pages/admin/AdminRedirectLinksPage';
+import { RedirectPage } from '@/pages/RedirectPage';
+import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage } from '@/pages/modules';
@@ -55,6 +58,8 @@ export function AppRoutes() {
       {/* URL declarada na Chrome Web Store: precisa abrir sem login */}
       <Route path={PRIVACY_POLICY_PATH} element={<PrivacyPolicyPage />} />
       <Route path={SUPPORT_PATH} element={<SupportPage />} />
+      {/* Links de redirecionamento da plataforma: sem login, sem layout (docs/redirect-links.md) */}
+      <Route path={`${REDIRECT_PUBLIC_PATH}/:slug`} element={<RedirectPage />} />
 
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>
@@ -92,6 +97,7 @@ export function AppRoutes() {
             <Route path="/admin/ai" element={<AdminAiPage />} />
             <Route path="/admin/link-domains" element={<AdminLinkDomainsPage />} />
             <Route path="/admin/workers" element={<AdminWorkersPage />} />
+            <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
           </Route>
         </Route>
       </Route>
