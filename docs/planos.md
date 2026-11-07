@@ -84,11 +84,46 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 
 - Slugs da vitrine: `lite | pro | max` (antes `starter | profissional | business`); nomes exibidos seguem LITE/PRO/MAX.
 - Cada plano tem `checkoutUrls: { monthly, annual }` em `catalog.ts`: URL da oferta da Cakto (texto de vitrine, como
-  o preço; nunca no banco nem em env). `buildCheckoutUrl(slug, period, search)` (`checkout.ts`) lê dali e repassa
-  `utm_*`/`gclid`/`fbclid`. "Assinar" abre em nova aba (`target="_blank"`, `rel="noopener noreferrer"`), período do toggle.
+  o preço; nunca no banco nem em env). `buildCheckoutUrl(slug, period, search, catalog, prefill)` (`checkout.ts`) lê
+  dali, anexa a UTM interna e o autopreenchimento (abaixo). Período vem do toggle.
 - A Cakto avisa a central, que manda ao CopySync o webhook com `planSlug = copysync-{lite|pro|max}-{mensal|anual}`;
   `resolvePlanSlug` (`api/.../tenants/domain/planPresets.ts`) leva os 6 ao preset do tier (mensal = anual).
 - Trocou oferta na Cakto: mudar só `checkoutUrls` e o teste `checkout.test.ts`.
+
+### Botão sem prévia de URL (app 0.87.0)
+
+- "Assinar" é `<button>` **sem `href`**: o navegador não mostra a URL do gateway na barra de status. A URL é
+  montada **no clique** (`getCheckoutUrl`) e aberta por `openCheckout` (`openCheckout.ts`), síncrono no handler
+  (fora dele o bloqueador de pop-up barra). Enter/Espaço vêm do próprio `<button>`; nome acessível
+  `ctaNewTab` ("abre o pagamento em nova aba") em `strings.ts`.
+- `window.open(url, '_blank')` **sem** `noopener,noreferrer`: com eles o navegador devolve `null` sempre (spec HTML)
+  e não daria para saber se a aba foi bloqueada. Isolamento: `tab.opener = null` logo após abrir; referrer só a
+  origem (meta `strict-origin-when-cross-origin` do `index.html`). Retorno `null` (bloqueado) →
+  `window.location.assign(url)`.
+
+### UTM de origem interna (app 0.87.0)
+
+- Todo link leva `utm_source=app`, `utm_medium=in_app`, `utm_campaign=plans`, `utm_content=<slug>-<monthly|annual>`
+  (`checkoutUtm`). Valores white label: sem nome do produto.
+- `utm_*` da URL atual do painel **não** são repassados: dentro do painel o clique é interno e a campanha que trouxe
+  o visitante já foi atribuída no cadastro. `gclid`/`fbclid` da URL atual **continuam** repassados.
+- Parâmetro que o link da Cakto já traz vence, e a query existente **nunca é re-serializada** (`queryAppend.ts`:
+  só anexa pares novos; utm/sck da oferta saem byte a byte iguais).
+
+### Autopreenchimento do checkout (api 0.69.0 · app 0.87.0)
+
+- API: `GET {API_PREFIX}/me/checkout-prefill` (Bearer, `authHook`; sem tenant) → `{ email?, confirmEmail?, name? }`.
+  Regra pura em `api/.../users/domain/services/checkoutPrefill.ts` (padrões copiados do formulário da Cakto, os
+  mesmos da central): e-mail `trim`+minúsculas no `CHECKOUT_EMAIL_PATTERN` (sai em `email` e `confirmEmail`); nome
+  com espaços colapsados, 1..100, só letras latinas/acentos/espaço. Inválido é **omitido**, nunca corrigido.
+  `GetCheckoutPrefillUseCase` + `CheckoutPrefillPresenter`; `Cache-Control: no-store`; valores nunca logados.
+- **Documento** não sai: o produto não guarda CPF/CNPJ (nem em `User` nem em `Tenant`). **Telefone** não sai: a Cakto
+  ignora `phone` na URL (verificado pela central, `pulsosocial_api/api/docs/checkout-prefill.md`).
+- App: `useCheckoutPrefill` busca ao **montar** a vitrine (timeout 2,5 s) e guarda num `ref` em memória;
+  `appendCheckoutPrefill` (`checkoutPrefill.ts`) anexa no clique com o que já tiver. Regras: só `https://pay.cakto.com.br`;
+  link que já traz `email` não recebe nada (não mistura dados); chave já preenchida não é sobrescrita. Falha ou
+  timeout → link só com UTM.
+- `/settings/subscription` continua levando à vitrine: sem mudança.
 
 ## Pendências (fora deste entregável)
 
@@ -103,6 +138,9 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 - Não calcular preço nem gravar preço no banco; não chamar a central do navegador.
 - Não usar hex fixo nos cards: `theme.palette` + `alpha()`.
 - Não criar segundo catálogo (LP, extensão): a vitrine do painel é `catalog.ts`.
+- Não guardar o autopreenchimento em `usePersistedState`/localStorage/sessionStorage nem exibi-lo: é dado pessoal.
+- Não pôr `href` no "Assinar" nem buscar o prefill no clique (`await` antes de `window.open` cai no bloqueador).
+- Não adicionar documento/telefone ao prefill sem campo guardado e evidência de que a Cakto lê o parâmetro.
 - Não voltar a montar link de checkout por env ou por `/planos/...` da central: o link é o do catálogo.
 - Não mostrar a tabela do roadmap com emoji: ícones Lucide via `AppIcon`.
 - Não repetir limites de canal em `benefits` nem escrever "Telegram não incluso": a tabela de canais cobre os dois.

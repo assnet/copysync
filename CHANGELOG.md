@@ -9,6 +9,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.69.0 · app 0.87.0 — vitrine: botão sem prévia de URL, UTM interna e autopreenchimento do checkout
+
+Doc: `docs/planos.md` (Links de pagamento).
+
+#### api/
+
+- **`users/domain/services/checkoutPrefill.ts`** (novo) + teste — função pura: e-mail (`email`/`confirmEmail`) e nome só quando aceitos pelo formulário da Cakto; inválido é omitido. Sem documento (não guardado) nem telefone (a Cakto ignora na URL).
+- **`GetCheckoutPrefillUseCase.ts`** (novo) + teste, **`CheckoutPrefillPresenter.ts`** (novo) — usuário logado → prefill; inexistente → `{}`.
+- **`me.routes.ts`** — `GET /me/checkout-prefill` (Bearer), `Cache-Control: no-store`, sem log dos valores; teste de rota (401 sem login, 200 filtrado).
+
+#### app/
+
+- **`PlanCard.tsx`** — "Assinar" vira `<button>` sem `href` (sem URL do gateway na barra de status); abre no clique via **`openCheckout.ts`** (novo): `window.open` síncrono, `opener = null`, fallback `location.assign` se bloqueado.
+- **`checkout.ts`** — UTM interna `utm_source=app`/`utm_medium=in_app`/`utm_campaign=plans`/`utm_content=<slug>-<período>`; `utm_*` da URL do painel deixam de ser repassados (gclid/fbclid seguem); query do destino não é mais re-serializada (**`queryAppend.ts`**, novo).
+- **`checkoutPrefill.ts`** (novo) + **`useCheckoutPrefill.ts`** (novo) — busca o prefill ao montar a vitrine (timeout 2,5 s), só em memória; anexa só em `https://pay.cakto.com.br`, sem sobrescrever chave preenchida nem misturar com link que já traz e-mail.
+- **`account.service.ts`** — `getCheckoutPrefill`. **`PlansPage.tsx`** — monta a URL no clique.
+
 ### Added — api 0.68.0 · app 0.86.0 — primeira venda: e-mail pela central, links da Cakto e slugs lite/pro/max
 
 Doc: `docs/arquitetura-central-billing.md` (§E-mail pela central), `docs/planos.md`, `docs/assinatura.md`.
