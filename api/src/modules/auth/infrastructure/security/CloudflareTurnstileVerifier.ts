@@ -6,7 +6,7 @@ const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverif
 /** `action` do widget do painel; token de outra ação é recusado. */
 export const TURNSTILE_LOGIN_ACTION = 'login';
 /** Secrets de TESTE da Cloudflare (1x/2x/3x…AA): não devolvem action/hostname reais. */
-const TEST_SECRET = /^[123]x0{33}AA$/;
+const TEST_SECRET = /^[123]x0{31}AA$/; // secrets de teste oficiais: 1x + 31 zeros + AA (35 caracteres)
 
 export interface TurnstileVerifierOptions {
   /** Host do painel (de PANEL_URL); token emitido em outro host é recusado. */

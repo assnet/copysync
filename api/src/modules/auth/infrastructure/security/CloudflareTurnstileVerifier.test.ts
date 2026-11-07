@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CloudflareTurnstileVerifier } from './CloudflareTurnstileVerifier';
 
 const reply = (json: unknown) => vi.fn(async () => new Response(JSON.stringify(json))) as unknown as typeof fetch;
-const TEST_SECRET = `1x${'0'.repeat(33)}AA`;
+const TEST_SECRET = `1x${'0'.repeat(31)}AA`;
 const make = (json: unknown, secret = 'real-secret') => new CloudflareTurnstileVerifier(secret, { fetchFn: reply(json), expectedHostname: 'app.copysync.app' });
 
 describe('CloudflareTurnstileVerifier', () => {
