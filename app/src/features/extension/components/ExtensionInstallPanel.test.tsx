@@ -10,6 +10,7 @@ const env = vi.hoisted(() => ({ chromium: true, detect: vi.fn(async () => false)
 vi.mock('../config', async (orig) => ({
   ...(await orig<typeof import('../config')>()),
   isChromiumDesktop: () => env.chromium,
+  isExtensionCapableBrowser: () => env.chromium,
 }));
 vi.mock('../channel/client', () => ({
   detectExtension: env.detect,

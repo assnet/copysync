@@ -86,6 +86,8 @@ export default (env = {}, argv = {}) => {
   return {
     entry: {
       background: path.resolve(srcDir, 'background', 'index.ts'),
+      // Proxy do canal para navegador sem externally_connectable (Orion): docs/extensao-navegador.md
+      'panel-bridge': path.resolve(srcDir, 'content', 'index.ts'),
     },
     output: {
       path: path.resolve(__dirname, outDir),
@@ -135,7 +137,14 @@ export default (env = {}, argv = {}) => {
               delete manifest.content_scripts;
 
               const ec = buildExternallyConnectable();
-              if (ec) manifest.externally_connectable = ec;
+              if (ec) {
+                manifest.externally_connectable = ec;
+                // Proxy: content script SÓ nas mesmas origens do externally_connectable
+                // (já cobertas por host_permissions → nenhum aviso de permissão novo).
+                manifest.content_scripts = [
+                  { matches: [...ec.matches], js: ['panel-bridge.js'], run_at: 'document_start', all_frames: false },
+                ];
+              }
 
               manifest.host_permissions = buildHostPermissions();
 

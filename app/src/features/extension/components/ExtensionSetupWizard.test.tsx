@@ -9,7 +9,7 @@ vi.mock('../hooks/useExtension', () => ({
   useExtension: () => ({ refresh: vi.fn(), handshake: null, mlStatus: null, ...ext.value }),
   syncErrorMessage: () => '',
 }));
-vi.mock('../config', async (orig) => ({ ...(await orig<typeof import('../config')>()), isChromiumDesktop: () => true }));
+vi.mock('../config', async (orig) => ({ ...(await orig<typeof import('../config')>()), isChromiumDesktop: () => true, isExtensionCapableBrowser: () => true }));
 vi.mock('../channel/client', () => ({
   detectExtension: vi.fn(async () => false),
   hasConfiguredExtensionIds: () => true,

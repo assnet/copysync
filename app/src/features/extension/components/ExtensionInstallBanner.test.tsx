@@ -14,6 +14,7 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: env.user }) }
 vi.mock('../config', async (orig) => ({
   ...(await orig<typeof import('../config')>()),
   isChromiumDesktop: () => env.chromium,
+  isExtensionCapableBrowser: () => env.chromium,
 }));
 vi.mock('../channel/client', () => ({
   detectExtension: env.detect,

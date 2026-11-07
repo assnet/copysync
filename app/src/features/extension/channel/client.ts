@@ -2,6 +2,15 @@ import {
   CHANNEL_NAME, CHANNEL_VERSION,
   type ChannelEnvelope, type ChannelResponse, type OpMap, type OpName,
 } from '../contract/channel';
+import { readProxyIds, sendViaProxy } from './proxyTransport';
+
+/**
+ * Dois transportes, mesmo envelope:
+ * - externo: `chrome.runtime.sendMessage(<id>)` via `externally_connectable` (Chrome/Edge);
+ * - proxy: `window.postMessage` ⇄ content script `panel-bridge.js` (Orion e quem não entrega
+ *   `externally_connectable` à página). Ver `proxyTransport.ts` e docs/extensao-navegador.md.
+ * Ordem: transporte já provado → externo → proxy. O que respondeu fica em cache.
+ */
 
 const EXTENSION_IDS: string[] = (import.meta.env.VITE_EXTENSION_IDS ?? '')
   .split(',')
@@ -9,7 +18,11 @@ const EXTENSION_IDS: string[] = (import.meta.env.VITE_EXTENSION_IDS ?? '')
   .filter(Boolean);
 
 const TIMEOUT_MS = 3_000;
-let cachedExtId: string | null = null;
+/** `handshake` pelo externo quando há proxy na página: desiste cedo e tenta o proxy. */
+const SHORT_TIMEOUT_MS = 1_500;
+
+type Transport = 'external' | 'proxy';
+let cached: { transport: Transport; extId: string } | null = null;
 
 function buildEnvelope<Op extends OpName>(op: Op, payload: OpMap[Op]['request']): ChannelEnvelope {
   return {
@@ -23,9 +36,9 @@ function buildEnvelope<Op extends OpName>(op: Op, payload: OpMap[Op]['request'])
   };
 }
 
-function sendToExtension(extId: string, envelope: ChannelEnvelope): Promise<ChannelEnvelope | undefined> {
+function sendToExtension(extId: string, envelope: ChannelEnvelope, timeoutMs = TIMEOUT_MS): Promise<ChannelEnvelope | undefined> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), TIMEOUT_MS);
+    const timer = setTimeout(() => resolve(undefined), timeoutMs);
     try {
       chrome.runtime.sendMessage(extId, envelope, (response: unknown) => {
         clearTimeout(timer);
@@ -42,24 +55,48 @@ function sendToExtension(extId: string, envelope: ChannelEnvelope): Promise<Chan
   });
 }
 
+/** Ids com proxy na página; com `VITE_EXTENSION_IDS`, só os configurados (na ordem deles). */
+function proxyIds(): string[] {
+  const ids = readProxyIds();
+  if (!EXTENSION_IDS.length) return ids;
+  return EXTENSION_IDS.filter((id) => ids.includes(id));
+}
+
+function send(transport: Transport, extId: string, envelope: ChannelEnvelope, timeoutMs = TIMEOUT_MS) {
+  return transport === 'proxy' ? sendViaProxy(extId, envelope, timeoutMs) : sendToExtension(extId, envelope, timeoutMs);
+}
+
 export async function sendOp<Op extends OpName>(
   op: Op,
   payload: OpMap[Op]['request'] = {} as OpMap[Op]['request'],
 ): Promise<ChannelResponse<OpMap[Op]['response']>> {
-  const envelope = buildEnvelope(op, payload);
+  // Envelope novo por tentativa: o anti-replay da extensão recusa requestId repetido.
+  const attempt = async (transport: Transport, extId: string, timeoutMs?: number) => {
+    const response = await send(transport, extId, buildEnvelope(op, payload), timeoutMs);
+    if (!response?.payload) return null;
+    cached = { transport, extId };
+    return response.payload as ChannelResponse<OpMap[Op]['response']>;
+  };
 
-  if (cachedExtId) {
-    const response = await sendToExtension(cachedExtId, envelope);
-    if (response?.payload) return response.payload as ChannelResponse<OpMap[Op]['response']>;
-    cachedExtId = null;
+  if (cached) {
+    const hit = await attempt(cached.transport, cached.extId);
+    if (hit) return hit;
+    cached = null;
   }
 
-  for (const extId of EXTENSION_IDS) {
-    const response = await sendToExtension(extId, envelope);
-    if (response?.payload) {
-      cachedExtId = extId;
-      return response.payload as ChannelResponse<OpMap[Op]['response']>;
+  const viaProxy = proxyIds();
+  if (isNativeChannelBound()) {
+    // Orion expõe `chrome.runtime` mas o externo não responde: com proxy, o handshake desiste cedo.
+    const timeoutMs = op === 'handshake' && viaProxy.length ? SHORT_TIMEOUT_MS : TIMEOUT_MS;
+    for (const extId of EXTENSION_IDS) {
+      const hit = await attempt('external', extId, timeoutMs);
+      if (hit) return hit;
     }
+  }
+
+  for (const extId of viaProxy) {
+    const hit = await attempt('proxy', extId);
+    if (hit) return hit;
   }
 
   return { ok: false, error: { code: 'INTERNAL' } };
@@ -70,16 +107,27 @@ export function hasConfiguredExtensionIds(): boolean {
   return EXTENSION_IDS.length > 0;
 }
 
-/**
- * `chrome.runtime.sendMessage` existe nesta página. O Chrome só o liga ao carregar a página e
- * se alguma extensão instalada a aceitar: instalou com a aba aberta → precisa recarregar.
- */
-export function isExtensionChannelBound(): boolean {
+/** `chrome.runtime.sendMessage` existe nesta página (externally_connectable ligado ao carregar). */
+function isNativeChannelBound(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.runtime?.sendMessage;
 }
 
+/** O content script do proxy marcou a página: a extensão está instalada e ativa nesta aba. */
+export function isExtensionProxyPresent(): boolean {
+  return proxyIds().length > 0;
+}
+
+/**
+ * A página tem por onde falar com a extensão: `chrome.runtime.sendMessage` (o Chrome só o liga
+ * ao carregar a página e se alguma extensão a aceitar) ou o proxy. Instalou com a aba aberta →
+ * nenhum dos dois até recarregar (content script declarado só entra em página nova).
+ */
+export function isExtensionChannelBound(): boolean {
+  return isNativeChannelBound() || isExtensionProxyPresent();
+}
+
 export function isExtensionApiAvailable(): boolean {
-  return isExtensionChannelBound() && hasConfiguredExtensionIds();
+  return (isNativeChannelBound() && hasConfiguredExtensionIds()) || isExtensionProxyPresent();
 }
 
 export async function detectExtension(): Promise<boolean> {
@@ -92,10 +140,16 @@ export async function detectExtension(): Promise<boolean> {
   }
 }
 
+/** Id da extensão que respondeu por último (qualquer transporte). */
 export function getCachedExtId(): string | null {
-  return cachedExtId;
+  return cached?.extId ?? null;
+}
+
+/** Transporte que respondeu por último (diagnóstico/testes). */
+export function getCachedTransport(): Transport | null {
+  return cached?.transport ?? null;
 }
 
 export function clearCachedExtId(): void {
-  cachedExtId = null;
+  cached = null;
 }

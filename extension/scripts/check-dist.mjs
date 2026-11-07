@@ -71,9 +71,23 @@ if (apiHost && bundles.includes('background.js')) {
   }
 }
 
-// v3: manifest must NOT have content_scripts
-if (manifest.content_scripts) {
-  failures.push('manifest.json contém content_scripts — v3 não usa content script.');
+// Único content script permitido: o proxy do canal (panel-bridge.js), só nas origens do
+// externally_connectable, só no frame principal, isolated world.
+const ecMatchesForCs = [...(manifest.externally_connectable?.matches ?? [])].sort().join(',');
+for (const cs of manifest.content_scripts ?? []) {
+  const js = (cs.js ?? []).join(',');
+  if (js !== 'panel-bridge.js' || (cs.css ?? []).length) {
+    failures.push(`content_scripts com "${js}" — só panel-bridge.js é permitido.`);
+  }
+  if ([...(cs.matches ?? [])].sort().join(',') !== ecMatchesForCs) {
+    failures.push('content_scripts.matches ≠ externally_connectable.matches — o proxy só roda no painel.');
+  }
+  if (cs.all_frames || cs.world === 'MAIN' || cs.match_about_blank || cs.match_origin_as_fallback) {
+    failures.push('content_scripts do proxy fora do frame principal/isolated world.');
+  }
+}
+if (manifest.content_scripts && !bundles.includes('panel-bridge.js')) {
+  failures.push('panel-bridge.js ausente do dist/.');
 }
 
 // v3: manifest must NOT have scripting/tabs permissions

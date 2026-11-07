@@ -2,6 +2,8 @@ import type { ChannelEnvelope, ChannelResponse, ChannelError } from '../../contr
 import { CHANNEL_NAME, CHANNEL_VERSION } from '../constants.js';
 import { devLog, devError } from '../../core/devLog.js';
 import { checkGuard } from './guard.js';
+import { isPanelOrigin } from '../../core/panelOrigin.js';
+import { isTrustedProxySender } from './proxy.js';
 import { getHandler } from './handlers.js';
 import { assertNoSecrets } from './sanitize.js';
 import { isValidEnvelope, isVersionAccepted, isWithinTtl, checkReplay, hasAuthInPayload } from './validate.js';
@@ -19,9 +21,8 @@ const makeResponse = <P>(requestId: string, result: ChannelResponse<P>): Channel
 const makeError = (requestId: string, error: ChannelError): ChannelEnvelope =>
   makeResponse(requestId, { ok: false, error });
 
-const handleMessage = async (
+export const handleMessage = async (
   message: unknown,
-  sender: chrome.runtime.MessageSender,
 ): Promise<ChannelEnvelope> => {
   const requestId = (message as any)?.requestId ?? crypto.randomUUID();
 
@@ -70,7 +71,21 @@ const handleMessage = async (
 export const registerChannel = (): void => {
   chrome.runtime.onMessageExternal.addListener(
     (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void) => {
-      void handleMessage(message, sender).then(sendResponse);
+      void handleMessage(message).then(sendResponse);
+      return true;
+    },
+  );
+  // Proxy (content script `panel-bridge.js`, navegador sem externally_connectable — Orion):
+  // mensagem interna com o MESMO envelope. Registrado no topo do worker (listener tardio
+  // perde a mensagem que o acorda). Remetente fora do portão: sem resposta.
+  chrome.runtime.onMessage.addListener(
+    (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void) => {
+      if ((message as { channel?: unknown } | null)?.channel !== CHANNEL_NAME) return false;
+      if (!isTrustedProxySender(sender, chrome.runtime.id, isPanelOrigin)) {
+        devLog('proxy: remetente recusado', sender.origin ?? sender.url);
+        return false;
+      }
+      void handleMessage(message).then(sendResponse);
       return true;
     },
   );

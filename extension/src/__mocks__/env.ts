@@ -3,6 +3,7 @@ export const env = {
   apiUrl: 'https://api.test.local/api',
   panelUrl: 'https://app.test.local',
   isDev: false,
+  devOrigins: [] as string[],
   sessionSyncIntervalMinutes: 30,
 } as const;
 

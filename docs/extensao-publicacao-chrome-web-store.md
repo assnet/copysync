@@ -73,8 +73,8 @@ pnpm build:store  # idem, sem key, em dist-store/ (zip da loja). dist/ nunca fic
 ```
 
 O que o build garante (`scripts/check-dist.mjs`): versão de `dist/manifest.json` = `package.json`;
-nenhum `localhost`/IP privado/`console.log`/`debugger`; host da API presente no bundle; sem
-`content_scripts`, `scripting`, `tabs`, `.com.ar`/`.com.mx`, `update_url`, `_metadata`; e, no build
+nenhum `localhost`/IP privado/`console.log`/`debugger`; host da API presente no bundle; content script só `panel-bridge.js` nas origens do `externally_connectable`; sem
+`scripting`, `tabs`, `.com.ar`/`.com.mx`, `update_url`, `_metadata`; e, no build
 de loja, sem `key`.
 
 Bump de versão **antes** de qualquer empacotamento: `extension/package.json` → `version` (SemVer) e
