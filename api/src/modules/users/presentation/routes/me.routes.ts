@@ -6,9 +6,12 @@ import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors
 import { ChangePasswordUseCase } from '../../application/use-cases/ChangePasswordUseCase';
 import { changePasswordBodySchema } from '../schemas/change-password.schema';
 import type { ChangePasswordInputDto } from '../../application/dtos/ChangePasswordInputDto';
+import { GetCheckoutPrefillUseCase } from '../../application/use-cases/GetCheckoutPrefillUseCase';
+import { CheckoutPrefillPresenter } from '../presenters/CheckoutPrefillPresenter';
 
 const userRepo = new PrismaUserRepository();
 const changePasswordUseCase = new ChangePasswordUseCase(userRepo);
+const checkoutPrefillUseCase = new GetCheckoutPrefillUseCase(userRepo);
 
 /**
  * /me route — returns the authenticated user's profile and tenant memberships.
@@ -99,6 +102,43 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
       const input = request.body as ChangePasswordInputDto;
       await changePasswordUseCase.execute(userId, input);
       httpResponse.noContent(reply);
+    },
+  );
+
+  // Autopreenchimento do link de pagamento (docs/planos.md). Dado pessoal: no-store e nunca logar.
+  app.get(
+    '/checkout-prefill',
+    {
+      preHandler: [authHook],
+      schema: {
+        tags: ['Me'],
+        summary: 'Dados para autopreencher o link de pagamento',
+        description: 'E-mail e nome do usuário autenticado, só quando válidos para o formulário de pagamento. Chave inválida é omitida.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  email: { type: 'string' },
+                  confirmEmail: { type: 'string' },
+                  name: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: { $ref: 'ErrorResponse#' },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const prefill = await checkoutPrefillUseCase.execute(request.user.userId);
+      reply.header('Cache-Control', 'no-store');
+      httpResponse.ok(reply, CheckoutPrefillPresenter.toResponse(prefill));
     },
   );
 }
