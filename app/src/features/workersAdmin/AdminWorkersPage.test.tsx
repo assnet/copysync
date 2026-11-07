@@ -38,6 +38,47 @@ describe('AdminWorkersPage', () => {
     expect(within(row).getByText('3')).toBeInTheDocument();
   });
 
+  it('adoção ligada e 0 workers: estado vazio atual, sem aviso de adoção', async () => {
+    vi.spyOn(adminWorkersService, 'list').mockResolvedValue({
+      adoptionEnabled: true, workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
+      awaiting: 0, processes: [], leasedSessions: 0,
+    });
+    renderWithTheme(<AdminWorkersPage />);
+    expect(await screen.findByText(t.empty)).toBeInTheDocument();
+    expect(screen.queryByText(t.lease.notice)).not.toBeInTheDocument();
+  });
+
+  it('adoção desligada: aviso, processos pelos leases e sessões sem teto (tema escuro)', async () => {
+    vi.spyOn(adminWorkersService, 'list').mockResolvedValue({
+      adoptionEnabled: false, workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
+      awaiting: 0,
+      processes: [
+        { workerId: 'api-a', sessions: 2, leaseUntil: new Date().toISOString() },
+        { workerId: 'api-b', sessions: 9, leaseUntil: new Date().toISOString() },
+      ],
+      leasedSessions: 11,
+    });
+    renderWithTheme(<AdminWorkersPage />, 'dark');
+    expect(await screen.findByText(t.lease.notice)).toBeInTheDocument();
+    expect(screen.getByText(t.lease.sessionsNoCap(11))).toBeInTheDocument();
+    expect(screen.queryByText(t.totals.capacity(0, 0, 0))).not.toBeInTheDocument();
+    expect(screen.queryByText(t.awaiting.title)).not.toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]).getByText('api-b')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('9')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t.lease.noticeHintAria })).toBeInTheDocument();
+  });
+
+  it('adoção desligada sem lease vivo: estado vazio dos processos', async () => {
+    vi.spyOn(adminWorkersService, 'list').mockResolvedValue({
+      adoptionEnabled: false, workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
+      awaiting: 0, processes: [], leasedSessions: 0,
+    });
+    renderWithTheme(<AdminWorkersPage />);
+    expect(await screen.findByText(t.lease.empty)).toBeInTheDocument();
+    expect(screen.queryByText(t.empty)).not.toBeInTheDocument();
+  });
+
   it('erro na 1ª carga mostra alerta com tentar de novo', async () => {
     vi.spyOn(adminWorkersService, 'list').mockRejectedValue(new Error('x'));
     renderWithTheme(<AdminWorkersPage />);

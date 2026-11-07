@@ -1,15 +1,15 @@
 import {
-  Alert, Box, Button, Card, CardContent, CircularProgress, Grid, LinearProgress, Stack, Table, TableBody, TableCell,
+  Alert, Box, Button, Card, CardContent, CircularProgress, Grid, IconButton, LinearProgress, Stack, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
-import { Hourglass, Server } from 'lucide-react';
+import { Cable, Hourglass, Info, Server } from 'lucide-react';
 import { AppIcon, EmptyState, PageHeader, SectionCard, StatCard } from '@/components';
 import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
 import { occupancyLevel, occupancyPercent, sortWorkers, type OccupancyLevel } from '@/features/workersAdmin/rules';
 import { workersAdminStrings as t } from '@/features/workersAdmin/strings';
 import { useAdminWorkers } from '@/features/workersAdmin/useAdminWorkers';
-import type { WorkerOccupancy } from '@/features/workersAdmin/types';
+import type { LeaseProcess, WorkerOccupancy, WorkerOccupancyList } from '@/features/workersAdmin/types';
 
 const LEVEL_COLOR: Record<OccupancyLevel, 'success' | 'warning' | 'error'> = {
   ok: 'success', warning: 'warning', full: 'error',
@@ -95,6 +95,116 @@ function AwaitingCard({ awaiting }: { awaiting: number }) {
   );
 }
 
+function LeaseProcessesTable({ processes }: { processes: LeaseProcess[] }) {
+  const sorted = [...processes].sort((a, b) => b.sessions - a.sessions || a.workerId.localeCompare(b.workerId));
+  return (
+    <TableContainer>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>{t.lease.columns.process}</TableCell>
+            <TableCell align="right">{t.lease.columns.sessions}</TableCell>
+            <TableCell>
+              <Tooltip title={t.lease.leaseUntilHint}>
+                <span>{t.lease.columns.leaseUntil}</span>
+              </Tooltip>
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {sorted.map((p) => (
+            <TableRow key={p.workerId}>
+              <TableCell sx={{ fontFamily: 'monospace', wordBreak: 'break-all', minWidth: 120 }}>{p.workerId}</TableCell>
+              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{p.sessions}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                <time dateTime={p.leaseUntil}>{new Date(p.leaseUntil).toLocaleTimeString('pt-BR')}</time>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+/** Adoção desligada: sem heartbeat; os processos vêm dos leases vivos e não há teto. */
+function LeaseView({ data }: { data: WorkerOccupancyList }) {
+  const processes = data.processes ?? [];
+  return (
+    <>
+      <Alert
+        severity="info"
+        sx={{ mb: 2, alignItems: 'center' }}
+        action={(
+          <Tooltip title={t.lease.noticeHint}>
+            <IconButton size="small" color="inherit" aria-label={t.lease.noticeHintAria}>
+              <AppIcon icon={Info} size="sm" />
+            </IconButton>
+          </Tooltip>
+        )}
+      >
+        {t.lease.notice}
+      </Alert>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} sm={6}>
+          <StatCard label={t.lease.processes} value={processes.length} icon={<AppIcon icon={Server} size="md" />} />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <Tooltip title={t.lease.sessionsHint} placement="bottom-start">
+            <Box>
+              <StatCard
+                label={t.lease.sessions}
+                value={t.lease.sessionsNoCap(data.leasedSessions ?? 0)}
+                icon={<AppIcon icon={Cable} size="md" />}
+              />
+            </Box>
+          </Tooltip>
+        </Grid>
+      </Grid>
+      <SectionCard title={t.lease.listTitle} noPadding={processes.length > 0}>
+        {processes.length === 0 ? (
+          <EmptyState icon={<AppIcon icon={Server} size="lg" />} title={t.lease.empty} description={t.lease.emptyHint} sx={{ py: 5 }} />
+        ) : (
+          <LeaseProcessesTable processes={processes} />
+        )}
+      </SectionCard>
+    </>
+  );
+}
+
+/** Adoção ligada: ocupação pelos batimentos dos workers (com teto). */
+function WorkersView({ data }: { data: WorkerOccupancyList }) {
+  return (
+    <>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} sm={6}>
+          <StatCard label={t.totals.workers} value={data.totals.workers} icon={<AppIcon icon={Server} size="md" />} />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <StatCard
+            label={t.totals.sessions}
+            value={t.totals.capacity(
+              data.totals.sessions,
+              data.totals.maxSessions,
+              occupancyPercent(data.totals.sessions, data.totals.maxSessions),
+            )}
+          />
+        </Grid>
+      </Grid>
+
+      <SectionCard title={t.listTitle} noPadding={data.workers.length > 0}>
+        {data.workers.length === 0 ? (
+          <EmptyState icon={<AppIcon icon={Server} size="lg" />} title={t.empty} description={t.emptyHint} sx={{ py: 5 }} />
+        ) : (
+          <WorkersTable workers={data.workers} />
+        )}
+      </SectionCard>
+
+      <AwaitingCard awaiting={data.awaiting} />
+    </>
+  );
+}
+
 export function AdminWorkersPage() {
   const w = useAdminWorkers();
   const data = w.data;
@@ -117,31 +227,7 @@ export function AdminWorkersPage() {
       ) : (
         <>
           {w.refreshError && <Alert severity="warning" sx={{ mb: 2 }}>{t.refreshFailed}</Alert>}
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={6}>
-              <StatCard label={t.totals.workers} value={data.totals.workers} icon={<AppIcon icon={Server} size="md" />} />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <StatCard
-                label={t.totals.sessions}
-                value={t.totals.capacity(
-                  data.totals.sessions,
-                  data.totals.maxSessions,
-                  occupancyPercent(data.totals.sessions, data.totals.maxSessions),
-                )}
-              />
-            </Grid>
-          </Grid>
-
-          <SectionCard title={t.listTitle} noPadding={data.workers.length > 0}>
-            {data.workers.length === 0 ? (
-              <EmptyState icon={<AppIcon icon={Server} size="lg" />} title={t.empty} description={t.emptyHint} sx={{ py: 5 }} />
-            ) : (
-              <WorkersTable workers={data.workers} />
-            )}
-          </SectionCard>
-
-          <AwaitingCard awaiting={data.awaiting} />
+          {data.adoptionEnabled === false ? <LeaseView data={data} /> : <WorkersView data={data} />}
         </>
       )}
     </Box>

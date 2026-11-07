@@ -25,6 +25,18 @@ const totals = {
   },
 } as const;
 
+/** Processo dono de lease vivo (adoção desligada): sem teto nem heartbeat. */
+const leaseProcess = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['workerId', 'sessions', 'leaseUntil'],
+  properties: {
+    workerId: { type: 'string' },
+    sessions: { type: 'integer' },
+    leaseUntil: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
 /** `GET /admin/workers`: workers vivos, totais e sessões aguardando capacidade (ADOPT-12). */
 export const workerListResponse = {
   type: 'object',
@@ -34,8 +46,15 @@ export const workerListResponse = {
     data: {
       type: 'object',
       additionalProperties: false,
-      required: ['workers', 'totals', 'awaiting'],
-      properties: { workers: { type: 'array', items: worker }, totals, awaiting: { type: 'integer' } },
+      required: ['adoptionEnabled', 'workers', 'totals', 'awaiting', 'processes', 'leasedSessions'],
+      properties: {
+        adoptionEnabled: { type: 'boolean' },
+        workers: { type: 'array', items: worker },
+        totals,
+        awaiting: { type: 'integer' },
+        processes: { type: 'array', items: leaseProcess },
+        leasedSessions: { type: 'integer' },
+      },
     },
   },
 } as const;

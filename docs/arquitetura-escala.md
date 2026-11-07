@@ -169,6 +169,11 @@ escrita em `worker_heartbeats`). Spec: `.specs/features/session-adoption/`. Onde
 - `WorkerHeartbeatJob` (20 s, tabela `worker_heartbeats`, apagada no shutdown) e `WorkerCapacityAlertJob`
   (`JobLease` `worker-capacity-alert`, 1 log `warn`/min no cluster). E-mail ao super-admin adiado (D5: sem
   template na central). `GET /admin/workers` (super-admin) + página `/admin/workers` no painel.
+- `GET /admin/workers` devolve `adoptionEnabled` (`WORKER_ADOPTION_ENABLED`). Desligada: sem heartbeat, a resposta traz
+  `processes` (leases vivos de `sessions.ownerWorkerId/leaseUntil` agrupados por processo, `PrismaSessionLeaseHolderRepository`)
+  e `leasedSessions`, sem teto; a tela mostra aviso info, "Processos ativos", "Sessões conectadas · sem teto" e a lista
+  dos processos. Leitura de plataforma, só super-admin, **sem `tenantId`** (o lease é do processo). Ligada: heartbeats
+  como antes, sem consultar leases.
 - Shutdown: drain de mídia **antes** dos sockets, com teto que reserva o fim para close+flush+release (D4).
 - QR sem leitura não prende mais vaga (T24); ainda ocupa memória e um lugar em `WORKER_MAX_PENDING_LOGINS`.
   `worker_heartbeats.sessions` = autenticadas, `pendingLogins` = logins em andamento (`/admin/workers`

@@ -20,9 +20,24 @@ export interface WorkerOccupancyTotals {
   maxSessions: number;
 }
 
+/** Processo dono de lease vivo (adoção desligada): sem heartbeat nem teto. */
+export interface LeaseProcess {
+  workerId: string;
+  /** Sessões com lease não vencido (socket aberto ou abrindo). */
+  sessions: number;
+  /** Maior validade de lease do processo (ISO, relógio do banco). */
+  leaseUntil: string;
+}
+
 export interface WorkerOccupancyList {
+  /** `WORKER_ADOPTION_ENABLED`. Ausente (API antiga) = ligada. */
+  adoptionEnabled?: boolean;
   workers: WorkerOccupancy[];
   totals: WorkerOccupancyTotals;
   /** Sessões com pedido vivo e sem dono vivo. */
   awaiting: number;
+  /** Só com adoção desligada: leases vivos agrupados por processo. */
+  processes?: LeaseProcess[];
+  /** Soma das sessões com lease vivo (adoção desligada). */
+  leasedSessions?: number;
 }

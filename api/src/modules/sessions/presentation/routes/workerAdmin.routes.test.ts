@@ -4,6 +4,7 @@ import { workerAdminRoutes } from './workerAdmin.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
 import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositories/PrismaWorkerHeartbeatRepository';
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
+import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/repositories/PrismaSessionLeaseHolderRepository';
 import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
@@ -57,6 +58,9 @@ describe('GET /admin/workers', () => {
     expect(res.statusCode).toBe(200);
     expect(alive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
     const { data } = res.json();
+    expect(data.adoptionEnabled).toBe(true);
+    expect(data.processes).toEqual([]);
+    expect(data.leasedSessions).toBe(0);
     expect(data.totals).toEqual({ workers: 2, sessions: 43, pendingLogins: 2, maxSessions: 80 });
     expect(data.awaiting).toBe(4);
     expect(data.workers[0]).toEqual({
@@ -72,22 +76,60 @@ describe('GET /admin/workers', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 },
+      data: {
+        adoptionEnabled: true,
+        workers: [],
+        totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
+        awaiting: 0,
+        processes: [],
+        leasedSessions: 0,
+      },
     });
   });
 
-  it('flag de adoção desligada: resposta vazia sem consultar o banco', async () => {
+  it('adoção ligada não consulta os leases', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([]);
+    vi.spyOn(PrismaSessionAdoptionRepository.prototype, 'countAwaitingCapacity').mockResolvedValue(0);
+    const holders = vi.spyOn(PrismaSessionLeaseHolderRepository.prototype, 'listLiveHolders');
+    await app.inject({ method: 'GET', url: URL });
+    expect(holders).not.toHaveBeenCalled();
+  });
+
+  it('adoção desligada: processos pelos leases vivos, sem heartbeat nem adoção', async () => {
     auth.isSuperAdmin = true;
     adoption.enabled = false;
     const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive');
     const awaiting = vi.spyOn(PrismaSessionAdoptionRepository.prototype, 'countAwaitingCapacity');
+    vi.spyOn(PrismaSessionLeaseHolderRepository.prototype, 'listLiveHolders').mockResolvedValue([
+      { workerId: 'api-1', sessions: 5, leaseUntil: seenAt },
+      { workerId: 'api-2', sessions: 1, leaseUntil: seenAt },
+    ]);
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 },
+      data: {
+        adoptionEnabled: false,
+        workers: [],
+        totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
+        awaiting: 0,
+        processes: [
+          { workerId: 'api-1', sessions: 5, leaseUntil: seenAt.toISOString() },
+          { workerId: 'api-2', sessions: 1, leaseUntil: seenAt.toISOString() },
+        ],
+        leasedSessions: 6,
+      },
     });
     expect(alive).not.toHaveBeenCalled();
     expect(awaiting).not.toHaveBeenCalled();
+  });
+
+  it('adoção desligada sem lease vivo: lista vazia', async () => {
+    auth.isSuperAdmin = true;
+    adoption.enabled = false;
+    vi.spyOn(PrismaSessionLeaseHolderRepository.prototype, 'listLiveHolders').mockResolvedValue([]);
+    const { data } = (await app.inject({ method: 'GET', url: URL })).json();
+    expect(data).toMatchObject({ adoptionEnabled: false, processes: [], leasedSessions: 0 });
   });
 });

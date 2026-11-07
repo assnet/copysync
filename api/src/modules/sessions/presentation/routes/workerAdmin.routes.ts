@@ -5,6 +5,8 @@ import { httpResponse } from '../../../../shared/http/httpResponse';
 import { ListWorkersUseCase, type ListWorkersOutput } from '../../application/use-cases/ListWorkersUseCase';
 import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositories/PrismaWorkerHeartbeatRepository';
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
+import { ListLeaseHoldersUseCase, type ListLeaseHoldersOutput } from '../../application/use-cases/ListLeaseHoldersUseCase';
+import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/repositories/PrismaSessionLeaseHolderRepository';
 import { workerListResponse } from '../schemas/workerAdmin.schema';
 import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 
@@ -15,22 +17,37 @@ let listWorkers: ListWorkersUseCase | null = null;
 const uc = () =>
   (listWorkers ??= new ListWorkersUseCase(new PrismaWorkerHeartbeatRepository(), new PrismaSessionAdoptionRepository()));
 
-/** Flag desligada: nada de heartbeat nem adoção — resposta vazia sem consultar o banco. */
-const EMPTY: ListWorkersOutput = { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 };
+let listHolders: ListLeaseHoldersUseCase | null = null;
+const holdersUc = () => (listHolders ??= new ListLeaseHoldersUseCase(new PrismaSessionLeaseHolderRepository()));
 
-const present = (out: ListWorkersOutput) => ({
+/** Flag desligada: sem heartbeat nem adoção — workers vazio; os processos vêm dos leases vivos. */
+const NO_WORKERS: ListWorkersOutput = { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 };
+/** Flag ligada: a tela usa os heartbeats; leases não são consultados. */
+const NO_HOLDERS: ListLeaseHoldersOutput = { processes: [], leasedSessions: 0 };
+
+const present = (adoptionEnabled: boolean, out: ListWorkersOutput, holders: ListLeaseHoldersOutput) => ({
+  adoptionEnabled,
   workers: out.workers.map((w) => ({ ...w, seenAt: w.seenAt.toISOString() })),
   totals: out.totals,
   awaiting: out.awaiting,
+  processes: holders.processes.map((p) => ({ ...p, leaseUntil: p.leaseUntil.toISOString() })),
+  leasedSessions: holders.leasedSessions,
 });
 
-/** Super admin: ocupação dos workers (ADOPT-12). Registrado em `/api/admin/workers`. */
+/**
+ * Super admin: ocupação dos workers (ADOPT-12). Registrado em `/api/admin/workers`.
+ * Adoção desligada (`WORKER_ADOPTION_ENABLED`): `processes` = leases vivos por processo, sem teto.
+ * Visão de plataforma, só leitura e sem tenant (docs/arquitetura-escala.md).
+ */
 export async function workerAdminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', {
     preHandler,
-    schema: { tags, summary: 'Workers vivos, ocupação e sessões aguardando capacidade', response: { 200: workerListResponse } },
+    schema: { tags, summary: 'Workers vivos, ocupação, sessões aguardando capacidade e leases por processo (adoção desligada)', response: { 200: workerListResponse } },
   }, async (_request, reply) => {
-    const out = workerAdoptionConfig().enabled ? await uc().execute() : EMPTY;
-    httpResponse.ok(reply, present(out));
+    const enabled = workerAdoptionConfig().enabled;
+    const [out, holders] = enabled
+      ? [await uc().execute(), NO_HOLDERS]
+      : [NO_WORKERS, await holdersUc().execute()];
+    httpResponse.ok(reply, present(enabled, out, holders));
   });
 }
