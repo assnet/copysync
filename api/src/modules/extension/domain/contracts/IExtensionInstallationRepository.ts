@@ -15,5 +15,7 @@ export interface IExtensionInstallationRepository {
   upsert(input: UpsertExtensionInstallationInput): Promise<ExtensionInstallation>;
   updateStatus(installationId: string, status: ExtensionInstallationStatus): Promise<void>;
   updateLastSeen(installationId: string, fields: { lastSeenAt?: Date; lastHeartbeatAt?: Date; lastSiteSeenAt?: Date; version?: string }): Promise<void>;
+  /** Linha sem dono criada pelo INSTALL público; não toca linha existente. */
+  createUnowned(input: { installationId: string; extensionId: string; channel: string; version: string; installedAt: Date }): Promise<void>;
   markReplaced(installationId: string, replacedByInstallationId: string): Promise<void>;
 }

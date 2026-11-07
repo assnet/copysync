@@ -55,6 +55,13 @@ export class PrismaExtensionInstallationRepository implements IExtensionInstalla
     await this.prisma.extensionInstallation.update({ where: { installationId }, data: fields });
   }
 
+  async createUnowned(input: { installationId: string; extensionId: string; channel: string; version: string; installedAt: Date }): Promise<void> {
+    await this.prisma.extensionInstallation.createMany({
+      data: [{ ...input, firstSeenAt: input.installedAt, lastSeenAt: input.installedAt }],
+      skipDuplicates: true,
+    });
+  }
+
   async markReplaced(installationId: string, replacedByInstallationId: string): Promise<void> {
     await this.prisma.extensionInstallation.update({
       where: { installationId },
