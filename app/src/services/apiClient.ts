@@ -144,7 +144,8 @@ apiClient.interceptors.response.use(
     sampleServerClock(error.response);
     const originalRequest = error.config as RetryableRequestConfig | undefined;
     const requestUrl = originalRequest?.url ?? '';
-    const isAuthLogin = requestUrl.endsWith('/auth/login');
+    // Inclui o passo do código (/auth/login/verify|resend): 401/400 ali nunca tenta refresh.
+    const isAuthLogin = /\/auth\/login(\/(verify|resend))?$/.test(requestUrl);
     const isAuthRefresh = requestUrl.endsWith('/auth/refresh');
 
     if (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ThemeModeSelector } from '@/components/ThemeModeSelector';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -18,6 +18,14 @@ import { LOGIN_COPY } from './login/loginContent';
 import { GOLDEN_SPACE, GOLDEN_SPLIT, GOLDEN_TYPE } from './login/goldenRatio';
 import { PRIVACY_POLICY_PATH, privacyPolicyLinkLabel } from '@/features/privacy-policy/strings';
 import { SUPPORT_PATH, supportLinkLabel } from '@/features/support/strings';
+import { authService } from '@/services/auth.service';
+import { serverNow } from '@/services/serverClock';
+import type { TenantRef } from '@/types/api.types';
+import { TURNSTILE_SITE_KEY } from '@/features/login-protection/config';
+import { TurnstileWidget } from '@/features/login-protection/TurnstileWidget';
+import { LoginCodeStep } from '@/features/login-protection/LoginCodeStep';
+import { loginErrorMessage, retryAtOf, type LoginCodeChallenge } from '@/features/login-protection/loginProtection';
+import { loginProtectionStrings as LP } from '@/features/login-protection/strings';
 
 const DEV_CREDENTIALS = [
   { label: 'Super Admin', email: import.meta.env.VITE_DEV_EMAIL || '', password: import.meta.env.VITE_DEV_PASSWORD || '' },
@@ -36,7 +44,7 @@ const IS_DEV = import.meta.env.DEV;
  */
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, verifyLoginCode } = useAuth();
   const { loadTenants } = useTenant();
   const theme = useTheme();
 
@@ -45,27 +53,61 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Proteção do login (docs/seguranca-login.md). Ticket e token só em memória, nunca em storage.
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileReset, setTurnstileReset] = useState(0);
+  const [challenge, setChallenge] = useState<LoginCodeChallenge | null>(null);
+  const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
+
+  // Bloqueio (429): libera o botão no `retryAt`, medido no relógio do servidor.
+  useEffect(() => {
+    if (!blockedUntil) return;
+    const wait = Date.parse(blockedUntil) - serverNow();
+    if (wait <= 0) { setBlockedUntil(null); return; }
+    const t = window.setTimeout(() => { setBlockedUntil(null); setError(null); }, Math.min(wait, 2_147_000_000));
+    return () => window.clearTimeout(t);
+  }, [blockedUntil]);
+
+  const finishLogin = async (tenants: TenantRef[]) => {
+    localStorage.removeItem('activeTenantId');
+    localStorage.removeItem('activeTenantName');
+    if (tenants.length > 0) {
+      localStorage.setItem('activeTenantId', tenants[0].id);
+      localStorage.setItem('activeTenantName', tenants[0].name);
+    }
+    await loadTenants();
+    navigate('/dashboard');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const tenants = await login({ email, password });
-      localStorage.removeItem('activeTenantId');
-      localStorage.removeItem('activeTenantName');
-      if (tenants.length > 0) {
-        localStorage.setItem('activeTenantId', tenants[0].id);
-        localStorage.setItem('activeTenantName', tenants[0].name);
+      const outcome = await login({ email, password, ...(turnstileToken ? { turnstileToken } : {}) });
+      if (outcome.status === 'OTP_REQUIRED') {
+        setChallenge(outcome.challenge);
+        setPassword('');
+        return;
       }
-      await loadTenants();
-      navigate('/dashboard');
+      await finishLogin(outcome.tenants);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao fazer login');
+      const code = (err as { code?: string })?.code;
+      setBlockedUntil(code === 'LOGIN_TOO_MANY_ATTEMPTS' ? retryAtOf(err) : null);
+      setError(loginErrorMessage(err));
     } finally {
       setLoading(false);
+      // Token Turnstile é de uso único: novo desafio a cada tentativa.
+      if (TURNSTILE_SITE_KEY) setTurnstileReset((n) => n + 1);
     }
   };
+
+  const leaveCodeStep = (message: string | null) => {
+    setChallenge(null);
+    setError(message);
+  };
+
+  const needsTurnstile = !!TURNSTILE_SITE_KEY && !turnstileToken;
 
   const isDark = theme.palette.mode === 'dark';
 
@@ -138,9 +180,27 @@ export function LoginPage() {
             }}
           >
             <CardContent sx={{ p: `${GOLDEN_SPACE.s4}px !important` }}>
+              {challenge ? (
+                <LoginCodeStep
+                  email={email}
+                  challenge={challenge}
+                  onVerify={async (code) => { await finishLogin(await verifyLoginCode(challenge.ticket, code)); }}
+                  onResend={async () => {
+                    const next = await authService.resendLoginCode(challenge.ticket);
+                    setChallenge(next);
+                    return next;
+                  }}
+                  onBack={() => leaveCodeStep(null)}
+                  onExpired={(message) => leaveCodeStep(message)}
+                />
+              ) : (
+                <>
               {error && (
                 <Alert severity="error" sx={{ mb: `${GOLDEN_SPACE.s3}px` }}>
                   {error}
+                  {blockedUntil && (
+                    <Typography variant="body2" sx={{ mt: 0.5, opacity: 0.85 }}>{LP.tooManyAttemptsHint}</Typography>
+                  )}
                 </Alert>
               )}
 
@@ -149,7 +209,7 @@ export function LoginPage() {
                   label="E-mail"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); if (blockedUntil) { setBlockedUntil(null); setError(null); } }}
                   fullWidth
                   required
                   autoFocus
@@ -164,7 +224,7 @@ export function LoginPage() {
                   fullWidth
                   required
                   autoComplete="current-password"
-                  sx={{ mb: `${GOLDEN_SPACE.s4}px` }}
+                  sx={{ mb: `${TURNSTILE_SITE_KEY ? GOLDEN_SPACE.s3 : GOLDEN_SPACE.s4}px` }}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -182,12 +242,15 @@ export function LoginPage() {
                     ),
                   }}
                 />
+                {TURNSTILE_SITE_KEY && (
+                  <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} resetSignal={turnstileReset} />
+                )}
                 <Button
                   type="submit"
                   variant="contained"
                   fullWidth
                   size="large"
-                  disabled={loading || !email || !password}
+                  disabled={loading || !email || !password || !!blockedUntil || needsTurnstile}
                   sx={{
                     py: `${GOLDEN_SPACE.s2}px`,
                     fontSize: GOLDEN_TYPE.base,
@@ -199,6 +262,8 @@ export function LoginPage() {
                   {loading ? <CircularProgress size={22} color="inherit" /> : 'Entrar'}
                 </Button>
               </Box>
+                </>
+              )}
             </CardContent>
           </Card>
 

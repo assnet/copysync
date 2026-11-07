@@ -3,7 +3,13 @@ import { authService } from '@/services/auth.service';
 import { reactionDispatcher } from '@/features/chat/reactionDispatcher';
 import { mediaAccountScope } from '@/features/chat/media/mediaAccountScope';
 import { clearOfferStoryState } from '@/features/offerStory/sessionState';
-import type { AuthUser, LoginRequest, TenantRef } from '@/types/api.types';
+import type { AuthUser, LoginRequest, LoginResponse, TenantRef } from '@/types/api.types';
+import type { LoginCodeChallenge } from '@/features/login-protection/loginProtection';
+
+/** Login concluído (tenants) ou login suspeito que pede o código por e-mail. */
+export type LoginOutcome =
+  | { status: 'AUTHENTICATED'; tenants: TenantRef[] }
+  | { status: 'OTP_REQUIRED'; challenge: LoginCodeChallenge };
 
 interface AuthState {
   user: AuthUser | null;
@@ -14,7 +20,9 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   isAuthenticated: boolean;
-  login: (data: LoginRequest) => Promise<TenantRef[]>;
+  login: (data: LoginRequest) => Promise<LoginOutcome>;
+  /** Confirma o código do login suspeito e abre a sessão. */
+  verifyLoginCode: (ticket: string, code: string) => Promise<TenantRef[]>;
   logout: () => Promise<void>;
   setTokens: (accessToken: string, refreshToken: string) => void;
 }
@@ -35,9 +43,7 @@ function loadInitialState(): AuthState {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(loadInitialState);
 
-  const login = useCallback(async (data: LoginRequest): Promise<TenantRef[]> => {
-    const result = await authService.login(data);
-
+  const applySession = useCallback((result: LoginResponse): TenantRef[] => {
     localStorage.setItem('accessToken', result.accessToken);
     localStorage.setItem('refreshToken', result.refreshToken);
     localStorage.setItem('authUser', JSON.stringify(result.user));
@@ -51,6 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return result.tenants;
   }, []);
+
+  const login = useCallback(async (data: LoginRequest): Promise<LoginOutcome> => {
+    const result = await authService.login(data);
+    if (result.status === 'OTP_REQUIRED') return result;
+    return { status: 'AUTHENTICATED', tenants: applySession(result.session) };
+  }, [applySession]);
+
+  const verifyLoginCode = useCallback(
+    async (ticket: string, code: string): Promise<TenantRef[]> => applySession(await authService.verifyLoginCode(ticket, code)),
+    [applySession],
+  );
 
   const logout = useCallback(async () => {
     // Nada agendado pode sair depois com o token de outro usuário.
@@ -99,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...state,
         isAuthenticated: !!state.accessToken,
         login,
+        verifyLoginCode,
         logout,
         setTokens,
       }}

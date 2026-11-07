@@ -3,6 +3,8 @@
 export interface LoginRequest {
   email: string;
   password: string;
+  /** Token do Turnstile, quando o widget está ligado (VITE_TURNSTILE_SITE_KEY). */
+  turnstileToken?: string;
 }
 
 export interface AuthUser {
