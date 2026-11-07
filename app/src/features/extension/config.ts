@@ -1,3 +1,5 @@
+import { readProxyIds } from './channel/proxyTransport';
+
 /**
  * Configuração da extensão do navegador no painel. Único lugar com a URL da loja:
  * telas e testes importam daqui, nunca repetem o endereço.
@@ -40,4 +42,12 @@ export function isChromiumDesktop(nav: Navigator | undefined = typeof navigator 
   const ua = nav.userAgent ?? '';
   if (/Android|iPhone|iPad|Mobile/i.test(ua)) return false;
   return /Chrome\/|Chromium\//.test(ua) && !/Firefox\//.test(ua);
+}
+
+/**
+ * Navegador onde a extensão roda: Chromium de computador ou qualquer um em que o proxy da
+ * extensão já marcou a página (Orion, que se identifica como Safari mas instala da Chrome Web Store).
+ */
+export function isExtensionCapableBrowser(nav?: Navigator): boolean {
+  return isChromiumDesktop(nav) || readProxyIds().length > 0;
 }

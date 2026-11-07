@@ -4,7 +4,7 @@ import { CircleCheck, Download, ExternalLink, MonitorX, Puzzle, RefreshCw } from
 import { AppIcon } from '@/components/AppIcon';
 import { extensionApi } from '../services/extensionApi';
 import { hasConfiguredExtensionIds, isExtensionChannelBound } from '../channel/client';
-import { isChromiumDesktop, openExtensionStore, type ExtensionInstallSource } from '../config';
+import { isExtensionCapableBrowser, openExtensionStore, type ExtensionInstallSource } from '../config';
 import { useExtensionInstallWatch } from '../hooks/useExtensionInstallWatch';
 import { extensionStrings } from '../strings';
 
@@ -29,7 +29,7 @@ export function ExtensionInstallPanel({ source, onDetected, showIntro = true }: 
   const isDark = theme.palette.mode === 'dark';
   const watch = useExtensionInstallWatch({ onDetected });
   const { start, startBeforeReload } = watch;
-  const compatible = isChromiumDesktop();
+  const compatible = isExtensionCapableBrowser();
   // Instalou com a aba aberta: o Chrome só libera o canal à página depois de recarregar.
   const needsReload = compatible && hasConfiguredExtensionIds() && !isExtensionChannelBound();
 

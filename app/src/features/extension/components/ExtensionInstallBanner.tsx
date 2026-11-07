@@ -5,7 +5,7 @@ import { AppIcon } from '@/components/AppIcon';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useAuth } from '@/contexts/AuthContext';
 import { detectExtension, hasConfiguredExtensionIds } from '../channel/client';
-import { isChromiumDesktop } from '../config';
+import { isExtensionCapableBrowser } from '../config';
 import { extensionStrings } from '../strings';
 import { ExtensionInstallPanel } from './ExtensionInstallPanel';
 
@@ -22,7 +22,7 @@ type Presence = 'checking' | 'missing' | 'present';
  */
 export function ExtensionInstallBanner() {
   const { user } = useAuth();
-  if (!user?.id || !isChromiumDesktop() || !hasConfiguredExtensionIds()) return null;
+  if (!user?.id || !isExtensionCapableBrowser() || !hasConfiguredExtensionIds()) return null;
   return <InstallBannerForUser userId={user.id} />;
 }
 

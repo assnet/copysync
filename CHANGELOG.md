@@ -9,6 +9,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.89.1 · extensão 3.3.0 — canal com a extensão por proxy no Orion (sem externally_connectable)
+
+Docs: `docs/extensao-navegador.md` (§Proxy para navegador sem `externally_connectable`). Mesmo contrato e ops; sem permissão nova.
+
+#### extension/
+
+- **`src/contract/channel.ts`** (+ cópia em `app/`) — `ProxyMessage` (`ready`/`req`/`res`/`fail`), `PROXY_MARKER_ATTR`, `PROXY_MAX_BYTES` e `parseProxyMessage`/`parseProxyMarker`; envelope do canal inalterado.
+- **`src/content/panelBridge.ts`** + **`src/content/index.ts`** (novos, `panel-bridge.js`) — content script na origem do painel: aceita só `source === window`, origem exata na allowlist, formato do contrato e `to` = próprio id; repassa por `chrome.runtime.sendMessage` e devolve só o envelope de resposta; rate limit 20/s, teto 64 KiB, `fail` com contexto invalidado. Testes em `panelBridge.test.ts`.
+- **`src/core/panelOrigin.ts`** (novo) + **`config/env.ts`** — allowlist de origem (`PANEL_URL`; `DEV_ORIGINS` só no build dev, eliminado em produção).
+- **`background/channel/proxy.ts`** (novo) + **`channel/index.ts`** — `onMessage` interno com `isTrustedProxySender` (id próprio, frame 0, origem do painel) entregando à mesma `handleMessage` do externo. Testes em `proxy.test.ts`.
+- **`webpack.js`** + **`scripts/check-dist.mjs`** — `content_scripts` gerado com os mesmos `matches` do `externally_connectable` (origem já em `host_permissions`); `check-dist` barra qualquer outro content script, `all_frames` ou `MAIN`.
+
+#### app/
+
+- **`features/extension/channel/proxyTransport.ts`** (novo) — `readProxyIds` (marcador em `<html>`) e `sendViaProxy` (postMessage com origem exata; resposta só do próprio window/origem, da extensão e `requestId` certos).
+- **`features/extension/channel/client.ts`** — ordem cache → externo → proxy; `handshake` externo desiste em 1,5 s quando há proxy (Orion mudo); envelope novo por tentativa (anti-replay); `isExtensionChannelBound`/`isExtensionApiAvailable` contam o proxy; `getCachedExtId` vale para os dois transportes. Testes em `client.test.ts` e `proxyTransport.test.ts`.
+- **`features/extension/config.ts`** — `isExtensionCapableBrowser()` (Chromium desktop ou proxy presente) usado em `ExtensionInstallPanel` e `ExtensionInstallBanner`: o Orion com a extensão deixa de ser "navegador incompatível".
+
 ### Added — api 0.72.0 · app 0.89.0 · extensão 3.3.0 — fluxo de instalação da extensão com rastreio de clique e ciclo de vida para a central
 
 Docs: `docs/extensao-navegador.md` (§Fluxo de instalação e ciclo de vida; §Eventos para a central: envelope, tipos e campos).

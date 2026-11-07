@@ -27,7 +27,7 @@ marketplace: só cookies de identidade (`ssid`, `orguseridp`, `orgnickp`, `orgus
  popup (UI)                     ──▶ chrome.runtime.onMessage (get-state, sync-now, save-settings)
 ```
 
-**Sem content script.** Sem `scripting`/`tabs`. Sem login por senha. Sem Bearer token.
+**Um único content script** (`panel-bridge.js`, proxy do canal — ver §Proxy para Orion), só na origem do painel; nunca em site de terceiro. Sem `scripting`/`tabs`. Sem login por senha. Sem Bearer token.
 
 Módulos: `src/config/env.ts` (único `process.env`), `src/contract/channel.ts` (envelope tipado),
 `src/core/{devLog,i18n}.ts`. Nenhuma regra mora em `index.ts`.
@@ -79,6 +79,58 @@ mlTenantId + tenant ACTIVE + permissão `ml.session`.
 
 Contrato espelhado em `app/src/features/extension/contract/channel.ts`. Paridade verificada por
 `scripts/check-contract-sync.mjs`.
+
+### Proxy para navegador sem `externally_connectable` (Orion) — extensão 3.3.0 · app 0.89.1
+
+O Orion (Kagi, WebKit que instala da Chrome Web Store) não entrega `externally_connectable` à
+página: `chrome.runtime` some ou o `sendMessage` nunca responde. Mesmo mecanismo do PulsoSocial
+(`pulsosocial_extension/src/site-bridge.ts`), adaptado ao nosso canal de mensagem única (sem Port):
+
+```
+painel ──postMessage──▶ panel-bridge.js (content script, origem do painel)
+       ◀─postMessage──        │ chrome.runtime.sendMessage (interna)
+                              ▼
+                 service worker: onMessage → handleMessage (MESMA cadeia do externo)
+```
+
+- **Contrato**: o envelope é o mesmo; o proxy só embrulha. `ProxyMessage` (`ready`/`req`/`res`/
+  `fail`), `PROXY_MARKER_ATTR` (`data-cs-ext-proxy` em `<html>`, ids separados por espaço),
+  `PROXY_MAX_BYTES` (64 KiB) e `parseProxyMessage` vivem em `contract/channel.ts` (paridade
+  garantida pelo `check-contract-sync`).
+- **Extensão** — `src/content/panelBridge.ts` (puro, testável) + `src/content/index.ts` (bootstrap
+  idempotente). Aceita só: `event.source === window`, `event.origin === location.origin` e na
+  allowlist (`core/panelOrigin.ts`: `PANEL_URL` + `DEV_ORIGINS` só no build dev, comparação exata),
+  formato do contrato, `to === chrome.runtime.id` (loja + dev instaladas: só a endereçada age),
+  até 20 pedidos/s e 64 KiB. Devolve só o envelope de resposta do service worker com o mesmo
+  `requestId` (já passou por `assertNoSecrets`); qualquer outra coisa vira `fail`. Contexto
+  invalidado (extensão recarregada) → `fail` sem chamar o worker. `postMessage` sempre com
+  `targetOrigin` = própria origem.
+- **Service worker** — `background/channel/proxy.ts`: `isTrustedProxySender` exige `sender.id`
+  desta extensão, `frameId` 0 quando presente e origem (`sender.origin` → `url` → `tab.url`) do
+  painel. Listener `onMessage` registrado no topo do worker, ao lado do `onMessageExternal`.
+- **Painel** — `channel/proxyTransport.ts` (`readProxyIds`, `sendViaProxy`) + `client.ts`. Ordem:
+  transporte já provado (cache) → externo (`VITE_EXTENSION_IDS`) → proxy. Com proxy na página, o
+  `handshake` externo desiste em 1,5 s (Orion mudo); demais ops mantêm 3 s. Cada tentativa usa
+  envelope novo (o anti-replay recusa `requestId` repetido). Proxy só de id em
+  `VITE_EXTENSION_IDS` (quando configurado). Resposta só aceita do próprio window/origem, da
+  extensão endereçada e com o `requestId` do pedido.
+- **Detecção**: o marcador conta como canal ligado (`isExtensionChannelBound`,
+  `isExtensionApiAvailable`) e `isExtensionCapableBrowser()` (`config.ts`) aceita o Orion quando o
+  marcador existe — painel de instalação e aviso do Dashboard passam a ver a extensão no Orion.
+  Instalou com a aba aberta: content script declarado só entra em página nova → continua o
+  "recarregar" do `ExtensionInstallPanel`.
+- **Manifest**: `content_scripts` gerado pelo `webpack.js` com os MESMOS `matches` do
+  `externally_connectable`, `document_start`, só frame principal, isolated world. A origem do
+  painel já está em `host_permissions` (foco da aba, 3.1) → **nenhuma permissão nova, nenhum
+  aviso novo ao usuário**; a loja revisa o pacote como em toda atualização. `check-dist` barra
+  qualquer outro content script, `matches` diferente, `all_frames`/`MAIN`.
+
+**Não fazer**: content script em outra origem que não a do painel; `world: 'MAIN'`/`all_frames`;
+`postMessage` com `'*'`; repassar ao painel algo que não seja o envelope de resposta (cookie,
+storage, erro cru); ler `document.cookie`/storage no content script; aceitar mensagem sem checar
+`source`/`origin`; mudar op/payload no proxy (contrato é um só); permissão `scripting` para injetar
+em aba já aberta (permissão nova → aviso e revisão); validar só no content script — o worker
+reaplica a cadeia completa.
 
 ## Contrato com a API
 
@@ -231,13 +283,13 @@ etiqueta 8s). Demais chamadas: 10s.
   (ignorada pelo git). Geração/conferência: `pnpm keys:generate` / `pnpm keys:id`
 - **Terser** remove `console.*` e `debugger` em produção
 - **Guard scripts**:
-  - `check-dist.mjs` — no content_scripts, no scripting/tabs, externally_connectable, no .ar/.mx,
+  - `check-dist.mjs` — só o content script do proxy (`panel-bridge.js`, matches = externally_connectable), no scripting/tabs, externally_connectable, no .ar/.mx,
     no key em store build
   - `check-cookie-scope.mjs` — `chrome.cookies.*` só em `marketplaceSession.ts` + `onChanged`
     em index.ts
   - `check-i18n.mjs` — paridade pt_BR⇄en, toda chave usada existe, `err_<SyncErrorCode>` coberto
   - `check-contract-sync.mjs` — paridade channel.ts extension/⇄app/
-- `onMessageExternal` verifica origem via `externally_connectable`
+- `onMessageExternal` verifica origem via `externally_connectable`; o proxy (`onMessage`) verifica remetente e origem no worker
 - **Sem popup (3.1+)**: clique no ícone foca a aba do painel já aberta (janela atual primeiro)
   ou abre uma nova. Achar aba por URL exige a origem do painel em `host_permissions` — o
   `webpack.js` deriva de `PANEL_URL`. Não usar a permissão `tabs` (aviso "ler histórico").
