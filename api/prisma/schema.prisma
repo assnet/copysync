@@ -1031,6 +1031,7 @@ model ExtensionInstallation {
   user            User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
   sessions        ExtensionSession[]
   lifecycleEvents ExtensionLifecycleEvent[]
+  uninstallFeedback ExtensionUninstallFeedback?
 
   @@index([deviceId, extensionId])
   @@index([userId])
@@ -1066,29 +1067,51 @@ model ExtensionSession {
   @@map("extension_sessions")
 }
 
+/// Evento do ciclo de vida. `installationId` nulo só em STORE_CLICK ainda não atribuído: o clique
+/// ganha a instalação quando o mesmo usuário vincula a primeira extensão (docs/extensao-navegador.md).
 model ExtensionLifecycleEvent {
   id             String   @id @default(cuid())
-  installationId String
+  installationId String?
   type           String
   occurredAt     DateTime @default(now())
   userId         String?
+  tenantId       String?
+  /// Onde o clique na loja aconteceu (settings | ml_wizard | onboarding). Só STORE_CLICK.
+  source         String?
   channel        String
   version        String
   dedupeKey      String
   createdAt      DateTime @default(now())
 
-  installation ExtensionInstallation @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  installation ExtensionInstallation? @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
 
   @@unique([installationId, dedupeKey])
   @@index([occurredAt])
+  @@index([userId, type, occurredAt])
   @@map("extension_lifecycle_events")
+}
+
+/// Pesquisa da página pública de desinstalação: motivos fixos + comentário curto. Reenvio substitui.
+model ExtensionUninstallFeedback {
+  id             String   @id @default(cuid())
+  installationId String   @unique
+  reasons        String[]
+  comment        String?  @db.VarChar(500)
+  version        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation ExtensionInstallation @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+
+  @@map("extension_uninstall_feedbacks")
 }
 
 model HubOutboxEvent {
   id             String               @id @default(cuid())
   clientKey      String
   seq            Int
-  installationId String
+  /// Nulo em `extension.lifecycle` STORE_CLICK (clique antes de existir instalação).
+  installationId String?
   type           String
   payload        Json
   status         HubOutboxEventStatus @default(PENDING)

@@ -2,7 +2,8 @@ import type { OpName, OpMap, ChannelResponse } from '../../contract/channel.js';
 import { CHANNEL_VERSION } from '../constants.js';
 import type { ExtensionProfile } from '../sessionResolver.js';
 import { invalidarSessao, getCachedProfile } from '../sessionResolver.js';
-import { getInstallation, setInstallation, getSyncState, type InstallationState } from '../store.js';
+import { ensureInstallation, setInstallation, getSyncState, type InstallationState } from '../store.js';
+import { setupUninstallUrl } from '../lifecycle.js';
 import { getMlStatus } from '../marketplaceSession.js';
 import { runSync } from '../syncSession.js';
 
@@ -12,13 +13,10 @@ type HandlerFn<Op extends OpName> = (
 ) => Promise<ChannelResponse<OpMap[Op]['response']>>;
 
 const handshake: HandlerFn<'handshake'> = async (_payload, profile) => {
-  let installation = await getInstallation();
-  if (!installation) {
-    installation = {
-      installationId: crypto.randomUUID(),
-      extensionId: chrome.runtime.id,
-      linkedAt: new Date().toISOString(),
-    };
+  // Mesmo installationId do onInstalled/boot; linkedAt marca o primeiro contato com o painel.
+  let installation = await ensureInstallation();
+  if (!installation.linkedAt) {
+    installation = { ...installation, linkedAt: new Date().toISOString() };
     await setInstallation(installation);
   }
   return {
@@ -41,6 +39,7 @@ const bridgeIdentify: HandlerFn<'bridge.identify'> = async (payload, _profile) =
     linkedAt: new Date().toISOString(),
   };
   await setInstallation(state);
+  void setupUninstallUrl();
   return { ok: true, payload: {} };
 };
 

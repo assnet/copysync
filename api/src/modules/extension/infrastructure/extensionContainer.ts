@@ -2,10 +2,12 @@ import { prisma } from '../../../shared/database/prisma.client';
 import { PrismaExtensionSessionRepository } from './repositories/PrismaExtensionSessionRepository';
 import { PrismaExtensionInstallationRepository } from './repositories/PrismaExtensionInstallationRepository';
 import { PrismaHubOutboxRepository } from './repositories/PrismaHubOutboxRepository';
+import { PrismaExtensionLifecycleRepository } from './repositories/PrismaExtensionLifecycleRepository';
 
 let _sessionRepo: PrismaExtensionSessionRepository | null = null;
 let _installationRepo: PrismaExtensionInstallationRepository | null = null;
 let _outboxRepo: PrismaHubOutboxRepository | null = null;
+let _lifecycleRepo: PrismaExtensionLifecycleRepository | null = null;
 
 export const extensionContainer = {
   get sessionRepository(): PrismaExtensionSessionRepository {
@@ -16,5 +18,8 @@ export const extensionContainer = {
   },
   get outboxRepository(): PrismaHubOutboxRepository {
     return (_outboxRepo ??= new PrismaHubOutboxRepository(prisma));
+  },
+  get lifecycleRepository(): PrismaExtensionLifecycleRepository {
+    return (_lifecycleRepo ??= new PrismaExtensionLifecycleRepository(prisma));
   },
 };

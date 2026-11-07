@@ -79,7 +79,7 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
       <DialogContent sx={{ pb: 3 }}>
         {/* Extension not connected yet — show wizard */}
         {!isConnected && !wizardDone ? (
-          <ExtensionSetupWizard onComplete={() => { setWizardDone(true); void ext.refresh(); }} />
+          <ExtensionSetupWizard source="ml_wizard" onComplete={() => { setWizardDone(true); void ext.refresh(); }} />
         ) : (
           <Stack spacing={2.5}>
             {/* Connected state */}

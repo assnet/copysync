@@ -65,8 +65,21 @@ export async function sendOp<Op extends OpName>(
   return { ok: false, error: { code: 'INTERNAL' } };
 }
 
+/** Algum ID de extensão configurado (`VITE_EXTENSION_IDS`): sem isso não há como detectar. */
+export function hasConfiguredExtensionIds(): boolean {
+  return EXTENSION_IDS.length > 0;
+}
+
+/**
+ * `chrome.runtime.sendMessage` existe nesta página. O Chrome só o liga ao carregar a página e
+ * se alguma extensão instalada a aceitar: instalou com a aba aberta → precisa recarregar.
+ */
+export function isExtensionChannelBound(): boolean {
+  return typeof chrome !== 'undefined' && !!chrome.runtime?.sendMessage;
+}
+
 export function isExtensionApiAvailable(): boolean {
-  return typeof chrome !== 'undefined' && !!chrome.runtime?.sendMessage && EXTENSION_IDS.length > 0;
+  return isExtensionChannelBound() && hasConfiguredExtensionIds();
 }
 
 export async function detectExtension(): Promise<boolean> {

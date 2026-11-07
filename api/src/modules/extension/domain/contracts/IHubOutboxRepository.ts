@@ -2,7 +2,7 @@ export interface OutboxHeadEvent {
   id: string;
   clientKey: string;
   seq: number;
-  installationId: string;
+  installationId: string | null;
   type: string;
   payload: unknown;
   attempts: number;

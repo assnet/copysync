@@ -8,6 +8,13 @@ import {
   EXT_SESSION_ABSOLUTE_TTL_SECONDS,
 } from '../../domain/constants';
 import type { ExtensionSession } from '../../domain/entities/ExtensionSession';
+import type { IExtensionLifecycleRepository } from '../../domain/contracts/IExtensionLifecycleRepository';
+import {
+  HUB_LIFECYCLE_ENVELOPE_TYPE,
+  LIFECYCLE_EVENT,
+  STORE_CLICK_ATTRIBUTION_WINDOW_MS,
+} from '../../domain/lifecycleEvents';
+import { buildLifecycleOutboxPayload } from '../../domain/services/lifecycleOutboxPayload';
 
 export interface IssueExtensionSessionInput {
   userId: string;
@@ -30,7 +37,9 @@ export class IssueExtensionSessionUseCase {
     private readonly sessionRepo: IExtensionSessionRepository,
     private readonly installationRepo: IExtensionInstallationRepository,
     private readonly entitlementReader: IExtensionEntitlementReader,
+    private readonly lifecycleRepo: IExtensionLifecycleRepository | null = null,
     private readonly now: () => Date = () => new Date(),
+    private readonly onLifecycleError: (err: unknown) => void = () => {},
   ) {}
 
   async execute(input: IssueExtensionSessionInput): Promise<IssueExtensionSessionResult> {
@@ -38,6 +47,9 @@ export class IssueExtensionSessionUseCase {
     if (!allowed) {
       throw new ExtensionNotEntitledError();
     }
+
+    const previous = await this.installationRepo.findById(input.installationId);
+    const linkedNow = previous?.userId !== input.userId;
 
     await this.installationRepo.upsert({
       installationId: input.installationId,
@@ -65,7 +77,40 @@ export class IssueExtensionSessionUseCase {
       absoluteExpiresAt,
     });
 
+    if (linkedNow && this.lifecycleRepo) {
+      // Telemetria nunca derruba o vínculo.
+      await this.recordLinked(input, now).catch(this.onLifecycleError);
+    }
+
     return { session, rawToken };
+  }
+
+  /**
+   * LINKED: instalação passa a ter este usuário como dono. Atribui o STORE_CLICK mais recente do
+   * usuário ainda sem instalação (até 7 dias) — é assim que clique → instalação → usuário se ligam.
+   */
+  private async recordLinked(input: IssueExtensionSessionInput, now: Date): Promise<void> {
+    const repo = this.lifecycleRepo!;
+    const storeClick = await repo.attributeStoreClick(
+      input.userId, input.installationId, new Date(now.getTime() - STORE_CLICK_ATTRIBUTION_WINDOW_MS),
+    );
+    const clientKey = await repo.findClientKeyForTenant(input.mlTenantId);
+    await repo.record({
+      event: {
+        installationId: input.installationId, type: LIFECYCLE_EVENT.LINKED, version: input.extVersion,
+        channel: input.channel, dedupeKey: `LINKED:${input.userId}`, occurredAt: now,
+        userId: input.userId, tenantId: input.mlTenantId,
+      },
+      outbox: clientKey
+        ? {
+            type: HUB_LIFECYCLE_ENVELOPE_TYPE,
+            payload: buildLifecycleOutboxPayload({
+              event: LIFECYCLE_EVENT.LINKED, occurredAt: now, installationId: input.installationId, clientKey,
+              version: input.extVersion, channel: input.channel, storeClick,
+            }),
+          }
+        : null,
+    });
   }
 }
 

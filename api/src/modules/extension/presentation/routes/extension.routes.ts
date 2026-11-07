@@ -6,6 +6,9 @@ import { IssueExtensionSessionUseCase } from '../../application/use-cases/IssueE
 import { RevokeExtensionSessionUseCase } from '../../application/use-cases/RevokeExtensionSessionUseCase';
 import { GetExtensionProfileUseCase } from '../../application/use-cases/GetExtensionProfileUseCase';
 import { RecordLifecycleSignalUseCase } from '../../application/use-cases/RecordLifecycleSignalUseCase';
+import { RecordStoreClickUseCase } from '../../application/use-cases/RecordStoreClickUseCase';
+import { RecordUninstallUseCase } from '../../application/use-cases/RecordUninstallUseCase';
+import { STORE_CLICK_SOURCES, UNINSTALL_COMMENT_MAX, UNINSTALL_REASONS, type StoreClickSource } from '../../domain/lifecycleEvents';
 import { setExtSessionCookie, clearExtSessionCookie } from '../../infrastructure/cookieHelper';
 import { EXT_SESSION_TTL_SECONDS, ML_SESSION_COOKIES } from '../../domain/constants';
 import { UpsertAffiliateSessionUseCase } from '../../../integrations/application/use-cases/UpsertAffiliateSessionUseCase';
@@ -236,6 +239,9 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
         extensionContainer.sessionRepository,
         extensionContainer.installationRepository,
         entitlementReader,
+        extensionContainer.lifecycleRepository,
+        undefined,
+        (err) => log.warn({ reason: (err as Error)?.name }, 'extension LINKED lifecycle event failed'),
       );
 
       const result = await useCase.execute({
@@ -475,11 +481,13 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           required: ['installationId', 'type', 'version', 'channel', 'dedupeKey'],
           properties: {
-            installationId: { type: 'string' },
-            type: { type: 'string' },
-            version: { type: 'string' },
-            channel: { type: 'string' },
-            dedupeKey: { type: 'string' },
+            installationId: { type: 'string', maxLength: 64 },
+            type: { type: 'string', maxLength: 16 },
+            version: { type: 'string', maxLength: 32 },
+            channel: { type: 'string', maxLength: 16 },
+            dedupeKey: { type: 'string', maxLength: 64 },
+            extensionId: { type: 'string', maxLength: 32 },
+            previousVersion: { type: 'string', maxLength: 32 },
           },
         },
         response: {
@@ -497,10 +505,45 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const useCase = new RecordLifecycleSignalUseCase(extensionContainer.installationRepository);
+      const useCase = new RecordLifecycleSignalUseCase(extensionContainer.installationRepository, extensionContainer.lifecycleRepository);
       const result = await useCase.execute(
-        request.body as { installationId: string; type: string; version: string; channel: string; dedupeKey: string },
+        request.body as { installationId: string; type: string; version: string; channel: string; dedupeKey: string; extensionId?: string },
       );
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // ── POST /store-click — Clique em "Instalar da Chrome Web Store" (painel, Bearer) ──
+  app.post(
+    '/store-click',
+    {
+      preHandler: [authHook, tenantHook],
+      config: { rateLimit: rateLimitPresets.extensionAuth },
+      schema: {
+        tags: ['Extension'],
+        summary: 'Registrar clique para instalar a extensão na loja',
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: 'object',
+          required: ['source'],
+          additionalProperties: false,
+          properties: { source: { type: 'string', enum: [...STORE_CLICK_SOURCES] } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: { type: 'object', properties: { recorded: { type: 'boolean' } } },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const { source } = request.body as { source: StoreClickSource };
+      const result = await new RecordStoreClickUseCase(extensionContainer.lifecycleRepository).execute({ userId, tenantId, source });
       return reply.send({ success: true, data: result });
     },
   );
@@ -517,29 +560,58 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           required: ['installationId'],
           properties: {
-            installationId: { type: 'string' },
-            feedback: { type: 'string' },
+            installationId: { type: 'string', maxLength: 64 },
+            extensionId: { type: 'string', maxLength: 32 },
+            version: { type: 'string', maxLength: 32 },
           },
         },
-        response: {
-          200: {
-            type: 'object',
-            properties: { success: { type: 'boolean' } },
-          },
-        },
+        response: { 200: { type: 'object', properties: { success: { type: 'boolean' } } } },
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const body = request.body as { installationId: string; feedback?: string };
-      const useCase = new RecordLifecycleSignalUseCase(extensionContainer.installationRepository);
-      await useCase.execute({
+      const body = request.body as { installationId: string; version?: string };
+      await uninstallUseCase().execute({ installationId: body.installationId, version: body.version });
+      return reply.send({ success: true });
+    },
+  );
+
+  // ── POST /lifecycle/feedback — Pesquisa de desinstalação (público) ────
+  app.post(
+    '/lifecycle/feedback',
+    {
+      config: { rateLimit: rateLimitPresets.lifecycle },
+      schema: {
+        tags: ['Extension'],
+        summary: 'Motivos da desinstalação da extensão (público)',
+        body: {
+          type: 'object',
+          required: ['installationId', 'reasons'],
+          properties: {
+            installationId: { type: 'string', maxLength: 64 },
+            extensionId: { type: 'string', maxLength: 32 },
+            version: { type: 'string', maxLength: 32 },
+            reasons: {
+              type: 'array', minItems: 1, maxItems: UNINSTALL_REASONS.length, uniqueItems: true,
+              items: { type: 'string', enum: [...UNINSTALL_REASONS] },
+            },
+            comment: { type: 'string', maxLength: UNINSTALL_COMMENT_MAX },
+          },
+        },
+        response: { 200: { type: 'object', properties: { success: { type: 'boolean' } } } },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = request.body as { installationId: string; version?: string; reasons: string[]; comment?: string };
+      await uninstallUseCase().execute({
         installationId: body.installationId,
-        type: 'uninstall',
-        version: 'unknown',
-        channel: 'unknown',
-        dedupeKey: `uninstall:${body.installationId}`,
+        version: body.version,
+        feedback: { reasons: body.reasons, comment: body.comment ?? null },
       });
       return reply.send({ success: true });
     },
   );
+}
+
+function uninstallUseCase(): RecordUninstallUseCase {
+  return new RecordUninstallUseCase(extensionContainer.installationRepository, extensionContainer.lifecycleRepository);
 }

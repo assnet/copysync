@@ -1,5 +1,23 @@
 # Changelog — CopySync Extension
 
+## [3.3.0] — 2026-11-07 — Instalação registrada desde o primeiro minuto
+
+> Exige nova publicação na Chrome Web Store (`pnpm pack:store` / `pack:upload`). Sem permissão nova.
+
+### Added
+
+- **`store.ts`** — `ensureInstallation()`: get-or-create single-flight (`crypto.randomUUID()`, `extensionId: chrome.runtime.id`) usado por boot, onInstalled, lifecycle e handshake; nunca gera dois `installationId`. Slot `lifecyclePending` para o INSTALL que falhou.
+- **`uninstallUrl.ts`** — `buildUninstallUrl(panelUrl, installationId, extensionId, version)` pura: `<panel>/extension-removed?i=&e=&v=` via `URL`/`URLSearchParams`; `null` com painel vazio/inválido ou acima de 1023 chars (limite do Chrome).
+- **`panelTab.ts`** — busca da aba do painel por URL (host_permissions, sem `tabs`) extraída do `index.ts`; `focusPanelTabIfOpen()` foca a aba do painel na primeira instalação, sem abrir aba nova.
+- **`lifecycle.ts`** — `flushPendingLifecycle()` reenvia o INSTALL pendente no alarme de heartbeat e no startup; limpa no sucesso ou em erro definitivo (4xx).
+- Testes: `uninstallUrl.test.ts`, `lifecycle.test.ts` (idempotência, body, pendente reenviado e limpo).
+
+### Fixed
+
+- **`lifecycle.ts`** — INSTALL nunca era enviado: o `installationId` só nascia no handshake do painel e o evento era pulado. Agora cria a instalação antes de enviar. Body ganha `extensionId` (a API cria a instalação sem dono); `dedupeKey` do INSTALL passa a `INSTALL` (uma vez por instalação), UPDATE `UPDATE:<versão>`.
+- **`index.ts`** + **`lifecycle.ts`** — URL de desinstalação definida no boot do service worker, em onInstalled/onStartup e após `bridge.identify`; antes ficava ausente até o próximo startup. Removido o `const installation = undefined` morto.
+- **`vitest.config.ts`** — alias do mock de `env` com caminho absoluto (o relativo não resolvia para módulos que importam `../config/env.js`).
+
 ## [3.2.2] — 2026-11-04 — Revalidação da sessão do ML
 
 ### Added

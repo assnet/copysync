@@ -6,32 +6,43 @@ import {
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useExtension, syncErrorMessage } from '../hooks/useExtension';
 import { extensionStrings } from '../strings';
+import type { ExtensionInstallSource } from '../config';
+import { ExtensionInstallPanel } from './ExtensionInstallPanel';
 
 const t = extensionStrings.wizard;
 
 interface Props {
   onComplete: () => void;
+  /** Tela que hospeda o assistente (métrica do clique em "Instalar"). */
+  source?: ExtensionInstallSource;
 }
 
-const STEPS = [t.stepDetect, t.stepConnect, t.stepSync, t.stepDone];
+const STEPS = [t.stepInstall, t.stepDetect, t.stepConnect, t.stepSync, t.stepDone];
+const STEP = { install: 0, detect: 1, connect: 2, sync: 3, done: 4 } as const;
 
-export function ExtensionSetupWizard({ onComplete }: Props) {
+export function ExtensionSetupWizard({ onComplete, source = 'settings' }: Props) {
   const ext = useExtension();
-  const [step, setStep] = useState(0);
+  const { refresh } = ext;
+  const [step, setStep] = useState<number>(STEP.install);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 0: auto-detect
+  // Instalar/Detectar: já detectada pula direto para o vínculo (ou sync, se já vinculada)
   useEffect(() => {
-    if (step !== 0) return;
-    if (ext.loading) return;
+    if (step > STEP.detect || ext.loading) return;
     if (ext.status === 'connected') {
-      setStep(2);
+      setStep(STEP.sync);
     } else if (ext.status === 'detected') {
-      setStep(1);
+      setStep(STEP.connect);
     }
   }, [step, ext.loading, ext.status]);
+
+  // O painel de instalação viu a extensão: handshake completo antes de avançar
+  const handleDetected = useCallback(() => {
+    setStep(STEP.detect);
+    void refresh();
+  }, [refresh]);
 
   const handleConnect = useCallback(async () => {
     if (!ext.handshake) return;
@@ -43,7 +54,7 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
         ext.handshake.extVersion,
         consent,
       );
-      setStep(2);
+      setStep(STEP.sync);
     } catch {
       setError(extensionStrings.errors.connectionFailed);
     } finally {
@@ -56,7 +67,7 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
     setError(null);
     try {
       await ext.syncMl();
-      setStep(3);
+      setStep(STEP.done);
     } catch (err) {
       setError(syncErrorMessage(err));
     } finally {
@@ -80,25 +91,45 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
         </Alert>
       )}
 
-      {/* Step 0 — Detect */}
-      {step === 0 && (
+      {/* Instalar */}
+      {step === STEP.install && (
+        ext.loading ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <CircularProgress sx={{ mb: 2 }} />
+            <Typography>{t.detectTitle}</Typography>
+          </Box>
+        ) : ext.status === 'error' ? (
+          <Alert severity="warning" variant="outlined">{extensionStrings.errors.extensionNotResponding}</Alert>
+        ) : ext.status === 'not_detected' || ext.status === 'unavailable' ? (
+          <ExtensionInstallPanel source={source} onDetected={handleDetected} />
+        ) : null
+      )}
+
+      {/* Detectar */}
+      {step === STEP.detect && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           {ext.loading ? (
             <>
               <CircularProgress sx={{ mb: 2 }} />
               <Typography>{t.detectTitle}</Typography>
             </>
-          ) : ext.status === 'not_detected' || ext.status === 'unavailable' ? (
-            <Alert severity="warning" variant="outlined">
+          ) : ext.status === 'not_detected' || ext.status === 'unavailable' || ext.status === 'error' ? (
+            <Alert
+              severity="warning"
+              variant="outlined"
+              action={(
+                <Button color="inherit" size="small" onClick={() => setStep(STEP.install)}>{t.detectRetry}</Button>
+              )}
+            >
               <Typography fontWeight={600} gutterBottom>{t.detectNotFound}</Typography>
-              <Typography variant="body2">{t.detectNotFoundHint}</Typography>
+              <Typography variant="body2">{extensionStrings.errors.extensionNotResponding}</Typography>
             </Alert>
           ) : null}
         </Box>
       )}
 
-      {/* Step 1 — Connect */}
-      {step === 1 && (
+      {/* Vincular */}
+      {step === STEP.connect && (
         <Box sx={{ py: 2 }}>
           <Typography variant="h6" gutterBottom>{t.connectTitle}</Typography>
           {ext.handshake && (
@@ -122,8 +153,8 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
         </Box>
       )}
 
-      {/* Step 2 — Sync */}
-      {step === 2 && (
+      {/* Sincronizar */}
+      {step === STEP.sync && (
         <Box sx={{ py: 2 }}>
           <Typography variant="h6" gutterBottom>{t.syncTitle}</Typography>
           <Typography variant="body2" color="text.secondary" mb={3}>
@@ -147,7 +178,7 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
               component="button"
               variant="body2"
               underline="hover"
-              onClick={() => setStep(3)}
+              onClick={() => setStep(STEP.done)}
             >
               {t.syncSkip}
             </Link>
@@ -155,8 +186,8 @@ export function ExtensionSetupWizard({ onComplete }: Props) {
         </Box>
       )}
 
-      {/* Step 3 — Done */}
-      {step === 3 && (
+      {/* Pronto */}
+      {step === STEP.done && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <CheckCircleOutlineIcon color="success" sx={{ fontSize: 48, mb: 1 }} />
           <Typography variant="h6" gutterBottom>{t.doneTitle}</Typography>

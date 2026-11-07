@@ -1,8 +1,9 @@
-import { MARKETPLACE_COOKIE_DOMAIN, env } from '../config/env.js';
+import { MARKETPLACE_COOKIE_DOMAIN } from '../config/env.js';
 import { ML_SESSION_COOKIES, ML_SYNC_PENDING_ALARM, ML_SYNC_RESERVE_ALARM, SYNC_DEBOUNCE_MS, HEARTBEAT_ALARM } from './constants.js';
 import { devError, devLog } from '../core/devLog.js';
 import { registerChannel } from './channel/index.js';
-import { setupAlarms, setupUninstallUrl, sendLifecycleEvent, sendHeartbeat } from './lifecycle.js';
+import { setupAlarms, setupUninstallUrl, sendLifecycleEvent, sendHeartbeat, flushPendingLifecycle } from './lifecycle.js';
+import { focusOrOpenPanel, focusPanelTabIfOpen } from './panelTab.js';
 import { runSync } from './syncSession.js';
 import { getSyncState, setSyncState } from './store.js';
 import { getMlStatus } from './marketplaceSession.js';
@@ -14,6 +15,12 @@ import { getMlStatus } from './marketplaceSession.js';
  * Panel communicates via `externally_connectable` channel.
  * ML cookies synced via `chrome.cookies.onChanged` + debounce.
  */
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+// Toda subida do service worker garante instalação + URL de desinstalação
+// (onInstalled/onStartup não disparam em todo wake-up).
+
+void setupUninstallUrl();
 
 // ── Stale sync reset ────────────────────────────────────────────────────────
 
@@ -33,6 +40,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
   if (details.reason === 'install') {
     void sendLifecycleEvent('INSTALL');
+    void focusPanelTabIfOpen().catch((error) => devError('focus panel failed', error));
   } else if (details.reason === 'update') {
     void sendLifecycleEvent('UPDATE', details.previousVersion);
   }
@@ -42,6 +50,7 @@ chrome.runtime.onStartup.addListener(() => {
   void setupAlarms();
   void resetStaleSync();
   void setupUninstallUrl();
+  void flushPendingLifecycle();
   void sendLifecycleEvent('STARTUP');
 });
 
@@ -60,6 +69,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       void runSync('alarm');
       break;
     case HEARTBEAT_ALARM:
+      void flushPendingLifecycle();
       void sendHeartbeat().then(result => {
         if (result.resyncRequested) void runSync('alarm');
       });
@@ -84,21 +94,6 @@ chrome.cookies.onChanged.addListener((changeInfo) => {
 });
 
 // ── Icon click → open panel ────────────────────────────────────────────────
-
-// Reuses an open panel tab (current window first) instead of stacking new ones.
-// Needs the panel origin in host_permissions to match tabs by URL (no `tabs` permission).
-const focusOrOpenPanel = async (): Promise<void> => {
-  const pattern = `${new URL(env.panelUrl).origin}/*`;
-  const [inCurrent] = await chrome.tabs.query({ url: pattern, lastFocusedWindow: true });
-  const tab = inCurrent ?? (await chrome.tabs.query({ url: pattern }))[0];
-
-  if (tab?.id === undefined) {
-    await chrome.tabs.create({ url: env.panelUrl });
-    return;
-  }
-  await chrome.tabs.update(tab.id, { active: true });
-  await chrome.windows.update(tab.windowId, { focused: true });
-};
 
 chrome.action.onClicked.addListener(() => {
   void focusOrOpenPanel().catch((error) => devError('open panel failed', error));
