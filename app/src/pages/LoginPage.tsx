@@ -21,7 +21,7 @@ import { SUPPORT_PATH, supportLinkLabel } from '@/features/support/strings';
 import { authService } from '@/services/auth.service';
 import { serverNow } from '@/services/serverClock';
 import type { TenantRef } from '@/types/api.types';
-import { TURNSTILE_SITE_KEY } from '@/features/login-protection/config';
+import { useLoginConfig } from '@/features/login-protection/useLoginConfig';
 import { TurnstileWidget } from '@/features/login-protection/TurnstileWidget';
 import { LoginCodeStep } from '@/features/login-protection/LoginCodeStep';
 import { loginErrorMessage, retryAtOf, type LoginCodeChallenge } from '@/features/login-protection/loginProtection';
@@ -54,6 +54,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Proteção do login (docs/seguranca-login.md). Ticket e token só em memória, nunca em storage.
+  const { siteKey: turnstileSiteKey, reload: reloadLoginConfig } = useLoginConfig();
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = useState(0);
   const [challenge, setChallenge] = useState<LoginCodeChallenge | null>(null);
@@ -94,11 +95,17 @@ export function LoginPage() {
     } catch (err) {
       const code = (err as { code?: string })?.code;
       setBlockedUntil(code === 'LOGIN_TOO_MANY_ATTEMPTS' ? retryAtOf(err) : null);
-      setError(loginErrorMessage(err));
+      if (code === 'LOGIN_CAPTCHA_REQUIRED' && !turnstileSiteKey) {
+        // API exige o desafio mas o widget não está na tela: avisa e busca a config de novo
+        setError(LP.captchaUnavailable);
+        void reloadLoginConfig();
+      } else {
+        setError(loginErrorMessage(err));
+      }
     } finally {
       setLoading(false);
       // Token Turnstile é de uso único: novo desafio a cada tentativa.
-      if (TURNSTILE_SITE_KEY) setTurnstileReset((n) => n + 1);
+      if (turnstileSiteKey) setTurnstileReset((n) => n + 1);
     }
   };
 
@@ -107,7 +114,7 @@ export function LoginPage() {
     setError(message);
   };
 
-  const needsTurnstile = !!TURNSTILE_SITE_KEY && !turnstileToken;
+  const needsTurnstile = !!turnstileSiteKey && !turnstileToken;
 
   const isDark = theme.palette.mode === 'dark';
 
@@ -224,7 +231,7 @@ export function LoginPage() {
                   fullWidth
                   required
                   autoComplete="current-password"
-                  sx={{ mb: `${TURNSTILE_SITE_KEY ? GOLDEN_SPACE.s3 : GOLDEN_SPACE.s4}px` }}
+                  sx={{ mb: `${turnstileSiteKey ? GOLDEN_SPACE.s3 : GOLDEN_SPACE.s4}px` }}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -242,8 +249,8 @@ export function LoginPage() {
                     ),
                   }}
                 />
-                {TURNSTILE_SITE_KEY && (
-                  <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} resetSignal={turnstileReset} />
+                {turnstileSiteKey && (
+                  <TurnstileWidget siteKey={turnstileSiteKey} onToken={setTurnstileToken} resetSignal={turnstileReset} />
                 )}
                 <Button
                   type="submit"

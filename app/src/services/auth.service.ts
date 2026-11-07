@@ -2,6 +2,12 @@ import { apiClient } from './apiClient';
 import type { LoginRequest, LoginResponse, RefreshResponse } from '@/types/api.types';
 import type { LoginCodeChallenge } from '@/features/login-protection/loginProtection';
 
+export interface LoginPublicConfig {
+  mode: 'off' | 'monitor' | 'enforce';
+  turnstileSiteKey: string | null;
+  emailCode: boolean;
+}
+
 /** 200 = sessão; 202 = login suspeito, segue para o passo do código (docs/seguranca-login.md). */
 export type LoginApiResult =
   | { status: 'SESSION'; session: LoginResponse }
@@ -16,6 +22,12 @@ export const authService = {
       return { status: 'OTP_REQUIRED', challenge: { ticket, codeSent, codeExpiresAt, resendAvailableAt } };
     }
     return { status: 'SESSION', session: body as LoginResponse };
+  },
+
+  /** Config pública do login: site key do Turnstile (null = não exigido), modo e código por e-mail. */
+  async loginConfig(): Promise<LoginPublicConfig> {
+    const res = await apiClient.get<{ success: true; data: LoginPublicConfig }>('/auth/login/config');
+    return res.data.data;
   },
 
   async verifyLoginCode(ticket: string, code: string): Promise<LoginResponse> {

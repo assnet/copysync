@@ -10,6 +10,8 @@ export const loginProtectionStrings = {
   captchaRequired: 'Confirme que você não é um robô para continuar.',
   captchaInvalid: 'A verificação expirou ou falhou. Faça de novo.',
   captchaLabel: 'Verificação de segurança',
+  /** 403 de verificação sem widget na tela (config não carregou). */
+  captchaUnavailable: 'A verificação de segurança não carregou. Recarregue a página e tente de novo.',
   captchaLoadFailed: 'Não foi possível carregar a verificação de segurança. Recarregue a página.',
   genericError: 'Não foi possível entrar agora. Tente de novo em instantes.',
 

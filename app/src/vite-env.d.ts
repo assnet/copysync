@@ -6,7 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_EXTENSION_IDS?: string;
   /** Página da extensão na Chrome Web Store (padrão em features/extension/config.ts). */
   readonly VITE_EXTENSION_STORE_URL?: string;
-  /** Site key do Cloudflare Turnstile no login (modo gerenciado). Ver docs/seguranca-login.md. */
+  /** Reserva da site key do Turnstile (a fonte é GET /auth/login/config). Ver docs/seguranca-login.md. */
   readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
