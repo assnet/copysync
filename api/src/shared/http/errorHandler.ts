@@ -40,6 +40,10 @@ export function errorHandler(
       );
     }
 
+    // 429 com `retryAt` (ex.: proteção do login): Retry-After em segundos para clientes HTTP
+    const retryAt = error.statusCode === 429 && typeof error.meta?.retryAt === 'string' ? Date.parse(error.meta.retryAt) : NaN;
+    if (Number.isFinite(retryAt)) reply.header('Retry-After', String(Math.max(1, Math.ceil((retryAt - Date.now()) / 1000))));
+
     reply.status(error.statusCode).send({
       success: false,
       error: {

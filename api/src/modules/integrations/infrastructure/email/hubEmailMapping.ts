@@ -1,7 +1,7 @@
 import type { SendEmailInput } from '../../domain/contracts/IEmailSender';
 
 /** Templates que a central aceita desta aplicação (`POST /integrations/email/send`). */
-export type HubEmailTemplate = 'SET_PASSWORD' | 'TEAM_INVITE' | 'SESSION_DISCONNECTED';
+export type HubEmailTemplate = 'SET_PASSWORD' | 'TEAM_INVITE' | 'SESSION_DISCONNECTED' | 'LOGIN_VERIFICATION';
 export type HubEmailVar = string | number | boolean;
 
 export interface HubEmailBody {
@@ -19,6 +19,8 @@ const VAR_ALLOWLIST: Record<HubEmailTemplate, readonly string[]> = {
   SET_PASSWORD: ['name', 'setPasswordUrl', 'expiresInHours'],
   TEAM_INVITE: ['name', 'inviterName', 'workspaceName', 'inviteUrl', 'expiresInHours'],
   SESSION_DISCONNECTED: ['name', 'sessionName', 'disconnectedAt', 'reconnectUrl'],
+  // Código do login suspeito (docs/seguranca-login.md): `code` sempre string de 6 dígitos.
+  LOGIN_VERIFICATION: ['code', 'expiresInMinutes', 'name'],
 };
 
 /** Template interno (`IEmailSender.send`) → template da central + renomeação das chaves de `data`. */
@@ -26,6 +28,7 @@ const INTERNAL_TEMPLATES: Record<string, { template: HubEmailTemplate; rename: R
   SET_PASSWORD: { template: 'SET_PASSWORD', rename: { link: 'setPasswordUrl' } },
   TEAM_INVITE: { template: 'TEAM_INVITE', rename: { link: 'inviteUrl', tenantName: 'workspaceName' } },
   SESSION_DISCONNECTED: { template: 'SESSION_DISCONNECTED', rename: { link: 'reconnectUrl' } },
+  LOGIN_VERIFICATION: { template: 'LOGIN_VERIFICATION', rename: {} },
 };
 
 /**

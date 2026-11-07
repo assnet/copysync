@@ -129,3 +129,10 @@ describe('HubEmailSender', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
+
+describe('toHubEmailBody — LOGIN_VERIFICATION', () => {
+  it('código fica string de 6 dígitos (zero à esquerda), expiresInMinutes e name; chave fora da allowlist cai', () => {
+    const body = toHubEmailBody({ to: 'a@x.com', template: 'LOGIN_VERIFICATION', data: { code: '012345', expiresInMinutes: 10, name: 'Ana', ip: '1.2.3.4' } });
+    expect(body).toEqual({ template: 'LOGIN_VERIFICATION', to: 'a@x.com', locale: 'pt-BR', vars: { code: '012345', expiresInMinutes: 10, name: 'Ana' } });
+  });
+});

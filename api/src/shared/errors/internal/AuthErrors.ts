@@ -48,3 +48,60 @@ export class WeakPasswordError extends AppError {
     );
   }
 }
+
+// ── Proteção do login (docs/seguranca-login.md) ───────────────────────────────
+// Mensagens genéricas: nenhuma revela se o e-mail existe. O painel traduz pelo `code`.
+
+export class LoginTooManyAttemptsError extends AppError {
+  constructor(retryAt: Date) {
+    super('LOGIN_TOO_MANY_ATTEMPTS', 'Too many attempts. Try again later.', 429, { retryAt: retryAt.toISOString() });
+  }
+}
+
+export class LoginCaptchaRequiredError extends AppError {
+  constructor() {
+    super('LOGIN_CAPTCHA_REQUIRED', 'Complete the verification to continue.', 403);
+  }
+}
+
+export class LoginCaptchaInvalidError extends AppError {
+  constructor() {
+    super('LOGIN_CAPTCHA_INVALID', 'The verification failed or expired. Try again.', 403);
+  }
+}
+
+export class LoginCodeSendLimitError extends AppError {
+  constructor(retryAt: Date) {
+    super('LOGIN_CODE_SEND_LIMIT', 'Wait before requesting a new code.', 429, { retryAt: retryAt.toISOString() });
+  }
+}
+
+export class LoginCodeDeliveryFailedError extends AppError {
+  constructor() {
+    super('LOGIN_CODE_DELIVERY_FAILED', 'Could not send the code. Try again.', 503);
+  }
+}
+
+export class LoginCodeInvalidError extends AppError {
+  constructor(attemptsLeft: number) {
+    super('LOGIN_CODE_INVALID', 'Invalid code.', 400, { attemptsLeft });
+  }
+}
+
+export class LoginCodeExpiredError extends AppError {
+  constructor() {
+    super('LOGIN_CODE_EXPIRED', 'The code expired. Request a new one.', 400);
+  }
+}
+
+export class LoginCodeExhaustedError extends AppError {
+  constructor() {
+    super('LOGIN_CODE_EXHAUSTED', 'Too many wrong codes. Request a new one.', 400);
+  }
+}
+
+export class LoginTicketInvalidError extends AppError {
+  constructor() {
+    super('LOGIN_TICKET_INVALID', 'The verification step expired. Sign in again.', 400);
+  }
+}

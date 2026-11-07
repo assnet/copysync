@@ -209,6 +209,7 @@ model User {
   createdOffers          Offer[]
   extensionSessions      ExtensionSession[]
   extensionInstallations ExtensionInstallation[]
+  loginCodes             LoginCode[]
 
   @@index([email])
   @@map("users")
@@ -273,6 +274,44 @@ model RefreshToken {
   @@index([userId])
   @@index([token])
   @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGIN PROTECTION  (docs/seguranca-login.md) — global, não tenant-aware
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Eventos do login: LOGIN_FAILED (sem userId), LOGIN_OK, LOGIN_CODE_VERIFIED. Poda: 30 dias.
+model LoginEvent {
+  id        String   @id @default(cuid())
+  type      String
+  email     String
+  ip        String?
+  userId    String?
+  userAgent String?  @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_events")
+}
+
+/// Código por e-mail do login suspeito: só o hash. sentAt nulo = envio em andamento. Poda: 1 dia.
+model LoginCode {
+  id            String    @id @default(cuid())
+  userId        String
+  codeHash      String
+  attempts      Int       @default(0)
+  expiresAt     DateTime
+  sentAt        DateTime?
+  consumedAt    DateTime?
+  invalidatedAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("login_codes")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

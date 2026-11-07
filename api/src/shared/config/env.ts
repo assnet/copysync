@@ -265,6 +265,22 @@ const envSchema = z.object({
     z.string().url().optional(),
   ),
 
+  // ── Proteção do login (docs/seguranca-login.md) ───────────────────
+  // off = sem guarda; monitor (padrão) = grava + bloqueio 429; enforce = + Turnstile + código por e-mail.
+  LOGIN_GUARD_MODE: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() || undefined : v),
+    z.enum(['off', 'monitor', 'enforce']).default('monitor'),
+  ),
+  // Código por e-mail no login suspeito (só em enforce). on|off; padrão off.
+  LOGIN_EMAIL_OTP: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.string().optional().transform((v) => v === 'on' || v === 'true'),
+  ),
+  TURNSTILE_SECRET_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+
   // ── Extension bridge ──────────────────────────────────────────────
   EXTENSION_ORIGINS: z.string().default(''),
   HUB_EVENTS_ENABLED: z
