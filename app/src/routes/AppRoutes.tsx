@@ -22,6 +22,8 @@ import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { AdminRedirectLinksPage } from '@/pages/admin/AdminRedirectLinksPage';
 import { RedirectPage } from '@/pages/RedirectPage';
+import { ThankYouPage } from '@/pages/ThankYouPage';
+import { THANK_YOU_PATH } from '@/features/thankYou/strings';
 import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
@@ -60,6 +62,8 @@ export function AppRoutes() {
       <Route path={SUPPORT_PATH} element={<SupportPage />} />
       {/* Links de redirecionamento da plataforma: sem login, sem layout (docs/redirect-links.md) */}
       <Route path={`${REDIRECT_PUBLIC_PATH}/:slug`} element={<RedirectPage />} />
+      {/* Página de obrigado pós-compra (checkout): estática, sem API (docs/pagina-obrigado.md) */}
+      <Route path={THANK_YOU_PATH} element={<ThankYouPage />} />
 
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>
