@@ -28,6 +28,8 @@ import { extensionRoutes } from '../modules/extension/presentation/routes/extens
 import { linkRotationRoutes } from '../modules/link-rotation/presentation/routes/linkRotation.routes';
 import { linkDomainAdminRoutes } from '../modules/link-rotation/presentation/routes/linkDomainAdmin.routes';
 import { storefrontRoutes } from '../modules/storefront/presentation/routes/storefront.routes';
+import { redirectLinkAdminRoutes } from '../modules/redirect-links/presentation/routes/redirectLinkAdmin.routes';
+import { publicRedirectRoutes } from '../modules/redirect-links/presentation/routes/publicRedirect.routes';
 import { offerStoryRoutes } from '../modules/offer-story/presentation/routes/offerStory.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
@@ -125,6 +127,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Workers de sessão: ocupação e aguardando capacidade (super admin) ──────
   await app.register(workerAdminRoutes, { prefix: `${env.API_PREFIX}/admin/workers` });
+
+  // ── Links de redirecionamento da plataforma: CRUD (super admin) e resolução pública ──
+  await app.register(redirectLinkAdminRoutes, { prefix: `${env.API_PREFIX}/admin/redirect-links` });
+  await app.register(publicRedirectRoutes, { prefix: `${env.API_PREFIX}/public/redirects` });
 
   // ── Página de Ofertas do tenant (a pública sai pelo hook do rodízio, app.ts) ──
   await app.register(storefrontRoutes, { prefix: `${env.API_PREFIX}/storefront` });

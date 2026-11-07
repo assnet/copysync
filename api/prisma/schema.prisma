@@ -1512,3 +1512,25 @@ model StorefrontOffer {
   @@index([tenantId])
   @@map("storefront_offers")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REDIRECT LINKS  (links de marketing/suporte da PLATAFORMA — docs/redirect-links.md)
+// Sem tenantId de propósito: o link é da plataforma, só o super-admin gerencia e a rota
+// pública (`/redirect/<slug>`) resolve sem contexto de tenant.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RedirectLink {
+  id        String   @id @default(cuid())
+  slug      String   @unique @db.VarChar(100) // minúsculo, [a-z0-9.-]; editável (o antigo para de responder)
+  urlA      String   @db.VarChar(2048) // só https://
+  urlB      String?  @db.VarChar(2048) // null = 100% A
+  percentA  Int      @default(100) // inteiro 0–100 (CHECK no banco); sem B é sempre 100
+  isActive  Boolean  @default(true)
+  hitsA     Int      @default(0) // UPDATE … SET "hitsA" = "hitsA" + 1
+  hitsB     Int      @default(0)
+  note      String?  @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("redirect_links")
+}
