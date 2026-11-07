@@ -276,6 +276,11 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.string().optional().transform((v) => v === 'on' || v === 'true'),
   ),
+  // Site key pública do widget: o painel lê em GET /auth/login/config. Turnstile só é exigido com o par.
+  TURNSTILE_SITE_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
   TURNSTILE_SECRET_KEY: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().optional(),

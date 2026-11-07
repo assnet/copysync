@@ -16,3 +16,9 @@ export interface ILoginCodeHasher {
   hash(userId: string, code: string): string;
   matches(userId: string, code: string, hash: string): boolean;
 }
+
+/** Confere a senha; sem hash (usuário inexistente/sem senha) compara com um hash fixo de mesmo custo. */
+export type PasswordVerifier = (plain: string, hash: string | null) => Promise<boolean>;
+
+/** Referência do e-mail para log (HMAC curto): correlaciona sem gravar o e-mail. */
+export type EmailRef = (email: string) => string;

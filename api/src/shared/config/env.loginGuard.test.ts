@@ -13,6 +13,8 @@ describe('env da proteção do login', () => {
     const e = parse({ TURNSTILE_SECRET_KEY: ' ' });
     expect(e).toMatchObject({ LOGIN_GUARD_MODE: 'monitor', LOGIN_EMAIL_OTP: false });
     expect(e.TURNSTILE_SECRET_KEY).toBeUndefined();
+    expect(parse({ TURNSTILE_SITE_KEY: '' }).TURNSTILE_SITE_KEY).toBeUndefined();
+    expect(parse({ TURNSTILE_SITE_KEY: '0xABC' }).TURNSTILE_SITE_KEY).toBe('0xABC');
   });
   it('aceita off/ENFORCE e on/true', () => {
     expect(parse({ LOGIN_GUARD_MODE: ' ENFORCE ', LOGIN_EMAIL_OTP: 'on' })).toMatchObject({ LOGIN_GUARD_MODE: 'enforce', LOGIN_EMAIL_OTP: true });

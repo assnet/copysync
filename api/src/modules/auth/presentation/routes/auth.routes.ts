@@ -21,7 +21,8 @@ import {
   PrismaLoginEventRepository,
 } from '../../infrastructure/repositories/PrismaLoginProtectionRepository';
 import { CloudflareTurnstileVerifier } from '../../infrastructure/security/CloudflareTurnstileVerifier';
-import { HmacLoginCodeHasher, HmacLoginTicketSigner } from '../../infrastructure/security/HmacLoginSecurity';
+import { HmacLoginCodeHasher, HmacLoginTicketSigner, createEmailRef } from '../../infrastructure/security/HmacLoginSecurity';
+import { bcryptPasswordVerifier } from '../../infrastructure/security/bcryptPasswordVerifier';
 import { createEmailSenderFromEnv } from '../../../integrations/infrastructure/email/EmailSenderFactory';
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 import { AuthPresenter } from '../presenters/AuthPresenter';
@@ -41,9 +42,18 @@ const loginPolicy = resolveLoginGuardPolicy(env);
 for (const warning of loginPolicy.warnings) logger.warn({ module: 'auth' }, warning);
 const loginGuard = new LoginGuard(
   new PrismaLoginEventRepository(),
-  env.TURNSTILE_SECRET_KEY ? new CloudflareTurnstileVerifier(env.TURNSTILE_SECRET_KEY) : null,
+  loginPolicy.requireTurnstile && env.TURNSTILE_SECRET_KEY
+    ? new CloudflareTurnstileVerifier(env.TURNSTILE_SECRET_KEY, { expectedHostname: env.PANEL_URL ? new URL(env.PANEL_URL).hostname : undefined })
+    : null,
   loginPolicy,
+  createEmailRef(env.JWT_SECRET),
 );
+/** Config pública do login para o painel: site key só quando o Turnstile é exigido. */
+const loginConfig = {
+  mode: loginPolicy.mode,
+  turnstileSiteKey: loginPolicy.requireTurnstile ? env.TURNSTILE_SITE_KEY ?? null : null,
+  emailCode: loginPolicy.requireEmailCode,
+};
 const loginChallenge = new LoginCodeChallenge(
   new PrismaLoginCodeRepository(),
   new HmacLoginCodeHasher(env.JWT_SECRET),
@@ -51,7 +61,7 @@ const loginChallenge = new LoginCodeChallenge(
   createEmailSenderFromEnv(),
 );
 const createLoginSession = new CreateLoginSessionUseCase(userRepo, authRepo);
-const loginUseCase = new LoginUseCase(userRepo, loginGuard, loginChallenge, createLoginSession);
+const loginUseCase = new LoginUseCase(userRepo, loginGuard, loginChallenge, createLoginSession, bcryptPasswordVerifier);
 const verifyLoginCodeUseCase = new VerifyLoginCodeUseCase(userRepo, loginGuard, loginChallenge, createLoginSession);
 const resendLoginCodeUseCase = new ResendLoginCodeUseCase(userRepo, loginChallenge);
 const refreshTokenUseCase = new RefreshTokenUseCase(authRepo, userRepo);
@@ -72,6 +82,40 @@ async function sendSession(reply: FastifyReply, result: LoginResultDto): Promise
  * Registered under /api/auth.
  */
 export async function authRoutes(app: FastifyInstance): Promise<void> {
+  // ── GET /auth/login/config ─────────────────────────────────────────────────
+  // Público: o painel decide se mostra o widget. Sem a site key aqui o Turnstile não é exigido.
+  app.get(
+    '/login/config',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Configuração pública do login',
+        description: 'Modo da proteção, site key do Turnstile (null quando não exigido) e se o código por e-mail está ligado.',
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  mode: { type: 'string', enum: ['off', 'monitor', 'enforce'] },
+                  turnstileSiteKey: { type: ['string', 'null'] },
+                  emailCode: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'public, max-age=60');
+      httpResponse.ok(reply, loginConfig);
+      return reply;
+    },
+  );
+
   // ── POST /auth/login ───────────────────────────────────────────────────────
   // Proteção: docs/seguranca-login.md (bloqueio 429, Turnstile, código por e-mail no login suspeito).
   app.post(

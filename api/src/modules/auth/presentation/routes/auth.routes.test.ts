@@ -10,6 +10,7 @@ const h = vi.hoisted(() => {
   process.env['LOGIN_GUARD_MODE'] = 'enforce';
   process.env['LOGIN_EMAIL_OTP'] = 'on';
   process.env['TURNSTILE_SECRET_KEY'] = 'test-turnstile-secret';
+  process.env['TURNSTILE_SITE_KEY'] = 'test-site-key';
   return {
     users: [] as { id: string; email: string; name: string; passwordHash: string | null; isSuperAdmin: boolean }[],
     sent: [] as { to: string; template: string; data: Record<string, unknown> }[],
@@ -58,7 +59,7 @@ let hash = '';
 let app: FastifyInstance;
 
 const login = (body: Record<string, unknown>, ip = '203.0.113.7') =>
-  app.inject({ method: 'POST', url: '/auth/login', headers: { 'cf-connecting-ip': ip, 'x-forwarded-for': '1.1.1.1' }, payload: { turnstileToken: 'human', ...body } });
+  app.inject({ method: 'POST', url: '/auth/login', headers: { 'x-forwarded-for': `6.6.6.6, ${ip}`, 'cf-connecting-ip': '9.9.9.9' }, payload: { turnstileToken: 'human', ...body } });
 const verify = (ticket: string, code: string) => app.inject({ method: 'POST', url: '/auth/login/verify', payload: { ticket, code } });
 const resend = (ticket: string) => app.inject({ method: 'POST', url: '/auth/login/resend', payload: { ticket } });
 const at = (ms: number) => vi.setSystemTime(new Date(ms));
@@ -91,6 +92,15 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); vi.useRealTimers(); });
 
+describe('GET /auth/login/config', () => {
+  it('público, com site key (Turnstile exigido), modo e código; cache curto', async () => {
+    const res = await app.inject({ method: 'GET', url: '/auth/login/config' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ mode: 'enforce', turnstileSiteKey: 'test-site-key', emailCode: true });
+    expect(res.headers['cache-control']).toBe('public, max-age=60');
+  });
+});
+
 describe('POST /auth/login — erros genéricos e bloqueio', () => {
   it('login limpo: 200 com tokens, sem código e sem e-mail', async () => {
     const res = await right();
@@ -108,10 +118,11 @@ describe('POST /auth/login — erros genéricos e bloqueio', () => {
     expect(a.json()).toEqual(b.json());
     expect(a.json().error.code).toBe('INVALID_CREDENTIALS');
     expect(loginStore.events.every((e) => e.type === 'LOGIN_FAILED' && e.userId === null)).toBe(true);
+    expect(loginStore.events.some((e) => e.type === 'LOGIN_ATTEMPT')).toBe(false);
     expect(h.sent).toHaveLength(0);
   });
 
-  it('IP vem do cf-connecting-ip, nunca do 1º X-Forwarded-For', async () => {
+  it('IP = salto do proxy (request.ip); nunca o 1º X-Forwarded-For nem cf-connecting-ip', async () => {
     await wrong();
     expect(loginStore.events[0].ip).toBe('203.0.113.7');
   });

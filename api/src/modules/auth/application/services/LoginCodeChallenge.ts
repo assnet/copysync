@@ -46,22 +46,31 @@ export class LoginCodeChallenge {
    * válido aberto, devolve o ticket sem enviar para o usuário digitar o que já recebeu.
    */
   async start(user: LoginCodeUser, now: number, opts: { allowReuse: boolean }): Promise<LoginCodeChallengeDto> {
-    const { windowMs, codeTtlMs } = LOGIN_GUARD_LIMITS;
-    const sent = await this.codes.createdSince(user.id, new Date(now - windowMs));
-    const decision = evaluateCodeSend(sent, now);
-    if (!decision.allowed) {
-      if (opts.allowReuse) {
-        const open = await this.codes.findLatestOpen(user.id);
-        if (open && loginCodeUsability(open, now) === 'USABLE') {
-          return { ticket: this.tickets.issue(user.id, codeTtlMs, now), codeSent: false, codeExpiresAt: open.expiresAt, resendAvailableAt: decision.retryAt };
-        }
-      }
-      throw new LoginCodeSendLimitError(decision.retryAt);
-    }
-
+    const { codeTtlMs } = LOGIN_GUARD_LIMITS;
     const code = this.hasher.generate();
     const expiresAt = new Date(now + codeTtlMs);
-    const pending = await this.codes.createPending({ userId: user.id, codeHash: this.hasher.hash(user.id, code), expiresAt });
+    // Trava por usuário só para avaliar o teto e reservar o código (curta); o envio fica fora dela.
+    const reserved = await this.codes.withUserLock(user.id, async (repo) => {
+      const { sent, exhausted } = await this.history(repo, user.id, now);
+      const decision = evaluateCodeSend(sent, now, exhausted);
+      if (!decision.allowed) {
+        if (opts.allowReuse) {
+          const open = await repo.findLatestOpen(user.id);
+          if (open && loginCodeUsability(open, now) === 'USABLE') {
+            return { kind: 'reuse' as const, codeExpiresAt: open.expiresAt, resendAvailableAt: decision.retryAt };
+          }
+        }
+        throw new LoginCodeSendLimitError(decision.retryAt);
+      }
+      const pending = await repo.createPending({ userId: user.id, codeHash: this.hasher.hash(user.id, code), expiresAt });
+      return { kind: 'reserved' as const, pending, sent, exhausted };
+    });
+
+    if (reserved.kind === 'reuse') {
+      const { codeExpiresAt, resendAvailableAt } = reserved;
+      return { ticket: this.tickets.issue(user.id, codeTtlMs, now), codeSent: false, codeExpiresAt, resendAvailableAt };
+    }
+
     let delivered = false;
     try {
       delivered = (await this.emailSender.send({
@@ -73,16 +82,25 @@ export class LoginCodeChallenge {
       log.error({ err: (err as Error)?.name }, 'login code email threw');
     }
     if (!delivered) {
-      await this.codes.deletePending(pending.id).catch((err) => log.error({ err: (err as Error)?.name }, 'pending login code cleanup failed'));
+      await this.codes.deletePending(reserved.pending.id).catch((err) => log.error({ err: (err as Error)?.name }, 'pending login code cleanup failed'));
       throw new LoginCodeDeliveryFailedError();
     }
-    await this.codes.markSent(pending.id, user.id, new Date(now));
+    await this.codes.markSent(reserved.pending.id, user.id, new Date(now));
     return {
       ticket: this.tickets.issue(user.id, codeTtlMs, now),
       codeSent: true,
       codeExpiresAt: expiresAt,
-      resendAvailableAt: nextCodeSendAt([...sent, new Date(now)], now),
+      resendAvailableAt: nextCodeSendAt([...reserved.sent, new Date(now)], now, reserved.exhausted),
     };
+  }
+
+  private async history(repo: ILoginCodeRepository, userId: string, now: number) {
+    const { windowMs, dayMs, maxCodeAttempts } = LOGIN_GUARD_LIMITS;
+    const [sent, exhausted] = await Promise.all([
+      repo.createdSince(userId, new Date(now - windowMs)),
+      repo.exhaustedSince(userId, new Date(now - dayMs), maxCodeAttempts),
+    ]);
+    return { sent, exhausted };
   }
 
   /** userId do ticket ou erro (ticket vencido/adulterado). */

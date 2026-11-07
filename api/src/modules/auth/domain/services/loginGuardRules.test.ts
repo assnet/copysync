@@ -17,18 +17,20 @@ const ago = (m: number) => new Date(NOW - m * min);
 
 describe('resolveLoginGuardPolicy', () => {
   it('off: nada; monitor: só bloqueio; enforce: Turnstile (com secret) + código (com flag)', () => {
-    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'off', LOGIN_EMAIL_OTP: true, TURNSTILE_SECRET_KEY: 's' }))
+    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'off', LOGIN_EMAIL_OTP: true, TURNSTILE_SECRET_KEY: 's', TURNSTILE_SITE_KEY: 'k' }))
       .toMatchObject({ enforceBlock: false, requireTurnstile: false, requireEmailCode: false });
-    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'monitor', LOGIN_EMAIL_OTP: true, TURNSTILE_SECRET_KEY: 's' }))
+    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'monitor', LOGIN_EMAIL_OTP: true, TURNSTILE_SECRET_KEY: 's', TURNSTILE_SITE_KEY: 'k' }))
       .toMatchObject({ enforceBlock: true, requireTurnstile: false, requireEmailCode: false });
-    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'enforce', LOGIN_EMAIL_OTP: true, TURNSTILE_SECRET_KEY: 's' }))
+    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'enforce', LOGIN_EMAIL_OTP: true, TURNSTILE_SECRET_KEY: 's', TURNSTILE_SITE_KEY: 'k' }))
       .toMatchObject({ enforceBlock: true, requireTurnstile: true, requireEmailCode: true, warnings: [] });
   });
-  it('enforce sem secret pula o Turnstile com aviso', () => {
+  it('enforce sem o par site key + secret pula o Turnstile com aviso', () => {
     const p = resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'enforce', LOGIN_EMAIL_OTP: false });
     expect(p.requireTurnstile).toBe(false);
     expect(p.requireEmailCode).toBe(false);
-    expect(p.warnings[0]).toMatch(/TURNSTILE_SECRET_KEY/);
+    expect(p.warnings[0]).toMatch(/TURNSTILE_SITE_KEY/);
+    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'enforce', LOGIN_EMAIL_OTP: false, TURNSTILE_SECRET_KEY: 's' }).requireTurnstile).toBe(false);
+    expect(resolveLoginGuardPolicy({ LOGIN_GUARD_MODE: 'enforce', LOGIN_EMAIL_OTP: false, TURNSTILE_SITE_KEY: 'k' }).requireTurnstile).toBe(false);
   });
 });
 
@@ -84,6 +86,12 @@ describe('teto de códigos', () => {
     expect(evaluateCodeSend([ago(2)], NOW)).toEqual({ allowed: true });
     expect(nextCodeSendAt([new Date(NOW)], NOW)).toEqual(new Date(NOW + L.resendCooldownMs));
   });
+  it('teto diário: 2 códigos esgotados em 24 h travam até o que completou o teto + 24 h', () => {
+    const h = 60 * min;
+    expect(evaluateCodeSend([], NOW, [new Date(NOW - 20 * h)])).toEqual({ allowed: true });
+    expect(evaluateCodeSend([], NOW, [new Date(NOW - 20 * h), new Date(NOW - 2 * h)])).toEqual({ allowed: false, retryAt: new Date(NOW - 20 * h + L.dayMs) });
+    expect(evaluateCodeSend([], NOW, [new Date(NOW - 25 * h), new Date(NOW - 2 * h)])).toEqual({ allowed: true });
+  });
 });
 
 describe('uso do código', () => {
@@ -94,5 +102,13 @@ describe('uso do código', () => {
     expect(loginCodeUsability({ ...base, consumedAt: new Date() }, NOW)).toBe('EXPIRED');
     expect(loginCodeUsability({ ...base, invalidatedAt: new Date() }, NOW)).toBe('EXPIRED');
     expect(loginCodeUsability({ ...base, attempts: L.maxCodeAttempts }, NOW)).toBe('EXHAUSTED');
+  });
+});
+
+describe('relógio do banco à frente', () => {
+  it('falha com createdAt depois do `now` da aplicação conta no teto', () => {
+    const later = [new Date(NOW + 5), new Date(NOW + 9), new Date(NOW + 12)];
+    expect(evaluateLoginBlock({ emailFailures: later, ipFailures: [], now: NOW }).blocked).toBe(true);
+    expect(isEmailSuspicious(later, NOW)).toBe(true);
   });
 });

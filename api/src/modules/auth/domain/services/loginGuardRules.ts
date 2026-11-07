@@ -20,6 +20,9 @@ export const LOGIN_GUARD_LIMITS = {
   maxCodeAttempts: 5,
   /** Intervalo mínimo entre dois envios (botão "reenviar"). */
   resendCooldownMs: 60 * 1000,
+  /** Códigos esgotados (5 erros) que travam novos envios na janela diária. */
+  maxExhaustedCodesPerDay: 2,
+  dayMs: 24 * 60 * 60 * 1000,
 } as const;
 
 export type LoginGuardMode = 'off' | 'monitor' | 'enforce';
@@ -28,7 +31,7 @@ export interface LoginGuardPolicy {
   mode: LoginGuardMode;
   /** Grava eventos e aplica o bloqueio 429. */
   enforceBlock: boolean;
-  /** Exige token Turnstile no login. */
+  /** Exige token Turnstile no login (enforce + site key + secret na API). */
   requireTurnstile: boolean;
   /** Pede código por e-mail no login suspeito. */
   requireEmailCode: boolean;
@@ -41,16 +44,19 @@ export function resolveLoginGuardPolicy(e: {
   LOGIN_GUARD_MODE: LoginGuardMode;
   LOGIN_EMAIL_OTP: boolean;
   TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
 }): LoginGuardPolicy {
   const mode = e.LOGIN_GUARD_MODE;
   const warnings: string[] = [];
   const enforce = mode === 'enforce';
-  if (enforce && !e.TURNSTILE_SECRET_KEY) warnings.push('LOGIN_GUARD_MODE=enforce without TURNSTILE_SECRET_KEY: Turnstile skipped');
+  const turnstileReady = !!e.TURNSTILE_SECRET_KEY && !!e.TURNSTILE_SITE_KEY;
+  // Sem o par completo o painel não teria como mostrar o widget: exigir o token trancaria todo mundo
+  if (enforce && !turnstileReady) warnings.push('LOGIN_GUARD_MODE=enforce without TURNSTILE_SITE_KEY + TURNSTILE_SECRET_KEY: Turnstile skipped');
   if (!enforce && e.LOGIN_EMAIL_OTP) warnings.push(`LOGIN_EMAIL_OTP=on ignored in LOGIN_GUARD_MODE=${mode}`);
   return {
     mode,
     enforceBlock: mode !== 'off',
-    requireTurnstile: enforce && !!e.TURNSTILE_SECRET_KEY,
+    requireTurnstile: enforce && turnstileReady,
     requireEmailCode: enforce && e.LOGIN_EMAIL_OTP,
     warnings,
   };
@@ -58,8 +64,9 @@ export function resolveLoginGuardPolicy(e: {
 
 export const normalizeLoginEmail = (email: string | null | undefined): string => (email ?? '').trim().toLowerCase();
 
+/** Datas "no futuro" também contam: o relógio do banco (createdAt) pode estar à frente do `now` da aplicação. */
 const sortedInWindow = (dates: Date[], now: number, windowMs: number): number[] =>
-  dates.map((d) => d.getTime()).filter((t) => t > now - windowMs && t <= now).sort((a, b) => a - b);
+  dates.map((d) => d.getTime()).filter((t) => t > now - windowMs).sort((a, b) => a - b);
 
 /**
  * Janela deslizante com teto: bloqueado enquanto houver `max` eventos na última janela.
@@ -92,7 +99,7 @@ export function isEmailSuspicious(failuresSinceReset: Date[], now: number): bool
   const { maxEmailFailures, windowMs, suspicionLookbackMs } = LOGIN_GUARD_LIMITS;
   const ts = failuresSinceReset
     .map((d) => d.getTime())
-    .filter((t) => t > now - suspicionLookbackMs && t <= now)
+    .filter((t) => t > now - suspicionLookbackMs)
     .sort((a, b) => a - b);
   for (let i = 0; i + maxEmailFailures - 1 < ts.length; i++) {
     if (ts[i + maxEmailFailures - 1] - ts[i] < windowMs) return true;
@@ -102,19 +109,24 @@ export function isEmailSuspicious(failuresSinceReset: Date[], now: number): bool
 
 export type CodeSendDecision = { allowed: true } | { allowed: false; retryAt: Date };
 
-/** Teto de envios (3/h por usuário) e intervalo mínimo entre envios. */
-export function evaluateCodeSend(sentAt: Date[], now: number): CodeSendDecision {
-  const { maxCodesPerWindow, windowMs, resendCooldownMs } = LOGIN_GUARD_LIMITS;
+/**
+ * Teto de envios (3/h por usuário), intervalo mínimo entre envios e teto diário de códigos
+ * esgotados (2 em 24 h: só volta a enviar quando o que completou o teto sai da janela).
+ */
+export function evaluateCodeSend(sentAt: Date[], now: number, exhaustedAt: Date[] = []): CodeSendDecision {
+  const { maxCodesPerWindow, windowMs, resendCooldownMs, maxExhaustedCodesPerDay, dayMs } = LOGIN_GUARD_LIMITS;
+  const daily = slidingWindowRetryAt(exhaustedAt, maxExhaustedCodesPerDay, now, dayMs);
   const capped = slidingWindowRetryAt(sentAt, maxCodesPerWindow, now, windowMs);
-  if (capped) return { allowed: false, retryAt: capped };
+  const latest = [daily, capped].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0];
+  if (latest) return { allowed: false, retryAt: latest };
   const last = Math.max(0, ...sentAt.map((d) => d.getTime()));
   if (last && last + resendCooldownMs > now) return { allowed: false, retryAt: new Date(last + resendCooldownMs) };
   return { allowed: true };
 }
 
 /** Quando o próximo envio fica liberado, contando o envio que acabou de acontecer. */
-export function nextCodeSendAt(sentAt: Date[], now: number): Date {
-  const d = evaluateCodeSend(sentAt, now);
+export function nextCodeSendAt(sentAt: Date[], now: number, exhaustedAt: Date[] = []): Date {
+  const d = evaluateCodeSend(sentAt, now, exhaustedAt);
   return d.allowed ? new Date(now) : d.retryAt;
 }
 

@@ -1,16 +1,11 @@
 import type { FastifyRequest } from 'fastify';
 
-const IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/;
-const IPV6 = /^[0-9a-fA-F:]{2,45}$/;
-
 /**
- * IP real do cliente para limites de segurança. `cf-connecting-ip` (Cloudflare) quando válido;
- * senão `request.ip`, que com `trustProxy: 1` é o salto adicionado pelo proxy da Render.
- * Nunca o 1º `X-Forwarded-For`: o cliente forja esse valor.
+ * IP do cliente para limites de segurança: `request.ip`, que com `trustProxy: 1` (app.ts) é o
+ * salto adicionado pelo proxy da Render — nunca o 1º `X-Forwarded-For`, que o cliente forja.
+ * `cf-connecting-ip` NÃO é lido: a borda Cloudflare é da Render, não de uma zona nossa, então o
+ * cabeçalho pode chegar do cliente sem ser sobrescrito.
  */
-export function resolveClientIp(request: Pick<FastifyRequest, 'headers' | 'ip'>): string | null {
-  const raw = request.headers['cf-connecting-ip'];
-  const cf = (Array.isArray(raw) ? raw[0] : raw)?.trim();
-  if (cf && (IPV4.test(cf) || IPV6.test(cf))) return cf;
+export function resolveClientIp(request: Pick<FastifyRequest, 'ip'>): string | null {
   return request.ip || null;
 }

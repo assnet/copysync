@@ -64,3 +64,9 @@ export class HmacLoginCodeHasher implements ILoginCodeHasher {
     return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 }
+
+/** Referência do e-mail para log: HMAC (chave derivada, rótulo próprio), 12 hex. Sem o segredo não dá para testar e-mails. */
+export function createEmailRef(secret: string): (email: string) => string {
+  const key = deriveKey(secret, 'login-email-ref-v1');
+  return (email) => crypto.createHmac('sha256', key).update(email).digest('hex').slice(0, 12);
+}

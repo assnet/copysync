@@ -31,3 +31,15 @@ describe('HmacLoginCodeHasher', () => {
     expect(h.matches('u2', code, hash)).toBe(false);
   });
 });
+
+describe('createEmailRef', () => {
+  it('HMAC curto, estável e dependente do segredo (não é sha256 puro)', async () => {
+    const { createEmailRef } = await import('./HmacLoginSecurity');
+    const crypto = await import('node:crypto');
+    const ref = createEmailRef(SECRET);
+    expect(ref('ana@x.com')).toMatch(/^[0-9a-f]{12}$/);
+    expect(ref('ana@x.com')).toBe(createEmailRef(SECRET)('ana@x.com'));
+    expect(ref('ana@x.com')).not.toBe(createEmailRef('z'.repeat(40))('ana@x.com'));
+    expect(ref('ana@x.com')).not.toBe(crypto.createHash('sha256').update('ana@x.com').digest('hex').slice(0, 12));
+  });
+});
