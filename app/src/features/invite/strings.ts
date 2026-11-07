@@ -1,24 +1,29 @@
 /**
  * Textos da tela de convite — mesmas regras de `features/settings/strings.ts`:
- * - chaves semanticas, nunca o texto como chave
+ * - chaves semânticas, nunca o texto como chave
  * - sem nome de marca do produto (usar "a ferramenta" / "o painel")
  */
 export const inviteStrings = {
   loading: 'Verificando convite...',
 
   /* --- estados de erro --- */
-  invalidTitle: 'Convite invalido',
-  invalidMessage: 'Este link de convite e invalido ou ja expirou.',
+  invalidTitle: 'Convite inválido',
+  invalidMessage: 'Este link de convite é inválido ou já expirou.',
   expiredTitle: 'Convite expirado',
   expiredMessage: 'Este convite expirou. Solicite um novo convite ao administrador.',
   backToLogin: 'Ir para o login',
 
   /* --- convite valido --- */
-  title: 'Voce foi convidado',
-  subtitle: 'Uma equipe quer que voce faca parte do painel.',
+  title: 'Você foi convidado',
+  subtitle: 'Uma equipe quer que você faça parte do painel.',
   teamLabel: 'Equipe',
-  roleLabel: 'Funcao',
+  roleLabel: 'Função',
   emailLabel: 'E-mail',
+
+  /* --- primeiro acesso de quem comprou (convite do sistema, `firstAccess`) --- */
+  firstAccessTitle: (appName: string) => `Bem-vindo ao ${appName}`,
+  firstAccessSubtitle: 'Crie sua senha para acessar seu painel.',
+  firstAccessSubmit: 'Criar senha e entrar',
 
   /* --- roles traduzidos --- */
   roles: {
@@ -28,42 +33,42 @@ export const inviteStrings = {
     OPERATOR: 'Operador',
   } as Record<string, string>,
 
-  /* --- formulario de senha (novo usuario) --- */
+  /* --- formulário de senha (novo usuário) --- */
   passwordTitle: 'Crie sua senha para acessar',
   passwordLabel: 'Senha',
   confirmPasswordLabel: 'Confirmar senha',
-  passwordMinLength: 'Minimo de 8 caracteres',
-  passwordMismatch: 'As senhas nao coincidem',
+  passwordMinLength: 'Mínimo de 8 caracteres',
+  passwordMismatch: 'As senhas não coincidem',
   showPassword: 'Mostrar senha',
   hidePassword: 'Ocultar senha',
   submitCreate: 'Criar conta e entrar',
 
-  /* --- usuario existente --- */
-  existingUserTitle: 'Voce ja tem conta',
-  existingUserMessage: 'Faca login para aceitar o convite e acessar a equipe.',
+  /* --- usuário existente --- */
+  existingUserTitle: 'Você já tem conta',
+  existingUserMessage: 'Faça login para aceitar o convite e acessar a equipe.',
   goToLogin: 'Fazer login',
 
   /* --- resultado --- */
   acceptedTitle: 'Convite aceito!',
-  acceptedMessage: 'Sua conta foi criada. Faca login para acessar o painel.',
+  acceptedMessage: 'Sua conta foi criada. Faça login para acessar o painel.',
   redirectingToLogin: 'Redirecionando para o login...',
-  genericError: 'Nao foi possivel aceitar o convite. Tente novamente.',
+  genericError: 'Não foi possível aceitar o convite. Tente novamente.',
 
   /* --- acessibilidade --- */
   strengthWeak: 'Fraca',
-  strengthMedium: 'Media',
+  strengthMedium: 'Média',
   strengthStrong: 'Forte',
 
   /* --- footer --- */
   footer: (year: number) => `© ${year} · Todos os direitos reservados`,
 } as const;
 
-/** Traduz o role da API para exibicao. */
+/** Traduz o role da API para exibição. */
 export function translateRole(role: string): string {
   return inviteStrings.roles[role] || role;
 }
 
-/** Mascara caracteres do meio do e-mail: a***z@domain.com */
+/** Mascara os caracteres do meio do e-mail: a***z@domain.com */
 export function maskEmail(email: string): string {
   const [local, domain] = email.split('@');
   if (!domain || local.length <= 2) return email;

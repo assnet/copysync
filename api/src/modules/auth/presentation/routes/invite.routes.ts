@@ -6,7 +6,8 @@ import { PrismaUserInviteRepository } from '../../../users/infrastructure/reposi
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 import { PrismaTenantRepository } from '../../../tenants/infrastructure/repositories/PrismaTenantRepository';
 import { AcceptInviteUseCase } from '../../../users/application/use-cases/AcceptInviteUseCase';
-import { decideInviteAccess } from '../../../users/domain/services/inviteAccess';
+import { decideInviteAccess, isFirstAccessInvite } from '../../../users/domain/services/inviteAccess';
+import { InvitePresenter } from '../presenters/InvitePresenter';
 import { InviteInvalidError } from '../../../../shared/errors/internal/TeamErrors';
 
 const inviteRepo = new PrismaUserInviteRepository();
@@ -41,6 +42,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
                   expiresAt: { type: 'string', format: 'date-time' },
                   requiresPassword: { type: 'boolean' },
                   requiresLogin: { type: 'boolean' },
+                  firstAccess: { type: 'boolean' },
                 },
               },
             },
@@ -75,14 +77,15 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       const tenant = await tenantRepo.findById(invite.tenantId);
       const tenantName = tenant?.name ?? invite.tenantId;
 
-      httpResponse.ok(reply, {
+      httpResponse.ok(reply, InvitePresenter.toInfoResponse({
         email: invite.email,
         tenantName,
         role: invite.role,
-        expiresAt: invite.expiresAt.toISOString(),
-        requiresPassword: !hasPassword,
+        expiresAt: invite.expiresAt,
+        hasPassword,
         requiresLogin,
-      });
+        firstAccess: isFirstAccessInvite({ invitedById: invite.invitedById, hasPassword }),
+      }));
     },
   );
 

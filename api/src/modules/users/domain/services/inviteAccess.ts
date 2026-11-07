@@ -29,3 +29,11 @@ export function decideInviteAccess(input: InviteAccessInput): InviteAccessDecisi
   if (input.isSuperAdmin) return 'LOGIN';
   return input.memberTenantIds.every((id) => id === input.inviteTenantId) ? 'SET_PASSWORD' : 'LOGIN';
 }
+
+/**
+ * Primeiro acesso de quem comprou: convite do sistema (`invitedById` null, provisionado pela
+ * cobrança ou pelo super admin) para conta sem senha. O painel troca o texto de equipe por boas-vindas.
+ */
+export function isFirstAccessInvite(input: { invitedById: string | null; hasPassword: boolean }): boolean {
+  return input.invitedById === null && !input.hasPassword;
+}

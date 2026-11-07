@@ -89,7 +89,7 @@ describe('convite / primeiro acesso', () => {
     provisioned();
     const res = await info('tok');
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toMatchObject({ requiresPassword: true, requiresLogin: false });
+    expect(res.json().data).toMatchObject({ requiresPassword: true, requiresLogin: false, firstAccess: true });
   });
 
   it('provisionado aceita: grava senha, marca convite, sem UserTenant duplicado nem troca de papel', async () => {
@@ -115,7 +115,7 @@ describe('convite / primeiro acesso', () => {
   it('usuário com senha: exige login', async () => {
     db.users.push(user('u1', 'ana@x.com', 'hash'));
     invite('tok');
-    expect((await info('tok')).json().data).toMatchObject({ requiresPassword: false, requiresLogin: true });
+    expect((await info('tok')).json().data).toMatchObject({ requiresPassword: false, requiresLogin: true, firstAccess: false });
     expect((await accept('tok')).json().data).toMatchObject({ status: 'REQUIRES_LOGIN', hint: 'LOGIN_REQUIRED' });
   });
 
@@ -123,9 +123,14 @@ describe('convite / primeiro acesso', () => {
     db.users.push(user('u1', 'ana@x.com'));
     db.links.push({ userId: 'u1', tenantId: 't0', role: 'ADMIN' });
     invite('tok', { invitedById: 'admin-t1' });
-    expect((await info('tok')).json().data).toMatchObject({ requiresLogin: true });
+    expect((await info('tok')).json().data).toMatchObject({ requiresLogin: true, firstAccess: false });
     expect((await accept('tok')).json().data).toMatchObject({ status: 'REQUIRES_LOGIN', hint: 'SET_PASSWORD_FIRST' });
     expect((db.users as User[])[0].passwordHash).toBeNull();
+  });
+
+  it('convite de equipe para usuário novo: firstAccess false', async () => {
+    invite('tok', { invitedById: 'admin-t1' });
+    expect((await info('tok')).json().data).toMatchObject({ requiresPassword: true, firstAccess: false });
   });
 
   it('token expirado ou já aceito: 404', async () => {

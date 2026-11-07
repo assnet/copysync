@@ -122,6 +122,9 @@ mesmo com o usuário já vinculado. Regra única em `users/domain/services/invit
   `REQUIRES_LOGIN`/`SET_PASSWORD_FIRST` (o cliente usa "esqueci a senha").
 - já membro do tenant do convite: aceitar grava hash + `passwordSetAt`, marca o convite e **não** duplica `UserTenant` nem
   muda o papel.
+- `GET /auth/invites/:token` devolve `firstAccess` (`isFirstAccessInvite`: convite do sistema + conta sem senha; aditivo,
+  api 0.70.0). Com ele a tela troca o texto de equipe por "Bem-vindo ao …" e o botão vira "Criar senha e entrar".
+- Página de obrigado do checkout (antes do e-mail chegar): `/obrigado`, ver [`pagina-obrigado.md`](pagina-obrigado.md).
 
 Não fazer: voltar a exigir login por "já tem tenant" (api ≤ 0.69.0 fazia isso e todo cliente novo caía no login sem senha);
 liberar convite de pessoa para conta sem senha de outro tenant (quem convida recebe o `inviteLink` na resposta de

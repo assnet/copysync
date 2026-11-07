@@ -7,6 +7,8 @@ export interface InviteInfo {
   expiresAt: string;
   requiresPassword: boolean;
   requiresLogin: boolean;
+  /** Convite do sistema para conta sem senha (primeiro acesso de quem comprou). API antiga: ausente. */
+  firstAccess?: boolean;
 }
 
 export interface AcceptInviteBody {

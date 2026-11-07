@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideInviteAccess, type InviteAccessInput } from './inviteAccess';
+import { decideInviteAccess, isFirstAccessInvite, type InviteAccessInput } from './inviteAccess';
 
 const base: InviteAccessInput = {
   hasPassword: false, isSuperAdmin: false, invitedById: null, inviteTenantId: 't1', memberTenantIds: [],
@@ -19,5 +19,13 @@ describe('decideInviteAccess', () => {
     expect(decideInviteAccess({ ...p, memberTenantIds: ['t1'] })).toBe('SET_PASSWORD');
     expect(decideInviteAccess({ ...p, memberTenantIds: ['t0'] })).toBe('LOGIN');
     expect(decideInviteAccess({ ...p, isSuperAdmin: true })).toBe('LOGIN');
+  });
+});
+
+describe('isFirstAccessInvite', () => {
+  it('só convite do sistema para conta sem senha', () => {
+    expect(isFirstAccessInvite({ invitedById: null, hasPassword: false })).toBe(true);
+    expect(isFirstAccessInvite({ invitedById: null, hasPassword: true })).toBe(false);
+    expect(isFirstAccessInvite({ invitedById: 'u9', hasPassword: false })).toBe(false);
   });
 });

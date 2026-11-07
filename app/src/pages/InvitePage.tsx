@@ -19,7 +19,7 @@ import { inviteStrings, translateRole, maskEmail } from '@/features/invite/strin
 
 type PageState = 'loading' | 'valid' | 'needs-login' | 'accepted' | 'error';
 
-/** Calcula forca da senha: 0 = fraca, 1 = media, 2 = forte. */
+/** Calcula a força da senha: 0 = fraca, 1 = média, 2 = forte. */
 function passwordStrength(pw: string): number {
   if (pw.length < 8) return 0;
   let score = 0;
@@ -97,7 +97,7 @@ export function InvitePage() {
     }
   };
 
-  /* ---------- validacoes ---------- */
+  /* ---------- validações ---------- */
   const strength = passwordStrength(password);
   const mismatch = confirmPassword.length > 0 && password !== confirmPassword;
   const canSubmit =
@@ -105,6 +105,9 @@ export function InvitePage() {
     && (!invite?.requiresPassword || (password.length >= 8 && password === confirmPassword));
 
   const isDark = theme.palette.mode === 'dark';
+  /** Primeiro acesso de quem comprou: boas-vindas no lugar do texto de equipe. */
+  const firstAccess = invite?.firstAccess === true;
+  const submitLabel = firstAccess ? inviteStrings.firstAccessSubmit : inviteStrings.submitCreate;
 
   /* ---------- card wrapper comum ---------- */
   const renderCard = (children: React.ReactNode) => (
@@ -250,7 +253,7 @@ export function InvitePage() {
           </Fade>
         )}
 
-        {/* --- VALID (form de criacao) --- */}
+        {/* --- VALID (formulário de criação) --- */}
         {pageState === 'valid' && invite && (
           <Fade in>
             <Box>
@@ -265,10 +268,10 @@ export function InvitePage() {
                   textAlign: 'center',
                 }}
               >
-                {inviteStrings.title}
+                {firstAccess ? inviteStrings.firstAccessTitle(APP_NAME) : inviteStrings.title}
               </Typography>
               <Typography sx={{ fontSize: GOLDEN_TYPE.base, color: 'text.secondary', mb: `${GOLDEN_SPACE.s4}px`, textAlign: 'center' }}>
-                {inviteStrings.subtitle}
+                {firstAccess ? inviteStrings.firstAccessSubtitle : inviteStrings.subtitle}
               </Typography>
 
               {renderCard(
@@ -289,12 +292,14 @@ export function InvitePage() {
                     </Alert>
                   )}
 
-                  {/* Formulario de senha (novo usuario) */}
+                  {/* Formulário de senha (novo usuário) */}
                   {invite.requiresPassword ? (
                     <Box component="form" onSubmit={handleAccept} noValidate>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: `${GOLDEN_SPACE.s3}px` }}>
-                        {inviteStrings.passwordTitle}
-                      </Typography>
+                      {!firstAccess && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: `${GOLDEN_SPACE.s3}px` }}>
+                          {inviteStrings.passwordTitle}
+                        </Typography>
+                      )}
 
                       <TextField
                         label={inviteStrings.passwordLabel}
@@ -326,7 +331,7 @@ export function InvitePage() {
                         }}
                       />
 
-                      {/* Indicador de forca */}
+                      {/* Indicador de força */}
                       {password.length > 0 && (
                         <Box sx={{ mb: `${GOLDEN_SPACE.s3}px` }}>
                           <LinearProgress
@@ -370,11 +375,11 @@ export function InvitePage() {
                       >
                         {submitting
                           ? <CircularProgress size={22} color="inherit" />
-                          : inviteStrings.submitCreate}
+                          : submitLabel}
                       </Button>
                     </Box>
                   ) : (
-                    /* Sem senha necessaria — apenas botao de aceitar */
+                    /* Sem senha necessária: apenas o botão de aceitar */
                     <Box component="form" onSubmit={handleAccept} noValidate>
                       <Button
                         type="submit"
@@ -389,7 +394,7 @@ export function InvitePage() {
                       >
                         {submitting
                           ? <CircularProgress size={22} color="inherit" />
-                          : inviteStrings.submitCreate}
+                          : submitLabel}
                       </Button>
                     </Box>
                   )}
