@@ -1,19 +1,44 @@
-import { describe, expect, it } from 'vitest';
-import { screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PLAN_CATALOG } from '../catalog';
 import { buildCheckoutUrl } from '../checkout';
 import { plansStrings as t } from '../strings';
 import { PlanCard } from './PlanCard';
 
+const max = PLAN_CATALOG.find((p) => p.slug === 'max')!;
+const url = buildCheckoutUrl('max', 'annual', '', PLAN_CATALOG, { email: 'ana@x.com', confirmEmail: 'ana@x.com', name: 'Ana' })!;
+
+afterEach(() => vi.restoreAllMocks());
+
 describe('PlanCard', () => {
-  it.each(['light', 'dark'] as const)('"Assinar" abre o pagamento do período em nova aba (%s)', (mode) => {
-    const max = PLAN_CATALOG.find((p) => p.slug === 'max')!;
-    renderWithTheme(<PlanCard plan={max} period="annual" checkoutHref={buildCheckoutUrl('max', 'annual')!} />, mode);
-    const link = screen.getByRole('link', { name: t.card.ctaNewTab(max.name) });
-    expect(link).toHaveAttribute('href', max.checkoutUrls.annual);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(link).toHaveTextContent(t.card.cta(max.name));
+  it.each(['light', 'dark'] as const)('"Assinar" é botão sem href, com nome acessível de nova aba (%s)', (mode) => {
+    renderWithTheme(<PlanCard plan={max} period="annual" getCheckoutUrl={() => url} />, mode);
+    const button = screen.getByRole('button', { name: t.card.ctaNewTab(max.name) });
+    expect(button.tagName).toBe('BUTTON');
+    expect(button).not.toHaveAttribute('href');
+    expect(button).toHaveTextContent(t.card.cta(max.name));
+    expect(screen.queryByRole('link', { name: t.card.ctaNewTab(max.name) })).toBeNull();
+  });
+
+  it('clique abre a URL montada em nova aba e isola o opener', () => {
+    const tab = { opener: {} as unknown };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as Window);
+    const getUrl = vi.fn(() => url);
+    renderWithTheme(<PlanCard plan={max} period="annual" getCheckoutUrl={getUrl} />);
+    expect(getUrl).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: t.card.ctaNewTab(max.name) }));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(url, '_blank');
+    expect(tab.opener).toBeNull();
+  });
+
+  it('pop-up bloqueado (null) → abre na própria aba', () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const assign = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, assign } as Location);
+    renderWithTheme(<PlanCard plan={max} period="annual" getCheckoutUrl={() => url} />);
+    fireEvent.click(screen.getByRole('button', { name: t.card.ctaNewTab(max.name) }));
+    expect(assign).toHaveBeenCalledWith(url);
   });
 });

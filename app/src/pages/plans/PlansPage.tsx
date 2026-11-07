@@ -2,17 +2,21 @@ import { Box, Grid, Typography } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader, SwipeCards } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { PLAN_CATALOG, PlanCard, buildCheckoutUrl, PlansFeatureNotice, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod } from '@/features/plans';
+import { PLAN_CATALOG, PlanCard, buildCheckoutUrl, useCheckoutPrefill, PlansFeatureNotice, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod, type PlanCatalogItem } from '@/features/plans';
 
 /**
  * Vitrine de planos. "Assinar" abre o pagamento do gateway do plano×período em nova aba
- * (`checkoutUrls` do catálogo; ver docs/planos.md). Sem dado sensível: não precisa de flag de privacidade.
+ * (`checkoutUrls` do catálogo + UTM interna + autopreenchimento; ver docs/planos.md). O
+ * autopreenchimento só vive em memória e nunca é exibido: não precisa de flag de privacidade.
  */
 export function PlansPage() {
   // Anual é o padrão (como no Pulso); a escolha sobrevive a reload na aba
   const [period, setPeriod] = usePersistedState<BillingPeriod>('plans.period', 'annual');
   // `?feature=` vem do redirect de um recurso bloqueado pelo plano (ex.: Página de Ofertas)
   const [searchParams] = useSearchParams();
+  const readPrefill = useCheckoutPrefill();
+  const checkoutUrl = (plan: PlanCatalogItem) => () =>
+    buildCheckoutUrl(plan.slug, period, searchParams.toString(), PLAN_CATALOG, readPrefill()) ?? plan.checkoutUrls[period];
   return (
     <Box>
       <PageHeader title={t.page.title} subtitle={t.page.subtitle} />
@@ -28,7 +32,7 @@ export function PlansPage() {
           items={PLAN_CATALOG.map((plan) => ({
             key: plan.slug,
             label: plan.name,
-            content: <PlanCard plan={plan} period={period} checkoutHref={buildCheckoutUrl(plan.slug, period, searchParams.toString()) ?? plan.checkoutUrls[period]} />,
+            content: <PlanCard plan={plan} period={period} getCheckoutUrl={checkoutUrl(plan)} />,
           }))}
           renderGrid={(items) => (
             <Grid container spacing={2.5} alignItems="stretch" sx={{ mt: 2 }}>

@@ -5,12 +5,16 @@ import { priceFor, savingsFor, type BillingPeriod, type PlanBenefit, type PlanCa
 import { formatPrice, plansStrings as t } from '../strings';
 import { ctaGradient } from './PlansHero';
 import { ChannelLimitsTable } from './ChannelLimitsTable';
+import { openCheckout } from '../openCheckout';
 
 interface Props {
   plan: PlanCatalogItem;
   period: BillingPeriod;
-  /** Link de pagamento do gateway (abre em nova aba). */
-  checkoutHref: string;
+  /**
+   * Monta o link de pagamento no clique (UTM + autopreenchimento já em memória). O botão não tem
+   * `href`: a URL do gateway não aparece na barra de status; abre em nova aba via `openCheckout`.
+   */
+  getCheckoutUrl: () => string;
 }
 
 const CHANNEL_LOGO = { whatsapp: WhatsAppIcon, telegram: TelegramIcon } as const;
@@ -141,7 +145,7 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
 }
 
 /** Card de plano. O recomendado ganha moldura em gradiente e selo "Mais escolhido". */
-export function PlanCard({ plan, period, checkoutHref }: Props) {
+export function PlanCard({ plan, period, getCheckoutUrl }: Props) {
   const theme = useTheme();
   const accent = theme.palette.primary.main;
   const recommended = !!plan.recommended;
@@ -187,9 +191,8 @@ export function PlanCard({ plan, period, checkoutHref }: Props) {
           fullWidth
           size="large"
           variant={recommended ? 'contained' : 'outlined'}
-          href={checkoutHref}
-          target="_blank"
-          rel="noopener noreferrer"
+          // Síncrono no clique (Enter/Espaço disparam o mesmo evento no <button>): sem pop-up bloqueado
+          onClick={() => openCheckout(getCheckoutUrl())}
           aria-label={t.card.ctaNewTab(plan.name)}
           sx={recommended ? { backgroundImage: gradient, boxShadow: 'none', '&:hover': { backgroundImage: gradient, filter: 'brightness(1.06)', boxShadow: 'none' } } : undefined}
         >
