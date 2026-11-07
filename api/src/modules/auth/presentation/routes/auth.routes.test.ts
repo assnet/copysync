@@ -59,7 +59,7 @@ let hash = '';
 let app: FastifyInstance;
 
 const login = (body: Record<string, unknown>, ip = '203.0.113.7') =>
-  app.inject({ method: 'POST', url: '/auth/login', headers: { 'x-forwarded-for': `6.6.6.6, ${ip}`, 'cf-connecting-ip': '9.9.9.9' }, payload: { turnstileToken: 'human', ...body } });
+  app.inject({ method: 'POST', url: '/auth/login', headers: { 'x-forwarded-for': '6.6.6.6, 104.22.160.59', 'cf-connecting-ip': ip }, payload: { turnstileToken: 'human', ...body } });
 const verify = (ticket: string, code: string) => app.inject({ method: 'POST', url: '/auth/login/verify', payload: { ticket, code } });
 const resend = (ticket: string) => app.inject({ method: 'POST', url: '/auth/login/resend', payload: { ticket } });
 const at = (ms: number) => vi.setSystemTime(new Date(ms));
@@ -122,7 +122,7 @@ describe('POST /auth/login — erros genéricos e bloqueio', () => {
     expect(h.sent).toHaveLength(0);
   });
 
-  it('IP = salto do proxy (request.ip); nunca o 1º X-Forwarded-For nem cf-connecting-ip', async () => {
+  it('IP = cf-connecting-ip (cliente real), nunca o salto da borda nem o 1º X-Forwarded-For', async () => {
     await wrong();
     expect(loginStore.events[0].ip).toBe('203.0.113.7');
   });

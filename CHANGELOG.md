@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.73.1 — IP do login era o servidor da borda Cloudflare
+
+- **`shared/http/clientIp.ts`** — o limite por IP do login usava `request.ip` (`trustProxy: 1`), que na Render é o servidor da borda Cloudflare compartilhado por muitos clientes: 10 erros de pessoas diferentes bloqueavam todos atrás do mesmo servidor. Agora usa `cf-connecting-ip` (gravado pela borda com o IP real), com `request.ip` só como reserva. Doc `docs/seguranca-login.md` corrigida.
+- **`CloudflareTurnstileVerifier.ts`** — secrets de teste da Cloudflare têm 31 zeros (eram exigidos 33).
+
 ### Fixed — api 0.73.0 · app 0.90.0 — proteção do login: corrida, tempo e salvaguardas (revisão de segurança)
 
 - **`LoginGuard.ts`** + **`PrismaLoginProtectionRepository.ts`** — tentativa provisória `LOGIN_ATTEMPT` gravada antes do bcrypt e contada no teto: logins paralelos conferem no máximo 3 senhas por e-mail / 10 por IP (antes, N paralelos testavam N senhas).

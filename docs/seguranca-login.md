@@ -102,12 +102,13 @@ ter o template na allowlist dela.
 
 ## IP real
 
-`resolveClientIp` (`shared/http/clientIp.ts`) = `request.ip`, que com `trustProxy: 1` (`app.ts`) é o
-último salto do `X-Forwarded-For`, o adicionado pelo proxy da Render. Nunca o 1º `X-Forwarded-For`.
-`cf-connecting-ip` **não** é lido: `api.copysync.app` está na borda Cloudflare da própria Render, não numa
-zona nossa, então o cliente pode mandar esse cabeçalho. Conferir em produção que `request.ip` é o IP do
-cliente (e não um IP interno da Render); se não for, ajustar o número de saltos de `trustProxy`, nunca
-voltar a ler o cabeçalho.
+`resolveClientIp` (`shared/http/clientIp.ts`) = `cf-connecting-ip` (validado com `net.isIP`); só se
+ausente ou inválido cai para `request.ip`. Motivo, conferido em produção em 2026-11-07: a Render põe uma borda
+Cloudflare na frente do serviço, e com `trustProxy: 1` o `request.ip` era o servidor dessa borda (faixas
+104.16.0.0/13, 172.64.0.0/13), compartilhado por muitos clientes — o limite de 10/h por IP somava clientes
+diferentes. A borda Cloudflare sempre grava `cf-connecting-ip` com o IP real e sobrescreve o que o cliente
+mandar. Nunca usar o 1º `X-Forwarded-For`. Conferir de tempos em tempos que `login_events.ip` não volta a ter
+IPs da Cloudflare (se voltar, a hospedagem mudou: rever esta regra).
 
 ## Ligar em produção
 
@@ -124,7 +125,7 @@ voltar a ler o cabeçalho.
 - Não enviar código antes da senha correta nem em senha errada.
 - Não gravar `userId` em `LOGIN_FAILED`; não logar e-mail (só `emailRef`, HMAC curto com chave derivada do `JWT_SECRET`), código ou ticket.
 - Não guardar ticket/código em `localStorage`/`sessionStorage`/`usePersistedState`.
-- Não usar o 1º `X-Forwarded-For` nem `cf-connecting-ip` como IP.
+- Não usar o 1º `X-Forwarded-For` como IP nem `request.ip` puro (é a borda Cloudflare da Render).
 - Não exigir Turnstile sem a site key na API (o painel não teria widget e ninguém entraria).
 - Não segurar trava de banco durante bcrypt nem durante o envio do e-mail.
 - Não ligar `enforce` + `LOGIN_EMAIL_OTP=on` com `EMAIL_SENDER=noop`: todo login suspeito falharia com 503.
