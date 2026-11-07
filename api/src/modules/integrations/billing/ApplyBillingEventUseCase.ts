@@ -11,7 +11,8 @@ import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRe
 import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFactory';
 import { syncPlanEntitlements } from './syncPlanEntitlements';
 import type { HubSubscriptionsFailure, IHubSubscriptionsClient } from '../application/ports/IHubSubscriptionsClient';
-import { pickGrantingSubscription, type HubSubscriptionSnapshot } from '../domain/services/subscriptionReconcile';
+import { graceMsFromHours, pickGrantingSubscription, type HubSubscriptionSnapshot } from '../domain/services/subscriptionReconcile';
+import { env } from '../../../shared/config/env';
 import { createHubSubscriptionsClientFromEnv } from '../infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
 import { parseExpiresAt } from './parseExpiresAt';
@@ -372,7 +373,7 @@ export class ApplyBillingEventUseCase {
     } else if (CANCELLING.has(type)) {
       // União (regra do PulsoSocial): outra assinatura do cliente ainda dá acesso → mantém ACTIVE
       if (!snapshot) throw new UnionLookupRequiredError();
-      const pick = pickGrantingSubscription(snapshot.subscriptions, new Date());
+      const pick = pickGrantingSubscription(snapshot.subscriptions, new Date(), graceMsFromHours(env.BILLING_GRACE_HOURS));
       if (pick.grants) {
         kept = true;
         data.status = 'ACTIVE';

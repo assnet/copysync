@@ -311,11 +311,27 @@ describe('ApplyBillingEventUseCase', () => {
       expect(db.state.tenant!.status).toBe('CANCELLED');
     });
 
-    it('cancelamento da recorrência dentro do ciclo pago: mantém até o vencimento', async () => {
+    it('cancelamento da recorrência na Cakto (central segue ACTIVE no ciclo): mantém', async () => {
       makeTenant({ status: 'SUSPENDED', suspendedAt: new Date() });
-      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'CANCELED', expiresAt: iso(5) })]));
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ expiresAt: iso(5) })]));
       expect((await run(ev('subscription.canceled', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
       expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', suspendedAt: null });
+    });
+
+    it('expired com vencimento há 23 h mantém; há 25 h corta', async () => {
+      makeTenant();
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'EXPIRED', expiresAt: iso(-23 / 24) })]));
+      expect((await run(ev('subscription.expired', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'EXPIRED', expiresAt: iso(-25 / 24) })]));
+      expect((await run(ev('subscription.expired', { eventId: 'ev-exp-2', seq: 12n, payload: {} }))).outcome).toBe('APPLIED');
+      expect(db.state.tenant!.status).toBe('CANCELLED');
+    });
+
+    it('cancelamento de admin na central (CANCELED/canceledAt) corta na hora mesmo com vencimento futuro', async () => {
+      makeTenant();
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'CANCELED', expiresAt: iso(20) }), hubSub({ id: 's2', canceledAt: iso(-0.1), expiresAt: iso(20) })]));
+      expect((await run(ev('subscription.canceled', { payload: {} }))).outcome).toBe('APPLIED');
+      expect(db.state.tenant!.status).toBe('CANCELLED');
     });
 
     it.each(['unauthorized', 'timeout', 'http_error', 'network'])('central fora (%s): HUB_UNAVAILABLE sem recibo nem efeito', async (reason) => {

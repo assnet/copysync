@@ -1,4 +1,5 @@
 import { env } from '../../../../shared/config/env';
+import { graceMsFromHours } from '../../domain/services/subscriptionReconcile';
 import { ReconcileSubscriptionsUseCase } from '../../billing/ReconcileSubscriptionsUseCase';
 import { HubSubscriptionsClient } from './HubSubscriptionsClient';
 import { PrismaBillingReconcileRepository } from './PrismaBillingReconcileRepository';
@@ -18,5 +19,6 @@ export function createReconcileSubscriptionsUseCase(): ReconcileSubscriptionsUse
   return new ReconcileSubscriptionsUseCase(createHubSubscriptionsClientFromEnv(), new PrismaBillingReconcileRepository(), {
     batchSize: env.BILLING_RECONCILE_BATCH_SIZE,
     leaseTtlMs: env.BILLING_RECONCILE_LEASE_TTL_MS,
+    graceMs: graceMsFromHours(env.BILLING_GRACE_HOURS),
   });
 }

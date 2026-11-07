@@ -14,7 +14,7 @@ const client: IHubSubscriptionsClient = {
   fetchByCustomer: async (id) => snapshots.get(id) ?? { ok: false, reason: 'http_error', status: 404 },
 };
 const repo = new PrismaBillingReconcileRepository(prisma);
-const reconcile = () => new ReconcileSubscriptionsUseCase(client, repo, { batchSize: 1000, leaseTtlMs: 60_000 }, undefined, () => undefined).execute();
+const reconcile = () => new ReconcileSubscriptionsUseCase(client, repo, { batchSize: 1000, leaseTtlMs: 60_000, graceMs: 24 * 3_600_000 }, undefined, () => undefined).execute();
 const sub = (o: Partial<HubSubscription> = {}): HubSubscription => ({
   id: `s-${stamp}`, planSlug: 'copysync-pro-mensal', billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null, ...o,
 });

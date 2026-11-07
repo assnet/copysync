@@ -207,14 +207,25 @@ até `BILLING_RECONCILE_BATCH_SIZE` tenants com `billingCustomerId`, ACTIVE ou S
 passadas giram por todos. Um `GET {BILLING_HUB_URL}/integrations/subscriptions?externalUserId=` por tenant, assinado com
 `BILLING_APPLICATION_KEY`/`BILLING_APPLICATION_SECRET` (`m2mSignature.ts`; o `_PREVIOUS` não vale para saída), timeout
 `BILLING_RECONCILE_HTTP_TIMEOUT_MS`, sem retry (a próxima passada repete). Pior caso ≈ lote × timeout: manter abaixo de
-`BILLING_RECONCILE_LEASE_TTL_MS` (padrão 100 × 5 s < 10 min). Log por passada: `examined`, `corrected`, `suspended`,
+`BILLING_RECONCILE_LEASE_TTL_MS` (padrão 100 × 5 s < 10 min). `BILLING_GRACE_HOURS` (0–168, padrão 24) vale para a reconciliação e para os eventos de corte. Log por passada: `examined`, `corrected`, `suspended`,
 `unknownCustomer`, `unknownPlan`, `adminSuspended`, `stale`, `errors`, `durationMs` — só ids e contagens, nunca e-mail/nome.
 
-**Assinatura dá acesso** (decisão do dono 2026-11-07, comportamento do PulsoSocial): não excluída e
-`billingStatus` null/ACTIVE/TRIAL_ACTIVE com vencimento nulo ou futuro; CANCELED/PENDING_CANCELLATION (só a recorrência)
-até o `expiresAt` (sem vencimento = sem acesso); REFUNDED (reembolso/chargeback), PAYMENT_FAILED, EXPIRED,
-TRIAL_ENDED_PENDING ou status desconhecido = sem acesso. Plano esperado = entre as que dão acesso com `planSlug` conhecido
-(`resolvePlanSlug`), o maior (MAX > PRO > LITE); empate = vencimento mais distante, depois menor id.
+**Assinatura dá acesso** (decisões do dono 2026-11-07; função `subscriptionGrantsAccess` do domínio, usada pela
+reconciliação e pelos eventos de corte). Tolerância `BILLING_GRACE_HOURS` (padrão 24 h) após o `expiresAt` para o banco
+retentar a cobrança:
+
+| Assinatura na central | Acesso |
+| --- | --- |
+| `deletedAt`, `canceledAt`, `refundedAt` ou `chargedbackAt` preenchido | **não**, na hora (sem tolerância) |
+| `billingStatus` CANCELED (cancelamento de admin/suporte na central) ou REFUNDED (reembolso/chargeback) | **não**, na hora |
+| `billingStatus` null (legado), ACTIVE, TRIAL_ACTIVE | sim, sem vencimento ou enquanto `expiresAt` + tolerância ≥ agora |
+| `billingStatus` PAYMENT_FAILED ou EXPIRED (o cron da central marca logo após vencer) | sim, enquanto `expiresAt` + tolerância ≥ agora; sem vencimento = não |
+| PENDING_CANCELLATION, TRIAL_ENDED_PENDING, status desconhecido | não |
+
+Cancelar só a recorrência na Cakto não grava nada na central: a linha segue ACTIVE e dá acesso até o vencimento + tolerância.
+`canceledAt`/`refundedAt`/`chargedbackAt` ainda não vêm na resposta da central; o cliente já os lê como opcionais e corta
+na hora quando vierem. Plano esperado = entre as que dão acesso com `planSlug` conhecido (`resolvePlanSlug`), o maior
+(MAX > PRO > LITE); empate = vencimento mais distante, depois menor id.
 
 **Regras** (decididas com o tenant travado, ver Concorrência):
 
@@ -241,12 +252,11 @@ Evento com `seq ≤ lastSeq` que chegue depois vira OUT_OF_ORDER (já refletido)
 `billingCustomerId`; não valida `permissions[]`; não usa o segredo anterior; não roda no papel `http`.
 
 **Pendências**:
-- A resposta da central não traz `canceledAt`/`refundedAt`/`chargedbackAt`. Estorno que o webhook do gateway grava como
-  `billingStatus = CANCELED` + `refundedAt` (schema da central) só corta no `expiresAt`, não na hora; cancelamento manual de
-  admin que grava só `canceledAt` (`admin-subscriptions.ts`) fica com acesso até o vencimento. Pedir à central para expor esses
-  campos (ou gravar REFUNDED) e então cortar na hora.
-- O `subscriptionGrantsAccess` da própria central exige `canceledAt: null` (corta na hora o cancelamento da recorrência); a
-  regra acima segue a decisão do dono (acesso até o fim do ciclo). Alinhar os dois lados.
+- A central não expõe `canceledAt`/`refundedAt`/`chargedbackAt` em `GET /integrations/subscriptions`. Estorno que o webhook do
+  gateway grava como `billingStatus = CANCELED` + `refundedAt` já corta (CANCELED); cancelamento manual de admin que grava
+  **só** `canceledAt` com status ACTIVE (`admin-subscriptions.ts` da central) só corta quando a central expuser o campo.
+- O `subscriptionGrantsAccess` da própria central não tem tolerância de 24 h nem aceita PAYMENT_FAILED/EXPIRED: o CopySync
+  segue a decisão do dono; alinhar os dois lados se a central mudar.
 - Reativar CANCELLED quando o cliente volta a ter acesso (evento `activated` perdido após cancelamento).
 
 ## O que não fazer

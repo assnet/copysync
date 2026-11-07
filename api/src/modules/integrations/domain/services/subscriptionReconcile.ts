@@ -13,6 +13,10 @@ export interface HubSubscription {
   /** ISO; null = sem vencimento. */
   expiresAt: string | null;
   deletedAt: string | null;
+  /** Ainda não expostos pela central; quando vierem preenchidos, cortam na hora. */
+  canceledAt?: string | null;
+  refundedAt?: string | null;
+  chargedbackAt?: string | null;
 }
 
 export interface HubSubscriptionSnapshot {
@@ -58,31 +62,32 @@ export type ReconcileDecision =
   /** Watermark local à frente do `lastSeq` da resposta: evento mais novo já aplicado, resposta velha. */
   | { kind: 'stale' };
 
-/** Cobrança em dia; null = legado (anterior ao campo), também dá acesso. Sem vencimento = acesso. */
-const PAID_BILLING_STATUSES = new Set(['ACTIVE', 'TRIAL_ACTIVE']);
-/** Só a recorrência foi cancelada: acesso até o fim do ciclo pago (`expiresAt` obrigatório). */
-const CYCLE_END_BILLING_STATUSES = new Set(['CANCELED', 'PENDING_CANCELLATION']);
+/** Tolerância padrão após o `expiresAt` para o banco retentar a cobrança (`BILLING_GRACE_HOURS`). */
+export const DEFAULT_BILLING_GRACE_HOURS = 24;
+const HOUR_MS = 3_600_000;
+export const graceMsFromHours = (hours: number) => hours * HOUR_MS;
 
-const notExpired = (iso: string, now: Date) => {
-  const exp = Date.parse(iso);
-  return Number.isFinite(exp) && exp >= now.getTime();
-};
+/** Dão acesso até `expiresAt` + tolerância (sem vencimento = acesso; null = legado, anterior ao campo). */
+const OPEN_BILLING_STATUSES = new Set(['ACTIVE', 'TRIAL_ACTIVE']);
+/** Cobrança falhou ou o cron da central marcou vencida: acesso só até `expiresAt` + tolerância (vencimento obrigatório). */
+const GRACE_ONLY_BILLING_STATUSES = new Set(['PAYMENT_FAILED', 'EXPIRED']);
 
 /**
- * Assinatura dá acesso agora (decisão do dono, 2026-11-07, comportamento do PulsoSocial): não excluída e
- * - `billingStatus` null | ACTIVE | TRIAL_ACTIVE: sem vencimento ou vencimento >= agora;
- * - CANCELED | PENDING_CANCELLATION (só a recorrência): até o `expiresAt`; sem vencimento = sem acesso;
- * - REFUNDED (reembolso/chargeback), PAYMENT_FAILED, EXPIRED, TRIAL_ENDED_PENDING e desconhecido: sem acesso.
- * A resposta não expõe `canceledAt`/`refundedAt`/`chargedbackAt`: estorno que a central grava como
- * CANCELED corta só no `expiresAt` (pendência na doc).
+ * Assinatura dá acesso agora (decisões do dono, 2026-11-07):
+ * - corta na hora, sem tolerância: `deletedAt`, `canceledAt`, `refundedAt` ou `chargedbackAt` preenchidos, ou
+ *   `billingStatus` CANCELED (cancelamento de admin/suporte na central) ou REFUNDED (reembolso/chargeback);
+ * - null | ACTIVE | TRIAL_ACTIVE: sem vencimento ou `expiresAt` + tolerância >= agora;
+ * - PAYMENT_FAILED | EXPIRED: `expiresAt` + tolerância >= agora (sem vencimento = sem acesso);
+ * - qualquer outro (PENDING_CANCELLATION, TRIAL_ENDED_PENDING, desconhecido): sem acesso.
+ * Cancelar só a recorrência na Cakto não grava nada na central: segue ACTIVE até o vencimento + tolerância.
  */
-export function subscriptionGrantsAccess(sub: HubSubscription, now: Date): boolean {
-  if (sub.deletedAt !== null) return false;
-  if (sub.billingStatus === null || PAID_BILLING_STATUSES.has(sub.billingStatus)) {
-    return sub.expiresAt === null || notExpired(sub.expiresAt, now);
-  }
-  if (CYCLE_END_BILLING_STATUSES.has(sub.billingStatus)) return sub.expiresAt !== null && notExpired(sub.expiresAt, now);
-  return false;
+export function subscriptionGrantsAccess(sub: HubSubscription, now: Date, graceMs: number): boolean {
+  if (sub.deletedAt || sub.canceledAt || sub.refundedAt || sub.chargedbackAt) return false;
+  const open = sub.billingStatus === null || OPEN_BILLING_STATUSES.has(sub.billingStatus);
+  if (!open && !GRACE_ONLY_BILLING_STATUSES.has(sub.billingStatus!)) return false;
+  if (sub.expiresAt === null) return open;
+  const exp = Date.parse(sub.expiresAt);
+  return Number.isFinite(exp) && exp + graceMs >= now.getTime();
 }
 
 const TIER = new Map<string, number>(PLAN_SLUGS.map((slug, i) => [slug, i]));
@@ -96,8 +101,9 @@ const expiryRank = (iso: string | null) => (iso === null ? Number.POSITIVE_INFIN
 export function pickGrantingSubscription(
   subs: readonly HubSubscription[],
   now: Date,
+  graceMs: number,
 ): { grants: boolean; sub: HubSubscription | null; planSlug: PlanSlug | null } {
-  const granting = subs.filter((s) => subscriptionGrantsAccess(s, now));
+  const granting = subs.filter((s) => subscriptionGrantsAccess(s, now, graceMs));
   const known = granting
     .map((s) => ({ s, slug: resolvePlanSlug(s.planSlug) }))
     .filter((x): x is { s: HubSubscription; slug: PlanSlug } => x.slug !== null)
@@ -114,13 +120,13 @@ export function pickGrantingSubscription(
  * aplicado por evento mais novo do webhook. Suspende só quando a central lista assinaturas do cliente e
  * nenhuma dá acesso; lista vazia (cliente desconhecido na central) nunca suspende.
  */
-export function decideReconcile(local: LocalBillingState, snapshot: HubSubscriptionSnapshot, now: Date): ReconcileDecision {
+export function decideReconcile(local: LocalBillingState, snapshot: HubSubscriptionSnapshot, now: Date, graceMs: number): ReconcileDecision {
   const { lastSeq } = snapshot;
   const localSeq = local.lastBillingEventSeq;
   if (localSeq !== null && (lastSeq === null || localSeq > lastSeq)) return { kind: 'stale' };
   if (local.status === 'CANCELLED') return { kind: 'noop' };
 
-  const pick = pickGrantingSubscription(snapshot.subscriptions, now);
+  const pick = pickGrantingSubscription(snapshot.subscriptions, now, graceMs);
   if (!pick.grants) {
     if (local.status !== 'ACTIVE') return { kind: 'noop' };
     return snapshot.subscriptions.length === 0 ? { kind: 'unknown_customer' } : { kind: 'suspend', advanceTo: lastSeq };

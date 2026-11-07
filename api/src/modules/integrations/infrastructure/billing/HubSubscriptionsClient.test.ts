@@ -41,6 +41,15 @@ describe('HubSubscriptionsClient', () => {
     expect(h['X-Signature']).toBe(signM2MCanonical('m2m-secret', canonical));
   });
 
+  it('canceledAt/refundedAt/chargedbackAt opcionais: presentes passam adiante, tipo errado é inválido', async () => {
+    const withCancel = okBody({ subscriptions: [{ ...okBody().subscriptions[0], canceledAt: '2026-11-07T10:00:00Z', refundedAt: null }] });
+    const r = await client(vi.fn().mockResolvedValue(reply(200, withCancel))).fetchByCustomer(ID);
+    expect(r.ok && r.snapshot.subscriptions[0]).toMatchObject({ canceledAt: '2026-11-07T10:00:00Z', refundedAt: null });
+    expect(r.ok && 'chargedbackAt' in r.snapshot.subscriptions[0]!).toBe(false);
+    const bad = okBody({ subscriptions: [{ ...okBody().subscriptions[0], canceledAt: 1 }] });
+    expect(await client(vi.fn().mockResolvedValue(reply(200, bad))).fetchByCustomer(ID)).toMatchObject({ ok: false, reason: 'invalid_response' });
+  });
+
   it('lastSeq null aceito', async () => {
     const r = await client(vi.fn().mockResolvedValue(reply(200, okBody({ lastSeq: null })))).fetchByCustomer(ID);
     expect(r.ok && r.snapshot.lastSeq).toBeNull();

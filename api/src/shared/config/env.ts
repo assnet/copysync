@@ -233,6 +233,9 @@ const envSchema = z.object({
   // Pior caso da passada ≈ lote × timeout: manter abaixo do TTL do lease (100 × 5 s < 10 min).
   BILLING_RECONCILE_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
   BILLING_RECONCILE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
+  // Tolerância após o vencimento (banco retenta a cobrança): ACTIVE/TRIAL/PAYMENT_FAILED/EXPIRED seguem com acesso
+  // até expiresAt + N h. Não vale para cancelamento/estorno. Ver docs/arquitetura-central-billing.md.
+  BILLING_GRACE_HOURS: z.coerce.number().int().min(0).max(168).default(24),
 
   EMAIL_SENDER: z.enum(['noop', 'smtp', 'hub']).default('noop'),
   EMAIL_SMTP_URL: z.preprocess(

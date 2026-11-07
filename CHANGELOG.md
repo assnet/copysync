@@ -15,13 +15,13 @@ Docs: `docs/arquitetura-central-billing.md` (§Reconciliação: regras, envs, co
 
 #### api/
 
-- **`integrations/domain/services/subscriptionReconcile.ts`** (novo) + teste — regras puras: assinatura dá acesso (decisão do dono: CANCELED/PENDING_CANCELLATION até o `expiresAt`, REFUNDED corta), escolha do plano esperado e `decideReconcile` (aplica, suspende, stale, cliente desconhecido, plano desconhecido, suspenso por admin, no-op).
+- **`integrations/domain/services/subscriptionReconcile.ts`** (novo) + teste — regras puras: assinatura dá acesso (decisões do dono: ACTIVE/TRIAL/PAYMENT_FAILED/EXPIRED até `expiresAt` + `BILLING_GRACE_HOURS`; `deletedAt`/`canceledAt`/`refundedAt`/`chargedbackAt` ou CANCELED/REFUNDED cortam na hora), escolha do plano esperado e `decideReconcile` (aplica, suspende, stale, cliente desconhecido, plano desconhecido, suspenso por admin, no-op).
 - **`integrations/application/ports/IHubSubscriptionsClient.ts`**, **`IBillingReconcileRepository.ts`** (novos) — portas do cliente M2M e da persistência sob trava.
 - **`integrations/infrastructure/billing/HubSubscriptionsClient.ts`** (novo) + teste — `GET /integrations/subscriptions?externalUserId=` assinado (vetor oficial), timeout curto, sem retry, valida o corpo; nunca lança nem devolve corpo.
 - **`integrations/infrastructure/billing/PrismaBillingReconcileRepository.ts`** (novo) + teste de integração — lease, lote por `billingReconciledAt`, `FOR UPDATE` (mesma trava do webhook), aplica/suspende com AuditLog `BILLING_RECONCILE`, watermark só sobe.
 - **`integrations/billing/ReconcileSubscriptionsUseCase.ts`** + teste — `reconcileTenant` implementado (antes vazio); resumo por passada; `TENANT_SUSPENDED` após o commit da suspensão.
 - **`integrations/billing/syncPlanEntitlements.ts`** (novo) — entitlements do preset + `applyPlanSideEffects`, extraído do `ApplyBillingEventUseCase` e usado pelos dois caminhos.
-- **`shared/config/env.ts`** — `BILLING_RECONCILE_BATCH_SIZE` (100) e `BILLING_RECONCILE_HTTP_TIMEOUT_MS` (5000).
+- **`shared/config/env.ts`** — `BILLING_RECONCILE_BATCH_SIZE` (100), `BILLING_RECONCILE_HTTP_TIMEOUT_MS` (5000) e `BILLING_GRACE_HOURS` (24; tolerância após o vencimento).
 - **`prisma/migrations/20261107150000_add_tenant_billing_reconciled_at`** — `Tenant.billingReconciledAt` (nulo; rodízio do lote). Migration necessária (roda no boot).
 
 ### Fixed — api 0.71.0 — evento de corte cancelava cliente que renovou

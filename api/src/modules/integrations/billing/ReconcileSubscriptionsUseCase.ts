@@ -11,6 +11,8 @@ export interface ReconcileSubscriptionsConfig {
   /** Tenants por passada (lote limitado). */
   batchSize: number;
   leaseTtlMs: number;
+  /** Tolerância após o vencimento (`BILLING_GRACE_HOURS`). */
+  graceMs: number;
 }
 
 /** Resumo de uma passada; só contagens (nunca PII). */
@@ -92,7 +94,7 @@ export class ReconcileSubscriptionsUseCase {
     }
     const { snapshot } = result;
     const now = this.now();
-    const { decision, found } = await this.repo.reconcileLocked(candidate, (state) => decideReconcile(state, snapshot, now));
+    const { decision, found } = await this.repo.reconcileLocked(candidate, (state) => decideReconcile(state, snapshot, now, this.config.graceMs));
     if (!found) return;
 
     const lastSeq = snapshot.lastSeq?.toString() ?? null;

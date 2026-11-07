@@ -13,13 +13,21 @@ export interface HubSubscriptionsClientConfig {
 }
 
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';
+const isOptStr = (v: unknown): v is string | null | undefined => v === undefined || isStrOrNull(v);
 
 function parseSubscription(v: unknown): HubSubscription | null {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
   if (typeof o.id !== 'string' || !isStrOrNull(o.planSlug) || !isStrOrNull(o.billingStatus)
-    || !isStrOrNull(o.expiresAt) || !isStrOrNull(o.deletedAt)) return null;
-  return { id: o.id, planSlug: o.planSlug, billingStatus: o.billingStatus, expiresAt: o.expiresAt, deletedAt: o.deletedAt };
+    || !isStrOrNull(o.expiresAt) || !isStrOrNull(o.deletedAt)
+    || !isOptStr(o.canceledAt) || !isOptStr(o.refundedAt) || !isOptStr(o.chargedbackAt)) return null;
+  return {
+    id: o.id, planSlug: o.planSlug, billingStatus: o.billingStatus, expiresAt: o.expiresAt, deletedAt: o.deletedAt,
+    // Opcionais: a central ainda não expõe; presentes, cortam na hora
+    ...(o.canceledAt !== undefined && { canceledAt: o.canceledAt }),
+    ...(o.refundedAt !== undefined && { refundedAt: o.refundedAt }),
+    ...(o.chargedbackAt !== undefined && { chargedbackAt: o.chargedbackAt }),
+  };
 }
 
 /**

@@ -49,7 +49,7 @@ function harness(states: Record<string, LocalBillingState>, results: Record<stri
     fetchByCustomer: vi.fn(async (id: string) => results[id.slice(2)]!),
   };
   const notified: string[] = [];
-  const uc = new ReconcileSubscriptionsUseCase(client, repo, { batchSize: 10, leaseTtlMs: 1000 }, () => NOW, (id) => notified.push(id));
+  const uc = new ReconcileSubscriptionsUseCase(client, repo, { batchSize: 10, leaseTtlMs: 1000, graceMs: 24 * 3_600_000 }, () => NOW, (id) => notified.push(id));
   return { uc, repo, client, applied, marked, notified };
 }
 
@@ -82,24 +82,26 @@ describe('ReconcileSubscriptionsUseCase', () => {
     expect(states.t1.lastBillingEventSeq).toBe(9n);
   });
 
-  it('b) cancelado dentro do ciclo pago mantém acesso: no-op', async () => {
-    const h = harness({ t1: state() }, { t1: ok([sub({ billingStatus: 'CANCELED', expiresAt: '2026-11-20T00:00:00Z' })]) });
+  it('b) recorrência cancelada na Cakto (central segue ACTIVE) e vencida há 23 h: mantém', async () => {
+    const h = harness({ t1: state() }, { t1: ok([sub({ expiresAt: '2026-11-06T13:00:00Z' })]) });
     expect(await h.uc.execute()).toMatchObject({ corrected: 0, suspended: 0 });
   });
 
-  it('b) cancelado vencido e reembolso: suspende, sobe watermark e notifica após o commit', async () => {
-    const states = {
-      t1: state({ lastBillingEventSeq: 4n }),
-      t2: state(),
-    };
+  it('b) vencida há 25 h, cancelamento de admin (canceledAt) e reembolso: suspende na hora, watermark e notifica', async () => {
+    const states = { t1: state({ lastBillingEventSeq: 4n }), t2: state(), t3: state() };
     const h = harness(states, {
-      t1: ok([sub({ billingStatus: 'CANCELED', expiresAt: '2026-11-01T00:00:00Z' })], 8n),
-      t2: ok([sub({ billingStatus: 'REFUNDED', expiresAt: '2026-12-01T00:00:00Z' })]),
+      t1: ok([sub({ billingStatus: 'EXPIRED', expiresAt: '2026-11-06T11:00:00Z' })], 8n),
+      t2: ok([sub({ canceledAt: '2026-11-07T10:00:00Z', expiresAt: '2026-12-01T00:00:00Z' })]),
+      t3: ok([sub({ billingStatus: 'REFUNDED', expiresAt: '2026-12-01T00:00:00Z' })]),
     });
-    expect(await h.uc.execute()).toMatchObject({ suspended: 2, corrected: 0 });
+    expect(await h.uc.execute()).toMatchObject({ suspended: 3, corrected: 0 });
     expect(states.t1).toMatchObject({ status: 'SUSPENDED', lastBillingEventSeq: 8n });
-    expect(states.t2.status).toBe('SUSPENDED');
-    expect(h.notified).toEqual(['t1', 't2']);
+    expect(h.notified).toEqual(['t1', 't2', 't3']);
+  });
+
+  it('b) PAYMENT_FAILED dentro da tolerância: mantém', async () => {
+    const h = harness({ t1: state() }, { t1: ok([sub({ billingStatus: 'PAYMENT_FAILED', expiresAt: '2026-11-07T06:00:00Z' })]) });
+    expect(await h.uc.execute()).toMatchObject({ suspended: 0 });
   });
 
   it('b) central sem nenhuma assinatura (cliente desconhecido): não suspende', async () => {
