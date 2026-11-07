@@ -1,8 +1,8 @@
 # Extensão Chrome (MV3)
 
 Sincroniza a sessão de afiliado do Mercado Livre (cookies de identidade via `chrome.cookies`) com o
-painel, para o tenant gerar links de afiliado sem colar credenciais à mão. Sem content script, sem
-popup, sem login na extensão: o painel autentica e fala com ela por `externally_connectable`.
+painel, para o tenant gerar links de afiliado sem colar credenciais à mão. Só um content script (proxy do canal
+na origem do painel, para Orion), sem popup, sem login na extensão: o painel autentica e fala com ela por `externally_connectable`.
 
 - Arquitetura, canal e contrato com a API: [`../docs/extensao-navegador.md`](../docs/extensao-navegador.md)
 - Build de produção, chaves do CRX, zip de loja e textos da listagem:
@@ -97,7 +97,7 @@ release/                     .crx e .zip gerados (fora do git)
 - **Propagar texto cru da API** — erros viram `SyncErrorCode`.
 - **Nome de marca em identificadores** — só em `NAME_APP` e `_locales`.
 - **Editar `version`/`host_permissions`/`externally_connectable` no manifest** — vêm de `package.json` e `.env`.
-- **Permissão `tabs`/`scripting`/content script** — `check-dist` barra; `tabs` gera aviso "ler histórico".
+- **Permissão `tabs`/`scripting`/content script além do `panel-bridge.js`** — `check-dist` barra; `tabs` gera aviso "ler histórico".
 - **Trocar ou perder `.keys/extension-private.pem`** — muda o ID e quebra API, painel e instalações.
 - **Carregar `dist-store/` sem compactação** — sem `key` o Chrome deriva outro ID e o painel não acha a extensão.
 - **Commitar `.keys/*.pem`, `.env*`, `dist/`, `dist-store/`, `release/`, `*.crx`, `*.zip`.**

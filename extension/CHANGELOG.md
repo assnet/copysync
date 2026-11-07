@@ -6,6 +6,7 @@
 
 ### Added
 
+- **`content/panelBridge.ts`** + **`content/index.ts`** (`panel-bridge.js`) — proxy do canal para navegador sem `externally_connectable` (Orion): `window.postMessage` ⇄ content script na origem do painel ⇄ `chrome.runtime.sendMessage` ⇄ worker, mesmo envelope. Valida `source`, origem exata (`core/panelOrigin.ts`), formato e id endereçado; só o envelope de resposta volta à página. `background/channel/proxy.ts` revalida remetente/origem e usa a mesma `handleMessage`. Manifest ganha `content_scripts` nas mesmas origens do `externally_connectable` (já em `host_permissions`: sem aviso de permissão novo).
 - **`store.ts`** — `ensureInstallation()`: get-or-create single-flight (`crypto.randomUUID()`, `extensionId: chrome.runtime.id`) usado por boot, onInstalled, lifecycle e handshake; nunca gera dois `installationId`. Slot `lifecyclePending` para o INSTALL que falhou.
 - **`uninstallUrl.ts`** — `buildUninstallUrl(panelUrl, installationId, extensionId, version)` pura: `<panel>/extension-removed?i=&e=&v=` via `URL`/`URLSearchParams`; `null` com painel vazio/inválido ou acima de 1023 chars (limite do Chrome).
 - **`panelTab.ts`** — busca da aba do painel por URL (host_permissions, sem `tabs`) extraída do `index.ts`; `focusPanelTabIfOpen()` foca a aba do painel na primeira instalação, sem abrir aba nova.

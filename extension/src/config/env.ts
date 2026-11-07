@@ -16,6 +16,13 @@ export const env = {
   panelUrl: trimSlash((process.env.PANEL_URL ?? '').trim()),
   /** `true` só no build de desenvolvimento. */
   isDev: process.env.DEV === 'true',
+  /**
+   * Origens extras do painel (`DEV_ORIGINS`), SÓ no build dev. Em produção o ramo é
+   * constante falsa e o Terser o elimina: nada de localhost no bundle (`check-dist`).
+   */
+  devOrigins: process.env.DEV === 'true'
+    ? (process.env.DEV_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+    : ([] as string[]),
   /** Período do alarme de renovação da sessão do marketplace. */
   sessionSyncIntervalMinutes: Math.max(
     1,
