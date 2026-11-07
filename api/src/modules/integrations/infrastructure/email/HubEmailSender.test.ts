@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildM2MCanonical, signM2MCanonical } from '../../../../shared/http/m2m/m2mSignature';
 import { HubEmailSender } from './HubEmailSender';
-import { toHubEmailBody } from './hubEmailMapping';
+import { toHubEmailBody, toHubLocale } from './hubEmailMapping';
 
 const config = { hubUrl: 'https://hub.example.com', applicationKey: 'copysync', secret: 'm2m-secret' };
 const NOW = Date.parse('2026-11-06T12:00:00Z');
@@ -17,16 +17,23 @@ function sender(fetchFn: ReturnType<typeof vi.fn>, hubUrl = config.hubUrl) {
 }
 
 describe('toHubEmailBody', () => {
-  it('SET_PASSWORD: link → setPasswordUrl, expiresAt → expiresInHours', () => {
+  it('SET_PASSWORD: link → setPasswordUrl, expiresAt → expiresInHours, locale padrão pt-BR', () => {
     expect(toHubEmailBody(setPassword, NOW)).toEqual({
-      template: 'SET_PASSWORD', to: 'ana@example.com',
+      template: 'SET_PASSWORD', to: 'ana@example.com', locale: 'pt-BR',
       vars: { name: 'Ana', setPasswordUrl: 'https://app.example.com/invite/tok', expiresInHours: 168 },
     });
   });
 
-  it('TEAM_INVITE: link → inviteUrl, tenantName → workspaceName, locale repassado', () => {
-    const body = toHubEmailBody({ to: 'b@example.com', template: 'TEAM_INVITE', locale: 'pt-BR', data: { link: 'https://x/i', tenantName: 'Loja', expiresAt: '2026-11-07T12:00:00Z' } }, NOW);
-    expect(body).toEqual({ template: 'TEAM_INVITE', to: 'b@example.com', locale: 'pt-BR', vars: { inviteUrl: 'https://x/i', workspaceName: 'Loja', expiresInHours: 24 } });
+  it('TEAM_INVITE: link → inviteUrl, tenantName → workspaceName, inviterName repassado, locale repassado', () => {
+    const body = toHubEmailBody({ to: 'b@example.com', template: 'TEAM_INVITE', locale: 'es', data: { link: 'https://x/i', tenantName: 'Loja', inviterName: 'Bia', expiresAt: '2026-11-07T12:00:00Z' } }, NOW);
+    expect(body).toEqual({ template: 'TEAM_INVITE', to: 'b@example.com', locale: 'es', vars: { inviteUrl: 'https://x/i', workspaceName: 'Loja', inviterName: 'Bia', expiresInHours: 24 } });
+  });
+
+  it('toHubLocale: pt_BR → pt-BR; ausente ou inválido → pt-BR', () => {
+    expect(toHubLocale('pt_BR')).toBe('pt-BR');
+    expect(toHubLocale('en')).toBe('en');
+    expect(toHubLocale(undefined)).toBe('pt-BR');
+    expect(toHubLocale('pt-BR; DROP')).toBe('pt-BR');
   });
 
   it('SESSION_DISCONNECTED: link → reconnectUrl', () => {
@@ -99,6 +106,20 @@ describe('HubEmailSender', () => {
     const { s } = sender(fetchFn);
     await expect(s.send(setPassword)).resolves.toEqual({ sent: false });
     expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['/invite/tok', 'http://app.example.com/invite/tok'])('link não https absoluto (%s) não chama a central', async (link) => {
+    const fetchFn = vi.fn();
+    const { s } = sender(fetchFn);
+    await expect(s.send({ ...setPassword, data: { ...setPassword.data, link } })).resolves.toEqual({ sent: false });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('corpo enviado leva locale', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(reply(202, { id: 'e1' }));
+    const { s } = sender(fetchFn);
+    await s.send(setPassword);
+    expect(JSON.parse((fetchFn.mock.calls[0] as [string, RequestInit])[1].body as string).locale).toBe('pt-BR');
   });
 
   it('template sem equivalente não chama a central', async () => {

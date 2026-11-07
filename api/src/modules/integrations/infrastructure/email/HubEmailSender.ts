@@ -1,7 +1,7 @@
 import { logger } from '../../../../shared/logger/logger';
 import { signM2MRequest } from '../../../../shared/http/m2m/m2mSignature';
 import type { IEmailSender, SendEmailInput, SendEmailResult } from '../../domain/contracts/IEmailSender';
-import { toHubEmailBody } from './hubEmailMapping';
+import { HUB_LINK_VARS, isAbsoluteHttpsUrl, toHubEmailBody } from './hubEmailMapping';
 
 const log = logger.child({ module: 'HubEmailSender' });
 
@@ -51,6 +51,12 @@ export class HubEmailSender implements IEmailSender {
     const body = toHubEmailBody(input);
     if (!body) {
       log.warn({ template: input.template }, 'Email template has no hub equivalent; not sent');
+      return { sent: false };
+    }
+    // Link relativo/http seria 400 na central: não chama e avisa (PANEL_URL ausente ou sem https)
+    const badLink = HUB_LINK_VARS.find((k) => k in body.vars && !isAbsoluteHttpsUrl(body.vars[k]));
+    if (badLink) {
+      log.error({ template: body.template, var: badLink }, 'Email link is not an absolute https URL (check PANEL_URL); not sent');
       return { sent: false };
     }
     const raw = JSON.stringify(body);

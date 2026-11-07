@@ -399,6 +399,17 @@ function linkRotationSecrets(e: z.infer<typeof envSchema>) {
 
 export type Env = z.infer<typeof envWithDerivedSchema>;
 
+/**
+ * `EMAIL_SENDER=hub` monta links do e-mail com `PANEL_URL`; a central só aceita URL absoluta https.
+ * Devolve o problema (texto para log) ou `null`. Pura: o boot de produção lança com ela.
+ */
+export function hubEmailPanelUrlIssue(e: { EMAIL_SENDER: string; PANEL_URL?: string }): string | null {
+  if (e.EMAIL_SENDER !== 'hub') return null;
+  if (!e.PANEL_URL) return 'EMAIL_SENDER=hub requires PANEL_URL (absolute https) to build email links';
+  if (new URL(e.PANEL_URL).protocol !== 'https:') return 'EMAIL_SENDER=hub requires PANEL_URL with https';
+  return null;
+}
+
 /** Valida um conjunto de variáveis sem efeito colateral (o `env` do processo usa a mesma). */
 export function parseEnv(source: NodeJS.ProcessEnv) {
   return envWithDerivedSchema.safeParse(source);
@@ -417,6 +428,9 @@ function loadEnv(): Env {
   const data = result.data;
 
   if (data.NODE_ENV === 'production') {
+    // Falha cedo: sem isso todo e-mail sairia com link relativo e a central devolveria 400
+    const emailIssue = hubEmailPanelUrlIssue(data);
+    if (emailIssue) throw new Error(`Invalid environment variables:\n  [PANEL_URL] ${emailIssue}`);
     const missing: string[] = [];
     if (!data.PANEL_URL) missing.push('PANEL_URL');
     if (!data.CORS_ORIGIN || data.CORS_ORIGIN.trim() === '' || data.CORS_ORIGIN.trim() === '*') missing.push('CORS_ORIGIN (explicit, not empty/*)');

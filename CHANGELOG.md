@@ -31,6 +31,14 @@ Doc: `docs/arquitetura-central-billing.md` (§E-mail pela central), `docs/planos
 - **`SubscriptionPlanCard.tsx`** — CTA abre a oferta mensal do plano atual.
 - **`subscription/strings.ts`**, **`api.types.ts`** — slugs novos.
 
+### Fixed — api 0.67.0 — e-mail pela central: idioma, convite e links absolutos
+
+- **`hubEmailMapping.ts`** — `locale` sempre enviado (`pt-BR` por padrão; `pt_BR` → `pt-BR`): sem ele a central mandava em inglês. O CopySync não guarda idioma por usuário/tenant.
+- **`InviteUserUseCase.ts`**, **`provisioning.routes.ts`** — `TEAM_INVITE` leva `tenantName` (→ `workspaceName`) e `inviterName` quando conhecidos (antes só link e validade).
+- **`HubEmailSender.ts`** — link (`setPasswordUrl`/`inviteUrl`/`reconnectUrl`) que não seja https absoluto não chama a central (seria 400); log com a var.
+- **`env.ts`** (`hubEmailPanelUrlIssue`), **`EmailSenderFactory.ts`** — produção com `EMAIL_SENDER=hub` sem `PANEL_URL` https não sobe; fora de produção só log.
+- Testes: `HubEmailSender.test.ts`, `InviteUserUseCase.test.ts`, `env.hubEmail.test.ts`.
+
 ### Fixed — api 0.67.0 — assinatura da saída para a central
 
 - **`hmacSigner.ts`** — `X-Timestamp` saía em ISO e a assinatura sem `sha256=`; agora delega ao assinador M2M (segundos, query ordenada, prefixo). O receiver do webhook (`verifyBillingHmac.ts`) não muda.

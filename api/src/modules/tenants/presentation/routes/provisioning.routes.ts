@@ -186,6 +186,7 @@ export async function provisioningRoutes(app: FastifyInstance): Promise<void> {
         new PrismaUserInviteRepository(),
         new PrismaAuditLogRepository(),
         emailSender,
+        new PrismaTenantRepository(),
       );
 
       const result = await useCase.execute({

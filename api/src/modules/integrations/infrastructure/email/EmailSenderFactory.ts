@@ -2,6 +2,7 @@ import { env } from '../../../../shared/config/env';
 import { logger } from '../../../../shared/logger/logger';
 import type { IEmailSender } from '../../domain/contracts/IEmailSender';
 import { HubEmailSender } from './HubEmailSender';
+import { isAbsoluteHttpsUrl } from './hubEmailMapping';
 import { NoopEmailSender } from './NoopEmailSender';
 import { SmtpEmailSender } from './SmtpEmailSender';
 
@@ -16,6 +17,8 @@ export interface EmailSenderOptions {
   hubUrl?: string;
   hubApplicationKey?: string;
   hubSecret?: string;
+  /** Base dos links do e-mail; no modo hub precisa ser absoluta https (produção já falha no boot). */
+  panelUrl?: string;
 }
 
 export function createEmailSender(opts: EmailSenderOptions): IEmailSender {
@@ -32,6 +35,9 @@ export function createEmailSender(opts: EmailSenderOptions): IEmailSender {
         // Não lança: o provisionamento inteiro responderia 500. Em produção o guard do webhook já bloqueia.
         log.error('EMAIL_SENDER=hub requires HUB_API_URL, HUB_APPLICATION_KEY and HUB_M2M_SECRET; using noop');
         return new NoopEmailSender();
+      }
+      if (!isAbsoluteHttpsUrl(opts.panelUrl)) {
+        log.error('EMAIL_SENDER=hub without absolute https PANEL_URL; emails with links will not be sent');
       }
       return new HubEmailSender({ hubUrl: opts.hubUrl, applicationKey: opts.hubApplicationKey, secret: opts.hubSecret });
     case 'noop':
@@ -50,5 +56,6 @@ export function createEmailSenderFromEnv(): IEmailSender {
     hubUrl: env.HUB_API_URL,
     hubApplicationKey: env.HUB_APPLICATION_KEY,
     hubSecret: env.HUB_M2M_SECRET,
+    panelUrl: env.PANEL_URL,
   });
 }

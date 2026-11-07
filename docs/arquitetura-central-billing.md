@@ -90,7 +90,7 @@ validar que `planSlug` e permissão batem; divergência = `AuditLog`, preset ven
 
 Link "defina sua senha": token gerado **pelo CopySync** (`UserInvite.tokenHash`, design §10); a central só envia o e-mail com o
 link pronto. O CopySync monta `data: { name, link, expiresAt }` (`ProvisionTenantUseCase.ts`); o `HubEmailSender` mapeia para
-`{ template: 'SET_PASSWORD', to, vars: { name, setPasswordUrl, expiresInHours } }` (seção abaixo).
+`{ template: 'SET_PASSWORD', to, locale, vars: { name, setPasswordUrl, expiresInHours } }` (seção abaixo).
 `permissions[]` do evento ainda **não é lido** pelo receiver (nem validado, nem auditado).
 
 ## E-mail pela central (`HubEmailSender`)
@@ -108,6 +108,13 @@ Faltando qualquer um, a fábrica usa noop (log `error`) e, em produção com bil
   `SESSION_DISCONNECTED` (`link`→`reconnectUrl`); `expiresAt` vira `expiresInHours`. Só chaves da allowlist da central
   (`email-vars.ts` dela; chave a mais = 400), só string/number/boolean, `<`/`>` removidos. Marca/suporte/links do painel
   são chaves de sistema da central: nunca enviar. Template sem equivalente: não chama, `sent:false`.
+- **Idioma**: `locale` sempre vai (`toHubLocale`): o de `IEmailSender.send` em tag (`pt_BR` → `pt-BR`) ou `pt-BR` se
+  ausente/inválido. Sem `locale` a central cai em inglês. Não há idioma salvo por usuário/tenant hoje.
+- **Convite (`TEAM_INVITE`)**: `InviteUserUseCase` manda `tenantName` (→ `workspaceName`) e `inviterName` (nome de
+  `invitedById`) quando conhecidos; ausente = omitido (a central usa texto neutro). `SET_PASSWORD` leva `name` do dono.
+- **Links**: `setPasswordUrl`/`inviteUrl`/`reconnectUrl` precisam ser https absolutos (relativo = 400 na central). Base é
+  `PANEL_URL`: produção com `EMAIL_SENDER=hub` sem `PANEL_URL` https **não sobe** (`hubEmailPanelUrlIssue` em `env.ts`);
+  fora de produção a fábrica só loga. Link inválido no envio: não chama a central, `sent:false`.
 - **Respostas**: 2xx (`202 QUEUED`) = `sent:true`. 4xx (400/401/403/409/429) = `sent:false`, sem retry. 5xx, rede ou
   timeout (5 s) = até 3 tentativas (300 ms, 1 s), cada uma com nonce/timestamp novos (senão 409).
 - **Log**: só template, status, `code` da central (`[A-Z0-9_]`) e id; nunca destinatário, vars, corpo ou segredo.

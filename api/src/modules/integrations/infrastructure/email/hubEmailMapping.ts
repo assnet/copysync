@@ -7,7 +7,7 @@ export type HubEmailVar = string | number | boolean;
 export interface HubEmailBody {
   template: HubEmailTemplate;
   to: string;
-  locale?: string;
+  locale: string;
   vars: Record<string, HubEmailVar>;
 }
 
@@ -27,6 +27,34 @@ const INTERNAL_TEMPLATES: Record<string, { template: HubEmailTemplate; rename: R
   TEAM_INVITE: { template: 'TEAM_INVITE', rename: { link: 'inviteUrl', tenantName: 'workspaceName' } },
   SESSION_DISCONNECTED: { template: 'SESSION_DISCONNECTED', rename: { link: 'reconnectUrl' } },
 };
+
+/**
+ * Idioma padrão do e-mail: o CopySync não guarda idioma por usuário/tenant e o painel nasce em pt-BR.
+ * Sem `locale` a central cai em inglês, então sempre enviamos um.
+ */
+export const DEFAULT_EMAIL_LOCALE = 'pt-BR';
+
+/** Mesmo formato que a central aceita (`pt-BR`, `pt_BR`, `en`, `es`…). */
+const LOCALE_FORMAT = /^[A-Za-z]{2,3}(?:[_-][A-Za-z0-9]{2,8})?$/;
+
+/** Locale do destinatário em tag BCP 47 (`pt_BR` → `pt-BR`); ausente/inválido → `DEFAULT_EMAIL_LOCALE`. */
+export function toHubLocale(raw: string | undefined): string {
+  const tag = raw?.trim() ?? '';
+  return LOCALE_FORMAT.test(tag) ? tag.replace('_', '-') : DEFAULT_EMAIL_LOCALE;
+}
+
+/** Vars de link: a central exige URL absoluta https (relativa = 400). */
+export const HUB_LINK_VARS: readonly string[] = ['setPasswordUrl', 'inviteUrl', 'reconnectUrl'];
+
+/** `true` se a URL é absoluta com esquema https. */
+export function isAbsoluteHttpsUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 /** `expiresAt` ISO → horas inteiras restantes (mín. 1); inválido = ausente. */
 function hoursUntil(iso: unknown, nowMs: number): number | undefined {
@@ -64,7 +92,5 @@ export function toHubEmailBody(input: SendEmailInput, nowMs: number = Date.now()
     if (value !== undefined) vars[name] = value;
   }
 
-  const body: HubEmailBody = { template: spec.template, to: input.to, vars };
-  if (input.locale) body.locale = input.locale;
-  return body;
+  return { template: spec.template, to: input.to, locale: toHubLocale(input.locale), vars };
 }
