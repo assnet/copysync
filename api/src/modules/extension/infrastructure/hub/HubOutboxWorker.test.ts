@@ -5,7 +5,7 @@ import type { IHubOutboxRepository, OutboxHeadEvent } from '../../domain/contrac
 vi.mock('./hmacSigner', () => ({
   signHubRequest: vi.fn().mockReturnValue({
     'X-Application-Key': 'key',
-    'X-Timestamp': '2026-01-01T00:00:00.000Z',
+    'X-Timestamp': '1767225600',
     'X-Nonce': 'nonce-1',
     'X-Signature': 'sig-1',
   }),

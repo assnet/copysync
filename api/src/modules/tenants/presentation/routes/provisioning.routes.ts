@@ -9,8 +9,7 @@ import { PrismaTenantRepository } from '../../infrastructure/repositories/Prisma
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 import { PrismaUserInviteRepository } from '../../../users/infrastructure/repositories/PrismaUserInviteRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
-import { createEmailSender } from '../../../integrations/infrastructure/email/EmailSenderFactory';
-import { env } from '../../../../shared/config/env';
+import { createEmailSenderFromEnv } from '../../../integrations/infrastructure/email/EmailSenderFactory';
 import type { TenantStatus } from '../../domain/entities/Tenant';
 
 export async function provisioningRoutes(app: FastifyInstance): Promise<void> {
@@ -72,7 +71,7 @@ export async function provisioningRoutes(app: FastifyInstance): Promise<void> {
         planSlug?: string;
       };
 
-      const emailSender = createEmailSender({ mode: env.EMAIL_SENDER, smtpUrl: env.EMAIL_SMTP_URL, from: env.EMAIL_FROM });
+      const emailSender = createEmailSenderFromEnv();
       const useCase = new ProvisionTenantUseCase(emailSender);
       const result = await useCase.execute({
         ...body,
@@ -181,12 +180,13 @@ export async function provisioningRoutes(app: FastifyInstance): Promise<void> {
       const { id } = request.params as { id: string };
       const body = request.body as { email: string; role?: 'ADMIN' | 'OPERATOR' };
 
-      const emailSender = createEmailSender({ mode: env.EMAIL_SENDER, smtpUrl: env.EMAIL_SMTP_URL, from: env.EMAIL_FROM });
+      const emailSender = createEmailSenderFromEnv();
       const useCase = new InviteUserUseCase(
         new PrismaUserRepository(),
         new PrismaUserInviteRepository(),
         new PrismaAuditLogRepository(),
         emailSender,
+        new PrismaTenantRepository(),
       );
 
       const result = await useCase.execute({

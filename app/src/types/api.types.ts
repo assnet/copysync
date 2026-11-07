@@ -772,7 +772,7 @@ export interface BroadcastGroupsResponse {
 // ── Assinatura (GET /subscription) ────────────────────────────────────────────
 
 export type SubscriptionStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
-export type SubscriptionPlanSlug = 'starter' | 'profissional' | 'business';
+export type SubscriptionPlanSlug = 'lite' | 'pro' | 'max';
 export type SubscriptionLimitChannel = 'whatsapp' | 'telegram';
 /** `count` = total atual; `daily` = uso de hoje; `feature` = recurso liga/desliga. */
 export type SubscriptionLimitKind = 'count' | 'daily' | 'feature';

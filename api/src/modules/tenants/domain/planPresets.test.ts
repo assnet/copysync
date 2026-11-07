@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_PRESETS, planPresetRows } from './planPresets';
+import { PLAN_PRESETS, planPresetRows, resolvePlanSlug } from './planPresets';
 import { ENTITLEMENT_KEYS as K } from './entitlementKeys';
 
 /** Mesmos números da vitrine (`app/src/features/plans/catalog.ts` → `limits`) e do roadmap. Mudou lá, muda aqui. */
@@ -57,5 +57,22 @@ describe('PLAN_PRESETS', () => {
       ['COPYSYNC_PRO', 20],
       ['COPYSYNC_MAX', null],
     ]);
+  });
+});
+
+describe('resolvePlanSlug', () => {
+  it('6 slugs de oferta da central resolvem o tier (mensal = anual)', () => {
+    for (const [tier, slug] of [['lite', 'COPYSYNC_LITE'], ['pro', 'COPYSYNC_PRO'], ['max', 'COPYSYNC_MAX']] as const) {
+      expect(resolvePlanSlug(`copysync-${tier}-mensal`)).toBe(slug);
+      expect(resolvePlanSlug(`copysync-${tier}-anual`)).toBe(slug);
+    }
+  });
+
+  it('aceita o slug interno e rejeita desconhecido/antigo da vitrine', () => {
+    expect(resolvePlanSlug('COPYSYNC_PRO')).toBe('COPYSYNC_PRO');
+    expect(resolvePlanSlug('COPYSYNC-MAX-ANUAL')).toBe('COPYSYNC_MAX');
+    for (const raw of ['starter', 'copysync-starter-mensal', 'copysync-pro-semestral', 'gold', '', null, undefined]) {
+      expect(resolvePlanSlug(raw)).toBeNull();
+    }
   });
 });

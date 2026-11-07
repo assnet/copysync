@@ -57,14 +57,14 @@ const CATALOG_FIELD: Partial<Record<SubscriptionLimitKey, CatalogLimitField>> = 
 };
 
 const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
-  mention_all_enabled: 'profissional',
-  storefront_enabled: 'profissional',
-  cross_session_dispatch: 'business',
-  offer_story_enabled: 'business',
-  marketplace_extension: 'starter',
-  ai_rewrite_enabled: 'starter',
-  offer_generations_per_day: 'starter',
-  ai_requests_per_day: 'starter',
+  mention_all_enabled: 'pro',
+  storefront_enabled: 'pro',
+  cross_session_dispatch: 'max',
+  offer_story_enabled: 'max',
+  marketplace_extension: 'lite',
+  ai_rewrite_enabled: 'lite',
+  offer_generations_per_day: 'lite',
+  ai_requests_per_day: 'lite',
 };
 
 /** Menor plano do catálogo que libera a chave, ou `null` se nenhum libera. */
@@ -118,7 +118,7 @@ export const subscriptionStrings = {
     label: 'Ver planos e assinar',
     /** Leitor de tela: o link abre outra aba. */
     newTab: 'Ver planos e assinar (abre em nova aba)',
-    tooltip: 'Compare os planos e conclua a assinatura numa página segura.',
+    tooltip: 'Conclua a assinatura do seu plano na página de pagamento segura.',
     /** OPERATOR não assina (D4). */
     operatorHint: 'Para mudar de plano, fale com o administrador da conta.',
   },

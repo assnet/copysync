@@ -239,6 +239,20 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().optional(),
   ),
+  // E-mail transacional pela central (EMAIL_SENDER=hub): POST {HUB_API_URL}/integrations/email/send, assinatura M2M.
+  // Segredo só aqui (env da Render); nunca logar. Ver docs/arquitetura-central-billing.md §E-mail.
+  HUB_API_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+  HUB_APPLICATION_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
+  HUB_M2M_SECRET: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional(),
+  ),
   PANEL_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional(),
@@ -372,6 +386,7 @@ const envWithDerivedSchema = envSchema.superRefine((e, ctx) => {
     .split(',')
     .map((s: string) => s.trim())
     .filter(Boolean),
+  HUB_EMAIL_CONFIGURED: !!(e.HUB_API_URL && e.HUB_APPLICATION_KEY && e.HUB_M2M_SECRET),
   HUB_EVENTS_CONFIGURED: !!(e.HUB_EVENTS_URL && e.HUB_EVENTS_APPLICATION_KEY && e.HUB_EVENTS_SECRET),
   ...linkRotationSecrets(e),
 }));
@@ -383,6 +398,18 @@ function linkRotationSecrets(e: z.infer<typeof envSchema>) {
 }
 
 export type Env = z.infer<typeof envWithDerivedSchema>;
+
+/**
+ * `EMAIL_SENDER=hub` monta links do e-mail com `PANEL_URL`; a central só aceita URL absoluta https.
+ * Devolve o problema (texto para log) ou `null`. Pura: o boot de produção lança com ela.
+ */
+export function hubEmailPanelUrlIssue(e: { EMAIL_SENDER: string; PANEL_URL?: string; HUB_API_URL?: string }): string | null {
+  if (e.EMAIL_SENDER !== 'hub') return null;
+  if (!e.PANEL_URL) return 'EMAIL_SENDER=hub requires PANEL_URL (absolute https) to build email links';
+  if (new URL(e.PANEL_URL).protocol !== 'https:') return 'EMAIL_SENDER=hub requires PANEL_URL with https';
+  if (e.HUB_API_URL && new URL(e.HUB_API_URL).protocol !== 'https:') return 'EMAIL_SENDER=hub requires HUB_API_URL with https';
+  return null;
+}
 
 /** Valida um conjunto de variáveis sem efeito colateral (o `env` do processo usa a mesma). */
 export function parseEnv(source: NodeJS.ProcessEnv) {
@@ -402,6 +429,9 @@ function loadEnv(): Env {
   const data = result.data;
 
   if (data.NODE_ENV === 'production') {
+    // Falha cedo: sem isso todo e-mail sairia com link relativo e a central devolveria 400
+    const emailIssue = hubEmailPanelUrlIssue(data);
+    if (emailIssue) throw new Error(`Invalid environment variables:\n  [PANEL_URL] ${emailIssue}`);
     const missing: string[] = [];
     if (!data.PANEL_URL) missing.push('PANEL_URL');
     if (!data.CORS_ORIGIN || data.CORS_ORIGIN.trim() === '' || data.CORS_ORIGIN.trim() === '*') missing.push('CORS_ORIGIN (explicit, not empty/*)');

@@ -80,10 +80,20 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
   Preço anual = `priceAnnualMonthly` por plano (≈ −20%, arredondado: 77/133/197). **Provisório** até o owner fixar o
   valor; mudar só no `catalog.ts` e em `ANNUAL_DISCOUNT` (selo do toggle).
 
+## Links de pagamento (app 0.86.0)
+
+- Slugs da vitrine: `lite | pro | max` (antes `starter | profissional | business`); nomes exibidos seguem LITE/PRO/MAX.
+- Cada plano tem `checkoutUrls: { monthly, annual }` em `catalog.ts`: URL da oferta da Cakto (texto de vitrine, como
+  o preço; nunca no banco nem em env). `buildCheckoutUrl(slug, period, search)` (`checkout.ts`) lê dali e repassa
+  `utm_*`/`gclid`/`fbclid`. "Assinar" abre em nova aba (`target="_blank"`, `rel="noopener noreferrer"`), período do toggle.
+- A Cakto avisa a central, que manda ao CopySync o webhook com `planSlug = copysync-{lite|pro|max}-{mensal|anual}`;
+  `resolvePlanSlug` (`api/.../tenants/domain/planPresets.ts`) leva os 6 ao preset do tier (mensal = anual).
+- Trocou oferta na Cakto: mudar só `checkoutUrls` e o teste `checkout.test.ts`.
+
 ## Pendências (fora deste entregável)
 
 1. `planSlug` no `GET /me` → destacar plano atual (card e chip no menu). Spec T1.
-2. `VITE_BILLING_CHECKOUT_URL` + `buildCheckoutUrl(slug, period, search)` → botão sai do `#`. Spec T3/T10. As 6 ofertas da Cakto já existem (2026-11-06, tabela em [`plano-lancamento-hub-copysync.md`](plano-lancamento-hub-copysync.md#ofertas-do-copysync-na-cakto)); recomendação: botão direto para a URL da oferta por plano e período, sem `/planos/...` na central. Só ligar depois do H3 (webhook da aplicação).
+2. ~~Botão sai do `#`.~~ Feito (app 0.86.0): ver "Links de pagamento" acima.
 3. `VITE_SUPPORT_WHATSAPP_NUMBER` → CTA de suporte quando checkout ausente. Spec T3.
 4. Confirmar preço anual por plano (hoje ≈ −20% arredondado) e se o "de" riscado no anual mostra o mensal (atual) ou o preço cheio.
 5. ~~Teste de consistência dos `limits` do catálogo com o seed de `PlanEntitlementPreset`.~~ Feito (api 0.42.0): `tenants/domain/planPresets.ts` + `planPresets.test.ts` travam os números da vitrine; o seed lê de lá. Gestor de Links por canal: ver "Limites por canal" acima e `rodizio-de-links.md`.
@@ -93,5 +103,6 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 - Não calcular preço nem gravar preço no banco; não chamar a central do navegador.
 - Não usar hex fixo nos cards: `theme.palette` + `alpha()`.
 - Não criar segundo catálogo (LP, extensão): a vitrine do painel é `catalog.ts`.
+- Não voltar a montar link de checkout por env ou por `/planos/...` da central: o link é o do catálogo.
 - Não mostrar a tabela do roadmap com emoji: ícones Lucide via `AppIcon`.
 - Não repetir limites de canal em `benefits` nem escrever "Telegram não incluso": a tabela de canais cobre os dois.

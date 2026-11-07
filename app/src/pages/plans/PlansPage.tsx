@@ -2,11 +2,11 @@ import { Box, Grid, Typography } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader, SwipeCards } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { PLAN_CATALOG, PlanCard, PlansFeatureNotice, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod } from '@/features/plans';
+import { PLAN_CATALOG, PlanCard, buildCheckoutUrl, PlansFeatureNotice, PlansHero, PlansTrustStrip, plansStrings as t, type BillingPeriod } from '@/features/plans';
 
 /**
- * Vitrine de planos. Só visual por enquanto: o botão aponta para `#` até o checkout da central
- * existir (ver docs/planos.md). Sem dado sensível: não precisa de flag de privacidade.
+ * Vitrine de planos. "Assinar" abre o pagamento do gateway do plano×período em nova aba
+ * (`checkoutUrls` do catálogo; ver docs/planos.md). Sem dado sensível: não precisa de flag de privacidade.
  */
 export function PlansPage() {
   // Anual é o padrão (como no Pulso); a escolha sobrevive a reload na aba
@@ -28,7 +28,7 @@ export function PlansPage() {
           items={PLAN_CATALOG.map((plan) => ({
             key: plan.slug,
             label: plan.name,
-            content: <PlanCard plan={plan} period={period} checkoutHref="#" />,
+            content: <PlanCard plan={plan} period={period} checkoutHref={buildCheckoutUrl(plan.slug, period, searchParams.toString()) ?? plan.checkoutUrls[period]} />,
           }))}
           renderGrid={(items) => (
             <Grid container spacing={2.5} alignItems="stretch" sx={{ mt: 2 }}>

@@ -1,13 +1,14 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/database/prisma.client';
-import { env } from '../../../shared/config/env';
 import { logger } from '../../../shared/logger/logger';
 import { internalEventBus } from '../../../shared/events/InternalEventBus';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
-import { PLAN_SLUGS, type PlanSlug } from '../../tenants/domain/planPresets';
+import { resolvePlanSlug, type PlanSlug } from '../../tenants/domain/planPresets';
 import type { ProvisionTenantInput, ProvisionTenantOutput } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { ProvisionTenantUseCase } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
-import { createEmailSender } from '../infrastructure/email/EmailSenderFactory';
+import { normalizeEmail } from '../../../shared/utils/normalizeEmail';
+import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
+import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFactory';
 import { applyPlanSideEffects } from './applyPlanSideEffects';
 import { entitlementJsonValue } from './entitlementJsonValue';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
@@ -78,6 +79,14 @@ interface LockedTenantRow {
   lastBillingEventSeq: bigint | null;
 }
 
+/** Tenant existente (criado sem `billingCustomerId`) que recebe o cliente da central pelo e-mail do dono. */
+interface LinkCandidate {
+  tenantId: string;
+  ownerUserId: string;
+}
+
+type ProvisionDecision = { reason: UnprovisionableReason } | { link: LinkCandidate | null };
+
 /* ------------------------------------------------------------------ */
 /*  Regras do contrato                                                 */
 /* ------------------------------------------------------------------ */
@@ -112,17 +121,20 @@ export class ApplyBillingEventUseCase {
     const type = isBillingEventType(input.eventType) ? input.eventType : null;
     const planSlug = this.resolvePlanSlug(input);
 
+    let link: LinkCandidate | null = null;
     if (type === 'subscription.activated') {
-      const reason = await this.provisionIfUnknown(input, planSlug);
-      if (reason) {
+      const decision = await this.provisionIfUnknown(input, planSlug);
+      if ('reason' in decision) {
+        const { reason } = decision;
         log.error({ eventId, externalUserId: billingCustomerId, reason }, 'Billing activation cannot provision tenant; receipt not written so the hub retries');
         return { outcome: 'UNPROVISIONABLE', reason };
       }
+      link = decision.link;
     }
 
     let result: TxResult;
     try {
-      result = await prisma.$transaction((tx) => this.applyInTx(tx, input, type, planSlug), TX_OPTIONS);
+      result = await prisma.$transaction((tx) => this.applyInTx(tx, input, type, planSlug, link), TX_OPTIONS);
     } catch (err) {
       // Mesmo eventId gravado por requisição concorrente: a unique do recibo decide
       if (isUniqueViolation(err) && (await prisma.billingEventReceipt.findUnique({ where: { eventId } }))) {
@@ -143,25 +155,32 @@ export class ApplyBillingEventUseCase {
   private resolvePlanSlug(input: ApplyBillingEventInput): PlanSlug | null {
     const raw = input.payload.planSlug;
     if (raw == null || raw === '') return null;
-    if ((PLAN_SLUGS as readonly string[]).includes(raw)) return raw as PlanSlug;
+    const slug = resolvePlanSlug(raw);
+    if (slug) return slug;
     log.warn({ eventId: input.eventId, planSlug: raw }, 'Billing event with unknown planSlug; plan not applied');
     return null;
   }
 
-  /** Provisiona cliente novo; devolve o motivo quando não dá (null = tenant existe ou foi criado). */
-  private async provisionIfUnknown(input: ApplyBillingEventInput, planSlug: PlanSlug | null): Promise<UnprovisionableReason | null> {
+  /**
+   * Cliente novo: vincula pelo e-mail ao tenant único do dono sem `billingCustomerId` ou provisiona.
+   * Devolve o motivo quando não dá; `link` = vincular na transação; `link: null` = tenant existe ou foi criado.
+   */
+  private async provisionIfUnknown(input: ApplyBillingEventInput, planSlug: PlanSlug | null): Promise<ProvisionDecision> {
     const { eventId, billingCustomerId } = input;
     const [receipt, tenant] = await Promise.all([
       prisma.billingEventReceipt.findUnique({ where: { eventId } }),
       prisma.tenant.findUnique({ where: { billingCustomerId }, select: { id: true } }),
     ]);
-    if (receipt || tenant) return null;
+    if (receipt || tenant) return { link: null };
     const email = input.payload.email;
-    if (!email) return 'missing_email';
-    if (!planSlug) return 'invalid_plan_slug';
+    if (!email) return { reason: 'missing_email' };
+    if (!planSlug) return { reason: 'invalid_plan_slug' };
+
+    const link = await this.findLinkCandidate(eventId, email);
+    if (link) return { link };
 
     const provisioner = this.provisioner ?? new ProvisionTenantUseCase(
-      createEmailSender({ mode: env.EMAIL_SENDER, smtpUrl: env.EMAIL_SMTP_URL, from: env.EMAIL_FROM }),
+      createEmailSenderFromEnv(),
     );
     const name = tenantNameFrom(input.payload.name, email);
 
@@ -176,17 +195,73 @@ export class ApplyBillingEventUseCase {
           origin: 'BILLING_WEBHOOK',
         });
         log.info({ eventId, tenantId: out.tenantId }, 'Tenant provisioned from billing event');
-        return null;
+        return { link: null };
       } catch (err) {
         if (err instanceof SlugTakenError && attempt < MAX_SLUG_ATTEMPTS) continue;
         // Activated concorrente já criou o tenant deste cliente: segue com ele
         if (isUniqueViolation(err) && (await prisma.tenant.findUnique({ where: { billingCustomerId }, select: { id: true } }))) {
           log.info({ eventId }, 'Tenant already provisioned by a concurrent billing event');
-          return null;
+          return { link: null };
         }
         throw err;
       }
     }
+  }
+
+  /**
+   * Elegível só quando o usuário do e-mail é ADMIN de exatamente um tenant e esse tenant não tem
+   * `billingCustomerId`; qualquer tenant dele já vinculado a outro cliente torna o caso ambíguo.
+   * Ambíguo = provisiona como antes, com aviso (só ids, nunca o e-mail).
+   */
+  private async findLinkCandidate(eventId: string, email: string): Promise<LinkCandidate | null> {
+    const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) }, select: { id: true } });
+    if (!user) return null;
+    const owned = await prisma.userTenant.findMany({
+      where: { userId: user.id, role: 'ADMIN' },
+      select: { tenantId: true, tenant: { select: { billingCustomerId: true } } },
+    });
+    const unlinked = owned.filter((m) => m.tenant.billingCustomerId === null);
+    if (unlinked.length === 1 && owned.length === 1) return { tenantId: unlinked[0]!.tenantId, ownerUserId: user.id };
+    log.warn(
+      { eventId, userId: user.id, unlinkedTenantIds: unlinked.map((m) => m.tenantId), linkedTenants: owned.length - unlinked.length },
+      'Billing customer not linked by email (owner tenants ambiguous or none); provisioning a new tenant',
+    );
+    return null;
+  }
+
+  /** Trava o tenant do cliente da central (eventos do mesmo cliente serializam até o commit). */
+  private lockByCustomer(tx: TxClient, billingCustomerId: string): Promise<LockedTenantRow[]> {
+    return tx.$queryRaw<LockedTenantRow[]>`
+      SELECT "id", "status"::text AS "status", "lastBillingEventSeq"
+        FROM "tenants" WHERE "billingCustomerId" = ${billingCustomerId}
+       FOR UPDATE`;
+  }
+
+  /**
+   * Trava o candidato ainda sem cliente e confere que o dono continua ADMIN. Se outra requisição do
+   * mesmo cliente vinculou antes, o FOR UPDATE espera o commit e a nova leitura por cliente acha.
+   * Corrida perdida para outro cliente: erro sem recibo, o hub reenvia e o próximo passo reavalia.
+   */
+  private async lockLinkCandidate(
+    tx: TxClient,
+    billingCustomerId: string,
+    link: LinkCandidate,
+  ): Promise<{ tenant: LockedTenantRow; linkPending: boolean }> {
+    const rows = await tx.$queryRaw<LockedTenantRow[]>`
+      SELECT "id", "status"::text AS "status", "lastBillingEventSeq"
+        FROM "tenants" WHERE "id" = ${link.tenantId} AND "billingCustomerId" IS NULL
+       FOR UPDATE`;
+    if (rows[0]) {
+      const owner = await tx.userTenant.findFirst({
+        where: { userId: link.ownerUserId, tenantId: link.tenantId, role: 'ADMIN' },
+        select: { id: true },
+      });
+      if (owner) return { tenant: rows[0], linkPending: true };
+    }
+    const again = await this.lockByCustomer(tx, billingCustomerId);
+    if (again[0]) return { tenant: again[0], linkPending: false };
+    log.warn({ tenantId: link.tenantId, userId: link.ownerUserId }, 'Billing link candidate changed before lock; hub will retry');
+    throw new Error('Billing link candidate changed concurrently');
   }
 
   private async applyInTx(
@@ -194,18 +269,29 @@ export class ApplyBillingEventUseCase {
     input: ApplyBillingEventInput,
     type: BillingEventType | null,
     planSlug: PlanSlug | null,
+    link: LinkCandidate | null = null,
   ): Promise<TxResult> {
     const { eventId, billingCustomerId, seq } = input;
 
     // Trava a linha do tenant: eventos do mesmo cliente serializam até o commit
-    const rows = await tx.$queryRaw<LockedTenantRow[]>`
-      SELECT "id", "status"::text AS "status", "lastBillingEventSeq"
-        FROM "tenants" WHERE "billingCustomerId" = ${billingCustomerId}
-       FOR UPDATE`;
-    const tenant = rows[0] ?? null;
+    let locked: LockedTenantRow | null = (await this.lockByCustomer(tx, billingCustomerId))[0] ?? null;
+    let linkPending = false;
+    if (!locked && link) ({ tenant: locked, linkPending } = await this.lockLinkCandidate(tx, billingCustomerId, link));
+    const tenant = locked;
 
     if (await tx.billingEventReceipt.findUnique({ where: { eventId } })) {
       return { outcome: 'DUPLICATE', tenantId: tenant?.id };
+    }
+
+    // Vínculo pelo e-mail no mesmo commit do recibo e da marca d’água: reentrega acha pelo cliente
+    if (tenant && link && linkPending) {
+      await tx.tenant.update({ where: { id: tenant.id }, data: { billingCustomerId } });
+      await new PrismaAuditLogRepository(tx).create({
+        tenantId: tenant.id,
+        action: 'TENANT_UPDATED',
+        meta: { origin: 'BILLING_WEBHOOK', change: 'billing_customer_linked', eventId, billingCustomerId, ownerUserId: link.ownerUserId },
+      });
+      log.info({ eventId, tenantId: tenant.id, userId: link.ownerUserId }, 'Existing tenant linked to billing customer by owner email');
     }
 
     const receipt = (outcome: BillingOutcome) =>

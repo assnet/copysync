@@ -1,10 +1,9 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Alert, AlertTitle, Box, Button, Chip, Stack, Tooltip, Typography } from '@mui/material';
-import { Crown, ExternalLink } from 'lucide-react';
+import { Crown } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
 import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
-import { buildCheckoutUrl } from '@/features/plans/checkout';
 import { Blurred, useBlur } from '@/features/privacy';
 import { serverNow } from '@/services/serverClock';
 import type { SubscriptionResponse, SubscriptionStatus } from '@/types/api.types';
@@ -45,32 +44,19 @@ export interface SubscriptionPlanCardProps {
 
 /**
  * Card do plano atual (SUB-06/07/09): nome e tagline do catálogo pelo slug (nunca preço), chip de
- * situação, vencimento em data local, conta (borrável) e botão para a página de venda. Sem
- * `VITE_BILLING_CHECKOUT_URL` ou sem plano, o botão leva à vitrine interna.
+ * situação, vencimento em data local, conta (borrável) e botão para a vitrine interna, onde o
+ * cliente escolhe plano e período (mensal/anual) antes do pagamento. Nunca leva direto ao pagamento
+ * do plano atual: quem quer trocar de plano ou assina o anual pagaria a oferta errada.
  */
-export function SubscriptionPlanCard({ subscription: sub, canSubscribe = false, search = window.location.search }: SubscriptionPlanCardProps) {
+export function SubscriptionPlanCard({ subscription: sub, canSubscribe = false }: SubscriptionPlanCardProps) {
   const blurTenant = useBlur('subscription.tenantName');
   const plan = PLAN_CATALOG.find((p) => p.slug === sub.planSlug) ?? null;
-  const checkoutUrl = plan ? buildCheckoutUrl(plan.slug, 'monthly', search) : null;
   const expiry = expiryLine(sub);
   const pending = sub.status === 'ACTIVE' ? null : t.pending[sub.status];
   const statusLabel = plan || sub.status !== 'ACTIVE' ? t.status[sub.status] : t.status.noPlan;
   const statusColor: ChipColor = plan || sub.status !== 'ACTIVE' ? STATUS_COLOR[sub.status] : 'default';
 
-  const cta = checkoutUrl ? (
-    <Button
-      variant="contained"
-      disableElevation
-      href={checkoutUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={t.cta.newTab}
-      startIcon={<AppIcon icon={Crown} />}
-      endIcon={<AppIcon icon={ExternalLink} />}
-    >
-      {t.cta.label}
-    </Button>
-  ) : (
+  const cta = (
     <Button variant="contained" disableElevation component={RouterLink} to={AFFILIATE_PLANS_PATH} startIcon={<AppIcon icon={Crown} />}>
       {t.cta.label}
     </Button>

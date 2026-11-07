@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { IUserRepository } from '../../domain/contracts/IUserRepository';
 import type { IUserInviteRepository } from '../../domain/contracts/IUserInviteRepository';
+import type { ITenantRepository } from '../../../tenants/domain/contracts/ITenantRepository';
 import type { IEmailSender } from '../../../integrations/domain/contracts/IEmailSender';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { normalizeEmail } from '../../../../shared/utils/normalizeEmail';
@@ -30,6 +31,7 @@ export class InviteUserUseCase {
     private readonly inviteRepo: IUserInviteRepository,
     private readonly auditLogRepo: IAuditLogRepository,
     private readonly emailSender: IEmailSender,
+    private readonly tenantRepo?: ITenantRepository,
   ) {}
 
   async execute(input: InviteUserInput): Promise<InviteUserOutput> {
@@ -74,11 +76,8 @@ export class InviteUserUseCase {
 
     let emailSent = false;
     try {
-      const result = await this.emailSender.send({
-        to: email,
-        template: 'TEAM_INVITE',
-        data: { link: inviteLink, expiresAt: expiresAt.toISOString() },
-      });
+      const data = await this.inviteEmailData(input, inviteLink, expiresAt);
+      const result = await this.emailSender.send({ to: email, template: 'TEAM_INVITE', data });
       emailSent = result.sent;
     } catch {
       emailSent = false;
@@ -87,5 +86,17 @@ export class InviteUserUseCase {
     void this.inviteRepo.cleanupOldInvites(input.tenantId, email, INVITE_RETENTION_DAYS).catch(() => {});
 
     return { inviteId: invite.id, inviteLink, emailSent };
+  }
+
+  /** Nome do tenant e de quem convidou entram no e-mail quando conhecidos; ausente = omitido. */
+  private async inviteEmailData(input: InviteUserInput, link: string, expiresAt: Date): Promise<Record<string, unknown>> {
+    const data: Record<string, unknown> = { link, expiresAt: expiresAt.toISOString() };
+    const [tenant, inviter] = await Promise.all([
+      this.tenantRepo?.findById(input.tenantId).catch(() => null) ?? null,
+      input.invitedById ? this.userRepo.findById(input.invitedById).catch(() => null) : null,
+    ]);
+    if (tenant?.name) data.tenantName = tenant.name;
+    if (inviter?.name) data.inviterName = inviter.name;
+    return data;
   }
 }

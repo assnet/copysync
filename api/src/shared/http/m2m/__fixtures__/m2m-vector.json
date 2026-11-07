@@ -1,0 +1,32 @@
+{
+  "description": "Vetor da assinatura M2M (/integrations/*). Canônica = METHOD\\npath\\nquery ordenada\\ntimestamp\\nnonce\\nsha256(corpo ou \"\"); X-Signature = sha256=<hex HMAC-SHA256(secret, canônica)>. GET usa sha256(\"\").",
+  "secret": "m2m-test-secret-v1",
+  "vectors": [
+    {
+      "name": "get-sem-corpo",
+      "method": "GET",
+      "path": "/integrations/subscriptions",
+      "query": "externalUserId=usr_123&b=2&a=1",
+      "canonicalQuery": "a=1&b=2&externalUserId=usr_123",
+      "timestamp": "1762300800",
+      "nonce": "7f3c2a9e-1b4d-4c8e-9a10-5d6e7f8a9b0c",
+      "body": null,
+      "expectedBodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expectedCanonical": "GET\n/integrations/subscriptions\na=1&b=2&externalUserId=usr_123\n1762300800\n7f3c2a9e-1b4d-4c8e-9a10-5d6e7f8a9b0c\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expectedSignature": "sha256=e2cca4e84d0bf5ece2d3040f2952eb175728ba021f51d89c904ace9355d490d9"
+    },
+    {
+      "name": "post-com-corpo",
+      "method": "POST",
+      "path": "/integrations/email/send",
+      "query": "",
+      "canonicalQuery": "",
+      "timestamp": "1762300800",
+      "nonce": "0b9a8f7e-6d5c-4b3a-8291-0f1e2d3c4b5a",
+      "body": "{\"template\":\"SET_PASSWORD\",\"to\":\"cliente@example.com\",\"vars\":{\"name\":\"Ana Lúcia\",\"setPasswordUrl\":\"https://app.example.com/definir-senha?t=abc\"}}",
+      "expectedBodyHash": "24f33a5ca192d05b265199e868c0a4a28267b9123475a60b48c89d6a91d8b3c4",
+      "expectedCanonical": "POST\n/integrations/email/send\n\n1762300800\n0b9a8f7e-6d5c-4b3a-8291-0f1e2d3c4b5a\n24f33a5ca192d05b265199e868c0a4a28267b9123475a60b48c89d6a91d8b3c4",
+      "expectedSignature": "sha256=fa2c2cce2941d90b3db9bcc2808cc167b97d9e28bd4193ece34eacdae07aed34"
+    }
+  ]
+}

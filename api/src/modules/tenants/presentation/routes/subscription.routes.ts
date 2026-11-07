@@ -26,7 +26,7 @@ const subscriptionResponse = {
       type: 'object',
       properties: {
         tenantName: { type: 'string' },
-        planSlug: { type: ['string', 'null'], enum: ['starter', 'profissional', 'business', null] },
+        planSlug: { type: ['string', 'null'], enum: ['lite', 'pro', 'max', null] },
         status: { type: 'string', enum: ['ACTIVE', 'SUSPENDED', 'CANCELLED'] },
         suspendedAt: { ...nullableString, format: 'date-time' },
         expiresAt: { ...nullableString, format: 'date-time' },

@@ -48,3 +48,42 @@ describe('ApplyBillingEventUseCase (seq BIGINT)', () => {
     expect((await repo.findById(tenantId))!.lastBillingEventSeq).toBe(9_223_372_036_854_775_807n);
   });
 });
+
+/** Vínculo pelo e-mail do dono: SQL do lock condicional, relação UserTenant e idempotência no Postgres real. */
+describe('ApplyBillingEventUseCase (vínculo pelo e-mail)', () => {
+  const linkCustomer = `int-billing-link-${stamp}`;
+  const email = `dono-${stamp}@exemplo.com`;
+  const provisioner = { execute: async () => { throw new Error('não deveria provisionar'); } };
+  const linkUseCase = new ApplyBillingEventUseCase(provisioner);
+  let manualId = '';
+  let userId = '';
+  const activated = (eventId: string, seq: bigint): ApplyBillingEventInput => ({
+    eventId: `${eventId}-${stamp}`, billingCustomerId: linkCustomer, eventType: 'subscription.activated', seq,
+    payload: { email: email.toUpperCase(), name: 'Dono', planSlug: null },
+  });
+
+  beforeAll(async () => {
+    manualId = (await prisma.tenant.create({ data: { name: 'manual', slug: `int-link-${stamp}` } })).id;
+    userId = (await prisma.user.create({ data: { email, name: 'Dono' } })).id;
+    await prisma.userTenant.create({ data: { userId, tenantId: manualId, role: 'ADMIN' } });
+  });
+  afterAll(async () => {
+    await prisma.billingEventReceipt.deleteMany({ where: { billingCustomerId: linkCustomer } });
+    await prisma.auditLog.deleteMany({ where: { tenantId: manualId } });
+    await prisma.userTenant.deleteMany({ where: { tenantId: manualId } });
+    await prisma.user.deleteMany({ where: { id: userId } });
+    await prisma.tenant.deleteMany({ where: { id: manualId } });
+  });
+
+  it('vincula o tenant único do dono, audita e reentrega vira DUPLICATE', async () => {
+    const first = await linkUseCase.execute({ ...activated('l1', 1n), payload: { email: ` ${email.toUpperCase()} `, name: 'Dono', planSlug: 'COPYSYNC_PRO' } });
+    expect(first).toEqual({ outcome: 'APPLIED', tenantId: manualId });
+    const t = await prisma.tenant.findUniqueOrThrow({ where: { id: manualId } });
+    expect(t).toMatchObject({ billingCustomerId: linkCustomer, planSlug: 'COPYSYNC_PRO', status: 'ACTIVE', lastBillingEventSeq: 1n });
+    expect(await prisma.auditLog.count({ where: { tenantId: manualId, action: 'TENANT_UPDATED' } })).toBe(1);
+    expect((await linkUseCase.execute({ ...activated('l1', 1n), payload: { email, planSlug: 'COPYSYNC_PRO' } })).outcome).toBe('DUPLICATE');
+    const next = await linkUseCase.execute({ ...activated('l2', 2n), eventType: 'subscription.canceled' });
+    expect(next).toEqual({ outcome: 'APPLIED', tenantId: manualId });
+    expect(await prisma.auditLog.count({ where: { tenantId: manualId, action: 'TENANT_UPDATED' } })).toBe(1);
+  });
+});

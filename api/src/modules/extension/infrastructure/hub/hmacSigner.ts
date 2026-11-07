@@ -1,12 +1,12 @@
-import { createHmac, createHash, randomUUID } from 'node:crypto';
+import { signM2MRequest, type M2MHeaders } from '../../../../shared/http/m2m/m2mSignature';
 
-export interface HubRequestHeaders {
-  'X-Application-Key': string;
-  'X-Timestamp': string;
-  'X-Nonce': string;
-  'X-Signature': string;
-}
+export type HubRequestHeaders = M2MHeaders;
 
+/**
+ * Headers M2M da saída para a central (outbox da extensão). Mesmo contrato das rotas
+ * `/integrations/*`: timestamp em segundos, query ordenada, `X-Signature: sha256=<hex>`.
+ * Ver `shared/http/m2m/m2mSignature.ts`.
+ */
 export function signHubRequest(opts: {
   method: string;
   path: string;
@@ -15,29 +15,5 @@ export function signHubRequest(opts: {
   applicationKey: string;
   secret: string;
 }): HubRequestHeaders {
-  const timestamp = new Date().toISOString();
-  const nonce = randomUUID();
-  const bodyHash = createHash('sha256')
-    .update(opts.body ?? '')
-    .digest('hex');
-
-  const canonical = [
-    opts.method.toUpperCase(),
-    opts.path,
-    opts.query ?? '',
-    timestamp,
-    nonce,
-    bodyHash,
-  ].join('\n');
-
-  const signature = createHmac('sha256', opts.secret)
-    .update(canonical)
-    .digest('hex');
-
-  return {
-    'X-Application-Key': opts.applicationKey,
-    'X-Timestamp': timestamp,
-    'X-Nonce': nonce,
-    'X-Signature': signature,
-  };
+  return signM2MRequest(opts);
 }
