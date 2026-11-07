@@ -180,11 +180,19 @@ describe('Reconciliação com Postgres', () => {
     await prisma.auditLog.create({ data: { tenantId: adm.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', newStatus: 'CANCELLED' } } });
     await prisma.auditLog.create({ data: { tenantId: bill.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', newStatus: 'SUSPENDED' }, createdAt: new Date('2026-08-01') } });
     await prisma.auditLog.create({ data: { tenantId: bill.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'BILLING_RECONCILE', newStatus: 'SUSPENDED' } } });
+    // Admin suspendeu em agosto; a cobrança reativou e depois cortou em setembro sem auditoria de status.
+    const later = await tenant('bf-later', { status: 'SUSPENDED', suspendedAt: since });
+    await prisma.auditLog.create({ data: { tenantId: later.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', newStatus: 'SUSPENDED' }, createdAt: new Date('2026-08-01') } });
+    // Última auditoria do admin levou a outro status (CANCELLED) que não é o atual.
+    const other = await tenant('bf-other', { status: 'SUSPENDED', suspendedAt: new Date('2026-07-01') });
+    await prisma.auditLog.create({ data: { tenantId: other.id, action: 'TENANT_STATUS_CHANGED', meta: { origin: 'SUPER_ADMIN', newStatus: 'CANCELLED' }, createdAt: new Date('2026-08-01') } });
     const sql = readFileSync(join(__dirname, '../../../../../prisma/migrations/20261107170000_add_tenant_admin_blocked_at/migration.sql'), 'utf8');
     const update = sql.slice(sql.indexOf('UPDATE'));
     await prisma.$executeRawUnsafe(update);
     await prisma.$executeRawUnsafe(update);
     expect((await read(adm.id)).adminBlockedAt).toEqual(since);
     expect((await read(bill.id)).adminBlockedAt).toBeNull();
+    expect((await read(later.id)).adminBlockedAt).toBeNull();
+    expect((await read(other.id)).adminBlockedAt).toBeNull();
   });
 });

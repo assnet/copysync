@@ -56,7 +56,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
       where: { ...base, status: 'ACTIVE', subscriptionExpiresAt: { lt: new Date(now.getTime() - graceMs) } },
       select: { id: true, billingCustomerId: true },
       orderBy: [{ subscriptionExpiresAt: 'asc' }, { id: 'asc' }],
-      take: Math.ceil(limit / 2),
+      take: Math.floor(limit / 2), // floor: com lote 1 o rodízio nunca fica sem vaga
     });
     const rotation = await this.db.tenant.findMany({
       where: { ...base, status: { in: ['ACTIVE', 'SUSPENDED', 'CANCELLED'] }, id: { notIn: overdue.map((r) => r.id) } },
