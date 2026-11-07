@@ -403,10 +403,11 @@ export type Env = z.infer<typeof envWithDerivedSchema>;
  * `EMAIL_SENDER=hub` monta links do e-mail com `PANEL_URL`; a central só aceita URL absoluta https.
  * Devolve o problema (texto para log) ou `null`. Pura: o boot de produção lança com ela.
  */
-export function hubEmailPanelUrlIssue(e: { EMAIL_SENDER: string; PANEL_URL?: string }): string | null {
+export function hubEmailPanelUrlIssue(e: { EMAIL_SENDER: string; PANEL_URL?: string; HUB_API_URL?: string }): string | null {
   if (e.EMAIL_SENDER !== 'hub') return null;
   if (!e.PANEL_URL) return 'EMAIL_SENDER=hub requires PANEL_URL (absolute https) to build email links';
   if (new URL(e.PANEL_URL).protocol !== 'https:') return 'EMAIL_SENDER=hub requires PANEL_URL with https';
+  if (e.HUB_API_URL && new URL(e.HUB_API_URL).protocol !== 'https:') return 'EMAIL_SENDER=hub requires HUB_API_URL with https';
   return null;
 }
 

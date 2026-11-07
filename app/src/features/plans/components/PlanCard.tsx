@@ -9,7 +9,6 @@ import { ChannelLimitsTable } from './ChannelLimitsTable';
 interface Props {
   plan: PlanCatalogItem;
   period: BillingPeriod;
-  /** Destino do botão. Enquanto o checkout não existe, `#`. */
   /** Link de pagamento do gateway (abre em nova aba). */
   checkoutHref: string;
 }

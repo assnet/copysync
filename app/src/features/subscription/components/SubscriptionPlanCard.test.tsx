@@ -43,13 +43,11 @@ describe('SubscriptionPlanCard', () => {
     expect(container.textContent).not.toMatch(/R\$/);
   });
 
-  it('CTA abre o pagamento mensal do plano em nova aba repassando utm', () => {
+  it('CTA com plano leva à vitrine interna (nunca ao pagamento do plano atual)', () => {
     setup();
     const link = cta();
-    expect(link).toHaveAttribute('href', `${pro.checkoutUrls.monthly}?utm_source=x`);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(link).toHaveAccessibleName(t.cta.newTab);
+    expect(link).toHaveAttribute('href', AFFILIATE_PLANS_PATH);
+    expect(link).not.toHaveAttribute('target');
   });
 
   it('SUSPENDED (escuro): chip warning, aviso e data da suspensão', () => {

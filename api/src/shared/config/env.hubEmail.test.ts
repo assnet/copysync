@@ -12,6 +12,10 @@ describe('hubEmailPanelUrlIssue', () => {
     expect(hubEmailPanelUrlIssue({ EMAIL_SENDER: 'hub', PANEL_URL: 'http://app.example.com' })).toMatch(/https/);
   });
 
+  it('hub com HUB_API_URL http → problema', () => {
+    expect(hubEmailPanelUrlIssue({ EMAIL_SENDER: 'hub', PANEL_URL: 'https://app.example.com', HUB_API_URL: 'http://hub.example.com' })).toMatch(/HUB_API_URL/);
+  });
+
   it('hub com PANEL_URL https → ok', () => {
     expect(hubEmailPanelUrlIssue({ EMAIL_SENDER: 'hub', PANEL_URL: 'https://app.example.com' })).toBeNull();
   });
