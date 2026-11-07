@@ -2,7 +2,7 @@
  * Persistence layer — `chrome.storage.local`.
  *
  * v3: no auth tokens in storage. Session lives in HttpOnly cookie.
- * Storage holds: settings (theme), syncState, installationId, mlCookieHash.
+ * Storage holds: settings (theme), syncState, installationId, mlCookieHash, lifecyclePending.
  */
 
 export interface StoredSettings {
@@ -45,6 +45,7 @@ const KEYS = {
   installation: 'installation',
   mlCookieHash: 'mlCookieHash',
   lastSyncEpoch: 'lastSyncEpoch',
+  lifecyclePending: 'lifecyclePending',
 } as const;
 
 const DEFAULT_SETTINGS: StoredSettings = { theme: 'system' };
@@ -99,8 +100,48 @@ export const getInstallation = (): Promise<InstallationState | undefined> =>
 export const setInstallation = (state: InstallationState): Promise<void> =>
   enqueue(() => chrome.storage.local.set({ [KEYS.installation]: state }));
 
+/**
+ * Get-or-create da instalação. Single-flight (promise compartilhada) + fila de escrita:
+ * onInstalled, boot, lifecycle e handshake concorrentes recebem o MESMO installationId.
+ */
+let ensuring: Promise<InstallationState> | null = null;
+export const ensureInstallation = (): Promise<InstallationState> => {
+  ensuring ??= enqueue(async () => {
+    const existing = await read<InstallationState>(KEYS.installation);
+    if (existing?.installationId) return existing;
+    const created: InstallationState = {
+      installationId: crypto.randomUUID(),
+      extensionId: chrome.runtime.id,
+    };
+    await chrome.storage.local.set({ [KEYS.installation]: created });
+    return created;
+  }).finally(() => { ensuring = null; });
+  return ensuring;
+};
+
 export const getInstallationId = async (): Promise<string | undefined> =>
   (await getInstallation())?.installationId;
+
+// ── Lifecycle pendente (INSTALL que falhou por rede; reenviado no heartbeat/startup) ──
+
+export interface PendingLifecycleEvent {
+  installationId: string;
+  type: 'INSTALL' | 'UPDATE' | 'STARTUP';
+  version: string;
+  channel: string;
+  dedupeKey: string;
+  extensionId: string;
+  previousVersion?: string;
+}
+
+export const getPendingLifecycle = (): Promise<PendingLifecycleEvent | undefined> =>
+  read<PendingLifecycleEvent>(KEYS.lifecyclePending);
+
+export const setPendingLifecycle = (event: PendingLifecycleEvent): Promise<void> =>
+  enqueue(() => chrome.storage.local.set({ [KEYS.lifecyclePending]: event }));
+
+export const clearPendingLifecycle = (): Promise<void> =>
+  enqueue(() => chrome.storage.local.remove(KEYS.lifecyclePending));
 
 // ── ML cookie hash (change detection, never actual cookie values) ───────────
 
