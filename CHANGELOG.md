@@ -9,6 +9,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.70.0 · app 0.88.0 — página de obrigado, primeiro acesso no convite e processos sem adoção na tela de Workers
+
+Docs: `docs/pagina-obrigado.md` (novo), `docs/arquitetura-central-billing.md` (§Primeiro acesso), `docs/arquitetura-escala.md`.
+
+#### app/
+
+- **`pages/ThankYouPage.tsx`** (novo), **`features/thankYou/strings.ts`** (novo) + teste — página pública `/obrigado` (fora do login e do layout) para a página de obrigado / "Acessar meu produto" da Cakto: compra confirmada, e-mail "Definir senha" (remetente, 7 dias, 1–2 min, Spam/Promoções), conta existente, "Ir para o login" e suporte em nova aba. Estática: sem API; query/hash do checkout nunca exibidos e retirados da URL; `noindex`; título da aba.
+- **`routes/AppRoutes.tsx`** — rota `THANK_YOU_PATH`.
+- **`pages/InvitePage.tsx`**, **`features/invite/strings.ts`** + teste (novo) — acentuação corrigida em todos os textos ("Você foi convidado", "Função", "faça", "não"…). Com `firstAccess`: "Bem-vindo ao CopySync" / "Crie sua senha para acessar seu painel." e botão "Criar senha e entrar"; convite de equipe mantém o texto de equipe. `invite.service.ts`: `firstAccess?` (ausente = equipe).
+- **`pages/admin/AdminWorkersPage.tsx`**, **`features/workersAdmin/{types,strings}.ts`** + testes — adoção desligada: aviso info (com tooltip para a doc), "Processos ativos", "Sessões conectadas · sem teto" e lista dos processos pelos leases; em vez de "0 de 0 (0%)". Adoção ligada: tela como antes.
+
+#### api/
+
+- **`users/domain/services/inviteAccess.ts`** — `isFirstAccessInvite` (convite do sistema + conta sem senha) + teste.
+- **`auth/presentation/presenters/InvitePresenter.ts`** (novo), **`invite.routes.ts`** + teste — `GET /auth/invites/:token` devolve `firstAccess` (aditivo; schema atualizado).
+- **`ISessionLeaseHolderRepository.ts`**, **`PrismaSessionLeaseHolderRepository.ts`**, **`ListLeaseHoldersUseCase.ts`** (novos) + teste — leases vivos agrupados por processo (só leitura, plataforma, sem `tenantId`).
+- **`workerAdmin.routes.ts`**, **`workerAdmin.schema.ts`** + teste — `GET /admin/workers` ganha `adoptionEnabled`, `processes` e `leasedSessions`; desligada consulta só os leases, ligada só os heartbeats.
+
 ### Fixed — api 0.69.1 — primeiro acesso: cliente provisionado pela cobrança caía no login sem ter senha
 
 Doc: `docs/arquitetura-central-billing.md` (§Primeiro acesso).
