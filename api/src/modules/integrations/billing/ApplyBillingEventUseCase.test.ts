@@ -11,11 +11,36 @@ const db = vi.hoisted(() => {
     locked: 0,
     /** Força P2002 no create do recibo (outra requisição gravou o mesmo eventId). */
     receiptRace: false,
+    /** Tenants fora do cliente do evento (vínculo pelo e-mail), por id. */
+    others: new Map<string, Tenant & { billingCustomerId: string | null }>(),
+    users: new Map<string, string>(),
+    memberships: [] as { userId: string; tenantId: string; role: string }[],
+    audits: [] as { tenantId?: string; action: string; meta?: Record<string, unknown> }[],
+    /** Candidato vinculado a outro cliente entre a leitura e o lock. */
+    candidateGone: false,
   };
+  const row = (t: Tenant) => ({ id: t.id, status: t.status, lastBillingEventSeq: t.lastBillingEventSeq });
   const client = {
-    $queryRaw: async () => {
+    $queryRaw: async (sql: TemplateStringsArray, ...values: unknown[]) => {
       state.locked++;
-      return state.tenant ? [{ id: state.tenant.id, status: state.tenant.status, lastBillingEventSeq: state.tenant.lastBillingEventSeq }] : [];
+      if (sql.join('?').includes('"id" =')) {
+        const t = state.others.get(values[0] as string);
+        return t && t.billingCustomerId === null && !state.candidateGone ? [row(t)] : [];
+      }
+      return state.tenant ? [row(state.tenant)] : [];
+    },
+    user: {
+      findUnique: async ({ where }: { where: { email: string } }) => (state.users.has(where.email) ? { id: state.users.get(where.email)! } : null),
+    },
+    userTenant: {
+      findMany: async ({ where }: { where: { userId: string; role: string } }) => state.memberships
+        .filter((m) => m.userId === where.userId && m.role === where.role)
+        .map((m) => ({ tenantId: m.tenantId, tenant: { billingCustomerId: state.others.has(m.tenantId) ? state.others.get(m.tenantId)!.billingCustomerId : 'linked' } })),
+      findFirst: async ({ where }: { where: { userId: string; tenantId: string; role: string } }) =>
+        state.memberships.find((m) => m.userId === where.userId && m.tenantId === where.tenantId && m.role === where.role) ? { id: 'ut' } : null,
+    },
+    auditLog: {
+      create: async ({ data }: { data: { tenantId?: string; action: string; meta?: Record<string, unknown> } }) => { state.audits.push(data); return {}; },
     },
     billingEventReceipt: {
       findUnique: async ({ where }: { where: { eventId: string } }) => state.receipts.get(where.eventId) ?? null,
@@ -30,7 +55,14 @@ const db = vi.hoisted(() => {
     },
     tenant: {
       findUnique: async () => (state.tenant ? { id: state.tenant.id } : null),
-      update: async ({ data }: { data: Partial<Tenant> }) => { Object.assign(state.tenant!, data); return {}; },
+      update: async ({ where, data }: { where: { id: string }; data: Partial<Tenant> & { billingCustomerId?: string } }) => {
+        const other = state.others.get(where.id);
+        if (other && data.billingCustomerId) {
+          state.others.delete(where.id);
+          state.tenant = Object.assign(other, data);
+        } else Object.assign(state.tenant!, data);
+        return {};
+      },
       updateMany: async ({ data }: { data: { lastBillingEventSeq: bigint } }) => {
         const t = state.tenant!;
         if (t.lastBillingEventSeq === null || t.lastBillingEventSeq < data.lastBillingEventSeq) t.lastBillingEventSeq = data.lastBillingEventSeq;
@@ -91,6 +123,11 @@ beforeEach(() => {
   db.state.entitlements.clear();
   db.state.locked = 0;
   db.state.receiptRace = false;
+  db.state.others.clear();
+  db.state.users.clear();
+  db.state.memberships.length = 0;
+  db.state.audits.length = 0;
+  db.state.candidateGone = false;
   db.txOptions.length = 0;
   provisioner.execute.mockReset();
   provisioner.execute.mockImplementation(async () => {
@@ -323,6 +360,98 @@ describe('ApplyBillingEventUseCase', () => {
       expect(db.state.tenant!.subscriptionExpiresAt).toBe(PREV);
       await run(ev('subscription.updated', { eventId: 'ev-2', seq: 12n, payload: { planSlug: 'COPYSYNC_PRO', expiresAt: null } }));
       expect(db.state.tenant!.subscriptionExpiresAt).toBeNull();
+    });
+  });
+  describe('vínculo pelo e-mail do dono (tenant criado sem billingCustomerId)', () => {
+    const manual = (id: string, billingCustomerId: string | null = null) => {
+      db.state.others.set(id, { id, status: 'ACTIVE', lastBillingEventSeq: null, planSlug: null, suspendedAt: null, billingCustomerId });
+    };
+    const own = (tenantId: string, role = 'ADMIN', userId = 'u-ana') => {
+      db.state.users.set('ana@exemplo.com', userId);
+      db.state.memberships.push({ userId, tenantId, role });
+    };
+    const activated = (over: Partial<ApplyBillingEventInput> = {}) =>
+      ev('subscription.activated', { payload: { email: '  Ana@Exemplo.com ', name: 'Ana', planSlug: 'COPYSYNC_PRO' }, ...over });
+
+    it('dono de um único tenant sem cliente: vincula, aplica o plano e audita, sem provisionar', async () => {
+      manual('t-manual');
+      own('t-manual');
+      const out = await run(activated());
+      expect(provisioner.execute).not.toHaveBeenCalled();
+      expect(out).toEqual({ outcome: 'APPLIED', tenantId: 't-manual' });
+      expect(db.state.tenant).toMatchObject({ id: 't-manual', billingCustomerId: 'user-central-1', planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 11n });
+      expect(db.state.entitlements.get('whatsapp_sessions')).toBe('1');
+      expect(db.state.receipts.get('ev-subscription.activated')).toMatchObject({ outcome: 'APPLIED', tenantId: 't-manual' });
+      expect(db.state.audits).toEqual([expect.objectContaining({
+        tenantId: 't-manual', action: 'TENANT_UPDATED',
+        meta: expect.objectContaining({ change: 'billing_customer_linked', billingCustomerId: 'user-central-1', ownerUserId: 'u-ana' }),
+      })]);
+    });
+
+    it('reentrega do mesmo evento é DUPLICATE e eventos seguintes acham pelo cliente', async () => {
+      manual('t-manual');
+      own('t-manual');
+      await run(activated());
+      expect((await run(activated())).outcome).toBe('DUPLICATE');
+      const renewed = await run(ev('subscription.renewed', { seq: 12n, payload: { planSlug: 'COPYSYNC_MAX' } }));
+      expect(renewed).toEqual({ outcome: 'APPLIED', tenantId: 't-manual' });
+      expect(db.state.tenant).toMatchObject({ id: 't-manual', planSlug: 'COPYSYNC_MAX', lastBillingEventSeq: 12n });
+      expect(provisioner.execute).not.toHaveBeenCalled();
+      expect(db.state.audits).toHaveLength(1);
+    });
+
+    it('dois tenants elegíveis: provisiona um novo como antes e não toca nos dois', async () => {
+      manual('t-a');
+      manual('t-b');
+      own('t-a');
+      own('t-b');
+      await run(activated());
+      expect(provisioner.execute).toHaveBeenCalledTimes(1);
+      expect(db.state.others.get('t-a')!.billingCustomerId).toBeNull();
+      expect(db.state.others.get('t-b')!.billingCustomerId).toBeNull();
+      expect(db.state.audits).toHaveLength(0);
+    });
+
+    it('tenant do dono já ligado a outro cliente não é tocado: provisiona', async () => {
+      manual('t-outro', 'outro-cliente');
+      own('t-outro');
+      await run(activated());
+      expect(provisioner.execute).toHaveBeenCalledTimes(1);
+      expect(db.state.others.get('t-outro')!.billingCustomerId).toBe('outro-cliente');
+    });
+
+    it('um tenant sem cliente e outro já vinculado: ambíguo, provisiona', async () => {
+      manual('t-livre');
+      manual('t-outro', 'outro-cliente');
+      own('t-livre');
+      own('t-outro');
+      await run(activated());
+      expect(provisioner.execute).toHaveBeenCalledTimes(1);
+      expect(db.state.others.get('t-livre')!.billingCustomerId).toBeNull();
+    });
+
+    it('usuário só OPERATOR do tenant não vincula: provisiona', async () => {
+      manual('t-manual');
+      own('t-manual', 'OPERATOR');
+      await run(activated());
+      expect(provisioner.execute).toHaveBeenCalledTimes(1);
+      expect(db.state.others.get('t-manual')!.billingCustomerId).toBeNull();
+    });
+
+    it('candidato vinculado por outro cliente antes do lock: erro sem recibo (hub reenvia)', async () => {
+      manual('t-manual');
+      own('t-manual');
+      db.state.candidateGone = true;
+      await expect(run(activated())).rejects.toThrow();
+      expect(db.state.receipts.size).toBe(0);
+      expect(db.state.audits).toHaveLength(0);
+    });
+
+    it('evento que não é ativação não vincula', async () => {
+      manual('t-manual');
+      own('t-manual');
+      expect((await run(ev('subscription.renewed'))).outcome).toBe('IGNORED');
+      expect(db.state.others.get('t-manual')!.billingCustomerId).toBeNull();
     });
   });
 });

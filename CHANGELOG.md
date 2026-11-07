@@ -31,6 +31,15 @@ Doc: `docs/arquitetura-central-billing.md` (§E-mail pela central), `docs/planos
 - **`SubscriptionPlanCard.tsx`** — CTA abre a oferta mensal do plano atual.
 - **`subscription/strings.ts`**, **`api.types.ts`** — slugs novos.
 
+### Fixed — api 0.67.0 — assinatura de tenant criado pelo super-admin gerava um 2º tenant
+
+Doc: `docs/arquitetura-central-billing.md` (§Mapeamento, vínculo pelo e-mail). Causa raiz: o receiver só achava o tenant por `billingCustomerId`; tenant criado à mão (sem ele) cujo dono assinava pela Cakto recebia `subscription.activated` de cliente desconhecido, `provisionIfUnknown` criava outro tenant e o original ficava sem plano.
+
+#### api/
+
+- **`ApplyBillingEventUseCase.ts`** — antes de provisionar, `findLinkCandidate` busca o usuário pelo e-mail normalizado; se ele é ADMIN de exatamente um tenant e esse tenant não tem `billingCustomerId`, a transação do receipt trava o tenant (`FOR UPDATE … AND "billingCustomerId" IS NULL`), grava `billingCustomerId`, audita `TENANT_UPDATED` e aplica o evento nele. Caso ambíguo (0/2+ tenants, tenant já ligado a outro cliente, só `OPERATOR`) provisiona como antes, com `warn` só com ids.
+- **`ApplyBillingEventUseCase.test.ts`** / **`ApplyBillingEventUseCase.int.test.ts`** — vínculo do tenant único, reentrega `DUPLICATE`, eventos seguintes pelo cliente, 2 elegíveis, tenant de outro cliente, só OPERATOR, corrida perdida sem receipt; integração contra Postgres descartável.
+
 ### Fixed — api 0.67.0 — e-mail pela central: idioma, convite e links absolutos
 
 - **`hubEmailMapping.ts`** — `locale` sempre enviado (`pt-BR` por padrão; `pt_BR` → `pt-BR`): sem ele a central mandava em inglês. O CopySync não guarda idioma por usuário/tenant.
