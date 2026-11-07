@@ -24,6 +24,8 @@ import { AdminRedirectLinksPage } from '@/pages/admin/AdminRedirectLinksPage';
 import { RedirectPage } from '@/pages/RedirectPage';
 import { ThankYouPage } from '@/pages/ThankYouPage';
 import { THANK_YOU_PATH } from '@/features/thankYou/strings';
+import { ExtensionRemovedPage } from '@/pages/ExtensionRemovedPage';
+import { EXTENSION_REMOVED_PATH } from '@/features/extension/config';
 import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
@@ -64,6 +66,8 @@ export function AppRoutes() {
       <Route path={`${REDIRECT_PUBLIC_PATH}/:slug`} element={<RedirectPage />} />
       {/* Página de obrigado pós-compra (checkout): estática, sem API (docs/pagina-obrigado.md) */}
       <Route path={THANK_YOU_PATH} element={<ThankYouPage />} />
+      {/* Pública: aberta pela extensão ao ser desinstalada (pesquisa de motivo) */}
+      <Route path={EXTENSION_REMOVED_PATH} element={<ExtensionRemovedPage />} />
 
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>

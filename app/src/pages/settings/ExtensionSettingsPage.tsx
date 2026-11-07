@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Box, Button, CircularProgress, Alert, Typography, Stack } from '@mui/material';
+import { Box, Button, CircularProgress, Typography, Stack } from '@mui/material';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import { PageHeader, SectionCard, ConfirmDialog } from '@/components';
 import { useExtension } from '@/features/extension/hooks/useExtension';
@@ -32,24 +32,12 @@ export function ExtensionSettingsPage() {
     );
   }
 
-  // Not detected / unavailable — install prompt
-  if (ext.status === 'not_detected' || ext.status === 'unavailable') {
+  // Não instalada, detectada sem vínculo ou reconfigurando: assistente (começa em "Instalar")
+  if (ext.status !== 'connected' || showWizard) {
     return (
       <Box>
-        <PageHeader title={ts.title} subtitle={ts.subtitle} />
-        <Alert severity="info" variant="outlined">
-          <Typography variant="body2">{ts.installHint}</Typography>
-        </Alert>
-      </Box>
-    );
-  }
-
-  // Detected but not connected — show wizard
-  if (ext.status === 'detected' || showWizard) {
-    return (
-      <Box>
-        <PageHeader title={tw.title} />
-        <ExtensionSetupWizard onComplete={() => { setShowWizard(false); void ext.refresh(); }} />
+        <PageHeader title={tw.title} subtitle={ts.subtitle} />
+        <ExtensionSetupWizard source="settings" onComplete={() => { setShowWizard(false); void ext.refresh(); }} />
       </Box>
     );
   }

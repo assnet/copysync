@@ -19,6 +19,7 @@ import { channelOf, isAwaitingStatus } from '@/features/sessions/utils';
 import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { sessionStrings } from '@/features/sessions/strings';
 import { Blurred, useBlur } from '@/features/privacy';
+import { ExtensionInstallBanner } from '@/features/extension/components/ExtensionInstallBanner';
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -74,6 +75,8 @@ export function DashboardPage() {
           )}
         </Box>
       </Box>
+
+      <ExtensionInstallBanner />
 
       {/* Stats */}
       <Grid container spacing={2.5} sx={{ mb: 4 }}>
