@@ -9,6 +9,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.73.0 · app 0.90.0 — proteção do login: corrida, tempo e salvaguardas (revisão de segurança)
+
+- **`LoginGuard.ts`** + **`PrismaLoginProtectionRepository.ts`** — tentativa provisória `LOGIN_ATTEMPT` gravada antes do bcrypt e contada no teto: logins paralelos conferem no máximo 3 senhas por e-mail / 10 por IP (antes, N paralelos testavam N senhas).
+- **`loginGuardRules.ts`** — a janela conta `createdAt` à frente do `now` da aplicação; antes a falha recém-gravada ficava fora e a 3ª falha não virava 429 no banco real. Teto diário: 2 códigos esgotados em 24 h travam novos envios.
+- **`bcryptPasswordVerifier.ts`** (novo) — usuário inexistente compara com hash fixo de mesmo custo (sem enumeração por tempo).
+- **`auth.routes.ts`** — `GET /auth/login/config` público; Turnstile só exigido com `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (env nova `TURNSTILE_SITE_KEY`).
+- **`CloudflareTurnstileVerifier.ts`** — exige `action` = login e `hostname` do `PANEL_URL` (secret de teste dispensa).
+- **`LoginCodeChallenge.ts`** — teto/reserva do código sob `pg_advisory_xact_lock` por usuário; `markSent` invalida só códigos já enviados.
+- **`clientIp.ts`** — IP só por `request.ip`; `cf-connecting-ip` removido (borda Cloudflare é da Render).
+- **`HmacLoginSecurity.ts`** — `emailRef` dos logs por HMAC com chave derivada.
+- **app `useLoginConfig.ts`** (novo) + **`LoginPage.tsx`** — site key vinda da API (`VITE_TURNSTILE_SITE_KEY` só de reserva); 403 de verificação sem widget mostra aviso e relê a config.
+
 ### Added — api 0.73.0 · app 0.90.0 — proteção do login (bloqueio, Turnstile, código por e-mail)
 
 Docs: `docs/seguranca-login.md` (regras, envs, tabela modo × comportamento, o que não fazer). Migration aditiva `20261108100000_add_login_events_and_codes`.
