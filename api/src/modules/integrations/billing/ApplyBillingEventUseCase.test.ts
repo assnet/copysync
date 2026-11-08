@@ -177,6 +177,22 @@ describe('ApplyBillingEventUseCase', () => {
     expect(provisioner.execute.mock.calls[0]![0]).toMatchObject({ planSlug: 'COPYSYNC_MAX' });
   });
 
+  it.each(['afiliado-dev-anual', 'copysync-dev-anual'])('ativação DEV %s provisiona com os limites MAX do Hub e reentrega é idempotente', async (planSlug) => {
+    const input = ev('subscription.activated', {
+      payload: { email: 'dev@exemplo.com', planSlug, expiresAt: iso(365) },
+    });
+    expect(await run(input)).toEqual({ outcome: 'APPLIED', tenantId: 'tenant-1' });
+    expect(provisioner.execute).toHaveBeenCalledWith(expect.objectContaining({
+      planSlug: 'COPYSYNC_MAX', origin: 'BILLING_WEBHOOK',
+    }));
+    expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_MAX', lastBillingEventSeq: 11n });
+    expect(db.state.entitlements.get('whatsapp_sessions')).toBe('2');
+    expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
+    expect(db.state.receipts.get(input.eventId)?.outcome).toBe('APPLIED');
+    expect(await run(input)).toEqual({ outcome: 'DUPLICATE', tenantId: 'tenant-1' });
+    expect(provisioner.execute).toHaveBeenCalledTimes(1);
+  });
+
   it('slug ocupado nas 3 tentativas propaga o erro (hub reenvia)', async () => {
     provisioner.execute.mockRejectedValue(new SlugTakenError());
     await expect(run(ev('subscription.activated'))).rejects.toBeInstanceOf(SlugTakenError);

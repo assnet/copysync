@@ -7,6 +7,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.73.2] — 2026-11-08 — plano DEV no fluxo de assinatura
+
+### Fixed
+
+- **`tenants/domain/planPresets.ts`** — mapeia `afiliado-dev-anual` e `copysync-dev-anual` para `COPYSYNC_MAX`, de acordo com a configuração do plano DEV no Hub; ativação, renovação e reconciliação usam os limites existentes. Testes cobrem provisionamento, reentrega idempotente e aliases desconhecidos. Sem migration ou alteração de dados.
+
 ## [0.24.0] — 2026-10-27 — Extension Bridge API (F1)
 
 ### Added

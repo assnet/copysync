@@ -40,6 +40,12 @@ describe('subscriptionGrantsAccess (tolerância de 24 h; cancelamento/estorno co
 });
 
 describe('pickGrantingSubscription', () => {
+  it.each(['afiliado-dev-anual', 'copysync-dev-anual'])('oferta DEV %s mantém acesso e limites MAX na reconciliação', (planSlug) => {
+    expect(pickGrantingSubscription([sub({ planSlug })], NOW, G)).toMatchObject({
+      grants: true, planSlug: 'COPYSYNC_MAX', sub: { id: 's1' },
+    });
+  });
+
   it('maior plano; empate = vencimento mais distante, depois menor id', () => {
     const subs = [
       sub({ id: 'a', planSlug: 'copysync-lite-mensal' }),

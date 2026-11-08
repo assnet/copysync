@@ -268,6 +268,18 @@ Evento com `seq ≤ lastSeq` que chegue depois vira OUT_OF_ORDER (já refletido)
 - O `subscriptionGrantsAccess` da própria central não tem tolerância de 24 h nem aceita PAYMENT_FAILED/EXPIRED: o CopySync
   segue a decisão do dono; alinhar os dois lados se a central mudar.
 
+## Oferta de teste DEV
+
+Desde api 0.73.2, `afiliado-dev-anual` (slug preservado no evento já emitido) e `copysync-dev-anual`
+(slug atual de `Plan` no Hub) resolvem `COPYSYNC_MAX`. Corresponde à configuração consultada em
+2026-11-08: `Plan.permissions = ["COPYSYNC_MAX"]`, `maxSessions = 2`. Usa os presets existentes
+de Business no provisionamento, renovação e reconciliação, sem quarto plano ou cópia de preço.
+Novos slugs DEV não são aceitos por padrão.
+
+Publicar a API antes de reenviar o evento `subscription.activated` marcado DEAD no Hub.
+Reprocessar apenas o webhook de pagamento da Cakto não substitui esse replay, pois a compra
+já está registrada. Este ajuste não habilita o e-mail de confirmação de compra no Hub.
+
 ## O que não fazer
 
 - Não chamar a central de forma síncrona em request de usuário. Exceções: e-mail em `afterCommit` com timeout curto e `sent:false` em falha.

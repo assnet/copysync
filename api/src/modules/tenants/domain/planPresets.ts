@@ -5,18 +5,22 @@ export type PlanSlug = (typeof PLAN_SLUGS)[number];
 
 const TIER_SLUG: Record<string, PlanSlug> = { lite: 'COPYSYNC_LITE', pro: 'COPYSYNC_PRO', max: 'COPYSYNC_MAX' };
 const BILLING_OFFER_SLUG = /^copysync-(lite|pro|max)-(mensal|anual)$/;
+const BILLING_TEST_OFFER_SLUGS = new Set(['afiliado-dev-anual', 'copysync-dev-anual']);
 
 /**
  * `planSlug` vindo da central → slug do tenant. A central envia o slug da oferta
  * (`copysync-{lite|pro|max}-{mensal|anual}`); o período não muda limites, então mensal e anual
- * resolvem o mesmo preset. Aceita também o slug interno (`COPYSYNC_*`) por compatibilidade.
+ * resolvem o mesmo preset. A oferta de teste DEV (slugs atual e histórico) usa Business.
+ * Aceita também o slug interno (`COPYSYNC_*`) por compatibilidade.
  * Desconhecido = `null`.
  */
 export function resolvePlanSlug(raw: string | null | undefined): PlanSlug | null {
   if (!raw) return null;
   const value = raw.trim();
   if ((PLAN_SLUGS as readonly string[]).includes(value)) return value as PlanSlug;
-  const match = BILLING_OFFER_SLUG.exec(value.toLowerCase());
+  const offerSlug = value.toLowerCase();
+  if (BILLING_TEST_OFFER_SLUGS.has(offerSlug)) return 'COPYSYNC_MAX';
+  const match = BILLING_OFFER_SLUG.exec(offerSlug);
   return match ? TIER_SLUG[match[1]] : null;
 }
 

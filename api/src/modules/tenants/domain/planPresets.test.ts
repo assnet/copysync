@@ -61,6 +61,10 @@ describe('PLAN_PRESETS', () => {
 });
 
 describe('resolvePlanSlug', () => {
+  it.each(['afiliado-dev-anual', 'copysync-dev-anual', ' AFILIADO-DEV-ANUAL '])('oferta DEV %s resolve Business', (slug) => {
+    expect(resolvePlanSlug(slug)).toBe('COPYSYNC_MAX');
+  });
+
   it('6 slugs de oferta da central resolvem o tier (mensal = anual)', () => {
     for (const [tier, slug] of [['lite', 'COPYSYNC_LITE'], ['pro', 'COPYSYNC_PRO'], ['max', 'COPYSYNC_MAX']] as const) {
       expect(resolvePlanSlug(`copysync-${tier}-mensal`)).toBe(slug);
@@ -71,7 +75,7 @@ describe('resolvePlanSlug', () => {
   it('aceita o slug interno e rejeita desconhecido/antigo da vitrine', () => {
     expect(resolvePlanSlug('COPYSYNC_PRO')).toBe('COPYSYNC_PRO');
     expect(resolvePlanSlug('COPYSYNC-MAX-ANUAL')).toBe('COPYSYNC_MAX');
-    for (const raw of ['starter', 'copysync-starter-mensal', 'copysync-pro-semestral', 'gold', '', null, undefined]) {
+    for (const raw of ['starter', 'copysync-starter-mensal', 'copysync-pro-semestral', 'afiliado-dev-mensal', 'copysync-dev', 'copysync-dev-anual-extra', 'gold', '', null, undefined]) {
       expect(resolvePlanSlug(raw)).toBeNull();
     }
   });

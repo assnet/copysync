@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.73.2 — plano DEV no fluxo de assinatura
+
+- **`tenants/domain/planPresets.ts`** — aceita os slugs `afiliado-dev-anual` (evento já emitido) e `copysync-dev-anual` (plano atual do Hub) como `COPYSYNC_MAX`, conforme `Plan.permissions` e `maxSessions` cadastrados. Evita HTTP 422 na ativação e mantém os mesmos limites na renovação e reconciliação.
+- **`planPresets.test.ts`**, **`ApplyBillingEventUseCase.test.ts`** e **`subscriptionReconcile.test.ts`** — cobrem os aliases, provisionamento com entitlements MAX, reentrega idempotente e reconciliação; slugs desconhecidos continuam rejeitados.
+
 ### Fixed — api 0.73.1 — IP do login era o servidor da borda Cloudflare
 
 - **`shared/http/clientIp.ts`** — o limite por IP do login usava `request.ip` (`trustProxy: 1`), que na Render é o servidor da borda Cloudflare compartilhado por muitos clientes: 10 erros de pessoas diferentes bloqueavam todos atrás do mesmo servidor. Agora usa `cf-connecting-ip` (gravado pela borda com o IP real), com `request.ip` só como reserva. Doc `docs/seguranca-login.md` corrigida.

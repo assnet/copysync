@@ -4,6 +4,8 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Decisões
 
+- 2026-11-08 — Billing DEV: aliases exatos `afiliado-dev-anual` (evento existente) e `copysync-dev-anual` (Plan atual do Hub) resolvem `COPYSYNC_MAX`, conforme `Plan.permissions = ["COPYSYNC_MAX"]` e `maxSessions = 2` consultados em somente leitura. Sem novo preset/seed. API 0.73.2; publicar antes do replay de `subscription.activated` DEAD no Hub. Confirmação de compra por e-mail no Hub continua pendente.
+
 - 2026-11-04 — Escala E4: adoção por capacidade (`WORKER_MAX_SESSIONS`, default 40) em vez de shard por hash; drain no `SIGTERM`; heartbeat + alerta 80%. Autoescala pela API da Render/Dokploy **diferida** (manual até 1º worker extra em produção). Doc: `docs/arquitetura-escala.md` §3.2.
 - 2026-11-04 — Checkout: CopySync vende pela **Cakto** (como o PulsoSocial) até a escala estar pronta (E4). H3 do M2 vira "venda pela Cakto": `Application copysync`, planos com `applicationId`, rota `/webhook/app/copysync/cakto` antecipada do H8 (PulsoSocial fica na legada). Checkout próprio por aplicação (marca, cores, domínio) é fase posterior com estudo. Sem `ALLOWED_ORIGINS` até lá.
 - 2026-11-04 — Log de corpo na central: `/integrations/*` mantém o corpo em `RequestLog` como o PulsoSocial (sem exclusão). Variável do link de senha com `password`/`token` no nome (ex.: `setPasswordUrl`) para cair na redação existente.
