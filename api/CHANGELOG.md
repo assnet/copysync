@@ -7,6 +7,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.73.3] — 2026-11-08 — Plano de isolamento das filas
+
+### Documentation
+
+- **`.specs/features/monitoring-queue-isolation/`** — requisitos, desenho, tarefas, gates de recursos e revisão do plano de independência de captura/envio; concorrência e justiça por tenant condicionadas à medição. Sem alteração de código operacional, migration aplicada ou ativação de flags.
+- **`.specs/codebase/TESTING.md`** — corrige matriz desatualizada: integração Postgres/Redis local já existe e exige execução serial; SQL/claims devem ter testes de integração.
+
 ## [0.73.2] — 2026-11-08 — plano DEV no fluxo de assinatura
 
 ### Fixed

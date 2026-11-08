@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Documentation — api 0.73.3 — plano de isolamento das filas
+
+- **`.specs/features/monitoring-queue-isolation/{spec,design,tasks,review,validation}.md`** — plano TLC para independência de captura/envio no timer atual, com etapas condicionais de concorrência limitada e distribuição entre tenants; inclui regressões, gates de carga, rollback e monitoramento de RAM. Não implementa nem ativa a estratégia.
+- **`.specs/codebase/TESTING.md`** — registra a integração local existente e exige testes seriais para alterações SQL/claims; **`.specs/project/STATE.md`** referencia o plano.
+
 ### Fixed — api 0.73.2 — plano DEV no fluxo de assinatura
 
 - **`tenants/domain/planPresets.ts`** — aceita os slugs `afiliado-dev-anual` (evento já emitido) e `copysync-dev-anual` (plano atual do Hub) como `COPYSYNC_MAX`, conforme `Plan.permissions` e `maxSessions` cadastrados. Evita HTTP 422 na ativação e mantém os mesmos limites na renovação e reconciliação.

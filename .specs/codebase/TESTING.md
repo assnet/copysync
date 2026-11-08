@@ -18,6 +18,8 @@ CI: `.github/workflows/ci.yml` roda `typecheck` + `test` nos dois apps a cada pu
 | `full` | `cd api && pnpm typecheck && pnpm test` + `cd app && pnpm typecheck && pnpm test` | Antes de commit e antes de PR |
 | `watch` | `pnpm test:watch` | Durante o desenvolvimento |
 | `smoke` | Roteiro manual com sessão WhatsApp real conectada | Antes de merge de feature de mensageria |
+| `integration-db` | `INTEGRATION_DATABASE_URL=<Postgres local descartável> pnpm exec vitest run --config vitest.int.config.mts --project db` em `api/` | Alterações de SQL, claims, locks e migrations; serial, fora da suíte unitária |
+| `integration-redis` | `INTEGRATION_REDIS_URL=<Redis local descartável> pnpm test:int:redis` em `api/` | Alterações de transporte/fila Redis; serial |
 
 `pnpm build` da API ignora testes (`tsconfig.build.json` exclui `src/**/*.test.ts`), então nada de
 teste vai para `dist/`.
@@ -40,7 +42,7 @@ teste vai para `dist/`.
 | `application/use-cases` | **unit** | Onde mora a regra; dependências entram como dublês (repos, engine) |
 | `shared/utils`, funções puras | **unit** | Barato e determinístico |
 | `infrastructure/mappers` | **unit** | Tradução Prisma ↔ domínio erra em silêncio |
-| `infrastructure/repositories` | nenhum (por ora) | Exigiria banco de teste; validado por smoke |
+| `infrastructure/repositories` | **integration** quando alterar SQL, claim, lock ou transação | Postgres local descartável já disponível; testes unitários que inspecionam texto SQL não comprovam concorrência/atomicidade |
 | `infrastructure/engines/baileys` | **unit** na normalização pura | O adapter inteiro não é testável sem socket, mas a extração/normalização de payload é função pura e já mostrou ser onde o erro se esconde |
 | `presentation/routes`, `presenters` | nenhum (por ora) | Precisa de Fastify em pé; validado por smoke |
 | `app/` funções puras (`utils.ts`, formatação, agregação) | **unit** | Barato |
@@ -49,12 +51,20 @@ teste vai para `dist/`.
 
 ## Paralelismo
 
-Todos os tipos acima são **parallel-safe**: sem banco, sem porta de rede, sem arquivo compartilhado.
-Tasks que só escrevem testes unitários podem manter o marcador `[P]`.
+Testes **unitários** com dublês são parallel-safe: sem banco, porta de rede ou arquivo compartilhado.
+Tasks independentes que só escrevem testes unitários podem manter `[P]`, respeitando o limite local
+de memória. Integrações **db/redis não são parallel-safe**: `api/vitest.int.config.mts` usa
+`fileParallelism: false` e projetos em sequência. Não executar dois processos de integração contra
+o mesmo banco/Redis descartável.
+
+`api/scripts/postgres-descartavel.sh` e `api/scripts/redis-descartavel.sh` fornecem ambientes locais;
+os setups recusam hosts remotos. Nunca usar `api/.env` (produção) como fonte de conexão de testes.
+Com RAM limitada, executar unitários com `--maxWorkers=1 --no-file-parallelism`, um app por vez.
 
 ## Dívida conhecida
 
-- Sem teste de integração com Postgres — repositórios Prisma não têm rede de segurança automatizada
+- Há integração Postgres/Redis, mas não para todo repositório e fora do gate unitário padrão do CI;
+  novos cenários de claim/SQL devem ampliar a cobertura local existente
 - Sem teste de rota (Fastify `inject` seria o caminho natural quando fizer falta)
 - `ChatPage` concentra estado demais para ser testável hoje; extrair a redução de estado das mensagens
   para funções puras tornaria testável sem refactor grande
