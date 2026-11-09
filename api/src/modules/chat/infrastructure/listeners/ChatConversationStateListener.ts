@@ -1,4 +1,5 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 import { logger } from '../../../../shared/logger/logger';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
@@ -52,9 +53,11 @@ export function toWsShape(changed: AppliedConversationState): {
  */
 export function registerChatConversationStateListener(
   conversationRepo: IChatConversationRepository,
+  gate?: IChatEntitlementGate,
 ): void {
   internalEventBus.on<ChatStateUpdatedEvent>('CHAT_STATE_UPDATED', async (payload) => {
     try {
+      if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
       const result = await conversationRepo.applyRemoteState({
         tenantId: payload.tenantId,
         sessionId: payload.sessionId,

@@ -1,4 +1,5 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 import { logger } from '../../../../shared/logger/logger';
 import { ChatMessageStatus } from '../../domain/enums/ChatMessageEnums';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
@@ -19,6 +20,7 @@ type MessageReadEvent      = Extract<InternalMessagingEvent, { type: 'MESSAGE_RE
  */
 export function registerChatMessageStatusListener(
   messageRepo: IChatMessageRepository,
+  gate?: IChatEntitlementGate,
 ): void {
   async function handleStatusUpdate(
     externalMessageId: string,
@@ -26,6 +28,7 @@ export function registerChatMessageStatusListener(
     status: ChatMessageStatus,
   ): Promise<void> {
     try {
+      if (gate && !(await gate.isChatEnabled(tenantId))) return; // tenant sem chat
       const updated = await messageRepo.updateStatusByExternalId(
         externalMessageId,
         tenantId,

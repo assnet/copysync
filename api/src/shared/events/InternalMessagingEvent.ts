@@ -58,6 +58,11 @@ export type InternalMessagingEvent =
       participant?: string;
       /** Nome exibido do membro do grupo que enviou a mensagem */
       participantName?: string;
+      /**
+       * LID (dígitos, sem `@lid`) de quem a mensagem identifica: contato em 1:1 (`from`), membro em
+       * grupo (`participant`). Só quando a engine entrega o par LID↔telefone; ausente no Telegram.
+       */
+      authorLid?: string;
       /** Prévia de link (só texto com link); null/ausente = sem cartão */
       linkPreview?: MessageLinkPreview | null;
       /** Raw engine payload — never use outside the adapter */

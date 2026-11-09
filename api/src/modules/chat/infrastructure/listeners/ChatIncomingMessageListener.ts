@@ -40,6 +40,7 @@ export function registerChatIncomingMessageListener(
         groupName: payload.groupName,
         participant: payload.participant,
         participantName: payload.participantName,
+        authorLid: payload.authorLid,
         linkPreview: payload.linkPreview,
       });
 

@@ -70,6 +70,7 @@ import type { RemoteChatState } from '../../../../../shared/events/InternalMessa
 import { outboundEchoRegistries } from './outboundEchoRegistries';
 import { sentMediaCache } from './sentMediaCache';
 import { isOwnOutboundEcho } from './isOwnOutboundEcho';
+import { CURRENT_RULE_MEDIA_POLICY, type IIncomingMediaPolicy } from '../../../domain/contracts/IIncomingMediaPolicy';
 import { normalizeReactionEvent } from './normalizeReactionEvent';
 import { buildBaileysQuotedMessage } from './buildBaileysQuotedMessage';
 import { buildBaileysMediaContent } from './buildBaileysMediaContent';
@@ -208,6 +209,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     private readonly historySyncUseCase: IngestHistorySyncUseCase,
     /** Lease da sessão (LEASE-03): sem gate, sempre permite (teste e boot sem lease). */
     private readonly leaseGate: ISessionLeaseGate = ALWAYS_LEASED,
+    /** Download de mídia recebida (entrega D). Padrão: regra atual (`shouldAutoDownloadGroupMedia`). */
+    private readonly mediaPolicy: IIncomingMediaPolicy = CURRENT_RULE_MEDIA_POLICY,
   ) {}
 
   async createSession(input: CreateSessionInput): Promise<void> {
@@ -1296,6 +1299,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         }
 
         for (const msg of messages) {
+        // Eco do nosso envio marcado (mídia, texto com prévia): já gravado no envio; sem download nem bus.
+        if (isOwnOutboundEcho(msg.key, (id) => outboundEchoRegistries().media.consume(sessionId, id))) {
+          baileysLogger.debug({ sessionId, id: msg.key.id }, 'Skipping own outbound echo (notify)');
+          continue;
+        }
         const jidRaw = msg.key?.remoteJid;
         if (!jidRaw) continue;
         if (jidRaw.endsWith('@broadcast') || jidRaw === 'status@broadcast') continue;
@@ -1324,13 +1332,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         if (!extracted) continue;
 
         extracted.body = await this.resolveMentionsInBody(
-          socket, sessionId, routing.groupJid, extracted.body, extracted.mentionedJids,
+          socket, sessionId, tenantId, routing.groupJid, extracted.body, extracted.mentionedJids,
         );
 
         let mediaUrl: string | null = null;
         if (
           MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
-          && await this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId)
+          && await this.mediaAllowed(routing, sessionId, tenantId, extracted.msgType, fromMe)
         ) {
           mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
         }
@@ -1341,8 +1349,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
             preview: extracted.linkPreview,
             sessionId,
             msgId: msg.key.id,
-            saveThumbs: true,
-            allowHq: () => this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId),
+            saveThumbs: await this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, async () => true),
+            allowHq: () => this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe),
             store: mediaContainer.mediaFileStore,
             logger: baileysLogger,
           })
@@ -1368,6 +1376,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
           groupName: routing.groupName,
           participant: routing.participant,
           participantName: routing.participantName,
+          ...(routing.authorLid ? { authorLid: routing.authorLid } : {}),
           externalMessageId: msg.key.id ?? undefined,
           linkPreview,
           raw: msg,
@@ -1675,7 +1684,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       if (!routing) continue;
 
       extracted.body = await this.resolveMentionsInBody(
-        socket, sessionId, routing.groupJid, extracted.body, extracted.mentionedJids,
+        socket, sessionId, tenantId, routing.groupJid, extracted.body, extracted.mentionedJids,
       );
 
       const fromMe: boolean = key?.fromMe ?? false;
@@ -1688,7 +1697,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       if (
         MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
         && (now - timestamp.getTime()) < THIRTY_MIN_MS
-        && await this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId)
+        && await this.mediaAllowed(routing, sessionId, tenantId, extracted.msgType, fromMe)
       ) {
         mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
       }
@@ -1700,8 +1709,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
           preview: extracted.linkPreview,
           sessionId,
           msgId: id,
-          saveThumbs: (now - timestamp.getTime()) < THIRTY_MIN_MS,
-          allowHq: () => this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId),
+          saveThumbs: (now - timestamp.getTime()) < THIRTY_MIN_MS
+            && await this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, async () => true),
+          allowHq: () => this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe),
           store: mediaContainer.mediaFileStore,
           logger: baileysLogger,
         })
@@ -1744,10 +1754,13 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
     const isGroup = rawRemoteJid.endsWith('@g.us');
     if (!isGroup) {
+      const key = msg.key as { remoteJidAlt?: string | null };
+      const authorLid = lidDigitsOf(rawRemoteJid) ?? lidDigitsOf(key.remoteJidAlt);
       return {
         from: resolvedRemoteJid.split('@')[0],
         fromName: msg.pushName ?? undefined,
         isGroup: false,
+        ...(authorLid ? { authorLid } : {}),
       };
     }
 
@@ -1765,6 +1778,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       ? await this.resolveParticipantPhone(socket, participantJid)
       : undefined;
 
+    // Só propaga no evento: membro de grupo não grava contato (par fica para o Saver).
+    const participantKey = msg.key as { participant?: string | null; participantAlt?: string | null };
+    const authorLid = participant
+      ? lidDigitsOf(participantKey.participant) ?? lidDigitsOf(participantKey.participantAlt)
+      : undefined;
     return {
       from: groupJid,
       isGroup: true,
@@ -1772,6 +1790,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       groupName: groupMetadata?.groupName ?? undefined,
       participant,
       participantName: participant ? (msg.pushName ?? undefined) : undefined,
+      ...(authorLid ? { authorLid } : {}),
     };
   }
 
@@ -1814,6 +1833,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
   private async resolveMentionsInBody(
     socket: ReturnType<typeof makeWASocket>,
     sessionId: string,
+    tenantId: string,
     groupJid: string | null | undefined,
     body: string | null,
     mentionedJids: string[] | null | undefined,
@@ -1828,7 +1848,10 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     for (const mentionedJid of mentionedJids) {
       if (!mentionedJid.endsWith('@lid')) continue;
       const lid = mentionedJid.split('@')[0];
-      const phone = (await this.resolveParticipantPhone(socket, mentionedJid)) ?? lidToPhone?.[lid];
+      // Par persistido no contato (MQ-19) antes da engine; miss segue o caminho de sempre.
+      const phone = (await this.persistedPhoneForLid(tenantId, lid))
+        ?? (await this.resolveParticipantPhone(socket, mentionedJid))
+        ?? lidToPhone?.[lid];
       if (phone && phone !== lid) {
         resolvedBody = resolvedBody.split(`@${lid}`).join(`@${phone}`);
       } else {
@@ -1836,6 +1859,26 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       }
     }
     return resolvedBody;
+  }
+
+  /** Telefone do contato com este LID já gravado; `undefined` em miss ou erro (nunca lança). */
+  private async persistedPhoneForLid(tenantId: string, lid: string): Promise<string | undefined> {
+    try {
+      return (await this.chatContactRepo.findByLid(tenantId, lid))?.phone ?? undefined;
+    } catch (err) {
+      baileysLogger.debug({ err, tenantId }, 'Persisted LID lookup failed — asking the engine');
+      return undefined;
+    }
+  }
+
+  /** LID gravado no contato deste telefone; `null` em miss ou erro (nunca lança). */
+  private async persistedLidForPhone(tenantId: string, phone: string): Promise<string | null> {
+    try {
+      return (await this.chatContactRepo.findByPhone(phone, tenantId))?.lid ?? null;
+    } catch (err) {
+      baileysLogger.debug({ err, tenantId }, 'Persisted LID lookup failed — asking the engine');
+      return null;
+    }
   }
 
   private extractParticipantJid(msg: proto.IWebMessageInfo): string | undefined {
@@ -1906,6 +1949,21 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
     this.groupMetadataPending.set(cacheKey, request);
     return request;
+  }
+
+  /** Política de mídia recebida sobre a regra atual (`currentRule`, padrão `autoDownloadMedia`). */
+  private mediaAllowed(
+    routing: IncomingMessageRoutingInfo,
+    sessionId: string,
+    tenantId: string,
+    msgType: string,
+    fromMe: boolean,
+    currentRule: () => Promise<boolean> = () => this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId),
+  ): Promise<boolean> {
+    return this.mediaPolicy.shouldDownload(
+      { tenantId, sessionId, isGroup: routing.isGroup, groupJid: routing.groupJid ?? null, msgType, fromMe },
+      currentRule,
+    );
   }
 
   private async shouldAutoDownloadGroupMedia(
@@ -2154,6 +2212,9 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       const participantJid = this.normalizeJid(ref.participant);
       if (participantJid.endsWith('@lid')) return jidNormalizedUser(participantJid);
 
+      const knownLid = await this.persistedLidForPhone(tenantId, jidNormalizedUser(participantJid).split('@')[0]);
+      if (knownLid) return `${knownLid}@lid`;
+
       const lookup = (socket as BaileysSocketWithGroupHelpers).signalRepository?.lidMapping?.getLIDForPN?.(participantJid);
       const lid = lookup ? await withTimeout(lookup, QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS) : null;
       return lid ? jidNormalizedUser(lid) : null;
@@ -2178,6 +2239,15 @@ interface IncomingMessageRoutingInfo {
   groupName?: string;
   participant?: string;
   participantName?: string;
+  /** LID (dígitos) do contato (1:1) ou do membro (grupo), quando a engine entregou o par. */
+  authorLid?: string;
+}
+
+/** Dígitos do LID de um JID `…@lid` (sem dispositivo); `undefined` para qualquer outro JID. */
+function lidDigitsOf(jid: string | null | undefined): string | undefined {
+  if (!jid || !jid.endsWith('@lid')) return undefined;
+  const digits = jidNormalizedUser(jid).split('@')[0];
+  return digits || undefined;
 }
 
 interface GroupMetadataSnapshot {

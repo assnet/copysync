@@ -8,6 +8,7 @@ import type { MessageLinkPreview } from '../../../../shared/events/InternalMessa
 import { toChatLinkPreview } from '../../domain/services/toChatLinkPreview';
 import { channelForEngine, type ConversationChannel } from '../../domain/services/conversationChannel';
 import type { ISessionRepository } from '../../../sessions/domain/contracts/ISessionRepository';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 
 export interface IngestIncomingMessageInput {
   tenantId: string;
@@ -39,8 +40,15 @@ export interface IngestIncomingMessageInput {
   participant?: string;
   /** Nome do participante que enviou, em grupos */
   participantName?: string;
+  /** LID do contato (dígitos) em 1:1; gravado no contato. Em grupo é ignorado (membros ficam para o Saver). */
+  authorLid?: string;
   /** Prévia de link recebida; miniatura já gravada no media store pelo adapter */
   linkPreview?: MessageLinkPreview | null;
+}
+
+/** `lid` só entra no contato quando a engine o entregou; ausente não toca a coluna. */
+function lidOf(input: IngestIncomingMessageInput): { lid?: string } {
+  return input.authorLid ? { lid: input.authorLid } : {};
 }
 
 export interface IngestIncomingMessageResult {
@@ -62,6 +70,9 @@ export interface IngestIncomingMessageResult {
  *  5. Update conversation last-message preview, timestamp, and unread counter
  *
  * Returns null when the message was already processed (duplicate).
+ *
+ * Tenant sem `chat_enabled` (gate presente): só o passo 1 em conversa individual e `null` — sem
+ * conversa, mensagem, não lidas nem WS. Grupo não grava nada (hoje grupo não toca contato).
  */
 export class IngestIncomingMessageUseCase {
   constructor(
@@ -70,6 +81,8 @@ export class IngestIncomingMessageUseCase {
     private readonly messageRepo: IChatMessageRepository,
     /** Engine da sessão → canal da conversa criada. Ausente = WhatsApp (testes, legado). */
     private readonly sessionEngines?: Pick<ISessionRepository, 'findEngineById'>,
+    /** Entitlement do chat. Ausente (flag desligada) = ingestão completa para todos. */
+    private readonly chatGate?: IChatEntitlementGate,
   ) {}
 
   /** Consultado só ao criar conversa: mensagem em conversa existente não paga a consulta. */
@@ -80,6 +93,15 @@ export class IngestIncomingMessageUseCase {
 
   async execute(input: IngestIncomingMessageInput): Promise<IngestIncomingMessageResult | null> {
     const { tenantId, sessionId, from, fromName, body, externalMessageId, fromMe } = input;
+
+    if (this.chatGate && !(await this.chatGate.isChatEnabled(tenantId))) {
+      if (!(input.isGroup && input.groupJid)) {
+        await this.contactRepo.findOrCreate({
+          tenantId, phone: from, name: (!fromMe && fromName) ? fromName : from, ...lidOf(input),
+        });
+      }
+      return null;
+    }
 
     // 2 — Find active conversation or create a new one
     let isNewConversation = false;
@@ -111,6 +133,7 @@ export class IngestIncomingMessageUseCase {
         tenantId,
         phone: from,
         name: (!fromMe && fromName) ? fromName : from,
+        ...lidOf(input),
       });
 
       conversation = await this.conversationRepo.findActiveByContactAndSession(

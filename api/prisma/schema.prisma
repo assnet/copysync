@@ -483,6 +483,8 @@ model ChatContact {
   tenantId  String
   name      String
   phone     String
+  /// LID do WhatsApp (dígitos) visto em 1:1; nulo até a 1ª mensagem com par LID↔telefone
+  lid       String?
   avatarUrl String?
   notes     String?
   createdAt DateTime @default(now())
@@ -493,6 +495,7 @@ model ChatContact {
 
   @@unique([tenantId, phone])
   @@index([tenantId])
+  @@index([tenantId, lid])
   @@map("chat_contacts")
 }
 

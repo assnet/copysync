@@ -3,6 +3,8 @@ export interface ChatContactProps {
   tenantId: string;
   name: string;
   phone: string;
+  /** LID do WhatsApp (dígitos), quando já visto em 1:1. Não é chave: a única continua tenant+telefone. */
+  lid?: string | null;
   avatarUrl: string | null;
   notes: string | null;
   createdAt: Date;
@@ -14,6 +16,7 @@ export class ChatContact {
   readonly tenantId: string;
   readonly name: string;
   readonly phone: string;
+  readonly lid: string | null;
   readonly avatarUrl: string | null;
   readonly notes: string | null;
   readonly createdAt: Date;
@@ -24,6 +27,7 @@ export class ChatContact {
     this.tenantId = props.tenantId;
     this.name = props.name;
     this.phone = props.phone;
+    this.lid = props.lid ?? null;
     this.avatarUrl = props.avatarUrl;
     this.notes = props.notes;
     this.createdAt = props.createdAt;

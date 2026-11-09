@@ -1,4 +1,5 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
 import type { InternalMessagingEvent } from '../../../../shared/events/InternalMessagingEvent';
 import { logger } from '../../../../shared/logger/logger';
@@ -14,8 +15,9 @@ type PresenceUpdatedEvent = Extract<InternalMessagingEvent, { type: 'PRESENCE_UP
  *
  * Must be called once during application startup.
  */
-export function registerChatPresenceListener(): void {
-  internalEventBus.on<PresenceUpdatedEvent>('PRESENCE_UPDATED', (payload) => {
+export function registerChatPresenceListener(gate?: IChatEntitlementGate): void {
+  internalEventBus.on<PresenceUpdatedEvent>('PRESENCE_UPDATED', async (payload) => {
+    if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
     chatWsPublisher.publish(payload.tenantId, {
       event: 'chat.presence.updated',
       data: {
