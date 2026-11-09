@@ -44,3 +44,37 @@ Todos os achados materiais corrigidos; nenhum nit pendente obrigatório. Três s
 no total (arquitetura, cobertura e revisão independente), no máximo dois ativos simultaneamente.
 
 Nenhum teste de implementação foi executado; aprovação documental não substitui T5/T8/T11/T12.
+
+## Rodada 4 — entregas D (gate do chat + `lid`) e E (métricas de recursos), 2026-11-09
+
+Dois revisores independentes compararam D/E com o código. Achados materiais e correções:
+
+| Local | Achado | Correção incorporada |
+|---|---|---|
+| `adapter:1286` | 🔴 `append` grava via `IngestHistorySyncUseCase` sem passar pelo bus; gate em listener não cobre | Gate dentro dos dois use cases de ingestão (MQ-16, T13) |
+| `adapter:1331–1335`, `:1918` | 🔴 download roda antes do bus e 1:1 sempre baixa; gate em listener não impede | `IIncomingMediaPolicy` injetada no adapter (MQ-17, design D) |
+| `RegisterCapturedMessageUseCase.ts:49`, `ProcessPendingCapturedOffersUseCase.ts:217–222` | 🔴 imagem da captura é o `mediaUrl` baixado pelo chat; design dizia o contrário | Política baixa só imagem de grupo monitorado sem chat; texto corrigido |
+| `InternalEventBus.ts`, `SyncTenantEntitlementsUseCase` | 🔴 não há evento de invalidação de entitlements entre processos | Cache TTL 30–60 s lendo `tenant_entitlements` (MQ-20) |
+| `adapter:601/:662/:1651` | 🟡 marca de eco só consumida no `append`; refs erradas (`:598`) | Consumir no `notify` antes do download/bus; refs corrigidas (MQ-18) |
+| `InternalMessagingEvent.ts`, `extractParticipantJid` | 🟡 `authorLid` exige mudança de contrato não listada | Passo próprio em T14 (emissor+consumidor+CHANGELOG) |
+| design E `SET LOCAL` | 🔴 fora de `$transaction` é autocommit | `$transaction([...])`, teste do timeout (MQ-22, T17) |
+| MQ-24 e-mail | 🔴 `ICapacityAlertNotifier` sem implementação de produção; sem template na central | Só log até template existir |
+| MQ-24 silêncio em memória | 🔴 contradiz regra de escala; cooldown atual é `IJobLease` | `IJobLease` `ops-alert:<reason>` |
+| sampler em N workers | 🟡 amostragem duplicada | Dono único por `IJobLease` `ops-metrics-sampler` |
+| ring buffer | 🟡 exceção não declarada | Declarada como cache de `ops_metrics_samples`, perda ≤ 5 min |
+| streak CPU / limite RAM | 🟡 sem histórico nem limite configurado | Lidos de `ops_metrics_samples`/Render API, `OPS_MEMORY_LIMIT_MB` fallback |
+| shutdown | 🟡 sem slot para o sampler | `stop()` antes de `heartbeat.stop()`, `AbortSignal.timeout` na Render |
+| T16 migration | 🟡 colunas NOT NULL quebram deploy sobreposto; `$metrics` exige preview | Colunas nullable; pool removido, conexões via `pg_stat_activity` |
+| Render API | ❓ não verificável offline | Doc oficial citada; confirmar antes de T17 |
+
+Rodada 5 (convergência) pendente: um revisor sobre o texto corrigido; parar se só restarem nits.
+
+### Rodada 5 — convergência D/E
+
+Um revisor sobre o texto corrigido. Sem contradição nova de desenho; achados de localização incorporados:
+`append` também baixa mídia (`adapter:1691/1704`) e Telegram baixa 1:1 (`:715/746`) → política nos dois
+caminhos e nos dois adapters; 2ª composição em `localEngineContainer.ts:35` → factory único de gate+política;
+`PrismaJobLease` só reaquire após vencer → TTL 45 s + `release()`; ordem real do shutdown (`server.ts:436–453`,
+`:527`) e `Promise.all`; gate em `processChunk` (`execute` síncrono); reusar `IEntitlementReader.getBoolean`
+em vez de porta nova. Confirmado OK: eco no `notify` não quebra dedup/status; `IJobLease` aceita chave
+arbitrária. **Parada por convergência**: restam só nits. Nenhum teste executado; implementação não iniciada.

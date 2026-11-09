@@ -221,6 +221,97 @@ Uma alteração de contrato compatível: parâmetro opcional de exclusões, vazi
   diferidos. Preparar PR na branch adequada; merge/push/deploy conforme autorização da execução.
 **Commit:** `docs(automation): registra operação e validação das filas`
 
+### T13 — Porta de entitlement do chat e gate nos listeners
+
+**What / Where:** `chat/domain/contracts/IChatEntitlementGate.ts`, implementação com cache TTL sobre
+`tenant_entitlements` em `chat/infrastructure/`; gate dentro de `IngestIncomingMessageUseCase` e
+`IngestHistorySyncUseCase` e nos listeners de estado; porta `IIncomingMediaPolicy` no messaging
+injetada no adapter (`:1333`, prévia), implementação compondo entitlement + catálogo de grupos
+monitorados; consumo da marca de eco no `notify` (`:601/:662/:1651`); registro em `server.ts`.
+**Depends on:** —. **Reuses:** entitlements/eventos do hub, listeners existentes, `chatMediaContainer`.
+**Requirement:** MQ-16/17/18/20. **Tests:** unit por listener (ligado/desligado), unit da política de
+mídia, regressão de eco e marca `:598`. **Gate:** full.
+
+**Done when / Verify:**
+- [ ] Desligado: só upsert de contato; zero conversa/mensagem/WS inclusive via `append`; download só
+  de imagem de grupo monitorado; `sourceMediaUrl` da captura preservado; 1:1 e vídeo sem download.
+- [ ] Ligado: suíte atual do chat sem diff. Adapter sem import de entitlement. Política aplicada em
+  `notify` e `append` do Baileys e no Telegram; composição única para `server.ts` e `localEngineContainer`.
+- [ ] Disparo MEDIA/texto/LINK_PREVIEW conclui `SENT`; eco não grava nem vaza marca.
+**Commit:** `feat(chat): condiciona ingestão ao entitlement do tenant`
+
+### T14 — Coluna `lid` em `chat_contacts` e uso na resolução de menções
+
+**What / Where:** passo 1 (contrato): `MESSAGE_RECEIVED.authorLid?` em `shared/events/InternalMessagingEvent.ts`,
+emissores Baileys/Telegram/remoto e consumidores, CHANGELOG (AGENTS §36). Passo 2: migration aditiva
+`add-chat-contact-lid`; `ChatContact` + mapper + repositório (`findByLid`, upsert com `lid`); consulta
+antes da engine na resolução de menção/citação.
+**Depends on:** —. **Reuses:** resolução `participant`/`participantAlt` já no adapter (`:1844–1848`).
+**Requirement:** MQ-19. **Tests:** integração Postgres local (migration + unique), unit do upsert e
+da resolução com hit/miss. **Gate:** full + integração.
+
+**Done when / Verify:**
+- [ ] Chave única continua `tenantId+phone`; `lid` nulo permitido; sem backfill.
+- [ ] Menção com `lid` conhecido não chama a engine; miss cai no caminho atual.
+**Commit:** `feat(chat): persiste LID do contato e usa na resolução de menções`
+
+### T15 — Flag, gate de ativação e docs de D
+
+**What / Where:** `CHAT_INGEST_ENTITLEMENT_GATE_ENABLED` em `env.ts`; evidência em
+`validation.md`; `docs/monitoramento-grupos.md`, `docs/chat-*.md`, `docs/produto-roadmap.md`
+(gate do produto Chat), changelog e versão.
+**Depends on:** T13, T14. **Reuses:** gates de T5, checklist Render. **Requirement:** MQ-12/13/14/20.
+**Tests:** unit de configuração + smoke controlado. **Gate:** full + review.
+
+**Done when / Verify:**
+- [ ] Default false; ativação só após hub publicar `chat_enabled`.
+- [ ] Medição: escritas/mensagem e downloads antes × depois em tenant sem chat.
+- [ ] Rollback false sem reprocessamento.
+**Commit:** `feat(chat): ativa gate de ingestão por entitlement`
+
+### T16 — CPU, event loop e pool no heartbeat
+
+**What / Where:** `WorkerHeartbeatJob.ts` + repositório + migration aditiva `add-worker-heartbeat-resources`
+(colunas `cpuPct`, `eventLoopP99Ms` **nullable**; sem pool Prisma).
+**Depends on:** —. **Reuses:** heartbeat de 20 s, RSS existente. **Requirement:** MQ-21.
+**Tests:** unit com relógio/cpuUsage injetados; integração da migration. **Gate:** full.
+
+**Done when / Verify:**
+- [ ] Delta de CPU correto entre ticks; p99 do event loop zerado após leitura; sem timer novo.
+- [ ] Falha do banco só loga, como hoje.
+**Commit:** `feat(sessions): registra CPU, event loop e pool no heartbeat`
+
+### T17 — Sampler de métricas Render + Postgres com retenção e alertas
+
+**What / Where:** portas `IPlatformMetricsSource`/`IDatabaseStatsSource`, adapters Render (`AbortSignal.timeout`)
+e Prisma (`$transaction` + `SET LOCAL statement_timeout`), `OpsMetricsSamplerJob` com `IJobLease`
+`ops-metrics-sampler` e `stop()` na ordem de shutdown, migration `create-ops-metrics-samples`,
+avaliador de limiares com silêncio por `IJobLease` `ops-alert:<reason>` (só log),
+`processJobs.ts` (só worker), env `OPS_METRICS_SAMPLER_ENABLED`, `RENDER_API_KEY`, `RENDER_RESOURCE_IDS`.
+**Depends on:** T16. **Reuses:** `capacityAlert`, orçamento de shutdown, e-mail do hub.
+**Requirement:** MQ-22/23/24. **Tests:** unit com clientes falsos; integração da tabela e do delete de
+retenção; unit do silêncio de 30 min. **Gate:** full + integração.
+
+**Done when / Verify:**
+- [ ] Nunca registra no `http`; `statement_timeout` aplicado; falha parcial não derruba a amostra.
+- [ ] 1 linha/5 min; retenção 7 dias; sem PII nem SQL bruto.
+- [ ] Alerta 1× por limiar/30 min via lease, válido com 2 workers; sem e-mail até template na central.
+- [ ] Dois workers: só um amostra; TTL 45 s + `release()` no stop; timeout do PG provado por teste.
+- [ ] Shutdown: stop sinalizado e aguardado em `Promise.all`, dentro da reserva de 10 s.
+**Commit:** `feat(metrics): amostra recursos da Render e do Postgres no worker`
+
+### T18 — Rota super admin, flag, docs e versão de E
+
+**What / Where:** `GET /ops/metrics` (super admin, cursor assinado), `docs/arquitetura-escala.md`
+(§ observabilidade), `docs/ops-metricas.md` novo, changelog, versão.
+**Depends on:** T17. **Reuses:** guard super admin, `OpaqueCursor`. **Requirement:** MQ-25/12/13/14.
+**Tests:** unit da rota (403 não super admin), review. **Gate:** full + review.
+
+**Done when / Verify:**
+- [ ] Rota lê só tabelas locais; sem chamada à Render em requisição.
+- [ ] Docs dizem o que não fazer: APM, `/metrics` público, medir em requisição.
+**Commit:** `feat(metrics): expõe amostras de recursos ao super admin`
+
 ## Comandos de verificação previstos
 
 Executar um comando por vez, somente com margem de RAM. Nenhum comando abaixo foi executado neste
@@ -271,6 +362,12 @@ em `app/`, serialmente. Smoke com tenant/sessão de teste autorizado. Não execu
 | T10 | um claim transacional e seus testes | T9 | T9 | integração / integração |
 | T11 | configuração/seleção e gate C | T10 | T10 | unit+gates / unit+gates |
 | T12 | documentação/validação da release | T5,T8,T11 | T5,T8,T11 | docs+gates / docs+gates |
+| T13 | porta + gate nos listeners e política de mídia | — | — | unit / unit+regressão |
+| T14 | uma evolução de schema + resolução | — | — | integração / unit+integração |
+| T15 | configuração/gate D e docs | T13,T14 | T13,T14 | unit+gates / unit+gates |
+| T16 | heartbeat + migration aditiva | — | — | unit+integração / unit+integração |
+| T17 | sampler, portas, tabela, alertas | T16 | T16 | unit+integração / unit+integração |
+| T18 | rota super admin + docs | T17 | T17 | unit+review / unit+review |
 
 Resultado: tarefas coesas, arestas conferidas e testes co-localizados. A matriz antiga de TESTING.md
 não exigia integração de repositórios, mas o projeto já a possui; este plano exige-a explicitamente

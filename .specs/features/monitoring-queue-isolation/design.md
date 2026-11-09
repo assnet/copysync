@@ -151,6 +151,89 @@ conclusão. Marketplace lento ainda ocupa o único slot de captura. Envio perman
 dessa contenção. Testar progresso dos outros e atendimento do tenant assim que o lock for liberado,
 sem avançar seu turno indevidamente ou impor o limite N durante a contenção.
 
+## D — gate da ingestão do chat por entitlement e coluna `lid`
+
+Não remover o módulo chat. Gate = `IEntitlementReader.getBoolean(tenantId, 'chat_enabled')` (porta já
+existente em `tenants/domain/contracts/IEntitlementReader.ts`; ausente = false) com cache em memória TTL 30–60 s (sem evento de invalidação: `SyncTenantEntitlementsUseCase` só faz
+upsert e roda no `http`; a ingestão roda no dono da sessão). Aplicado **dentro dos use cases de
+ingestão**, para cobrir os dois caminhos do adapter: `IngestIncomingMessageUseCase` (`notify`, só
+upsert de `ChatContact` e retorna) e `IngestHistorySyncUseCase` (`append`, `adapter:1286`; `execute` é síncrono, gate entra em
+`processChunk` `:118`, não grava nada). Composição única: `server.ts:336` **e**
+`localEngineContainer.ts:35`/`MessagingEngineFactory.ts:43–54` criam ingestão/adapter separados; gate e
+política saem de um único factory usado pelos dois, senão o `append` do worker fica sem gate. Listeners de status, reação, presença, avatar e estado de conversa (`server.ts:336–353`)
+retornam cedo pelo mesmo gate. Bus, `MESSAGE_RECEIVED` e `GroupMonitoringMessageListener` intactos.
+
+Mídia recebida: o download acontece no adapter **antes** do bus (`adapter:1331–1335`) e
+`shouldAutoDownloadGroupMedia` devolve `true` para 1:1 (`:1918`); gate em listener não impede nada.
+A decisão passa a uma porta do messaging `IIncomingMediaPolicy.shouldDownload({tenantId, sessionId,
+isGroup, groupJid, msgType})` injetada no adapter (usada em `:1333`, no `append` `:1691`/`:1704` e nos flags de prévia) e no adapter
+Telegram (`:715`/`shouldDownloadMedia :746`, hoje baixa 1:1 sempre), com
+implementação fora do adapter que compõe: `chat_enabled` → regra atual; senão → só `IMAGE` de grupo
+monitorado (consulta ao catálogo de monitoramento com cache). Motivo: `RegisterCapturedMessageUseCase.ts:49`
+usa `m.mediaUrl` como `sourceMediaUrl` e `ProcessPendingCapturedOffersUseCase.ts:217–222` prefere essa
+foto à do produto; sem download toda captura com foto cairia para a imagem do produto.
+
+Envio e eco: `SendMessageUseCase` e `sendStoredMediaMessage` continuam; 1 escrita por disparo.
+Status `PENDING→SENT` é pelo retorno do envio; eco só deduplica. Marca de eco esperado (texto `:601`,
+mídia `:662`) hoje só é consumida no `append` (`isOwnOutboundEcho`, `:1651`); passa a ser consumida
+também no `notify`, antes do download e do bus. Eco 1:1 `fromMe` então não baixa mídia nem chega ao
+chat quando desligado. Mudança no adapter, coberta por teste.
+
+`lid`: contrato `MESSAGE_RECEIVED` ganha `authorLid?` (adapter preenche de `participant @lid`, `:1844–1848`,
+que hoje é descartado por `extractParticipantJid`); emissor Baileys/Telegram/remoto e consumidores
+atualizados juntos, CHANGELOG (AGENTS §36). Migration aditiva `chat_contacts.lid TEXT NULL` + índice
+`(tenantId, lid)`; gravado no upsert; sem backfill. Resolução de menção/citação consulta
+`findByLid` antes de pedir à engine; miss cai no caminho atual. Flag única
+`CHAT_INGEST_ENTITLEMENT_GATE_ENABLED=false`: false = comportamento atual para todos; coluna `lid` é
+gravada independentemente da flag.
+
+| Entrega | Ativação | Reversão |
+|---|---|---|
+| D | migration no boot Render; flag true após hub publicar `chat_enabled` para super admin/teste | flag false + restart; coluna `lid` permanece; nada a reprocessar |
+
+Gate de ativação: tenant sem chat, por mensagem de grupo: escritas caem de ~4 para 2 (contato +
+captura), zero download; suíte do chat com entitlement true sem diff; smoke de disparo MEDIA/texto/
+LINK_PREVIEW com eco observado.
+
+## E — métricas de recursos fora do caminho do usuário
+
+Princípio: medir só em job do `worker`, um dono por vez (`IJobLease` `ops-metrics-sampler`, como
+`WorkerCapacityAlertJob`), baixa frequência, agregado em memória, persistência rara.
+Fonte de CPU/RAM real do container e do Postgres é a Render Metrics API (dados por minuto); o
+`process.cpuUsage()` mede só o Node e fica como complemento no heartbeat. Chave em `RENDER_API_KEY`,
+nunca exposta ao painel; IDs de recurso em `RENDER_RESOURCE_IDS`.
+
+- **Heartbeat** (`WorkerHeartbeatJob.ts`): colunas aditivas `cpuPct`, `eventLoopP99Ms`, `poolInUse`.
+  Migration aditiva em `worker_heartbeats`; grava junto do RSS já existente.
+- **Sampler** (`sessions/infrastructure/jobs/OpsMetricsSamplerJob.ts` ou módulo `metrics/`): porta
+  `IPlatformMetricsSource` (implementação Render) e `IDatabaseStatsSource` (Prisma `$transaction([$executeRawUnsafe('SET LOCAL statement_timeout = \'2s\''), $queryRaw…])`:
+  fora de transação o `SET LOCAL` é autocommit e some; padrão de `PrismaSessionLeaseRepository.ts:53`; teste prova o timeout).
+  Chamadas à Render com `AbortSignal.timeout` (padrão `HubOutboxWorker.ts:104`). Timer próprio de 60 s com `unref()`, `stop()` cooperativo
+  sob o orçamento de shutdown existente. Ring buffer fixo (60 amostras) é **cache** de `ops_metrics_samples`, exceção declarada à regra de
+  escala (perda ≤ 5 min em crash aceita); persistência a cada 5 amostras. Lease: `PrismaJobLease.ts:16`
+  só reaquire após `expiresAt`, então TTL do `ops-metrics-sampler` = 45 s (< intervalo de 60 s) e
+  `release()` no `stop()`; sem isso a amostragem vira período do TTL. `stop()` é sinalizado junto do
+  bloco keeper/adoção (`server.ts:436–453`) e aguardado em `Promise.all` com os demais, não em série
+  (reserva de 10 s de `shutdownBudget.ts:7`); `heartbeat.stop()` real fica em `:527`, após leases.
+- **Tabela** `ops_metrics_samples(id, at, source, resource, metric, value, meta jsonb)` sem tenant
+  (dado de infraestrutura); índice `(metric, at)`; delete `at < now() - 7d` no mesmo tick.
+- **Alertas**: novo avaliador ao lado de `capacityAlertReason` (que só conhece ocupação); streak
+  "CPU ≥ 80% por 5 min" e limite de RAM lidos de `ops_metrics_samples`/Render API (`OPS_MEMORY_LIMIT_MB`
+  fallback). Silêncio 30 min por limiar via `IJobLease` `ops-alert:<reason>` (cluster-wide, como o
+  cooldown de `worker-capacity-alert-email`). Só log: `ICapacityAlertNotifier` não tem implementação
+  de produção e não há template na central (escala §3.2 D5); e-mail entra quando o template existir.
+- **Rota** `GET /ops/metrics?metric=&from=&to=` só super admin, paginada por cursor assinado; tela
+  super admin fora deste plano (ler via Render enquanto não existir).
+
+Referência a confirmar antes de T17: Render API `GET /v1/metrics/cpu|memory?resource=<id>`
+(https://api-docs.render.com/reference/get-cpu); cobertura de Postgres a validar lá.
+Custo esperado por minuto no worker dono: 3 HTTPs externos + 3 consultas de catálogo do PG (< 5 ms cada,
+`pg_stat_statements` já habilitado na Render). Zero no `http`.
+
+| Entrega | Ativação | Reversão |
+|---|---|---|
+| E | migration no boot; `OPS_METRICS_SAMPLER_ENABLED=true` só no worker após `RENDER_API_KEY` | flag false; tabela fica; retenção limpa sozinha |
+
 ## Rollout, limites e rollback
 
 Flags só na Render após deploy versionado. Nenhuma ativação faz parte deste planejamento.
