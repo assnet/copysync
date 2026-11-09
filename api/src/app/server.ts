@@ -252,6 +252,7 @@ async function start(): Promise<void> {
     offerDispatch: env.OFFER_DISPATCH_WORKER_ENABLED,
     groupMonitoring: env.GROUP_MONITORING_ENABLED,
     independentStages: env.OFFER_WORKER_INDEPENDENT_STAGES_ENABLED,
+    dispatchConcurrency: env.OFFER_DISPATCH_CONCURRENCY,
   };
   if (jobs.has('offerDispatch')) {
     const offerWorkerOptions = buildOfferWorkerOptions({

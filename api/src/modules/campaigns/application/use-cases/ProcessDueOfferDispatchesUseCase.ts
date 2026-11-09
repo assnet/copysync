@@ -3,6 +3,7 @@ import type { IOfferDispatchRepository, OfferDispatchResult } from '../../domain
 import type { IOfferMessageSender } from '../../domain/contracts/IOfferMessageSender';
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
 import { AppError } from '../../../../shared/errors/AppError';
+import { ConcurrentOfferDispatchExecutor, type OfferSendSlot } from '../services/ConcurrentOfferDispatchExecutor';
 import { logger } from '../../../../shared/logger/logger';
 
 /** SENDING sem resultado há mais que isso = worker morreu no meio; volta à fila. */
@@ -50,7 +51,15 @@ class SendTimeoutError extends Error {}
  */
 export interface OfferDispatchRunContext {
   signal?: AbortSignal;
+  /**
+   * Chamadas simultâneas ao sender (`OFFER_DISPATCH_CONCURRENCY`, entrega B). Ausente/1 = caminho
+   * serial de sempre. 2 = executor por vagas (`ConcurrentOfferDispatchExecutor`); só com etapas
+   * independentes (validado na composição do worker).
+   */
+  concurrency?: OfferDispatchConcurrency;
 }
+
+export type OfferDispatchConcurrency = 1 | 2;
 
 /** Desfecho de um item, só para o log de observação. */
 type ItemOutcome = { status: string; code: string | null; sendMs: number | null };
@@ -76,7 +85,15 @@ export interface ProcessDueOfferDispatchesDeps {
  * volta à fila após STALE_DISPATCH_MS e pode sair duas vezes.
  */
 export class ProcessDueOfferDispatchesUseCase {
+  /** Vagas do modo 2: vivem entre rodadas (promise do sender ainda pendente). Criado no 1º uso. */
+  private concurrent: ConcurrentOfferDispatchExecutor | null = null;
+
   constructor(private readonly deps: ProcessDueOfferDispatchesDeps) {}
+
+  /** Chamadas ao sender ainda pendentes no modo 2 (0 no modo serial). */
+  unsettledSenders(): { unsettledSenders: number; oldestUnsettledMs: number | null } {
+    return this.concurrent?.unsettled() ?? { unsettledSenders: 0, oldestUnsettledMs: null };
+  }
 
   async execute(ctx: OfferDispatchRunContext = {}): Promise<{ processed: number }> {
     const { dispatches } = this.deps;
@@ -88,6 +105,7 @@ export class ProcessDueOfferDispatchesUseCase {
     // Vencidos fecham em lote antes do claim: não ocupam a cabeça da faixa um por tick
     await dispatches.skipExpired(now);
     if (signal?.aborted) return { processed: 0 };
+    if (ctx.concurrency === 2) return this.executeConcurrent(signal);
     const due = await dispatches.claimDue(now, this.deps.batchSize ?? DISPATCH_BATCH_SIZE);
 
     for (let i = 0; i < due.length; i++) {
@@ -108,14 +126,41 @@ export class ProcessDueOfferDispatchesUseCase {
     return { processed: due.length };
   }
 
-  private async processOne(dispatch: OfferDispatch, now: Date, signal?: AbortSignal): Promise<void> {
+  /**
+   * Modo 2 (design B): ondas do tamanho das vagas livres, `now` novo por claim, até
+   * DISPATCH_BATCH_SIZE itens, excluindo sessões já escolhidas na rodada e sessões com sender
+   * pendente (mesmo após SEND_TIMEOUT e o hold de 120 s). Cada item segue o mesmo `handleOne`.
+   */
+  private async executeConcurrent(signal?: AbortSignal): Promise<{ processed: number }> {
+    this.concurrent ??= new ConcurrentOfferDispatchExecutor({
+      capacity: 2,
+      maxItemsPerRound: this.deps.batchSize ?? DISPATCH_BATCH_SIZE,
+      clock: this.deps.clock,
+    });
+    const nowFn = this.deps.now ?? (() => new Date());
+    const claimedAt = new Map<string, Date>();
+    const result = await this.concurrent.runRound({
+      signal,
+      claim: async (limit, excludeSessionIds) => {
+        const now = nowFn();
+        const due = await this.deps.dispatches.claimDue(now, limit, { excludeSessionIds });
+        for (const d of due) claimedAt.set(d.id, now);
+        return due;
+      },
+      process: (d, slot) => this.processOne(d, claimedAt.get(d.id) ?? nowFn(), signal, slot),
+    });
+    if (!signal?.aborted) await this.sweepOrphanOffers();
+    return result;
+  }
+
+  private async processOne(dispatch: OfferDispatch, now: Date, signal?: AbortSignal, slot?: OfferSendSlot): Promise<void> {
     const startedAt = (this.deps.now ?? (() => new Date()))();
-    const outcome = await this.handleOne(dispatch, now, signal);
+    const outcome = await this.handleOne(dispatch, now, signal, slot);
     if (outcome) observeDispatch(dispatch, outcome, startedAt);
   }
 
   /** null = nada aconteceu com o item (sem token, posse perdida antes, parada antes do envio). */
-  private async handleOne(dispatch: OfferDispatch, now: Date, signal?: AbortSignal): Promise<ItemOutcome | null> {
+  private async handleOne(dispatch: OfferDispatch, now: Date, signal?: AbortSignal, slot?: OfferSendSlot): Promise<ItemOutcome | null> {
     const { offers, dispatches } = this.deps;
     const { id, tenantId, offerId, claimToken } = dispatch;
     if (!claimToken) return null;
@@ -162,7 +207,7 @@ export class ProcessDueOfferDispatchesUseCase {
         mentionAll: offer.mentionAll,
         simulateTyping: offer.simulateTyping,
         typingSeconds: offer.typingSeconds,
-      });
+      }, slot);
       sendMs = clock() - sendStarted;
       result = { status: 'SENT', chatMessageId: sent.chatMessageId };
     } catch (err) {
@@ -233,7 +278,7 @@ export class ProcessDueOfferDispatchesUseCase {
   }
 
   /** O envio pode seguir em segundo plano após o timeout; por isso SEND_TIMEOUT não reenvia. */
-  private async sendWithTimeout(input: Parameters<IOfferMessageSender['send']>[0]): Promise<{ chatMessageId: string }> {
+  private async sendWithTimeout(input: Parameters<IOfferMessageSender['send']>[0], slot?: OfferSendSlot): Promise<{ chatMessageId: string }> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
       // A digitação acontece dentro do envio: estende o prazo para ela não virar SEND_TIMEOUT
@@ -241,7 +286,18 @@ export class ProcessDueOfferDispatchesUseCase {
       timer = setTimeout(() => reject(new SendTimeoutError()), (this.deps.sendTimeoutMs ?? DISPATCH_SEND_TIMEOUT_MS) + typingMs);
     });
     try {
-      return await Promise.race([this.deps.sender.send(input), timeout]);
+      if (!slot) return await Promise.race([this.deps.sender.send(input), timeout]);
+      // Modo 2: a vaga passa para a promise original ANTES do envio; erro síncrono vira rejeição
+      let release!: () => void;
+      slot.holdUntil(new Promise<void>((r) => { release = r; }));
+      let send: Promise<{ chatMessageId: string }>;
+      try {
+        send = this.deps.sender.send(input);
+      } catch (err) {
+        send = Promise.reject(err);
+      }
+      send.then(release, release);
+      return await Promise.race([send, timeout]);
     } finally {
       clearTimeout(timer);
     }

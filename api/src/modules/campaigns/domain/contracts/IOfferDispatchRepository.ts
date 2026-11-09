@@ -19,6 +19,11 @@ export interface StartSendingExpectation {
   mentionAll: boolean;
 }
 
+/** Filtros extras do claim. Envio sem sessão (legado) nunca é excluído. */
+export interface ClaimDueOptions {
+  excludeSessionIds?: readonly string[];
+}
+
 export interface IOfferDispatchRepository {
   /**
    * Numa transação: oferta DRAFT → SENDING (condicional) + cria os envios. A transição exige o
@@ -37,8 +42,10 @@ export interface IOfferDispatchRepository {
    * fila). **No máximo um por sessão**, e só se a sessão não tem envio SENDING nem envio SENT
    * iniciado há menos de `gapSeconds` do candidato. Claims concorrentes serializados. Cada envio
    * volta com `claimToken` novo (posse); todo passo seguinte exige esse token.
+   * `options.excludeSessionIds` (concorrência 2, entrega B): sessões já escolhidas na rodada ou com
+   * chamada ao sender ainda pendente neste processo não são candidatas. Vazio/ausente = claim de sempre.
    */
-  claimDue(now: Date, limit: number): Promise<OfferDispatch[]>;
+  claimDue(now: Date, limit: number, options?: ClaimDueOptions): Promise<OfferDispatch[]>;
   /**
    * Horários (`notBefore`) dos envios abertos (QUEUED/SENDING) da sessão em ofertas SENDING que já
    * começaram até `from` (`scheduledAt` nulo ou ≤ from) e não vencidas. Só horários, ordenados: é a

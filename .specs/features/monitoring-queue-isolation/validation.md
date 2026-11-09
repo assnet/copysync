@@ -158,3 +158,56 @@ sem erros nos arquivos de C (erros restantes em `campaigns/…concurrency.test.t
 Faltam carga comparativa false/true (CPU/RSS/DB, 3×10 min, 7 tenants), smoke autorizado e `/caveman-review`.
 Ativar só após a migration no boot da Render e com todos os consumidores no mesmo modo. Rollback = flag false +
 restart; coluna, sequência e itens ficam; sem seed nem UPDATE em produção.
+
+## Entrega B — execução de T6–T8 (2026-11-09)
+
+**Versão:** `api` 0.73.3 sobre `5df078b`, não commitado. **Ambiente:** Mac de desenvolvimento, PG 16 local
+descartável (55432), banco isolado `copysync_int_b` (template `copysync_int`, fuso UTC), apagado ao fim.
+
+### Implementação
+
+- T6: `IOfferDispatchRepository.claimDue(now, limit, { excludeSessionIds? })`; vazio/ausente = SQL idêntico
+  (teste compara o texto). Exclusão filtra a cabeça da faixa; envio sem sessão nunca é excluído.
+- T7: `campaigns/application/services/ConcurrentOfferDispatchExecutor.ts` (só com `ctx.concurrency === 2`).
+  Vaga tomada no claim, transferida para a promise ORIGINAL do sender antes do envio e liberada no settle
+  dela (não no timeout). Claim só das vagas livres, `now` novo por claim, até 10 itens/rodada, exclusões =
+  sessões da rodada ∪ sessões com sender pendente. Vagas presas: rodada sem claim, sem busy loop; log
+  `offer dispatch sender unsettled beyond hold` (> 120 s) ou `senders in flight`, no máximo 1/min, com
+  `unsettledSenders`/`oldestUnsettledMs`. Modo 1 = caminho serial intocado.
+- T8: `OFFER_DISPATCH_CONCURRENCY` (1–2, default 1; rejeita 0/3/fração/NaN/vazio). `resolveDispatchConcurrency`
+  na composição: 2 sem `OFFER_WORKER_INDEPENDENT_STAGES_ENABLED=true` lança erro de configuração no boot.
+
+### Testes
+
+| Alvo | Resultado |
+|---|---|
+| `ConcurrentOfferDispatchExecutor.test.ts` | 10 — vagas, refill ≤10, busca vazia única, vaga presa (10 claims de 1), eternas sem claim/alerta ≤1/min, parada, erro de claim |
+| `ProcessDueOfferDispatchesUseCase.concurrency.test.ts` | 10 — 2 sessões juntas/3ª espera, erro isolado, SEND_TIMEOUT + exclusão após 120 s até settle, 2 eternas, 1 seleção/sessão/rodada, MEDIA/texto/LINK_PREVIEW, erro síncrono, parada, default 1 = `claimDue(now, 10)` |
+| composição + env | +6 (`offerWorkerComposition.test.ts`) +3 (`env.offerDispatch.test.ts`) |
+| `PrismaOfferDispatchRepository.test.ts` | +1 (SQL vazio idêntico) |
+| `PrismaOfferDispatchRepository.int.test.ts` (PG) | 25/25 (+4: exclusão/legado, exclusão após hold 120 s, 2 claims concorrentes sem sessão repetida nem token perdido, prioridade de espera + agendamento) |
+| unit `src/modules/campaigns src/app src/shared/config` | 64 arquivos, 689 testes, 0 falhas |
+| `pnpm typecheck` (api) | sem erros |
+
+### Benchmark sintético REDUZIDO (`OFFER_WORKER_BENCH_MODES=stages,concurrent`, 45 s × 2 rep.)
+
+Mesma carga de A (5 sessões, sender 300 ms, 1 a cada 10 preso 15 s), etapas ligadas nos dois modos.
+
+| Mediana das 2 | concorrência 1 | concorrência 2 |
+|---|---|---|
+| Envios | 23 | 30 (+30%) |
+| Rodadas de envio / p95 etapa envio (ms) | 6 / 16 250 | 7 / 15 641 |
+| Capturas enfileiradas / espera p95 (ms) | 66 / 11 262 | 66 / 11 260 |
+| CPU (ms em 45 s) / RSS p95 (MB) | 781 / 89 | 672 / 78 |
+| Queries / p95 por query (ms) | 1 239 / 0 | 1 418 / 1 |
+
+Leitura: throughput de envio sobe sem queda de captura; queries +14% (claims por vaga + busca vazia), p95 ≤1 ms,
+sem timeout de pool. A rodada ainda espera o envio lento (até o timeout), como no desenho. Cenário com vaga presa
+medido só em unit (10 claims + ≤1 vazia), não em carga.
+
+### Estado do gate de B: **PENDENTE**
+
+Sintético, local, 45 s × 2, um tenant. Falta: carga de produção (baseline × candidato 10 min × 3), carga com uma
+vaga presa, smoke com tenant de teste, conferência de um único consumidor de ofertas. Flag segue 1. Runbook:
+ativar 1→2 só após gate de A, um consumidor, sem deploy sobreposto; alerta `unsettled beyond hold` com as duas
+vagas presas → conferir mensagens, `OFFER_DISPATCH_CONCURRENCY=1` + restart controlado (sem retry automático).

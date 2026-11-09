@@ -144,6 +144,10 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Entrega B: chamadas simultâneas ao sender de ofertas, entre sessões distintas (1–2). 1 = envio
+  // serial de hoje. 2 exige OFFER_WORKER_INDEPENDENT_STAGES_ENABLED=true (validado na composição do
+  // worker) e um único consumidor de ofertas (docs/arquitetura-escala.md §3.6).
+  OFFER_DISPATCH_CONCURRENCY: z.coerce.number().int().min(1).max(2).default(1),
   // Entrega C das filas: claim de capturas pelo tenant menos recentemente atendido (turno
   // persistido em `tenants.monitoringClaimTurn`). false = FIFO global de hoje. Só ligar após a
   // migration e com todos os consumidores no mesmo modo.

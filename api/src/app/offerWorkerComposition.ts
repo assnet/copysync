@@ -13,21 +13,39 @@ import { mediaDrainBudgetMs } from './shutdownBudget';
  * - Papel: só onde `jobsFor` inclui `offerDispatch` (`http` nunca).
  * - `independentStages` false: tick sequencial de hoje (envio, depois capturas), sem sinal.
  * - true: uma etapa por flag ligada, cada uma no seu slot, repassando o `ctx` (sinal de parada).
+ * - `dispatchConcurrency` (entrega B): 1 = envio serial (ctx intocado); 2 só com etapas independentes,
+ *   repassado ao envio como `ctx.concurrency`. Valor inválido ou 2 sem etapas = erro de configuração.
  */
 export interface OfferWorkerFlags {
   offerDispatch: boolean;
   groupMonitoring: boolean;
   independentStages: boolean;
+  /** `OFFER_DISPATCH_CONCURRENCY` (padrão 1). */
+  dispatchConcurrency?: number;
 }
 
 interface Runnable {
   execute(ctx?: { signal?: AbortSignal }): Promise<{ processed: number }>;
 }
 
+interface DispatchRunnable {
+  execute(ctx?: { signal?: AbortSignal; concurrency?: 1 | 2 }): Promise<{ processed: number }>;
+}
+
 export interface OfferWorkerRunners {
   /** Factories lazy: o container só é tocado quando a etapa roda. */
-  offerDispatch: () => Runnable;
+  offerDispatch: () => DispatchRunnable;
   groupMonitoring: () => Runnable;
+}
+
+/** Concorrência de envio validada: 1 ou 2; 2 exige etapas independentes. Lança erro de configuração. */
+export function resolveDispatchConcurrency(flags: Pick<OfferWorkerFlags, 'independentStages' | 'dispatchConcurrency'>): 1 | 2 {
+  const c = flags.dispatchConcurrency ?? 1;
+  if (c !== 1 && c !== 2) throw new Error(`OFFER_DISPATCH_CONCURRENCY must be 1 or 2 (got ${String(c)})`);
+  if (c === 2 && !flags.independentStages) {
+    throw new Error('OFFER_DISPATCH_CONCURRENCY=2 requires OFFER_WORKER_INDEPENDENT_STAGES_ENABLED=true');
+  }
+  return c;
 }
 
 export const OFFER_STAGE_DISPATCH = 'offer-dispatch';
@@ -46,6 +64,7 @@ export function buildOfferWorkerOptions(input: OfferWorkerCompositionInput): Off
   const { jobs, flags, runners, onLegacyPartError } = input;
   if (!jobs.has('offerDispatch')) return null;
   if (!flags.offerDispatch && !flags.groupMonitoring) return null;
+  const concurrency = resolveDispatchConcurrency(flags);
 
   if (!flags.independentStages) {
     const safe = async (name: string, run: () => Promise<{ processed: number }>) => {
@@ -69,7 +88,10 @@ export function buildOfferWorkerOptions(input: OfferWorkerCompositionInput): Off
 
   const stages: OfferWorkerStage[] = [];
   if (flags.offerDispatch) {
-    stages.push({ name: OFFER_STAGE_DISPATCH, run: (ctx: OfferWorkerRunContext) => runners.offerDispatch().execute(ctx) });
+    stages.push({
+      name: OFFER_STAGE_DISPATCH,
+      run: (ctx: OfferWorkerRunContext) => runners.offerDispatch().execute(concurrency === 2 ? { ...ctx, concurrency } : ctx),
+    });
   }
   if (flags.groupMonitoring) {
     stages.push({ name: OFFER_STAGE_MONITORING, run: (ctx: OfferWorkerRunContext) => runners.groupMonitoring().execute(ctx) });

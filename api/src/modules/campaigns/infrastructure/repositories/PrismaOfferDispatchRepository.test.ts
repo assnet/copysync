@@ -33,4 +33,17 @@ describe('PrismaOfferDispatchRepository.claimDue', () => {
     expect(sql).toContain('JOIN "offer_generator_configs" c ON c."tenantId" = go."tenantId"');
     expect(sql).toContain(`go."origin" = 'GENERATOR'::"OfferOrigin" AND go."scheduledAt" IS NULL`);
   });
+
+  it('exclusões vazias = SQL de sempre; com sessões, filtra a cabeça (legado sem sessão passa)', async () => {
+    const at = new Date('2026-11-02T12:00:00Z');
+    const plain = captureClaimSql();
+    await plain.repo.claimDue(at, 10);
+    const empty = captureClaimSql();
+    await empty.repo.claimDue(at, 10, { excludeSessionIds: [] });
+    expect(empty.sqls).toEqual(plain.sqls);
+    expect(plain.sqls.join('\n')).not.toContain('<> ALL');
+    const ex = captureClaimSql();
+    await ex.repo.claimDue(at, 10, { excludeSessionIds: ['s1', 's1'] });
+    expect(ex.sqls.join('\n')).toContain('AND (heads."sessionId" IS NULL OR heads."sessionId" <> ALL(');
+  });
 });

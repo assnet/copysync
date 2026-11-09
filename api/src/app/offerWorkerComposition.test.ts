@@ -4,6 +4,7 @@ import { jobsFor } from './processJobs';
 import {
   buildOfferWorkerOptions,
   offerWorkerStopOptions,
+  resolveDispatchConcurrency,
   OFFER_STAGE_DISPATCH,
   OFFER_STAGE_MONITORING,
   type OfferWorkerFlags,
@@ -118,6 +119,47 @@ describe('buildOfferWorkerOptions — papéis e flags', () => {
     }
     expect(offerDispatch).not.toHaveBeenCalled();
     expect(groupMonitoring).not.toHaveBeenCalled();
+  });
+});
+
+describe('OFFER_DISPATCH_CONCURRENCY na composição (entrega B)', () => {
+  it('padrão 1: ctx do envio intocado, sem `concurrency`', async () => {
+    const { options, dispatch } = build('worker', { offerDispatch: true, independentStages: true, dispatchConcurrency: 1 });
+    if (!options || !('stages' in options)) throw new Error('esperava etapas');
+    const ctx = { signal: new AbortController().signal };
+    await options.stages[0].run(ctx);
+    expect(dispatch.execute).toHaveBeenCalledWith(ctx);
+  });
+
+  it('2 com etapas: envio recebe concurrency 2; capturas não', async () => {
+    const { options, dispatch, monitoring } = build('worker', { offerDispatch: true, groupMonitoring: true, independentStages: true, dispatchConcurrency: 2 });
+    if (!options || !('stages' in options)) throw new Error('esperava etapas');
+    const ctx = { signal: new AbortController().signal };
+    await options.stages[0].run(ctx);
+    await options.stages[1].run(ctx);
+    expect(dispatch.execute).toHaveBeenCalledWith({ signal: ctx.signal, concurrency: 2 });
+    expect(monitoring.execute).toHaveBeenCalledWith(ctx);
+  });
+
+  it('2 sem etapas independentes: erro de configuração explícito', () => {
+    expect(() => build('worker', { offerDispatch: true, dispatchConcurrency: 2 })).toThrow(
+      'OFFER_DISPATCH_CONCURRENCY=2 requires OFFER_WORKER_INDEPENDENT_STAGES_ENABLED=true',
+    );
+  });
+
+  it('rejeita 0, 3, fração e NaN; ausente = 1', () => {
+    for (const c of [0, 3, 1.5, Number.NaN]) {
+      expect(() => resolveDispatchConcurrency({ independentStages: true, dispatchConcurrency: c })).toThrow('must be 1 or 2');
+    }
+    expect(resolveDispatchConcurrency({ independentStages: false })).toBe(1);
+  });
+
+  it('http não valida nem cria worker', () => {
+    expect(build('http', { offerDispatch: true, dispatchConcurrency: 2 }).options).toBeNull();
+  });
+
+  it('env: padrão 1', () => {
+    expect(env.OFFER_DISPATCH_CONCURRENCY).toBe(1);
   });
 });
 

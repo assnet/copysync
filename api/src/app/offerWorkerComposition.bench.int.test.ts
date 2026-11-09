@@ -13,7 +13,8 @@ import { jobsFor } from './processJobs';
 import { buildOfferWorkerOptions } from './offerWorkerComposition';
 
 /**
- * Benchmark sintético REDUZIDO da entrega A (T5): flag false × true, mesma carga, banco LOCAL
+ * Benchmark sintético REDUZIDO da entrega A (T5) e B (T8, `OFFER_WORKER_BENCH_MODES=stages,concurrent`):
+ * flag false × true (ou concorrência 1 × 2), mesma carga, banco LOCAL
  * descartável. Use cases reais de envio e captura com repositórios Prisma reais; rede, marketplace,
  * fila de oferta e WhatsApp são dublês com latência fixa. Nunca gera mensagem real.
  *
@@ -28,6 +29,9 @@ import { buildOfferWorkerOptions } from './offerWorkerComposition';
 const ENABLED = process.env['OFFER_WORKER_BENCH'] === '1';
 const SECONDS = Number(process.env['OFFER_WORKER_BENCH_SECONDS'] ?? '120');
 const REPS = Number(process.env['OFFER_WORKER_BENCH_REPS'] ?? '3');
+type Mode = 'legacy' | 'stages' | 'concurrent';
+/** Modos comparados (padrão A: legacy,stages). B: `stages,concurrent` (= etapas com OFFER_DISPATCH_CONCURRENCY 1 × 2). */
+const MODES = (process.env['OFFER_WORKER_BENCH_MODES'] ?? 'legacy,stages').split(',').map((m) => m.trim()) as Mode[];
 /** Arquivo JSONL com cada rodada e o resumo (opcional; sempre também no stdout). */
 const OUT = process.env['OFFER_WORKER_BENCH_OUT'];
 const emit = (line: string) => {
@@ -56,7 +60,7 @@ const median = (xs: number[]) => {
 };
 
 interface RunResult {
-  mode: 'legacy' | 'stages';
+  mode: Mode;
   rep: number;
   captureRuns: number;
   dispatchRuns: number;
@@ -123,7 +127,7 @@ describe.skipIf(!ENABLED)('benchmark A — etapas independentes (sintético redu
     await db.tenant.delete({ where: { id: tenantId } });
   }
 
-  async function runOnce(mode: 'legacy' | 'stages', rep: number): Promise<RunResult> {
+  async function runOnce(mode: Mode, rep: number): Promise<RunResult> {
     const { tenantId, sessions } = await seedTenant(`${mode}-${rep}`);
     const captured = new PrismaCapturedOfferRepository(db);
     const captureWaits: number[] = [];
@@ -195,7 +199,10 @@ describe.skipIf(!ENABLED)('benchmark A — etapas independentes (sintético redu
     });
     const options = buildOfferWorkerOptions({
       jobs: jobsFor('worker'),
-      flags: { offerDispatch: true, groupMonitoring: true, independentStages: mode === 'stages' },
+      flags: {
+        offerDispatch: true, groupMonitoring: true, independentStages: mode !== 'legacy',
+        dispatchConcurrency: mode === 'concurrent' ? 2 : 1,
+      },
       runners: {
         offerDispatch: () => timed(dispatchUseCase, stageMs.dispatch),
         groupMonitoring: () => timed(captureUseCase, stageMs.capture),
@@ -259,13 +266,13 @@ describe.skipIf(!ENABLED)('benchmark A — etapas independentes (sintético redu
 
   it('flag false × true, repetições alternadas', async () => {
     for (let rep = 1; rep <= REPS; rep++) {
-      for (const mode of ['legacy', 'stages'] as const) {
+      for (const mode of MODES) {
         const r = await runOnce(mode, rep);
         results.push(r);
         emit(`BENCH_RUN ${JSON.stringify(r)}`);
       }
     }
-    const summary = (['legacy', 'stages'] as const).map((mode) => {
+    const summary = MODES.map((mode) => {
       const rs = results.filter((r) => r.mode === mode);
       const med = (k: keyof RunResult) => median(rs.map((r) => Number(r[k] ?? 0)));
       return {
@@ -278,6 +285,6 @@ describe.skipIf(!ENABLED)('benchmark A — etapas independentes (sintético redu
       };
     });
     emit(`BENCH_RESULT ${JSON.stringify({ seconds: SECONDS, reps: REPS, summary })}`);
-    expect(results).toHaveLength(REPS * 2);
-  }, (SECONDS + 60) * 1000 * REPS * 2 + 60_000);
+    expect(results).toHaveLength(REPS * MODES.length);
+  }, (SECONDS + 60) * 1000 * REPS * MODES.length + 60_000);
 });
