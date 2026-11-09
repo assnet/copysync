@@ -149,6 +149,9 @@ model Tenant {
   adminBlockedAt        DateTime?
   /// Pausa global de envios (fila de envio): nada sai enquanto não for null; captura continua.
   sendingPausedAt       DateTime?
+  /// Turno da seleção justa de capturas do monitoramento (sequência `monitoring_claim_turn_seq`);
+  /// null = nunca atendido. Controle de infra: sem DTO/painel.
+  monitoringClaimTurn   BigInt?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 

@@ -95,3 +95,66 @@ Carga reduzida e sintética, Mac local, 2 min × 3, um tenant: não cobre o gate
 vazio / 1 sessão / 10 sessões / 7 tenants com backlog desigual, CPU/RSS do container, MEDIA/texto/LINK_PREVIEW,
 janela de 30 min em carga representativa). Smoke com tenant/sessão de teste autorizado não executado.
 Flag continua `false`; nenhuma ativação, deploy ou alteração de produção. Rollback de A = flag false + restart.
+
+## Entrega C — execução de T9–T11 (2026-11-09)
+
+**Base:** `5df078b` + C não commitado, `api` 0.73.3 (versão/CHANGELOG ficam para T12). **Ambiente:** Mac local,
+PostgreSQL 16 descartável (55432), banco isolado `copysync_int_c` (cópia de `copysync_int`, fuso UTC, apagado ao fim).
+Sem produção, sem `start:migrate`; migration aplicada só com `DATABASE_URL` explícito local sobre cópia do schema.
+
+### T9 — migration `20261109130000_add_monitoring_claim_turn`
+
+- `tenants."monitoringClaimTurn" BIGINT` nullable (SQL do `prisma migrate diff`) + `CREATE SEQUENCE monitoring_claim_turn_seq`
+  manual. Sem backfill, DTO ou painel. Aplicada em fixture anterior (`copysync_int_c`, `copysync_int`) e em banco vazio
+  (64 migrations); `migrate diff` banco × schema vazio depois. Código anterior não lê a coluna (rollback de código a mantém).
+
+### T10 — claim justo (`PrismaCapturedOfferRepository.claimFair`)
+
+Um statement (CTEs) em `$transaction([SET LOCAL lock_timeout 200ms, SET LOCAL statement_timeout 2s, claim])`.
+Tenant: `FOR NO KEY UPDATE SKIP LOCKED` (não bloqueia FK do insert de captura; o `FOR UPDATE` do billing conflita e
+é pulado). Elegibilidade em dois `EXISTS` (PENDING; PROCESSING stale): a 1ª versão com `IN (… OR …)` varria o
+histórico do tenant (93 714 buffers, 14 ms) e foi descartada.
+
+`PrismaCapturedOfferRepository.fairClaim.int.test.ts` (serial, 9 testes, 3 execuções seguidas sem falha):
+
+| Cenário | Resultado |
+|---|---|
+| 7 tenants, lote pedido 3, backlog desigual (t0 = 30 mais antigas; demais 4–9) | ≤1 por chamada; 14 claims = 2 rodadas completas na mesma ordem; FIFO dentro do tenant; nenhum backlog esgotado; turnos distintos |
+| PROCESSING stale × recente | stale reivindicado com token novo; recente não |
+| Duas conexões concorrentes até esvaziar | sem duplicata, tokens únicos, os dois progrediram, 7 turnos distintos e não nulos |
+| Restart (novo PrismaClient) | continua pelos turnos persistidos (3 atendidos → os 4 restantes → volta ao 1º) |
+| Rollback (trigger falha o UPDATE da captura) | erro propagado; turno null e capturas PENDING; após remover a trigger, claim normal |
+| Timeout explícito (`LOCK TABLE` externo) | falha em < 2 s (lock_timeout), turno intacto |
+| Captura travada externamente | `[]`, turno intacto; atendida ao liberar |
+| Tenant travado como o billing (`FOR UPDATE`) | sem espera; os outros 6 atendidos; turno do travado null; atendido logo após liberar |
+| Flag false | FIFO global, 3 itens do tenant com backlog antigo, turnos intocados |
+
+Limitação aceita: se o tenant de menor turno tem a única captura elegível travada por outra transação (não por
+claim, que travaria o tenant), a chamada devolve vazio e a próxima rodada tenta de novo.
+
+### EXPLAIN (10 mil elegíveis desiguais + 100 mil de histórico)
+
+500 tenants (metade com turno), 1 tenant com 6 000, 40 com 100, 200 PROCESSING (metade stale), 100 mil
+QUEUED/SKIPPED/FAILED em todos. `EXPLAIN (ANALYZE, BUFFERS)` do statement completo dentro de transação revertida:
+
+| Consulta | Buffers | Tempo |
+|---|---|---|
+| FIFO atual (flag false) | 187 | 1,8 ms |
+| Justa, tenant pequeno escolhido | 376 | 1,8 ms |
+| Justa, tenant de 6 000 escolhido | 381 até o lock da captura (sort de 5 936 linhas, 656 kB) | 2,7 ms |
+
+Custo proporcional ao backlog elegível (índice `[status, capturedAt]` e `[tenantId, status, capturedAt]`), nunca ao
+histórico. **Índice novo não justificado.**
+
+### T11 — configuração
+
+`MONITORING_FAIR_CLAIM_ENABLED` (default `false`) em `env.ts`, injetada em `automationContainer.ts`. Unit:
+`env.monitoringFairClaim.test.ts` (default) e `PrismaCapturedOfferRepository.test.ts` (roteamento por flag, 3).
+Regressão `vitest src/modules/automation src/shared/config`: 17 arquivos, 185 testes, 0 falhas. `pnpm typecheck`:
+sem erros nos arquivos de C (erros restantes em `campaigns/…concurrency.test.ts`, da entrega B em andamento).
+
+### Estado do gate de C: **PENDENTE**
+
+Faltam carga comparativa false/true (CPU/RSS/DB, 3×10 min, 7 tenants), smoke autorizado e `/caveman-review`.
+Ativar só após a migration no boot da Render e com todos os consumidores no mesmo modo. Rollback = flag false +
+restart; coluna, sequência e itens ficam; sem seed nem UPDATE em produção.

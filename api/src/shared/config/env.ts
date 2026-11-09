@@ -144,6 +144,13 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Entrega C das filas: claim de capturas pelo tenant menos recentemente atendido (turno
+  // persistido em `tenants.monitoringClaimTurn`). false = FIFO global de hoje. Só ligar após a
+  // migration e com todos os consumidores no mesmo modo.
+  MONITORING_FAIR_CLAIM_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // Gate da ingestão do chat por entitlement `chat_enabled` (entrega D). false = ingestão de hoje
   // para todos. true: tenant sem chat grava só o contato e baixa só imagem de grupo monitorado.
   CHAT_INGEST_ENTITLEMENT_GATE_ENABLED: z

@@ -1,4 +1,5 @@
 import { prisma } from '../../../shared/database/prisma.client';
+import { env } from '../../../shared/config/env';
 import { offersContainer } from '../../campaigns/infrastructure/offersContainer';
 import { PrismaGroupMonitorRepository } from './repositories/PrismaGroupMonitorRepository';
 import { PrismaCapturedOfferRepository } from './repositories/PrismaCapturedOfferRepository';
@@ -21,7 +22,7 @@ function lazy<T>(make: () => T): () => T {
 }
 
 const monitors  = lazy(() => new PrismaGroupMonitorRepository(prisma));
-const captured  = lazy(() => new PrismaCapturedOfferRepository(prisma));
+const captured  = lazy(() => new PrismaCapturedOfferRepository(prisma, { fairClaim: env.MONITORING_FAIR_CLAIM_ENABLED }));
 const directory = lazy(() => new ChatMonitorGroupDirectory());
 const broadcastUsage = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));
 const configDeps = () => ({
