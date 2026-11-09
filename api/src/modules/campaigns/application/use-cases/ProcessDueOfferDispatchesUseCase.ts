@@ -43,11 +43,25 @@ const SKIP_CODES = new Set(['NOT_FOUND', 'SESSION_NOT_FOUND', 'OFFER_DESTINATION
 
 class SendTimeoutError extends Error {}
 
+/**
+ * Contexto opcional de uma rodada. `signal` abortado = parada do worker: nenhum claim nem envio
+ * novo começa; item já reivindicado e não iniciado fica SENDING e volta pelo `releaseStale`. Envio
+ * já iniciado termina e grava resultado/token. Sem sinal = comportamento de sempre.
+ */
+export interface OfferDispatchRunContext {
+  signal?: AbortSignal;
+}
+
+/** Desfecho de um item, só para o log de observação. */
+type ItemOutcome = { status: string; code: string | null; sendMs: number | null };
+
 export interface ProcessDueOfferDispatchesDeps {
   offers: IOfferRepository;
   dispatches: IOfferDispatchRepository;
   sender: IOfferMessageSender;
   now?: () => Date;
+  /** Relógio monotônico só para durações do log (padrão `Date.now`). */
+  clock?: () => number;
   batchSize?: number;
   sendTimeoutMs?: number;
 }
@@ -64,42 +78,58 @@ export interface ProcessDueOfferDispatchesDeps {
 export class ProcessDueOfferDispatchesUseCase {
   constructor(private readonly deps: ProcessDueOfferDispatchesDeps) {}
 
-  async execute(): Promise<{ processed: number }> {
+  async execute(ctx: OfferDispatchRunContext = {}): Promise<{ processed: number }> {
     const { dispatches } = this.deps;
+    const { signal } = ctx;
+    if (signal?.aborted) return { processed: 0 };
     const now = (this.deps.now ?? (() => new Date()))();
 
     await dispatches.releaseStale(new Date(now.getTime() - STALE_DISPATCH_MS));
     // Vencidos fecham em lote antes do claim: não ocupam a cabeça da faixa um por tick
     await dispatches.skipExpired(now);
+    if (signal?.aborted) return { processed: 0 };
     const due = await dispatches.claimDue(now, this.deps.batchSize ?? DISPATCH_BATCH_SIZE);
 
-    for (const dispatch of due) {
+    for (let i = 0; i < due.length; i++) {
+      const dispatch = due[i]!;
+      // Parada: o resto do lote fica SENDING sem envio e o releaseStale devolve (não é falha)
+      if (signal?.aborted) {
+        logger.info({ left: due.length - i }, 'offer dispatches left for recovery at stop');
+        break;
+      }
       try {
-        await this.processOne(dispatch, now);
+        await this.processOne(dispatch, now, signal);
       } catch (err) {
         // Envio fica SENDING; releaseStale devolve à fila
         logger.error({ err: (err as Error)?.name, dispatchId: dispatch.id, tenantId: dispatch.tenantId }, 'offer dispatch processing failed');
       }
     }
-    await this.sweepOrphanOffers();
+    if (!signal?.aborted) await this.sweepOrphanOffers();
     return { processed: due.length };
   }
 
-  private async processOne(dispatch: OfferDispatch, now: Date): Promise<void> {
+  private async processOne(dispatch: OfferDispatch, now: Date, signal?: AbortSignal): Promise<void> {
+    const startedAt = (this.deps.now ?? (() => new Date()))();
+    const outcome = await this.handleOne(dispatch, now, signal);
+    if (outcome) observeDispatch(dispatch, outcome, startedAt);
+  }
+
+  /** null = nada aconteceu com o item (sem token, posse perdida antes, parada antes do envio). */
+  private async handleOne(dispatch: OfferDispatch, now: Date, signal?: AbortSignal): Promise<ItemOutcome | null> {
     const { offers, dispatches } = this.deps;
     const { id, tenantId, offerId, claimToken } = dispatch;
-    if (!claimToken) return;
+    if (!claimToken) return null;
 
     // Renova a posse; se outro worker reivindicou, não envia
     if (!(await dispatches.touchClaim(id, claimToken))) {
       logger.warn({ dispatchId: id, offerId, tenantId }, 'offer dispatch claim lost');
-      return;
+      return { status: 'CLAIM_LOST', code: null, sendMs: null };
     }
 
     const offer = await offers.findById(offerId, tenantId);
     if (!offer) {
       await dispatches.markResult(id, tenantId, claimToken, { status: 'SKIPPED', failureReason: 'OFFER_NOT_FOUND' });
-      return;
+      return { status: 'SKIPPED', code: 'OFFER_NOT_FOUND', sendMs: null };
     }
     // Oferta/cupom vencido não sai (validade definida por quem criou, ex.: monitoramento). Relógio
     // de agora, não do início do tick: o lote pode levar minutos
@@ -107,10 +137,19 @@ export class ProcessDueOfferDispatchesUseCase {
     if (offer.expiresAt && offer.expiresAt.getTime() <= Math.max(now.getTime(), sendNow.getTime())) {
       await dispatches.markResult(id, tenantId, claimToken, { status: 'SKIPPED', failureReason: 'OFFER_EXPIRED' });
       await this.finalizeIfDone(offerId, tenantId);
-      return;
+      return { status: 'SKIPPED', code: 'OFFER_EXPIRED', sendMs: null };
+    }
+
+    // Último ponto antes do efeito: parada aqui não envia; SENDING volta pelo releaseStale
+    if (signal?.aborted) {
+      logger.info({ dispatchId: id, offerId, tenantId }, 'offer dispatch left for recovery at stop');
+      return null;
     }
 
     let result: OfferDispatchResult;
+    const clock = this.deps.clock ?? Date.now;
+    const sendStarted = clock();
+    let sendMs: number | null = null;
     try {
       const sent = await this.sendWithTimeout({
         tenantId,
@@ -124,14 +163,18 @@ export class ProcessDueOfferDispatchesUseCase {
         simulateTyping: offer.simulateTyping,
         typingSeconds: offer.typingSeconds,
       });
+      sendMs = clock() - sendStarted;
       result = { status: 'SENT', chatMessageId: sent.chatMessageId };
     } catch (err) {
+      sendMs = clock() - sendStarted;
       if (err instanceof AppError && OFFLINE_CODES.has(err.code) && dispatch.sessionId) {
         await this.waitForSession(dispatch, now);
-        return;
+        return { status: 'WAITING_SESSION', code: err.code, sendMs };
       }
       const floodMs = err instanceof AppError && FLOOD_WAIT_CODES.has(err.code) ? floodWaitMs(err) : null;
-      if (floodMs !== null && dispatch.sessionId && (await this.waitForFlood(dispatch, now, floodMs))) return;
+      if (floodMs !== null && dispatch.sessionId && (await this.waitForFlood(dispatch, now, floodMs))) {
+        return { status: 'RATE_LIMITED', code: FLOOD_WAIT_REASON, sendMs };
+      }
       result = toFailure(err);
       // Sem texto da oferta no log
       logger.warn({ dispatchId: id, offerId, tenantId, code: result.failureReason }, 'offer dispatch not sent');
@@ -141,6 +184,7 @@ export class ProcessDueOfferDispatchesUseCase {
     if (!marked) logger.warn({ dispatchId: id, offerId, tenantId }, 'offer dispatch no longer owned');
 
     await this.finalizeIfDone(offerId, tenantId);
+    return { status: marked ? result.status : 'NOT_OWNED', code: 'failureReason' in result ? result.failureReason : null, sendMs };
   }
 
   /**
@@ -228,6 +272,24 @@ export class ProcessDueOfferDispatchesUseCase {
     if ((await dispatches.countOpen(offerId, tenantId)) > 0) return;
     const counts = await dispatches.countByStatus(offerId, tenantId);
     await offers.transitionStatus(offerId, tenantId, ['SENDING', 'PAUSED'], counts.SENT > 0 ? 'SENT' : 'FAILED');
+  }
+}
+
+/**
+ * Um log por envio tratado (docs/fila-de-envio.md): `dispatchOverdueMs` = início real − `notBefore`
+ * (espera planejada/janela/offline já está no `notBefore`; isto é só o atraso do worker), `sendMs` =
+ * duração da chamada ao sender. Só IDs e códigos: sem texto, link, título ou erro bruto. Falha aqui
+ * nunca muda o resultado do envio.
+ */
+function observeDispatch(d: OfferDispatch, o: ItemOutcome, startedAt: Date): void {
+  try {
+    logger.info({
+      dispatchId: d.id, offerId: d.offerId, tenantId: d.tenantId, sessionId: d.sessionId,
+      status: o.status, code: o.code, sendMs: o.sendMs,
+      dispatchOverdueMs: Math.max(0, startedAt.getTime() - d.notBefore.getTime()),
+    }, 'offer dispatch observed');
+  } catch {
+    // observação é melhor esforço
   }
 }
 

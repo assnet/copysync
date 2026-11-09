@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { logger } from '../../../../shared/logger/logger';
 import { FLOOD_MAX_WAIT_MS, FLOOD_WAIT_MARGIN_MS, OFFLINE_MAX_WAIT_MS, OFFLINE_RETRY_MS, ProcessDueOfferDispatchesUseCase } from './ProcessDueOfferDispatchesUseCase';
 import { TelegramFloodWaitError } from '../../../../shared/errors/internal/TelegramErrors';
 import { AppError } from '../../../../shared/errors/AppError';
@@ -335,5 +336,120 @@ describe('ProcessDueOfferDispatchesUseCase — FLOOD_WAIT (Telegram)', () => {
     s.sender.send.mockRejectedValueOnce(new TelegramFloodWaitError(3_600));
     await s.uc.execute();
     expect(s.dispatches.items[0]).toMatchObject({ status: 'QUEUED', waitingSessionSince: NOW, failureReason: 'TELEGRAM_FLOOD_WAIT' });
+  });
+});
+
+describe('ProcessDueOfferDispatchesUseCase — parada cooperativa e observação', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sem contexto: igual a antes (todos enviados)', async () => {
+    const s = setup();
+    expect(await s.uc.execute({})).toEqual({ processed: 2 });
+    expect(statuses(s)).toEqual([['SENT', 'm1'], ['SENT', 'm1']]);
+  });
+
+  it('sinal já abortado: nem claim, nem stale, nem envio', async () => {
+    const s = setup();
+    const claim = vi.spyOn(s.dispatches, 'claimDue');
+    const stale = vi.spyOn(s.dispatches, 'releaseStale');
+    expect(await s.uc.execute({ signal: AbortSignal.abort() })).toEqual({ processed: 0 });
+    expect(claim).not.toHaveBeenCalled();
+    expect(stale).not.toHaveBeenCalled();
+    expect(s.sender.send).not.toHaveBeenCalled();
+  });
+
+  it('parada durante o claim: itens pré-reivindicados ficam SENDING sem envio e voltam pelo stale', async () => {
+    const s = setup();
+    const ac = new AbortController();
+    const original = s.dispatches.claimDue.bind(s.dispatches);
+    vi.spyOn(s.dispatches, 'claimDue').mockImplementation(async (...a) => {
+      const r = await original(...a);
+      ac.abort();
+      return r;
+    });
+    await s.uc.execute({ signal: ac.signal });
+    expect(s.sender.send).not.toHaveBeenCalled();
+    expect(s.dispatches.items.map((d) => [d.status, d.failureReason])).toEqual([['SENDING', null], ['SENDING', null]]);
+    expect(s.offers.items[0]!.status).toBe('SENDING');
+    // Recuperação de sempre: releaseStale devolve à fila, sem retry novo por parada
+    await s.dispatches.releaseStale(new Date(NOW.getTime() + 1));
+    expect(s.dispatches.items.map((d) => d.status)).toEqual(['QUEUED', 'QUEUED']);
+  });
+
+  it('parada entre o claim renovado e o sender: não envia nem marca', async () => {
+    const s = setup(['c1']);
+    const ac = new AbortController();
+    const original = s.offers.findById.bind(s.offers);
+    vi.spyOn(s.offers, 'findById').mockImplementation(async (...a) => {
+      ac.abort();
+      return original(...a);
+    });
+    await s.uc.execute({ signal: ac.signal });
+    expect(s.sender.send).not.toHaveBeenCalled();
+    expect(s.dispatches.items[0]).toMatchObject({ status: 'SENDING', failureReason: null, chatMessageId: null });
+  });
+
+  it('parada durante o sender: o envio termina, grava SENT/token e o próximo não começa', async () => {
+    const s = setup(['c1', 'c2']);
+    const ac = new AbortController();
+    s.sender.send.mockImplementationOnce(async () => {
+      ac.abort();
+      return { chatMessageId: 'm9' };
+    });
+    await s.uc.execute({ signal: ac.signal });
+    expect(s.sender.send).toHaveBeenCalledTimes(1);
+    expect(statuses(s)).toEqual([['SENT', 'm9'], ['SENDING', null]]);
+  });
+
+  it('SEND_TIMEOUT tardio com parada: marca FAILED SEND_TIMEOUT, sem retry e sem novo envio', async () => {
+    const s = setup(['c1', 'c2']);
+    const ac = new AbortController();
+    let finish!: (v: { chatMessageId: string }) => void;
+    s.sender.send.mockImplementationOnce(() => new Promise((r) => {
+      finish = r;
+      setTimeout(() => ac.abort(), 10);
+    }));
+    await s.uc.execute({ signal: ac.signal });
+    expect(statuses(s)).toEqual([['FAILED', 'SEND_TIMEOUT'], ['SENDING', null]]);
+    finish({ chatMessageId: 'late' });
+    await Promise.resolve();
+    expect(s.sender.send).toHaveBeenCalledTimes(1);
+    expect(statuses(s)[0]).toEqual(['FAILED', 'SEND_TIMEOUT']);
+  });
+
+  it('posse perdida antes do sender com sinal ativo: não envia; log de observação CLAIM_LOST', async () => {
+    const s = setup(['c1']);
+    vi.spyOn(s.dispatches, 'touchClaim').mockResolvedValue(false);
+    const info = vi.spyOn(logger, 'info');
+    await s.uc.execute({ signal: new AbortController().signal });
+    expect(s.sender.send).not.toHaveBeenCalled();
+    expect(info.mock.calls.find((c) => c[1] === 'offer dispatch observed')?.[0]).toMatchObject({ status: 'CLAIM_LOST' });
+  });
+
+  it('log por envio: atraso desde notBefore separado da duração do envio; sem texto nem link', async () => {
+    const offers = new InMemoryOfferRepository();
+    offers.items.push(makeOffer({ status: 'SENDING', text: 'oferta secreta', imageUrl: 'store://1.jpg' }));
+    const dispatches = new InMemoryOfferDispatchRepository(offers);
+    dispatches.add({ offerId: 'offer-1', conversationId: 'c1', sessionId: 's1', notBefore: new Date(NOW.getTime() - 45_000) });
+    const sender = { send: vi.fn().mockResolvedValue({ chatMessageId: 'm1' }) };
+    let t = 0;
+    const uc = new ProcessDueOfferDispatchesUseCase({ offers, dispatches, sender, now: () => NOW, clock: () => (t += 700) });
+    const info = vi.spyOn(logger, 'info');
+    await uc.execute();
+    expect(info.mock.calls.find((c) => c[1] === 'offer dispatch observed')?.[0]).toMatchObject({
+      status: 'SENT', code: null, dispatchOverdueMs: 45_000, sendMs: 700, sessionId: 's1', tenantId: TENANT,
+    });
+    const dump = JSON.stringify(info.mock.calls);
+    for (const secret of ['oferta secreta', 'http', 'store://']) expect(dump).not.toContain(secret);
+  });
+
+  it('log de falha leva só o código interno', async () => {
+    const s = setup(['c1']);
+    s.sender.send.mockRejectedValueOnce(new Error('boom com texto'));
+    const info = vi.spyOn(logger, 'info');
+    await s.uc.execute();
+    const obs = info.mock.calls.find((c) => c[1] === 'offer dispatch observed')?.[0];
+    expect(obs).toMatchObject({ status: 'FAILED', code: 'MESSAGE_SEND_FAILED' });
+    expect(JSON.stringify(info.mock.calls)).not.toContain('boom com texto');
   });
 });
