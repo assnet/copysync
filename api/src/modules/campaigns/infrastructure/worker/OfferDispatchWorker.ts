@@ -149,7 +149,7 @@ export class OfferDispatchWorker {
       const { processed } = await (this.options as OfferDispatchWorkerLegacyOptions).tick().execute({ signal: this.abort.signal });
       if (processed > 0) this.log.debug({ processed }, 'offer dispatches processed');
     } catch (err) {
-      this.log.error({ err }, 'offer dispatch tick failed');
+      this.log.error({ err: (err as Error)?.name }, 'offer dispatch tick failed');
     }
   }
 

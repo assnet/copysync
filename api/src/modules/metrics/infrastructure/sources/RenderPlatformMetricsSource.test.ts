@@ -64,4 +64,27 @@ describe('RenderPlatformMetricsSource', () => {
     ac.abort();
     await expect(p).rejects.toThrow();
   });
+  it('série sem rótulo de recurso: conta e loga warn 1× por endpoint, depois debug, sem chave nem valores', async () => {
+    const warn = vi.fn();
+    const debug = vi.fn();
+    const fetchFn = fakeFetch({
+      cpu: [series('srv-1', [0.2]), { labels: [{ field: 'x', value: 'y' }], values: [{ value: 9 }] }, { values: [{ value: 7 }] }],
+    });
+    const src = new RenderPlatformMetricsSource({ apiKey: 'secret-key', resourceIds: ['srv-1'], fetchFn, now });
+    (src as unknown as { log: unknown }).log = { warn, debug };
+    const out = await src.read();
+    expect(out).toContainEqual(expect.objectContaining({ resource: 'srv-1', metric: 'cpu' }));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({ path: 'cpu', discardedSeries: 2 }, expect.any(String));
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/secret-key|"y"|9|7/);
+    await src.read();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(debug).toHaveBeenCalledWith({ path: 'cpu', discardedSeries: 2 }, expect.any(String));
+  });
+
+  it('lastPoints conta descartes no stats', () => {
+    const stats = { discarded: 0 };
+    lastPoints([series('srv-1', [1]), { values: [{ value: 1 }] }, { values: [] }], stats);
+    expect(stats.discarded).toBe(1);
+  });
 });

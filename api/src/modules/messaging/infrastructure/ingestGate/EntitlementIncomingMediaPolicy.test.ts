@@ -27,6 +27,16 @@ describe('EntitlementIncomingMediaPolicy', () => {
     expect(currentRule).not.toHaveBeenCalled();
   });
 
+  it('chat desligado: histórico (append) nunca baixa, nem de grupo monitorado; chat ligado segue a regra', async () => {
+    const off = make(false, true);
+    expect(await off.policy.shouldDownload({ ...group, origin: 'history' }, off.currentRule)).toBe(false);
+    expect(off.monitors.findActiveMonitoredGroup).not.toHaveBeenCalled();
+    expect(await off.policy.shouldDownload({ ...group, origin: 'live' }, off.currentRule)).toBe(true);
+    const on = make(true, false);
+    expect(await on.policy.shouldDownload({ ...group, origin: 'history' }, on.currentRule)).toBe(true);
+    expect(on.currentRule).toHaveBeenCalledTimes(1);
+  });
+
   it('chat desligado: grupo não monitorado, 1:1, vídeo, prévia e fromMe não baixam', async () => {
     const { policy, currentRule } = make(false, true);
     const notMon = make(false, false);

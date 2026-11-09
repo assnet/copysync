@@ -10,7 +10,8 @@ const MONITORED_TTL_MS = 60_000;
  * Download de mídia recebida por entitlement. Chat ligado: regra atual da engine. Chat desligado:
  * só `IMAGE` de grupo monitorado — a captura usa o `mediaUrl` baixado como foto da oferta
  * (`RegisterCapturedMessageUseCase`, que ignora `fromMe`). Contato, vídeo, áudio, documento,
- * prévia e mensagem nossa não baixam.
+ * prévia e mensagem nossa não baixam. Histórico (`origin: 'history'`) nunca baixa com chat
+ * desligado: a ingestão descarta o histórico e o `append` não emite MESSAGE_RECEIVED (sem consumidor).
  */
 export class EntitlementIncomingMediaPolicy implements IIncomingMediaPolicy {
   private readonly monitored: TtlCache<boolean>;
@@ -25,6 +26,7 @@ export class EntitlementIncomingMediaPolicy implements IIncomingMediaPolicy {
 
   async shouldDownload(ctx: IncomingMediaContext, currentRule: () => Promise<boolean>): Promise<boolean> {
     if (await this.gate.isChatEnabled(ctx.tenantId)) return currentRule();
+    if (ctx.origin === 'history') return false;
     if (ctx.fromMe || ctx.msgType !== 'IMAGE' || !ctx.isGroup || !ctx.groupJid) return false;
     return this.isMonitored(ctx.tenantId, ctx.sessionId, ctx.groupJid);
   }

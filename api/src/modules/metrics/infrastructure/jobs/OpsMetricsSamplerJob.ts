@@ -26,6 +26,11 @@ export const OPS_SAMPLER_TICK_MS = 60_000;
  * seguinte; com TTL ≥ intervalo a amostragem viraria o período do TTL. Solto no `stop()`.
  */
 export const OPS_SAMPLER_LEASE_TTL_MS = 45_000;
+/**
+ * Teto da coleta do tick (fontes lentas não seguram o tick): < TTL do lease. Tick que estoura
+ * descarta a leitura (sem buffer, persist nem alerta). O `persist` roda com o lease renovado.
+ */
+export const OPS_TICK_TIMEOUT_MS = 30_000;
 /** 1 linha por série a cada 5 ticks (5 min). */
 export const OPS_PERSIST_EVERY_TICKS = 5;
 export const OPS_RETENTION_MS = 7 * 24 * 3_600_000;
@@ -42,14 +47,17 @@ export interface OpsMetricsSamplerJobOptions {
   /** `OPS_MEMORY_LIMIT_MB`: fallback de RSS quando a plataforma não dá `memory_pct`. */
   memoryLimitMb?: number | null;
   intervalMs?: number;
+  /** Teste: teto da coleta (padrão `OPS_TICK_TIMEOUT_MS`). */
+  tickTimeoutMs?: number;
   now?: () => Date;
 }
 
 /**
  * Amostrador de recursos (MQ-22..24), só no `worker`/`all` e com `OPS_METRICS_SAMPLER_ENABLED`.
  * Tick de 60 s sob o lease `ops-metrics-sampler` (1 processo amostra no cluster): lê Render,
- * Postgres e `worker_heartbeats` em paralelo (falha de uma fonte só loga), guarda no ring buffer,
- * persiste a cada 5 ticks e apaga > 7 dias no mesmo tick, e avalia limiares com silêncio por lease.
+ * Postgres e `worker_heartbeats` em paralelo (falha de uma fonte só loga; coleta limitada a 30 s),
+ * guarda no ring buffer, persiste a cada 5 ticks com o lease renovado (perdeu → não grava) e apaga
+ * > 7 dias no mesmo tick, e avalia limiares com silêncio por lease.
  * Nunca roda em requisição; nunca lança.
  */
 export class OpsMetricsSamplerJob {
@@ -113,24 +121,62 @@ export class OpsMetricsSamplerJob {
       return;
     }
 
-    const readings = await this.collect();
+    const deadline = AbortSignal.timeout(this.options.tickTimeoutMs ?? OPS_TICK_TIMEOUT_MS);
+    const readings = await this.collect(deadline);
+    if (this.stopped) return;
+    if (deadline.aborted) {
+      this.log.warn('ops metrics tick over budget, sample dropped');
+      return;
+    }
     this.buffer.push({ at: now, readings });
     this.ticksSincePersist += 1;
     if (this.ticksSincePersist >= OPS_PERSIST_EVERY_TICKS) {
       this.ticksSincePersist = 0;
+      if (!(await this.renewLease())) {
+        // Outro processo virou dono no meio do tick: não grava janela duplicada
+        this.log.warn('ops metrics lease lost before persist, skipped');
+        this.buffer.clear();
+        return;
+      }
       await this.persist(now);
     }
     await this.evaluateAlerts(now, readings);
   }
 
-  private async collect(): Promise<OpsMetricReading[]> {
+  /**
+   * Renova o lease antes do `persist` (o tick pode ter passado do TTL): `tryAcquire` só pega
+   * lease vencido, então solta o próprio e readquire. Se outro processo for dono, o `release`
+   * não apaga e o `tryAcquire` falha → `false`. Falha de banco também conta como perda.
+   */
+  private async renewLease(): Promise<boolean> {
+    const { lease } = this.options;
+    try {
+      await lease.release(OPS_SAMPLER_LEASE, this.ownerId);
+      const now = this.options.now?.() ?? new Date();
+      return await lease.tryAcquire(OPS_SAMPLER_LEASE, this.ownerId, new Date(now.getTime() + OPS_SAMPLER_LEASE_TTL_MS), now);
+    } catch (err) {
+      this.log.warn({ err: (err as Error)?.name }, 'ops metrics lease renew failed');
+      return false;
+    }
+  }
+
+  private async collect(deadline: AbortSignal): Promise<OpsMetricReading[]> {
     const { platform, database, heartbeats } = this.options;
     this.abort = new AbortController();
-    const signal = this.abort.signal;
+    const signal = AbortSignal.any([this.abort.signal, deadline]);
+    // Fontes sem sinal (Postgres, heartbeats) também param no teto do tick
+    const bounded = <T>(p: Promise<T>): Promise<T> => Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        const fail = () => reject(new Error('ops metrics tick timeout'));
+        if (signal.aborted) fail();
+        else signal.addEventListener('abort', fail, { once: true });
+      }),
+    ]);
     const sources = [
-      ['render', platform ? platform.read(signal) : Promise.resolve([])],
-      ['postgres', database.read()],
-      ['worker', heartbeats.listAlive(WORKER_ALIVE_MS).then(workerReadings)],
+      ['render', bounded(platform ? platform.read(signal) : Promise.resolve([]))],
+      ['postgres', bounded(database.read())],
+      ['worker', bounded(heartbeats.listAlive(WORKER_ALIVE_MS).then(workerReadings))],
     ] as const;
     const settled = await Promise.allSettled(sources.map(([, p]) => p));
     const out: OpsMetricReading[] = [];

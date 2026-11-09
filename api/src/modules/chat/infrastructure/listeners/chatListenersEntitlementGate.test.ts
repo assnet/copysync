@@ -4,6 +4,7 @@ const { publish } = vi.hoisted(() => ({ publish: vi.fn() }));
 vi.mock('../ws/ChatWebSocketPublisher', () => ({ chatWsPublisher: { publish } }));
 
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import { logger } from '../../../../shared/logger/logger';
 import { registerChatContactAvatarListener } from './ChatContactAvatarListener';
 import { registerChatGroupAvatarListener } from './ChatGroupAvatarListener';
 import { registerChatMessageReactionListener } from './ChatMessageReactionListener';
@@ -83,5 +84,22 @@ describe('listeners do chat — gate por entitlement (entrega D)', () => {
       'PRESENCE_UPDATED', { type: 'PRESENCE_UPDATED', tenantId: 't1', sessionId: 's1', phone: '5511', presence: 'available' },
     );
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('presença: publish que lança não vira rejeição (loga e segue)', async () => {
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => undefined as never);
+    const rejections: unknown[] = [];
+    const onRejection = (r: unknown) => { rejections.push(r); };
+    process.on('unhandledRejection', onRejection);
+    publish.mockImplementationOnce(() => { throw new Error('ws down'); });
+    registerChatPresenceListener({ isChatEnabled: vi.fn().mockResolvedValue(true) });
+    (internalEventBus.emit.bind(internalEventBus) as (t: string, p: unknown) => boolean)(
+      'PRESENCE_UPDATED', { type: 'PRESENCE_UPDATED', tenantId: 't1', sessionId: 's1', phone: '5511', presence: 'available' },
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    process.off('unhandledRejection', onRejection);
+    expect(rejections).toHaveLength(0);
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1' }), expect.any(String));
+    error.mockRestore();
   });
 });

@@ -174,9 +174,25 @@ describe('ConcurrentOfferDispatchExecutor', () => {
     const ex = new ConcurrentOfferDispatchExecutor({ capacity: 2, maxItemsPerRound: 10 });
     const ac = new AbortController();
     const q = queue(['s1', 's2', 's3']);
-    const r = await ex.runRound({ signal: ac.signal, claim: q.claim, process: async () => { ac.abort(); } });
+    const r = await ex.runRound({ signal: ac.signal, claim: q.claim, process: async () => { await Promise.resolve(); ac.abort(); } });
     expect(r).toEqual({ processed: 2 });
     expect(q.claim).toHaveBeenCalledTimes(1);
+  });
+
+  it('abort durante o claim: itens já claimados não rodam (ficam SENDING para o releaseStale)', async () => {
+    const ex = new ConcurrentOfferDispatchExecutor({ capacity: 2, maxItemsPerRound: 10 });
+    const ac = new AbortController();
+    const q = queue(['s1', 's2']);
+    const claim = vi.fn(async (limit: number, exclude: string[]) => {
+      const out = await q.claim(limit, exclude);
+      ac.abort();
+      return out;
+    });
+    const process = vi.fn(async () => undefined);
+    const r = await ex.runRound({ signal: ac.signal, claim, process });
+    expect(process).not.toHaveBeenCalled();
+    expect(r).toEqual({ processed: 0 });
+    expect(claim).toHaveBeenCalledTimes(1);
   });
 
   it('erro no claim propaga depois de aguardar os itens em andamento', async () => {

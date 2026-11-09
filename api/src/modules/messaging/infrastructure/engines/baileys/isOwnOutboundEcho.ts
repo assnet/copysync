@@ -1,6 +1,7 @@
 /**
- * Diz se a mensagem é o eco de um envio nosso registrado. Só consulta (e retira) o id
- * quando é `fromMe` com id: mensagem recebida nunca gasta a marca de um eco legítimo.
+ * Diz se a mensagem é o eco de um envio nosso registrado. Só consulta o id (via `consume`,
+ * que pode retirá-lo ou só espiar) quando é `fromMe` com id: mensagem recebida nunca gasta a
+ * marca de um eco legítimo.
  */
 export function isOwnOutboundEcho(
   key: { fromMe?: boolean | null; id?: string | null } | null | undefined,

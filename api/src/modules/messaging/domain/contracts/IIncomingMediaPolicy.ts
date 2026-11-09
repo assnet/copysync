@@ -9,6 +9,11 @@ export interface IncomingMediaContext {
   msgType: string;
   /** Enviada por nós (outro aparelho ou eco não marcado). */
   fromMe?: boolean;
+  /**
+   * `live` = `notify` (vira MESSAGE_RECEIVED); `history` = `append`/sincronização (só vai para o
+   * histórico do chat). Ausente = `live`.
+   */
+  origin?: 'live' | 'history';
 }
 
 /**

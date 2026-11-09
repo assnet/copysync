@@ -53,6 +53,7 @@ import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import { outboundEchoRegistries } from './outboundEchoRegistries';
 import { internalEventBus } from '../../../../../shared/events/InternalEventBus';
 import type { IIncomingMediaPolicy } from '../../../domain/contracts/IIncomingMediaPolicy';
+import { EntitlementIncomingMediaPolicy } from '../../ingestGate/EntitlementIncomingMediaPolicy';
 
 const S = 'sess-mp';
 const T = 'tenant-mp';
@@ -121,7 +122,7 @@ describe('Baileys — política de mídia recebida e eco no notify (entrega D)',
     const events = received();
     await sock.handlers['messages.upsert']({ type: 'notify', messages: [msg('G1', { group: true })] });
     expect(policy.shouldDownload).toHaveBeenCalledWith(
-      { tenantId: T, sessionId: S, isGroup: true, groupJid: '1203', msgType: 'IMAGE', fromMe: false },
+      { tenantId: T, sessionId: S, isGroup: true, groupJid: '1203', msgType: 'IMAGE', fromMe: false, origin: 'live' },
       expect.any(Function),
     );
     expect(h.download).not.toHaveBeenCalled();
@@ -147,14 +148,19 @@ describe('Baileys — política de mídia recebida e eco no notify (entrega D)',
     expect(events[0]?.linkPreview).toMatchObject({ url: 'https://loja.com/p', thumbnailUrl: null });
   });
 
-  it('notify: eco marcado é consumido antes do download e do bus', async () => {
-    const { sock } = await open();
+  it('notify: eco marcado é pulado (sem download nem bus) sem gastar a marca; o append ainda a vê', async () => {
+    const { adapter, sock } = await open();
     const events = received();
     outboundEchoRegistries().media.register(S, 'ECHO1');
     await sock.handlers['messages.upsert']({ type: 'notify', messages: [msg('ECHO1', { fromMe: true })] });
     expect(h.download).not.toHaveBeenCalled();
     expect(events).toHaveLength(0);
-    expect(outboundEchoRegistries().media.consume(S, 'ECHO1')).toBe(false);
+    expect(outboundEchoRegistries().media.has(S, 'ECHO1')).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = await (adapter as any).mapMessagesToHistoryItems([msg('ECHO1', { fromMe: true })], sock, S, T);
+    expect(items).toHaveLength(0);
+    expect(h.download).not.toHaveBeenCalled();
+    expect(outboundEchoRegistries().media.has(S, 'ECHO1')).toBe(false);
   });
 
   it('notify: fromMe sem marca (enviada pelo celular) segue o caminho normal', async () => {
@@ -174,6 +180,21 @@ describe('Baileys — política de mídia recebida e eco no notify (entrega D)',
     expect(h.download).not.toHaveBeenCalled();
     expect(h.saveBuffer).not.toHaveBeenCalled();
     expect(items.map((i: { mediaUrl: unknown }) => i.mediaUrl)).toEqual([null, null]);
-    expect(policy.shouldDownload).toHaveBeenCalledWith(expect.objectContaining({ msgType: 'IMAGE', isGroup: false }), expect.any(Function));
+    expect(policy.shouldDownload).toHaveBeenCalledWith(
+      expect.objectContaining({ msgType: 'IMAGE', isGroup: false, origin: 'history' }), expect.any(Function),
+    );
+  });
+
+  it('append com chat desligado: imagem de grupo monitorado não baixa (histórico sem consumidor)', async () => {
+    const gate = { isChatEnabled: vi.fn(async () => false) };
+    const monitors = { findActiveMonitoredGroup: vi.fn(async () => ({ id: 'mg1' })) };
+    const { adapter, sock } = await open(new EntitlementIncomingMediaPolicy(gate, monitors as never));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = await (adapter as any).mapMessagesToHistoryItems([msg('AP3', { group: true, ageMs: 60_000 })], sock, S, T);
+    expect(h.download).not.toHaveBeenCalled();
+    expect(items[0]?.mediaUrl).toBeNull();
+    // O mesmo grupo no notify (ao vivo) baixa: é a foto da captura.
+    await sock.handlers['messages.upsert']({ type: 'notify', messages: [msg('AP4', { group: true })] });
+    expect(h.download).toHaveBeenCalledTimes(1);
   });
 });

@@ -123,6 +123,7 @@ export class ConcurrentOfferDispatchExecutor {
     const chosen = new Set<string>();
     const active = new Set<Promise<void>>();
     let claimed = 0;
+    let skipped = 0;
     let exhausted = false;
     let claimError: unknown = null;
 
@@ -141,6 +142,11 @@ export class ConcurrentOfferDispatchExecutor {
         for (const d of due) {
           claimed++;
           if (d.sessionId) chosen.add(d.sessionId);
+          // Abort chegou durante o claim: não toca o item; fica SENDING até o releaseStale
+          if (signal?.aborted) {
+            skipped++;
+            continue;
+          }
           const slot = this.acquire(d.sessionId);
           const task: Promise<void> = input
             .process(d, slot)
@@ -162,13 +168,13 @@ export class ConcurrentOfferDispatchExecutor {
       await Promise.race([...active, this.nextRelease()]);
     }
 
-    if (signal?.aborted && claimed > 0) logger.info({ inFlight: active.size }, 'offer dispatch concurrent round stopping');
+    if (signal?.aborted && claimed > 0) logger.info({ inFlight: active.size, skipped }, 'offer dispatch concurrent round stopping');
     await Promise.allSettled([...active]);
     // Esperas não resolvidas desta rodada não precisam sobreviver a ela
     this.releaseWaiters = [];
     this.report();
     if (claimError) throw claimError;
-    return { processed: claimed };
+    return { processed: claimed - skipped };
   }
 
   /** Resumo/alerta limitado a um por intervalo: só quando há chamada ao sender pendente. */

@@ -7,6 +7,7 @@ import {
   OPS_ALERT_SILENCE_MS,
   OPS_RETENTION_MS,
   OPS_SAMPLER_LEASE,
+  OPS_SAMPLER_LEASE_TTL_MS,
   OpsMetricsSamplerJob,
 } from './OpsMetricsSamplerJob';
 
@@ -48,7 +49,7 @@ const reading = (metric: string, value: number, extra: Partial<OpsMetricReading>
 const T0 = new Date('2026-11-09T12:00:00Z').getTime();
 const MIN = 60_000;
 
-function setup(opts: { lease?: ReturnType<typeof memoryLease>; samples?: ReturnType<typeof memorySamples> } = {}) {
+function setup(opts: { lease?: ReturnType<typeof memoryLease>; samples?: ReturnType<typeof memorySamples>; tickTimeoutMs?: number } = {}) {
   const lease = opts.lease ?? memoryLease();
   const samples = opts.samples ?? memorySamples();
   let platformReadings: OpsMetricReading[] = [reading('cpu_pct', 10), reading('memory_pct', 50)];
@@ -66,6 +67,7 @@ function setup(opts: { lease?: ReturnType<typeof memoryLease>; samples?: ReturnT
   let clock = T0;
   const job = new OpsMetricsSamplerJob({
     lease: lease.lease, samples: samples.repo, heartbeats, platform, database, now: () => new Date(clock),
+    tickTimeoutMs: opts.tickTimeoutMs,
   });
   return {
     job, lease, samples, platform, database, heartbeats,
@@ -190,5 +192,35 @@ describe('OpsMetricsSamplerJob', () => {
     await expect(s.job.stop()).resolves.toBeUndefined();
     await tick;
     expect(s.lease.lease.release).toHaveBeenCalledWith(OPS_SAMPLER_LEASE, expect.any(String));
+  });
+  it('lease tomado por outro no meio do tick: renova antes do persist, perdeu → não grava', async () => {
+    const s = setup();
+    await ticks(s, 4);
+    s.platform.read.mockImplementationOnce(async () => {
+      // Tick passou do TTL e outro processo virou dono
+      s.lease.rows.set(OPS_SAMPLER_LEASE, { ownerId: 'other', expiresAt: new Date(T0 + 60 * MIN) });
+      return [reading('cpu_pct', 10)];
+    });
+    await ticks(s, 1, T0 + 4 * MIN);
+    expect(s.samples.repo.insertMany).not.toHaveBeenCalled();
+    expect(s.samples.repo.deleteOlderThan).not.toHaveBeenCalled();
+    expect(s.lease.rows.get(OPS_SAMPLER_LEASE)?.ownerId).toBe('other');
+  });
+
+  it('persist renova o lease do próprio dono (novo vencimento a partir de agora)', async () => {
+    const s = setup();
+    await ticks(s, 5);
+    expect(s.samples.repo.insertMany).toHaveBeenCalledTimes(1);
+    expect(s.lease.rows.get(OPS_SAMPLER_LEASE)?.expiresAt).toEqual(new Date(T0 + 4 * MIN + OPS_SAMPLER_LEASE_TTL_MS));
+  });
+
+  it('coleta acima do teto do tick: descarta a amostra sem lançar nem persistir', async () => {
+    const s = setup({ tickTimeoutMs: 20 });
+    s.database.read.mockImplementation(() => new Promise<OpsMetricReading[]>(() => undefined));
+    await expect(ticks(s, 5)).resolves.toBeUndefined();
+    expect(s.samples.repo.insertMany).not.toHaveBeenCalled();
+    s.database.read.mockImplementation(async () => []);
+    await ticks(s, 5, T0 + 5 * MIN);
+    expect(s.samples.repo.insertMany).toHaveBeenCalledTimes(1);
   });
 });

@@ -17,15 +17,19 @@ type PresenceUpdatedEvent = Extract<InternalMessagingEvent, { type: 'PRESENCE_UP
  */
 export function registerChatPresenceListener(gate?: IChatEntitlementGate): void {
   internalEventBus.on<PresenceUpdatedEvent>('PRESENCE_UPDATED', async (payload) => {
-    if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
-    chatWsPublisher.publish(payload.tenantId, {
-      event: 'chat.presence.updated',
-      data: {
-        tenantId: payload.tenantId,
-        phone: payload.phone,
-        presence: payload.presence,
-      },
-    });
+    try {
+      if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
+      chatWsPublisher.publish(payload.tenantId, {
+        event: 'chat.presence.updated',
+        data: {
+          tenantId: payload.tenantId,
+          phone: payload.phone,
+          presence: payload.presence,
+        },
+      });
+    } catch (err) {
+      logger.error({ err, tenantId: payload.tenantId }, 'ChatPresenceListener: failed to publish presence');
+    }
   });
 
   logger.info('ChatPresenceListener registered');

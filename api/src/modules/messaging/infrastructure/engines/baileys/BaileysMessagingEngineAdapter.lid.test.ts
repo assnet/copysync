@@ -157,6 +157,28 @@ describe('Baileys — LID do autor (MQ-19)', () => {
     expect(events).toHaveLength(1);
   });
 
+  it('menção com consulta lenta no banco: prazo vira miss e cai na engine', async () => {
+    const { sock, contacts, lidMapping } = await open(null);
+    contacts.findByLid.mockImplementationOnce(() => new Promise(() => undefined));
+    const events = received();
+    await sock.handlers['messages.upsert']({ type: 'notify', messages: [{
+      key: { remoteJid: `${PHONE}@s.whatsapp.net`, id: 'M4', fromMe: false }, message: MENTION,
+    }] });
+    expect(lidMapping.getPNForLID).toHaveBeenCalledWith('777');
+    expect(events[0]?.body).toBe(`oi @${PHONE}`);
+  });
+
+  it('autor citado com consulta lenta no banco: prazo vira miss e pede à engine', async () => {
+    const { adapter, sock, contacts, lidMapping } = await open(null, '888');
+    contacts.findByPhone.mockImplementationOnce(() => new Promise(() => undefined));
+    const ref = { externalId: 'Q3', remoteJid: '1203@g.us', fromMe: false, body: 'x', type: 'TEXT', participant: PHONE };
+    const out = await (adapter as unknown as {
+      resolveQuoteAuthor: (...a: unknown[]) => Promise<string | null>;
+    }).resolveQuoteAuthor(sock, T, ref, '1203@g.us', S);
+    expect(lidMapping.getLIDForPN).toHaveBeenCalled();
+    expect(out).toBe('999@lid');
+  });
+
   it('autor citado com LID persistido: não pede à engine', async () => {
     const { adapter, sock, contacts, lidMapping } = await open(null, '888');
     const ref = { externalId: 'Q1', remoteJid: '1203@g.us', fromMe: false, body: 'x', type: 'TEXT', participant: PHONE };

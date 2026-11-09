@@ -145,6 +145,8 @@ const GROUP_SUMMARY_TTL_MS = 15 * 60 * 1_000;
 const QR_TIMEOUT_MS = 120_000;
 /** Tempo máximo para descobrir o LID do autor citado; estourou, a citação sai pelo número. */
 const QUOTE_AUTHOR_LOOKUP_TIMEOUT_MS = 3_000;
+/** Prazo da consulta do par LID↔telefone gravado no contato; estourou = miss (caminho de sempre). */
+const PERSISTED_LID_LOOKUP_TIMEOUT_MS = 500;
 
 /** Resolve `null` se a promessa não terminar no prazo (a original segue e é descartada). */
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
@@ -1300,7 +1302,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
 
         for (const msg of messages) {
         // Eco do nosso envio marcado (mídia, texto com prévia): já gravado no envio; sem download nem bus.
-        if (isOwnOutboundEcho(msg.key, (id) => outboundEchoRegistries().media.consume(sessionId, id))) {
+        // Só consulta (peek): a marca é gasta no `append`, que pode trazer a mesma mensagem depois.
+        if (isOwnOutboundEcho(msg.key, (id) => outboundEchoRegistries().media.has(sessionId, id))) {
           baileysLogger.debug({ sessionId, id: msg.key.id }, 'Skipping own outbound echo (notify)');
           continue;
         }
@@ -1338,7 +1341,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         let mediaUrl: string | null = null;
         if (
           MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
-          && await this.mediaAllowed(routing, sessionId, tenantId, extracted.msgType, fromMe)
+          && await this.mediaAllowed(routing, sessionId, tenantId, extracted.msgType, fromMe, 'live')
         ) {
           mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
         }
@@ -1349,8 +1352,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
             preview: extracted.linkPreview,
             sessionId,
             msgId: msg.key.id,
-            saveThumbs: await this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, async () => true),
-            allowHq: () => this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe),
+            saveThumbs: await this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, 'live', async () => true),
+            allowHq: () => this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, 'live'),
             store: mediaContainer.mediaFileStore,
             logger: baileysLogger,
           })
@@ -1697,7 +1700,7 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       if (
         MEDIA_TYPES_WITH_BINARY.has(extracted.msgType)
         && (now - timestamp.getTime()) < THIRTY_MIN_MS
-        && await this.mediaAllowed(routing, sessionId, tenantId, extracted.msgType, fromMe)
+        && await this.mediaAllowed(routing, sessionId, tenantId, extracted.msgType, fromMe, 'history')
       ) {
         mediaUrl = await downloadBaileysMedia(msg, socket, sessionId, extracted.mimeType);
       }
@@ -1710,8 +1713,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
           sessionId,
           msgId: id,
           saveThumbs: (now - timestamp.getTime()) < THIRTY_MIN_MS
-            && await this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, async () => true),
-          allowHq: () => this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe),
+            && await this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, 'history', async () => true),
+          allowHq: () => this.mediaAllowed(routing, sessionId, tenantId, 'LINK_PREVIEW', fromMe, 'history'),
           store: mediaContainer.mediaFileStore,
           logger: baileysLogger,
         })
@@ -1861,20 +1864,22 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     return resolvedBody;
   }
 
-  /** Telefone do contato com este LID já gravado; `undefined` em miss ou erro (nunca lança). */
+  /** Telefone do contato com este LID já gravado; `undefined` em miss, erro ou prazo (nunca lança). */
   private async persistedPhoneForLid(tenantId: string, lid: string): Promise<string | undefined> {
     try {
-      return (await this.chatContactRepo.findByLid(tenantId, lid))?.phone ?? undefined;
+      const contact = await withTimeout(this.chatContactRepo.findByLid(tenantId, lid), PERSISTED_LID_LOOKUP_TIMEOUT_MS);
+      return contact?.phone ?? undefined;
     } catch (err) {
       baileysLogger.debug({ err, tenantId }, 'Persisted LID lookup failed — asking the engine');
       return undefined;
     }
   }
 
-  /** LID gravado no contato deste telefone; `null` em miss ou erro (nunca lança). */
+  /** LID gravado no contato deste telefone; `null` em miss, erro ou prazo (nunca lança). */
   private async persistedLidForPhone(tenantId: string, phone: string): Promise<string | null> {
     try {
-      return (await this.chatContactRepo.findByPhone(phone, tenantId))?.lid ?? null;
+      const contact = await withTimeout(this.chatContactRepo.findByPhone(phone, tenantId), PERSISTED_LID_LOOKUP_TIMEOUT_MS);
+      return contact?.lid ?? null;
     } catch (err) {
       baileysLogger.debug({ err, tenantId }, 'Persisted LID lookup failed — asking the engine');
       return null;
@@ -1958,10 +1963,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     tenantId: string,
     msgType: string,
     fromMe: boolean,
+    origin: 'live' | 'history',
     currentRule: () => Promise<boolean> = () => this.shouldAutoDownloadGroupMedia(routing, sessionId, tenantId),
   ): Promise<boolean> {
     return this.mediaPolicy.shouldDownload(
-      { tenantId, sessionId, isGroup: routing.isGroup, groupJid: routing.groupJid ?? null, msgType, fromMe },
+      { tenantId, sessionId, isGroup: routing.isGroup, groupJid: routing.groupJid ?? null, msgType, fromMe, origin },
       currentRule,
     );
   }

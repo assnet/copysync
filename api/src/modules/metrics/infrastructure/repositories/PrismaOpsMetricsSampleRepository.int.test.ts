@@ -42,6 +42,18 @@ describe('PrismaOpsMetricsSampleRepository', () => {
     expect(left.map((r) => r.at.toISOString())).toEqual([new Date(now.getTime() - 6 * DAY).toISOString()]);
   });
 
+  it('deleteOlderThan apaga em lotes e para no teto de lotes; o resto sai na chamada seguinte', async () => {
+    const old = Array.from({ length: 7 }, (_, i) => sample('cpu_pct', new Date(now.getTime() - 8 * DAY - i * 60_000)));
+    await repo.insertMany([...old, sample('cpu_pct', new Date(now.getTime() - DAY))]);
+    const small = new PrismaOpsMetricsSampleRepository(prisma, { retentionBatchSize: 2, retentionMaxBatches: 2 });
+    const cutoff = new Date(now.getTime() - 7 * DAY);
+    expect(await small.deleteOlderThan(cutoff)).toBe(4);
+    expect(await prisma.opsMetricsSample.count()).toBe(4);
+    expect(await small.deleteOlderThan(cutoff)).toBe(3);
+    expect(await small.deleteOlderThan(cutoff)).toBe(0);
+    expect(await prisma.opsMetricsSample.count()).toBe(1);
+  });
+
   it('índice (metric, at) existe', async () => {
     const idx = await prisma.$queryRaw<{ indexdef: string }[]>`
       SELECT indexdef FROM pg_indexes WHERE tablename = 'ops_metrics_samples' AND indexname = 'ops_metrics_samples_metric_at_idx'`;

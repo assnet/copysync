@@ -11,6 +11,12 @@ import { logger } from '../../../../shared/logger/logger';
  * `{ labels: [{ field, value }], values: [{ timestamp, value }], unit }`.
  * A doc não fixa a unidade (exemplo `GB`) nem os nomes dos labels: a série é identificada por
  * `instance` → `resource` → `service`, e o % sai da razão uso/limite da mesma série (independe da unidade).
+ * Série com pontos mas sem `resource`/`service` é descartada e contada (`discardedSeries`): warn na
+ * 1ª vez por endpoint, debug depois; nunca com chave, labels ou valores.
+ * Formato de vários recursos: a doc (OpenAPI, 2026-11-09) tem `type: string` com exemplo
+ * `srv-xxxxx,dpg-xxxxx,red-xxxxx` (vírgula), mas a descrição fala em "multiple resource query params"
+ * (repetido). Sem `style`/`explode` definidos: mantido o formato do exemplo (vírgula). Se a Render
+ * não separar, as séries voltam vazias para mais de um id: trocar por `resource` repetido.
  */
 export const RENDER_API_URL = 'https://api.render.com/v1';
 /** Teto por chamada: o tick de 60 s nunca espera a Render mais que isto. */
@@ -46,8 +52,8 @@ export interface RenderPlatformMetricsSourceOptions {
 
 const label = (s: RenderSeries, field: string) => s.labels?.find((l) => l.field === field)?.value ?? null;
 
-/** Último ponto finito de cada série. */
-export function lastPoints(series: unknown): SeriesPoint[] {
+/** Último ponto finito de cada série; `stats.discarded` conta séries com ponto mas sem recurso. */
+export function lastPoints(series: unknown, stats?: { discarded: number }): SeriesPoint[] {
   if (!Array.isArray(series)) return [];
   const out: SeriesPoint[] = [];
   for (const s of series as RenderSeries[]) {
@@ -55,7 +61,10 @@ export function lastPoints(series: unknown): SeriesPoint[] {
     const last = values[values.length - 1];
     if (!last) continue;
     const resource = label(s, 'resource') ?? label(s, 'service');
-    if (!resource) continue;
+    if (!resource) {
+      if (stats) stats.discarded += 1;
+      continue;
+    }
     out.push({ resource, instance: label(s, 'instance'), value: last.value!, unit: s.unit ?? null });
   }
   return out;
@@ -82,6 +91,8 @@ function toReadings(usage: SeriesPoint[], limits: SeriesPoint[], raw: string, pc
 
 export class RenderPlatformMetricsSource implements IPlatformMetricsSource {
   private readonly log = logger.child({ module: 'RenderPlatformMetricsSource' });
+  /** Endpoints que já deram warn de série descartada: depois só debug (sem spam a cada tick). */
+  private readonly warnedDiscard = new Set<Path>();
 
   constructor(private readonly options: RenderPlatformMetricsSourceOptions) {}
 
@@ -118,6 +129,13 @@ export class RenderPlatformMetricsSource implements IPlatformMetricsSource {
       signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return lastPoints(await response.json());
+    const stats = { discarded: 0 };
+    const points = lastPoints(await response.json(), stats);
+    if (stats.discarded > 0) {
+      const first = !this.warnedDiscard.has(path);
+      this.warnedDiscard.add(path);
+      this.log[first ? 'warn' : 'debug']({ path, discardedSeries: stats.discarded }, 'render metrics series without resource label discarded');
+    }
+    return points;
   }
 }

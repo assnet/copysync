@@ -284,6 +284,8 @@ export class ProcessDueOfferDispatchesUseCase {
       // A digitação acontece dentro do envio: estende o prazo para ela não virar SEND_TIMEOUT
       const typingMs = input.simulateTyping ? input.typingSeconds * 1000 : 0;
       timer = setTimeout(() => reject(new SendTimeoutError()), (this.deps.sendTimeoutMs ?? DISPATCH_SEND_TIMEOUT_MS) + typingMs);
+      // Não segura o processo no shutdown: o `finally` limpa no caminho normal
+      timer.unref?.();
     });
     try {
       if (!slot) return await Promise.race([this.deps.sender.send(input), timeout]);
