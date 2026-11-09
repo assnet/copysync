@@ -138,6 +138,18 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Entrega A das filas: envio e capturas em slots independentes no mesmo timer de 2 s
+  // (.specs/features/monitoring-queue-isolation). false = tick sequencial de hoje.
+  OFFER_WORKER_INDEPENDENT_STAGES_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Gate da ingestão do chat por entitlement `chat_enabled` (entrega D). false = ingestão de hoje
+  // para todos. true: tenant sem chat grava só o contato e baixa só imagem de grupo monitorado.
+  CHAT_INGEST_ENTITLEMENT_GATE_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // ── Papel do processo (.specs/features/worker-role) ──────────────────────
   // `all` (default) = comportamento de hoje, sem Redis. `http`/`worker` exigem `REDIS_URL`
   // e `MEDIA_STORAGE_DRIVER=s3` com S3 completo (ver `processRoleIssues`). `all` ignora `REDIS_URL`.
