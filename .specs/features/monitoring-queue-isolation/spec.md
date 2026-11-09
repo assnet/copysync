@@ -1,6 +1,6 @@
 # Filas de ofertas: independência e capacidade limitada
 
-**Data:** 2026-11-08 · **Status:** plano revisável; implementação não iniciada.
+**Data:** 2026-11-08 · **Status:** implementado atrás de flags desligadas (api 0.74.0, 2026-11-09); gates de produção de A/B/C pendentes; D/E aguardam ativação na Render.
 **Branch:** `feature/monitoring-queue-plan`.
 **Roadmap:** itens 3/4/7 (gerador, monitoramento, reescrita); evolução operacional, sem produto novo.
 
@@ -122,13 +122,13 @@ vez e respeita o silêncio de 30 min; rota recusa não super admin.
 
 | Requisitos | Tarefas | Estado |
 |---|---|---|
-| MQ-01..04 | T1–T4 | Planejado |
-| MQ-05 | T1–T3, T5 | Planejado |
-| MQ-06 | T1–T8, T12 | Planejado |
-| MQ-07..09 | T6–T8 | Condicional após A |
-| MQ-10..11 | T9–T11 | Condicional após A |
-| MQ-12..15 | T4–T5, T8–T15 | Planejado |
-| MQ-16..20 | T13–T15 | Planejado, independente de A/B/C |
-| MQ-21..25 | T16–T18 | Planejado; MQ-21 junto de A |
+| MQ-01..04 | T1–T4 | Implementado; gate produção pendente |
+| MQ-05 | T1–T3, T5 | Implementado |
+| MQ-06 | T1–T8, T12 | Implementado (regressão verde) |
+| MQ-07..09 | T6–T8 | Implementado (flag 1); gate produção pendente |
+| MQ-10..11 | T9–T11 | Implementado (flag false); gate produção pendente |
+| MQ-12..15 | T4–T5, T8–T15 | Implementado |
+| MQ-16..20 | T13–T15 | Implementado (flag false) |
+| MQ-21..25 | T16–T18 | Implementado (flag false) |
 
-Cobertura: 25 requisitos mapeados; zero implementados/verificados como funcionalidade nesta etapa.
+Cobertura: 25 requisitos implementados e testados (unit + integração local); ativações dependem dos gates em validation.md.

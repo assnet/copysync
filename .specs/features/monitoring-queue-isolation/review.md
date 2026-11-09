@@ -78,3 +78,31 @@ caminhos e nos dois adapters; 2ª composição em `localEngineContainer.ts:35` �
 `:527`) e `Promise.all`; gate em `processChunk` (`execute` síncrono); reusar `IEntitlementReader.getBoolean`
 em vez de porta nova. Confirmado OK: eco no `notify` não quebra dedup/status; `IJobLease` aceita chave
 arbitrária. **Parada por convergência**: restam só nits. Nenhum teste executado; implementação não iniciada.
+
+## Rodada 6 — revisão do código implementado (A–E), 2026-11-09
+
+Três revisores (`/caveman-review`) sobre `acdbffe..HEAD`, um por grupo (A+B, D, C+E). Zero 🔴.
+
+| Grupo | Achado | Decisão |
+|---|---|---|
+| D | 🟡 `append` baixava imagem de grupo monitorado sem consumidor | Corrigido: política recebe origem; `history` sem chat não baixa |
+| D | 🟡 lookup de LID/autor de citação sem prazo no loop do notify (vale com flag false) | Corrigido: `withTimeout`, miss segue caminho atual |
+| D | 🟡 falha de leitura do entitlement sem timeout nem cache | Corrigido: timeout ~1 s, fallback `true` cacheado 10 s |
+| D | 🟡 marca de eco consumida no notify para todo tenant | Corrigido: notify só confere; consumo segue no append. Pular eco no notify vale também com flag false (download desperdiçado) |
+| D | 🔵 presença async sem try/catch | Corrigido |
+| E | 🟡 retenção DELETE sem LIMIT nem statement_timeout | Corrigido: lotes de 5.000 em transação com timeout |
+| E | 🟡 tick > 45 s perde o lease com dono ativo | Corrigido: lease reconferido antes de persistir; tick com teto |
+| E | 🟡 séries da Render descartadas em silêncio | Corrigido: log limitado com contagem |
+| migr. | 🟡 ALTER sem `lock_timeout` | Revertido na rodada 7: falha por lock viraria P3009 e travaria o boot; tabelas pequenas (prod: chat_contacts 55 mil linhas/16 MB, tenants 7), espera curta é o menor risco |
+| A/B | 🔵 log de erro inteiro, timer sem `unref`, item abortado ainda processado | Corrigidos |
+| A | 🟡 modo legado não repassa sinal ao `stop()` | Mantido: flag false = comportamento de hoje (MQ-12) |
+| B | 🟡 sem recuperação automática de sender eterno | Mantido: runbook manual de restart do design B; alerta a cada 60 s |
+| B | 🟡 um `claimDue` por vaga (advisory lock por item) | Mantido: medir p95 do claim no gate de B antes de ativar |
+| C | 🔵 tenant com captura travada fica no topo até liberar | Mantido: documentado em validation.md C |
+
+### Rodada 7 — convergência
+
+Um revisor sobre as correções: todas resolvem o achado sem bug novo, exceto dois pontos corrigidos:
+`CachedChatEntitlementGate` em falha passa a usar o **último valor conhecido** do tenant (antes
+`true`, que religava a ingestão de tenant sem chat com pool saturado); `SET lock_timeout` removido
+das migrations (P3009). Restam só decisões "Mantido" da rodada 6. **Parada por convergência.**

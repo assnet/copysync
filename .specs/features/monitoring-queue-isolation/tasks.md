@@ -1,6 +1,6 @@
 # Tarefas de implementação
 
-**Design:** [design.md](design.md) · **Status:** planejado, nenhuma tarefa de implementação iniciada.
+**Design:** [design.md](design.md) · **Status:** T1–T18 implementadas (commits e763f73..HEAD, api 0.74.0); gates de produção em validation.md.
 **Ferramentas:** shell/`rg`, TLC e `/caveman-review`; Postgres somente local descartável nos testes.
 Nenhuma tarefa autoriza alterar produção, ativar flags, publicar ou trocar papéis.
 

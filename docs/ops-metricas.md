@@ -14,10 +14,16 @@ baixa frequência, persistência rara. Dado de infraestrutura: sem tenant, sem P
 
 - **Sampler**: `OpsMetricsSamplerJob` (`api/src/modules/metrics/infrastructure/jobs/`), tick de
   60 s com `unref()`, só em `worker`/`all`. Um dono por vez no cluster: lease `ops-metrics-sampler`
-  (`IJobLease`), TTL 45 s (menor que o tick), solto no `stop()`.
+  (`IJobLease`), TTL 45 s (menor que o tick), solto no `stop()`. Coleta limitada a 30 s
+  (`OPS_TICK_TIMEOUT_MS`, `AbortSignal.timeout`): estourou, a amostra do tick é descartada. Antes do
+  `persist` o lease é renovado (`release` + `tryAcquire`, pois `tryAcquire` só pega lease vencido);
+  se outro processo virou dono, não grava. Não remover essa renovação nem subir o teto acima do TTL.
 - **Persistência**: ring buffer de 60 leituras em memória, agregado e gravado em
   `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `meta` = min/max/n/unit).
-- **Retenção**: 7 dias; o próprio tick apaga `at < now() - 7d` (índice `ops_metrics_samples(at)`).
+- **Retenção**: 7 dias; o próprio tick apaga `at < now() - 7d` (índice `ops_metrics_samples(at)`)
+  em lotes de 5 mil por `ctid`, cada lote com `SET LOCAL statement_timeout = '2s'`, no máximo 10 lotes
+  por tick (pior caso 20 s, dentro do lease renovado). Backlog maior escoa nos ticks seguintes.
+  Nunca `deleteMany` sem limite.
 - **Leitura**: `GET /api/admin/ops/metrics?metric=&from=&to=&cursor=` só super admin
   (`metrics/presentation/routes/opsMetrics.routes.ts`). Lê só `ops_metrics_samples` e o estado
   atual de `worker_heartbeats`; nunca chama a Render. Janela padrão 24 h, máximo 7 dias; página de
@@ -38,7 +44,11 @@ timeout 5 s cada) + consultas de catálogo do PG. Zero no `http`.
 
 **Antes de ligar**: conferir numa resposta real da Render a unidade (`unit`) e os labels das
 séries (`instance`/`resource`/`service`). O `%` vem da razão uso/limite da mesma série, mas o valor
-absoluto de `cpu`/`memory` só tem sentido com a unidade confirmada.
+absoluto de `cpu`/`memory` só tem sentido com a unidade confirmada. Série sem `resource`/`service`
+é descartada e contada: warn `render metrics series without resource label discarded` na 1ª vez por
+endpoint (depois debug), com `path` e `discardedSeries`. Vários ids vão em `resource=a,b` (exemplo
+da doc); a descrição da Render fala em parâmetro repetido e o OpenAPI não define `style`/`explode`.
+Se a resposta real vier vazia com mais de um id, trocar por `resource` repetido.
 
 ## Alertas (MQ-24)
 

@@ -199,6 +199,9 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
   (credencial não utilizável + captura `CREDENTIAL_MISSING` nos últimos 7 dias). Um por loja; recusada prevalece.
   Save* não devolvem o campo; o painel mantém o anterior até o próximo load.
 
+Imagem da captura: vem do download feito no adapter. Com `CHAT_INGEST_ENTITLEMENT_GATE_ENABLED`
+e tenant sem `chat_enabled`, só imagem de grupo monitorado é baixada (`docs/chat-ingestao-por-entitlement.md`).
+
 ### 3.1 Seleção justa de capturas entre tenants (`MONITORING_FAIR_CLAIM_ENABLED`)
 
 Padrão `false`: `claimPending` = FIFO global por `capturedAt` (tenant com backlog grande atrasa os
