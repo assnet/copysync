@@ -302,7 +302,7 @@ retenção; unit do silêncio de 30 min. **Gate:** full + integração.
 
 ### T18 — Rota super admin, flag, docs e versão de E
 
-**What / Where:** `GET /ops/metrics` (super admin, cursor assinado), `docs/arquitetura-escala.md`
+**What / Where:** `GET /admin/ops/metrics` (super admin, cursor assinado), `docs/arquitetura-escala.md`
 (§ observabilidade), `docs/ops-metricas.md` novo, changelog, versão.
 **Depends on:** T17. **Reuses:** guard super admin, `OpaqueCursor`. **Requirement:** MQ-25/12/13/14.
 **Tests:** unit da rota (403 não super admin), review. **Gate:** full + review.

@@ -222,7 +222,7 @@ nunca exposta ao painel; IDs de recurso em `RENDER_RESOURCE_IDS`.
   fallback). Silêncio 30 min por limiar via `IJobLease` `ops-alert:<reason>` (cluster-wide, como o
   cooldown de `worker-capacity-alert-email`). Só log: `ICapacityAlertNotifier` não tem implementação
   de produção e não há template na central (escala §3.2 D5); e-mail entra quando o template existir.
-- **Rota** `GET /ops/metrics?metric=&from=&to=` só super admin, paginada por cursor assinado; tela
+- **Rota** `GET /admin/ops/metrics?metric=&from=&to=` só super admin, paginada por cursor assinado; tela
   super admin fora deste plano (ler via Render enquanto não existir).
 
 Referência a confirmar antes de T17: Render API `GET /v1/metrics/cpu|memory?resource=<id>`

@@ -73,8 +73,13 @@ só deduplica na ingestão. Revisão 2026-11-09 achou: `append` grava direto por
 | MQ-19 | Evento `MESSAGE_RECEIVED` ganha `authorLid?` (contrato interno: emissor + consumidores + CHANGELOG, AGENTS §36); `ChatContact` deverá ganhar coluna opcional `lid` (migration aditiva, sem backfill), gravada quando o adapter resolver `participant @lid` ↔ `participantAlt`; a chave única continua `tenantId+phone`. Resolução de menção/citação deverá consultar o par antes de pedir à engine. |
 | MQ-20 | Entitlement `chat_enabled` (chave nova; ausente = false) lido via `IEntitlementReader.getBoolean` existente, sem porta nova; super admin/tenant de teste true, lido de `tenant_entitlements` com cache em memória de TTL 30–60 s (não há evento de invalidação entre processos; webhook roda no `http`, ingestão no dono da sessão); sem UI nova; chat ligado = comportamento atual byte a byte. |
 
-**Teste independente:** tenant sem chat recebe mensagem de grupo monitorado com imagem: 1 upsert de
-contato + 1 captura, 1 download (imagem de grupo monitorado), zero `chat_messages` inclusive via `append`; mensagem 1:1 com vídeo: zero download; disparo MEDIA conclui `SENT` e eco não grava
+**Decisões da implementação (2026-11-09):** grupo com chat desligado não grava contato (o caminho de
+grupo nunca fez upsert de participante; Saver cuidará dos membros); `fromMe` não baixa mídia; DELIVERED/READ
+não são gravados sem chat (disparo usa só SENT/FAILED do retorno); falha ao ler entitlement = chat ligado.
+`lid` (MQ-19) é gravado no caminho 1:1; par LID de participante de grupo fica para o Saver.
+
+**Teste independente:** tenant sem chat recebe mensagem de grupo monitorado com imagem: 0 contato,
+1 captura, 1 download (imagem de grupo monitorado), zero `chat_messages` inclusive via `append`; mensagem 1:1 com vídeo: zero download; disparo MEDIA conclui `SENT` e eco não grava
 nada nem vaza marca. Tenant com chat: suíte atual intacta. LID: mensagem com `@lid` grava `lid` e a
 menção seguinte resolve sem chamar a engine.
 
@@ -89,7 +94,7 @@ do caminho das requisições, para calibrar A/B/C/D com dados.
 | MQ-22 | Um job `opsMetricsSampler` só no `worker`, a cada 60 s, deverá ler Render Metrics API (`/v1/metrics/cpu`, `/memory`, recursos da API, worker e Postgres) com `RENDER_API_KEY`, e 3 consultas leves ao Postgres (`pg_stat_database`, `pg_stat_activity` agregado, top 10 de `pg_stat_statements`) dentro de `$transaction` com `SET LOCAL statement_timeout = '2s'`. Dono único via `IJobLease` (`ops-metrics-sampler`): com N workers só um amostra. Nunca no `http`, nunca em requisição. Endpoints a confirmar na doc oficial da Render antes de T17. |
 | MQ-23 | Agregado em ring buffer de 60 min em memória e persistido 1 linha a cada 5 min em `ops_metrics_samples` com retenção de 7 dias apagada pelo próprio job. O ring buffer é exceção declarada à regra de escala (cache da tabela; perda ≤ 5 min em crash aceita). Sem PII, sem texto de query além do `queryid`/forma normalizada truncada. |
 | MQ-24 | `capacityAlert` (já existe) deverá avaliar limiares: RSS ≥ 80% do container, CPU ≥ 80% por 5 min, `idle in transaction` ≥ 3, event loop p99 ≥ 200 ms; alerta por log estruturado; e-mail só quando a central tiver template (hoje não há, escala §3.2 D5). Silêncio de 30 min por limiar via `IJobLease` com chave `ops-alert:<reason>`, nunca variável em memória. Streak de 5 min e limite de RAM lidos de `ops_metrics_samples`/Render API (`OPS_MEMORY_LIMIT_MB` como fallback). |
-| MQ-25 | Leitura só por rota super admin (`/ops/metrics`), que lê `ops_metrics_samples`/`worker_heartbeats`, nunca a Render ao vivo. Sem APM externo, sem `/metrics` público no `http`. Flag `OPS_METRICS_SAMPLER_ENABLED=false`; `RENDER_API_KEY` só na Render. |
+| MQ-25 | Leitura só por rota super admin (`/admin/ops/metrics`, 401 para não super admin como as demais rotas admin), que lê `ops_metrics_samples`/`worker_heartbeats`, nunca a Render ao vivo. Sem APM externo, sem `/metrics` público no `http`. Flag `OPS_METRICS_SAMPLER_ENABLED=false`; `RENDER_API_KEY` só na Render. |
 
 **Teste independente:** sampler com clientes falsos (Render e PG) produz amostra, agrega, persiste a
 cada 5 min e apaga > 7 dias; falha da Render ou do PG só loga e mantém o restante; alerta dispara uma
