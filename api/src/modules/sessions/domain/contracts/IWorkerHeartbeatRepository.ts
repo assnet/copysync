@@ -14,6 +14,13 @@ export interface WorkerHeartbeatInput {
   maxSessions: number;
   /** Memória residente em MB. */
   rssMb: number;
+  /**
+   * CPU do Node entre dois batimentos (delta de `process.cpuUsage()` / tempo de parede, %; passa de
+   * 100 com várias threads). `null` no 1º batimento ou com imagem antiga (coluna nullable, MQ-21).
+   */
+  cpuPct?: number | null;
+  /** p99 do atraso do event loop desde o batimento anterior, ms. `null` sem amostra. */
+  eventLoopP99Ms?: number | null;
 }
 
 export interface WorkerHeartbeat extends WorkerHeartbeatInput {

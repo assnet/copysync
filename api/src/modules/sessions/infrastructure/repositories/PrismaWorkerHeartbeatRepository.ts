@@ -25,18 +25,25 @@ const toHeartbeat = (r: HeartbeatRow): WorkerHeartbeat => ({
   pendingLogins: r.pendingLogins,
   maxSessions: r.maxSessions,
   rssMb: r.rssMb,
+  cpuPct: r.cpuPct ?? null,
+  eventLoopP99Ms: r.eventLoopP99Ms ?? null,
   seenAt: r.seenAt,
 });
 
 const int = (n: number) => Math.max(0, Math.trunc(n));
+/** Medida opcional: `null` se ausente/inválida, senão ≥ 0 com 1 casa. */
+const metric = (n: number | null | undefined) =>
+  n == null || !Number.isFinite(n) ? null : Math.max(0, Math.round(n * 10) / 10);
 
 export class PrismaWorkerHeartbeatRepository implements IWorkerHeartbeatRepository {
   async beat(row: WorkerHeartbeatInput): Promise<void> {
     await prisma.$executeRaw`
-      INSERT INTO "worker_heartbeats" ("workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "seenAt")
-      VALUES (${row.workerId}, ${row.role}, ${int(row.sessions)}, ${int(row.pendingLogins)}, ${int(row.maxSessions)}, ${int(row.rssMb)}, ${NOW})
+      INSERT INTO "worker_heartbeats" ("workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "cpuPct", "eventLoopP99Ms", "seenAt")
+      VALUES (${row.workerId}, ${row.role}, ${int(row.sessions)}, ${int(row.pendingLogins)}, ${int(row.maxSessions)}, ${int(row.rssMb)},
+        ${metric(row.cpuPct)}::double precision, ${metric(row.eventLoopP99Ms)}::double precision, ${NOW})
       ON CONFLICT ("workerId") DO UPDATE SET "role" = EXCLUDED."role", "sessions" = EXCLUDED."sessions",
-        "pendingLogins" = EXCLUDED."pendingLogins", "maxSessions" = EXCLUDED."maxSessions", "rssMb" = EXCLUDED."rssMb", "seenAt" = EXCLUDED."seenAt"`;
+        "pendingLogins" = EXCLUDED."pendingLogins", "maxSessions" = EXCLUDED."maxSessions", "rssMb" = EXCLUDED."rssMb",
+        "cpuPct" = EXCLUDED."cpuPct", "eventLoopP99Ms" = EXCLUDED."eventLoopP99Ms", "seenAt" = EXCLUDED."seenAt"`;
     try {
       await prisma.$executeRaw`
         DELETE FROM "worker_heartbeats" WHERE "workerId" IN (
@@ -49,7 +56,7 @@ export class PrismaWorkerHeartbeatRepository implements IWorkerHeartbeatReposito
 
   async listAlive(maxAgeMs: number): Promise<WorkerHeartbeat[]> {
     const rows = await prisma.$queryRaw<HeartbeatRow[]>`
-      SELECT "workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "seenAt" FROM "worker_heartbeats"
+      SELECT "workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "cpuPct", "eventLoopP99Ms", "seenAt" FROM "worker_heartbeats"
       WHERE "seenAt" > ${NOW} - (${int(maxAgeMs)}::int * interval '1 millisecond')
       ORDER BY "workerId"`;
     return rows.map(toHeartbeat);

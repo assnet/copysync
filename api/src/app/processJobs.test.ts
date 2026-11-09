@@ -6,10 +6,11 @@ const ALL: ProcessJob[] = [
   'offerDispatch', 'hubOutbox', 'extensionRetention', 'billingReconcile',
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
   'sessionAdoption', 'workerHeartbeat', 'capacityAlert', 'outboundTmpSweep',
+  'opsMetricsSampler',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 16 jobs', () => {
+  it('all liga os 17 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -44,5 +45,11 @@ describe('jobsFor', () => {
       expect(jobsFor('all').has(j)).toBe(true);
       expect(jobsFor('http').has(j)).toBe(false);
     }
+  });
+
+  it('sampler de métricas só em worker/all, nunca no http (MQ-22)', () => {
+    expect(jobsFor('worker').has('opsMetricsSampler')).toBe(true);
+    expect(jobsFor('all').has('opsMetricsSampler')).toBe(true);
+    expect(jobsFor('http').has('opsMetricsSampler')).toBe(false);
   });
 });

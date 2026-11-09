@@ -364,16 +364,34 @@ model Session {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model WorkerHeartbeat {
-  workerId      String   @id // id do processo (o mesmo do lease)
-  role          String // papel do processo: all | worker
-  sessions      Int // sessões com login concluído neste processo (ocupam vaga)
-  pendingLogins Int      @default(0) // logins em andamento (QR/código sem leitura); não ocupam vaga
-  maxSessions   Int // teto do processo (WORKER_MAX_SESSIONS)
-  rssMb         Int // memória residente em MB
-  seenAt        DateTime // último batimento (horário do banco, UTC)
+  workerId       String   @id // id do processo (o mesmo do lease)
+  role           String // papel do processo: all | worker
+  sessions       Int // sessões com login concluído neste processo (ocupam vaga)
+  pendingLogins  Int      @default(0) // logins em andamento (QR/código sem leitura); não ocupam vaga
+  maxSessions    Int // teto do processo (WORKER_MAX_SESSIONS)
+  rssMb          Int // memória residente em MB
+  cpuPct         Float? // CPU do Node entre batimentos (%); nullable: deploy sobreposto com imagem antiga (MQ-21)
+  eventLoopP99Ms Float? // p99 do atraso do event loop desde o batimento anterior (ms)
+  seenAt         DateTime // último batimento (horário do banco, UTC)
 
   @@index([seenAt])
   @@map("worker_heartbeats")
+}
+
+// Amostras de recursos da plataforma (Render, Postgres, workers), MQ-23. Dado de infraestrutura,
+// sem tenant. 1 linha por (resource, metric) a cada 5 min; retenção de 7 dias pelo próprio job.
+model OpsMetricsSample {
+  id       BigInt   @id @default(autoincrement())
+  at       DateTime // fim da janela agregada (UTC)
+  source   String // render | postgres | worker
+  resource String // id do recurso (srv-/dpg-), workerId, banco ou queryid
+  metric   String // ex.: cpu_pct, memory_pct, db_idle_in_transaction, event_loop_p99_ms
+  value    Float // média da janela (gauge) ou último valor (counter)
+  meta     Json? // { min, max, n, unit?, shape? }; sem PII nem SQL bruto
+
+  @@index([metric, at])
+  @@index([at]) // retenção: DELETE WHERE at < x
+  @@map("ops_metrics_samples")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

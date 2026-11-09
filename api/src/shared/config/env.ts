@@ -340,6 +340,27 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // ── Métricas de recursos (.specs/features/monitoring-queue-isolation, entrega E) ──
+  // Sampler de 60 s só em worker/all. Desligado por padrão; liga só na Render após RENDER_API_KEY.
+  OPS_METRICS_SAMPLER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Chave da Render Metrics API: só na Render, nunca exposta ao painel nem logada.
+  RENDER_API_KEY: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
+  // IDs `srv-`/`dpg-` separados por vírgula (API, worker, Postgres).
+  RENDER_RESOURCE_IDS: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
+  // Limite de RAM do container (MB): fallback do alerta de RSS quando a Render não dá o limite.
+  OPS_MEMORY_LIMIT_MB: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
 });
 
 export const LINK_ROTATION_SECRET_MIN_LENGTH = 32;

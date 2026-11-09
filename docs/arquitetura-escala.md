@@ -342,6 +342,14 @@ jobs por natureza: BullMQ com filas `monitoring.inbound`, `offer.rewrite`, `broa
 rate limit por sessão (WhatsApp pune rajada) e retry com backoff. Não construir essas features
 sobre `setInterval` in-process.
 
+### 3.7 Observabilidade de recursos
+
+CPU/RAM dos containers, Postgres e workers são amostrados por um job do `worker` sob lease único
+e lidos só pelo super admin em `GET /admin/ops/metrics`: ver [`ops-metricas.md`](ops-metricas.md).
+**Exceção declarada** à regra de estado em memória: o ring buffer de 60 leituras do
+`OpsMetricsSamplerJob` é cache de `ops_metrics_samples` (perda ≤ 5 min em crash aceita); alertas e
+silêncio ficam em lease no banco. Sem APM externo, sem `/metrics` público no `http`.
+
 ---
 
 ## 4. Ordem de entrega
