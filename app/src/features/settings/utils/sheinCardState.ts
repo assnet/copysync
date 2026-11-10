@@ -35,8 +35,9 @@ export interface SheinCardStateInput {
 export function sheinCardState(i: SheinCardStateInput): SheinCardState {
   if (i.availability && !i.availability.enabled) return 'locked';
   // Credencial existe e o aviso vigente não tem aceite (`riskNotice` null = pendente): parado até o reaceite.
-  // `availability` ausente = sem restrição (ver `useAffiliateCredentials`): não pede reaceite.
-  if (i.item && i.availability && !i.availability.riskNotice?.acceptedAt) return 'reaccept';
+  // Shein sem `availability` também pede reaceite: no card da Shein, sem prova de aceite vigente, fica
+  // parado (lado seguro; a API sempre envia a chave e bloqueia sem aceite de qualquer forma).
+  if (i.item && !i.availability?.riskNotice?.acceptedAt) return 'reaccept';
   if (i.item?.rejectedAt) return 'rejected';
   if (i.item?.hasSession) return 'connected';
   if (i.extLoading && i.extStatus === 'unavailable') return 'checking';

@@ -42,10 +42,8 @@ describe('sheinCardState', () => {
     expect(sheinCardState({ ...base, availability: avail({ riskNotice: null }) })).toBe('ready');
   });
 
-  it('availability ausente = sem restrição: credencial não vira reaceite', () => {
-    expect(sheinCardState({ ...base, availability: undefined, item: item() })).toBe('connected');
-    expect(sheinCardState({ ...base, availability: undefined, item: item({ rejectedAt: '2026-11-10T13:00:00.000Z' }) }))
-      .toBe('rejected');
+  it('availability ausente com credencial: pede reaceite (lado seguro)', () => {
+    expect(sheinCardState({ ...base, availability: undefined, item: item() })).toBe('reaccept');
   });
 
   it('faixa de aviso em todo estado menos travado', () => {
