@@ -3,6 +3,8 @@ export const workersAdminStrings = {
   navLabel: 'Workers',
   pageTitle: 'Workers',
   pageSubtitle: 'Ocupação dos servidores que mantêm as sessões conectadas. Atualiza a cada 20 segundos.',
+  /** Abas da tela (a aba ativa vem da URL). */
+  tabs: { occupancy: 'Ocupação', usage: 'Consumo', aria: 'Visões de Workers' },
   retry: 'Tentar de novo',
   listTitle: 'Workers ativos',
   empty: 'Nenhum worker ativo',

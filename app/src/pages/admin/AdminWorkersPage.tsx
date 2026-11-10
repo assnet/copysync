@@ -1,6 +1,8 @@
+import { lazy, Suspense, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import {
-  Alert, Box, Button, Card, CardContent, CircularProgress, Grid, IconButton, LinearProgress, Stack, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Tooltip, Typography,
+  Alert, Box, Button, Card, CardContent, CircularProgress, Grid, IconButton, LinearProgress, Skeleton, Stack, Tab, Table,
+  TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tooltip, Typography,
 } from '@mui/material';
 import { Cable, Hourglass, Info, Server } from 'lucide-react';
 import { AppIcon, EmptyState, PageHeader, SectionCard, StatCard } from '@/components';
@@ -10,6 +12,13 @@ import { occupancyLevel, occupancyPercent, sortWorkers, type OccupancyLevel } fr
 import { workersAdminStrings as t } from '@/features/workersAdmin/strings';
 import { useAdminWorkers } from '@/features/workersAdmin/useAdminWorkers';
 import type { LeaseProcess, WorkerOccupancy, WorkerOccupancyList } from '@/features/workersAdmin/types';
+import { opsMetricsStrings } from '@/features/opsMetrics/strings';
+
+/** Aba Consumo em chunk próprio: a biblioteca de gráficos só baixa ao abrir a aba. */
+const UsageTab = lazy(() => import('@/features/opsMetrics/components/UsageTab'));
+
+export const WORKERS_PATH = '/admin/workers';
+export const WORKERS_USAGE_PATH = '/admin/workers/usage';
 
 const LEVEL_COLOR: Record<OccupancyLevel, 'success' | 'warning' | 'error'> = {
   ok: 'success', warning: 'warning', full: 'error',
@@ -205,30 +214,66 @@ function WorkersView({ data }: { data: WorkerOccupancyList }) {
   );
 }
 
-export function AdminWorkersPage() {
+/** Aba Ocupação: conteúdo original da tela (atualiza a cada 20 s). */
+function OccupancyTab() {
   const w = useAdminWorkers();
   const data = w.data;
 
+  if (w.loading && !data) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress aria-label={t.pageTitle} />
+      </Box>
+    );
+  }
+  if (w.loadError || !data) {
+    return (
+      <Alert
+        severity="error"
+        action={<Button color="inherit" size="small" onClick={() => void w.reload()}>{t.retry}</Button>}
+      >
+        {w.loadError ?? t.errors.generic}
+      </Alert>
+    );
+  }
+  return (
+    <>
+      {w.refreshError && <Alert severity="warning" sx={{ mb: 2 }}>{t.refreshFailed}</Alert>}
+      {data.adoptionEnabled === false ? <LeaseView data={data} /> : <WorkersView data={data} />}
+    </>
+  );
+}
+
+export function AdminWorkersPage() {
+  const { pathname } = useLocation();
+  const usage = pathname.startsWith(WORKERS_USAGE_PATH);
+  // Ações do cabeçalho da aba Consumo entram aqui por portal (a aba é carregada sob demanda).
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+
   return (
     <Box>
-      <PageHeader title={t.pageTitle} subtitle={t.pageSubtitle} />
+      <PageHeader
+        title={t.pageTitle}
+        subtitle={usage ? opsMetricsStrings.subtitle : t.pageSubtitle}
+        action={usage ? <Box ref={setHeaderSlot} /> : undefined}
+        sx={{ mb: 2 }}
+      />
+      <Tabs
+        value={usage ? WORKERS_USAGE_PATH : WORKERS_PATH}
+        aria-label={t.tabs.aria}
+        variant="fullWidth"
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider', maxWidth: { sm: 360 } }}
+      >
+        <Tab label={t.tabs.occupancy} value={WORKERS_PATH} component={Link} to={WORKERS_PATH} />
+        <Tab label={t.tabs.usage} value={WORKERS_USAGE_PATH} component={Link} to={WORKERS_USAGE_PATH} />
+      </Tabs>
 
-      {w.loading && !data ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress aria-label={t.pageTitle} />
-        </Box>
-      ) : w.loadError || !data ? (
-        <Alert
-          severity="error"
-          action={<Button color="inherit" size="small" onClick={() => void w.reload()}>{t.retry}</Button>}
-        >
-          {w.loadError ?? t.errors.generic}
-        </Alert>
+      {usage ? (
+        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={opsMetricsStrings.loading} />}>
+          <UsageTab headerSlot={headerSlot} />
+        </Suspense>
       ) : (
-        <>
-          {w.refreshError && <Alert severity="warning" sx={{ mb: 2 }}>{t.refreshFailed}</Alert>}
-          {data.adoptionEnabled === false ? <LeaseView data={data} /> : <WorkersView data={data} />}
-        </>
+        <OccupancyTab />
       )}
     </Box>
   );

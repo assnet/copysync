@@ -84,6 +84,11 @@ describe('findActiveEntry', () => {
     expect(entry?.product).toBeUndefined();
   });
 
+  it('Workers: abas Ocupação e Consumo ativam o mesmo item', () => {
+    expect(findActiveEntry(model, '/admin/workers')?.link.key).toBe('admin-workers');
+    expect(findActiveEntry(model, '/admin/workers/usage')?.link.key).toBe('admin-workers');
+  });
+
   it('rota global e rota desconhecida', () => {
     expect(findActiveEntry(model, '/dashboard')?.link.key).toBe('dashboard');
     expect(findActiveEntry(model, '/nada')).toBeUndefined();

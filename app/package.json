@@ -1,7 +1,7 @@
 {
   "name": "copysync-app",
   "private": true,
-  "version": "0.90.0",
+  "version": "0.91.0",
   "type": "module",
   "scripts": {
     "dev": "vite --mode dev --host",
@@ -19,6 +19,7 @@
     "@emotion/styled": "^11.13.5",
     "@mui/icons-material": "^6.4.7",
     "@mui/material": "^6.4.7",
+    "@mui/x-charts": "8.29.3",
     "axios": "^1.8.4",
     "emoji-picker-react": "4.22.2",
     "lucide-react": "1.55.0",

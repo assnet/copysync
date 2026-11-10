@@ -71,6 +71,27 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
 Não fazer: balde no cliente sobre a leitura bruta paginada; aceitar `limit`/tamanho de balde do
 cliente; métrica fora de `OPS_METRIC`; chamar a Render nessas rotas.
 
+## Tela (painel, super admin)
+
+Workers → aba **Consumo** (`/admin/workers/usage`; Ocupação segue em `/admin/workers`). Código em
+`app/src/features/opsMetrics/` (desenho em `.specs/features/ops-metrics-dashboard/design.md`);
+gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
+
+- Filtros: período 1 h/6 h/24 h/7 dias (janela `from`/`to` pelo `serverNow()`; o balde é o que a
+  API devolver), recurso Todos/API/Postgres (filtra só CPU/RAM) e atualização de 60 s (pausa com a
+  aba do navegador oculta). Persistidos em `usePersistedState('workers.usage.filters')`, escopo `tab`.
+- Busca `latest` + 3 chamadas de `series` (servidores, banco, workers; ≤ 12 métricas cada) em
+  paralelo, erro por bloco. Counters viram taxa/total na tela (`rules.counterDeltas`: delta negativo
+  = reinício, balde vazio). Vários `srv-` do mesmo tipo viram uma série com o pior valor.
+- Status dos KPIs: limiares de `latest.thresholds` (Atenção a partir de 87,5% do limiar); cache hit
+  tem faixa própria da tela (Ok ≥ 99, Crítico < 95). `RAM · API` em MB usa 2.048 MB (plano atual).
+- Consultas: só `shape` (forma normalizada) do snapshot mais recente, sem flag de borrar (sem dado
+  de cliente). Se a API mandar SQL não normalizado, é bug da API.
+
+Não fazer: balde ou limiar fixo no front; chamar a Render pelo painel; importar o barrel de
+`@mui/x-charts` ou tirá-lo do lazy; animação de gráfico (`skipAnimation` sempre); cor de status em
+série; mais de 3 cores (mais de 3 workers = só tabela); persistir dado da API.
+
 ## Flags e variáveis (só na Render)
 
 | Variável | Padrão | Uso |

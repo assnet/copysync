@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
@@ -12,7 +13,7 @@ describe('AdminWorkersPage', () => {
     vi.spyOn(adminWorkersService, 'list').mockResolvedValue({
       workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0,
     });
-    renderWithTheme(<AdminWorkersPage />);
+    renderWithTheme(<MemoryRouter initialEntries={['/admin/workers']}><AdminWorkersPage /></MemoryRouter>);
     expect(await screen.findByText(t.empty)).toBeInTheDocument();
     expect(screen.getByText(t.awaiting.none)).toBeInTheDocument();
   });
@@ -26,7 +27,7 @@ describe('AdminWorkersPage', () => {
       totals: { workers: 2, sessions: 50, pendingLogins: 3, maxSessions: 80 },
       awaiting: 3,
     });
-    renderWithTheme(<AdminWorkersPage />);
+    renderWithTheme(<MemoryRouter initialEntries={['/admin/workers']}><AdminWorkersPage /></MemoryRouter>);
     expect(await screen.findByText('w-1')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: t.occupancyAria('w-1', 100) })).toBeInTheDocument();
     expect(screen.getByText(t.memoryMb(812))).toBeInTheDocument();
@@ -43,7 +44,7 @@ describe('AdminWorkersPage', () => {
       adoptionEnabled: true, workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
       awaiting: 0, processes: [], leasedSessions: 0,
     });
-    renderWithTheme(<AdminWorkersPage />);
+    renderWithTheme(<MemoryRouter initialEntries={['/admin/workers']}><AdminWorkersPage /></MemoryRouter>);
     expect(await screen.findByText(t.empty)).toBeInTheDocument();
     expect(screen.queryByText(t.lease.notice)).not.toBeInTheDocument();
   });
@@ -58,7 +59,7 @@ describe('AdminWorkersPage', () => {
       ],
       leasedSessions: 11,
     });
-    renderWithTheme(<AdminWorkersPage />, 'dark');
+    renderWithTheme(<MemoryRouter initialEntries={['/admin/workers']}><AdminWorkersPage /></MemoryRouter>, 'dark');
     expect(await screen.findByText(t.lease.notice)).toBeInTheDocument();
     expect(screen.getByText(t.lease.sessionsNoCap(11))).toBeInTheDocument();
     expect(screen.queryByText(t.totals.capacity(0, 0, 0))).not.toBeInTheDocument();
@@ -74,14 +75,14 @@ describe('AdminWorkersPage', () => {
       adoptionEnabled: false, workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
       awaiting: 0, processes: [], leasedSessions: 0,
     });
-    renderWithTheme(<AdminWorkersPage />);
+    renderWithTheme(<MemoryRouter initialEntries={['/admin/workers']}><AdminWorkersPage /></MemoryRouter>);
     expect(await screen.findByText(t.lease.empty)).toBeInTheDocument();
     expect(screen.queryByText(t.empty)).not.toBeInTheDocument();
   });
 
   it('erro na 1ª carga mostra alerta com tentar de novo', async () => {
     vi.spyOn(adminWorkersService, 'list').mockRejectedValue(new Error('x'));
-    renderWithTheme(<AdminWorkersPage />);
+    renderWithTheme(<MemoryRouter initialEntries={['/admin/workers']}><AdminWorkersPage /></MemoryRouter>);
     expect(await screen.findByText(t.errors.generic)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: t.retry })).toBeInTheDocument();
   });

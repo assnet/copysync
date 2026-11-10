@@ -9,6 +9,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.91.0 — aba Consumo em Workers (super admin)
+
+#### Frontend (app/)
+
+- **`pages/admin/AdminWorkersPage.tsx`** — abas Ocupação (`/admin/workers`, conteúdo anterior intacto) e Consumo (`/admin/workers/usage`), aba ativa pela URL; Consumo carregada com `React.lazy` (chunk próprio com `@mui/x-charts` 8.29.3 fixo). Rota nova em `routes/AppRoutes.tsx`; item `admin-workers` do menu casa as duas rotas (`matchPrefix`).
+- **`features/opsMetrics/`** — `rules.ts` (status por limiar vindo da API, delta de counter com reinício, alinhamento com buraco, formatação pt-BR), `useOpsMetrics.ts` (valores atuais + 3 blocos de séries em paralelo, erro por bloco, atualização de 60 s por `setTimeout` encadeado que pausa com a aba oculta), `strings.ts`, `chartColors.ts` (paleta validada claro/escuro) e componentes: KPIs com sparkline e status, gráficos com banda mín–máx, limiar tracejado e "Ver tabela", consultas mais caras, coleta desligada com instruções, aviso sem batimento de worker.
+- **`services/opsMetrics.service.ts`** — `GET /admin/ops/metrics/series` e `/latest` pelo Axios central.
+- Filtros (período, recurso, atualização) em `usePersistedState('workers.usage.filters')`, escopo `tab`. Testes: `rules.test.ts`, `useOpsMetrics.test.tsx`, `UsageTab.test.tsx`, `navigation/model.test.ts`.
+- **`docs/ops-metricas.md`** — seção "Tela".
+
 ### Added — api 0.74.0 — filas independentes, gate do chat e métricas de recursos
 
 - **`api/`** — worker de ofertas com etapas independentes, 2 envios entre sessões e claim justo entre tenants; ingestão do chat por entitlement `chat_enabled` com `chat_contacts.lid`; sampler de CPU/RAM/Postgres no worker e `GET /admin/ops/metrics`. Tudo atrás de flags desligadas; detalhes em `api/CHANGELOG.md` [0.74.0].

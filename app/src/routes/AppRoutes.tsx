@@ -105,6 +105,7 @@ export function AppRoutes() {
             <Route path="/admin/ai" element={<AdminAiPage />} />
             <Route path="/admin/link-domains" element={<AdminLinkDomainsPage />} />
             <Route path="/admin/workers" element={<AdminWorkersPage />} />
+            <Route path="/admin/workers/usage" element={<AdminWorkersPage />} />
             <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
           </Route>
         </Route>

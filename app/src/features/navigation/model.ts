@@ -130,7 +130,7 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
       ? [
           { key: 'admin-ai', label: aiStrings.admin.navLabel, path: '/admin/ai', icon: Bot },
           { key: 'admin-link-domains', label: linkDomainsAdminStrings.navLabel, path: '/admin/link-domains', icon: Globe },
-          { key: 'admin-workers', label: workersAdminStrings.navLabel, path: '/admin/workers', icon: Server },
+          { key: 'admin-workers', label: workersAdminStrings.navLabel, path: '/admin/workers', icon: Server, matchPrefix: '/admin/workers' },
           { key: 'admin-redirect-links', label: redirectLinksStrings.navLabel, path: '/admin/redirect-links', icon: Signpost },
         ]
       : [],
