@@ -8,3 +8,4 @@ export { PlansTrustStrip } from './components/PlansTrustStrip';
 export { PlansFeatureNotice } from './components/PlansFeatureNotice';
 export { openCheckout } from './openCheckout';
 export { useCheckoutPrefill } from './useCheckoutPrefill';
+export { toPanelPlanSlug, toPanelPlanSlugs } from './planSlug';

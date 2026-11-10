@@ -3,7 +3,7 @@ import type { AffiliateCredentialItem, MarketplaceAvailability } from '@/types/a
 import { sheinCardState, showsRiskBanner, type SheinCardStateInput } from './sheinCardState';
 
 const avail = (over: Partial<MarketplaceAvailability> = {}): MarketplaceAvailability => ({
-  enabled: true, plans: ['max'], riskNotice: { version: '2026-11-10', acceptedAt: '2026-11-10T12:00:00.000Z', acceptedByMe: true }, ...over,
+  enabled: true, plans: ['COPYSYNC_MAX'], riskNotice: { version: '2026-11-10', acceptedAt: '2026-11-10T12:00:00.000Z', acceptedByMe: true }, ...over,
 });
 const item = (over: Partial<AffiliateCredentialItem> = {}): AffiliateCredentialItem => ({
   provider: 'SHEIN', status: 'ACTIVE', publicIdentifier: '123', publicIdentifierMasked: '••23', hasSecret: false,

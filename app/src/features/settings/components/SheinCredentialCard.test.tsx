@@ -16,7 +16,7 @@ const spec = AFFILIATE_PROVIDERS.find((p) => p.provider === 'SHEIN')!;
 const ACCEPTED_AT = '2026-11-10T15:30:00.000Z';
 
 const avail = (over: Partial<MarketplaceAvailability> = {}): MarketplaceAvailability => ({
-  enabled: true, plans: ['max'], riskNotice: { version: '2026-11-10', acceptedAt: null, acceptedByMe: false }, ...over,
+  enabled: true, plans: ['COPYSYNC_MAX'], riskNotice: { version: '2026-11-10', acceptedAt: null, acceptedByMe: false }, ...over,
 });
 const accepted = () => avail({ riskNotice: { version: '2026-11-10', acceptedAt: ACCEPTED_AT, acceptedByMe: true } });
 const item = (over: Partial<AffiliateCredentialItem> = {}): AffiliateCredentialItem => ({
@@ -64,7 +64,7 @@ afterEach(() => {
 
 describe('SheinCredentialCard', () => {
   it('travado pelo plano: selos da lista da API, link para planos e sem faixa de aviso', () => {
-    setup({ availability: avail({ enabled: false, plans: ['pro', 'max'] }) });
+    setup({ availability: avail({ enabled: false, plans: ['COPYSYNC_PRO', 'COPYSYNC_MAX'] }) });
     expect(screen.getByText('PRO')).toBeInTheDocument();
     expect(screen.getByText('MAX')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ver planos' })).toBeInTheDocument();
@@ -333,5 +333,25 @@ describe('SheinCredentialCard', () => {
     expect(await screen.findByText(/O pedido de acesso expirou ou foi negado/)).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(SHEIN_WAIT_POLL_MS * 3); });
     expect(readSheinStatus).toHaveBeenCalledTimes(1);
+  });
+  it('"Ler aviso completo" com aceite vigente: só leitura, sem caixa, só "Fechar" e a data do aceite', async () => {
+    const user = userEvent.setup();
+    setup({ availability: accepted(), item: item() });
+    await user.click(screen.getByRole('button', { name: 'Ler aviso completo' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /Aceitar/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/^Aceito em .+ por você$/)).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button', { name: 'Fechar' }).length).toBeGreaterThan(0);
+  });
+
+  it('título do diálogo não inclui o botão de fechar', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
+    const heading = screen.getByRole('heading', { name: 'Aviso de risco: integração com a SHEIN' });
+    expect(within(heading).queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Aviso de risco: integração com a SHEIN');
   });
 });

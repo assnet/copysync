@@ -34,7 +34,7 @@ describe('AffiliateConnectionSummary', () => {
     const entries = AFFILIATE_PROVIDERS.map((spec) => ({
       spec,
       item: spec.provider === 'SHOPEE' ? item('SHOPEE', 'ACTIVE') : undefined,
-      availability: spec.provider === 'SHEIN' ? { enabled: false, plans: ['max' as const], riskNotice: null } : undefined,
+      availability: spec.provider === 'SHEIN' ? { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: null } : undefined,
     }));
     renderWithTheme(<AffiliateConnectionSummary entries={entries} />);
 

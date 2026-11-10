@@ -5,12 +5,13 @@ import {
   type ChipProps,
 } from '@mui/material';
 import {
-  CircleCheck, CircleX, Download, Hourglass, Link2, Lock, Plug, RefreshCw, RotateCw, ShieldAlert, Trash2, TriangleAlert,
+  Circle, CircleCheck, CircleX, Download, Hourglass, Link2, Lock, Plug, RefreshCw, RotateCw, ShieldAlert, Trash2, TriangleAlert,
   Unplug,
 } from 'lucide-react';
 import { AppIcon, ConfirmDialog } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { PlanAvailabilityBadges } from '@/features/plans/components/PlanAvailabilityBadges';
+import { toPanelPlanSlugs } from '@/features/plans/planSlug';
 import { EXTENSION_STORE_URL } from '@/features/extension/config';
 import {
   ExtensionSyncError, SHEIN_SESSION_CAP, syncErrorMessage, type UseExtensionResult,
@@ -68,7 +69,7 @@ function stateChip(state: SheinCardState, waiting: boolean, item?: AffiliateCred
       : { label: ta.statusConfigured, color: 'success', icon: <AppIcon icon={CircleCheck} size="sm" /> };
   }
   if (waiting) return { label: t.chipWaiting, color: 'info', icon: <AppIcon icon={Hourglass} size="sm" /> };
-  return { label: ta.statusNotConfigured, color: 'default', variant: 'outlined' };
+  return { label: ta.statusNotConfigured, color: 'default', variant: 'outlined', icon: <AppIcon icon={Circle} size="sm" /> };
 }
 
 /**
@@ -318,7 +319,7 @@ export function SheinCredentialCard({
         <Stack spacing={1.25} sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover', border: 1, borderColor: 'divider' }}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Typography variant="body2" fontWeight={600}>{t.lockedTitle}</Typography>
-            <PlanAvailabilityBadges plans={availability?.plans ?? []} />
+            <PlanAvailabilityBadges plans={toPanelPlanSlugs(availability?.plans ?? [])} />
           </Stack>
           <Typography variant="body2" color="text.secondary">{t.lockedHint}</Typography>
         </Stack>
@@ -536,6 +537,8 @@ export function SheinCredentialCard({
         busy={accepting}
         error={acceptError}
         stale={noticeStale}
+        // "Ler aviso completo" com aceite vigente: só leitura, sem caixa.
+        acceptedText={dialog === 'read' && risk?.acceptedAt ? tr.acceptedAt(risk.acceptedAt, risk.acceptedByMe) : null}
         onConfirm={() => void handleAccept()}
         onClose={() => setDialog(null)}
       />

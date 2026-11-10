@@ -78,8 +78,8 @@ export function AffiliateCredentialsPage() {
             items={entries.map(({ spec, item, availability }) => ({
               key: spec.provider,
               label: spec.name,
-              // Ativa = configurado; existe mas inativa = pausado; sem credencial = pendente
-              status: !item ? 'pending' : item.status === 'ACTIVE' ? 'done' : 'paused',
+              // Travado por plano = indisponível; ativa = configurado; inativa = pausado; sem credencial = pendente
+              status: availability?.enabled === false ? 'locked' : !item ? 'pending' : item.status === 'ACTIVE' ? 'done' : 'paused',
               content: spec.identifierFromSession ? (
                 <SheinCredentialCard
                   spec={spec}

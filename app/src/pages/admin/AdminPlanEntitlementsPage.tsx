@@ -49,7 +49,15 @@ export function AdminPlanEntitlementsPage() {
             <EmptyState icon={<AppIcon icon={SlidersHorizontal} size="lg" />} title={t.empty} description={t.emptyHint} sx={{ py: 5 }} />
           ) : (
             <TableContainer>
-              <Table size="small" aria-label={t.listTitle}>
+              {/* 360 px: padding padrão (16 px) das 4 colunas estourava a largura; no celular encolhe. */}
+              <Table
+                size="small"
+                aria-label={t.listTitle}
+                sx={{
+                  '& .MuiTableCell-root': { px: { xs: 0.75, sm: 2 } },
+                  '& .MuiTableCell-root:first-of-type': { overflowWrap: 'anywhere' },
+                }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell>{t.columns.feature}</TableCell>

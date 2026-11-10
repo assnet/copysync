@@ -22,6 +22,8 @@ interface Props {
    * sem caixa nem botão de aceite — só "Recarregar página". Aceitar reenviaria a versão velha.
    */
   stale?: boolean;
+  /** Aceite vigente já gravado: só leitura (sem caixa, só "Fechar") e a linha "Aceito em …". */
+  acceptedText?: string | null;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -32,9 +34,12 @@ interface Props {
  * sobreviver a um reload sem um clique novo.
  */
 export function MarketplaceRiskNoticeDialog({
-  open, canAccept, confirmLabel, busy, error, stale, onConfirm, onClose,
+  open, canAccept, confirmLabel, busy, error, stale, acceptedText, onConfirm, onClose,
 }: Props) {
   const [checked, setChecked] = useState(false);
+  const readOnly = Boolean(acceptedText);
+  // Sem caixa nem botão de aceite: texto velho (stale) ou aceite já gravado (só leitura).
+  const acceptable = !stale && !readOnly;
 
   useEffect(() => {
     if (open) setChecked(false);
@@ -44,20 +49,21 @@ export function MarketplaceRiskNoticeDialog({
     <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth aria-labelledby="risk-notice-title">
       <DialogTitle
         id="risk-notice-title"
-        sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, pr: 1.5 }}
+        sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, pr: 6 }}
       >
         <Stack component="span" sx={{ color: 'warning.main', display: 'inline-flex' }}>
           <AppIcon icon={TriangleAlert} size="md" />
         </Stack>
         <Stack component="span" sx={{ flexGrow: 1 }}>{t.dialogTitle}</Stack>
-        <Tooltip title={t.cancel}>
-          <span>
-            <IconButton onClick={onClose} size="small" aria-label={t.cancel} disabled={busy}>
-              <AppIcon icon={X} size="md" />
-            </IconButton>
-          </span>
-        </Tooltip>
       </DialogTitle>
+      {/* Fora do heading: o leitor de tela não lê o botão como parte do título. */}
+      <Tooltip title={t.close} describeChild>
+        <span style={{ position: 'absolute', top: 12, right: 12 }}>
+          <IconButton onClick={onClose} size="small" aria-label={t.close} disabled={busy}>
+            <AppIcon icon={X} size="md" />
+          </IconButton>
+        </span>
+      </Tooltip>
 
       <DialogContent dividers>
         {stale && (
@@ -82,7 +88,11 @@ export function MarketplaceRiskNoticeDialog({
           ))}
         </Stack>
 
-        {!stale && (
+        {readOnly && (
+          <Alert severity="success" variant="outlined" sx={{ mt: 2.5 }}>{acceptedText}</Alert>
+        )}
+
+        {acceptable && (
           <FormControlLabel
             sx={{ mt: 2.5, alignItems: 'flex-start', '& .MuiCheckbox-root': { mt: -0.75 } }}
             control={(
@@ -96,7 +106,7 @@ export function MarketplaceRiskNoticeDialog({
           />
         )}
 
-        {!canAccept && !stale && (
+        {!canAccept && acceptable && (
           <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>{t.adminOnly}</Alert>
         )}
         {error && (
@@ -105,8 +115,8 @@ export function MarketplaceRiskNoticeDialog({
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} disabled={busy}>{t.cancel}</Button>
-        {!stale && (
+        <Button onClick={onClose} disabled={busy}>{acceptable ? t.cancel : t.close}</Button>
+        {acceptable && (
           <Tooltip title={canAccept ? '' : t.adminOnly}>
             <span>
               <Button

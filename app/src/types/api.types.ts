@@ -216,7 +216,8 @@ export interface MarketplaceRiskNotice {
 /** Disponibilidade do marketplace para o tenant: plano (`plans` vem da API, não fixo) e aceite do aviso. */
 export interface MarketplaceAvailability {
   enabled: boolean;
-  plans: SubscriptionPlanSlug[];
+  /** Slugs do domínio (`COPYSYNC_MAX`…): converter com `toPanelPlanSlugs` (`features/plans/planSlug`). */
+  plans: string[];
   riskNotice: MarketplaceRiskNotice | null;
 }
 

@@ -284,6 +284,7 @@ export const settingsStrings = {
       confirmOnly: 'Aceitar aviso',
       confirming: 'Registrando aceite…',
       cancel: 'Cancelar',
+      close: 'Fechar',
       adminOnly: 'Só um administrador desta conta pode aceitar o aviso.',
       /** Versão da API ≠ versão deste painel (ou 409): aceitar reenviaria o texto velho. */
       staleTitle: 'O aviso foi atualizado',

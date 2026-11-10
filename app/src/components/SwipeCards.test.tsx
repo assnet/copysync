@@ -54,6 +54,15 @@ describe('SwipeCards', () => {
     expect(buttons[2]).toHaveTextContent('Amazon, pausado');
   });
 
+  it('mobile: card travado por plano lê "indisponível no plano", não "pendente"', () => {
+    stubViewport(true);
+    const four: SwipeCardsItem[] = [...items, { key: 'd', label: 'Shein', status: 'locked', content: <div>Card D</div> }];
+    render(<SwipeCards items={four} ariaLabel="Planos" renderGrid={() => null} />);
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[3]).toHaveTextContent('Shein, indisponível no plano');
+    expect(buttons[3]).not.toHaveTextContent('pendente');
+  });
+
   it('mobile: clique no indicador rola o trilho e ativa o card', () => {
     stubViewport(true);
     render(<SwipeCards items={items} ariaLabel="Planos" renderGrid={() => null} />);
