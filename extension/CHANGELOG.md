@@ -1,5 +1,27 @@
 # Changelog — CopySync Extension
 
+## [3.4.0] — 2026-11-10 — Sessão de afiliado da Shein
+
+> Exige nova publicação na Chrome Web Store. Permissão nova só **opcional** (`https://m.shein.com/*` em `optional_host_permissions`): a atualização não desativa a extensão na base; o Chrome pede o acesso só quando o usuário clica no ícone depois de "Conectar Shein" no painel. Requer API com `PUT /api/extension/marketplaces/shein/session`.
+
+### Added
+
+- **`config/env.ts`** (+ `__mocks__/env.ts`) — mapa `MARKETPLACES` (`ml`, `shein`): `provider`, `MARKETPLACE_COOKIE_DOMAIN`, `MARKETPLACE_URL_PATTERN`, `MARKETPLACE_URL` (concreta, para `cookies.getAll`), `cookies`, `tokenCookie`, `optional`. Substitui os valores únicos do ML (`AFFILIATE_PROVIDER`, `MARKETPLACE_COOKIE_DOMAIN`, `MARKETPLACE_URL_PATTERN`, `MARKETPLACE_HOME_URL`).
+- **`constants.ts`** — `SHEIN_SESSION_COOKIES = ['AT','memberId']` (paridade com a API em `cookie-parity.test.ts`), `SHEIN_SYNC_PENDING_ALARM`, `PENDING_ACCESS_TTL_MS` (10 min); `BLOCKED_FIELDS` ganha `AT` e `token` (o sanitize remove a chave; `memberId` é o id público).
+- **`marketplaceSession.ts`** — leitura por marketplace (`captureCookies`, `hasHostPermission`, `getSheinStatus`); Shein só lê cookie com `chrome.permissions.contains` verdadeiro e exige `AT` + `memberId`.
+- **`actionClick.ts`** — plano A do spike T9: com pendência de `shein.requestAccess`, o clique no ícone chama `chrome.permissions.request` como primeira chamada síncrona (espelho em memória `peekPendingAccess`, gesto do usuário); concedida → limpa, sincroniza e foca o painel; negada → limpa e foca; sem pendência → só foca o painel. Worker recém-acordado: lê o storage e tenta; recusa por gesto mantém a pendência para o próximo clique.
+- **`cookieWatch.ts`** — filtro do `cookies.onChanged` por domínio **e** nome por marketplace (Shein: só `AT`/`memberId`), debounce de 60 s por alarme de marketplace.
+- **Canal** — ops `shein.status` (`permission`, `pending`, `loggedIn`, `syncStatus`, `lastSyncAt`, `errorCode`; sem segredo), `shein.syncSession`, `shein.requestAccess`; `caps` = `['ml.session','shein.session']`; `guard.ts` com `SHEIN_OPS` (tenant ativo + `shein.session` via `hasPermission(profile, perm)` genérico em `sessionResolver.ts`). `CHANNEL_VERSION` inalterado; espelho `app/src/features/extension/contract/channel.ts` idêntico.
+- **`SyncErrorCode`** — `shein_not_logged`, `shein_permission_missing`, `shein_sync_failed`, `risk_not_accepted` (+ `_locales/*`).
+- **`scripts/check-dist.mjs`** — exige `m.shein.com` em `optional_host_permissions` e nunca em `host_permissions`.
+- Testes: `syncSession.test.ts` (ML × Shein simultâneos isolados em resultado, rota, rate limit e hash; sem `AT`; sem permissão não lê cookie), `cookieWatch.test.ts`, `apiFetch.test.ts`, `actionClick.test.ts`, `channel/handlers.test.ts`, casos Shein em `guard`/`sanitize`/`cookie-parity`.
+
+### Changed
+
+- **`store.ts`** / **`syncSession.ts`** — estado de sync por marketplace: single-flight, `syncState`, hash de cookies (`getCookieHash`/`setCookieHash`), `lastSyncEpoch`. Chaves do ML mantêm os nomes da 3.3 (`syncState`, `mlCookieHash`, `lastSyncEpoch`); Shein usa `sheinSyncState`, `sheinCookieHash`, `sheinLastSyncEpoch`. Gatilho automático da Shein sem permissão sai em silêncio.
+- **`apiFetch.ts`** — 403 lê `error.code` do envelope: `ML_CONSENT_REQUIRED`/`SHEIN_CONSENT_REQUIRED` → `consent_required`; `PLAN_FEATURE_UNAVAILABLE`/`EXTENSION_NOT_ENTITLED` → `plan_unavailable`; `MARKETPLACE_RISK_NOT_ACCEPTED` → `risk_not_accepted`; outro → `forbidden`.
+- **`index.ts`** — `resetStaleSync` por marketplace; alarme de reserva roda ML e Shein isolados; `webpack.js` grava `optional_host_permissions`.
+
 ## [3.3.0] — 2026-11-07 — Instalação registrada desde o primeiro minuto
 
 > Exige nova publicação na Chrome Web Store (`pnpm pack:store` / `pack:upload`). Sem permissão nova.

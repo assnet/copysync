@@ -12,7 +12,7 @@ export class ExtensionSyncError extends Error {
   }
 }
 
-/** Código da extensão (`SyncErrorCode`) ou do painel → mensagem. Só `ml_not_logged` fala de login no ML. */
+/** Código da extensão (`SyncErrorCode`) ou do painel → mensagem. Só `ml_not_logged` fala de login no ML; `shein_*` da Shein. */
 const SYNC_ERROR_MESSAGES: Record<string, string> = {
   forbidden: extensionStrings.errors.forbidden,
   FORBIDDEN: extensionStrings.errors.forbidden,
@@ -25,11 +25,23 @@ const SYNC_ERROR_MESSAGES: Record<string, string> = {
   ml_session_rejected: extensionStrings.errors.mlSessionRejected,
   api_unreachable: extensionStrings.errors.apiUnreachable,
   rate_limited: extensionStrings.errors.rateLimited,
+  shein_not_logged: extensionStrings.errors.sheinNotLogged,
+  shein_permission_missing: extensionStrings.errors.sheinPermissionMissing,
+  shein_sync_failed: extensionStrings.errors.sheinSyncFailed,
+  risk_not_accepted: extensionStrings.errors.riskNotAccepted,
 };
 
-export function syncErrorMessage(error: unknown): string {
+/** Marketplace da operação: o código é o mesmo, o texto cita a loja certa. */
+export type ExtensionMarketplace = 'ml' | 'shein';
+
+const MARKETPLACE_MESSAGES: Record<ExtensionMarketplace, Record<string, string>> = {
+  ml: {},
+  shein: { consent_required: extensionStrings.errors.consentRequiredShein },
+};
+
+export function syncErrorMessage(error: unknown, marketplace: ExtensionMarketplace = 'ml'): string {
   const code = error instanceof ExtensionSyncError ? error.code : '';
-  return SYNC_ERROR_MESSAGES[code] ?? extensionStrings.errors.syncFailed;
+  return MARKETPLACE_MESSAGES[marketplace][code] ?? SYNC_ERROR_MESSAGES[code] ?? extensionStrings.errors.syncFailed;
 }
 
 /** Folga entre o clique e o `sessionSyncedAt` do servidor (relógio do servidor dos dois lados). */

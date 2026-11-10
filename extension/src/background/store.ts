@@ -3,7 +3,10 @@
  *
  * v3: no auth tokens in storage. Session lives in HttpOnly cookie.
  * Storage holds: settings (theme), syncState, installationId, mlCookieHash, lifecyclePending.
+ * Estado de sync é POR MARKETPLACE: as chaves do ML ficam com o nome antigo (base instalada);
+ * as da Shein ganham prefixo. Sync de um nunca lê/grava o estado do outro.
  */
+import type { MarketplaceKey } from '../config/env.js';
 
 export interface StoredSettings {
   theme: 'system' | 'light' | 'dark';
@@ -19,6 +22,10 @@ export type SyncErrorCode =
   | 'ml_not_logged'
   | 'ml_account_mismatch'
   | 'ml_sync_failed'
+  | 'shein_not_logged'
+  | 'shein_permission_missing'
+  | 'shein_sync_failed'
+  | 'risk_not_accepted'
   | 'api_unreachable'
   | 'api_rejected'
   | 'api_route_missing'
@@ -46,7 +53,14 @@ const KEYS = {
   mlCookieHash: 'mlCookieHash',
   lastSyncEpoch: 'lastSyncEpoch',
   lifecyclePending: 'lifecyclePending',
+  pendingAccess: 'pendingAccess',
 } as const;
+
+/** Chaves de sync por marketplace. ML mantém os nomes da v3.3 (sem migração). */
+const SYNC_KEYS: Record<MarketplaceKey, { syncState: string; cookieHash: string; lastSyncEpoch: string }> = {
+  ml: { syncState: KEYS.syncState, cookieHash: KEYS.mlCookieHash, lastSyncEpoch: KEYS.lastSyncEpoch },
+  shein: { syncState: 'sheinSyncState', cookieHash: 'sheinCookieHash', lastSyncEpoch: 'sheinLastSyncEpoch' },
+};
 
 const DEFAULT_SETTINGS: StoredSettings = { theme: 'system' };
 const DEFAULT_SYNC: SyncState = { status: 'idle' };
@@ -81,16 +95,16 @@ export const setSettings = (patch: Partial<StoredSettings>): Promise<StoredSetti
 
 const STALE_SYNCING_MS = 5 * 60 * 1000;
 
-export const getSyncState = async (): Promise<SyncState> => {
-  const state = (await read<SyncState>(KEYS.syncState)) ?? DEFAULT_SYNC;
+export const getSyncState = async (marketplace: MarketplaceKey): Promise<SyncState> => {
+  const state = (await read<SyncState>(SYNC_KEYS[marketplace].syncState)) ?? DEFAULT_SYNC;
   if (state.status !== 'syncing') return state;
   const started = state.startedAt ? Date.parse(state.startedAt) : NaN;
   if (Number.isFinite(started) && Date.now() - started < STALE_SYNCING_MS) return state;
   return { status: 'idle', lastSyncAt: state.lastSyncAt };
 };
 
-export const setSyncState = (state: SyncState): Promise<void> =>
-  enqueue(() => chrome.storage.local.set({ [KEYS.syncState]: state }));
+export const setSyncState = (marketplace: MarketplaceKey, state: SyncState): Promise<void> =>
+  enqueue(() => chrome.storage.local.set({ [SYNC_KEYS[marketplace].syncState]: state }));
 
 // ── Installation ────────────────────────────────────────────────────────────
 
@@ -143,18 +157,54 @@ export const setPendingLifecycle = (event: PendingLifecycleEvent): Promise<void>
 export const clearPendingLifecycle = (): Promise<void> =>
   enqueue(() => chrome.storage.local.remove(KEYS.lifecyclePending));
 
-// ── ML cookie hash (change detection, never actual cookie values) ───────────
+// ── Cookie hash (change detection, never actual cookie values) ──────────────
 
-export const getMlCookieHash = (): Promise<string | undefined> =>
-  read<string>(KEYS.mlCookieHash);
+export const getCookieHash = (marketplace: MarketplaceKey): Promise<string | undefined> =>
+  read<string>(SYNC_KEYS[marketplace].cookieHash);
 
-export const setMlCookieHash = (hash: string): Promise<void> =>
-  enqueue(() => chrome.storage.local.set({ [KEYS.mlCookieHash]: hash }));
+export const setCookieHash = (marketplace: MarketplaceKey, hash: string): Promise<void> =>
+  enqueue(() => chrome.storage.local.set({ [SYNC_KEYS[marketplace].cookieHash]: hash }));
 
 // ── Rate limit epoch ────────────────────────────────────────────────────────
 
-export const getLastSyncEpoch = async (): Promise<number> =>
-  (await read<number>(KEYS.lastSyncEpoch)) ?? 0;
+export const getLastSyncEpoch = async (marketplace: MarketplaceKey): Promise<number> =>
+  (await read<number>(SYNC_KEYS[marketplace].lastSyncEpoch)) ?? 0;
 
-export const setLastSyncEpoch = (epoch: number): Promise<void> =>
-  enqueue(() => chrome.storage.local.set({ [KEYS.lastSyncEpoch]: epoch }));
+export const setLastSyncEpoch = (marketplace: MarketplaceKey, epoch: number): Promise<void> =>
+  enqueue(() => chrome.storage.local.set({ [SYNC_KEYS[marketplace].lastSyncEpoch]: epoch }));
+
+// ── Pedido de permissão de host pendente (`shein.requestAccess` → clique no ícone) ──
+
+export interface PendingAccess {
+  marketplace: MarketplaceKey;
+  /** Epoch ms; depois disso o clique no ícone volta a só focar o painel. */
+  until: number;
+}
+
+/**
+ * Espelho em memória: `permissions.request` só vale no gesto, então o clique no ícone decide
+ * SÍNCRONO (`peekPendingAccess`), sem `await` antes do pedido. `undefined` = ainda não lido.
+ */
+let pendingMemo: PendingAccess | null | undefined;
+
+const valid = (pending: PendingAccess | null | undefined): PendingAccess | null =>
+  pending && pending.until > Date.now() ? pending : null;
+
+export const getPendingAccess = async (): Promise<PendingAccess | null> => {
+  pendingMemo = (await read<PendingAccess>(KEYS.pendingAccess)) ?? null;
+  return valid(pendingMemo);
+};
+
+/** Leitura síncrona do espelho: `undefined` se o worker acabou de subir e ainda não leu. */
+export const peekPendingAccess = (): PendingAccess | null | undefined =>
+  pendingMemo === undefined ? undefined : valid(pendingMemo);
+
+export const setPendingAccess = (pending: PendingAccess): Promise<void> => {
+  pendingMemo = pending;
+  return enqueue(() => chrome.storage.local.set({ [KEYS.pendingAccess]: pending }));
+};
+
+export const clearPendingAccess = (): Promise<void> => {
+  pendingMemo = null;
+  return enqueue(() => chrome.storage.local.remove(KEYS.pendingAccess));
+};

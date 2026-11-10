@@ -1,19 +1,20 @@
-import { MARKETPLACE_COOKIE_DOMAIN } from '../config/env.js';
-import { ML_SESSION_COOKIES, ML_SYNC_PENDING_ALARM, ML_SYNC_RESERVE_ALARM, SYNC_DEBOUNCE_MS, HEARTBEAT_ALARM } from './constants.js';
+import { MARKETPLACE_KEYS } from '../config/env.js';
+import { ML_SYNC_PENDING_ALARM, ML_SYNC_RESERVE_ALARM, SHEIN_SYNC_PENDING_ALARM, HEARTBEAT_ALARM } from './constants.js';
 import { devError, devLog } from '../core/devLog.js';
 import { registerChannel } from './channel/index.js';
 import { setupAlarms, setupUninstallUrl, sendLifecycleEvent, sendHeartbeat, flushPendingLifecycle } from './lifecycle.js';
-import { focusOrOpenPanel, focusPanelTabIfOpen } from './panelTab.js';
+import { focusPanelTabIfOpen } from './panelTab.js';
 import { runSync } from './syncSession.js';
-import { getSyncState, setSyncState } from './store.js';
-import { getMlStatus } from './marketplaceSession.js';
+import { getSyncState, setSyncState, getPendingAccess } from './store.js';
+import { cookieChangeAlarm, scheduleDebouncedSync } from './cookieWatch.js';
+import { handleActionClick } from './actionClick.js';
 
 /**
  * Service worker (MV3) — v3.0.0.
  *
  * No password login. Session via HttpOnly cookie from `POST /session`.
  * Panel communicates via `externally_connectable` channel.
- * ML cookies synced via `chrome.cookies.onChanged` + debounce.
+ * Marketplace cookies (ML, Shein) synced via `chrome.cookies.onChanged` + debounce, por marketplace.
  */
 
 // ── Boot ────────────────────────────────────────────────────────────────────
@@ -21,13 +22,17 @@ import { getMlStatus } from './marketplaceSession.js';
 // (onInstalled/onStartup não disparam em todo wake-up).
 
 void setupUninstallUrl();
+// Espelho da pendência de permissão: o clique no ícone decide sem `await` (gesto do usuário).
+void getPendingAccess().catch(() => undefined);
 
 // ── Stale sync reset ────────────────────────────────────────────────────────
 
 const resetStaleSync = async (): Promise<void> => {
-  const state = await getSyncState();
-  if (state.status === 'syncing') {
-    await setSyncState({ status: 'idle', lastSyncAt: state.lastSyncAt });
+  for (const marketplace of MARKETPLACE_KEYS) {
+    const state = await getSyncState(marketplace);
+    if (state.status === 'syncing') {
+      await setSyncState(marketplace, { status: 'idle', lastSyncAt: state.lastSyncAt });
+    }
   }
 };
 
@@ -63,38 +68,36 @@ registerChannel();
 chrome.alarms.onAlarm.addListener((alarm) => {
   switch (alarm.name) {
     case ML_SYNC_PENDING_ALARM:
-      void runSync('cookie-changed');
+      void runSync('cookie-changed', 'ml');
+      break;
+    case SHEIN_SYNC_PENDING_ALARM:
+      void runSync('cookie-changed', 'shein');
       break;
     case ML_SYNC_RESERVE_ALARM:
-      void runSync('alarm');
+      // Reserva compartilhada: cada marketplace roda isolado (Shein sem permissão sai em silêncio).
+      void runSync('alarm', 'ml');
+      void runSync('alarm', 'shein');
       break;
     case HEARTBEAT_ALARM:
       void flushPendingLifecycle();
       void sendHeartbeat().then(result => {
-        if (result.resyncRequested) void runSync('alarm');
+        if (result.resyncRequested) void runSync('alarm', 'ml');
       });
       break;
   }
 });
 
-// ── ML cookie change detection ──────────────────────────────────────────────
-
-const ML_COOKIE_SET = new Set<string>(ML_SESSION_COOKIES);
+// ── Marketplace cookie change detection (domínio E nome, por marketplace) ───
 
 chrome.cookies.onChanged.addListener((changeInfo) => {
-  if (changeInfo.cookie.domain.replace(/^\./, '') !== MARKETPLACE_COOKIE_DOMAIN.replace(/^\./, '')) return;
-  if (!ML_COOKIE_SET.has(changeInfo.cookie.name)) return;
-
-  devLog('ml cookie changed', changeInfo.cookie.name, changeInfo.cause);
-
-  void chrome.alarms.get(ML_SYNC_PENDING_ALARM).then(existing => {
-    if (existing) return;
-    chrome.alarms.create(ML_SYNC_PENDING_ALARM, { delayInMinutes: SYNC_DEBOUNCE_MS / 60_000 });
-  });
+  const alarm = cookieChangeAlarm(changeInfo.cookie);
+  if (!alarm) return;
+  devLog('marketplace cookie changed', alarm, changeInfo.cookie.name, changeInfo.cause);
+  void scheduleDebouncedSync(alarm);
 });
 
-// ── Icon click → open panel ────────────────────────────────────────────────
+// ── Icon click → pedido de permissão pendente ou painel ─────────────────────
 
 chrome.action.onClicked.addListener(() => {
-  void focusOrOpenPanel().catch((error) => devError('open panel failed', error));
+  void handleActionClick().catch((error) => devError('icon click failed', error));
 });

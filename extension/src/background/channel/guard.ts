@@ -1,5 +1,5 @@
 import type { ChannelError, OpName } from '../../contract/channel.js';
-import { resolverSessao, hasMlPermission, getCachedProfile, type ExtensionProfile } from '../sessionResolver.js';
+import { resolverSessao, hasMlPermission, hasPermission, getCachedProfile, type ExtensionProfile } from '../sessionResolver.js';
 import { SyncError } from '../errors.js';
 
 /**
@@ -11,11 +11,12 @@ import { SyncError } from '../errors.js';
  * - `FORBIDDEN` + reason: authenticated but missing permission
  *   - `MEMBERSHIP`: not a member of the ML tenant
  *   - `TENANT`: tenant inactive
- *   - `PLAN`: missing `marketplace_extension` entitlement
+ *   - `PLAN`: missing `ml.session` (ML ops) / `shein.session` (Shein ops) permission
  */
 
 const PUBLIC_OPS: ReadonlySet<string> = new Set<OpName>(['handshake', 'bridge.identify']);
 const ML_OPS: ReadonlySet<string> = new Set<OpName>(['ml.status', 'ml.syncSession']);
+const SHEIN_OPS: ReadonlySet<string> = new Set<OpName>(['shein.status', 'shein.syncSession', 'shein.requestAccess']);
 
 export interface GuardResult {
   profile: ExtensionProfile;
@@ -46,18 +47,26 @@ export const checkGuard = async (op: string): Promise<GuardResult | ChannelError
 
   if (!profile.user.id) return { code: 'NEEDS_LOGIN' };
 
-  if (ML_OPS.has(op) || op === 'session.changed') {
-    if (!profile.mlTenantId) {
-      return { code: 'FORBIDDEN', reason: 'MEMBERSHIP' };
-    }
-    const tenant = profile.tenants.find(t => t.id === profile.mlTenantId);
-    if (!tenant || tenant.status !== 'ACTIVE') {
-      return { code: 'FORBIDDEN', reason: 'TENANT' };
-    }
-    if (!hasMlPermission(profile)) {
+  const isMl = ML_OPS.has(op) || op === 'session.changed';
+  if (isMl || SHEIN_OPS.has(op)) {
+    const tenantError = checkTenant(profile);
+    if (tenantError) return tenantError;
+    const allowed = isMl ? hasMlPermission(profile) : hasPermission(profile, 'shein.session');
+    if (!allowed) {
       return { code: 'FORBIDDEN', reason: 'PLAN' };
     }
   }
 
   return { profile };
+};
+
+const checkTenant = (profile: ExtensionProfile): ChannelError | null => {
+  if (!profile.mlTenantId) {
+    return { code: 'FORBIDDEN', reason: 'MEMBERSHIP' };
+  }
+  const tenant = profile.tenants.find(t => t.id === profile.mlTenantId);
+  if (!tenant || tenant.status !== 'ACTIVE') {
+    return { code: 'FORBIDDEN', reason: 'TENANT' };
+  }
+  return null;
 };

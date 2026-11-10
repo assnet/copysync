@@ -8,6 +8,8 @@ const mockHasMlPermission = vi.fn<[ExtensionProfile], boolean>();
 vi.mock('../sessionResolver', () => ({
   resolverSessao: (...args: []) => mockResolverSessao(...args),
   hasMlPermission: (p: ExtensionProfile) => mockHasMlPermission(p),
+  hasPermission: (p: ExtensionProfile, perm: string) =>
+    p.tenants.find(t => t.id === p.mlTenantId)?.permissions.includes(perm) ?? false,
   getCachedProfile: () => null,
 }));
 
@@ -111,6 +113,42 @@ describe('checkGuard', () => {
       mockResolverSessao.mockResolvedValue(makeProfile({ mlTenantId: null }));
       const result = await checkGuard('session.changed');
       expect(result).toEqual({ code: 'FORBIDDEN', reason: 'MEMBERSHIP' });
+    });
+  });
+
+  describe('Shein ops', () => {
+    const sheinOps = ['shein.status', 'shein.syncSession', 'shein.requestAccess'];
+
+    it.each(sheinOps)('%s sem tenant → FORBIDDEN/MEMBERSHIP', async (op) => {
+      mockResolverSessao.mockResolvedValue(makeProfile({ mlTenantId: null }));
+      expect(await checkGuard(op)).toEqual({ code: 'FORBIDDEN', reason: 'MEMBERSHIP' });
+    });
+
+    it.each(sheinOps)('%s só com ml.session → FORBIDDEN/PLAN', async (op) => {
+      mockResolverSessao.mockResolvedValue(makeProfile());
+      mockHasMlPermission.mockReturnValue(true);
+      expect(await checkGuard(op)).toEqual({ code: 'FORBIDDEN', reason: 'PLAN' });
+    });
+
+    it('tenant inativo → FORBIDDEN/TENANT', async () => {
+      mockResolverSessao.mockResolvedValue(makeProfile({
+        tenants: [{ id: 't1', name: 'T', status: 'SUSPENDED', permissions: ['shein.session'] }],
+      }));
+      expect(await checkGuard('shein.syncSession')).toEqual({ code: 'FORBIDDEN', reason: 'TENANT' });
+    });
+
+    it('sem login → NEEDS_LOGIN', async () => {
+      mockResolverSessao.mockRejectedValue(new SyncError('session_expired'));
+      expect(await checkGuard('shein.status')).toEqual({ code: 'NEEDS_LOGIN' });
+    });
+
+    it('passa com shein.session (sem depender de ml.session)', async () => {
+      const profile = makeProfile({
+        tenants: [{ id: 't1', name: 'T', status: 'ACTIVE', permissions: ['shein.session'] }],
+      });
+      mockResolverSessao.mockResolvedValue(profile);
+      mockHasMlPermission.mockReturnValue(false);
+      expect(await checkGuard('shein.syncSession')).toEqual({ profile });
     });
   });
 });

@@ -1,6 +1,7 @@
 /**
  * Guarda: `chrome.cookies.*` só existe em `src/background/marketplaceSession.ts`
- * e sempre mira `MARKETPLACE_COOKIE_DOMAIN`.
+ * e sempre mira o marketplace (`MARKETPLACES[key].MARKETPLACE_COOKIE_DOMAIN` ou
+ * `.MARKETPLACE_URL`, mapa em `config/env.ts`; Shein só com permissão de host concedida).
  *
  * A permissão `cookies` permite ler QUALQUER cookie — inclusive o da API, se um
  * dia ela usar cookie. Restringir o escopo a um módulo e a um domínio é regra

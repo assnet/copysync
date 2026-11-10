@@ -1,7 +1,7 @@
 import { env } from '../config/env.js';
 import { devLog } from '../core/devLog.js';
 import { SyncError } from './errors.js';
-import { getInstallationId } from './store.js';
+import { getInstallationId, type SyncErrorCode } from './store.js';
 
 /**
  * HTTP client for the CopySync API using cookie-based auth.
@@ -32,6 +32,18 @@ const buildUrl = (path: string): string => {
 };
 
 const FETCH_TIMEOUT_MS = 10_000;
+
+/** `error.code` do envelope 403 → `SyncErrorCode`. Código desconhecido continua `forbidden`. */
+const FORBIDDEN_CODES: Record<string, SyncErrorCode> = {
+  ML_CONSENT_REQUIRED: 'consent_required',
+  SHEIN_CONSENT_REQUIRED: 'consent_required',
+  PLAN_FEATURE_UNAVAILABLE: 'plan_unavailable',
+  EXTENSION_NOT_ENTITLED: 'plan_unavailable',
+  MARKETPLACE_RISK_NOT_ACCEPTED: 'risk_not_accepted',
+};
+
+export const forbiddenKind = (code: string | undefined): SyncErrorCode =>
+  (code && FORBIDDEN_CODES[code]) || 'forbidden';
 
 export interface ApiEnvelope<T> {
   success: boolean;
@@ -70,7 +82,6 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
   }
 
   if (response.status === 401) throw new SyncError('session_expired');
-  if (response.status === 403) throw new SyncError('forbidden');
   if (response.status === 404) throw new SyncError('api_route_missing');
   if (response.status === 429) throw new SyncError('rate_limited');
 
@@ -79,6 +90,12 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
     envelope = (await response.json()) as ApiEnvelope<T>;
   } catch {
     envelope = null;
+  }
+
+  // 403: o `error.code` do envelope diz o motivo (consentimento, plano, aceite de risco).
+  if (response.status === 403) {
+    const code = envelope?.error?.code;
+    throw new SyncError(forbiddenKind(code), code ? `HTTP 403 ${code}` : undefined);
   }
 
   if (!response.ok || !envelope?.success) {
