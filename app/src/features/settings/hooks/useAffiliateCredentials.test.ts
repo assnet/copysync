@@ -54,6 +54,17 @@ describe('useAffiliateCredentials', () => {
     expect(h.result.current.actionError).toBeTruthy();
   });
 
+  it('com removeOp (ML pela extensão) usa a rota do marketplace, não o DELETE genérico', async () => {
+    const h = await setup();
+    const removeOp = vi.fn().mockResolvedValue(undefined);
+
+    await act(() => h.result.current.remove('AMAZON', removeOp));
+
+    expect(removeOp).toHaveBeenCalledTimes(1);
+    expect(service.remove).not.toHaveBeenCalled();
+    expect(itemOf(h, 'AMAZON')).toBeUndefined();
+  });
+
   it('credencial já apagada noutra aba: card não volta e o aviso aparece', async () => {
     const h = await setup();
     const gone = Object.assign(new Error('x'), { code: 'AFFILIATE_CREDENTIAL_NOT_FOUND' });

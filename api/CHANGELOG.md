@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [app 0.96.1] — 2026-11-10 — Credenciais: remover Mercado Livre revoga a extensão
+
+### Fixed
+
+#### Painel (app/)
+
+- **`AffiliateCredentialsPage.tsx`** / **`useAffiliateCredentials.ts`** — a lixeira do Mercado Livre chamava o `DELETE` genérico, que apaga a credencial mas deixa o consentimento da extensão: o sync seguinte recriava o card (produção: removida 20:41, recriada 20:43). Agora usa a rota do marketplace (`DELETE /extension/marketplaces/ml/session`, revoga e apaga). `remove` aceita `removeOp`; teste em `useAffiliateCredentials.test.ts`. Doc: `docs/integracoes-credenciais-afiliado.md`.
+
 ## [app 0.96.0] — 2026-11-10 — Planos: logos dos marketplaces no banner
 
 ### Added

@@ -100,7 +100,12 @@ export function AffiliateCredentialsPage() {
                   busy={busy[spec.provider]}
                   onConfigure={() => setEditing(spec.provider)}
                   // Provider com `identifierFromSession` sempre cai no SheinCredentialCard (desconecta lá).
-                  onRemove={() => void remove(spec.provider)}
+                  // Sincronizado pela extensão (ML): rota do marketplace, que revoga o consentimento
+                  // antes de apagar; o DELETE genérico deixaria a extensão recriar no próximo sync.
+                  onRemove={() => {
+                    const marketplace = spec.usesBrowserSession ? spec.extensionMarketplace : undefined;
+                    void remove(spec.provider, marketplace ? () => disconnectExt(marketplace) : undefined);
+                  }}
                   onStatusChange={(status) => void setStatus(spec.provider, status)}
                 />
               ),
