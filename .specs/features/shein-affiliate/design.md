@@ -306,8 +306,12 @@ exigindo o domínio do marketplace junto de cada `chrome.cookies.*`).
   2. `action.onClicked`: pendência válida → `permissions.request` → concedida: limpa pendência, sincroniza, foca o painel; negada: limpa e foca o painel. Sem pendência: `focusOrOpenPanel()` como hoje.
   3. `shein.status` devolve `{ permission: 'granted' | 'missing', pending: boolean, … }` para o card.
 
-  **Spike na T9**: se `permissions.request` não funcionar a partir desse gesto no service worker, plano
-  B = página de opções mínima com o botão; plano C = host obrigatório (aceitando o aviso).
+  **Spike T9 (2026-11-10, Chrome for Testing 157):** chamada sem gesto é recusada na hora ("This function
+  must be called during a user gesture"); dentro de `action.onClicked` (simulado por CDP
+  `Extensions.triggerAction`) passa a checagem e fica aguardando o prompt — **plano A adotado**. O prompt
+  nativo não pôde ser visto nem aceito na automação: confirmar no smoke do dono (carregar a extensão,
+  clicar no ícone, aceitar). Reserva: plano B = página de opções mínima com o botão (mesmo resultado no
+  spike); plano C = host obrigatório (aceitando o aviso).
 - `marketplaceSession.ts` (único arquivo que **lê** cookies; `index.ts:84` só escuta `onChanged`): lê por marketplace; Shein só com a permissão concedida.
 - **Estado de sync por marketplace** — hoje é único e misturaria os dois: `inFlight`
   (`syncSession.ts:37,102-103`), `lastSyncEpoch` (`store.ts:156-160`), `syncState` (`store.ts:84-93`) e
