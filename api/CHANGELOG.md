@@ -7,6 +7,51 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.76.0] — 2026-11-09 — Monitoramento: padrões novos, recursos por plano e prévia do link
+
+### Added
+
+#### Backend — planos (tenants) e monitoramento (automation)
+
+- **`entitlementKeys.ts`**, **`planPresets.ts`**, **`subscriptionLimits.ts`** — entitlements `enrich_link_only_enabled` (LITE false, PRO/MAX true) e `capture_outside_window_enabled` (só MAX); ausente = bloqueado.
+- **`RegisterCapturedMessageUseCase.ts`** — fora da janela só captura com `captureOutsideWindow` **e** o entitlement do MAX (lido só nesse caso); `SaveGroupMonitorSettingsUseCase` grava `false` sem o plano, `limits.captureOutsideWindowEnabled` no GET.
+- **`GroupMonitorConfigUseCases.ts`** — `limits.enrichLinkOnlyEnabled` no GET; salvar com `enrichLinkOnly` sem o plano → `PLAN_FEATURE_UNAVAILABLE`.
+- **`ProcessPendingCapturedOffersUseCase.ts`** — captura só com link só vira oferta montada com o entitlement; plano rebaixado cai no texto original.
+- **`OfferImageMode.ts`** — `MEDIA_IMAGE_MODE_ENABLED = false` e `effectiveImageMode`: "Imagem com legenda" desligada para todos os planos até nova decisão; `MEDIA` salvo sai como `LINK_PREVIEW` (envio, PATCH da oferta, config e captura do monitoramento).
+
+#### Frontend — monitoramento e gerador (app 0.92.0)
+
+- **`MonitorCard.tsx`** — prop `collapseKey`: card nasce recolhido, cabeçalho vira botão (`aria-expanded`), lembra aberto/fechado por navegador. Usado em Horário de postagem, Envio, Depois da captura e Texto da oferta.
+- **`MonitoringSettingsForm.tsx`**, **`settingsDraft.ts`** — switch "Montar a oferta quando chegar só o link" travado fora do PRO/MAX (conta como desligado no salvar e no "não salvo").
+- **`ImageModePicker.tsx`**, **`offerConfig.ts`**, **`OfferChatPreview.tsx`** — "Imagem com legenda" desabilitada com tooltip; padrão e valor efetivo = prévia do link.
+- **`PlanAvailabilityBadges.tsx`**, **`ToggleOption.tsx`** (prop `badge`) — selos dos planos que incluem a opção (PRO MAX / MAX) ao lado de "Montar a oferta quando chegar só o link" e "Capturar fora do horário"; esta travada fora do MAX.
+- **`subscription/strings.ts`**, **`plans/catalog.ts`** — linhas e benefícios "Oferta montada a partir só do link" (a partir do PRO) e "Captura fora do horário de postagem" (exclusivo MAX).
+
+### Changed
+
+- **`monitorSettings.ts`**, **`schema.prisma`** — padrões do monitoramento: intervalo 0–0, "digitando…" ligado 3 s, validade 24 h com e sem cupom, `enrichLinkOnly` false, `imageMode` `LINK_PREVIEW`; `Offer.imageMode` padrão `LINK_PREVIEW`. Só o DEFAULT muda: configurações salvas ficam como estão.
+
+### Migration
+
+- **`20261110000000_monitor_defaults_and_plan_gated_features`** — `ALTER COLUMN … SET DEFAULT` em `group_monitor_configs`/`offers`, presets do entitlement novo e backfill em `tenant_entitlements` (`ON CONFLICT DO NOTHING`). Roda no boot da Render.
+
+---
+
+## [0.75.1] — 2026-11-09 — Links link.amazon e contadores da fila
+
+### Fixed
+
+#### Backend — gerador/monitoramento (campaigns)
+
+- **`detectMarketplace.ts`**, **`HttpShortLinkExpander.ts`** — `link.amazon/…` (encurtador atual da Amazon, salta por `amzlinks.in` até `amazon.com.br`) caía em "Loja não suportada": hosts fora da allowlist. Entraram `link.amazon` e `amzlinks.in`. O host responde 404 ao HEAD, então o expansor repete com GET em qualquer status ≥ 400 (antes só 405/501).
+- **`GetSendQueueUseCase.ts`**, **`sendQueue.schema.ts`** — `counts.cancelledToday` (aditivo): cancelados do dia já eram contados no banco e descartados.
+
+#### Frontend — fila de envio (app 0.91.1)
+
+- **`SendQueuePanel.tsx`**, **`sendQueue/strings.ts`** — abas mostravam sempre "Aguardando (100)" e "Concluídos hoje (20)": usavam o tamanho da lista, que a API corta em 100/20. Agora usam os contadores exatos; "Mostrar os N próximos de TOTAL" quando a lista veio cortada.
+
+---
+
 ## [0.75.0] — 2026-11-09 — Dashboard de consumo (séries e valores atuais)
 
 ### Added
