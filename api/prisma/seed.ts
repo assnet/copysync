@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { planPresetRows } from '../src/modules/tenants/domain/planPresets';
 import { entitlementJsonValue } from '../src/modules/integrations/billing/entitlementJsonValue';
+import { isAdminEditableEntitlementKey } from '../src/modules/tenants/domain/adminEditableEntitlements';
 
 const prisma = new PrismaClient();
 
@@ -138,10 +139,11 @@ async function main(): Promise<void> {
   // Tabela única em src/modules/tenants/domain/planPresets.ts (travada por teste contra a vitrine)
   const PLAN_PRESETS = planPresetRows();
 
+  // Chave editável pelo super admin: o seed só cria, nunca desfaz a liberação feita pela rota admin
   for (const p of PLAN_PRESETS) {
     await prisma.planEntitlementPreset.upsert({
       where: { planSlug_key: { planSlug: p.planSlug, key: p.key } },
-      update: { value: entitlementJsonValue(p.value) },
+      update: isAdminEditableEntitlementKey(p.key) ? {} : { value: entitlementJsonValue(p.value) },
       create: { planSlug: p.planSlug, key: p.key, value: entitlementJsonValue(p.value) },
     });
   }
