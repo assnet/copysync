@@ -8,6 +8,17 @@ import { IMAGE_MODE_ICONS, OFFER_IMAGE_MODES, effectiveImageMode, isImageModeAva
 
 const t = offerStrings.imageMode;
 
+/**
+ * Segmento: colunas iguais em qualquer largura, alvo ≥ 44 px e rótulo numa linha só (reticências se
+ * faltar espaço). No próprio botão: no grupo perdia para o padding do `size="small"`.
+ */
+const segmentSx = {
+  flex: '1 1 0', minWidth: 0, minHeight: 44, px: 1.5, py: 0.75, gap: 0.75,
+  textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  // Celular: o rótulo precisa do espaço; o ícone é decorativo (o texto já diz o formato)
+  '& svg': { display: { xs: 'none', sm: 'inline-block' } },
+} as const;
+
 interface Props {
   value: OfferImageMode;
   onChange: (value: OfferImageMode) => void;
@@ -43,20 +54,27 @@ export function ImageModePicker({ value: raw, onChange, disabled }: Props) {
         onChange={(_, next: OfferImageMode | null) => { if (next && next !== value && isImageModeAvailable(next)) onChange(next); }}
         aria-labelledby={labelId}
         aria-describedby={hintId}
-        sx={{ '& .MuiToggleButton-root': { textTransform: 'none', gap: 0.75, fontWeight: 600, py: 0.75 } }}
       >
         {OFFER_IMAGE_MODES.map((mode) => {
           const available = isImageModeAvailable(mode);
           const button = (
-            <ToggleButton key={mode} value={mode} disabled={disabled || !available} aria-label={available ? undefined : `${t.options[mode].label} (${t.unavailable})`}>
+            <ToggleButton
+              key={mode}
+              value={mode}
+              // Indisponível: `aria-disabled` (não `disabled`) para o tooltip receber hover/foco/toque sem
+              // invólucro — um <span> dentro do grupo quebrava a largura igual e as bordas do segmento
+              aria-disabled={available ? undefined : true}
+              aria-label={available ? undefined : `${t.options[mode].label} (${t.unavailable})`}
+              className={available ? undefined : 'Mui-disabled'}
+              sx={[segmentSx, !available && { pointerEvents: 'auto', cursor: 'not-allowed' }]}
+            >
               <AppIcon icon={IMAGE_MODE_ICONS[mode]} />
               {t.options[mode].label}
             </ToggleButton>
           );
-          // Botão desabilitado não dispara eventos: o tooltip fica no invólucro
           return available ? button : (
-            <Tooltip key={mode} title={t.unavailableTooltip} arrow>
-              <Box component="span" sx={{ display: 'flex', flex: 1, '& > .MuiToggleButton-root': { flex: 1 } }}>{button}</Box>
+            <Tooltip key={mode} title={t.unavailableTooltip} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+              {button}
             </Tooltip>
           );
         })}

@@ -61,7 +61,7 @@ describe('formato da imagem', () => {
       />,
     );
     const media = screen.getByRole('button', { name: /Imagem com legenda \(indisponível\)/ });
-    expect(media).toBeDisabled();
+    expect(media).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('button', { name: /Prévia do link/ }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(media);
     fireEvent.click(screen.getByRole('button', { name: /Prévia do link/ }));

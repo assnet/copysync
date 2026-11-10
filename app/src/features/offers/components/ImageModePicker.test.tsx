@@ -8,7 +8,7 @@ describe('ImageModePicker', () => {
     const onChange = vi.fn();
     renderWithTheme(<ImageModePicker value="LINK_PREVIEW" onChange={onChange} />, mode);
     const media = screen.getByRole('button', { name: 'Imagem com legenda (indisponível)' });
-    expect(media).toBeDisabled();
+    expect(media).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('button', { name: /Prévia do link/ })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(media);
     expect(onChange).not.toHaveBeenCalled();
@@ -23,7 +23,7 @@ describe('ImageModePicker', () => {
 
   it('tooltip explica por que "Imagem com legenda" está indisponível', async () => {
     renderWithTheme(<ImageModePicker value="LINK_PREVIEW" onChange={vi.fn()} />);
-    fireEvent.mouseOver(screen.getByRole('button', { name: /Imagem com legenda/ }).parentElement!);
+    fireEvent.mouseOver(screen.getByRole('button', { name: /Imagem com legenda/ }));
     expect(await screen.findByText('Indisponível no momento: as ofertas saem com a prévia do link.')).toBeInTheDocument();
   });
 });
