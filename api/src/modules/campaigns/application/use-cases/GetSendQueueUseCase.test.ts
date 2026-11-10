@@ -37,6 +37,7 @@ describe('GetSendQueueUseCase', () => {
         { sessionId: 's1', status: 'SENT', count: 4 },
         { sessionId: 's1', status: 'FAILED', count: 1 },
         { sessionId: 's1', status: 'SKIPPED', count: 2 },
+        { sessionId: 's1', status: 'CANCELLED', count: 3 },
       ],
     });
     const out = await uc.execute({ tenantId: TENANT });
@@ -47,7 +48,7 @@ describe('GetSendQueueUseCase', () => {
     expect(s1.running?.dispatchId).toBe('run');
     expect(s1.waiting.map((w) => w.dispatchId)).toEqual(['w1', 'p1']);
     expect(s1.recent.map((w) => w.dispatchId)).toEqual(['r1']);
-    expect(s1.counts).toEqual({ waiting: 140, paused: 1, sentToday: 4, failedToday: 1, skippedToday: 2 });
+    expect(s1.counts).toEqual({ waiting: 140, paused: 1, sentToday: 4, failedToday: 1, skippedToday: 2, cancelledToday: 3 });
     expect(out.sessions[1]!.running).toBeNull();
   });
 

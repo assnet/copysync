@@ -151,12 +151,15 @@ explícito ignora a janela. Padrão (0–1440, 127) = sem filtro. Ver `docs/grup
     "running": { "dispatchId", "offerId", "origin", "offerStatus", "title", "textPreview", "groupName", "status": "SENDING", "claimedAt", … } | null,
     "waiting": [ …mesmo formato, "status": "QUEUED", "offerStatus": "SENDING|PAUSED", "notBefore" ],
     "recent":  [ …concluídos hoje, mais recentes primeiro, até 20 por sessão ],
-    "counts":  { "waiting", "paused", "sentToday", "failedToday", "skippedToday" } }] }
+    "counts":  { "waiting", "paused", "sentToday", "failedToday", "skippedToday", "cancelledToday" } }] }
 ```
 
 - Todas as consultas filtram `tenantId`. "Hoje" = meia-noite de `America/Sao_Paulo`.
 - Listas lidas por sessão (100 abertos, 20 concluídos); contadores por `groupBy`, exatos. Uma
   sessão com fila longa não esconde as outras.
+- **Não** usar o tamanho de `waiting`/`recent` como total: são cortados em 100/20. Abas do painel
+  usam `waiting + paused` e `sentToday + failedToday + skippedToday + cancelledToday`; o botão
+  "Mostrar" diz "os N próximos de TOTAL" quando a lista veio cortada.
 - Sessão do tenant sem nada aparece com listas vazias; o painel a esconde.
 - Pausar/retomar/parar continuam em `POST /campaigns/offers/:id/{pause|resume|cancel}`.
 

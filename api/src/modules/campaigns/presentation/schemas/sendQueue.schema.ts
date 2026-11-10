@@ -48,7 +48,7 @@ const sessionSchema = {
     recent: { type: 'array', items: itemSchema },
     counts: {
       type: 'object',
-      properties: { waiting: count, paused: count, sentToday: count, failedToday: count, skippedToday: count },
+      properties: { waiting: count, paused: count, sentToday: count, failedToday: count, skippedToday: count, cancelledToday: count },
     },
   },
 } as const;

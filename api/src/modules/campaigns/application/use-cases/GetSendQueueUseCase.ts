@@ -41,7 +41,7 @@ export interface SendQueueSessionDTO {
   running: SendQueueItemDTO | null;
   waiting: SendQueueItemDTO[];
   recent: SendQueueItemDTO[];
-  counts: { waiting: number; paused: number; sentToday: number; failedToday: number; skippedToday: number };
+  counts: { waiting: number; paused: number; sentToday: number; failedToday: number; skippedToday: number; cancelledToday: number };
 }
 
 export interface SendQueueDTO {
@@ -102,7 +102,7 @@ export class GetSendQueueUseCase {
       if (!g) {
         g = {
           sessionId, name: null, status: null, running: null, waiting: [], recent: [],
-          counts: { waiting: 0, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0 },
+          counts: { waiting: 0, paused: 0, sentToday: 0, failedToday: 0, skippedToday: 0, cancelledToday: 0 },
         };
         groups.set(sessionId, g);
       }
@@ -122,6 +122,7 @@ export class GetSendQueueUseCase {
       if (c.status === 'SENT') g.counts.sentToday += c.count;
       else if (c.status === 'FAILED') g.counts.failedToday += c.count;
       else if (c.status === 'SKIPPED') g.counts.skippedToday += c.count;
+      else if (c.status === 'CANCELLED') g.counts.cancelledToday += c.count;
     }
 
     // Sessões do tenant primeiro (ordem de criação); grupo sem sessão só se tiver algo

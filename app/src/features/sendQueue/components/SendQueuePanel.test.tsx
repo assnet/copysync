@@ -128,6 +128,16 @@ describe('SendQueuePanel — sessão fora do ar', () => {
     expect(await screen.findByText(/Não foi possível alterar/)).toBeInTheDocument();
   });
 
+  it('abas usam os contadores exatos, não o teto da lista; "mostrar" diz quantos de quantos', async () => {
+    const waiting = Array.from({ length: 6 }, (_, i) => item({ dispatchId: `w${i}`, offerId: `o${i}` }));
+    const base = lane(waiting).sessions[0];
+    get.mockResolvedValue({ ...lane(waiting), sessions: [{ ...base, recent: [item({ status: 'SENT', offerStatus: 'SENT' })], counts: { waiting: 4640, paused: 8, sentToday: 3535, failedToday: 0, skippedToday: 355, cancelledToday: 10 } }] });
+    render(<SendQueuePanel sessionId="s1" />);
+    expect(await screen.findByRole('tab', { name: 'Aguardando (4648)' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Concluídos hoje (3900)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mostrar os 6 próximos de 4648' })).toBeInTheDocument();
+  });
+
   it('envio concluído não tem controles', async () => {
     get.mockResolvedValue({ ...lane([]), sessions: [{ ...lane([]).sessions[0], recent: [item({ status: 'SENT', offerStatus: 'SENT' })], counts: { waiting: 0, paused: 0, sentToday: 1, failedToday: 0, skippedToday: 0 } }] });
     render(<SendQueuePanel sessionId="s1" />);

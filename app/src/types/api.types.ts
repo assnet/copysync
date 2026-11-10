@@ -258,7 +258,10 @@ export interface SendQueueSession {
   waiting: SendQueueItem[];
   /** Concluídos hoje, mais recentes primeiro (até 20). */
   recent: SendQueueItem[];
-  counts: { waiting: number; paused: number; sentToday: number; failedToday: number; skippedToday: number };
+  counts: { waiting: number; paused: number; sentToday: number; failedToday: number; skippedToday: number;
+    /** Opcional: API anterior não envia. */
+    cancelledToday?: number;
+  };
 }
 
 export interface SendQueueResponse {

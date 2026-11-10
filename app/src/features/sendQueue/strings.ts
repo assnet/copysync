@@ -93,7 +93,8 @@ export const sendQueueStrings = {
   stopConfirmDescription: 'Os envios que ainda não saíram serão cancelados em todos os grupos desta oferta. Os que já saíram ficam como estão. Não dá para desfazer.',
   stopConfirm: 'Parar oferta',
   stopCancel: 'Voltar',
-  showAll: (n: number) => `Mostrar todos (${n})`,
+  /** Lista com teto da API: diz quantos aparecem de quantos existem. */
+  showAll: (shown: number, total: number) => (total > shown ? `Mostrar os ${shown} próximos de ${total}` : `Mostrar todos (${shown})`),
   showLess: 'Mostrar menos',
   emptyWaiting: 'Nenhum envio aguardando nesta sessão.',
   emptyDone: 'Nenhum envio concluído hoje nesta sessão.',

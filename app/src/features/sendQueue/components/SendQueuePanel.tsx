@@ -169,6 +169,10 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control, acc
   const name = session.sessionId === null ? t.noSession : session.name || t.unnamedSession;
   const overdue = cooldown != null && serverNow() - cooldown.endMs > OVERDUE_MS;
   const c = session.counts;
+  // Abas e "mostrar todos" usam os contadores exatos: a lista vem com teto da API (100/20)
+  const waitingTotal = c.waiting + c.paused;
+  const doneTotal = c.sentToday + c.failedToday + c.skippedToday + (c.cancelledToday ?? 0);
+  const rowsTotal = Math.max(rows.length, tab === 'waiting' ? waitingTotal : doneTotal);
   // Os botões agem na oferta inteira: aparecem só na 1ª linha de cada oferta (em curso ou aguardando)
   const live = [...(session.running ? [session.running] : []), ...session.waiting];
   const waitingByOffer = new Map<string, number>();
@@ -241,8 +245,8 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control, acc
         variant="fullWidth"
         sx={{ minHeight: 36, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 36, py: 0.5, px: 1, textTransform: 'none', minWidth: 0 } }}
       >
-        <Tab value="waiting" label={t.tabs.waiting(session.waiting.length)} />
-        <Tab value="done" label={t.tabs.done(session.recent.length)} />
+        <Tab value="waiting" label={t.tabs.waiting(Math.max(waitingTotal, session.waiting.length))} />
+        <Tab value="done" label={t.tabs.done(Math.max(doneTotal, session.recent.length))} />
       </Tabs>
 
       {rows.length === 0 ? (
@@ -258,7 +262,7 @@ function LanePanel({ session, privacy, onOpenOffer, currentOfferId, control, acc
       )}
       {rows.length > COLLAPSED_ROWS && (
         <Button size="small" onClick={() => setExpanded(!expanded)} sx={{ mt: 0.5 }}>
-          {expanded ? t.showLess : t.showAll(rows.length)}
+          {expanded ? t.showLess : t.showAll(rows.length, rowsTotal)}
         </Button>
       )}
     </Box>
