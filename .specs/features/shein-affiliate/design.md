@@ -423,6 +423,20 @@ exigindo o domínio do marketplace junto de cada `chrome.cookies.*`).
 `docs/produto-roadmap.md` (tabela Marketplaces), `docs/gerador-de-ofertas.md`, `api/CHANGELOG.md`,
 `extension/CHANGELOG.md`.
 
+## Riscos aceitos (revisão de código, 2026-11-10)
+
+- **ID lido do token sem verificar assinatura.** O `m` do payload do `AT` é conferido só com o cookie
+  `memberId`, ambos vindos da extensão. Quem tem a sessão da extensão do tenant já controla o tenant; o ID
+  serve para reconhecer links do próprio afiliado. A geração do link usa o token, que a Shein valida — um
+  ID forjado não gera link em nome de outra conta.
+- **Operador conecta e desconecta a Shein.** Igual ao Mercado Livre (consentimento sem checagem de papel).
+  O aceite de risco, que só administrador faz, já é pré-requisito para conectar.
+- **Propagação do entitlement em uma transação, sem lotes.** Número de tenants por plano é baixo; a
+  atomicidade (preset + tenants + auditoria) vale mais que fatiar.
+- **Texto "a partir do MAX" na vitrine e na assinatura** é marketing em código (`docs/planos.md`). Se o
+  super admin liberar no PRO, atualizar `catalog.ts`/`FIXED_MIN_PLAN`; o card de credenciais usa a lista de
+  planos vinda da API e não fica desatualizado.
+
 ## O que não fazer
 
 - Não resolver, pular nem automatizar o desafio anti-bot da Shein (`/risk/challenge`), em servidor ou extensão.
