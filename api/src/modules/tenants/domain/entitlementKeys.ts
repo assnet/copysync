@@ -19,6 +19,7 @@ export const ENTITLEMENT_KEYS = {
   MENTION_ALL_ENABLED: 'mention_all_enabled',
   OFFER_GENERATIONS_PER_DAY: 'offer_generations_per_day',
   MARKETPLACE_EXTENSION: 'marketplace_extension',
+  /** Reescrita com IA (gerador e monitoramento): PRO e MAX; `false` explícito no LITE, ausente = liberado. */
   AI_REWRITE_ENABLED: 'ai_rewrite_enabled',
   AI_REQUESTS_PER_DAY: 'ai_requests_per_day',
   /** Grupo de disparo em sessão diferente de onde a oferta nasce (Business). Ausente = bloqueado. */

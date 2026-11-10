@@ -12,7 +12,7 @@ import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from
 import { resolveStartWithinWindow, type OperatingWindow } from '../../domain/services/operatingWindow';
 import { weekdaysMask } from '../../../campaigns/domain/services/postingWindow';
 import { logger } from '../../../../shared/logger/logger';
-import { CROSS_SESSION_DISPATCH, ENRICH_LINK_ONLY_ENABLED, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
+import { AI_REWRITE_ENABLED, CROSS_SESSION_DISPATCH, ENRICH_LINK_ONLY_ENABLED, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
 import { keepOneSessionPerChannel, limitKeyOfChannel, requiresCrossSession, sliceByChannel } from '../../../tenants/domain/channelLimits';
 
 /** Capturas por tick (cada uma pode ir à rede: expandir link, API do marketplace). */
@@ -184,7 +184,12 @@ export class ProcessPendingCapturedOffersUseCase {
     const startAt = resolveStartWithinWindow(earliest, window);
     // "Montar só com link" é Pro/Max: plano rebaixado com a opção salva cai no texto original
     const enrichAllowed = config.enrichLinkOnly && (await entitlements.getBoolean(c.tenantId, ENRICH_LINK_ONLY_ENABLED)) === true;
-    const built = await this.buildText(c, enrichAllowed === config.enrichLinkOnly ? config : { ...config, enrichLinkOnly: false }, first, coupon, finalText, tenantLinks);
+    // Reescrita com IA é PRO/MAX: LITE com IA salva cai no Modelo (sem chamar a IA, sem selo de falha)
+    const aiLocked = config.textMode === 'AI' && (await entitlements.getBoolean(c.tenantId, AI_REWRITE_ENABLED)) === false;
+    const effective = enrichAllowed === config.enrichLinkOnly && !aiLocked
+      ? config
+      : { ...config, enrichLinkOnly: enrichAllowed, ...(aiLocked && { textMode: 'TEMPLATE' as const, audience: 'STANDARD' as const }) };
+    const built = await this.buildText(c, effective, first, coupon, finalText, tenantLinks);
     const base: CapturedOfferResolution = {
       marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon,
       finalText: built.text, textSource: built.textSource, aiErrorCode: built.aiErrorCode, expiresAt, startsAt: null,

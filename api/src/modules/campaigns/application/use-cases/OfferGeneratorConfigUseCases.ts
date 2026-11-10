@@ -55,6 +55,8 @@ export interface OfferGeneratorConfigDTO {
   crossSessionDispatch: boolean;
   /** Entitlement `mention_all_enabled` (só `false` explícito trava): o painel desliga "marcar todos" antes do envio. */
   mentionAllEnabled: boolean;
+  /** Entitlement `ai_rewrite_enabled` (só `false` trava, LITE): públicos com IA saem no modelo fixo. */
+  aiRewriteEnabled: boolean;
   /** Limites por canal (canal = engine da sessão; do grupo = da sessão dona). null = sem limite. */
   limits: Record<LimitChannel, OfferChannelLimitsDTO>;
   /** Uso por canal: sessões do gerador; grupos = união gerador ⋃ monitoramentos do tenant (BG-03). */
@@ -102,7 +104,7 @@ export class GetOfferGeneratorConfigUseCase {
   async execute(tenantId: string): Promise<OfferGeneratorConfigDTO> {
     const { configs, entitlements } = this.deps;
     const num = (kind: 'sessions' | 'broadcastGroups', ch: LimitChannel) => entitlements.getNumber(tenantId, limitKeyOfChannel(kind, ch));
-    const [config, groups, unionRows, waGroups, waSessions, tgGroups, tgSessions, crossSession, mentionAll] = await Promise.all([
+    const [config, groups, unionRows, waGroups, waSessions, tgGroups, tgSessions, crossSession, mentionAll, aiRewrite] = await Promise.all([
       configs.find(tenantId),
       configs.listGroups(tenantId),
       this.deps.groupUsage.listRows(tenantId),
@@ -112,6 +114,7 @@ export class GetOfferGeneratorConfigUseCase {
       num('sessions', 'telegram'),
       entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
       entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.MENTION_ALL_ENABLED),
+      entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.AI_REWRITE_ENABLED),
     ]);
     const sessions = config?.sessionIds.length ? await configs.findSessions(tenantId, config.sessionIds) : [];
     const sessionCount = countByChannel(sessions, (x) => x.engine);
@@ -133,6 +136,7 @@ export class GetOfferGeneratorConfigUseCase {
       sessionLimit: waSessions,
       crossSessionDispatch: crossSession === true,
       mentionAllEnabled: mentionAll !== false,
+      aiRewriteEnabled: aiRewrite !== false,
       limits: {
         whatsapp: { sessions: waSessions, broadcastGroups: waGroups },
         telegram: { sessions: tgSessions, broadcastGroups: tgGroups },

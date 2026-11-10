@@ -346,6 +346,14 @@ describe('ProcessPendingCapturedOffersUseCase — oferta montada e reescrita com
     expect(s.captured.items[0]).toMatchObject({ textSource: 'AI', aiErrorCode: null });
   });
 
+  it('LITE (ai_rewrite_enabled false) com IA salva: cai no Modelo sem pedir público à IA nem selo de falha', async () => {
+    const s = await setup({ settings: { textMode: 'AI', audience: 'MOMS' }, entitlements: { ai_rewrite_enabled: false } });
+    await s.msg();
+    await s.process.execute();
+    expect(s.texts.inputs[0]).toMatchObject({ audience: 'STANDARD' });
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'TEMPLATE', aiErrorCode: null });
+  });
+
   it('IA indisponível: cai no modelo, TEMPLATE com aiErrorCode', async () => {
     const s = await setup({ settings: { textMode: 'AI', audience: 'PET' } });
     s.texts.result = (i) => ({ text: `*${i.title}*\n${i.affiliateUrl}`, aiFallback: true, aiErrorCode: 'AI_NOT_CONFIGURED' });

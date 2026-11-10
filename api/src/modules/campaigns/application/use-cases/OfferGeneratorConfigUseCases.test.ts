@@ -55,7 +55,7 @@ describe('Offer generator config', () => {
     const s = setup({ broadcast_groups: 5 });
     expect(await s.get.execute(TENANT)).toEqual({
       sessionIds: [], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL',
-      windowStartMinute: 0, windowEndMinute: 1440, weekdays: [0, 1, 2, 3, 4, 5, 6], groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, mentionAllEnabled: true, configured: false,
+      windowStartMinute: 0, windowEndMinute: 1440, weekdays: [0, 1, 2, 3, 4, 5, 6], groups: [], groupLimit: 5, sessionLimit: null, crossSessionDispatch: false, mentionAllEnabled: true, aiRewriteEnabled: true, configured: false,
       limits: { whatsapp: { sessions: null, broadcastGroups: 5 }, telegram: { sessions: null, broadcastGroups: null } },
       usage: { whatsapp: { sessions: 0, broadcastGroups: 0 }, telegram: { sessions: 0, broadcastGroups: 0 } },
     });
@@ -274,6 +274,12 @@ describe('Offer generator config — horário de postagem (PS-05)', () => {
 });
 
 describe('Offer generator config — marcar todos', () => {
+  it('ai_rewrite_enabled=false (LITE) → aiRewriteEnabled false; ausente/true → true', async () => {
+    expect((await setup({ ai_rewrite_enabled: false }).get.execute(TENANT)).aiRewriteEnabled).toBe(false);
+    expect((await setup({ ai_rewrite_enabled: true }).get.execute(TENANT)).aiRewriteEnabled).toBe(true);
+    expect((await setup({}).get.execute(TENANT)).aiRewriteEnabled).toBe(true);
+  });
+
   it('mention_all_enabled=false explícito → mentionAllEnabled false no GET', async () => {
     expect((await setup({ mention_all_enabled: false }).get.execute(TENANT)).mentionAllEnabled).toBe(false);
     expect((await setup({ mention_all_enabled: true }).get.execute(TENANT)).mentionAllEnabled).toBe(true);

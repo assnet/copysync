@@ -29,7 +29,7 @@ describe('GroupMonitorConfigUseCases', () => {
     const out = await s.get.execute(base);
     expect(out.settings).toEqual(DEFAULT_MONITOR_SETTINGS);
     expect(out.limits).toEqual({
-      monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false, enrichLinkOnlyEnabled: false, captureOutsideWindowEnabled: false,
+      monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false, enrichLinkOnlyEnabled: false, captureOutsideWindowEnabled: false, aiRewriteEnabled: true,
       whatsapp: { monitoredGroups: 2, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null },
     });
     expect(out.channel).toBe('whatsapp');
@@ -69,6 +69,19 @@ describe('GroupMonitorConfigUseCases', () => {
     const ok = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, enrichLinkOnly: true } });
     expect(ok.settings.enrichLinkOnly).toBe(true);
     expect(ok.limits.enrichLinkOnlyEnabled).toBe(true);
+  });
+
+  it('reescrita com IA só no PRO/MAX: ai_rewrite_enabled false grava Modelo (sem recusar); ausente/true mantém IA', async () => {
+    const lite = setup({ ai_rewrite_enabled: false });
+    const out = await lite.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, textMode: 'AI', audience: 'MOMS' } });
+    expect(out.settings).toMatchObject({ textMode: 'TEMPLATE', audience: 'STANDARD' });
+    expect(out.limits.aiRewriteEnabled).toBe(false);
+    for (const ent of [{}, { ai_rewrite_enabled: true }]) {
+      const s = setup(ent);
+      const ok = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, textMode: 'AI', audience: 'MOMS' } });
+      expect(ok.settings).toMatchObject({ textMode: 'AI', audience: 'MOMS' });
+      expect(ok.limits.aiRewriteEnabled).toBe(true);
+    }
   });
 
   it('capturar fora do horário: sem capture_outside_window_enabled grava false (sem recusar); GetConfig expõe o limite', async () => {

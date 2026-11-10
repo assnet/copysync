@@ -211,6 +211,7 @@ export const offerConfigResponse = envelope({
     sessionLimit: { type: ['number', 'null'] },
     crossSessionDispatch: { type: 'boolean' },
     mentionAllEnabled: { type: 'boolean' },
+    aiRewriteEnabled: { type: 'boolean' },
     limits: channelMapSchema({ sessions: { type: ['number', 'null'] }, broadcastGroups: { type: ['number', 'null'] } }),
     usage: channelMapSchema({ sessions: { type: 'integer' }, broadcastGroups: { type: 'integer' } }),
     configured: { type: 'boolean' },

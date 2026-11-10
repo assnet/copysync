@@ -29,6 +29,7 @@ export const MENTION_ALL_ENABLED = ENTITLEMENT_KEYS.MENTION_ALL_ENABLED;
 export const CROSS_SESSION_DISPATCH = ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH;
 export const ENRICH_LINK_ONLY_ENABLED = ENTITLEMENT_KEYS.ENRICH_LINK_ONLY_ENABLED;
 export const CAPTURE_OUTSIDE_WINDOW_ENABLED = ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED;
+export const AI_REWRITE_ENABLED = ENTITLEMENT_KEYS.AI_REWRITE_ENABLED;
 
 export interface GroupMonitorConfigDeps {
   monitors: IGroupMonitorRepository;
@@ -60,7 +61,7 @@ abstract class GroupMonitorConfigBase {
   protected async load({ tenantId, sessionId }: SessionInput): Promise<GroupMonitorConfigDTO> {
     const { monitors, entitlements } = this.deps;
     const num = (kind: 'monitoredGroups' | 'broadcastGroups', ch: LimitChannel) => entitlements.getNumber(tenantId, limitKeyOfChannel(kind, ch));
-    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, enrichLinkOnly, captureOutside, unionRows] = await Promise.all([
+    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, enrichLinkOnly, captureOutside, aiRewrite, unionRows] = await Promise.all([
       monitors.findConfig(tenantId, sessionId),
       monitors.listMonitored(tenantId, sessionId),
       monitors.listBroadcast(tenantId, sessionId),
@@ -74,6 +75,7 @@ abstract class GroupMonitorConfigBase {
       entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
       entitlements.getBoolean(tenantId, ENRICH_LINK_ONLY_ENABLED),
       entitlements.getBoolean(tenantId, CAPTURE_OUTSIDE_WINDOW_ENABLED),
+      entitlements.getBoolean(tenantId, AI_REWRITE_ENABLED),
       this.deps.broadcastUsage.listRows(tenantId),
     ]);
     const live = broadcast.length > 0
@@ -100,6 +102,7 @@ abstract class GroupMonitorConfigBase {
         ...whatsapp, mentionAllEnabled: mentionAll !== false, crossSessionDispatch: crossSession === true,
         enrichLinkOnlyEnabled: enrichLinkOnly === true,
         captureOutsideWindowEnabled: captureOutside === true,
+        aiRewriteEnabled: aiRewrite !== false,
         whatsapp, telegram: { monitoredGroups: tgMon, broadcastGroups: tgBc },
       },
       usage: { ...usageWa, whatsapp: usageWa, telegram: { monitoredGroups: mon.telegram, broadcastGroups: bc.telegram } },
@@ -169,6 +172,11 @@ export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
     // Só Max. Desliga em vez de recusar: o padrão do banco é ligado e cliente antigo reenvia o salvo
     if (settings.captureOutsideWindow && (await this.deps.entitlements.getBoolean(input.tenantId, CAPTURE_OUTSIDE_WINDOW_ENABLED)) !== true) {
       settings.captureOutsideWindow = false;
+    }
+    // Reescrita com IA é PRO/MAX (só `false` trava): LITE grava o Modelo em vez de recusar
+    if (settings.textMode === 'AI' && (await this.deps.entitlements.getBoolean(input.tenantId, AI_REWRITE_ENABLED)) === false) {
+      settings.textMode = 'TEMPLATE';
+      settings.audience = 'STANDARD';
     }
     // Início 24:00 grava 0 (mesmo dia): regra TS e claim SQL leem igual
     settings.windowStartMinute = normalizeWindowStartMinute(settings.windowStartMinute, settings.windowEndMinute);

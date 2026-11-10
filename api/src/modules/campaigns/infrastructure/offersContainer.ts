@@ -90,7 +90,7 @@ const sender       = lazy(() => new ChatOfferMessageSender(undefined, {
   previewImage: previewImage,
   files:        () => mediaContainer.mediaFileStore,
 }));
-const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator()));
+const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator(), entitlements()));
 
 const generate = lazy(() => new GenerateOfferUseCase({
   offers:       offers(),

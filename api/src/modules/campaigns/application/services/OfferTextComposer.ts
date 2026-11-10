@@ -8,6 +8,11 @@ import {
 import { renderOfferText } from '../../domain/services/renderOfferText';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
+import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
+
+/** Plano sem reescrita com IA (`ai_rewrite_enabled` = false, LITE): sai o modelo, sem chamar a IA. */
+export const AI_PLAN_UNAVAILABLE = 'AI_PLAN_UNAVAILABLE';
 
 export const OFFER_TEXT_AI_PURPOSE = 'offer.text';
 /** Teto do texto gravado (o mesmo da edição manual). */
@@ -36,7 +41,11 @@ export interface ComposedOfferText {
  * em qualquer erro `AI_*`. O link exato é garantido no fim. Prompt e resposta nunca vão para log.
  */
 export class OfferTextComposer {
-  constructor(private readonly ai: IAiTextGenerator) {}
+  constructor(
+    private readonly ai: IAiTextGenerator,
+    /** Ausente = sem trava de plano (testes antigos). Só `false` explícito bloqueia. */
+    private readonly entitlements?: Pick<IEntitlementReader, 'getBoolean'>,
+  ) {}
 
   async compose(input: ComposeOfferTextInput): Promise<ComposedOfferText> {
     const template = () =>
@@ -48,6 +57,10 @@ export class OfferTextComposer {
         coupon: input.coupon,
       });
     if (input.audience === 'STANDARD') return { text: template(), aiFallback: false };
+    // Trava única do plano: cobre gerar, gerar novamente e monitoramento (vale também com chave do tenant)
+    if (this.entitlements && (await this.entitlements.getBoolean(input.tenantId, ENTITLEMENT_KEYS.AI_REWRITE_ENABLED)) === false) {
+      return { text: template(), aiFallback: true, aiErrorCode: AI_PLAN_UNAVAILABLE };
+    }
 
     const { system, prompt } = buildOfferTextPrompt({ ...input, audience: input.audience });
     try {

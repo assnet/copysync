@@ -42,6 +42,8 @@ export interface GroupMonitorConfigDTO {
     enrichLinkOnlyEnabled: boolean;
     /** Entitlement `capture_outside_window_enabled` (Max): false = "capturar fora do horário" travado (vale desligado). */
     captureOutsideWindowEnabled: boolean;
+    /** Entitlement `ai_rewrite_enabled` (só `false` trava, LITE): modo IA vale como Modelo. */
+    aiRewriteEnabled: boolean;
     whatsapp: ChannelGroupLimitsDTO;
     telegram: ChannelGroupLimitsDTO;
   };

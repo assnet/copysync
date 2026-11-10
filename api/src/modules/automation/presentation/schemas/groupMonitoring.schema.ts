@@ -122,7 +122,7 @@ const configSchema = {
     limits: {
       type: 'object',
       properties: {
-        monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' }, enrichLinkOnlyEnabled: { type: 'boolean' }, captureOutsideWindowEnabled: { type: 'boolean' },
+        monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' }, enrichLinkOnlyEnabled: { type: 'boolean' }, captureOutsideWindowEnabled: { type: 'boolean' }, aiRewriteEnabled: { type: 'boolean' },
         whatsapp: channelLimitsSchema, telegram: channelLimitsSchema,
       },
     },
