@@ -107,3 +107,84 @@ describe('GET /admin/ops/metrics', () => {
     expect(page).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /admin/ops/metrics/series e /latest', () => {
+  it('sem super-admin: 401 nas duas e não consulta o banco', async () => {
+    const agg = vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'aggregate');
+    const last = vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'latestSince');
+    for (const path of ['/series', '/latest']) {
+      expect((await app.inject({ method: 'GET', url: `${URL}${path}` })).statusCode, path).toBe(401);
+    }
+    expect(agg).not.toHaveBeenCalled();
+    expect(last).not.toHaveBeenCalled();
+  });
+
+  it('series: métricas por vírgula, baldes e kind no contrato; sem rede', async () => {
+    auth.isSuperAdmin = true;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const agg = vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'aggregate').mockResolvedValue([
+      { source: 'render', resource: 'srv-a', metric: 'cpu_pct', at, avg: 42.5, min: 10, max: 80 },
+    ]);
+    const res = await app.inject({
+      method: 'GET', url: `${URL}/series?metrics=cpu_pct,memory_pct&from=2026-11-09T00:00:00.000Z&to=2026-11-09T12:00:00.000Z&resource=srv-a`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(agg).toHaveBeenCalledWith({
+      metrics: ['cpu_pct', 'memory_pct'], resource: 'srv-a',
+      from: new Date('2026-11-09T00:00:00.000Z'), to: new Date('2026-11-09T12:00:00.000Z'), bucketMinutes: 5,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.json()).toEqual({
+      success: true,
+      data: {
+        window: { from: '2026-11-09T00:00:00.000Z', to: '2026-11-09T12:00:00.000Z' },
+        bucketMinutes: 5,
+        series: [{ resource: 'srv-a', kind: 'api', metric: 'cpu_pct', points: [{ at: at.toISOString(), avg: 42.5, min: 10, max: 80 }] }],
+      },
+    });
+  });
+
+  it('series: 400 para métrica inválida/desconhecida, >12, janela e datas', async () => {
+    auth.isSuperAdmin = true;
+    const agg = vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'aggregate');
+    const many = Array.from({ length: 13 }, () => 'cpu_pct').join(',');
+    const thirteen = 'cpu,cpu_pct,memory,memory_pct,rss_mb,node_cpu_pct,event_loop_p99_ms,db_connections,db_xact_commit,db_xact_rollback,db_deadlocks,db_temp_bytes,db_cache_hit_pct';
+    for (const qs of [
+      'metrics=CPU;drop', 'metrics=nao_existe', `metrics=${thirteen}`, 'metrics=cpu_pct,', 'resource=a%20b', 'from=ontem',
+      'from=2026-11-09T12:00:00Z&to=2026-11-09T00:00:00Z', 'from=2026-11-01T00:00:00Z&to=2026-11-09T00:00:01Z',
+    ]) {
+      expect((await app.inject({ method: 'GET', url: `${URL}/series?${qs}` })).statusCode, qs).toBe(400);
+    }
+    expect(agg).not.toHaveBeenCalled();
+    // repetida 13 vezes vira 1 métrica: aceita
+    vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'aggregate').mockResolvedValue([]);
+    expect((await app.inject({ method: 'GET', url: `${URL}/series?metrics=${many}` })).statusCode).toBe(200);
+  });
+
+  it('latest: valores, limiares, top consultas, sampler e workers', async () => {
+    auth.isSuperAdmin = true;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'latestSince').mockResolvedValue([
+      { at, source: 'worker', resource: 'w1', metric: 'rss_mb', value: 310, meta: { min: 300, max: 320, n: 5 } },
+    ]);
+    vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'latestStatementSnapshot').mockResolvedValue([
+      { at, source: 'postgres', resource: '123', metric: 'db_statement_total_ms', value: 50, meta: { calls: 5, meanMs: 10, shape: 'SELECT 1' } },
+    ]);
+    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([
+      { workerId: 'w1', role: 'worker', sessions: 3, pendingLogins: 0, maxSessions: 40, rssMb: 310, seenAt },
+    ]);
+    const res = await app.inject({ method: 'GET', url: `${URL}/latest` });
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.json()).toEqual({
+      success: true,
+      data: {
+        latest: [{ resource: 'w1', kind: 'worker', metric: 'rss_mb', value: 310, at: at.toISOString() }],
+        thresholds: { memoryPct: 80, cpuPct: 80, idleInTransaction: 3, eventLoopP99Ms: 200 },
+        topQueries: [{ queryid: '123', shape: 'SELECT 1', totalMs: 50, meanMs: 10, calls: 5, at: at.toISOString() }],
+        samplerActive: expect.any(Boolean),
+        workers: [{ workerId: 'w1', role: 'worker', sessions: 3, pendingLogins: 0, maxSessions: 40, rssMb: 310, cpuPct: null, eventLoopP99Ms: null, seenAt: seenAt.toISOString() }],
+      },
+    });
+  });
+});

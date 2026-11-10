@@ -45,12 +45,7 @@ export class ListOpsMetricsUseCase {
   ) {}
 
   async execute(input: ListOpsMetricsInput): Promise<ListOpsMetricsOutput> {
-    const to = input.to ?? truncateToSecond(this.now());
-    const from = input.from ?? new Date(to.getTime() - OPS_METRICS_DEFAULT_WINDOW_MS);
-    if (from.getTime() > to.getTime()) throw new ValidationError('`from` must be before `to`');
-    if (to.getTime() - from.getTime() > OPS_METRICS_MAX_WINDOW_MS) {
-      throw new ValidationError('Window must not exceed 7 days');
-    }
+    const { from, to } = resolveOpsMetricsWindow(input, this.now());
 
     const metric = input.metric ?? null;
     const scope = `ops-metrics:${metric ?? '*'}:${from.toISOString()}:${to.toISOString()}`;
@@ -65,6 +60,20 @@ export class ListOpsMetricsUseCase {
     const nextCursor = hasMore ? createCursor(scope, offset + OPS_METRICS_PAGE_SIZE) : null;
     return { window: { from, to }, samples, nextCursor, workers };
   }
+}
+
+/**
+ * Janela das leituras super admin: `to` padrão = agora (sem ms), `from` padrão = `to` − 24 h.
+ * `from > to` ou janela acima de 7 dias (a retenção) → `ValidationError` (400).
+ */
+export function resolveOpsMetricsWindow(input: { from?: Date; to?: Date }, now: Date): { from: Date; to: Date } {
+  const to = input.to ?? truncateToSecond(now);
+  const from = input.from ?? new Date(to.getTime() - OPS_METRICS_DEFAULT_WINDOW_MS);
+  if (from.getTime() > to.getTime()) throw new ValidationError('`from` must be before `to`');
+  if (to.getTime() - from.getTime() > OPS_METRICS_MAX_WINDOW_MS) {
+    throw new ValidationError('Window must not exceed 7 days');
+  }
+  return { from, to };
 }
 
 /** `to` padrão sem milissegundos: o ISO devolvido volta igual no próximo pedido. */

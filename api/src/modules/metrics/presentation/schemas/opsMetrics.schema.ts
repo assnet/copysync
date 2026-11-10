@@ -24,7 +24,7 @@ const sample = {
   },
 } as const;
 
-const worker = {
+export const opsWorker = {
   type: 'object',
   additionalProperties: false,
   required: ['workerId', 'role', 'sessions', 'pendingLogins', 'maxSessions', 'rssMb', 'cpuPct', 'eventLoopP99Ms', 'seenAt'],
@@ -59,7 +59,120 @@ export const opsMetricsResponse = {
         },
         samples: { type: 'array', items: sample },
         nextCursor: { type: ['string', 'null'] },
-        workers: { type: 'array', items: worker },
+        workers: { type: 'array', items: opsWorker },
+      },
+    },
+  },
+} as const;
+
+const isoDate = { type: 'string', format: 'date-time' } as const;
+const opsWindow = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['from', 'to'],
+  properties: { from: isoDate, to: isoDate },
+} as const;
+const kind = { type: 'string', enum: ['api', 'postgres', 'worker', 'query', 'other'] } as const;
+
+/** `GET /admin/ops/metrics/series`: `metrics` separado por vírgula (nomes validados no use case). */
+export const opsMetricsSeriesQuery = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    metrics: { type: 'string', pattern: '^[a-z0-9_]{1,64}(,[a-z0-9_]{1,64})*$', maxLength: 800 },
+    from: isoDate,
+    to: isoDate,
+    resource: { type: 'string', pattern: '^[^\\s,]{1,200}$' },
+  },
+} as const;
+
+export const opsMetricsSeriesResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['window', 'bucketMinutes', 'series'],
+      properties: {
+        window: opsWindow,
+        bucketMinutes: { type: 'integer' },
+        series: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['resource', 'kind', 'metric', 'points'],
+            properties: {
+              resource: { type: 'string' },
+              kind,
+              metric: { type: 'string' },
+              points: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['at', 'avg', 'min', 'max'],
+                  properties: { at: isoDate, avg: { type: 'number' }, min: { type: 'number' }, max: { type: 'number' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+export const opsMetricsLatestResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['latest', 'thresholds', 'topQueries', 'samplerActive', 'workers'],
+      properties: {
+        latest: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['resource', 'kind', 'metric', 'value', 'at'],
+            properties: { resource: { type: 'string' }, kind, metric: { type: 'string' }, value: { type: 'number' }, at: isoDate },
+          },
+        },
+        thresholds: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['memoryPct', 'cpuPct', 'idleInTransaction', 'eventLoopP99Ms'],
+          properties: {
+            memoryPct: { type: 'number' },
+            cpuPct: { type: 'number' },
+            idleInTransaction: { type: 'number' },
+            eventLoopP99Ms: { type: 'number' },
+          },
+        },
+        topQueries: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['queryid', 'shape', 'totalMs', 'meanMs', 'calls', 'at'],
+            properties: {
+              queryid: { type: 'string' },
+              shape: { type: ['string', 'null'] },
+              totalMs: { type: 'number' },
+              meanMs: { type: ['number', 'null'] },
+              calls: { type: ['number', 'null'] },
+              at: isoDate,
+            },
+          },
+        },
+        samplerActive: { type: 'boolean' },
+        workers: { type: 'array', items: opsWorker },
       },
     },
   },

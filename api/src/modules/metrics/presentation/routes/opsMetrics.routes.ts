@@ -6,8 +6,16 @@ import { prisma } from '../../../../shared/database/prisma.client';
 import { ListOpsMetricsUseCase } from '../../application/use-cases/ListOpsMetricsUseCase';
 import { PrismaOpsMetricsSampleRepository } from '../../infrastructure/repositories/PrismaOpsMetricsSampleRepository';
 import { PrismaWorkerHeartbeatRepository } from '../../../sessions/infrastructure/repositories/PrismaWorkerHeartbeatRepository';
-import { opsMetricsQuery, opsMetricsResponse } from '../schemas/opsMetrics.schema';
-import { presentOpsMetrics } from '../presenters/opsMetricsPresenter';
+import { GetOpsMetricsSeriesUseCase } from '../../application/use-cases/GetOpsMetricsSeriesUseCase';
+import { GetOpsMetricsLatestUseCase } from '../../application/use-cases/GetOpsMetricsLatestUseCase';
+import {
+  opsMetricsLatestResponse,
+  opsMetricsQuery,
+  opsMetricsResponse,
+  opsMetricsSeriesQuery,
+  opsMetricsSeriesResponse,
+} from '../schemas/opsMetrics.schema';
+import { presentOpsMetrics, presentOpsMetricsLatest, presentOpsMetricsSeries } from '../presenters/opsMetricsPresenter';
 
 const preHandler = [authHook, superAdminHook];
 const tags = ['Ops metrics (admin)'];
@@ -15,6 +23,19 @@ const tags = ['Ops metrics (admin)'];
 let listOps: ListOpsMetricsUseCase | null = null;
 const uc = () =>
   (listOps ??= new ListOpsMetricsUseCase(new PrismaOpsMetricsSampleRepository(prisma), new PrismaWorkerHeartbeatRepository()));
+
+let seriesUc: GetOpsMetricsSeriesUseCase | null = null;
+const series = () => (seriesUc ??= new GetOpsMetricsSeriesUseCase(new PrismaOpsMetricsSampleRepository(prisma)));
+let latestUc: GetOpsMetricsLatestUseCase | null = null;
+const latest = () =>
+  (latestUc ??= new GetOpsMetricsLatestUseCase(new PrismaOpsMetricsSampleRepository(prisma), new PrismaWorkerHeartbeatRepository()));
+
+interface OpsMetricsSeriesQuery {
+  metrics?: string;
+  from?: string;
+  to?: string;
+  resource?: string;
+}
 
 interface OpsMetricsQuery {
   metric?: string;
@@ -45,5 +66,35 @@ export async function opsMetricsRoutes(app: FastifyInstance): Promise<void> {
       cursor,
     });
     httpResponse.ok(reply, presentOpsMetrics(out));
+  });
+
+  app.get<{ Querystring: OpsMetricsSeriesQuery }>('/series', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Séries agregadas em baldes no servidor (avg/min/max) para o dashboard de consumo',
+      querystring: opsMetricsSeriesQuery,
+      response: { 200: opsMetricsSeriesResponse },
+    },
+  }, async (request, reply) => {
+    const { metrics, from, to, resource } = request.query;
+    const out = await series().execute({
+      metrics: metrics?.split(','),
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      resource,
+    });
+    httpResponse.ok(reply, presentOpsMetricsSeries(out));
+  });
+
+  app.get('/latest', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Último valor por recurso/métrica (15 min), limiares dos alertas, top consultas e workers vivos',
+      response: { 200: opsMetricsLatestResponse },
+    },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, presentOpsMetricsLatest(await latest().execute()));
   });
 }

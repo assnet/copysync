@@ -24,11 +24,52 @@ baixa frequência, persistência rara. Dado de infraestrutura: sem tenant, sem P
   em lotes de 5 mil por `ctid`, cada lote com `SET LOCAL statement_timeout = '2s'`, no máximo 10 lotes
   por tick (pior caso 20 s, dentro do lease renovado). Backlog maior escoa nos ticks seguintes.
   Nunca `deleteMany` sem limite.
-- **Leitura**: `GET /api/admin/ops/metrics?metric=&from=&to=&cursor=` só super admin
+- **Leitura bruta**: `GET /api/admin/ops/metrics?metric=&from=&to=&cursor=` só super admin
   (`metrics/presentation/routes/opsMetrics.routes.ts`). Lê só `ops_metrics_samples` e o estado
   atual de `worker_heartbeats`; nunca chama a Render. Janela padrão 24 h, máximo 7 dias; página de
   500 decidida pelo servidor; o cliente repete `from`/`to` devolvidos em `window` junto do
-  `nextCursor` (cursor de outra janela recomeça do início). Sem tela: ler pela rota/Render.
+  `nextCursor` (cursor de outra janela recomeça do início).
+
+## Leitura do dashboard (Consumo, super admin)
+
+Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `superAdminHook`,
+401 sem super admin), só tabelas locais, **nunca Render ao vivo**.
+
+`GET /api/admin/ops/metrics/series?metrics=cpu_pct,memory_pct&from=&to=&resource=`
+(`GetOpsMetricsSeriesUseCase`)
+
+- `metrics`: nomes de `OPS_METRIC` separados por vírgula, no máximo 12 (repetidos contam uma vez);
+  ausente = `cpu_pct,memory_pct`. Nome desconhecido → 400.
+- Janela: padrão 24 h até agora; `from > to` ou mais de 7 dias → 400 (`resolveOpsMetricsWindow`).
+- Agregação **no servidor** (`PrismaOpsMetricsSampleRepository.aggregate`): balde =
+  `max(5 min, ceil(janela/240))` arredondado para cima a 1/5/15/30/60/120/360 min
+  (`opsBucketMinutes`; 24 h → 15 min, 7 dias → 60 min, ≤ 240 pontos por série). SQL cru com
+  `avg/min/max(value)` por (source, resource, metric, balde), em `$transaction` com
+  `SET LOCAL statement_timeout = '2s'`.
+- Fuso: `at` é `timestamp` sem fuso gravado em UTC. Corte com `::timestamptz AT TIME ZONE 'UTC'`
+  e balde por `extract(epoch FROM at)` (nominal, alinhado à época): independe do `TimeZone` da
+  sessão (teste de integração troca o banco para São Paulo e compara).
+- Resposta: `{ window:{from,to}, bucketMinutes, series:[{ resource, kind, metric, points:[{ at, avg, min, max }] }] }`;
+  `at` = início do balde; valores arredondados a 3 casas. `kind` derivado (`opsResourceKind`):
+  `query` (`db_statement_total_ms`) › `worker` (source worker) › `postgres` (`dpg-` ou source
+  postgres) › `api` (`srv-`) › `other`.
+- Counters (`db_xact_*`, `db_deadlocks`, `db_temp_bytes`, `db_statement_total_ms`) são acumulados:
+  o avg do balde é do acumulado; taxa (delta) é conta da tela.
+
+`GET /api/admin/ops/metrics/latest` (`GetOpsMetricsLatestUseCase`)
+
+- `latest`: última linha por (resource, metric) nos últimos 15 min, sem `db_statement_total_ms`
+  (`DISTINCT ON`, mesmo timeout de 2 s): `{ resource, kind, metric, value, at }`.
+- `thresholds`: `OPS_ALERT_THRESHOLDS` de `opsAlertPolicy` (`memoryPct`, `cpuPct`,
+  `idleInTransaction`, `eventLoopP99Ms`). Não duplicar números no painel.
+- `topQueries`: linhas do snapshot mais recente de `db_statement_total_ms` (top 10 do sampler),
+  `{ queryid, shape, totalMs, meanMs, calls, at }`; `shape` é a forma truncada já gravada em
+  `meta`. Snapshot antigo também aparece: conferir `at`.
+- `samplerActive`: há amostra nos últimos 15 min (sampler ligado e gravando).
+- `workers`: workers vivos de `worker_heartbeats` (mesmo formato da leitura bruta).
+
+Não fazer: balde no cliente sobre a leitura bruta paginada; aceitar `limit`/tamanho de balde do
+cliente; métrica fora de `OPS_METRIC`; chamar a Render nessas rotas.
 
 ## Flags e variáveis (só na Render)
 

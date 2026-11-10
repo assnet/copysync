@@ -7,6 +7,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### Backend — leitura do dashboard de consumo (metrics)
+
+- **`metrics/presentation/routes/opsMetrics.routes.ts`** — `GET /admin/ops/metrics/series` (baldes avg/min/max no servidor, até 12 métricas, janela ≤ 7 dias) e `GET /admin/ops/metrics/latest` (último valor 15 min, limiares dos alertas, top consultas, `samplerActive`, workers vivos); só super admin, sem chamar a Render.
+- **`GetOpsMetricsSeriesUseCase.ts`**, **`GetOpsMetricsLatestUseCase.ts`** — validação de nomes contra `OPS_METRIC`, agrupamento por série e `kind` derivado.
+- **`domain/services/opsMetricsSeriesPolicy.ts`** — `opsBucketMinutes` (5…360 min, ≤ 240 pontos) e `opsResourceKind` (api/postgres/worker/query/other), puras.
+- **`PrismaOpsMetricsSampleRepository.ts`** — `aggregate`, `latestSince`, `latestStatementSnapshot` (SQL cru com `statement_timeout` 2 s; corte e balde em UTC independentes do `TimeZone` da sessão), contrato `IOpsMetricsSeriesReader`.
+- **`opsMetrics.schema.ts`**, **`opsMetricsPresenter.ts`** — schemas de resposta fechados e presenters; `presentWorker` compartilhado.
+
+### Changed
+
+- **`ListOpsMetricsUseCase.ts`** — regra da janela extraída para `resolveOpsMetricsWindow` (reuso, sem mudança de contrato).
+
 ## [0.74.0] — 2026-11-09 — Filas independentes, gate do chat e métricas de recursos
 
 Tudo atrás de flags desligadas por padrão. Gates de produção de A, B e C seguem **pendentes**
