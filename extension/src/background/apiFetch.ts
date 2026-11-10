@@ -42,15 +42,15 @@ const FORBIDDEN_CODES: ReadonlyMap<string, SyncErrorCode> = new Map([
   ['MARKETPLACE_RISK_NOT_ACCEPTED', 'risk_not_accepted'],
 ]);
 
+const SHEIN_ROUTE_PREFIX = '/api/extension/marketplaces/shein/';
+
 /**
  * `error.code` conhecido → `SyncErrorCode`, ANTES do status. Os de `FORBIDDEN_CODES` (que levam
  * `syncSession` a pausar e até remover a permissão de host) só valem em 4xx: um 5xx com o mesmo
- * código é falha do servidor e cai em `api_rejected` (só mensagem). `SESSION_NOT_FOUND` fica de
- * fora de propósito: o 404 dele no ML sempre foi `api_route_missing`. Map: sem herança de
+ * código é falha do servidor e cai em `api_rejected` (só mensagem). `SESSION_NOT_FOUND` em 4xx só
+ * vira `session_expired` nas rotas da Shein: no ML o 404 dele sempre foi `api_route_missing`. Map: sem herança de
  * `Object.prototype` (`constructor`, `__proto__` não viram código).
  */
-const SHEIN_ROUTE_PREFIX = '/api/extension/marketplaces/shein/';
-
 const KNOWN_CODES: ReadonlyMap<string, SyncErrorCode> = new Map<string, SyncErrorCode>([
   ['MISSING_EXT_SESSION', 'session_expired'],
   ['INVALID_EXT_SESSION', 'session_expired'],
@@ -129,7 +129,7 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
       : (clientError ? FORBIDDEN_CODES.get(code) : undefined)
         ?? KNOWN_CODES.get(code)
         // Só nas rotas da Shein: no ML o 404 de SESSION_NOT_FOUND segue `api_route_missing` (como sempre foi)
-        ?? (code === 'SESSION_NOT_FOUND' && opts.path.startsWith(SHEIN_ROUTE_PREFIX) ? 'session_expired' : undefined);
+        ?? (clientError && code === 'SESSION_NOT_FOUND' && opts.path.startsWith(SHEIN_ROUTE_PREFIX) ? 'session_expired' : undefined);
     const kind = known ?? STATUS_CODES.get(response.status);
     if (kind) throw new SyncError(kind, code ? detail : undefined);
   }
