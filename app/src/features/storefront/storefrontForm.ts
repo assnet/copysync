@@ -4,6 +4,7 @@
  * troca de endereço e payloads do `PUT`/prévia. Sem React, sem HTTP.
  */
 import { finalizeSlug, previewUrl } from '@/features/linkRotation/slug';
+import { isSheinUnavailable } from '@/features/plans/planGate';
 import { storefrontStrings } from './strings';
 import type {
   SaveStorefrontInput,
@@ -195,6 +196,7 @@ export const STOREFRONT_ERROR_CODES = [
   'OFFER_PRODUCT_NOT_FOUND',
   'OFFER_LINK_NOT_OWNED',
   'OFFER_LINK_NOT_AFFILIATE',
+  'MARKETPLACE_RISK_NOT_ACCEPTED',
   'MEDIA_TOO_LARGE',
   'UNSUPPORTED_MEDIA_TYPE',
   'MEDIA_PROCESSING_FAILED',
@@ -213,6 +215,7 @@ export function errorMessage(err: unknown): string {
   const e: StorefrontApiError = typeof err === 'string' ? { code: err } : ((err ?? {}) as StorefrontApiError);
   const code = (STOREFRONT_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as StorefrontErrorCode) : null;
   if (!code) return t.errors.generic;
+  if (isSheinUnavailable(e)) return t.errors.sheinUnavailable;
   const seconds = e.meta?.retryAfterSeconds;
   if (code === 'RATE_LIMITED' && typeof seconds === 'number' && seconds > 0) return t.errors.rateLimitedSeconds(seconds);
   return t.errors[code];

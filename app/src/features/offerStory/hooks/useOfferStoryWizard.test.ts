@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { writePersisted, readPersisted } from '@/hooks/usePersistedState';
 import type { OfferStoryResult } from '../types';
+import { offerStoryStrings } from '../strings';
 
 const render = vi.hoisted(() => vi.fn());
 const navigate = vi.hoisted(() => vi.fn());
@@ -106,6 +107,25 @@ describe('useOfferStoryWizard', () => {
     expect(result.current.errors.url).toBeTruthy();
 
     render.mockRejectedValueOnce({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE' });
+    await act(() => result.current.generate());
+    expect(navigate).toHaveBeenCalledWith('/affiliates/plans?feature=offerStory', { replace: true });
+  });
+
+  it('403 da Shein fica no campo do link; Story fora do plano (com chave) redireciona', async () => {
+    saved({ step: 1, templateId: 'flash-night', url: URL_OK });
+    render.mockRejectedValueOnce({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } });
+    const { result } = renderHook(() => useOfferStoryWizard());
+    await act(() => result.current.generate());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(result.current.step).toBe(1);
+    expect(result.current.errors.url).toBe(offerStoryStrings.errors.sheinUnavailable);
+
+    render.mockRejectedValueOnce({ status: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
+    await act(() => result.current.generate());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(result.current.errors.url).toBe(offerStoryStrings.errors.MARKETPLACE_RISK_NOT_ACCEPTED);
+
+    render.mockRejectedValueOnce({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'offer_story_enabled' } });
     await act(() => result.current.generate());
     expect(navigate).toHaveBeenCalledWith('/affiliates/plans?feature=offerStory', { replace: true });
   });

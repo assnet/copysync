@@ -95,4 +95,48 @@ describe('StorefrontPage', () => {
     expect(screen.queryByRole('textbox', { name: new RegExp(t.fields.name.label) })).not.toBeInTheDocument();
     expect(Object.keys(sessionStorage).some((k) => k.includes('storefront.form'))).toBe(false);
   });
+  describe('extrair oferta: 403 de outro recurso', () => {
+    const withPage: StorefrontOverview = {
+      ...overview,
+      publicUrl: 'https://achadinhos.ofertas.test',
+      storefront: {
+        id: 'p1', title: 'Achadinhos', subtitle: null, avatarUrl: null, coverUrl: null,
+        colorPrimary: '#2563EB', colorBackground: '#F5F5F5', colorCard: '#FFFFFF', categories: [],
+        status: 'ACTIVE', domainId: 'd1', slug: 'achadinhos',
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+      },
+    };
+    const extract = async (err: unknown) => {
+      svc.getStorefront.mockResolvedValue(withPage);
+      svc.extractOffer.mockReset();
+      svc.extractOffer.mockRejectedValue(err);
+      renderPage();
+      const field = await screen.findByRole('textbox', { name: new RegExp(t.addOffer.urlLabel) });
+      fireEvent.change(field, { target: { value: 'https://br.shein.com/p-1.html' } });
+      fireEvent.click(screen.getByRole('button', { name: t.addOffer.extract }));
+      await waitFor(() => expect(svc.extractOffer).toHaveBeenCalled());
+    };
+
+    it('Shein fora do plano não redireciona e mostra o texto no campo', async () => {
+      await extract({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } });
+      expect(await screen.findByText(t.errors.sheinUnavailable)).toBeInTheDocument();
+      expect(screen.queryByText('tela de planos')).not.toBeInTheDocument();
+    });
+
+    it('aceite da Shein pendente mostra o texto no campo', async () => {
+      await extract({ status: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
+      expect(await screen.findByText(t.errors.MARKETPLACE_RISK_NOT_ACCEPTED)).toBeInTheDocument();
+    });
+
+    it('Página de Ofertas fora do plano continua redirecionando', async () => {
+      await extract({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'storefront_enabled' } });
+      expect(await screen.findByText('tela de planos')).toBeInTheDocument();
+    });
+  });
+
+  it('sem plano com chave storefront_enabled redireciona', async () => {
+    svc.getStorefront.mockRejectedValue({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'storefront_enabled' } });
+    renderPage();
+    expect(await screen.findByText('tela de planos')).toBeInTheDocument();
+  });
 });

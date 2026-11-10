@@ -2,6 +2,7 @@
  * Lógica pura do passo "Produto": validação local (espelha o schema/use case da API, que revalida)
  * e tradução de erro da API → campo + texto. Sem React, sem HTTP.
  */
+import { isSheinUnavailable } from '@/features/plans/planGate';
 import { OFFER_STORY_RULES as R } from './productForm.rules';
 import { offerStoryStrings } from './strings';
 import type { OfferStoryApiError, RenderOfferStoryInput } from './types';
@@ -87,6 +88,7 @@ export const OFFER_STORY_ERROR_CODES = [
   'MEDIA_PROCESSOR_UNAVAILABLE',
   'AFFILIATE_API_ACCESS_DENIED',
   'AFFILIATE_CREDENTIAL_REJECTED',
+  'MARKETPLACE_RISK_NOT_ACCEPTED',
   'AFFILIATE_API_RATE_LIMITED',
   'AFFILIATE_API_UNAVAILABLE',
   'RATE_LIMITED',
@@ -104,6 +106,7 @@ const URL_CODES: readonly string[] = [
   // Credencial/API de afiliado da loja do link: a correção é no link ou nas credenciais.
   'AFFILIATE_API_ACCESS_DENIED',
   'AFFILIATE_CREDENTIAL_REJECTED',
+  'MARKETPLACE_RISK_NOT_ACCEPTED',
 ];
 
 /** `field` da API → campo do formulário (`coupon`/`coupon.code` → código). */
@@ -126,6 +129,7 @@ export interface OfferStoryErrorView {
 /** Erro da API → texto pt-BR e onde mostrar. Nunca usa a `message` crua da API. */
 export function mapRenderError(err: unknown): OfferStoryErrorView {
   const e = (err ?? {}) as OfferStoryApiError;
+  if (isSheinUnavailable(e)) return { field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false };
   const code = (OFFER_STORY_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as OfferStoryErrorCode) : null;
   if (!code) return { field: null, message: t.errors.generic, backToTemplates: false };
   if (URL_CODES.includes(code)) return { field: 'url', message: t.errors[code], backToTemplates: false };

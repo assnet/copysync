@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearPersisted, readPersisted, usePersistedState, writePersisted } from '@/hooks/usePersistedState';
-import { isPlanFeatureUnavailable } from '@/features/plans/planGate';
+import { PLAN_FEATURE_KEYS, isPlanFeatureUnavailable } from '@/features/plans/planGate';
 import { offerStoryService } from '@/services/offerStory.service';
 import { offerStoryUpgradePath } from '../planGate';
 import {
@@ -113,7 +113,7 @@ export function useOfferStoryWizard() {
       setResult(art);
       setDraft((d) => ({ ...d, step: 2 }));
     } catch (err) {
-      if (isPlanFeatureUnavailable(err)) {
+      if (isPlanFeatureUnavailable(err, PLAN_FEATURE_KEYS.offerStory)) {
         navigate(offerStoryUpgradePath, { replace: true });
         return;
       }
