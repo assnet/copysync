@@ -65,10 +65,10 @@ const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
   offer_story_enabled: 'max',
   enrich_link_only_enabled: 'pro',
   capture_outside_window_enabled: 'max',
+  ai_rewrite_enabled: 'pro',
   marketplace_extension: 'lite',
-  ai_rewrite_enabled: 'lite',
   offer_generations_per_day: 'lite',
-  ai_requests_per_day: 'lite',
+  ai_requests_per_day: 'pro',
 };
 
 /** Menor plano do catálogo que libera a chave, ou `null` se nenhum libera. */
@@ -183,7 +183,7 @@ export const subscriptionStrings = {
     ai_requests_per_day: { label: 'Pedidos de IA', hint: 'Textos reescritos pela IA por dia. O contador zera à meia-noite.' },
     mention_all_enabled: { label: 'Menção a todos', hint: PLAN_HINTS.mentionAll },
     marketplace_extension: { label: 'Extensão do navegador', hint: 'Gere ofertas direto da página do produto na Shopee, Amazon e Mercado Livre.' },
-    ai_rewrite_enabled: { label: 'Reescrita com IA', hint: 'A IA reescreve o texto de cada oferta capturada antes do disparo.' },
+    ai_rewrite_enabled: { label: 'Reescrita com IA', hint: PLAN_HINTS.aiRewrite },
     cross_session_dispatch: { label: 'Cross Session', hint: PLAN_HINTS.crossSession },
     storefront_enabled: { label: 'Página de Ofertas', hint: PLAN_HINTS.storefront },
     offer_story_enabled: { label: 'Story de Oferta', hint: 'Arte da oferta pronta para os stories do Instagram.' },

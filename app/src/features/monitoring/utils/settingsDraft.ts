@@ -111,6 +111,8 @@ export interface PlanGates {
   mentionAll?: boolean;
   enrichLinkOnly?: boolean;
   captureOutsideWindow?: boolean;
+  /** "Reescrita com IA" (PRO/MAX): travada, o modo IA vale como Modelo. */
+  aiRewrite?: boolean;
 }
 
 /**
@@ -121,9 +123,12 @@ export function effectiveDraft(d: MonitorSettingsDraft, gates: PlanGates = {}): 
   const mentionAll = gates.mentionAll !== false && d.mentionAll;
   const enrichLinkOnly = gates.enrichLinkOnly !== false && d.enrichLinkOnly;
   const captureOutsideWindow = gates.captureOutsideWindow !== false && d.captureOutsideWindow;
+  // IA travada pelo plano: o servidor monta pelo Modelo, então a tela mostra e salva Modelo
+  const textMode: MonitorTextMode = gates.aiRewrite === false && d.textMode === 'AI' ? 'TEMPLATE' : d.textMode;
   return mentionAll === d.mentionAll && enrichLinkOnly === d.enrichLinkOnly && captureOutsideWindow === d.captureOutsideWindow
+    && textMode === d.textMode
     ? d
-    : { ...d, mentionAll, enrichLinkOnly, captureOutsideWindow };
+    : { ...d, mentionAll, enrichLinkOnly, captureOutsideWindow, textMode };
 }
 
 /** Rascunho difere do salvo? Compara no formato da API, com os dois lados no valor efetivo. */
@@ -141,20 +146,27 @@ export const TEXT_MODES: readonly MonitorTextMode[] = ['ORIGINAL', 'TEMPLATE', '
  * Modo escolhido pela tecla no radiogroup (padrão WAI-ARIA: setas circulam, Home/End vão às
  * pontas). `null` = tecla não muda a seleção.
  */
-export function textModeForKey(current: MonitorTextMode, key: string): MonitorTextMode | null {
-  const i = Math.max(0, TEXT_MODES.indexOf(current));
-  const n = TEXT_MODES.length;
+export function textModeForKey(
+  current: MonitorTextMode,
+  key: string,
+  /** Modos travados pelo plano: as setas pulam por cima deles. */
+  locked: readonly MonitorTextMode[] = [],
+): MonitorTextMode | null {
+  const modes = TEXT_MODES.filter((m) => !locked.includes(m));
+  const n = modes.length;
+  if (n === 0) return null;
+  const i = Math.max(0, modes.indexOf(current));
   switch (key) {
     case 'ArrowRight':
     case 'ArrowDown':
-      return TEXT_MODES[(i + 1) % n]!;
+      return modes[(i + 1) % n]!;
     case 'ArrowLeft':
     case 'ArrowUp':
-      return TEXT_MODES[(i - 1 + n) % n]!;
+      return modes[(i - 1 + n) % n]!;
     case 'Home':
-      return TEXT_MODES[0]!;
+      return modes[0]!;
     case 'End':
-      return TEXT_MODES[n - 1]!;
+      return modes[n - 1]!;
     default:
       return null;
   }

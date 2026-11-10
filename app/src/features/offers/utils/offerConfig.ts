@@ -10,6 +10,10 @@ export const OFFER_AUDIENCES: readonly OfferAudience[] = [
   'STANDARD', 'MOMS', 'PET', 'BEAUTY_FASHION', 'MEN', 'FITNESS', 'HOME_KITCHEN',
 ];
 
+/** Público que vale de fato: sem "Reescrita com IA" no plano, só o Padrão (o servidor usa o modelo fixo). */
+export const effectiveAudience = (audience: OfferAudience, aiLocked: boolean): OfferAudience =>
+  aiLocked ? 'STANDARD' : audience;
+
 /** Ícone de cada público (Lucide, via `AppIcon`). Texto fica em `strings.ts`. */
 export const AUDIENCE_ICONS: Record<OfferAudience, LucideIcon> = {
   STANDARD: Tag,

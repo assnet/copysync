@@ -150,6 +150,7 @@ export function OfferGeneratorPage() {
                   }}
                   onChange={() => { if (gen.error?.isLinkField) gen.clearError(); }}
                   onCancel={offer ? () => { gen.clearError(); setComposing(false); } : undefined}
+                  aiRewriteEnabled={cfg.aiRewriteEnabled}
                 />
                 {limitReached && gen.usage?.limit != null && <Alert severity="warning">{t.planLimit(gen.usage.limit)}</Alert>}
                 {!offer && pageError && (
@@ -199,6 +200,7 @@ export function OfferGeneratorPage() {
                 onEditingChange={setEditing}
                 onNew={() => { gen.clearError(); setComposing(true); }}
                 newLockedReason={offerSending ? t.page.newOfferLocked : null}
+                aiRewriteEnabled={cfg.aiRewriteEnabled}
               />
 
               <Box sx={{ minWidth: 0, position: { md: 'sticky' }, top: { md: 88 } }}>

@@ -11,7 +11,8 @@ import AddIcon from '@mui/icons-material/Add';
 import { AppIcon, SectionCard } from '@/components';
 import type { OfferAudience, OfferConfigGroup, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { AUDIENCE_ICONS, OFFER_AUDIENCES } from '../utils/offerConfig';
+import { PlanAvailabilityBadges } from '@/features/plans/components/PlanAvailabilityBadges';
+import { AUDIENCE_ICONS, OFFER_AUDIENCES, effectiveAudience } from '../utils/offerConfig';
 import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
@@ -43,6 +44,8 @@ interface Props {
   onNew: () => void;
   /** Motivo de "+ Novo" bloqueado (envio em andamento); null = liberado. */
   newLockedReason: string | null;
+  /** "Reescrita com IA" no plano; `false` = só o público Padrão no "Gerar novamente". */
+  aiRewriteEnabled?: boolean;
 }
 
 /** Prévia da oferta gerada: editar, gerar novamente e "+ Novo". Opções e disparo ficam no card de envio. */
@@ -54,7 +57,9 @@ export function OfferResultPanel(props: Props) {
   // Sem dados da loja o operador precisa preencher: já abre editando.
   const [editing, setEditing] = useState(needsManualData);
   useEffect(() => { onEditingChange?.(editing); }, [editing, onEditingChange]);
-  const [audience, setAudience] = useState<OfferAudience>(offer.audience);
+  const aiLocked = props.aiRewriteEnabled === false;
+  const [pickedAudience, setAudience] = useState<OfferAudience>(offer.audience);
+  const audience = effectiveAudience(pickedAudience, aiLocked);
   const blurAudience = useBlur('offers.audience');
   const [copied, setCopied] = useState(false);
   const isDraft = offer.status === 'DRAFT';
@@ -173,9 +178,12 @@ export function OfferResultPanel(props: Props) {
                 sx={{ flex: 1, minWidth: 140, ...(blurAudience && { '& .MuiSelect-select': { filter: 'blur(5px)' } }) }}
               >
                 {OFFER_AUDIENCES.map((key) => (
-                  <MenuItem key={key} value={key} sx={{ gap: 1 }}>
+                  <MenuItem key={key} value={key} disabled={aiLocked && key !== 'STANDARD'} sx={{ gap: 1 }}>
                     <AppIcon icon={AUDIENCE_ICONS[key]} />
                     {offerStrings.audiences[key].label}
+                    {aiLocked && key !== 'STANDARD' && (
+                      <Box component="span" sx={{ ml: 'auto', pl: 1 }}><PlanAvailabilityBadges from="pro" /></Box>
+                    )}
                   </MenuItem>
                 ))}
               </TextField>

@@ -12,6 +12,7 @@ import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
 import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 import { offerStrings } from '../strings';
 import { detectStore, linkProblem } from '../utils/offerStore';
+import { effectiveAudience } from '../utils/offerConfig';
 import { AudiencePicker } from './AudiencePicker';
 import { OfferScheduleField } from './OfferScheduleField';
 import { SCHEDULE_MAX_DAYS, defaultScheduleInput, fromLocalInput, scheduleProblem } from '../utils/offerSchedule';
@@ -44,14 +45,20 @@ interface Props {
   onChange?: () => void;
   /** Volta para a oferta aberta sem gerar outra (só quando há uma). */
   onCancel?: () => void;
+  /** "Reescrita com IA" no plano; `false` = só o público Padrão. */
+  aiRewriteEnabled?: boolean;
 }
 
 /** Card "Gerar nova oferta": link próprio + cupom opcional + público-alvo + início agendado. */
-export function OfferGeneratorForm({ generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel }: Props) {
+export function OfferGeneratorForm({
+  generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel, aiRewriteEnabled = true,
+}: Props) {
   // Sobrevive a reload (padrão do painel): link colado, cupom e público ficam na aba
   const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM);
   // Rascunho antigo (antes do agendamento) não tem os campos novos
-  const { url, hasCoupon, coupon, audience, scheduleOn = false, scheduleAt = '' } = form;
+  const { url, hasCoupon, coupon, scheduleOn = false, scheduleAt = '' } = form;
+  // Sem IA no plano, público salvo diferente de Padrão vale como Padrão (o que a tela mostra e envia)
+  const audience = effectiveAudience(form.audience, !aiRewriteEnabled);
   const setUrl = (v: string) => setForm((f) => ({ ...f, url: v }));
   const setHasCoupon = (v: boolean) => setForm((f) => ({ ...f, hasCoupon: v }));
   const setCoupon = (v: string) => setForm((f) => ({ ...f, coupon: v }));
@@ -192,7 +199,7 @@ export function OfferGeneratorForm({ generating, serverError, disabled, disabled
           <Box>
             <Typography variant="subtitle2" component="p">{t.audienceLabel}</Typography>
             <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1.25 }}>{t.audienceHelper}</Typography>
-            <AudiencePicker value={audience} onChange={setAudience} disabled={busy} label={t.audienceLabel} />
+            <AudiencePicker value={audience} onChange={setAudience} disabled={busy} label={t.audienceLabel} aiLocked={!aiRewriteEnabled} />
           </Box>
 
           <OfferScheduleField

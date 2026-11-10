@@ -57,6 +57,20 @@ describe('settingsDraft', () => {
     expect(effectiveDraft(draft, { enrichLinkOnly: true })).toBe(draft);
   });
 
+  it('"Reescrita com IA" travada: IA vale como Modelo, sem sujar o rascunho; setas pulam o IA', () => {
+    const ai = { ...saved, textMode: 'AI' as const };
+    const draft = settingsToDraft(ai);
+    expect(effectiveDraft(draft, { aiRewrite: false }).textMode).toBe('TEMPLATE');
+    expect(draftToSettings(effectiveDraft(draft, { aiRewrite: false })).audience).toBe('STANDARD');
+    expect(effectiveDraft(draft, { aiRewrite: true })).toBe(draft);
+    expect(effectiveDraft(draft)).toBe(draft);
+    expect(isDraftDirty(draft, ai, { aiRewrite: false })).toBe(false);
+    expect(isDraftDirty(draft, { ...ai, textMode: 'TEMPLATE' }, { aiRewrite: false })).toBe(false);
+    expect(textModeForKey('TEMPLATE', 'ArrowRight', ['AI'])).toBe('ORIGINAL');
+    expect(textModeForKey('ORIGINAL', 'ArrowLeft', ['AI'])).toBe('TEMPLATE');
+    expect(textModeForKey('ORIGINAL', 'End', ['AI'])).toBe('TEMPLATE');
+  });
+
   it('dias da semana: lista ↔ mask; API sem o campo ou lista vazia = todos; troca suja o rascunho', () => {
     expect(settingsToDraft(saved).weekdaysMask).toBe(127);
     expect(settingsToDraft({ ...saved, weekdays: [] }).weekdaysMask).toBe(127);

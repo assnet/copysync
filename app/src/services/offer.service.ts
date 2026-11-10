@@ -110,6 +110,7 @@ interface OfferConfigApiDto {
   sessionLimit: number | null;
   crossSessionDispatch?: boolean;
   mentionAllEnabled?: boolean;
+  aiRewriteEnabled?: boolean;
   limits?: OfferConfigResponse['limits'];
   usage?: OfferConfigResponse['usage'];
   configured: boolean;
@@ -139,6 +140,8 @@ function toOfferConfig(dto: OfferConfigApiDto): OfferConfigResponse {
     crossSessionDispatch: dto.crossSessionDispatch ?? false,
     // API anterior sem o campo: liberado (o erro do envio continua como rede de segurança)
     mentionAllEnabled: dto.mentionAllEnabled !== false,
+    // Chave "só false bloqueia": ausente = liberado
+    aiRewriteEnabled: dto.aiRewriteEnabled !== false,
     // API anterior sem `limits`: o legado vale como WhatsApp e o Telegram fica sem limite
     limits: dto.limits ?? {
       whatsapp: { sessions: dto.sessionLimit, broadcastGroups: dto.groupLimit },

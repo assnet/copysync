@@ -39,6 +39,7 @@ describe('subscriptionStrings', () => {
     expect(minPlanFor('storefront_enabled')?.slug).toBe('pro');
     expect(minPlanFor('offer_story_enabled')?.slug).toBe('max');
     expect(minPlanFor('cross_session_dispatch')?.slug).toBe('max');
+    expect(minPlanFor('ai_rewrite_enabled')?.slug).toBe('pro');
   });
 
   it('"A partir do X" com nome de vitrine', () => {

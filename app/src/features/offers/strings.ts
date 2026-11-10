@@ -223,6 +223,8 @@ export const offerStrings = {
     couponRequired: 'Digite o código do cupom ou desligue a opção.',
     audienceLabel: 'Público-alvo',
     audienceHelper: 'O texto muda conforme quem vai ler. "Padrão" usa o modelo fixo; os demais são escritos pela IA.',
+    /** Públicos com IA fora do plano (LITE). */
+    aiRewriteLocked: 'Disponível nos planos PRO e MAX.',
     submit: 'Gerar oferta',
     generating: 'Criando sua oferta…',
     sendingLock: 'Aguarde o envio atual terminar para gerar outra oferta.',

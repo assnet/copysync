@@ -116,4 +116,10 @@ describe('catálogo de planos (vitrine)', () => {
     expect(PREMIUM_SLUG_OFFER.title).not.toBe('');
     expect(PREMIUM_SLUG_OFFER.benefits.length).toBeGreaterThan(0);
   });
+
+  it('"Reescrita com IA" é benefício do PRO (MAX herda) e não do LITE', () => {
+    const has = (slug: string) => PLAN_CATALOG.find((p) => p.slug === slug)!.benefits.some((b) => /IA/.test(b.label));
+    expect(has('lite')).toBe(false);
+    expect(has('pro')).toBe(true);
+  });
 });

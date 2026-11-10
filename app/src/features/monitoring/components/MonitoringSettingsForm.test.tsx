@@ -162,4 +162,52 @@ describe('MonitoringSettingsForm', () => {
     expect(enrich).toBeEnabled();
     expect(enrich).toBeChecked();
   });
+
+  it('"Reescrita com IA" fora do plano: card travado com selos e aviso; salvo em IA envia Modelo sem "não salvo" fantasma', async () => {
+    const locked: GroupMonitorConfigResponse = {
+      ...config,
+      settings: { ...config.settings, textMode: 'AI', audience: 'MOMS' },
+      limits: { ...config.limits, aiRewriteEnabled: false },
+    };
+    const onSave = vi.fn().mockResolvedValue(locked);
+    renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={locked} onSave={onSave} />);
+    const group = screen.getByRole('radiogroup', { name: 'Como montar o texto' });
+    const ai = within(group).getByRole('radio', { name: /Reescrita com IA/ });
+    expect(ai).toBeDisabled();
+    expect(ai).toHaveAttribute('aria-disabled', 'true');
+    expect(ai).toHaveAttribute('aria-checked', 'false');
+    expect(within(ai).getByText('Disponível nos planos PRO e MAX.')).toBeInTheDocument();
+    expect(within(ai).getByLabelText('Disponível nos planos PRO e MAX')).toBeInTheDocument();
+    expect(within(group).getByRole('radio', { name: /Modelo/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radiogroup', { name: 'Público-alvo' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
+
+    fireEvent.click(ai);
+    fireEvent.keyDown(within(group).getByRole('radio', { name: /Modelo/ }), { key: 'ArrowRight' });
+    expect(within(group).getByRole('radio', { name: /Original/ })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.keyDown(within(group).getByRole('radio', { name: /Original/ }), { key: 'ArrowLeft' });
+    expect(within(group).getByRole('radio', { name: /Modelo/ })).toHaveAttribute('aria-checked', 'true');
+    expect(ai).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Monitoramento ativo/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ textMode: 'TEMPLATE', audience: 'STANDARD' });
+  });
+
+  it.each([
+    ['true', true],
+    ['ausente', undefined],
+  ] as const)('"Reescrita com IA" liberada (%s): card habilitado, selos visíveis e público aparece', (_label, enabled) => {
+    const limits = { ...config.limits, aiRewriteEnabled: enabled };
+    if (enabled === undefined) delete limits.aiRewriteEnabled;
+    renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={{ ...config, limits }} onSave={vi.fn()} />);
+    const ai = screen.getByRole('radio', { name: /Reescrita com IA/ });
+    expect(ai).toBeEnabled();
+    expect(within(ai).getByLabelText('Disponível nos planos PRO e MAX')).toBeInTheDocument();
+    expect(within(ai).queryByText('Disponível nos planos PRO e MAX.')).not.toBeInTheDocument();
+    fireEvent.click(ai);
+    expect(ai).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radiogroup', { name: 'Público-alvo' })).toBeInTheDocument();
+  });
 });

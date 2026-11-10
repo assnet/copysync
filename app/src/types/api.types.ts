@@ -430,6 +430,8 @@ export interface OfferConfigResponse {
   crossSessionDispatch: boolean;
   /** Entitlement `mention_all_enabled`: false = "marcar todos" travado pelo plano (LITE). */
   mentionAllEnabled: boolean;
+  /** Entitlement `ai_rewrite_enabled` (PRO/MAX): false = só o público Padrão (sem IA). */
+  aiRewriteEnabled: boolean;
   /** Limites por canal (null = sem limite). */
   limits: Record<LimitChannel, OfferChannelLimits>;
   /** Uso da configuração salva por canal. */
@@ -671,6 +673,8 @@ export interface GroupMonitorConfigResponse {
     enrichLinkOnlyEnabled?: boolean;
     /** Entitlement `capture_outside_window_enabled` (MAX). Ausente (API anterior) = travado. */
     captureOutsideWindowEnabled?: boolean;
+    /** Entitlement `ai_rewrite_enabled` (PRO/MAX). Só `false` trava; ausente = liberado. */
+    aiRewriteEnabled?: boolean;
     whatsapp: ChannelGroupLimits;
     telegram: ChannelGroupLimits;
   };

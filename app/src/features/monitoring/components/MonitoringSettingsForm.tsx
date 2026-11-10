@@ -153,19 +153,22 @@ interface TextModeProps {
   value: MonitorTextMode;
   onChange: (mode: MonitorTextMode) => void;
   describedBy: string;
+  /** "Reescrita com IA" fora do plano: o card IA fica travado (sem clique nem setas). */
+  aiLocked?: boolean;
 }
 
 /**
  * Seletor do modo de texto em cartões (`radiogroup`): tab entra no selecionado, setas/Home/End
  * mudam a seleção e o foco (WAI-ARIA). Selecionado = borda 2 px primary, tinta e selo de check.
  */
-export function TextModeCards({ value, onChange, describedBy }: TextModeProps) {
+export function TextModeCards({ value, onChange, describedBy, aiLocked = false }: TextModeProps) {
   const theme = useTheme();
   const refs = useRef<Partial<Record<MonitorTextMode, HTMLButtonElement | null>>>({});
   const { primary } = theme.palette;
+  const locked: readonly MonitorTextMode[] = aiLocked ? ['AI'] : [];
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const next = textModeForKey(value, e.key);
+    const next = textModeForKey(value, e.key, locked);
     if (!next) return;
     e.preventDefault();
     onChange(next);
@@ -183,12 +186,16 @@ export function TextModeCards({ value, onChange, describedBy }: TextModeProps) {
       {TEXT_MODES.map((mode) => {
         const selected = mode === value;
         const m = t.textModes[mode];
+        const disabled = locked.includes(mode);
+        const isAi = mode === 'AI';
         return (
           <ButtonBase
             key={mode}
             ref={(el: HTMLButtonElement | null) => { refs.current[mode] = el; }}
             role="radio"
             aria-checked={selected}
+            aria-disabled={disabled || undefined}
+            disabled={disabled}
             tabIndex={selected ? 0 : -1}
             focusRipple
             onClick={() => onChange(mode)}
@@ -211,6 +218,8 @@ export function TextModeCards({ value, onChange, describedBy }: TextModeProps) {
               transition: theme.transitions.create(['border-color', 'background-color', 'box-shadow'], { duration: 200 }),
               '&:hover': { borderColor: selected ? 'primary.main' : alpha(primary.main, 0.45), bgcolor: selected ? alpha(primary.main, 0.1) : 'action.hover' },
               '&.Mui-focusVisible': { outline: `3px solid ${primary.main}`, outlineOffset: 3 },
+              // Travado pelo plano: visível (mostra onde o recurso existe), mas apagado e sem clique
+              '&.Mui-disabled': { opacity: 0.6, cursor: 'not-allowed', pointerEvents: 'auto' },
               [REDUCED_MOTION]: { transition: 'none' },
             }}
           >
@@ -222,8 +231,13 @@ export function TextModeCards({ value, onChange, describedBy }: TextModeProps) {
                 {m.label}
               </Typography>
               <Typography variant="caption" component="span" color="text.secondary" sx={{ display: 'block', lineHeight: 1.4, mt: 0.25 }}>
-                {m.short}
+                {disabled ? t.aiRewriteLocked : m.short}
               </Typography>
+              {isAi && (
+                <Box component="span" sx={{ display: 'block', mt: 0.75 }}>
+                  <PlanAvailabilityBadges from="pro" />
+                </Box>
+              )}
             </Box>
             {selected && (
               <Box
@@ -273,8 +287,13 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
   const mentionAllEnabled = config.limits.mentionAllEnabled;
   const enrichLinkOnlyEnabled = config.limits.enrichLinkOnlyEnabled === true;
   const captureOutsideEnabled = config.limits.captureOutsideWindowEnabled === true;
-  const gates = { mentionAll: mentionAllEnabled, enrichLinkOnly: enrichLinkOnlyEnabled, captureOutsideWindow: captureOutsideEnabled };
-  const value = draft ?? settingsToDraft(config.settings);
+  // Chave "só false bloqueia": ausente (API anterior) = liberado
+  const aiRewriteEnabled = config.limits.aiRewriteEnabled !== false;
+  const gates = {
+    mentionAll: mentionAllEnabled, enrichLinkOnly: enrichLinkOnlyEnabled, captureOutsideWindow: captureOutsideEnabled, aiRewrite: aiRewriteEnabled,
+  };
+  // Valor efetivo na tela: IA travada aparece (e salva) como Modelo
+  const value = effectiveDraft(draft ?? settingsToDraft(config.settings), gates);
   // Comparação e envio no valor efetivo: "mencionar todos" travado pelo plano não gera "não salvo" fantasma
   const dirty = isDraftDirty(draft, config.settings, gates);
   const windowValid = isWindowValid(value.window);
@@ -426,7 +445,7 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
 
       <MonitorCard icon={FileText} title={t.textTitle} subtitle={t.textSubtitle} collapseKey="text">
         <Stack spacing={2}>
-          <TextModeCards value={value.textMode} onChange={(textMode) => patch({ textMode })} describedBy={textHelpId} />
+          <TextModeCards value={value.textMode} onChange={(textMode) => patch({ textMode })} describedBy={textHelpId} aiLocked={!aiRewriteEnabled} />
           <Typography id={textHelpId} variant="body2" color="text.secondary">{t.textModes[value.textMode].help}</Typography>
           {value.textMode === 'AI' && (
             <AudiencePicker value={value.audience} onChange={(audience) => patch({ audience })} label={t.audienceLabel} />

@@ -38,3 +38,21 @@ describe('"Gerar novamente" vale uma vez por oferta', () => {
     expect(screen.getByRole('button', { name: /Gerar novamente/ })).toBeEnabled();
   });
 });
+
+describe('"Gerar novamente" sem "Reescrita com IA" no plano', () => {
+  it('oferta com público de IA regenera como Padrão', () => {
+    const onRegenerate = vi.fn();
+    const o = offer({ audience: 'PET' });
+    render(
+      <OfferResultPanel
+        offer={o} draft={{ title: o.title ?? '', priceCents: null, originalPriceCents: null, text: o.text }} onField={vi.fn()}
+        dirty={false} textTooLong={false} missingLink={false} needsManualData={false} aiFallback={false} groups={[]}
+        saving={false} regenerating={false} sending={false} imageProgress={null}
+        onSave={vi.fn().mockResolvedValue(undefined)} onDiscard={vi.fn()} onRegenerate={onRegenerate} onReplaceImage={vi.fn()}
+        onNew={vi.fn()} newLockedReason={null} aiRewriteEnabled={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Gerar novamente/ }));
+    expect(onRegenerate).toHaveBeenCalledWith('STANDARD');
+  });
+});

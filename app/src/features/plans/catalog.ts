@@ -90,6 +90,7 @@ export const PLAN_HINTS = {
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
   captureOutsideWindow: 'Fora do horário de postagem o monitoramento continua capturando: as ofertas ficam na fila e saem assim que o horário abrir.',
   enrichLinkOnly: 'No monitoramento, mensagem que chega só com o link vira oferta completa, com título, preço e foto do produto.',
+  aiRewrite: 'A IA reescreve o texto de cada oferta para o público escolhido, no gerador de ofertas e no monitoramento.',
   storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
   crossSession:
@@ -155,6 +156,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: 'Ofertas circulando entre WhatsApp e Telegram', hint: PLAN_HINTS.bothChannels },
       { label: 'Menção a todos os participantes', hint: PLAN_HINTS.mentionAll },
       { label: 'Oferta montada a partir só do link', hint: PLAN_HINTS.enrichLinkOnly },
+      { label: 'Reescrita com IA para o seu público', hint: PLAN_HINTS.aiRewrite },
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Suporte prioritário 24/7' },
     ],

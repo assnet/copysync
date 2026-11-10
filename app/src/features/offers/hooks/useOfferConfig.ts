@@ -75,6 +75,8 @@ export function useOfferConfig() {
     crossSessionDispatch: data?.crossSessionDispatch ?? false,
     /** Sem dados ainda: liberado (o erro do envio segue como rede de segurança). */
     mentionAllEnabled: data?.mentionAllEnabled !== false,
+    /** "Reescrita com IA" (PRO/MAX); sem dados ainda, liberado (o servidor cai no modelo fixo). */
+    aiRewriteEnabled: data?.aiRewriteEnabled !== false,
     /** Limites por canal (null = sem limite); sem dados ainda, nada é limitado. */
     limits: data?.limits ?? NO_LIMITS,
     usage: data?.usage ?? null,
