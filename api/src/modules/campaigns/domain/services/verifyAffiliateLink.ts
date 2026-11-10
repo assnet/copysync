@@ -9,6 +9,8 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
  */
 export type AffiliateLinkCheck = 'verified' | 'unverified' | 'not_owned' | 'not_affiliate';
 
+const SHEIN_URL_FROM = /^affiliate_koc_(\d+)$/;
+
 /** Todos os valores não vazios do parâmetro (nome sem diferenciar caixa). */
 function params(url: URL, name: string): string[] {
   const out: string[] = [];
@@ -30,7 +32,8 @@ function socialTag(url: URL): string | null {
 
 /**
  * Todos os identificadores de afiliado presentes no link, na ordem em que aparecem (Amazon:
- * cada `tag`; ML: cada `matt_word` e `/social/<etiqueta>`). Repetidos ficam: quem decide é o chamador.
+ * cada `tag`; ML: cada `matt_word` e `/social/<etiqueta>`; Shein: o `<id>` de cada
+ * `url_from=affiliate_koc_<id>`, outro formato não conta). Repetidos ficam: quem decide é o chamador.
  */
 export function affiliateIdentifiersOf(provider: AffiliateProvider, url: URL): string[] {
   switch (provider) {
@@ -40,6 +43,8 @@ export function affiliateIdentifiersOf(provider: AffiliateProvider, url: URL): s
       const social = socialTag(url);
       return [...params(url, 'matt_word'), ...(social ? [social] : [])];
     }
+    case 'SHEIN':
+      return params(url, 'url_from').flatMap((v) => SHEIN_URL_FROM.exec(v)?.[1] ?? []);
     default:
       return [];
   }

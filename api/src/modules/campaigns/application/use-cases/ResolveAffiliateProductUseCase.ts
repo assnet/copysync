@@ -1,27 +1,38 @@
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
+import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
+import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
+import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
 import type {
   IAffiliateCredentialResolver,
   OfferAffiliateCredential,
 } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
-import { parseProductRef } from '../../domain/services/parseProductRef';
+import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
+import { currentRiskNoticeVersion, requiresRiskAcceptance } from '../../../integrations/domain/services/marketplaceRiskNotice';
+import { requireMarketplaceEnabled } from '../services/requireMarketplaceEnabled';
 import { verifyAffiliateLink, type AffiliateLinkCheck } from '../../domain/services/verifyAffiliateLink';
 import {
   OfferLinkNotAffiliateError,
   OfferLinkNotOwnedError,
   OfferUrlUnsupportedError,
 } from '../../../../shared/errors/internal/OfferErrors';
+import { MarketplaceRiskNotAcceptedError } from '../../../../shared/errors/internal/MarketplaceRiskErrors';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
-import type { ProductData, ResolveProductDataUseCase } from './ResolveProductDataUseCase';
+import { EMPTY_PRODUCT_DATA, type ProductData, type ResolveProductDataUseCase } from './ResolveProductDataUseCase';
 
 export interface ResolveAffiliateProductDeps {
   expander: IShortLinkExpander;
   credentials: IAffiliateCredentialResolver;
   mercadoLivre: IMercadoLivreAffiliateClient;
   products: ResolveProductDataUseCase;
+  shein: ISheinAffiliateClient;
+  /** Gate de plano por marketplace (`requireMarketplaceEnabled`). Obrigatório: opcional seria contornável. */
+  entitlements: IEntitlementReader;
+  /** Aceite do aviso de risco; só consultado com credencial e para provider com aviso. */
+  riskGate: IMarketplaceRiskGate;
 }
 
 export interface ResolvedAffiliateProduct {
@@ -50,6 +61,8 @@ export class ResolveAffiliateProductUseCase {
     const final = await this.deps.expander.expand(source);
     const provider = detectMarketplace(final);
     if (!provider) throw new OfferUrlUnsupportedError();
+    // Marketplace fora do plano: antes de ler credencial ou chamar a loja
+    await requireMarketplaceEnabled(this.deps.entitlements, tenantId, provider);
     const ref = parseProductRef(provider, final);
     const mlSocial = provider === 'MERCADO_LIVRE' && final.pathname.startsWith('/social/');
     if (!ref && !mlSocial) throw new OfferUrlUnsupportedError('Product not recognized');
@@ -58,6 +71,11 @@ export class ResolveAffiliateProductUseCase {
     const cred = await this.deps.credentials.execute(tenantId, provider);
     const check = this.checkOwnership(provider, source, final, cred);
     if (check === 'not_owned') throw new OfferLinkNotOwnedError(provider);
+    // Aceite do aviso de risco: só com credencial (sem ela nada é pedido à loja)
+    if (cred && requiresRiskAcceptance(provider) && !(await this.deps.riskGate.isAccepted(tenantId, provider))) {
+      throw new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider) ?? '');
+    }
+    if (ref?.provider === 'SHEIN') return this.resolveShein(source, ref, check, cred);
 
     let affiliateUrl = source.toString();
     let attributionVerified = check === 'verified';
@@ -73,6 +91,45 @@ export class ResolveAffiliateProductUseCase {
 
     const product = await this.deps.products.resolve(provider, ref, final, cred);
     return { provider, sourceUrl: source.toString(), affiliateUrl, attributionVerified, product };
+  }
+
+  /**
+   * Shein: a página do produto cai em desafio anti-bot, então os dados vêm só da API de afiliados
+   * (1 chamada, com a sessão do tenant). Sem sessão: link colado e produto vazio (preenchimento manual).
+   * Sessão recusada propaga; quem pausa a loja é só o builder do monitoramento.
+   */
+  private async resolveShein(
+    source: URL,
+    ref: Extract<ProductRef, { provider: 'SHEIN' }>,
+    check: AffiliateLinkCheck,
+    cred: OfferAffiliateCredential | null,
+  ): Promise<ResolvedAffiliateProduct> {
+    const sourceUrl = source.toString();
+    const empty: ProductData = { ...EMPTY_PRODUCT_DATA, productRef: ref.goodsId };
+    const token = cred?.session?.cookies?.AT;
+    if (!cred || !token) {
+      if (check === 'not_affiliate') throw new OfferLinkNotAffiliateError('SHEIN');
+      return { provider: 'SHEIN', sourceUrl, affiliateUrl: sourceUrl, attributionVerified: check === 'verified', product: empty };
+    }
+    const share = await this.deps.shein.getProductShare({ token, memberId: cred.publicIdentifier }, ref.goodsId);
+    if (!share) {
+      if (check !== 'verified') throw new OfferLinkNotAffiliateError('SHEIN');
+      return { provider: 'SHEIN', sourceUrl, affiliateUrl: sourceUrl, attributionVerified: true, product: empty };
+    }
+    return {
+      provider: 'SHEIN',
+      sourceUrl,
+      // Link colado do próprio tenant fica; senão vai o gerado pela conta dele
+      affiliateUrl: check === 'verified' ? sourceUrl : share.affiliateUrl,
+      attributionVerified: true,
+      product: {
+        productRef: ref.goodsId,
+        title: share.title,
+        priceCents: share.priceCents,
+        originalPriceCents: share.originalPriceCents,
+        imageSourceUrl: share.imageUrl,
+      },
+    };
   }
 
   private async generateMlAffiliateLink(

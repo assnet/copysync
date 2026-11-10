@@ -99,4 +99,91 @@ describe('HttpShortLinkExpander', () => {
     });
     await expect(new HttpShortLinkExpander().expand(SHORT)).rejects.toMatchObject({ code: 'AFFILIATE_API_UNAVAILABLE' });
   });
+
+  describe('onelink.shein.com', () => {
+    const ONELINK = new URL('https://onelink.shein.com/60/67s1itltjnsh');
+    const PRODUCT_URL =
+      'https://br.shein.com/Men-Polo-Shirts-p-533885353-cat-1979.html?onelink=60/67s1itltjnsh&requestId=olw-67s1oaww2gjj&ismg_ol=J8tt4PR8Y4d_01_KOC-C&campaign_id=20&url_from=affiliate_koc_4320454940';
+    const FIXTURE =
+      '<html><body><input id="url" value="https://br.shein.com/Men-Polo-Shirts-p-533885353-cat-1979.html?onelink=60/67s1itltjnsh&amp;requestId=olw-67s1oaww2gjj&amp;ismg_ol=J8tt4PR8Y4d_01_KOC-C&amp;campaign_id=20&amp;url_from=affiliate_koc_4320454940" style="display: none"/></body></html>';
+    const page = (body: string, status = 200) => new Response(body, { status, headers: { 'content-type': 'text/html' } });
+
+    it('GET (nunca HEAD), lê o input, desfaz &amp; e não busca a página do produto', async () => {
+      const fn = stubFetch(async () => page(FIXTURE));
+      const out = await new HttpShortLinkExpander().expand(ONELINK);
+      expect(out.href).toBe(PRODUCT_URL);
+      expect(out.searchParams.get('url_from')).toBe('affiliate_koc_4320454940');
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(fn.mock.calls[0][1].method).toBe('GET');
+      expect(fn.mock.calls[0][1].redirect).toBe('manual');
+    });
+
+    it('3xx para página Shein: devolve o destino sem buscá-lo', async () => {
+      const fn = stubFetch(async () => redirect(PRODUCT_URL));
+      const out = await new HttpShortLinkExpander().expand(ONELINK);
+      expect(out.href).toBe(PRODUCT_URL);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('aspas simples, outra ordem de atributos e entidades', async () => {
+      stubFetch(async () => page(`<input type='hidden' data-id='x' value='https://br.shein.com/p-1.html?a=1&amp;b=&quot;2&quot;&#39;' id='url'>`));
+      const out = await new HttpShortLinkExpander().expand(ONELINK);
+      expect(out.searchParams.get('b')).toBe(`"2"'`);
+      expect(out.searchParams.get('a')).toBe('1');
+    });
+
+    it('destino fora da allowlist ou inválido é recusado', async () => {
+      for (const v of ['https://evil.example.com/p', 'http://br.shein.com/p-1.html', 'nao-url']) {
+        stubFetch(async () => page(`<input id="url" value="${v}">`));
+        await expect(new HttpShortLinkExpander().expand(ONELINK)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+      }
+    });
+
+    it('corpo cortado em 32 KiB: input depois do limite não é achado → URL atual', async () => {
+      const fn = stubFetch(async () => page(' '.repeat(32 * 1024) + FIXTURE));
+      expect((await new HttpShortLinkExpander().expand(ONELINK)).href).toBe(ONELINK.href);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('sem input → URL atual; input antes do limite é achado', async () => {
+      stubFetch(async () => page('<html><input id="other" value="https://br.shein.com/x"></html>'));
+      expect((await new HttpShortLinkExpander().expand(ONELINK)).href).toBe(ONELINK.href);
+      stubFetch(async () => page(FIXTURE + ' '.repeat(64 * 1024)));
+      expect((await new HttpShortLinkExpander().expand(ONELINK)).href).toBe(PRODUCT_URL);
+    });
+
+    it('3xx para fora da allowlist é recusado sem ser buscado', async () => {
+      const fn = stubFetch(async () => redirect('https://evil.example.com/x'));
+      await expect(new HttpShortLinkExpander().expand(ONELINK)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('onelink em cadeia conta no limite de saltos', async () => {
+      let n = 0;
+      const fn = stubFetch(async () => redirect(`https://onelink.shein.com/h${n++}`));
+      await expect(new HttpShortLinkExpander().expand(ONELINK)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+      expect(fn).toHaveBeenCalledTimes(6);
+      expect(fn.mock.calls.every((c) => c[1].method === 'GET')).toBe(true);
+    });
+
+    it('falha de rede → indisponível; isShortLink reconhece o onelink', async () => {
+      stubFetch(async () => {
+        throw new TypeError('fetch failed');
+      });
+      await expect(new HttpShortLinkExpander().expand(ONELINK)).rejects.toMatchObject({ code: 'AFFILIATE_API_UNAVAILABLE' });
+      expect(isShortLink(ONELINK)).toBe(true);
+      expect(isShortLink(new URL('https://br.shein.com/p-1.html'))).toBe(false);
+    });
+  });
+
+  it('outros hosts não leem o corpo (cancelado)', async () => {
+    const cancel = vi.fn(async () => undefined);
+    stubFetch(async () => {
+      const res = new Response('<input id="url" value="https://shopee.com.br/x">', { status: 200 });
+      vi.spyOn(res.body!, 'cancel').mockImplementation(cancel);
+      return res;
+    });
+    expect((await new HttpShortLinkExpander().expand(SHORT)).href).toBe(SHORT.href);
+    expect(cancel).toHaveBeenCalled();
+  });
 });

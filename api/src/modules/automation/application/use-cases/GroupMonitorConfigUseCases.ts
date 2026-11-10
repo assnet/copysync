@@ -124,20 +124,25 @@ export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
 
   /**
    * Um aviso por loja: recusada (`rejectedAt`) prevalece; senão, não utilizável + captura
-   * `CREDENTIAL_MISSING` recente = sem credencial. Só aqui (não no `load`): Save* não pagam as consultas.
+   * `CREDENTIAL_MISSING` recente = sem credencial; senão, captura `MARKETPLACE_RISK_NOT_ACCEPTED`
+   * recente = aceite do aviso de risco pendente. Só aqui (não no `load`): Save* não pagam as consultas.
    */
   private async credentialAlerts(tenantId: string): Promise<CredentialAlertDTO[]> {
     const now = (this.deps.now ?? (() => new Date()))();
-    const [states, missing] = await Promise.all([
+    const since = new Date(now.getTime() - CREDENTIAL_MISSING_WINDOW_MS);
+    const [states, missing, riskPending] = await Promise.all([
       this.deps.credentialStates.listStates(tenantId),
-      this.deps.captured.listRecentMissingProviders(tenantId, new Date(now.getTime() - CREDENTIAL_MISSING_WINDOW_MS)),
+      this.deps.captured.listRecentMissingProviders(tenantId, since),
+      this.deps.captured.listRecentRiskNotAcceptedProviders(tenantId, since),
     ]);
     const recent = new Set(missing);
+    const recentRisk = new Set(riskPending);
     const alerts: CredentialAlertDTO[] = [];
     for (const provider of AFFILIATE_PROVIDERS) {
       const st = states.find((s) => s.provider === provider);
       if (st?.rejectedAt) alerts.push({ provider, kind: 'REJECTED', since: st.rejectedAt.toISOString(), code: st.rejectedCode });
       else if ((!st || !st.usable) && recent.has(provider)) alerts.push({ provider, kind: 'MISSING', since: null, code: null });
+      else if (recentRisk.has(provider)) alerts.push({ provider, kind: 'RISK_NOT_ACCEPTED', since: null, code: null });
     }
     return alerts;
   }

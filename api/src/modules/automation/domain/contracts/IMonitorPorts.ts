@@ -7,6 +7,10 @@ import type { OfferImageMode } from '../../../campaigns/domain/enums/OfferImageM
 export type TenantLinkResult =
   | { kind: 'unsupported' }
   | { kind: 'credential_missing'; provider: AffiliateProvider }
+  /** Marketplace fora do plano do tenant. */
+  | { kind: 'plan_unavailable'; provider: AffiliateProvider }
+  /** Credencial salva, mas sem aceite da versão vigente do aviso de risco. */
+  | { kind: 'risk_not_accepted'; provider: AffiliateProvider }
   /** Loja recusou a credencial: pausada até o usuário reconfigurar (sem rede). */
   | { kind: 'credential_rejected'; provider: AffiliateProvider; since: Date }
   | { kind: 'failed'; provider: AffiliateProvider | null; code: string }

@@ -113,8 +113,14 @@ export class InMemoryCapturedOfferRepository implements ICapturedOfferRepository
     return c ? { ...c, sourceGroupTitle: 'Concorrente', sourceGroupAvatarUrl: null, offerStatus: null, sentCount: 0, totalCount: 0 } : null;
   }
   async listRecentMissingProviders(tenantId: string, since: Date) {
+    return this.recentSkipped(tenantId, since, 'CREDENTIAL_MISSING');
+  }
+  async listRecentRiskNotAcceptedProviders(tenantId: string, since: Date) {
+    return this.recentSkipped(tenantId, since, 'MARKETPLACE_RISK_NOT_ACCEPTED');
+  }
+  private recentSkipped(tenantId: string, since: Date, reason: string) {
     const out = new Set<AffiliateProvider>();
-    for (const c of this.items) if (c.tenantId === tenantId && c.status === 'SKIPPED' && c.reason === 'CREDENTIAL_MISSING' && c.marketplace && c.capturedAt >= since) out.add(c.marketplace);
+    for (const c of this.items) if (c.tenantId === tenantId && c.status === 'SKIPPED' && c.reason === reason && c.marketplace && c.capturedAt >= since) out.add(c.marketplace);
     return [...out];
   }
   async resetForRetry(tenantId: string, id: string) {

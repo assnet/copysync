@@ -3,6 +3,8 @@ import type { IOfferRepository, CreateOfferInput } from '../../domain/contracts/
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
+import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
+import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
@@ -47,6 +49,8 @@ export interface GenerateOfferDeps {
   credentials: IAffiliateCredentialResolver;
   shopee: IShopeeAffiliateClient;
   mercadoLivre: IMercadoLivreAffiliateClient;
+  shein: ISheinAffiliateClient;
+  riskGate: IMarketplaceRiskGate;
   pageReader: IProductPageReader;
   imageFetcher: IOfferImageFetcher;
   mediaStore: IOfferMediaStore;
@@ -72,6 +76,7 @@ export class GenerateOfferUseCase {
     });
     this.affiliateProducts = new ResolveAffiliateProductUseCase({
       expander: deps.expander, credentials: deps.credentials, mercadoLivre: deps.mercadoLivre, products: this.products,
+      shein: deps.shein, entitlements: deps.entitlements, riskGate: deps.riskGate,
     });
   }
 

@@ -4,12 +4,15 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 export type ProductRef =
   | { provider: 'SHOPEE'; shopId: string; itemId: string }
   | { provider: 'AMAZON'; asin: string }
-  | { provider: 'MERCADO_LIVRE'; itemId: string; catalog: boolean };
+  | { provider: 'MERCADO_LIVRE'; itemId: string; catalog: boolean }
+  | { provider: 'SHEIN'; goodsId: string };
 
 const SHOPEE_PATHS = [/-i\.(\d+)\.(\d+)/, /\/product\/(\d+)\/(\d+)/, /\/opaanlp\/(\d+)\/(\d+)/];
 const AMAZON_ASIN = /\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/ASIN)\/([A-Z0-9]{10})(?![A-Z0-9])/i;
 const ML_CATALOG = /\/p\/(MLB\d+)/i;
 const ML_ITEM = /MLB-?(\d+)/i;
+const SHEIN_GOODS = /-p-(\d{4,12})(?:-cat-\d+)?\.html$/i;
+const SHEIN_GOODS_ID = /^\d{4,12}$/;
 
 /** Query sem diferenciar caixa do nome (`shopId`, `SHOPID`…). */
 function queryParam(url: URL, name: string): string | null {
@@ -32,6 +35,16 @@ function parseShopee(url: URL): ProductRef | null {
   return null;
 }
 
+/** `m.shein.com` serve vários países: só `/br/` é da loja BR. */
+function parseShein(url: URL): ProductRef | null {
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (host === 'm.shein.com' && !/^\/br\//i.test(url.pathname)) return null;
+  const m = SHEIN_GOODS.exec(url.pathname);
+  if (m) return { provider: 'SHEIN', goodsId: m[1] };
+  const goodsId = queryParam(url, 'goods_id');
+  return goodsId && SHEIN_GOODS_ID.test(goodsId) ? { provider: 'SHEIN', goodsId } : null;
+}
+
 /** Referência do produto na URL; `null` quando o formato não é reconhecido. */
 export function parseProductRef(provider: AffiliateProvider, url: URL): ProductRef | null {
   switch (provider) {
@@ -47,6 +60,8 @@ export function parseProductRef(provider: AffiliateProvider, url: URL): ProductR
       const item = ML_ITEM.exec(url.pathname);
       return item ? { provider: 'MERCADO_LIVRE', itemId: `MLB${item[1]}`, catalog: false } : null;
     }
+    case 'SHEIN':
+      return parseShein(url);
     default:
       return null;
   }

@@ -39,6 +39,9 @@ export class HttpProductPageReader implements IProductPageReader {
   async read(input: ReadProductPageInput): Promise<ProductPageData | null> {
     const provider = detectMarketplace(input.url);
     if (!provider || !isSupportedProductUrl(input.url)) return null;
+    // Shein: a página do produto cai em desafio (`/risk/challenge`); os dados vêm do cliente de
+    // afiliado. Segunda barreira: nenhum caminho lê essa página, antes de qualquer rede
+    if (provider === 'SHEIN') return null;
     const ssid = safeCookieValue(input.mercadoLivreCookies?.ssid);
     const signal = AbortSignal.timeout(TIMEOUT_MS);
 

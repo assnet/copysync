@@ -182,6 +182,25 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.captured.items[1]).toMatchObject({ status: 'FAILED', reason: 'LINK_RESOLVE_FAILED' });
   });
 
+  it('Shein fora do plano: SKIPPED MARKETPLACE_PLAN_UNAVAILABLE mesmo com outro link válido (o link Shein não some)', async () => {
+    const s = await setup();
+    const amazon = s.links.resolve;
+    s.links.resolve = (href) => (href.includes('onelink.shein.com') ? { kind: 'plan_unavailable', provider: 'SHEIN' } : amazon(href));
+    await s.msg({ body: 'Fone https://amzn.to/abc\nVestido https://onelink.shein.com/1/abc' });
+    await s.process.execute();
+    expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'MARKETPLACE_PLAN_UNAVAILABLE', marketplace: 'SHEIN' });
+    expect(s.queue.inputs).toHaveLength(0);
+  });
+
+  it('Shein com credencial e sem aceite do aviso: SKIPPED MARKETPLACE_RISK_NOT_ACCEPTED, nada enfileirado', async () => {
+    const s = await setup();
+    s.links.resolve = () => ({ kind: 'risk_not_accepted', provider: 'SHEIN' });
+    await s.msg({ body: 'Vestido https://onelink.shein.com/1/abc' });
+    await s.process.execute();
+    expect(s.captured.items[0]).toMatchObject({ status: 'SKIPPED', reason: 'MARKETPLACE_RISK_NOT_ACCEPTED', marketplace: 'SHEIN' });
+    expect(s.queue.inputs).toHaveLength(0);
+  });
+
   it('link do tenant com pontuação colada continua aceito pela rede de segurança', async () => {
     const s = await setup();
     await s.msg({ body: 'Fone (https://amzn.to/abc).' });

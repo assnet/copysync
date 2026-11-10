@@ -29,6 +29,7 @@ const CREDS: Record<AffiliateProvider, OfferAffiliateCredential> = {
   SHOPEE: { provider: 'SHOPEE', publicIdentifier: '18301234567', secret: 'S3CR3T' },
   AMAZON: { provider: 'AMAZON', publicIdentifier: 'loja-20', secret: null },
   MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { cookies: { ssid: 'SSID-TOKEN' } } },
+  SHEIN: { provider: 'SHEIN', publicIdentifier: '1234567890', secret: null, session: { cookies: { AT: 'AT-TOKEN', memberId: '1234567890' } } },
 };
 
 function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> } = {}) {
@@ -45,6 +46,8 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
     credentials: { execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null) },
     shopee,
     mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null) },
+    shein: { getProductShare: vi.fn().mockResolvedValue(null) },
+    riskGate: { isAccepted: vi.fn().mockResolvedValue(true) },
     pageReader: { read: vi.fn().mockResolvedValue(PAGE) },
     imageFetcher: { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) },
     mediaStore: { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() },
@@ -297,5 +300,24 @@ describe('GenerateOfferUseCase — início agendado', () => {
     await expect(run(s, AMAZON, { scheduledAt: new Date(NOW.getTime() - 1000).toISOString() }))
       .rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'scheduledAt' } });
     expect(s.deps.expander.expand).not.toHaveBeenCalled();
+  });
+});
+
+describe('GenerateOfferUseCase — Shein (gate e aceite na instância interna)', () => {
+  const SHEIN = 'https://br.shein.com/Vestido-p-12345678.html?url_from=affiliate_koc_1234567890';
+
+  it('chave do plano ausente: PLAN_FEATURE_UNAVAILABLE sem gravar nem chamar a Shein', async () => {
+    const s = setup();
+    await expect(run(s, SHEIN)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+    expect(s.offers.items).toHaveLength(0);
+  });
+
+  it('com plano e sem aceite: MARKETPLACE_RISK_NOT_ACCEPTED sem chamar a Shein', async () => {
+    const s = setup();
+    s.deps.entitlements.values.marketplace_shein_enabled = true;
+    s.deps.riskGate.isAccepted.mockResolvedValueOnce(false);
+    await expect(run(s, SHEIN)).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
 });

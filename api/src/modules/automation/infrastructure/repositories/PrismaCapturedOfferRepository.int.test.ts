@@ -24,6 +24,10 @@ beforeAll(async () => {
   await row('m3', { status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', marketplace: 'AMAZON', capturedAt: days(9) });
   await row('m4', { status: 'SKIPPED', reason: 'EXPIRED', marketplace: 'MERCADO_LIVRE', capturedAt: days(1) });
   await row('m5', { status: 'FAILED', reason: 'CREDENTIAL_MISSING', marketplace: 'MERCADO_LIVRE', capturedAt: days(1) });
+  await row('m6', { status: 'SKIPPED', reason: 'MARKETPLACE_RISK_NOT_ACCEPTED', marketplace: 'SHEIN', capturedAt: days(1) });
+  await row('m7', { status: 'SKIPPED', reason: 'MARKETPLACE_RISK_NOT_ACCEPTED', marketplace: 'SHEIN', capturedAt: days(3) });
+  await row('m8', { status: 'SKIPPED', reason: 'MARKETPLACE_RISK_NOT_ACCEPTED', marketplace: 'AMAZON', capturedAt: days(9) });
+  await row('m9', { status: 'FAILED', reason: 'MARKETPLACE_RISK_NOT_ACCEPTED', marketplace: 'SHOPEE', capturedAt: days(1) });
 });
 afterAll(async () => {
   await prisma.capturedOffer.deleteMany({ where: { tenantId } });
@@ -38,5 +42,16 @@ describe('PrismaCapturedOfferRepository.listRecentMissingProviders', () => {
     expect(await repo.listRecentMissingProviders(tenantId, days(7))).toEqual(['SHOPEE']);
     expect(await repo.listRecentMissingProviders(tenantId, days(10))).toEqual(expect.arrayContaining(['SHOPEE', 'AMAZON']));
     expect(await repo.listRecentMissingProviders('outro-tenant', days(10))).toEqual([]);
+  });
+});
+
+describe('PrismaCapturedOfferRepository.listRecentRiskNotAcceptedProviders', () => {
+  it('DISTINCT por loja, só SKIPPED/MARKETPLACE_RISK_NOT_ACCEPTED dentro da janela, por tenant', async () => {
+    expect(await repo.listRecentRiskNotAcceptedProviders(tenantId, days(7))).toEqual(['SHEIN']);
+    expect(await repo.listRecentRiskNotAcceptedProviders(tenantId, days(10))).toEqual(expect.arrayContaining(['SHEIN', 'AMAZON']));
+    expect((await repo.listRecentRiskNotAcceptedProviders(tenantId, days(10))).length).toBe(2);
+    expect(await repo.listRecentRiskNotAcceptedProviders('outro-tenant', days(10))).toEqual([]);
+    // Os motivos não se misturam
+    expect(await repo.listRecentMissingProviders(tenantId, days(7))).toEqual(['SHOPEE']);
   });
 });

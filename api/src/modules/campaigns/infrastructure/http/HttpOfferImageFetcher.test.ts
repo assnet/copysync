@@ -68,6 +68,9 @@ describe('isAllowedImageUrl — CDNs de ML e Amazon', () => {
     ['https://images-na.ssl-images-amazon.com/images/I/k.jpg', true],
     ['https://evilmlstatic.com/a.jpg', false],
     ['https://media-amazon.com.evil.com/a.jpg', false],
+    ['https://img.ltwebstatic.com/images3_pi/2024/a.jpg', true],
+    ['https://ltwebstatic.com.evil/a.jpg', false],
+    ['https://evilltwebstatic.com/a.jpg', false],
   ])('%s → %s', (url, ok) => {
     expect(isAllowedImageUrl(new URL(url))).toBe(ok);
   });

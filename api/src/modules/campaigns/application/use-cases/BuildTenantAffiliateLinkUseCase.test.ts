@@ -9,9 +9,15 @@ const CREDS: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = {
   AMAZON: { provider: 'AMAZON', publicIdentifier: 'meu-20', secret: null },
   SHOPEE: { provider: 'SHOPEE', publicIdentifier: '123456', secret: 's3cr3t' },
   MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { cookies: { ssid: 'x' } } },
+  SHEIN: { provider: 'SHEIN', publicIdentifier: '123456', secret: null, session: { cookies: { AT: 'AT-TOKEN', memberId: '123456' } } },
+};
+const SHARE = {
+  affiliateUrl: 'https://onelink.shein.com/1/meu', title: 'Vestido Midi', priceCents: 2999, originalPriceCents: 5000,
+  imageUrl: 'https://img.ltwebstatic.com/images3/v.jpg',
 };
 
-function setup(creds = CREDS) {
+function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: boolean } = {}) {
+  const ent: Record<string, unknown> = opts.ent ?? { marketplace_shein_enabled: true };
   const deps = {
     expander: { expand: vi.fn(async (u: URL) => u) },
     credentials: {
@@ -25,6 +31,12 @@ function setup(creds = CREDS) {
       getActiveTag: vi.fn(),
     },
     pageReader: { read: vi.fn().mockResolvedValue({ title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: 'MLB998877' }) },
+    shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },
+    entitlements: {
+      getNumber: vi.fn(async () => null),
+      getBoolean: vi.fn(async (_t: string, k: string) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null)),
+    },
+    riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
   };
   return { deps, uc: new BuildTenantAffiliateLinkUseCase(deps) };
 }
@@ -127,5 +139,70 @@ describe('BuildTenantAffiliateLinkUseCase — credencial recusada', () => {
     s.deps.shopee.generateShortLink.mockRejectedValueOnce(new AppError('AFFILIATE_API_RATE_LIMITED', 'slow', 429));
     expect(await s.uc.execute('t1', 'https://shopee.com.br/product/1/2')).toMatchObject({ kind: 'failed', code: 'AFFILIATE_API_RATE_LIMITED' });
     expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
+  });
+
+  it('ML, Shopee e Amazon nunca passam pelo gate de plano nem de aceite', async () => {
+    const s = setup(CREDS, { ent: {}, accepted: false });
+    expect(await s.uc.execute('t1', 'https://www.amazon.com.br/dp/B0ABCDEFGH')).toMatchObject({ kind: 'ok' });
+    expect(await s.uc.execute('t1', 'https://shopee.com.br/product/1/2')).toMatchObject({ kind: 'ok' });
+    expect(await s.uc.execute('t1', 'https://produto.mercadolivre.com.br/MLB-123456-fone')).toMatchObject({ kind: 'ok' });
+    expect(s.deps.entitlements.getBoolean).not.toHaveBeenCalled();
+    expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
+  });
+});
+
+describe('BuildTenantAffiliateLinkUseCase — Shein', () => {
+  const HREF = 'https://m.shein.com/br/Vestido-Midi-p-12345678-cat-1727.html?url_from=affiliate_koc_999999';
+
+  it('ok: sourceUrl canônica só com o id, affiliateUrl = shareLink e product preenchido', async () => {
+    const s = setup();
+    const out = await s.uc.execute('t1', HREF);
+    expect(s.deps.shein.getProductShare).toHaveBeenCalledWith({ token: 'AT-TOKEN', memberId: '123456' }, '12345678');
+    expect(out).toEqual({
+      kind: 'ok', provider: 'SHEIN', sourceUrl: 'https://br.shein.com/product-p-12345678.html', affiliateUrl: SHARE.affiliateUrl,
+      product: { title: 'Vestido Midi', priceCents: 2999, originalPriceCents: 5000, imageUrl: SHARE.imageUrl },
+    });
+  });
+
+  it('sem plano (chave ausente ou false): plan_unavailable antes de ler a credencial', async () => {
+    for (const ent of [{}, { marketplace_shein_enabled: false }]) {
+      const s = setup(CREDS, { ent });
+      expect(await s.uc.execute('t1', HREF)).toEqual({ kind: 'plan_unavailable', provider: 'SHEIN' });
+      expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+      expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+    }
+  });
+
+  it('sem sessão (sem AT): credential_missing; sem credencial: credential_missing sem consultar o aceite', async () => {
+    const noAt = setup({ SHEIN: { provider: 'SHEIN', publicIdentifier: '123456', secret: null, session: { cookies: { memberId: '123456' } } } });
+    expect(await noAt.uc.execute('t1', HREF)).toEqual({ kind: 'credential_missing', provider: 'SHEIN' });
+    const none = setup({}, { accepted: false });
+    expect(await none.uc.execute('t1', HREF)).toEqual({ kind: 'credential_missing', provider: 'SHEIN' });
+    expect(none.deps.riskGate.isAccepted).not.toHaveBeenCalled();
+    expect(none.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('com credencial e sem aceite: risk_not_accepted sem chamar a Shein', async () => {
+    const s = setup(CREDS, { accepted: false });
+    expect(await s.uc.execute('t1', HREF)).toEqual({ kind: 'risk_not_accepted', provider: 'SHEIN' });
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith('t1', 'SHEIN');
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('sessão recusada: marca rejected e devolve credential_rejected', async () => {
+    const s = setup();
+    s.deps.shein.getProductShare.mockRejectedValueOnce(new AppError('AFFILIATE_CREDENTIAL_REJECTED', 'no', 401));
+    expect(await s.uc.execute('t1', HREF)).toMatchObject({ kind: 'credential_rejected', provider: 'SHEIN' });
+    expect(s.deps.credentials.markRejected).toHaveBeenCalledWith('t1', 'SHEIN', 'AFFILIATE_CREDENTIAL_REJECTED');
+  });
+
+  it('cliente devolve null ou shareLink fora da allowlist: failed SHEIN_LINK_NOT_CREATED', async () => {
+    const s = setup();
+    s.deps.shein.getProductShare.mockResolvedValueOnce(null);
+    expect(await s.uc.execute('t1', HREF)).toEqual({ kind: 'failed', provider: 'SHEIN', code: 'SHEIN_LINK_NOT_CREATED' });
+    for (const bad of ['https://evil.example.com/x', 'http://onelink.shein.com/1/x', 'não é url']) {
+      s.deps.shein.getProductShare.mockResolvedValueOnce({ ...SHARE, affiliateUrl: bad });
+      expect(await s.uc.execute('t1', HREF)).toEqual({ kind: 'failed', provider: 'SHEIN', code: 'SHEIN_LINK_NOT_CREATED' });
+    }
   });
 });

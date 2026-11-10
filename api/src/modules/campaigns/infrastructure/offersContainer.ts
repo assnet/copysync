@@ -6,6 +6,9 @@ import { ResolveAffiliateCredentialUseCase } from '../../integrations/applicatio
 import { MarkAffiliateCredentialRejectedUseCase } from '../../integrations/application/use-cases/MarkAffiliateCredentialRejectedUseCase';
 import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
 import type { IAffiliateCredentialGateway } from '../domain/contracts/IAffiliateCredentialGateway';
+import type { IMarketplaceRiskGate } from '../domain/contracts/IMarketplaceRiskGate';
+import { createMarketplaceRiskAcceptanceRepository } from '../../integrations/infrastructure/marketplaceRiskTransaction';
+import { isMarketplaceRiskAccepted } from '../../integrations/application/services/requireMarketplaceRiskAccepted';
 import { PrismaOfferRepository } from './repositories/PrismaOfferRepository';
 import { PrismaOfferDispatchRepository } from './repositories/PrismaOfferDispatchRepository';
 import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
@@ -13,6 +16,7 @@ import { PrismaBroadcastGroupUsageReader } from './repositories/PrismaBroadcastG
 import { PrismaEntitlementReader } from './repositories/PrismaEntitlementReader';
 import { ShopeeAffiliateClient } from './http/ShopeeAffiliateClient';
 import { MercadoLivreAffiliateClient } from './http/MercadoLivreAffiliateClient';
+import { SheinAffiliateClient } from './http/SheinAffiliateClient';
 import { HttpShortLinkExpander } from './http/HttpShortLinkExpander';
 import { HttpOfferImageFetcher } from './http/HttpOfferImageFetcher';
 import { HttpProductPageReader } from './http/HttpProductPageReader';
@@ -75,6 +79,13 @@ const credentialGateway = lazy((): IAffiliateCredentialGateway => {
     markRejected: (t, p, code) => mark.execute(t, p, code),
   };
 });
+// Aceite do aviso de risco (versão vigente) pelo repositório de integrations
+const riskGate = lazy((): IMarketplaceRiskGate => {
+  const repo = createMarketplaceRiskAcceptanceRepository();
+  return { isAccepted: (t, p) => isMarketplaceRiskAccepted(repo, t, p) };
+});
+// Uma instância para os três use cases (gerador, monitoramento, vitrine/story)
+const shein        = lazy(() => new SheinAffiliateClient());
 const mediaStore   = lazy(
   () => new MediaOfferStore({
     files:   () => mediaContainer.mediaFileStore,
@@ -99,6 +110,8 @@ const generate = lazy(() => new GenerateOfferUseCase({
   credentials:  credentials(),
   shopee:       new ShopeeAffiliateClient(),
   mercadoLivre: new MercadoLivreAffiliateClient(),
+  shein:        shein(),
+  riskGate:     riskGate(),
   pageReader:   new HttpProductPageReader(),
   imageFetcher: new HttpOfferImageFetcher(),
   mediaStore:   mediaStore(),
@@ -132,6 +145,9 @@ const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
   shopee: new ShopeeAffiliateClient(),
   mercadoLivre: new MercadoLivreAffiliateClient(),
   pageReader: new HttpProductPageReader(),
+  shein: shein(),
+  entitlements: entitlements(),
+  riskGate: riskGate(),
 }));
 const enqueue     = lazy(() => new EnqueueOfferUseCase({ offers: offers(), dispatches: dispatches() }));
 const products    = lazy(() => new ResolveProductDataUseCase({
@@ -140,6 +156,7 @@ const products    = lazy(() => new ResolveProductDataUseCase({
 // Link colado → marketplace, dono e dados do produto, sem foto (página de ofertas)
 const affiliateProduct = lazy(() => new ResolveAffiliateProductUseCase({
   expander: new HttpShortLinkExpander(), credentials: credentials(), mercadoLivre: new MercadoLivreAffiliateClient(), products: products(),
+  shein: shein(), entitlements: entitlements(), riskGate: riskGate(),
 }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),

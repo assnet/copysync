@@ -34,6 +34,8 @@ export function productRefOf(ref: ProductRef): string {
       return ref.asin;
     case 'MERCADO_LIVRE':
       return ref.itemId;
+    case 'SHEIN':
+      return ref.goodsId;
   }
 }
 
@@ -75,6 +77,9 @@ export class ResolveProductDataUseCase {
         logger.warn({ code: err.code, provider }, 'offer product API failed, reading page');
       }
     }
+
+    // Shein nunca é lida por página: cai em desafio anti-bot
+    if (provider === 'SHEIN') return { ...EMPTY_PRODUCT_DATA, productRef: refId };
 
     const page = await this.deps.pageReader.read({
       url: final,

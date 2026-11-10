@@ -4,6 +4,11 @@ import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliate
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
+import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
+import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
+import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
+import { requiresRiskAcceptance } from '../../../integrations/domain/services/marketplaceRiskNotice';
+import { isMarketplaceEnabled } from '../services/requireMarketplaceEnabled';
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
@@ -14,6 +19,10 @@ export type TenantAffiliateLink =
   /** Não é link de produto de marketplace suportado (convite de grupo, outro site, vitrine…). */
   | { kind: 'unsupported' }
   | { kind: 'credential_missing'; provider: AffiliateProvider }
+  /** Marketplace fora do plano do tenant: nada é lido nem pedido à loja. */
+  | { kind: 'plan_unavailable'; provider: AffiliateProvider }
+  /** Com credencial, mas sem aceite da versão vigente do aviso de risco: nada é pedido à loja. */
+  | { kind: 'risk_not_accepted'; provider: AffiliateProvider }
   /** Loja recusou a credencial (agora ou antes): nada é pedido à loja até o usuário reconfigurar. */
   | { kind: 'credential_rejected'; provider: AffiliateProvider; since: Date }
   | { kind: 'failed'; provider: AffiliateProvider | null; code: string }
@@ -38,6 +47,9 @@ export interface BuildTenantAffiliateLinkDeps {
   shopee: IShopeeAffiliateClient;
   mercadoLivre: IMercadoLivreAffiliateClient;
   pageReader: IProductPageReader;
+  shein: ISheinAffiliateClient;
+  entitlements: IEntitlementReader;
+  riskGate: IMarketplaceRiskGate;
 }
 
 const AMAZON_DEFAULT_HOST = 'www.amazon.com.br';
@@ -70,6 +82,13 @@ export class BuildTenantAffiliateLinkUseCase {
     }
     const provider = detectMarketplace(final);
     if (!provider) return { kind: 'unsupported' };
+
+    // Ordem fixa: plano → credencial → aceite → chamada à loja
+    try {
+      if (!(await isMarketplaceEnabled(this.deps.entitlements, tenantId, provider))) return { kind: 'plan_unavailable', provider };
+    } catch (err) {
+      return this.failure(provider, err, 'ENTITLEMENT_UNREADABLE');
+    }
 
     let cred: OfferAffiliateCredential;
     try {
@@ -120,6 +139,27 @@ export class BuildTenantAffiliateLinkUseCase {
           }
           return { kind: 'ok', provider, sourceUrl, affiliateUrl: link, ...(product ? { product } : {}) };
         }
+        case 'SHEIN': {
+          const ref = parseProductRef(provider, final);
+          if (ref?.provider !== 'SHEIN') return { kind: 'unsupported' };
+          const token = cred.session?.cookies?.AT;
+          if (!token) return { kind: 'credential_missing', provider };
+          if (requiresRiskAcceptance(provider) && !(await this.deps.riskGate.isAccepted(tenantId, provider))) {
+            return { kind: 'risk_not_accepted', provider };
+          }
+          const share = await this.deps.shein.getProductShare({ token, memberId: cred.publicIdentifier }, ref.goodsId);
+          // O monitor trata todo `ok` como link do tenant: revalida o host antes de devolver
+          if (!share || !isSupportedShareLink(share.affiliateUrl)) {
+            logger.warn({ code: 'SHEIN_LINK_NOT_CREATED', provider }, 'tenant affiliate link not built');
+            return { kind: 'failed', provider, code: 'SHEIN_LINK_NOT_CREATED' };
+          }
+          // Só referência interna (registro e comparação): a página cai em desafio e nunca é requisitada
+          const sourceUrl = `https://br.shein.com/product-p-${ref.goodsId}.html`;
+          return {
+            kind: 'ok', provider, sourceUrl, affiliateUrl: share.affiliateUrl,
+            product: { title: share.title, priceCents: share.priceCents, originalPriceCents: share.originalPriceCents, imageUrl: share.imageUrl },
+          };
+        }
       }
     } catch (err) {
       // Loja recusou agora (401/403): pausa a loja; rate limit e indisponibilidade NÃO pausam
@@ -158,5 +198,13 @@ export class BuildTenantAffiliateLinkUseCase {
     // Sem URL nem corpo no log (link de terceiro e resposta da API)
     logger.warn({ code: err.code, provider }, 'tenant affiliate link not built');
     return { kind: 'failed', provider, code: err.code || fallback };
+  }
+}
+
+function isSupportedShareLink(raw: string): boolean {
+  try {
+    return isSupportedProductUrl(new URL(raw));
+  } catch {
+    return false;
   }
 }

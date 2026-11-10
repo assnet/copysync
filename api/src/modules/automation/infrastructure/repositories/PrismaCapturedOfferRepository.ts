@@ -174,10 +174,18 @@ export class PrismaCapturedOfferRepository implements ICapturedOfferRepository {
     });
   }
 
+  listRecentMissingProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]> {
+    return this.listRecentSkippedProviders(tenantId, since, 'CREDENTIAL_MISSING');
+  }
+
+  listRecentRiskNotAcceptedProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]> {
+    return this.listRecentSkippedProviders(tenantId, since, 'MARKETPLACE_RISK_NOT_ACCEPTED');
+  }
+
   /** Índice `[tenantId, status, capturedAt]`. */
-  async listRecentMissingProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]> {
+  private async listRecentSkippedProviders(tenantId: string, since: Date, reason: CapturedOfferReason): Promise<AffiliateProvider[]> {
     const rows = await this.prisma.capturedOffer.findMany({
-      where: { tenantId, status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', marketplace: { not: null }, capturedAt: { gte: since } },
+      where: { tenantId, status: 'SKIPPED', reason, marketplace: { not: null }, capturedAt: { gte: since } },
       distinct: ['marketplace'],
       select: { marketplace: true },
     });

@@ -20,7 +20,19 @@ const CREDS: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = {
   MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { cookies: { ssid: 'SSID-TOKEN' } } },
 };
 
-function setup(creds: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = CREDS) {
+const SHEIN_CRED: OfferAffiliateCredential = {
+  provider: 'SHEIN', publicIdentifier: '123456', secret: null, session: { cookies: { AT: 'AT-TOKEN', memberId: '123456' } },
+};
+const SHARE = {
+  affiliateUrl: 'https://onelink.shein.com/1/gerado', title: 'Vestido Midi', priceCents: 2999, originalPriceCents: 5000,
+  imageUrl: 'https://img.ltwebstatic.com/images3/v.jpg',
+};
+
+function setup(
+  creds: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = CREDS,
+  opts: { ent?: Record<string, unknown>; accepted?: boolean } = {},
+) {
+  const ent: Record<string, unknown> = opts.ent ?? { marketplace_shein_enabled: true };
   const imageFetcher = { fetch: vi.fn() };
   const mediaStore = { saveImage: vi.fn(), consumeUploadedImage: vi.fn(), removeImage: vi.fn() };
   const pageReader = { read: vi.fn().mockResolvedValue(PAGE) };
@@ -31,7 +43,14 @@ function setup(creds: Partial<Record<AffiliateProvider, OfferAffiliateCredential
     products: new ResolveProductDataUseCase({
       shopee: { getProduct: vi.fn(), generateShortLink: vi.fn() }, pageReader, imageFetcher, mediaStore,
     }),
+    shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },
+    entitlements: {
+      getNumber: vi.fn(async () => null),
+      getBoolean: vi.fn(async (_t: string, k: string) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null)),
+    },
+    riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
   };
+  vi.spyOn(deps.products, 'resolve');
   return { deps, pageReader, imageFetcher, mediaStore, uc: new ResolveAffiliateProductUseCase(deps) };
 }
 
@@ -122,5 +141,91 @@ describe('ResolveAffiliateProductUseCase', () => {
       product: { productRef: 'MLB999' },
     });
     expect(s.pageReader.read).toHaveBeenCalledWith(expect.objectContaining({ mercadoLivreCookies: { ssid: 'SSID-TOKEN' } }));
+  });
+
+  it('ML, Shopee e Amazon nunca passam pelo gate de plano nem de aceite', async () => {
+    const s = setup(CREDS, { ent: {}, accepted: false });
+    await s.uc.execute(TENANT, AMAZON);
+    await s.uc.execute(TENANT, 'https://shopee.com.br/Fone-i.111.222');
+    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [{ shortUrl: 'https://meli.la/g' }], errors: [] });
+    await s.uc.execute(TENANT, ML_PLAIN);
+    expect(s.deps.entitlements.getBoolean).not.toHaveBeenCalled();
+    expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResolveAffiliateProductUseCase — Shein', () => {
+  const PRODUCT = 'https://br.shein.com/Vestido-Midi-p-12345678.html';
+  const MINE = `${PRODUCT}?url_from=affiliate_koc_123456`;
+  const OTHER = `${PRODUCT}?url_from=affiliate_koc_999999`;
+  const WITH = { SHEIN: SHEIN_CRED };
+  const EMPTY = { productRef: '12345678', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: null };
+
+  it('chave do plano ausente ou false bloqueia (PLAN_FEATURE_UNAVAILABLE) antes de ler a credencial', async () => {
+    for (const ent of [{}, { marketplace_shein_enabled: false }]) {
+      const s = setup(WITH, { ent });
+      await expect(s.uc.execute(TENANT, MINE)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', statusCode: 403 });
+      expect(s.deps.credentials.execute).not.toHaveBeenCalled();
+      expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+    }
+  });
+
+  it('link de outra conta → OFFER_LINK_NOT_OWNED, sem chamar a Shein', async () => {
+    const s = setup(WITH);
+    await expect(s.uc.execute(TENANT, OTHER)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('com credencial e sem aceite do aviso → MARKETPLACE_RISK_NOT_ACCEPTED (403), sem chamar a Shein', async () => {
+    const s = setup(WITH, { accepted: false });
+    await expect(s.uc.execute(TENANT, MINE)).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED', statusCode: 403 });
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith(TENANT, 'SHEIN');
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('sessão, link do próprio tenant: 1 chamada, mantém o colado e o produto vem da API (sem products.resolve)', async () => {
+    const s = setup(WITH);
+    const out = await s.uc.execute(TENANT, MINE);
+    expect(s.deps.shein.getProductShare).toHaveBeenCalledTimes(1);
+    expect(s.deps.shein.getProductShare).toHaveBeenCalledWith({ token: 'AT-TOKEN', memberId: '123456' }, '12345678');
+    expect(out).toEqual({
+      provider: 'SHEIN', sourceUrl: MINE, affiliateUrl: MINE, attributionVerified: true,
+      product: { productRef: '12345678', title: 'Vestido Midi', priceCents: 2999, originalPriceCents: 5000, imageSourceUrl: SHARE.imageUrl },
+    });
+    expect(s.deps.products.resolve).not.toHaveBeenCalled();
+    expect(s.pageReader.read).not.toHaveBeenCalled();
+  });
+
+  it('sessão, link sem afiliação: usa o shareLink gerado com attributionVerified = true', async () => {
+    const s = setup(WITH);
+    const out = await s.uc.execute(TENANT, PRODUCT);
+    expect(out).toMatchObject({ affiliateUrl: SHARE.affiliateUrl, attributionVerified: true, product: { title: 'Vestido Midi' } });
+    expect(s.deps.products.resolve).not.toHaveBeenCalled();
+  });
+
+  it('sessão, cliente devolve null: verificado segue com produto vazio; sem afiliação → OFFER_LINK_NOT_AFFILIATE', async () => {
+    const s = setup(WITH);
+    s.deps.shein.getProductShare.mockResolvedValue(null);
+    const out = await s.uc.execute(TENANT, MINE);
+    expect(out).toEqual({ provider: 'SHEIN', sourceUrl: MINE, affiliateUrl: MINE, attributionVerified: true, product: EMPTY });
+    await expect(s.uc.execute(TENANT, PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
+  });
+
+  it('sem credencial: aceite não é exigido; link colado sem verificação e produto vazio; sem afiliação → erro', async () => {
+    const s = setup({}, { accepted: false });
+    const out = await s.uc.execute(TENANT, MINE);
+    expect(out).toEqual({ provider: 'SHEIN', sourceUrl: MINE, affiliateUrl: MINE, attributionVerified: false, product: EMPTY });
+    expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+    expect(s.pageReader.read).not.toHaveBeenCalled();
+    await expect(s.uc.execute(TENANT, PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
+  });
+
+  it('sessão recusada pela Shein: AFFILIATE_CREDENTIAL_REJECTED propaga (sem pausar a loja aqui)', async () => {
+    const s = setup(WITH);
+    s.deps.shein.getProductShare.mockRejectedValueOnce(new AppError('AFFILIATE_CREDENTIAL_REJECTED', 'rejected', 401));
+    await expect(s.uc.execute(TENANT, MINE)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    expect('markRejected' in s.deps.credentials).toBe(false);
   });
 });

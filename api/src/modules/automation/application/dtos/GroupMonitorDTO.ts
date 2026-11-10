@@ -9,8 +9,8 @@ import { previewText } from '../../domain/services/offerMessageText';
 
 export interface CredentialAlertDTO {
   provider: AffiliateProvider;
-  kind: 'MISSING' | 'REJECTED';
-  /** `rejectedAt` (REJECTED); null em MISSING. */
+  kind: 'MISSING' | 'REJECTED' | 'RISK_NOT_ACCEPTED';
+  /** `rejectedAt` (REJECTED); null em MISSING e RISK_NOT_ACCEPTED. */
   since: string | null;
   code: string | null;
 }
@@ -47,7 +47,7 @@ export interface GroupMonitorConfigDTO {
     whatsapp: ChannelGroupLimitsDTO;
     telegram: ChannelGroupLimitsDTO;
   };
-  /** Só no GET: loja sem credencial (com captura recente) ou recusada. Save* não devolve. */
+  /** Só no GET: loja sem credencial (com captura recente), recusada ou sem aceite do aviso de risco. Save* não devolve. */
   credentialAlerts?: CredentialAlertDTO[];
   /** Uso no tenant inteiro por canal; raiz = WhatsApp (legado). */
   usage: ChannelGroupUsageDTO & { whatsapp: ChannelGroupUsageDTO; telegram: ChannelGroupUsageDTO };
