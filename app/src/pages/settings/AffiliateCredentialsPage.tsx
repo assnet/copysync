@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, Grid, Snackbar } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Snackbar } from '@mui/material';
 import { ArrowLeft } from 'lucide-react';
 import { AppIcon, PageHeader, SwipeCards } from '@/components';
 import { safeReturnPath } from '@/features/sessions/utils';
@@ -106,13 +106,24 @@ export function AffiliateCredentialsPage() {
               ),
             }))}
             renderGrid={(items) => (
-              <Grid container spacing={3}>
-                {items.map((card) => (
-                  <Grid item xs={12} md={6} xl={3} key={card.key} sx={{ display: 'flex', '& > *': { flexGrow: 1 } }}>
-                    {card.content}
-                  </Grid>
-                ))}
-              </Grid>
+              // Colunas pela largura da área de conteúdo (container query), não da janela: com o menu
+              // aberto em 100% de zoom (~1170 px úteis) os 4 cards cabem numa linha.
+              <Box sx={{ containerType: 'inline-size' }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: 3,
+                    gridTemplateColumns: '1fr',
+                    '@container (min-width: 600px)': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+                    '@container (min-width: 1080px)': { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' },
+                    '& > *': { display: 'flex', '& > *': { flexGrow: 1 } },
+                  }}
+                >
+                  {items.map((card) => (
+                    <Box key={card.key}>{card.content}</Box>
+                  ))}
+                </Box>
+              </Box>
             )}
           />
         </>

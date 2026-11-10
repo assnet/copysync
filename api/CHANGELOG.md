@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [app 0.95.1] — 2026-11-10 — Credenciais: 4 cards numa linha no desktop
+
+### Fixed
+
+#### Painel (app/)
+
+- **`AffiliateCredentialsPage.tsx`** — com o menu aberto em 100% de zoom (janela < 1536 px) os 4 cards (Shopee, Mercado Livre, Amazon, Shein) quebravam em 2×2, porque a coluna de 4 dependia do breakpoint `xl` da janela. A grade passa a usar container query sobre a área de conteúdo: 1 coluna < 600 px, 2 colunas até 1080 px, 4 colunas acima. Celular segue com os cards em carrossel (`SwipeCards`).
+
 ## [0.78.0] — 2026-11-10 — Afiliado Shein
 
 > app 0.95.0 · extensão 3.4.0 (ver `extension/CHANGELOG.md`). Doc: `docs/afiliado-shein.md`. Shein não tem API de
