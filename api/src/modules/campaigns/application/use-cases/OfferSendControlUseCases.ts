@@ -102,9 +102,11 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
     const planned = scheduleDispatches(queued.length, start, interval, this.deps.rand);
     // Volta para o fim da fila das suas sessões: o que entrou durante a pausa não é atropelado
     const sessionIds = [...new Set(queued.flatMap((d) => (d.sessionId ? [d.sessionId] : [])))];
-    // Fim do bloco ocupado de cada sessão (a própria oferta ainda está PAUSED: não conta)
+    // Fim do bloco ocupado de cada sessão (a própria oferta ainda está PAUSED: não conta). Gerador só
+    // espera outro gerador: o claim o põe à frente das capturas do monitoramento
+    const laneOrigin = offer.origin === 'GENERATOR' ? 'GENERATOR' : undefined;
     const openBySession = new Map<string, Date[]>();
-    for (const sessionId of sessionIds) openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(input.tenantId, sessionId, planned[0] ?? start));
+    for (const sessionId of sessionIds) openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(input.tenantId, sessionId, planned[0] ?? start, laneOrigin));
     const tails = laneTailsFromOpen(openBySession, planned[0] ?? start, interval.maxMs);
     const laned = tails.size === 0
       ? planned

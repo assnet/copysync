@@ -43,8 +43,8 @@ faixa da sessão até o `releaseStale` (no máximo 5 min).
 
 `claimDue` (uma transação, serializada por `pg_advisory_xact_lock(hashtext('offer_dispatch_claim'))`):
 
-1. por sessão, o candidato é o `QUEUED` vencido de menor `notBefore` de oferta `SENDING`
-   (`DISTINCT ON`);
+1. por sessão, o candidato é o `QUEUED` vencido de oferta `SENDING` (`DISTINCT ON`), na ordem:
+   gerador antes do monitoramento (§2.4), depois quem esperava a sessão (§2.2.1), depois menor `notBefore`;
 2. só entra se a sessão **não tem envio `SENDING`**, nem **`SENT` iniciado (`claimedAt`) há menos
    de `gapSeconds`** do candidato, nem **`FAILED/SEND_TIMEOUT` há menos de
    `max(gapSeconds, 120 s)`** (a mensagem pode ainda estar saindo: timeout 60 s + digitação), menos 5 s de tolerância (`LANE_GAP_TOLERANCE_SECONDS`: o claim
@@ -99,8 +99,20 @@ Intervalo: o da configuração do gerador (mesma simplificação da retomada).
 
 ### 2.4 Prioridade
 
-FIFO por `notBefore`. Oferta manual não fura o que já está na fila. Se o produto pedir:
-`Offer.priority` e `ORDER BY priority DESC, notBefore` no claim.
+(api 0.78.1) Na faixa da sessão, envio **vencido do gerador sai antes de qualquer captura do
+monitoramento**, mesmo com milhares de capturas mais antigas acumuladas (incidente 2026-11-10: ~4 mil
+capturas por sessão, ~250 envios/h, oferta manual esperaria ~16 h). Dentro da mesma origem: FIFO por
+`notBefore`. É só a ordem do `DISTINCT ON` (`od."origin" <> 'GENERATOR'` antes de `notBefore`), com
+`IN (offers)` virando `JOIN`: mesmo plano e mesmo custo (~40 ms com 13 mil `QUEUED` em produção).
+
+- O intervalo da sessão não muda: `gapSeconds`/`SENT` recente/`SENDING` seguram o gerador como antes.
+- Gerador com `notBefore` futuro (agendado, ou entre um grupo e outro) não fura: só o vencido.
+- Previsão honesta: `SendOfferUseCase` e a retomada de oferta do gerador chamam
+  `openNotBefore(..., 'GENERATOR')`: o fim da faixa considera só envios do gerador. Captura do
+  monitoramento continua encostando em tudo (gerador incluído).
+- Não fazer: `Offer.priority` numérico, prioridade por tenant ou por plano, nem fazer captura
+  furar captura. Capturas velhas acumuladas (preço desatualizado) são outro problema: validade por idade
+  da captura ainda não existe (decisão pendente).
 
 ### 2.5 Pausa global de envios (api 0.44.0)
 

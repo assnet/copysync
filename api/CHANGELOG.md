@@ -23,6 +23,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - **`AffiliateCredentialsPage.tsx`** — com o menu aberto em 100% de zoom (janela < 1536 px) os 4 cards (Shopee, Mercado Livre, Amazon, Shein) quebravam em 2×2, porque a coluna de 4 dependia do breakpoint `xl` da janela. A grade passa a usar container query sobre a área de conteúdo: 1 coluna < 600 px, 2 colunas até 1080 px, 4 colunas acima. Celular segue com os cards em carrossel (`SwipeCards`).
 
+## [0.78.1] — 2026-11-10 — Fila: gerador à frente do monitoramento
+
+### Changed
+
+#### Fila de envio (`campaigns`)
+
+- **`PrismaOfferDispatchRepository.ts`** — `claimDue` ordena a cabeça de cada faixa com o gerador antes do monitoramento (`od."origin" <> 'GENERATOR'` antes de `waitingSessionSince`/`notBefore`; `IN (offers)` virou `JOIN`). Problema: oferta manual entrava atrás de ~4 mil capturas vencidas por sessão e esperaria ~16 h. Intervalo da sessão mantido; custo da consulta igual (~40 ms, 13 mil `QUEUED`).
+- **`IOfferDispatchRepository.ts`** / **`PrismaOfferDispatchRepository.ts`** / **`offerTestFakes.ts`** — `openNotBefore` aceita `origin` opcional.
+- **`SendOfferUseCase.ts`** / **`OfferSendControlUseCases.ts`** (retomar) — oferta do gerador calcula o fim da faixa só com envios do gerador: a fila do monitoramento não empurra o horário previsto.
+- Testes: `PrismaOfferDispatchRepository.int.test.ts` (prioridade e `openNotBefore` por origem), `SendOfferUseCase.test.ts`. Docs: `docs/fila-de-envio.md` §2.4, `docs/gerador-de-ofertas.md`.
+
 ## [0.78.0] — 2026-11-10 — Afiliado Shein
 
 > app 0.95.0 · extensão 3.4.0 (ver `extension/CHANGELOG.md`). Doc: `docs/afiliado-shein.md`. Shein não tem API de

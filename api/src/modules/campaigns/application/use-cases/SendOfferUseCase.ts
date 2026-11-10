@@ -120,10 +120,11 @@ export class SendOfferUseCase {
     );
     // Fila por sessão: a oferta inteira (uma fila só, mesmo com várias sessões) entra depois do que
     // já está à frente em qualquer das suas sessões (docs/fila-de-envio.md)
-    // Fim do bloco ocupado de cada sessão: captura do monitoramento agendada para a próxima janela não prende o gerador
+    // Fim do bloco ocupado de cada sessão, só com envios do gerador: o claim põe o gerador à frente
+    // das capturas do monitoramento, então a fila delas não atrasa o horário desta oferta
     const openBySession = new Map<string, Date[]>();
     for (const sessionId of new Set(targets.map((t) => t.sessionId))) {
-      openBySession.set(sessionId, await dispatches.openNotBefore(tenantId, sessionId, planned[0]!));
+      openBySession.set(sessionId, await dispatches.openNotBefore(tenantId, sessionId, planned[0]!, 'GENERATOR'));
     }
     const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
     const laned = tails.size === 0

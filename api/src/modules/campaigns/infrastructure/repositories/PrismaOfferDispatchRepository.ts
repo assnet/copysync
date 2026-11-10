@@ -7,6 +7,7 @@ import type {
   StartSendingExpectation,
 } from '../../domain/contracts/IOfferDispatchRepository';
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
+import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
 import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '../mappers/PrismaOfferDispatchMapper';
 import { POSTING_TIME_ZONE, weekdayInZone } from '../../domain/services/postingWindow';
@@ -110,6 +111,10 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * só sai dentro do horário do gerador do tenant (com `scheduledAt` o operador escolheu a hora:
    * ignora a janela; tenant sem configuração não tem janela). Filtrar no candidato, e não na cabeça, deixa a
    * cabeça da faixa ser o próximo elegível (o gerador não fica preso atrás de uma captura fora da janela).
+   *
+   * Prioridade na faixa: envio vencido do gerador sai antes de qualquer captura do monitoramento da
+   * mesma sessão, mesmo com milhares de capturas acumuladas mais antigas. O intervalo da sessão
+   * (gapSeconds/SENT recente) continua valendo: só muda quem é a cabeça.
    */
   async claimDue(now: Date, limit: number, options: ClaimDueOptions = {}): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
@@ -136,8 +141,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                SELECT DISTINCT ON (COALESCE(d."sessionId", d."id"))
                       d."id", d."notBefore", d."sessionId", d."gapSeconds"
                  FROM "offer_dispatches" d
+                 JOIN "offers" od ON od."id" = d."offerId" AND od."status" = 'SENDING'::"OfferStatus"
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
-                  AND d."offerId" IN (SELECT "id" FROM "offers" WHERE "status" = 'SENDING'::"OfferStatus")
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
                   -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir
@@ -158,8 +163,10 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                      WHERE go."id" = d."offerId" AND go."origin" = 'GENERATOR'::"OfferOrigin" AND go."scheduledAt" IS NULL
                        AND NOT ${generatorOpen}
                   )
-                -- Quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
-                ORDER BY COALESCE(d."sessionId", d."id"), (d."waitingSessionSince" IS NULL), d."notBefore"
+                -- Gerador (envio manual) fura a fila do monitoramento na faixa da sessão; dentro da mesma
+                -- origem, quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
+                ORDER BY COALESCE(d."sessionId", d."id"), (od."origin" <> 'GENERATOR'::"OfferOrigin"),
+                         (d."waitingSessionSince" IS NULL), d."notBefore"
              ) heads
               WHERE NOT EXISTS (
                 -- Sessão em espera: envio devolvido por sessão fora do ar ainda não chegou na nova tentativa
@@ -186,11 +193,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     });
   }
 
-  async openNotBefore(tenantId: string, sessionId: string, from: Date): Promise<Date[]> {
+  async openNotBefore(tenantId: string, sessionId: string, from: Date, origin?: OfferOrigin): Promise<Date[]> {
     const rows = await this.prisma.offerDispatch.findMany({
       where: {
         tenantId, sessionId, status: { in: ['QUEUED', 'SENDING'] },
-        offer: { status: 'SENDING', OR: [{ scheduledAt: null }, { scheduledAt: { lte: from } }], AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: from } }] }] },
+        offer: { status: 'SENDING', ...(origin ? { origin } : {}), OR: [{ scheduledAt: null }, { scheduledAt: { lte: from } }], AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: from } }] }] },
       },
       select: { notBefore: true },
       orderBy: { notBefore: 'asc' },

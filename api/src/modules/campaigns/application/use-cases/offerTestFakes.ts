@@ -15,6 +15,7 @@ import type { IEntitlementReader } from '../../domain/contracts/IEntitlementRead
 import type { OfferGeneratorConfig, OfferSessionRef } from '../../domain/entities/OfferGeneratorConfig';
 import type { Offer } from '../../domain/entities/Offer';
 import type { OfferDispatch } from '../../domain/entities/OfferDispatch';
+import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
 import type { OfferDestinationView } from '../../domain/entities/OfferDestination';
 import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import type { OfferStatus } from '../../domain/enums/OfferStatus';
@@ -146,10 +147,10 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     return due.map((d) => ({ ...d }));
   }
   /** Mesma regra do Prisma: horários dos abertos de ofertas SENDING já iniciadas até `from`, não vencidas. */
-  async openNotBefore(tenantId: string, sessionId: string, from: Date) {
+  async openNotBefore(tenantId: string, sessionId: string, from: Date, origin?: OfferOrigin) {
     return this.items
       .filter((d) => d.tenantId === tenantId && d.sessionId === sessionId && (d.status === 'QUEUED' || d.status === 'SENDING'))
-      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!o.scheduledAt || o.scheduledAt <= from) && (!o.expiresAt || o.expiresAt > from); })
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return o?.status === 'SENDING' && (!origin || o.origin === origin) && (!o.scheduledAt || o.scheduledAt <= from) && (!o.expiresAt || o.expiresAt > from); })
       .map((d) => d.notBefore)
       .sort((a, b) => a.getTime() - b.getTime());
   }

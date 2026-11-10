@@ -212,6 +212,28 @@ describe('claimDue — pausa global', () => {
   });
 });
 
+describe('claimDue — prioridade do gerador na faixa', () => {
+  it('gerador vencido sai antes de capturas do monitoramento mais antigas da mesma sessão', async () => {
+    await reset();
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(7));
+    const gen = await offer('GENERATOR');
+    const g = await queued(gen.id, convGen, spToUtc(8, 50));
+    const got = await repo.claimDue(spToUtc(9), 10);
+    expect(got.map((d) => d.id)).toEqual([g.id]);
+  });
+
+  it('gerador agendado no futuro não fura: a captura vencida sai', async () => {
+    await reset();
+    const mon = await offer('MONITORING');
+    const m = await queued(mon.id, convMon, spToUtc(7));
+    const gen = await offer('GENERATOR');
+    await queued(gen.id, convGen, spToUtc(9, 30));
+    const got = await repo.claimDue(spToUtc(9), 10);
+    expect(got.map((d) => d.id)).toEqual([m.id]);
+  });
+});
+
 describe('openSessionIds', () => {
   it('sessões com QUEUED de oferta SENDING, sem repetir', async () => {
     await reset();
@@ -241,6 +263,16 @@ describe('openNotBefore', () => {
     await queued(expired.id, convMon, spToUtc(8, 30));
     expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5))).toEqual([spToUtc(8), spToUtc(8, 10)]);
     expect(await repo.openNotBefore(tenantId, 'outra', spToUtc(8, 5))).toEqual([]);
+  });
+
+  it('com origem, só envios de ofertas dessa origem', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    await queued(gen.id, convGen, spToUtc(8, 10));
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(8));
+    expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5), 'GENERATOR')).toEqual([spToUtc(8, 10)]);
+    expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5))).toEqual([spToUtc(8), spToUtc(8, 10)]);
   });
 });
 

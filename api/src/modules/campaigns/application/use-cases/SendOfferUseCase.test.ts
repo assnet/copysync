@@ -262,6 +262,16 @@ describe('SendOfferUseCase — fila por sessão', () => {
     expect(s.dispatches.items.find((d) => d.offerId === 'offer-1')!.notBefore).toEqual(NOW);
   });
 
+  it('fila contígua do monitoramento na sessão não atrasa o gerador (o claim o põe à frente)', async () => {
+    const s = setup();
+    s.offers.items.push(makeOffer({ id: 'captured', status: 'SENDING', origin: 'MONITORING' }));
+    for (let i = 0; i < 5; i++) {
+      s.dispatches.add({ offerId: 'captured', conversationId: `m${i}`, sessionId: 's1', notBefore: new Date(NOW.getTime() + i * 10_000) });
+    }
+    await s.uc.execute(input);
+    expect(s.dispatches.items.find((d) => d.offerId === 'offer-1')!.notBefore).toEqual(NOW);
+  });
+
   it('oferta agendada para depois não segura quem dispara agora', async () => {
     const s = setup();
     s.offers.items.push(makeOffer({ id: 'later', status: 'SENDING', scheduledAt: new Date(NOW.getTime() + 3_600_000) }));

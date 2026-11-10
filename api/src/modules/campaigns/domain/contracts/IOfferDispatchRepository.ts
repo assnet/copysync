@@ -1,3 +1,4 @@
+import type { OfferOrigin } from '../enums/OfferOrigin';
 import type { OfferDispatch } from '../entities/OfferDispatch';
 import type { OfferDispatchStatus } from '../enums/OfferDispatchStatus';
 
@@ -49,9 +50,10 @@ export interface IOfferDispatchRepository {
   /**
    * Horários (`notBefore`) dos envios abertos (QUEUED/SENDING) da sessão em ofertas SENDING que já
    * começaram até `from` (`scheduledAt` nulo ou ≤ from) e não vencidas. Só horários, ordenados: é a
-   * entrada de `laneBusyUntil` (fim do bloco ocupado da faixa).
+   * entrada de `laneBusyUntil` (fim do bloco ocupado da faixa). `origin` restringe às ofertas dessa
+   * origem: o gerador fura a fila do monitoramento no claim, então só outro envio do gerador o atrasa.
    */
-  openNotBefore(tenantId: string, sessionId: string, from: Date): Promise<Date[]>;
+  openNotBefore(tenantId: string, sessionId: string, from: Date, origin?: OfferOrigin): Promise<Date[]>;
   /**
    * Retomar: QUEUED da oferta, na ordem de `notBefore`, recebem `slots[i]`. Slot a menos que
    * envio mantém o `notBefore` antigo. Retorna quantos mudaram.
