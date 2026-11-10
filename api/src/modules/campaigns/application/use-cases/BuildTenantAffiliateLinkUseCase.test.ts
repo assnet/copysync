@@ -173,6 +173,16 @@ describe('BuildTenantAffiliateLinkUseCase — Shein', () => {
     }
   });
 
+  it('sem plano + link curto `onelink`: plan_unavailable sem expandir; redirect até a Shein também trava', async () => {
+    const s = setup(CREDS, { ent: {} });
+    expect(await s.uc.execute('t1', 'https://onelink.shein.com/1/abc')).toEqual({ kind: 'plan_unavailable', provider: 'SHEIN' });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    s.deps.expander.expand.mockResolvedValueOnce(new URL(HREF));
+    expect(await s.uc.execute('t1', 'https://amzn.to/abc')).toEqual({ kind: 'plan_unavailable', provider: 'SHEIN' });
+    expect(s.deps.expander.expand).toHaveBeenCalledTimes(1);
+    expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+  });
+
   it('sem sessão (sem AT): credential_missing; sem credencial: credential_missing sem consultar o aceite', async () => {
     const noAt = setup({ SHEIN: { provider: 'SHEIN', publicIdentifier: '123456', secret: null, session: { cookies: { memberId: '123456' } } } });
     expect(await noAt.uc.execute('t1', HREF)).toEqual({ kind: 'credential_missing', provider: 'SHEIN' });

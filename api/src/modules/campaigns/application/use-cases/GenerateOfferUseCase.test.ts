@@ -43,7 +43,13 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
     offers,
     entitlements: new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {}),
     expander: { expand: vi.fn(async (u: URL) => u) },
-    credentials: { execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null) },
+    credentials: {
+      execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null),
+      resolveState: vi.fn(async (_t: string, p: AffiliateProvider) => {
+        const cred = (opts.creds ?? CREDS)[p];
+        return cred ? { state: 'ok' as const, cred } : { state: 'missing' as const };
+      }),
+    },
     shopee,
     mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null) },
     shein: { getProductShare: vi.fn().mockResolvedValue(null) },

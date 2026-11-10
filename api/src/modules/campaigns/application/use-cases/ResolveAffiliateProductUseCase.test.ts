@@ -5,6 +5,7 @@ import { TENANT } from './offerTestFakes';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { ProductPageData } from '../../domain/services/parseProductPage';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { AffiliateCredentialState } from '../../domain/contracts/IAffiliateCredentialGateway';
 import { AppError } from '../../../../shared/errors/AppError';
 
 const PAGE: ProductPageData = {
@@ -30,7 +31,7 @@ const SHARE = {
 
 function setup(
   creds: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = CREDS,
-  opts: { ent?: Record<string, unknown>; accepted?: boolean } = {},
+  opts: { ent?: Record<string, unknown>; accepted?: boolean; rejected?: AffiliateProvider[] } = {},
 ) {
   const ent: Record<string, unknown> = opts.ent ?? { marketplace_shein_enabled: true };
   const imageFetcher = { fetch: vi.fn() };
@@ -38,7 +39,15 @@ function setup(
   const pageReader = { read: vi.fn().mockResolvedValue(PAGE) };
   const deps = {
     expander: { expand: vi.fn(async (u: URL) => u) },
-    credentials: { execute: vi.fn(async (_t: string, p: AffiliateProvider) => creds[p] ?? null) },
+    credentials: {
+      execute: vi.fn(async (_t: string, p: AffiliateProvider) => creds[p] ?? null),
+      resolveState: vi.fn<(t: string, p: AffiliateProvider) => Promise<AffiliateCredentialState>>(async (_t, p) => {
+        if (opts.rejected?.includes(p)) return { state: 'rejected', since: new Date(0), code: 'AFFILIATE_CREDENTIAL_REJECTED' };
+        return creds[p] ? { state: 'ok', cred: creds[p]! } : { state: 'missing' };
+      }),
+      // Só para provar que o resolver nunca pausa a loja
+      markRejected: vi.fn().mockResolvedValue(undefined),
+    },
     mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn() },
     products: new ResolveProductDataUseCase({
       shopee: { getProduct: vi.fn(), generateShortLink: vi.fn() }, pageReader, imageFetcher, mediaStore,
@@ -153,6 +162,12 @@ describe('ResolveAffiliateProductUseCase', () => {
     expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
+
+  it('outros marketplaces leem a credencial por execute, mesmo com recusa registrada', async () => {
+    const s = setup(CREDS, { rejected: ['AMAZON'] });
+    await expect(s.uc.execute(TENANT, AMAZON)).resolves.toMatchObject({ attributionVerified: true });
+    expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+  });
 });
 
 describe('ResolveAffiliateProductUseCase — Shein', () => {
@@ -167,8 +182,24 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
       const s = setup(WITH, { ent });
       await expect(s.uc.execute(TENANT, MINE)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', statusCode: 403 });
       expect(s.deps.credentials.execute).not.toHaveBeenCalled();
+      expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
       expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
     }
+  });
+
+  it('sem plano + link curto `onelink` colado: bloqueia sem expandir (nenhuma rede)', async () => {
+    const s = setup(WITH, { ent: {} });
+    await expect(s.uc.execute(TENANT, 'https://onelink.shein.com/1/abc')).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('link de outro marketplace que redireciona para a Shein: gate de plano depois do expand', async () => {
+    const s = setup(WITH, { ent: {} });
+    s.deps.expander.expand.mockResolvedValueOnce(new URL(MINE));
+    await expect(s.uc.execute(TENANT, 'https://amzn.to/abc')).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
+    expect(s.deps.expander.expand).toHaveBeenCalledTimes(1);
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
 
   it('link de outra conta → OFFER_LINK_NOT_OWNED, sem chamar a Shein', async () => {
@@ -222,10 +253,27 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
     await expect(s.uc.execute(TENANT, PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
   });
 
-  it('sessão recusada pela Shein: AFFILIATE_CREDENTIAL_REJECTED propaga (sem pausar a loja aqui)', async () => {
+  it('sessão recusada pela Shein agora: AFFILIATE_CREDENTIAL_REJECTED propaga (sem pausar a loja aqui)', async () => {
     const s = setup(WITH);
     s.deps.shein.getProductShare.mockRejectedValueOnce(new AppError('AFFILIATE_CREDENTIAL_REJECTED', 'rejected', 401));
     await expect(s.uc.execute(TENANT, MINE)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
-    expect('markRejected' in s.deps.credentials).toBe(false);
+    expect(s.deps.shein.getProductShare).toHaveBeenCalledTimes(1);
+    expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
+  });
+
+  it('credencial já recusada: AFFILIATE_CREDENTIAL_REJECTED sem chamar a Shein nem marcar', async () => {
+    const s = setup(WITH, { rejected: ['SHEIN'] });
+    await expect(s.uc.execute(TENANT, MINE)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+    expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
+    expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
+  });
+
+  it('shareLink fora da allowlist: sem afiliação → OFFER_LINK_NOT_AFFILIATE; link do tenant segue com o colado', async () => {
+    const s = setup(WITH);
+    s.deps.shein.getProductShare.mockResolvedValue({ ...SHARE, affiliateUrl: 'https://evil.example/x' });
+    await expect(s.uc.execute(TENANT, PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
+    const out = await s.uc.execute(TENANT, MINE);
+    expect(out).toMatchObject({ affiliateUrl: MINE, attributionVerified: true });
   });
 });

@@ -8,7 +8,6 @@ import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRi
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
-import type { IAffiliateCredentialResolver } from '../../domain/contracts/IAffiliateCredentialResolver';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
 import { startOfDayInZone } from '../../domain/services/startOfDayInZone';
 import { OfferInvalidInputError } from '../../../../shared/errors/internal/OfferErrors';
@@ -19,7 +18,7 @@ import type { OfferTextComposer } from '../services/OfferTextComposer';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
-import { ResolveAffiliateProductUseCase } from './ResolveAffiliateProductUseCase';
+import { ResolveAffiliateProductUseCase, type ResolveAffiliateProductDeps } from './ResolveAffiliateProductUseCase';
 
 export const OFFER_GENERATIONS_PER_DAY = ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY;
 
@@ -46,7 +45,8 @@ export interface GenerateOfferDeps {
   offers: IOfferRepository;
   entitlements: IEntitlementReader;
   expander: IShortLinkExpander;
-  credentials: IAffiliateCredentialResolver;
+  /** `resolveState`: Shein recusada não chama a loja (ver `ResolveAffiliateProductUseCase`). */
+  credentials: ResolveAffiliateProductDeps['credentials'];
   shopee: IShopeeAffiliateClient;
   mercadoLivre: IMercadoLivreAffiliateClient;
   shein: ISheinAffiliateClient;

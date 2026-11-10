@@ -7,16 +7,20 @@ import type {
   IAffiliateCredentialResolver,
   OfferAffiliateCredential,
 } from '../../domain/contracts/IAffiliateCredentialResolver';
+import type { IAffiliateCredentialGateway } from '../../domain/contracts/IAffiliateCredentialGateway';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
 import { currentRiskNoticeVersion, requiresRiskAcceptance } from '../../../integrations/domain/services/marketplaceRiskNotice';
 import { requireMarketplaceEnabled } from '../services/requireMarketplaceEnabled';
+import { marketplaceEntitlementKey } from '../../domain/services/marketplaceEntitlement';
+import { isSupportedShareLink } from '../../domain/services/isSupportedShareLink';
 import { verifyAffiliateLink, type AffiliateLinkCheck } from '../../domain/services/verifyAffiliateLink';
 import {
   OfferLinkNotAffiliateError,
   OfferLinkNotOwnedError,
   OfferUrlUnsupportedError,
+  AffiliateCredentialRejectedError,
 } from '../../../../shared/errors/internal/OfferErrors';
 import { MarketplaceRiskNotAcceptedError } from '../../../../shared/errors/internal/MarketplaceRiskErrors';
 import { AppError } from '../../../../shared/errors/AppError';
@@ -25,7 +29,11 @@ import { EMPTY_PRODUCT_DATA, type ProductData, type ResolveProductDataUseCase } 
 
 export interface ResolveAffiliateProductDeps {
   expander: IShortLinkExpander;
-  credentials: IAffiliateCredentialResolver;
+  /**
+   * `resolveState` só para a Shein: credencial recusada não chama a loja.
+   * Sem `markRejected` de propósito: quem pausa a loja é só o builder do monitoramento.
+   */
+  credentials: IAffiliateCredentialResolver & Pick<IAffiliateCredentialGateway, 'resolveState'>;
   mercadoLivre: IMercadoLivreAffiliateClient;
   products: ResolveProductDataUseCase;
   shein: ISheinAffiliateClient;
@@ -58,17 +66,20 @@ export class ResolveAffiliateProductUseCase {
     // URL: allowlist antes de qualquer requisição; expande e revalida
     const source = parseUrl(rawUrl);
     if (!isSupportedProductUrl(source)) throw new OfferUrlUnsupportedError();
+    // Marketplace fora do plano: antes de qualquer rede (o encurtador do marketplace travado já é rede dele)
+    const pasted = detectMarketplace(source);
+    if (pasted && marketplaceEntitlementKey(pasted)) await requireMarketplaceEnabled(this.deps.entitlements, tenantId, pasted);
     const final = await this.deps.expander.expand(source);
     const provider = detectMarketplace(final);
     if (!provider) throw new OfferUrlUnsupportedError();
-    // Marketplace fora do plano: antes de ler credencial ou chamar a loja
-    await requireMarketplaceEnabled(this.deps.entitlements, tenantId, provider);
+    // De novo após o redirect: pode cair em outro marketplace; antes de ler credencial ou chamar a loja
+    if (provider !== pasted) await requireMarketplaceEnabled(this.deps.entitlements, tenantId, provider);
     const ref = parseProductRef(provider, final);
     const mlSocial = provider === 'MERCADO_LIVRE' && final.pathname.startsWith('/social/');
     if (!ref && !mlSocial) throw new OfferUrlUnsupportedError('Product not recognized');
 
     // Dono do link. Sem credencial do marketplace: não bloqueia, só não verifica
-    const cred = await this.deps.credentials.execute(tenantId, provider);
+    const cred = await this.readCredential(tenantId, provider);
     const check = this.checkOwnership(provider, source, final, cred);
     if (check === 'not_owned') throw new OfferLinkNotOwnedError(provider);
     // Aceite do aviso de risco: só com credencial (sem ela nada é pedido à loja)
@@ -96,7 +107,8 @@ export class ResolveAffiliateProductUseCase {
   /**
    * Shein: a página do produto cai em desafio anti-bot, então os dados vêm só da API de afiliados
    * (1 chamada, com a sessão do tenant). Sem sessão: link colado e produto vazio (preenchimento manual).
-   * Sessão recusada propaga; quem pausa a loja é só o builder do monitoramento.
+   * Recusa já registrada lança antes (`readCredential`); recusa agora propaga. Quem pausa a loja é
+   * só o builder do monitoramento.
    */
   private async resolveShein(
     source: URL,
@@ -112,7 +124,8 @@ export class ResolveAffiliateProductUseCase {
       return { provider: 'SHEIN', sourceUrl, affiliateUrl: sourceUrl, attributionVerified: check === 'verified', product: empty };
     }
     const share = await this.deps.shein.getProductShare({ token, memberId: cred.publicIdentifier }, ref.goodsId);
-    if (!share) {
+    // Link gerado fora da allowlist vale como não gerado (mesma revalidação do builder)
+    if (!share || (check !== 'verified' && !isSupportedShareLink(share.affiliateUrl))) {
       if (check !== 'verified') throw new OfferLinkNotAffiliateError('SHEIN');
       return { provider: 'SHEIN', sourceUrl, affiliateUrl: sourceUrl, attributionVerified: true, product: empty };
     }
@@ -130,6 +143,17 @@ export class ResolveAffiliateProductUseCase {
         imageSourceUrl: share.imageUrl,
       },
     };
+  }
+
+  /**
+   * Shein: `resolveState`, e recusa já registrada lança sem chamar a
+   * loja (não marca nada aqui). Os outros: `execute`, como sempre.
+   */
+  private async readCredential(tenantId: string, provider: AffiliateProvider): Promise<OfferAffiliateCredential | null> {
+    if (provider !== 'SHEIN') return this.deps.credentials.execute(tenantId, provider);
+    const state = await this.deps.credentials.resolveState(tenantId, provider);
+    if (state.state === 'rejected') throw new AffiliateCredentialRejectedError(provider);
+    return state.state === 'ok' ? state.cred : null;
   }
 
   private async generateMlAffiliateLink(

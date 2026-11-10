@@ -193,4 +193,6 @@ export const offersContainer = {
   offerTexts:           texts,
   credentials:          credentials,
   credentialRepo:       credentialRepo,
+  // Alerta de aceite pendente do monitoramento (módulo automation)
+  riskGate:             riskGate,
 };

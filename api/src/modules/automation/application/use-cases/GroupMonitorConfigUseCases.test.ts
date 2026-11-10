@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   GetGroupMonitorConfigUseCase, SaveBroadcastGroupsUseCase, SaveGroupMonitorSettingsUseCase, SaveMonitoredGroupsUseCase,
 } from './GroupMonitorConfigUseCases';
@@ -11,9 +11,10 @@ function setup(entitlements: Record<string, unknown> = {}) {
   const credentialStates = new FakeCredentialStates();
   const captured = new InMemoryCapturedOfferRepository();
   const broadcastUsage = new FakeBroadcastGroupUsage(monitors);
-  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, now: () => NOW };
+  const riskGate = { isAccepted: vi.fn(async () => false) };
+  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, riskGate, now: () => NOW };
   return {
-    monitors, directory, credentialStates, captured, broadcastUsage,
+    monitors, directory, credentialStates, captured, broadcastUsage, riskGate,
     get: new GetGroupMonitorConfigUseCase(deps),
     settings: new SaveGroupMonitorSettingsUseCase(deps),
     monitored: new SaveMonitoredGroupsUseCase(deps),
@@ -283,15 +284,36 @@ describe('GetGroupMonitorConfigUseCase — credentialAlerts', () => {
     await s.captured.markSkipped(c!.id, c!.claimToken!, reason, { marketplace });
   }
 
-  it('Shein utilizável com captura MARKETPLACE_RISK_NOT_ACCEPTED recente → RISK_NOT_ACCEPTED; antiga não conta', async () => {
+  it('Shein utilizável, sem aceite agora e com captura MARKETPLACE_RISK_NOT_ACCEPTED recente → RISK_NOT_ACCEPTED; antiga não conta', async () => {
     const s = setup();
     s.credentialStates.states = [{ provider: 'SHEIN', usable: true, rejectedAt: null, rejectedCode: null }];
     await missingCapture(s, 'SHEIN', 1, 'MARKETPLACE_RISK_NOT_ACCEPTED');
     expect((await s.get.execute(base)).credentialAlerts).toEqual([{ provider: 'SHEIN', kind: 'RISK_NOT_ACCEPTED', since: null, code: null }]);
+    expect(s.riskGate.isAccepted).toHaveBeenCalledWith(TENANT, 'SHEIN');
     const old = setup();
     old.credentialStates.states = [{ provider: 'SHEIN', usable: true, rejectedAt: null, rejectedCode: null }];
     await missingCapture(old, 'SHEIN', 8, 'MARKETPLACE_RISK_NOT_ACCEPTED');
     expect((await old.get.execute(base)).credentialAlerts).toEqual([]);
+  });
+
+  it('aceito depois da captura: sem alerta', async () => {
+    const s = setup();
+    s.riskGate.isAccepted.mockResolvedValue(true);
+    s.credentialStates.states = [{ provider: 'SHEIN', usable: true, rejectedAt: null, rejectedCode: null }];
+    await missingCapture(s, 'SHEIN', 1, 'MARKETPLACE_RISK_NOT_ACCEPTED');
+    expect((await s.get.execute(base)).credentialAlerts).toEqual([]);
+  });
+
+  it('sem credencial (ou não utilizável) com captura sem aceite: nunca RISK; só MISSING com captura CREDENTIAL_MISSING', async () => {
+    const none = setup();
+    await missingCapture(none, 'SHEIN', 1, 'MARKETPLACE_RISK_NOT_ACCEPTED');
+    expect((await none.get.execute(base)).credentialAlerts).toEqual([]);
+    expect(none.riskGate.isAccepted).not.toHaveBeenCalled();
+    const off = setup();
+    off.credentialStates.states = [{ provider: 'SHEIN', usable: false, rejectedAt: null, rejectedCode: null }];
+    await missingCapture(off, 'SHEIN', 1, 'MARKETPLACE_RISK_NOT_ACCEPTED');
+    await missingCapture(off, 'SHEIN', 2, 'CREDENTIAL_MISSING');
+    expect((await off.get.execute(base)).credentialAlerts).toEqual([{ provider: 'SHEIN', kind: 'MISSING', since: null, code: null }]);
   });
 
   it('Shein recusada e com captura sem aceite recente: um alerta só, REJECTED', async () => {

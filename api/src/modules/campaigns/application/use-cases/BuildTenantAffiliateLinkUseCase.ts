@@ -11,6 +11,8 @@ import { requiresRiskAcceptance } from '../../../integrations/domain/services/ma
 import { isMarketplaceEnabled } from '../services/requireMarketplaceEnabled';
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
+import { isSupportedShareLink } from '../../domain/services/isSupportedShareLink';
+import { marketplaceEntitlementKey } from '../../domain/services/marketplaceEntitlement';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
@@ -19,7 +21,7 @@ export type TenantAffiliateLink =
   /** Não é link de produto de marketplace suportado (convite de grupo, outro site, vitrine…). */
   | { kind: 'unsupported' }
   | { kind: 'credential_missing'; provider: AffiliateProvider }
-  /** Marketplace fora do plano do tenant: nada é lido nem pedido à loja. */
+  /** Marketplace fora do plano (da URL colada ou da final): nada é expandido, lido nem pedido à loja. */
   | { kind: 'plan_unavailable'; provider: AffiliateProvider }
   /** Com credencial, mas sem aceite da versão vigente do aviso de risco: nada é pedido à loja. */
   | { kind: 'risk_not_accepted'; provider: AffiliateProvider }
@@ -74,6 +76,13 @@ export class BuildTenantAffiliateLinkUseCase {
     }
     if (!isSupportedProductUrl(url)) return { kind: 'unsupported' };
 
+    // Plano antes de qualquer rede: o encurtador do marketplace travado (ex.: `onelink`) já é rede dele
+    const pasted = detectMarketplace(url);
+    if (pasted && marketplaceEntitlementKey(pasted)) {
+      const blocked = await this.planBlocked(tenantId, pasted);
+      if (blocked) return blocked;
+    }
+
     let final: URL;
     try {
       final = await this.deps.expander.expand(url);
@@ -83,11 +92,10 @@ export class BuildTenantAffiliateLinkUseCase {
     const provider = detectMarketplace(final);
     if (!provider) return { kind: 'unsupported' };
 
-    // Ordem fixa: plano → credencial → aceite → chamada à loja
-    try {
-      if (!(await isMarketplaceEnabled(this.deps.entitlements, tenantId, provider))) return { kind: 'plan_unavailable', provider };
-    } catch (err) {
-      return this.failure(provider, err, 'ENTITLEMENT_UNREADABLE');
+    // Ordem fixa: plano → credencial → aceite → chamada à loja. De novo após o redirect (pode cair em outro marketplace)
+    if (provider !== pasted) {
+      const blocked = await this.planBlocked(tenantId, provider);
+      if (blocked) return blocked;
     }
 
     let cred: OfferAffiliateCredential;
@@ -193,6 +201,15 @@ export class BuildTenantAffiliateLinkUseCase {
     };
   }
 
+  /** `plan_unavailable`/`failed` quando o plano trava o marketplace; null = liberado. */
+  private async planBlocked(tenantId: string, provider: AffiliateProvider): Promise<TenantAffiliateLink | null> {
+    try {
+      return (await isMarketplaceEnabled(this.deps.entitlements, tenantId, provider)) ? null : { kind: 'plan_unavailable', provider };
+    } catch (err) {
+      return this.failure(provider, err, 'ENTITLEMENT_UNREADABLE');
+    }
+  }
+
   private failure(provider: AffiliateProvider | null, err: unknown, fallback: string): TenantAffiliateLink {
     if (!(err instanceof AppError)) throw err;
     // Sem URL nem corpo no log (link de terceiro e resposta da API)
@@ -201,10 +218,3 @@ export class BuildTenantAffiliateLinkUseCase {
   }
 }
 
-function isSupportedShareLink(raw: string): boolean {
-  try {
-    return isSupportedProductUrl(new URL(raw));
-  } catch {
-    return false;
-  }
-}
