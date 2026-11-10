@@ -9,6 +9,7 @@ legado2/
 legadoBot/
 legadoML/
 legadoAmazonNode/
+legadoSheinA/
 
 # Cache incremental do tsc (`tsc -b`) — regenerado a cada build, não versionar
 *.tsbuildinfo
