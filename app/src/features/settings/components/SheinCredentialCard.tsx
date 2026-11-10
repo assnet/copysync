@@ -224,7 +224,8 @@ export function SheinCredentialCard({
 
   const handleConnect = () => {
     // Aceite da versão vigente já gravado: pula o diálogo. `riskNotice` null = pendente.
-    if (!riskAccepted) {
+    // Versão divergente: abre o diálogo, que só oferece "Recarregar página".
+    if (!riskAccepted || noticeStale) {
       setAcceptError(null);
       setDialog('connect');
       return;

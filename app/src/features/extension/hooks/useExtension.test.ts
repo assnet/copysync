@@ -111,6 +111,24 @@ describe('useExtension', () => {
     expect(h.result.current.credentials.shein?.publicIdentifier).toBe('novo');
   });
 
+  it('sync com dois refresh concorrentes é avaliado pela credencial do refresh mais novo', async () => {
+    const h = await mount(['shein.session'], { 'shein.syncSession': { ok: true, payload: { result: 'FAILED', errorCode: 'api_unreachable' } } });
+    let resolveSyncRefresh!: (v: unknown) => void;
+    api.getCredentialStatuses
+      .mockImplementationOnce(() => new Promise((r) => { resolveSyncRefresh = r; }))
+      .mockResolvedValueOnce({ ml: null, shein: cred('SHEIN') });
+    let syncP!: Promise<unknown>;
+    act(() => { syncP = h.result.current.sync('shein').then(() => 'ok', (e) => e); });
+    // refresh do próprio sync em voo; outro refresh (ex.: foco da aba) começa e termina antes
+    await waitFor(() => expect(api.getCredentialStatuses).toHaveBeenCalledTimes(2));
+    await act(async () => { await h.result.current.refresh(); });
+    let outcome: unknown;
+    await act(async () => { resolveSyncRefresh({ ml: null, shein: null }); outcome = await syncP; });
+    // Servidor já gravou (credencial mais nova): FAILED da extensão não vira erro
+    expect(outcome).toBe('ok');
+    expect(h.result.current.credentials.shein?.lastSyncAt).toBe('2026-11-10T12:00:01.000Z');
+  });
+
   it('refresh em voo antes de disconnect("shein") não reinstala a credencial', async () => {
     const h = await mount();
     let resolveStale!: (v: unknown) => void;

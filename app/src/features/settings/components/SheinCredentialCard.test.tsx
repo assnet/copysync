@@ -189,6 +189,17 @@ describe('SheinCredentialCard', () => {
     }
   });
 
+  it('aceite gravado em versão divergente não pula o diálogo: só "Recarregar página", sem /consent', async () => {
+    const user = userEvent.setup();
+    const s = setup({ availability: avail({ riskNotice: { version: '2026-12-01', acceptedAt: ACCEPTED_AT, acceptedByMe: true } }) });
+    await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Recarregar página' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Aceitar e conectar' })).not.toBeInTheDocument();
+    expect(s.ext.consent).not.toHaveBeenCalled();
+    expect(s.ext.requestAccess).not.toHaveBeenCalled();
+  });
+
   it('riskNotice null não pula o aceite: abre o diálogo e não chama /consent', async () => {
     const user = userEvent.setup();
     const s = setup({ availability: avail({ riskNotice: null }) });

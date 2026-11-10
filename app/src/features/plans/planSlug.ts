@@ -15,7 +15,8 @@ const DOMAIN_TO_PANEL: Record<string, PlanSlug> = {
 };
 
 export function toPanelPlanSlug(slug: string): PlanSlug | null {
-  return DOMAIN_TO_PANEL[slug] ?? null;
+  // `hasOwnProperty`: `toString`/`__proto__` não podem sair do protótipo como slug.
+  return Object.prototype.hasOwnProperty.call(DOMAIN_TO_PANEL, slug) ? DOMAIN_TO_PANEL[slug] : null;
 }
 
 /** Lista da API → ids curtos, sem desconhecidos nem repetidos. */

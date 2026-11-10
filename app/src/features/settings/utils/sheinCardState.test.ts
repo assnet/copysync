@@ -42,6 +42,12 @@ describe('sheinCardState', () => {
     expect(sheinCardState({ ...base, availability: avail({ riskNotice: null }) })).toBe('ready');
   });
 
+  it('availability ausente = sem restrição: credencial não vira reaceite', () => {
+    expect(sheinCardState({ ...base, availability: undefined, item: item() })).toBe('connected');
+    expect(sheinCardState({ ...base, availability: undefined, item: item({ rejectedAt: '2026-11-10T13:00:00.000Z' }) }))
+      .toBe('rejected');
+  });
+
   it('faixa de aviso em todo estado menos travado', () => {
     expect(showsRiskBanner('locked')).toBe(false);
     for (const s of ['no_extension', 'outdated_extension', 'no_link', 'ready', 'connected', 'rejected', 'reaccept'] as const) {

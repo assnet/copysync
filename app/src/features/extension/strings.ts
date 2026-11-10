@@ -46,17 +46,6 @@ export const extensionStrings = {
     resyncHint: 'A sessão expirou. Abra o Mercado Livre no navegador e sincronize.',
   },
 
-  shein: {
-    title: 'Shein',
-    accessLabel: 'Acesso à Shein',
-    accessGranted: 'Permitido',
-    accessMissing: 'Não permitido',
-    sessionLabel: 'Sessão da Shein',
-    idLabel: 'ID de afiliado',
-    idMissing: 'Ainda não lido da sessão',
-    accessHint: 'Use o botão Conectar Shein no card para pedir o acesso da extensão.',
-  },
-
   wizard: {
     title: 'Conectar extensão',
     /** Vínculo pedido a partir do card Shein: sem consentimento do ML nem passo de sync do ML. */

@@ -59,6 +59,22 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
   const tag = credential?.publicIdentifier;
 
   const title = t.dialogCreateTitle(spec.name);
+  /** ID lido da sessão (Shein): o diálogo só (re)vincula a extensão — sempre o assistente. */
+  const sessionIdentifier = isShein || !!spec.identifierFromSession;
+
+  const wizard = (
+    <ExtensionSetupWizard
+      // Métrica `store-click`: a API só aceita `settings | ml_wizard | onboarding`; Shein conta como `settings`.
+      source={isShein ? 'settings' : 'ml_wizard'}
+      marketplace={marketplace}
+      onComplete={() => {
+        setWizardDone(true);
+        void ext.refresh();
+        // Shein: vínculo feito, a conexão continua no card (aceite do aviso de risco).
+        if (sessionIdentifier) onClose();
+      }}
+    />
+  );
 
   return (
     <Dialog
@@ -83,19 +99,10 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
       <DialogContent sx={{ pb: 3 }}>
         {/* Extension not connected yet — show wizard */}
         {/* Shein: o card só abre o diálogo para (re)vincular a extensão — sempre o assistente */}
-        {(!isConnected || isShein) && !wizardDone ? (
-          <ExtensionSetupWizard
-            // Métrica `store-click`: a API só aceita `settings | ml_wizard | onboarding`; Shein conta como `settings`.
-            source={isShein ? 'settings' : 'ml_wizard'}
-            marketplace={marketplace}
-            onComplete={() => {
-              setWizardDone(true);
-              void ext.refresh();
-              // Shein: vínculo feito, a conexão continua no card (aceite do aviso de risco).
-              if (isShein) onClose();
-            }}
-          />
-        ) : (
+        {/* ID vindo da sessão (Shein): nunca renderiza o corpo do ML (mostraria o ID cru). */}
+        {sessionIdentifier ? (
+          wizardDone ? null : wizard
+        ) : !isConnected && !wizardDone ? wizard : (
           <Stack spacing={2.5}>
             {/* Connected state */}
             <Alert severity="success" icon={<CheckCircleIcon />}>

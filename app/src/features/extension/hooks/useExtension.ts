@@ -77,7 +77,9 @@ export interface ExtensionState {
   loading: boolean;
 }
 
-const NO_CREDENTIALS: Record<ExtensionMarketplace, MlCredentialStatus | null> = { ml: null, shein: null };
+type Credentials = Record<ExtensionMarketplace, MlCredentialStatus | null>;
+
+const NO_CREDENTIALS: Credentials = { ml: null, shein: null };
 
 const INITIAL: ExtensionState = {
   status: 'unavailable',
@@ -96,11 +98,14 @@ export function useExtension() {
   const mountedRef = useRef(true);
   /** Guarda de ordem do `refresh()`: só a chamada mais recente grava o estado. */
   const refreshSeqRef = useRef(0);
+  /** Promessa da chamada mais recente: a descartada devolve o resultado dela (ex.: `sync`). */
+  const latestRefreshRef = useRef<Promise<Credentials | undefined> | null>(null);
 
-  const refresh = useCallback(async (): Promise<Record<ExtensionMarketplace, MlCredentialStatus | null> | undefined> => {
-    const seq = ++refreshSeqRef.current;
+  const runRefresh = useCallback(async (seq: number): Promise<Credentials | undefined> => {
     // Resposta antiga (ex.: refresh em voo antes de `disconnect`) não sobrescreve a mais nova.
     const stale = () => seq !== refreshSeqRef.current || !mountedRef.current;
+    // Descartada: espera a mais nova e devolve o resultado dela (nunca `undefined` por corrida).
+    const newest = () => (mountedRef.current ? latestRefreshRef.current ?? undefined : undefined);
     if (!isExtensionApiAvailable()) {
       setState(prev => ({ ...INITIAL, status: 'unavailable', loading: false, refreshSeq: prev.refreshSeq }));
       return undefined;
@@ -109,14 +114,14 @@ export function useExtension() {
     setState(prev => ({ ...prev, loading: true }));
 
     const detected = await detectExtension();
-    if (stale()) return undefined;
+    if (stale()) return newest();
     if (!detected) {
       setState(prev => ({ ...INITIAL, status: 'not_detected', loading: false, refreshSeq: prev.refreshSeq }));
       return undefined;
     }
 
     const hsResult = await sendOp('handshake');
-    if (stale()) return undefined;
+    if (stale()) return newest();
     if (!hsResult.ok) {
       setState(prev => ({ ...INITIAL, status: 'error', error: hsResult.error, loading: false, refreshSeq: prev.refreshSeq }));
       return undefined;
@@ -138,12 +143,12 @@ export function useExtension() {
     }
 
     // undefined = falha ao consultar: mantém o último valor em vez de mostrar "não sincronizada"
-    let credentials: Record<ExtensionMarketplace, MlCredentialStatus | null> | undefined = NO_CREDENTIALS;
+    let credentials: Credentials | undefined = NO_CREDENTIALS;
     if (isConnected) {
       credentials = await extensionApi.getCredentialStatuses().catch(() => undefined);
     }
 
-    if (stale()) return credentials;
+    if (stale()) return newest();
     setState(prev => {
       const nextCreds = credentials ?? prev.credentials;
       return {
@@ -160,6 +165,13 @@ export function useExtension() {
     });
     return credentials;
   }, []);
+
+  const refresh = useCallback((): Promise<Credentials | undefined> => {
+    const seq = ++refreshSeqRef.current;
+    const p = runRefresh(seq);
+    latestRefreshRef.current = p;
+    return p;
+  }, [runRefresh]);
 
   const connect = useCallback(async (installationId: string, extVersion: string, consent: boolean) => {
     const extensionId = getCachedExtId() ?? '';
