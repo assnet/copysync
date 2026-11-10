@@ -211,6 +211,9 @@ export const getPendingAccess = async (): Promise<PendingAccess | null> => {
   const stored = (await read<PendingAccess>(KEYS.pendingAccess)) ?? null;
   // set/clear durante a leitura: o espelho já tem o valor novo.
   if (generation !== pendingGeneration) return valid(pendingMemo);
+  // Espelho já carregado: ele é a verdade (set/clear gravam nele na hora; a escrita no storage é
+  // enfileirada e pode ainda não ter rodado). Storage só manda no cold start (`undefined`).
+  if (pendingMemo !== undefined) return valid(pendingMemo);
   // Vencida: sai do storage na leitura (não fica lixo esperando um clique que não vem).
   if (stored && !valid(stored)) {
     await clearPendingAccess();

@@ -54,6 +54,13 @@ describe('apiFetch: error.code antes do status', () => {
       .rejects.toMatchObject({ code: 'api_route_missing' });
   });
 
+  it('404 SESSION_NOT_FOUND no PUT da Shein → session_expired (reconectar, não "atualize a extensão")', async () => {
+    respond(404, forbidden('SESSION_NOT_FOUND'));
+    const { apiFetch } = await import('./apiFetch.js');
+    await expect(apiFetch({ method: 'PUT', path: '/api/extension/marketplaces/shein/session', body: {} }))
+      .rejects.toMatchObject({ code: 'session_expired' });
+  });
+
   it.each([
     'PLAN_FEATURE_UNAVAILABLE', 'EXTENSION_NOT_ENTITLED', 'SHEIN_CONSENT_REQUIRED', 'ML_CONSENT_REQUIRED',
     'MARKETPLACE_RISK_NOT_ACCEPTED',

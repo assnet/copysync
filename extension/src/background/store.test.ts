@@ -30,6 +30,16 @@ describe('getPendingAccess: corrida com set/clear', () => {
     expect(store.peekPendingAccess()).toBeNull();
   });
 
+  it('espelho já carregado vence a leitura do storage (escrita ainda na fila)', async () => {
+    chromeStub.storage.pendingAccess = null;
+    const store = await import('./store.js');
+    await store.getPendingAccess(); // carrega o espelho (null)
+    const fresh = { marketplace: 'shein' as const, until: future() };
+    void store.setPendingAccess(fresh); // espelho na hora; storage só depois da fila
+    expect(await store.getPendingAccess()).toEqual(fresh);
+    expect(store.peekPendingAccess()).toEqual(fresh);
+  });
+
   it('sem corrida, a leitura carrega o espelho', async () => {
     const stored = { marketplace: 'shein' as const, until: future() };
     chromeStub.storage.pendingAccess = stored;
