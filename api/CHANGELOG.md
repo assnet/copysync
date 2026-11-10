@@ -7,6 +7,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [app 0.93.0] — 2026-11-09 — Monitoramento: capturadas e fila recolhíveis
+
+### Added
+
+#### Frontend — componentes e monitoramento
+
+- **`SectionCard.tsx`** — prop `collapseKey`: nasce recolhido, título vira botão (`aria-expanded`, chevron à direita), memória por navegador; a ação do cabeçalho segue clicável.
+- **`CapturedOffersList.tsx`**, **`SendQueuePanel.tsx`** (prop `collapseKey`), **`MonitoringPage.tsx`** — Ofertas capturadas e Fila de envio nascem recolhidas no Monitoramento e lembram o estado; no gerador a fila segue aberta.
+
+### Changed
+
+- **`MonitorCard.tsx`** — cor do título do cabeçalho recolhível explícita (`text.primary`), não herdada do botão.
+
+---
+
 ## [0.76.1] — 2026-11-09 — Encurtador shoope.top como link Shopee
 
 ### Fixed
