@@ -10,13 +10,14 @@ const SHEIN_ORIGIN = 'https://m.shein.com/*';
 
 let chromeStub: ChromeStub;
 
-const cookie = (name: string, value: string) => ({ name, value, path: '/' });
+const cookie = (name: string, value: string, domain = 'm.shein.com', path = '/') => ({ name, value, path, domain });
+const mlCookie = (name: string, value: string) => cookie(name, value, '.mercadolivre.com.br');
 
 beforeEach(() => {
   vi.resetModules();
   apiFetch.mockReset();
   chromeStub = stubChrome();
-  chromeStub.cookies[ML_URL] = [cookie('ssid', 'ml-token'), cookie('orguseridp', '1')];
+  chromeStub.cookies[ML_URL] = [mlCookie('ssid', 'ml-token'), mlCookie('orguseridp', '1')];
   chromeStub.cookies[SHEIN_URL] = [cookie('AT', 'shein-token'), cookie('memberId', '42'), cookie('other', 'x')];
   chromeStub.granted.add(SHEIN_ORIGIN);
 });
@@ -61,10 +62,57 @@ describe('runSync por marketplace', () => {
   it('hash da Shein não faz o ML pular (cookie-changed)', async () => {
     apiFetch.mockResolvedValue({});
     const { sync, store } = await load();
-    await sync.runSync('manual', 'shein');
-    await store.setCookieHash('ml', 'outro');
+    const { captureCookies } = await import('./marketplaceSession.js');
+    // Grava em `shein` o hash REAL do ML: se as chaves vazassem, o ML veria "sem mudança".
+    const mlHash = (await captureCookies('ml'))!.hash;
+    await store.setCookieHash('shein', mlHash);
+    expect(await store.getCookieHash('ml')).toBeUndefined();
     expect((await sync.runSync('cookie-changed', 'ml')).status).toBe('ok');
-    expect((await sync.runSync('cookie-changed', 'shein')).status).toBe('idle');
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('alarme: Shein respeita o hash, ML reenvia o mesmo token', async () => {
+    apiFetch.mockResolvedValue({});
+    const { sync, store } = await load();
+    expect((await sync.runSync('manual', 'shein')).status).toBe('ok');
+    expect((await sync.runSync('manual', 'ml')).status).toBe('ok');
+    await store.setLastSyncEpoch('shein', 0);
+    await store.setLastSyncEpoch('ml', 0);
+    apiFetch.mockClear();
+
+    expect((await sync.runSync('alarm', 'shein')).status).toBe('idle');
+    expect((await sync.runSync('alarm', 'ml')).status).toBe('ok');
+    expect(apiFetch.mock.calls.map(c => c[0].path)).toEqual(['/api/extension/marketplaces/ml/session']);
+
+    // Token da Shein mudou → o alarme envia.
+    chromeStub.cookies[SHEIN_URL] = [cookie('AT', 'novo'), cookie('memberId', '42')];
+    expect((await sync.runSync('alarm', 'shein')).status).toBe('ok');
+  });
+
+  it('Shein ignora cookie do domínio pai (.shein.com) mesmo com path maior', async () => {
+    chromeStub.cookies[SHEIN_URL] = [
+      cookie('AT', 'parent-token', '.shein.com', '/long/path'),
+      cookie('AT', 'shein-token'),
+      cookie('memberId', '7', '.shein.com'),
+      cookie('memberId', '42', '.m.shein.com'),
+    ];
+    const { captureCookies } = await import('./marketplaceSession.js');
+    expect((await captureCookies('shein'))?.cookies).toEqual({ AT: 'shein-token', memberId: '42' });
+  });
+
+  it('Shein só no domínio pai → deslogado', async () => {
+    chromeStub.cookies[SHEIN_URL] = [cookie('AT', 'x', '.shein.com'), cookie('memberId', '1', '.shein.com')];
+    const { captureCookies } = await import('./marketplaceSession.js');
+    expect(await captureCookies('shein')).toBeNull();
+  });
+
+  it('ML mantém a deduplicação por path sem filtrar domínio', async () => {
+    chromeStub.cookies[ML_URL] = [
+      mlCookie('ssid', 'short'),
+      cookie('ssid', 'long', 'www.mercadolivre.com.br', '/deep'),
+    ];
+    const { captureCookies } = await import('./marketplaceSession.js');
+    expect((await captureCookies('ml'))?.cookies).toEqual({ ssid: 'long' });
   });
 
   it('sem AT → shein_not_logged, sem chamar a API', async () => {
@@ -90,6 +138,65 @@ describe('runSync por marketplace', () => {
     expect(status).toMatchObject({ permission: 'missing', loggedIn: false, pending: false });
     expect(chromeStub.getAll).not.toHaveBeenCalledWith({ url: SHEIN_URL });
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['consent_required', 'plan_unavailable'] as const)(
+    '%s na Shein remove a permissão, limpa hash/estado e para o automático', async (code) => {
+      const { SyncError } = await import('./errors.js');
+      apiFetch.mockResolvedValueOnce({});
+      const { sync, store } = await load();
+      expect((await sync.runSync('manual', 'shein')).status).toBe('ok');
+      apiFetch.mockRejectedValueOnce(new SyncError(code));
+
+      const state = await sync.runSync('channel', 'shein');
+
+      expect(state).toEqual({ status: 'error', lastErrorCode: code });
+      expect(chromeStub.remove).toHaveBeenCalledWith({ origins: [SHEIN_ORIGIN] });
+      expect(chromeStub.granted.has(SHEIN_ORIGIN)).toBe(false);
+      expect(await store.getCookieHash('shein')).toBeUndefined();
+      expect(await store.getLastSyncEpoch('shein')).toBe(0);
+      expect(await store.isAutoSyncPaused('shein')).toBe(true);
+
+      // Gatilhos automáticos não leem cookie nem chamam a API.
+      apiFetch.mockClear();
+      chromeStub.getAll.mockClear();
+      chromeStub.granted.add(SHEIN_ORIGIN); // nem com a permissão de volta por fora
+      for (const t of ['alarm', 'cookie-changed', 'startup'] as const) await sync.runSync(t, 'shein');
+      expect(apiFetch).not.toHaveBeenCalled();
+      expect(chromeStub.getAll).not.toHaveBeenCalled();
+
+      // Ação do usuário (pedido de acesso + clique → manual) reativa.
+      apiFetch.mockResolvedValueOnce({});
+      expect((await sync.runSync('manual', 'shein')).status).toBe('ok');
+      expect(await store.isAutoSyncPaused('shein')).toBe(false);
+    });
+
+  it('risk_not_accepted pausa o automático sem remover a permissão', async () => {
+    const { SyncError } = await import('./errors.js');
+    apiFetch.mockRejectedValueOnce(new SyncError('risk_not_accepted'));
+    const { sync, store } = await load();
+    expect((await sync.runSync('channel', 'shein')).lastErrorCode).toBe('risk_not_accepted');
+    expect(chromeStub.remove).not.toHaveBeenCalled();
+    expect(chromeStub.granted.has(SHEIN_ORIGIN)).toBe(true);
+    expect(await store.isAutoSyncPaused('shein')).toBe(true);
+
+    apiFetch.mockClear();
+    await sync.runSync('alarm', 'shein');
+    expect(apiFetch).not.toHaveBeenCalled();
+
+    apiFetch.mockResolvedValueOnce({});
+    expect((await sync.runSync('channel', 'shein')).status).toBe('ok');
+  });
+
+  it('consent_required no ML não pausa nem remove permissão', async () => {
+    const { SyncError } = await import('./errors.js');
+    apiFetch.mockRejectedValueOnce(new SyncError('consent_required'));
+    const { sync, store } = await load();
+    expect((await sync.runSync('manual', 'ml')).lastErrorCode).toBe('consent_required');
+    expect(chromeStub.remove).not.toHaveBeenCalled();
+    expect(await store.isAutoSyncPaused('ml')).toBe(false);
+    apiFetch.mockResolvedValueOnce({});
+    expect((await sync.runSync('alarm', 'ml')).status).toBe('ok');
   });
 
   it('status da Shein não carrega valor de cookie', async () => {

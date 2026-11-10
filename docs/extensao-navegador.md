@@ -264,13 +264,25 @@ Tudo do produto (aviso de risco, plano, gerador): [`afiliado-shein.md`](afiliado
   em `host_permissions`: host obrigatório novo desativa a extensão em toda a base). `chrome.permissions.request` só
   roda em gesto do usuário e não há popup, então: painel envia `shein.requestAccess` → pendência de 10 min no storage
   → usuário clica no ícone → `actionClick.ts` chama `permissions.request` como primeira chamada síncrona. Concedida:
-  limpa, sincroniza e foca o painel; negada: limpa e foca. Worker recém-acordado lê o storage; recusa por gesto mantém
-  a pendência para o próximo clique. Sem pendência: só foca o painel. O painel consulta `shein.status` a cada 3 s
+  limpa, sincroniza e foca o painel; negada: limpa e foca. O espelho da pendência é carregado no topo de `index.ts`
+  (antes dos listeners); clique com o espelho ainda não lido NÃO faz `await` antes do pedido: só foca o painel e
+  mantém a pendência para o próximo clique. Recusa por gesto também mantém. Pendência vencida sai do storage quando
+  lida. Sem pendência: só foca o painel. O painel consulta `shein.status` a cada 3 s
   enquanto `pending`.
 - **Leitura**: `marketplaceSession.ts` só lê cookie Shein com `chrome.permissions.contains` verdadeiro e exige `AT` +
-  `memberId`. `cookieWatch.ts` agenda sync só para mudança desses dois em `m.shein.com` (debounce 60 s). Gatilho
-  automático sem permissão sai em silêncio.
-- **Erros**: `apiFetch.ts` lê `error.code` do 403 antes do status: `*_CONSENT_REQUIRED` → `consent_required`;
+  `memberId`; `check-cookie-scope` falha se a função que chama `chrome.cookies.*` não tiver
+  `if (!(await hasHostPermission(...))) return` antes. Só cookie do host exato (`c.domain` sem ponto = `m.shein.com`):
+  `getAll({ url })` também traz `.shein.com`, descartado antes de deduplicar por path (ML, domínio com ponto, sem
+  filtro). `cookieWatch.ts` agenda sync só para mudança desses dois em `m.shein.com` (debounce 60 s,
+  `chrome.alarms.create` direto pelo nome). Gatilho automático sem permissão sai em silêncio. O alarme de reserva
+  respeita o hash na Shein (só envia se o token mudou); no ML segue reenviando.
+- **Recusa do servidor (só Shein)**: `consent_required`/`plan_unavailable` (ex.: "Desconectar" no painel) →
+  `chrome.permissions.remove` da origem, apaga hash/`lastSyncEpoch`, estado vira só o erro e o automático pausa
+  (`sheinAutoSyncPaused`). Só `shein.requestAccess` + clique reativa. `risk_not_accepted` → pausa o automático sem
+  remover a permissão; sync manual/canal reativa. ML nunca pausa.
+- **Erros**: `apiFetch.ts` lê o envelope antes do status e mapeia `error.code` conhecido (Map, sem herança de
+  protótipo) em qualquer status; status (401/403/404/429) só sem código conhecido. `SESSION_NOT_FOUND`/
+  `*_EXT_SESSION` → `session_expired`; `RATE_LIMITED` → `rate_limited`; `*_CONSENT_REQUIRED` → `consent_required`;
   `PLAN_FEATURE_UNAVAILABLE`/`EXTENSION_NOT_ENTITLED` → `plan_unavailable`; `MARKETPLACE_RISK_NOT_ACCEPTED` →
   `risk_not_accepted`. Códigos novos: `shein_not_logged`, `shein_permission_missing`, `shein_sync_failed`,
   `risk_not_accepted` (chaves `err_*` nas `_locales`, textos do painel em `features/extension/strings.ts`).
@@ -294,7 +306,7 @@ manual (popup), channel (`ml.syncSession`), startup.
 Hash igual só pula envio em `cookie-changed` e `startup`. Alarm reserve, manual e channel enviam
 sempre: o servidor revalida a sessão na loja a cada PUT e é isso que limpa "Recusada" quando o
 token não mudou (ver `integracoes-credenciais-afiliado.md`, "Checagem da sessão no sync").
-Não voltar a pular o alarme por hash: o servidor fica dias sem revalidar.
+Não voltar a pular o alarme por hash no ML: o servidor fica dias sem revalidar. (A Shein pula: ver acima.)
 
 Timeout do PUT da sessão: 25s (`SYNC_TIMEOUT_MS`), acima do caminho do servidor (bootstrap 8s +
 etiqueta 8s). Demais chamadas: 10s.

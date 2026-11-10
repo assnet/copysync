@@ -60,13 +60,46 @@ describe('handleActionClick', () => {
     expect(focusOrOpenPanel).toHaveBeenCalledTimes(1);
   });
 
-  it('worker recém-acordado lê o storage; recusa por gesto mantém a pendência', async () => {
+  it('concedida registra a origem (estado pós-grant)', async () => {
+    const { click, store } = await load();
+    await store.setPendingAccess({ marketplace: 'shein', until: Date.now() + 60_000 });
+    await click.handleActionClick();
+    expect(chromeStub.granted.has('https://m.shein.com/*')).toBe(true);
+    const { hasHostPermission } = await import('./marketplaceSession.js');
+    expect(await hasHostPermission('shein')).toBe(true);
+  });
+
+  it('worker recém-acordado (espelho não lido): sem await antes do pedido, foca e mantém a pendência', async () => {
     chromeStub.storage.pendingAccess = { marketplace: 'shein', until: Date.now() + 60_000 };
+    const { click, store } = await load();
+    expect(store.peekPendingAccess()).toBeUndefined();
+    await click.handleActionClick();
+    expect(chromeStub.request).not.toHaveBeenCalled();
+    expect(focusOrOpenPanel).toHaveBeenCalledTimes(1);
+    expect(chromeStub.storage.pendingAccess).toBeDefined();
+
+    // Próximo clique, espelho já carregado (boot do worker): pede no gesto.
+    await store.getPendingAccess();
+    const done = click.handleActionClick();
+    expect(chromeStub.request).toHaveBeenCalledTimes(1);
+    await done;
+  });
+
+  it('recusa por falta de gesto mantém a pendência', async () => {
     chromeStub.request.mockRejectedValue(new Error('This function must be called during a user gesture'));
     const { click, store } = await load();
+    await store.setPendingAccess({ marketplace: 'shein', until: Date.now() + 60_000 });
     await click.handleActionClick();
     expect(chromeStub.request).toHaveBeenCalledTimes(1);
     expect(await store.getPendingAccess()).not.toBeNull();
     expect(focusOrOpenPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it('pendência vencida sai do storage quando lida', async () => {
+    chromeStub.storage.pendingAccess = { marketplace: 'shein', until: Date.now() - 1 };
+    const { store } = await load();
+    expect(await store.getPendingAccess()).toBeNull();
+    expect(chromeStub.storage.pendingAccess).toBeUndefined();
+    expect(store.peekPendingAccess()).toBeNull();
   });
 });

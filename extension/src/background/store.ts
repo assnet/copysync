@@ -57,9 +57,9 @@ const KEYS = {
 } as const;
 
 /** Chaves de sync por marketplace. ML mantém os nomes da v3.3 (sem migração). */
-const SYNC_KEYS: Record<MarketplaceKey, { syncState: string; cookieHash: string; lastSyncEpoch: string }> = {
-  ml: { syncState: KEYS.syncState, cookieHash: KEYS.mlCookieHash, lastSyncEpoch: KEYS.lastSyncEpoch },
-  shein: { syncState: 'sheinSyncState', cookieHash: 'sheinCookieHash', lastSyncEpoch: 'sheinLastSyncEpoch' },
+const SYNC_KEYS: Record<MarketplaceKey, { syncState: string; cookieHash: string; lastSyncEpoch: string; autoSyncPaused: string }> = {
+  ml: { syncState: KEYS.syncState, cookieHash: KEYS.mlCookieHash, lastSyncEpoch: KEYS.lastSyncEpoch, autoSyncPaused: 'mlAutoSyncPaused' },
+  shein: { syncState: 'sheinSyncState', cookieHash: 'sheinCookieHash', lastSyncEpoch: 'sheinLastSyncEpoch', autoSyncPaused: 'sheinAutoSyncPaused' },
 };
 
 const DEFAULT_SETTINGS: StoredSettings = { theme: 'system' };
@@ -173,6 +173,20 @@ export const getLastSyncEpoch = async (marketplace: MarketplaceKey): Promise<num
 export const setLastSyncEpoch = (marketplace: MarketplaceKey, epoch: number): Promise<void> =>
   enqueue(() => chrome.storage.local.set({ [SYNC_KEYS[marketplace].lastSyncEpoch]: epoch }));
 
+/** Esquece hash e rate limit do marketplace: o próximo sync envia de novo (sem valor de cookie guardado). */
+export const clearCookieTracking = (marketplace: MarketplaceKey): Promise<void> =>
+  enqueue(() => chrome.storage.local.remove([SYNC_KEYS[marketplace].cookieHash, SYNC_KEYS[marketplace].lastSyncEpoch]));
+
+// ── Sync automático pausado (servidor recusou: só ação manual reativa) ──────
+
+export const isAutoSyncPaused = async (marketplace: MarketplaceKey): Promise<boolean> =>
+  (await read<boolean>(SYNC_KEYS[marketplace].autoSyncPaused)) === true;
+
+export const setAutoSyncPaused = (marketplace: MarketplaceKey, paused: boolean): Promise<void> =>
+  enqueue(() => paused
+    ? chrome.storage.local.set({ [SYNC_KEYS[marketplace].autoSyncPaused]: true })
+    : chrome.storage.local.remove(SYNC_KEYS[marketplace].autoSyncPaused));
+
 // ── Pedido de permissão de host pendente (`shein.requestAccess` → clique no ícone) ──
 
 export interface PendingAccess {
@@ -191,8 +205,14 @@ const valid = (pending: PendingAccess | null | undefined): PendingAccess | null 
   pending && pending.until > Date.now() ? pending : null;
 
 export const getPendingAccess = async (): Promise<PendingAccess | null> => {
-  pendingMemo = (await read<PendingAccess>(KEYS.pendingAccess)) ?? null;
-  return valid(pendingMemo);
+  const stored = (await read<PendingAccess>(KEYS.pendingAccess)) ?? null;
+  // Vencida: sai do storage na leitura (não fica lixo esperando um clique que não vem).
+  if (stored && !valid(stored)) {
+    await clearPendingAccess();
+    return null;
+  }
+  pendingMemo = stored;
+  return stored;
 };
 
 /** Leitura síncrona do espelho: `undefined` se o worker acabou de subir e ainda não leu. */

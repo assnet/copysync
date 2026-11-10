@@ -34,16 +34,45 @@ const buildUrl = (path: string): string => {
 const FETCH_TIMEOUT_MS = 10_000;
 
 /** `error.code` do envelope 403 → `SyncErrorCode`. Código desconhecido continua `forbidden`. */
-const FORBIDDEN_CODES: Record<string, SyncErrorCode> = {
-  ML_CONSENT_REQUIRED: 'consent_required',
-  SHEIN_CONSENT_REQUIRED: 'consent_required',
-  PLAN_FEATURE_UNAVAILABLE: 'plan_unavailable',
-  EXTENSION_NOT_ENTITLED: 'plan_unavailable',
-  MARKETPLACE_RISK_NOT_ACCEPTED: 'risk_not_accepted',
-};
+const FORBIDDEN_CODES: ReadonlyMap<string, SyncErrorCode> = new Map([
+  ['ML_CONSENT_REQUIRED', 'consent_required'],
+  ['SHEIN_CONSENT_REQUIRED', 'consent_required'],
+  ['PLAN_FEATURE_UNAVAILABLE', 'plan_unavailable'],
+  ['EXTENSION_NOT_ENTITLED', 'plan_unavailable'],
+  ['MARKETPLACE_RISK_NOT_ACCEPTED', 'risk_not_accepted'],
+]);
+
+/**
+ * `error.code` conhecido em qualquer status → `SyncErrorCode`. Vem ANTES do status: um 404
+ * `SESSION_NOT_FOUND` (sessão da extensão sumiu) não é rota ausente. Map: sem herança de
+ * `Object.prototype` (`constructor`, `__proto__` não viram código).
+ */
+const KNOWN_CODES: ReadonlyMap<string, SyncErrorCode> = new Map<string, SyncErrorCode>([
+  ...FORBIDDEN_CODES,
+  ['SESSION_NOT_FOUND', 'session_expired'],
+  ['MISSING_EXT_SESSION', 'session_expired'],
+  ['INVALID_EXT_SESSION', 'session_expired'],
+  ['RATE_LIMITED', 'rate_limited'],
+]);
 
 export const forbiddenKind = (code: string | undefined): SyncErrorCode =>
-  (code && FORBIDDEN_CODES[code]) || 'forbidden';
+  (code !== undefined && FORBIDDEN_CODES.get(code)) || 'forbidden';
+
+/** Status sem `error.code` conhecido. */
+const STATUS_CODES: ReadonlyMap<number, SyncErrorCode> = new Map<number, SyncErrorCode>([
+  [401, 'session_expired'],
+  [403, 'forbidden'],
+  [404, 'api_route_missing'],
+  [429, 'rate_limited'],
+]);
+
+const envelopeCode = (envelope: unknown): string | undefined => {
+  if (!envelope || typeof envelope !== 'object') return undefined;
+  const error = (envelope as { error?: unknown }).error;
+  if (!error || typeof error !== 'object') return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && code ? code : undefined;
+};
 
 export interface ApiEnvelope<T> {
   success: boolean;
@@ -81,10 +110,7 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
     throw new SyncError('api_unreachable', error instanceof Error ? error.message : String(error));
   }
 
-  if (response.status === 401) throw new SyncError('session_expired');
-  if (response.status === 404) throw new SyncError('api_route_missing');
-  if (response.status === 429) throw new SyncError('rate_limited');
-
+  // Envelope primeiro: o `error.code` diz o motivo (consentimento, plano, sessão); status só sem código conhecido.
   let envelope: ApiEnvelope<T> | null = null;
   try {
     envelope = (await response.json()) as ApiEnvelope<T>;
@@ -92,14 +118,16 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
     envelope = null;
   }
 
-  // 403: o `error.code` do envelope diz o motivo (consentimento, plano, aceite de risco).
-  if (response.status === 403) {
-    const code = envelope?.error?.code;
-    throw new SyncError(forbiddenKind(code), code ? `HTTP 403 ${code}` : undefined);
+  if (!response.ok) {
+    const code = envelopeCode(envelope);
+    const detail = `HTTP ${response.status}${code ? ` ${code}` : ''}`;
+    const known = code !== undefined ? KNOWN_CODES.get(code) : undefined;
+    const kind = known ?? STATUS_CODES.get(response.status);
+    if (kind) throw new SyncError(kind, code ? detail : undefined);
   }
 
   if (!response.ok || !envelope?.success) {
-    const code = envelope?.error?.code ?? '';
+    const code = envelopeCode(envelope) ?? '';
     const detail = `HTTP ${response.status}${code ? ` ${code}` : ''}`;
     devLog('api error', opts.method ?? 'GET', opts.path, detail);
     throw new SyncError('api_rejected', detail);

@@ -21,9 +21,10 @@ import { handleActionClick } from './actionClick.js';
 // Toda subida do service worker garante instalação + URL de desinstalação
 // (onInstalled/onStartup não disparam em todo wake-up).
 
-void setupUninstallUrl();
-// Espelho da pendência de permissão: o clique no ícone decide sem `await` (gesto do usuário).
+// Primeiro passo do boot: espelho da pendência de permissão em memória. O clique no ícone decide
+// sem `await` (gesto do usuário); clique antes de carregar só foca o painel (ver actionClick.ts).
 void getPendingAccess().catch(() => undefined);
+void setupUninstallUrl();
 
 // ── Stale sync reset ────────────────────────────────────────────────────────
 

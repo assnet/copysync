@@ -34,11 +34,39 @@ export const hasHostPermission = async (marketplace: MarketplaceKey): Promise<bo
   }
 };
 
-/** Todos os cookies da URL do marketplace; `[]` sem permissão de host. */
+/**
+ * Devolve a permissão de host opcional (servidor recusou: consentimento revogado/sem plano).
+ * Obrigatório (ML) nunca é removido. Falha do Chrome vira `false` (o sync automático já pausou).
+ */
+export const revokeHostPermission = async (marketplace: MarketplaceKey): Promise<boolean> => {
+  const mp = MARKETPLACES[marketplace];
+  if (!mp.optional) return false;
+  try {
+    return await chrome.permissions.remove({ origins: [mp.MARKETPLACE_URL_PATTERN] });
+  } catch {
+    return false;
+  }
+};
+
+const bareDomain = (domain: string): string => domain.replace(/^\./, '');
+
+/**
+ * Domínio do cookie aceito. Domínio configurado SEM ponto (Shein `m.shein.com`) = host exato:
+ * `getAll({ url })` também traz cookies do domínio pai (`.shein.com`), que ficam de fora.
+ * Domínio COM ponto (ML `.mercadolivre.com.br`) mantém o comportamento da v3.3 (sem filtro).
+ */
+const matchesCookieDomain = (marketplace: MarketplaceKey, cookie: { domain?: string }): boolean => {
+  const configured = MARKETPLACES[marketplace].MARKETPLACE_COOKIE_DOMAIN;
+  if (configured.startsWith('.')) return true;
+  return bareDomain(cookie.domain ?? '') === configured;
+};
+
+/** Cookies da URL do marketplace (Shein: só o host exato); `[]` sem permissão de host. */
 const readCookies = async (marketplace: MarketplaceKey): Promise<chrome.cookies.Cookie[]> => {
   const mp = MARKETPLACES[marketplace];
   if (!(await hasHostPermission(marketplace))) return [];
-  return chrome.cookies.getAll({ url: mp.MARKETPLACE_URL });
+  const all = await chrome.cookies.getAll({ url: mp.MARKETPLACE_URL });
+  return all.filter(c => matchesCookieDomain(marketplace, c));
 };
 
 /** Cookies de identidade + hash; `null` sem o cookie de token (deslogado) ou sem permissão. */
@@ -50,7 +78,7 @@ export const captureCookies = async (marketplace: MarketplaceKey): Promise<Captu
   for (const name of mp.cookies) {
     const matches = allCookies.filter(c => c.name === name);
     if (matches.length === 0) continue;
-    // Dedupe: longest path wins (most specific)
+    // Dedupe (domínio já filtrado em `readCookies`): longest path wins (most specific)
     const best = matches.reduce((a, b) => (a.path.length >= b.path.length ? a : b));
     if (best.value) result[best.name] = best.value;
   }

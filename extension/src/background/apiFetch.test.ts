@@ -45,3 +45,28 @@ describe('apiFetch 403 por error.code', () => {
     expect(await codeOf(401, forbidden())).toBe('session_expired');
   });
 });
+
+describe('apiFetch: error.code antes do status', () => {
+  it('404 SESSION_NOT_FOUND → session_expired (não é rota ausente)', async () => {
+    expect(await codeOf(404, forbidden('SESSION_NOT_FOUND'))).toBe('session_expired');
+  });
+
+  it('404 sem código (rota do Fastify) → api_route_missing', async () => {
+    expect(await codeOf(404, { message: 'Route not found', error: 'Not Found', statusCode: 404 })).toBe('api_route_missing');
+  });
+
+  it('401 com código de sessão e 429 sem código seguem pelo mapa/status', async () => {
+    expect(await codeOf(401, forbidden('INVALID_EXT_SESSION'))).toBe('session_expired');
+    expect(await codeOf(429, { success: false })).toBe('rate_limited');
+    expect(await codeOf(429, forbidden('RATE_LIMITED'))).toBe('rate_limited');
+  });
+
+  it('código de consentimento vale mesmo fora do 403', async () => {
+    expect(await codeOf(409, forbidden('SHEIN_CONSENT_REQUIRED'))).toBe('consent_required');
+  });
+
+  it.each(['constructor', '__proto__', 'toString'])('código herdado %s não vira mapeamento', async (code) => {
+    expect(await codeOf(403, forbidden(code))).toBe('forbidden');
+    expect(await codeOf(500, forbidden(code))).toBe('api_rejected');
+  });
+});

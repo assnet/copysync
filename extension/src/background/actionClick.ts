@@ -1,7 +1,7 @@
 import { MARKETPLACES, type MarketplaceKey } from '../config/env.js';
 import { devError, devLog } from '../core/devLog.js';
 import { focusOrOpenPanel } from './panelTab.js';
-import { clearPendingAccess, getPendingAccess, peekPendingAccess } from './store.js';
+import { clearPendingAccess, peekPendingAccess } from './store.js';
 import { runSync } from './syncSession.js';
 
 /**
@@ -11,8 +11,9 @@ import { runSync } from './syncSession.js';
  * `shein.requestAccess` o pedido é a PRIMEIRA chamada, síncrona, lida do espelho em memória
  * (`peekPendingAccess`). Concedida: limpa a pendência, sincroniza e foca o painel. Negada: limpa
  * e foca. Sem pendência: só foca/abre o painel, como antes.
- * Worker recém-acordado (espelho não lido): lê o storage e tenta; se o Chrome recusar por falta
- * de gesto, a pendência fica e o próximo clique (worker já vivo) pede.
+ * Worker recém-acordado (espelho ainda não lido — `index.ts` o carrega no boot, antes dos
+ * listeners): NÃO faz `await` antes do pedido, que perderia o gesto. Só foca o painel e mantém a
+ * pendência no storage; o próximo clique (espelho já carregado) faz o pedido.
  */
 
 const requestOrigins = (marketplace: MarketplaceKey): Promise<boolean> => {
@@ -41,10 +42,6 @@ const finish = async (marketplace: MarketplaceKey, request: Promise<boolean>): P
 export const handleActionClick = (): Promise<void> => {
   const pending = peekPendingAccess();
   if (pending) return finish(pending.marketplace, requestOrigins(pending.marketplace));
-  if (pending === null) return focusOrOpenPanel();
-  return (async () => {
-    const loaded = await getPendingAccess();
-    if (!loaded) return focusOrOpenPanel();
-    return finish(loaded.marketplace, requestOrigins(loaded.marketplace));
-  })();
+  // `null` = sem pendência; `undefined` = espelho não carregado (pendência fica para o próximo clique).
+  return focusOrOpenPanel();
 };
