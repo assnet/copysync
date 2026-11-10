@@ -11,6 +11,10 @@ export const OPS_MIN_BUCKET_MIN = 5;
 export const OPS_SERIES_TARGET_POINTS = 240;
 /** Teto de métricas por chamada de `/series`. */
 export const OPS_SERIES_MAX_METRICS = 12;
+/** Teto de séries (source, resource, metric) por resposta de `/series`, aplicado no SQL. */
+export const OPS_SERIES_MAX_SERIES = 40;
+/** `db_statement_total_ms` sem `resource`: só os N `queryid` de maior `max(value)` na janela. */
+export const OPS_SERIES_MAX_STATEMENT_SERIES = 10;
 
 const KNOWN = new Set<string>(Object.values(OPS_METRIC));
 

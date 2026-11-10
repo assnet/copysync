@@ -23,6 +23,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - **`ListOpsMetricsUseCase.ts`** — regra da janela extraída para `resolveOpsMetricsWindow` (reuso, sem mudança de contrato).
 
+### Fixed
+
+#### Backend — leitura do dashboard de consumo (metrics)
+
+- **`PrismaOpsMetricsSampleRepository.ts`** (`aggregate`) — min/max de gauge vinham de `value` (média de 5 min) e escondiam picos; agora `meta.min`/`meta.max` com guarda `jsonb_typeof = 'number'` (senão `value`). Counters (`OPS_COUNTER_METRICS` em `OpsMetric.ts`) seguem em `value`.
+- **`PrismaOpsMetricsSampleRepository.ts`**, **`GetOpsMetricsSeriesUseCase.ts`**, **`opsMetricsSeriesPolicy.ts`** — `/series` sem teto: `db_statement_total_ms` sem `resource` gerava uma série por `queryid`. Teto no SQL: top 10 `queryid` por `max(value)` na janela e no máximo 40 séries por resposta (`OPS_SERIES_MAX_STATEMENT_SERIES`, `OPS_SERIES_MAX_SERIES`; campos `maxStatementSeries`/`maxSeries` em `OpsMetricsSeriesFilter`).
+- **`PrismaOpsMetricsSampleRepository.ts`** (`latestStatementSnapshot`) — rodava sem `statement_timeout`; agora uma consulta só em `$transaction` com `SET LOCAL statement_timeout = '2s'`, como as demais leituras.
+
 ## [0.74.0] — 2026-11-09 — Filas independentes, gate do chat e métricas de recursos
 
 Tudo atrás de flags desligadas por padrão. Gates de produção de A, B e C seguem **pendentes**

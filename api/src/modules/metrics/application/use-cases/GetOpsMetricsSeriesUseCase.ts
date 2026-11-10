@@ -2,6 +2,8 @@ import type { IOpsMetricsSeriesReader } from '../../domain/contracts/IOpsMetrics
 import { OPS_METRIC } from '../../domain/OpsMetric';
 import {
   OPS_SERIES_MAX_METRICS,
+  OPS_SERIES_MAX_SERIES,
+  OPS_SERIES_MAX_STATEMENT_SERIES,
   isOpsMetricName,
   opsBucketMinutes,
   opsResourceKind,
@@ -44,7 +46,9 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
  * Séries agregadas em baldes no servidor para o dashboard super admin (Consumo). Só lê
- * `ops_metrics_samples`; nunca chama a Render. Dado de plataforma, sem tenant.
+ * `ops_metrics_samples`; nunca chama a Render. Dado de plataforma, sem tenant. No máximo
+ * `OPS_SERIES_MAX_SERIES` séries; consultas (`db_statement_total_ms`) limitadas ao top
+ * `OPS_SERIES_MAX_STATEMENT_SERIES` por `max(value)` — ambos os cortes no SQL.
  */
 export class GetOpsMetricsSeriesUseCase {
   constructor(
@@ -56,7 +60,14 @@ export class GetOpsMetricsSeriesUseCase {
     const metrics = parseMetrics(input.metrics);
     const window = resolveOpsMetricsWindow(input, this.now());
     const bucketMinutes = opsBucketMinutes(window.to.getTime() - window.from.getTime());
-    const rows = await this.reader.aggregate({ metrics, resource: input.resource ?? null, ...window, bucketMinutes });
+    const rows = await this.reader.aggregate({
+      metrics,
+      resource: input.resource ?? null,
+      ...window,
+      bucketMinutes,
+      maxSeries: OPS_SERIES_MAX_SERIES,
+      maxStatementSeries: OPS_SERIES_MAX_STATEMENT_SERIES,
+    });
 
     const bySeries = new Map<string, OpsMetricSeries>();
     for (const r of rows) {

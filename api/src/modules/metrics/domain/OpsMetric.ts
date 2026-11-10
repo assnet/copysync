@@ -51,3 +51,15 @@ export const OPS_METRIC = {
   dbIdleInTransactionMaxAgeS: 'db_idle_in_transaction_max_age_s',
   dbStatementTotalMs: 'db_statement_total_ms',
 } as const;
+
+/**
+ * Métricas `counter` (acumulado desde o reset): o agregado guarda o último valor, sem `meta.min`/`max`.
+ * No `/series` o min/max delas vem de `value`; as demais (gauge) usam `meta.min`/`meta.max` (pico do tick).
+ */
+export const OPS_COUNTER_METRICS: readonly string[] = [
+  OPS_METRIC.dbXactCommit,
+  OPS_METRIC.dbXactRollback,
+  OPS_METRIC.dbDeadlocks,
+  OPS_METRIC.dbTempBytes,
+  OPS_METRIC.dbStatementTotalMs,
+];

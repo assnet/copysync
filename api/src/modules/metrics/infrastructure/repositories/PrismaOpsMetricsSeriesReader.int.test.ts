@@ -29,7 +29,7 @@ describe('PrismaOpsMetricsSampleRepository — leitura agregada', () => {
       s('db_idle', '2026-11-09T10:05:00Z', 7, 'copysync', 'postgres'),
       s('cpu_pct', '2026-11-09T09:59:59.999Z', 1000), // fora da janela
     ]);
-    const window = { from: T('2026-11-09T10:00:00Z'), to: T('2026-11-09T10:15:00Z'), bucketMinutes: 15 };
+    const window = { from: T('2026-11-09T10:00:00Z'), to: T('2026-11-09T10:15:00Z'), bucketMinutes: 15, maxSeries: 40, maxStatementSeries: 10 };
     const rows = await repo.aggregate({ metrics: ['cpu_pct', 'memory_pct'], resource: null, ...window });
     expect(rows).toEqual([
       { source: 'render', resource: 'srv-a', metric: 'cpu_pct', at: T('2026-11-09T10:00:00Z'), avg: 30, min: 10, max: 60 },
@@ -48,7 +48,7 @@ describe('PrismaOpsMetricsSampleRepository — leitura agregada', () => {
       s('cpu_pct', '2026-11-09T03:10:00Z', 30),
       s('cpu_pct', '2026-11-09T01:59:00Z', 999), // antes do from
     ]);
-    const filter = { metrics: ['cpu_pct'], resource: null, from: T('2026-11-09T02:00:00Z'), to: T('2026-11-09T04:00:00Z'), bucketMinutes: 60 };
+    const filter = { metrics: ['cpu_pct'], resource: null, from: T('2026-11-09T02:00:00Z'), to: T('2026-11-09T04:00:00Z'), bucketMinutes: 60, maxSeries: 40, maxStatementSeries: 10 };
     const utc = await repo.aggregate(filter);
     const [{ db, tz: prevTz }] = await prisma.$queryRaw<{ db: string; tz: string }[]>`
       SELECT current_database() AS db, current_setting('TimeZone') AS tz`;
@@ -90,6 +90,41 @@ describe('PrismaOpsMetricsSampleRepository — leitura agregada', () => {
     const snap = await repo.latestStatementSnapshot();
     expect(snap.map((r) => [r.resource, r.value])).toEqual([['3', 90], ['2', 10]]);
     expect(snap[1]!.meta).toEqual({ calls: 2, meanMs: 5, shape: 'SELECT $1' });
+  });
+
+  it('aggregate: pico do gauge vem de meta.max/meta.min; counter e meta não numérica usam value', async () => {
+    await repo.insertMany([
+      s('cpu_pct', '2026-11-09T10:00:00Z', 20, 'srv-a', 'render', { min: 5, max: 97, n: 5 }),
+      s('cpu_pct', '2026-11-09T10:05:00Z', 30, 'srv-a', 'render', { min: 25, max: 35, n: 5 }),
+      s('memory_pct', '2026-11-09T10:00:00Z', 40, 'srv-a', 'render', { min: 'x', max: 'NaN' }),
+      s('memory_pct', '2026-11-09T10:05:00Z', 60, 'srv-a', 'render', null),
+      s('db_xact_commit', '2026-11-09T10:00:00Z', 100, 'copysync', 'postgres', { max: 9999, n: 5 }),
+      s('db_xact_commit', '2026-11-09T10:05:00Z', 150, 'copysync', 'postgres', { n: 5 }),
+    ]);
+    const rows = await repo.aggregate({
+      metrics: ['cpu_pct', 'memory_pct', 'db_xact_commit'], resource: null,
+      from: T('2026-11-09T10:00:00Z'), to: T('2026-11-09T10:10:00Z'), bucketMinutes: 15, maxSeries: 40, maxStatementSeries: 10,
+    });
+    expect(rows.map((r) => [r.metric, r.avg, r.min, r.max])).toEqual([
+      ['db_xact_commit', 125, 100, 150],
+      ['cpu_pct', 25, 5, 97],
+      ['memory_pct', 50, 40, 60],
+    ]);
+  });
+
+  it('aggregate: teto de séries e top N de db_statement_total_ms por max(value), no SQL', async () => {
+    const at = '2026-11-09T10:00:00Z';
+    const stmts = Array.from({ length: 15 }, (_, i) => s('db_statement_total_ms', at, (i + 1) * 10, `q${String(i).padStart(2, '0')}`, 'postgres'));
+    const cpus = Array.from({ length: 50 }, (_, i) => s('cpu_pct', at, i, `srv-${String(i).padStart(2, '0')}`));
+    await repo.insertMany([...stmts, ...cpus]);
+    const base = { from: T(at), to: T('2026-11-09T10:10:00Z'), bucketMinutes: 15 };
+    const top = await repo.aggregate({ ...base, metrics: ['db_statement_total_ms'], resource: null, maxSeries: 40, maxStatementSeries: 10 });
+    expect(top.map((r) => r.resource)).toEqual(['q05', 'q06', 'q07', 'q08', 'q09', 'q10', 'q11', 'q12', 'q13', 'q14']);
+    const capped = await repo.aggregate({ ...base, metrics: ['cpu_pct', 'db_statement_total_ms'], resource: null, maxSeries: 40, maxStatementSeries: 10 });
+    expect(new Set(capped.map((r) => `${r.source}|${r.resource}|${r.metric}`)).size).toBe(40);
+    expect(capped.filter((r) => r.metric === 'db_statement_total_ms')).toHaveLength(10);
+    const one = await repo.aggregate({ ...base, metrics: ['db_statement_total_ms'], resource: 'q00', maxSeries: 40, maxStatementSeries: 10 });
+    expect(one.map((r) => [r.resource, r.max])).toEqual([['q00', 10]]);
   });
 
   it('latestStatementSnapshot vazio sem dados', async () => {

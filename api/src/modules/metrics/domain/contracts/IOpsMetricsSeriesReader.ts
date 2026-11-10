@@ -7,6 +7,10 @@ export interface OpsMetricsSeriesFilter {
   from: Date;
   to: Date;
   bucketMinutes: number;
+  /** Teto de séries devolvidas (ordem: resource, metric, source); o resto não é lido. */
+  maxSeries: number;
+  /** Teto de `queryid` de `db_statement_total_ms` (top por `max(value)` na janela). */
+  maxStatementSeries: number;
 }
 
 /** Um balde agregado no servidor; `at` = início do balde (UTC, alinhado à época). */
@@ -16,7 +20,9 @@ export interface OpsMetricBucketRow {
   metric: string;
   at: Date;
   avg: number;
+  /** Gauge: menor `meta.min` (pico do tick); counter: menor `value`. */
   min: number;
+  /** Gauge: maior `meta.max` (pico do tick); counter: maior `value`. */
   max: number;
 }
 

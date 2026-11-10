@@ -132,6 +132,7 @@ describe('GET /admin/ops/metrics/series e /latest', () => {
     expect(agg).toHaveBeenCalledWith({
       metrics: ['cpu_pct', 'memory_pct'], resource: 'srv-a',
       from: new Date('2026-11-09T00:00:00.000Z'), to: new Date('2026-11-09T12:00:00.000Z'), bucketMinutes: 5,
+      maxSeries: 40, maxStatementSeries: 10,
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.json()).toEqual({

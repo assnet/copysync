@@ -17,7 +17,7 @@ describe('GetOpsMetricsSeriesUseCase', () => {
     const out = await uc.execute({});
     expect(out.window).toEqual({ from: new Date('2026-11-08T12:00:00.000Z'), to: new Date('2026-11-09T12:00:00.000Z') });
     expect(out.bucketMinutes).toBe(15);
-    expect(reader.aggregate).toHaveBeenCalledWith({ metrics: ['cpu_pct', 'memory_pct'], resource: null, ...out.window, bucketMinutes: 15 });
+    expect(reader.aggregate).toHaveBeenCalledWith({ metrics: ['cpu_pct', 'memory_pct'], resource: null, ...out.window, bucketMinutes: 15, maxSeries: 40, maxStatementSeries: 10 });
   });
 
   it('dedup, trim e recurso repassados; 7 dias → balde de 60 min', async () => {
@@ -26,7 +26,7 @@ describe('GetOpsMetricsSeriesUseCase', () => {
     const from = new Date(to.getTime() - 7 * DAY);
     const out = await uc.execute({ metrics: ['rss_mb', ' rss_mb', 'db_idle', ''], from, to, resource: 'w1' });
     expect(out.bucketMinutes).toBe(60);
-    expect(reader.aggregate).toHaveBeenCalledWith({ metrics: ['rss_mb', 'db_idle'], resource: 'w1', from, to, bucketMinutes: 60 });
+    expect(reader.aggregate).toHaveBeenCalledWith({ metrics: ['rss_mb', 'db_idle'], resource: 'w1', from, to, bucketMinutes: 60, maxSeries: 40, maxStatementSeries: 10 });
   });
 
   it('recusa métrica desconhecida, mais de 12, from > to e janela > 7 dias sem consultar', async () => {

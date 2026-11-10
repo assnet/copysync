@@ -86,6 +86,10 @@ export const opsMetricsSeriesQuery = {
   },
 } as const;
 
+/**
+ * Até 40 séries (`OPS_SERIES_MAX_SERIES`); `db_statement_total_ms` sem `resource` = top 10 `queryid`
+ * por `max(value)` na janela. Gauge: min/max = picos de `meta`; counter: de `value`.
+ */
 export const opsMetricsSeriesResponse = {
   type: 'object',
   additionalProperties: false,

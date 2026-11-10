@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { IOpsMetricsSampleReader, IOpsMetricsSampleRepository, OpsMetricsSampleFilter } from '../../domain/contracts/IOpsMetricsSampleRepository';
 import type { IOpsMetricsSeriesReader, OpsMetricBucketRow, OpsMetricsSeriesFilter } from '../../domain/contracts/IOpsMetricsSeriesReader';
-import { OPS_METRIC, type OpsMetricMeta, type OpsMetricSample, type OpsMetricSource } from '../../domain/OpsMetric';
+import { OPS_COUNTER_METRICS, OPS_METRIC, type OpsMetricMeta, type OpsMetricSample, type OpsMetricSource } from '../../domain/OpsMetric';
 
 type Row = { at: Date; source: string; resource: string; metric: string; value: number; meta: Prisma.JsonValue };
 
@@ -106,21 +106,41 @@ export class PrismaOpsMetricsSampleRepository implements IOpsMetricsSampleReposi
    * Baldes alinhados à época: `extract(epoch FROM at)` de `timestamp` sem fuso é nominal (= UTC),
    * então o balde não depende do `TimeZone` da sessão. Devolve o início do balde em segundos
    * (`float8`) para não passar por conversão de fuso no driver.
+   * - min/max de gauge vêm de `meta.min`/`meta.max` (pico dentro dos 5 min; `value` é a média);
+   *   counter ou `meta` sem número → `value`.
+   * - Teto no SQL: `db_statement_total_ms` só os `maxStatementSeries` `queryid` de maior
+   *   `max(value)` na janela; depois no máximo `maxSeries` séries (ordem resource, metric, source).
    */
   async aggregate(f: OpsMetricsSeriesFilter): Promise<OpsMetricBucketRow[]> {
-    if (f.metrics.length === 0) return [];
+    if (f.metrics.length === 0 || f.maxSeries <= 0) return [];
     const step = f.bucketMinutes * 60;
     const byResource = f.resource === null ? Prisma.empty : Prisma.sql`AND "resource" = ${f.resource}`;
+    const counters = [...OPS_COUNTER_METRICS];
+    const stmt = OPS_METRIC.dbStatementTotalMs;
+    const peak = (key: 'min' | 'max') => Prisma.sql`CASE
+      WHEN "metric" = ANY(${counters}::text[]) OR jsonb_typeof("meta"::jsonb -> ${key}) IS DISTINCT FROM 'number' THEN "value"
+      ELSE ("meta"::jsonb ->> ${key})::float8 END`;
     const [, rows] = await this.prisma.$transaction([
       this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${OPS_READ_STATEMENT_TIMEOUT}'`),
       this.prisma.$queryRaw<{ source: string; resource: string; metric: string; bucket: number; avg: number; min: number; max: number }[]>`
-        SELECT "source", "resource", "metric",
-          (floor(extract(epoch FROM "at") / ${step}::int) * ${step}::int)::float8 AS bucket,
-          avg("value")::float8 AS avg, min("value")::float8 AS min, max("value")::float8 AS max
-        FROM "ops_metrics_samples"
-        WHERE "metric" = ANY(${[...f.metrics]}::text[]) AND "at" >= ${utc(f.from)} AND "at" <= ${utc(f.to)} ${byResource}
+        WITH base AS (
+          SELECT "source", "resource", "metric", "at", "value", ${peak('min')} AS lo, ${peak('max')} AS hi
+          FROM "ops_metrics_samples"
+          WHERE "metric" = ANY(${[...f.metrics]}::text[]) AND "at" >= ${utc(f.from)} AND "at" <= ${utc(f.to)} ${byResource}
+        ), top_statements AS (
+          SELECT "resource" FROM base WHERE "metric" = ${stmt}
+          GROUP BY "resource" ORDER BY max("value") DESC, "resource" LIMIT ${Math.max(0, f.maxStatementSeries)}::int
+        ), series AS (
+          SELECT DISTINCT "source", "resource", "metric" FROM base
+          WHERE "metric" <> ${stmt} OR "resource" IN (SELECT "resource" FROM top_statements)
+          ORDER BY "resource", "metric", "source" LIMIT ${f.maxSeries}::int
+        )
+        SELECT b."source", b."resource", b."metric",
+          (floor(extract(epoch FROM b."at") / ${step}::int) * ${step}::int)::float8 AS bucket,
+          avg(b."value")::float8 AS avg, min(b.lo)::float8 AS min, max(b.hi)::float8 AS max
+        FROM base b JOIN series USING ("source", "resource", "metric")
         GROUP BY 1, 2, 3, 4
-        ORDER BY "resource", "metric", "source", bucket`,
+        ORDER BY b."resource", b."metric", b."source", bucket`,
     ]);
     return rows.map((r) => ({
       source: r.source as OpsMetricSource,
@@ -146,15 +166,18 @@ export class PrismaOpsMetricsSampleRepository implements IOpsMetricsSampleReposi
     return rows.map((r) => toSample({ ...r, at: new Date(r.at_s * 1000) }));
   }
 
+  /** Mesmo teto de 2 s das outras leituras: as duas consultas na mesma transação. */
   async latestStatementSnapshot(): Promise<OpsMetricSample[]> {
     const metric = OPS_METRIC.dbStatementTotalMs;
-    const last = await this.prisma.opsMetricsSample.findFirst({ where: { metric }, orderBy: { at: 'desc' }, select: { at: true } });
-    if (!last) return [];
-    const rows = await this.prisma.opsMetricsSample.findMany({
-      where: { metric, at: last.at },
-      orderBy: [{ value: 'desc' }, { id: 'asc' }],
-      select: { at: true, source: true, resource: true, metric: true, value: true, meta: true },
-    });
-    return rows.map(toSample);
+    const [, rows] = await this.prisma.$transaction([
+      this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${OPS_READ_STATEMENT_TIMEOUT}'`),
+      this.prisma.$queryRaw<{ at_s: number; source: string; resource: string; metric: string; value: number; meta: Prisma.JsonValue }[]>`
+        SELECT extract(epoch FROM "at")::float8 AS at_s, "source", "resource", "metric", "value", "meta"
+        FROM "ops_metrics_samples"
+        WHERE "metric" = ${metric}
+          AND "at" = (SELECT max("at") FROM "ops_metrics_samples" WHERE "metric" = ${metric})
+        ORDER BY "value" DESC, "id" ASC`,
+    ]);
+    return rows.map((r) => toSample({ ...r, at: new Date(r.at_s * 1000) }));
   }
 }

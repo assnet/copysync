@@ -44,8 +44,16 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
 - Agregação **no servidor** (`PrismaOpsMetricsSampleRepository.aggregate`): balde =
   `max(5 min, ceil(janela/240))` arredondado para cima a 1/5/15/30/60/120/360 min
   (`opsBucketMinutes`; 24 h → 15 min, 7 dias → 60 min, ≤ 240 pontos por série). SQL cru com
-  `avg/min/max(value)` por (source, resource, metric, balde), em `$transaction` com
+  `avg(value)` por (source, resource, metric, balde), em `$transaction` com
   `SET LOCAL statement_timeout = '2s'`.
+- min/max: cada linha da tabela é a média de 5 min. Para **gauge** o balde usa
+  `min(meta.min)`/`max(meta.max)` (pico real do tick de 60 s); `meta` ausente ou não numérica
+  (`jsonb_typeof <> 'number'`) cai para `value`. **Counter** (`OPS_COUNTER_METRICS`) usa sempre
+  `value`. Nunca voltar a `max(value)` em gauge: esconde pico de CPU/memória.
+- Teto de séries **no SQL** (nada é materializado além dele): `db_statement_total_ms` entra só
+  com os `OPS_SERIES_MAX_STATEMENT_SERIES` (10) `queryid` de maior `max(value)` na janela; depois
+  no máximo `OPS_SERIES_MAX_SERIES` (40) séries por resposta, na ordem resource, metric, source.
+  Série cortada não aparece; para ver uma consulta específica, passe `resource=<queryid>`.
 - Fuso: `at` é `timestamp` sem fuso gravado em UTC. Corte com `::timestamptz AT TIME ZONE 'UTC'`
   e balde por `extract(epoch FROM at)` (nominal, alinhado à época): independe do `TimeZone` da
   sessão (teste de integração troca o banco para São Paulo e compara).
@@ -60,6 +68,8 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
 
 - `latest`: última linha por (resource, metric) nos últimos 15 min, sem `db_statement_total_ms`
   (`DISTINCT ON`, mesmo timeout de 2 s): `{ resource, kind, metric, value, at }`.
+- Top consultas (`latestStatementSnapshot`): linhas do último `at` de `db_statement_total_ms`,
+  numa única consulta sob o mesmo `statement_timeout` de 2 s.
 - `thresholds`: `OPS_ALERT_THRESHOLDS` de `opsAlertPolicy` (`memoryPct`, `cpuPct`,
   `idleInTransaction`, `eventLoopP99Ms`). Não duplicar números no painel.
 - `topQueries`: linhas do snapshot mais recente de `db_statement_total_ms` (top 10 do sampler),
