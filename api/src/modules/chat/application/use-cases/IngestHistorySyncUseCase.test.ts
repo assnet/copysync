@@ -150,3 +150,29 @@ describe('IngestHistorySyncUseCase', () => {
     }));
   });
 });
+
+describe('IngestHistorySyncUseCase — gate do chat (entrega D)', () => {
+  it('desligado: lote (append/histórico) não grava nada', async () => {
+    const deps = makeDeps();
+    const gate = { isChatEnabled: vi.fn().mockResolvedValue(false) };
+    const uc = new IngestHistorySyncUseCase(deps.contactRepo, deps.conversationRepo, deps.messageRepo, gate);
+    uc.execute({ tenantId: TENANT, sessionId: SESSION, messages: [makeItem(), makeItem({ externalMessageId: 'ext-2', isGroup: true, groupJid: 'g1' })] });
+    await aguardarChamada(gate.isChatEnabled);
+    await aguardarOcioso();
+    expect(gate.isChatEnabled).toHaveBeenCalledWith(TENANT);
+    expect(deps.contactRepo.findOrCreate).not.toHaveBeenCalled();
+    expect(deps.messageRepo.findByExternalId).not.toHaveBeenCalled();
+    expect(deps.messageRepo.create).not.toHaveBeenCalled();
+    expect(deps.conversationRepo.create).not.toHaveBeenCalled();
+    expect(deps.conversationRepo.updateLastMessage).not.toHaveBeenCalled();
+  });
+
+  it('ligado: grava como sem gate', async () => {
+    const deps = makeDeps();
+    const gate = { isChatEnabled: vi.fn().mockResolvedValue(true) };
+    const uc = new IngestHistorySyncUseCase(deps.contactRepo, deps.conversationRepo, deps.messageRepo, gate);
+    uc.execute({ tenantId: TENANT, sessionId: SESSION, messages: [makeItem()] });
+    await aguardarChamada(deps.messageRepo.create);
+    expect(deps.conversationRepo.create).toHaveBeenCalledTimes(1);
+  });
+});

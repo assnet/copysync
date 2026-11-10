@@ -9,6 +9,7 @@ import { subscriptionRoutes } from '../modules/tenants/presentation/routes/subsc
 import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
 import { workerAdminRoutes } from '../modules/sessions/presentation/routes/workerAdmin.routes';
+import { opsMetricsRoutes } from '../modules/metrics/presentation/routes/opsMetrics.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
 import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
 import {
@@ -127,6 +128,8 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Workers de sessão: ocupação e aguardando capacidade (super admin) ──────
   await app.register(workerAdminRoutes, { prefix: `${env.API_PREFIX}/admin/workers` });
+  // Métricas de recursos (MQ-25): só tabelas locais, nunca a Render na requisição
+  await app.register(opsMetricsRoutes, { prefix: `${env.API_PREFIX}/admin/ops/metrics` });
 
   // ── Links de redirecionamento da plataforma: CRUD (super admin) e resolução pública ──
   await app.register(redirectLinkAdminRoutes, { prefix: `${env.API_PREFIX}/admin/redirect-links` });

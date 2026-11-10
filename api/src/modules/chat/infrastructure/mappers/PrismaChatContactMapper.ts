@@ -8,6 +8,7 @@ export class PrismaChatContactMapper {
       tenantId: raw.tenantId,
       name: raw.name,
       phone: raw.phone,
+      lid: raw.lid,
       avatarUrl: raw.avatarUrl,
       notes: raw.notes,
       createdAt: raw.createdAt,

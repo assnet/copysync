@@ -43,7 +43,7 @@ Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela a
 | Produto | Status | Funcionalidades |
 |---|---|---|
 | Afiliados | disponível | 3, 4, 8, 9, 11, 12 |
-| CRM & Automação | em breve | chat/atendimento, fluxos por blocos, assistentes de IA (`/chat` já existe, só super admin) |
+| CRM & Automação | em breve | chat/atendimento, fluxos por blocos, assistentes de IA (`/chat` já existe, só super admin; ingestão por entitlement `chat_enabled`, ver `chat-ingestao-por-entitlement.md`) |
 | Gestor de Grupos | em breve | 5, 10, 14 |
 | Saver | em breve | a definir |
 | Aquecedor de Chip | em breve | a definir |

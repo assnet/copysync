@@ -23,8 +23,21 @@ function toDomain(r: Row): CapturedOffer {
 
 const withGroup = { monitoredGroup: { select: { conversation: { select: { groupName: true, groupAvatarUrl: true } } } } } as const;
 
+export interface CapturedOfferRepositoryOptions {
+  /** Seleção justa entre tenants (`MONITORING_FAIR_CLAIM_ENABLED`). false = FIFO global de hoje. */
+  fairClaim?: boolean;
+}
+
+/** Teto da transação do claim justo: lock do tenant também é usado pelo billing. */
+const FAIR_CLAIM_LOCK_TIMEOUT = '200ms';
+const FAIR_CLAIM_STATEMENT_TIMEOUT = '2s';
+
 export class PrismaCapturedOfferRepository implements ICapturedOfferRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly fairClaim: boolean;
+
+  constructor(private readonly prisma: PrismaClient, options: CapturedOfferRepositoryOptions = {}) {
+    this.fairClaim = options.fairClaim ?? false;
+  }
 
   async createPending(input: NewCapturedOffer): Promise<boolean> {
     try {
@@ -44,6 +57,7 @@ export class PrismaCapturedOfferRepository implements ICapturedOfferRepository {
    */
   async claimPending(limit: number, staleBefore: Date): Promise<CapturedOffer[]> {
     if (limit <= 0) return [];
+    if (this.fairClaim) return this.claimFair(staleBefore);
     const rows = await this.prisma.$queryRaw<Row[]>`
       UPDATE "captured_offers"
          SET "status" = 'PROCESSING'::"CapturedOfferStatus", "claimedAt" = now(),
@@ -57,6 +71,53 @@ export class PrismaCapturedOfferRepository implements ICapturedOfferRepository {
           FOR UPDATE SKIP LOCKED
        )
       RETURNING *`;
+    return rows.map(toDomain);
+  }
+
+  /**
+   * Modo justo: no máximo 1 item. Um único statement (atômico) numa transação curta sem I/O:
+   * 1. tenant com captura elegível (mesma regra do FIFO) de menor turno, null primeiro, `id`
+   *    desempata. Dois EXISTS (não `IN` com OR): status vira condição de índice e o custo segue o
+   *    backlog, não o histórico (EXPLAIN em validation.md, seção C); `FOR NO KEY UPDATE SKIP LOCKED` (não bloqueia FK de insert; tenant travado pelo
+   *    billing é pulado nesta chamada e volta na próxima);
+   * 2. captura dele por `capturedAt, id`, lock + SKIP LOCKED;
+   * 3. PROCESSING/token/claimedAt (`now()` do banco) e `nextval` no turno do tenant só se a
+   *    captura foi obtida. Nada obtido ou erro = turno intacto; lacunas da sequência não importam.
+   */
+  private async claimFair(staleBefore: Date): Promise<CapturedOffer[]> {
+    const [, , rows] = await this.prisma.$transaction([
+      this.prisma.$executeRawUnsafe(`SET LOCAL lock_timeout = '${FAIR_CLAIM_LOCK_TIMEOUT}'`),
+      this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${FAIR_CLAIM_STATEMENT_TIMEOUT}'`),
+      this.prisma.$queryRaw<Row[]>`
+        WITH "pick_tenant" AS (
+          SELECT "t"."id" FROM "tenants" "t"
+           WHERE EXISTS (SELECT 1 FROM "captured_offers" "c" WHERE "c"."tenantId" = "t"."id"
+                            AND "c"."status" = 'PENDING'::"CapturedOfferStatus")
+              OR EXISTS (SELECT 1 FROM "captured_offers" "c" WHERE "c"."tenantId" = "t"."id"
+                            AND "c"."status" = 'PROCESSING'::"CapturedOfferStatus" AND "c"."claimedAt" < ${staleBefore})
+           ORDER BY "t"."monitoringClaimTurn" ASC NULLS FIRST, "t"."id"
+           LIMIT 1
+           FOR NO KEY UPDATE SKIP LOCKED
+        ), "pick_capture" AS (
+          SELECT "c"."id" FROM "captured_offers" "c" JOIN "pick_tenant" "p" ON "c"."tenantId" = "p"."id"
+           WHERE "c"."status" = 'PENDING'::"CapturedOfferStatus"
+              OR ("c"."status" = 'PROCESSING'::"CapturedOfferStatus" AND "c"."claimedAt" < ${staleBefore})
+           ORDER BY "c"."capturedAt", "c"."id"
+           LIMIT 1
+           FOR UPDATE OF "c" SKIP LOCKED
+        ), "claimed" AS (
+          UPDATE "captured_offers"
+             SET "status" = 'PROCESSING'::"CapturedOfferStatus", "claimedAt" = now(),
+                 "claimToken" = gen_random_uuid()::text, "updatedAt" = now()
+           WHERE "id" IN (SELECT "id" FROM "pick_capture")
+          RETURNING *
+        ), "turn" AS (
+          UPDATE "tenants" SET "monitoringClaimTurn" = nextval('monitoring_claim_turn_seq')
+           WHERE "id" IN (SELECT "tenantId" FROM "claimed")
+          RETURNING "id"
+        )
+        SELECT "claimed".* FROM "claimed" LEFT JOIN "turn" ON "turn"."id" = "claimed"."tenantId"`,
+    ]);
     return rows.map(toDomain);
   }
 

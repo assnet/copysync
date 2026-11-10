@@ -52,6 +52,12 @@ export class OutboundEchoRegistry {
     ids.set(messageId, this.now() + this.options.ttlMs);
   }
 
+  /** Como `consume`, mas sem retirar o id (a marca continua valendo para o próximo evento). */
+  has(sessionId: string, messageId: string): boolean {
+    const expiresAt = this.sessions.get(sessionId)?.get(messageId);
+    return expiresAt !== undefined && expiresAt >= this.now();
+  }
+
   /** true quando o id foi enviado por nós e ainda está no TTL; o id sai do registro. */
   consume(sessionId: string, messageId: string): boolean {
     const ids = this.sessions.get(sessionId);

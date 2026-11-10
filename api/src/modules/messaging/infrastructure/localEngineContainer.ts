@@ -9,6 +9,7 @@ import { PrismaChatMessageRepository } from '../../chat/infrastructure/repositor
 import { IngestHistorySyncUseCase } from '../../chat/application/use-cases/IngestHistorySyncUseCase';
 import { MessagingEngineFactory } from './MessagingEngineFactory';
 import { PrismaWatchedChannelSource } from './PrismaWatchedChannelSource';
+import { chatIngestComposition } from './ingestGate/chatIngestComposition';
 import type { MessagingEngineRouter } from './MessagingEngineRouter';
 
 let instance: MessagingEngineRouter | undefined;
@@ -26,15 +27,18 @@ export function localEngine(): MessagingEngineRouter {
   const chatConversationRepo = new PrismaChatConversationRepository(prisma);
   const chatMessageRepo = new PrismaChatMessageRepository(prisma);
   const lease = sessionLeaseContainer();
+  // Mesma composição do server.ts: sem ela o `append`/histórico do worker ficaria sem gate.
+  const ingestGate = chatIngestComposition();
 
   const engine = MessagingEngineFactory.createRouter({
     sessionRepo: new PrismaSessionRepository(),
     authStateRepo: new PrismaSessionAuthStateRepository(),
     chatContactRepo,
     chatConversationRepo,
-    historySyncUseCase: new IngestHistorySyncUseCase(chatContactRepo, chatConversationRepo, chatMessageRepo),
+    historySyncUseCase: new IngestHistorySyncUseCase(chatContactRepo, chatConversationRepo, chatMessageRepo, ingestGate.gate),
     leaseGate: lease.gate,
     watchedChannels: new PrismaWatchedChannelSource(prisma),
+    mediaPolicy: ingestGate.mediaPolicy,
   });
   lease.bindSocketControl(engine);
   setActiveEngine(engine);

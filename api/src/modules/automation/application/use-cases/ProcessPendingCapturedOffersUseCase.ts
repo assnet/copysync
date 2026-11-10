@@ -39,9 +39,20 @@ export interface ProcessPendingCapturedOffersDeps {
   clock?: () => number;
 }
 
+/**
+ * Contexto opcional de uma rodada. `signal` abortado = parada do worker: nenhum claim ou enqueue
+ * novo começa; o que já começou termina e é marcado. Sem sinal = comportamento de sempre.
+ */
+export interface CapturedOffersRunContext {
+  signal?: AbortSignal;
+}
+
 type Outcome =
   | { status: 'QUEUED'; data: CapturedOfferResolution & { offerId: string } }
   | { status: 'SKIPPED' | 'FAILED'; reason: Parameters<ICapturedOfferRepository['markSkipped']>[2]; data?: Partial<CapturedOfferResolution> };
+
+/** Parada observada antes do enqueue: a captura fica PROCESSING e volta pelo stale (não é falha). */
+class CaptureStoppedError extends Error {}
 
 /**
  * Um tick do processamento de capturas (roda no tick do worker de envio). Para cada captura:
@@ -52,24 +63,39 @@ type Outcome =
 export class ProcessPendingCapturedOffersUseCase {
   constructor(private readonly deps: ProcessPendingCapturedOffersDeps) {}
 
-  async execute(): Promise<{ processed: number }> {
-    const now = (this.deps.now ?? (() => new Date()))();
+  async execute(ctx: CapturedOffersRunContext = {}): Promise<{ processed: number }> {
+    const nowFn = this.deps.now ?? (() => new Date());
+    const now = nowFn();
     const clock = this.deps.clock ?? Date.now;
     const started = clock();
+    const { signal } = ctx;
     let processed = 0;
     // Uma por vez enquanto houver orçamento: nada fica reivindicado sem ser processado
     while (processed < CAPTURE_BATCH_SIZE && (processed === 0 || clock() - started < CAPTURE_TICK_BUDGET_MS)) {
+      if (signal?.aborted) break;
       const [c] = await this.deps.captured.claimPending(1, new Date(now.getTime() - CAPTURE_STALE_MS));
       if (!c) break;
       processed++;
+      const itemStarted = clock();
+      // Claim que voltou depois da parada: fica PROCESSING e o stale devolve (sem renovar validade)
+      if (signal?.aborted) {
+        logger.info({ capturedOfferId: c.id, tenantId: c.tenantId }, 'captured offer left for recovery at stop');
+        break;
+      }
       let outcome: Outcome;
       try {
-        outcome = await this.resolve(c, (this.deps.now ?? (() => new Date()))());
+        outcome = await this.resolve(c, nowFn(), signal);
       } catch (err) {
+        if (err instanceof CaptureStoppedError) {
+          logger.info({ capturedOfferId: c.id, tenantId: c.tenantId }, 'captured offer left for recovery at stop');
+          break;
+        }
         logger.error({ err: (err as Error)?.name, capturedOfferId: c.id, tenantId: c.tenantId }, 'captured offer processing failed');
         outcome = { status: 'FAILED', reason: 'INTERNAL_ERROR' };
       }
+      // Enqueue já feito: marca mesmo com sinal abortado (senão a oferta sai e a captura volta)
       await this.mark(c, outcome);
+      observeCapture(c, outcome, nowFn(), clock() - itemStarted);
     }
     return { processed };
   }
@@ -95,7 +121,7 @@ export class ProcessPendingCapturedOffersUseCase {
     return buildMonitorText(this.deps, c, config, link, coupon, originalText, tenantLinks);
   }
 
-  private async resolve(c: CapturedOffer, now: Date): Promise<Outcome> {
+  private async resolve(c: CapturedOffer, now: Date, signal?: AbortSignal): Promise<Outcome> {
     const { monitors, links, queue, entitlements } = this.deps;
     const config = await monitors.findConfig(c.tenantId, c.sessionId);
     if (!config?.enabled) return { status: 'SKIPPED', reason: 'MONITOR_DISABLED' };
@@ -162,6 +188,8 @@ export class ProcessPendingCapturedOffersUseCase {
     };
 
     const mentionAll = config.mentionAll && (await entitlements.getBoolean(c.tenantId, MENTION_ALL_ENABLED)) !== false;
+    // Último ponto antes do efeito: parada aqui não cria oferta nem marca falha
+    if (signal?.aborted) throw new CaptureStoppedError();
     const res = await queue.enqueue({
       tenantId: c.tenantId,
       destinations: targets.map((t) => ({ conversationId: t.conversationId, sessionId: t.sessionId })),
@@ -188,6 +216,23 @@ export class ProcessPendingCapturedOffersUseCase {
     });
     if (res.kind === 'expired') return { status: 'SKIPPED', reason: 'EXPIRED', data: { ...base, startsAt: res.firstSendAt } };
     return { status: 'QUEUED', data: { ...base, startsAt: res.firstSendAt, offerId: res.offerId } };
+  }
+}
+
+/**
+ * Um log por captura processada (docs/monitoramento-grupos.md): idade desde a captura (não é
+ * latência WhatsApp→evento), duração da preparação e resultado. Só IDs e códigos: sem texto,
+ * link, título, nome ou erro bruto. Falha aqui nunca muda o resultado da fila.
+ */
+function observeCapture(c: CapturedOffer, o: Outcome, now: Date, durationMs: number): void {
+  try {
+    logger.info({
+      capturedOfferId: c.id, tenantId: c.tenantId, sessionId: c.sessionId, status: o.status,
+      reason: o.status === 'QUEUED' ? null : o.reason,
+      captureAgeMs: Math.max(0, now.getTime() - c.capturedAt.getTime()), durationMs: Math.max(0, durationMs),
+    }, 'captured offer observed');
+  } catch {
+    // observação é melhor esforço
   }
 }
 

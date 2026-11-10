@@ -7,6 +7,50 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.74.0] — 2026-11-09 — Filas independentes, gate do chat e métricas de recursos
+
+Tudo atrás de flags desligadas por padrão. Gates de produção de A, B e C seguem **pendentes**
+(benchmark só sintético). Plano e revisões: `.specs/features/monitoring-queue-isolation/`.
+
+### Added
+
+#### Backend — fila de ofertas (campaigns, automation)
+
+- **`campaigns/infrastructure/worker/OfferDispatchWorker.ts`**, **`app/offerWorkerComposition.ts`** — captura e envio em slots independentes no mesmo timer de 2 s (`OFFER_WORKER_INDEPENDENT_STAGES_ENABLED`); `stop()` sinaliza as duas etapas e espera sob o orçamento de shutdown. Antes, um envio lento (digitação, timeout de 60 s) segurava a preparação de capturas de todos os tenants. Benchmark sintético: espera p95 da captura 98,6 s → 29,0 s.
+- **`ProcessPendingCapturedOffersUseCase.ts`**, **`ProcessDueOfferDispatchesUseCase.ts`** — contexto cooperativo (`AbortSignal`) e logs de observação por item (idade, duração, atraso), sem texto, link ou credencial.
+- **`campaigns/application/services/ConcurrentOfferDispatchExecutor.ts`** — até 2 envios simultâneos entre sessões distintas (`OFFER_DISPATCH_CONCURRENCY`, 1–2; 2 exige etapas independentes). Vaga presa à promise original do sender; sessão excluída do claim até o settle.
+- **`automation/infrastructure/repositories/PrismaCapturedOfferRepository.ts`** — claim justo de capturas pelo tenant menos atendido (`MONITORING_FAIR_CLAIM_ENABLED`), turno persistido via sequência, `SKIP LOCKED` e `lock_timeout`.
+
+#### Backend — chat por entitlement (chat, messaging)
+
+- **`chat/infrastructure/entitlement/CachedChatEntitlementGate.ts`**, **`messaging/infrastructure/ingestGate/`** — com `CHAT_INGEST_ENTITLEMENT_GATE_ENABLED`, tenant sem `chat_enabled` grava só o contato 1:1, não grava conversa/mensagem/histórico e só baixa imagem de grupo monitorado (`IIncomingMediaPolicy` nos adapters Baileys e Telegram). Ver `docs/chat-ingestao-por-entitlement.md`.
+
+#### Backend — métricas de recursos (metrics, sessions)
+
+- **`sessions/infrastructure/jobs/WorkerHeartbeatJob.ts`** — grava CPU do Node e p99 do event loop.
+- **`metrics/`** — `OpsMetricsSamplerJob` (60 s, só worker, dono único por lease): Render Metrics API, `pg_stat_*` com `statement_timeout`, persistência a cada 5 min em `ops_metrics_samples` (7 dias), alertas só em log. `GET /admin/ops/metrics` só super admin. Ver `docs/ops-metricas.md`.
+
+### Changed
+
+- **`shared/events/InternalMessagingEvent.ts`** — `MESSAGE_RECEIVED` ganha `authorLid?` (dígitos). Emissor: `BaileysMessagingEngineAdapter`; consumidor: `ChatIncomingMessageListener` → `IngestIncomingMessageUseCase` (grava `chat_contacts.lid` só no 1:1). Telegram não emite; engine remota não transporta eventos.
+- **`BaileysMessagingEngineAdapter.ts`** — menções e autor de citação consultam o par LID↔telefone no banco (com prazo) antes da engine; eco da própria mensagem é pulado no `notify` antes do download (vale também com flag desligada: era download descartado pelo dedup).
+- **`PrismaOfferDispatchRepository.ts`** — `claimDue` aceita exclusão de sessões; lista vazia = SQL idêntico ao anterior.
+
+### Migrations
+
+- `20261109100000_add_worker_heartbeat_resources` — `worker_heartbeats.cpuPct`/`eventLoopP99Ms` nullable.
+- `20261109110000_create_ops_metrics_samples`, `20261109110500_add_ops_metrics_samples_at_index` — tabela nova sem tenant.
+- `20261109120000_add_chat_contact_lid` — `chat_contacts.lid` nullable + índice `(tenantId, lid)`, sem backfill.
+- `20261109130000_add_monitoring_claim_turn` — `tenants.monitoringClaimTurn` + sequência, sem backfill.
+- Todas aditivas, seguras para deploy sobreposto com imagem antiga. Sem `lock_timeout` na migration: falha registraria a migration como falha (P3009) e travaria o boot; tabelas afetadas são pequenas (chat_contacts ~55 mil linhas).
+
+## [0.73.3] — 2026-11-08 — Plano de isolamento das filas
+
+### Documentation
+
+- **`.specs/features/monitoring-queue-isolation/`** — requisitos, desenho, tarefas, gates de recursos e revisão do plano de independência de captura/envio; concorrência e justiça por tenant condicionadas à medição. Sem alteração de código operacional, migration aplicada ou ativação de flags.
+- **`.specs/codebase/TESTING.md`** — corrige matriz desatualizada: integração Postgres/Redis local já existe e exige execução serial; SQL/claims devem ter testes de integração.
+
 ## [0.73.2] — 2026-11-08 — plano DEV no fluxo de assinatura
 
 ### Fixed

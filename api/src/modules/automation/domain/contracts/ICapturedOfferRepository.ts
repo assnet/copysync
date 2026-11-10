@@ -43,6 +43,9 @@ export interface ICapturedOfferRepository {
   /**
    * Worker, cross-tenant: PENDING (ou PROCESSING com claim anterior a `staleBefore`) → PROCESSING
    * com `claimToken` novo, SKIP LOCKED, mais antigas primeiro.
+   * Modo justo (`MONITORING_FAIR_CLAIM_ENABLED`): devolve no máximo 1 item, qualquer `limit` ≥ 1;
+   * tenant de menor turno persistido primeiro, FIFO dentro dele; vazio pode significar só que os
+   * tenants elegíveis estão travados agora (tentar na próxima rodada).
    */
   claimPending(limit: number, staleBefore: Date): Promise<CapturedOffer[]>;
   /** Só com o token da posse; false = posse perdida. */

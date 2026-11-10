@@ -1,6 +1,6 @@
 {
   "name": "waioprime-api",
-  "version": "0.73.2",
+  "version": "0.74.0",
   "description": "WaioPrime API — Fastify + TypeScript + Prisma + PostgreSQL",
   "private": true,
   "scripts": {

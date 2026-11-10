@@ -6,6 +6,7 @@ import { logger } from '../../../../shared/logger/logger';
 import { initialStateFromRemote } from '../../domain/services/initialStateFromRemote';
 import type { MessageLinkPreview, RemoteChatState } from '../../../../shared/events/InternalMessagingEvent';
 import { toChatLinkPreview } from '../../domain/services/toChatLinkPreview';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 
 export interface HistoryMessageItem {
   /** ID externo da mensagem (Baileys key.id) — necessário para deduplicação */
@@ -78,6 +79,8 @@ export class IngestHistorySyncUseCase {
     private readonly contactRepo: IChatContactRepository,
     private readonly conversationRepo: IChatConversationRepository,
     private readonly messageRepo: IChatMessageRepository,
+    /** Entitlement do chat. Ausente (flag desligada) = grava como hoje. */
+    private readonly chatGate?: IChatEntitlementGate,
   ) {}
 
   execute(input: IngestHistorySyncInput): void {
@@ -121,6 +124,9 @@ export class IngestHistorySyncUseCase {
     items: HistoryMessageItem[],
     chatStates?: Record<string, RemoteChatState>,
   ): Promise<void> {
+    // Tenant sem chat: `append`/histórico não grava nada (`execute` é síncrono; gate por lote)
+    if (this.chatGate && !(await this.chatGate.isChatEnabled(tenantId))) return;
+
     // Acumula a última mensagem por conversa para atualizar preview ao final
     const latestPerConversation = new Map<string, { preview: string; at: Date }>();
 

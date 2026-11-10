@@ -342,6 +342,40 @@ jobs por natureza: BullMQ com filas `monitoring.inbound`, `offer.rewrite`, `broa
 rate limit por sessão (WhatsApp pune rajada) e retry com backoff. Não construir essas features
 sobre `setInterval` in-process.
 
+**Hoje (consumidor Postgres, `docs/fila-de-envio.md`)**: fila, posse (`claimToken`), faixa por
+sessão, hold de 120 s após `SEND_TIMEOUT` e resultado vivem em `offer_dispatches`. O worker de 2 s
+só reivindica e executa.
+
+**Concorrência de envio (`OFFER_DISPATCH_CONCURRENCY`, entrega B de
+`.specs/features/monitoring-queue-isolation`)**: `1` (padrão) = envio serial; `2` exige
+`OFFER_WORKER_INDEPENDENT_STAGES_ENABLED=true` (a composição recusa no boot) e permite até duas
+chamadas a `IOfferMessageSender.send` em sessões distintas (`ConcurrentOfferDispatchExecutor`).
+Distinção que não pode se perder:
+
+- **Reserva local** (memória do processo, no máximo 2 entradas): vaga + `sessionId` de cada chamada
+  ao sender ainda pendente. Liberada só quando a promise ORIGINAL termina, não no timeout. Serve
+  para não repetir a sessão (`claimDue(..., { excludeSessionIds })`) enquanto a mensagem ainda pode
+  estar saindo, mesmo depois do hold de 120 s do banco. Não é fila: nada fica pré-reivindicado
+  esperando vaga (claim só das vagas livres, até 10 itens/rodada, 1 por sessão/rodada).
+- **Fila no banco**: o que garante posse, cooldown, retomada após crash e resultado. Reinício perde
+  a reserva local; vale o hold/stale de sempre (sem exclusão física indefinida).
+
+Consequências: B só pode ser ligada com **um único consumidor de ofertas** (sem réplica nem
+deploy sobreposto rodando o job `offerDispatch`); a reserva não é vista por outro processo.
+Sender que nunca termina mantém a vaga (alerta `offer dispatch sender unsettled beyond hold`, no
+máximo 1/min); com as duas presas o envio para sem busy loop — rollback `2→1` + restart controlado,
+após conferir as mensagens. Limite cobre a chamada ao sender, não a transferência de mídia
+(`MEDIA_SEND_CONCURRENCY`/`MEDIA_SEND_PER_SESSION` seguem valendo). Ampliar para N consumidores
+exige reserva durável (fora deste escopo).
+
+### 3.7 Observabilidade de recursos
+
+CPU/RAM dos containers, Postgres e workers são amostrados por um job do `worker` sob lease único
+e lidos só pelo super admin em `GET /admin/ops/metrics`: ver [`ops-metricas.md`](ops-metricas.md).
+**Exceção declarada** à regra de estado em memória: o ring buffer de 60 leituras do
+`OpsMetricsSamplerJob` é cache de `ops_metrics_samples` (perda ≤ 5 min em crash aceita); alertas e
+silêncio ficam em lease no banco. Sem APM externo, sem `/metrics` público no `http`.
+
 ---
 
 ## 4. Ordem de entrega

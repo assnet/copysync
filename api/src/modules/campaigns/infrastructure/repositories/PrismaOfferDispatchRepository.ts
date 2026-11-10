@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
+  ClaimDueOptions,
   IOfferDispatchRepository,
   NewOfferDispatchItem,
   OfferDispatchResult,
@@ -110,8 +111,13 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * ignora a janela; tenant sem configuração não tem janela). Filtrar no candidato, e não na cabeça, deixa a
    * cabeça da faixa ser o próximo elegível (o gerador não fica preso atrás de uma captura fora da janela).
    */
-  async claimDue(now: Date, limit: number): Promise<OfferDispatch[]> {
+  async claimDue(now: Date, limit: number, options: ClaimDueOptions = {}): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
+    // Concorrência 2: sessões da rodada / com sender pendente ficam de fora. Vazio = SQL de sempre
+    const excluded = [...new Set(options.excludeSessionIds ?? [])];
+    const excludeSql = excluded.length > 0
+      ? Prisma.sql`AND (heads."sessionId" IS NULL OR heads."sessionId" <> ALL(${excluded}::text[]))`
+      : Prisma.empty;
     const zoneMinute = zoneMinuteSql(now);
     // Dia da semana no fuso (hoje e ontem) calculado aqui pela mesma regra do domínio
     const zoneWeekday = weekdayInZone(now, WINDOW_TIME_ZONE);
@@ -161,6 +167,7 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                  WHERE w."sessionId" = heads."sessionId" AND w."status" = 'QUEUED'::"OfferDispatchStatus"
                    AND w."waitingSessionSince" IS NOT NULL AND w."notBefore" > ${now}
               )
+              ${excludeSql}
               AND NOT EXISTS (
                 SELECT 1 FROM "offer_dispatches" o
                  WHERE o."sessionId" = heads."sessionId"

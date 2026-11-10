@@ -15,7 +15,7 @@ import { PrismaChatMessageRepository } from '../modules/chat/infrastructure/repo
 import { PrismaChatMessageReactionRepository } from '../modules/chat/infrastructure/repositories/PrismaChatMessageReactionRepository';
 import { IngestIncomingMessageUseCase } from '../modules/chat/application/use-cases/IngestIncomingMessageUseCase';
 import { IngestMessageReactionUseCase } from '../modules/chat/application/use-cases/IngestMessageReactionUseCase';
-import { IngestHistorySyncUseCase } from '../modules/chat/application/use-cases/IngestHistorySyncUseCase';
+import { chatIngestComposition } from '../modules/messaging/infrastructure/ingestGate/chatIngestComposition';
 import { FailOrphanPendingMediaUseCase } from '../modules/chat/application/use-cases/FailOrphanPendingMediaUseCase';
 import { ReconcileInterruptedUploadsUseCase } from '../modules/chat/application/use-cases/ReconcileInterruptedUploadsUseCase';
 import { chatMediaContainer } from '../modules/chat/infrastructure/chatMediaContainer';
@@ -45,11 +45,14 @@ import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutb
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
 import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
 import { sessionAdoptionContainer } from '../modules/sessions/infrastructure/lease/sessionAdoptionContainer';
+import { createOpsMetricsSamplerJob } from '../modules/metrics/infrastructure/opsMetricsContainer';
+import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/jobs/OpsMetricsSamplerJob';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
 import { jobsFor } from './processJobs';
 import { mediaDrainBudgetMs } from './shutdownBudget';
+import { buildOfferWorkerOptions, offerWorkerStopOptions } from './offerWorkerComposition';
 import { composeForRole } from './roleComposition';
 import { buildWorkerApp } from './workerApp';
 
@@ -243,27 +246,28 @@ async function start(): Promise<void> {
   // Mesmo worker processa as capturas do monitoramento (GROUP_MONITORING_ENABLED): sem
   // setInterval novo. Cada parte isolada: erro numa não derruba a outra (docs/monitoramento-grupos.md).
   let offerDispatchWorker: OfferDispatchWorker | null = null;
+  // OFFER_WORKER_INDEPENDENT_STAGES_ENABLED (entrega A): true = envio e capturas em slots
+  // independentes no mesmo timer; false = tick sequencial de hoje (`offerWorkerComposition`).
+  const offerWorkerFlags = {
+    offerDispatch: env.OFFER_DISPATCH_WORKER_ENABLED,
+    groupMonitoring: env.GROUP_MONITORING_ENABLED,
+    independentStages: env.OFFER_WORKER_INDEPENDENT_STAGES_ENABLED,
+    dispatchConcurrency: env.OFFER_DISPATCH_CONCURRENCY,
+  };
   if (jobs.has('offerDispatch')) {
-    if (env.OFFER_DISPATCH_WORKER_ENABLED || env.GROUP_MONITORING_ENABLED) {
-      const safe = async (name: string, run: () => Promise<{ processed: number }>) => {
-        try {
-          return (await run()).processed;
-        } catch (err) {
-          logger.error({ err: (err as Error)?.name, part: name }, 'worker tick part failed');
-          return 0;
-        }
-      };
-      offerDispatchWorker = new OfferDispatchWorker({
-        tick: () => ({
-          execute: async () => ({
-            processed:
-              (env.OFFER_DISPATCH_WORKER_ENABLED ? await safe('offer-dispatch', () => offersContainer.processDueDispatches().execute()) : 0)
-              + (env.GROUP_MONITORING_ENABLED ? await safe('group-monitoring', () => automationContainer.processCaptured().execute()) : 0),
-          }),
-        }),
-      });
+    const offerWorkerOptions = buildOfferWorkerOptions({
+      jobs,
+      flags: offerWorkerFlags,
+      runners: {
+        offerDispatch: () => offersContainer.processDueDispatches(),
+        groupMonitoring: () => automationContainer.processCaptured(),
+      },
+      onLegacyPartError: (part, err) => logger.error({ err: (err as Error)?.name, part }, 'worker tick part failed'),
+    });
+    if (offerWorkerOptions) {
+      offerDispatchWorker = new OfferDispatchWorker(offerWorkerOptions);
       offerDispatchWorker.start();
-      logger.info({ offerDispatch: env.OFFER_DISPATCH_WORKER_ENABLED, groupMonitoring: env.GROUP_MONITORING_ENABLED }, 'Offer dispatch worker started');
+      logger.info({ ...offerWorkerFlags }, 'Offer dispatch worker started');
     } else {
       logger.info('Offer dispatch worker disabled (OFFER_DISPATCH_WORKER_ENABLED=false, GROUP_MONITORING_ENABLED=false)');
     }
@@ -327,30 +331,29 @@ async function start(): Promise<void> {
   }
 
   // ── Register chat listeners ────────────────────────────────────────────────
+  // Gate do chat por entitlement (entrega D): mesma composição do `localEngineContainer`.
+  const chatGate = chatIngestComposition().gate;
   const ingestUseCase = new IngestIncomingMessageUseCase(
     chatContactRepo,
     chatConversationRepo,
     chatMessageRepo,
     new PrismaSessionRepository(),
-  );
-  const ingestHistorySyncUseCase = new IngestHistorySyncUseCase(
-    chatContactRepo,
-    chatConversationRepo,
-    chatMessageRepo,
+    chatGate,
   );
   registerChatIncomingMessageListener(ingestUseCase);
   // Grava capturas no banco: só com a flag (api/.env local aponta para produção, AGENTS §22).
   // Só onde há sessões: as mensagens de grupo nascem no processo dono do socket.
   if (runsSessions(role) && env.GROUP_MONITORING_ENABLED) registerGroupMonitoringListener();
-  registerChatMessageStatusListener(chatMessageRepo);
+  registerChatMessageStatusListener(chatMessageRepo, chatGate);
   registerChatMessageReactionListener(
     new IngestMessageReactionUseCase(chatMessageRepo, chatReactionRepo, chatContactRepo),
+    chatGate,
   );
-  registerChatPresenceListener();
-  registerChatContactAvatarListener(chatContactRepo);
-  registerChatGroupAvatarListener(chatConversationRepo);
+  registerChatPresenceListener(chatGate);
+  registerChatContactAvatarListener(chatContactRepo, chatGate);
+  registerChatGroupAvatarListener(chatConversationRepo, chatGate);
   registerChatSessionStatusListener();
-  registerChatConversationStateListener(chatConversationRepo);
+  registerChatConversationStateListener(chatConversationRepo, chatGate);
 
   // ── Session suspension listener ────────────────────────────────────────────
   // Todo papel (WROLE-13): no `http` a engine remota leva o `disconnect` ao dono por BullMQ.
@@ -421,6 +424,16 @@ async function start(): Promise<void> {
     );
   }
 
+  // ── Métricas de recursos (MQ-22) ───────────────────────────────────────────
+  // Só worker/all e com a flag; 1 dono por vez via lease. Timer `unref`, nunca em requisição.
+  let opsMetricsSampler: OpsMetricsSamplerJob | null = null;
+  if (jobs.has('opsMetricsSampler') && env.OPS_METRICS_SAMPLER_ENABLED) {
+    const sampler = createOpsMetricsSamplerJob();
+    opsMetricsSampler = sampler.job;
+    opsMetricsSampler.start();
+    logger.info({ platform: sampler.platformEnabled }, 'Ops metrics sampler started');
+  }
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   // WROLE-15. `all`: ordem de hoje. `http`: jobs → composição → mídia → Redis → app.
   // `worker`: keeper → jobs → consumidores BullMQ/RPC → mídia (ofertas, D8) → sockets → flush →
@@ -443,10 +456,11 @@ async function start(): Promise<void> {
     }
     // ADOPT-14/D4: junto com o keeper param ticker (espera o tick em curso) e alerta. O heartbeat
     // segue batendo até soltar os leases; `heartbeat.stop()` apaga a linha no fim.
-    if (adoption) {
+    // MQ-22: o sampler para junto (cancela a Render em voo, solta o lease), aguardado em paralelo.
+    if (adoption || opsMetricsSampler) {
       try {
-        await Promise.all([adoption.ticker.stop(), adoption.capacityAlert.stop()]);
-        logger.info('Session adoption stopped');
+        await Promise.all([adoption?.ticker.stop(), adoption?.capacityAlert.stop(), opsMetricsSampler?.stop()]);
+        if (adoption) logger.info('Session adoption stopped');
       } catch (err) {
         logger.error({ err }, 'Session adoption stop failed during shutdown');
       }
@@ -457,7 +471,7 @@ async function start(): Promise<void> {
     if (billingReconcileInterval) clearInterval(billingReconcileInterval);
     // Antes do drain: o tick em curso termina de enfileirar; nada novo entra na fila depois.
     try {
-      await offerDispatchWorker?.stop();
+      await offerDispatchWorker?.stop(offerWorkerStopOptions(offerWorkerFlags.independentStages, Date.now() - shutdownStartedAt));
     } catch (err) {
       logger.error({ err }, 'Offer dispatch worker stop failed during shutdown');
     }

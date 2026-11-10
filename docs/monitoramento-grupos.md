@@ -199,6 +199,27 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
   (credencial não utilizável + captura `CREDENTIAL_MISSING` nos últimos 7 dias). Um por loja; recusada prevalece.
   Save* não devolvem o campo; o painel mantém o anterior até o próximo load.
 
+Imagem da captura: vem do download feito no adapter. Com `CHAT_INGEST_ENTITLEMENT_GATE_ENABLED`
+e tenant sem `chat_enabled`, só imagem de grupo monitorado é baixada (`docs/chat-ingestao-por-entitlement.md`).
+
+### 3.1 Seleção justa de capturas entre tenants (`MONITORING_FAIR_CLAIM_ENABLED`)
+
+Padrão `false`: `claimPending` = FIFO global por `capturedAt` (tenant com backlog grande atrasa os
+outros). `true` (`PrismaCapturedOfferRepository`, injetado em `automationContainer.ts`): um statement
+numa transação curta (`lock_timeout` 200 ms, `statement_timeout` 2 s, sem I/O) escolhe o tenant elegível
+de menor `tenants.monitoringClaimTurn` (null primeiro, `id` desempata; `FOR NO KEY UPDATE SKIP LOCKED`),
+pega a captura mais antiga dele (`capturedAt, id`, SKIP LOCKED), marca PROCESSING e grava o turno com
+`nextval('monitoring_claim_turn_seq')`. Devolve **no máximo 1 item** qualquer que seja o `limit`.
+Turno só avança se a captura foi obtida; erro reverte as duas linhas (lacunas na sequência não importam).
+Tenant travado pelo billing é pulado nesta chamada (não espera) e volta depois. Garantia: com N tenants
+continuamente elegíveis, um worker e sem lock externo, todos são atendidos nas primeiras N seleções.
+Não promete ordem de conclusão, fairness do envio nem SLA. Migration `20261109130000_add_monitoring_claim_turn`
+(aditiva, sem backfill). Evidência: `.specs/features/monitoring-queue-isolation/validation.md`, seção C.
+
+Não fazer: ligar antes da migration; misturar workers em modos diferentes; round-robin em memória;
+expor o turno em DTO/painel; usar `Tenant.updatedAt` como turno; rede ou I/O dentro da transação;
+`UPDATE` de backfill em produção. Rollback = flag `false` + restart (coluna/sequência ficam).
+
 ## 4. Rotas (`/api/automation/group-monitoring`)
 
 | Método | Rota | Uso |

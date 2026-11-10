@@ -39,6 +39,15 @@ export class PrismaChatContactRepository implements IChatContactRepository {
     return raw ? PrismaChatContactMapper.toDomain(raw) : null;
   }
 
+  async findByLid(tenantId: string, lid: string): Promise<ChatContact | null> {
+    // Sem unique em `lid`: o mais recente vence se dois telefones já carregaram o mesmo LID.
+    const raw = await this.prisma.chatContact.findFirst({
+      where: { tenantId, lid },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return raw ? PrismaChatContactMapper.toDomain(raw) : null;
+  }
+
   async search(term: string, tenantId: string, limit: number): Promise<ChatContact[]> {
     const digits = term.replace(/\D/g, '');
     const rows = await this.prisma.chatContact.findMany({
@@ -61,10 +70,13 @@ export class PrismaChatContactRepository implements IChatContactRepository {
       // Promove nome: se o nome atual é numérico (LID/phone fallback) e chegou um nome real
       const currentIsNumeric = /^\d+$/.test(existing.name);
       const newIsReal = !!data.name && !/^\d+$/.test(data.name);
-      if (currentIsNumeric && newIsReal) {
+      const promoteName = currentIsNumeric && newIsReal;
+      // LID novo ou trocado grava; ausente nunca apaga o existente.
+      const newLid = data.lid && data.lid !== existing.lid ? data.lid : null;
+      if (promoteName || newLid) {
         const raw = await this.prisma.chatContact.update({
           where: { tenantId_phone: { tenantId: data.tenantId, phone: data.phone } },
-          data: { name: data.name },
+          data: { ...(promoteName ? { name: data.name } : {}), ...(newLid ? { lid: newLid } : {}) },
         });
         return PrismaChatContactMapper.toDomain(raw);
       }
@@ -76,6 +88,7 @@ export class PrismaChatContactRepository implements IChatContactRepository {
         tenantId: data.tenantId,
         name: data.name,
         phone: data.phone,
+        lid: data.lid ?? null,
         avatarUrl: data.avatarUrl ?? null,
         notes: data.notes ?? null,
       },
@@ -90,11 +103,14 @@ export class PrismaChatContactRepository implements IChatContactRepository {
         name: data.name,
         // Só atualiza avatarUrl se foi explicitamente fornecido — nunca apaga avatar existente
         ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
+        // `lid` só quando veio; null/ausente nunca apaga o par já gravado
+        ...(data.lid ? { lid: data.lid } : {}),
       },
       create: {
         tenantId: data.tenantId,
         name: data.name,
         phone: data.phone,
+        lid: data.lid ?? null,
         avatarUrl: data.avatarUrl ?? null,
         notes: data.notes ?? null,
       },

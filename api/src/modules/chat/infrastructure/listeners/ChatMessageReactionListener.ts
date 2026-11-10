@@ -1,4 +1,5 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 import { logger } from '../../../../shared/logger/logger';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
 import type { IngestMessageReactionUseCase } from '../../application/use-cases/IngestMessageReactionUseCase';
@@ -18,9 +19,11 @@ type MessageReactionUpdatedEvent = Extract<InternalMessagingEvent, { type: 'MESS
  */
 export function registerChatMessageReactionListener(
   ingestReaction: IngestMessageReactionUseCase,
+  gate?: IChatEntitlementGate,
 ): void {
   internalEventBus.on<MessageReactionUpdatedEvent>('MESSAGE_REACTION_UPDATED', async (payload) => {
     try {
+      if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
       const result = await ingestReaction.execute({
         tenantId:                payload.tenantId,
         sessionId:               payload.sessionId,

@@ -1,4 +1,5 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 import { logger } from '../../../../shared/logger/logger';
 import type { IChatContactRepository } from '../../domain/contracts/IChatContactRepository';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
@@ -15,9 +16,11 @@ type ContactAvatarUpdatedEvent = Extract<InternalMessagingEvent, { type: 'CONTAC
  */
 export function registerChatContactAvatarListener(
   contactRepo: IChatContactRepository,
+  gate?: IChatEntitlementGate,
 ): void {
   internalEventBus.on<ContactAvatarUpdatedEvent>('CONTACT_AVATAR_UPDATED', async (payload) => {
     try {
+      if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
       await contactRepo.updateAvatarUrlByPhone(payload.phone, payload.tenantId, payload.avatarUrl);
 
       chatWsPublisher.publish(payload.tenantId, {

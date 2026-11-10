@@ -275,7 +275,9 @@ describe('skipExpired', () => {
 
 /** Sessão do Postgres em outro fuso: `ALTER DATABASE` + reconexão (o pool abre conexões novas). */
 async function sessionTimeZone(tz: string) {
-  await prisma.$executeRawUnsafe(`ALTER DATABASE "${'copysync_int'}" SET timezone = '${tz}'`);
+  // Banco da própria conexão (INTEGRATION_DATABASE_URL), nunca um nome fixo: bancos isolados por agente
+  const [{ db }] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS "db"`;
+  await prisma.$executeRawUnsafe(`ALTER DATABASE "${db}" SET timezone = '${tz}'`);
   await prisma.$disconnect();
 }
 
@@ -343,5 +345,74 @@ describe('claimDue — sessão do Postgres fora de UTC', () => {
     // 05:30 em SP (= 17:30 em Tóquio, dentro de 06–20 se o fuso vazasse): fora
     expect(await repo.claimDue(spToUtc(5, 30, 28), 10)).toEqual([]);
     expect((await repo.claimDue(spToUtc(7, 0, 28), 10)).map((d) => d.offerId)).toEqual([mon.id]);
+  });
+});
+
+describe('claimDue — exclusões de sessão (concorrência 2, entrega B)', () => {
+  let session2 = '';
+  let conv2 = '';
+  /** Uma oferta por envio: (offerId, conversationId) é único. */
+  async function queuedIn(_offerId: string, conversationId: string, sid: string | null, notBefore: Date) {
+    const offerId = (await offer('GENERATOR')).id;
+    return prisma.offerDispatch.create({ data: { tenantId, offerId, conversationId, sessionId: sid, notBefore, status: 'QUEUED', gapSeconds: 0 } });
+  }
+  beforeAll(async () => {
+    session2 = (await prisma.session.create({ data: { tenantId, name: 'S2', status: 'CONNECTED' } })).id;
+    conv2 = (await prisma.chatConversation.create({ data: { tenantId, sessionId: session2, isGroup: true, groupJid: 'g2' } })).id;
+  });
+
+  it('vazio = claim de sempre; sessão excluída fica de fora; legado sem sessão nunca é excluído', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    await queuedIn(gen.id, convGen, sessionId, spToUtc(8));
+    await queuedIn(gen.id, conv2, session2, spToUtc(8));
+    await queuedIn(gen.id, convMon, null, spToUtc(8));
+    const got = await repo.claimDue(spToUtc(9), 10, { excludeSessionIds: [sessionId] });
+    expect(got.map((d) => d.sessionId).sort()).toEqual([null, session2].sort());
+    expect(got.every((d) => !!d.claimToken)).toBe(true);
+    // A excluída continua QUEUED e sai num claim sem exclusão
+    const rest = await repo.claimDue(spToUtc(9), 10, { excludeSessionIds: [] });
+    expect(rest.map((d) => d.sessionId)).toEqual([sessionId]);
+  });
+
+  it('sessão com sender pendente segue excluída mesmo após o hold de 120 s do SEND_TIMEOUT', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    const t = await queuedIn(gen.id, convGen, sessionId, spToUtc(8));
+    await prisma.offerDispatch.update({ where: { id: t.id }, data: { status: 'FAILED', failureReason: 'SEND_TIMEOUT', claimedAt: spToUtc(8) } });
+    await queuedIn(gen.id, convGen, sessionId, spToUtc(8, 1));
+    // 1 min depois: o hold do banco ainda segura; 3 min depois: só a exclusão segura
+    expect(await repo.claimDue(new Date(spToUtc(8).getTime() + 60_000), 10)).toEqual([]);
+    const after = new Date(spToUtc(8).getTime() + 180_000);
+    expect(await repo.claimDue(after, 10, { excludeSessionIds: [sessionId] })).toEqual([]);
+    expect((await repo.claimDue(after, 10)).map((d) => d.sessionId)).toEqual([sessionId]);
+  });
+
+  it('dois claims concorrentes: sessões distintas, um token por item, nada perdido', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    await queuedIn(gen.id, convGen, sessionId, spToUtc(8));
+    await queuedIn(gen.id, conv2, session2, spToUtc(8));
+    const [a, b] = await Promise.all([
+      repo.claimDue(spToUtc(9), 1, { excludeSessionIds: [] }),
+      repo.claimDue(spToUtc(9), 1, { excludeSessionIds: [] }),
+    ]);
+    const all = [...a, ...b];
+    expect(all).toHaveLength(2);
+    expect(new Set(all.map((d) => d.sessionId)).size).toBe(2);
+    expect(new Set(all.map((d) => d.claimToken)).size).toBe(2);
+    const rows = await prisma.offerDispatch.findMany({ where: { tenantId } });
+    expect(rows.every((r) => r.status === 'SENDING' && r.claimToken)).toBe(true);
+  });
+
+  it('preserva prioridade de quem esperava a sessão e o agendamento futuro', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    await queuedIn(gen.id, convGen, sessionId, spToUtc(8));
+    const waiting = await queuedIn(gen.id, convGen, sessionId, spToUtc(8, 5));
+    await prisma.offerDispatch.update({ where: { id: waiting.id }, data: { waitingSessionSince: spToUtc(7) } });
+    await queuedIn(gen.id, conv2, session2, spToUtc(10));
+    const got = await repo.claimDue(spToUtc(9), 10, { excludeSessionIds: ['outra-sessao'] });
+    expect(got.map((d) => d.id)).toEqual([waiting.id]);
   });
 });

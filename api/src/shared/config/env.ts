@@ -138,6 +138,29 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // Entrega A das filas: envio e capturas em slots independentes no mesmo timer de 2 s
+  // (.specs/features/monitoring-queue-isolation). false = tick sequencial de hoje.
+  OFFER_WORKER_INDEPENDENT_STAGES_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Entrega B: chamadas simultâneas ao sender de ofertas, entre sessões distintas (1–2). 1 = envio
+  // serial de hoje. 2 exige OFFER_WORKER_INDEPENDENT_STAGES_ENABLED=true (validado na composição do
+  // worker) e um único consumidor de ofertas (docs/arquitetura-escala.md §3.6).
+  OFFER_DISPATCH_CONCURRENCY: z.coerce.number().int().min(1).max(2).default(1),
+  // Entrega C das filas: claim de capturas pelo tenant menos recentemente atendido (turno
+  // persistido em `tenants.monitoringClaimTurn`). false = FIFO global de hoje. Só ligar após a
+  // migration e com todos os consumidores no mesmo modo.
+  MONITORING_FAIR_CLAIM_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Gate da ingestão do chat por entitlement `chat_enabled` (entrega D). false = ingestão de hoje
+  // para todos. true: tenant sem chat grava só o contato e baixa só imagem de grupo monitorado.
+  CHAT_INGEST_ENTITLEMENT_GATE_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // ── Papel do processo (.specs/features/worker-role) ──────────────────────
   // `all` (default) = comportamento de hoje, sem Redis. `http`/`worker` exigem `REDIS_URL`
   // e `MEDIA_STORAGE_DRIVER=s3` com S3 completo (ver `processRoleIssues`). `all` ignora `REDIS_URL`.
@@ -328,6 +351,27 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // ── Métricas de recursos (.specs/features/monitoring-queue-isolation, entrega E) ──
+  // Sampler de 60 s só em worker/all. Desligado por padrão; liga só na Render após RENDER_API_KEY.
+  OPS_METRICS_SAMPLER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Chave da Render Metrics API: só na Render, nunca exposta ao painel nem logada.
+  RENDER_API_KEY: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
+  // IDs `srv-`/`dpg-` separados por vírgula (API, worker, Postgres).
+  RENDER_RESOURCE_IDS: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
+  // Limite de RAM do container (MB): fallback do alerta de RSS quando a Render não dá o limite.
+  OPS_MEMORY_LIMIT_MB: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
 });
 
 export const LINK_ROTATION_SECRET_MIN_LENGTH = 32;

@@ -135,9 +135,11 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     for (const d of queued) d.status = 'CANCELLED';
     return queued.length;
   }
-  async claimDue(now: Date, limit: number) {
+  async claimDue(now: Date, limit: number, options: { excludeSessionIds?: readonly string[] } = {}) {
+    const excluded = new Set(options.excludeSessionIds ?? []);
     const due = this.items
       .filter((d) => d.status === 'QUEUED' && d.notBefore <= now)
+      .filter((d) => !d.sessionId || !excluded.has(d.sessionId))
       .filter((d) => this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING')
       .slice(0, limit);
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });

@@ -5,6 +5,7 @@ import type { IChatContactRepository } from '../../chat/domain/contracts/IChatCo
 import type { IChatConversationRepository } from '../../chat/domain/contracts/IChatConversationRepository';
 import type { IngestHistorySyncUseCase } from '../../chat/application/use-cases/IngestHistorySyncUseCase';
 import type { IWatchedChannelSource } from '../domain/contracts/IWatchedChannelSource';
+import type { IIncomingMediaPolicy } from '../domain/contracts/IIncomingMediaPolicy';
 import type { ISessionLeaseGate } from '../../sessions/domain/contracts/ISessionLeaseRepository';
 import { BaileysMessagingEngineAdapter } from './engines/baileys/BaileysMessagingEngineAdapter';
 import { TelegramMessagingEngineAdapter } from './engines/telegram/TelegramMessagingEngineAdapter';
@@ -26,6 +27,8 @@ export interface MessagingEngineDeps {
   leaseGate?: ISessionLeaseGate;
   /** Canais monitorados por sessão (recuperação de posts de canal no Telegram). */
   watchedChannels?: IWatchedChannelSource;
+  /** Download de mídia recebida por entitlement (`chatIngestComposition`). Ausente: regra atual. */
+  mediaPolicy?: IIncomingMediaPolicy;
 }
 
 /**
@@ -44,6 +47,7 @@ export class MessagingEngineFactory {
           deps.chatConversationRepo,
           deps.historySyncUseCase,
           deps.leaseGate,
+          deps.mediaPolicy,
         );
       case 'telegram': {
         if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) throw new Error('Telegram engine requires TELEGRAM_API_ID and TELEGRAM_API_HASH');
@@ -54,6 +58,7 @@ export class MessagingEngineFactory {
           deps.chatConversationRepo,
           deps.leaseGate,
           deps.watchedChannels,
+          deps.mediaPolicy,
         );
       }
       default:

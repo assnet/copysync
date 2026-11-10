@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { ProcessPendingCapturedOffersUseCase } from './ProcessPendingCapturedOffersUseCase';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../../../../shared/logger/logger';
+import { CAPTURE_TICK_BUDGET_MS, ProcessPendingCapturedOffersUseCase } from './ProcessPendingCapturedOffersUseCase';
 import { RegisterCapturedMessageUseCase } from './RegisterCapturedMessageUseCase';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
 import {
@@ -438,5 +439,127 @@ describe('ProcessPendingCapturedOffersUseCase — janela em todos os envios', ()
     // 19:59 em São Paulo fica; 20:01 vai para 14:00 do dia seguinte
     expect(fit(new Date('2026-10-28T22:59:00.000Z'))).toEqual(new Date('2026-10-28T22:59:00.000Z'));
     expect(fit(new Date('2026-10-28T23:01:00.000Z'))).toEqual(new Date('2026-10-29T17:00:00.000Z'));
+  });
+});
+
+describe('ProcessPendingCapturedOffersUseCase — parada cooperativa e observação', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Use case sobre os mesmos dublês do setup, com relógio e `now` controláveis. */
+  function withClock(s: Awaited<ReturnType<typeof setup>>, clock: () => number, now: () => Date = () => NOW) {
+    return new ProcessPendingCapturedOffersUseCase({
+      captured: s.captured, monitors: s.monitors, links: s.links, queue: s.queue, entitlements: new FakeEntitlements(),
+      products: s.products, texts: s.texts, images: s.images, now, clock,
+    });
+  }
+  const capture = async (s: Awaited<ReturnType<typeof setup>>, n: number) => {
+    for (let i = 0; i < n; i++) await s.msg({ externalMessageId: `m${i}` });
+  };
+
+  it('sem contexto: até três por rodada (comportamento de sempre)', async () => {
+    const s = await setup();
+    await capture(s, 4);
+    expect(await s.process.execute()).toEqual({ processed: 3 });
+    expect(s.captured.items.map((c) => c.status)).toEqual(['QUEUED', 'QUEUED', 'QUEUED', 'PENDING']);
+  });
+
+  it('sinal já abortado: nenhum claim nem enqueue', async () => {
+    const s = await setup();
+    await capture(s, 2);
+    const claim = vi.spyOn(s.captured, 'claimPending');
+    expect(await s.process.execute({ signal: AbortSignal.abort() })).toEqual({ processed: 0 });
+    expect(claim).not.toHaveBeenCalled();
+    expect(s.queue.inputs).toHaveLength(0);
+  });
+
+  it('parada durante o claim: item fica PROCESSING recuperável, sem FAILED/INTERNAL_ERROR', async () => {
+    const s = await setup();
+    await capture(s, 2);
+    const ac = new AbortController();
+    const original = s.captured.claimPending.bind(s.captured);
+    vi.spyOn(s.captured, 'claimPending').mockImplementation(async (...a) => {
+      const r = await original(...a);
+      ac.abort();
+      return r;
+    });
+    await s.process.execute({ signal: ac.signal });
+    expect(s.queue.inputs).toHaveLength(0);
+    expect(s.captured.items.map((c) => [c.status, c.reason])).toEqual([['PROCESSING', null], ['PENDING', null]]);
+  });
+
+  it('parada antes do enqueue: não cria oferta; reprocessada depois pelo stale com a mesma sourceKey e validade original', async () => {
+    const s = await setup();
+    await capture(s, 1);
+    const ac = new AbortController();
+    s.links.resolve = (href) => {
+      ac.abort();
+      return href.includes('amzn.to')
+        ? { kind: 'ok', provider: 'AMAZON', sourceUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH', affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=meu-20' }
+        : { kind: 'unsupported' };
+    };
+    await s.process.execute({ signal: ac.signal });
+    expect(s.queue.inputs).toHaveLength(0);
+    expect(s.captured.items[0]).toMatchObject({ status: 'PROCESSING', reason: null });
+
+    // Stale devolve (simulado): retoma 30 min depois sem renovar a validade da captura
+    Object.assign(s.captured.items[0]!, { status: 'PENDING', claimToken: null });
+    const later = withClock(s, Date.now, () => new Date(NOW.getTime() + 30 * 60_000));
+    expect(await later.execute()).toEqual({ processed: 1 });
+    expect(s.queue.inputs).toHaveLength(1);
+    expect(s.queue.inputs[0]).toMatchObject({ sourceKey: `captured:${s.captured.items[0]!.id}` });
+    expect(s.queue.inputs[0]!.expiresAt).toEqual(new Date(NOW.getTime() + 60 * 60_000));
+    expect(s.captured.items[0]!.status).toBe('QUEUED');
+  });
+
+  it('parada durante o enqueue: o enqueue termina e markQueued ainda acontece; nada novo depois', async () => {
+    const s = await setup();
+    await capture(s, 2);
+    const ac = new AbortController();
+    const base = s.queue.result;
+    s.queue.result = (i) => {
+      ac.abort();
+      return base(i);
+    };
+    expect(await s.process.execute({ signal: ac.signal })).toEqual({ processed: 1 });
+    expect(s.queue.inputs).toHaveLength(1);
+    expect(s.captured.items.map((c) => c.status)).toEqual(['QUEUED', 'PENDING']);
+  });
+
+  it('orçamento entre itens: estourado, não começa outra captura; o 1º item sempre roda', async () => {
+    const s = await setup();
+    await capture(s, 3);
+    let t = 0;
+    const clock = () => t;
+    s.links.resolve = (href) => {
+      t += CAPTURE_TICK_BUDGET_MS; // cada captura "gasta" o orçamento inteiro
+      return href.includes('amzn.to')
+        ? { kind: 'ok', provider: 'AMAZON', sourceUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH', affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=meu-20' }
+        : { kind: 'unsupported' };
+    };
+    expect(await withClock(s, clock).execute()).toEqual({ processed: 1 });
+  });
+
+  it('log por item: idade e duração pelo relógio injetado, sem texto, link nem cupom', async () => {
+    const s = await setup();
+    await capture(s, 1);
+    const info = vi.spyOn(logger, 'info');
+    let t = 1_000;
+    const uc = withClock(s, () => (t += 250), () => new Date(NOW.getTime() + 90_000));
+    await uc.execute();
+    const call = info.mock.calls.find((c) => c[1] === 'captured offer observed');
+    expect(call?.[0]).toMatchObject({ status: 'QUEUED', reason: null, captureAgeMs: 90_000, tenantId: TENANT, sessionId: SESSION });
+    expect((call?.[0] as { durationMs: number }).durationMs).toBeGreaterThan(0);
+    const dump = JSON.stringify(info.mock.calls);
+    for (const secret of ['http', 'PROMO10', 'Fone', 'concorrente', 'amazon']) expect(dump).not.toContain(secret);
+  });
+
+  it('log de falha também só leva o código', async () => {
+    const s = await setup();
+    s.links.resolve = () => ({ kind: 'credential_missing', provider: 'AMAZON' });
+    await capture(s, 1);
+    const info = vi.spyOn(logger, 'info');
+    await s.process.execute();
+    const call = info.mock.calls.find((c) => c[1] === 'captured offer observed');
+    expect(call?.[0]).toMatchObject({ status: 'SKIPPED', reason: 'CREDENTIAL_MISSING' });
   });
 });

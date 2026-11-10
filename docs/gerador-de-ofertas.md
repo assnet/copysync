@@ -149,6 +149,11 @@ Entitlement `offer_generations_per_day`: LITE 5, PRO 20, MAX ilimitado (decisão
   agora + seconds + 1 s`, mesma vez da sessão) em vez de falhar; espera ≥ 6 h → `FAILED`. Detalhes:
   `sessoes-telegram.md` §5.
 - Flag **`OFFER_DISPATCH_WORKER_ENABLED`** (padrão `false`; ligar só na Render — `api/.env` e `.env.dev` apontam para o banco real).
+- Flag **`OFFER_WORKER_INDEPENDENT_STAGES_ENABLED`** (padrão `false` = tick sequencial envio → capturas). `true`:
+  envio e capturas do monitoramento em slots independentes no mesmo timer de 2 s (envio preso não segura captura);
+  `stop()` usa o orçamento restante do shutdown sem invadir a reserva de sockets/flush. Composição pura em
+  `api/src/app/offerWorkerComposition.ts`; `http` nunca roda. Ligar só na Render, após o gate de produção da entrega A
+  (`.specs/features/monitoring-queue-isolation/validation.md`); rollback = `false` + restart.
 
 ### Limites conhecidos
 

@@ -39,6 +39,24 @@ describe('beat', () => {
   });
 });
 
+describe('recursos (MQ-21)', () => {
+  it('grava e lê cpuPct/eventLoopP99Ms; atualiza no upsert', async () => {
+    await repo.beat({ workerId: 'w1', ...base, cpuPct: 12.34, eventLoopP99Ms: 21.06 });
+    expect((await repo.listAlive(ALIVE_MS))[0]).toMatchObject({ cpuPct: 12.3, eventLoopP99Ms: 21.1 });
+    await repo.beat({ workerId: 'w1', ...base, cpuPct: null, eventLoopP99Ms: 250 });
+    expect((await repo.listAlive(ALIVE_MS))[0]).toMatchObject({ cpuPct: null, eventLoopP99Ms: 250 });
+  });
+
+  it('colunas nullable: imagem antiga grava sem elas e a leitura devolve null', async () => {
+    await prisma.$executeRaw`
+      INSERT INTO "worker_heartbeats" ("workerId", "role", "sessions", "pendingLogins", "maxSessions", "rssMb", "seenAt")
+      VALUES ('old', 'worker', 1, 0, 40, 100, now() AT TIME ZONE 'UTC')`;
+    await repo.beat({ workerId: 'new', ...base });
+    const rows = await repo.listAlive(ALIVE_MS);
+    expect(rows.map((r) => [r.workerId, r.cpuPct, r.eventLoopP99Ms])).toEqual([['new', null, null], ['old', null, null]]);
+  });
+});
+
 describe('listAlive', () => {
   it('exclui batimento mais velho que maxAgeMs', async () => {
     await repo.beat({ workerId: 'w-alive', ...base });

@@ -1,4 +1,5 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
+import type { IChatEntitlementGate } from '../../domain/contracts/IChatEntitlementGate';
 import { logger } from '../../../../shared/logger/logger';
 import type { IChatConversationRepository } from '../../domain/contracts/IChatConversationRepository';
 import { chatWsPublisher } from '../ws/ChatWebSocketPublisher';
@@ -16,9 +17,11 @@ type GroupAvatarUpdatedEvent = Extract<InternalMessagingEvent, { type: 'GROUP_AV
  */
 export function registerChatGroupAvatarListener(
   conversationRepo: IChatConversationRepository,
+  gate?: IChatEntitlementGate,
 ): void {
   internalEventBus.on<GroupAvatarUpdatedEvent>('GROUP_AVATAR_UPDATED', async (payload) => {
     try {
+      if (gate && !(await gate.isChatEnabled(payload.tenantId))) return; // tenant sem chat
       await conversationRepo.updateGroupAvatarUrlByGroupJid(
         payload.groupJid,
         payload.tenantId,

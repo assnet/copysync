@@ -16,6 +16,7 @@
  * Login: `client.start` (telefone → código → senha 2FA) ou `signInUserWithQrCode`, ambos em
  * background esperando o operador por `Deferred`s (ver `TelegramSessionRegistry.PendingLogin`).
  */
+import { CURRENT_RULE_MEDIA_POLICY, type IIncomingMediaPolicy } from '../../../domain/contracts/IIncomingMediaPolicy';
 import { Api, TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import { NewMessage, type NewMessageEvent } from 'telegram/events';
@@ -233,6 +234,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
     private readonly leaseGate: ISessionLeaseGate = { acquire: async () => true },
     /** Canais monitorados da sessão, para a recuperação de posts que o Telegram não empurrou. */
     private readonly watchedChannels?: IWatchedChannelSource,
+    /** Download de mídia recebida (entrega D). Padrão: regra atual (`shouldDownloadMedia`). */
+    private readonly mediaPolicy: IIncomingMediaPolicy = CURRENT_RULE_MEDIA_POLICY,
   ) {}
 
   // ── Ciclo de vida ──────────────────────────────────────────────────────────
@@ -712,7 +715,10 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       : null;
 
     const info = mediaInfo(msg.media ?? undefined);
-    const mediaUrl = msgType !== ChatMessageType.TEXT && await this.shouldDownloadMedia(sessionId, entry.tenantId, isGroup ? chatId : null)
+    const mediaUrl = msgType !== ChatMessageType.TEXT && await this.mediaPolicy.shouldDownload(
+      { tenantId: entry.tenantId, sessionId, isGroup, groupJid: isGroup ? chatId : null, msgType, fromMe },
+      () => this.shouldDownloadMedia(sessionId, entry.tenantId, isGroup ? chatId : null),
+    )
       ? await this.downloadInboundMedia(sessionId, entry, msg, externalMessageId, info)
       : null;
 

@@ -22,6 +22,16 @@ describe('OutboundEchoRegistry', () => {
     expect(registro.consume('s1', 'm1')).toBe(false);
   });
 
+  it('has espia sem retirar o id; respeita o TTL', () => {
+    const { registro, avancar } = criarRegistro(3, 1_000);
+    registro.register('s1', 'm1');
+    expect(registro.has('s1', 'm1')).toBe(true);
+    expect(registro.has('s1', 'm1')).toBe(true);
+    expect(registro.has('s2', 'm1')).toBe(false);
+    avancar(1_001);
+    expect(registro.has('s1', 'm1')).toBe(false);
+  });
+
   it('não reconhece id nunca registrado nem id de outra sessão', () => {
     const { registro } = criarRegistro();
     registro.register('s1', 'm1');
