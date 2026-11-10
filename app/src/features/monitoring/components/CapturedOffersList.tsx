@@ -577,6 +577,7 @@ export function CapturedOffersList({ sessionId, onConfigureGroups }: CapturedOff
     <MonitorCard
       icon={Inbox}
       tone="info"
+      collapseKey="captured"
       title={t.title}
       subtitle={t.subtitle}
       action={

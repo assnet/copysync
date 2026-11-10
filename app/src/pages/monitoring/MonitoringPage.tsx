@@ -298,7 +298,7 @@ export function MonitoringPage() {
             sessionId={selected.id}
             onConfigureGroups={config && config.monitoredGroups.length === 0 ? () => setPicker('monitored') : undefined}
           />
-          <SendQueuePanel sessionId={selected.id} privacy={PRIVACY} />
+          <SendQueuePanel sessionId={selected.id} privacy={PRIVACY} collapseKey="monitoring.card.sendQueue" />
 
           {config && picker === 'monitored' && (
             <GroupPickerDialog

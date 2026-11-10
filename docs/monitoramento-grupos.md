@@ -282,7 +282,7 @@ com "Marcar todos" ligado → nota discreta (no Telegram não existe). Não soma
   horário" fora do MAX. Opção exclusiva mostra sempre os selos dos planos que a incluem
   (`PlanAvailabilityBadges from="pro|max"`, prop `badge` do `ToggleOption`) e entra nos benefícios do
   `plans/catalog.ts` e na tabela da assinatura (`subscription/strings.ts`). Cards Horário, Envio,
-  Depois da captura e Texto da oferta nascem **recolhidos** (`MonitorCard collapseKey`) e lembram aberto/fechado
+  Depois da captura, Texto da oferta, Ofertas capturadas e Fila de envio nascem **recolhidos** (`MonitorCard collapseKey`) e lembram aberto/fechado
   por navegador (`ui.monitoring.card.<chave>`, `usePersistedState` escopo `browser`). "Formato da imagem"
   (`ImageModePicker`, `GroupMonitorConfig.imageMode`, padrão `LINK_PREVIEW`; `MEDIA` desligado, ver
   `docs/mensagens-previa-de-link.md`) é copiado para cada `Offer` criada; `LINK_PREVIEW` envia texto + cartão de prévia, com título =

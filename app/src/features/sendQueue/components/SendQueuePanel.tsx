@@ -51,13 +51,15 @@ interface Props {
   /** Oferta já aberta: não mostra "Abrir" para ela. */
   currentOfferId?: string | null;
   privacy?: SendQueuePrivacyFlags;
+  /** Card recolhível com memória por navegador (chave de `usePersistedState`). Ausente = sempre aberto. */
+  collapseKey?: string;
 }
 
 /**
  * Fila de envio lida do servidor: por sessão, o que está saindo, o que aguarda e o que saiu hoje.
  * Igual em qualquer aba ou navegador; o envio segue no servidor com o painel fechado.
  */
-export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, privacy = OFFER_FLAGS }: Props) {
+export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, privacy = OFFER_FLAGS, collapseKey }: Props) {
   const { data, loading, failed, refresh, patch } = useSendQueue(sessionId);
   const sessions = (data?.sessions ?? []).filter((s) => s.running || s.waiting.length > 0 || s.recent.length > 0);
   const control = useOfferControl(refresh);
@@ -68,6 +70,7 @@ export function SendQueuePanel({ sessionId, onOpenOffer, currentOfferId = null, 
     <SectionCard
       title={t.title}
       subtitle={t.subtitle}
+      collapseKey={collapseKey}
       // Celular: título/descrição em cima e ações embaixo (lado a lado a descrição vira 1 palavra por linha)
       headerSx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: { xs: 1.5, sm: 2 } }}
       action={

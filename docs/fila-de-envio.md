@@ -165,6 +165,8 @@ explícito ignora a janela. Padrão (0–1440, 127) = sem filtro. Ver `docs/grup
 
 ## 4. Painel
 
+- No Monitoramento a fila nasce recolhida (`collapseKey="monitoring.card.sendQueue"`, memória por navegador); no
+  gerador fica sempre aberta.
 - `SendQueuePanel` no fim do Gerador de ofertas, também com o assistente de configuração aberto
   (tenant sem gerador configurado ainda vê a fila). Por sessão: chips de contagem com tooltip, alerta
   de sessão desconectada, "Enviando agora", `CooldownBar` até o próximo (`laneCooldown`, relógio do

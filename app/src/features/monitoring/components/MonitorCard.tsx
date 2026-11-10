@@ -86,7 +86,7 @@ function MonitorCardFrame({
             onClick={onToggle}
             aria-expanded={open}
             aria-controls={bodyId}
-            sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 1.5, borderRadius: 2, m: -0.5, p: 0.5 }}
+            sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 1.5, borderRadius: 2, m: -0.5, p: 0.5, color: 'text.primary' }}
           >
             {heading}
             <Box

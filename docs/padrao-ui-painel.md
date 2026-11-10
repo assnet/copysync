@@ -70,6 +70,15 @@ compartilhar a tela sem expor clientes, grupos e produtos.
 Limites: proteção **visual**; o dado continua no DOM e na API. Não substitui permissão.
 Telas cobertas: Painel/menu (e-mail e papel do usuário), Chat (miniaturas e textos da prévia de link: título, descrição e domínio, com o tooltip do domínio desligado; o corpo da mensagem fica fora), Gerador de ofertas (sessão, fotos e nomes de grupos, público-alvo, imagens e texto das ofertas), Monitoramento (sessão e foto da sessão, fotos e nomes de grupos, palavras-chave, texto e imagens das ofertas capturadas), Gestor de Links (link público e apelido, sessão, fotos e nomes de grupos, link de convite dos grupos) e Página de Ofertas (nome da página, foto de perfil, capa, endereço/subdomínio, título e imagens das ofertas; o preview inteiro borra se qualquer flag da tela estiver ligada). Componente reutilizado entre telas recebe as flags da tela que o hospeda (ex.: `SendQueuePanel`, `GroupChip`).
 
+## Card recolhível
+
+`SectionCard` e `MonitorCard` aceitam `collapseKey`: nasce recolhido, título/descrição viram botão
+(`aria-expanded`, chevron à direita) e o aberto/fechado fica em `usePersistedState` escopo `browser`
+(preferência de tela, igual para todas as sessões). A `action` do cabeçalho segue clicável recolhido.
+Chaves em uso: `monitoring.card.{window,dispatch,after,text,captured}` (MonitorCard prefixa
+`monitoring.card.`) e `monitoring.card.sendQueue` (SendQueuePanel → SectionCard, chave completa).
+Card recolhível novo usa a prop; não criar acordeão próprio por tela.
+
 ## ToggleOption
 
 - Card de borda fina; a linha inteira é `<label>` do switch (alvo ≥ 44 px, clique em qualquer

@@ -84,6 +84,7 @@ describe('MonitoringPage', () => {
   it('mostra os três cards, a configuração e as ofertas capturadas da 1ª sessão', async () => {
     // Card "Horário de postagem" é recolhível (nasce fechado): abre pela preferência do navegador
     localStorage.setItem('ui.monitoring.card.window', JSON.stringify({ v: 0, d: true }));
+    localStorage.setItem('ui.monitoring.card.captured', JSON.stringify({ v: 0, d: true }));
     renderAt();
     expect(await screen.findByText('Meu Grupo')).toBeInTheDocument();
     expect(getConfig).toHaveBeenCalledWith('s1');

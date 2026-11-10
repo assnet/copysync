@@ -23,6 +23,9 @@ const items = [
 
 beforeEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
+  // Card nasce recolhido; os testes de lista partem dele aberto (o recolher tem teste próprio)
+  localStorage.setItem('ui.monitoring.card.captured', JSON.stringify({ v: 0, d: true }));
   listCaptured.mockReset();
   listCaptured.mockResolvedValue({ items, nextCursor: null });
 });
@@ -88,5 +91,15 @@ describe('CapturedOffersList', () => {
     await screen.findByText('Oferta na fila');
     const all = screen.getByRole('button', { name: 'Todas: 3 ofertas nas carregadas' });
     expect(within(all).getByText('3+')).toBeInTheDocument();
+  });
+
+  it('card nasce recolhido; clique no título abre e lembra no navegador', async () => {
+    localStorage.clear();
+    render(<CapturedOffersList sessionId="s1" />);
+    const header = screen.getByRole('button', { name: /Ofertas capturadas/ });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(JSON.parse(localStorage.getItem('ui.monitoring.card.captured')!)).toEqual({ v: 0, d: true });
   });
 });
