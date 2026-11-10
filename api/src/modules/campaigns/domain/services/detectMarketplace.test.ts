@@ -14,6 +14,8 @@ describe('detectMarketplace', () => {
     expect(detectMarketplace(u('https://www.amazon.com.br/dp/X'))).toBe('AMAZON');
     expect(detectMarketplace(u('https://amzn.to/abc'))).toBe('AMAZON');
     expect(detectMarketplace(u('https://a.co/d/abc'))).toBe('AMAZON');
+    expect(detectMarketplace(u('https://link.amazon/B00hBgkzm'))).toBe('AMAZON');
+    expect(detectMarketplace(u('https://amzlinks.in/B00hBgkzm'))).toBe('AMAZON');
   });
 
   it('ignora caixa e ponto final do host', () => {

@@ -37,6 +37,18 @@ describe('HttpShortLinkExpander', () => {
     expect(fn.mock.calls.map((c) => c[1].method)).toEqual(['HEAD', 'GET']);
   });
 
+  it('link.amazon: HEAD 404 → GET, salta por amzlinks.in até amazon.com.br', async () => {
+    const final = 'https://www.amazon.com.br/dp/B07643MPGS?tag=x-20';
+    const fn = stubFetch(async (url, init) => {
+      if (url.hostname === 'link.amazon') return init.method === 'HEAD' ? new Response(null, { status: 404 }) : redirect('https://amzlinks.in/B00hBgkzm');
+      if (url.hostname === 'amzlinks.in') return redirect(final);
+      return new Response(null, { status: 200 });
+    });
+    const out = await new HttpShortLinkExpander().expand(new URL('https://link.amazon/B00hBgkzm'));
+    expect(out.href).toBe(final);
+    expect(fn.mock.calls.slice(0, 2).map((c) => c[1].method)).toEqual(['HEAD', 'GET']);
+  });
+
   it('redirect para host fora da allowlist é recusado sem ser buscado', async () => {
     const fn = stubFetch(async (url) => (url.href === SHORT.href ? redirect('https://evil.example.com/p') : new Response(null, { status: 200 })));
     await expect(new HttpShortLinkExpander().expand(SHORT)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
@@ -65,7 +77,7 @@ describe('HttpShortLinkExpander', () => {
   });
 
   it('isShortLink: encurtadores das três lojas, inclusive br.shp.ee; produto não é curto', () => {
-    for (const h of ['https://br.shp.ee/8pq7D1kb', 'https://shope.ee/x', 'https://s.shopee.com.br/x', 'https://meli.la/x', 'https://amzn.to/x', 'https://a.co/d/x', 'https://mercadolivre.com/sec/x', 'https://click1.mercadolivre.com.br/mclics/clicks/external/MLB/count?x=1']) {
+    for (const h of ['https://br.shp.ee/8pq7D1kb', 'https://shope.ee/x', 'https://s.shopee.com.br/x', 'https://meli.la/x', 'https://amzn.to/x', 'https://a.co/d/x', 'https://link.amazon/x', 'https://amzlinks.in/x', 'https://mercadolivre.com/sec/x', 'https://click1.mercadolivre.com.br/mclics/clicks/external/MLB/count?x=1']) {
       expect(isShortLink(new URL(h))).toBe(true);
     }
     expect(isShortLink(new URL(PRODUCT))).toBe(false);

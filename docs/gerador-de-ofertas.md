@@ -48,7 +48,9 @@ não produto: `HttpProductPageReader` usa `parseMercadoLivreSocialPage` (1º `po
 Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos
 (`detectMarketplace.ts`, subdomínio entra por sufixo): `shopee.com.br`, `shope.ee`, `shp.ee` (`br.shp.ee`, encurtador
 atual do app/painel Shopee BR), `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`,
-`amazon.com.br`, `amzn.to`, `a.co` (Compartilhar do app Amazon; só vale se o redirect cair em `amazon.com.br`).
+`amazon.com.br`, `amzn.to`, `a.co` (Compartilhar do app Amazon), `link.amazon` (gTLD da Amazon, salta por `amzlinks.in`)
+e `amzlinks.in`; encurtador só vale se o redirect cair em `amazon.com.br`. `link.amazon` responde 404 ao HEAD: o expansor
+repete com GET sempre que o HEAD vier ≥ 400.
 Encurtadores que vão à rede (`isShortLink`): os mesmos curtos + `mercadolivre.com/sec|social` + `click1.mercadolivre.com.br`
 (rastreio). Pesquisa de variantes 2026-11-02: `collshp.com` (coleção Shopee, vários itens), `invl.io` (rede Involve Asia),
 `lista.`/`ofertas.mercadolivre` (busca/ofertas, ML proíbe afiliar), `amzn.eu` (Europa) ficam fora de propósito.

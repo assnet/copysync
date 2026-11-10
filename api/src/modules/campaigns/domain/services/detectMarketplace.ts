@@ -5,8 +5,9 @@ const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> 
   // `shp.ee` cobre `br.shp.ee` (encurtador atual do app/painel de afiliados Shopee BR)
   SHOPEE: ['shopee.com.br', 'shope.ee', 'shp.ee'],
   MERCADO_LIVRE: ['mercadolivre.com.br', 'mercadolivre.com', 'mercadolibre.com', 'meli.la'],
-  // `a.co` = botão Compartilhar do app/site Amazon; só passa se o redirect cair em `amazon.com.br`
-  AMAZON: ['amazon.com.br', 'amzn.to', 'a.co'],
+  // `a.co` = botão Compartilhar do app/site Amazon; `link.amazon` (gTLD da Amazon) salta por
+  // `amzlinks.in` até `amazon.com.br`. Encurtadores só valem se o redirect cair em `amazon.com.br`
+  AMAZON: ['amazon.com.br', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in'],
 };
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;

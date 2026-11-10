@@ -11,7 +11,7 @@ const TIMEOUT_MS = 8_000;
 const MAX_HOPS = 5;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-const SHORT_HOSTS = new Set(['s.shopee.com.br', 'shope.ee', 'shp.ee', 'br.shp.ee', 'amzn.to', 'a.co', 'meli.la', 'click1.mercadolivre.com.br']);
+const SHORT_HOSTS = new Set(['s.shopee.com.br', 'shope.ee', 'shp.ee', 'br.shp.ee', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in', 'meli.la', 'click1.mercadolivre.com.br']);
 
 /** Só link curto conhecido vai para a rede; o resto já é a URL do produto. */
 export function isShortLink(url: URL): boolean {
@@ -49,7 +49,8 @@ export class HttpShortLinkExpander implements IShortLinkExpander {
   private async request(url: URL, signal: AbortSignal): Promise<Response> {
     try {
       let res = await this.send(url, 'HEAD', signal);
-      if (res.status === 405 || res.status === 501) res = await this.send(url, 'GET', signal);
+      // Encurtador que só responde a GET (`link.amazon` dá 404 no HEAD): erro no HEAD → tenta GET
+      if (res.status >= 400) res = await this.send(url, 'GET', signal);
       return res;
     } catch (err) {
       if (err instanceof OfferUrlUnsupportedError) throw err;
