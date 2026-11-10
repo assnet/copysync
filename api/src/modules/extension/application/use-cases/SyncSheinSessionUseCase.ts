@@ -37,7 +37,7 @@ export interface SyncSheinSessionDeps {
   entitlements: Pick<IExtensionEntitlementReader, 'hasMarketplace'>;
   profile: { execute(userId: string, mlTenantId: string): Promise<ExtensionProfile> };
   upsertSession: { execute(input: UpsertAffiliateSessionInput): Promise<AffiliateCredential> };
-  sessions: Pick<IExtensionSessionRepository, 'hasConsent'>;
+  sessions: Pick<IExtensionSessionRepository, 'hasConsent' | 'hasAnyConsentForTenant'>;
   deleteCredential: { execute(input: AffiliateCredentialKeyInput): Promise<void> };
 }
 
@@ -83,8 +83,12 @@ export class SyncSheinSessionUseCase {
       sessionIdentifier: memberId,
     });
 
-    // 6. "Desconectar" no meio: o consentimento sumiu — desfaz a gravação
+    // 6. "Desconectar" no meio: o consentimento desta sessão sumiu. Só desfaz a gravação se
+    // nenhuma outra instalação do tenant ainda consente (a credencial é do tenant, não da sessão).
     if (!(await this.deps.sessions.hasConsent(sessionId, 'SHEIN'))) {
+      if (await this.deps.sessions.hasAnyConsentForTenant(tenantId, 'SHEIN')) {
+        throw new MarketplaceConsentRequiredError('SHEIN');
+      }
       try {
         await this.deps.deleteCredential.execute({ tenantId, userId, provider: 'SHEIN' });
       } catch (err) {

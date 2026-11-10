@@ -131,6 +131,14 @@ export class PrismaExtensionSessionRepository implements IExtensionSessionReposi
     return count > 0;
   }
 
+  async hasAnyConsentForTenant(mlTenantId: string, marketplace: ExtensionConsentMarketplace): Promise<boolean> {
+    const row = await this.prisma.extensionSession.findFirst({
+      where: { mlTenantId, revokedAt: null, [CONSENT_COLUMN[marketplace]]: { not: null } },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async deleteExpiredBefore(date: Date): Promise<number> {
     const result = await this.prisma.extensionSession.deleteMany({
       where: { absoluteExpiresAt: { lt: date } },

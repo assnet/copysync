@@ -20,9 +20,8 @@ import {
   AffiliateCredentialInvalidError,
   UseMarketplaceDisconnectError,
 } from '../../../../shared/errors/internal/AffiliateCredentialErrors';
-import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { PrismaPlanEntitlementPresetRepository } from '../../../tenants/infrastructure/repositories/PrismaPlanEntitlementPresetRepository';
-import { prisma } from '../../../../shared/database/prisma.client';
+import { createAffiliateEntitlementReader } from '../../infrastructure/affiliateCredentialEntitlements';
 import { AcceptMarketplaceRiskUseCase } from '../../application/use-cases/AcceptMarketplaceRiskUseCase';
 import { MarketplaceRiskPresenter } from '../presenters/MarketplaceRiskPresenter';
 import { acceptMarketplaceRiskBodySchema, acceptMarketplaceRiskResponse } from '../schemas/marketplaceRisk.schema';
@@ -45,7 +44,7 @@ const cipher = () => SecretCipherFactory.get();
 
 const listUseCase = new ListAffiliateCredentialsUseCase(
   repo,
-  new PrismaEntitlementReader(prisma),
+  createAffiliateEntitlementReader(),
   new PrismaPlanEntitlementPresetRepository(),
   createMarketplaceRiskAcceptanceRepository(),
 );

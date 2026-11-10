@@ -16,7 +16,7 @@ function riskRepo(accepted = true): IMarketplaceRiskAcceptanceRepository {
   return { findCurrent: vi.fn(async () => (accepted ? acceptance : null)), create: vi.fn(), listByTenant: vi.fn() };
 }
 
-function deps(over: Partial<{ consentAfter: boolean; plan: boolean; accepted: boolean; tenants: string[] }> = {}) {
+function deps(over: Partial<{ consentAfter: boolean; otherConsent: boolean; plan: boolean; accepted: boolean; tenants: string[] }> = {}) {
   const d = {
     riskAcceptances: riskRepo(over.accepted ?? true),
     entitlements: { hasMarketplace: vi.fn(async () => over.plan ?? true) },
@@ -27,7 +27,10 @@ function deps(over: Partial<{ consentAfter: boolean; plan: boolean; accepted: bo
       })),
     },
     upsertSession: { execute: vi.fn(async (i: { sessionIdentifier?: string }) => ({ publicIdentifier: i.sessionIdentifier ?? null }) as never) },
-    sessions: { hasConsent: vi.fn(async () => over.consentAfter ?? true) },
+    sessions: {
+      hasConsent: vi.fn(async () => over.consentAfter ?? true),
+      hasAnyConsentForTenant: vi.fn(async () => over.otherConsent ?? false),
+    },
     deleteCredential: { execute: vi.fn(async () => undefined) },
   } satisfies SyncSheinSessionDeps;
   return d;
@@ -79,7 +82,21 @@ describe('SyncSheinSessionUseCase', () => {
   it('consentimento revogado entre a checagem e o upsert: apaga a credencial e 403', async () => {
     const d = deps({ consentAfter: false });
     expect(await run(d)).toMatchObject({ statusCode: 403, code: 'SHEIN_CONSENT_REQUIRED' });
+    expect(d.sessions.hasAnyConsentForTenant).toHaveBeenCalledWith('t1', 'SHEIN');
     expect(d.deleteCredential.execute).toHaveBeenCalledWith({ tenantId: 't1', userId: 'u1', provider: 'SHEIN' });
+  });
+
+  it('consentimento desta sessão revogado, mas outra instalação do tenant consente: mantém a credencial e 403', async () => {
+    const d = deps({ consentAfter: false, otherConsent: true });
+    expect(await run(d)).toMatchObject({ statusCode: 403, code: 'SHEIN_CONSENT_REQUIRED' });
+    expect(d.sessions.hasAnyConsentForTenant).toHaveBeenCalledWith('t1', 'SHEIN');
+    expect(d.deleteCredential.execute).not.toHaveBeenCalled();
+  });
+
+  it('consentimento mantido: não consulta as outras sessões', async () => {
+    const d = deps();
+    await run(d);
+    expect(d.sessions.hasAnyConsentForTenant).not.toHaveBeenCalled();
   });
 
   it('revogado e credencial já apagada pelo "Desconectar": ainda 403', async () => {

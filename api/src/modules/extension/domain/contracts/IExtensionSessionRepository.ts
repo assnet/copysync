@@ -41,5 +41,7 @@ export interface IExtensionSessionRepository {
   ): Promise<boolean>;
   /** Fresh read (not the auth-hook snapshot): consent still granted and session not revoked. */
   hasConsent(sessionId: string, marketplace: ExtensionConsentMarketplace): Promise<boolean>;
+  /** Fresh read: some non-revoked session bound to the tenant still has the marketplace consent. */
+  hasAnyConsentForTenant(mlTenantId: string, marketplace: ExtensionConsentMarketplace): Promise<boolean>;
   deleteExpiredBefore(date: Date): Promise<number>;
 }

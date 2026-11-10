@@ -12,6 +12,9 @@ import { MARKETPLACE_RISK_NOTICE_VERSION } from '../../../integrations/domain/se
 import type { AffiliateCredentialRecord, UpsertAffiliateSessionRecord } from '../../../integrations/domain/contracts/AffiliateCredentialRecords';
 import { PrismaExtensionSessionRepository } from '../../infrastructure/repositories/PrismaExtensionSessionRepository';
 import type { ExtensionSession } from '../../domain/entities/ExtensionSession';
+import { IssueExtensionSessionUseCase } from '../../application/use-cases/IssueExtensionSessionUseCase';
+import type { IExtensionInstallationRepository } from '../../domain/contracts/IExtensionInstallationRepository';
+import type { CreateExtensionSessionInput } from '../../domain/contracts/IExtensionSessionRepository';
 import { extensionRoutes } from './extension.routes';
 
 /*
@@ -61,9 +64,11 @@ const EXT_HEADERS = { 'x-client': 'extension', 'x-installation-id': INSTALL, coo
 let app: FastifyInstance;
 let state: {
   session: ExtensionSession;
-  plan: boolean;
+  /** `marketplace_shein_enabled`: null = chave ausente no tenant. */
+  plan: boolean | null;
   accepted: boolean;
   consentNow: boolean;
+  otherConsent: boolean;
   credentials: Map<string, AffiliateCredentialRecord>;
 };
 
@@ -91,12 +96,13 @@ function credentialFrom(i: UpsertAffiliateSessionRecord, prev?: AffiliateCredent
 
 beforeEach(async () => {
   db.memberships = [{ tenantId: 't1', role: 'ADMIN', tenant: { name: 'Loja', slug: 'loja', status: 'ACTIVE' } }];
-  state = { session: extSession(), plan: true, accepted: true, consentNow: true, credentials: new Map() };
+  state = { session: extSession(), plan: true, accepted: true, consentNow: true, otherConsent: false, credentials: new Map() };
 
   vi.spyOn(SecretCipherFactory, 'get').mockReturnValue(cipher);
   vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
   vi.spyOn(PrismaExtensionSessionRepository.prototype, 'findByTokenHash').mockImplementation(async () => state.session);
   vi.spyOn(PrismaExtensionSessionRepository.prototype, 'hasConsent').mockImplementation(async () => state.consentNow);
+  vi.spyOn(PrismaExtensionSessionRepository.prototype, 'hasAnyConsentForTenant').mockImplementation(async () => state.otherConsent);
   vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockImplementation(async (_t, key) =>
     key === 'marketplace_shein_enabled' ? state.plan : true);
   vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockImplementation(async () =>
@@ -124,12 +130,16 @@ afterEach(async () => {
   await app.close();
 });
 
-const sync = (cookies: Record<string, unknown> = { AT, memberId: MEMBER }, headers: Record<string, string> = EXT_HEADERS) =>
+const sync = (
+  cookies: Record<string, unknown> = { AT, memberId: MEMBER },
+  headers: Record<string, string> = EXT_HEADERS,
+  capturedAt = '2026-11-10T12:00:00.000Z',
+) =>
   app.inject({
     method: 'PUT',
     url: '/api/extension/marketplaces/shein/session',
     headers,
-    payload: { cookies, capturedAt: '2026-11-10T12:00:00.000Z' },
+    payload: { cookies, capturedAt },
   });
 
 const storedCookies = () => {
@@ -200,6 +210,21 @@ describe('PUT /marketplaces/shein/session', () => {
     expect(state.credentials.has('SHEIN')).toBe(false);
   });
 
+  it('consentimento desta sessão revogado, outra instalação do tenant ainda consente → credencial mantida e 403', async () => {
+    await sync();
+    state.consentNow = false;
+    state.otherConsent = true;
+    const res = await sync();
+    expect([res.statusCode, res.json().error.code]).toEqual([403, 'SHEIN_CONSENT_REQUIRED']);
+    expect(state.credentials.has('SHEIN')).toBe(true);
+  });
+
+  it.each(['agora', '2026-11-10', '2026-13-40T99:00:00Z'])('capturedAt fora do ISO 8601 (%s) → 400, nada gravado', async (v) => {
+    const res = await sync(undefined, undefined, v);
+    expect(res.statusCode).toBe(400);
+    expect(state.credentials.size).toBe(0);
+  });
+
   it('troca de conta substitui o ID', async () => {
     await sync();
     const other = '9876543210';
@@ -219,9 +244,46 @@ describe('PUT /marketplaces/shein/session', () => {
     expect(audit).not.toHaveBeenCalled();
   });
 
-  it('re-vínculo a outro tenant (sheinConsentAt zerado) → sync volta a dar 403', async () => {
-    state.session = extSession({ mlTenantId: 't2', sheinConsentAt: null });
-    expect((await sync()).json().error.code).toBe('SHEIN_CONSENT_REQUIRED');
+  it('re-vínculo a outro tenant pelo IssueExtensionSessionUseCase zera sheinConsentAt → sync volta a dar 403', async () => {
+    expect((await sync()).statusCode).toBe(200); // consentido em t1
+    const issued: CreateExtensionSessionInput[] = [];
+    // Fake do upsert de `issue()`: mesma linha (user, installation), campos da emissão por cima.
+    const sessionRepo = {
+      issue: vi.fn(async (i: CreateExtensionSessionInput) => {
+        issued.push(i);
+        state.session = { ...state.session, ...i, prevTokenHash: null, prevValidUntil: null, revokedAt: null };
+        return state.session;
+      }),
+    };
+    const installations = {
+      findById: vi.fn(async () => ({ installationId: INSTALL, userId: 'u1' })),
+      upsert: vi.fn(async () => undefined),
+    } as unknown as IExtensionInstallationRepository;
+    const issue = new IssueExtensionSessionUseCase(
+      sessionRepo as never, installations, { hasMarketplaceExtension: async () => true },
+    );
+    await issue.execute({
+      userId: 'u1', mlTenantId: 't2', installationId: INSTALL, extVersion: '3.4.0',
+      extensionId: 'nokcbnoicaebghagbhlfcbepheohdgnd', channel: 'cs-ext', mlSessionConsent: false,
+    });
+    expect(issued).toHaveLength(1);
+    expect(issued[0]).toMatchObject({ mlTenantId: 't2', sheinConsentAt: null });
+    expect(state.session).toMatchObject({ id: 's1', mlTenantId: 't2', sheinConsentAt: null });
+    const res = await sync();
+    expect([res.statusCode, res.json().error.code]).toEqual([403, 'SHEIN_CONSENT_REQUIRED']);
+  });
+});
+
+describe('GET /me — permissões do tenant (GetExtensionProfileUseCase)', () => {
+  it.each([
+    ['ligado', true, ['ml.session', 'shein.session']],
+    ['desligado', false, ['ml.session']],
+    ['ausente', null, ['ml.session']],
+  ] as const)('marketplace_shein_enabled %s → %j', async (_n, plan, permissions) => {
+    state.plan = plan;
+    const res = await app.inject({ method: 'GET', url: '/api/extension/me', headers: EXT_HEADERS });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.tenants).toEqual([expect.objectContaining({ id: 't1', permissions })]);
   });
 });
 

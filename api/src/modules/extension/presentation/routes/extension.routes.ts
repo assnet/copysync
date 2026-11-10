@@ -284,7 +284,8 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
               properties: { AT: sheinCookieSchema, memberId: sheinCookieSchema },
               additionalProperties: false,
             },
-            capturedAt: { type: 'string', maxLength: 64 },
+            // `format` validado pelo ajv-formats que o @fastify/ajv-compiler já registra.
+            capturedAt: { type: 'string', format: 'date-time', maxLength: 64 },
           },
           additionalProperties: false,
         },

@@ -8,7 +8,7 @@ import { PrismaExtensionInstallationRepository } from './PrismaExtensionInstalla
 const repo = new PrismaExtensionSessionRepository(prisma);
 const stamp = Date.now();
 const inst = randomUUID();
-const ids = { t1: '', t2: '', user: '' };
+const ids = { t1: '', t2: '', user: '', other: '' };
 const later = (h: number) => new Date(Date.now() + h * 3600_000);
 
 const issue = (mlTenantId: string, mlConsentAt: Date | null) =>
@@ -21,15 +21,16 @@ beforeAll(async () => {
   ids.t1 = (await prisma.tenant.create({ data: { name: 'int s1', slug: `int-ses1-${stamp}` } })).id;
   ids.t2 = (await prisma.tenant.create({ data: { name: 'int s2', slug: `int-ses2-${stamp}` } })).id;
   ids.user = (await prisma.user.create({ data: { email: `ses-${stamp}@int.test`, name: 'Int' } })).id;
+  ids.other = (await prisma.user.create({ data: { email: `ses-other-${stamp}@int.test`, name: 'Int 2' } })).id;
   await new PrismaExtensionInstallationRepository(prisma).upsert({
     installationId: inst, extensionId: 'nokcbnoicaebghagbhlfcbepheohdgnd', channel: 'cs-ext', userId: ids.user, version: '3.4.0',
   });
 });
 
 afterAll(async () => {
-  await prisma.extensionSession.deleteMany({ where: { userId: ids.user } });
+  await prisma.extensionSession.deleteMany({ where: { userId: { in: [ids.user, ids.other] } } });
   await prisma.extensionInstallation.deleteMany({ where: { installationId: inst } });
-  await prisma.user.delete({ where: { id: ids.user } });
+  await prisma.user.deleteMany({ where: { id: { in: [ids.user, ids.other] } } });
   await prisma.tenant.deleteMany({ where: { id: { in: [ids.t1, ids.t2] } } });
   await prisma.$disconnect();
 });
@@ -73,5 +74,23 @@ describe('PrismaExtensionSessionRepository — consentimento por marketplace', (
     expect(relinked.id).toBe(s.id);
     expect(relinked).toMatchObject({ mlTenantId: ids.t2, sheinConsentAt: null, revokedAt: null });
     expect(await repo.hasConsent(s.id, 'SHEIN')).toBe(false);
+  });
+
+  it('grantConsent com userId de outro usuário na mesma instalação → false e nada gravado', async () => {
+    const s = await issue(ids.t1, null);
+    expect(await repo.grantConsent('SHEIN', ids.other, inst, ids.t1, new Date())).toBe(false);
+    expect(await repo.hasConsent(s.id, 'SHEIN')).toBe(false);
+    expect(await prisma.extensionSession.count({ where: { installationId: inst, sheinConsentAt: { not: null } } })).toBe(0);
+  });
+
+  it('hasAnyConsentForTenant: só sessão ativa com consentimento do marketplace no tenant', async () => {
+    const s = await issue(ids.t1, new Date());
+    expect(await repo.hasAnyConsentForTenant(ids.t1, 'SHEIN')).toBe(false);
+    expect(await repo.hasAnyConsentForTenant(ids.t1, 'ML')).toBe(true);
+    await repo.grantConsent('SHEIN', ids.user, inst, ids.t1, new Date());
+    expect(await repo.hasAnyConsentForTenant(ids.t1, 'SHEIN')).toBe(true);
+    expect(await repo.hasAnyConsentForTenant(ids.t2, 'SHEIN')).toBe(false);
+    await repo.revoke(s.id);
+    expect(await repo.hasAnyConsentForTenant(ids.t1, 'SHEIN')).toBe(false);
   });
 });
