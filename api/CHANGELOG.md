@@ -7,6 +7,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.76.1] — 2026-11-09 — Encurtador shoope.top como link Shopee
+
+### Fixed
+
+#### Backend — gerador/monitoramento (campaigns)
+
+- **`detectMarketplace.ts`**, **`HttpShortLinkExpander.ts`** — `shoope.top/…` caía em "Loja não suportada". É encurtador de **terceiro** (DivulgaLinks), não da Shopee, mas redireciona direto para `shopee.com.br/product/…`. Entra na allowlist da Shopee e em `SHORT_HOSTS`; como todo salto é revalidado, só vira oferta se o redirect cair em `shopee.com.br`.
+
+#### Frontend (app 0.92.2)
+
+- **`offerStore.ts`** — aviso "loja detectada" reconhece `shp.ee`, `shoope.top`, `a.co`, `link.amazon` e `amzlinks.in`, alinhado à API.
+
+---
+
 ## [app 0.92.1] — 2026-11-09 — Formato da imagem: segmentos iguais
 
 ### Fixed
