@@ -15,12 +15,18 @@ interface Props {
   onComplete: () => void;
   /** Tela que hospeda o assistente (métrica do clique em "Instalar"). */
   source?: ExtensionInstallSource;
+  /**
+   * `shein`: só instala e vincula (sem consentimento do ML nem sync do ML); a conexão da Shein
+   * acontece no card, depois do aceite do aviso de risco.
+   */
+  marketplace?: 'ml' | 'shein';
 }
 
 const STEPS = [t.stepInstall, t.stepDetect, t.stepConnect, t.stepSync, t.stepDone];
 const STEP = { install: 0, detect: 1, connect: 2, sync: 3, done: 4 } as const;
 
-export function ExtensionSetupWizard({ onComplete, source = 'settings' }: Props) {
+export function ExtensionSetupWizard({ onComplete, source = 'settings', marketplace = 'ml' }: Props) {
+  const sheinOnly = marketplace === 'shein';
   const ext = useExtension();
   const { refresh } = ext;
   const [step, setStep] = useState<number>(STEP.install);
@@ -32,7 +38,8 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings' }: Props)
   useEffect(() => {
     if (step > STEP.detect || ext.loading) return;
     if (ext.status === 'connected') {
-      setStep(STEP.sync);
+      // Shein: aberto porque o vínculo é de outro usuário (404 no consentimento) → vincular de novo.
+      setStep(sheinOnly ? STEP.connect : STEP.sync);
     } else if (ext.status === 'detected') {
       setStep(STEP.connect);
     }
@@ -52,15 +59,15 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings' }: Props)
       await ext.connect(
         ext.handshake.installationId ?? crypto.randomUUID(),
         ext.handshake.extVersion,
-        consent,
+        sheinOnly ? false : consent,
       );
-      setStep(STEP.sync);
+      setStep(sheinOnly ? STEP.done : STEP.sync);
     } catch {
       setError(extensionStrings.errors.connectionFailed);
     } finally {
       setBusy(false);
     }
-  }, [ext, consent]);
+  }, [ext, consent, sheinOnly]);
 
   const handleSync = useCallback(async () => {
     setBusy(true);
@@ -137,15 +144,19 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings' }: Props)
               {t.detectFoundHint}{ext.handshake.extVersion}
             </Typography>
           )}
-          <FormControlLabel
-            control={<Checkbox checked={consent} onChange={(_, v) => setConsent(v)} />}
-            label={t.connectConsent}
-            sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', '& .MuiCheckbox-root': { mt: -0.5 } }}
-          />
+          {sheinOnly ? (
+            <Typography variant="body2" color="text.secondary" mb={3}>{t.connectHintShein}</Typography>
+          ) : (
+            <FormControlLabel
+              control={<Checkbox checked={consent} onChange={(_, v) => setConsent(v)} />}
+              label={t.connectConsent}
+              sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', '& .MuiCheckbox-root': { mt: -0.5 } }}
+            />
+          )}
           <Button
             variant="contained"
             disableElevation
-            disabled={!consent || busy}
+            disabled={(!sheinOnly && !consent) || busy}
             onClick={() => void handleConnect()}
           >
             {busy ? t.connectingAction : t.connectAction}
@@ -192,7 +203,7 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings' }: Props)
           <CheckCircleOutlineIcon color="success" sx={{ fontSize: 48, mb: 1 }} />
           <Typography variant="h6" gutterBottom>{t.doneTitle}</Typography>
           <Typography variant="body2" color="text.secondary" mb={3}>
-            {t.doneHint}
+            {sheinOnly ? t.connectHintShein : t.doneHint}
           </Typography>
           <Button variant="contained" disableElevation onClick={onComplete}>
             {t.doneAction}

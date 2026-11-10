@@ -9,15 +9,30 @@ import { AffiliateCredentialCard } from '@/features/settings/components/Affiliat
 import { AffiliateConnectionSummary } from '@/features/settings/components/AffiliateConnectionSummary';
 import { AffiliateCredentialDialog } from '@/features/settings/components/AffiliateCredentialDialog';
 import { BrowserSessionCredentialDialog } from '@/features/settings/components/BrowserSessionCredentialDialog';
+import { SheinCredentialCard } from '@/features/settings/components/SheinCredentialCard';
 import { useAffiliateCredentials } from '@/features/settings/hooks/useAffiliateCredentials';
+import { useExtension } from '@/features/extension/hooks/useExtension';
+import { useTenant } from '@/contexts/TenantContext';
 import { settingsStrings } from '@/features/settings/strings';
 
 const t = settingsStrings.affiliate;
 
 export function AffiliateCredentialsPage() {
   const {
-    entries, loading, loadError, reload, busy, upsert, remove, setStatus, actionError, clearActionError,
+    entries, loading, loadError, reload, refreshSilently, busy, upsert, remove, setStatus, actionError, clearActionError,
   } = useAffiliateCredentials();
+  const ext = useExtension();
+  const { tenants, activeTenantId } = useTenant();
+  // Só ADMIN confirmado aceita o aviso de risco; papel desconhecido trata como operador.
+  const canAcceptRisk = tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN';
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const { refresh: refreshExt, disconnect: disconnectExt } = ext;
+
+  /** Provider com ID da sessão (Shein): desconectar pela rota da extensão, nunca o DELETE genérico. */
+  const disconnectSession = async (spec: (typeof entries)[number]['spec']) => {
+    await disconnectExt(spec.extensionMarketplace ?? 'shein');
+    await refreshSilently();
+  };
   const [editing, setEditing] = useState<AffiliateProvider | null>(null);
   const editingEntry = entries.find((e) => e.spec.provider === editing);
   const navigate = useNavigate();
@@ -61,18 +76,35 @@ export function AffiliateCredentialsPage() {
           {/* Mobile: um marketplace por deslize; sm+: grade. Diálogos de edição ficam fora (modais) */}
           <SwipeCards
             ariaLabel={t.carouselLabel}
-            items={entries.map(({ spec, item }) => ({
+            items={entries.map(({ spec, item, availability }) => ({
               key: spec.provider,
               label: spec.name,
               // Ativa = configurado; existe mas inativa = pausado; sem credencial = pendente
               status: !item ? 'pending' : item.status === 'ACTIVE' ? 'done' : 'paused',
-              content: (
+              content: spec.identifierFromSession ? (
+                <SheinCredentialCard
+                  spec={spec}
+                  item={item}
+                  availability={availability}
+                  ext={ext}
+                  canAcceptRisk={canAcceptRisk}
+                  busy={busy[spec.provider]}
+                  onReload={refreshSilently}
+                  onDisconnect={() => disconnectSession(spec)}
+                  onStatusChange={(status) => void setStatus(spec.provider, status)}
+                  onOpenLink={() => setEditing(spec.provider)}
+                />
+              ) : (
                 <AffiliateCredentialCard
                   spec={spec}
                   item={item}
                   busy={busy[spec.provider]}
                   onConfigure={() => setEditing(spec.provider)}
-                  onRemove={() => void remove(spec.provider)}
+                  onRemove={() => {
+                    if (spec.identifierFromSession) {
+                      disconnectSession(spec).catch(() => setDisconnectError(t.shein.disconnectFailed));
+                    } else void remove(spec.provider);
+                  }}
                   onStatusChange={(status) => void setStatus(spec.provider, status)}
                 />
               ),
@@ -80,7 +112,7 @@ export function AffiliateCredentialsPage() {
             renderGrid={(items) => (
               <Grid container spacing={3}>
                 {items.map((card) => (
-                  <Grid item xs={12} md={4} key={card.key} sx={{ display: 'flex', '& > *': { flexGrow: 1 } }}>
+                  <Grid item xs={12} md={6} xl={3} key={card.key} sx={{ display: 'flex', '& > *': { flexGrow: 1 } }}>
                     {card.content}
                   </Grid>
                 ))}
@@ -95,8 +127,8 @@ export function AffiliateCredentialsPage() {
           <BrowserSessionCredentialDialog
             open
             spec={editingEntry.spec}
-            onClose={() => { setEditing(null); void reload(); }}
-            onSynced={() => { void reload(); }}
+            onClose={() => { setEditing(null); void refreshSilently(); void refreshExt(); }}
+            onSynced={() => { void refreshSilently(); }}
           />
         ) : (
           <AffiliateCredentialDialog
@@ -111,6 +143,15 @@ export function AffiliateCredentialsPage() {
           />
         )
       )}
+
+      <Snackbar
+        open={Boolean(disconnectError)}
+        autoHideDuration={6000}
+        onClose={() => setDisconnectError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" variant="filled" onClose={() => setDisconnectError(null)}>{disconnectError}</Alert>
+      </Snackbar>
 
       <Snackbar
         open={Boolean(actionError)}

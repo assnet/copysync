@@ -28,7 +28,7 @@ function item(overrides: Partial<AffiliateCredentialItem>): AffiliateCredentialI
 const handlers = () => ({ onConfigure: vi.fn(), onRemove: vi.fn(), onStatusChange: vi.fn() });
 
 describe('AffiliateCredentialCard', () => {
-  it('sem credencial, os três marketplaces aparecem como "Não configurado"', () => {
+  it('sem credencial, todos os marketplaces aparecem como "Não configurado"', () => {
     renderWithTheme(
       <>
         {AFFILIATE_PROVIDERS.map((s) => <AffiliateCredentialCard key={s.provider} spec={s} {...handlers()} />)}
@@ -36,7 +36,7 @@ describe('AffiliateCredentialCard', () => {
       'dark',
     );
 
-    expect(screen.getAllByText('Não configurado')).toHaveLength(3);
+    expect(screen.getAllByText('Não configurado')).toHaveLength(AFFILIATE_PROVIDERS.length);
     for (const s of AFFILIATE_PROVIDERS) {
       expect(screen.getByRole('button', { name: `Conectar ${s.name}` })).toBeInTheDocument();
     }
@@ -125,5 +125,18 @@ describe('AffiliateCredentialCard — recusada', () => {
     renderWithTheme(<AffiliateCredentialCard spec={spec('SHOPEE')} item={item({})} {...h} />);
     expect(screen.getByText('Configurado')).toBeInTheDocument();
     expect(screen.queryByText('Recusada')).not.toBeInTheDocument();
+  });
+});
+
+describe('AffiliateCredentialCard sem publicField', () => {
+  it('provider com ID da sessão (Shein) renderiza o rótulo padrão sem quebrar', () => {
+    const shein = AFFILIATE_PROVIDERS.find((p) => p.provider === 'SHEIN')!;
+    expect(shein.publicField).toBeUndefined();
+    renderWithTheme(
+      <AffiliateCredentialCard spec={shein} item={item({ provider: 'SHEIN', publicIdentifierMasked: '••77' })} {...handlers()} />,
+      'dark',
+    );
+    expect(screen.getByText('ID de afiliado')).toBeInTheDocument();
+    expect(screen.getByText('••77')).toBeInTheDocument();
   });
 });

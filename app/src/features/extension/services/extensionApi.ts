@@ -27,6 +27,7 @@ export interface ExtensionSessionInfo {
   lastSeenAt: string;
 }
 
+/** Credencial de sessão de um marketplace (nome histórico: nasceu só para o ML). */
 export interface MlCredentialStatus {
   provider: string;
   status: 'ACTIVE' | 'INACTIVE';
@@ -37,6 +38,11 @@ export interface MlCredentialStatus {
   /** Loja recusou a sessão (no sync ou no monitor): loja pausada até um sync aceito. */
   rejectedAt: string | null;
 }
+
+/** Marketplace com sessão pela extensão (segmento da rota `/extension/marketplaces/<id>`). */
+export type ExtensionMarketplaceId = 'ml' | 'shein';
+
+const MARKETPLACE_PROVIDER: Record<ExtensionMarketplaceId, string> = { ml: 'MERCADO_LIVRE', shein: 'SHEIN' };
 
 export const extensionApi = {
   async issueSession(data: {
@@ -68,10 +74,15 @@ export const extensionApi = {
     await apiClient.delete(`/extension/sessions/${id}`);
   },
 
-  /** Lança em falha de rede/HTTP: quem chama decide (nunca confundir com "sem credencial"). */
-  async getMlCredentialStatus(): Promise<MlCredentialStatus | null> {
+  /**
+   * Credencial de cada marketplace (sessão sincronizada pela extensão), lida da lista do painel.
+   * Lança em falha de rede/HTTP: quem chama decide (nunca confundir com "sem credencial").
+   */
+  async getCredentialStatuses(): Promise<Record<ExtensionMarketplaceId, MlCredentialStatus | null>> {
     const { data } = await apiClient.get('/integrations/affiliate-credentials');
-    const items = (data.data ?? []) as Array<{
+    // A lista vem em `{ items, marketplaceAvailability }`; array puro = API antiga.
+    const raw = data?.data;
+    const items = (Array.isArray(raw) ? raw : raw?.items ?? []) as Array<{
       provider: string;
       status: 'ACTIVE' | 'INACTIVE';
       hasSession: boolean;
@@ -79,25 +90,46 @@ export const extensionApi = {
       sessionSyncedAt: string | null;
       rejectedAt: string | null;
     }>;
-    const ml = items.find(i => i.provider === 'MERCADO_LIVRE');
-    if (!ml) return null;
-    return {
-      provider: ml.provider,
-      status: ml.status,
-      hasSession: ml.hasSession,
-      sessionInvalidAt: null,
-      publicIdentifier: ml.publicIdentifier,
-      lastSyncAt: ml.sessionSyncedAt,
-      rejectedAt: ml.rejectedAt ?? null,
+    const pick = (marketplace: ExtensionMarketplaceId): MlCredentialStatus | null => {
+      const found = items.find(i => i.provider === MARKETPLACE_PROVIDER[marketplace]);
+      if (!found) return null;
+      return {
+        provider: found.provider,
+        status: found.status,
+        hasSession: found.hasSession,
+        sessionInvalidAt: null,
+        publicIdentifier: found.publicIdentifier,
+        lastSyncAt: found.sessionSyncedAt,
+        rejectedAt: found.rejectedAt ?? null,
+      };
     };
+    return { ml: pick('ml'), shein: pick('shein') };
+  },
+
+  async getCredentialStatus(marketplace: ExtensionMarketplaceId): Promise<MlCredentialStatus | null> {
+    return (await extensionApi.getCredentialStatuses())[marketplace];
+  },
+
+  async getMlCredentialStatus(): Promise<MlCredentialStatus | null> {
+    return extensionApi.getCredentialStatus('ml');
+  },
+
+  /** Revoga o consentimento e apaga a credencial do marketplace (nunca o DELETE genérico de credenciais). */
+  async disconnect(marketplace: ExtensionMarketplaceId): Promise<void> {
+    await apiClient.delete(`/extension/marketplaces/${marketplace}/session`);
+  },
+
+  /** Consentimento desta instalação. Shein: 404 `SESSION_NOT_FOUND`, 403 plano/aceite de risco. */
+  async consent(marketplace: ExtensionMarketplaceId, installationId: string): Promise<void> {
+    await apiClient.post(`/extension/marketplaces/${marketplace}/consent`, { installationId });
   },
 
   async disconnectMl(): Promise<void> {
-    await apiClient.delete('/extension/marketplaces/ml/session');
+    await extensionApi.disconnect('ml');
   },
 
   async grantMlConsent(installationId: string): Promise<void> {
-    await apiClient.post('/extension/marketplaces/ml/consent', { installationId });
+    await extensionApi.consent('ml', installationId);
   },
 
   /** Clique em "Instalar". `false` = repetido em 60 s (a API deduplica). Nunca bloqueia abrir a loja. */

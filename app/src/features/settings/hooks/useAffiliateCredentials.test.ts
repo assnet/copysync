@@ -27,7 +27,7 @@ const amazon: AffiliateCredentialItem = {
 };
 
 async function setup() {
-  service.list.mockResolvedValue([amazon]);
+  service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {} });
   const hook = renderHook(() => useAffiliateCredentials());
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   return hook;
@@ -39,7 +39,7 @@ const itemOf = (h: Awaited<ReturnType<typeof setup>>, p: string) =>
 describe('useAffiliateCredentials', () => {
   it('mescla a lista com o catálogo dos três marketplaces', async () => {
     const h = await setup();
-    expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON']);
+    expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN']);
     expect(itemOf(h, 'AMAZON')).toEqual(amazon);
     expect(itemOf(h, 'SHOPEE')).toBeUndefined();
   });

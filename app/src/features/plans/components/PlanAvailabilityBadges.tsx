@@ -10,12 +10,20 @@ export function plansFrom(from: PlanSlug): string[] {
   return i < 0 ? [] : PLAN_CATALOG.slice(i).map((p) => p.name);
 }
 
+/** Nomes dos planos da lista, na ordem da vitrine; slug fora do catálogo é ignorado. */
+export function plansIn(plans: readonly PlanSlug[]): string[] {
+  return PLAN_CATALOG.filter((p) => plans.includes(p.slug)).map((p) => p.name);
+}
+
+/** `from`: a partir de um plano (fixo no código). `plans`: lista vinda da API (ex.: recurso por preset). */
+export type PlanAvailabilityBadgesProps = { from: PlanSlug; plans?: never } | { plans: readonly PlanSlug[]; from?: never };
+
 /**
  * Selos dos planos que incluem um recurso (ex.: "PRO" "MAX"), ao lado do título da opção.
  * Sempre visíveis: mostram onde o recurso existe, travado ou não. Mesmo visual do selo do menu.
  */
-export function PlanAvailabilityBadges({ from }: { from: PlanSlug }) {
-  const names = plansFrom(from);
+export function PlanAvailabilityBadges(props: PlanAvailabilityBadgesProps) {
+  const names = props.plans ? plansIn(props.plans) : plansFrom(props.from);
   if (names.length === 0) return null;
   return (
     <Tooltip title={t.tooltip(names)} arrow describeChild>

@@ -98,6 +98,13 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'affiliateCredentials',
+    label: 'Credenciais de afiliado',
+    flags: [
+      { id: 'affiliateCredentials.sessionAffiliateId', label: 'ID de afiliado vindo da sessão (Shein)' },
+    ],
+  },
+  {
     id: 'subscription',
     label: 'Assinatura',
     flags: [

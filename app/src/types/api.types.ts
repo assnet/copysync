@@ -205,8 +205,35 @@ export interface AffiliateCredentialItem {
   updatedAt: string;
 }
 
+/** Aviso de risco do marketplace (só os que exigem aceite, ex.: Shein). `acceptedAt` null = versão vigente sem aceite. */
+export interface MarketplaceRiskNotice {
+  /** Versão vigente do texto, espelhada em `features/settings/strings.ts`. */
+  version: string;
+  acceptedAt: string | null;
+  acceptedByMe: boolean;
+}
+
+/** Disponibilidade do marketplace para o tenant: plano (`plans` vem da API, não fixo) e aceite do aviso. */
+export interface MarketplaceAvailability {
+  enabled: boolean;
+  plans: SubscriptionPlanSlug[];
+  riskNotice: MarketplaceRiskNotice | null;
+}
+
 export interface AffiliateCredentialListResponse {
   items: AffiliateCredentialItem[];
+  /** Ausente em API antiga: o painel trata como "sem restrição". */
+  marketplaceAvailability?: Partial<Record<AffiliateProvider, MarketplaceAvailability>>;
+}
+
+export interface AcceptMarketplaceRiskRequest {
+  noticeVersion: string;
+  locale: string;
+}
+
+export interface AcceptMarketplaceRiskResponse {
+  acceptedAt: string;
+  noticeVersion: string;
 }
 
 export interface UpsertAffiliateCredentialRequest {

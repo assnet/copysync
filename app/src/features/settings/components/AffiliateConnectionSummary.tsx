@@ -27,7 +27,9 @@ function headline(connected: number, total: number): { title: string; hint: stri
  * Topo da tela de credenciais: progresso de conexão (logos com selo) e os 3 passos de como
  * a troca de links funciona. A barra anima de 0 ao valor real uma vez, ao montar.
  */
-export function AffiliateConnectionSummary({ entries }: { entries: AffiliateCredentialEntry[] }) {
+export function AffiliateConnectionSummary({ entries: all }: { entries: AffiliateCredentialEntry[] }) {
+  // Marketplace fora do plano (ex.: Shein travada) não entra na conta: "1 de 4" sem poder conectar engana.
+  const entries = all.filter((e) => e.availability?.enabled !== false);
   const total = entries.length;
   const connected = entries.filter(isConnected).length;
   const percent = total ? Math.round((connected / total) * 100) : 0;
