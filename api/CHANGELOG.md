@@ -7,6 +7,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.77.0] — 2026-11-10 — Reescrita com IA só no PRO e no MAX
+
+### Changed
+
+#### Backend — planos, gerador e monitoramento
+
+- **`planPresets.ts`** — `ai_rewrite_enabled` false no LITE (PRO/MAX true; ausente segue liberado).
+- **`OfferTextComposer.ts`** — trava única do plano antes de chamar a IA: com `false`, sai o modelo fixo (`aiErrorCode` `AI_PLAN_UNAVAILABLE`), inclusive com chave própria do tenant. Cobre gerar, gerar novamente e monitoramento.
+- **`GroupMonitorConfigUseCases.ts`** — `limits.aiRewriteEnabled`; salvar IA no LITE grava Modelo/STANDARD sem recusar. **`ProcessPendingCapturedOffersUseCase.ts`** — config IA salva no LITE compõe como Modelo, sem selo de falha.
+- **`OfferGeneratorConfigUseCases.ts`**, **`offer.schema.ts`** — `aiRewriteEnabled` na config do gerador.
+
+#### Frontend — app 0.94.0
+
+- **`MonitoringSettingsForm.tsx`**, **`settingsDraft.ts`** — card "Reescrita com IA" travado no LITE com selos PRO MAX e aviso; IA salva vale como Modelo; setas pulam o modo travado.
+- **`AudiencePicker.tsx`**, **`OfferGeneratorForm.tsx`**, **`OfferResultPanel.tsx`**, **`OfferGeneratorPage.tsx`** — no LITE só "Padrão" fica selecionável (gerar e gerar novamente), com selos e aviso.
+- **`plans/catalog.ts`**, **`subscription/strings.ts`** — benefício "Reescrita com IA para o seu público" no PRO; `ai_rewrite_enabled` e `ai_requests_per_day` a partir do PRO.
+
+### Migration
+
+- **`20261110120000_restrict_ai_rewrite_to_pro_max`** — preset LITE e tenants LITE com `ai_rewrite_enabled` = false.
+
+---
+
 ## [app 0.93.0] — 2026-11-09 — Monitoramento: capturadas e fila recolhíveis
 
 ### Added
