@@ -90,6 +90,8 @@ export function SheinCredentialCard({
   const [syncing, setSyncing] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  /** 409 `MARKETPLACE_RISK_NOTICE_OUTDATED`: o texto deste painel ficou velho até recarregar a página. */
+  const [staleAfter409, setStaleAfter409] = useState(false);
 
   // Refs: a espera não reinicia a cada render (o objeto `ext` muda sempre).
   const extRef = useRef(ext);
@@ -99,6 +101,11 @@ export function SheinCredentialCard({
   const deadlineRef = useRef(0);
 
   const risk = availability?.riskNotice ?? null;
+  // Sem `riskNotice` (null) conta como aceite pendente: nunca pula o diálogo.
+  const riskAccepted = Boolean(risk?.acceptedAt);
+  // Texto e versão do diálogo são estáticos (`strings.ts`): versão da API diferente = texto velho,
+  // e aceitar reenviaria a versão velha em loop. Só oferece "Recarregar página".
+  const noticeStale = staleAfter409 || (risk !== null && risk.version !== tr.version);
   // Flag do 404 vale até o próximo `refresh()` bem-sucedido da extensão.
   const noLinkFlag = noLinkSeq !== null && noLinkSeq === ext.refreshSeq;
   const state = sheinCardState({
@@ -162,28 +169,33 @@ export function SheinCredentialCard({
       setNotice({ severity: 'warning', text: t.waitingExpired });
     };
     const tick = async () => {
-      const st = await extRef.current.readSheinStatus();
-      if (cancelled) return;
-      if (st?.permission === 'granted' && !st.pending) {
-        if (st.syncStatus === 'ok') {
-          await finishConnected();
-          void extRef.current.refresh();
+      try {
+        const st = await extRef.current.readSheinStatus();
+        if (cancelled) return;
+        if (st?.permission === 'granted' && !st.pending) {
+          if (st.syncStatus === 'ok') {
+            await finishConnected();
+            void extRef.current.refresh();
+            return;
+          }
+          if (st.syncStatus === 'error') {
+            setFlow('idle');
+            setNotice({ severity: 'error', text: syncErrorMessage(new ExtensionSyncError(st.errorCode ?? ''), 'shein') });
+            return;
+          }
+        } else if (st && !st.pending && st.permission === 'missing') {
+          expire();
           return;
         }
-        if (st.syncStatus === 'error') {
-          setFlow('idle');
-          setNotice({ severity: 'error', text: syncErrorMessage(new ExtensionSyncError(st.errorCode ?? ''), 'shein') });
+        if (Date.now() >= deadlineRef.current) {
+          expire();
           return;
         }
-      } else if (st && !st.pending && st.permission === 'missing') {
-        expire();
-        return;
+        timer = setTimeout(() => void tick(), SHEIN_WAIT_POLL_MS);
+      } catch {
+        // Canal ou recarga falhou: encerra a espera (sem promise rejeitada solta nem consulta eterna).
+        if (!cancelled) expire();
       }
-      if (Date.now() >= deadlineRef.current) {
-        expire();
-        return;
-      }
-      timer = setTimeout(() => void tick(), SHEIN_WAIT_POLL_MS);
     };
     timer = setTimeout(() => void tick(), SHEIN_WAIT_POLL_MS);
     return () => {
@@ -192,9 +204,26 @@ export function SheinCredentialCard({
     };
   }, [flow, finishConnected]);
 
+  /**
+   * Retomar a espera após reload SEM `usePersistedState`: o passo "aguardando o clique" vem do
+   * estado da extensão (`shein.status` com `pending: true`), que é a fonte da verdade. Avaliado uma
+   * vez por montagem, no primeiro `sheinStatus` recebido (cancelar não volta a entrar sozinho).
+   * O status não traz `until`: o prazo local é a janela máxima (10 min); a extensão expira a dela.
+   */
+  const resumeCheckedRef = useRef(false);
+  const sheinPending = ext.sheinStatus?.pending === true;
+  const statusKnown = ext.sheinStatus !== null;
+  useEffect(() => {
+    if (resumeCheckedRef.current || !statusKnown) return;
+    resumeCheckedRef.current = true;
+    if (!sheinPending || state !== 'ready' || flow !== 'idle') return;
+    deadlineRef.current = Date.now() + SHEIN_WAIT_MAX_MS;
+    setFlow('waiting');
+  }, [statusKnown, sheinPending, state, flow]);
+
   const handleConnect = () => {
-    // Aceite da versão vigente já gravado: pula o diálogo.
-    if (risk && !risk.acceptedAt) {
+    // Aceite da versão vigente já gravado: pula o diálogo. `riskNotice` null = pendente.
+    if (!riskAccepted) {
       setAcceptError(null);
       setDialog('connect');
       return;
@@ -203,6 +232,7 @@ export function SheinCredentialCard({
   };
 
   const handleAccept = async () => {
+    if (noticeStale) return;
     const mode = dialog;
     setAccepting(true);
     setAcceptError(null);
@@ -211,7 +241,8 @@ export function SheinCredentialCard({
     } catch (err) {
       setAccepting(false);
       if (errorCode(err) === 'MARKETPLACE_RISK_NOTICE_OUTDATED') {
-        setAcceptError(tr.outdated);
+        // Sem novo aceite com a versão velha: o diálogo passa a pedir "Recarregar página".
+        setStaleAfter409(true);
         void reloadRef.current();
       } else {
         setAcceptError(ta.errors[errorCode(err)] ?? tr.acceptFailed);
@@ -253,7 +284,8 @@ export function SheinCredentialCard({
 
   const locked = busy || disconnecting;
   const hasCredential = Boolean(item);
-  const affiliateId = item?.publicIdentifier ?? item?.publicIdentifierMasked ?? null;
+  // Só o mascarado chega ao DOM (como ML/Amazon); `Blurred` continua por cima.
+  const affiliateId = item?.publicIdentifierMasked ?? null;
 
   return (
     <AffiliateCardShell spec={spec} chip={stateChip(state, waiting, item)} chipMuted={state !== 'connected' && !waiting && !['reaccept', 'rejected'].includes(state)}>
@@ -392,9 +424,11 @@ export function SheinCredentialCard({
         {state === 'no_link' && (
           <>
             <Tooltip title={t.linkTooltip} describeChild>
-              <Button variant="contained" startIcon={<AppIcon icon={Link2} size="sm" />} onClick={onOpenLink} disabled={locked}>
-                {t.linkAction}
-              </Button>
+              <span>
+                <Button variant="contained" startIcon={<AppIcon icon={Link2} size="sm" />} onClick={onOpenLink} disabled={locked}>
+                  {t.linkAction}
+                </Button>
+              </span>
             </Tooltip>
             <Tooltip title={t.recheckTooltip} describeChild>
               <span>
@@ -501,6 +535,7 @@ export function SheinCredentialCard({
         confirmLabel={dialog === 'connect' ? tr.confirm : tr.confirmOnly}
         busy={accepting}
         error={acceptError}
+        stale={noticeStale}
         onConfirm={() => void handleAccept()}
         onClose={() => setDialog(null)}
       />

@@ -3,7 +3,7 @@ import {
   Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel,
   IconButton, Stack, Tooltip, Typography,
 } from '@mui/material';
-import { TriangleAlert, X } from 'lucide-react';
+import { RotateCw, TriangleAlert, X } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { settingsStrings } from '../strings';
 
@@ -17,6 +17,11 @@ interface Props {
   confirmLabel?: string;
   busy?: boolean;
   error?: string | null;
+  /**
+   * Texto desta tela é de outra versão (API ≠ painel, ou 409 `MARKETPLACE_RISK_NOTICE_OUTDATED`):
+   * sem caixa nem botão de aceite — só "Recarregar página". Aceitar reenviaria a versão velha.
+   */
+  stale?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -26,7 +31,9 @@ interface Props {
  * A caixa NÃO usa `usePersistedState` (exceção à regra de persistência): o aceite nunca pode
  * sobreviver a um reload sem um clique novo.
  */
-export function MarketplaceRiskNoticeDialog({ open, canAccept, confirmLabel, busy, error, onConfirm, onClose }: Props) {
+export function MarketplaceRiskNoticeDialog({
+  open, canAccept, confirmLabel, busy, error, stale, onConfirm, onClose,
+}: Props) {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -53,25 +60,43 @@ export function MarketplaceRiskNoticeDialog({ open, canAccept, confirmLabel, bus
       </DialogTitle>
 
       <DialogContent dividers>
+        {stale && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 2 }}
+            action={(
+              <Tooltip title={t.reloadPageTooltip} describeChild>
+                <Button color="inherit" size="small" startIcon={<AppIcon icon={RotateCw} size="sm" />} onClick={() => window.location.reload()}>
+                  {t.reloadPage}
+                </Button>
+              </Tooltip>
+            )}
+          >
+            <Typography variant="body2" fontWeight={600}>{t.staleTitle}</Typography>
+            <Typography variant="body2">{t.staleText}</Typography>
+          </Alert>
+        )}
         <Stack spacing={1.5} component="section" aria-label={t.dialogTitle}>
           {t.paragraphs.map((p) => (
             <Typography key={p} variant="body2">{p}</Typography>
           ))}
         </Stack>
 
-        <FormControlLabel
-          sx={{ mt: 2.5, alignItems: 'flex-start', '& .MuiCheckbox-root': { mt: -0.75 } }}
-          control={(
-            <Checkbox
-              checked={checked}
-              onChange={(_, v) => setChecked(v)}
-              disabled={!canAccept || busy}
-            />
-          )}
-          label={<Typography variant="body2" fontWeight={600}>{t.checkbox}</Typography>}
-        />
+        {!stale && (
+          <FormControlLabel
+            sx={{ mt: 2.5, alignItems: 'flex-start', '& .MuiCheckbox-root': { mt: -0.75 } }}
+            control={(
+              <Checkbox
+                checked={checked}
+                onChange={(_, v) => setChecked(v)}
+                disabled={!canAccept || busy}
+              />
+            )}
+            label={<Typography variant="body2" fontWeight={600}>{t.checkbox}</Typography>}
+          />
+        )}
 
-        {!canAccept && (
+        {!canAccept && !stale && (
           <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>{t.adminOnly}</Alert>
         )}
         {error && (
@@ -81,19 +106,21 @@ export function MarketplaceRiskNoticeDialog({ open, canAccept, confirmLabel, bus
 
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} disabled={busy}>{t.cancel}</Button>
-        <Tooltip title={canAccept ? '' : t.adminOnly}>
-          <span>
-            <Button
-              variant="contained"
-              color="warning"
-              disableElevation
-              disabled={!canAccept || !checked || busy}
-              onClick={onConfirm}
-            >
-              {busy ? t.confirming : (confirmLabel ?? t.confirm)}
-            </Button>
-          </span>
-        </Tooltip>
+        {!stale && (
+          <Tooltip title={canAccept ? '' : t.adminOnly}>
+            <span>
+              <Button
+                variant="contained"
+                color="warning"
+                disableElevation
+                disabled={!canAccept || !checked || busy}
+                onClick={onConfirm}
+              >
+                {busy ? t.confirming : (confirmLabel ?? t.confirm)}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
       </DialogActions>
     </Dialog>
   );

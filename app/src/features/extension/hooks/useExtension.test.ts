@@ -97,4 +97,33 @@ describe('useExtension', () => {
     await act(async () => { await h.result.current.refresh(); });
     expect(h.result.current.refreshSeq).toBe(seq + 1);
   });
+  it('dois refresh: o primeiro termina depois e não sobrescreve o segundo', async () => {
+    const h = await mount();
+    let resolveFirst!: (v: unknown) => void;
+    api.getCredentialStatuses
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }))
+      .mockResolvedValueOnce({ ml: null, shein: cred('SHEIN', { publicIdentifier: 'novo' }) });
+    let first!: Promise<unknown>;
+    act(() => { first = h.result.current.refresh(); });
+    await waitFor(() => expect(api.getCredentialStatuses).toHaveBeenCalledTimes(2));
+    await act(async () => { await h.result.current.refresh(); });
+    await act(async () => { resolveFirst({ ml: null, shein: cred('SHEIN', { publicIdentifier: 'velho' }) }); await first; });
+    expect(h.result.current.credentials.shein?.publicIdentifier).toBe('novo');
+  });
+
+  it('refresh em voo antes de disconnect("shein") não reinstala a credencial', async () => {
+    const h = await mount();
+    let resolveStale!: (v: unknown) => void;
+    api.getCredentialStatuses
+      .mockImplementationOnce(() => new Promise((r) => { resolveStale = r; }))
+      .mockResolvedValueOnce({ ml: null, shein: null });
+    let stale!: Promise<unknown>;
+    act(() => { stale = h.result.current.refresh(); });
+    await waitFor(() => expect(api.getCredentialStatuses).toHaveBeenCalledTimes(2));
+    await act(async () => { await h.result.current.disconnect('shein'); });
+    await act(async () => { resolveStale({ ml: null, shein: cred('SHEIN') }); await stale; });
+    expect(api.disconnect).toHaveBeenCalledWith('shein');
+    expect(h.result.current.credentials.shein).toBeNull();
+    expect(h.result.current.loading).toBe(false);
+  });
 });

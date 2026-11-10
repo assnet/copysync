@@ -94,8 +94,13 @@ const INITIAL: ExtensionState = {
 export function useExtension() {
   const [state, setState] = useState<ExtensionState>(INITIAL);
   const mountedRef = useRef(true);
+  /** Guarda de ordem do `refresh()`: só a chamada mais recente grava o estado. */
+  const refreshSeqRef = useRef(0);
 
   const refresh = useCallback(async (): Promise<Record<ExtensionMarketplace, MlCredentialStatus | null> | undefined> => {
+    const seq = ++refreshSeqRef.current;
+    // Resposta antiga (ex.: refresh em voo antes de `disconnect`) não sobrescreve a mais nova.
+    const stale = () => seq !== refreshSeqRef.current || !mountedRef.current;
     if (!isExtensionApiAvailable()) {
       setState(prev => ({ ...INITIAL, status: 'unavailable', loading: false, refreshSeq: prev.refreshSeq }));
       return undefined;
@@ -104,12 +109,14 @@ export function useExtension() {
     setState(prev => ({ ...prev, loading: true }));
 
     const detected = await detectExtension();
+    if (stale()) return undefined;
     if (!detected) {
       setState(prev => ({ ...INITIAL, status: 'not_detected', loading: false, refreshSeq: prev.refreshSeq }));
       return undefined;
     }
 
     const hsResult = await sendOp('handshake');
+    if (stale()) return undefined;
     if (!hsResult.ok) {
       setState(prev => ({ ...INITIAL, status: 'error', error: hsResult.error, loading: false, refreshSeq: prev.refreshSeq }));
       return undefined;
@@ -136,7 +143,7 @@ export function useExtension() {
       credentials = await extensionApi.getCredentialStatuses().catch(() => undefined);
     }
 
-    if (!mountedRef.current) return credentials;
+    if (stale()) return credentials;
     setState(prev => {
       const nextCreds = credentials ?? prev.credentials;
       return {

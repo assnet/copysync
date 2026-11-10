@@ -38,6 +38,7 @@ export function useAffiliateCredentials() {
   const [busy, setBusy] = useState<Partial<Record<AffiliateProvider, boolean>>>({});
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const loadSeqRef = useRef(0);
 
   /**
    * `silent`: recarrega sem trocar a tela pelo spinner (os cards seguem montados — a espera pelo
@@ -45,19 +46,24 @@ export function useAffiliateCredentials() {
    */
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
+    // Guarda de ordem: só a resposta da carga mais recente vale (uma antiga que chega depois é descartada).
+    const seq = ++loadSeqRef.current;
     if (!silent) {
       setLoading(true);
       setLoadError(null);
     }
     try {
       const list = await affiliateCredentialService.list();
+      if (seq !== loadSeqRef.current) return;
       setItems(Object.fromEntries(list.items.map((i) => [i.provider, i])) as ItemsByProvider);
       setAvailability(list.marketplaceAvailability);
     } catch (err) {
+      if (seq !== loadSeqRef.current) return;
       if (silent) setActionError(affiliateErrorMessage(err));
       else setLoadError(affiliateErrorMessage(err));
     } finally {
-      if (!silent) setLoading(false);
+      // A mais recente encerra o spinner mesmo se for silenciosa (a não silenciosa pode ter sido descartada).
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, []);
 

@@ -25,4 +25,12 @@ describe('extensionApi por marketplace', () => {
     expect(all.ml).toBeNull();
     expect(all.shein?.lastSyncAt).toBe('a');
   });
+  it('aceita também a lista como array puro (API antiga)', async () => {
+    http.get.mockResolvedValue({ data: { data: [
+      { provider: 'MERCADO_LIVRE', status: 'ACTIVE', hasSession: true, publicIdentifier: 'tag', sessionSyncedAt: 'b', rejectedAt: null },
+    ] } });
+    const all = await extensionApi.getCredentialStatuses();
+    expect(all.ml?.lastSyncAt).toBe('b');
+    expect(all.shein).toBeNull();
+  });
 });

@@ -123,10 +123,15 @@ describe('SheinCredentialCard', () => {
 
   it('caixa de aceite não sobrevive a reload (remontagem começa desmarcada)', async () => {
     const user = userEvent.setup();
+    const keys = () => [...Object.keys(sessionStorage), ...Object.keys(localStorage)].sort();
+    const before = keys();
     const first = setup();
     await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
     await user.click(screen.getByRole('checkbox', { name: 'Li e assumo o risco' }));
     expect(screen.getByRole('checkbox', { name: 'Li e assumo o risco' })).toBeChecked();
+    // Nada do diálogo de aceite foi gravado em sessionStorage/localStorage.
+    expect(keys()).toEqual(before);
+    expect(keys().some((k) => /risk|aceite|accept|notice|shein/i.test(k))).toBe(false);
     first.view.unmount();
 
     setup();
@@ -146,16 +151,57 @@ describe('SheinCredentialCard', () => {
     expect(within(dialog).getByText('Só um administrador desta conta pode aceitar o aviso.')).toBeInTheDocument();
   });
 
-  it('409 de aviso desatualizado: recarrega e pede nova leitura', async () => {
+  it('409 de aviso desatualizado: recarrega e troca o aceite por "Recarregar página" (sem loop)', async () => {
     const user = userEvent.setup();
     service.acceptRisk.mockRejectedValue(Object.assign(new Error('x'), { code: 'MARKETPLACE_RISK_NOTICE_OUTDATED' }));
     const s = setup();
     await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
     await user.click(screen.getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: 'Aceitar e conectar' }));
-    expect(await screen.findByText(/O texto do aviso mudou/)).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByText(/O texto do aviso de risco foi atualizado/)).toBeInTheDocument();
     expect(s.onReload).toHaveBeenCalled();
     expect(s.ext.consent).not.toHaveBeenCalled();
+    // Sem caixa nem botão de aceite: não há como reenviar a versão velha.
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Aceitar e conectar' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Recarregar página' })).toBeInTheDocument();
+    expect(service.acceptRisk).toHaveBeenCalledTimes(1);
+  });
+
+  it('versão da API diferente da do painel: sem aceite, só "Recarregar página"', async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, reload } });
+    try {
+      setup({ availability: avail({ riskNotice: { version: '2026-12-01', acceptedAt: null, acceptedByMe: false } }) });
+      await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).getByText(/O texto do aviso de risco foi atualizado/)).toBeInTheDocument();
+      expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(within(dialog).queryByRole('button', { name: 'Aceitar e conectar' })).not.toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: 'Recarregar página' }));
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(service.acceptRisk).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original });
+    }
+  });
+
+  it('riskNotice null não pula o aceite: abre o diálogo e não chama /consent', async () => {
+    const user = userEvent.setup();
+    const s = setup({ availability: avail({ riskNotice: null }) });
+    await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Li e assumo o risco' })).toBeInTheDocument();
+    expect(s.ext.consent).not.toHaveBeenCalled();
+  });
+
+  it('riskNotice null com conta conectada pede reaceite', () => {
+    setup({ item: item(), availability: avail({ riskNotice: null }) });
+    expect(screen.getByText('O aviso de risco mudou')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sincronizar agora' })).not.toBeInTheDocument();
   });
 
   it('mostra data e hora do aceite no card, com "por você"', () => {
@@ -175,7 +221,9 @@ describe('SheinCredentialCard', () => {
   it('conectado: ID, "Sincronizar agora" e "Desconectar"/lixeira pela rota da extensão', async () => {
     const user = userEvent.setup();
     const s = setup({ item: item(), availability: accepted() });
-    expect(screen.getByText('998877')).toBeInTheDocument();
+    // Só o ID mascarado vai ao DOM.
+    expect(screen.getByText('••77')).toBeInTheDocument();
+    expect(screen.queryByText('998877')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Sincronizar agora' }));
     await waitFor(() => expect(s.ext.sync).toHaveBeenCalledWith('shein'));
@@ -250,6 +298,39 @@ describe('SheinCredentialCard', () => {
 
     expect(await screen.findByText(/O pedido de acesso expirou ou foi negado/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Conectar Shein' })).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(SHEIN_WAIT_POLL_MS * 3); });
+    expect(readSheinStatus).toHaveBeenCalledTimes(1);
+  });
+  it('remontagem com pendência na extensão retoma a espera sem persistir nada', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const readSheinStatus = vi.fn().mockResolvedValue({ permission: 'granted', pending: false, loggedIn: true, syncStatus: 'ok' });
+    const sheinStatus = { permission: 'missing' as const, pending: true, loggedIn: false, syncStatus: 'idle' as const };
+    const s = setup({ ext: makeExt({ readSheinStatus, sheinStatus }), availability: accepted() });
+
+    expect(await screen.findByText('Falta um clique na extensão')).toBeInTheDocument();
+    expect(s.ext.consent).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(SHEIN_WAIT_POLL_MS); });
+    await waitFor(() => expect(s.onReload).toHaveBeenCalled());
+    expect(screen.getByText('Sessão da Shein sincronizada.')).toBeInTheDocument();
+  });
+
+  it('sem pendência na extensão a montagem fica em "pronto"', () => {
+    const sheinStatus = { permission: 'missing' as const, pending: false, loggedIn: false, syncStatus: 'idle' as const };
+    setup({ ext: makeExt({ sheinStatus }), availability: accepted() });
+    expect(screen.queryByText('Falta um clique na extensão')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Conectar Shein' })).toBeInTheDocument();
+  });
+
+  it('erro na consulta da espera encerra com aviso, sem consultar de novo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const readSheinStatus = vi.fn().mockRejectedValue(new Error('canal'));
+    setup({ ext: makeExt({ readSheinStatus }), availability: accepted() });
+
+    await user.click(screen.getByRole('button', { name: 'Conectar Shein' }));
+    await screen.findByText('Falta um clique na extensão');
+    await act(async () => { await vi.advanceTimersByTimeAsync(SHEIN_WAIT_POLL_MS); });
+    expect(await screen.findByText(/O pedido de acesso expirou ou foi negado/)).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(SHEIN_WAIT_POLL_MS * 3); });
     expect(readSheinStatus).toHaveBeenCalledTimes(1);
   });

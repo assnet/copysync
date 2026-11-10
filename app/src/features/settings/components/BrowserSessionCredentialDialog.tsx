@@ -11,7 +11,6 @@ import { useExtension, syncErrorMessage } from '@/features/extension/hooks/useEx
 import { ExtensionSetupWizard } from '@/features/extension/components/ExtensionSetupWizard';
 import { extensionStrings } from '@/features/extension/strings';
 import { useNavigate } from 'react-router-dom';
-import { Blurred, useBlur } from '@/features/privacy';
 import type { AffiliateProviderSpec } from '../affiliateProviders';
 import { settingsStrings } from '../strings';
 
@@ -36,7 +35,6 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
   const ext = useExtension();
   const marketplace = spec.extensionMarketplace ?? 'ml';
   const isShein = marketplace === 'shein';
-  const blurId = useBlur('affiliateCredentials.sessionAffiliateId');
   const navigate = useNavigate();
   const [wizardDone, setWizardDone] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -59,9 +57,6 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
   const credential = ext.credentials[marketplace];
   const hasSession = !!credential?.lastSyncAt;
   const tag = credential?.publicIdentifier;
-  // Shein: sync só depois do "Conectar Shein" (aceite + permissão); aqui o botão espera o acesso.
-  const sheinAccess = ext.sheinStatus?.permission === 'granted';
-  const canSync = !isShein || sheinAccess;
 
   const title = t.dialogCreateTitle(spec.name);
 
@@ -90,7 +85,8 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
         {/* Shein: o card só abre o diálogo para (re)vincular a extensão — sempre o assistente */}
         {(!isConnected || isShein) && !wizardDone ? (
           <ExtensionSetupWizard
-            source="ml_wizard"
+            // Métrica `store-click`: a API só aceita `settings | ml_wizard | onboarding`; Shein conta como `settings`.
+            source={isShein ? 'settings' : 'ml_wizard'}
             marketplace={marketplace}
             onComplete={() => {
               setWizardDone(true);
@@ -107,31 +103,20 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
               {ext.handshake?.extVersion && ` — v${ext.handshake.extVersion}`}
             </Alert>
 
-            {/* ML sync status */}
+            {/* Só Mercado Livre chega aqui: a Shein fecha o diálogo ao concluir o vínculo. */}
             <Box
               sx={{
                 p: 2, borderRadius: 1, border: 1, borderColor: 'divider',
                 display: 'flex', flexDirection: 'column', gap: 1.5,
               }}
             >
-              {isShein ? (
-                <Row label={te.shein.accessLabel}>
-                  <Chip
-                    label={sheinAccess ? te.shein.accessGranted : te.shein.accessMissing}
-                    color={sheinAccess ? 'success' : 'default'}
-                    size="small"
-                    variant="outlined"
-                  />
-                </Row>
-              ) : (
-                <Row label={te.ml.statusLabel}>
-                  {ext.mlStatus?.loggedIn ? (
-                    <Chip label={te.ml.statusLoggedIn} color="success" size="small" variant="outlined" />
-                  ) : (
-                    <Chip label={te.ml.statusLoggedOut} color="default" size="small" variant="outlined" />
-                  )}
-                </Row>
-              )}
+              <Row label={te.ml.statusLabel}>
+                {ext.mlStatus?.loggedIn ? (
+                  <Chip label={te.ml.statusLoggedIn} color="success" size="small" variant="outlined" />
+                ) : (
+                  <Chip label={te.ml.statusLoggedOut} color="default" size="small" variant="outlined" />
+                )}
+              </Row>
 
               <Row label={te.ml.lastSyncLabel}>
                 <Typography variant="body2">
@@ -139,25 +124,17 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
                 </Typography>
               </Row>
 
-              <Row label={isShein ? te.shein.idLabel : te.ml.tagLabel}>
-                {isShein ? (
-                  <Blurred when={blurId} inline>
-                    <Typography variant="body2" fontFamily="monospace" component="span">
-                      {tag ?? te.shein.idMissing}
-                    </Typography>
-                  </Blurred>
-                ) : (
-                  <Typography variant="body2" fontFamily="monospace">
-                    {tag ?? te.ml.tagMissing}
-                  </Typography>
-                )}
+              <Row label={te.ml.tagLabel}>
+                <Typography variant="body2" fontFamily="monospace">
+                  {tag ?? te.ml.tagMissing}
+                </Typography>
               </Row>
             </Box>
 
             {/* Sync / resync button */}
             {!hasSession && (
               <Alert severity="info" variant="outlined" sx={{ py: 0 }}>
-                {isShein ? te.shein.accessHint : t.sessionMissing}
+                {t.sessionMissing}
               </Alert>
             )}
 
@@ -173,7 +150,7 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
                 disableElevation
                 size="small"
                 startIcon={<SyncIcon />}
-                disabled={syncing || !canSync}
+                disabled={syncing}
                 onClick={() => void handleSync()}
               >
                 {syncing ? te.ml.syncing : te.ml.syncNow}

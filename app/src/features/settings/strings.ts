@@ -285,7 +285,11 @@ export const settingsStrings = {
       confirming: 'Registrando aceite…',
       cancel: 'Cancelar',
       adminOnly: 'Só um administrador desta conta pode aceitar o aviso.',
-      outdated: 'O texto do aviso mudou enquanto você lia. Leia a versão atual e aceite de novo.',
+      /** Versão da API ≠ versão deste painel (ou 409): aceitar reenviaria o texto velho. */
+      staleTitle: 'O aviso foi atualizado',
+      staleText: 'O texto do aviso de risco foi atualizado. Recarregue a página para ler a versão atual antes de aceitar.',
+      reloadPage: 'Recarregar página',
+      reloadPageTooltip: 'Recarrega o painel com o texto atual do aviso',
       acceptFailed: 'Não foi possível registrar o aceite. Tente de novo.',
     },
 

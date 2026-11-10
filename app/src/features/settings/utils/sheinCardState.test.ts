@@ -37,6 +37,11 @@ describe('sheinCardState', () => {
       .toBe('ready');
   });
 
+  it('riskNotice null conta como aceite pendente', () => {
+    expect(sheinCardState({ ...base, item: item(), availability: avail({ riskNotice: null }) })).toBe('reaccept');
+    expect(sheinCardState({ ...base, availability: avail({ riskNotice: null }) })).toBe('ready');
+  });
+
   it('faixa de aviso em todo estado menos travado', () => {
     expect(showsRiskBanner('locked')).toBe(false);
     for (const s of ['no_extension', 'outdated_extension', 'no_link', 'ready', 'connected', 'rejected', 'reaccept'] as const) {

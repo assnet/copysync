@@ -21,13 +21,13 @@ interface Props {
   children: ReactNode;
 }
 
+/** Marca preta (Shein) some no tema escuro: a faixa e os fundos usam o texto do tema como acento. */
+const DARK_ON_DARK = '#000000';
+
 /**
  * Moldura comum dos cards de marketplace: faixa e fundo translúcido com a cor da marca, logo,
  * nome, chip de estado, descrição e os três destaques. Cabeçalho próprio (não `SectionCard`).
  */
-/** Marca preta (Shein) some no tema escuro: a faixa e os fundos usam o texto do tema como acento. */
-const DARK_ON_DARK = '#000000';
-
 export function AffiliateCardShell({ spec, chip, chipMuted, children }: Props) {
   const brand = spec.brandColor;
   const isBlack = brand === DARK_ON_DARK;

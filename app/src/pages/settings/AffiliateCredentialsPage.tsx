@@ -25,7 +25,6 @@ export function AffiliateCredentialsPage() {
   const { tenants, activeTenantId } = useTenant();
   // Só ADMIN confirmado aceita o aviso de risco; papel desconhecido trata como operador.
   const canAcceptRisk = tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN';
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const { refresh: refreshExt, disconnect: disconnectExt } = ext;
 
   /** Provider com ID da sessão (Shein): desconectar pela rota da extensão, nunca o DELETE genérico. */
@@ -100,11 +99,8 @@ export function AffiliateCredentialsPage() {
                   item={item}
                   busy={busy[spec.provider]}
                   onConfigure={() => setEditing(spec.provider)}
-                  onRemove={() => {
-                    if (spec.identifierFromSession) {
-                      disconnectSession(spec).catch(() => setDisconnectError(t.shein.disconnectFailed));
-                    } else void remove(spec.provider);
-                  }}
+                  // Provider com `identifierFromSession` sempre cai no SheinCredentialCard (desconecta lá).
+                  onRemove={() => void remove(spec.provider)}
                   onStatusChange={(status) => void setStatus(spec.provider, status)}
                 />
               ),
@@ -143,15 +139,6 @@ export function AffiliateCredentialsPage() {
           />
         )
       )}
-
-      <Snackbar
-        open={Boolean(disconnectError)}
-        autoHideDuration={6000}
-        onClose={() => setDisconnectError(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity="error" variant="filled" onClose={() => setDisconnectError(null)}>{disconnectError}</Alert>
-      </Snackbar>
 
       <Snackbar
         open={Boolean(actionError)}
