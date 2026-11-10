@@ -80,6 +80,7 @@ export const extensionStrings = {
 
     doneTitle: 'Extensão configurada!',
     doneHint: 'A sessão do ML será renovada automaticamente enquanto o navegador estiver aberto.',
+    doneHintNotSynced: 'A extensão está vinculada, mas a sessão do Mercado Livre ainda não foi sincronizada. Entre no Mercado Livre neste navegador e sincronize para gerar links.',
     doneAction: 'Concluir',
   },
 
@@ -160,6 +161,7 @@ export const extensionStrings = {
     sheinPermissionMissing: 'Permita o acesso da extensão à Shein: clique no ícone da extensão e aceite o pedido do navegador.',
     sheinSyncFailed: 'Falha ao sincronizar a sessão da Shein. Tente de novo em instantes.',
     riskNotAccepted: 'Aceite o aviso de risco da Shein no painel para continuar.',
+    relinkRequired: 'O vínculo desta extensão não vale mais para a sua conta (ela foi reinstalada ou vinculada a outro usuário). Vincule de novo para continuar.',
     disconnectMlFailed: 'Não foi possível desconectar o Mercado Livre. Tente novamente.',
     needsLogin: 'Faça login no painel para continuar.',
     forbidden: 'Sem permissão para esta operação.',

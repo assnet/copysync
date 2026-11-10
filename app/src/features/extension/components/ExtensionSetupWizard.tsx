@@ -33,6 +33,8 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings', marketpl
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Pronto" só promete renovação automática se a sessão do ML foi mesmo sincronizada.
+  const [synced, setSynced] = useState(false);
 
   // Instalar/Detectar: já detectada pula direto para o vínculo (ou sync, se já vinculada)
   useEffect(() => {
@@ -74,8 +76,16 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings', marketpl
     setError(null);
     try {
       await ext.syncMl();
+      setSynced(true);
       setStep(STEP.done);
     } catch (err) {
+      // Vínculo é de outra instalação (extensão reinstalada) ou de outro usuário: o consentimento
+      // dá 404. Volta para "Vincular", que emite a sessão desta instalação.
+      if ((err as { code?: unknown } | null)?.code === 'SESSION_NOT_FOUND') {
+        setStep(STEP.connect);
+        setError(extensionStrings.errors.relinkRequired);
+        return;
+      }
       setError(syncErrorMessage(err));
     } finally {
       setBusy(false);
@@ -189,7 +199,7 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings', marketpl
               component="button"
               variant="body2"
               underline="hover"
-              onClick={() => setStep(STEP.done)}
+              onClick={() => { setError(null); setStep(STEP.done); }}
             >
               {t.syncSkip}
             </Link>
@@ -203,7 +213,7 @@ export function ExtensionSetupWizard({ onComplete, source = 'settings', marketpl
           <CheckCircleOutlineIcon color="success" sx={{ fontSize: 48, mb: 1 }} />
           <Typography variant="h6" gutterBottom>{t.doneTitle}</Typography>
           <Typography variant="body2" color="text.secondary" mb={3}>
-            {sheinOnly ? t.connectHintShein : t.doneHint}
+            {sheinOnly ? t.connectHintShein : synced ? t.doneHint : t.doneHintNotSynced}
           </Typography>
           <Button variant="contained" disableElevation onClick={onComplete}>
             {t.doneAction}

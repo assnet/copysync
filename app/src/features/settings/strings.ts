@@ -250,7 +250,7 @@ export const settingsStrings = {
       reacceptHint: 'Leia e aceite a nova versão. Até lá, a sincronização e a geração de links da Shein ficam paradas.',
       reacceptAction: 'Ler e aceitar o aviso',
       rejectedHint: 'A Shein recusou a sua sessão. Entre de novo na sua conta da Shein neste navegador e sincronize.',
-      noLinkError: 'Esta extensão está vinculada a outro usuário deste painel. Vincule-a à sua conta para continuar.',
+      noLinkError: 'O vínculo desta extensão não vale mais para a sua conta (ela foi reinstalada ou vinculada a outro usuário). Vincule de novo para continuar.',
       consentErrors: {
         PLAN_FEATURE_UNAVAILABLE: 'A Shein não está liberada no seu plano.',
         MARKETPLACE_RISK_NOT_ACCEPTED: 'Aceite o aviso de risco da Shein para continuar.',

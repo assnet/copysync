@@ -37,6 +37,15 @@ export async function extensionAuthHook(
     return reply.code(401).send({ success: false, error: { code: 'INVALID_EXT_SESSION', message: 'Extension session expired or revoked' } });
   }
 
+  // Cookie sobrevive à reinstalação da extensão, que nasce com outro `installationId`: sem esta
+  // checagem a instalação nova parece vinculada (handshake autenticado, heartbeat creditado à
+  // antiga), mas o consentimento do painel (por instalação) dá 404 e nada conecta. 401 faz a
+  // extensão se declarar sem vínculo e o painel oferecer "Vincular" (sessão nova para esta instalação).
+  const headerInstallationId = request.headers['x-installation-id'];
+  if (typeof headerInstallationId === 'string' && headerInstallationId !== result.session.installationId) {
+    return reply.code(401).send({ success: false, error: { code: 'INVALID_EXT_SESSION', message: 'Extension session belongs to another installation' } });
+  }
+
   request.extensionSession = {
     sessionId: result.session.id,
     userId: result.session.userId,
