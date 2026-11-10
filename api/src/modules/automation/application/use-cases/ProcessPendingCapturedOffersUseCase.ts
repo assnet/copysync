@@ -1,3 +1,4 @@
+import { effectiveImageMode } from '../../../campaigns/domain/enums/OfferImageMode';
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
 import type { CapturedOfferResolution, ICapturedOfferRepository } from '../../domain/contracts/ICapturedOfferRepository';
 import type { IGroupMonitorRepository } from '../../domain/contracts/IGroupMonitorRepository';
@@ -11,7 +12,7 @@ import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from
 import { resolveStartWithinWindow, type OperatingWindow } from '../../domain/services/operatingWindow';
 import { weekdaysMask } from '../../../campaigns/domain/services/postingWindow';
 import { logger } from '../../../../shared/logger/logger';
-import { CROSS_SESSION_DISPATCH, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
+import { CROSS_SESSION_DISPATCH, ENRICH_LINK_ONLY_ENABLED, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
 import { keepOneSessionPerChannel, limitKeyOfChannel, requiresCrossSession, sliceByChannel } from '../../../tenants/domain/channelLimits';
 
 /** Capturas por tick (cada uma pode ir à rede: expandir link, API do marketplace). */
@@ -181,7 +182,9 @@ export class ProcessPendingCapturedOffersUseCase {
     const expiresAt = captureExpiresAt(resolveStartWithinWindow(plannedFromCapture, window), coupon !== null, config);
     const earliest = new Date(Math.max(now.getTime(), plannedFromCapture.getTime()));
     const startAt = resolveStartWithinWindow(earliest, window);
-    const built = await this.buildText(c, config, first, coupon, finalText, tenantLinks);
+    // "Montar só com link" é Pro/Max: plano rebaixado com a opção salva cai no texto original
+    const enrichAllowed = config.enrichLinkOnly && (await entitlements.getBoolean(c.tenantId, ENRICH_LINK_ONLY_ENABLED)) === true;
+    const built = await this.buildText(c, enrichAllowed === config.enrichLinkOnly ? config : { ...config, enrichLinkOnly: false }, first, coupon, finalText, tenantLinks);
     const base: CapturedOfferResolution = {
       marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon,
       finalText: built.text, textSource: built.textSource, aiErrorCode: built.aiErrorCode, expiresAt, startsAt: null,
@@ -201,7 +204,7 @@ export class ProcessPendingCapturedOffersUseCase {
       imageUrl: built.imageUrl,
       coupon,
       mentionAll,
-      imageMode: config.imageMode,
+      imageMode: effectiveImageMode(config.imageMode),
       simulateTyping: config.simulateTyping,
       typingSeconds: config.typingSeconds,
       startAt,

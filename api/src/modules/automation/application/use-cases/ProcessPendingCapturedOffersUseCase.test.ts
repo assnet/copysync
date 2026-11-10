@@ -9,6 +9,9 @@ import {
 
 const TEXT = '🔥 Fone JBL por R$ 99\nhttps://amzn.to/abc?tag=concorrente-20\nCupom: PROMO10\n👉 Grupo: https://chat.whatsapp.com/XYZ';
 
+/** Base dos cenários: validade 3 h / cupom 1 h e montar só com link ligado (não depende dos padrões de produto). */
+const FIXTURE_SETTINGS = { maxOfferAgeMinutes: 180, couponMaxAgeMinutes: 60, enrichLinkOnly: true };
+
 async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS> & { weekdays?: number[] }; broadcast?: string[]; entitlements?: Record<string, unknown>; processNow?: () => Date; captureNow?: () => Date } = {}) {
   const monitors = new InMemoryGroupMonitorRepository();
   const captured = new InMemoryCapturedOfferRepository();
@@ -17,12 +20,13 @@ async function setup(opts: { settings?: Partial<typeof DEFAULT_MONITOR_SETTINGS>
   const products = new FakeProductReader();
   const texts = new FakeTextComposer();
   const images = new FakeImageStore();
-  const cfg = await monitors.saveSettings(TENANT, SESSION, { ...DEFAULT_MONITOR_SETTINGS, enabled: true, ...opts.settings });
+  const cfg = await monitors.saveSettings(TENANT, SESSION, { ...DEFAULT_MONITOR_SETTINGS, ...FIXTURE_SETTINGS, enabled: true, ...opts.settings });
   await monitors.replaceMonitored(TENANT, SESSION, cfg.id, [{ conversationId: 'c-src', groupJid: '120363-src', keywords: [] }]);
   await monitors.replaceBroadcast(TENANT, SESSION, cfg.id, (opts.broadcast ?? ['g1', 'g2']).map((j) => ({ conversationId: `c-${j}`, groupJid: j, sessionId: SESSION })));
-  const register = new RegisterCapturedMessageUseCase({ monitors, captured, now: opts.captureNow ?? (() => NOW) });
+  const entitlements = new FakeEntitlements({ enrich_link_only_enabled: true, capture_outside_window_enabled: true, ...opts.entitlements });
+  const register = new RegisterCapturedMessageUseCase({ monitors, captured, entitlements, now: opts.captureNow ?? (() => NOW) });
   const process = new ProcessPendingCapturedOffersUseCase({
-    captured, monitors, links, queue, entitlements: new FakeEntitlements(opts.entitlements), now: opts.processNow ?? opts.captureNow ?? (() => NOW), products, texts, images,
+    captured, monitors, links, queue, entitlements, now: opts.processNow ?? opts.captureNow ?? (() => NOW), products, texts, images,
   });
   const msg = (o = {}) => register.execute({
     tenantId: TENANT, sessionId: SESSION, isGroup: true, fromMe: false, groupJid: '120363-src', externalMessageId: 'm1',
@@ -58,6 +62,17 @@ describe('RegisterCapturedMessageUseCase', () => {
     expect(b.captured.items).toHaveLength(0);
     const c = await setup({ settings: { ...window, captureOutsideWindow: false, windowStartMinute: 600 } });
     expect(await c.msg()).toBe('captured');
+  });
+
+  it('capturar fora do horário só no Max: ligado sem capture_outside_window_enabled não captura fora da janela', async () => {
+    const window = { windowStartMinute: 840, windowEndMinute: 1200 };
+    for (const ent of [{ capture_outside_window_enabled: undefined }, { capture_outside_window_enabled: false }]) {
+      const s = await setup({ settings: window, entitlements: ent });
+      expect(await s.msg()).toBe('outside_window');
+    }
+    // Dentro da janela o plano não importa
+    const inside = await setup({ settings: { ...window, windowStartMinute: 600 }, entitlements: { capture_outside_window_enabled: false } });
+    expect(await inside.msg()).toBe('captured');
   });
 
   it('dia fora dos dias de postagem conta como fora do horário', async () => {
@@ -208,6 +223,13 @@ describe('ProcessPendingCapturedOffersUseCase', () => {
     expect(s.queue.inputs[0]).toMatchObject({ imageMode: 'LINK_PREVIEW' });
   });
 
+  it('configuração antiga com MEDIA (desligado) gera oferta LINK_PREVIEW', async () => {
+    const s = await setup({ settings: { imageMode: 'MEDIA' } });
+    await s.msg();
+    await s.process.execute();
+    expect(s.queue.inputs[0]).toMatchObject({ imageMode: 'LINK_PREVIEW' });
+  });
+
   it('erro inesperado vira FAILED INTERNAL_ERROR e não derruba o tick', async () => {
     const s = await setup();
     s.queue.result = () => { throw new TypeError('bug'); };
@@ -253,6 +275,17 @@ describe('ProcessPendingCapturedOffersUseCase — oferta montada e reescrita com
     expect(s.queue.inputs[0]!.text).toBe(TENANT_LINK);
     expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
     expect(s.captured.items[0]).toMatchObject({ textSource: 'ORIGINAL' });
+  });
+
+  it('só link com enrichLinkOnly salvo mas sem enrich_link_only_enabled (plano rebaixado): ORIGINAL, sem montar', async () => {
+    for (const ent of [{ enrich_link_only_enabled: undefined }, { enrich_link_only_enabled: false }]) {
+      const s = await setup({ settings: { enrichLinkOnly: true }, entitlements: ent });
+      await s.msg({ body: LINK_ONLY, msgType: 'TEXT', mediaUrl: null, mimeType: null });
+      await s.process.execute();
+      expect(s.texts.inputs).toHaveLength(0);
+      expect(s.queue.inputs[0]!.text).toBe(TENANT_LINK);
+      expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
+    }
   });
 
   it('ORIGINAL com texto e sem foto na mensagem (link com prévia): texto original + foto do produto', async () => {

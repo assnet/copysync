@@ -37,7 +37,7 @@ export const automationContainer = {
   saveBroadcast:    lazy(() => new SaveBroadcastGroupsUseCase(configDeps())),
   listCaptured:     lazy(() => new ListCapturedOffersUseCase({ captured: captured(), monitors: monitors() })),
   retryCaptured:    lazy(() => new RetryCapturedOfferUseCase({ captured: captured(), monitors: monitors() })),
-  registerMessage:  lazy(() => new RegisterCapturedMessageUseCase({ monitors: monitors(), captured: captured() })),
+  registerMessage:  lazy(() => new RegisterCapturedMessageUseCase({ monitors: monitors(), captured: captured(), entitlements: offersContainer.entitlements() })),
   processCaptured:  lazy(() => new ProcessPendingCapturedOffersUseCase({
     captured: captured(), monitors: monitors(), links: new CampaignsTenantLinkBuilder(), queue: new CampaignsOfferQueue(),
     entitlements: offersContainer.entitlements(),

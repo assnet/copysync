@@ -1,3 +1,4 @@
+import { effectiveImageMode } from '../../../campaigns/domain/enums/OfferImageMode';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import {
   channelOfEngine, countByChannel, LIMIT_CHANNELS, limitKeyOfChannel, requiresCrossSession, type LimitChannel,
@@ -26,6 +27,8 @@ export const MONITORED_GROUPS = ENTITLEMENT_KEYS.MONITORED_GROUPS;
 export const BROADCAST_GROUPS = ENTITLEMENT_KEYS.BROADCAST_GROUPS;
 export const MENTION_ALL_ENABLED = ENTITLEMENT_KEYS.MENTION_ALL_ENABLED;
 export const CROSS_SESSION_DISPATCH = ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH;
+export const ENRICH_LINK_ONLY_ENABLED = ENTITLEMENT_KEYS.ENRICH_LINK_ONLY_ENABLED;
+export const CAPTURE_OUTSIDE_WINDOW_ENABLED = ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED;
 
 export interface GroupMonitorConfigDeps {
   monitors: IGroupMonitorRepository;
@@ -57,7 +60,7 @@ abstract class GroupMonitorConfigBase {
   protected async load({ tenantId, sessionId }: SessionInput): Promise<GroupMonitorConfigDTO> {
     const { monitors, entitlements } = this.deps;
     const num = (kind: 'monitoredGroups' | 'broadcastGroups', ch: LimitChannel) => entitlements.getNumber(tenantId, limitKeyOfChannel(kind, ch));
-    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, unionRows] = await Promise.all([
+    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, enrichLinkOnly, captureOutside, unionRows] = await Promise.all([
       monitors.findConfig(tenantId, sessionId),
       monitors.listMonitored(tenantId, sessionId),
       monitors.listBroadcast(tenantId, sessionId),
@@ -69,6 +72,8 @@ abstract class GroupMonitorConfigBase {
       num('broadcastGroups', 'telegram'),
       entitlements.getBoolean(tenantId, MENTION_ALL_ENABLED),
       entitlements.getBoolean(tenantId, CROSS_SESSION_DISPATCH),
+      entitlements.getBoolean(tenantId, ENRICH_LINK_ONLY_ENABLED),
+      entitlements.getBoolean(tenantId, CAPTURE_OUTSIDE_WINDOW_ENABLED),
       this.deps.broadcastUsage.listRows(tenantId),
     ]);
     const live = broadcast.length > 0
@@ -93,6 +98,8 @@ abstract class GroupMonitorConfigBase {
       })),
       limits: {
         ...whatsapp, mentionAllEnabled: mentionAll !== false, crossSessionDispatch: crossSession === true,
+        enrichLinkOnlyEnabled: enrichLinkOnly === true,
+        captureOutsideWindowEnabled: captureOutside === true,
         whatsapp, telegram: { monitoredGroups: tgMon, broadcastGroups: tgBc },
       },
       usage: { ...usageWa, whatsapp: usageWa, telegram: { monitoredGroups: mon.telegram, broadcastGroups: bc.telegram } },
@@ -147,13 +154,21 @@ export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
     const settings: GroupMonitorSettings = {
       ...input.settings,
       captureOutsideWindow: captureOutsideWindow ?? saved?.captureOutsideWindow ?? DEFAULT_MONITOR_SETTINGS.captureOutsideWindow,
-      imageMode: imageMode ?? saved?.imageMode ?? DEFAULT_MONITOR_SETTINGS.imageMode,
+      imageMode: effectiveImageMode(imageMode ?? saved?.imageMode ?? DEFAULT_MONITOR_SETTINGS.imageMode),
     };
     const problem = monitorSettingsProblem(settings);
     if (problem) throw new GroupMonitorInvalidInputError(problem.reason, problem.field);
     // Ausente = permitido; só `false` explícito bloqueia (mesma regra do gerador)
     if (settings.mentionAll && (await this.deps.entitlements.getBoolean(input.tenantId, MENTION_ALL_ENABLED)) === false) {
       throw new PlanFeatureUnavailableError(MENTION_ALL_ENABLED);
+    }
+    // Recurso Pro/Max: ausente bloqueia (só `true` libera)
+    if (settings.enrichLinkOnly && (await this.deps.entitlements.getBoolean(input.tenantId, ENRICH_LINK_ONLY_ENABLED)) !== true) {
+      throw new PlanFeatureUnavailableError(ENRICH_LINK_ONLY_ENABLED);
+    }
+    // Só Max. Desliga em vez de recusar: o padrão do banco é ligado e cliente antigo reenvia o salvo
+    if (settings.captureOutsideWindow && (await this.deps.entitlements.getBoolean(input.tenantId, CAPTURE_OUTSIDE_WINDOW_ENABLED)) !== true) {
+      settings.captureOutsideWindow = false;
     }
     // Início 24:00 grava 0 (mesmo dia): regra TS e claim SQL leem igual
     settings.windowStartMinute = normalizeWindowStartMinute(settings.windowStartMinute, settings.windowEndMinute);

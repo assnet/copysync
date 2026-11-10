@@ -35,6 +35,10 @@ export const ENTITLEMENT_KEYS = {
   STOREFRONT_ENABLED: 'storefront_enabled',
   /** Story de Oferta (arte para Instagram, só Business). Ausente = bloqueado. */
   OFFER_STORY_ENABLED: 'offer_story_enabled',
+  /** Monitoramento: captura só com link vira oferta montada (Pro e Max). Ausente = bloqueado. */
+  ENRICH_LINK_ONLY_ENABLED: 'enrich_link_only_enabled',
+  /** Monitoramento: capturar fora do horário de postagem e acumular a fila (só Max). Ausente = bloqueado. */
+  CAPTURE_OUTSIDE_WINDOW_ENABLED: 'capture_outside_window_enabled',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

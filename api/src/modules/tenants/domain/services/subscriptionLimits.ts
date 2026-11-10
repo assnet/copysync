@@ -66,6 +66,8 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   feature(ENTITLEMENT_KEYS.MARKETPLACE_EXTENSION),
   feature(ENTITLEMENT_KEYS.STOREFRONT_ENABLED),
   feature(ENTITLEMENT_KEYS.OFFER_STORY_ENABLED),
+  feature(ENTITLEMENT_KEYS.ENRICH_LINK_ONLY_ENABLED),
+  feature(ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED),
 ];
 
 /** Mesma leitura do `PrismaEntitlementReader.getNumber`: número ou string numérica; resto = ausente. */

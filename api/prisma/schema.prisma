@@ -773,7 +773,7 @@ model Offer {
   audience            OfferAudience     @default(STANDARD)
   mentionAll          Boolean           @default(false)
   /// Formato da foto no envio (docs/mensagens-previa-de-link.md).
-  imageMode           OfferImageMode    @default(MEDIA)
+  imageMode           OfferImageMode    @default(LINK_PREVIEW)
   /// Envia "digitando…" antes da mensagem, por um tempo proporcional ao texto.
   simulateTyping      Boolean           @default(false)
   /// Duração do "digitando…" em segundos (limites em campaigns/domain/offerTyping.ts).
@@ -1222,26 +1222,28 @@ model GroupMonitorConfig {
   /// Dias da semana da janela (bit 0 = domingo; 127 = todos). Faixa que cruza a meia-noite pertence ao dia do início.
   weekdaysMask         Int             @default(127)
   /// Fora da janela: true = captura continua e acumula a fila (sai quando a janela abrir); false = não captura.
+  /// Só vale no Max (`capture_outside_window_enabled`); sem o plano conta como false.
   captureOutsideWindow Boolean         @default(true)
-  /// Padrão 15–40 min: repostagem de oferta capturada é mais espaçada que o gerador (2–5 min).
-  intervalMinSeconds   Int             @default(900)
-  intervalMaxSeconds   Int             @default(2400)
+  /// Padrão sem intervalo (0–0): o painel sugere espaçar conforme o volume.
+  intervalMinSeconds   Int             @default(0)
+  intervalMaxSeconds   Int             @default(0)
   /// Espera depois da captura antes do 1º envio.
   startDelaySeconds    Int             @default(0)
   /// Validade sem cupom / com cupom (minutos desde a captura).
-  maxOfferAgeMinutes   Int             @default(180)
-  couponMaxAgeMinutes  Int             @default(60)
+  maxOfferAgeMinutes   Int             @default(1440)
+  couponMaxAgeMinutes  Int             @default(1440)
   mentionAll           Boolean         @default(false)
-  simulateTyping       Boolean         @default(false)
-  typingSeconds        Int             @default(15)
+  simulateTyping       Boolean         @default(true)
+  typingSeconds        Int             @default(3)
   /// Como montar o texto enviado (docs/monitoramento-grupos.md §2.4).
   textMode             MonitorTextMode @default(ORIGINAL)
   /// Público da IA (só com textMode AI; STANDARD = modelo fixo).
   audience             OfferAudience   @default(STANDARD)
-  /// Captura só com link vira oferta montada mesmo em ORIGINAL.
-  enrichLinkOnly       Boolean         @default(true)
+  /// Captura só com link vira oferta montada mesmo em ORIGINAL. Recurso Pro/Max (`enrich_link_only_enabled`).
+  enrichLinkOnly       Boolean         @default(false)
   /// Formato da foto nas ofertas criadas por esta configuração (copiado para Offer.imageMode).
-  imageMode            OfferImageMode  @default(MEDIA)
+  /// MEDIA desligado no envio até nova decisão (`effectiveImageMode`).
+  imageMode            OfferImageMode  @default(LINK_PREVIEW)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 

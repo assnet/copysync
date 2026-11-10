@@ -38,6 +38,10 @@ export interface GroupMonitorConfigDTO {
   limits: ChannelGroupLimitsDTO & {
     mentionAllEnabled: boolean;
     crossSessionDispatch: boolean;
+    /** Entitlement `enrich_link_only_enabled` (Pro/Max): false = "montar oferta só com link" travado. */
+    enrichLinkOnlyEnabled: boolean;
+    /** Entitlement `capture_outside_window_enabled` (Max): false = "capturar fora do horário" travado (vale desligado). */
+    captureOutsideWindowEnabled: boolean;
     whatsapp: ChannelGroupLimitsDTO;
     telegram: ChannelGroupLimitsDTO;
   };

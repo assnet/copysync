@@ -1,6 +1,6 @@
 import { MONITOR_TEXT_MODES, type GroupMonitorSettings } from '../entities/GroupMonitor';
 import { OFFER_AUDIENCES } from '../../../campaigns/domain/enums/OfferAudience';
-import { OFFER_IMAGE_MODES } from '../../../campaigns/domain/enums/OfferImageMode';
+import { DEFAULT_OFFER_IMAGE_MODE, OFFER_IMAGE_MODES } from '../../../campaigns/domain/enums/OfferImageMode';
 import { MINUTES_PER_DAY } from './operatingWindow';
 
 export const MONITOR_LIMITS = {
@@ -22,24 +22,27 @@ export const DEFAULT_MONITOR_WEEKDAYS: readonly number[] = [0, 1, 2, 3, 4, 5, 6]
 /** Configuração com os dias de postagem (ausente = cliente anterior: mantém o salvo). */
 export type MonitorSettingsWithWeekdays = GroupMonitorSettings & { weekdays?: readonly number[] };
 
-/** Padrões (espelham os `@default` do Prisma): 06:00–18:00 e 15–40 min entre envios. */
+/**
+ * Padrões (espelham os `@default` do Prisma): 06:00–18:00, sem intervalo, "digitando" 3 s, validade 24 h,
+ * prévia do link e sem montar oferta só com link (recurso Pro/Max, `enrich_link_only_enabled`).
+ */
 export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   enabled: false,
   windowStartMinute: 6 * 60,
   windowEndMinute: 18 * 60,
   captureOutsideWindow: true,
-  intervalMinSeconds: 15 * 60,
-  intervalMaxSeconds: 40 * 60,
+  intervalMinSeconds: 0,
+  intervalMaxSeconds: 0,
   startDelaySeconds: 0,
-  maxOfferAgeMinutes: 180,
-  couponMaxAgeMinutes: 60,
+  maxOfferAgeMinutes: 24 * 60,
+  couponMaxAgeMinutes: 24 * 60,
   mentionAll: false,
-  simulateTyping: false,
-  typingSeconds: 15,
+  simulateTyping: true,
+  typingSeconds: 3,
   textMode: 'ORIGINAL',
   audience: 'STANDARD',
-  enrichLinkOnly: true,
-  imageMode: 'MEDIA',
+  enrichLinkOnly: false,
+  imageMode: DEFAULT_OFFER_IMAGE_MODE,
 };
 
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;

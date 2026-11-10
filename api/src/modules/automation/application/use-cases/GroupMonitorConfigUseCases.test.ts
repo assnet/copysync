@@ -29,7 +29,7 @@ describe('GroupMonitorConfigUseCases', () => {
     const out = await s.get.execute(base);
     expect(out.settings).toEqual(DEFAULT_MONITOR_SETTINGS);
     expect(out.limits).toEqual({
-      monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false,
+      monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false, enrichLinkOnlyEnabled: false, captureOutsideWindowEnabled: false,
       whatsapp: { monitoredGroups: 2, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null },
     });
     expect(out.channel).toBe('whatsapp');
@@ -50,25 +50,55 @@ describe('GroupMonitorConfigUseCases', () => {
     const s = setup({ mention_all_enabled: false });
     const ok = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, enabled: true, windowStartMinute: 1320, windowEndMinute: 360 } });
     expect(ok.settings).toMatchObject({ enabled: true, windowStartMinute: 1320, windowEndMinute: 360 });
-    await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, couponMaxAgeMinutes: 999 } }))
+    await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, maxOfferAgeMinutes: 180, couponMaxAgeMinutes: 999 } }))
       .rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT', meta: { field: 'couponMaxAgeMinutes' } });
     await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, mentionAll: true } }))
       .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
   });
 
+  it('montar só com link exige enrich_link_only_enabled === true; GetConfig expõe o limite', async () => {
+    for (const ent of [{}, { enrich_link_only_enabled: false }]) {
+      const s = setup(ent);
+      await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, enrichLinkOnly: true } }))
+        .rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'enrich_link_only_enabled' } });
+      expect((await s.get.execute(base)).limits.enrichLinkOnlyEnabled).toBe(false);
+      // desligado continua salvável sem o recurso
+      await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, enrichLinkOnly: false } })).resolves.toBeTruthy();
+    }
+    const s = setup({ enrich_link_only_enabled: true });
+    const ok = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, enrichLinkOnly: true } });
+    expect(ok.settings.enrichLinkOnly).toBe(true);
+    expect(ok.limits.enrichLinkOnlyEnabled).toBe(true);
+  });
+
+  it('capturar fora do horário: sem capture_outside_window_enabled grava false (sem recusar); GetConfig expõe o limite', async () => {
+    for (const ent of [{}, { capture_outside_window_enabled: false }]) {
+      const s = setup(ent);
+      const out = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, captureOutsideWindow: true } });
+      expect(out.settings.captureOutsideWindow).toBe(false);
+      expect(out.limits.captureOutsideWindowEnabled).toBe(false);
+    }
+    const s = setup({ capture_outside_window_enabled: true });
+    const out = await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, captureOutsideWindow: true } });
+    expect(out.settings.captureOutsideWindow).toBe(true);
+    expect(out.limits.captureOutsideWindowEnabled).toBe(true);
+  });
+
   it('captureOutsideWindow ausente (cliente antigo) mantém o valor salvo; sem config salva vale o padrão', async () => {
-    const s = setup();
+    const s = setup({ capture_outside_window_enabled: true });
     const { captureOutsideWindow: _omit, ...without } = DEFAULT_MONITOR_SETTINGS;
     expect((await s.settings.execute({ ...base, settings: without })).settings.captureOutsideWindow).toBe(true);
     await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, captureOutsideWindow: false } });
     expect((await s.settings.execute({ ...base, settings: without })).settings.captureOutsideWindow).toBe(false);
   });
 
-  it('imageMode ausente (cliente antigo) mantém o valor salvo; desconhecido vira 422', async () => {
+  it('imageMode ausente (cliente antigo) vale o padrão LINK_PREVIEW; MEDIA desligado grava LINK_PREVIEW; desconhecido vira 422', async () => {
     const s = setup();
     const { imageMode: _omit, ...without } = DEFAULT_MONITOR_SETTINGS;
-    expect((await s.settings.execute({ ...base, settings: without })).settings.imageMode).toBe('MEDIA');
-    await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, imageMode: 'LINK_PREVIEW' } });
+    expect((await s.settings.execute({ ...base, settings: without })).settings.imageMode).toBe('LINK_PREVIEW');
+    expect((await s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, imageMode: 'MEDIA' } })).settings.imageMode).toBe('LINK_PREVIEW');
+    // salvo MEDIA (linha antiga) + cliente antigo sem o campo: também sai LINK_PREVIEW
+    await s.monitors.saveSettings(TENANT, SESSION, { ...DEFAULT_MONITOR_SETTINGS, imageMode: 'MEDIA' });
     expect((await s.settings.execute({ ...base, settings: without })).settings.imageMode).toBe('LINK_PREVIEW');
     await expect(s.settings.execute({ ...base, settings: { ...DEFAULT_MONITOR_SETTINGS, imageMode: 'X' as never } }))
       .rejects.toMatchObject({ code: 'GROUP_MONITOR_INVALID_INPUT', meta: { field: 'imageMode' } });
