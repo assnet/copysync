@@ -239,11 +239,12 @@ export function useExtension() {
   const supports = useCallback((cap: string) => !!caps?.includes(cap), [caps]);
 
   const revokeSession = useCallback(async () => {
-    await extensionApi.revokeSession();
+    if (!installationId) throw new Error('installation unknown');
+    await extensionApi.revokeSession(installationId);
     await sendOp('session.changed', {});
     clearCachedExtId();
     await refresh();
-  }, [refresh]);
+  }, [refresh, installationId]);
 
   useEffect(() => {
     mountedRef.current = true;

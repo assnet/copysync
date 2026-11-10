@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Box, Button, CircularProgress, Typography, Stack } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Typography, Stack } from '@mui/material';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import { PageHeader, SectionCard, ConfirmDialog } from '@/components';
 import { useExtension } from '@/features/extension/hooks/useExtension';
@@ -16,9 +16,16 @@ export function ExtensionSettingsPage() {
   const [showWizard, setShowWizard] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
+  const [revokeError, setRevokeError] = useState(false);
+
   const handleRevoke = useCallback(async () => {
     setConfirmRevoke(false);
-    await ext.revokeSession();
+    setRevokeError(false);
+    try {
+      await ext.revokeSession();
+    } catch {
+      setRevokeError(true);
+    }
   }, [ext]);
 
   if (ext.loading) {
@@ -65,6 +72,10 @@ export function ExtensionSettingsPage() {
         {/* ML card */}
         <ExtensionMlCard />
 
+        {revokeError && (
+          <Alert severity="error" onClose={() => setRevokeError(false)}>{ts.disconnectFailed}</Alert>
+        )}
+
         {/* Disconnect extension */}
         <Box>
           <Button
@@ -84,7 +95,7 @@ export function ExtensionSettingsPage() {
         title={ts.disconnectExtension}
         description={ts.disconnectConfirm}
         confirmLabel={ts.disconnectExtension}
-        cancelLabel="Cancelar"
+        cancelLabel={ts.cancel}
         confirmColor="error"
         onConfirm={() => void handleRevoke()}
         onClose={() => setConfirmRevoke(false)}

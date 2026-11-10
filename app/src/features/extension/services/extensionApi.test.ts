@@ -12,6 +12,17 @@ describe('extensionApi por marketplace', () => {
     expect(http.delete).not.toHaveBeenCalledWith('/integrations/affiliate-credentials/SHEIN');
   });
 
+  it('revokeSession revoga pelo Bearer só as sessões da instalação; nunca a rota exclusiva da extensão', async () => {
+    http.get.mockResolvedValue({ data: { data: [
+      { id: 's1', installationId: 'inst-1' }, { id: 's2', installationId: 'outra' },
+    ] } });
+    await extensionApi.revokeSession('inst-1');
+    expect(http.get).toHaveBeenCalledWith('/extension/sessions');
+    expect(http.delete).toHaveBeenCalledWith('/extension/sessions/s1');
+    expect(http.delete).not.toHaveBeenCalledWith('/extension/sessions/s2');
+    expect(http.delete).not.toHaveBeenCalledWith('/extension/session');
+  });
+
   it('consent("shein") envia a instalação', async () => {
     await extensionApi.consent('shein', 'inst-1');
     expect(http.post).toHaveBeenCalledWith('/extension/marketplaces/shein/consent', { installationId: 'inst-1' });

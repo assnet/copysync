@@ -56,13 +56,15 @@ export const extensionApi = {
     await apiClient.post('/extension/session', data, { withCredentials: true });
   },
 
-  async revokeSession(): Promise<void> {
-    const baseUrl = import.meta.env.VITE_API_URL ?? '/api';
-    await fetch(`${baseUrl}/extension/session`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'x-client': 'web' },
-    });
+  /**
+   * Desvincula esta instalação pelo painel (Bearer): acha a sessão ativa da instalação e a revoga.
+   * Nunca `DELETE /extension/session`: essa rota é só da extensão (`x-client: extension` + cookie)
+   * e responde 403 ao painel. Sem sessão ativa = já desvinculada (não é erro).
+   */
+  async revokeSession(installationId: string): Promise<void> {
+    const sessions = await extensionApi.listSessions();
+    const mine = sessions.filter((s) => s.installationId === installationId);
+    for (const s of mine) await extensionApi.revokeSessionById(s.id);
   },
 
   async listSessions(): Promise<ExtensionSessionInfo[]> {

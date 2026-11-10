@@ -7,6 +7,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [app 0.96.2] — 2026-11-10 — Extensão: desconectar volta a funcionar
+
+### Fixed
+
+#### Painel (app/) — `extension`, `settings`
+
+- **`extensionApi.ts`** / **`useExtension.ts`** — "Desconectar extensão" chamava `DELETE /extension/session` com `x-client: web`; a rota é só da extensão e respondia 403 `EXTENSION_ONLY`, que o `fetch` engolia: nada acontecia (nenhuma sessão com `revokedAt` em produção). Agora revoga pelo Bearer a sessão da instalação (`GET /extension/sessions` → `DELETE /extension/sessions/:id`).
+- **`ExtensionSettingsPage.tsx`** — erro ao desconectar aparece (`settings.disconnectFailed`); antes a rejeição ficava sem tratamento.
+- **`ExtensionMlCard.tsx`** — "Desconectar Mercado Livre" já funcionava no servidor, mas a tela não mudava (etiqueta mantida, chip "Logado" é o login do navegador): aviso de sucesso `ml.disconnected`.
+- **`useAffiliateCredentials.ts`** / **`AffiliateCredentialsPage.tsx`** — corrige a 0.96.1: a rota do ML revoga o consentimento mas mantém a linha, então a lixeira agora revoga **e depois** apaga (`beforeRemove`); só a rota faria o card voltar ao recarregar.
+- **`strings.ts`** — `settings.disconnectFailed`, `settings.cancel`, `ml.disconnected`, `ml.cancel` (saem os "Cancelar" fixos). Testes: `extensionApi.test.ts`, `useExtension.test.ts`, `useAffiliateCredentials.test.ts`. Docs: `docs/extensao-navegador.md`, `docs/integracoes-credenciais-afiliado.md`.
+
 ## [app 0.96.1] — 2026-11-10 — Credenciais: remover Mercado Livre revoga a extensão
 
 ### Fixed

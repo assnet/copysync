@@ -15,10 +15,12 @@ export function ExtensionMlCard() {
   const [syncing, setSyncing] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [disconnected, setDisconnected] = useState(false);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
     setSyncError(null);
+    setDisconnected(false);
     try {
       await ext.syncMl();
     } catch (err) {
@@ -31,8 +33,10 @@ export function ExtensionMlCard() {
   const handleDisconnect = useCallback(async () => {
     setConfirmDisconnect(false);
     setSyncError(null);
+    setDisconnected(false);
     try {
       await ext.disconnectMl();
+      setDisconnected(true);
     } catch {
       setSyncError(extensionStrings.errors.disconnectMlFailed);
     }
@@ -81,6 +85,12 @@ export function ExtensionMlCard() {
           </Alert>
         )}
 
+        {disconnected && (
+          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setDisconnected(false)}>
+            {t.disconnected}
+          </Alert>
+        )}
+
         {syncError && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSyncError(null)}>
             {syncError}
@@ -115,7 +125,7 @@ export function ExtensionMlCard() {
         title={t.disconnectMl}
         description={t.disconnectMlConfirm}
         confirmLabel={t.disconnectMl}
-        cancelLabel="Cancelar"
+        cancelLabel={t.cancel}
         confirmColor="error"
         onConfirm={() => void handleDisconnect()}
         onClose={() => setConfirmDisconnect(false)}
