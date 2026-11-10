@@ -120,8 +120,10 @@ o processamento trata como desligada; GET devolve `limits.enrichLinkOnlyEnabled`
 4. Foto: a da mensagem; sem ela, a do produto via `IMonitorImageStore` (também no `ORIGINAL`, só a foto, `productImageOnly`) (fetcher + media store do gerador,
    allowlist `mlstatic.com`/`susercontent.com`/`media-amazon.com`).
 
-Entitlement de IA: o mesmo do gerador (`ai_rewrite_enabled`, resolvido dentro do `IAiTextGenerator`;
-decisão do owner 2026-10-28: IA em todos os planos por enquanto). Limite diário de IA: o mesmo
+Entitlement de IA: o mesmo do gerador (`ai_rewrite_enabled`). **Decisão 2026-11-10: só PRO/MAX** (LITE `false`
+explícito; ausente = liberado). Save com `textMode` AI no LITE grava `TEMPLATE`/`STANDARD` sem recusar; captura de
+config AI salva no LITE é composta como Modelo (`textSource` TEMPLATE, sem `aiErrorCode`); GET devolve
+`limits.aiRewriteEnabled` e o painel trava o card "Reescrita com IA" com selos PRO MAX. Limite diário de IA: o mesmo
 `ai_usage_logs`, purpose `offer.text`.
 
 ### 2.2 Janela de operação

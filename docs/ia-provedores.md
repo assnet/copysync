@@ -19,6 +19,11 @@ Resolução (`ResolveAiTextProviderUseCase`), em ordem:
 2. Senão, chaves do tenant ligadas **e** `tenant_ai_credentials.enabled`.
 3. Senão `AI_NOT_CONFIGURED` 409.
 
+**Trava de plano do texto da oferta (2026-11-10):** reescrita com IA é PRO/MAX. `OfferTextComposer` consulta
+`ai_rewrite_enabled` antes de chamar a IA e, com `false` (LITE), sai o modelo fixo com `aiErrorCode`
+`AI_PLAN_UNAVAILABLE` — vale também com chave própria do tenant (o passo 1 acima só barra a plataforma).
+Não mover essa trava para o adapter nem para o provedor.
+
 O tenant só vê o formulário de chave própria quando a IA da plataforma não está disponível para ele e o modo de chaves está ligado.
 
 ## Para quem consome

@@ -92,8 +92,8 @@ guarda o plano, não o preço.
 | Suporte | 24/7 | prioritário 24/7 | exclusivo 24/7 |
 | Aulas em vídeo | ✅ | ✅ | ✅ |
 
-Não aparecem na tabela de venda e ficam como entitlement interno, default ligado nos três:
-reescrita com IA (`ai_rewrite_enabled`), limite diário do gerador (`offer_generations_per_day`,
+Reescrita com IA (`ai_rewrite_enabled`) passou a PRO/MAX em 2026-11-10 (LITE `false`; gerador e monitoramento,
+trava no `OfferTextComposer`) e aparece na vitrine. Ficam como entitlement interno: limite diário do gerador (`offer_generations_per_day`,
 decisão 2026-11-04: LITE 5, PRO 20, MAX ilimitado = `null` explícito no preset).
 
 Versão anterior (Básico/Plus/Pro, R$ 99/169/299) fica substituída por esta. Telegram no

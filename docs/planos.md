@@ -65,6 +65,8 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 
 - Benefício "Oferta montada a partir só do link" no PRO (MAX herda por "Tudo do PRO"), espelhando
   `enrich_link_only_enabled` false/true/true.
+- Benefício "Reescrita com IA para o seu público" no PRO (MAX herda), espelhando `ai_rewrite_enabled`
+  false/true/true; no LITE o card IA do monitoramento e os públicos com IA do gerador ficam travados.
 - Benefício "Captura fora do horário de postagem" só no MAX (`exclusive`), espelhando
   `capture_outside_window_enabled` false/false/true.
 - Benefício "Template para Instagram" só no MAX, espelhando `offer_story_enabled` false/false/true (travado em
