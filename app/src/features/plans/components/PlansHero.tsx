@@ -1,9 +1,16 @@
-import { Box, Chip, ToggleButton, ToggleButtonGroup, Typography, alpha, useTheme, type Theme } from '@mui/material';
+import { Box, Chip, ToggleButton, ToggleButtonGroup, Tooltip, Typography, alpha, useTheme, type Theme } from '@mui/material';
 import { Crown } from 'lucide-react';
 import { AppIcon } from '@/components';
+import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
+import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 import { GuaranteeSeal } from './GuaranteeSeal';
 import { ANNUAL_DISCOUNT, type BillingPeriod } from '../catalog';
 import { plansStrings as t } from '../strings';
+
+/** Texto só para leitor de tela (mesmo padrão de `ChannelLimitsTable`). */
+const visuallyHidden = {
+  position: 'absolute', width: '1px', height: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+} as const;
 
 export function ctaGradient(theme: Theme): string {
   return `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`;
@@ -59,6 +66,37 @@ export function PlansHero({ period, onPeriodChange }: Props) {
       <Typography variant="body1" sx={{ mt: 1.5, mx: 'auto', maxWidth: 560, color: 'text.secondary' }}>
         <Box component="b" sx={{ color: 'text.primary', fontWeight: 700 }}>{t.hero.lead}</Box> {t.hero.leadDetail}
       </Typography>
+
+      <Box
+        component="ul"
+        aria-label={t.hero.marketplaces}
+        sx={{ listStyle: 'none', m: 0, p: 0, mt: 2.5, display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5 }}
+      >
+        {AFFILIATE_PROVIDERS.map((spec) => {
+          const shein = spec.provider === 'SHEIN';
+          return (
+            <Tooltip key={spec.provider} title={shein ? t.hero.sheinTooltip : spec.name} arrow>
+              <Box component="li" sx={{ position: 'relative' }}>
+                <MarketplaceLogo src={spec.logo} size={40} round />
+                <Box component="span" sx={visuallyHidden}>{shein ? t.hero.sheinTooltip : spec.name}</Box>
+                {shein && (
+                  <Box
+                    component="span"
+                    aria-hidden
+                    sx={{
+                      position: 'absolute', right: -6, bottom: -4, px: 0.5, borderRadius: 999,
+                      // Fundo sólido escuro: branco em 10 px precisa de contraste ≥ 4,5:1 (gradiente cai abaixo)
+                      fontSize: 10, fontWeight: 800, lineHeight: '15px', color: '#fff', bgcolor: 'primary.dark',
+                    }}
+                  >
+                    {t.hero.sheinPlan}
+                  </Box>
+                )}
+              </Box>
+            </Tooltip>
+          );
+        })}
+      </Box>
 
       <ToggleButtonGroup
         exclusive
