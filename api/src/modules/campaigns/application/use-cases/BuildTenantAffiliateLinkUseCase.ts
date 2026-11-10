@@ -92,7 +92,8 @@ export class BuildTenantAffiliateLinkUseCase {
     const provider = detectMarketplace(final);
     if (!provider) return { kind: 'unsupported' };
 
-    // Ordem fixa: plano → credencial → aceite → chamada à loja. De novo após o redirect (pode cair em outro marketplace)
+    // Ordem fixa: plano (na URL colada, antes de expandir; de novo aqui se o redirect mudou o marketplace)
+    // → credencial → aceite → chamada à loja
     if (provider !== pasted) {
       const blocked = await this.planBlocked(tenantId, provider);
       if (blocked) return blocked;
