@@ -253,7 +253,7 @@ export const storefrontStrings = {
     OFFER_LINK_NOT_OWNED: 'Esse link de afiliado é de outra conta. Use um link gerado na sua conta.',
     OFFER_LINK_NOT_AFFILIATE: 'Esse link não tem a sua identificação de afiliado. Na Amazon, use o link com a sua tag.',
     MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
-    sheinUnavailable: 'A Shein não está liberada no seu plano. Veja os planos para usar links da Shein.',
+    sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
     MEDIA_TOO_LARGE: 'Imagem grande demais para este campo.',
     UNSUPPORTED_MEDIA_TYPE: 'Formato não aceito. Use JPEG, PNG ou WebP.',
     MEDIA_PROCESSING_FAILED: 'Não conseguimos usar essa imagem. Confira o tamanho mínimo e tente outra.',

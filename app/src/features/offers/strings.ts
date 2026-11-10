@@ -455,7 +455,7 @@ export const offerStrings = {
   planLimit: (limit: number) =>
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
-  sheinUnavailable: 'A Shein não está liberada no seu plano. Veja os planos para usar links da Shein.',
+  sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
   crossSessionUnavailable: 'Disparar por duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Deixe uma sessão por canal ou faça upgrade.',
   channelGroupLimit: (channel: LimitChannel, limit: number) =>
     limit === 0
