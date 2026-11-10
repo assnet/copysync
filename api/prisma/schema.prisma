@@ -76,6 +76,8 @@ enum AuditAction {
   AFFILIATE_CREDENTIAL_REJECTED
   PREMIUM_SLUG_GRANTED
   PREMIUM_SLUG_REVOKED
+  PLAN_ENTITLEMENT_CHANGED
+  MARKETPLACE_RISK_ACCEPTED
 }
 
 enum ExtensionInstallationStatus {
@@ -155,36 +157,37 @@ model Tenant {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  userTenants          UserTenant[]
-  sessions             Session[]
-  sessionAuthStates    SessionAuthState[]
-  messages             Message[]
-  auditLogs            AuditLog[]
-  chatContacts         ChatContact[]
-  chatConversations    ChatConversation[]
-  chatMessages         ChatMessage[]
-  chatMessageReactions ChatMessageReaction[]
-  chatLists            ChatList[]
-  affiliateCredentials AffiliateCredential[]
-  userInvites          UserInvite[]
-  tenantEntitlements   TenantEntitlement[]
-  offers               Offer[]
-  offerDispatches      OfferDispatch[]
-  offerDestinations    OfferDestination[]
-  offerGeneratorConfig OfferGeneratorConfig?
-  aiCredential         TenantAiCredential?
-  aiUsageLogs          AiUsageLog[]
-  BillingEventReceipt  BillingEventReceipt[]
-  extensionSessions    ExtensionSession[]
-  groupMonitorConfigs  GroupMonitorConfig[]
-  linkRotations        LinkRotation[]
-  linkRotationGroups   LinkRotationGroup[]
-  linkSlugReservations LinkSlugReservation[]
-  linkClicks           LinkClick[]
-  publicSlugClaims     PublicSlugClaim[]
-  premiumSlugGrants    PremiumSlugGrant[]
-  storefront           Storefront?
-  storefrontOffers     StorefrontOffer[]
+  userTenants                UserTenant[]
+  sessions                   Session[]
+  sessionAuthStates          SessionAuthState[]
+  messages                   Message[]
+  auditLogs                  AuditLog[]
+  chatContacts               ChatContact[]
+  chatConversations          ChatConversation[]
+  chatMessages               ChatMessage[]
+  chatMessageReactions       ChatMessageReaction[]
+  chatLists                  ChatList[]
+  affiliateCredentials       AffiliateCredential[]
+  marketplaceRiskAcceptances MarketplaceRiskAcceptance[]
+  userInvites                UserInvite[]
+  tenantEntitlements         TenantEntitlement[]
+  offers                     Offer[]
+  offerDispatches            OfferDispatch[]
+  offerDestinations          OfferDestination[]
+  offerGeneratorConfig       OfferGeneratorConfig?
+  aiCredential               TenantAiCredential?
+  aiUsageLogs                AiUsageLog[]
+  BillingEventReceipt        BillingEventReceipt[]
+  extensionSessions          ExtensionSession[]
+  groupMonitorConfigs        GroupMonitorConfig[]
+  linkRotations              LinkRotation[]
+  linkRotationGroups         LinkRotationGroup[]
+  linkSlugReservations       LinkSlugReservation[]
+  linkClicks                 LinkClick[]
+  publicSlugClaims           PublicSlugClaim[]
+  premiumSlugGrants          PremiumSlugGrant[]
+  storefront                 Storefront?
+  storefrontOffers           StorefrontOffer[]
 
   @@index([slug])
   @@map("tenants")
@@ -205,14 +208,15 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  userTenants            UserTenant[]
-  refreshTokens          RefreshToken[]
-  auditLogs              AuditLog[]
-  assignedConversations  ChatConversation[]      @relation("AssignedConversations")
-  createdOffers          Offer[]
-  extensionSessions      ExtensionSession[]
-  extensionInstallations ExtensionInstallation[]
-  loginCodes             LoginCode[]
+  userTenants                UserTenant[]
+  refreshTokens              RefreshToken[]
+  auditLogs                  AuditLog[]
+  assignedConversations      ChatConversation[]          @relation("AssignedConversations")
+  createdOffers              Offer[]
+  extensionSessions          ExtensionSession[]
+  extensionInstallations     ExtensionInstallation[]
+  marketplaceRiskAcceptances MarketplaceRiskAcceptance[]
+  loginCodes                 LoginCode[]
 
   @@index([email])
   @@map("users")
@@ -683,6 +687,7 @@ enum AffiliateProvider {
   SHOPEE
   MERCADO_LIVRE
   AMAZON
+  SHEIN
 }
 
 enum AffiliateCredentialStatus {
@@ -719,6 +724,26 @@ model AffiliateCredential {
 
   @@unique([tenantId, provider])
   @@map("affiliate_credentials")
+}
+
+/// Aceite do aviso de risco de um marketplace (hoje só SHEIN), por tenant. Só inclusão:
+/// nunca atualizar nem apagar (registro de quem aceitou, quando, qual versão do texto e em que idioma).
+model MarketplaceRiskAcceptance {
+  id               String            @id @default(cuid())
+  tenantId         String
+  provider         AffiliateProvider
+  noticeVersion    String
+  acceptedByUserId String
+  locale           String
+  acceptedAt       DateTime          @default(now())
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  acceptedBy User   @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, provider, noticeVersion])
+  @@index([tenantId, provider])
+  @@index([acceptedByUserId])
+  @@map("marketplace_risk_acceptances")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1091,9 +1116,9 @@ model ExtensionInstallation {
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
 
-  user            User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  sessions        ExtensionSession[]
-  lifecycleEvents ExtensionLifecycleEvent[]
+  user              User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions          ExtensionSession[]
+  lifecycleEvents   ExtensionLifecycleEvent[]
   uninstallFeedback ExtensionUninstallFeedback?
 
   @@index([deviceId, extensionId])
@@ -1112,6 +1137,8 @@ model ExtensionSession {
   mlTenantId        String
   extVersion        String
   mlConsentAt       DateTime?
+  /// Consentimento para sincronizar a sessão da Shein; zera ao re-vincular a outro tenant.
+  sheinConsentAt    DateTime?
   lastSeenAt        DateTime  @default(now())
   expiresAt         DateTime
   absoluteExpiresAt DateTime
