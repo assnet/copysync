@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert, AlertTitle, Box, Button, CircularProgress, Divider, IconButton, Link, Stack, Switch, Tooltip, Typography,
   type ChipProps,
 } from '@mui/material';
 import {
-  Circle, CircleCheck, CircleX, Download, Hourglass, Link2, Lock, Plug, RefreshCw, RotateCw, ShieldAlert, Trash2, TriangleAlert,
+  CircleCheck, CircleX, Download, Hourglass, Link2, Lock, Plug, RefreshCw, RotateCw, ShieldAlert, Trash2, TriangleAlert,
   Unplug,
 } from 'lucide-react';
 import { AppIcon, ConfirmDialog } from '@/components';
@@ -69,7 +70,7 @@ function stateChip(state: SheinCardState, waiting: boolean, item?: AffiliateCred
       : { label: ta.statusConfigured, color: 'success', icon: <AppIcon icon={CircleCheck} size="sm" /> };
   }
   if (waiting) return { label: t.chipWaiting, color: 'info', icon: <AppIcon icon={Hourglass} size="sm" /> };
-  return { label: ta.statusNotConfigured, color: 'default', variant: 'outlined', icon: <AppIcon icon={Circle} size="sm" /> };
+  return { label: ta.statusNotConfigured, color: 'default', variant: 'outlined', icon: <RadioButtonUncheckedIcon /> }; // mesmo ícone do card genérico
 }
 
 /**

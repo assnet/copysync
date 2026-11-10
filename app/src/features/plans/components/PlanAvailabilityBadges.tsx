@@ -27,7 +27,7 @@ export function PlanAvailabilityBadges(props: PlanAvailabilityBadgesProps) {
   if (names.length === 0) return null;
   return (
     <Tooltip title={t.tooltip(names)} arrow describeChild>
-      <Stack component="span" direction="row" spacing={0.5} aria-label={t.tooltip(names)} sx={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+      <Stack component="span" direction="row" spacing={0.5} role="img" aria-label={t.tooltip(names)} sx={{ display: 'inline-flex', verticalAlign: 'middle' }}>
         {names.map((name) => (
           <Chip
             key={name}
