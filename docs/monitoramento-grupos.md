@@ -103,7 +103,9 @@ ser do operador, aqui o link é sempre gerado.
 ### 2.1.1 Texto da oferta: original, modelo ou IA (api 0.41.0)
 
 Config por sessão: `textMode` (`ORIGINAL` padrão | `TEMPLATE` | `AI`), `audience` (públicos do gerador;
-`STANDARD` = modelo) e `enrichLinkOnly` (padrão `true`). Depois do link do tenant e antes de enfileirar
+`STANDARD` = modelo) e `enrichLinkOnly` (padrão `false`; **só PRO/MAX**, entitlement `enrich_link_only_enabled`:
+só `true` libera. Salvar ligado sem o plano → `PLAN_FEATURE_UNAVAILABLE`; plano rebaixado com a opção salva →
+o processamento trata como desligada; GET devolve `limits.enrichLinkOnlyEnabled` e o painel trava o switch). Depois do link do tenant e antes de enfileirar
 (`buildMonitorText`):
 
 1. `ORIGINAL` com texto além de links → texto do grupo com links trocados (como sempre), `textSource = ORIGINAL`.
@@ -140,7 +142,10 @@ Faixa que cruza a meia-noite pertence ao dia do início. Dia fora da lista: clai
 fora do horário (`outside_window`) e `fitSlot` pulam para a próxima abertura. O gerador tem horário
 próprio (`offer_generator_configs`). Ver [`grupos-de-disparo-e-horario.md`](grupos-de-disparo-e-horario.md).
 
-**Capturar fora do horário** (`captureOutsideWindow`, padrão ligado): fora da janela a captura
+**Capturar fora do horário** (`captureOutsideWindow`, padrão ligado; **só MAX**, entitlement
+`capture_outside_window_enabled`: sem o plano o save grava `false` sem recusar — o padrão do banco é ligado e
+cliente antigo reenvia o salvo — e `RegisterCapturedMessageUseCase` consulta o entitlement só quando a mensagem cai
+fora da janela; o painel trava o switch e mostra o selo MAX): fora da janela a captura
 continua e as ofertas acumulam na fila, saindo quando ela abrir. **A validade conta do início
 previsto a partir da captura** (`captureExpiresAt(janela(captura + atraso))`, independente de quando
 o processamento rodou): capturado às 19:00 com janela até 18:00 e
@@ -152,7 +157,8 @@ listener, logado sem texto, sem linha no banco). Sem efeito com janela de dia in
 
 ## 3. Regras e limites
 
-- Faixas: intervalo 0–3600 s (min ≤ max; 0 = sem espera entre envios; **padrão 15–40 min**, mais espaçado que o gerador),
+- Faixas: intervalo 0–3600 s (min ≤ max; 0 = sem espera entre envios; **padrão 0–0**; padrões novos (2026-11-09):
+  "digitando…" ligado 3 s, validade 24 h com e sem cupom, prévia do link, montar só com link desligado),
   atraso 0–7200 s, validade 15–1440 min, validade com
   cupom ≤ validade sem cupom, "digitando…" 1–30 s. 422 `GROUP_MONITOR_INVALID_INPUT` com `field`.
 - Plano, **por canal** (`tenants/domain/channelLimits.ts`): canal do grupo = engine da sessão dona
@@ -272,8 +278,14 @@ com "Marcar todos" ligado → nota discreta (no Telegram não existe). Não soma
   com `marks`, 00:00–24:00, passo 15 min, "Janela noturna"); envio; depois da captura; texto da oferta em
   `radiogroup` Original / Modelo / IA (setas, Home/End: `textModeForKey`) com `AudiencePicker` quando IA.
   Barra Salvar/Descartar só com alteração, `aria-live`. "Marcar todos" travado pelo plano conta como
-  desligado (`effectiveDraft`). "Formato da imagem" (`ImageModePicker`, `GroupMonitorConfig.imageMode`,
-  padrão `MEDIA`) é copiado para cada `Offer` criada; `LINK_PREVIEW` envia texto + cartão de prévia, com título =
+  desligado (`effectiveDraft` com `PlanGates`), assim como "montar só com link" fora do PRO/MAX e "capturar fora do
+  horário" fora do MAX. Opção exclusiva mostra sempre os selos dos planos que a incluem
+  (`PlanAvailabilityBadges from="pro|max"`, prop `badge` do `ToggleOption`) e entra nos benefícios do
+  `plans/catalog.ts` e na tabela da assinatura (`subscription/strings.ts`). Cards Horário, Envio,
+  Depois da captura e Texto da oferta nascem **recolhidos** (`MonitorCard collapseKey`) e lembram aberto/fechado
+  por navegador (`ui.monitoring.card.<chave>`, `usePersistedState` escopo `browser`). "Formato da imagem"
+  (`ImageModePicker`, `GroupMonitorConfig.imageMode`, padrão `LINK_PREVIEW`; `MEDIA` desligado, ver
+  `docs/mensagens-previa-de-link.md`) é copiado para cada `Offer` criada; `LINK_PREVIEW` envia texto + cartão de prévia, com título =
   1ª linha do texto capturado (limitação do MVP). Ver `docs/mensagens-previa-de-link.md`.
 - **Capturadas** (`CapturedOffersList`): filtros `all`/`action` (Precisa de ação)/`queued`/`working`/`skipped`
   com contagem (marcada parcial enquanto há mais páginas); horário relativo pt-BR pelo `serverNow()`, com

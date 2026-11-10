@@ -133,7 +133,7 @@ Chaves de entitlement sugeridas (snake_case, estáveis):
 `telegram_monitored_groups`, `telegram_broadcast_groups`,
 `offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `link_rotation_groups`,
 `telegram_link_rotations`, `telegram_link_rotation_groups`, `ai_rewrite_enabled`,
-`offer_story_enabled`, `storefront_enabled`, `mention_all_enabled`, `custom_domain_enabled`,
+`offer_story_enabled`, `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).
 
 Billing: via API central, ver [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (reaproveitar

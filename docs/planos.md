@@ -63,6 +63,10 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 
 ## Story de Oferta (app 0.53.0)
 
+- Benefício "Oferta montada a partir só do link" no PRO (MAX herda por "Tudo do PRO"), espelhando
+  `enrich_link_only_enabled` false/true/true.
+- Benefício "Captura fora do horário de postagem" só no MAX (`exclusive`), espelhando
+  `capture_outside_window_enabled` false/false/true.
 - Benefício "Template para Instagram" só no MAX, espelhando `offer_story_enabled` false/false/true (travado em
   `planPresets.test.ts`).
 - `/plans?feature=offerStory` mostra o aviso (`featureNotice.offerStory`); o painel redireciona para lá no
