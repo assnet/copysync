@@ -428,6 +428,7 @@ export const offerStrings = {
     GROUP_NOT_POSTABLE: 'Não dá para postar neste grupo. Escolha outro.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use um link da Shopee, Amazon ou Mercado Livre.',
     OFFER_LINK_NOT_OWNED: 'Este link é de outro afiliado. Gere o link na sua conta e cole aqui.',
+    MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
     OFFER_LINK_NOT_AFFILIATE: 'Esse não é um link de afiliado. Gere o link pela sua conta de afiliado da loja.',
     OFFER_PRODUCT_NOT_FOUND: 'A loja não encontrou este produto. Confira o link.',
     OFFER_NOT_FOUND: 'Esta oferta não existe mais. Gere uma nova.',
@@ -454,6 +455,7 @@ export const offerStrings = {
   planLimit: (limit: number) =>
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
+  sheinUnavailable: 'A Shein não está liberada no seu plano. Veja os planos para usar links da Shein.',
   crossSessionUnavailable: 'Disparar por duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Deixe uma sessão por canal ou faça upgrade.',
   channelGroupLimit: (channel: LimitChannel, limit: number) =>
     limit === 0

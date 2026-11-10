@@ -159,7 +159,7 @@ Detalhes em [`extensao-navegador.md`](extensao-navegador.md) (seção "Shein") e
 - **Rotas**: `POST /api/extension/marketplaces/shein/consent` (painel; plano e aceite antes de gravar; sem sessão da
   extensão → 404 `SESSION_NOT_FOUND`), `PUT …/shein/session` (cookie da extensão; resposta `{ affiliateId }`),
   `DELETE …/shein/session` (painel; revoga consentimento e apaga a credencial inteira, idempotente → 204).
-- **Desconectar** só pela extensão (`DELETE …/shein/session`). As rotas genéricas recusam SHEIN: `PUT /:provider` e
+- **Desconectar** só pela rota da Shein (`DELETE …/shein/session`, chamada pelo painel). As rotas genéricas recusam SHEIN: `PUT /:provider` e
   `PUT /:provider/session` → 422, `DELETE /:provider` → 409 `USE_MARKETPLACE_DISCONNECT`. Re-vínculo da extensão a
   outro tenant zera `sheinConsentAt`.
 
