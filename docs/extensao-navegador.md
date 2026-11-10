@@ -271,9 +271,10 @@ Tudo do produto (aviso de risco, plano, gerador): [`afiliado-shein.md`](afiliado
   enquanto `pending`.
 - **Leitura**: `marketplaceSession.ts` só lê cookie Shein com `chrome.permissions.contains` verdadeiro e exige `AT` +
   `memberId`; `check-cookie-scope` falha se a função que chama `chrome.cookies.*` não tiver
-  `if (!(await hasHostPermission(...))) return` antes. Só cookie do host exato (`c.domain` sem ponto = `m.shein.com`):
-  `getAll({ url })` também traz `.shein.com`, descartado antes de deduplicar por path (ML, domínio com ponto, sem
-  filtro). `cookieWatch.ts` agenda sync só para mudança desses dois em `m.shein.com` (debounce 60 s,
+  `if (!(await hasHostPermission(...))) return` antes. Só cookie do host exato: `c.domain` sem o ponto
+  inicial igual a `m.shein.com` (aceita `m.shein.com` e `.m.shein.com`; recusa `.shein.com`). `getAll({ url })`
+  também traz `.shein.com`, descartado antes de deduplicar por path (ML, domínio com ponto, sem filtro).
+  Observado na conta real em 2026-11-10: `AT` e `memberId` vêm com domínio `m.shein.com` (host-only). `cookieWatch.ts` agenda sync só para mudança desses dois em `m.shein.com` (debounce 60 s,
   `chrome.alarms.create` direto pelo nome). Gatilho automático sem permissão sai em silêncio. O alarme de reserva
   respeita o hash na Shein (só envia se o token mudou); no ML segue reenviando.
 - **Recusa do servidor (só Shein)**: `consent_required`/`plan_unavailable` (ex.: "Desconectar" no painel) →
@@ -281,7 +282,9 @@ Tudo do produto (aviso de risco, plano, gerador): [`afiliado-shein.md`](afiliado
   (`sheinAutoSyncPaused`). Só `shein.requestAccess` + clique reativa. `risk_not_accepted` → pausa o automático sem
   remover a permissão; sync manual/canal reativa. ML nunca pausa.
 - **Erros**: `apiFetch.ts` lê o envelope antes do status e mapeia `error.code` conhecido (Map, sem herança de
-  protótipo) em qualquer status; status (401/403/404/429) só sem código conhecido. `SESSION_NOT_FOUND`/
+  protótipo); status (401/403/404/429) só sem código conhecido. Códigos que pausam/revogam (consentimento, plano,
+  risco) só valem em **4xx**: 5xx com o mesmo código vira `api_rejected` (só mensagem, nunca
+  `permissions.remove`). `SESSION_NOT_FOUND` NÃO entra no mapa (404 do ML segue `api_route_missing`, como antes).
   `*_EXT_SESSION` → `session_expired`; `RATE_LIMITED` → `rate_limited`; `*_CONSENT_REQUIRED` → `consent_required`;
   `PLAN_FEATURE_UNAVAILABLE`/`EXTENSION_NOT_ENTITLED` → `plan_unavailable`; `MARKETPLACE_RISK_NOT_ACCEPTED` →
   `risk_not_accepted`. Códigos novos: `shein_not_logged`, `shein_permission_missing`, `shein_sync_failed`,

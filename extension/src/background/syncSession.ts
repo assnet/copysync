@@ -79,8 +79,8 @@ const execute = async (marketplace: MarketplaceKey, trigger: SyncTrigger): Promi
 
   if (AUTO_TRIGGERS.has(trigger)) {
     if (await isAutoSyncPaused(marketplace)) return previous;
-  } else {
-    // Ação do usuário (manual/canal) reativa o automático; nova recusa pausa de novo.
+  } else if (MARKETPLACES[marketplace].optional) {
+    // Ação do usuário (manual/canal) reativa o automático; nova recusa pausa de novo. O ML nunca pausa.
     await setAutoSyncPaused(marketplace, false);
   }
 

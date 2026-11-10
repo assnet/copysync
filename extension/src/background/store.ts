@@ -200,12 +200,17 @@ export interface PendingAccess {
  * SÍNCRONO (`peekPendingAccess`), sem `await` antes do pedido. `undefined` = ainda não lido.
  */
 let pendingMemo: PendingAccess | null | undefined;
+/** Sobe a cada set/clear: leitura que começou antes não sobrescreve o espelho com valor velho. */
+let pendingGeneration = 0;
 
 const valid = (pending: PendingAccess | null | undefined): PendingAccess | null =>
   pending && pending.until > Date.now() ? pending : null;
 
 export const getPendingAccess = async (): Promise<PendingAccess | null> => {
+  const generation = pendingGeneration;
   const stored = (await read<PendingAccess>(KEYS.pendingAccess)) ?? null;
+  // set/clear durante a leitura: o espelho já tem o valor novo.
+  if (generation !== pendingGeneration) return valid(pendingMemo);
   // Vencida: sai do storage na leitura (não fica lixo esperando um clique que não vem).
   if (stored && !valid(stored)) {
     await clearPendingAccess();
@@ -220,11 +225,13 @@ export const peekPendingAccess = (): PendingAccess | null | undefined =>
   pendingMemo === undefined ? undefined : valid(pendingMemo);
 
 export const setPendingAccess = (pending: PendingAccess): Promise<void> => {
+  pendingGeneration += 1;
   pendingMemo = pending;
   return enqueue(() => chrome.storage.local.set({ [KEYS.pendingAccess]: pending }));
 };
 
 export const clearPendingAccess = (): Promise<void> => {
+  pendingGeneration += 1;
   pendingMemo = null;
   return enqueue(() => chrome.storage.local.remove(KEYS.pendingAccess));
 };

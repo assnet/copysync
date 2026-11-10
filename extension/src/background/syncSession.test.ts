@@ -171,6 +171,36 @@ describe('runSync por marketplace', () => {
       expect(await store.isAutoSyncPaused('shein')).toBe(false);
     });
 
+  it('500 PLAN_FEATURE_UNAVAILABLE (apiFetch real) não remove a permissão nem pausa', async () => {
+    const real = await vi.importActual<typeof import('./apiFetch.js')>('./apiFetch.js');
+    apiFetch.mockImplementation((opts) => real.apiFetch(opts));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ success: false, error: { code: 'PLAN_FEATURE_UNAVAILABLE', message: 'x' } }), { status: 500 })));
+    const { sync, store } = await load();
+    expect((await sync.runSync('channel', 'shein')).lastErrorCode).toBe('api_rejected');
+    expect(chromeStub.remove).not.toHaveBeenCalled();
+    expect(chromeStub.granted.has(SHEIN_ORIGIN)).toBe(true);
+    expect(await store.isAutoSyncPaused('shein')).toBe(false);
+  });
+
+  it.each(['api_unreachable', 'shein_sync_failed'] as const)('%s não remove a permissão nem pausa', async (code) => {
+    const { SyncError } = await import('./errors.js');
+    apiFetch.mockRejectedValueOnce(new SyncError(code));
+    const { sync, store } = await load();
+    expect((await sync.runSync('channel', 'shein')).lastErrorCode).toBe(code);
+    expect(chromeStub.remove).not.toHaveBeenCalled();
+    expect(chromeStub.granted.has(SHEIN_ORIGIN)).toBe(true);
+    expect(await store.isAutoSyncPaused('shein')).toBe(false);
+  });
+
+  it('manual no ML não grava nada sobre pausa', async () => {
+    apiFetch.mockResolvedValueOnce({});
+    const { sync } = await load();
+    const removeSpy = vi.spyOn(chrome.storage.local, 'remove');
+    expect((await sync.runSync('manual', 'ml')).status).toBe('ok');
+    expect(removeSpy.mock.calls.flat().flat()).not.toContain('mlAutoSyncPaused');
+  });
+
   it('risk_not_accepted pausa o automático sem remover a permissão', async () => {
     const { SyncError } = await import('./errors.js');
     apiFetch.mockRejectedValueOnce(new SyncError('risk_not_accepted'));

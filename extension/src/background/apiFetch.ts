@@ -43,13 +43,13 @@ const FORBIDDEN_CODES: ReadonlyMap<string, SyncErrorCode> = new Map([
 ]);
 
 /**
- * `error.code` conhecido em qualquer status → `SyncErrorCode`. Vem ANTES do status: um 404
- * `SESSION_NOT_FOUND` (sessão da extensão sumiu) não é rota ausente. Map: sem herança de
+ * `error.code` conhecido → `SyncErrorCode`, ANTES do status. Os de `FORBIDDEN_CODES` (que levam
+ * `syncSession` a pausar e até remover a permissão de host) só valem em 4xx: um 5xx com o mesmo
+ * código é falha do servidor e cai em `api_rejected` (só mensagem). `SESSION_NOT_FOUND` fica de
+ * fora de propósito: o 404 dele no ML sempre foi `api_route_missing`. Map: sem herança de
  * `Object.prototype` (`constructor`, `__proto__` não viram código).
  */
 const KNOWN_CODES: ReadonlyMap<string, SyncErrorCode> = new Map<string, SyncErrorCode>([
-  ...FORBIDDEN_CODES,
-  ['SESSION_NOT_FOUND', 'session_expired'],
   ['MISSING_EXT_SESSION', 'session_expired'],
   ['INVALID_EXT_SESSION', 'session_expired'],
   ['RATE_LIMITED', 'rate_limited'],
@@ -121,7 +121,10 @@ export const apiFetch = async <T>(opts: ApiFetchOptions): Promise<T> => {
   if (!response.ok) {
     const code = envelopeCode(envelope);
     const detail = `HTTP ${response.status}${code ? ` ${code}` : ''}`;
-    const known = code !== undefined ? KNOWN_CODES.get(code) : undefined;
+    const clientError = response.status >= 400 && response.status < 500;
+    const known = code === undefined
+      ? undefined
+      : (clientError ? FORBIDDEN_CODES.get(code) : undefined) ?? KNOWN_CODES.get(code);
     const kind = known ?? STATUS_CODES.get(response.status);
     if (kind) throw new SyncError(kind, code ? detail : undefined);
   }

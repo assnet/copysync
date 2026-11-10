@@ -11,6 +11,9 @@
  * `if (!(await hasHostPermission(...))) return ...` entre o início da declaração e a chamada.
  * Sem isso, a Shein (`optional_host_permissions`) poderia ser lida sem permissão concedida.
  *
+ * Limite: a guarda é TEXTUAL (regex sobre o fonte). Não pega alias (`const c = chrome.cookies`),
+ * nem distingue ramo morto (`if (false) ...` passa como checagem). Revisão humana continua valendo.
+ *
  * Uso: `pnpm check:cookie-scope` (roda em `pnpm type-check`).
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
