@@ -3,7 +3,9 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 /** Hosts aceitos por marketplace. Subdomínios entram por sufixo `.<host>`. */
 const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> = {
   // `shp.ee` cobre `br.shp.ee` (encurtador atual do app/painel de afiliados Shopee BR)
-  SHOPEE: ['shopee.com.br', 'shope.ee', 'shp.ee'],
+  // `shoope.top`: encurtador de TERCEIRO (DivulgaLinks), não é da Shopee; só passa se o redirect
+  // cair em `shopee.com.br` (cada salto é revalidado em `HttpShortLinkExpander`)
+  SHOPEE: ['shopee.com.br', 'shope.ee', 'shp.ee', 'shoope.top'],
   MERCADO_LIVRE: ['mercadolivre.com.br', 'mercadolivre.com', 'mercadolibre.com', 'meli.la'],
   // `a.co` = botão Compartilhar do app/site Amazon; `link.amazon` (gTLD da Amazon) salta por
   // `amzlinks.in` até `amazon.com.br`. Encurtadores só valem se o redirect cair em `amazon.com.br`

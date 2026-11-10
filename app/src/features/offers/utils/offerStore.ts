@@ -5,9 +5,9 @@ import type { AffiliateProvider } from '@/types/api.types';
  * (allowlist, expansão de link curto e dono do link); aqui nada é bloqueado além do óbvio.
  */
 const STORE_HOSTS: ReadonlyArray<[AffiliateProvider, readonly string[]]> = [
-  ['SHOPEE', ['shopee.com.br', 's.shopee.com.br', 'shope.ee']],
+  ['SHOPEE', ['shopee.com.br', 's.shopee.com.br', 'shope.ee', 'shp.ee', 'shoope.top']],
   ['MERCADO_LIVRE', ['mercadolivre.com.br', 'mercadolivre.com', 'meli.la']],
-  ['AMAZON', ['amazon.com.br', 'amzn.to']],
+  ['AMAZON', ['amazon.com.br', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in']],
 ];
 
 /** Host igual ou subdomínio (`produto.mercadolivre.com.br`). */

@@ -15,6 +15,8 @@ describe('detectMarketplace', () => {
     expect(detectMarketplace(u('https://amzn.to/abc'))).toBe('AMAZON');
     expect(detectMarketplace(u('https://a.co/d/abc'))).toBe('AMAZON');
     expect(detectMarketplace(u('https://link.amazon/B00hBgkzm'))).toBe('AMAZON');
+    expect(detectMarketplace(u('https://shoope.top/_c8d09838ba'))).toBe('SHOPEE');
+    expect(detectMarketplace(u('https://evilshoope.top/x'))).toBeNull();
     expect(detectMarketplace(u('https://amzlinks.in/B00hBgkzm'))).toBe('AMAZON');
   });
 

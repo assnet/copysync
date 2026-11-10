@@ -49,6 +49,15 @@ describe('HttpShortLinkExpander', () => {
     expect(fn.mock.calls.slice(0, 2).map((c) => c[1].method)).toEqual(['HEAD', 'GET']);
   });
 
+  it('shoope.top (encurtador de terceiro) expande até shopee.com.br; redirect para fora da Shopee é recusado', async () => {
+    const final = 'https://shopee.com.br/product/1441157744/25946709329?utm_source=an_1&utm_content=dvlinks';
+    stubFetch(async (url) => (url.hostname === 'shoope.top' ? redirect(final) : new Response(null, { status: 200 })));
+    expect((await new HttpShortLinkExpander().expand(new URL('https://shoope.top/_c8d09838ba'))).href).toBe(final);
+    const fn = stubFetch(async (url) => (url.hostname === 'shoope.top' ? redirect('https://evil.example.com/x') : new Response(null)));
+    await expect(new HttpShortLinkExpander().expand(new URL('https://shoope.top/_y'))).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it('redirect para host fora da allowlist é recusado sem ser buscado', async () => {
     const fn = stubFetch(async (url) => (url.href === SHORT.href ? redirect('https://evil.example.com/p') : new Response(null, { status: 200 })));
     await expect(new HttpShortLinkExpander().expand(SHORT)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
@@ -77,7 +86,7 @@ describe('HttpShortLinkExpander', () => {
   });
 
   it('isShortLink: encurtadores das três lojas, inclusive br.shp.ee; produto não é curto', () => {
-    for (const h of ['https://br.shp.ee/8pq7D1kb', 'https://shope.ee/x', 'https://s.shopee.com.br/x', 'https://meli.la/x', 'https://amzn.to/x', 'https://a.co/d/x', 'https://link.amazon/x', 'https://amzlinks.in/x', 'https://mercadolivre.com/sec/x', 'https://click1.mercadolivre.com.br/mclics/clicks/external/MLB/count?x=1']) {
+    for (const h of ['https://br.shp.ee/8pq7D1kb', 'https://shope.ee/x', 'https://s.shopee.com.br/x', 'https://meli.la/x', 'https://amzn.to/x', 'https://a.co/d/x', 'https://link.amazon/x', 'https://amzlinks.in/x', 'https://shoope.top/_x', 'https://mercadolivre.com/sec/x', 'https://click1.mercadolivre.com.br/mclics/clicks/external/MLB/count?x=1']) {
       expect(isShortLink(new URL(h))).toBe(true);
     }
     expect(isShortLink(new URL(PRODUCT))).toBe(false);
