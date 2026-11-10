@@ -7,6 +7,92 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.78.0] — 2026-11-10 — Afiliado Shein
+
+> app 0.95.0 · extensão 3.4.0 (ver `extension/CHANGELOG.md`). Doc: `docs/afiliado-shein.md`. Shein não tem API de
+> afiliados: o link vem de endpoint interno com a sessão do afiliado, proibido pelos termos da SHEIN (3.3.2, Anexo 3
+> §6) — risco assumido pelo tenant com aceite registrado. Nada ligado em produção sem o dono; smoke T16 pendente.
+
+### Added
+
+#### Backend — integrations (provider SHEIN e aviso de risco)
+
+- **`AffiliateProvider.ts`**, **`affiliateProviderFields.ts`** — `SHEIN` (ID `^\d{6,15}$`, sem secret, com sessão) e `providerIdentifierFollowsSession` (ID segue a sessão).
+- **`marketplaceRiskNotice.ts`** — versão vigente do aviso por marketplace (`SHEIN: '2026-11-10'`), `requiresRiskAcceptance`. Texto vive no painel, que espelha a versão.
+- **`AcceptMarketplaceRiskUseCase.ts`** — só administrador do tenant aceita (operador e super admin → 403); versão ≠ vigente → 409 `MARKETPLACE_RISK_NOTICE_OUTDATED`; reaceite da mesma versão devolve o existente; audita `MARKETPLACE_RISK_ACCEPTED`.
+- **`requireMarketplaceRiskAccepted.ts`**, **`MarketplaceRiskErrors.ts`** — `MARKETPLACE_RISK_NOT_ACCEPTED` (403).
+- **`IMarketplaceRiskAcceptanceRepository.ts`**, **`PrismaMarketplaceRiskAcceptanceRepository.ts`** (+ mapper) — só inclusão (sem update/delete), toda consulta com `tenantId`.
+- **`affiliateCredential.routes.ts`** — `POST /integrations/affiliate-credentials/:provider/risk-acceptance`. **`marketplaceRiskAdmin.routes.ts`** — `GET /admin/tenants/:tenantId/marketplace-risk-acceptances` (super admin).
+- **`sheinSessionMemberId.ts`** — lê o `memberId` (`m`) do payload do token `AT`.
+
+#### Backend — tenants (entitlement e edição por plano)
+
+- **`entitlementKeys.ts`**, **`planPresets.ts`** — `marketplace_shein_enabled` (LITE/PRO false, MAX true; ausente = bloqueado). **`subscriptionLimits.ts`** — linha do recurso.
+- **`adminEditableEntitlements.ts`** — allowlist de chaves editáveis pelo super admin (hoje só `marketplace_shein_enabled`).
+- **`IPlanEntitlementPresetRepository.ts`**, **`PrismaPlanEntitlementPresetRepository.ts`**, **`planEntitlementTransaction.ts`** — presets lidos/gravados por repositório; `setForPlan` atualiza preset + tenants do plano numa transação.
+- **`ListAdminPlanEntitlementsUseCase.ts`**, **`SetPlanEntitlementUseCase.ts`**, **`planEntitlementAdmin.routes.ts`** — `GET /admin/plan-entitlements` e `PUT /admin/plan-entitlements/:planSlug/:key`; chave fora da allowlist → 400; audita `PLAN_ENTITLEMENT_CHANGED`; não chama a central.
+
+#### Backend — campaigns (gerador, vitrine, story)
+
+- **`ISheinAffiliateClient.ts`**, **`SheinAffiliateClient.ts`** — `POST m.shein.com/br/affiliate/api/goods/recommend/detailNew` (URL fixa, 8 s, ≤ 256 KiB, `redirect: 'manual'`): link (`shareLink` só em `onelink.shein.com`) + título, preço, preço cheio e foto numa chamada. 401/403/`100105` → credencial recusada; 3xx/5xx/timeout/JSON inválido → indisponível; outro `code` → `null`. Log só com código.
+- **`detectMarketplace.ts`**, **`parseProductRef.ts`**, **`verifyAffiliateLink.ts`** — hosts `br.shein.com`, `m.shein.com` (só `/br/`), `onelink.shein.com`; `goodsId` do `-p-<id>.html`; dono por `url_from=affiliate_koc_<id>`.
+- **`isSupportedShareLink.ts`** — `shareLink` devolvido pela loja passa na mesma allowlist da URL colada.
+- **`marketplaceEntitlement.ts`**, **`requireMarketplaceEnabled.ts`** — gate de plano por marketplace (`PLAN_FEATURE_UNAVAILABLE`).
+- **`IMarketplaceRiskGate.ts`** — porta obrigatória nas 3 instâncias do resolver/builder (`offersContainer.ts`, `GenerateOfferUseCase.ts`).
+- **`ResolveAffiliateProductUseCase.ts`** — ramo SHEIN: plano (antes de expandir) → credencial → aceite → 1 chamada; link gerado sai com `attributionVerified = true`; sem conta, link com afiliação segue sem dados.
+- **`BuildTenantAffiliateLinkUseCase.ts`** — kinds `plan_unavailable` e `risk_not_accepted`; `sourceUrl` montada só com o id; `null` → `SHEIN_LINK_NOT_CREATED`.
+
+#### Backend — automation (monitoramento)
+
+- **`CapturedOffer.ts`**, **`IMonitorPorts.ts`**, **`ProcessPendingCapturedOffersUseCase.ts`** — `SKIPPED` com `MARKETPLACE_PLAN_UNAVAILABLE` / `MARKETPLACE_RISK_NOT_ACCEPTED` (retryable), em ramo próprio: o link Shein não some em silêncio.
+- **`GroupMonitorConfigUseCases.ts`**, **`PrismaCapturedOfferRepository.ts`**, **`GroupMonitorDTO.ts`**, **`groupMonitoring.schema.ts`** — alerta `RISK_NOT_ACCEPTED` em `credentialAlerts` (só com credencial e sem aceite; `REJECTED` tem precedência).
+
+#### Backend — extension (sessão Shein)
+
+- **`SyncSheinSessionUseCase.ts`** — consentimento → aceite → plano → vínculo → ID do token (≠ cookie `memberId` → 422) → upsert cifrado → releitura do consentimento (revogado no meio → apaga a credencial e 403).
+- **`extension.routes.ts`** — `PUT /extension/marketplaces/shein/session` (cookies `AT`/`memberId`, resposta `{ affiliateId }`), `POST …/shein/consent` (plano e aceite antes de gravar) e `DELETE …/shein/session` (revoga e apaga a credencial; 204 idempotente), por fábrica parametrizada.
+- **`MarketplaceConsentUseCases.ts`**, **`IExtensionSessionRepository.ts`**, **`PrismaExtensionSessionRepository.ts`**, **`ExtensionSession.ts`**, **`extensionAuthHook.ts`** — consentimento por marketplace (`sheinConsentAt`, `hasConsent`).
+- **`GetExtensionProfileUseCase.ts`** — permissão `shein.session` quando o tenant tem o plano. **`IExtensionEntitlementReader.ts`** — `hasMarketplace(tenantId, provider)`. **`constants.ts`** — `SHEIN_SESSION_COOKIES`.
+
+#### Frontend — app 0.95.0
+
+- **`AdminPlanEntitlementsPage.tsx`**, **`features/planEntitlementsAdmin/`**, **`adminPlanEntitlements.service.ts`**, **`AppRoutes.tsx`**, **`navigation/model.ts`** — `/admin/plan-entitlements` (super admin, seção Plataforma): chave × plano com `<Switch>`.
+- **`features/settings/`**, **`AffiliateCredentialsPage.tsx`**, **`affiliateCredential.service.ts`**, **`api.types.ts`** — card Shein (travado por plano com selos vindos da API, sem extensão, sem vínculo, pronto, conectado, recusada, reaceite), aviso de risco fixo, diálogo de aceite (caixa desmarcada, só admin confirma, fora de `usePersistedState`), `marketplaceAvailability`.
+- **`features/extension/contract/channel.ts`**, **`useExtension.ts`**, **`features/extension/strings.ts`** — ops `shein.*`, `supports(cap)`, mensagens dos novos `SyncErrorCode`.
+- **`monitoring/strings.ts`**, **`CredentialAlerts.tsx`**, **`storefront/{types,strings}.ts`**, **`offerStore.ts`**, **`subscription/strings.ts`**, **`plans/catalog.ts`** — rótulo Shein, motivos e alerta novos, hosts, benefício MAX.
+
+### Changed
+
+- **`UpsertAffiliateSessionUseCase.ts`**, **`PrismaAffiliateCredentialRepository.ts`** — cookie de troca de token por provider (`ssid` × `AT`); `sessionIdentifier` substitui o `publicIdentifier` (create e update) para provider cujo ID segue a sessão.
+- **`UpsertAffiliateCredentialUseCase.ts`**, **`affiliateCredential.routes.ts`** — rotas genéricas recusam SHEIN: `PUT /:provider` e `PUT /:provider/session` → 422; `DELETE /:provider` → 409 `USE_MARKETPLACE_DISCONNECT`.
+- **`ListAffiliateCredentialsUseCase.ts`**, **`AffiliateCredentialPresenter.ts`**, **`affiliateCredential.schema.ts`** — listagem ganha `marketplaceAvailability` (`enabled`, `plans`, `riskNotice`).
+- **`HttpShortLinkExpander.ts`** — `onelink.shein.com`: só GET, corpo ≤ 32 KiB, `input#url` vira a URL final sem nova requisição. **`HttpProductPageReader.ts`** — host Shein → `null` (página nunca lida). **`HttpOfferImageFetcher.ts`** — `ltwebstatic.com`.
+- **`ResolveProductDataUseCase.ts`** — `productRefOf` com `goodsId`; SHEIN não chama o leitor de página. **`CampaignsMonitorAdapters.ts`** — não decifra sessão Shein para leitura de produto.
+- **`IssueExtensionSessionUseCase.ts`** — re-vínculo a outro tenant zera `sheinConsentAt`.
+- **`seed.ts`** — chave da allowlist admin com `update: {}` (seed não desfaz decisão do super admin).
+- **`IAuditLogRepository.ts`** — `PLAN_ENTITLEMENT_CHANGED`, `MARKETPLACE_RISK_ACCEPTED`.
+
+### Fixed
+
+- **`BuildTenantAffiliateLinkUseCase.ts`**, **`ResolveAffiliateProductUseCase.ts`** — gate de plano antes de expandir (link curto Shein não é buscado sem plano); credencial já recusada não chama a Shein no gerador; `shareLink` revalidado.
+- **`GroupMonitorConfigUseCases.ts`** — alerta de aceite some quando o aceite existe ou não há credencial.
+- **`SyncSheinSessionUseCase.ts`**, **`PrismaExtensionSessionRepository.ts`** — corrida do sync com "Desconectar" preserva o consentimento de outras instalações do tenant.
+
+### Breaking Changes
+
+- Nenhuma de contrato público. Rotas e campos novos são adições; `marketplaceAvailability` é campo novo na listagem. Rotas genéricas passam a recusar só o provider novo `SHEIN`.
+
+### Migration
+
+- **`20261111090000_add_shein_affiliate_provider`** — `AffiliateProvider` ganha `SHEIN` (arquivo próprio: valor de enum não usável na mesma transação).
+- **`20261111090100_add_shein_extension_consent`** — coluna `extension_sessions.sheinConsentAt`.
+- **`20261111090200_add_audit_action_plan_entitlement_changed`** — `AuditAction` ganha `PLAN_ENTITLEMENT_CHANGED`.
+- **`20261111090300_add_audit_action_marketplace_risk_accepted`** — `AuditAction` ganha `MARKETPLACE_RISK_ACCEPTED`.
+- **`20261111090400_create_marketplace_risk_acceptances`** — tabela de aceites (único por tenant+provider+versão; FK tenant `CASCADE`, usuário `RESTRICT`).
+- **`20261111090500_add_marketplace_shein_entitlement`** — presets `marketplace_shein_enabled` (false/false/true) + backfill dos tenants pelo preset vigente, `ON CONFLICT DO NOTHING`.
+
+---
+
 ## [0.77.0] — 2026-11-10 — Reescrita com IA só no PRO e no MAX
 
 ### Changed

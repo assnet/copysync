@@ -4,6 +4,8 @@ Memória entre sessões: decisões, bloqueios, lições.
 
 ## Decisões
 
+- 2026-11-10 — Afiliado Shein em código (`feature/shein-affiliate`, api 0.78.0 · app 0.95.0 · extensão 3.4.0): provider SHEIN, sessão `AT`+`memberId` pela extensão (permissão opcional), `detailNew` + `onelink`, `marketplace_shein_enabled` só MAX com edição em `/admin/plan-entitlements`, aviso de risco com aceite só de admin (`marketplace_risk_acceptances`, só inclusão), 6 migrations `20261111090000..090500`. Doc `docs/afiliado-shein.md`. Falta: QA visual T14, deploy, publicação da extensão na Web Store e smoke do dono T16. Não ligar nada em produção sem o dono.
+
 - 2026-11-08 — Plano de isolamento das filas em `.specs/features/monitoring-queue-isolation/`, branch `feature/monitoring-queue-plan`: A usa o timer existente com slots independentes e métricas; B (envio até 2) e C (turno persistido de capturas por tenant) são condicionais após medição. Somente planejamento; implementação, dados e flags de produção intactos. Revisão `/caveman-review` e evidências em `review.md`/`validation.md`.
 
 - 2026-11-08 — Billing DEV: aliases exatos `afiliado-dev-anual` (evento existente) e `copysync-dev-anual` (Plan atual do Hub) resolvem `COPYSYNC_MAX`, conforme `Plan.permissions = ["COPYSYNC_MAX"]` e `maxSessions = 2` consultados em somente leitura. Sem novo preset/seed. API 0.73.2; publicar antes do replay de `subscription.activated` DEAD no Hub. Confirmação de compra por e-mail no Hub continua pendente.

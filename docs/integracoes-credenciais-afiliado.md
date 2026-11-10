@@ -1,6 +1,6 @@
 # Credenciais de afiliado
 
-Por tenant, guarda a credencial de cada marketplace (Shopee, Mercado Livre e Amazon) para o
+Por tenant, guarda a credencial de cada marketplace (Shopee, Mercado Livre, Amazon e Shein) para o
 Gerador de ofertas trocar o link do concorrente pelo do cliente. Spec, design e tasks ficam em
 `.specs/features/affiliate-credentials/`. Item 3 do roadmap.
 
@@ -14,7 +14,7 @@ Gerador de ofertas trocar o link do concorrente pelo do cliente. Spec, design e 
 | HTTP | `api/src/modules/integrations/presentation/` |
 | Cifra | `api/src/shared/security/` (`ISecretCipher`, `AesGcmSecretCipher`, `SecretCipherFactory`) |
 | Painel | `app/src/features/settings/` (card, resumo de progresso `AffiliateConnectionSummary`, `MarketplaceLogo`, diálogo, hook, `strings.ts`, `affiliateProviders.ts`; logos em `app/public/assets/marketplaces/`, licenças no `LICENSE.md` da pasta) · `app/src/pages/settings/AffiliateCredentialsPage.tsx` (no celular os cards de marketplace viram carrossel por deslize via `SwipeCards`, indicador configurado/pendente) · rota `/affiliates/credentials` (item do produto Afiliados; `/settings/affiliate-credentials` redireciona e mantém a query) |
-| Extensão | `extension/` sincroniza a sessão do Mercado Livre (`docs/extensao-navegador.md`) |
+| Extensão | `extension/` sincroniza a sessão do Mercado Livre e da Shein (`docs/extensao-navegador.md`) |
 
 ## Campos por marketplace
 
@@ -27,6 +27,7 @@ verdade e o painel só repete as regras, para dar retorno ao operador.
 | Shopee (Affiliate Open API) | AppID | `^\d{5,20}$` | Secret `^[A-Za-z0-9]{16,128}$` (assina `sha256(appId+timestamp+payload+secret)`) |
 | Mercado Livre | Etiqueta de afiliado (`matt_word` no link) | `^[A-Za-z0-9._-]{2,64}$` | — (a sessão vem da extensão) |
 | Amazon Associados | ID de rastreamento (`?tag=`) | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}-\d{2}$` | — |
+| Shein | ID de afiliado (`memberId`, `url_from=affiliate_koc_<id>`) | `^\d{6,15}$` | — (a sessão vem da extensão; o ID **segue a sessão**, não é editável) |
 
 Assim que houver valores reais do cliente, confira as regras com eles antes de restringi-las.
 
@@ -52,6 +53,9 @@ Prefixo `/api/integrations/affiliate-credentials`, com `authHook` e `tenantHook`
 | DELETE | `/:provider` | 204, ou 404 se não existe. Apaga junto a sessão da extensão |
 | PATCH | `/:provider/status` | `{ status: ACTIVE \| INACTIVE }` |
 | PUT | `/:provider/session` | Usada só pela extensão e só para `MERCADO_LIVRE`. Recebe `{ sessionToken, csrfToken, affiliateTag?, capturedAt }` |
+| POST | `/:provider/risk-acceptance` | `{ noticeVersion, locale }`. Aceite do aviso de risco (hoje só `SHEIN`), só administrador do tenant. Ver [`afiliado-shein.md`](afiliado-shein.md) |
+
+A listagem (`GET /`) traz também `marketplaceAvailability` por provider: `{ enabled, plans, riskNotice }` (plano do tenant, planos que têm o recurso, aceite da versão vigente do aviso).
 
 Erros possíveis:
 
@@ -84,6 +88,23 @@ sem ID público são ignoradas.
   só existe a versão 1. Uma chore futura vai criar o mapa de chaves por versão e um script que
   cifra de novo os dados existentes. **Trocar a chave sem esse script inutiliza todos os segredos
   gravados.**
+
+## Shein: ID segue a sessão
+
+Para provider com `providerIdentifierFollowsSession` (hoje só `SHEIN`) o `publicIdentifier` é o `memberId` lido do
+próprio token `AT` no sync da extensão e **substitui** o anterior (`publicIdentifierOverride` no create e no update
+do upsert). Por isso as rotas genéricas recusam SHEIN:
+
+- `PUT /:provider` (manual) e `PUT /:provider/session` → 422 `AFFILIATE_CREDENTIAL_INVALID`: sessão Shein só entra
+  por `PUT /api/extension/marketplaces/shein/session`, que exige consentimento, plano e aceite do aviso.
+- `DELETE /:provider` → 409 `USE_MARKETPLACE_DISCONNECT`: apagar sem revogar o consentimento deixaria o próximo sync
+  recriar a credencial. Desconectar pela extensão: `DELETE /api/extension/marketplaces/shein/session` (revoga e apaga
+  a credencial inteira; 204 mesmo sem credencial). O painel usa essa rota no botão e na lixeira do card.
+- `PATCH /:provider/status` segue genérico.
+
+O cookie que identifica troca de token é por provider (`MERCADO_LIVRE: 'ssid'`, `SHEIN: 'AT'`): mesmo `AT` em sync
+repetido não zera recusa nem audita de novo. O sync da Shein não checa a sessão na loja (v1): recusa aparece no uso.
+Tudo da Shein: [`afiliado-shein.md`](afiliado-shein.md).
 
 ## Sessão da extensão (Mercado Livre)
 
@@ -152,6 +173,7 @@ Testes só-Redis (`*.redis.int.test.ts`, projeto `redis`, sem banco): ver [arqui
 - Não acessar Prisma fora de `infrastructure/`, e não criar consulta sem `tenantId`.
 - Nunca gravar em `rejectedCode` (nem na auditoria) corpo da resposta da loja, cookie ou chave: só o código interno.
 - Não limpar a rejeição ao reativar (`setStatus`), nem em sync do mesmo token **sem** checagem `VALID` da loja.
+- Não aceitar ID da Shein digitado nem apagar credencial Shein pelo `DELETE` genérico.
 - Não reaproveitar `syncFailed` para "verifique o login": a extensão já informa se há login (`ml.status`); culpar o
   login em erro de servidor faz o usuário refazer um login que está certo.
 

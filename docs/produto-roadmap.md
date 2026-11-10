@@ -20,7 +20,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 |---|---|---|---|---|
 | 1 | 📱 Conexão WhatsApp | Conecta números do cliente à ferramenta (QR / pairing code) | `sessions`, `messaging` (Baileys) | ✅ existe |
 | 2 | ✈️ Conexão Telegram | Conecta conta Telegram para monitorar e postar | `messaging` engine `telegram` ([doc](sessoes-telegram.md)) | 🟡 conexão e limite por plano (api 0.51.0 · app 0.64.0); falta monitorar/disparar por Telegram |
-| 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre e Amazon para gerar links | `integrations/affiliate-credentials` | ✅ |
+| 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre, Amazon e Shein para gerar links | `integrations/affiliate-credentials` | ✅ (Shein: api 0.78.0 · app 0.95.0 · extensão 3.4.0, só MAX, [doc](afiliado-shein.md); smoke T16 pendente) |
 | 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` (`docs/monitoramento-grupos.md`) | 🟡 WhatsApp, oferta montada e IA prontos; falta imagem e Telegram |
 | 5 | 📤 Grupos de disparo | Grupos do cliente que recebem as ofertas | `campaigns/broadcast-groups` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
@@ -83,6 +83,7 @@ guarda o plano, não o preço.
 | Gestor de Links — Telegram (links · grupos por link) | — | 1 · 5 | 2 · 10 |
 | Menção a todos os participantes | — | ✅ | ✅ |
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
+| Marketplace Shein (sessão pela extensão, aviso de risco) | — | — | ✅ |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
 | Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
 | Monitorar numa sessão e disparar em outra do mesmo canal (sessão cruzada) | — | — | ✅ (exclusivo) |
@@ -133,7 +134,7 @@ Chaves de entitlement sugeridas (snake_case, estáveis):
 `telegram_monitored_groups`, `telegram_broadcast_groups`,
 `offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `link_rotation_groups`,
 `telegram_link_rotations`, `telegram_link_rotation_groups`, `ai_rewrite_enabled`,
-`offer_story_enabled`, `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
+`offer_story_enabled`, `marketplace_shein_enabled` (MAX; super admin libera por plano em `/admin/plan-entitlements`), `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).
 
 Billing: via API central, ver [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (reaproveitar

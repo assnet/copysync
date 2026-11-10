@@ -1,6 +1,6 @@
 # Afiliado Shein — Especificação
 
-Status: **planejado** (2026-11-10). Nada implementado. Roadmap: item 3 (credenciais) e tabela "Marketplaces"
+Status: **implementado em código** (api 0.78.0 · app 0.95.0 · extensão 3.4.0, 2026-11-10). Falta smoke do dono (T16) e deploy. Roadmap: item 3 (credenciais) e tabela "Marketplaces"
 de `docs/produto-roadmap.md`. Desenho em `design.md`, tarefas em `tasks.md`.
 
 ## Problema
