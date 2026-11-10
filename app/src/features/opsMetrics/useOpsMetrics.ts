@@ -33,11 +33,17 @@ export interface OpsMetricsState {
 const EMPTY_SERIES: Record<SeriesBlock, OpsSeriesResult | null> = { servers: null, database: null, workers: null };
 const NO_ERRORS: Record<OpsBlock, boolean> = { latest: false, servers: false, database: false, workers: false };
 
+/** Chamada que nunca lança de forma síncrona: erro vira rejeição e cai no `allSettled`. */
+const settle = <T,>(fn: () => Promise<T>): Promise<T> => Promise.resolve().then(fn);
+
 /**
  * Valores atuais + séries do período em paralelo, com erro por bloco (um cartão falhar não
  * derruba a aba). Atualização a cada 60 s por `setTimeout` encadeado (nunca acumula): com a aba
  * do navegador oculta não busca; ao voltar, busca na hora se a última tem mais de 60 s.
- * Troca de período busca na hora e reinicia o ciclo; resposta antiga é descartada.
+ * Troca de período busca na hora e reinicia o ciclo. Cada execução de efeito tem sua flag
+ * `cancelled`: depois do cleanup (desmontar, desligar a atualização, trocar o período) a busca em
+ * voo não aplica resultado nem re-arma o timer. Só a busca mais recente aplica (`reqId`).
+ * O serviço não aceita `AbortSignal`: a requisição em voo termina, mas é descartada.
  */
 export function useOpsMetrics(range: OpsRange, autoRefresh: boolean) {
   const [state, setState] = useState<OpsMetricsState>({
@@ -46,19 +52,33 @@ export function useOpsMetrics(range: OpsRange, autoRefresh: boolean) {
   const reqId = useRef(0);
   const lastFetchAt = useRef(0);
   const hasData = useRef(false);
+  const mounted = useRef(true);
 
-  const fetchAll = useCallback(async (initial: boolean) => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      reqId.current += 1; // invalida o que estiver em voo
+    };
+  }, []);
+
+  const fetchAll = useCallback(async (initial: boolean, isCancelled: () => boolean = () => false) => {
     const id = ++reqId.current;
     lastFetchAt.current = Date.now();
     setState((s) => ({ ...s, fetching: true, ...(initial ? { loading: true } : {}) }));
-    const window = rangeWindow(range, serverNow());
+    const window = () => rangeWindow(range, serverNow());
     const [latest, servers, database, workers] = await Promise.allSettled([
-      opsMetricsService.latest(),
-      opsMetricsService.series([...OPS_BLOCK_METRICS.servers], window),
-      opsMetricsService.series([...OPS_BLOCK_METRICS.database], window),
-      opsMetricsService.series([...OPS_BLOCK_METRICS.workers], window),
+      settle(() => opsMetricsService.latest()),
+      settle(() => opsMetricsService.series([...OPS_BLOCK_METRICS.servers], window())),
+      settle(() => opsMetricsService.series([...OPS_BLOCK_METRICS.database], window())),
+      settle(() => opsMetricsService.series([...OPS_BLOCK_METRICS.workers], window())),
     ]);
-    if (id !== reqId.current) return false;
+    if (!mounted.current || id !== reqId.current) return false;
+    if (isCancelled()) {
+      // Ciclo encerrado e nenhuma busca mais nova: só apaga o "buscando", sem aplicar.
+      setState((s) => ({ ...s, fetching: false, loading: false }));
+      return false;
+    }
     const allFailed = [latest, servers, database, workers].every((r) => r.status === 'rejected');
     setState((s) => {
       // Refresh que falhou inteiro com dados na tela: mantém tudo e só sinaliza.
@@ -92,29 +112,36 @@ export function useOpsMetrics(range: OpsRange, autoRefresh: boolean) {
 
   // Troca de período: busca na hora (com skeleton).
   useEffect(() => {
-    void fetchAll(true);
+    let cancelled = false;
+    void fetchAll(true, () => cancelled);
+    return () => { cancelled = true; };
   }, [fetchAll]);
 
   // Ciclo de atualização automática.
   useEffect(() => {
     if (!autoRefresh) return undefined;
+    let cancelled = false;
     let timer: number | undefined;
     const schedule = (delay: number) => {
       window.clearTimeout(timer);
+      if (cancelled) return;
       timer = window.setTimeout(tick, Math.max(0, delay));
     };
     const tick = () => {
-      if (document.visibilityState === 'hidden') return; // retoma no visibilitychange
-      void fetchAll(false).finally(() => schedule(OPS_REFRESH_MS));
+      if (cancelled || document.visibilityState === 'hidden') return; // retoma no visibilitychange
+      void fetchAll(false, () => cancelled)
+        .catch(() => false)
+        .then(() => schedule(OPS_REFRESH_MS));
     };
     const onVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (cancelled || document.visibilityState !== 'visible') return;
       const elapsed = Date.now() - lastFetchAt.current;
       schedule(elapsed >= OPS_REFRESH_MS ? 0 : OPS_REFRESH_MS - elapsed);
     };
     schedule(OPS_REFRESH_MS - (Date.now() - lastFetchAt.current));
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };

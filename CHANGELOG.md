@@ -18,6 +18,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`services/opsMetrics.service.ts`** — `GET /admin/ops/metrics/series` e `/latest` pelo Axios central.
 - Filtros (período, recurso, atualização) em `usePersistedState('workers.usage.filters')`, escopo `tab`. Testes: `rules.test.ts`, `useOpsMetrics.test.tsx`, `UsageTab.test.tsx`, `navigation/model.test.ts`.
 - **`docs/ops-metricas.md`** — seção "Tela".
+- **Correções de revisão (aba Consumo)** — `useOpsMetrics.ts`: flag `cancelled` por execução de efeito; após cleanup (desmontar, desligar atualização, trocar período) a busca em voo não aplica resultado nem re-arma o timer (antes `.finally(schedule)` religava o ciclo com o período antigo e a resposta velha sobrescrevia a nova); chamadas embrulhadas para nunca lançar antes do `allSettled`. `rules.ts`: `counterRatePerMinute` divide o delta pelo intervalo real entre pontos (buraco não vira pico), reinício = 0 (substitui `perMinute`); `parseUsageFilters` valida filtros do sessionStorage com fallback ao padrão (range inválido travava o loading). `UsageTab.tsx`: tile Conexões sem ociosas em transação = "Sem dados" (antes "Ok"); KPIs, linhas, extras e tabelas derivados num `useMemo` (`buildUsageView`) para não reconstruir os gráficos a cada render. `TimeLineChart.tsx`: `extras` padrão estável.
 
 ### Added — api 0.74.0 — filas independentes, gate do chat e métricas de recursos
 

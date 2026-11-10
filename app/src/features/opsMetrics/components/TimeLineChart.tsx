@@ -40,6 +40,8 @@ interface Props {
 }
 
 const END_LABEL_GAP = 14;
+/** Padrão estável: `[]` novo a cada render invalidaria o `useMemo` das séries. */
+const NO_EXTRAS: TooltipExtra[] = [];
 
 /** Rótulo só no tooltip: `undefined` na legenda tira a série dela (o tipo da lib não prevê). */
 export function tooltipOnlyLabel(label: string) {
@@ -81,7 +83,7 @@ function lastIndex(values: (number | null)[]): number {
  * Gráfico de linha no tempo da aba Consumo: média em 2 px, banda mín–máx opcional, ponto no
  * último valor, limiar neutro tracejado, tooltip por eixo e legenda/rótulo direto com ≥ 2 séries.
  */
-export function TimeLineChart({ times, range, lines, extras = [], yMin, yMax, reference }: Props) {
+export function TimeLineChart({ times, range, lines, extras = NO_EXTRAS, yMin, yMax, reference }: Props) {
   const theme = useTheme();
   const small = useMediaQuery(theme.breakpoints.down('md'));
   const narrow = useMediaQuery(theme.breakpoints.down('sm'));

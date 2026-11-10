@@ -175,4 +175,30 @@ describe('Aba Consumo', () => {
     expect(await screen.findByText(t.charts.workerMemory)).toBeInTheDocument();
     expect(screen.queryByText(t.workers.adoptionOff)).not.toBeInTheDocument();
   });
+
+  it('Conexões sem ociosas em transação: status "Sem dados", nunca "Ok"', async () => {
+    mockAll(
+      { ...FULL_LATEST, latest: FULL_LATEST.latest.filter((v) => v.metric !== 'db_idle_in_transaction') },
+      (m) => (m.includes('db_connections')
+        ? result([s('postgres', 'db', 'db_connections', [17, 18])])
+        : fullSeries(m)),
+    );
+    renderUsage();
+    const label = await screen.findByText(t.kpi.connections);
+    const tile = label.closest('.MuiCard-root') as HTMLElement;
+    expect(within(tile).getByText('18')).toBeInTheDocument();
+    expect(within(tile).getByText(t.status.noData)).toBeInTheDocument();
+    expect(within(tile).queryByText(t.status.ok)).not.toBeInTheDocument();
+  });
+
+  it('filtros inválidos no sessionStorage caem no padrão e a aba carrega', async () => {
+    sessionStorage.setItem('ui.workers.usage.filters', JSON.stringify({ v: 1, d: { range: '2y', resource: 'x', autoRefresh: 1 } }));
+    mockAll(FULL_LATEST, fullSeries);
+    renderUsage();
+    expect(await screen.findByText(t.kpi.ramApi)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t.filters.ranges['24h'] })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: t.filters.resources.all })).toHaveAttribute('aria-pressed', 'true');
+    const [, window] = vi.mocked(opsMetricsService.series).mock.calls[0];
+    expect(Date.parse(window.to) - Date.parse(window.from)).toBe(24 * 60 * 60_000);
+  });
 });

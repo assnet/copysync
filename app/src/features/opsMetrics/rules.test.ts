@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas, counterPeriodTotal, countDomainMax, formatBytes,
-  formatDuration, formatPct, isStale, latestValue, newestSampleAt, perMinute, querySharePct, rangeWindow, resourceVisible,
+  formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, resourceVisible,
   seriesPoints, shortQueryId, statusFor,
 } from './rules';
 import type { OpsSeries, OpsSeriesPoint } from './types';
@@ -45,8 +45,30 @@ describe('counterDeltas', () => {
     expect(counterPeriodTotal([pt('a', 0, 2, 10), pt('b', 0, 10, 12), pt('c', 0, 0, 3)])).toBe(10);
     expect(counterPeriodTotal([])).toBeNull();
   });
-  it('taxa por minuto', () => {
-    expect(perMinute([null, 30, null], 15)).toEqual([null, 2, null]);
+  it('taxa por minuto pelo intervalo real', () => {
+    const T = 15 * 60_000;
+    expect(counterRatePerMinute([pt('a', 0, 0, 0), pt('b', 0, 0, 30)], [0, T])).toEqual([null, 2]);
+  });
+  it('buraco de 3 baldes divide pelo intervalo real (sem pico falso)', () => {
+    const T = 15 * 60_000;
+    // 4 baldes de 15 min (60 min) com 3 vazios no meio: 120 commits → 2/min, não 8/min.
+    const rows = [pt('a', 0, 0, 100), null, null, null, pt('e', 0, 100, 220)];
+    expect(counterRatePerMinute(rows, [0, T, 2 * T, 3 * T, 4 * T])).toEqual([null, null, null, null, 2]);
+  });
+  it('reinício (delta negativo) = 0', () => {
+    const T = 15 * 60_000;
+    expect(counterRatePerMinute([pt('a', 0, 0, 100), pt('b', 0, 0, 4), pt('c', 0, 4, 34)], [0, T, 2 * T]))
+      .toEqual([null, 0, 2]);
+  });
+});
+
+describe('parseUsageFilters', () => {
+  it('valores válidos passam; inválidos caem no padrão campo a campo', () => {
+    expect(parseUsageFilters({ range: '7d', resource: 'api', autoRefresh: false }))
+      .toEqual({ range: '7d', resource: 'api', autoRefresh: false });
+    expect(parseUsageFilters({ range: '2y', resource: 'x', autoRefresh: 'sim' }))
+      .toEqual({ range: '24h', resource: 'all', autoRefresh: true });
+    expect(parseUsageFilters(null)).toEqual({ range: '24h', resource: 'all', autoRefresh: true });
   });
 });
 

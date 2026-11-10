@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Alert, Box, Button, Chip, FormControlLabel, Grid, IconButton, Skeleton, Stack, Switch, ToggleButton,
@@ -11,22 +11,23 @@ import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
 import { chartColors } from '../chartColors';
 import {
-  API_MEMORY_LIMIT_MB, MAX_WORKERS_IN_CHART, OPS_RANGES, alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas,
-  counterPeriodTotal, countDomainMax, formatBytes, formatDateTime, formatNumber, formatPct, hasHeartbeat, isStale,
-  latestValue, newestSampleAt, perMinute, resourceVisible, seriesByResource, seriesPoints, statusFor, valueStats,
+  API_MEMORY_LIMIT_MB, DEFAULT_USAGE_FILTERS, MAX_WORKERS_IN_CHART, OPS_RANGES, OPS_RESOURCE_FILTERS, alignSeries,
+  cacheHitDomainMin, cacheHitStatus, counterPeriodTotal, counterRatePerMinute, countDomainMax, formatBytes, formatDateTime,
+  formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceVisible,
+  seriesByResource, seriesPoints, statusFor, valueStats,
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
-import type { OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsRange, UsageFilters } from '../types';
-import { useOpsMetrics } from '../useOpsMetrics';
+import type { OpsLatest, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsRange, UsageFilters } from '../types';
+import { useOpsMetrics, type OpsMetricsState } from '../useOpsMetrics';
 import { CollectionOffState } from './CollectionOffState';
 import { CommitsBarChart } from './CommitsBarChart';
 import { MetricChartCard, type ChartTable } from './MetricChartCard';
-import { TimeLineChart, type LineSpec } from './TimeLineChart';
+import { TimeLineChart, type LineSpec, type TooltipExtra } from './TimeLineChart';
 import { TopQueriesTable } from './TopQueriesTable';
 import { UsageKpiTile, type UsageKpiTileProps } from './UsageKpiTile';
 
 export const USAGE_FILTERS_KEY = 'workers.usage.filters';
-const DEFAULT_FILTERS: UsageFilters = { range: '24h', resource: 'all', autoRefresh: true };
+const FILTER_PERSIST = { version: 1, deserialize: parseUsageFilters } as const;
 
 const fmtCount = (v: number) => formatNumber(v);
 const fmtMs = (v: number) => `${formatNumber(v)} ms`;
@@ -158,7 +159,7 @@ function Filters({ filters, onChange }: { filters: UsageFilters; onChange: (f: P
           aria-label={t.filters.resourceAria}
           sx={{ display: 'flex' }}
         >
-          {(['all', 'api', 'postgres'] as const).map((r) => (
+          {OPS_RESOURCE_FILTERS.map((r) => (
             <ToggleButton key={r} value={r} sx={toggleSx}>{t.filters.resources[r]}</ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -179,78 +180,35 @@ function Filters({ filters, onChange }: { filters: UsageFilters; onChange: (f: P
   );
 }
 
-/** Aba Consumo de Workers (carregada sob demanda). Dado de infraestrutura: sem tenant, sem PII. */
-export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | null }) {
-  const theme = useTheme();
-  const colors = chartColors(theme.palette.mode);
-  const [filters, setFilters] = usePersistedState<UsageFilters>(USAGE_FILTERS_KEY, DEFAULT_FILTERS, { version: 1 });
-  const m = useOpsMetrics(filters.range, filters.autoRefresh);
-  const [announce, setAnnounce] = useState('');
+interface ViewInput {
+  latestRes: OpsLatest | null;
+  series: OpsMetricsState['series'];
+  resource: OpsResourceFilter;
+  colors: ReturnType<typeof chartColors>;
+}
 
-  const thresholds = m.latest?.thresholds;
-  const latest = m.latest?.latest ?? [];
-  const serversSeries = m.series.servers?.series ?? [];
-  const dbSeries = m.series.database?.series ?? [];
-  const workerSeries = m.series.workers?.series ?? [];
-  const allSeries: OpsSeries[] = [...serversSeries, ...dbSeries, ...workerSeries];
-  const newestAt = newestSampleAt(latest, allSeries);
-  const hasSamples = latest.length > 0 || allSeries.some((s) => s.points.length > 0);
-  const samplerActive = m.latest ? m.latest.samplerActive : null;
-  const now = serverNow();
-
-  const onChange = (patch: Partial<UsageFilters>) => setFilters((f) => ({ ...f, ...patch }));
-  const manualRefresh = () => {
-    setAnnounce('');
-    void m.reload().then((ok) => { if (ok) setAnnounce(t.header.refreshed); });
-  };
-  const retry = () => void m.reload();
-
-  const header = (
-    <UsageHeader samplerActive={samplerActive} newestAt={newestAt} fetching={m.fetching} onRefresh={manualRefresh} />
-  );
-  const live = (
-    <Box component="span" aria-live="polite" sx={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
-      {announce}
-    </Box>
-  );
-  const top = (
-    <>
-      {headerSlot ? createPortal(header, headerSlot) : <Box sx={{ mb: 1 }}>{header}</Box>}
-      {live}
-      <Filters filters={filters} onChange={onChange} />
-    </>
-  );
-
-  // 1ª carga falhou inteira.
-  const allFailed = m.errors.latest && m.errors.servers && m.errors.database && m.errors.workers;
-  if (!m.loading && allFailed && !m.latest) {
-    return (
-      <Box>
-        {top}
-        <Alert severity="error" sx={{ mt: 3 }} action={<Button color="inherit" size="small" onClick={retry}>{t.retry}</Button>}>
-          {t.loadFailed}
-        </Alert>
-      </Box>
-    );
-  }
-
-  if (!m.loading && m.latest && !m.latest.samplerActive && !hasSamples) {
-    return <Box>{top}<CollectionOffState /></Box>;
-  }
-
-  const loading = m.loading;
-  const bucketS = m.series.servers?.bucketMinutes ?? 5;
-  const bucketD = m.series.database?.bucketMinutes ?? 5;
-  const bucketW = m.series.workers?.bucketMinutes ?? 5;
+/**
+ * Tudo que os KPIs e os gráficos mostram, derivado só dos dados da API e do filtro de recurso.
+ * Roda num `useMemo`: render por "buscando", anúncio ou relógio não reconstrói os 12 gráficos.
+ */
+function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
+  const thresholds = latestRes?.thresholds;
+  const latest = latestRes?.latest ?? [];
+  const serversSeries = series.servers?.series ?? [];
+  const dbSeries = series.database?.series ?? [];
+  const workerSeries = series.workers?.series ?? [];
+  const bucketS = series.servers?.bucketMinutes ?? 5;
+  const bucketD = series.database?.bucketMinutes ?? 5;
+  const bucketW = series.workers?.bucketMinutes ?? 5;
 
   // ---- Servidores ----
-  const showApi = resourceVisible(filters.resource, 'api');
-  const showDb = resourceVisible(filters.resource, 'postgres');
+  const showApi = resourceVisible(resource, 'api');
+  const showDb = resourceVisible(resource, 'postgres');
   const cpuApi = seriesPoints(serversSeries, 'cpu_pct', 'api');
   const cpuDb = seriesPoints(serversSeries, 'cpu_pct', 'postgres');
   const memApi = seriesPoints(serversSeries, 'memory_pct', 'api');
   const memDb = seriesPoints(serversSeries, 'memory_pct', 'postgres');
-  const renderMissing = !loading && cpuApi.length + cpuDb.length + memApi.length + memDb.length === 0 && dbSeries.some((s) => s.points.length > 0);
+  const renderMissingData = cpuApi.length + cpuDb.length + memApi.length + memDb.length === 0 && dbSeries.some((s) => s.points.length > 0);
 
   const kpiValue = (metric: string, kind: 'api' | 'postgres' | undefined, pts: OpsSeriesPoint[]) =>
     latestValue(latest, metric, kind)?.value ?? lastAvg(pts);
@@ -293,7 +251,8 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
       key: 'connections', visible: true, label: t.kpi.connections, icon: Database,
       value: connV != null ? formatNumber(connV) : '—',
       context: idleTxV != null ? t.kpi.idleInTx(Math.round(idleTxV)) : undefined,
-      status: connV == null ? 'noData' : thresholds ? statusFor(idleTxV ?? 0, thresholds.idleInTransaction) : 'noData',
+      // Status vem das ociosas em transação: sem esse valor (ou sem limiar) não há como julgar.
+      status: connV == null || idleTxV == null || !thresholds ? 'noData' : statusFor(idleTxV, thresholds.idleInTransaction),
       help: t.help.db_connections, spark: spark(connPts), sparkColor: colors.postgres, formatValue: fmtCount,
     },
     {
@@ -341,14 +300,14 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
   const cacheAligned = alignSeries([cachePts], bucketD);
   const cacheValues = avgOf(cacheAligned.rows[0]);
   const commitAligned = alignSeries([commitPts], bucketD);
-  const commitRates = perMinute(counterDeltas(commitAligned.rows[0]), bucketD);
+  const commitRates = counterRatePerMinute(commitAligned.rows[0], commitAligned.times);
 
   const rollbacks = counterPeriodTotal(seriesPoints(dbSeries, 'db_xact_rollback'));
   const deadlocks = counterPeriodTotal(seriesPoints(dbSeries, 'db_deadlocks'));
   const tempBytes = counterPeriodTotal(seriesPoints(dbSeries, 'db_temp_bytes'));
 
   // ---- Workers ----
-  const heartbeat = m.latest ? hasHeartbeat(m.latest.workers) : false;
+  const heartbeat = latestRes ? hasHeartbeat(latestRes.workers) : false;
   const rssByWorker = seriesByResource(workerSeries, 'rss_mb');
   const loopByWorker = seriesByResource(workerSeries, 'event_loop_p99_ms');
   const cpuByWorker = seriesByResource(workerSeries, 'node_cpu_pct');
@@ -370,6 +329,140 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
       return v == null ? '—' : formatPct(v);
     };
   });
+
+
+  // Itens que antes nasciam no JSX: memoizados aqui para o `useMemo` do gráfico não recalcular a cada render.
+  const memExtras: TooltipExtra[] = memApiIdx >= 0 ? [{
+    id: 'memApiMb',
+    label: t.charts.series.api,
+    text: (i) => {
+      const p = mem.aligned.rows[memApiIdx][i];
+      return p ? t.charts.memoryMb(formatNumber(Math.round((p.avg / 100) * API_MEMORY_LIMIT_MB))) : null;
+    },
+  }] : [];
+  const connExtras: TooltipExtra[] = [
+    { id: 'connTotal', label: t.charts.series.total, text: (i) => (connTotals[i] == null ? null : fmtCount(connTotals[i] as number)) },
+    {
+      id: 'connOther',
+      label: t.charts.series.other,
+      text: (i) => {
+        const total = connTotals[i];
+        if (total == null) return null;
+        const sum = connLines.reduce((a, l) => a + (l.values[i] ?? 0), 0);
+        return total - sum > 0.5 ? fmtCount(total - sum) : null;
+      },
+    },
+  ];
+  const connTable = buildTable(connAligned.times, connSpecs.map((c, i) => ({ label: c.label, rows: connAligned.rows[i], format: fmtCount })));
+  const idleLines: LineSpec[] = [{ id: 'idleTx', label: t.charts.idleInTx, color: colors.idleInTx, values: idleValues, format: fmtCount }];
+  const idleExtras: TooltipExtra[] = [{
+    id: 'oldest',
+    label: t.charts.series.idleInTx,
+    text: (i) => {
+      const p = idleAligned.rows[1][i];
+      return p && p.max > 0 ? t.charts.oldestIdle(Math.round(p.max)) : null;
+    },
+  }];
+  const idleTable = buildTable(idleAligned.times, [{ label: t.charts.idleInTx, rows: idleAligned.rows[0], format: fmtCount }]);
+  const cacheLines: LineSpec[] = [{
+    id: 'cache', label: t.charts.cacheHit, color: colors.postgres, values: cacheValues,
+    band: { min: minOf(cacheAligned.rows[0]), max: maxOf(cacheAligned.rows[0]) }, format: formatPct,
+  }];
+  const cacheMin = cacheHitDomainMin(minOf(cacheAligned.rows[0]));
+  const cacheTable = buildTable(cacheAligned.times, [{ label: t.charts.cacheHit, rows: cacheAligned.rows[0], format: formatPct }]);
+  const commitTable: ChartTable = {
+    headers: [t.charts.tableCols.time, t.charts.commits],
+    rows: commitAligned.times
+      .map((ms, i) => [formatDateTime(ms), commitRates[i] == null ? '—' : formatNumber(commitRates[i] as number, 1)])
+      .reverse(),
+  };
+  const rssTable = buildTable(
+    rssW.aligned.times,
+    rssByWorker.map((w, i) => ({ label: w.resource, rows: rssW.aligned.rows[i], format: fmtMb, extra: cpuAlignedByWorker[i] })),
+    t.charts.tableCols.cpu,
+  );
+  const loopTable = buildTable(loopW.aligned.times, loopByWorker.map((w, i) => ({ label: w.resource, rows: loopW.aligned.rows[i], format: fmtMs })));
+
+  return {
+    tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
+    idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
+    cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
+    loopByWorker, rssW, loopW, rssTable, loopTable,
+  };
+}
+
+/** Aba Consumo de Workers (carregada sob demanda). Dado de infraestrutura: sem tenant, sem PII. */
+export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | null }) {
+  const theme = useTheme();
+  const mode = theme.palette.mode;
+  const colors = useMemo(() => chartColors(mode), [mode]);
+  const [filters, setFilters] = usePersistedState<UsageFilters>(USAGE_FILTERS_KEY, DEFAULT_USAGE_FILTERS, FILTER_PERSIST);
+  const m = useOpsMetrics(filters.range, filters.autoRefresh);
+  const [announce, setAnnounce] = useState('');
+
+  const thresholds = m.latest?.thresholds;
+  const latest = m.latest?.latest ?? [];
+  const serversSeries = m.series.servers?.series ?? [];
+  const dbSeries = m.series.database?.series ?? [];
+  const workerSeries = m.series.workers?.series ?? [];
+  const allSeries: OpsSeries[] = [...serversSeries, ...dbSeries, ...workerSeries];
+  const newestAt = newestSampleAt(latest, allSeries);
+  const hasSamples = latest.length > 0 || allSeries.some((s) => s.points.length > 0);
+  const samplerActive = m.latest ? m.latest.samplerActive : null;
+  const now = serverNow();
+  const view = useMemo(
+    () => buildUsageView({ latestRes: m.latest, series: m.series, resource: filters.resource, colors }),
+    [m.latest, m.series, filters.resource, colors],
+  );
+
+  const onChange = (patch: Partial<UsageFilters>) => setFilters((f) => ({ ...f, ...patch }));
+  const manualRefresh = () => {
+    setAnnounce('');
+    void m.reload().then((ok) => { if (ok) setAnnounce(t.header.refreshed); });
+  };
+  const retry = () => void m.reload();
+
+  const header = (
+    <UsageHeader samplerActive={samplerActive} newestAt={newestAt} fetching={m.fetching} onRefresh={manualRefresh} />
+  );
+  const live = (
+    <Box component="span" aria-live="polite" sx={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
+      {announce}
+    </Box>
+  );
+  const top = (
+    <>
+      {headerSlot ? createPortal(header, headerSlot) : <Box sx={{ mb: 1 }}>{header}</Box>}
+      {live}
+      <Filters filters={filters} onChange={onChange} />
+    </>
+  );
+
+  // 1ª carga falhou inteira.
+  const allFailed = m.errors.latest && m.errors.servers && m.errors.database && m.errors.workers;
+  if (!m.loading && allFailed && !m.latest) {
+    return (
+      <Box>
+        {top}
+        <Alert severity="error" sx={{ mt: 3 }} action={<Button color="inherit" size="small" onClick={retry}>{t.retry}</Button>}>
+          {t.loadFailed}
+        </Alert>
+      </Box>
+    );
+  }
+
+  if (!m.loading && m.latest && !m.latest.samplerActive && !hasSamples) {
+    return <Box>{top}<CollectionOffState /></Box>;
+  }
+
+  const loading = m.loading;
+  const {
+    tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
+    idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
+    cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
+    loopByWorker, rssW, loopW, rssTable, loopTable,
+  } = view;
+  const renderMissing = !loading && renderMissingData;
 
   const newestAge = newestAt ? formatRelativeTime(newestAt, now, t.header.justNow) : '';
 
@@ -439,14 +532,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
               yMin={0}
               yMax={100}
               reference={thresholds && { y: thresholds.memoryPct, label: t.charts.threshold(formatPct(thresholds.memoryPct)) }}
-              extras={memApiIdx >= 0 ? [{
-                id: 'memApiMb',
-                label: t.charts.series.api,
-                text: (i) => {
-                  const p = mem.aligned.rows[memApiIdx][i];
-                  return p ? t.charts.memoryMb(formatNumber(Math.round((p.avg / 100) * API_MEMORY_LIMIT_MB))) : null;
-                },
-              }] : []}
+              extras={memExtras}
             />
           </MetricChartCard>
         </Grid>
@@ -464,7 +550,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
             onRetry={retry}
             empty={connEmpty}
             figureAria={figureAria(t.charts.connections, connTotals, fmtCount)}
-            table={buildTable(connAligned.times, connSpecs.map((c, i) => ({ label: c.label, rows: connAligned.rows[i], format: fmtCount })))}
+            table={connTable}
           >
             <TimeLineChart
               times={connAligned.times}
@@ -472,19 +558,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
               lines={connLines}
               yMin={0}
               yMax={countDomainMax(connTotals)}
-              extras={[
-                { id: 'connTotal', label: t.charts.series.total, text: (i) => (connTotals[i] == null ? null : fmtCount(connTotals[i] as number)) },
-                {
-                  id: 'connOther',
-                  label: t.charts.series.other,
-                  text: (i) => {
-                    const total = connTotals[i];
-                    if (total == null) return null;
-                    const sum = connLines.reduce((a, l) => a + (l.values[i] ?? 0), 0);
-                    return total - sum > 0.5 ? fmtCount(total - sum) : null;
-                  },
-                },
-              ]}
+              extras={connExtras}
             />
           </MetricChartCard>
         </Grid>
@@ -498,23 +572,16 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
             onRetry={retry}
             empty={idleTxPts.length === 0}
             figureAria={figureAria(t.charts.idleInTx, idleValues, fmtCount, thresholds && fmtCount(thresholds.idleInTransaction))}
-            table={buildTable(idleAligned.times, [{ label: t.charts.idleInTx, rows: idleAligned.rows[0], format: fmtCount }])}
+            table={idleTable}
           >
             <TimeLineChart
               times={idleAligned.times}
               range={filters.range}
-              lines={[{ id: 'idleTx', label: t.charts.idleInTx, color: colors.idleInTx, values: idleValues, format: fmtCount }]}
+              lines={idleLines}
               yMin={0}
               yMax={countDomainMax(idleValues, thresholds?.idleInTransaction)}
               reference={thresholds && { y: thresholds.idleInTransaction, label: t.charts.threshold(fmtCount(thresholds.idleInTransaction)) }}
-              extras={[{
-                id: 'oldest',
-                label: t.charts.series.idleInTx,
-                text: (i) => {
-                  const p = idleAligned.rows[1][i];
-                  return p && p.max > 0 ? t.charts.oldestIdle(Math.round(p.max)) : null;
-                },
-              }]}
+              extras={idleExtras}
             />
           </MetricChartCard>
         </Grid>
@@ -528,16 +595,13 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
             onRetry={retry}
             empty={cachePts.length === 0}
             figureAria={figureAria(t.charts.cacheHit, cacheValues, formatPct)}
-            table={buildTable(cacheAligned.times, [{ label: t.charts.cacheHit, rows: cacheAligned.rows[0], format: formatPct }])}
+            table={cacheTable}
           >
             <TimeLineChart
               times={cacheAligned.times}
               range={filters.range}
-              lines={[{
-                id: 'cache', label: t.charts.cacheHit, color: colors.postgres, values: cacheValues,
-                band: { min: minOf(cacheAligned.rows[0]), max: maxOf(cacheAligned.rows[0]) }, format: formatPct,
-              }]}
-              yMin={cacheHitDomainMin(minOf(cacheAligned.rows[0]))}
+              lines={cacheLines}
+              yMin={cacheMin}
               yMax={100}
               reference={{ y: 99, label: t.charts.ideal(formatPct(99)) }}
             />
@@ -553,12 +617,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
             onRetry={retry}
             empty={commitRates.every((v) => v == null)}
             figureAria={figureAria(t.charts.commits, commitRates, (v) => formatNumber(v, 1))}
-            table={{
-              headers: [t.charts.tableCols.time, t.charts.commits],
-              rows: commitAligned.times
-                .map((ms, i) => [formatDateTime(ms), commitRates[i] == null ? '—' : formatNumber(commitRates[i] as number, 1)])
-                .reverse(),
-            }}
+            table={commitTable}
           >
             <CommitsBarChart
               times={commitAligned.times}
@@ -659,11 +718,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
               empty={rssByWorker.length === 0}
               figureAria={figureAria(t.charts.workerMemory, rssW.lines.flatMap((l) => l.values), fmtMb)}
               tableOnlyNotice={rssByWorker.length > MAX_WORKERS_IN_CHART ? t.charts.tooManyWorkers : undefined}
-              table={buildTable(
-                rssW.aligned.times,
-                rssByWorker.map((w, i) => ({ label: w.resource, rows: rssW.aligned.rows[i], format: fmtMb, extra: cpuAlignedByWorker[i] })),
-                t.charts.tableCols.cpu,
-              )}
+              table={rssTable}
             >
               <TimeLineChart times={rssW.aligned.times} range={filters.range} lines={rssW.lines} yMin={0} />
             </MetricChartCard>
@@ -679,7 +734,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
               empty={loopByWorker.length === 0}
               figureAria={figureAria(t.charts.eventLoop, loopW.lines.flatMap((l) => l.values), fmtMs, thresholds && fmtMs(thresholds.eventLoopP99Ms))}
               tableOnlyNotice={loopByWorker.length > MAX_WORKERS_IN_CHART ? t.charts.tooManyWorkers : undefined}
-              table={buildTable(loopW.aligned.times, loopByWorker.map((w, i) => ({ label: w.resource, rows: loopW.aligned.rows[i], format: fmtMs })))}
+              table={loopTable}
             >
               <TimeLineChart
                 times={loopW.aligned.times}

@@ -1,6 +1,7 @@
 /** Regras puras da aba Consumo: janela, status vs limiar, delta de counter, alinhamento e formatação. */
 import type {
   OpsKind, OpsLatestValue, OpsRange, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsStatus, OpsTopQuery, OpsWorker,
+  UsageFilters,
 } from './types';
 
 const MIN = 60_000;
@@ -22,6 +23,23 @@ export const API_MEMORY_LIMIT_MB = 2048;
 export const STALE_AFTER_MIN = 15;
 /** Acima disso o gráfico por worker some e fica só a tabela (sem gerar cor nova). */
 export const MAX_WORKERS_IN_CHART = 3;
+
+export const OPS_RESOURCE_FILTERS: OpsResourceFilter[] = ['all', 'api', 'postgres'];
+export const DEFAULT_USAGE_FILTERS: UsageFilters = { range: '24h', resource: 'all', autoRefresh: true };
+
+/**
+ * Filtros lidos do sessionStorage: valor fora dos permitidos (versão antiga, edição manual) cai
+ * no padrão campo a campo. Sem isso, `range` inválido vira `NaN` e `toISOString` lança.
+ */
+export function parseUsageFilters(raw: unknown): UsageFilters {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const d = DEFAULT_USAGE_FILTERS;
+  return {
+    range: OPS_RANGES.includes(o.range as OpsRange) ? (o.range as OpsRange) : d.range,
+    resource: OPS_RESOURCE_FILTERS.includes(o.resource as OpsResourceFilter) ? (o.resource as OpsResourceFilter) : d.resource,
+    autoRefresh: typeof o.autoRefresh === 'boolean' ? o.autoRefresh : d.autoRefresh,
+  };
+}
 
 export function rangeWindow(range: OpsRange, nowMs: number): { from: string; to: string } {
   return { from: new Date(nowMs - OPS_RANGE_MS[range]).toISOString(), to: new Date(nowMs).toISOString() };
@@ -124,10 +142,25 @@ export function counterDeltas(points: (OpsSeriesPoint | null)[]): (number | null
   });
 }
 
-/** Taxa por minuto a partir dos deltas por balde. */
-export function perMinute(deltas: (number | null)[], bucketMinutes: number): (number | null)[] {
-  const m = Math.max(1, bucketMinutes);
-  return deltas.map((d) => (d == null ? null : d / m));
+/**
+ * Taxa por minuto de um counter acumulado, alinhado em `times` (ms). Divide o delta pelo intervalo
+ * real até o ponto não nulo anterior: depois de um buraco o acumulado de vários baldes não vira
+ * pico falso. Delta negativo (reinício do Postgres zerou o acumulado) = 0. Reinício dentro de um
+ * balde não é detectável: o máximo do balde já mistura antes e depois, e o delta sai subestimado.
+ * 1º ponto e buracos = `null`.
+ */
+export function counterRatePerMinute(points: (OpsSeriesPoint | null)[], times: number[]): (number | null)[] {
+  let prev: { v: number; t: number } | null = null;
+  return points.map((p, i) => {
+    const t = times[i];
+    if (!p || !Number.isFinite(t)) return null;
+    const cur = { v: p.max, t };
+    const last = prev;
+    prev = cur;
+    if (!last || cur.t <= last.t) return null;
+    const delta = cur.v - last.v;
+    return delta < 0 ? 0 : delta / ((cur.t - last.t) / MIN);
+  });
 }
 
 /** Soma dos deltas do período (reinícios descartados); `null` sem pontos. */
