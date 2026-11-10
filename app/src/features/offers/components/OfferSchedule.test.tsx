@@ -51,7 +51,7 @@ describe('agendamento do início', () => {
 });
 
 describe('formato da imagem', () => {
-  it('mostra o formato salvo e avisa a troca para prévia do link', () => {
+  it('MEDIA salvo aparece como prévia do link; "Imagem com legenda" desabilitada e sem troca', () => {
     const onImageMode = vi.fn();
     render(
       <OfferSendPanel
@@ -60,9 +60,12 @@ describe('formato da imagem', () => {
         onMentionAll={vi.fn()} onImageMode={onImageMode} onTyping={vi.fn()} onSchedule={vi.fn()} onSend={vi.fn()}
       />,
     );
-    expect(screen.getByRole('button', { name: /Imagem com legenda/ }).getAttribute('aria-pressed')).toBe('true');
+    const media = screen.getByRole('button', { name: /Imagem com legenda \(indisponível\)/ });
+    expect(media).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Prévia do link/ }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(media);
     fireEvent.click(screen.getByRole('button', { name: /Prévia do link/ }));
-    expect(onImageMode).toHaveBeenCalledWith('LINK_PREVIEW');
+    expect(onImageMode).not.toHaveBeenCalled();
   });
 
   it('prévia do link sem foto avisa que sai como texto; com foto, não', () => {

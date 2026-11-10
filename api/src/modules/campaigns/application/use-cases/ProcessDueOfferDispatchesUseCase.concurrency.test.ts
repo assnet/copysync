@@ -191,22 +191,24 @@ describe('ProcessDueOfferDispatchesUseCase — concorrência 2 (entrega B)', () 
     expect(s.dispatches.claims.reduce((n, c) => n + c.limit, 0)).toBe(10);
   });
 
-  it('MEDIA, texto e LINK_PREVIEW: a vaga cobre só a chamada ao sender, não a transferência da mídia', async () => {
+  it('MEDIA (sai LINK_PREVIEW), texto e LINK_PREVIEW: a vaga cobre só a chamada ao sender, não a transferência da mídia', async () => {
     const s = setup([]);
     add(s.offers, s.dispatches, 'sm', { imageMode: 'MEDIA', imageUrl: 'store://1.jpg' });
     add(s.offers, s.dispatches, 'st', { imageUrl: null });
     add(s.offers, s.dispatches, 'sl', { imageMode: 'LINK_PREVIEW', imageUrl: 'store://2.jpg', title: 'Fone' });
-    // MEDIA: o sender devolve ao enfileirar; a transferência (fila de mídia, limites próprios) nunca termina aqui
+    // Com foto: o sender devolve ao enfileirar; a transferência (fila de mídia, limites próprios) nunca termina aqui
     const transfers: Promise<void>[] = [];
     s.sender.send.mockImplementation(async (input) => {
-      if (input.imageMode === 'MEDIA' && input.imageUrl) transfers.push(new Promise<void>(() => undefined));
+      if (input.imageUrl) transfers.push(new Promise<void>(() => undefined));
       return { chatMessageId: 'm' };
     });
     expect(await s.uc.execute(B)).toEqual({ processed: 3 });
-    expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'MEDIA', imageUrl: 'store://1.jpg' }));
+    // MEDIA desligado: a oferta salva MEDIA chega ao sender como LINK_PREVIEW
+    expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'LINK_PREVIEW', imageUrl: 'store://1.jpg' }));
+    expect(s.sender.send).not.toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'MEDIA' }));
     expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: null }));
     expect(s.sender.send).toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'LINK_PREVIEW', title: 'Fone' }));
-    expect(transfers).toHaveLength(1);
+    expect(transfers).toHaveLength(2);
     expect(s.uc.unsettledSenders().unsettledSenders).toBe(0);
   });
 

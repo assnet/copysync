@@ -3,7 +3,7 @@ import { EDITABLE_OFFER_STATUSES } from '../../domain/contracts/IOfferRepository
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import { renderOfferText } from '../../domain/services/renderOfferText';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
-import { OFFER_IMAGE_MODES, type OfferImageMode } from '../../domain/enums/OfferImageMode';
+import { effectiveImageMode, OFFER_IMAGE_MODES, type OfferImageMode } from '../../domain/enums/OfferImageMode';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import {
@@ -68,7 +68,7 @@ export class UpdateOfferUseCase {
     if (input.coupon !== undefined) patch.coupon = normalizeCoupon(input.coupon);
     if (input.audience !== undefined) patch.audience = input.audience;
     if (input.mentionAll !== undefined) patch.mentionAll = input.mentionAll;
-    if (input.imageMode !== undefined) patch.imageMode = input.imageMode;
+    if (input.imageMode !== undefined) patch.imageMode = effectiveImageMode(input.imageMode);
     if (input.simulateTyping !== undefined) patch.simulateTyping = input.simulateTyping;
     if (input.typingSeconds !== undefined) patch.typingSeconds = input.typingSeconds;
     const scheduledAt = parseOfferSchedule(input.scheduledAt, (this.deps.now ?? (() => new Date()))());

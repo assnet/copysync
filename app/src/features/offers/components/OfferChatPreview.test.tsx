@@ -8,10 +8,10 @@ const props = {
 };
 
 describe('OfferChatPreview', () => {
-  it('imagem com legenda: foto cheia, sem cartão de prévia', () => {
+  it('imagem com legenda indisponível: MEDIA mostra o cartão da prévia do link', () => {
     render(<OfferChatPreview {...props} imageMode="MEDIA" />);
-    expect(screen.queryByTestId('offer-link-preview')).toBeNull();
-    expect(screen.getByRole('img', { name: /Fone Bluetooth/ })).toBeTruthy();
+    const card = screen.getByTestId('offer-link-preview');
+    expect(card.textContent).toContain('Fone Bluetooth');
   });
 
   it('prévia do link: cartão com a foto, o título e o domínio acima do texto', () => {

@@ -38,11 +38,12 @@ describe('ProcessDueOfferDispatchesUseCase', () => {
     }));
   });
 
-  it('envia vencidos com texto e foto; todos SENT → oferta SENT', async () => {
+  it('envia vencidos com texto e foto; todos SENT → oferta SENT; oferta salva MEDIA sai LINK_PREVIEW (MEDIA desligado)', async () => {
     const s = setup();
+    expect(s.offers.items[0]!.imageMode).toBe('MEDIA');
     expect(await s.uc.execute()).toEqual({ processed: 2 });
     expect(s.sender.send).toHaveBeenCalledWith({ tenantId: TENANT, conversationId: 'c1', text: 'oferta', imageUrl: 'store://1.jpg', mentionAll: false,
-      imageMode: 'MEDIA', title: null, affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20',
+      imageMode: 'LINK_PREVIEW', title: null, affiliateUrl: 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20',
       simulateTyping: false, typingSeconds: 15,
     });
     expect(statuses(s)).toEqual([['SENT', 'm1'], ['SENT', 'm1']]);

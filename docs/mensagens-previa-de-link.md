@@ -19,13 +19,18 @@ Cartão com miniatura, título e domínio acima de uma mensagem de texto com lin
 
 | Valor | Envio |
 | --- | --- |
-| `MEDIA` (padrão) | Imagem com legenda, caminho de mídia de sempre (`chat-midias-anexos.md`) |
-| `LINK_PREVIEW` | Texto + cartão; sem cópia `PENDING` de mídia no chat; nada vai para a galeria |
+| `MEDIA` | Imagem com legenda, caminho de mídia de sempre (`chat-midias-anexos.md`). **Desligado** (ver abaixo) |
+| `LINK_PREVIEW` (padrão) | Texto + cartão; sem cópia `PENDING` de mídia no chat; nada vai para a galeria |
 
 - Campos: `Offer.imageMode` (PATCH, como `mentionAll`) e `GroupMonitorConfig.imageMode` (copiado para cada `Offer`).
 - Painel: `ImageModePicker` (`features/offers/components/`) no card "Envio" do rascunho (`OfferSendPanel`) e nas
   configurações do monitoramento (`MonitoringSettingsForm`). Textos em `offers/strings.ts` → `imageMode`.
-- Padrão fica `MEDIA` até a validação em aparelhos (abaixo) aprovar a troca, em mudança separada.
+- **Decisão do dono (2026-11-09):** padrão `LINK_PREVIEW` (Prisma `@default`, `DEFAULT_OFFER_IMAGE_MODE`,
+  `DEFAULT_IMAGE_MODE`) e `MEDIA` desligado para todos os planos até segunda ordem: `MEDIA_IMAGE_MODE_ENABLED = false`
+  na API (`OfferImageMode.ts`) e no painel (`offerConfig.ts`). `effectiveImageMode` converte `MEDIA` salvo em
+  `LINK_PREVIEW` no envio (`ProcessDueOfferDispatchesUseCase`), no PATCH e ao salvar/criar pelo monitoramento;
+  linhas antigas não são reescritas. No painel o botão "Imagem com legenda" aparece desabilitado com tooltip.
+  Para religar: `true` nas duas constantes (o código de `MEDIA` continua inteiro).
 - Link da prévia: `pickPreviewUrl(text, affiliateUrl)` (`campaigns/domain/services/`): `affiliateUrl` se está no
   texto, senão o primeiro link do tenant. `matchedText` = esse texto exato.
 
@@ -96,7 +101,7 @@ adapter (`buildBaileysLinkPreview.ts` + `sendTextMessage`).
 - Gravar miniatura de histórico antigo (> 30 min) ou baixar a grande ignorando `autoDownloadMedia`.
 - `Buffer.concat` do download antes de checar o teto.
 - Guardar a miniatura de 192 px ou criar mídia `PENDING` no modo `LINK_PREVIEW`.
-- Trocar o padrão para `LINK_PREVIEW` antes da validação abaixo.
+- Religar `MEDIA` só em uma das pontas (API e painel andam juntos).
 
 ## Validação em aparelhos (P3)
 

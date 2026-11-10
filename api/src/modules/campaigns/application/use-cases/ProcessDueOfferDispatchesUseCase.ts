@@ -1,3 +1,4 @@
+import { effectiveImageMode } from '../../domain/enums/OfferImageMode';
 import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { IOfferDispatchRepository, OfferDispatchResult } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferMessageSender } from '../../domain/contracts/IOfferMessageSender';
@@ -201,7 +202,7 @@ export class ProcessDueOfferDispatchesUseCase {
         conversationId: dispatch.conversationId,
         text: offer.text,
         imageUrl: offer.imageUrl,
-        imageMode: offer.imageMode,
+        imageMode: effectiveImageMode(offer.imageMode),
         title: offer.title,
         affiliateUrl: offer.affiliateUrl,
         mentionAll: offer.mentionAll,

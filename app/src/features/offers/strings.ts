@@ -297,6 +297,8 @@ export const offerStrings = {
       LINK_PREVIEW: { label: 'Prévia do link', hint: 'Cartão leve com a imagem acima do link. Não ocupa a galeria de quem recebe.' },
     },
     noImageWarning: 'Sem foto: a oferta sai como texto, sem prévia.',
+    unavailable: 'indisponível',
+    unavailableTooltip: 'Indisponível no momento: as ofertas saem com a prévia do link.',
   },
 
   editor: {

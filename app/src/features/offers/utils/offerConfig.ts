@@ -21,9 +21,18 @@ export const AUDIENCE_ICONS: Record<OfferAudience, LucideIcon> = {
   HOME_KITCHEN: CookingPot,
 };
 
-/** Formatos da foto no envio, na ordem do seletor. `MEDIA` é o padrão. */
+/** Formatos da foto no envio, na ordem do seletor. `LINK_PREVIEW` é o padrão. */
 export const OFFER_IMAGE_MODES: readonly OfferImageMode[] = ['MEDIA', 'LINK_PREVIEW'];
-export const DEFAULT_IMAGE_MODE: OfferImageMode = 'MEDIA';
+export const DEFAULT_IMAGE_MODE: OfferImageMode = 'LINK_PREVIEW';
+/**
+ * "Imagem com legenda" desligada para todos os planos até nova decisão: aparece desabilitada e o
+ * salvo com `MEDIA` vale como prévia do link. Espelha `MEDIA_IMAGE_MODE_ENABLED` da API.
+ */
+export const MEDIA_IMAGE_MODE_ENABLED = false;
+export const isImageModeAvailable = (mode: OfferImageMode) => mode !== 'MEDIA' || MEDIA_IMAGE_MODE_ENABLED;
+/** Formato que vale de fato (o que a tela mostra, salva e envia). */
+export const effectiveImageMode = (mode: OfferImageMode | null | undefined): OfferImageMode =>
+  mode && isImageModeAvailable(mode) ? mode : DEFAULT_IMAGE_MODE;
 export const IMAGE_MODE_ICONS: Record<OfferImageMode, LucideIcon> = { MEDIA: Image, LINK_PREVIEW: Link2 };
 
 /** "Digitando…" antes do envio. Espelha `campaigns/domain/offerTyping.ts` da API. */

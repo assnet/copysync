@@ -1,3 +1,4 @@
+import { effectiveImageMode } from '../utils/offerConfig';
 import { Avatar, Box, Stack, Typography, alpha, useTheme } from '@mui/material';
 import { OverflowTooltipText } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
@@ -39,7 +40,7 @@ function linkDomain(url: string | null | undefined): string | null {
  * Como a oferta chega no grupo: cabeçalho, foto e bolha de mensagem enviada.
  * Cores derivadas do tema (sucesso translúcido sobre o fundo) para funcionar no claro e no escuro.
  */
-export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text, at, imageMode = 'MEDIA', linkUrl = null }: Props) {
+export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text, at, imageMode = 'LINK_PREVIEW', linkUrl = null }: Props) {
   const theme = useTheme();
   const dark = theme.palette.mode === 'dark';
   const src = resolveMediaUrl(imageUrl);
@@ -48,7 +49,7 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
   const blurText = useBlur('offers.productText');
   const bubbleBg = alpha(theme.palette.success.main, dark ? 0.22 : 0.12);
   const time = timeFmt.format(new Date(at));
-  const linkPreview = imageMode === 'LINK_PREVIEW';
+  const linkPreview = effectiveImageMode(imageMode) === 'LINK_PREVIEW';
   const domain = linkDomain(linkUrl);
 
   return (

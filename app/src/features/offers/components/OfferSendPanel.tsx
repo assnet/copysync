@@ -9,7 +9,7 @@ import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { AppIcon, SectionCard, ToggleOption } from '@/components';
 import type { OfferConfigGroup, OfferImageMode, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
-import { DEFAULT_IMAGE_MODE, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
+import { DEFAULT_IMAGE_MODE, effectiveImageMode, TYPING_SECONDS_MAX, TYPING_SECONDS_MIN } from '../utils/offerConfig';
 import {
   SCHEDULE_MAX_DAYS, defaultScheduleInput, fromLocalInput, isPendingSchedule, scheduleProblem, toLocalInput,
 } from '../utils/offerSchedule';
@@ -108,7 +108,7 @@ export function OfferSendPanel(props: Props) {
           disabled={imageModeSaving || busy}
           onChange={props.onImageMode}
         />
-        {(offer.imageMode ?? DEFAULT_IMAGE_MODE) === 'LINK_PREVIEW' && !offer.imageUrl && (
+        {effectiveImageMode(offer.imageMode) === 'LINK_PREVIEW' && !offer.imageUrl && (
           <Typography variant="caption" color="text.secondary" sx={{ mt: -1.25 }}>
             {offerStrings.imageMode.noImageWarning}
           </Typography>
