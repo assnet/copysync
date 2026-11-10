@@ -24,6 +24,10 @@ describe('ML cookie parity (extension ↔ API)', () => {
     expect(extractArray(extSrc, 'ML_TEMP_COOKIES')).toEqual(extractArray(apiSrc, 'ML_TEMP_COOKIES'));
   });
 
+  it('SHEIN_SESSION_COOKIES match', () => {
+    expect(extractArray(extSrc, 'SHEIN_SESSION_COOKIES')).toEqual(extractArray(apiSrc, 'SHEIN_SESSION_COOKIES'));
+  });
+
   it('ML_SERVER_COOKIES is union of session + temp', () => {
     const session = extractArray(extSrc, 'ML_SESSION_COOKIES');
     const temp = extractArray(extSrc, 'ML_TEMP_COOKIES');

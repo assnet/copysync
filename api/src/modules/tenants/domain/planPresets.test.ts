@@ -47,6 +47,12 @@ describe('PLAN_PRESETS', () => {
       ['COPYSYNC_PRO', false],
       ['COPYSYNC_MAX', true],
     ]);
+    // Shein só no MAX por preset, com `false` explícito nos outros dois (super admin pode liberar)
+    expect(rows.filter((r) => r.key === K.MARKETPLACE_SHEIN_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', false],
+      ['COPYSYNC_PRO', false],
+      ['COPYSYNC_MAX', true],
+    ]);
     expect(new Set(rows.map((r) => r.planSlug)).size).toBe(3);
   });
 

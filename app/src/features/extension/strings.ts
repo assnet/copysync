@@ -48,6 +48,8 @@ export const extensionStrings = {
 
   wizard: {
     title: 'Conectar extensão',
+    /** Vínculo pedido a partir do card Shein: sem consentimento do ML nem passo de sync do ML. */
+    connectHintShein: 'Depois de vincular, volte ao card da Shein e clique em Conectar Shein.',
     stepInstall: 'Instalar',
     stepDetect: 'Detectar',
     stepConnect: 'Vincular',
@@ -149,6 +151,11 @@ export const extensionStrings = {
     apiUnreachable: 'A extensão não conseguiu falar com o servidor. Verifique a conexão e tente de novo em instantes.',
     rateLimited: 'Muitas tentativas seguidas. Aguarde um minuto e tente de novo.',
     consentRequired: 'Autorize a sincronização do Mercado Livre para continuar.',
+    consentRequiredShein: 'Autorize a sincronização da Shein para continuar.',
+    sheinNotLogged: 'A extensão não encontrou login da Shein (m.shein.com) neste navegador. Entre na sua conta e tente de novo.',
+    sheinPermissionMissing: 'Permita o acesso da extensão à Shein: clique no ícone da extensão e aceite o pedido do navegador.',
+    sheinSyncFailed: 'Falha ao sincronizar a sessão da Shein. Tente de novo em instantes.',
+    riskNotAccepted: 'Aceite o aviso de risco da Shein no painel para continuar.',
     disconnectMlFailed: 'Não foi possível desconectar o Mercado Livre. Tente novamente.',
     needsLogin: 'Faça login no painel para continuar.',
     forbidden: 'Sem permissão para esta operação.',

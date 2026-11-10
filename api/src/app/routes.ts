@@ -10,6 +10,7 @@ import { meRoutes } from '../modules/users/presentation/routes/me.routes';
 import { sessionRoutes } from '../modules/sessions/presentation/routes/session.routes';
 import { workerAdminRoutes } from '../modules/sessions/presentation/routes/workerAdmin.routes';
 import { opsMetricsRoutes } from '../modules/metrics/presentation/routes/opsMetrics.routes';
+import { planEntitlementAdminRoutes } from '../modules/tenants/presentation/routes/planEntitlementAdmin.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
 import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
 import {
@@ -17,6 +18,7 @@ import {
   type MediaUploadRoutesOptions,
 } from '../modules/media/presentation/routes/media.upload.routes';
 import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
+import { marketplaceRiskAdminRoutes } from '../modules/integrations/presentation/routes/marketplaceRiskAdmin.routes';
 import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.routes';
 import { sendQueueRoutes } from '../modules/campaigns/presentation/routes/sendQueue.routes';
 import { broadcastGroupsRoutes } from '../modules/campaigns/presentation/routes/broadcastGroups.routes';
@@ -106,6 +108,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(affiliateCredentialRoutes, {
     prefix: `${env.API_PREFIX}/integrations/affiliate-credentials`,
   });
+  await app.register(marketplaceRiskAdminRoutes, { prefix: `${env.API_PREFIX}/admin/tenants` });
 
   // ── Gerador de ofertas (auth + tenant scope required) ──────────────────────
   await app.register(offerRoutes, { prefix: `${env.API_PREFIX}/campaigns/offers` });
@@ -130,6 +133,9 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(workerAdminRoutes, { prefix: `${env.API_PREFIX}/admin/workers` });
   // Métricas de recursos (MQ-25): só tabelas locais, nunca a Render na requisição
   await app.register(opsMetricsRoutes, { prefix: `${env.API_PREFIX}/admin/ops/metrics` });
+
+  // ── Entitlements editáveis por plano (super admin) ─────────────────────────
+  await app.register(planEntitlementAdminRoutes, { prefix: `${env.API_PREFIX}/admin/plan-entitlements` });
 
   // ── Links de redirecionamento da plataforma: CRUD (super admin) e resolução pública ──
   await app.register(redirectLinkAdminRoutes, { prefix: `${env.API_PREFIX}/admin/redirect-links` });

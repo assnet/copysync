@@ -15,9 +15,14 @@ export const ML_TEMP_COOKIES = ['_csrf', '_d2id', '_mldataSessionId', 'nsa_rotok
 /** Union: all cookies the server may hold. */
 export const ML_SERVER_COOKIES = [...ML_SESSION_COOKIES, ...ML_TEMP_COOKIES] as const;
 
+/** Cookies da sessão Shein enviados à API (`AT` = token, `memberId` = id do afiliado). Paridade com a API. */
+export const SHEIN_SESSION_COOKIES = ['AT', 'memberId'] as const;
+
 /** Fields that must NEVER appear in channel responses (assertNoSecrets). */
 export const BLOCKED_FIELDS = [
   ...ML_SERVER_COOKIES,
+  // `memberId` não entra: é o id público do afiliado (a API devolve como `affiliateId`).
+  'AT', 'token',
   'csrf', 'x-csrf-token', 'cookies', 'authorization', 'cookie', 'set-cookie',
 ] as const;
 
@@ -26,5 +31,8 @@ export const SYNC_DEBOUNCE_MS = 60 * 1000;
 export const HEARTBEAT_ALARM = 'ext-heartbeat';
 export const ML_SYNC_PENDING_ALARM = 'ml-session-pending';
 export const ML_SYNC_RESERVE_ALARM = 'ml-session-reserve';
+export const SHEIN_SYNC_PENDING_ALARM = 'shein-session-pending';
+/** Janela para o clique no ícone pedir a permissão de host depois de `shein.requestAccess`. */
+export const PENDING_ACCESS_TTL_MS = 10 * 60 * 1000;
 export const CHANNEL_VERSION = 1;
 export const CHANNEL_NAME = 'cs-ext';

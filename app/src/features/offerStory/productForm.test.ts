@@ -48,6 +48,11 @@ describe('mapRenderError', () => {
     }
   });
 
+  it('Shein fora do plano e aceite pendente vão para o campo do link', () => {
+    expect(mapRenderError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } })).toEqual({ field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false });
+    expect(mapRenderError({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toEqual({ field: 'url', message: t.errors.MARKETPLACE_RISK_NOT_ACCEPTED, backToTemplates: false });
+  });
+
   it('OFFER_INVALID_INPUT com field coupon vai para o código', () => {
     expect(mapRenderError({ code: 'OFFER_INVALID_INPUT', field: 'coupon' }).field).toBe('code');
     expect(mapRenderError({ code: 'OFFER_INVALID_INPUT', field: 'coupon.discountPercent' }).field).toBe('discount');

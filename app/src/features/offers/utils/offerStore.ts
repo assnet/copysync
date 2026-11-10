@@ -8,6 +8,7 @@ const STORE_HOSTS: ReadonlyArray<[AffiliateProvider, readonly string[]]> = [
   ['SHOPEE', ['shopee.com.br', 's.shopee.com.br', 'shope.ee', 'shp.ee', 'shoope.top']],
   ['MERCADO_LIVRE', ['mercadolivre.com.br', 'mercadolivre.com', 'meli.la']],
   ['AMAZON', ['amazon.com.br', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in']],
+  ['SHEIN', ['br.shein.com', 'm.shein.com', 'onelink.shein.com']],
 ];
 
 /** Host igual ou subdomínio (`produto.mercadolivre.com.br`). */

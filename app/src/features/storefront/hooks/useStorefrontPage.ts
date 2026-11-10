@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { storefrontService } from '@/services/storefront.service';
 import type { AddOfferDraft } from '../components/AddOfferCard';
-import { isPlanFeatureUnavailable } from '@/features/plans/planGate';
+import { PLAN_FEATURE_KEYS, isPlanFeatureUnavailable, isSheinUnavailable } from '@/features/plans/planGate';
 import { storefrontUpgradePath } from '../planGate';
 import type { StorefrontOfferTab } from '../reorder';
 import {
@@ -47,7 +47,7 @@ interface SlugCheck {
 const NO_SLUG_CHECK: SlugCheck = { status: null, checking: false, suggestions: [] };
 const EMPTY_ADD: AddOfferDraft = { url: '', category: null };
 /** Erros do "Adicionar oferta" que ficam no próprio card (os demais viram snackbar). */
-const ADD_FIELD_CODES = ['OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'RATE_LIMITED', 'VALIDATION_ERROR'];
+const ADD_FIELD_CODES = ['OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'RATE_LIMITED', 'VALIDATION_ERROR', 'MARKETPLACE_RISK_NOT_ACCEPTED'];
 /** Códigos que mostram estado no campo do nome ao salvar. */
 const SLUG_SAVE_STATUS: Record<string, SlugAvailabilityStatus> = {
   LINK_SLUG_TAKEN: 'TAKEN',
@@ -92,9 +92,9 @@ export function useStorefrontPage() {
 
   const notify = (message: string, severity: StorefrontToast['severity'] = 'success') => setToast({ message, severity });
 
-  /** Sem plano em qualquer chamada: vai para os planos. Retorna true se redirecionou. */
+  /** Página de Ofertas fora do plano em qualquer chamada: vai para os planos. Retorna true se redirecionou. */
   const redirectIfNoPlan = useCallback((err: unknown) => {
-    if (!isPlanFeatureUnavailable(err)) return false;
+    if (!isPlanFeatureUnavailable(err, PLAN_FEATURE_KEYS.storefront)) return false;
     navigate(storefrontUpgradePath, { replace: true });
     return true;
   }, [navigate]);
@@ -228,7 +228,7 @@ export function useStorefrontPage() {
       notify(t.addOffer.added);
     } catch (err) {
       if (redirectIfNoPlan(err)) return;
-      if (ADD_FIELD_CODES.includes(codeOf(err) ?? '')) setAddError(errorMessage(err));
+      if (isSheinUnavailable(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) setAddError(errorMessage(err));
       else fail(err);
     }
   };

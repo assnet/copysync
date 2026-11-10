@@ -12,6 +12,11 @@ describe('assertNoSecrets', () => {
     expect(assertNoSecrets(input)).toEqual({ data: 1 });
   });
 
+  it('strips Shein token (AT) and token header, keeps memberId', () => {
+    const input = { AT: 'shein-secret', token: 'hdr', memberId: '42', nested: { at: 'x', ok: 1 } };
+    expect(assertNoSecrets(input)).toEqual({ memberId: '42', nested: { ok: 1 } });
+  });
+
   it('strips auth-related fields', () => {
     const input = { authorization: 'Bearer x', cookie: 'c=1', 'set-cookie': 'y', cookies: {}, csrf: 'z', 'x-csrf-token': 'a', safe: true };
     expect(assertNoSecrets(input)).toEqual({ safe: true });

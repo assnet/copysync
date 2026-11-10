@@ -83,6 +83,10 @@ export default (env = {}, argv = {}) => {
     return hosts;
   };
 
+  // Hosts opcionais (pedidos por `chrome.permissions.request` no clique do ícone). NUNCA em
+  // host_permissions: host obrigatório novo desativa a extensão da base até o aceite.
+  const buildOptionalHostPermissions = () => ['https://m.shein.com/*'];
+
   return {
     entry: {
       background: path.resolve(srcDir, 'background', 'index.ts'),
@@ -147,6 +151,7 @@ export default (env = {}, argv = {}) => {
               }
 
               manifest.host_permissions = buildHostPermissions();
+              manifest.optional_host_permissions = buildOptionalHostPermissions();
 
               if (isStoreBuild) delete manifest.key;
 

@@ -1,10 +1,18 @@
 /**
  * Guarda: `chrome.cookies.*` só existe em `src/background/marketplaceSession.ts`
- * e sempre mira `MARKETPLACE_COOKIE_DOMAIN`.
+ * e sempre mira o marketplace (`MARKETPLACES[key].MARKETPLACE_COOKIE_DOMAIN` ou
+ * `.MARKETPLACE_URL`, mapa em `config/env.ts`; Shein só com permissão de host concedida).
  *
  * A permissão `cookies` permite ler QUALQUER cookie — inclusive o da API, se um
  * dia ela usar cookie. Restringir o escopo a um módulo e a um domínio é regra
  * de leitura de código; regra sem verificação vira promessa esquecida.
+ *
+ * Leitura de cookie exige a checagem de permissão ANTES, na mesma função:
+ * `if (!(await hasHostPermission(...))) return ...` entre o início da declaração e a chamada.
+ * Sem isso, a Shein (`optional_host_permissions`) poderia ser lida sem permissão concedida.
+ *
+ * Limite: a guarda é TEXTUAL (regex sobre o fonte). Não pega alias (`const c = chrome.cookies`),
+ * nem distingue ramo morto (`if (false) ...` passa como checagem). Revisão humana continua valendo.
  *
  * Uso: `pnpm check:cookie-scope` (roda em `pnpm type-check`).
  */
@@ -15,6 +23,17 @@ const ROOT = 'src';
 const ALLOWED_FILE = join('src', 'background', 'marketplaceSession.ts');
 const DOMAIN_CONST = 'MARKETPLACE_COOKIE_DOMAIN';
 const WINDOW = 240;
+const PERMISSION_GUARD = /if\s*\(\s*!\s*\(\s*await\s+hasHostPermission\s*\([^)]*\)\s*\)\s*\)\s*return\b/;
+// Início da declaração de topo que contém a chamada (`const x =`, `export const x =`, `function x`).
+const DECL_START = /^(?:export\s+)?(?:async\s+)?(?:const|let|function)\s+[A-Za-z_$][\w$]*/gm;
+
+const enclosingBody = (content, index) => {
+  let start = -1;
+  DECL_START.lastIndex = 0;
+  let d;
+  while ((d = DECL_START.exec(content)) !== null && d.index < index) start = d.index;
+  return start < 0 ? '' : content.slice(start, index);
+};
 
 const files = [];
 const walk = (dir) => {
@@ -51,6 +70,11 @@ for (const file of files) {
     // v3: accept both MARKETPLACE_COOKIE_DOMAIN and URL-based patterns
     if (!slice.includes(DOMAIN_CONST) && !slice.includes('MARKETPLACE_URL')) {
       failures.push(`${file}:${line} — ${call} sem ${DOMAIN_CONST} ou MARKETPLACE_URL nos ${WINDOW} chars seguintes`);
+    }
+    // Tipo (`chrome.cookies.Cookie`) não lê nada; todo membro em minúscula (getAll, get, ...) exige a guarda.
+    const isType = /^[A-Z]/.test(call.slice('chrome.cookies.'.length));
+    if (!isType && !PERMISSION_GUARD.test(enclosingBody(content, m.index))) {
+      failures.push(`${file}:${line} — ${call} sem \`if (!(await hasHostPermission(...))) return\` antes, na mesma função`);
     }
   }
 }

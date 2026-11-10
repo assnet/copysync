@@ -28,6 +28,7 @@ const broadcastUsage = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));
 const configDeps = () => ({
   monitors: monitors(), directory: directory(), entitlements: offersContainer.entitlements(),
   credentialStates: new CampaignsCredentialStateSource(), captured: captured(), broadcastUsage: broadcastUsage(),
+  riskGate: offersContainer.riskGate(),
 });
 
 export const automationContainer = {

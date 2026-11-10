@@ -40,6 +40,11 @@ export const ENTITLEMENT_KEYS = {
   ENRICH_LINK_ONLY_ENABLED: 'enrich_link_only_enabled',
   /** Monitoramento: capturar fora do horário de postagem e acumular a fila (só Max). Ausente = bloqueado. */
   CAPTURE_OUTSIDE_WINDOW_ENABLED: 'capture_outside_window_enabled',
+  /**
+   * Shein como marketplace (sessão pela extensão, links, captura). Só `true` libera; ausente = bloqueado.
+   * Preset: só MAX. O super admin libera outro plano pela rota admin (`adminEditableEntitlements.ts`).
+   */
+  MARKETPLACE_SHEIN_ENABLED: 'marketplace_shein_enabled',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

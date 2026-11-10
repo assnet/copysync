@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  providerIdentifierFollowsSession,
   providerRequiresSecret,
+  providerUsesSession,
   validatePublicIdentifier,
   validateSecret,
 } from './affiliateProviderFields';
@@ -37,5 +39,24 @@ describe('affiliateProviderFields', () => {
     expect(validatePublicIdentifier('AMAZON', '  minhaloja-20 ')).toBe('minhaloja-20');
     expect(validatePublicIdentifier('SHOPEE', '   ')).toBeNull();
     expect(validatePublicIdentifier('MERCADO_LIVRE', '')).toBeNull();
+  });
+});
+
+describe('affiliateProviderFields — Shein', () => {
+  it('ID numérico de 6 a 15 dígitos, sem segredo, via sessão', () => {
+    expect(validatePublicIdentifier('SHEIN', ' 1234567890 ')).toBe('1234567890');
+    expect(validatePublicIdentifier('SHEIN', '12345')).toBeNull();
+    expect(validatePublicIdentifier('SHEIN', '1234567890123456')).toBeNull();
+    expect(validatePublicIdentifier('SHEIN', 'affiliate_koc_1')).toBeNull();
+    expect(providerRequiresSecret('SHEIN')).toBe(false);
+    expect(validateSecret('SHEIN', 'qualquer')).toBeNull();
+    expect(providerUsesSession('SHEIN')).toBe(true);
+  });
+
+  it('só na Shein o identificador acompanha a sessão', () => {
+    expect(providerIdentifierFollowsSession('SHEIN')).toBe(true);
+    expect(providerIdentifierFollowsSession('MERCADO_LIVRE')).toBe(false);
+    expect(providerIdentifierFollowsSession('SHOPEE')).toBe(false);
+    expect(providerIdentifierFollowsSession('AMAZON')).toBe(false);
   });
 });

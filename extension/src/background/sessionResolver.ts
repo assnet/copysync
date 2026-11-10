@@ -50,11 +50,14 @@ export const invalidarSessao = (): void => {
 export const isAuthenticated = (): boolean =>
   cached !== null && Date.now() - cached.fetchedAt < CACHE_TTL_MS;
 
-export const hasMlPermission = (profile: ExtensionProfile): boolean => {
+/** Permissão (`ml.session`, `shein.session`) no tenant da sessão da extensão (`mlTenantId`). */
+export const hasPermission = (profile: ExtensionProfile, permission: string): boolean => {
   if (!profile.mlTenantId) return false;
   const tenant = profile.tenants.find(t => t.id === profile.mlTenantId);
-  return tenant?.permissions.includes('ml.session') ?? false;
+  return tenant?.permissions.includes(permission) ?? false;
 };
+
+export const hasMlPermission = (profile: ExtensionProfile): boolean => hasPermission(profile, 'ml.session');
 
 export const getCachedProfile = (): ExtensionProfile | null => {
   if (!cached || Date.now() - cached.fetchedAt > CACHE_TTL_MS) return null;

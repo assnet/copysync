@@ -45,3 +45,27 @@ describe('verifyAffiliateLink — identificadores divergentes', () => {
     expect(verifyAffiliateLink('AMAZON', [u('https://amzn.to/x'), u('https://www.amazon.com.br/dp/B0?tag=loja-20')], 'loja-20')).toBe('verified');
   });
 });
+
+describe('verifyAffiliateLink — Shein', () => {
+  const P = 'https://br.shein.com/x-p-12345678.html';
+  it.each([
+    [`${P}?url_from=affiliate_koc_123456`, '123456', 'verified'],
+    [`${P}?url_from=affiliate_koc_123456`, '999999', 'not_owned'],
+    [`${P}?url_from=affiliate_koc_123456`, null, 'unverified'],
+    [`${P}?url_from=GM7654321`, '123456', 'not_affiliate'],
+    [P, '123456', 'not_affiliate'],
+    [`${P}?url_from=affiliate_koc_123456&url_from=affiliate_koc_654321`, '123456', 'not_owned'],
+  ] as const)('%s (cred %s) → %s', (url, cred, expected) => {
+    expect(verifyAffiliateLink('SHEIN', u(url), cred)).toBe(expected);
+  });
+
+  it('lê só o id do `url_from`', () => {
+    expect(affiliateIdentifierOf('SHEIN', u(`${P}?url_from=affiliate_koc_123456`))).toBe('123456');
+    expect(affiliateIdentifierOf('SHEIN', u(`${P}?url_from=GM7654321`))).toBeNull();
+  });
+
+  it('colado e expandido com ids divergentes → not_owned', () => {
+    const urls = [u(`${P}?url_from=affiliate_koc_123456`), u(`${P}?url_from=affiliate_koc_654321`)];
+    expect(verifyAffiliateLink('SHEIN', urls, '123456')).toBe('not_owned');
+  });
+});

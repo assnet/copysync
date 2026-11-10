@@ -27,6 +27,11 @@ export interface UpsertAffiliateSessionInput {
   cookies: Record<string, string>;
   csrf?: string;
   affiliateTag?: string;
+  /**
+   * ID da conta da sessão, para provider em que o ID segue a sessão (`providerIdentifierFollowsSession`,
+   * só SHEIN): substitui o `publicIdentifier` no create e no update. Quem chama já validou contra o token.
+   */
+  sessionIdentifier?: string;
   /** Relógio do navegador: só vai para a auditoria; `sessionSyncedAt` usa o do servidor. */
   capturedAt: string;
   /**

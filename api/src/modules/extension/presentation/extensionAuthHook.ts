@@ -10,6 +10,7 @@ export interface ExtensionSessionContext {
   installationId: string;
   mlTenantId: string;
   mlConsent: boolean;
+  sheinConsent: boolean;
   tokenHash: string;
 }
 
@@ -42,6 +43,7 @@ export async function extensionAuthHook(
     installationId: result.session.installationId,
     mlTenantId: result.session.mlTenantId,
     mlConsent: result.session.mlConsentAt !== null,
+    sheinConsent: result.session.sheinConsentAt !== null,
     tokenHash: result.session.tokenHash,
   };
 }

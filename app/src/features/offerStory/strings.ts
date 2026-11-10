@@ -110,6 +110,8 @@ export const offerStoryStrings = {
     AFFILIATE_API_ACCESS_DENIED:
       'Sua conta de afiliado ainda não tem acesso à Open API. Libere o acesso no painel de afiliado da Shopee e confira em Configurações → Credenciais de afiliado.',
     AFFILIATE_CREDENTIAL_REJECTED: 'A loja recusou sua credencial de afiliado. Confira os dados em Configurações → Credenciais de afiliado.',
+    MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
+    sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
     AFFILIATE_API_RATE_LIMITED: 'A loja limitou as consultas por agora. Aguarde um instante e tente de novo.',
     AFFILIATE_API_UNAVAILABLE: 'A loja não respondeu agora. Tente de novo em instantes.',
     RATE_LIMITED: 'Muitas artes seguidas. Aguarde um pouco e tente de novo.',

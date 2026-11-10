@@ -43,6 +43,8 @@ trabalho:
 | passo e escolhas de assistente (seleções, intervalos) | segredos, tokens, senhas |
 | filtros, busca, ordenação, "ver todos" | estado derivado (contadores, validação) |
 | id do item aberto (oferta, conversa) | estado transitório (`loading`, `saving`) |
+| | caixa de aceite de termo/risco (ex.: "Li e assumo o risco" da Shein): aceite exige novo clique após reload |
+| | passo que outro processo já guarda (ex.: "aguardando o clique" do card Shein): ao montar, retoma pelo `shein.status` da extensão (`pending: true`), nunca por `usePersistedState` |
 
 - Escopo `tab` (sessionStorage) por padrão: sobrevive a reload, some ao fechar a aba. `browser`
   (localStorage) só para preferência duradoura (tema, menu recolhido, privacidade).

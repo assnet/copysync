@@ -36,7 +36,7 @@ export class IssueExtensionSessionUseCase {
   constructor(
     private readonly sessionRepo: IExtensionSessionRepository,
     private readonly installationRepo: IExtensionInstallationRepository,
-    private readonly entitlementReader: IExtensionEntitlementReader,
+    private readonly entitlementReader: Pick<IExtensionEntitlementReader, 'hasMarketplaceExtension'>,
     private readonly lifecycleRepo: IExtensionLifecycleRepository | null = null,
     private readonly now: () => Date = () => new Date(),
     private readonly onLifecycleError: (err: unknown) => void = () => {},
@@ -73,6 +73,8 @@ export class IssueExtensionSessionUseCase {
       tokenHash,
       extVersion: input.extVersion,
       mlConsentAt: input.mlSessionConsent ? now : null,
+      // Re-vínculo (inclusive a outro tenant) nunca herda o consentimento Shein: o painel pede de novo.
+      sheinConsentAt: null,
       expiresAt,
       absoluteExpiresAt,
     });

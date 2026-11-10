@@ -10,6 +10,8 @@ const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> 
   // `a.co` = botão Compartilhar do app/site Amazon; `link.amazon` (gTLD da Amazon) salta por
   // `amzlinks.in` até `amazon.com.br`. Encurtadores só valem se o redirect cair em `amazon.com.br`
   AMAZON: ['amazon.com.br', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in'],
+  // Nunca `shein.com` inteiro: `us.shein.com` e afins são outras lojas (outro programa de afiliados)
+  SHEIN: ['br.shein.com', 'm.shein.com', 'onelink.shein.com'],
 };
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;

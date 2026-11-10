@@ -53,7 +53,9 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
 
   const secretField = spec.secretField;
   const secretRequired = Boolean(secretField) && !item?.hasSecret;
-  const publicError = validateAffiliateField(spec.publicField, publicValue, true);
+  // Sem `publicField` (ID vem da sessão, ex.: Shein) não há o que validar nem campo a mostrar.
+  const publicField = spec.publicField;
+  const publicError = publicField ? validateAffiliateField(publicField, publicValue, true) : null;
   const secretError = secretField ? validateAffiliateField(secretField, secretValue, secretRequired) : null;
   const publicValid = !publicError && apiField !== 'publicIdentifier';
   const steps = t.guideSteps[spec.provider];
@@ -182,18 +184,19 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
             </Box>
           )}
 
+          {publicField && (
           <TextField
-            label={spec.publicField.label}
+            label={publicField.label}
             value={publicValue}
             onChange={(e) => { setPublicValue(e.target.value); setApiField(null); }}
-            placeholder={spec.publicField.placeholder}
+            placeholder={publicField.placeholder}
             required
             fullWidth
             autoFocus
             autoComplete="off"
             spellCheck={false}
             error={(submitted && Boolean(publicError)) || apiField === 'publicIdentifier'}
-            helperText={(submitted && publicError) || spec.publicField.helper}
+            helperText={(submitted && publicError) || publicField.helper}
             InputProps={publicValid ? {
               endAdornment: (
                 <InputAdornment position="end">
@@ -206,6 +209,7 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
               ),
             } : undefined}
           />
+          )}
 
           {spec.linkPreview && publicValid && (
             <Box

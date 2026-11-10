@@ -1,5 +1,6 @@
 import { AFFILIATE_PROVIDERS } from '../../domain/enums/AffiliateProvider';
 import { AFFILIATE_CREDENTIAL_STATUSES } from '../../domain/enums/AffiliateCredentialStatus';
+import { PLAN_SLUGS } from '../../../tenants/domain/planPresets';
 
 /** Registrado em `app.ts` via `addSchema`. Nenhum campo secreto existe aqui. */
 export const affiliateCredentialItemSchema = {
@@ -71,9 +72,32 @@ const envelope = (data: object) => ({
 
 export const affiliateCredentialItemResponse = envelope({ $ref: 'AffiliateCredentialItem#' });
 
+const marketplaceAvailabilitySchema = {
+  type: 'object',
+  properties: {
+    enabled: { type: 'boolean' },
+    plans: { type: 'array', items: { type: 'string', enum: [...PLAN_SLUGS] } },
+    riskNotice: {
+      type: ['object', 'null'],
+      properties: {
+        version: { type: 'string' },
+        acceptedAt: { type: ['string', 'null'], format: 'date-time' },
+        acceptedByMe: { type: 'boolean' },
+      },
+    },
+  },
+} as const;
+
+/** `marketplaceAvailability` declarado campo a campo: o serializer descarta o que não estiver aqui. */
 export const affiliateCredentialListResponse = envelope({
   type: 'object',
-  properties: { items: { type: 'array', items: { $ref: 'AffiliateCredentialItem#' } } },
+  properties: {
+    items: { type: 'array', items: { $ref: 'AffiliateCredentialItem#' } },
+    marketplaceAvailability: {
+      type: 'object',
+      properties: Object.fromEntries(AFFILIATE_PROVIDERS.map((p) => [p, marketplaceAvailabilitySchema])),
+    },
+  },
 });
 
 export const affiliateSessionSyncResponse = envelope({
@@ -83,4 +107,10 @@ export const affiliateSessionSyncResponse = envelope({
     status: { type: 'string', enum: [...AFFILIATE_CREDENTIAL_STATUSES] },
     updatedAt: { type: 'string', format: 'date-time' },
   },
+});
+
+/** Sync da sessão Shein (extensão): só o ID da conta. Token nunca sai. */
+export const sheinSessionSyncResponse = envelope({
+  type: 'object',
+  properties: { affiliateId: { type: 'string' } },
 });

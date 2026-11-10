@@ -23,7 +23,7 @@ const CHANNEL_LIMIT_KEYS: Record<string, { channel: LimitChannel; what: 'session
   telegram_broadcast_groups: { channel: 'telegram', what: 'groups', kind: 'telegramBroadcastGroups' },
 };
 
-const CREDENTIAL_CODES = new Set(['AFFILIATE_CREDENTIAL_NOT_FOUND', 'AFFILIATE_CREDENTIAL_REJECTED']);
+const CREDENTIAL_CODES = new Set(['AFFILIATE_CREDENTIAL_NOT_FOUND', 'AFFILIATE_CREDENTIAL_REJECTED', 'MARKETPLACE_RISK_NOT_ACCEPTED']);
 const CONFIG_CODES = new Set(['OFFER_CONFIG_MISSING', 'OFFER_NO_DESTINATIONS']);
 const LINK_CODES = new Set(['OFFER_URL_UNSUPPORTED', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'VALIDATION_ERROR']);
 
@@ -54,6 +54,11 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
 
   if (code === 'PLAN_FEATURE_UNAVAILABLE' && e?.meta?.key === 'cross_session_dispatch') {
     return { code, message: t.crossSessionUnavailable, action: 'config', isLinkField: false };
+  }
+
+  // Shein fora do plano: sem este ramo cairia no texto genérico de PLAN_FEATURE_UNAVAILABLE (outra função)
+  if (code === 'PLAN_FEATURE_UNAVAILABLE' && e?.meta?.key === 'marketplace_shein_enabled') {
+    return { code, message: t.sheinUnavailable, action: 'none', isLinkField: true };
   }
 
   if (code === 'OFFER_INVALID_INPUT' && e?.meta?.field === 'scheduledAt') {

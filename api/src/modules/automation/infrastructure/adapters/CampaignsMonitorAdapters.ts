@@ -53,7 +53,8 @@ export class CampaignsMonitorProductReader implements IMonitorProductReader {
       return null;
     }
     const ref = parseProductRef(provider, url);
-    const cred = await offersContainer.credentials().execute(tenantId, provider);
+    // Shein não usa a credencial aqui (dados só pela API de afiliados, nunca pela página): não decifra
+    const cred = provider === 'SHEIN' ? null : await offersContainer.credentials().execute(tenantId, provider);
     const data = await offersContainer.resolveProductData().resolve(provider, ref, url, cred);
     if (!data.title && data.priceCents == null && !data.imageSourceUrl) return null;
     return { title: data.title, priceCents: data.priceCents, originalPriceCents: data.originalPriceCents, imageUrl: data.imageSourceUrl };

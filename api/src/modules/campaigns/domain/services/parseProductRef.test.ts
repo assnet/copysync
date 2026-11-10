@@ -61,3 +61,24 @@ describe('parseProductRef — Mercado Livre', () => {
     expect(parseProductRef('MERCADO_LIVRE', u('https://www.mercadolivre.com.br/ofertas'))).toBeNull();
   });
 });
+
+describe('parseProductRef — Shein', () => {
+  it.each([
+    ['https://br.shein.com/Vestido-Floral-p-12345678.html', '12345678'],
+    ['https://br.shein.com/Vestido-Floral-p-12345678-cat-1727.html?url_from=affiliate_koc_99', '12345678'],
+    ['https://m.shein.com/br/Vestido-p-87654321-cat-2.html', '87654321'],
+    ['https://br.shein.com/x?goods_id=4455667', '4455667'],
+  ])('%s → %s', (url, goodsId) => {
+    expect(parseProductRef('SHEIN', u(url))).toEqual({ provider: 'SHEIN', goodsId });
+  });
+
+  it.each([
+    'https://m.shein.com/us/Vestido-p-12345678.html',
+    'https://m.shein.com/Vestido-p-12345678.html',
+    'https://br.shein.com/Vestido-p-123.html',
+    'https://br.shein.com/x?goods_id=abc',
+    'https://br.shein.com/promo',
+  ])('recusa %s', (url) => {
+    expect(parseProductRef('SHEIN', u(url))).toBeNull();
+  });
+});

@@ -119,6 +119,15 @@ for (const hp of hostPerms) {
   }
 }
 
+// Host opcional (Shein) nunca obrigatório: host novo em host_permissions desativa a extensão da base.
+const optionalHosts = manifest.optional_host_permissions ?? [];
+if (!optionalHosts.includes('https://m.shein.com/*')) {
+  failures.push('optional_host_permissions sem "https://m.shein.com/*" — webpack transform falhou?');
+}
+for (const hp of hostPerms) {
+  if (hp.includes('shein.com')) failures.push(`host_permissions contém "${hp}" — Shein é host OPCIONAL.`);
+}
+
 // Store build: no key
 if (process.env.STORE_BUILD === 'true' && manifest.key) {
   failures.push('manifest.json contém "key" no build de loja — webpack deveria ter removido.');

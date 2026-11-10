@@ -28,7 +28,9 @@ export type AuditAction =
   | 'AFFILIATE_SESSION_ACCOUNT_RESET'
   | 'AFFILIATE_CREDENTIAL_REJECTED'
   | 'PREMIUM_SLUG_GRANTED'
-  | 'PREMIUM_SLUG_REVOKED';
+  | 'PREMIUM_SLUG_REVOKED'
+  | 'PLAN_ENTITLEMENT_CHANGED'
+  | 'MARKETPLACE_RISK_ACCEPTED';
 
 export interface CreateAuditLogInput {
   tenantId?: string;

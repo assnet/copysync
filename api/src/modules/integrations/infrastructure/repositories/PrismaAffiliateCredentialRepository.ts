@@ -100,17 +100,26 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
       ? { rejectedAt: input.rejectWith.at, rejectedCode: input.rejectWith.code }
       : input.clearRejection ? REJECTION_CLEARED : {};
 
+    // ID que segue a sessão (Shein): substitui o atual no create e no update.
+    const override = input.publicIdentifierOverride ? { publicIdentifier: input.publicIdentifierOverride } : {};
+
     // (1) Só as colunas de sessão; a linha nasce com a tag da extensão, se houver.
     let raw = await withUniqueRetry(() =>
       prisma.affiliateCredential.upsert({
         where: { tenantId_provider: key },
-        create: { ...key, publicIdentifier: input.publicIdentifierIfEmpty ?? null, ...session, ...REJECTION_CLEARED, ...rejection },
-        update: { ...session, ...rejection },
+        create: {
+          ...key,
+          publicIdentifier: input.publicIdentifierOverride ?? input.publicIdentifierIfEmpty ?? null,
+          ...session,
+          ...REJECTION_CLEARED,
+          ...rejection,
+        },
+        update: { ...session, ...rejection, ...override },
       }),
     );
 
     // (2) Tag só preenche ID vazio — condição no WHERE, atômica: o painel sempre vence.
-    if (input.publicIdentifierIfEmpty && raw.publicIdentifier === null) {
+    if (!input.publicIdentifierOverride && input.publicIdentifierIfEmpty && raw.publicIdentifier === null) {
       const { count } = await prisma.affiliateCredential.updateMany({
         where: { ...key, publicIdentifier: null },
         data: { publicIdentifier: input.publicIdentifierIfEmpty },

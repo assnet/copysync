@@ -20,6 +20,7 @@ import { normalizeWindowStartMinute } from '../../../campaigns/domain/services/p
 import { loadLiveGroups } from '../../../campaigns/application/services/loadLiveGroups';
 import { countDistinctBroadcastGroups } from '../../../campaigns/domain/services/broadcastGroupUnion';
 import type { IBroadcastGroupUsageReader } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
+import type { IMarketplaceRiskGate } from '../../../campaigns/domain/contracts/IMarketplaceRiskGate';
 import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
 
 /** WhatsApp; Telegram em `telegram_*`. Chave por canal: `limitKeyOfChannel` (tenants/domain/channelLimits). */
@@ -39,6 +40,8 @@ export interface GroupMonitorConfigDeps {
   captured: ICapturedOfferRepository;
   /** União gerador ⋃ monitoramentos: limite e uso de grupos de disparo (BG-01/BG-03). */
   broadcastUsage: IBroadcastGroupUsageReader;
+  /** Aceite vigente do aviso de risco: o alerta `RISK_NOT_ACCEPTED` só sai enquanto falta o aceite. */
+  riskGate: IMarketplaceRiskGate;
   now?: () => Date;
 }
 
@@ -124,20 +127,28 @@ export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
 
   /**
    * Um aviso por loja: recusada (`rejectedAt`) prevalece; senão, não utilizável + captura
-   * `CREDENTIAL_MISSING` recente = sem credencial. Só aqui (não no `load`): Save* não pagam as consultas.
+   * `CREDENTIAL_MISSING` recente = sem credencial; senão, credencial utilizável + captura
+   * `MARKETPLACE_RISK_NOT_ACCEPTED` recente + aceite vigente ainda ausente agora = aceite pendente
+   * (aceitar depois da captura apaga o aviso). Só aqui (não no `load`): Save* não pagam as consultas.
    */
   private async credentialAlerts(tenantId: string): Promise<CredentialAlertDTO[]> {
     const now = (this.deps.now ?? (() => new Date()))();
-    const [states, missing] = await Promise.all([
+    const since = new Date(now.getTime() - CREDENTIAL_MISSING_WINDOW_MS);
+    const [states, missing, riskPending] = await Promise.all([
       this.deps.credentialStates.listStates(tenantId),
-      this.deps.captured.listRecentMissingProviders(tenantId, new Date(now.getTime() - CREDENTIAL_MISSING_WINDOW_MS)),
+      this.deps.captured.listRecentMissingProviders(tenantId, since),
+      this.deps.captured.listRecentRiskNotAcceptedProviders(tenantId, since),
     ]);
     const recent = new Set(missing);
+    const recentRisk = new Set(riskPending);
     const alerts: CredentialAlertDTO[] = [];
     for (const provider of AFFILIATE_PROVIDERS) {
       const st = states.find((s) => s.provider === provider);
       if (st?.rejectedAt) alerts.push({ provider, kind: 'REJECTED', since: st.rejectedAt.toISOString(), code: st.rejectedCode });
       else if ((!st || !st.usable) && recent.has(provider)) alerts.push({ provider, kind: 'MISSING', since: null, code: null });
+      else if (st?.usable && recentRisk.has(provider) && !(await this.deps.riskGate.isAccepted(tenantId, provider))) {
+        alerts.push({ provider, kind: 'RISK_NOT_ACCEPTED', since: null, code: null });
+      }
     }
     return alerts;
   }

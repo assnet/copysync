@@ -9,4 +9,5 @@ export const swipeCardsStrings = {
   statusDone: 'configurado',
   statusPaused: 'pausado',
   statusPending: 'pendente',
+  statusLocked: 'indisponível no plano',
 };

@@ -26,12 +26,15 @@ interface Props {
 }
 
 /**
- * Diálogo de configuração para marketplaces que usam sessão de navegador (Mercado Livre).
- * Substitui o AffiliateCredentialDialog genérico: embute o wizard da extensão e exibe
- * status de sincronização ML ao invés do campo de etiqueta manual.
+ * Diálogo de configuração para marketplaces que usam sessão de navegador (Mercado Livre, Shein).
+ * Substitui o AffiliateCredentialDialog genérico: embute o wizard da extensão e exibe o status
+ * de sincronização do marketplace do `spec`, julgado pela credencial **desse** marketplace.
+ * Com `identifierFromSession` (Shein) o ID vem da sessão: só leitura, sem campo.
  */
 export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }: Props) {
   const ext = useExtension();
+  const marketplace = spec.extensionMarketplace ?? 'ml';
+  const isShein = marketplace === 'shein';
   const navigate = useNavigate();
   const [wizardDone, setWizardDone] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -41,20 +44,37 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
     setSyncing(true);
     setSyncError(null);
     try {
-      await ext.syncMl();
+      await ext.sync(marketplace);
     } catch (err) {
-      setSyncError(syncErrorMessage(err));
+      setSyncError(syncErrorMessage(err, marketplace));
     } finally {
       setSyncing(false);
       onSynced?.();
     }
-  }, [ext, onSynced]);
+  }, [ext, onSynced, marketplace]);
 
   const isConnected = ext.status === 'connected';
-  const hasSession = !!ext.mlCredential?.lastSyncAt;
-  const tag = ext.mlCredential?.publicIdentifier;
+  const credential = ext.credentials[marketplace];
+  const hasSession = !!credential?.lastSyncAt;
+  const tag = credential?.publicIdentifier;
 
   const title = t.dialogCreateTitle(spec.name);
+  /** ID lido da sessão (Shein): o diálogo só (re)vincula a extensão — sempre o assistente. */
+  const sessionIdentifier = isShein || !!spec.identifierFromSession;
+
+  const wizard = (
+    <ExtensionSetupWizard
+      // Métrica `store-click`: a API só aceita `settings | ml_wizard | onboarding`; Shein conta como `settings`.
+      source={isShein ? 'settings' : 'ml_wizard'}
+      marketplace={marketplace}
+      onComplete={() => {
+        setWizardDone(true);
+        void ext.refresh();
+        // Shein: vínculo feito, a conexão continua no card (aceite do aviso de risco).
+        if (sessionIdentifier) onClose();
+      }}
+    />
+  );
 
   return (
     <Dialog
@@ -78,9 +98,11 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
 
       <DialogContent sx={{ pb: 3 }}>
         {/* Extension not connected yet — show wizard */}
-        {!isConnected && !wizardDone ? (
-          <ExtensionSetupWizard source="ml_wizard" onComplete={() => { setWizardDone(true); void ext.refresh(); }} />
-        ) : (
+        {/* Shein: o card só abre o diálogo para (re)vincular a extensão — sempre o assistente */}
+        {/* ID vindo da sessão (Shein): nunca renderiza o corpo do ML (mostraria o ID cru). */}
+        {sessionIdentifier ? (
+          wizardDone ? null : wizard
+        ) : !isConnected && !wizardDone ? wizard : (
           <Stack spacing={2.5}>
             {/* Connected state */}
             <Alert severity="success" icon={<CheckCircleIcon />}>
@@ -88,7 +110,7 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
               {ext.handshake?.extVersion && ` — v${ext.handshake.extVersion}`}
             </Alert>
 
-            {/* ML sync status */}
+            {/* Só Mercado Livre chega aqui: a Shein fecha o diálogo ao concluir o vínculo. */}
             <Box
               sx={{
                 p: 2, borderRadius: 1, border: 1, borderColor: 'divider',
@@ -105,7 +127,7 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
 
               <Row label={te.ml.lastSyncLabel}>
                 <Typography variant="body2">
-                  {hasSession ? te.ml.lastSync(ext.mlCredential!.lastSyncAt!) : te.ml.statusNeverSynced}
+                  {hasSession ? te.ml.lastSync(credential!.lastSyncAt!) : te.ml.statusNeverSynced}
                 </Typography>
               </Row>
 

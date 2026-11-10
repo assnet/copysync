@@ -8,6 +8,7 @@ export interface ExtensionSession {
   mlTenantId: string;
   extVersion: string;
   mlConsentAt: Date | null;
+  sheinConsentAt: Date | null;
   lastSeenAt: Date;
   expiresAt: Date;
   absoluteExpiresAt: Date;

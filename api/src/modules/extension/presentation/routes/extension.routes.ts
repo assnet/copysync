@@ -10,7 +10,20 @@ import { RecordStoreClickUseCase } from '../../application/use-cases/RecordStore
 import { RecordUninstallUseCase } from '../../application/use-cases/RecordUninstallUseCase';
 import { STORE_CLICK_SOURCES, UNINSTALL_COMMENT_MAX, UNINSTALL_REASONS, type StoreClickSource } from '../../domain/lifecycleEvents';
 import { setExtSessionCookie, clearExtSessionCookie } from '../../infrastructure/cookieHelper';
-import { EXT_SESSION_TTL_SECONDS, ML_SESSION_COOKIES } from '../../domain/constants';
+import { EXT_SESSION_TTL_SECONDS, ML_SESSION_COOKIES, SHEIN_SESSION_COOKIES } from '../../domain/constants';
+import { SyncSheinSessionUseCase } from '../../application/use-cases/SyncSheinSessionUseCase';
+import {
+  DisconnectMarketplaceSessionUseCase,
+  GrantMarketplaceConsentUseCase,
+  type ConsentTarget,
+} from '../../application/use-cases/MarketplaceConsentUseCases';
+import type { IExtensionEntitlementReader } from '../../domain/contracts/IExtensionEntitlementReader';
+import { DeleteAffiliateCredentialUseCase } from '../../../integrations/application/use-cases/DeleteAffiliateCredentialUseCase';
+import { createMarketplaceRiskAcceptanceRepository } from '../../../integrations/infrastructure/marketplaceRiskTransaction';
+import { AffiliateCredentialPresenter } from '../../../integrations/presentation/presenters/AffiliateCredentialPresenter';
+import { sheinSessionSyncResponse } from '../../../integrations/presentation/schemas/affiliateCredential.schema';
+import { marketplaceEntitlementKey } from '../../../campaigns/domain/services/marketplaceEntitlement';
+import { httpResponse } from '../../../../shared/http/httpResponse';
 import { UpsertAffiliateSessionUseCase } from '../../../integrations/application/use-cases/UpsertAffiliateSessionUseCase';
 import { ClearAffiliateSessionUseCase } from '../../../integrations/application/use-cases/ClearAffiliateSessionUseCase';
 import { PrismaAffiliateCredentialRepository } from '../../../integrations/infrastructure/repositories/PrismaAffiliateCredentialRepository';
@@ -27,14 +40,18 @@ import { prisma } from '../../../../shared/database/prisma.client';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
 const _entitlementPrismaReader = new PrismaEntitlementReader(prisma);
-const entitlementReader = {
+const entitlementReader: IExtensionEntitlementReader = {
   async hasMarketplaceExtension(tenantId: string): Promise<boolean> {
     return (await _entitlementPrismaReader.getBoolean(tenantId, ENTITLEMENT_KEYS.MARKETPLACE_EXTENSION)) === true;
+  },
+  async hasMarketplace(tenantId, provider): Promise<boolean> {
+    const key = marketplaceEntitlementKey(provider);
+    return key === null || (await _entitlementPrismaReader.getBoolean(tenantId, key)) === true;
   },
 };
 
 const mlClient = new MercadoLivreAffiliateClient();
-const syncMlSessionUseCase = new UpsertAffiliateSessionUseCase(
+const upsertAffiliateSessionUseCase = new UpsertAffiliateSessionUseCase(
   new PrismaAffiliateCredentialRepository(),
   () => SecretCipherFactory.get(),
   new PrismaAuditLogRepository(),
@@ -45,6 +62,66 @@ const clearMlSessionUseCase = new ClearAffiliateSessionUseCase(
   new PrismaAffiliateCredentialRepository(),
   new PrismaAuditLogRepository(),
 );
+
+const deleteCredentialUseCase = new DeleteAffiliateCredentialUseCase(
+  new PrismaAffiliateCredentialRepository(),
+  new PrismaAuditLogRepository(),
+);
+const riskAcceptances = createMarketplaceRiskAcceptanceRepository();
+const SHEIN_TARGET: ConsentTarget = { marketplace: 'SHEIN', provider: 'SHEIN' };
+
+const sheinCookieSchema = { type: 'string', minLength: 1, maxLength: 4096 } as const;
+
+/**
+ * Consentimento e desconexão por marketplace (painel, Bearer + tenant). As rotas `ml/*` ficam como
+ * estão (extensão já instalada); marketplace novo entra por aqui.
+ */
+function registerMarketplaceConsentRoutes(app: FastifyInstance, path: string, target: ConsentTarget, label: string): void {
+  app.post(
+    `/marketplaces/${path}/consent`,
+    {
+      preHandler: [authHook, tenantHook],
+      config: { rateLimit: rateLimitPresets.extensionAuth },
+      schema: {
+        tags: ['Extension'],
+        summary: `Autorizar sincronização da ${label} nesta instalação`,
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: 'object',
+          required: ['installationId'],
+          properties: { installationId: { type: 'string', format: 'uuid' } },
+        },
+        response: { 200: { type: 'object', properties: { success: { type: 'boolean' } } } },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const { installationId } = request.body as { installationId: string };
+      await new GrantMarketplaceConsentUseCase(target, extensionContainer.sessionRepository, entitlementReader, riskAcceptances)
+        .execute({ userId, tenantId, installationId });
+      return reply.send({ success: true });
+    },
+  );
+
+  app.delete(
+    `/marketplaces/${path}/session`,
+    {
+      preHandler: [authHook, tenantHook],
+      schema: {
+        tags: ['Extension'],
+        summary: `Desconectar ${label} (revoga consentimento e apaga a credencial)`,
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { tenantId, userId } = request.tenantContext;
+      await new DisconnectMarketplaceSessionUseCase(target, extensionContainer.sessionRepository, deleteCredentialUseCase)
+        .execute({ tenantId, userId });
+      httpResponse.noContent(reply);
+      return reply;
+    },
+  );
+}
 
 export async function extensionRoutes(app: FastifyInstance): Promise<void> {
   // ── DELETE /marketplaces/ml/session — Disconnect ML (panel, Bearer) ──
@@ -169,7 +246,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
         log.warn({ reason: (err as Error)?.name }, 'ML active tag lookup failed');
       }
 
-      await syncMlSessionUseCase.execute({
+      await upsertAffiliateSessionUseCase.execute({
         tenantId: session.mlTenantId,
         userId: session.userId,
         provider: 'MERCADO_LIVRE',
@@ -180,6 +257,47 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       });
 
       return reply.send({ success: true, data: { affiliateTag, sessionRejected: sessionCheck === 'REJECTED' } });
+    },
+  );
+
+  // ── Shein: consentimento e desconexão (painel) ─────────────────────────
+  registerMarketplaceConsentRoutes(app, 'shein', SHEIN_TARGET, 'Shein');
+
+  // ── PUT /marketplaces/shein/session — Shein session sync (cookie auth) ─
+  app.put(
+    '/marketplaces/shein/session',
+    {
+      preHandler: [extensionAuthHook],
+      onRequest: [extensionRequestGuard],
+      config: { rateLimit: rateLimitPresets.extensionSync },
+      schema: {
+        tags: ['Extension'],
+        summary: 'Sincronizar sessão da Shein',
+        body: {
+          type: 'object',
+          required: ['cookies', 'capturedAt'],
+          properties: {
+            // Ajv com `removeAdditional`: cookie não declarado é removido (nunca chega ao use case).
+            cookies: {
+              type: 'object',
+              required: [...SHEIN_SESSION_COOKIES],
+              properties: { AT: sheinCookieSchema, memberId: sheinCookieSchema },
+              additionalProperties: false,
+            },
+            // `format` validado pelo ajv-formats que o @fastify/ajv-compiler já registra.
+            capturedAt: { type: 'string', format: 'date-time', maxLength: 64 },
+          },
+          additionalProperties: false,
+        },
+        response: { 200: sheinSessionSyncResponse },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = request.extensionSession!;
+      const body = request.body as { cookies: { AT: string; memberId: string }; capturedAt: string };
+      const result = await sheinSyncUseCase().execute({ session, cookies: body.cookies, capturedAt: body.capturedAt });
+      httpResponse.ok(reply, AffiliateCredentialPresenter.toSheinSessionSync(result));
+      return reply;
     },
   );
 
@@ -610,6 +728,17 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ success: true });
     },
   );
+}
+
+function sheinSyncUseCase(): SyncSheinSessionUseCase {
+  return new SyncSheinSessionUseCase({
+    riskAcceptances,
+    entitlements: entitlementReader,
+    profile: new GetExtensionProfileUseCase(entitlementReader),
+    upsertSession: upsertAffiliateSessionUseCase,
+    sessions: extensionContainer.sessionRepository,
+    deleteCredential: deleteCredentialUseCase,
+  });
 }
 
 function uninstallUseCase(): RecordUninstallUseCase {

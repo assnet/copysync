@@ -190,6 +190,12 @@ describe('slugStatusView', () => {
 });
 
 describe('errorMessage', () => {
+  it('Shein fora do plano e aceite pendente têm texto próprio', () => {
+    expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } })).toBe(t.errors.sheinUnavailable);
+    expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'storefront_enabled' } })).toBe(t.errors.PLAN_FEATURE_UNAVAILABLE);
+    expect(errorMessage({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toBe(t.errors.MARKETPLACE_RISK_NOT_ACCEPTED);
+  });
+
   it.each([
     'PLAN_FEATURE_UNAVAILABLE',
     'LINK_SLUG_INVALID',

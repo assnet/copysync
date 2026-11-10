@@ -10,7 +10,7 @@ Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/feat
 | --- | --- |
 | Domínio (funções puras) | `api/src/modules/campaigns/domain/services/` (`detectMarketplace`, `parseProductRef`, `verifyAffiliateLink`, `parseProductPage`, `buildOfferTextPrompt`, `renderOfferText`, `scheduleDispatches`, `startOfDayInZone`) |
 | Use cases | `campaigns/application/use-cases/` (Generate, Update, Regenerate, Send, ProcessDue, Config, Get, Usage) · `application/services/OfferTextComposer.ts` |
-| HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `HttpShortLinkExpander`, `HttpProductPageReader`, `HttpOfferImageFetcher`) |
+| HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `MercadoLivreAffiliateClient`, `SheinAffiliateClient`, `HttpShortLinkExpander`, `HttpProductPageReader`, `HttpOfferImageFetcher`) |
 | IA | porta `IAiTextGenerator` via `LazyAiTextGenerator` → `docs/ia-provedores.md` |
 | Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem, `imageMode = MEDIA`; WebP do ML sai como JPEG, ver `chat-midias-anexos.md` "Foto WebP") / `SendMessageUseCase` (texto, ou texto + prévia do link com `imageMode = LINK_PREVIEW`), com `mentions` |
 | Worker | `campaigns/infrastructure/worker/OfferDispatchWorker.ts`, ligado em `app/server.ts` |
@@ -39,6 +39,7 @@ O link colado **é** o link de afiliado (o sistema não gera mais link). Após e
 | Amazon | `tag=` | ≠ credencial → `OFFER_LINK_NOT_OWNED`; sem `tag` → `OFFER_LINK_NOT_AFFILIATE` |
 | Mercado Livre | `matt_word` ou `/social/<etiqueta>` (`meli.la`) | idem (comparação sem caixa) |
 | Shopee | — | sem verificação (aviso fixo no painel); `attributionVerified=false` |
+| Shein | `url_from=affiliate_koc_<memberId>` | ≠ ID da conta conectada → `OFFER_LINK_NOT_OWNED`; sem afiliação e com conta → link gerado pela sessão (`attributionVerified=true`); sem afiliação e sem conta → `OFFER_LINK_NOT_AFFILIATE` |
 
 Dados do produto (título, preços, foto) e foto no store: `ResolveProductDataUseCase` (api 0.41.0, extraído do
 `GenerateOfferUseCase` para o monitoramento reaproveitar). Vitrine social ML (`/social/<etq>?…&ref=…`) é perfil,
@@ -50,7 +51,9 @@ Sem credencial cadastrada da loja e com tag presente: passa como não verificado
 atual do app/painel Shopee BR), `shoope.top` (encurtador de **terceiro**, DivulgaLinks; não é da Shopee e só vale se o
 redirect cair em `shopee.com.br` — encurtador de terceiro novo entra assim, com teste de redirect para fora), `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`,
 `amazon.com.br`, `amzn.to`, `a.co` (Compartilhar do app Amazon), `link.amazon` (gTLD da Amazon, salta por `amzlinks.in`)
-e `amzlinks.in`; encurtador só vale se o redirect cair em `amazon.com.br`. `link.amazon` responde 404 ao HEAD: o expansor
+e `amzlinks.in`; encurtador só vale se o redirect cair em `amazon.com.br`. Shein: `br.shein.com`, `m.shein.com` (só `/br/`) e
+`onelink.shein.com` (nunca `shein.com` inteiro); o `onelink` é lido por GET e o `input#url` do HTML vira a URL final sem
+abrir a página do produto. `link.amazon` responde 404 ao HEAD: o expansor
 repete com GET sempre que o HEAD vier ≥ 400.
 Encurtadores que vão à rede (`isShortLink`): os mesmos curtos + `mercadolivre.com/sec|social` + `click1.mercadolivre.com.br`
 (rastreio). Pesquisa de variantes 2026-11-02: `collshp.com` (coleção Shopee, vários itens), `invl.io` (rede Involve Asia),
@@ -73,6 +76,14 @@ pode sempre colar seu próprio link de afiliado — a geração automática é f
 
 Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body ou headers.
 
+## Shein
+
+Sem API oficial: link e dados vêm de uma chamada ao endpoint interno `detailNew` com a sessão sincronizada pela
+extensão (`SheinAffiliateClient`). Gate na ordem plano (`marketplace_shein_enabled`, só MAX, checado antes de
+expandir) → credencial → aceite do aviso de risco → chamada. Sem plano: `PLAN_FEATURE_UNAVAILABLE`; conta conectada
+sem aceite: `MARKETPLACE_RISK_NOT_ACCEPTED`. A página de produto Shein **nunca** é lida (`HttpProductPageReader`
+devolve `null`). Detalhes, riscos e o que não fazer: [`afiliado-shein.md`](afiliado-shein.md).
+
 ## Dados do produto
 
 - Shopee: Affiliate Open API (`productOfferV2`) quando há credencial com secret; erro na API cai para a leitura da página.
@@ -86,7 +97,8 @@ Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body o
   `*.mercadolivre.com.br`; token validado contra injeção de cookie). Mesmo mecanismo das extensões do mercado: requisição
   logada é bloqueada bem menos. Rotas não documentadas do ML podem mudar sem aviso.
 - Faltou título, preço ou foto → `needsManualData: true` e o painel pede os campos.
-- Fotos: `*.susercontent.com`, `*.shopee.com.br`, `*.mlstatic.com`, `*.media-amazon.com`, `*.ssl-images-amazon.com`.
+- Shein: título, preço, preço cheio e foto vêm do `detailNew` (mesma chamada do link). Sem conta conectada: preenchimento manual.
+- Fotos: `*.susercontent.com`, `*.shopee.com.br`, `*.mlstatic.com`, `*.media-amazon.com`, `*.ssl-images-amazon.com`, `*.ltwebstatic.com` (Shein).
 - Foto gravada (`MediaOfferStore.saveImage`, fetch/upload/foto do produto): JPEG lado ≤ 600 px, q75, sem metadados.
 
 ## Texto

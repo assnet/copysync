@@ -25,4 +25,13 @@ describe('syncErrorMessage', () => {
     expect(msg('api_rejected')).toBe(e.syncFailed);
     expect(syncErrorMessage(new Error('x'))).toBe(e.syncFailed);
   });
+
+  it('Shein: códigos próprios e consentimento cita a loja da operação', () => {
+    expect(msg('shein_not_logged')).toBe(e.sheinNotLogged);
+    expect(msg('shein_permission_missing')).toBe(e.sheinPermissionMissing);
+    expect(msg('risk_not_accepted')).toBe(e.riskNotAccepted);
+    expect(msg('consent_required')).toBe(e.consentRequired);
+    expect(syncErrorMessage(new ExtensionSyncError('consent_required'), 'shein')).toBe(e.consentRequiredShein);
+    expect(syncErrorMessage(new ExtensionSyncError('plan_unavailable'), 'shein')).toBe(e.planRequired);
+  });
 });

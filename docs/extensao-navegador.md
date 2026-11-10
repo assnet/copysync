@@ -4,10 +4,10 @@ Pasta: `extension/` · CHANGELOG: [`extension/CHANGELOG.md`](../extension/CHANGE
 
 ## Objetivo
 
-Capturar, no navegador do operador, a sessão logada do marketplace (Mercado Livre) e enviá-la ao
+Capturar, no navegador do operador, a sessão logada do marketplace (Mercado Livre; Shein desde a 3.4.0) e enviá-la ao
 painel para o tenant gerar links de afiliado automaticamente. A extensão **não** lê senha do
 marketplace: só cookies de identidade (`ssid`, `orguseridp`, `orgnickp`, `orguserid`) via
-`chrome.cookies` API. Substitui o legado "Redirect Flow"
+`chrome.cookies` API (Shein: `AT`, `memberId`). Substitui o legado "Redirect Flow"
 (`legadoML/iiobglifbapgfafnghkcakggkcaddpap/`).
 
 ## Arquitetura (v3.0.0)
@@ -72,10 +72,13 @@ Comunicação via `chrome.runtime.onMessageExternal` + `externally_connectable` 
 Pipeline: origin → version N-1 → envelope filter (TTL 15s, anti-replay set de 500) →
 guard → handler → `assertNoSecrets`.
 
-Operações v1: `handshake`, `bridge.identify`, `session.changed`, `ml.status`, `ml.syncSession`.
+Operações v1: `handshake`, `bridge.identify`, `session.changed`, `ml.status`, `ml.syncSession`;
+3.4.0: `shein.status`, `shein.syncSession`, `shein.requestAccess` (só adição, `CHANNEL_VERSION` inalterado).
+`handshake.caps` = `['ml.session', 'shein.session']`; o painel lê com `supports(cap)`.
 
 Guard: PUBLIC_OPS (handshake, bridge.identify) não requerem auth. ML_OPS requerem sessão +
-mlTenantId + tenant ACTIVE + permissão `ml.session`.
+mlTenantId + tenant ACTIVE + permissão `ml.session`; SHEIN_OPS, o mesmo com `shein.session`
+(`hasPermission(profile, perm)` genérico).
 
 Contrato espelhado em `app/src/features/extension/contract/channel.ts`. Paridade verificada por
 `scripts/check-contract-sync.mjs`.
@@ -147,6 +150,9 @@ reaplica a cadeia completa.
 | `POST /api/extension/lifecycle/feedback` | Pública (rate limited) | `{ installationId, reasons[1..8], comment? ≤500 }` | `{ success }` |
 | `DELETE /api/extension/marketplaces/ml/session` | Bearer + X-Tenant-Id (painel) | — | revoga consentimento ML do tenant e apaga a sessão cifrada |
 | `POST /api/extension/marketplaces/ml/consent` | Bearer + X-Tenant-Id (painel) | `{ installationId }` | reautoriza o sync nesta instalação |
+| `POST /api/extension/marketplaces/shein/consent` | Bearer + X-Tenant-Id (painel) | `{ installationId }` | grava `sheinConsentAt`; 403 sem `marketplace_shein_enabled` ou sem aceite do aviso de risco; 404 sem sessão da extensão |
+| `PUT /api/extension/marketplaces/shein/session` | Cookie + consentimento Shein + aceite + entitlement | `{ cookies: { AT, memberId }, capturedAt }` | `{ affiliateId }` (nunca o token) |
+| `DELETE /api/extension/marketplaces/shein/session` | Bearer + X-Tenant-Id (painel) | — | revoga o consentimento Shein do tenant e apaga a credencial inteira (204, idempotente) |
 
 **Desconectar Mercado Livre:** revoga o consentimento **antes** de apagar a sessão (senão a
 extensão pode ressincronizar entre as duas escritas). Etiqueta e secreto da credencial ficam.
@@ -245,6 +251,51 @@ sem dono — o `LINKED` traz a instalação para a central). `STARTUP` e heartbe
 não envia heartbeat a lugar nenhum: ele só atualiza `lastHeartbeatAt` local). Cada evento é único por
 instalação (`UNINSTALL`, `UNINSTALL_FEEDBACK`, `LINKED:<userId>`, `UPDATE:<versão>`, `INSTALL`).
 
+## Shein (3.4.0)
+
+Tudo do produto (aviso de risco, plano, gerador): [`afiliado-shein.md`](afiliado-shein.md).
+
+- **Mapa por marketplace** (`config/env.ts`, espelhado em `__mocks__/env.ts`): `MARKETPLACES.ml` e
+  `MARKETPLACES.shein` com `provider`, `MARKETPLACE_COOKIE_DOMAIN`, `MARKETPLACE_URL_PATTERN`, `MARKETPLACE_URL`,
+  `cookies`, `tokenCookie` (`ssid` × `AT`), `optional`. Estado de sync, hash de cookies, rate limit, `lastSyncEpoch`
+  e single-flight são por marketplace (chaves ML mantêm os nomes da 3.3; Shein usa `sheinSyncState`,
+  `sheinCookieHash`, `sheinLastSyncEpoch`).
+- **Permissão opcional**: `https://m.shein.com/*` em `optional_host_permissions` (`check-dist` exige que nunca esteja
+  em `host_permissions`: host obrigatório novo desativa a extensão em toda a base). `chrome.permissions.request` só
+  roda em gesto do usuário e não há popup, então: painel envia `shein.requestAccess` → pendência de 10 min no storage
+  → usuário clica no ícone → `actionClick.ts` chama `permissions.request` como primeira chamada síncrona. Concedida:
+  limpa, sincroniza e foca o painel; negada: limpa e foca. O espelho da pendência é carregado no topo de `index.ts`
+  (antes dos listeners); clique com o espelho ainda não lido NÃO faz `await` antes do pedido: só foca o painel e
+  mantém a pendência para o próximo clique. Recusa por gesto também mantém. Pendência vencida sai do storage quando
+  lida. Sem pendência: só foca o painel. O painel consulta `shein.status` a cada 3 s
+  enquanto `pending`.
+- **Leitura**: `marketplaceSession.ts` só lê cookie Shein com `chrome.permissions.contains` verdadeiro e exige `AT` +
+  `memberId`; `check-cookie-scope` falha se a função que chama `chrome.cookies.*` não tiver
+  `if (!(await hasHostPermission(...))) return` antes. Só cookie do host exato: `c.domain` sem o ponto
+  inicial igual a `m.shein.com` (aceita `m.shein.com` e `.m.shein.com`; recusa `.shein.com`). `getAll({ url })`
+  também traz `.shein.com`, descartado antes de deduplicar por path (ML, domínio com ponto, sem filtro).
+  Observado na conta real em 2026-11-10: `AT` e `memberId` vêm com domínio `m.shein.com` (host-only). `cookieWatch.ts` agenda sync só para mudança desses dois em `m.shein.com` (debounce 60 s,
+  `chrome.alarms.create` direto pelo nome). Gatilho automático sem permissão sai em silêncio. O alarme de reserva
+  respeita o hash na Shein (só envia se o token mudou); no ML segue reenviando.
+- **Recusa do servidor (só Shein)**: `consent_required`/`plan_unavailable` (ex.: "Desconectar" no painel) →
+  `chrome.permissions.remove` da origem, apaga hash/`lastSyncEpoch`, estado vira só o erro e o automático pausa
+  (`sheinAutoSyncPaused`). Só `shein.requestAccess` + clique reativa. `risk_not_accepted` → pausa o automático sem
+  remover a permissão; sync manual/canal reativa. ML nunca pausa.
+- **Erros**: `apiFetch.ts` lê o envelope antes do status e mapeia `error.code` conhecido (Map, sem herança de
+  protótipo); status (401/403/404/429) só sem código conhecido. Códigos que pausam/revogam (consentimento, plano,
+  risco) só valem em **4xx**: 5xx com o mesmo código vira `api_rejected` (só mensagem, nunca
+  `permissions.remove`). `SESSION_NOT_FOUND` NÃO entra no mapa (404 do ML segue `api_route_missing`, como antes).
+  `*_EXT_SESSION` → `session_expired`; `RATE_LIMITED` → `rate_limited`; `*_CONSENT_REQUIRED` → `consent_required`;
+  `PLAN_FEATURE_UNAVAILABLE`/`EXTENSION_NOT_ENTITLED` → `plan_unavailable`; `MARKETPLACE_RISK_NOT_ACCEPTED` →
+  `risk_not_accepted`. Códigos novos: `shein_not_logged`, `shein_permission_missing`, `shein_sync_failed`,
+  `risk_not_accepted` (chaves `err_*` nas `_locales`, textos do painel em `features/extension/strings.ts`).
+- `BLOCKED_FIELDS` ganha `AT` e `token` (o sanitize remove a chave; `memberId` é o id público).
+- Permissão `shein.session` em `permissions` do `/extension/me` quando o tenant tem `marketplace_shein_enabled`.
+
+**Não fazer**: tornar `m.shein.com` permissão obrigatória; chamar `permissions.request` fora do clique; ler cookie
+Shein sem permissão concedida; abrir página da Shein ou resolver desafio anti-bot; deixar o sync Shein reusar
+resultado, hash ou rate limit do ML.
+
 ## ML Cookie Sync
 
 Cookies de identidade lidos via `chrome.cookies.getAll({ url })`:
@@ -258,7 +309,7 @@ manual (popup), channel (`ml.syncSession`), startup.
 Hash igual só pula envio em `cookie-changed` e `startup`. Alarm reserve, manual e channel enviam
 sempre: o servidor revalida a sessão na loja a cada PUT e é isso que limpa "Recusada" quando o
 token não mudou (ver `integracoes-credenciais-afiliado.md`, "Checagem da sessão no sync").
-Não voltar a pular o alarme por hash: o servidor fica dias sem revalidar.
+Não voltar a pular o alarme por hash no ML: o servidor fica dias sem revalidar. (A Shein pula: ver acima.)
 
 Timeout do PUT da sessão: 25s (`SYNC_TIMEOUT_MS`), acima do caminho do servidor (bootstrap 8s +
 etiqueta 8s). Demais chamadas: 10s.
@@ -327,4 +378,5 @@ Resumo: bump em `extension/package.json` + CHANGELOG → `pnpm release` (type-ch
 | 6 | Extensão 3.3.0 (INSTALL na instalação, uninstall URL no boot) precisa ser publicada na Chrome Web Store | `extension/` | Correlação e feedback de remoção |
 | 3 | Publicação na Chrome Web Store: nova listagem (F8). Build/zip/CRX prontos (3.2.1); faltam política de privacidade pública, capturas e conta — ver pendências em `extensao-publicacao-chrome-web-store.md` §9 | seção *Publicação* | Distribuição |
 | 4 | Expiração da sessão do marketplace: API sinaliza via heartbeat `resyncRequested` | API + `syncSession.ts` | Confiabilidade |
-| 5 | Outros marketplaces (Shopee, Amazon) — só ML exige sessão por extensão | roadmap item 3 | — |
+| 5 | Outros marketplaces: Shein entrou na 3.4.0 (sessão + permissão opcional); Shopee e Amazon não exigem sessão (StoreID da Amazon pela extensão: spike opcional F6 em `.specs/features/shein-affiliate/`) | roadmap item 3 | — |
+| 7 | Extensão 3.4.0 (Shein) precisa ser publicada na Chrome Web Store; smoke do prompt de permissão (inclusive com worker dormindo) no T16 | `extension/`, [`afiliado-shein.md`](afiliado-shein.md) | Shein em produção |

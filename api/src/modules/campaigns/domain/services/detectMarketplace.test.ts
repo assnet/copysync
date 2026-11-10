@@ -50,3 +50,17 @@ describe('isSupportedProductUrl', () => {
     expect(isSupportedProductUrl(u('https://shopee.com.br:443/x'))).toBe(true);
   });
 });
+
+describe('detectMarketplace — Shein', () => {
+  it.each([
+    ['https://br.shein.com/Vestido-p-12345678.html', 'SHEIN'],
+    ['https://m.shein.com/br/Vestido-p-12345678.html', 'SHEIN'],
+    ['https://onelink.shein.com/60/abc', 'SHEIN'],
+    ['https://us.shein.com/x-p-12345678.html', null],
+    ['https://shein.com/x-p-12345678.html', null],
+    ['https://evilshein.com/x', null],
+    ['https://br.shein.com.evil.com/x', null],
+  ] as const)('%s → %s', (url, expected) => {
+    expect(detectMarketplace(u(url))).toBe(expected);
+  });
+});

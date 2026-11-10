@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Box, ButtonBase, Typography, alpha, useMediaQuery, useTheme } from '@mui/material';
-import { Check, Pause } from 'lucide-react';
+import { Check, Lock, Pause } from 'lucide-react';
 import { AppIcon } from './AppIcon';
 import { swipeCardsStrings as t } from './swipeCardsStrings';
 
-export type SwipeCardsStatus = 'done' | 'paused' | 'pending';
+/** `locked`: recurso indisponível no plano (cadeado, não "pendente"). */
+export type SwipeCardsStatus = 'done' | 'paused' | 'pending' | 'locked';
 
 export interface SwipeCardsItem {
   key: string;
@@ -33,6 +34,10 @@ const GAP_PX = 10;
  */
 const EDGE_SPACER = `calc(11% - ${GAP_PX * 2}px)`;
 const MOTION_MS = 220;
+
+const STATUS_TEXT: Record<SwipeCardsStatus, string> = {
+  done: t.statusDone, paused: t.statusPaused, pending: t.statusPending, locked: t.statusLocked,
+};
 
 /** `scrollLeft` que centraliza o card no trilho (`offsetLeft` relativo ao trilho, que é `position: relative`). */
 function centeredScrollLeft(track: HTMLElement, card: HTMLElement): number {
@@ -162,11 +167,14 @@ function SwipeTrack({ items, initialKey, ariaLabel }: TrackProps) {
       <Box
         role="group"
         aria-label={t.indicatorsLabel}
-        sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 0.75, mb: 1 }}
+        sx={items.length > 3
+          // 4+ cards não cabem numa linha em 360–430 px: grade 2×2 em vez de um seletor sozinho na 2ª linha.
+          ? { display: 'grid', gridTemplateColumns: 'repeat(2, max-content)', justifyContent: 'center', columnGap: 0.75, mb: 1 }
+          : { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 0.75, mb: 1 }}
       >
         {items.map((item, i) => {
           const isActive = i === active;
-          const statusText = item.status === 'done' ? t.statusDone : item.status === 'paused' ? t.statusPaused : item.status === 'pending' ? t.statusPending : null;
+          const statusText = item.status ? STATUS_TEXT[item.status] : null;
           return (
             <ButtonBase
               key={item.key}
@@ -196,6 +204,11 @@ function SwipeTrack({ items, initialKey, ariaLabel }: TrackProps) {
                 {item.status === 'paused' && (
                   <Box sx={{ display: 'flex', color: isActive ? 'inherit' : 'warning.main' }}>
                     <AppIcon icon={Pause} size="sm" strokeWidth={3} />
+                  </Box>
+                )}
+                {item.status === 'locked' && (
+                  <Box sx={{ display: 'flex', color: isActive ? 'inherit' : 'text.secondary' }}>
+                    <AppIcon icon={Lock} size="sm" strokeWidth={2.5} />
                   </Box>
                 )}
                 {item.status === 'pending' && (

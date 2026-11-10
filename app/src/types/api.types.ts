@@ -185,7 +185,7 @@ export interface ChangePasswordRequest {
 
 // ── Affiliate credentials ────────────────────────────────────────────────────
 
-export type AffiliateProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON';
+export type AffiliateProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON' | 'SHEIN';
 
 export type AffiliateCredentialStatus = 'ACTIVE' | 'INACTIVE';
 
@@ -205,8 +205,36 @@ export interface AffiliateCredentialItem {
   updatedAt: string;
 }
 
+/** Aviso de risco do marketplace (só os que exigem aceite, ex.: Shein). `acceptedAt` null = versão vigente sem aceite. */
+export interface MarketplaceRiskNotice {
+  /** Versão vigente do texto, espelhada em `features/settings/strings.ts`. */
+  version: string;
+  acceptedAt: string | null;
+  acceptedByMe: boolean;
+}
+
+/** Disponibilidade do marketplace para o tenant: plano (`plans` vem da API, não fixo) e aceite do aviso. */
+export interface MarketplaceAvailability {
+  enabled: boolean;
+  /** Slugs do domínio (`COPYSYNC_MAX`…): converter com `toPanelPlanSlugs` (`features/plans/planSlug`). */
+  plans: string[];
+  riskNotice: MarketplaceRiskNotice | null;
+}
+
 export interface AffiliateCredentialListResponse {
   items: AffiliateCredentialItem[];
+  /** Ausente em API antiga: o painel trata como "sem restrição". */
+  marketplaceAvailability?: Partial<Record<AffiliateProvider, MarketplaceAvailability>>;
+}
+
+export interface AcceptMarketplaceRiskRequest {
+  noticeVersion: string;
+  locale: string;
+}
+
+export interface AcceptMarketplaceRiskResponse {
+  acceptedAt: string;
+  noticeVersion: string;
 }
 
 export interface UpsertAffiliateCredentialRequest {
@@ -688,8 +716,9 @@ export interface GroupMonitorConfigResponse {
 
 export interface CredentialAlertItem {
   provider: AffiliateProvider;
-  kind: 'MISSING' | 'REJECTED';
-  /** `rejectedAt` (REJECTED); null em MISSING. */
+  /** RISK_NOT_ACCEPTED: marketplace com aviso de risco ainda não aceito na versão vigente. */
+  kind: 'MISSING' | 'REJECTED' | 'RISK_NOT_ACCEPTED';
+  /** `rejectedAt` (REJECTED); null em MISSING e RISK_NOT_ACCEPTED. */
   since: string | null;
   code: string | null;
 }
@@ -716,6 +745,8 @@ export type CapturedOfferReason =
   | 'UNSUPPORTED_MARKETPLACE'
   | 'CREDENTIAL_MISSING'
   | 'CREDENTIAL_REJECTED'
+  | 'MARKETPLACE_PLAN_UNAVAILABLE'
+  | 'MARKETPLACE_RISK_NOT_ACCEPTED'
   | 'LINK_RESOLVE_FAILED'
   | 'EXPIRED'
   | 'MONITOR_DISABLED'

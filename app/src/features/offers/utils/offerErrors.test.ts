@@ -27,3 +27,18 @@ describe('toOfferError — limite por canal', () => {
     expect(v.planLimit).toBeUndefined();
   });
 });
+
+describe('toOfferError — Shein', () => {
+  it('Shein fora do plano: texto da Shein, não o de outra função', () => {
+    const v = toOfferError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } });
+    expect(v.message).toContain('Shein');
+    expect(v.message).not.toContain('Marcar todos');
+    expect(v.isLinkField).toBe(true);
+  });
+
+  it('aviso de risco não aceito: explica e leva às credenciais', () => {
+    const v = toOfferError({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
+    expect(v.message).toContain('aviso de risco');
+    expect(v.action).toBe('credentials');
+  });
+});

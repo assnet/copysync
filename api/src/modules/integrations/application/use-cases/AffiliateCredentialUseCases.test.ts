@@ -50,6 +50,13 @@ const errorOf = (p: Promise<unknown>) => p.catch((e: unknown) => e);
 describe('UpsertAffiliateCredentialUseCase', () => {
   const upsert = (d: ReturnType<typeof makeDeps>) => new UpsertAffiliateCredentialUseCase(d.repo, d.getCipher, d.audit);
 
+  it('Shein (ID segue a sessão): PUT manual recusado com 422, nada gravado', async () => {
+    const d = makeDeps();
+    const err = await errorOf(upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'SHEIN', publicIdentifier: '4320454940' }));
+    expect(err).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_INVALID', statusCode: 422 });
+    expect(d.repo.upsert).not.toHaveBeenCalled();
+  });
+
   it('Shopee nova sem secret: recusa com 422 apontando o campo', async () => {
     const d = makeDeps(null);
     const err = await errorOf(upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'SHOPEE', publicIdentifier: '18301234567' }));

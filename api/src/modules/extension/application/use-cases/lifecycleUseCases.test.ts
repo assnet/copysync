@@ -178,6 +178,13 @@ describe('IssueExtensionSessionUseCase — vínculo e atribuição do clique', (
     expect(writes[0]!.outbox?.payload).toMatchObject({ event: 'LINKED', storeClickId: 'click-1', storeClickAt: clickAt.toISOString() });
   });
 
+  it('re-vínculo (inclusive a outro tenant) zera o consentimento Shein e mantém o do ML pedido', async () => {
+    const { repo } = lifecycleRepo();
+    await new IssueExtensionSessionUseCase(sessionRepo, installationRepo(installation({ userId: 'u1' })), entitled, repo, () => NOW)
+      .execute({ ...input, mlTenantId: 'tenant-2' });
+    expect(sessionRepo.issue).toHaveBeenCalledWith(expect.objectContaining({ mlTenantId: 'tenant-2', sheinConsentAt: null, mlConsentAt: NOW }));
+  });
+
   it('revincular a mesma instalação ao mesmo usuário não gera LINKED', async () => {
     const { repo } = lifecycleRepo();
     await new IssueExtensionSessionUseCase(sessionRepo, installationRepo(installation({ userId: 'u1' })), entitled, repo, () => NOW).execute(input);

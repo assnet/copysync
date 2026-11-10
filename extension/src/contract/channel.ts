@@ -60,12 +60,39 @@ export interface MlSyncSessionPayload {
   errorCode?: string;
 }
 
+export interface SheinStatusPayload {
+  /** Permissão de host opcional (`https://m.shein.com/*`). */
+  permission: 'granted' | 'missing';
+  /** `shein.requestAccess` aguardando o clique no ícone (janela de 10 min). */
+  pending: boolean;
+  /** Cookie `AT` presente (só lido com a permissão concedida). */
+  loggedIn: boolean;
+  syncStatus: 'idle' | 'syncing' | 'ok' | 'error';
+  lastSyncAt?: string;
+  /** `SyncErrorCode` do último sync (ex.: `shein_not_logged`, `risk_not_accepted`). Nunca carrega segredo. */
+  errorCode?: string;
+}
+
+export type SheinSyncSessionPayload = MlSyncSessionPayload;
+
+export interface SheinRequestAccessPayload {
+  /** `true`: o próximo clique no ícone da extensão (até `until`) abre o pedido de permissão. */
+  pending: boolean;
+  /** ISO 8601. */
+  until: string;
+  /** Já concedida: nada a pedir. */
+  permission: 'granted' | 'missing';
+}
+
 export type OpMap = {
   'handshake': { request: Record<string, never>; response: HandshakePayload };
   'bridge.identify': { request: BridgeIdentifyPayload; response: Record<string, never> };
   'session.changed': { request: SessionChangedPayload; response: Record<string, never> };
   'ml.status': { request: Record<string, never>; response: MlStatusPayload };
   'ml.syncSession': { request: Record<string, never>; response: MlSyncSessionPayload };
+  'shein.status': { request: Record<string, never>; response: SheinStatusPayload };
+  'shein.syncSession': { request: Record<string, never>; response: SheinSyncSessionPayload };
+  'shein.requestAccess': { request: Record<string, never>; response: SheinRequestAccessPayload };
 };
 
 export type OpName = keyof OpMap;

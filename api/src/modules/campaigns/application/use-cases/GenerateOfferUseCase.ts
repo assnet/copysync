@@ -3,10 +3,11 @@ import type { IOfferRepository, CreateOfferInput } from '../../domain/contracts/
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
+import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
+import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
-import type { IAffiliateCredentialResolver } from '../../domain/contracts/IAffiliateCredentialResolver';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
 import { startOfDayInZone } from '../../domain/services/startOfDayInZone';
 import { OfferInvalidInputError } from '../../../../shared/errors/internal/OfferErrors';
@@ -17,7 +18,7 @@ import type { OfferTextComposer } from '../services/OfferTextComposer';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
-import { ResolveAffiliateProductUseCase } from './ResolveAffiliateProductUseCase';
+import { ResolveAffiliateProductUseCase, type ResolveAffiliateProductDeps } from './ResolveAffiliateProductUseCase';
 
 export const OFFER_GENERATIONS_PER_DAY = ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY;
 
@@ -44,9 +45,12 @@ export interface GenerateOfferDeps {
   offers: IOfferRepository;
   entitlements: IEntitlementReader;
   expander: IShortLinkExpander;
-  credentials: IAffiliateCredentialResolver;
+  /** `resolveState`: Shein recusada não chama a loja (ver `ResolveAffiliateProductUseCase`). */
+  credentials: ResolveAffiliateProductDeps['credentials'];
   shopee: IShopeeAffiliateClient;
   mercadoLivre: IMercadoLivreAffiliateClient;
+  shein: ISheinAffiliateClient;
+  riskGate: IMarketplaceRiskGate;
   pageReader: IProductPageReader;
   imageFetcher: IOfferImageFetcher;
   mediaStore: IOfferMediaStore;
@@ -72,6 +76,7 @@ export class GenerateOfferUseCase {
     });
     this.affiliateProducts = new ResolveAffiliateProductUseCase({
       expander: deps.expander, credentials: deps.credentials, mercadoLivre: deps.mercadoLivre, products: this.products,
+      shein: deps.shein, entitlements: deps.entitlements, riskGate: deps.riskGate,
     });
   }
 

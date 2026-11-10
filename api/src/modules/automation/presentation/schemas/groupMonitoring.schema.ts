@@ -128,7 +128,7 @@ const configSchema = {
     },
     credentialAlerts: {
       type: 'array',
-      items: { type: 'object', properties: { provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] }, kind: { type: 'string', enum: ['MISSING', 'REJECTED'] }, since: nullableDate, code: nullableString } },
+      items: { type: 'object', properties: { provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] }, kind: { type: 'string', enum: ['MISSING', 'REJECTED', 'RISK_NOT_ACCEPTED'] }, since: nullableDate, code: nullableString } },
     },
     usage: {
       type: 'object',

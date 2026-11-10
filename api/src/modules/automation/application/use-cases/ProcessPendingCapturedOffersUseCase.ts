@@ -160,6 +160,9 @@ export class ProcessPendingCapturedOffersUseCase {
       // Loja pausada (credencial recusada): não envia texto pela metade nem tenta os outros links
       if (r.kind === 'credential_rejected') return { status: 'SKIPPED', reason: 'CREDENTIAL_REJECTED', data: { marketplace: r.provider } };
       if (r.kind === 'credential_missing') return { status: 'SKIPPED', reason: 'CREDENTIAL_MISSING', data: { marketplace: r.provider } };
+      // Ramos próprios com return: sem eles o link cairia em `replacements` como null e sumiria do texto
+      if (r.kind === 'plan_unavailable') return { status: 'SKIPPED', reason: 'MARKETPLACE_PLAN_UNAVAILABLE', data: { marketplace: r.provider } };
+      if (r.kind === 'risk_not_accepted') return { status: 'SKIPPED', reason: 'MARKETPLACE_RISK_NOT_ACCEPTED', data: { marketplace: r.provider } };
       replacements.set(u.href, r.kind === 'ok' ? r.affiliateUrl : null);
       if (r.kind === 'ok') first ??= r;
     }

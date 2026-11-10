@@ -5,7 +5,7 @@
 
 export type StorefrontStatus = 'ACTIVE' | 'PAUSED_BY_PLAN';
 export type StorefrontOfferStatus = 'DRAFT' | 'PUBLISHED';
-export type StorefrontOfferProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON';
+export type StorefrontOfferProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON' | 'SHEIN';
 export type StorefrontImageKind = 'avatar' | 'cover';
 export type StorefrontViewport = 'mobile' | 'desktop';
 

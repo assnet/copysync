@@ -134,4 +134,10 @@ describe('HttpProductPageReader', () => {
     const out = await new HttpProductPageReader().read({ url: ML });
     expect(out?.title).toBe('Fone X');
   });
+
+  it.each(['https://br.shein.com/Men-Polo-Shirts-p-533885353-cat-1979.html', 'https://m.shein.com/br/x-p-1.html'])('Shein (%s) → null sem rede', async (url) => {
+    const fn = stubFetch(async () => html());
+    expect(await new HttpProductPageReader().read({ url: new URL(url) })).toBeNull();
+    expect(fn).not.toHaveBeenCalled();
+  });
 });

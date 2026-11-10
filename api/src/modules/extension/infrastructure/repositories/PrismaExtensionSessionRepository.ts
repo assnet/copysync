@@ -5,6 +5,9 @@ import type {
 } from '../../domain/contracts/IExtensionSessionRepository';
 import type { ExtensionSession } from '../../domain/entities/ExtensionSession';
 import { PrismaExtensionSessionMapper } from '../mappers/PrismaExtensionSessionMapper';
+import type { ExtensionConsentMarketplace } from '../../domain/constants';
+
+const CONSENT_COLUMN = { ML: 'mlConsentAt', SHEIN: 'sheinConsentAt' } as const satisfies Record<ExtensionConsentMarketplace, string>;
 
 export class PrismaExtensionSessionRepository implements IExtensionSessionRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -39,6 +42,7 @@ export class PrismaExtensionSessionRepository implements IExtensionSessionReposi
     const row = await this.prisma.extensionSession.upsert({
       where: { userId_installationId: { userId, installationId } },
       create: input,
+      // `fields` traz `mlConsentAt` e `sheinConsentAt` (null): re-vínculo nunca herda consentimento.
       update: {
         ...fields,
         prevTokenHash: null,
@@ -89,20 +93,50 @@ export class PrismaExtensionSessionRepository implements IExtensionSessionReposi
     return result.count;
   }
 
-  async revokeMlConsentForTenant(mlTenantId: string): Promise<number> {
+  revokeMlConsentForTenant(mlTenantId: string): Promise<number> {
+    return this.revokeConsentForTenant('ML', mlTenantId);
+  }
+
+  grantMlConsent(userId: string, installationId: string, mlTenantId: string, at: Date): Promise<boolean> {
+    return this.grantConsent('ML', userId, installationId, mlTenantId, at);
+  }
+
+  async revokeConsentForTenant(marketplace: ExtensionConsentMarketplace, mlTenantId: string): Promise<number> {
+    const column = CONSENT_COLUMN[marketplace];
     const result = await this.prisma.extensionSession.updateMany({
-      where: { mlTenantId, mlConsentAt: { not: null } },
-      data: { mlConsentAt: null },
+      where: { mlTenantId, [column]: { not: null } },
+      data: { [column]: null },
     });
     return result.count;
   }
 
-  async grantMlConsent(userId: string, installationId: string, mlTenantId: string, at: Date): Promise<boolean> {
+  async grantConsent(
+    marketplace: ExtensionConsentMarketplace,
+    userId: string,
+    installationId: string,
+    mlTenantId: string,
+    at: Date,
+  ): Promise<boolean> {
     const result = await this.prisma.extensionSession.updateMany({
       where: { userId, installationId, mlTenantId, revokedAt: null },
-      data: { mlConsentAt: at },
+      data: { [CONSENT_COLUMN[marketplace]]: at },
     });
     return result.count > 0;
+  }
+
+  async hasConsent(sessionId: string, marketplace: ExtensionConsentMarketplace): Promise<boolean> {
+    const count = await this.prisma.extensionSession.count({
+      where: { id: sessionId, revokedAt: null, [CONSENT_COLUMN[marketplace]]: { not: null } },
+    });
+    return count > 0;
+  }
+
+  async hasAnyConsentForTenant(mlTenantId: string, marketplace: ExtensionConsentMarketplace): Promise<boolean> {
+    const row = await this.prisma.extensionSession.findFirst({
+      where: { mlTenantId, revokedAt: null, [CONSENT_COLUMN[marketplace]]: { not: null } },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   async deleteExpiredBefore(date: Date): Promise<number> {

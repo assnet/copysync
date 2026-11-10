@@ -142,3 +142,65 @@ describe('UpsertAffiliateSessionUseCase — rejeição', () => {
     expect(d.audit.create).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_CREDENTIAL_REJECTED' }));
   });
 });
+
+describe('UpsertAffiliateSessionUseCase — Shein (token `AT`, ID segue a sessão)', () => {
+  const SHEIN_AAD = `${TENANT}:SHEIN:session`;
+  const shein = (over?: object) => input({
+    provider: 'SHEIN', cookies: { AT: 'at-token-1', memberId: '4320454940' }, csrf: undefined, sessionIdentifier: '4320454940', ...over,
+  });
+  const sheinRecord = (at: string) => ({
+    ...record(cipher.encrypt(JSON.stringify({ cookies: { AT: at, memberId: '4320454940' } }), SHEIN_AAD), '4320454940'),
+    provider: 'SHEIN' as const,
+    rejectedAt: new Date('2026-11-01T00:00:00.000Z'),
+    rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED',
+  });
+
+  it('nova: grava cifrado com AAD SHEIN, ID como override (nunca só-se-vazio) e audita sem o token', async () => {
+    const d = makeDeps(null);
+    await d.useCase.execute(shein());
+    const call = d.repo.upsertSession.mock.calls[0]![0];
+    expect(call).toMatchObject({ provider: 'SHEIN', publicIdentifierOverride: '4320454940' });
+    expect(call).not.toHaveProperty('publicIdentifierIfEmpty');
+    expect(JSON.parse(cipher.decrypt(call.session, SHEIN_AAD)).cookies).toEqual({ AT: 'at-token-1', memberId: '4320454940' });
+    expect(call.session.ciphertext.toString('utf8')).not.toContain('at-token-1');
+    expect(d.audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'AFFILIATE_SESSION_SYNCED' }));
+    expect(JSON.stringify(d.audit.create.mock.calls)).not.toContain('at-token-1');
+  });
+
+  it('mesmo AT: não zera a recusa nem audita de novo (compara `AT`, não `ssid`)', async () => {
+    const d = makeDeps(sheinRecord('at-token-1'));
+    await d.useCase.execute(shein());
+    expect(d.repo.upsertSession.mock.calls[0]![0]).toMatchObject({ clearRejection: false });
+    expect(d.audit.create).not.toHaveBeenCalled();
+  });
+
+  it('AT novo: zera a recusa e audita', async () => {
+    const d = makeDeps(sheinRecord('at-velho'));
+    await d.useCase.execute(shein());
+    expect(d.repo.upsertSession.mock.calls[0]![0]).toMatchObject({ clearRejection: true });
+    expect(d.audit.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('troca de conta: o ID novo vai como override', async () => {
+    const d = makeDeps(sheinRecord('at-velho'));
+    await d.useCase.execute(shein({ cookies: { AT: 'at-2', memberId: '9876543210' }, sessionIdentifier: '9876543210' }));
+    expect(d.repo.upsertSession.mock.calls[0]![0].publicIdentifierOverride).toBe('9876543210');
+  });
+
+  it('sem ID da sessão ou ID fora do formato: 422 sem gravar; affiliateTag é ignorada', async () => {
+    for (const over of [{ sessionIdentifier: undefined }, { sessionIdentifier: 'abc' }]) {
+      const d = makeDeps(null);
+      await expect(d.useCase.execute(shein(over))).rejects.toMatchObject({ statusCode: 422 });
+      expect(d.repo.upsertSession).not.toHaveBeenCalled();
+    }
+    const tagged = makeDeps(null);
+    await tagged.useCase.execute(shein({ affiliateTag: '1234567' }));
+    expect(tagged.repo.upsertSession.mock.calls[0]![0]).not.toHaveProperty('publicIdentifierIfEmpty');
+  });
+
+  it('ML não recebe override', async () => {
+    const d = makeDeps(null);
+    await d.useCase.execute(input({ sessionIdentifier: '4320454940' }));
+    expect(d.repo.upsertSession.mock.calls[0]![0]).not.toHaveProperty('publicIdentifierOverride');
+  });
+});

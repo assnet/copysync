@@ -25,8 +25,20 @@ describe('AffiliateConnectionSummary', () => {
     }));
     renderWithTheme(<AffiliateConnectionSummary entries={entries} />);
 
-    expect(screen.getByText('1 de 3 marketplaces conectados')).toBeInTheDocument();
+    expect(screen.getByText('1 de 4 marketplaces conectados')).toBeInTheDocument();
     expect(screen.getByLabelText('Shopee conectado')).toBeInTheDocument();
     expect(screen.getByLabelText('Amazon não conectado')).toBeInTheDocument();
+  });
+
+  it('marketplace travado pelo plano não entra na conta', () => {
+    const entries = AFFILIATE_PROVIDERS.map((spec) => ({
+      spec,
+      item: spec.provider === 'SHOPEE' ? item('SHOPEE', 'ACTIVE') : undefined,
+      availability: spec.provider === 'SHEIN' ? { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: null } : undefined,
+    }));
+    renderWithTheme(<AffiliateConnectionSummary entries={entries} />);
+
+    expect(screen.getByText('1 de 3 marketplaces conectados')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Shein não conectado')).not.toBeInTheDocument();
   });
 });

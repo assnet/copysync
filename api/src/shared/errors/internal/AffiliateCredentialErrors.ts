@@ -14,3 +14,13 @@ export class AffiliateCredentialInvalidError extends AppError {
     super('AFFILIATE_CREDENTIAL_INVALID', reason, 422, field ? { field } : undefined);
   }
 }
+
+/**
+ * Provider cujo ID segue a sessão (Shein) só desconecta pela rota do marketplace, que revoga o
+ * consentimento antes de apagar: senão o próximo sync da extensão recriaria a credencial.
+ */
+export class UseMarketplaceDisconnectError extends AppError {
+  constructor(provider: string) {
+    super('USE_MARKETPLACE_DISCONNECT', `Disconnect this marketplace through its own route: ${provider}`, 409, { provider });
+  }
+}

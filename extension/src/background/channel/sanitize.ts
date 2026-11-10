@@ -6,6 +6,8 @@ import { BLOCKED_FIELDS } from '../constants.js';
  * the channel to the panel.
  */
 
+// Comparação sem caixa é intencional: bloqueia também `Ssid`, `at`, `MEMBERID`... (mais restritivo
+// que o nome exato do cookie). Não trocar por igualdade exata.
 const BLOCKED_SET = new Set(BLOCKED_FIELDS.map(f => f.toLowerCase()));
 
 const sanitizeValue = (value: unknown): unknown => {

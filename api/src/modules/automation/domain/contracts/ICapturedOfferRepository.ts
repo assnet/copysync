@@ -58,4 +58,6 @@ export interface ICapturedOfferRepository {
   resetForRetry(tenantId: string, id: string): Promise<boolean>;
   /** Lojas com captura `SKIPPED/CREDENTIAL_MISSING` desde `since` (aviso "sem credencial" no monitoramento). */
   listRecentMissingProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]>;
+  /** Lojas com captura `SKIPPED/MARKETPLACE_RISK_NOT_ACCEPTED` desde `since` (aviso "aceite pendente"). */
+  listRecentRiskNotAcceptedProviders(tenantId: string, since: Date): Promise<AffiliateProvider[]>;
 }

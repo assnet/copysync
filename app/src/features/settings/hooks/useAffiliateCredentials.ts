@@ -4,6 +4,7 @@ import type {
   AffiliateCredentialItem,
   AffiliateCredentialStatus,
   AffiliateProvider,
+  MarketplaceAvailability,
   UpsertAffiliateCredentialRequest,
 } from '@/types/api.types';
 import { AFFILIATE_PROVIDERS, type AffiliateProviderSpec } from '../affiliateProviders';
@@ -12,6 +13,8 @@ import { affiliateErrorMessage } from '../strings';
 export interface AffiliateCredentialEntry {
   spec: AffiliateProviderSpec;
   item?: AffiliateCredentialItem;
+  /** Plano e aviso de risco (só marketplaces com restrição, ex.: Shein). Ausente = sem restrição. */
+  availability?: MarketplaceAvailability;
 }
 
 type ItemsByProvider = Partial<Record<AffiliateProvider, AffiliateCredentialItem>>;
@@ -28,29 +31,47 @@ function isNotFound(err: unknown): boolean {
 
 export function useAffiliateCredentials() {
   const [items, setItems] = useState<ItemsByProvider>({});
+  const [availability, setAvailability] = useState<Partial<Record<AffiliateProvider, MarketplaceAvailability>>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Partial<Record<AffiliateProvider, boolean>>>({});
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const loadSeqRef = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
+  /**
+   * `silent`: recarrega sem trocar a tela pelo spinner (os cards seguem montados — a espera pelo
+   * clique na extensão vive no card Shein). Falha silenciosa vira `actionError`, não erro de página.
+   */
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    // Guarda de ordem: só a resposta da carga mais recente vale (uma antiga que chega depois é descartada).
+    const seq = ++loadSeqRef.current;
+    if (!silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
     try {
       const list = await affiliateCredentialService.list();
-      setItems(Object.fromEntries(list.map((i) => [i.provider, i])) as ItemsByProvider);
+      if (seq !== loadSeqRef.current) return;
+      setItems(Object.fromEntries(list.items.map((i) => [i.provider, i])) as ItemsByProvider);
+      setAvailability(list.marketplaceAvailability);
     } catch (err) {
-      setLoadError(affiliateErrorMessage(err));
+      if (seq !== loadSeqRef.current) return;
+      if (silent) setActionError(affiliateErrorMessage(err));
+      else setLoadError(affiliateErrorMessage(err));
     } finally {
-      setLoading(false);
+      // A mais recente encerra o spinner mesmo se for silenciosa (a não silenciosa pode ter sido descartada).
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const refreshSilently = useCallback(() => load({ silent: true }), [load]);
 
   const setOne = (provider: AffiliateProvider, item: AffiliateCredentialItem | undefined) =>
     setItems((prev) => {
@@ -99,8 +120,10 @@ export function useAffiliateCredentials() {
   }, []);
 
   const entries: AffiliateCredentialEntry[] = useMemo(
-    () => AFFILIATE_PROVIDERS.map((spec) => ({ spec, item: items[spec.provider] })),
-    [items],
+    () => AFFILIATE_PROVIDERS.map((spec) => ({
+      spec, item: items[spec.provider], availability: availability[spec.provider],
+    })),
+    [items, availability],
   );
 
   return {
@@ -108,6 +131,7 @@ export function useAffiliateCredentials() {
     loading,
     loadError,
     reload: load,
+    refreshSilently,
     busy,
     upsert,
     remove,

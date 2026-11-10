@@ -1,4 +1,6 @@
 import type { SvgIconComponent } from '@mui/icons-material';
+import type { LucideIcon } from 'lucide-react';
+import { Link2, Puzzle, UserCheck } from 'lucide-react';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined';
 import PaidOutlinedIcon from '@mui/icons-material/PaidOutlined';
@@ -22,9 +24,20 @@ export interface AffiliateFieldSpec {
   placeholder?: string;
 }
 
+/**
+ * Ícone do destaque: MUI (marketplaces antigos) ou Lucide (novos, renderizado por `AppIcon`).
+ * A migração dos antigos para Lucide fica fora desta feature.
+ */
+export type AffiliateHighlightIcon = SvgIconComponent | LucideIcon;
+
 export interface AffiliateHighlight {
-  icon: SvgIconComponent;
+  icon: AffiliateHighlightIcon;
   text: string;
+}
+
+/** Ícone MUI tem `muiName` (de `createSvgIcon`); Lucide não. */
+export function isMuiIcon(icon: AffiliateHighlightIcon): icon is SvgIconComponent {
+  return typeof (icon as { muiName?: unknown }).muiName === 'string';
 }
 
 export interface AffiliateProviderSpec {
@@ -41,11 +54,19 @@ export interface AffiliateProviderSpec {
   brandColor: string;
   /** O que a conexão faz, em 3 linhas curtas com ícone. */
   highlights: readonly AffiliateHighlight[];
-  publicField: AffiliateFieldSpec;
+  /** Ausente quando o ID vem da sessão (`identifierFromSession`): nada a digitar. */
+  publicField?: AffiliateFieldSpec;
   /** Ausente quando o programa não tem chave secreta. */
   secretField?: AffiliateFieldSpec;
-  /** Sessão vem da extensão do navegador (Mercado Livre). */
+  /** Sessão vem da extensão do navegador (Mercado Livre, Shein). */
   usesBrowserSession: boolean;
+  /**
+   * O ID de afiliado segue a sessão (Shein): sem campo editável, e desconectar/remover usa a rota
+   * da extensão (`disconnect`), nunca o DELETE genérico (a API devolve 409).
+   */
+  identifierFromSession?: boolean;
+  /** Segmento da extensão (`/extension/marketplaces/<id>`) quando `usesBrowserSession`. */
+  extensionMarketplace?: 'ml' | 'shein';
   /** Guia do diálogo: programa de afiliados (nome e painel oficial) e, se houver, link de ajuda. */
   setup?: { program: string; url: string; helpUrl?: string };
   /** Prévia do link de afiliado com o identificador digitado (só quando o formato é válido). */
@@ -92,6 +113,7 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
       pattern: /^[A-Za-z0-9._-]{2,64}$/,
     },
     usesBrowserSession: true,
+    extensionMarketplace: 'ml',
   },
   {
     provider: 'AMAZON',
@@ -113,6 +135,21 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     usesBrowserSession: false,
     setup: { program: 'Amazon Associados', url: 'https://associados.amazon.com.br/' },
     linkPreview: (tag) => `amazon.com.br/dp/B0XXXXXXXX?tag=${tag}`,
+  },
+  {
+    provider: 'SHEIN',
+    name: 'Shein',
+    description: providerDescriptions.SHEIN,
+    logo: '/assets/marketplaces/shein.svg',
+    brandColor: '#000000',
+    highlights: [
+      { icon: Puzzle, text: hl.SHEIN[0] },
+      { icon: Link2, text: hl.SHEIN[1] },
+      { icon: UserCheck, text: hl.SHEIN[2] },
+    ],
+    usesBrowserSession: true,
+    identifierFromSession: true,
+    extensionMarketplace: 'shein',
   },
 ];
 

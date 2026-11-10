@@ -27,7 +27,7 @@ const amazon: AffiliateCredentialItem = {
 };
 
 async function setup() {
-  service.list.mockResolvedValue([amazon]);
+  service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {} });
   const hook = renderHook(() => useAffiliateCredentials());
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   return hook;
@@ -39,7 +39,7 @@ const itemOf = (h: Awaited<ReturnType<typeof setup>>, p: string) =>
 describe('useAffiliateCredentials', () => {
   it('mescla a lista com o catálogo dos três marketplaces', async () => {
     const h = await setup();
-    expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON']);
+    expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN']);
     expect(itemOf(h, 'AMAZON')).toEqual(amazon);
     expect(itemOf(h, 'SHOPEE')).toBeUndefined();
   });
@@ -93,5 +93,44 @@ describe('useAffiliateCredentials', () => {
     });
 
     expect(itemOf(h, 'SHOPEE')).toBeUndefined();
+  });
+  it('duas cargas: a primeira termina depois e é descartada (vale a segunda)', async () => {
+    const h = await setup();
+    let resolveFirst!: (v: unknown) => void;
+    let resolveSecond!: (v: unknown) => void;
+    service.list
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }))
+      .mockImplementationOnce(() => new Promise((r) => { resolveSecond = r; }));
+    const fresh = { ...amazon, publicIdentifierMasked: '••novo' };
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => { first = h.result.current.reload(); });
+    act(() => { second = h.result.current.refreshSilently(); });
+    await act(async () => { resolveSecond({ items: [fresh], marketplaceAvailability: {} }); await second; });
+    await act(async () => { resolveFirst({ items: [], marketplaceAvailability: {} }); await first; });
+
+    expect(itemOf(h, 'AMAZON')).toEqual(fresh);
+    expect(h.result.current.loading).toBe(false);
+    expect(h.result.current.loadError).toBeNull();
+  });
+
+  it('refreshSilently não liga o spinner e atualiza os dados', async () => {
+    const seen: boolean[] = [];
+    service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {} });
+    const h = renderHook(() => {
+      const r = useAffiliateCredentials();
+      seen.push(r.loading);
+      return r;
+    });
+    await waitFor(() => expect(h.result.current.loading).toBe(false));
+    seen.length = 0;
+    const updated = { ...amazon, status: 'INACTIVE' as const };
+    service.list.mockResolvedValue({ items: [updated], marketplaceAvailability: {} });
+
+    await act(() => h.result.current.refreshSilently());
+
+    expect(seen).not.toContain(true);
+    expect(h.result.current.entries.find((e) => e.spec.provider === 'AMAZON')?.item).toEqual(updated);
   });
 });
