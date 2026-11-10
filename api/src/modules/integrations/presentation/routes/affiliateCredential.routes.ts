@@ -11,6 +11,10 @@ import { DeleteAffiliateCredentialUseCase } from '../../application/use-cases/De
 import { SetAffiliateCredentialStatusUseCase } from '../../application/use-cases/SetAffiliateCredentialStatusUseCase';
 import { UpsertAffiliateSessionUseCase } from '../../application/use-cases/UpsertAffiliateSessionUseCase';
 import { AffiliateCredentialPresenter } from '../presenters/AffiliateCredentialPresenter';
+import { prismaMarketplaceRiskAcceptTransaction } from '../../infrastructure/marketplaceRiskTransaction';
+import { AcceptMarketplaceRiskUseCase } from '../../application/use-cases/AcceptMarketplaceRiskUseCase';
+import { MarketplaceRiskPresenter } from '../presenters/MarketplaceRiskPresenter';
+import { acceptMarketplaceRiskBodySchema, acceptMarketplaceRiskResponse } from '../schemas/marketplaceRisk.schema';
 import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
 import type { AffiliateCredentialStatus } from '../../domain/enums/AffiliateCredentialStatus';
 import {
@@ -33,6 +37,7 @@ const upsertUseCase = new UpsertAffiliateCredentialUseCase(repo, cipher, auditRe
 const deleteUseCase = new DeleteAffiliateCredentialUseCase(repo, auditRepo);
 const setStatusUseCase = new SetAffiliateCredentialStatusUseCase(repo);
 const upsertSessionUseCase = new UpsertAffiliateSessionUseCase(repo, cipher, auditRepo);
+const acceptRiskUseCase = new AcceptMarketplaceRiskUseCase(prismaMarketplaceRiskAcceptTransaction);
 
 const preHandler = [authHook, tenantHook];
 const tags = ['Integrations'];
@@ -147,6 +152,33 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
         ...request.body,
       });
       httpResponse.ok(reply, AffiliateCredentialPresenter.toSessionSync(credential));
+    },
+  );
+  app.post<ProviderParams & { Body: { noticeVersion: string; locale: string } }>(
+    '/:provider/risk-acceptance',
+    {
+      preHandler,
+      schema: {
+        tags,
+        summary: 'Aceitar o aviso de risco vigente do marketplace (só admin do tenant)',
+        params: affiliateProviderParamSchema,
+        body: acceptMarketplaceRiskBodySchema,
+        response: { 200: acceptMarketplaceRiskResponse },
+      },
+    },
+    async (request, reply) => {
+      const { tenantId, userId, role, isSuperAdmin } = request.tenantContext;
+      const result = await acceptRiskUseCase.execute({
+        tenantId,
+        userId,
+        role,
+        isSuperAdmin,
+        provider: request.params.provider,
+        noticeVersion: request.body.noticeVersion,
+        locale: request.body.locale,
+      });
+      httpResponse.ok(reply, MarketplaceRiskPresenter.toAccepted(result));
+      return reply;
     },
   );
 }

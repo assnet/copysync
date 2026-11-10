@@ -1,12 +1,14 @@
 import type { AffiliateProvider } from '../enums/AffiliateProvider';
 
 /**
- * Campos de cada programa de afiliados (verificado em T0, 2026-10-22). Nenhum dos três publica
+ * Campos de cada programa de afiliados (verificado em T0, 2026-10-22). Nenhum publica
  * formato oficial: as regras são permissivas de propósito, para não recusar valor real.
  *
  * - Shopee Affiliate Open API: "AppID" (numérico) + "Secret" (assina `sha256(appId+ts+payload+secret)`)
  * - Mercado Livre: etiqueta do afiliado (`matt_word` no link); sem segredo — a sessão vem da extensão
  * - Amazon Associados: "ID de rastreamento" (`?tag=`, ex. `minhaloja-20`); sem segredo
+ * - Shein: ID de afiliado (`memberId`, numérico; `url_from=affiliate_koc_<id>`); sem segredo — vem da
+ *   sessão da extensão e acompanha a conta logada (não é digitado)
  */
 export interface AffiliateProviderFields {
   publicIdentifier: { pattern: RegExp; maxLength: number };
@@ -31,6 +33,11 @@ export const AFFILIATE_PROVIDER_FIELDS: Record<AffiliateProvider, AffiliateProvi
     secret: null,
     usesSession: false,
   },
+  SHEIN: {
+    publicIdentifier: { pattern: /^\d{6,15}$/, maxLength: 15 },
+    secret: null,
+    usesSession: true,
+  },
 };
 
 export function providerRequiresSecret(provider: AffiliateProvider): boolean {
@@ -39,6 +46,11 @@ export function providerRequiresSecret(provider: AffiliateProvider): boolean {
 
 export function providerUsesSession(provider: AffiliateProvider): boolean {
   return AFFILIATE_PROVIDER_FIELDS[provider].usesSession;
+}
+
+/** O identificador público é o da conta da sessão (troca de conta troca o ID); só a Shein. */
+export function providerIdentifierFollowsSession(provider: AffiliateProvider): boolean {
+  return provider === 'SHEIN';
 }
 
 /** Valor já com `trim`, ou null se vazio/fora do formato. */
