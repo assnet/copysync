@@ -21,7 +21,7 @@ function when(iso: string | null): string {
 
 /**
  * Aviso por loja no topo do monitoramento: sem credencial (capturas ignoradas) ou recusada
- * (loja pausada). Linha compacta tintada: ícone, título curto, detalhe e ação. Nada sensível aqui:
+ * (loja pausada) ou com aviso de risco não aceito (loja pausada). Linha compacta tintada: ícone, título curto, detalhe e ação. Nada sensível aqui:
  * só o nome da loja e a data. Lista vazia não renderiza nada.
  */
 export function CredentialAlerts({ alerts }: { alerts: readonly CredentialAlertItem[] | undefined }) {
@@ -34,6 +34,7 @@ export function CredentialAlerts({ alerts }: { alerts: readonly CredentialAlertI
       {alerts.map((a) => {
         const name = monitoringStrings.captured.marketplace[a.provider];
         const rejected = a.kind === 'REJECTED';
+        const risk = a.kind === 'RISK_NOT_ACCEPTED';
         const tone = rejected ? 'error' : 'warning';
         const surface = toneSurface(theme, tone);
         const since = rejected && a.since ? t.since(when(a.since)) : null;
@@ -53,10 +54,10 @@ export function CredentialAlerts({ alerts }: { alerts: readonly CredentialAlertI
               </Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2" component="p" sx={{ fontWeight: 700, color: surface.color }}>
-                  {rejected ? t.titleRejected(name) : t.titleMissing(name)}
+                  {rejected ? t.titleRejected(name) : risk ? t.titleRiskNotAccepted(name) : t.titleMissing(name)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {rejected ? t.rejectedDetail : t.missingDetail} {t.hint[a.provider]}
+                  {risk ? t.riskNotAcceptedDetail : <>{rejected ? t.rejectedDetail : t.missingDetail} {t.hint[a.provider]}</>}
                   {since && <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>{` ${since}.`}</Box>}
                 </Typography>
               </Box>

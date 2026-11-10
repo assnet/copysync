@@ -21,6 +21,7 @@ import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { AdminRedirectLinksPage } from '@/pages/admin/AdminRedirectLinksPage';
+import { AdminPlanEntitlementsPage } from '@/pages/admin/AdminPlanEntitlementsPage';
 import { RedirectPage } from '@/pages/RedirectPage';
 import { ThankYouPage } from '@/pages/ThankYouPage';
 import { THANK_YOU_PATH } from '@/features/thankYou/strings';
@@ -107,6 +108,7 @@ export function AppRoutes() {
             <Route path="/admin/workers" element={<AdminWorkersPage />} />
             <Route path="/admin/workers/usage" element={<AdminWorkersPage />} />
             <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
+            <Route path="/admin/plan-entitlements" element={<AdminPlanEntitlementsPage />} />
           </Route>
         </Route>
       </Route>

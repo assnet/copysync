@@ -185,7 +185,7 @@ export interface ChangePasswordRequest {
 
 // ── Affiliate credentials ────────────────────────────────────────────────────
 
-export type AffiliateProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON';
+export type AffiliateProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON' | 'SHEIN';
 
 export type AffiliateCredentialStatus = 'ACTIVE' | 'INACTIVE';
 
@@ -688,8 +688,9 @@ export interface GroupMonitorConfigResponse {
 
 export interface CredentialAlertItem {
   provider: AffiliateProvider;
-  kind: 'MISSING' | 'REJECTED';
-  /** `rejectedAt` (REJECTED); null em MISSING. */
+  /** RISK_NOT_ACCEPTED: marketplace com aviso de risco ainda não aceito na versão vigente. */
+  kind: 'MISSING' | 'REJECTED' | 'RISK_NOT_ACCEPTED';
+  /** `rejectedAt` (REJECTED); null em MISSING e RISK_NOT_ACCEPTED. */
   since: string | null;
   code: string | null;
 }
@@ -716,6 +717,8 @@ export type CapturedOfferReason =
   | 'UNSUPPORTED_MARKETPLACE'
   | 'CREDENTIAL_MISSING'
   | 'CREDENTIAL_REJECTED'
+  | 'MARKETPLACE_PLAN_UNAVAILABLE'
+  | 'MARKETPLACE_RISK_NOT_ACCEPTED'
   | 'LINK_RESOLVE_FAILED'
   | 'EXPIRED'
   | 'MONITOR_DISABLED'

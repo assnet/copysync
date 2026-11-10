@@ -17,6 +17,7 @@ const PROVIDER_LABELS: Record<StorefrontOfferProvider, string> = {
   SHOPEE: 'Shopee',
   MERCADO_LIVRE: 'Mercado Livre',
   AMAZON: 'Amazon',
+  SHEIN: 'Shein',
 };
 
 export const storefrontStrings = {

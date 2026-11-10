@@ -33,7 +33,7 @@ describe('buildNavigation', () => {
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('available');
     expect(crm.children.map((c) => c.path)).toEqual(['/chat']);
-    expect(model.platform.map((l) => l.path)).toEqual(['/admin/ai', '/admin/link-domains', '/admin/workers', '/admin/redirect-links']);
+    expect(model.platform.map((l) => l.path)).toEqual(['/admin/ai', '/admin/link-domains', '/admin/workers', '/admin/redirect-links', '/admin/plan-entitlements']);
   });
 
   it('nenhum rótulo leva nome de marca', () => {

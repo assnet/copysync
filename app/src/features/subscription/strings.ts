@@ -35,6 +35,7 @@ export const SUBSCRIPTION_LIMIT_KEYS = [
   'offer_story_enabled',
   'enrich_link_only_enabled',
   'capture_outside_window_enabled',
+  'marketplace_shein_enabled',
 ] as const;
 
 export type SubscriptionLimitKey = (typeof SUBSCRIPTION_LIMIT_KEYS)[number];
@@ -65,6 +66,7 @@ const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
   offer_story_enabled: 'max',
   enrich_link_only_enabled: 'pro',
   capture_outside_window_enabled: 'max',
+  marketplace_shein_enabled: 'max',
   ai_rewrite_enabled: 'pro',
   marketplace_extension: 'lite',
   offer_generations_per_day: 'lite',
@@ -189,5 +191,6 @@ export const subscriptionStrings = {
     offer_story_enabled: { label: 'Story de Oferta', hint: 'Arte da oferta pronta para os stories do Instagram.' },
     enrich_link_only_enabled: { label: 'Oferta montada a partir só do link', hint: PLAN_HINTS.enrichLinkOnly },
     capture_outside_window_enabled: { label: 'Captura fora do horário', hint: PLAN_HINTS.captureOutsideWindow },
+    marketplace_shein_enabled: { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate },
   } satisfies Record<SubscriptionLimitKey, { label: string; hint: string }>,
 };

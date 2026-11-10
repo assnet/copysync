@@ -31,6 +31,8 @@ export const navigationStrings = {
     affiliateCredentials: 'Credenciais de afiliado',
     chat: 'Chat',
     settings: 'Configurações',
+    /** Super admin: recursos liberados por plano. */
+    planEntitlements: 'Recursos por plano',
   },
 
   aria: {
