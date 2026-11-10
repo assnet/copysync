@@ -55,6 +55,10 @@ export const plansStrings = {
     title: 'Escolha seu plano',
     lead: 'Monitoramento, disparo e links de afiliado em todos os planos.',
     leadDetail: 'O que muda é quantos grupos e canais você opera ao mesmo tempo.',
+    marketplaces: 'Marketplaces integrados',
+    /** Selo da Shein no banner: igual ao `exclusive` do MAX em `catalog.ts`. */
+    sheinPlan: 'MAX',
+    sheinTooltip: 'Shein: disponível no plano MAX',
   },
 
   period: {

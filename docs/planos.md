@@ -82,6 +82,7 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 - **Página, não modal** (decisão do owner em 2026-10-28, muda a spec). Os avisos de limite (`PLAN_LIMIT_REACHED`)
   vão linkar para `/plans` quando entrarem.
 - **Sem dado sensível** na tela: sem flag de privacidade. Se um chip com nome do tenant entrar, aí sim.
+- **Logos dos marketplaces integrados** no banner (`PlansHero`): lista vem de `AFFILIATE_PROVIDERS` (marketplace novo entra sozinho), logo via `MarketplaceLogo`, nome no `Tooltip` (hover) e em texto oculto para leitor de tela, sem foco (logo não é ação). Nome da marca vem de `affiliateProviders.ts` (marca de terceiro, não traduz). Shein leva selo `MAX` (texto de marketing, igual ao `exclusive` de `catalog.ts`); se o super admin liberar no PRO, atualizar `hero.sheinPlan`/`sheinTooltip` em `strings.ts` junto com o catálogo.
 - **Toggle mensal/anual** no banner, anual por padrão (como no Pulso). Período em `usePersistedState('plans.period')`.
   Preço anual = `priceAnnualMonthly` por plano (≈ −20%, arredondado: 77/133/197). **Provisório** até o owner fixar o
   valor; mudar só no `catalog.ts` e em `ANNUAL_DISCOUNT` (selo do toggle).

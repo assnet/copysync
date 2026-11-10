@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [app 0.96.0] — 2026-11-10 — Planos: logos dos marketplaces no banner
+
+### Added
+
+#### Painel (app/)
+
+- **`PlansHero.tsx`** — banner da vitrine de planos mostra as logos de Shopee, Mercado Livre, Amazon e Shein (lista de `AFFILIATE_PROVIDERS`), com nome no tooltip e no leitor de tela; Shein com selo `MAX`. Textos em `features/plans/strings.ts`; teste em `PlansHero.test.tsx` (claro e escuro).
+
 ## [app 0.95.1] — 2026-11-10 — Credenciais: 4 cards numa linha no desktop
 
 ### Fixed
