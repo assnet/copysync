@@ -7,7 +7,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
-## [Unreleased]
+## [0.75.0] — 2026-11-09 — Dashboard de consumo (séries e valores atuais)
 
 ### Added
 
@@ -129,7 +129,7 @@ Tudo atrás de flags desligadas por padrão. Gates de produção de A, B e C seg
 
 ---
 
-## [Unreleased]
+## [0.75.0] — 2026-11-09 — Dashboard de consumo (séries e valores atuais)
 
 ### Fixed — app 0.82.1 — Conferência visual e testes estáveis
 
