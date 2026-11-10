@@ -7,6 +7,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.78.2 · app 0.96.3] — 2026-11-10 — Extensão reinstalada volta a conectar
+
+### Fixed
+
+#### API — `extension`
+
+- **`extensionAuthHook.ts`** — cookie de sessão sobrevive à reinstalação da extensão (novo `installationId`): a instalação nova parecia vinculada, o assistente pulava "Vincular" e o consentimento por instalação dava 404 (ML "A sincronização falhou no servidor", Shein "vinculada a outro usuário"; heartbeat creditado à instalação antiga). Agora `X-Installation-Id` ≠ instalação da sessão → 401 `INVALID_EXT_SESSION`: a extensão se declara sem vínculo e o painel oferece "Vincular". Teste em `extensionHooks.test.ts`.
+
+#### Painel (app/) — `extension`, `settings`
+
+- **`ExtensionSetupWizard.tsx`** — 404 `SESSION_NOT_FOUND` no sync volta para "Vincular" com `errors.relinkRequired`; "Pular por enquanto" limpa o erro; "Pronto" sem sync mostra `doneHintNotSynced` em vez de prometer renovação automática.
+- **`strings.ts`** (extension e settings) — `relinkRequired`, `doneHintNotSynced`; `noLinkError` deixa de afirmar "outro usuário" (o caso comum é reinstalação). Docs: `docs/extensao-navegador.md`.
+
 ## [app 0.96.2] — 2026-11-10 — Extensão: desconectar volta a funcionar
 
 ### Fixed

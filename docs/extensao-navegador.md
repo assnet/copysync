@@ -154,6 +154,15 @@ reaplica a cadeia completa.
 | `PUT /api/extension/marketplaces/shein/session` | Cookie + consentimento Shein + aceite + entitlement | `{ cookies: { AT, memberId }, capturedAt }` | `{ affiliateId }` (nunca o token) |
 | `DELETE /api/extension/marketplaces/shein/session` | Bearer + X-Tenant-Id (painel) | — | revoga o consentimento Shein do tenant e apaga a credencial inteira (204, idempotente) |
 
+**Extensão reinstalada (api 0.78.2 / app 0.96.3):** reinstalar gera outro `installationId`, mas o cookie da sessão
+fica no navegador. `extensionAuthHook` recusa (401 `INVALID_EXT_SESSION`) cookie cuja sessão é de outra instalação
+(`X-Installation-Id` ≠ `session.installationId`). Sem isso a instalação nova parecia vinculada (handshake autenticado,
+heartbeat creditado à antiga, marcada `UNINSTALLED`), o assistente pulava "Vincular" e o consentimento por instalação
+dava 404 `SESSION_NOT_FOUND`: ML "falhou no servidor" e Shein "vinculada a outro usuário" (produção, 2026-11-10). Com o
+401 a extensão se declara sem vínculo e o painel oferece "Vincular". Rede de segurança no assistente: 404
+`SESSION_NOT_FOUND` no sync volta para "Vincular" (`errors.relinkRequired`). Não remover a checagem nem autenticar a
+extensão só pelo cookie. "Pular por enquanto" limpa o erro e o "Pronto" não promete renovação sem sync (`doneHintNotSynced`).
+
 **Desconectar extensão (painel):** `GET /api/extension/sessions` → sessão(ões) da `installationId` do handshake →
 `DELETE /api/extension/sessions/:id` (Bearer), depois `session.changed` para a extensão descartar o perfil em cache
 (`extensionApi.revokeSession(installationId)`, app 0.96.2). Não chamar `DELETE /api/extension/session` do painel: o

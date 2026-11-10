@@ -53,6 +53,30 @@ describe('ExtensionSetupWizard', () => {
     expect(await screen.findByText(extensionStrings.wizard.doneTitle)).toBeInTheDocument();
   });
 
+  it('sync com vínculo de outra instalação (404 SESSION_NOT_FOUND) volta para Vincular com aviso', async () => {
+    const user = userEvent.setup();
+    const syncMl = vi.fn().mockRejectedValue(Object.assign(new Error('x'), { code: 'SESSION_NOT_FOUND' }));
+    ext.value = { status: 'connected', loading: false, handshake: { extVersion: '3.4.0', installationId: 'inst-2' }, syncMl };
+    renderWithTheme(<ExtensionSetupWizard source="ml_wizard" marketplace="ml" onComplete={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: extensionStrings.wizard.syncAction }));
+    expect(await screen.findByText(extensionStrings.errors.relinkRequired)).toBeInTheDocument();
+    expect(screen.getByText(extensionStrings.wizard.connectTitle)).toBeInTheDocument();
+  });
+
+  it('pular o sync depois de erro: Pronto sem o erro e sem prometer renovação automática', async () => {
+    const user = userEvent.setup();
+    const syncMl = vi.fn().mockRejectedValue(new Error('x'));
+    ext.value = { status: 'connected', loading: false, handshake: { extVersion: '3.4.0', installationId: 'inst-1' }, syncMl };
+    renderWithTheme(<ExtensionSetupWizard source="ml_wizard" marketplace="ml" onComplete={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: extensionStrings.wizard.syncAction }));
+    await waitFor(() => expect(syncMl).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: extensionStrings.wizard.syncSkip }));
+    expect(await screen.findByText(extensionStrings.wizard.doneHintNotSynced)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('Shein: só vincula, sem consentimento do ML nem sync', async () => {
     const user = userEvent.setup();
     const connect = vi.fn().mockResolvedValue(undefined);
