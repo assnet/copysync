@@ -88,6 +88,8 @@ export const PLAN_HINTS = {
   telegramLinkRotation:
     'Um link fixo para divulgar nas redes que distribui os visitantes entre os seus grupos e canais do Telegram, sempre para um com vaga. Para gerar o convite ou colar o link, sua conta precisa ser admin do grupo ou canal.',
   mentionAll: 'Marca todos os participantes do grupo no disparo para aumentar a visualização.',
+  captureOutsideWindow: 'Fora do horário de postagem o monitoramento continua capturando: as ofertas ficam na fila e saem assim que o horário abrir.',
+  enrichLinkOnly: 'No monitoramento, mensagem que chega só com o link vira oferta completa, com título, preço e foto do produto.',
   storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
   crossSession:
@@ -152,6 +154,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       telegramLinkRotation(1, 5),
       { label: 'Ofertas circulando entre WhatsApp e Telegram', hint: PLAN_HINTS.bothChannels },
       { label: 'Menção a todos os participantes', hint: PLAN_HINTS.mentionAll },
+      { label: 'Oferta montada a partir só do link', hint: PLAN_HINTS.enrichLinkOnly },
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Suporte prioritário 24/7' },
     ],
@@ -187,6 +190,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       TELEGRAM_GROUPS_CHANNELS,
       telegramLinkRotation(2, 10),
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
+      { label: 'Captura fora do horário de postagem', hint: PLAN_HINTS.captureOutsideWindow, exclusive: true },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
     ],

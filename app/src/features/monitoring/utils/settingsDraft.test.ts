@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GroupMonitorSettings } from '@/types/api.types';
 import {
-  LIMITS, TEXT_MODES, draftToSettings, isDraftDirty, settingsToDraft, sliderMinutesToSeconds, textModeForKey,
+  LIMITS, TEXT_MODES, draftToSettings, effectiveDraft, isDraftDirty, settingsToDraft, sliderMinutesToSeconds, textModeForKey,
 } from './settingsDraft';
 
 const saved: GroupMonitorSettings = {
@@ -33,17 +33,28 @@ describe('settingsDraft', () => {
     expect(isDraftDirty({ ...settingsToDraft(saved), audience: 'YOUNG' as never }, saved)).toBe(false);
     expect(isDraftDirty({ ...settingsToDraft(saved), textMode: 'AI' }, saved)).toBe(true);
     // "Mencionar todos" travado pelo plano: rascunho antigo com true não vira "não salvo" fantasma
-    expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, saved, false)).toBe(false);
-    expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, { ...saved, mentionAll: true }, false)).toBe(false);
-    expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, saved, true)).toBe(true);
+    expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, saved, { mentionAll: false })).toBe(false);
+    expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, { ...saved, mentionAll: true }, { mentionAll: false })).toBe(false);
+    expect(isDraftDirty({ ...settingsToDraft(saved), mentionAll: true }, saved, { mentionAll: true })).toBe(true);
   });
 
-  it('formato da imagem: padrão MEDIA quando a API não manda; troca deixa o rascunho sujo e vai no envio', () => {
+  it('formato da imagem: padrão prévia do link; MEDIA salvo vale como prévia (indisponível) e não suja o rascunho', () => {
     const { imageMode: _omit, ...legacy } = saved;
-    expect(settingsToDraft(legacy as GroupMonitorSettings).imageMode).toBe('MEDIA');
-    const draft = { ...settingsToDraft(saved), imageMode: 'LINK_PREVIEW' as const };
-    expect(isDraftDirty(draft, saved)).toBe(true);
-    expect(draftToSettings(draft).imageMode).toBe('LINK_PREVIEW');
+    expect(settingsToDraft(legacy as GroupMonitorSettings).imageMode).toBe('LINK_PREVIEW');
+    expect(settingsToDraft(saved).imageMode).toBe('LINK_PREVIEW');
+    expect(draftToSettings(settingsToDraft(saved)).imageMode).toBe('LINK_PREVIEW');
+    expect(isDraftDirty(settingsToDraft(saved), saved)).toBe(false);
+    expect(isDraftDirty({ ...settingsToDraft(saved), imageMode: 'MEDIA' }, { ...saved, imageMode: 'LINK_PREVIEW' })).toBe(true);
+  });
+
+  it('"montar oferta só com link" travado pelo plano: rascunho com true não suja; efetivo envia false', () => {
+    const draft = settingsToDraft(saved);
+    expect(draft.enrichLinkOnly).toBe(true);
+    expect(isDraftDirty(draft, saved, { enrichLinkOnly: false })).toBe(false);
+    expect(isDraftDirty(draft, { ...saved, enrichLinkOnly: false }, { enrichLinkOnly: false })).toBe(false);
+    expect(isDraftDirty(draft, { ...saved, enrichLinkOnly: false }, { enrichLinkOnly: true })).toBe(true);
+    expect(draftToSettings(effectiveDraft(draft, { enrichLinkOnly: false })).enrichLinkOnly).toBe(false);
+    expect(effectiveDraft(draft, { enrichLinkOnly: true })).toBe(draft);
   });
 
   it('dias da semana: lista ↔ mask; API sem o campo ou lista vazia = todos; troca suja o rascunho', () => {

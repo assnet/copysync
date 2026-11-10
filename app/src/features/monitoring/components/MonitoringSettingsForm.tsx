@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { AppIcon, PostingWindowField, RangeSlider, ToggleOption } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { PlanAvailabilityBadges } from '@/features/plans/components/PlanAvailabilityBadges';
 import type { GroupMonitorConfigResponse, GroupMonitorSettings, MonitorTextMode } from '@/types/api.types';
 import { AudiencePicker } from '@/features/offers/components/AudiencePicker';
 import { ImageModePicker } from '@/features/offers/components/ImageModePicker';
@@ -270,9 +271,12 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
   const [error, setError] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
   const mentionAllEnabled = config.limits.mentionAllEnabled;
+  const enrichLinkOnlyEnabled = config.limits.enrichLinkOnlyEnabled === true;
+  const captureOutsideEnabled = config.limits.captureOutsideWindowEnabled === true;
+  const gates = { mentionAll: mentionAllEnabled, enrichLinkOnly: enrichLinkOnlyEnabled, captureOutsideWindow: captureOutsideEnabled };
   const value = draft ?? settingsToDraft(config.settings);
   // Comparação e envio no valor efetivo: "mencionar todos" travado pelo plano não gera "não salvo" fantasma
-  const dirty = isDraftDirty(draft, config.settings, mentionAllEnabled);
+  const dirty = isDraftDirty(draft, config.settings, gates);
   const windowValid = isWindowValid(value.window);
   // Dia inteiro em todos os dias = nunca há "fora do horário"
   const fullDay = isFullDay(value.window) && isAllWeekdays(value.weekdaysMask);
@@ -285,7 +289,7 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
     setError(null);
     try {
       const sent = draft;
-      await onSave(draftToSettings(effectiveDraft(value, mentionAllEnabled)));
+      await onSave(draftToSettings(effectiveDraft(value, gates)));
       if (draftRef.current === sent) clearDraft();
       setSavedToast(true);
     } catch (err) {
@@ -302,28 +306,33 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
     <Stack spacing={3}>
       <MasterToggleCard enabled={value.enabled} missingGroups={missingGroups} onChange={(enabled) => patch({ enabled })} />
 
-      <MonitorCard icon={Clock} title={t.windowTitle} subtitle={t.windowSubtitle}>
+      <MonitorCard icon={Clock} title={t.windowTitle} subtitle={t.windowSubtitle} collapseKey="window">
         <Stack spacing={2}>
           <PostingWindowField
             value={{ window: value.window, weekdaysMask: value.weekdaysMask }}
             onChange={({ window, weekdaysMask }) => patch({ window, weekdaysMask })}
           />
-          <Tooltip title={fullDay ? t.captureOutsideFullDay : ''} arrow placement="top">
+          <Tooltip title={fullDay ? t.captureOutsideFullDay : captureOutsideEnabled ? '' : t.captureOutsideLocked} arrow placement="top">
             <Box>
               <ToggleOption
-                checked={value.captureOutsideWindow}
+                checked={captureOutsideEnabled && value.captureOutsideWindow}
                 onChange={(captureOutsideWindow) => patch({ captureOutsideWindow })}
                 title={t.captureOutsideTitle}
-                description={fullDay ? t.captureOutsideFullDay : value.captureOutsideWindow ? t.captureOutsideOn : t.captureOutsideOff}
-                disabled={fullDay}
+                badge={<PlanAvailabilityBadges from="max" />}
+                description={fullDay
+                  ? t.captureOutsideFullDay
+                  : !captureOutsideEnabled ? t.captureOutsideLocked
+                    : value.captureOutsideWindow ? t.captureOutsideOn : t.captureOutsideOff}
+                disabled={fullDay || !captureOutsideEnabled}
               />
             </Box>
           </Tooltip>
         </Stack>
       </MonitorCard>
 
-      <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' } }}>
-        <MonitorCard icon={Timer} tone="info" title={t.dispatchTitle} subtitle={t.dispatchSubtitle}>
+      {/* `start`: card recolhido não estica até a altura do vizinho aberto */}
+      <Box sx={{ display: 'grid', gap: 3, alignItems: 'start', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' } }}>
+        <MonitorCard icon={Timer} tone="info" title={t.dispatchTitle} subtitle={t.dispatchSubtitle} collapseKey="dispatch">
           <Stack spacing={2.5}>
             <Box>
               <FieldLabel help={t.intervalHelp}>{t.intervalLabel}</FieldLabel>
@@ -377,7 +386,7 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
           </Stack>
         </MonitorCard>
 
-        <MonitorCard icon={Hourglass} tone="info" title={t.afterTitle} subtitle={t.afterSubtitle}>
+        <MonitorCard icon={Hourglass} tone="info" title={t.afterTitle} subtitle={t.afterSubtitle} collapseKey="after">
           <Stack spacing={2.5}>
             <ValueSlider
               label={t.delayLabel}
@@ -415,7 +424,7 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
         </MonitorCard>
       </Box>
 
-      <MonitorCard icon={FileText} title={t.textTitle} subtitle={t.textSubtitle}>
+      <MonitorCard icon={FileText} title={t.textTitle} subtitle={t.textSubtitle} collapseKey="text">
         <Stack spacing={2}>
           <TextModeCards value={value.textMode} onChange={(textMode) => patch({ textMode })} describedBy={textHelpId} />
           <Typography id={textHelpId} variant="body2" color="text.secondary">{t.textModes[value.textMode].help}</Typography>
@@ -423,12 +432,18 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
             <AudiencePicker value={value.audience} onChange={(audience) => patch({ audience })} label={t.audienceLabel} />
           )}
           <ImageModePicker value={value.imageMode} onChange={(imageMode) => patch({ imageMode })} />
-          <ToggleOption
-            checked={value.enrichLinkOnly}
-            onChange={(enrichLinkOnly) => patch({ enrichLinkOnly })}
-            title={t.enrichTitle}
-            description={t.enrichHelp}
-          />
+          <Tooltip title={enrichLinkOnlyEnabled ? '' : t.enrichLocked} arrow placement="top">
+            <Box>
+              <ToggleOption
+                checked={enrichLinkOnlyEnabled && value.enrichLinkOnly}
+                onChange={(enrichLinkOnly) => patch({ enrichLinkOnly })}
+                title={t.enrichTitle}
+                badge={<PlanAvailabilityBadges from="pro" />}
+                description={enrichLinkOnlyEnabled ? t.enrichHelp : `${t.enrichHelp} ${t.enrichLocked}`}
+                disabled={!enrichLinkOnlyEnabled}
+              />
+            </Box>
+          </Tooltip>
           <Note>{t.textProductNote}</Note>
           <Box
             sx={{

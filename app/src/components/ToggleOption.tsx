@@ -13,6 +13,8 @@ export interface ToggleOptionProps {
   disabled?: boolean;
   /** Mostra os filhos mesmo desligado (padrão: só ligado). */
   alwaysShowChildren?: boolean;
+  /** Ao lado do título (ex.: selos dos planos que incluem o recurso). */
+  badge?: ReactNode;
 }
 
 /**
@@ -21,7 +23,7 @@ export interface ToggleOptionProps {
  * controles filhos revelados abaixo, alinhados com o título. Padrão para "ligar/desligar com
  * detalhes" (docs/padrao-ui-painel.md).
  */
-export function ToggleOption({ checked, onChange, title, description, children, disabled, alwaysShowChildren }: ToggleOptionProps) {
+export function ToggleOption({ checked, onChange, title, description, children, disabled, alwaysShowChildren, badge }: ToggleOptionProps) {
   const theme = useTheme();
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const titleId = useId();
@@ -62,7 +64,10 @@ export function ToggleOption({ checked, onChange, title, description, children, 
           sx={{ mt: 0.25, flexShrink: 0 }}
         />
         <Box sx={{ minWidth: 0 }}>
-          <Typography id={titleId} variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>{title}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1, rowGap: 0.5 }}>
+            <Typography id={titleId} variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>{title}</Typography>
+            {badge}
+          </Box>
           {description && (
             <Typography id={descId} variant="caption" color="text.secondary" component="p" sx={{ mt: 0.25, lineHeight: 1.4 }}>
               {description}

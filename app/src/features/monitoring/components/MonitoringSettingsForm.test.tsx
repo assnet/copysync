@@ -15,14 +15,22 @@ const config: GroupMonitorConfigResponse = {
   },
   monitoredGroups: [],
   broadcastGroups: [],
-  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
+  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, enrichLinkOnlyEnabled: true, captureOutsideWindowEnabled: true, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
   usage: { monitoredGroups: 0, broadcastGroups: 0, whatsapp: { monitoredGroups: 0, broadcastGroups: 0 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } },
 };
 
 const renderForm = (mode: 'light' | 'dark' = 'light') =>
   renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={vi.fn().mockResolvedValue(config)} />, mode);
 
-beforeEach(() => sessionStorage.clear());
+/** Cards recolhíveis nascem fechados: abre todos pela preferência salva (escopo browser). */
+const COLLAPSIBLE_CARDS = ['window', 'dispatch', 'after', 'text'] as const;
+const openCards = () => COLLAPSIBLE_CARDS.forEach((key) => localStorage.setItem(`ui.monitoring.card.${key}`, JSON.stringify({ v: 0, d: true })));
+
+beforeEach(() => {
+  sessionStorage.clear();
+  localStorage.clear();
+  openCards();
+});
 
 describe('MonitoringSettingsForm', () => {
   it.each(['light', 'dark'] as const)('%s: seta no seletor de texto muda o modo, move o foco e marca o rascunho', (mode) => {
@@ -101,5 +109,57 @@ describe('MonitoringSettingsForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]![0]).toMatchObject({ mentionAll: false, textMode: 'TEMPLATE' });
+  });
+
+  it('cards recolhíveis nascem fechados; o cabeçalho abre e a preferência fica no navegador', () => {
+    localStorage.clear();
+    renderForm();
+    const header = screen.getByRole('button', { name: /Texto da oferta/, expanded: false });
+    expect(screen.queryByRole('radiogroup', { name: 'Como montar o texto' })).not.toBeInTheDocument();
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(JSON.parse(localStorage.getItem('ui.monitoring.card.text')!)).toEqual({ v: 0, d: true });
+  });
+
+  it('"montar a oferta só com link" fora do plano: switch travado com aviso e salvar envia false', async () => {
+    const { enrichLinkOnlyEnabled: _omit, ...limits } = config.limits;
+    const locked: GroupMonitorConfigResponse = { ...config, limits };
+    const onSave = vi.fn().mockResolvedValue(locked);
+    renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={locked} onSave={onSave} />);
+    const enrich = screen.getByRole('checkbox', { name: /Montar a oferta quando chegar só o link/ });
+    expect(enrich).toBeDisabled();
+    expect(enrich).not.toBeChecked();
+    expect(screen.getAllByText(/Disponível nos planos PRO e MAX\./).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Monitoramento ativo/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ enabled: true, enrichLinkOnly: false });
+  });
+
+  it('"capturar fora do horário" fora do MAX: switch travado, selo MAX e salvar envia false', async () => {
+    const { captureOutsideWindowEnabled: _omit, ...limits } = config.limits;
+    const locked: GroupMonitorConfigResponse = { ...config, limits, settings: { ...config.settings, captureOutsideWindow: true, windowStartMinute: 360, windowEndMinute: 1080 } };
+    const onSave = vi.fn().mockResolvedValue(locked);
+    renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={locked} onSave={onSave} />);
+    const capture = screen.getByRole('checkbox', { name: /Capturar fora do horário/ });
+    expect(capture).toBeDisabled();
+    expect(capture).not.toBeChecked();
+    expect(screen.getAllByLabelText('Exclusivo do plano MAX').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Disponível nos planos PRO e MAX').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Monitoramento ativo/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ captureOutsideWindow: false });
+  });
+
+  it('"montar a oferta só com link" no plano: switch liberado e marcado', () => {
+    renderForm();
+    const enrich = screen.getByRole('checkbox', { name: /Montar a oferta quando chegar só o link/ });
+    expect(enrich).toBeEnabled();
+    expect(enrich).toBeChecked();
   });
 });

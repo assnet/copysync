@@ -31,6 +31,11 @@ export const plansStrings = {
   /** Selo no item de menu de recurso exclusivo dos planos pagos maiores. */
   badgeProfessional: 'PRO',
   badgeBusiness: 'MAX',
+  /** Selos de plano ao lado de opção exclusiva (`PlanAvailabilityBadges`). */
+  availability: {
+    tooltip: (names: readonly string[]) =>
+      names.length === 1 ? `Exclusivo do plano ${names[0]}` : `Disponível nos planos ${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`,
+  },
 
   /** Aviso no topo de `/affiliates/plans?feature=<chave>` quando o usuário chega barrado por um recurso. */
   featureNotice: {

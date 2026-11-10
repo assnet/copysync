@@ -79,7 +79,8 @@ describe('rascunho da configuração', () => {
     const d = settingsToDraft(saved);
     expect(d).toMatchObject({ window: { lo: 360, hi: 1320, overnight: true }, intervalMinSeconds: 300, startDelaySeconds: 600 });
     // API sem `weekdays` = todos os dias; o envio manda a lista explícita
-    expect(draftToSettings(d)).toEqual({ ...saved, weekdays: [0, 1, 2, 3, 4, 5, 6] });
+    // MEDIA indisponível: o formato salvo vale (e volta) como prévia do link
+    expect(draftToSettings(d)).toEqual({ ...saved, imageMode: 'LINK_PREVIEW', weekdays: [0, 1, 2, 3, 4, 5, 6] });
   });
 
   it('segundos fora do minuto exato só mudam se o usuário mexer naquele cursor', () => {

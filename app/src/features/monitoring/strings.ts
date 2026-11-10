@@ -238,6 +238,8 @@ export const monitoringStrings = {
     mentionAllTitle: 'Marcar todos',
     mentionAllHelp: 'Notifica todos os participantes do grupo a cada oferta.',
     mentionAllLocked: 'Seu plano não inclui marcar todos.',
+    enrichLocked: 'Disponível nos planos PRO e MAX.',
+    captureOutsideLocked: 'Exclusivo do plano MAX: nos outros planos, mensagem fora do horário não é capturada.',
     mentionAllTelegram: 'No Telegram não existe marcar todos: nos grupos do Telegram a oferta sai sem a marcação.',
 
     afterTitle: 'Depois da captura',

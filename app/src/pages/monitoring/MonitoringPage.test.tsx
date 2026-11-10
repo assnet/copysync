@@ -39,7 +39,7 @@ const config = (sessionId: string): GroupMonitorConfigResponse => ({
   },
   monitoredGroups: [{ conversationId: 'c1', groupJid: 'g1@g.us', title: 'Promo Rival', avatarUrl: null, keywords: ['fone'] }],
   broadcastGroups: [{ conversationId: 'c2', groupJid: 'g2@g.us', sessionId, title: 'Meu Grupo', avatarUrl: null, position: 0 }],
-  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
+  limits: { monitoredGroups: 5, broadcastGroups: 10, mentionAllEnabled: false, captureOutsideWindowEnabled: true, crossSessionDispatch: false, whatsapp: { monitoredGroups: 5, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null } },
   usage: { monitoredGroups: 1, broadcastGroups: 1, whatsapp: { monitoredGroups: 1, broadcastGroups: 1 }, telegram: { monitoredGroups: 0, broadcastGroups: 0 } },
 });
 
@@ -69,6 +69,7 @@ const renderAt = (url = '/monitoring') =>
 
 beforeEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
   listSessions.mockReset();
   getConfig.mockReset();
   saveSettings.mockReset();
@@ -81,6 +82,8 @@ beforeEach(() => {
 
 describe('MonitoringPage', () => {
   it('mostra os três cards, a configuração e as ofertas capturadas da 1ª sessão', async () => {
+    // Card "Horário de postagem" é recolhível (nasce fechado): abre pela preferência do navegador
+    localStorage.setItem('ui.monitoring.card.window', JSON.stringify({ v: 0, d: true }));
     renderAt();
     expect(await screen.findByText('Meu Grupo')).toBeInTheDocument();
     expect(getConfig).toHaveBeenCalledWith('s1');

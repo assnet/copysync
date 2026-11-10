@@ -1,3 +1,4 @@
+import { effectiveImageMode } from '@/features/offers/utils/offerConfig';
 import type { GroupMonitorSettings, MonitorTextMode, OfferAudience, OfferImageMode } from '@/types/api.types';
 import {
   ALL_WEEKDAYS_MASK, isWeekdaysMaskValid, maskToWeekdays, weekdaysToMask, windowFromSettings, windowToSettings,
@@ -72,8 +73,8 @@ export function settingsToDraft(s: GroupMonitorSettings): MonitorSettingsDraft {
     maxOfferAgeMinutes: s.maxOfferAgeMinutes,
     couponMaxAgeMinutes: s.couponMaxAgeMinutes,
     mentionAll: s.mentionAll,
-    // API anterior ao campo não o devolve: vale o padrão
-    imageMode: s.imageMode ?? 'MEDIA',
+    // Ausente (API anterior) ou indisponível (imagem com legenda desligada): vale o padrão
+    imageMode: effectiveImageMode(s.imageMode),
     simulateTyping: s.simulateTyping,
     typingSeconds: s.typingSeconds,
     textMode: s.textMode,
@@ -105,16 +106,31 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
   };
 }
 
-/** Valor que vale de fato: "mencionar todos" travado pelo plano conta como desligado (é o que a tela mostra e o que se salva). */
-export function effectiveDraft(d: MonitorSettingsDraft, mentionAllEnabled: boolean): MonitorSettingsDraft {
-  return mentionAllEnabled || !d.mentionAll ? d : { ...d, mentionAll: false };
+/** Recursos liberados pelo plano; `false` trava (ausente = liberado). */
+export interface PlanGates {
+  mentionAll?: boolean;
+  enrichLinkOnly?: boolean;
+  captureOutsideWindow?: boolean;
+}
+
+/**
+ * Valor que vale de fato: recurso travado pelo plano ("mencionar todos", "montar só com link", "capturar fora do horário") conta
+ * como desligado — é o que a tela mostra e o que se salva.
+ */
+export function effectiveDraft(d: MonitorSettingsDraft, gates: PlanGates = {}): MonitorSettingsDraft {
+  const mentionAll = gates.mentionAll !== false && d.mentionAll;
+  const enrichLinkOnly = gates.enrichLinkOnly !== false && d.enrichLinkOnly;
+  const captureOutsideWindow = gates.captureOutsideWindow !== false && d.captureOutsideWindow;
+  return mentionAll === d.mentionAll && enrichLinkOnly === d.enrichLinkOnly && captureOutsideWindow === d.captureOutsideWindow
+    ? d
+    : { ...d, mentionAll, enrichLinkOnly, captureOutsideWindow };
 }
 
 /** Rascunho difere do salvo? Compara no formato da API, com os dois lados no valor efetivo. */
-export function isDraftDirty(draft: MonitorSettingsDraft | null, saved: GroupMonitorSettings, mentionAllEnabled = true): boolean {
+export function isDraftDirty(draft: MonitorSettingsDraft | null, saved: GroupMonitorSettings, gates: PlanGates = {}): boolean {
   if (!draft) return false;
-  const a = draftToSettings(effectiveDraft(draft, mentionAllEnabled));
-  const b = draftToSettings(effectiveDraft(settingsToDraft(saved), mentionAllEnabled));
+  const a = draftToSettings(effectiveDraft(draft, gates));
+  const b = draftToSettings(effectiveDraft(settingsToDraft(saved), gates));
   return (Object.keys(a) as (keyof GroupMonitorSettings)[]).some((k) => !sameField(a[k], b[k]));
 }
 

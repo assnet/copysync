@@ -667,6 +667,10 @@ export interface GroupMonitorConfigResponse {
   limits: ChannelGroupLimits & {
     mentionAllEnabled: boolean;
     crossSessionDispatch: boolean;
+    /** Entitlement `enrich_link_only_enabled` (PRO/MAX). Ausente (API anterior) = travado. */
+    enrichLinkOnlyEnabled?: boolean;
+    /** Entitlement `capture_outside_window_enabled` (MAX). Ausente (API anterior) = travado. */
+    captureOutsideWindowEnabled?: boolean;
     whatsapp: ChannelGroupLimits;
     telegram: ChannelGroupLimits;
   };
