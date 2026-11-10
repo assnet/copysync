@@ -3,6 +3,7 @@ import type { AffiliateCredential } from '../../domain/entities/AffiliateCredent
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import type { ISecretCipher } from '../../../../shared/security/ISecretCipher';
 import {
+  providerIdentifierFollowsSession,
   providerRequiresSecret,
   providerUsesSession,
   validatePublicIdentifier,
@@ -25,6 +26,10 @@ export class UpsertAffiliateCredentialUseCase {
   ) {}
 
   async execute(input: UpsertAffiliateCredentialInput): Promise<AffiliateCredential> {
+    // ID que segue a sessão (Shein) não é digitado: a conexão só nasce pela extensão.
+    if (providerIdentifierFollowsSession(input.provider)) {
+      throw new AffiliateCredentialInvalidError('Provider is connected through the browser extension', 'provider');
+    }
     const publicIdentifier = validatePublicIdentifier(input.provider, input.publicIdentifier);
     if (!publicIdentifier) {
       throw new AffiliateCredentialInvalidError('Invalid public identifier', 'publicIdentifier');

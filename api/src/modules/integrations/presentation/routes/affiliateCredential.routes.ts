@@ -11,7 +11,18 @@ import { DeleteAffiliateCredentialUseCase } from '../../application/use-cases/De
 import { SetAffiliateCredentialStatusUseCase } from '../../application/use-cases/SetAffiliateCredentialStatusUseCase';
 import { UpsertAffiliateSessionUseCase } from '../../application/use-cases/UpsertAffiliateSessionUseCase';
 import { AffiliateCredentialPresenter } from '../presenters/AffiliateCredentialPresenter';
-import { prismaMarketplaceRiskAcceptTransaction } from '../../infrastructure/marketplaceRiskTransaction';
+import {
+  createMarketplaceRiskAcceptanceRepository,
+  prismaMarketplaceRiskAcceptTransaction,
+} from '../../infrastructure/marketplaceRiskTransaction';
+import { providerIdentifierFollowsSession } from '../../domain/services/affiliateProviderFields';
+import {
+  AffiliateCredentialInvalidError,
+  UseMarketplaceDisconnectError,
+} from '../../../../shared/errors/internal/AffiliateCredentialErrors';
+import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
+import { PrismaPlanEntitlementPresetRepository } from '../../../tenants/infrastructure/repositories/PrismaPlanEntitlementPresetRepository';
+import { prisma } from '../../../../shared/database/prisma.client';
 import { AcceptMarketplaceRiskUseCase } from '../../application/use-cases/AcceptMarketplaceRiskUseCase';
 import { MarketplaceRiskPresenter } from '../presenters/MarketplaceRiskPresenter';
 import { acceptMarketplaceRiskBodySchema, acceptMarketplaceRiskResponse } from '../schemas/marketplaceRisk.schema';
@@ -32,7 +43,12 @@ const auditRepo = new PrismaAuditLogRepository();
 // Cifra resolvida no uso: sem chave, só quem cifra responde 503.
 const cipher = () => SecretCipherFactory.get();
 
-const listUseCase = new ListAffiliateCredentialsUseCase(repo);
+const listUseCase = new ListAffiliateCredentialsUseCase(
+  repo,
+  new PrismaEntitlementReader(prisma),
+  new PrismaPlanEntitlementPresetRepository(),
+  createMarketplaceRiskAcceptanceRepository(),
+);
 const upsertUseCase = new UpsertAffiliateCredentialUseCase(repo, cipher, auditRepo);
 const deleteUseCase = new DeleteAffiliateCredentialUseCase(repo, auditRepo);
 const setStatusUseCase = new SetAffiliateCredentialStatusUseCase(repo);
@@ -60,8 +76,9 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const items = await listUseCase.execute(request.tenantContext.tenantId);
-      httpResponse.ok(reply, AffiliateCredentialPresenter.toList(items));
+      const { tenantId, userId } = request.tenantContext;
+      const result = await listUseCase.execute({ tenantId, userId });
+      httpResponse.ok(reply, AffiliateCredentialPresenter.toList(result));
     },
   );
 
@@ -97,6 +114,10 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
       schema: { tags, summary: 'Remover credencial (inclui sessão da extensão)', params: affiliateProviderParamSchema },
     },
     async (request, reply) => {
+      // Shein: só pela rota do marketplace (revoga o consentimento antes de apagar).
+      if (providerIdentifierFollowsSession(request.params.provider)) {
+        throw new UseMarketplaceDisconnectError(request.params.provider);
+      }
       const { tenantId, userId } = request.tenantContext;
       await deleteUseCase.execute({ tenantId, userId, provider: request.params.provider });
       httpResponse.noContent(reply);
@@ -144,6 +165,10 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
       },
     },
     async (request, reply) => {
+      // Sessão Shein só entra pela rota da extensão (consentimento, aceite e plano).
+      if (providerIdentifierFollowsSession(request.params.provider)) {
+        throw new AffiliateCredentialInvalidError('Provider session is synced through the extension route', 'provider');
+      }
       const { tenantId, userId } = request.tenantContext;
       const credential = await upsertSessionUseCase.execute({
         tenantId,

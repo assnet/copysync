@@ -46,3 +46,22 @@ describe('PrismaAffiliateCredentialRepository — rejeição', () => {
     expect(await repo.findByTenantAndProvider(tenantId, 'MERCADO_LIVRE')).toMatchObject({ hasSession: false, rejectedAt: null, rejectedCode: null });
   });
 });
+
+describe('PrismaAffiliateCredentialRepository — ID que segue a sessão (Shein)', () => {
+  it('override grava no create e substitui no update; sem override o ID fica', async () => {
+    const created = await repo.upsertSession({ tenantId, provider: 'SHEIN', session: blob(1), syncedAt: AT, publicIdentifierOverride: '4320454940' });
+    expect(created).toMatchObject({ publicIdentifier: '4320454940', hasSession: true });
+    const switched = await repo.upsertSession({ tenantId, provider: 'SHEIN', session: blob(2), syncedAt: AT, publicIdentifierOverride: '9876543210' });
+    expect(switched.publicIdentifier).toBe('9876543210');
+    const kept = await repo.upsertSession({ tenantId, provider: 'SHEIN', session: blob(3), syncedAt: AT });
+    expect(kept.publicIdentifier).toBe('9876543210');
+    expect(await repo.delete(tenantId, 'SHEIN')).toBe(true);
+    expect(await repo.findByTenantAndProvider(tenantId, 'SHEIN')).toBeNull();
+  });
+
+  it('ML: publicIdentifierIfEmpty continua só preenchendo ID vazio', async () => {
+    await repo.delete(tenantId, 'MERCADO_LIVRE');
+    expect((await repo.upsertSession({ tenantId, provider: 'MERCADO_LIVRE', session: blob(1), syncedAt: AT, publicIdentifierIfEmpty: 'tag_a' })).publicIdentifier).toBe('tag_a');
+    expect((await repo.upsertSession({ tenantId, provider: 'MERCADO_LIVRE', session: blob(2), syncedAt: AT, publicIdentifierIfEmpty: 'tag_b' })).publicIdentifier).toBe('tag_a');
+  });
+});

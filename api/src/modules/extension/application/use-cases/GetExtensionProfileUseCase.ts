@@ -37,13 +37,15 @@ export class GetExtensionProfileUseCase {
     for (const m of memberships) {
       if (m.tenant.status !== 'ACTIVE') continue;
       const mlAllowed = await this.entitlementReader.hasMarketplaceExtension(m.tenantId);
+      const sheinAllowed = await this.entitlementReader.hasMarketplace(m.tenantId, 'SHEIN');
+      const permissions = [...(mlAllowed ? ['ml.session'] : []), ...(sheinAllowed ? ['shein.session'] : [])];
       tenants.push({
         id: m.tenantId,
         name: m.tenant.name,
         slug: m.tenant.slug,
         role: m.role,
         status: m.tenant.status,
-        permissions: mlAllowed ? ['ml.session'] : [],
+        permissions,
       });
     }
 

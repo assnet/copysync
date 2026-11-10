@@ -3,14 +3,24 @@ import type { AffiliateCredential } from '../../domain/entities/AffiliateCredent
 import type { EncryptedBlob } from '../../domain/contracts/AffiliateCredentialRecords';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import type { ISecretCipher } from '../../../../shared/security/ISecretCipher';
-import { validatePublicIdentifier } from '../../domain/services/affiliateProviderFields';
+import {
+  providerIdentifierFollowsSession,
+  validatePublicIdentifier,
+} from '../../domain/services/affiliateProviderFields';
+import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
 import { AffiliateCredentialInvalidError } from '../../../../shared/errors/internal/AffiliateCredentialErrors';
 import { logger } from '../../../../shared/logger/logger';
 import type { AffiliateSessionSecret, UpsertAffiliateSessionInput } from '../dtos/AffiliateCredentialDTO';
 import { affiliateCipherAad } from './affiliateCipherAad';
 
-/** Só o Mercado Livre depende de sessão logada para gerar link. */
-const SESSION_PROVIDERS = new Set(['MERCADO_LIVRE']);
+/**
+ * Providers que dependem de sessão logada para gerar link, com o cookie que identifica o token
+ * (troca dele = sessão nova: audita e, sem checagem, zera a recusa).
+ */
+const SESSION_TOKEN_COOKIE: Partial<Record<AffiliateProvider, string>> = {
+  MERCADO_LIVRE: 'ssid',
+  SHEIN: 'AT',
+};
 
 /** Mesmo código gravado pelo monitor quando a loja recusa (`BuildTenantAffiliateLinkUseCase`). */
 const SESSION_REJECTED_CODE = 'AFFILIATE_CREDENTIAL_REJECTED';
@@ -34,19 +44,27 @@ export class UpsertAffiliateSessionUseCase {
   ) {}
 
   async execute(input: UpsertAffiliateSessionInput): Promise<AffiliateCredential> {
-    if (!SESSION_PROVIDERS.has(input.provider)) {
+    const tokenCookie = SESSION_TOKEN_COOKIE[input.provider];
+    if (!tokenCookie) {
       throw new AffiliateCredentialInvalidError('Provider does not take a session', 'provider');
+    }
+    const followsSession = providerIdentifierFollowsSession(input.provider);
+    const sessionIdentifier = followsSession && input.sessionIdentifier
+      ? validatePublicIdentifier(input.provider, input.sessionIdentifier)
+      : null;
+    if (followsSession && !sessionIdentifier) {
+      throw new AffiliateCredentialInvalidError('Session account identifier is required', 'sessionIdentifier');
     }
 
     const cipher = this.cipher();
     const aad = affiliateCipherAad(input.tenantId, input.provider, 'session');
-    const tag = input.affiliateTag?.trim()
+    const tag = !followsSession && input.affiliateTag?.trim()
       ? validatePublicIdentifier(input.provider, input.affiliateTag)
       : null;
-    const tagIgnored = Boolean(input.affiliateTag?.trim()) && tag === null;
+    const tagIgnored = Boolean(input.affiliateTag?.trim()) && !tag;
 
     const existing = await this.repo.findByTenantAndProvider(input.tenantId, input.provider);
-    const changed = this.tokenChanged(existing?.session ?? null, aad, input.cookies.ssid ?? '', cipher);
+    const changed = this.tokenChanged(existing?.session ?? null, aad, tokenCookie, input.cookies[tokenCookie] ?? '', cipher);
 
     const payload: AffiliateSessionSecret = { cookies: input.cookies, csrf: input.csrf };
     const now = this.now();
@@ -57,6 +75,7 @@ export class UpsertAffiliateSessionUseCase {
       provider: input.provider,
       session: cipher.encrypt(JSON.stringify(payload), aad),
       ...(tag && { publicIdentifierIfEmpty: tag }),
+      ...(sessionIdentifier && { publicIdentifierOverride: sessionIdentifier }),
       syncedAt: now,
       clearRejection: input.sessionCheck === 'VALID' || (input.sessionCheck === undefined && changed),
       ...(newlyRejected && { rejectWith: { at: now, code: SESSION_REJECTED_CODE } }),
@@ -86,16 +105,18 @@ export class UpsertAffiliateSessionUseCase {
   private tokenChanged(
     current: EncryptedBlob | null,
     aad: string,
-    newSsid: string,
+    tokenCookie: string,
+    newToken: string,
     cipher: ISecretCipher,
   ): boolean {
     if (!current) return true;
     try {
       const raw = JSON.parse(cipher.decrypt(current, aad)) as Record<string, unknown>;
-      const storedSsid = raw.cookies && typeof raw.cookies === 'object'
-        ? (raw.cookies as Record<string, string>).ssid
+      // Formato legado (`sessionToken`) só existiu no ML.
+      const stored = raw.cookies && typeof raw.cookies === 'object'
+        ? (raw.cookies as Record<string, string>)[tokenCookie]
         : (raw as Record<string, string>).sessionToken;
-      return storedSsid !== newSsid;
+      return stored !== newToken;
     } catch {
       logger.warn('Stored affiliate session could not be decrypted — overwriting');
       return true;

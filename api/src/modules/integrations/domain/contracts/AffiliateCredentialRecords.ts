@@ -22,13 +22,15 @@ export interface UpsertAffiliateCredentialRecord {
 
 /**
  * Gravação pela extensão. `publicIdentifierIfEmpty` só preenche linha sem ID — o valor do
- * painel sempre vence.
+ * painel sempre vence. `publicIdentifierOverride` (Shein) sempre vence: troca de conta troca o ID.
  */
 export interface UpsertAffiliateSessionRecord {
   tenantId: string;
   provider: AffiliateProvider;
   session: EncryptedBlob;
   publicIdentifierIfEmpty?: string;
+  /** ID da conta da sessão (só provider em que o ID segue a sessão): grava no create e no update. */
+  publicIdentifierOverride?: string;
   syncedAt: Date;
   /** true = loja aceitou a sessão agora (ou token novo sem checagem): zera a rejeição. */
   clearRejection?: boolean;

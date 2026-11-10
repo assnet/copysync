@@ -12,6 +12,13 @@ export const ML_TEMP_COOKIES = ['_csrf', '_d2id', '_mldataSessionId', 'nsa_rotok
 /** Union: all cookies the server may hold. */
 export const ML_SERVER_COOKIES = [...ML_SESSION_COOKIES, ...ML_TEMP_COOKIES] as const;
 
+/** Cookies da sessão Shein enviados pela extensão — paridade com `extension/src/background/constants.ts`. */
+export const SHEIN_SESSION_COOKIES = ['AT', 'memberId'] as const;
+
+/** Marketplaces com consentimento próprio na sessão da extensão (`mlConsentAt`, `sheinConsentAt`). */
+export const EXTENSION_CONSENT_MARKETPLACES = ['ML', 'SHEIN'] as const;
+export type ExtensionConsentMarketplace = (typeof EXTENSION_CONSENT_MARKETPLACES)[number];
+
 /** Sliding TTL for ExtensionSession (renewed on heartbeat). */
 export const EXT_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 

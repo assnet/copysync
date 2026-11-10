@@ -13,6 +13,7 @@ export class PrismaExtensionSessionMapper {
       mlTenantId: raw.mlTenantId,
       extVersion: raw.extVersion,
       mlConsentAt: raw.mlConsentAt,
+      sheinConsentAt: raw.sheinConsentAt,
       lastSeenAt: raw.lastSeenAt,
       expiresAt: raw.expiresAt,
       absoluteExpiresAt: raw.absoluteExpiresAt,
