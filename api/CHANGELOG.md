@@ -7,6 +7,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [app 0.92.1] — 2026-11-09 — Formato da imagem: segmentos iguais
+
+### Fixed
+
+#### Frontend — gerador e monitoramento
+
+- **`ImageModePicker.tsx`** — "Imagem com legenda" ficava espremida (3 linhas) porque o `<span>` do tooltip dentro do `ToggleButtonGroup` quebrava a largura igual e as bordas. Botão indisponível agora usa `aria-disabled` + classe `Mui-disabled` com `pointerEvents` ligado (tooltip sem invólucro, `describeChild`); segmentos `flex: 1 1 0`, 44 px de altura, rótulo em uma linha e ícone oculto em `xs`.
+
+---
+
 ## [0.76.0] — 2026-11-09 — Monitoramento: padrões novos, recursos por plano e prévia do link
 
 ### Added
