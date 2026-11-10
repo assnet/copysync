@@ -83,7 +83,7 @@ export const opsMetricsStrings = {
   queries: {
     title: 'Consultas que mais consumiram tempo',
     subtitle: 'Forma normalizada da consulta, sem valores. Tempo somado desde o último reinício das estatísticas do banco.',
-    snapshot: (rel: string) => `Retrato de ${rel}`,
+    snapshot: (rel: string) => `Retrato tirado ${rel}`,
     cols: { rank: '#', shape: 'Forma da consulta', total: 'Tempo total', share: 'Participação', id: 'ID' },
     shareAria: (pct: number) => `${pct}% do tempo`,
     copyId: 'Copiar ID',

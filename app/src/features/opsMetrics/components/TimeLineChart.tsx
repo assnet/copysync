@@ -5,7 +5,8 @@ import { ChartsReferenceLine } from '@mui/x-charts/ChartsReferenceLine';
 import { useDrawingArea, useYScale } from '@mui/x-charts/hooks';
 import type { LineSeriesType } from '@mui/x-charts/models';
 import { BAND_OPACITY } from '../chartColors';
-import { formatDateTime, formatTick } from '../rules';
+import { serverNow } from '@/services/serverClock';
+import { OPS_RANGE_MS, formatDateTime, formatNumber, formatTick } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
 import type { OpsRange } from '../types';
 
@@ -83,9 +84,12 @@ function lastIndex(values: (number | null)[]): number {
 export function TimeLineChart({ times, range, lines, extras = [], yMin, yMax, reference }: Props) {
   const theme = useTheme();
   const small = useMediaQuery(theme.breakpoints.down('md'));
+  const narrow = useMediaQuery(theme.breakpoints.down('sm'));
   const mode = theme.palette.mode;
   const multi = lines.length >= 2;
-  const directLabels = multi && lines.length <= 4;
+  // No celular a legenda do topo já nomeia as séries; o rótulo direto espremeria o plot.
+  const directLabels = multi && lines.length <= 4 && !narrow;
+  const labelRoom = directLabels ? Math.min(140, 26 + Math.max(...lines.map((l) => l.label.length)) * 6) : 24; // 24: meio rótulo do último tick (eixo strict)
 
   const series = useMemo(() => {
     const out: LineSeriesType[] = [];
@@ -146,8 +150,16 @@ export function TimeLineChart({ times, range, lines, extras = [], yMin, yMax, re
     });
   }, [directLabels, lines]);
 
+  // Eixo = período escolhido terminando agora: coleta parada aparece como trecho vazio no fim.
+  const axisEnd = Math.max(serverNow(), times[times.length - 1] ?? 0);
+  const axisStart = Math.min(axisEnd - OPS_RANGE_MS[range], times[0] ?? axisEnd);
+
   const hidden = lines.filter((l) => l.band).flatMap((l) => [`${l.id}-band`, `${l.id}-bandbase`]);
-  const hideSelectors = hidden.map((id) => `& path[data-series="${id}"][fill="none"]`).join(', ');
+  // Traço da banda e ponto de destaque no hover das séries auxiliares (banda e linhas só de tooltip).
+  const hideSelectors = [
+    ...hidden.map((id) => `& path[data-series="${id}"][fill="none"]`),
+    ...[...hidden, ...extras.map((e) => e.id)].map((id) => `& .MuiHighlightElement-series-${id}`),
+  ].join(', ');
 
   return (
     <LineChart
@@ -157,13 +169,18 @@ export function TimeLineChart({ times, range, lines, extras = [], yMin, yMax, re
       xAxis={[{
         data: times.map((ms) => new Date(ms)),
         scaleType: 'time',
+        // Sem `nice`: o eixo não estica além do período (sem rótulo cortado no fim).
+        domainLimit: 'strict',
+        min: new Date(axisStart),
+        max: new Date(axisEnd),
         valueFormatter: (d: Date, ctx) => (ctx.location === 'tick' ? formatTick(d.getTime(), range) : formatDateTime(d.getTime())),
       }]}
-      yAxis={[{ min: yMin, max: yMax, width: 44 }]}
+      yAxis={[{ min: yMin, max: yMax, width: 44, valueFormatter: (v: number) => formatNumber(v, 1) }]}
       grid={{ horizontal: true }}
       hideLegend={!multi}
       slotProps={{ legend: { position: { vertical: 'top', horizontal: 'start' } }, tooltip: { trigger: 'axis' } }}
-      margin={{ top: 8, right: directLabels ? 96 : 12, bottom: 0, left: 0 }}
+      // top ≥ 16: abaixo disso a lib esconde o rótulo do topo do eixo Y (ex.: 100).
+      margin={{ top: 16, right: labelRoom, bottom: 0, left: 0 }}
       sx={{
         '& .MuiChartsGrid-line': { stroke: theme.palette.divider },
         '& path[fill]:not([fill="none"])[data-series]': { stroke: theme.palette.background.paper, strokeWidth: lines.some((l) => l.stacked) ? 2 : 0 },

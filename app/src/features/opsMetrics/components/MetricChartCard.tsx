@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Alert, Box, Button, Card, Divider, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   ToggleButton, Tooltip, Typography,
@@ -41,6 +41,12 @@ export function MetricChartCard({
   const tableOnly = Boolean(tableOnlyNotice);
   const asTable = tableOnly || showTable;
   const canToggle = !loading && !error && !empty && !tableOnly;
+  const plotRef = useRef<HTMLDivElement>(null);
+  // O Chrome põe o <svg> do gráfico na ordem do Tab; dentro de aria-hidden isso vira parada muda.
+  // O caminho por teclado é "Ver tabela", então tira o svg da ordem (o hover do mouse continua).
+  useEffect(() => {
+    plotRef.current?.querySelectorAll('svg').forEach((svg) => svg.setAttribute('tabindex', '-1'));
+  });
 
   let body: ReactNode;
   if (loading) {
@@ -95,7 +101,7 @@ export function MetricChartCard({
   } else {
     body = (
       <Box component="figure" role="group" aria-label={figureAria} sx={{ m: 0 }}>
-        <Box aria-hidden>{children}</Box>
+        <Box aria-hidden ref={plotRef}>{children}</Box>
       </Box>
     );
   }

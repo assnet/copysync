@@ -105,14 +105,17 @@ function UsageHeader({ samplerActive, newestAt, fetching, onRefresh }: HeaderPro
       )}
       <Tooltip title={t.header.refresh}>
         <span>
+          {/* Sem `disabled`: o botão desabilitado perde o foco do teclado no meio da atualização. */}
           <IconButton
             size="small"
             aria-label={t.header.refresh}
-            onClick={onRefresh}
-            disabled={fetching}
+            onClick={fetching ? undefined : onRefresh}
+            aria-busy={fetching}
+            aria-disabled={fetching}
             sx={{
               '@keyframes opsSpin': { to: { transform: 'rotate(360deg)' } },
               '& svg': fetching ? { animation: 'opsSpin 1s linear infinite' } : {},
+              ...(fetching ? { cursor: 'progress' } : {}),
               '@media (prefers-reduced-motion: reduce)': { '& svg': { animation: 'none' } },
             }}
           >
@@ -206,7 +209,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
     <UsageHeader samplerActive={samplerActive} newestAt={newestAt} fetching={m.fetching} onRefresh={manualRefresh} />
   );
   const live = (
-    <Box component="span" aria-live="polite" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+    <Box component="span" aria-live="polite" sx={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
       {announce}
     </Box>
   );
