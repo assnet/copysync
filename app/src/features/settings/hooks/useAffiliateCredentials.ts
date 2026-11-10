@@ -90,16 +90,17 @@ export function useAffiliateCredentials() {
   }, []);
 
   /**
-   * `removeOp`: como apagar no servidor. Provider sincronizado pela extensão (ML) passa a rota do
-   * marketplace, que revoga o consentimento antes de apagar; o DELETE genérico deixaria a extensão
-   * recriar a credencial no próximo sync.
+   * `beforeRemove`: roda antes do DELETE. Provider sincronizado pela extensão (ML) passa a rota do
+   * marketplace, que revoga o consentimento (e limpa a sessão, mantendo a linha); sem isso a
+   * extensão recria a credencial no próximo sync. O DELETE genérico vem depois e apaga a linha.
    */
-  const remove = useCallback(async (provider: AffiliateProvider, removeOp?: () => Promise<void>) => {
+  const remove = useCallback(async (provider: AffiliateProvider, beforeRemove?: () => Promise<void>) => {
     const previous = itemsRef.current[provider];
     setOne(provider, undefined);
     setBusyFor(provider, true);
     try {
-      await (removeOp ? removeOp() : affiliateCredentialService.remove(provider));
+      await beforeRemove?.();
+      await affiliateCredentialService.remove(provider);
     } catch (err) {
       // Já removida em outra aba: não ressuscita o card.
       if (!isNotFound(err)) setOne(provider, previous);

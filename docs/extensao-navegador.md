@@ -140,7 +140,7 @@ reaplica a cadeia completa.
 | Rota | Auth | Body | Resposta |
 |---|---|---|---|
 | `POST /api/extension/session` | Bearer + X-Tenant-Id (painel) | `{ installationId, extVersion, extensionId, channel, mlSessionConsent }` | cookie `__Host-ext_session` |
-| `DELETE /api/extension/session` | Cookie | — | limpa cookie |
+| `DELETE /api/extension/session` | Cookie + `x-client: extension` | — | limpa cookie. **Só a extensão**: o painel recebe 403 `EXTENSION_ONLY` |
 | `GET /api/extension/me` | Cookie + X-Client + X-Installation-Id | — | `ExtensionProfile` |
 | `POST /api/extension/heartbeat` | Cookie | `{ extVersion, ml: { lastSyncAt } }` | `{ resyncRequested }` |
 | `PUT /api/extension/marketplaces/ml/session` | Cookie + consentimento ML + entitlement | `{ cookies: { ssid, … }, capturedAt }` | `{ affiliateTag }` |
@@ -153,6 +153,15 @@ reaplica a cadeia completa.
 | `POST /api/extension/marketplaces/shein/consent` | Bearer + X-Tenant-Id (painel) | `{ installationId }` | grava `sheinConsentAt`; 403 sem `marketplace_shein_enabled` ou sem aceite do aviso de risco; 404 sem sessão da extensão |
 | `PUT /api/extension/marketplaces/shein/session` | Cookie + consentimento Shein + aceite + entitlement | `{ cookies: { AT, memberId }, capturedAt }` | `{ affiliateId }` (nunca o token) |
 | `DELETE /api/extension/marketplaces/shein/session` | Bearer + X-Tenant-Id (painel) | — | revoga o consentimento Shein do tenant e apaga a credencial inteira (204, idempotente) |
+
+**Desconectar extensão (painel):** `GET /api/extension/sessions` → sessão(ões) da `installationId` do handshake →
+`DELETE /api/extension/sessions/:id` (Bearer), depois `session.changed` para a extensão descartar o perfil em cache
+(`extensionApi.revokeSession(installationId)`, app 0.96.2). Não chamar `DELETE /api/extension/session` do painel: o
+guard exige `x-client: extension` e o `fetch` antigo engolia o 403 (botão sem efeito, nenhum `revokedAt` em produção).
+Falha mostra `settings.disconnectFailed`.
+
+**Feedback do "Desconectar Mercado Livre":** a rota mantém a etiqueta e o chip "Logado" é o login do navegador
+(`ml.status`), então a tela quase não muda: `ExtensionMlCard` mostra o aviso de sucesso `ml.disconnected`.
 
 **Desconectar Mercado Livre:** revoga o consentimento **antes** de apagar a sessão (senão a
 extensão pode ressincronizar entre as duas escritas). Etiqueta e secreto da credencial ficam.

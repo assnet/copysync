@@ -54,15 +54,26 @@ describe('useAffiliateCredentials', () => {
     expect(h.result.current.actionError).toBeTruthy();
   });
 
-  it('com removeOp (ML pela extensão) usa a rota do marketplace, não o DELETE genérico', async () => {
+  it('com beforeRemove (ML pela extensão) revoga pela rota do marketplace e depois apaga a credencial', async () => {
     const h = await setup();
-    const removeOp = vi.fn().mockResolvedValue(undefined);
+    const order: string[] = [];
+    const beforeRemove = vi.fn(async () => { order.push('revoke'); });
+    service.remove.mockImplementation(async () => { order.push('delete'); });
 
-    await act(() => h.result.current.remove('AMAZON', removeOp));
+    await act(() => h.result.current.remove('AMAZON', beforeRemove));
 
-    expect(removeOp).toHaveBeenCalledTimes(1);
-    expect(service.remove).not.toHaveBeenCalled();
+    expect(order).toEqual(['revoke', 'delete']);
     expect(itemOf(h, 'AMAZON')).toBeUndefined();
+  });
+
+  it('beforeRemove que falha não apaga e devolve o card', async () => {
+    const h = await setup();
+    service.remove.mockClear();
+
+    await act(() => h.result.current.remove('AMAZON', () => Promise.reject(new Error('rede'))));
+
+    expect(service.remove).not.toHaveBeenCalled();
+    expect(itemOf(h, 'AMAZON')).toEqual(amazon);
   });
 
   it('credencial já apagada noutra aba: card não volta e o aviso aparece', async () => {

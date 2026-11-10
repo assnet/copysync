@@ -89,6 +89,21 @@ describe('useExtension', () => {
     expect(api.disconnect).toHaveBeenCalledWith('shein');
   });
 
+  it('revokeSession revoga a sessão desta instalação e avisa a extensão', async () => {
+    const h = await mount();
+    await act(async () => { await h.result.current.revokeSession(); });
+    expect(api.revokeSession).toHaveBeenCalledWith('inst-1');
+    expect(client.sendOp).toHaveBeenCalledWith('session.changed', {});
+    expect(client.clearCachedExtId).toHaveBeenCalled();
+  });
+
+  it('revokeSession que falha na API propaga o erro e não avisa a extensão', async () => {
+    api.revokeSession.mockRejectedValue(new Error('rede'));
+    const h = await mount();
+    await expect(h.result.current.revokeSession()).rejects.toThrow('rede');
+    expect(client.sendOp).not.toHaveBeenCalledWith('session.changed', {});
+  });
+
   it('refreshSeq sobe a cada refresh concluído e shein.status só com a capacidade', async () => {
     api.getCredentialStatuses.mockResolvedValue({ ml: null, shein: null });
     const h = await mount([]);
