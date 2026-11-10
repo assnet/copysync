@@ -174,6 +174,10 @@ Testes só-Redis (`*.redis.int.test.ts`, projeto `redis`, sem banco): ver [arqui
 - Nunca gravar em `rejectedCode` (nem na auditoria) corpo da resposta da loja, cookie ou chave: só o código interno.
 - Não limpar a rejeição ao reativar (`setStatus`), nem em sync do mesmo token **sem** checagem `VALID` da loja.
 - Não aceitar ID da Shein digitado nem apagar credencial Shein pelo `DELETE` genérico.
+- Não remover Mercado Livre pela lixeira com o `DELETE` genérico: o consentimento da extensão fica e o próximo sync
+  recria a credencial (visto em produção: removida 20:41, recriada 20:43). O painel (app 0.96.1) usa
+  `DELETE /api/extension/marketplaces/ml/session` (revoga e apaga) para provider com `usesBrowserSession` +
+  `extensionMarketplace`. O `DELETE /MERCADO_LIVRE` genérico continua aceito (cliente antigo).
 - Não reaproveitar `syncFailed` para "verifique o login": a extensão já informa se há login (`ml.status`); culpar o
   login em erro de servidor faz o usuário refazer um login que está certo.
 
