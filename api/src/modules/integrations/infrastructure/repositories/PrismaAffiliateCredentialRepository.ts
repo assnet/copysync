@@ -172,6 +172,21 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     return count > 0;
   }
 
+  async setIdentifiers(
+    tenantId: string,
+    provider: AffiliateProvider,
+    primary: string,
+    linked: string[],
+  ): Promise<AffiliateCredential | null> {
+    const { count } = await prisma.affiliateCredential.updateMany({
+      where: { tenantId, provider },
+      data: { publicIdentifier: primary, linkedIdentifiers: linked },
+    });
+    if (count === 0) return null;
+    const raw = await prisma.affiliateCredential.findFirst({ where: { tenantId, provider } });
+    return raw ? Mapper.toDomain(raw) : null;
+  }
+
   /** `updateMany`: linha apagada no meio vira no-op, nunca P2025. */
   async markRejected(tenantId: string, provider: AffiliateProvider, code: string, at: Date): Promise<void> {
     await prisma.affiliateCredential.updateMany({

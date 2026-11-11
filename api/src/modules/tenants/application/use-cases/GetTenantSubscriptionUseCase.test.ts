@@ -13,6 +13,7 @@ const USAGE: SubscriptionUsage = {
   linkRotations: ch(1, 0),
   offerGenerationsToday: 12,
   aiRequestsToday: null,
+  mercadoLivreAffiliateTags: 2,
 };
 
 function tenant(over: Partial<TenantProps> = {}): Tenant {
@@ -74,5 +75,12 @@ describe('GetTenantSubscriptionUseCase', () => {
     expect(item(out, 'telegram_sessions')).toMatchObject({ channel: 'telegram', used: 0, limit: 0, enabled: false });
     expect(item(out, 'whatsapp_sessions')).toMatchObject({ channel: 'whatsapp', used: 2, limit: 3, enabled: true });
     expect(item(out, 'storefront_enabled')).toMatchObject({ kind: 'feature', used: null, enabled: true });
+  });
+
+  it('etiquetas do ML: uso × limite do plano; sem entitlement vale 1', async () => {
+    const pro = await build(tenant(), { mercado_livre_affiliate_tags: 2 }).uc.execute('t1');
+    expect(item(pro, 'mercado_livre_affiliate_tags')).toMatchObject({ kind: 'count', channel: null, used: 2, limit: 2 });
+    const none = await build(tenant({ planSlug: null })).uc.execute('t1');
+    expect(item(none, 'mercado_livre_affiliate_tags')).toMatchObject({ limit: 1 });
   });
 });

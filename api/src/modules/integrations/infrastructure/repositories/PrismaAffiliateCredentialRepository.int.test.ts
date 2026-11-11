@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { PrismaAffiliateCredentialRepository } from './PrismaAffiliateCredentialRepository';
+import { PrismaTenantUsageReader } from '../../../tenants/infrastructure/repositories/PrismaTenantUsageReader';
 
 const repo = new PrismaAffiliateCredentialRepository();
 const blob = (n: number) => ({ ciphertext: Buffer.from(`c${n}`), iv: Buffer.from('iv'), tag: Buffer.from('tg'), keyVersion: 1 });
@@ -93,5 +94,35 @@ describe('PrismaAffiliateCredentialRepository — etiquetas da conta (ML)', () =
     await setLinked(['tag_b']);
     expect(await repo.clearSession(tenantId, ML)).toBe(true);
     expect(await repo.findByTenantAndProvider(tenantId, ML)).toMatchObject({ hasSession: false, accountIdentifiers: [], linkedIdentifiers: [], publicIdentifier: 'tag_a' });
+  });
+
+  it('setIdentifiers grava principal e vinculadas sem tocar em sessão, recusa nem lista da conta', async () => {
+    await repo.upsertSession({ tenantId, provider: ML, session: blob(7), syncedAt: AT, accountIdentifiers: ['tag_a', 'tag_b', 'tag_c'] });
+    await repo.markRejected(tenantId, ML, 'SESSION_REJECTED', AT);
+    const r = await repo.setIdentifiers(tenantId, ML, 'tag_c', ['tag_a', 'tag_b']);
+    expect(r).toMatchObject({
+      publicIdentifier: 'tag_c', linkedIdentifiers: ['tag_a', 'tag_b'], accountIdentifiers: ['tag_a', 'tag_b', 'tag_c'],
+      hasSession: true, rejectedCode: 'SESSION_REJECTED',
+    });
+    expect((await repo.findByTenantAndProvider(tenantId, ML))?.session).not.toBeNull();
+  });
+
+  it('setIdentifiers é escopado por tenant: outro tenant ou linha inexistente → null', async () => {
+    const other = await prisma.tenant.create({ data: { name: 'int2', slug: `int-cred2-${Date.now()}` } });
+    try {
+      expect(await repo.setIdentifiers(other.id, ML, 'tag_x', [])).toBeNull();
+      expect((await repo.findByTenantAndProvider(tenantId, ML))?.publicIdentifier).toBe('tag_c');
+    } finally {
+      await prisma.tenant.delete({ where: { id: other.id } });
+    }
+  });
+
+  it('uso na Assinatura: conjunto efetivo sob o limite (ausente = 1; com 2 = principal + 1)', async () => {
+    const reader = new PrismaTenantUsageReader(prisma);
+    expect((await reader.read(tenantId)).mercadoLivreAffiliateTags).toBe(1);
+    await prisma.tenantEntitlement.create({ data: { tenantId, key: 'mercado_livre_affiliate_tags', value: 2 } });
+    expect((await reader.read(tenantId)).mercadoLivreAffiliateTags).toBe(2);
+    await repo.delete(tenantId, ML);
+    expect((await reader.read(tenantId)).mercadoLivreAffiliateTags).toBe(0);
   });
 });

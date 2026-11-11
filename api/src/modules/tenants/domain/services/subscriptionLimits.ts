@@ -1,5 +1,6 @@
 import { ENTITLEMENT_KEYS, type EntitlementKey } from '../entitlementKeys';
 import { LIMIT_CHANNELS, limitKeyOfChannel, type ChannelLimitKind, type LimitChannel } from '../channelLimits';
+import { identifierLimitOf } from './affiliateIdentifierLimit';
 
 /**
  * Limites exibidos na tela "Assinatura" (`GET /subscription`, `.specs/features/subscription-page`).
@@ -24,6 +25,8 @@ export interface SubscriptionUsage {
   offerGenerationsToday: number;
   /** Pedidos de IA do dia; `null` se não houver contador. */
   aiRequestsToday: number | null;
+  /** Etiquetas do Mercado Livre em uso: principal + vinculadas dentro do limite do plano (0 sem credencial). */
+  mercadoLivreAffiliateTags: number;
 }
 
 export interface SubscriptionLimitItem extends SubscriptionLimitItemDef {
@@ -45,12 +48,13 @@ const FEATURES_DEFAULT_ON: ReadonlySet<EntitlementKey> = new Set([
   ENTITLEMENT_KEYS.AI_REWRITE_ENABLED,
 ]);
 
-/**
- * Chaves que não aparecem na tela. Chave nova entra na lista ou aqui, com motivo.
- * - `mercado_livre_affiliate_tags`: oculta até existir o contador de uso (etiquetas vinculadas); ausente
- *   vale 1, não "sem limite" (`affiliateIdentifierLimit.ts`).
- */
-export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS];
+/** Chaves que não aparecem na tela. Chave nova entra na lista ou aqui, com motivo. Hoje nenhuma. */
+export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [];
+
+/** Chaves numéricas em que ausente não é "sem limite": o limite passa pela função do recurso. */
+const LIMIT_OF: ReadonlyMap<EntitlementKey, (value: number | null) => number> = new Map([
+  [ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, identifierLimitOf],
+]);
 
 const channelItems = (kind: ChannelLimitKind): SubscriptionLimitItemDef[] =>
   LIMIT_CHANNELS.map((channel) => ({ key: limitKeyOfChannel(kind, channel), channel, kind: 'count' as const }));
@@ -64,6 +68,8 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   ...channelItems('linkRotationGroups'),
   { key: ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY, channel: null, kind: 'daily' },
   { key: ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY, channel: null, kind: 'daily' },
+  /** Etiquetas do ML: principal incluída; ausente vale 1 (`affiliateIdentifierLimit.ts`), nunca "sem limite". */
+  { key: ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, channel: null, kind: 'count' },
   feature(ENTITLEMENT_KEYS.AI_REWRITE_ENABLED),
   feature(ENTITLEMENT_KEYS.MENTION_ALL_ENABLED),
   feature(ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH),
@@ -104,18 +110,21 @@ function usedOf(def: SubscriptionLimitItemDef, usage: SubscriptionUsage): number
   if (def.kind === 'feature') return null;
   if (def.key === ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY) return usage.offerGenerationsToday;
   if (def.key === ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY) return usage.aiRequestsToday;
+  if (def.key === ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS) return usage.mercadoLivreAffiliateTags;
   const c = KEY_TO_COUNT.get(def.key);
   return c ? usage[c.kind][c.channel] : null;
 }
 
-/** `values` = snapshot cru (`IEntitlementSnapshotReader.readAll`). Ausente numérico = ilimitado. */
+/** `values` = snapshot cru (`IEntitlementSnapshotReader.readAll`). Ausente numérico = ilimitado, salvo `LIMIT_OF`. */
 export function buildSubscriptionLimits(values: Readonly<Record<string, unknown>>, usage: SubscriptionUsage): SubscriptionLimitItem[] {
   return SUBSCRIPTION_LIMIT_ITEMS.map((def) => {
     if (def.kind === 'feature') {
       const v = toBoolean(values[def.key]);
       return { ...def, used: null, limit: null, enabled: v ?? FEATURES_DEFAULT_ON.has(def.key) };
     }
-    const limit = toNumber(values[def.key]);
+    const raw = toNumber(values[def.key]);
+    const limitOf = LIMIT_OF.get(def.key);
+    const limit = limitOf ? limitOf(raw) : raw;
     return { ...def, used: usedOf(def, usage), limit, enabled: limit !== 0 };
   });
 }

@@ -17,6 +17,10 @@ export const affiliateCredentialItemSchema = {
     lastValidatedAt: { type: ['string', 'null'], format: 'date-time' },
     rejectedAt: { type: ['string', 'null'], format: 'date-time' },
     rejectedCode: { type: ['string', 'null'] },
+    accountIdentifiers: { type: 'array', items: { type: 'string' } },
+    linkedIdentifiers: { type: 'array', items: { type: 'string' } },
+    /** Limite efetivo de etiquetas (principal incluída); null = provider sem lista ou resposta de escrita. */
+    identifierLimit: { type: ['integer', 'null'] },
     updatedAt: { type: 'string', format: 'date-time' },
   },
 } as const;
@@ -65,6 +69,17 @@ export const upsertAffiliateSessionBodySchema = {
   additionalProperties: false,
 } as const;
 
+/** Principal + vinculadas escolhidas entre as etiquetas da conta. Pertencer à conta e o limite: domínio. */
+export const setAffiliateIdentifiersBodySchema = {
+  type: 'object',
+  required: ['primary', 'linked'],
+  properties: {
+    primary: { type: 'string', minLength: 1, maxLength: 256 },
+    linked: { type: 'array', maxItems: 50, items: { type: 'string', minLength: 1, maxLength: 256 } },
+  },
+  additionalProperties: false,
+} as const;
+
 const envelope = (data: object) => ({
   type: 'object',
   properties: { success: { type: 'boolean' }, data },
@@ -106,6 +121,17 @@ export const affiliateSessionSyncResponse = envelope({
     provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] },
     status: { type: 'string', enum: [...AFFILIATE_CREDENTIAL_STATUSES] },
     updatedAt: { type: 'string', format: 'date-time' },
+  },
+});
+
+export const affiliateIdentifiersResponse = envelope({
+  type: 'object',
+  properties: {
+    account: { type: 'array', items: { type: 'string' } },
+    primary: { type: ['string', 'null'] },
+    linked: { type: 'array', items: { type: 'string' } },
+    limit: { type: 'integer' },
+    used: { type: 'integer' },
   },
 });
 

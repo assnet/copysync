@@ -3,6 +3,8 @@ import type { IMarketplaceRiskAcceptanceRepository } from '../../domain/contract
 import type { AffiliateCredential } from '../../domain/entities/AffiliateCredential';
 import { AFFILIATE_PROVIDERS, type AffiliateProvider } from '../../domain/enums/AffiliateProvider';
 import { currentRiskNoticeVersion } from '../../domain/services/marketplaceRiskNotice';
+import { affiliateIdentifierLimitKey } from '../../domain/services/affiliateIdentifierEntitlement';
+import { identifierLimitOf } from '../../../tenants/domain/services/affiliateIdentifierLimit';
 import { marketplaceEntitlementKey } from '../../../campaigns/domain/services/marketplaceEntitlement';
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
 import type { IPlanEntitlementPresetRepository } from '../../../tenants/domain/contracts/IPlanEntitlementPresetRepository';
@@ -27,6 +29,8 @@ export interface MarketplaceAvailability {
 export interface AffiliateCredentialListResult {
   items: AffiliateCredential[];
   marketplaceAvailability: Record<AffiliateProvider, MarketplaceAvailability>;
+  /** Limite efetivo de etiquetas vinculadas, só para provider com lista da conta (hoje o ML). */
+  identifierLimits: Partial<Record<AffiliateProvider, number>>;
 }
 
 export interface ListAffiliateCredentialsInput {
@@ -45,9 +49,10 @@ export class ListAffiliateCredentialsUseCase {
 
   async execute(input: ListAffiliateCredentialsInput): Promise<AffiliateCredentialListResult> {
     const keys = AFFILIATE_PROVIDERS.map(marketplaceEntitlementKey).filter((k): k is NonNullable<typeof k> => k !== null);
-    const [items, presetRows] = await Promise.all([
+    const [items, presetRows, identifierLimits] = await Promise.all([
       this.repo.listByTenant(input.tenantId),
       this.presets.listByKeys(keys),
+      this.identifierLimits(input.tenantId),
     ]);
 
     const entries = await Promise.all(
@@ -64,7 +69,17 @@ export class ListAffiliateCredentialsUseCase {
     return {
       items,
       marketplaceAvailability: Object.fromEntries(entries) as Record<AffiliateProvider, MarketplaceAvailability>,
+      identifierLimits,
     };
+  }
+
+  private async identifierLimits(tenantId: string): Promise<Partial<Record<AffiliateProvider, number>>> {
+    const out: Partial<Record<AffiliateProvider, number>> = {};
+    for (const provider of AFFILIATE_PROVIDERS) {
+      const key = affiliateIdentifierLimitKey(provider);
+      if (key) out[provider] = identifierLimitOf(await this.entitlements.getNumber(tenantId, key));
+    }
+    return out;
   }
 
   private async riskNotice(

@@ -31,6 +31,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null) {
     clearSession: vi.fn(),
     setStatus: vi.fn(),
     markRejected: vi.fn(),
+    setIdentifiers: vi.fn(),
   } satisfies IAffiliateCredentialRepository;
   const audit = { create: vi.fn().mockResolvedValue(undefined) } satisfies IAuditLogRepository;
   const useCase = new UpsertAffiliateSessionUseCase(repo, () => cipher, audit, () => NOW);

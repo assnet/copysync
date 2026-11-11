@@ -10,6 +10,8 @@ import { UpsertAffiliateCredentialUseCase } from '../../application/use-cases/Up
 import { DeleteAffiliateCredentialUseCase } from '../../application/use-cases/DeleteAffiliateCredentialUseCase';
 import { SetAffiliateCredentialStatusUseCase } from '../../application/use-cases/SetAffiliateCredentialStatusUseCase';
 import { UpsertAffiliateSessionUseCase } from '../../application/use-cases/UpsertAffiliateSessionUseCase';
+import { GetAffiliateIdentifiersUseCase } from '../../application/use-cases/GetAffiliateIdentifiersUseCase';
+import { SetLinkedAffiliateIdentifiersUseCase } from '../../application/use-cases/SetLinkedAffiliateIdentifiersUseCase';
 import { AffiliateCredentialPresenter } from '../presenters/AffiliateCredentialPresenter';
 import {
   createMarketplaceRiskAcceptanceRepository,
@@ -30,9 +32,11 @@ import type { AffiliateCredentialStatus } from '../../domain/enums/AffiliateCred
 import {
   affiliateCredentialItemResponse,
   affiliateCredentialListResponse,
+  affiliateIdentifiersResponse,
   affiliateProviderParamSchema,
   affiliateSessionSyncResponse,
   setAffiliateCredentialStatusBodySchema,
+  setAffiliateIdentifiersBodySchema,
   upsertAffiliateCredentialBodySchema,
   upsertAffiliateSessionBodySchema,
 } from '../schemas/affiliateCredential.schema';
@@ -42,9 +46,10 @@ const auditRepo = new PrismaAuditLogRepository();
 // Cifra resolvida no uso: sem chave, só quem cifra responde 503.
 const cipher = () => SecretCipherFactory.get();
 
+const entitlements = createAffiliateEntitlementReader();
 const listUseCase = new ListAffiliateCredentialsUseCase(
   repo,
-  createAffiliateEntitlementReader(),
+  entitlements,
   new PrismaPlanEntitlementPresetRepository(),
   createMarketplaceRiskAcceptanceRepository(),
 );
@@ -52,6 +57,8 @@ const upsertUseCase = new UpsertAffiliateCredentialUseCase(repo, cipher, auditRe
 const deleteUseCase = new DeleteAffiliateCredentialUseCase(repo, auditRepo);
 const setStatusUseCase = new SetAffiliateCredentialStatusUseCase(repo);
 const upsertSessionUseCase = new UpsertAffiliateSessionUseCase(repo, cipher, auditRepo);
+const getIdentifiersUseCase = new GetAffiliateIdentifiersUseCase(repo, entitlements);
+const setIdentifiersUseCase = new SetLinkedAffiliateIdentifiersUseCase(repo, entitlements, auditRepo);
 const acceptRiskUseCase = new AcceptMarketplaceRiskUseCase(prismaMarketplaceRiskAcceptTransaction);
 
 const preHandler = [authHook, tenantHook];
@@ -178,6 +185,51 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
       httpResponse.ok(reply, AffiliateCredentialPresenter.toSessionSync(credential));
     },
   );
+  app.get<ProviderParams>(
+    '/:provider/identifiers',
+    {
+      preHandler,
+      schema: {
+        tags,
+        summary: 'Etiquetas da conta, principal, vinculadas e limite do plano (só provider com lista da conta)',
+        params: affiliateProviderParamSchema,
+        response: { 200: affiliateIdentifiersResponse },
+      },
+    },
+    async (request, reply) => {
+      const { tenantId } = request.tenantContext;
+      const result = await getIdentifiersUseCase.execute({ tenantId, provider: request.params.provider });
+      httpResponse.ok(reply, AffiliateCredentialPresenter.toIdentifiers(result));
+      return reply;
+    },
+  );
+
+  app.put<ProviderParams & { Body: { primary: string; linked: string[] } }>(
+    '/:provider/identifiers',
+    {
+      preHandler,
+      schema: {
+        tags,
+        summary: 'Escolher a principal e as vinculadas entre as etiquetas da conta (até o limite do plano)',
+        params: affiliateProviderParamSchema,
+        body: setAffiliateIdentifiersBodySchema,
+        response: { 200: affiliateIdentifiersResponse },
+      },
+    },
+    async (request, reply) => {
+      const { tenantId, userId } = request.tenantContext;
+      const result = await setIdentifiersUseCase.execute({
+        tenantId,
+        userId,
+        provider: request.params.provider,
+        primary: request.body.primary,
+        linked: request.body.linked,
+      });
+      httpResponse.ok(reply, AffiliateCredentialPresenter.toIdentifiers(result));
+      return reply;
+    },
+  );
+
   app.post<ProviderParams & { Body: { noticeVersion: string; locale: string } }>(
     '/:provider/risk-acceptance',
     {
