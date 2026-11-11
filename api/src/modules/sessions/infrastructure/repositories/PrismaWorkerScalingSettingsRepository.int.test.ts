@@ -49,6 +49,9 @@ describe('save', () => {
     const saved = await repo.save({ maxSessionsPerWorker: 30 }, 'admin-1', null);
     expect(saved).toMatchObject({ value: { maxSessionsPerWorker: 30 }, updatedById: 'admin-1' });
     expect(await repo.get()).toEqual(saved);
+    // `updatedAt` em UTC (sem deslocamento de fuso) e utilizável pelo update condicionado.
+    expect(Math.abs(saved.updatedAt.getTime() - Date.now())).toBeLessThan(60_000);
+    await expect(repo.save({ maxSessionsPerWorker: 31 }, 'admin-1', saved.updatedAt)).resolves.toMatchObject({ value: { maxSessionsPerWorker: 31 } });
   });
 
   it('create com linha existente → conflito, sem gravar', async () => {

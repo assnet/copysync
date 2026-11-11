@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { WorkerScalingSettingsConflictError } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import type {
   IWorkerScalingSettingsRepository,
@@ -10,8 +10,8 @@ import type { WorkerScalingSettingsPatch } from '../../domain/services/workerSca
 export const WORKER_SCALING_SETTINGS_KEY = 'worker_scaling';
 
 /**
- * Concorrência otimista por `updatedAt` (WSCALE-06): `null` = cria (linha existente ou corrida
- * no create = conflito); data = `updateMany` condicionado; 0 linhas = conflito.
+ * Concorrência otimista por `updatedAt` (WSCALE-06): `null` = cria com `ON CONFLICT DO NOTHING`
+ * (linha existente ou corrida = 0 linhas = conflito); data = `updateMany` condicionado; 0 linhas = conflito.
  */
 export class PrismaWorkerScalingSettingsRepository implements IWorkerScalingSettingsRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -30,17 +30,16 @@ export class PrismaWorkerScalingSettingsRepository implements IWorkerScalingSett
   ): Promise<WorkerScalingSettingsRecord> {
     const json = value as Prisma.InputJsonValue;
     if (expectedUpdatedAt === null) {
-      try {
-        const row = await this.prisma.platformSetting.create({
-          data: { key: WORKER_SCALING_SETTINGS_KEY, value: json, updatedById: actorId },
-        });
-        return { value: row.value, updatedAt: row.updatedAt, updatedById: row.updatedById };
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          throw new WorkerScalingSettingsConflictError();
-        }
-        throw err;
-      }
+      // `ON CONFLICT DO NOTHING`: linha existente/corrida vira 0 linhas, sem P2002 nem `prisma:error` no log.
+      // Literal ISO com `Z` em `timestamp(3)` ignora o fuso: grava em UTC, como o Prisma no update.
+      const rows = await this.prisma.$queryRaw<WorkerScalingSettingsRecord[]>`
+        INSERT INTO "platform_settings" ("key", "value", "updatedById", "updatedAt")
+        VALUES (${WORKER_SCALING_SETTINGS_KEY}, ${JSON.stringify(value)}::jsonb, ${actorId}, ${new Date().toISOString()}::timestamp(3))
+        ON CONFLICT ("key") DO NOTHING
+        RETURNING "value", "updatedAt", "updatedById"`;
+      const row = rows[0];
+      if (!row) throw new WorkerScalingSettingsConflictError();
+      return { value: row.value, updatedAt: row.updatedAt, updatedById: row.updatedById };
     }
     // Sempre depois do esperado: duas gravações no mesmo ms não podem repetir o `updatedAt`.
     const updatedAt = new Date(Math.max(Date.now(), expectedUpdatedAt.getTime() + 1));
