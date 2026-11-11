@@ -50,7 +50,7 @@ export interface NewWorkerScaleEvent {
   reason: string;
   outcome: WorkerScaleOutcome;
   error?: string | null;
-  /** Idempotência do pedido manual; `null` no job. */
+  /** Idempotência do pedido (manual: id do painel; job: `auto:<balde de 5 min>`). */
   requestId?: string | null;
 }
 

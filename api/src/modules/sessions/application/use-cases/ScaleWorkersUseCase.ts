@@ -31,7 +31,7 @@ export interface ScaleWorkersInput {
   replicas: number;
   /** Motivo (obrigatório no manual; `RequestWorkerScaleUseCase` mede 3–200 code points após o trim). */
   reason: string;
-  /** Idempotência: o mesmo id devolve o evento anterior sem chamar de novo. `null` no job. */
+  /** Idempotência: o mesmo id devolve o evento anterior sem chamar de novo. Job: `auto:<balde de 5 min>`. */
   requestId: string | null;
   trigger: WorkerScaleTrigger;
   /** Super admin que pediu; `null` = sistema (job). Auditoria só quando há ator. */

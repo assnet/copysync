@@ -43,7 +43,12 @@ import { registerGroupMonitoringListener } from '../modules/automation/infrastru
 import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
 import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
-import { sessionLeaseContainer, workerScalingSettingsProvider } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
+import {
+  createWorkerAutoscalerJob,
+  sessionLeaseContainer,
+  workerScalingSettingsProvider,
+} from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
+import type { WorkerAutoscalerJob } from '../modules/sessions/infrastructure/jobs/WorkerAutoscalerJob';
 import { sessionAdoptionContainer } from '../modules/sessions/infrastructure/lease/sessionAdoptionContainer';
 import { createOpsMetricsSamplerJob } from '../modules/metrics/infrastructure/opsMetricsContainer';
 import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/jobs/OpsMetricsSamplerJob';
@@ -138,9 +143,9 @@ async function start(): Promise<void> {
   // Só em `worker`/`all`: o `http` nunca monta repositório, listener nem timer da adoção.
   const adoption = jobs.has('sessionAdoption') ? sessionAdoptionContainer() : null;
   // Escalador (WSCALE-11): construir no boot só para o aviso de `WORKER_SCALER_SERVICE_ID` inválido
-  // sair no log de boot, não no 1º uso. Só constrói (sem rede). Papéis que montam as rotas de escala;
-  // o job de subida automática (T27) inclui o papel dele aqui.
-  if (env.WORKER_SCALER_ENABLED && role !== 'worker') workerScaler();
+  // sair no log de boot, não no 1º uso. Só constrói (sem rede). Papéis com as rotas de escala
+  // (`http`/`all`) ou com a subida automática (`worker`/`all`, WSCALE-15).
+  if (env.WORKER_SCALER_ENABLED && (role !== 'worker' || jobs.has('workerAutoscaler'))) workerScaler();
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
@@ -465,6 +470,15 @@ async function start(): Promise<void> {
     logger.info({ platform: sampler.platformEnabled }, 'Ops metrics sampler started');
   }
 
+  // ── Subida automática de workers (WSCALE-15) ───────────────────────────────
+  // Só worker/all; 1 dono por vez via lease. Age só com `scalerMode = auto` (lido a cada tick).
+  let workerAutoscaler: WorkerAutoscalerJob | null = null;
+  if (jobs.has('workerAutoscaler')) {
+    workerAutoscaler = createWorkerAutoscalerJob();
+    workerAutoscaler.start();
+    logger.info('Worker autoscaler started');
+  }
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   // WROLE-15. `all`: ordem de hoje. `http`: jobs → composição → mídia → Redis → app.
   // `worker`: keeper → jobs → consumidores BullMQ/RPC → mídia (ofertas, D8) → sockets → flush →
@@ -489,9 +503,15 @@ async function start(): Promise<void> {
     // ADOPT-14/D4: junto com o keeper param ticker (espera o tick em curso) e alerta. O heartbeat
     // segue batendo até soltar os leases; `heartbeat.stop()` apaga a linha no fim.
     // MQ-22: o sampler para junto (cancela a Render em voo, solta o lease), aguardado em paralelo.
-    if (adoption || opsMetricsSampler) {
+    // WSCALE-15: a subida automática também (espera o tick em curso).
+    if (adoption || opsMetricsSampler || workerAutoscaler) {
       try {
-        await Promise.all([adoption?.ticker.stop(), adoption?.capacityAlert.stop(), opsMetricsSampler?.stop()]);
+        await Promise.all([
+          adoption?.ticker.stop(),
+          adoption?.capacityAlert.stop(),
+          opsMetricsSampler?.stop(),
+          workerAutoscaler?.stop(),
+        ]);
         if (adoption) logger.info('Session adoption stopped');
       } catch (err) {
         logger.error({ err }, 'Session adoption stop failed during shutdown');
