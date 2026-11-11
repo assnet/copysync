@@ -29,6 +29,7 @@ Subir réplica dependia de alguém ver o alerta e clicar. Com `scalerMode = auto
 - **`workerAdmin.routes.ts`** — `GET /admin/workers/scale` com `lastAutoEvent`.
 - **`rules.ts`**, **`useWorkerScale.ts`**, **`ScaleTab.tsx`**, **`strings.ts`** — cartão usa `lastAutoEvent` (fallback `lastEvent`) e relê o histórico quando o `lastEvent` muda; chip "Ligada" só com escalador pronto e adoção; textos do coletor e do intervalo corrigidos.
 - **`WorkerAutoscalerJob.ts`**, **`PrismaSessionAdoptionRepository.ts`** — aguardando só conta pedido posterior à última subida (`requestedAfter`); no teto, lê as réplicas ao vivo antes de recusar (1×/h).
+- **`WorkerAutoscalerJob.ts`** — no teto, a leitura ao vivo das réplicas usa lease próprio de 5 min (`worker-autoscaler:ceiling-check`, ≤ 12/h) separado da recusa (1×/h, sempre após a leitura): redução fora do painel é vista em ≤ 5 min, não em até 1 h.
 - **`strings.ts`**, **`ScaleTab.tsx`** — motivo `auto: adoption_disabled` traduzido; recusa 0/0 sem seta ("—").
 
 ### Added — api 0.84.0 · app 0.103.0 — escala dos workers por decisão do super admin

@@ -14,8 +14,10 @@ import {
 import type { WorkerScalerState } from '../../domain/contracts/IWorkerScaler';
 import { defaultWorkerScalingSettings, type WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
 import {
+  AUTOSCALER_CEILING_CHECK_LEASE,
   AUTOSCALER_CLEANUP_LEASE,
   AUTOSCALER_LEASE,
+  AUTOSCALER_REJECTED_LEASE_PREFIX,
   NO_SAMPLES_ERROR,
   SCALE_EVENT_RETENTION_MS,
   WorkerAutoscalerJob,
@@ -421,14 +423,15 @@ describe('WorkerAutoscalerJob', () => {
     expect(w.rows).toHaveLength(2);
   });
 
-  it('último succeeded já no maxReplicas: lê ao vivo só na recusa (1×/hora), silenciada não lê', async () => {
+  it('último succeeded já no maxReplicas: lê ao vivo a cada 5 min (lease não solto), recusa 1×/hora', async () => {
     const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
     w.setAwaiting(1);
     const job = w.newJob();
     await job.runTick();
     expect(w.replicas).toBe(2);
     await run(w, job, 20);
-    expect(w.scaler.getState).toHaveBeenCalledTimes(2);
+    expect(w.lease.held.has(AUTOSCALER_CEILING_CHECK_LEASE)).toBe(true);
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1 + 4); // subida + leituras em t=5, 10, 15, 20 (balde da subida pula t=1..4)
     expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
     expect(w.rows.filter((r) => r.outcome === 'rejected')).toEqual([
       expect.objectContaining({ error: 'SCALE_TARGET_OUT_OF_RANGE', fromReplicas: 2, toReplicas: 3 }),
@@ -447,6 +450,53 @@ describe('WorkerAutoscalerJob', () => {
     expect(w.scaler.scaleTo).toHaveBeenCalledTimes(2);
     expect(w.scaler.scaleTo).toHaveBeenLastCalledWith(2);
     expect(w.rows.filter((r) => r.outcome === 'rejected')).toEqual([]);
+    expect(w.rows.at(-1)).toMatchObject({ outcome: 'succeeded', fromReplicas: 1, toReplicas: 2 });
+  });
+
+  it('no teto parado: no máximo 12 leituras ao vivo e 1 recusa por hora', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
+    w.setAwaiting(1);
+    const job = w.newJob();
+    await job.runTick();
+    w.scaler.getState.mockClear();
+    await run(w, job, 60);
+    expect(w.scaler.getState.mock.calls.length).toBeLessThanOrEqual(12);
+    expect(w.rows.filter((r) => r.outcome === 'rejected')).toHaveLength(1);
+    w.scaler.getState.mockClear();
+    await run(w, job, 60);
+    expect(w.scaler.getState.mock.calls.length).toBeLessThanOrEqual(12);
+    expect(w.rows.filter((r) => r.outcome === 'rejected')).toHaveLength(2);
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('recusa só sai em tick com leitura ao vivo: lease da recusa livre sem a leitura só pula', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
+    w.setAwaiting(1);
+    const job = w.newJob();
+    await job.runTick();
+    await run(w, job, 5); // t=5 (fora do balde da subida): lê e recusa
+    w.lease.held.delete(`${AUTOSCALER_REJECTED_LEASE_PREFIX}SCALE_TARGET_OUT_OF_RANGE`);
+    const calls = w.scaler.getState.mock.calls.length;
+    await run(w, job, 1); // t=6: leitura ainda no lease de 5 min
+    expect(w.scaler.getState.mock.calls.length).toBe(calls);
+    expect(w.rows.filter((r) => r.outcome === 'rejected')).toHaveLength(1);
+  });
+
+  it('reduzido fora do painel com o automático no teto: visto e subido em até 5 min', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
+    w.setAwaiting(1);
+    const job = w.newJob();
+    await job.runTick();
+    await run(w, job, 5); // t=5: lê no teto e recusa (silêncio de 1 h)
+    expect(w.rows.filter((r) => r.outcome === 'rejected')).toHaveLength(1);
+    w.setState(ready(1)); // admin voltou para 1 direto no provedor logo depois da leitura
+    let minutes = 0;
+    while (w.scaler.scaleTo.mock.calls.length < 2 && minutes < 10) {
+      await run(w, job, 1);
+      minutes++;
+    }
+    expect(minutes).toBeLessThanOrEqual(5);
+    expect(w.scaler.scaleTo).toHaveBeenLastCalledWith(2);
     expect(w.rows.at(-1)).toMatchObject({ outcome: 'succeeded', fromReplicas: 1, toReplicas: 2 });
   });
 

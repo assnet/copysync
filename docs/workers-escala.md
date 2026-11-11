@@ -235,9 +235,10 @@ lease `worker-autoscaler`. Lê `scalerMode` a cada tick: com `off` ou `manual` n
   subida não conta de novo para a próxima).
 - **Ordem do tick**: com a adoção desligada o job não consulta a Render e só registra `ADOPTION_DISABLED` (1×/h). Intervalo
   mínimo ativo é checado antes de ler a Render. Teto: com o último `succeeded` abaixo de `maxReplicas` não há leitura
-  extra; já no teto, as réplicas podem ter mudado fora do painel, então o job lê o estado ao vivo (`getState`) antes de
-  recusar, no máximo 1×/h (o lease da recusa `SCALE_TARGET_OUT_OF_RANGE` é pego antes; silenciado, nem lê). Réplicas
-  reais abaixo do teto: solta o lease e segue com esse estado (uma leitura por tick).
+  extra; já no teto, as réplicas podem ter mudado fora do painel, então o job lê o estado ao vivo (`getState`) no máximo
+  1× a cada 5 min (lease próprio `worker-autoscaler:ceiling-check`, não solto: ≤ 12 leituras/h; sem o lease, só pula o
+  tick). A recusa `SCALE_TARGET_OUT_OF_RANGE` sai só depois dessa leitura e segue 1×/h pelo lease da recusa. Réplicas
+  reais abaixo do teto: segue no mesmo tick com esse estado (uma leitura por tick); redução fora do painel é vista em ≤ 5 min.
 - **Ação**: sempre **+1** réplica sobre as desejadas do provedor, pelo mesmo `ScaleWorkersUseCase` do manual
   (`trigger = auto`, ator nulo): `checkPreconditions()` antes, depois `execute()`. Valem as mesmas regras: modo, adoção,
   faixa (`maxReplicas` é o teto), disco/autoescala nativa, intervalo mínimo (inclusive falha incerta) e evento
@@ -298,10 +299,10 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 - Chamar a Render nas rotas de métricas/capacidade: só as rotas de escala chamam (cache 30 s, timeout 5 s).
 - Reduzir réplicas no automático ou subir mais de 1 por decisão.
 - Guardar em memória o início do "sustentado", o último pedido ou o silêncio das recusas: tudo vem do banco (amostras,
-  eventos, `JobLease`). Soltar os leases `worker-autoscaler:rejected:*`/`:cleanup` (perde o 1×/h e o 1×/24 h).
+  eventos, `JobLease`). Soltar os leases `worker-autoscaler:rejected:*`/`:ceiling-check`/`:cleanup` (perde o 1×/h, o 1×/5 min e o 1×/24 h).
 - Pôr número ou texto variável no motivo do automático (quebra o replay estrito do balde) ou chamar o escalador fora do
   `ScaleWorkersUseCase` (pula intervalo, faixa e evento).
 - Registrar o `workerAutoscaler` no `http` ou ligar `scalerMode = auto` sem o T25 (sem o coletor, só o gatilho de
   sessão aguardando age).
-- Consultar a Render no tick com a adoção desligada ou intervalo ativo; já no teto, mais de 1×/h (recusa silenciada não lê).
+- Consultar a Render no tick com a adoção desligada ou intervalo ativo; já no teto, mais de 1× a cada 5 min (lease `:ceiling-check`) ou gravar recusa sem leitura ao vivo no tick.
 - Contar como aguardando sessão que pediu conexão antes da última subida (dispara subida em cascata durante o boot).

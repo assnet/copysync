@@ -42,6 +42,9 @@ export const SCALE_EVENT_RETENTION_MS = 180 * 24 * 60 * 60_000;
 const CLEANUP_LEASE_MS = 24 * 60 * 60_000;
 /** Recusa do mesmo motivo: no máximo 1 evento por hora no cluster (lease não solto). */
 export const REJECTION_SILENCE_MS = 60 * 60_000;
+/** Leitura ao vivo das réplicas já no teto: no máximo 1 a cada 5 min no cluster (lease não solto). */
+export const AUTOSCALER_CEILING_CHECK_LEASE = 'worker-autoscaler:ceiling-check';
+export const CEILING_CHECK_MS = 5 * 60_000;
 /**
  * Janela do `requestId` do automático: dois donos do lease no mesmo balde de 5 min geram o mesmo id
  * e o segundo vira "já feito" (sem chamada dupla ao escalador nem evento novo). O replay do use case
@@ -192,8 +195,8 @@ export class WorkerAutoscalerJob {
   /**
    * Checagens locais antes do provedor (sem chamada à Render): balde já pedido e intervalo mínimo
    * ativo. Último `succeeded` já no `maxReplicas`: as réplicas podem ter mudado fora do painel, então
-   * a recusa só sai depois de ler o estado ao vivo, no máximo 1×/h (lease da recusa; silenciada, nem
-   * lê). Abaixo do teto lido ao vivo segue com esse estado. Um só `getState` por tick, que vai para a
+   * lê o estado ao vivo no máximo 1× a cada 5 min (lease `ceiling-check`; sem ele, pula o tick). A recusa
+   * sai só depois dessa leitura e segue 1×/h (lease da recusa). Abaixo do teto lido ao vivo segue com esse estado. Um só `getState` por tick, que vai para a
    * precondição e o pedido (`knownState`).
    */
   private async scaleUp(now: Date, reason: ScaleUpReason, connected: number, cooldownStart: Date | null): Promise<void> {
@@ -218,15 +221,17 @@ export class WorkerAutoscalerJob {
     }
     let live: WorkerScalerState | null = null;
     if (known !== null && known >= settings.maxReplicas) {
-      const code = new ScaleTargetOutOfRangeError(settings.minReplicas, settings.maxReplicas).code;
-      if (!(await this.acquireRejection(now, code))) return;
+      // Leitura ao vivo no teto no máximo 1× a cada 5 min no cluster (lease não solto); sem ela, só pula.
+      // -1 s como o lease do tick: com tick de 60 s o lease está livre exatamente 5 ticks depois.
+      const checkUntil = new Date(now.getTime() + CEILING_CHECK_MS - 1_000);
+      if (!(await this.options.lease.tryAcquire(AUTOSCALER_CEILING_CHECK_LEASE, this.ownerId, checkUntil, now))) return;
       live = await scaler.getState();
       if (live.status === 'ready' && live.desiredReplicas >= settings.maxReplicas) {
-        await this.recordRejection(reason, code, live.desiredReplicas, live.desiredReplicas + 1);
+        const code = new ScaleTargetOutOfRangeError(settings.minReplicas, settings.maxReplicas).code;
+        await this.rejectOnce(now, reason, code, live.desiredReplicas, live.desiredReplicas + 1);
         return;
       }
-      // Teto não confirmado ao vivo: solta o silêncio e segue com o estado lido.
-      await this.options.lease.release(`${AUTOSCALER_REJECTED_LEASE_PREFIX}${code}`, this.ownerId);
+      // Abaixo do teto ao vivo (ou provedor fora): segue no mesmo tick com o estado lido.
     }
 
     const state = live ?? (await scaler.getState());
