@@ -22,6 +22,8 @@ export interface WorkerSettingsDraftState {
 }
 
 export type FieldErrors = Partial<Record<WorkerScalingSettingsField, string>>;
+/** Estado da medição do teto sugerido: `loading` não afirma ausência; `unavailable` = sem amostra ou falha. */
+export type SuggestedState = 'loading' | 'ready' | 'unavailable';
 export interface WorkerSettingsNotice { severity: 'success' | 'warning' | 'error'; text: string }
 
 /** Sessões do worker mais ocupado agora (ou do processo, com a adoção desligada); `null` sem dado. */
@@ -46,6 +48,7 @@ export function useWorkerSettings() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busiest, setBusiest] = useState<number | null>(null);
   const [suggestedMaxSessions, setSuggestedMaxSessions] = useState<number | null>(null);
+  const [suggestedState, setSuggestedState] = useState<SuggestedState>('loading');
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<WorkerSettingsNotice | null>(null);
@@ -71,8 +74,14 @@ export function useWorkerSettings() {
     // Teto sugerido pela medição (WSCALE-07). Falha ou sem amostra = sem sugestão: a confirmação
     // reforçada vale para toda mudança de teto, como antes da medição existir.
     adminWorkersService.getCapacity().then(
-      (c) => setSuggestedMaxSessions(c.cluster.suggestedMaxSessions),
-      () => setSuggestedMaxSessions(null),
+      (c) => {
+        setSuggestedMaxSessions(c.cluster.suggestedMaxSessions);
+        setSuggestedState(c.cluster.suggestedMaxSessions === null ? 'unavailable' : 'ready');
+      },
+      () => {
+        setSuggestedMaxSessions(null);
+        setSuggestedState('unavailable');
+      },
     );
   }, [load]);
 
@@ -131,7 +140,7 @@ export function useWorkerSettings() {
   }, [clearDraft, draft, load, view]);
 
   return {
-    view, values, loading, loadError, busiest, suggestedMaxSessions, saving, serverErrors, notice,
+    view, values, loading, loadError, busiest, suggestedMaxSessions, suggestedState, saving, serverErrors, notice,
     dirty: draft !== null, restored: restored && draft !== null,
     change, discard, save, reload: load, clearNotice: () => setNotice(null),
   };

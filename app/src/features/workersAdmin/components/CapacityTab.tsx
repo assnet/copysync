@@ -12,6 +12,7 @@ import { TimeLineChart, type LineSpec } from '@/features/opsMetrics/components/T
 import { chartColors } from '@/features/opsMetrics/chartColors';
 import { alignSeries, countDomainMax, formatDateTime, formatNumber, seriesPoints } from '@/features/opsMetrics/rules';
 import { planName } from '@/features/planEntitlementsAdmin/strings';
+import { serverNow } from '@/services/serverClock';
 import { avgContractedPerTenant, clientsThatFit, isUnlimitedPlan } from '../rules';
 import { workersAdminStrings } from '../strings';
 import type { WorkerCapacityChannel, WorkerCapacityPlan } from '../types';
@@ -223,7 +224,10 @@ export default function CapacityTab() {
     const cards = c.cards;
     const ratioPct = `${formatNumber(data.settings.alertOccupancyRatio * 100, 0)}%`;
     const tiles: TileProps[] = [
-      { ...cards.capacity, icon: Server, value: v(k.capacity, c.sessions) },
+      {
+        label: cards.capacity.label, help: data.enforced ? cards.capacity.help : cards.capacity.helpNotEnforced,
+        icon: Server, value: v(k.capacity, c.sessions),
+      },
       { ...cards.connected, icon: PlugZap, value: v(k.connected, c.sessions) },
       { ...cards.occupancy, icon: Gauge, value: v(k.occupancyPct, (x) => `${formatNumber(x, 1)}%`), context: cards.occupancy.alertAt(ratioPct) },
       { ...cards.headroom, icon: Layers, value: v(k.headroom, c.sessions) },
@@ -243,6 +247,9 @@ export default function CapacityTab() {
       <Stack spacing={2}>
         {!data.enforced && <Alert severity="info">{c.notEnforced}</Alert>}
         {!sampled && <Alert severity="info">{c.noSampleNotice}</Alert>}
+        {sampled && k.stale === true && (
+          <Alert severity="warning">{c.stale(Math.max(0, Math.floor((serverNow() - Date.parse(k.sampledAt!)) / 60_000)))}</Alert>
+        )}
         <SectionCard
           title={c.clusterTitle}
           subtitle={sampled ? `${c.clusterSubtitle} ${c.sampledAt(formatDateTime(k.sampledAt!))}` : c.clusterSubtitle}

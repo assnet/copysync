@@ -68,12 +68,16 @@ export const workersAdminStrings = {
     noSampleNotice: 'Nenhuma amostra de sessões na última hora. Os números do cluster aparecem quando a coleta de métricas estiver ligada.',
     notEnforced: 'Adoção por capacidade desligada: a capacidade é o teto por worker vezes os processos que mantêm sessões, e o teto ainda não é aplicado.',
     sampledAt: (when: string) => `Última amostra em ${when}`,
-    helpAria: (label: string) => `Ajuda: ${label}`,
+    stale: (min: number) => `Última amostra há ${min.toLocaleString('pt-BR')} min; o coletor pode estar parado.`,
     clusterTitle: 'Cluster',
     clusterSubtitle: 'Última amostra da última hora. Conectadas é contagem do banco, não o socket ao vivo.',
     cards: {
-      capacity: { label: 'Capacidade', help: 'Sessões que o cluster comporta: soma dos tetos dos workers ativos.' },
-      connected: { label: 'Conectadas (banco)', help: 'Contagem do banco: sessões com lease válido e status conectado na última amostra. Pode diferir do socket ao vivo por alguns segundos.' },
+      capacity: {
+        label: 'Capacidade',
+        help: 'Sessões que o cluster comporta: soma dos tetos dos workers vivos.',
+        helpNotEnforced: 'Sessões que o cluster comporta: teto por worker × processos que mantêm sessões (mínimo 1; processo sem sessão não conta).',
+      },
+      connected: { label: 'Conectadas (banco)', help: 'Contagem do banco na última amostra: todas as sessões com lease válido e status conectado. A tabela por plano conta só clientes ativos. Pode diferir do socket ao vivo por alguns segundos.' },
       occupancy: { label: 'Ocupação', help: 'Conectadas ÷ capacidade.', alertAt: (pct: string) => `alerta a partir de ${pct}` },
       headroom: { label: 'Folga', help: 'Vagas livres agora: capacidade menos conectadas.' },
       replicas: { label: 'Réplicas necessárias', help: 'Workers necessários para as conectadas de hoje com o teto atual, abaixo do alerta de ocupação.' },
@@ -101,7 +105,7 @@ export const workersAdminStrings = {
       },
       connectedHint: 'Contagem do banco: sessões com lease válido e status conectado agora.',
       contractedHint: 'Soma dos limites de sessões dos clientes ativos. Clientes sem limite aparecem à parte.',
-      fitHint: 'Folga do cluster ÷ sessões contratadas pelo cliente médio do plano. É uma projeção: não reserva vaga.',
+      fitHint: 'Folga do cluster ÷ sessões contratadas pelo cliente médio do plano. Projeção isolada por plano (cada linha usa a folga inteira); não somar entre planos. Não reserva vaga.',
       unlimited: (n: number) => (n === 1 ? '+ 1 ilimitado' : `+ ${n} ilimitados`),
       fit: (n: number) => (n === 1 ? '1 cliente' : `${n.toLocaleString('pt-BR')} clientes`),
       fitUnlimited: 'Plano com cliente sem limite: não dá para projetar.',
@@ -138,7 +142,7 @@ export const workersAdminStrings = {
     lastSaved: (when: string) => `Salvo em ${when}`,
     neverSaved: 'Nunca salvo: valores padrão do ambiente.',
     draftRestored: 'Rascunho restaurado',
-    actions: { discard: 'Descartar alterações', review: 'Revisar e salvar', retry: 'Tentar de novo' },
+    actions: { discard: 'Descartar alterações', review: 'Revisar e salvar', loadingSuggestion: 'Carregando medição…', retry: 'Tentar de novo' },
     confirm: {
       title: 'Confirmar alterações',
       intro: 'Estes valores mudam para todos os workers:',
@@ -149,6 +153,9 @@ export const workersAdminStrings = {
       strongHintRaise: 'Ainda não há medição de memória por sessão para confirmar que o teto novo cabe nos servidores. Subir o teto sem medir pode derrubar um worker por falta de memória.',
       strongHintLower: 'Ainda não há medição de memória por sessão. Reduzir o teto não derruba sessões conectadas: o worker acima do teto novo só deixa de adotar sessões até a ocupação cair.',
       strongTitleAbove: 'Teto acima do sugerido',
+      strongTitleLower: 'Confirmar o teto novo',
+      strongHintLowerAbove: (suggested: string) =>
+        `Reduzir o teto não derruba sessões conectadas: o worker acima do teto novo só deixa de adotar sessões até a ocupação cair. O teto novo ainda fica acima das ${suggested} sessões por worker sugeridas pela medição de memória.`,
       strongHintAbove: (suggested: string) =>
         `A medição de memória sugere no máximo ${suggested} sessões por worker. Passar disso pode derrubar um worker por falta de memória.`,
       strongLabel: 'Teto novo',

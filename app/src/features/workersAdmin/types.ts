@@ -119,6 +119,8 @@ export interface WorkerCapacityCluster {
   suggestedMaxSessions: number | null;
   memoryLimitMb: number | null;
   sampledAt: string | null;
+  /** `true` = última amostra com mais de 10 min (coletor possivelmente parado). Ausente em API antiga. */
+  stale?: boolean;
 }
 
 /** Resposta de `GET /admin/workers/capacity` (WSCALE-09/10). */

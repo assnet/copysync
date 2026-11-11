@@ -74,18 +74,19 @@ Rota `GET /admin/workers/capacity` (super admin, `GetWorkerCapacityUseCase`); ab
 `/admin/workers/capacity`. Só tabelas locais (`tenants`/`sessions` agregados e `ops_metrics_samples`), nunca a Render,
 nenhum dado de tenant individual.
 
-**Fonte**: o coletor (`OpsMetricsSamplerJob`, [`ops-metricas.md`](ops-metricas.md)) grava a cada tick as métricas
-`sessions_*` (fonte `sessions`, recurso `cluster`) em `all` e `worker`, com ou sem adoção. Sem
+**Fonte**: o coletor (`OpsMetricsSamplerJob`, [`ops-metricas.md`](ops-metricas.md)) coleta a cada tick (60 s) e grava a média de 5 min
+das métricas `sessions_*` (fonte `sessions`, recurso `cluster`) em `all` e `worker`, com ou sem adoção. Sem
 `OPS_METRICS_SAMPLER_ENABLED` não há amostra e a aba mostra "sem amostra" em vez de número.
 
 | Número | Significado |
 |---|---|
-| `capacity` | última `sessions_capacity` da janela de 1 h. Com adoção: soma dos tetos dos batimentos vivos. Sem adoção: teto × processos donos de lease (mínimo 1) |
-| `connected` — "Conectadas (banco)" | última `sessions_connected`: sessões `CONNECTED` com lease vivo, contadas no banco. A aba **Ocupação** segue com a soma dos batimentos (socket ao vivo); as duas podem diferir por segundos |
+| `capacity` | última `sessions_capacity` da janela de 1 h. Com adoção: soma dos tetos dos batimentos vivos. Sem adoção: teto × processos que mantêm sessões (donos de lease vivo; mínimo 1; processo sem sessão não conta). A ajuda do cartão escolhe o texto por `enforced` |
+| `connected` — "Conectadas (banco)" | última `sessions_connected`: **todas** as sessões `CONNECTED` com lease vivo, contadas no banco (inclui tenant suspenso). A tabela por plano conta só tenants `ACTIVE`: a soma das linhas pode ficar abaixo do cluster. A aba **Ocupação** segue com a soma dos batimentos (socket ao vivo); as duas podem diferir por segundos |
 | `occupancyPct`, `headroom` | `connected ÷ capacity × 100` (0 sem capacidade); folga = `max(0, capacity − connected)` |
 | `requiredReplicas` | `ceil(connected ÷ (teto × alertOccupancyRatio))`, mínimo 1 |
 | `mbPerSession` | média da `memory` da Render convertida para MB (`meta.unit`; a Render grava bytes) ÷ média de `sessions_connected`, ambas na janela de 1 h |
 | `memoryLimitMb` | `memory ÷ (memory_pct ÷ 100)` da amostra mais recente (o limite não é gravado) |
+| `stale` | `true` quando a última amostra tem mais de 10 min (coletor parado ou atrasado). A aba avisa "Última amostra há N min" (N por `serverNow()`, nunca `Date.now()`). Opcional no tipo do painel (API antiga não manda) |
 | `suggestedMaxSessions` | `floor(0,7 × memoryLimitMb ÷ mbPerSession)` (`capacityPlan.ts`) |
 | por plano | `tenants` `ACTIVE`, `contracted`/`unlimitedTenants`/`created`/`connected` por canal (`PrismaWorkerCapacityReader`, uma consulta, `statement_timeout` 2 s) |
 
@@ -94,18 +95,24 @@ nenhum dado de tenant individual.
   `mbPerSession`, `memoryLimitMb` e `suggestedMaxSessions` `null` (não há como saber qual roda sessões; o filtro por
   `WORKER_SCALER_SERVICE_ID` é da P3). Sem métrica da Render ou sem sessões → `null`.
 - Contratado: valor de `tenant_entitlements` (número ou string numérica). Ausente, `null` ou não numérico = **ilimitado**
-  (contado em `unlimitedTenants`, igual a `CreateSessionUseCase`). `planSlug` nulo = grupo "Sem plano".
+  (contado em `unlimitedTenants`, igual a `CreateSessionUseCase`). String em hex (`0x…`) ou notação científica
+  (`1e3`) também conta como ilimitado na aba: só inteiro decimal vira limite. `planSlug` nulo = grupo "Sem plano".
 - Projeção "cabem mais N clientes" (`rules.clientsThatFit`): `floor(folga ÷ sessões contratadas pelo tenant médio)`.
-  Plano com tenant ilimitado, sem tenant, sem contratado ou sem folga medida → "—". É projeção, não reserva vaga.
+  Plano com tenant ilimitado, sem tenant, sem contratado ou sem folga medida → "—". É projeção, não reserva vaga, e
+  **isolada por plano**: cada linha usa a folga inteira, então não se soma entre planos.
 - Série de 7 dias (sessões × capacidade) vem de `GET /admin/ops/metrics/series` (`sessions_connected`,
   `sessions_capacity`); a rota de capacidade não devolve série.
 - Aba **Configuração** lê `suggestedMaxSessions` daqui: confirmação reforçada (digitar o valor) **só** quando o teto novo
-  passa do sugerido ou não há sugestão (sem amostra ou rota fora). Sem formulário na aba Capacidade: só a aba na URL.
+  passa do sugerido ou não há sugestão (sem amostra ou rota fora). Reduzir o teto (mesmo acima do sugerido) usa título
+  neutro e o texto de redução. Enquanto a medição carrega (`suggestedState: 'loading'`), "Revisar e salvar" fica
+  desabilitado com "Carregando medição…" se o teto mudou; a tela não afirma ausência de medição antes da resposta. Sem
+  formulário na aba Capacidade: só a aba na URL.
 
 ## Alerta de ocupação sem adoção
 
 Com a adoção desligada (`all` ou `worker`) o `WorkerCapacityAlertJob` não roda; o coletor avalia `sessions_connected ÷
-sessions_capacity > alertOccupancyRatio` a cada tick (motivo `session_occupancy` em `opsAlertPolicy.ts`). **Só log**
+sessions_capacity > alertOccupancyRatio` a cada tick (motivo `session_occupancy` em `opsAlertPolicy.ts`; o valor e o
+limiar do log saem em percentual, não em fração). **Só log**
 (`ops metrics alert`), com o dedupe do coletor (lease `ops-alert:session_occupancy`, silêncio de 30 min). Com adoção o
 coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 

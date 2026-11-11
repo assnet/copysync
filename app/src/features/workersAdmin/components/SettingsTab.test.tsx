@@ -340,6 +340,39 @@ describe('SettingsTab — teto sugerido pela medição (WSCALE-07)', () => {
     expect(within(dialog).getByText(s.confirm.strongTitle)).toBeInTheDocument();
     expect(within(dialog).getByText(s.confirm.strongHintLower)).toBeInTheDocument();
   });
+
+  it('reduzir o teto ainda acima do sugerido: título neutro e texto de redução', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList([10]);
+    mockSuggested(30);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await setField(user, 'maxSessionsPerWorker', '35');
+    expect(await screen.findByText(new RegExp(s.suggested(30)))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongTitleLower)).toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHintLowerAbove('30'))).toBeInTheDocument();
+    expect(within(dialog).queryByText(s.confirm.strongTitleAbove)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(s.confirm.strongHintAbove('30'))).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: s.confirm.save })).toBeDisabled();
+  });
+
+  it('medição carregando: teto mudado deixa o revisar desabilitado com "Carregando medição…"', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    vi.spyOn(adminWorkersService, 'getCapacity').mockReturnValue(new Promise(() => {}));
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    // Outro campo não depende da medição.
+    await setField(user, 'awaitingAlertSeconds', '300');
+    expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+    await setField(user, 'maxSessionsPerWorker', '50');
+    expect(screen.getByRole('button', { name: s.actions.loadingSuggestion })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: s.actions.review })).not.toBeInTheDocument();
+  });
 });
 
 describe('AdminWorkersPage — abas', () => {

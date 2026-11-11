@@ -16,7 +16,7 @@ Sem número para decidir teto e réplicas, e sem alerta de ocupação com a ado�
 
 #### Backend (api/) — `metrics`, `sessions`
 
-- **`SessionsOccupancySource.ts`**, **`OpsMetric.ts`**, **`OpsMetricsSamplerJob.ts`** — `sessions_connected/pending_login/awaiting/capacity` a cada tick, com ou sem adoção.
+- **`SessionsOccupancySource.ts`**, **`OpsMetric.ts`**, **`OpsMetricsSamplerJob.ts`** — `sessions_connected/pending_login/awaiting/capacity` coletadas a cada tick (60 s) e gravadas como média de 5 min, com ou sem adoção.
 - **`opsAlertPolicy.ts`** — alerta `session_occupancy` só sem adoção (só log, dedupe de 30 min).
 - **`capacityPlan.ts`**, **`PrismaWorkerCapacityReader.ts`**, **`GetWorkerCapacityUseCase.ts`**, **`workerAdmin.routes.ts`** — `GET /admin/workers/capacity`: por plano e do cluster, teto sugerido = 0,7 × limite ÷ MB por sessão.
 
@@ -24,6 +24,7 @@ Sem número para decidir teto e réplicas, e sem alerta de ocupação com a ado�
 
 - **`CapacityTab.tsx`**, **`useWorkerCapacity.ts`**, **`rules.ts`** — aba Capacidade: cartões, tabela por plano com "cabem mais N clientes", série de 7 dias.
 - **`SettingsTab.tsx`**, **`useWorkerSettings.ts`** — confirmação reforçada do teto só acima do sugerido ou sem amostra.
+- **`SettingsConfirmDialog.tsx`**, **`useWorkerSettings.ts`**, **`CapacityTab.tsx`**, **`strings.ts`**, **`types.ts`** (revisão) — reduzir o teto acima do sugerido usa título neutro e texto de redução (antes "pode derrubar um worker"); `suggestedState` (`loading|ready|unavailable`) segura "Revisar e salvar" em "Carregando medição…" enquanto a medição chega; ajuda da Capacidade por modo (`enforced`); aviso de coletor parado com `cluster.stale`; "Cabem mais" explicado como projeção isolada por plano.
 
 ### Added — api 0.82.0 · app 0.101.0 — configuração de escala dos workers em banco
 

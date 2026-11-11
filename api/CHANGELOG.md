@@ -19,7 +19,7 @@ fase P2). Doc: `docs/workers-escala.md` (Capacidade), `docs/ops-metricas.md`.
 
 #### API — `metrics`
 
-- **`metrics/infrastructure/sources/SessionsOccupancySource.ts`**, **`domain/contracts/ISessionsOccupancySource.ts`** — `sessions_connected`, `sessions_pending_login`, `sessions_awaiting`, `sessions_capacity` (fonte `sessions`, recurso `cluster`) a cada tick, em `all`/`worker`, uma consulta com `statement_timeout` 2 s; sem adoção `awaiting` = 0 e `capacity` = teto × donos de lease.
+- **`metrics/infrastructure/sources/SessionsOccupancySource.ts`**, **`domain/contracts/ISessionsOccupancySource.ts`** — `sessions_connected`, `sessions_pending_login`, `sessions_awaiting`, `sessions_capacity` (fonte `sessions`, recurso `cluster`) coletadas a cada tick (60 s) e gravadas como média de 5 min, em `all`/`worker`, uma consulta com `statement_timeout` 2 s; sem adoção `awaiting` = 0 e `capacity` = teto × donos de lease.
 - **`metrics/domain/OpsMetric.ts`** — fonte `sessions` e as 4 métricas em `OPS_METRIC`.
 - **`metrics/domain/services/opsAlertPolicy.ts`** — motivo `session_occupancy` (`connected ÷ capacity > alertOccupancyRatio`), só log com o silêncio de 30 min por lease.
 

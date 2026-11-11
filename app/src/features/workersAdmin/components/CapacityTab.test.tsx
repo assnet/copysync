@@ -90,6 +90,28 @@ describe('CapacityTab', () => {
     expect(within(lite).getByLabelText(c.plans.fitNoSample)).toHaveTextContent('—');
   });
 
+  it('amostra velha (stale): avisa há quantos minutos e que o coletor pode estar parado', async () => {
+    mock(view({ stale: true, sampledAt: new Date(Date.now() - 15 * 60_000 - 5_000).toISOString() }));
+    renderWithTheme(<CapacityTab />);
+    expect(await screen.findByText(c.stale(15))).toBeInTheDocument();
+  });
+
+  it('amostra recente não mostra o aviso de coletor parado', async () => {
+    mock(view({ stale: false }));
+    renderWithTheme(<CapacityTab />);
+    await screen.findByText(c.cards.capacity.label);
+    expect(screen.queryByText(/coletor pode estar parado/)).not.toBeInTheDocument();
+  });
+
+  it('ajuda da capacidade muda com a adoção (soma dos tetos × teto por processo com sessão)', async () => {
+    const user = userEvent.setup();
+    mock(view({}, { enforced: false }));
+    renderWithTheme(<CapacityTab />);
+    await screen.findByText(c.cards.capacity.label);
+    await user.hover(within(tile(c.cards.capacity.label)).getByRole('button'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(c.cards.capacity.helpNotEnforced);
+  });
+
   it('tabela por plano: clientes, contratadas e conectadas por canal, ilimitados à parte', async () => {
     mock(view());
     renderWithTheme(<CapacityTab />);
