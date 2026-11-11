@@ -5,7 +5,7 @@ import { Info } from 'lucide-react';
 import { AppIcon, SectionCard, TelegramIcon, WhatsAppIcon, brandColor } from '@/components';
 import type { SubscriptionLimitItem } from '@/types/api.types';
 import { minPlanFor, subscriptionStrings, SUBSCRIPTION_LIMIT_KEYS, type SubscriptionChannel, type SubscriptionLimitKey } from '../strings';
-import { usageTone } from '../usageTone';
+import { usageToneFor } from '../usageTone';
 
 const t = subscriptionStrings;
 const CHANNELS: SubscriptionChannel[] = ['whatsapp', 'telegram'];
@@ -32,7 +32,7 @@ function UsageCell({ item, label }: { item: SubscriptionLimitItem & { key: Subsc
   if (item.limit == null) {
     return <Typography variant="body2">{daily ? t.limits.usageUnlimitedToday(used) : t.limits.usageUnlimited(used)}</Typography>;
   }
-  const tone = usageTone(used, item.limit);
+  const tone = usageToneFor(item.key, used, item.limit);
   return (
     <Stack spacing={0.5} sx={{ minWidth: { xs: 88, sm: 140 } }}>
       <Typography variant="body2" color={tone === 'default' ? 'text.primary' : `${tone}.main`}>
@@ -103,7 +103,7 @@ export interface SubscriptionLimitsTableProps {
 
 /**
  * Limites do plano (SUB-08): uma tabela por canal (aba) e outra com os recursos gerais
- * (`channel: null`). Barra de uso com a mesma cor do chip do gerador (`usageTone`); ilimitado
+ * (`channel: null`). Barra de uso com a mesma cor do chip do gerador (`usageToneFor`, política por chave); ilimitado
  * mostra só o uso; limite 0 ou recurso desligado mostra o menor plano que libera.
  */
 export function SubscriptionLimitsTable({ limits, channel, onChannelChange }: SubscriptionLimitsTableProps) {

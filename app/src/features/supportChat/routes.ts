@@ -15,8 +15,9 @@ export const SUPPORT_CHAT_HIDDEN_PATHS: readonly string[] = [REDIRECT_PUBLIC_PAT
  * Rotas com barra de ação presa ao rodapé: o botão sobe para não cobrir "Salvar".
  * - `/monitoring`: barra "alterações não salvas" (`MonitoringSettingsForm`, sticky a 16 px do
  *   rodapé; quebra em duas linhas no celular).
+ * - `/offer-story`: "Continuar" fica preso ao rodapé no celular (`TemplateStep`, sticky).
  */
-export const SUPPORT_CHAT_RAISED_PATHS: readonly string[] = ['/monitoring'];
+export const SUPPORT_CHAT_RAISED_PATHS: readonly string[] = ['/monitoring', '/offer-story'];
 
 const matches = (pathname: string, prefixes: readonly string[]) => {
   const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';

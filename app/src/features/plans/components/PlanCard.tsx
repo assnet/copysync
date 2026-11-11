@@ -161,10 +161,14 @@ function MercadoLivreTagsRow({ count }: { count: number }) {
         }}
       >
         {ML_LOGO && <MarketplaceLogo src={ML_LOGO} size={20} round />}
-        <Typography variant="body2" sx={{ flex: 1, color: 'text.secondary' }}>{t.mercadoLivreTags.label}</Typography>
-        <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary', fontVariantNumeric: 'tabular-nums' }}>
-          {t.mercadoLivreTags.value(count)}
-        </Typography>
+        {/* Rótulo e valor em linhas fixas (uma cada, sem quebra): mesma altura nos três cards, seja
+            "1 etiqueta" ou "10 etiquetas". */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>{t.mercadoLivreTags.label}</Typography>
+          <Typography variant="body2" noWrap sx={{ fontWeight: 700, color: 'text.primary', fontVariantNumeric: 'tabular-nums' }}>
+            {t.mercadoLivreTags.value(count)}
+          </Typography>
+        </Box>
         <Box sx={{ color: 'text.disabled', display: 'flex' }}><AppIcon icon={Info} size="sm" /></Box>
       </Box>
     </Tooltip>

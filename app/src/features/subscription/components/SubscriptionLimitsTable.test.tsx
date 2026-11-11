@@ -45,6 +45,15 @@ describe('SubscriptionLimitsTable', () => {
     expect(bar('monitored_groups')).toHaveAccessibleName(t.limits.usageAria(t.limit.monitored_groups.label, 8, 10));
   });
 
+  it('etiquetas do ML no limite ficam neutras (barra primary, texto sem cor de erro)', () => {
+    renderWithTheme(
+      <SubscriptionLimitsTable limits={[L('mercado_livre_affiliate_tags', null, 'count', 1, 1)]} channel="whatsapp" onChannelChange={vi.fn()} />,
+    );
+    const r = row('mercado_livre_affiliate_tags');
+    expect(within(r).getByRole('progressbar')).toHaveClass('MuiLinearProgress-colorPrimary');
+    expect(within(r).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+  });
+
   it('ilimitado sem barra, com uso e "Ilimitado"', () => {
     setup();
     expect(bar('broadcast_groups')).toBeNull();

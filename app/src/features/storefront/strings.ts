@@ -153,7 +153,8 @@ export const storefrontStrings = {
     title: 'Adicionar Oferta',
     urlLabel: 'Link do produto',
     urlPlaceholder: 'Cole o link do produto',
-    productLinkHint: 'Use o link do PRODUTO (não o da vitrine/loja) — senão a imagem pode vir trocada.',
+    productLinkHint:
+      'Cole o link da página do produto, mesmo que seja de outro afiliado. O link sai com a sua comissão. Link de loja ou vitrine pode trazer a imagem errada.',
     categoryLabel: 'Categoria',
     noCategory: 'Sem categoria',
     extract: 'Extrair',

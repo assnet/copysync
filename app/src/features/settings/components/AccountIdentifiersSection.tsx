@@ -91,7 +91,9 @@ export function AccountIdentifiersSection({ item, onSave }: Props) {
         <Chip
           size="small"
           variant="outlined"
-          color={used >= limit ? 'warning' : 'default'}
+          // No limite é o estado normal (ex.: LITE com 1 de 1): neutro. Aviso só quando o salvar
+          // recusou por passar do limite do plano.
+          color={error?.showPlans ? 'warning' : 'default'}
           label={t.counter(used, limit)}
           aria-label={t.counterAria(used, limit)}
         />
@@ -117,7 +119,9 @@ export function AccountIdentifiersSection({ item, onSave }: Props) {
             aria-labelledby={`${baseId}-title`}
             value={sel.primary ?? ''}
             onChange={(_, tag) => change(choosePrimary(sel, tag, limit))}
-            sx={{ gap: 0.5 }}
+            // FormGroup do MUI usa `flex-wrap: wrap`: a linha estica até o max-content e estoura
+            // a largura no celular. Sem wrap, cada linha respeita a largura e o texto encolhe.
+            sx={{ gap: 0.5, flexWrap: 'nowrap', minWidth: 0 }}
           >
             {visible.map((tag, idx) => {
               const isPrimary = tag === sel.primary;
@@ -129,11 +133,12 @@ export function AccountIdentifiersSection({ item, onSave }: Props) {
                   data-identifier-row
                   aria-describedby={unavailable ? reasonId : undefined}
                   sx={{
-                    display: 'flex', alignItems: 'center', gap: 1, minHeight: 44, px: 0.5, borderRadius: 1,
-                    bgcolor: isPrimary ? 'action.selected' : undefined,
+                    display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1, minHeight: 44, minWidth: 0,
+                    px: 0.5, borderRadius: 1, bgcolor: isPrimary ? 'action.selected' : undefined,
                   }}
                 >
                   <Radio value={tag} size="small" disabled={saving} inputProps={{ 'aria-label': t.primaryAria(tag) }} />
+                  {/* Opacidade só na etiqueta: o motivo abaixo mantém o contraste do tema. */}
                   <Box sx={{ flex: 1, minWidth: 0, opacity: unavailable ? 0.7 : 1 }}>
                     <OverflowTooltipText
                       text={tag}
@@ -142,10 +147,17 @@ export function AccountIdentifiersSection({ item, onSave }: Props) {
                     >
                       <Blurred when={blur} inline radius={5}>{tag}</Blurred>
                     </OverflowTooltipText>
-                    {unavailable && <UnavailableReason id={reasonId} text={t.unavailable(limit)} />}
                   </Box>
                   {isPrimary ? (
-                    <Tooltip title={t.primaryAlwaysLinked} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
+                    // À esquerda: acima/abaixo cobriria o rádio/caixa da linha vizinha.
+                    <Tooltip
+                      title={t.primaryAlwaysLinked}
+                      placement="left"
+                      arrow
+                      describeChild
+                      enterTouchDelay={0}
+                      leaveTouchDelay={4000}
+                    >
                       <Chip size="small" color="primary" label={t.primaryBadge} sx={{ flexShrink: 0 }} />
                     </Tooltip>
                   ) : (
@@ -158,6 +170,12 @@ export function AccountIdentifiersSection({ item, onSave }: Props) {
                         onChange={() => change(toggleLinked(sel, tag, limit))}
                         inputProps={{ 'aria-label': t.linkAria(tag) }}
                       />
+                    </Box>
+                  )}
+                  {/* Linha própria, alinhada ao texto da etiqueta: não espreme a coluna no celular. */}
+                  {unavailable && (
+                    <Box sx={{ flexBasis: '100%', minWidth: 0, pl: 5.5, pb: 0.5, mt: -0.5 }}>
+                      <UnavailableReason id={reasonId} text={t.unavailable(limit)} />
                     </Box>
                   )}
                 </Box>

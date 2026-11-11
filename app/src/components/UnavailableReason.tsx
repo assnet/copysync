@@ -1,4 +1,4 @@
-import { Box, Typography, useTheme } from '@mui/material';
+import { Box, Typography, darken, useTheme } from '@mui/material';
 import { Lock } from 'lucide-react';
 import { AppIcon } from './AppIcon';
 
@@ -15,7 +15,9 @@ export interface UnavailableReasonProps {
  */
 export function UnavailableReason({ text, id }: UnavailableReasonProps) {
   const theme = useTheme();
-  const color = theme.palette.mode === 'dark' ? theme.palette.warning.light : theme.palette.warning.dark;
+  // `warning.dark` puro dá ~3,2:1 no branco (abaixo do AA para texto pequeno): no claro escurece o
+  // tom do tema até passar de 4,5:1; no escuro `warning.light` já passa.
+  const color = theme.palette.mode === 'dark' ? theme.palette.warning.light : darken(theme.palette.warning.dark, 0.3);
   return (
     <Typography id={id} variant="caption" component="p" sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, color, mt: 0.25 }}>
       <Box component="span" sx={{ display: 'inline-flex', pt: 0.25, flexShrink: 0 }}>

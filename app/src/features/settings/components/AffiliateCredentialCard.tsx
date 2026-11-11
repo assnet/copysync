@@ -129,7 +129,7 @@ export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemov
           {item && (
             <Stack direction="row" alignItems="center" spacing={0.5}>
               <Tooltip title={active ? t.deactivateTooltip : t.activateTooltip}>
-                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="caption" color="text.secondary" component="span">{t.activeLabel}</Typography>
                   <Switch
                     size="small"

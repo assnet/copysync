@@ -43,6 +43,8 @@ describe('SupportChatButton', () => {
     expect(isSupportChatHidden('/redirects')).toBe(false);
     expect(isSupportChatHidden('/')).toBe(false);
     expect(isSupportChatRaised('/monitoring')).toBe(true);
+    expect(isSupportChatRaised('/offer-story')).toBe(true);
+    expect(isSupportChatRaised('/offer-story/')).toBe(true);
     expect(isSupportChatRaised('/offers')).toBe(false);
   });
 
