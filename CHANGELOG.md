@@ -23,6 +23,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 #### Infra
 
 - **`render.yaml`** — CSP: `frame-src` passa a aceitar `https://www.youtube-nocookie.com` (player do vídeo do login).
+- **`render.yaml`** — CSP: `connect-src` volta a listar `https://challenges.cloudflare.com`, como já está no header editado à mão na Render (o arquivo estava atrás; sincronizar o Blueprint derrubaria o Turnstile).
 
 #### Docs
 
