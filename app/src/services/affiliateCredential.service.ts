@@ -5,9 +5,11 @@ import type {
   AffiliateCredentialItem,
   AffiliateCredentialListResponse,
   AffiliateCredentialStatus,
+  AffiliateIdentifiers,
   AffiliateProvider,
   ApiSuccess,
   MarketplaceAvailability,
+  SetAffiliateIdentifiersRequest,
   UpsertAffiliateCredentialRequest,
 } from '@/types/api.types';
 
@@ -37,6 +39,18 @@ export const affiliateCredentialService = {
 
   async setStatus(provider: AffiliateProvider, status: AffiliateCredentialStatus): Promise<AffiliateCredentialItem> {
     const res = await apiClient.patch<ApiSuccess<AffiliateCredentialItem>>(`${BASE}/${provider}/status`, { status });
+    return res.data.data;
+  },
+
+  /** Etiquetas da conta, principal e vinculadas (só provider com sessão, hoje ML). */
+  async getIdentifiers(provider: AffiliateProvider): Promise<AffiliateIdentifiers> {
+    const res = await apiClient.get<ApiSuccess<AffiliateIdentifiers>>(`${BASE}/${provider}/identifiers`);
+    return res.data.data;
+  },
+
+  /** 403 `PLAN_LIMIT_REACHED` acima do limite; 422 `AFFILIATE_CREDENTIAL_INVALID` fora da conta. */
+  async setIdentifiers(provider: AffiliateProvider, body: SetAffiliateIdentifiersRequest): Promise<AffiliateIdentifiers> {
+    const res = await apiClient.put<ApiSuccess<AffiliateIdentifiers>>(`${BASE}/${provider}/identifiers`, body);
     return res.data.data;
   },
 

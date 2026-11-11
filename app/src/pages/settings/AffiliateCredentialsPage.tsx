@@ -19,7 +19,8 @@ const t = settingsStrings.affiliate;
 
 export function AffiliateCredentialsPage() {
   const {
-    entries, loading, loadError, reload, refreshSilently, busy, upsert, remove, setStatus, actionError, clearActionError,
+    entries, loading, loadError, reload, refreshSilently, busy, upsert, remove, setStatus, setIdentifiers, actionError,
+    clearActionError,
   } = useAffiliateCredentials();
   const ext = useExtension();
   const { tenants, activeTenantId } = useTenant();
@@ -140,6 +141,8 @@ export function AffiliateCredentialsPage() {
           <BrowserSessionCredentialDialog
             open
             spec={editingEntry.spec}
+            item={editingEntry.item}
+            onSaveIdentifiers={(body) => setIdentifiers(editingEntry.spec.provider, body)}
             onClose={() => { setEditing(null); void refreshSilently(); void refreshExt(); }}
             onSynced={() => { void refreshSilently(); }}
           />

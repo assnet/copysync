@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import type { AffiliateCredentialItem } from '@/types/api.types';
+import { PrivacyProvider } from '@/features/privacy';
 import { AFFILIATE_PROVIDERS } from '../affiliateProviders';
 import { AffiliateCredentialCard } from './AffiliateCredentialCard';
 
@@ -138,5 +139,48 @@ describe('AffiliateCredentialCard sem publicField', () => {
     );
     expect(screen.getByText('ID de afiliado')).toBeInTheDocument();
     expect(screen.getByText('••77')).toBeInTheDocument();
+  });
+
+  it.each(['light', 'dark'] as const)('Mercado Livre com lista mostra "N etiquetas vinculadas" (%s)', (mode) => {
+    renderWithTheme(
+      <AffiliateCredentialCard
+        spec={spec('MERCADO_LIVRE')}
+        item={item({ provider: 'MERCADO_LIVRE', hasSecret: false, accountIdentifiers: ['a', 'b', 'c'], linkedIdentifiers: ['b'], identifierLimit: 10 })}
+        {...handlers()}
+      />,
+      mode,
+    );
+    expect(screen.getByText('2 etiquetas vinculadas')).toBeInTheDocument();
+  });
+
+  it('plano rebaixado: contagem respeita o limite', () => {
+    renderWithTheme(
+      <AffiliateCredentialCard
+        spec={spec('MERCADO_LIVRE')}
+        item={item({ provider: 'MERCADO_LIVRE', hasSecret: false, linkedIdentifiers: ['b', 'c'], identifierLimit: 1 })}
+        {...handlers()}
+      />,
+    );
+    expect(screen.getByText('1 etiqueta vinculada')).toBeInTheDocument();
+  });
+
+  it('provider sem lista (Shopee) não mostra contagem de etiquetas', () => {
+    renderWithTheme(<AffiliateCredentialCard spec={spec('SHOPEE')} item={item({})} {...handlers()} />);
+    expect(screen.queryByTestId('linked-identifiers-count')).not.toBeInTheDocument();
+  });
+
+  it('flag de privacidade borra a etiqueta mascarada do Mercado Livre', () => {
+    localStorage.setItem('privacy.blur', JSON.stringify(['affiliateCredentials.accountIdentifiers']));
+    renderWithTheme(
+      <PrivacyProvider>
+        <AffiliateCredentialCard
+          spec={spec('MERCADO_LIVRE')}
+          item={item({ provider: 'MERCADO_LIVRE', hasSecret: false, identifierLimit: 2 })}
+          {...handlers()}
+        />
+      </PrivacyProvider>,
+    );
+    expect(screen.getByText('••••4567').closest('[data-blurred="true"]')).not.toBeNull();
+    localStorage.removeItem('privacy.blur');
   });
 });

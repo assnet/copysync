@@ -11,8 +11,10 @@ import { useExtension, syncErrorMessage } from '@/features/extension/hooks/useEx
 import { ExtensionSetupWizard } from '@/features/extension/components/ExtensionSetupWizard';
 import { extensionStrings } from '@/features/extension/strings';
 import { useNavigate } from 'react-router-dom';
+import type { AffiliateCredentialItem, SetAffiliateIdentifiersRequest } from '@/types/api.types';
 import type { AffiliateProviderSpec } from '../affiliateProviders';
 import { settingsStrings } from '../strings';
+import { AccountIdentifiersSection } from './AccountIdentifiersSection';
 
 const t = settingsStrings.affiliate;
 const te = extensionStrings;
@@ -20,6 +22,10 @@ const te = extensionStrings;
 interface Props {
   open: boolean;
   spec: AffiliateProviderSpec;
+  /** Credencial vinda da API: fonte única das etiquetas (principal, vinculadas, conta, limite). */
+  item?: AffiliateCredentialItem;
+  /** Salva principal + vinculadas; o erro sobe para o diálogo mapear. */
+  onSaveIdentifiers?: (body: SetAffiliateIdentifiersRequest) => Promise<void>;
   onClose: () => void;
   /** Após cada tentativa de sync: a página recarrega o card sem esperar o diálogo fechar. */
   onSynced?: () => void;
@@ -31,7 +37,7 @@ interface Props {
  * de sincronização do marketplace do `spec`, julgado pela credencial **desse** marketplace.
  * Com `identifierFromSession` (Shein) o ID vem da sessão: só leitura, sem campo.
  */
-export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }: Props) {
+export function BrowserSessionCredentialDialog({ open, spec, item, onSaveIdentifiers, onClose, onSynced }: Props) {
   const ext = useExtension();
   const marketplace = spec.extensionMarketplace ?? 'ml';
   const isShein = marketplace === 'shein';
@@ -56,7 +62,10 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
   const isConnected = ext.status === 'connected';
   const credential = ext.credentials[marketplace];
   const hasSession = !!credential?.lastSyncAt;
-  const tag = credential?.publicIdentifier;
+  // Etiquetas só da API (a da extensão não é exibida). Provider sem lista: `identifierLimit` nulo.
+  const identifiers = item && item.identifierLimit != null && onSaveIdentifiers
+    ? <AccountIdentifiersSection item={item} onSave={onSaveIdentifiers} />
+    : null;
 
   const title = t.dialogCreateTitle(spec.name);
   /** ID lido da sessão (Shein): o diálogo só (re)vincula a extensão — sempre o assistente. */
@@ -102,7 +111,10 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
         {/* ID vindo da sessão (Shein): nunca renderiza o corpo do ML (mostraria o ID cru). */}
         {sessionIdentifier ? (
           wizardDone ? null : wizard
-        ) : !isConnected && !wizardDone ? wizard : (
+        ) : !isConnected && !wizardDone ? (
+          // Extensão ausente neste navegador: escolher etiquetas não depende dela.
+          <Stack spacing={2.5}>{wizard}{identifiers}</Stack>
+        ) : (
           <Stack spacing={2.5}>
             {/* Connected state */}
             <Alert severity="success" icon={<CheckCircleIcon />}>
@@ -130,13 +142,9 @@ export function BrowserSessionCredentialDialog({ open, spec, onClose, onSynced }
                   {hasSession ? te.ml.lastSync(credential!.lastSyncAt!) : te.ml.statusNeverSynced}
                 </Typography>
               </Row>
-
-              <Row label={te.ml.tagLabel}>
-                <Typography variant="body2" fontFamily="monospace">
-                  {tag ?? te.ml.tagMissing}
-                </Typography>
-              </Row>
             </Box>
+
+            {identifiers}
 
             {/* Sync / resync button */}
             {!hasSession && (
