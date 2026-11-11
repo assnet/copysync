@@ -6,7 +6,12 @@ import { OFFER_STORY_TEMPLATES } from '../../domain/offerStoryTemplates';
 import { OFFER_STORY_HEADLINE_AI_PURPOSE } from '../../domain/offerStoryRules';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { AppError } from '../../../../shared/errors/AppError';
-import { OfferLinkNotOwnedError } from '../../../../shared/errors/internal/OfferErrors';
+import {
+  AffiliateApiRateLimitedError,
+  AffiliateApiUnavailableError,
+  AffiliateCredentialRequiredError,
+  OfferLinkRebuildFailedError,
+} from '../../../../shared/errors/internal/OfferErrors';
 import { AiNotConfiguredError } from '../../../../shared/errors/internal/AiErrors';
 
 const TEMPLATE = OFFER_STORY_TEMPLATES[0].id;
@@ -47,7 +52,7 @@ describe('RenderOfferStoryUseCase', () => {
     expect(out).toMatchObject({
       image: `data:image/jpeg;base64,${Buffer.from('jpeg-bytes').toString('base64')}`,
       width: 1080, height: 1920, templateId: TEMPLATE, headline: 'Fone Bluetooth XYZ Pro com cancelamento',
-      provider: 'MERCADO_LIVRE', affiliateUrl: 'https://meli.la/abc', attributionVerified: true,
+      provider: 'MERCADO_LIVRE', affiliateUrl: 'https://meli.la/abc', attributionVerified: true, linkRebuilt: false,
       price: { fromCents: 15000, toCents: 10000 }, coupon: null, warnings: [],
     });
     expect(fakes.resolveProduct.calls).toEqual([[TENANT, 'https://meli.la/abc']]);
@@ -91,10 +96,23 @@ describe('RenderOfferStoryUseCase', () => {
     expect(out.price).toEqual({ fromCents: 15000, toCents: 10000 });
   });
 
-  it('erro OFFER_* da extração sobe como está', async () => {
+  it.each([
+    ['sem credencial', new AffiliateCredentialRequiredError('SHOPEE'), 'AFFILIATE_CREDENTIAL_REQUIRED', 422],
+    ['recriação falhou', new OfferLinkRebuildFailedError('MERCADO_LIVRE', 'ML_100'), 'OFFER_LINK_REBUILD_FAILED', 422],
+    ['limite da API', new AffiliateApiRateLimitedError('SHOPEE'), 'AFFILIATE_API_RATE_LIMITED', 429],
+    ['API fora', new AffiliateApiUnavailableError('AMAZON'), 'AFFILIATE_API_UNAVAILABLE', 503],
+  ])('erro da extração (%s) sobe com o status original, sem render', async (_l, error, errCode, status) => {
     const { fakes, render } = setup();
-    fakes.resolveProduct.error = new OfferLinkNotOwnedError('MERCADO_LIVRE');
-    expect(await code(render.execute(base))).toMatchObject({ code: 'OFFER_LINK_NOT_OWNED', status: 422 });
+    fakes.resolveProduct.error = error;
+    expect(await code(render.execute(base))).toMatchObject({ code: errCode, status });
+    expect(fakes.renderer.calls).toHaveLength(0);
+  });
+
+  it('link de outro afiliado recriado → linkRebuilt e link do tenant na saída', async () => {
+    const { fakes, render } = setup();
+    fakes.resolveProduct.result = makeResolved({ sourceUrl: 'https://meli.la/outro', affiliateUrl: 'https://meli.la/tenant', linkRebuilt: true });
+    const out = await render.execute(base);
+    expect(out).toMatchObject({ affiliateUrl: 'https://meli.la/tenant', attributionVerified: true, linkRebuilt: true });
   });
 
   it.each([[null], ['   ']])('título %j → 422 OFFER_STORY_PRODUCT_INCOMPLETE, sem render', async (title) => {
