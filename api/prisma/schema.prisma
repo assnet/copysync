@@ -426,6 +426,24 @@ model OpsMetricsSample {
   @@map("ops_metrics_samples")
 }
 
+// Pedidos de escala dos workers (WSCALE-13). Dado de infraestrutura, sem tenant. Não identifica o ator na
+// listagem (quem pediu fica na auditoria). Retenção de 180 dias pelo WorkerAutoscalerJob (P4).
+model WorkerScaleEvent {
+  id           BigInt   @id @default(autoincrement())
+  at           DateTime @default(now()) // UTC
+  trigger      String // manual | auto (CHECK no banco)
+  actorUserId  String? // User.id (cuid); null = sistema
+  fromReplicas Int
+  toReplicas   Int
+  reason       String   @db.VarChar(200) // truncado no repositório
+  outcome      String // requested | succeeded | failed | rejected (CHECK no banco)
+  error        String?  @db.VarChar(200) // código/mensagem curta; truncado no repositório
+  requestId    String?  @unique // idempotência do POST /scale; null = job automático
+
+  @@index([at(sort: Desc)])
+  @@map("worker_scale_events")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SESSION AUTH STATE  (persists engine credentials — one record per session)
 // ─────────────────────────────────────────────────────────────────────────────

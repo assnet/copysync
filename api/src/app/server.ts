@@ -55,6 +55,7 @@ import { mediaDrainBudgetMs } from './shutdownBudget';
 import { buildOfferWorkerOptions, offerWorkerStopOptions } from './offerWorkerComposition';
 import { composeForRole } from './roleComposition';
 import { buildWorkerApp } from './workerApp';
+import { workerScaler } from '../modules/sessions/infrastructure/scaler/workerScaler';
 
 /** Varredura de mídia `PENDING` que a fila não tem mais (design §8). */
 const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -136,6 +137,10 @@ async function start(): Promise<void> {
   // Adoção por capacidade (E4): `null` com WORKER_ADOPTION_ENABLED desligada → boot/shutdown da E3.
   // Só em `worker`/`all`: o `http` nunca monta repositório, listener nem timer da adoção.
   const adoption = jobs.has('sessionAdoption') ? sessionAdoptionContainer() : null;
+  // Escalador (WSCALE-11): construir no boot só para o aviso de `WORKER_SCALER_SERVICE_ID` inválido
+  // sair no log de boot, não no 1º uso. Só constrói (sem rede). Papéis que montam as rotas de escala;
+  // o job de subida automática (T27) inclui o papel dele aqui.
+  if (env.WORKER_SCALER_ENABLED && role !== 'worker') workerScaler();
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();

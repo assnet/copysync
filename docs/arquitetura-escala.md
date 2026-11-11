@@ -379,6 +379,9 @@ e lidos só pelo super admin em `GET /admin/ops/metrics`: ver [`ops-metricas.md`
 **Exceção declarada** à regra de estado em memória: o ring buffer de 60 leituras do
 `OpsMetricsSamplerJob` é cache de `ops_metrics_samples` (perda ≤ 5 min em crash aceita); alertas e
 silêncio ficam em lease no banco. Sem APM externo, sem `/metrics` público no `http`.
+**Exceção declarada**: o cache de 30 s do estado do escalador de workers (`WorkerScalerStateCache`, por processo) é
+leitura descartável só para o `GET /admin/workers/scale`, sem efeito em decisão: o `POST` lê o estado ao vivo e o
+intervalo mínimo é serializado no banco (`pg_advisory_xact_lock`), ver [`workers-escala.md`](workers-escala.md).
 
 ---
 
@@ -461,6 +464,9 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 | `WORKER_MAX_PENDING_LOGINS` | `50` | **valor inicial**; o valor em uso vem da configuração em `/admin/workers/settings`. Logins em andamento (QR/código) por processo; só baixar se a RAM apertar |
 | `WORKER_SHARD` | vazio | só com tenant dedicado (ninguém grava `Session.shard` ainda) |
 | `DATABASE_SOCKET_TIMEOUT_S` | vazio | em todo serviço antes de ligar o 2º processo (ex.: 30; §6) |
+| `WORKER_SCALER_ENABLED` | `false` | kill switch do escalador de réplicas ([`workers-escala.md`](workers-escala.md), Escala); no `http` **e** no `worker`, só após o T25 |
+| `WORKER_SCALER_SERVICE_ID` | vazio | `srv-…` do Private Service `worker`; no `http` e no `worker`. Formato inválido = não configurado (não derruba o boot) |
+| `RENDER_API_KEY` | vazio | já usada pelo coletor no `worker`; com o escalador ligado vai também no `http` |
 
 **Antes de ligar mais de um processo na Render:**
 
@@ -471,6 +477,10 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 - [x] Timeout de comando de texto: 60 s (decisão do dono 2026-11-04).
 - [x] QR sem leitura não ocupa vaga do worker (decisão do dono 2026-11-04; E4 T24).
 - [ ] Smoke com sessão real autorizada: QR lido, código, envio texto/mídia, recebimento, grupos, readoção sem 440.
+- [ ] Antes de ligar o escalador (`WORKER_SCALER_ENABLED=true`): T25 feito num Private Service de teste (1→2, 2→1,
+  `SIGTERM` + grace, `maxShutdownDelaySeconds`); serviço `worker` sem disco e sem autoescala nativa da Render.
+- [ ] `WORKER_SCALER_ENABLED`, `WORKER_SCALER_SERVICE_ID` e `RENDER_API_KEY` iguais no `http` e no `worker`;
+  `/admin/workers/scale` mostra o estado sem `missing`.
 
 Preços de Postgres acima de 1c-2g são aproximados; conferir nos 24 planos do painel.
 
@@ -559,6 +569,9 @@ não o servidor.
     Container `copysync-redis-int-<porta>` (override `REDIS_INT_NAME`), nome salvo em
     `$TMPDIR/copysync-redis-int/name`: o `stop` derruba o mesmo que o `start` subiu. Jobs paralelos usam
     `TMPDIR` próprio; porta livre a partir de 56379 (ou `REDIS_INT_PORT`).
+- Não ligar `WORKER_SCALER_ENABLED` local nem na Render antes do T25; não fazer retry automático de `scaleTo`;
+  não escalar serviço com disco ou autoescala nativa; não pôr chave/id do serviço em log, evento ou resposta.
+  Descida de réplica é só manual (a Render escolhe a instância encerrada).
 - Não usar Kubernetes abaixo de milhares de sessões.
 - Não implementar monitoramento/disparo com `setInterval` in-process.
 - Não guardar sessão, fila, eco ou cache de decisão em memória sem equivalente externo

@@ -202,3 +202,127 @@ export const workerCapacityResponse = {
     },
   },
 } as const;
+
+/** Evento de escala sem ator nem `requestId` (WSCALE-13; quem pediu fica na auditoria). */
+const scaleEvent = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'at', 'trigger', 'fromReplicas', 'toReplicas', 'reason', 'outcome', 'error'],
+  properties: {
+    id: { type: 'integer' },
+    at: { type: 'string', format: 'date-time' },
+    trigger: { type: 'string', enum: ['manual', 'auto'] },
+    fromReplicas: { type: 'integer' },
+    toReplicas: { type: 'integer' },
+    reason: { type: 'string' },
+    outcome: { type: 'string', enum: ['requested', 'succeeded', 'failed', 'rejected'] },
+    error: { type: ['string', 'null'] },
+  },
+} as const;
+
+/**
+ * Estado do escalador (`IWorkerScaler`): `ready` com réplicas e bloqueios; `not_configured` com os
+ * NOMES das envs ausentes; `unavailable` com o motivo. Nunca chave nem id do serviço.
+ */
+const scalerState = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['status'],
+  properties: {
+    status: { type: 'string', enum: ['ready', 'not_configured', 'unavailable'] },
+    desiredReplicas: { type: 'integer' },
+    runningReplicas: { type: 'integer' },
+    hasDisk: { type: 'boolean' },
+    autoscalingEnabled: { type: 'boolean' },
+    missing: {
+      type: 'array',
+      items: { type: 'string', enum: ['WORKER_SCALER_ENABLED', 'RENDER_API_KEY', 'WORKER_SCALER_SERVICE_ID'] },
+    },
+    reason: { type: 'string', enum: ['auth', 'not_found', 'rate_limited', 'upstream', 'timeout', 'rejected_by_provider'] },
+  },
+} as const;
+
+/** `GET /admin/workers/scale` (WSCALE-14): estado (cache 30 s), faixa, intervalo mínimo e último evento. */
+export const workerScaleStateResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['scaler', 'settings', 'cooldownUntil', 'lastEvent', 'enforced'],
+      properties: {
+        scaler: scalerState,
+        settings: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['scalerMode', 'minReplicas', 'maxReplicas', 'scaleCooldownSeconds'],
+          properties: {
+            scalerMode: { type: 'string', enum: ['off', 'manual', 'auto'] },
+            minReplicas: { type: 'integer' },
+            maxReplicas: { type: 'integer' },
+            scaleCooldownSeconds: { type: 'integer' },
+          },
+        },
+        cooldownUntil: { type: ['string', 'null'], format: 'date-time' },
+        lastEvent: { anyOf: [scaleEvent, { type: 'null' }] },
+        enforced: { type: 'boolean' },
+      },
+    },
+  },
+} as const;
+
+/**
+ * `POST /admin/workers/scale` (WSCALE-12). Faixa `[min, max]` e motivo 3–200 (após o trim, por code
+ * point) são do use case (400 com `meta.field`); aqui só não-vazio e um teto de segurança.
+ */
+export const workerScaleRequestBody = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['replicas', 'reason', 'requestId'],
+  properties: {
+    replicas: { type: 'integer' },
+    reason: { type: 'string', maxLength: 1000, pattern: '\\S' },
+    requestId: { type: 'string', format: 'uuid' },
+  },
+} as const;
+
+/** Resposta do pedido: o evento e se foi repetição do mesmo `requestId` (nada chamado de novo). */
+export const workerScaleRequestResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['event', 'replayed'],
+      properties: { event: scaleEvent, replayed: { type: 'boolean' } },
+    },
+  },
+} as const;
+
+/** `GET /admin/workers/scale/events?cursor=`: página de tamanho fixo no servidor, cursor assinado. */
+export const workerScaleEventsQuery = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { cursor: { type: 'string', maxLength: 512 } },
+} as const;
+
+export const workerScaleEventsResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['items', 'nextCursor'],
+      properties: {
+        items: { type: 'array', items: scaleEvent },
+        nextCursor: { type: ['string', 'null'] },
+      },
+    },
+  },
+} as const;

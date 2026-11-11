@@ -2,12 +2,14 @@
 import type {
   WorkerCapacityPlan,
   WorkerScalerMode,
+  WorkerScaleStateView,
   WorkerScalingSettings,
   WorkerScalingSettingsChange,
   WorkerScalingSettingsDraft,
   WorkerScalingSettingsField,
 } from './types';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
+import { serverNow } from '@/services/serverClock';
 import { workersAdminStrings } from './strings';
 
 export type OccupancyLevel = 'ok' | 'warning' | 'full';
@@ -176,4 +178,170 @@ export function sortPlansByCatalog<T extends { planSlug: string | null }>(plans:
     .map((p, i) => ({ p, i, r: planCatalogRank(p.planSlug) }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.p);
+}
+
+// ── Aba Escala (WSCALE-14) ─────────────────────────────────────────────────
+
+const sc = workersAdminStrings.scale;
+
+export const SCALE_REASON_MIN = 3;
+export const SCALE_REASON_MAX = 200;
+
+/** Por que os pedidos estão desligados; `null` = liberados (o intervalo mínimo é tratado à parte). */
+export type ScaleBlock = 'notReady' | 'modeOff' | 'notEnforced' | 'disk' | 'nativeAutoscaling';
+
+export function scaleBlock(view: WorkerScaleStateView): ScaleBlock | null {
+  if (view.settings.scalerMode === 'off') return 'modeOff';
+  if (!view.enforced) return 'notEnforced';
+  if (view.scaler.status !== 'ready') return 'notReady';
+  if (view.scaler.hasDisk) return 'disk';
+  if (view.scaler.autoscalingEnabled) return 'nativeAutoscaling';
+  return null;
+}
+
+/** Intervalo mínimo ativo no relógio do servidor. */
+export function cooldownActive(cooldownUntil: string | null, nowMs: number): boolean {
+  if (!cooldownUntil) return false;
+  const end = new Date(cooldownUntil).getTime();
+  return Number.isFinite(end) && end > nowMs;
+}
+
+/** Tempo restante em minutos/horas, arredondado para cima ("menos de 1 min" no último minuto). */
+export function formatScaleRemaining(seconds: number): string {
+  if (seconds < 60) return sc.remaining.underMinute;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return sc.remaining.minutes(minutes);
+  return sc.remaining.hours(Math.floor(minutes / 60), minutes % 60);
+}
+
+/** Erro do alvo no diálogo; `null` = válido. */
+export function scaleTargetError(raw: number | string, current: number, min: number, max: number): string | null {
+  const text = String(raw).trim();
+  const n = Number(text);
+  if (text === '' || !Number.isInteger(n) || n < min || n > max) return sc.dialog.targetRange(min, max);
+  if (n === current) return sc.dialog.targetSame;
+  return null;
+}
+
+/** Erro do motivo (contado sem espaços nas pontas, como a API); `null` = válido. */
+export function scaleReasonError(reason: string): string | null {
+  const n = reason.trim().length;
+  if (n < SCALE_REASON_MIN) return sc.dialog.reasonShort;
+  if (n > SCALE_REASON_MAX) return sc.dialog.reasonLong;
+  return null;
+}
+
+const fmtNum = (v: unknown, digits = 0) =>
+  (typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('pt-BR', { maximumFractionDigits: digits }) : '—');
+
+const fmtWhen = (iso: unknown): string | null => {
+  if (typeof iso !== 'string') return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+/** Mensagem clara para o erro do `POST /admin/workers/scale` (código e `meta` da API). */
+/**
+ * Espera de um 429: `meta.retryAfterSeconds` (provedor), depois o header `Retry-After` (segundos
+ * ou data HTTP, contra o relógio do servidor) e por fim `meta.retryAt` (ISO).
+ */
+function rateLimitedMessage(m: Record<string, unknown>, retryAfter: unknown, now: number): string {
+  const e2 = sc.requestErrors;
+  if (typeof m.retryAfterSeconds === 'number' && m.retryAfterSeconds > 0) return e2.rateLimited(Math.ceil(m.retryAfterSeconds));
+  if (typeof retryAfter === 'string' && retryAfter.trim()) {
+    const raw = retryAfter.trim();
+    if (/^\d+$/.test(raw)) {
+      const secs = Number(raw);
+      if (secs > 0) return e2.rateLimited(secs);
+    } else {
+      const at = Date.parse(raw);
+      if (!Number.isNaN(at)) {
+        const secs = Math.ceil((at - now) / 1000);
+        if (secs > 0) return e2.rateLimited(secs);
+      }
+    }
+  }
+  const when = fmtWhen(m.retryAt);
+  return when ? e2.rateLimitedAt(when) : e2.rateLimited(null);
+}
+
+/**
+ * Erros de evento `failed` com resultado incerto (espelha `UNCERTAIN_SCALE_FAILURE_ERRORS` do
+ * contrato da API; teste de paridade em `rules.test.ts`). Só falhas do pedido de escala: a leitura
+ * antes dele (`SCALER_UNAVAILABLE:read_<motivo>`) não pediu nada e mostra "nada foi alterado".
+ */
+export const UNCERTAIN_SCALE_EVENT_ERRORS: readonly string[] = [
+  'SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED',
+];
+
+/**
+ * Falha depois do pedido ao provedor sem saber se ele aplicou: `SCALE_REQUEST_FAILED` ou
+ * `meta.uncertain` (timeout/5xx no `scaleTo`). O intervalo mínimo já conta a partir do pedido.
+ * `SCALER_UNAVAILABLE` sem `uncertain` é recusa antes da chamada: nada foi alterado.
+ */
+export function isUncertainScaleError(err: unknown): boolean {
+  const e = (err ?? {}) as { code?: string; meta?: Record<string, unknown> };
+  return e.code === 'SCALE_REQUEST_FAILED' || (e.code === 'SCALER_UNAVAILABLE' && e.meta?.uncertain === true);
+}
+
+export function scaleRequestErrorMessage(err: unknown, now: number = serverNow()): string {
+  const e = (err ?? {}) as { status?: number; code?: string; meta?: Record<string, unknown>; retryAfter?: unknown };
+  const m = e.meta ?? {};
+  const e2 = sc.requestErrors;
+  if (isUncertainScaleError(e)) return e2.uncertain;
+  switch (e.code) {
+    case 'REQUEST_ID_REUSED': return e2.requestIdReused;
+    case 'SCALE_TARGET_OUT_OF_RANGE':
+      return typeof m.min === 'number' && typeof m.max === 'number' ? e2.outOfRange(m.min, m.max) : e2.invalid;
+    case 'SCALER_MODE_OFF': return e2.modeOff;
+    case 'ADOPTION_DISABLED': return e2.adoptionDisabled;
+    case 'SCALER_NOT_CONFIGURED':
+      return e2.notConfigured(Array.isArray(m.missing) ? m.missing.filter((x) => typeof x === 'string').join(', ') : '');
+    case 'SCALE_COOLDOWN_ACTIVE': return e2.cooldown(fmtWhen(m.retryAt));
+    case 'SCALE_TARGET_UNCHANGED': return e2.unchanged(typeof m.replicas === 'number' ? m.replicas : null);
+    case 'SCALE_DOWN_WOULD_EXCEED_CAPACITY':
+      if (typeof m.replicas !== 'number' || typeof m.capacity !== 'number' || typeof m.connected !== 'number') return e2.wouldExceedShort;
+      return e2.wouldExceed({
+        replicas: fmtNum(m.replicas), maxSessionsPerWorker: fmtNum(m.maxSessionsPerWorker), ratio: fmtNum(m.ratio, 2),
+        capacity: fmtNum(m.capacity), connected: fmtNum(m.connected),
+      });
+    case 'SCALER_SERVICE_NOT_SCALABLE':
+      return (typeof m.reason === 'string' && e2.notScalable[m.reason]) || e2.notScalableGeneric;
+    case 'SCALER_UNAVAILABLE':
+      return m.reason === 'rejected_by_provider' || m.reason === 'read_rejected_by_provider' ? e2.rejectedByProvider : e2.unavailable;
+    case 'SCALER_RATE_LIMITED': return rateLimitedMessage(m, e.retryAfter, now);
+    default:
+      if (e.status === 429) return rateLimitedMessage(m, e.retryAfter, now);
+      return e.status === 400 ? e2.invalid : e2.generic;
+  }
+}
+
+/**
+ * Erro gravado num evento `failed` (`CODIGO` ou `CODIGO:motivo`, ex.: `SCALER_UNAVAILABLE:timeout`)
+ * traduzido com as mesmas mensagens do pedido; resultado incerto = `uncertain`; leitura antes do
+ * pedido (`SCALER_UNAVAILABLE:read_*`) = `unavailable` ("nada foi alterado"); código desconhecido
+ * cai no texto de falha genérico.
+ */
+export function scaleEventErrorMessage(error: string | null): string {
+  if (!error) return sc.requestErrors.failedGeneric;
+  if (UNCERTAIN_SCALE_EVENT_ERRORS.includes(error)) return sc.requestErrors.uncertain;
+  const [code, reason] = error.split(':', 2);
+  const known = scaleRequestErrorMessage({ code, meta: reason ? { reason } : {} });
+  return known === sc.requestErrors.generic ? sc.requestErrors.failedGeneric : known;
+}
+
+/** Passo de ±1 réplica só vale se o alvo cair dentro de `[min, max]`. */
+export function scaleStepAllowed(current: number, step: 1 | -1, min: number, max: number): boolean {
+  const target = current + step;
+  return target >= min && target <= max;
+}
+
+/** Alvo inicial de "Escolher alvo": vizinho dentro da faixa, ou a ponta mais perto se o atual está fora. */
+export function defaultScaleTarget(current: number, min: number, max: number): number {
+  if (current < min) return min;
+  if (current > max) return max;
+  if (current + 1 <= max) return current + 1;
+  return current - 1;
 }

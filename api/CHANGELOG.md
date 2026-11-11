@@ -7,6 +7,66 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.84.0 · app 0.103.0] — 2026-11-11 — Escala dos workers por decisão do super admin
+
+Subir ou reduzir réplicas do worker exigia o painel da Render, sem regra de capacidade nem rastro. O super admin passa a
+pedir a escala em `/admin/workers/scale`, com as regras de WSCALE-12, evento antes da chamada e auditoria. Spec:
+`.specs/features/worker-scaling/` (WSCALE-09, 11..14, 19; fase P3). Doc: `docs/workers-escala.md` (Escala).
+**Migration Prisma**: sim (`20261111150000_create_worker_scale_events`). **Breaking**: não. **Kill switch**:
+`WORKER_SCALER_ENABLED=false` por default (D8/D10): sem ela nada chama a Render; ligar só após o T25 (smoke real, dono).
+
+### Added
+
+#### API — `prisma`
+
+- **`prisma/migrations/20261111150000_create_worker_scale_events/migration.sql`**, **`schema.prisma`** — tabela `worker_scale_events` (`trigger`, `actorUserId` nulo = sistema, réplicas de/para, motivo, `outcome`, `error` curto, `requestId` único).
+
+#### API — `sessions`
+
+- **`domain/contracts/IWorkerScaleEventRepository.ts`**, **`infrastructure/repositories/PrismaWorkerScaleEventRepository.ts`** — gravar, atualizar resultado, último sucesso, busca por `requestId`, lista por cursor opaco, limpeza de 180 dias em lotes (job da P4).
+- **`domain/contracts/IWorkerScaler.ts`**, **`infrastructure/scaler/RenderWorkerScaler.ts`**, **`NotConfiguredWorkerScaler.ts`**, **`workerScaler.ts`** — porta e adaptador Render (`GET /services/{id}`, `/instances`, `POST /scale`; timeout 5 s; 429 com `Retry-After`; recusa com disco ou autoescala nativa); sem as três envs o estado é `not_configured` com `missing` (só nomes).
+- **`shared/config/env.ts`** — `WORKER_SCALER_ENABLED` (default `false`) e `WORKER_SCALER_SERVICE_ID` (`^srv-[a-z0-9]+$`; inválido = ausente, 1 `warn` sem o valor, boot segue). Valem no `http` e no `worker`.
+- **`shared/errors/internal/WorkerScalingErrors.ts`** — `SCALER_NOT_CONFIGURED`, `SCALER_UNAVAILABLE` (503), `SCALER_RATE_LIMITED` (429), `SCALER_SERVICE_NOT_SCALABLE`, `SCALER_MODE_OFF`, `ADOPTION_DISABLED`, `SCALE_TARGET_OUT_OF_RANGE` (400), `SCALE_TARGET_UNCHANGED`, `SCALE_COOLDOWN_ACTIVE`, `SCALE_DOWN_WOULD_EXCEED_CAPACITY` (409 nos demais).
+- **`application/use-cases/ScaleWorkersUseCase.ts`** — regras na ordem: modo `off`, adoção, faixa, estado ao vivo, disco/autoescala, passo +1 do automático, intervalo mínimo, capacidade na redução, alvo igual. `requested` antes de `scaleTo` (sem retry) → `succeeded`/`failed`; recusa = `rejected` sem `requestId`; idempotente por `requestId`; auditoria `WORKER_SCALE_REQUESTED`. `checkPreconditions()` para a P4.
+- **`RequestWorkerScaleUseCase.ts`**, **`GetWorkerScaleStateUseCase.ts`**, **`ListWorkerScaleEventsUseCase.ts`**, **`application/services/WorkerScalerStateCache.ts`** — pedido manual (conectadas pela última amostra), estado com cache de 30 s por processo (POST ao vivo e invalida), histórico sem ator.
+- **`presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`**, **`presenters/WorkerScalePresenter.ts`** — `GET`/`POST /admin/workers/scale` e `GET /admin/workers/scale/events` (super admin).
+
+### Changed
+
+#### API — `sessions`
+
+- **`GetWorkerCapacityUseCase.ts`** — com `WORKER_SCALER_SERVICE_ID` a memória usa só esse serviço (id ou prefixo `<id>-`).
+- **`infrastructure/lease/sessionLeaseContainer.ts`** — monta os use cases de escala; adoção = flag local OU batimento vivo (`50b0be9`: com `http`/`worker` separados a flag mora só no worker).
+
+#### Painel (app/) — `workersAdmin`
+
+- **`components/ScaleTab.tsx`**, **`ScaleConfirmDialog.tsx`**, **`useWorkerScale.ts`**, **`rules.ts`**, **`strings.ts`**, **`types.ts`**, **`services/adminWorkers.service.ts`**, **`pages/admin/AdminWorkersPage.tsx`**, **`routes/AppRoutes.tsx`** — aba Escala: estado e o que falta, subir/reduzir com motivo, `CooldownBar` + `serverNow()`, histórico paginado só com `Manual`/`Automática`; rascunho em `usePersistedState('workers.scale.draft')`.
+
+#### Docs
+
+- **`docs/workers-escala.md`** (Escala), **`docs/arquitetura-escala.md`** (§5.1 envs e checklist, §6), **`docs/ops-metricas.md`** (recorte: só as rotas de escala chamam a Render), **`docs/produto-roadmap.md`**, **`AGENTS.md`**.
+
+### Fixed (revisão da P3)
+
+- **`IWorkerScaleEventRepository.ts`**, **`PrismaWorkerScaleEventRepository.ts`** — `recordRequestedIfIdle({ evt, cooldownSeconds, now })`: lê o último `requested|succeeded` e grava `requested` numa transação com `pg_advisory_xact_lock(hashtextextended('worker-scale-request', 0))`; dentro do intervalo devolve `{ blocked: retryAt }`. Dois `POST` com `requestId` diferentes não chamam `scaleTo` juntos (antes leitura e insert eram separados).
+- **`ScaleWorkersUseCase.ts`** — usa `recordRequestedIfIdle` (a checagem antecipada continua para `checkPreconditions`); bloqueio no lock grava `rejected` e responde 409 `SCALE_COOLDOWN_ACTIVE`. Replay estrito: mesmo `requestId` com alvo, motivo ou ator diferentes → 409 `REQUEST_ID_REUSED` (igual: replay, inclusive `failed`). Erro fora de `AppError` vira 503 `SCALE_REQUEST_FAILED` sem a mensagem original (evento `failed` só com o código; `warn` sem o texto). Falha em `updateOutcome`/auditoria depois do `scaleTo` aceito: `warn` e resposta de sucesso (`succeeded` em memória; a linha que ficar `requested` segue contando o intervalo).
+- **`WorkerScalingErrors.ts`**, **`IWorkerScaler.ts`**, **`RenderWorkerScaler.ts`** — `ScalerRateLimitedError` com `meta.retryAt` (ISO) além de `retryAfterSeconds`; o estado `unavailable/rate_limited` carrega `retryAfterSeconds` e o use case não perde o valor: o `errorHandler` devolve `Retry-After` no 429. Erros novos `REQUEST_ID_REUSED` (409), `SCALE_REQUEST_FAILED` (503), `INVALID_SCALE_REASON` (400, `field: 'reason'`).
+- **`RequestWorkerScaleUseCase.ts`** — motivo validado depois do `trim` (3–200, `INVALID_SCALE_REASON`); `invalidate()` do cache em `finally` (também em erro).
+- **`sessionLeaseContainer.ts`** — logger do `ScaleWorkersUseCase`.
+- **`app/app.ts`**, **`app/corsPolicy.ts`** — `Retry-After` em `exposedHeaders` do CORS (`CORS_EXPOSED_HEADERS`, com `X-Server-Time`): sem ele o painel de outra origem não lia o header.
+- **`PrismaWorkerScaleEventRepository.ts`**, **`IWorkerScaleEventRepository.ts`**, **`ScaleWorkersUseCase.ts`** — replay concorrente: dois `POST` simultâneos com o mesmo `requestId` faziam o segundo cair no intervalo mínimo (409 + `rejected` espúrio). Sob o lock e antes do intervalo, `recordRequestedIfIdle` procura o `requestId` e devolve `{ existing }`; o use case aplica o replay estrito (replay ou `REQUEST_ID_REUSED`). Texto truncado por code point (`truncateText`; nunca parte emoji).
+- **`workerAdmin.schema.ts`**, **`RequestWorkerScaleUseCase.ts`** — o schema media 3–200 antes do `trim` e recusava motivo válido com espaços nas pontas; agora só barra vazio e > 1000, e o use case mede 3–200 após o `trim`, por code point (`Array.from`).
+- **`RenderWorkerScaler.ts`** — `getState`: erro fora de `AppError` vira `unavailable/upstream` (nunca relança cru).
+- **`useWorkerScale.ts`**, **`ScaleTab.tsx`** — com rascunho existente, "Subir 1"/"Reduzir 1" reabriam o alvo antigo com "Reenviar": alvo clicado diferente substitui o rascunho (motivo vazio, `requestId` novo), igual reabre o mesmo pedido; "Revisar" e "Escolher alvo" reabrem o rascunho. A reabertura automática só é consumida pela 1ª leitura `ready`.
+- **`useWorkerScale.ts`**, **`strings.ts`** — replay de evento ainda `requested` (resultado não confirmado) deixa de ser sucesso: aviso próprio ("em andamento ou interrompido; confira o histórico") e o rascunho fica.
+- **`IWorkerScaleEventRepository.ts`**, **`PrismaWorkerScaleEventRepository.ts`**, **`ScaleWorkersUseCase.ts`**, **`WorkerScalingErrors.ts`** — `scaleTo` com timeout ou 5xx pode ter sido aplicado pela Render, mas o `failed` não contava para o intervalo mínimo e o admin podia somar réplicas. `failed` com `SCALER_UNAVAILABLE:timeout`, `SCALER_UNAVAILABLE:upstream` ou `SCALE_REQUEST_FAILED` (lista `UNCERTAIN_SCALE_FAILURE_ERRORS`, helpers `isUncertainScaleFailure`/`countsForScaleCooldown`) passa a contar em `lastSucceededAt` e `recordRequestedIfIdle`; falhas certas (`auth`, `not_found`, 429, recusas) não. A resposta leva `meta.uncertain: true` para o painel distinguir da recusa antes da chamada.
+- **`strings.ts`**, **`rules.ts`**, **`useWorkerScale.ts`** — falha incerta (`meta.uncertain` ou evento `failed` da lista) deixa de dizer "Nada foi alterado": aviso "Não dá para confirmar se o provedor aplicou…", diálogo fechado e rascunho descartado (não reabre nem gera `requestId` para reenviar), estado e histórico relidos para mostrar o `CooldownBar`.
+- **`WorkerScalingErrors.ts`**, **`RenderWorkerScaler.ts`**, **`ScaleWorkersUseCase.ts`**, **`IWorkerScaleEventRepository.ts`** — o `scaleTo` lê o serviço (`GET`) antes do `POST /scale`; timeout/5xx nessa leitura virava `SCALER_UNAVAILABLE:timeout|upstream`, era tratado como incerto e segurava o intervalo mínimo sem pedido algum ter saído. `ScalerUnavailableError` ganha `phase: 'read' | 'write'` (`GET` = `read`, `POST` = `write`; `meta.phase: 'read'` só na leitura); o evento grava `SCALER_UNAVAILABLE:read_<motivo>` para a leitura e `SCALER_UNAVAILABLE:<motivo>` para o POST. `UNCERTAIN_SCALE_FAILURE_ERRORS` fica só com as falhas do POST e `SCALE_REQUEST_FAILED`; `meta.uncertain` só nelas. Testes com o `RenderWorkerScaler` real e `fetchFn` falso: timeout no `GET` não conta o intervalo, no `POST` conta.
+- **`RenderWorkerScaler.ts`**, **`WorkerScalingErrors.ts`**, **`IWorkerScaler.ts`**, **`ScaleWorkersUseCase.ts`**, **`app/.../workersAdmin/{rules,strings,types}.ts`** — todo status fora de 401/403/404/429 virava `upstream`, então 400/409/422 do `POST /scale` contavam como incertos e seguravam o intervalo. Outro 4xx vira a razão `rejected_by_provider` (`SCALER_UNAVAILABLE:rejected_by_provider`, fora de `UNCERTAIN_SCALE_FAILURE_ERRORS`, sem `meta.uncertain`) e o painel diz "O provedor recusou o pedido. Nada foi alterado."; só 5xx, timeout e erro de rede no POST são incertos. `ScalerUnavailableError.phase` passa a ser obrigatório (a recusa por estado prévio usa `read`). Testes: POST 422 não conta no intervalo, POST 503 conta.
+- **`IWorkerScaleEventRepository.ts`**, **`PrismaWorkerScaleEventRepository.ts`**, **`ScaleWorkersUseCase.ts`**, **`GetWorkerScaleStateUseCase.ts`** — `lastSucceededAt()` renomeado para `lastCooldownStartAt()` (conta `requested`, `succeeded` e `failed` incerto, não só sucesso).
+- **`app/.../workersAdmin/rules.ts`**, **`rules.test.ts`** — `read_*` cai em "nada foi alterado"; teste de paridade lê o contrato da API (`?raw`) e compara com `UNCERTAIN_SCALE_EVENT_ERRORS`.
+- **Docs** — `docs/workers-escala.md` (serialização, replay estrito, erro genérico, sucesso com falha de escrita, `Retry-After`), `docs/arquitetura-escala.md` §3.7 (cache de 30 s do estado do escalador).
+
 ## [0.83.0 · app 0.102.0] — 2026-11-11 — Capacidade dos workers e métricas de sessões
 
 Não havia número para decidir o teto nem quantas réplicas subir, e sem adoção nenhum alerta de ocupação. O coletor passa a

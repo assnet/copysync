@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+// Fonte do contrato da API como texto (Vite `?raw`), só para o teste de paridade da lista de incertas.
+import apiScaleEventContract from '../../../../api/src/modules/sessions/domain/contracts/IWorkerScaleEventRepository.ts?raw';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
-  sortPlansByCatalog,
+  sortPlansByCatalog, cooldownActive, formatScaleRemaining, scaleBlock, scaleReasonError, scaleRequestErrorMessage, scaleTargetError,
+  scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget, isUncertainScaleError, UNCERTAIN_SCALE_EVENT_ERRORS,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
@@ -195,5 +198,134 @@ describe('sortPlansByCatalog', () => {
   it('ordem do catálogo; desconhecido e sem plano no fim', () => {
     const rows = [null, 'COPYSYNC_MAX', 'OUTRO', 'COPYSYNC_LITE', 'ZETA', 'pro'].map((planSlug) => ({ planSlug }));
     expect(sortPlansByCatalog(rows).map((r) => r.planSlug)).toEqual(['COPYSYNC_LITE', 'pro', 'COPYSYNC_MAX', 'OUTRO', 'ZETA', null]);
+  });
+});
+
+describe('escala (WSCALE-14)', () => {
+  const base = {
+    scaler: { status: 'ready' as const, desiredReplicas: 2, runningReplicas: 2, hasDisk: false, autoscalingEnabled: false },
+    settings: { scalerMode: 'manual' as const, minReplicas: 1, maxReplicas: 4, scaleCooldownSeconds: 600 },
+    cooldownUntil: null, lastEvent: null, enforced: true,
+  };
+
+  it('formatScaleRemaining em min/h, arredondando para cima', () => {
+    expect(formatScaleRemaining(30)).toBe('menos de 1 min');
+    expect(formatScaleRemaining(61)).toBe('2 min');
+    expect(formatScaleRemaining(3600)).toBe('1 h');
+    expect(formatScaleRemaining(5400)).toBe('1 h 30 min');
+  });
+
+  it('scaleBlock: modo, adoção, escalador e serviço', () => {
+    expect(scaleBlock(base)).toBeNull();
+    expect(scaleBlock({ ...base, settings: { ...base.settings, scalerMode: 'off' } })).toBe('modeOff');
+    expect(scaleBlock({ ...base, enforced: false })).toBe('notEnforced');
+    expect(scaleBlock({ ...base, scaler: { status: 'unavailable', reason: 'timeout' } })).toBe('notReady');
+    expect(scaleBlock({ ...base, scaler: { ...base.scaler, hasDisk: true } })).toBe('disk');
+    expect(scaleBlock({ ...base, scaler: { ...base.scaler, autoscalingEnabled: true } })).toBe('nativeAutoscaling');
+  });
+
+  it('cooldownActive pelo relógio dado', () => {
+    expect(cooldownActive(null, 0)).toBe(false);
+    expect(cooldownActive('2026-11-11T10:00:00.000Z', Date.parse('2026-11-11T09:59:00.000Z'))).toBe(true);
+    expect(cooldownActive('2026-11-11T10:00:00.000Z', Date.parse('2026-11-11T10:00:00.000Z'))).toBe(false);
+  });
+
+  it('valida alvo e motivo', () => {
+    expect(scaleTargetError('3', 2, 1, 4)).toBeNull();
+    expect(scaleTargetError('2', 2, 1, 4)).not.toBeNull();
+    expect(scaleTargetError('1.5', 2, 1, 4)).not.toBeNull();
+    expect(scaleTargetError('', 2, 1, 4)).not.toBeNull();
+    expect(scaleReasonError('  ab ')).not.toBeNull();
+    expect(scaleReasonError('abc')).toBeNull();
+    expect(scaleReasonError('x'.repeat(201))).not.toBeNull();
+  });
+
+  it('erro sem código conhecido: 400 = inválido, resto = genérico', () => {
+    expect(scaleRequestErrorMessage({ status: 400, code: 'VALIDATION_ERROR' })).toMatch(/recusado/);
+    expect(scaleRequestErrorMessage(new Error('rede'))).toMatch(/mesmo pedido não é duplicado/);
+    expect(scaleRequestErrorMessage({ code: 'SCALE_DOWN_WOULD_EXCEED_CAPACITY', meta: {} })).toMatch(/menos vagas/);
+    expect(scaleRequestErrorMessage({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'rejected_by_provider' } })).toMatch(/recusou o pedido\. Nada foi alterado/);
+  });
+
+  it('429: retryAfterSeconds, depois Retry-After (segundos ou data HTTP), depois retryAt', () => {
+    const re = workersAdminStrings.scale.requestErrors;
+    const now = Date.parse('2026-11-11T12:00:00.000Z');
+    expect(scaleRequestErrorMessage({ status: 429, code: 'SCALER_RATE_LIMITED', meta: { retryAfterSeconds: 12 }, retryAfter: '99' }, now)).toBe(re.rateLimited(12));
+    expect(scaleRequestErrorMessage({ status: 429, code: 'X', retryAfter: '30' }, now)).toBe(re.rateLimited(30));
+    expect(scaleRequestErrorMessage({ status: 429, retryAfter: 'Wed, 11 Nov 2026 12:01:30 GMT' }, now)).toBe(re.rateLimited(90));
+    expect(scaleRequestErrorMessage({ status: 429, retryAfter: 'lixo' }, now)).toBe(re.rateLimited(null));
+    expect(scaleRequestErrorMessage({ status: 429, meta: { retryAt: 'x' } }, now)).toBe(re.rateLimited(null));
+    expect(scaleRequestErrorMessage({ status: 409, code: 'REQUEST_ID_REUSED' })).toBe(re.requestIdReused);
+  });
+});
+
+describe('scaleEventErrorMessage', () => {
+  const re = workersAdminStrings.scale.requestErrors;
+  it('traduz CODIGO e CODIGO:motivo; desconhecido ou vazio = falha genérica', () => {
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:auth')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:not_found')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:rejected_by_provider')).toBe(re.rejectedByProvider);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:read_rejected_by_provider')).toBe(re.rejectedByProvider);
+    expect(scaleEventErrorMessage('SCALER_SERVICE_NOT_SCALABLE:disk')).toBe(re.notScalable.disk);
+    expect(scaleEventErrorMessage('SCALER_RATE_LIMITED')).toBe(re.rateLimited(null));
+    expect(scaleEventErrorMessage('OUTRO')).toBe(re.failedGeneric);
+    expect(scaleEventErrorMessage(null)).toBe(re.failedGeneric);
+  });
+
+  it('resultado incerto (timeout, 5xx, falha inesperada) não diz que nada foi alterado', () => {
+    for (const e of ['SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED']) {
+      expect(scaleEventErrorMessage(e)).toBe(re.uncertain);
+    }
+    expect(re.uncertain).not.toMatch(/Nada foi alterado/);
+  });
+
+  it('falha na leitura antes do pedido (read_*) diz que nada foi alterado', () => {
+    for (const e of ['SCALER_UNAVAILABLE:read_timeout', 'SCALER_UNAVAILABLE:read_upstream', 'SCALER_UNAVAILABLE:read_auth']) {
+      expect(scaleEventErrorMessage(e)).toBe(re.unavailable);
+    }
+    expect(re.unavailable).toMatch(/Nada foi alterado/);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout', phase: 'read' } })).toBe(re.unavailable);
+  });
+});
+
+describe('UNCERTAIN_SCALE_EVENT_ERRORS', () => {
+  it('paridade com UNCERTAIN_SCALE_FAILURE_ERRORS do contrato da API', () => {
+    const block = /export const UNCERTAIN_SCALE_FAILURE_ERRORS = \[([^\]]*)\]/.exec(apiScaleEventContract)?.[1];
+    expect(block).toBeDefined();
+    const api = [...block!.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(api.length).toBeGreaterThan(0);
+    expect([...UNCERTAIN_SCALE_EVENT_ERRORS].sort()).toEqual(api.sort());
+  });
+});
+
+describe('isUncertainScaleError', () => {
+  const re = workersAdminStrings.scale.requestErrors;
+  it('SCALE_REQUEST_FAILED ou SCALER_UNAVAILABLE com meta.uncertain; recusa antes da chamada não', () => {
+    expect(isUncertainScaleError({ code: 'SCALE_REQUEST_FAILED' })).toBe(true);
+    expect(isUncertainScaleError({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout', uncertain: true } })).toBe(true);
+    expect(isUncertainScaleError({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout' } })).toBe(false);
+    expect(isUncertainScaleError({ code: 'SCALER_RATE_LIMITED' })).toBe(false);
+    expect(isUncertainScaleError(null)).toBe(false);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALE_REQUEST_FAILED', meta: { uncertain: true } })).toBe(re.uncertain);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALER_UNAVAILABLE', meta: { reason: 'upstream', uncertain: true } })).toBe(re.uncertain);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALER_UNAVAILABLE', meta: { reason: 'auth' } })).toBe(re.unavailable);
+  });
+});
+
+describe('scaleStepAllowed / defaultScaleTarget', () => {
+  it('±1 só dentro da faixa', () => {
+    expect(scaleStepAllowed(2, 1, 1, 4)).toBe(true);
+    expect(scaleStepAllowed(4, 1, 1, 4)).toBe(false);
+    expect(scaleStepAllowed(0, 1, 2, 4)).toBe(false);
+    expect(scaleStepAllowed(1, 1, 2, 4)).toBe(true);
+    expect(scaleStepAllowed(6, -1, 1, 4)).toBe(false);
+    expect(scaleStepAllowed(1, -1, 1, 4)).toBe(false);
+  });
+  it('alvo inicial: vizinho na faixa ou a ponta mais perto', () => {
+    expect(defaultScaleTarget(2, 1, 4)).toBe(3);
+    expect(defaultScaleTarget(4, 1, 4)).toBe(3);
+    expect(defaultScaleTarget(0, 2, 4)).toBe(2);
+    expect(defaultScaleTarget(9, 2, 4)).toBe(4);
   });
 });

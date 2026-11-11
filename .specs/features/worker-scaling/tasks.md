@@ -64,14 +64,14 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 | T18 | Painel: aba Capacidade | T16 | | feito |
 | T19 | Docs, versão e changelog da P2 | T17, T18 | | feito |
 | R2 | Revisão da P2 e merge | T19 | | feito |
-| T20 | Eventos de escala (tabela e repositório) | R2 | | pendente |
-| T21 | Porta do escalador e adaptador Render | R2 | P | pendente |
-| T22 | Use case de escala | T14, T20, T21 | | pendente |
-| T23 | Rotas de escala | T22 | | pendente |
-| T24 | Painel: aba Escala | T23 | | pendente |
+| T20 | Eventos de escala (tabela e repositório) | R2 | | feito |
+| T21 | Porta do escalador e adaptador Render | R2 | P | feito |
+| T22 | Use case de escala | T14, T20, T21 | | feito |
+| T23 | Rotas de escala | T22 | | feito |
+| T24 | Painel: aba Escala | T23 | | feito |
 | T25 | Smoke de subida e redução num serviço de teste | T23 | | pendente (dono) |
-| T26 | Docs, versão e changelog da P3 | T24 | | pendente |
-| R3 | Revisão da P3 e merge | T26 | | pendente |
+| T26 | Docs, versão e changelog da P3 | T24 | | feito |
+| R3 | Revisão da P3 e merge | T26 | | feito |
 | T27 | Job de subida automática | R3 | | pendente |
 | T28 | Painel: modo automático e docs da P4 | T27 | | pendente |
 | R4 | Revisão da P4 e merge | T28 | | pendente |

@@ -32,13 +32,13 @@ describe('SupportChatButton', () => {
     },
   );
 
-  it.each(['/redirect/x', '/redirect/suporte', '/chat', '/chat/', '/chat/123', '/Chat', '/admin/workers/settings', '/admin/workers/capacity'])('não aparece em %s', (path) => {
+  it.each(['/redirect/x', '/redirect/suporte', '/chat', '/chat/', '/chat/123', '/Chat', '/admin/workers/settings', '/admin/workers/capacity', '/admin/workers/scale'])('não aparece em %s', (path) => {
     renderAt(path);
     expect(link()).not.toBeInTheDocument();
   });
 
   it('lista de rotas ocultas e regra de prefixo', () => {
-    expect(SUPPORT_CHAT_HIDDEN_PATHS).toEqual(['/redirect', '/chat', '/admin/workers/settings', '/admin/workers/capacity']);
+    expect(SUPPORT_CHAT_HIDDEN_PATHS).toEqual(['/redirect', '/chat', '/admin/workers/settings', '/admin/workers/capacity', '/admin/workers/scale']);
     expect(isSupportChatHidden('/admin/workers')).toBe(false);
     expect(isSupportChatHidden('/redirect')).toBe(true);
     expect(isSupportChatHidden('/redirects')).toBe(false);

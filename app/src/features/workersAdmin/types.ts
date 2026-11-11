@@ -130,3 +130,58 @@ export interface WorkerCapacityView {
   settings: Pick<WorkerScalingSettings, 'maxSessionsPerWorker' | 'alertOccupancyRatio'>;
   enforced: boolean;
 }
+
+/** Variável de ambiente que falta para o escalador funcionar (WSCALE-11). */
+export type WorkerScalerMissingEnv = 'WORKER_SCALER_ENABLED' | 'RENDER_API_KEY' | 'WORKER_SCALER_SERVICE_ID';
+export type WorkerScalerFailureReason = 'auth' | 'not_found' | 'rejected_by_provider' | 'rate_limited' | 'upstream' | 'timeout';
+
+/** Estado do escalador no provedor (cache de 30 s na API). Nunca carrega chave nem id do serviço. */
+export type WorkerScalerState =
+  | { status: 'ready'; desiredReplicas: number; runningReplicas: number; hasDisk: boolean; autoscalingEnabled: boolean }
+  | { status: 'not_configured'; missing: WorkerScalerMissingEnv[] }
+  | { status: 'unavailable'; reason: WorkerScalerFailureReason };
+
+export type WorkerScaleTrigger = 'manual' | 'auto';
+export type WorkerScaleOutcome = 'requested' | 'succeeded' | 'failed' | 'rejected';
+
+/** Evento de escala sem identificar o ator (quem pediu fica na auditoria). */
+export interface WorkerScaleEvent {
+  id: number;
+  at: string;
+  trigger: WorkerScaleTrigger;
+  fromReplicas: number;
+  toReplicas: number;
+  reason: string;
+  outcome: WorkerScaleOutcome;
+  error: string | null;
+}
+
+/** Resposta de `GET /admin/workers/scale` (WSCALE-14). */
+export interface WorkerScaleStateView {
+  scaler: WorkerScalerState;
+  settings: Pick<WorkerScalingSettings, 'scalerMode' | 'minReplicas' | 'maxReplicas' | 'scaleCooldownSeconds'>;
+  /** ISO; fim do intervalo mínimo desde a última escalada bem-sucedida. `null` = sem espera. */
+  cooldownUntil: string | null;
+  lastEvent: WorkerScaleEvent | null;
+  /** `false` com a adoção desligada: o pedido é recusado (`ADOPTION_DISABLED`). */
+  enforced: boolean;
+}
+
+/** Corpo de `POST /admin/workers/scale`. `requestId` torna o pedido idempotente. */
+export interface WorkerScaleRequestInput {
+  replicas: number;
+  reason: string;
+  requestId: string;
+}
+
+export interface WorkerScaleRequestResult {
+  event: WorkerScaleEvent;
+  /** `true` = mesmo `requestId` já processado: nada novo foi pedido ao provedor. */
+  replayed: boolean;
+}
+
+/** Página de `GET /admin/workers/scale/events` (cursor opaco do servidor). */
+export interface WorkerScaleEventsPage {
+  items: WorkerScaleEvent[];
+  nextCursor: string | null;
+}

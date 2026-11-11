@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CAPACITY_WINDOW_MS, GetWorkerCapacityUseCase, memoryToMb, type GetWorkerCapacityDeps } from './GetWorkerCapacityUseCase';
+import {
+  CAPACITY_WINDOW_MS, GetWorkerCapacityUseCase, connectedSessionsNow, memoryResourceFilter, memoryToMb, type GetWorkerCapacityDeps,
+} from './GetWorkerCapacityUseCase';
 import type { WorkerCapacityPlanRow } from '../../domain/contracts/IWorkerCapacityReader';
 import type { OpsMetricSample, OpsMetricSource } from '../../../metrics/domain/OpsMetric';
 import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
@@ -142,6 +144,39 @@ describe('GetWorkerCapacityUseCase', () => {
     const { cluster } = await uc.execute();
     expect(cluster).toMatchObject({ connected: 30, mbPerSession: null, memoryLimitMb: null, suggestedMaxSessions: null });
     expect(listSince.mock.calls.map((c) => c[0])).not.toContain('memory');
+  });
+
+  it('com WORKER_SCALER_SERVICE_ID: só o serviço e as instâncias dele, mesmo com vários srv-', async () => {
+    const { uc } = build([
+      ...sessions,
+      mem(t(5), 300, 'MB', 'srv-a-stl6v'), mem(t(5), 200, 'MB', 'srv-a-x9k2p'), pct(t(5), 25, 'srv-a-stl6v'),
+      mem(t(5), 9000, 'MB', 'srv-b-q1w2e'), pct(t(5), 90, 'srv-b-q1w2e'),
+      mem(t(5), 7000, 'MB', 'srv-ab-zz'), // prefixo parecido: outro serviço
+    ], { renderServiceIds: ['srv-a', 'srv-b', 'srv-ab'], scalerServiceId: 'srv-a' });
+    const { cluster } = await uc.execute();
+    // 500 MB ÷ média(20, 30) = 20; limite 300 ÷ 0,25
+    expect(cluster).toMatchObject({ mbPerSession: 20, memoryLimitMb: 1200 });
+  });
+
+  it('com WORKER_SCALER_SERVICE_ID sem amostra do serviço: memória null', async () => {
+    const { uc } = build([...sessions, mem(t(5), 512, 'MB', 'srv-b-q1'), pct(t(5), 50, 'srv-b-q1')], { scalerServiceId: 'srv-a' });
+    expect((await uc.execute()).cluster).toMatchObject({ mbPerSession: null, memoryLimitMb: null });
+  });
+
+  it('memoryResourceFilter: id igual ou `<id>-`; sem id, qualquer srv-', () => {
+    const f = memoryResourceFilter('srv-a');
+    expect(['srv-a', 'srv-a-x1', 'srv-ab', 'srv-ab-x1', 'dpg-a'].map(f)).toEqual([true, true, false, false, false]);
+    const any = memoryResourceFilter(null);
+    expect(['srv-a-x1', 'srv-b', 'dpg-a'].map(any)).toEqual([true, true, false]);
+  });
+
+  it('connectedSessionsNow: última amostra sessions; sem amostra, contagem ao vivo do banco', async () => {
+    const { listSince } = build(sessions);
+    const reader = { readByPlan: vi.fn(async () => [row]) };
+    expect(await connectedSessionsNow({ samples: { listSince }, reader, now: () => now })).toBe(30);
+    expect(reader.readByPlan).not.toHaveBeenCalled();
+    const empty = build([]).listSince;
+    expect(await connectedSessionsNow({ samples: { listSince: empty }, reader, now: () => now })).toBe(5); // 4 + 1
   });
 
   it('sessões 0: MB por sessão null, limite ainda medido', async () => {

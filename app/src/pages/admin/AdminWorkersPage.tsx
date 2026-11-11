@@ -23,10 +23,14 @@ const SettingsTab = lazy(() => import('@/features/workersAdmin/components/Settin
 /** Aba Capacidade em chunk próprio (cartões, tabela por plano e série de 7 dias). */
 const CapacityTab = lazy(() => import('@/features/workersAdmin/components/CapacityTab'));
 
+/** Aba Escala em chunk próprio (estado do escalador, diálogo de pedido e histórico). */
+const ScaleTab = lazy(() => import('@/features/workersAdmin/components/ScaleTab'));
+
 export const WORKERS_PATH = '/admin/workers';
 export const WORKERS_USAGE_PATH = '/admin/workers/usage';
 export const WORKERS_CAPACITY_PATH = '/admin/workers/capacity';
 export const WORKERS_SETTINGS_PATH = '/admin/workers/settings';
+export const WORKERS_SCALE_PATH = '/admin/workers/scale';
 
 /** Abas pela URL: caminho → rótulo. A ativa é a de prefixo mais longo que casa com o caminho. */
 const WORKER_TABS: { path: string; label: string }[] = [
@@ -34,6 +38,7 @@ const WORKER_TABS: { path: string; label: string }[] = [
   { path: WORKERS_USAGE_PATH, label: t.tabs.usage },
   { path: WORKERS_CAPACITY_PATH, label: t.tabs.capacity },
   { path: WORKERS_SETTINGS_PATH, label: t.tabs.settings },
+  { path: WORKERS_SCALE_PATH, label: t.tabs.scale },
 ];
 
 /** Subtítulo do cabeçalho por aba; ausente = o da aba Ocupação. */
@@ -41,6 +46,7 @@ const TAB_SUBTITLES: Record<string, string> = {
   [WORKERS_USAGE_PATH]: opsMetricsStrings.subtitle,
   [WORKERS_CAPACITY_PATH]: t.capacity.subtitle,
   [WORKERS_SETTINGS_PATH]: t.settings.subtitle,
+  [WORKERS_SCALE_PATH]: t.scale.subtitle,
 };
 
 export function activeWorkersTab(pathname: string): string {
@@ -320,6 +326,11 @@ export function AdminWorkersPage() {
       {active === WORKERS_SETTINGS_PATH && (
         <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.settings.loading} />}>
           <SettingsTab />
+        </Suspense>
+      )}
+      {active === WORKERS_SCALE_PATH && (
+        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.scale.loading} />}>
+          <ScaleTab />
         </Suspense>
       )}
       {active === WORKERS_PATH && <OccupancyTab />}

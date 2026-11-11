@@ -67,10 +67,15 @@ export interface GetWorkerCapacityDeps {
   /** Configuração efetiva + `enforced` (o `GetWorkerScalingSettingsUseCase`). */
   settings: () => Promise<{ settings: WorkerScalingSettings; enforced: boolean }>;
   /**
-   * IDs `srv-` monitorados (`RENDER_RESOURCE_IDS`). Mais de um: não há como saber qual roda sessões
-   * → memória `null` (o filtro por `WORKER_SCALER_SERVICE_ID` é da T23).
+   * IDs `srv-` monitorados (`RENDER_RESOURCE_IDS`). Sem `scalerServiceId` e com mais de um: não há
+   * como saber qual roda sessões → memória `null`.
    */
   renderServiceIds: readonly string[];
+  /**
+   * `WORKER_SCALER_SERVICE_ID` já validado (`srv-...`) ou `null`. Definido: a memória usa só o
+   * recurso igual ao id ou as instâncias dele (`<id>-<sufixo>`, formato gravado pela Render).
+   */
+  scalerServiceId?: string | null;
   now?: () => Date;
 }
 
@@ -97,6 +102,22 @@ const round = (n: number, d: number) => Math.round(n * 10 ** d) / 10 ** d;
 const avg = (xs: readonly number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const latest = (xs: readonly OpsMetricSample[]) =>
   xs.reduce<OpsMetricSample | null>((m, s) => (!m || s.at > m.at ? s : m), null);
+const fromSessions = (xs: readonly OpsMetricSample[]) => xs.filter((s) => s.source === 'sessions');
+
+/**
+ * Conectadas agora para a regra de redução (WSCALE-12): a última amostra `sessions_connected` da
+ * janela (mesma fonte de `cluster.connected`). Sem amostra (coletor parado), a contagem ao vivo do
+ * banco (lease vivo + `CONNECTED`): nunca 0 por falta de dado, senão a redução passaria sempre.
+ */
+export async function connectedSessionsNow(
+  deps: Pick<GetWorkerCapacityDeps, 'reader' | 'samples' | 'now'>,
+): Promise<number> {
+  const since = new Date((deps.now?.() ?? new Date()).getTime() - CAPACITY_WINDOW_MS);
+  const last = latest(fromSessions(await deps.samples.listSince(OPS_METRIC.sessionsConnected, since)));
+  if (last) return Math.round(last.value);
+  const rows = await deps.reader.readByPlan();
+  return rows.reduce((sum, r) => sum + r.connected.whatsapp + r.connected.telegram, 0);
+}
 
 function channel(row: WorkerCapacityPlanRow, c: LimitChannel): WorkerCapacityChannelView {
   return { contracted: row.contracted[c], unlimitedTenants: row.unlimitedTenants[c], created: row.created[c], connected: row.connected[c] };
@@ -107,9 +128,19 @@ interface MemoryStats {
   memoryLimitMb: number | null;
 }
 
-/** Só recursos `srv-` da fonte `render`; soma instâncias por `at`; limite da amostra mais recente. */
-function memoryStats(memory: readonly OpsMetricSample[], memoryPct: readonly OpsMetricSample[]): MemoryStats {
-  const isSrv = (s: OpsMetricSample) => s.source === 'render' && s.resource.startsWith('srv-');
+/** Recurso de memória atribuível ao worker: o serviço do escalador (e instâncias) ou qualquer `srv-`. */
+export function memoryResourceFilter(scalerServiceId: string | null | undefined): (resource: string) => boolean {
+  if (scalerServiceId) return (r) => r === scalerServiceId || r.startsWith(`${scalerServiceId}-`);
+  return (r) => r.startsWith('srv-');
+}
+
+/** Só recursos aceitos por `belongs` da fonte `render`; soma instâncias por `at`; limite da amostra mais recente. */
+function memoryStats(
+  memory: readonly OpsMetricSample[],
+  memoryPct: readonly OpsMetricSample[],
+  belongs: (resource: string) => boolean,
+): MemoryStats {
+  const isSrv = (s: OpsMetricSample) => s.source === 'render' && belongs(s.resource);
   const pctByKey = new Map(memoryPct.filter(isSrv).map((s) => [`${s.at.getTime()}|${s.resource}`, s.value]));
   const sumByAt = new Map<number, number>();
   const limitsByAt = new Map<number, number[]>();
@@ -141,7 +172,8 @@ export class GetWorkerCapacityUseCase {
     const { reader, samples } = this.deps;
     const nowMs = (this.deps.now?.() ?? new Date()).getTime();
     const since = new Date(nowMs - CAPACITY_WINDOW_MS);
-    const memoryKnown = this.deps.renderServiceIds.filter((id) => id.startsWith('srv-')).length <= 1;
+    const serviceId = this.deps.scalerServiceId ?? null;
+    const memoryKnown = !!serviceId || this.deps.renderServiceIds.filter((id) => id.startsWith('srv-')).length <= 1;
     const none = Promise.resolve<OpsMetricSample[]>([]);
     const [rows, view, connectedSamples, capacitySamples, memory, memoryPct] = await Promise.all([
       reader.readByPlan(),
@@ -152,14 +184,13 @@ export class GetWorkerCapacityUseCase {
       memoryKnown ? samples.listSince(OPS_METRIC.memoryPct, since) : none,
     ]);
 
-    const fromSessions = (xs: OpsMetricSample[]) => xs.filter((s) => s.source === 'sessions');
     const connectedRows = fromSessions(connectedSamples);
     const lastConnected = latest(connectedRows);
     const connected = Math.round(lastConnected?.value ?? 0);
     const capacity = Math.round(latest(fromSessions(capacitySamples))?.value ?? 0);
     const { maxSessionsPerWorker, alertOccupancyRatio } = view.settings;
 
-    const mem = memoryStats(memory, memoryPct);
+    const mem = memoryStats(memory, memoryPct, memoryResourceFilter(serviceId));
     const perSession = mbPerSession(mem.avgMemoryMb, avg(connectedRows.map((s) => s.value)));
     const suggested = suggestedMaxSessions(mem.memoryLimitMb, perSession);
 

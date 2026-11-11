@@ -203,6 +203,8 @@ apiClient.interceptors.response.use(
         field: error.response?.data?.error?.meta?.field,
         // Dados extras do erro (ex.: `limit` do PLAN_LIMIT_REACHED); nunca carrega segredo.
         meta: error.response?.data?.error?.meta,
+        // `Retry-After` de um 429 (segundos ou data HTTP), para a tela dizer quando tentar de novo.
+        retryAfter: error.response?.headers?.['retry-after'],
       }),
     );
   },
