@@ -41,6 +41,7 @@ export const plansStrings = {
   featureNotice: {
     storefront: 'Faça upgrade agora mesmo e acesse a Página de Ofertas, exclusiva dos planos PRO e MAX',
     offerStory: 'Faça upgrade e crie stories de oferta para o Instagram, exclusivo do plano MAX.',
+    mercadoLivreTags: 'Faça upgrade e use mais etiquetas do Mercado Livre nos seus links, nos planos PRO e MAX.',
   },
 
   page: {
@@ -59,6 +60,9 @@ export const plansStrings = {
     /** Selo da Shein no banner: igual ao `exclusive` do MAX em `catalog.ts`. */
     sheinPlan: 'MAX',
     sheinTooltip: 'Shein: disponível no plano MAX',
+    /** Selo do Mercado Livre no banner: mais de uma etiqueta a partir do PRO (LITE tem 1). */
+    mercadoLivreTagsPlan: 'PRO+',
+    mercadoLivreTagsTooltip: 'Mercado Livre: várias etiquetas de afiliado no PRO e MAX',
   },
 
   period: {
@@ -106,6 +110,13 @@ export const plansStrings = {
     linkRotationAria: (links: string, groups: string) => `${links}, ${groups} por link`,
     /** Canal fora do plano: convite, não negativa. */
     availableFrom: (planName: string) => `A partir do ${planName}`,
+  },
+
+  /** Linha do limite de etiquetas do Mercado Livre, abaixo da tabela de canais. */
+  mercadoLivreTags: {
+    label: 'Etiquetas do Mercado Livre',
+    value: (count: number) => `${count} ${count === 1 ? 'etiqueta' : 'etiquetas'}`,
+    hint: 'Quantas etiquetas da sua conta de afiliado você pode usar nos links das ofertas.',
   },
 
   trust: {

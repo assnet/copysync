@@ -1,6 +1,7 @@
 import { Box, Chip, ToggleButton, ToggleButtonGroup, Tooltip, Typography, alpha, useTheme, type Theme } from '@mui/material';
 import { Crown } from 'lucide-react';
 import { AppIcon } from '@/components';
+import type { AffiliateProvider } from '@/types/api.types';
 import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
 import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 import { GuaranteeSeal } from './GuaranteeSeal';
@@ -11,6 +12,12 @@ import { plansStrings as t } from '../strings';
 const visuallyHidden = {
   position: 'absolute', width: '1px', height: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 } as const;
+
+/** Selo por marketplace no banner (texto de marketing do plano); provider sem entrada não tem selo. */
+const PROVIDER_SEAL: Partial<Record<AffiliateProvider, { label: string; tooltip: string }>> = {
+  SHEIN: { label: t.hero.sheinPlan, tooltip: t.hero.sheinTooltip },
+  MERCADO_LIVRE: { label: t.hero.mercadoLivreTagsPlan, tooltip: t.hero.mercadoLivreTagsTooltip },
+};
 
 export function ctaGradient(theme: Theme): string {
   return `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`;
@@ -73,13 +80,14 @@ export function PlansHero({ period, onPeriodChange }: Props) {
         sx={{ listStyle: 'none', m: 0, p: 0, mt: 2.5, display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5 }}
       >
         {AFFILIATE_PROVIDERS.map((spec) => {
-          const shein = spec.provider === 'SHEIN';
+          const seal = PROVIDER_SEAL[spec.provider];
+          const label = seal?.tooltip ?? spec.name;
           return (
-            <Tooltip key={spec.provider} title={shein ? t.hero.sheinTooltip : spec.name} arrow>
+            <Tooltip key={spec.provider} title={label} arrow>
               <Box component="li" sx={{ position: 'relative' }}>
                 <MarketplaceLogo src={spec.logo} size={40} round />
-                <Box component="span" sx={visuallyHidden}>{shein ? t.hero.sheinTooltip : spec.name}</Box>
-                {shein && (
+                <Box component="span" sx={visuallyHidden}>{label}</Box>
+                {seal && (
                   <Box
                     component="span"
                     aria-hidden
@@ -89,7 +97,7 @@ export function PlansHero({ period, onPeriodChange }: Props) {
                       fontSize: 10, fontWeight: 800, lineHeight: '15px', color: '#fff', bgcolor: 'primary.dark',
                     }}
                   >
-                    {t.hero.sheinPlan}
+                    {seal.label}
                   </Box>
                 )}
               </Box>
