@@ -395,6 +395,8 @@ export interface GenerateOfferResponse {
   /** A IA não respondeu; o texto veio do modelo padrão. */
   aiFallback: boolean;
   aiErrorCode?: string;
+  /** O link colado não era da conta do tenant: a API gerou outro com a credencial dele. */
+  linkRebuilt: boolean;
 }
 
 export interface RegenerateOfferResponse {
