@@ -1,7 +1,7 @@
 import type { IPublicPageRenderer, PublicPageAddress, RenderedPublicPage } from '../../domain/contracts/IPublicPageRenderer';
 import { StorefrontStatus } from '../../domain/enums/StorefrontEnums';
 import type { StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
-import { storefrontPublicUrl, toStorefrontTemplateModel } from './storefrontPageModel';
+import { publicStorefrontOffers, storefrontPublicUrl, toStorefrontTemplateModel } from './storefrontPageModel';
 
 type Deps = Pick<StorefrontUseCaseDeps, 'storefronts' | 'offers' | 'domains' | 'template'>;
 
@@ -23,7 +23,7 @@ export class RenderPublicStorefrontUseCase implements IPublicPageRenderer {
     if (!tenantActive) return { status: 503, ...template.unavailable(), cacheable: false };
     if (page.status === StorefrontStatus.PAUSED_BY_PLAN) return { status: 200, ...template.paused(page.title), cacheable: false };
 
-    const published = await offers.listPublished(page.tenantId, page.id);
+    const published = publicStorefrontOffers(await offers.listPublished(page.tenantId, page.id));
     if (published.length === 0) return { status: 200, ...template.comingSoon(page.title), cacheable: false };
 
     const domain = await domains.findById(address.domainId);

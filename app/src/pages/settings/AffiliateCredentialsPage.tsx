@@ -14,6 +14,7 @@ import { useAffiliateCredentials } from '@/features/settings/hooks/useAffiliateC
 import { useExtension } from '@/features/extension/hooks/useExtension';
 import { useTenant } from '@/contexts/TenantContext';
 import { settingsStrings } from '@/features/settings/strings';
+import { returnButtonLabel } from '@/features/settings/utils/returnButtonLabel';
 
 const t = settingsStrings.affiliate;
 
@@ -54,7 +55,7 @@ export function AffiliateCredentialsPage() {
         subtitle={t.pageSubtitle}
         action={returnToRef.current ? (
           <Button variant="outlined" startIcon={<AppIcon icon={ArrowLeft} size="sm" />} onClick={() => navigate(returnToRef.current!)}>
-            {t.backToMonitoring}
+            {returnButtonLabel(returnToRef.current)}
           </Button>
         ) : undefined}
       />

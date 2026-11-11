@@ -232,6 +232,12 @@ export function useStorefrontPage() {
     }
   };
 
+  /** Edição do card de adicionar: mexer no link apaga o aviso de "link recriado" do item anterior. */
+  const editAddDraft = (next: AddOfferDraft) => {
+    if (next.url !== addDraft.url) setAddRebuiltProvider(null);
+    setAddDraft(next);
+  };
+
   const updateOffers = (fn: (offers: OfferLists) => OfferLists) =>
     setOverview((prev) => (prev ? { ...prev, offers: fn(prev.offers) } : prev));
 
@@ -327,7 +333,7 @@ export function useStorefrontPage() {
     imageErrors, uploadImage, removeImage,
     // ofertas
     tab, setTab,
-    addDraft, setAddDraft, addError, addErrorAction, addErrorSource, addRebuiltProvider, extract,
+    addDraft, setAddDraft, editAddDraft, addError, addErrorAction, addErrorSource, addRebuiltProvider, extract,
     toggleStatus, deleteOffer, reorder,
     editingOffer, openEditOffer: (o: StorefrontOffer) => setEditOfferId(o.id), closeEditOffer: clearEditOffer, saveOffer,
     // prévia e avisos

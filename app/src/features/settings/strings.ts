@@ -72,6 +72,7 @@ export const settingsStrings = {
       SHEIN: 'Entre de novo na sua conta da Shein (m.shein.com) neste navegador e clique em Sincronizar agora.',
     } as Record<string, string>,
     backToMonitoring: 'Voltar ao monitoramento',
+    back: 'Voltar',
     idPending: 'ID pendente',
     secretSaved: 'Salvo',
     notInformed: 'Não informado',

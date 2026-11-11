@@ -48,6 +48,7 @@ describe('PreviewStorefrontUseCase', () => {
     fakes.offers.seed({ status: PUBLISHED, position: 0, title: 'A', category: 'pet_shop' });
     fakes.offers.seed({ status: DRAFT, title: 'rascunho' });
     fakes.offers.seed({ tenantId: OTHER_TENANT, status: PUBLISHED, title: 'alheia' });
+    fakes.offers.seed({ status: PUBLISHED, position: 2, title: 'legado', attributionVerified: false });
     await preview();
     const { model } = fakes.template.pages[0];
     expect(model.offers.map((o) => o.title)).toEqual(['A', 'B']);
@@ -113,5 +114,20 @@ describe('RenderPublicStorefrontUseCase', () => {
     expect(opts).toEqual({ isPreview: false });
     expect(model.offers.map((o) => o.title)).toEqual(['Fone']);
     expect(model.publicUrl).toBe(`https://minhaloja.${STOREFRONT_HOST}`);
+  });
+
+  it('publicada não verificada (legado) não sai na página; status gravado intacto', async () => {
+    publish(true);
+    fakes.offers.seed({ status: PUBLISHED, title: 'Verificada' });
+    const legacy = fakes.offers.seed({ status: PUBLISHED, title: 'Legado', attributionVerified: false });
+    await render();
+    expect(fakes.template.pages[0].model.offers.map((o) => o.title)).toEqual(['Verificada']);
+    expect(legacy.status).toBe(PUBLISHED);
+  });
+
+  it('só publicadas não verificadas → 200 em breve', async () => {
+    publish(true);
+    fakes.offers.seed({ status: PUBLISHED, attributionVerified: false });
+    expect(await render()).toMatchObject({ status: 200, html: '<soon>Minha Loja</soon>' });
   });
 });

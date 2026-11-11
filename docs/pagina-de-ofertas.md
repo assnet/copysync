@@ -99,6 +99,7 @@ um de `linkRotationId`/`storefrontId` por CHECK). Unicidade no banco, não na ap
   `LinkRebuiltNotice` ao adicionar e `ConnectStoreAction` ("Conectar <loja>", `returnTo`) nos erros de credencial.
 - Publicar item legado com `attributionVerified = false` → `409 STOREFRONT_OFFER_LINK_UNVERIFIED`
   (`SetStorefrontOfferStatusUseCase`); o selo "comissão não verificada" fica só para esses itens.
+- Página pública e prévia só listam `PUBLISHED` **e** `attributionVerified = true` (`publicStorefrontOffers`); legado já publicado some sem mudar o status gravado.
 - Não usa `GenerateOfferUseCase`: não grava `Offer`, não compõe texto e não consome a cota diária do gerador.
 
 ## Limites

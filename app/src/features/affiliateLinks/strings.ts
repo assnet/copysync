@@ -16,7 +16,8 @@ const ARTICLE: Record<AffiliateProvider, 'a' | 'o'> = {
 };
 
 export function isAffiliateProvider(value: unknown): value is AffiliateProvider {
-  return typeof value === 'string' && value in ARTICLE;
+  // `in` aceitaria chave herdada ("toString", "__proto__"): só chave própria do mapa.
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(ARTICLE, value);
 }
 
 export function storeName(provider: AffiliateProvider): string {
