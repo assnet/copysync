@@ -65,6 +65,8 @@ export interface PlanCatalogItem {
     telegramLinkRotations: number;
     /** Grupos/canais por link de rodízio no Telegram (`telegram_link_rotation_groups`). */
     telegramLinkRotationGroups: number;
+    /** Etiquetas do Mercado Livre vinculadas, principal incluída (`mercado_livre_affiliate_tags`). Fora de `benefits`. */
+    mercadoLivreTags: number;
   };
   /** Itens além dos limites por canal (estes o `PlanCard` monta a partir de `limits`, inclusive o rodízio). */
   benefits: PlanBenefit[];
@@ -126,7 +128,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     checkoutUrls: { monthly: 'https://pay.cakto.com.br/8e4gepk_1291207', annual: 'https://pay.cakto.com.br/a92kn9k_1291217' },
     limits: {
       whatsappSessions: 1, telegramSessions: 0, monitoredGroups: 1, broadcastGroups: 5, telegramMonitoredGroups: 0, telegramBroadcastGroups: 0,
-      linkRotations: 1, linkRotationGroups: 3, telegramLinkRotations: 0, telegramLinkRotationGroups: 0,
+      linkRotations: 1, linkRotationGroups: 3, telegramLinkRotations: 0, telegramLinkRotationGroups: 0, mercadoLivreTags: 1,
     },
     benefits: [
       { label: 'Disparo em massa com agendamento de horários' },
@@ -148,7 +150,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     recommended: true,
     limits: {
       whatsappSessions: 1, telegramSessions: 1, monitoredGroups: 2, broadcastGroups: 10, telegramMonitoredGroups: 2, telegramBroadcastGroups: 10,
-      linkRotations: 1, linkRotationGroups: 5, telegramLinkRotations: 1, telegramLinkRotationGroups: 5,
+      linkRotations: 1, linkRotationGroups: 5, telegramLinkRotations: 1, telegramLinkRotationGroups: 5, mercadoLivreTags: 2,
     },
     benefits: [
       { label: 'Tudo do LITE', strong: true },
@@ -173,7 +175,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
     checkoutUrls: { monthly: 'https://pay.cakto.com.br/kzoagvc_1291239', annual: 'https://pay.cakto.com.br/97nqcb8_1291245' },
     limits: {
       whatsappSessions: 2, telegramSessions: 2, monitoredGroups: 6, broadcastGroups: 40, telegramMonitoredGroups: 6, telegramBroadcastGroups: 40,
-      linkRotations: 2, linkRotationGroups: 10, telegramLinkRotations: 2, telegramLinkRotationGroups: 10,
+      linkRotations: 2, linkRotationGroups: 10, telegramLinkRotations: 2, telegramLinkRotationGroups: 10, mercadoLivreTags: 10,
     },
     benefits: [
       { label: 'Tudo do PRO', strong: true },

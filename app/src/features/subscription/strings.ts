@@ -36,6 +36,7 @@ export const SUBSCRIPTION_LIMIT_KEYS = [
   'enrich_link_only_enabled',
   'capture_outside_window_enabled',
   'marketplace_shein_enabled',
+  'mercado_livre_affiliate_tags',
 ] as const;
 
 export type SubscriptionLimitKey = (typeof SUBSCRIPTION_LIMIT_KEYS)[number];
@@ -57,6 +58,7 @@ const CATALOG_FIELD: Partial<Record<SubscriptionLimitKey, CatalogLimitField>> = 
   link_rotation_groups: 'linkRotationGroups',
   telegram_link_rotations: 'telegramLinkRotations',
   telegram_link_rotation_groups: 'telegramLinkRotationGroups',
+  mercado_livre_affiliate_tags: 'mercadoLivreTags',
 };
 
 const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
@@ -192,5 +194,9 @@ export const subscriptionStrings = {
     enrich_link_only_enabled: { label: 'Oferta montada a partir só do link', hint: PLAN_HINTS.enrichLinkOnly },
     capture_outside_window_enabled: { label: 'Captura fora do horário', hint: PLAN_HINTS.captureOutsideWindow },
     marketplace_shein_enabled: { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate },
+    mercado_livre_affiliate_tags: {
+      label: 'Etiquetas do Mercado Livre',
+      hint: 'Etiquetas da sua conta de afiliado aceitas nos links, contando a principal.',
+    },
   } satisfies Record<SubscriptionLimitKey, { label: string; hint: string }>,
 };

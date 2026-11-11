@@ -45,8 +45,12 @@ const FEATURES_DEFAULT_ON: ReadonlySet<EntitlementKey> = new Set([
   ENTITLEMENT_KEYS.AI_REWRITE_ENABLED,
 ]);
 
-/** Chaves que não aparecem na tela. Vazio hoje: chave nova entra na lista ou aqui, com motivo. */
-export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [];
+/**
+ * Chaves que não aparecem na tela. Chave nova entra na lista ou aqui, com motivo.
+ * - `mercado_livre_affiliate_tags`: oculta até existir o contador de uso (etiquetas vinculadas); ausente
+ *   vale 1, não "sem limite" (`affiliateIdentifierLimit.ts`).
+ */
+export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS];
 
 const channelItems = (kind: ChannelLimitKind): SubscriptionLimitItemDef[] =>
   LIMIT_CHANNELS.map((channel) => ({ key: limitKeyOfChannel(kind, channel), channel, kind: 'count' as const }));
