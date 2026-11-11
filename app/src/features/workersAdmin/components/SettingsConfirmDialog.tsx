@@ -19,6 +19,8 @@ interface Props {
   changes: WorkerScalingSettingsChange[];
   /** Teto novo a digitar para liberar o botão; `null` = sem confirmação reforçada. */
   strongValue: number | null;
+  /** `true` = o teto sobe (risco de memória); `false` = reduz (só para de adotar). */
+  strongRaise?: boolean;
   /** Aviso de teto abaixo da ocupação atual. */
   warning?: string | null;
   saving: boolean;
@@ -27,7 +29,7 @@ interface Props {
 }
 
 /** Diálogo da feature: mostra o diff e, se o teto muda sem medição, pede o valor digitado. */
-export function SettingsConfirmDialog({ open, changes, strongValue, warning, saving, onConfirm, onClose }: Props) {
+export function SettingsConfirmDialog({ open, changes, strongValue, strongRaise = true, warning, saving, onConfirm, onClose }: Props) {
   const [typed, setTyped] = useState('');
   useEffect(() => { if (open) setTyped(''); }, [open]);
 
@@ -66,9 +68,12 @@ export function SettingsConfirmDialog({ open, changes, strongValue, warning, sav
           {strongValue !== null && (
             <Alert severity="warning" icon={false}>
               <AlertTitle>{s.confirm.strongTitle}</AlertTitle>
-              <Typography variant="body2" sx={{ mb: 1.5 }}>{s.confirm.strongHint}</Typography>
+              <Typography variant="body2" sx={{ mb: 1.5 }}>
+                {strongRaise ? s.confirm.strongHintRaise : s.confirm.strongHintLower}
+              </Typography>
               <TextField
-                label={s.confirm.strongLabel(expected)}
+                label={s.confirm.strongLabel}
+                helperText={s.confirm.strongHelper(expected)}
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
                 size="small"

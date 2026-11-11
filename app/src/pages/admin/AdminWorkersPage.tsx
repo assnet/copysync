@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Alert, Box, Button, Card, CardContent, CircularProgress, Grid, IconButton, LinearProgress, Skeleton, Stack, Tab, Table,
-  TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tooltip, Typography,
+  TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import { Cable, Hourglass, Info, Server } from 'lucide-react';
 import { AppIcon, EmptyState, PageHeader, SectionCard, StatCard } from '@/components';
@@ -266,6 +266,10 @@ export function AdminWorkersPage() {
   const { pathname } = useLocation();
   const active = activeWorkersTab(pathname);
   const usage = active === WORKERS_USAGE_PATH;
+  // Celular: setas sempre montadas desde o 1º render. Com `auto` elas surgem depois da medição,
+  // empurram as abas e a ativa fica cortada sem nova rolagem (`noSsr` = valor certo já no 1º render).
+  const theme = useTheme();
+  const compactTabs = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   // Ações do cabeçalho da aba Consumo entram aqui por portal (a aba é carregada sob demanda).
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const subtitle = usage ? opsMetricsStrings.subtitle : active === WORKERS_SETTINGS_PATH ? t.settings.subtitle : t.pageSubtitle;
@@ -282,7 +286,7 @@ export function AdminWorkersPage() {
         value={active}
         aria-label={t.tabs.aria}
         variant="scrollable"
-        scrollButtons="auto"
+        scrollButtons={compactTabs ? true : 'auto'}
         allowScrollButtonsMobile
         sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
       >

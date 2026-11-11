@@ -108,13 +108,62 @@ describe('SettingsTab', () => {
     const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
     const save = within(dialog).getByRole('button', { name: s.confirm.save });
     expect(save).toBeDisabled();
-    const confirmInput = within(dialog).getByRole('textbox', { name: s.confirm.strongLabel('20') });
+    // Reduzir: texto próprio (não derruba sessão); instrução visível fora do placeholder.
+    expect(within(dialog).getByText(s.confirm.strongHintLower)).toBeInTheDocument();
+    expect(within(dialog).queryByText(s.confirm.strongHintRaise)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHelper('20'))).toBeInTheDocument();
+    const confirmInput = within(dialog).getByRole('textbox', { name: s.confirm.strongLabel });
+    expect(confirmInput).not.toHaveAttribute('placeholder');
     await user.type(confirmInput, '2');
     expect(save).toBeDisabled();
     await user.type(confirmInput, '0');
     expect(save).toBeEnabled();
     await user.click(save);
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  });
+
+  it('subir o teto mostra o aviso de memória da confirmação reforçada', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await setField(user, 'maxSessionsPerWorker', '50');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongHintRaise)).toBeInTheDocument();
+    expect(within(dialog).queryByText(s.confirm.strongHintLower)).not.toBeInTheDocument();
+  });
+
+  it('razão em pt-BR no campo e no diff; aceita ponto ou vírgula', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    renderWithTheme(<SettingsTab />);
+    expect(await screen.findByRole('textbox', { name: s.fields.alertOccupancyRatio.label })).toHaveValue('0,8');
+    await setField(user, 'alertOccupancyRatio', '0.9');
+    expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+    await setField(user, 'alertOccupancyRatio', '0,85');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText('0,8')).toBeInTheDocument();
+    expect(within(dialog).getByText('0,85')).toBeInTheDocument();
+  });
+
+  it('campo editado mostra "Alterado"; voltar ao valor gravado volta à origem', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.awaitingAlertSeconds.label });
+    const awaitingHelp = `${s.fields.awaitingAlertSeconds.range} · `;
+    await setField(user, 'awaitingAlertSeconds', '300');
+    expect(screen.getByText(awaitingHelp + s.origin.changed)).toBeInTheDocument();
+    expect(screen.getByText(`${s.fields.maxSessionsPerWorker.range} · ${s.origin.default}`)).toBeInTheDocument();
+    await setField(user, 'awaitingAlertSeconds', '120');
+    expect(screen.getByText(awaitingHelp + s.origin.default)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: t.settings.scalerModes.manual }));
+    expect(screen.getByText(s.origin.changed)).toBeInTheDocument();
   });
 
   it('409: recarrega os valores atuais, descarta o rascunho e avisa', async () => {

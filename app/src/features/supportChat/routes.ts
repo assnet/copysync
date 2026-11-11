@@ -8,8 +8,10 @@ import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
  * Rotas sem o botão:
  * - `/redirect/*`: página de transição (o próprio destino do botão); some em seguida.
  * - `/chat`: o composer (enviar/gravar) e o "ir para o fim" ocupam o canto inferior direito.
+ * - `/admin/workers/settings`: "Revisar e salvar" fica no fim do formulário (não é sticky), então
+ *   subir o botão só passaria a cobrir campo e slider; tela só de super admin, sem uso de suporte.
  */
-export const SUPPORT_CHAT_HIDDEN_PATHS: readonly string[] = [REDIRECT_PUBLIC_PATH, '/chat'];
+export const SUPPORT_CHAT_HIDDEN_PATHS: readonly string[] = [REDIRECT_PUBLIC_PATH, '/chat', '/admin/workers/settings'];
 
 /**
  * Rotas com barra de ação presa ao rodapé: o botão sobe para não cobrir "Salvar".

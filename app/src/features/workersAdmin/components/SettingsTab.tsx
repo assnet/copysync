@@ -5,7 +5,10 @@ import {
 } from '@mui/material';
 import { Info } from 'lucide-react';
 import { AppIcon, RangeSlider, SectionCard } from '@/components';
-import { WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, parseDraftNumber, validateSettingsDraft } from '../rules';
+import {
+  WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, formatDraftValue, isDraftFieldChanged, parseDraftNumber,
+  validateSettingsDraft,
+} from '../rules';
 import { workersAdminStrings } from '../strings';
 import type { WorkerScalerMode, WorkerScalingSettingsDraft, WorkerScalingSettingsField } from '../types';
 import { useWorkerSettings } from '../useWorkerSettings';
@@ -64,6 +67,10 @@ export default function SettingsTab() {
   const capChange = changes.find((c) => c.field === 'maxSessionsPerWorker');
   // P1: sem medição de memória por sessão, toda mudança de teto pede o valor digitado.
   const strongValue = capChange ? (capChange.to as number) : null;
+  const strongRaise = capChange ? (capChange.to as number) > (capChange.from as number) : true;
+  /** Origem exibida: "Alterado" quando o rascunho difere do gravado. */
+  const originOf = (...fields: WorkerScalingSettingsField[]) =>
+    fields.some((f) => isDraftFieldChanged(f, values, view.settings)) ? s.origin.changed : s.origin[view.origin[fields[0]]];
 
   const numberField = (field: NumericField) => {
     const f = s.fields[field];
@@ -72,10 +79,10 @@ export default function SettingsTab() {
       <TextField
         key={field}
         label={f.label}
-        value={String(values[field])}
+        value={formatDraftValue(values[field])}
         onChange={(e) => w.change({ [field]: e.target.value } as Partial<WorkerScalingSettingsDraft>)}
         error={Boolean(err)}
-        helperText={err ?? `${f.range} · ${s.origin[view.origin[field]]}`}
+        helperText={err ?? `${f.range} · ${originOf(field)}`}
         fullWidth
         inputProps={{ inputMode: WORKER_SETTINGS_LIMITS[field].integer ? 'numeric' : 'decimal' }}
         InputProps={{ endAdornment: <InputAdornment position="end"><HelpTip field={field} /></InputAdornment> }}
@@ -112,6 +119,8 @@ export default function SettingsTab() {
         title={s.groups.scaling.title}
         subtitle={s.groups.scaling.subtitle}
         action={<Chip size="small" variant="outlined" label={s.groups.scaling.pending} />}
+        // Celular: o chip desce para baixo do título, que fica numa linha só.
+        headerSx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 1, sm: 2 } }}
       >
         <Stack spacing={3}>
           <Box>
@@ -132,7 +141,7 @@ export default function SettingsTab() {
               {MODES.map((m) => <ToggleButton key={m} value={m} sx={{ px: 2 }}>{s.scalerModes[m]}</ToggleButton>)}
             </ToggleButtonGroup>
             <FormHelperText id="worker-scaler-mode-help" error={Boolean(errors.scalerMode)}>
-              {errors.scalerMode ?? s.origin[view.origin.scalerMode]}
+              {errors.scalerMode ?? originOf('scalerMode')}
             </FormHelperText>
           </Box>
 
@@ -158,15 +167,18 @@ export default function SettingsTab() {
               describedBy="worker-replicas-help"
             />
             <FormHelperText id="worker-replicas-help" error={Boolean(replicasError)}>
-              {replicasError ?? `${s.fields.minReplicas.range} · ${s.origin[view.origin.minReplicas]}`}
+              {replicasError ?? `${s.fields.minReplicas.range} · ${originOf('minReplicas', 'maxReplicas')}`}
             </FormHelperText>
           </Box>
 
-          <Grid container spacing={2}>
-            {TIMING_FIELDS.map((field) => (
-              <Grid item xs={12} md={6} key={field}>{numberField(field)}</Grid>
-            ))}
-          </Grid>
+          {/* Box: a margem do Stack zeraria a margem negativa do Grid e deslocaria a linha 16 px. */}
+          <Box>
+            <Grid container spacing={2}>
+              {TIMING_FIELDS.map((field) => (
+                <Grid item xs={12} md={6} key={field}>{numberField(field)}</Grid>
+              ))}
+            </Grid>
+          </Box>
         </Stack>
       </SectionCard>
 
@@ -194,6 +206,7 @@ export default function SettingsTab() {
         open={confirmOpen}
         changes={changes}
         strongValue={strongValue}
+        strongRaise={strongRaise}
         warning={belowOccupancy}
         saving={w.saving}
         onConfirm={() => void onConfirm()}

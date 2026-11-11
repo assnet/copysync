@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
-  parseDraftNumber, validateSettingsDraft,
+  formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerScalingSettings } from './types';
@@ -118,6 +118,30 @@ describe('validateSettingsDraft', () => {
       const t = workersAdminStrings.settings.fields[field as keyof typeof WORKER_SETTINGS_LIMITS];
       expect(t.label && t.help && t.range).toBeTruthy();
     }
+  });
+});
+
+describe('formatDraftValue / isDraftFieldChanged', () => {
+  const saved = {
+    maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 10, alertOccupancyRatio: 0.8, awaitingAlertSeconds: 120,
+    scalerMode: 'off', minReplicas: 1, maxReplicas: 3, scaleUpSustainSeconds: 600, scaleCooldownSeconds: 86400,
+  } as const;
+
+  it('número com vírgula decimal e sem milhar; texto digitado fica como está', () => {
+    expect(formatDraftValue(0.8)).toBe('0,8');
+    expect(formatDraftValue(0.95)).toBe('0,95');
+    expect(formatDraftValue(86400)).toBe('86400');
+    expect(formatDraftValue('0.8')).toBe('0.8');
+    expect(parseDraftNumber(formatDraftValue(0.85))).toBe(0.85);
+  });
+
+  it('compara o valor do rascunho com o gravado', () => {
+    expect(isDraftFieldChanged('alertOccupancyRatio', { ...saved, alertOccupancyRatio: '0,8' }, saved)).toBe(false);
+    expect(isDraftFieldChanged('alertOccupancyRatio', { ...saved, alertOccupancyRatio: '0.85' }, saved)).toBe(true);
+    expect(isDraftFieldChanged('awaitingAlertSeconds', { ...saved, awaitingAlertSeconds: '' }, saved)).toBe(true);
+    expect(isDraftFieldChanged('scaleCooldownSeconds', { ...saved, scaleCooldownSeconds: '86.400' }, saved)).toBe(false);
+    expect(isDraftFieldChanged('scalerMode', { ...saved, scalerMode: 'manual' }, saved)).toBe(true);
+    expect(isDraftFieldChanged('scalerMode', saved, saved)).toBe(false);
   });
 });
 

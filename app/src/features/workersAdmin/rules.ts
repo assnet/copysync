@@ -113,3 +113,18 @@ export function diffSettings(
     .filter((field) => before[field] !== after[field])
     .map((field) => ({ field, from: before[field], to: after[field] }));
 }
+
+/** Valor no campo: número vindo da API com vírgula decimal (pt-BR) e sem milhar; texto digitado fica como está. */
+export function formatDraftValue(value: number | string): string {
+  return typeof value === 'number' ? value.toLocaleString('pt-BR', { useGrouping: false, maximumFractionDigits: 10 }) : value;
+}
+
+/** `true` quando o rascunho do campo difere do valor gravado (texto inválido conta como alterado). */
+export function isDraftFieldChanged(
+  field: WorkerScalingSettingsField,
+  draft: WorkerScalingSettingsDraft,
+  saved: WorkerScalingSettings,
+): boolean {
+  if (field === 'scalerMode') return draft.scalerMode !== saved.scalerMode;
+  return parseDraftNumber(draft[field], WORKER_SETTINGS_LIMITS[field].integer) !== saved[field];
+}

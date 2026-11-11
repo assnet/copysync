@@ -84,8 +84,10 @@ export const workersAdminStrings = {
       before: 'Atual',
       after: 'Novo',
       strongTitle: 'Teto sem medição',
-      strongHint: 'Ainda não há medição de memória por sessão para confirmar que o teto novo cabe nos servidores. Subir o teto sem medir pode derrubar um worker por falta de memória.',
-      strongLabel: (value: string) => `Digite ${value} para confirmar o teto`,
+      strongHintRaise: 'Ainda não há medição de memória por sessão para confirmar que o teto novo cabe nos servidores. Subir o teto sem medir pode derrubar um worker por falta de memória.',
+      strongHintLower: 'Ainda não há medição de memória por sessão. Reduzir o teto não derruba sessões conectadas: o worker acima do teto novo só deixa de adotar sessões até a ocupação cair.',
+      strongLabel: 'Teto novo',
+      strongHelper: (value: string) => `Digite ${value} para confirmar.`,
       cancel: 'Cancelar',
       save: 'Salvar',
       saving: 'Salvando…',
@@ -140,7 +142,8 @@ export const workersAdminStrings = {
       },
     },
     scalerModes: { off: 'Desligado', manual: 'Manual', auto: 'Automático' },
-    origin: { default: 'Valor padrão', saved: 'Salvo' },
+    /** `changed`: rascunho diferente do valor gravado. */
+    origin: { default: 'Valor padrão', saved: 'Salvo', changed: 'Alterado' },
     errors: {
       required: 'Preencha este campo.',
       integer: 'Use um número inteiro.',

@@ -35,7 +35,8 @@ outra origem de compra, criar outro slug (ex.: `comprar-<origem>`), não reaprov
 
 - Sem auth e sem API: aparece logado e deslogado. `z-index` = `theme.zIndex.speedDial` (abaixo de
   Dialog, Drawer e Snackbar).
-- `features/supportChat/routes.ts`: `SUPPORT_CHAT_HIDDEN_PATHS` (`/redirect`, `/chat`) e
+- `features/supportChat/routes.ts`: `SUPPORT_CHAT_HIDDEN_PATHS` (`/redirect`, `/chat`, `/admin/workers/settings`:
+  "Revisar e salvar" no fim do formulário, não sticky; subir só cobriria campo/slider) e
   `SUPPORT_CHAT_RAISED_PATHS` (`/monitoring`, por causa da barra "Salvar"; `/offer-story`, por causa do
   "Continuar" preso ao rodapé no celular).
 - Tela nova com ação fixa no canto inferior direito entra em uma dessas listas.

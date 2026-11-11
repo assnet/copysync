@@ -62,7 +62,9 @@ guardados na P1 (escalador é P3/P4).
   `20261111140000_add_audit_action_worker_scaling`, que também cria `WORKER_SCALE_REQUESTED` para a P3).
 - Tela: confirmação com o diff; mudar o teto pede digitar o valor novo (sem medição de RAM na P1, regra "não subir o teto
   sem medir", `arquitetura-escala.md` §6); aviso se o teto fica abaixo da ocupação atual; rascunho em `usePersistedState`
-  (`workers.settings.draft`, escopo `tab`), limpo ao salvar.
+  (`workers.settings.draft`, escopo `tab`), limpo ao salvar. Texto da confirmação distinto para subir (risco de memória)
+  e reduzir (não derruba sessão, só para de adotar). Campo editado mostra a origem "Alterado"; razão exibida com vírgula
+  (`formatDraftValue`), digitação aceita `.` ou `,`. Sem botão de suporte na aba (`SUPPORT_CHAT_HIDDEN_PATHS`).
 
 Sem flag de privacidade: a tela só mostra números da plataforma, nenhum dado de cliente, grupo ou produto.
 
