@@ -410,14 +410,14 @@ model WorkerHeartbeat {
   @@map("worker_heartbeats")
 }
 
-// Amostras de recursos da plataforma (Render, Postgres, workers), MQ-23. Dado de infraestrutura,
+// Amostras de recursos da plataforma (Render, Postgres, workers, sessões), MQ-23/WSCALE-08. Dado de infraestrutura,
 // sem tenant. 1 linha por (resource, metric) a cada 5 min; retenção de 7 dias pelo próprio job.
 model OpsMetricsSample {
   id       BigInt   @id @default(autoincrement())
   at       DateTime // fim da janela agregada (UTC)
-  source   String // render | postgres | worker
-  resource String // id do recurso (srv-/dpg-), workerId, banco ou queryid
-  metric   String // ex.: cpu_pct, memory_pct, db_idle_in_transaction, event_loop_p99_ms
+  source   String // render | postgres | worker | sessions
+  resource String // id do recurso (srv-/dpg-), workerId, banco, queryid ou cluster (sessões)
+  metric   String // ex.: cpu_pct, memory_pct, db_idle_in_transaction, event_loop_p99_ms, sessions_connected
   value    Float // média da janela (gauge) ou último valor (counter)
   meta     Json? // { min, max, n, unit?, shape? }; sem PII nem SQL bruto
 

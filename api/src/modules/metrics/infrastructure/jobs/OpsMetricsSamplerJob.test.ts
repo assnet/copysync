@@ -106,6 +106,30 @@ describe('OpsMetricsSamplerJob', () => {
     expect(s.samples.repo.insertMany).toHaveBeenCalledTimes(2);
   });
 
+  it('fonte de sessões entra no tick; falha dela só loga e as outras seguem', async () => {
+    const lease = memoryLease();
+    const samples = memorySamples();
+    const sessions = { read: vi.fn(async (): Promise<OpsMetricReading[]> => [
+      reading('sessions_connected', 3, { source: 'sessions', resource: 'cluster' }),
+    ]) };
+    const base = setup({ lease, samples });
+    let clock = T0;
+    const job = new OpsMetricsSamplerJob({
+      lease: lease.lease, samples: samples.repo, heartbeats: base.heartbeats, platform: base.platform,
+      database: base.database, sessions, now: () => new Date(clock),
+    });
+    await job.runTick();
+    sessions.read.mockRejectedValueOnce(new Error('db down'));
+    for (let i = 1; i < 5; i++) {
+      clock = T0 + i * MIN;
+      await job.runTick();
+    }
+    expect(sessions.read).toHaveBeenCalledTimes(5);
+    const row = samples.rows.find((r) => r.metric === 'sessions_connected');
+    expect(row).toMatchObject({ source: 'sessions', resource: 'cluster', value: 3, meta: { n: 4 } });
+    expect(samples.rows.some((r) => r.metric === 'cpu_pct')).toBe(true);
+  });
+
   it('apaga > 7 dias no mesmo tick da persistência', async () => {
     const samples = memorySamples();
     const old = { source: 'render' as const, resource: 'srv-1', metric: 'cpu_pct', value: 1, meta: null };

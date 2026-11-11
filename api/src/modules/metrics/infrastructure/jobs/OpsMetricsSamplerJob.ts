@@ -5,6 +5,7 @@ import type { IWorkerHeartbeatRepository } from '../../../sessions/domain/contra
 import { WORKER_ALIVE_MS } from '../../../sessions/domain/services/sessionAdoptionPolicy';
 import type { IPlatformMetricsSource } from '../../domain/contracts/IPlatformMetricsSource';
 import type { IDatabaseStatsSource } from '../../domain/contracts/IDatabaseStatsSource';
+import type { ISessionsOccupancySource } from '../../domain/contracts/ISessionsOccupancySource';
 import type { IOpsMetricsSampleRepository } from '../../domain/contracts/IOpsMetricsSampleRepository';
 import { OPS_METRIC, type OpsMetricReading } from '../../domain/OpsMetric';
 import { aggregateOpsMetrics } from '../../domain/services/aggregateOpsMetrics';
@@ -44,6 +45,8 @@ export interface OpsMetricsSamplerJobOptions {
   /** `null` sem `RENDER_API_KEY`/`RENDER_RESOURCE_IDS`: só Postgres e workers. */
   platform: IPlatformMetricsSource | null;
   database: IDatabaseStatsSource;
+  /** Ocupação de sessões do cluster (WSCALE-08); ausente = sem as métricas `sessions_*`. */
+  sessions?: ISessionsOccupancySource | null;
   /** `OPS_MEMORY_LIMIT_MB`: fallback de RSS quando a plataforma não dá `memory_pct`. */
   memoryLimitMb?: number | null;
   intervalMs?: number;
@@ -55,7 +58,7 @@ export interface OpsMetricsSamplerJobOptions {
 /**
  * Amostrador de recursos (MQ-22..24), só no `worker`/`all` e com `OPS_METRICS_SAMPLER_ENABLED`.
  * Tick de 60 s sob o lease `ops-metrics-sampler` (1 processo amostra no cluster): lê Render,
- * Postgres e `worker_heartbeats` em paralelo (falha de uma fonte só loga; coleta limitada a 30 s),
+ * Postgres, `worker_heartbeats` e ocupação de sessões em paralelo (falha de uma fonte só loga; coleta limitada a 30 s),
  * guarda no ring buffer, persiste a cada 5 ticks com o lease renovado (perdeu → não grava) e apaga
  * > 7 dias no mesmo tick, e avalia limiares com silêncio por lease.
  * Nunca roda em requisição; nunca lança.
@@ -161,7 +164,7 @@ export class OpsMetricsSamplerJob {
   }
 
   private async collect(deadline: AbortSignal): Promise<OpsMetricReading[]> {
-    const { platform, database, heartbeats } = this.options;
+    const { platform, database, heartbeats, sessions } = this.options;
     this.abort = new AbortController();
     const signal = AbortSignal.any([this.abort.signal, deadline]);
     // Fontes sem sinal (Postgres, heartbeats) também param no teto do tick
@@ -177,6 +180,7 @@ export class OpsMetricsSamplerJob {
       ['render', bounded(platform ? platform.read(signal) : Promise.resolve([]))],
       ['postgres', bounded(database.read())],
       ['worker', bounded(heartbeats.listAlive(WORKER_ALIVE_MS).then(workerReadings))],
+      ['sessions', bounded(sessions ? sessions.read() : Promise.resolve([]))],
     ] as const;
     const settled = await Promise.allSettled(sources.map(([, p]) => p));
     const out: OpsMetricReading[] = [];
