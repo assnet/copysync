@@ -1,0 +1,106 @@
+import type { PrismaClient, WorkerScaleEvent as Row } from '@prisma/client';
+import {
+  WORKER_SCALE_TEXT_MAX,
+  type IWorkerScaleEventRepository,
+  type NewWorkerScaleEvent,
+  type WorkerScaleEvent,
+  type WorkerScaleEventPage,
+  type WorkerScaleOutcome,
+  type WorkerScaleTrigger,
+} from '../../domain/contracts/IWorkerScaleEventRepository';
+
+/** Linhas por DELETE da retenção (mesmo lote de `ops_metrics_samples`). */
+export const WORKER_SCALE_RETENTION_BATCH_SIZE = 5_000;
+/** Teto de lotes por chamada; o resto sai na limpeza seguinte. */
+export const WORKER_SCALE_RETENTION_MAX_BATCHES = 10;
+const STATEMENT_TIMEOUT = '2s';
+
+const cut = (s: string) => s.slice(0, WORKER_SCALE_TEXT_MAX);
+const cutOrNull = (s: string | null | undefined) => (s == null ? null : cut(s));
+
+const toEvent = (r: Row): WorkerScaleEvent => ({
+  id: Number(r.id),
+  at: r.at,
+  trigger: r.trigger as WorkerScaleTrigger,
+  actorUserId: r.actorUserId,
+  fromReplicas: r.fromReplicas,
+  toReplicas: r.toReplicas,
+  reason: r.reason,
+  outcome: r.outcome as WorkerScaleOutcome,
+  error: r.error,
+  requestId: r.requestId,
+});
+
+/** `worker_scale_events` (WSCALE-13). `at` gravado em UTC pelo Prisma; sem tenant. */
+export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async record(e: NewWorkerScaleEvent): Promise<number> {
+    const row = await this.prisma.workerScaleEvent.create({
+      data: {
+        trigger: e.trigger,
+        actorUserId: e.actorUserId,
+        fromReplicas: e.fromReplicas,
+        toReplicas: e.toReplicas,
+        reason: cut(e.reason),
+        outcome: e.outcome,
+        error: cutOrNull(e.error),
+        requestId: e.requestId ?? null,
+      },
+      select: { id: true },
+    });
+    return Number(row.id);
+  }
+
+  async updateOutcome(id: number, outcome: WorkerScaleOutcome, error?: string | null): Promise<void> {
+    await this.prisma.workerScaleEvent.update({
+      where: { id: BigInt(id) },
+      data: { outcome, error: cutOrNull(error) },
+    });
+  }
+
+  async lastSucceededAt(): Promise<Date | null> {
+    const row = await this.prisma.workerScaleEvent.findFirst({
+      where: { outcome: { in: ['requested', 'succeeded'] } },
+      orderBy: [{ at: 'desc' }, { id: 'desc' }],
+      select: { at: true },
+    });
+    return row?.at ?? null;
+  }
+
+  async findByRequestId(requestId: string): Promise<WorkerScaleEvent | null> {
+    const row = await this.prisma.workerScaleEvent.findUnique({ where: { requestId } });
+    return row ? toEvent(row) : null;
+  }
+
+  /** Keyset por `id desc` (crescente com `at`): página estável mesmo com inserções novas no topo. */
+  async list({ beforeId, limit }: { beforeId?: number | null; limit: number }): Promise<WorkerScaleEventPage> {
+    const rows = await this.prisma.workerScaleEvent.findMany({
+      where: beforeId != null ? { id: { lt: BigInt(beforeId) } } : {},
+      orderBy: { id: 'desc' },
+      take: limit + 1,
+    });
+    const items = rows.slice(0, limit).map(toEvent);
+    return { items, nextBeforeId: rows.length > limit ? items[items.length - 1]!.id : null };
+  }
+
+  /**
+   * Lotes de `ctid` com `SET LOCAL statement_timeout` (só vale na transação), como
+   * `PrismaOpsMetricsSampleRepository.deleteOlderThan`. Lote que estoura lança; os anteriores ficam.
+   */
+  async deleteOlderThan(cutoff: Date, batchSize = WORKER_SCALE_RETENTION_BATCH_SIZE): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < WORKER_SCALE_RETENTION_MAX_BATCHES; i++) {
+      const [, deleted] = await this.prisma.$transaction([
+        this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}'`),
+        this.prisma.$executeRaw`
+          DELETE FROM "worker_scale_events" WHERE ctid IN (
+            SELECT ctid FROM "worker_scale_events" WHERE "at" < (${cutoff.toISOString()}::timestamptz AT TIME ZONE 'UTC') LIMIT ${batchSize}
+          )`,
+      ]);
+      total += deleted;
+      if (deleted < batchSize) break;
+    }
+    return total;
+  }
+}
