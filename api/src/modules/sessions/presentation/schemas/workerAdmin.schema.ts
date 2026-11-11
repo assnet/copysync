@@ -58,3 +58,64 @@ export const workerListResponse = {
     },
   },
 } as const;
+
+const scalingSettings = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'maxSessionsPerWorker', 'maxPendingLoginsPerWorker', 'alertOccupancyRatio', 'awaitingAlertSeconds',
+    'scalerMode', 'minReplicas', 'maxReplicas', 'scaleUpSustainSeconds', 'scaleCooldownSeconds',
+  ],
+  properties: {
+    maxSessionsPerWorker: { type: 'integer' },
+    maxPendingLoginsPerWorker: { type: 'integer' },
+    alertOccupancyRatio: { type: 'number' },
+    awaitingAlertSeconds: { type: 'integer' },
+    scalerMode: { type: 'string', enum: ['off', 'manual', 'auto'] },
+    minReplicas: { type: 'integer' },
+    maxReplicas: { type: 'integer' },
+    scaleUpSustainSeconds: { type: 'integer' },
+    scaleCooldownSeconds: { type: 'integer' },
+  },
+} as const;
+
+const source = { type: 'string', enum: ['default', 'saved'] } as const;
+
+/** `GET`/`PUT /admin/workers/settings`: valor efetivo, origem por campo, `updatedAt` e se tem efeito (WSCALE-06). */
+export const workerScalingSettingsResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['settings', 'origin', 'updatedAt', 'enforced'],
+      properties: {
+        settings: scalingSettings,
+        origin: {
+          type: 'object',
+          additionalProperties: false,
+          required: scalingSettings.required,
+          properties: Object.fromEntries(scalingSettings.required.map((k) => [k, source])),
+        },
+        updatedAt: { type: ['string', 'null'], format: 'date-time' },
+        enforced: { type: 'boolean' },
+      },
+    },
+  },
+} as const;
+
+/**
+ * `PUT /admin/workers/settings`. `settings` só exige ser objeto: faixa, tipo e campo desconhecido
+ * são do domínio, que devolve 400 com `meta.field`.
+ */
+export const workerScalingSettingsBody = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['settings', 'expectedUpdatedAt'],
+  properties: {
+    settings: { type: 'object' },
+    expectedUpdatedAt: { type: ['string', 'null'] },
+  },
+} as const;

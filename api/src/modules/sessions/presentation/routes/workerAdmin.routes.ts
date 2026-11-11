@@ -7,8 +7,15 @@ import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositori
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
 import { ListLeaseHoldersUseCase, type ListLeaseHoldersOutput } from '../../application/use-cases/ListLeaseHoldersUseCase';
 import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/repositories/PrismaSessionLeaseHolderRepository';
-import { workerListResponse } from '../schemas/workerAdmin.schema';
-import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
+import { workerListResponse, workerScalingSettingsBody, workerScalingSettingsResponse } from '../schemas/workerAdmin.schema';
+import { workerAdoptionConfig, workerScalingEnvDefaults } from '../../../../shared/config/workerAdoption';
+import { GetWorkerScalingSettingsUseCase } from '../../application/use-cases/GetWorkerScalingSettingsUseCase';
+import { UpdateWorkerScalingSettingsUseCase } from '../../application/use-cases/UpdateWorkerScalingSettingsUseCase';
+import type { WorkerScalingSettingsViewDeps } from '../../application/use-cases/GetWorkerScalingSettingsUseCase';
+import { PrismaWorkerScalingSettingsRepository } from '../../infrastructure/repositories/PrismaWorkerScalingSettingsRepository';
+import { workerScalingSettingsProvider } from '../../infrastructure/lease/sessionLeaseContainer';
+import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
+import { prisma } from '../../../../shared/database/prisma.client';
 
 const preHandler = [authHook, superAdminHook];
 const tags = ['Workers (admin)'];
@@ -19,6 +26,24 @@ const uc = () =>
 
 let listHolders: ListLeaseHoldersUseCase | null = null;
 const holdersUc = () => (listHolders ??= new ListLeaseHoldersUseCase(new PrismaSessionLeaseHolderRepository()));
+
+const settingsDeps = (): WorkerScalingSettingsViewDeps => ({
+  envDefaults: workerScalingEnvDefaults(),
+  isEnforced: () => workerAdoptionConfig().enabled,
+});
+
+let getSettings: GetWorkerScalingSettingsUseCase | null = null;
+const getSettingsUc = () =>
+  (getSettings ??= new GetWorkerScalingSettingsUseCase(new PrismaWorkerScalingSettingsRepository(prisma), settingsDeps()));
+
+let updateSettings: UpdateWorkerScalingSettingsUseCase | null = null;
+const updateSettingsUc = () =>
+  (updateSettings ??= new UpdateWorkerScalingSettingsUseCase(
+    new PrismaWorkerScalingSettingsRepository(prisma),
+    new PrismaAuditLogRepository(),
+    workerScalingSettingsProvider(),
+    settingsDeps(),
+  ));
 
 /** Flag desligada: sem heartbeat nem adoção — workers vazio; os processos vêm dos leases vivos. */
 const NO_WORKERS: ListWorkersOutput = { workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 }, awaiting: 0 };
@@ -49,5 +74,29 @@ export async function workerAdminRoutes(app: FastifyInstance): Promise<void> {
       ? [await uc().execute(), NO_HOLDERS]
       : [NO_WORKERS, await holdersUc().execute()];
     httpResponse.ok(reply, present(enabled, out, holders));
+  });
+
+  app.get('/settings', {
+    preHandler,
+    schema: { tags, summary: 'Configuração de escala efetiva, origem por campo e se está em vigor', response: { 200: workerScalingSettingsResponse } },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, await getSettingsUc().execute());
+  });
+
+  app.put<{ Body: { settings: unknown; expectedUpdatedAt: string | null } }>('/settings', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Grava a configuração de escala (objeto completo, com controle de concorrência), auditado',
+      body: workerScalingSettingsBody,
+      response: { 200: workerScalingSettingsResponse },
+    },
+  }, async (request, reply) => {
+    const data = await updateSettingsUc().execute({
+      settings: request.body.settings,
+      expectedUpdatedAt: request.body.expectedUpdatedAt,
+      actorUserId: request.user.userId,
+    });
+    httpResponse.ok(reply, data);
   });
 }
