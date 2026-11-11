@@ -20,7 +20,7 @@ baixa frequência, persistência rara. Dado de infraestrutura: sem tenant, sem P
   `persist` o lease é renovado (`release` + `tryAcquire`, pois `tryAcquire` só pega lease vencido);
   se outro processo virou dono, não grava. Não remover essa renovação nem subir o teto acima do TTL.
 - **Persistência**: ring buffer de 60 leituras em memória, agregado e gravado em
-  `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `meta` = min/max/n/unit).
+  `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `sessions_capacity` = último valor, porque o teto muda em degrau e a média misturaria antes e depois; `meta` = min/max/n/unit).
 - **Retenção**: 7 dias; o próprio tick apaga `at < now() - 7d` (índice `ops_metrics_samples(at)`)
   em lotes de 5 mil por `ctid`, cada lote com `SET LOCAL statement_timeout = '2s'`, no máximo 10 lotes
   por tick (pior caso 20 s, dentro do lease renovado). Backlog maior escoa nos ticks seguintes.
@@ -128,7 +128,7 @@ Se a resposta real vier vazia com mais de um id, trocar por `resource` repetido.
 Limiares em `metrics/domain/services/opsAlertPolicy.ts`: RAM ≥ 80% do limite, CPU ≥ 80% por 5 min
 (5 ticks), `idle in transaction` ≥ 3, p99 do event loop ≥ 200 ms. Um alerta por motivo, silêncio
 de 30 min por motivo no cluster via lease `ops-alert:<reason>`. `session_occupancy` (WSCALE-17): `sessions_connected ÷
-sessions_capacity > alertOccupancyRatio` do tick, só com a adoção desligada (com ela o `WorkerCapacityAlertJob` cobre). **Só log** (`ops metrics alert`):
+sessions_capacity > alertOccupancyRatio` do tick, só com a adoção desligada (com ela o `WorkerCapacityAlertJob` cobre); o log sai com `metric: 'sessions_occupancy_pct'` (percentual derivado, não gravado). **Só log** (`ops metrics alert`):
 não há notifier de produção nem template de e-mail na central; e-mail entra quando o template existir.
 
 ## Ativação e reversão

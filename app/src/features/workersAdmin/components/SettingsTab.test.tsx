@@ -223,6 +223,17 @@ describe('SettingsTab', () => {
     expect(screen.getByText(s.errors.invalid)).toBeInTheDocument();
   });
 
+  it('sem batimentos: aviso de teto abaixo da ocupação usa as conectadas da capacidade', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList([]);
+    mockSuggested(null);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await setField(user, 'maxSessionsPerWorker', '20');
+    expect(await screen.findByText(s.belowOccupancy(20, 30))).toBeInTheDocument();
+  });
+
   it('sem adoção não mostra o aviso de teto abaixo da ocupação', async () => {
     const user = userEvent.setup();
     vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view({ enforced: false }));

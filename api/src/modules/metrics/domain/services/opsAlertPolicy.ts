@@ -15,6 +15,9 @@ export const OPS_ALERT_THRESHOLDS = {
   eventLoopP99Ms: 200,
 } as const;
 
+/** `metric` do alerta `session_occupancy`: percentual derivado no tick, não é métrica gravada. */
+export const SESSIONS_OCCUPANCY_ALERT_METRIC = 'sessions_occupancy_pct';
+
 /** Ticks de 60 s que formam os 5 min do streak de CPU. */
 export const CPU_STREAK_TICKS = 5;
 
@@ -106,7 +109,7 @@ export function opsAlerts(input: OpsAlertInput): OpsAlert[] {
       reason: 'session_occupancy',
       source: 'sessions',
       resource: SESSIONS_CLUSTER_RESOURCE,
-      metric: OPS_METRIC.sessionsConnected,
+      metric: SESSIONS_OCCUPANCY_ALERT_METRIC,
       value: pct(occ.connected / occ.capacity),
       threshold: pct(occ.ratio),
     });

@@ -75,7 +75,7 @@ Rota `GET /admin/workers/capacity` (super admin, `GetWorkerCapacityUseCase`); ab
 nenhum dado de tenant individual.
 
 **Fonte**: o coletor (`OpsMetricsSamplerJob`, [`ops-metricas.md`](ops-metricas.md)) coleta a cada tick (60 s) e grava a média de 5 min
-das métricas `sessions_*` (fonte `sessions`, recurso `cluster`) em `all` e `worker`, com ou sem adoção. Sem
+das métricas `sessions_*` (exceto `sessions_capacity`, gravada pelo último valor da janela: depois de mudar o teto a aba não mostra número misturado) (fonte `sessions`, recurso `cluster`) em `all` e `worker`, com ou sem adoção. Sem
 `OPS_METRICS_SAMPLER_ENABLED` não há amostra e a aba mostra "sem amostra" em vez de número. Falha ou timeout (2 s) só
 da contagem de aguardando omite `sessions_awaiting` daquele tick (`warn` uma vez por sequência de falhas); as outras três
 métricas e o alerta de ocupação seguem.
@@ -122,7 +122,7 @@ adoção para a capacidade vir dos batimentos.
 
 Com a adoção desligada (`all` ou `worker`) o `WorkerCapacityAlertJob` não roda; o coletor avalia `sessions_connected ÷
 sessions_capacity > alertOccupancyRatio` a cada tick (motivo `session_occupancy` em `opsAlertPolicy.ts`; o valor e o
-limiar do log saem em percentual, não em fração). **Só log**
+limiar do log saem em percentual, não em fração, com `metric: 'sessions_occupancy_pct'`). **Só log**
 (`ops metrics alert`), com o dedupe do coletor (lease `ops-alert:session_occupancy`, silêncio de 30 min). Com adoção o
 coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 

@@ -65,12 +65,12 @@ export const workersAdminStrings = {
     subtitle: 'Quantas sessões o cluster comporta hoje e quantos clientes ainda cabem em cada plano.',
     loading: 'Carregando a capacidade',
     noSample: 'sem amostra',
-    noSampleNotice: 'Nenhuma amostra de sessões na última hora. Os números do cluster aparecem quando a coleta de métricas estiver ligada.',
+    noSampleNotice: 'Nenhuma amostra de sessões na última hora. Os números do cluster aparecem quando a coleta de métricas estiver ligada; a primeira amostra leva até 5 min depois de ligar.',
     notEnforced: 'Adoção por capacidade desligada: a capacidade é o teto por worker vezes os processos que mantêm sessões, e o teto ainda não é aplicado.',
-    sampledAt: (when: string) => `Última amostra em ${when}`,
     stale: (min: number) => `Última amostra há ${min.toLocaleString('pt-BR')} min; o coletor pode estar parado.`,
     clusterTitle: 'Cluster',
     clusterSubtitle: 'Última amostra da última hora. Conectadas é contagem do banco, não o socket ao vivo.',
+    clusterSubtitleAt: (when: string) => `Última amostra em ${when}. Conectadas é contagem do banco, não o socket ao vivo.`,
     cards: {
       capacity: {
         label: 'Capacidade',

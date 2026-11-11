@@ -7,6 +7,7 @@ import type {
   WorkerScalingSettingsDraft,
   WorkerScalingSettingsField,
 } from './types';
+import { PLAN_CATALOG } from '@/features/plans/catalog';
 import { workersAdminStrings } from './strings';
 
 export type OccupancyLevel = 'ok' | 'warning' | 'full';
@@ -159,4 +160,20 @@ export function clientsThatFit(plan: WorkerCapacityPlan, headroom: number | null
  */
 export function needsStrongCapConfirm(nextCap: number, suggestedMaxSessions: number | null): boolean {
   return suggestedMaxSessions === null || nextCap > suggestedMaxSessions;
+}
+
+/** Posição do plano no catálogo do painel (`lite` casa `lite` ou `<prefixo>_LITE`); desconhecido e sem plano no fim. */
+function planCatalogRank(planSlug: string | null): number {
+  if (planSlug === null) return PLAN_CATALOG.length + 1;
+  const slug = planSlug.toLowerCase();
+  const i = PLAN_CATALOG.findIndex((p) => slug === p.slug || slug.endsWith(`_${p.slug}`));
+  return i === -1 ? PLAN_CATALOG.length : i;
+}
+
+/** Linhas da tabela por plano na ordem do catálogo; empate (desconhecidos) mantém a ordem da API. */
+export function sortPlansByCatalog<T extends { planSlug: string | null }>(plans: readonly T[]): T[] {
+  return plans
+    .map((p, i) => ({ p, i, r: planCatalogRank(p.planSlug) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.p);
 }

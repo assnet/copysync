@@ -13,7 +13,7 @@ import { chartColors } from '@/features/opsMetrics/chartColors';
 import { alignSeries, countDomainMax, formatDateTime, formatNumber, seriesPoints } from '@/features/opsMetrics/rules';
 import { planName } from '@/features/planEntitlementsAdmin/strings';
 import { serverNow } from '@/services/serverClock';
-import { avgContractedPerTenant, clientsThatFit, isUnlimitedPlan } from '../rules';
+import { avgContractedPerTenant, clientsThatFit, isUnlimitedPlan, sortPlansByCatalog } from '../rules';
 import { workersAdminStrings } from '../strings';
 import type { WorkerCapacityChannel, WorkerCapacityPlan } from '../types';
 import { useWorkerCapacity } from '../useWorkerCapacity';
@@ -35,15 +35,18 @@ function CapacityTile({ label, help, icon, value, context }: TileProps) {
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', color: 'text.secondary' }}>
-          <AppIcon icon={icon} size="inline" aria-hidden />
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'flex-start', color: 'text.secondary' }}>
+          <Box sx={{ flexShrink: 0, display: 'flex', mt: '1px' }}><AppIcon icon={icon} size="inline" aria-hidden /></Box>
           <Typography
             variant="caption"
-            sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, flex: 1, minWidth: 0, lineHeight: 1.3 }}
+            sx={{
+              fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, flex: 1, minWidth: 0, lineHeight: 1.3,
+              overflowWrap: 'anywhere', hyphens: 'auto',
+            }}
           >
             {label}
           </Typography>
-          <HelpTip label={label} text={help} />
+          <Box sx={{ flexShrink: 0, mt: '-3px' }}><HelpTip label={label} text={help} /></Box>
         </Stack>
         <Typography
           variant={value === null ? 'body1' : 'h5'}
@@ -64,7 +67,7 @@ function CapacityTile({ label, help, icon, value, context }: TileProps) {
 function HeaderWithHint({ label, hint }: { label: string; hint: string }) {
   return (
     <Tooltip title={hint} arrow>
-      <Box component="span" tabIndex={0} sx={{ borderBottom: 1, borderStyle: 'dotted', borderColor: 'text.disabled', cursor: 'help' }}>
+      <Box component="span" tabIndex={0} sx={{ borderBottom: 1, borderBottomStyle: 'dotted', borderBottomColor: 'text.disabled', cursor: 'help' }}>
         {label}
       </Box>
     </Tooltip>
@@ -110,7 +113,7 @@ function FitCell({ plan, headroom }: { plan: WorkerCapacityPlan; headroom: numbe
 
 function PlansTable({ plans, headroom }: { plans: WorkerCapacityPlan[]; headroom: number | null }) {
   const col = c.plans.columns;
-  const visible = plans.filter((p) => p.tenants > 0 || p.planSlug !== null);
+  const visible = sortPlansByCatalog(plans).filter((p) => p.tenants > 0 || p.planSlug !== null);
   if (visible.length === 0) {
     return <Typography variant="body2" color="text.secondary">{c.plans.empty}</Typography>;
   }
@@ -252,7 +255,7 @@ export default function CapacityTab() {
         )}
         <SectionCard
           title={c.clusterTitle}
-          subtitle={sampled ? `${c.clusterSubtitle} ${c.sampledAt(formatDateTime(k.sampledAt!))}` : c.clusterSubtitle}
+          subtitle={sampled ? c.clusterSubtitleAt(formatDateTime(k.sampledAt!)) : c.clusterSubtitle}
         >
           <Grid container spacing={2}>
             {tiles.map((tile) => (

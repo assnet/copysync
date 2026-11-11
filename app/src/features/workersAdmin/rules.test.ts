@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
+  sortPlansByCatalog,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
@@ -187,5 +188,12 @@ describe('needsStrongCapConfirm', () => {
     expect(needsStrongCapConfirm(60, 50)).toBe(true);
     expect(needsStrongCapConfirm(50, 50)).toBe(false);
     expect(needsStrongCapConfirm(20, 50)).toBe(false);
+  });
+});
+
+describe('sortPlansByCatalog', () => {
+  it('ordem do catálogo; desconhecido e sem plano no fim', () => {
+    const rows = [null, 'COPYSYNC_MAX', 'OUTRO', 'COPYSYNC_LITE', 'ZETA', 'pro'].map((planSlug) => ({ planSlug }));
+    expect(sortPlansByCatalog(rows).map((r) => r.planSlug)).toEqual(['COPYSYNC_LITE', 'pro', 'COPYSYNC_MAX', 'OUTRO', 'ZETA', null]);
   });
 });
