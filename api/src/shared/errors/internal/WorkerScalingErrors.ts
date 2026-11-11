@@ -27,15 +27,16 @@ export class ScalerNotConfiguredError extends AppError {
 }
 
 /**
- * Provedor recusou a credencial, não achou o serviço, falhou (5xx) ou estourou o timeout.
+ * Provedor recusou a credencial, não achou o serviço, recusou o pedido (outro 4xx:
+ * `rejected_by_provider`, nada foi alterado), falhou (5xx) ou estourou o timeout.
  * `phase`: `read` (GET de leitura, nenhum pedido de escala saiu: nada foi alterado) ou `write`
  * (o `POST /scale`). `uncertain` (só no `scaleTo`, fase `write`, com `timeout`/`upstream`): o
  * provedor pode ter aplicado; vai em `meta.uncertain` para o painel não dizer "nada foi alterado".
  */
 export class ScalerUnavailableError extends AppError {
   constructor(
-    public readonly reason: 'auth' | 'not_found' | 'upstream' | 'timeout',
-    public readonly phase: 'read' | 'write' = 'write',
+    public readonly reason: 'auth' | 'not_found' | 'rejected_by_provider' | 'upstream' | 'timeout',
+    public readonly phase: 'read' | 'write',
     uncertain = false,
   ) {
     super('SCALER_UNAVAILABLE', `Worker scaler provider unavailable (${reason})`, 503, {

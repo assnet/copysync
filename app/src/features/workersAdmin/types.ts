@@ -133,7 +133,7 @@ export interface WorkerCapacityView {
 
 /** Variável de ambiente que falta para o escalador funcionar (WSCALE-11). */
 export type WorkerScalerMissingEnv = 'WORKER_SCALER_ENABLED' | 'RENDER_API_KEY' | 'WORKER_SCALER_SERVICE_ID';
-export type WorkerScalerFailureReason = 'auth' | 'not_found' | 'rate_limited' | 'upstream' | 'timeout';
+export type WorkerScalerFailureReason = 'auth' | 'not_found' | 'rejected_by_provider' | 'rate_limited' | 'upstream' | 'timeout';
 
 /** Estado do escalador no provedor (cache de 30 s na API). Nunca carrega chave nem id do serviço. */
 export type WorkerScalerState =

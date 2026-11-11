@@ -58,7 +58,8 @@ describe('RenderWorkerScaler.getState', () => {
   });
 
   it.each([
-    [401, 'auth'], [403, 'auth'], [404, 'not_found'], [500, 'upstream'], [503, 'upstream'], [429, 'rate_limited'],
+    [401, 'auth'], [403, 'auth'], [404, 'not_found'], [400, 'rejected_by_provider'], [500, 'upstream'], [503, 'upstream'],
+    [429, 'rate_limited'],
   ] as const)('HTTP %i vira unavailable/%s sem lançar', async (status, reason) => {
     const fetchFn = fakeFetch({ service: { status }, instances: instances(1), scale: { status: 500 } });
     const extra = reason === 'rate_limited' ? { retryAfterSeconds: null } : {};
@@ -122,7 +123,8 @@ describe('RenderWorkerScaler.scaleTo', () => {
   });
 
   it.each([
-    [401, 'auth'], [403, 'auth'], [404, 'not_found'], [500, 'upstream'], [502, 'upstream'],
+    [401, 'auth'], [403, 'auth'], [404, 'not_found'], [400, 'rejected_by_provider'], [409, 'rejected_by_provider'],
+    [422, 'rejected_by_provider'], [500, 'upstream'], [502, 'upstream'],
   ] as const)('HTTP %i no scale vira SCALER_UNAVAILABLE/%s', async (status, reason) => {
     const fetchFn = fakeFetch({ service: service(), instances: instances(1), scale: { status } });
     const err = await scaler(fetchFn).scaleTo(2).catch((e) => e);

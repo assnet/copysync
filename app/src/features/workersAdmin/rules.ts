@@ -309,7 +309,8 @@ export function scaleRequestErrorMessage(err: unknown, now: number = serverNow()
       });
     case 'SCALER_SERVICE_NOT_SCALABLE':
       return (typeof m.reason === 'string' && e2.notScalable[m.reason]) || e2.notScalableGeneric;
-    case 'SCALER_UNAVAILABLE': return e2.unavailable;
+    case 'SCALER_UNAVAILABLE':
+      return m.reason === 'rejected_by_provider' || m.reason === 'read_rejected_by_provider' ? e2.rejectedByProvider : e2.unavailable;
     case 'SCALER_RATE_LIMITED': return rateLimitedMessage(m, e.retryAfter, now);
     default:
       if (e.status === 429) return rateLimitedMessage(m, e.retryAfter, now);

@@ -262,6 +262,7 @@ export const workersAdminStrings = {
       reasons: {
         auth: 'A chave da API foi recusada pelo provedor. Confira RENDER_API_KEY na Render.',
         not_found: 'O serviço configurado não foi encontrado. Confira WORKER_SCALER_SERVICE_ID na Render.',
+        rejected_by_provider: 'O provedor recusou a consulta. Tente de novo em alguns minutos.',
         rate_limited: 'O provedor limitou as consultas. Tente de novo em alguns minutos.',
         upstream: 'O provedor respondeu com erro. Tente de novo em alguns minutos.',
         timeout: 'O provedor demorou demais para responder. Tente de novo em alguns minutos.',
@@ -342,6 +343,8 @@ export const workersAdminStrings = {
       notScalable: { disk: 'O serviço worker tem disco persistente e não aceita mais de uma réplica.', native_autoscaling: 'O serviço usa a autoescala do provedor. Desligue-a na Render para mudar por aqui.' } as Record<string, string>,
       notScalableGeneric: 'O serviço worker não aceita mudança de réplicas.',
       unavailable: 'O provedor está indisponível. Nada foi alterado; tente de novo em alguns minutos.',
+      /** 4xx fora de 401/403/404/429 (`rejected_by_provider`): pedido recusado, sem efeito. */
+      rejectedByProvider: 'O provedor recusou o pedido. Nada foi alterado.',
       /** Timeout/5xx/falha inesperada depois do pedido: o provedor pode ter aplicado. */
       uncertain: 'Não dá para confirmar se o provedor aplicou. Confira as réplicas rodando antes de tentar de novo; o intervalo mínimo foi iniciado.',
       rateLimitedAt: (at: string) => `Muitos pedidos seguidos. Tente de novo depois de ${at}.`,

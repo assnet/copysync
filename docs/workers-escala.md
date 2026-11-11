@@ -198,6 +198,9 @@ no header.
   do `scaleTo`; `SCALE_REQUEST_FAILED` sempre): o mesmo `SCALER_UNAVAILABLE` vindo do estado, antes da chamada, é
   recusa e não leva. O painel mostra "Não dá para confirmar se o provedor aplicou…", fecha o diálogo, descarta o
   rascunho (não reabre nem reenvia sozinho) e relê o estado para exibir o `CooldownBar`.
+  Outro 4xx (fora de 401/403/404/429) do provedor é recusa certa: `SCALER_UNAVAILABLE:rejected_by_provider`, fora da
+  lista, sem `meta.uncertain`; o painel diz "O provedor recusou o pedido. Nada foi alterado.". Incerto no POST é só
+  5xx, timeout e erro de rede.
 - **Sucesso mesmo com falha de escrita**: se `updateOutcome(succeeded)` ou a auditoria lançar depois do `scaleTo`
   aceito, `warn` (sem segredo) e a resposta é de sucesso com o evento `succeeded` em memória. A linha pode ficar
   `requested` no banco: ela continua contando para o intervalo mínimo (regra 7), o que é o lado seguro.

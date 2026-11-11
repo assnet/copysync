@@ -151,7 +151,12 @@ export class RenderWorkerScaler implements IWorkerScaler {
       this.log.warn({ op, status, retryAfterSeconds }, 'worker scaler rate limited');
       return new ScalerRateLimitedError(retryAfterSeconds);
     }
-    const reason = status === 401 || status === 403 ? 'auth' : status === 404 ? 'not_found' : 'upstream';
+    // Só 5xx (e timeout/rede, em `request`) é incerto no POST; outro 4xx é recusa: nada foi alterado.
+    const reason =
+      status === 401 || status === 403 ? 'auth'
+        : status === 404 ? 'not_found'
+          : status >= 400 && status < 500 ? 'rejected_by_provider'
+            : 'upstream';
     this.log.warn({ op, status, reason }, 'worker scaler request failed');
     return new ScalerUnavailableError(reason, phase);
   }

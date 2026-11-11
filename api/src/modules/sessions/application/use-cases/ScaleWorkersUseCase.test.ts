@@ -168,6 +168,12 @@ describe('ScaleWorkersUseCase — recusas', () => {
     await expectRejected(setup({ state: { status: 'unavailable', reason: 'rate_limited' } }), input(), 'SCALER_RATE_LIMITED', 0);
   });
 
+  it('recusa por estado indisponível tem fase read e não é incerta', async () => {
+    const err = await setup({ state: { status: 'unavailable', reason: 'upstream' } }).useCase.execute(input()).catch((e) => e);
+    expect(err).toMatchObject({ code: 'SCALER_UNAVAILABLE', phase: 'read', meta: { reason: 'upstream', phase: 'read' } });
+    expect(err.meta.uncertain).toBeUndefined();
+  });
+
   it('limite do provedor no estado: retryAt preservado na recusa', async () => {
     const ctx = setup({ state: { status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: 30 } });
     await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
@@ -254,7 +260,7 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
 
   it('falha do escalador → failed com código curto, auditoria e relança', async () => {
     const ctx = setup();
-    ctx.scaler.scaleTo.mockRejectedValue(new ScalerUnavailableError('timeout'));
+    ctx.scaler.scaleTo.mockRejectedValue(new ScalerUnavailableError('timeout', 'write'));
     await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
       code: 'SCALER_UNAVAILABLE',
       meta: { reason: 'timeout', uncertain: true },
@@ -312,8 +318,8 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
   });
 
   it.each([
-    ['timeout', new ScalerUnavailableError('timeout')],
-    ['5xx', new ScalerUnavailableError('upstream')],
+    ['timeout', new ScalerUnavailableError('timeout', 'write')],
+    ['5xx', new ScalerUnavailableError('upstream', 'write')],
     ['erro desconhecido', new Error('boom')],
   ])('falha incerta (%s) segura o intervalo mínimo do pedido seguinte', async (_label, err) => {
     const ctx = setup();
@@ -345,9 +351,10 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
   describe('com o RenderWorkerScaler real (fetchFn falso, sem rede)', () => {
     const timeout = () => Object.assign(new Error('timed out'), { name: 'TimeoutError' });
     const serviceBody = { serviceDetails: { numInstances: 2, autoscaling: null, disk: null } };
-    function withRealScaler(fail: 'service' | 'scale') {
+    function withRealScaler(fail: 'service' | 'scale', scaleStatus?: number) {
       const fetchFn = vi.fn(async (url: string | URL | Request) => {
         const isScale = String(url).endsWith('/scale');
+        if (isScale && scaleStatus) return new Response(null, { status: scaleStatus });
         if ((fail === 'scale') === isScale) throw timeout();
         return new Response(isScale ? null : JSON.stringify(serviceBody), { status: isScale ? 202 : 200 });
       });
@@ -375,11 +382,33 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
       expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' });
       await expect(ctx.useCase.execute(input({ requestId: 'req-2' }))).rejects.toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
     });
+
+    it('POST 503 conta no intervalo', async () => {
+      const { ctx } = withRealScaler('scale', 503);
+      await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
+        code: 'SCALER_UNAVAILABLE',
+        meta: { reason: 'upstream', uncertain: true },
+      });
+      expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:upstream' });
+      await expect(ctx.useCase.execute(input({ requestId: 'req-2' }))).rejects.toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
+    });
+
+    it('POST 422 (recusa do provedor) não conta no intervalo', async () => {
+      const { ctx } = withRealScaler('scale', 422);
+      const thrown = await ctx.useCase.execute(input()).catch((e) => e);
+      expect(thrown).toMatchObject({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'rejected_by_provider' } });
+      expect(thrown.meta.uncertain).toBeUndefined();
+      expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:rejected_by_provider' });
+      expect(isUncertainScaleFailure('failed', ctx.events.rows[0].error)).toBe(false);
+      const res = await ctx.useCase.execute(input({ requestId: 'req-2' }));
+      expect(res.event.outcome).toBe('succeeded');
+    });
   });
 
   it.each([
-    ['auth', new ScalerUnavailableError('auth')],
-    ['not_found', new ScalerUnavailableError('not_found')],
+    ['auth', new ScalerUnavailableError('auth', 'write')],
+    ['not_found', new ScalerUnavailableError('not_found', 'write')],
+    ['4xx', new ScalerUnavailableError('rejected_by_provider', 'write')],
     ['429', new ScalerRateLimitedError(null, NOW)],
   ])('falha certa (%s) não segura o intervalo mínimo', async (_label, err) => {
     const ctx = setup();
@@ -461,7 +490,7 @@ describe('ScaleWorkersUseCase — idempotência', () => {
 
   it('replay de pedido failed devolve o failed sem chamar de novo', async () => {
     const ctx = setup();
-    ctx.scaler.scaleTo.mockRejectedValueOnce(new ScalerUnavailableError('timeout'));
+    ctx.scaler.scaleTo.mockRejectedValueOnce(new ScalerUnavailableError('timeout', 'write'));
     await expect(ctx.useCase.execute(input())).rejects.toMatchObject({ code: 'SCALER_UNAVAILABLE' });
     const again = await ctx.useCase.execute(input());
     expect(again).toMatchObject({ replayed: true, event: { outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' } });

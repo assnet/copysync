@@ -144,7 +144,7 @@ export class ScaleWorkersUseCase {
       if (!(err instanceof AppError)) this.deps.log?.warn({ eventId: id, error }, 'worker scale request failed');
       await this.afterCall(id, 'failed', error, () => this.auditRequest(input, { ...event, outcome: 'failed', error }));
       if (!(err instanceof AppError)) throw new ScaleRequestFailedError();
-      // Timeout/5xx no POST: pode ter sido aplicado (`meta.uncertain`; conta no intervalo). Falha
+      // Timeout/5xx/rede no POST: pode ter sido aplicado (`meta.uncertain`; conta no intervalo). Falha
       // no GET de leitura do `scaleTo` (`read_*`) não chegou a pedir nada: não é incerta.
       if (err instanceof ScalerUnavailableError && isUncertainScaleFailure('failed', error)) {
         throw new ScalerUnavailableError(err.reason, 'write', true);
@@ -212,7 +212,7 @@ export class ScaleWorkersUseCase {
       return unknown(
         state.reason === 'rate_limited'
           ? new ScalerRateLimitedError(state.retryAfterSeconds ?? null, this.now())
-          : new ScalerUnavailableError(state.reason),
+          : new ScalerUnavailableError(state.reason, 'read'),
       );
     }
     const current = state.desiredReplicas;

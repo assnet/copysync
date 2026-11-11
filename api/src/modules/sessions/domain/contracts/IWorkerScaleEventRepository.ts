@@ -12,7 +12,7 @@ export type WorkerScaleOutcome = 'requested' | 'succeeded' | 'failed' | 'rejecte
  * Erros de evento `failed` com resultado incerto: timeout ou 5xx do pedido de escala (`POST`) e
  * falha inesperada podem ter sido aplicados pelo provedor. Contam para o intervalo mínimo como
  * `requested|succeeded` (evita pedir de novo e somar réplicas). Falhas certas não contam: `auth`,
- * `not_found`, 429, recusas e a leitura antes do POST (`SCALER_UNAVAILABLE:read_<motivo>`, nada saiu).
+ * `not_found`, outro 4xx (`rejected_by_provider`), 429, recusas e a leitura antes do POST (`SCALER_UNAVAILABLE:read_<motivo>`, nada saiu).
  * Espelhada em `app/src/features/workersAdmin/rules.ts` (teste de paridade no painel).
  */
 export const UNCERTAIN_SCALE_FAILURE_ERRORS = [

@@ -244,6 +244,7 @@ describe('escala (WSCALE-14)', () => {
     expect(scaleRequestErrorMessage({ status: 400, code: 'VALIDATION_ERROR' })).toMatch(/recusado/);
     expect(scaleRequestErrorMessage(new Error('rede'))).toMatch(/mesmo pedido não é duplicado/);
     expect(scaleRequestErrorMessage({ code: 'SCALE_DOWN_WOULD_EXCEED_CAPACITY', meta: {} })).toMatch(/menos vagas/);
+    expect(scaleRequestErrorMessage({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'rejected_by_provider' } })).toMatch(/recusou o pedido\. Nada foi alterado/);
   });
 
   it('429: retryAfterSeconds, depois Retry-After (segundos ou data HTTP), depois retryAt', () => {
@@ -264,6 +265,8 @@ describe('scaleEventErrorMessage', () => {
     expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:auth')).toBe(re.unavailable);
     expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:not_found')).toBe(re.unavailable);
     expect(scaleEventErrorMessage('SCALER_UNAVAILABLE')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:rejected_by_provider')).toBe(re.rejectedByProvider);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:read_rejected_by_provider')).toBe(re.rejectedByProvider);
     expect(scaleEventErrorMessage('SCALER_SERVICE_NOT_SCALABLE:disk')).toBe(re.notScalable.disk);
     expect(scaleEventErrorMessage('SCALER_RATE_LIMITED')).toBe(re.rateLimited(null));
     expect(scaleEventErrorMessage('OUTRO')).toBe(re.failedGeneric);
