@@ -16,6 +16,7 @@ import { AdoptNextSessionUseCase } from '../../application/use-cases/AdoptNextSe
 import { SessionAdoptionTicker } from '../../application/services/SessionAdoptionTicker';
 import { WorkerHeartbeatJob } from '../jobs/WorkerHeartbeatJob';
 import { WorkerCapacityAlertJob } from '../jobs/WorkerCapacityAlertJob';
+import { defaultWorkerScalingSettings } from '../../domain/services/workerScalingSettings';
 import { registerSessionAdoptionResetListener } from '../listeners/SessionAdoptionResetListener';
 import { sessionLeaseContainer, type SessionLeaseContainer } from './sessionLeaseContainer';
 
@@ -62,6 +63,12 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
     maxSessions: config.maxSessions,
   });
   const unregister = (deps.registerReset ?? registerSessionAdoptionResetListener)(adoption);
+  // Valores da env por enquanto; a troca pelo provider da configuração de escala é da T7.
+  const scalingSettings = defaultWorkerScalingSettings({
+    maxSessionsPerWorker: config.maxSessions,
+    maxPendingLoginsPerWorker: config.maxPendingLogins,
+  });
+  const settings = () => scalingSettings;
   return {
     config,
     adoption,
@@ -71,11 +78,11 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
       heartbeats,
       workerId: lease.workerId,
       role: deps.role,
-      maxSessions: config.maxSessions,
+      settings,
       occupancy: lease.occupancy,
     }),
     // D5: sem template de e-mail na central, sem `notifier` (alerta só no log).
-    capacityAlert: new WorkerCapacityAlertJob({ lease: deps.jobLease, heartbeats, adoption }),
+    capacityAlert: new WorkerCapacityAlertJob({ lease: deps.jobLease, heartbeats, adoption, settings }),
     dispose: unregister,
   };
 }

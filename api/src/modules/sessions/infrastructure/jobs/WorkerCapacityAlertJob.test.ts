@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { IJobLease } from '../../../../shared/jobs/IJobLease';
 import type { IWorkerHeartbeatRepository, WorkerHeartbeat } from '../../domain/contracts/IWorkerHeartbeatRepository';
 import type { ISessionAdoptionRepository } from '../../domain/contracts/ISessionAdoptionRepository';
+import { defaultWorkerScalingSettings, type WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
 import {
   CAPACITY_ALERT_EMAIL_LEASE,
   CAPACITY_ALERT_LEASE,
@@ -41,9 +42,11 @@ function setup(workers: WorkerHeartbeat[], awaiting = 0, withNotifier = true) {
   } as unknown as ISessionAdoptionRepository;
   const sent: CapacityAlert[] = [];
   const notifier = withNotifier ? { notify: vi.fn(async (a: CapacityAlert) => void sent.push(a)) } : undefined;
-  const job = new WorkerCapacityAlertJob({ lease, heartbeats, adoption, notifier, now: () => clock });
+  let settings: WorkerScalingSettings = defaultWorkerScalingSettings({ maxSessionsPerWorker: 50, maxPendingLoginsPerWorker: 10 });
+  const job = new WorkerCapacityAlertJob({ lease, heartbeats, adoption, notifier, settings: () => settings, now: () => clock });
   const advance = (ms: number) => { clock = new Date(clock.getTime() + ms); };
-  return { job, lease, heartbeats, adoption, sent, advance };
+  const configure = (patch: Partial<WorkerScalingSettings>) => { settings = { ...settings, ...patch }; };
+  return { job, lease, heartbeats, adoption, sent, advance, configure };
 }
 
 describe('WorkerCapacityAlertJob', () => {
@@ -99,5 +102,16 @@ describe('WorkerCapacityAlertJob', () => {
     const { job, heartbeats } = setup([]);
     vi.mocked(heartbeats.listAlive).mockRejectedValueOnce(new Error('db'));
     await expect(job.runTick()).resolves.toBeUndefined();
+  });
+
+  it('limiares alterados em runtime mudam a decisão no tick seguinte', async () => {
+    const { job, sent, adoption, advance, configure } = setup([worker(35, 50)]);
+    await job.runTick();
+    expect(sent).toEqual([]);
+    configure({ alertOccupancyRatio: 0.6, awaitingAlertSeconds: 300 });
+    advance(60_000);
+    await job.runTick();
+    expect(adoption.countAwaitingCapacity).toHaveBeenLastCalledWith(300_000);
+    expect(sent).toEqual([{ reason: 'occupancy', workers: 1, sessions: 35, maxSessions: 50, awaiting: 0 }]);
   });
 });

@@ -2,6 +2,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
 import { HEARTBEAT_MS } from '../../domain/services/sessionAdoptionPolicy';
 import { logger } from '../../../../shared/logger/logger';
+import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
 import type { SessionOccupancy } from '../../application/services/CapacityLimitedLeaseGate';
 
 export interface WorkerHeartbeatJobOptions {
@@ -9,8 +10,8 @@ export interface WorkerHeartbeatJobOptions {
   workerId: string;
   /** Papel do processo: `all` | `worker`. */
   role: string;
-  /** Teto do processo (`WORKER_MAX_SESSIONS`). */
-  maxSessions: number;
+  /** Configuração de escala efetiva, lida a cada batimento: `maxSessionsPerWorker` é o teto gravado. */
+  settings: () => WorkerScalingSettings;
   /** Ocupação do processo: sessões com login concluído e logins em andamento (T24). */
   occupancy: () => SessionOccupancy;
   /** Memória residente em MB; padrão `process.memoryUsage().rss`. */
@@ -103,8 +104,9 @@ export class WorkerHeartbeatJob {
   }
 
   private async beatOnce(): Promise<void> {
-    const { heartbeats, workerId, role, maxSessions, occupancy } = this.options;
+    const { heartbeats, workerId, role, settings, occupancy } = this.options;
     try {
+      const maxSessions = settings().maxSessionsPerWorker;
       const { sessions, pendingLogins } = occupancy();
       await heartbeats.beat({
         workerId,

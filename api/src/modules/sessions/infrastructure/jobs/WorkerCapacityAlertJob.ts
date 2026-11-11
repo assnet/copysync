@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { IJobLease } from '../../../../shared/jobs/IJobLease';
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
 import type { ISessionAdoptionRepository } from '../../domain/contracts/ISessionAdoptionRepository';
+import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
 import {
   ALERT_TICK_MS,
-  AWAITING_ALERT_MS,
   WORKER_ALIVE_MS,
   capacityAlertReason,
   type CapacityAlertReason,
@@ -42,6 +42,8 @@ export interface WorkerCapacityAlertJobOptions {
   lease: IJobLease;
   heartbeats: IWorkerHeartbeatRepository;
   adoption: ISessionAdoptionRepository;
+  /** Configuração de escala efetiva, lida a cada tick (`alertOccupancyRatio`, `awaitingAlertSeconds`). */
+  settings: () => WorkerScalingSettings;
   notifier?: ICapacityAlertNotifier;
   intervalMs?: number;
   now?: () => Date;
@@ -49,8 +51,8 @@ export interface WorkerCapacityAlertJobOptions {
 
 /**
  * Alerta de capacidade (ADOPT-11): tick de 60 s sob o lease `worker-capacity-alert` (1 processo por
- * vez). Soma sessões/tetos dos workers vivos e pedidos sem dono há > 2 min; `capacityAlertReason`
- * decide. Sem alerta, nada é escrito além do lease.
+ * vez). Soma sessões/tetos dos workers vivos e pedidos sem dono além do limiar; `capacityAlertReason`
+ * decide com os limiares da configuração de escala lidos no tick. Sem alerta, nada é escrito além do lease.
  */
 export class WorkerCapacityAlertJob {
   private timer: NodeJS.Timeout | null = null;
@@ -91,9 +93,11 @@ export class WorkerCapacityAlertJob {
     );
     if (!acquired) return;
 
+    const { alertOccupancyRatio, awaitingAlertSeconds } = this.options.settings();
+    const awaitingMs = awaitingAlertSeconds * 1000;
     const [alive, awaiting] = await Promise.all([
       heartbeats.listAlive(WORKER_ALIVE_MS),
-      adoption.countAwaitingCapacity(AWAITING_ALERT_MS),
+      adoption.countAwaitingCapacity(awaitingMs),
     ]);
     const sessions = alive.reduce((sum, w) => sum + w.sessions, 0);
     const maxSessions = alive.reduce((sum, w) => sum + w.maxSessions, 0);
@@ -101,7 +105,9 @@ export class WorkerCapacityAlertJob {
     const reason = capacityAlertReason({
       sessions,
       maxSessions,
-      awaitingOverMs: awaiting > 0 ? AWAITING_ALERT_MS + 1 : null,
+      awaitingOverMs: awaiting > 0 ? awaitingMs + 1 : null,
+      ratio: alertOccupancyRatio,
+      awaitingSeconds: awaitingAlertSeconds,
     });
     if (!reason) return;
 
