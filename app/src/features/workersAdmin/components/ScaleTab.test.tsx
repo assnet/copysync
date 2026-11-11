@@ -648,6 +648,73 @@ describe('ScaleTab — histórico', () => {
   });
 });
 
+describe('ScaleTab — modo automático (WSCALE-15)', () => {
+  const card = () => screen.getByRole('group', { name: sc.auto.lastTitle });
+
+  it('modo manual: escala automática desligada, sem última decisão', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents([event(1, { trigger: 'auto', reason: 'auto: occupancy' })]);
+    renderWithTheme(<ScaleTab />);
+    expect(await screen.findByText(sc.auto.modeText.manual)).toBeInTheDocument();
+    expect(screen.getByText(sc.auto.status.off)).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: sc.auto.lastTitle })).not.toBeInTheDocument();
+  });
+
+  it('modo auto sem evento automático: avisa que não há decisão', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({ settings: { ...view().settings, scalerMode: 'auto' } }));
+    mockEvents([event(1)]);
+    renderWithTheme(<ScaleTab />);
+    expect(await screen.findByText(sc.auto.none)).toBeInTheDocument();
+    expect(screen.getByText(sc.auto.status.on)).toBeInTheDocument();
+    expect(screen.getByText(sc.auto.modeText.auto)).toBeInTheDocument();
+  });
+
+  it('modo auto: mostra a última decisão do histórico com motivo traduzido', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({ settings: { ...view().settings, scalerMode: 'auto' } }));
+    mockEvents([
+      event(3, { at: '2026-11-10T13:00:00.000Z' }),
+      event(2, { trigger: 'auto', reason: 'auto: occupancy', fromReplicas: 2, toReplicas: 3, at: '2026-11-10T12:30:00.000Z' }),
+      event(1, { trigger: 'auto', reason: 'auto: awaiting', at: '2026-11-10T12:00:00.000Z' }),
+    ]);
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.auto.lastTitle);
+    await waitFor(() => expect(within(card()).getByText(sc.auto.reasons['auto: occupancy'])).toBeInTheDocument());
+    expect(within(card()).getByText(sc.auto.change(2, 3))).toBeInTheDocument();
+    expect(within(card()).getByText(sc.history.outcomes.succeeded)).toBeInTheDocument();
+    // Histórico também traduz o motivo do automático.
+    const table = screen.getByRole('table', { name: sc.history.aria });
+    expect(within(table).getByText(sc.auto.reasons['auto: awaiting'])).toBeInTheDocument();
+    expect(within(table).getByText('motivo 3')).toBeInTheDocument();
+  });
+
+  it('recusa automática: código traduzido e aviso de 1 por hora; lastEvent mais novo vence', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      settings: { ...view().settings, scalerMode: 'auto' },
+      lastEvent: event(9, {
+        trigger: 'auto', reason: 'auto: awaiting', outcome: 'rejected', error: 'SCALE_TARGET_OUT_OF_RANGE',
+        fromReplicas: 4, toReplicas: 5, at: '2026-11-10T14:00:00.000Z',
+      }),
+    }));
+    mockEvents([event(2, { trigger: 'auto', reason: 'auto: occupancy', at: '2026-11-10T12:30:00.000Z' })]);
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.auto.lastTitle);
+    expect(within(card()).getByText(sc.auto.reasons['auto: awaiting'])).toBeInTheDocument();
+    expect(within(card()).getByText(sc.history.outcomes.rejected)).toBeInTheDocument();
+    expect(within(card()).getByText(sc.auto.detail(sc.auto.rejections.SCALE_TARGET_OUT_OF_RANGE))).toBeInTheDocument();
+    expect(within(card()).getByText(sc.auto.repeatHint)).toBeInTheDocument();
+  });
+
+  it('sem amostras: recusa sem réplicas mostra o motivo e o código traduzidos', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({ settings: { ...view().settings, scalerMode: 'auto' } }));
+    mockEvents([event(5, {
+      trigger: 'auto', reason: 'auto: no_samples', outcome: 'rejected', error: 'NO_OCCUPANCY_SAMPLES', fromReplicas: 0, toReplicas: 0,
+    })]);
+    renderWithTheme(<ScaleTab />);
+    await waitFor(() => expect(within(card()).getByText(sc.auto.reasons['auto: no_samples'])).toBeInTheDocument());
+    expect(within(card()).getByText(sc.auto.detail(sc.auto.rejections.NO_OCCUPANCY_SAMPLES))).toBeInTheDocument();
+  });
+});
+
 describe('AdminWorkersPage — aba Escala', () => {
   it('abre a aba pela URL /admin/workers/scale', async () => {
     vi.spyOn(adminWorkersService, 'list').mockResolvedValue({

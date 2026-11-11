@@ -9,6 +9,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.85.0 · app 0.104.0 — subida automática dos workers
+
+Subir réplica dependia de alguém ver o alerta e clicar. Com `scalerMode = auto`, o `WorkerAutoscalerJob` pede +1 réplica quando a ocupação fica alta por tempo sustentado ou há sessão aguardando vaga; nunca reduz. Doc: `docs/workers-escala.md` (Automático). Spec: `.specs/features/worker-scaling/` (WSCALE-14..16, 19; fase P4).
+**Migration Prisma**: não. **Breaking**: não. **Kill switch**: `scalerMode` ≠ `auto` (padrão) e `WORKER_SCALER_ENABLED=false`.
+
+#### Backend (api/) — `sessions`
+
+- **`WorkerAutoscalerJob.ts`**, **`processJobs.ts`**, **`server.ts`** — tick 60 s sob lease `worker-autoscaler` (`worker`/`all`); +1 pelo `ScaleWorkersUseCase` (intervalo mínimo, teto `maxReplicas`, evento); sustentado pelas amostras do banco; recusa 1×/h por código; limpeza de 180 dias 1×/24 h.
+
+#### Frontend (app/) — `workersAdmin`
+
+- **`ScaleTab.tsx`**, **`rules.ts`**, **`strings.ts`** — cartão "Escala automática" com o modo e a última decisão automática (do histórico, motivo e recusa traduzidos).
+- **`SettingsTab.tsx`**, **`useWorkerSettings.ts`** — ajuda sem "ainda sem efeito"; chip "sem efeito por enquanto" só com o escalador `not_configured`.
+
 ### Added — api 0.84.0 · app 0.103.0 — escala dos workers por decisão do super admin
 
 Escalar réplicas do worker só pelo painel da Render, sem regra de capacidade nem rastro. `/admin/workers/scale` pede a escala com regras (modo, adoção, faixa, intervalo, capacidade na redução), evento antes da chamada e auditoria. Doc: `docs/workers-escala.md` (Escala). Spec: `.specs/features/worker-scaling/` (WSCALE-09, 11..14, 19; fase P3).

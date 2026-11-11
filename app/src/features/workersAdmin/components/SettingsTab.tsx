@@ -125,7 +125,11 @@ export default function SettingsTab() {
       <SectionCard
         title={s.groups.scaling.title}
         subtitle={s.groups.scaling.subtitle}
-        action={<Chip size="small" variant="outlined" label={s.groups.scaling.pending} />}
+        action={w.scalerNotConfigured ? (
+          <Tooltip title={s.groups.scaling.pendingHint} arrow>
+            <Chip size="small" variant="outlined" label={s.groups.scaling.pending} tabIndex={0} />
+          </Tooltip>
+        ) : undefined}
         // Celular: o chip desce para baixo do título, que fica numa linha só.
         headerSx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 1, sm: 2 } }}
       >

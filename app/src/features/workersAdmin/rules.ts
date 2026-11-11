@@ -1,6 +1,7 @@
 /** Regras puras da tela de workers (sem React). */
 import type {
   WorkerCapacityPlan,
+  WorkerScaleEvent,
   WorkerScalerMode,
   WorkerScaleStateView,
   WorkerScalingSettings,
@@ -344,4 +345,32 @@ export function defaultScaleTarget(current: number, min: number, max: number): n
   if (current > max) return max;
   if (current + 1 <= max) return current + 1;
   return current - 1;
+}
+
+/** Motivo do evento: o automático grava `auto: <gatilho>` fixo; traduz, e o manual fica como foi digitado. */
+export function scaleEventReasonLabel(event: Pick<WorkerScaleEvent, 'trigger' | 'reason'>): string {
+  if (event.trigger !== 'auto') return event.reason;
+  return sc.auto.reasons[event.reason] ?? event.reason;
+}
+
+/** Texto da recusa/falha de uma decisão automática: código conhecido do job, senão o texto comum dos eventos. */
+export function autoScaleErrorMessage(error: string | null): string {
+  const code = error?.split(':', 1)[0] ?? '';
+  return sc.auto.rejections[code] ?? scaleEventErrorMessage(error);
+}
+
+/**
+ * Última decisão automática: o `lastEvent` do estado (relido a cada 20 s) ou a 1ª `auto` do
+ * histórico carregado, a mais recente das duas. Sem campo novo na API.
+ */
+export function latestAutoEvent(
+  lastEvent: WorkerScaleEvent | null,
+  events: readonly WorkerScaleEvent[],
+): WorkerScaleEvent | null {
+  let best: WorkerScaleEvent | null = null;
+  for (const e of lastEvent ? [lastEvent, ...events] : events) {
+    if (e.trigger !== 'auto') continue;
+    if (!best || Date.parse(e.at) > Date.parse(best.at) || (e.at === best.at && e.id > best.id)) best = e;
+  }
+  return best;
 }

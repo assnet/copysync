@@ -4,15 +4,18 @@ import {
   TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowDown, ArrowRight, ArrowUp, Gauge, Layers, Server, SlidersHorizontal, Target } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Gauge, Layers, Server, SlidersHorizontal, Target, TrendingUp } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
 import { CooldownBar } from '@/components/CooldownBar';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { formatDateTime } from '@/features/opsMetrics/rules';
 import { serverNow } from '@/services/serverClock';
-import { cooldownActive, defaultScaleTarget, formatScaleRemaining, scaleBlock, scaleStepAllowed, type ScaleBlock } from '../rules';
+import {
+  autoScaleErrorMessage, cooldownActive, defaultScaleTarget, formatScaleRemaining, latestAutoEvent, scaleBlock,
+  scaleEventReasonLabel, scaleStepAllowed, type ScaleBlock,
+} from '../rules';
 import { workersAdminStrings } from '../strings';
-import type { WorkerScaleEvent, WorkerScaleOutcome, WorkerScaleStateView } from '../types';
+import type { WorkerScaleEvent, WorkerScaleOutcome, WorkerScalerMode, WorkerScaleStateView } from '../types';
 import { useWorkerScale } from '../useWorkerScale';
 import { ScaleConfirmDialog } from './ScaleConfirmDialog';
 
@@ -148,6 +151,56 @@ function ReplicaChange({ event: e }: { event: WorkerScaleEvent }) {
   );
 }
 
+/** Modo automático (WSCALE-15): ligado ou não e a última decisão do job, lida do histórico. */
+function AutoScaleCard({ mode, last }: { mode: WorkerScalerMode; last: WorkerScaleEvent | null }) {
+  const a = sc.auto;
+  const on = mode === 'auto';
+  const failedOrRejected = last && (last.outcome === 'rejected' || last.outcome === 'failed');
+  return (
+    <SectionCard
+      title={a.title}
+      action={(
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+          <Chip size="small" color={on ? 'success' : 'default'} variant={on ? 'filled' : 'outlined'} label={on ? a.status.on : a.status.off} />
+          <HelpTip label={a.helpLabel} text={a.help} />
+        </Stack>
+      )}
+    >
+      <Stack spacing={1.5}>
+        <Typography variant="body2" color="text.secondary">{a.modeText[mode] ?? a.modeText.manual}</Typography>
+        {on && (
+          <Box aria-label={a.lastTitle} role="group">
+            <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{a.lastTitle}</Typography>
+            {last ? (
+              <Stack spacing={0.75}>
+                <Stack direction="row" sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  <AppIcon icon={TrendingUp} size="inline" aria-hidden />
+                  <OutcomeChip event={last} />
+                  <Typography variant="body2">{scaleEventReasonLabel(last)}</Typography>
+                  {last.toReplicas > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {last.fromReplicas > 0 ? a.change(last.fromReplicas, last.toReplicas) : sc.history.unknownChange(last.toReplicas)}
+                    </Typography>
+                  )}
+                  <Typography variant="body2" color="text.secondary">{a.at(formatDateTime(last.at))}</Typography>
+                </Stack>
+                {failedOrRejected && (
+                  <Typography variant="body2" color="text.secondary">{a.detail(autoScaleErrorMessage(last.error))}</Typography>
+                )}
+                {last.outcome === 'rejected' && (
+                  <Typography variant="caption" color="text.secondary">{a.repeatHint}</Typography>
+                )}
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="text.secondary">{a.none}</Typography>
+            )}
+          </Box>
+        )}
+      </Stack>
+    </SectionCard>
+  );
+}
+
 function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
   const col = sc.history.columns;
   if (w.events.length === 0 && w.eventsLoading) return <Skeleton variant="rounded" height={120} aria-label={sc.loading} />;
@@ -179,7 +232,7 @@ function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
                 <TableCell sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                   <ReplicaChange event={e} />
                 </TableCell>
-                <TableCell sx={{ minWidth: 180, overflowWrap: 'anywhere' }}>{e.reason}</TableCell>
+                <TableCell sx={{ minWidth: 180, overflowWrap: 'anywhere' }}>{scaleEventReasonLabel(e)}</TableCell>
                 <TableCell><OutcomeChip event={e} /></TableCell>
                 <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{formatDateTime(e.at)}</TableCell>
               </TableRow>
@@ -204,7 +257,7 @@ function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
   );
 }
 
-/** Aba Escala (WSCALE-14): estado das réplicas, pedido manual com motivo, intervalo mínimo e histórico. */
+/** Aba Escala (WSCALE-14/15): estado das réplicas, modo automático, pedido manual com motivo, intervalo mínimo e histórico. */
 export default function ScaleTab() {
   const w = useWorkerScale();
   // Re-render ao zerar o intervalo mínimo (a barra avisa uma vez).
@@ -281,6 +334,8 @@ export default function ScaleTab() {
           </Grid>
         </Grid>
       </Box>
+
+      <AutoScaleCard mode={scalerMode} last={latestAutoEvent(view.lastEvent, w.events)} />
 
       <SectionCard title={sc.actions.title}>
         <Stack spacing={2.5}>

@@ -53,6 +53,8 @@ export function useWorkerSettings() {
   const [occupancy, setOccupancy] = useState<WorkerOccupancyList | null>(null);
   const [suggestedMaxSessions, setSuggestedMaxSessions] = useState<number | null>(null);
   const [suggestedState, setSuggestedState] = useState<SuggestedState>('loading');
+  /** `true` só se o estado da escala disser `not_configured`; falha na leitura não afirma nada. */
+  const [scalerNotConfigured, setScalerNotConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<WorkerSettingsNotice | null>(null);
@@ -75,6 +77,11 @@ export function useWorkerSettings() {
     void load();
     // Ocupação atual só alimenta o aviso de teto abaixo dela: falha não bloqueia a tela.
     adminWorkersService.list().then(setOccupancy, () => setOccupancy(null));
+    // Escalador configurado = campos de escala com efeito; o aviso "sem efeito" só com `not_configured`.
+    adminWorkersService.getScale().then(
+      (v) => setScalerNotConfigured(v?.scaler?.status === 'not_configured'),
+      () => setScalerNotConfigured(false),
+    );
     // Teto sugerido pela medição (WSCALE-07). Falha ou sem amostra = sem sugestão: a confirmação
     // reforçada vale para toda mudança de teto, como antes da medição existir.
     // Sem `signal` no serviço: após o timeout (ou desmontagem) a resposta tardia é ignorada.
@@ -155,7 +162,7 @@ export function useWorkerSettings() {
   }, [clearDraft, draft, load, view]);
 
   return {
-    view, values, loading, loadError, busiest, suggestedMaxSessions, suggestedState, saving, serverErrors, notice,
+    view, values, loading, loadError, busiest, suggestedMaxSessions, suggestedState, scalerNotConfigured, saving, serverErrors, notice,
     dirty: draft !== null, restored: restored && draft !== null,
     change, discard, save, reload: load, clearNotice: () => setNotice(null),
   };

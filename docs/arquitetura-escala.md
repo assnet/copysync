@@ -245,10 +245,14 @@ Por que não hash: hash exige `WORKER_SHARD_COUNT` igual em todos os workers e r
 mudar N (todas as sessões trocam de dono = onda de reconexão). Capacidade só precisa de
 subir mais uma réplica com a mesma env. Réplicas necessárias = `ceil(sessões / (teto × 0,8))`.
 
-**Autoescala (diferido).** Subir worker é manual: aumentar réplicas do serviço `worker` na
-Render ou no Dokploy quando o alerta de 80% disparar. Controlador que chama a API da infra
-(com teto de instâncias, intervalo mínimo entre escaladas e descida só manual) fica para
-depois do primeiro worker extra em produção; não entra no plano atual.
+**Autoescala (P4, api 0.85.0).** Controlador próprio, desligado por padrão: com `scalerMode = auto` em
+`/admin/workers/settings`, o `WorkerAutoscalerJob` (papéis `worker`/`all`, lease `worker-autoscaler`, tick 60 s) pede
+**+1** réplica ao escalador (`IWorkerScaler`, API da Render) quando há sessão aguardando vaga além de
+`awaitingAlertSeconds` ou a ocupação das amostras `sessions_*` fica acima de `alertOccupancyRatio` por
+`scaleUpSustainSeconds`. Mesmo `ScaleWorkersUseCase` do pedido manual: teto `maxReplicas`, intervalo mínimo,
+evento antes da chamada. Nunca reduz (descida só manual). Estado do "sustentado" só no banco; recusas 1×/h por código.
+Exige `WORKER_SCALER_ENABLED` (após o T25) e o coletor de métricas ligado. Detalhes:
+[`workers-escala.md`](workers-escala.md) (Automático).
 
 ### 3.3 Separação HTTP × worker
 
@@ -295,6 +299,7 @@ Mesmo código, três modos de boot via `PROCESS_ROLE=http|worker|all`:
 | `HubOutboxWorker` (`HUB_EVENTS_ENABLED` + `HUB_EVENTS_CONFIGURED`), `ExtensionRetentionJob` | `worker` | já seguros: `PrismaHubOutboxRepository` usa `SKIP LOCKED`; `ExtensionRetentionJob` usa `pg_try_advisory_lock` (não copiar como modelo: `$queryRaw` no pool pode dar `unlock` em outra conexão; preferir `JobLease`) |
 | reconcile de billing (`ReconcileSubscriptionsUseCase`, `BILLING_ENABLED`, `BILLING_RECONCILE_INTERVAL_MS`) | `worker` | já usa `JobLease` (`BILLING_RECONCILE_LEASE_TTL_MS`) |
 | Gestor de Links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | já usa `JobLease` |
+| `WorkerAutoscalerJob` (`workerAutoscaler`; age só com `scalerMode = auto`, limpeza de `worker_scale_events` em todo modo) | `worker`/`all` | `JobLease` `worker-autoscaler` (tick), `worker-autoscaler:rejected:<código>` (1 h, não solto) e `worker-autoscaler:cleanup` (24 h, não solto) |
 | `markActiveSessionsAsDisconnected()` no boot (só com `SESSION_BOOTSTRAP_ON_STARTUP=false`) | `worker`, só sessões sem lease válido | — |
 | `prisma migrate deploy` (`CMD pnpm start:migrate`) | todos; Prisma serializa por advisory lock | subir `http` antes das réplicas `worker` no deploy, para o código novo não rodar com schema velho |
 
