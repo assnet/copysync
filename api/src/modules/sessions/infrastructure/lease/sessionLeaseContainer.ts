@@ -88,7 +88,7 @@ export function buildSessionLeaseContainer(
         listAuthenticated: () => sockets.listAuthenticatedSessionIds(),
         hasStoredCredentials: (id) => sockets.hasStoredCredentials(id),
       },
-      capacity,
+      () => capacity,
     )
     : undefined;
   const gate = capped ? withRelease(capped, baseGate) : baseGate;

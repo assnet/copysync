@@ -65,7 +65,8 @@ export class CapacityLimitedLeaseGate implements ISessionLeaseGate {
   constructor(
     private readonly inner: ISessionLeaseGate,
     private readonly source: SessionCapacitySource,
-    private readonly limits: SessionCapacityLimits,
+    /** Lida a cada checagem: o teto pode mudar sem recriar o gate (WSCALE-04). */
+    private readonly limits: () => SessionCapacityLimits,
     private readonly log: CapacityGateLogger = logger.child({ module: 'CapacityLimitedLeaseGate' }),
     private readonly reservationTtlMs = CAPACITY_RESERVATION_TTL_MS,
     private readonly now: () => number = Date.now,
@@ -125,16 +126,17 @@ export class CapacityLimitedLeaseGate implements ISessionLeaseGate {
     if (this.isLocalOrReserved(snap, sessionId)) return 'pass';
     if (withCredentials && this.pendingSeenAt.has(sessionId)) return 'pass';
     const occupancy = this.count(snap);
+    const limits = this.limits();
     if (withCredentials) {
-      if (occupancy.sessions >= this.limits.maxSessions) {
-        this.log.warn({ sessionId, active: occupancy.sessions, max: this.limits.maxSessions }, 'teto de sessões atingido; lease negado');
+      if (occupancy.sessions >= limits.maxSessions) {
+        this.log.warn({ sessionId, active: occupancy.sessions, max: limits.maxSessions }, 'teto de sessões atingido; lease negado');
         return 'denied';
       }
       return this.hold(sessionId, 'session');
     }
-    if (occupancy.pendingLogins >= this.limits.maxPendingLogins) {
+    if (occupancy.pendingLogins >= limits.maxPendingLogins) {
       this.log.warn(
-        { sessionId, pendingLogins: occupancy.pendingLogins, max: this.limits.maxPendingLogins },
+        { sessionId, pendingLogins: occupancy.pendingLogins, max: limits.maxPendingLogins },
         'teto de logins pendentes atingido; lease negado',
       );
       return 'denied';

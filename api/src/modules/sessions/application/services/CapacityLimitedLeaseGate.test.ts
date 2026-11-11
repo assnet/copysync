@@ -11,7 +11,7 @@ const source = (local: string[], over: Partial<SessionCapacitySource> = {}): Ses
 
 const setup = (local: string[], max: number, acquire = vi.fn(async () => true)) => {
   const log = { warn: vi.fn() };
-  const gate = new CapacityLimitedLeaseGate({ acquire }, source(local), { maxSessions: max, maxPendingLogins: 50 }, log as never);
+  const gate = new CapacityLimitedLeaseGate({ acquire }, source(local), () => ({ maxSessions: max, maxPendingLogins: 50 }), log as never);
   return { gate, acquire, log };
 };
 
@@ -112,7 +112,7 @@ describe('CapacityLimitedLeaseGate — reserva síncrona (T22)', () => {
     try {
       const log = { warn: vi.fn() };
       const gate = new CapacityLimitedLeaseGate(
-        { acquire: async () => true }, source([]), { maxSessions: 1, maxPendingLogins: 50 }, log as never, 1_000,
+        { acquire: async () => true }, source([]), () => ({ maxSessions: 1, maxPendingLogins: 50 }), log as never, 1_000,
       );
       expect(await gate.acquire('a')).toBe(true);
       expect(await gate.acquire('b')).toBe(false);
@@ -142,7 +142,7 @@ describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', (
         listAuthenticated: () => opts.auth,
         hasStoredCredentials: async (id) => opts.creds?.has(id) ?? false,
       }),
-      { maxSessions: opts.max ?? 1, maxPendingLogins: opts.maxPending ?? 50 },
+      () => ({ maxSessions: opts.max ?? 1, maxPendingLogins: opts.maxPending ?? 50 }),
       log as never,
       15_000,
       opts.now,
@@ -229,7 +229,7 @@ describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', (
     const gate = new CapacityLimitedLeaseGate(
       { acquire: async () => true },
       source(['a'], { hasStoredCredentials: async () => { throw new Error('db'); } }),
-      { maxSessions: 1, maxPendingLogins: 50 },
+      () => ({ maxSessions: 1, maxPendingLogins: 50 }),
       log as never,
     );
     expect(await gate.acquire('x')).toBe(false);
@@ -238,7 +238,7 @@ describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', (
   it('sessão já local não consulta credencial', async () => {
     const hasStoredCredentials = vi.fn(async () => true);
     const gate = new CapacityLimitedLeaseGate(
-      { acquire: async () => true }, source(['a'], { hasStoredCredentials }), { maxSessions: 1, maxPendingLogins: 1 },
+      { acquire: async () => true }, source(['a'], { hasStoredCredentials }), () => ({ maxSessions: 1, maxPendingLogins: 1 }),
     );
     expect(await gate.acquire('a')).toBe(true);
     expect(hasStoredCredentials).not.toHaveBeenCalled();
@@ -288,7 +288,7 @@ describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', (
         .mockImplementationOnce(() => new Promise<boolean>(() => {}))
         .mockResolvedValue(true);
       const gate = new CapacityLimitedLeaseGate(
-        { acquire }, source([]), { maxSessions: 1, maxPendingLogins: 50 }, { warn: vi.fn() } as never, 1_000,
+        { acquire }, source([]), () => ({ maxSessions: 1, maxPendingLogins: 50 }), { warn: vi.fn() } as never, 1_000,
       );
       void gate.acquire('a');
       expect(await gate.acquire('b')).toBe(false);
@@ -297,5 +297,42 @@ describe('CapacityLimitedLeaseGate — só login concluído ocupa vaga (T24)', (
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('CapacityLimitedLeaseGate — teto lido a cada uso (WSCALE-04/05)', () => {
+  const build = (local: string[], limits: { maxSessions: number; maxPendingLogins: number }) => {
+    const acquire = vi.fn(async () => true);
+    const gate = new CapacityLimitedLeaseGate({ acquire }, source(local), () => limits, { warn: vi.fn() } as never);
+    return { gate, acquire };
+  };
+
+  it('teto sobe entre dois acquire → libera a sessão antes negada', async () => {
+    const limits = { maxSessions: 2, maxPendingLogins: 50 };
+    const { gate, acquire } = build(['a', 'b'], limits);
+    expect(await gate.acquire('c')).toBe(false);
+    limits.maxSessions = 3;
+    expect(await gate.acquire('c')).toBe(true);
+    expect(acquire).toHaveBeenCalledWith('c');
+  });
+
+  it('teto cai abaixo das ativas → nega nova e não solta as existentes', async () => {
+    const limits = { maxSessions: 5, maxPendingLogins: 50 };
+    const { gate } = build(['a', 'b', 'c'], limits);
+    limits.maxSessions = 1;
+    expect(await gate.acquire('d')).toBe(false);
+    expect(await gate.acquire('a')).toBe(true);
+    expect(gate.occupancy()).toEqual({ sessions: 3, pendingLogins: 0 });
+  });
+
+  it('teto de logins pendentes também é lido a cada uso', async () => {
+    const limits = { maxSessions: 1, maxPendingLogins: 0 };
+    const acquire = vi.fn(async () => true);
+    const gate = new CapacityLimitedLeaseGate(
+      { acquire }, source([], { hasStoredCredentials: async () => false }), () => limits, { warn: vi.fn() } as never,
+    );
+    expect(await gate.acquire('qr')).toBe(false);
+    limits.maxPendingLogins = 1;
+    expect(await gate.acquire('qr')).toBe(true);
   });
 });
