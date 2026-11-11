@@ -3,13 +3,14 @@
  * LOGIN_ATTEMPT = tentativa em andamento (gravada ANTES de conferir a senha): conta no teto, para que
  * logins paralelos não testem mais senhas que o limite. Vira LOGIN_FAILED ou é apagada ao terminar.
  */
-export type LoginEventType = 'LOGIN_ATTEMPT' | 'LOGIN_FAILED' | 'LOGIN_OK' | 'LOGIN_CODE_VERIFIED';
+/** PASSWORD_RESET_OK = senha redefinida pelo link do e-mail (posse provada): zera a contagem, como um login limpo. */
+export type LoginEventType = 'LOGIN_ATTEMPT' | 'LOGIN_FAILED' | 'LOGIN_OK' | 'LOGIN_CODE_VERIFIED' | 'PASSWORD_RESET_OK';
 
 export interface LoginEventInput {
   type: LoginEventType;
   email: string;
   ip: string | null;
-  /** Só em LOGIN_OK/LOGIN_CODE_VERIFIED: falha nunca grava userId (o IP do atacante viraria o da vítima). */
+  /** Só em LOGIN_OK/LOGIN_CODE_VERIFIED/PASSWORD_RESET_OK: falha nunca grava userId (o IP do atacante viraria o da vítima). */
   userId: string | null;
   userAgent: string | null;
 }

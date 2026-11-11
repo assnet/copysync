@@ -9,6 +9,43 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.79.0 · app 0.98.0 — recuperação de senha ("Esqueci minha senha")
+
+Não havia caminho sem suporte para quem esquecia a senha ou ficava com o convite vencido. Doc: `docs/recuperacao-de-senha.md`.
+**Migration Prisma**: sim (2, aditivas). **Depende da central**: template `RESET_PASSWORD` publicado e liberado para a aplicação antes de publicar o painel.
+
+#### Backend (api/) — `auth`, `integrations`
+
+- **`prisma/schema.prisma`**, migrations **`20261111120000_create_password_reset_requests`** e **`20261111120100_add_audit_action_password_reset_completed`** — tabela `password_reset_requests` (pedido por e-mail/IP, hash do token, validade, uso) e ação de auditoria `PASSWORD_RESET_COMPLETED`.
+- **`auth/domain/services/passwordResetRules.ts`** — regras puras: teto 3/h por e-mail e 10/h por IP, link de 1 h, uso único.
+- **`auth/application/use-cases/RequestPasswordResetUseCase.ts`** — `POST /auth/password/forgot`: sempre 202, exista ou não a conta; pedido gravado antes de avaliar o teto; busca da conta, token e e-mail sem `await` (tempo de resposta igual); só o hash do token no banco.
+- **`auth/application/use-cases/ResetPasswordUseCase.ts`**, **`auth/infrastructure/repositories/PrismaPasswordResetRepository.ts`** — `POST /auth/password/reset/inspect` e `POST /auth/password/reset` (token no corpo, nunca na URL, que vai para o log): consumo atômico do token, grava a senha, invalida os outros links da conta e revoga todos os refresh tokens e sessões da extensão numa transação (linha do usuário travada primeiro); grava `PASSWORD_RESET_OK` e auditoria.
+- **`auth/presentation/routes/passwordReset.routes.ts`**, **`auth.routes.ts`**, **`schemas/auth.schema.ts`** — rotas públicas sob `/api/auth/password/*`; erros `PASSWORD_RESET_TOO_MANY_REQUESTS` (429) e `PASSWORD_RESET_INVALID` (404) em `AuthErrors.ts`.
+- **`ILoginProtectionRepository.ts`**, **`PrismaLoginProtectionRepository.ts`**, **`LoginGuard.ts`** — evento `PASSWORD_RESET_OK` zera a contagem de falhas e a suspeita do e-mail, como um login limpo.
+- **`integrations/infrastructure/email/hubEmailMapping.ts`** — template `RESET_PASSWORD` (`name`, `resetPasswordUrl`, `expiresInHours`).
+- Testes: `passwordResetRules.test.ts`, `passwordReset.routes.test.ts`, `PrismaPasswordResetRepository.int.test.ts` (Postgres descartável), `HubEmailSender.test.ts`.
+
+#### Frontend (app/) — `passwordReset`, `login`, `invite`
+
+- **`pages/ForgotPasswordPage.tsx`**, **`pages/ResetPasswordPage.tsx`**, **`features/passwordReset/`**, **`services/passwordReset.service.ts`** — telas `/forgot-password` (confirmação neutra, reenvio após 60 s com `CooldownBar`, 429 com horário, Turnstile quando exigido) e `/reset-password/:token` (link inválido → "pedir novo link"; nova senha; sucesso com "Fazer login").
+- **`components/PasswordStrengthMeter.tsx`** — indicador de força extraído do `InvitePage`.
+- **`pages/LoginPage.tsx`** — link "Esqueci minha senha" sob o campo de senha, levando o e-mail digitado. **`pages/InvitePage.tsx`** — mesmo link nos estados "senha já criada" e "faça login". **`routes/AppRoutes.tsx`** — rotas públicas.
+- Testes: `features/passwordReset/passwordReset.test.tsx`, `pages/login/LoginPage.test.tsx`, `features/invite/InvitePage.test.tsx`.
+
+### Fixed — api 0.78.3 · app 0.97.1 — convite já usado orienta o login
+
+Caso real (2026-11-11): cliente criou a senha, clicou de novo no link do e-mail e viu "Convite inválido" (o link é de uso único); achou que o acesso estava quebrado.
+
+#### Backend (api/) — `users`, `auth`
+
+- **`users/domain/services/inviteAccess.ts`** — `inviteUsability` (função pura): `USABLE` | `ALREADY_ACCEPTED` | `INVALID`; aceito vence expirado. Teste em `inviteAccess.test.ts`.
+- **`shared/errors/internal/TeamErrors.ts`** — `InviteAlreadyAcceptedError` (`409 INVITE_ALREADY_ACCEPTED`).
+- **`auth/presentation/routes/invite.routes.ts`**, **`users/application/use-cases/AcceptInviteUseCase.ts`** — link já aceito devolve 409 `INVITE_ALREADY_ACCEPTED` em vez de 404 `INVITE_INVALID` (inexistente/expirado seguem 404). Painel antigo trata qualquer erro como inválido: compatível.
+
+#### Frontend (app/) — `invite`
+
+- **`pages/InvitePage.tsx`**, **`features/invite/strings.ts`** — estado "Sua senha já foi criada" com botão "Fazer login" quando a API responde `INVITE_ALREADY_ACCEPTED` (ao abrir e ao enviar). Teste em `features/invite/InvitePage.test.tsx`. Doc: `docs/arquitetura-central-billing.md`, "Primeiro acesso".
+
 ### Added — app 0.97.0 — login com compra, primeiro acesso, vídeo e botão de suporte
 
 #### Frontend (app/)

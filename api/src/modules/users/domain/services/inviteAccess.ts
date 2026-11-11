@@ -37,3 +37,19 @@ export function decideInviteAccess(input: InviteAccessInput): InviteAccessDecisi
 export function isFirstAccessInvite(input: { invitedById: string | null; hasPassword: boolean }): boolean {
   return input.invitedById === null && !input.hasPassword;
 }
+
+/**
+ * Estado do link de convite. `ALREADY_ACCEPTED` é separado de `INVALID` para o painel dizer
+ * "sua senha já foi criada, faça login" a quem clica de novo no e-mail (o link é de uso único).
+ * Aceito vence expirado: quem já usou o link deve ser mandado ao login, não a pedir outro convite.
+ */
+export type InviteUsability = 'USABLE' | 'ALREADY_ACCEPTED' | 'INVALID';
+
+export function inviteUsability(
+  invite: { acceptedAt: Date | null; expiresAt: Date } | null,
+  now: Date,
+): InviteUsability {
+  if (!invite) return 'INVALID';
+  if (invite.acceptedAt) return 'ALREADY_ACCEPTED';
+  return invite.expiresAt < now ? 'INVALID' : 'USABLE';
+}

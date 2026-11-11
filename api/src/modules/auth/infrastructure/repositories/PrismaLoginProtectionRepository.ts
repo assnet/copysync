@@ -8,7 +8,7 @@ import type {
   LoginEventInput,
 } from '../../domain/contracts/ILoginProtectionRepository';
 
-const RESET_EVENTS = ['LOGIN_OK', 'LOGIN_CODE_VERIFIED'];
+const RESET_EVENTS = ['LOGIN_OK', 'LOGIN_CODE_VERIFIED', 'PASSWORD_RESET_OK'];
 /** Teto de linhas lidas por consulta: as regras só olham poucas falhas. */
 const MAX_ROWS = 50;
 
@@ -23,7 +23,7 @@ export class PrismaLoginEventRepository implements ILoginEventRepository {
         type: input.type,
         email: input.email,
         ip: input.ip,
-        userId: input.type === 'LOGIN_OK' || input.type === 'LOGIN_CODE_VERIFIED' ? input.userId : null,
+        userId: RESET_EVENTS.includes(input.type) ? input.userId : null,
         userAgent: input.userAgent,
       },
       select: { id: true },

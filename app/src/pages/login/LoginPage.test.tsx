@@ -7,6 +7,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { APP_NAME } from '@/shared/branding/brand';
 import { BUY_NOW_PATH, INTRO_VIDEO_EMBED_URL, INTRO_VIDEO_POSTERS } from '@/features/platformLinks/links';
 import { THANK_YOU_PATH } from '@/features/thankYou/strings';
+import { FORGOT_PASSWORD_PATH, passwordResetStrings } from '@/features/passwordReset/strings';
 import { LoginIntroVideo } from './LoginIntroVideo';
 import { LOGIN_COPY } from './loginContent';
 
@@ -23,12 +24,18 @@ function FirstAccessProbe() {
   return <p>destino:{from}</p>;
 }
 
+function ForgotProbe() {
+  const email = (useLocation().state as { email?: string } | null)?.email;
+  return <p>esqueci:{email ?? 'vazio'}</p>;
+}
+
 const renderLogin = (mode: 'light' | 'dark' = 'light') =>
   renderWithTheme(
     <MemoryRouter initialEntries={['/login']}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path={THANK_YOU_PATH} element={<FirstAccessProbe />} />
+        <Route path={FORGOT_PASSWORD_PATH} element={<ForgotProbe />} />
       </Routes>
     </MemoryRouter>,
     mode,
@@ -52,6 +59,21 @@ describe('LoginPage', () => {
     expect(link).toHaveAttribute('href', THANK_YOU_PATH);
     await userEvent.click(link);
     expect(screen.getByText('destino:login')).toBeInTheDocument();
+  });
+
+  it('"Esqueci minha senha" leva ao pedido do link com o e-mail digitado', async () => {
+    renderLogin();
+    await userEvent.type(screen.getByLabelText(new RegExp(LOGIN_COPY.form.email)), 'ana@x.com');
+    const link = screen.getByRole('link', { name: passwordResetStrings.forgotLink });
+    expect(link).toHaveAttribute('href', FORGOT_PASSWORD_PATH);
+    await userEvent.click(link);
+    expect(screen.getByText('esqueci:ana@x.com')).toBeInTheDocument();
+  });
+
+  it('"Esqueci minha senha" sem e-mail digitado não leva state', async () => {
+    renderLogin('dark');
+    await userEvent.click(screen.getByRole('link', { name: passwordResetStrings.forgotLink }));
+    expect(screen.getByText('esqueci:vazio')).toBeInTheDocument();
   });
 
   it('não carrega o player antes do clique em nenhuma das fachadas (desktop e mobile)', () => {

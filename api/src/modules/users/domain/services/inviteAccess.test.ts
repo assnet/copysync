@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideInviteAccess, isFirstAccessInvite, type InviteAccessInput } from './inviteAccess';
+import { decideInviteAccess, inviteUsability, isFirstAccessInvite, type InviteAccessInput } from './inviteAccess';
 
 const base: InviteAccessInput = {
   hasPassword: false, isSuperAdmin: false, invitedById: null, inviteTenantId: 't1', memberTenantIds: [],
@@ -27,5 +27,22 @@ describe('isFirstAccessInvite', () => {
     expect(isFirstAccessInvite({ invitedById: null, hasPassword: false })).toBe(true);
     expect(isFirstAccessInvite({ invitedById: null, hasPassword: true })).toBe(false);
     expect(isFirstAccessInvite({ invitedById: 'u9', hasPassword: false })).toBe(false);
+  });
+});
+
+describe('inviteUsability', () => {
+  const now = new Date('2026-11-11T12:00:00Z');
+  const future = new Date('2026-11-18T12:00:00Z');
+  const past = new Date('2026-11-01T12:00:00Z');
+  it('inexistente ou expirado: inválido', () => {
+    expect(inviteUsability(null, now)).toBe('INVALID');
+    expect(inviteUsability({ acceptedAt: null, expiresAt: past }, now)).toBe('INVALID');
+  });
+  it('pendente dentro do prazo: utilizável', () => {
+    expect(inviteUsability({ acceptedAt: null, expiresAt: future }, now)).toBe('USABLE');
+  });
+  it('já aceito: ALREADY_ACCEPTED, mesmo expirado', () => {
+    expect(inviteUsability({ acceptedAt: past, expiresAt: future }, now)).toBe('ALREADY_ACCEPTED');
+    expect(inviteUsability({ acceptedAt: past, expiresAt: past }, now)).toBe('ALREADY_ACCEPTED');
   });
 });

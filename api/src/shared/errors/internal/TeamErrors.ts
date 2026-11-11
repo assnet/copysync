@@ -24,6 +24,13 @@ export class InviteInvalidError extends AppError {
   }
 }
 
+/** Link de convite já usado (uso único). O painel orienta a fazer login em vez de "convite inválido". */
+export class InviteAlreadyAcceptedError extends AppError {
+  constructor() {
+    super('INVITE_ALREADY_ACCEPTED', 'Invite was already accepted', 409);
+  }
+}
+
 export class LastAdminError extends AppError {
   constructor() {
     super('LAST_ADMIN', 'Cannot deactivate the last admin of a tenant', 409);
