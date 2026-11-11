@@ -46,6 +46,8 @@ export interface RenderOfferStoryOutput {
   provider: AffiliateProvider;
   affiliateUrl: string;
   attributionVerified: boolean;
+  /** O link colado era de outro afiliado e foi recriado com a credencial do tenant. */
+  linkRebuilt: boolean;
   price: StoryPrice;
   coupon: { code: string; discountPercent: number | null } | null;
   warnings: OfferStoryWarning[];
@@ -67,7 +69,7 @@ export class RenderOfferStoryUseCase {
 
     const coupon = this.parseCoupon(input.coupon);
 
-    // Erros OFFER_* (allowlist, dono do link, sem afiliação) sobem como estão
+    // Erros da extração (allowlist, credencial, recriação, API da loja) sobem com o status original
     const resolved = await this.deps.resolveProduct.execute(tenantId, input.url);
     const { product } = resolved;
     const title = product.title?.trim();
@@ -102,6 +104,7 @@ export class RenderOfferStoryUseCase {
       provider: resolved.provider,
       affiliateUrl: resolved.affiliateUrl,
       attributionVerified: resolved.attributionVerified,
+      linkRebuilt: resolved.linkRebuilt,
       price,
       coupon,
       warnings: OFFER_STORY_WARNINGS.filter((w) => warnings.has(w)),

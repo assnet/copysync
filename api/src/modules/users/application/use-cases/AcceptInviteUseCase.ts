@@ -4,12 +4,12 @@ import { PrismaUserRepository } from '../../infrastructure/repositories/PrismaUs
 import { PrismaUserInviteRepository } from '../../infrastructure/repositories/PrismaUserInviteRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { User } from '../../domain/entities/User';
-import { decideInviteAccess } from '../../domain/services/inviteAccess';
+import { decideInviteAccess, inviteUsability } from '../../domain/services/inviteAccess';
 import { hashInviteToken } from '../../../../shared/utils/generateInviteToken';
 import { hashPassword } from '../../../../shared/utils/hash';
 import { validatePasswordPolicy } from '../../../../shared/utils/passwordPolicy';
 import { normalizeEmail } from '../../../../shared/utils/normalizeEmail';
-import { InviteInvalidError, AlreadyMemberError } from '../../../../shared/errors/internal/TeamErrors';
+import { InviteInvalidError, InviteAlreadyAcceptedError, AlreadyMemberError } from '../../../../shared/errors/internal/TeamErrors';
 import { UnauthorizedError } from '../../../../shared/errors/internal/AuthErrors';
 import { randomUUID } from 'node:crypto';
 
@@ -35,9 +35,9 @@ export class AcceptInviteUseCase {
       const auditRepo = new PrismaAuditLogRepository(tx);
 
       const invite = await inviteRepo.findByTokenHash(tokenHash);
-      if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) {
-        throw new InviteInvalidError();
-      }
+      const usability = inviteUsability(invite, new Date());
+      if (usability === 'ALREADY_ACCEPTED') throw new InviteAlreadyAcceptedError();
+      if (usability === 'INVALID' || !invite) throw new InviteInvalidError();
 
       const email = normalizeEmail(invite.email);
       const existingUser = await userRepo.findByEmail(email);

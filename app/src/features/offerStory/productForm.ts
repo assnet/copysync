@@ -2,7 +2,9 @@
  * Lógica pura do passo "Produto": validação local (espelha o schema/use case da API, que revalida)
  * e tradução de erro da API → campo + texto. Sem React, sem HTTP.
  */
-import { isSheinUnavailable } from '@/features/plans/planGate';
+import { AFFILIATE_LINK_ERROR_CODES, describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
+import { plansAbove } from '@/features/linkRotation/planUpsell';
+import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf } from '@/features/plans/planGate';
 import { OFFER_STORY_RULES as R } from './productForm.rules';
 import { offerStoryStrings } from './strings';
 import type { OfferStoryApiError, RenderOfferStoryInput } from './types';
@@ -75,24 +77,25 @@ export function toRenderInput(templateId: string, form: ProductFormState): Rende
   return input;
 }
 
-export const OFFER_STORY_ERROR_CODES = [
+/** Códigos com texto próprio do story (`strings.ts`). */
+const STORY_ERROR_CODES = [
   'OFFER_URL_UNSUPPORTED',
   'OFFER_PRODUCT_NOT_FOUND',
-  'OFFER_LINK_NOT_OWNED',
-  'OFFER_LINK_NOT_AFFILIATE',
   'OFFER_STORY_PRODUCT_INCOMPLETE',
   'OFFER_INVALID_INPUT',
   'VALIDATION_ERROR',
   'OFFER_STORY_TEMPLATE_NOT_FOUND',
   'MEDIA_PROCESSING_FAILED',
   'MEDIA_PROCESSOR_UNAVAILABLE',
-  'AFFILIATE_API_ACCESS_DENIED',
-  'AFFILIATE_CREDENTIAL_REJECTED',
-  'MARKETPLACE_RISK_NOT_ACCEPTED',
-  'AFFILIATE_API_RATE_LIMITED',
-  'AFFILIATE_API_UNAVAILABLE',
+  'AFFILIATE_IDENTIFIER_NOT_LINKED',
+  'PLAN_LIMIT_REACHED',
   'RATE_LIMITED',
 ] as const;
+
+type StoryErrorCode = (typeof STORY_ERROR_CODES)[number];
+
+/** Tudo o que o story trata; os de link de afiliado têm texto e ação no módulo comum (`affiliateLinks`). */
+export const OFFER_STORY_ERROR_CODES = [...STORY_ERROR_CODES, ...AFFILIATE_LINK_ERROR_CODES] as const;
 
 export type OfferStoryErrorCode = (typeof OFFER_STORY_ERROR_CODES)[number];
 
@@ -100,13 +103,15 @@ export type OfferStoryErrorCode = (typeof OFFER_STORY_ERROR_CODES)[number];
 const URL_CODES: readonly string[] = [
   'OFFER_URL_UNSUPPORTED',
   'OFFER_PRODUCT_NOT_FOUND',
-  'OFFER_LINK_NOT_OWNED',
-  'OFFER_LINK_NOT_AFFILIATE',
   'OFFER_STORY_PRODUCT_INCOMPLETE',
   // Credencial/API de afiliado da loja do link: a correção é no link ou nas credenciais.
-  'AFFILIATE_API_ACCESS_DENIED',
+  'AFFILIATE_CREDENTIAL_REQUIRED',
   'AFFILIATE_CREDENTIAL_REJECTED',
+  'AFFILIATE_API_ACCESS_DENIED',
   'MARKETPLACE_RISK_NOT_ACCEPTED',
+  'OFFER_LINK_REBUILD_FAILED',
+  // Etiqueta da conta do ML não vinculada: vincular nas credenciais
+  'AFFILIATE_IDENTIFIER_NOT_LINKED',
 ];
 
 /** `field` da API → campo do formulário (`coupon`/`coupon.code` → código). */
@@ -124,13 +129,39 @@ export interface OfferStoryErrorView {
   message: string;
   /** Template sumiu do catálogo: volta ao passo 1. */
   backToTemplates: boolean;
+  /** Correção em outra tela (botão sob o link). Ausente = sem ação. */
+  action?: OfferStoryErrorAction;
+  /** Erro de credencial do módulo comum: código e `meta` do botão de conectar a loja. */
+  connect?: OfferStoryConnectError;
 }
+
+export interface OfferStoryConnectError {
+  code: string;
+  meta?: unknown;
+}
+
+/** O que o passo do produto oferece sob o link além do texto do erro. */
+export type OfferStoryErrorAction = 'credentials' | 'plans';
 
 /** Erro da API → texto pt-BR e onde mostrar. Nunca usa a `message` crua da API. */
 export function mapRenderError(err: unknown): OfferStoryErrorView {
   const e = (err ?? {}) as OfferStoryApiError;
   if (isSheinUnavailable(e)) return { field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false };
-  const code = (OFFER_STORY_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as OfferStoryErrorCode) : null;
+  // Etiqueta da conta do ML sem vaga: planos; no maior plano, credenciais para desvincular outra
+  if (isMercadoLivreTagLimit(e)) {
+    const limit = planLimitOf(e);
+    const canUpgrade = limit == null || plansAbove('mercadoLivreTags', limit).length > 0;
+    return { field: 'url', message: t.errors.mercadoLivreTagLimit(limit, canUpgrade), backToTemplates: false, action: canUpgrade ? 'plans' : 'credentials' };
+  }
+  if (e.code === 'AFFILIATE_IDENTIFIER_NOT_LINKED') {
+    return { field: 'url', message: t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED, backToTemplates: false, action: 'credentials' };
+  }
+  const shared = describeAffiliateLinkError(e.code, e.meta);
+  if (shared) {
+    const view: OfferStoryErrorView = { field: URL_CODES.includes(e.code!) ? 'url' : null, message: shared.message, backToTemplates: false };
+    return shared.action === 'credentials' ? { ...view, action: 'credentials', connect: { code: e.code!, meta: e.meta } } : view;
+  }
+  const code = (STORY_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as StoryErrorCode) : null;
   if (!code) return { field: null, message: t.errors.generic, backToTemplates: false };
   if (URL_CODES.includes(code)) return { field: 'url', message: t.errors[code], backToTemplates: false };
   if (code === 'OFFER_INVALID_INPUT' || code === 'VALIDATION_ERROR') {

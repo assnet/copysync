@@ -136,7 +136,10 @@ mesmo com o usuário já vinculado. Regra única em `users/domain/services/invit
 - com senha → login (`requiresLogin: true`, aceite devolve `REQUIRES_LOGIN`/`LOGIN_REQUIRED`);
 - sem senha + convite do sistema (`invitedById` null: cobrança ou super admin) → define senha;
 - sem senha + convite de pessoa → define senha só se a conta não estiver em outro tenant nem for super admin; senão
-  `REQUIRES_LOGIN`/`SET_PASSWORD_FIRST` (o cliente usa "esqueci a senha").
+  `REQUIRES_LOGIN`/`SET_PASSWORD_FIRST` (o cliente usa "esqueci a senha": [`recuperacao-de-senha.md`](recuperacao-de-senha.md)).
+- link já usado (`acceptedAt`): `409 INVITE_ALREADY_ACCEPTED` no `GET` e no aceite (`inviteUsability`), separado do
+  `404 INVITE_INVALID` (inexistente/expirado). O painel mostra "Sua senha já foi criada" + login. Não juntar os dois de
+  volta: quem clica de novo no e-mail após criar a senha achava que o acesso estava quebrado (caso real 2026-11-11).
 - já membro do tenant do convite: aceitar grava hash + `passwordSetAt`, marca o convite e **não** duplica `UserTenant` nem
   muda o papel.
 - `GET /auth/invites/:token` devolve `firstAccess` (`isFirstAccessInvite`: convite do sistema + conta sem senha; aditivo,

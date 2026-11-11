@@ -72,6 +72,8 @@ export function OfferStoryPage() {
             <ProductStep
               form={w.form}
               errors={w.errors}
+              urlErrorAction={w.urlErrorAction}
+              urlErrorConnect={w.urlErrorConnect}
               generalError={w.generalError}
               onDismissError={w.dismissError}
               generating={w.generating}

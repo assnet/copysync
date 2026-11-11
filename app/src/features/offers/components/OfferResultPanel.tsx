@@ -17,6 +17,7 @@ import type { OfferDraft } from '../hooks/useOfferDraft';
 import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
 import { Blurred, useBlur } from '@/features/privacy';
+import { LinkRebuiltNotice } from '@/features/affiliateLinks/components/LinkRebuiltNotice';
 
 const t = offerStrings.actions;
 
@@ -29,6 +30,8 @@ interface Props {
   missingLink: boolean;
   needsManualData: boolean;
   aiFallback: boolean;
+  /** O link colado foi trocado por um da conta do usuário (aviso sem URL). */
+  linkRebuilt?: boolean;
   groups: OfferConfigGroup[];
   saving: boolean;
   regenerating: boolean;
@@ -118,7 +121,9 @@ export function OfferResultPanel(props: Props) {
     >
       <Stack spacing={2}>
         {aiFallback && <Alert severity="info">{offerStrings.preview.aiFallback}</Alert>}
-        {!offer.attributionVerified && offer.provider !== 'SHOPEE' && (
+        {props.linkRebuilt && <LinkRebuiltNotice provider={offer.provider} />}
+        {/* Só oferta antiga: as novas sempre saem com o link da conta do usuário */}
+        {!offer.attributionVerified && (
           <Alert severity="warning">{offerStrings.editor.attributionUnverified}</Alert>
         )}
 

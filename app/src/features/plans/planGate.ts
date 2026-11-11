@@ -28,3 +28,18 @@ export function isPlanFeatureUnavailable(err: unknown, featureKey?: string): boo
 /** Shein fora do plano (403 ao usar link da Shein). */
 export const isSheinUnavailable = (err: unknown): boolean =>
   typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'PLAN_FEATURE_UNAVAILABLE' && planFeatureKeyOf(err) === PLAN_FEATURE_KEYS.shein;
+
+/** Chaves de limite (`meta.key` do 403 `PLAN_LIMIT_REACHED`) com tratamento próprio nas telas. */
+export const PLAN_LIMIT_KEYS = {
+  mercadoLivreTags: 'mercado_livre_affiliate_tags',
+} as const;
+
+/** Link com etiqueta da conta do ML não vinculada e sem vaga no plano (403 `PLAN_LIMIT_REACHED`). */
+export const isMercadoLivreTagLimit = (err: unknown): boolean =>
+  typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'PLAN_LIMIT_REACHED' && planFeatureKeyOf(err) === PLAN_LIMIT_KEYS.mercadoLivreTags;
+
+/** `meta.limit` numérico do erro, quando vier. */
+export function planLimitOf(err: unknown): number | null {
+  const limit = (err as { meta?: { limit?: unknown } | null } | null)?.meta?.limit;
+  return typeof limit === 'number' ? limit : null;
+}

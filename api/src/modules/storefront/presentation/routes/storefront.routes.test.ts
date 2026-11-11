@@ -9,6 +9,7 @@ import { GetStorefrontUseCase } from '../../application/use-cases/GetStorefrontU
 import { PreviewStorefrontUseCase } from '../../application/use-cases/PreviewStorefrontUseCase';
 import { SetStorefrontImageUseCase } from '../../application/use-cases/SetStorefrontImageUseCase';
 import { CheckStorefrontSlugUseCase } from '../../application/use-cases/CheckStorefrontSlugUseCase';
+import { ExtractStorefrontOfferUseCase } from '../../application/use-cases/ExtractStorefrontOfferUseCase';
 import { StorefrontOfferStatus, StorefrontStatus } from '../../domain/enums/StorefrontEnums';
 import type { StorefrontOffer } from '../../domain/entities/StorefrontOffer';
 import type { Storefront } from '../../domain/entities/Storefront';
@@ -98,6 +99,7 @@ describe('GET /storefront', () => {
     expect(data.storefront.tenantId).toBeUndefined();
     expect(data.offers.drafts[0]).toMatchObject({ id: 'of-1', attributionVerified: false, publishedAt: null });
     expect(data.offers.drafts[0].tenantId).toBeUndefined();
+    expect(data.offers.drafts[0]).not.toHaveProperty('linkRebuilt');
     expect(data.publicUrl).toBe('https://ana.copysync.com.br');
   });
 
@@ -179,5 +181,26 @@ describe('demais rotas', () => {
   it('reordenar com status inválido → 400', async () => {
     const res = await app.inject({ method: 'PUT', url: `${PREFIX}/offers/order`, headers: AUTH, payload: { status: 'ARCHIVED', ids: [] } });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('POST /storefront/offers', () => {
+  it.each([true, false])('201: item criado com linkRebuilt=%s dentro de data', async (linkRebuilt) => {
+    const execute = vi.spyOn(ExtractStorefrontOfferUseCase.prototype, 'execute')
+      .mockResolvedValue({ offer: { ...offer, attributionVerified: true }, linkRebuilt });
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/offers`, headers: AUTH, payload: { url: 'https://s.shopee.com.br/x' } });
+    expect(res.statusCode).toBe(201);
+    expect(execute).toHaveBeenCalledWith({ url: 'https://s.shopee.com.br/x', tenantId: 'tenant-a' });
+    const data = res.json().data;
+    expect(data).toMatchObject({ id: 'of-1', attributionVerified: true, linkRebuilt });
+    expect(data.tenantId).toBeUndefined();
+  });
+
+  it('erro do link sobe com o status original', async () => {
+    const { AffiliateCredentialRequiredError } = await import('../../../../shared/errors/internal/OfferErrors');
+    vi.spyOn(ExtractStorefrontOfferUseCase.prototype, 'execute').mockRejectedValue(new AffiliateCredentialRequiredError('SHOPEE'));
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/offers`, headers: AUTH, payload: { url: 'https://s.shopee.com.br/x' } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
   });
 });

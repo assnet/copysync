@@ -6,7 +6,7 @@
  * - sem nome de marca do produto; termo de produto é "sessão", nunca "instância"
  */
 import type { RotationChannel, RotationGroupStatus, RotationInviteBlockedReason, RotationStatus, RotationStrategy } from './types';
-import type { PlanLimitKind } from './planUpsell';
+import type { NextPlanOffer, PlanLimitKind } from './planUpsell';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const count = (n: number) => n.toLocaleString('pt-BR');
@@ -19,7 +19,15 @@ interface UpgradeKindCopy {
   unit: (n: number) => string;
   compareAria: (now: number, planName: string, next: number) => string;
   topPlanBody: (limit: number) => string;
+  /** Kinds que comparam com todos os planos acima: frase única com cada plano e seu limite. */
+  allPlans?: (offers: readonly NextPlanOffer[]) => string;
 }
+
+/** "a", "a e b", "a, b e c". */
+const joinList = (items: readonly string[]) =>
+  items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
+
+const tags = (n: number) => `${count(n)} ${plural(n, 'etiqueta', 'etiquetas')}`;
 
 const sessionsCopy = (channel: string, benefit: string): UpgradeKindCopy => ({
   title: `Mais contas de ${channel} para a sua operação`,
@@ -108,6 +116,21 @@ const UPGRADE_KINDS: Record<PlanLimitKind, UpgradeKindCopy> = {
   telegramMonitoredGroups: channelGroupsCopy('Telegram', 'monitorados', 'Mais fontes de ofertas, capturadas e reescritas com o seu link.'),
   whatsappBroadcastGroups: channelGroupsCopy('WhatsApp', 'de disparo', 'Suas ofertas chegam a mais gente, nos horários que você definir.'),
   telegramBroadcastGroups: channelGroupsCopy('Telegram', 'de disparo', 'Suas ofertas chegam a mais gente, nos horários que você definir.'),
+  mercadoLivreTags: {
+    title: 'Use mais etiquetas do Mercado Livre',
+    body: (limit) =>
+      limit <= 1
+        ? 'Este link usa outra etiqueta da sua conta do Mercado Livre, e o seu plano inclui só a etiqueta principal. Com um plano maior você vincula outras etiquetas e usa todas nos seus links.'
+        : `Este link usa outra etiqueta da sua conta do Mercado Livre, e as ${tags(limit)} do seu plano já estão em uso. Com um plano maior você vincula mais etiquetas.`,
+    benefit: 'Uma etiqueta para cada campanha, canal ou nicho, todas aceitas nos seus links.',
+    nextPlan: (planName, limit) => `No ${planName} são ${tags(limit)} do Mercado Livre.`,
+    unit: (n) => plural(n, 'etiqueta', 'etiquetas'),
+    compareAria: (now, planName, next) => `Hoje: ${tags(now)} do Mercado Livre. No ${planName}: ${tags(next)}.`,
+    topPlanBody: (limit) =>
+      `Você já usa as ${tags(limit)} do Mercado Livre do seu plano. Para usar esta, desvincule outra em Credenciais de afiliado.`,
+    allPlans: (offers) =>
+      `${joinList(offers.map((o, i) => (i === 0 ? `No ${o.name} são ${tags(o.limit)}` : `no ${o.name}, ${count(o.limit)}`)))}.`,
+  },
 };
 
 export const linkRotationStrings = {
@@ -376,6 +399,11 @@ export const linkRotationStrings = {
       UPGRADE_KINDS[kind].compareAria(now, planName, next),
     topPlanTitle: 'Você já está no maior plano',
     topPlanBody: (limit: number, kind: PlanLimitKind) => UPGRADE_KINDS[kind].topPlanBody(limit),
+    /** Frase com todos os planos acima (kinds com `listAll`); sem texto próprio, junta as do `nextPlan`. */
+    allPlans: (offers: readonly NextPlanOffer[], kind: PlanLimitKind) =>
+      UPGRADE_KINDS[kind].allPlans?.(offers) ?? offers.map((o) => UPGRADE_KINDS[kind].nextPlan(o.name, o.limit)).join(' '),
+    compareAllAria: (now: number, offers: readonly NextPlanOffer[], kind: PlanLimitKind) =>
+      [`Seu plano: ${count(now)} ${UPGRADE_KINDS[kind].unit(now)}.`, ...offers.map((o) => `${o.name}: ${count(o.limit)} ${UPGRADE_KINDS[kind].unit(o.limit)}.`)].join(' '),
     topPlanDismiss: 'Entendi',
     cta: 'Ver planos',
     dismiss: 'Agora não',

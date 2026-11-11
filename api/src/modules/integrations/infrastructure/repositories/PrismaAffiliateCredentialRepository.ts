@@ -103,23 +103,51 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     // ID que segue a sessão (Shein): substitui o atual no create e no update.
     const override = input.publicIdentifierOverride ? { publicIdentifier: input.publicIdentifierOverride } : {};
 
-    // (1) Só as colunas de sessão; a linha nasce com a tag da extensão, se houver.
+    // Lista vazia = leitura não confiável (conta do ML sempre tem etiqueta): não toca nas colunas.
+    const account = input.accountIdentifiers?.length ? input.accountIdentifiers : null;
+
+    // Etiqueta em uso informada pelo sync, na grafia da conta; fora da lista = nenhuma.
+    const tag = input.publicIdentifierIfEmpty?.toLowerCase();
+    const inUse = (tag && account?.find((a) => a.toLowerCase() === tag)) || null;
+    let primaryReplaced = false;
+
+    // (1) Colunas de sessão (+ lista da conta); a linha nasce com a tag da extensão, se houver.
+    // Com lista, a poda das vinculadas e a troca da principal que sumiu da conta vão na mesma
+    // transação e leem a coluna recém-gravada.
     let raw = await withUniqueRetry(() =>
-      prisma.affiliateCredential.upsert({
-        where: { tenantId_provider: key },
-        create: {
-          ...key,
-          publicIdentifier: input.publicIdentifierOverride ?? input.publicIdentifierIfEmpty ?? null,
-          ...session,
-          ...REJECTION_CLEARED,
-          ...rejection,
-        },
-        update: { ...session, ...rejection, ...override },
+      prisma.$transaction(async (tx) => {
+        const row = await tx.affiliateCredential.upsert({
+          where: { tenantId_provider: key },
+          create: {
+            ...key,
+            publicIdentifier: input.publicIdentifierOverride ?? input.publicIdentifierIfEmpty ?? null,
+            ...session,
+            ...REJECTION_CLEARED,
+            ...rejection,
+            ...(account && { accountIdentifiers: account }),
+          },
+          update: { ...session, ...rejection, ...override, ...(account && { accountIdentifiers: account }) },
+        });
+        if (!account) return row;
+        await tx.$executeRaw`
+          UPDATE "affiliate_credentials" SET "linkedIdentifiers" = ARRAY(
+            SELECT l FROM unnest("linkedIdentifiers") WITH ORDINALITY AS t(l, i)
+            WHERE lower(l) IN (SELECT lower(a) FROM unnest("accountIdentifiers") AS a)
+            ORDER BY i
+          )::text[]
+          WHERE "id" = ${row.id}`;
+        // Principal que deixou de existir na conta (troca de conta): vira a em uso ou nenhuma.
+        primaryReplaced = !input.publicIdentifierOverride && (await tx.$executeRaw`
+          UPDATE "affiliate_credentials" SET "publicIdentifier" = ${inUse}
+          WHERE "id" = ${row.id} AND "publicIdentifier" IS NOT NULL
+            AND lower("publicIdentifier") NOT IN (SELECT lower(a) FROM unnest("accountIdentifiers") AS a)`) > 0;
+        return tx.affiliateCredential.findUniqueOrThrow({ where: { id: row.id } });
       }),
     );
 
     // (2) Tag só preenche ID vazio — condição no WHERE, atômica: o painel sempre vence.
-    if (!input.publicIdentifierOverride && input.publicIdentifierIfEmpty && raw.publicIdentifier === null) {
+    // Principal recém-trocada já decidiu (tag fora da conta não entra).
+    if (!input.publicIdentifierOverride && !primaryReplaced && input.publicIdentifierIfEmpty && raw.publicIdentifier === null) {
       const { count } = await prisma.affiliateCredential.updateMany({
         where: { ...key, publicIdentifier: null },
         data: { publicIdentifier: input.publicIdentifierIfEmpty },
@@ -148,11 +176,28 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
         sessionInvalidAt: null,
         sessionAccountHash: null,
         sessionAccountKeyVersion: null,
+        ...Mapper.clearedIdentifierColumns(),
         // Sem sessão = "não conectado": a rejeição (hoje só nasce com sessão, ML) sai junto
         ...REJECTION_CLEARED,
       },
     });
     return count > 0;
+  }
+
+  async setIdentifiers(
+    tenantId: string,
+    provider: AffiliateProvider,
+    primary: string,
+    linked: string[],
+  ): Promise<AffiliateCredential | 'ACCOUNT_CHANGED' | null> {
+    // CAS contra um sync no meio: `hasEvery` compara exato, então os valores são a grafia da conta.
+    const { count } = await prisma.affiliateCredential.updateMany({
+      where: { tenantId, provider, accountIdentifiers: { hasEvery: [primary, ...linked] } },
+      data: { publicIdentifier: primary, linkedIdentifiers: linked },
+    });
+    const raw = await prisma.affiliateCredential.findFirst({ where: { tenantId, provider } });
+    if (!raw) return null;
+    return count === 0 ? 'ACCOUNT_CHANGED' : Mapper.toDomain(raw);
   }
 
   /** `updateMany`: linha apagada no meio vira no-op, nunca P2025. */

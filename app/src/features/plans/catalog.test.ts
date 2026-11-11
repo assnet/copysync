@@ -44,13 +44,13 @@ describe('catálogo de planos (vitrine)', () => {
     const bySlug = Object.fromEntries(
       PLAN_CATALOG.map(({ slug, limits: l }) => [
         slug,
-        { whatsapp: [l.linkRotations, l.linkRotationGroups], telegram: [l.telegramLinkRotations, l.telegramLinkRotationGroups] },
+        { whatsapp: [l.linkRotations, l.linkRotationGroups], telegram: [l.telegramLinkRotations, l.telegramLinkRotationGroups], mercadoLivreTags: l.mercadoLivreTags },
       ]),
     );
     expect(bySlug).toEqual({
-      lite: { whatsapp: [1, 3], telegram: [0, 0] },
-      pro: { whatsapp: [1, 5], telegram: [1, 5] },
-      max: { whatsapp: [2, 10], telegram: [2, 10] },
+      lite: { whatsapp: [1, 3], telegram: [0, 0], mercadoLivreTags: 1 },
+      pro: { whatsapp: [1, 5], telegram: [1, 5], mercadoLivreTags: 2 },
+      max: { whatsapp: [2, 10], telegram: [2, 10], mercadoLivreTags: 10 },
     });
   });
 
@@ -61,13 +61,14 @@ describe('catálogo de planos (vitrine)', () => {
         {
           whatsapp: [l.whatsappSessions, l.monitoredGroups, l.broadcastGroups],
           telegram: [l.telegramSessions, l.telegramMonitoredGroups, l.telegramBroadcastGroups],
+          mercadoLivreTags: l.mercadoLivreTags,
         },
       ]),
     );
     expect(bySlug).toEqual({
-      lite: { whatsapp: [1, 1, 5], telegram: [0, 0, 0] },
-      pro: { whatsapp: [1, 2, 10], telegram: [1, 2, 10] },
-      max: { whatsapp: [2, 6, 40], telegram: [2, 6, 40] },
+      lite: { whatsapp: [1, 1, 5], telegram: [0, 0, 0], mercadoLivreTags: 1 },
+      pro: { whatsapp: [1, 2, 10], telegram: [1, 2, 10], mercadoLivreTags: 2 },
+      max: { whatsapp: [2, 6, 40], telegram: [2, 6, 40], mercadoLivreTags: 10 },
     });
   });
 

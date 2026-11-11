@@ -6,6 +6,7 @@ import { InvitePage } from '@/pages/InvitePage';
 import { APP_NAME } from '@/shared/branding/brand';
 import { inviteService, type InviteInfo } from '@/services/invite.service';
 import { inviteStrings as t } from './strings';
+import { FORGOT_PASSWORD_PATH, passwordResetStrings } from '@/features/passwordReset/strings';
 
 vi.mock('@/components/ThemeModeSelector', () => ({ ThemeModeSelector: () => null }));
 
@@ -46,5 +47,34 @@ describe('InvitePage', () => {
   it('API antiga sem firstAccess: texto de equipe', async () => {
     renderInvite(base);
     expect(await screen.findByText(t.subtitle)).toBeInTheDocument();
+  });
+
+  it('link já usado: orienta o login em vez de "convite inválido"', async () => {
+    vi.spyOn(inviteService, 'getInfo').mockRejectedValue({ code: 'INVITE_ALREADY_ACCEPTED', status: 409 });
+    renderWithTheme(
+      <MemoryRouter initialEntries={['/invite/tok']}>
+        <Routes><Route path="/invite/:token" element={<InvitePage />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(t.alreadyAcceptedTitle)).toBeInTheDocument();
+    expect(screen.queryByText(t.invalidTitle)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: t.goToLogin })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: passwordResetStrings.forgotLink })).toHaveAttribute('href', FORGOT_PASSWORD_PATH);
+  });
+
+  it('conta existente (precisa de login): oferece "Esqueci minha senha"', async () => {
+    renderInvite({ ...base, requiresPassword: false, requiresLogin: true });
+    expect(await screen.findByText(t.existingUserTitle)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: passwordResetStrings.forgotLink })).toHaveAttribute('href', FORGOT_PASSWORD_PATH);
+  });
+
+  it('link inexistente ou expirado: segue "convite inválido"', async () => {
+    vi.spyOn(inviteService, 'getInfo').mockRejectedValue({ code: 'INVITE_INVALID', status: 404 });
+    renderWithTheme(
+      <MemoryRouter initialEntries={['/invite/tok']}>
+        <Routes><Route path="/invite/:token" element={<InvitePage />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(t.invalidTitle)).toBeInTheDocument();
   });
 });

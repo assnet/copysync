@@ -41,4 +41,18 @@ describe('PlanCard', () => {
     fireEvent.click(screen.getByRole('button', { name: t.card.ctaNewTab(max.name) }));
     expect(assign).toHaveBeenCalledWith(url);
   });
+
+  it.each([['lite', '1 etiqueta'], ['pro', '2 etiquetas'], ['max', '10 etiquetas']] as const)(
+    'mostra o limite de etiquetas do Mercado Livre do %s abaixo da tabela, com dica', (slug, text) => {
+      const plan = PLAN_CATALOG.find((p) => p.slug === slug)!;
+      renderWithTheme(<PlanCard plan={plan} period="monthly" getCheckoutUrl={() => url} />);
+      const row = screen.getByTestId('plan-ml-tags');
+      expect(t.mercadoLivreTags.value(plan.limits.mercadoLivreTags)).toBe(text);
+      expect(row).toHaveTextContent(t.mercadoLivreTags.label);
+      expect(row).toHaveTextContent(text);
+      expect(row).toHaveAccessibleDescription(t.mercadoLivreTags.hint);
+      const table = screen.getByRole('table');
+      expect(table.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    },
+  );
 });

@@ -9,6 +9,7 @@ const usage: SubscriptionUsage = {
   linkRotations: { whatsapp: 1, telegram: 0 },
   offerGenerationsToday: 12,
   aiRequestsToday: null,
+  mercadoLivreAffiliateTags: 2,
 };
 
 const byKey = (items: ReturnType<typeof buildSubscriptionLimits>) => Object.fromEntries(items.map((i) => [i.key, i]));
@@ -26,6 +27,15 @@ describe('subscriptionLimits', () => {
     expect(m.telegram_broadcast_groups).toMatchObject({ channel: 'telegram', kind: 'count' });
     expect(m.offer_generations_per_day).toMatchObject({ channel: null, kind: 'daily' });
     expect(m.storefront_enabled).toMatchObject({ channel: null, kind: 'feature' });
+    expect(m.mercado_livre_affiliate_tags).toMatchObject({ channel: null, kind: 'count' });
+  });
+
+  it('etiquetas do ML: uso do contador; ausente/lixo vale 1 (nunca sem limite); valor do plano', () => {
+    const empty = byKey(buildSubscriptionLimits({}, usage));
+    expect(empty.mercado_livre_affiliate_tags).toMatchObject({ used: 2, limit: 1, enabled: true });
+    expect(byKey(buildSubscriptionLimits({ mercado_livre_affiliate_tags: 'x' }, usage)).mercado_livre_affiliate_tags.limit).toBe(1);
+    expect(byKey(buildSubscriptionLimits({ mercado_livre_affiliate_tags: 10 }, usage)).mercado_livre_affiliate_tags)
+      .toMatchObject({ used: 2, limit: 10, enabled: true });
   });
 
   it('snapshot vazio: numérico ilimitado, feature desligada salvo mention_all/ai_rewrite', () => {

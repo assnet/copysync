@@ -103,7 +103,9 @@ describe('convite / primeiro acesso', () => {
     expect(await verifyPassword(PASS, u.passwordHash!)).toBe(true);
     expect(db.links).toEqual([{ userId: 'u1', tenantId: 't1', role: 'OPERATOR' }]);
     expect((db.invites as InviteRow[])[0].acceptedAt).toBeInstanceOf(Date);
-    expect((await info('tok')).statusCode).toBe(404);
+    const again = await info('tok');
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe('INVITE_ALREADY_ACCEPTED');
   });
 
   it('sem senha e sem senha no corpo: erro, nada gravado', async () => {
@@ -133,12 +135,16 @@ describe('convite / primeiro acesso', () => {
     expect((await info('tok')).json().data).toMatchObject({ requiresPassword: true, firstAccess: false });
   });
 
-  it('token expirado ou já aceito: 404', async () => {
+  it('token expirado ou inexistente: 404; já aceito: 409 INVITE_ALREADY_ACCEPTED', async () => {
     invite('exp', { expiresAt: new Date(Date.now() - 1) });
     invite('used', { acceptedAt: new Date() });
-    for (const t of ['exp', 'used', 'nao-existe']) {
+    for (const t of ['exp', 'nao-existe']) {
       expect((await info(t)).statusCode).toBe(404);
       expect((await accept(t)).statusCode).toBe(404);
+    }
+    for (const res of [await info('used'), await accept('used')]) {
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe('INVITE_ALREADY_ACCEPTED');
     }
   });
 });

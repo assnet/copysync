@@ -38,7 +38,13 @@ export const offerStoryStrings = {
     subtitle: 'Buscamos foto, título e preço direto do anúncio.',
     linkLabel: 'Link do produto',
     linkPlaceholder: 'https://…',
-    linkHelp: 'Use o link da página do produto (não da vitrine ou loja): Mercado Livre, Shopee ou Amazon.',
+    /** Aceita link de qualquer afiliado: a API recria com a conta do usuário. */
+    linkHelp: 'Cole o link da página do produto no Mercado Livre, na Shopee ou na Amazon, mesmo que seja de outro afiliado. O link da arte sai com a sua comissão.',
+    /** Botão sob o link quando o erro tem correção em outra tela (conectar loja vem de `affiliateLinks`). */
+    errorActions: {
+      credentials: 'Ir para Credenciais de afiliado',
+      plans: 'Ver planos com mais etiquetas',
+    },
     couponToggle: 'Tem cupom?',
     couponHint: 'O código aparece em destaque na arte.',
     codeLabel: 'Código',
@@ -95,25 +101,27 @@ export const offerStoryStrings = {
     discountInvalid: `Use um número inteiro de ${OFFER_STORY_RULES.discountMin} a ${OFFER_STORY_RULES.discountMax}.`,
   },
 
+  /** Erros de link de afiliado (credencial, loja fora, aceite de risco) vêm de `features/affiliateLinks`. */
   errors: {
     generic: 'Algo deu errado. Tente de novo.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use o link do produto da Shopee, do Mercado Livre ou da Amazon.',
     OFFER_PRODUCT_NOT_FOUND: 'Não encontramos o produto desse link. Confira se é o link do produto.',
-    OFFER_LINK_NOT_OWNED: 'Esse link de afiliado é de outra conta. Use um link gerado na sua conta.',
-    OFFER_LINK_NOT_AFFILIATE: 'Esse link não tem a sua identificação de afiliado. Na Amazon, use o link com a sua tag.',
     OFFER_STORY_PRODUCT_INCOMPLETE: 'Não conseguimos ler o nome do produto; tente o link da página do produto.',
     OFFER_INVALID_INPUT: 'Confira os campos destacados.',
     VALIDATION_ERROR: 'Confira os campos destacados.',
     OFFER_STORY_TEMPLATE_NOT_FOUND: 'Esse template não existe mais. Escolha outro.',
     MEDIA_PROCESSING_FAILED: 'Não conseguimos montar a arte agora. Tente de novo em instantes.',
     MEDIA_PROCESSOR_UNAVAILABLE: 'O gerador de artes está ocupado. Tente de novo em alguns segundos.',
-    AFFILIATE_API_ACCESS_DENIED:
-      'Sua conta de afiliado ainda não tem acesso à Open API. Libere o acesso no painel de afiliado da Shopee e confira em Configurações → Credenciais de afiliado.',
-    AFFILIATE_CREDENTIAL_REJECTED: 'A loja recusou sua credencial de afiliado. Confira os dados em Configurações → Credenciais de afiliado.',
-    MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
     sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
-    AFFILIATE_API_RATE_LIMITED: 'A loja limitou as consultas por agora. Aguarde um instante e tente de novo.',
-    AFFILIATE_API_UNAVAILABLE: 'A loja não respondeu agora. Tente de novo em instantes.',
+    AFFILIATE_IDENTIFIER_NOT_LINKED: 'Este link usa outra etiqueta da sua conta do Mercado Livre. Vincule a etiqueta em Credenciais de afiliado para usar este link.',
+    PLAN_LIMIT_REACHED: 'Você chegou a um limite do seu plano. Veja os planos para ter mais.',
+    /** Etiqueta da conta do ML não vinculada e sem vaga no plano (`PLAN_LIMIT_REACHED` de etiquetas). */
+    mercadoLivreTagLimit: (limit: number | null, canUpgrade: boolean) =>
+      !canUpgrade && limit != null
+        ? `Este link usa outra etiqueta da sua conta do Mercado Livre e as ${limit} etiquetas do seu plano já estão em uso. Desvincule uma em Credenciais de afiliado para usar esta.`
+        : limit != null && limit <= 1
+          ? 'Este link usa outra etiqueta da sua conta do Mercado Livre, e o seu plano inclui só a etiqueta principal. Faça upgrade para usar mais etiquetas.'
+          : 'Este link usa outra etiqueta da sua conta do Mercado Livre, e as etiquetas do seu plano já estão em uso. Faça upgrade ou desvincule uma em Credenciais de afiliado.',
     RATE_LIMITED: 'Muitas artes seguidas. Aguarde um pouco e tente de novo.',
     rateLimitedSeconds: (s: number) => `Muitas artes seguidas. Aguarde ${s} ${s === 1 ? 'segundo' : 'segundos'} e tente de novo.`,
   },

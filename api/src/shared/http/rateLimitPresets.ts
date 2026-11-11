@@ -42,6 +42,15 @@ export const rateLimitPresets = {
     max: 60,
     timeWindow: '1 hour',
   },
+  /**
+   * Gerador de ofertas: gerar oferta de link (expansão + recriação do link na loja + IA). Por tenant
+   * por instância; a cota diária do plano só conta oferta gravada, então tentativa que falha só
+   * esbarra aqui (risco aceito, como a vitrine).
+   */
+  offerGenerate: {
+    max: 60,
+    timeWindow: '1 hour',
+  },
   /** Links de redirecionamento da plataforma (`/public/redirects/:slug`), por IP. */
   publicRedirect: {
     max: 60,

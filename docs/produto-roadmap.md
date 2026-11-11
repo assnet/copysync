@@ -20,16 +20,16 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 |---|---|---|---|---|
 | 1 | 📱 Conexão WhatsApp | Conecta números do cliente à ferramenta (QR / pairing code) | `sessions`, `messaging` (Baileys) | ✅ existe |
 | 2 | ✈️ Conexão Telegram | Conecta conta Telegram para monitorar e postar | `messaging` engine `telegram` ([doc](sessoes-telegram.md)) | 🟡 conexão e limite por plano (api 0.51.0 · app 0.64.0); falta monitorar/disparar por Telegram |
-| 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre, Amazon e Shein para gerar links | `integrations/affiliate-credentials` | ✅ (Shein: api 0.78.0 · app 0.95.0 · extensão 3.4.0, só MAX, [doc](afiliado-shein.md); smoke T16 pendente) |
+| 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre, Amazon e Shein para gerar links | `integrations/affiliate-credentials` | ✅ (Shein: api 0.78.0 · app 0.95.0 · extensão 3.4.0, só MAX, [doc](afiliado-shein.md); smoke T16 pendente). Desde api 0.81.0 a credencial é obrigatória para gerar oferta, vitrine e story da loja |
 | 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` (`docs/monitoramento-grupos.md`) | 🟡 WhatsApp, oferta montada e IA prontos; falta imagem e Telegram |
 | 5 | 📤 Grupos de disparo | Grupos do cliente que recebem as ofertas | `campaigns/broadcast-groups` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
 | 7 | 🤖 Reescrita com IA | Reescreve o texto de cada oferta automaticamente | `assistants` (`docs/ia-provedores.md`) | ✅ gerador e monitoramento (`textMode: AI`) |
-| 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offers` (`docs/gerador-de-ofertas.md`) | ✅ v2: link do próprio afiliado, cupom, público-alvo com IA, marcar todos (`docs/gerador-de-ofertas.md`) |
+| 8 | ⚡ Gerador de ofertas | Cola o link → monta oferta (foto, preço, texto) e dispara | `campaigns/offers` (`docs/gerador-de-ofertas.md`) | ✅ v2: cupom, público-alvo com IA, marcar todos; link sempre do tenant, recriado com a credencial dele a partir de qualquer link do produto (api 0.81.0 · app 0.100.0, `docs/gerador-de-ofertas.md`) |
 | 9 | 🔄 Gestor de Links | Um link único que distribui pessoas entre os grupos | `link-rotation` ([doc](rodizio-de-links.md)) | ✅ |
 | 10 | 📢 Disparo em massa | O que é postado num grupo é espelhado nos outros | `campaigns/broadcast-mirror` | ⏳ |
-| 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `offer-story` ([doc](story-de-oferta.md)) | ✅ MAX |
-| 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` ([doc](pagina-de-ofertas.md)) | ✅ Página de Ofertas (PRO/MAX) |
+| 11 | 📸 Story de oferta | Gera stories de oferta prontos para Instagram | `offer-story` ([doc](story-de-oferta.md)) | ✅ MAX (link sempre do tenant, api 0.81.0) |
+| 12 | 🛍️ Site de ofertas | Vitrine pública com as ofertas, para colocar na bio | `storefront` ([doc](pagina-de-ofertas.md)) | ✅ Página de Ofertas (PRO/MAX; link sempre do tenant, api 0.81.0) |
 | 13 | 🎓 Conta | Aulas e suporte pelo WhatsApp | `tenants` (entitlements) + conteúdo externo | ⏳ |
 | 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
 | 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
@@ -83,6 +83,7 @@ guarda o plano, não o preço.
 | Gestor de Links — Telegram (links · grupos por link) | — | 1 · 5 | 2 · 10 |
 | Menção a todos os participantes | — | ✅ | ✅ |
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
+| Etiquetas do Mercado Livre vinculadas (principal incluída) | 1 | 2 | 10 |
 | Marketplace Shein (sessão pela extensão, aviso de risco) | — | — | ✅ |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
 | Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
@@ -111,6 +112,11 @@ PRO 2/10, MAX 6/40. Gestor de Links (canal = engine da sessão do rodízio): `li
 PRO 1/5, MAX 2/10). Cada canal conta e corta sozinho; `PLAN_LIMIT_REACHED` (403) leva `meta.key` do canal.
 `cross_session_dispatch` só é exigido com **2+ sessões do mesmo canal**; WhatsApp + Telegram juntos
 sempre podem. Nada de chave literal em use case: `channelLimitKey(kind, engine)` / `limitKeyOfChannel`.
+
+**Etiquetas do Mercado Livre** (`mercado_livre_affiliate_tags`, api 0.80.0): LITE 1, PRO 2, MAX 10, principal incluída;
+ausente/`null` = **1** (não é ilimitado; `identifierLimitOf`). Não é por canal. Link com etiqueta da conta não
+vinculada: com vaga `AFFILIATE_IDENTIFIER_NOT_LINKED` (422), sem vaga `PLAN_LIMIT_REACHED` (403, `meta.key` da chave).
+Regra completa: [`integracoes-credenciais-afiliado.md`](integracoes-credenciais-afiliado.md).
 
 ### Carga por plano (entrada do estudo de arquitetura)
 

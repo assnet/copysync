@@ -119,6 +119,11 @@ IPs da Cloudflare (se voltar, a hospedagem mudou: rever esta regra).
 4. `LOGIN_GUARD_MODE=enforce`; observar logs (`turnstile rejected`, `login blocked`).
 5. Só então `LOGIN_EMAIL_OTP=on`.
 
+## Recuperação de senha
+
+"Esqueci minha senha" usa o mesmo Turnstile (`assertHuman`) e grava `PASSWORD_RESET_OK` ao concluir, que zera a
+contagem de falhas e a suspeita do e-mail (posse do e-mail provada pelo link). Ver [`recuperacao-de-senha.md`](recuperacao-de-senha.md).
+
 ## O que não fazer
 
 - Não revelar se o e-mail existe (mensagem, status ou tempo diferente por caso).

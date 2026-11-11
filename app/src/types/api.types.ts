@@ -203,6 +203,26 @@ export interface AffiliateCredentialItem {
   rejectedAt: string | null;
   rejectedCode: string | null;
   updatedAt: string;
+  /** Etiquetas da conta vistas na última sincronização (ML). Ausente = `[]`. */
+  accountIdentifiers?: string[];
+  /** Vinculadas além da principal (`publicIdentifier`), em ordem. Ausente = `[]`. */
+  linkedIdentifiers?: string[];
+  /** Total permitido pelo plano, principal incluída. `null`/ausente = provider sem lista. */
+  identifierLimit?: number | null;
+}
+
+/** `GET|PUT /integrations/affiliate-credentials/:provider/identifiers`. */
+export interface AffiliateIdentifiers {
+  account: string[];
+  primary: string | null;
+  linked: string[];
+  limit: number;
+  used: number;
+}
+
+export interface SetAffiliateIdentifiersRequest {
+  primary: string;
+  linked: string[];
 }
 
 /** Aviso de risco do marketplace (só os que exigem aceite, ex.: Shein). `acceptedAt` null = versão vigente sem aceite. */
@@ -375,6 +395,8 @@ export interface GenerateOfferResponse {
   /** A IA não respondeu; o texto veio do modelo padrão. */
   aiFallback: boolean;
   aiErrorCode?: string;
+  /** O link colado não era da conta do tenant: a API gerou outro com a credencial dele. */
+  linkRebuilt: boolean;
 }
 
 export interface RegenerateOfferResponse {

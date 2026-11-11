@@ -59,6 +59,7 @@ export const renderOfferStoryResponse = envelope({
     provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] },
     affiliateUrl: { type: 'string' },
     attributionVerified: { type: 'boolean' },
+    linkRebuilt: { type: 'boolean' },
     price: {
       type: 'object',
       additionalProperties: false,

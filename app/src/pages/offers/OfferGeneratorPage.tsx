@@ -4,10 +4,13 @@ import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
 import ChatOutlinedIcon from '@mui/icons-material/ChatOutlined';
 import { ConfirmDialog, EmptyState, PageHeader } from '@/components';
 import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
+import { ConnectStoreAction } from '@/features/affiliateLinks/components/ConnectStoreAction';
+import { isAffiliateLinkErrorCode } from '@/features/affiliateLinks/linkErrors';
 import { useOfferConfig } from '@/features/offers/hooks/useOfferConfig';
 import { useOfferGenerator } from '@/features/offers/hooks/useOfferGenerator';
 import { useOfferDraft } from '@/features/offers/hooks/useOfferDraft';
 import { OfferConfigWizard } from '@/features/offers/components/config/OfferConfigWizard';
+import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
 import { OfferConfigSummary } from '@/features/offers/components/OfferConfigSummary';
 import { OfferGeneratorForm } from '@/features/offers/components/OfferGeneratorForm';
 import { OfferResultPanel } from '@/features/offers/components/OfferResultPanel';
@@ -47,6 +50,10 @@ export function OfferGeneratorPage() {
   const offerSending = offer?.status === 'SENDING' || offer?.status === 'PAUSED';
   const linkFieldError = gen.error?.isLinkField ? gen.error.message : null;
   const pageError = gen.error && !gen.error.isLinkField ? gen.error : null;
+  // Limite do plano no erro (ex.: etiqueta do ML sem vaga): o aviso de upgrade substitui o alerta;
+  // dispensar o aviso limpa o erro
+  const planLimit = pageError?.planLimit ?? null;
+  const alertError = planLimit ? null : pageError;
   const intervalMin = cfg.config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min;
   const intervalMax = cfg.config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max;
   const showForm = !offer || composing;
@@ -65,10 +72,14 @@ export function OfferGeneratorPage() {
   };
 
   const errorAction = (err: OfferErrorView) => {
+    // Loja não conectada, recusada ou aceite pendente: rótulo por loja e volta para esta tela
+    if (err.action === 'credentials' && isAffiliateLinkErrorCode(err.code)) {
+      return <ConnectStoreAction code={err.code} meta={err.meta} />;
+    }
     if (err.action === 'credentials') {
       return (
         <Button color="inherit" size="small" component={RouterLink} to={CREDENTIALS_PATH}>
-          {err.code === 'AFFILIATE_CREDENTIAL_REJECTED' ? t.editCredentials : t.goToCredentials}
+          {err.code === 'AFFILIATE_IDENTIFIER_NOT_LINKED' ? t.linkAffiliateTag : t.goToCredentials}
         </Button>
       );
     }
@@ -153,8 +164,8 @@ export function OfferGeneratorPage() {
                   aiRewriteEnabled={cfg.aiRewriteEnabled}
                 />
                 {limitReached && gen.usage?.limit != null && <Alert severity="warning">{t.planLimit(gen.usage.limit)}</Alert>}
-                {!offer && pageError && (
-                  <Alert severity="error" onClose={gen.clearError} action={errorAction(pageError)}>{pageError.message}</Alert>
+                {!offer && alertError && (
+                  <Alert severity="error" onClose={gen.clearError} action={errorAction(alertError)}>{alertError.message}</Alert>
                 )}
               </Stack>
 
@@ -185,6 +196,7 @@ export function OfferGeneratorPage() {
                 missingLink={form.missingLink}
                 needsManualData={gen.needsManualData}
                 aiFallback={gen.aiFallback}
+                linkRebuilt={gen.linkRebuilt}
                 groups={cfg.groups}
                 saving={gen.saving}
                 regenerating={gen.regenerating}
@@ -271,15 +283,17 @@ export function OfferGeneratorPage() {
       />
 
       <Snackbar
-        open={Boolean(offer && pageError)}
+        open={Boolean(offer && alertError)}
         autoHideDuration={8000}
         onClose={(_, reason) => { if (reason !== 'clickaway') gen.clearError(); }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" variant="filled" onClose={gen.clearError} action={pageError ? errorAction(pageError) : undefined}>
-          {pageError?.message}
+        <Alert severity="error" variant="filled" onClose={gen.clearError} action={alertError ? errorAction(alertError) : undefined}>
+          {alertError?.message}
         </Alert>
       </Snackbar>
+
+      {planLimit && <PlanLimitBanner open onClose={gen.clearError} kind={planLimit.kind} limit={planLimit.limit} />}
 
       <Snackbar
         open={Boolean(notice)}

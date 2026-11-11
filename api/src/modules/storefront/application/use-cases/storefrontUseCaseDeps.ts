@@ -2,7 +2,6 @@ import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEnti
 import type { IUploadSessionStore } from '../../../media/domain/contracts/IUploadSessionStore';
 import type { IOfferImageFetcher } from '../../../campaigns/domain/contracts/IOfferImageFetcher';
 import type { ResolveAffiliateProductUseCase } from '../../../campaigns/application/use-cases/ResolveAffiliateProductUseCase';
-import type { BuildTenantAffiliateLinkUseCase } from '../../../campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase';
 import type { IStorefrontRepository } from '../../domain/contracts/IStorefrontRepository';
 import type { IStorefrontOfferRepository } from '../../domain/contracts/IStorefrontOfferRepository';
 import type { IStorefrontImageProcessor } from '../../domain/contracts/IStorefrontImageProcessor';
@@ -43,8 +42,6 @@ export interface StorefrontUseCaseDeps {
   readFile: (path: string) => Promise<Buffer>;
   /** Link colado → marketplace, dono e produto (mesma regra do gerador). */
   resolveProduct: Pick<ResolveAffiliateProductUseCase, 'execute'>;
-  /** Shopee: link do tenant pela API com a credencial dele. */
-  buildAffiliateLink: Pick<BuildTenantAffiliateLinkUseCase, 'execute'>;
   imageFetcher: IOfferImageFetcher;
   /** Namespace público `<slug>.<domínio>`: só leitura (check/suggest) fora de transação. */
   slugs: IPublicSlugRegistry;

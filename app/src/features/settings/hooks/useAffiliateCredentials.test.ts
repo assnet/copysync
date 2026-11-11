@@ -7,6 +7,7 @@ const service = vi.hoisted(() => ({
   upsert: vi.fn(),
   remove: vi.fn(),
   setStatus: vi.fn(),
+  setIdentifiers: vi.fn(),
 }));
 vi.mock('@/services/affiliateCredential.service', () => ({ affiliateCredentialService: service }));
 
@@ -154,5 +155,34 @@ describe('useAffiliateCredentials', () => {
 
     expect(seen).not.toContain(true);
     expect(h.result.current.entries.find((e) => e.spec.provider === 'AMAZON')?.item).toEqual(updated);
+  });
+
+  it('setIdentifiers funde principal, vinculadas e limite no item e recarrega em silêncio', async () => {
+    const ml: AffiliateCredentialItem = {
+      ...amazon, provider: 'MERCADO_LIVRE', publicIdentifier: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: [], identifierLimit: 2,
+    };
+    service.list.mockResolvedValue({ items: [ml], marketplaceAvailability: {} });
+    const h = renderHook(() => useAffiliateCredentials());
+    await waitFor(() => expect(h.result.current.loading).toBe(false));
+    service.list.mockClear();
+    service.list.mockImplementationOnce(() => new Promise(() => {}));
+    service.setIdentifiers.mockResolvedValue({ account: ['tag_a', 'tag_b'], primary: 'tag_b', linked: ['tag_a'], limit: 2, used: 2 });
+
+    await act(() => h.result.current.setIdentifiers('MERCADO_LIVRE', { primary: 'tag_b', linked: ['tag_a'] }));
+
+    expect(service.setIdentifiers).toHaveBeenCalledWith('MERCADO_LIVRE', { primary: 'tag_b', linked: ['tag_a'] });
+    expect(itemOf(h as never, 'MERCADO_LIVRE')).toMatchObject({ publicIdentifier: 'tag_b', linkedIdentifiers: ['tag_a'], identifierLimit: 2 });
+    expect(service.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('setIdentifiers recusado repassa o erro e não mexe no item', async () => {
+    const h = await setup();
+    service.setIdentifiers.mockRejectedValue(Object.assign(new Error('x'), { code: 'PLAN_LIMIT_REACHED' }));
+
+    await act(async () => {
+      await expect(h.result.current.setIdentifiers('AMAZON', { primary: 'a', linked: [] })).rejects.toThrow();
+    });
+
+    expect(itemOf(h, 'AMAZON')).toEqual(amazon);
   });
 });

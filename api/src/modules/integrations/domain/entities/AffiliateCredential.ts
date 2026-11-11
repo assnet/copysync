@@ -23,6 +23,10 @@ export interface AffiliateCredential {
   /** Loja recusou a credencial no uso; o monitoramento pausa a loja. Zera ao salvar chave/sessão nova. */
   rejectedAt: Date | null;
   rejectedCode: string | null;
+  /** Etiquetas da conta vistas na última sincronização da sessão. Ausente = `[]`. */
+  accountIdentifiers?: string[];
+  /** Vinculadas além da principal (`publicIdentifier`), em ordem. Ausente = `[]`. */
+  linkedIdentifiers?: string[];
   createdAt: Date;
   updatedAt: Date;
 }

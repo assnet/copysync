@@ -5,6 +5,7 @@ import type {
   AffiliateCredentialStatus,
   AffiliateProvider,
   MarketplaceAvailability,
+  SetAffiliateIdentifiersRequest,
   UpsertAffiliateCredentialRequest,
 } from '@/types/api.types';
 import { AFFILIATE_PROVIDERS, type AffiliateProviderSpec } from '../affiliateProviders';
@@ -125,6 +126,25 @@ export function useAffiliateCredentials() {
     }
   }, []);
 
+  /**
+   * Salva principal + vinculadas. Não otimista: o erro (limite do plano, etiqueta fora da conta)
+   * sobe para o diálogo. Após 2xx funde a resposta no item e recarrega em silêncio (máscara da principal).
+   */
+  const setIdentifiers = useCallback(async (provider: AffiliateProvider, body: SetAffiliateIdentifiersRequest) => {
+    const saved = await affiliateCredentialService.setIdentifiers(provider, body);
+    const previous = itemsRef.current[provider];
+    if (previous) {
+      setOne(provider, {
+        ...previous,
+        publicIdentifier: saved.primary,
+        accountIdentifiers: saved.account,
+        linkedIdentifiers: saved.linked,
+        identifierLimit: saved.limit,
+      });
+    }
+    void load({ silent: true });
+  }, [load]);
+
   const entries: AffiliateCredentialEntry[] = useMemo(
     () => AFFILIATE_PROVIDERS.map((spec) => ({
       spec, item: items[spec.provider], availability: availability[spec.provider],
@@ -142,6 +162,7 @@ export function useAffiliateCredentials() {
     upsert,
     remove,
     setStatus,
+    setIdentifiers,
     actionError,
     clearActionError: () => setActionError(null),
   };

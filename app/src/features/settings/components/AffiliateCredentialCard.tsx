@@ -11,6 +11,7 @@ import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import { ConfirmDialog } from '@/components';
+import { Blurred, useBlur } from '@/features/privacy';
 import type { AffiliateCredentialItem, AffiliateCredentialStatus } from '@/types/api.types';
 import type { AffiliateProviderSpec } from '../affiliateProviders';
 import { settingsStrings } from '../strings';
@@ -36,7 +37,7 @@ function stateChip(item?: AffiliateCredentialItem): ChipProps {
   return { label: t.statusConfigured, color: 'success', icon: <CheckCircleIcon /> };
 }
 
-function ReadOnlyField({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+function ReadOnlyField({ label, value, muted, blur }: { label: string; value: string; muted?: boolean; blur?: boolean }) {
   return (
     <Box sx={{ minWidth: 0 }}>
       <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
@@ -46,7 +47,7 @@ function ReadOnlyField({ label, value, muted }: { label: string; value: string; 
         color={muted ? 'text.secondary' : 'text.primary'}
         sx={{ fontFamily: muted ? undefined : 'monospace', wordBreak: 'break-all' }}
       >
-        {value}
+        <Blurred when={!!blur} inline radius={5}>{value}</Blurred>
       </Typography>
     </Box>
   );
@@ -62,6 +63,12 @@ export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemov
   const [confirmOpen, setConfirmOpen] = useState(false);
   const chip = stateChip(item);
   const active = item?.status === 'ACTIVE';
+  // Provider com lista de etiquetas (ML): `identifierLimit` numérico. Contagem efetiva respeita o plano.
+  const hasIdentifierList = item?.identifierLimit != null;
+  const blurIdentifiers = useBlur('affiliateCredentials.accountIdentifiers') && hasIdentifierList;
+  const linkedCount = item && hasIdentifierList
+    ? Math.min((item.publicIdentifier ? 1 : 0) + (item.linkedIdentifiers?.length ?? 0), Math.max(1, item.identifierLimit!))
+    : 0;
 
   return (
     <AffiliateCardShell spec={spec} chip={chip} chipMuted={!item}>
@@ -74,7 +81,13 @@ export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemov
               label={spec.publicField?.label ?? t.fields.sessionAffiliateId}
               value={item.publicIdentifierMasked ?? t.idPending}
               muted={!item.publicIdentifierMasked}
+              blur={blurIdentifiers}
             />
+            {hasIdentifierList && (
+              <Typography variant="caption" color="text.secondary" data-testid="linked-identifiers-count">
+                {t.identifiers.cardLinked(linkedCount)}
+              </Typography>
+            )}
             {spec.secretField && (
               <ReadOnlyField
                 label={spec.secretField.label}
@@ -116,7 +129,7 @@ export function AffiliateCredentialCard({ spec, item, busy, onConfigure, onRemov
           {item && (
             <Stack direction="row" alignItems="center" spacing={0.5}>
               <Tooltip title={active ? t.deactivateTooltip : t.activateTooltip}>
-                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="caption" color="text.secondary" component="span">{t.activeLabel}</Typography>
                   <Switch
                     size="small"

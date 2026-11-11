@@ -1,15 +1,17 @@
 # Gerador de ofertas
 
-Fluxo (v2, 0.22.0): **configurar** (sessão → grupos → confirmar) → **colar o próprio link de afiliado** → cupom e
+Fluxo (v2, 0.22.0): **configurar** (sessão → grupos → confirmar) → **colar qualquer link do produto** (o link da
+oferta sai sempre com a conta de afiliado do tenant, api 0.81.0) → cupom e
 público-alvo → texto por IA → prévia, editar ou gerar novamente → marcar todos (opcional) → disparar nos grupos, espaçado.
-Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1) e `.specs/features/offer-generator-v2/spec.md` (Parte C).
+Item 8 do roadmap. Specs: `.specs/features/offer-generator/` (v1), `.specs/features/offer-generator-v2/spec.md` (Parte C)
+e `.specs/features/tenant-affiliate-link/` (link sempre do tenant; substitui GEN-02).
 
 ## Onde está
 
 | Camada | Caminho |
 | --- | --- |
 | Domínio (funções puras) | `api/src/modules/campaigns/domain/services/` (`detectMarketplace`, `parseProductRef`, `verifyAffiliateLink`, `parseProductPage`, `buildOfferTextPrompt`, `renderOfferText`, `scheduleDispatches`, `startOfDayInZone`) |
-| Use cases | `campaigns/application/use-cases/` (Generate, Update, Regenerate, Send, ProcessDue, Config, Get, Usage) · `application/services/OfferTextComposer.ts` |
+| Use cases | `campaigns/application/use-cases/` (Generate, Update, Regenerate, Send, ProcessDue, Config, Get, Usage, `ResolveAffiliateProductUseCase`) · `application/services/OfferTextComposer.ts` · `application/services/TenantAffiliateLinkComposer.ts` |
 | HTTP externo | `campaigns/infrastructure/http/` (`ShopeeAffiliateClient`, `MercadoLivreAffiliateClient`, `SheinAffiliateClient`, `HttpShortLinkExpander`, `HttpProductPageReader`, `HttpOfferImageFetcher`) |
 | IA | porta `IAiTextGenerator` via `LazyAiTextGenerator` → `docs/ia-provedores.md` |
 | Envio | `ChatOfferMessageSender` → `SendStoredMediaMessageUseCase` (imagem, `imageMode = MEDIA`; WebP do ML sai como JPEG, ver `chat-midias-anexos.md` "Foto WebP") / `SendMessageUseCase` (texto, ou texto + prévia do link com `imageMode = LINK_PREVIEW`), com `mentions` |
@@ -30,23 +32,75 @@ no PUT (ausente = mantém; padrão 0–1440, todos os dias). Sem `scheduledAt`, 
 os envios na janela (`fitSlots`) e o claim não reivindica fora dela; `scheduledAt` explícito ignora a janela.
 Ver [`grupos-de-disparo-e-horario.md`](grupos-de-disparo-e-horario.md).
 
-## Link do usuário e verificação de dono
+## Link do tenant: sempre recriado ou provado (api 0.81.0)
 
-O link colado **é** o link de afiliado (o sistema não gera mais link). Após expandir (allowlist por salto):
+O link da oferta é **sempre** do tenant. O tenant cola qualquer link do produto (de outro afiliado, limpo ou dele) e
+`ResolveAffiliateProductUseCase` decide, num ponto só para gerador, Página de Ofertas e Story. Spec/design:
+`.specs/features/tenant-affiliate-link/` (TLINK-01..24). Até a 0.80.0 a regra era o inverso (o link colado era o
+link da oferta e link de terceiro era recusado com `OFFER_LINK_NOT_OWNED`/`OFFER_LINK_NOT_AFFILIATE`, códigos
+removidos na 0.81.0).
 
-| Loja | Prova | Regra |
-| --- | --- | --- |
-| Amazon | `tag=` | ≠ credencial → `OFFER_LINK_NOT_OWNED`; sem `tag` → `OFFER_LINK_NOT_AFFILIATE` |
-| Mercado Livre | `matt_word` ou `/social/<etiqueta>` (`meli.la`) | idem (comparação sem caixa) |
-| Shopee | — | sem verificação (aviso fixo no painel); `attributionVerified=false` |
-| Shein | `url_from=affiliate_koc_<memberId>` | ≠ ID da conta conectada → `OFFER_LINK_NOT_OWNED`; sem afiliação e com conta → link gerado pela sessão (`attributionVerified=true`); sem afiliação e sem conta → `OFFER_LINK_NOT_AFFILIATE` |
+Ordem, após expandir (allowlist por salto): plano (na URL colada e de novo se o redirect mudou o marketplace) →
+produto reconhecido (cupom/lista sem produto → `OFFER_URL_UNSUPPORTED`, mesmo sem loja conectada) → credencial
+(`resolveState` nos 4 marketplaces) → aceite de risco (Shein) → etiqueta da conta ML não vinculada → manter ou recriar.
+
+| Caso | Resultado |
+| --- | --- |
+| Link curto oficial já do tenant (`meli.la`, `onelink`…; `shouldKeepPastedLink` = `isShortLink` + `verifyAffiliateLink` = `verified`) | mantido, `linkRebuilt: false`; dados do produto pelo caminho de sempre (Shein: 1 `detailNew` só para dados) |
+| Qualquer outro (de terceiro, limpo, link longo do próprio tenant) | recriado por `TenantAffiliateLinkComposer` com a credencial do tenant, `linkRebuilt: true` |
+| Amazon | sempre reescrita: `https://<host amazon.com.br>/dp/<ASIN>?tag=<ID do tenant>` (padrão `www.amazon.com.br`) |
+| Shopee | `generateShortLink` com AppID/secret do tenant (sem secret = sem credencial utilizável) |
+| Mercado Livre | `createAffiliateLinks` com a sessão da extensão; etiqueta **vinculada efetiva** do link é mantida (`mlTag`), senão a principal |
+| Shein | `getProductShare` (`detailNew`) com a sessão; link e dados da mesma chamada |
+| Sem credencial utilizável | 422 `AFFILIATE_CREDENTIAL_REQUIRED` (`meta.provider`); nunca passa o link colado |
+| Credencial recusada (registro `rejected`) | 422 `AFFILIATE_CREDENTIAL_REJECTED` sem chamar a loja (não pausa a loja: só o builder do monitoramento chama `markRejected`) |
+| Loja não devolveu link ou link fora da allowlist (`isSupportedShareLink`, nos 4) | 422 `OFFER_LINK_REBUILD_FAILED` (`meta { provider, reason }`, ex. `ML_100`, `NOT_ALLOWED`) |
+| Loja limitou / fora do ar / negou a API (Shopee 10035, API de afiliados não aprovada) | `AFFILIATE_API_RATE_LIMITED` / `…_UNAVAILABLE` / `…_ACCESS_DENIED`, sem tradução |
+
+Nada da URL de origem sobrevive na recriação além do produto (sem `tag`, `matt_word`, `matt_tool`, `utm_*`).
+`attributionVerified` é sempre `true` em oferta nova (campo mantido para legado e auditoria). `sourceUrl` = colado.
+Shopee sem acesso aprovado à Open API **deixa de gerar oferta** (antes passava com aviso fixo); liberar pelo
+formulário de ativação do painel de afiliado da Shopee (link no `AGENTS.md`).
+
+`linkRebuilt` vem **só** do Resolve e vai no envelope da geração (`{ offer, needsManualData, …, linkRebuilt }`),
+dentro de `data` na criação da vitrine e na resposta do story. Nunca derivar de `sourceUrl ≠ affiliateUrl` (oferta do
+monitoramento tem os dois diferentes).
+
+`TenantAffiliateLinkComposer` é o mesmo núcleo do `BuildTenantAffiliateLinkUseCase` do monitoramento (extraído sem
+mudar resultado, TLINK-23): sem expandir, sem gate de plano, sem `markRejected`, sem log de URL. A allowlist do link
+devolvido para Shopee e ML é aplicada no Resolve, não no composer (o monitoramento não muda).
+
+Etiquetas do ML (api 0.80.0): o conjunto aceito vem de `effectiveLinkedIdentifiers` com o limite de
+`mercado_livre_affiliate_tags` (`ResolveAffiliateProductUseCase`; vitrine e story herdam). Etiqueta da conta não
+vinculada → `AFFILIATE_IDENTIFIER_NOT_LINKED` (422, com vaga) ou `PLAN_LIMIT_REACHED` (403,
+`meta.key = mercado_livre_affiliate_tags`, sem vaga); etiqueta de terceiro é recriada com a do tenant. Regra,
+rebaixamento e o que não fazer: [`integracoes-credenciais-afiliado.md`](integracoes-credenciais-afiliado.md) ("Várias
+etiquetas do Mercado Livre"). No painel, `AFFILIATE_IDENTIFIER_NOT_LINKED` entra em `CREDENTIAL_CODES` (botão para as
+credenciais) e o `PLAN_LIMIT_REACHED` dessa chave tem ramo próprio em `offerErrors.ts` (`isMercadoLivreTagLimit`): o
+gerador abre o `PlanLimitBanner` com PRO e MAX; vitrine e story mostram texto + link para `?feature=mercadoLivreTags`.
+Monitoramento e link gerado pela sessão seguem com a principal.
+
+**Texto editado** (`UpdateOfferUseCase`, PATCH `/:id`): `findForeignMarketplaceLinks(novo, gravado, affiliateUrl)`
+acha link de host de marketplace que não é o `affiliateUrl` e **não estava** no texto gravado → 422
+`OFFER_TEXT_FOREIGN_LINK` (sem URL no meta nem no log). Links que já estavam (oferta do monitoramento tem até 8 do
+tenant) ficam. Extração por `campaigns/domain/services/extractUrls.ts` (`offerMessageText.ts` reexporta).
+
+**Prévia de link**: `pickPreviewUrl` usa só o `affiliateUrl`, e só se ele está no texto; senão a oferta sai sem
+prévia (ver [`mensagens-previa-de-link.md`](mensagens-previa-de-link.md)).
+
+**Painel** (`app/src/features/affiliateLinks/`): `linkErrors.ts` (`describeAffiliateLinkError`) é a fonte única de
+texto e ação dos erros de link para gerador (`offerErrors.ts`), vitrine (`storefrontForm.ts`) e story
+(`productForm.ts`); `strings.ts` tem os textos por loja; `ConnectStoreAction` ("Conectar <loja>",
+`/affiliates/credentials?returnTo=<tela>`) e `LinkRebuiltNotice` ("Link recriado com a sua conta …", sem URL, sem
+flag de privacidade nova). Campo "Link do produto"; o aviso fixo da Shopee saiu. Selo "comissão não verificada" só
+para item legado.
 
 Dados do produto (título, preços, foto) e foto no store: `ResolveProductDataUseCase` (api 0.41.0, extraído do
 `GenerateOfferUseCase` para o monitoramento reaproveitar). Vitrine social ML (`/social/<etq>?…&ref=…`) é perfil,
 não produto: `HttpProductPageReader` usa `parseMercadoLivreSocialPage` (1º `polycard`: `title.text`,
 `price.current_price/previous_price.value`, `pictures[0].id` + `picture_template` → `D_NQ_NP_2X_<id>-F.webp`).
 
-Sem credencial cadastrada da loja e com tag presente: passa como não verificado. Hosts aceitos
+Hosts aceitos
 (`detectMarketplace.ts`, subdomínio entra por sufixo): `shopee.com.br`, `shope.ee`, `shp.ee` (`br.shp.ee`, encurtador
 atual do app/painel Shopee BR), `shoope.top` (encurtador de **terceiro**, DivulgaLinks; não é da Shopee e só vale se o
 redirect cair em `shopee.com.br` — encurtador de terceiro novo entra assim, com teste de redirect para fora), `mercadolivre.com.br`, `mercadolivre.com`, `mercadolibre.com`, `meli.la`,
@@ -61,18 +115,21 @@ Encurtadores que vão à rede (`isShortLink`): os mesmos curtos + `mercadolivre.
 Link curto que cai em página sem produto (ex.: `s.shopee.com.br/…` → `shopee.com.br/m/cupom-de-desconto`) é
 "não suportado" de propósito: não há item para afiliar. Host novo entra nos dois lugares + teste.
 
-## Geração automática de link ML (F4)
+## Geração de link ML (F4)
 
-Quando o link colado é um produto ML **sem** `matt_word` ou `/social/` e o tenant tem sessão da extensão sincronizada:
+Todo link ML que não é o link curto oficial já do tenant é recriado com a sessão da extensão (sem sessão =
+`AFFILIATE_CREDENTIAL_REQUIRED`). Chamada feita pelo `TenantAffiliateLinkComposer`:
 
 1. `MercadoLivreAffiliateClient.createAffiliateLinks(cookies, [url], etiqueta)` chama a API interna do programa de afiliados
 2. Bootstrap: GET `/afiliados/linkbuilder` (redirect manual, até 3 saltos, Set-Cookie mesclado) → cookies temporários (`_csrf`, `_d2id`, `_mldataSessionId`). Redirect para login = `AFFILIATE_CREDENTIAL_REJECTED`. **Nunca** `/affiliate-program/link-builder`: responde 404 sem `_csrf` (incidente 2026-10-28)
-3. Se tag não foi passada, resolve via GET `/affiliate-program/api/v2/stripe/user/tags` (campo `in_use`)
+3. Etiqueta: a vinculada efetiva que veio no link (`mlTag`), senão a principal; sem nenhuma, resolve via GET `/affiliate-program/api/v2/stripe/user/tags` (campo `in_use`)
 4. POST `/affiliate-program/api/v2/affiliates/createLink` com `{ urls, tag }`, headers `Origin`, `Referer: /afiliados/linkbuilder` e `X-Requested-With` → `{ urls: [{ short_url }] }`. Item sem `short_url` traz `error_code` (100 URL inválida, 1001 tipo, 1004 fechado, 1008 condição): vira `code: ML_<n>` no log
-5. `short_url` vira o `affiliateUrl` da oferta, com `attributionVerified: true`
+5. `short_url` vira o `affiliateUrl` da oferta (passa pela allowlist no Resolve), com `attributionVerified: true` e `linkRebuilt: true`
 
-Degradação graciosa: API indisponível, sessão expirada ou rate limit → `OFFER_LINK_NOT_AFFILIATE` como antes. O tenant
-pode sempre colar seu próprio link de afiliado — a geração automática é fallback, não obrigação.
+Sem degradação para o link colado (api 0.81.0): item sem `short_url` → `OFFER_LINK_REBUILD_FAILED`; sessão recusada,
+rate limit ou ML fora do ar → `AFFILIATE_CREDENTIAL_REJECTED` / `AFFILIATE_API_RATE_LIMITED` /
+`AFFILIATE_API_UNAVAILABLE`. Sem retry automático. Até a 0.80.0 a falha caía em `OFFER_LINK_NOT_AFFILIATE` e a geração
+era só fallback (histórico).
 
 Rotas não documentadas do ML podem mudar sem aviso. Nunca logar cookies, body ou headers.
 
@@ -115,11 +172,11 @@ a 2ª chamada é recusada com 409 `OFFER_REGENERATE_USED` antes da IA. O painel 
 
 | Método | Path | Faz |
 | --- | --- | --- |
-| POST | `/` | `{ url, coupon?, audience? }` → 201 `{ offer, needsManualData, aiFallback, aiErrorCode? }` |
+| POST | `/` | `{ url, coupon?, audience? }` → 201 `{ offer, needsManualData, aiFallback, aiErrorCode?, linkRebuilt }`; 60/h por tenant (`rateLimitPresets.offerGenerate`, `perTenantRateLimit`, por instância) → 429 `RATE_LIMITED`. A cota diária só conta oferta gravada; o limite de taxa cobre a tentativa que falha |
 | GET | `/usage` | `{ used, limit }` |
 | GET / PUT | `/config` | configuração (acima) |
 | GET | `/:id` | oferta + `dispatches` |
-| PATCH | `/:id` | título, preços, texto, `imageUploadId`, `coupon`, `audience`, `mentionAll`. Só `DRAFT` |
+| PATCH | `/:id` | título, preços, texto, `imageUploadId`, `coupon`, `audience`, `mentionAll`. Só `DRAFT`. Texto com link de marketplace acrescentado → 422 `OFFER_TEXT_FOREIGN_LINK` |
 | POST | `/:id/regenerate` | `{ audience? }` → `{ offer, aiFallback }`; 409 `OFFER_CHANGED` se a oferta foi editada durante a geração; 409 `OFFER_REGENERATE_USED` se o uso único já foi gasto |
 | POST | `/:id/send` | 202; um envio por grupo, espaçado pelo intervalo da configuração |
 
@@ -186,6 +243,16 @@ Entitlement `offer_generations_per_day`: LITE 5, PRO 20, MAX ilimitado (decisão
 - Buscar URL fora da allowlist ou seguir redirect automático.
 - Logar corpo, headers, cookie `ssid`, assinatura ou segredo.
 - Gerar link de afiliado sem sessão válida da extensão (a geração automática exige sessão do ML sincronizada).
+
+Link do tenant (api 0.81.0, `.specs/features/tenant-affiliate-link/design.md`):
+
+- Devolver o link colado como alternativa quando a recriação falha.
+- Chamar `markRejected` fora do `BuildTenantAffiliateLinkUseCase`.
+- Chamar builder ou clientes de loja direto em storefront/offer-story.
+- Logar URL colada, link gerado ou corpo da loja.
+- Ler página de produto Shein; instalar lib de prévia; criar tabela ou cache.
+- Reintroduzir `unverified` como resultado aceito.
+- Derivar `linkRebuilt` de `sourceUrl ≠ affiliateUrl`.
 - Ligar o worker com banco de produção fora da Render.
 - Enviar sem passar por `OfferDispatch` com `notBefore`.
 - Buscar a página/og:image do produto para montar prévia de link (ver `mensagens-previa-de-link.md`).

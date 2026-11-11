@@ -5,24 +5,20 @@ import {
 } from '../../../../shared/errors/internal/OfferErrors';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
 import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
+import { isShortLink } from '../../domain/services/isShortLink';
+
+/** Reexportado: o teste e consumidores antigos importam daqui. */
+export { isShortLink };
 
 const log = logger.child({ module: 'HttpShortLinkExpander' });
 const TIMEOUT_MS = 8_000;
 const MAX_HOPS = 5;
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-const SHORT_HOSTS = new Set(['s.shopee.com.br', 'shope.ee', 'shp.ee', 'br.shp.ee', 'shoope.top', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in', 'meli.la', 'click1.mercadolivre.com.br', 'onelink.shein.com']);
 /** Shein: o onelink responde 200 com HTML e a URL do produto em `<input id="url">`, sem redirect. */
 const ONELINK_HOST = 'onelink.shein.com';
 const ONELINK_MAX_BYTES = 32 * 1024;
 const HTML_ENTITIES: Record<string, string> = { amp: '&', quot: '"', '#39': "'", '#x27': "'", lt: '<', gt: '>' };
-
-/** Só link curto conhecido vai para a rede; o resto já é a URL do produto. */
-export function isShortLink(url: URL): boolean {
-  const host = url.hostname.toLowerCase();
-  if (SHORT_HOSTS.has(host)) return true;
-  return host === 'mercadolivre.com' && (url.pathname.startsWith('/sec/') || url.pathname.startsWith('/social/'));
-}
 
 export class HttpShortLinkExpander implements IShortLinkExpander {
   async expand(url: URL): Promise<URL> {

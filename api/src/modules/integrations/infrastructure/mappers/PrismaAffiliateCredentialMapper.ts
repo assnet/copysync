@@ -45,6 +45,8 @@ export class PrismaAffiliateCredentialMapper {
       lastValidatedAt: raw.lastValidatedAt,
       rejectedAt: raw.rejectedAt,
       rejectedCode: raw.rejectedCode,
+      accountIdentifiers: raw.accountIdentifiers ?? [],
+      linkedIdentifiers: raw.linkedIdentifiers ?? [],
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };
@@ -65,6 +67,11 @@ export class PrismaAffiliateCredentialMapper {
       secretTag: blob.tag,
       keyVersion: blob.keyVersion,
     };
+  }
+
+  /** Listas de etiquetas zeradas (desconexão da sessão). */
+  static clearedIdentifierColumns() {
+    return { accountIdentifiers: [] as string[], linkedIdentifiers: [] as string[] };
   }
 
   static sessionColumns(blob: EncryptedBlob, syncedAt: Date) {

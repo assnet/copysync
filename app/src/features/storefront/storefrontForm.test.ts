@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { affiliateLinkStrings } from '@/features/affiliateLinks/strings';
 import { storefrontStrings as t } from './strings';
 import type { Storefront, StorefrontOffer, StorefrontOverview } from './types';
 import {
   SLUG_STATUSES,
   STOREFRONT_FORM_DEFAULTS,
+  errorAction,
   errorMessage,
   formFromOverview,
   isFormDirty,
@@ -193,7 +195,24 @@ describe('errorMessage', () => {
   it('Shein fora do plano e aceite pendente têm texto próprio', () => {
     expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } })).toBe(t.errors.sheinUnavailable);
     expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'storefront_enabled' } })).toBe(t.errors.PLAN_FEATURE_UNAVAILABLE);
-    expect(errorMessage({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toBe(t.errors.MARKETPLACE_RISK_NOT_ACCEPTED);
+    expect(errorMessage({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toBe(affiliateLinkStrings.errors.riskNotAccepted);
+  });
+
+  it('erros de link/credencial de afiliado usam o texto do módulo comum', () => {
+    expect(errorMessage({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } })).toBe(affiliateLinkStrings.errors.credentialRequired('SHOPEE'));
+    expect(errorMessage({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' })).toBe(affiliateLinkStrings.errors.credentialRequired(null));
+    expect(errorMessage({ code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'MERCADO_LIVRE' } })).toBe(affiliateLinkStrings.errors.rebuildFailed('MERCADO_LIVRE'));
+    expect(errorMessage('AFFILIATE_API_RATE_LIMITED')).toBe(affiliateLinkStrings.errors.storeUnavailable(null));
+    expect(errorMessage('AFFILIATE_API_UNAVAILABLE')).toBe(affiliateLinkStrings.errors.storeUnavailable(null));
+  });
+
+  it('publicar item com link não verificado tem texto próprio', () => {
+    expect(errorMessage({ status: 409, code: 'STOREFRONT_OFFER_LINK_UNVERIFIED' })).toBe(t.errors.STOREFRONT_OFFER_LINK_UNVERIFIED);
+  });
+
+  it('códigos removidos da API caem no genérico', () => {
+    expect(errorMessage('OFFER_LINK_NOT_OWNED')).toBe(t.errors.generic);
+    expect(errorMessage('OFFER_LINK_NOT_AFFILIATE')).toBe(t.errors.generic);
   });
 
   it.each([
@@ -206,20 +225,25 @@ describe('errorMessage', () => {
     'STOREFRONT_PUBLISHED_LIMIT',
     'STOREFRONT_NOT_FOUND',
     'STOREFRONT_ORDER_INVALID',
+    'STOREFRONT_OFFER_LINK_UNVERIFIED',
     'OFFER_URL_UNSUPPORTED',
-    'OFFER_LINK_NOT_OWNED',
-    'OFFER_LINK_NOT_AFFILIATE',
+    'OFFER_PRODUCT_NOT_FOUND',
+    'AFFILIATE_CREDENTIAL_REQUIRED',
+    'AFFILIATE_CREDENTIAL_REJECTED',
+    'AFFILIATE_API_ACCESS_DENIED',
+    'AFFILIATE_API_RATE_LIMITED',
+    'AFFILIATE_API_UNAVAILABLE',
+    'OFFER_LINK_REBUILD_FAILED',
+    'MARKETPLACE_RISK_NOT_ACCEPTED',
     'MEDIA_TOO_LARGE',
     'UNSUPPORTED_MEDIA_TYPE',
     'MEDIA_PROCESSING_FAILED',
     'RATE_LIMITED',
+    'AFFILIATE_IDENTIFIER_NOT_LINKED',
+    'PLAN_LIMIT_REACHED',
   ])('traduz %s sem cair no genérico', (code) => {
     expect(errorMessage(code)).not.toBe(t.errors.generic);
     expect(errorMessage({ code })).toBe(errorMessage(code));
-  });
-
-  it('Amazon sem tag pede o link com a tag', () => {
-    expect(errorMessage('OFFER_LINK_NOT_AFFILIATE')).toMatch(/Amazon.*tag/);
   });
 
   it('RATE_LIMITED usa os segundos do meta', () => {
@@ -230,6 +254,38 @@ describe('errorMessage', () => {
     expect(errorMessage({ code: 'X', message: 'stack' })).toBe(t.errors.generic);
     expect(errorMessage(null)).toBe(t.errors.generic);
     expect(errorMessage('toString')).toBe(t.errors.generic);
+  });
+});
+
+describe('etiquetas do Mercado Livre', () => {
+  const tagLimit = (limit?: number) => ({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'mercado_livre_affiliate_tags', ...(limit != null ? { limit } : {}) } });
+
+  it('não vinculada com vaga: texto próprio e ação de credenciais', () => {
+    const err = { code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } };
+    expect(errorMessage(err)).toBe(t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED);
+    expect(errorAction(err)).toBe('credentials');
+  });
+
+  it('sem vaga: texto de etiquetas e ação de planos; no maior plano, credenciais', () => {
+    expect(errorMessage(tagLimit(1))).toBe(t.errors.mercadoLivreTagLimit(1, true));
+    expect(errorAction(tagLimit(1))).toBe('plans');
+    expect(errorAction(tagLimit())).toBe('plans');
+    expect(errorMessage(tagLimit(10))).toBe(t.errors.mercadoLivreTagLimit(10, false));
+    expect(errorAction(tagLimit(10))).toBe('credentials');
+  });
+
+  it('credencial faltando/recusada e aceite de risco levam às credenciais', () => {
+    expect(errorAction({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } })).toBe('credentials');
+    expect(errorAction({ code: 'AFFILIATE_CREDENTIAL_REJECTED' })).toBe('credentials');
+    expect(errorAction('MARKETPLACE_RISK_NOT_ACCEPTED')).toBe('credentials');
+  });
+
+  it('outros erros não têm ação', () => {
+    expect(errorAction({ code: 'OFFER_LINK_REBUILD_FAILED' })).toBeNull();
+    expect(errorAction({ code: 'AFFILIATE_API_UNAVAILABLE' })).toBeNull();
+    expect(errorAction({ code: 'STOREFRONT_OFFER_LINK_UNVERIFIED' })).toBeNull();
+    expect(errorAction({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'offers_per_day' } })).toBeNull();
+    expect(errorAction(null)).toBeNull();
   });
 });
 

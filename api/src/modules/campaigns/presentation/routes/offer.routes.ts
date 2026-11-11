@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
+import { perTenantRateLimit, rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
 import { offersContainer } from '../../infrastructure/offersContainer';
 import type { OfferAudience } from '../../domain/enums/OfferAudience';
 import type { OfferImageMode } from '../../domain/enums/OfferImageMode';
@@ -64,7 +65,9 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: GenerateBody }>(
     '/',
     {
-      preHandler,
+      // Array próprio: o rate-limit anexa o hook ao `preHandler` da rota; no compartilhado valeria para todas
+      preHandler: [...preHandler],
+      config: { rateLimit: perTenantRateLimit(rateLimitPresets.offerGenerate) },
       schema: {
         tags,
         summary: 'Gerar oferta a partir do link do produto',

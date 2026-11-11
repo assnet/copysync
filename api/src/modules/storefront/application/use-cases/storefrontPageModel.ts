@@ -5,6 +5,11 @@ import { keepOfferCategory } from '../../domain/services/storefrontRules';
 
 const LABELS: ReadonlyMap<string, string> = new Map(STOREFRONT_CATEGORIES.map((c) => [c.key, c.label]));
 
+/** Só item com link provado do tenant vai à página pública (legado não verificado fica gravado, mas fora). */
+export function publicStorefrontOffers(offers: readonly StorefrontOffer[]): StorefrontOffer[] {
+  return offers.filter((o) => o.attributionVerified);
+}
+
 /** Endereço público da página: sempre https, `<slug>.<hostname>`. */
 export function storefrontPublicUrl(hostname: string, slug: string): string {
   return `https://${slug}.${hostname}`;

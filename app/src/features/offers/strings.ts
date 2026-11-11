@@ -16,7 +16,7 @@ const CHANNEL_NAME: Record<LimitChannel, string> = { whatsapp: 'WhatsApp', teleg
 export const offerStrings = {
   page: {
     title: 'Gerador de ofertas',
-    subtitle: 'Cole seu link de afiliado, escolha o público e dispare nos seus grupos',
+    subtitle: 'Cole o link do produto, escolha o público e dispare nos seus grupos',
     loadError: 'Não foi possível carregar a configuração do gerador.',
     retry: 'Tentar novamente',
     newOfferShort: 'Novo',
@@ -208,15 +208,14 @@ export const offerStrings = {
 
   form: {
     title: 'Gerar nova oferta',
-    linkLabel: 'Cole o SEU link de afiliado',
+    linkLabel: 'Link do produto',
     linkPlaceholder: 'https://...',
-    linkHelper: 'Gere o link na Shopee, Amazon ou Mercado Livre e cole aqui — a ferramenta detecta a loja sozinha.',
-    linkRequired: 'Cole o seu link de afiliado.',
+    linkHelper: 'Cole qualquer link do produto na Shopee, Amazon ou Mercado Livre. A ferramenta gera o link com a sua conta de afiliado, e a comissão vai para você.',
+    linkRequired: 'Cole o link do produto.',
     linkInvalid: 'Isso não parece um link. Ele deve começar com https://',
     linkUnknownStore: 'Loja não reconhecida. Use um link da Shopee, Amazon ou Mercado Livre.',
     clear: 'Limpar link',
     detected: (store: string) => `${store} detectado`,
-    shopeeNotice: 'Na Shopee a ferramenta não confere o dono do link. Garanta que ele foi gerado na sua conta.',
     couponSwitch: 'Tem cupom',
     couponLabel: 'Código do cupom',
     couponPlaceholder: 'Ex.: PROMO10',
@@ -314,7 +313,7 @@ export const offerStrings = {
     textTooLong: (max: number) => `O texto passa de ${max.toLocaleString('pt-BR')} caracteres.`,
     missingLink: 'O texto não contém o seu link de afiliado. Sem ele, a venda não gera comissão.',
     attributionUnverified:
-      'Não deu para confirmar que este link é seu. Cadastre sua credencial de afiliado para a ferramenta conferir.',
+      'Não deu para confirmar que este link é seu. Gere a oferta de novo para usar o link da sua conta de afiliado.',
     manualData: 'A loja não liberou os dados do produto. Preencha título, preço e foto.',
     imageMissing: 'A foto do produto não pôde ser baixada. Envie outra imagem.',
     replaceImage: 'Trocar foto',
@@ -424,12 +423,11 @@ export const offerStrings = {
     },
   },
 
+  /** Erros de link de afiliado (credencial, loja, recriação) vêm de `features/affiliateLinks`. */
   errors: {
     GROUP_NOT_POSTABLE: 'Não dá para postar neste grupo. Escolha outro.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use um link da Shopee, Amazon ou Mercado Livre.',
-    OFFER_LINK_NOT_OWNED: 'Este link é de outro afiliado. Gere o link na sua conta e cole aqui.',
-    MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
-    OFFER_LINK_NOT_AFFILIATE: 'Esse não é um link de afiliado. Gere o link pela sua conta de afiliado da loja.',
+    OFFER_TEXT_FOREIGN_LINK: 'O texto tem um link de produto que não é o desta oferta. Remova esse link para salvar.',
     OFFER_PRODUCT_NOT_FOUND: 'A loja não encontrou este produto. Confira o link.',
     OFFER_NOT_FOUND: 'Esta oferta não existe mais. Gere uma nova.',
     OFFER_ALREADY_SENT: 'Esta oferta já foi enviada.',
@@ -442,11 +440,7 @@ export const offerStrings = {
     SESSION_NOT_CONNECTED: 'A sessão de envio está desconectada. Reconecte para disparar.',
     PLAN_FEATURE_UNAVAILABLE: 'Marcar todos os membros não está disponível no seu plano. Desligue a opção ou faça upgrade.',
     AFFILIATE_CREDENTIAL_NOT_FOUND: 'Você ainda não conectou sua conta de afiliado desta loja.',
-    AFFILIATE_CREDENTIAL_REJECTED: 'A loja recusou sua credencial de afiliado. Confira os dados salvos.',
-    AFFILIATE_API_ACCESS_DENIED:
-      'Sua conta de afiliado ainda não tem acesso à Open API. Libere o acesso no painel de afiliado da Shopee e tente de novo.',
-    AFFILIATE_API_RATE_LIMITED: 'A loja limitou as consultas por agora. Aguarde um minuto e tente de novo.',
-    AFFILIATE_API_UNAVAILABLE: 'A loja não respondeu. Tente de novo em instantes; nada foi contado no seu limite.',
+    AFFILIATE_IDENTIFIER_NOT_LINKED: 'Este link usa outra etiqueta da sua conta do Mercado Livre. Vincule a etiqueta em Credenciais de afiliado para usar este link.',
     UNSUPPORTED_MEDIA_TYPE: 'Esse arquivo não é uma imagem aceita.',
     MEDIA_TOO_LARGE: 'A imagem é grande demais.',
     VALIDATION_ERROR: 'Confira o link e tente de novo.',
@@ -456,6 +450,13 @@ export const offerStrings = {
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
   sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
+  /** Etiqueta da conta do ML não vinculada e sem vaga no plano (`PLAN_LIMIT_REACHED` de etiquetas). */
+  mercadoLivreTagLimit: (limit: number | null, canUpgrade: boolean) =>
+    !canUpgrade && limit != null
+      ? `Este link usa outra etiqueta da sua conta do Mercado Livre e as ${limit} etiquetas do seu plano já estão em uso. Desvincule uma em Credenciais de afiliado para usar esta.`
+      : limit != null && limit <= 1
+        ? 'Este link usa outra etiqueta da sua conta do Mercado Livre, e o seu plano inclui só a etiqueta principal. Faça upgrade para usar mais etiquetas.'
+        : 'Este link usa outra etiqueta da sua conta do Mercado Livre, e as etiquetas do seu plano já estão em uso. Faça upgrade ou desvincule uma em Credenciais de afiliado.',
   crossSessionUnavailable: 'Disparar por duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Deixe uma sessão por canal ou faça upgrade.',
   channelGroupLimit: (channel: LimitChannel, limit: number) =>
     limit === 0
@@ -466,7 +467,7 @@ export const offerStrings = {
       ? `Seu plano não inclui disparo pelo ${CHANNEL_NAME[channel]}. Desmarque essas sessões e salve de novo.`
       : `Seu plano permite disparar por até ${sessionsLabel(limit)} de ${CHANNEL_NAME[channel]}. Desmarque alguma e salve de novo.`,
   goToCredentials: 'Conectar conta de afiliado',
-  editCredentials: 'Revisar credencial',
+  linkAffiliateTag: 'Vincular etiqueta',
   openConfig: 'Configurar grupos',
   goToSessions: 'Ver sessões',
   dismiss: 'Fechar',

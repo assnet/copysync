@@ -2,12 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { GenerateOfferUseCase, type GenerateOfferDeps } from './GenerateOfferUseCase';
 import { FakeEntitlementReader, InMemoryOfferRepository, makeOffer, NOW, TENANT, USER } from './offerTestFakes';
 import { OfferTextComposer } from '../services/OfferTextComposer';
+import { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
+import { ResolveAffiliateProductUseCase } from './ResolveAffiliateProductUseCase';
+import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
 import type { IShopeeAffiliateClient, ShopeeProduct } from '../../domain/contracts/IShopeeAffiliateClient';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { ProductPageData } from '../../domain/services/parseProductPage';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import { AppError } from '../../../../shared/errors/AppError';
-import { OfferUrlUnsupportedError, AffiliateApiUnavailableError } from '../../../../shared/errors/internal/OfferErrors';
+import { OfferUrlUnsupportedError, AffiliateApiUnavailableError, OfferLinkRebuildFailedError } from '../../../../shared/errors/internal/OfferErrors';
 
 const SHOPEE_PRODUCT: ShopeeProduct = {
   title: 'Fone Bluetooth',
@@ -36,34 +39,49 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
   const offers = new InMemoryOfferRepository();
   const shopee = {
     getProduct: vi.fn().mockResolvedValue(SHOPEE_PRODUCT),
-    generateShortLink: vi.fn(),
+    generateShortLink: vi.fn().mockResolvedValue('https://s.shopee.com.br/dotenant'),
   } satisfies IShopeeAffiliateClient;
   const ai = { generate: vi.fn().mockResolvedValue({ text: 'Texto da IA 💜\nhttps://amzn.to/abc' }) };
-  const deps = {
-    offers,
-    entitlements: new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {}),
+  const entitlements = new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {});
+  const pageReader = { read: vi.fn().mockResolvedValue(PAGE) };
+  const imageFetcher = { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) };
+  const mediaStore = { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() };
+  // Deps do Resolve: o gerador recebe a instância pronta, como no container
+  const resolveFakes = {
     expander: { expand: vi.fn(async (u: URL) => u) },
     credentials: {
-      execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null),
       resolveState: vi.fn(async (_t: string, p: AffiliateProvider) => {
         const cred = (opts.creds ?? CREDS)[p];
         return cred ? { state: 'ok' as const, cred } : { state: 'missing' as const };
       }),
     },
-    shopee,
-    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null) },
+    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [{ originUrl: '', shortUrl: 'https://meli.la/gerado', longUrl: '' }], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null), listAccountTags: vi.fn() },
     shein: { getProductShare: vi.fn().mockResolvedValue(null) },
     riskGate: { isAccepted: vi.fn().mockResolvedValue(true) },
-    pageReader: { read: vi.fn().mockResolvedValue(PAGE) },
-    imageFetcher: { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) },
-    mediaStore: { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() },
+  };
+  const { expander, credentials, mercadoLivre, shein, riskGate } = resolveFakes;
+  const affiliateProducts = new ResolveAffiliateProductUseCase({
+    expander, credentials, shein, entitlements, riskGate,
+    composer: new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate }),
+    products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore }),
+  });
+  const deps = {
+    offers,
+    entitlements,
+    affiliateProducts,
+    shopee,
+    pageReader,
+    imageFetcher,
+    mediaStore,
     texts: new OfferTextComposer(ai),
     now: () => NOW,
   } satisfies GenerateOfferDeps;
-  return { deps, offers, ai, uc: new GenerateOfferUseCase(deps) };
+  return { deps: { ...deps, ...resolveFakes }, offers, ai, uc: new GenerateOfferUseCase(deps) };
 }
 
 const AMAZON = 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=loja-20';
+// Amazon é sempre reescrita na forma canônica com a tag do tenant (D2)
+const AMAZON_TENANT = 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=loja-20';
 const run = (s: ReturnType<typeof setup>, url: string, extra: { coupon?: string | null; audience?: 'STANDARD' | 'PET'; scheduledAt?: string | null } = {}) =>
   s.uc.execute({ tenantId: TENANT, userId: USER, url, ...extra });
 const errorOf = (p: Promise<unknown>) => p.catch((e: unknown) => e);
@@ -136,50 +154,52 @@ describe('GenerateOfferUseCase — URL', () => {
   });
 });
 
-describe('GenerateOfferUseCase — link colado é o link de afiliado', () => {
-  it('Amazon curto: affiliateUrl = link colado; dono conferido na URL expandida', async () => {
+describe('GenerateOfferUseCase — link de afiliado sempre do tenant', () => {
+  it('Amazon curto: reescrita com a tag do tenant; sourceUrl = colado', async () => {
     const s = setup();
     s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.amazon.com.br/dp/B0ZZZZZZZZ?tag=LOJA-20&ref=x'));
     const { offer } = await run(s, 'https://amzn.to/abc');
     expect(offer).toMatchObject({
-      affiliateUrl: 'https://amzn.to/abc', sourceUrl: 'https://amzn.to/abc', productRef: 'B0ZZZZZZZZ', attributionVerified: true,
+      affiliateUrl: 'https://www.amazon.com.br/dp/B0ZZZZZZZZ?tag=loja-20', sourceUrl: 'https://amzn.to/abc', productRef: 'B0ZZZZZZZZ', attributionVerified: true,
     });
     expect(s.deps.shopee.generateShortLink).not.toHaveBeenCalled();
   });
 
-  it('Amazon com tag de outra conta → OFFER_LINK_NOT_OWNED, nada gravado', async () => {
+  it('Amazon com tag de outra conta → recriado com a tag do tenant, sem a alheia', async () => {
     const s = setup();
-    const err = await errorOf(run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=outro-20'));
-    expect(err).toMatchObject({ code: 'OFFER_LINK_NOT_OWNED', statusCode: 422, meta: { provider: 'AMAZON' } });
-    expect(JSON.stringify(err)).not.toContain('outro-20');
+    const out = await run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=outro-20');
+    expect(out.offer).toMatchObject({ affiliateUrl: AMAZON_TENANT, attributionVerified: true });
+    expect(out.linkRebuilt).toBe(true);
+    expect(out.offer.text).not.toContain('outro-20');
+  });
+
+  it('Amazon sem tag e sem credencial → AFFILIATE_CREDENTIAL_REQUIRED, nada gravado', async () => {
+    const s = setup({ creds: {} });
+    await expect(run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH')).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', statusCode: 422 });
     expect(s.offers.items).toHaveLength(0);
+  });
+
+  it('sem credencial do marketplace: bloqueia (D1), sem ler a página', async () => {
+    const s = setup({ creds: {} });
+    await expect(run(s, AMAZON)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'AMAZON' } });
     expect(s.deps.pageReader.read).not.toHaveBeenCalled();
   });
 
-  it('Amazon sem tag → OFFER_LINK_NOT_AFFILIATE (mesmo sem credencial)', async () => {
-    const s = setup({ creds: {} });
-    await expect(run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE', statusCode: 422 });
-  });
-
-  it('sem credencial do marketplace: não bloqueia, attributionVerified=false', async () => {
-    const s = setup({ creds: {} });
-    const { offer } = await run(s, AMAZON);
-    expect(offer.attributionVerified).toBe(false);
-  });
-
-  it('ML: matt_word do tenant → verificado; página lida com cookie da sessão', async () => {
+  it('ML: link longo do tenant → recriado (D2); página lida com cookie da sessão', async () => {
     const s = setup();
     const url = 'https://produto.mercadolivre.com.br/MLB-123456-fone?matt_word=minhaetq&matt_tool=1';
     const out = await run(s, url);
-    expect(out.offer).toMatchObject({ provider: 'MERCADO_LIVRE', productRef: 'MLB123456', attributionVerified: true, affiliateUrl: url });
+    expect(out.offer).toMatchObject({ provider: 'MERCADO_LIVRE', productRef: 'MLB123456', attributionVerified: true, affiliateUrl: 'https://meli.la/gerado' });
     expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(url), mercadoLivreCookies: { ssid: 'SSID-TOKEN' } });
     expect(JSON.stringify(out)).not.toContain('SSID-TOKEN');
   });
 
-  it('ML: matt_word de outra etiqueta → OFFER_LINK_NOT_OWNED; sem matt_word → NOT_AFFILIATE', async () => {
+  it('ML: matt_word de outra etiqueta ou sem matt_word → recriado com a etiqueta do tenant', async () => {
     const s = setup();
-    await expect(run(s, 'https://produto.mercadolivre.com.br/MLB-1-x?matt_word=outra')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
-    await expect(run(s, 'https://produto.mercadolivre.com.br/MLB-1-x')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
+    for (const url of ['https://produto.mercadolivre.com.br/MLB-1-x?matt_word=outra', 'https://produto.mercadolivre.com.br/MLB-1-x']) {
+      expect((await run(s, url)).offer).toMatchObject({ affiliateUrl: 'https://meli.la/gerado', attributionVerified: true });
+    }
+    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, ['https://produto.mercadolivre.com.br/MLB-1'], 'minhaetq');
   });
 
   it('meli.la → página social: link colado mantido; produto pelo product_id da página', async () => {
@@ -193,18 +213,45 @@ describe('GenerateOfferUseCase — link colado é o link de afiliado', () => {
       provider: 'MERCADO_LIVRE', productRef: 'MLB999', attributionVerified: true, affiliateUrl: 'https://meli.la/1Hb6zu6',
       title: 'Air Fryer 4L', priceCents: 29990,
     });
-    expect(out.needsManualData).toBe(false);
+    expect(out).toMatchObject({ needsManualData: false, linkRebuilt: false });
   });
 
-  it('página social sem matt_word: etiqueta do path vale', async () => {
+  it('página social sem matt_word: etiqueta do path de outro → recriado com a do tenant', async () => {
     const s = setup();
     s.deps.expander.expand.mockResolvedValueOnce(new URL('https://www.mercadolivre.com.br/social/outra'));
-    await expect(run(s, 'https://meli.la/xyz')).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
+    s.deps.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB999' });
+    const out = await run(s, 'https://meli.la/xyz');
+    expect(out.offer).toMatchObject({ affiliateUrl: 'https://meli.la/gerado', productRef: 'MLB999', sourceUrl: 'https://meli.la/xyz' });
+    expect(out.linkRebuilt).toBe(true);
+  });
+
+  it('falha ao recriar → erro do Resolve propaga, nada gravado nem contado', async () => {
+    const s = setup({ limit: 5 });
+    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [{ originUrl: '', errorCode: 100, message: 'URL Invalid' }] });
+    await expect(run(s, 'https://produto.mercadolivre.com.br/MLB-1-x?matt_word=outra')).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
+    expect(s.offers.items).toHaveLength(0);
+    expect(s.deps.mediaStore.saveImage).not.toHaveBeenCalled();
+  });
+
+  it('linkRebuilt vem do Resolve, não dos campos gravados (TLINK-12)', async () => {
+    const s = setup();
+    const resolved = {
+      provider: 'AMAZON' as const, sourceUrl: AMAZON, affiliateUrl: AMAZON_TENANT, attributionVerified: true,
+      product: { productRef: 'B0ABCDEFGH', title: 'Fone', priceCents: 100, originalPriceCents: null, imageSourceUrl: null },
+    };
+    const spy = vi.spyOn(s.deps.affiliateProducts, 'execute');
+    spy.mockResolvedValueOnce({ ...resolved, linkRebuilt: false });
+    expect((await run(s, AMAZON)).linkRebuilt).toBe(false);
+    spy.mockResolvedValueOnce({ ...resolved, linkRebuilt: true });
+    expect((await run(s, AMAZON)).linkRebuilt).toBe(true);
+    spy.mockRejectedValueOnce(new OfferLinkRebuildFailedError('AMAZON', 'X'));
+    await expect(run(s, AMAZON)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
+    expect(s.offers.items).toHaveLength(2);
   });
 });
 
 describe('GenerateOfferUseCase — dados do produto', () => {
-  it('Shopee com secret: Open API, link colado, sem verificação de dono', async () => {
+  it('Shopee com secret: Open API para os dados e link recriado pela conta do tenant', async () => {
     const s = setup();
     const out = await run(s, 'https://shopee.com.br/fone-i.123.456');
     expect(s.deps.shopee.getProduct).toHaveBeenCalledWith(
@@ -215,17 +262,17 @@ describe('GenerateOfferUseCase — dados do produto', () => {
     expect(out.needsManualData).toBe(false);
     expect(out.offer).toMatchObject({
       provider: 'SHOPEE', productRef: '123.456', title: 'Fone Bluetooth', priceCents: 4990, originalPriceCents: 9990,
-      imageUrl: 'store://offers/1.jpg', affiliateUrl: 'https://shopee.com.br/fone-i.123.456', attributionVerified: false,
+      imageUrl: 'store://offers/1.jpg', affiliateUrl: 'https://s.shopee.com.br/dotenant', attributionVerified: true,
     });
     expect(out.offer.text).toContain('50% OFF');
     expect(JSON.stringify(out)).not.toContain('S3CR3T');
   });
 
-  it('Shopee sem credencial: lê a página', async () => {
+  it('Shopee sem credencial: AFFILIATE_CREDENTIAL_REQUIRED, sem API nem página', async () => {
     const s = setup({ creds: {} });
-    await run(s, 'https://shopee.com.br/fone-i.123.456');
+    await expect(run(s, 'https://shopee.com.br/fone-i.123.456')).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
     expect(s.deps.shopee.getProduct).not.toHaveBeenCalled();
-    expect(s.deps.pageReader.read).toHaveBeenCalled();
+    expect(s.deps.pageReader.read).not.toHaveBeenCalled();
   });
 
   it('Shopee API indisponível ou produto ausente → cai na página, oferta gravada', async () => {
@@ -264,7 +311,7 @@ describe('GenerateOfferUseCase — texto', () => {
     expect(out.aiFallback).toBe(false);
     expect(out.offer).toMatchObject({ coupon: 'PROMO10', audience: 'STANDARD' });
     expect(out.offer.text).toContain('🎟️ Cupom: PROMO10');
-    expect(out.offer.text).toContain(AMAZON);
+    expect(out.offer.text).toContain(AMAZON_TENANT);
   });
 
   it('público PET: IA com purpose offer.text; link exato anexado se faltar', async () => {
@@ -272,7 +319,7 @@ describe('GenerateOfferUseCase — texto', () => {
     s.ai.generate.mockResolvedValueOnce({ text: 'Seu pet merece 🐶' });
     const out = await run(s, AMAZON, { audience: 'PET' });
     expect(s.ai.generate).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, purpose: 'offer.text', maxOutputTokens: 400 }));
-    expect(out.offer.text).toBe(`Seu pet merece 🐶\n\n🛒 ${AMAZON}`);
+    expect(out.offer.text).toBe(`Seu pet merece 🐶\n\n🛒 ${AMAZON_TENANT}`);
     expect(out).toMatchObject({ aiFallback: false, offer: { audience: 'PET' } });
   });
 
@@ -309,7 +356,7 @@ describe('GenerateOfferUseCase — início agendado', () => {
   });
 });
 
-describe('GenerateOfferUseCase — Shein (gate e aceite na instância interna)', () => {
+describe('GenerateOfferUseCase — Shein (gate e aceite no Resolve)', () => {
   const SHEIN = 'https://br.shein.com/Vestido-p-12345678.html?url_from=affiliate_koc_1234567890';
 
   it('chave do plano ausente: PLAN_FEATURE_UNAVAILABLE sem gravar nem chamar a Shein', async () => {

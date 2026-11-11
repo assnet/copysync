@@ -17,6 +17,15 @@ function sender(fetchFn: ReturnType<typeof vi.fn>, hubUrl = config.hubUrl) {
 }
 
 describe('toHubEmailBody', () => {
+  it('RESET_PASSWORD: link → resetPasswordUrl, expiresAt → expiresInHours', () => {
+    const body = toHubEmailBody({ to: 'ana@example.com', template: 'RESET_PASSWORD',
+      data: { name: 'Ana', link: 'https://app.example.com/reset-password/tok', expiresAt: new Date(NOW + 3_600_000).toISOString() } }, NOW);
+    expect(body).toEqual({
+      template: 'RESET_PASSWORD', to: 'ana@example.com', locale: 'pt-BR',
+      vars: { name: 'Ana', resetPasswordUrl: 'https://app.example.com/reset-password/tok', expiresInHours: 1 },
+    });
+  });
+
   it('SET_PASSWORD: link → setPasswordUrl, expiresAt → expiresInHours, locale padrão pt-BR', () => {
     expect(toHubEmailBody(setPassword, NOW)).toEqual({
       template: 'SET_PASSWORD', to: 'ana@example.com', locale: 'pt-BR',

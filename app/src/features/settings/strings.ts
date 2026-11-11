@@ -72,6 +72,7 @@ export const settingsStrings = {
       SHEIN: 'Entre de novo na sua conta da Shein (m.shein.com) neste navegador e clique em Sincronizar agora.',
     } as Record<string, string>,
     backToMonitoring: 'Voltar ao monitoramento',
+    back: 'Voltar',
     idPending: 'ID pendente',
     secretSaved: 'Salvo',
     notInformed: 'Não informado',
@@ -294,6 +295,47 @@ export const settingsStrings = {
       acceptFailed: 'Não foi possível registrar o aceite. Tente de novo.',
     },
 
+    /** Etiquetas da conta do ML: principal + vinculadas até o limite do plano (fonte: API). */
+    identifiers: {
+      title: 'Etiquetas da conta',
+      subtitle:
+        'Links com uma etiqueta vinculada contam como seus. A principal é a usada nos links que a ferramenta gera.',
+      counter: (used: number, limit: number) => `${used} de ${limit}`,
+      counterAria: (used: number, limit: number) => `${used} de ${limit} etiquetas vinculadas`,
+      cardLinked: (n: number) => (n === 0
+        ? 'Nenhuma etiqueta vinculada'
+        : n === 1 ? '1 etiqueta vinculada' : `${n} etiquetas vinculadas`),
+      empty: 'Nenhuma etiqueta encontrada. Clique em Sincronizar agora para listar as etiquetas da sua conta.',
+      choosePrimary: 'Escolha a etiqueta principal. Sem ela, a ferramenta não reconhece os seus links do Mercado Livre.',
+      primaryBadge: 'Principal',
+      linkLabel: 'Vincular',
+      primaryAria: (tag: string) => `Usar ${tag} como principal`,
+      linkAria: (tag: string) => `Vincular ${tag}`,
+      primaryAlwaysLinked: 'A principal está sempre vinculada',
+      unavailable: (limit: number) => (limit === 1
+        ? 'Seu plano vincula 1 etiqueta'
+        : `Seu plano vincula até ${limit} etiquetas`),
+      hideUnavailable: 'Ocultar etiquetas fora do limite',
+      hideUnavailableTooltip:
+        'Etiquetas que não cabem no seu plano. Você ainda pode trocar a principal por uma delas.',
+      hiddenCount: (n: number) => (n === 1 ? '1 oculta' : `${n} ocultas`),
+      seePlans: 'Ver planos com mais etiquetas',
+      seePlansTooltip: 'Compare quantas etiquetas cada plano vincula',
+      save: 'Salvar etiquetas',
+      saving: 'Salvando…',
+      discard: 'Descartar',
+      saved: 'Etiquetas salvas.',
+      errors: {
+        PLAN_LIMIT_REACHED: (limit: number | null) => (limit
+          ? `Seu plano vincula até ${limit} ${limit === 1 ? 'etiqueta' : 'etiquetas'}. Desmarque alguma ou veja os planos.`
+          : 'Você chegou ao limite de etiquetas do seu plano. Desmarque alguma ou veja os planos.'),
+        notInAccount: 'Alguma etiqueta não está mais na sua conta. Sincronize e escolha de novo.',
+        provider: 'Este marketplace não aceita etiquetas vinculadas.',
+        AFFILIATE_CREDENTIAL_NOT_FOUND: 'Esta credencial não existe mais. Sincronize a extensão de novo.',
+        generic: 'Não foi possível salvar as etiquetas. Tente de novo.',
+      },
+    },
+
     errors: {
       AFFILIATE_CREDENTIAL_INVALID: 'Algum campo não foi aceito. Confira os valores e tente de novo.',
       AFFILIATE_CREDENTIAL_NOT_FOUND: 'Esta credencial não existe mais. Atualize a página.',
@@ -309,4 +351,20 @@ export function affiliateErrorMessage(err: unknown): string {
   const code = (err as { code?: unknown } | null)?.code;
   const { errors } = settingsStrings.affiliate;
   return (typeof code === 'string' && errors[code]) || errors.generic;
+}
+
+/** Erro ao salvar etiquetas → texto + se cabe o botão para os planos. */
+export function identifiersErrorOf(err: unknown): { message: string; showPlans: boolean } {
+  const e = (err ?? {}) as { code?: unknown; field?: unknown; meta?: { field?: unknown; limit?: unknown } };
+  const s = settingsStrings.affiliate.identifiers.errors;
+  if (e.code === 'PLAN_LIMIT_REACHED') {
+    const limit = typeof e.meta?.limit === 'number' ? e.meta.limit : null;
+    return { message: s.PLAN_LIMIT_REACHED(limit), showPlans: true };
+  }
+  if (e.code === 'AFFILIATE_CREDENTIAL_INVALID') {
+    const field = e.meta?.field ?? e.field;
+    return { message: field === 'provider' ? s.provider : s.notInAccount, showPlans: false };
+  }
+  if (e.code === 'AFFILIATE_CREDENTIAL_NOT_FOUND') return { message: s.AFFILIATE_CREDENTIAL_NOT_FOUND, showPlans: false };
+  return { message: s.generic, showPlans: false };
 }

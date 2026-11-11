@@ -56,6 +56,14 @@ export interface StorefrontOffer {
   updatedAt: string;
 }
 
+/**
+ * Item devolvido pela criação (`POST /storefront/offers`). `linkRebuilt` = o link colado foi trocado
+ * por um gerado com a conta do usuário; só a criação envia (a listagem não).
+ */
+export interface CreatedStorefrontOffer extends StorefrontOffer {
+  linkRebuilt?: boolean;
+}
+
 export interface StorefrontCategory {
   key: string;
   label: string;

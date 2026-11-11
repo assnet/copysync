@@ -89,11 +89,15 @@ export function StorefrontPage() {
             <Stack spacing={3} sx={{ gridArea: 'offers', minWidth: 0 }}>
               <AddOfferCard
                 value={s.addDraft}
-                onChange={s.setAddDraft}
+                onChange={s.editAddDraft}
                 categories={overview.categories}
                 selectedCategories={page?.categories ?? []}
                 onExtract={s.extract}
                 error={s.addError}
+                errorAction={s.addErrorAction}
+                errorCode={s.addErrorSource?.code}
+                errorMeta={s.addErrorSource?.meta}
+                rebuiltProvider={s.addRebuiltProvider}
                 disabled={!page}
               />
               {page && (

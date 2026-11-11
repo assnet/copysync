@@ -9,6 +9,11 @@ describe('PlansFeatureNotice', () => {
     expect(screen.getByRole('alert').textContent).toContain(plansStrings.featureNotice.storefront);
   });
 
+  it('mostra o aviso com feature=mercadoLivreTags', () => {
+    render(<PlansFeatureNotice feature="mercadoLivreTags" />);
+    expect(screen.getByRole('alert').textContent).toContain(plansStrings.featureNotice.mercadoLivreTags);
+  });
+
   it('some sem feature ou com feature desconhecida', () => {
     const { container, rerender } = render(<PlansFeatureNotice feature={null} />);
     expect(container.innerHTML).toBe('');

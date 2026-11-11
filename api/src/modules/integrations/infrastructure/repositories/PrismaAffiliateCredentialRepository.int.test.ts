@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { PrismaAffiliateCredentialRepository } from './PrismaAffiliateCredentialRepository';
+import { PrismaTenantUsageReader } from '../../../tenants/infrastructure/repositories/PrismaTenantUsageReader';
 
 const repo = new PrismaAffiliateCredentialRepository();
 const blob = (n: number) => ({ ciphertext: Buffer.from(`c${n}`), iv: Buffer.from('iv'), tag: Buffer.from('tg'), keyVersion: 1 });
@@ -63,5 +64,97 @@ describe('PrismaAffiliateCredentialRepository — ID que segue a sessão (Shein)
     await repo.delete(tenantId, 'MERCADO_LIVRE');
     expect((await repo.upsertSession({ tenantId, provider: 'MERCADO_LIVRE', session: blob(1), syncedAt: AT, publicIdentifierIfEmpty: 'tag_a' })).publicIdentifier).toBe('tag_a');
     expect((await repo.upsertSession({ tenantId, provider: 'MERCADO_LIVRE', session: blob(2), syncedAt: AT, publicIdentifierIfEmpty: 'tag_b' })).publicIdentifier).toBe('tag_a');
+  });
+});
+
+describe('PrismaAffiliateCredentialRepository — etiquetas da conta (ML)', () => {
+  const ML = 'MERCADO_LIVRE' as const;
+  const setLinked = (linked: string[]) =>
+    prisma.affiliateCredential.update({ where: { tenantId_provider: { tenantId, provider: ML } }, data: { linkedIdentifiers: linked } });
+
+  it('lista na criação; sem lista ou [] não toca nas colunas', async () => {
+    await repo.delete(tenantId, ML);
+    const created = await repo.upsertSession({ tenantId, provider: ML, session: blob(1), syncedAt: AT, publicIdentifierIfEmpty: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'] });
+    expect(created).toMatchObject({ publicIdentifier: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: [] });
+    await setLinked(['tag_b']);
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(2), syncedAt: AT })).toMatchObject({ accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: ['tag_b'] });
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(3), syncedAt: AT, accountIdentifiers: [] })).toMatchObject({ accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: ['tag_b'] });
+  });
+
+  it('lista nova substitui e poda vinculadas fora dela (sem caixa), mantendo a ordem; principal na lista não muda', async () => {
+    await setLinked(['tag_c', 'TAG_B', 'tag_d', 'tag_e']);
+    const r = await repo.upsertSession({ tenantId, provider: ML, session: blob(4), syncedAt: AT, publicIdentifierIfEmpty: 'tag_x', accountIdentifiers: ['TAG_A', 'tag_b', 'tag_e', 'Tag_C'] });
+    expect(r).toMatchObject({ publicIdentifier: 'tag_a', accountIdentifiers: ['TAG_A', 'tag_b', 'tag_e', 'Tag_C'], linkedIdentifiers: ['tag_c', 'TAG_B', 'tag_e'] });
+    // troca de conta: nenhuma vinculada é da conta nova; principal sumiu e não há em uso → null
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(5), syncedAt: AT, accountIdentifiers: ['outra'] })).toMatchObject({ publicIdentifier: null, accountIdentifiers: ['outra'], linkedIdentifiers: [] });
+  });
+
+  it('principal que sumiu da conta vira a em uso (grafia da conta) se estiver na lista; senão null', async () => {
+    const setPrimary = (v: string) =>
+      prisma.affiliateCredential.update({ where: { tenantId_provider: { tenantId, provider: ML } }, data: { publicIdentifier: v } });
+    await setPrimary('velha');
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(51), syncedAt: AT, publicIdentifierIfEmpty: 'nova_b', accountIdentifiers: ['nova_a', 'Nova_B'] }))
+      .toMatchObject({ publicIdentifier: 'Nova_B', accountIdentifiers: ['nova_a', 'Nova_B'] });
+    // em uso fora da lista: não preenche nem depois (o "só se vazia" não entra)
+    await setPrimary('velha');
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(52), syncedAt: AT, publicIdentifierIfEmpty: 'fora', accountIdentifiers: ['nova_a'] }))
+      .toMatchObject({ publicIdentifier: null });
+    // principal vazia: "só se vazia" segue valendo
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(53), syncedAt: AT, publicIdentifierIfEmpty: 'nova_a', accountIdentifiers: ['nova_a'] }))
+      .toMatchObject({ publicIdentifier: 'nova_a' });
+    // principal na lista (sem caixa): fica, mesmo com outra em uso
+    await setPrimary('NOVA_A');
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(54), syncedAt: AT, publicIdentifierIfEmpty: 'nova_c', accountIdentifiers: ['nova_a', 'nova_c'] }))
+      .toMatchObject({ publicIdentifier: 'NOVA_A' });
+    // sem lista: nada muda
+    await setPrimary('velha');
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(55), syncedAt: AT, publicIdentifierIfEmpty: 'nova_c' }))
+      .toMatchObject({ publicIdentifier: 'velha' });
+  });
+
+  it('clearSession zera as duas listas', async () => {
+    await repo.upsertSession({ tenantId, provider: ML, session: blob(6), syncedAt: AT, publicIdentifierIfEmpty: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'] });
+    await setLinked(['tag_b']);
+    expect(await repo.clearSession(tenantId, ML)).toBe(true);
+    expect(await repo.findByTenantAndProvider(tenantId, ML)).toMatchObject({ hasSession: false, accountIdentifiers: [], linkedIdentifiers: [], publicIdentifier: 'tag_a' });
+  });
+
+  it('setIdentifiers grava principal e vinculadas sem tocar em sessão, recusa nem lista da conta', async () => {
+    await repo.upsertSession({ tenantId, provider: ML, session: blob(7), syncedAt: AT, accountIdentifiers: ['tag_a', 'tag_b', 'tag_c'] });
+    await repo.markRejected(tenantId, ML, 'SESSION_REJECTED', AT);
+    const r = await repo.setIdentifiers(tenantId, ML, 'tag_c', ['tag_a', 'tag_b']);
+    expect(r).toMatchObject({
+      publicIdentifier: 'tag_c', linkedIdentifiers: ['tag_a', 'tag_b'], accountIdentifiers: ['tag_a', 'tag_b', 'tag_c'],
+      hasSession: true, rejectedCode: 'SESSION_REJECTED',
+    });
+    expect((await repo.findByTenantAndProvider(tenantId, ML))?.session).not.toBeNull();
+  });
+
+  it('setIdentifiers CAS: etiqueta fora da lista atual (ou grafia diferente) → ACCOUNT_CHANGED, nada gravado', async () => {
+    const before = await repo.findByTenantAndProvider(tenantId, ML);
+    expect(await repo.setIdentifiers(tenantId, ML, 'tag_a', ['tag_sumiu'])).toBe('ACCOUNT_CHANGED');
+    expect(await repo.setIdentifiers(tenantId, ML, 'TAG_A', [])).toBe('ACCOUNT_CHANGED');
+    expect(await repo.findByTenantAndProvider(tenantId, ML)).toMatchObject({
+      publicIdentifier: before?.publicIdentifier, linkedIdentifiers: before?.linkedIdentifiers,
+    });
+  });
+
+  it('setIdentifiers é escopado por tenant: outro tenant ou linha inexistente → null', async () => {
+    const other = await prisma.tenant.create({ data: { name: 'int2', slug: `int-cred2-${Date.now()}` } });
+    try {
+      expect(await repo.setIdentifiers(other.id, ML, 'tag_x', [])).toBeNull();
+      expect((await repo.findByTenantAndProvider(tenantId, ML))?.publicIdentifier).toBe('tag_c');
+    } finally {
+      await prisma.tenant.delete({ where: { id: other.id } });
+    }
+  });
+
+  it('uso na Assinatura: conjunto efetivo sob o limite (ausente = 1; com 2 = principal + 1)', async () => {
+    const reader = new PrismaTenantUsageReader(prisma);
+    expect((await reader.read(tenantId)).mercadoLivreAffiliateTags).toBe(1);
+    await prisma.tenantEntitlement.create({ data: { tenantId, key: 'mercado_livre_affiliate_tags', value: 2 } });
+    expect((await reader.read(tenantId)).mercadoLivreAffiliateTags).toBe(2);
+    await repo.delete(tenantId, ML);
+    expect((await reader.read(tenantId)).mercadoLivreAffiliateTags).toBe(0);
   });
 });

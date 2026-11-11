@@ -101,17 +101,24 @@ export class OfferDestinationUnavailableError extends AppError {
 
 // ── Gerador v2 ───────────────────────────────────────────────────────────────
 
-/** Link de afiliado de outra conta (tag/etiqueta ≠ credencial do tenant). Nunca carrega a tag. */
-export class OfferLinkNotOwnedError extends AppError {
+/** Tenant sem credencial da loja: o link não pode ser recriado com a conta dele. */
+export class AffiliateCredentialRequiredError extends AppError {
   constructor(provider: string) {
-    super('OFFER_LINK_NOT_OWNED', `Affiliate link belongs to another account on ${provider}`, 422, { provider });
+    super('AFFILIATE_CREDENTIAL_REQUIRED', `Affiliate credential required for ${provider}`, 422, { provider });
   }
 }
 
-/** Link sem identificação de afiliado (sem `tag` na Amazon, sem `matt_word` no ML). */
-export class OfferLinkNotAffiliateError extends AppError {
-  constructor(provider: string) {
-    super('OFFER_LINK_NOT_AFFILIATE', `Link has no affiliate identifier on ${provider}`, 422, { provider });
+/** A loja não devolveu link de afiliado do tenant (ex.: `ML_100`, `SHEIN_LINK_NOT_CREATED`). Nunca carrega URL. */
+export class OfferLinkRebuildFailedError extends AppError {
+  constructor(provider: string, reason: string) {
+    super('OFFER_LINK_REBUILD_FAILED', `Affiliate link could not be rebuilt on ${provider}`, 422, { provider, reason });
+  }
+}
+
+/** Texto editado ganhou link de marketplace que não é o da oferta. Sem URL no meta nem na mensagem. */
+export class OfferTextForeignLinkError extends AppError {
+  constructor() {
+    super('OFFER_TEXT_FOREIGN_LINK', 'Offer text contains a marketplace link that is not the offer link', 422, {});
   }
 }
 

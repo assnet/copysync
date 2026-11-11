@@ -6,12 +6,23 @@ import { errorHandler } from '../../../../shared/http/errorHandler';
 import { rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
 import { OFFER_STORY_TEMPLATES } from '../../domain/offerStoryTemplates';
 import type { OfferStoryFakes } from '../../application/use-cases/offerStoryTestFakes';
+import {
+  AffiliateApiRateLimitedError,
+  AffiliateApiUnavailableError,
+  AffiliateCredentialRequiredError,
+  OfferLinkRebuildFailedError,
+} from '../../../../shared/errors/internal/OfferErrors';
 
 /*
  * Contrato HTTP (padrão storefront.routes.test): Fastify de verdade, sem banco. Container trocado por
  * use cases reais sobre fakes (renderer real fica no teste do adapter); auth falso e tenant por header.
  */
-const holder = vi.hoisted(() => ({ fakes: null as unknown as OfferStoryFakes, gateOff: false }));
+const holder = vi.hoisted(() => ({
+  fakes: null as unknown as OfferStoryFakes,
+  gateOff: false,
+  /** Ajusta os fakes de cada requisição (o container cria use cases novos por chamada). */
+  arrange: null as ((fakes: OfferStoryFakes) => void) | null,
+}));
 vi.mock('../../infrastructure/offerStoryContainer', async () => {
   const { makeOfferStoryDeps } = await import('../../application/use-cases/offerStoryTestFakes');
   const { ListOfferStoryTemplatesUseCase } = await import('../../application/use-cases/ListOfferStoryTemplatesUseCase');
@@ -23,6 +34,7 @@ vi.mock('../../infrastructure/offerStoryContainer', async () => {
         const { deps, fakes } = makeOfferStoryDeps();
         holder.fakes = fakes;
         if (holder.gateOff) fakes.entitlements.values = { [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED]: false };
+        holder.arrange?.(fakes);
         return { listTemplates: new ListOfferStoryTemplatesUseCase(deps), render: new Render(deps) };
       },
     },
@@ -60,6 +72,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   holder.gateOff = false;
+  holder.arrange = null;
   vi.restoreAllMocks();
   await app.close();
 });
@@ -82,8 +95,27 @@ describe('POST /offer-story/render', () => {
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.image).toMatch(/^data:image\/jpeg;base64,/);
-    expect(data).toMatchObject({ width: 1080, height: 1920, provider: 'MERCADO_LIVRE', coupon: { code: 'PROMO', discountPercent: 10 }, warnings: [] });
+    expect(data).toMatchObject({ width: 1080, height: 1920, provider: 'MERCADO_LIVRE', linkRebuilt: false, coupon: { code: 'PROMO', discountPercent: 10 }, warnings: [] });
     expect(holder.fakes.resolveProduct.calls).toEqual([['tenant-a', body.url]]);
+  });
+
+  it('200: link recriado chega como linkRebuilt (campo declarado no schema)', async () => {
+    holder.arrange = (f) => { f.resolveProduct.result = { ...f.resolveProduct.result, affiliateUrl: 'https://meli.la/tenant', linkRebuilt: true }; };
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/render`, headers: AUTH, payload: body });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ affiliateUrl: 'https://meli.la/tenant', linkRebuilt: true });
+  });
+
+  it.each([
+    [new AffiliateCredentialRequiredError('SHOPEE'), 422],
+    [new OfferLinkRebuildFailedError('MERCADO_LIVRE', 'ML_100'), 422],
+    [new AffiliateApiRateLimitedError('SHOPEE'), 429],
+    [new AffiliateApiUnavailableError('AMAZON'), 503],
+  ])('erro da extração %s → status original', async (error, status) => {
+    holder.arrange = (f) => { f.resolveProduct.error = error; };
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/render`, headers: AUTH, payload: body });
+    expect(res.statusCode).toBe(status);
+    expect(res.json().error.code).toBe(error.code);
   });
 
   it.each([['templates', 'GET'], ['render', 'POST']] as const)('plano sem o story: %s → 403 PLAN_FEATURE_UNAVAILABLE', async (path, method) => {

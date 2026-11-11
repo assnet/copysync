@@ -64,6 +64,15 @@ describe('PLAN_PRESETS', () => {
       ['COPYSYNC_MAX', null],
     ]);
   });
+
+  it('etiquetas do Mercado Livre: LITE 1, PRO 2, MAX 10 (principal incluída)', () => {
+    const rows = planPresetRows().filter((r) => r.key === K.MERCADO_LIVRE_AFFILIATE_TAGS);
+    expect(rows.map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', 1],
+      ['COPYSYNC_PRO', 2],
+      ['COPYSYNC_MAX', 10],
+    ]);
+  });
 });
 
 describe('resolvePlanSlug', () => {

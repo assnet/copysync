@@ -6,6 +6,10 @@ import { formatPrice, plansStrings as t } from '../strings';
 import { ctaGradient } from './PlansHero';
 import { ChannelLimitsTable } from './ChannelLimitsTable';
 import { openCheckout } from '../openCheckout';
+import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
+import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
+
+const ML_LOGO = AFFILIATE_PROVIDERS.find((p) => p.provider === 'MERCADO_LIVRE')?.logo;
 
 interface Props {
   plan: PlanCatalogItem;
@@ -144,6 +148,33 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
   ) : row;
 }
 
+/** Limite de etiquetas do Mercado Livre (fora da tabela: não é por canal). Tooltip explica o número. */
+function MercadoLivreTagsRow({ count }: { count: number }) {
+  return (
+    <Tooltip title={t.mercadoLivreTags.hint} enterTouchDelay={0} arrow describeChild placement="top">
+      <Box
+        tabIndex={0}
+        data-testid="plan-ml-tags"
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1, cursor: 'help', mt: -1, px: 1, py: 0.75, mx: -1, borderRadius: 1.5,
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 1 },
+        }}
+      >
+        {ML_LOGO && <MarketplaceLogo src={ML_LOGO} size={20} round />}
+        {/* Rótulo e valor em linhas fixas (uma cada, sem quebra): mesma altura nos três cards, seja
+            "1 etiqueta" ou "10 etiquetas". */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>{t.mercadoLivreTags.label}</Typography>
+          <Typography variant="body2" noWrap sx={{ fontWeight: 700, color: 'text.primary', fontVariantNumeric: 'tabular-nums' }}>
+            {t.mercadoLivreTags.value(count)}
+          </Typography>
+        </Box>
+        <Box sx={{ color: 'text.disabled', display: 'flex' }}><AppIcon icon={Info} size="sm" /></Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
 /** Card de plano. O recomendado ganha moldura em gradiente e selo "Mais escolhido". */
 export function PlanCard({ plan, period, getCheckoutUrl }: Props) {
   const theme = useTheme();
@@ -209,6 +240,8 @@ export function PlanCard({ plan, period, getCheckoutUrl }: Props) {
       <Box sx={{ position: 'relative', overflow: 'hidden' }}>
         <ChannelLimitsTable plan={plan} />
       </Box>
+
+      <MercadoLivreTagsRow count={plan.limits.mercadoLivreTags} />
 
       <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 1.25 }}>
         {plan.benefits.map((b) => <BenefitRow key={b.label} benefit={b} accent={accent} />)}

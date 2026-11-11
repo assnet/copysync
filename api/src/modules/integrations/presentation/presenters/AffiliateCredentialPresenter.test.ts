@@ -34,6 +34,18 @@ describe('AffiliateCredentialPresenter', () => {
     expect(item).toMatchObject({ publicIdentifier: null, publicIdentifierMasked: null, hasSession: true, sessionSyncedAt: NOW.toISOString() });
   });
 
+  it('etiquetas: listas (ausente = []) e limite efetivo vindo da listagem só para o provider com lista', () => {
+    expect(AffiliateCredentialPresenter.toItem(credential())).toMatchObject({ accountIdentifiers: [], linkedIdentifiers: [], identifierLimit: null });
+    const ml = credential({ provider: 'MERCADO_LIVRE', accountIdentifiers: ['a', 'b'], linkedIdentifiers: ['b'] });
+    const list = AffiliateCredentialPresenter.toList({
+      items: [ml, credential()],
+      marketplaceAvailability: {} as never,
+      identifierLimits: { MERCADO_LIVRE: 2 },
+    });
+    expect(list.items[0]).toMatchObject({ accountIdentifiers: ['a', 'b'], linkedIdentifiers: ['b'], identifierLimit: 2 });
+    expect(list.items[1].identifierLimit).toBeNull();
+  });
+
   it('GET serializa publicIdentifier null pelo schema de resposta, sem descartar campos', async () => {
     const app = Fastify();
     app.addSchema(affiliateCredentialItemSchema);
@@ -45,7 +57,10 @@ describe('AffiliateCredentialPresenter', () => {
 
     const res = await app.inject({ method: 'GET', url: '/' });
     const body = res.json();
-    expect(body.data.items[0]).toMatchObject({ publicIdentifier: null, publicIdentifierMasked: null, hasSecret: true });
+    expect(body.data.items[0]).toMatchObject({
+      publicIdentifier: null, publicIdentifierMasked: null, hasSecret: true,
+      accountIdentifiers: [], linkedIdentifiers: [], identifierLimit: null,
+    });
     expect(res.body).not.toContain('vazou');
     await app.close();
   });

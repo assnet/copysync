@@ -15,14 +15,15 @@ describe('pickPreviewUrl', () => {
     expect(pickPreviewUrl(text, AFF)).toBe(AFF);
   });
 
-  it('affiliateUrl ausente do texto: primeiro link', () => {
-    expect(pickPreviewUrl('A https://meli.la/xyz e https://amzn.to/zzz', AFF)).toBe('https://meli.la/xyz');
-    expect(pickPreviewUrl('A https://meli.la/xyz', null)).toBe('https://meli.la/xyz');
-    expect(pickPreviewUrl('A https://meli.la/xyz', undefined)).toBe('https://meli.la/xyz');
+  it('affiliateUrl ausente do texto ou sem affiliateUrl: sem prévia (nunca outro link)', () => {
+    expect(pickPreviewUrl('A https://meli.la/xyz e https://amzn.to/zzz', AFF)).toBeNull();
+    expect(pickPreviewUrl('A https://meli.la/xyz', null)).toBeNull();
+    expect(pickPreviewUrl('A https://meli.la/xyz', undefined)).toBeNull();
+    expect(pickPreviewUrl('A https://meli.la/xyz', '   ')).toBeNull();
   });
 
   it('affiliateUrl prefixo de outro link não conta como presente', () => {
-    expect(pickPreviewUrl(`https://meli.la/a ${AFF}456`, AFF)).toBe('https://meli.la/a');
+    expect(pickPreviewUrl(`https://meli.la/a ${AFF}456`, AFF)).toBeNull();
   });
 
   it('texto sem link → null', () => {
@@ -36,7 +37,7 @@ describe('pickPreviewUrl', () => {
     expect(pickPreviewUrl(`Compre aqui: ${AFF}.`, AFF)).toBe(AFF);
     expect(pickPreviewUrl(`(${AFF})`, AFF)).toBe(AFF);
     expect(pickPreviewUrl(`_${AFF}_!`, AFF)).toBe(AFF);
-    expect(pickPreviewUrl('Link: https://meli.la/xyz,', null)).toBe('https://meli.la/xyz');
+    expect(pickPreviewUrl('Link: https://meli.la/xyz,', 'https://meli.la/xyz')).toBe('https://meli.la/xyz');
   });
 
   it('affiliateUrl com espaços nas pontas', () => {

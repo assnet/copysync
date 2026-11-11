@@ -45,6 +45,11 @@ export const ENTITLEMENT_KEYS = {
    * Preset: só MAX. O super admin libera outro plano pela rota admin (`adminEditableEntitlements.ts`).
    */
   MARKETPLACE_SHEIN_ENABLED: 'marketplace_shein_enabled',
+  /**
+   * Etiquetas da conta do Mercado Livre vinculadas ao tenant (principal incluída). LITE 1, PRO 2, MAX 10.
+   * Exceção à regra acima: ausente/`null` vale 1, nunca ilimitado (`services/affiliateIdentifierLimit.ts`).
+   */
+  MERCADO_LIVRE_AFFILIATE_TAGS: 'mercado_livre_affiliate_tags',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

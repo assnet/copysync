@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { offerRoutes } from './offer.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
+import { rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
 import { GenerateOfferUseCase } from '../../application/use-cases/GenerateOfferUseCase';
 import { GetOfferUseCase } from '../../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../../application/use-cases/GetOfferUsageUseCase';
@@ -15,7 +17,13 @@ import {
   SaveOfferGeneratorConfigUseCase,
   type OfferGeneratorConfigDTO,
 } from '../../application/use-cases/OfferGeneratorConfigUseCases';
-import { OfferLinkNotOwnedError, OfferNotFoundError } from '../../../../shared/errors/internal/OfferErrors';
+import {
+  AffiliateApiRateLimitedError,
+  AffiliateCredentialRejectedError,
+  AffiliateCredentialRequiredError,
+  OfferLinkRebuildFailedError,
+  OfferNotFoundError,
+} from '../../../../shared/errors/internal/OfferErrors';
 import { toOfferDto, type OfferDTO } from '../../application/dtos/OfferDTO';
 import { makeOffer } from '../../application/use-cases/offerTestFakes';
 
@@ -30,8 +38,9 @@ vi.mock('../../../../shared/http/hooks/authHook', () => ({
   },
 }));
 vi.mock('../../../../shared/http/hooks/tenantHook', () => ({
-  tenantHook: async (request: { tenantContext?: unknown }) => {
-    request.tenantContext = { userId: 'user-a', tenantId: 'tenant-a', role: 'ADMIN', isSuperAdmin: false };
+  tenantHook: async (request: { headers: Record<string, unknown>; tenantContext?: unknown }) => {
+    const tenantId = (request.headers['x-tenant-id'] as string | undefined) ?? 'tenant-a';
+    request.tenantContext = { userId: 'user-a', tenantId, role: 'ADMIN', isSuperAdmin: false };
   },
 }));
 
@@ -55,6 +64,8 @@ let app: FastifyInstance;
 beforeEach(async () => {
   app = Fastify();
   app.setErrorHandler(errorHandler);
+  // Global por IP alto, como o app; o preset por tenant da geração vem da rota
+  await app.register(rateLimit, { max: 1000, timeWindow: '1 minute', keyGenerator: (r) => r.ip });
   await app.register(offerRoutes, { prefix: PREFIX });
   await app.ready();
 });
@@ -65,8 +76,8 @@ afterEach(async () => {
 });
 
 describe('POST /', () => {
-  it('201 com { offer, needsManualData, aiFallback, aiErrorCode } e contexto do tenant', async () => {
-    const data = { offer: dto(), needsManualData: true, aiFallback: true, aiErrorCode: 'AI_NOT_CONFIGURED' };
+  it('201 com { offer, needsManualData, aiFallback, aiErrorCode, linkRebuilt } e contexto do tenant', async () => {
+    const data = { offer: dto(), needsManualData: true, aiFallback: true, aiErrorCode: 'AI_NOT_CONFIGURED', linkRebuilt: true };
     const execute = vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue(data);
 
     const res = await app.inject({
@@ -89,11 +100,38 @@ describe('POST /', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('OFFER_LINK_NOT_OWNED → 422 com código', async () => {
-    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockRejectedValue(new OfferLinkNotOwnedError('AMAZON'));
+  it.each([
+    ['AFFILIATE_CREDENTIAL_REQUIRED', new AffiliateCredentialRequiredError('SHOPEE')],
+    ['AFFILIATE_CREDENTIAL_REJECTED', new AffiliateCredentialRejectedError('SHOPEE')],
+    ['OFFER_LINK_REBUILD_FAILED', new OfferLinkRebuildFailedError('MERCADO_LIVRE', 'ML_100')],
+  ])('%s → 422 com código e provider', async (code, err) => {
+    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockRejectedValue(err);
     const res = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x' } });
     expect(res.statusCode).toBe(422);
-    expect(res.body).toContain('OFFER_LINK_NOT_OWNED');
+    expect(res.json().error).toMatchObject({ code, meta: { provider: expect.any(String) } });
+  });
+
+  it('limite da loja ao recriar → 429 AFFILIATE_API_RATE_LIMITED', async () => {
+    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockRejectedValue(new AffiliateApiRateLimitedError('MERCADO_LIVRE'));
+    const res = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://meli.la/x' } });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error.code).toBe('AFFILIATE_API_RATE_LIMITED');
+  });
+
+  it('rate limit por tenant: geração além do preset → 429 RATE_LIMITED; outro tenant segue livre', async () => {
+    const data = { offer: dto(), needsManualData: false, aiFallback: false, linkRebuilt: false };
+    const execute = vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue(data);
+    const send = (tenant: string) =>
+      app.inject({ method: 'POST', url: `${PREFIX}/`, headers: { 'x-tenant-id': tenant }, payload: { url: 'https://amzn.to/x' } });
+    for (let i = 0; i < rateLimitPresets.offerGenerate.max; i++) expect((await send('tenant-a')).statusCode).toBe(201);
+    const limited = await send('tenant-a');
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json().error).toMatchObject({ code: 'RATE_LIMITED', meta: { retryAfterSeconds: expect.any(Number) } });
+    expect(execute).toHaveBeenCalledTimes(rateLimitPresets.offerGenerate.max);
+    expect((await send('tenant-b')).statusCode).toBe(201);
+    // O limite é só da geração: as demais rotas do gerador seguem livres para o mesmo tenant
+    vi.spyOn(GetOfferUsageUseCase.prototype, 'execute').mockResolvedValue({ used: 0, limit: null });
+    expect((await app.inject({ method: 'GET', url: `${PREFIX}/usage`, headers: { 'x-tenant-id': 'tenant-a' } })).statusCode).toBe(200);
   });
 
   it('400 sem url ou com url longa demais', async () => {
@@ -107,7 +145,7 @@ describe('POST /', () => {
 
   it('resposta não vaza campo fora do contrato', async () => {
     const offer = { ...dto(), secret: 'never' } as OfferDTO;
-    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue({ offer, needsManualData: false, aiFallback: false });
+    vi.spyOn(GenerateOfferUseCase.prototype, 'execute').mockResolvedValue({ offer, needsManualData: false, aiFallback: false, linkRebuilt: false });
     const res = await app.inject({ method: 'POST', url: `${PREFIX}/`, payload: { url: 'https://amzn.to/x' } });
     expect(res.body).not.toContain('never');
   });

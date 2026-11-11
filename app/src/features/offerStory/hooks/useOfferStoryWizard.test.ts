@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { writePersisted, readPersisted } from '@/hooks/usePersistedState';
 import type { OfferStoryResult } from '../types';
 import { offerStoryStrings } from '../strings';
+import { affiliateLinkStrings } from '@/features/affiliateLinks/strings';
 
 const render = vi.hoisted(() => vi.fn());
 const navigate = vi.hoisted(() => vi.fn());
@@ -14,7 +15,7 @@ import { RESULT_KEY, RESULT_VERSION, WIZARD_KEY, WIZARD_VERSION, restoreDraft, u
 const URL_OK = 'https://shopee.com.br/produto-i.1.2';
 const RESULT: OfferStoryResult = {
   image: 'data:image/jpeg;base64,AAAA', width: 1080, height: 1920, templateId: 'flash-night', headline: 'Fone',
-  provider: 'SHOPEE', affiliateUrl: 'https://s.shopee.com.br/x', attributionVerified: true,
+  provider: 'SHOPEE', affiliateUrl: 'https://s.shopee.com.br/x', attributionVerified: true, linkRebuilt: false,
   price: { fromCents: null, toCents: 1000 }, coupon: null, warnings: [],
 };
 const saved = (patch: Partial<OfferStoryDraft>) =>
@@ -64,12 +65,28 @@ describe('useOfferStoryWizard', () => {
     render.mockResolvedValue(RESULT);
     await act(() => result.current.generate());
     expect(result.current.step).toBe(2);
-    expect(result.current.result).toBe(RESULT);
+    expect(result.current.result).toEqual(RESULT);
     expect(readPersisted(RESULT_KEY, { version: RESULT_VERSION })).toBeUndefined();
     vi.restoreAllMocks();
     const reloaded = renderHook(() => useOfferStoryWizard());
     expect(reloaded.result.current.step).toBe(1);
     expect(reloaded.result.current.form.url).toBe(URL_OK);
+  });
+
+  it('guarda linkRebuilt da resposta e arte salva sem o campo vale como não recriado', async () => {
+    saved({ step: 1, templateId: 'flash-night', url: URL_OK });
+    render.mockResolvedValue({ ...RESULT, linkRebuilt: true });
+    const { result } = renderHook(() => useOfferStoryWizard());
+    await act(() => result.current.generate());
+    expect(result.current.result?.linkRebuilt).toBe(true);
+    expect(readPersisted<OfferStoryResult>(RESULT_KEY, { version: RESULT_VERSION })?.linkRebuilt).toBe(true);
+
+    const { linkRebuilt: _omit, ...legacy } = RESULT;
+    savedResult(legacy);
+    saved({ step: 2, templateId: 'flash-night', url: URL_OK });
+    const reloaded = renderHook(() => useOfferStoryWizard());
+    expect(reloaded.result.current.step).toBe(2);
+    expect(reloaded.result.current.result?.linkRebuilt).toBe(false);
   });
 
   it('reload no passo 3 (sem arte) volta ao passo 2 com os campos', () => {
@@ -93,18 +110,23 @@ describe('useOfferStoryWizard', () => {
     await act(() => result.current.generate());
     expect(render).toHaveBeenCalledWith({ templateId: 'flash-night', url: URL_OK });
     expect(result.current.step).toBe(2);
-    expect(result.current.result).toBe(RESULT);
+    expect(result.current.result).toEqual(RESULT);
     expect(JSON.stringify(readPersisted(WIZARD_KEY, { version: WIZARD_VERSION }))).not.toContain('base64');
     expect(readPersisted(RESULT_KEY, { version: RESULT_VERSION })).toEqual(RESULT);
   });
 
   it('erro de link fica no campo e no passo 2; sem plano redireciona', async () => {
     saved({ step: 1, templateId: 'flash-night', url: URL_OK });
-    render.mockRejectedValueOnce({ status: 422, code: 'OFFER_LINK_NOT_OWNED' });
+    render.mockRejectedValueOnce({ status: 422, code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } });
     const { result } = renderHook(() => useOfferStoryWizard());
     await act(() => result.current.generate());
     expect(result.current.step).toBe(1);
-    expect(result.current.errors.url).toBeTruthy();
+    expect(result.current.errors.url).toBe(affiliateLinkStrings.errors.credentialRequired('SHOPEE'));
+    expect(result.current.urlErrorAction).toBe('credentials');
+    expect(result.current.urlErrorConnect).toEqual({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } });
+    act(() => result.current.setField('url', URL_OK + '?x'));
+    expect(result.current.urlErrorAction).toBeNull();
+    expect(result.current.urlErrorConnect).toBeNull();
 
     render.mockRejectedValueOnce({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE' });
     await act(() => result.current.generate());
@@ -123,11 +145,27 @@ describe('useOfferStoryWizard', () => {
     render.mockRejectedValueOnce({ status: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
     await act(() => result.current.generate());
     expect(navigate).not.toHaveBeenCalled();
-    expect(result.current.errors.url).toBe(offerStoryStrings.errors.MARKETPLACE_RISK_NOT_ACCEPTED);
+    expect(result.current.errors.url).toBe(affiliateLinkStrings.errors.riskNotAccepted);
 
     render.mockRejectedValueOnce({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'offer_story_enabled' } });
     await act(() => result.current.generate());
     expect(navigate).toHaveBeenCalledWith('/affiliates/plans?feature=offerStory', { replace: true });
+  });
+
+  it('etiqueta do ML sem vaga: erro no link com ação de planos; editar o link limpa a ação', async () => {
+    saved({ step: 1, templateId: 'flash-night', url: URL_OK });
+    render.mockRejectedValueOnce({ status: 403, code: 'PLAN_LIMIT_REACHED', meta: { key: 'mercado_livre_affiliate_tags', limit: 1 } });
+    const { result } = renderHook(() => useOfferStoryWizard());
+    await act(() => result.current.generate());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(result.current.errors.url).toBe(offerStoryStrings.errors.mercadoLivreTagLimit(1, true));
+    expect(result.current.urlErrorAction).toBe('plans');
+    act(() => result.current.setField('url', URL_OK + '?x'));
+    expect(result.current.urlErrorAction).toBeNull();
+
+    render.mockRejectedValueOnce({ status: 422, code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } });
+    await act(() => result.current.generate());
+    expect(result.current.urlErrorAction).toBe('credentials');
   });
 
   it('validação local não chama a API', async () => {

@@ -11,7 +11,7 @@ function row(overrides?: Partial<PrismaAffiliateCredential>): PrismaAffiliateCre
     keyVersion: 1, status: 'ACTIVE',
     sessionCiphertext: null, sessionIv: null, sessionTag: null, sessionKeyVersion: null,
     sessionSyncedAt: null, sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
-    lastValidatedAt: null, rejectedAt: null, rejectedCode: null, createdAt: NOW, updatedAt: NOW,
+    lastValidatedAt: null, rejectedAt: null, rejectedCode: null, accountIdentifiers: [], linkedIdentifiers: [], createdAt: NOW, updatedAt: NOW,
     ...overrides,
   };
 }
@@ -35,6 +35,11 @@ describe('PrismaAffiliateCredentialMapper', () => {
 
     expect(r).toMatchObject({ publicIdentifier: null, hasSecret: false, hasSession: true, secret: null });
     expect(r.session?.keyVersion).toBe(1);
+  });
+
+  it('lê as listas de etiquetas da conta e vinculadas', () => {
+    const d = PrismaAffiliateCredentialMapper.toDomain(row({ accountIdentifiers: ['a', 'b'], linkedIdentifiers: ['b'] }));
+    expect(d).toMatchObject({ accountIdentifiers: ['a', 'b'], linkedIdentifiers: ['b'] });
   });
 
   it('blob incompleto conta como ausente', () => {

@@ -3,11 +3,15 @@ import { ExtractStorefrontOfferUseCase } from './ExtractStorefrontOfferUseCase';
 import { makeResolved, makeStorefrontDeps, MEDIA_URL, TENANT, type StorefrontFakes } from './storefrontTestFakes';
 import { StorefrontOfferStatus } from '../../domain/enums/StorefrontEnums';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
-import { OfferLinkNotOwnedError } from '../../../../shared/errors/internal/OfferErrors';
-import { AppError } from '../../../../shared/errors/AppError';
+import {
+  AffiliateApiRateLimitedError,
+  AffiliateApiUnavailableError,
+  AffiliateCredentialRequiredError,
+  OfferLinkRebuildFailedError,
+} from '../../../../shared/errors/internal/OfferErrors';
 
-const SHOPEE = makeResolved({
-  provider: 'SHOPEE', sourceUrl: 'https://s.shopee.com.br/abc', affiliateUrl: 'https://s.shopee.com.br/abc', attributionVerified: false,
+const SHOPEE_REBUILT = makeResolved({
+  provider: 'SHOPEE', sourceUrl: 'https://s.shopee.com.br/abc', affiliateUrl: 'https://s.shopee.com.br/meu', linkRebuilt: true,
 });
 
 describe('ExtractStorefrontOfferUseCase', () => {
@@ -23,7 +27,8 @@ describe('ExtractStorefrontOfferUseCase', () => {
   });
 
   it('cria rascunho com dados do produto, imagem processada e link resolvido', async () => {
-    const offer = await useCase.execute({ ...input, category: 'pet_shop' });
+    const { offer, linkRebuilt } = await useCase.execute({ ...input, category: 'pet_shop' });
+    expect(linkRebuilt).toBe(false);
     expect(offer).toMatchObject({
       tenantId: TENANT, storefrontId: 'sf-1', status: StorefrontOfferStatus.DRAFT, position: 0, provider: 'MERCADO_LIVRE',
       sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true,
@@ -32,18 +37,17 @@ describe('ExtractStorefrontOfferUseCase', () => {
     expect(fakes.resolveProduct.calls).toEqual([[TENANT, 'https://meli.la/abc']]);
     expect(fakes.imageFetcher.calls).toEqual(['https://img.example/p.jpg']);
     expect(fakes.images.calls).toEqual(['offer']);
-    expect(fakes.buildAffiliateLink.calls).toEqual([]);
   });
 
   it('nova oferta vai para o fim dos rascunhos', async () => {
     fakes.offers.seed({ position: 4 });
     fakes.offers.seed({ status: StorefrontOfferStatus.PUBLISHED, position: 9 });
-    expect((await useCase.execute(input)).position).toBe(5);
+    expect((await useCase.execute(input)).offer.position).toBe(5);
   });
 
   it('categoria fora das categorias da página vira "Sem categoria"', async () => {
-    expect((await useCase.execute({ ...input, category: 'automotive' })).category).toBeNull();
-    expect((await useCase.execute({ ...input, category: 'inexistente' })).category).toBeNull();
+    expect((await useCase.execute({ ...input, category: 'automotive' })).offer.category).toBeNull();
+    expect((await useCase.execute({ ...input, category: 'inexistente' })).offer.category).toBeNull();
   });
 
   it('sem o plano responde PLAN_FEATURE_UNAVAILABLE sem resolver o link', async () => {
@@ -63,70 +67,55 @@ describe('ExtractStorefrontOfferUseCase', () => {
     expect(fakes.resolveProduct.calls).toEqual([]);
   });
 
-  it('erro de regra do link sobe sem gravar', async () => {
-    fakes.resolveProduct.error = new OfferLinkNotOwnedError('MERCADO_LIVRE');
-    await expect(useCase.execute(input)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
-    expect(fakes.offers.offers).toEqual([]);
-  });
-
-  it('Shopee com credencial grava o link gerado do tenant como verificado', async () => {
-    fakes.resolveProduct.result = SHOPEE;
-    fakes.buildAffiliateLink.result = {
-      kind: 'ok', provider: 'SHOPEE', sourceUrl: 'https://shopee.com.br/product/1/2', affiliateUrl: 'https://s.shopee.com.br/meu',
-    };
-    const offer = await useCase.execute({ ...input, url: 'https://s.shopee.com.br/abc' });
-    expect(fakes.buildAffiliateLink.calls).toEqual([[TENANT, 'https://s.shopee.com.br/abc']]);
-    expect(offer).toMatchObject({ sourceUrl: 'https://s.shopee.com.br/abc', affiliateUrl: 'https://s.shopee.com.br/meu', attributionVerified: true });
-  });
-
   it.each([
-    { kind: 'credential_missing', provider: 'SHOPEE' },
-    { kind: 'credential_rejected', provider: 'SHOPEE', since: new Date() },
-    { kind: 'failed', provider: 'SHOPEE', code: 'X' },
-    { kind: 'unsupported' },
-  ] as const)('Shopee com resultado %o grava o link colado sem verificação', async (result) => {
-    fakes.resolveProduct.result = SHOPEE;
-    fakes.buildAffiliateLink.result = result;
-    const offer = await useCase.execute(input);
-    expect(offer).toMatchObject({ affiliateUrl: 'https://s.shopee.com.br/abc', attributionVerified: false });
+    new AffiliateCredentialRequiredError('SHOPEE'),
+    new OfferLinkRebuildFailedError('MERCADO_LIVRE', 'ML_100'),
+    new AffiliateApiRateLimitedError('SHOPEE'),
+    new AffiliateApiUnavailableError('AMAZON'),
+  ])('erro do link ($code) sobe sem gravar nem baixar imagem', async (error) => {
+    fakes.resolveProduct.error = error;
+    await expect(useCase.execute(input)).rejects.toBe(error);
+    expect(fakes.offers.offers).toEqual([]);
+    expect(fakes.imageFetcher.calls).toEqual([]);
   });
 
-  it('Shopee com erro inesperado na geração grava o link colado sem verificação', async () => {
-    fakes.resolveProduct.result = SHOPEE;
-    fakes.buildAffiliateLink.error = new Error('boom');
-    const offer = await useCase.execute(input);
-    expect(offer).toMatchObject({ affiliateUrl: 'https://s.shopee.com.br/abc', attributionVerified: false });
+  it('link de outro afiliado recriado: grava o link do tenant como verificado e devolve linkRebuilt', async () => {
+    fakes.resolveProduct.result = SHOPEE_REBUILT;
+    const { offer, linkRebuilt } = await useCase.execute({ ...input, url: 'https://s.shopee.com.br/abc' });
+    expect(linkRebuilt).toBe(true);
+    expect(offer).toMatchObject({
+      provider: 'SHOPEE', sourceUrl: 'https://s.shopee.com.br/abc', affiliateUrl: 'https://s.shopee.com.br/meu', attributionVerified: true,
+    });
   });
 
-  it('Shopee com AppError na geração sobe o erro', async () => {
-    fakes.resolveProduct.result = SHOPEE;
-    fakes.buildAffiliateLink.error = new AppError('X', 'x', 500);
-    await expect(useCase.execute(input)).rejects.toMatchObject({ code: 'X' });
+  it('item novo nasce verificado mesmo se o resultado vier sem a marca', async () => {
+    fakes.resolveProduct.result = makeResolved({ attributionVerified: false });
+    expect((await useCase.execute(input)).offer.attributionVerified).toBe(true);
   });
 
   it('imagem não baixável não impede o rascunho', async () => {
     fakes.imageFetcher.result = null;
-    expect((await useCase.execute(input)).imageUrl).toBeNull();
+    expect((await useCase.execute(input)).offer.imageUrl).toBeNull();
   });
 
   it('falha ao processar ou gravar a imagem não impede o rascunho', async () => {
     fakes.images.error = new Error('sharp');
-    expect((await useCase.execute(input)).imageUrl).toBeNull();
+    expect((await useCase.execute(input)).offer.imageUrl).toBeNull();
     fakes.images.error = null;
     fakes.media.error = new Error('s3');
-    expect((await useCase.execute(input)).imageUrl).toBeNull();
+    expect((await useCase.execute(input)).offer.imageUrl).toBeNull();
   });
 
   it('produto sem foto não baixa nada', async () => {
     fakes.resolveProduct.result = makeResolved({ product: { ...makeResolved().product, imageSourceUrl: null } });
-    expect((await useCase.execute(input)).imageUrl).toBeNull();
+    expect((await useCase.execute(input)).offer.imageUrl).toBeNull();
     expect(fakes.imageFetcher.calls).toEqual([]);
   });
 
   it('título longo é cortado em 140 e título ausente vira vazio', async () => {
     fakes.resolveProduct.result = makeResolved({ product: { ...makeResolved().product, title: `  ${'a'.repeat(200)}  ` } });
-    expect((await useCase.execute(input)).title).toHaveLength(140);
+    expect((await useCase.execute(input)).offer.title).toHaveLength(140);
     fakes.resolveProduct.result = makeResolved({ product: { ...makeResolved().product, title: null } });
-    expect((await useCase.execute(input)).title).toBe('');
+    expect((await useCase.execute(input)).offer.title).toBe('');
   });
 });

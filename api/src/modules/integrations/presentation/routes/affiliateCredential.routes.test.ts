@@ -75,6 +75,7 @@ describe('GET / — marketplaceAvailability', () => {
   it('enabled do tenant, planos do preset e riskNotice só onde há aviso', async () => {
     vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'listByTenant').mockResolvedValue([]);
     vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockResolvedValue(false);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(null);
     const presets = vi.spyOn(PrismaPlanEntitlementPresetRepository.prototype, 'listByKeys').mockResolvedValue([
       { planSlug: 'COPYSYNC_MAX', key: 'marketplace_shein_enabled', value: true },
       { planSlug: 'COPYSYNC_PRO', key: 'marketplace_shein_enabled', value: false },
@@ -102,6 +103,7 @@ describe('GET / — marketplaceAvailability', () => {
   it('sem aceite da versão vigente: acceptedAt null; aceite de outro usuário: acceptedByMe false', async () => {
     vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'listByTenant').mockResolvedValue([]);
     vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockResolvedValue(true);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(null);
     vi.spyOn(PrismaPlanEntitlementPresetRepository.prototype, 'listByKeys').mockResolvedValue([]);
     const find = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue(null);
     const none = (await call('GET', '/')).json().data.marketplaceAvailability.SHEIN;
@@ -110,5 +112,61 @@ describe('GET / — marketplaceAvailability', () => {
 
     find.mockResolvedValue({ id: 'a1', tenantId: 't1', provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u9', locale: 'pt-BR', acceptedAt: AT });
     expect((await call('GET', '/')).json().data.marketplaceAvailability.SHEIN.riskNotice.acceptedByMe).toBe(false);
+  });
+});
+
+const NOW = new Date('2026-11-11T12:00:00.000Z');
+const mlRecord = {
+  id: 'c1', tenantId: 't1', provider: 'MERCADO_LIVRE' as const, publicIdentifier: 'loja', hasSecret: false, hasSession: true,
+  sessionSyncedAt: NOW, sessionInvalidAt: null, sessionAccountHash: null, sessionAccountKeyVersion: null,
+  status: 'ACTIVE' as const, lastValidatedAt: null, rejectedAt: null, rejectedCode: null,
+  accountIdentifiers: ['loja', 'promo', 'cupom'], linkedIdentifiers: ['promo'],
+  createdAt: NOW, updatedAt: NOW, secret: null, session: null,
+};
+
+describe('GET|PUT /:provider/identifiers', () => {
+  it('sem token → 401, nada lido', async () => {
+    const find = vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider');
+    const res = await app.inject({ method: 'GET', url: '/api/integrations/affiliate-credentials/MERCADO_LIVRE/identifiers' });
+    expect(res.statusCode).toBe(401);
+    expect(find).not.toHaveBeenCalled();
+  });
+
+  it('GET → formato da resposta e leitura pelo tenant do contexto', async () => {
+    const find = vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider').mockResolvedValue(mlRecord);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(2);
+    const res = await call('GET', '/MERCADO_LIVRE/identifiers');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ account: ['loja', 'promo', 'cupom'], primary: 'loja', linked: ['promo'], limit: 2, used: 2 });
+    expect(find).toHaveBeenCalledWith('t1', 'MERCADO_LIVRE');
+  });
+
+  it('PUT grava e devolve o novo estado; auditoria sem etiquetas', async () => {
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider').mockResolvedValue(mlRecord);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(10);
+    const set = vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'setIdentifiers')
+      .mockResolvedValue({ ...mlRecord, publicIdentifier: 'cupom', linkedIdentifiers: ['loja', 'promo'] });
+    const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    const res = await call('PUT', '/MERCADO_LIVRE/identifiers', { primary: 'cupom', linked: ['loja', 'promo'] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ account: ['loja', 'promo', 'cupom'], primary: 'cupom', linked: ['loja', 'promo'], limit: 10, used: 3 });
+    expect(set).toHaveBeenCalledWith('t1', 'MERCADO_LIVRE', 'cupom', ['loja', 'promo']);
+    expect(audit.mock.calls[0][0]).toMatchObject({ action: 'AFFILIATE_CREDENTIAL_UPSERTED', meta: { provider: 'MERCADO_LIVRE', identifiersChanged: true } });
+  });
+
+  it('PUT acima do limite → 403 PLAN_LIMIT_REACHED; body inválido → 400', async () => {
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider').mockResolvedValue(mlRecord);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(1);
+    const set = vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'setIdentifiers');
+    const res = await call('PUT', '/MERCADO_LIVRE/identifiers', { primary: 'loja', linked: ['promo'] });
+    expect([res.statusCode, res.json().error.code]).toEqual([403, 'PLAN_LIMIT_REACHED']);
+    expect(res.json().error.meta).toMatchObject({ key: 'mercado_livre_affiliate_tags', limit: 1 });
+    expect((await call('PUT', '/MERCADO_LIVRE/identifiers', { primary: 'loja' })).statusCode).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('provider sem lista da conta → 422', async () => {
+    const res = await call('GET', '/SHOPEE/identifiers');
+    expect([res.statusCode, res.json().error.code]).toEqual([422, 'AFFILIATE_CREDENTIAL_INVALID']);
   });
 });

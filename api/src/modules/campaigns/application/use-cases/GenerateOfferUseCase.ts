@@ -1,10 +1,6 @@
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import type { IOfferRepository, CreateOfferInput } from '../../domain/contracts/IOfferRepository';
-import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpander';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
-import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
-import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
-import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
@@ -18,7 +14,7 @@ import type { OfferTextComposer } from '../services/OfferTextComposer';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
-import { ResolveAffiliateProductUseCase, type ResolveAffiliateProductDeps } from './ResolveAffiliateProductUseCase';
+import type { ResolveAffiliateProductUseCase } from './ResolveAffiliateProductUseCase';
 
 export const OFFER_GENERATIONS_PER_DAY = ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY;
 
@@ -39,18 +35,16 @@ export interface GenerateOfferOutput {
   /** Público pedia IA, mas o texto saiu do modelo fixo. */
   aiFallback: boolean;
   aiErrorCode?: string;
+  /** Link colado não era do tenant e foi recriado com a credencial dele (aviso no painel). */
+  linkRebuilt: boolean;
 }
 
 export interface GenerateOfferDeps {
   offers: IOfferRepository;
   entitlements: IEntitlementReader;
-  expander: IShortLinkExpander;
-  /** `resolveState`: Shein recusada não chama a loja (ver `ResolveAffiliateProductUseCase`). */
-  credentials: ResolveAffiliateProductDeps['credentials'];
+  /** URL, credencial, aceite e link do tenant: a instância do container (a mesma da vitrine e do story). */
+  affiliateProducts: Pick<ResolveAffiliateProductUseCase, 'execute'>;
   shopee: IShopeeAffiliateClient;
-  mercadoLivre: IMercadoLivreAffiliateClient;
-  shein: ISheinAffiliateClient;
-  riskGate: IMarketplaceRiskGate;
   pageReader: IProductPageReader;
   imageFetcher: IOfferImageFetcher;
   mediaStore: IOfferMediaStore;
@@ -59,24 +53,19 @@ export interface GenerateOfferDeps {
 }
 
 /**
- * Link de afiliado colado → Offer DRAFT (GEN-02..04). O link colado É o link enviado: nada é
- * gerado. Grava só no fim: erro antes (limite, URL, dono do link) não persiste nem conta no limite.
+ * Link de produto colado → Offer DRAFT (GEN-02..04) com o link de afiliado DO TENANT (o colado, se
+ * já for dele, ou recriado pelo Resolve). Grava só no fim: erro antes (limite, URL, credencial,
+ * recriação) não persiste nem conta no limite.
  */
 export class GenerateOfferUseCase {
   private readonly now: () => Date;
-  /** Dados do produto e foto: o mesmo caminho do monitoramento (`ResolveProductDataUseCase`). */
+  /** Foto da oferta (guardar/descartar): o mesmo caminho do monitoramento (`ResolveProductDataUseCase`). */
   private readonly products: ResolveProductDataUseCase;
-  /** Passos 2–4 (URL, dono do link, dados): o mesmo caminho da página de ofertas. */
-  private readonly affiliateProducts: ResolveAffiliateProductUseCase;
 
   constructor(private readonly deps: GenerateOfferDeps) {
     this.now = deps.now ?? (() => new Date());
     this.products = new ResolveProductDataUseCase({
       shopee: deps.shopee, pageReader: deps.pageReader, imageFetcher: deps.imageFetcher, mediaStore: deps.mediaStore,
-    });
-    this.affiliateProducts = new ResolveAffiliateProductUseCase({
-      expander: deps.expander, credentials: deps.credentials, mercadoLivre: deps.mercadoLivre, products: this.products,
-      shein: deps.shein, entitlements: deps.entitlements, riskGate: deps.riskGate,
     });
   }
 
@@ -95,9 +84,9 @@ export class GenerateOfferUseCase {
       if (used >= limit) throw new PlanLimitReachedError(OFFER_GENERATIONS_PER_DAY, limit);
     }
 
-    // 2–4. URL, dono do link e dados do produto (melhor esforço); foto no store
-    const { provider, sourceUrl, affiliateUrl, attributionVerified, product: data } =
-      await this.affiliateProducts.execute(tenantId, input.url);
+    // 2–4. URL, link do tenant e dados do produto (melhor esforço); foto no store
+    const { provider, sourceUrl, affiliateUrl, attributionVerified, linkRebuilt, product: data } =
+      await this.deps.affiliateProducts.execute(tenantId, input.url);
     const imageUrl = data.imageSourceUrl ? await this.products.storeImage(data.imageSourceUrl) : null;
 
     // 5. Texto (modelo ou IA) e grava
@@ -142,6 +131,7 @@ export class GenerateOfferUseCase {
       needsManualData: !offer.title || offer.priceCents == null || !offer.imageUrl,
       aiFallback: composed.aiFallback,
       ...(composed.aiErrorCode ? { aiErrorCode: composed.aiErrorCode } : {}),
+      linkRebuilt,
     };
   }
 }

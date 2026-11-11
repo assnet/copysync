@@ -31,8 +31,10 @@ Cartão com miniatura, título e domínio acima de uma mensagem de texto com lin
   `LINK_PREVIEW` no envio (`ProcessDueOfferDispatchesUseCase`), no PATCH e ao salvar/criar pelo monitoramento;
   linhas antigas não são reescritas. No painel o botão "Imagem com legenda" aparece desabilitado com tooltip.
   Para religar: `true` nas duas constantes (o código de `MEDIA` continua inteiro).
-- Link da prévia: `pickPreviewUrl(text, affiliateUrl)` (`campaigns/domain/services/`): `affiliateUrl` se está no
-  texto, senão o primeiro link do tenant. `matchedText` = esse texto exato.
+- Link da prévia: `pickPreviewUrl(text, affiliateUrl)` (`campaigns/domain/services/`): só o `affiliateUrl`, e só se
+  está no texto como link inteiro; senão `null` e a oferta sai sem prévia (api 0.81.0, TLINK-22: nunca outro link do
+  texto, para a prévia não divulgar link que não é do tenant; antes caía no primeiro link). `matchedText` = esse texto
+  exato.
 
 ## Tamanhos
 

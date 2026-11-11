@@ -8,6 +8,7 @@ import { storefrontUpgradePath } from '../planGate';
 import type { StorefrontOfferTab } from '../reorder';
 import {
   STOREFRONT_FORM_DEFAULTS,
+  errorAction,
   errorMessage,
   formFromOverview,
   isStaleDraft,
@@ -16,14 +17,17 @@ import {
   toSavePayload,
   validateForm,
   type StorefrontFormState,
+  type StorefrontErrorAction,
 } from '../storefrontForm';
 import { finalizeSlug } from '@/features/linkRotation/slug';
+import { AFFILIATE_LINK_ERROR_CODES } from '@/features/affiliateLinks/linkErrors';
 import { storefrontStrings } from '../strings';
 import type {
   SlugAvailabilityStatus,
   StorefrontApiError,
   StorefrontImageKind,
   StorefrontOffer,
+  StorefrontOfferProvider,
   StorefrontOfferStatus,
   StorefrontOverview,
   StorefrontViewport,
@@ -47,7 +51,14 @@ interface SlugCheck {
 const NO_SLUG_CHECK: SlugCheck = { status: null, checking: false, suggestions: [] };
 const EMPTY_ADD: AddOfferDraft = { url: '', category: null };
 /** Erros do "Adicionar oferta" que ficam no próprio card (os demais viram snackbar). */
-const ADD_FIELD_CODES = ['OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'RATE_LIMITED', 'VALIDATION_ERROR', 'MARKETPLACE_RISK_NOT_ACCEPTED'];
+const ADD_FIELD_CODES: readonly string[] = [
+  'OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'RATE_LIMITED', 'VALIDATION_ERROR',
+  // Credencial faltando/recusada, aceite de risco e loja sem resposta (texto do módulo comum);
+  // credencial e aceite ganham o botão para as credenciais sob o campo
+  ...AFFILIATE_LINK_ERROR_CODES,
+  // Etiqueta da conta do ML: não vinculada (vincular) ou sem vaga no plano (planos), com botão sob o campo
+  'AFFILIATE_IDENTIFIER_NOT_LINKED', 'PLAN_LIMIT_REACHED',
+];
 /** Códigos que mostram estado no campo do nome ao salvar. */
 const SLUG_SAVE_STATUS: Record<string, SlugAvailabilityStatus> = {
   LINK_SLUG_TAKEN: 'TAKEN',
@@ -87,6 +98,11 @@ export function useStorefrontPage() {
   const [saving, setSaving] = useState(false);
   const [slugCheck, setSlugCheck] = useState<SlugCheck>(NO_SLUG_CHECK);
   const [addError, setAddError] = useState<string | null>(null);
+  const [addErrorAction, setAddErrorAction] = useState<StorefrontErrorAction | null>(null);
+  /** Código e `meta` do erro de adicionar: escolhem o rótulo do botão de conectar a loja. */
+  const [addErrorSource, setAddErrorSource] = useState<Pick<StorefrontApiError, 'code' | 'meta'> | null>(null);
+  /** Loja do último item adicionado com link recriado (aviso no card; dado do servidor, não persiste). */
+  const [addRebuiltProvider, setAddRebuiltProvider] = useState<StorefrontOfferProvider | null>(null);
   const [imageErrors, setImageErrors] = useState<Partial<Record<StorefrontImageKind, string | null>>>({});
   const [toast, setToast] = useState<StorefrontToast | null>(null);
 
@@ -113,6 +129,7 @@ export function useStorefrontPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  /** Erro de ação na lista/página → snackbar. `STOREFRONT_OFFER_LINK_UNVERIFIED` (publicar) tem texto próprio em `errorMessage`. */
   const fail = (err: unknown) => {
     if (redirectIfNoPlan(err)) return;
     const code = codeOf(err);
@@ -215,21 +232,35 @@ export function useStorefrontPage() {
     }
   };
 
+  /** Edição do card de adicionar: mexer no link apaga o aviso de "link recriado" do item anterior. */
+  const editAddDraft = (next: AddOfferDraft) => {
+    if (next.url !== addDraft.url) setAddRebuiltProvider(null);
+    setAddDraft(next);
+  };
+
   const updateOffers = (fn: (offers: OfferLists) => OfferLists) =>
     setOverview((prev) => (prev ? { ...prev, offers: fn(prev.offers) } : prev));
 
   const extract = async (url: string, category: string | null) => {
     setAddError(null);
+    setAddErrorAction(null);
+    setAddErrorSource(null);
+    setAddRebuiltProvider(null);
     try {
-      const created = await storefrontService.extractOffer(url, category);
+      const { linkRebuilt, ...created } = await storefrontService.extractOffer(url, category);
       updateOffers((o) => ({ ...o, drafts: [...o.drafts, created] }));
+      if (linkRebuilt) setAddRebuiltProvider(created.provider);
       setAddDraft((a) => ({ ...a, url: '' }));
       setTab('drafts');
       notify(t.addOffer.added);
     } catch (err) {
       if (redirectIfNoPlan(err)) return;
-      if (isSheinUnavailable(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) setAddError(errorMessage(err));
-      else fail(err);
+      if (isSheinUnavailable(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) {
+        const e = err as StorefrontApiError;
+        setAddError(errorMessage(err));
+        setAddErrorAction(errorAction(err));
+        setAddErrorSource({ code: e.code, meta: e.meta });
+      } else fail(err);
     }
   };
 
@@ -302,7 +333,7 @@ export function useStorefrontPage() {
     imageErrors, uploadImage, removeImage,
     // ofertas
     tab, setTab,
-    addDraft, setAddDraft, addError, extract,
+    addDraft, setAddDraft, editAddDraft, addError, addErrorAction, addErrorSource, addRebuiltProvider, extract,
     toggleStatus, deleteOffer, reorder,
     editingOffer, openEditOffer: (o: StorefrontOffer) => setEditOfferId(o.id), closeEditOffer: clearEditOffer, saveOffer,
     // prévia e avisos

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BuildTenantAffiliateLinkUseCase } from './BuildTenantAffiliateLinkUseCase';
+import { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { AffiliateCredentialState } from '../../domain/contracts/IAffiliateCredentialGateway';
@@ -29,6 +30,7 @@ function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: 
     mercadoLivre: {
       createAffiliateLinks: vi.fn().mockResolvedValue({ success: [{ originUrl: '', shortUrl: 'https://meli.la/meu', longUrl: '' }], errors: [] }),
       getActiveTag: vi.fn(),
+      listAccountTags: vi.fn(),
     },
     pageReader: { read: vi.fn().mockResolvedValue({ title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: 'MLB998877' }) },
     shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },
@@ -38,7 +40,7 @@ function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: 
     },
     riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
   };
-  return { deps, uc: new BuildTenantAffiliateLinkUseCase(deps) };
+  return { deps, uc: new BuildTenantAffiliateLinkUseCase({ ...deps, composer: new TenantAffiliateLinkComposer(deps) }) };
 }
 
 describe('BuildTenantAffiliateLinkUseCase', () => {
@@ -214,5 +216,15 @@ describe('BuildTenantAffiliateLinkUseCase — Shein', () => {
       s.deps.shein.getProductShare.mockResolvedValueOnce({ ...SHARE, affiliateUrl: bad });
       expect(await s.uc.execute('t1', HREF)).toEqual({ kind: 'failed', provider: 'SHEIN', code: 'SHEIN_LINK_NOT_CREATED' });
     }
+  });
+});
+
+describe('BuildTenantAffiliateLinkUseCase — etiquetas vinculadas (TLINK-35)', () => {
+  it('Mercado Livre com vinculadas no plano: o link do monitoramento sai com a principal', async () => {
+    const ml = { ...CREDS.MERCADO_LIVRE!, accountIdentifiers: ['minhaetq', 'segunda'], linkedIdentifiers: ['segunda'] };
+    const s = setup({ ...CREDS, MERCADO_LIVRE: ml });
+    s.deps.entitlements.getNumber.mockImplementation(async () => 10 as never);
+    await s.uc.execute('t1', 'https://produto.mercadolivre.com.br/MLB-123456-fone-_JM?matt_word=segunda');
+    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://produto.mercadolivre.com.br/MLB-123456'], 'minhaetq');
   });
 });

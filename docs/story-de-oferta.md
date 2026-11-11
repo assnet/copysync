@@ -23,9 +23,13 @@ resposta devolve `affiliateUrl` para o botão "Copiar link".
 ## Extração
 
 - Só via `ResolveAffiliateProductUseCase` (`offersContainer.resolveAffiliateProduct()`, como a vitrine): allowlist
-  (Shopee, Mercado Livre, Amazon), expansão anti-SSRF, dono do link. Erros `OFFER_*`/`AFFILIATE_*` sobem como estão (tabela de Erros).
+  (Shopee, Mercado Livre, Amazon, Shein), expansão anti-SSRF, link sempre do tenant (api 0.81.0; regra em
+  [`gerador-de-ofertas.md`](gerador-de-ofertas.md), "Link do tenant"). Erros `OFFER_*`/`AFFILIATE_*` sobem como estão,
+  com o status original (tabela de Erros).
 - Não usa `GenerateOfferUseCase`: não grava `Offer` nem consome `offer_generations_per_day`.
-- Shopee: link colado + `attributionVerified` do resolve (`false` → selo "comissão não verificada").
+- Link de outro afiliado ou limpo é recriado com a credencial do tenant nos 4 marketplaces (`linkRebuilt: true`); o
+  `affiliateUrl` devolvido é sempre do tenant. Sem selo "comissão não verificada" (até a 0.80.0 a Shopee passava o
+  link colado com `attributionVerified = false`).
 - Título nulo → `422 OFFER_STORY_PRODUCT_INCOMPLETE`.
 - Foto via `IOfferImageFetcher` (≤ 5 MiB, allowlist de CDN). Falha ou imagem que o `sharp` não abre → arte sem foto +
   aviso `NO_IMAGE`.
@@ -93,10 +97,13 @@ Imagem e título rodam em paralelo.
 JSON padrão (`httpResponse.ok`), `image` em data URL base64 (~0,5 MB):
 
 ```ts
-{ image, width: 1080, height: 1920, templateId, headline, provider, affiliateUrl, attributionVerified,
+{ image, width: 1080, height: 1920, templateId, headline, provider, affiliateUrl, attributionVerified, linkRebuilt,
   price: { fromCents, toCents }, coupon: { code, discountPercent } | null,
   warnings: Array<'NO_IMAGE' | 'NO_PRICE' | 'AI_FALLBACK'> }
 ```
+
+`linkRebuilt` (api 0.81.0) vem do `ResolveAffiliateProductUseCase`: `true` quando o link colado foi recriado com a
+conta do tenant; o painel mostra `LinkRebuiltNotice` no passo de resultado.
 
 Por que não binário: com `responseType: 'blob'` o corpo do erro vira Blob e o painel perde o `code` (gate
 `PLAN_FEATURE_UNAVAILABLE`). Storage + URL exigiria job de limpeza. CSP do painel já aceita `img-src data: blob:`.
@@ -119,8 +126,8 @@ Body do render: `{ templateId (1–40), url (1–2048), coupon?: { code (1–60)
 | `OFFER_STORY_PRODUCT_INCOMPLETE` | 422 |
 | `PLAN_FEATURE_UNAVAILABLE` | 403 |
 | `OFFER_PRODUCT_NOT_FOUND` | 404 |
-| `OFFER_*` (URL, dono, afiliado), `OFFER_INVALID_INPUT` | 422 |
-| `AFFILIATE_API_ACCESS_DENIED`, `AFFILIATE_CREDENTIAL_REJECTED` (Shopee: API não liberada / credencial recusada) | 422 |
+| `OFFER_URL_UNSUPPORTED`, `OFFER_LINK_REBUILD_FAILED`, `OFFER_INVALID_INPUT` | 422 |
+| `AFFILIATE_CREDENTIAL_REQUIRED` (loja sem credencial utilizável), `AFFILIATE_API_ACCESS_DENIED`, `AFFILIATE_CREDENTIAL_REJECTED` (API não liberada / credencial recusada), `AFFILIATE_IDENTIFIER_NOT_LINKED` | 422 |
 | `AFFILIATE_API_RATE_LIMITED` | 429 |
 | `AFFILIATE_API_UNAVAILABLE` | 503 |
 | `MEDIA_PROCESSING_FAILED` (renderer) | 422 |

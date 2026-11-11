@@ -5,10 +5,11 @@ import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
 import type { StorefrontOverview } from './types';
 import { storefrontStrings as t } from './strings';
+import { affiliateLinkStrings } from '@/features/affiliateLinks/strings';
 
 const svc = vi.hoisted(() => ({
   getStorefront: vi.fn(),
-  checkSlug: vi.fn(),
+  checkSlug: vi.fn(() => new Promise<never>(() => {})),
   saveStorefront: vi.fn(),
   extractOffer: vi.fn(),
   preview: vi.fn(() => new Promise<string>(() => {})),
@@ -125,7 +126,29 @@ describe('StorefrontPage', () => {
 
     it('aceite da Shein pendente mostra o texto no campo', async () => {
       await extract({ status: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
-      expect(await screen.findByText(t.errors.MARKETPLACE_RISK_NOT_ACCEPTED)).toBeInTheDocument();
+      expect(await screen.findByText(affiliateLinkStrings.errors.riskNotAccepted)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: affiliateLinkStrings.actions.openCredentials })).toBeInTheDocument();
+    });
+
+    it('sem credencial da loja mostra o texto e "Conectar <loja>" no campo', async () => {
+      await extract({ status: 422, code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } });
+      expect(await screen.findByText(affiliateLinkStrings.errors.credentialRequired('SHOPEE'))).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Conectar Shopee' })).toHaveAttribute('href', '/affiliates/credentials?returnTo=%2Fstorefront');
+    });
+
+    it('item criado com link recriado mostra o aviso no card', async () => {
+      svc.getStorefront.mockResolvedValue(withPage);
+      svc.extractOffer.mockReset();
+      svc.extractOffer.mockResolvedValue({
+        id: 'o1', status: 'DRAFT', position: 0, provider: 'MERCADO_LIVRE', sourceUrl: 'https://x.test/p', affiliateUrl: 'https://x.test/a',
+        attributionVerified: true, title: 'Produto', priceCents: null, originalPriceCents: null, imageUrl: null, category: null,
+        publishedAt: null, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z', linkRebuilt: true,
+      });
+      renderPage();
+      const field = await screen.findByRole('textbox', { name: new RegExp(t.addOffer.urlLabel) });
+      fireEvent.change(field, { target: { value: 'https://produto.mercadolivre.com.br/MLB-1' } });
+      fireEvent.click(screen.getByRole('button', { name: t.addOffer.extract }));
+      expect(await screen.findByText('Link recriado com a sua conta do Mercado Livre')).toBeInTheDocument();
     });
 
     it('Página de Ofertas fora do plano continua redirecionando', async () => {

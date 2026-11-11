@@ -150,6 +150,8 @@ const offerItem = {
     sourceUrl: { type: 'string' },
     affiliateUrl: { type: 'string' },
     attributionVerified: { type: 'boolean' },
+    /** Só na criação (`POST /offers`): o link colado era de outro afiliado e foi recriado. */
+    linkRebuilt: { type: 'boolean' },
     title: { type: 'string' },
     priceCents,
     originalPriceCents: priceCents,

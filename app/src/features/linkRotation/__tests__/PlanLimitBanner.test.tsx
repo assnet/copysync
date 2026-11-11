@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PlanLimitBanner } from '../components/PlanLimitBanner';
-import { nextPlanFor } from '../planUpsell';
+import { nextPlanFor, plansAbove, upgradePathFor } from '../planUpsell';
 import { linkRotationStrings } from '../strings';
 
 const t = linkRotationStrings.upgrade;
@@ -39,6 +39,50 @@ describe('nextPlanFor', () => {
   it('textos de grupos por canal com plural e canal', () => {
     expect(t.nextPlan('PRO', 2, 'telegramMonitoredGroups')).toBe('No PRO são 2 grupos monitorados no Telegram.');
     expect(t.topPlanBody(40, 'whatsappBroadcastGroups')).toBe('Você já usa o máximo de 40 grupos de disparo no WhatsApp. Para incluir outro, remova um grupo que não usa mais.');
+  });
+});
+
+describe('plansAbove', () => {
+  it('todos os planos com limite maior, em ordem', () => {
+    expect(plansAbove('mercadoLivreTags', 1)).toEqual([{ name: 'PRO', limit: 2 }, { name: 'MAX', limit: 10 }]);
+    expect(plansAbove('mercadoLivreTags', 2)).toEqual([{ name: 'MAX', limit: 10 }]);
+    expect(plansAbove('mercadoLivreTags', 10)).toEqual([]);
+    expect(plansAbove('groups', 3)).toEqual([{ name: 'PRO', limit: 5 }, { name: 'MAX', limit: 10 }]);
+  });
+
+  it('CTA com ?feature= só para o kind que tem aviso na vitrine', () => {
+    expect(upgradePathFor('mercadoLivreTags')).toBe('/affiliates/plans?feature=mercadoLivreTags');
+    expect(upgradePathFor('groups')).toBe('/affiliates/plans');
+  });
+});
+
+describe('PlanLimitBanner — etiquetas do Mercado Livre', () => {
+  const showTags = (limit: number, mode: 'light' | 'dark' = 'light') =>
+    renderWithTheme(<MemoryRouter><PlanLimitBanner open onClose={vi.fn()} kind="mercadoLivreTags" limit={limit} /></MemoryRouter>, mode);
+
+  it('LITE: lista PRO e MAX e leva aos planos com o recurso destacado', () => {
+    showTags(1, 'dark');
+    const offers = [{ name: 'PRO', limit: 2 }, { name: 'MAX', limit: 10 }];
+    expect(screen.getByText(t.title('mercadoLivreTags'))).toBeInTheDocument();
+    expect(screen.getByText(t.body(1, 'mercadoLivreTags'))).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: t.compareAllAria(1, offers, 'mercadoLivreTags') })).toBeInTheDocument();
+    expect(screen.getByText('PRO')).toBeInTheDocument();
+    expect(screen.getByText('MAX')).toBeInTheDocument();
+    expect(screen.getByText(t.allPlans(offers, 'mercadoLivreTags'))).toBeInTheDocument();
+    expect(t.allPlans(offers, 'mercadoLivreTags')).toBe('No PRO são 2 etiquetas e no MAX, 10.');
+    expect(screen.getByRole('link', { name: t.cta })).toHaveAttribute('href', '/affiliates/plans?feature=mercadoLivreTags');
+  });
+
+  it('PRO cheio: só o MAX', () => {
+    showTags(2);
+    expect(screen.getByText(t.nextPlan('MAX', 10, 'mercadoLivreTags'))).toBeInTheDocument();
+    expect(screen.queryByText('PRO')).not.toBeInTheDocument();
+  });
+
+  it('MAX cheio: sem upgrade, orienta a desvincular', () => {
+    showTags(10);
+    expect(screen.getByText(t.topPlanBody(10, 'mercadoLivreTags'))).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: t.cta })).not.toBeInTheDocument();
   });
 });
 

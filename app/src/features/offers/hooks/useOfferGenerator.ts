@@ -22,6 +22,8 @@ export function useOfferGenerator() {
   const [needsManualData, setNeedsManualData] = useState(false);
   const [usage, setUsage] = useState<OfferUsage | null>(null);
   const [aiFallback, setAiFallback] = useState(false);
+  // O link colado foi trocado por um da conta do tenant (só na geração; reabrir a oferta zera)
+  const [linkRebuilt, setLinkRebuilt] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [mentionSaving, setMentionSaving] = useState(false);
@@ -78,6 +80,7 @@ export function useOfferGenerator() {
       setOffer(res.offer);
       setNeedsManualData(res.needsManualData);
       setAiFallback(res.aiFallback);
+      setLinkRebuilt(res.linkRebuilt === true);
     } catch (err) {
       fail(err);
     } finally {
@@ -261,6 +264,7 @@ export function useOfferGenerator() {
       setOffer(fresh);
       setNeedsManualData(false);
       setAiFallback(false);
+      setLinkRebuilt(false);
       return true;
     } catch (err) {
       return fail(err);
@@ -273,6 +277,7 @@ export function useOfferGenerator() {
     clearOpenOfferId();
     setNeedsManualData(false);
     setAiFallback(false);
+    setLinkRebuilt(false);
     setError(null);
   }, [clearOpenOfferId]);
 
@@ -305,6 +310,7 @@ export function useOfferGenerator() {
     needsManualData,
     usage,
     aiFallback,
+    linkRebuilt,
     generating,
     regenerating,
     mentionSaving,

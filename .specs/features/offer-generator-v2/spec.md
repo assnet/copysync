@@ -79,7 +79,7 @@ Painel: página super admin `/admin/ai` (item de menu só para `isSuperAdmin`): 
 | AI-04 | B | resolução + limites + log |
 | AI-05 | B | adapters Anthropic/OpenAI |
 | GEN-01 | C | configuração (sessão, grupos ≤ plano, intervalo) |
-| GEN-02 | C | link próprio + verificação de dono |
+| GEN-02 | C | ~~link próprio + verificação de dono~~ **Substituído** (api 0.81.0) por [`.specs/features/tenant-affiliate-link/spec.md`](../tenant-affiliate-link/spec.md): link sempre recriado ou provado com a credencial do tenant |
 | GEN-03 | C | dados por API/página com fallback manual |
 | GEN-04 | C | cupom + público + IA + gerar novamente |
 | GEN-05 | C | marcar todos + envio pelos grupos da configuração |

@@ -111,9 +111,12 @@ Memória entre sessões: decisões, bloqueios, lições.
   desligados; tenant só vê o formulário de chave quando a IA da plataforma não está disponível para ele. Teto diário da
   plataforma reservado de forma atômica (padrão 200/dia). Ver `docs/ia-provedores.md`.
 
-- **2026-10-26 — Gerador v2: o link é sempre o do usuário.** O sistema não gera link de afiliado; bloqueia link de
-  terceiro quando a loja expõe a etiqueta (Amazon `tag`, ML `matt_word`). Dados de ML usam a sessão da extensão
-  (mesmo mecanismo das extensões do mercado).
+- **2026-11-11 — Link de afiliado sempre do tenant** (substitui a decisão de 2026-10-26 "o link é sempre o do
+  usuário", que bloqueava link de terceiro). Gerador, Página de Ofertas e Story aceitam qualquer link do produto e
+  recriam o link com a credencial do tenant nos 4 marketplaces (`TenantAffiliateLinkComposer`, o mesmo núcleo do
+  monitoramento); só o link curto oficial já do tenant é mantido; sem credencial utilizável bloqueia
+  (`AFFILIATE_CREDENTIAL_REQUIRED`). api 0.81.0 · app 0.100.0. Spec: `.specs/features/tenant-affiliate-link/`; doc:
+  `docs/gerador-de-ofertas.md` ("Link do tenant").
 
 - **2026-10-29 — Página de Ofertas divide o namespace de subdomínio com o rodízio.** Render só tem 2
   domínios custom (decisão #12 do rodízio), então vitrine e rodízio usam o mesmo `LinkDomain`. Dono único

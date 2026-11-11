@@ -6,6 +6,10 @@ export interface OfferAffiliateCredential {
   publicIdentifier: string;
   secret: string | null;
   session?: { cookies: Record<string, string> } | null;
+  /** Etiquetas da conta vistas na última sincronização (ML). Ausente = `[]`. */
+  accountIdentifiers?: string[];
+  /** Vinculadas além da principal, em ordem, sem aplicar o limite do plano. Ausente = `[]`. */
+  linkedIdentifiers?: string[];
 }
 
 /** Mesmo formato de `ResolveAffiliateCredentialUseCase.execute`; null = sem credencial ativa. */

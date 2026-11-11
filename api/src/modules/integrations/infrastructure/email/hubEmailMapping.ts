@@ -1,7 +1,7 @@
 import type { SendEmailInput } from '../../domain/contracts/IEmailSender';
 
 /** Templates que a central aceita desta aplicação (`POST /integrations/email/send`). */
-export type HubEmailTemplate = 'SET_PASSWORD' | 'TEAM_INVITE' | 'SESSION_DISCONNECTED' | 'LOGIN_VERIFICATION';
+export type HubEmailTemplate = 'SET_PASSWORD' | 'RESET_PASSWORD' | 'TEAM_INVITE' | 'SESSION_DISCONNECTED' | 'LOGIN_VERIFICATION';
 export type HubEmailVar = string | number | boolean;
 
 export interface HubEmailBody {
@@ -17,6 +17,8 @@ export interface HubEmailBody {
  */
 const VAR_ALLOWLIST: Record<HubEmailTemplate, readonly string[]> = {
   SET_PASSWORD: ['name', 'setPasswordUrl', 'expiresInHours'],
+  // Esqueci minha senha (docs/recuperacao-de-senha.md): link de uso único, 1 h.
+  RESET_PASSWORD: ['name', 'resetPasswordUrl', 'expiresInHours'],
   TEAM_INVITE: ['name', 'inviterName', 'workspaceName', 'inviteUrl', 'expiresInHours'],
   SESSION_DISCONNECTED: ['name', 'sessionName', 'disconnectedAt', 'reconnectUrl'],
   // Código do login suspeito (docs/seguranca-login.md): `code` sempre string de 6 dígitos.
@@ -26,6 +28,7 @@ const VAR_ALLOWLIST: Record<HubEmailTemplate, readonly string[]> = {
 /** Template interno (`IEmailSender.send`) → template da central + renomeação das chaves de `data`. */
 const INTERNAL_TEMPLATES: Record<string, { template: HubEmailTemplate; rename: Record<string, string> }> = {
   SET_PASSWORD: { template: 'SET_PASSWORD', rename: { link: 'setPasswordUrl' } },
+  RESET_PASSWORD: { template: 'RESET_PASSWORD', rename: { link: 'resetPasswordUrl' } },
   TEAM_INVITE: { template: 'TEAM_INVITE', rename: { link: 'inviteUrl', tenantName: 'workspaceName' } },
   SESSION_DISCONNECTED: { template: 'SESSION_DISCONNECTED', rename: { link: 'reconnectUrl' } },
   LOGIN_VERIFICATION: { template: 'LOGIN_VERIFICATION', rename: {} },
@@ -47,7 +50,7 @@ export function toHubLocale(raw: string | undefined): string {
 }
 
 /** Vars de link: a central exige URL absoluta https (relativa = 400). */
-export const HUB_LINK_VARS: readonly string[] = ['setPasswordUrl', 'inviteUrl', 'reconnectUrl'];
+export const HUB_LINK_VARS: readonly string[] = ['setPasswordUrl', 'resetPasswordUrl', 'inviteUrl', 'reconnectUrl'];
 
 /** `true` se a URL é absoluta com esquema https. */
 export function isAbsoluteHttpsUrl(value: unknown): boolean {

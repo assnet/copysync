@@ -22,7 +22,6 @@ import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEnti
 import type { BeginConsumeResult, UploadSessionRecord } from '../../../media/domain/contracts/IUploadSessionStore';
 import type { FetchedOfferImage, IOfferImageFetcher } from '../../../campaigns/domain/contracts/IOfferImageFetcher';
 import type { ResolvedAffiliateProduct } from '../../../campaigns/application/use-cases/ResolveAffiliateProductUseCase';
-import type { TenantAffiliateLink } from '../../../campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { StorefrontNotFoundError } from '../../../../shared/errors/internal/StorefrontErrors';
 import type { StorefrontSlugTransaction, StorefrontUploadStore, StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
@@ -230,7 +229,7 @@ export class FakeUploadStore implements StorefrontUploadStore {
 
 export function makeResolved(over: Partial<ResolvedAffiliateProduct> = {}): ResolvedAffiliateProduct {
   return {
-    provider: 'MERCADO_LIVRE', sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true,
+    provider: 'MERCADO_LIVRE', sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true, linkRebuilt: false,
     product: { productRef: 'MLB1', title: 'Fone Bluetooth', priceCents: 9990, originalPriceCents: 12990, imageSourceUrl: 'https://img.example/p.jpg' },
     ...over,
   };
@@ -242,17 +241,6 @@ export class FakeResolveProduct {
   calls: Array<[string, string]> = [];
   async execute(tenantId: string, url: string) {
     this.calls.push([tenantId, url]);
-    if (this.error) throw this.error;
-    return this.result;
-  }
-}
-
-export class FakeBuildAffiliateLink {
-  result: TenantAffiliateLink = { kind: 'credential_missing', provider: 'SHOPEE' };
-  error: Error | null = null;
-  calls: Array<[string, string]> = [];
-  async execute(tenantId: string, href: string) {
-    this.calls.push([tenantId, href]);
     if (this.error) throw this.error;
     return this.result;
   }
@@ -307,7 +295,6 @@ export interface StorefrontFakes {
   media: FakeMediaStore;
   uploads: FakeUploadStore;
   resolveProduct: FakeResolveProduct;
-  buildAffiliateLink: FakeBuildAffiliateLink;
   imageFetcher: FakeImageFetcher;
   files: Map<string, Buffer>;
   domains: FakeDomains;
@@ -325,7 +312,7 @@ export function makeStorefrontDeps(): { deps: Required<StorefrontUseCaseDeps>; f
   const fakes: StorefrontFakes = {
     storefronts: new InMemoryStorefrontRepository(), offers: new InMemoryStorefrontOfferRepository(),
     entitlements: new FakeEntitlementReader(), images: new FakeImageProcessor(), media: new FakeMediaStore(),
-    uploads: new FakeUploadStore(), resolveProduct: new FakeResolveProduct(), buildAffiliateLink: new FakeBuildAffiliateLink(),
+    uploads: new FakeUploadStore(), resolveProduct: new FakeResolveProduct(),
     imageFetcher: new FakeImageFetcher(), files, domains, rotations, slugs, template: new FakePageTemplate(),
   };
   const deps: Required<StorefrontUseCaseDeps> = {

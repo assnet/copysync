@@ -34,6 +34,10 @@ const SESSION_REJECTED_CODE = 'AFFILIATE_CREDENTIAL_REJECTED';
  * - Rejeição: checagem da loja no sync decide (VALID libera, REJECTED recusa). Sem checagem,
  *   só token novo libera — o navegador pode seguir logado com o mesmo token que a loja recusou
  *   no servidor, então "mesmo token" sozinho nunca prova nada.
+ * - Etiquetas da conta: cada item validado (inválido descartado), sem repetição (sem caixa); o
+ *   repositório substitui a lista e poda as vinculadas. Lista nula = leitura falhou, nada muda.
+ *   Mudança de token não zera nada: a troca de conta é coberta pela poda. Principal que sumiu da
+ *   lista vira a etiqueta em uso (`affiliateTag`, se estiver na lista) ou nenhuma — no repositório.
  */
 export class UpsertAffiliateSessionUseCase {
   constructor(
@@ -63,6 +67,8 @@ export class UpsertAffiliateSessionUseCase {
       : null;
     const tagIgnored = Boolean(input.affiliateTag?.trim()) && !tag;
 
+    const accountIdentifiers = this.accountIdentifiersOf(input.provider, input.accountIdentifiers);
+
     const existing = await this.repo.findByTenantAndProvider(input.tenantId, input.provider);
     const changed = this.tokenChanged(existing?.session ?? null, aad, tokenCookie, input.cookies[tokenCookie] ?? '', cipher);
 
@@ -79,6 +85,7 @@ export class UpsertAffiliateSessionUseCase {
       syncedAt: now,
       clearRejection: input.sessionCheck === 'VALID' || (input.sessionCheck === undefined && changed),
       ...(newlyRejected && { rejectWith: { at: now, code: SESSION_REJECTED_CODE } }),
+      ...(accountIdentifiers && { accountIdentifiers }),
     });
 
     if (newlyRejected) {
@@ -100,6 +107,20 @@ export class UpsertAffiliateSessionUseCase {
     }
 
     return credential;
+  }
+
+  /** null = não tocar na lista (ausente ou nada válido sobrou). */
+  private accountIdentifiersOf(provider: AffiliateProvider, raw: string[] | null | undefined): string[] | null {
+    if (!raw) return null;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of raw) {
+      const v = typeof item === 'string' ? validatePublicIdentifier(provider, item) : null;
+      if (!v || seen.has(v.toLowerCase())) continue;
+      seen.add(v.toLowerCase());
+      out.push(v);
+    }
+    return out.length ? out : null;
   }
 
   private tokenChanged(

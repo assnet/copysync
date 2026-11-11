@@ -105,3 +105,18 @@ export class LoginTicketInvalidError extends AppError {
     super('LOGIN_TICKET_INVALID', 'The verification step expired. Sign in again.', 400);
   }
 }
+
+// ── Recuperação de senha (docs/recuperacao-de-senha.md) ──────────────────────
+
+export class PasswordResetTooManyRequestsError extends AppError {
+  constructor(retryAt: Date) {
+    super('PASSWORD_RESET_TOO_MANY_REQUESTS', 'Too many requests. Try again later.', 429, { retryAt: retryAt.toISOString() });
+  }
+}
+
+/** Link inexistente, vencido ou já usado: resposta única (o caminho é pedir outro link). */
+export class PasswordResetInvalidError extends AppError {
+  constructor() {
+    super('PASSWORD_RESET_INVALID', 'Reset link is invalid, expired or already used', 404);
+  }
+}

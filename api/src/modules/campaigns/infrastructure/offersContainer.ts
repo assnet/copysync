@@ -24,6 +24,7 @@ import { LazyAiTextGenerator } from './adapters/LazyAiTextGenerator';
 import { ResolveProductDataUseCase } from '../application/use-cases/ResolveProductDataUseCase';
 import { ResolveAffiliateProductUseCase } from '../application/use-cases/ResolveAffiliateProductUseCase';
 import { OfferTextComposer } from '../application/services/OfferTextComposer';
+import { TenantAffiliateLinkComposer } from '../application/services/TenantAffiliateLinkComposer';
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
 import { OfferPreviewImage } from './adapters/OfferPreviewImage';
@@ -106,12 +107,8 @@ const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator(),
 const generate = lazy(() => new GenerateOfferUseCase({
   offers:       offers(),
   entitlements: entitlements(),
-  expander:     new HttpShortLinkExpander(),
-  credentials:  credentials(),
+  affiliateProducts: affiliateProduct(),
   shopee:       new ShopeeAffiliateClient(),
-  mercadoLivre: new MercadoLivreAffiliateClient(),
-  shein:        shein(),
-  riskGate:     riskGate(),
   pageReader:   new HttpProductPageReader(),
   imageFetcher: new HttpOfferImageFetcher(),
   mediaStore:   mediaStore(),
@@ -139,15 +136,19 @@ const pauses      = lazy(() => new PrismaSendingPauseStore(prisma));
 const sendQueue   = lazy(() => new GetSendQueueUseCase({ reader: new PrismaSendQueueReader(prisma), pauses: pauses() }));
 const pauseAll    = lazy(() => new PauseAllSendsUseCase({ pauses: pauses() }));
 const resumeAll   = lazy(() => new ResumeAllSendsUseCase({ pauses: pauses(), dispatches: dispatches(), configs: configs() }));
-const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
-  expander: new HttpShortLinkExpander(),
-  credentials: credentialGateway(),
+// Núcleo do link do tenant (sem expandir, plano nem pausa): monitoramento e, depois, o Resolve
+const tenantLinkComposer = lazy(() => new TenantAffiliateLinkComposer({
   shopee: new ShopeeAffiliateClient(),
   mercadoLivre: new MercadoLivreAffiliateClient(),
   pageReader: new HttpProductPageReader(),
   shein: shein(),
-  entitlements: entitlements(),
   riskGate: riskGate(),
+}));
+const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
+  expander: new HttpShortLinkExpander(),
+  credentials: credentialGateway(),
+  entitlements: entitlements(),
+  composer: tenantLinkComposer(),
 }));
 const enqueue     = lazy(() => new EnqueueOfferUseCase({ offers: offers(), dispatches: dispatches() }));
 const products    = lazy(() => new ResolveProductDataUseCase({
@@ -155,7 +156,7 @@ const products    = lazy(() => new ResolveProductDataUseCase({
 }));
 // Link colado → marketplace, dono e dados do produto, sem foto (página de ofertas)
 const affiliateProduct = lazy(() => new ResolveAffiliateProductUseCase({
-  expander: new HttpShortLinkExpander(), credentials: credentials(), mercadoLivre: new MercadoLivreAffiliateClient(), products: products(),
+  expander: new HttpShortLinkExpander(), credentials: credentials(), composer: tenantLinkComposer(), products: products(),
   shein: shein(), entitlements: entitlements(), riskGate: riskGate(),
 }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
@@ -185,6 +186,7 @@ export const offersContainer = {
   resumeAllSends:       resumeAll,
   // Usados pelo monitoramento de grupos (módulo automation)
   buildTenantAffiliateLink: tenantLinks,
+  tenantAffiliateLinkComposer: tenantLinkComposer,
   enqueueOffer:         enqueue,
   entitlements:         entitlements,
   resolveProductData:   products,

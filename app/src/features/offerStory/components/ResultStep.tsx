@@ -3,6 +3,7 @@ import { Alert, Box, Button, Chip, Snackbar, Stack, Tooltip, Typography, alpha, 
 import { Check, CircleCheckBig, Copy, Download, Link2, Pencil, Plus, Share2, ShieldAlert } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { LinkRebuiltNotice } from '@/features/affiliateLinks/components/LinkRebuiltNotice';
 import { useCopyToClipboard } from '@/features/storefront/hooks/useCopyToClipboard';
 import { canShareImage, dataUrlToFile, downloadImage, shareImage, storyFileName } from '../shareImage';
 import { offerStoryStrings } from '../strings';
@@ -112,6 +113,7 @@ export function ResultStep({ result, onEdit, onNew }: Props) {
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25, flexWrap: 'wrap', rowGap: 1 }}>
             <AppIcon icon={Link2} size="sm" aria-hidden />
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{t.linkLabel}</Typography>
+            {/* Só legado: link recriado ou provado sai verificado. */}
             {!result.attributionVerified && (
               <Tooltip title={t.unverifiedTooltip} arrow describeChild>
                 <Chip size="small" color="warning" variant="outlined" icon={<AppIcon icon={ShieldAlert} size="sm" />} label={t.unverified} tabIndex={0}
@@ -119,6 +121,11 @@ export function ResultStep({ result, onEdit, onNew }: Props) {
               </Tooltip>
             )}
           </Stack>
+          {result.linkRebuilt && (
+            <Box sx={{ mb: 1.25 }}>
+              <LinkRebuiltNotice provider={result.provider} />
+            </Box>
+          )}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
             <Typography
               variant="body2"

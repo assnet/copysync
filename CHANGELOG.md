@@ -9,6 +9,91 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.81.0 · app 0.100.0 — link de afiliado sempre do tenant
+
+Gerador, Página de Ofertas e Story recusavam link de outro afiliado e a Shopee passava o link colado sem conferência. Agora aceitam qualquer link do produto e o link sai sempre com a conta do tenant. Doc: `docs/gerador-de-ofertas.md` ("Link do tenant"). Spec: `.specs/features/tenant-affiliate-link/` (TLINK-01..24).
+**Migration Prisma**: não. **Erros novos**: `AFFILIATE_CREDENTIAL_REQUIRED`, `OFFER_LINK_REBUILD_FAILED`, `OFFER_TEXT_FOREIGN_LINK` (422) e `STOREFRONT_OFFER_LINK_UNVERIFIED` (409). **Breaking**: `OFFER_LINK_NOT_OWNED`/`OFFER_LINK_NOT_AFFILIATE` removidos; link não verificado deixa de passar; loja sem credencial bloqueia; Shopee sem Open API aprovada deixa de gerar oferta; resposta da geração com `linkRebuilt`.
+
+#### Backend (api/) — `campaigns`, `storefront`, `offer-story`
+
+- **`TenantAffiliateLinkComposer.ts`**, **`BuildTenantAffiliateLinkUseCase.ts`** — núcleo do link do tenant extraído do builder do monitoramento (resultado do monitoramento idêntico); sem `markRejected` nem log de URL.
+- **`ResolveAffiliateProductUseCase.ts`**, **`shouldKeepPastedLink.ts`**, **`isShortLink.ts`** — mantém só o link curto oficial já do tenant (Amazon sempre reescrita), senão recria nos 4 marketplaces; `resolveState` nos 4; allowlist do link devolvido; etiqueta vinculada do ML mantida; `linkRebuilt`.
+- **`GenerateOfferUseCase.ts`**, **`offersContainer.ts`**, **`offer.schema.ts`**, **`rateLimitPresets.ts`**, **`offer.routes.ts`** — resolvedor do container, `linkRebuilt` no envelope, 60/h por tenant em `POST /campaigns/offers`.
+- **`UpdateOfferUseCase.ts`**, **`findForeignMarketplaceLinks.ts`**, **`extractUrls.ts`** — texto editado com link de marketplace acrescentado → `OFFER_TEXT_FOREIGN_LINK`.
+- **`pickPreviewUrl.ts`** — prévia só com o `affiliateUrl`.
+- **`ExtractStorefrontOfferUseCase.ts`**, **`storefrontContainer.ts`**, **`storefront.routes.ts`**, **`SetStorefrontOfferStatusUseCase.ts`** — vitrine sem troca própria da Shopee, `linkRebuilt` na criação, item legado não verificado não publica.
+- **`RenderOfferStoryUseCase.ts`**, **`offerStory.schema.ts`** — story devolve `linkRebuilt`; erros com o status original.
+
+#### Frontend (app/) — `affiliateLinks`, `offers`, `storefront`, `offerStory`
+
+- **`features/affiliateLinks/`** (`linkErrors.ts`, `strings.ts`, `ConnectStoreAction.tsx`, `LinkRebuiltNotice.tsx`) — textos por loja, botão "Conectar <loja>" com `returnTo` e aviso "Link recriado com a sua conta".
+- **`OfferGeneratorForm.tsx`**, **`offerErrors.ts`**, **`OfferResultPanel.tsx`** — campo "Link do produto", sem aviso fixo da Shopee, aviso de recriado.
+- **`AddOfferCard.tsx`**, **`useStorefrontPage.ts`**, **`storefrontForm.ts`** — erro com ação de conectar e aviso ao adicionar.
+- **`ProductStep.tsx`**, **`ResultStep.tsx`**, **`productForm.ts`** — story aceita link de outro afiliado e avisa.
+
+### Added — api 0.80.0 · app 0.99.0 — várias etiquetas do Mercado Livre por plano
+
+Link do ML com etiqueta da própria conta (não `in_use`) era recusado como de terceiro. Doc: `docs/integracoes-credenciais-afiliado.md` ("Várias etiquetas do Mercado Livre"). Spec: `.specs/features/tenant-affiliate-link/` (TLINK-28..39).
+**Migration Prisma**: sim (1, aditiva: `20261111130000_add_affiliate_account_identifiers_and_ml_tags_entitlement`, aplicada no boot pela Render). **Erros novos**: `AFFILIATE_IDENTIFIER_NOT_LINKED` (422) e `PLAN_LIMIT_REACHED` com `meta.key = mercado_livre_affiliate_tags` (403).
+
+#### Backend (api/) — `tenants`, `integrations`, `extension`, `campaigns`
+
+- **`entitlementKeys.ts`**, **`planPresets.ts`**, **`affiliateIdentifierLimit.ts`** — chave `mercado_livre_affiliate_tags` (LITE 1, PRO 2, MAX 10; ausente = 1).
+- **`schema.prisma`** + migration — colunas `accountIdentifiers`/`linkedIdentifiers` em `affiliate_credentials`; presets e backfill filtrado pela chave nova.
+- **`MercadoLivreAffiliateClient.ts`**, **`extension.routes.ts`**, **`UpsertAffiliateSessionUseCase.ts`**, **`PrismaAffiliateCredentialRepository.ts`** — sync grava a lista da conta e poda vinculadas que saíram; lista nula ou vazia não toca; desconectar zera.
+- **`GetAffiliateIdentifiersUseCase.ts`**, **`SetLinkedAffiliateIdentifiersUseCase.ts`**, **`affiliateCredential.routes.ts`** — `GET|PUT /integrations/affiliate-credentials/:provider/identifiers`; listagem com `accountIdentifiers`/`linkedIdentifiers`/`identifierLimit`; Assinatura com uso × limite (`subscriptionLimits.ts`, `PrismaTenantUsageReader.ts`).
+- **`ResolveAffiliateProductUseCase.ts`**, **`verifyAffiliateLink.ts`**, **`effectiveLinkedIdentifiers.ts`** — gerador, vitrine e story aceitam etiqueta vinculada efetiva; da conta não vinculada → `AFFILIATE_IDENTIFIER_NOT_LINKED` (com vaga) ou `PLAN_LIMIT_REACHED` (sem vaga). Monitoramento e links gerados usam a principal.
+
+#### Frontend (app/) — `plans`, `linkRotation`, `offers`, `storefront`, `offerStory`, `settings`
+
+- **`PlanCard.tsx`**, **`PlansHero.tsx`**, **`catalog.ts`** — linha de etiquetas do ML no card; selo "PRO+" no ML no banner; `?feature=mercadoLivreTags`.
+- **`planUpsell.ts`**, **`PlanLimitBanner.tsx`** — aviso de upgrade lista PRO e MAX para esse limite.
+- **`offerErrors.ts`**, **`storefrontForm.ts`**, **`productForm.ts`** — erros novos no gerador, vitrine e story.
+- **`BrowserSessionCredentialDialog.tsx`**, **`AffiliateCredentialCard.tsx`**, **`privacyFlags.ts`** — escolha da principal e das vinculadas na tela de credenciais, contador "x de y", flag de privacidade.
+
+### Fixed — api 0.79.1 — link próprio do ML com apelido do perfil ≠ etiqueta volta a ser aceito
+
+#### Backend (api/) — `campaigns`
+
+- **`campaigns/domain/services/verifyAffiliateLink.ts`** — link próprio do Mercado Livre era recusado (`OFFER_LINK_NOT_OWNED`) quando o apelido do perfil diferia da etiqueta (ex.: `/social/sevenclub?matt_word=sevenclub2025`). Causa raiz: `/social/<x>` (apelido do perfil) e `matt_word` (etiqueta) contavam juntos como identificadores de dono; dois valores distintos → `not_owned`, mesmo com `matt_word` = etiqueta do tenant. Em produção 84 de 86 URLs sociais têm apelido ≠ etiqueta. Nova função pura `ownershipIdentifiersOf`: no ML, havendo `matt_word` em qualquer URL (colada ou final), só ele conta; `/social/<x>` vale apenas sem nenhum `matt_word`. Dois `matt_word` distintos seguem `not_owned`; Amazon, Shein e Shopee inalterados; monitoramento não usa a função. Testes em `verifyAffiliateLink.test.ts` e `ResolveAffiliateProductUseCase.test.ts`. Doc: `docs/gerador-de-ofertas.md`.
+
+### Added — api 0.79.0 · app 0.98.0 — recuperação de senha ("Esqueci minha senha")
+
+Não havia caminho sem suporte para quem esquecia a senha ou ficava com o convite vencido. Doc: `docs/recuperacao-de-senha.md`.
+**Migration Prisma**: sim (2, aditivas). **Depende da central**: template `RESET_PASSWORD` publicado e liberado para a aplicação antes de publicar o painel.
+
+#### Backend (api/) — `auth`, `integrations`
+
+- **`prisma/schema.prisma`**, migrations **`20261111120000_create_password_reset_requests`** e **`20261111120100_add_audit_action_password_reset_completed`** — tabela `password_reset_requests` (pedido por e-mail/IP, hash do token, validade, uso) e ação de auditoria `PASSWORD_RESET_COMPLETED`.
+- **`auth/domain/services/passwordResetRules.ts`** — regras puras: teto 3/h por e-mail e 10/h por IP, link de 1 h, uso único.
+- **`auth/application/use-cases/RequestPasswordResetUseCase.ts`** — `POST /auth/password/forgot`: sempre 202, exista ou não a conta; pedido gravado antes de avaliar o teto; busca da conta, token e e-mail sem `await` (tempo de resposta igual); só o hash do token no banco.
+- **`auth/application/use-cases/ResetPasswordUseCase.ts`**, **`auth/infrastructure/repositories/PrismaPasswordResetRepository.ts`** — `POST /auth/password/reset/inspect` e `POST /auth/password/reset` (token no corpo, nunca na URL, que vai para o log): consumo atômico do token, grava a senha, invalida os outros links da conta e revoga todos os refresh tokens e sessões da extensão numa transação (linha do usuário travada primeiro); grava `PASSWORD_RESET_OK` e auditoria.
+- **`auth/presentation/routes/passwordReset.routes.ts`**, **`auth.routes.ts`**, **`schemas/auth.schema.ts`** — rotas públicas sob `/api/auth/password/*`; erros `PASSWORD_RESET_TOO_MANY_REQUESTS` (429) e `PASSWORD_RESET_INVALID` (404) em `AuthErrors.ts`.
+- **`ILoginProtectionRepository.ts`**, **`PrismaLoginProtectionRepository.ts`**, **`LoginGuard.ts`** — evento `PASSWORD_RESET_OK` zera a contagem de falhas e a suspeita do e-mail, como um login limpo.
+- **`integrations/infrastructure/email/hubEmailMapping.ts`** — template `RESET_PASSWORD` (`name`, `resetPasswordUrl`, `expiresInHours`).
+- Testes: `passwordResetRules.test.ts`, `passwordReset.routes.test.ts`, `PrismaPasswordResetRepository.int.test.ts` (Postgres descartável), `HubEmailSender.test.ts`.
+
+#### Frontend (app/) — `passwordReset`, `login`, `invite`
+
+- **`pages/ForgotPasswordPage.tsx`**, **`pages/ResetPasswordPage.tsx`**, **`features/passwordReset/`**, **`services/passwordReset.service.ts`** — telas `/forgot-password` (confirmação neutra, reenvio após 60 s com `CooldownBar`, 429 com horário, Turnstile quando exigido) e `/reset-password/:token` (link inválido → "pedir novo link"; nova senha; sucesso com "Fazer login").
+- **`components/PasswordStrengthMeter.tsx`** — indicador de força extraído do `InvitePage`.
+- **`pages/LoginPage.tsx`** — link "Esqueci minha senha" sob o campo de senha, levando o e-mail digitado. **`pages/InvitePage.tsx`** — mesmo link nos estados "senha já criada" e "faça login". **`routes/AppRoutes.tsx`** — rotas públicas.
+- Testes: `features/passwordReset/passwordReset.test.tsx`, `pages/login/LoginPage.test.tsx`, `features/invite/InvitePage.test.tsx`.
+
+### Fixed — api 0.78.3 · app 0.97.1 — convite já usado orienta o login
+
+Caso real (2026-11-11): cliente criou a senha, clicou de novo no link do e-mail e viu "Convite inválido" (o link é de uso único); achou que o acesso estava quebrado.
+
+#### Backend (api/) — `users`, `auth`
+
+- **`users/domain/services/inviteAccess.ts`** — `inviteUsability` (função pura): `USABLE` | `ALREADY_ACCEPTED` | `INVALID`; aceito vence expirado. Teste em `inviteAccess.test.ts`.
+- **`shared/errors/internal/TeamErrors.ts`** — `InviteAlreadyAcceptedError` (`409 INVITE_ALREADY_ACCEPTED`).
+- **`auth/presentation/routes/invite.routes.ts`**, **`users/application/use-cases/AcceptInviteUseCase.ts`** — link já aceito devolve 409 `INVITE_ALREADY_ACCEPTED` em vez de 404 `INVITE_INVALID` (inexistente/expirado seguem 404). Painel antigo trata qualquer erro como inválido: compatível.
+
+#### Frontend (app/) — `invite`
+
+- **`pages/InvitePage.tsx`**, **`features/invite/strings.ts`** — estado "Sua senha já foi criada" com botão "Fazer login" quando a API responde `INVITE_ALREADY_ACCEPTED` (ao abrir e ao enviar). Teste em `features/invite/InvitePage.test.tsx`. Doc: `docs/arquitetura-central-billing.md`, "Primeiro acesso".
+
 ### Added — app 0.97.0 — login com compra, primeiro acesso, vídeo e botão de suporte
 
 #### Frontend (app/)

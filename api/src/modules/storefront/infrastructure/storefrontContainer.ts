@@ -62,7 +62,6 @@ const deps = lazy((): StorefrontUseCaseDeps => ({
   },
   readFile:           (path) => fs.readFile(path),
   resolveProduct:     offersContainer.resolveAffiliateProduct(),
-  buildAffiliateLink: offersContainer.buildTenantAffiliateLink(),
   imageFetcher:       new HttpOfferImageFetcher(),
   slugs:              linkRotationContainer.publicSlugRegistry,
   runInSlugTransaction: slugTransaction,

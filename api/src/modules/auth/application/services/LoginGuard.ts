@@ -96,7 +96,7 @@ export class LoginGuard {
     await this.events.discardAttempt(attempt.id).catch((err) => log.error({ err: (err as Error)?.name }, 'login attempt discard failed'));
   }
 
-  async recordSuccess(type: 'LOGIN_OK' | 'LOGIN_CODE_VERIFIED', email: string, userId: string, ctx: LoginRequestContext): Promise<void> {
+  async recordSuccess(type: 'LOGIN_OK' | 'LOGIN_CODE_VERIFIED' | 'PASSWORD_RESET_OK', email: string, userId: string, ctx: LoginRequestContext): Promise<void> {
     if (!this.policy.enforceBlock) return;
     await this.record(type, email, userId, ctx).catch((err) => log.error({ err: (err as Error)?.name, type }, 'login event write failed'));
   }

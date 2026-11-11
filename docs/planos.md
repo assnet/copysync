@@ -51,6 +51,23 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
   (`rotations`/`groups` = WhatsApp; `telegramLinkRotations`/`telegramLinkRotationGroups` = Telegram);
   textos em `linkRotation/strings.ts` (`channelGroupsCopy`).
 
+## Etiquetas do Mercado Livre (app 0.99.0)
+
+- `limits.mercadoLivreTags` do catálogo espelha `mercado_livre_affiliate_tags` (LITE 1, PRO 2, MAX 10; principal
+  incluída). Travado em `catalog.test.ts` (literais) e `planPresets.test.ts`. Regra completa em
+  [`integracoes-credenciais-afiliado.md`](integracoes-credenciais-afiliado.md) ("Várias etiquetas do Mercado Livre").
+- **Linha do card**: não é limite por canal, então fica fora da `ChannelLimitsTable`: linha própria do `PlanCard`
+  logo abaixo da tabela (`MercadoLivreTagsRow`, logo do ML, "Etiquetas do Mercado Livre: N etiqueta(s)", Tooltip
+  `strings.mercadoLivreTags.hint`). O número **não** se repete em `benefits`.
+- **Selos por marketplace no banner** (`PlansHero.tsx`): mapa `PROVIDER_SEAL` provider → `{ label, tooltip }`. Shein =
+  `hero.sheinPlan`; Mercado Livre = "PRO+" (`hero.mercadoLivreTagsPlan`, tooltip `mercadoLivreTagsTooltip`).
+  Marketplace novo com selo entra no mapa, não em booleano por provider.
+- `/affiliates/plans?feature=mercadoLivreTags` mostra o aviso `featureNotice.mercadoLivreTags`.
+- **Aviso de upgrade com vários planos**: `PlanLimitKind` `mercadoLivreTags`; `UPSELL_CONFIG` em `planUpsell.ts`
+  (`listAll`, `feature`) faz o `PlanLimitBanner` listar **todos** os planos acima (`plansAbove`: LITE → PRO e MAX) e o
+  CTA ir para `?feature=mercadoLivreTags` (`upgradePathFor`). Os kinds antigos seguem mostrando só o próximo plano.
+- Assinatura (`/settings/subscription`): linha "Etiquetas do Mercado Livre" com uso × limite.
+
 ## Página de Ofertas (app 0.52.0)
 
 - Benefício "Página de Ofertas" (`STOREFRONT_BENEFIT_LABEL`) só em PRO e MAX, espelhando

@@ -7,7 +7,7 @@ import {
 } from '../../domain/services/storefrontRules';
 import { normalizeSlug, validateSlug } from '../../../link-rotation/domain/services/slugRules';
 import { requireStorefrontEnabled, type StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
-import { storefrontPublicUrl, toStorefrontTemplateModel } from './storefrontPageModel';
+import { publicStorefrontOffers, storefrontPublicUrl, toStorefrontTemplateModel } from './storefrontPageModel';
 
 type Deps = Pick<StorefrontUseCaseDeps, 'storefronts' | 'offers' | 'entitlements' | 'domains' | 'template'>;
 
@@ -44,7 +44,8 @@ export class PreviewStorefrontUseCase {
     const { tenantId, draft } = input;
     await requireStorefrontEnabled(this.deps.entitlements, tenantId);
     const page = await this.deps.storefronts.findByTenant(tenantId);
-    const offers = page ? await this.deps.offers.listPublished(tenantId, page.id) : [];
+    // Mesmo recorte da página pública: prévia mostra o que o visitante veria.
+    const offers = page ? publicStorefrontOffers(await this.deps.offers.listPublished(tenantId, page.id)) : [];
 
     const categories = [...new Set(draft.categories.filter(isStorefrontCategory))];
     const model = toStorefrontTemplateModel(

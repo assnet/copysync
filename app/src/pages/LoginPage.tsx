@@ -18,6 +18,7 @@ import { GOLDEN_SPACE, GOLDEN_SPLIT, GOLDEN_TYPE } from './login/goldenRatio';
 import { PRIVACY_POLICY_PATH, privacyPolicyLinkLabel } from '@/features/privacy-policy/strings';
 import { SUPPORT_PATH, supportLinkLabel } from '@/features/support/strings';
 import { BUY_NOW_PATH } from '@/features/platformLinks/links';
+import { FORGOT_PASSWORD_PATH, passwordResetStrings } from '@/features/passwordReset/strings';
 import { THANK_YOU_FROM_LOGIN_STATE, THANK_YOU_PATH } from '@/features/thankYou/strings';
 import { authService } from '@/services/auth.service';
 import { serverNow } from '@/services/serverClock';
@@ -240,7 +241,6 @@ export function LoginPage() {
                   fullWidth
                   required
                   autoComplete="current-password"
-                  sx={{ mb: `${turnstileSiteKey ? GOLDEN_SPACE.s3 : GOLDEN_SPACE.s4}px` }}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -259,6 +259,22 @@ export function LoginPage() {
                     ),
                   }}
                 />
+                {/* Esqueci minha senha: discreto, leva o e-mail já digitado (docs/seguranca-login.md). */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: `${turnstileSiteKey ? 0 : GOLDEN_SPACE.s1}px` }}>
+                  <Link
+                    component={RouterLink}
+                    to={FORGOT_PASSWORD_PATH}
+                    state={email.trim() ? { email: email.trim() } : undefined}
+                    underline="hover"
+                    sx={{
+                      // Área de toque de 44 px sem aumentar o peso visual do link.
+                      display: 'inline-block', py: '12px', fontSize: GOLDEN_TYPE.caption, fontWeight: 600, borderRadius: 0.5,
+                      '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
+                    }}
+                  >
+                    {passwordResetStrings.forgotLink}
+                  </Link>
+                </Box>
                 {turnstileSiteKey && (
                   <TurnstileWidget siteKey={turnstileSiteKey} onToken={setTurnstileToken} resetSignal={turnstileReset} />
                 )}
