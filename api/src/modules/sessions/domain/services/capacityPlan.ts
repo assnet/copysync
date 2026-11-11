@@ -66,6 +66,12 @@ export interface ShouldScaleUpInput {
   awaitingOlderThanThreshold: number;
   settings: Pick<WorkerScalingSettings, 'alertOccupancyRatio' | 'scaleUpSustainSeconds'>;
   now: Date;
+  /**
+   * Início do último intervalo mínimo (`lastCooldownStartAt`). Amostras com `at` ≤ esse instante não
+   * entram na janela sustentada: depois de cada subida a janela recomeça (amostras velhas, medidas com
+   * menos réplicas, não disparam outra subida). Não afeta o `no_samples`.
+   */
+  ignoreBefore?: Date | null;
 }
 
 export interface ShouldScaleUpResult {
@@ -83,7 +89,8 @@ function isAboveRatio(sample: OccupancySample, ratio: number): boolean {
  * Decide subir uma réplica (WSCALE-15). Primeiro o gatilho de aguardando: contado ao vivo no banco (T27),
  * vale mesmo sem amostra → `awaiting`. Depois as amostras: sem amostra recente → `{ scaleUp: null, reason: 'no_samples' }`.
  * Ocupação sustentada = todas as amostras em `(now − scaleUpSustainSeconds, now]` acima de
- * `alertOccupancyRatio` e pelo menos `ceil(scaleUpSustainSeconds ÷ 300)` delas. Amostras futuras são ignoradas.
+ * `alertOccupancyRatio` e pelo menos `ceil(scaleUpSustainSeconds ÷ 300)` delas. Amostras futuras são ignoradas,
+ * e as de `at` ≤ `ignoreBefore` não contam na janela.
  */
 export function shouldScaleUp(input: ShouldScaleUpInput): ShouldScaleUpResult {
   if (input.awaitingOlderThanThreshold > 0) return { scaleUp: true, reason: 'awaiting' };
@@ -97,7 +104,8 @@ export function shouldScaleUp(input: ShouldScaleUpInput): ShouldScaleUpResult {
 
   const { alertOccupancyRatio, scaleUpSustainSeconds } = input.settings;
   const windowStartMs = nowMs - scaleUpSustainSeconds * 1000;
-  const inWindow = past.filter((s) => s.at.getTime() > windowStartMs);
+  const startMs = Math.max(windowStartMs, input.ignoreBefore?.getTime() ?? -Infinity);
+  const inWindow = past.filter((s) => s.at.getTime() > startMs);
   const minSamples = Math.ceil(scaleUpSustainSeconds / OCCUPANCY_SAMPLE_SECONDS);
   if (inWindow.length >= minSamples && inWindow.every((s) => isAboveRatio(s, alertOccupancyRatio))) {
     return { scaleUp: true, reason: 'occupancy' };

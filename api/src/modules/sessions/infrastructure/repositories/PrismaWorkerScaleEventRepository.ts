@@ -123,6 +123,20 @@ export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventReposi
     return row ? toEvent(row) : null;
   }
 
+  /** Usa o índice `(at desc)` (tabela pequena: 180 dias de retenção); sem índice novo. */
+  async latestByTrigger(trigger: WorkerScaleTrigger): Promise<WorkerScaleEvent | null> {
+    const row = await this.prisma.workerScaleEvent.findFirst({ where: { trigger }, orderBy: [{ at: 'desc' }, { id: 'desc' }] });
+    return row ? toEvent(row) : null;
+  }
+
+  async latestSucceeded(): Promise<WorkerScaleEvent | null> {
+    const row = await this.prisma.workerScaleEvent.findFirst({
+      where: { outcome: 'succeeded' },
+      orderBy: [{ at: 'desc' }, { id: 'desc' }],
+    });
+    return row ? toEvent(row) : null;
+  }
+
   /** Keyset por `id desc` (crescente com `at`): página estável mesmo com inserções novas no topo. */
   async list({ beforeId, limit }: { beforeId?: number | null; limit: number }): Promise<WorkerScaleEventPage> {
     const rows = await this.prisma.workerScaleEvent.findMany({

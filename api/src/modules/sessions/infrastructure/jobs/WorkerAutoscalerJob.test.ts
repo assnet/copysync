@@ -90,6 +90,8 @@ function world(over: Partial<WorkerScalingSettings> = {}) {
       },
     ),
     findByRequestId: vi.fn(async (id: string) => rows.find((r) => r.requestId === id) ?? null),
+    latestSucceeded: vi.fn(async () => rows.filter((r) => r.outcome === 'succeeded').at(-1) ?? null),
+    latestByTrigger: vi.fn(async (t: string) => rows.filter((r) => r.trigger === t).at(-1) ?? null),
     list: vi.fn(),
     deleteOlderThan: vi.fn(async () => 0),
   };
@@ -108,10 +110,13 @@ function world(over: Partial<WorkerScalingSettings> = {}) {
   const adoption = { countAwaitingCapacity: vi.fn(async () => awaiting) };
   const provider = { current: () => ({ value: settings, origin: {} as never }), refresh: vi.fn(), start: vi.fn(), stop: vi.fn() };
   const now = () => clock;
+  let adoptionOn = true;
+  const isAdoptionEnabled = vi.fn(() => adoptionOn);
   const scale = new ScaleWorkersUseCase({
-    events, scaler, settings: provider, audit: makeAuditRepo(), isAdoptionEnabled: () => true, now,
+    events, scaler, settings: provider, audit: makeAuditRepo(), isAdoptionEnabled, now,
   });
-  const newJob = () => new WorkerAutoscalerJob({ lease, settings: provider, samples, adoption, scaler, scale, events, now });
+  const newJob = () =>
+    new WorkerAutoscalerJob({ lease, settings: provider, samples, adoption, scaler, scale, events, isAdoptionEnabled, now });
 
   return {
     lease, events, rows, scaler, samples, adoption, newJob,
@@ -119,6 +124,7 @@ function world(over: Partial<WorkerScalingSettings> = {}) {
     now,
     configure: (patch: Partial<WorkerScalingSettings>) => { settings = { ...settings, ...patch }; },
     setAwaiting: (n: number) => { awaiting = n; },
+    setAdoption: (on: boolean) => { adoptionOn = on; },
     setState: (s: WorkerScalerState | null) => { state = s; },
     /** Grava o par `sessions_*` no instante atual (como o sampler a cada 5 min). */
     persist: (connected: number, capacity = 100) => {
@@ -139,7 +145,7 @@ async function run(w: ReturnType<typeof world>, job: WorkerAutoscalerJob, minute
 }
 
 describe('pairOccupancySamples', () => {
-  it('pareia por `at`, só sessions/cluster, e aceita amostra antiga sem `agg`', () => {
+  it('pareia por `at` só sessions/cluster; `at` sem par é descartado, com ou sem `meta.agg`', () => {
     const a = new Date(START.getTime());
     const b = new Date(START.getTime() + 5 * MIN);
     const out = pairOccupancySamples(
@@ -220,6 +226,8 @@ describe('WorkerAutoscalerJob', () => {
     await job.runTick();
     expect(w.replicas).toBe(2);
     await run(w, job, 30);
+    // Intervalo checado localmente: o provedor só foi lido no 1º tick (estado reaproveitado no pedido).
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
     const rejected = w.rows.filter((r) => r.outcome === 'rejected');
     expect(rejected).toHaveLength(1);
     expect(rejected[0]).toMatchObject({ error: 'SCALE_COOLDOWN_ACTIVE', fromReplicas: 2, toReplicas: 3, requestId: null });
@@ -291,10 +299,12 @@ describe('WorkerAutoscalerJob', () => {
     const job = w.newJob();
     await job.runTick();
     expect(w.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout', toReplicas: 2 });
-    await run(w, job, 10); // baldes seguintes: id novo, mas o intervalo segura
+    await run(w, job, 10); // baldes seguintes: id novo, mas o intervalo segura (checado localmente)
     expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
+    // Sem `succeeded` conhecido as réplicas ficam desconhecidas (0), como nas recusas antes da leitura.
     expect(w.rows.filter((r) => r.outcome === 'rejected')).toEqual([
-      expect.objectContaining({ error: 'SCALE_COOLDOWN_ACTIVE', fromReplicas: 1, toReplicas: 2 }),
+      expect.objectContaining({ error: 'SCALE_COOLDOWN_ACTIVE', fromReplicas: 0, toReplicas: 0 }),
     ]);
   });
 
@@ -317,7 +327,7 @@ describe('WorkerAutoscalerJob', () => {
     const job = w.newJob();
     await run(w, job, 3);
     expect(w.rows).toHaveLength(1);
-    expect(w.rows[0]).toMatchObject({ outcome: 'rejected', error: 'SCALER_UNAVAILABLE' });
+    expect(w.rows[0]).toMatchObject({ outcome: 'rejected', error: 'SCALER_UNAVAILABLE:read_upstream' });
     expect(w.scaler.scaleTo).not.toHaveBeenCalled();
   });
 
@@ -353,12 +363,93 @@ describe('WorkerAutoscalerJob', () => {
     expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
   });
 
-  it('nunca reduz: ocupação baixa sustentada não pede escala', async () => {
+  it('nunca reduz: 3 réplicas e ocupação baixa por 30+ min não pedem escala', async () => {
     const w = world({ maxReplicas: 5 });
+    w.setState(ready(3));
     w.persist(5);
     const job = w.newJob();
-    await run(w, job, 30, 5);
+    await run(w, job, 35, 5);
     expect(w.scaler.getState).not.toHaveBeenCalled();
+    expect(w.scaler.scaleTo).not.toHaveBeenCalled();
+    expect(w.rows.filter((r) => r.outcome === 'succeeded' || r.outcome === 'requested')).toEqual([]);
     expect(w.rows).toEqual([]);
+  });
+
+  it('troca de dono com lease VIVO (B no mesmo minuto): B não lê o provedor, não pede nem grava', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 5 });
+    w.setAwaiting(1);
+    await w.newJob().runTick();
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
+    const b = w.newJob();
+    w.advance(30_000); // lease de A vale até tick − 1 s
+    await b.runTick();
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    expect(w.adoption.countAwaitingCapacity).toHaveBeenCalledTimes(1);
+    expect(w.rows).toHaveLength(1);
+  });
+
+  it('janela sustentada recomeça depois da subida: amostras velhas não sobem de novo', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 5 });
+    const job = w.newJob();
+    await run(w, job, 15, 90); // amostras 5, 10, 15 → sobe no minuto 15
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    await run(w, job, 14, 90); // 20 e 25: só 2 amostras depois da subida
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    await run(w, job, 1, 90); // 30: 3ª amostra nova
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(2);
+    expect(w.replicas).toBe(3);
+  });
+
+  it('adoção desligada: não conta aguardando nem lê amostras/provedor; ADOPTION_DISABLED 1×/hora', async () => {
+    const w = world();
+    w.setAdoption(false);
+    w.setAwaiting(5);
+    w.persist(99);
+    const job = w.newJob();
+    await run(w, job, 59);
+    expect(w.rows).toHaveLength(1);
+    expect(w.rows[0]).toMatchObject({ outcome: 'rejected', error: 'ADOPTION_DISABLED', reason: 'auto: adoption_disabled', requestId: null });
+    expect(w.adoption.countAwaitingCapacity).not.toHaveBeenCalled();
+    expect(w.samples.listSince).not.toHaveBeenCalled();
+    expect(w.scaler.getState).not.toHaveBeenCalled();
+    await run(w, job, 2);
+    expect(w.rows).toHaveLength(1);
+    await run(w, job, 1);
+    expect(w.rows).toHaveLength(2);
+  });
+
+  it('último succeeded já no maxReplicas: recusa 1×/hora sem ler o provedor', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
+    w.setAwaiting(1);
+    const job = w.newJob();
+    await job.runTick();
+    expect(w.replicas).toBe(2);
+    await run(w, job, 20);
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    expect(w.rows.filter((r) => r.outcome === 'rejected')).toEqual([
+      expect.objectContaining({ error: 'SCALE_TARGET_OUT_OF_RANGE', fromReplicas: 2, toReplicas: 3 }),
+    ]);
+  });
+
+  it('corrida no lock com intervalo > 0: recusa do execute não é gravada por ele; job grava 1×/hora', async () => {
+    const w = world({ scaleCooldownSeconds: 1800, maxReplicas: 5 });
+    w.setAwaiting(1);
+    // Pedido manual entra entre a checagem do job e o lock: o lock devolve `blocked`.
+    w.events.recordRequestedIfIdle.mockImplementationOnce(async () => {
+      await w.events.record({ trigger: 'manual', actorUserId: 'u1', fromReplicas: 1, toReplicas: 2, reason: 'pico', outcome: 'requested' });
+      return { blocked: new Date(START.getTime() + 1800_000) };
+    });
+    const job = w.newJob();
+    await job.runTick();
+    await run(w, job, 12); // baldes 5 e 10: intervalo ativo visto localmente, mesma recusa silenciada
+    expect(w.events.recordRequestedIfIdle).toHaveBeenCalledTimes(1);
+    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
+    expect(w.scaler.scaleTo).not.toHaveBeenCalled();
+    expect(w.rows.filter((r) => r.trigger === 'auto')).toEqual([
+      expect.objectContaining({ outcome: 'rejected', error: 'SCALE_COOLDOWN_ACTIVE', fromReplicas: 1, toReplicas: 2, requestId: null }),
+    ]);
+    expect(w.events.record).toHaveBeenCalledTimes(2); // o manual + a recusa do job (o execute não gravou)
   });
 });

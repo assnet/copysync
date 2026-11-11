@@ -251,7 +251,7 @@ export const workerScaleStateResponse = {
     data: {
       type: 'object',
       additionalProperties: false,
-      required: ['scaler', 'settings', 'cooldownUntil', 'lastEvent', 'enforced'],
+      required: ['scaler', 'settings', 'cooldownUntil', 'lastEvent', 'lastAutoEvent', 'enforced'],
       properties: {
         scaler: scalerState,
         settings: {
@@ -267,6 +267,8 @@ export const workerScaleStateResponse = {
         },
         cooldownUntil: { type: ['string', 'null'], format: 'date-time' },
         lastEvent: { anyOf: [scaleEvent, { type: 'null' }] },
+        /** Último evento do job automático (qualquer resultado), sem ator. */
+        lastAutoEvent: { anyOf: [scaleEvent, { type: 'null' }] },
         enforced: { type: 'boolean' },
       },
     },

@@ -58,7 +58,7 @@ const publicEvent = (e: WorkerScaleEvent) => ({
 });
 
 let app: FastifyInstance;
-let events: Record<'findByRequestId' | 'record' | 'recordRequestedIfIdle' | 'updateOutcome' | 'lastCooldownStartAt' | 'list', ReturnType<typeof vi.fn>>;
+let events: Record<'findByRequestId' | 'record' | 'recordRequestedIfIdle' | 'updateOutcome' | 'lastCooldownStartAt' | 'list' | 'latestByTrigger', ReturnType<typeof vi.fn>>;
 let audit: ReturnType<typeof vi.fn>;
 let listSince: ReturnType<typeof vi.fn>;
 
@@ -82,6 +82,7 @@ beforeEach(async () => {
     updateOutcome: vi.spyOn(proto, 'updateOutcome').mockResolvedValue(undefined),
     lastCooldownStartAt: vi.spyOn(proto, 'lastCooldownStartAt').mockResolvedValue(null),
     list: vi.spyOn(proto, 'list').mockResolvedValue({ items: [], nextBeforeId: null }),
+    latestByTrigger: vi.spyOn(proto, 'latestByTrigger').mockResolvedValue(null),
   } as never;
   audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined as never) as never;
   listSince = vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'listSince').mockImplementation(async (metric) =>
@@ -133,6 +134,7 @@ describe('GET /admin/workers/scale', () => {
         settings: { scalerMode: 'manual', minReplicas: 1, maxReplicas: 4, scaleCooldownSeconds: 600 },
         cooldownUntil: new Date(last.getTime() + 600_000).toISOString(),
         lastEvent: publicEvent(event()),
+        lastAutoEvent: null,
         enforced: true,
       },
     });
@@ -149,7 +151,20 @@ describe('GET /admin/workers/scale', () => {
       scaler: { status: 'not_configured', missing: ['RENDER_API_KEY', 'WORKER_SCALER_SERVICE_ID'] },
       cooldownUntil: null,
       lastEvent: null,
+      lastAutoEvent: null,
     });
+  });
+
+  it('lastAutoEvent: último evento do automático, sem ator nem requestId', async () => {
+    const auto = event({ id: 9, trigger: 'auto', actorUserId: null, outcome: 'rejected', error: 'SCALE_COOLDOWN_ACTIVE', reason: 'auto: awaiting', requestId: 'auto:123' });
+    events.latestByTrigger.mockResolvedValue(auto);
+    events.list.mockResolvedValue({ items: [event()], nextBeforeId: null });
+    const res = await app.inject({ method: 'GET', url: URL });
+    expect(res.statusCode).toBe(200);
+    expect(events.latestByTrigger).toHaveBeenCalledWith('auto');
+    expect(res.json().data.lastAutoEvent).toEqual(publicEvent(auto));
+    expect(res.json().data.lastEvent).toEqual(publicEvent(event()));
+    expect(res.body).not.toContain('auto:123');
   });
 
   it('indisponível por recusa do provedor: razão rejected_by_provider no contrato', async () => {

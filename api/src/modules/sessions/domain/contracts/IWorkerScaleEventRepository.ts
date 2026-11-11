@@ -95,6 +95,10 @@ export interface IWorkerScaleEventRepository {
    */
   lastCooldownStartAt(): Promise<Date | null>;
   findByRequestId(requestId: string): Promise<WorkerScaleEvent | null>;
+  /** Evento mais recente com esse `trigger` (`at desc`, desempate `id desc`), qualquer resultado. */
+  latestByTrigger(trigger: WorkerScaleTrigger): Promise<WorkerScaleEvent | null>;
+  /** Último `succeeded` (manual ou automático): réplicas conhecidas sem consultar o provedor. */
+  latestSucceeded(): Promise<WorkerScaleEvent | null>;
   /** Mais recentes primeiro (`id desc`); `beforeId` vem do cursor decodificado. */
   list(input: { beforeId?: number | null; limit: number }): Promise<WorkerScaleEventPage>;
   /** Apaga `at < cutoff` em lotes (`statement_timeout` 2 s por lote); devolve o total apagado. */

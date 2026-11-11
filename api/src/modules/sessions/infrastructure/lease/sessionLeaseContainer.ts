@@ -299,6 +299,7 @@ export function createWorkerAutoscalerJob(): WorkerAutoscalerJob {
       log: logger.child({ module: 'ScaleWorkersUseCase' }),
     }),
     events,
+    isAdoptionEnabled: workerScalingEnforced(),
   });
 }
 
