@@ -4,7 +4,7 @@ export const workersAdminStrings = {
   pageTitle: 'Workers',
   pageSubtitle: 'Ocupação dos servidores que mantêm as sessões conectadas. Atualiza a cada 20 segundos.',
   /** Abas da tela (a aba ativa vem da URL). */
-  tabs: { occupancy: 'Ocupação', usage: 'Consumo', aria: 'Visões de Workers' },
+  tabs: { occupancy: 'Ocupação', usage: 'Consumo', settings: 'Configuração', aria: 'Visões de Workers' },
   retry: 'Tentar de novo',
   listTitle: 'Workers ativos',
   empty: 'Nenhum worker ativo',
@@ -62,6 +62,36 @@ export const workersAdminStrings = {
 
   /** Aba Configuração (WSCALE-07): rótulo, ajuda e faixa por campo. */
   settings: {
+    subtitle: 'Limites dos workers e regras da escala de réplicas. Vale para todos os servidores.',
+    loading: 'Carregando a configuração',
+    helpAria: (label: string) => `Ajuda: ${label}`,
+    groups: {
+      limits: { title: 'Teto e alertas', subtitle: 'Quanto cada worker assume e quando a ocupação vira alerta.' },
+      scaling: { title: 'Escala de réplicas', subtitle: 'Como e até onde o número de workers pode mudar.' },
+    },
+    replicas: { label: 'Réplicas', aria: 'Faixa de réplicas', min: 'Mínimo', max: 'Máximo', value: (n: number) => (n === 1 ? '1 worker' : `${n} workers`) },
+    notEnforced: 'Sem efeito até ligar a adoção por capacidade. Os valores ficam salvos e passam a valer quando a adoção for ligada.',
+    belowOccupancy: (cap: number, busiest: number) =>
+      `O teto de ${cap.toLocaleString('pt-BR')} fica abaixo das ${busiest.toLocaleString('pt-BR')} sessões do worker mais ocupado. Nenhuma sessão cai: ele só deixa de adotar novas até a ocupação baixar.`,
+    lastSaved: (when: string) => `Salvo em ${when}`,
+    neverSaved: 'Nunca salvo: valores padrão do ambiente.',
+    draftRestored: 'Rascunho restaurado',
+    actions: { discard: 'Descartar alterações', review: 'Revisar e salvar', retry: 'Tentar de novo' },
+    confirm: {
+      title: 'Confirmar alterações',
+      intro: 'Estes valores mudam para todos os workers:',
+      field: 'Campo',
+      before: 'Atual',
+      after: 'Novo',
+      strongTitle: 'Teto sem medição',
+      strongHint: 'Ainda não há medição de memória por sessão para confirmar que o teto novo cabe nos servidores. Subir o teto sem medir pode derrubar um worker por falta de memória.',
+      strongLabel: (value: string) => `Digite ${value} para confirmar o teto`,
+      cancel: 'Cancelar',
+      save: 'Salvar',
+      saving: 'Salvando…',
+    },
+    saved: 'Configuração salva.',
+    fieldRejected: 'Valor recusado. Confira a faixa aceita.',
     fields: {
       maxSessionsPerWorker: {
         label: 'Teto de sessões por worker',
