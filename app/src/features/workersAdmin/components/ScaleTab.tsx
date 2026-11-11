@@ -134,9 +134,22 @@ function OutcomeChip({ event }: { event: WorkerScaleEvent }) {
   return event.error ? <Tooltip title={sc.history.errorHint(event.error)} arrow>{chip}</Tooltip> : chip;
 }
 
-/** Recusa antes de ler o escalador grava `fromReplicas = 0`: a origem é desconhecida, não zero. */
+/**
+ * Recusa antes de ler o escalador grava `fromReplicas = 0`: a origem é desconhecida, não zero.
+ * Sem alvo também (0/0, recusa do automático antes de decidir o alvo): só "—", sem seta.
+ */
 function ReplicaChange({ event: e }: { event: WorkerScaleEvent }) {
-  const unknownFrom = e.fromReplicas === 0 && e.outcome === 'rejected';
+  const rejected = e.outcome === 'rejected';
+  if (rejected && e.fromReplicas === 0 && e.toReplicas === 0) {
+    return (
+      <Tooltip title={sc.history.unknownFromHint} arrow>
+        <Box component="span" tabIndex={0} aria-label={sc.history.unknownReplicas} sx={{ color: 'text.secondary', cursor: 'help' }}>
+          {sc.history.unknownFrom}
+        </Box>
+      </Tooltip>
+    );
+  }
+  const unknownFrom = rejected && e.fromReplicas === 0 && e.toReplicas > 0;
   const label = unknownFrom ? sc.history.unknownChange(e.toReplicas) : sc.dialog.change(e.fromReplicas, e.toReplicas);
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }} aria-label={label}>

@@ -277,6 +277,17 @@ describe('countAwaitingCapacity', () => {
     }
   });
 
+  it('requestedAfter: só pedido posterior ao instante (UTC, TimeZone ≠ UTC); com olderThan e teto', async () => {
+    await newSession({ connectRequestedAt: past(10 * MIN) });
+    await newSession({ connectRequestedAt: past(4 * MIN) });
+    await newSession({ connectRequestedAt: past(MIN) });
+    const after = past(5 * MIN);
+    expect(await repo.countAwaitingCapacity(undefined, { requestedAfter: after })).toBe(2);
+    expect(await repo.countAwaitingCapacity(2 * MIN, { requestedAfter: after, statementTimeoutMs: 2_000 })).toBe(1);
+    expect(await repo.countAwaitingCapacity(undefined, { requestedAfter: past(30_000) })).toBe(0);
+    expect(await repo.countAwaitingCapacity(undefined, { requestedAfter: null })).toBe(3);
+  });
+
   it('Telegram: AWAITING_CODE/PASSWORD não conta; AWAITING_QR e DISCONNECTED contam', async () => {
     await newSession({ engine: 'telegram', status: 'AWAITING_CODE' });
     await newSession({ engine: 'telegram', status: 'AWAITING_PASSWORD', ownerWorkerId: OTHER, leaseUntil: past() });

@@ -22,7 +22,7 @@ import {
 } from '../../application/use-cases/ScaleWorkersUseCase';
 import type { ISessionAdoptionRepository } from '../../domain/contracts/ISessionAdoptionRepository';
 import type { IWorkerScaleEventRepository } from '../../domain/contracts/IWorkerScaleEventRepository';
-import type { IWorkerScaler } from '../../domain/contracts/IWorkerScaler';
+import type { IWorkerScaler, WorkerScalerState } from '../../domain/contracts/IWorkerScaler';
 import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
 import {
   OCCUPANCY_SAMPLE_MAX_AGE_MS,
@@ -160,13 +160,16 @@ export class WorkerAutoscalerJob {
     const lookbackMs =
       Math.max(settings.scaleUpSustainSeconds * 1000, OCCUPANCY_SAMPLE_MAX_AGE_MS) + OCCUPANCY_SAMPLE_SECONDS * 1000;
     const since = new Date(now.getTime() - lookbackMs);
-    const [connected, capacity, awaiting, cooldownStart] = await Promise.all([
+    // Antes da contagem: quem pediu conexão antes da última subida aguarda o boot da réplica nova
+    // e não dispara outra (só pedido posterior ao início do intervalo conta como aguardando).
+    const cooldownStart = await this.options.events.lastCooldownStartAt();
+    const [connected, capacity, awaiting] = await Promise.all([
       samples.listSince(OPS_METRIC.sessionsConnected, since),
       samples.listSince(OPS_METRIC.sessionsCapacity, since),
       adoption.countAwaitingCapacity(settings.awaitingAlertSeconds * 1000, {
         statementTimeoutMs: AWAITING_STATEMENT_TIMEOUT_MS,
+        requestedAfter: cooldownStart,
       }),
-      this.options.events.lastCooldownStartAt(),
     ]);
     const occupancy = pairOccupancySamples(connected, capacity);
     // A janela sustentada recomeça depois de cada subida: amostra de antes dela não dispara outra.
@@ -187,9 +190,11 @@ export class WorkerAutoscalerJob {
   }
 
   /**
-   * Checagens locais antes do provedor (sem chamada à Render): balde já pedido, intervalo mínimo
-   * ativo e último `succeeded` já no `maxReplicas`. Só então `getState`, cujo resultado vai para a
-   * precondição e o pedido (`knownState`), sem reler no mesmo tick.
+   * Checagens locais antes do provedor (sem chamada à Render): balde já pedido e intervalo mínimo
+   * ativo. Último `succeeded` já no `maxReplicas`: as réplicas podem ter mudado fora do painel, então
+   * a recusa só sai depois de ler o estado ao vivo, no máximo 1×/h (lease da recusa; silenciada, nem
+   * lê). Abaixo do teto lido ao vivo segue com esse estado. Um só `getState` por tick, que vai para a
+   * precondição e o pedido (`knownState`).
    */
   private async scaleUp(now: Date, reason: ScaleUpReason, connected: number, cooldownStart: Date | null): Promise<void> {
     const { scaler, scale, events } = this.options;
@@ -211,13 +216,20 @@ export class WorkerAutoscalerJob {
         return;
       }
     }
+    let live: WorkerScalerState | null = null;
     if (known !== null && known >= settings.maxReplicas) {
       const code = new ScaleTargetOutOfRangeError(settings.minReplicas, settings.maxReplicas).code;
-      await this.rejectOnce(now, reason, code, knownFrom, knownTo);
-      return;
+      if (!(await this.acquireRejection(now, code))) return;
+      live = await scaler.getState();
+      if (live.status === 'ready' && live.desiredReplicas >= settings.maxReplicas) {
+        await this.recordRejection(reason, code, live.desiredReplicas, live.desiredReplicas + 1);
+        return;
+      }
+      // Teto não confirmado ao vivo: solta o silêncio e segue com o estado lido.
+      await this.options.lease.release(`${AUTOSCALER_REJECTED_LEASE_PREFIX}${code}`, this.ownerId);
     }
 
-    const state = await scaler.getState();
+    const state = live ?? (await scaler.getState());
     if (state.status !== 'ready') {
       const error =
         state.status === 'not_configured'
@@ -275,8 +287,22 @@ export class WorkerAutoscalerJob {
     from: number,
     to: number,
   ): Promise<void> {
+    if (!(await this.acquireRejection(now, code))) return;
+    await this.recordRejection(reason, code, from, to);
+  }
+
+  /** Lease `worker-autoscaler:rejected:<código>` de 1 h; `false` = recusa já gravada nesta hora. */
+  private acquireRejection(now: Date, code: string): Promise<boolean> {
     const until = new Date(now.getTime() + REJECTION_SILENCE_MS);
-    if (!(await this.options.lease.tryAcquire(`${AUTOSCALER_REJECTED_LEASE_PREFIX}${code}`, this.ownerId, until, now))) return;
+    return this.options.lease.tryAcquire(`${AUTOSCALER_REJECTED_LEASE_PREFIX}${code}`, this.ownerId, until, now);
+  }
+
+  private async recordRejection(
+    reason: ScaleUpReason | typeof ADOPTION_DISABLED_REASON,
+    code: string,
+    from: number,
+    to: number,
+  ): Promise<void> {
     await this.options.events.record({
       trigger: 'auto',
       actorUserId: null,

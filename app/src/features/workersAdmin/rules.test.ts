@@ -340,6 +340,7 @@ describe('modo automático (WSCALE-15)', () => {
   it('scaleEventReasonLabel traduz só o automático', () => {
     expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: occupancy' })).toBe(a.reasons['auto: occupancy']);
     expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: awaiting' })).toBe(a.reasons['auto: awaiting']);
+    expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: adoption_disabled' })).toBe('adoção de sessões desligada');
     expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: novo' })).toBe('auto: novo');
     expect(scaleEventReasonLabel({ trigger: 'manual', reason: 'auto: occupancy' })).toBe('auto: occupancy');
   });

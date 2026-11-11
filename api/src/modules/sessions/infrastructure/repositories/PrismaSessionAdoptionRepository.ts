@@ -91,12 +91,17 @@ export class PrismaSessionAdoptionRepository implements ISessionAdoptionReposito
       olderThanMs === undefined
         ? Prisma.empty
         : Prisma.sql`AND s."connectRequestedAt" < ${NOW} - (${Math.max(0, Math.trunc(olderThanMs))}::int * interval '1 millisecond')`;
+    // Instante absoluto (ISO com `Z`) convertido para UTC sem fuso, como as colunas: independe do `TimeZone`.
+    const { requestedAfter } = options;
+    const after = requestedAfter
+      ? Prisma.sql`AND s."connectRequestedAt" > (${requestedAfter.toISOString()}::timestamptz AT TIME ZONE 'UTC')`
+      : Prisma.empty;
     const query = prisma.$queryRaw<{ n: number }[]>`
       SELECT COUNT(*)::int AS n FROM "sessions" s
       JOIN "tenants" t ON t."id" = s."tenantId" AND t."status" = 'ACTIVE'
       WHERE s."deletedAt" IS NULL AND s."connectRequestedAt" IS NOT NULL
         AND ${ADOPTABLE('s')}
-        AND ${LEASE_FREE('s')} ${older}`;
+        AND ${LEASE_FREE('s')} ${older} ${after}`;
     const { statementTimeoutMs } = options;
     if (statementTimeoutMs === undefined) return (await query)[0]?.n ?? 0;
     // `SET LOCAL` vale só nesta transação; o valor é inteiro (ms) montado aqui, nunca vindo de fora.

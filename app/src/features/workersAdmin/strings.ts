@@ -314,6 +314,7 @@ export const workersAdminStrings = {
         'auto: occupancy': 'ocupação alta sustentada',
         'auto: awaiting': 'sessões aguardando vaga',
         'auto: no_samples': 'sem amostras de ocupação',
+        'auto: adoption_disabled': 'adoção de sessões desligada',
       } as Record<string, string>,
       rejections: {
         NO_OCCUPANCY_SAMPLES: 'Sem amostras recentes de ocupação. Confira se o coletor de métricas está ligado.',
@@ -409,6 +410,8 @@ export const workersAdminStrings = {
       unknownFrom: '—',
       unknownFromHint: 'Réplicas atuais não lidas: o pedido foi recusado antes de consultar o escalador.',
       unknownChange: (to: number) => `réplicas atuais não lidas → ${to}`,
+      /** Recusa sem origem nem alvo (0/0: o job recusou antes de ler o escalador). */
+      unknownReplicas: 'réplicas não lidas',
     },
   },
 } as const;

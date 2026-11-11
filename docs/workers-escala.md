@@ -224,7 +224,9 @@ no header.
 lease `worker-autoscaler`. Lê `scalerMode` a cada tick: com `off` ou `manual` não faz nada além da limpeza.
 
 - **Gatilhos** (`shouldScaleUp`, `capacityPlan.ts`), nesta ordem: (1) sessão aguardando vaga há mais de
-  `awaitingAlertSeconds`, contada ao vivo no banco (`countAwaitingCapacity`, `statement_timeout` 2 s) → `awaiting`;
+  `awaitingAlertSeconds`, contada ao vivo no banco (`countAwaitingCapacity`, `statement_timeout` 2 s) → `awaiting`.
+  Só conta pedido feito **depois** do início do intervalo mínimo da última escalada (`requestedAfter =
+  lastCooldownStartAt`): quem pediu antes da subida aguarda o boot da réplica nova e não dispara outra;
   (2) ocupação sustentada: todas as amostras `sessions_connected ÷ sessions_capacity` (fonte `sessions`, recurso
   `cluster`) em `(agora − scaleUpSustainSeconds, agora]` acima de `alertOccupancyRatio`, com pelo menos
   `ceil(scaleUpSustainSeconds ÷ 300)` amostras → `occupancy`. O estado do "sustentado" vem das amostras no banco: reinício
@@ -232,7 +234,10 @@ lease `worker-autoscaler`. Lê `scalerMode` a cada tick: com `off` ou `manual` n
   amostras anteriores ao início do intervalo mínimo da última escalada são ignoradas (a ocupação alta que já motivou uma
   subida não conta de novo para a próxima).
 - **Ordem do tick**: com a adoção desligada o job não consulta a Render e só registra `ADOPTION_DISABLED` (1×/h). Intervalo
-  mínimo ativo e teto (`maxReplicas`) são checados antes de ler a Render; só depois sai a leitura do provedor.
+  mínimo ativo é checado antes de ler a Render. Teto: com o último `succeeded` abaixo de `maxReplicas` não há leitura
+  extra; já no teto, as réplicas podem ter mudado fora do painel, então o job lê o estado ao vivo (`getState`) antes de
+  recusar, no máximo 1×/h (o lease da recusa `SCALE_TARGET_OUT_OF_RANGE` é pego antes; silenciado, nem lê). Réplicas
+  reais abaixo do teto: solta o lease e segue com esse estado (uma leitura por tick).
 - **Ação**: sempre **+1** réplica sobre as desejadas do provedor, pelo mesmo `ScaleWorkersUseCase` do manual
   (`trigger = auto`, ator nulo): `checkPreconditions()` antes, depois `execute()`. Valem as mesmas regras: modo, adoção,
   faixa (`maxReplicas` é o teto), disco/autoescala nativa, intervalo mínimo (inclusive falha incerta) e evento
@@ -254,7 +259,8 @@ lease `worker-autoscaler`. Lê `scalerMode` a cada tick: com `off` ou `manual` n
   `lastEvent`), junto do 1º `trigger: 'auto'` do histórico carregado, vence o mais recente (`latestAutoEvent`,
   `rules.ts`). Evento manual mais novo não tira o automático do cartão. Quando o `lastEvent.id` muda, a tela relê a 1ª
   página do histórico. Motivo traduzido
-  (`occupancy` = ocupação alta sustentada, `awaiting` = sessões aguardando vaga) também na tabela; recusa com o código
+  (`occupancy` = ocupação alta sustentada, `awaiting` = sessões aguardando vaga, `adoption_disabled` = adoção de sessões
+  desligada) também na tabela; recusa 0/0 (antes de ler o escalador) mostra só "—" sem seta; recusa com o código
   traduzido (`autoScaleErrorMessage`). Aba Configuração: o chip "sem efeito por enquanto" do bloco de escala só aparece
   se `GET /admin/workers/scale` disser `not_configured` (falha na leitura não mostra o chip).
 
@@ -297,4 +303,5 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
   `ScaleWorkersUseCase` (pula intervalo, faixa e evento).
 - Registrar o `workerAutoscaler` no `http` ou ligar `scalerMode = auto` sem o T25 (sem o coletor, só o gatilho de
   sessão aguardando age).
-- Consultar a Render no tick com a adoção desligada, intervalo ativo ou já no teto.
+- Consultar a Render no tick com a adoção desligada ou intervalo ativo; já no teto, mais de 1×/h (recusa silenciada não lê).
+- Contar como aguardando sessão que pediu conexão antes da última subida (dispara subida em cascata durante o boot).

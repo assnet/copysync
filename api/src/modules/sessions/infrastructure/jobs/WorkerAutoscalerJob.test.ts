@@ -107,7 +107,9 @@ function world(over: Partial<WorkerScalingSettings> = {}) {
       stored.filter((s) => s.metric === metric && s.at >= since).sort((a, b) => b.at.getTime() - a.at.getTime())),
   };
   let awaiting = 0;
-  const adoption = { countAwaitingCapacity: vi.fn(async () => awaiting) };
+  const adoption = {
+    countAwaitingCapacity: vi.fn(async (_olderThanMs?: number, _opts?: { requestedAfter?: Date | null }) => awaiting),
+  };
   const provider = { current: () => ({ value: settings, origin: {} as never }), refresh: vi.fn(), start: vi.fn(), stop: vi.fn() };
   const now = () => clock;
   let adoptionOn = true;
@@ -201,7 +203,7 @@ describe('WorkerAutoscalerJob', () => {
     const w = world();
     w.setAwaiting(1);
     await w.newJob().runTick();
-    expect(w.adoption.countAwaitingCapacity).toHaveBeenCalledWith(120_000, { statementTimeoutMs: 2000 });
+    expect(w.adoption.countAwaitingCapacity).toHaveBeenCalledWith(120_000, { statementTimeoutMs: 2000, requestedAfter: null });
     expect(w.scaler.scaleTo).toHaveBeenCalledWith(2);
     expect(w.rows[0]).toMatchObject({ outcome: 'succeeded', reason: 'auto: awaiting', requestId: expect.stringMatching(/^auto:\d+$/) });
   });
@@ -419,18 +421,53 @@ describe('WorkerAutoscalerJob', () => {
     expect(w.rows).toHaveLength(2);
   });
 
-  it('último succeeded já no maxReplicas: recusa 1×/hora sem ler o provedor', async () => {
+  it('último succeeded já no maxReplicas: lê ao vivo só na recusa (1×/hora), silenciada não lê', async () => {
     const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
     w.setAwaiting(1);
     const job = w.newJob();
     await job.runTick();
     expect(w.replicas).toBe(2);
     await run(w, job, 20);
-    expect(w.scaler.getState).toHaveBeenCalledTimes(1);
+    expect(w.scaler.getState).toHaveBeenCalledTimes(2);
     expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
     expect(w.rows.filter((r) => r.outcome === 'rejected')).toEqual([
       expect.objectContaining({ error: 'SCALE_TARGET_OUT_OF_RANGE', fromReplicas: 2, toReplicas: 3 }),
     ]);
+  });
+
+  it('teto pelo último succeeded, mas réplicas reduzidas fora do painel: lê ao vivo e sobe', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 2 });
+    w.setAwaiting(1);
+    const job = w.newJob();
+    await job.runTick();
+    expect(w.replicas).toBe(2);
+    w.setState(ready(1)); // admin voltou para 1 direto no provedor
+    await run(w, job, 5); // próximo balde
+    expect(w.scaler.getState).toHaveBeenCalledTimes(2); // uma leitura no tick, reaproveitada no pedido
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(2);
+    expect(w.scaler.scaleTo).toHaveBeenLastCalledWith(2);
+    expect(w.rows.filter((r) => r.outcome === 'rejected')).toEqual([]);
+    expect(w.rows.at(-1)).toMatchObject({ outcome: 'succeeded', fromReplicas: 1, toReplicas: 2 });
+  });
+
+  it('aguardando só conta pedido posterior à última subida: boot da réplica nova não dispara outra', async () => {
+    const w = world({ scaleCooldownSeconds: 0, maxReplicas: 5 });
+    const requests = [new Date(START.getTime() - 5 * MIN)];
+    w.adoption.countAwaitingCapacity.mockImplementation(async (olderThanMs, opts) =>
+      requests.filter((at) => at.getTime() < w.now().getTime() - (olderThanMs ?? 0) && (!opts?.requestedAfter || at > opts.requestedAfter)).length);
+    const job = w.newJob();
+    await job.runTick();
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    const upAt = w.rows[0]!.at;
+    await run(w, job, 10); // mesma sessão ainda aguarda (réplica subindo): nada
+    expect(w.adoption.countAwaitingCapacity).toHaveBeenLastCalledWith(120_000, { statementTimeoutMs: 2000, requestedAfter: upAt });
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    requests.push(new Date(w.now().getTime() - 30_000)); // pedido novo, depois da subida
+    await run(w, job, 1); // ainda abaixo do limiar de 120 s
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    await run(w, job, 5);
+    expect(w.scaler.scaleTo).toHaveBeenCalledTimes(2);
+    expect(w.rows.at(-1)).toMatchObject({ outcome: 'succeeded', reason: 'auto: awaiting', toReplicas: 3 });
   });
 
   it('corrida no lock com intervalo > 0: recusa do execute não é gravada por ele; job grava 1×/hora', async () => {

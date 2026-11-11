@@ -661,6 +661,23 @@ describe('ScaleTab — histórico', () => {
     await user.hover(dash);
     expect(await screen.findByRole('tooltip')).toHaveTextContent(sc.history.unknownFromHint);
   });
+
+  it('recusa 0/0 (automático antes de ler o escalador) mostra só "—", sem seta nem "→ 0"', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    vi.spyOn(adminWorkersService, 'listScaleEvents').mockResolvedValue({
+      items: [event(3, { fromReplicas: 0, toReplicas: 0, outcome: 'rejected' })],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    const table = await screen.findByRole('table', { name: sc.history.aria });
+    const dash = within(table).getByLabelText(sc.history.unknownReplicas);
+    expect(dash).toHaveTextContent(sc.history.unknownFrom);
+    expect(within(table).queryByLabelText(sc.history.unknownChange(0))).not.toBeInTheDocument();
+    expect(within(table).queryByLabelText(sc.dialog.change(0, 0))).not.toBeInTheDocument();
+    await user.hover(dash);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(sc.history.unknownFromHint);
+  });
 });
 
 describe('ScaleTab — modo automático (WSCALE-15)', () => {
