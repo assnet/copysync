@@ -88,3 +88,43 @@ export interface WorkerScalingSettingsChange {
   from: WorkerScalingSettings[WorkerScalingSettingsField];
   to: WorkerScalingSettings[WorkerScalingSettingsField];
 }
+
+/** Sessões por canal num plano (WSCALE-09). `contracted` soma só tenants com limite finito. */
+export interface WorkerCapacityChannel {
+  contracted: number;
+  /** Tenants sem limite neste canal (não entram em `contracted`). */
+  unlimitedTenants: number;
+  created: number;
+  /** Lease vivo + `CONNECTED` (contagem do banco). */
+  connected: number;
+}
+
+/** Linha por plano: só contagens, sem tenant individual. `planSlug: null` = tenants sem plano. */
+export interface WorkerCapacityPlan {
+  planSlug: string | null;
+  tenants: number;
+  whatsapp: WorkerCapacityChannel;
+  telegram: WorkerCapacityChannel;
+}
+
+/** Cluster pela última amostra `sessions_*` da última hora. `sampledAt: null` = sem amostra (números viram 0). */
+export interface WorkerCapacityCluster {
+  capacity: number;
+  connected: number;
+  occupancyPct: number;
+  headroom: number;
+  requiredReplicas: number;
+  /** `null` = sem medição de memória. */
+  mbPerSession: number | null;
+  suggestedMaxSessions: number | null;
+  memoryLimitMb: number | null;
+  sampledAt: string | null;
+}
+
+/** Resposta de `GET /admin/workers/capacity` (WSCALE-09/10). */
+export interface WorkerCapacityView {
+  plans: WorkerCapacityPlan[];
+  cluster: WorkerCapacityCluster;
+  settings: Pick<WorkerScalingSettings, 'maxSessionsPerWorker' | 'alertOccupancyRatio'>;
+  enforced: boolean;
+}

@@ -6,8 +6,8 @@ import {
 import { Info } from 'lucide-react';
 import { AppIcon, RangeSlider, SectionCard } from '@/components';
 import {
-  WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, formatDraftValue, isDraftFieldChanged, parseDraftNumber,
-  validateSettingsDraft,
+  WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, formatDraftValue, isDraftFieldChanged, needsStrongCapConfirm,
+  parseDraftNumber, validateSettingsDraft,
 } from '../rules';
 import { workersAdminStrings } from '../strings';
 import type { WorkerScalerMode, WorkerScalingSettingsDraft, WorkerScalingSettingsField } from '../types';
@@ -65,8 +65,9 @@ export default function SettingsTab() {
   // Sem adoção o teto não vale; a faixa "sem efeito" já cobre o caso.
   const belowOccupancy = view.enforced && cap !== null && w.busiest !== null && cap < w.busiest ? s.belowOccupancy(cap, w.busiest) : null;
   const capChange = changes.find((c) => c.field === 'maxSessionsPerWorker');
-  // P1: sem medição de memória por sessão, toda mudança de teto pede o valor digitado.
-  const strongValue = capChange ? (capChange.to as number) : null;
+  // Valor digitado só quando o teto novo passa do sugerido pela medição ou não há sugestão (WSCALE-07).
+  const strongValue = capChange && needsStrongCapConfirm(capChange.to as number, w.suggestedMaxSessions)
+    ? (capChange.to as number) : null;
   const strongRaise = capChange ? (capChange.to as number) > (capChange.from as number) : true;
   /** Origem exibida: "Alterado" quando o rascunho difere do gravado. */
   const originOf = (...fields: WorkerScalingSettingsField[]) =>
@@ -82,7 +83,11 @@ export default function SettingsTab() {
         value={formatDraftValue(values[field])}
         onChange={(e) => w.change({ [field]: e.target.value } as Partial<WorkerScalingSettingsDraft>)}
         error={Boolean(err)}
-        helperText={err ?? `${f.range} · ${originOf(field)}`}
+        helperText={err ?? [
+          f.range,
+          field === 'maxSessionsPerWorker' && w.suggestedMaxSessions !== null ? s.suggested(w.suggestedMaxSessions) : null,
+          originOf(field),
+        ].filter(Boolean).join(' · ')}
         fullWidth
         inputProps={{ inputMode: WORKER_SETTINGS_LIMITS[field].integer ? 'numeric' : 'decimal' }}
         InputProps={{ endAdornment: <InputAdornment position="end"><HelpTip field={field} /></InputAdornment> }}
@@ -207,6 +212,7 @@ export default function SettingsTab() {
         changes={changes}
         strongValue={strongValue}
         strongRaise={strongRaise}
+        suggestedMaxSessions={w.suggestedMaxSessions}
         warning={belowOccupancy}
         saving={w.saving}
         onConfirm={() => void onConfirm()}

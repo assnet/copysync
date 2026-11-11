@@ -36,7 +36,23 @@ async function setField(user: ReturnType<typeof userEvent.setup>, name: keyof ty
   if (value) await user.type(input, value);
 }
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  // Padrão: rota de capacidade fora (sem sugestão) — a tela tolera e reforça toda mudança de teto.
+  vi.spyOn(adminWorkersService, 'getCapacity').mockRejectedValue(new Error('offline'));
+});
+
+function mockSuggested(suggestedMaxSessions: number | null) {
+  vi.spyOn(adminWorkersService, 'getCapacity').mockResolvedValue({
+    plans: [],
+    cluster: {
+      capacity: 80, connected: 30, occupancyPct: 37.5, headroom: 50, requiredReplicas: 1, mbPerSession: 12,
+      suggestedMaxSessions, memoryLimitMb: 1024, sampledAt: '2026-11-11T10:00:00.000Z',
+    },
+    settings: { maxSessionsPerWorker: 40, alertOccupancyRatio: 0.8 },
+    enforced: true,
+  });
+}
 afterEach(() => vi.restoreAllMocks());
 
 describe('SettingsTab', () => {
@@ -274,6 +290,55 @@ describe('SettingsTab', () => {
     expect(await screen.findByRole('textbox', { name: s.fields.awaitingAlertSeconds.label })).toHaveValue('450');
     expect(screen.getByText(s.draftRestored)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+  });
+});
+
+describe('SettingsTab — teto sugerido pela medição (WSCALE-07)', () => {
+  it('teto novo até o sugerido salva sem confirmação reforçada', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockSuggested(60);
+    const update = vi.spyOn(adminWorkersService, 'updateSettings').mockResolvedValue(view());
+    renderWithTheme(<SettingsTab />);
+    expect(await screen.findByText(new RegExp(s.suggested(60)))).toBeInTheDocument();
+    await setField(user, 'maxSessionsPerWorker', '60');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).queryByRole('textbox', { name: s.confirm.strongLabel })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: s.confirm.save }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  });
+
+  it('teto novo acima do sugerido pede o valor digitado com o aviso do sugerido', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockSuggested(60);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByText(new RegExp(s.suggested(60)));
+    await setField(user, 'maxSessionsPerWorker', '61');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongTitleAbove)).toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHintAbove('60'))).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: s.confirm.save })).toBeDisabled();
+  });
+
+  it('sem amostra (sugestão null) reforça como antes', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockSuggested(null);
+    const cap = vi.mocked(adminWorkersService.getCapacity);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await waitFor(() => expect(cap).toHaveBeenCalled());
+    await setField(user, 'maxSessionsPerWorker', '30');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongTitle)).toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHintLower)).toBeInTheDocument();
   });
 });
 

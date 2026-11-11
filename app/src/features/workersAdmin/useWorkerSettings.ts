@@ -45,6 +45,7 @@ export function useWorkerSettings() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busiest, setBusiest] = useState<number | null>(null);
+  const [suggestedMaxSessions, setSuggestedMaxSessions] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<WorkerSettingsNotice | null>(null);
@@ -67,6 +68,12 @@ export function useWorkerSettings() {
     void load();
     // Ocupação atual só alimenta o aviso de teto abaixo dela: falha não bloqueia a tela.
     adminWorkersService.list().then((list) => setBusiest(busiestSessions(list)), () => setBusiest(null));
+    // Teto sugerido pela medição (WSCALE-07). Falha ou sem amostra = sem sugestão: a confirmação
+    // reforçada vale para toda mudança de teto, como antes da medição existir.
+    adminWorkersService.getCapacity().then(
+      (c) => setSuggestedMaxSessions(c.cluster.suggestedMaxSessions),
+      () => setSuggestedMaxSessions(null),
+    );
   }, [load]);
 
   const values: WorkerScalingSettingsDraft | null = draft?.values ?? view?.settings ?? null;
@@ -124,7 +131,7 @@ export function useWorkerSettings() {
   }, [clearDraft, draft, load, view]);
 
   return {
-    view, values, loading, loadError, busiest, saving, serverErrors, notice,
+    view, values, loading, loadError, busiest, suggestedMaxSessions, saving, serverErrors, notice,
     dirty: draft !== null, restored: restored && draft !== null,
     change, discard, save, reload: load, clearNotice: () => setNotice(null),
   };

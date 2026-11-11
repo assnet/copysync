@@ -20,16 +20,28 @@ const UsageTab = lazy(() => import('@/features/opsMetrics/components/UsageTab'))
 /** Aba Configuração em chunk próprio (formulário e diálogo só baixam ao abrir a aba). */
 const SettingsTab = lazy(() => import('@/features/workersAdmin/components/SettingsTab'));
 
+/** Aba Capacidade em chunk próprio (cartões, tabela por plano e série de 7 dias). */
+const CapacityTab = lazy(() => import('@/features/workersAdmin/components/CapacityTab'));
+
 export const WORKERS_PATH = '/admin/workers';
 export const WORKERS_USAGE_PATH = '/admin/workers/usage';
+export const WORKERS_CAPACITY_PATH = '/admin/workers/capacity';
 export const WORKERS_SETTINGS_PATH = '/admin/workers/settings';
 
 /** Abas pela URL: caminho → rótulo. A ativa é a de prefixo mais longo que casa com o caminho. */
 const WORKER_TABS: { path: string; label: string }[] = [
   { path: WORKERS_PATH, label: t.tabs.occupancy },
   { path: WORKERS_USAGE_PATH, label: t.tabs.usage },
+  { path: WORKERS_CAPACITY_PATH, label: t.tabs.capacity },
   { path: WORKERS_SETTINGS_PATH, label: t.tabs.settings },
 ];
+
+/** Subtítulo do cabeçalho por aba; ausente = o da aba Ocupação. */
+const TAB_SUBTITLES: Record<string, string> = {
+  [WORKERS_USAGE_PATH]: opsMetricsStrings.subtitle,
+  [WORKERS_CAPACITY_PATH]: t.capacity.subtitle,
+  [WORKERS_SETTINGS_PATH]: t.settings.subtitle,
+};
 
 export function activeWorkersTab(pathname: string): string {
   const match = WORKER_TABS
@@ -272,7 +284,7 @@ export function AdminWorkersPage() {
   const compactTabs = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   // Ações do cabeçalho da aba Consumo entram aqui por portal (a aba é carregada sob demanda).
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
-  const subtitle = usage ? opsMetricsStrings.subtitle : active === WORKERS_SETTINGS_PATH ? t.settings.subtitle : t.pageSubtitle;
+  const subtitle = TAB_SUBTITLES[active] ?? t.pageSubtitle;
 
   return (
     <Box>
@@ -298,6 +310,11 @@ export function AdminWorkersPage() {
       {usage && (
         <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={opsMetricsStrings.loading} />}>
           <UsageTab headerSlot={headerSlot} />
+        </Suspense>
+      )}
+      {active === WORKERS_CAPACITY_PATH && (
+        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.capacity.loading} />}>
+          <CapacityTab />
         </Suspense>
       )}
       {active === WORKERS_SETTINGS_PATH && (

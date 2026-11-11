@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
-  formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft,
+  formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
 } from './rules';
 import { workersAdminStrings } from './strings';
-import type { WorkerScalingSettings } from './types';
+import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
 
 describe('occupancyPercent', () => {
   it('arredonda e limita a 0–100', () => {
@@ -160,5 +160,32 @@ describe('diffSettings', () => {
       { field: 'scalerMode', from: 'off', to: 'manual' },
       { field: 'maxReplicas', from: 3, to: 5 },
     ]);
+  });
+});
+
+const ch = (contracted: number, unlimitedTenants = 0) => ({ contracted, unlimitedTenants, created: 0, connected: 0 });
+const plan = (tenants: number, wa: number, tg: number, unlimited = 0): WorkerCapacityPlan =>
+  ({ planSlug: 'P', tenants, whatsapp: ch(wa, unlimited), telegram: ch(tg) });
+
+describe('clientsThatFit', () => {
+  it('folga ÷ sessões contratadas pelo tenant médio (WhatsApp + Telegram), para baixo', () => {
+    // 10 tenants, 30 + 10 contratadas → 4 por tenant; folga 50 → 12
+    expect(clientsThatFit(plan(10, 30, 10), 50)).toBe(12);
+    expect(clientsThatFit(plan(10, 30, 10), 3)).toBe(0);
+  });
+  it('sem tenant, ilimitado, sem contratada ou sem folga medida → null', () => {
+    expect(clientsThatFit(plan(0, 0, 0), 50)).toBeNull();
+    expect(clientsThatFit(plan(3, 6, 0, 1), 50)).toBeNull();
+    expect(clientsThatFit(plan(3, 0, 0), 50)).toBeNull();
+    expect(clientsThatFit(plan(3, 6, 0), null)).toBeNull();
+  });
+});
+
+describe('needsStrongCapConfirm', () => {
+  it('só acima do sugerido ou sem sugestão', () => {
+    expect(needsStrongCapConfirm(60, null)).toBe(true);
+    expect(needsStrongCapConfirm(60, 50)).toBe(true);
+    expect(needsStrongCapConfirm(50, 50)).toBe(false);
+    expect(needsStrongCapConfirm(20, 50)).toBe(false);
   });
 });
