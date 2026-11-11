@@ -95,6 +95,9 @@ export function StorefrontPage() {
                 onExtract={s.extract}
                 error={s.addError}
                 errorAction={s.addErrorAction}
+                errorCode={s.addErrorSource?.code}
+                errorMeta={s.addErrorSource?.meta}
+                rebuiltProvider={s.addRebuiltProvider}
                 disabled={!page}
               />
               {page && (

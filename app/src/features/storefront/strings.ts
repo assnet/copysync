@@ -255,9 +255,8 @@ export const storefrontStrings = {
     STOREFRONT_ORDER_INVALID: 'A lista mudou enquanto você reordenava. Recarregamos as ofertas.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use o link do produto da Shopee, do Mercado Livre ou da Amazon.',
     OFFER_PRODUCT_NOT_FOUND: 'Não encontramos o produto desse link. Confira se é o link do produto.',
-    OFFER_LINK_NOT_OWNED: 'Esse link de afiliado é de outra conta. Use um link gerado na sua conta.',
-    OFFER_LINK_NOT_AFFILIATE: 'Esse link não tem a sua identificação de afiliado. Na Amazon, use o link com a sua tag.',
-    MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
+    /** Publicar item antigo cujo link não foi gerado com a conta do usuário (texto da credencial/link vem de `affiliateLinks`). */
+    STOREFRONT_OFFER_LINK_UNVERIFIED: 'Esta oferta ainda não pode ser publicada: o link não foi gerado com a sua conta de afiliado. Adicione o produto de novo para recriar o link.',
     sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
     AFFILIATE_IDENTIFIER_NOT_LINKED: 'Este link usa outra etiqueta da sua conta do Mercado Livre. Vincule a etiqueta em Credenciais de afiliado para usar este link.',
     PLAN_LIMIT_REACHED: 'Você chegou a um limite do seu plano. Veja os planos para ter mais.',

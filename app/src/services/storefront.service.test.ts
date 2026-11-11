@@ -47,6 +47,11 @@ describe('storefrontService', () => {
     expect(http.post).toHaveBeenLastCalledWith('/storefront/preview', { ...draft, viewport: 'desktop' });
   });
 
+  it('criação devolve o item com linkRebuilt de dentro de data', async () => {
+    http.post.mockReturnValueOnce(Promise.resolve({ data: { success: true, data: { id: 'o1', provider: 'SHOPEE', linkRebuilt: true } } }));
+    expect(await svc.extractOffer('https://x.test/p')).toEqual({ id: 'o1', provider: 'SHOPEE', linkRebuilt: true });
+  });
+
   it('extrai, edita, publica, ordena e apaga ofertas', async () => {
     await svc.extractOffer('https://x.test/p');
     expect(http.post).toHaveBeenLastCalledWith('/storefront/offers', { url: 'https://x.test/p' });

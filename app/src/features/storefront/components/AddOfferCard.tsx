@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Alert, Box, Button, CircularProgress, MenuItem, Stack, TextField } from '@mui/material';
 import { ArrowRight, Info, KeyRound, Link2, PackagePlus, ScanSearch } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { AppIcon, SectionCard } from '@/components';
-import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
 import { upgradePathFor } from '@/features/linkRotation/planUpsell';
+import { isAffiliateLinkErrorCode } from '@/features/affiliateLinks/linkErrors';
+import { ConnectStoreAction, credentialsPathFor } from '@/features/affiliateLinks/components/ConnectStoreAction';
+import { LinkRebuiltNotice } from '@/features/affiliateLinks/components/LinkRebuiltNotice';
 import type { StorefrontErrorAction } from '../storefrontForm';
 import { storefrontStrings } from '../strings';
 import type { StorefrontCategory } from '../types';
@@ -32,16 +34,51 @@ export interface AddOfferCardProps {
   error?: string | null;
   /** Correção do erro em outra tela: botão sob o campo (credenciais ou planos). */
   errorAction?: StorefrontErrorAction | null;
+  /** Código e `meta` do erro: escolhem o rótulo do botão de credenciais ("Conectar Shopee"…). */
+  errorCode?: string | null;
+  errorMeta?: unknown;
+  /** Loja do último item adicionado com link recriado com a conta do usuário (mostra o aviso). */
+  rebuiltProvider?: string | null;
   disabled?: boolean;
 }
 
-const ACTION_TARGET: Record<StorefrontErrorAction, { to: string; icon: typeof KeyRound }> = {
-  credentials: { to: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
-  plans: { to: upgradePathFor('mercadoLivreTags'), icon: ArrowRight },
-};
+interface ErrorActionButtonProps {
+  action: StorefrontErrorAction;
+  code?: string | null;
+  meta?: unknown;
+}
+
+/**
+ * Botão sob o campo. Credencial/aceite de risco → `ConnectStoreAction` (rótulo por código); etiqueta
+ * do ML → credenciais; sem vaga → planos. Credenciais voltam para esta tela (`returnTo`).
+ */
+function ErrorActionButton({ action, code, meta }: ErrorActionButtonProps) {
+  const { pathname, search } = useLocation();
+  if (action === 'credentials' && isAffiliateLinkErrorCode(code)) {
+    return <ConnectStoreAction code={code} meta={meta} variant="outlined" />;
+  }
+  const plans = action === 'plans';
+  return (
+    <Button
+      component={RouterLink}
+      to={plans ? upgradePathFor('mercadoLivreTags') : credentialsPathFor(pathname, search)}
+      size="small"
+      variant="outlined"
+      color={plans ? 'primary' : 'inherit'}
+      {...(plans
+        ? { endIcon: <AppIcon icon={ArrowRight} size="sm" /> }
+        : { startIcon: <AppIcon icon={KeyRound} size="sm" /> })}
+      sx={{ minHeight: 36 }}
+    >
+      {t.actions[action]}
+    </Button>
+  );
+}
 
 /** "Adicionar Oferta": link do produto + categoria → Extrair (vira rascunho). */
-export function AddOfferCard({ value, onChange, categories, selectedCategories, onExtract, error, errorAction, disabled }: AddOfferCardProps) {
+export function AddOfferCard({
+  value, onChange, categories, selectedCategories, onExtract, error, errorAction, errorCode, errorMeta, rebuiltProvider, disabled,
+}: AddOfferCardProps) {
   const [busy, setBusy] = useState(false);
   const options = pageCategoryOptions(categories, selectedCategories);
   const url = value.url.trim();
@@ -104,19 +141,12 @@ export function AddOfferCard({ value, onChange, categories, selectedCategories, 
           </Stack>
           {error && errorAction && (
             <Box>
-              <Button
-                component={RouterLink}
-                to={ACTION_TARGET[errorAction].to}
-                size="small"
-                variant="outlined"
-                color={errorAction === 'plans' ? 'primary' : 'inherit'}
-                {...(errorAction === 'plans'
-                  ? { endIcon: <AppIcon icon={ACTION_TARGET.plans.icon} size="sm" /> }
-                  : { startIcon: <AppIcon icon={ACTION_TARGET.credentials.icon} size="sm" /> })}
-                sx={{ minHeight: 36 }}
-              >
-                {t.actions[errorAction]}
-              </Button>
+              <ErrorActionButton action={errorAction} code={errorCode} meta={errorMeta} />
+            </Box>
+          )}
+          {!error && rebuiltProvider && (
+            <Box>
+              <LinkRebuiltNotice provider={rebuiltProvider} />
             </Box>
           )}
           <Alert severity="info" variant="outlined" icon={<AppIcon icon={Info} size="sm" />} sx={{ py: 0 }}>

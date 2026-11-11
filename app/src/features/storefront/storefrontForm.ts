@@ -6,6 +6,7 @@
 import { finalizeSlug, previewUrl } from '@/features/linkRotation/slug';
 import { plansAbove } from '@/features/linkRotation/planUpsell';
 import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf } from '@/features/plans/planGate';
+import { AFFILIATE_LINK_ERROR_CODES, describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
 import { storefrontStrings } from './strings';
 import type {
   SaveStorefrontInput,
@@ -180,8 +181,8 @@ export function slugStatusView(status: SlugAvailabilityStatus): { tone: SlugStat
   return { tone: SLUG_TONES[status], text: t.slugStatus[status] };
 }
 
-/** Códigos que a tela traduz; os demais caem no genérico. */
-export const STOREFRONT_ERROR_CODES = [
+/** Códigos com texto próprio da vitrine (`strings.ts` › `errors`). */
+const STOREFRONT_OWN_ERROR_CODES = [
   'PLAN_FEATURE_UNAVAILABLE',
   'VALIDATION_ERROR',
   'LINK_SLUG_INVALID',
@@ -193,11 +194,9 @@ export const STOREFRONT_ERROR_CODES = [
   'STOREFRONT_PUBLISHED_LIMIT',
   'STOREFRONT_NOT_FOUND',
   'STOREFRONT_ORDER_INVALID',
+  'STOREFRONT_OFFER_LINK_UNVERIFIED',
   'OFFER_URL_UNSUPPORTED',
   'OFFER_PRODUCT_NOT_FOUND',
-  'OFFER_LINK_NOT_OWNED',
-  'OFFER_LINK_NOT_AFFILIATE',
-  'MARKETPLACE_RISK_NOT_ACCEPTED',
   'AFFILIATE_IDENTIFIER_NOT_LINKED',
   'PLAN_LIMIT_REACHED',
   'MEDIA_TOO_LARGE',
@@ -208,7 +207,14 @@ export const STOREFRONT_ERROR_CODES = [
   'RATE_LIMITED',
 ] as const;
 
+/**
+ * Códigos que a tela traduz; os demais caem no genérico. Os de link/credencial de afiliado
+ * (`AFFILIATE_LINK_ERROR_CODES`) vêm com texto do módulo comum `affiliateLinks`.
+ */
+export const STOREFRONT_ERROR_CODES = [...STOREFRONT_OWN_ERROR_CODES, ...AFFILIATE_LINK_ERROR_CODES] as const;
+
 export type StorefrontErrorCode = (typeof STOREFRONT_ERROR_CODES)[number];
+type StorefrontOwnErrorCode = (typeof STOREFRONT_OWN_ERROR_CODES)[number];
 
 /** O que o card de "Adicionar oferta" oferece sob o campo além do texto do erro. */
 export type StorefrontErrorAction = 'credentials' | 'plans';
@@ -216,12 +222,18 @@ export type StorefrontErrorAction = 'credentials' | 'plans';
 /** Limite de etiquetas desconhecido conta como "dá para subir de plano". */
 const canUpgradeTags = (limit: number | null) => limit == null || plansAbove('mercadoLivreTags', limit).length > 0;
 
+const asApiError = (err: unknown): StorefrontApiError =>
+  typeof err === 'string' ? { code: err } : ((err ?? {}) as StorefrontApiError);
+
 /**
- * Ação do erro: etiqueta do ML não vinculada → credenciais (vincular); sem vaga → planos (no maior
- * plano, credenciais para desvincular outra). Os demais erros não têm ação.
+ * Ação do erro: credencial de afiliado faltando/recusada e aceite de risco → credenciais (módulo
+ * comum); etiqueta do ML não vinculada → credenciais (vincular); sem vaga → planos (no maior plano,
+ * credenciais para desvincular outra). Os demais erros não têm ação.
  */
 export function errorAction(err: unknown): StorefrontErrorAction | null {
-  if ((err as StorefrontApiError | null)?.code === 'AFFILIATE_IDENTIFIER_NOT_LINKED') return 'credentials';
+  const e = asApiError(err);
+  if (describeAffiliateLinkError(e.code, e.meta)?.action === 'credentials') return 'credentials';
+  if (e.code === 'AFFILIATE_IDENTIFIER_NOT_LINKED') return 'credentials';
   if (isMercadoLivreTagLimit(err)) return canUpgradeTags(planLimitOf(err)) ? 'plans' : 'credentials';
   return null;
 }
@@ -231,8 +243,10 @@ export function errorAction(err: unknown): StorefrontErrorAction | null {
  * usa `meta.retryAfterSeconds` quando vier.
  */
 export function errorMessage(err: unknown): string {
-  const e: StorefrontApiError = typeof err === 'string' ? { code: err } : ((err ?? {}) as StorefrontApiError);
-  const code = (STOREFRONT_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as StorefrontErrorCode) : null;
+  const e = asApiError(err);
+  const shared = describeAffiliateLinkError(e.code, e.meta);
+  if (shared) return shared.message;
+  const code = (STOREFRONT_OWN_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as StorefrontOwnErrorCode) : null;
   if (!code) return t.errors.generic;
   if (isSheinUnavailable(e)) return t.errors.sheinUnavailable;
   if (isMercadoLivreTagLimit(e)) {

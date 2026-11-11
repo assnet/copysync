@@ -1,6 +1,7 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
+  CreatedStorefrontOffer,
   SaveStorefrontInput,
   SlugAvailability,
   Storefront,
@@ -60,10 +61,13 @@ export const storefrontService = {
     return res.data.data.html;
   },
 
-  /** Extrai do link do produto; entra como rascunho. 429 `RATE_LIMITED`. */
-  async extractOffer(url: string, category?: string | null): Promise<StorefrontOffer> {
+  /**
+   * Extrai do link do produto; entra como rascunho. 429 `RATE_LIMITED`. O item traz `linkRebuilt`
+   * quando o link colado foi recriado com a conta do usuário.
+   */
+  async extractOffer(url: string, category?: string | null): Promise<CreatedStorefrontOffer> {
     const body = category === undefined ? { url } : { url, category };
-    const res = await apiClient.post<ApiSuccess<StorefrontOffer>>(`${BASE}/offers`, body);
+    const res = await apiClient.post<ApiSuccess<CreatedStorefrontOffer>>(`${BASE}/offers`, body);
     return res.data.data;
   },
 
