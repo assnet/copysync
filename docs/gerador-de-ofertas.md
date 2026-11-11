@@ -37,7 +37,7 @@ O link colado **é** o link de afiliado (o sistema não gera mais link). Após e
 | Loja | Prova | Regra |
 | --- | --- | --- |
 | Amazon | `tag=` | ≠ credencial → `OFFER_LINK_NOT_OWNED`; sem `tag` → `OFFER_LINK_NOT_AFFILIATE` |
-| Mercado Livre | `matt_word` ou `/social/<etiqueta>` (`meli.la`) | idem (comparação sem caixa) |
+| Mercado Livre | `matt_word` (etiqueta); `/social/<x>` é o apelido do perfil e só vale quando nenhuma URL (colada ou final, `meli.la`) tem `matt_word` (`ownershipIdentifiersOf`) | idem (comparação sem caixa); dois `matt_word` distintos → `OFFER_LINK_NOT_OWNED` |
 | Shopee | — | sem verificação (aviso fixo no painel); `attributionVerified=false` |
 | Shein | `url_from=affiliate_koc_<memberId>` | ≠ ID da conta conectada → `OFFER_LINK_NOT_OWNED`; sem afiliação e com conta → link gerado pela sessão (`attributionVerified=true`); sem afiliação e sem conta → `OFFER_LINK_NOT_AFFILIATE` |
 

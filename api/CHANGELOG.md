@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.79.1 · app 0.98.0] — 2026-11-11 — Link próprio do ML com apelido do perfil ≠ etiqueta volta a ser aceito
+
+### Fixed
+
+#### API — `campaigns`
+
+- **`campaigns/domain/services/verifyAffiliateLink.ts`** — link próprio do Mercado Livre era recusado (`OFFER_LINK_NOT_OWNED`) quando o apelido do perfil diferia da etiqueta (ex.: `/social/sevenclub?matt_word=sevenclub2025`). Causa raiz: `/social/<x>` (apelido do perfil) e `matt_word` (etiqueta) contavam juntos como identificadores de dono; dois valores distintos → `not_owned`, mesmo com `matt_word` = etiqueta do tenant. Em produção 84 de 86 URLs sociais têm apelido ≠ etiqueta. Nova função pura `ownershipIdentifiersOf`: no ML, havendo `matt_word` em qualquer URL (colada ou final), só ele conta; `/social/<x>` vale apenas sem nenhum `matt_word`. Dois `matt_word` distintos seguem `not_owned`; Amazon, Shein e Shopee inalterados; monitoramento não usa a função. Testes em `verifyAffiliateLink.test.ts` e `ResolveAffiliateProductUseCase.test.ts`. Doc: `docs/gerador-de-ofertas.md`.
+
 ## [0.78.2 · app 0.96.3] — 2026-11-10 — Extensão reinstalada volta a conectar
 
 ### Fixed

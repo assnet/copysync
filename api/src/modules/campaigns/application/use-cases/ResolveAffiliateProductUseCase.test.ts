@@ -152,6 +152,20 @@ describe('ResolveAffiliateProductUseCase', () => {
     expect(s.pageReader.read).toHaveBeenCalledWith(expect.objectContaining({ mercadoLivreCookies: { ssid: 'SSID-TOKEN' } }));
   });
 
+  it('ML meli.la → social com apelido do perfil ≠ etiqueta do tenant: verificado pelo matt_word', async () => {
+    const s = setup();
+    s.deps.expander.expand.mockResolvedValueOnce(
+      new URL('https://www.mercadolivre.com.br/social/apelidodoperfil?matt_word=minhaetq&matt_tool=63844234'),
+    );
+    s.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB999' });
+    const out = await s.uc.execute(TENANT, 'https://meli.la/2Xy9abc');
+    expect(out).toMatchObject({
+      provider: 'MERCADO_LIVRE', affiliateUrl: 'https://meli.la/2Xy9abc', attributionVerified: true,
+      product: { productRef: 'MLB999' },
+    });
+    expect(s.deps.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
+  });
+
   it('ML, Shopee e Amazon nunca passam pelo gate de plano nem de aceite', async () => {
     const s = setup(CREDS, { ent: {}, accepted: false });
     await s.uc.execute(TENANT, AMAZON);

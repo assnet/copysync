@@ -56,10 +56,22 @@ export function affiliateIdentifierOf(provider: AffiliateProvider, url: URL): st
 }
 
 /**
+ * Identificadores que provam o dono do link, juntando todas as URLs (colada e expandida). No ML o
+ * `/social/<x>` é o apelido do perfil, não a etiqueta: com algum `matt_word` em qualquer URL só os
+ * `matt_word` contam; o `/social/<x>` vale apenas quando não há nenhum. Demais marketplaces: todos
+ * os identificadores de `affiliateIdentifiersOf`.
+ */
+export function ownershipIdentifiersOf(provider: AffiliateProvider, urls: readonly URL[]): string[] {
+  if (provider !== 'MERCADO_LIVRE') return urls.flatMap((url) => affiliateIdentifiersOf(provider, url));
+  const tags = urls.flatMap((url) => params(url, 'matt_word'));
+  return tags.length > 0 ? tags : urls.flatMap((url) => socialTag(url) ?? []);
+}
+
+/**
  * Confere se o link é do tenant. Recebe a URL colada e a expandida juntas: os identificadores de
- * todas valem, e mais de um valor distinto (sem caixa) é `not_owned` — evita `tag` duplicada ou
- * redirect trocando a etiqueta. Link sem identificador é recusado mesmo sem credencial: não
- * renderia comissão a ninguém.
+ * dono de todas valem (`ownershipIdentifiersOf`), e mais de um valor distinto (sem caixa) é
+ * `not_owned` — evita `tag` duplicada ou redirect trocando a etiqueta. Link sem identificador é
+ * recusado mesmo sem credencial: não renderia comissão a ninguém.
  */
 export function verifyAffiliateLink(
   provider: AffiliateProvider,
@@ -68,7 +80,7 @@ export function verifyAffiliateLink(
 ): AffiliateLinkCheck {
   if (provider === 'SHOPEE') return 'unverified';
   const list = Array.isArray(urls) ? urls : [urls as URL];
-  const found = new Set(list.flatMap((url) => affiliateIdentifiersOf(provider, url).map((v) => v.toLowerCase())));
+  const found = new Set(ownershipIdentifiersOf(provider, list).map((v) => v.toLowerCase()));
   if (found.size === 0) return 'not_affiliate';
   if (found.size > 1) return 'not_owned';
   if (!credentialIdentifier?.trim()) return 'unverified';
