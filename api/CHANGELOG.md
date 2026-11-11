@@ -26,7 +26,7 @@ fase P2). Doc: `docs/workers-escala.md` (Capacidade), `docs/ops-metricas.md`.
 #### API — `sessions`
 
 - **`sessions/domain/services/capacityPlan.ts`** — contas puras: `requiredReplicas`, `mbPerSession`, `suggestedMaxSessions` (0,7 × limite ÷ MB), `canScaleDownTo`, `shouldScaleUp` (P3/P4).
-- **`sessions/domain/contracts/IWorkerCapacityReader.ts`**, **`infrastructure/repositories/PrismaWorkerCapacityReader.ts`** — agregado por plano de tenants `ACTIVE` (contratado, ilimitados, criadas, conectadas por canal) numa consulta; entitlement ausente/não numérico = ilimitado, string numérica aceita.
+- **`sessions/domain/contracts/IWorkerCapacityReader.ts`**, **`infrastructure/repositories/PrismaWorkerCapacityReader.ts`** — agregado por plano de tenants `ACTIVE` (contratado, ilimitados, criadas, conectadas por canal) numa consulta; número JSON = limite; string só se casar `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$` (decimal com casas aceito); outra string (hex, sinal, notação científica, mais de 9 dígitos, `.5`), ausente ou `null` = ilimitado na aba (difere de `CreateSessionUseCase`, que usa `Number()` em `PrismaEntitlementReader.toNumber`).
 - **`sessions/application/use-cases/GetWorkerCapacityUseCase.ts`** — cluster pela última amostra de 1 h; MB por sessão com memória `srv-` (instâncias `srv-<id>-<sufixo>` somadas por `at`, unidade por `meta.unit`) e limite por `memory ÷ memory_pct`; mais de um `srv-` → `null`.
 - **`sessions/presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`** — `GET /admin/workers/capacity` (super admin).
 
@@ -46,6 +46,14 @@ fase P2). Doc: `docs/workers-escala.md` (Capacidade), `docs/ops-metricas.md`.
 #### Docs
 
 - **`docs/workers-escala.md`** (Capacidade, alerta sem adoção), **`docs/ops-metricas.md`** (fonte `sessions`, `session_occupancy`), **`docs/produto-roadmap.md`**.
+
+### Fixed (revisão da P2)
+
+- **`workerAdmin.schema.ts`**, **`GetWorkerCapacityUseCase.ts`** — campo novo `cluster.stale` em `GET /admin/workers/capacity` (`true` com a última amostra há mais de 10 min).
+- **`SessionsOccupancySource.ts`**, **`PrismaSessionAdoptionRepository`** — `countAwaitingCapacity(…, { statementTimeoutMs })` com teto de 2 s; falha ou timeout dela omite só `sessions_awaiting` do tick (`warn` 1× por sequência), sem derrubar as outras 3 métricas nem o alerta de ocupação.
+- **`PrismaWorkerCapacityReader.ts`** — entitlement em string só vira limite com a regex `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$`; outra string = ilimitado na aba.
+- **`opsAlertPolicy.ts`** — `session_occupancy` loga `value`/`threshold` em percentual (0–100), como `memory`.
+- **`app/…/useWorkerSettings.ts`** — medição do teto sugerido com timeout de 8 s: resposta pendurada vira `unavailable` e não trava "Revisar e salvar".
 
 ## [0.82.0 · app 0.101.0] — 2026-11-11 — Configuração de escala dos workers em banco
 

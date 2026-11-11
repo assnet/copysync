@@ -76,7 +76,13 @@ nenhum dado de tenant individual.
 
 **Fonte**: o coletor (`OpsMetricsSamplerJob`, [`ops-metricas.md`](ops-metricas.md)) coleta a cada tick (60 s) e grava a média de 5 min
 das métricas `sessions_*` (fonte `sessions`, recurso `cluster`) em `all` e `worker`, com ou sem adoção. Sem
-`OPS_METRICS_SAMPLER_ENABLED` não há amostra e a aba mostra "sem amostra" em vez de número.
+`OPS_METRICS_SAMPLER_ENABLED` não há amostra e a aba mostra "sem amostra" em vez de número. Falha ou timeout (2 s) só
+da contagem de aguardando omite `sessions_awaiting` daquele tick (`warn` uma vez por sequência de falhas); as outras três
+métricas e o alerta de ocupação seguem.
+
+**Limite sem adoção**: `sessions_capacity` = teto × processos donos de lease (mínimo 1). Processo vivo sem sessão não
+entra na soma. Em 2026-11-11 a produção rodava 1 processo `all`, caso coberto pelo mínimo 1; com vários processos, ligar a
+adoção para a capacidade vir dos batimentos.
 
 | Número | Significado |
 |---|---|
@@ -94,9 +100,11 @@ das métricas `sessions_*` (fonte `sessions`, recurso `cluster`) em `all` e `wor
   produção, leitura de 2026-11-11); as instâncias são somadas por `at`. Mais de um `srv-` em `RENDER_RESOURCE_IDS` →
   `mbPerSession`, `memoryLimitMb` e `suggestedMaxSessions` `null` (não há como saber qual roda sessões; o filtro por
   `WORKER_SCALER_SERVICE_ID` é da P3). Sem métrica da Render ou sem sessões → `null`.
-- Contratado: valor de `tenant_entitlements` (número ou string numérica). Ausente, `null` ou não numérico = **ilimitado**
-  (contado em `unlimitedTenants`, igual a `CreateSessionUseCase`). String em hex (`0x…`) ou notação científica
-  (`1e3`) também conta como ilimitado na aba: só inteiro decimal vira limite. `planSlug` nulo = grupo "Sem plano".
+- Contratado: valor de `tenant_entitlements`. Número JSON = limite. String = limite só se casar
+  `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$` (decimal com casas aceito, ex.: `"5.5"`). Qualquer outra string (hex `0x…`, sinal,
+  notação científica `1e3`, mais de 9 dígitos, `.5`), ausente ou `null` = **ilimitado** na aba (contado em
+  `unlimitedTenants`). **Difere** de `CreateSessionUseCase` (`PrismaEntitlementReader.toNumber`, que usa `Number()` e
+  aceita hex/notação científica): a aba é só leitura e conta essas strings como ilimitadas. `planSlug` nulo = grupo "Sem plano".
 - Projeção "cabem mais N clientes" (`rules.clientsThatFit`): `floor(folga ÷ sessões contratadas pelo tenant médio)`.
   Plano com tenant ilimitado, sem tenant, sem contratado ou sem folga medida → "—". É projeção, não reserva vaga, e
   **isolada por plano**: cada linha usa a folga inteira, então não se soma entre planos.
@@ -105,7 +113,9 @@ das métricas `sessions_*` (fonte `sessions`, recurso `cluster`) em `all` e `wor
 - Aba **Configuração** lê `suggestedMaxSessions` daqui: confirmação reforçada (digitar o valor) **só** quando o teto novo
   passa do sugerido ou não há sugestão (sem amostra ou rota fora). Reduzir o teto (mesmo acima do sugerido) usa título
   neutro e o texto de redução. Enquanto a medição carrega (`suggestedState: 'loading'`), "Revisar e salvar" fica
-  desabilitado com "Carregando medição…" se o teto mudou; a tela não afirma ausência de medição antes da resposta. Sem
+  desabilitado com "Carregando medição…" se o teto mudou; a tela não afirma ausência de medição antes da resposta. A
+  medição tem teto de 8 s (`CAPACITY_TIMEOUT_MS`): resposta pendurada vira `unavailable` (confirmação reforçada) e a
+  resposta tardia é ignorada. Sem
   formulário na aba Capacidade: só a aba na URL.
 
 ## Alerta de ocupação sem adoção

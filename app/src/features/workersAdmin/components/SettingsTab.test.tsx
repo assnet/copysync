@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
@@ -7,7 +7,7 @@ import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { readPersisted } from '@/hooks/usePersistedState';
 import { workersAdminStrings as t } from '../strings';
-import { WORKER_SETTINGS_DRAFT_KEY } from '../useWorkerSettings';
+import { CAPACITY_TIMEOUT_MS, WORKER_SETTINGS_DRAFT_KEY } from '../useWorkerSettings';
 import type { WorkerScalingSettings, WorkerScalingSettingsView } from '../types';
 import SettingsTab from './SettingsTab';
 
@@ -53,7 +53,10 @@ function mockSuggested(suggestedMaxSessions: number | null) {
     enforced: true,
   });
 }
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('SettingsTab', () => {
   it('carrega os valores e mostra a faixa "sem efeito" com enforced: false', async () => {
@@ -359,8 +362,9 @@ describe('SettingsTab — teto sugerido pela medição (WSCALE-07)', () => {
     expect(within(dialog).getByRole('button', { name: s.confirm.save })).toBeDisabled();
   });
 
-  it('medição carregando: teto mudado deixa o revisar desabilitado com "Carregando medição…"', async () => {
-    const user = userEvent.setup();
+  it('medição carregando: teto mudado deixa o revisar desabilitado com "Carregando medição…"; após 8 s vira indisponível', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
     mockList();
     vi.spyOn(adminWorkersService, 'getCapacity').mockReturnValue(new Promise(() => {}));
@@ -372,6 +376,11 @@ describe('SettingsTab — teto sugerido pela medição (WSCALE-07)', () => {
     await setField(user, 'maxSessionsPerWorker', '50');
     expect(screen.getByRole('button', { name: s.actions.loadingSuggestion })).toBeDisabled();
     expect(screen.queryByRole('button', { name: s.actions.review })).not.toBeInTheDocument();
+    // Resposta pendurada: o timeout libera o revisar (medição indisponível = confirmação reforçada).
+    act(() => { vi.advanceTimersByTime(CAPACITY_TIMEOUT_MS); });
+    expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: s.actions.loadingSuggestion })).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 });
 

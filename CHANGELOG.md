@@ -24,6 +24,14 @@ Sem número para decidir teto e réplicas, e sem alerta de ocupação com a ado�
 
 - **`CapacityTab.tsx`**, **`useWorkerCapacity.ts`**, **`rules.ts`** — aba Capacidade: cartões, tabela por plano com "cabem mais N clientes", série de 7 dias.
 - **`SettingsTab.tsx`**, **`useWorkerSettings.ts`** — confirmação reforçada do teto só acima do sugerido ou sem amostra.
+
+#### Fixed (revisão da P2)
+
+- **`GET /admin/workers/capacity`** — campo novo `cluster.stale` (última amostra há mais de 10 min).
+- **`SessionsOccupancySource.ts`** — `countAwaitingCapacity(…, { statementTimeoutMs })` com teto de 2 s; falha dela omite só `sessions_awaiting` do tick, sem derrubar as outras métricas.
+- **`PrismaWorkerCapacityReader.ts`** — entitlement string só é limite com `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$`; outra string = ilimitado na aba (difere de `CreateSessionUseCase`).
+- **`opsAlertPolicy.ts`** — alerta `session_occupancy` em percentual (0–100).
+- **`useWorkerSettings.ts`** — medição com timeout de 8 s no painel (não trava "Revisar e salvar").
 - **`SettingsConfirmDialog.tsx`**, **`useWorkerSettings.ts`**, **`CapacityTab.tsx`**, **`strings.ts`**, **`types.ts`** (revisão) — reduzir o teto acima do sugerido usa título neutro e texto de redução (antes "pode derrubar um worker"); `suggestedState` (`loading|ready|unavailable`) segura "Revisar e salvar" em "Carregando medição…" enquanto a medição chega; ajuda da Capacidade por modo (`enforced`); aviso de coletor parado com `cluster.stale`; "Cabem mais" explicado como projeção isolada por plano.
 
 ### Added — api 0.82.0 · app 0.101.0 — configuração de escala dos workers em banco

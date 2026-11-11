@@ -14,6 +14,8 @@ import type {
 const s = workersAdminStrings.settings;
 
 export const WORKER_SETTINGS_DRAFT_KEY = 'workers.settings.draft';
+/** Teto da medição do teto sugerido: resposta pendurada não deixa "Revisar e salvar" em espera. */
+export const CAPACITY_TIMEOUT_MS = 8_000;
 
 /** Rascunho salvo na aba: valores digitados + `updatedAt` em que foram baseados (vira `expectedUpdatedAt`). */
 export interface WorkerSettingsDraftState {
@@ -73,16 +75,24 @@ export function useWorkerSettings() {
     adminWorkersService.list().then((list) => setBusiest(busiestSessions(list)), () => setBusiest(null));
     // Teto sugerido pela medição (WSCALE-07). Falha ou sem amostra = sem sugestão: a confirmação
     // reforçada vale para toda mudança de teto, como antes da medição existir.
+    // Sem `signal` no serviço: após o timeout (ou desmontagem) a resposta tardia é ignorada.
+    let settled = false;
+    const finish = (suggested: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      setSuggestedMaxSessions(suggested);
+      setSuggestedState(suggested === null ? 'unavailable' : 'ready');
+    };
+    const timer = setTimeout(() => finish(null), CAPACITY_TIMEOUT_MS);
     adminWorkersService.getCapacity().then(
-      (c) => {
-        setSuggestedMaxSessions(c.cluster.suggestedMaxSessions);
-        setSuggestedState(c.cluster.suggestedMaxSessions === null ? 'unavailable' : 'ready');
-      },
-      () => {
-        setSuggestedMaxSessions(null);
-        setSuggestedState('unavailable');
-      },
+      (c) => finish(c.cluster.suggestedMaxSessions),
+      () => finish(null),
     );
+    return () => {
+      settled = true;
+      clearTimeout(timer);
+    };
   }, [load]);
 
   const values: WorkerScalingSettingsDraft | null = draft?.values ?? view?.settings ?? null;

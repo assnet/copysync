@@ -49,6 +49,8 @@ export class PrismaWorkerCapacityReader implements IWorkerCapacityReader {
         ),
         e AS (
           SELECT te."tenantId", te."key",
+            -- Número JSON é sempre limite. Estouro de float8 é improvável: JSON.parse de ≥1e308 vira
+            -- Infinity e é gravado como null (não chega aqui como número).
             CASE
               WHEN jsonb_typeof(te."value") = 'number' THEN (te."value" #>> '{}')::float8
               WHEN jsonb_typeof(te."value") = 'string' AND (te."value" #>> '{}') ~ ${NUMERIC_TEXT}

@@ -5,6 +5,7 @@ import { SESSIONS_CLUSTER_RESOURCE } from '../../domain/services/opsAlertPolicy'
 import type { ISessionAdoptionRepository } from '../../../sessions/domain/contracts/ISessionAdoptionRepository';
 import type { IWorkerHeartbeatRepository } from '../../../sessions/domain/contracts/IWorkerHeartbeatRepository';
 import { WORKER_ALIVE_MS } from '../../../sessions/domain/services/sessionAdoptionPolicy';
+import { logger } from '../../../../shared/logger/logger';
 import { statementTimeout } from './PrismaDatabaseStatsSource';
 
 export const SESSIONS_RESOURCE = SESSIONS_CLUSTER_RESOURCE;
@@ -40,12 +41,35 @@ export interface SessionsOccupancySourceDeps {
  * Adoção desligada: `awaiting` = 0 sem consultar e `capacity` = teto × processos donos de lease
  * (mínimo 1). Ligada: `awaiting` = `countAwaitingCapacity()` e `capacity` = soma dos tetos dos
  * batimentos vivos. Só leitura.
+ * Falha (ou timeout) só da contagem de aguardando omite `sessions_awaiting` daquele tick e mantém as
+ * outras três (e o alerta de ocupação); `warn` uma vez por sequência de falhas.
  */
 export class SessionsOccupancySource implements ISessionsOccupancySource {
+  private readonly log = logger.child({ module: 'SessionsOccupancySource' });
+  /** Já logou `warn` na sequência atual de falhas da contagem de aguardando. */
+  private awaitingFailing = false;
+
   constructor(private readonly deps: SessionsOccupancySourceDeps) {}
 
+  /** `null` = leitura falhou neste tick (métrica omitida). */
+  private async readAwaiting(): Promise<number | null> {
+    try {
+      const n = await this.deps.adoption.countAwaitingCapacity(undefined, {
+        statementTimeoutMs: AWAITING_STATEMENT_TIMEOUT_MS,
+      });
+      this.awaitingFailing = false;
+      return n;
+    } catch (err) {
+      if (!this.awaitingFailing) {
+        this.log.warn({ err: (err as Error)?.message }, 'sessions awaiting count failed; metric omitted');
+      }
+      this.awaitingFailing = true;
+      return null;
+    }
+  }
+
   async read(): Promise<OpsMetricReading[]> {
-    const { prisma: p, adoptionEnabled, adoption, heartbeats, maxSessionsPerWorker } = this.deps;
+    const { prisma: p, adoptionEnabled, heartbeats, maxSessionsPerWorker } = this.deps;
     const enabled = adoptionEnabled();
     const [[, rows], awaiting, alive] = await Promise.all([
       p.$transaction([
@@ -57,16 +81,14 @@ export class SessionsOccupancySource implements ISessionsOccupancySource {
           FROM "sessions"
           WHERE "deletedAt" IS NULL AND "ownerWorkerId" IS NOT NULL AND "leaseUntil" > ${NOW}`,
       ]),
-      enabled
-        ? adoption.countAwaitingCapacity(undefined, { statementTimeoutMs: AWAITING_STATEMENT_TIMEOUT_MS })
-        : Promise.resolve(0),
+      enabled ? this.readAwaiting() : Promise.resolve(0),
       enabled ? heartbeats.listAlive(WORKER_ALIVE_MS) : Promise.resolve([]),
     ]);
     const counts = rows[0] ?? { connected: 0, pending: 0, owners: 0 };
     // Limite aceito: sem adoção não há batimento, então a capacidade só enxerga processos que já são
-    // donos de algum lease; um processo vivo e ocioso (sem sessão) não entra na soma. Produção roda
-    // 1 processo `all` (o `Math.max(1, …)` cobre o caso sem sessão); com vários processos, ligar a
-    // adoção para a capacidade vir dos batimentos.
+    // donos de algum lease; um processo vivo e ocioso (sem sessão) não entra na soma. O
+    // `Math.max(1, …)` cobre 1 processo sem sessão; com vários processos, ligar a adoção para a
+    // capacidade vir dos batimentos (ver `docs/workers-escala.md`).
     const capacity = enabled
       ? alive.reduce((sum, w) => sum + w.maxSessions, 0)
       : maxSessionsPerWorker() * Math.max(1, Number(counts.owners));
@@ -75,7 +97,7 @@ export class SessionsOccupancySource implements ISessionsOccupancySource {
     return [
       reading(OPS_METRIC.sessionsConnected, counts.connected),
       reading(OPS_METRIC.sessionsPendingLogin, counts.pending),
-      reading(OPS_METRIC.sessionsAwaiting, awaiting),
+      ...(awaiting === null ? [] : [reading(OPS_METRIC.sessionsAwaiting, awaiting)]),
       reading(OPS_METRIC.sessionsCapacity, capacity),
     ];
   }
