@@ -26,6 +26,44 @@ export const LOGIN_COPY = {
   socialProof: 'Afiliados publicando ofertas todos os dias, enquanto cuidam do resto.',
   formTitle: 'Que bom ter você de volta',
   formSubtitle: 'Entre para acompanhar suas ofertas e grupos.',
+  showcaseLabel: 'Apresentação do produto',
+  stepsLabel: 'Como o produto funciona, em ordem',
+  form: {
+    email: 'E-mail',
+    password: 'Senha',
+    showPassword: 'Mostrar senha',
+    hidePassword: 'Ocultar senha',
+    submit: 'Entrar',
+  },
+  /** Quem comprou e ainda não definiu a senha: leva à página de primeiro acesso. */
+  firstAccess: {
+    prompt: 'Comprou e ainda não tem senha?',
+    link: 'Meu primeiro acesso',
+  },
+  /** Quem ainda não é cliente: leva à página de vendas (link de redirecionamento). */
+  buy: {
+    title: 'Ainda não é cliente?',
+    body: 'Conheça os planos e comece hoje.',
+    cta: 'Comprar agora',
+    tooltip: 'Abre a página de planos em uma nova aba',
+  },
+  /** Vídeo de apresentação (fachada + player em janela). */
+  introVideo: {
+    title: 'Veja como funciona',
+    hint: 'Vídeo de apresentação',
+    playLabel: 'Assistir ao vídeo de apresentação',
+    dialogTitle: 'Como funciona',
+    frameTitle: (appName: string) => `Vídeo de apresentação do ${appName}`,
+    close: 'Fechar vídeo',
+    watchExternal: 'Abrir no YouTube',
+    watchExternalTooltip: 'Abre o vídeo no YouTube em uma nova aba',
+  },
+  dev: {
+    title: 'Credenciais de desenvolvimento',
+    fill: 'Usar',
+    fillTooltip: 'Preencher formulário',
+  },
+  footerRights: 'Todos os direitos reservados',
 } as const;
 
 export interface LoginBenefit {

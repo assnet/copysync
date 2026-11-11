@@ -4,10 +4,12 @@ import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { BRAND_NAVY, LOGIN_COPY, LOGIN_IMAGES } from './loginContent';
 import { GOLDEN_SPACE, GOLDEN_TYPE, PHI } from './goldenRatio';
 import { REVEAL_KEYFRAMES, revealSx } from './loginReveal';
+import { LoginIntroVideo } from './LoginIntroVideo';
 
 /**
- * Faixa superior compacta (xs/sm): foto com overlay navy, logo e headline curta.
- * φ aplicado: altura = 144 × φ ≈ 233 px; headline em 26 px (16 × φ).
+ * Faixa superior compacta (xs/sm): foto com overlay navy, logo, headline curta e o atalho do
+ * vídeo de apresentação (linha com miniatura; o player abre em janela, então o formulário
+ * continua logo abaixo). φ aplicado: altura mínima = 144 × φ ≈ 233 px; headline em 26 px.
  */
 export function LoginMobileBanner() {
   return (
@@ -59,6 +61,7 @@ export function LoginMobileBanner() {
       >
         {LOGIN_COPY.headlineShort}
       </Typography>
+      <LoginIntroVideo variant="compact" sx={{ mt: `${GOLDEN_SPACE.s3}px`, maxWidth: GOLDEN_TYPE.lead * 16 }} />
     </Box>
   );
 }

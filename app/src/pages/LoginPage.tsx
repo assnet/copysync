@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ThemeModeSelector } from '@/components/ThemeModeSelector';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
   CircularProgress, InputAdornment, IconButton, Chip, Tooltip,
   Stack, Link, alpha, useTheme,
 } from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { Copy, Eye, EyeOff, ShoppingBag, Wrench } from 'lucide-react';
+import { AppIcon } from '@/components/AppIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { APP_NAME } from '@/shared/branding/brand';
@@ -18,6 +17,8 @@ import { LOGIN_COPY } from './login/loginContent';
 import { GOLDEN_SPACE, GOLDEN_SPLIT, GOLDEN_TYPE } from './login/goldenRatio';
 import { PRIVACY_POLICY_PATH, privacyPolicyLinkLabel } from '@/features/privacy-policy/strings';
 import { SUPPORT_PATH, supportLinkLabel } from '@/features/support/strings';
+import { BUY_NOW_PATH } from '@/features/platformLinks/links';
+import { THANK_YOU_FROM_LOGIN_STATE, THANK_YOU_PATH } from '@/features/thankYou/strings';
 import { authService } from '@/services/auth.service';
 import { serverNow } from '@/services/serverClock';
 import type { TenantRef } from '@/types/api.types';
@@ -32,6 +33,9 @@ const DEV_CREDENTIALS = [
 ] as const;
 
 const IS_DEV = import.meta.env.DEV;
+
+/** Alvo de toque mínimo (px) para controles pequenos. */
+const MIN_TOUCH_TARGET = 44;
 
 /**
  * Tela de login.
@@ -124,13 +128,14 @@ export function LoginPage() {
         minHeight: '100vh',
         display: 'grid',
         // φ: 61,8% painel visual × 38,2% formulário no desktop; coluna única no mobile.
-        gridTemplateColumns: { xs: '1fr', md: `${GOLDEN_SPLIT.major} ${GOLDEN_SPLIT.minor}` },
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: `${GOLDEN_SPLIT.major} ${GOLDEN_SPLIT.minor}` },
         gridTemplateRows: { xs: 'auto 1fr', md: '1fr' },
         bgcolor: 'background.default',
       }}
     >
       {/* Painel visual — desktop */}
-      <Box sx={{ display: { xs: 'none', md: 'block' }, minHeight: '100vh' }}>
+      {/* Fixo na janela (sticky): se a coluna do formulário crescer, a apresentação não é cortada. */}
+      <Box sx={{ display: { xs: 'none', md: 'block' }, position: 'sticky', top: 0, alignSelf: 'start', minHeight: '100vh', minWidth: 0 }}>
         <LoginShowcasePanel />
       </Box>
 
@@ -148,10 +153,14 @@ export function LoginPage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          px: { xs: `${GOLDEN_SPACE.s3}px`, sm: `${GOLDEN_SPACE.s5}px` },
+          minWidth: 0,
+          px: { xs: `${GOLDEN_SPACE.s3}px`, sm: `${GOLDEN_SPACE.s5}px`, md: `${GOLDEN_SPACE.s4}px`, xl: `${GOLDEN_SPACE.s5}px` },
+          // Telas baixas (ex.: 1280×720): respiro menor para o formulário inteiro caber.
+          '@media (min-width: 900px) and (max-height: 800px)': { py: `${GOLDEN_SPACE.s4}px` },
           // xs: espaço extra no topo para o toggle de tema não encostar no título.
           pt: { xs: `${GOLDEN_SPACE.s6}px`, md: `${GOLDEN_SPACE.s5}px` },
-          pb: { xs: `${GOLDEN_SPACE.s4}px`, md: `${GOLDEN_SPACE.s5}px` },
+          // xs: folga para o botão flutuante de suporte não cobrir o rodapé no fim da rolagem.
+          pb: { xs: 'calc(88px + env(safe-area-inset-bottom))', md: `${GOLDEN_SPACE.s5}px` },
           // Brilho discreto do azul da marca atrás do card (ancora o glass).
           backgroundImage: `radial-gradient(60% 50% at 50% 38.2%, ${alpha(theme.palette.primary.main, isDark ? 0.16 : 0.1)} 0%, transparent 100%)`,
         }}
@@ -213,7 +222,7 @@ export function LoginPage() {
 
               <Box component="form" onSubmit={handleSubmit} noValidate>
                 <TextField
-                  label="E-mail"
+                  label={LOGIN_COPY.form.email}
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); if (blockedUntil) { setBlockedUntil(null); setError(null); } }}
@@ -224,7 +233,7 @@ export function LoginPage() {
                   sx={{ mb: `${GOLDEN_SPACE.s3}px` }}
                 />
                 <TextField
-                  label="Senha"
+                  label={LOGIN_COPY.form.password}
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -235,14 +244,15 @@ export function LoginPage() {
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
-                        <Tooltip title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+                        <Tooltip title={showPassword ? LOGIN_COPY.form.hidePassword : LOGIN_COPY.form.showPassword}>
                           <IconButton
                             onClick={() => setShowPassword((v) => !v)}
                             edge="end"
-                            size="small"
-                            aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                            aria-label={showPassword ? LOGIN_COPY.form.hidePassword : LOGIN_COPY.form.showPassword}
+                            aria-pressed={showPassword}
+                            sx={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET }}
                           >
-                            {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                            <AppIcon icon={showPassword ? EyeOff : Eye} size="md" />
                           </IconButton>
                         </Tooltip>
                       </InputAdornment>
@@ -266,13 +276,81 @@ export function LoginPage() {
                     '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
                   }}
                 >
-                  {loading ? <CircularProgress size={22} color="inherit" /> : 'Entrar'}
+                  {loading ? <CircularProgress size={22} color="inherit" /> : LOGIN_COPY.form.submit}
                 </Button>
               </Box>
+
+              {/* Primeiro acesso: discreto, para quem comprou e ainda não definiu a senha. */}
+              <Typography
+                sx={{
+                  fontSize: GOLDEN_TYPE.caption, color: 'text.secondary', textAlign: 'center',
+                  mt: `${GOLDEN_SPACE.s1}px`, mb: `-${GOLDEN_SPACE.s3}px`,
+                }}
+              >
+                {LOGIN_COPY.firstAccess.prompt}{' '}
+                <Link
+                  component={RouterLink}
+                  to={THANK_YOU_PATH}
+                  state={THANK_YOU_FROM_LOGIN_STATE}
+                  underline="hover"
+                  sx={{
+                    // Área de toque de 44 px sem aumentar o peso visual do link.
+                    display: 'inline-block', py: '12px', fontWeight: 600, borderRadius: 0.5,
+                    '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
+                  }}
+                >
+                  {LOGIN_COPY.firstAccess.link}
+                </Link>
+              </Typography>
                 </>
               )}
             </CardContent>
           </Card>
+
+          {/* Ainda não é cliente: CTA secundário forte (o primário segue sendo "Entrar"). */}
+          {!challenge && (
+            <Box
+              component="section"
+              aria-labelledby="login-buy-title"
+              sx={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+                gap: `${GOLDEN_SPACE.s2}px`,
+                mb: `${GOLDEN_SPACE.s3}px`,
+                p: `${GOLDEN_SPACE.s2}px ${GOLDEN_SPACE.s3}px`,
+                borderRadius: `${GOLDEN_SPACE.s3}px`,
+                bgcolor: alpha(theme.palette.primary.main, isDark ? 0.12 : 0.06),
+                border: `1px solid ${alpha(theme.palette.primary.main, isDark ? 0.32 : 0.2)}`,
+              }}
+            >
+              <Box sx={{ flex: '1 1 180px', minWidth: 0 }}>
+                <Typography id="login-buy-title" component="h2" sx={{ fontSize: GOLDEN_TYPE.base, fontWeight: 700, lineHeight: 1.3 }}>
+                  {LOGIN_COPY.buy.title}
+                </Typography>
+                <Typography sx={{ fontSize: GOLDEN_TYPE.caption, color: 'text.secondary', lineHeight: 1.45 }}>
+                  {LOGIN_COPY.buy.body}
+                </Typography>
+              </Box>
+              <Tooltip title={LOGIN_COPY.buy.tooltip} describeChild>
+                <Button
+                  component="a"
+                  href={BUY_NOW_PATH}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="outlined"
+                  startIcon={<AppIcon icon={ShoppingBag} />}
+                  sx={{
+                    flex: { xs: '1 1 100%', sm: '0 0 auto' },
+                    minHeight: MIN_TOUCH_TARGET, px: `${GOLDEN_SPACE.s3}px`,
+                    fontWeight: 700, whiteSpace: 'nowrap', borderWidth: 1.5,
+                    bgcolor: 'background.paper',
+                    '&:hover': { borderWidth: 1.5 },
+                  }}
+                >
+                  {LOGIN_COPY.buy.cta}
+                </Button>
+              </Tooltip>
+            </Box>
+          )}
 
           {/* Credenciais de dev */}
           {IS_DEV && (
@@ -289,11 +367,11 @@ export function LoginPage() {
                   variant="caption"
                   fontWeight={700}
                   color="warning.dark"
-                  display="block"
                   mb={1}
-                  sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 0.75, textTransform: 'uppercase', letterSpacing: 0.5 }}
                 >
-                  🛠 Credenciais de desenvolvimento
+                  <AppIcon icon={Wrench} />
+                  {LOGIN_COPY.dev.title}
                 </Typography>
                 <Stack spacing={1}>
                   {DEV_CREDENTIALS.map((cred) => (
@@ -307,13 +385,13 @@ export function LoginPage() {
                           {cred.email} · {cred.password}
                         </Typography>
                       </Box>
-                      <Tooltip title="Preencher formulário">
+                      <Tooltip title={LOGIN_COPY.dev.fillTooltip}>
                         <Chip
-                          label="Usar"
+                          label={LOGIN_COPY.dev.fill}
                           size="small"
                           color="warning"
                           variant="outlined"
-                          icon={<ContentCopyIcon sx={{ fontSize: '14px !important' }} />}
+                          icon={<AppIcon icon={Copy} size="sm" />}
                           onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
                           sx={{ cursor: 'pointer', fontSize: 11 }}
                         />
@@ -326,7 +404,7 @@ export function LoginPage() {
           )}
 
           <Typography sx={{ fontSize: GOLDEN_TYPE.caption, color: 'text.disabled', textAlign: 'center', mt: `${GOLDEN_SPACE.s3}px` }}>
-            © {new Date().getFullYear()} {APP_NAME} · Todos os direitos reservados
+            © {new Date().getFullYear()} {APP_NAME} · {LOGIN_COPY.footerRights}
             {' · '}
             <Link
               href={PRIVACY_POLICY_PATH}
