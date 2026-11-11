@@ -155,6 +155,66 @@ describe('SettingsTab', () => {
     expect(screen.getByText(s.errors.invalid)).toBeInTheDocument();
   });
 
+  it('sem adoção não mostra o aviso de teto abaixo da ocupação', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view({ enforced: false }));
+    mockList([30]);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await setField(user, 'maxSessionsPerWorker', '20');
+    expect(screen.queryByText(s.belowOccupancy(20, 30))).not.toBeInTheDocument();
+    expect(screen.getByText(s.notEnforced)).toBeInTheDocument();
+  });
+
+  it('bloco de escala avisa "sem efeito por enquanto"; erro das réplicas ligado ao slider', async () => {
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view({ settings: { ...SETTINGS, minReplicas: 5, maxReplicas: 4 } }));
+    mockList();
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    expect(screen.getByText(s.groups.scaling.pending)).toBeInTheDocument();
+    const help = screen.getByText(s.errors.maxBelowMin);
+    expect(help.id).toBeTruthy();
+    for (const thumb of screen.getAllByRole('slider')) expect(thumb).toHaveAttribute('aria-describedby', help.id);
+  });
+
+  it('400 em scalerMode aparece abaixo do seletor de modo', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    vi.spyOn(adminWorkersService, 'updateSettings').mockRejectedValue(
+      Object.assign(new Error('x'), { status: 400, code: 'INVALID_WORKER_SCALING_SETTINGS', field: 'scalerMode' }),
+    );
+    renderWithTheme(<SettingsTab />);
+    await user.click(await screen.findByRole('button', { name: s.scalerModes.manual }));
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: s.confirm.save }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const help = await screen.findByText(s.fieldRejected);
+    expect(help).toHaveClass('Mui-error');
+    expect(screen.getByRole('button', { name: s.scalerModes.manual }).parentElement).toHaveAttribute('aria-describedby', help.id);
+  });
+
+  it('rascunho com base null (antes de existir linha) mantém expectedUpdatedAt null e o PUT dá 409', async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(`ui.${WORKER_SETTINGS_DRAFT_KEY}`, JSON.stringify({
+      v: 0, d: { base: null, values: { ...SETTINGS, awaitingAlertSeconds: '450' } },
+    }));
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    const update = vi.spyOn(adminWorkersService, 'updateSettings').mockRejectedValue(
+      Object.assign(new Error('x'), { status: 409, code: 'WORKER_SCALING_SETTINGS_CONFLICT' }),
+    );
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.awaitingAlertSeconds.label });
+    await setField(user, 'awaitingAlertSeconds', '500');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: s.confirm.save }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({
+      settings: { ...SETTINGS, awaitingAlertSeconds: 500 }, expectedUpdatedAt: null,
+    }));
+    expect(await screen.findByText(s.errors.conflict)).toBeInTheDocument();
+  });
+
   it('rascunho salvo na aba é restaurado ao abrir', async () => {
     sessionStorage.setItem(`ui.${WORKER_SETTINGS_DRAFT_KEY}`, JSON.stringify({
       v: 0, d: { base: '2026-11-01T10:00:00.000Z', values: { ...SETTINGS, awaitingAlertSeconds: '450' } },

@@ -69,6 +69,8 @@ export interface RangeSliderProps {
   status?: RangeSliderStatus;
   disabled?: boolean;
   error?: boolean;
+  /** `id` do texto de ajuda/erro abaixo: vira `aria-describedby` dos dois cursores. */
+  describedBy?: string;
   /**
    * Rótulos intermediários da escala (ex.: 00/03/…/24 numa janela de horário). Viram marcas na
    * barra e substituem os rótulos dos extremos abaixo dela. Ausente = só os extremos.
@@ -94,7 +96,7 @@ export interface RangeSliderMark {
  */
 export function RangeSlider({
   value, onChange, min, max, step = 1, minDistance = 0, ariaLabel,
-  minLabel = 'Mínimo', maxLabel = 'Máximo', formatValue = (v) => String(v), status, disabled, error, marks, inverted,
+  minLabel = 'Mínimo', maxLabel = 'Máximo', formatValue = (v) => String(v), status, disabled, error, describedBy, marks, inverted,
 }: RangeSliderProps) {
   const theme = useTheme();
   const [lo, hi] = clampRange(value, { min, max, step, minDistance });
@@ -182,6 +184,7 @@ export function RangeSlider({
         track={inverted ? 'inverted' : 'normal'}
         getAriaLabel={(index) => `${ariaLabel}: ${index === 0 ? minLabel : maxLabel}`}
         getAriaValueText={formatValue}
+        slotProps={describedBy ? { input: { 'aria-describedby': describedBy } } : undefined}
         onChange={(_e, next, activeThumb) => {
           if (!Array.isArray(next)) return;
           onChange(clampRange([next[0]!, next[1]!], { min, max, step, minDistance }, activeThumb === 1 ? 1 : 0));

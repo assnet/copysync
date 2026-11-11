@@ -74,7 +74,8 @@ export function useWorkerSettings() {
   const change = useCallback((patch: Partial<WorkerScalingSettingsDraft>) => {
     if (!view) return;
     setDraft((prev) => ({
-      base: prev?.base ?? view.updatedAt,
+      // `prev.base` pode ser `null` (rascunho de antes de existir linha): mantém, para o PUT dar 409.
+      base: prev ? prev.base : view.updatedAt,
       values: { ...(prev?.values ?? view.settings), ...patch } as WorkerScalingSettingsDraft,
     }));
     setServerErrors((prev) => {

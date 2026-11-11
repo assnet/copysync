@@ -35,8 +35,11 @@ guardados na P1 (escalador é P3/P4).
 - Sem linha salva: o default acima (comportamento de antes). `WORKER_MAX_*` viram **só valor inicial** (D2), lidos
   apenas em `workerScalingEnvDefaults()` (`shared/config/workerAdoption.ts`).
 - Salvo, o banco vence a env campo a campo. A resposta traz `origin[campo] = default|saved`.
-- Provider: `current()` síncrono; refresh a cada 30 s (`unref`) e na hora no processo que salvou. Falha de leitura ou
-  linha inválida mantém o último valor bom e loga `warn` uma vez, sem o conteúdo. Boot com banco fora: segue com a env.
+- Provider: `current()` síncrono; refresh a cada 30 s (`unref`) e na hora no processo que salvou.
+- Linha salva inválida: `GET` e provider usam o default da env (origem `default`) e logam `warn` uma vez, sem o conteúdo.
+- Erro de leitura do banco: o provider mantém o último valor bom. Boot com leitura lenta espera no máximo 5 s e segue
+  com a env.
+- Env acima da faixa (`WORKER_MAX_SESSIONS` > 1000, `WORKER_MAX_PENDING_LOGINS` > 500) é limitada ao teto, com aviso no log.
 - Mudança vale em todas as réplicas em até 30 s, sem reinício.
 
 ## Efeito
@@ -44,7 +47,7 @@ guardados na P1 (escalador é P3/P4).
 - Consumidores leem o provider **a cada uso**: gate do lease (`CapacityLimitedLeaseGate` recebe função), ticker de
   adoção, fila `session-open` (`roleComposition.ts`), `WorkerHeartbeatJob` (teto gravado) e `WorkerCapacityAlertJob`
   (ratio e segundos).
-- `enforced` = `WORKER_ADOPTION_ENABLED`. **Limite conhecido:** sem adoção o gate com teto nem é criado e não há heartbeat;
+- `enforced` = adoção ligada no processo (`WORKER_ADOPTION_ENABLED`) **ou** batimento vivo de algum worker. **Limite conhecido:** sem adoção o gate com teto nem é criado e não há heartbeat;
   a configuração só é guardada e mostrada (faixa "sem efeito" na tela). Vale quando a adoção for ligada (D12).
 - Reduzir o teto abaixo das sessões atuais **não derruba** sessão: o worker só para de adotar (ocupação > 100%). Aumentar
   libera vaga no próximo tick (D3).
@@ -68,5 +71,5 @@ Sem flag de privacidade: a tela só mostra números da plataforma, nenhum dado d
   (`() => provider.current().value`) e leia no uso.
 - Fazer I/O no construtor do provider ou criar outra instância: só `workerScalingSettingsProvider()`.
 - Aplicar o teto sem adoção ou derrubar sessão acima do teto novo.
-- Gravar `worker_scaling` direto no banco (sem auditoria nem validação); linha inválida cai no default.
+- Gravar `worker_scaling` direto no banco (sem auditoria nem validação); linha inválida cai no default da env (não no último valor salvo).
 - Teto por instância: `workerId` muda a cada boot.

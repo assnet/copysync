@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
-  validateSettingsDraft,
+  parseDraftNumber, validateSettingsDraft,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerScalingSettings } from './types';
@@ -71,10 +71,31 @@ describe('validateSettingsDraft', () => {
 
   it('vazio, não numérico e decimal em campo inteiro', () => {
     expect(validateSettingsDraft({ ...valid, awaitingAlertSeconds: ' ' }).awaitingAlertSeconds).toBe(e.required);
-    expect(validateSettingsDraft({ ...valid, maxSessionsPerWorker: 'abc' }).maxSessionsPerWorker).toBe(e.integer);
+    expect(validateSettingsDraft({ ...valid, maxSessionsPerWorker: 'abc' }).maxSessionsPerWorker).toBe(e.number);
     expect(validateSettingsDraft({ ...valid, alertOccupancyRatio: 'x' }).alertOccupancyRatio).toBe(e.number);
     expect(validateSettingsDraft({ ...valid, minReplicas: 1.5 }).minReplicas).toBe(e.integer);
-    expect(validateSettingsDraft({ ...valid, maxReplicas: Number.NaN }).maxReplicas).toBe(e.integer);
+    expect(validateSettingsDraft({ ...valid, maxReplicas: Number.NaN }).maxReplicas).toBe(e.number);
+    expect(validateSettingsDraft({ ...valid, minReplicas: '1,5' }).minReplicas).toBe(e.integer);
+  });
+
+  it('parseDraftNumber: só dígitos com um separador; milhar em campo inteiro', () => {
+    expect(parseDraftNumber(' 1.000 ', true)).toBe(1000);
+    expect(parseDraftNumber('1,000', true)).toBe(1000);
+    expect(parseDraftNumber('1.000')).toBe(1);
+    expect(parseDraftNumber('1.5', true)).toBe(1.5);
+    expect(parseDraftNumber('0,8')).toBe(0.8);
+    expect(parseDraftNumber('0.8')).toBe(0.8);
+    for (const bad of ['0x10', '1e3', '-1', '+5', '1.000.000', '1,2,3', '.5', '5.', 'Infinity', '1 000', '']) {
+      expect(parseDraftNumber(bad, true)).toBeNull();
+    }
+  });
+
+  it('texto fora do formato vira "Use um número"; "1.000" no teto vale 1000', () => {
+    expect(validateSettingsDraft({ ...valid, maxSessionsPerWorker: '0x10' }).maxSessionsPerWorker).toBe(e.number);
+    expect(validateSettingsDraft({ ...valid, alertOccupancyRatio: '0,8' })).toEqual({});
+    expect(validateSettingsDraft({ ...valid, maxSessionsPerWorker: '1.000' })).toEqual({});
+    expect(draftToSettings({ ...valid, maxSessionsPerWorker: '1.000', scaleCooldownSeconds: '86.400' }))
+      .toEqual({ ...valid, maxSessionsPerWorker: 1000, scaleCooldownSeconds: 86400 });
   });
 
   it('máximo de réplicas abaixo do mínimo', () => {

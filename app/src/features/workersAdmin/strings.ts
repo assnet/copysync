@@ -67,9 +67,9 @@ export const workersAdminStrings = {
     helpAria: (label: string) => `Ajuda: ${label}`,
     groups: {
       limits: { title: 'Teto e alertas', subtitle: 'Quanto cada worker assume e quando a ocupação vira alerta.' },
-      scaling: { title: 'Escala de réplicas', subtitle: 'Como e até onde o número de workers pode mudar.' },
+      scaling: { title: 'Escala de réplicas', subtitle: 'Como e até onde o número de workers pode mudar.', pending: 'sem efeito por enquanto' },
     },
-    replicas: { label: 'Réplicas', aria: 'Faixa de réplicas', min: 'Mínimo', max: 'Máximo', value: (n: number) => (n === 1 ? '1 worker' : `${n} workers`) },
+    replicas: { label: 'Réplicas', help: 'Menor e maior número de workers que a escala mantém. Guardado para a escala de réplicas; ainda sem efeito.', aria: 'Faixa de réplicas', min: 'Mínimo', max: 'Máximo', value: (n: number) => (n === 1 ? '1 worker' : `${n} workers`) },
     notEnforced: 'Sem efeito até ligar a adoção por capacidade. Os valores ficam salvos e passam a valer quando a adoção for ligada.',
     belowOccupancy: (cap: number, busiest: number) =>
       `O teto de ${cap.toLocaleString('pt-BR')} fica abaixo das ${busiest.toLocaleString('pt-BR')} sessões do worker mais ocupado. Nenhuma sessão cai: ele só deixa de adotar novas até a ocupação baixar.`,
@@ -105,7 +105,7 @@ export const workersAdminStrings = {
       },
       alertOccupancyRatio: {
         label: 'Alerta de ocupação',
-        help: 'Fração do teto a partir da qual a ocupação gera alerta. Também é o gatilho da subida automática.',
+        help: 'Fração do teto a partir da qual a ocupação gera alerta.',
         range: '0,5 a 0,95',
       },
       awaitingAlertSeconds: {
@@ -115,27 +115,27 @@ export const workersAdminStrings = {
       },
       scalerMode: {
         label: 'Modo de escala',
-        help: 'Desligado: ninguém muda réplicas pelo painel. Manual: só pelos botões da aba Escala. Automático: sobe uma réplica quando a ocupação se mantém alta.',
+        help: 'Desligado: sem mudança de réplicas pelo painel. Manual: mudança só por ação de um administrador. Automático: uma réplica a mais quando a ocupação fica alta por tempo sustentado. Guardado para a escala de réplicas; ainda sem efeito.',
         range: 'Desligado, manual ou automático',
       },
       minReplicas: {
         label: 'Mínimo de réplicas',
-        help: 'Menor número de workers que a escala mantém.',
+        help: 'Menor número de workers que a escala mantém. Guardado para a escala de réplicas; ainda sem efeito.',
         range: '1 a 20',
       },
       maxReplicas: {
         label: 'Máximo de réplicas',
-        help: 'Maior número de workers que a escala pode pedir.',
+        help: 'Maior número de workers que a escala pode pedir. Guardado para a escala de réplicas; ainda sem efeito.',
         range: 'Mínimo a 20',
       },
       scaleUpSustainSeconds: {
         label: 'Ocupação alta sustentada (segundos)',
-        help: 'Tempo acima do alerta de ocupação antes da subida automática. Resolução de 5 minutos.',
+        help: 'Tempo acima do alerta de ocupação antes de pedir uma réplica a mais, medido em blocos de 5 minutos. Guardado para a escala de réplicas; ainda sem efeito.',
         range: '300 a 3.600 segundos',
       },
       scaleCooldownSeconds: {
         label: 'Intervalo mínimo entre escaladas (segundos)',
-        help: 'Espera obrigatória depois de uma escalada bem-sucedida.',
+        help: 'Espera obrigatória depois de uma escalada bem-sucedida. Guardado para a escala de réplicas; ainda sem efeito.',
         range: '300 a 86.400 segundos',
       },
     },

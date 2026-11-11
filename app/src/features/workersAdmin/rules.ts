@@ -56,13 +56,19 @@ export const WORKER_SETTINGS_FIELDS: WorkerScalingSettingsField[] = [
 const SCALER_MODES: WorkerScalerMode[] = ['off', 'manual', 'auto'];
 const fmt = (n: number) => n.toLocaleString('pt-BR');
 
-/** Número do rascunho (input pode mandar texto com vírgula). Vazio/inválido → `null`. */
-export function parseDraftNumber(value: number | string): number | null {
+const DRAFT_NUMBER = /^\d+([.,]\d+)?$/;
+
+/**
+ * Número do rascunho. Texto aceito: dígitos com no máximo um `.` ou `,` (sem sinal, hexa, expoente).
+ * Em campo inteiro, separador seguido de exatamente 3 dígitos é milhar ("1.000" → 1000).
+ * Vazio/inválido → `null`.
+ */
+export function parseDraftNumber(value: number | string, integer = false): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const text = value.trim().replace(',', '.');
-  if (text === '') return null;
-  const n = Number(text);
-  return Number.isFinite(n) ? n : null;
+  const text = value.trim();
+  if (!DRAFT_NUMBER.test(text)) return null;
+  if (integer && /^\d+[.,]\d{3}$/.test(text)) return Number(text.replace(/[.,]/, ''));
+  return Number(text.replace(',', '.'));
 }
 
 /** Erro por campo do rascunho; objeto vazio = válido. */
@@ -74,16 +80,16 @@ export function validateSettingsDraft(
   for (const field of Object.keys(WORKER_SETTINGS_LIMITS) as NumericField[]) {
     const raw = draft[field];
     if (typeof raw === 'string' && raw.trim() === '') { errors[field] = e.required; continue; }
-    const n = parseDraftNumber(raw);
     const lim = WORKER_SETTINGS_LIMITS[field];
-    if (n === null) errors[field] = lim.integer ? e.integer : e.number;
+    const n = parseDraftNumber(raw, lim.integer);
+    if (n === null) errors[field] = e.number;
     else if (lim.integer && !Number.isInteger(n)) errors[field] = e.integer;
     else if (n < lim.min || n > lim.max) errors[field] = e.range(fmt(lim.min), fmt(lim.max));
   }
   if (!SCALER_MODES.includes(draft.scalerMode)) errors.scalerMode = e.scalerMode;
   if (!errors.minReplicas && !errors.maxReplicas) {
-    const min = parseDraftNumber(draft.minReplicas) as number;
-    const max = parseDraftNumber(draft.maxReplicas) as number;
+    const min = parseDraftNumber(draft.minReplicas, true) as number;
+    const max = parseDraftNumber(draft.maxReplicas, true) as number;
     if (max < min) errors.maxReplicas = e.maxBelowMin;
   }
   return errors;
@@ -93,7 +99,7 @@ export function validateSettingsDraft(
 export function draftToSettings(draft: WorkerScalingSettingsDraft): WorkerScalingSettings {
   const out = { scalerMode: draft.scalerMode } as WorkerScalingSettings;
   for (const field of Object.keys(WORKER_SETTINGS_LIMITS) as NumericField[]) {
-    out[field] = parseDraftNumber(draft[field]) as number;
+    out[field] = parseDraftNumber(draft[field], WORKER_SETTINGS_LIMITS[field].integer) as number;
   }
   return out;
 }

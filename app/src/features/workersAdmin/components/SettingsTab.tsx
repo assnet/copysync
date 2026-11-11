@@ -58,8 +58,9 @@ export default function SettingsTab() {
   }
 
   const { view, values } = w;
-  const cap = parseDraftNumber(values.maxSessionsPerWorker);
-  const belowOccupancy = cap !== null && w.busiest !== null && cap < w.busiest ? s.belowOccupancy(cap, w.busiest) : null;
+  const cap = parseDraftNumber(values.maxSessionsPerWorker, true);
+  // Sem adoção o teto não vale; a faixa "sem efeito" já cobre o caso.
+  const belowOccupancy = view.enforced && cap !== null && w.busiest !== null && cap < w.busiest ? s.belowOccupancy(cap, w.busiest) : null;
   const capChange = changes.find((c) => c.field === 'maxSessionsPerWorker');
   // P1: sem medição de memória por sessão, toda mudança de teto pede o valor digitado.
   const strongValue = capChange ? (capChange.to as number) : null;
@@ -83,8 +84,8 @@ export default function SettingsTab() {
   };
 
   const lim = WORKER_SETTINGS_LIMITS.minReplicas;
-  const lo = parseDraftNumber(values.minReplicas) ?? view.settings.minReplicas;
-  const hi = parseDraftNumber(values.maxReplicas) ?? view.settings.maxReplicas;
+  const lo = parseDraftNumber(values.minReplicas, true) ?? view.settings.minReplicas;
+  const hi = parseDraftNumber(values.maxReplicas, true) ?? view.settings.maxReplicas;
   const replicasError = errors.minReplicas ?? errors.maxReplicas;
 
   const onConfirm = async () => {
@@ -107,7 +108,11 @@ export default function SettingsTab() {
         {belowOccupancy && <Alert severity="warning" sx={{ mt: 2 }}>{belowOccupancy}</Alert>}
       </SectionCard>
 
-      <SectionCard title={s.groups.scaling.title} subtitle={s.groups.scaling.subtitle}>
+      <SectionCard
+        title={s.groups.scaling.title}
+        subtitle={s.groups.scaling.subtitle}
+        action={<Chip size="small" variant="outlined" label={s.groups.scaling.pending} />}
+      >
         <Stack spacing={3}>
           <Box>
             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
@@ -121,17 +126,20 @@ export default function SettingsTab() {
               value={values.scalerMode}
               onChange={(_, mode: WorkerScalerMode | null) => { if (mode) w.change({ scalerMode: mode }); }}
               aria-labelledby="worker-scaler-mode-label"
+              aria-describedby="worker-scaler-mode-help"
               sx={{ flexWrap: 'wrap' }}
             >
               {MODES.map((m) => <ToggleButton key={m} value={m} sx={{ px: 2 }}>{s.scalerModes[m]}</ToggleButton>)}
             </ToggleButtonGroup>
-            <FormHelperText>{s.origin[view.origin.scalerMode]}</FormHelperText>
+            <FormHelperText id="worker-scaler-mode-help" error={Boolean(errors.scalerMode)}>
+              {errors.scalerMode ?? s.origin[view.origin.scalerMode]}
+            </FormHelperText>
           </Box>
 
           <Box>
             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
               <Typography variant="subtitle2">{s.replicas.label}</Typography>
-              <Tooltip title={`${s.fields.minReplicas.help} ${s.fields.maxReplicas.help}`}>
+              <Tooltip title={s.replicas.help}>
                 <IconButton size="small" aria-label={s.helpAria(s.replicas.label)}>
                   <AppIcon icon={Info} size="sm" />
                 </IconButton>
@@ -147,8 +155,9 @@ export default function SettingsTab() {
               maxLabel={s.replicas.max}
               formatValue={s.replicas.value}
               error={Boolean(replicasError)}
+              describedBy="worker-replicas-help"
             />
-            <FormHelperText error={Boolean(replicasError)}>
+            <FormHelperText id="worker-replicas-help" error={Boolean(replicasError)}>
               {replicasError ?? `${s.fields.minReplicas.range} · ${s.origin[view.origin.minReplicas]}`}
             </FormHelperText>
           </Box>
