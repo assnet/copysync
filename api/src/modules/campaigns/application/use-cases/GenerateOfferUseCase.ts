@@ -5,6 +5,7 @@ import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffil
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
 import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
 import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
+import type { IAffiliateCredentialGateway } from '../../domain/contracts/IAffiliateCredentialGateway';
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
@@ -15,6 +16,7 @@ import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanEr
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
 import type { OfferTextComposer } from '../services/OfferTextComposer';
+import { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
 import { normalizeCoupon } from './offerCoupon';
 import { parseOfferSchedule } from './offerScheduleInput';
 import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
@@ -45,8 +47,8 @@ export interface GenerateOfferDeps {
   offers: IOfferRepository;
   entitlements: IEntitlementReader;
   expander: IShortLinkExpander;
-  /** `resolveState`: Shein recusada não chama a loja (ver `ResolveAffiliateProductUseCase`). */
-  credentials: ResolveAffiliateProductDeps['credentials'];
+  /** `resolveState`: credencial ausente/recusada bloqueia (ver `ResolveAffiliateProductUseCase`). Sai na T5. */
+  credentials: ResolveAffiliateProductDeps['credentials'] & Partial<Pick<IAffiliateCredentialGateway, 'execute'>>;
   shopee: IShopeeAffiliateClient;
   mercadoLivre: IMercadoLivreAffiliateClient;
   shein: ISheinAffiliateClient;
@@ -74,8 +76,12 @@ export class GenerateOfferUseCase {
     this.products = new ResolveProductDataUseCase({
       shopee: deps.shopee, pageReader: deps.pageReader, imageFetcher: deps.imageFetcher, mediaStore: deps.mediaStore,
     });
+    // Instância própria só até o gerador receber a do container (T5)
+    const composer = new TenantAffiliateLinkComposer({
+      shopee: deps.shopee, mercadoLivre: deps.mercadoLivre, pageReader: deps.pageReader, shein: deps.shein, riskGate: deps.riskGate,
+    });
     this.affiliateProducts = new ResolveAffiliateProductUseCase({
-      expander: deps.expander, credentials: deps.credentials, mercadoLivre: deps.mercadoLivre, products: this.products,
+      expander: deps.expander, credentials: deps.credentials, composer, products: this.products,
       shein: deps.shein, entitlements: deps.entitlements, riskGate: deps.riskGate,
     });
   }

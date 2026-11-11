@@ -160,7 +160,7 @@ const products    = lazy(() => new ResolveProductDataUseCase({
 }));
 // Link colado → marketplace, dono e dados do produto, sem foto (página de ofertas)
 const affiliateProduct = lazy(() => new ResolveAffiliateProductUseCase({
-  expander: new HttpShortLinkExpander(), credentials: credentials(), mercadoLivre: new MercadoLivreAffiliateClient(), products: products(),
+  expander: new HttpShortLinkExpander(), credentials: credentials(), composer: tenantLinkComposer(), products: products(),
   shein: shein(), entitlements: entitlements(), riskGate: riskGate(),
 }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({

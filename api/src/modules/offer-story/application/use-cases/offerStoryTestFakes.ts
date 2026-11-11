@@ -27,7 +27,7 @@ export class FakeEntitlementReader implements IEntitlementReader {
 
 export function makeResolved(over: Partial<ResolvedAffiliateProduct> = {}): ResolvedAffiliateProduct {
   return {
-    provider: 'MERCADO_LIVRE', sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true,
+    provider: 'MERCADO_LIVRE', sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true, linkRebuilt: false,
     product: {
       productRef: 'MLB1', title: 'Fone de Ouvido Bluetooth XYZ Pro com Cancelamento de Ruído e Estojo de Carga',
       priceCents: 10000, originalPriceCents: 15000, imageSourceUrl: 'https://img.example/p.jpg',

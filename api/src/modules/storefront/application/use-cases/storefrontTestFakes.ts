@@ -230,7 +230,7 @@ export class FakeUploadStore implements StorefrontUploadStore {
 
 export function makeResolved(over: Partial<ResolvedAffiliateProduct> = {}): ResolvedAffiliateProduct {
   return {
-    provider: 'MERCADO_LIVRE', sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true,
+    provider: 'MERCADO_LIVRE', sourceUrl: 'https://meli.la/abc', affiliateUrl: 'https://meli.la/abc', attributionVerified: true, linkRebuilt: false,
     product: { productRef: 'MLB1', title: 'Fone Bluetooth', priceCents: 9990, originalPriceCents: 12990, imageSourceUrl: 'https://img.example/p.jpg' },
     ...over,
   };
