@@ -51,7 +51,7 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
       }),
     },
     shopee,
-    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null) },
+    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null), listAccountTags: vi.fn() },
     shein: { getProductShare: vi.fn().mockResolvedValue(null) },
     riskGate: { isAccepted: vi.fn().mockResolvedValue(true) },
     pageReader: { read: vi.fn().mockResolvedValue(PAGE) },

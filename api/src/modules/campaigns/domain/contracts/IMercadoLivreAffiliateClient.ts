@@ -18,6 +18,12 @@ export interface MlCreateLinksResult {
   errors: MlAffiliateLinkError[];
 }
 
+/** Etiquetas da conta. `tags: null` = não deu para ler (rede/formato); `[]` = conta sem etiquetas. */
+export interface MlAccountTags {
+  tags: string[] | null;
+  active: string | null;
+}
+
 export interface IMercadoLivreAffiliateClient {
   /** Gera links de afiliado (até 20 por chamada). Tag opcional: se omitida, usa a ativa. */
   createAffiliateLinks(
@@ -28,4 +34,7 @@ export interface IMercadoLivreAffiliateClient {
 
   /** Tag ativa do programa de afiliados. null se nenhuma está ativa. */
   getActiveTag(cookies: Record<string, string>): Promise<string | null>;
+
+  /** Todas as etiquetas da conta (ordem da resposta, sem repetir) e a ativa. 401/403/429 lançam. */
+  listAccountTags(cookies: Record<string, string>): Promise<MlAccountTags>;
 }

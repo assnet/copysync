@@ -29,6 +29,7 @@ function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: 
     mercadoLivre: {
       createAffiliateLinks: vi.fn().mockResolvedValue({ success: [{ originUrl: '', shortUrl: 'https://meli.la/meu', longUrl: '' }], errors: [] }),
       getActiveTag: vi.fn(),
+      listAccountTags: vi.fn(),
     },
     pageReader: { read: vi.fn().mockResolvedValue({ title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: 'MLB998877' }) },
     shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },

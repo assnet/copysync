@@ -48,7 +48,7 @@ function setup(
       // Só para provar que o resolver nunca pausa a loja
       markRejected: vi.fn().mockResolvedValue(undefined),
     },
-    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn() },
+    mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [], errors: [] }), getActiveTag: vi.fn(), listAccountTags: vi.fn() },
     products: new ResolveProductDataUseCase({
       shopee: { getProduct: vi.fn(), generateShortLink: vi.fn() }, pageReader, imageFetcher, mediaStore,
     }),
