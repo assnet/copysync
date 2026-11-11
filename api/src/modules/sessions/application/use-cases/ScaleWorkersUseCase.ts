@@ -16,6 +16,7 @@ import {
 } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import {
   WORKER_SCALE_TEXT_MAX,
+  isUncertainScaleFailure,
   truncateText,
   type IWorkerScaleEventRepository,
   type WorkerScaleEvent,
@@ -80,7 +81,8 @@ class ScaleRejection {
  * Aceito: grava `requested` ANTES da chamada externa (queda no meio deixa rastro e o intervalo
  * conta do pedido) com o intervalo rechecado sob advisory lock (`recordRequestedIfIdle`), chama
  * `scaleTo` (sem retry) e atualiza para `succeeded` ou `failed`. Erro fora de `AppError` vira
- * `SCALE_REQUEST_FAILED` sem a mensagem original. Mesmo `requestId` (antes ou sob o lock, em
+ * `SCALE_REQUEST_FAILED` sem a mensagem original. `failed` incerto (timeout, 5xx, erro desconhecido:
+ * `isUncertainScaleFailure`) conta para o intervalo mínimo, pois o provedor pode ter aplicado. Mesmo `requestId` (antes ou sob o lock, em
  * pedido concorrente) com o mesmo alvo/motivo/ator é replay; com outro: `REQUEST_ID_REUSED`.
  */
 export class ScaleWorkersUseCase {
@@ -141,7 +143,12 @@ export class ScaleWorkersUseCase {
       const error = shortError(err);
       if (!(err instanceof AppError)) this.deps.log?.warn({ eventId: id, error }, 'worker scale request failed');
       await this.afterCall(id, 'failed', error, () => this.auditRequest(input, { ...event, outcome: 'failed', error }));
-      throw err instanceof AppError ? err : new ScaleRequestFailedError();
+      if (!(err instanceof AppError)) throw new ScaleRequestFailedError();
+      // Timeout/5xx depois do pedido: pode ter sido aplicado (`meta.uncertain`; conta no intervalo).
+      if (err instanceof ScalerUnavailableError && isUncertainScaleFailure('failed', error)) {
+        throw new ScalerUnavailableError(err.reason, true);
+      }
+      throw err;
     }
     // Escalador já aceitou: falha de escrita daqui em diante não desfaz o pedido (a linha fica
     // `requested`, que continua contando para o intervalo mínimo).

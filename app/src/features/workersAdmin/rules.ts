@@ -267,10 +267,26 @@ function rateLimitedMessage(m: Record<string, unknown>, retryAfter: unknown, now
   return when ? e2.rateLimitedAt(when) : e2.rateLimited(null);
 }
 
+/** Erros de evento `failed` com resultado incerto (espelha `UNCERTAIN_SCALE_FAILURE_ERRORS` da API). */
+export const UNCERTAIN_SCALE_EVENT_ERRORS: readonly string[] = [
+  'SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED',
+];
+
+/**
+ * Falha depois do pedido ao provedor sem saber se ele aplicou: `SCALE_REQUEST_FAILED` ou
+ * `meta.uncertain` (timeout/5xx no `scaleTo`). O intervalo mínimo já conta a partir do pedido.
+ * `SCALER_UNAVAILABLE` sem `uncertain` é recusa antes da chamada: nada foi alterado.
+ */
+export function isUncertainScaleError(err: unknown): boolean {
+  const e = (err ?? {}) as { code?: string; meta?: Record<string, unknown> };
+  return e.code === 'SCALE_REQUEST_FAILED' || (e.code === 'SCALER_UNAVAILABLE' && e.meta?.uncertain === true);
+}
+
 export function scaleRequestErrorMessage(err: unknown, now: number = serverNow()): string {
   const e = (err ?? {}) as { status?: number; code?: string; meta?: Record<string, unknown>; retryAfter?: unknown };
   const m = e.meta ?? {};
   const e2 = sc.requestErrors;
+  if (isUncertainScaleError(e)) return e2.uncertain;
   switch (e.code) {
     case 'REQUEST_ID_REUSED': return e2.requestIdReused;
     case 'SCALE_TARGET_OUT_OF_RANGE':
@@ -299,10 +315,12 @@ export function scaleRequestErrorMessage(err: unknown, now: number = serverNow()
 
 /**
  * Erro gravado num evento `failed` (`CODIGO` ou `CODIGO:motivo`, ex.: `SCALER_UNAVAILABLE:timeout`)
- * traduzido com as mesmas mensagens do pedido; código desconhecido cai no texto de falha genérico.
+ * traduzido com as mesmas mensagens do pedido; resultado incerto = `uncertain`; código desconhecido
+ * cai no texto de falha genérico.
  */
 export function scaleEventErrorMessage(error: string | null): string {
   if (!error) return sc.requestErrors.failedGeneric;
+  if (UNCERTAIN_SCALE_EVENT_ERRORS.includes(error)) return sc.requestErrors.uncertain;
   const [code, reason] = error.split(':', 2);
   const known = scaleRequestErrorMessage({ code, meta: reason ? { reason } : {} });
   return known === sc.requestErrors.generic ? sc.requestErrors.failedGeneric : known;

@@ -161,7 +161,8 @@ no header.
    `SCALER_UNAVAILABLE` (`reason`) ou 429 `SCALER_RATE_LIMITED`.
 5. Serviço com disco ou autoescala nativa da Render → 409 `SCALER_SERVICE_NOT_SCALABLE` (`disk`|`native_autoscaling`).
 6. Automático (P4) só `atual + 1`.
-7. Intervalo `scaleCooldownSeconds` desde o último `requested` ou `succeeded` → 409 `SCALE_COOLDOWN_ACTIVE` (`retryAt`).
+7. Intervalo `scaleCooldownSeconds` desde o último `requested`, `succeeded` ou `failed` **incerto** → 409
+   `SCALE_COOLDOWN_ACTIVE` (`retryAt`).
 8. Redução só se `floor(réplicas × teto × alertOccupancyRatio) ≥ conectadas` → 409 `SCALE_DOWN_WOULD_EXCEED_CAPACITY`
    com os números.
 9. Alvo igual ao atual → 409 `SCALE_TARGET_UNCHANGED`.
@@ -171,7 +172,7 @@ no header.
   (teto de segurança): medir 3–200 lá recusaria um motivo válido com espaços nas pontas. O repositório trunca por
   code point (nunca parte emoji).
 - **Serialização**: a regra 7 é checada cedo (para `checkPreconditions` e para recusar sem lock) e de novo em
-  `recordRequestedIfIdle`, que lê o último `requested|succeeded` e grava `requested` numa transação com
+  `recordRequestedIfIdle`, que lê o último evento que conta (`countsForScaleCooldown`) e grava `requested` numa transação com
   `pg_advisory_xact_lock(hashtextextended('worker-scale-request', 0))` (chave fixa: um recurso só). Dois `POST` com
   `requestId` diferentes ao mesmo tempo: um grava, o outro recebe `{ blocked: retryAt }` → `rejected` + 409
   `SCALE_COOLDOWN_ACTIVE`. Vale entre réplicas do `http` (o lock é do Postgres).
@@ -186,6 +187,14 @@ no header.
   curto, nunca mensagem do provedor). Recusa grava `rejected` **sem** `requestId` (pode ser refeita).
 - **Erro genérico**: erro do `scaleTo` fora de `AppError` vira 503 `SCALE_REQUEST_FAILED` sem a mensagem original
   (evento `failed` com `error = SCALE_REQUEST_FAILED`, `warn` só com o id do evento e o código).
+- **Falha incerta conta o intervalo**: `failed` com `error` em `UNCERTAIN_SCALE_FAILURE_ERRORS`
+  (`SCALER_UNAVAILABLE:timeout`, `SCALER_UNAVAILABLE:upstream`, `SCALE_REQUEST_FAILED`; helper
+  `isUncertainScaleFailure`/`countsForScaleCooldown` no contrato) pode ter sido aplicado pela Render e conta para a
+  regra 7, em `lastSucceededAt` e em `recordRequestedIfIdle`. Sem isso o admin pedia de novo e somava réplicas.
+  Falhas certas (`auth`, `not_found`, 429, recusas) não contam. A resposta leva `meta.uncertain: true` (timeout/5xx
+  do `scaleTo`; `SCALE_REQUEST_FAILED` sempre): o mesmo `SCALER_UNAVAILABLE` vindo do estado, antes da chamada, é
+  recusa e não leva. O painel mostra "Não dá para confirmar se o provedor aplicou…", fecha o diálogo, descarta o
+  rascunho (não reabre nem reenvia sozinho) e relê o estado para exibir o `CooldownBar`.
 - **Sucesso mesmo com falha de escrita**: se `updateOutcome(succeeded)` ou a auditoria lançar depois do `scaleTo`
   aceito, `warn` (sem segredo) e a resposta é de sucesso com o evento `succeeded` em memória. A linha pode ficar
   `requested` no banco: ela continua contando para o intervalo mínimo (regra 7), o que é o lado seguro.
@@ -227,6 +236,8 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 - Checar o intervalo e gravar `requested` fora de `recordRequestedIfIdle` (perde a serialização).
 - Relançar erro cru do escalador ou gravar a mensagem dele no evento: só o código interno.
 - Retry automático de `scaleTo` (o evento `requested` já conta o intervalo; repetir duplica custo).
+- Tirar timeout/5xx/falha inesperada da lista de falhas incertas ou dizer "nada foi alterado" para elas: a Render
+  pode ter aplicado. Lista só no contrato (`UNCERTAIN_SCALE_FAILURE_ERRORS`), espelhada em `workersAdmin/rules.ts`.
 - Ligar `WORKER_SCALER_ENABLED` em produção sem o T25, ou localmente (`api/.env` aponta para produção).
 - Escalar serviço com disco ou com a autoescala nativa da Render ligada.
 - Chamar a Render nas rotas de métricas/capacidade: só as rotas de escala chamam (cache 30 s, timeout 5 s).

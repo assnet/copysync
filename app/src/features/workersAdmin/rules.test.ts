@@ -3,7 +3,7 @@ import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
   sortPlansByCatalog, cooldownActive, formatScaleRemaining, scaleBlock, scaleReasonError, scaleRequestErrorMessage, scaleTargetError,
-  scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget,
+  scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget, isUncertainScaleError,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
@@ -259,11 +259,34 @@ describe('escala (WSCALE-14)', () => {
 describe('scaleEventErrorMessage', () => {
   const re = workersAdminStrings.scale.requestErrors;
   it('traduz CODIGO e CODIGO:motivo; desconhecido ou vazio = falha genérica', () => {
-    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:timeout')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:auth')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:not_found')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE')).toBe(re.unavailable);
     expect(scaleEventErrorMessage('SCALER_SERVICE_NOT_SCALABLE:disk')).toBe(re.notScalable.disk);
     expect(scaleEventErrorMessage('SCALER_RATE_LIMITED')).toBe(re.rateLimited(null));
-    expect(scaleEventErrorMessage('SCALE_REQUEST_FAILED')).toBe(re.failedGeneric);
+    expect(scaleEventErrorMessage('OUTRO')).toBe(re.failedGeneric);
     expect(scaleEventErrorMessage(null)).toBe(re.failedGeneric);
+  });
+
+  it('resultado incerto (timeout, 5xx, falha inesperada) não diz que nada foi alterado', () => {
+    for (const e of ['SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED']) {
+      expect(scaleEventErrorMessage(e)).toBe(re.uncertain);
+    }
+    expect(re.uncertain).not.toMatch(/Nada foi alterado/);
+  });
+});
+
+describe('isUncertainScaleError', () => {
+  const re = workersAdminStrings.scale.requestErrors;
+  it('SCALE_REQUEST_FAILED ou SCALER_UNAVAILABLE com meta.uncertain; recusa antes da chamada não', () => {
+    expect(isUncertainScaleError({ code: 'SCALE_REQUEST_FAILED' })).toBe(true);
+    expect(isUncertainScaleError({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout', uncertain: true } })).toBe(true);
+    expect(isUncertainScaleError({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout' } })).toBe(false);
+    expect(isUncertainScaleError({ code: 'SCALER_RATE_LIMITED' })).toBe(false);
+    expect(isUncertainScaleError(null)).toBe(false);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALE_REQUEST_FAILED', meta: { uncertain: true } })).toBe(re.uncertain);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALER_UNAVAILABLE', meta: { reason: 'upstream', uncertain: true } })).toBe(re.uncertain);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALER_UNAVAILABLE', meta: { reason: 'auth' } })).toBe(re.unavailable);
   });
 });
 

@@ -2,12 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { ScaleWorkersUseCase, type ScaleWorkersInput } from './ScaleWorkersUseCase';
 import { makeAuditRepo } from './sessionTestFakes';
 import { workerScalingEnforcedCheck } from './GetWorkerScalingSettingsUseCase';
-import type {
-  IWorkerScaleEventRepository,
-  NewWorkerScaleEvent,
-  RecordRequestedResult,
-  WorkerScaleEvent,
-  WorkerScaleOutcome,
+import {
+  countsForScaleCooldown,
+  isUncertainScaleFailure,
+  type IWorkerScaleEventRepository,
+  type NewWorkerScaleEvent,
+  type RecordRequestedResult,
+  type WorkerScaleEvent,
+  type WorkerScaleOutcome,
 } from '../../domain/contracts/IWorkerScaleEventRepository';
 import type { IWorkerScaler, WorkerScalerState } from '../../domain/contracts/IWorkerScaler';
 import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
@@ -38,7 +40,7 @@ function makeEvents(lastSucceededAt: Date | null = null) {
     recordRequestedIfIdle: vi.fn(async ({ evt, cooldownSeconds, now }: { evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>; cooldownSeconds: number; now: Date }): Promise<RecordRequestedResult> => {
       const existing = evt.requestId ? rows.find((r) => r.requestId === evt.requestId) : undefined;
       if (existing) return { existing };
-      const counted = rows.filter((r) => r.outcome === 'requested' || r.outcome === 'succeeded').map((r) => r.at);
+      const counted = rows.filter(countsForScaleCooldown).map((r) => r.at);
       if (lastSucceededAt) counted.push(lastSucceededAt);
       const last = counted.sort((a, b) => b.getTime() - a.getTime())[0];
       if (last && last.getTime() + cooldownSeconds * 1000 > now.getTime()) {
@@ -251,9 +253,11 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
 
   it('falha do escalador → failed com código curto, auditoria e relança', async () => {
     const ctx = setup();
-    const err = new ScalerUnavailableError('timeout');
-    ctx.scaler.scaleTo.mockRejectedValue(err);
-    await expect(ctx.useCase.execute(input())).rejects.toBe(err);
+    ctx.scaler.scaleTo.mockRejectedValue(new ScalerUnavailableError('timeout'));
+    await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
+      code: 'SCALER_UNAVAILABLE',
+      meta: { reason: 'timeout', uncertain: true },
+    });
     expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' });
     expect(ctx.audit.create).toHaveBeenCalledWith(
       expect.objectContaining({ meta: expect.objectContaining({ outcome: 'failed' }) }),
@@ -264,7 +268,7 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
     const ctx = setup();
     ctx.scaler.scaleTo.mockRejectedValue(new Error('Bearer rnd_secret'));
     const err = (await ctx.useCase.execute(input()).catch((e: unknown) => e)) as Error & { meta?: unknown };
-    expect(err).toMatchObject({ code: 'SCALE_REQUEST_FAILED', statusCode: 503 });
+    expect(err).toMatchObject({ code: 'SCALE_REQUEST_FAILED', statusCode: 503, meta: { uncertain: true } });
     expect(err.message).not.toContain('rnd_secret');
     expect(JSON.stringify(err.meta ?? null)).not.toContain('rnd_secret');
     expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALE_REQUEST_FAILED' });
@@ -304,6 +308,36 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
       code: 'SCALE_COOLDOWN_ACTIVE',
     });
     expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['timeout', new ScalerUnavailableError('timeout')],
+    ['5xx', new ScalerUnavailableError('upstream')],
+    ['erro desconhecido', new Error('boom')],
+  ])('falha incerta (%s) segura o intervalo mínimo do pedido seguinte', async (_label, err) => {
+    const ctx = setup();
+    ctx.scaler.scaleTo.mockRejectedValueOnce(err);
+    await expect(ctx.useCase.execute(input())).rejects.toBeTruthy();
+    expect(ctx.events.rows[0].outcome).toBe('failed');
+    await expect(ctx.useCase.execute(input({ requestId: 'req-2' }))).rejects.toMatchObject({
+      code: 'SCALE_COOLDOWN_ACTIVE',
+      meta: { retryAt: new Date(NOW.getTime() + 600_000).toISOString() },
+    });
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['auth', new ScalerUnavailableError('auth')],
+    ['not_found', new ScalerUnavailableError('not_found')],
+    ['429', new ScalerRateLimitedError(null, NOW)],
+  ])('falha certa (%s) não segura o intervalo mínimo', async (_label, err) => {
+    const ctx = setup();
+    ctx.scaler.scaleTo.mockRejectedValueOnce(err);
+    await expect(ctx.useCase.execute(input())).rejects.toBe(err);
+    expect((err as { meta?: Record<string, unknown> }).meta?.uncertain).toBeUndefined();
+    const res = await ctx.useCase.execute(input({ requestId: 'req-2' }));
+    expect(res.event.outcome).toBe('succeeded');
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(2);
   });
 
   it('intervalo ocupado no lock (corrida entre requestId diferentes) → rejected sem scaleTo', async () => {
@@ -413,5 +447,27 @@ describe('ScaleWorkersUseCase.checkPreconditions', () => {
     await expect(ctx.useCase.checkPreconditions(input())).rejects.toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
     expect(ctx.events.record).not.toHaveBeenCalled();
     expect(ctx.audit.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('isUncertainScaleFailure / countsForScaleCooldown', () => {
+  it.each([
+    ['failed', 'SCALER_UNAVAILABLE:timeout', true],
+    ['failed', 'SCALER_UNAVAILABLE:upstream', true],
+    ['failed', 'SCALE_REQUEST_FAILED', true],
+    ['failed', 'SCALER_UNAVAILABLE:auth', false],
+    ['failed', 'SCALER_UNAVAILABLE:not_found', false],
+    ['failed', 'SCALER_RATE_LIMITED', false],
+    ['failed', 'SCALER_SERVICE_NOT_SCALABLE:disk', false],
+    ['failed', null, false],
+    ['rejected', 'SCALE_REQUEST_FAILED', false],
+  ] as const)('%s + %s → incerta %s', (outcome, error, expected) => {
+    expect(isUncertainScaleFailure(outcome, error)).toBe(expected);
+    expect(countsForScaleCooldown({ outcome, error })).toBe(expected);
+  });
+
+  it('requested e succeeded sempre contam', () => {
+    expect(countsForScaleCooldown({ outcome: 'requested', error: null })).toBe(true);
+    expect(countsForScaleCooldown({ outcome: 'succeeded' })).toBe(true);
   });
 });

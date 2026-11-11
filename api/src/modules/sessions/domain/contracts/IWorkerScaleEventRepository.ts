@@ -8,6 +8,28 @@ export type WorkerScaleTrigger = 'manual' | 'auto';
  */
 export type WorkerScaleOutcome = 'requested' | 'succeeded' | 'failed' | 'rejected';
 
+/**
+ * Erros de evento `failed` com resultado incerto: timeout, 5xx do provedor ou falha inesperada
+ * podem ter sido aplicados pelo provedor. Contam para o intervalo mínimo como `requested|succeeded`
+ * (evita pedir de novo e somar réplicas). Falhas certas (`auth`, `not_found`, 429, recusas) não contam.
+ */
+export const UNCERTAIN_SCALE_FAILURE_ERRORS = [
+  'SCALER_UNAVAILABLE:timeout',
+  'SCALER_UNAVAILABLE:upstream',
+  'SCALE_REQUEST_FAILED',
+] as const;
+
+/** Resultados que sempre contam para o intervalo mínimo (queda no meio deixa `requested`). */
+export const SCALE_COOLDOWN_OUTCOMES: readonly WorkerScaleOutcome[] = ['requested', 'succeeded'];
+
+/** `failed` com erro da lista `UNCERTAIN_SCALE_FAILURE_ERRORS`. */
+export const isUncertainScaleFailure = (outcome: WorkerScaleOutcome, error: string | null | undefined): boolean =>
+  outcome === 'failed' && error != null && (UNCERTAIN_SCALE_FAILURE_ERRORS as readonly string[]).includes(error);
+
+/** O evento inicia o intervalo mínimo: `requested`, `succeeded` ou falha incerta. */
+export const countsForScaleCooldown = (e: { outcome: WorkerScaleOutcome; error?: string | null }): boolean =>
+  SCALE_COOLDOWN_OUTCOMES.includes(e.outcome) || isUncertainScaleFailure(e.outcome, e.error);
+
 /** Teto de `reason` e `error`; o repositório trunca o excedente. */
 export const WORKER_SCALE_TEXT_MAX = 200;
 
@@ -52,7 +74,7 @@ export interface IWorkerScaleEventRepository {
   /** Grava e devolve o id. `requestId` repetido lança (unicidade); use `findByRequestId` antes. */
   record(event: NewWorkerScaleEvent): Promise<number>;
   /**
-   * Grava `evt` como `requested` só se o último `requested|succeeded` estiver fora de
+   * Grava `evt` como `requested` só se o último evento que conta (`countsForScaleCooldown`) estiver fora de
    * `cooldownSeconds` contados até `now`; senão devolve `{ blocked: retryAt }` sem gravar. Leitura e
    * insert serializados por `pg_advisory_xact_lock` de chave fixa: dois pedidos simultâneos (com
    * `requestId` diferentes) não passam juntos. `requestId` já gravado (checado sob o lock, antes do
@@ -65,8 +87,9 @@ export interface IWorkerScaleEventRepository {
   }): Promise<RecordRequestedResult>;
   updateOutcome(id: number, outcome: WorkerScaleOutcome, error?: string | null): Promise<void>;
   /**
-   * Horário do último pedido que conta para o intervalo mínimo: `requested` ou `succeeded`
-   * (queda no meio da chamada deixa `requested` e o intervalo conta a partir do pedido).
+   * Horário do último pedido que conta para o intervalo mínimo (`countsForScaleCooldown`):
+   * `requested`, `succeeded` ou `failed` incerto (queda no meio da chamada deixa `requested` e o
+   * intervalo conta a partir do pedido).
    */
   lastSucceededAt(): Promise<Date | null>;
   findByRequestId(requestId: string): Promise<WorkerScaleEvent | null>;

@@ -26,10 +26,14 @@ export class ScalerNotConfiguredError extends AppError {
   }
 }
 
-/** Provedor recusou a credencial, não achou o serviço, falhou (5xx) ou estourou o timeout. */
+/**
+ * Provedor recusou a credencial, não achou o serviço, falhou (5xx) ou estourou o timeout.
+ * `uncertain` (só no `scaleTo` com `timeout`/`upstream`): o provedor pode ter aplicado; vai em
+ * `meta.uncertain` para o painel não dizer "nada foi alterado".
+ */
 export class ScalerUnavailableError extends AppError {
-  constructor(public readonly reason: 'auth' | 'not_found' | 'upstream' | 'timeout') {
-    super('SCALER_UNAVAILABLE', `Worker scaler provider unavailable (${reason})`, 503, { reason });
+  constructor(public readonly reason: 'auth' | 'not_found' | 'upstream' | 'timeout', uncertain = false) {
+    super('SCALER_UNAVAILABLE', `Worker scaler provider unavailable (${reason})`, 503, uncertain ? { reason, uncertain: true } : { reason });
   }
 }
 
@@ -103,10 +107,13 @@ export class ScaleRequestIdReusedError extends AppError {
   }
 }
 
-/** Falha inesperada no pedido de escala; a mensagem original nunca sai (pode ter credencial). */
+/**
+ * Falha inesperada no pedido de escala; a mensagem original nunca sai (pode ter credencial).
+ * Sempre incerta (`meta.uncertain`): o provedor pode ter aplicado.
+ */
 export class ScaleRequestFailedError extends AppError {
   constructor() {
-    super('SCALE_REQUEST_FAILED', 'The scale request failed', 503);
+    super('SCALE_REQUEST_FAILED', 'The scale request failed', 503, { uncertain: true });
   }
 }
 

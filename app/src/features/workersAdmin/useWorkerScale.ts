@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { adminWorkersService } from '@/services/adminWorkers.service';
-import { scaleEventErrorMessage, scaleRequestErrorMessage } from './rules';
+import { UNCERTAIN_SCALE_EVENT_ERRORS, isUncertainScaleError, scaleEventErrorMessage, scaleRequestErrorMessage } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerScaleEvent, WorkerScaleStateView } from './types';
 
@@ -22,7 +22,7 @@ export interface WorkerScaleDraft {
   requestId: string;
 }
 
-export interface WorkerScaleNotice { severity: 'success' | 'info'; text: string }
+export interface WorkerScaleNotice { severity: 'success' | 'info' | 'warning'; text: string }
 
 /** Erros que mudam o estado no servidor: depois deles a tela relê o estado. */
 const RELOAD_ON = new Set([
@@ -166,6 +166,19 @@ export function useWorkerScale() {
     setRequestError(null);
   }, [clearDraft]);
 
+  /**
+   * Falha incerta (o provedor pode ter aplicado): fecha o diálogo e descarta o rascunho (nada de
+   * reabrir nem reenviar sozinho), avisa na aba e relê estado e histórico para mostrar o intervalo.
+   */
+  const settleUncertain = useCallback((text: string) => {
+    clearDraft();
+    setDialogOpen(false);
+    setRequestError(null);
+    setNotice({ severity: 'warning', text });
+    void loadState(false);
+    void loadEvents(null);
+  }, [clearDraft, loadEvents, loadState]);
+
   /** `true` quando o pedido foi aceito (novo ou replay de um pedido `succeeded`). */
   const submit = useCallback(async (): Promise<boolean> => {
     if (!draft || sendingRef.current) return false;
@@ -186,6 +199,10 @@ export function useWorkerScale() {
         void loadEvents(null);
         return false;
       }
+      if (outcome === 'failed' && res.event.error && UNCERTAIN_SCALE_EVENT_ERRORS.includes(res.event.error)) {
+        settleUncertain(res.replayed ? s.requestErrors.failedReplay(s.requestErrors.uncertain) : s.requestErrors.uncertain);
+        return false;
+      }
       if (outcome !== 'succeeded' && outcome !== 'requested') {
         // Falhou (agora ou no replay): o `requestId` não serve mais; diálogo e rascunho ficam.
         const detail = scaleEventErrorMessage(res.event.error);
@@ -204,6 +221,10 @@ export function useWorkerScale() {
       void loadEvents(null);
       return true;
     } catch (err) {
+      if (isUncertainScaleError(err)) {
+        settleUncertain(s.requestErrors.uncertain);
+        return false;
+      }
       setRequestError(scaleRequestErrorMessage(err));
       const code = (err as { code?: string }).code;
       // Resposta com código = o servidor decidiu (recusa, falha no provedor, id reusado): o
@@ -215,7 +236,7 @@ export function useWorkerScale() {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [clearDraft, draft, loadEvents, loadState, renewRequestId]);
+  }, [clearDraft, draft, loadEvents, loadState, renewRequestId, settleUncertain]);
 
   return {
     view, loading, loadError, refreshError,

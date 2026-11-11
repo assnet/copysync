@@ -342,6 +342,8 @@ export const workersAdminStrings = {
       notScalable: { disk: 'O serviço worker tem disco persistente e não aceita mais de uma réplica.', native_autoscaling: 'O serviço usa a autoescala do provedor. Desligue-a na Render para mudar por aqui.' } as Record<string, string>,
       notScalableGeneric: 'O serviço worker não aceita mudança de réplicas.',
       unavailable: 'O provedor está indisponível. Nada foi alterado; tente de novo em alguns minutos.',
+      /** Timeout/5xx/falha inesperada depois do pedido: o provedor pode ter aplicado. */
+      uncertain: 'Não dá para confirmar se o provedor aplicou. Confira as réplicas rodando antes de tentar de novo; o intervalo mínimo foi iniciado.',
       rateLimitedAt: (at: string) => `Muitos pedidos seguidos. Tente de novo depois de ${at}.`,
       requestIdReused: 'Este pedido já foi usado com outros dados. Cancele e abra o pedido de novo.',
       failedReplay: (detail: string) => `Este pedido já tinha falhado. ${detail}`,

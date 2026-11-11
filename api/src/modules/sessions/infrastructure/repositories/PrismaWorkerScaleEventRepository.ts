@@ -1,8 +1,10 @@
-import type { PrismaClient, WorkerScaleEvent as Row } from '@prisma/client';
+import type { Prisma, PrismaClient, WorkerScaleEvent as Row } from '@prisma/client';
 import {
   WORKER_SCALE_TEXT_MAX,
   truncateText,
   type IWorkerScaleEventRepository,
+  SCALE_COOLDOWN_OUTCOMES,
+  UNCERTAIN_SCALE_FAILURE_ERRORS,
   type NewWorkerScaleEvent,
   type RecordRequestedResult,
   type WorkerScaleEvent,
@@ -18,8 +20,13 @@ export const WORKER_SCALE_RETENTION_MAX_BATCHES = 10;
 const STATEMENT_TIMEOUT = '2s';
 /** Chave fixa do advisory lock que serializa pedidos de escala (recurso único: o serviço worker). */
 const SCALE_REQUEST_LOCK_KEY = 'worker-scale-request';
-/** Resultados que contam para o intervalo mínimo (queda no meio deixa `requested`). */
-const COOLDOWN_OUTCOMES = ['requested', 'succeeded'];
+/** Mesmo critério de `countsForScaleCooldown`: `requested|succeeded` ou `failed` incerto. */
+const COOLDOWN_WHERE: Prisma.WorkerScaleEventWhereInput = {
+  OR: [
+    { outcome: { in: [...SCALE_COOLDOWN_OUTCOMES] } },
+    { outcome: 'failed', error: { in: [...UNCERTAIN_SCALE_FAILURE_ERRORS] } },
+  ],
+};
 
 /** Corte por code point (`varchar(200)` conta caracteres, não unidades UTF-16). */
 const cut = (s: string) => truncateText(s, WORKER_SCALE_TEXT_MAX);
@@ -79,7 +86,7 @@ export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventReposi
         if (existing) return { existing: toEvent(existing) };
       }
       const last = await tx.workerScaleEvent.findFirst({
-        where: { outcome: { in: COOLDOWN_OUTCOMES } },
+        where: COOLDOWN_WHERE,
         orderBy: [{ at: 'desc' }, { id: 'desc' }],
         select: { at: true },
       });
@@ -104,7 +111,7 @@ export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventReposi
 
   async lastSucceededAt(): Promise<Date | null> {
     const row = await this.prisma.workerScaleEvent.findFirst({
-      where: { outcome: { in: ['requested', 'succeeded'] } },
+      where: COOLDOWN_WHERE,
       orderBy: [{ at: 'desc' }, { id: 'desc' }],
       select: { at: true },
     });

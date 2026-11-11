@@ -7,8 +7,8 @@ import { PrismaWorkerScaleEventRepository } from './PrismaWorkerScaleEventReposi
 const repo = new PrismaWorkerScaleEventRepository(prisma);
 const base: NewWorkerScaleEvent = { trigger: 'manual', actorUserId: 'u1', fromReplicas: 1, toReplicas: 2, reason: 'pico', outcome: 'requested' };
 const DAY = 86_400_000;
-const plant = (at: Date, outcome = 'requested') =>
-  prisma.workerScaleEvent.create({ data: { ...base, at, outcome } });
+const plant = (at: Date, outcome = 'requested', error: string | null = null) =>
+  prisma.workerScaleEvent.create({ data: { ...base, at, outcome, error } });
 
 beforeEach(async () => {
   await prisma.workerScaleEvent.deleteMany({});
@@ -75,6 +75,23 @@ describe('lastSucceededAt', () => {
   });
 });
 
+describe('lastSucceededAt — falha incerta', () => {
+  it.each(['SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED'])(
+    'failed com %s conta; falhas certas não',
+    async (error) => {
+      const t1 = new Date(Date.now() - 3 * 60_000);
+      const t2 = new Date(Date.now() - 2 * 60_000);
+      await plant(t1, 'succeeded');
+      await plant(t2, 'failed', error);
+      await plant(new Date(Date.now() - 60_000), 'failed', 'SCALER_UNAVAILABLE:auth');
+      await plant(new Date(Date.now() - 50_000), 'failed', 'SCALER_UNAVAILABLE:not_found');
+      await plant(new Date(Date.now() - 40_000), 'failed', 'SCALER_RATE_LIMITED');
+      await plant(new Date(), 'rejected', 'SCALE_REQUEST_FAILED');
+      expect((await repo.lastSucceededAt())?.getTime()).toBe(t2.getTime());
+    },
+  );
+});
+
 describe('recordRequestedIfIdle', () => {
   const evt = { trigger: 'manual' as const, actorUserId: 'u1', fromReplicas: 1, toReplicas: 2, reason: 'pico' };
 
@@ -90,12 +107,24 @@ describe('recordRequestedIfIdle', () => {
     expect(await repo.findByRequestId('b')).toBeNull();
   });
 
-  it('failed e rejected não contam; intervalo vencido libera', async () => {
+  it('failed sem erro incerto e rejected não contam; intervalo vencido libera', async () => {
     await plant(new Date(Date.now() - 60_000), 'failed');
     await plant(new Date(Date.now() - 30_000), 'rejected');
     await plant(new Date(Date.now() - 700_000), 'succeeded');
     const res = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'c' }, cooldownSeconds: 600, now: new Date() });
     expect(res).toEqual({ id: expect.any(Number) });
+  });
+
+  it('failed incerto bloqueia com retryAt a partir dele; falha certa não', async () => {
+    const t = new Date(Date.now() - 60_000);
+    await plant(t, 'failed', 'SCALER_UNAVAILABLE:timeout');
+    const res = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'd' }, cooldownSeconds: 600, now: new Date() });
+    expect(res).toEqual({ blocked: new Date(t.getTime() + 600_000) });
+    await prisma.workerScaleEvent.deleteMany({});
+    await plant(t, 'failed', 'SCALER_UNAVAILABLE:auth');
+    await plant(t, 'failed', 'SCALER_RATE_LIMITED');
+    const ok = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'e' }, cooldownSeconds: 600, now: new Date() });
+    expect(ok).toEqual({ id: expect.any(Number) });
   });
 
   it('dois pedidos concorrentes com requestId diferentes: só um grava', async () => {

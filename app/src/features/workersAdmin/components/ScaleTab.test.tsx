@@ -291,7 +291,7 @@ describe('ScaleTab — pedido', () => {
     const list = mockEvents();
     useSequentialIds();
     const post = vi.spyOn(adminWorkersService, 'requestScale')
-      .mockResolvedValueOnce({ event: event(9, { outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' }), replayed: true })
+      .mockResolvedValueOnce({ event: event(9, { outcome: 'failed', error: 'SCALER_UNAVAILABLE:auth' }), replayed: true })
       .mockResolvedValue({ event: event(10, { fromReplicas: 2, toReplicas: 3, outcome: 'requested' }), replayed: false });
     const user = userEvent.setup();
     renderWithTheme(<ScaleTab />);
@@ -314,7 +314,7 @@ describe('ScaleTab — pedido', () => {
     vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
     mockEvents();
     vi.spyOn(adminWorkersService, 'requestScale').mockResolvedValue({
-      event: event(9, { outcome: 'failed', error: 'SCALE_REQUEST_FAILED' }), replayed: false,
+      event: event(9, { outcome: 'failed', error: 'OUTRO_ERRO' }), replayed: false,
     });
     const user = userEvent.setup();
     renderWithTheme(<ScaleTab />);
@@ -322,6 +322,45 @@ describe('ScaleTab — pedido', () => {
     await user.click(confirmButton());
     expect(await screen.findByText(sc.requestErrors.failedGeneric)).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['timeout', apiError(503, 'SCALER_UNAVAILABLE', { reason: 'timeout', uncertain: true })],
+    ['5xx', apiError(503, 'SCALER_UNAVAILABLE', { reason: 'upstream', uncertain: true })],
+    ['falha inesperada', apiError(503, 'SCALE_REQUEST_FAILED', { uncertain: true })],
+  ])('falha incerta (%s): avisa, fecha sem reabrir, descarta o rascunho e relê o estado com o intervalo', async (_n, err) => {
+    const cooling = view({ cooldownUntil: new Date(Date.now() + 1_800_000).toISOString() });
+    const get = vi.spyOn(adminWorkersService, 'getScale').mockResolvedValueOnce(view()).mockResolvedValue(cooling);
+    const list = mockEvents();
+    const post = vi.spyOn(adminWorkersService, 'requestScale').mockRejectedValue(err);
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await openUpWithReason(user);
+    await user.click(confirmButton());
+    expect(await screen.findByText(sc.requestErrors.uncertain)).toBeInTheDocument();
+    expect(screen.queryByText(sc.requestErrors.unavailable)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(readPersisted(WORKER_SCALE_DRAFT_KEY)).toBeUndefined();
+    expect(screen.queryByText(sc.pendingDraft.text)).not.toBeInTheDocument();
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    expect(list).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(upButton()).toBeDisabled());
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('replay de falha incerta: mesmo aviso, sem reabrir o pedido', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents();
+    vi.spyOn(adminWorkersService, 'requestScale').mockResolvedValue({
+      event: event(9, { outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' }), replayed: true,
+    });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await openUpWithReason(user);
+    await user.click(confirmButton());
+    expect(await screen.findByText(sc.requestErrors.failedReplay(sc.requestErrors.uncertain))).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(readPersisted(WORKER_SCALE_DRAFT_KEY)).toBeUndefined();
   });
 
   it('mudar alvo ou motivo gera requestId novo', async () => {
