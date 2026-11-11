@@ -57,3 +57,23 @@ describe('opsAlerts', () => {
     expect(cpuSustained([90, 90], 70)).toBe(false);
   });
 });
+
+describe('opsAlerts: ocupação de sessões (WSCALE-17)', () => {
+  const occ = (connected: number, capacity: number, ratio = 0.85) =>
+    opsAlerts({ ...none, current: [], sessionOccupancy: { connected, capacity, ratio } });
+
+  it('dispara só acima do limiar (estrito)', () => {
+    expect(occ(35, 40)).toEqual([{
+      reason: 'session_occupancy', source: 'sessions', resource: 'cluster', metric: 'sessions_connected',
+      value: 35 / 40, threshold: 0.85,
+    }]);
+    expect(occ(34, 40, 0.85)).toEqual([]);
+    expect(occ(17, 20, 0.85)).toEqual([]);
+    expect(occ(30, 40)).toEqual([]);
+  });
+
+  it('capacidade 0 ou sem ocupação no input: sem alerta', () => {
+    expect(occ(5, 0)).toEqual([]);
+    expect(opsAlerts({ ...none, current: [] })).toEqual([]);
+  });
+});

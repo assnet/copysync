@@ -1,12 +1,13 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { ISessionsOccupancySource } from '../../domain/contracts/ISessionsOccupancySource';
 import { OPS_METRIC, type OpsMetricReading } from '../../domain/OpsMetric';
+import { SESSIONS_CLUSTER_RESOURCE } from '../../domain/services/opsAlertPolicy';
 import type { ISessionAdoptionRepository } from '../../../sessions/domain/contracts/ISessionAdoptionRepository';
 import type { IWorkerHeartbeatRepository } from '../../../sessions/domain/contracts/IWorkerHeartbeatRepository';
 import { WORKER_ALIVE_MS } from '../../../sessions/domain/services/sessionAdoptionPolicy';
 import { statementTimeout } from './PrismaDatabaseStatsSource';
 
-export const SESSIONS_RESOURCE = 'cluster';
+export const SESSIONS_RESOURCE = SESSIONS_CLUSTER_RESOURCE;
 
 /** Relógio do lease: `timestamp` sem fuso gravado em UTC. */
 const NOW = Prisma.sql`(now() AT TIME ZONE 'UTC')`;

@@ -13,9 +13,11 @@ import {
   CPU_ALERT_METRICS,
   CPU_STREAK_TICKS,
   OPS_ALERT_THRESHOLDS,
+  SESSIONS_CLUSTER_RESOURCE,
   cpuSeriesKey,
   opsAlerts,
   type OpsAlert,
+  type OpsAlertInput,
 } from '../../domain/services/opsAlertPolicy';
 import { OpsMetricsRingBuffer } from '../../application/services/OpsMetricsRingBuffer';
 
@@ -49,6 +51,13 @@ export interface OpsMetricsSamplerJobOptions {
   sessions?: ISessionsOccupancySource | null;
   /** `OPS_MEMORY_LIMIT_MB`: fallback de RSS quando a plataforma não dá `memory_pct`. */
   memoryLimitMb?: number | null;
+  /**
+   * Alerta de ocupação sem adoção (WSCALE-17), lidos a cada tick: com a adoção ligada o
+   * `WorkerCapacityAlertJob` já cobre e o sampler não alerta. Ausentes = sem alerta de ocupação.
+   */
+  adoptionEnabled?: () => boolean;
+  /** `alertOccupancyRatio` da configuração de escala efetiva. */
+  occupancyAlertRatio?: () => number;
   intervalMs?: number;
   /** Teste: teto da coleta (padrão `OPS_TICK_TIMEOUT_MS`). */
   tickTimeoutMs?: number;
@@ -219,8 +228,26 @@ export class OpsMetricsSamplerJob {
       }
     }
     const cpuPersisted = await this.persistedCpu(now, current, cpuHistory);
-    const alerts = opsAlerts({ current, cpuHistory, cpuPersisted, memoryLimitMb: this.options.memoryLimitMb ?? null });
+    const alerts = opsAlerts({
+      current,
+      cpuHistory,
+      cpuPersisted,
+      memoryLimitMb: this.options.memoryLimitMb ?? null,
+      sessionOccupancy: this.sessionOccupancy(current),
+    });
     for (const alert of alerts) await this.raise(alert, now);
+  }
+
+  /** Ocupação do tick só com a adoção desligada e as duas leituras `sessions_*` presentes. */
+  private sessionOccupancy(current: OpsMetricReading[]): OpsAlertInput['sessionOccupancy'] {
+    const { adoptionEnabled, occupancyAlertRatio } = this.options;
+    if (!adoptionEnabled || !occupancyAlertRatio || adoptionEnabled()) return undefined;
+    const value = (metric: string) =>
+      current.find((r) => r.source === 'sessions' && r.resource === SESSIONS_CLUSTER_RESOURCE && r.metric === metric)?.value;
+    const connected = value(OPS_METRIC.sessionsConnected);
+    const capacity = value(OPS_METRIC.sessionsCapacity);
+    if (connected === undefined || capacity === undefined) return undefined;
+    return { connected, capacity, ratio: occupancyAlertRatio() };
   }
 
   /**

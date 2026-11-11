@@ -248,4 +248,74 @@ describe('OpsMetricsSamplerJob', () => {
     await ticks(s, 5, T0 + 5 * MIN);
     expect(s.samples.repo.insertMany).toHaveBeenCalledTimes(1);
   });
+
+  describe('alerta de ocupação de sessões (WSCALE-17)', () => {
+    function occupancySetup(opts: { connected: number; capacity: number; adoption?: boolean; ratio?: number }) {
+      const base = setup();
+      let ratio = opts.ratio ?? 0.85;
+      let adoption = opts.adoption ?? false;
+      let tick = 0;
+      const sessions = { read: vi.fn(async (): Promise<OpsMetricReading[]> => [
+        reading('sessions_connected', opts.connected, { source: 'sessions', resource: 'cluster' }),
+        reading('sessions_capacity', opts.capacity, { source: 'sessions', resource: 'cluster' }),
+      ]) };
+      const job = new OpsMetricsSamplerJob({
+        lease: base.lease.lease, samples: base.samples.repo, heartbeats: base.heartbeats, platform: base.platform,
+        // Relógio avança 1 min por leitura: o lease do sampler vence entre ticks
+        database: base.database, sessions, now: () => new Date(T0 + (tick++) * MIN),
+        adoptionEnabled: () => adoption, occupancyAlertRatio: () => ratio,
+      });
+      const warns: unknown[][] = [];
+      vi.spyOn((job as unknown as { log: { warn: (...x: unknown[]) => void } }).log, 'warn')
+        .mockImplementation((...x: unknown[]) => { warns.push(x); });
+      const alerts = () => warns.filter((w) => w[1] === 'ops metrics alert').map((w) => w[0]);
+      return {
+        job, lease: base.lease, alerts,
+        setRatio: (v: number) => { ratio = v; },
+        setAdoption: (v: boolean) => { adoption = v; },
+      };
+    }
+
+    it('sem adoção e acima do limiar: alerta só log com o lease de silêncio', async () => {
+      const s = occupancySetup({ connected: 36, capacity: 40 });
+      await s.job.runTick();
+      expect(s.alerts()).toEqual([expect.objectContaining({ reason: 'session_occupancy', value: 0.9, threshold: 0.85 })]);
+      expect(s.lease.rows.has('ops-alert:session_occupancy')).toBe(true);
+    });
+
+    it('igual ou abaixo do limiar: sem alerta', async () => {
+      for (const connected of [34, 20]) {
+        const s = occupancySetup({ connected, capacity: 40, ratio: 0.85 });
+        await s.job.runTick();
+        expect(s.alerts()).toEqual([]);
+      }
+      const eq = occupancySetup({ connected: 17, capacity: 20, ratio: 0.85 });
+      await eq.job.runTick();
+      expect(eq.alerts()).toEqual([]);
+    });
+
+    it('com adoção ligada não alerta (WorkerCapacityAlertJob cobre)', async () => {
+      const s = occupancySetup({ connected: 40, capacity: 40, adoption: true });
+      await s.job.runTick();
+      expect(s.alerts()).toEqual([]);
+      expect(s.lease.rows.has('ops-alert:session_occupancy')).toBe(false);
+    });
+
+    it('limiar e adoção lidos a cada tick', async () => {
+      const s = occupancySetup({ connected: 32, capacity: 40, ratio: 0.9, adoption: true });
+      await s.job.runTick();
+      s.setAdoption(false);
+      await s.job.runTick();
+      expect(s.alerts()).toEqual([]);
+      s.setRatio(0.75);
+      await s.job.runTick();
+      expect(s.alerts()).toEqual([expect.objectContaining({ reason: 'session_occupancy', value: 0.8, threshold: 0.75 })]);
+    });
+
+    it('capacidade 0: sem alerta', async () => {
+      const s = occupancySetup({ connected: 5, capacity: 0 });
+      await s.job.runTick();
+      expect(s.alerts()).toEqual([]);
+    });
+  });
 });
