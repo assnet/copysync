@@ -367,6 +367,19 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().optional(),
   ),
+  // ── Escalador de workers (.specs/features/worker-scaling, WSCALE-11) ─────
+  // Desligado por padrão. Liga só na Render, nos serviços `http` (rotas) e `worker` (job), junto de
+  // RENDER_API_KEY e WORKER_SCALER_SERVICE_ID. Sem as três o estado é `not_configured` e nada sai.
+  WORKER_SCALER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  // Id do serviço worker na Render (`srv-...`). Nunca devolvido completo pela API nem logado.
+  // Formato conferido no escalador (inválido = ausente): erro de digitação nunca derruba o boot.
+  WORKER_SCALER_SERVICE_ID: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
   // Limite de RAM do container (MB): fallback do alerta de RSS quando a Render não dá o limite.
   OPS_MEMORY_LIMIT_MB: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
