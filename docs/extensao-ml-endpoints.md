@@ -122,6 +122,17 @@ x-csrf-token: <csrf>
 }
 ```
 
+### Conta com várias etiquetas (teste real, 2026-11-11)
+
+Conta do dono com 3 etiquetas, chamada feita na própria página do ML:
+
+- `GET /stripe/user/tags` → `200 {"tags":[{tag, in_use, generated_date}, …]}` com **todas** as etiquetas da conta,
+  uma só com `in_use: true`. Sem o header `X-Csrf-Token` responde `429 {status, message}` (não é limite real).
+- `POST /affiliates/createLink` com `tag` = etiqueta da conta **que não é a `in_use`** → `200`, `short_url` em
+  `meli.la` e `long_url` com `matt_word=<essa etiqueta>`. Ou seja, dá para gerar link com qualquer etiqueta da conta.
+- `createLink` com etiqueta **que não existe na conta** → `200` e o ML usa a `in_use` em silêncio (`matt_word` da
+  principal). O teste antigo (v4, "400 com tag inventada") não se repetiu: não confiar em erro para validar etiqueta.
+
 ## 5. Formatos de URL aceitos
 
 | Formato | Aceito | Notas |
