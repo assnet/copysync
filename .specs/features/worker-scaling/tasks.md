@@ -63,7 +63,7 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 | T17 | Alerta de ocupação sem adoção | T13 | | feito |
 | T18 | Painel: aba Capacidade | T16 | | feito |
 | T19 | Docs, versão e changelog da P2 | T17, T18 | | feito |
-| R2 | Revisão da P2 e merge | T19 | | pendente |
+| R2 | Revisão da P2 e merge | T19 | | feito |
 | T20 | Eventos de escala (tabela e repositório) | R2 | | pendente |
 | T21 | Porta do escalador e adaptador Render | R2 | P | pendente |
 | T22 | Use case de escala | T14, T20, T21 | | pendente |

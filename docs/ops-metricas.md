@@ -20,7 +20,7 @@ baixa frequência, persistência rara. Dado de infraestrutura: sem tenant, sem P
   `persist` o lease é renovado (`release` + `tryAcquire`, pois `tryAcquire` só pega lease vencido);
   se outro processo virou dono, não grava. Não remover essa renovação nem subir o teto acima do TTL.
 - **Persistência**: ring buffer de 60 leituras em memória, agregado e gravado em
-  `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `sessions_capacity` = último valor, porque o teto muda em degrau e a média misturaria antes e depois; `meta` = min/max/n/unit; `meta.agg` = `'avg'` ou `'last'` diz como o valor foi obtido).
+  `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `sessions_capacity` = último valor, porque o teto muda em degrau e a média misturaria antes e depois; `meta` = min/max/n/unit; `meta.agg` = `'avg'` ou `'last'` diz como o valor foi obtido; ausente em amostras gravadas antes da api 0.83.0, que são média para gauge).
 - **Retenção**: 7 dias; o próprio tick apaga `at < now() - 7d` (índice `ops_metrics_samples(at)`)
   em lotes de 5 mil por `ctid`, cada lote com `SET LOCAL statement_timeout = '2s'`, no máximo 10 lotes
   por tick (pior caso 20 s, dentro do lease renovado). Backlog maior escoa nos ticks seguintes.
