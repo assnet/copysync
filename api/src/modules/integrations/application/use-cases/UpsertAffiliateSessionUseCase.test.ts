@@ -204,3 +204,33 @@ describe('UpsertAffiliateSessionUseCase — Shein (token `AT`, ID segue a sessã
     expect(d.repo.upsertSession.mock.calls[0]![0]).not.toHaveProperty('publicIdentifierOverride');
   });
 });
+
+describe('UpsertAffiliateSessionUseCase — etiquetas da conta', () => {
+  const sent = async (over: object, existing: AffiliateCredentialRecord | null = null) => {
+    const d = makeDeps(existing);
+    await d.useCase.execute(input(over));
+    return d.repo.upsertSession.mock.calls[0]![0];
+  };
+
+  it('repassa a lista validada, sem inválidas nem repetidas (sem caixa), na ordem', async () => {
+    const call = await sent({ accountIdentifiers: [' loja_a ', 'tag com espaço!', 'LOJA_A', 'loja_b', ''] });
+    expect(call.accountIdentifiers).toEqual(['loja_a', 'loja_b']);
+  });
+
+  it.each([[null], [undefined], [[]], [['tag inválida!']]])('lista %j → não toca nas colunas', async (accountIdentifiers) => {
+    const call = await sent({ accountIdentifiers });
+    expect(call).not.toHaveProperty('accountIdentifiers');
+  });
+
+  it('mudança de token não zera nada: lista segue repassada e nada de limpar', async () => {
+    const current = cipher.encrypt(JSON.stringify({ cookies: { ssid: 'ssid-velho' } }), AAD);
+    const call = await sent({ accountIdentifiers: ['loja_a'] }, record(current, 'loja_a'));
+    expect(call.accountIdentifiers).toEqual(['loja_a']);
+    expect(call).not.toHaveProperty('publicIdentifierOverride');
+  });
+
+  it('principal segue "só se vazia" independente da lista', async () => {
+    const call = await sent({ affiliateTag: 'loja_b', accountIdentifiers: ['loja_a', 'loja_b'] });
+    expect(call.publicIdentifierIfEmpty).toBe('loja_b');
+  });
+});

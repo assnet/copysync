@@ -236,10 +236,14 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
       // Tag is best-effort: an ML outage must never block storing the session.
       // The same call checks the session on ML: it decides the store rejection
       // (the browser may stay logged in with a token ML refuses server-side).
+      // The same read lists the account tags (`null` = unreadable: stored list untouched).
       let affiliateTag: string | null = null;
+      let accountIdentifiers: string[] | null = null;
       let sessionCheck: 'VALID' | 'REJECTED' | undefined;
       try {
-        affiliateTag = await mlClient.getActiveTag(cookies);
+        const account = await mlClient.listAccountTags(cookies);
+        affiliateTag = account.active;
+        accountIdentifiers = account.tags;
         sessionCheck = 'VALID';
       } catch (err) {
         if (err instanceof AffiliateCredentialRejectedError) sessionCheck = 'REJECTED';
@@ -254,6 +258,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
         ...(affiliateTag && { affiliateTag }),
         capturedAt: body.capturedAt,
         ...(sessionCheck && { sessionCheck }),
+        ...(accountIdentifiers && { accountIdentifiers }),
       });
 
       return reply.send({ success: true, data: { affiliateTag, sessionRejected: sessionCheck === 'REJECTED' } });

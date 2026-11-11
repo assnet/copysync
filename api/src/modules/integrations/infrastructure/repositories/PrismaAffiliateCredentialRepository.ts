@@ -103,18 +103,34 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     // ID que segue a sessão (Shein): substitui o atual no create e no update.
     const override = input.publicIdentifierOverride ? { publicIdentifier: input.publicIdentifierOverride } : {};
 
-    // (1) Só as colunas de sessão; a linha nasce com a tag da extensão, se houver.
+    // Lista vazia = leitura não confiável (conta do ML sempre tem etiqueta): não toca nas colunas.
+    const account = input.accountIdentifiers?.length ? input.accountIdentifiers : null;
+
+    // (1) Colunas de sessão (+ lista da conta); a linha nasce com a tag da extensão, se houver.
+    // Com lista, a poda das vinculadas vai na mesma transação e lê a coluna recém-gravada.
     let raw = await withUniqueRetry(() =>
-      prisma.affiliateCredential.upsert({
-        where: { tenantId_provider: key },
-        create: {
-          ...key,
-          publicIdentifier: input.publicIdentifierOverride ?? input.publicIdentifierIfEmpty ?? null,
-          ...session,
-          ...REJECTION_CLEARED,
-          ...rejection,
-        },
-        update: { ...session, ...rejection, ...override },
+      prisma.$transaction(async (tx) => {
+        const row = await tx.affiliateCredential.upsert({
+          where: { tenantId_provider: key },
+          create: {
+            ...key,
+            publicIdentifier: input.publicIdentifierOverride ?? input.publicIdentifierIfEmpty ?? null,
+            ...session,
+            ...REJECTION_CLEARED,
+            ...rejection,
+            ...(account && { accountIdentifiers: account }),
+          },
+          update: { ...session, ...rejection, ...override, ...(account && { accountIdentifiers: account }) },
+        });
+        if (!account) return row;
+        await tx.$executeRaw`
+          UPDATE "affiliate_credentials" SET "linkedIdentifiers" = ARRAY(
+            SELECT l FROM unnest("linkedIdentifiers") WITH ORDINALITY AS t(l, i)
+            WHERE lower(l) IN (SELECT lower(a) FROM unnest("accountIdentifiers") AS a)
+            ORDER BY i
+          )::text[]
+          WHERE "id" = ${row.id}`;
+        return tx.affiliateCredential.findUniqueOrThrow({ where: { id: row.id } });
       }),
     );
 
@@ -148,6 +164,7 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
         sessionInvalidAt: null,
         sessionAccountHash: null,
         sessionAccountKeyVersion: null,
+        ...Mapper.clearedIdentifierColumns(),
         // Sem sessão = "não conectado": a rejeição (hoje só nasce com sessão, ML) sai junto
         ...REJECTION_CLEARED,
       },

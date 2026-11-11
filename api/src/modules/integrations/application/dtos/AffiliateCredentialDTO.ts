@@ -39,6 +39,11 @@ export interface UpsertAffiliateSessionInput {
    * mesmo token; REJECTED grava a rejeição; ausente (loja fora do ar) = só token novo libera.
    */
   sessionCheck?: 'VALID' | 'REJECTED';
+  /**
+   * Etiquetas da conta lidas na loja no sync. `null`/ausente = leitura falhou: não toca na lista
+   * guardada nem nas vinculadas. Item inválido é descartado (não recusa a sessão).
+   */
+  accountIdentifiers?: string[] | null;
 }
 
 /** Sessão do marketplace decifrada — nunca sai por HTTP. */

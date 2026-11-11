@@ -37,6 +37,11 @@ describe('PrismaAffiliateCredentialMapper', () => {
     expect(r.session?.keyVersion).toBe(1);
   });
 
+  it('lê as listas de etiquetas da conta e vinculadas', () => {
+    const d = PrismaAffiliateCredentialMapper.toDomain(row({ accountIdentifiers: ['a', 'b'], linkedIdentifiers: ['b'] }));
+    expect(d).toMatchObject({ accountIdentifiers: ['a', 'b'], linkedIdentifiers: ['b'] });
+  });
+
   it('blob incompleto conta como ausente', () => {
     expect(PrismaAffiliateCredentialMapper.toDomain(row({ secretTag: null })).hasSecret).toBe(false);
   });

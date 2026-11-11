@@ -65,3 +65,33 @@ describe('PrismaAffiliateCredentialRepository — ID que segue a sessão (Shein)
     expect((await repo.upsertSession({ tenantId, provider: 'MERCADO_LIVRE', session: blob(2), syncedAt: AT, publicIdentifierIfEmpty: 'tag_b' })).publicIdentifier).toBe('tag_a');
   });
 });
+
+describe('PrismaAffiliateCredentialRepository — etiquetas da conta (ML)', () => {
+  const ML = 'MERCADO_LIVRE' as const;
+  const setLinked = (linked: string[]) =>
+    prisma.affiliateCredential.update({ where: { tenantId_provider: { tenantId, provider: ML } }, data: { linkedIdentifiers: linked } });
+
+  it('lista na criação; sem lista ou [] não toca nas colunas', async () => {
+    await repo.delete(tenantId, ML);
+    const created = await repo.upsertSession({ tenantId, provider: ML, session: blob(1), syncedAt: AT, publicIdentifierIfEmpty: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'] });
+    expect(created).toMatchObject({ publicIdentifier: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: [] });
+    await setLinked(['tag_b']);
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(2), syncedAt: AT })).toMatchObject({ accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: ['tag_b'] });
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(3), syncedAt: AT, accountIdentifiers: [] })).toMatchObject({ accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: ['tag_b'] });
+  });
+
+  it('lista nova substitui e poda vinculadas fora dela (sem caixa), mantendo a ordem; principal não muda', async () => {
+    await setLinked(['tag_c', 'TAG_B', 'tag_d', 'tag_e']);
+    const r = await repo.upsertSession({ tenantId, provider: ML, session: blob(4), syncedAt: AT, publicIdentifierIfEmpty: 'tag_x', accountIdentifiers: ['tag_b', 'tag_e', 'Tag_C'] });
+    expect(r).toMatchObject({ publicIdentifier: 'tag_a', accountIdentifiers: ['tag_b', 'tag_e', 'Tag_C'], linkedIdentifiers: ['tag_c', 'TAG_B', 'tag_e'] });
+    // troca de conta: nenhuma vinculada é da conta nova
+    expect(await repo.upsertSession({ tenantId, provider: ML, session: blob(5), syncedAt: AT, accountIdentifiers: ['outra'] })).toMatchObject({ accountIdentifiers: ['outra'], linkedIdentifiers: [] });
+  });
+
+  it('clearSession zera as duas listas', async () => {
+    await repo.upsertSession({ tenantId, provider: ML, session: blob(6), syncedAt: AT, accountIdentifiers: ['tag_a', 'tag_b'] });
+    await setLinked(['tag_b']);
+    expect(await repo.clearSession(tenantId, ML)).toBe(true);
+    expect(await repo.findByTenantAndProvider(tenantId, ML)).toMatchObject({ hasSession: false, accountIdentifiers: [], linkedIdentifiers: [], publicIdentifier: 'tag_a' });
+  });
+});
