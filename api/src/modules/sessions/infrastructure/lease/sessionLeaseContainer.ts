@@ -26,6 +26,14 @@ import { env } from '../../../../shared/config/env';
 import { GetWorkerCapacityUseCase } from '../../application/use-cases/GetWorkerCapacityUseCase';
 import { PrismaWorkerCapacityReader } from '../repositories/PrismaWorkerCapacityReader';
 import { PrismaOpsMetricsSampleRepository } from '../../../metrics/infrastructure/repositories/PrismaOpsMetricsSampleRepository';
+import { connectedSessionsNow } from '../../application/use-cases/GetWorkerCapacityUseCase';
+import { ScaleWorkersUseCase } from '../../application/use-cases/ScaleWorkersUseCase';
+import { GetWorkerScaleStateUseCase } from '../../application/use-cases/GetWorkerScaleStateUseCase';
+import { RequestWorkerScaleUseCase } from '../../application/use-cases/RequestWorkerScaleUseCase';
+import { ListWorkerScaleEventsUseCase } from '../../application/use-cases/ListWorkerScaleEventsUseCase';
+import { WorkerScalerStateCache } from '../../application/services/WorkerScalerStateCache';
+import { PrismaWorkerScaleEventRepository } from '../repositories/PrismaWorkerScaleEventRepository';
+import { RENDER_SERVICE_ID_PATTERN, workerScaler } from '../scaler/workerScaler';
 
 export interface SessionLeaseContainer {
   workerId: string;
@@ -189,7 +197,8 @@ let capacityUseCase: GetWorkerCapacityUseCase | undefined;
 
 /**
  * Capacidade por plano e do cluster (WSCALE-09), singleton preguiçoso. Só tabelas locais; os IDs
- * `srv-` de `RENDER_RESOURCE_IDS` só decidem se a memória é atribuível (mais de um → `null`).
+ * `srv-` de `RENDER_RESOURCE_IDS` só decidem se a memória é atribuível (mais de um → `null`), salvo com
+ * `WORKER_SCALER_SERVICE_ID` válido: aí vale só esse serviço e as instâncias dele.
  */
 export function getWorkerCapacityUseCase(): GetWorkerCapacityUseCase {
   capacityUseCase ??= new GetWorkerCapacityUseCase({
@@ -197,8 +206,66 @@ export function getWorkerCapacityUseCase(): GetWorkerCapacityUseCase {
     samples: new PrismaOpsMetricsSampleRepository(prisma),
     settings: () => getWorkerScalingSettingsUseCase().execute(),
     renderServiceIds: (env.RENDER_RESOURCE_IDS ?? '').split(',').map((s) => s.trim()).filter((s) => s.startsWith('srv-')),
+    scalerServiceId: scalerServiceIdForMemory(),
   });
   return capacityUseCase;
+}
+
+/** `WORKER_SCALER_SERVICE_ID` no formato `srv-...`; fora dele (ou ausente) o filtro antigo vale. */
+function scalerServiceIdForMemory(): string | null {
+  const id = env.WORKER_SCALER_SERVICE_ID?.trim();
+  return id && RENDER_SERVICE_ID_PATTERN.test(id) ? id : null;
+}
+
+let scaleStateCache: WorkerScalerStateCache | undefined;
+let scaleStateUseCase: GetWorkerScaleStateUseCase | undefined;
+let requestScaleUseCase: RequestWorkerScaleUseCase | undefined;
+let listScaleEventsUseCase: ListWorkerScaleEventsUseCase | undefined;
+
+/** Cache do estado do escalador do processo (30 s), compartilhado entre o `GET` e o `POST`. */
+export function workerScalerStateCache(): WorkerScalerStateCache {
+  scaleStateCache ??= new WorkerScalerStateCache(workerScaler());
+  return scaleStateCache;
+}
+
+/** Estado da aba Escala (WSCALE-14), singleton preguiçoso. */
+export function getWorkerScaleStateUseCase(): GetWorkerScaleStateUseCase {
+  scaleStateUseCase ??= new GetWorkerScaleStateUseCase({
+    state: workerScalerStateCache(),
+    settings: workerScalingSettingsProvider(),
+    events: new PrismaWorkerScaleEventRepository(prisma),
+    isEnforced: workerScalingSettingsViewDeps().isEnforced,
+  });
+  return scaleStateUseCase;
+}
+
+/**
+ * Pedido manual de escala (WSCALE-12): `getState` ao vivo dentro do `ScaleWorkersUseCase`, adoção
+ * lida a cada pedido e conectadas pela última amostra `sessions_connected`.
+ */
+export function requestWorkerScaleUseCase(): RequestWorkerScaleUseCase {
+  if (!requestScaleUseCase) {
+    const samples = new PrismaOpsMetricsSampleRepository(prisma);
+    const reader = new PrismaWorkerCapacityReader(prisma);
+    requestScaleUseCase = new RequestWorkerScaleUseCase({
+      scale: new ScaleWorkersUseCase({
+        events: new PrismaWorkerScaleEventRepository(prisma),
+        scaler: workerScaler(),
+        settings: workerScalingSettingsProvider(),
+        audit: new PrismaAuditLogRepository(),
+        isAdoptionEnabled: () => workerAdoptionConfig().enabled,
+      }),
+      connectedSessions: () => connectedSessionsNow({ samples, reader }),
+      state: workerScalerStateCache(),
+    });
+  }
+  return requestScaleUseCase;
+}
+
+/** Histórico de escala paginado (WSCALE-13). */
+export function listWorkerScaleEventsUseCase(): ListWorkerScaleEventsUseCase {
+  listScaleEventsUseCase ??= new ListWorkerScaleEventsUseCase(new PrismaWorkerScaleEventRepository(prisma));
+  return listScaleEventsUseCase;
 }
 
 /**

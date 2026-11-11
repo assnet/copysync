@@ -10,17 +10,29 @@ import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/reposit
 import {
   workerCapacityResponse,
   workerListResponse,
+  workerScaleEventsQuery,
+  workerScaleEventsResponse,
+  workerScaleRequestBody,
+  workerScaleRequestResponse,
+  workerScaleStateResponse,
   workerScalingSettingsBody,
   workerScalingSettingsResponse,
 } from '../schemas/workerAdmin.schema';
+import { presentWorkerScaleEvent, presentWorkerScaleState } from '../presenters/WorkerScalePresenter';
+import { createCursor, readCursor } from '../../../../shared/http/pagination/OpaqueCursor';
 import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 import {
   getWorkerCapacityUseCase,
+  getWorkerScaleStateUseCase,
   getWorkerScalingSettingsUseCase,
+  listWorkerScaleEventsUseCase,
+  requestWorkerScaleUseCase,
   updateWorkerScalingSettingsUseCase,
 } from '../../infrastructure/lease/sessionLeaseContainer';
 
 const preHandler = [authHook, superAdminHook];
+/** Escopo do cursor do histórico: cursor de outra lista não vale aqui. */
+const SCALE_EVENTS_CURSOR_SCOPE = 'worker-scale-events';
 const tags = ['Workers (admin)'];
 
 let listWorkers: ListWorkersUseCase | null = null;
@@ -94,5 +106,50 @@ export async function workerAdminRoutes(app: FastifyInstance): Promise<void> {
       actorUserId: request.user.userId,
     });
     httpResponse.ok(reply, data);
+  });
+
+  app.get('/scale', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Estado do escalador (cache de 30 s), faixa de réplicas, intervalo mínimo e último evento',
+      response: { 200: workerScaleStateResponse },
+    },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, presentWorkerScaleState(await getWorkerScaleStateUseCase().execute()));
+  });
+
+  app.post<{ Body: { replicas: number; reason: string; requestId: string } }>('/scale', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Pede réplicas do worker ao provedor (estado lido ao vivo), idempotente por requestId, auditado',
+      body: workerScaleRequestBody,
+      response: { 200: workerScaleRequestResponse },
+    },
+  }, async (request, reply) => {
+    const { event, replayed } = await requestWorkerScaleUseCase().execute({
+      replicas: request.body.replicas,
+      reason: request.body.reason,
+      requestId: request.body.requestId,
+      actorUserId: request.user.userId,
+    });
+    httpResponse.ok(reply, { event: presentWorkerScaleEvent(event), replayed });
+  });
+
+  app.get<{ Querystring: { cursor?: string } }>('/scale/events', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Histórico de escala, mais recentes primeiro, por cursor opaco (sem identificar o ator)',
+      querystring: workerScaleEventsQuery,
+      response: { 200: workerScaleEventsResponse },
+    },
+  }, async (request, reply) => {
+    const page = await listWorkerScaleEventsUseCase().execute(readCursor(request.query.cursor, SCALE_EVENTS_CURSOR_SCOPE));
+    httpResponse.ok(reply, {
+      items: page.items.map(presentWorkerScaleEvent),
+      nextCursor: page.nextBeforeId === null ? null : createCursor(SCALE_EVENTS_CURSOR_SCOPE, page.nextBeforeId),
+    });
   });
 }
