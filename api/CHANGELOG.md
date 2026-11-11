@@ -22,10 +22,10 @@ Spec: `.specs/features/worker-scaling/` (WSCALE-01..07, 19; fase P1). Doc: `docs
 
 - **`sessions/domain/services/workerScalingSettings.ts`** — configuração pura: 9 campos com faixa (`maxSessionsPerWorker` 1–1000, `maxPendingLoginsPerWorker` 1–500, `alertOccupancyRatio` 0,5–0,95, `awaitingAlertSeconds`, `scalerMode`, réplicas 1–20, tempos), defaults vindos da env, `resolveEffectiveSettings` com origem `default|saved` por campo; campo desconhecido rejeitado.
 - **`sessions/domain/contracts/IWorkerScalingSettingsRepository.ts`**, **`IWorkerScalingSettingsProvider.ts`** — contratos de persistência e de leitura síncrona (`current()`).
-- **`sessions/infrastructure/repositories/PrismaWorkerScalingSettingsRepository.ts`** — leitura/gravação em `platform_settings`; concorrência otimista por `updatedAt` (create com P2002 ou `updateMany` sem linha → conflito); valor não-objeto ignorado com `warn` sem conteúdo.
-- **`sessions/infrastructure/lease/RefreshingWorkerScalingSettingsProvider.ts`** — nasce com a env sem I/O; refresh a cada 30 s (`unref`) e na hora após salvar; falha mantém o último valor bom e loga uma vez.
-- **`sessions/application/use-cases/GetWorkerScalingSettingsUseCase.ts`**, **`UpdateWorkerScalingSettingsUseCase.ts`** — leitura com `origin`, `updatedAt` e `enforced`; gravação do objeto completo com `expectedUpdatedAt`, `updatedById`, auditoria antes/depois e `provider.refresh()`.
-- **`sessions/presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`** — `GET`/`PUT /admin/workers/settings` (super admin).
+- **`sessions/infrastructure/repositories/PrismaWorkerScalingSettingsRepository.ts`** — leitura/gravação em `platform_settings`; concorrência otimista por `updatedAt` (`INSERT … ON CONFLICT DO NOTHING` ou `updateMany` sem linha → conflito, sem `prisma:error`); `get()` devolve a linha crua com o `updatedAt` real, para o PUT regravar uma linha inválida.
+- **`sessions/infrastructure/lease/RefreshingWorkerScalingSettingsProvider.ts`** — nasce com a env sem I/O; refresh a cada 30 s (`unref`) e na hora após salvar; leitura com teto de 5 s; falha mantém o último valor bom e loga uma vez; valor salvo inválido cai no default (igual ao GET); refresh durante leitura em curso encadeia uma nova leitura.
+- **`sessions/application/use-cases/GetWorkerScalingSettingsUseCase.ts`**, **`UpdateWorkerScalingSettingsUseCase.ts`** — leitura com `origin`, `updatedAt` e `enforced` (adoção ligada no processo ou batimento vivo de algum worker, via `IWorkerHeartbeatRepository.hasAlive`; falha da consulta cai na flag local); gravação do objeto completo com `expectedUpdatedAt`, `updatedById`, auditoria antes/depois e `provider.refresh()`.
+- **`sessions/presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`** — `GET`/`PUT /admin/workers/settings` (super admin); use cases montados no container, sem Prisma na rota.
 - **`shared/errors/internal/WorkerScalingErrors.ts`** — `INVALID_WORKER_SCALING_SETTINGS` (400, `{field}`) e `WORKER_SCALING_SETTINGS_CONFLICT` (409).
 - **`prisma/schema.prisma`**, **`shared/audit/IAuditLogRepository.ts`** — `AuditAction` `WORKER_SCALING_SETTINGS_CHANGED` e `WORKER_SCALE_REQUESTED` (este para a P3).
 
@@ -38,15 +38,17 @@ Spec: `.specs/features/worker-scaling/` (WSCALE-01..07, 19; fase P1). Doc: `docs
 - **`sessions/infrastructure/lease/sessionAdoptionContainer.ts`**, **`AdoptNextSessionUseCase.ts`**, **`sessionAdoptionPolicy.ts`** — ticker com `maxSessions()` por tick; `capacityAlertReason` recebe `ratio` e `awaitingSeconds` (constantes viram default).
 - **`sessions/infrastructure/jobs/WorkerHeartbeatJob.ts`**, **`WorkerCapacityAlertJob.ts`** — teto gravado e limiares lidos da configuração a cada tick.
 - **`app/roleComposition.ts`** — pausa do `session-open` compara com o teto do provider a cada checagem.
-- **`app/server.ts`** — `refresh()` + `start()` do provider antes do boot das sessões; `stop()` no shutdown; registro do worker com o teto da configuração.
-- **`shared/config/workerAdoption.ts`** — `workerAdoptionConfig()` sem os tetos; `workerScalingEnvDefaults()` é o único ponto que lê `WORKER_MAX_*`.
+- **`app/server.ts`** — `refresh()` (teto de 5 s no boot, segue com a env) + `start()` do provider antes do boot das sessões; `stop()` no shutdown; registro do worker com o teto da configuração.
+- **`shared/config/workerAdoption.ts`** — `workerAdoptionConfig()` sem os tetos; `workerScalingEnvDefaults()` é o único ponto que lê `WORKER_MAX_*`, limitando à faixa do domínio (1000/500) com `warn`.
 
 #### Painel (app/) — `workersAdmin`
 
 - **`features/workersAdmin/types.ts`**, **`rules.ts`**, **`strings.ts`**, **`services/adminWorkers.service.ts`** — contrato, faixas espelhadas da API, validação e diff do rascunho, textos pt-BR.
 - **`features/workersAdmin/useWorkerSettings.ts`** — carga, rascunho em `usePersistedState` (`workers.settings.draft`, `tab`), 409 recarrega e descarta, 400 marca o campo.
 - **`features/workersAdmin/components/SettingsTab.tsx`**, **`SettingsConfirmDialog.tsx`** — formulário com ajuda por campo, `RangeSlider` de réplicas, diff na confirmação, valor digitado para mudar o teto, aviso abaixo da ocupação e faixa "sem efeito" sem adoção.
-- **`pages/admin/AdminWorkersPage.tsx`**, **`routes/AppRoutes.tsx`** — aba Configuração em `/admin/workers/settings` (chunk `lazy`), abas pela URL.
+- **`pages/admin/AdminWorkersPage.tsx`**, **`routes/AppRoutes.tsx`** — aba Configuração em `/admin/workers/settings` (chunk `lazy`), abas pela URL roláveis com setas no celular.
+- **`features/supportChat/routes.ts`** — botão de suporte oculto em `/admin/workers/settings` (ação no rodapé do formulário).
+- **`components/RangeSlider.tsx`** — prop opcional `describedBy` (`aria-describedby` nos cursores).
 
 #### Docs
 

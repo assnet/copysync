@@ -43,19 +43,19 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 
 | ID | Título | Deps | [P] | Status |
 | --- | --- | --- | --- | --- |
-| T1 | Domínio da configuração | — | P | pendente |
-| T2 | Ações de auditoria | — | P | pendente |
-| T3 | Repositório da configuração | T1 | P | pendente |
-| T4 | Provider com refresh | T1 | P | pendente |
-| T5 | Gate lê limites por função | T4 | P | pendente |
-| T6 | Política e job de alerta parametrizados | T4 | P | pendente |
-| T7 | Composição e ciclo de vida | T3, T4, T5, T6 | | pendente |
-| T8 | Use cases de leitura e gravação | T2, T3, T4 | | pendente |
-| T9 | Rotas de configuração | T8 | | pendente |
-| T10 | Painel: contratos, regras, serviço | — | P | pendente |
-| T11 | Painel: aba Configuração | T9, T10 | | pendente |
-| T12 | Docs, versão e changelog da P1 | T7, T11 | | pendente |
-| R1 | Revisão da P1 e merge | T12 | | pendente |
+| T1 | Domínio da configuração | — | P | feito |
+| T2 | Ações de auditoria | — | P | feito |
+| T3 | Repositório da configuração | T1 | P | feito |
+| T4 | Provider com refresh | T1 | P | feito |
+| T5 | Gate lê limites por função | T4 | P | feito |
+| T6 | Política e job de alerta parametrizados | T4 | P | feito |
+| T7 | Composição e ciclo de vida | T3, T4, T5, T6 | | feito |
+| T8 | Use cases de leitura e gravação | T2, T3, T4 | | feito |
+| T9 | Rotas de configuração | T8 | | feito |
+| T10 | Painel: contratos, regras, serviço | — | P | feito |
+| T11 | Painel: aba Configuração | T9, T10 | | feito |
+| T12 | Docs, versão e changelog da P1 | T7, T11 | | feito |
+| R1 | Revisão da P1 e merge | T12 | | feito |
 | T13 | Métricas de sessões no coletor | R1 | | pendente |
 | T14 | Contas de capacidade | R1 | P | pendente |
 | T15 | Leitor de capacidade por plano | T13 | | pendente |

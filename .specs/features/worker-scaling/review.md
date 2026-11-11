@@ -10,3 +10,14 @@
 | 3 (correções × código e entre arquivos) | 0 🔴, 6 🟡, 1 ❓ | 🟡 corrigidos: critério de pronto da T7; T2 com uma migration; confirmação reforçada sempre na P1 e `suggestedMaxSessions` ligado na T18; filtro por serviço na T23; lease de 24 h da limpeza; `missing` no estado `not_configured`. ❓: casamento instância→serviço por prefixo, conferido no T25. D13: atualizar a branch antes da P1. |
 | 4 (correções da rodada 3) | 0 🔴, 0 🟡, 2 🔵 | Só nits (requisitos citados em T18 e T23), corrigidos. Convergiu. |
 | 5 (plano × integração em `d30c625`, +29 commits) | 0 🔴, 3 🟡 | Nenhum arquivo citado de `sessions`, `metrics`, `app/` de workers, containers, `server.ts` ou docs de escala mudou (`git diff --stat 891a26b d30c625` nos caminhos do plano: só `schema.prisma`, `AGENTS.md`, roadmap e `padrao-ui-painel.md`). 🟡 corrigidos: versões fixas viraram "próxima minor acima do topo" (0.80/0.81 e 0.99/0.100 já usadas); última migration agora `20261111130000`; linhas de `PlatformSetting` (948-955). Lista de arquivos do dono atualizada. Só nits. |
+
+## R1 — revisão da implementação da P1
+
+| Rodada | Achados | Resultado |
+| --- | --- | --- |
+| 1 (diff da fase, backend + painel/docs) | 0 🔴, 11 🟡, 1 ❓, 6 🔵 | Corrigidos em T12a/T12b: refresh em curso devolvia valor antigo; linha inválida divergia entre GET e provider; env > 1000 travava o PUT (clamp); boot sem teto de tempo; Prisma na rota (factories no container); `enforced` só do processo `http` (agora também batimento vivo); rascunho com base `null` sobrescrevia sem 409; aviso de ocupação sem adoção; "1.000"→1; textos prometiam aba Escala; erro de `scalerMode` sem lugar; aria do `RangeSlider`. |
+| 2 (correções) | 1 🔴, 3 🟡, 4 🔵 | Corrigidos em T12c: 🔴 linha não-objeto → 409 eterno (repositório devolve `updatedAt` real); leitura sem timeout depois do boot; falha de `hasAlive` virava 500 depois de salvo; `parseSavedWorkerScalingSettings` no domínio; `hasAlive` com `EXISTS`. |
+| 3 (T12c) | 0 🔴, 0 🟡, 3 🔵, 1 ❓ | Só nits, aceitos: fakes de heartbeat sem `hasAlive` em `sessionAdoptionContainer.test.ts`; warn sem dedupe quando `hasAlive` falha; teste da janela de microtask talvez não determinístico. ❓ aceito: com `hasAlive` falhando e adoção desligada no `http`, a tela mostra "sem efeito" naquele carregamento. Convergiu. |
+| Smoke (local, Postgres descartável, adoção ligada) | 0 🔴, 4 🟡, 7 🔵 | Funcional ok (teto 40→25 no batimento em ~5 s sem reinício; 409; auditoria). Visual corrigido em T12d (botão de suporte, linha deslocada, "0,8", aba cortada no celular, textos) e T12e (409 sem `prisma:error`). Reconferência: 8/8 ok. Aceitos fora do escopo: contraste do Snackbar (tema global); seta das abas habilitada com ~6 px. |
+
+Gates no topo: api 4.400 testes + typecheck; app 1.770 testes + typecheck + build; integração 262 testes (T12e).
