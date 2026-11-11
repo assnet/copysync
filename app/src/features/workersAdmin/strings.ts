@@ -59,4 +59,69 @@ export const workersAdminStrings = {
   errors: {
     generic: 'Não foi possível carregar os workers.',
   },
+
+  /** Aba Configuração (WSCALE-07): rótulo, ajuda e faixa por campo. */
+  settings: {
+    fields: {
+      maxSessionsPerWorker: {
+        label: 'Teto de sessões por worker',
+        help: 'Máximo de sessões conectadas que cada worker assume. Reduzir não derruba sessão: o worker só para de adotar.',
+        range: '1 a 1.000',
+      },
+      maxPendingLoginsPerWorker: {
+        label: 'Logins simultâneos por worker',
+        help: 'Máximo de sessões aguardando leitura do QR Code ou do código em cada worker.',
+        range: '1 a 500',
+      },
+      alertOccupancyRatio: {
+        label: 'Alerta de ocupação',
+        help: 'Fração do teto a partir da qual a ocupação gera alerta. Também é o gatilho da subida automática.',
+        range: '0,5 a 0,95',
+      },
+      awaitingAlertSeconds: {
+        label: 'Alerta de sessão aguardando (segundos)',
+        help: 'Tempo que uma sessão pode esperar vaga antes de gerar alerta.',
+        range: '30 a 3.600 segundos',
+      },
+      scalerMode: {
+        label: 'Modo de escala',
+        help: 'Desligado: ninguém muda réplicas pelo painel. Manual: só pelos botões da aba Escala. Automático: sobe uma réplica quando a ocupação se mantém alta.',
+        range: 'Desligado, manual ou automático',
+      },
+      minReplicas: {
+        label: 'Mínimo de réplicas',
+        help: 'Menor número de workers que a escala mantém.',
+        range: '1 a 20',
+      },
+      maxReplicas: {
+        label: 'Máximo de réplicas',
+        help: 'Maior número de workers que a escala pode pedir.',
+        range: 'Mínimo a 20',
+      },
+      scaleUpSustainSeconds: {
+        label: 'Ocupação alta sustentada (segundos)',
+        help: 'Tempo acima do alerta de ocupação antes da subida automática. Resolução de 5 minutos.',
+        range: '300 a 3.600 segundos',
+      },
+      scaleCooldownSeconds: {
+        label: 'Intervalo mínimo entre escaladas (segundos)',
+        help: 'Espera obrigatória depois de uma escalada bem-sucedida.',
+        range: '300 a 86.400 segundos',
+      },
+    },
+    scalerModes: { off: 'Desligado', manual: 'Manual', auto: 'Automático' },
+    origin: { default: 'Valor padrão', saved: 'Salvo' },
+    errors: {
+      required: 'Preencha este campo.',
+      integer: 'Use um número inteiro.',
+      number: 'Use um número.',
+      range: (min: string, max: string) => `Use um valor entre ${min} e ${max}.`,
+      maxBelowMin: 'O máximo não pode ser menor que o mínimo de réplicas.',
+      scalerMode: 'Escolha um modo de escala.',
+      invalid: 'A configuração foi recusada. Confira os campos marcados.',
+      conflict: 'Outro administrador salvou antes. Os valores atuais foram recarregados.',
+      loadFailed: 'Não foi possível carregar a configuração.',
+      saveFailed: 'Não foi possível salvar a configuração.',
+    },
+  },
 } as const;
