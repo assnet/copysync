@@ -101,20 +101,6 @@ export class OfferDestinationUnavailableError extends AppError {
 
 // ── Gerador v2 ───────────────────────────────────────────────────────────────
 
-/** Link de afiliado de outra conta (tag/etiqueta ≠ credencial do tenant). Nunca carrega a tag. */
-export class OfferLinkNotOwnedError extends AppError {
-  constructor(provider: string) {
-    super('OFFER_LINK_NOT_OWNED', `Affiliate link belongs to another account on ${provider}`, 422, { provider });
-  }
-}
-
-/** Link sem identificação de afiliado (sem `tag` na Amazon, sem `matt_word` no ML). */
-export class OfferLinkNotAffiliateError extends AppError {
-  constructor(provider: string) {
-    super('OFFER_LINK_NOT_AFFILIATE', `Link has no affiliate identifier on ${provider}`, 422, { provider });
-  }
-}
-
 /** Tenant sem credencial da loja: o link não pode ser recriado com a conta dele. */
 export class AffiliateCredentialRequiredError extends AppError {
   constructor(provider: string) {
