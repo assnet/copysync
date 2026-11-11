@@ -62,20 +62,20 @@ describe('updateOutcome', () => {
   });
 });
 
-describe('lastSucceededAt', () => {
+describe('lastCooldownStartAt', () => {
   it('null sem eventos; considera requested e succeeded, ignora failed e rejected', async () => {
-    expect(await repo.lastSucceededAt()).toBeNull();
+    expect(await repo.lastCooldownStartAt()).toBeNull();
     const t1 = new Date(Date.now() - 3 * 60_000);
     const t2 = new Date(Date.now() - 2 * 60_000);
     await plant(t1, 'succeeded');
     await plant(t2, 'requested');
     await plant(new Date(Date.now() - 60_000), 'failed');
     await plant(new Date(), 'rejected');
-    expect((await repo.lastSucceededAt())?.getTime()).toBe(t2.getTime());
+    expect((await repo.lastCooldownStartAt())?.getTime()).toBe(t2.getTime());
   });
 });
 
-describe('lastSucceededAt — falha incerta', () => {
+describe('lastCooldownStartAt — falha incerta', () => {
   it.each(['SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED'])(
     'failed com %s conta; falhas certas não',
     async (error) => {
@@ -86,8 +86,10 @@ describe('lastSucceededAt — falha incerta', () => {
       await plant(new Date(Date.now() - 60_000), 'failed', 'SCALER_UNAVAILABLE:auth');
       await plant(new Date(Date.now() - 50_000), 'failed', 'SCALER_UNAVAILABLE:not_found');
       await plant(new Date(Date.now() - 40_000), 'failed', 'SCALER_RATE_LIMITED');
+      await plant(new Date(Date.now() - 30_000), 'failed', 'SCALER_UNAVAILABLE:read_timeout');
+      await plant(new Date(Date.now() - 20_000), 'failed', 'SCALER_UNAVAILABLE:read_upstream');
       await plant(new Date(), 'rejected', 'SCALE_REQUEST_FAILED');
-      expect((await repo.lastSucceededAt())?.getTime()).toBe(t2.getTime());
+      expect((await repo.lastCooldownStartAt())?.getTime()).toBe(t2.getTime());
     },
   );
 });

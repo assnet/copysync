@@ -9,9 +9,11 @@ export type WorkerScaleTrigger = 'manual' | 'auto';
 export type WorkerScaleOutcome = 'requested' | 'succeeded' | 'failed' | 'rejected';
 
 /**
- * Erros de evento `failed` com resultado incerto: timeout, 5xx do provedor ou falha inesperada
- * podem ter sido aplicados pelo provedor. Contam para o intervalo mínimo como `requested|succeeded`
- * (evita pedir de novo e somar réplicas). Falhas certas (`auth`, `not_found`, 429, recusas) não contam.
+ * Erros de evento `failed` com resultado incerto: timeout ou 5xx do pedido de escala (`POST`) e
+ * falha inesperada podem ter sido aplicados pelo provedor. Contam para o intervalo mínimo como
+ * `requested|succeeded` (evita pedir de novo e somar réplicas). Falhas certas não contam: `auth`,
+ * `not_found`, 429, recusas e a leitura antes do POST (`SCALER_UNAVAILABLE:read_<motivo>`, nada saiu).
+ * Espelhada em `app/src/features/workersAdmin/rules.ts` (teste de paridade no painel).
  */
 export const UNCERTAIN_SCALE_FAILURE_ERRORS = [
   'SCALER_UNAVAILABLE:timeout',
@@ -91,7 +93,7 @@ export interface IWorkerScaleEventRepository {
    * `requested`, `succeeded` ou `failed` incerto (queda no meio da chamada deixa `requested` e o
    * intervalo conta a partir do pedido).
    */
-  lastSucceededAt(): Promise<Date | null>;
+  lastCooldownStartAt(): Promise<Date | null>;
   findByRequestId(requestId: string): Promise<WorkerScaleEvent | null>;
   /** Mais recentes primeiro (`id desc`); `beforeId` vem do cursor decodificado. */
   list(input: { beforeId?: number | null; limit: number }): Promise<WorkerScaleEventPage>;

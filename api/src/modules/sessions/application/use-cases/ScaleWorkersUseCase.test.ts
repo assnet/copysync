@@ -18,10 +18,11 @@ import {
   type WorkerScalingSettings,
 } from '../../domain/services/workerScalingSettings';
 import { ScalerRateLimitedError, ScalerUnavailableError } from '../../../../shared/errors/internal/WorkerScalingErrors';
+import { RenderWorkerScaler } from '../../infrastructure/scaler/RenderWorkerScaler';
 
 const NOW = new Date('2026-11-11T12:00:00.000Z');
 
-function makeEvents(lastSucceededAt: Date | null = null) {
+function makeEvents(lastCooldownStartAt: Date | null = null) {
   const rows: WorkerScaleEvent[] = [];
   let seq = 0;
   const repo = {
@@ -41,14 +42,14 @@ function makeEvents(lastSucceededAt: Date | null = null) {
       const existing = evt.requestId ? rows.find((r) => r.requestId === evt.requestId) : undefined;
       if (existing) return { existing };
       const counted = rows.filter(countsForScaleCooldown).map((r) => r.at);
-      if (lastSucceededAt) counted.push(lastSucceededAt);
+      if (lastCooldownStartAt) counted.push(lastCooldownStartAt);
       const last = counted.sort((a, b) => b.getTime() - a.getTime())[0];
       if (last && last.getTime() + cooldownSeconds * 1000 > now.getTime()) {
         return { blocked: new Date(last.getTime() + cooldownSeconds * 1000) };
       }
       return { id: await repo.record({ ...evt, outcome: 'requested', error: null }) };
     }),
-    lastSucceededAt: vi.fn(async () => lastSucceededAt),
+    lastCooldownStartAt: vi.fn(async () => lastCooldownStartAt),
     findByRequestId: vi.fn(async (id: string) => rows.find((r) => r.requestId === id) ?? null),
     list: vi.fn(),
     deleteOlderThan: vi.fn(),
@@ -303,7 +304,7 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
     const ctx = setup();
     ctx.events.updateOutcome.mockRejectedValueOnce(new Error('db'));
     await ctx.useCase.execute(input());
-    // checagem antecipada lê `lastSucceededAt` (fixo no fake); o lock vê a linha `requested`
+    // checagem antecipada lê `lastCooldownStartAt` (fixo no fake); o lock vê a linha `requested`
     await expect(ctx.useCase.execute(input({ requestId: 'req-2', replicas: 4 }))).rejects.toMatchObject({
       code: 'SCALE_COOLDOWN_ACTIVE',
     });
@@ -324,6 +325,56 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
       meta: { retryAt: new Date(NOW.getTime() + 600_000).toISOString() },
     });
     expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['timeout', new ScalerUnavailableError('timeout', 'read')],
+    ['5xx', new ScalerUnavailableError('upstream', 'read')],
+  ])('falha na leitura antes do POST (%s) grava read_* e não segura o intervalo', async (_label, err) => {
+    const ctx = setup();
+    ctx.scaler.scaleTo.mockRejectedValueOnce(err);
+    const thrown = await ctx.useCase.execute(input()).catch((e) => e);
+    expect(thrown).toBe(err);
+    expect(thrown.meta.uncertain).toBeUndefined();
+    expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: `SCALER_UNAVAILABLE:read_${err.reason}` });
+    expect(isUncertainScaleFailure('failed', ctx.events.rows[0].error)).toBe(false);
+    const res = await ctx.useCase.execute(input({ requestId: 'req-2' }));
+    expect(res.event.outcome).toBe('succeeded');
+  });
+
+  describe('com o RenderWorkerScaler real (fetchFn falso, sem rede)', () => {
+    const timeout = () => Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+    const serviceBody = { serviceDetails: { numInstances: 2, autoscaling: null, disk: null } };
+    function withRealScaler(fail: 'service' | 'scale') {
+      const fetchFn = vi.fn(async (url: string | URL | Request) => {
+        const isScale = String(url).endsWith('/scale');
+        if ((fail === 'scale') === isScale) throw timeout();
+        return new Response(isScale ? null : JSON.stringify(serviceBody), { status: isScale ? 202 : 200 });
+      });
+      const ctx = setup();
+      const real = new RenderWorkerScaler({ apiKey: 'k', serviceId: 's', baseUrl: 'http://render.invalid/v1', fetchFn });
+      ctx.scaler.scaleTo.mockImplementationOnce((n: number) => real.scaleTo(n));
+      return { ctx, fetchFn };
+    }
+
+    it('timeout no GET dentro do scaleTo não conta no intervalo', async () => {
+      const { ctx, fetchFn } = withRealScaler('service');
+      await expect(ctx.useCase.execute(input())).rejects.toMatchObject({ code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout', phase: 'read' } });
+      expect(fetchFn.mock.calls.some(([u]) => String(u).endsWith('/scale'))).toBe(false);
+      expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:read_timeout' });
+      const res = await ctx.useCase.execute(input({ requestId: 'req-2' }));
+      expect(res.event.outcome).toBe('succeeded');
+    });
+
+    it('timeout no POST conta no intervalo', async () => {
+      const { ctx } = withRealScaler('scale');
+      await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
+        code: 'SCALER_UNAVAILABLE',
+        meta: { reason: 'timeout', uncertain: true },
+      });
+      expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' });
+      await expect(ctx.useCase.execute(input({ requestId: 'req-2' }))).rejects.toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
+    });
   });
 
   it.each([
@@ -457,6 +508,8 @@ describe('isUncertainScaleFailure / countsForScaleCooldown', () => {
     ['failed', 'SCALE_REQUEST_FAILED', true],
     ['failed', 'SCALER_UNAVAILABLE:auth', false],
     ['failed', 'SCALER_UNAVAILABLE:not_found', false],
+    ['failed', 'SCALER_UNAVAILABLE:read_timeout', false],
+    ['failed', 'SCALER_UNAVAILABLE:read_upstream', false],
     ['failed', 'SCALER_RATE_LIMITED', false],
     ['failed', 'SCALER_SERVICE_NOT_SCALABLE:disk', false],
     ['failed', null, false],

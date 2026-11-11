@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+// Fonte do contrato da API como texto (Vite `?raw`), só para o teste de paridade da lista de incertas.
+import apiScaleEventContract from '../../../../api/src/modules/sessions/domain/contracts/IWorkerScaleEventRepository.ts?raw';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
   sortPlansByCatalog, cooldownActive, formatScaleRemaining, scaleBlock, scaleReasonError, scaleRequestErrorMessage, scaleTargetError,
-  scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget, isUncertainScaleError,
+  scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget, isUncertainScaleError, UNCERTAIN_SCALE_EVENT_ERRORS,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
@@ -273,6 +275,24 @@ describe('scaleEventErrorMessage', () => {
       expect(scaleEventErrorMessage(e)).toBe(re.uncertain);
     }
     expect(re.uncertain).not.toMatch(/Nada foi alterado/);
+  });
+
+  it('falha na leitura antes do pedido (read_*) diz que nada foi alterado', () => {
+    for (const e of ['SCALER_UNAVAILABLE:read_timeout', 'SCALER_UNAVAILABLE:read_upstream', 'SCALER_UNAVAILABLE:read_auth']) {
+      expect(scaleEventErrorMessage(e)).toBe(re.unavailable);
+    }
+    expect(re.unavailable).toMatch(/Nada foi alterado/);
+    expect(scaleRequestErrorMessage({ status: 503, code: 'SCALER_UNAVAILABLE', meta: { reason: 'timeout', phase: 'read' } })).toBe(re.unavailable);
+  });
+});
+
+describe('UNCERTAIN_SCALE_EVENT_ERRORS', () => {
+  it('paridade com UNCERTAIN_SCALE_FAILURE_ERRORS do contrato da API', () => {
+    const block = /export const UNCERTAIN_SCALE_FAILURE_ERRORS = \[([^\]]*)\]/.exec(apiScaleEventContract)?.[1];
+    expect(block).toBeDefined();
+    const api = [...block!.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(api.length).toBeGreaterThan(0);
+    expect([...UNCERTAIN_SCALE_EVENT_ERRORS].sort()).toEqual(api.sort());
   });
 });
 

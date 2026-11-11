@@ -24,7 +24,7 @@ export interface GetWorkerScaleStateDeps {
   state: Pick<WorkerScalerStateCache, 'get'>;
   /** O mesmo provider que o pedido de escala consulta: a tela mostra a regra que vale no `POST`. */
   settings: Pick<IWorkerScalingSettingsProvider, 'current'>;
-  events: Pick<IWorkerScaleEventRepository, 'list' | 'lastSucceededAt'>;
+  events: Pick<IWorkerScaleEventRepository, 'list' | 'lastCooldownStartAt'>;
   isEnforced: () => Promise<boolean>;
   now?: () => Date;
 }
@@ -37,7 +37,7 @@ export class GetWorkerScaleStateUseCase {
     const { scalerMode, minReplicas, maxReplicas, scaleCooldownSeconds } = this.deps.settings.current().value;
     const [scaler, last, page, enforced] = await Promise.all([
       this.deps.state.get(),
-      this.deps.events.lastSucceededAt(),
+      this.deps.events.lastCooldownStartAt(),
       this.deps.events.list({ limit: 1 }),
       this.deps.isEnforced(),
     ]);

@@ -190,8 +190,11 @@ no header.
 - **Falha incerta conta o intervalo**: `failed` com `error` em `UNCERTAIN_SCALE_FAILURE_ERRORS`
   (`SCALER_UNAVAILABLE:timeout`, `SCALER_UNAVAILABLE:upstream`, `SCALE_REQUEST_FAILED`; helper
   `isUncertainScaleFailure`/`countsForScaleCooldown` no contrato) pode ter sido aplicado pela Render e conta para a
-  regra 7, em `lastSucceededAt` e em `recordRequestedIfIdle`. Sem isso o admin pedia de novo e somava réplicas.
-  Falhas certas (`auth`, `not_found`, 429, recusas) não contam. A resposta leva `meta.uncertain: true` (timeout/5xx
+  regra 7, em `lastCooldownStartAt` e em `recordRequestedIfIdle`. Sem isso o admin pedia de novo e somava réplicas.
+  Falhas certas (`auth`, `not_found`, 429, recusas) não contam. Só a falha do `POST /scale` é incerta: o
+  `scaleTo` lê o serviço (`GET`) antes do POST, e timeout/5xx nessa leitura (`ScalerUnavailableError.phase = 'read'`)
+  grava `SCALER_UNAVAILABLE:read_<motivo>`, fora da lista, sem `meta.uncertain` (vai `meta.phase: 'read'`): nada
+  saiu, o painel diz "nada foi alterado" e o intervalo não conta. A resposta leva `meta.uncertain: true` (timeout/5xx
   do `scaleTo`; `SCALE_REQUEST_FAILED` sempre): o mesmo `SCALER_UNAVAILABLE` vindo do estado, antes da chamada, é
   recusa e não leva. O painel mostra "Não dá para confirmar se o provedor aplicou…", fecha o diálogo, descarta o
   rascunho (não reabre nem reenvia sozinho) e relê o estado para exibir o `CooldownBar`.
@@ -237,7 +240,9 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 - Relançar erro cru do escalador ou gravar a mensagem dele no evento: só o código interno.
 - Retry automático de `scaleTo` (o evento `requested` já conta o intervalo; repetir duplica custo).
 - Tirar timeout/5xx/falha inesperada da lista de falhas incertas ou dizer "nada foi alterado" para elas: a Render
-  pode ter aplicado. Lista só no contrato (`UNCERTAIN_SCALE_FAILURE_ERRORS`), espelhada em `workersAdmin/rules.ts`.
+  pode ter aplicado. Lista só no contrato (`UNCERTAIN_SCALE_FAILURE_ERRORS`), espelhada em `rules.ts`, com teste de
+  paridade (`workersAdmin/rules.test.ts` lê o contrato da API).
+- Pôr `read_*` (falha no `GET` antes do `POST /scale`) na lista de incertas: nenhum pedido saiu.
 - Ligar `WORKER_SCALER_ENABLED` em produção sem o T25, ou localmente (`api/.env` aponta para produção).
 - Escalar serviço com disco ou com a autoescala nativa da Render ligada.
 - Chamar a Render nas rotas de métricas/capacidade: só as rotas de escala chamam (cache 30 s, timeout 5 s).

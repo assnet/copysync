@@ -127,7 +127,7 @@ describe('RenderWorkerScaler.scaleTo', () => {
     const fetchFn = fakeFetch({ service: service(), instances: instances(1), scale: { status } });
     const err = await scaler(fetchFn).scaleTo(2).catch((e) => e);
     expect(err).toBeInstanceOf(ScalerUnavailableError);
-    expect(err).toMatchObject({ code: 'SCALER_UNAVAILABLE', statusCode: 503, reason });
+    expect(err).toMatchObject({ code: 'SCALER_UNAVAILABLE', statusCode: 503, reason, phase: 'write' });
   });
 
   it('429 com Retry-After traz os segundos', async () => {
@@ -144,12 +144,26 @@ describe('RenderWorkerScaler.scaleTo', () => {
 
   it('timeout no scale vira SCALER_UNAVAILABLE/timeout', async () => {
     const fetchFn = fakeFetch({ service: service(), instances: instances(1), scale: timeoutError() });
-    await expect(scaler(fetchFn).scaleTo(2)).rejects.toMatchObject({ code: 'SCALER_UNAVAILABLE', reason: 'timeout' });
+    await expect(scaler(fetchFn).scaleTo(2)).rejects.toMatchObject({ code: 'SCALER_UNAVAILABLE', reason: 'timeout', phase: 'write' });
   });
 
   it('falha de rede vira upstream', async () => {
     const fetchFn = fakeFetch({ service: new TypeError('fetch failed'), instances: instances(1), scale: { status: 202 } });
     await expect(scaler(fetchFn).scaleTo(2)).rejects.toMatchObject({ reason: 'upstream' });
+  });
+
+  it.each([
+    ['timeout', timeoutError(), 'timeout'],
+    ['5xx', { status: 503 }, 'upstream'],
+    ['401', { status: 401 }, 'auth'],
+    ['corpo inválido', { status: 200, body: { serviceDetails: {} } }, 'upstream'],
+  ] as const)('falha no GET antes do POST (%s) tem fase read e não chama o scale', async (_l, reply, reason) => {
+    const fetchFn = fakeFetch({ service: reply as Reply, instances: instances(1), scale: { status: 202 } });
+    const err = await scaler(fetchFn).scaleTo(2).catch((e) => e);
+    expect(err).toBeInstanceOf(ScalerUnavailableError);
+    expect(err).toMatchObject({ reason, phase: 'read', meta: { reason, phase: 'read' } });
+    expect(err.meta.uncertain).toBeUndefined();
+    expect(fetchFn.mock.calls.some(([u]) => String(u).endsWith('/scale'))).toBe(false);
   });
 
   it('rejeita alvo inválido sem chamar o provedor', async () => {

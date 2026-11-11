@@ -53,7 +53,7 @@ function parseService(body: unknown): ServiceSnapshot {
   const details = isRecord(body) && isRecord(body.serviceDetails) ? body.serviceDetails : null;
   const num = details?.numInstances;
   if (!details || typeof num !== 'number' || !Number.isInteger(num) || num < 0) {
-    throw new ScalerUnavailableError('upstream');
+    throw new ScalerUnavailableError('upstream', 'read');
   }
   const autoscaling = details.autoscaling;
   return {
@@ -65,7 +65,7 @@ function parseService(body: unknown): ServiceSnapshot {
 
 /** A doc devolve um array de instâncias; cada item é uma réplica rodando. */
 function parseInstances(body: unknown): number {
-  if (!Array.isArray(body)) throw new ScalerUnavailableError('upstream');
+  if (!Array.isArray(body)) throw new ScalerUnavailableError('upstream', 'read');
   return body.length;
 }
 
@@ -108,10 +108,14 @@ export class RenderWorkerScaler implements IWorkerScaler {
     return parseService(await this.request('service', 'GET', ''));
   }
 
-  /** Faz a chamada e traduz falha para erro interno. Devolve o JSON (ou null sem corpo). */
+  /**
+   * Faz a chamada e traduz falha para erro interno. Devolve o JSON (ou null sem corpo). `GET` falha
+   * com fase `read` (nenhum pedido de escala saiu); `POST` com fase `write`.
+   */
   private async request(op: Operation, method: 'GET' | 'POST', suffix: string, body?: unknown): Promise<unknown> {
     const { apiKey, serviceId } = this.options;
     const url = `${this.options.baseUrl ?? RENDER_SCALER_API_URL}/services/${encodeURIComponent(serviceId)}${suffix}`;
+    const phase = method === 'GET' ? 'read' : 'write';
     let response: Response;
     try {
       response = await (this.options.fetchFn ?? fetch)(url, {
@@ -128,19 +132,19 @@ export class RenderWorkerScaler implements IWorkerScaler {
       const name = (err as Error)?.name;
       const reason = name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'upstream';
       this.log.warn({ op, reason }, 'worker scaler request failed');
-      throw new ScalerUnavailableError(reason);
+      throw new ScalerUnavailableError(reason, phase);
     }
-    if (!response.ok) throw this.translateStatus(op, response);
+    if (!response.ok) throw this.translateStatus(op, phase, response);
     if (method === 'POST') return null;
     try {
       return await response.json();
     } catch {
       this.log.warn({ op, reason: 'invalid_body' }, 'worker scaler request failed');
-      throw new ScalerUnavailableError('upstream');
+      throw new ScalerUnavailableError('upstream', phase);
     }
   }
 
-  private translateStatus(op: Operation, response: Response): Error {
+  private translateStatus(op: Operation, phase: 'read' | 'write', response: Response): Error {
     const status = response.status;
     if (status === 429) {
       const retryAfterSeconds = parseRetryAfter(response.headers.get('retry-after'));
@@ -149,6 +153,6 @@ export class RenderWorkerScaler implements IWorkerScaler {
     }
     const reason = status === 401 || status === 403 ? 'auth' : status === 404 ? 'not_found' : 'upstream';
     this.log.warn({ op, status, reason }, 'worker scaler request failed');
-    return new ScalerUnavailableError(reason);
+    return new ScalerUnavailableError(reason, phase);
   }
 }

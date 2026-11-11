@@ -267,7 +267,11 @@ function rateLimitedMessage(m: Record<string, unknown>, retryAfter: unknown, now
   return when ? e2.rateLimitedAt(when) : e2.rateLimited(null);
 }
 
-/** Erros de evento `failed` com resultado incerto (espelha `UNCERTAIN_SCALE_FAILURE_ERRORS` da API). */
+/**
+ * Erros de evento `failed` com resultado incerto (espelha `UNCERTAIN_SCALE_FAILURE_ERRORS` do
+ * contrato da API; teste de paridade em `rules.test.ts`). Só falhas do pedido de escala: a leitura
+ * antes dele (`SCALER_UNAVAILABLE:read_<motivo>`) não pediu nada e mostra "nada foi alterado".
+ */
 export const UNCERTAIN_SCALE_EVENT_ERRORS: readonly string[] = [
   'SCALER_UNAVAILABLE:timeout', 'SCALER_UNAVAILABLE:upstream', 'SCALE_REQUEST_FAILED',
 ];
@@ -315,7 +319,8 @@ export function scaleRequestErrorMessage(err: unknown, now: number = serverNow()
 
 /**
  * Erro gravado num evento `failed` (`CODIGO` ou `CODIGO:motivo`, ex.: `SCALER_UNAVAILABLE:timeout`)
- * traduzido com as mesmas mensagens do pedido; resultado incerto = `uncertain`; código desconhecido
+ * traduzido com as mesmas mensagens do pedido; resultado incerto = `uncertain`; leitura antes do
+ * pedido (`SCALER_UNAVAILABLE:read_*`) = `unavailable` ("nada foi alterado"); código desconhecido
  * cai no texto de falha genérico.
  */
 export function scaleEventErrorMessage(error: string | null): string {

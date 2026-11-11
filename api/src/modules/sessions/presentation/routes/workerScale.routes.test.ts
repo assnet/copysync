@@ -58,7 +58,7 @@ const publicEvent = (e: WorkerScaleEvent) => ({
 });
 
 let app: FastifyInstance;
-let events: Record<'findByRequestId' | 'record' | 'recordRequestedIfIdle' | 'updateOutcome' | 'lastSucceededAt' | 'list', ReturnType<typeof vi.fn>>;
+let events: Record<'findByRequestId' | 'record' | 'recordRequestedIfIdle' | 'updateOutcome' | 'lastCooldownStartAt' | 'list', ReturnType<typeof vi.fn>>;
 let audit: ReturnType<typeof vi.fn>;
 let listSince: ReturnType<typeof vi.fn>;
 
@@ -80,7 +80,7 @@ beforeEach(async () => {
     record: vi.spyOn(proto, 'record').mockResolvedValue(7),
     recordRequestedIfIdle: vi.spyOn(proto, 'recordRequestedIfIdle').mockResolvedValue({ id: 7 }),
     updateOutcome: vi.spyOn(proto, 'updateOutcome').mockResolvedValue(undefined),
-    lastSucceededAt: vi.spyOn(proto, 'lastSucceededAt').mockResolvedValue(null),
+    lastCooldownStartAt: vi.spyOn(proto, 'lastCooldownStartAt').mockResolvedValue(null),
     list: vi.spyOn(proto, 'list').mockResolvedValue({ items: [], nextBeforeId: null }),
   } as never;
   audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined as never) as never;
@@ -118,7 +118,7 @@ describe('rotas de escala: acesso', () => {
 describe('GET /admin/workers/scale', () => {
   it('estado, faixa, intervalo mínimo e último evento sem ator; 2 GETs = 1 getState', async () => {
     const last = new Date(Date.now() - 60_000);
-    events.lastSucceededAt.mockResolvedValue(last);
+    events.lastCooldownStartAt.mockResolvedValue(last);
     events.list.mockResolvedValue({ items: [event()], nextBeforeId: 7 });
     const first = await app.inject({ method: 'GET', url: URL });
     const second = await app.inject({ method: 'GET', url: URL });
@@ -142,7 +142,7 @@ describe('GET /admin/workers/scale', () => {
 
   it('não configurado: só os nomes do que falta; intervalo vencido = null', async () => {
     scaler.getState.mockResolvedValue({ status: 'not_configured', missing: ['RENDER_API_KEY', 'WORKER_SCALER_SERVICE_ID'] });
-    events.lastSucceededAt.mockResolvedValue(new Date(Date.now() - 3_600_000));
+    events.lastCooldownStartAt.mockResolvedValue(new Date(Date.now() - 3_600_000));
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
     expect(res.json().data).toMatchObject({
@@ -279,7 +279,7 @@ describe('POST /admin/workers/scale', () => {
     ['modo off', () => useSettings({ scalerMode: 'off' }), 'SCALER_MODE_OFF'],
     ['adoção desligada', () => { adoption.enabled = false; }, 'ADOPTION_DISABLED'],
     ['não configurado', () => scaler.getState.mockResolvedValue({ status: 'not_configured', missing: ['RENDER_API_KEY'] }), 'SCALER_NOT_CONFIGURED'],
-    ['intervalo mínimo', () => events.lastSucceededAt.mockResolvedValue(new Date(Date.now() - 60_000)), 'SCALE_COOLDOWN_ACTIVE'],
+    ['intervalo mínimo', () => events.lastCooldownStartAt.mockResolvedValue(new Date(Date.now() - 60_000)), 'SCALE_COOLDOWN_ACTIVE'],
     ['alvo igual ao atual', () => undefined, 'SCALE_TARGET_UNCHANGED', 2],
     ['redução sem vaga', () => undefined, 'SCALE_DOWN_WOULD_EXCEED_CAPACITY', 1],
   ])('%s: 409 sem chamar scaleTo', async (_name, arrange, code, replicas = 3) => {

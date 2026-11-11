@@ -81,7 +81,7 @@ class ScaleRejection {
  * Aceito: grava `requested` ANTES da chamada externa (queda no meio deixa rastro e o intervalo
  * conta do pedido) com o intervalo rechecado sob advisory lock (`recordRequestedIfIdle`), chama
  * `scaleTo` (sem retry) e atualiza para `succeeded` ou `failed`. Erro fora de `AppError` vira
- * `SCALE_REQUEST_FAILED` sem a mensagem original. `failed` incerto (timeout, 5xx, erro desconhecido:
+ * `SCALE_REQUEST_FAILED` sem a mensagem original. `failed` incerto (timeout/5xx do POST, erro desconhecido:
  * `isUncertainScaleFailure`) conta para o intervalo mínimo, pois o provedor pode ter aplicado. Mesmo `requestId` (antes ou sob o lock, em
  * pedido concorrente) com o mesmo alvo/motivo/ator é replay; com outro: `REQUEST_ID_REUSED`.
  */
@@ -144,9 +144,10 @@ export class ScaleWorkersUseCase {
       if (!(err instanceof AppError)) this.deps.log?.warn({ eventId: id, error }, 'worker scale request failed');
       await this.afterCall(id, 'failed', error, () => this.auditRequest(input, { ...event, outcome: 'failed', error }));
       if (!(err instanceof AppError)) throw new ScaleRequestFailedError();
-      // Timeout/5xx depois do pedido: pode ter sido aplicado (`meta.uncertain`; conta no intervalo).
+      // Timeout/5xx no POST: pode ter sido aplicado (`meta.uncertain`; conta no intervalo). Falha
+      // no GET de leitura do `scaleTo` (`read_*`) não chegou a pedir nada: não é incerta.
       if (err instanceof ScalerUnavailableError && isUncertainScaleFailure('failed', error)) {
-        throw new ScalerUnavailableError(err.reason, true);
+        throw new ScalerUnavailableError(err.reason, 'write', true);
       }
       throw err;
     }
@@ -224,7 +225,7 @@ export class ScaleWorkersUseCase {
       return reject(new ScaleTargetOutOfRangeError(current + 1, current + 1));
     }
 
-    const last = await this.deps.events.lastSucceededAt();
+    const last = await this.deps.events.lastCooldownStartAt();
     if (last) {
       const retryAt = new Date(last.getTime() + settings.scaleCooldownSeconds * 1000);
       if (retryAt.getTime() > this.now().getTime()) return reject(new ScaleCooldownActiveError(retryAt));
@@ -277,8 +278,12 @@ export class ScaleWorkersUseCase {
   }
 }
 
-/** Código interno do erro (sem mensagem do provedor, chave nem id do serviço). */
+/**
+ * Código interno do erro (sem mensagem do provedor, chave nem id do serviço). Falha na leitura
+ * antes do POST: `SCALER_UNAVAILABLE:read_<motivo>` (fora de `UNCERTAIN_SCALE_FAILURE_ERRORS`).
+ */
 function shortError(err: unknown): string {
+  if (err instanceof ScalerUnavailableError && err.phase === 'read') return `${err.code}:read_${err.reason}`;
   if (err instanceof AppError) {
     const reason = typeof err.meta?.reason === 'string' ? `:${err.meta.reason}` : '';
     return `${err.code}${reason}`;

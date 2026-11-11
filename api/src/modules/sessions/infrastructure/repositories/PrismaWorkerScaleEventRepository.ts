@@ -109,7 +109,7 @@ export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventReposi
     });
   }
 
-  async lastSucceededAt(): Promise<Date | null> {
+  async lastCooldownStartAt(): Promise<Date | null> {
     const row = await this.prisma.workerScaleEvent.findFirst({
       where: COOLDOWN_WHERE,
       orderBy: [{ at: 'desc' }, { id: 'desc' }],
