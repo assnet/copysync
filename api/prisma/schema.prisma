@@ -740,6 +740,10 @@ model AffiliateCredential {
   /// Loja recusou a credencial no uso (monitoramento pausa a loja); zera ao salvar chave/sessão nova.
   rejectedAt               DateTime?
   rejectedCode             String?
+  /// Etiquetas da conta vistas na última sincronização da extensão.
+  accountIdentifiers       String[]                  @default([])
+  /// Etiquetas vinculadas além da principal (`publicIdentifier`), em ordem.
+  linkedIdentifiers        String[]                  @default([])
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
