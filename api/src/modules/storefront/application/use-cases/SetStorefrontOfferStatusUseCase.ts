@@ -2,7 +2,11 @@ import { ValidationError } from '../../../../shared/errors/internal/ResourceErro
 import type { StorefrontOffer } from '../../domain/entities/StorefrontOffer';
 import { StorefrontOfferStatus } from '../../domain/enums/StorefrontEnums';
 import { STOREFRONT_MAX_PUBLISHED_OFFERS } from '../../domain/services/storefrontRules';
-import { StorefrontNotFoundError, StorefrontPublishedLimitError } from '../../../../shared/errors/internal/StorefrontErrors';
+import {
+  StorefrontNotFoundError,
+  StorefrontOfferLinkUnverifiedError,
+  StorefrontPublishedLimitError,
+} from '../../../../shared/errors/internal/StorefrontErrors';
 import { requireStorefrontEnabled, type StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
 
 type Deps = Pick<StorefrontUseCaseDeps, 'offers' | 'now' | 'entitlements'>;
@@ -16,6 +20,8 @@ export interface SetStorefrontOfferStatusDTO {
 /**
  * Publica/despublica: a oferta vai para o fim da aba de destino. Publicar respeita o limite de
  * 60 publicadas e grava `publishedAt`; despublicar limpa. Mesmo status = nada muda.
+ * Item com link não provado como do tenant (`attributionVerified=false`, legado) não é publicado;
+ * despublicar segue livre.
  */
 export class SetStorefrontOfferStatusUseCase {
   constructor(private readonly deps: Deps) {}
@@ -33,6 +39,7 @@ export class SetStorefrontOfferStatusUseCase {
     if (publishing) {
       // Rascunho sem título (marketplace não informou) não vai para a página pública.
       if (!offer.title.trim()) throw new ValidationError('Offer title is required to publish', { field: 'title' });
+      if (!offer.attributionVerified) throw new StorefrontOfferLinkUnverifiedError();
       const { published } = await offers.countByStorefront(tenantId, offer.storefrontId);
       if (published >= STOREFRONT_MAX_PUBLISHED_OFFERS) throw new StorefrontPublishedLimitError(STOREFRONT_MAX_PUBLISHED_OFFERS);
     }

@@ -70,6 +70,19 @@ describe('SetStorefrontOfferStatusUseCase', () => {
     expect(out).toMatchObject({ status: DRAFT, position: 0, publishedAt: null });
   });
 
+  it('publicar item com link não verificado responde STOREFRONT_OFFER_LINK_UNVERIFIED e não muda nada', async () => {
+    const o = fakes.offers.seed({ attributionVerified: false });
+    await expect(new SetStorefrontOfferStatusUseCase(deps).execute({ tenantId: TENANT, id: o.id, status: PUBLISHED }))
+      .rejects.toMatchObject({ code: 'STOREFRONT_OFFER_LINK_UNVERIFIED', statusCode: 409 });
+    expect(fakes.offers.offers.find((x) => x.id === o.id)?.status).toBe(DRAFT);
+  });
+
+  it('despublicar item com link não verificado segue livre', async () => {
+    const o = fakes.offers.seed({ status: PUBLISHED, publishedAt: NOW, attributionVerified: false });
+    const out = await new SetStorefrontOfferStatusUseCase(deps).execute({ tenantId: TENANT, id: o.id, status: DRAFT });
+    expect(out).toMatchObject({ status: DRAFT, publishedAt: null });
+  });
+
   it('com 60 publicadas responde STOREFRONT_PUBLISHED_LIMIT', async () => {
     for (let i = 0; i < 60; i++) fakes.offers.seed({ status: PUBLISHED, position: i });
     const o = fakes.offers.seed();

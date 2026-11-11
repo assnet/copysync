@@ -181,3 +181,49 @@ describe('UpdateOfferUseCase — início agendado', () => {
       .rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field: 'scheduledAt' } });
   });
 });
+
+describe('UpdateOfferUseCase — link de marketplace acrescentado no texto (D3)', () => {
+  const AFF = 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=t-20';
+
+  it.each([
+    ['com https', `🛒 ${AFF}\nOutra: https://meli.la/alheio`],
+    ['com http://', `🛒 ${AFF}\nhttp://s.shopee.com.br/x`],
+    ['sem protocolo', `🛒 ${AFF}\namzn.to/outro`],
+  ])('link novo %s → OFFER_TEXT_FOREIGN_LINK, sem URL no erro e sem gravar nem consumir upload', async (_n, text) => {
+    const s = setup();
+    const before = s.offers.items[0]!.text;
+    const err = await s.uc.execute({ ...base, text, imageUploadId: 'up-1' }).catch((e) => e);
+    expect(err).toMatchObject({ code: 'OFFER_TEXT_FOREIGN_LINK', statusCode: 422, meta: {} });
+    expect(JSON.stringify(err.meta)).not.toContain('http');
+    expect(String(err.message)).not.toMatch(/meli\.la|shopee|amzn/);
+    expect(s.offers.items[0]!.text).toBe(before);
+    expect(s.mediaStore.consumeUploadedImage).not.toHaveBeenCalled();
+  });
+
+  it('affiliateUrl, convite de grupo e outros hosts passam', async () => {
+    const s = setup();
+    const text = `Fone novo\n🛒 ${AFF}\nGrupo: https://chat.whatsapp.com/abc\nhttps://example.com/x`;
+    await expect(s.uc.execute({ ...base, text })).resolves.toMatchObject({ text, textEdited: true });
+  });
+
+  it('oferta do monitoramento com 2+ links do tenant salva sem erro quando os links não mudam', async () => {
+    const s = setup();
+    const stored = 'Oferta\nhttps://meli.la/a\nhttps://amzn.to/b\nhttps://s.shopee.com.br/c';
+    Object.assign(s.offers.items[0]!, { origin: 'MONITORING', text: stored, affiliateUrl: 'https://meli.la/a' });
+    const text = 'Oferta editada\nhttps://meli.la/a\namzn.to/b\nhttps://s.shopee.com.br/c.';
+    await expect(s.uc.execute({ ...base, text })).resolves.toMatchObject({ text });
+  });
+
+  it('oferta do monitoramento: link acrescentado ainda é barrado', async () => {
+    const s = setup();
+    Object.assign(s.offers.items[0]!, { origin: 'MONITORING', text: 'Oferta\nhttps://meli.la/a\nhttps://amzn.to/b', affiliateUrl: 'https://meli.la/a' });
+    await expect(s.uc.execute({ ...base, text: 'Oferta\nhttps://meli.la/a\nhttps://amzn.to/b\nhttps://meli.la/novo' }))
+      .rejects.toMatchObject({ code: 'OFFER_TEXT_FOREIGN_LINK' });
+  });
+
+  it('sem texto no input não verifica (remontagem pelo modelo segue livre)', async () => {
+    const s = setup();
+    s.offers.items[0]!.text = 'texto antigo';
+    await expect(s.uc.execute({ ...base, priceCents: 100 })).resolves.toBeDefined();
+  });
+});

@@ -145,6 +145,7 @@ describe('ChatOfferMessageSender — formato da imagem', () => {
   it.each([
     ['sem título', { title: '   ' }],
     ['sem link', { text: 'Fone X sem link' }],
+    ['só com link que não é o da oferta', { text: 'Fone X\n🛒https://meli.la/outro' }],
     ['sem foto', { imageUrl: null }],
   ])('LINK_PREVIEW %s: texto puro', async (_n, over) => {
     await sender().send({ ...lp, ...over });

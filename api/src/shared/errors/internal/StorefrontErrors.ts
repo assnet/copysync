@@ -39,3 +39,10 @@ export class StorefrontOrderInvalidError extends AppError {
     super('STOREFRONT_ORDER_INVALID', 'Offer order must list exactly the offers of the tab', 400);
   }
 }
+
+/** Publicar item cujo link não foi provado como do tenant (legado). */
+export class StorefrontOfferLinkUnverifiedError extends AppError {
+  constructor() {
+    super('STOREFRONT_OFFER_LINK_UNVERIFIED', 'Storefront offer link is not verified', 409, {});
+  }
+}

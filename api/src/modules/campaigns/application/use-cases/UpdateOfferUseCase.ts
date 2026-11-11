@@ -2,6 +2,7 @@ import type { IOfferRepository, OfferPatch, UpdateOfferResult } from '../../doma
 import { EDITABLE_OFFER_STATUSES } from '../../domain/contracts/IOfferRepository';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import { renderOfferText } from '../../domain/services/renderOfferText';
+import { findForeignMarketplaceLinks } from '../../domain/services/findForeignMarketplaceLinks';
 import { OFFER_AUDIENCES, type OfferAudience } from '../../domain/enums/OfferAudience';
 import { effectiveImageMode, OFFER_IMAGE_MODES, type OfferImageMode } from '../../domain/enums/OfferImageMode';
 import { normalizeCoupon } from './offerCoupon';
@@ -10,6 +11,7 @@ import {
   OfferAlreadySentError,
   OfferInvalidInputError,
   OfferNotFoundError,
+  OfferTextForeignLinkError,
 } from '../../../../shared/errors/internal/OfferErrors';
 import { logger } from '../../../../shared/logger/logger';
 import { toOfferDto, type OfferDTO } from '../dtos/OfferDTO';
@@ -47,7 +49,8 @@ export interface UpdateOfferDeps {
 
 /**
  * Edição antes do envio (OFFER-06). Texto enviado = editado à mão; sem texto, o modelo
- * remonta enquanto o operador não tiver editado o texto.
+ * remonta enquanto o operador não tiver editado o texto. Texto editado não pode ganhar link de
+ * marketplace que não é o da oferta (`OFFER_TEXT_FOREIGN_LINK`).
  */
 export class UpdateOfferUseCase {
   constructor(private readonly deps: UpdateOfferDeps) {}
@@ -60,6 +63,11 @@ export class UpdateOfferUseCase {
     if (!offer) throw new OfferNotFoundError(offerId);
     // Antes de consumir o upload: oferta enviada não gasta o arquivo
     if (!EDITABLE_OFFER_STATUSES.includes(offer.status)) throw new OfferAlreadySentError(offerId);
+    // Link de marketplace acrescentado no texto (não estava gravado, não é o da oferta) é barrado (D3).
+    // Sem URL no erro nem no log.
+    if (input.text !== undefined && findForeignMarketplaceLinks(input.text, offer.text, offer.affiliateUrl).length > 0) {
+      throw new OfferTextForeignLinkError();
+    }
 
     const patch: OfferPatch = {};
     if (input.title !== undefined) patch.title = input.title?.trim() || null;
