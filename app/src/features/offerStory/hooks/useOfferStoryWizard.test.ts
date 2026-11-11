@@ -130,6 +130,22 @@ describe('useOfferStoryWizard', () => {
     expect(navigate).toHaveBeenCalledWith('/affiliates/plans?feature=offerStory', { replace: true });
   });
 
+  it('etiqueta do ML sem vaga: erro no link com ação de planos; editar o link limpa a ação', async () => {
+    saved({ step: 1, templateId: 'flash-night', url: URL_OK });
+    render.mockRejectedValueOnce({ status: 403, code: 'PLAN_LIMIT_REACHED', meta: { key: 'mercado_livre_affiliate_tags', limit: 1 } });
+    const { result } = renderHook(() => useOfferStoryWizard());
+    await act(() => result.current.generate());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(result.current.errors.url).toBe(offerStoryStrings.errors.mercadoLivreTagLimit(1, true));
+    expect(result.current.urlErrorAction).toBe('plans');
+    act(() => result.current.setField('url', URL_OK + '?x'));
+    expect(result.current.urlErrorAction).toBeNull();
+
+    render.mockRejectedValueOnce({ status: 422, code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } });
+    await act(() => result.current.generate());
+    expect(result.current.urlErrorAction).toBe('credentials');
+  });
+
   it('validação local não chama a API', async () => {
     saved({ step: 1, templateId: 'flash-night', url: '' });
     const { result } = renderHook(() => useOfferStoryWizard());

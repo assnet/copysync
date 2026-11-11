@@ -10,6 +10,7 @@ import {
   mapRenderError,
   toRenderInput,
   validateProductForm,
+  type OfferStoryErrorAction,
   type ProductField,
   type ProductFormErrors,
   type ProductFormState,
@@ -85,6 +86,8 @@ export function useOfferStoryWizard() {
   const [generating, setGenerating] = useState(false);
   const [errors, setErrors] = useState<ProductFormErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
+  /** Ação do erro do link (credenciais/planos); some junto com o erro do campo. */
+  const [urlErrorAction, setUrlErrorAction] = useState<OfferStoryErrorAction | null>(null);
 
   // Garante a regra mesmo se o estado chegar ao passo 3 sem arte por outro caminho.
   const step: OfferStoryStep = draft.step === 2 && !result ? 1 : draft.step;
@@ -99,6 +102,7 @@ export function useOfferStoryWizard() {
     setDraft((d) => ({ ...d, [field]: value }));
     const key = (field === 'couponEnabled' ? null : field) as ProductField | null;
     if (key) setErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
+    if (field === 'url') setUrlErrorAction(null);
     if (field === 'couponEnabled' && !value) setErrors((e) => ({ url: e.url }));
   }, [setDraft]);
 
@@ -106,6 +110,7 @@ export function useOfferStoryWizard() {
     const found = validateProductForm(draft);
     setErrors(found);
     setGeneralError(null);
+    setUrlErrorAction(null);
     if (hasErrors(found) || generating) return;
     setGenerating(true);
     try {
@@ -121,7 +126,10 @@ export function useOfferStoryWizard() {
       if (view.backToTemplates) {
         setDraft((d) => ({ ...d, step: 0, templateId: '' }));
         setGeneralError(view.message);
-      } else if (view.field) setErrors({ [view.field]: view.message });
+      } else if (view.field) {
+        setErrors({ [view.field]: view.message });
+        if (view.field === 'url') setUrlErrorAction(view.action ?? null);
+      }
       else setGeneralError(view.message);
     } finally {
       setGenerating(false);
@@ -144,6 +152,7 @@ export function useOfferStoryWizard() {
     setResult(null);
     setErrors({});
     setGeneralError(null);
+    setUrlErrorAction(null);
     clearDraft();
   }, [clearDraft, setResult]);
 
@@ -152,6 +161,7 @@ export function useOfferStoryWizard() {
     templateId: draft.templateId,
     form: draft as ProductFormState,
     errors,
+    urlErrorAction,
     generalError,
     dismissError: () => setGeneralError(null),
     generating,

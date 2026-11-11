@@ -8,6 +8,7 @@ import { storefrontUpgradePath } from '../planGate';
 import type { StorefrontOfferTab } from '../reorder';
 import {
   STOREFRONT_FORM_DEFAULTS,
+  errorAction,
   errorMessage,
   formFromOverview,
   isStaleDraft,
@@ -16,6 +17,7 @@ import {
   toSavePayload,
   validateForm,
   type StorefrontFormState,
+  type StorefrontErrorAction,
 } from '../storefrontForm';
 import { finalizeSlug } from '@/features/linkRotation/slug';
 import { storefrontStrings } from '../strings';
@@ -47,7 +49,12 @@ interface SlugCheck {
 const NO_SLUG_CHECK: SlugCheck = { status: null, checking: false, suggestions: [] };
 const EMPTY_ADD: AddOfferDraft = { url: '', category: null };
 /** Erros do "Adicionar oferta" que ficam no próprio card (os demais viram snackbar). */
-const ADD_FIELD_CODES = ['OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'RATE_LIMITED', 'VALIDATION_ERROR', 'MARKETPLACE_RISK_NOT_ACCEPTED'];
+const ADD_FIELD_CODES = [
+  'OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'RATE_LIMITED', 'VALIDATION_ERROR',
+  'MARKETPLACE_RISK_NOT_ACCEPTED',
+  // Etiqueta da conta do ML: não vinculada (vincular) ou sem vaga no plano (planos), com botão sob o campo
+  'AFFILIATE_IDENTIFIER_NOT_LINKED', 'PLAN_LIMIT_REACHED',
+];
 /** Códigos que mostram estado no campo do nome ao salvar. */
 const SLUG_SAVE_STATUS: Record<string, SlugAvailabilityStatus> = {
   LINK_SLUG_TAKEN: 'TAKEN',
@@ -87,6 +94,7 @@ export function useStorefrontPage() {
   const [saving, setSaving] = useState(false);
   const [slugCheck, setSlugCheck] = useState<SlugCheck>(NO_SLUG_CHECK);
   const [addError, setAddError] = useState<string | null>(null);
+  const [addErrorAction, setAddErrorAction] = useState<StorefrontErrorAction | null>(null);
   const [imageErrors, setImageErrors] = useState<Partial<Record<StorefrontImageKind, string | null>>>({});
   const [toast, setToast] = useState<StorefrontToast | null>(null);
 
@@ -220,6 +228,7 @@ export function useStorefrontPage() {
 
   const extract = async (url: string, category: string | null) => {
     setAddError(null);
+    setAddErrorAction(null);
     try {
       const created = await storefrontService.extractOffer(url, category);
       updateOffers((o) => ({ ...o, drafts: [...o.drafts, created] }));
@@ -228,8 +237,10 @@ export function useStorefrontPage() {
       notify(t.addOffer.added);
     } catch (err) {
       if (redirectIfNoPlan(err)) return;
-      if (isSheinUnavailable(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) setAddError(errorMessage(err));
-      else fail(err);
+      if (isSheinUnavailable(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) {
+        setAddError(errorMessage(err));
+        setAddErrorAction(errorAction(err));
+      } else fail(err);
     }
   };
 
@@ -302,7 +313,7 @@ export function useStorefrontPage() {
     imageErrors, uploadImage, removeImage,
     // ofertas
     tab, setTab,
-    addDraft, setAddDraft, addError, extract,
+    addDraft, setAddDraft, addError, addErrorAction, extract,
     toggleStatus, deleteOffer, reorder,
     editingOffer, openEditOffer: (o: StorefrontOffer) => setEditOfferId(o.id), closeEditOffer: clearEditOffer, saveOffer,
     // prévia e avisos

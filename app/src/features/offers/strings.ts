@@ -443,6 +443,7 @@ export const offerStrings = {
     PLAN_FEATURE_UNAVAILABLE: 'Marcar todos os membros não está disponível no seu plano. Desligue a opção ou faça upgrade.',
     AFFILIATE_CREDENTIAL_NOT_FOUND: 'Você ainda não conectou sua conta de afiliado desta loja.',
     AFFILIATE_CREDENTIAL_REJECTED: 'A loja recusou sua credencial de afiliado. Confira os dados salvos.',
+    AFFILIATE_IDENTIFIER_NOT_LINKED: 'Este link usa outra etiqueta da sua conta do Mercado Livre. Vincule a etiqueta em Credenciais de afiliado para usar este link.',
     AFFILIATE_API_ACCESS_DENIED:
       'Sua conta de afiliado ainda não tem acesso à Open API. Libere o acesso no painel de afiliado da Shopee e tente de novo.',
     AFFILIATE_API_RATE_LIMITED: 'A loja limitou as consultas por agora. Aguarde um minuto e tente de novo.',
@@ -456,6 +457,13 @@ export const offerStrings = {
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
   sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
+  /** Etiqueta da conta do ML não vinculada e sem vaga no plano (`PLAN_LIMIT_REACHED` de etiquetas). */
+  mercadoLivreTagLimit: (limit: number | null, canUpgrade: boolean) =>
+    !canUpgrade && limit != null
+      ? `Este link usa outra etiqueta da sua conta do Mercado Livre e as ${limit} etiquetas do seu plano já estão em uso. Desvincule uma em Credenciais de afiliado para usar esta.`
+      : limit != null && limit <= 1
+        ? 'Este link usa outra etiqueta da sua conta do Mercado Livre, e o seu plano inclui só a etiqueta principal. Faça upgrade para usar mais etiquetas.'
+        : 'Este link usa outra etiqueta da sua conta do Mercado Livre, e as etiquetas do seu plano já estão em uso. Faça upgrade ou desvincule uma em Credenciais de afiliado.',
   crossSessionUnavailable: 'Disparar por duas sessões do mesmo canal (ex.: dois WhatsApp) é exclusivo do plano MAX. Deixe uma sessão por canal ou faça upgrade.',
   channelGroupLimit: (channel: LimitChannel, limit: number) =>
     limit === 0
@@ -467,6 +475,7 @@ export const offerStrings = {
       : `Seu plano permite disparar por até ${sessionsLabel(limit)} de ${CHANNEL_NAME[channel]}. Desmarque alguma e salve de novo.`,
   goToCredentials: 'Conectar conta de afiliado',
   editCredentials: 'Revisar credencial',
+  linkAffiliateTag: 'Vincular etiqueta',
   openConfig: 'Configurar grupos',
   goToSessions: 'Ver sessões',
   dismiss: 'Fechar',

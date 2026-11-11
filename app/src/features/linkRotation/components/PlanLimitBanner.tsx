@@ -1,11 +1,10 @@
-import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
 import { useId } from 'react';
 import { Box, Button, Dialog, DialogActions, DialogContent, Stack, Typography, useMediaQuery } from '@mui/material';
 import { alpha, keyframes, useTheme } from '@mui/material/styles';
 import { ArrowRight, Check, Rocket, TrendingUp } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
 import { AppIcon } from '@/components';
-import { nextPlanFor, type PlanLimitKind } from '../planUpsell';
+import { listsAllPlans, nextPlanFor, plansAbove, upgradePathFor, type NextPlanOffer, type PlanLimitKind } from '../planUpsell';
 import { linkRotationStrings } from '../strings';
 
 const t = linkRotationStrings.upgrade;
@@ -52,9 +51,16 @@ const CONFETTI = [
   [85, -50, 170], [115, -30, -120], [-95, 20, 90], [-40, 35, -60], [45, 40, 110], [100, 25, -150],
 ] as const;
 
+/** Planos oferecidos: todos os acima para kinds com `listAll` (ex.: etiquetas do ML), senão só o próximo. */
+function offersFor(kind: PlanLimitKind, limit: number): NextPlanOffer[] {
+  if (listsAllPlans(kind)) return plansAbove(kind, limit);
+  const next = nextPlanFor(kind, limit);
+  return next ? [next] : [];
+}
+
 /**
  * Aviso de upgrade quando o plano não comporta mais rodízios/grupos, com CTA para `/plans`.
- * O próximo plano e seu limite vêm do catálogo da vitrine; no maior plano o texto não oferece
+ * O(s) plano(s) acima e seus limites vêm do catálogo da vitrine; no maior plano o texto não oferece
  * upgrade. Com `prefers-reduced-motion`, nada se move (sem confete, sem entrada animada).
  */
 export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerProps) {
@@ -62,7 +68,9 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)', { noSsr: true });
   const titleId = useId();
   const bodyId = useId();
-  const next = nextPlanFor(kind, limit);
+  const offers = offersFor(kind, limit);
+  const next = offers[0] ?? null;
+  const many = offers.length > 1;
   const dark = theme.palette.mode === 'dark';
   const from = dark ? theme.palette.primary.dark : theme.palette.primary.main;
   const to = dark ? theme.palette.secondary.dark : theme.palette.secondary.main;
@@ -172,12 +180,12 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
             <Stack
               direction="row"
               alignItems="stretch"
-              spacing={1.5}
+              spacing={many ? 1 : 1.5}
               role="img"
-              aria-label={t.compareAria(limit, next.name, next.limit, kind)}
+              aria-label={many ? t.compareAllAria(limit, offers, kind) : t.compareAria(limit, next.name, next.limit, kind)}
               sx={{ mt: 2.5 }}
             >
-              <Box sx={{ flex: 1, p: 1.5, borderRadius: 2, border: 1, borderColor: 'divider', textAlign: 'center' }}>
+              <Box sx={{ flex: 1, minWidth: 0, p: many ? 1.25 : 1.5, borderRadius: 2, border: 1, borderColor: 'divider', textAlign: 'center' }}>
                 <Typography variant="caption" color="text.secondary" component="p">{t.compareNow}</Typography>
                 <Typography variant="h5" component="p" sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{limit}</Typography>
                 <Typography variant="caption" color="text.secondary" component="p">{t.unit(limit, kind)}</Typography>
@@ -185,29 +193,34 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
               <Box aria-hidden sx={{ display: 'grid', placeItems: 'center', color: 'text.secondary' }}>
                 <AppIcon icon={ArrowRight} size="md" />
               </Box>
-              <Box
-                sx={{
-                  flex: 1, p: 1.5, borderRadius: 2, textAlign: 'center', position: 'relative',
-                  border: '2px solid transparent',
-                  background: `linear-gradient(${theme.palette.background.paper}, ${theme.palette.background.paper}) padding-box, linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main}) border-box`,
-                }}
-              >
-                <Typography variant="caption" color="primary" component="p" sx={{ fontWeight: 700 }}>{next.name}</Typography>
-                <Typography
-                  variant="h5"
-                  component="p"
+              {offers.map((offer) => (
+                <Box
+                  key={offer.name}
                   sx={{
-                    fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-                    backgroundImage: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                    backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent',
+                    flex: 1, minWidth: 0, p: many ? 1.25 : 1.5, borderRadius: 2, textAlign: 'center', position: 'relative',
+                    border: '2px solid transparent',
+                    background: `linear-gradient(${theme.palette.background.paper}, ${theme.palette.background.paper}) padding-box, linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main}) border-box`,
                   }}
                 >
-                  {next.limit}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" component="p">{t.unit(next.limit, kind)}</Typography>
-              </Box>
+                  <Typography variant="caption" color="primary" component="p" sx={{ fontWeight: 700 }}>{offer.name}</Typography>
+                  <Typography
+                    variant="h5"
+                    component="p"
+                    sx={{
+                      fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                      backgroundImage: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                      backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent',
+                    }}
+                  >
+                    {offer.limit}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" component="p">{t.unit(offer.limit, kind)}</Typography>
+                </Box>
+              ))}
             </Stack>
-            <Typography variant="body2" sx={{ mt: 2, fontWeight: 600 }}>{t.nextPlan(next.name, next.limit, kind)}</Typography>
+            <Typography variant="body2" sx={{ mt: 2, fontWeight: 600 }}>
+              {many ? t.allPlans(offers, kind) : t.nextPlan(next.name, next.limit, kind)}
+            </Typography>
             <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mt: 0.75, color: 'success.main' }}>
               <AppIcon icon={Check} style={{ marginTop: 2 }} />
               <Typography variant="body2" color="text.secondary">{t.benefit(kind)}</Typography>
@@ -223,7 +236,7 @@ export function PlanLimitBanner({ open, onClose, kind, limit }: PlanLimitBannerP
             <Button
               variant="contained"
               component={RouterLink}
-              to={AFFILIATE_PLANS_PATH}
+              to={upgradePathFor(kind)}
               onClick={onClose}
               endIcon={<AppIcon icon={ArrowRight} />}
               sx={{

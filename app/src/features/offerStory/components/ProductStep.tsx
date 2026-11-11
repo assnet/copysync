@@ -1,9 +1,12 @@
 import { Alert, Box, Button, Collapse, InputAdornment, Stack, Switch, TextField, Typography, alpha, useTheme } from '@mui/material';
-import { ArrowLeft, Image as ImageIcon, ImagePlus, Link2, Repeat2, Tag, Ticket, Type } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Image as ImageIcon, ImagePlus, KeyRound, Link2, Repeat2, Tag, Ticket, Type } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { useBlur } from '@/features/privacy';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
+import { upgradePathFor } from '@/features/linkRotation/planUpsell';
 import { OFFER_STORY_RULES } from '../productForm.rules';
-import type { ProductFormErrors, ProductFormState } from '../productForm';
+import type { OfferStoryErrorAction, ProductFormErrors, ProductFormState } from '../productForm';
 import { offerStoryStrings } from '../strings';
 import { storyGradient, storyWash } from '../storyStyle';
 import { templateThumbnail, type OfferStoryTemplate } from '../types';
@@ -15,6 +18,8 @@ const SLOT_ICONS = [ImageIcon, Type, Tag] as const;
 interface Props {
   form: ProductFormState;
   errors: ProductFormErrors;
+  /** Correção do erro do link em outra tela (botão sob o campo). */
+  urlErrorAction?: OfferStoryErrorAction | null;
   generalError: string | null;
   onDismissError: () => void;
   generating: boolean;
@@ -76,7 +81,7 @@ function TemplatePreview({ template, onBack, disabled }: { template: OfferStoryT
 }
 
 /** Passo 2: link do produto e cupom opcional, com prévia do visual. Erro da API aparece no campo. */
-export function ProductStep({ form, errors, generalError, onDismissError, generating, template, onChange, onBack, onGenerate }: Props) {
+export function ProductStep({ form, errors, urlErrorAction, generalError, onDismissError, generating, template, onChange, onBack, onGenerate }: Props) {
   const theme = useTheme();
   const blurLink = useBlur('offerStory.link');
   const { primary, secondary } = theme.palette;
@@ -112,6 +117,23 @@ export function ProductStep({ form, errors, generalError, onDismissError, genera
             // Borrar só o texto: o campo continua editável (Blurred bloquearia o clique).
             sx={blurLink ? { '& input': { filter: 'blur(5px)' } } : undefined}
           />
+          {errors.url && urlErrorAction && (
+            <Box sx={{ mt: '-12px !important' }}>
+              <Button
+                component={RouterLink}
+                to={urlErrorAction === 'plans' ? upgradePathFor('mercadoLivreTags') : AFFILIATE_CREDENTIALS_PATH}
+                size="small"
+                variant="outlined"
+                color={urlErrorAction === 'plans' ? 'primary' : 'inherit'}
+                {...(urlErrorAction === 'plans'
+                  ? { endIcon: <AppIcon icon={ArrowRight} size="sm" /> }
+                  : { startIcon: <AppIcon icon={KeyRound} size="sm" /> })}
+                sx={{ borderRadius: 999, minHeight: 36 }}
+              >
+                {t.errorActions[urlErrorAction]}
+              </Button>
+            </Box>
+          )}
 
           <Box
             sx={{

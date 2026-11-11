@@ -94,6 +94,7 @@ export function StorefrontPage() {
                 selectedCategories={page?.categories ?? []}
                 onExtract={s.extract}
                 error={s.addError}
+                errorAction={s.addErrorAction}
                 disabled={!page}
               />
               {page && (

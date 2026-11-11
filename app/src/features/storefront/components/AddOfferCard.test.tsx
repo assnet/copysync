@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { storefrontStrings } from '../strings';
 import { AddOfferCard, type AddOfferDraft } from './AddOfferCard';
@@ -48,5 +49,23 @@ describe('AddOfferCard', () => {
     );
     expect(screen.getByText('Link não suportado')).toBeInTheDocument();
     expect(screen.getByText(t.title)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['credentials', '/affiliates/credentials'],
+    ['plans', '/affiliates/plans?feature=mercadoLivreTags'],
+  ] as const)('erro com ação %s mostra o botão sob o campo', (action, href) => {
+    renderWithTheme(
+      <MemoryRouter>
+        <AddOfferCard value={{ url: 'x', category: null }} onChange={vi.fn()} categories={categories} selectedCategories={[]} onExtract={vi.fn()} error="Etiqueta" errorAction={action} />
+      </MemoryRouter>,
+      'dark',
+    );
+    expect(screen.getByRole('link', { name: t.actions[action] })).toHaveAttribute('href', href);
+  });
+
+  it('sem erro não mostra botão de ação', () => {
+    renderWithTheme(<MemoryRouter><AddOfferCard value={{ url: 'x', category: null }} onChange={vi.fn()} categories={categories} selectedCategories={[]} onExtract={vi.fn()} errorAction="plans" /></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: t.actions.plans })).not.toBeInTheDocument();
   });
 });

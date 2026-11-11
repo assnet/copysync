@@ -4,6 +4,7 @@ import type { Storefront, StorefrontOffer, StorefrontOverview } from './types';
 import {
   SLUG_STATUSES,
   STOREFRONT_FORM_DEFAULTS,
+  errorAction,
   errorMessage,
   formFromOverview,
   isFormDirty,
@@ -213,6 +214,8 @@ describe('errorMessage', () => {
     'UNSUPPORTED_MEDIA_TYPE',
     'MEDIA_PROCESSING_FAILED',
     'RATE_LIMITED',
+    'AFFILIATE_IDENTIFIER_NOT_LINKED',
+    'PLAN_LIMIT_REACHED',
   ])('traduz %s sem cair no genérico', (code) => {
     expect(errorMessage(code)).not.toBe(t.errors.generic);
     expect(errorMessage({ code })).toBe(errorMessage(code));
@@ -230,6 +233,30 @@ describe('errorMessage', () => {
     expect(errorMessage({ code: 'X', message: 'stack' })).toBe(t.errors.generic);
     expect(errorMessage(null)).toBe(t.errors.generic);
     expect(errorMessage('toString')).toBe(t.errors.generic);
+  });
+});
+
+describe('etiquetas do Mercado Livre', () => {
+  const tagLimit = (limit?: number) => ({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'mercado_livre_affiliate_tags', ...(limit != null ? { limit } : {}) } });
+
+  it('não vinculada com vaga: texto próprio e ação de credenciais', () => {
+    const err = { code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } };
+    expect(errorMessage(err)).toBe(t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED);
+    expect(errorAction(err)).toBe('credentials');
+  });
+
+  it('sem vaga: texto de etiquetas e ação de planos; no maior plano, credenciais', () => {
+    expect(errorMessage(tagLimit(1))).toBe(t.errors.mercadoLivreTagLimit(1, true));
+    expect(errorAction(tagLimit(1))).toBe('plans');
+    expect(errorAction(tagLimit())).toBe('plans');
+    expect(errorMessage(tagLimit(10))).toBe(t.errors.mercadoLivreTagLimit(10, false));
+    expect(errorAction(tagLimit(10))).toBe('credentials');
+  });
+
+  it('outros erros não têm ação', () => {
+    expect(errorAction({ code: 'OFFER_LINK_NOT_OWNED' })).toBeNull();
+    expect(errorAction({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'offers_per_day' } })).toBeNull();
+    expect(errorAction(null)).toBeNull();
   });
 });
 

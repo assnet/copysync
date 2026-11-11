@@ -159,6 +159,11 @@ export const storefrontStrings = {
     extract: 'Extrair',
     extracting: 'Extraindo…',
     added: 'Oferta adicionada aos rascunhos',
+    /** Botão sob o campo quando o erro tem correção em outra tela. */
+    actions: {
+      credentials: 'Ir para Credenciais de afiliado',
+      plans: 'Ver planos com mais etiquetas',
+    },
   },
 
   offers: {
@@ -254,6 +259,15 @@ export const storefrontStrings = {
     OFFER_LINK_NOT_AFFILIATE: 'Esse link não tem a sua identificação de afiliado. Na Amazon, use o link com a sua tag.',
     MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
     sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
+    AFFILIATE_IDENTIFIER_NOT_LINKED: 'Este link usa outra etiqueta da sua conta do Mercado Livre. Vincule a etiqueta em Credenciais de afiliado para usar este link.',
+    PLAN_LIMIT_REACHED: 'Você chegou a um limite do seu plano. Veja os planos para ter mais.',
+    /** Etiqueta da conta do ML não vinculada e sem vaga no plano (`PLAN_LIMIT_REACHED` de etiquetas). */
+    mercadoLivreTagLimit: (limit: number | null, canUpgrade: boolean) =>
+      !canUpgrade && limit != null
+        ? `Este link usa outra etiqueta da sua conta do Mercado Livre e as ${limit} etiquetas do seu plano já estão em uso. Desvincule uma em Credenciais de afiliado para usar esta.`
+        : limit != null && limit <= 1
+          ? 'Este link usa outra etiqueta da sua conta do Mercado Livre, e o seu plano inclui só a etiqueta principal. Faça upgrade para usar mais etiquetas.'
+          : 'Este link usa outra etiqueta da sua conta do Mercado Livre, e as etiquetas do seu plano já estão em uso. Faça upgrade ou desvincule uma em Credenciais de afiliado.',
     MEDIA_TOO_LARGE: 'Imagem grande demais para este campo.',
     UNSUPPORTED_MEDIA_TYPE: 'Formato não aceito. Use JPEG, PNG ou WebP.',
     MEDIA_PROCESSING_FAILED: 'Não conseguimos usar essa imagem. Confira o tamanho mínimo e tente outra.',

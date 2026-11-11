@@ -2,7 +2,7 @@ import { useId } from 'react';
 import {
   Box, Chip, CircularProgress, FormHelperText, InputAdornment, MenuItem, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { CircleCheck, CircleX, Globe, Sparkles, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Globe, Lightbulb, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { useBlur } from '@/features/privacy';
 import { normalizeSlugInput } from '@/features/linkRotation/slug';
@@ -122,7 +122,7 @@ export function SlugField({
                     disabled={disabled}
                     color="primary"
                     variant="outlined"
-                    icon={<AppIcon icon={Sparkles} size="sm" />}
+                    icon={<AppIcon icon={Lightbulb} size="sm" />}
                     onClick={() => onChange(s)}
                     sx={blur ? { '& .MuiChip-label': { filter: 'blur(5px)' } } : undefined}
                   />

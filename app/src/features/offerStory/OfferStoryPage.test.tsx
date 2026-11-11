@@ -57,4 +57,16 @@ describe('OfferStoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: t.result.newArt }));
     await waitFor(() => expect(screen.getByRole('button', { name: t.template.continue })).toBeTruthy());
   });
+
+  it('etiqueta do ML sem vaga: texto no link e botão para os planos', async () => {
+    svc.listTemplates.mockResolvedValue([{ id: 'flash-night', name: 'Oferta relâmpago' }]);
+    svc.render.mockRejectedValue({ status: 403, code: 'PLAN_LIMIT_REACHED', meta: { key: 'mercado_livre_affiliate_tags', limit: 1 } });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Oferta relâmpago' }));
+    fireEvent.click(screen.getByRole('button', { name: t.template.continue }));
+    fireEvent.change(screen.getByLabelText(new RegExp(t.product.linkLabel)), { target: { value: 'https://www.mercadolivre.com.br/p/MLB1' } });
+    fireEvent.click(screen.getByRole('button', { name: t.product.generate }));
+    expect(await screen.findByText(t.errors.mercadoLivreTagLimit(1, true))).toBeTruthy();
+    expect(screen.getByRole('link', { name: t.product.errorActions.plans }).getAttribute('href')).toBe('/affiliates/plans?feature=mercadoLivreTags');
+  });
 });

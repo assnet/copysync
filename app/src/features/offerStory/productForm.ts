@@ -2,7 +2,8 @@
  * Lógica pura do passo "Produto": validação local (espelha o schema/use case da API, que revalida)
  * e tradução de erro da API → campo + texto. Sem React, sem HTTP.
  */
-import { isSheinUnavailable } from '@/features/plans/planGate';
+import { plansAbove } from '@/features/linkRotation/planUpsell';
+import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf } from '@/features/plans/planGate';
 import { OFFER_STORY_RULES as R } from './productForm.rules';
 import { offerStoryStrings } from './strings';
 import type { OfferStoryApiError, RenderOfferStoryInput } from './types';
@@ -89,6 +90,8 @@ export const OFFER_STORY_ERROR_CODES = [
   'AFFILIATE_API_ACCESS_DENIED',
   'AFFILIATE_CREDENTIAL_REJECTED',
   'MARKETPLACE_RISK_NOT_ACCEPTED',
+  'AFFILIATE_IDENTIFIER_NOT_LINKED',
+  'PLAN_LIMIT_REACHED',
   'AFFILIATE_API_RATE_LIMITED',
   'AFFILIATE_API_UNAVAILABLE',
   'RATE_LIMITED',
@@ -107,6 +110,8 @@ const URL_CODES: readonly string[] = [
   'AFFILIATE_API_ACCESS_DENIED',
   'AFFILIATE_CREDENTIAL_REJECTED',
   'MARKETPLACE_RISK_NOT_ACCEPTED',
+  // Etiqueta da conta do ML não vinculada: vincular nas credenciais
+  'AFFILIATE_IDENTIFIER_NOT_LINKED',
 ];
 
 /** `field` da API → campo do formulário (`coupon`/`coupon.code` → código). */
@@ -124,12 +129,26 @@ export interface OfferStoryErrorView {
   message: string;
   /** Template sumiu do catálogo: volta ao passo 1. */
   backToTemplates: boolean;
+  /** Correção em outra tela (botão sob o link). Ausente = sem ação. */
+  action?: OfferStoryErrorAction;
 }
+
+/** O que o passo do produto oferece sob o link além do texto do erro. */
+export type OfferStoryErrorAction = 'credentials' | 'plans';
 
 /** Erro da API → texto pt-BR e onde mostrar. Nunca usa a `message` crua da API. */
 export function mapRenderError(err: unknown): OfferStoryErrorView {
   const e = (err ?? {}) as OfferStoryApiError;
   if (isSheinUnavailable(e)) return { field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false };
+  // Etiqueta da conta do ML sem vaga: planos; no maior plano, credenciais para desvincular outra
+  if (isMercadoLivreTagLimit(e)) {
+    const limit = planLimitOf(e);
+    const canUpgrade = limit == null || plansAbove('mercadoLivreTags', limit).length > 0;
+    return { field: 'url', message: t.errors.mercadoLivreTagLimit(limit, canUpgrade), backToTemplates: false, action: canUpgrade ? 'plans' : 'credentials' };
+  }
+  if (e.code === 'AFFILIATE_IDENTIFIER_NOT_LINKED') {
+    return { field: 'url', message: t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED, backToTemplates: false, action: 'credentials' };
+  }
   const code = (OFFER_STORY_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as OfferStoryErrorCode) : null;
   if (!code) return { field: null, message: t.errors.generic, backToTemplates: false };
   if (URL_CODES.includes(code)) return { field: 'url', message: t.errors[code], backToTemplates: false };

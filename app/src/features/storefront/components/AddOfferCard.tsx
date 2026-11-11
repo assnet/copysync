@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { Alert, Box, Button, CircularProgress, MenuItem, Stack, TextField } from '@mui/material';
-import { Info, Link2, PackagePlus, Sparkles } from 'lucide-react';
+import { ArrowRight, Info, KeyRound, Link2, PackagePlus, ScanSearch } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 import { AppIcon, SectionCard } from '@/components';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
+import { upgradePathFor } from '@/features/linkRotation/planUpsell';
+import type { StorefrontErrorAction } from '../storefrontForm';
 import { storefrontStrings } from '../strings';
 import type { StorefrontCategory } from '../types';
 import { pageCategoryOptions } from '../offerForm';
@@ -26,11 +30,18 @@ export interface AddOfferCardProps {
   onExtract: (url: string, category: string | null) => Promise<void>;
   /** Erro da última extração (texto já traduzido), mostrado junto ao campo. */
   error?: string | null;
+  /** Correção do erro em outra tela: botão sob o campo (credenciais ou planos). */
+  errorAction?: StorefrontErrorAction | null;
   disabled?: boolean;
 }
 
+const ACTION_TARGET: Record<StorefrontErrorAction, { to: string; icon: typeof KeyRound }> = {
+  credentials: { to: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
+  plans: { to: upgradePathFor('mercadoLivreTags'), icon: ArrowRight },
+};
+
 /** "Adicionar Oferta": link do produto + categoria → Extrair (vira rascunho). */
-export function AddOfferCard({ value, onChange, categories, selectedCategories, onExtract, error, disabled }: AddOfferCardProps) {
+export function AddOfferCard({ value, onChange, categories, selectedCategories, onExtract, error, errorAction, disabled }: AddOfferCardProps) {
   const [busy, setBusy] = useState(false);
   const options = pageCategoryOptions(categories, selectedCategories);
   const url = value.url.trim();
@@ -85,12 +96,29 @@ export function AddOfferCard({ value, onChange, categories, selectedCategories, 
               variant="contained"
               disableElevation
               disabled={disabled || busy || !url}
-              startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={Sparkles} size="sm" />}
+              startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={ScanSearch} size="sm" />}
               sx={{ flexShrink: 0, minHeight: 40, minWidth: 120 }}
             >
               <span aria-live="polite">{busy ? t.extracting : t.extract}</span>
             </Button>
           </Stack>
+          {error && errorAction && (
+            <Box>
+              <Button
+                component={RouterLink}
+                to={ACTION_TARGET[errorAction].to}
+                size="small"
+                variant="outlined"
+                color={errorAction === 'plans' ? 'primary' : 'inherit'}
+                {...(errorAction === 'plans'
+                  ? { endIcon: <AppIcon icon={ACTION_TARGET.plans.icon} size="sm" /> }
+                  : { startIcon: <AppIcon icon={ACTION_TARGET.credentials.icon} size="sm" /> })}
+                sx={{ minHeight: 36 }}
+              >
+                {t.actions[errorAction]}
+              </Button>
+            </Box>
+          )}
           <Alert severity="info" variant="outlined" icon={<AppIcon icon={Info} size="sm" />} sx={{ py: 0 }}>
             {t.productLinkHint}
           </Alert>

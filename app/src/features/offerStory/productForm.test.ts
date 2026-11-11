@@ -53,6 +53,16 @@ describe('mapRenderError', () => {
     expect(mapRenderError({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toEqual({ field: 'url', message: t.errors.MARKETPLACE_RISK_NOT_ACCEPTED, backToTemplates: false });
   });
 
+  it('etiqueta do ML: não vinculada → credenciais; sem vaga → planos (no maior plano, credenciais)', () => {
+    expect(mapRenderError({ status: 422, code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } }))
+      .toEqual({ field: 'url', message: t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED, backToTemplates: false, action: 'credentials' });
+    const limit = (n?: number) => ({ status: 403, code: 'PLAN_LIMIT_REACHED', meta: { key: 'mercado_livre_affiliate_tags', ...(n != null ? { limit: n } : {}) } });
+    expect(mapRenderError(limit(1))).toEqual({ field: 'url', message: t.errors.mercadoLivreTagLimit(1, true), backToTemplates: false, action: 'plans' });
+    expect(mapRenderError(limit()).action).toBe('plans');
+    expect(mapRenderError(limit(10))).toEqual({ field: 'url', message: t.errors.mercadoLivreTagLimit(10, false), backToTemplates: false, action: 'credentials' });
+    for (const err of [limit(1), { code: 'AFFILIATE_IDENTIFIER_NOT_LINKED' }]) expect(mapRenderError(err).message).not.toBe(t.errors.generic);
+  });
+
   it('OFFER_INVALID_INPUT com field coupon vai para o código', () => {
     expect(mapRenderError({ code: 'OFFER_INVALID_INPUT', field: 'coupon' }).field).toBe('code');
     expect(mapRenderError({ code: 'OFFER_INVALID_INPUT', field: 'coupon.discountPercent' }).field).toBe('discount');

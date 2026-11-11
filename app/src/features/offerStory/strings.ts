@@ -39,6 +39,11 @@ export const offerStoryStrings = {
     linkLabel: 'Link do produto',
     linkPlaceholder: 'https://…',
     linkHelp: 'Use o link da página do produto (não da vitrine ou loja): Mercado Livre, Shopee ou Amazon.',
+    /** Botão sob o link quando o erro tem correção em outra tela. */
+    errorActions: {
+      credentials: 'Ir para Credenciais de afiliado',
+      plans: 'Ver planos com mais etiquetas',
+    },
     couponToggle: 'Tem cupom?',
     couponHint: 'O código aparece em destaque na arte.',
     codeLabel: 'Código',
@@ -112,6 +117,15 @@ export const offerStoryStrings = {
     AFFILIATE_CREDENTIAL_REJECTED: 'A loja recusou sua credencial de afiliado. Confira os dados em Configurações → Credenciais de afiliado.',
     MARKETPLACE_RISK_NOT_ACCEPTED: 'Para usar links da Shein, um administrador precisa aceitar o aviso de risco em Credenciais de afiliado.',
     sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
+    AFFILIATE_IDENTIFIER_NOT_LINKED: 'Este link usa outra etiqueta da sua conta do Mercado Livre. Vincule a etiqueta em Credenciais de afiliado para usar este link.',
+    PLAN_LIMIT_REACHED: 'Você chegou a um limite do seu plano. Veja os planos para ter mais.',
+    /** Etiqueta da conta do ML não vinculada e sem vaga no plano (`PLAN_LIMIT_REACHED` de etiquetas). */
+    mercadoLivreTagLimit: (limit: number | null, canUpgrade: boolean) =>
+      !canUpgrade && limit != null
+        ? `Este link usa outra etiqueta da sua conta do Mercado Livre e as ${limit} etiquetas do seu plano já estão em uso. Desvincule uma em Credenciais de afiliado para usar esta.`
+        : limit != null && limit <= 1
+          ? 'Este link usa outra etiqueta da sua conta do Mercado Livre, e o seu plano inclui só a etiqueta principal. Faça upgrade para usar mais etiquetas.'
+          : 'Este link usa outra etiqueta da sua conta do Mercado Livre, e as etiquetas do seu plano já estão em uso. Faça upgrade ou desvincule uma em Credenciais de afiliado.',
     AFFILIATE_API_RATE_LIMITED: 'A loja limitou as consultas por agora. Aguarde um instante e tente de novo.',
     AFFILIATE_API_UNAVAILABLE: 'A loja não respondeu agora. Tente de novo em instantes.',
     RATE_LIMITED: 'Muitas artes seguidas. Aguarde um pouco e tente de novo.',

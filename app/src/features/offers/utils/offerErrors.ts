@@ -1,4 +1,5 @@
-import type { PlanLimitKind } from '@/features/linkRotation/planUpsell';
+import { plansAbove, type PlanLimitKind } from '@/features/linkRotation/planUpsell';
+import { isMercadoLivreTagLimit } from '@/features/plans/planGate';
 import type { LimitChannel } from '@/types/api.types';
 import { offerStrings as t } from '../strings';
 
@@ -11,7 +12,7 @@ export interface OfferErrorView {
   action: OfferErrorAction;
   /** Erro do campo de link: aparece sob o campo, não num alerta. */
   isLinkField: boolean;
-  /** Limite do plano por canal (sessões ou grupos de disparo): abre o aviso de upgrade. */
+  /** Limite do plano (sessões/grupos por canal, etiquetas do ML): abre o aviso de upgrade. */
   planLimit?: { kind: PlanLimitKind; limit: number };
 }
 
@@ -23,7 +24,13 @@ const CHANNEL_LIMIT_KEYS: Record<string, { channel: LimitChannel; what: 'session
   telegram_broadcast_groups: { channel: 'telegram', what: 'groups', kind: 'telegramBroadcastGroups' },
 };
 
-const CREDENTIAL_CODES = new Set(['AFFILIATE_CREDENTIAL_NOT_FOUND', 'AFFILIATE_CREDENTIAL_REJECTED', 'MARKETPLACE_RISK_NOT_ACCEPTED']);
+const CREDENTIAL_CODES = new Set([
+  'AFFILIATE_CREDENTIAL_NOT_FOUND',
+  'AFFILIATE_CREDENTIAL_REJECTED',
+  'MARKETPLACE_RISK_NOT_ACCEPTED',
+  // Etiqueta da conta do ML ainda não vinculada (há vaga): a correção é vincular nas credenciais
+  'AFFILIATE_IDENTIFIER_NOT_LINKED',
+]);
 const CONFIG_CODES = new Set(['OFFER_CONFIG_MISSING', 'OFFER_NO_DESTINATIONS']);
 const LINK_CODES = new Set(['OFFER_URL_UNSUPPORTED', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'VALIDATION_ERROR']);
 
@@ -42,6 +49,14 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
 
   if (code === 'PLAN_LIMIT_REACHED') {
     const limit = typeof e?.meta?.limit === 'number' ? e.meta.limit : null;
+    // Etiqueta da conta do ML sem vaga: sem este ramo cairia no texto do limite diário
+    if (isMercadoLivreTagLimit(err)) {
+      const canUpgrade = limit == null || plansAbove('mercadoLivreTags', limit).length > 0;
+      const message = t.mercadoLivreTagLimit(limit, canUpgrade);
+      return limit == null
+        ? { code, message, action: 'none', isLinkField: false }
+        : { code, message, action: 'none', isLinkField: false, planLimit: { kind: 'mercadoLivreTags', limit } };
+    }
     const channelKey = typeof e?.meta?.key === 'string' ? CHANNEL_LIMIT_KEYS[e.meta.key] : undefined;
     if (channelKey) {
       if (limit == null) return { code, message: t.errors.generic, action: 'none', isLinkField: false };
