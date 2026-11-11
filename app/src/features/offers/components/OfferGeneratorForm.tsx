@@ -5,7 +5,6 @@ import {
 import LinkIcon from '@mui/icons-material/Link';
 import CloseIcon from '@mui/icons-material/Close';
 import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { SectionCard } from '@/components';
 import type { GenerateOfferRequest, OfferAudience } from '@/types/api.types';
 import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
@@ -36,7 +35,7 @@ const COUPON_MAX = 40;
 
 interface Props {
   generating: boolean;
-  /** Erro do servidor para o campo de link (ex.: link de outro afiliado). */
+  /** Erro do servidor para o campo de link (ex.: a loja não gerou link para o produto). */
   serverError: string | null;
   disabled?: boolean;
   /** Motivo de `disabled`, mostrado sob o botão. */
@@ -155,12 +154,6 @@ export function OfferGeneratorForm({
                     size="small"
                     sx={{ fontWeight: 600 }}
                   />
-                  {store === 'SHOPEE' && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <InfoOutlinedIcon sx={{ fontSize: 16 }} aria-hidden />
-                      {t.shopeeNotice}
-                    </Typography>
-                  )}
                 </Box>
               )}
             </Collapse>

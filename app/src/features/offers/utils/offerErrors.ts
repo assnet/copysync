@@ -1,5 +1,6 @@
 import { plansAbove, type PlanLimitKind } from '@/features/linkRotation/planUpsell';
 import { isMercadoLivreTagLimit } from '@/features/plans/planGate';
+import { describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
 import type { LimitChannel } from '@/types/api.types';
 import { offerStrings as t } from '../strings';
 
@@ -14,6 +15,8 @@ export interface OfferErrorView {
   isLinkField: boolean;
   /** Limite do plano (sessões/grupos por canal, etiquetas do ML): abre o aviso de upgrade. */
   planLimit?: { kind: PlanLimitKind; limit: number };
+  /** `meta` do erro (ex.: `meta.provider`): escolhe o rótulo do botão de conectar a loja. */
+  meta?: unknown;
 }
 
 /** Chave de entitlement (`meta.key` do 403) → canal, o que estourou e o aviso de upgrade. */
@@ -25,6 +28,7 @@ const CHANNEL_LIMIT_KEYS: Record<string, { channel: LimitChannel; what: 'session
 };
 
 const CREDENTIAL_CODES = new Set([
+  'AFFILIATE_CREDENTIAL_REQUIRED',
   'AFFILIATE_CREDENTIAL_NOT_FOUND',
   'AFFILIATE_CREDENTIAL_REJECTED',
   'MARKETPLACE_RISK_NOT_ACCEPTED',
@@ -32,7 +36,14 @@ const CREDENTIAL_CODES = new Set([
   'AFFILIATE_IDENTIFIER_NOT_LINKED',
 ]);
 const CONFIG_CODES = new Set(['OFFER_CONFIG_MISSING', 'OFFER_NO_DESTINATIONS']);
-const LINK_CODES = new Set(['OFFER_URL_UNSUPPORTED', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'VALIDATION_ERROR']);
+/** Erro do campo de link (aparece sob o campo). `OFFER_TEXT_FOREIGN_LINK` não entra: é da edição do texto (alerta da página). */
+const LINK_CODES = new Set([
+  'OFFER_URL_UNSUPPORTED',
+  'OFFER_LINK_REBUILD_FAILED',
+  'AFFILIATE_API_RATE_LIMITED',
+  'AFFILIATE_API_UNAVAILABLE',
+  'VALIDATION_ERROR',
+]);
 
 function actionFor(code: string | null): OfferErrorAction {
   if (!code) return 'none';
@@ -80,10 +91,13 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
     return { code, message: t.schedule.invalid, action: 'none', isLinkField: false };
   }
 
+  // Texto comum dos erros de link de afiliado; a ação e o lugar (campo × alerta) seguem os mapas daqui
+  const shared = describeAffiliateLinkError(code, e?.meta);
   return {
     code,
-    message: (code && t.errors[code]) || t.errors.generic,
+    message: shared?.message ?? ((code && t.errors[code]) || t.errors.generic),
     action: actionFor(code),
     isLinkField: code != null && LINK_CODES.has(code),
+    ...(e?.meta !== undefined && { meta: e.meta }),
   };
 }

@@ -35,7 +35,7 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
   svc.usage.mockResolvedValue({ used: 0, limit: 10 });
-  svc.generate.mockResolvedValue({ offer: base, needsManualData: false, aiFallback: false });
+  svc.generate.mockResolvedValue({ offer: base, needsManualData: false, aiFallback: false, linkRebuilt: false });
 });
 
 describe('setImageMode', () => {
@@ -66,5 +66,22 @@ describe('setImageMode', () => {
     await act(async () => { await result.current.setImageMode('MEDIA'); });
     await act(async () => { first.resolve({ ...base, imageMode: 'LINK_PREVIEW' }); await firstCall; });
     expect(result.current.offer?.imageMode).toBe('MEDIA');
+  });
+});
+
+describe('linkRebuilt', () => {
+  it('guarda o aviso da geração e zera ao reabrir ou limpar', async () => {
+    svc.generate.mockResolvedValueOnce({ offer: base, needsManualData: false, aiFallback: false, linkRebuilt: true });
+    const { result } = await opened();
+    expect(result.current.linkRebuilt).toBe(true);
+    svc.get.mockResolvedValueOnce(base);
+    await act(async () => { await result.current.open('o1'); });
+    expect(result.current.linkRebuilt).toBe(false);
+  });
+
+  it('API sem o campo: sem aviso', async () => {
+    svc.generate.mockResolvedValueOnce({ offer: base, needsManualData: false, aiFallback: false });
+    const { result } = await opened();
+    expect(result.current.linkRebuilt).toBe(false);
   });
 });

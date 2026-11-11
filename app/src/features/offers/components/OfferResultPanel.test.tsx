@@ -10,13 +10,13 @@ const offer = (over: Partial<OfferItem> = {}): OfferItem => ({
   text: 'oferta https://a', textEdited: false, status: 'DRAFT', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...over,
 });
 
-const panel = (o: OfferItem, onRegenerate = vi.fn()) => (
+const panel = (o: OfferItem, onRegenerate = vi.fn(), linkRebuilt = false) => (
   <OfferResultPanel
     offer={o} draft={{ title: o.title ?? '', priceCents: null, originalPriceCents: null, text: o.text }} onField={vi.fn()}
     dirty={false} textTooLong={false} missingLink={false} needsManualData={false} aiFallback={false} groups={[]}
     saving={false} regenerating={false} sending={false} imageProgress={null}
     onSave={vi.fn().mockResolvedValue(undefined)} onDiscard={vi.fn()} onRegenerate={onRegenerate} onReplaceImage={vi.fn()}
-    onNew={vi.fn()} newLockedReason={null}
+    onNew={vi.fn()} newLockedReason={null} linkRebuilt={linkRebuilt}
   />
 );
 
@@ -54,5 +54,23 @@ describe('"Gerar novamente" sem "Reescrita com IA" no plano', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Gerar novamente/ }));
     expect(onRegenerate).toHaveBeenCalledWith('STANDARD');
+  });
+});
+
+describe('aviso de link recriado e selo de legado', () => {
+  it('linkRebuilt: mostra a loja, sem URL, e sem selo de não verificado', () => {
+    render(panel(offer({ provider: 'SHOPEE' }), vi.fn(), true));
+    expect(screen.getByRole('status')).toHaveTextContent('Link recriado com a sua conta da Shopee');
+    expect(screen.queryByText(/Não deu para confirmar/)).toBeNull();
+  });
+
+  it('sem recriar: sem aviso', () => {
+    render(panel(offer()));
+    expect(screen.queryByText(/Link recriado/)).toBeNull();
+  });
+
+  it('oferta antiga não verificada (inclusive Shopee) mostra o selo', () => {
+    render(panel(offer({ provider: 'SHOPEE', attributionVerified: false })));
+    expect(screen.getByText(/Não deu para confirmar que este link é seu/)).toBeInTheDocument();
   });
 });

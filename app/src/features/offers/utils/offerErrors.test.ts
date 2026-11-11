@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toOfferError } from './offerErrors';
 import { offerStrings as t } from '../strings';
+import { affiliateLinkStrings as common } from '@/features/affiliateLinks/strings';
 
 const limitErr = (key: string, limit: number) => ({ code: 'PLAN_LIMIT_REACHED', meta: { key, limit } });
 
@@ -69,5 +70,45 @@ describe('toOfferError — etiquetas do Mercado Livre', () => {
     expect(v.message).toBe(t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED);
     expect(v.message).not.toBe(t.errors.generic);
     expect(v.isLinkField).toBe(false);
+  });
+});
+
+describe('toOfferError — link de afiliado (texto comum)', () => {
+  it('loja não conectada: texto por loja, botão de credenciais e meta preservado', () => {
+    const meta = { provider: 'MERCADO_LIVRE' };
+    const v = toOfferError({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta });
+    expect(v.message).toBe(common.errors.credentialRequired('MERCADO_LIVRE'));
+    expect(v.action).toBe('credentials');
+    expect(v.isLinkField).toBe(false);
+    expect(v.meta).toEqual(meta);
+  });
+
+  it('credencial recusada usa o texto comum', () => {
+    const v = toOfferError({ code: 'AFFILIATE_CREDENTIAL_REJECTED', meta: { provider: 'SHOPEE' } });
+    expect(v.message).toBe(common.errors.credentialRejected('SHOPEE'));
+    expect(v.action).toBe('credentials');
+  });
+
+  it.each(['OFFER_LINK_REBUILD_FAILED', 'AFFILIATE_API_RATE_LIMITED', 'AFFILIATE_API_UNAVAILABLE'])('%s fica no campo, sem botão', (code) => {
+    const v = toOfferError({ code, meta: { provider: 'AMAZON' } });
+    expect(v.isLinkField).toBe(true);
+    expect(v.action).toBe('none');
+    expect(v.message).toContain('A Amazon');
+  });
+
+  it('códigos removidos caem no texto genérico e não são do campo', () => {
+    for (const code of ['OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE']) {
+      const v = toOfferError({ code });
+      expect(v.message).toBe(t.errors.generic);
+      expect(v.isLinkField).toBe(false);
+    }
+  });
+
+  it('link estranho no texto editado: texto próprio, alerta da página', () => {
+    const v = toOfferError({ code: 'OFFER_TEXT_FOREIGN_LINK' });
+    expect(v.message).toBe(t.errors.OFFER_TEXT_FOREIGN_LINK);
+    expect(v.message).not.toBe(t.errors.generic);
+    expect(v.isLinkField).toBe(false);
+    expect(v.action).toBe('none');
   });
 });

@@ -48,10 +48,10 @@ describe('intervalValid', () => {
 });
 
 describe('toOfferError v2', () => {
-  it('link de outro afiliado é erro do campo', () => {
-    const view = toOfferError({ code: 'OFFER_LINK_NOT_OWNED' });
+  it('loja que não gerou link para o produto é erro do campo, com o nome da loja', () => {
+    const view = toOfferError({ code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'SHOPEE' } });
     expect(view.isLinkField).toBe(true);
-    expect(view.message).toContain('outro afiliado');
+    expect(view.message).toContain('A Shopee não gerou link para este produto');
   });
 
   it('limite de grupos usa a chave broadcast_groups', () => {
