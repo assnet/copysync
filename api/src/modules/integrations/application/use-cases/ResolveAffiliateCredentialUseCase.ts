@@ -47,7 +47,15 @@ export class ResolveAffiliateCredentialUseCase {
         ? this.parseSession(this.cipher().decrypt(record.session, affiliateCipherAad(tenantId, provider, 'session')))
         : null;
 
-    return { provider, publicIdentifier: record.publicIdentifier, secret, session };
+    return {
+      provider,
+      publicIdentifier: record.publicIdentifier,
+      secret,
+      session,
+      // Crus, como gravados: o limite do plano é aplicado por quem verifica o link
+      ...(record.accountIdentifiers ? { accountIdentifiers: [...record.accountIdentifiers] } : {}),
+      ...(record.linkedIdentifiers ? { linkedIdentifiers: [...record.linkedIdentifiers] } : {}),
+    };
   }
 
   private parseSession(plain: string): AffiliateSessionSecret {

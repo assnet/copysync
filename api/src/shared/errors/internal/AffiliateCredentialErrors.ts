@@ -24,3 +24,13 @@ export class UseMarketplaceDisconnectError extends AppError {
     super('USE_MARKETPLACE_DISCONNECT', `Disconnect this marketplace through its own route: ${provider}`, 409, { provider });
   }
 }
+
+/**
+ * Link com etiqueta da própria conta que ainda não está vinculada, e o plano tem vaga (`used < limit`).
+ * Nunca carrega a etiqueta (nem no `meta`).
+ */
+export class AffiliateIdentifierNotLinkedError extends AppError {
+  constructor(provider: string, limit: number, used: number) {
+    super('AFFILIATE_IDENTIFIER_NOT_LINKED', `Affiliate identifier not linked: ${provider}`, 422, { provider, limit, used });
+  }
+}

@@ -71,18 +71,24 @@ export function ownershipIdentifiersOf(provider: AffiliateProvider, urls: readon
  * Confere se o link é do tenant. Recebe a URL colada e a expandida juntas: os identificadores de
  * dono de todas valem (`ownershipIdentifiersOf`), e mais de um valor distinto (sem caixa) é
  * `not_owned` — evita `tag` duplicada ou redirect trocando a etiqueta. Link sem identificador é
- * recusado mesmo sem credencial: não renderia comissão a ninguém.
+ * recusado mesmo sem credencial: não renderia comissão a ninguém. `credentialIdentifier` aceita o
+ * conjunto efetivo do tenant (principal + vinculadas sob o limite): `verified` se o identificador
+ * único do link estiver nele.
  */
 export function verifyAffiliateLink(
   provider: AffiliateProvider,
   urls: URL | readonly URL[],
-  credentialIdentifier: string | null,
+  credentialIdentifier: string | readonly string[] | null,
 ): AffiliateLinkCheck {
   if (provider === 'SHOPEE') return 'unverified';
   const list = Array.isArray(urls) ? urls : [urls as URL];
   const found = new Set(ownershipIdentifiersOf(provider, list).map((v) => v.toLowerCase()));
   if (found.size === 0) return 'not_affiliate';
   if (found.size > 1) return 'not_owned';
-  if (!credentialIdentifier?.trim()) return 'unverified';
-  return found.has(credentialIdentifier.trim().toLowerCase()) ? 'verified' : 'not_owned';
+  const owned = (typeof credentialIdentifier === 'string' ? [credentialIdentifier] : credentialIdentifier ?? [])
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+  if (owned.length === 0) return 'unverified';
+  const [only] = found;
+  return owned.includes(only) ? 'verified' : 'not_owned';
 }

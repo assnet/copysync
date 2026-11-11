@@ -54,7 +54,7 @@ function setup(
     }),
     shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },
     entitlements: {
-      getNumber: vi.fn(async () => null),
+      getNumber: vi.fn(async (_t: string, _k: string): Promise<number | null> => null),
       getBoolean: vi.fn(async (_t: string, k: string) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null)),
     },
     riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
@@ -289,5 +289,70 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
     await expect(s.uc.execute(TENANT, PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_AFFILIATE' });
     const out = await s.uc.execute(TENANT, MINE);
     expect(out).toMatchObject({ affiliateUrl: MINE, attributionVerified: true });
+  });
+});
+
+describe('ResolveAffiliateProductUseCase — etiquetas da conta ML por plano', () => {
+  const KEY = 'mercado_livre_affiliate_tags';
+  const link = (tag: string) => `${ML_PLAIN}?matt_word=${tag}`;
+  const mlCred = (linked: string[], account = ['minhaetq', 'segunda', 'terceira', 'quarta']): OfferAffiliateCredential => ({
+    ...CREDS.MERCADO_LIVRE!, accountIdentifiers: account, linkedIdentifiers: linked,
+  });
+  const withLimit = (cred: OfferAffiliateCredential, limit: number | null) => {
+    const s = setup({ MERCADO_LIVRE: cred });
+    s.deps.entitlements.getNumber.mockImplementation(async (_t: string, k: string) => (k === KEY ? limit : null));
+    return s;
+  };
+
+  it('LITE (1) com etiqueta da conta não vinculada → PLAN_LIMIT_REACHED com a chave, sem ler a página', async () => {
+    const s = withLimit(mlCred([]), 1);
+    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({
+      code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 },
+    });
+    expect(s.deps.entitlements.getNumber).toHaveBeenCalledWith(TENANT, KEY);
+    expect(s.pageReader.read).not.toHaveBeenCalled();
+  });
+
+  it('PRO (2) sem vinculadas → AFFILIATE_IDENTIFIER_NOT_LINKED (limit 2, used 1), sem a etiqueta no meta', async () => {
+    const s = withLimit(mlCred([]), 2);
+    const err = await s.uc.execute(TENANT, link('Segunda')).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', statusCode: 422, meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } });
+    expect(JSON.stringify((err as AppError).meta)).not.toContain('egunda');
+  });
+
+  it('PRO com a 2ª vinculada → oferta verificada com o link colado (mantém a etiqueta)', async () => {
+    const s = withLimit(mlCred(['segunda']), 2);
+    const out = await s.uc.execute(TENANT, link('segunda'));
+    expect(out).toMatchObject({ provider: 'MERCADO_LIVRE', affiliateUrl: link('segunda'), attributionVerified: true });
+    expect(s.deps.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
+  });
+
+  it('rebaixado (MAX→LITE) com 3 vinculadas gravadas: só a principal vale', async () => {
+    const s = withLimit(mlCred(['segunda', 'terceira', 'quarta']), 1);
+    await expect(s.uc.execute(TENANT, link('minhaetq'))).resolves.toMatchObject({ attributionVerified: true });
+    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 } });
+  });
+
+  it('etiqueta de terceiro (fora da conta) → OFFER_LINK_NOT_OWNED como hoje', async () => {
+    const s = withLimit(mlCred([]), 10);
+    await expect(s.uc.execute(TENANT, link('alheia'))).rejects.toMatchObject({ code: 'OFFER_LINK_NOT_OWNED' });
+  });
+
+  it('tenant sem a chave (getNumber null) → limite 1', async () => {
+    const s = withLimit(mlCred(['segunda']), null);
+    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 } });
+  });
+
+  it('link sem afiliação com vinculadas: o link gerado usa a principal', async () => {
+    const s = withLimit(mlCred(['segunda']), 2);
+    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [{ shortUrl: 'https://meli.la/gerado' }], errors: [] });
+    await s.uc.execute(TENANT, ML_PLAIN);
+    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, [ML_PLAIN], 'minhaetq');
+  });
+
+  it('outro marketplace não consulta o limite de etiquetas', async () => {
+    const s = setup();
+    await s.uc.execute(TENANT, AMAZON);
+    expect(s.deps.entitlements.getNumber).not.toHaveBeenCalledWith(TENANT, KEY);
   });
 });

@@ -64,4 +64,7 @@ export interface ResolvedAffiliateCredential {
   publicIdentifier: string;
   secret: string | null;
   session: AffiliateSessionSecret | null;
+  /** Crus do registro; o limite do plano é aplicado por quem verifica o link. */
+  accountIdentifiers?: string[];
+  linkedIdentifiers?: string[];
 }

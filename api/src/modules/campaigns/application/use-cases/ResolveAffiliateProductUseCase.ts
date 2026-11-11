@@ -15,7 +15,14 @@ import { currentRiskNoticeVersion, requiresRiskAcceptance } from '../../../integ
 import { requireMarketplaceEnabled } from '../services/requireMarketplaceEnabled';
 import { marketplaceEntitlementKey } from '../../domain/services/marketplaceEntitlement';
 import { isSupportedShareLink } from '../../domain/services/isSupportedShareLink';
-import { verifyAffiliateLink, type AffiliateLinkCheck } from '../../domain/services/verifyAffiliateLink';
+import {
+  ownershipIdentifiersOf,
+  verifyAffiliateLink,
+  type AffiliateLinkCheck,
+} from '../../domain/services/verifyAffiliateLink';
+import { effectiveLinkedIdentifiers } from '../../../integrations/domain/services/effectiveLinkedIdentifiers';
+import { identifierLimitOf } from '../../../tenants/domain/services/affiliateIdentifierLimit';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import {
   OfferLinkNotAffiliateError,
   OfferLinkNotOwnedError,
@@ -23,6 +30,8 @@ import {
   AffiliateCredentialRejectedError,
 } from '../../../../shared/errors/internal/OfferErrors';
 import { MarketplaceRiskNotAcceptedError } from '../../../../shared/errors/internal/MarketplaceRiskErrors';
+import { AffiliateIdentifierNotLinkedError } from '../../../../shared/errors/internal/AffiliateCredentialErrors';
+import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
 import { EMPTY_PRODUCT_DATA, type ProductData, type ResolveProductDataUseCase } from './ResolveProductDataUseCase';
@@ -80,8 +89,13 @@ export class ResolveAffiliateProductUseCase {
 
     // Dono do link. Sem credencial do marketplace: não bloqueia, só não verifica
     const cred = await this.readCredential(tenantId, provider);
-    const check = this.checkOwnership(provider, source, final, cred);
-    if (check === 'not_owned') throw new OfferLinkNotOwnedError(provider);
+    const owned = await this.ownedIdentifiers(tenantId, provider, cred);
+    const urls = final === source ? [final] : [source, final];
+    const check = verifyAffiliateLink(provider, urls, owned.identifiers);
+    if (check === 'not_owned') {
+      this.rejectUnlinkedAccountIdentifier(provider, urls, cred, owned);
+      throw new OfferLinkNotOwnedError(provider);
+    }
     // Aceite do aviso de risco: só com credencial (sem ela nada é pedido à loja)
     if (cred && requiresRiskAcceptance(provider) && !(await this.deps.riskGate.isAccepted(tenantId, provider))) {
       throw new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider) ?? '');
@@ -175,14 +189,41 @@ export class ResolveAffiliateProductUseCase {
     }
   }
 
-  /** Confere URL colada e final juntas: qualquer identificador divergente entre elas é `not_owned`. */
-  private checkOwnership(
+  /**
+   * Identificadores que provam o dono. ML: principal + vinculadas sob o limite do plano
+   * (`mercado_livre_affiliate_tags`; rebaixado ignora o excedente sem apagar). Demais: só a principal.
+   */
+  private async ownedIdentifiers(
+    tenantId: string,
     provider: AffiliateProvider,
-    source: URL,
-    final: URL,
     cred: OfferAffiliateCredential | null,
-  ): AffiliateLinkCheck {
-    return verifyAffiliateLink(provider, final === source ? [final] : [source, final], cred?.publicIdentifier ?? null);
+  ): Promise<{ identifiers: string[]; limit: number }> {
+    if (!cred) return { identifiers: [], limit: 1 };
+    if (provider !== 'MERCADO_LIVRE') return { identifiers: [cred.publicIdentifier], limit: 1 };
+    const limit = identifierLimitOf(
+      await this.deps.entitlements.getNumber(tenantId, ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS),
+    );
+    return { identifiers: effectiveLinkedIdentifiers(cred.publicIdentifier, cred.linkedIdentifiers ?? [], limit), limit };
+  }
+
+  /**
+   * `not_owned` com etiqueta da própria conta (ainda não vinculada): com vaga no plano pede para vincular;
+   * sem vaga, limite do plano. Etiqueta de terceiro segue para `OFFER_LINK_NOT_OWNED`.
+   */
+  private rejectUnlinkedAccountIdentifier(
+    provider: AffiliateProvider,
+    urls: readonly URL[],
+    cred: OfferAffiliateCredential | null,
+    owned: { identifiers: string[]; limit: number },
+  ): void {
+    if (provider !== 'MERCADO_LIVRE' || !cred?.accountIdentifiers?.length) return;
+    const found = new Set(ownershipIdentifiersOf(provider, urls).map((v) => v.trim().toLowerCase()));
+    if (found.size !== 1) return;
+    const [tag] = [...found];
+    if (!cred.accountIdentifiers.some((v) => v.trim().toLowerCase() === tag)) return;
+    const used = owned.identifiers.length;
+    if (used < owned.limit) throw new AffiliateIdentifierNotLinkedError(provider, owned.limit, used);
+    throw new PlanLimitReachedError(ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, owned.limit);
   }
 }
 

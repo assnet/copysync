@@ -39,6 +39,7 @@ function makeDeps(existing: AffiliateCredentialRecord | null = null) {
     clearSession: vi.fn().mockResolvedValue(existing?.hasSession ?? false),
     setStatus: vi.fn().mockResolvedValue(existing),
     markRejected: vi.fn().mockResolvedValue(undefined),
+    setIdentifiers: vi.fn(),
   } satisfies IAffiliateCredentialRepository;
   const audit = { create: vi.fn().mockResolvedValue(undefined) } satisfies IAuditLogRepository;
   const getCipher = vi.fn(() => cipher);
@@ -187,6 +188,16 @@ describe('ResolveAffiliateCredentialUseCase', () => {
   it('linha sem ID público nunca resolve, mesmo se vier do repositório', async () => {
     const d = makeDeps(makeRecord({ publicIdentifier: null }));
     await expect(new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher).execute(TENANT, 'SHOPEE')).resolves.toBeNull();
+  });
+});
+
+describe('ResolveAffiliateCredentialUseCase — etiquetas da conta', () => {
+  it('repassa accountIdentifiers e linkedIdentifiers crus (sem aplicar limite) em execute e resolveState', async () => {
+    const lists = { accountIdentifiers: ['a', 'b', 'c', 'd'], linkedIdentifiers: ['b', 'c', 'd'] };
+    const d = makeDeps(makeRecord(lists));
+    const uc = new ResolveAffiliateCredentialUseCase(d.repo, d.getCipher);
+    expect(await uc.execute(TENANT, 'SHOPEE')).toMatchObject(lists);
+    expect(await uc.resolveState(TENANT, 'SHOPEE')).toMatchObject({ state: 'ok', cred: lists });
   });
 });
 

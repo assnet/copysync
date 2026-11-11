@@ -104,4 +104,13 @@ describe('verifyAffiliateLink — ML: matt_word tem precedência sobre /social/<
     expect(ownershipIdentifiersOf('MERCADO_LIVRE', [u('https://www.mercadolivre.com.br/social/apelido')])).toEqual(['apelido']);
     expect(ownershipIdentifiersOf('AMAZON', [u('https://amzn.to/x'), u('https://www.amazon.com.br/dp/B0?tag=a-20')])).toEqual(['a-20']);
   });
+  it('conjunto de identificadores: verified se o único do link estiver nele (sem caixa)', () => {
+    const link = [u('https://x.mercadolivre.com.br/MLB-1?matt_word=Segunda')];
+    expect(verifyAffiliateLink('MERCADO_LIVRE', link, ['principal', 'segunda'])).toBe('verified');
+    expect(verifyAffiliateLink('MERCADO_LIVRE', link, ['principal'])).toBe('not_owned');
+    expect(verifyAffiliateLink('MERCADO_LIVRE', link, [])).toBe('unverified');
+    expect(verifyAffiliateLink('MERCADO_LIVRE', link, ['  '])).toBe('unverified');
+    const two = [u('https://x.mercadolivre.com.br/MLB-1?matt_word=principal&matt_word=segunda')];
+    expect(verifyAffiliateLink('MERCADO_LIVRE', two, ['principal', 'segunda'])).toBe('not_owned');
+  });
 });

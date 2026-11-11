@@ -217,3 +217,13 @@ describe('BuildTenantAffiliateLinkUseCase — Shein', () => {
     }
   });
 });
+
+describe('BuildTenantAffiliateLinkUseCase — etiquetas vinculadas (TLINK-35)', () => {
+  it('Mercado Livre com vinculadas no plano: o link do monitoramento sai com a principal', async () => {
+    const ml = { ...CREDS.MERCADO_LIVRE!, accountIdentifiers: ['minhaetq', 'segunda'], linkedIdentifiers: ['segunda'] };
+    const s = setup({ ...CREDS, MERCADO_LIVRE: ml });
+    s.deps.entitlements.getNumber.mockImplementation(async () => 10 as never);
+    await s.uc.execute('t1', 'https://produto.mercadolivre.com.br/MLB-123456-fone-_JM?matt_word=segunda');
+    expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://produto.mercadolivre.com.br/MLB-123456'], 'minhaetq');
+  });
+});
