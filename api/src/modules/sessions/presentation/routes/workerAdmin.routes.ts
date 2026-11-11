@@ -7,9 +7,15 @@ import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositori
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
 import { ListLeaseHoldersUseCase, type ListLeaseHoldersOutput } from '../../application/use-cases/ListLeaseHoldersUseCase';
 import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/repositories/PrismaSessionLeaseHolderRepository';
-import { workerListResponse, workerScalingSettingsBody, workerScalingSettingsResponse } from '../schemas/workerAdmin.schema';
+import {
+  workerCapacityResponse,
+  workerListResponse,
+  workerScalingSettingsBody,
+  workerScalingSettingsResponse,
+} from '../schemas/workerAdmin.schema';
 import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
 import {
+  getWorkerCapacityUseCase,
   getWorkerScalingSettingsUseCase,
   updateWorkerScalingSettingsUseCase,
 } from '../../infrastructure/lease/sessionLeaseContainer';
@@ -60,6 +66,17 @@ export async function workerAdminRoutes(app: FastifyInstance): Promise<void> {
     schema: { tags, summary: 'Configuração de escala efetiva, origem por campo e se está em vigor', response: { 200: workerScalingSettingsResponse } },
   }, async (_request, reply) => {
     httpResponse.ok(reply, await getWorkerScalingSettingsUseCase().execute());
+  });
+
+  app.get('/capacity', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Capacidade contratada por plano e do cluster (amostras locais; nunca chama a Render)',
+      response: { 200: workerCapacityResponse },
+    },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, await getWorkerCapacityUseCase().execute());
   });
 
   app.put<{ Body: { settings: unknown; expectedUpdatedAt: string | null } }>('/settings', {

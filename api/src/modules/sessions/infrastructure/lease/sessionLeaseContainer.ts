@@ -22,6 +22,10 @@ import {
 import { UpdateWorkerScalingSettingsUseCase } from '../../application/use-cases/UpdateWorkerScalingSettingsUseCase';
 import { PrismaWorkerHeartbeatRepository } from '../repositories/PrismaWorkerHeartbeatRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
+import { env } from '../../../../shared/config/env';
+import { GetWorkerCapacityUseCase } from '../../application/use-cases/GetWorkerCapacityUseCase';
+import { PrismaWorkerCapacityReader } from '../repositories/PrismaWorkerCapacityReader';
+import { PrismaOpsMetricsSampleRepository } from '../../../metrics/infrastructure/repositories/PrismaOpsMetricsSampleRepository';
 
 export interface SessionLeaseContainer {
   workerId: string;
@@ -179,6 +183,22 @@ export function updateWorkerScalingSettingsUseCase(): UpdateWorkerScalingSetting
     workerScalingSettingsViewDeps(),
   );
   return updateSettingsUseCase;
+}
+
+let capacityUseCase: GetWorkerCapacityUseCase | undefined;
+
+/**
+ * Capacidade por plano e do cluster (WSCALE-09), singleton preguiçoso. Só tabelas locais; os IDs
+ * `srv-` de `RENDER_RESOURCE_IDS` só decidem se a memória é atribuível (mais de um → `null`).
+ */
+export function getWorkerCapacityUseCase(): GetWorkerCapacityUseCase {
+  capacityUseCase ??= new GetWorkerCapacityUseCase({
+    reader: new PrismaWorkerCapacityReader(prisma),
+    samples: new PrismaOpsMetricsSampleRepository(prisma),
+    settings: () => getWorkerScalingSettingsUseCase().execute(),
+    renderServiceIds: (env.RENDER_RESOURCE_IDS ?? '').split(',').map((s) => s.trim()).filter((s) => s.startsWith('srv-')),
+  });
+  return capacityUseCase;
 }
 
 /**
