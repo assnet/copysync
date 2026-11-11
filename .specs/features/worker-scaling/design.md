@@ -20,19 +20,20 @@ API (qualquer papel) ── platform_settings["worker_scaling"] ◄── refres
                                               OpsMetricsSamplerJob ── SessionsOccupancySource (conta no banco)
 ```
 
-A fonte da verdade é sempre o banco. O cache do provider é derivado e descartável, por isso não fere a regra
-"nada de estado operacional novo em memória" de `docs/arquitetura-escala.md`.
+A fonte da verdade é o banco. O cache do provider é derivado e descartável (cache de desempenho, aceito por
+`docs/arquitetura-escala.md` §6). **Boot degradado:** se a primeira leitura falhar, o processo sobe com os valores da env
+(os mesmos de hoje), loga `warn` e troca no primeiro refresh que der certo.
 
 ## 2. Reuso
 
 | Peça | Onde | Como |
 | --- | --- | --- |
 | `PlatformSetting` | `api/prisma/schema.prisma:921` | Chave `worker_scaling`; sem migration para a configuração |
-| Padrão de leitura/gravação | `assistants/infrastructure/repositories/PrismaAiSettingsRepository.ts` | Mesmo formato de repositório; acrescenta `updatedAt` para concorrência |
+| Padrão de leitura/gravação | `assistants/infrastructure/repositories/PrismaAiSettingsRepository.ts` | Mesmo formato de repositório; usa `updatedAt`/`updatedById` que já existem (`schema.prisma:921-925`) para concorrência |
 | Auditoria sem tenant | `tenants/application/use-cases/SetPlanEntitlementUseCase.ts:46` | `audit.create({ userId, action, meta })` |
-| Limites do gate | `sessions/application/services/CapacityLimitedLeaseGate.ts:60-65,127-137` | Trocar `limits` fixo por função `() => limits` |
+| Limites do gate | `sessions/application/services/CapacityLimitedLeaseGate.ts:68` (construtor), usos em `:129-137` | Trocar `limits` fixo por função `() => limits` |
 | Composição | `sessions/infrastructure/lease/sessionLeaseContainer.ts:45-47`, `sessionAdoptionContainer.ts:78-102` | Injetar o provider |
-| Política pura | `sessions/domain/services/sessionAdoptionPolicy.ts` | `capacityAlertReason` recebe ratio e segundos como parâmetro |
+| Política pura | `sessions/domain/services/sessionAdoptionPolicy.ts:23,26,62-63` | **Mudança de assinatura** (não reuso): `capacityAlertReason` hoje usa constantes; passa a receber ratio e segundos |
 | Coletor | `metrics/infrastructure/jobs/OpsMetricsSamplerJob.ts:176` | Fonte nova no array `sources` |
 | Cliente Render | `metrics/infrastructure/sources/RenderPlatformMetricsSource.ts:21-131` | Mesmo padrão: `fetchFn` injetável, `AbortSignal.timeout`, chave nunca logada |
 | Job por papel | `app/processJobs.ts`, `shared/jobs/IJobLease.ts` | `workerAutoscaler` em `WORKER_JOBS` |
@@ -89,7 +90,7 @@ Sem flag de privacidade: nenhum dado de cliente (só contagens por plano). Regis
 Contagens (relógio `now() AT TIME ZONE 'UTC'`):
 - `connected`: sessões com `leaseUntil` vivo e status `CONNECTED`;
 - `pending_login`: lease vivo e status `AWAITING_*`/`CONNECTING`;
-- `awaiting`: `connectRequestedAt` não nulo, sem dono vivo (mesma regra de `countAwaitingCapacity`);
+- `awaiting`: reutiliza `countAwaitingCapacity()` de `PrismaSessionAdoptionRepository.ts:88-97` (status adotável, engine, tenant `ACTIVE`, `deletedAt IS NULL`, sem dono vivo), sem filtro de idade, igual ao `GET /admin/workers`;
 - `capacity`: com adoção, soma dos tetos dos workers vivos; sem adoção, `maxSessionsPerWorker` × processos donos de lease (mínimo 1).
 
 ## 5. Erros
@@ -112,13 +113,19 @@ Contagens (relógio `now() AT TIME ZONE 'UTC'`):
 - **Evento antes da chamada externa:** grava `requested`, chama a Render, atualiza para `failed` se der erro. Queda no
   meio deixa rastro e o intervalo mínimo conta a partir do pedido.
 - **Autoscaler lê amostras, não memória:** "acima do limiar por N segundos" = todas as amostras `sessions_*` da janela
-  acima do limiar e pelo menos `ceil(N ÷ 300)` amostras (o coletor grava a cada 5 min). Depende do coletor ligado;
+  acima do limiar e pelo menos `ceil(N ÷ 300)` amostras. Cada amostra é a média de 5 min (`OPS_PERSIST_EVERY_TICKS = 5`),
+  então a resolução é de 5 min e o mínimo configurável é 300 s. Depende do coletor ligado;
   sem amostra recente o job não age e registra `rejected: no_samples` no máximo uma vez por hora.
 - **Chave da Render:** a chave comum tem escrita em todos os workspaces do usuário. Fica só na env do serviço; a rota
   nunca devolve a chave nem o id do serviço completo. Recomendar scoped key quando sair do early access.
 - **`maxShutdownDelaySeconds`:** o drain do `SIGTERM` precisa caber no prazo do serviço worker. O comportamento na
   redução de réplicas não está na documentação de referência da Render: validar em smoke (tarefa própria) antes de
   liberar a redução em produção.
+- **`GET /admin/workers/scale` e a Render:** o estado vem de `getState` com cache de 30 s por processo (a tela atualiza a
+  cada 20 s); `POST /scale` sempre lê ao vivo antes de agir. As rotas de métricas (`/admin/ops/metrics/*`) continuam sem
+  chamar a Render.
+- **Navegação:** as abas novas são sub-rotas de `/admin/workers`, cobertas pelo `matchPrefix` do item existente
+  (`navigation/model.ts:133`), como `/admin/workers/usage`. Sem item de menu novo.
 - **Serviço com disco não escala:** o escalador só pode apontar para serviço sem disco (mídia em S3). `getState`
   devolve `hasDisk`; com disco, `scaleTo` é recusado.
 

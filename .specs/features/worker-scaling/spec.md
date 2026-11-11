@@ -23,6 +23,11 @@ O super admin gerencia a capacidade pelo painel, sem redeploy: define o teto por
 contratada × usada × disponível, sobe ou reduz réplicas por decisão própria e, opcionalmente, liga a subida automática
 com teto de custo. Com tudo no padrão (configuração nunca salva, escalador desligado), **nada muda** em relação a hoje.
 
+**Limite conhecido:** o teto só é **aplicado** com a adoção ligada (`WORKER_ADOPTION_ENABLED=true`): sem ela o gate com teto
+nem é criado (`sessionLeaseContainer.ts:130`) e não há heartbeat (`sessionAdoptionContainer.ts:92-93`). Produção hoje roda
+sem adoção: ali a P1 guarda e mostra a configuração, a P2 mede e alerta, e o bloqueio por teto passa a valer quando a
+adoção for ligada (D12).
+
 ## Alternativas avaliadas
 
 | Tema | Alternativa | Veredito | Por quê |
@@ -43,15 +48,15 @@ com teto de custo. Com tudo no padrão (configuração nunca salva, escalador de
 
 | ID | Requisito |
 | --- | --- |
-| WSCALE-01 | Configuração `WorkerScalingSettings` em `platform_settings` (chave `worker_scaling`, JSON validado no domínio): `maxSessionsPerWorker` (1–1000), `maxPendingLoginsPerWorker` (1–500), `alertOccupancyRatio` (0,5–0,95), `awaitingAlertSeconds` (30–3600), `scalerMode` (`off`\|`manual`\|`auto`), `minReplicas` (1–20), `maxReplicas` (≥ min, ≤ 20), `scaleUpSustainSeconds` (60–3600), `scaleCooldownSeconds` (300–86400). Campo desconhecido é rejeitado; fora da faixa → 400 com o campo |
+| WSCALE-01 | Configuração `WorkerScalingSettings` em `platform_settings` (chave `worker_scaling`, JSON validado no domínio): `maxSessionsPerWorker` (1–1000), `maxPendingLoginsPerWorker` (1–500), `alertOccupancyRatio` (0,5–0,95), `awaitingAlertSeconds` (30–3600), `scalerMode` (`off`\|`manual`\|`auto`), `minReplicas` (1–20), `maxReplicas` (≥ min, ≤ 20), `scaleUpSustainSeconds` (300–3600, resolução de 5 min: é o intervalo de gravação das amostras), `scaleCooldownSeconds` (300–86400). Campo desconhecido é rejeitado; fora da faixa → 400 com o campo |
 | WSCALE-02 | Sem linha salva, o valor efetivo é o de hoje: `WORKER_MAX_SESSIONS`/`WORKER_MAX_PENDING_LOGINS` da env (viram só valor inicial), 0,8, 120 s, `scalerMode=off`. A resposta diz a origem de cada campo (`default` \| `saved`). Depois de salvo, o banco vence a env |
 | WSCALE-03 | `IWorkerScalingSettingsProvider.current()` síncrono, alimentado por refresh a cada 30 s (`unref`) e na hora no processo que salvou. Falha de leitura mantém o último valor bom e loga `warn` sem dado sensível; nunca derruba adoção nem lease |
-| WSCALE-04 | Gate do lease, adoção, heartbeat e alerta leem o teto e os limiares do provider **a cada uso** (não no construtor). Mudança vale em todas as réplicas em até 30 s, sem reinício |
+| WSCALE-04 | Com a adoção ligada, gate do lease, adoção, heartbeat e alerta leem o teto e os limiares do provider **a cada uso** (não no construtor). Mudança vale em todas as réplicas em até 30 s, sem reinício. Com a adoção desligada o teto não é aplicado (como hoje) e a API devolve `enforced: false` |
 | WSCALE-05 | Reduzir o teto abaixo das sessões atuais **não derruba** sessão: o worker só para de adotar (ocupação > 100% visível). Aumentar libera vaga no próximo tick |
 | WSCALE-06 | `GET /admin/workers/settings` e `PUT /admin/workers/settings` (super admin). `PUT` exige `expectedUpdatedAt` (409 se outro admin salvou antes), grava `updatedById` e auditoria `WORKER_SCALING_SETTINGS_CHANGED` com antes/depois |
-| WSCALE-07 | Aba **Configuração** em `/admin/workers/settings`: formulário com faixa e ajuda por campo, confirmação antes de salvar mostrando o que muda, erro por campo, aviso quando o teto novo fica abaixo da ocupação atual. Rascunho em `usePersistedState` (escopo `tab`), limpo ao salvar |
+| WSCALE-07 | Aba **Configuração** em `/admin/workers/settings`: formulário com faixa e ajuda por campo, confirmação antes de salvar mostrando o que muda, erro por campo, aviso quando o teto novo fica abaixo da ocupação atual, faixa "sem efeito até ligar a adoção" quando `enforced: false`, e confirmação reforçada (digitar o valor) quando o teto passa do `suggestedMaxSessions` ou não há amostra de RAM (regra "não subir o teto sem medir", `docs/arquitetura-escala.md` §6). Par mínimo–máximo de réplicas em `RangeSlider`. Rascunho em `usePersistedState` (escopo `tab`), limpo ao salvar |
 | WSCALE-08 | Coletor grava a cada tick `sessions_connected`, `sessions_pending_login`, `sessions_awaiting` e `sessions_capacity` (fonte `sessions`, recurso `cluster`), contando no banco, em `all` e `worker`, com ou sem adoção |
-| WSCALE-09 | `GET /admin/workers/capacity`: por plano (`tenants`, `contracted` por canal, `unlimitedTenants`, `created`, `connected`) e do cluster (`capacity`, `connected`, `occupancyPct`, `headroom`, `requiredReplicas = ceil(connected ÷ (teto × ratio))`, `mbPerSession` e `suggestedMaxSessions` quando há amostra). Só tabelas locais, sem dado de tenant individual, `statement_timeout` 2 s |
+| WSCALE-09 | `GET /admin/workers/capacity`: por plano (`tenants`, `contracted` por canal, `unlimitedTenants`, `created`, `connected`) e do cluster (`capacity`, `connected`, `occupancyPct`, `headroom`, `requiredReplicas = ceil(connected ÷ (teto × ratio))`, `mbPerSession` e `suggestedMaxSessions` quando há amostra). `connected` aqui é a contagem do banco (lease vivo + `CONNECTED`), rotulada como tal; a aba Ocupação segue com a soma dos batimentos. `mbPerSession` = média de `memory` da Render (serviços que rodam sessões) ÷ média de `sessions_connected` na janela; sem métrica da Render (`RENDER_API_KEY`/`RENDER_RESOURCE_IDS`) ou sem sessões, `null`. Só tabelas locais, sem dado de tenant individual, `statement_timeout` 2 s |
 | WSCALE-10 | Aba **Capacidade** em `/admin/workers/capacity`: cartões do cluster, tabela por plano, série de sessões × capacidade (7 dias) e projeção "cabem mais N clientes" por plano. Sem dado medido, mostra "sem amostra" em vez de número |
 | WSCALE-11 | Porta `IWorkerScaler` (`getState`, `scaleTo`) com adaptador Render (`GET /services/{id}`, `GET /services/{id}/instances`, `POST /services/{id}/scale`). Liga só com `WORKER_SCALER_ENABLED=true`, `RENDER_API_KEY` e `WORKER_SCALER_SERVICE_ID`; senão o estado é `not_configured` e nenhuma chamada sai. Chave nunca em resposta nem log; timeout 5 s; 429 respeita `Retry-After` |
 | WSCALE-12 | `POST /admin/workers/scale` `{ replicas, reason }` (super admin): exige `scalerMode ≠ off`, `min ≤ replicas ≤ max`, adoção ligada e intervalo `scaleCooldownSeconds` desde a última escalada bem-sucedida. Redução só se `(replicas × teto × ratio) ≥ conectadas`; senão 409 com os números. Idempotente por `requestId` |
@@ -77,7 +82,7 @@ com teto de custo. Com tudo no padrão (configuração nunca salva, escalador de
 
 ## Critérios de aceite (smoke, depois da última tarefa de cada fase)
 
-1. **P1:** salvar teto 25 na tela → em até 30 s o heartbeat e o gate usam 25, sem reinício; sem linha salva, o comportamento é idêntico ao de antes do deploy.
+1. **P1:** em ambiente local com Postgres descartável e adoção ligada, salvar teto 25 na tela → em até 30 s o heartbeat e o gate usam 25, sem reinício. Com adoção desligada, a tela mostra "sem efeito" e nada muda. Sem linha salva, o comportamento é idêntico ao de antes do deploy.
 2. **P2:** a aba Capacidade mostra as 27 contratadas, as conectadas e a série de sessões; `mbPerSession` aparece depois de 1 h de amostras.
 3. **P3:** com o escalador configurado num serviço de teste, "Subir 1" muda `numInstances` na Render e gera evento; sem configuração, a tela explica o que falta e nenhuma chamada sai.
 4. **P4:** com `auto`, ocupação acima do limiar pelo tempo configurado sobe uma réplica uma única vez dentro do intervalo mínimo.
@@ -94,3 +99,4 @@ com teto de custo. Com tudo no padrão (configuração nunca salva, escalador de
 | D6 | Linha nova "Gestão de workers" em "Ferramentas operacionais" do roadmap | Sem item | Regra: feature nova cabe em item do roadmap |
 | D7 | Drenar worker fica opcional (P5) | Obrigatório antes de reduzir | A Render escolhe a instância encerrada |
 | D8 | Kill switch `WORKER_SCALER_ENABLED` na env, além do modo no painel | Só o painel | `api/.env` local aponta para produção: sem a env, nenhum processo local chama a Render |
+| D12 | Teto continua aplicado só com a adoção ligada; no modo `all` atual a proteção é o alerta de ocupação (WSCALE-17) | Aplicar o teto também sem adoção | Aplicar sem adoção muda a E3 em produção: a 41ª sessão passaria a ser recusada sem haver outro worker para assumir |

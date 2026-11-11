@@ -5,7 +5,7 @@
 ## Regras comuns
 
 **Branch e merge** (regra atual do projeto, memória `branch-integracao-rebranding`):
-- Tudo nasce de `feature/rebranding-app`. Branch da feature: `feature/worker-scaling`. Cada tarefa roda em worktree
+- Tudo nasce de `feature/rebranding-app` (decisão do dono de 2026-10-26, que prevalece sobre o `AGENTS.md` §31.2). Branch da feature: `feature/worker-scaling`. Cada tarefa roda em worktree
   próprio com branch `ws/t<N>` saído do topo de `feature/worker-scaling`; aprovado no gate, entra por `cherry-pick`.
 - Fim de cada fase (P1–P4): gate completo + revisão convergida → `git merge --no-ff feature/worker-scaling` **local** em
   `feature/rebranding-app`. **Sem push** sem o dono pedir (o push publica o CopySync na Render). Nunca push da branch de feature.
@@ -59,7 +59,7 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 | T14 | Contas de capacidade | R1 | P | pendente |
 | T15 | Leitor de capacidade por plano | T13 | | pendente |
 | T16 | Use case e rota de capacidade | T14, T15 | | pendente |
-| T17 | Alerta de ocupação sem adoção | T13 | P | pendente |
+| T17 | Alerta de ocupação sem adoção | T13 | | pendente |
 | T18 | Painel: aba Capacidade | T16 | | pendente |
 | T19 | Docs, versão e changelog da P2 | T17, T18 | | pendente |
 | R2 | Revisão da P2 e merge | T19 | | pendente |
@@ -85,7 +85,7 @@ P1  onda 1 (4 agentes): T1 ∥ T2 ∥ T4* ∥ T10        (*T4 começa quando T1 
     onda 4 (1 agente) : T11 → T12
     R1: revisão → correções → merge --no-ff local
 P2  onda 1 (2 agentes): T13 (banco) ∥ T14
-    onda 2 (2 agentes): T15 (banco) ∥ T17
+    onda 2 (1 agente) : T15 (banco) → T17      (T17 edita o mesmo `OpsMetricsSamplerJob.ts` da T13)
     onda 3 (1 agente) : T16 → T18 → T19
     R2
 P3  onda 1 (2 agentes): T20 (banco) ∥ T21
@@ -144,11 +144,11 @@ Pico de 4 agentes de implementação + 1 revisor; folga para o teto de 7.
 **What**: `sessionLeaseContainer` e `sessionAdoptionContainer` criam um provider único e o injetam; `AdoptNextSessionUseCase.hasCapacity` passa a ler do provider; `server.ts` faz `provider.start()` antes do lease e `stop()` no shutdown. Env continua como valor inicial.
 **Where**: `sessions/infrastructure/lease/sessionLeaseContainer.ts`, `sessionAdoptionContainer.ts`, `sessions/application/use-cases/AdoptNextSessionUseCase.ts`, `api/src/app/server.ts`, `shared/config/workerAdoption.ts`
 **Depends on**: T3, T4, T5, T6 · **Requirement**: WSCALE-02, WSCALE-04
-**Done when**: `grep` não acha leitura de `WORKER_MAX_SESSIONS`/`WORKER_MAX_PENDING_LOGINS` fora de `env.ts` e do cálculo de `envDefaults`; testes dos containers e do use case verdes
+**Done when**: `grep` não acha leitura de `WORKER_MAX_SESSIONS`/`WORKER_MAX_PENDING_LOGINS` fora de `env.ts` e do cálculo de `envDefaults`; com adoção desligada o gate continua sem teto (teste explícito: comportamento igual ao de hoje) e o provider ainda sobe para servir as rotas; boot com falha de leitura usa a env; testes dos containers e do use case verdes
 **Tests**: unit · **Gate**: full · **Commit**: `feat(sessions): teto dos workers vem da configuração em banco`
 
 ### T8: Use cases de leitura e gravação
-**What**: `GetWorkerScalingSettingsUseCase` (efetivo + origem + `updatedAt`); `UpdateWorkerScalingSettingsUseCase` (valida, salva com `expectedUpdatedAt`, audita antes/depois, `provider.refresh()`).
+**What**: `GetWorkerScalingSettingsUseCase` (efetivo + origem + `updatedAt` + `enforced` = adoção ligada); `UpdateWorkerScalingSettingsUseCase` (valida, salva com `expectedUpdatedAt`, audita antes/depois, `provider.refresh()`).
 **Where**: `sessions/application/use-cases/` (+ `.test.ts`)
 **Depends on**: T2, T3, T4 · **Reuses**: `SetPlanEntitlementUseCase.ts:46` · **Requirement**: WSCALE-06
 **Done when**: testes cobrem sucesso, validação, conflito, auditoria com diff e refresh chamado
@@ -163,13 +163,13 @@ Pico de 4 agentes de implementação + 1 revisor; folga para o teto de 7.
 
 ### T10: Painel — contratos, regras, serviço [P]
 **What**: tipos de configuração; `validateSettingsDraft`, `diffSettings`; métodos `getSettings`/`updateSettings` no serviço; textos (rótulo, ajuda e faixa por campo, erros).
-**Where**: `app/src/features/workersAdmin/{types,rules,strings}.ts`, `app/src/services/adminWorkers.service.ts` (+ `rules.test.ts`)
+**Where**: edição dos arquivos que já existem: `app/src/features/workersAdmin/{types,rules,strings}.ts`, `rules.test.ts`, `app/src/services/adminWorkers.service.ts`. T11, T18 e T24 tocam os mesmos arquivos, por isso são sequenciais
 **Depends on**: — (contrato do `design.md` §3/§5) · **Requirement**: WSCALE-07
 **Done when**: testes de `rules` cobrem cada faixa e o diff
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(app): contratos e regras da configuração de workers`
 
 ### T11: Painel — aba Configuração
-**What**: aba `Configuração` em `/admin/workers/settings` (chunk `lazy`), `useWorkerSettings`, formulário com `TextField` numérico + ajuda em `Tooltip`, `Switch`/seletor do modo, `ConfirmDialog` com o diff, `Snackbar`, aviso de teto abaixo da ocupação, rascunho em `usePersistedState('workers.settings.draft')` limpo ao salvar; rota em `AppRoutes`.
+**What**: aba `Configuração` em `/admin/workers/settings` (chunk `lazy`), `useWorkerSettings`, formulário com `TextField` numérico + ajuda em `Tooltip` nos campos simples, `RangeSlider` no par mínimo–máximo de réplicas (`docs/padrao-ui-painel.md:11`), seletor do modo, `ConfirmDialog` com o diff, confirmação reforçada (digitar o valor) quando o teto passa do sugerido ou não há amostra, faixa "sem efeito até ligar a adoção" quando `enforced: false`, `Snackbar`, aviso de teto abaixo da ocupação, rascunho em `usePersistedState('workers.settings.draft')` limpo ao salvar; rota em `AppRoutes`.
 **Where**: `app/src/features/workersAdmin/components/SettingsTab.tsx`, `useWorkerSettings.ts`, `pages/admin/AdminWorkersPage.tsx`, `routes/AppRoutes.tsx` (+ testes)
 **Depends on**: T9, T10 · **Reuses**: `AdminPlanEntitlementsPage.tsx`, `AiProviderDialog.tsx` · **Requirement**: WSCALE-07
 **Tools**: skills `ui-ux-pro-max` (layout) e `agent-browser` (conferência visual claro/escuro/sistema e largura de celular)
@@ -187,13 +187,13 @@ Pico de 4 agentes de implementação + 1 revisor; folga para o teto de 7.
 
 ### T13: Métricas de sessões no coletor
 **What**: `sessions_connected`, `sessions_pending_login`, `sessions_awaiting`, `sessions_capacity` em `OPS_METRIC`; `SessionsOccupancySource` com as contagens de `design.md` §4; plugar em `opsMetricsContainer`.
-**Where**: `metrics/domain/OpsMetric.ts`, `metrics/infrastructure/sources/SessionsOccupancySource.ts`, `opsMetricsContainer.ts` (+ `.int.test.ts`)
+**Where**: `metrics/domain/OpsMetric.ts` (`OpsMetricSource` + `OPS_METRIC`), `metrics/infrastructure/sources/SessionsOccupancySource.ts`, `metrics/infrastructure/jobs/OpsMetricsSamplerJob.ts` (opção nova no construtor `:40-53` e array `sources` `:176`), `opsMetricsContainer.ts` (+ `.int.test.ts`)
 **Depends on**: R1 · **Requirement**: WSCALE-08
 **Done when**: integração cobre lease vivo/vencido, status de login, aguardando sem dono, capacidade com e sem heartbeat
 **Tests**: integration-db · **Gate**: integration-db · **Commit**: `feat(metrics): métricas de sessões no coletor`
 
 ### T14: Contas de capacidade [P]
-**What**: `requiredReplicas`, `mbPerSession`, `suggestedMaxSessions` (0,7 × limite ÷ MB por sessão), `canScaleDownTo`, `shouldScaleUp(samples, settings, now)`; sem amostra → `null`.
+**What**: `requiredReplicas`, `mbPerSession` (entrada: média de `memory` da Render e média de `sessions_connected`; sem uma das duas → `null`), `suggestedMaxSessions` (0,7 × limite ÷ MB por sessão), `canScaleDownTo`, `shouldScaleUp(samples, settings, now)`; sem amostra → `null`.
 **Where**: `sessions/domain/services/capacityPlan.ts` (+ `.test.ts`)
 **Depends on**: R1 · **Requirement**: WSCALE-09, WSCALE-12, WSCALE-15, WSCALE-16
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(sessions): contas de capacidade e regras de escala`
@@ -211,8 +211,8 @@ Pico de 4 agentes de implementação + 1 revisor; folga para o teto de 7.
 **Depends on**: T14, T15 · **Requirement**: WSCALE-09
 **Tests**: unit · **Gate**: full · **Commit**: `feat(sessions): rota de capacidade dos workers`
 
-### T17: Alerta de ocupação sem adoção [P]
-**What**: `opsAlertPolicy` ganha limiar de ocupação de sessões (configuração) aplicado às amostras `sessions_*`; o coletor levanta o alerta em `all` sem adoção.
+### T17: Alerta de ocupação sem adoção
+**What**: `OpsAlertInput` (`opsAlertPolicy.ts:35-44`) ganha `sessionOccupancy: { connected, capacity, ratio }` calculado pelo coletor a partir das leituras `sessions_*` do tick; `OpsAlertReason` (`:18`) ganha `session_occupancy`; o alerta dispara quando `connected ÷ capacity > ratio`. O coletor levanta em `all` sem adoção (com adoção o `WorkerCapacityAlertJob` já cobre: não duplicar).
 **Where**: `metrics/domain/services/opsAlertPolicy.ts`, `OpsMetricsSamplerJob.ts` (+ testes)
 **Depends on**: T13 · **Requirement**: WSCALE-17
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): alerta de ocupação de sessões`
@@ -277,7 +277,7 @@ Como R1, com atenção de segurança: chave e id de serviço fora de resposta, l
 **What**: `WorkerAutoscalerJob` (lease `worker-autoscaler`, tick 60 s, `unref`), decisão por `shouldScaleUp` sobre as amostras do banco, chama `ScaleWorkersUseCase` com `trigger=auto`; `rejected: no_samples` no máximo uma vez por hora; registro em `processJobs.ts` (`WORKER_JOBS`) e `server.ts`.
 **Where**: `sessions/infrastructure/jobs/WorkerAutoscalerJob.ts`, `app/processJobs.ts`, `app/server.ts` (+ `.test.ts`; `.int.test.ts` para a leitura das amostras)
 **Depends on**: R3 · **Requirement**: WSCALE-15, WSCALE-16
-**Done when**: testes cobrem modo `off`/`manual` (não age), sustentado incompleto, intervalo mínimo, teto de réplicas, troca de dono do lease sem escalada dupla
+**Done when**: testes cobrem modo `off`/`manual` (não age), sustentado incompleto, intervalo mínimo, teto de réplicas, troca de dono do lease sem escalada dupla e reinício do processo no meio da janela (contagem preservada pelas amostras)
 **Tests**: unit + integration-db · **Gate**: full + integration-db · **Commit**: `feat(sessions): subida automática de workers`
 
 ### T28: Painel — modo automático e docs da P4
@@ -296,13 +296,13 @@ Só se o dono aprovar a D7. Detalhar em tarefas próprias antes de executar (WSC
 | # | Decisão (proposta) | Alternativa | Por quê |
 | --- | --- | --- | --- |
 | D1–D8 | Ver [`spec.md`](spec.md), seção Decisões | | |
-| D9 | Entregar P1 e P2 antes de ligar a escala em produção (funcionam no modo `all` atual) | Esperar o checklist §5.1 | Mede MB por sessão e dá o teto no painel já para a pré-venda |
+| D9 | Entregar P1 e P2 antes de ligar a escala em produção. No modo `all` atual a P2 mede e alerta; a P1 guarda o teto, que só passa a bloquear com a adoção ligada (D12 da spec) | Esperar o checklist §5.1 | Mede MB por sessão e deixa o teto pronto no painel já para a pré-venda |
 | D10 | P3 e P4 saem com `WORKER_SCALER_ENABLED=false`; ligar é passo do dono depois do T25 | Ligar no deploy | Nenhuma chamada à Render sem teste real |
 | D11 | Uma versão minor por fase, a partir de api 0.79.0 e app 0.98.0 (ajustar ao que estiver no topo na hora) | Uma só no fim | Regra do projeto: versão a cada entrega |
 
 ## Riscos
 
-- **Teto errado digitado** (ex.: 400 em vez de 40) estoura a RAM: faixa validada, confirmação com diff e aviso quando o valor passa do `suggestedMaxSessions`.
+- **Teto errado digitado** (ex.: 400 em vez de 40) estoura a RAM: faixa validada, confirmação com diff e confirmação reforçada quando o valor passa do `suggestedMaxSessions` ou não há amostra.
 - **Refresh de 30 s** deixa réplicas com tetos diferentes por instantes: aceito; nenhuma sessão cai por isso.
 - **Coletor desligado** (`OPS_METRICS_SAMPLER_ENABLED=false`): sem amostras não há série nem subida automática; a tela diz isso.
 - **Chave da Render com escrita ampla**: só na env do serviço; rota nunca a devolve; recomendação de scoped key registrada.
