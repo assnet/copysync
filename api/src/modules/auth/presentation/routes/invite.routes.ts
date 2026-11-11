@@ -6,9 +6,9 @@ import { PrismaUserInviteRepository } from '../../../users/infrastructure/reposi
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
 import { PrismaTenantRepository } from '../../../tenants/infrastructure/repositories/PrismaTenantRepository';
 import { AcceptInviteUseCase } from '../../../users/application/use-cases/AcceptInviteUseCase';
-import { decideInviteAccess, isFirstAccessInvite } from '../../../users/domain/services/inviteAccess';
+import { decideInviteAccess, inviteUsability, isFirstAccessInvite } from '../../../users/domain/services/inviteAccess';
 import { InvitePresenter } from '../presenters/InvitePresenter';
-import { InviteInvalidError } from '../../../../shared/errors/internal/TeamErrors';
+import { InviteAlreadyAcceptedError, InviteInvalidError } from '../../../../shared/errors/internal/TeamErrors';
 
 const inviteRepo = new PrismaUserInviteRepository();
 const userRepo = new PrismaUserRepository();
@@ -48,6 +48,7 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
             },
           },
           404: { $ref: 'ErrorResponse#' },
+          409: { $ref: 'ErrorResponse#' },
         },
       },
     },
@@ -55,9 +56,9 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       const tokenHash = hashInviteToken(request.params.token);
       const invite = await inviteRepo.findByTokenHash(tokenHash);
 
-      if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) {
-        throw new InviteInvalidError();
-      }
+      const usability = inviteUsability(invite, new Date());
+      if (usability === 'ALREADY_ACCEPTED') throw new InviteAlreadyAcceptedError();
+      if (usability === 'INVALID' || !invite) throw new InviteInvalidError();
 
       const user = await userRepo.findByEmail(invite.email);
       const hasPassword = user?.hasPassword() ?? false;
