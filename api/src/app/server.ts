@@ -43,7 +43,7 @@ import { registerGroupMonitoringListener } from '../modules/automation/infrastru
 import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
 import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
-import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
+import { sessionLeaseContainer, workerScalingSettingsProvider } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
 import { sessionAdoptionContainer } from '../modules/sessions/infrastructure/lease/sessionAdoptionContainer';
 import { createOpsMetricsSamplerJob } from '../modules/metrics/infrastructure/opsMetricsContainer';
 import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/jobs/OpsMetricsSamplerJob';
@@ -137,6 +137,13 @@ async function start(): Promise<void> {
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
+
+  // ── Configuração de escala (WSCALE-03) ─────────────────────────────────────
+  // Antes do boot das sessões e da adoção: gate, adoção e jobs já leem o valor do banco. Falha de
+  // leitura não lança: segue com o teto da env e troca no próximo refresh (30 s, `unref`).
+  const scalingSettings = workerScalingSettingsProvider();
+  await scalingSettings.refresh();
+  scalingSettings.start();
 
   // ── Media module (ffmpeg + pasta de uploads) ───────────────────────────────
   // Antes do listen: a primeira requisição já vê as capacidades detectadas. Só loga.
@@ -419,7 +426,12 @@ async function start(): Promise<void> {
     if (jobs.has('workerHeartbeat')) adoption.heartbeat.start();
     if (jobs.has('capacityAlert')) adoption.capacityAlert.start();
     logger.info(
-      { workerId: lease.workerId, maxSessions: adoption.config.maxSessions, shard: adoption.config.shard },
+      {
+        workerId: lease.workerId,
+        maxSessions: scalingSettings.current().value.maxSessionsPerWorker,
+        maxPendingLogins: scalingSettings.current().value.maxPendingLoginsPerWorker,
+        shard: adoption.config.shard,
+      },
       'Session adoption started',
     );
   }
@@ -445,6 +457,7 @@ async function start(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received');
     // Cancela o timer já; a passada em curso é aguardada antes de fechar os sockets (F8).
     const bootRecheckSettled = cancelBootRecheck?.() ?? Promise.resolve();
+    scalingSettings.stop();
     // LEASE-09: primeiro o keeper — nenhuma renovação concorre com o fechamento dos sockets.
     if (sessions) {
       try {

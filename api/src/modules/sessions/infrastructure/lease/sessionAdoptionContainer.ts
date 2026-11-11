@@ -16,9 +16,9 @@ import { AdoptNextSessionUseCase } from '../../application/use-cases/AdoptNextSe
 import { SessionAdoptionTicker } from '../../application/services/SessionAdoptionTicker';
 import { WorkerHeartbeatJob } from '../jobs/WorkerHeartbeatJob';
 import { WorkerCapacityAlertJob } from '../jobs/WorkerCapacityAlertJob';
-import { defaultWorkerScalingSettings } from '../../domain/services/workerScalingSettings';
+import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
 import { registerSessionAdoptionResetListener } from '../listeners/SessionAdoptionResetListener';
-import { sessionLeaseContainer, type SessionLeaseContainer } from './sessionLeaseContainer';
+import { sessionLeaseContainer, workerScalingSettingsProvider, type SessionLeaseContainer } from './sessionLeaseContainer';
 
 export interface SessionAdoptionContainer {
   config: WorkerAdoptionConfig;
@@ -37,6 +37,8 @@ export interface SessionAdoptionContainer {
 export interface SessionAdoptionDeps {
   config: WorkerAdoptionConfig;
   lease: Pick<SessionLeaseContainer, 'workerId' | 'occupancy'>;
+  /** Configuração de escala do processo; lida a cada tick, nunca guardada. */
+  settings: Pick<IWorkerScalingSettingsProvider, 'current'>;
   /** Papel do processo (`worker`/`all`), gravado no heartbeat. */
   role: string;
   adoption: ISessionAdoptionRepository;
@@ -53,6 +55,7 @@ export interface SessionAdoptionDeps {
  */
 export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): SessionAdoptionContainer {
   const { config, lease, adoption, heartbeats } = deps;
+  const settings = () => deps.settings.current().value;
   const tick = new AdoptNextSessionUseCase({
     adoption,
     engine: deps.engine,
@@ -60,15 +63,9 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
     occupiedSessions: () => lease.occupancy().sessions,
     workerId: lease.workerId,
     shard: config.shard,
-    maxSessions: config.maxSessions,
+    maxSessions: () => settings().maxSessionsPerWorker,
   });
   const unregister = (deps.registerReset ?? registerSessionAdoptionResetListener)(adoption);
-  // Valores da env por enquanto; a troca pelo provider da configuração de escala é da T7.
-  const scalingSettings = defaultWorkerScalingSettings({
-    maxSessionsPerWorker: config.maxSessions,
-    maxPendingLoginsPerWorker: config.maxPendingLogins,
-  });
-  const settings = () => scalingSettings;
   return {
     config,
     adoption,
@@ -103,6 +100,7 @@ export function sessionAdoptionContainer(): SessionAdoptionContainer | null {
   instance = buildSessionAdoptionContainer({
     config,
     lease: sessionLeaseContainer(),
+    settings: workerScalingSettingsProvider(),
     role: currentRole(),
     adoption: new PrismaSessionAdoptionRepository(),
     heartbeats: new PrismaWorkerHeartbeatRepository(),

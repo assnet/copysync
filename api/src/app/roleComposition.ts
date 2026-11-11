@@ -65,7 +65,7 @@ async function outboundMediaTransfer() {
 }
 
 async function composeWorker(): Promise<RoleComposition> {
-  const [{ localEngine }, { sessionLeaseContainer }, redis, { EngineCommandServer }, { RedisEngineRpcServer }, { BullEngineCommandQueues }, ws, { RedisChatEventRelay }, { workerAdoptionConfig }, { hasCapacity }] =
+  const [{ localEngine }, { sessionLeaseContainer, workerScalingSettingsProvider }, redis, { EngineCommandServer }, { RedisEngineRpcServer }, { BullEngineCommandQueues }, ws, { RedisChatEventRelay }, { workerAdoptionConfig }, { hasCapacity }] =
     await Promise.all([
       import('../modules/messaging/infrastructure/localEngineContainer'),
       import('../modules/sessions/infrastructure/lease/sessionLeaseContainer'),
@@ -82,6 +82,7 @@ async function composeWorker(): Promise<RoleComposition> {
   const engine = localEngine();
   const adoption = workerAdoptionConfig();
   const lease = sessionLeaseContainer();
+  const settings = workerScalingSettingsProvider();
   const mediaTransfer = await outboundMediaTransfer();
   const handler = new EngineCommandServer(engine, engine, lease.release, mediaTransfer);
   const rpcServer = new RedisEngineRpcServer({
@@ -93,9 +94,11 @@ async function composeWorker(): Promise<RoleComposition> {
   const queues = new BullEngineCommandQueues({
     connection: redis.bullConnection(),
     concurrency: env.ENGINE_COMMAND_CONCURRENCY,
-    // ADOPT-09: cheio, este worker para de puxar `session-open` (sem a flag, nada muda).
+    // ADOPT-09: cheio, este worker para de puxar `session-open` (sem a flag, nada muda). Teto lido
+    // a cada checagem (WSCALE-04): até o primeiro refresh do `server.ts` vale o da env.
     ...(adoption.enabled && {
-      sessionOpenHasCapacity: () => hasCapacity(lease.occupancy().sessions, adoption.maxSessions),
+      sessionOpenHasCapacity: () =>
+        hasCapacity(lease.occupancy().sessions, settings.current().value.maxSessionsPerWorker),
     }),
   });
 

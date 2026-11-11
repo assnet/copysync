@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseEnv } from './env';
-import { workerAdoptionConfig } from './workerAdoption';
+import { workerAdoptionConfig, workerScalingEnvDefaults } from './workerAdoption';
 
 const base = {
   ...process.env,
@@ -13,19 +13,19 @@ const base = {
 function config(over: NodeJS.ProcessEnv) {
   const r = parseEnv({ ...base, ...over });
   if (!r.success) throw new Error(r.error.message);
-  return workerAdoptionConfig(r.data);
+  return { ...workerAdoptionConfig(r.data), ...workerScalingEnvDefaults(r.data) };
 }
 
 describe('workerAdoptionConfig', () => {
   it('sem env: desligada, teto 40, 50 logins pendentes, sem shard', () => {
-    expect(config({})).toEqual({ enabled: false, maxSessions: 40, maxPendingLogins: 50, shard: null });
+    expect(config({})).toEqual({ enabled: false, maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 50, shard: null });
   });
 
   it('lê os valores definidos', () => {
     expect(config({ WORKER_ADOPTION_ENABLED: 'true', WORKER_MAX_SESSIONS: '12', WORKER_MAX_PENDING_LOGINS: '7', WORKER_SHARD: ' sa-1 ' })).toEqual({
       enabled: true,
-      maxSessions: 12,
-      maxPendingLogins: 7,
+      maxSessionsPerWorker: 12,
+      maxPendingLoginsPerWorker: 7,
       shard: 'sa-1',
     });
   });
@@ -55,5 +55,6 @@ describe('workerAdoptionConfig', () => {
 
   it('sem argumento lê o env do processo', () => {
     expect(workerAdoptionConfig()).toEqual(expect.objectContaining({ enabled: expect.any(Boolean) }));
+    expect(workerScalingEnvDefaults()).toEqual({ maxSessionsPerWorker: expect.any(Number), maxPendingLoginsPerWorker: expect.any(Number) });
   });
 });
