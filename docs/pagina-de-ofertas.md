@@ -86,14 +86,19 @@ um de `linkRotationId`/`storefrontId` por CHECK). Unicidade no banco, não na ap
 `POST /api/storefront/offers {url, category?}` → oferta `DRAFT` no fim dos rascunhos (`ExtractStorefrontOfferUseCase`).
 
 - Mesma regra do gerador, via `ResolveAffiliateProductUseCase` (campaigns, extraído de `GenerateOfferUseCase`):
-  allowlist (Shopee, Mercado Livre, Amazon), expansão de link curto revalidando cada salto (anti-SSRF), dono do link.
+  allowlist (Shopee, Mercado Livre, Amazon, Shein), expansão de link curto revalidando cada salto (anti-SSRF), link
+  sempre do tenant (api 0.81.0; regra e erros em [`gerador-de-ofertas.md`](gerador-de-ofertas.md), "Link do tenant").
 - Link sem produto (vitrine/loja) → `OFFER_URL_UNSUPPORTED` ("use o link do PRODUTO"). Exceção herdada: ML
   `meli.la`/`/social/` aceito, produto vem do 1º card.
-- Link de outro afiliado → `OFFER_LINK_NOT_OWNED` / `OFFER_LINK_NOT_AFFILIATE`. ML com cookies gera o link do tenant.
-  Amazon sem `?tag=` → `OFFER_LINK_NOT_AFFILIATE`.
-- **Shopee diverge do gerador**: com credencial (appId + secret) gera o link do tenant via
-  `BuildTenantAffiliateLinkUseCase` (`attributionVerified = true`); sem credencial, credencial recusada ou falha →
-  grava o link colado com `attributionVerified = false` e o painel mostra "comissão não verificada".
+- Link de outro afiliado ou limpo → recriado com a credencial do tenant nos 4 marketplaces; link curto oficial já do
+  tenant é mantido. Sem credencial utilizável → `AFFILIATE_CREDENTIAL_REQUIRED`; loja não gerou →
+  `OFFER_LINK_REBUILD_FAILED`. O item nasce sempre `attributionVerified = true`.
+- Sem troca própria da Shopee (até a 0.80.0 a vitrine chamava `BuildTenantAffiliateLinkUseCase` e gravava o colado
+  com `attributionVerified = false` quando falhava; removido). `storefrontContainer` não injeta mais o builder.
+- Resposta da criação: `data: { ...item, linkRebuilt }` (só no `POST`; listagem não envia). O painel mostra
+  `LinkRebuiltNotice` ao adicionar e `ConnectStoreAction` ("Conectar <loja>", `returnTo`) nos erros de credencial.
+- Publicar item legado com `attributionVerified = false` → `409 STOREFRONT_OFFER_LINK_UNVERIFIED`
+  (`SetStorefrontOfferStatusUseCase`); o selo "comissão não verificada" fica só para esses itens.
 - Não usa `GenerateOfferUseCase`: não grava `Offer`, não compõe texto e não consome a cota diária do gerador.
 
 ## Limites

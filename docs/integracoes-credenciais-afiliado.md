@@ -130,9 +130,12 @@ Tudo da Shein: [`afiliado-shein.md`](afiliado-shein.md).
 ### Geração automática de links (F4)
 
 A sessão sincronizada pela extensão também é consumida por `MercadoLivreAffiliateClient`
-(`campaigns/infrastructure/http/`) para gerar links de afiliado automaticamente quando o operador
-cola uma URL de produto ML sem `matt_word`. Detalhes em
-[`gerador-de-ofertas.md`](gerador-de-ofertas.md) (seção "Geração automática de link ML").
+(`campaigns/infrastructure/http/`), via `TenantAffiliateLinkComposer`, para recriar com a conta do tenant todo link ML
+colado no gerador, na Página de Ofertas e no Story que não seja o link curto oficial já dele (api 0.81.0). Vale para os
+4 marketplaces: sem credencial utilizável (ML sem sessão, Shopee sem secret, Shein sem `AT`) a geração bloqueia com
+`AFFILIATE_CREDENTIAL_REQUIRED`; credencial recusada → `AFFILIATE_CREDENTIAL_REJECTED` sem chamar a loja e **sem**
+pausar a loja (só o monitoramento chama `markRejected`). Detalhes em
+[`gerador-de-ofertas.md`](gerador-de-ofertas.md) ("Link do tenant" e "Geração de link ML").
 
 ## Várias etiquetas do Mercado Livre
 
@@ -180,10 +183,10 @@ tudo ∈ `accountIdentifiers`, sem repetição, `1 + linked ≤ limite`; audita 
 
 | `matt_word` do link | Resultado |
 | --- | --- |
-| No conjunto efetivo | Aceito como do tenant (`verified`), com a etiqueta do próprio link |
+| No conjunto efetivo | Do tenant (`verified`): link curto oficial é mantido; senão recriado com essa etiqueta (`mlTag`) |
 | Da conta, não vinculada, com vaga | 422 `AFFILIATE_IDENTIFIER_NOT_LINKED` (`meta { provider, limit, used }`): painel leva às credenciais |
 | Da conta, não vinculada, sem vaga (sempre no LITE) | 403 `PLAN_LIMIT_REACHED` (`meta.key = mercado_livre_affiliate_tags`): painel lista PRO e MAX |
-| De terceiro | Como antes (`OFFER_LINK_NOT_OWNED`) |
+| De terceiro | Recriado com a etiqueta principal do tenant (api 0.81.0; até a 0.80.0, `OFFER_LINK_NOT_OWNED`, código removido) |
 
 Monitoramento, vitrine pública e links gerados pelo sistema seguem usando só a **principal** (TLINK-35).
 

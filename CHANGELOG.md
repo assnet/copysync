@@ -9,6 +9,28 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.81.0 · app 0.100.0 — link de afiliado sempre do tenant
+
+Gerador, Página de Ofertas e Story recusavam link de outro afiliado e a Shopee passava o link colado sem conferência. Agora aceitam qualquer link do produto e o link sai sempre com a conta do tenant. Doc: `docs/gerador-de-ofertas.md` ("Link do tenant"). Spec: `.specs/features/tenant-affiliate-link/` (TLINK-01..24).
+**Migration Prisma**: não. **Erros novos**: `AFFILIATE_CREDENTIAL_REQUIRED`, `OFFER_LINK_REBUILD_FAILED`, `OFFER_TEXT_FOREIGN_LINK` (422) e `STOREFRONT_OFFER_LINK_UNVERIFIED` (409). **Breaking**: `OFFER_LINK_NOT_OWNED`/`OFFER_LINK_NOT_AFFILIATE` removidos; link não verificado deixa de passar; loja sem credencial bloqueia; Shopee sem Open API aprovada deixa de gerar oferta; resposta da geração com `linkRebuilt`.
+
+#### Backend (api/) — `campaigns`, `storefront`, `offer-story`
+
+- **`TenantAffiliateLinkComposer.ts`**, **`BuildTenantAffiliateLinkUseCase.ts`** — núcleo do link do tenant extraído do builder do monitoramento (resultado do monitoramento idêntico); sem `markRejected` nem log de URL.
+- **`ResolveAffiliateProductUseCase.ts`**, **`shouldKeepPastedLink.ts`**, **`isShortLink.ts`** — mantém só o link curto oficial já do tenant (Amazon sempre reescrita), senão recria nos 4 marketplaces; `resolveState` nos 4; allowlist do link devolvido; etiqueta vinculada do ML mantida; `linkRebuilt`.
+- **`GenerateOfferUseCase.ts`**, **`offersContainer.ts`**, **`offer.schema.ts`**, **`rateLimitPresets.ts`**, **`offer.routes.ts`** — resolvedor do container, `linkRebuilt` no envelope, 60/h por tenant em `POST /campaigns/offers`.
+- **`UpdateOfferUseCase.ts`**, **`findForeignMarketplaceLinks.ts`**, **`extractUrls.ts`** — texto editado com link de marketplace acrescentado → `OFFER_TEXT_FOREIGN_LINK`.
+- **`pickPreviewUrl.ts`** — prévia só com o `affiliateUrl`.
+- **`ExtractStorefrontOfferUseCase.ts`**, **`storefrontContainer.ts`**, **`storefront.routes.ts`**, **`SetStorefrontOfferStatusUseCase.ts`** — vitrine sem troca própria da Shopee, `linkRebuilt` na criação, item legado não verificado não publica.
+- **`RenderOfferStoryUseCase.ts`**, **`offerStory.schema.ts`** — story devolve `linkRebuilt`; erros com o status original.
+
+#### Frontend (app/) — `affiliateLinks`, `offers`, `storefront`, `offerStory`
+
+- **`features/affiliateLinks/`** (`linkErrors.ts`, `strings.ts`, `ConnectStoreAction.tsx`, `LinkRebuiltNotice.tsx`) — textos por loja, botão "Conectar <loja>" com `returnTo` e aviso "Link recriado com a sua conta".
+- **`OfferGeneratorForm.tsx`**, **`offerErrors.ts`**, **`OfferResultPanel.tsx`** — campo "Link do produto", sem aviso fixo da Shopee, aviso de recriado.
+- **`AddOfferCard.tsx`**, **`useStorefrontPage.ts`**, **`storefrontForm.ts`** — erro com ação de conectar e aviso ao adicionar.
+- **`ProductStep.tsx`**, **`ResultStep.tsx`**, **`productForm.ts`** — story aceita link de outro afiliado e avisa.
+
 ### Added — api 0.80.0 · app 0.99.0 — várias etiquetas do Mercado Livre por plano
 
 Link do ML com etiqueta da própria conta (não `in_use`) era recusado como de terceiro. Doc: `docs/integracoes-credenciais-afiliado.md` ("Várias etiquetas do Mercado Livre"). Spec: `.specs/features/tenant-affiliate-link/` (TLINK-28..39).

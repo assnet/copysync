@@ -134,7 +134,7 @@ Fora da v1: evento de add-on do hub cria `PremiumSlugGrant(source = BILLING)`; c
 | STORE-06 | Salvar configuração (nome, slug, subtítulo, categorias, cores) | Verified |
 | STORE-07 | Foto e capa (formato, tamanho, recorte WebP) | Verified |
 | STORE-08 | Preview mobile/desktop pelo mesmo template | Verified |
-| STORE-09 | Extrair oferta pelo link (allowlist + regra de afiliado do gerador) | Verified |
+| STORE-09 | Extrair oferta pelo link (allowlist + regra de afiliado do gerador). **Substituído** (api 0.81.0) por [`.specs/features/tenant-affiliate-link/spec.md`](../tenant-affiliate-link/spec.md): sem troca própria da Shopee, link sempre do tenant (TLINK-13, 15) | Verified |
 | STORE-10 | Rascunho → publicada, limites 200/60 | Verified |
 | STORE-11 | Ordenar, editar, apagar | Verified |
 | STORE-12 | Página pública por Host (HTML sem JS, OG, escape) | Verified |

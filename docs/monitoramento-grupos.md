@@ -19,7 +19,7 @@ Termos: **sessão** (nunca instância), **grupo monitorado** (origem), **grupo d
 | Configuração | `GroupMonitorConfigUseCases.ts` (ler, salvar regras, grupos monitorados, grupos de disparo) |
 | Captura (listener) | `RegisterCapturedMessageUseCase.ts` + `GroupMonitoringMessageListener.ts` |
 | Processamento (worker) | `ProcessPendingCapturedOffersUseCase.ts` |
-| Link do tenant | `campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase.ts` |
+| Link do tenant | `campaigns/application/use-cases/BuildTenantAffiliateLinkUseCase.ts` (núcleo em `application/services/TenantAffiliateLinkComposer.ts`, compartilhado com o gerador) |
 | Dados do produto e foto | `campaigns/application/use-cases/ResolveProductDataUseCase.ts` (o mesmo do gerador); vitrine social ML em `parseMercadoLivreSocialPage` |
 | Texto (modelo / IA) | `campaigns/application/services/OfferTextComposer.ts` via `IMonitorTextComposer` (adapters em `CampaignsMonitorAdapters.ts`) |
 | Entrada na fila | `campaigns/application/use-cases/EnqueueOfferUseCase.ts` |
@@ -97,8 +97,14 @@ em 14 dias). Título, preços e foto do 1º card seguem junto com o link (`Tenan
 processador usa isso antes de reler a página do produto: `/p/MLB…` e `produto…/MLB-…` caem no captcha do ML
 para o servidor em ~90% dos casos (14 dias: 57 ofertas ML sem foto na mensagem, só 5 com foto do produto), e a
 vitrine já tinha os dados. Vale para a foto em modo original e para o texto em modelo/IA. A vitrine é pública e é lida **sem** cookie (com cookie do servidor a ML manda para o captcha). Rede só dentro da allowlist
-(`isSupportedProductUrl`, expansor e leitor de página). Diferente do gerador, que exige o link já
-ser do operador, aqui o link é sempre gerado.
+(`isSupportedProductUrl`, expansor e leitor de página). Aqui o link é sempre gerado.
+
+Núcleo comum (api 0.81.0): o switch por marketplace saiu do builder para
+`campaigns/application/services/TenantAffiliateLinkComposer.ts`, o mesmo que gerador, Página de Ofertas e Story usam
+via `ResolveAffiliateProductUseCase` (extração sem mudar nenhum resultado do monitoramento, TLINK-23). O builder
+continua dono de expandir, do gate de plano, do `resolveState` e de `markRejected` (pausa a loja); o composer não faz
+nada disso. A allowlist do link devolvido para Shopee e ML é aplicada só no Resolve. Não mexer no composer sem rodar
+os testes do builder.
 
 ### 2.1.1 Texto da oferta: original, modelo ou IA (api 0.41.0)
 

@@ -50,15 +50,17 @@ monitoramento ─▶ BuildTenantAffiliateLinkUseCase ─────────
 ### Gerador, vitrine e story
 
 Ordem fixa: **plano → credencial → aceite → chamada**. O plano é checado já na URL colada, antes de expandir
-(link curto Shein não é buscado sem plano), e de novo se o redirect mudar o marketplace.
+(link curto Shein não é buscado sem plano), e de novo se o redirect mudar o marketplace. Desde a api 0.81.0 o link é
+sempre do tenant (regra comum aos 4 marketplaces em [`gerador-de-ofertas.md`](gerador-de-ofertas.md), "Link do
+tenant"; substitui SHEIN-10/11 da spec antiga). Até a 0.80.0 link de outro afiliado era recusado com
+`OFFER_LINK_NOT_OWNED` e, sem conta, o link com afiliação passava sem conferência (histórico).
 
 | Situação | Resultado |
 |---|---|
-| link de outro afiliado (`affiliate_koc_` ≠ ID do tenant) | `OFFER_LINK_NOT_OWNED` |
-| conta conectada | 1 chamada `detailNew`; link colado do tenant é mantido, senão sai o `shareLink` com `attributionVerified = true`; dados do produto vêm da mesma chamada |
-| conta conectada, cliente devolve `null` | link já do tenant segue sem dados; senão `OFFER_LINK_NOT_AFFILIATE` |
-| sem conta conectada, link com `affiliate_koc_` | segue sem conferência de dono e sem dados (gerador/vitrine: preenchimento manual; story: `OFFER_STORY_PRODUCT_INCOMPLETE`) |
-| sem conta conectada, link sem afiliação | `OFFER_LINK_NOT_AFFILIATE` (422) |
+| link curto `onelink` já do tenant (`affiliate_koc_<ID do tenant>`) | mantido; 1 chamada `detailNew` só para os dados (sem `AT`: produto vazio, preenchimento manual) |
+| qualquer outro (de outro afiliado, sem afiliação, link longo do tenant), conta conectada | recriado: 1 chamada `detailNew`, sai o `shareLink` (`linkRebuilt: true`); dados da mesma chamada |
+| conta conectada, cliente devolve `null` ou link fora da allowlist | `OFFER_LINK_REBUILD_FAILED` (`reason = SHEIN_LINK_NOT_CREATED`) |
+| sem conta conectada (ou sem `AT`) | `AFFILIATE_CREDENTIAL_REQUIRED` (422); nunca passa o link colado |
 | sem `marketplace_shein_enabled` | `PLAN_FEATURE_UNAVAILABLE` (403) |
 | conta conectada sem aceite da versão vigente | `MARKETPLACE_RISK_NOT_ACCEPTED` (403), sem chamar a Shein |
 | sessão recusada pela Shein | erro da requisição; **não** pausa a loja (só o monitoramento marca `rejected`) |

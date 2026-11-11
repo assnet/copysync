@@ -137,9 +137,9 @@ Decisão: **E**. Se a T0 falhar na Render, o plano para e volta para decisão (C
 
 - **SHEIN-09** Link de produto Shein BR ou `onelink` colado → oferta com título, preço, preço cheio e
   foto vindos do `detailNew`.
-- **SHEIN-10** Link sem afiliação → link do tenant gerado pela sessão. Link já do tenant
+- **SHEIN-10** (**Substituído** na api 0.81.0 por [`.specs/features/tenant-affiliate-link/spec.md`](../tenant-affiliate-link/spec.md): todo link que não é o `onelink` já do tenant é recriado; sem `OfferLinkNotOwnedError`.) Link sem afiliação → link do tenant gerado pela sessão. Link já do tenant
   (`url_from=affiliate_koc_<memberId>`) → mantido. Link de outro afiliado → `OfferLinkNotOwnedError`.
-- **SHEIN-11** Sem conta Shein conectada (plano liberado): link que já traz afiliação segue **sem
+- **SHEIN-11** (**Substituído** na api 0.81.0 por [`.specs/features/tenant-affiliate-link/spec.md`](../tenant-affiliate-link/spec.md): sem conta → `AFFILIATE_CREDENTIAL_REQUIRED`.) Sem conta Shein conectada (plano liberado): link que já traz afiliação segue **sem
   conferência de dono** e sem dados do produto — regra atual dos outros marketplaces sem credencial
   (gerador e vitrine: preenchimento manual; story recusa com `OFFER_STORY_PRODUCT_INCOMPLETE`). Link sem
   afiliação é recusado com `OFFER_LINK_NOT_AFFILIATE` (422).
