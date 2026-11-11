@@ -9,6 +9,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.83.0 · app 0.102.0 — capacidade dos workers e métricas de sessões
+
+Sem número para decidir teto e réplicas, e sem alerta de ocupação com a adoção desligada. O coletor grava a ocupação de sessões do cluster; `/admin/workers/capacity` mostra contratado por plano × instalado, MB por sessão e teto sugerido. Doc: `docs/workers-escala.md` (Capacidade). Spec: `.specs/features/worker-scaling/` (WSCALE-07..10, 17, 19; fase P2).
+**Migration Prisma**: não. **Erros novos**: não. **Breaking**: não. **Depende de**: `OPS_METRICS_SAMPLER_ENABLED` (sem amostra a aba mostra "sem amostra").
+
+#### Backend (api/) — `metrics`, `sessions`
+
+- **`SessionsOccupancySource.ts`**, **`OpsMetric.ts`**, **`OpsMetricsSamplerJob.ts`** — `sessions_connected/pending_login/awaiting/capacity` a cada tick, com ou sem adoção.
+- **`opsAlertPolicy.ts`** — alerta `session_occupancy` só sem adoção (só log, dedupe de 30 min).
+- **`capacityPlan.ts`**, **`PrismaWorkerCapacityReader.ts`**, **`GetWorkerCapacityUseCase.ts`**, **`workerAdmin.routes.ts`** — `GET /admin/workers/capacity`: por plano e do cluster, teto sugerido = 0,7 × limite ÷ MB por sessão.
+
+#### Frontend (app/) — `workersAdmin`
+
+- **`CapacityTab.tsx`**, **`useWorkerCapacity.ts`**, **`rules.ts`** — aba Capacidade: cartões, tabela por plano com "cabem mais N clientes", série de 7 dias.
+- **`SettingsTab.tsx`**, **`useWorkerSettings.ts`** — confirmação reforçada do teto só acima do sugerido ou sem amostra.
+
 ### Added — api 0.82.0 · app 0.101.0 — configuração de escala dos workers em banco
 
 Teto de sessões por worker e limiares de alerta eram env lida no boot (mudar = redeploy, derruba sessões). Agora o super admin ajusta em `/admin/workers/settings`; vale em todas as réplicas em até 30 s. Sem linha salva, nada muda. Doc: `docs/workers-escala.md`. Spec: `.specs/features/worker-scaling/` (WSCALE-01..07, 19; fase P1).

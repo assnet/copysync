@@ -56,13 +56,13 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 | T11 | Painel: aba Configuração | T9, T10 | | feito |
 | T12 | Docs, versão e changelog da P1 | T7, T11 | | feito |
 | R1 | Revisão da P1 e merge | T12 | | feito |
-| T13 | Métricas de sessões no coletor | R1 | | pendente |
-| T14 | Contas de capacidade | R1 | P | pendente |
-| T15 | Leitor de capacidade por plano | T13 | | pendente |
-| T16 | Use case e rota de capacidade | T14, T15 | | pendente |
-| T17 | Alerta de ocupação sem adoção | T13 | | pendente |
-| T18 | Painel: aba Capacidade | T16 | | pendente |
-| T19 | Docs, versão e changelog da P2 | T17, T18 | | pendente |
+| T13 | Métricas de sessões no coletor | R1 | | feito |
+| T14 | Contas de capacidade | R1 | P | feito |
+| T15 | Leitor de capacidade por plano | T13 | | feito |
+| T16 | Use case e rota de capacidade | T14, T15 | | feito |
+| T17 | Alerta de ocupação sem adoção | T13 | | feito |
+| T18 | Painel: aba Capacidade | T16 | | feito |
+| T19 | Docs, versão e changelog da P2 | T17, T18 | | feito |
 | R2 | Revisão da P2 e merge | T19 | | pendente |
 | T20 | Eventos de escala (tabela e repositório) | R2 | | pendente |
 | T21 | Porta do escalador e adaptador Render | R2 | P | pendente |
@@ -264,7 +264,7 @@ Como R1, com o smoke P2 da spec.
 **Tests**: unit (Testing Library) · **Gate**: full + build · **Commit**: `feat(app): aba Escala dos workers`
 
 ### T25: Smoke de subida e redução num serviço de teste (dono)
-**What**: ambiente: API local com env sintético (nunca `api/.env`), Postgres descartável e `WORKER_ADOPTION_ENABLED=true` (sem adoção o `POST /scale` responde 409 `ADOPTION_DISABLED`); com um Private Service de teste na Render (sem disco) e `WORKER_SCALER_*` apontando para ele: subir 1→2, reduzir 2→1, conferir `SIGTERM` + prazo de encerramento na redução e ajustar `maxShutdownDelaySeconds`; anotar o formato do id de instância nas amostras (casamento por prefixo da T23). Resultado anotado em `docs/workers-escala.md`.
+**What**: ambiente: API local com env sintético (nunca `api/.env`), Postgres descartável e `WORKER_ADOPTION_ENABLED=true` (sem adoção o `POST /scale` responde 409 `ADOPTION_DISABLED`); com um Private Service de teste na Render (sem disco) e `WORKER_SCALER_*` apontando para ele: subir 1→2, reduzir 2→1, conferir `SIGTERM` + prazo de encerramento na redução e ajustar `maxShutdownDelaySeconds`; anotar o formato do id de instância nas amostras (casamento por prefixo da T23). Formato `srv-<id>-<sufixo>` já confirmado em produção (2026-11-11, leitura de `ops_metrics_samples`). Resultado anotado em `docs/workers-escala.md`.
 **Depends on**: T23 · **Requirement**: WSCALE-11, WSCALE-12 · **Tests**: smoke manual
 **Bloqueia**: liberar a redução em produção (não bloqueia o merge da P3, que sai com o escalador desligado por env)
 
