@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ScaleWorkersUseCase, type ScaleWorkersInput } from './ScaleWorkersUseCase';
 import { makeAuditRepo } from './sessionTestFakes';
+import { workerScalingEnforcedCheck } from './GetWorkerScalingSettingsUseCase';
 import type {
   IWorkerScaleEventRepository,
   NewWorkerScaleEvent,
@@ -73,7 +74,7 @@ const settingsOf = (over: Partial<WorkerScalingSettings> = {}): IWorkerScalingSe
 function setup(opts: {
   settings?: Partial<WorkerScalingSettings>;
   state?: WorkerScalerState;
-  adoption?: boolean;
+  adoption?: boolean | (() => Promise<boolean> | boolean);
   last?: Date | null;
 } = {}) {
   const events = makeEvents(opts.last ?? null);
@@ -84,7 +85,7 @@ function setup(opts: {
     scaler,
     audit,
     settings: settingsOf(opts.settings),
-    isAdoptionEnabled: () => opts.adoption ?? true,
+    isAdoptionEnabled: typeof opts.adoption === 'function' ? opts.adoption : () => (opts.adoption as boolean | undefined) ?? true,
     now: () => NOW,
   });
   return { events, scaler, audit, useCase };
@@ -117,6 +118,16 @@ describe('ScaleWorkersUseCase — recusas', () => {
 
   it('adoção desligada → ADOPTION_DISABLED', async () => {
     await expectRejected(setup({ adoption: false }), input(), 'ADOPTION_DISABLED', 0);
+  });
+
+  it('flag local off sem batimento vivo → ADOPTION_DISABLED (mesma checagem do enforced)', async () => {
+    const check = workerScalingEnforcedCheck(() => false, { hasAlive: async () => false }, { warn: vi.fn() });
+    await expectRejected(setup({ adoption: check }), input(), 'ADOPTION_DISABLED', 0);
+  });
+
+  it('falha da consulta de batimento cai na flag local (off) → ADOPTION_DISABLED', async () => {
+    const check = workerScalingEnforcedCheck(() => false, { hasAlive: async () => { throw new Error('db'); } }, { warn: vi.fn() });
+    await expectRejected(setup({ adoption: check }), input(), 'ADOPTION_DISABLED', 0);
   });
 
   it.each([0, 6, 2.5])('alvo %s fora da faixa → SCALE_TARGET_OUT_OF_RANGE com campo replicas', async (replicas) => {
@@ -190,6 +201,15 @@ describe('ScaleWorkersUseCase — recusas', () => {
 });
 
 describe('ScaleWorkersUseCase — pedido aceito', () => {
+  it('flag local off com batimento vivo de outro processo → aceita (http e worker separados)', async () => {
+    const hasAlive = vi.fn(async () => true);
+    const ctx = setup({ adoption: workerScalingEnforcedCheck(() => false, { hasAlive }, { warn: vi.fn() }) });
+    const res = await ctx.useCase.execute(input());
+    expect(res.event.outcome).toBe('succeeded');
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledWith(3);
+    expect(hasAlive).toHaveBeenCalled();
+  });
+
   it('grava requested antes da chamada, depois succeeded, e audita o ator', async () => {
     const ctx = setup();
     ctx.scaler.scaleTo.mockImplementation(async () => {

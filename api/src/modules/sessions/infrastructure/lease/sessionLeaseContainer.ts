@@ -165,11 +165,21 @@ export function workerScalingSettingsProvider(): RefreshingWorkerScalingSettings
 let getSettingsUseCase: GetWorkerScalingSettingsUseCase | undefined;
 let updateSettingsUseCase: UpdateWorkerScalingSettingsUseCase | undefined;
 
-/** `enforced` da tela: adoção ligada aqui ou batimento vivo de algum worker (com `http` separado). */
+let enforcedCheck: (() => Promise<boolean>) | undefined;
+
+/**
+ * Adoção em vigor no cluster: ligada aqui ou batimento vivo de algum worker (com `http` separado).
+ * Única fonte do `enforced` da tela e da recusa `ADOPTION_DISABLED` do pedido de escala.
+ */
+function workerScalingEnforced(): () => Promise<boolean> {
+  enforcedCheck ??= workerScalingEnforcedCheck(() => workerAdoptionConfig().enabled, new PrismaWorkerHeartbeatRepository());
+  return enforcedCheck;
+}
+
 function workerScalingSettingsViewDeps(): WorkerScalingSettingsViewDeps {
   return {
     envDefaults: workerScalingEnvDefaults(),
-    isEnforced: workerScalingEnforcedCheck(() => workerAdoptionConfig().enabled, new PrismaWorkerHeartbeatRepository()),
+    isEnforced: workerScalingEnforced(),
   };
 }
 
@@ -253,7 +263,7 @@ export function requestWorkerScaleUseCase(): RequestWorkerScaleUseCase {
         scaler: workerScaler(),
         settings: workerScalingSettingsProvider(),
         audit: new PrismaAuditLogRepository(),
-        isAdoptionEnabled: () => workerAdoptionConfig().enabled,
+        isAdoptionEnabled: workerScalingEnforced(),
       }),
       connectedSessions: () => connectedSessionsNow({ samples, reader }),
       state: workerScalerStateCache(),

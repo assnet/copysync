@@ -49,8 +49,11 @@ export interface ScaleWorkersDeps {
   scaler: IWorkerScaler;
   settings: IWorkerScalingSettingsProvider;
   audit: IAuditLogRepository;
-  /** Lido a cada pedido (`workerAdoptionConfig().enabled`). */
-  isAdoptionEnabled: () => boolean;
+  /**
+   * Lido a cada pedido. Na composição é o mesmo `workerScalingEnforcedCheck` do `enforced` da tela
+   * (flag local OU batimento vivo): com `http` e `worker` separados a flag mora só no worker.
+   */
+  isAdoptionEnabled: () => Promise<boolean> | boolean;
   now?: () => Date;
 }
 
@@ -135,7 +138,7 @@ export class ScaleWorkersUseCase {
     const unknown = (error: AppError) => new ScaleRejection(error, UNKNOWN_REPLICAS);
 
     if (settings.scalerMode === 'off') return unknown(new ScalerModeOffError());
-    if (!this.deps.isAdoptionEnabled()) return unknown(new AdoptionDisabledError());
+    if (!(await this.deps.isAdoptionEnabled())) return unknown(new AdoptionDisabledError());
     if (!Number.isInteger(input.replicas) || input.replicas < settings.minReplicas || input.replicas > settings.maxReplicas) {
       return unknown(new ScaleTargetOutOfRangeError(settings.minReplicas, settings.maxReplicas));
     }
