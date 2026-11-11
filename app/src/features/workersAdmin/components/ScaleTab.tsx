@@ -241,7 +241,7 @@ export default function ScaleTab() {
           action={(
             <Stack direction="row" spacing={1}>
               {ready && (
-                <Button color="inherit" size="small" onClick={() => w.openDialog(current)}>{sc.pendingDraft.reopen}</Button>
+                <Button color="inherit" size="small" onClick={() => w.openDialog()}>{sc.pendingDraft.reopen}</Button>
               )}
               <Button color="inherit" size="small" onClick={w.cancel}>{sc.pendingDraft.discard}</Button>
             </Stack>
@@ -289,7 +289,7 @@ export default function ScaleTab() {
               hint={customHint}
               icon={Gauge}
               disabled={locked || min === max}
-              onClick={() => w.openDialog(defaultScaleTarget(current, min, max))}
+              onClick={() => w.openDialog(w.draft ? undefined : defaultScaleTarget(current, min, max))}
             />
           </Stack>
           {inCooldown && view.cooldownUntil && (

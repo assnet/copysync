@@ -345,6 +345,7 @@ export const workersAdminStrings = {
       rateLimitedAt: (at: string) => `Muitos pedidos seguidos. Tente de novo depois de ${at}.`,
       requestIdReused: 'Este pedido já foi usado com outros dados. Cancele e abra o pedido de novo.',
       failedReplay: (detail: string) => `Este pedido já tinha falhado. ${detail}`,
+      pendingReplay: 'Este pedido já tinha sido enviado e está em andamento ou foi interrompido. Confira o histórico antes de tentar de novo.',
       failedGeneric: 'O provedor não aplicou o pedido. Confira e tente de novo; um pedido novo será enviado.',
       rateLimited: (s: number | null) => (s ? `O provedor limitou os pedidos. Tente de novo em ${s} s.` : 'O provedor limitou os pedidos. Tente de novo em alguns minutos.'),
       invalid: 'O pedido foi recusado. Confira o alvo e o motivo.',

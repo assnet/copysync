@@ -16,6 +16,7 @@ import {
 } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import {
   WORKER_SCALE_TEXT_MAX,
+  truncateText,
   type IWorkerScaleEventRepository,
   type WorkerScaleEvent,
   type WorkerScaleTrigger,
@@ -27,7 +28,7 @@ import { canScaleDownTo } from '../../domain/services/capacityPlan';
 export interface ScaleWorkersInput {
   /** Réplicas alvo. */
   replicas: number;
-  /** Motivo (obrigatório no manual; a rota valida tamanho/vazio, o repositório trunca em 200). */
+  /** Motivo (obrigatório no manual; `RequestWorkerScaleUseCase` mede 3–200 code points após o trim). */
   reason: string;
   /** Idempotência: o mesmo id devolve o evento anterior sem chamar de novo. `null` no job. */
   requestId: string | null;
@@ -79,8 +80,8 @@ class ScaleRejection {
  * Aceito: grava `requested` ANTES da chamada externa (queda no meio deixa rastro e o intervalo
  * conta do pedido) com o intervalo rechecado sob advisory lock (`recordRequestedIfIdle`), chama
  * `scaleTo` (sem retry) e atualiza para `succeeded` ou `failed`. Erro fora de `AppError` vira
- * `SCALE_REQUEST_FAILED` sem a mensagem original. Mesmo `requestId` com outro alvo/motivo/ator:
- * `REQUEST_ID_REUSED`.
+ * `SCALE_REQUEST_FAILED` sem a mensagem original. Mesmo `requestId` (antes ou sob o lock, em
+ * pedido concorrente) com o mesmo alvo/motivo/ator é replay; com outro: `REQUEST_ID_REUSED`.
  */
 export class ScaleWorkersUseCase {
   private readonly now: () => Date;
@@ -118,11 +119,13 @@ export class ScaleWorkersUseCase {
         now: at,
       });
     } catch (err) {
-      // Corrida com o mesmo `requestId`: a unicidade barrou o segundo; devolve o primeiro.
+      // Rede de segurança: a unicidade barrou um `requestId` gravado fora do lock (`record`).
       const winner = input.requestId ? await this.deps.events.findByRequestId(input.requestId) : null;
       if (winner) return this.replay(winner, input);
       throw err;
     }
+    // Mesmo `requestId` gravado por um pedido concorrente (visto sob o lock): replay estrito.
+    if ('existing' in recorded) return this.replay(recorded.existing, input);
     if ('blocked' in recorded) {
       // Outro pedido passou entre a checagem antecipada e o lock (corrida entre `requestId` diferentes).
       const rejection = new ScaleRejection(new ScaleCooldownActiveError(recorded.blocked), outcome.fromReplicas);
@@ -151,7 +154,7 @@ export class ScaleWorkersUseCase {
   private replay(previous: WorkerScaleEvent, input: ScaleWorkersInput): ScaleWorkersResult {
     const same =
       previous.toReplicas === input.replicas &&
-      previous.reason === input.reason.slice(0, WORKER_SCALE_TEXT_MAX) &&
+      previous.reason === truncateText(input.reason, WORKER_SCALE_TEXT_MAX) &&
       previous.actorUserId === input.actorUserId;
     if (!same) throw new ScaleRequestIdReusedError();
     return { event: previous, replayed: true };

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
@@ -7,7 +7,7 @@ import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { readPersisted, writePersisted } from '@/hooks/usePersistedState';
 import { workersAdminStrings as t } from '../strings';
-import { WORKER_SCALE_DRAFT_KEY, WORKER_SCALE_REFRESH_MS, type WorkerScaleDraft } from '../useWorkerScale';
+import { WORKER_SCALE_DRAFT_KEY, WORKER_SCALE_REFRESH_MS, useWorkerScale, type WorkerScaleDraft } from '../useWorkerScale';
 import type { WorkerScaleEvent, WorkerScaleStateView } from '../types';
 import ScaleTab from './ScaleTab';
 
@@ -383,7 +383,7 @@ describe('ScaleTab — pedido', () => {
     expect(readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY)?.requestId).toBe(REQUEST_ID);
   });
 
-  it('escalador sem resposta com rascunho: avisa e não reabre sozinho depois; Revisar reabre o mesmo pedido', async () => {
+  it('escalador sem resposta com rascunho: avisa e reabre o mesmo pedido na 1ª leitura pronta', async () => {
     const draft: WorkerScaleDraft = { replicas: 3, reason: 'restaurado', requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' };
     writePersisted(WORKER_SCALE_DRAFT_KEY, draft);
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -391,19 +391,32 @@ describe('ScaleTab — pedido', () => {
       .mockResolvedValueOnce(view({ scaler: { status: 'unavailable', reason: 'timeout' } }))
       .mockResolvedValue(view());
     mockEvents();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderWithTheme(<ScaleTab />);
     expect(await screen.findByText(sc.pendingDraft.waiting)).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: sc.pendingDraft.reopen })).not.toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(WORKER_SCALE_REFRESH_MS); });
-    expect(await screen.findByText(sc.pendingDraft.text)).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: sc.pendingDraft.reopen }));
     await screen.findByRole('dialog');
     expect(reasonField()).toHaveValue('restaurado');
     expect(screen.getByRole('button', { name: sc.dialog.resend })).toBeInTheDocument();
     expect(readPersisted(WORKER_SCALE_DRAFT_KEY)).toEqual(draft);
+  });
+
+  it('replay de pedido ainda requested: não é sucesso, avisa e mantém diálogo, rascunho e requestId', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    const list = mockEvents();
+    vi.spyOn(adminWorkersService, 'requestScale').mockResolvedValue({
+      event: event(9, { fromReplicas: 2, toReplicas: 3, outcome: 'requested' }), replayed: true,
+    });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await openUpWithReason(user);
+    await user.click(confirmButton());
+    expect(await screen.findByText(sc.requestErrors.pendingReplay)).toBeInTheDocument();
+    expect(screen.queryByText(sc.notices.replayed)).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY)).toMatchObject({ replicas: 3, reason: 'pico de sessões', requestId: REQUEST_ID });
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
   it('aviso de rascunho: Descartar limpa o pedido', async () => {
@@ -595,5 +608,48 @@ describe('AdminWorkersPage — aba Escala', () => {
     expect(await screen.findByRole('tab', { name: t.tabs.scale, selected: true })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: sc.actions.up })).toBeInTheDocument();
     expect(screen.getByText(sc.subtitle)).toBeInTheDocument();
+  });
+});
+
+describe('useWorkerScale — abrir com rascunho existente', () => {
+  const restored: WorkerScaleDraft = { replicas: 3, reason: 'restaurado', requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' };
+
+  async function mountWithDraft() {
+    writePersisted(WORKER_SCALE_DRAFT_KEY, restored);
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({ scaler: { status: 'unavailable', reason: 'timeout' } }));
+    mockEvents();
+    const hook = renderHook(() => useWorkerScale());
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  }
+
+  it('alvo clicado diferente do rascunho: pedido novo com motivo vazio e requestId novo', async () => {
+    const { result } = await mountWithDraft();
+    act(() => result.current.openDialog(1));
+    expect(result.current.dialogOpen).toBe(true);
+    expect(result.current.draft).toEqual({ replicas: 1, reason: '', requestId: REQUEST_ID });
+    expect(result.current.resend).toBe(false);
+  });
+
+  it('alvo clicado igual ao do rascunho: reabre o mesmo pedido (Reenviar)', async () => {
+    const { result } = await mountWithDraft();
+    act(() => result.current.openDialog(3));
+    expect(result.current.draft).toEqual(restored);
+    expect(result.current.resend).toBe(true);
+  });
+
+  it('sem alvo (Revisar): reabre o rascunho como está', async () => {
+    const { result } = await mountWithDraft();
+    act(() => result.current.openDialog());
+    expect(result.current.dialogOpen).toBe(true);
+    expect(result.current.draft).toEqual(restored);
+  });
+
+  it('escalador fora no boot não consome a reabertura automática', async () => {
+    const { result } = await mountWithDraft();
+    expect(result.current.dialogOpen).toBe(false);
+    vi.mocked(adminWorkersService.getScale).mockResolvedValue(view());
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.dialogOpen).toBe(true);
   });
 });

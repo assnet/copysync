@@ -76,9 +76,10 @@ export function useWorkerScale() {
       setView(next);
       setRefreshError(false);
       setLoadError(null);
-      if (!autoOpenChecked.current) {
+      // Só a leitura `ready` consome a reabertura automática: escalador fora no boot adia para a 1ª pronta.
+      if (!autoOpenChecked.current && next.scaler.status === 'ready') {
         autoOpenChecked.current = true;
-        if (draftRef.current && next.scaler.status === 'ready') setDialogOpen(true);
+        if (draftRef.current) setDialogOpen(true);
       }
     } catch {
       if (seq !== stateSeq.current) return;
@@ -130,11 +131,21 @@ export function useWorkerScale() {
     setDraft((prev) => (prev ? { ...prev, requestId: newRequestId() } : prev));
   }, [setDraft]);
 
-  /** Abre o diálogo; havendo rascunho (recarga), reabre com ele: mesmo alvo, motivo e `requestId`. */
-  const openDialog = useCallback((replicas: number) => {
+  /**
+   * Abre o diálogo. Sem `replicas` (Revisar, Escolher alvo) reabre o rascunho como está. Com o alvo
+   * clicado (Subir/Reduzir 1): igual ao do rascunho reabre o mesmo pedido (mesmo `requestId`);
+   * diferente substitui o rascunho por um pedido novo (motivo vazio, `requestId` novo).
+   */
+  const openDialog = useCallback((replicas?: number) => {
     setRequestError(null);
     setNotice(null);
-    if (!draftRef.current) setDraft({ replicas, reason: '', requestId: newRequestId() });
+    const current = draftRef.current;
+    if (current && (replicas === undefined || String(current.replicas) === String(replicas))) {
+      setDialogOpen(true);
+      return;
+    }
+    if (replicas === undefined) return;
+    setDraft({ replicas, reason: '', requestId: newRequestId() });
     setDialogOpen(true);
   }, [setDraft]);
 
@@ -155,7 +166,7 @@ export function useWorkerScale() {
     setRequestError(null);
   }, [clearDraft]);
 
-  /** `true` quando o pedido foi aceito (novo ou replay de um pedido aceito). */
+  /** `true` quando o pedido foi aceito (novo ou replay de um pedido `succeeded`). */
   const submit = useCallback(async (): Promise<boolean> => {
     if (!draft || sendingRef.current) return false;
     sendingRef.current = true;
@@ -168,6 +179,13 @@ export function useWorkerScale() {
         requestId: draft.requestId,
       });
       const { outcome } = res.event;
+      if (res.replayed && outcome === 'requested') {
+        // Replay sem resultado confirmado (em andamento ou interrompido): não é sucesso; o rascunho fica.
+        setRequestError(s.requestErrors.pendingReplay);
+        void loadState(false);
+        void loadEvents(null);
+        return false;
+      }
       if (outcome !== 'succeeded' && outcome !== 'requested') {
         // Falhou (agora ou no replay): o `requestId` não serve mais; diálogo e rascunho ficam.
         const detail = scaleEventErrorMessage(res.event.error);

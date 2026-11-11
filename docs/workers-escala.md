@@ -129,6 +129,10 @@ adoção para a capacidade vir dos batimentos.
 Aba **Escala** (`/admin/workers/scale`): réplicas atuais × desejadas, estado do escalador (com a lista de envs que
 faltam quando `not_configured`), subir/reduzir com diálogo e motivo obrigatório (3–200), `CooldownBar` até o fim do
 intervalo mínimo e histórico paginado. Rascunho (alvo + motivo) em `usePersistedState('workers.scale.draft')`.
+Com rascunho guardado, "Subir 1"/"Reduzir 1" com alvo diferente do rascunho começam um pedido novo (motivo vazio,
+`requestId` novo); com o mesmo alvo, "Revisar" ou "Escolher alvo", reabrem o rascunho (mesmo `requestId`, "Reenviar").
+A reabertura automática do rascunho restaurado espera a 1ª leitura com o escalador `ready`. Replay de evento ainda
+`requested` não é sucesso: aviso "em andamento ou interrompido; confira o histórico" e o rascunho fica.
 
 Código: `IWorkerScaler` + `sessions/infrastructure/scaler/` (`RenderWorkerScaler`, `NotConfiguredWorkerScaler`,
 `workerScaler()` singleton), `ScaleWorkersUseCase` (regras), `RequestWorkerScaleUseCase` (rota: conta conectadas pela
@@ -162,8 +166,10 @@ no header.
    com os números.
 9. Alvo igual ao atual → 409 `SCALE_TARGET_UNCHANGED`.
 
-- Motivo validado depois do `trim` (3–200) no `RequestWorkerScaleUseCase` → 400 `INVALID_SCALE_REASON`
-  (`field: 'reason'`); o schema da rota mede antes do `trim`.
+- Motivo validado depois do `trim` (3–200, contado por code point com `Array.from`) no `RequestWorkerScaleUseCase`
+  → 400 `INVALID_SCALE_REASON` (`field: 'reason'`). O schema da rota só barra vazio (`pattern`) e acima de 1000
+  (teto de segurança): medir 3–200 lá recusaria um motivo válido com espaços nas pontas. O repositório trunca por
+  code point (nunca parte emoji).
 - **Serialização**: a regra 7 é checada cedo (para `checkPreconditions` e para recusar sem lock) e de novo em
   `recordRequestedIfIdle`, que lê o último `requested|succeeded` e grava `requested` numa transação com
   `pg_advisory_xact_lock(hashtextextended('worker-scale-request', 0))` (chave fixa: um recurso só). Dois `POST` com
@@ -172,7 +178,10 @@ no header.
 - **Replay estrito** por `requestId`: mesmo id com o mesmo alvo, motivo (após `trim`) e ator devolve o evento gravado
   (`replayed: true`) sem chamar a Render, **inclusive `failed`**; com qualquer um deles diferente → 409
   `REQUEST_ID_REUSED`. Por isso um pedido `failed` não é reenviado com o mesmo `requestId`: o painel gera outro id
-  para tentar de novo. Corrida barrada pela unicidade aplica a mesma comparação ao vencedor.
+  para tentar de novo. Replay concorrente (dois `POST` com o mesmo `requestId` ao mesmo tempo): sob o lock e
+  **antes** do intervalo, `recordRequestedIfIdle` procura o `requestId` e devolve `{ existing }`; o use case aplica a
+  mesma comparação (replay ou `REQUEST_ID_REUSED`), sem `rejected` espúrio nem 409 de intervalo. A unicidade segue
+  como rede de segurança.
 - Evento antes da chamada: `requested` → `scaleTo` (sem retry) → `succeeded` ou `failed` (`error` = código interno
   curto, nunca mensagem do provedor). Recusa grava `rejected` **sem** `requestId` (pode ser refeita).
 - **Erro genérico**: erro do `scaleTo` fora de `AppError` vira 503 `SCALE_REQUEST_FAILED` sem a mensagem original

@@ -1,9 +1,9 @@
 import type { ScaleWorkersResult, ScaleWorkersUseCase } from './ScaleWorkersUseCase';
 import type { WorkerScalerStateCache } from '../services/WorkerScalerStateCache';
 import { InvalidScaleReasonError } from '../../../../shared/errors/internal/WorkerScalingErrors';
-import { WORKER_SCALE_TEXT_MAX } from '../../domain/contracts/IWorkerScaleEventRepository';
+import { WORKER_SCALE_TEXT_MAX, textLength } from '../../domain/contracts/IWorkerScaleEventRepository';
 
-/** Tamanho do motivo depois do `trim` (o schema da rota mede antes). */
+/** Tamanho mínimo do motivo em code points depois do `trim` (a rota só barra vazio e > 1000). */
 export const SCALE_REASON_MIN = 3;
 
 export interface RequestWorkerScaleInput {
@@ -27,7 +27,8 @@ export class RequestWorkerScaleUseCase {
 
   async execute(input: RequestWorkerScaleInput): Promise<ScaleWorkersResult> {
     const reason = input.reason.trim();
-    if (reason.length < SCALE_REASON_MIN || reason.length > WORKER_SCALE_TEXT_MAX) {
+    const length = textLength(reason);
+    if (length < SCALE_REASON_MIN || length > WORKER_SCALE_TEXT_MAX) {
       throw new InvalidScaleReasonError(SCALE_REASON_MIN, WORKER_SCALE_TEXT_MAX);
     }
     try {

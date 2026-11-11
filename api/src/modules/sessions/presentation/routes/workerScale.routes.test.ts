@@ -203,6 +203,13 @@ describe('POST /admin/workers/scale', () => {
     expect(scaler.getState).not.toHaveBeenCalled();
   });
 
+  it('motivo de 200 caracteres com espaços nas pontas: aceito (o schema não mede antes do trim)', async () => {
+    const reason = 'x'.repeat(200);
+    const res = await post(body({ reason: `   ${reason}   ` }));
+    expect(res.statusCode).toBe(200);
+    expect(events.recordRequestedIfIdle.mock.calls[0][0].evt).toMatchObject({ reason });
+  });
+
   it('429 do provedor: Retry-After no header', async () => {
     scaler.scaleTo.mockRejectedValue(new ScalerRateLimitedError(42));
     const res = await post(body());
@@ -240,6 +247,7 @@ describe('POST /admin/workers/scale', () => {
     for (const payload of [
       body({ reason: 'ab' }),
       body({ reason: 'x'.repeat(201) }),
+      body({ reason: 'x'.repeat(1001) }),
       body({ reason: '     ' }),
       body({ requestId: 'nao-e-uuid' }),
       body({ replicas: 2.5 }),

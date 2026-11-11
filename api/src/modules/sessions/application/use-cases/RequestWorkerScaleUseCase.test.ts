@@ -43,4 +43,12 @@ describe('RequestWorkerScaleUseCase', () => {
     await ctx.useCase.execute(input(` ${'x'.repeat(200)} `));
     expect(ctx.execute).toHaveBeenCalled();
   });
+
+  it('conta por code point: 200 emojis passam, 2 emojis + espaço não', async () => {
+    const ctx = setup();
+    await ctx.useCase.execute(input(`  ${'😀'.repeat(200)}  `));
+    expect(ctx.execute).toHaveBeenCalledWith(expect.objectContaining({ reason: '😀'.repeat(200) }));
+    await expect(ctx.useCase.execute(input(' 😀😀 '))).rejects.toMatchObject({ code: 'INVALID_SCALE_REASON' });
+    await expect(ctx.useCase.execute(input('😀'.repeat(201)))).rejects.toMatchObject({ code: 'INVALID_SCALE_REASON' });
+  });
 });

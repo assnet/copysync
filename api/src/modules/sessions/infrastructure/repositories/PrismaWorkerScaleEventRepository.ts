@@ -1,6 +1,7 @@
 import type { PrismaClient, WorkerScaleEvent as Row } from '@prisma/client';
 import {
   WORKER_SCALE_TEXT_MAX,
+  truncateText,
   type IWorkerScaleEventRepository,
   type NewWorkerScaleEvent,
   type RecordRequestedResult,
@@ -20,7 +21,8 @@ const SCALE_REQUEST_LOCK_KEY = 'worker-scale-request';
 /** Resultados que contam para o intervalo mínimo (queda no meio deixa `requested`). */
 const COOLDOWN_OUTCOMES = ['requested', 'succeeded'];
 
-const cut = (s: string) => s.slice(0, WORKER_SCALE_TEXT_MAX);
+/** Corte por code point (`varchar(200)` conta caracteres, não unidades UTF-16). */
+const cut = (s: string) => truncateText(s, WORKER_SCALE_TEXT_MAX);
 const cutOrNull = (s: string | null | undefined) => (s == null ? null : cut(s));
 
 const toEvent = (r: Row): WorkerScaleEvent => ({
@@ -71,6 +73,11 @@ export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventReposi
   }): Promise<RecordRequestedResult> {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${SCALE_REQUEST_LOCK_KEY}::text, 0::bigint))`;
+      // Replay concorrente: o mesmo `requestId` já gravado sob o lock vence o bloqueio do intervalo.
+      if (evt.requestId) {
+        const existing = await tx.workerScaleEvent.findUnique({ where: { requestId: evt.requestId } });
+        if (existing) return { existing: toEvent(existing) };
+      }
       const last = await tx.workerScaleEvent.findFirst({
         where: { outcome: { in: COOLDOWN_OUTCOMES } },
         orderBy: [{ at: 'desc' }, { id: 'desc' }],

@@ -11,6 +11,12 @@ export type WorkerScaleOutcome = 'requested' | 'succeeded' | 'failed' | 'rejecte
 /** Teto de `reason` e `error`; o repositório trunca o excedente. */
 export const WORKER_SCALE_TEXT_MAX = 200;
 
+/** Tamanho em code points (o que `varchar(n)` do Postgres conta). */
+export const textLength = (s: string): number => Array.from(s).length;
+/** Corta em `max` code points sem partir par substituto. */
+export const truncateText = (s: string, max: number): string =>
+  s.length <= max ? s : Array.from(s).slice(0, max).join('');
+
 export interface NewWorkerScaleEvent {
   trigger: WorkerScaleTrigger;
   /** `User.id`; `null` = sistema (job automático). */
@@ -35,8 +41,11 @@ export interface WorkerScaleEventPage {
   nextBeforeId: number | null;
 }
 
-/** Resultado de `recordRequestedIfIdle`: id do `requested` gravado ou fim do intervalo mínimo. */
-export type RecordRequestedResult = { id: number } | { blocked: Date };
+/**
+ * Resultado de `recordRequestedIfIdle`: id do `requested` gravado, fim do intervalo mínimo ou o
+ * evento que já tinha o mesmo `requestId` (replay concorrente; quem chama compara alvo/motivo/ator).
+ */
+export type RecordRequestedResult = { id: number } | { blocked: Date } | { existing: WorkerScaleEvent };
 
 /** `worker_scale_events` (WSCALE-13). Sem tenant: dado de infraestrutura. */
 export interface IWorkerScaleEventRepository {
@@ -46,7 +55,8 @@ export interface IWorkerScaleEventRepository {
    * Grava `evt` como `requested` só se o último `requested|succeeded` estiver fora de
    * `cooldownSeconds` contados até `now`; senão devolve `{ blocked: retryAt }` sem gravar. Leitura e
    * insert serializados por `pg_advisory_xact_lock` de chave fixa: dois pedidos simultâneos (com
-   * `requestId` diferentes) não passam juntos. `requestId` repetido lança (unicidade).
+   * `requestId` diferentes) não passam juntos. `requestId` já gravado (checado sob o lock, antes do
+   * intervalo) devolve `{ existing }` sem gravar.
    */
   recordRequestedIfIdle(input: {
     evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>;

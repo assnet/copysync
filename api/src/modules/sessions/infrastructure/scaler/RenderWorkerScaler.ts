@@ -5,6 +5,7 @@ import {
   ScalerUnavailableError,
 } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import { logger } from '../../../../shared/logger/logger';
+import { AppError } from '../../../../shared/errors/AppError';
 
 /**
  * Render API (WSCALE-11), mesmo padrão de `RenderPlatformMetricsSource` (fetch injetável,
@@ -85,6 +86,8 @@ export class RenderWorkerScaler implements IWorkerScaler {
         return { status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: err.retryAfterSeconds };
       }
       if (err instanceof ScalerUnavailableError) return { status: 'unavailable', reason: err.reason };
+      // Erro fora do contrato (resposta inesperada, bug de parse): nunca sobe cru.
+      if (!(err instanceof AppError)) return { status: 'unavailable', reason: 'upstream' };
       throw err;
     }
   }

@@ -5,6 +5,7 @@ import { workerScalingEnforcedCheck } from './GetWorkerScalingSettingsUseCase';
 import type {
   IWorkerScaleEventRepository,
   NewWorkerScaleEvent,
+  RecordRequestedResult,
   WorkerScaleEvent,
   WorkerScaleOutcome,
 } from '../../domain/contracts/IWorkerScaleEventRepository';
@@ -34,7 +35,9 @@ function makeEvents(lastSucceededAt: Date | null = null) {
       row.outcome = outcome;
       row.error = error ?? null;
     }),
-    recordRequestedIfIdle: vi.fn(async ({ evt, cooldownSeconds, now }: { evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>; cooldownSeconds: number; now: Date }) => {
+    recordRequestedIfIdle: vi.fn(async ({ evt, cooldownSeconds, now }: { evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>; cooldownSeconds: number; now: Date }): Promise<RecordRequestedResult> => {
+      const existing = evt.requestId ? rows.find((r) => r.requestId === evt.requestId) : undefined;
+      if (existing) return { existing };
       const counted = rows.filter((r) => r.outcome === 'requested' || r.outcome === 'succeeded').map((r) => r.at);
       if (lastSucceededAt) counted.push(lastSucceededAt);
       const last = counted.sort((a, b) => b.getTime() - a.getTime())[0];
@@ -332,6 +335,20 @@ describe('ScaleWorkersUseCase — idempotência', () => {
     expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
     expect(ctx.scaler.getState).toHaveBeenCalledTimes(1);
     expect(ctx.events.rows).toHaveLength(1);
+  });
+
+  it.each<[string, Partial<ScaleWorkersInput>, string | null]>([
+    ['mesmo corpo → replay', {}, null],
+    ['outro alvo → REQUEST_ID_REUSED', { replicas: 4 }, 'REQUEST_ID_REUSED'],
+  ])('corrida sob o lock (existing do repositório), %s, sem rejected espúrio', async (_n, over, code) => {
+    const ctx = setup();
+    const winner = { id: 9, at: NOW, trigger: 'manual', actorUserId: 'u1', fromReplicas: 2, toReplicas: 3, reason: 'pico', outcome: 'requested', error: null, requestId: 'req-1' } as WorkerScaleEvent;
+    ctx.events.recordRequestedIfIdle.mockResolvedValueOnce({ existing: winner });
+    const run = ctx.useCase.execute(input(over));
+    if (code) await expect(run).rejects.toMatchObject({ code, statusCode: 409 });
+    else await expect(run).resolves.toEqual({ event: winner, replayed: true });
+    expect(ctx.scaler.scaleTo).not.toHaveBeenCalled();
+    expect(ctx.events.record).not.toHaveBeenCalled();
   });
 
   it('corrida: unicidade barra o segundo record e devolve o vencedor', async () => {

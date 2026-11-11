@@ -54,6 +54,11 @@ pedir a escala em `/admin/workers/scale`, com as regras de WSCALE-12, evento ant
 - **`RequestWorkerScaleUseCase.ts`** — motivo validado depois do `trim` (3–200, `INVALID_SCALE_REASON`); `invalidate()` do cache em `finally` (também em erro).
 - **`sessionLeaseContainer.ts`** — logger do `ScaleWorkersUseCase`.
 - **`app/app.ts`**, **`app/corsPolicy.ts`** — `Retry-After` em `exposedHeaders` do CORS (`CORS_EXPOSED_HEADERS`, com `X-Server-Time`): sem ele o painel de outra origem não lia o header.
+- **`PrismaWorkerScaleEventRepository.ts`**, **`IWorkerScaleEventRepository.ts`**, **`ScaleWorkersUseCase.ts`** — replay concorrente: dois `POST` simultâneos com o mesmo `requestId` faziam o segundo cair no intervalo mínimo (409 + `rejected` espúrio). Sob o lock e antes do intervalo, `recordRequestedIfIdle` procura o `requestId` e devolve `{ existing }`; o use case aplica o replay estrito (replay ou `REQUEST_ID_REUSED`). Texto truncado por code point (`truncateText`; nunca parte emoji).
+- **`workerAdmin.schema.ts`**, **`RequestWorkerScaleUseCase.ts`** — o schema media 3–200 antes do `trim` e recusava motivo válido com espaços nas pontas; agora só barra vazio e > 1000, e o use case mede 3–200 após o `trim`, por code point (`Array.from`).
+- **`RenderWorkerScaler.ts`** — `getState`: erro fora de `AppError` vira `unavailable/upstream` (nunca relança cru).
+- **`useWorkerScale.ts`**, **`ScaleTab.tsx`** — com rascunho existente, "Subir 1"/"Reduzir 1" reabriam o alvo antigo com "Reenviar": alvo clicado diferente substitui o rascunho (motivo vazio, `requestId` novo), igual reabre o mesmo pedido; "Revisar" e "Escolher alvo" reabrem o rascunho. A reabertura automática só é consumida pela 1ª leitura `ready`.
+- **`useWorkerScale.ts`**, **`strings.ts`** — replay de evento ainda `requested` (resultado não confirmado) deixa de ser sucesso: aviso próprio ("em andamento ou interrompido; confira o histórico") e o rascunho fica.
 - **Docs** — `docs/workers-escala.md` (serialização, replay estrito, erro genérico, sucesso com falha de escrita, `Retry-After`), `docs/arquitetura-escala.md` §3.7 (cache de 30 s do estado do escalador).
 
 ## [0.83.0 · app 0.102.0] — 2026-11-11 — Capacidade dos workers e métricas de sessões

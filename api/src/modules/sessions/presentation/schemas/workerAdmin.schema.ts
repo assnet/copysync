@@ -273,14 +273,17 @@ export const workerScaleStateResponse = {
   },
 } as const;
 
-/** `POST /admin/workers/scale` (WSCALE-12). Faixa `[min, max]` é do use case (400 com `meta.field`). */
+/**
+ * `POST /admin/workers/scale` (WSCALE-12). Faixa `[min, max]` e motivo 3–200 (após o trim, por code
+ * point) são do use case (400 com `meta.field`); aqui só não-vazio e um teto de segurança.
+ */
 export const workerScaleRequestBody = {
   type: 'object',
   additionalProperties: false,
   required: ['replicas', 'reason', 'requestId'],
   properties: {
     replicas: { type: 'integer' },
-    reason: { type: 'string', minLength: 3, maxLength: 200, pattern: '\\S' },
+    reason: { type: 'string', maxLength: 1000, pattern: '\\S' },
     requestId: { type: 'string', format: 'uuid' },
   },
 } as const;

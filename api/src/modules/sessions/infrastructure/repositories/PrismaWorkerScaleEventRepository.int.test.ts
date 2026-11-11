@@ -110,11 +110,31 @@ describe('recordRequestedIfIdle', () => {
     expect(await prisma.workerScaleEvent.count({ where: { outcome: 'requested' } })).toBe(1);
   });
 
-  it('requestId repetido lança (unicidade)', async () => {
-    await repo.record({ ...base, outcome: 'rejected', requestId: 'dup2' });
-    await expect(
-      repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'dup2' }, cooldownSeconds: 600, now: new Date() }),
-    ).rejects.toThrow();
+  it('requestId já gravado devolve existing (antes do intervalo), sem gravar', async () => {
+    await repo.record({ ...base, outcome: 'failed', requestId: 'dup2' });
+    await plant(new Date(), 'succeeded'); // intervalo ocupado: o replay vence o bloqueio
+    const res = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'dup2' }, cooldownSeconds: 600, now: new Date() });
+    expect(res).toEqual({ existing: expect.objectContaining({ requestId: 'dup2', outcome: 'failed' }) });
+    expect(await prisma.workerScaleEvent.count()).toBe(2);
+  });
+
+  it('dois pedidos concorrentes com o mesmo requestId: um grava, o outro recebe existing', async () => {
+    const now = new Date();
+    const results = await Promise.all(
+      [0, 1].map(() => repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'same' }, cooldownSeconds: 600, now })),
+    );
+    const created = results.filter((r) => 'id' in r) as { id: number }[];
+    const replayed = results.filter((r) => 'existing' in r) as { existing: { id: number } }[];
+    expect(created).toHaveLength(1);
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0]!.existing.id).toBe(created[0]!.id);
+    expect(results.some((r) => 'blocked' in r)).toBe(false);
+    expect(await prisma.workerScaleEvent.count()).toBe(1);
+  });
+
+  it('trunca por code point sem partir emoji', async () => {
+    await repo.recordRequestedIfIdle({ evt: { ...evt, reason: '😀'.repeat(250), requestId: 'emoji' }, cooldownSeconds: 0, now: new Date() });
+    expect((await repo.findByRequestId('emoji'))!.reason).toBe('😀'.repeat(200));
   });
 });
 

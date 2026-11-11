@@ -74,6 +74,11 @@ describe('RenderWorkerScaler.getState', () => {
     await expect(scaler(fetchFn).getState()).resolves.toEqual({ status: 'unavailable', reason: 'upstream' });
   });
 
+  it('erro fora de AppError vira unavailable/upstream (nunca relança cru)', async () => {
+    const broken = vi.fn(async () => null) as unknown as typeof fetch;
+    await expect(scaler(broken).getState()).resolves.toEqual({ status: 'unavailable', reason: 'upstream' });
+  });
+
   it('timeout real do AbortSignal (5 s por padrão, aqui curto) aborta a chamada', async () => {
     const hanging = vi.fn((_: unknown, init?: RequestInit) => new Promise<Response>((_r, reject) => {
       init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason));
