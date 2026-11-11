@@ -15,14 +15,21 @@ Na Cakto, em cada oferta (mensal e anual de cada plano): campo **página de obri
 - Diz que a compra foi confirmada e o próximo passo: abrir o e-mail de `CopySync <nao-responda@copysync.app>`,
   clicar em "Definir senha" (link válido por 7 dias, pode levar 1–2 min, olhar Spam/Promoções). Quem já tem
   conta entra normalmente; o plano novo aparece em Configurações → Assinatura.
-- Botão "Ir para o login" (`/login`) e suporte em nova aba (`https://app.copysync.app/redirect/suporte`).
+- Três passos numerados (abrir o e-mail, "Definir senha", entrar), remetente em destaque e atalhos
+  "Abrir Gmail"/"Abrir Outlook". "Ir para o login" é secundário (quem acabou de comprar ainda não tem senha).
+  Suporte em nova aba por `SUPPORT_CHAT_PATH` (`/redirect/suporte`).
+- **Variante "Primeiro acesso"** (app 0.97.0): o link "Meu primeiro acesso" do login navega com router
+  state `THANK_YOU_FROM_LOGIN_STATE` (`{ from: 'login' }`). Mesmos passos, cabeçalho sem afirmar pagamento
+  recém-confirmado, título "Primeiro acesso · CopySync". Qualquer outro state = variante de compra.
+  Ver [`login-apresentacao.md`](login-apresentacao.md).
 - `noindex` (meta do `index.html`; a página cria a meta se faltar) e título "Compra confirmada · CopySync".
 - Temas sistema/claro/escuro e mobile primeiro (gutter 16 px).
 
 ## O que não fazer
 
 - **Não exibir nem ler a query string.** A Cakto pode anexar dados do comprador; a página tira query e hash da
-  barra (`navigate(pathname, { replace: true })`) e nunca mostra os valores.
+  barra (`navigate(pathname, { replace: true, state })`, preservando o state da variante) e nunca
+  mostra os valores. A variante nunca é escolhida por query.
 - **Não chamar a API** nem buscar dado do pedido: a página é estática. Status e plano chegam pelo webhook da
   central (ver `arquitetura-central-billing.md`); a senha, pelo convite de primeiro acesso.
 - Não mudar o caminho sem trocar a URL em todas as ofertas da Cakto.

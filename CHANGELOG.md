@@ -9,6 +9,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.97.0 — login com compra, primeiro acesso, vídeo e botão de suporte
+
+#### Frontend (app/)
+
+- **`features/platformLinks/links.ts`** — caminhos públicos de compra (`/redirect/comprar-login`) e suporte (`/redirect/suporte`) e id do vídeo de apresentação; compra e suporte passam pelos links de redirecionamento para o super-admin acompanhar os cliques.
+- **`pages/LoginPage.tsx`** — bloco "Ainda não é cliente?" com "Comprar agora" e link discreto "Meu primeiro acesso" (→ `/obrigado` com state); ícones migrados para Lucide/`AppIcon`, textos em `LOGIN_COPY`, alvo de 44 px no mostrar senha, folga inferior no mobile para o botão de suporte. Fluxo de login/Turnstile/código inalterado.
+- **`pages/login/LoginIntroVideo.tsx`** — vídeo de apresentação em fachada (capa + play; iframe `youtube-nocookie` só após o clique, em Dialog 16:9). Card no painel desktop (`LoginShowcasePanel.tsx`) e linha compacta na faixa mobile (`LoginMobileBanner.tsx`).
+- **`features/supportChat/`** — botão flutuante de suporte por WhatsApp montado em `app/App.tsx`, visível logado e deslogado; oculto em `/redirect/*` e `/chat`, elevado em `/monitoring`.
+- **`pages/ThankYouPage.tsx`**, **`features/thankYou/strings.ts`** — variante "Primeiro acesso" por router state, três passos numerados, remetente em destaque, atalhos Gmail/Outlook, "Ir para o login" secundário; limpeza da query preserva o state.
+- Testes: `pages/login/LoginPage.test.tsx`, `features/supportChat/SupportChatButton.test.tsx`, `features/thankYou/ThankYouPage.test.tsx`.
+
+#### Infra
+
+- **`render.yaml`** — CSP: `frame-src` passa a aceitar `https://www.youtube-nocookie.com` (player do vídeo do login).
+
+#### Docs
+
+- **`docs/login-apresentacao.md`** (novo), **`docs/pagina-obrigado.md`**, **`AGENTS.md`**.
+
 ### Added — app 0.91.0 — aba Consumo em Workers (super admin)
 
 #### Frontend (app/)

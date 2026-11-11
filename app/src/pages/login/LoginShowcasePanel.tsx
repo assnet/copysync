@@ -4,6 +4,7 @@ import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { BRAND_NAVY, LOGIN_BENEFITS, LOGIN_COPY, LOGIN_IMAGES } from './loginContent';
 import { GOLDEN_LINE, GOLDEN_SPACE, GOLDEN_TYPE, PHI } from './goldenRatio';
 import { LoginAmbientVideo } from './LoginAmbientVideo';
+import { LoginIntroVideo } from './LoginIntroVideo';
 import {
   REVEAL_ITEMS_DELAY_MS, REVEAL_ITEM_STAGGER_MS, REVEAL_KEYFRAMES, REVEAL_SUBTITLE_DELAY_MS,
   REVEAL_WORD_STAGGER_MS, revealSx,
@@ -11,6 +12,9 @@ import {
 
 /** Fio de 1px entre os passos (branco α 0,14 sobre o overlay navy). */
 const HAIRLINE = alpha('#fff', 0.14);
+
+/** Medida do texto do painel: 26 × 16 ≈ 416 px; o bloco vídeo + passos vai a φ× isso (≈ 673 px). */
+const TEXT_MEASURE = GOLDEN_TYPE.lead * 16;
 
 /** Palavras da headline, para o reveal escalonado. */
 const HEADLINE_WORDS = LOGIN_COPY.headline.split(' ');
@@ -23,27 +27,30 @@ const SR_ONLY = {
 
 /**
  * Painel visual (desktop, md+): vídeo ambiente de equipe (poster + loop) com overlay navy da marca,
- * logo, headline, índice numerado dos passos do produto e faixa de prova social.
+ * logo, headline, vídeo de apresentação ao lado do índice numerado dos passos e prova social.
  *
- * φ aplicado: a grade vertical divide o painel na linha áurea superior (38,2%):
- * o logo vive acima dela e a headline nasce exatamente nela. A largura máxima
- * do texto é 26 × 16 ≈ 420 px (GOLDEN_TYPE.lead × base), e os espaçamentos
- * seguem GOLDEN_SPACE (8 × φⁿ).
+ * φ aplicado: a grade vertical reserva até a linha áurea superior (38,2%) para o logo e
+ * encolhe em telas baixas (1280×720) para o conteúdo caber sem rolagem. Em lg+ o vídeo
+ * (capa 16:9, abre o player em janela) e os passos dividem a linha; em md empilham.
+ * Espaçamentos seguem GOLDEN_SPACE (8 × φⁿ).
  */
 export function LoginShowcasePanel() {
   return (
     <Box
       component="aside"
-      aria-label="Apresentação do produto"
+      aria-label={LOGIN_COPY.showcaseLabel}
       sx={{
         position: 'relative',
         overflow: 'hidden',
-        height: '100%',
         minHeight: '100vh',
         display: 'grid',
         // φ: linha áurea em 38,2% — logo acima, headline a partir dela.
         gridTemplateRows: `minmax(min-content, ${GOLDEN_LINE.upper}) auto`,
+        rowGap: `${GOLDEN_SPACE.s4}px`,
+        alignContent: 'space-between',
         p: `${GOLDEN_SPACE.s5}px`, // 55 px
+        // Telas baixas (ex.: 1280×720): respiro menor para nada estourar a altura.
+        '@media (max-height: 800px)': { py: `${GOLDEN_SPACE.s4}px`, rowGap: `${GOLDEN_SPACE.s3}px` },
         color: '#fff',
         bgcolor: BRAND_NAVY,
         isolation: 'isolate',
@@ -80,10 +87,7 @@ export function LoginShowcasePanel() {
 
       {/* Headline + provas + prova social — nascem na linha áurea */}
       <Box
-        sx={{
-          maxWidth: GOLDEN_TYPE.lead * 16, // ≈ 416 px
-          display: 'flex', flexDirection: 'column',
-        }}
+        sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, maxWidth: TEXT_MEASURE * PHI }}
       >
         <Typography
           component="h2"
@@ -91,6 +95,7 @@ export function LoginShowcasePanel() {
             fontSize: GOLDEN_TYPE.display, // 42 px
             fontWeight: 800, letterSpacing: -1, lineHeight: 1.1,
             textWrap: 'balance',
+            maxWidth: TEXT_MEASURE,
             mb: `${GOLDEN_SPACE.s3}px`,
           }}
         >
@@ -110,7 +115,9 @@ export function LoginShowcasePanel() {
           sx={{
             fontSize: GOLDEN_TYPE.base, lineHeight: PHI, // 16 px, altura de linha φ
             color: alpha('#fff', 0.84),
+            maxWidth: TEXT_MEASURE,
             mb: `${GOLDEN_SPACE.s4}px`,
+            '@media (max-height: 800px)': { mb: `${GOLDEN_SPACE.s3}px` },
             ...revealSx(REVEAL_SUBTITLE_DELAY_MS),
           }}
         >
@@ -121,11 +128,24 @@ export function LoginShowcasePanel() {
             Não focável (não é interativo); a hint vai no tooltip (mouse) e em
             texto só-para-leitor-de-tela. */}
         <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(0, 1fr)' },
+            alignItems: 'center',
+            gap: { xs: `${GOLDEN_SPACE.s3}px`, lg: `${GOLDEN_SPACE.s4}px` },
+            mb: `${GOLDEN_SPACE.s3}px`,
+          }}
+        >
+        <LoginIntroVideo
+          variant="card"
+          sx={{ maxWidth: { xs: GOLDEN_TYPE.lead * 16, lg: 'none' }, ...revealSx(REVEAL_ITEMS_DELAY_MS) }}
+        />
+        <Box
           component="ol"
-          aria-label="Como o produto funciona, em ordem"
+          aria-label={LOGIN_COPY.stepsLabel}
           sx={{
             m: 0, p: 0, listStyle: 'none',
-            mb: `${GOLDEN_SPACE.s3}px`,
+            maxWidth: { xs: GOLDEN_TYPE.lead * 16, lg: 'none' },
             borderTop: `1px solid ${HAIRLINE}`,
           }}
         >
@@ -184,6 +204,7 @@ export function LoginShowcasePanel() {
               </Box>
             </Tooltip>
           ))}
+        </Box>
         </Box>
 
         {/* Prova social: avatares recortados das fotos (sem números inventados) */}
