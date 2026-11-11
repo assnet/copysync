@@ -5,7 +5,6 @@ import {
   STOREFRONT_MAX_OFFERS,
   STOREFRONT_OFFER_TITLE_MAX_LENGTH,
 } from '../../domain/services/storefrontRules';
-import type { ResolvedAffiliateProduct } from '../../../campaigns/application/use-cases/ResolveAffiliateProductUseCase';
 import { StorefrontOfferLimitError } from '../../../../shared/errors/internal/StorefrontErrors';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
@@ -13,7 +12,7 @@ import { requireStorefront, requireStorefrontEnabled, type StorefrontUseCaseDeps
 
 type Deps = Pick<
   StorefrontUseCaseDeps,
-  'storefronts' | 'offers' | 'entitlements' | 'images' | 'media' | 'resolveProduct' | 'buildAffiliateLink' | 'imageFetcher'
+  'storefronts' | 'offers' | 'entitlements' | 'images' | 'media' | 'resolveProduct' | 'imageFetcher'
 >;
 
 export interface ExtractStorefrontOfferInput {
@@ -22,15 +21,21 @@ export interface ExtractStorefrontOfferInput {
   category?: string | null;
 }
 
+export interface ExtractStorefrontOfferResult {
+  offer: StorefrontOffer;
+  /** O link colado era de outro afiliado e foi recriado com a credencial do tenant. */
+  linkRebuilt: boolean;
+}
+
 /**
- * Link colado → rascunho no fim da aba. Regra de link do gerador (`ResolveAffiliateProductUseCase`),
- * exceto Shopee: com credencial o link é gerado para o tenant; sem ela (ou falha) grava o colado
- * com `attributionVerified = false`. Imagem é melhor esforço: falha não impede o rascunho.
+ * Link colado → rascunho no fim da aba. Link só pela regra do gerador (`ResolveAffiliateProductUseCase`):
+ * devolve sempre o link do tenant (recriado se for de outro afiliado) ou lança erro — nunca grava link
+ * de terceiro, então o item nasce `attributionVerified = true`. Imagem é melhor esforço.
  */
 export class ExtractStorefrontOfferUseCase {
   constructor(private readonly deps: Deps) {}
 
-  async execute(input: ExtractStorefrontOfferInput): Promise<StorefrontOffer> {
+  async execute(input: ExtractStorefrontOfferInput): Promise<ExtractStorefrontOfferResult> {
     const { storefronts, offers, entitlements } = this.deps;
     const { tenantId } = input;
 
@@ -40,20 +45,19 @@ export class ExtractStorefrontOfferUseCase {
     if (counts.total >= STOREFRONT_MAX_OFFERS) throw new StorefrontOfferLimitError(STOREFRONT_MAX_OFFERS);
 
     const resolved = await this.deps.resolveProduct.execute(tenantId, input.url);
-    const link = resolved.provider === 'SHOPEE' ? await this.shopeeLink(tenantId, resolved) : resolved;
     const imageUrl = resolved.product.imageSourceUrl ? await this.storeImage(resolved.product.imageSourceUrl) : null;
 
     // Posição lida por último: extração lenta não pega a mesma posição de outra recém-criada
     const max = await offers.maxPosition(tenantId, page.id, StorefrontOfferStatus.DRAFT);
-    return offers.create({
+    const offer = await offers.create({
       tenantId,
       storefrontId: page.id,
       status: StorefrontOfferStatus.DRAFT,
       position: (max ?? -1) + 1,
       provider: resolved.provider,
       sourceUrl: resolved.sourceUrl,
-      affiliateUrl: link.affiliateUrl,
-      attributionVerified: link.attributionVerified,
+      affiliateUrl: resolved.affiliateUrl,
+      attributionVerified: true,
       // Sem título do marketplace: vazio, o tenant completa na edição
       title: (resolved.product.title ?? '').trim().slice(0, STOREFRONT_OFFER_TITLE_MAX_LENGTH),
       priceCents: resolved.product.priceCents,
@@ -61,24 +65,7 @@ export class ExtractStorefrontOfferUseCase {
       imageUrl,
       category: keepOfferCategory(input.category ?? null, page.categories),
     });
-  }
-
-  /** `ok` → link do tenant (verificado); qualquer outro resultado → link colado sem verificação. */
-  private async shopeeLink(
-    tenantId: string,
-    resolved: ResolvedAffiliateProduct,
-  ): Promise<{ affiliateUrl: string; attributionVerified: boolean }> {
-    const pasted = { affiliateUrl: resolved.sourceUrl, attributionVerified: false };
-    try {
-      const built = await this.deps.buildAffiliateLink.execute(tenantId, resolved.sourceUrl);
-      if (built.kind === 'ok') return { affiliateUrl: built.affiliateUrl, attributionVerified: true };
-      logger.info({ kind: built.kind, provider: 'SHOPEE' }, 'storefront offer kept pasted link');
-      return pasted;
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      logger.warn({ err, provider: 'SHOPEE' }, 'storefront affiliate link build failed');
-      return pasted;
-    }
+    return { offer, linkRebuilt: resolved.linkRebuilt };
   }
 
   private async storeImage(sourceUrl: string): Promise<string | null> {
