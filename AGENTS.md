@@ -19,7 +19,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Estado do rebranding, pendências por fase e o que não mexer: [`docs/rebranding-copysync.md`](docs/rebranding-copysync.md).
 - A marca só aparece em texto exibido, `<title>`, OpenAPI e assets. Nomes de funções, chaves, eventos e rotas descrevem o recurso (white label).
 - Funcionalidades, planos/limites e ordem de entrega do produto: [`docs/produto-roadmap.md`](docs/produto-roadmap.md). Feature nova deve caber em um item de lá.
-- Credenciais de afiliado (cifra, rotas, o que não fazer): [`docs/integracoes-credenciais-afiliado.md`](docs/integracoes-credenciais-afiliado.md). Segredo só via `ISecretCipher`; nunca devolver/logar.
+- Credenciais de afiliado (cifra, rotas, o que não fazer): [`docs/integracoes-credenciais-afiliado.md`](docs/integracoes-credenciais-afiliado.md). Segredo só via `ISecretCipher`; nunca devolver/logar. Etiquetas do ML: lista só do sync da extensão, vinculadas até `mercado_livre_affiliate_tags` (LITE 1/PRO 2/MAX 10, ausente = 1); nunca trocar a principal sozinho.
 - Billing, checkout e e-mail via API central (hub, webhook HMAC, entitlements): [`docs/arquitetura-central-billing.md`](docs/arquitetura-central-billing.md). Sem cálculo de preço nem gateway no CopySync: só receiver de eventos, status do tenant e entitlements.
 - Gerador de ofertas (marketplaces, anti-SSRF, worker de envio e flag `OFFER_DISPATCH_WORKER_ENABLED`): [`docs/gerador-de-ofertas.md`](docs/gerador-de-ofertas.md). Worker só liga na Render.
 - Gestor de Links (subdomínio público por Host, estratégias, limites por plano, job de membros e flag `LINK_ROTATION_MEMBER_SYNC_ENABLED`): [`docs/rodizio-de-links.md`](docs/rodizio-de-links.md). Hook público nunca intercepta host da API/painel.

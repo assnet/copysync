@@ -37,9 +37,17 @@ O link colado **é** o link de afiliado (o sistema não gera mais link). Após e
 | Loja | Prova | Regra |
 | --- | --- | --- |
 | Amazon | `tag=` | ≠ credencial → `OFFER_LINK_NOT_OWNED`; sem `tag` → `OFFER_LINK_NOT_AFFILIATE` |
-| Mercado Livre | `matt_word` (etiqueta); `/social/<x>` é o apelido do perfil e só vale quando nenhuma URL (colada ou final, `meli.la`) tem `matt_word` (`ownershipIdentifiersOf`) | idem (comparação sem caixa); dois `matt_word` distintos → `OFFER_LINK_NOT_OWNED` |
+| Mercado Livre | `matt_word` (etiqueta); `/social/<x>` é o apelido do perfil e só vale quando nenhuma URL (colada ou final, `meli.la`) tem `matt_word` (`ownershipIdentifiersOf`) | aceita **qualquer etiqueta vinculada efetiva** (principal + vinculadas até o limite do plano; comparação sem caixa). Etiqueta da conta não vinculada → `AFFILIATE_IDENTIFIER_NOT_LINKED` (422, com vaga) ou `PLAN_LIMIT_REACHED` (403, `meta.key = mercado_livre_affiliate_tags`, sem vaga); de terceiro ou dois `matt_word` distintos → `OFFER_LINK_NOT_OWNED` |
 | Shopee | — | sem verificação (aviso fixo no painel); `attributionVerified=false` |
 | Shein | `url_from=affiliate_koc_<memberId>` | ≠ ID da conta conectada → `OFFER_LINK_NOT_OWNED`; sem afiliação e com conta → link gerado pela sessão (`attributionVerified=true`); sem afiliação e sem conta → `OFFER_LINK_NOT_AFFILIATE` |
+
+Etiquetas do ML (api 0.80.0): o conjunto aceito vem de `effectiveLinkedIdentifiers` com o limite de
+`mercado_livre_affiliate_tags` (`ResolveAffiliateProductUseCase`; vitrine e story herdam). Regra, rebaixamento e o que
+não fazer: [`integracoes-credenciais-afiliado.md`](integracoes-credenciais-afiliado.md) ("Várias etiquetas do Mercado
+Livre"). No painel, `AFFILIATE_IDENTIFIER_NOT_LINKED` entra em `CREDENTIAL_CODES` (botão para as credenciais) e o
+`PLAN_LIMIT_REACHED` dessa chave tem ramo próprio em `offerErrors.ts` (`isMercadoLivreTagLimit`): o gerador abre o
+`PlanLimitBanner` com PRO e MAX; vitrine e story mostram texto + link para `?feature=mercadoLivreTags`. Monitoramento e
+link gerado pela sessão seguem com a principal.
 
 Dados do produto (título, preços, foto) e foto no store: `ResolveProductDataUseCase` (api 0.41.0, extraído do
 `GenerateOfferUseCase` para o monitoramento reaproveitar). Vitrine social ML (`/social/<etq>?…&ref=…`) é perfil,

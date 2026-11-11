@@ -83,6 +83,7 @@ guarda o plano, não o preço.
 | Gestor de Links — Telegram (links · grupos por link) | — | 1 · 5 | 2 · 10 |
 | Menção a todos os participantes | — | ✅ | ✅ |
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
+| Etiquetas do Mercado Livre vinculadas (principal incluída) | 1 | 2 | 10 |
 | Marketplace Shein (sessão pela extensão, aviso de risco) | — | — | ✅ |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
 | Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
@@ -111,6 +112,11 @@ PRO 2/10, MAX 6/40. Gestor de Links (canal = engine da sessão do rodízio): `li
 PRO 1/5, MAX 2/10). Cada canal conta e corta sozinho; `PLAN_LIMIT_REACHED` (403) leva `meta.key` do canal.
 `cross_session_dispatch` só é exigido com **2+ sessões do mesmo canal**; WhatsApp + Telegram juntos
 sempre podem. Nada de chave literal em use case: `channelLimitKey(kind, engine)` / `limitKeyOfChannel`.
+
+**Etiquetas do Mercado Livre** (`mercado_livre_affiliate_tags`, api 0.80.0): LITE 1, PRO 2, MAX 10, principal incluída;
+ausente/`null` = **1** (não é ilimitado; `identifierLimitOf`). Não é por canal. Link com etiqueta da conta não
+vinculada: com vaga `AFFILIATE_IDENTIFIER_NOT_LINKED` (422), sem vaga `PLAN_LIMIT_REACHED` (403, `meta.key` da chave).
+Regra completa: [`integracoes-credenciais-afiliado.md`](integracoes-credenciais-afiliado.md).
 
 ### Carga por plano (entrada do estudo de arquitetura)
 

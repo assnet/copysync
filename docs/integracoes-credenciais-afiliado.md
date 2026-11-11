@@ -25,7 +25,7 @@ verdade e o painel só repete as regras, para dar retorno ao operador.
 | Marketplace | Campo público | Regex | Segredo |
 | --- | --- | --- | --- |
 | Shopee (Affiliate Open API) | AppID | `^\d{5,20}$` | Secret `^[A-Za-z0-9]{16,128}$` (assina `sha256(appId+timestamp+payload+secret)`) |
-| Mercado Livre | Etiqueta de afiliado (`matt_word` no link) | `^[A-Za-z0-9._-]{2,64}$` | — (a sessão vem da extensão) |
+| Mercado Livre | Etiqueta de afiliado principal (`matt_word` no link); outras etiquetas da conta podem ser vinculadas até o limite do plano ([Várias etiquetas](#várias-etiquetas-do-mercado-livre)) | `^[A-Za-z0-9._-]{2,64}$` (vale também para cada item da lista da conta) | — (a sessão vem da extensão) |
 | Amazon Associados | ID de rastreamento (`?tag=`) | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}-\d{2}$` | — |
 | Shein | ID de afiliado (`memberId`, `url_from=affiliate_koc_<id>`) | `^\d{6,15}$` | — (a sessão vem da extensão; o ID **segue a sessão**, não é editável) |
 
@@ -53,9 +53,13 @@ Prefixo `/api/integrations/affiliate-credentials`, com `authHook` e `tenantHook`
 | DELETE | `/:provider` | 204, ou 404 se não existe. Apaga junto a sessão da extensão |
 | PATCH | `/:provider/status` | `{ status: ACTIVE \| INACTIVE }` |
 | PUT | `/:provider/session` | Usada só pela extensão e só para `MERCADO_LIVRE`. Recebe `{ sessionToken, csrfToken, affiliateTag?, capturedAt }` |
+| GET | `/:provider/identifiers` | `{ account, primary, linked, limit, used }`: etiquetas da conta, principal, vinculadas e limite do plano. Só provider com lista da conta (hoje `MERCADO_LIVRE`); outro → 422 `AFFILIATE_CREDENTIAL_INVALID` |
+| PUT | `/:provider/identifiers` | `{ primary, linked }`: escolhe a principal e as vinculadas entre as etiquetas da conta. Acima do limite → 403 `PLAN_LIMIT_REACHED` (`meta.key = mercado_livre_affiliate_tags`) |
 | POST | `/:provider/risk-acceptance` | `{ noticeVersion, locale }`. Aceite do aviso de risco (hoje só `SHEIN`), só administrador do tenant. Ver [`afiliado-shein.md`](afiliado-shein.md) |
 
 A listagem (`GET /`) traz também `marketplaceAvailability` por provider: `{ enabled, plans, riskNotice }` (plano do tenant, planos que têm o recurso, aceite da versão vigente do aviso).
+Cada item traz ainda `accountIdentifiers`, `linkedIdentifiers` e `identifierLimit` (este só para provider com lista da
+conta; `null` nos demais).
 
 Erros possíveis:
 
@@ -118,6 +122,10 @@ Tudo da Shein: [`afiliado-shein.md`](afiliado-shein.md).
   não enche `audit_logs`.
 - Se o blob atual não decifra, a sessão é gravada por cima, auditada e registra um `warn`. Nunca
   responde 500 em loop.
+- O sync (`PUT /extension/marketplaces/ml/session`) lê `listAccountTags` (no lugar de `getActiveTag`): a etiqueta
+  `in_use` alimenta `affiliateTag` e o `sessionCheck`; a lista inteira vai como `accountIdentifiers` ao
+  `UpsertAffiliateSessionUseCase`, que grava a lista da conta e poda as vinculadas que saíram dela (seção abaixo).
+- `DELETE /extension/marketplaces/ml/session` (`clearSession`) zera junto `accountIdentifiers` e `linkedIdentifiers`.
 
 ### Geração automática de links (F4)
 
@@ -125,6 +133,69 @@ A sessão sincronizada pela extensão também é consumida por `MercadoLivreAffi
 (`campaigns/infrastructure/http/`) para gerar links de afiliado automaticamente quando o operador
 cola uma URL de produto ML sem `matt_word`. Detalhes em
 [`gerador-de-ofertas.md`](gerador-de-ofertas.md) (seção "Geração automática de link ML").
+
+## Várias etiquetas do Mercado Livre
+
+Uma conta de afiliado do ML pode ter várias etiquetas (`matt_word`), uma só `in_use`. O tenant vincula as que quer usar
+como suas, até o limite do plano. Spec/design: `.specs/features/tenant-affiliate-link/` (TLINK-28..39, fase FE).
+Formato real do ML: [`extensao-ml-endpoints.md`](extensao-ml-endpoints.md) §4.
+
+**Dados** (`affiliate_credentials`, migration `20261111130000_add_affiliate_account_identifiers_and_ml_tags_entitlement`):
+
+| Coluna | Conteúdo |
+| --- | --- |
+| `publicIdentifier` | Etiqueta **principal** (inalterada; preenchida pelo sync só se vazia, ou escolhida na tela) |
+| `accountIdentifiers String[]` | Etiquetas da conta vistas na última sincronização |
+| `linkedIdentifiers String[]` | Vinculadas **além** da principal, em ordem |
+
+**De onde vem a lista**: só da sincronização da extensão (`listAccountTags` → `GET /stripe/user/tags`). Cada item passa
+por `validatePublicIdentifier` (inválido descartado, repetido sem caixa descartado). Lista nula (leitura falhou) ou
+vazia depois da validação **não toca** nas colunas. Com lista lida: substitui `accountIdentifiers` e remove de
+`linkedIdentifiers` o que não está mais na conta. Etiqueta criada no ML depois do último sync só aparece no próximo
+(alarme da extensão, ou botão de sincronizar na tela).
+
+**Limite por plano**: chave `mercado_livre_affiliate_tags` (LITE 1, PRO 2, MAX 10; **principal incluída**). Ausente ou
+`null` vale **1** (não é ilimitado), via `identifierLimitOf` (`tenants/domain/services/affiliateIdentifierLimit.ts`),
+único ponto de leitura. Chave por provider em `integrations/domain/services/affiliateIdentifierEntitlement.ts`.
+
+**Conjunto efetivo** = principal + primeiras `limite − 1` vinculadas (`effectiveLinkedIdentifiers`, função pura).
+Rebaixamento não apaga nada: o excedente só deixa de valer e volta se o plano subir. A tela de Assinatura mostra o uso
+(`used` = tamanho do conjunto efetivo) × limite.
+
+**Desconexão e troca de conta**: `clearSession` zera as duas colunas. Troca de conta sem desconectar não tem detecção
+própria: o próximo sync lido substitui a lista e poda as vinculadas da conta antiga. Mudança de token não zera nada.
+
+**Rotas**: `GET|PUT /api/integrations/affiliate-credentials/:provider/identifiers` (tabela de rotas acima). O PUT exige
+tudo ∈ `accountIdentifiers`, sem repetição, `1 + linked ≤ limite`; audita `AFFILIATE_CREDENTIAL_UPSERTED` com
+`meta { provider, identifiersChanged: true }`, **sem** as etiquetas.
+
+**Uso no link colado** (`ResolveAffiliateProductUseCase`; gerador, Página de Ofertas e Story herdam):
+
+| `matt_word` do link | Resultado |
+| --- | --- |
+| No conjunto efetivo | Aceito como do tenant (`verified`), com a etiqueta do próprio link |
+| Da conta, não vinculada, com vaga | 422 `AFFILIATE_IDENTIFIER_NOT_LINKED` (`meta { provider, limit, used }`): painel leva às credenciais |
+| Da conta, não vinculada, sem vaga (sempre no LITE) | 403 `PLAN_LIMIT_REACHED` (`meta.key = mercado_livre_affiliate_tags`): painel lista PRO e MAX |
+| De terceiro | Como antes (`OFFER_LINK_NOT_OWNED`) |
+
+Monitoramento, vitrine pública e links gerados pelo sistema seguem usando só a **principal** (TLINK-35).
+
+**Painel** (`app/src/features/settings/`): a fonte das etiquetas é a API (a etiqueta exibida pela extensão sai). O diálogo
+do ML (`BrowserSessionCredentialDialog`, recebe o `item`) lista as etiquetas da conta, escolha da principal e das
+vinculadas, contador "x de y", item além do limite indisponível com botão para os planos, e pede escolha quando a
+principal está vazia e a conta tem etiquetas. O card mostra quantas estão vinculadas. Flag de privacidade
+`affiliateCredentials.accountIdentifiers` + `Blurred`; rascunho em `usePersistedState`, limpo ao salvar.
+
+**O que não fazer**:
+
+- Não atualizar a lista da conta na hora da geração (nem chamar o ML para isso): a lista vem só do sync.
+- Não trocar a principal sozinho (sync nem poda): só o tenant troca, pela tela. Principal que sumiu da conta → a tela
+  avisa e pede nova escolha.
+- Não confiar em erro do ML para validar etiqueta: `createLink` com etiqueta fora da conta responde 200 e usa a
+  `in_use` em silêncio. A validação é `∈ accountIdentifiers`.
+- Não pôr etiqueta em `meta` de erro, auditoria ou log.
+- Não tratar chave ausente como ilimitada, nem ler a chave fora de `identifierLimitOf`.
+- Não apagar vinculadas no rebaixamento.
 
 ## Credencial recusada pela loja (`rejectedAt` / `rejectedCode`)
 
@@ -141,7 +212,7 @@ não marcam rejeição. O presenter expõe `rejectedAt`/`rejectedCode`; o card m
 
 ### Checagem da sessão no sync (`sessionCheck`)
 
-O `PUT /extension/marketplaces/ml/session` já chama `getActiveTag`, que faz o bootstrap no ML com os cookies
+O `PUT /extension/marketplaces/ml/session` já chama `listAccountTags` (antes `getActiveTag`, que hoje delega a ela), que faz o bootstrap no ML com os cookies
 recebidos. O resultado vira `sessionCheck` do `UpsertAffiliateSessionUseCase`:
 
 | Bootstrap no ML | `sessionCheck` | Rejeição |

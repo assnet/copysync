@@ -7,6 +7,40 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.80.0 · app 0.99.0] — 2026-11-11 — Várias etiquetas do Mercado Livre por plano (LITE 1, PRO 2, MAX 10)
+
+Link do ML com etiqueta da própria conta que não era a `in_use` era recusado como de terceiro. Agora o tenant vincula
+etiquetas da conta até o limite do plano. Spec: `.specs/features/tenant-affiliate-link/` (TLINK-28..39). Doc:
+`docs/integracoes-credenciais-afiliado.md` ("Várias etiquetas do Mercado Livre").
+
+### Added
+
+#### API — `tenants`, `integrations`, `extension`, `campaigns`
+
+- **`tenants/domain/entitlementKeys.ts`**, **`planPresets.ts`**, **`domain/services/affiliateIdentifierLimit.ts`** — chave `mercado_livre_affiliate_tags` (LITE 1, PRO 2, MAX 10, principal incluída); `identifierLimitOf`: ausente/`null` vale 1, nunca ilimitado.
+- **`prisma/schema.prisma`** + migration **`20261111130000_add_affiliate_account_identifiers_and_ml_tags_entitlement`** — colunas `accountIdentifiers`/`linkedIdentifiers` (`TEXT[]`, default vazio) em `affiliate_credentials`; presets da chave nova (`ON CONFLICT DO NOTHING`) e backfill em `tenant_entitlements` por `planSlug`, filtrado pela chave nova (nenhuma outra chave muda).
+- **`MercadoLivreAffiliateClient.ts`** / **`IMercadoLivreAffiliateClient.ts`** — `listAccountTags` (`{ tags, active }`; `tags: null` quando a leitura falha, 401/403/429 lançam); `getActiveTag` delega.
+- **`integrations/domain/services/effectiveLinkedIdentifiers.ts`** — regra pura: principal + primeiras `limite − 1` vinculadas (rebaixamento não apaga).
+- **`extension.routes.ts`**, **`UpsertAffiliateSessionUseCase.ts`**, **`PrismaAffiliateCredentialRepository.ts`**, entidade/DTO/mapper — o sync grava a lista da conta (itens validados, repetidos descartados) e poda vinculadas que saíram dela; lista nula ou vazia não toca; `clearSession` zera as duas colunas.
+- **`GetAffiliateIdentifiersUseCase.ts`**, **`SetLinkedAffiliateIdentifiersUseCase.ts`**, **`affiliateCredential.routes.ts`**, **`affiliateCredential.schema.ts`**, **`AffiliateCredentialPresenter.ts`**, **`affiliateIdentifierEntitlement.ts`** — `GET|PUT /integrations/affiliate-credentials/:provider/identifiers`; PUT só com etiquetas da conta, sem repetição, até o limite (`PLAN_LIMIT_REACHED`); auditoria `AFFILIATE_CREDENTIAL_UPSERTED` sem as etiquetas. Listagem com `accountIdentifiers`, `linkedIdentifiers`, `identifierLimit`.
+- **`subscriptionLimits.ts`**, **`PrismaTenantUsageReader.ts`** — Assinatura mostra etiquetas do ML com uso (conjunto efetivo) × limite.
+- **`ResolveAffiliateProductUseCase.ts`**, **`verifyAffiliateLink.ts`**, **`ResolveAffiliateCredentialUseCase.ts`**, **`IAffiliateCredentialResolver.ts`**, **`AffiliateCredentialErrors.ts`** — gerador, vitrine e story aceitam qualquer etiqueta vinculada efetiva; etiqueta da conta não vinculada → `AFFILIATE_IDENTIFIER_NOT_LINKED` (com vaga) ou `PLAN_LIMIT_REACHED` (sem vaga). Monitoramento e links gerados seguem com a principal.
+- Teste real (TE0) em `docs/extensao-ml-endpoints.md` §4: `createLink` aceita qualquer etiqueta da conta; etiqueta fora da conta vira a `in_use` sem erro.
+
+#### Painel (app/) — `plans`, `subscription`, `linkRotation`, `offers`, `storefront`, `offerStory`, `settings`
+
+- **`plans/catalog.ts`**, **`PlanCard.tsx`**, **`PlansHero.tsx`**, **`plans/strings.ts`** — `limits.mercadoLivreTags` 1/2/10; linha "Etiquetas do Mercado Livre" no card; selo "PRO+" no logo do ML no banner (mapa `PROVIDER_SEAL`); `?feature=mercadoLivreTags`.
+- **`subscription/strings.ts`** — rótulo e campo de catálogo da chave nova.
+- **`linkRotation/planUpsell.ts`**, **`PlanLimitBanner.tsx`**, **`linkRotation/strings.ts`** — kind `mercadoLivreTags`; `plansAbove`/`UPSELL_CONFIG`: o aviso lista PRO **e** MAX (kinds antigos seguem com um plano).
+- **`offers/utils/offerErrors.ts`**, **`plans/planGate.ts`**, **`OfferGeneratorPage.tsx`**, **`storefrontForm.ts`**, **`useStorefrontPage.ts`**, **`AddOfferCard.tsx`**, **`offerStory/productForm.ts`**, **`ProductStep.tsx`** — erros novos nas três telas: não vinculada → botão para credenciais; sem vaga → aviso de upgrade (gerador) ou texto + link para planos (vitrine e story).
+- **`settings/components/BrowserSessionCredentialDialog.tsx`**, **`AffiliateCredentialCard.tsx`**, **`useAffiliateCredentials.ts`**, **`affiliateCredential.service.ts`**, **`privacyFlags.ts`** — tela de credenciais lista as etiquetas da conta (vindas da API), escolha da principal e das vinculadas com contador "x de y" e botão para planos no limite; flag `affiliateCredentials.accountIdentifiers` com `Blurred`; rascunho em `usePersistedState`.
+
+### Breaking Changes / Migration
+
+- **Migration Prisma**: `20261111130000_add_affiliate_account_identifiers_and_ml_tags_entitlement` (aditiva; colunas + presets + backfill). Aplicada no boot pela Render (`start:migrate`); nunca rodar local (`api/.env` = produção).
+- **Respostas de erro novas**: `AFFILIATE_IDENTIFIER_NOT_LINKED` (422, `meta { provider, limit, used }`) e `PLAN_LIMIT_REACHED` (403, `meta.key = mercado_livre_affiliate_tags`) em `POST /campaigns/offers`, vitrine e story, para link do ML com etiqueta da conta não vinculada (antes `OFFER_LINK_NOT_OWNED`). Painel 0.99.0 trata as duas; publicar API e painel juntos.
+- Contrato da listagem de credenciais ganha campos (aditivo).
+
 ## [0.79.1 · app 0.98.0] — 2026-11-11 — Link próprio do ML com apelido do perfil ≠ etiqueta volta a ser aceito
 
 ### Fixed
