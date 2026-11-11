@@ -2,6 +2,7 @@
 import type {
   WorkerCapacityPlan,
   WorkerScalerMode,
+  WorkerScaleStateView,
   WorkerScalingSettings,
   WorkerScalingSettingsChange,
   WorkerScalingSettingsDraft,
@@ -176,4 +177,95 @@ export function sortPlansByCatalog<T extends { planSlug: string | null }>(plans:
     .map((p, i) => ({ p, i, r: planCatalogRank(p.planSlug) }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.p);
+}
+
+// ── Aba Escala (WSCALE-14) ─────────────────────────────────────────────────
+
+const sc = workersAdminStrings.scale;
+
+export const SCALE_REASON_MIN = 3;
+export const SCALE_REASON_MAX = 200;
+
+/** Por que os pedidos estão desligados; `null` = liberados (o intervalo mínimo é tratado à parte). */
+export type ScaleBlock = 'notReady' | 'modeOff' | 'notEnforced' | 'disk' | 'nativeAutoscaling';
+
+export function scaleBlock(view: WorkerScaleStateView): ScaleBlock | null {
+  if (view.settings.scalerMode === 'off') return 'modeOff';
+  if (!view.enforced) return 'notEnforced';
+  if (view.scaler.status !== 'ready') return 'notReady';
+  if (view.scaler.hasDisk) return 'disk';
+  if (view.scaler.autoscalingEnabled) return 'nativeAutoscaling';
+  return null;
+}
+
+/** Intervalo mínimo ativo no relógio do servidor. */
+export function cooldownActive(cooldownUntil: string | null, nowMs: number): boolean {
+  if (!cooldownUntil) return false;
+  const end = new Date(cooldownUntil).getTime();
+  return Number.isFinite(end) && end > nowMs;
+}
+
+/** Tempo restante em minutos/horas, arredondado para cima ("menos de 1 min" no último minuto). */
+export function formatScaleRemaining(seconds: number): string {
+  if (seconds < 60) return sc.remaining.underMinute;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return sc.remaining.minutes(minutes);
+  return sc.remaining.hours(Math.floor(minutes / 60), minutes % 60);
+}
+
+/** Erro do alvo no diálogo; `null` = válido. */
+export function scaleTargetError(raw: number | string, current: number, min: number, max: number): string | null {
+  const text = String(raw).trim();
+  const n = Number(text);
+  if (text === '' || !Number.isInteger(n) || n < min || n > max) return sc.dialog.targetRange(min, max);
+  if (n === current) return sc.dialog.targetSame;
+  return null;
+}
+
+/** Erro do motivo (contado sem espaços nas pontas, como a API); `null` = válido. */
+export function scaleReasonError(reason: string): string | null {
+  const n = reason.trim().length;
+  if (n < SCALE_REASON_MIN) return sc.dialog.reasonShort;
+  if (n > SCALE_REASON_MAX) return sc.dialog.reasonLong;
+  return null;
+}
+
+const fmtNum = (v: unknown, digits = 0) =>
+  (typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('pt-BR', { maximumFractionDigits: digits }) : '—');
+
+const fmtWhen = (iso: unknown): string | null => {
+  if (typeof iso !== 'string') return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+/** Mensagem clara para o erro do `POST /admin/workers/scale` (código e `meta` da API). */
+export function scaleRequestErrorMessage(err: unknown): string {
+  const e = (err ?? {}) as { status?: number; code?: string; meta?: Record<string, unknown> };
+  const m = e.meta ?? {};
+  const e2 = sc.requestErrors;
+  switch (e.code) {
+    case 'SCALE_TARGET_OUT_OF_RANGE':
+      return typeof m.min === 'number' && typeof m.max === 'number' ? e2.outOfRange(m.min, m.max) : e2.invalid;
+    case 'SCALER_MODE_OFF': return e2.modeOff;
+    case 'ADOPTION_DISABLED': return e2.adoptionDisabled;
+    case 'SCALER_NOT_CONFIGURED':
+      return e2.notConfigured(Array.isArray(m.missing) ? m.missing.filter((x) => typeof x === 'string').join(', ') : '');
+    case 'SCALE_COOLDOWN_ACTIVE': return e2.cooldown(fmtWhen(m.retryAt));
+    case 'SCALE_TARGET_UNCHANGED': return e2.unchanged(typeof m.replicas === 'number' ? m.replicas : null);
+    case 'SCALE_DOWN_WOULD_EXCEED_CAPACITY':
+      if (typeof m.replicas !== 'number' || typeof m.capacity !== 'number' || typeof m.connected !== 'number') return e2.wouldExceedShort;
+      return e2.wouldExceed({
+        replicas: fmtNum(m.replicas), maxSessionsPerWorker: fmtNum(m.maxSessionsPerWorker), ratio: fmtNum(m.ratio, 2),
+        capacity: fmtNum(m.capacity), connected: fmtNum(m.connected),
+      });
+    case 'SCALER_SERVICE_NOT_SCALABLE':
+      return (typeof m.reason === 'string' && e2.notScalable[m.reason]) || e2.notScalableGeneric;
+    case 'SCALER_UNAVAILABLE': return e2.unavailable;
+    case 'SCALER_RATE_LIMITED': return e2.rateLimited(typeof m.retryAfterSeconds === 'number' ? m.retryAfterSeconds : null);
+    default:
+      return e.status === 400 ? e2.invalid : e2.generic;
+  }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
-  sortPlansByCatalog,
+  sortPlansByCatalog, cooldownActive, formatScaleRemaining, scaleBlock, scaleReasonError, scaleRequestErrorMessage, scaleTargetError,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
@@ -195,5 +195,51 @@ describe('sortPlansByCatalog', () => {
   it('ordem do catálogo; desconhecido e sem plano no fim', () => {
     const rows = [null, 'COPYSYNC_MAX', 'OUTRO', 'COPYSYNC_LITE', 'ZETA', 'pro'].map((planSlug) => ({ planSlug }));
     expect(sortPlansByCatalog(rows).map((r) => r.planSlug)).toEqual(['COPYSYNC_LITE', 'pro', 'COPYSYNC_MAX', 'OUTRO', 'ZETA', null]);
+  });
+});
+
+describe('escala (WSCALE-14)', () => {
+  const base = {
+    scaler: { status: 'ready' as const, desiredReplicas: 2, runningReplicas: 2, hasDisk: false, autoscalingEnabled: false },
+    settings: { scalerMode: 'manual' as const, minReplicas: 1, maxReplicas: 4, scaleCooldownSeconds: 600 },
+    cooldownUntil: null, lastEvent: null, enforced: true,
+  };
+
+  it('formatScaleRemaining em min/h, arredondando para cima', () => {
+    expect(formatScaleRemaining(30)).toBe('menos de 1 min');
+    expect(formatScaleRemaining(61)).toBe('2 min');
+    expect(formatScaleRemaining(3600)).toBe('1 h');
+    expect(formatScaleRemaining(5400)).toBe('1 h 30 min');
+  });
+
+  it('scaleBlock: modo, adoção, escalador e serviço', () => {
+    expect(scaleBlock(base)).toBeNull();
+    expect(scaleBlock({ ...base, settings: { ...base.settings, scalerMode: 'off' } })).toBe('modeOff');
+    expect(scaleBlock({ ...base, enforced: false })).toBe('notEnforced');
+    expect(scaleBlock({ ...base, scaler: { status: 'unavailable', reason: 'timeout' } })).toBe('notReady');
+    expect(scaleBlock({ ...base, scaler: { ...base.scaler, hasDisk: true } })).toBe('disk');
+    expect(scaleBlock({ ...base, scaler: { ...base.scaler, autoscalingEnabled: true } })).toBe('nativeAutoscaling');
+  });
+
+  it('cooldownActive pelo relógio dado', () => {
+    expect(cooldownActive(null, 0)).toBe(false);
+    expect(cooldownActive('2026-11-11T10:00:00.000Z', Date.parse('2026-11-11T09:59:00.000Z'))).toBe(true);
+    expect(cooldownActive('2026-11-11T10:00:00.000Z', Date.parse('2026-11-11T10:00:00.000Z'))).toBe(false);
+  });
+
+  it('valida alvo e motivo', () => {
+    expect(scaleTargetError('3', 2, 1, 4)).toBeNull();
+    expect(scaleTargetError('2', 2, 1, 4)).not.toBeNull();
+    expect(scaleTargetError('1.5', 2, 1, 4)).not.toBeNull();
+    expect(scaleTargetError('', 2, 1, 4)).not.toBeNull();
+    expect(scaleReasonError('  ab ')).not.toBeNull();
+    expect(scaleReasonError('abc')).toBeNull();
+    expect(scaleReasonError('x'.repeat(201))).not.toBeNull();
+  });
+
+  it('erro sem código conhecido: 400 = inválido, resto = genérico', () => {
+    expect(scaleRequestErrorMessage({ status: 400, code: 'VALIDATION_ERROR' })).toMatch(/recusado/);
+    expect(scaleRequestErrorMessage(new Error('rede'))).toMatch(/mesmo pedido não é duplicado/);
+    expect(scaleRequestErrorMessage({ code: 'SCALE_DOWN_WOULD_EXCEED_CAPACITY', meta: {} })).toMatch(/menos vagas/);
   });
 });
