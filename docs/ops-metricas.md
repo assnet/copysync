@@ -108,12 +108,14 @@ série; mais de 3 cores (mais de 3 workers = só tabela); persistir dado da API.
 | Variável | Padrão | Uso |
 |---|---|---|
 | `OPS_METRICS_SAMPLER_ENABLED` | `false` | liga o sampler; só no serviço `worker` |
-| `RENDER_API_KEY` | vazio | chave da Metrics API; sem ela (ou sem IDs) a fonte Render fica de fora e o resto segue. Nunca no painel, nunca em log |
+| `RENDER_API_KEY` | vazio | chave da Metrics API; sem ela (ou sem IDs) a fonte Render fica de fora e o resto segue. Também usada pelo escalador dos workers ([`workers-escala.md`](workers-escala.md), Escala): com `WORKER_SCALER_ENABLED=true` passa a existir no `http` além do `worker`. Nunca no painel, nunca em log |
 | `RENDER_RESOURCE_IDS` | vazio | `srv-…`/`dpg-…` separados por vírgula |
 | `OPS_MEMORY_LIMIT_MB` | vazio | limite de RAM para o alerta de RSS quando a Render não dá `memory-limit` |
 
 Custo no worker dono, por minuto: 4 GETs à Render (`cpu`, `cpu-limit`, `memory`, `memory-limit`,
-timeout 5 s cada) + consultas de catálogo do PG. Zero no `http`.
+timeout 5 s cada) + consultas de catálogo do PG. Zero no `http` para métricas. Recorte: só as rotas de escala
+(`/admin/workers/scale`, escalador ligado) chamam a Render a partir do `http`, com cache de 30 s no `GET` e timeout de
+5 s; as rotas de métricas e capacidade continuam sem chamada à Render.
 
 **Antes de ligar**: conferir numa resposta real da Render a unidade (`unit`) e os labels das
 séries (`instance`/`resource`/`service`). O `%` vem da razão uso/limite da mesma série, mas o valor
@@ -141,7 +143,8 @@ fica e a retenção não roda mais (apagar à mão só com autorização).
 
 - APM externo (Datadog, New Relic, etc.) ou agente extra no container.
 - Endpoint `/metrics` público (Prometheus) no processo `http`.
-- Medir em requisição de usuário ou chamar a Render ao vivo numa rota.
+- Medir em requisição de usuário ou chamar a Render ao vivo numa rota de métricas/capacidade (exceção única: rotas de
+  escala dos workers, cache 30 s e timeout 5 s; ver `workers-escala.md`).
 - Estado operacional em memória sem tabela: o ring buffer é cache de `ops_metrics_samples`
   (exceção declarada em `docs/arquitetura-escala.md`, §3.7); alerta/cooldown nunca em memória.
 - Tenant, PII ou SQL bruto em `ops_metrics_samples` (só forma normalizada truncada em `meta.shape`).

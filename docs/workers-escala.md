@@ -3,7 +3,8 @@
 Super admin ajusta o teto de sessões por worker e os limiares de alerta pelo painel, sem redeploy.
 Spec: [`.specs/features/worker-scaling/`](../.specs/features/worker-scaling/spec.md) (WSCALE-01..10, 17, 19). Arquitetura:
 [`arquitetura-escala.md`](arquitetura-escala.md) §3.2. Configuração na P1 (api 0.82.0 · app 0.101.0); capacidade e
-alerta de ocupação sem adoção na P2 (api 0.83.0 · app 0.102.0); escalador e subida automática (P3–P4) ainda não existem.
+alerta de ocupação sem adoção na P2 (api 0.83.0 · app 0.102.0); escala manual pelo super admin na P3 (api 0.84.0 ·
+app 0.103.0, desligada por env); subida automática (P4) ainda não existe.
 
 ## Onde fica
 
@@ -12,6 +13,7 @@ alerta de ocupação sem adoção na P2 (api 0.83.0 · app 0.102.0); escalador e
 - Provider: `RefreshingWorkerScalingSettingsProvider` via `workerScalingSettingsProvider()` (`sessionLeaseContainer.ts`),
   singleton em todo papel; `server.ts` faz `refresh()` + `start()` no boot e `stop()` no shutdown.
 - Rotas (super admin): `GET`/`PUT /admin/workers/settings`. Tela: aba **Configuração** em `/admin/workers/settings`.
+  Escala (P3): `GET`/`POST /admin/workers/scale`, `GET /admin/workers/scale/events`; aba **Escala** em `/admin/workers/scale`.
 
 ## Campos e faixas
 
@@ -28,7 +30,7 @@ alerta de ocupação sem adoção na P2 (api 0.83.0 · app 0.102.0); escalador e
 
 Inteiros exceto o ratio; sem coerção de string. Campo desconhecido, tipo errado ou fora da faixa → 400
 `INVALID_WORKER_SCALING_SETTINGS` com `meta.field`. `PUT` exige o objeto completo. `scalerMode` e réplicas só ficam
-guardados na P1 (escalador é P3/P4).
+guardados na P1; a P3 passa a usá-los no `POST /scale` (seção Escala).
 
 ## De onde vem o valor
 
@@ -97,9 +99,10 @@ adoção para a capacidade vir dos batimentos.
 | por plano | `tenants` `ACTIVE`, `contracted`/`unlimitedTenants`/`created`/`connected` por canal (`PrismaWorkerCapacityReader`, uma consulta, `statement_timeout` 2 s) |
 
 - Memória: só recursos `srv-` da fonte `render`. O recurso gravado é por instância, `srv-<id>-<sufixo>` (confirmado em
-  produção, leitura de 2026-11-11); as instâncias são somadas por `at`. Mais de um `srv-` em `RENDER_RESOURCE_IDS` →
-  `mbPerSession`, `memoryLimitMb` e `suggestedMaxSessions` `null` (não há como saber qual roda sessões; o filtro por
-  `WORKER_SCALER_SERVICE_ID` é da P3). Sem métrica da Render ou sem sessões → `null`.
+  produção, leitura de 2026-11-11); as instâncias são somadas por `at`. Com `WORKER_SCALER_SERVICE_ID` válido (P3) a
+  memória usa só esse serviço (id igual ou prefixo `<id>-`; sem casamento → `null`). Sem ele, mais de um `srv-` em
+  `RENDER_RESOURCE_IDS` → `mbPerSession`, `memoryLimitMb` e `suggestedMaxSessions` `null` (não há como saber qual roda
+  sessões). Sem métrica da Render ou sem sessões → `null`.
 - Contratado: valor de `tenant_entitlements`. Número JSON = limite. String = limite só se casar
   `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$` (decimal com casas aceito, ex.: `"5.5"`). Qualquer outra string (hex `0x…`, sinal,
   notação científica `1e3`, mais de 9 dígitos, `.5`), ausente ou `null` = **ilimitado** na aba (contado em
@@ -121,6 +124,56 @@ adoção para a capacidade vir dos batimentos.
   resposta tardia é ignorada. Sem
   formulário na aba Capacidade: só a aba na URL.
 
+## Escala (P3)
+
+Aba **Escala** (`/admin/workers/scale`): réplicas atuais × desejadas, estado do escalador (com a lista de envs que
+faltam quando `not_configured`), subir/reduzir com diálogo e motivo obrigatório (3–200), `CooldownBar` até o fim do
+intervalo mínimo e histórico paginado. Rascunho (alvo + motivo) em `usePersistedState('workers.scale.draft')`.
+
+Código: `IWorkerScaler` + `sessions/infrastructure/scaler/` (`RenderWorkerScaler`, `NotConfiguredWorkerScaler`,
+`workerScaler()` singleton), `ScaleWorkersUseCase` (regras), `RequestWorkerScaleUseCase` (rota: conta conectadas pela
+última amostra `sessions_connected`), `GetWorkerScaleStateUseCase`, `ListWorkerScaleEventsUseCase`, tabela
+`worker_scale_events` (migration `20261111150000_create_worker_scale_events`).
+
+Envs (nos serviços `http` **e** `worker`: as rotas rodam no `http`, o job da P4 no `worker`):
+
+| Env | Default | Uso |
+|---|---|---|
+| `WORKER_SCALER_ENABLED` | `false` | kill switch (D8). Saída da P3/P4 com `false` (D10); ligar só depois do T25 |
+| `WORKER_SCALER_SERVICE_ID` | vazio | `srv-…` do Private Service `worker`. Fora de `^srv-[a-z0-9]+$` conta como ausente (1 `warn` sem o valor), não derruba o boot |
+| `RENDER_API_KEY` | vazio | a mesma da Metrics API; passa a existir também no `http` quando o escalador for ligado |
+
+Sem as três: estado `not_configured` com `missing` (nomes, nunca valores) e nenhuma chamada sai. Render: `GET
+/v1/services/{id}`, `/instances`, `POST /scale` `{ numInstances }`; timeout 5 s, 429 respeita `Retry-After`; chave só
+no header.
+
+`POST /admin/workers/scale` `{ replicas, reason, requestId (uuid) }`. Regras na ordem do use case:
+
+1. `scalerMode = off` → 409 `SCALER_MODE_OFF`.
+2. Adoção desligada → 409 `ADOPTION_DISABLED`. Adoção = flag local **ou** batimento vivo de worker com adoção (o mesmo
+   `enforced` da tela; com `http`/`worker` separados a flag mora só no worker).
+3. Fora de `[minReplicas, maxReplicas]` → 400 `SCALE_TARGET_OUT_OF_RANGE`. `maxReplicas` ≤ 20 no código (D5).
+4. Estado do escalador ao vivo: `not_configured` → 409 `SCALER_NOT_CONFIGURED` (`missing`); provedor fora → 503
+   `SCALER_UNAVAILABLE` (`reason`) ou 429 `SCALER_RATE_LIMITED`.
+5. Serviço com disco ou autoescala nativa da Render → 409 `SCALER_SERVICE_NOT_SCALABLE` (`disk`|`native_autoscaling`).
+6. Automático (P4) só `atual + 1`.
+7. Intervalo `scaleCooldownSeconds` desde o último `succeeded` → 409 `SCALE_COOLDOWN_ACTIVE` (`retryAt`).
+8. Redução só se `floor(réplicas × teto × alertOccupancyRatio) ≥ conectadas` → 409 `SCALE_DOWN_WOULD_EXCEED_CAPACITY`
+   com os números.
+9. Alvo igual ao atual → 409 `SCALE_TARGET_UNCHANGED`.
+
+- Idempotência por `requestId`: repetido devolve o evento anterior (`replayed: true`) sem chamar a Render; corrida
+  barrada pela unicidade devolve o primeiro.
+- Evento antes da chamada: `requested` → `scaleTo` (sem retry) → `succeeded` ou `failed` (`error` = código interno
+  curto, nunca mensagem do provedor). Recusa grava `rejected` **sem** `requestId` (pode ser refeita).
+- Histórico (`GET /scale/events`, cursor opaco) sem ator: só `Manual`/`Automática`. Quem pediu fica na auditoria
+  `WORKER_SCALE_REQUESTED` (`succeeded`/`failed`). Retenção 180 dias (limpeza no job da P4).
+- `GET /scale`: estado do escalador em cache de 30 s por processo (`WorkerScalerStateCache`); o `POST` lê ao vivo e
+  invalida o cache.
+- Descida só manual (D4); a Render escolhe qual instância encerra (`SIGTERM` + grace).
+- **T25 pendente (dono)**: smoke real num Private Service de teste na Render (subir 1→2, reduzir 2→1, `SIGTERM`,
+  `maxShutdownDelaySeconds`). Obrigatório antes de ligar `WORKER_SCALER_ENABLED` em produção; resultado anotado aqui.
+
 ## Alerta de ocupação sem adoção
 
 Com a adoção desligada (`all` ou `worker`) o `WorkerCapacityAlertJob` não roda; o coletor avalia `sessions_connected ÷
@@ -141,3 +194,8 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 - Somar `memory` de recurso `dpg-` (Postgres) na conta de MB por sessão ou chamar a Render na rota de capacidade.
 - Comparar "Conectadas (banco)" com a aba Ocupação como se fossem a mesma conta.
 - Alertar ocupação no coletor com a adoção ligada (duplica o `WorkerCapacityAlertJob`).
+- Chave, id do serviço ou corpo da Render em log, evento ou resposta (só operação, status e código interno).
+- Retry automático de `scaleTo` (o evento `requested` já conta o intervalo; repetir duplica custo).
+- Ligar `WORKER_SCALER_ENABLED` em produção sem o T25, ou localmente (`api/.env` aponta para produção).
+- Escalar serviço com disco ou com a autoescala nativa da Render ligada.
+- Chamar a Render nas rotas de métricas/capacidade: só as rotas de escala chamam (cache 30 s, timeout 5 s).

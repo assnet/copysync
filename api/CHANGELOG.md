@@ -7,6 +7,45 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.84.0 · app 0.103.0] — 2026-11-11 — Escala dos workers por decisão do super admin
+
+Subir ou reduzir réplicas do worker exigia o painel da Render, sem regra de capacidade nem rastro. O super admin passa a
+pedir a escala em `/admin/workers/scale`, com as regras de WSCALE-12, evento antes da chamada e auditoria. Spec:
+`.specs/features/worker-scaling/` (WSCALE-09, 11..14, 19; fase P3). Doc: `docs/workers-escala.md` (Escala).
+**Migration Prisma**: sim (`20261111150000_create_worker_scale_events`). **Breaking**: não. **Kill switch**:
+`WORKER_SCALER_ENABLED=false` por default (D8/D10): sem ela nada chama a Render; ligar só após o T25 (smoke real, dono).
+
+### Added
+
+#### API — `prisma`
+
+- **`prisma/migrations/20261111150000_create_worker_scale_events/migration.sql`**, **`schema.prisma`** — tabela `worker_scale_events` (`trigger`, `actorUserId` nulo = sistema, réplicas de/para, motivo, `outcome`, `error` curto, `requestId` único).
+
+#### API — `sessions`
+
+- **`domain/contracts/IWorkerScaleEventRepository.ts`**, **`infrastructure/repositories/PrismaWorkerScaleEventRepository.ts`** — gravar, atualizar resultado, último sucesso, busca por `requestId`, lista por cursor opaco, limpeza de 180 dias em lotes (job da P4).
+- **`domain/contracts/IWorkerScaler.ts`**, **`infrastructure/scaler/RenderWorkerScaler.ts`**, **`NotConfiguredWorkerScaler.ts`**, **`workerScaler.ts`** — porta e adaptador Render (`GET /services/{id}`, `/instances`, `POST /scale`; timeout 5 s; 429 com `Retry-After`; recusa com disco ou autoescala nativa); sem as três envs o estado é `not_configured` com `missing` (só nomes).
+- **`shared/config/env.ts`** — `WORKER_SCALER_ENABLED` (default `false`) e `WORKER_SCALER_SERVICE_ID` (`^srv-[a-z0-9]+$`; inválido = ausente, 1 `warn` sem o valor, boot segue). Valem no `http` e no `worker`.
+- **`shared/errors/internal/WorkerScalingErrors.ts`** — `SCALER_NOT_CONFIGURED`, `SCALER_UNAVAILABLE` (503), `SCALER_RATE_LIMITED` (429), `SCALER_SERVICE_NOT_SCALABLE`, `SCALER_MODE_OFF`, `ADOPTION_DISABLED`, `SCALE_TARGET_OUT_OF_RANGE` (400), `SCALE_TARGET_UNCHANGED`, `SCALE_COOLDOWN_ACTIVE`, `SCALE_DOWN_WOULD_EXCEED_CAPACITY` (409 nos demais).
+- **`application/use-cases/ScaleWorkersUseCase.ts`** — regras na ordem: modo `off`, adoção, faixa, estado ao vivo, disco/autoescala, passo +1 do automático, intervalo mínimo, capacidade na redução, alvo igual. `requested` antes de `scaleTo` (sem retry) → `succeeded`/`failed`; recusa = `rejected` sem `requestId`; idempotente por `requestId`; auditoria `WORKER_SCALE_REQUESTED`. `checkPreconditions()` para a P4.
+- **`RequestWorkerScaleUseCase.ts`**, **`GetWorkerScaleStateUseCase.ts`**, **`ListWorkerScaleEventsUseCase.ts`**, **`application/services/WorkerScalerStateCache.ts`** — pedido manual (conectadas pela última amostra), estado com cache de 30 s por processo (POST ao vivo e invalida), histórico sem ator.
+- **`presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`**, **`presenters/WorkerScalePresenter.ts`** — `GET`/`POST /admin/workers/scale` e `GET /admin/workers/scale/events` (super admin).
+
+### Changed
+
+#### API — `sessions`
+
+- **`GetWorkerCapacityUseCase.ts`** — com `WORKER_SCALER_SERVICE_ID` a memória usa só esse serviço (id ou prefixo `<id>-`).
+- **`infrastructure/lease/sessionLeaseContainer.ts`** — monta os use cases de escala; adoção = flag local OU batimento vivo (`50b0be9`: com `http`/`worker` separados a flag mora só no worker).
+
+#### Painel (app/) — `workersAdmin`
+
+- **`components/ScaleTab.tsx`**, **`ScaleConfirmDialog.tsx`**, **`useWorkerScale.ts`**, **`rules.ts`**, **`strings.ts`**, **`types.ts`**, **`services/adminWorkers.service.ts`**, **`pages/admin/AdminWorkersPage.tsx`**, **`routes/AppRoutes.tsx`** — aba Escala: estado e o que falta, subir/reduzir com motivo, `CooldownBar` + `serverNow()`, histórico paginado só com `Manual`/`Automática`; rascunho em `usePersistedState('workers.scale.draft')`.
+
+#### Docs
+
+- **`docs/workers-escala.md`** (Escala), **`docs/arquitetura-escala.md`** (§5.1 envs e checklist, §6), **`docs/ops-metricas.md`** (recorte: só as rotas de escala chamam a Render), **`docs/produto-roadmap.md`**, **`AGENTS.md`**.
+
 ## [0.83.0 · app 0.102.0] — 2026-11-11 — Capacidade dos workers e métricas de sessões
 
 Não havia número para decidir o teto nem quantas réplicas subir, e sem adoção nenhum alerta de ocupação. O coletor passa a

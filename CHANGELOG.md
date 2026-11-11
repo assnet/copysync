@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.84.0 · app 0.103.0 — escala dos workers por decisão do super admin
+
+Escalar réplicas do worker só pelo painel da Render, sem regra de capacidade nem rastro. `/admin/workers/scale` pede a escala com regras (modo, adoção, faixa, intervalo, capacidade na redução), evento antes da chamada e auditoria. Doc: `docs/workers-escala.md` (Escala). Spec: `.specs/features/worker-scaling/` (WSCALE-09, 11..14, 19; fase P3).
+**Migration Prisma**: sim (`20261111150000_create_worker_scale_events`). **Erros novos**: sim (`SCALER_*`, `SCALE_*`, `ADOPTION_DISABLED`). **Breaking**: não. **Kill switch**: `WORKER_SCALER_ENABLED=false` por default; ligar (no `http` e no `worker`, com `WORKER_SCALER_SERVICE_ID` e `RENDER_API_KEY`) só após o T25.
+
+#### Backend (api/) — `sessions`
+
+- **`IWorkerScaler.ts`**, **`RenderWorkerScaler.ts`**, **`workerScaler.ts`** — adaptador Render (timeout 5 s, `Retry-After`, recusa com disco/autoescala nativa); sem as envs, `not_configured`.
+- **`ScaleWorkersUseCase.ts`**, **`RequestWorkerScaleUseCase.ts`** — regras de WSCALE-12, idempotência por `requestId`, `requested` → `succeeded`/`failed`, recusa `rejected`, sem retry.
+- **`PrismaWorkerScaleEventRepository.ts`**, **`workerAdmin.routes.ts`**, **`WorkerScalerStateCache.ts`** — `worker_scale_events`; `GET`/`POST /admin/workers/scale` (estado em cache de 30 s) e `GET /admin/workers/scale/events` sem ator.
+
+#### Frontend (app/) — `workersAdmin`
+
+- **`ScaleTab.tsx`**, **`ScaleConfirmDialog.tsx`**, **`useWorkerScale.ts`** — aba Escala: estado, subir/reduzir com motivo, contagem do intervalo, histórico.
+
 ### Added — api 0.83.0 · app 0.102.0 — capacidade dos workers e métricas de sessões
 
 Sem número para decidir teto e réplicas, e sem alerta de ocupação com a adoção desligada. O coletor grava a ocupação de sessões do cluster; `/admin/workers/capacity` mostra contratado por plano × instalado, MB por sessão e teto sugerido. Doc: `docs/workers-escala.md` (Capacidade). Spec: `.specs/features/worker-scaling/` (WSCALE-07..10, 17, 19; fase P2).
