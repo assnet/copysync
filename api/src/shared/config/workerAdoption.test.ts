@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseEnv } from './env';
-import { workerAdoptionConfig, workerScalingEnvDefaults } from './workerAdoption';
+import { resetWorkerScalingEnvWarningsForTests, workerAdoptionConfig, workerScalingEnvDefaults } from './workerAdoption';
 
 const base = {
   ...process.env,
@@ -56,5 +56,24 @@ describe('workerAdoptionConfig', () => {
   it('sem argumento lê o env do processo', () => {
     expect(workerAdoptionConfig()).toEqual(expect.objectContaining({ enabled: expect.any(Boolean) }));
     expect(workerScalingEnvDefaults()).toEqual({ maxSessionsPerWorker: expect.any(Number), maxPendingLoginsPerWorker: expect.any(Number) });
+  });
+
+  it('teto acima da faixa do domínio é limitado e loga warn uma vez por env', () => {
+    resetWorkerScalingEnvWarningsForTests();
+    const r = parseEnv({ ...base, WORKER_MAX_SESSIONS: '5000', WORKER_MAX_PENDING_LOGINS: '900' });
+    if (!r.success) throw new Error(r.error.message);
+    const log = { warn: vi.fn() };
+    expect(workerScalingEnvDefaults(r.data, log)).toEqual({ maxSessionsPerWorker: 1000, maxPendingLoginsPerWorker: 500 });
+    expect(workerScalingEnvDefaults(r.data, log)).toEqual({ maxSessionsPerWorker: 1000, maxPendingLoginsPerWorker: 500 });
+    expect(log.warn).toHaveBeenCalledTimes(2);
+    expect(log.warn.mock.calls.map((c) => c[0].env)).toEqual(['WORKER_MAX_SESSIONS', 'WORKER_MAX_PENDING_LOGINS']);
+  });
+
+  it('teto dentro da faixa não loga', () => {
+    resetWorkerScalingEnvWarningsForTests();
+    const log = { warn: vi.fn() };
+    expect(workerScalingEnvDefaults({ WORKER_MAX_SESSIONS: 1000, WORKER_MAX_PENDING_LOGINS: 1 }, log))
+      .toEqual({ maxSessionsPerWorker: 1000, maxPendingLoginsPerWorker: 1 });
+    expect(log.warn).not.toHaveBeenCalled();
   });
 });

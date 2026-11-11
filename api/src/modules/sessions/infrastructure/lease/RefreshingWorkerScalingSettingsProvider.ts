@@ -1,7 +1,7 @@
 import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
 import type { IWorkerScalingSettingsRepository } from '../../domain/contracts/IWorkerScalingSettingsRepository';
+import { parseSavedWorkerScalingSettings } from '../../application/use-cases/GetWorkerScalingSettingsUseCase';
 import {
-  parseWorkerScalingSettings,
   resolveEffectiveSettings,
   type EffectiveWorkerScalingSettings,
   type WorkerScalingEnvDefaults,
@@ -23,16 +23,20 @@ export interface RefreshingWorkerScalingSettingsProviderOptions {
 
 export const WORKER_SCALING_REFRESH_MS = 30_000;
 
+type FailureKind = 'read' | 'invalid';
+
 /**
  * Configuração de escala em memória (WSCALE-03). Nasce com o default da env, sem I/O no
- * construtor. `refresh()` relê `platform_settings["worker_scaling"]`; erro de banco ou valor
- * inválido mantém o último valor bom e loga `warn` uma vez por sequência de falhas, sem o conteúdo.
+ * construtor. `refresh()` relê `platform_settings["worker_scaling"]`. Valor salvo inválido vale
+ * como sem linha (default da env, igual ao GET); erro de leitura (banco fora) mantém o último
+ * valor bom. Os dois logam `warn` uma vez por sequência, sem o conteúdo.
  */
 export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSettingsProvider {
   private effective: EffectiveWorkerScalingSettings;
-  private lastRecord: { updatedAt: Date; updatedById: string | null } | null = null;
-  private failing = false;
+  private failing: FailureKind | null = null;
   private inFlight: Promise<void> | null = null;
+  /** No máximo uma leitura pendente atrás da que está em curso. */
+  private queued: Promise<void> | null = null;
   private timer: NodeJS.Timeout | null = null;
   private readonly log: WorkerScalingSettingsLogger;
 
@@ -45,17 +49,17 @@ export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSe
     return this.effective;
   }
 
-  /** `updatedAt`/`updatedById` do último registro bom (`null` sem linha). Fora do contrato. */
-  lastUpdate(): { updatedAt: Date; updatedById: string | null } | null {
-    return this.lastRecord;
-  }
-
+  /**
+   * Com leitura em curso, encadeia uma nova depois dela: quem chama logo após gravar (PUT) vê o
+   * valor novo, nunca o lido antes do UPDATE. Chamadas no meio dividem a mesma pendente.
+   */
   refresh(): Promise<void> {
-    if (this.inFlight) return this.inFlight;
-    this.inFlight = this.load().finally(() => {
-      this.inFlight = null;
+    if (!this.inFlight) return this.startLoad();
+    this.queued ??= this.inFlight.then(() => {
+      this.queued = null;
+      return this.startLoad();
     });
-    return this.inFlight;
+    return this.queued;
   }
 
   start(): void {
@@ -69,20 +73,35 @@ export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSe
     this.timer = null;
   }
 
+  private startLoad(): Promise<void> {
+    const run = this.load().finally(() => {
+      if (this.inFlight === run) this.inFlight = null;
+    });
+    this.inFlight = run;
+    return run;
+  }
+
   private async load(): Promise<void> {
+    let record;
     try {
-      const record = await this.options.repository.get();
-      const saved = record ? parseWorkerScalingSettings(record.value) : null;
-      this.effective = resolveEffectiveSettings(saved, this.options.envDefaults);
-      this.lastRecord = record ? { updatedAt: record.updatedAt, updatedById: record.updatedById } : null;
-      this.failing = false;
+      record = await this.options.repository.get();
     } catch (err) {
-      if (this.failing) return;
-      this.failing = true;
-      this.log.warn(
-        { err: (err as Error | null)?.name },
-        'worker scaling settings refresh failed; keeping last good value',
-      );
+      this.warnOnce('read', { err: (err as Error | null)?.name },
+        'worker scaling settings refresh failed; keeping last good value');
+      return;
     }
+    const saved = parseSavedWorkerScalingSettings(record);
+    this.effective = resolveEffectiveSettings(saved, this.options.envDefaults);
+    if (record && saved === null) {
+      this.warnOnce('invalid', {}, 'worker scaling settings: stored value is invalid; using env defaults');
+      return;
+    }
+    this.failing = null;
+  }
+
+  private warnOnce(kind: FailureKind, obj: Record<string, unknown>, msg: string): void {
+    if (this.failing === kind) return;
+    this.failing = kind;
+    this.log.warn(obj, msg);
   }
 }

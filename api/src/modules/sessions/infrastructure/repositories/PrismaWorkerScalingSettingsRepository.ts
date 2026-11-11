@@ -10,6 +10,9 @@ import type { WorkerScalingSettingsPatch } from '../../domain/services/workerSca
 /** Chave em `platform_settings` (WSCALE-01). */
 export const WORKER_SCALING_SETTINGS_KEY = 'worker_scaling';
 
+/** Warn de valor não-objeto uma vez por processo até ver um valor bom (o refresh roda a cada 30 s). */
+let warnedNonObject = false;
+
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -24,11 +27,14 @@ export class PrismaWorkerScalingSettingsRepository implements IWorkerScalingSett
     const row = await this.prisma.platformSetting.findUnique({ where: { key: WORKER_SCALING_SETTINGS_KEY } });
     if (!row) return null;
     if (!isObject(row.value)) {
+      if (warnedNonObject) return null;
+      warnedNonObject = true;
       // Sem o conteúdo no log: só o tipo.
       logger.warn({ key: WORKER_SCALING_SETTINGS_KEY, valueType: Array.isArray(row.value) ? 'array' : typeof row.value },
         'worker scaling settings: stored value is not an object, ignoring');
       return null;
     }
+    warnedNonObject = false;
     return { value: row.value, updatedAt: row.updatedAt, updatedById: row.updatedById };
   }
 

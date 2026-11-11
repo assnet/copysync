@@ -10,6 +10,8 @@ import {
   type WorkerScalingSettingsOrigin,
   type WorkerScalingSettingsPatch,
 } from '../../domain/services/workerScalingSettings';
+import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
+import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 
 /** Resposta de leitura/gravação da configuração de escala (WSCALE-06). */
 export interface WorkerScalingSettingsView {
@@ -17,14 +19,26 @@ export interface WorkerScalingSettingsView {
   origin: WorkerScalingSettingsOrigin;
   /** ISO do último salvamento; `null` sem linha salva. Vai como `expectedUpdatedAt` no PUT. */
   updatedAt: string | null;
-  /** Adoção ligada: com `false` a configuração é gravada mas sem efeito. */
+  /** Adoção ligada em algum processo: com `false` a configuração é gravada mas sem efeito. */
   enforced: boolean;
 }
 
 export interface WorkerScalingSettingsViewDeps {
   envDefaults: WorkerScalingEnvDefaults;
-  /** Adoção ligada no processo (`WORKER_ADOPTION_ENABLED`); lido pelo composition root. */
-  isEnforced: () => boolean;
+  /** Adoção em vigor no cluster (`workerScalingEnforcedCheck`); montado pelo composition root. */
+  isEnforced: () => Promise<boolean>;
+}
+
+/**
+ * Em vigor = adoção ligada neste processo OU algum batimento vivo em `worker_heartbeats` (só
+ * existe com a adoção). Com `PROCESS_ROLE=http` separado a flag mora só no worker: o batimento
+ * dele é o que diz à rota que a configuração vale. "Vivo" = o mesmo de `ListWorkersUseCase`.
+ */
+export function workerScalingEnforcedCheck(
+  adoptionEnabled: () => boolean,
+  heartbeats: Pick<IWorkerHeartbeatRepository, 'listAlive'>,
+): () => Promise<boolean> {
+  return async () => adoptionEnabled() || (await heartbeats.listAlive(WORKER_ALIVE_MS)).length > 0;
 }
 
 /**
@@ -40,17 +54,17 @@ export function parseSavedWorkerScalingSettings(record: WorkerScalingSettingsRec
   }
 }
 
-export function presentWorkerScalingSettings(
+export async function presentWorkerScalingSettings(
   saved: WorkerScalingSettingsPatch | null,
   updatedAt: Date | null,
   deps: WorkerScalingSettingsViewDeps,
-): WorkerScalingSettingsView {
+): Promise<WorkerScalingSettingsView> {
   const effective = resolveEffectiveSettings(saved, deps.envDefaults);
   return {
     settings: effective.value,
     origin: effective.origin,
     updatedAt: updatedAt ? updatedAt.toISOString() : null,
-    enforced: deps.isEnforced(),
+    enforced: await deps.isEnforced(),
   };
 }
 

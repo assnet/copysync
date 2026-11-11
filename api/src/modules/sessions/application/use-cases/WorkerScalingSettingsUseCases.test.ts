@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { GetWorkerScalingSettingsUseCase } from './GetWorkerScalingSettingsUseCase';
+import { GetWorkerScalingSettingsUseCase, workerScalingEnforcedCheck } from './GetWorkerScalingSettingsUseCase';
+import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 import { UpdateWorkerScalingSettingsUseCase } from './UpdateWorkerScalingSettingsUseCase';
 import { makeAuditRepo } from './sessionTestFakes';
 import type {
@@ -17,7 +18,7 @@ import {
 } from '../../../../shared/errors/internal/WorkerScalingErrors';
 
 const envDefaults = { maxSessionsPerWorker: 50, maxPendingLoginsPerWorker: 10 };
-const deps = (enforced = true) => ({ envDefaults, isEnforced: () => enforced });
+const deps = (enforced = true) => ({ envDefaults, isEnforced: async () => enforced });
 const SAVED_AT = new Date('2026-11-10T12:00:00.000Z');
 const NEW_AT = new Date('2026-11-11T08:00:00.000Z');
 
@@ -140,5 +141,30 @@ describe('UpdateWorkerScalingSettingsUseCase', () => {
     expect(err.statusCode).toBe(409);
     expect(audit.create).not.toHaveBeenCalled();
     expect(provider.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe('workerScalingEnforcedCheck', () => {
+  const beat = { workerId: 'w1', role: 'worker', sessions: 0, pendingLogins: 0, maxSessions: 40, rssMb: 1, seenAt: new Date() };
+
+  it('adoção ligada no processo: em vigor sem consultar batimentos', async () => {
+    const heartbeats = { listAlive: vi.fn(async () => []) };
+    expect(await workerScalingEnforcedCheck(() => true, heartbeats)()).toBe(true);
+    expect(heartbeats.listAlive).not.toHaveBeenCalled();
+  });
+
+  it('flag só no worker (processo http): batimento vivo = em vigor; sem batimento = sem efeito', async () => {
+    const heartbeats = { listAlive: vi.fn(async () => [beat]) };
+    const check = workerScalingEnforcedCheck(() => false, heartbeats);
+    expect(await check()).toBe(true);
+    expect(heartbeats.listAlive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
+    heartbeats.listAlive.mockResolvedValueOnce([]);
+    expect(await check()).toBe(false);
+  });
+
+  it('use case aguarda o check assíncrono', async () => {
+    const check = workerScalingEnforcedCheck(() => false, { listAlive: async () => [beat] });
+    const view = await new GetWorkerScalingSettingsUseCase(makeRepo(null), { envDefaults, isEnforced: check }).execute();
+    expect(view.enforced).toBe(true);
   });
 });

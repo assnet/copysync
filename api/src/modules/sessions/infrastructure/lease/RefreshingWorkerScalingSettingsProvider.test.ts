@@ -33,17 +33,15 @@ describe('RefreshingWorkerScalingSettingsProvider', () => {
     expect(value.scalerMode).toBe('off');
     expect(origin.maxSessionsPerWorker).toBe('default');
     expect(repository.get).not.toHaveBeenCalled();
-    expect(provider.lastUpdate()).toBeNull();
   });
 
-  it('troca o valor após refresh e guarda autor/data', async () => {
+  it('troca o valor após refresh', async () => {
     const { repository, provider } = setup();
     repository.get.mockResolvedValueOnce(record({ maxSessionsPerWorker: 80 }));
     await provider.refresh();
     expect(provider.current().value.maxSessionsPerWorker).toBe(80);
     expect(provider.current().origin.maxSessionsPerWorker).toBe('saved');
     expect(provider.current().value.maxPendingLoginsPerWorker).toBe(5);
-    expect(provider.lastUpdate()).toEqual({ updatedAt: new Date('2026-11-11T00:00:00Z'), updatedById: 'admin-1' });
   });
 
   it('sem linha volta ao default', async () => {
@@ -52,7 +50,6 @@ describe('RefreshingWorkerScalingSettingsProvider', () => {
     await provider.refresh();
     await provider.refresh();
     expect(provider.current().value.maxSessionsPerWorker).toBe(40);
-    expect(provider.lastUpdate()).toBeNull();
   });
 
   it('falha preserva o anterior e loga warn uma vez por sequência', async () => {
@@ -75,18 +72,44 @@ describe('RefreshingWorkerScalingSettingsProvider', () => {
     expect(provider.current().value.maxSessionsPerWorker).toBe(90);
   });
 
-  it('JSON inválido mantém o anterior e não loga o conteúdo', async () => {
+  it('valor salvo inválido cai no default da env (igual ao GET) e não loga o conteúdo', async () => {
     const { repository, log, provider } = setup();
     repository.get
       .mockResolvedValueOnce(record({ maxSessionsPerWorker: 80 }))
       .mockResolvedValueOnce(record({ maxSessionsPerWorker: 'segredo-123' }))
-      .mockResolvedValueOnce(record({ campoEstranho: 1 }));
+      .mockResolvedValueOnce(record({ campoEstranho: 1 }))
+      .mockResolvedValueOnce(record({ maxSessionsPerWorker: 70 }))
+      .mockResolvedValueOnce(record({ maxSessionsPerWorker: 0 }));
     await provider.refresh();
     await provider.refresh();
+    expect(provider.current().value.maxSessionsPerWorker).toBe(40);
+    expect(provider.current().origin.maxSessionsPerWorker).toBe('default');
     await provider.refresh();
-    expect(provider.current().value.maxSessionsPerWorker).toBe(80);
+    expect(provider.current().value.maxSessionsPerWorker).toBe(40);
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(log.warn.mock.calls)).not.toContain('segredo-123');
+    await provider.refresh();
+    expect(provider.current().value.maxSessionsPerWorker).toBe(70);
+    await provider.refresh();
+    expect(provider.current().value.maxSessionsPerWorker).toBe(40);
+    expect(log.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('refresh durante leitura em curso encadeia nova leitura e termina com o valor novo', async () => {
+    const { repository, provider } = setup();
+    let releaseFirst!: (v: WorkerScalingSettingsRecord) => void;
+    repository.get
+      .mockReturnValueOnce(new Promise<WorkerScalingSettingsRecord>((r) => { releaseFirst = r; }))
+      .mockResolvedValueOnce(record({ maxSessionsPerWorker: 99 }));
+    const first = provider.refresh();
+    const second = provider.refresh();
+    const third = provider.refresh();
+    expect(third).toBe(second);
+    releaseFirst(record({ maxSessionsPerWorker: 80 }));
+    await second;
+    expect(provider.current().value.maxSessionsPerWorker).toBe(99);
+    await first;
+    expect(repository.get).toHaveBeenCalledTimes(2);
   });
 
   it('start agenda refresh periódico; duas vezes não duplica; stop cancela', async () => {

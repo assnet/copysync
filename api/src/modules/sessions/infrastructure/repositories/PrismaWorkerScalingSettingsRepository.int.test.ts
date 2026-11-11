@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { logger } from '../../../../shared/logger/logger';
@@ -30,13 +31,20 @@ describe('get', () => {
     expect(await repo.get()).toBeNull();
   });
 
-  it('JSON que não é objeto → null + warn sem o conteúdo', async () => {
+  it('JSON que não é objeto → null + warn uma vez até ver valor bom, sem o conteúdo', async () => {
     const warn = vi.spyOn(logger, 'warn');
+    const put = (value: Prisma.InputJsonValue) =>
+      prisma.platformSetting.upsert({ where, create: { ...where, value }, update: { value } });
     for (const value of [[1, 2], 'segredo', 42]) {
-      await prisma.platformSetting.upsert({ where, create: { ...where, value }, update: { value } });
+      await put(value);
       expect(await repo.get()).toBeNull();
     }
-    expect(warn).toHaveBeenCalledTimes(3);
+    expect(warn).toHaveBeenCalledTimes(1);
+    await put({ maxSessionsPerWorker: 30 });
+    expect(await repo.get()).not.toBeNull();
+    await put('segredo');
+    expect(await repo.get()).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(warn.mock.calls)).not.toContain('segredo');
   });
 });

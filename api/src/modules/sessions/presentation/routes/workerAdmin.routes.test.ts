@@ -18,6 +18,7 @@ vi.mock('../../../../shared/config/workerAdoption', () => ({
   workerAdoptionConfig: () => ({ enabled: adoption.enabled, shard: null }),
   workerScalingEnvDefaults: () => ({ maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 50 }),
 }));
+// A rota não importa Prisma; o container das factories sim (só importa, sem I/O).
 vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
 vi.mock('../../../../shared/http/hooks/authHook', () => ({
   authHook: async (request: { user?: unknown }) => {
@@ -168,6 +169,7 @@ describe('/admin/workers/settings', () => {
     auth.isSuperAdmin = true;
     adoption.enabled = false;
     vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
+    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([]);
     const res = await app.inject({ method: 'GET', url: SETTINGS_URL });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -176,6 +178,19 @@ describe('/admin/workers/settings', () => {
     expect(Object.values(body.data.origin).every((o) => o === 'default')).toBe(true);
     expect(body.data.updatedAt).toBeNull();
     expect(body.data.enforced).toBe(false);
+  });
+
+  it('GET com a flag só no worker (processo http): batimento vivo = enforced', async () => {
+    auth.isSuperAdmin = true;
+    adoption.enabled = false;
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
+    const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([
+      { workerId: 'w1', role: 'worker', sessions: 0, pendingLogins: 0, maxSessions: 40, rssMb: 1, seenAt },
+    ]);
+    const res = await app.inject({ method: 'GET', url: SETTINGS_URL });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.enforced).toBe(true);
+    expect(alive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
   });
 
   it('PUT grava, audita, aplica no processo e devolve o novo estado', async () => {

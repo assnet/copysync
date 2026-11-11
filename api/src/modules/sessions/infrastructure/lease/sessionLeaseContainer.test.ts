@@ -132,7 +132,6 @@ describe('sessionLeaseContainer', () => {
     const repo = fakeRepo();
     const c = buildSessionLeaseContainer(repo, 'w1');
     c.bindSocketControl(ctl(() => ['a', 'b', 'c']));
-    expect(c.gate.constructor).toBe(Object);
     expect(await c.gate.acquire('s1')).toBe(true);
     expect(repo.tryAcquire).toHaveBeenCalledTimes(1);
   });
@@ -212,7 +211,6 @@ describe('sessionLeaseContainer', () => {
       const c = mod.sessionLeaseContainer();
       await mod.workerScalingSettingsProvider().refresh();
       c.bindSocketControl(ctl(() => ['a', 'b', 'c']));
-      expect(c.gate.constructor).toBe(Object);
       expect(await c.gate.acquire('nova')).toBe(true);
       expect(c.occupancy()).toEqual({ sessions: 3, pendingLogins: 0 });
       expect(mod.workerScalingSettingsProvider()).toBe(mod.workerScalingSettingsProvider());

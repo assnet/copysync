@@ -14,6 +14,14 @@ import { AcquireSessionLeaseUseCase } from '../../application/use-cases/AcquireS
 import { RenewSessionLeaseUseCase, type ResumeGiveUpStatus } from '../../application/use-cases/RenewSessionLeaseUseCase';
 import { PrismaSessionRepository } from '../repositories/PrismaSessionRepository';
 import { ReleaseSessionLeaseUseCase } from '../../application/use-cases/ReleaseSessionLeaseUseCase';
+import {
+  GetWorkerScalingSettingsUseCase,
+  workerScalingEnforcedCheck,
+  type WorkerScalingSettingsViewDeps,
+} from '../../application/use-cases/GetWorkerScalingSettingsUseCase';
+import { UpdateWorkerScalingSettingsUseCase } from '../../application/use-cases/UpdateWorkerScalingSettingsUseCase';
+import { PrismaWorkerHeartbeatRepository } from '../repositories/PrismaWorkerHeartbeatRepository';
+import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 
 export interface SessionLeaseContainer {
   workerId: string;
@@ -140,6 +148,37 @@ export function workerScalingSettingsProvider(): RefreshingWorkerScalingSettings
     envDefaults: workerScalingEnvDefaults(),
   });
   return settingsProvider;
+}
+
+let getSettingsUseCase: GetWorkerScalingSettingsUseCase | undefined;
+let updateSettingsUseCase: UpdateWorkerScalingSettingsUseCase | undefined;
+
+/** `enforced` da tela: adoção ligada aqui ou batimento vivo de algum worker (com `http` separado). */
+function workerScalingSettingsViewDeps(): WorkerScalingSettingsViewDeps {
+  return {
+    envDefaults: workerScalingEnvDefaults(),
+    isEnforced: workerScalingEnforcedCheck(() => workerAdoptionConfig().enabled, new PrismaWorkerHeartbeatRepository()),
+  };
+}
+
+/** Leitura da configuração de escala para o super admin (singleton preguiçoso; import não toca banco). */
+export function getWorkerScalingSettingsUseCase(): GetWorkerScalingSettingsUseCase {
+  getSettingsUseCase ??= new GetWorkerScalingSettingsUseCase(
+    new PrismaWorkerScalingSettingsRepository(prisma),
+    workerScalingSettingsViewDeps(),
+  );
+  return getSettingsUseCase;
+}
+
+/** Gravação auditada da configuração de escala; aplica no processo pelo mesmo provider. */
+export function updateWorkerScalingSettingsUseCase(): UpdateWorkerScalingSettingsUseCase {
+  updateSettingsUseCase ??= new UpdateWorkerScalingSettingsUseCase(
+    new PrismaWorkerScalingSettingsRepository(prisma),
+    new PrismaAuditLogRepository(),
+    workerScalingSettingsProvider(),
+    workerScalingSettingsViewDeps(),
+  );
+  return updateSettingsUseCase;
 }
 
 /**
