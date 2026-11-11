@@ -61,7 +61,7 @@ guardados na P1 (escalador é P3/P4).
 - Grava `updatedById` e auditoria `WORKER_SCALING_SETTINGS_CHANGED` com `before`/`after` (migration
   `20261111140000_add_audit_action_worker_scaling`, que também cria `WORKER_SCALE_REQUESTED` para a P3).
 - Tela: confirmação com o diff; mudar o teto pede digitar o valor novo (sem medição de RAM na P1, regra "não subir o teto
-  sem medir", `arquitetura-escala.md` §6); aviso se o teto fica abaixo da ocupação atual; rascunho em `usePersistedState`
+  sem medir", `arquitetura-escala.md` §6); aviso se o teto fica abaixo das sessões do worker mais ocupado (só com batimentos; sem batimento não há aviso, o total do cluster não é ocupação por worker); rascunho em `usePersistedState`
   (`workers.settings.draft`, escopo `tab`), limpo ao salvar. Texto da confirmação distinto para subir (risco de memória)
   e reduzir (não derruba sessão, só para de adotar). Campo editado mostra a origem "Alterado"; razão exibida com vírgula
   (`formatDraftValue`), digitação aceita `.` ou `,`. Sem botão de suporte na aba (`SUPPORT_CHAT_HIDDEN_PATHS`).
@@ -110,6 +110,9 @@ adoção para a capacidade vir dos batimentos.
   **isolada por plano**: cada linha usa a folga inteira, então não se soma entre planos.
 - Série de 7 dias (sessões × capacidade) vem de `GET /admin/ops/metrics/series` (`sessions_connected`,
   `sessions_capacity`); a rota de capacidade não devolve série.
+- Par usado para ocupação nas amostras: `sessions_connected` = média dos 5 ticks (`meta.agg: 'avg'`),
+  `sessions_capacity` = último tick (`meta.agg: 'last'`). No bucket em que o teto muda a razão mistura os dois
+  (aceito: o job da P4 usa várias amostras, não uma).
 - Aba **Configuração** lê `suggestedMaxSessions` daqui: confirmação reforçada (digitar o valor) **só** quando o teto novo
   passa do sugerido ou não há sugestão (sem amostra ou rota fora). Reduzir o teto (mesmo acima do sugerido) usa título
   neutro e o texto de redução. Enquanto a medição carrega (`suggestedState: 'loading'`), "Revisar e salvar" fica

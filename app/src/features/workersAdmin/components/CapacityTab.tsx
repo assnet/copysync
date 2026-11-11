@@ -3,6 +3,7 @@ import {
   Alert, Box, Button, Card, CardContent, CircularProgress, Grid, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Tooltip, Typography, useTheme,
 } from '@mui/material';
+import type { SxProps, Theme } from '@mui/material/styles';
 import type { LucideIcon } from 'lucide-react';
 import { Gauge, HardDrive, Layers, MemoryStick, PlugZap, Server, SlidersHorizontal } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
@@ -30,23 +31,30 @@ interface TileProps {
   context?: string | null;
 }
 
+const TILE_LABEL_LINE_HEIGHT = 1.3;
+/** Ícone e ajuda centrados na 1ª linha do rótulo: altura de uma linha do caption, sem offset fixo. */
+const TILE_LINE_SLOT: SxProps<Theme> = {
+  flexShrink: 0, display: 'flex', alignItems: 'center',
+  height: (theme) => `calc(${theme.typography.caption.fontSize} * ${TILE_LABEL_LINE_HEIGHT})`,
+};
+
 /** Cartão do cluster: rótulo com ajuda, valor e contexto. Sem valor mostra "sem amostra". */
 function CapacityTile({ label, help, icon, value, context }: TileProps) {
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'flex-start', color: 'text.secondary' }}>
-          <Box sx={{ flexShrink: 0, display: 'flex', mt: '1px' }}><AppIcon icon={icon} size="inline" aria-hidden /></Box>
+          <Box sx={TILE_LINE_SLOT}><AppIcon icon={icon} size="inline" aria-hidden /></Box>
           <Typography
             variant="caption"
             sx={{
-              fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, flex: 1, minWidth: 0, lineHeight: 1.3,
-              overflowWrap: 'anywhere', hyphens: 'auto',
+              fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, flex: 1, minWidth: 0, lineHeight: TILE_LABEL_LINE_HEIGHT,
+              overflowWrap: 'anywhere',
             }}
           >
             {label}
           </Typography>
-          <Box sx={{ flexShrink: 0, mt: '-3px' }}><HelpTip label={label} text={help} /></Box>
+          <Box sx={TILE_LINE_SLOT}><HelpTip label={label} text={help} /></Box>
         </Stack>
         <Typography
           variant={value === null ? 'body1' : 'h5'}

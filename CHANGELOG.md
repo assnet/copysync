@@ -33,6 +33,10 @@ Sem número para decidir teto e réplicas, e sem alerta de ocupação com a ado�
 - **`opsAlertPolicy.ts`** — alerta `session_occupancy` em percentual (0–100).
 - **`useWorkerSettings.ts`** — medição com timeout de 8 s no painel (não trava "Revisar e salvar").
 - **`SettingsConfirmDialog.tsx`**, **`useWorkerSettings.ts`**, **`CapacityTab.tsx`**, **`strings.ts`**, **`types.ts`** (revisão) — reduzir o teto acima do sugerido usa título neutro e texto de redução (antes "pode derrubar um worker"); `suggestedState` (`loading|ready|unavailable`) segura "Revisar e salvar" em "Carregando medição…" enquanto a medição chega; ajuda da Capacidade por modo (`enforced`); aviso de coletor parado com `cluster.stale`; "Cabem mais" explicado como projeção isolada por plano.
+- **`aggregateOpsMetrics.ts`** — `sessions_capacity` gravada pelo último valor da janela (amostras anteriores são médias; a série de 7 dias mistura os dois na transição); todo gauge/counter agregado grava `meta.agg` (`'avg'` | `'last'`).
+- **`opsAlertPolicy.ts`** — `metric` do alerta de ocupação agora `sessions_occupancy_pct`.
+- **`useWorkerSettings.ts`** — aviso de teto abaixo da ocupação só com batimentos (sessões do worker mais ocupado); sem batimento não há aviso.
+- **`rules.ts`**, **`CapacityTab.tsx`**, **`supportChat/routes.ts`** — planos na ordem do catálogo; botão de suporte oculto em `/admin/workers/capacity`.
 
 ### Added — api 0.82.0 · app 0.101.0 — configuração de escala dos workers em banco
 

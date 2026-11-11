@@ -16,7 +16,8 @@ const LAST_VALUE_GAUGES: ReadonlySet<string> = new Set([OPS_METRIC.sessionsCapac
 
 /**
  * Agrega os ticks de uma janela em 1 linha por (source, resource, metric), MQ-23. `gauge` = média
- * com `min`/`max`/`n` em `meta` (`sessions_capacity`: último valor, mesmo `meta`); `counter` = último valor (média de acumulado não diz nada). Pura.
+ * com `min`/`max`/`n` em `meta` (`sessions_capacity`: último valor, mesmo `meta`); `counter` = último valor (média de acumulado não diz nada).
+ * `meta.agg` (`'avg'` | `'last'`) diz como o valor foi obtido. Pura.
  */
 export function aggregateOpsMetrics(ticks: readonly OpsMetricTick[], at: Date): OpsMetricSample[] {
   const groups = new Map<string, OpsMetricReading[]>();
@@ -35,14 +36,15 @@ export function aggregateOpsMetrics(ticks: readonly OpsMetricTick[], at: Date): 
     const values = list.map((r) => r.value);
     const base = { at, source: last.source, resource: last.resource, metric: last.metric };
     if (last.kind === 'counter') {
-      out.push({ ...base, value: last.value, meta: { ...(last.meta ?? {}), n: list.length } });
+      out.push({ ...base, value: last.value, meta: { ...(last.meta ?? {}), n: list.length, agg: 'last' } });
       continue;
     }
-    const value = LAST_VALUE_GAUGES.has(last.metric) ? last.value : values.reduce((s, v) => s + v, 0) / values.length;
+    const useLast = LAST_VALUE_GAUGES.has(last.metric);
+    const value = useLast ? last.value : values.reduce((s, v) => s + v, 0) / values.length;
     out.push({
       ...base,
       value: round(value),
-      meta: { ...(last.meta ?? {}), min: round(Math.min(...values)), max: round(Math.max(...values)), n: values.length },
+      meta: { ...(last.meta ?? {}), min: round(Math.min(...values)), max: round(Math.max(...values)), n: values.length, agg: useLast ? 'last' : 'avg' },
     });
   }
   return out;

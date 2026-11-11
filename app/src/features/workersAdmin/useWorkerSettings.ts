@@ -30,20 +30,12 @@ export type SuggestedState = 'loading' | 'ready' | 'unavailable';
 export interface WorkerSettingsNotice { severity: 'success' | 'warning' | 'error'; text: string }
 
 /**
- * Ocupação de referência do aviso de teto abaixo dela. Com batimentos: sessões do worker mais
- * ocupado. Sem batimentos (adoção desligada ou nenhum worker vivo): `connected` da última amostra
- * de capacidade; sem amostra, o processo mais ocupado. `null` sem dado.
+ * Ocupação de referência do aviso de teto abaixo dela: sessões do worker mais ocupado, só com
+ * batimentos. Sem batimento, `null` (sem aviso): o total do cluster não é ocupação por worker.
  */
-export function busiestSessions(
-  list: WorkerOccupancyList | null,
-  cluster: Pick<WorkerCapacityCluster, 'connected' | 'sampledAt'> | null = null,
-): number | null {
-  if (list && list.adoptionEnabled !== false && list.workers.length > 0) {
-    return Math.max(...list.workers.map((w) => w.sessions));
-  }
-  if (cluster && cluster.sampledAt !== null) return cluster.connected;
-  const counts = (list?.processes ?? []).map((p) => p.sessions);
-  return counts.length ? Math.max(...counts) : null;
+export function busiestSessions(list: WorkerOccupancyList | null): number | null {
+  if (!list || list.workers.length === 0) return null;
+  return Math.max(...list.workers.map((w) => w.sessions));
 }
 
 function isField(value: unknown): value is WorkerScalingSettingsField {
@@ -59,7 +51,6 @@ export function useWorkerSettings() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [occupancy, setOccupancy] = useState<WorkerOccupancyList | null>(null);
-  const [cluster, setCluster] = useState<WorkerCapacityCluster | null>(null);
   const [suggestedMaxSessions, setSuggestedMaxSessions] = useState<number | null>(null);
   const [suggestedState, setSuggestedState] = useState<SuggestedState>('loading');
   const [saving, setSaving] = useState(false);
@@ -93,7 +84,6 @@ export function useWorkerSettings() {
       settled = true;
       clearTimeout(timer);
       const suggested = found?.suggestedMaxSessions ?? null;
-      setCluster(found);
       setSuggestedMaxSessions(suggested);
       setSuggestedState(suggested === null ? 'unavailable' : 'ready');
     };
@@ -108,7 +98,7 @@ export function useWorkerSettings() {
     };
   }, [load]);
 
-  const busiest = useMemo(() => busiestSessions(occupancy, cluster), [occupancy, cluster]);
+  const busiest = useMemo(() => busiestSessions(occupancy), [occupancy]);
 
   const values: WorkerScalingSettingsDraft | null = draft?.values ?? view?.settings ?? null;
 

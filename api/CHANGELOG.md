@@ -54,6 +54,10 @@ fase P2). Doc: `docs/workers-escala.md` (Capacidade), `docs/ops-metricas.md`.
 - **`PrismaWorkerCapacityReader.ts`** — entitlement em string só vira limite com a regex `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$`; outra string = ilimitado na aba.
 - **`opsAlertPolicy.ts`** — `session_occupancy` loga `value`/`threshold` em percentual (0–100), como `memory`.
 - **`app/…/useWorkerSettings.ts`** — medição do teto sugerido com timeout de 8 s: resposta pendurada vira `unavailable` e não trava "Revisar e salvar".
+- **`aggregateOpsMetrics.ts`** — `sessions_capacity` gravada pelo último valor da janela (antes, média; as amostras anteriores seguem médias e a série de 7 dias mistura os dois na transição). Todo agregado grava `meta.agg`: `'avg'` (gauge na média) ou `'last'` (counter e `sessions_capacity`); valores não mudam.
+- **`opsAlertPolicy.ts`** — `metric` do log do alerta de ocupação agora `sessions_occupancy_pct` (percentual derivado, não gravado).
+- **`app/…/useWorkerSettings.ts`** — aviso de teto abaixo da ocupação só com batimentos (sessões do worker mais ocupado, sem olhar `adoptionEnabled`); sem batimento, sem aviso (total do cluster não é ocupação por worker).
+- **`app/…/workersAdmin/rules.ts`**, **`CapacityTab.tsx`**, **`supportChat/routes.ts`** — planos na ordem do catálogo; botão flutuante de suporte oculto em `/admin/workers/capacity`.
 
 ## [0.82.0 · app 0.101.0] — 2026-11-11 — Configuração de escala dos workers em banco
 
