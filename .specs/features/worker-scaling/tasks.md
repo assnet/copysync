@@ -11,7 +11,7 @@
   `feature/rebranding-app`. **Sem push** sem o dono pedir (o push publica o CopySync na Render). Nunca push da branch de feature.
 - `git add` só com caminhos explícitos. Ficam fora de qualquer commit os arquivos do dono na worktree principal:
   `.specs/features/plans-modal/`, `.specs/features/product-access/`, `.specs/features/saver/`,
-  `.specs/features/tenant-affiliate-link/`, `docs/mensagens-interativas.md` (conferir a lista com `git status` no início de cada fase).
+  `docs/mensagens-interativas.md` (conferir a lista com `git status` no início de cada fase).
   Conferir com `git show --stat HEAD` depois de cada commit.
 - Um commit por tarefa, mensagem `tipo(escopo): descrição`, com `Co-Authored-By`. Migration nova nunca edita migration aplicada.
 
@@ -108,7 +108,7 @@ Pico de 4 agentes de implementação + 1 revisor; folga para o teto de 7.
 
 ### T2: Ações de auditoria [P]
 **What**: migration `add_audit_action_worker_scaling` com `WORKER_SCALING_SETTINGS_CHANGED` e `WORKER_SCALE_REQUESTED`; união em `IAuditLogRepository.ts`.
-**Where**: `api/prisma/schema.prisma`, `api/prisma/migrations/<ts>_add_audit_action_worker_scaling/` (`<ts>` maior que a última migration do topo, hoje `20261111120100`; uma migration só, com dois `ALTER TYPE ... ADD VALUE` e nada mais, como `20261029040000_add_premium_slug_audit_actions`), `api/src/shared/audit/IAuditLogRepository.ts`
+**Where**: `api/prisma/schema.prisma`, `api/prisma/migrations/<ts>_add_audit_action_worker_scaling/` (`<ts>` maior que a última migration do topo, hoje `20261111130000`; uma migration só, com dois `ALTER TYPE ... ADD VALUE` e nada mais, como `20261029040000_add_premium_slug_audit_actions`), `api/src/shared/audit/IAuditLogRepository.ts`
 **Depends on**: — · **Requirement**: WSCALE-06, WSCALE-12
 **Done when**: `pnpm typecheck` verde; migration aplica no descartável (conferido em T3)
 **Tests**: none (enum) · **Gate**: full · **Commit**: `feat(prisma): ações de auditoria da escala dos workers`
@@ -178,9 +178,9 @@ Pico de 4 agentes de implementação + 1 revisor; folga para o teto de 7.
 **Tests**: unit (Testing Library) · **Gate**: full + build · **Commit**: `feat(app): aba Configuração dos workers`
 
 ### T12: Docs, versão e changelog da P1
-**What**: `docs/workers-escala.md` (o que é, campos, origem do valor, o que não fazer), linha no `AGENTS.md`, linha em "Ferramentas operacionais" do roadmap, `docs/arquitetura-escala.md` (as duas tabelas de envs, §3.2 e §5.1, e as menções em prosa ao teto por env: `WORKER_MAX_*` = valor inicial), `api` 0.80.0, `app` 0.99.0 (0.79.0/0.98.0 já saíram com a recuperação de senha; conferir o topo na hora), `CHANGELOG.md` e `api/CHANGELOG.md`.
+**What**: `docs/workers-escala.md` (o que é, campos, origem do valor, o que não fazer), linha no `AGENTS.md`, linha em "Ferramentas operacionais" do roadmap, `docs/arquitetura-escala.md` (as duas tabelas de envs, §3.2 e §5.1, e as menções em prosa ao teto por env: `WORKER_MAX_*` = valor inicial), próxima minor de `api` e `app` acima do topo na hora (topo em `d30c625`: api 0.81.0, app 0.100.0 → P1 = 0.82.0 e 0.101.0), `CHANGELOG.md` e `api/CHANGELOG.md`.
 **Where**: arquivos citados · **Depends on**: T7, T11 · **Requirement**: WSCALE-19
-**Tests**: none · **Gate**: full · **Commit**: `docs(workers): configuração de escala em banco (api 0.80.0, app 0.99.0)`
+**Tests**: none · **Gate**: full · **Commit**: `docs(workers): configuração de escala em banco (api X.Y.0, app X.Y.0)` com as versões reais
 
 ### R1: Revisão da P1 e merge
 **What**: `/caveman-review` do diff da fase; correções em tarefas `T12a…`; gate `full` + `integration-db` + `build`; smoke P1 da spec num ambiente local com Postgres descartável; `merge --no-ff` local em `feature/rebranding-app`.
@@ -226,7 +226,7 @@ A `SettingsTab` passa a ler `suggestedMaxSessions` da rota de capacidade: confir
 **Tests**: unit (Testing Library) · **Gate**: full + build · **Commit**: `feat(app): aba Capacidade dos workers`
 
 ### T19: Docs, versão e changelog da P2
-**What**: `docs/workers-escala.md`, `docs/ops-metricas.md` (métricas novas, fonte `sessions`), `api` 0.81.0, `app` 0.100.0 (conferir o topo) e changelogs.
+**What**: `docs/workers-escala.md`, `docs/ops-metricas.md` (métricas novas, fonte `sessions`), próxima minor de `api` e `app` acima do topo na hora e changelogs.
 **Depends on**: T17, T18 · **Requirement**: WSCALE-19 · **Tests**: none · **Gate**: full · **Commit**: `docs(workers): capacidade e métricas de sessões`
 
 ### R2: Revisão da P2 e merge
@@ -270,7 +270,7 @@ Como R1, com o smoke P2 da spec.
 
 ### T26: Docs, versão e changelog da P3
 **Depends on**: T24 · **Requirement**: WSCALE-19 · **Commit**: `docs(workers): escala por decisão do super admin`
-Inclui `docs/arquitetura-escala.md` §5.1 (itens novos do checklist, envs do escalador nos serviços `http` e `worker`) e §6; `docs/ops-metricas.md` ("O que não fazer", linha `RENDER_API_KEY` da tabela de envs e o parágrafo de custo com "Zero no `http`", `:109-115`) e a linha de métricas do `AGENTS.md`, registrando o recorte: só as rotas de escala chamam a Render, com cache de 30 s e timeout; as rotas de métricas continuam proibidas. `api` 0.82.0, `app` 0.101.0 (conferir o topo).
+Inclui `docs/arquitetura-escala.md` §5.1 (itens novos do checklist, envs do escalador nos serviços `http` e `worker`) e §6; `docs/ops-metricas.md` ("O que não fazer", linha `RENDER_API_KEY` da tabela de envs e o parágrafo de custo com "Zero no `http`", `:109-115`) e a linha de métricas do `AGENTS.md`, registrando o recorte: só as rotas de escala chamam a Render, com cache de 30 s e timeout; as rotas de métricas continuam proibidas. Próxima minor de `api` e `app` acima do topo na hora.
 
 ### R3: Revisão da P3 e merge
 Como R1, com atenção de segurança: chave e id de serviço fora de resposta, log, evento e auditoria.
@@ -283,7 +283,7 @@ Como R1, com atenção de segurança: chave e id de serviço fora de resposta, l
 **Tests**: unit + integration-db · **Gate**: full + integration-db · **Commit**: `feat(sessions): subida automática de workers`
 
 ### T28: Painel — modo automático e docs da P4
-**What**: indicador do modo e da última decisão automática (do histórico de eventos; sem campo novo na API) na aba Escala; textos de ajuda do modo automático; `docs/arquitetura-escala.md` §3.2 ("Autoescala (diferido)" vira a descrição do que existe) e §3.3 (linha do job); `docs/workers-escala.md`; `api` 0.83.0, `app` 0.102.0 (conferir o topo) e changelogs.
+**What**: indicador do modo e da última decisão automática (do histórico de eventos; sem campo novo na API) na aba Escala; textos de ajuda do modo automático; `docs/arquitetura-escala.md` §3.2 ("Autoescala (diferido)" vira a descrição do que existe) e §3.3 (linha do job); `docs/workers-escala.md`; próxima minor de `api` e `app` acima do topo na hora e changelogs.
 **Where**: `app/src/features/workersAdmin/components/ScaleTab.tsx`, `useWorkerScale.ts`, `{strings,types}.ts` (+ teste), docs citados, `package.json` e changelogs
 **Depends on**: T27 · **Requirement**: WSCALE-14, WSCALE-19 · **Tests**: unit · **Gate**: full + build
 **Commit**: `feat(app): modo automático na escala dos workers`
@@ -301,8 +301,8 @@ Só se o dono aprovar a D7. Detalhar em tarefas próprias antes de executar (WSC
 | D1–D8 | Ver [`spec.md`](spec.md), seção Decisões | | |
 | D9 | Entregar P1 e P2 antes de ligar a escala em produção. No modo `all` atual a P2 mede e alerta; a P1 guarda o teto, que só passa a bloquear com a adoção ligada (D12 da spec) | Esperar o checklist §5.1 | Mede MB por sessão e deixa o teto pronto no painel já para a pré-venda |
 | D10 | P3 e P4 saem com `WORKER_SCALER_ENABLED=false`; ligar é passo do dono depois do T25 | Ligar no deploy | Nenhuma chamada à Render sem teste real |
-| D13 | Antes da P1, trazer o topo de `feature/rebranding-app` para `feature/worker-scaling` (`merge --no-ff` local; o plano saiu de `6e199e7`, a integração já está em `891a26b`) | Executar na base antiga | Versões, migrations e linhas citadas são as do topo |
-| D11 | Uma versão minor por fase, a partir de api 0.80.0 e app 0.99.0 (ajustar ao que estiver no topo na hora) | Uma só no fim | Regra do projeto: versão a cada entrega |
+| D13 | Antes da P1, trazer o topo de `feature/rebranding-app` para `feature/worker-scaling` (`merge --no-ff` local; o plano saiu de `6e199e7`, a integração já está em `d30c625`, 29 commits à frente) | Executar na base antiga | Versões, migrations e linhas citadas são as do topo |
+| D11 | Uma versão minor por fase, sempre a próxima acima do topo de `feature/rebranding-app` na hora do commit de docs da fase (outras frentes consomem versões em paralelo: 0.79 a 0.81 saíram enquanto este plano era revisado) | Uma só no fim | Regra do projeto: versão a cada entrega |
 
 ## Riscos
 

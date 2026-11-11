@@ -28,8 +28,8 @@ A fonte da verdade é o banco. O cache do provider é derivado e descartável (c
 
 | Peça | Onde | Como |
 | --- | --- | --- |
-| `PlatformSetting` | `api/prisma/schema.prisma:944-951` | Chave `worker_scaling`; sem migration para a configuração |
-| Padrão de leitura/gravação | `assistants/infrastructure/repositories/PrismaAiSettingsRepository.ts` | Mesma tabela e injeção do `PrismaClient`; ele faz `upsert` cego, então a concorrência por `updatedAt` (`schema.prisma:947-948`, já existem) é código novo |
+| `PlatformSetting` | `api/prisma/schema.prisma:948-955` | Chave `worker_scaling`; sem migration para a configuração |
+| Padrão de leitura/gravação | `assistants/infrastructure/repositories/PrismaAiSettingsRepository.ts` | Mesma tabela e injeção do `PrismaClient`; ele faz `upsert` cego, então a concorrência por `updatedAt` (`schema.prisma:951-952`, já existem) é código novo |
 | Auditoria sem tenant | `tenants/application/use-cases/SetPlanEntitlementUseCase.ts:46` | `audit.create({ userId, action, meta })` |
 | Limites do gate | `sessions/application/services/CapacityLimitedLeaseGate.ts:68` (construtor), usos em `:129-137` | Trocar `limits` fixo por função `() => limits` |
 | Composição | `sessions/infrastructure/lease/sessionLeaseContainer.ts:45-47`, `sessionAdoptionContainer.ts:55-78, 89-111`, `app/roleComposition.ts:83,98` (fila `session-open`) | Injetar o provider; nenhum consumidor guarda o número |
