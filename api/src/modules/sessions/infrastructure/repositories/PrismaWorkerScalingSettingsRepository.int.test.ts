@@ -1,7 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
-import { logger } from '../../../../shared/logger/logger';
 import { WorkerScalingSettingsConflictError } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import { PrismaWorkerScalingSettingsRepository, WORKER_SCALING_SETTINGS_KEY } from './PrismaWorkerScalingSettingsRepository';
 
@@ -31,21 +30,17 @@ describe('get', () => {
     expect(await repo.get()).toBeNull();
   });
 
-  it('JSON que não é objeto → null + warn uma vez até ver valor bom, sem o conteúdo', async () => {
-    const warn = vi.spyOn(logger, 'warn');
+  it('JSON que não é objeto → linha crua com o updatedAt real; o update com ele grava', async () => {
     const put = (value: Prisma.InputJsonValue) =>
       prisma.platformSetting.upsert({ where, create: { ...where, value }, update: { value } });
-    for (const value of [[1, 2], 'segredo', 42]) {
-      await put(value);
-      expect(await repo.get()).toBeNull();
+    for (const value of [[1, 2], 'texto', 42]) {
+      const row = await put(value);
+      expect(await repo.get()).toEqual({ value, updatedAt: row.updatedAt, updatedById: null });
     }
-    expect(warn).toHaveBeenCalledTimes(1);
-    await put({ maxSessionsPerWorker: 30 });
-    expect(await repo.get()).not.toBeNull();
-    await put('segredo');
-    expect(await repo.get()).toBeNull();
-    expect(warn).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(warn.mock.calls)).not.toContain('segredo');
+    const read = await repo.get();
+    const saved = await repo.save({ maxSessionsPerWorker: 30 }, 'admin-1', read!.updatedAt);
+    expect(saved.value).toEqual({ maxSessionsPerWorker: 30 });
+    expect(await repo.get()).toMatchObject({ value: { maxSessionsPerWorker: 30 } });
   });
 });
 

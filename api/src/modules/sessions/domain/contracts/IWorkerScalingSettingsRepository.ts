@@ -2,7 +2,7 @@ import type { WorkerScalingSettingsPatch } from '../services/workerScalingSettin
 
 /**
  * Linha `platform_settings["worker_scaling"]` (WSCALE-01/06). Dado de plataforma, sem `tenantId`.
- * `value` sai cru do banco: quem lê valida com `parseWorkerScalingSettings`.
+ * `value` sai cru do banco (pode nem ser objeto): quem lê valida com `parseSavedWorkerScalingSettings`.
  */
 export interface WorkerScalingSettingsRecord {
   value: unknown;
@@ -12,7 +12,7 @@ export interface WorkerScalingSettingsRecord {
 }
 
 export interface IWorkerScalingSettingsRepository {
-  /** Linha salva, ou `null` sem linha. */
+  /** Linha salva com `updatedAt` real mesmo se `value` for inválido; `null` só sem linha. */
   get(): Promise<WorkerScalingSettingsRecord | null>;
   /**
    * Grava `value` já validado. `expectedUpdatedAt` é o `updatedAt` lido antes (`null` = não

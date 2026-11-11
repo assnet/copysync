@@ -131,6 +131,17 @@ describe('UpdateWorkerScalingSettingsUseCase', () => {
     expect(repo.save).not.toHaveBeenCalled();
   });
 
+  it('linha não-objeto: GET cai no default com o updatedAt real e o PUT com ele grava', async () => {
+    const repo = makeRepo({ value: 'texto', updatedAt: SAVED_AT, updatedById: null });
+    const view = await new GetWorkerScalingSettingsUseCase(repo, deps()).execute();
+    expect(view.settings).toEqual(defaultWorkerScalingSettings(envDefaults));
+    expect(view.updatedAt).toBe(SAVED_AT.toISOString());
+    const uc = new UpdateWorkerScalingSettingsUseCase(repo, makeAuditRepo(), makeProvider(), deps());
+    const out = await uc.execute({ settings: full(), expectedUpdatedAt: view.updatedAt, actorUserId: 'u1' });
+    expect(repo.save).toHaveBeenCalledWith(full(), 'u1', SAVED_AT);
+    expect(out.updatedAt).toBe(NEW_AT.toISOString());
+  });
+
   it('conflito propaga o 409 sem auditoria nem refresh', async () => {
     const { repo, audit, provider, useCase } = setup({ value: {}, updatedAt: NEW_AT, updatedById: 'u2' });
     repo.save.mockRejectedValueOnce(new WorkerScalingSettingsConflictError());
@@ -145,26 +156,42 @@ describe('UpdateWorkerScalingSettingsUseCase', () => {
 });
 
 describe('workerScalingEnforcedCheck', () => {
-  const beat = { workerId: 'w1', role: 'worker', sessions: 0, pendingLogins: 0, maxSessions: 40, rssMb: 1, seenAt: new Date() };
+  const log = () => ({ warn: vi.fn() });
 
   it('adoção ligada no processo: em vigor sem consultar batimentos', async () => {
-    const heartbeats = { listAlive: vi.fn(async () => []) };
-    expect(await workerScalingEnforcedCheck(() => true, heartbeats)()).toBe(true);
-    expect(heartbeats.listAlive).not.toHaveBeenCalled();
+    const heartbeats = { hasAlive: vi.fn(async () => false) };
+    expect(await workerScalingEnforcedCheck(() => true, heartbeats, log())()).toBe(true);
+    expect(heartbeats.hasAlive).not.toHaveBeenCalled();
   });
 
   it('flag só no worker (processo http): batimento vivo = em vigor; sem batimento = sem efeito', async () => {
-    const heartbeats = { listAlive: vi.fn(async () => [beat]) };
-    const check = workerScalingEnforcedCheck(() => false, heartbeats);
+    const heartbeats = { hasAlive: vi.fn(async () => true) };
+    const check = workerScalingEnforcedCheck(() => false, heartbeats, log());
     expect(await check()).toBe(true);
-    expect(heartbeats.listAlive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
-    heartbeats.listAlive.mockResolvedValueOnce([]);
+    expect(heartbeats.hasAlive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
+    heartbeats.hasAlive.mockResolvedValueOnce(false);
     expect(await check()).toBe(false);
   });
 
+  it('falha na consulta de batimento: cai na flag local com warn, sem lançar', async () => {
+    const l = log();
+    const heartbeats = { hasAlive: vi.fn(async () => { throw new TypeError('db'); }) };
+    expect(await workerScalingEnforcedCheck(() => false, heartbeats, l)()).toBe(false);
+    expect(l.warn).toHaveBeenCalledWith({ err: 'TypeError' }, expect.any(String));
+  });
+
   it('use case aguarda o check assíncrono', async () => {
-    const check = workerScalingEnforcedCheck(() => false, { listAlive: async () => [beat] });
+    const check = workerScalingEnforcedCheck(() => false, { hasAlive: async () => true }, log());
     const view = await new GetWorkerScalingSettingsUseCase(makeRepo(null), { envDefaults, isEnforced: check }).execute();
     expect(view.enforced).toBe(true);
+  });
+
+  it('PUT não vira 500 se a consulta de batimento falhar depois de gravar', async () => {
+    const isEnforced = workerScalingEnforcedCheck(() => false, { hasAlive: async () => { throw new Error('db'); } }, log());
+    const repo = makeRepo(null);
+    const uc = new UpdateWorkerScalingSettingsUseCase(repo, makeAuditRepo(), makeProvider(), { envDefaults, isEnforced });
+    const view = await uc.execute({ settings: full(), expectedUpdatedAt: null, actorUserId: 'u1' });
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(view.enforced).toBe(false);
   });
 });

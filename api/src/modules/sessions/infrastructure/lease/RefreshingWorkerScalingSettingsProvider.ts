@@ -1,7 +1,7 @@
 import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
 import type { IWorkerScalingSettingsRepository } from '../../domain/contracts/IWorkerScalingSettingsRepository';
-import { parseSavedWorkerScalingSettings } from '../../application/use-cases/GetWorkerScalingSettingsUseCase';
 import {
+  parseSavedWorkerScalingSettings,
   resolveEffectiveSettings,
   type EffectiveWorkerScalingSettings,
   type WorkerScalingEnvDefaults,
@@ -19,9 +19,16 @@ export interface RefreshingWorkerScalingSettingsProviderOptions {
   logger?: WorkerScalingSettingsLogger;
   /** Intervalo do refresh periódico; padrão 30 s. */
   refreshMs?: number;
+  /** Teto de uma leitura; estouro = falha de leitura. Padrão 5 s. */
+  readTimeoutMs?: number;
 }
 
 export const WORKER_SCALING_REFRESH_MS = 30_000;
+export const WORKER_SCALING_READ_TIMEOUT_MS = 5_000;
+
+class WorkerScalingSettingsReadTimeoutError extends Error {
+  override name = 'TimeoutError';
+}
 
 type FailureKind = 'read' | 'invalid';
 
@@ -29,7 +36,8 @@ type FailureKind = 'read' | 'invalid';
  * Configuração de escala em memória (WSCALE-03). Nasce com o default da env, sem I/O no
  * construtor. `refresh()` relê `platform_settings["worker_scaling"]`. Valor salvo inválido vale
  * como sem linha (default da env, igual ao GET); erro de leitura (banco fora) mantém o último
- * valor bom. Os dois logam `warn` uma vez por sequência, sem o conteúdo.
+ * valor bom; leitura acima de 5 s conta como erro (nunca pendura o refresh nem o PUT). Os dois logam
+ * `warn` uma vez por sequência, sem o conteúdo.
  */
 export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSettingsProvider {
   private effective: EffectiveWorkerScalingSettings;
@@ -51,14 +59,17 @@ export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSe
 
   /**
    * Com leitura em curso, encadeia uma nova depois dela: quem chama logo após gravar (PUT) vê o
-   * valor novo, nunca o lido antes do UPDATE. Chamadas no meio dividem a mesma pendente.
+   * valor novo, nunca o lido antes do UPDATE. Chamadas no meio dividem a mesma pendente; com a
+   * pendente já agendada (inclusive entre o fim da leitura e o início dela) não abre outra.
    */
   refresh(): Promise<void> {
+    if (this.queued) return this.queued;
     if (!this.inFlight) return this.startLoad();
-    this.queued ??= this.inFlight.then(() => {
+    const next = () => {
       this.queued = null;
       return this.startLoad();
-    });
+    };
+    this.queued = this.inFlight.then(next, next);
     return this.queued;
   }
 
@@ -84,7 +95,7 @@ export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSe
   private async load(): Promise<void> {
     let record;
     try {
-      record = await this.options.repository.get();
+      record = await this.readWithTimeout();
     } catch (err) {
       this.warnOnce('read', { err: (err as Error | null)?.name },
         'worker scaling settings refresh failed; keeping last good value');
@@ -97,6 +108,16 @@ export class RefreshingWorkerScalingSettingsProvider implements IWorkerScalingSe
       return;
     }
     this.failing = null;
+  }
+
+  private readWithTimeout(): ReturnType<IWorkerScalingSettingsRepository['get']> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new WorkerScalingSettingsReadTimeoutError('read timed out')),
+        this.options.readTimeoutMs ?? WORKER_SCALING_READ_TIMEOUT_MS);
+      timer.unref();
+    });
+    return Promise.race([this.options.repository.get(), timeout]).finally(() => clearTimeout(timer));
   }
 
   private warnOnce(kind: FailureKind, obj: Record<string, unknown>, msg: string): void {

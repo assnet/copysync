@@ -62,6 +62,13 @@ export class PrismaWorkerHeartbeatRepository implements IWorkerHeartbeatReposito
     return rows.map(toHeartbeat);
   }
 
+  async hasAlive(maxAgeMs: number): Promise<boolean> {
+    const rows = await prisma.$queryRaw<{ alive: boolean }[]>`
+      SELECT EXISTS (SELECT 1 FROM "worker_heartbeats"
+        WHERE "seenAt" > ${NOW} - (${int(maxAgeMs)}::int * interval '1 millisecond')) AS "alive"`;
+    return rows[0]?.alive === true;
+  }
+
   async remove(workerId: string): Promise<void> {
     await prisma.$executeRaw`DELETE FROM "worker_heartbeats" WHERE "workerId" = ${workerId}`;
   }

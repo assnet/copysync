@@ -33,6 +33,8 @@ export interface IWorkerHeartbeatRepository {
   beat(row: WorkerHeartbeatInput): Promise<void>;
   /** Workers com `seenAt` mais novo que `maxAgeMs` (ADOPT-02: vivo = < 90 s), por `workerId`. */
   listAlive(maxAgeMs: number): Promise<WorkerHeartbeat[]>;
+  /** Há algum worker vivo (mesmo critério de `listAlive`)? Consulta barata, sem trazer linhas. */
+  hasAlive(maxAgeMs: number): Promise<boolean>;
   /** Apaga só a linha deste worker (shutdown). */
   remove(workerId: string): Promise<void>;
 }

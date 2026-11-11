@@ -4,13 +4,13 @@ import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWor
 import type { IWorkerScalingSettingsRepository } from '../../domain/contracts/IWorkerScalingSettingsRepository';
 import {
   assertReplicaRange,
+  parseSavedWorkerScalingSettings,
   parseWorkerScalingSettings,
   resolveEffectiveSettings,
   WORKER_SCALING_FIELDS,
   type WorkerScalingSettings,
 } from '../../domain/services/workerScalingSettings';
 import {
-  parseSavedWorkerScalingSettings,
   presentWorkerScalingSettings,
   type WorkerScalingSettingsView,
   type WorkerScalingSettingsViewDeps,

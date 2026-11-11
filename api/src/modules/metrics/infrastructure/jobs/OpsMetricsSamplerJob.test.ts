@@ -59,6 +59,7 @@ function setup(opts: { lease?: ReturnType<typeof memoryLease>; samples?: ReturnT
   const heartbeats = {
     beat: vi.fn(async () => undefined),
     remove: vi.fn(async () => undefined),
+    hasAlive: vi.fn(async () => true),
     listAlive: vi.fn(async () => [{
       workerId: 'w1', role: 'worker', sessions: 1, pendingLogins: 0, maxSessions: 40, rssMb: 300,
       cpuPct: 12, eventLoopP99Ms: 30, seenAt: new Date(T0),

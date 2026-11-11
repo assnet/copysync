@@ -169,7 +169,7 @@ describe('/admin/workers/settings', () => {
     auth.isSuperAdmin = true;
     adoption.enabled = false;
     vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
-    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([]);
+    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'hasAlive').mockResolvedValue(false);
     const res = await app.inject({ method: 'GET', url: SETTINGS_URL });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -184,9 +184,7 @@ describe('/admin/workers/settings', () => {
     auth.isSuperAdmin = true;
     adoption.enabled = false;
     vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
-    const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'listAlive').mockResolvedValue([
-      { workerId: 'w1', role: 'worker', sessions: 0, pendingLogins: 0, maxSessions: 40, rssMb: 1, seenAt },
-    ]);
+    const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'hasAlive').mockResolvedValue(true);
     const res = await app.inject({ method: 'GET', url: SETTINGS_URL });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.enforced).toBe(true);

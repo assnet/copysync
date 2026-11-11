@@ -36,7 +36,9 @@ guardados na P1 (escalador é P3/P4).
   apenas em `workerScalingEnvDefaults()` (`shared/config/workerAdoption.ts`).
 - Salvo, o banco vence a env campo a campo. A resposta traz `origin[campo] = default|saved`.
 - Provider: `current()` síncrono; refresh a cada 30 s (`unref`) e na hora no processo que salvou.
-- Linha salva inválida: `GET` e provider usam o default da env (origem `default`) e logam `warn` uma vez, sem o conteúdo.
+- Linha salva inválida (não-objeto ou objeto inválido): `GET` e provider usam o default da env (origem `default`);
+  o `GET` devolve o `updatedAt` real, então o `PUT` regrava. O `warn` (uma vez por sequência, sem o conteúdo) sai do
+  refresh do provider, não do `GET`.
 - Erro de leitura do banco: o provider mantém o último valor bom. Boot com leitura lenta espera no máximo 5 s e segue
   com a env.
 - Env acima da faixa (`WORKER_MAX_SESSIONS` > 1000, `WORKER_MAX_PENDING_LOGINS` > 500) é limitada ao teto, com aviso no log.

@@ -12,6 +12,7 @@ function setup(extra: { cpu?: () => NodeJS.CpuUsage; clock?: () => number; loop?
   const heartbeats = {
     beat: vi.fn(async () => undefined),
     listAlive: vi.fn(async () => []),
+    hasAlive: vi.fn(async () => false),
     remove: vi.fn(async () => undefined),
   } satisfies IWorkerHeartbeatRepository;
   let local = ['s1', 's2'];

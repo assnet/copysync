@@ -1,9 +1,6 @@
-import type {
-  IWorkerScalingSettingsRepository,
-  WorkerScalingSettingsRecord,
-} from '../../domain/contracts/IWorkerScalingSettingsRepository';
+import type { IWorkerScalingSettingsRepository } from '../../domain/contracts/IWorkerScalingSettingsRepository';
 import {
-  parseWorkerScalingSettings,
+  parseSavedWorkerScalingSettings,
   resolveEffectiveSettings,
   type WorkerScalingEnvDefaults,
   type WorkerScalingSettings,
@@ -12,6 +9,12 @@ import {
 } from '../../domain/services/workerScalingSettings';
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
 import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
+import { logger } from '../../../../shared/logger/logger';
+
+/** Recorte do logger usado pelo check (pino). */
+export interface WorkerScalingEnforcedCheckLogger {
+  warn(obj: Record<string, unknown>, msg: string): void;
+}
 
 /** Resposta de leitura/gravação da configuração de escala (WSCALE-06). */
 export interface WorkerScalingSettingsView {
@@ -33,25 +36,22 @@ export interface WorkerScalingSettingsViewDeps {
  * Em vigor = adoção ligada neste processo OU algum batimento vivo em `worker_heartbeats` (só
  * existe com a adoção). Com `PROCESS_ROLE=http` separado a flag mora só no worker: o batimento
  * dele é o que diz à rota que a configuração vale. "Vivo" = o mesmo de `ListWorkersUseCase`.
+ * Falha na consulta não vira 500 (no PUT já gravou): vale só a flag deste processo, com `warn`.
  */
 export function workerScalingEnforcedCheck(
   adoptionEnabled: () => boolean,
-  heartbeats: Pick<IWorkerHeartbeatRepository, 'listAlive'>,
+  heartbeats: Pick<IWorkerHeartbeatRepository, 'hasAlive'>,
+  log: WorkerScalingEnforcedCheckLogger = logger,
 ): () => Promise<boolean> {
-  return async () => adoptionEnabled() || (await heartbeats.listAlive(WORKER_ALIVE_MS)).length > 0;
-}
-
-/**
- * Valor salvo validado. Linha inválida no banco (gravada fora da API) cai no default,
- * como o provider faz, para a tela abrir e o admin poder regravar.
- */
-export function parseSavedWorkerScalingSettings(record: WorkerScalingSettingsRecord | null): WorkerScalingSettingsPatch | null {
-  if (!record) return null;
-  try {
-    return parseWorkerScalingSettings(record.value);
-  } catch {
-    return null;
-  }
+  return async () => {
+    if (adoptionEnabled()) return true;
+    try {
+      return await heartbeats.hasAlive(WORKER_ALIVE_MS);
+    } catch (err) {
+      log.warn({ err: (err as Error | null)?.name }, 'worker scaling settings: alive check failed; using local adoption flag');
+      return false;
+    }
+  };
 }
 
 export async function presentWorkerScalingSettings(

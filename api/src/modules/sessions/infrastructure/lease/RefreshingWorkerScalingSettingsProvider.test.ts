@@ -12,12 +12,12 @@ const record = (value: unknown, by: string | null = 'admin-1'): WorkerScalingSet
   updatedById: by,
 });
 
-function setup(refreshMs?: number) {
+function setup(refreshMs?: number, readTimeoutMs?: number) {
   const repository = { get: vi.fn(), save: vi.fn() } as unknown as IWorkerScalingSettingsRepository & {
     get: ReturnType<typeof vi.fn>;
   };
   const log = { warn: vi.fn() };
-  const provider = new RefreshingWorkerScalingSettingsProvider({ repository, envDefaults, logger: log, refreshMs });
+  const provider = new RefreshingWorkerScalingSettingsProvider({ repository, envDefaults, logger: log, refreshMs, readTimeoutMs });
   return { repository, log, provider };
 }
 
@@ -110,6 +110,64 @@ describe('RefreshingWorkerScalingSettingsProvider', () => {
     expect(provider.current().value.maxSessionsPerWorker).toBe(99);
     await first;
     expect(repository.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('refresh logo após o fim da leitura não abre leitura paralela à encadeada', async () => {
+    const { repository, provider } = setup();
+    let active = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    repository.get.mockImplementation(() => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      return new Promise<null>((r) => releases.push(() => { active--; r(null); }));
+    });
+    const calls = [provider.refresh(), provider.refresh()];
+    releases.shift()!();
+    for (let i = 0; i < 10; i++) {
+      calls.push(provider.refresh());
+      await Promise.resolve();
+    }
+    while (releases.length) {
+      releases.shift()!();
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    await Promise.all(calls);
+    expect(maxActive).toBe(1);
+  });
+
+  it('leitura pendurada estoura em 5 s: mantém o último valor bom, warn uma vez, libera o refresh', async () => {
+    const { repository, log, provider } = setup();
+    repository.get
+      .mockResolvedValueOnce(record({ maxSessionsPerWorker: 80 }))
+      .mockReturnValueOnce(new Promise(() => undefined))
+      .mockReturnValueOnce(new Promise(() => undefined))
+      .mockResolvedValueOnce(record({ maxSessionsPerWorker: 90 }));
+    await provider.refresh();
+    const hung = provider.refresh();
+    await vi.advanceTimersByTimeAsync(4_999);
+    let done = false;
+    void hung.then(() => { done = true; });
+    await Promise.resolve();
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(hung).resolves.toBeUndefined();
+    expect(provider.current().value.maxSessionsPerWorker).toBe(80);
+    const again = provider.refresh();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await again;
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn.mock.calls[0][0]).toEqual({ err: 'TimeoutError' });
+    await provider.refresh();
+    expect(provider.current().value.maxSessionsPerWorker).toBe(90);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leitura rápida limpa o timer do teto', async () => {
+    const { repository, provider } = setup(undefined, 1000);
+    repository.get.mockResolvedValue(null);
+    await provider.refresh();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('start agenda refresh periódico; duas vezes não duplica; stop cancela', async () => {

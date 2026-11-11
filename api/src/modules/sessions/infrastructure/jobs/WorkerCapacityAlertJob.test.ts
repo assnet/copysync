@@ -34,7 +34,7 @@ function setup(workers: WorkerHeartbeat[], awaiting = 0, withNotifier = true) {
   let clock = new Date('2026-11-04T12:00:00Z');
   const lease = new ClockLease();
   const heartbeats: IWorkerHeartbeatRepository = {
-    beat: vi.fn(), remove: vi.fn(), listAlive: vi.fn(async () => workers),
+    beat: vi.fn(), remove: vi.fn(), listAlive: vi.fn(async () => workers), hasAlive: vi.fn(async () => workers.length > 0),
   };
   const adoption = {
     adoptNext: vi.fn(), failExhausted: vi.fn(), resetFailures: vi.fn(),

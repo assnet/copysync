@@ -72,6 +72,16 @@ describe('listAlive', () => {
   });
 });
 
+describe('hasAlive', () => {
+  it('mesmo critério de listAlive: só batimento recente conta', async () => {
+    expect(await repo.hasAlive(ALIVE_MS)).toBe(false);
+    await plant('w-stale', ago(120_000));
+    expect(await repo.hasAlive(ALIVE_MS)).toBe(false);
+    await repo.beat({ workerId: 'w-alive', ...base });
+    expect(await repo.hasAlive(ALIVE_MS)).toBe(true);
+  });
+});
+
 describe('remove', () => {
   it('apaga só o id pedido', async () => {
     await repo.beat({ workerId: 'w1', ...base });

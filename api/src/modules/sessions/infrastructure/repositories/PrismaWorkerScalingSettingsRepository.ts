@@ -1,5 +1,4 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { logger } from '../../../../shared/logger/logger';
 import { WorkerScalingSettingsConflictError } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import type {
   IWorkerScalingSettingsRepository,
@@ -9,12 +8,6 @@ import type { WorkerScalingSettingsPatch } from '../../domain/services/workerSca
 
 /** Chave em `platform_settings` (WSCALE-01). */
 export const WORKER_SCALING_SETTINGS_KEY = 'worker_scaling';
-
-/** Warn de valor não-objeto uma vez por processo até ver um valor bom (o refresh roda a cada 30 s). */
-let warnedNonObject = false;
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
  * Concorrência otimista por `updatedAt` (WSCALE-06): `null` = cria (linha existente ou corrida
@@ -26,15 +19,7 @@ export class PrismaWorkerScalingSettingsRepository implements IWorkerScalingSett
   async get(): Promise<WorkerScalingSettingsRecord | null> {
     const row = await this.prisma.platformSetting.findUnique({ where: { key: WORKER_SCALING_SETTINGS_KEY } });
     if (!row) return null;
-    if (!isObject(row.value)) {
-      if (warnedNonObject) return null;
-      warnedNonObject = true;
-      // Sem o conteúdo no log: só o tipo.
-      logger.warn({ key: WORKER_SCALING_SETTINGS_KEY, valueType: Array.isArray(row.value) ? 'array' : typeof row.value },
-        'worker scaling settings: stored value is not an object, ignoring');
-      return null;
-    }
-    warnedNonObject = false;
+    // `value` cru, mesmo não-objeto: a linha existe e o `updatedAt` real é o que destrava o PUT.
     return { value: row.value, updatedAt: row.updatedAt, updatedById: row.updatedById };
   }
 

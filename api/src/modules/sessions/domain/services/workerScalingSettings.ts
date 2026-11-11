@@ -138,6 +138,19 @@ export function parseWorkerScalingSettings(input: unknown): WorkerScalingSetting
 }
 
 /**
+ * Valor salvo validado. Linha inválida no banco (não-objeto ou objeto inválido, gravada fora da
+ * API) vale como sem valor: GET e provider caem no default para a tela abrir e o admin regravar.
+ */
+export function parseSavedWorkerScalingSettings(record: { value: unknown } | null): WorkerScalingSettingsPatch | null {
+  if (!record) return null;
+  try {
+    return parseWorkerScalingSettings(record.value);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Valor efetivo: o salvo vence o default campo a campo (WSCALE-02). `saved` já validado
  * (`parseWorkerScalingSettings`); `null` = sem linha salva. Se o salvo deixar
  * `maxReplicas < minReplicas` (ex.: só `minReplicas` gravado), `maxReplicas` sobe para `minReplicas`.
