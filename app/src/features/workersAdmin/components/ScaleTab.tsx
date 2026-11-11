@@ -10,7 +10,7 @@ import { CooldownBar } from '@/components/CooldownBar';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { formatDateTime } from '@/features/opsMetrics/rules';
 import { serverNow } from '@/services/serverClock';
-import { cooldownActive, formatScaleRemaining, scaleBlock, type ScaleBlock } from '../rules';
+import { cooldownActive, defaultScaleTarget, formatScaleRemaining, scaleBlock, scaleStepAllowed, type ScaleBlock } from '../rules';
 import { workersAdminStrings } from '../strings';
 import type { WorkerScaleEvent, WorkerScaleOutcome, WorkerScaleStateView } from '../types';
 import { useWorkerScale } from '../useWorkerScale';
@@ -220,8 +220,13 @@ export default function ScaleTab() {
     if (inCooldown) return sc.actions.cooldown;
     return base;
   };
-  const upHint = !locked && current >= max ? sc.actions.atMax : lockedHint(sc.actions.upHint);
-  const downHint = !locked && current <= min ? sc.actions.atMin : lockedHint(sc.actions.downHint);
+  // ±1 só quando o alvo cai em [min, max]; fora disso o Tooltip mostra a faixa.
+  const canUp = scaleStepAllowed(current, 1, min, max);
+  const canDown = scaleStepAllowed(current, -1, min, max);
+  const upHint = !locked && !canUp ? sc.actions.stepOutOfRange(current + 1, min, max) : lockedHint(sc.actions.upHint);
+  const downHint = !locked && !canDown ? sc.actions.stepOutOfRange(current - 1, min, max) : lockedHint(sc.actions.downHint);
+  const customHint = !locked && min === max ? sc.actions.singleValueRange(min) : lockedHint(sc.actions.customHint);
+  const pendingDraft = w.draft !== null && !(w.dialogOpen && ready);
 
   return (
     <Stack spacing={3}>
@@ -230,6 +235,21 @@ export default function ScaleTab() {
         <Alert severity={w.notice.severity} onClose={w.clearNotice}>{w.notice.text}</Alert>
       )}
       <ScalerNotice view={view} block={block} />
+      {pendingDraft && (
+        <Alert
+          severity="info"
+          action={(
+            <Stack direction="row" spacing={1}>
+              {ready && (
+                <Button color="inherit" size="small" onClick={() => w.openDialog(current)}>{sc.pendingDraft.reopen}</Button>
+              )}
+              <Button color="inherit" size="small" onClick={w.cancel}>{sc.pendingDraft.discard}</Button>
+            </Stack>
+          )}
+        >
+          {ready ? sc.pendingDraft.text : sc.pendingDraft.waiting}
+        </Alert>
+      )}
 
       <Grid container spacing={2}>
         <Grid item xs={6} md={3}>
@@ -254,22 +274,22 @@ export default function ScaleTab() {
               hint={upHint}
               icon={ArrowUp}
               variant="contained"
-              disabled={locked || current >= max}
+              disabled={locked || !canUp}
               onClick={() => w.openDialog(current + 1)}
             />
             <ActionButton
               label={sc.actions.down}
               hint={downHint}
               icon={ArrowDown}
-              disabled={locked || current <= min}
+              disabled={locked || !canDown}
               onClick={() => w.openDialog(current - 1)}
             />
             <ActionButton
               label={sc.actions.custom}
-              hint={lockedHint(sc.actions.customHint)}
+              hint={customHint}
               icon={Gauge}
               disabled={locked || min === max}
-              onClick={() => w.openDialog(current + 1 <= max ? current + 1 : current - 1)}
+              onClick={() => w.openDialog(defaultScaleTarget(current, min, max))}
             />
           </Stack>
           {inCooldown && view.cooldownUntil && (
@@ -295,9 +315,10 @@ export default function ScaleTab() {
         <HistoryTable w={w} />
       </SectionCard>
 
-      {/* Rascunho restaurado só reabre com o escalador respondendo (precisa das réplicas atuais). */}
+      {/* Diálogo só com o escalador respondendo (precisa das réplicas atuais); sem ele, o aviso acima. */}
       <ScaleConfirmDialog
-        draft={ready ? w.draft : null}
+        draft={w.dialogOpen && ready ? w.draft : null}
+        resend={w.resend}
         current={current}
         min={min}
         max={max}

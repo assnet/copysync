@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { adminWorkersService } from '@/services/adminWorkers.service';
-import { scaleRequestErrorMessage } from './rules';
+import { scaleEventErrorMessage, scaleRequestErrorMessage } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerScaleEvent, WorkerScaleStateView } from './types';
 
@@ -12,7 +12,9 @@ export const WORKER_SCALE_REFRESH_MS = 20_000;
 
 /**
  * Rascunho do diálogo: alvo, motivo e `requestId`. O `requestId` nasce ao abrir e fica no
- * rascunho, então "tentar de novo" (ou recarregar a página no meio) reenvia o mesmo pedido.
+ * rascunho, então recarregar a página no meio (ou perder a resposta) reenvia o mesmo pedido.
+ * A API recusa o mesmo `requestId` com outro corpo (`REQUEST_ID_REUSED`) e um `requestId` que
+ * falhou não serve de novo: mudar alvo/motivo ou receber resposta de erro gera um novo.
  */
 export interface WorkerScaleDraft {
   replicas: number | string;
@@ -33,8 +35,8 @@ function newRequestId(): string {
 }
 
 /**
- * Aba Escala (WSCALE-14): estado (a cada 20 s, pulado com a aba oculta), histórico por cursor
- * opaco e pedido de réplicas com rascunho persistido na aba.
+ * Aba Escala (WSCALE-14): estado (a cada 20 s, pulado com a aba oculta e relido ao voltar),
+ * histórico por cursor opaco e pedido de réplicas com rascunho persistido na aba.
  */
 export function useWorkerScale() {
   const [view, setView] = useState<WorkerScaleStateView | null>(null);
@@ -48,25 +50,43 @@ export function useWorkerScale() {
   const [eventsError, setEventsError] = useState(false);
 
   const [draft, setDraft, clearDraft] = usePersistedState<WorkerScaleDraft | null>(WORKER_SCALE_DRAFT_KEY, null);
+  /** `requestId` do rascunho que veio da recarga: enquanto for o mesmo, o botão diz "Reenviar". */
+  const [restoredRequestId] = useState<string | null>(() => draft?.requestId ?? null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [notice, setNotice] = useState<WorkerScaleNotice | null>(null);
   const eventsSeq = useRef(0);
+  const stateSeq = useRef(0);
+  const sendingRef = useRef(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** O rascunho restaurado reabre sozinho só na 1ª leitura com o escalador pronto; depois, só pelo aviso. */
+  const autoOpenChecked = useRef(false);
 
   const loadState = useCallback(async (initial: boolean) => {
+    const seq = ++stateSeq.current;
     if (initial) {
       setLoading(true);
       setLoadError(null);
     }
     try {
-      setView(await adminWorkersService.getScale());
+      const next = await adminWorkersService.getScale();
+      if (seq !== stateSeq.current) return;
+      setView(next);
       setRefreshError(false);
       setLoadError(null);
+      if (!autoOpenChecked.current) {
+        autoOpenChecked.current = true;
+        if (draftRef.current && next.scaler.status === 'ready') setDialogOpen(true);
+      }
     } catch {
+      if (seq !== stateSeq.current) return;
       if (initial) setLoadError(s.errors.loadFailed);
       else setRefreshError(true);
     } finally {
-      if (initial) setLoading(false);
+      // Qualquer leitura vigente encerra o carregamento (a 1ª pode ter sido superada por outra).
+      if (seq === stateSeq.current) setLoading(false);
     }
   }, []);
 
@@ -95,28 +115,50 @@ export function useWorkerScale() {
       if (typeof document !== 'undefined' && document.hidden) return;
       void loadState(false);
     }, WORKER_SCALE_REFRESH_MS);
-    return () => window.clearInterval(id);
+    // Aba volta a ficar visível: lê na hora (o intervalo segue o mesmo, sem duplicar).
+    const onVisible = () => {
+      if (!document.hidden) void loadState(false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [loadEvents, loadState]);
 
+  const renewRequestId = useCallback(() => {
+    setDraft((prev) => (prev ? { ...prev, requestId: newRequestId() } : prev));
+  }, [setDraft]);
+
+  /** Abre o diálogo; havendo rascunho (recarga), reabre com ele: mesmo alvo, motivo e `requestId`. */
   const openDialog = useCallback((replicas: number) => {
     setRequestError(null);
     setNotice(null);
-    setDraft({ replicas, reason: '', requestId: newRequestId() });
+    if (!draftRef.current) setDraft({ replicas, reason: '', requestId: newRequestId() });
+    setDialogOpen(true);
   }, [setDraft]);
 
   const changeDraft = useCallback((patch: Partial<Pick<WorkerScaleDraft, 'replicas' | 'reason'>>) => {
-    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      const changed = String(next.replicas) !== String(prev.replicas) || next.reason !== prev.reason;
+      // Corpo novo exige `requestId` novo; durante o envio em voo o pedido fica como foi.
+      return changed && !sendingRef.current ? { ...next, requestId: newRequestId() } : next;
+    });
     setRequestError(null);
   }, [setDraft]);
 
   const cancel = useCallback(() => {
     clearDraft();
+    setDialogOpen(false);
     setRequestError(null);
   }, [clearDraft]);
 
-  /** `true` quando o pedido foi aceito (novo ou replay). */
+  /** `true` quando o pedido foi aceito (novo ou replay de um pedido aceito). */
   const submit = useCallback(async (): Promise<boolean> => {
-    if (!draft) return false;
+    if (!draft || sendingRef.current) return false;
+    sendingRef.current = true;
     setSending(true);
     setRequestError(null);
     try {
@@ -125,7 +167,18 @@ export function useWorkerScale() {
         reason: draft.reason.trim(),
         requestId: draft.requestId,
       });
+      const { outcome } = res.event;
+      if (outcome !== 'succeeded' && outcome !== 'requested') {
+        // Falhou (agora ou no replay): o `requestId` não serve mais; diálogo e rascunho ficam.
+        const detail = scaleEventErrorMessage(res.event.error);
+        setRequestError(res.replayed ? s.requestErrors.failedReplay(detail) : detail);
+        renewRequestId();
+        void loadState(false);
+        void loadEvents(null);
+        return false;
+      }
       clearDraft();
+      setDialogOpen(false);
       setNotice(res.replayed
         ? { severity: 'info', text: s.notices.replayed }
         : { severity: 'success', text: s.notices.success(res.event.fromReplicas, res.event.toReplicas) });
@@ -135,17 +188,23 @@ export function useWorkerScale() {
     } catch (err) {
       setRequestError(scaleRequestErrorMessage(err));
       const code = (err as { code?: string }).code;
+      // Resposta com código = o servidor decidiu (recusa, falha no provedor, id reusado): o
+      // próximo envio é um pedido novo. Sem resposta (rede), mantém o id para o replay.
+      if (code) renewRequestId();
       if (code && RELOAD_ON.has(code)) void loadState(false);
       return false;
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
-  }, [clearDraft, draft, loadEvents, loadState]);
+  }, [clearDraft, draft, loadEvents, loadState, renewRequestId]);
 
   return {
     view, loading, loadError, refreshError,
     events, nextCursor, eventsLoading, eventsError,
-    draft, sending, requestError, notice,
+    draft, dialogOpen, sending, requestError, notice,
+    /** Rascunho veio da recarga e ainda é o mesmo pedido: a ação do diálogo é "Reenviar". */
+    resend: draft !== null && draft.requestId === restoredRequestId,
     reload: () => loadState(true),
     refresh: () => loadState(false),
     loadMore: () => (nextCursor ? loadEvents(nextCursor) : Promise.resolve()),

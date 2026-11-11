@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
-import { readPersisted } from '@/hooks/usePersistedState';
+import { readPersisted, writePersisted } from '@/hooks/usePersistedState';
 import { workersAdminStrings as t } from '../strings';
 import { WORKER_SCALE_DRAFT_KEY, WORKER_SCALE_REFRESH_MS, type WorkerScaleDraft } from '../useWorkerScale';
 import type { WorkerScaleEvent, WorkerScaleStateView } from '../types';
@@ -34,6 +34,12 @@ function apiError(status: number, code: string, meta?: Record<string, unknown>) 
 
 function mockEvents(items: WorkerScaleEvent[] = [], nextCursor: string | null = null) {
   return vi.spyOn(adminWorkersService, 'listScaleEvents').mockResolvedValue({ items, nextCursor });
+}
+
+/** `randomUUID` devolvendo um id diferente por chamada. */
+function useSequentialIds() {
+  let n = 0;
+  vi.mocked(crypto.randomUUID).mockImplementation(() => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}` as `${string}-${string}-${string}-${string}-${string}`);
 }
 
 const upButton = () => screen.getByRole('button', { name: sc.actions.up });
@@ -129,6 +135,43 @@ describe('ScaleTab — estados', () => {
     expect(downButton()).toBeEnabled();
   });
 
+  it('±1 só liberado se o alvo cair na faixa; Tooltip explica a faixa', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      scaler: { status: 'ready', desiredReplicas: 6, runningReplicas: 6, hasDisk: false, autoscalingEnabled: false },
+    }));
+    mockEvents();
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.tiles.rangeValue(1, 4));
+    expect(upButton()).toBeDisabled();
+    expect(downButton()).toBeDisabled();
+    expect(screen.getByLabelText(sc.actions.stepOutOfRange(7, 1, 4))).toBeInTheDocument();
+    expect(screen.getByLabelText(sc.actions.stepOutOfRange(5, 1, 4))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: sc.actions.custom })).toBeEnabled();
+  });
+
+  it('abaixo do mínimo: Subir só se o alvo entrar na faixa', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      scaler: { status: 'ready', desiredReplicas: 0, runningReplicas: 0, hasDisk: false, autoscalingEnabled: false },
+      settings: { scalerMode: 'manual', minReplicas: 2, maxReplicas: 4, scaleCooldownSeconds: 1800 },
+    }));
+    mockEvents();
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.tiles.rangeValue(2, 4));
+    expect(upButton()).toBeDisabled();
+    expect(screen.getByLabelText(sc.actions.stepOutOfRange(1, 2, 4))).toBeInTheDocument();
+  });
+
+  it('faixa de um só valor: Escolher alvo desligado com explicação própria', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      settings: { scalerMode: 'manual', minReplicas: 2, maxReplicas: 2, scaleCooldownSeconds: 1800 },
+    }));
+    mockEvents();
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.tiles.rangeValue(2, 2));
+    expect(screen.getByRole('button', { name: sc.actions.custom })).toBeDisabled();
+    expect(screen.getByLabelText(sc.actions.singleValueRange(2))).toBeInTheDocument();
+  });
+
   it('falha na 1ª carga mostra erro com tentar de novo', async () => {
     const get = vi.spyOn(adminWorkersService, 'getScale').mockRejectedValueOnce(new Error('x')).mockResolvedValue(view());
     mockEvents();
@@ -209,10 +252,27 @@ describe('ScaleTab — pedido', () => {
     expect(await screen.findByText(sc.notices.replayed)).toBeInTheDocument();
   });
 
-  it('erro mantém o diálogo e o mesmo requestId na nova tentativa', async () => {
+  it('sem resposta (rede) mantém o diálogo e o mesmo requestId na nova tentativa', async () => {
     vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
     mockEvents();
-    const uuid = vi.mocked(crypto.randomUUID);
+    const post = vi.spyOn(adminWorkersService, 'requestScale')
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValue({ event: event(9, { fromReplicas: 2, toReplicas: 3 }), replayed: false });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await openUpWithReason(user);
+    await user.click(confirmButton());
+    expect(await screen.findByText(sc.requestErrors.generic)).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await user.click(confirmButton());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls[0][0].requestId).toBe(post.mock.calls[1][0].requestId);
+  });
+
+  it('erro com código do servidor: a nova tentativa vai com requestId novo', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents();
+    useSequentialIds();
     const post = vi.spyOn(adminWorkersService, 'requestScale')
       .mockRejectedValueOnce(apiError(503, 'SCALER_UNAVAILABLE', { reason: 'timeout' }))
       .mockResolvedValue({ event: event(9, { fromReplicas: 2, toReplicas: 3 }), replayed: false });
@@ -221,11 +281,67 @@ describe('ScaleTab — pedido', () => {
     await openUpWithReason(user);
     await user.click(confirmButton());
     expect(await screen.findByText(sc.requestErrors.unavailable)).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
     await user.click(confirmButton());
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
-    expect(post.mock.calls[0][0].requestId).toBe(post.mock.calls[1][0].requestId);
-    expect(uuid).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[1][0].requestId).not.toBe(post.mock.calls[0][0].requestId);
+  });
+
+  it('replay de pedido que falhou: mostra o erro, mantém diálogo e rascunho e troca o requestId', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    const list = mockEvents();
+    useSequentialIds();
+    const post = vi.spyOn(adminWorkersService, 'requestScale')
+      .mockResolvedValueOnce({ event: event(9, { outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' }), replayed: true })
+      .mockResolvedValue({ event: event(10, { fromReplicas: 2, toReplicas: 3, outcome: 'requested' }), replayed: false });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await openUpWithReason(user);
+    await user.click(confirmButton());
+    expect(await screen.findByText(sc.requestErrors.failedReplay(sc.requestErrors.unavailable))).toBeInTheDocument();
+    expect(screen.queryByText(sc.notices.replayed)).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    const kept = readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY);
+    expect(kept).toMatchObject({ replicas: 3, reason: 'pico de sessões' });
+    expect(kept?.requestId).not.toBe(post.mock.calls[0][0].requestId);
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    await user.click(confirmButton());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls[1][0].requestId).toBe(kept?.requestId);
+    expect(await screen.findByText(sc.notices.success(2, 3))).toBeInTheDocument();
+  });
+
+  it('falha sem replay com erro desconhecido usa o texto genérico de falha', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents();
+    vi.spyOn(adminWorkersService, 'requestScale').mockResolvedValue({
+      event: event(9, { outcome: 'failed', error: 'SCALE_REQUEST_FAILED' }), replayed: false,
+    });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await openUpWithReason(user);
+    await user.click(confirmButton());
+    expect(await screen.findByText(sc.requestErrors.failedGeneric)).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('mudar alvo ou motivo gera requestId novo', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents();
+    useSequentialIds();
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await user.click(await screen.findByRole('button', { name: sc.actions.up }));
+    await screen.findByRole('dialog');
+    const first = readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY)?.requestId;
+    await user.type(reasonField(), 'x');
+    const afterReason = readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY)?.requestId;
+    expect(afterReason).not.toBe(first);
+    const target = screen.getByRole('textbox', { name: sc.dialog.targetLabel });
+    await user.clear(target);
+    await user.type(target, '4');
+    const afterTarget = readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY);
+    expect(afterTarget).toMatchObject({ replicas: '4', reason: 'x' });
+    expect(afterTarget?.requestId).not.toBe(afterReason);
   });
 
   it('cancelar limpa o rascunho', async () => {
@@ -240,9 +356,7 @@ describe('ScaleTab — pedido', () => {
   });
 
   it('rascunho restaurado reabre o diálogo com alvo e motivo', async () => {
-    sessionStorage.clear();
     const draft: WorkerScaleDraft = { replicas: 3, reason: 'restaurado', requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' };
-    const { writePersisted } = await import('@/hooks/usePersistedState');
     writePersisted(WORKER_SCALE_DRAFT_KEY, draft);
     vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
     mockEvents();
@@ -252,8 +366,55 @@ describe('ScaleTab — pedido', () => {
     await screen.findByRole('dialog');
     expect(reasonField()).toHaveValue('restaurado');
     expect(screen.getByRole('textbox', { name: sc.dialog.targetLabel })).toHaveValue('3');
-    await user.click(confirmButton());
+    expect(screen.queryByRole('button', { name: sc.dialog.confirm })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: sc.dialog.resend }));
     expect(post).toHaveBeenCalledWith({ replicas: 3, reason: 'restaurado', requestId: draft.requestId });
+  });
+
+  it('rascunho restaurado: editar troca o Reenviar por Pedir mudança', async () => {
+    writePersisted(WORKER_SCALE_DRAFT_KEY, { replicas: 3, reason: 'restaurado', requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents();
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await screen.findByRole('button', { name: sc.dialog.resend });
+    await user.type(reasonField(), '!');
+    expect(confirmButton()).toBeInTheDocument();
+    expect(readPersisted<WorkerScaleDraft>(WORKER_SCALE_DRAFT_KEY)?.requestId).toBe(REQUEST_ID);
+  });
+
+  it('escalador sem resposta com rascunho: avisa e não reabre sozinho depois; Revisar reabre o mesmo pedido', async () => {
+    const draft: WorkerScaleDraft = { replicas: 3, reason: 'restaurado', requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' };
+    writePersisted(WORKER_SCALE_DRAFT_KEY, draft);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(adminWorkersService, 'getScale')
+      .mockResolvedValueOnce(view({ scaler: { status: 'unavailable', reason: 'timeout' } }))
+      .mockResolvedValue(view());
+    mockEvents();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderWithTheme(<ScaleTab />);
+    expect(await screen.findByText(sc.pendingDraft.waiting)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: sc.pendingDraft.reopen })).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(WORKER_SCALE_REFRESH_MS); });
+    expect(await screen.findByText(sc.pendingDraft.text)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: sc.pendingDraft.reopen }));
+    await screen.findByRole('dialog');
+    expect(reasonField()).toHaveValue('restaurado');
+    expect(screen.getByRole('button', { name: sc.dialog.resend })).toBeInTheDocument();
+    expect(readPersisted(WORKER_SCALE_DRAFT_KEY)).toEqual(draft);
+  });
+
+  it('aviso de rascunho: Descartar limpa o pedido', async () => {
+    writePersisted(WORKER_SCALE_DRAFT_KEY, { replicas: 3, reason: 'restaurado', requestId: REQUEST_ID });
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({ scaler: { status: 'not_configured', missing: ['RENDER_API_KEY'] } }));
+    mockEvents();
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    await user.click(await screen.findByRole('button', { name: sc.pendingDraft.discard }));
+    expect(screen.queryByText(sc.pendingDraft.waiting)).not.toBeInTheDocument();
+    expect(readPersisted(WORKER_SCALE_DRAFT_KEY)).toBeUndefined();
   });
 });
 
@@ -266,6 +427,10 @@ describe('ScaleTab — erros do pedido', () => {
     ['alvo igual', apiError(409, 'SCALE_TARGET_UNCHANGED', { replicas: 2 }), sc.requestErrors.unchanged(2)],
     ['disco', apiError(409, 'SCALER_SERVICE_NOT_SCALABLE', { reason: 'disk' }), sc.requestErrors.notScalable.disk],
     ['limitado', apiError(429, 'SCALER_RATE_LIMITED', { retryAfterSeconds: 30 }), sc.requestErrors.rateLimited(30)],
+    ['requestId reusado', apiError(409, 'REQUEST_ID_REUSED'), sc.requestErrors.requestIdReused],
+    ['429 com Retry-After', Object.assign(apiError(429, 'RATE_LIMITED'), { retryAfter: '45' }), sc.requestErrors.rateLimited(45)],
+    ['429 com retryAt', apiError(429, 'RATE_LIMITED', { retryAt: '2026-11-11T15:30:00.000Z' }),
+      sc.requestErrors.rateLimitedAt(new Date('2026-11-11T15:30:00.000Z').toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))],
     ['desconhecido', apiError(500, 'INTERNAL'), sc.requestErrors.generic],
   ];
 
@@ -346,6 +511,50 @@ describe('ScaleTab — intervalo mínimo e atualização', () => {
     unmount();
     await act(async () => { await vi.advanceTimersByTimeAsync(WORKER_SCALE_REFRESH_MS * 2); });
     expect(get).toHaveBeenCalledTimes(3);
+  });
+});
+
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+describe('ScaleTab — aba visível de novo', () => {
+  afterEach(() => {
+    delete (document as unknown as Record<string, unknown>).hidden;
+  });
+
+  it('relê na hora ao voltar a ficar visível, sem duplicar o intervalo', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const get = vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    mockEvents();
+    renderWithTheme(<ScaleTab />);
+    await screen.findByRole('button', { name: sc.actions.up });
+    expect(get).toHaveBeenCalledTimes(1);
+    await act(async () => { setHidden(true); });
+    expect(get).toHaveBeenCalledTimes(1);
+    await act(async () => { setHidden(false); });
+    expect(get).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(WORKER_SCALE_REFRESH_MS); });
+    expect(get).toHaveBeenCalledTimes(3);
+  });
+
+  it('resposta antiga que chega depois não sobrescreve a mais nova', async () => {
+    let resolveSlow: (v: WorkerScaleStateView) => void = () => {};
+    const ready = (n: number) => view({ scaler: { status: 'ready', desiredReplicas: n, runningReplicas: 1, hasDisk: false, autoscalingEnabled: false } });
+    vi.spyOn(adminWorkersService, 'getScale')
+      .mockResolvedValueOnce(ready(2))
+      .mockImplementationOnce(() => new Promise((r) => { resolveSlow = r; }))
+      .mockResolvedValueOnce(ready(3));
+    mockEvents();
+    renderWithTheme(<ScaleTab />);
+    expect(await screen.findByText('2')).toBeInTheDocument();
+    await act(async () => { setHidden(false); });
+    await act(async () => { setHidden(false); });
+    expect(await screen.findByText('3')).toBeInTheDocument();
+    await act(async () => { resolveSlow(ready(5)); });
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.queryByText('5')).not.toBeInTheDocument();
   });
 });
 

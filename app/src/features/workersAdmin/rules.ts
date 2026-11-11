@@ -9,6 +9,7 @@ import type {
   WorkerScalingSettingsField,
 } from './types';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
+import { serverNow } from '@/services/serverClock';
 import { workersAdminStrings } from './strings';
 
 export type OccupancyLevel = 'ok' | 'warning' | 'full';
@@ -242,11 +243,36 @@ const fmtWhen = (iso: unknown): string | null => {
 };
 
 /** Mensagem clara para o erro do `POST /admin/workers/scale` (código e `meta` da API). */
-export function scaleRequestErrorMessage(err: unknown): string {
-  const e = (err ?? {}) as { status?: number; code?: string; meta?: Record<string, unknown> };
+/**
+ * Espera de um 429: `meta.retryAfterSeconds` (provedor), depois o header `Retry-After` (segundos
+ * ou data HTTP, contra o relógio do servidor) e por fim `meta.retryAt` (ISO).
+ */
+function rateLimitedMessage(m: Record<string, unknown>, retryAfter: unknown, now: number): string {
+  const e2 = sc.requestErrors;
+  if (typeof m.retryAfterSeconds === 'number' && m.retryAfterSeconds > 0) return e2.rateLimited(Math.ceil(m.retryAfterSeconds));
+  if (typeof retryAfter === 'string' && retryAfter.trim()) {
+    const raw = retryAfter.trim();
+    if (/^\d+$/.test(raw)) {
+      const secs = Number(raw);
+      if (secs > 0) return e2.rateLimited(secs);
+    } else {
+      const at = Date.parse(raw);
+      if (!Number.isNaN(at)) {
+        const secs = Math.ceil((at - now) / 1000);
+        if (secs > 0) return e2.rateLimited(secs);
+      }
+    }
+  }
+  const when = fmtWhen(m.retryAt);
+  return when ? e2.rateLimitedAt(when) : e2.rateLimited(null);
+}
+
+export function scaleRequestErrorMessage(err: unknown, now: number = serverNow()): string {
+  const e = (err ?? {}) as { status?: number; code?: string; meta?: Record<string, unknown>; retryAfter?: unknown };
   const m = e.meta ?? {};
   const e2 = sc.requestErrors;
   switch (e.code) {
+    case 'REQUEST_ID_REUSED': return e2.requestIdReused;
     case 'SCALE_TARGET_OUT_OF_RANGE':
       return typeof m.min === 'number' && typeof m.max === 'number' ? e2.outOfRange(m.min, m.max) : e2.invalid;
     case 'SCALER_MODE_OFF': return e2.modeOff;
@@ -264,8 +290,34 @@ export function scaleRequestErrorMessage(err: unknown): string {
     case 'SCALER_SERVICE_NOT_SCALABLE':
       return (typeof m.reason === 'string' && e2.notScalable[m.reason]) || e2.notScalableGeneric;
     case 'SCALER_UNAVAILABLE': return e2.unavailable;
-    case 'SCALER_RATE_LIMITED': return e2.rateLimited(typeof m.retryAfterSeconds === 'number' ? m.retryAfterSeconds : null);
+    case 'SCALER_RATE_LIMITED': return rateLimitedMessage(m, e.retryAfter, now);
     default:
+      if (e.status === 429) return rateLimitedMessage(m, e.retryAfter, now);
       return e.status === 400 ? e2.invalid : e2.generic;
   }
+}
+
+/**
+ * Erro gravado num evento `failed` (`CODIGO` ou `CODIGO:motivo`, ex.: `SCALER_UNAVAILABLE:timeout`)
+ * traduzido com as mesmas mensagens do pedido; código desconhecido cai no texto de falha genérico.
+ */
+export function scaleEventErrorMessage(error: string | null): string {
+  if (!error) return sc.requestErrors.failedGeneric;
+  const [code, reason] = error.split(':', 2);
+  const known = scaleRequestErrorMessage({ code, meta: reason ? { reason } : {} });
+  return known === sc.requestErrors.generic ? sc.requestErrors.failedGeneric : known;
+}
+
+/** Passo de ±1 réplica só vale se o alvo cair dentro de `[min, max]`. */
+export function scaleStepAllowed(current: number, step: 1 | -1, min: number, max: number): boolean {
+  const target = current + step;
+  return target >= min && target <= max;
+}
+
+/** Alvo inicial de "Escolher alvo": vizinho dentro da faixa, ou a ponta mais perto se o atual está fora. */
+export function defaultScaleTarget(current: number, min: number, max: number): number {
+  if (current < min) return min;
+  if (current > max) return max;
+  if (current + 1 <= max) return current + 1;
+  return current - 1;
 }

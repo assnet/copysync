@@ -3,6 +3,7 @@ import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, occupancyLevel, occupancyPercent, sortWorkers,
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
   sortPlansByCatalog, cooldownActive, formatScaleRemaining, scaleBlock, scaleReasonError, scaleRequestErrorMessage, scaleTargetError,
+  scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget,
 } from './rules';
 import { workersAdminStrings } from './strings';
 import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
@@ -241,5 +242,44 @@ describe('escala (WSCALE-14)', () => {
     expect(scaleRequestErrorMessage({ status: 400, code: 'VALIDATION_ERROR' })).toMatch(/recusado/);
     expect(scaleRequestErrorMessage(new Error('rede'))).toMatch(/mesmo pedido não é duplicado/);
     expect(scaleRequestErrorMessage({ code: 'SCALE_DOWN_WOULD_EXCEED_CAPACITY', meta: {} })).toMatch(/menos vagas/);
+  });
+
+  it('429: retryAfterSeconds, depois Retry-After (segundos ou data HTTP), depois retryAt', () => {
+    const re = workersAdminStrings.scale.requestErrors;
+    const now = Date.parse('2026-11-11T12:00:00.000Z');
+    expect(scaleRequestErrorMessage({ status: 429, code: 'SCALER_RATE_LIMITED', meta: { retryAfterSeconds: 12 }, retryAfter: '99' }, now)).toBe(re.rateLimited(12));
+    expect(scaleRequestErrorMessage({ status: 429, code: 'X', retryAfter: '30' }, now)).toBe(re.rateLimited(30));
+    expect(scaleRequestErrorMessage({ status: 429, retryAfter: 'Wed, 11 Nov 2026 12:01:30 GMT' }, now)).toBe(re.rateLimited(90));
+    expect(scaleRequestErrorMessage({ status: 429, retryAfter: 'lixo' }, now)).toBe(re.rateLimited(null));
+    expect(scaleRequestErrorMessage({ status: 429, meta: { retryAt: 'x' } }, now)).toBe(re.rateLimited(null));
+    expect(scaleRequestErrorMessage({ status: 409, code: 'REQUEST_ID_REUSED' })).toBe(re.requestIdReused);
+  });
+});
+
+describe('scaleEventErrorMessage', () => {
+  const re = workersAdminStrings.scale.requestErrors;
+  it('traduz CODIGO e CODIGO:motivo; desconhecido ou vazio = falha genérica', () => {
+    expect(scaleEventErrorMessage('SCALER_UNAVAILABLE:timeout')).toBe(re.unavailable);
+    expect(scaleEventErrorMessage('SCALER_SERVICE_NOT_SCALABLE:disk')).toBe(re.notScalable.disk);
+    expect(scaleEventErrorMessage('SCALER_RATE_LIMITED')).toBe(re.rateLimited(null));
+    expect(scaleEventErrorMessage('SCALE_REQUEST_FAILED')).toBe(re.failedGeneric);
+    expect(scaleEventErrorMessage(null)).toBe(re.failedGeneric);
+  });
+});
+
+describe('scaleStepAllowed / defaultScaleTarget', () => {
+  it('±1 só dentro da faixa', () => {
+    expect(scaleStepAllowed(2, 1, 1, 4)).toBe(true);
+    expect(scaleStepAllowed(4, 1, 1, 4)).toBe(false);
+    expect(scaleStepAllowed(0, 1, 2, 4)).toBe(false);
+    expect(scaleStepAllowed(1, 1, 2, 4)).toBe(true);
+    expect(scaleStepAllowed(6, -1, 1, 4)).toBe(false);
+    expect(scaleStepAllowed(1, -1, 1, 4)).toBe(false);
+  });
+  it('alvo inicial: vizinho na faixa ou a ponta mais perto', () => {
+    expect(defaultScaleTarget(2, 1, 4)).toBe(3);
+    expect(defaultScaleTarget(4, 1, 4)).toBe(3);
+    expect(defaultScaleTarget(0, 2, 4)).toBe(2);
+    expect(defaultScaleTarget(9, 2, 4)).toBe(4);
   });
 });

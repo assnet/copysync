@@ -17,6 +17,8 @@ interface Props {
   min: number;
   max: number;
   sending: boolean;
+  /** Rascunho restaurado da recarga, mesmo `requestId`: a ação diz "Reenviar". */
+  resend?: boolean;
   error: string | null;
   onChange: (patch: Partial<Pick<WorkerScaleDraft, 'replicas' | 'reason'>>) => void;
   onConfirm: () => void;
@@ -24,7 +26,7 @@ interface Props {
 }
 
 /** Diálogo próprio (o `ConfirmDialog` não tem campo): alvo dentro da faixa e motivo de 3 a 200 caracteres. */
-export function ScaleConfirmDialog({ draft, current, min, max, sending, error, onChange, onConfirm, onClose }: Props) {
+export function ScaleConfirmDialog({ draft, current, min, max, sending, resend = false, error, onChange, onConfirm, onClose }: Props) {
   const open = draft !== null;
   const [reasonTouched, setReasonTouched] = useState(false);
   const wasOpen = useRef(open);
@@ -119,7 +121,7 @@ export function ScaleConfirmDialog({ draft, current, min, max, sending, error, o
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={sending}>{d.cancel}</Button>
         <Button variant="contained" type="submit" form="worker-scale-form" disabled={sending || !valid}>
-          {sending ? d.sending : d.confirm}
+          {sending ? d.sending : resend ? d.resend : d.confirm}
         </Button>
       </DialogActions>
     </Dialog>

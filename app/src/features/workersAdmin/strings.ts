@@ -254,7 +254,7 @@ export const workersAdminStrings = {
     notConfigured: {
       title: 'Escalador não configurado',
       intro: 'Faltam variáveis de ambiente na Render, nos serviços http e worker. Nenhum pedido sai enquanto elas não existirem.',
-      missingLabel: 'Variáveis que faltam',
+      missingLabel: 'Variáveis que faltam ou com formato inválido',
       enabledHint: 'WORKER_SCALER_ENABLED=true liga o escalador. A chave da API e o id do serviço ficam só na env e nunca aparecem no painel.',
     },
     unavailable: {
@@ -280,8 +280,10 @@ export const workersAdminStrings = {
       up: 'Subir 1',
       down: 'Reduzir 1',
       custom: 'Escolher alvo',
-      atMax: 'Já está no máximo da faixa.',
-      atMin: 'Já está no mínimo da faixa.',
+      stepOutOfRange: (target: number, min: number, max: number) =>
+        `Daria ${target} ${target === 1 ? 'réplica' : 'réplicas'}, fora da faixa de ${min} a ${max}. Use Escolher alvo ou ajuste a faixa na aba Configuração.`,
+      singleValueRange: (n: number) =>
+        `A faixa tem um só valor (${n}). Para escolher outro alvo, mude o mínimo ou o máximo na aba Configuração.`,
       cooldown: 'Aguarde o fim do intervalo mínimo.',
       upHint: 'Pede uma réplica a mais ao provedor.',
       downHint: 'Pede uma réplica a menos. As sessões do worker encerrado voltam a conectar nos outros.',
@@ -314,11 +316,18 @@ export const workersAdminStrings = {
       reasonCount: (n: number) => `${n}/200`,
       cancel: 'Cancelar',
       confirm: 'Pedir mudança',
+      resend: 'Reenviar',
       sending: 'Enviando…',
     },
     notices: {
       success: (from: number, to: number) => `Pedido enviado: ${from} → ${to} réplicas. O provedor aplica em alguns minutos.`,
       replayed: 'Este pedido já tinha sido enviado. Nada novo foi pedido ao provedor.',
+    },
+    pendingDraft: {
+      text: 'Há um pedido de escala não enviado.',
+      waiting: 'Há um pedido de escala não enviado. Ele pode ser revisto quando o escalador responder.',
+      reopen: 'Revisar',
+      discard: 'Descartar',
     },
     requestErrors: {
       outOfRange: (min: number, max: number) => `O alvo precisa ficar entre ${min} e ${max} réplicas.`,
@@ -333,6 +342,10 @@ export const workersAdminStrings = {
       notScalable: { disk: 'O serviço worker tem disco persistente e não aceita mais de uma réplica.', native_autoscaling: 'O serviço usa a autoescala do provedor. Desligue-a na Render para mudar por aqui.' } as Record<string, string>,
       notScalableGeneric: 'O serviço worker não aceita mudança de réplicas.',
       unavailable: 'O provedor está indisponível. Nada foi alterado; tente de novo em alguns minutos.',
+      rateLimitedAt: (at: string) => `Muitos pedidos seguidos. Tente de novo depois de ${at}.`,
+      requestIdReused: 'Este pedido já foi usado com outros dados. Cancele e abra o pedido de novo.',
+      failedReplay: (detail: string) => `Este pedido já tinha falhado. ${detail}`,
+      failedGeneric: 'O provedor não aplicou o pedido. Confira e tente de novo; um pedido novo será enviado.',
       rateLimited: (s: number | null) => (s ? `O provedor limitou os pedidos. Tente de novo em ${s} s.` : 'O provedor limitou os pedidos. Tente de novo em alguns minutos.'),
       invalid: 'O pedido foi recusado. Confira o alvo e o motivo.',
       generic: 'Não foi possível pedir a mudança. Tente de novo; o mesmo pedido não é duplicado.',
