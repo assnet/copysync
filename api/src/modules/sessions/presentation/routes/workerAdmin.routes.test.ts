@@ -281,6 +281,7 @@ describe('GET /admin/workers/capacity', () => {
         cluster: {
           capacity: 40, connected: 10, occupancyPct: 25, headroom: 30, requiredReplicas: 1,
           mbPerSession: null, suggestedMaxSessions: null, memoryLimitMb: null, sampledAt: seenAt.toISOString(),
+          stale: true, // `seenAt` fixo no passado (> 10 min do relógio real)
         },
         settings: { maxSessionsPerWorker: 40, alertOccupancyRatio: expect.any(Number) },
         enforced: false,

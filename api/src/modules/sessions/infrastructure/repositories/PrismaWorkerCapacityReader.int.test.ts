@@ -14,6 +14,7 @@ const stamp = Date.now();
 const PLAN_A = `INT_CAP_A_${stamp}`;
 const PLAN_B = `INT_CAP_B_${stamp}`;
 const PLAN_EMPTY = `INT_CAP_E_${stamp}`;
+const PLAN_TEXT = `INT_CAP_T_${stamp}`;
 const WA = 'whatsapp_sessions';
 const TG = 'telegram_sessions';
 const MIN = 60_000;
@@ -81,6 +82,14 @@ beforeAll(async () => {
   await ent(n1, WA, ' 4 ');
   await session(n1, live);
 
+  // Plano T: string fora do decimal simples conta como ilimitado (sem estourar o `::float8`).
+  const t1 = await tenant(PLAN_TEXT);
+  await ent(t1, WA, '1e400');
+  await ent(t1, TG, '0x10');
+  const t2 = await tenant(PLAN_TEXT);
+  await ent(t2, WA, ' 1.5 ');
+  await ent(t2, TG, '-3');
+
   rows = await reader.readByPlan();
 });
 
@@ -113,6 +122,14 @@ describe('readByPlan', () => {
       tenants: 1,
       contracted: { whatsapp: 2, telegram: 0 },
       unlimitedTenants: { whatsapp: 0, telegram: 1 },
+    });
+  });
+
+  it("string '1e400'/'0x10'/negativa = ilimitado; decimal simples soma; a leitura não falha", () => {
+    expect(plan(PLAN_TEXT)).toMatchObject({
+      tenants: 2,
+      contracted: { whatsapp: 1.5, telegram: 0 },
+      unlimitedTenants: { whatsapp: 1, telegram: 2 },
     });
   });
 

@@ -137,10 +137,12 @@ const nullableNumber = { type: ['number', 'null'] } as const;
 /**
  * `GET /admin/workers/capacity` (WSCALE-09), tipo `WorkerCapacityView` de `GetWorkerCapacityUseCase.ts`:
  * `{ plans: [{ planSlug, tenants, whatsapp, telegram }], cluster: { capacity, connected, occupancyPct,
- * headroom, requiredReplicas, mbPerSession, suggestedMaxSessions, memoryLimitMb, sampledAt },
+ * headroom, requiredReplicas, mbPerSession, suggestedMaxSessions, memoryLimitMb, sampledAt, stale },
  * settings: { maxSessionsPerWorker, alertOccupancyRatio }, enforced }`. Canal = `{ contracted,
  * unlimitedTenants, created, connected }`. `cluster.connected`/`capacity` = última amostra `sessions_*`
- * da última hora (0 e `sampledAt: null` sem amostra); `null` em memória = "sem amostra".
+ * da última hora (0 e `sampledAt: null` sem amostra); `stale` = amostra com mais de 10 min (números
+ * mantidos, não atuais); `null` em memória = "sem amostra". Conectadas: cluster = todas as sessões com
+ * lease vivo (inclui tenant suspenso); planos = só tenants ativos — a soma dos planos pode ser menor.
  */
 export const workerCapacityResponse = {
   type: 'object',
@@ -171,7 +173,7 @@ export const workerCapacityResponse = {
           additionalProperties: false,
           required: [
             'capacity', 'connected', 'occupancyPct', 'headroom', 'requiredReplicas',
-            'mbPerSession', 'suggestedMaxSessions', 'memoryLimitMb', 'sampledAt',
+            'mbPerSession', 'suggestedMaxSessions', 'memoryLimitMb', 'sampledAt', 'stale',
           ],
           properties: {
             capacity: { type: 'integer' },
@@ -183,6 +185,7 @@ export const workerCapacityResponse = {
             suggestedMaxSessions: { type: ['integer', 'null'] },
             memoryLimitMb: nullableNumber,
             sampledAt: { type: ['string', 'null'], format: 'date-time' },
+            stale: { type: 'boolean' },
           },
         },
         settings: {

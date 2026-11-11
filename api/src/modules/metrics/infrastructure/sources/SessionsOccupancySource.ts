@@ -8,6 +8,8 @@ import { WORKER_ALIVE_MS } from '../../../sessions/domain/services/sessionAdopti
 import { statementTimeout } from './PrismaDatabaseStatsSource';
 
 export const SESSIONS_RESOURCE = SESSIONS_CLUSTER_RESOURCE;
+/** Teto de `countAwaitingCapacity` por tick (mesmo da consulta de contagens): banco lento não empilha consultas. */
+export const AWAITING_STATEMENT_TIMEOUT_MS = 2_000;
 
 /** Relógio do lease: `timestamp` sem fuso gravado em UTC. */
 const NOW = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
@@ -33,7 +35,8 @@ export interface SessionsOccupancySourceDeps {
 
 /**
  * Contagens de `design.md` §4 a cada tick, em `all` e `worker`, com ou sem adoção. Conectadas,
- * em login e processos donos de lease saem de uma consulta com `statement_timeout` de 2 s.
+ * em login e processos donos de lease saem de uma consulta com `statement_timeout` de 2 s; a contagem
+ * de aguardando tem o mesmo teto.
  * Adoção desligada: `awaiting` = 0 sem consultar e `capacity` = teto × processos donos de lease
  * (mínimo 1). Ligada: `awaiting` = `countAwaitingCapacity()` e `capacity` = soma dos tetos dos
  * batimentos vivos. Só leitura.
@@ -54,10 +57,16 @@ export class SessionsOccupancySource implements ISessionsOccupancySource {
           FROM "sessions"
           WHERE "deletedAt" IS NULL AND "ownerWorkerId" IS NOT NULL AND "leaseUntil" > ${NOW}`,
       ]),
-      enabled ? adoption.countAwaitingCapacity() : Promise.resolve(0),
+      enabled
+        ? adoption.countAwaitingCapacity(undefined, { statementTimeoutMs: AWAITING_STATEMENT_TIMEOUT_MS })
+        : Promise.resolve(0),
       enabled ? heartbeats.listAlive(WORKER_ALIVE_MS) : Promise.resolve([]),
     ]);
     const counts = rows[0] ?? { connected: 0, pending: 0, owners: 0 };
+    // Limite aceito: sem adoção não há batimento, então a capacidade só enxerga processos que já são
+    // donos de algum lease; um processo vivo e ocioso (sem sessão) não entra na soma. Produção roda
+    // 1 processo `all` (o `Math.max(1, …)` cobre o caso sem sessão); com vários processos, ligar a
+    // adoção para a capacidade vir dos batimentos.
     const capacity = enabled
       ? alive.reduce((sum, w) => sum + w.maxSessions, 0)
       : maxSessionsPerWorker() * Math.max(1, Number(counts.owners));

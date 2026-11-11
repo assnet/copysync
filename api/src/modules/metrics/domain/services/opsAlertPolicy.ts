@@ -99,14 +99,16 @@ export function opsAlerts(input: OpsAlertInput): OpsAlert[] {
     }
   }
   const occ = input.sessionOccupancy;
+  // Decide pela razão (0–1, estrita); `value`/`threshold` saem em percentual (0–100, 2 casas), como `memory`.
+  const pct = (n: number) => Math.round(n * 10_000) / 100;
   if (occ && occ.capacity > 0 && occ.connected / occ.capacity > occ.ratio) {
     worst.set('session_occupancy', {
       reason: 'session_occupancy',
       source: 'sessions',
       resource: SESSIONS_CLUSTER_RESOURCE,
       metric: OPS_METRIC.sessionsConnected,
-      value: occ.connected / occ.capacity,
-      threshold: occ.ratio,
+      value: pct(occ.connected / occ.capacity),
+      threshold: pct(occ.ratio),
     });
   }
   return [...worst.values()];

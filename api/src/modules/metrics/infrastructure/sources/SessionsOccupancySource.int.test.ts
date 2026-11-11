@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { PrismaSessionAdoptionRepository } from '../../../sessions/infrastructure/repositories/PrismaSessionAdoptionRepository';
 import { PrismaWorkerHeartbeatRepository } from '../../../sessions/infrastructure/repositories/PrismaWorkerHeartbeatRepository';
 import type { OpsMetricReading } from '../../domain/OpsMetric';
-import { SessionsOccupancySource } from './SessionsOccupancySource';
+import { AWAITING_STATEMENT_TIMEOUT_MS, SessionsOccupancySource } from './SessionsOccupancySource';
 
 /**
  * WSCALE-08 contra Postgres descartável, com `TimeZone` da conexão ≠ UTC (o relógio é
@@ -102,6 +102,16 @@ describe('SessionsOccupancySource', () => {
     await session({ status: 'DISCONNECTED', connectRequestedAt: past(), deletedAt: new Date() });
     await prisma.session.create({ data: { tenantId: suspendedId, name: 'x', status: 'DISCONNECTED', connectRequestedAt: past() } });
     expect(values(await source.read()).sessions_awaiting).toBe(2);
+  });
+
+  it('com adoção: aguardando consultado com teto de 2 s', async () => {
+    const countAwaitingCapacity = vi.fn(async () => 7);
+    const spy = new SessionsOccupancySource({
+      prisma, adoptionEnabled: () => true, adoption: { countAwaitingCapacity }, heartbeats, maxSessionsPerWorker: () => MAX,
+    });
+    expect(values(await spy.read()).sessions_awaiting).toBe(7);
+    expect(AWAITING_STATEMENT_TIMEOUT_MS).toBe(2_000);
+    expect(countAwaitingCapacity).toHaveBeenCalledWith(undefined, { statementTimeoutMs: 2_000 });
   });
 
   it('com adoção: capacidade = soma dos tetos dos batimentos vivos; sem batimento = 0', async () => {

@@ -279,7 +279,7 @@ describe('OpsMetricsSamplerJob', () => {
     it('sem adoção e acima do limiar: alerta só log com o lease de silêncio', async () => {
       const s = occupancySetup({ connected: 36, capacity: 40 });
       await s.job.runTick();
-      expect(s.alerts()).toEqual([expect.objectContaining({ reason: 'session_occupancy', value: 0.9, threshold: 0.85 })]);
+      expect(s.alerts()).toEqual([expect.objectContaining({ reason: 'session_occupancy', value: 90, threshold: 85 })]);
       expect(s.lease.rows.has('ops-alert:session_occupancy')).toBe(true);
     });
 
@@ -309,7 +309,7 @@ describe('OpsMetricsSamplerJob', () => {
       expect(s.alerts()).toEqual([]);
       s.setRatio(0.75);
       await s.job.runTick();
-      expect(s.alerts()).toEqual([expect.objectContaining({ reason: 'session_occupancy', value: 0.8, threshold: 0.75 })]);
+      expect(s.alerts()).toEqual([expect.objectContaining({ reason: 'session_occupancy', value: 80, threshold: 75 })]);
     });
 
     it('capacidade 0: sem alerta', async () => {

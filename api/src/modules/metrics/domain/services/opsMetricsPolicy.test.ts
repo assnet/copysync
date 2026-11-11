@@ -65,8 +65,9 @@ describe('opsAlerts: ocupação de sessões (WSCALE-17)', () => {
   it('dispara só acima do limiar (estrito)', () => {
     expect(occ(35, 40)).toEqual([{
       reason: 'session_occupancy', source: 'sessions', resource: 'cluster', metric: 'sessions_connected',
-      value: 35 / 40, threshold: 0.85,
+      value: 87.5, threshold: 85,
     }]);
+    expect(occ(2, 3, 0.6)[0]).toMatchObject({ value: 66.67, threshold: 60 });
     expect(occ(34, 40, 0.85)).toEqual([]);
     expect(occ(17, 20, 0.85)).toEqual([]);
     expect(occ(30, 40)).toEqual([]);

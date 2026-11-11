@@ -1,6 +1,11 @@
 import type { IWorkerCapacityReader, WorkerCapacityPlanRow } from '../../domain/contracts/IWorkerCapacityReader';
 import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
-import { mbPerSession, requiredReplicas, suggestedMaxSessions } from '../../domain/services/capacityPlan';
+import {
+  OCCUPANCY_SAMPLE_MAX_AGE_MS,
+  mbPerSession,
+  requiredReplicas,
+  suggestedMaxSessions,
+} from '../../domain/services/capacityPlan';
 import type { IOpsMetricsSampleRepository } from '../../../metrics/domain/contracts/IOpsMetricsSampleRepository';
 import { OPS_METRIC, type OpsMetricSample } from '../../../metrics/domain/OpsMetric';
 import type { LimitChannel } from '../../../tenants/domain/channelLimits';
@@ -40,6 +45,11 @@ export interface WorkerCapacityClusterView {
   memoryLimitMb: number | null;
   /** ISO da última amostra `sessions_connected`; `null` sem amostra na janela. */
   sampledAt: string | null;
+  /**
+   * `sampledAt` mais velho que `OCCUPANCY_SAMPLE_MAX_AGE_MS` (10 min): números mantidos, mas não são
+   * atuais (coletor parado). `false` sem amostra (`sampledAt: null` já diz isso).
+   */
+  stale: boolean;
 }
 
 /** Resposta de `GET /admin/workers/capacity` (consumida pela aba Capacidade, T18). */
@@ -129,7 +139,8 @@ export class GetWorkerCapacityUseCase {
 
   async execute(): Promise<WorkerCapacityView> {
     const { reader, samples } = this.deps;
-    const since = new Date((this.deps.now?.() ?? new Date()).getTime() - CAPACITY_WINDOW_MS);
+    const nowMs = (this.deps.now?.() ?? new Date()).getTime();
+    const since = new Date(nowMs - CAPACITY_WINDOW_MS);
     const memoryKnown = this.deps.renderServiceIds.filter((id) => id.startsWith('srv-')).length <= 1;
     const none = Promise.resolve<OpsMetricSample[]>([]);
     const [rows, view, connectedSamples, capacitySamples, memory, memoryPct] = await Promise.all([
@@ -164,6 +175,7 @@ export class GetWorkerCapacityUseCase {
         suggestedMaxSessions: suggested,
         memoryLimitMb: mem.memoryLimitMb === null ? null : round(mem.memoryLimitMb, 0),
         sampledAt: lastConnected ? lastConnected.at.toISOString() : null,
+        stale: lastConnected ? nowMs - lastConnected.at.getTime() > OCCUPANCY_SAMPLE_MAX_AGE_MS : false,
       },
       settings: { maxSessionsPerWorker, alertOccupancyRatio },
       enforced: view.enforced,

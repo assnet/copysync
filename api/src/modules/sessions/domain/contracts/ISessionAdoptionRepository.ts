@@ -24,6 +24,14 @@ export interface ISessionAdoptionRepository {
   failExhausted(): Promise<AdoptedSessionRef[]>;
   /** Zera contador e backoff (ADOPT-04); não escreve quando já estão zerados. */
   resetFailures(sessionId: string): Promise<void>;
-  /** Sessões com pedido vivo sem dono vivo (tenant `ACTIVE`); `olderThanMs` filtra pedido mais antigo que isso. */
-  countAwaitingCapacity(olderThanMs?: number): Promise<number>;
+  /**
+   * Sessões com pedido vivo sem dono vivo (tenant `ACTIVE`); `olderThanMs` filtra pedido mais antigo que isso.
+   * `statementTimeoutMs` (opcional) põe teto na consulta (falha em vez de esperar); sem ele, sem teto.
+   */
+  countAwaitingCapacity(olderThanMs?: number, options?: CountAwaitingOptions): Promise<number>;
+}
+
+export interface CountAwaitingOptions {
+  /** Teto da consulta em ms (`SET LOCAL statement_timeout` numa transação). */
+  statementTimeoutMs?: number;
 }

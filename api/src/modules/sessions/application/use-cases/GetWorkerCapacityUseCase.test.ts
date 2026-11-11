@@ -3,6 +3,7 @@ import { CAPACITY_WINDOW_MS, GetWorkerCapacityUseCase, memoryToMb, type GetWorke
 import type { WorkerCapacityPlanRow } from '../../domain/contracts/IWorkerCapacityReader';
 import type { OpsMetricSample, OpsMetricSource } from '../../../metrics/domain/OpsMetric';
 import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
+import { OCCUPANCY_SAMPLE_MAX_AGE_MS } from '../../domain/services/capacityPlan';
 
 const now = new Date('2026-11-11T12:00:00.000Z');
 const t = (min: number) => new Date(now.getTime() - min * 60_000);
@@ -72,7 +73,7 @@ describe('GetWorkerCapacityUseCase', () => {
     expect(listSince).toHaveBeenCalledWith('sessions_connected', new Date(now.getTime() - CAPACITY_WINDOW_MS));
     expect(out.cluster).toEqual({
       capacity: 0, connected: 0, occupancyPct: 0, headroom: 0, requiredReplicas: 1,
-      mbPerSession: null, suggestedMaxSessions: null, memoryLimitMb: null, sampledAt: null,
+      mbPerSession: null, suggestedMaxSessions: null, memoryLimitMb: null, sampledAt: null, stale: false,
     });
     expect(out.plans).toEqual([{
       planSlug: 'pro', tenants: 3,
@@ -86,10 +87,10 @@ describe('GetWorkerCapacityUseCase', () => {
   it('com amostra: última sessions_* e MB por sessão com instâncias somadas', async () => {
     const { uc } = build([
       ...sessions,
-      // duas instâncias srv- por at: 300 MB + 200 MB = 500 MB; recurso dpg- ignorado
+      // duas instâncias srv- por at: 250 MB + 250 MB = 500 MB (mesmo limite, 1000 MB); recurso dpg- ignorado
       // formato real: `meta.unit = 'bytes'`, recurso `srv-<serviço>-<sufixo>` por instância
-      mem(t(10), 314572800, 'bytes', 'srv-a-stl6v'), mem(t(10), 209715200, 'bytes', 'srv-a-x9k2p'),
-      mem(t(5), 314572800, 'bytes', 'srv-a-stl6v'), mem(t(5), 209715200, 'bytes', 'srv-a-x9k2p'),
+      mem(t(10), 262144000, 'bytes', 'srv-a-stl6v'), mem(t(10), 262144000, 'bytes', 'srv-a-x9k2p'),
+      mem(t(5), 262144000, 'bytes', 'srv-a-stl6v'), mem(t(5), 262144000, 'bytes', 'srv-a-x9k2p'),
       pct(t(5), 25, 'srv-a-stl6v'), pct(t(5), 25, 'srv-a-x9k2p'),
       mem(t(5), 10484711424, 'bytes', 'dpg-x'),
       s('sessions_connected', t(5), 999, 'srv-a', 'render'),
@@ -101,10 +102,19 @@ describe('GetWorkerCapacityUseCase', () => {
     expect(cluster.headroom).toBe(50);
     expect(cluster.requiredReplicas).toBe(2); // ceil(30 ÷ (40 × 0,5))
     expect(cluster.sampledAt).toBe(t(5).toISOString());
-    // 500 MB ÷ média(20, 30) = 20 MB/sessão; limite 300 ÷ 0,25 = 1200 MB
+    expect(cluster.stale).toBe(false);
+    // 500 MB ÷ média de conectadas 25 ((20 + 30) ÷ 2) = 20 MB/sessão; limite 250 ÷ 0,25 = 1000 MB
     expect(cluster.mbPerSession).toBe(20);
-    expect(cluster.memoryLimitMb).toBe(1200);
-    expect(cluster.suggestedMaxSessions).toBe(42); // floor(0,7 × 1200 ÷ 20)
+    expect(cluster.memoryLimitMb).toBe(1000);
+    expect(cluster.suggestedMaxSessions).toBe(35); // floor(0,7 × 1000 ÷ 20)
+  });
+
+  it('amostra mais velha que 10 min: números mantidos e stale = true; no limite, false', async () => {
+    const at = (ms: number) => new Date(now.getTime() - ms);
+    const old = build([s('sessions_connected', at(OCCUPANCY_SAMPLE_MAX_AGE_MS + 1), 30), s('sessions_capacity', at(OCCUPANCY_SAMPLE_MAX_AGE_MS + 1), 80)]);
+    expect((await old.uc.execute()).cluster).toMatchObject({ connected: 30, capacity: 80, occupancyPct: 37.5, stale: true });
+    const edge = build([s('sessions_connected', at(OCCUPANCY_SAMPLE_MAX_AGE_MS), 30), s('sessions_capacity', at(OCCUPANCY_SAMPLE_MAX_AGE_MS), 80)]);
+    expect((await edge.uc.execute()).cluster.stale).toBe(false);
   });
 
   it.each([

@@ -7,8 +7,14 @@ const STATEMENT_TIMEOUT = '2s';
 const NOW = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
 const WA_KEY = limitKeyOfChannel('sessions', 'whatsapp');
 const TG_KEY = limitKeyOfChannel('sessions', 'telegram');
-/** Mesma conversão de `PrismaEntitlementReader.toNumber`: número JSON ou string numérica (com espaços). */
-const NUMERIC_TEXT = '^\\s*[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?\\s*$';
+/**
+ * String numérica aceita: só decimal simples sem sinal (até 9 dígitos inteiros, com espaços). Hex,
+ * notação científica, sinal e o resto contam como ilimitado aqui — diferente de
+ * `PrismaEntitlementReader.toNumber`, que aceita esses formatos. Os valores são gravados por
+ * `syncPlanEntitlements` como número JSON; a regra estreita evita que `'1e400'` estoure o `::float8`
+ * ("value out of range") e derrube a rota inteira.
+ */
+const NUMERIC_TEXT = '^\\s*[0-9]{1,9}(\\.[0-9]+)?\\s*$';
 
 interface PlanSqlRow {
   planSlug: string | null;
