@@ -163,6 +163,8 @@ export interface WorkerScaleStateView {
   /** ISO; fim do intervalo mínimo desde a última escalada bem-sucedida. `null` = sem espera. */
   cooldownUntil: string | null;
   lastEvent: WorkerScaleEvent | null;
+  /** Evento automático mais recente (`null` = nenhum). Ausente em API antiga: cai no histórico. */
+  lastAutoEvent?: WorkerScaleEvent | null;
   /** `false` com a adoção desligada: o pedido é recusado (`ADOPTION_DISABLED`). */
   enforced: boolean;
 }

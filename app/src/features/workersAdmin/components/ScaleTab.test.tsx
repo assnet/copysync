@@ -611,6 +611,21 @@ describe('ScaleTab — aba visível de novo', () => {
 });
 
 describe('ScaleTab — histórico', () => {
+  it('lastEvent novo no estado relê a 1ª página do histórico', async () => {
+    vi.spyOn(adminWorkersService, 'getScale')
+      .mockResolvedValueOnce(view({ lastEvent: event(1) }))
+      .mockResolvedValueOnce(view({ lastEvent: event(1) }))
+      .mockResolvedValue(view({ lastEvent: event(2, { trigger: 'auto' }) }));
+    const list = mockEvents([event(1)]);
+    renderWithTheme(<ScaleTab />);
+    await screen.findByRole('table', { name: sc.history.aria });
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await act(async () => { setHidden(false); });
+    expect(list).toHaveBeenCalledTimes(1);
+    await act(async () => { setHidden(false); });
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(list).toHaveBeenLastCalledWith(null);
+  });
   it('lista tipo, de→para, motivo, resultado e pagina pelo cursor', async () => {
     vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
     const list = vi.spyOn(adminWorkersService, 'listScaleEvents')
@@ -702,6 +717,48 @@ describe('ScaleTab — modo automático (WSCALE-15)', () => {
     expect(within(card()).getByText(sc.history.outcomes.rejected)).toBeInTheDocument();
     expect(within(card()).getByText(sc.auto.detail(sc.auto.rejections.SCALE_TARGET_OUT_OF_RANGE))).toBeInTheDocument();
     expect(within(card()).getByText(sc.auto.repeatHint)).toBeInTheDocument();
+  });
+
+  it('lastAutoEvent: manual mais novo no estado não tira o automático do cartão', async () => {
+    const auto = event(7, { trigger: 'auto', reason: 'auto: occupancy', fromReplicas: 2, toReplicas: 3, at: '2026-11-10T12:00:00.000Z' });
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      settings: { ...view().settings, scalerMode: 'auto' },
+      lastEvent: event(8, { reason: 'manual depois', at: '2026-11-10T13:00:00.000Z' }),
+      lastAutoEvent: auto,
+    }));
+    mockEvents([event(8, { reason: 'manual depois', at: '2026-11-10T13:00:00.000Z' })]);
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.auto.lastTitle);
+    expect(within(card()).getByText(sc.auto.reasons['auto: occupancy'])).toBeInTheDocument();
+    expect(within(card()).getByText(sc.auto.change(2, 3))).toBeInTheDocument();
+  });
+
+  it('lastAutoEvent: histórico sem automático na 1ª página mostra o do estado', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      settings: { ...view().settings, scalerMode: 'auto' },
+      lastAutoEvent: event(3, { trigger: 'auto', reason: 'auto: awaiting', at: '2026-11-09T12:00:00.000Z' }),
+    }));
+    mockEvents([event(20), event(19)], 'c1');
+    renderWithTheme(<ScaleTab />);
+    await screen.findByText(sc.auto.lastTitle);
+    expect(within(card()).getByText(sc.auto.reasons['auto: awaiting'])).toBeInTheDocument();
+    expect(screen.queryByText(sc.auto.none)).not.toBeInTheDocument();
+  });
+
+  it('chip: escalador fora ou adoção desligada = ligada sem efeito', async () => {
+    const auto = { ...view().settings, scalerMode: 'auto' as const };
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      settings: auto, scaler: { status: 'not_configured', missing: [] },
+    }));
+    mockEvents();
+    const { unmount } = renderWithTheme(<ScaleTab />);
+    expect(await screen.findByText(sc.auto.status.onWaitingScaler)).toBeInTheDocument();
+    expect(screen.queryByText(sc.auto.status.on)).not.toBeInTheDocument();
+    unmount();
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({ settings: auto, enforced: false }));
+    renderWithTheme(<ScaleTab />);
+    expect(await screen.findByText(sc.auto.status.onWaitingAdoption)).toBeInTheDocument();
+    expect(screen.queryByText(sc.auto.status.on)).not.toBeInTheDocument();
   });
 
   it('sem amostras: recusa sem réplicas mostra o motivo e o código traduzidos', async () => {

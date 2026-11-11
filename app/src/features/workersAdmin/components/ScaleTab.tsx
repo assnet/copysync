@@ -151,17 +151,32 @@ function ReplicaChange({ event: e }: { event: WorkerScaleEvent }) {
   );
 }
 
-/** Modo automático (WSCALE-15): ligado ou não e a última decisão do job, lida do histórico. */
-function AutoScaleCard({ mode, last }: { mode: WorkerScalerMode; last: WorkerScaleEvent | null }) {
+/**
+ * Modo automático (WSCALE-15): ligado ou não e a última decisão do job (`lastAutoEvent` do estado).
+ * "Ligada" só com o escalador pronto e a adoção ligada; senão o modo está gravado mas não age.
+ */
+function AutoScaleCard({ mode, scalerReady, enforced, last }: {
+  mode: WorkerScalerMode;
+  scalerReady: boolean;
+  enforced: boolean;
+  last: WorkerScaleEvent | null;
+}) {
   const a = sc.auto;
   const on = mode === 'auto';
+  const effective = on && scalerReady && enforced;
+  const chipLabel = !on ? a.status.off : !scalerReady ? a.status.onWaitingScaler : !enforced ? a.status.onWaitingAdoption : a.status.on;
   const failedOrRejected = last && (last.outcome === 'rejected' || last.outcome === 'failed');
   return (
     <SectionCard
       title={a.title}
       action={(
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-          <Chip size="small" color={on ? 'success' : 'default'} variant={on ? 'filled' : 'outlined'} label={on ? a.status.on : a.status.off} />
+          <Chip
+            size="small"
+            color={effective ? 'success' : on ? 'warning' : 'default'}
+            variant={effective ? 'filled' : 'outlined'}
+            label={chipLabel}
+          />
           <HelpTip label={a.helpLabel} text={a.help} />
         </Stack>
       )}
@@ -335,7 +350,12 @@ export default function ScaleTab() {
         </Grid>
       </Box>
 
-      <AutoScaleCard mode={scalerMode} last={latestAutoEvent(view.lastEvent, w.events)} />
+      <AutoScaleCard
+        mode={scalerMode}
+        scalerReady={view.scaler.status === 'ready'}
+        enforced={view.enforced}
+        last={latestAutoEvent(view, w.events)}
+      />
 
       <SectionCard title={sc.actions.title}>
         <Stack spacing={2.5}>

@@ -23,6 +23,12 @@ Subir réplica dependia de alguém ver o alerta e clicar. Com `scalerMode = auto
 - **`ScaleTab.tsx`**, **`rules.ts`**, **`strings.ts`** — cartão "Escala automática" com o modo e a última decisão automática (do histórico, motivo e recusa traduzidos).
 - **`SettingsTab.tsx`**, **`useWorkerSettings.ts`** — ajuda sem "ainda sem efeito"; chip "sem efeito por enquanto" só com o escalador `not_configured`.
 
+#### Fixed (revisão da P4)
+
+- **`WorkerAutoscalerJob.ts`** — sustentado recomeça após cada subida; sem adoção não consulta a Render (`ADOPTION_DISABLED` 1×/h); intervalo e teto antes de ler a Render; recusas sempre 1×/h por código.
+- **`workerAdmin.routes.ts`** — `GET /admin/workers/scale` com `lastAutoEvent`.
+- **`rules.ts`**, **`useWorkerScale.ts`**, **`ScaleTab.tsx`**, **`strings.ts`** — cartão usa `lastAutoEvent` (fallback `lastEvent`) e relê o histórico quando o `lastEvent` muda; chip "Ligada" só com escalador pronto e adoção; textos do coletor e do intervalo corrigidos.
+
 ### Added — api 0.84.0 · app 0.103.0 — escala dos workers por decisão do super admin
 
 Escalar réplicas do worker só pelo painel da Render, sem regra de capacidade nem rastro. `/admin/workers/scale` pede a escala com regras (modo, adoção, faixa, intervalo, capacidade na redução), evento antes da chamada e auditoria. Doc: `docs/workers-escala.md` (Escala). Spec: `.specs/features/worker-scaling/` (WSCALE-09, 11..14, 19; fase P3).

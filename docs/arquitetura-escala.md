@@ -251,7 +251,8 @@ subir mais uma réplica com a mesma env. Réplicas necessárias = `ceil(sessões
 `awaitingAlertSeconds` ou a ocupação das amostras `sessions_*` fica acima de `alertOccupancyRatio` por
 `scaleUpSustainSeconds`. Mesmo `ScaleWorkersUseCase` do pedido manual: teto `maxReplicas`, intervalo mínimo,
 evento antes da chamada. Nunca reduz (descida só manual). Estado do "sustentado" só no banco; recusas 1×/h por código.
-Exige `WORKER_SCALER_ENABLED` (após o T25) e o coletor de métricas ligado. Detalhes:
+Exige `WORKER_SCALER_ENABLED` (após o T25). O gatilho de ocupação exige o coletor (`OPS_METRICS_SAMPLER_ENABLED`); o
+de sessão aguardando não. Detalhes:
 [`workers-escala.md`](workers-escala.md) (Automático).
 
 ### 3.3 Separação HTTP × worker

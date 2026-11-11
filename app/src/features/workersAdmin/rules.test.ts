@@ -354,10 +354,20 @@ describe('modo automático (WSCALE-15)', () => {
   it('latestAutoEvent: mais recente entre lastEvent e histórico; ignora manual', () => {
     const old = ev(1, { trigger: 'auto', at: '2026-11-10T10:00:00.000Z' });
     const newer = ev(2, { trigger: 'auto', at: '2026-11-10T11:00:00.000Z' });
+    const st = (lastEvent: WorkerScaleEvent | null) => ({ lastEvent });
     expect(latestAutoEvent(null, [])).toBeNull();
-    expect(latestAutoEvent(ev(3, { at: '2026-11-10T13:00:00.000Z' }), [old])).toBe(old);
-    expect(latestAutoEvent(old, [newer])).toBe(newer);
+    expect(latestAutoEvent(st(ev(3, { at: '2026-11-10T13:00:00.000Z' })), [old])).toBe(old);
+    expect(latestAutoEvent(st(old), [newer])).toBe(newer);
     const fresh = { ...newer, outcome: 'failed' as const };
-    expect(latestAutoEvent(fresh, [newer])).toBe(fresh);
+    expect(latestAutoEvent(st(fresh), [newer])).toBe(fresh);
+  });
+
+  it('latestAutoEvent: lastAutoEvent do estado tem precedência sobre lastEvent', () => {
+    const auto = ev(1, { trigger: 'auto', at: '2026-11-10T10:00:00.000Z' });
+    const manual = ev(2, { at: '2026-11-10T12:00:00.000Z' });
+    expect(latestAutoEvent({ lastEvent: manual, lastAutoEvent: auto }, [manual])).toBe(auto);
+    expect(latestAutoEvent({ lastEvent: manual, lastAutoEvent: null }, [])).toBeNull();
+    const autoInLast = ev(3, { trigger: 'auto', at: '2026-11-10T13:00:00.000Z' });
+    expect(latestAutoEvent({ lastEvent: autoInLast, lastAutoEvent: auto }, [])).toBe(auto);
   });
 });

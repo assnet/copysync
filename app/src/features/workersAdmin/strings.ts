@@ -210,7 +210,7 @@ export const workersAdminStrings = {
       },
       scaleCooldownSeconds: {
         label: 'Intervalo mínimo entre escaladas (segundos)',
-        help: 'Espera obrigatória depois de uma escalada bem-sucedida, manual ou automática.',
+        help: 'Espera obrigatória depois de uma escalada (bem-sucedida ou com falha incerta), manual ou automática.',
         range: '300 a 86.400 segundos',
       },
     },
@@ -294,8 +294,13 @@ export const workersAdminStrings = {
     auto: {
       title: 'Escala automática',
       helpLabel: 'Como funciona a escala automática',
-      help: 'Com o modo Automático, o sistema confere a cada minuto e pede uma réplica a mais quando a ocupação fica acima do alerta pelo tempo sustentado ou quando há sessão aguardando vaga além do tempo de alerta. Nunca reduz: reduzir é sempre manual. Respeita o máximo de réplicas e o intervalo mínimo entre escaladas, e depende do coletor de métricas ligado (sem amostras de ocupação, não age).',
-      status: { on: 'Ligada', off: 'Desligada' },
+      help: 'Com o modo Automático, o sistema confere a cada minuto e pede uma réplica a mais quando a ocupação fica acima do alerta pelo tempo sustentado ou quando há sessão aguardando vaga além do tempo de alerta. Nunca reduz: reduzir é sempre manual. Respeita o máximo de réplicas e o intervalo mínimo entre escaladas. Pelo gatilho de ocupação, exige o coletor de métricas ligado; sessão aguardando vaga dispara sem ele.',
+      status: {
+        on: 'Ligada',
+        off: 'Desligada',
+        onWaitingScaler: 'Ligada, sem efeito até o escalador ficar pronto',
+        onWaitingAdoption: 'Ligada, sem efeito até ligar a adoção',
+      },
       modeText: {
         off: 'Modo Desligado: nenhum pedido de escala sai, nem manual nem automático.',
         manual: 'Modo Manual: só um administrador muda as réplicas. Para o sistema subir sozinho, escolha Automático na aba Configuração.',

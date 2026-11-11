@@ -360,15 +360,16 @@ export function autoScaleErrorMessage(error: string | null): string {
 }
 
 /**
- * Última decisão automática: o `lastEvent` do estado (relido a cada 20 s) ou a 1ª `auto` do
- * histórico carregado, a mais recente das duas. Sem campo novo na API.
+ * Última decisão automática: o `lastAutoEvent` do estado (relido a cada 20 s) ou, em API sem esse
+ * campo, o `lastEvent`; junto da 1ª `auto` do histórico carregado, vence a mais recente.
  */
 export function latestAutoEvent(
-  lastEvent: WorkerScaleEvent | null,
+  view: Pick<WorkerScaleStateView, 'lastEvent' | 'lastAutoEvent'> | null,
   events: readonly WorkerScaleEvent[],
 ): WorkerScaleEvent | null {
+  const fromState = view ? (view.lastAutoEvent !== undefined ? view.lastAutoEvent : view.lastEvent) : null;
   let best: WorkerScaleEvent | null = null;
-  for (const e of lastEvent ? [lastEvent, ...events] : events) {
+  for (const e of fromState ? [fromState, ...events] : events) {
     if (e.trigger !== 'auto') continue;
     if (!best || Date.parse(e.at) > Date.parse(best.at) || (e.at === best.at && e.id > best.id)) best = e;
   }

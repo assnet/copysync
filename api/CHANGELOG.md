@@ -37,6 +37,13 @@ Spec: `.specs/features/worker-scaling/` (WSCALE-14..16, 19; fase P4). Doc: `docs
 
 - **`docs/workers-escala.md`** (Automático, o que não fazer), **`docs/arquitetura-escala.md`** (§3.2 autoescala deixa de ser diferida; §3.3 dono do `workerAutoscaler`), **`docs/ops-metricas.md`**, **`docs/produto-roadmap.md`**, **`AGENTS.md`**.
 
+### Fixed (revisão da P4)
+
+- **`WorkerAutoscalerJob.ts`** — janela do "sustentado" recomeça depois de cada subida (amostras anteriores ao início do intervalo mínimo da última escalada são ignoradas); com a adoção desligada o job não consulta a Render e só registra `ADOPTION_DISABLED` 1×/h; intervalo ativo e teto checados antes de ler a Render; recusas do job sempre 1×/h por código.
+- **`workerAdmin.routes.ts`** — `GET /admin/workers/scale` devolve também `lastAutoEvent` (evento automático mais recente ou `null`).
+- **`workersAdmin/rules.ts`**, **`useWorkerScale.ts`**, **`components/ScaleTab.tsx`**, **`strings.ts`** (app) — cartão "Escala automática" lê o `lastAutoEvent` (API sem o campo cai no `lastEvent`): manual mais novo não tira o automático e histórico sem automático na 1ª página não esconde a decisão; `lastEvent.id` novo relê a 1ª página do histórico. Chip "Ligada" só com escalador pronto e adoção ligada (senão "Ligada, sem efeito até…"). Ajuda: ocupação exige o coletor, sessão aguardando não; intervalo mínimo vale também após falha incerta.
+- **`docs/workers-escala.md`**, **`docs/arquitetura-escala.md`**, **`AGENTS.md`** — mesma regra do coletor e o comportamento novo do job; requisitos WSCALE-01..17, 19.
+
 ## [0.84.0 · app 0.103.0] — 2026-11-11 — Escala dos workers por decisão do super admin
 
 Subir ou reduzir réplicas do worker exigia o painel da Render, sem regra de capacidade nem rastro. O super admin passa a
