@@ -238,7 +238,7 @@ const scalerState = {
       type: 'array',
       items: { type: 'string', enum: ['WORKER_SCALER_ENABLED', 'RENDER_API_KEY', 'WORKER_SCALER_SERVICE_ID'] },
     },
-    reason: { type: 'string', enum: ['auth', 'not_found', 'rate_limited', 'upstream', 'timeout'] },
+    reason: { type: 'string', enum: ['auth', 'not_found', 'rate_limited', 'upstream', 'timeout', 'rejected_by_provider'] },
   },
 } as const;
 

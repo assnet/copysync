@@ -151,6 +151,13 @@ describe('GET /admin/workers/scale', () => {
       lastEvent: null,
     });
   });
+
+  it('indisponível por recusa do provedor: razão rejected_by_provider no contrato', async () => {
+    scaler.getState.mockResolvedValue({ status: 'unavailable', reason: 'rejected_by_provider' });
+    const res = await app.inject({ method: 'GET', url: URL });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.scaler).toEqual({ status: 'unavailable', reason: 'rejected_by_provider' });
+  });
 });
 
 describe('POST /admin/workers/scale', () => {

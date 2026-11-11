@@ -34,3 +34,15 @@ Gates no topo: api 4.400 testes + typecheck; app 1.770 testes + typecheck + buil
 | 5 (T19e) | 0 🔴, 0 🟡, 2 🔵 | Só nits (teste negativo sem `waitFor`; `meta.agg` ausente em amostras antigas — doc ajustado). Convergiu. |
 
 Formato real das amostras da Render conferido em produção (leitura, 2026-11-11): `meta.unit='bytes'`, `resource='srv-<id>-<sufixo>'`.
+
+## R3 — revisão da implementação da P3 (com atenção de segurança)
+
+| Rodada | Achados | Resultado |
+| --- | --- | --- |
+| 1 (diff da fase, backend+segurança e painel/docs) | 1 🔴, 9 🟡, 6 🔵, 1 ❓ | Segurança: nenhum vazamento de chave/id; nenhum caminho chama a Render com o escalador desligado. 🔴 corrigido (T26b): replay de pedido `failed` aparecia como enviado. 🟡 corrigidos (T26a/T26b): corrida entre `requestId` diferentes (advisory lock em `recordRequestedIfIdle`); replay estrito `REQUEST_ID_REUSED`; erro desconhecido genérico; sucesso com falha de escrita posterior; 429 com `Retry-After` exposto no CORS; `invalidate` em `finally`; `requestId` renovado ao editar; rascunho de recarga reaberto; ±1 só dentro da faixa. ❓: cache de 30 s registrado como exceção (leitura descartável) em `docs/arquitetura-escala.md` §3.7. |
+| 2 | 0 🔴, 2 🟡, 3 🔵 | Corrigidos (T26c): replay concorrente com o mesmo `requestId` caía no intervalo; alvo clicado ignorado com rascunho; replay `requested` não é sucesso; motivo medido após trim por code point; `getState` sem erro cru. |
+| 3 | 0 🔴, 0 🟡, 3 🔵 | Só nits. |
+| Smoke (local, sem Render) | 0 🔴, 3 🟡, 3 🔵 | Funcional ok (estados, recusas, eventos sem ator, rascunho). Corrigidos (T26d): cards deslocados; "— → N"; botão de suporte oculto; motivo mantido; log `unexpected`; aviso de id inválido no boot. |
+| 4–6 (falha incerta) | 0 🔴, 1 🟡 por rodada | T26e: timeout/5xx do POST conta no intervalo e o painel não afirma "nada foi alterado". T26f: falha da leitura prévia (`read_*`) não é incerta; `lastCooldownStartAt`; paridade da lista. T26g: 4xx do provedor = `rejected_by_provider`, não incerto; `phase` obrigatório. Contrato da rota com `rejected_by_provider` (ajuste do orquestrador). Convergiu. |
+
+T25 (smoke real num serviço de teste da Render) continua do dono e obrigatório antes de `WORKER_SCALER_ENABLED=true` em produção.

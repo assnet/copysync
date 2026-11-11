@@ -71,7 +71,7 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 | T24 | Painel: aba Escala | T23 | | feito |
 | T25 | Smoke de subida e redução num serviço de teste | T23 | | pendente (dono) |
 | T26 | Docs, versão e changelog da P3 | T24 | | feito |
-| R3 | Revisão da P3 e merge | T26 | | pendente |
+| R3 | Revisão da P3 e merge | T26 | | feito |
 | T27 | Job de subida automática | R3 | | pendente |
 | T28 | Painel: modo automático e docs da P4 | T27 | | pendente |
 | R4 | Revisão da P4 e merge | T28 | | pendente |
