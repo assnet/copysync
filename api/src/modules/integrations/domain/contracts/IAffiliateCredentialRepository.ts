@@ -30,14 +30,15 @@ export interface IAffiliateCredentialRepository {
   clearSession(tenantId: string, provider: AffiliateProvider): Promise<boolean>;
   /**
    * Grava a principal (`publicIdentifier`) e as vinculadas, já validadas. Não toca em sessão, recusa
-   * nem na lista da conta. null = não existia.
+   * nem na lista da conta. CAS: só grava se todas ainda estão em `accountIdentifiers` (grafia exata
+   * da conta). null = não existia; `'ACCOUNT_CHANGED'` = a lista mudou desde a leitura (nada gravado).
    */
   setIdentifiers(
     tenantId: string,
     provider: AffiliateProvider,
     primary: string,
     linked: string[],
-  ): Promise<AffiliateCredential | null>;
+  ): Promise<AffiliateCredential | 'ACCOUNT_CHANGED' | null>;
   /** Loja recusou a credencial: grava `rejectedAt`/`rejectedCode`. No-op se a linha sumiu. */
   markRejected(tenantId: string, provider: AffiliateProvider, code: string, at: Date): Promise<void>;
   /** null = não existia. */

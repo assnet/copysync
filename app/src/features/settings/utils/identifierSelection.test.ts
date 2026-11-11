@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { choosePrimary, isFull, sanitizeSelection, toggleLinked, usedOf } from './identifierSelection';
+import { choosePrimary, isFull, sameSelection, sanitizeSelection, toggleLinked, usedOf } from './identifierSelection';
 
 describe('identifierSelection', () => {
+  it('sameSelection compara principal e vinculadas na ordem', () => {
+    expect(sameSelection({ primary: 'a', linked: ['b', 'c'] }, { primary: 'a', linked: ['b', 'c'] })).toBe(true);
+    expect(sameSelection({ primary: 'a', linked: ['c', 'b'] }, { primary: 'a', linked: ['b', 'c'] })).toBe(false);
+    expect(sameSelection({ primary: 'a', linked: ['b'] }, { primary: 'a', linked: ['b', 'c'] })).toBe(false);
+    expect(sameSelection({ primary: null, linked: [] }, { primary: 'a', linked: [] })).toBe(false);
+  });
+
   it('sanitize descarta fora da conta, repetidas e o que passa do limite', () => {
     expect(sanitizeSelection({ primary: 'x', linked: ['a', 'a', 'b', 'c'] }, ['a', 'b', 'c'], 2))
       .toEqual({ primary: null, linked: ['a'] });

@@ -234,4 +234,10 @@ describe('UpsertAffiliateSessionUseCase — etiquetas da conta', () => {
     const call = await sent({ affiliateTag: 'loja_b', accountIdentifiers: ['loja_a', 'loja_b'] });
     expect(call.publicIdentifierIfEmpty).toBe('loja_b');
   });
+
+  it('troca de conta: repassa a etiqueta em uso junto da lista nova (repositório troca a principal que sumiu)', async () => {
+    const call = await sent({ affiliateTag: ' nova_b ', accountIdentifiers: ['nova_a', 'nova_b'] }, record(null, 'velha'));
+    expect(call).toMatchObject({ publicIdentifierIfEmpty: 'nova_b', accountIdentifiers: ['nova_a', 'nova_b'] });
+    expect(call).not.toHaveProperty('publicIdentifierOverride');
+  });
 });

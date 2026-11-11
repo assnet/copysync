@@ -144,7 +144,7 @@ Formato real do ML: [`extensao-ml-endpoints.md`](extensao-ml-endpoints.md) §4.
 
 | Coluna | Conteúdo |
 | --- | --- |
-| `publicIdentifier` | Etiqueta **principal** (inalterada; preenchida pelo sync só se vazia, ou escolhida na tela) |
+| `publicIdentifier` | Etiqueta **principal** (preenchida pelo sync só se vazia, ou escolhida na tela; o sync só a troca se ela sumiu da conta) |
 | `accountIdentifiers String[]` | Etiquetas da conta vistas na última sincronização |
 | `linkedIdentifiers String[]` | Vinculadas **além** da principal, em ordem |
 
@@ -163,7 +163,14 @@ Rebaixamento não apaga nada: o excedente só deixa de valer e volta se o plano 
 (`used` = tamanho do conjunto efetivo) × limite.
 
 **Desconexão e troca de conta**: `clearSession` zera as duas colunas. Troca de conta sem desconectar não tem detecção
-própria: o próximo sync lido substitui a lista e poda as vinculadas da conta antiga. Mudança de token não zera nada.
+própria: o próximo sync lido substitui a lista e poda as vinculadas da conta antiga. Se a principal também não está na
+lista nova (sem caixa), ela passa a ser a etiqueta em uso informada pelo sync (`affiliateTag`, na grafia da conta) ou
+`null` se essa não estiver na lista — mesma transação da poda. Principal que está na lista nunca muda pelo sync. Mudança
+de token não zera nada.
+
+**CAS no vínculo**: `setIdentifiers` só grava se `accountIdentifiers` ainda contém a principal e as vinculadas (`hasEvery`,
+grafia exata da conta, que o use case já normalizou). Sync no meio trocou a lista → 422 `AFFILIATE_CREDENTIAL_INVALID`
+(`meta.field = linked`), nada gravado.
 
 **Rotas**: `GET|PUT /api/integrations/affiliate-credentials/:provider/identifiers` (tabela de rotas acima). O PUT exige
 tudo ∈ `accountIdentifiers`, sem repetição, `1 + linked ≤ limite`; audita `AFFILIATE_CREDENTIAL_UPSERTED` com
@@ -189,8 +196,8 @@ principal está vazia e a conta tem etiquetas. O card mostra quantas estão vinc
 **O que não fazer**:
 
 - Não atualizar a lista da conta na hora da geração (nem chamar o ML para isso): a lista vem só do sync.
-- Não trocar a principal sozinho (sync nem poda): só o tenant troca, pela tela. Principal que sumiu da conta → a tela
-  avisa e pede nova escolha.
+- Não trocar a principal sozinho: só o tenant troca, pela tela. **Única exceção**: o sync troca quando ela deixou de
+  existir na conta (troca de conta) — vira a em uso, se estiver na lista, ou `null`, e a tela pede nova escolha.
 - Não confiar em erro do ML para validar etiqueta: `createLink` com etiqueta fora da conta responde 200 e usa a
   `in_use` em silêncio. A validação é `∈ accountIdentifiers`.
 - Não pôr etiqueta em `meta` de erro, auditoria ou log.

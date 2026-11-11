@@ -38,7 +38,9 @@ export interface UpsertAffiliateSessionRecord {
   rejectWith?: { at: Date; code: string };
   /**
    * Etiquetas da conta (já validadas). Não vazia = substitui a lista e, na mesma escrita, tira das
-   * vinculadas o que não está nela (sem caixa). Ausente ou `[]` = não toca nas duas colunas.
+   * vinculadas o que não está nela (sem caixa). Se a principal gravada também não está nela, a
+   * principal passa a ser `publicIdentifierIfEmpty` (etiqueta em uso) quando ela está na lista, ou
+   * `null`. Ausente ou `[]` = não toca nas colunas.
    */
   accountIdentifiers?: string[];
 }

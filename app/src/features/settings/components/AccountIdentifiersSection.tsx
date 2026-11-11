@@ -58,7 +58,9 @@ export function AccountIdentifiersSection({ item, onSave }: Props) {
   const change = (next: IdentifierSelection) => {
     setSaved(false);
     setError(null);
-    setDraft(next);
+    // Voltou ao que está salvo: sem rascunho (não sobrevive ao reload como "alterado").
+    if (sameSelection(next, server)) clearDraft();
+    else setDraft(next);
   };
 
   const save = async () => {

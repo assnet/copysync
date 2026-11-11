@@ -36,7 +36,8 @@ const SESSION_REJECTED_CODE = 'AFFILIATE_CREDENTIAL_REJECTED';
  *   no servidor, então "mesmo token" sozinho nunca prova nada.
  * - Etiquetas da conta: cada item validado (inválido descartado), sem repetição (sem caixa); o
  *   repositório substitui a lista e poda as vinculadas. Lista nula = leitura falhou, nada muda.
- *   Mudança de token não zera nada: a troca de conta é coberta pela poda.
+ *   Mudança de token não zera nada: a troca de conta é coberta pela poda. Principal que sumiu da
+ *   lista vira a etiqueta em uso (`affiliateTag`, se estiver na lista) ou nenhuma — no repositório.
  */
 export class UpsertAffiliateSessionUseCase {
   constructor(

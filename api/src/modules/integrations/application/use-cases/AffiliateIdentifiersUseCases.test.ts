@@ -109,6 +109,15 @@ describe('SetLinkedAffiliateIdentifiersUseCase', () => {
     expect(d.repo.findByTenantAndProvider).not.toHaveBeenCalled();
   });
 
+  it('sync trocou a lista entre leitura e escrita (CAS) → 422 de "fora da conta", sem auditoria', async () => {
+    const d = deps(record(), 10);
+    d.repo.setIdentifiers.mockResolvedValueOnce('ACCOUNT_CHANGED');
+    expect(await errorOf(run(d, 'LOJA', ['promo']))).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_INVALID', statusCode: 422, meta: { field: 'linked' } });
+    // valores do CAS = grafia da conta (o `hasEvery` compara exato)
+    expect(d.repo.setIdentifiers).toHaveBeenCalledWith(T, 'MERCADO_LIVRE', 'loja', ['Promo']);
+    expect(d.audit.create).not.toHaveBeenCalled();
+  });
+
   it('conta sem lista sincronizada: qualquer etiqueta é recusada', async () => {
     const d = deps(record({ accountIdentifiers: [] }), 10);
     expect(await errorOf(run(d, 'loja', []))).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_INVALID' });

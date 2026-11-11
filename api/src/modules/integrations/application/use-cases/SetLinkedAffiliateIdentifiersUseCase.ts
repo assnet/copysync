@@ -57,6 +57,8 @@ export class SetLinkedAffiliateIdentifiersUseCase {
 
     const saved = await this.repo.setIdentifiers(input.tenantId, input.provider, primary, linked);
     if (!saved) throw new AffiliateCredentialNotFoundError(input.provider);
+    // Sync trocou a lista entre a leitura e a escrita: mesmo erro de "fora da conta".
+    if (saved === 'ACCOUNT_CHANGED') throw new AffiliateCredentialInvalidError('Identifier is not in the account', 'linked');
 
     await this.auditRepo.create({
       tenantId: input.tenantId,

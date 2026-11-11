@@ -350,6 +350,18 @@ describe('ResolveAffiliateProductUseCase — etiquetas da conta ML por plano', (
     expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, [ML_PLAIN], 'minhaetq');
   });
 
+  // RISCO ACEITO (design FE, "Riscos aceitos"): conta com várias etiquetas e nenhuma `in_use` deixa a
+  // principal vazia; `ResolveAffiliateCredentialUseCase` não resolve credencial sem `publicIdentifier`
+  // e o link passa como hoje (sem verificação, nem gate de etiquetas) até o usuário escolher a principal.
+  // A F1 fecha (sem credencial → bloqueia): quando ela entrar, este teste muda de propósito.
+  it('regressão: ML com principal vazia (credencial não resolve) → link colado passa sem verificação', async () => {
+    const s = setup({});
+    const out = await s.uc.execute(TENANT, link('segunda'));
+    expect(out).toMatchObject({ provider: 'MERCADO_LIVRE', affiliateUrl: link('segunda'), attributionVerified: false });
+    expect(s.deps.entitlements.getNumber).not.toHaveBeenCalledWith(TENANT, KEY);
+    expect(s.deps.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
+  });
+
   it('outro marketplace não consulta o limite de etiquetas', async () => {
     const s = setup();
     await s.uc.execute(TENANT, AMAZON);

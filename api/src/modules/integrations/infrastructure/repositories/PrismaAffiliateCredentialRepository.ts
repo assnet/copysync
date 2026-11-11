@@ -106,8 +106,14 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     // Lista vazia = leitura não confiável (conta do ML sempre tem etiqueta): não toca nas colunas.
     const account = input.accountIdentifiers?.length ? input.accountIdentifiers : null;
 
+    // Etiqueta em uso informada pelo sync, na grafia da conta; fora da lista = nenhuma.
+    const tag = input.publicIdentifierIfEmpty?.toLowerCase();
+    const inUse = (tag && account?.find((a) => a.toLowerCase() === tag)) || null;
+    let primaryReplaced = false;
+
     // (1) Colunas de sessão (+ lista da conta); a linha nasce com a tag da extensão, se houver.
-    // Com lista, a poda das vinculadas vai na mesma transação e lê a coluna recém-gravada.
+    // Com lista, a poda das vinculadas e a troca da principal que sumiu da conta vão na mesma
+    // transação e leem a coluna recém-gravada.
     let raw = await withUniqueRetry(() =>
       prisma.$transaction(async (tx) => {
         const row = await tx.affiliateCredential.upsert({
@@ -130,12 +136,18 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
             ORDER BY i
           )::text[]
           WHERE "id" = ${row.id}`;
+        // Principal que deixou de existir na conta (troca de conta): vira a em uso ou nenhuma.
+        primaryReplaced = !input.publicIdentifierOverride && (await tx.$executeRaw`
+          UPDATE "affiliate_credentials" SET "publicIdentifier" = ${inUse}
+          WHERE "id" = ${row.id} AND "publicIdentifier" IS NOT NULL
+            AND lower("publicIdentifier") NOT IN (SELECT lower(a) FROM unnest("accountIdentifiers") AS a)`) > 0;
         return tx.affiliateCredential.findUniqueOrThrow({ where: { id: row.id } });
       }),
     );
 
     // (2) Tag só preenche ID vazio — condição no WHERE, atômica: o painel sempre vence.
-    if (!input.publicIdentifierOverride && input.publicIdentifierIfEmpty && raw.publicIdentifier === null) {
+    // Principal recém-trocada já decidiu (tag fora da conta não entra).
+    if (!input.publicIdentifierOverride && !primaryReplaced && input.publicIdentifierIfEmpty && raw.publicIdentifier === null) {
       const { count } = await prisma.affiliateCredential.updateMany({
         where: { ...key, publicIdentifier: null },
         data: { publicIdentifier: input.publicIdentifierIfEmpty },
@@ -177,14 +189,15 @@ export class PrismaAffiliateCredentialRepository implements IAffiliateCredential
     provider: AffiliateProvider,
     primary: string,
     linked: string[],
-  ): Promise<AffiliateCredential | null> {
+  ): Promise<AffiliateCredential | 'ACCOUNT_CHANGED' | null> {
+    // CAS contra um sync no meio: `hasEvery` compara exato, então os valores são a grafia da conta.
     const { count } = await prisma.affiliateCredential.updateMany({
-      where: { tenantId, provider },
+      where: { tenantId, provider, accountIdentifiers: { hasEvery: [primary, ...linked] } },
       data: { publicIdentifier: primary, linkedIdentifiers: linked },
     });
-    if (count === 0) return null;
     const raw = await prisma.affiliateCredential.findFirst({ where: { tenantId, provider } });
-    return raw ? Mapper.toDomain(raw) : null;
+    if (!raw) return null;
+    return count === 0 ? 'ACCOUNT_CHANGED' : Mapper.toDomain(raw);
   }
 
   /** `updateMany`: linha apagada no meio vira no-op, nunca P2025. */
