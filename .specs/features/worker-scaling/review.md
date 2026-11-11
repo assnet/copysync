@@ -21,3 +21,16 @@
 | Smoke (local, Postgres descartável, adoção ligada) | 0 🔴, 4 🟡, 7 🔵 | Funcional ok (teto 40→25 no batimento em ~5 s sem reinício; 409; auditoria). Visual corrigido em T12d (botão de suporte, linha deslocada, "0,8", aba cortada no celular, textos) e T12e (409 sem `prisma:error`). Reconferência: 8/8 ok. Aceitos fora do escopo: contraste do Snackbar (tema global); seta das abas habilitada com ~6 px. |
 
 Gates no topo: api 4.400 testes + typecheck; app 1.770 testes + typecheck + build; integração 262 testes (T12e).
+
+## R2 — revisão da implementação da P2
+
+| Rodada | Achados | Resultado |
+| --- | --- | --- |
+| 1 (diff da fase, backend + painel/docs) | 0 🔴, 9 🟡, 2 ❓, 5 🔵 | Corrigidos em T19a/T19b: `countAwaitingCapacity` sem `statement_timeout`; entitlement `'1e400'` derrubava a rota (regex decimal); amostra velha como atual (`cluster.stale`); alerta em percentual; texto de redução do teto; sugestão "carregando" tratada como "sem medição"; ajuda da capacidade por modo; docs "grava a cada tick". Aceitos e documentados: capacidade sem adoção conta só processos com sessão; "cabem mais" é projeção isolada por plano; cluster inclui tenant suspenso, planos não. |
+| 2 (T19a/T19b) | 0 🔴, 4 🟡, 1 ❓, 1 🔵 | Corrigidos em T19c: timeout de aguardando derrubava as 4 métricas do tick; `getCapacity` pendurado travava a tela (8 s); regra exata do entitlement nos docs; changelogs com as correções; afirmação operacional movida do código para o doc com data. |
+| 3 (T19c) | 0 🔴, 0 🟡, 2 🔵 | Só nits, aceitos. |
+| Smoke (local, descartável, sem adoção) | 0 🔴, 3 🟡, 7 🔵 | Funcional ok (10 ticks, rota, tabela por plano, alerta 87,5 % / 80 %, sem chamada externa). Corrigidos em T19d: `sessions_capacity` pela última leitura da janela; borda pontilhada; rótulo sobre o ícone em 390 px; textos; ordem dos planos; botão de suporte oculto. Fora: rótulos repetidos do eixo no `TimeLineChart` compartilhado. |
+| 4 (T19d) | 0 🔴, 3 🟡, 1 🔵 | Corrigidos em T19e: aviso de ocupação comparava teto por worker com total do cluster; `meta.agg` em todo agregado; changelogs. |
+| 5 (T19e) | 0 🔴, 0 🟡, 2 🔵 | Só nits (teste negativo sem `waitFor`; `meta.agg` ausente em amostras antigas — doc ajustado). Convergiu. |
+
+Formato real das amostras da Render conferido em produção (leitura, 2026-11-11): `meta.unit='bytes'`, `resource='srv-<id>-<sufixo>'`.

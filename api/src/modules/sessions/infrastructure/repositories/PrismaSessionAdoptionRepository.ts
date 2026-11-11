@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/database/prisma.client';
 import type {
   AdoptedSessionRef,
+  CountAwaitingOptions,
   ISessionAdoptionRepository,
 } from '../../domain/contracts/ISessionAdoptionRepository';
 import { ADOPT_BACKOFF_CAP_MIN, MAX_ADOPT_ATTEMPTS } from '../../domain/services/sessionAdoptionPolicy';
@@ -85,17 +86,25 @@ export class PrismaSessionAdoptionRepository implements ISessionAdoptionReposito
       WHERE "id" = ${sessionId} AND ("adoptFailures" > 0 OR "nextAdoptAt" IS NOT NULL)`;
   }
 
-  async countAwaitingCapacity(olderThanMs?: number): Promise<number> {
+  async countAwaitingCapacity(olderThanMs?: number, options: CountAwaitingOptions = {}): Promise<number> {
     const older =
       olderThanMs === undefined
         ? Prisma.empty
         : Prisma.sql`AND s."connectRequestedAt" < ${NOW} - (${Math.max(0, Math.trunc(olderThanMs))}::int * interval '1 millisecond')`;
-    const rows = await prisma.$queryRaw<{ n: number }[]>`
+    const query = prisma.$queryRaw<{ n: number }[]>`
       SELECT COUNT(*)::int AS n FROM "sessions" s
       JOIN "tenants" t ON t."id" = s."tenantId" AND t."status" = 'ACTIVE'
       WHERE s."deletedAt" IS NULL AND s."connectRequestedAt" IS NOT NULL
         AND ${ADOPTABLE('s')}
         AND ${LEASE_FREE('s')} ${older}`;
+    const { statementTimeoutMs } = options;
+    if (statementTimeoutMs === undefined) return (await query)[0]?.n ?? 0;
+    // `SET LOCAL` vale só nesta transação; o valor é inteiro (ms) montado aqui, nunca vindo de fora.
+    const ms = Math.max(1, Math.trunc(statementTimeoutMs));
+    const [, rows] = await prisma.$transaction([
+      prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = ${ms}`),
+      query,
+    ]);
     return rows[0]?.n ?? 0;
   }
 }

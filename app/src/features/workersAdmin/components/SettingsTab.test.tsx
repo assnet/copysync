@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
@@ -7,7 +7,7 @@ import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { readPersisted } from '@/hooks/usePersistedState';
 import { workersAdminStrings as t } from '../strings';
-import { WORKER_SETTINGS_DRAFT_KEY } from '../useWorkerSettings';
+import { CAPACITY_TIMEOUT_MS, WORKER_SETTINGS_DRAFT_KEY } from '../useWorkerSettings';
 import type { WorkerScalingSettings, WorkerScalingSettingsView } from '../types';
 import SettingsTab from './SettingsTab';
 
@@ -36,8 +36,27 @@ async function setField(user: ReturnType<typeof userEvent.setup>, name: keyof ty
   if (value) await user.type(input, value);
 }
 
-beforeEach(() => sessionStorage.clear());
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  sessionStorage.clear();
+  // Padrão: rota de capacidade fora (sem sugestão) — a tela tolera e reforça toda mudança de teto.
+  vi.spyOn(adminWorkersService, 'getCapacity').mockRejectedValue(new Error('offline'));
+});
+
+function mockSuggested(suggestedMaxSessions: number | null) {
+  vi.spyOn(adminWorkersService, 'getCapacity').mockResolvedValue({
+    plans: [],
+    cluster: {
+      capacity: 80, connected: 30, occupancyPct: 37.5, headroom: 50, requiredReplicas: 1, mbPerSession: 12,
+      suggestedMaxSessions, memoryLimitMb: 1024, sampledAt: '2026-11-11T10:00:00.000Z',
+    },
+    settings: { maxSessionsPerWorker: 40, alertOccupancyRatio: 0.8 },
+    enforced: true,
+  });
+}
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('SettingsTab', () => {
   it('carrega os valores e mostra a faixa "sem efeito" com enforced: false', async () => {
@@ -204,6 +223,17 @@ describe('SettingsTab', () => {
     expect(screen.getByText(s.errors.invalid)).toBeInTheDocument();
   });
 
+  it('sem batimentos: sem aviso de teto abaixo da ocupação (total do cluster não é por worker)', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList([]);
+    mockSuggested(null);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await setField(user, 'maxSessionsPerWorker', '20');
+    expect(screen.queryByText(s.belowOccupancy(20, 30))).not.toBeInTheDocument();
+  });
+
   it('sem adoção não mostra o aviso de teto abaixo da ocupação', async () => {
     const user = userEvent.setup();
     vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view({ enforced: false }));
@@ -274,6 +304,94 @@ describe('SettingsTab', () => {
     expect(await screen.findByRole('textbox', { name: s.fields.awaitingAlertSeconds.label })).toHaveValue('450');
     expect(screen.getByText(s.draftRestored)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+  });
+});
+
+describe('SettingsTab — teto sugerido pela medição (WSCALE-07)', () => {
+  it('teto novo até o sugerido salva sem confirmação reforçada', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockSuggested(60);
+    const update = vi.spyOn(adminWorkersService, 'updateSettings').mockResolvedValue(view());
+    renderWithTheme(<SettingsTab />);
+    expect(await screen.findByText(new RegExp(s.suggested(60)))).toBeInTheDocument();
+    await setField(user, 'maxSessionsPerWorker', '60');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).queryByRole('textbox', { name: s.confirm.strongLabel })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: s.confirm.save }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  });
+
+  it('teto novo acima do sugerido pede o valor digitado com o aviso do sugerido', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockSuggested(60);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByText(new RegExp(s.suggested(60)));
+    await setField(user, 'maxSessionsPerWorker', '61');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongTitleAbove)).toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHintAbove('60'))).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: s.confirm.save })).toBeDisabled();
+  });
+
+  it('sem amostra (sugestão null) reforça como antes', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockSuggested(null);
+    const cap = vi.mocked(adminWorkersService.getCapacity);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await waitFor(() => expect(cap).toHaveBeenCalled());
+    await setField(user, 'maxSessionsPerWorker', '30');
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongTitle)).toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHintLower)).toBeInTheDocument();
+  });
+
+  it('reduzir o teto ainda acima do sugerido: título neutro e texto de redução', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList([10]);
+    mockSuggested(30);
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await setField(user, 'maxSessionsPerWorker', '35');
+    expect(await screen.findByText(new RegExp(s.suggested(30)))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: s.actions.review }));
+    const dialog = await screen.findByRole('dialog', { name: s.confirm.title });
+    expect(within(dialog).getByText(s.confirm.strongTitleLower)).toBeInTheDocument();
+    expect(within(dialog).getByText(s.confirm.strongHintLowerAbove('30'))).toBeInTheDocument();
+    expect(within(dialog).queryByText(s.confirm.strongTitleAbove)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(s.confirm.strongHintAbove('30'))).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: s.confirm.save })).toBeDisabled();
+  });
+
+  it('medição carregando: teto mudado deixa o revisar desabilitado com "Carregando medição…"; após 8 s vira indisponível', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    vi.spyOn(adminWorkersService, 'getCapacity').mockReturnValue(new Promise(() => {}));
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    // Outro campo não depende da medição.
+    await setField(user, 'awaitingAlertSeconds', '300');
+    expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+    await setField(user, 'maxSessionsPerWorker', '50');
+    expect(screen.getByRole('button', { name: s.actions.loadingSuggestion })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: s.actions.review })).not.toBeInTheDocument();
+    // Resposta pendurada: o timeout libera o revisar (medição indisponível = confirmação reforçada).
+    act(() => { vi.advanceTimersByTime(CAPACITY_TIMEOUT_MS); });
+    expect(screen.getByRole('button', { name: s.actions.review })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: s.actions.loadingSuggestion })).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 });
 

@@ -11,6 +11,7 @@ baixa frequência, persistência rara. Dado de infraestrutura: sem tenant, sem P
 | Render | `cpu`, `cpu_pct`, `memory`, `memory_pct` por recurso/instância | Render Metrics API (`RenderPlatformMetricsSource`) |
 | Postgres | `db_connections`, `db_active`, `db_idle`, `db_idle_in_transaction(_max_age_s)`, `db_xact_commit/rollback`, `db_deadlocks`, `db_temp_bytes`, `db_cache_hit_pct`, `db_statement_total_ms` | catálogo `pg_stat_*` com `statement_timeout` 2 s (`PrismaDatabaseStatsSource`) |
 | Workers | `rss_mb`, `node_cpu_pct`, `event_loop_p99_ms` | `worker_heartbeats` (`rssMb`, `cpuPct`, `eventLoopP99Ms`), gravados pelo `WorkerHeartbeatJob` |
+| Sessões | `sessions_connected`, `sessions_pending_login`, `sessions_awaiting`, `sessions_capacity` (recurso `cluster`) | `SessionsOccupancySource`: uma consulta em `sessions` (lease vivo; `statement_timeout` 2 s); `awaiting` = 0 e `capacity` = teto × donos de lease sem adoção; com adoção, `countAwaitingCapacity()` e soma dos tetos dos batimentos. Uso: [`workers-escala.md`](workers-escala.md) (Capacidade) |
 
 - **Sampler**: `OpsMetricsSamplerJob` (`api/src/modules/metrics/infrastructure/jobs/`), tick de
   60 s com `unref()`, só em `worker`/`all`. Um dono por vez no cluster: lease `ops-metrics-sampler`
@@ -19,7 +20,7 @@ baixa frequência, persistência rara. Dado de infraestrutura: sem tenant, sem P
   `persist` o lease é renovado (`release` + `tryAcquire`, pois `tryAcquire` só pega lease vencido);
   se outro processo virou dono, não grava. Não remover essa renovação nem subir o teto acima do TTL.
 - **Persistência**: ring buffer de 60 leituras em memória, agregado e gravado em
-  `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `meta` = min/max/n/unit).
+  `ops_metrics_samples` a cada 5 ticks (gauge = média; counter = último valor; `sessions_capacity` = último valor, porque o teto muda em degrau e a média misturaria antes e depois; `meta` = min/max/n/unit; `meta.agg` = `'avg'` ou `'last'` diz como o valor foi obtido; ausente em amostras gravadas antes da api 0.83.0, que são média para gauge).
 - **Retenção**: 7 dias; o próprio tick apaga `at < now() - 7d` (índice `ops_metrics_samples(at)`)
   em lotes de 5 mil por `ctid`, cada lote com `SET LOCAL statement_timeout = '2s'`, no máximo 10 lotes
   por tick (pior caso 20 s, dentro do lease renovado). Backlog maior escoa nos ticks seguintes.
@@ -60,7 +61,7 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
 - Resposta: `{ window:{from,to}, bucketMinutes, series:[{ resource, kind, metric, points:[{ at, avg, min, max }] }] }`;
   `at` = início do balde; valores arredondados a 3 casas. `kind` derivado (`opsResourceKind`):
   `query` (`db_statement_total_ms`) › `worker` (source worker) › `postgres` (`dpg-` ou source
-  postgres) › `api` (`srv-`) › `other`.
+  postgres) › `api` (`srv-`) › `other` (fonte `sessions`).
 - Counters (`db_xact_*`, `db_deadlocks`, `db_temp_bytes`, `db_statement_total_ms`) são acumulados:
   o avg do balde é do acumulado; taxa (delta) é conta da tela.
 
@@ -126,7 +127,8 @@ Se a resposta real vier vazia com mais de um id, trocar por `resource` repetido.
 
 Limiares em `metrics/domain/services/opsAlertPolicy.ts`: RAM ≥ 80% do limite, CPU ≥ 80% por 5 min
 (5 ticks), `idle in transaction` ≥ 3, p99 do event loop ≥ 200 ms. Um alerta por motivo, silêncio
-de 30 min por motivo no cluster via lease `ops-alert:<reason>`. **Só log** (`ops metrics alert`):
+de 30 min por motivo no cluster via lease `ops-alert:<reason>`. `session_occupancy` (WSCALE-17): `sessions_connected ÷
+sessions_capacity > alertOccupancyRatio` do tick, só com a adoção desligada (com ela o `WorkerCapacityAlertJob` cobre); o log sai com `metric: 'sessions_occupancy_pct'` (percentual derivado, não gravado). **Só log** (`ops metrics alert`):
 não há notifier de produção nem template de e-mail na central; e-mail entra quando o template existir.
 
 ## Ativação e reversão

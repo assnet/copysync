@@ -2,7 +2,7 @@
  * Métricas de recursos da plataforma (MQ-21..25): dado de infraestrutura, sem tenant e sem PII.
  * Texto de SQL só como forma normalizada truncada (`meta.shape`), nunca bruto.
  */
-export type OpsMetricSource = 'render' | 'postgres' | 'worker';
+export type OpsMetricSource = 'render' | 'postgres' | 'worker' | 'sessions';
 
 /** `gauge` agrega por média; `counter` (acumulado desde o reset) guarda o último valor. */
 export type OpsMetricKind = 'gauge' | 'counter';
@@ -12,7 +12,7 @@ export type OpsMetricMeta = Record<string, string | number | null>;
 /** Uma leitura de um tick (60 s). */
 export interface OpsMetricReading {
   source: OpsMetricSource;
-  /** `srv-…`/`dpg-…`, instância, workerId, nome do banco ou `queryid`. */
+  /** `srv-…`/`dpg-…`, instância, workerId, nome do banco, `queryid` ou `cluster` (sessões). */
   resource: string;
   metric: string;
   value: number;
@@ -50,6 +50,11 @@ export const OPS_METRIC = {
   dbIdleInTransaction: 'db_idle_in_transaction',
   dbIdleInTransactionMaxAgeS: 'db_idle_in_transaction_max_age_s',
   dbStatementTotalMs: 'db_statement_total_ms',
+  /** Fonte `sessions`, recurso `cluster` (WSCALE-08): contagens do banco a cada tick. */
+  sessionsConnected: 'sessions_connected',
+  sessionsPendingLogin: 'sessions_pending_login',
+  sessionsAwaiting: 'sessions_awaiting',
+  sessionsCapacity: 'sessions_capacity',
 } as const;
 
 /**

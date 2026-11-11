@@ -113,6 +113,7 @@ export function AppRoutes() {
             <Route path="/admin/link-domains" element={<AdminLinkDomainsPage />} />
             <Route path="/admin/workers" element={<AdminWorkersPage />} />
             <Route path="/admin/workers/usage" element={<AdminWorkersPage />} />
+            <Route path="/admin/workers/capacity" element={<AdminWorkersPage />} />
             <Route path="/admin/workers/settings" element={<AdminWorkersPage />} />
             <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
             <Route path="/admin/plan-entitlements" element={<AdminPlanEntitlementsPage />} />

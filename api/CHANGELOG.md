@@ -7,6 +7,58 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.83.0 · app 0.102.0] — 2026-11-11 — Capacidade dos workers e métricas de sessões
+
+Não havia número para decidir o teto nem quantas réplicas subir, e sem adoção nenhum alerta de ocupação. O coletor passa a
+gravar a ocupação de sessões do cluster, a rota de capacidade cruza o contratado por plano com o instalado e a RAM medida
+(teto sugerido), e a aba Capacidade mostra os números. Spec: `.specs/features/worker-scaling/` (WSCALE-07..10, 17, 19;
+fase P2). Doc: `docs/workers-escala.md` (Capacidade), `docs/ops-metricas.md`.
+**Migration Prisma**: não (só comentário de fontes em `schema.prisma`). **Breaking**: não.
+
+### Added
+
+#### API — `metrics`
+
+- **`metrics/infrastructure/sources/SessionsOccupancySource.ts`**, **`domain/contracts/ISessionsOccupancySource.ts`** — `sessions_connected`, `sessions_pending_login`, `sessions_awaiting`, `sessions_capacity` (fonte `sessions`, recurso `cluster`) coletadas a cada tick (60 s) e gravadas como média de 5 min, em `all`/`worker`, uma consulta com `statement_timeout` 2 s; sem adoção `awaiting` = 0 e `capacity` = teto × donos de lease.
+- **`metrics/domain/OpsMetric.ts`** — fonte `sessions` e as 4 métricas em `OPS_METRIC`.
+- **`metrics/domain/services/opsAlertPolicy.ts`** — motivo `session_occupancy` (`connected ÷ capacity > alertOccupancyRatio`), só log com o silêncio de 30 min por lease.
+
+#### API — `sessions`
+
+- **`sessions/domain/services/capacityPlan.ts`** — contas puras: `requiredReplicas`, `mbPerSession`, `suggestedMaxSessions` (0,7 × limite ÷ MB), `canScaleDownTo`, `shouldScaleUp` (P3/P4).
+- **`sessions/domain/contracts/IWorkerCapacityReader.ts`**, **`infrastructure/repositories/PrismaWorkerCapacityReader.ts`** — agregado por plano de tenants `ACTIVE` (contratado, ilimitados, criadas, conectadas por canal) numa consulta; número JSON = limite; string só se casar `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$` (decimal com casas aceito); outra string (hex, sinal, notação científica, mais de 9 dígitos, `.5`), ausente ou `null` = ilimitado na aba (difere de `CreateSessionUseCase`, que usa `Number()` em `PrismaEntitlementReader.toNumber`).
+- **`sessions/application/use-cases/GetWorkerCapacityUseCase.ts`** — cluster pela última amostra de 1 h; MB por sessão com memória `srv-` (instâncias `srv-<id>-<sufixo>` somadas por `at`, unidade por `meta.unit`) e limite por `memory ÷ memory_pct`; mais de um `srv-` → `null`.
+- **`sessions/presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`** — `GET /admin/workers/capacity` (super admin).
+
+### Changed
+
+#### API — `metrics`, `sessions`
+
+- **`metrics/infrastructure/jobs/OpsMetricsSamplerJob.ts`**, **`opsMetricsContainer.ts`** — fonte de sessões plugada; alerta de ocupação só com a adoção desligada (com ela o `WorkerCapacityAlertJob` cobre).
+- **`sessions/infrastructure/lease/sessionLeaseContainer.ts`** — monta o use case de capacidade.
+
+#### Painel (app/) — `workersAdmin`
+
+- **`features/workersAdmin/components/CapacityTab.tsx`**, **`useWorkerCapacity.ts`**, **`rules.ts`**, **`strings.ts`**, **`types.ts`**, **`services/adminWorkers.service.ts`** — aba Capacidade em `/admin/workers/capacity` (chunk `lazy`): cartões do cluster, tabela por plano com "cabem mais N clientes", série sessões × capacidade de 7 dias (`/admin/ops/metrics/series`), "sem amostra" sem dado.
+- **`SettingsTab.tsx`**, **`SettingsConfirmDialog.tsx`**, **`useWorkerSettings.ts`** — teto sugerido na ajuda; confirmação reforçada só acima do sugerido ou sem amostra.
+- **`pages/admin/AdminWorkersPage.tsx`**, **`routes/AppRoutes.tsx`** — aba nova.
+
+#### Docs
+
+- **`docs/workers-escala.md`** (Capacidade, alerta sem adoção), **`docs/ops-metricas.md`** (fonte `sessions`, `session_occupancy`), **`docs/produto-roadmap.md`**.
+
+### Fixed (revisão da P2)
+
+- **`workerAdmin.schema.ts`**, **`GetWorkerCapacityUseCase.ts`** — campo novo `cluster.stale` em `GET /admin/workers/capacity` (`true` com a última amostra há mais de 10 min).
+- **`SessionsOccupancySource.ts`**, **`PrismaSessionAdoptionRepository`** — `countAwaitingCapacity(…, { statementTimeoutMs })` com teto de 2 s; falha ou timeout dela omite só `sessions_awaiting` do tick (`warn` 1× por sequência), sem derrubar as outras 3 métricas nem o alerta de ocupação.
+- **`PrismaWorkerCapacityReader.ts`** — entitlement em string só vira limite com a regex `^\s*[0-9]{1,9}(\.[0-9]+)?\s*$`; outra string = ilimitado na aba.
+- **`opsAlertPolicy.ts`** — `session_occupancy` loga `value`/`threshold` em percentual (0–100), como `memory`.
+- **`app/…/useWorkerSettings.ts`** — medição do teto sugerido com timeout de 8 s: resposta pendurada vira `unavailable` e não trava "Revisar e salvar".
+- **`aggregateOpsMetrics.ts`** — `sessions_capacity` gravada pelo último valor da janela (antes, média; as amostras anteriores seguem médias e a série de 7 dias mistura os dois na transição). Todo agregado grava `meta.agg`: `'avg'` (gauge na média) ou `'last'` (counter e `sessions_capacity`); valores não mudam.
+- **`opsAlertPolicy.ts`** — `metric` do log do alerta de ocupação agora `sessions_occupancy_pct` (percentual derivado, não gravado).
+- **`app/…/useWorkerSettings.ts`** — aviso de teto abaixo da ocupação só com batimentos (sessões do worker mais ocupado, sem olhar `adoptionEnabled`); sem batimento, sem aviso (total do cluster não é ocupação por worker).
+- **`app/…/workersAdmin/rules.ts`**, **`CapacityTab.tsx`**, **`supportChat/routes.ts`** — planos na ordem do catálogo; botão flutuante de suporte oculto em `/admin/workers/capacity`.
+
 ## [0.82.0 · app 0.101.0] — 2026-11-11 — Configuração de escala dos workers em banco
 
 O teto de sessões por worker (`WORKER_MAX_SESSIONS`) e os limiares de alerta eram env lida no boot: mudar exigia

@@ -119,3 +119,86 @@ export const workerScalingSettingsBody = {
     expectedUpdatedAt: { type: ['string', 'null'] },
   },
 } as const;
+
+const capacityChannel = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['contracted', 'unlimitedTenants', 'created', 'connected'],
+  properties: {
+    contracted: { type: 'number' },
+    unlimitedTenants: { type: 'integer' },
+    created: { type: 'integer' },
+    connected: { type: 'integer' },
+  },
+} as const;
+
+const nullableNumber = { type: ['number', 'null'] } as const;
+
+/**
+ * `GET /admin/workers/capacity` (WSCALE-09), tipo `WorkerCapacityView` de `GetWorkerCapacityUseCase.ts`:
+ * `{ plans: [{ planSlug, tenants, whatsapp, telegram }], cluster: { capacity, connected, occupancyPct,
+ * headroom, requiredReplicas, mbPerSession, suggestedMaxSessions, memoryLimitMb, sampledAt, stale },
+ * settings: { maxSessionsPerWorker, alertOccupancyRatio }, enforced }`. Canal = `{ contracted,
+ * unlimitedTenants, created, connected }`. `cluster.connected`/`capacity` = última amostra `sessions_*`
+ * da última hora (0 e `sampledAt: null` sem amostra); `stale` = amostra com mais de 10 min (números
+ * mantidos, não atuais); `null` em memória = "sem amostra". Conectadas: cluster = todas as sessões com
+ * lease vivo (inclui tenant suspenso); planos = só tenants ativos — a soma dos planos pode ser menor.
+ */
+export const workerCapacityResponse = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['plans', 'cluster', 'settings', 'enforced'],
+      properties: {
+        plans: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['planSlug', 'tenants', 'whatsapp', 'telegram'],
+            properties: {
+              planSlug: { type: ['string', 'null'] },
+              tenants: { type: 'integer' },
+              whatsapp: capacityChannel,
+              telegram: capacityChannel,
+            },
+          },
+        },
+        cluster: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'capacity', 'connected', 'occupancyPct', 'headroom', 'requiredReplicas',
+            'mbPerSession', 'suggestedMaxSessions', 'memoryLimitMb', 'sampledAt', 'stale',
+          ],
+          properties: {
+            capacity: { type: 'integer' },
+            connected: { type: 'integer' },
+            occupancyPct: { type: 'number' },
+            headroom: { type: 'integer' },
+            requiredReplicas: { type: 'integer' },
+            mbPerSession: nullableNumber,
+            suggestedMaxSessions: { type: ['integer', 'null'] },
+            memoryLimitMb: nullableNumber,
+            sampledAt: { type: ['string', 'null'], format: 'date-time' },
+            stale: { type: 'boolean' },
+          },
+        },
+        settings: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['maxSessionsPerWorker', 'alertOccupancyRatio'],
+          properties: {
+            maxSessionsPerWorker: { type: 'integer' },
+            alertOccupancyRatio: { type: 'number' },
+          },
+        },
+        enforced: { type: 'boolean' },
+      },
+    },
+  },
+} as const;

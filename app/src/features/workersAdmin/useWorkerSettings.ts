@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { WORKER_SETTINGS_FIELDS } from './rules';
 import { workersAdminStrings } from './strings';
 import type {
+  WorkerCapacityCluster,
   WorkerOccupancyList,
   WorkerScalingSettings,
   WorkerScalingSettingsDraft,
@@ -14,6 +15,8 @@ import type {
 const s = workersAdminStrings.settings;
 
 export const WORKER_SETTINGS_DRAFT_KEY = 'workers.settings.draft';
+/** Teto da medição do teto sugerido: resposta pendurada não deixa "Revisar e salvar" em espera. */
+export const CAPACITY_TIMEOUT_MS = 8_000;
 
 /** Rascunho salvo na aba: valores digitados + `updatedAt` em que foram baseados (vira `expectedUpdatedAt`). */
 export interface WorkerSettingsDraftState {
@@ -22,14 +25,17 @@ export interface WorkerSettingsDraftState {
 }
 
 export type FieldErrors = Partial<Record<WorkerScalingSettingsField, string>>;
+/** Estado da medição do teto sugerido: `loading` não afirma ausência; `unavailable` = sem amostra ou falha. */
+export type SuggestedState = 'loading' | 'ready' | 'unavailable';
 export interface WorkerSettingsNotice { severity: 'success' | 'warning' | 'error'; text: string }
 
-/** Sessões do worker mais ocupado agora (ou do processo, com a adoção desligada); `null` sem dado. */
-export function busiestSessions(list: WorkerOccupancyList): number | null {
-  const counts = list.adoptionEnabled === false
-    ? (list.processes ?? []).map((p) => p.sessions)
-    : list.workers.map((w) => w.sessions);
-  return counts.length ? Math.max(...counts) : null;
+/**
+ * Ocupação de referência do aviso de teto abaixo dela: sessões do worker mais ocupado, só com
+ * batimentos. Sem batimento, `null` (sem aviso): o total do cluster não é ocupação por worker.
+ */
+export function busiestSessions(list: WorkerOccupancyList | null): number | null {
+  if (!list || list.workers.length === 0) return null;
+  return Math.max(...list.workers.map((w) => w.sessions));
 }
 
 function isField(value: unknown): value is WorkerScalingSettingsField {
@@ -44,7 +50,9 @@ export function useWorkerSettings() {
   const [view, setView] = useState<WorkerScalingSettingsView | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busiest, setBusiest] = useState<number | null>(null);
+  const [occupancy, setOccupancy] = useState<WorkerOccupancyList | null>(null);
+  const [suggestedMaxSessions, setSuggestedMaxSessions] = useState<number | null>(null);
+  const [suggestedState, setSuggestedState] = useState<SuggestedState>('loading');
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<WorkerSettingsNotice | null>(null);
@@ -66,8 +74,31 @@ export function useWorkerSettings() {
   useEffect(() => {
     void load();
     // Ocupação atual só alimenta o aviso de teto abaixo dela: falha não bloqueia a tela.
-    adminWorkersService.list().then((list) => setBusiest(busiestSessions(list)), () => setBusiest(null));
+    adminWorkersService.list().then(setOccupancy, () => setOccupancy(null));
+    // Teto sugerido pela medição (WSCALE-07). Falha ou sem amostra = sem sugestão: a confirmação
+    // reforçada vale para toda mudança de teto, como antes da medição existir.
+    // Sem `signal` no serviço: após o timeout (ou desmontagem) a resposta tardia é ignorada.
+    let settled = false;
+    const finish = (found: WorkerCapacityCluster | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const suggested = found?.suggestedMaxSessions ?? null;
+      setSuggestedMaxSessions(suggested);
+      setSuggestedState(suggested === null ? 'unavailable' : 'ready');
+    };
+    const timer = setTimeout(() => finish(null), CAPACITY_TIMEOUT_MS);
+    adminWorkersService.getCapacity().then(
+      (c) => finish(c.cluster),
+      () => finish(null),
+    );
+    return () => {
+      settled = true;
+      clearTimeout(timer);
+    };
   }, [load]);
+
+  const busiest = useMemo(() => busiestSessions(occupancy), [occupancy]);
 
   const values: WorkerScalingSettingsDraft | null = draft?.values ?? view?.settings ?? null;
 
@@ -124,7 +155,7 @@ export function useWorkerSettings() {
   }, [clearDraft, draft, load, view]);
 
   return {
-    view, values, loading, loadError, busiest, saving, serverErrors, notice,
+    view, values, loading, loadError, busiest, suggestedMaxSessions, suggestedState, saving, serverErrors, notice,
     dirty: draft !== null, restored: restored && draft !== null,
     change, discard, save, reload: load, clearNotice: () => setNotice(null),
   };

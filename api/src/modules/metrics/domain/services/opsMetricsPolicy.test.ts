@@ -9,14 +9,27 @@ const at = (m: number) => new Date(Date.UTC(2026, 10, 9, 12, m));
 const none = { cpuHistory: new Map(), cpuPersisted: new Map(), memoryLimitMb: null };
 
 describe('aggregateOpsMetrics', () => {
-  it('gauge = média com min/max/n; counter = último valor', () => {
+  it('gauge = média com min/max/n (agg avg); counter = último valor (agg last)', () => {
     const ticks = [10, 20, 30].map((v, i) => ({
       at: at(i),
       readings: [r('cpu_pct', v), r('db_xact_commit', 100 + i, { source: 'postgres', resource: 'db', kind: 'counter' })],
     }));
     const out = aggregateOpsMetrics(ticks, at(5));
-    expect(out).toContainEqual({ at: at(5), source: 'render', resource: 'srv-1', metric: 'cpu_pct', value: 20, meta: { min: 10, max: 30, n: 3 } });
-    expect(out).toContainEqual({ at: at(5), source: 'postgres', resource: 'db', metric: 'db_xact_commit', value: 102, meta: { n: 3 } });
+    expect(out).toContainEqual({ at: at(5), source: 'render', resource: 'srv-1', metric: 'cpu_pct', value: 20, meta: { min: 10, max: 30, n: 3, agg: 'avg' } });
+    expect(out).toContainEqual({ at: at(5), source: 'postgres', resource: 'db', metric: 'db_xact_commit', value: 102, meta: { n: 3, agg: 'last' } });
+  });
+
+  it('sessions_capacity = último valor da janela, com min/max/n; outros gauges seguem na média', () => {
+    const ticks = [8, 8, 80, 80, 80].map((v, i) => ({
+      at: at(i),
+      readings: [
+        r('sessions_capacity', v, { source: 'sessions', resource: 'cluster' }),
+        r('sessions_connected', v, { source: 'sessions', resource: 'cluster' }),
+      ],
+    }));
+    const out = aggregateOpsMetrics(ticks, at(5));
+    expect(out).toContainEqual({ at: at(5), source: 'sessions', resource: 'cluster', metric: 'sessions_capacity', value: 80, meta: { min: 8, max: 80, n: 5, agg: 'last' } });
+    expect(out).toContainEqual({ at: at(5), source: 'sessions', resource: 'cluster', metric: 'sessions_connected', value: 51.2, meta: { min: 8, max: 80, n: 5, agg: 'avg' } });
   });
 
   it('ignora valor não finito; janela vazia → []', () => {
@@ -55,5 +68,26 @@ describe('opsAlerts', () => {
     expect(opsAlerts({ ...none, current: cur, cpuHistory: new Map([[k, [90]]]) })).toEqual([]);
     expect(opsAlerts({ ...none, current: cur, cpuHistory: new Map([[k, [90]]]), cpuPersisted: new Map([[k, 82]]) })[0]?.reason).toBe('cpu');
     expect(cpuSustained([90, 90], 70)).toBe(false);
+  });
+});
+
+describe('opsAlerts: ocupação de sessões (WSCALE-17)', () => {
+  const occ = (connected: number, capacity: number, ratio = 0.85) =>
+    opsAlerts({ ...none, current: [], sessionOccupancy: { connected, capacity, ratio } });
+
+  it('dispara só acima do limiar (estrito)', () => {
+    expect(occ(35, 40)).toEqual([{
+      reason: 'session_occupancy', source: 'sessions', resource: 'cluster', metric: 'sessions_occupancy_pct',
+      value: 87.5, threshold: 85,
+    }]);
+    expect(occ(2, 3, 0.6)[0]).toMatchObject({ value: 66.67, threshold: 60 });
+    expect(occ(34, 40, 0.85)).toEqual([]);
+    expect(occ(17, 20, 0.85)).toEqual([]);
+    expect(occ(30, 40)).toEqual([]);
+  });
+
+  it('capacidade 0 ou sem ocupação no input: sem alerta', () => {
+    expect(occ(5, 0)).toEqual([]);
+    expect(opsAlerts({ ...none, current: [] })).toEqual([]);
   });
 });

@@ -252,6 +252,31 @@ describe('countAwaitingCapacity', () => {
     expect(await repo.countAwaitingCapacity()).toBe(3);
   });
 
+  it('statementTimeoutMs: mesma contagem; com a tabela travada falha no teto em vez de esperar', async () => {
+    await newSession();
+    await newSession({ connectRequestedAt: past(10_000) });
+    expect(await repo.countAwaitingCapacity(undefined, { statementTimeoutMs: 2_000 })).toBe(2);
+    expect(await repo.countAwaitingCapacity(30_000, { statementTimeoutMs: 2_000 })).toBe(1);
+
+    let release!: () => void;
+    let locked!: () => void;
+    const lockedP = new Promise<void>((r) => { locked = r; });
+    const holder = prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('LOCK TABLE "sessions" IN ACCESS EXCLUSIVE MODE');
+      locked();
+      await new Promise<void>((r) => { release = r; });
+    }, { timeout: 15_000 });
+    await lockedP;
+    try {
+      const started = Date.now();
+      await expect(repo.countAwaitingCapacity(undefined, { statementTimeoutMs: 200 })).rejects.toThrow(/statement timeout/i);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      release();
+      await holder;
+    }
+  });
+
   it('Telegram: AWAITING_CODE/PASSWORD não conta; AWAITING_QR e DISCONNECTED contam', async () => {
     await newSession({ engine: 'telegram', status: 'AWAITING_CODE' });
     await newSession({ engine: 'telegram', status: 'AWAITING_PASSWORD', ownerWorkerId: OTHER, leaseUntil: past() });

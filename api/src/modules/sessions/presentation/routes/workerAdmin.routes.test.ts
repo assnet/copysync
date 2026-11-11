@@ -9,6 +9,8 @@ import { PrismaWorkerScalingSettingsRepository } from '../../infrastructure/repo
 import { RefreshingWorkerScalingSettingsProvider } from '../../infrastructure/lease/RefreshingWorkerScalingSettingsProvider';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { WorkerScalingSettingsConflictError } from '../../../../shared/errors/internal/WorkerScalingErrors';
+import { PrismaWorkerCapacityReader } from '../../infrastructure/repositories/PrismaWorkerCapacityReader';
+import { PrismaOpsMetricsSampleRepository } from '../../../metrics/infrastructure/repositories/PrismaOpsMetricsSampleRepository';
 import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
@@ -238,5 +240,52 @@ describe('/admin/workers/settings', () => {
     expect(res.json().error.code).toBe('WORKER_SCALING_SETTINGS_CONFLICT');
     expect(audit).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+const CAPACITY_URL = `${URL}/capacity`;
+
+describe('GET /admin/workers/capacity', () => {
+  it('sem super-admin: 401 sem tocar no banco', async () => {
+    const read = vi.spyOn(PrismaWorkerCapacityReader.prototype, 'readByPlan');
+    const list = vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'listSince');
+    expect((await app.inject({ method: 'GET', url: CAPACITY_URL })).statusCode).toBe(401);
+    expect(read).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('super-admin: planos, cluster pela última amostra e configuração', async () => {
+    auth.isSuperAdmin = true;
+    adoption.enabled = false;
+    vi.spyOn(PrismaWorkerCapacityReader.prototype, 'readByPlan').mockResolvedValue([{
+      planSlug: null, tenants: 2,
+      contracted: { whatsapp: 4, telegram: 0 }, unlimitedTenants: { whatsapp: 0, telegram: 2 },
+      created: { whatsapp: 3, telegram: 0 }, connected: { whatsapp: 2, telegram: 0 },
+    }]);
+    vi.spyOn(PrismaOpsMetricsSampleRepository.prototype, 'listSince').mockImplementation(async (metric) =>
+      metric === 'sessions_connected' || metric === 'sessions_capacity'
+        ? [{ at: seenAt, source: 'sessions', resource: 'cluster', metric, value: metric === 'sessions_connected' ? 10 : 40, meta: null }]
+        : []);
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
+    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'hasAlive').mockResolvedValue(false);
+    const res = await app.inject({ method: 'GET', url: CAPACITY_URL });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: {
+        plans: [{
+          planSlug: null, tenants: 2,
+          whatsapp: { contracted: 4, unlimitedTenants: 0, created: 3, connected: 2 },
+          telegram: { contracted: 0, unlimitedTenants: 2, created: 0, connected: 0 },
+        }],
+        cluster: {
+          capacity: 40, connected: 10, occupancyPct: 25, headroom: 30, requiredReplicas: 1,
+          mbPerSession: null, suggestedMaxSessions: null, memoryLimitMb: null, sampledAt: seenAt.toISOString(),
+          stale: true, // `seenAt` fixo no passado (> 10 min do relógio real)
+        },
+        settings: { maxSessionsPerWorker: 40, alertOccupancyRatio: expect.any(Number) },
+        enforced: false,
+      },
+    });
   });
 });

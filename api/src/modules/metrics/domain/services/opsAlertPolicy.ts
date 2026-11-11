@@ -1,5 +1,8 @@
 import { OPS_METRIC, type OpsMetricReading, type OpsMetricSource } from '../OpsMetric';
 
+/** Recurso das leituras `sessions_*` (agregado do cluster). */
+export const SESSIONS_CLUSTER_RESOURCE = 'cluster';
+
 /** Limiares de MQ-24. */
 export const OPS_ALERT_THRESHOLDS = {
   /** RSS ≥ 80% do limite do container. */
@@ -12,10 +15,13 @@ export const OPS_ALERT_THRESHOLDS = {
   eventLoopP99Ms: 200,
 } as const;
 
+/** `metric` do alerta `session_occupancy`: percentual derivado no tick, não é métrica gravada. */
+export const SESSIONS_OCCUPANCY_ALERT_METRIC = 'sessions_occupancy_pct';
+
 /** Ticks de 60 s que formam os 5 min do streak de CPU. */
 export const CPU_STREAK_TICKS = 5;
 
-export type OpsAlertReason = 'memory' | 'cpu' | 'idle_in_transaction' | 'event_loop';
+export type OpsAlertReason = 'memory' | 'cpu' | 'idle_in_transaction' | 'event_loop' | 'session_occupancy';
 
 export interface OpsAlert {
   reason: OpsAlertReason;
@@ -41,6 +47,12 @@ export interface OpsAlertInput {
   cpuPersisted: ReadonlyMap<string, number>;
   /** Fallback `OPS_MEMORY_LIMIT_MB` para RSS dos workers quando a plataforma não dá `memory_pct`. */
   memoryLimitMb: number | null;
+  /**
+   * Ocupação do cluster (`sessions_connected` ÷ `sessions_capacity` do tick) e o limiar
+   * `alertOccupancyRatio` (WSCALE-17). O coletor só preenche com a adoção desligada: com ela o
+   * `WorkerCapacityAlertJob` já alerta. Ausente = sem alerta de ocupação.
+   */
+  sessionOccupancy?: { connected: number; capacity: number; ratio: number };
 }
 
 /** CPU ≥ limiar nos últimos 5 ticks do buffer; com buffer curto (dono novo), a média persistida decide. */
@@ -88,6 +100,19 @@ export function opsAlerts(input: OpsAlertInput): OpsAlert[] {
           }
         }
     }
+  }
+  const occ = input.sessionOccupancy;
+  // Decide pela razão (0–1, estrita); `value`/`threshold` saem em percentual (0–100, 2 casas), como `memory`.
+  const pct = (n: number) => Math.round(n * 10_000) / 100;
+  if (occ && occ.capacity > 0 && occ.connected / occ.capacity > occ.ratio) {
+    worst.set('session_occupancy', {
+      reason: 'session_occupancy',
+      source: 'sessions',
+      resource: SESSIONS_CLUSTER_RESOURCE,
+      metric: SESSIONS_OCCUPANCY_ALERT_METRIC,
+      value: pct(occ.connected / occ.capacity),
+      threshold: pct(occ.ratio),
+    });
   }
   return [...worst.values()];
 }

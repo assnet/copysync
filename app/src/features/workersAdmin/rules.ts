@@ -1,11 +1,13 @@
 /** Regras puras da tela de workers (sem React). */
 import type {
+  WorkerCapacityPlan,
   WorkerScalerMode,
   WorkerScalingSettings,
   WorkerScalingSettingsChange,
   WorkerScalingSettingsDraft,
   WorkerScalingSettingsField,
 } from './types';
+import { PLAN_CATALOG } from '@/features/plans/catalog';
 import { workersAdminStrings } from './strings';
 
 export type OccupancyLevel = 'ok' | 'warning' | 'full';
@@ -127,4 +129,51 @@ export function isDraftFieldChanged(
 ): boolean {
   if (field === 'scalerMode') return draft.scalerMode !== saved.scalerMode;
   return parseDraftNumber(draft[field], WORKER_SETTINGS_LIMITS[field].integer) !== saved[field];
+}
+
+/* ── Capacidade (WSCALE-07/10) ───────────────────────────────────────── */
+
+/** Plano sem limite em algum canal: um tenant pode abrir sessões sem fim, então não há como projetar. */
+export function isUnlimitedPlan(plan: WorkerCapacityPlan): boolean {
+  return plan.whatsapp.unlimitedTenants > 0 || plan.telegram.unlimitedTenants > 0;
+}
+
+/** Sessões contratadas (WhatsApp + Telegram) pelo tenant médio do plano; `null` sem tenant ou plano ilimitado. */
+export function avgContractedPerTenant(plan: WorkerCapacityPlan): number | null {
+  if (plan.tenants <= 0 || isUnlimitedPlan(plan)) return null;
+  return (plan.whatsapp.contracted + plan.telegram.contracted) / plan.tenants;
+}
+
+/**
+ * "Cabem mais N clientes" do plano: folga ÷ sessões contratadas pelo tenant médio (para baixo).
+ * `null` ("—") sem folga medida, sem tenant, plano ilimitado ou tenant médio sem sessão contratada.
+ */
+export function clientsThatFit(plan: WorkerCapacityPlan, headroom: number | null): number | null {
+  const avg = avgContractedPerTenant(plan);
+  if (headroom === null || !Number.isFinite(headroom) || avg === null || avg <= 0) return null;
+  return Math.floor(Math.max(0, headroom) / avg);
+}
+
+/**
+ * Confirmação reforçada do teto (WSCALE-07): só quando o teto novo passa do sugerido pela
+ * medição ou quando não há sugestão (sem amostra ou rota de capacidade fora).
+ */
+export function needsStrongCapConfirm(nextCap: number, suggestedMaxSessions: number | null): boolean {
+  return suggestedMaxSessions === null || nextCap > suggestedMaxSessions;
+}
+
+/** Posição do plano no catálogo do painel (`lite` casa `lite` ou `<prefixo>_LITE`); desconhecido e sem plano no fim. */
+function planCatalogRank(planSlug: string | null): number {
+  if (planSlug === null) return PLAN_CATALOG.length + 1;
+  const slug = planSlug.toLowerCase();
+  const i = PLAN_CATALOG.findIndex((p) => slug === p.slug || slug.endsWith(`_${p.slug}`));
+  return i === -1 ? PLAN_CATALOG.length : i;
+}
+
+/** Linhas da tabela por plano na ordem do catálogo; empate (desconhecidos) mantém a ordem da API. */
+export function sortPlansByCatalog<T extends { planSlug: string | null }>(plans: readonly T[]): T[] {
+  return plans
+    .map((p, i) => ({ p, i, r: planCatalogRank(p.planSlug) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.p);
 }

@@ -21,6 +21,8 @@ interface Props {
   strongValue: number | null;
   /** `true` = o teto sobe (risco de memória); `false` = reduz (só para de adotar). */
   strongRaise?: boolean;
+  /** Teto sugerido pela medição; com valor, o aviso reforçado fala em passar do sugerido. */
+  suggestedMaxSessions?: number | null;
   /** Aviso de teto abaixo da ocupação atual. */
   warning?: string | null;
   saving: boolean;
@@ -29,12 +31,20 @@ interface Props {
 }
 
 /** Diálogo da feature: mostra o diff e, se o teto muda sem medição, pede o valor digitado. */
-export function SettingsConfirmDialog({ open, changes, strongValue, strongRaise = true, warning, saving, onConfirm, onClose }: Props) {
+export function SettingsConfirmDialog({ open, changes, strongValue, strongRaise = true, suggestedMaxSessions = null, warning, saving, onConfirm, onClose }: Props) {
   const [typed, setTyped] = useState('');
   useEffect(() => { if (open) setTyped(''); }, [open]);
 
   const expected = strongValue === null ? '' : String(strongValue);
   const confirmed = strongValue === null || typed.trim() === expected;
+  const suggested = suggestedMaxSessions?.toLocaleString('pt-BR') ?? null;
+  // Reduzir não derruba sessão: título neutro e texto de redução, mesmo acima do sugerido.
+  const strongTitle = !strongRaise
+    ? (suggested !== null ? s.confirm.strongTitleLower : s.confirm.strongTitle)
+    : (suggested !== null ? s.confirm.strongTitleAbove : s.confirm.strongTitle);
+  const strongHint = !strongRaise
+    ? (suggested !== null ? s.confirm.strongHintLowerAbove(suggested) : s.confirm.strongHintLower)
+    : (suggested !== null ? s.confirm.strongHintAbove(suggested) : s.confirm.strongHintRaise);
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth aria-labelledby="worker-settings-confirm-title">
@@ -67,10 +77,8 @@ export function SettingsConfirmDialog({ open, changes, strongValue, strongRaise 
           {warning && <Alert severity="warning">{warning}</Alert>}
           {strongValue !== null && (
             <Alert severity="warning" icon={false}>
-              <AlertTitle>{s.confirm.strongTitle}</AlertTitle>
-              <Typography variant="body2" sx={{ mb: 1.5 }}>
-                {strongRaise ? s.confirm.strongHintRaise : s.confirm.strongHintLower}
-              </Typography>
+              <AlertTitle>{strongTitle}</AlertTitle>
+              <Typography variant="body2" sx={{ mb: 1.5 }}>{strongHint}</Typography>
               <TextField
                 label={s.confirm.strongLabel}
                 helperText={s.confirm.strongHelper(expected)}
