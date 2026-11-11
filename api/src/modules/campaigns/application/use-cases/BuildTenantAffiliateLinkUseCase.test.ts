@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BuildTenantAffiliateLinkUseCase } from './BuildTenantAffiliateLinkUseCase';
+import { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { AffiliateCredentialState } from '../../domain/contracts/IAffiliateCredentialGateway';
@@ -39,7 +40,7 @@ function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: 
     },
     riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
   };
-  return { deps, uc: new BuildTenantAffiliateLinkUseCase(deps) };
+  return { deps, uc: new BuildTenantAffiliateLinkUseCase({ ...deps, composer: new TenantAffiliateLinkComposer(deps) }) };
 }
 
 describe('BuildTenantAffiliateLinkUseCase', () => {
