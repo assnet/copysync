@@ -176,7 +176,13 @@ const envelope = (data: object) => ({
 
 export const generateOfferResponse = envelope({
   type: 'object',
-  properties: { offer: offerSchema, needsManualData: { type: 'boolean' }, ...aiFlags },
+  properties: {
+    offer: offerSchema,
+    needsManualData: { type: 'boolean' },
+    ...aiFlags,
+    /** Link colado não era do tenant e foi recriado com a credencial dele. */
+    linkRebuilt: { type: 'boolean' },
+  },
 });
 
 export const regenerateOfferResponse = envelope({

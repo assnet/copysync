@@ -2,12 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { GenerateOfferUseCase, type GenerateOfferDeps } from './GenerateOfferUseCase';
 import { FakeEntitlementReader, InMemoryOfferRepository, makeOffer, NOW, TENANT, USER } from './offerTestFakes';
 import { OfferTextComposer } from '../services/OfferTextComposer';
+import { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
+import { ResolveAffiliateProductUseCase } from './ResolveAffiliateProductUseCase';
+import { ResolveProductDataUseCase } from './ResolveProductDataUseCase';
 import type { IShopeeAffiliateClient, ShopeeProduct } from '../../domain/contracts/IShopeeAffiliateClient';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { ProductPageData } from '../../domain/services/parseProductPage';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import { AppError } from '../../../../shared/errors/AppError';
-import { OfferUrlUnsupportedError, AffiliateApiUnavailableError } from '../../../../shared/errors/internal/OfferErrors';
+import { OfferUrlUnsupportedError, AffiliateApiUnavailableError, OfferLinkRebuildFailedError } from '../../../../shared/errors/internal/OfferErrors';
 
 const SHOPEE_PRODUCT: ShopeeProduct = {
   title: 'Fone Bluetooth',
@@ -39,28 +42,41 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
     generateShortLink: vi.fn().mockResolvedValue('https://s.shopee.com.br/dotenant'),
   } satisfies IShopeeAffiliateClient;
   const ai = { generate: vi.fn().mockResolvedValue({ text: 'Texto da IA 💜\nhttps://amzn.to/abc' }) };
-  const deps = {
-    offers,
-    entitlements: new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {}),
+  const entitlements = new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {});
+  const pageReader = { read: vi.fn().mockResolvedValue(PAGE) };
+  const imageFetcher = { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) };
+  const mediaStore = { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() };
+  // Deps do Resolve: o gerador recebe a instância pronta, como no container
+  const resolveFakes = {
     expander: { expand: vi.fn(async (u: URL) => u) },
     credentials: {
-      execute: vi.fn(async (_t: string, p: AffiliateProvider) => (opts.creds ?? CREDS)[p] ?? null),
       resolveState: vi.fn(async (_t: string, p: AffiliateProvider) => {
         const cred = (opts.creds ?? CREDS)[p];
         return cred ? { state: 'ok' as const, cred } : { state: 'missing' as const };
       }),
     },
-    shopee,
     mercadoLivre: { createAffiliateLinks: vi.fn().mockResolvedValue({ success: [{ originUrl: '', shortUrl: 'https://meli.la/gerado', longUrl: '' }], errors: [] }), getActiveTag: vi.fn().mockResolvedValue(null), listAccountTags: vi.fn() },
     shein: { getProductShare: vi.fn().mockResolvedValue(null) },
     riskGate: { isAccepted: vi.fn().mockResolvedValue(true) },
-    pageReader: { read: vi.fn().mockResolvedValue(PAGE) },
-    imageFetcher: { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) },
-    mediaStore: { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() },
+  };
+  const { expander, credentials, mercadoLivre, shein, riskGate } = resolveFakes;
+  const affiliateProducts = new ResolveAffiliateProductUseCase({
+    expander, credentials, shein, entitlements, riskGate,
+    composer: new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate }),
+    products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore }),
+  });
+  const deps = {
+    offers,
+    entitlements,
+    affiliateProducts,
+    shopee,
+    pageReader,
+    imageFetcher,
+    mediaStore,
     texts: new OfferTextComposer(ai),
     now: () => NOW,
   } satisfies GenerateOfferDeps;
-  return { deps, offers, ai, uc: new GenerateOfferUseCase(deps) };
+  return { deps: { ...deps, ...resolveFakes }, offers, ai, uc: new GenerateOfferUseCase(deps) };
 }
 
 const AMAZON = 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=loja-20';
@@ -153,6 +169,7 @@ describe('GenerateOfferUseCase — link de afiliado sempre do tenant', () => {
     const s = setup();
     const out = await run(s, 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=outro-20');
     expect(out.offer).toMatchObject({ affiliateUrl: AMAZON_TENANT, attributionVerified: true });
+    expect(out.linkRebuilt).toBe(true);
     expect(out.offer.text).not.toContain('outro-20');
   });
 
@@ -196,7 +213,7 @@ describe('GenerateOfferUseCase — link de afiliado sempre do tenant', () => {
       provider: 'MERCADO_LIVRE', productRef: 'MLB999', attributionVerified: true, affiliateUrl: 'https://meli.la/1Hb6zu6',
       title: 'Air Fryer 4L', priceCents: 29990,
     });
-    expect(out.needsManualData).toBe(false);
+    expect(out).toMatchObject({ needsManualData: false, linkRebuilt: false });
   });
 
   it('página social sem matt_word: etiqueta do path de outro → recriado com a do tenant', async () => {
@@ -205,6 +222,31 @@ describe('GenerateOfferUseCase — link de afiliado sempre do tenant', () => {
     s.deps.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB999' });
     const out = await run(s, 'https://meli.la/xyz');
     expect(out.offer).toMatchObject({ affiliateUrl: 'https://meli.la/gerado', productRef: 'MLB999', sourceUrl: 'https://meli.la/xyz' });
+    expect(out.linkRebuilt).toBe(true);
+  });
+
+  it('falha ao recriar → erro do Resolve propaga, nada gravado nem contado', async () => {
+    const s = setup({ limit: 5 });
+    s.deps.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [{ originUrl: '', errorCode: 100, message: 'URL Invalid' }] });
+    await expect(run(s, 'https://produto.mercadolivre.com.br/MLB-1-x?matt_word=outra')).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
+    expect(s.offers.items).toHaveLength(0);
+    expect(s.deps.mediaStore.saveImage).not.toHaveBeenCalled();
+  });
+
+  it('linkRebuilt vem do Resolve, não dos campos gravados (TLINK-12)', async () => {
+    const s = setup();
+    const resolved = {
+      provider: 'AMAZON' as const, sourceUrl: AMAZON, affiliateUrl: AMAZON_TENANT, attributionVerified: true,
+      product: { productRef: 'B0ABCDEFGH', title: 'Fone', priceCents: 100, originalPriceCents: null, imageSourceUrl: null },
+    };
+    const spy = vi.spyOn(s.deps.affiliateProducts, 'execute');
+    spy.mockResolvedValueOnce({ ...resolved, linkRebuilt: false });
+    expect((await run(s, AMAZON)).linkRebuilt).toBe(false);
+    spy.mockResolvedValueOnce({ ...resolved, linkRebuilt: true });
+    expect((await run(s, AMAZON)).linkRebuilt).toBe(true);
+    spy.mockRejectedValueOnce(new OfferLinkRebuildFailedError('AMAZON', 'X'));
+    await expect(run(s, AMAZON)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
+    expect(s.offers.items).toHaveLength(2);
   });
 });
 
@@ -314,7 +356,7 @@ describe('GenerateOfferUseCase — início agendado', () => {
   });
 });
 
-describe('GenerateOfferUseCase — Shein (gate e aceite na instância interna)', () => {
+describe('GenerateOfferUseCase — Shein (gate e aceite no Resolve)', () => {
   const SHEIN = 'https://br.shein.com/Vestido-p-12345678.html?url_from=affiliate_koc_1234567890';
 
   it('chave do plano ausente: PLAN_FEATURE_UNAVAILABLE sem gravar nem chamar a Shein', async () => {
