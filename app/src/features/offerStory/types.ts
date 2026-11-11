@@ -29,6 +29,8 @@ export interface OfferStoryResult {
   provider: AffiliateProvider;
   affiliateUrl: string;
   attributionVerified: boolean;
+  /** O link colado foi trocado por um da conta do usuário (aviso no resultado). Arte salva antiga: false. */
+  linkRebuilt: boolean;
   price: { fromCents: number | null; toCents: number | null };
   coupon: { code: string; discountPercent: number | null } | null;
   warnings: OfferStoryWarning[];

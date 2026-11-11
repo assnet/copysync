@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { PRODUCT_FORM_DEFAULTS, mapRenderError, parseDiscount, toRenderInput, validateProductForm, type ProductFormState } from './productForm';
+import { OFFER_STORY_ERROR_CODES, PRODUCT_FORM_DEFAULTS, mapRenderError, parseDiscount, toRenderInput, validateProductForm, type ProductFormState } from './productForm';
 import { offerStoryStrings as t } from './strings';
+import { affiliateLinkStrings as al } from '@/features/affiliateLinks/strings';
 
 const URL_OK = 'https://www.mercadolivre.com.br/produto/p/MLB123';
 const form = (patch: Partial<ProductFormState> = {}): ProductFormState => ({ ...PRODUCT_FORM_DEFAULTS, url: URL_OK, ...patch });
@@ -43,14 +44,33 @@ describe('toRenderInput', () => {
 
 describe('mapRenderError', () => {
   it('erros de link vão para o campo do link', () => {
-    for (const code of ['OFFER_URL_UNSUPPORTED', 'OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE', 'OFFER_STORY_PRODUCT_INCOMPLETE'] as const) {
+    for (const code of ['OFFER_URL_UNSUPPORTED', 'OFFER_PRODUCT_NOT_FOUND', 'OFFER_STORY_PRODUCT_INCOMPLETE'] as const) {
       expect(mapRenderError({ status: 422, code })).toEqual({ field: 'url', message: t.errors[code], backToTemplates: false });
     }
   });
 
+  it('códigos removidos da API não estão mais na lista e viram genérico', () => {
+    for (const code of ['OFFER_LINK_NOT_OWNED', 'OFFER_LINK_NOT_AFFILIATE']) {
+      expect(OFFER_STORY_ERROR_CODES as readonly string[]).not.toContain(code);
+      expect(mapRenderError({ status: 422, code })).toEqual({ field: null, message: t.errors.generic, backToTemplates: false });
+    }
+  });
+
+  it('loja sem credencial: texto do módulo comum no link e botão de conectar com código e meta', () => {
+    const meta = { provider: 'SHOPEE' };
+    expect(mapRenderError({ status: 422, code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta })).toEqual({
+      field: 'url', message: al.errors.credentialRequired('SHOPEE'), backToTemplates: false,
+      action: 'credentials', connect: { code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta },
+    });
+    expect(mapRenderError({ status: 422, code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'MERCADO_LIVRE' } }))
+      .toEqual({ field: 'url', message: al.errors.rebuildFailed('MERCADO_LIVRE'), backToTemplates: false });
+  });
+
   it('Shein fora do plano e aceite pendente vão para o campo do link', () => {
     expect(mapRenderError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } })).toEqual({ field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false });
-    expect(mapRenderError({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toEqual({ field: 'url', message: t.errors.MARKETPLACE_RISK_NOT_ACCEPTED, backToTemplates: false });
+    expect(mapRenderError({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toEqual({
+      field: 'url', message: al.errors.riskNotAccepted, backToTemplates: false, action: 'credentials', connect: { code: 'MARKETPLACE_RISK_NOT_ACCEPTED' },
+    });
   });
 
   it('etiqueta do ML: não vinculada → credenciais; sem vaga → planos (no maior plano, credenciais)', () => {
@@ -76,13 +96,15 @@ describe('mapRenderError', () => {
   });
 
   it('credencial/API de afiliado vai para o link; limite, loja fora e gerador ocupado são aviso geral', () => {
-    for (const code of ['AFFILIATE_API_ACCESS_DENIED', 'AFFILIATE_CREDENTIAL_REJECTED'] as const) {
-      expect(mapRenderError({ status: 422, code })).toEqual({ field: 'url', message: t.errors[code], backToTemplates: false });
+    expect(mapRenderError({ status: 422, code: 'AFFILIATE_API_ACCESS_DENIED' })).toEqual({ field: 'url', message: al.errors.apiAccessDenied, backToTemplates: false });
+    const meta = { provider: 'SHOPEE' };
+    expect(mapRenderError({ status: 422, code: 'AFFILIATE_CREDENTIAL_REJECTED', meta })).toEqual({
+      field: 'url', message: al.errors.credentialRejected('SHOPEE'), backToTemplates: false, action: 'credentials', connect: { code: 'AFFILIATE_CREDENTIAL_REJECTED', meta },
+    });
+    for (const [status, code] of [[429, 'AFFILIATE_API_RATE_LIMITED'], [503, 'AFFILIATE_API_UNAVAILABLE']] as const) {
+      expect(mapRenderError({ status, code, meta })).toEqual({ field: null, message: al.errors.storeUnavailable('SHOPEE'), backToTemplates: false });
     }
-    for (const [status, code] of [[429, 'AFFILIATE_API_RATE_LIMITED'], [503, 'AFFILIATE_API_UNAVAILABLE'], [503, 'MEDIA_PROCESSOR_UNAVAILABLE']] as const) {
-      expect(mapRenderError({ status, code })).toEqual({ field: null, message: t.errors[code], backToTemplates: false });
-    }
-    expect(t.errors.AFFILIATE_CREDENTIAL_REJECTED).toContain('Credenciais de afiliado');
+    expect(mapRenderError({ status: 503, code: 'MEDIA_PROCESSOR_UNAVAILABLE' })).toEqual({ field: null, message: t.errors.MEDIA_PROCESSOR_UNAVAILABLE, backToTemplates: false });
   });
 
   it('template inexistente volta ao passo 1', () => {

@@ -10,6 +10,7 @@ import {
   mapRenderError,
   toRenderInput,
   validateProductForm,
+  type OfferStoryConnectError,
   type OfferStoryErrorAction,
   type ProductField,
   type ProductFormErrors,
@@ -54,7 +55,8 @@ export function restoreResult(raw: unknown): OfferStoryResult | null {
     typeof r.width === 'number' && typeof r.height === 'number' && typeof r.attributionVerified === 'boolean' &&
     !!r.price && typeof r.price === 'object' && Array.isArray(r.warnings) &&
     (r.coupon === null || (!!r.coupon && typeof r.coupon.code === 'string'));
-  return ok ? (r as OfferStoryResult) : null;
+  // `linkRebuilt` entrou depois: arte salva antes dele vale como não recriado.
+  return ok ? { ...(r as OfferStoryResult), linkRebuilt: r.linkRebuilt === true } : null;
 }
 
 const RESULT_OPTS = { version: RESULT_VERSION, deserialize: restoreResult };
@@ -88,6 +90,12 @@ export function useOfferStoryWizard() {
   const [generalError, setGeneralError] = useState<string | null>(null);
   /** Ação do erro do link (credenciais/planos); some junto com o erro do campo. */
   const [urlErrorAction, setUrlErrorAction] = useState<OfferStoryErrorAction | null>(null);
+  /** Código e `meta` do erro de credencial, para o botão "Conectar <loja>". */
+  const [urlErrorConnect, setUrlErrorConnect] = useState<OfferStoryConnectError | null>(null);
+  const clearUrlAction = useCallback(() => {
+    setUrlErrorAction(null);
+    setUrlErrorConnect(null);
+  }, []);
 
   // Garante a regra mesmo se o estado chegar ao passo 3 sem arte por outro caminho.
   const step: OfferStoryStep = draft.step === 2 && !result ? 1 : draft.step;
@@ -102,20 +110,20 @@ export function useOfferStoryWizard() {
     setDraft((d) => ({ ...d, [field]: value }));
     const key = (field === 'couponEnabled' ? null : field) as ProductField | null;
     if (key) setErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
-    if (field === 'url') setUrlErrorAction(null);
+    if (field === 'url') clearUrlAction();
     if (field === 'couponEnabled' && !value) setErrors((e) => ({ url: e.url }));
-  }, [setDraft]);
+  }, [setDraft, clearUrlAction]);
 
   const generate = useCallback(async () => {
     const found = validateProductForm(draft);
     setErrors(found);
     setGeneralError(null);
-    setUrlErrorAction(null);
+    clearUrlAction();
     if (hasErrors(found) || generating) return;
     setGenerating(true);
     try {
       const art = await offerStoryService.render(toRenderInput(draft.templateId, draft));
-      setResult(art);
+      setResult({ ...art, linkRebuilt: art.linkRebuilt === true });
       setDraft((d) => ({ ...d, step: 2 }));
     } catch (err) {
       if (isPlanFeatureUnavailable(err, PLAN_FEATURE_KEYS.offerStory)) {
@@ -128,13 +136,16 @@ export function useOfferStoryWizard() {
         setGeneralError(view.message);
       } else if (view.field) {
         setErrors({ [view.field]: view.message });
-        if (view.field === 'url') setUrlErrorAction(view.action ?? null);
+        if (view.field === 'url') {
+          setUrlErrorAction(view.action ?? null);
+          setUrlErrorConnect(view.connect ?? null);
+        }
       }
       else setGeneralError(view.message);
     } finally {
       setGenerating(false);
     }
-  }, [draft, generating, navigate, setDraft, setResult]);
+  }, [draft, generating, navigate, setDraft, setResult, clearUrlAction]);
 
   /** Arte salva cujo template saiu do catálogo: descarta (a página chama com os ids carregados). */
   const dropStaleResult = useCallback((ids: readonly string[]) => {
@@ -152,9 +163,9 @@ export function useOfferStoryWizard() {
     setResult(null);
     setErrors({});
     setGeneralError(null);
-    setUrlErrorAction(null);
+    clearUrlAction();
     clearDraft();
-  }, [clearDraft, setResult]);
+  }, [clearDraft, setResult, clearUrlAction]);
 
   return {
     step,
@@ -162,6 +173,7 @@ export function useOfferStoryWizard() {
     form: draft as ProductFormState,
     errors,
     urlErrorAction,
+    urlErrorConnect,
     generalError,
     dismissError: () => setGeneralError(null),
     generating,

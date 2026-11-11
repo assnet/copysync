@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
 import { offerStoryStrings as t } from './strings';
+import { affiliateLinkStrings as al } from '@/features/affiliateLinks/strings';
 
 const svc = vi.hoisted(() => ({ listTemplates: vi.fn(), render: vi.fn() }));
 vi.mock('@/services/offerStory.service', () => ({ offerStoryService: svc }));
@@ -36,7 +37,7 @@ describe('OfferStoryPage', () => {
     svc.listTemplates.mockResolvedValue([{ id: 'flash-night', name: 'Oferta relâmpago' }]);
     svc.render.mockResolvedValue({
       image: 'data:image/jpeg;base64,AAAA', width: 1080, height: 1920, templateId: 'flash-night', headline: 'Fone',
-      provider: 'SHOPEE', affiliateUrl: 'https://s.shopee.com.br/x', attributionVerified: false,
+      provider: 'SHOPEE', affiliateUrl: 'https://s.shopee.com.br/x', attributionVerified: false, linkRebuilt: true,
       price: { fromCents: null, toCents: null }, coupon: null, warnings: ['NO_PRICE'],
     });
     renderPage('dark');
@@ -51,6 +52,7 @@ describe('OfferStoryPage', () => {
     expect(document.querySelector('header [aria-current="step"]')?.textContent).toContain(t.page.steps[2]);
     expect(screen.getByRole('button', { name: t.result.download })).toBeTruthy();
     expect(screen.getByText(t.result.unverified)).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent(al.rebuilt.notice('SHOPEE'));
     expect(screen.getByText(t.result.warnings.NO_PRICE)).toBeTruthy();
     expect(screen.queryByRole('button', { name: t.result.share })).toBeNull();
     expect(screen.getByRole('button', { name: t.result.copyLink })).toBeTruthy();
@@ -68,5 +70,19 @@ describe('OfferStoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: t.product.generate }));
     expect(await screen.findByText(t.errors.mercadoLivreTagLimit(1, true))).toBeTruthy();
     expect(screen.getByRole('link', { name: t.product.errorActions.plans }).getAttribute('href')).toBe('/affiliates/plans?feature=mercadoLivreTags');
+  });
+
+  it('loja sem credencial: texto no link e botão "Conectar <loja>" que volta ao story; sem aviso de recriado', async () => {
+    svc.listTemplates.mockResolvedValue([{ id: 'flash-night', name: 'Oferta relâmpago' }]);
+    svc.render.mockRejectedValue({ status: 422, code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } });
+    renderPage('dark');
+    fireEvent.click(await screen.findByRole('button', { name: 'Oferta relâmpago' }));
+    fireEvent.click(screen.getByRole('button', { name: t.template.continue }));
+    fireEvent.change(screen.getByLabelText(new RegExp(t.product.linkLabel)), { target: { value: 'https://shopee.com.br/p-i.1.2' } });
+    fireEvent.click(screen.getByRole('button', { name: t.product.generate }));
+    expect(await screen.findByText(al.errors.credentialRequired('SHOPEE'))).toBeTruthy();
+    const href = new URL(screen.getByRole('link', { name: al.actions.connect('SHOPEE') }).getAttribute('href')!, 'http://x');
+    expect(href.pathname).toBe('/affiliates/credentials');
+    expect(href.searchParams.get('returnTo')).toBe('/offer-story');
   });
 });

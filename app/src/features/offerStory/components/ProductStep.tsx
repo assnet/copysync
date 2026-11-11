@@ -1,12 +1,12 @@
 import { Alert, Box, Button, Collapse, InputAdornment, Stack, Switch, TextField, Typography, alpha, useTheme } from '@mui/material';
 import { ArrowLeft, ArrowRight, Image as ImageIcon, ImagePlus, KeyRound, Link2, Repeat2, Tag, Ticket, Type } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { useBlur } from '@/features/privacy';
-import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation';
+import { ConnectStoreAction, credentialsPathFor } from '@/features/affiliateLinks/components/ConnectStoreAction';
 import { upgradePathFor } from '@/features/linkRotation/planUpsell';
 import { OFFER_STORY_RULES } from '../productForm.rules';
-import type { OfferStoryErrorAction, ProductFormErrors, ProductFormState } from '../productForm';
+import type { OfferStoryConnectError, OfferStoryErrorAction, ProductFormErrors, ProductFormState } from '../productForm';
 import { offerStoryStrings } from '../strings';
 import { storyGradient, storyWash } from '../storyStyle';
 import { templateThumbnail, type OfferStoryTemplate } from '../types';
@@ -20,6 +20,8 @@ interface Props {
   errors: ProductFormErrors;
   /** Correção do erro do link em outra tela (botão sob o campo). */
   urlErrorAction?: OfferStoryErrorAction | null;
+  /** Erro de credencial do módulo comum: o botão vira "Conectar <loja>" / "Revisar conexão". */
+  urlErrorConnect?: OfferStoryConnectError | null;
   generalError: string | null;
   onDismissError: () => void;
   generating: boolean;
@@ -81,9 +83,10 @@ function TemplatePreview({ template, onBack, disabled }: { template: OfferStoryT
 }
 
 /** Passo 2: link do produto e cupom opcional, com prévia do visual. Erro da API aparece no campo. */
-export function ProductStep({ form, errors, urlErrorAction, generalError, onDismissError, generating, template, onChange, onBack, onGenerate }: Props) {
+export function ProductStep({ form, errors, urlErrorAction, urlErrorConnect, generalError, onDismissError, generating, template, onChange, onBack, onGenerate }: Props) {
   const theme = useTheme();
   const blurLink = useBlur('offerStory.link');
+  const { pathname, search } = useLocation();
   const { primary, secondary } = theme.palette;
 
   return (
@@ -118,20 +121,23 @@ export function ProductStep({ form, errors, urlErrorAction, generalError, onDism
             sx={blurLink ? { '& input': { filter: 'blur(5px)' } } : undefined}
           />
           {errors.url && urlErrorAction && (
-            <Box sx={{ mt: '-12px !important' }}>
-              <Button
-                component={RouterLink}
-                to={urlErrorAction === 'plans' ? upgradePathFor('mercadoLivreTags') : AFFILIATE_CREDENTIALS_PATH}
-                size="small"
-                variant="outlined"
-                color={urlErrorAction === 'plans' ? 'primary' : 'inherit'}
-                {...(urlErrorAction === 'plans'
-                  ? { endIcon: <AppIcon icon={ArrowRight} size="sm" /> }
-                  : { startIcon: <AppIcon icon={KeyRound} size="sm" /> })}
-                sx={{ borderRadius: 999, minHeight: 36 }}
-              >
-                {t.errorActions[urlErrorAction]}
-              </Button>
+            <Box sx={{ mt: '-12px !important', '& .MuiButton-root': { borderRadius: 999, minHeight: 36 } }}>
+              {urlErrorAction === 'credentials' && urlErrorConnect ? (
+                <ConnectStoreAction code={urlErrorConnect.code} meta={urlErrorConnect.meta} variant="outlined" />
+              ) : (
+                <Button
+                  component={RouterLink}
+                  to={urlErrorAction === 'plans' ? upgradePathFor('mercadoLivreTags') : credentialsPathFor(pathname, search)}
+                  size="small"
+                  variant="outlined"
+                  color={urlErrorAction === 'plans' ? 'primary' : 'inherit'}
+                  {...(urlErrorAction === 'plans'
+                    ? { endIcon: <AppIcon icon={ArrowRight} size="sm" /> }
+                    : { startIcon: <AppIcon icon={KeyRound} size="sm" /> })}
+                >
+                  {t.errorActions[urlErrorAction]}
+                </Button>
+              )}
             </Box>
           )}
 

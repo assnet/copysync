@@ -2,6 +2,7 @@
  * Lógica pura do passo "Produto": validação local (espelha o schema/use case da API, que revalida)
  * e tradução de erro da API → campo + texto. Sem React, sem HTTP.
  */
+import { AFFILIATE_LINK_ERROR_CODES, describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
 import { plansAbove } from '@/features/linkRotation/planUpsell';
 import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf } from '@/features/plans/planGate';
 import { OFFER_STORY_RULES as R } from './productForm.rules';
@@ -76,26 +77,25 @@ export function toRenderInput(templateId: string, form: ProductFormState): Rende
   return input;
 }
 
-export const OFFER_STORY_ERROR_CODES = [
+/** Códigos com texto próprio do story (`strings.ts`). */
+const STORY_ERROR_CODES = [
   'OFFER_URL_UNSUPPORTED',
   'OFFER_PRODUCT_NOT_FOUND',
-  'OFFER_LINK_NOT_OWNED',
-  'OFFER_LINK_NOT_AFFILIATE',
   'OFFER_STORY_PRODUCT_INCOMPLETE',
   'OFFER_INVALID_INPUT',
   'VALIDATION_ERROR',
   'OFFER_STORY_TEMPLATE_NOT_FOUND',
   'MEDIA_PROCESSING_FAILED',
   'MEDIA_PROCESSOR_UNAVAILABLE',
-  'AFFILIATE_API_ACCESS_DENIED',
-  'AFFILIATE_CREDENTIAL_REJECTED',
-  'MARKETPLACE_RISK_NOT_ACCEPTED',
   'AFFILIATE_IDENTIFIER_NOT_LINKED',
   'PLAN_LIMIT_REACHED',
-  'AFFILIATE_API_RATE_LIMITED',
-  'AFFILIATE_API_UNAVAILABLE',
   'RATE_LIMITED',
 ] as const;
+
+type StoryErrorCode = (typeof STORY_ERROR_CODES)[number];
+
+/** Tudo o que o story trata; os de link de afiliado têm texto e ação no módulo comum (`affiliateLinks`). */
+export const OFFER_STORY_ERROR_CODES = [...STORY_ERROR_CODES, ...AFFILIATE_LINK_ERROR_CODES] as const;
 
 export type OfferStoryErrorCode = (typeof OFFER_STORY_ERROR_CODES)[number];
 
@@ -103,13 +103,13 @@ export type OfferStoryErrorCode = (typeof OFFER_STORY_ERROR_CODES)[number];
 const URL_CODES: readonly string[] = [
   'OFFER_URL_UNSUPPORTED',
   'OFFER_PRODUCT_NOT_FOUND',
-  'OFFER_LINK_NOT_OWNED',
-  'OFFER_LINK_NOT_AFFILIATE',
   'OFFER_STORY_PRODUCT_INCOMPLETE',
   // Credencial/API de afiliado da loja do link: a correção é no link ou nas credenciais.
-  'AFFILIATE_API_ACCESS_DENIED',
+  'AFFILIATE_CREDENTIAL_REQUIRED',
   'AFFILIATE_CREDENTIAL_REJECTED',
+  'AFFILIATE_API_ACCESS_DENIED',
   'MARKETPLACE_RISK_NOT_ACCEPTED',
+  'OFFER_LINK_REBUILD_FAILED',
   // Etiqueta da conta do ML não vinculada: vincular nas credenciais
   'AFFILIATE_IDENTIFIER_NOT_LINKED',
 ];
@@ -131,6 +131,13 @@ export interface OfferStoryErrorView {
   backToTemplates: boolean;
   /** Correção em outra tela (botão sob o link). Ausente = sem ação. */
   action?: OfferStoryErrorAction;
+  /** Erro de credencial do módulo comum: código e `meta` do botão de conectar a loja. */
+  connect?: OfferStoryConnectError;
+}
+
+export interface OfferStoryConnectError {
+  code: string;
+  meta?: unknown;
 }
 
 /** O que o passo do produto oferece sob o link além do texto do erro. */
@@ -149,7 +156,12 @@ export function mapRenderError(err: unknown): OfferStoryErrorView {
   if (e.code === 'AFFILIATE_IDENTIFIER_NOT_LINKED') {
     return { field: 'url', message: t.errors.AFFILIATE_IDENTIFIER_NOT_LINKED, backToTemplates: false, action: 'credentials' };
   }
-  const code = (OFFER_STORY_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as OfferStoryErrorCode) : null;
+  const shared = describeAffiliateLinkError(e.code, e.meta);
+  if (shared) {
+    const view: OfferStoryErrorView = { field: URL_CODES.includes(e.code!) ? 'url' : null, message: shared.message, backToTemplates: false };
+    return shared.action === 'credentials' ? { ...view, action: 'credentials', connect: { code: e.code!, meta: e.meta } } : view;
+  }
+  const code = (STORY_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as StoryErrorCode) : null;
   if (!code) return { field: null, message: t.errors.generic, backToTemplates: false };
   if (URL_CODES.includes(code)) return { field: 'url', message: t.errors[code], backToTemplates: false };
   if (code === 'OFFER_INVALID_INPUT' || code === 'VALIDATION_ERROR') {
