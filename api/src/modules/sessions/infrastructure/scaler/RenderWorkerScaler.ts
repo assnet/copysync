@@ -81,7 +81,9 @@ export class RenderWorkerScaler implements IWorkerScaler {
       ]);
       return { status: 'ready', ...service, runningReplicas: running };
     } catch (err) {
-      if (err instanceof ScalerRateLimitedError) return { status: 'unavailable', reason: 'rate_limited' };
+      if (err instanceof ScalerRateLimitedError) {
+        return { status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: err.retryAfterSeconds };
+      }
       if (err instanceof ScalerUnavailableError) return { status: 'unavailable', reason: err.reason };
       throw err;
     }

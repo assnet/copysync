@@ -24,6 +24,13 @@ Escalar réplicas do worker só pelo painel da Render, sem regra de capacidade n
 
 - **`ScaleTab.tsx`**, **`ScaleConfirmDialog.tsx`**, **`useWorkerScale.ts`** — aba Escala: estado, subir/reduzir com motivo, contagem do intervalo, histórico.
 
+#### Fixed (revisão da P3)
+
+- **`ScaleWorkersUseCase.ts`**, **`PrismaWorkerScaleEventRepository.ts`** — intervalo rechecado e `requested` gravado sob advisory lock (`recordRequestedIfIdle`): dois pedidos com `requestId` diferentes não escalam juntos.
+- **`ScaleWorkersUseCase.ts`** — mesmo `requestId` com outro alvo/motivo/ator → 409 `REQUEST_ID_REUSED`; erro desconhecido → 503 `SCALE_REQUEST_FAILED` sem a mensagem original; falha de escrita depois do `scaleTo` aceito responde sucesso com `warn`.
+- **`WorkerScalingErrors.ts`**, **`RenderWorkerScaler.ts`**, **`app/corsPolicy.ts`** — 429 `SCALER_RATE_LIMITED` com `meta.retryAt` → header `Retry-After`, exposto no CORS para o painel.
+- **`RequestWorkerScaleUseCase.ts`** — motivo 3–200 depois do `trim` (400 `INVALID_SCALE_REASON`); cache do estado invalidado também em erro.
+
 ### Added — api 0.83.0 · app 0.102.0 — capacidade dos workers e métricas de sessões
 
 Sem número para decidir teto e réplicas, e sem alerta de ocupação com a adoção desligada. O coletor grava a ocupação de sessões do cluster; `/admin/workers/capacity` mostra contratado por plano × instalado, MB por sessão e teto sugerido. Doc: `docs/workers-escala.md` (Capacidade). Spec: `.specs/features/worker-scaling/` (WSCALE-07..10, 17, 19; fase P2).

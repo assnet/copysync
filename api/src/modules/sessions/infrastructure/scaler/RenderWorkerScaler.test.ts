@@ -60,7 +60,8 @@ describe('RenderWorkerScaler.getState', () => {
     [401, 'auth'], [403, 'auth'], [404, 'not_found'], [500, 'upstream'], [503, 'upstream'], [429, 'rate_limited'],
   ] as const)('HTTP %i vira unavailable/%s sem lançar', async (status, reason) => {
     const fetchFn = fakeFetch({ service: { status }, instances: instances(1), scale: { status: 500 } });
-    await expect(scaler(fetchFn).getState()).resolves.toEqual({ status: 'unavailable', reason });
+    const extra = reason === 'rate_limited' ? { retryAfterSeconds: null } : {};
+    await expect(scaler(fetchFn).getState()).resolves.toEqual({ status: 'unavailable', reason, ...extra });
   });
 
   it('timeout vira unavailable/timeout', async () => {

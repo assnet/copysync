@@ -75,6 +75,49 @@ describe('lastSucceededAt', () => {
   });
 });
 
+describe('recordRequestedIfIdle', () => {
+  const evt = { trigger: 'manual' as const, actorUserId: 'u1', fromReplicas: 1, toReplicas: 2, reason: 'pico' };
+
+  it('grava requested fora do intervalo e bloqueia dentro dele com retryAt', async () => {
+    const now = new Date();
+    const first = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'a' }, cooldownSeconds: 600, now });
+    expect(first).toEqual({ id: expect.any(Number) });
+    expect(await repo.findByRequestId('a')).toMatchObject({ outcome: 'requested', error: null });
+    const second = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'b' }, cooldownSeconds: 600, now });
+    expect('blocked' in second).toBe(true);
+    const row = await repo.findByRequestId('a');
+    expect((second as { blocked: Date }).blocked.getTime()).toBe(row!.at.getTime() + 600_000);
+    expect(await repo.findByRequestId('b')).toBeNull();
+  });
+
+  it('failed e rejected não contam; intervalo vencido libera', async () => {
+    await plant(new Date(Date.now() - 60_000), 'failed');
+    await plant(new Date(Date.now() - 30_000), 'rejected');
+    await plant(new Date(Date.now() - 700_000), 'succeeded');
+    const res = await repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'c' }, cooldownSeconds: 600, now: new Date() });
+    expect(res).toEqual({ id: expect.any(Number) });
+  });
+
+  it('dois pedidos concorrentes com requestId diferentes: só um grava', async () => {
+    const now = new Date();
+    const results = await Promise.all(
+      ['x1', 'x2', 'x3', 'x4'].map((requestId) =>
+        repo.recordRequestedIfIdle({ evt: { ...evt, requestId }, cooldownSeconds: 600, now }),
+      ),
+    );
+    expect(results.filter((r) => 'id' in r)).toHaveLength(1);
+    expect(results.filter((r) => 'blocked' in r)).toHaveLength(3);
+    expect(await prisma.workerScaleEvent.count({ where: { outcome: 'requested' } })).toBe(1);
+  });
+
+  it('requestId repetido lança (unicidade)', async () => {
+    await repo.record({ ...base, outcome: 'rejected', requestId: 'dup2' });
+    await expect(
+      repo.recordRequestedIfIdle({ evt: { ...evt, requestId: 'dup2' }, cooldownSeconds: 600, now: new Date() }),
+    ).rejects.toThrow();
+  });
+});
+
 describe('list', () => {
   it('pagina por id desc com nextBeforeId até o fim', async () => {
     const ids: number[] = [];

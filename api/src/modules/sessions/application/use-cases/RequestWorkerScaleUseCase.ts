@@ -1,5 +1,10 @@
 import type { ScaleWorkersResult, ScaleWorkersUseCase } from './ScaleWorkersUseCase';
 import type { WorkerScalerStateCache } from '../services/WorkerScalerStateCache';
+import { InvalidScaleReasonError } from '../../../../shared/errors/internal/WorkerScalingErrors';
+import { WORKER_SCALE_TEXT_MAX } from '../../domain/contracts/IWorkerScaleEventRepository';
+
+/** Tamanho do motivo depois do `trim` (o schema da rota mede antes). */
+export const SCALE_REASON_MIN = 3;
 
 export interface RequestWorkerScaleInput {
   replicas: number;
@@ -12,7 +17,7 @@ export interface RequestWorkerScaleDeps {
   scale: Pick<ScaleWorkersUseCase, 'execute'>;
   /** Sessões conectadas agora (`connectedSessionsNow`: última amostra `sessions_connected`). */
   connectedSessions: () => Promise<number>;
-  /** Cache do `GET`: invalidado depois do pedido aceito para a tela ver o alvo novo. */
+  /** Cache do `GET`: invalidado depois de todo pedido (aceito ou não) para a tela ler o estado novo. */
   state: Pick<WorkerScalerStateCache, 'invalidate'>;
 }
 
@@ -21,9 +26,15 @@ export class RequestWorkerScaleUseCase {
   constructor(private readonly deps: RequestWorkerScaleDeps) {}
 
   async execute(input: RequestWorkerScaleInput): Promise<ScaleWorkersResult> {
-    const connected = await this.deps.connectedSessions();
-    const result = await this.deps.scale.execute({ ...input, reason: input.reason.trim(), trigger: 'manual', connected });
-    this.deps.state.invalidate();
-    return result;
+    const reason = input.reason.trim();
+    if (reason.length < SCALE_REASON_MIN || reason.length > WORKER_SCALE_TEXT_MAX) {
+      throw new InvalidScaleReasonError(SCALE_REASON_MIN, WORKER_SCALE_TEXT_MAX);
+    }
+    try {
+      const connected = await this.deps.connectedSessions();
+      return await this.deps.scale.execute({ ...input, reason, trigger: 'manual', connected });
+    } finally {
+      this.deps.state.invalidate();
+    }
   }
 }

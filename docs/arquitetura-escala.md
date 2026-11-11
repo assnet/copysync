@@ -379,6 +379,9 @@ e lidos só pelo super admin em `GET /admin/ops/metrics`: ver [`ops-metricas.md`
 **Exceção declarada** à regra de estado em memória: o ring buffer de 60 leituras do
 `OpsMetricsSamplerJob` é cache de `ops_metrics_samples` (perda ≤ 5 min em crash aceita); alertas e
 silêncio ficam em lease no banco. Sem APM externo, sem `/metrics` público no `http`.
+**Exceção declarada**: o cache de 30 s do estado do escalador de workers (`WorkerScalerStateCache`, por processo) é
+leitura descartável só para o `GET /admin/workers/scale`, sem efeito em decisão: o `POST` lê o estado ao vivo e o
+intervalo mínimo é serializado no banco (`pg_advisory_xact_lock`), ver [`workers-escala.md`](workers-escala.md).
 
 ---
 

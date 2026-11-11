@@ -17,7 +17,12 @@ export type WorkerScalerState =
       autoscalingEnabled: boolean;
     }
   | { status: 'not_configured'; missing: WorkerScalerConfigKey[] }
-  | { status: 'unavailable'; reason: WorkerScalerFailureReason };
+  | {
+      status: 'unavailable';
+      reason: WorkerScalerFailureReason;
+      /** Só com `rate_limited`: segundos do `Retry-After` do provedor (`null` se ausente). */
+      retryAfterSeconds?: number | null;
+    };
 
 /**
  * Escalador das réplicas do serviço worker (WSCALE-11). Sem regra de produto: intervalo mínimo,

@@ -23,6 +23,7 @@ import { UpdateWorkerScalingSettingsUseCase } from '../../application/use-cases/
 import { PrismaWorkerHeartbeatRepository } from '../repositories/PrismaWorkerHeartbeatRepository';
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { env } from '../../../../shared/config/env';
+import { logger } from '../../../../shared/logger/logger';
 import { GetWorkerCapacityUseCase } from '../../application/use-cases/GetWorkerCapacityUseCase';
 import { PrismaWorkerCapacityReader } from '../repositories/PrismaWorkerCapacityReader';
 import { PrismaOpsMetricsSampleRepository } from '../../../metrics/infrastructure/repositories/PrismaOpsMetricsSampleRepository';
@@ -264,6 +265,7 @@ export function requestWorkerScaleUseCase(): RequestWorkerScaleUseCase {
         settings: workerScalingSettingsProvider(),
         audit: new PrismaAuditLogRepository(),
         isAdoptionEnabled: workerScalingEnforced(),
+        log: logger.child({ module: 'ScaleWorkersUseCase' }),
       }),
       connectedSessions: () => connectedSessionsNow({ samples, reader }),
       state: workerScalerStateCache(),

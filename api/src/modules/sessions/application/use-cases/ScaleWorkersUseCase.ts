@@ -4,6 +4,8 @@ import {
   AdoptionDisabledError,
   ScaleCooldownActiveError,
   ScaleDownWouldExceedCapacityError,
+  ScaleRequestFailedError,
+  ScaleRequestIdReusedError,
   ScalerModeOffError,
   ScalerNotConfiguredError,
   ScalerRateLimitedError,
@@ -12,10 +14,11 @@ import {
   ScaleTargetOutOfRangeError,
   ScaleTargetUnchangedError,
 } from '../../../../shared/errors/internal/WorkerScalingErrors';
-import type {
-  IWorkerScaleEventRepository,
-  WorkerScaleEvent,
-  WorkerScaleTrigger,
+import {
+  WORKER_SCALE_TEXT_MAX,
+  type IWorkerScaleEventRepository,
+  type WorkerScaleEvent,
+  type WorkerScaleTrigger,
 } from '../../domain/contracts/IWorkerScaleEventRepository';
 import type { IWorkerScaler } from '../../domain/contracts/IWorkerScaler';
 import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
@@ -54,6 +57,8 @@ export interface ScaleWorkersDeps {
    * (flag local OU batimento vivo): com `http` e `worker` separados a flag mora só no worker.
    */
   isAdoptionEnabled: () => Promise<boolean> | boolean;
+  /** Avisos sem segredo (nunca a mensagem de erro do provedor). */
+  log?: { warn(obj: Record<string, unknown>, msg: string): void };
   now?: () => Date;
 }
 
@@ -72,7 +77,10 @@ class ScaleRejection {
  * desligada, faixa `[min, max]`, estado do escalador, passo do automático (+1), intervalo mínimo,
  * capacidade na redução, alvo igual ao atual. Cada recusa grava evento `rejected` e lança.
  * Aceito: grava `requested` ANTES da chamada externa (queda no meio deixa rastro e o intervalo
- * conta do pedido), chama `scaleTo` (sem retry) e atualiza para `succeeded` ou `failed`.
+ * conta do pedido) com o intervalo rechecado sob advisory lock (`recordRequestedIfIdle`), chama
+ * `scaleTo` (sem retry) e atualiza para `succeeded` ou `failed`. Erro fora de `AppError` vira
+ * `SCALE_REQUEST_FAILED` sem a mensagem original. Mesmo `requestId` com outro alvo/motivo/ator:
+ * `REQUEST_ID_REUSED`.
  */
 export class ScaleWorkersUseCase {
   private readonly now: () => Date;
@@ -91,46 +99,90 @@ export class ScaleWorkersUseCase {
   async execute(input: ScaleWorkersInput): Promise<ScaleWorkersResult> {
     if (input.requestId) {
       const previous = await this.deps.events.findByRequestId(input.requestId);
-      if (previous) return { event: previous, replayed: true };
+      if (previous) return this.replay(previous, input);
     }
 
     const outcome = await this.evaluate(input);
     if (outcome instanceof ScaleRejection) {
-      // Recusa sem `requestId`: o mesmo pedido pode ser refeito depois (fim do intervalo etc.).
-      await this.deps.events.record({
-        ...this.base(input, outcome.fromReplicas),
-        outcome: 'rejected',
-        error: outcome.error.code,
-        requestId: null,
-      });
+      await this.reject(input, outcome);
       throw outcome.error;
     }
 
     const at = this.now();
     const base = this.base(input, outcome.fromReplicas);
-    let id: number;
+    let recorded: Awaited<ReturnType<IWorkerScaleEventRepository['recordRequestedIfIdle']>>;
     try {
-      id = await this.deps.events.record({ ...base, outcome: 'requested', error: null, requestId: input.requestId });
+      recorded = await this.deps.events.recordRequestedIfIdle({
+        evt: { ...base, requestId: input.requestId },
+        cooldownSeconds: this.deps.settings.current().value.scaleCooldownSeconds,
+        now: at,
+      });
     } catch (err) {
       // Corrida com o mesmo `requestId`: a unicidade barrou o segundo; devolve o primeiro.
       const winner = input.requestId ? await this.deps.events.findByRequestId(input.requestId) : null;
-      if (winner) return { event: winner, replayed: true };
+      if (winner) return this.replay(winner, input);
       throw err;
     }
+    if ('blocked' in recorded) {
+      // Outro pedido passou entre a checagem antecipada e o lock (corrida entre `requestId` diferentes).
+      const rejection = new ScaleRejection(new ScaleCooldownActiveError(recorded.blocked), outcome.fromReplicas);
+      await this.reject(input, rejection);
+      throw rejection.error;
+    }
+    const id = recorded.id;
     const event: WorkerScaleEvent = { id, at, ...base, outcome: 'requested', error: null, requestId: input.requestId };
 
     try {
       await this.deps.scaler.scaleTo(input.replicas);
     } catch (err) {
       const error = shortError(err);
-      await this.deps.events.updateOutcome(id, 'failed', error);
-      await this.auditRequest(input, { ...event, outcome: 'failed', error });
-      throw err;
+      if (!(err instanceof AppError)) this.deps.log?.warn({ eventId: id, error }, 'worker scale request failed');
+      await this.afterCall(id, 'failed', error, () => this.auditRequest(input, { ...event, outcome: 'failed', error }));
+      throw err instanceof AppError ? err : new ScaleRequestFailedError();
     }
-    await this.deps.events.updateOutcome(id, 'succeeded', null);
+    // Escalador já aceitou: falha de escrita daqui em diante não desfaz o pedido (a linha fica
+    // `requested`, que continua contando para o intervalo mínimo).
     const done: WorkerScaleEvent = { ...event, outcome: 'succeeded' };
-    await this.auditRequest(input, done);
+    await this.afterCall(id, 'succeeded', null, () => this.auditRequest(input, done));
     return { event: done, replayed: false };
+  }
+
+  /** Replay estrito: só o mesmo alvo, motivo e ator devolvem o evento gravado (inclusive `failed`). */
+  private replay(previous: WorkerScaleEvent, input: ScaleWorkersInput): ScaleWorkersResult {
+    const same =
+      previous.toReplicas === input.replicas &&
+      previous.reason === input.reason.slice(0, WORKER_SCALE_TEXT_MAX) &&
+      previous.actorUserId === input.actorUserId;
+    if (!same) throw new ScaleRequestIdReusedError();
+    return { event: previous, replayed: true };
+  }
+
+  /** Recusa sem `requestId`: o mesmo pedido pode ser refeito depois (fim do intervalo etc.). */
+  private async reject(input: ScaleWorkersInput, rejection: ScaleRejection): Promise<void> {
+    await this.deps.events.record({
+      ...this.base(input, rejection.fromReplicas),
+      outcome: 'rejected',
+      error: rejection.error.code,
+      requestId: null,
+    });
+  }
+
+  /** Atualiza o resultado e audita depois do `scaleTo`; falha de escrita vira `warn`, não erro. */
+  private async afterCall(
+    id: number,
+    outcome: 'succeeded' | 'failed',
+    error: string | null,
+    audit: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await this.deps.events.updateOutcome(id, outcome, error);
+      await audit();
+    } catch (err) {
+      this.deps.log?.warn(
+        { eventId: id, outcome, writeError: err instanceof AppError ? err.code : 'WRITE_FAILED' },
+        'worker scale outcome not persisted',
+      );
+    }
   }
 
   private async evaluate(input: ScaleWorkersInput): Promise<ScaleRejection | { fromReplicas: number }> {
@@ -147,7 +199,9 @@ export class ScaleWorkersUseCase {
     if (state.status === 'not_configured') return unknown(new ScalerNotConfiguredError(state.missing));
     if (state.status === 'unavailable') {
       return unknown(
-        state.reason === 'rate_limited' ? new ScalerRateLimitedError(null) : new ScalerUnavailableError(state.reason),
+        state.reason === 'rate_limited'
+          ? new ScalerRateLimitedError(state.retryAfterSeconds ?? null, this.now())
+          : new ScalerUnavailableError(state.reason),
       );
     }
     const current = state.desiredReplicas;

@@ -33,10 +33,16 @@ export class ScalerUnavailableError extends AppError {
   }
 }
 
-/** Provedor respondeu 429. `retryAfterSeconds` vem do `Retry-After` (null se ausente ou inválido). */
+/**
+ * Provedor respondeu 429. `retryAfterSeconds` vem do `Retry-After` (null se ausente ou inválido);
+ * `meta.retryAt` (ISO, a partir de `now`) faz o `errorHandler` devolver o `Retry-After` ao cliente.
+ */
 export class ScalerRateLimitedError extends AppError {
-  constructor(public readonly retryAfterSeconds: number | null) {
-    super('SCALER_RATE_LIMITED', 'Worker scaler provider rate limited the request', 429, { retryAfterSeconds });
+  constructor(public readonly retryAfterSeconds: number | null, now: Date = new Date()) {
+    super('SCALER_RATE_LIMITED', 'Worker scaler provider rate limited the request', 429, {
+      retryAfterSeconds,
+      retryAt: retryAfterSeconds == null ? null : new Date(now.getTime() + retryAfterSeconds * 1000).toISOString(),
+    });
   }
 }
 
@@ -87,6 +93,27 @@ export class ScaleCooldownActiveError extends AppError {
     super('SCALE_COOLDOWN_ACTIVE', 'Wait for the minimum interval between scale requests', 409, {
       retryAt: retryAt.toISOString(),
     });
+  }
+}
+
+/** Mesmo `requestId` com alvo, motivo ou ator diferentes do pedido gravado: o painel gera outro id. */
+export class ScaleRequestIdReusedError extends AppError {
+  constructor() {
+    super('REQUEST_ID_REUSED', 'This request id was already used for a different scale request', 409, { field: 'requestId' });
+  }
+}
+
+/** Falha inesperada no pedido de escala; a mensagem original nunca sai (pode ter credencial). */
+export class ScaleRequestFailedError extends AppError {
+  constructor() {
+    super('SCALE_REQUEST_FAILED', 'The scale request failed', 503);
+  }
+}
+
+/** Motivo com menos de 3 ou mais de 200 caracteres depois de tirar os espaços das pontas. */
+export class InvalidScaleReasonError extends AppError {
+  constructor(min: number, max: number) {
+    super('INVALID_SCALE_REASON', `Reason must have between ${min} and ${max} characters`, 400, { field: 'reason', min, max });
   }
 }
 

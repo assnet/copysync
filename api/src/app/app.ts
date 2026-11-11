@@ -13,6 +13,7 @@ import { env } from '../shared/config/env';
 import { errorHandler } from '../shared/http/errorHandler';
 import { contentDispositionFor, isAllowedMediaPath } from '../shared/storage/staticMediaPolicy';
 import { serverTimeHook, storageDispositionHook } from './onSendHooks';
+import { CORS_EXPOSED_HEADERS } from './corsPolicy';
 import { registerRoutes } from './routes';
 import { registerPublicLinkRoutes } from '../modules/link-rotation/presentation/routes/publicLink.routes';
 import { createPublicLinkDeps } from '../modules/link-rotation/infrastructure/publicLinkComposition';
@@ -101,7 +102,7 @@ export async function buildApp() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-client', 'x-installation-id'],
-    exposedHeaders: ['X-Server-Time'],
+    exposedHeaders: [...CORS_EXPOSED_HEADERS],
   });
 
   // Hooks onSend são síncronos por obrigação — ver onSendHooks.ts.

@@ -3,6 +3,7 @@ import {
   WORKER_SCALE_TEXT_MAX,
   type IWorkerScaleEventRepository,
   type NewWorkerScaleEvent,
+  type RecordRequestedResult,
   type WorkerScaleEvent,
   type WorkerScaleEventPage,
   type WorkerScaleOutcome,
@@ -14,6 +15,10 @@ export const WORKER_SCALE_RETENTION_BATCH_SIZE = 5_000;
 /** Teto de lotes por chamada; o resto sai na limpeza seguinte. */
 export const WORKER_SCALE_RETENTION_MAX_BATCHES = 10;
 const STATEMENT_TIMEOUT = '2s';
+/** Chave fixa do advisory lock que serializa pedidos de escala (recurso único: o serviço worker). */
+const SCALE_REQUEST_LOCK_KEY = 'worker-scale-request';
+/** Resultados que contam para o intervalo mínimo (queda no meio deixa `requested`). */
+const COOLDOWN_OUTCOMES = ['requested', 'succeeded'];
 
 const cut = (s: string) => s.slice(0, WORKER_SCALE_TEXT_MAX);
 const cutOrNull = (s: string | null | undefined) => (s == null ? null : cut(s));
@@ -31,25 +36,56 @@ const toEvent = (r: Row): WorkerScaleEvent => ({
   requestId: r.requestId,
 });
 
+const toData = (e: NewWorkerScaleEvent) => ({
+  trigger: e.trigger,
+  actorUserId: e.actorUserId,
+  fromReplicas: e.fromReplicas,
+  toReplicas: e.toReplicas,
+  reason: cut(e.reason),
+  outcome: e.outcome,
+  error: cutOrNull(e.error),
+  requestId: e.requestId ?? null,
+});
+
 /** `worker_scale_events` (WSCALE-13). `at` gravado em UTC pelo Prisma; sem tenant. */
 export class PrismaWorkerScaleEventRepository implements IWorkerScaleEventRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async record(e: NewWorkerScaleEvent): Promise<number> {
     const row = await this.prisma.workerScaleEvent.create({
-      data: {
-        trigger: e.trigger,
-        actorUserId: e.actorUserId,
-        fromReplicas: e.fromReplicas,
-        toReplicas: e.toReplicas,
-        reason: cut(e.reason),
-        outcome: e.outcome,
-        error: cutOrNull(e.error),
-        requestId: e.requestId ?? null,
-      },
+      data: toData(e),
       select: { id: true },
     });
     return Number(row.id);
+  }
+
+  /** Transação curta: o lock solta no commit/rollback. */
+  async recordRequestedIfIdle({
+    evt,
+    cooldownSeconds,
+    now,
+  }: {
+    evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>;
+    cooldownSeconds: number;
+    now: Date;
+  }): Promise<RecordRequestedResult> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${SCALE_REQUEST_LOCK_KEY}::text, 0::bigint))`;
+      const last = await tx.workerScaleEvent.findFirst({
+        where: { outcome: { in: COOLDOWN_OUTCOMES } },
+        orderBy: [{ at: 'desc' }, { id: 'desc' }],
+        select: { at: true },
+      });
+      if (last) {
+        const retryAt = new Date(last.at.getTime() + cooldownSeconds * 1000);
+        if (retryAt.getTime() > now.getTime()) return { blocked: retryAt };
+      }
+      const row = await tx.workerScaleEvent.create({
+        data: toData({ ...evt, outcome: 'requested', error: null }),
+        select: { id: true },
+      });
+      return { id: Number(row.id) };
+    });
   }
 
   async updateOutcome(id: number, outcome: WorkerScaleOutcome, error?: string | null): Promise<void> {

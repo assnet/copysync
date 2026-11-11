@@ -11,6 +11,7 @@ import { PrismaWorkerCapacityReader } from '../../infrastructure/repositories/Pr
 import { workerScalerStateCache } from '../../infrastructure/lease/sessionLeaseContainer';
 import type { WorkerScaleEvent } from '../../domain/contracts/IWorkerScaleEventRepository';
 import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
+import { ScalerRateLimitedError } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import { WORKER_SCALE_EVENTS_PAGE_SIZE } from '../../application/use-cases/ListWorkerScaleEventsUseCase';
 
 /* Sem banco nem rede: Prisma vazio, escalador falso, repositórios espionados no protótipo. */
@@ -57,7 +58,7 @@ const publicEvent = (e: WorkerScaleEvent) => ({
 });
 
 let app: FastifyInstance;
-let events: Record<'findByRequestId' | 'record' | 'updateOutcome' | 'lastSucceededAt' | 'list', ReturnType<typeof vi.fn>>;
+let events: Record<'findByRequestId' | 'record' | 'recordRequestedIfIdle' | 'updateOutcome' | 'lastSucceededAt' | 'list', ReturnType<typeof vi.fn>>;
 let audit: ReturnType<typeof vi.fn>;
 let listSince: ReturnType<typeof vi.fn>;
 
@@ -77,6 +78,7 @@ beforeEach(async () => {
   events = {
     findByRequestId: vi.spyOn(proto, 'findByRequestId').mockResolvedValue(null),
     record: vi.spyOn(proto, 'record').mockResolvedValue(7),
+    recordRequestedIfIdle: vi.spyOn(proto, 'recordRequestedIfIdle').mockResolvedValue({ id: 7 }),
     updateOutcome: vi.spyOn(proto, 'updateOutcome').mockResolvedValue(undefined),
     lastSucceededAt: vi.spyOn(proto, 'lastSucceededAt').mockResolvedValue(null),
     list: vi.spyOn(proto, 'list').mockResolvedValue({ items: [], nextBeforeId: null }),
@@ -160,10 +162,13 @@ describe('POST /admin/workers/scale', () => {
     expect(res.json()).toEqual({ success: true, data: { event: { ...rest, at: expect.any(String) }, replayed: false } });
     expect(scaler.scaleTo).toHaveBeenCalledWith(3);
     expect(listSince).toHaveBeenCalledWith('sessions_connected', expect.any(Date));
-    expect(events.record).toHaveBeenCalledWith(expect.objectContaining({
-      trigger: 'manual', actorUserId: 'user-a', fromReplicas: 2, toReplicas: 3, reason: 'pico de sessões',
-      outcome: 'requested', requestId: REQUEST_ID,
-    }));
+    expect(events.recordRequestedIfIdle).toHaveBeenCalledWith({
+      evt: expect.objectContaining({
+        trigger: 'manual', actorUserId: 'user-a', fromReplicas: 2, toReplicas: 3, reason: 'pico de sessões', requestId: REQUEST_ID,
+      }),
+      cooldownSeconds: 600,
+      now: expect.any(Date),
+    });
     expect(events.updateOutcome).toHaveBeenCalledWith(7, 'succeeded', null);
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-a', action: 'WORKER_SCALE_REQUESTED' }));
     // GET (1) + POST ao vivo (1) + GET depois da invalidação (1)
@@ -179,6 +184,56 @@ describe('POST /admin/workers/scale', () => {
     expect(scaler.getState).not.toHaveBeenCalled();
     expect(scaler.scaleTo).not.toHaveBeenCalled();
     expect(events.record).not.toHaveBeenCalled();
+    expect(events.recordRequestedIfIdle).not.toHaveBeenCalled();
+  });
+
+  it('replay com o mesmo requestId e outro alvo: 409 REQUEST_ID_REUSED', async () => {
+    events.findByRequestId.mockResolvedValue(event({ toReplicas: 4 }));
+    const res = await post(body());
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('REQUEST_ID_REUSED');
+    expect(scaler.scaleTo).not.toHaveBeenCalled();
+  });
+
+  it('motivo curto depois do trim: 400 INVALID_SCALE_REASON, sem gravar nem ler o escalador', async () => {
+    const res = await post(body({ reason: '   ab   ' }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatchObject({ code: 'INVALID_SCALE_REASON', meta: { field: 'reason' } });
+    expect(events.record).not.toHaveBeenCalled();
+    expect(scaler.getState).not.toHaveBeenCalled();
+  });
+
+  it('429 do provedor: Retry-After no header', async () => {
+    scaler.scaleTo.mockRejectedValue(new ScalerRateLimitedError(42));
+    const res = await post(body());
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error.code).toBe('SCALER_RATE_LIMITED');
+    expect(Number(res.headers['retry-after'])).toBeGreaterThanOrEqual(41);
+    expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(42);
+  });
+
+  it('429 no estado ao vivo: Retry-After no header', async () => {
+    scaler.getState.mockResolvedValue({ status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: 30 });
+    const res = await post(body());
+    expect(res.statusCode).toBe(429);
+    expect(Number(res.headers['retry-after'])).toBeGreaterThanOrEqual(29);
+    expect(scaler.scaleTo).not.toHaveBeenCalled();
+  });
+
+  it('erro desconhecido do escalador: 503 SCALE_REQUEST_FAILED sem a mensagem original', async () => {
+    scaler.scaleTo.mockRejectedValue(new Error('Bearer rnd_secret'));
+    const res = await post(body());
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe('SCALE_REQUEST_FAILED');
+    expect(res.body).not.toContain('rnd_secret');
+  });
+
+  it('falha ao gravar o resultado depois do escalador aceitar: 200 succeeded', async () => {
+    events.updateOutcome.mockRejectedValue(new Error('db'));
+    const res = await post(body());
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.event.outcome).toBe('succeeded');
+    expect(scaler.scaleTo).toHaveBeenCalledTimes(1);
   });
 
   it('body inválido: 400 pelo schema, sem gravar', async () => {
@@ -200,8 +255,8 @@ describe('POST /admin/workers/scale', () => {
   it('campo extra: removido pelo `additionalProperties: false` (padrão do Fastify), não chega ao use case', async () => {
     const res = await post(body({ extra: true, actorUserId: 'outro' }));
     expect(res.statusCode).toBe(200);
-    expect(events.record).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 'user-a' }));
-    expect(events.record.mock.calls[0][0]).not.toHaveProperty('extra');
+    expect(events.recordRequestedIfIdle.mock.calls[0][0].evt).toMatchObject({ actorUserId: 'user-a' });
+    expect(events.recordRequestedIfIdle.mock.calls[0][0].evt).not.toHaveProperty('extra');
   });
 
   it('fora da faixa: 400 com meta.field', async () => {

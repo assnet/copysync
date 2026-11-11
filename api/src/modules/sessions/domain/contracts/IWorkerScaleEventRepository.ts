@@ -35,10 +35,24 @@ export interface WorkerScaleEventPage {
   nextBeforeId: number | null;
 }
 
+/** Resultado de `recordRequestedIfIdle`: id do `requested` gravado ou fim do intervalo mínimo. */
+export type RecordRequestedResult = { id: number } | { blocked: Date };
+
 /** `worker_scale_events` (WSCALE-13). Sem tenant: dado de infraestrutura. */
 export interface IWorkerScaleEventRepository {
   /** Grava e devolve o id. `requestId` repetido lança (unicidade); use `findByRequestId` antes. */
   record(event: NewWorkerScaleEvent): Promise<number>;
+  /**
+   * Grava `evt` como `requested` só se o último `requested|succeeded` estiver fora de
+   * `cooldownSeconds` contados até `now`; senão devolve `{ blocked: retryAt }` sem gravar. Leitura e
+   * insert serializados por `pg_advisory_xact_lock` de chave fixa: dois pedidos simultâneos (com
+   * `requestId` diferentes) não passam juntos. `requestId` repetido lança (unicidade).
+   */
+  recordRequestedIfIdle(input: {
+    evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>;
+    cooldownSeconds: number;
+    now: Date;
+  }): Promise<RecordRequestedResult>;
   updateOutcome(id: number, outcome: WorkerScaleOutcome, error?: string | null): Promise<void>;
   /**
    * Horário do último pedido que conta para o intervalo mínimo: `requested` ou `succeeded`

@@ -157,19 +157,38 @@ no header.
    `SCALER_UNAVAILABLE` (`reason`) ou 429 `SCALER_RATE_LIMITED`.
 5. Serviço com disco ou autoescala nativa da Render → 409 `SCALER_SERVICE_NOT_SCALABLE` (`disk`|`native_autoscaling`).
 6. Automático (P4) só `atual + 1`.
-7. Intervalo `scaleCooldownSeconds` desde o último `succeeded` → 409 `SCALE_COOLDOWN_ACTIVE` (`retryAt`).
+7. Intervalo `scaleCooldownSeconds` desde o último `requested` ou `succeeded` → 409 `SCALE_COOLDOWN_ACTIVE` (`retryAt`).
 8. Redução só se `floor(réplicas × teto × alertOccupancyRatio) ≥ conectadas` → 409 `SCALE_DOWN_WOULD_EXCEED_CAPACITY`
    com os números.
 9. Alvo igual ao atual → 409 `SCALE_TARGET_UNCHANGED`.
 
-- Idempotência por `requestId`: repetido devolve o evento anterior (`replayed: true`) sem chamar a Render; corrida
-  barrada pela unicidade devolve o primeiro.
+- Motivo validado depois do `trim` (3–200) no `RequestWorkerScaleUseCase` → 400 `INVALID_SCALE_REASON`
+  (`field: 'reason'`); o schema da rota mede antes do `trim`.
+- **Serialização**: a regra 7 é checada cedo (para `checkPreconditions` e para recusar sem lock) e de novo em
+  `recordRequestedIfIdle`, que lê o último `requested|succeeded` e grava `requested` numa transação com
+  `pg_advisory_xact_lock(hashtextextended('worker-scale-request', 0))` (chave fixa: um recurso só). Dois `POST` com
+  `requestId` diferentes ao mesmo tempo: um grava, o outro recebe `{ blocked: retryAt }` → `rejected` + 409
+  `SCALE_COOLDOWN_ACTIVE`. Vale entre réplicas do `http` (o lock é do Postgres).
+- **Replay estrito** por `requestId`: mesmo id com o mesmo alvo, motivo (após `trim`) e ator devolve o evento gravado
+  (`replayed: true`) sem chamar a Render, **inclusive `failed`**; com qualquer um deles diferente → 409
+  `REQUEST_ID_REUSED`. Por isso um pedido `failed` não é reenviado com o mesmo `requestId`: o painel gera outro id
+  para tentar de novo. Corrida barrada pela unicidade aplica a mesma comparação ao vencedor.
 - Evento antes da chamada: `requested` → `scaleTo` (sem retry) → `succeeded` ou `failed` (`error` = código interno
   curto, nunca mensagem do provedor). Recusa grava `rejected` **sem** `requestId` (pode ser refeita).
+- **Erro genérico**: erro do `scaleTo` fora de `AppError` vira 503 `SCALE_REQUEST_FAILED` sem a mensagem original
+  (evento `failed` com `error = SCALE_REQUEST_FAILED`, `warn` só com o id do evento e o código).
+- **Sucesso mesmo com falha de escrita**: se `updateOutcome(succeeded)` ou a auditoria lançar depois do `scaleTo`
+  aceito, `warn` (sem segredo) e a resposta é de sucesso com o evento `succeeded` em memória. A linha pode ficar
+  `requested` no banco: ela continua contando para o intervalo mínimo (regra 7), o que é o lado seguro.
+- **`Retry-After`**: `SCALER_RATE_LIMITED` (429) leva `meta.retryAfterSeconds` e `meta.retryAt` (ISO); o
+  `errorHandler` põe o header a partir de `retryAt`. Vale para o 429 do `scaleTo` e para o estado ao vivo
+  `unavailable/rate_limited` (que carrega `retryAfterSeconds`). O header está em `CORS_EXPOSED_HEADERS`
+  (`app/corsPolicy.ts`) para o painel de outra origem ler. Sem `Retry-After` do provedor, `retryAt` é `null` e
+  não há header.
 - Histórico (`GET /scale/events`, cursor opaco) sem ator: só `Manual`/`Automática`. Quem pediu fica na auditoria
   `WORKER_SCALE_REQUESTED` (`succeeded`/`failed`). Retenção 180 dias (limpeza no job da P4).
 - `GET /scale`: estado do escalador em cache de 30 s por processo (`WorkerScalerStateCache`); o `POST` lê ao vivo e
-  invalida o cache.
+  invalida o cache em `finally` (aceito ou recusado). O cache só alimenta a tela, nunca decisão.
 - Descida só manual (D4); a Render escolhe qual instância encerra (`SIGTERM` + grace).
 - **T25 pendente (dono)**: smoke real num Private Service de teste na Render (subir 1→2, reduzir 2→1, `SIGTERM`,
   `maxShutdownDelaySeconds`). Obrigatório antes de ligar `WORKER_SCALER_ENABLED` em produção; resultado anotado aqui.
@@ -195,6 +214,9 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 - Comparar "Conectadas (banco)" com a aba Ocupação como se fossem a mesma conta.
 - Alertar ocupação no coletor com a adoção ligada (duplica o `WorkerCapacityAlertJob`).
 - Chave, id do serviço ou corpo da Render em log, evento ou resposta (só operação, status e código interno).
+- Reusar um `requestId` para outro pedido (alvo/motivo diferente) ou para tentar de novo um `failed`: gere outro.
+- Checar o intervalo e gravar `requested` fora de `recordRequestedIfIdle` (perde a serialização).
+- Relançar erro cru do escalador ou gravar a mensagem dele no evento: só o código interno.
 - Retry automático de `scaleTo` (o evento `requested` já conta o intervalo; repetir duplica custo).
 - Ligar `WORKER_SCALER_ENABLED` em produção sem o T25, ou localmente (`api/.env` aponta para produção).
 - Escalar serviço com disco ou com a autoescala nativa da Render ligada.

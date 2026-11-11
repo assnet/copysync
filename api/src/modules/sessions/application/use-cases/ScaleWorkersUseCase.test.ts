@@ -14,7 +14,7 @@ import {
   defaultWorkerScalingSettings,
   type WorkerScalingSettings,
 } from '../../domain/services/workerScalingSettings';
-import { ScalerUnavailableError } from '../../../../shared/errors/internal/WorkerScalingErrors';
+import { ScalerRateLimitedError, ScalerUnavailableError } from '../../../../shared/errors/internal/WorkerScalingErrors';
 
 const NOW = new Date('2026-11-11T12:00:00.000Z');
 
@@ -33,6 +33,15 @@ function makeEvents(lastSucceededAt: Date | null = null) {
       const row = rows.find((r) => r.id === id)!;
       row.outcome = outcome;
       row.error = error ?? null;
+    }),
+    recordRequestedIfIdle: vi.fn(async ({ evt, cooldownSeconds, now }: { evt: Omit<NewWorkerScaleEvent, 'outcome' | 'error'>; cooldownSeconds: number; now: Date }) => {
+      const counted = rows.filter((r) => r.outcome === 'requested' || r.outcome === 'succeeded').map((r) => r.at);
+      if (lastSucceededAt) counted.push(lastSucceededAt);
+      const last = counted.sort((a, b) => b.getTime() - a.getTime())[0];
+      if (last && last.getTime() + cooldownSeconds * 1000 > now.getTime()) {
+        return { blocked: new Date(last.getTime() + cooldownSeconds * 1000) };
+      }
+      return { id: await repo.record({ ...evt, outcome: 'requested', error: null }) };
     }),
     lastSucceededAt: vi.fn(async () => lastSucceededAt),
     findByRequestId: vi.fn(async (id: string) => rows.find((r) => r.requestId === id) ?? null),
@@ -80,15 +89,17 @@ function setup(opts: {
   const events = makeEvents(opts.last ?? null);
   const scaler = makeScaler(opts.state ?? ready());
   const audit = makeAuditRepo();
+  const log = { warn: vi.fn() };
   const useCase = new ScaleWorkersUseCase({
     events,
     scaler,
     audit,
     settings: settingsOf(opts.settings),
     isAdoptionEnabled: typeof opts.adoption === 'function' ? opts.adoption : () => (opts.adoption as boolean | undefined) ?? true,
+    log,
     now: () => NOW,
   });
-  return { events, scaler, audit, useCase };
+  return { events, scaler, audit, log, useCase };
 }
 
 const input = (over: Partial<ScaleWorkersInput> = {}): ScaleWorkersInput => ({
@@ -149,6 +160,15 @@ describe('ScaleWorkersUseCase — recusas', () => {
   it('escalador indisponível → SCALER_UNAVAILABLE / SCALER_RATE_LIMITED', async () => {
     await expectRejected(setup({ state: { status: 'unavailable', reason: 'timeout' } }), input(), 'SCALER_UNAVAILABLE', 0);
     await expectRejected(setup({ state: { status: 'unavailable', reason: 'rate_limited' } }), input(), 'SCALER_RATE_LIMITED', 0);
+  });
+
+  it('limite do provedor no estado: retryAt preservado na recusa', async () => {
+    const ctx = setup({ state: { status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: 30 } });
+    await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
+      code: 'SCALER_RATE_LIMITED',
+      statusCode: 429,
+      meta: { retryAfterSeconds: 30, retryAt: new Date(NOW.getTime() + 30_000).toISOString() },
+    });
   });
 
   it('serviço com disco ou autoescala nativa → SCALER_SERVICE_NOT_SCALABLE', async () => {
@@ -237,11 +257,61 @@ describe('ScaleWorkersUseCase — pedido aceito', () => {
     );
   });
 
-  it('erro desconhecido não vaza mensagem', async () => {
+  it('erro desconhecido → SCALE_REQUEST_FAILED (503) sem a mensagem original no erro nem no log', async () => {
     const ctx = setup();
     ctx.scaler.scaleTo.mockRejectedValue(new Error('Bearer rnd_secret'));
-    await expect(ctx.useCase.execute(input())).rejects.toThrow();
-    expect(ctx.events.rows[0].error).toBe('SCALE_REQUEST_FAILED');
+    const err = (await ctx.useCase.execute(input()).catch((e: unknown) => e)) as Error & { meta?: unknown };
+    expect(err).toMatchObject({ code: 'SCALE_REQUEST_FAILED', statusCode: 503 });
+    expect(err.message).not.toContain('rnd_secret');
+    expect(JSON.stringify(err.meta ?? null)).not.toContain('rnd_secret');
+    expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALE_REQUEST_FAILED' });
+    expect(ctx.log.warn).toHaveBeenCalled();
+    expect(JSON.stringify(ctx.log.warn.mock.calls)).not.toContain('rnd_secret');
+    expect(JSON.stringify(ctx.audit.create.mock.calls)).not.toContain('rnd_secret');
+  });
+
+  it('429 do provedor no scaleTo: relança com retryAt', async () => {
+    const ctx = setup();
+    ctx.scaler.scaleTo.mockRejectedValue(new ScalerRateLimitedError(12, NOW));
+    await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
+      code: 'SCALER_RATE_LIMITED',
+      meta: { retryAt: new Date(NOW.getTime() + 12_000).toISOString() },
+    });
+    expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed', error: 'SCALER_RATE_LIMITED' });
+  });
+
+  it.each(['updateOutcome', 'audit'] as const)('falha de escrita (%s) depois do scaleTo aceito: sucesso com warn', async (what) => {
+    const ctx = setup();
+    if (what === 'updateOutcome') ctx.events.updateOutcome.mockRejectedValueOnce(new Error('db down secret'));
+    else ctx.audit.create.mockRejectedValueOnce(new Error('db down secret'));
+    const res = await ctx.useCase.execute(input());
+    expect(res).toMatchObject({ replayed: false, event: { outcome: 'succeeded', toReplicas: 3 } });
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    expect(ctx.log.warn).toHaveBeenCalledWith(expect.objectContaining({ eventId: 1, outcome: 'succeeded' }), expect.any(String));
+    expect(JSON.stringify(ctx.log.warn.mock.calls)).not.toContain('secret');
+    if (what === 'updateOutcome') expect(ctx.events.rows[0].outcome).toBe('requested');
+  });
+
+  it('linha que ficou requested segura o intervalo mínimo do pedido seguinte', async () => {
+    const ctx = setup();
+    ctx.events.updateOutcome.mockRejectedValueOnce(new Error('db'));
+    await ctx.useCase.execute(input());
+    // checagem antecipada lê `lastSucceededAt` (fixo no fake); o lock vê a linha `requested`
+    await expect(ctx.useCase.execute(input({ requestId: 'req-2', replicas: 4 }))).rejects.toMatchObject({
+      code: 'SCALE_COOLDOWN_ACTIVE',
+    });
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('intervalo ocupado no lock (corrida entre requestId diferentes) → rejected sem scaleTo', async () => {
+    const ctx = setup();
+    ctx.events.recordRequestedIfIdle.mockResolvedValueOnce({ blocked: new Date(NOW.getTime() + 600_000) });
+    await expect(ctx.useCase.execute(input())).rejects.toMatchObject({
+      code: 'SCALE_COOLDOWN_ACTIVE',
+      meta: { retryAt: new Date(NOW.getTime() + 600_000).toISOString() },
+    });
+    expect(ctx.scaler.scaleTo).not.toHaveBeenCalled();
+    expect(ctx.events.rows).toEqual([expect.objectContaining({ outcome: 'rejected', requestId: null, fromReplicas: 2 })]);
   });
 
   it('automático (sem ator) não audita', async () => {
@@ -267,10 +337,41 @@ describe('ScaleWorkersUseCase — idempotência', () => {
   it('corrida: unicidade barra o segundo record e devolve o vencedor', async () => {
     const ctx = setup();
     const winner = { id: 9, at: NOW, trigger: 'manual', actorUserId: 'u1', fromReplicas: 2, toReplicas: 3, reason: 'x', outcome: 'requested', error: null, requestId: 'req-1' } as WorkerScaleEvent;
-    ctx.events.findByRequestId.mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
-    ctx.events.record.mockRejectedValueOnce(new Error('unique'));
+    const winnerOf = (reason: string) => ({ ...winner, reason });
+    ctx.events.findByRequestId.mockResolvedValueOnce(null).mockResolvedValueOnce(winnerOf('pico'));
+    ctx.events.recordRequestedIfIdle.mockRejectedValueOnce(new Error('unique'));
     const res = await ctx.useCase.execute(input());
-    expect(res).toEqual({ event: winner, replayed: true });
+    expect(res).toEqual({ event: winnerOf('pico'), replayed: true });
+    expect(ctx.scaler.scaleTo).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, Partial<ScaleWorkersInput>]>([
+    ['outro alvo', { replicas: 4 }],
+    ['outro motivo', { reason: 'outro' }],
+    ['outro ator', { actorUserId: 'u2' }],
+  ])('mesmo requestId com %s → REQUEST_ID_REUSED (409) sem chamar', async (_n, over) => {
+    const ctx = setup();
+    await ctx.useCase.execute(input());
+    await expect(ctx.useCase.execute(input(over))).rejects.toMatchObject({ code: 'REQUEST_ID_REUSED', statusCode: 409 });
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+    expect(ctx.events.rows).toHaveLength(1);
+  });
+
+  it('replay de pedido failed devolve o failed sem chamar de novo', async () => {
+    const ctx = setup();
+    ctx.scaler.scaleTo.mockRejectedValueOnce(new ScalerUnavailableError('timeout'));
+    await expect(ctx.useCase.execute(input())).rejects.toMatchObject({ code: 'SCALER_UNAVAILABLE' });
+    const again = await ctx.useCase.execute(input());
+    expect(again).toMatchObject({ replayed: true, event: { outcome: 'failed', error: 'SCALER_UNAVAILABLE:timeout' } });
+    expect(ctx.scaler.scaleTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('corrida com o mesmo requestId e corpo diferente → REQUEST_ID_REUSED', async () => {
+    const ctx = setup();
+    const other = { id: 9, at: NOW, trigger: 'manual', actorUserId: 'u1', fromReplicas: 2, toReplicas: 5, reason: 'pico', outcome: 'requested', error: null, requestId: 'req-1' } as WorkerScaleEvent;
+    ctx.events.findByRequestId.mockResolvedValueOnce(null).mockResolvedValueOnce(other);
+    ctx.events.recordRequestedIfIdle.mockRejectedValueOnce(new Error('unique'));
+    await expect(ctx.useCase.execute(input())).rejects.toMatchObject({ code: 'REQUEST_ID_REUSED' });
     expect(ctx.scaler.scaleTo).not.toHaveBeenCalled();
   });
 

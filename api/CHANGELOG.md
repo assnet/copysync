@@ -46,6 +46,16 @@ pedir a escala em `/admin/workers/scale`, com as regras de WSCALE-12, evento ant
 
 - **`docs/workers-escala.md`** (Escala), **`docs/arquitetura-escala.md`** (§5.1 envs e checklist, §6), **`docs/ops-metricas.md`** (recorte: só as rotas de escala chamam a Render), **`docs/produto-roadmap.md`**, **`AGENTS.md`**.
 
+### Fixed (revisão da P3)
+
+- **`IWorkerScaleEventRepository.ts`**, **`PrismaWorkerScaleEventRepository.ts`** — `recordRequestedIfIdle({ evt, cooldownSeconds, now })`: lê o último `requested|succeeded` e grava `requested` numa transação com `pg_advisory_xact_lock(hashtextextended('worker-scale-request', 0))`; dentro do intervalo devolve `{ blocked: retryAt }`. Dois `POST` com `requestId` diferentes não chamam `scaleTo` juntos (antes leitura e insert eram separados).
+- **`ScaleWorkersUseCase.ts`** — usa `recordRequestedIfIdle` (a checagem antecipada continua para `checkPreconditions`); bloqueio no lock grava `rejected` e responde 409 `SCALE_COOLDOWN_ACTIVE`. Replay estrito: mesmo `requestId` com alvo, motivo ou ator diferentes → 409 `REQUEST_ID_REUSED` (igual: replay, inclusive `failed`). Erro fora de `AppError` vira 503 `SCALE_REQUEST_FAILED` sem a mensagem original (evento `failed` só com o código; `warn` sem o texto). Falha em `updateOutcome`/auditoria depois do `scaleTo` aceito: `warn` e resposta de sucesso (`succeeded` em memória; a linha que ficar `requested` segue contando o intervalo).
+- **`WorkerScalingErrors.ts`**, **`IWorkerScaler.ts`**, **`RenderWorkerScaler.ts`** — `ScalerRateLimitedError` com `meta.retryAt` (ISO) além de `retryAfterSeconds`; o estado `unavailable/rate_limited` carrega `retryAfterSeconds` e o use case não perde o valor: o `errorHandler` devolve `Retry-After` no 429. Erros novos `REQUEST_ID_REUSED` (409), `SCALE_REQUEST_FAILED` (503), `INVALID_SCALE_REASON` (400, `field: 'reason'`).
+- **`RequestWorkerScaleUseCase.ts`** — motivo validado depois do `trim` (3–200, `INVALID_SCALE_REASON`); `invalidate()` do cache em `finally` (também em erro).
+- **`sessionLeaseContainer.ts`** — logger do `ScaleWorkersUseCase`.
+- **`app/app.ts`**, **`app/corsPolicy.ts`** — `Retry-After` em `exposedHeaders` do CORS (`CORS_EXPOSED_HEADERS`, com `X-Server-Time`): sem ele o painel de outra origem não lia o header.
+- **Docs** — `docs/workers-escala.md` (serialização, replay estrito, erro genérico, sucesso com falha de escrita, `Retry-After`), `docs/arquitetura-escala.md` §3.7 (cache de 30 s do estado do escalador).
+
 ## [0.83.0 · app 0.102.0] — 2026-11-11 — Capacidade dos workers e métricas de sessões
 
 Não havia número para decidir o teto nem quantas réplicas subir, e sem adoção nenhum alerta de ocupação. O coletor passa a
