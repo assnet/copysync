@@ -13,6 +13,10 @@ export const inviteStrings = {
   expiredMessage: 'Este convite expirou. Solicite um novo convite ao administrador.',
   backToLogin: 'Ir para o login',
 
+  /* --- link já usado (uso único): a senha já existe, o caminho é o login --- */
+  alreadyAcceptedTitle: 'Sua senha já foi criada',
+  alreadyAcceptedMessage: 'Este link só funciona uma vez e já foi usado. Entre com seu e-mail e a senha que você criou.',
+
   /* --- convite valido --- */
   title: 'Você foi convidado',
   subtitle: 'Uma equipe quer que você faça parte do painel.',
@@ -55,6 +59,7 @@ export const inviteStrings = {
   genericError: 'Não foi possível aceitar o convite. Tente novamente.',
 
   /* --- acessibilidade --- */
+  strengthAria: 'Força da senha',
   strengthWeak: 'Fraca',
   strengthMedium: 'Média',
   strengthStrong: 'Forte',

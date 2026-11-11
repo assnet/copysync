@@ -66,6 +66,7 @@ enum AuditAction {
   AFFILIATE_CREDENTIAL_DELETED
   AFFILIATE_SESSION_SYNCED
   INVITE_ACCEPTED
+  PASSWORD_RESET_COMPLETED
   MEMBER_INVITED
   MEMBER_CREATED
   MEMBER_DEACTIVATED
@@ -217,6 +218,7 @@ model User {
   extensionInstallations     ExtensionInstallation[]
   marketplaceRiskAcceptances MarketplaceRiskAcceptance[]
   loginCodes                 LoginCode[]
+  passwordResetRequests      PasswordResetRequest[]
 
   @@index([email])
   @@map("users")
@@ -319,6 +321,27 @@ model LoginCode {
   @@index([userId, createdAt])
   @@index([createdAt])
   @@map("login_codes")
+}
+
+/// Pedido de redefinição de senha (docs/recuperacao-de-senha.md). Toda requisição grava uma linha
+/// (teto por e-mail/IP, exista ou não a conta); tokenHash só quando há conta. Poda: 30 dias.
+model PasswordResetRequest {
+  id            String    @id @default(cuid())
+  email         String
+  ip            String?
+  userId        String?
+  tokenHash     String?   @unique
+  expiresAt     DateTime?
+  usedAt        DateTime?
+  invalidatedAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@index([userId])
+  @@map("password_reset_requests")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

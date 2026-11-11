@@ -68,3 +68,34 @@ export const loginCodeChallengeResponseSchema = {
     },
   },
 } as const;
+
+// ── Recuperação de senha (docs/recuperacao-de-senha.md) ──────────────────────
+
+export const passwordForgotBodySchema = {
+  type: 'object',
+  required: ['email'],
+  properties: {
+    email: { type: 'string', format: 'email', maxLength: 254 },
+    turnstileToken: { type: 'string', maxLength: 4096 },
+  },
+  additionalProperties: false,
+} as const;
+
+/** Token sempre no corpo, nunca na URL: a URL vai para o log de requisições. */
+export const passwordResetInspectBodySchema = {
+  type: 'object',
+  required: ['token'],
+  properties: { token: { type: 'string', minLength: 1, maxLength: 128 } },
+  additionalProperties: false,
+} as const;
+
+export const passwordResetBodySchema = {
+  type: 'object',
+  required: ['token', 'password', 'confirmPassword'],
+  properties: {
+    token: { type: 'string', minLength: 1, maxLength: 128 },
+    password: { type: 'string', minLength: 8, maxLength: 200 },
+    confirmPassword: { type: 'string', minLength: 8, maxLength: 200 },
+  },
+  additionalProperties: false,
+} as const;

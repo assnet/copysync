@@ -3,6 +3,9 @@ import { PrivateRoute } from './PrivateRoute';
 import { AppLayout } from '@/app/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
 import { InvitePage } from '@/pages/InvitePage';
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
+import { FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH } from '@/features/passwordReset/strings';
 import { PrivacyPolicyPage } from '@/pages/PrivacyPolicyPage';
 import { PRIVACY_POLICY_PATH } from '@/features/privacy-policy/strings';
 import { SupportPage } from '@/pages/SupportPage';
@@ -60,6 +63,9 @@ export function AppRoutes() {
       {/* Públicas */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/invite/:token" element={<InvitePage />} />
+      {/* Esqueci minha senha: pedido do link e redefinição pelo link do e-mail (docs/seguranca-login.md) */}
+      <Route path={FORGOT_PASSWORD_PATH} element={<ForgotPasswordPage />} />
+      <Route path={`${RESET_PASSWORD_PATH}/:token`} element={<ResetPasswordPage />} />
       {/* URL declarada na Chrome Web Store: precisa abrir sem login */}
       <Route path={PRIVACY_POLICY_PATH} element={<PrivacyPolicyPage />} />
       <Route path={SUPPORT_PATH} element={<SupportPage />} />

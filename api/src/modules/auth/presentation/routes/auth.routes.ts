@@ -25,6 +25,11 @@ import { HmacLoginCodeHasher, HmacLoginTicketSigner, createEmailRef } from '../.
 import { bcryptPasswordVerifier } from '../../infrastructure/security/bcryptPasswordVerifier';
 import { createEmailSenderFromEnv } from '../../../integrations/infrastructure/email/EmailSenderFactory';
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
+import { RequestPasswordResetUseCase } from '../../application/use-cases/RequestPasswordResetUseCase';
+import { ResetPasswordUseCase } from '../../application/use-cases/ResetPasswordUseCase';
+import { PrismaPasswordResetRepository } from '../../infrastructure/repositories/PrismaPasswordResetRepository';
+import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
+import { passwordResetRoutes } from './passwordReset.routes';
 import { AuthPresenter } from '../presenters/AuthPresenter';
 import {
   loginBodySchema,
@@ -54,12 +59,18 @@ const loginConfig = {
   turnstileSiteKey: loginPolicy.requireTurnstile ? env.TURNSTILE_SITE_KEY ?? null : null,
   emailCode: loginPolicy.requireEmailCode,
 };
+const emailSender = createEmailSenderFromEnv();
 const loginChallenge = new LoginCodeChallenge(
   new PrismaLoginCodeRepository(),
   new HmacLoginCodeHasher(env.JWT_SECRET),
   new HmacLoginTicketSigner(env.JWT_SECRET),
-  createEmailSenderFromEnv(),
+  emailSender,
 );
+const passwordResetRepo = new PrismaPasswordResetRepository();
+const requestPasswordReset = new RequestPasswordResetUseCase(
+  userRepo, passwordResetRepo, loginGuard, emailSender, env.PANEL_URL, createEmailRef(env.JWT_SECRET),
+);
+const resetPassword = new ResetPasswordUseCase(userRepo, passwordResetRepo, loginGuard, new PrismaAuditLogRepository());
 const createLoginSession = new CreateLoginSessionUseCase(userRepo, authRepo);
 const loginUseCase = new LoginUseCase(userRepo, loginGuard, loginChallenge, createLoginSession, bcryptPasswordVerifier);
 const verifyLoginCodeUseCase = new VerifyLoginCodeUseCase(userRepo, loginGuard, loginChallenge, createLoginSession);
@@ -82,6 +93,9 @@ async function sendSession(reply: FastifyReply, result: LoginResultDto): Promise
  * Registered under /api/auth.
  */
 export async function authRoutes(app: FastifyInstance): Promise<void> {
+  // Recuperação de senha (docs/recuperacao-de-senha.md): /auth/password/*
+  await app.register(passwordResetRoutes, { requestPasswordReset, resetPassword });
+
   // ── GET /auth/login/config ─────────────────────────────────────────────────
   // Público: o painel decide se mostra o widget. Sem a site key aqui o Turnstile não é exigido.
   app.get(

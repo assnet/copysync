@@ -3,7 +3,7 @@ import { ThemeModeSelector } from '@/components/ThemeModeSelector';
 import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
-  CircularProgress, InputAdornment, IconButton, Tooltip, LinearProgress,
+  CircularProgress, InputAdornment, IconButton, Tooltip,
   alpha, useTheme, Fade,
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -16,26 +16,18 @@ import { BrandLogo } from '@/shared/branding/BrandLogo';
 import { GOLDEN_SPACE, GOLDEN_TYPE } from './login/goldenRatio';
 import { inviteService, type InviteInfo } from '@/services/invite.service';
 import { inviteStrings, translateRole, maskEmail } from '@/features/invite/strings';
+import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
+import { FORGOT_PASSWORD_PATH, passwordResetStrings } from '@/features/passwordReset/strings';
 
-type PageState = 'loading' | 'valid' | 'needs-login' | 'accepted' | 'error';
+type PageState = 'loading' | 'valid' | 'needs-login' | 'accepted' | 'already-accepted' | 'error';
 
-/** Calcula a força da senha: 0 = fraca, 1 = média, 2 = forte. */
-function passwordStrength(pw: string): number {
-  if (pw.length < 8) return 0;
-  let score = 0;
-  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
-  if (/\d/.test(pw)) score++;
-  if (/[^a-zA-Z0-9]/.test(pw)) score++;
-  if (pw.length >= 12) score++;
-  return score <= 1 ? 0 : score <= 2 ? 1 : 2;
-}
+const isAlreadyAccepted = (err: unknown) => (err as { code?: string })?.code === 'INVITE_ALREADY_ACCEPTED';
 
 const STRENGTH_LABELS = [
   inviteStrings.strengthWeak,
   inviteStrings.strengthMedium,
   inviteStrings.strengthStrong,
-];
-const STRENGTH_COLORS = ['error', 'warning', 'success'] as const;
+] as const;
 
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
@@ -64,7 +56,8 @@ export function InvitePage() {
       } else {
         setPageState('valid');
       }
-    } catch {
+    } catch (err) {
+      if (isAlreadyAccepted(err)) { setPageState('already-accepted'); return; }
       setPageState('error');
       setErrorMsg(inviteStrings.invalidMessage);
     }
@@ -90,6 +83,8 @@ export function InvitePage() {
         setPageState('needs-login');
       }
     } catch (err) {
+      // Duplo envio ou outra aba: o link foi usado entre abrir a tela e enviar.
+      if (isAlreadyAccepted(err)) { setPageState('already-accepted'); return; }
       const msg = (err as { message?: string })?.message || inviteStrings.genericError;
       setSubmitError(msg);
     } finally {
@@ -98,7 +93,6 @@ export function InvitePage() {
   };
 
   /* ---------- validações ---------- */
-  const strength = passwordStrength(password);
   const mismatch = confirmPassword.length > 0 && password !== confirmPassword;
   const canSubmit =
     !submitting
@@ -198,6 +192,31 @@ export function InvitePage() {
           </Fade>
         )}
 
+        {/* --- JÁ USADO --- */}
+        {pageState === 'already-accepted' && (
+          <Fade in>
+            <Box>
+              {renderCard(
+                <Box sx={{ textAlign: 'center', py: `${GOLDEN_SPACE.s2}px` }}>
+                  <CheckCircleOutlineIcon color="success" sx={{ fontSize: 48, mb: 2 }} />
+                  <Typography variant="h6" fontWeight={700} gutterBottom>
+                    {inviteStrings.alreadyAcceptedTitle}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ mb: 3 }}>
+                    {inviteStrings.alreadyAcceptedMessage}
+                  </Typography>
+                  <Button component={RouterLink} to="/login" variant="contained" fullWidth size="large">
+                    {inviteStrings.goToLogin}
+                  </Button>
+                  <Button component={RouterLink} to={FORGOT_PASSWORD_PATH} variant="text" fullWidth sx={{ mt: 1 }}>
+                    {passwordResetStrings.forgotLink}
+                  </Button>
+                </Box>,
+              )}
+            </Box>
+          </Fade>
+        )}
+
         {/* --- ACCEPTED --- */}
         {pageState === 'accepted' && (
           <Fade in>
@@ -246,6 +265,9 @@ export function InvitePage() {
                     size="large"
                   >
                     {inviteStrings.goToLogin}
+                  </Button>
+                  <Button component={RouterLink} to={FORGOT_PASSWORD_PATH} variant="text" fullWidth sx={{ mt: 1 }}>
+                    {passwordResetStrings.forgotLink}
                   </Button>
                 </Box>,
               )}
@@ -334,15 +356,7 @@ export function InvitePage() {
                       {/* Indicador de força */}
                       {password.length > 0 && (
                         <Box sx={{ mb: `${GOLDEN_SPACE.s3}px` }}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={(strength + 1) * 33.3}
-                            color={STRENGTH_COLORS[strength]}
-                            sx={{ height: 4, borderRadius: 2, mb: 0.5 }}
-                          />
-                          <Typography variant="caption" color={`${STRENGTH_COLORS[strength]}.main`}>
-                            {STRENGTH_LABELS[strength]}
-                          </Typography>
+                          <PasswordStrengthMeter password={password} labels={STRENGTH_LABELS} ariaLabel={inviteStrings.strengthAria} />
                         </Box>
                       )}
 
