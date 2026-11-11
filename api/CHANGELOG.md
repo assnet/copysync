@@ -7,6 +7,51 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.82.0 · app 0.101.0] — 2026-11-11 — Configuração de escala dos workers em banco
+
+O teto de sessões por worker (`WORKER_MAX_SESSIONS`) e os limiares de alerta eram env lida no boot: mudar exigia
+redeploy, que derruba as sessões. Agora ficam em `platform_settings` (chave `worker_scaling`), ajustados pelo super admin
+e lidos em runtime (refresh 30 s). Sem linha salva o comportamento é o de antes; a env vira só valor inicial.
+Spec: `.specs/features/worker-scaling/` (WSCALE-01..07, 19; fase P1). Doc: `docs/workers-escala.md`.
+**Migration Prisma**: sim (`20261111140000_add_audit_action_worker_scaling`, só `ALTER TYPE ... ADD VALUE`).
+**Limite conhecido**: o teto só é aplicado com `WORKER_ADOPTION_ENABLED=true` (`enforced: false` sem ela).
+
+### Added
+
+#### API — `sessions`
+
+- **`sessions/domain/services/workerScalingSettings.ts`** — configuração pura: 9 campos com faixa (`maxSessionsPerWorker` 1–1000, `maxPendingLoginsPerWorker` 1–500, `alertOccupancyRatio` 0,5–0,95, `awaitingAlertSeconds`, `scalerMode`, réplicas 1–20, tempos), defaults vindos da env, `resolveEffectiveSettings` com origem `default|saved` por campo; campo desconhecido rejeitado.
+- **`sessions/domain/contracts/IWorkerScalingSettingsRepository.ts`**, **`IWorkerScalingSettingsProvider.ts`** — contratos de persistência e de leitura síncrona (`current()`).
+- **`sessions/infrastructure/repositories/PrismaWorkerScalingSettingsRepository.ts`** — leitura/gravação em `platform_settings`; concorrência otimista por `updatedAt` (create com P2002 ou `updateMany` sem linha → conflito); valor não-objeto ignorado com `warn` sem conteúdo.
+- **`sessions/infrastructure/lease/RefreshingWorkerScalingSettingsProvider.ts`** — nasce com a env sem I/O; refresh a cada 30 s (`unref`) e na hora após salvar; falha mantém o último valor bom e loga uma vez.
+- **`sessions/application/use-cases/GetWorkerScalingSettingsUseCase.ts`**, **`UpdateWorkerScalingSettingsUseCase.ts`** — leitura com `origin`, `updatedAt` e `enforced`; gravação do objeto completo com `expectedUpdatedAt`, `updatedById`, auditoria antes/depois e `provider.refresh()`.
+- **`sessions/presentation/routes/workerAdmin.routes.ts`**, **`schemas/workerAdmin.schema.ts`** — `GET`/`PUT /admin/workers/settings` (super admin).
+- **`shared/errors/internal/WorkerScalingErrors.ts`** — `INVALID_WORKER_SCALING_SETTINGS` (400, `{field}`) e `WORKER_SCALING_SETTINGS_CONFLICT` (409).
+- **`prisma/schema.prisma`**, **`shared/audit/IAuditLogRepository.ts`** — `AuditAction` `WORKER_SCALING_SETTINGS_CHANGED` e `WORKER_SCALE_REQUESTED` (este para a P3).
+
+### Changed
+
+#### API — `sessions`
+
+- **`sessions/application/services/CapacityLimitedLeaseGate.ts`** — recebe `() => limits` e lê o teto a cada `acquire`.
+- **`sessions/infrastructure/lease/sessionLeaseContainer.ts`** — singleton `workerScalingSettingsProvider()` em todo papel; gate com teto só com adoção ligada (como antes), lido do provider.
+- **`sessions/infrastructure/lease/sessionAdoptionContainer.ts`**, **`AdoptNextSessionUseCase.ts`**, **`sessionAdoptionPolicy.ts`** — ticker com `maxSessions()` por tick; `capacityAlertReason` recebe `ratio` e `awaitingSeconds` (constantes viram default).
+- **`sessions/infrastructure/jobs/WorkerHeartbeatJob.ts`**, **`WorkerCapacityAlertJob.ts`** — teto gravado e limiares lidos da configuração a cada tick.
+- **`app/roleComposition.ts`** — pausa do `session-open` compara com o teto do provider a cada checagem.
+- **`app/server.ts`** — `refresh()` + `start()` do provider antes do boot das sessões; `stop()` no shutdown; registro do worker com o teto da configuração.
+- **`shared/config/workerAdoption.ts`** — `workerAdoptionConfig()` sem os tetos; `workerScalingEnvDefaults()` é o único ponto que lê `WORKER_MAX_*`.
+
+#### Painel (app/) — `workersAdmin`
+
+- **`features/workersAdmin/types.ts`**, **`rules.ts`**, **`strings.ts`**, **`services/adminWorkers.service.ts`** — contrato, faixas espelhadas da API, validação e diff do rascunho, textos pt-BR.
+- **`features/workersAdmin/useWorkerSettings.ts`** — carga, rascunho em `usePersistedState` (`workers.settings.draft`, `tab`), 409 recarrega e descarta, 400 marca o campo.
+- **`features/workersAdmin/components/SettingsTab.tsx`**, **`SettingsConfirmDialog.tsx`** — formulário com ajuda por campo, `RangeSlider` de réplicas, diff na confirmação, valor digitado para mudar o teto, aviso abaixo da ocupação e faixa "sem efeito" sem adoção.
+- **`pages/admin/AdminWorkersPage.tsx`**, **`routes/AppRoutes.tsx`** — aba Configuração em `/admin/workers/settings` (chunk `lazy`), abas pela URL.
+
+#### Docs
+
+- **`docs/workers-escala.md`** (novo), **`docs/arquitetura-escala.md`** (env `WORKER_MAX_*` = valor inicial), **`docs/produto-roadmap.md`** (Gestão de workers), **`AGENTS.md`**.
+
 ## [0.81.0 · app 0.100.0] — 2026-11-11 — Link de afiliado sempre do tenant (recriado a partir de qualquer link do produto)
 
 Gerador, Página de Ofertas e Story recusavam link de outro afiliado (`OFFER_LINK_NOT_OWNED`) ou sem afiliação
