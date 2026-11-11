@@ -75,7 +75,7 @@ worker. Isso exige exatamente o mesmo trabalho de código que multi-instância. 
 app (static) ──► API HTTP + WS  (N réplicas, stateless)
                       │  BullMQ (comandos)   ▲ Redis pub/sub (eventos → WS)
                       ▼                      │
-                 Workers Baileys  (M processos, cada um dono de até WORKER_MAX_SESSIONS sessões)
+                 Workers Baileys  (M processos, cada um dono de até maxSessionsPerWorker sessões)
                       │
           Postgres (sessões, lease, auth state, mensagens)   S3/R2 (mídia)   Redis
 ```
@@ -149,10 +149,14 @@ Use cases novos: `AcquireSessionLeaseUseCase`, `RenewSessionLeaseUseCase`,
 **Feito na E4 (api 0.62.0), atrás de `WORKER_ADOPTION_ENABLED=false`** (desligada = E3 idêntica, nenhuma
 escrita em `worker_heartbeats`). Spec: `.specs/features/session-adoption/`. Onde diverge do desenho abaixo:
 
-- Teto no gate: `CapacityLimitedLeaseGate` nega `acquire` de sessão alheia com `ativas >= WORKER_MAX_SESSIONS`.
+- **Teto e limiares (api 0.82.0):** `WORKER_MAX_SESSIONS`/`WORKER_MAX_PENDING_LOGINS` são só valor inicial; o valor em uso
+  vem da configuração em `/admin/workers/settings` (`platform_settings.worker_scaling`, refresh 30 s, lido a cada uso).
+  Ver [`workers-escala.md`](workers-escala.md). Abaixo, "teto" = `maxSessionsPerWorker` e "teto de logins" =
+  `maxPendingLoginsPerWorker`; 80 % e 2 min do alerta = `alertOccupancyRatio`/`awaitingAlertSeconds`.
+- Teto no gate: `CapacityLimitedLeaseGate` nega `acquire` de sessão alheia com `ativas >= teto`.
   **Só login concluído ocupa vaga (T24):** `ativas` = `listAuthenticatedSessionIds()` (Baileys `creds.registered`/
   `creds.me`; Telegram após `finishLogin`) + reservas de reabertura com credencial salva (`hasStoredCredentials`).
-  Abertura sem credencial (QR/pareamento/código/senha) passa sem vaga, limitada por `WORKER_MAX_PENDING_LOGINS`.
+  Abertura sem credencial (QR/pareamento/código/senha) passa sem vaga, limitada pelo teto de logins.
   `listLocalSessionIds()` segue com todas (lease e renovação não mudam). Login concluído com o worker cheio
   **fica** (inclui o reinício do socket logo após o QR lido, janela de 60 s): o teto pode ser excedido
   temporariamente; ticker e `session-open` só param de adotar enquanto `autenticadas ≥ teto`. Vale para rota,
@@ -175,7 +179,7 @@ escrita em `worker_heartbeats`). Spec: `.specs/features/session-adoption/`. Onde
   dos processos. Leitura de plataforma, só super-admin, **sem `tenantId`** (o lease é do processo). Ligada: heartbeats
   como antes, sem consultar leases.
 - Shutdown: drain de mídia **antes** dos sockets, com teto que reserva o fim para close+flush+release (D4).
-- QR sem leitura não prende mais vaga (T24); ainda ocupa memória e um lugar em `WORKER_MAX_PENDING_LOGINS`.
+- QR sem leitura não prende mais vaga (T24); ainda ocupa memória e um lugar no teto de logins.
   `worker_heartbeats.sessions` = autenticadas, `pendingLogins` = logins em andamento (`/admin/workers`
   mostra a coluna "Aguardando login").
 - Pendentes do dono: heartbeat de worker morto só é limpo após 1 dia
@@ -186,12 +190,12 @@ Decisão 2026-11-04: **sem shard por hash**. Envs (todas em `env.ts` desde a E4)
 | Env | Default | Função |
 |---|---|---|
 | `WORKER_ADOPTION_ENABLED` | `false` | liga a adoção. **Só na Render.** `api/.env` local aponta para produção: `pnpm dev` com isso ligado roubaria lease e reconectaria sessões reais |
-| `WORKER_MAX_SESSIONS` | `40` | teto por processo = `0,7 × RAM ÷ MB por sessão` medido na Fase 0 (§2: 15–40 MB). A 40 MB: 2 GB → 35, 8 GB → 140, 16 GB → 280. Teto 200 exige medição ≤ 28 MB em 8 GB |
-| `WORKER_MAX_PENDING_LOGINS` | `50` | teto separado de logins em andamento (QR/código sem leitura) por processo, só para proteger a memória; acima dele a abertura dá 503 como o teto de sessões |
+| `WORKER_MAX_SESSIONS` | `40` | **valor inicial**; o valor em uso vem da configuração em `/admin/workers/settings`. Teto por processo = `0,7 × RAM ÷ MB por sessão` medido na Fase 0 (§2: 15–40 MB). A 40 MB: 2 GB → 35, 8 GB → 140, 16 GB → 280. Teto 200 exige medição ≤ 28 MB em 8 GB |
+| `WORKER_MAX_PENDING_LOGINS` | `50` | **valor inicial**; o valor em uso vem da configuração em `/admin/workers/settings`. Teto separado de logins em andamento (QR/código sem leitura) por processo, só para proteger a memória; acima dele a abertura dá 503 como o teto de sessões |
 | `WORKER_ID` | `${HOSTNAME ?? os.hostname()}-${pid}-${nonce8}` | identidade do dono, única por boot (restart no mesmo host não herda leases). `RENDER_INSTANCE_ID` não existe no código nem está confirmada; `HOSTNAME` não existe fora do Docker |
 | `WORKER_SHARD` | vazio | worker com valor só adota `Session.shard = x`; sem valor só adota `"shard" IS NULL` (tenant dedicado fica isolado). Coluna entra na migração de E2, sem uso até existir tenant dedicado |
 
-Adoção (tick de 5 s enquanto `ativas < WORKER_MAX_SESSIONS`; `ativas` = sessões com
+Adoção (tick de 5 s enquanto `ativas < teto`; `ativas` = sessões com
 `ownerWorkerId = $me` **e** socket aberto neste processo), uma linha por tick:
 
 ```sql
@@ -424,11 +428,11 @@ Criação (decisão 2026-10-26: só sessões de teste em produção, então **se
 `DATABASE_URL`, subir, parear as sessões de teste de novo. Criado sob demanda, antes da Fase 1 (R2) ou do primeiro teste de carga.
 Tabelas antigas no banco compartilhado: verificado em 2026-11-06 que o Postgres do PulsoSocial não tem nenhuma tabela do CopySync; nada a apagar ali. Storage 15 GB basta porque mídia vai para R2 (Fase 1).
 
-Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa de `WORKER_MAX_SESSIONS` igual à meta e de
+Um processo em modo `all` (HTTP + worker) com 150-300 sessões precisa do teto (`/admin/workers/settings`; `WORKER_MAX_SESSIONS` é só valor inicial) igual à meta e de
 `NODE_OPTIONS=--max-old-space-size=<70% da RAM em MB>`, senão o heap padrão do Node
 (~2-4 GB) estoura antes do plano.
 
-Escada na Render (teto por réplica `worker` = `WORKER_MAX_SESSIONS`; réplicas = `ceil(sessões / (teto × 0,8))`):
+Escada na Render (teto por réplica `worker` = `maxSessionsPerWorker` da configuração; réplicas = `ceil(sessões / (teto × 0,8))`):
 
 | Sessões | Serviços | US$/mês | Postgres (dedicado ao CopySync) | US$/mês |
 |---|---|---|---|---|
@@ -453,8 +457,8 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 | `REDIS_URL` | vazio | com o Key Value da Render; `all` ignora |
 | `ENGINE_COMMAND_CONCURRENCY` | `2` | comandos simultâneos por fila do worker; subir só medindo |
 | `WORKER_ADOPTION_ENABLED` | `false` | no worker (ou `all`) quando houver mais de um processo de sessão ou para readotar no deploy |
-| `WORKER_MAX_SESSIONS` | `40` | teto medido na Fase 0 (§3.2), junto com `NODE_OPTIONS`; conta só sessões com login concluído |
-| `WORKER_MAX_PENDING_LOGINS` | `50` | logins em andamento (QR/código) por processo; só baixar se a RAM apertar |
+| `WORKER_MAX_SESSIONS` | `40` | **valor inicial**; o valor em uso vem da configuração em `/admin/workers/settings`. Teto medido na Fase 0 (§3.2), junto com `NODE_OPTIONS`; conta só sessões com login concluído |
+| `WORKER_MAX_PENDING_LOGINS` | `50` | **valor inicial**; o valor em uso vem da configuração em `/admin/workers/settings`. Logins em andamento (QR/código) por processo; só baixar se a RAM apertar |
 | `WORKER_SHARD` | vazio | só com tenant dedicado (ninguém grava `Session.shard` ainda) |
 | `DATABASE_SOCKET_TIMEOUT_S` | vazio | em todo serviço antes de ligar o 2º processo (ex.: 30; §6) |
 
@@ -503,7 +507,7 @@ Alternativa sem painel: `docker-compose.yml` com `api`, `worker`, `postgres`, `r
 | Fase | Sessões | Infra | Custo |
 |---|---|---|---|
 | A | 0-300 | Dedicado AX42 (64 GB) + Dokploy (Swarm + Traefik). `api`, `postgres`, `redis`, `minio` no mesmo nó. App no Cloudflare Pages | €99 |
-| B | 300-800 | Mesmo AX42. 1 serviço `api` (http) + 2-3 réplicas `worker` com `WORKER_MAX_SESSIONS`. Sobra RAM | €99 |
+| B | 300-800 | Mesmo AX42. 1 serviço `api` (http) + 2-3 réplicas `worker` com o teto da configuração. Sobra RAM | €99 |
 | C | 800-2.000 | Segundo nó AX42 ou AX102 via Dokploy (SSH). Workers no nó 2, Postgres/Redis no nó 1 | €200-360 |
 | D | 3.000+ | AX102 para workers; AX42 para Postgres com réplica | ~€360 |
 
@@ -542,7 +546,8 @@ não o servidor.
   o resto usa `getActiveEngine()`), nem usar pub/sub para comando que precisa de entrega (BullMQ).
 - Não ligar retry automático no envio (duplica mensagem no grupo) nem subir `http` para N réplicas
   (upload em disco e throttle de reação são por processo).
-- Não subir `WORKER_MAX_SESSIONS` sem medir RAM (Fase 0), nem gravar `Session.shard` sem tenant dedicado.
+- Não subir o teto (`/admin/workers/settings`; a env é só valor inicial) sem medir RAM (Fase 0), nem ler
+  `WORKER_MAX_*` em código novo (só `workerScalingSettingsProvider().current()`), nem gravar `Session.shard` sem tenant dedicado.
 - Smoke local só com env sintético apontando para o Postgres descartável
   (`api/scripts/postgres-descartavel.sh`): `api/.env` **e** `api/.env.dev` têm `DATABASE_URL` de produção.
 - Testes de integração (`api/vitest.int.config.mts`, dois projetos, em sequência):

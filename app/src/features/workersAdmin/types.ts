@@ -41,3 +41,50 @@ export interface WorkerOccupancyList {
   /** Soma das sessões com lease vivo (adoção desligada). */
   leasedSessions?: number;
 }
+
+/** Modo do escalador de réplicas (WSCALE-01). */
+export type WorkerScalerMode = 'off' | 'manual' | 'auto';
+
+/** Configuração de escala dos workers (WSCALE-01). Todos inteiros, salvo `alertOccupancyRatio`. */
+export interface WorkerScalingSettings {
+  maxSessionsPerWorker: number;
+  maxPendingLoginsPerWorker: number;
+  alertOccupancyRatio: number;
+  awaitingAlertSeconds: number;
+  scalerMode: WorkerScalerMode;
+  minReplicas: number;
+  maxReplicas: number;
+  scaleUpSustainSeconds: number;
+  scaleCooldownSeconds: number;
+}
+
+export type WorkerScalingSettingsField = keyof WorkerScalingSettings;
+export type WorkerScalingSettingsOrigin = 'default' | 'saved';
+
+/** Resposta de `GET`/`PUT /admin/workers/settings`. */
+export interface WorkerScalingSettingsView {
+  settings: WorkerScalingSettings;
+  origin: Record<WorkerScalingSettingsField, WorkerScalingSettingsOrigin>;
+  /** ISO; `null` = nunca salvo (valores da env). */
+  updatedAt: string | null;
+  /** `false` com a adoção desligada: o teto não é aplicado. */
+  enforced: boolean;
+}
+
+/** Corpo de `PUT /admin/workers/settings`. */
+export interface UpdateWorkerScalingSettingsInput {
+  settings: WorkerScalingSettings;
+  /** `updatedAt` lido no GET (409 se outro admin salvou antes). */
+  expectedUpdatedAt: string | null;
+}
+
+/** Rascunho do formulário: campos numéricos podem vir como texto do input. */
+export type WorkerScalingSettingsDraft = {
+  [K in WorkerScalingSettingsField]: K extends 'scalerMode' ? WorkerScalerMode : number | string;
+};
+
+export interface WorkerScalingSettingsChange {
+  field: WorkerScalingSettingsField;
+  from: WorkerScalingSettings[WorkerScalingSettingsField];
+  to: WorkerScalingSettings[WorkerScalingSettingsField];
+}

@@ -1,5 +1,9 @@
 import { currentWorkerId } from '../../../../shared/config/workerIdentity';
-import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
+import { workerAdoptionConfig, workerScalingEnvDefaults } from '../../../../shared/config/workerAdoption';
+import { prisma } from '../../../../shared/database/prisma.client';
+import type { WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
+import { PrismaWorkerScalingSettingsRepository } from '../repositories/PrismaWorkerScalingSettingsRepository';
+import { RefreshingWorkerScalingSettingsProvider } from './RefreshingWorkerScalingSettingsProvider';
 import type { ISessionLeaseGate, ISessionLeaseRepository } from '../../domain/contracts/ISessionLeaseRepository';
 import type { ISessionSocketControl } from '../../../messaging/domain/contracts/ISessionSocketControl';
 import { PrismaSessionLeaseRepository } from '../repositories/PrismaSessionLeaseRepository';
@@ -10,6 +14,14 @@ import { AcquireSessionLeaseUseCase } from '../../application/use-cases/AcquireS
 import { RenewSessionLeaseUseCase, type ResumeGiveUpStatus } from '../../application/use-cases/RenewSessionLeaseUseCase';
 import { PrismaSessionRepository } from '../repositories/PrismaSessionRepository';
 import { ReleaseSessionLeaseUseCase } from '../../application/use-cases/ReleaseSessionLeaseUseCase';
+import {
+  GetWorkerScalingSettingsUseCase,
+  workerScalingEnforcedCheck,
+  type WorkerScalingSettingsViewDeps,
+} from '../../application/use-cases/GetWorkerScalingSettingsUseCase';
+import { UpdateWorkerScalingSettingsUseCase } from '../../application/use-cases/UpdateWorkerScalingSettingsUseCase';
+import { PrismaWorkerHeartbeatRepository } from '../repositories/PrismaWorkerHeartbeatRepository';
+import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 
 export interface SessionLeaseContainer {
   workerId: string;
@@ -42,10 +54,15 @@ export interface SessionLeaseContainer {
  * banco. Antes de `bindSocketControl` a renovação vê zero sockets locais (não faz nada).
  */
 export interface SessionLeaseCapacity {
-  /** Teto de sessões com login concluído (`WORKER_MAX_SESSIONS`). */
+  /** Teto de sessões com login concluído (`maxSessionsPerWorker` da configuração de escala). */
   maxSessions: number;
-  /** Teto de logins em andamento (`WORKER_MAX_PENDING_LOGINS`). */
+  /** Teto de logins em andamento (`maxPendingLoginsPerWorker` da configuração de escala). */
   maxPendingLogins: number;
+}
+
+/** Teto do gate a partir da configuração de escala efetiva (WSCALE-04). */
+export function capacityFromSettings(settings: WorkerScalingSettings): SessionLeaseCapacity {
+  return { maxSessions: settings.maxSessionsPerWorker, maxPendingLogins: settings.maxPendingLoginsPerWorker };
 }
 
 /** Sem porta de status (testes): a desistência da retomada só loga. */
@@ -54,7 +71,8 @@ const NO_STATUS: ResumeGiveUpStatus = { markDisconnectedIfNoLiveLease: async () 
 export function buildSessionLeaseContainer(
   repo: ISessionLeaseRepository,
   workerId: string,
-  capacity?: SessionLeaseCapacity,
+  /** Teto lido a cada `acquire` (WSCALE-04); ausente = sem teto (adoção desligada). */
+  capacity?: () => SessionLeaseCapacity,
   status: ResumeGiveUpStatus = NO_STATUS,
 ): SessionLeaseContainer {
   const ledger = new SessionLeaseLedger();
@@ -116,18 +134,65 @@ function withRelease(capped: CapacityLimitedLeaseGate, base: ISessionLeaseGate):
 }
 
 let instance: SessionLeaseContainer | undefined;
+let settingsProvider: RefreshingWorkerScalingSettingsProvider | undefined;
+
+/**
+ * Configuração de escala do processo (WSCALE-03), singleton. Nasce com o valor da env, sem I/O:
+ * `server.ts` faz `refresh()` + `start()` depois de conectar no banco e `stop()` no shutdown.
+ * Existe em todo papel (as rotas leem e o salvamento chama `refresh()`), com ou sem adoção.
+ * Consumidores leem `current()` a cada uso, nunca guardam o número.
+ */
+export function workerScalingSettingsProvider(): RefreshingWorkerScalingSettingsProvider {
+  settingsProvider ??= new RefreshingWorkerScalingSettingsProvider({
+    repository: new PrismaWorkerScalingSettingsRepository(prisma),
+    envDefaults: workerScalingEnvDefaults(),
+  });
+  return settingsProvider;
+}
+
+let getSettingsUseCase: GetWorkerScalingSettingsUseCase | undefined;
+let updateSettingsUseCase: UpdateWorkerScalingSettingsUseCase | undefined;
+
+/** `enforced` da tela: adoção ligada aqui ou batimento vivo de algum worker (com `http` separado). */
+function workerScalingSettingsViewDeps(): WorkerScalingSettingsViewDeps {
+  return {
+    envDefaults: workerScalingEnvDefaults(),
+    isEnforced: workerScalingEnforcedCheck(() => workerAdoptionConfig().enabled, new PrismaWorkerHeartbeatRepository()),
+  };
+}
+
+/** Leitura da configuração de escala para o super admin (singleton preguiçoso; import não toca banco). */
+export function getWorkerScalingSettingsUseCase(): GetWorkerScalingSettingsUseCase {
+  getSettingsUseCase ??= new GetWorkerScalingSettingsUseCase(
+    new PrismaWorkerScalingSettingsRepository(prisma),
+    workerScalingSettingsViewDeps(),
+  );
+  return getSettingsUseCase;
+}
+
+/** Gravação auditada da configuração de escala; aplica no processo pelo mesmo provider. */
+export function updateWorkerScalingSettingsUseCase(): UpdateWorkerScalingSettingsUseCase {
+  updateSettingsUseCase ??= new UpdateWorkerScalingSettingsUseCase(
+    new PrismaWorkerScalingSettingsRepository(prisma),
+    new PrismaAuditLogRepository(),
+    workerScalingSettingsProvider(),
+    workerScalingSettingsViewDeps(),
+  );
+  return updateSettingsUseCase;
+}
 
 /**
  * Singleton preguiçoso do processo; o `workerId` vem de `currentWorkerId()` (T2). Teto no gate
- * só com `WORKER_ADOPTION_ENABLED` (ADOPT-06); desligada, nada muda em relação à E3.
+ * só com `WORKER_ADOPTION_ENABLED` (ADOPT-06), lido do provider a cada uso; desligada, nada muda
+ * em relação à E3.
  */
 export function sessionLeaseContainer(): SessionLeaseContainer {
   if (!instance) {
-    const adoption = workerAdoptionConfig();
+    const settings = workerScalingSettingsProvider();
     instance = buildSessionLeaseContainer(
       new PrismaSessionLeaseRepository(),
       currentWorkerId(),
-      adoption.enabled ? { maxSessions: adoption.maxSessions, maxPendingLogins: adoption.maxPendingLogins } : undefined,
+      workerAdoptionConfig().enabled ? () => capacityFromSettings(settings.current().value) : undefined,
       new PrismaSessionRepository(),
     );
   }

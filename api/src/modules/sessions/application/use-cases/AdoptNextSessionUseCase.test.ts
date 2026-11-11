@@ -21,7 +21,7 @@ function setup(opts: { local?: string[]; max?: number; adopted?: { id: string; t
   const uc = new AdoptNextSessionUseCase({
     adoption, engine, audit, log,
     occupiedSessions: () => local.length,
-    workerId: 'w1', shard: null, maxSessions: opts.max ?? 2,
+    workerId: 'w1', shard: null, maxSessions: () => opts.max ?? 2,
   });
   return { uc, adoption, engine, audit, log, local };
 }
@@ -39,7 +39,7 @@ describe('AdoptNextSessionUseCase', () => {
       engine: { adoptSession: vi.fn(), abortSession: vi.fn() },
       audit: { create: vi.fn() },
       log: { info: vi.fn(), warn: vi.fn() },
-      occupiedSessions: occupied, workerId: 'w1', shard: null, maxSessions: 1,
+      occupiedSessions: occupied, workerId: 'w1', shard: null, maxSessions: () => 1,
     });
     expect(await uc.execute()).toBe('full');
     occupied.mockReturnValue(0);

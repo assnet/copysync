@@ -13,6 +13,8 @@ import {
   hasCapacity,
 } from './sessionAdoptionPolicy';
 
+const LIMITS = { ratio: CAPACITY_ALERT_RATIO, awaitingSeconds: AWAITING_ALERT_MS / 1000 };
+
 describe('sessionAdoptionPolicy', () => {
   it('constantes da ADOPT-02', () => {
     expect(ADOPT_TICK_MS).toBe(5_000);
@@ -43,24 +45,33 @@ describe('sessionAdoptionPolicy', () => {
   });
 
   it('80 % exato não alerta; acima alerta por ocupação', () => {
-    expect(capacityAlertReason({ sessions: 8, maxSessions: 10, awaitingOverMs: null })).toBeNull();
-    expect(capacityAlertReason({ sessions: 12, maxSessions: 15, awaitingOverMs: null })).toBeNull();
-    expect(capacityAlertReason({ sessions: 9, maxSessions: 10, awaitingOverMs: null })).toBe('occupancy');
-    expect(capacityAlertReason({ sessions: 33, maxSessions: 40, awaitingOverMs: null })).toBe('occupancy');
+    expect(capacityAlertReason({ ...LIMITS, sessions: 8, maxSessions: 10, awaitingOverMs: null })).toBeNull();
+    expect(capacityAlertReason({ ...LIMITS, sessions: 12, maxSessions: 15, awaitingOverMs: null })).toBeNull();
+    expect(capacityAlertReason({ ...LIMITS, sessions: 9, maxSessions: 10, awaitingOverMs: null })).toBe('occupancy');
+    expect(capacityAlertReason({ ...LIMITS, sessions: 33, maxSessions: 40, awaitingOverMs: null })).toBe('occupancy');
   });
 
   it('soma de tetos 0 não divide por zero nem alerta por ocupação', () => {
-    expect(capacityAlertReason({ sessions: 0, maxSessions: 0, awaitingOverMs: null })).toBeNull();
-    expect(capacityAlertReason({ sessions: 3, maxSessions: 0, awaitingOverMs: null })).toBeNull();
-    expect(capacityAlertReason({ sessions: 0, maxSessions: 0, awaitingOverMs: 120_001 })).toBe('awaiting');
+    expect(capacityAlertReason({ ...LIMITS, sessions: 0, maxSessions: 0, awaitingOverMs: null })).toBeNull();
+    expect(capacityAlertReason({ ...LIMITS, sessions: 3, maxSessions: 0, awaitingOverMs: null })).toBeNull();
+    expect(capacityAlertReason({ ...LIMITS, sessions: 0, maxSessions: 0, awaitingOverMs: 120_001 })).toBe('awaiting');
   });
 
   it('espera: 2 min exatos não alerta; acima alerta', () => {
-    expect(capacityAlertReason({ sessions: 1, maxSessions: 10, awaitingOverMs: 120_000 })).toBeNull();
-    expect(capacityAlertReason({ sessions: 1, maxSessions: 10, awaitingOverMs: 120_001 })).toBe('awaiting');
+    expect(capacityAlertReason({ ...LIMITS, sessions: 1, maxSessions: 10, awaitingOverMs: 120_000 })).toBeNull();
+    expect(capacityAlertReason({ ...LIMITS, sessions: 1, maxSessions: 10, awaitingOverMs: 120_001 })).toBe('awaiting');
   });
 
   it('ocupação tem prioridade sobre espera', () => {
-    expect(capacityAlertReason({ sessions: 10, maxSessions: 10, awaitingOverMs: 999_999 })).toBe('occupancy');
+    expect(capacityAlertReason({ ...LIMITS, sessions: 10, maxSessions: 10, awaitingOverMs: 999_999 })).toBe('occupancy');
+  });
+
+  it('limiares vêm da entrada: ratio e awaitingSeconds alterados mudam a decisão', () => {
+    const base = { sessions: 7, maxSessions: 10, awaitingOverMs: 61_000 };
+    expect(capacityAlertReason({ ...base, ratio: 0.8, awaitingSeconds: 120 })).toBeNull();
+    expect(capacityAlertReason({ ...base, ratio: 0.6, awaitingSeconds: 120 })).toBe('occupancy');
+    expect(capacityAlertReason({ ...base, ratio: 0.7, awaitingSeconds: 120 })).toBeNull();
+    expect(capacityAlertReason({ ...base, ratio: 0.8, awaitingSeconds: 60 })).toBe('awaiting');
+    expect(capacityAlertReason({ ...base, ratio: 0.8, awaitingSeconds: 61 })).toBeNull();
   });
 });

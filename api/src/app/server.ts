@@ -43,7 +43,7 @@ import { registerGroupMonitoringListener } from '../modules/automation/infrastru
 import { extensionContainer } from '../modules/extension/infrastructure/extensionContainer';
 import { HubOutboxWorker } from '../modules/extension/infrastructure/hub/HubOutboxWorker';
 import { ExtensionRetentionJob } from '../modules/extension/infrastructure/jobs/ExtensionRetentionJob';
-import { sessionLeaseContainer } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
+import { sessionLeaseContainer, workerScalingSettingsProvider } from '../modules/sessions/infrastructure/lease/sessionLeaseContainer';
 import { sessionAdoptionContainer } from '../modules/sessions/infrastructure/lease/sessionAdoptionContainer';
 import { createOpsMetricsSamplerJob } from '../modules/metrics/infrastructure/opsMetricsContainer';
 import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/jobs/OpsMetricsSamplerJob';
@@ -62,6 +62,8 @@ const PENDING_MEDIA_SWEEP_INTERVAL_MS = 5 * 60_000;
 const OUTBOUND_TMP_SWEEP_INTERVAL_MS = 60 * 60_000;
 /** Espera dos envios de mídia em andamento no shutdown: a Render dá 30 s entre SIGTERM e SIGKILL. */
 const MEDIA_QUEUE_DRAIN_TIMEOUT_MS = 25_000;
+/** Teto da 1ª leitura da configuração de escala no boot; estourou, segue com a env. */
+const SCALING_SETTINGS_BOOT_TIMEOUT_MS = 5_000;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -137,6 +139,25 @@ async function start(): Promise<void> {
 
   // ── Connect to database ────────────────────────────────────────────────────
   await connectDatabaseWithRetry();
+
+  // ── Configuração de escala (WSCALE-03) ─────────────────────────────────────
+  // Antes do boot das sessões e da adoção: gate, adoção e jobs já leem o valor do banco. Falha de
+  // leitura não lança: segue com o teto da env e troca no próximo refresh (30 s, `unref`).
+  // Teto de 5 s: banco lento não segura o boot; a leitura continua e aplica quando terminar.
+  const scalingSettings = workerScalingSettingsProvider();
+  let scalingTimer: NodeJS.Timeout | undefined;
+  const scalingTimedOut = await Promise.race([
+    scalingSettings.refresh().then(() => false),
+    new Promise<boolean>((resolve) => {
+      scalingTimer = setTimeout(() => resolve(true), SCALING_SETTINGS_BOOT_TIMEOUT_MS);
+      scalingTimer.unref();
+    }),
+  ]);
+  clearTimeout(scalingTimer);
+  if (scalingTimedOut) {
+    logger.warn({ timeoutMs: SCALING_SETTINGS_BOOT_TIMEOUT_MS }, 'worker scaling settings boot refresh timed out; using env defaults');
+  }
+  scalingSettings.start();
 
   // ── Media module (ffmpeg + pasta de uploads) ───────────────────────────────
   // Antes do listen: a primeira requisição já vê as capacidades detectadas. Só loga.
@@ -419,7 +440,12 @@ async function start(): Promise<void> {
     if (jobs.has('workerHeartbeat')) adoption.heartbeat.start();
     if (jobs.has('capacityAlert')) adoption.capacityAlert.start();
     logger.info(
-      { workerId: lease.workerId, maxSessions: adoption.config.maxSessions, shard: adoption.config.shard },
+      {
+        workerId: lease.workerId,
+        maxSessions: scalingSettings.current().value.maxSessionsPerWorker,
+        maxPendingLogins: scalingSettings.current().value.maxPendingLoginsPerWorker,
+        shard: adoption.config.shard,
+      },
       'Session adoption started',
     );
   }
@@ -445,6 +471,7 @@ async function start(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received');
     // Cancela o timer já; a passada em curso é aguardada antes de fechar os sockets (F8).
     const bootRecheckSettled = cancelBootRecheck?.() ?? Promise.resolve();
+    scalingSettings.stop();
     // LEASE-09: primeiro o keeper — nenhuma renovação concorre com o fechamento dos sockets.
     if (sessions) {
       try {

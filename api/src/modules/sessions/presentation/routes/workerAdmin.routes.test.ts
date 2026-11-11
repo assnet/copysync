@@ -5,14 +5,20 @@ import { errorHandler } from '../../../../shared/http/errorHandler';
 import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositories/PrismaWorkerHeartbeatRepository';
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
 import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/repositories/PrismaSessionLeaseHolderRepository';
+import { PrismaWorkerScalingSettingsRepository } from '../../infrastructure/repositories/PrismaWorkerScalingSettingsRepository';
+import { RefreshingWorkerScalingSettingsProvider } from '../../infrastructure/lease/RefreshingWorkerScalingSettingsProvider';
+import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
+import { WorkerScalingSettingsConflictError } from '../../../../shared/errors/internal/WorkerScalingErrors';
 import { WORKER_ALIVE_MS } from '../../domain/services/sessionAdoptionPolicy';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
 const adoption = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../../../../shared/config/workerAdoption', () => ({
-  workerAdoptionConfig: () => ({ enabled: adoption.enabled, maxSessions: 40, maxPendingLogins: 50, shard: null }),
+  workerAdoptionConfig: () => ({ enabled: adoption.enabled, shard: null }),
+  workerScalingEnvDefaults: () => ({ maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 50 }),
 }));
+// A rota não importa Prisma; o container das factories sim (só importa, sem I/O).
 vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
 vi.mock('../../../../shared/http/hooks/authHook', () => ({
   authHook: async (request: { user?: unknown }) => {
@@ -131,5 +137,106 @@ describe('GET /admin/workers', () => {
     vi.spyOn(PrismaSessionLeaseHolderRepository.prototype, 'listLiveHolders').mockResolvedValue([]);
     const { data } = (await app.inject({ method: 'GET', url: URL })).json();
     expect(data).toMatchObject({ adoptionEnabled: false, processes: [], leasedSessions: 0 });
+  });
+});
+
+const SETTINGS_URL = `${URL}/settings`;
+const savedAt = new Date('2026-11-10T09:00:00.000Z');
+const fullSettings = {
+  maxSessionsPerWorker: 60,
+  maxPendingLoginsPerWorker: 20,
+  alertOccupancyRatio: 0.8,
+  awaitingAlertSeconds: 120,
+  scalerMode: 'manual',
+  minReplicas: 1,
+  maxReplicas: 3,
+  scaleUpSustainSeconds: 900,
+  scaleCooldownSeconds: 1800,
+};
+
+describe('/admin/workers/settings', () => {
+  it('sem super-admin: GET e PUT negados sem tocar no banco', async () => {
+    const get = vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get');
+    const save = vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'save');
+    expect((await app.inject({ method: 'GET', url: SETTINGS_URL })).statusCode).toBe(401);
+    const put = await app.inject({ method: 'PUT', url: SETTINGS_URL, payload: { settings: fullSettings, expectedUpdatedAt: null } });
+    expect(put.statusCode).toBe(401);
+    expect(get).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('GET sem linha salva: defaults da env, origem default e updatedAt null', async () => {
+    auth.isSuperAdmin = true;
+    adoption.enabled = false;
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
+    vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'hasAlive').mockResolvedValue(false);
+    const res = await app.inject({ method: 'GET', url: SETTINGS_URL });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.settings).toMatchObject({ maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 50, scalerMode: 'off' });
+    expect(Object.values(body.data.origin).every((o) => o === 'default')).toBe(true);
+    expect(body.data.updatedAt).toBeNull();
+    expect(body.data.enforced).toBe(false);
+  });
+
+  it('GET com a flag só no worker (processo http): batimento vivo = enforced', async () => {
+    auth.isSuperAdmin = true;
+    adoption.enabled = false;
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
+    const alive = vi.spyOn(PrismaWorkerHeartbeatRepository.prototype, 'hasAlive').mockResolvedValue(true);
+    const res = await app.inject({ method: 'GET', url: SETTINGS_URL });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.enforced).toBe(true);
+    expect(alive).toHaveBeenCalledWith(WORKER_ALIVE_MS);
+  });
+
+  it('PUT grava, audita, aplica no processo e devolve o novo estado', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get').mockResolvedValue(null);
+    const save = vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'save')
+      .mockResolvedValue({ value: fullSettings, updatedAt: savedAt, updatedById: 'user-a' });
+    const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined as never);
+    const refresh = vi.spyOn(RefreshingWorkerScalingSettingsProvider.prototype, 'refresh').mockResolvedValue();
+    const res = await app.inject({ method: 'PUT', url: SETTINGS_URL, payload: { settings: fullSettings, expectedUpdatedAt: null } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ settings: fullSettings, updatedAt: savedAt.toISOString(), enforced: true });
+    expect(Object.values(res.json().data.origin).every((o) => o === 'saved')).toBe(true);
+    expect(save).toHaveBeenCalledWith(fullSettings, 'user-a', null);
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-a', action: 'WORKER_SCALING_SETTINGS_CHANGED' }));
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('PUT com campo fora da faixa: 400 com meta.field, sem gravar', async () => {
+    auth.isSuperAdmin = true;
+    const save = vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'save');
+    const res = await app.inject({
+      method: 'PUT', url: SETTINGS_URL, payload: { settings: { ...fullSettings, maxSessionsPerWorker: 0 }, expectedUpdatedAt: null },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatchObject({ code: 'INVALID_WORKER_SCALING_SETTINGS', meta: { field: 'maxSessionsPerWorker' } });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('PUT sem settings: 400 pelo schema do body', async () => {
+    auth.isSuperAdmin = true;
+    const res = await app.inject({ method: 'PUT', url: SETTINGS_URL, payload: { expectedUpdatedAt: null } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('PUT com updatedAt desatualizado: 409 sem auditar nem aplicar', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'get')
+      .mockResolvedValue({ value: fullSettings, updatedAt: savedAt, updatedById: 'user-b' });
+    vi.spyOn(PrismaWorkerScalingSettingsRepository.prototype, 'save').mockRejectedValue(new WorkerScalingSettingsConflictError());
+    const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create');
+    const refresh = vi.spyOn(RefreshingWorkerScalingSettingsProvider.prototype, 'refresh');
+    const res = await app.inject({
+      method: 'PUT', url: SETTINGS_URL, payload: { settings: fullSettings, expectedUpdatedAt: '2026-11-01T00:00:00.000Z' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('WORKER_SCALING_SETTINGS_CONFLICT');
+    expect(audit).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

@@ -7,8 +7,12 @@ import { PrismaWorkerHeartbeatRepository } from '../../infrastructure/repositori
 import { PrismaSessionAdoptionRepository } from '../../infrastructure/repositories/PrismaSessionAdoptionRepository';
 import { ListLeaseHoldersUseCase, type ListLeaseHoldersOutput } from '../../application/use-cases/ListLeaseHoldersUseCase';
 import { PrismaSessionLeaseHolderRepository } from '../../infrastructure/repositories/PrismaSessionLeaseHolderRepository';
-import { workerListResponse } from '../schemas/workerAdmin.schema';
+import { workerListResponse, workerScalingSettingsBody, workerScalingSettingsResponse } from '../schemas/workerAdmin.schema';
 import { workerAdoptionConfig } from '../../../../shared/config/workerAdoption';
+import {
+  getWorkerScalingSettingsUseCase,
+  updateWorkerScalingSettingsUseCase,
+} from '../../infrastructure/lease/sessionLeaseContainer';
 
 const preHandler = [authHook, superAdminHook];
 const tags = ['Workers (admin)'];
@@ -49,5 +53,29 @@ export async function workerAdminRoutes(app: FastifyInstance): Promise<void> {
       ? [await uc().execute(), NO_HOLDERS]
       : [NO_WORKERS, await holdersUc().execute()];
     httpResponse.ok(reply, present(enabled, out, holders));
+  });
+
+  app.get('/settings', {
+    preHandler,
+    schema: { tags, summary: 'Configuração de escala efetiva, origem por campo e se está em vigor', response: { 200: workerScalingSettingsResponse } },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, await getWorkerScalingSettingsUseCase().execute());
+  });
+
+  app.put<{ Body: { settings: unknown; expectedUpdatedAt: string | null } }>('/settings', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Grava a configuração de escala (objeto completo, com controle de concorrência), auditado',
+      body: workerScalingSettingsBody,
+      response: { 200: workerScalingSettingsResponse },
+    },
+  }, async (request, reply) => {
+    const data = await updateWorkerScalingSettingsUseCase().execute({
+      settings: request.body.settings,
+      expectedUpdatedAt: request.body.expectedUpdatedAt,
+      actorUserId: request.user.userId,
+    });
+    httpResponse.ok(reply, data);
   });
 }

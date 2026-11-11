@@ -4,7 +4,7 @@ export const workersAdminStrings = {
   pageTitle: 'Workers',
   pageSubtitle: 'Ocupação dos servidores que mantêm as sessões conectadas. Atualiza a cada 20 segundos.',
   /** Abas da tela (a aba ativa vem da URL). */
-  tabs: { occupancy: 'Ocupação', usage: 'Consumo', aria: 'Visões de Workers' },
+  tabs: { occupancy: 'Ocupação', usage: 'Consumo', settings: 'Configuração', aria: 'Visões de Workers' },
   retry: 'Tentar de novo',
   listTitle: 'Workers ativos',
   empty: 'Nenhum worker ativo',
@@ -58,5 +58,103 @@ export const workersAdminStrings = {
 
   errors: {
     generic: 'Não foi possível carregar os workers.',
+  },
+
+  /** Aba Configuração (WSCALE-07): rótulo, ajuda e faixa por campo. */
+  settings: {
+    subtitle: 'Limites dos workers e regras da escala de réplicas. Vale para todos os servidores.',
+    loading: 'Carregando a configuração',
+    helpAria: (label: string) => `Ajuda: ${label}`,
+    groups: {
+      limits: { title: 'Teto e alertas', subtitle: 'Quanto cada worker assume e quando a ocupação vira alerta.' },
+      scaling: { title: 'Escala de réplicas', subtitle: 'Como e até onde o número de workers pode mudar.', pending: 'sem efeito por enquanto' },
+    },
+    replicas: { label: 'Réplicas', help: 'Menor e maior número de workers que a escala mantém. Guardado para a escala de réplicas; ainda sem efeito.', aria: 'Faixa de réplicas', min: 'Mínimo', max: 'Máximo', value: (n: number) => (n === 1 ? '1 worker' : `${n} workers`) },
+    notEnforced: 'Sem efeito até ligar a adoção por capacidade. Os valores ficam salvos e passam a valer quando a adoção for ligada.',
+    belowOccupancy: (cap: number, busiest: number) =>
+      `O teto de ${cap.toLocaleString('pt-BR')} fica abaixo das ${busiest.toLocaleString('pt-BR')} sessões do worker mais ocupado. Nenhuma sessão cai: ele só deixa de adotar novas até a ocupação baixar.`,
+    lastSaved: (when: string) => `Salvo em ${when}`,
+    neverSaved: 'Nunca salvo: valores padrão do ambiente.',
+    draftRestored: 'Rascunho restaurado',
+    actions: { discard: 'Descartar alterações', review: 'Revisar e salvar', retry: 'Tentar de novo' },
+    confirm: {
+      title: 'Confirmar alterações',
+      intro: 'Estes valores mudam para todos os workers:',
+      field: 'Campo',
+      before: 'Atual',
+      after: 'Novo',
+      strongTitle: 'Teto sem medição',
+      strongHintRaise: 'Ainda não há medição de memória por sessão para confirmar que o teto novo cabe nos servidores. Subir o teto sem medir pode derrubar um worker por falta de memória.',
+      strongHintLower: 'Ainda não há medição de memória por sessão. Reduzir o teto não derruba sessões conectadas: o worker acima do teto novo só deixa de adotar sessões até a ocupação cair.',
+      strongLabel: 'Teto novo',
+      strongHelper: (value: string) => `Digite ${value} para confirmar.`,
+      cancel: 'Cancelar',
+      save: 'Salvar',
+      saving: 'Salvando…',
+    },
+    saved: 'Configuração salva.',
+    fieldRejected: 'Valor recusado. Confira a faixa aceita.',
+    fields: {
+      maxSessionsPerWorker: {
+        label: 'Teto de sessões por worker',
+        help: 'Máximo de sessões conectadas que cada worker assume. Reduzir não derruba sessão: o worker só para de adotar.',
+        range: '1 a 1.000',
+      },
+      maxPendingLoginsPerWorker: {
+        label: 'Logins simultâneos por worker',
+        help: 'Máximo de sessões aguardando leitura do QR Code ou do código em cada worker.',
+        range: '1 a 500',
+      },
+      alertOccupancyRatio: {
+        label: 'Alerta de ocupação',
+        help: 'Fração do teto a partir da qual a ocupação gera alerta.',
+        range: '0,5 a 0,95',
+      },
+      awaitingAlertSeconds: {
+        label: 'Alerta de sessão aguardando (segundos)',
+        help: 'Tempo que uma sessão pode esperar vaga antes de gerar alerta.',
+        range: '30 a 3.600 segundos',
+      },
+      scalerMode: {
+        label: 'Modo de escala',
+        help: 'Desligado: sem mudança de réplicas pelo painel. Manual: mudança só por ação de um administrador. Automático: uma réplica a mais quando a ocupação fica alta por tempo sustentado. Guardado para a escala de réplicas; ainda sem efeito.',
+        range: 'Desligado, manual ou automático',
+      },
+      minReplicas: {
+        label: 'Mínimo de réplicas',
+        help: 'Menor número de workers que a escala mantém. Guardado para a escala de réplicas; ainda sem efeito.',
+        range: '1 a 20',
+      },
+      maxReplicas: {
+        label: 'Máximo de réplicas',
+        help: 'Maior número de workers que a escala pode pedir. Guardado para a escala de réplicas; ainda sem efeito.',
+        range: 'Mínimo a 20',
+      },
+      scaleUpSustainSeconds: {
+        label: 'Ocupação alta sustentada (segundos)',
+        help: 'Tempo acima do alerta de ocupação antes de pedir uma réplica a mais, medido em blocos de 5 minutos. Guardado para a escala de réplicas; ainda sem efeito.',
+        range: '300 a 3.600 segundos',
+      },
+      scaleCooldownSeconds: {
+        label: 'Intervalo mínimo entre escaladas (segundos)',
+        help: 'Espera obrigatória depois de uma escalada bem-sucedida. Guardado para a escala de réplicas; ainda sem efeito.',
+        range: '300 a 86.400 segundos',
+      },
+    },
+    scalerModes: { off: 'Desligado', manual: 'Manual', auto: 'Automático' },
+    /** `changed`: rascunho diferente do valor gravado. */
+    origin: { default: 'Valor padrão', saved: 'Salvo', changed: 'Alterado' },
+    errors: {
+      required: 'Preencha este campo.',
+      integer: 'Use um número inteiro.',
+      number: 'Use um número.',
+      range: (min: string, max: string) => `Use um valor entre ${min} e ${max}.`,
+      maxBelowMin: 'O máximo não pode ser menor que o mínimo de réplicas.',
+      scalerMode: 'Escolha um modo de escala.',
+      invalid: 'A configuração foi recusada. Confira os campos marcados.',
+      conflict: 'Outro administrador salvou antes. Os valores atuais foram recarregados.',
+      loadFailed: 'Não foi possível carregar a configuração.',
+      saveFailed: 'Não foi possível salvar a configuração.',
+    },
   },
 } as const;

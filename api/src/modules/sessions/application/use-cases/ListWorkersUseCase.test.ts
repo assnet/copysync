@@ -8,7 +8,7 @@ const row = (workerId: string, sessions: number, maxSessions: number, pendingLog
   ({ workerId, role: 'worker', sessions, pendingLogins, maxSessions, rssMb: 300, seenAt });
 
 function build(rows: WorkerHeartbeat[], awaiting: number) {
-  const heartbeats = { beat: vi.fn(), remove: vi.fn(), listAlive: vi.fn().mockResolvedValue(rows) };
+  const heartbeats = { beat: vi.fn(), remove: vi.fn(), hasAlive: vi.fn(), listAlive: vi.fn().mockResolvedValue(rows) };
   const adoption = { countAwaitingCapacity: vi.fn().mockResolvedValue(awaiting) };
   return { uc: new ListWorkersUseCase(heartbeats, adoption), heartbeats, adoption };
 }

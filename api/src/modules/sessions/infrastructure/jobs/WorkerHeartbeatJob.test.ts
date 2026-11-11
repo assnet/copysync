@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IWorkerHeartbeatRepository } from '../../domain/contracts/IWorkerHeartbeatRepository';
+import { defaultWorkerScalingSettings, type WorkerScalingSettings } from '../../domain/services/workerScalingSettings';
 import { WorkerHeartbeatJob, cpuPercent, type EventLoopDelaySampler } from './WorkerHeartbeatJob';
 
 function fakeLoop(p99Ns: number) {
@@ -11,17 +12,24 @@ function setup(extra: { cpu?: () => NodeJS.CpuUsage; clock?: () => number; loop?
   const heartbeats = {
     beat: vi.fn(async () => undefined),
     listAlive: vi.fn(async () => []),
+    hasAlive: vi.fn(async () => false),
     remove: vi.fn(async () => undefined),
   } satisfies IWorkerHeartbeatRepository;
   let local = ['s1', 's2'];
   let pending = 3;
+  let settings: WorkerScalingSettings = defaultWorkerScalingSettings({ maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 10 });
   const job = new WorkerHeartbeatJob({
-    heartbeats, workerId: 'w1', role: 'worker', maxSessions: 40,
+    heartbeats, workerId: 'w1', role: 'worker', settings: () => settings,
     occupancy: () => ({ sessions: local.length, pendingLogins: pending }), rssMb: () => 321,
     cpuUsage: extra.cpu ?? (() => ({ user: 0, system: 0 })), monotonicMs: extra.clock ?? (() => 0),
     eventLoopDelay: () => extra.loop ?? fakeLoop(0),
   });
-  return { job, heartbeats, setLocal: (ids: string[]) => { local = ids; }, setPending: (n: number) => { pending = n; } };
+  return {
+    job, heartbeats,
+    setLocal: (ids: string[]) => { local = ids; },
+    setPending: (n: number) => { pending = n; },
+    setMax: (n: number) => { settings = { ...settings, maxSessionsPerWorker: n }; },
+  };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -107,5 +115,14 @@ describe('WorkerHeartbeatJob', () => {
     const { job, heartbeats } = setup();
     await job.runTick();
     expect(heartbeats.beat).toHaveBeenLastCalledWith(expect.objectContaining({ eventLoopP99Ms: null }));
+  });
+
+  it('teto alterado na configuração vale no batimento seguinte, sem recriar o job', async () => {
+    const { job, heartbeats, setMax } = setup();
+    await job.runTick();
+    expect(heartbeats.beat).toHaveBeenLastCalledWith(expect.objectContaining({ maxSessions: 40 }));
+    setMax(25);
+    await job.runTick();
+    expect(heartbeats.beat).toHaveBeenLastCalledWith(expect.objectContaining({ maxSessions: 25 }));
   });
 });

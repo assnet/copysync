@@ -21,7 +21,8 @@ export interface AdoptNextSessionDeps {
   occupiedSessions: () => number;
   workerId: string;
   shard: string | null;
-  maxSessions: number;
+  /** Teto de sessões deste processo, lido a cada tick (configuração de escala, WSCALE-04). */
+  maxSessions: () => number;
   log?: AdoptLogger;
 }
 
@@ -51,7 +52,7 @@ export class AdoptNextSessionUseCase {
     await this.failExhausted();
 
     const { adoption, occupiedSessions, workerId, shard, maxSessions } = this.deps;
-    if (!hasCapacity(occupiedSessions(), maxSessions)) return 'full';
+    if (!hasCapacity(occupiedSessions(), maxSessions())) return 'full';
 
     const adopted = await adoption.adoptNext(workerId, shard, LEASE_TTL_MS);
     if (!adopted) return 'none';
@@ -112,7 +113,7 @@ export class AdoptNextSessionUseCase {
 
   /** `held`: outro dono ou teto (corrida com abertura local). Devolve a vaga e a tentativa. */
   private async giveBack(s: AdoptedSessionRef): Promise<void> {
-    const full = !hasCapacity(this.deps.occupiedSessions(), this.deps.maxSessions);
+    const full = !hasCapacity(this.deps.occupiedSessions(), this.deps.maxSessions());
     try {
       await this.deps.adoption.revertAdoptAttempt(s.id, this.deps.workerId);
     } catch (err) {

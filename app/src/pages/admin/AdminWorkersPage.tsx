@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Alert, Box, Button, Card, CardContent, CircularProgress, Grid, IconButton, LinearProgress, Skeleton, Stack, Tab, Table,
-  TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tooltip, Typography,
+  TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import { Cable, Hourglass, Info, Server } from 'lucide-react';
 import { AppIcon, EmptyState, PageHeader, SectionCard, StatCard } from '@/components';
@@ -17,8 +17,26 @@ import { opsMetricsStrings } from '@/features/opsMetrics/strings';
 /** Aba Consumo em chunk próprio: a biblioteca de gráficos só baixa ao abrir a aba. */
 const UsageTab = lazy(() => import('@/features/opsMetrics/components/UsageTab'));
 
+/** Aba Configuração em chunk próprio (formulário e diálogo só baixam ao abrir a aba). */
+const SettingsTab = lazy(() => import('@/features/workersAdmin/components/SettingsTab'));
+
 export const WORKERS_PATH = '/admin/workers';
 export const WORKERS_USAGE_PATH = '/admin/workers/usage';
+export const WORKERS_SETTINGS_PATH = '/admin/workers/settings';
+
+/** Abas pela URL: caminho → rótulo. A ativa é a de prefixo mais longo que casa com o caminho. */
+const WORKER_TABS: { path: string; label: string }[] = [
+  { path: WORKERS_PATH, label: t.tabs.occupancy },
+  { path: WORKERS_USAGE_PATH, label: t.tabs.usage },
+  { path: WORKERS_SETTINGS_PATH, label: t.tabs.settings },
+];
+
+export function activeWorkersTab(pathname: string): string {
+  const match = WORKER_TABS
+    .filter((tab) => pathname === tab.path || pathname.startsWith(`${tab.path}/`))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  return match?.path ?? WORKERS_PATH;
+}
 
 const LEVEL_COLOR: Record<OccupancyLevel, 'success' | 'warning' | 'error'> = {
   ok: 'success', warning: 'warning', full: 'error',
@@ -246,35 +264,48 @@ function OccupancyTab() {
 
 export function AdminWorkersPage() {
   const { pathname } = useLocation();
-  const usage = pathname.startsWith(WORKERS_USAGE_PATH);
+  const active = activeWorkersTab(pathname);
+  const usage = active === WORKERS_USAGE_PATH;
+  // Celular: setas sempre montadas desde o 1º render. Com `auto` elas surgem depois da medição,
+  // empurram as abas e a ativa fica cortada sem nova rolagem (`noSsr` = valor certo já no 1º render).
+  const theme = useTheme();
+  const compactTabs = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   // Ações do cabeçalho da aba Consumo entram aqui por portal (a aba é carregada sob demanda).
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  const subtitle = usage ? opsMetricsStrings.subtitle : active === WORKERS_SETTINGS_PATH ? t.settings.subtitle : t.pageSubtitle;
 
   return (
     <Box>
       <PageHeader
         title={t.pageTitle}
-        subtitle={usage ? opsMetricsStrings.subtitle : t.pageSubtitle}
+        subtitle={subtitle}
         action={usage ? <Box ref={setHeaderSlot} /> : undefined}
         sx={{ mb: 2 }}
       />
       <Tabs
-        value={usage ? WORKERS_USAGE_PATH : WORKERS_PATH}
+        value={active}
         aria-label={t.tabs.aria}
-        variant="fullWidth"
-        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider', maxWidth: { sm: 360 } }}
+        variant="scrollable"
+        scrollButtons={compactTabs ? true : 'auto'}
+        allowScrollButtonsMobile
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label={t.tabs.occupancy} value={WORKERS_PATH} component={Link} to={WORKERS_PATH} />
-        <Tab label={t.tabs.usage} value={WORKERS_USAGE_PATH} component={Link} to={WORKERS_USAGE_PATH} />
+        {WORKER_TABS.map((tab) => (
+          <Tab key={tab.path} label={tab.label} value={tab.path} component={Link} to={tab.path} />
+        ))}
       </Tabs>
 
-      {usage ? (
+      {usage && (
         <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={opsMetricsStrings.loading} />}>
           <UsageTab headerSlot={headerSlot} />
         </Suspense>
-      ) : (
-        <OccupancyTab />
       )}
+      {active === WORKERS_SETTINGS_PATH && (
+        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.settings.loading} />}>
+          <SettingsTab />
+        </Suspense>
+      )}
+      {active === WORKERS_PATH && <OccupancyTab />}
     </Box>
   );
 }

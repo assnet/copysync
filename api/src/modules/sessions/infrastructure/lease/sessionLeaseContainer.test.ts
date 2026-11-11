@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../repositories/PrismaSessionLeaseRepository', () => ({
   PrismaSessionLeaseRepository: class {
-    tryAcquire = vi.fn();
+    tryAcquire = vi.fn(async () => true);
     renew = vi.fn();
     release = vi.fn();
     releaseAllOwned = vi.fn();
@@ -15,8 +15,22 @@ vi.mock('../repositories/PrismaSessionRepository', () => ({
   },
 }));
 vi.mock('../../../../shared/config/workerIdentity', () => ({ currentWorkerId: () => 'worker-test' }));
-const adoptionCfg = vi.hoisted(() => ({ enabled: false, maxSessions: 1, maxPendingLogins: 50, shard: null as string | null }));
-vi.mock('../../../../shared/config/workerAdoption', () => ({ workerAdoptionConfig: () => adoptionCfg }));
+const adoptionCfg = vi.hoisted(() => ({ enabled: false, shard: null as string | null }));
+vi.mock('../../../../shared/config/workerAdoption', () => ({
+  workerAdoptionConfig: () => adoptionCfg,
+  workerScalingEnvDefaults: () => ({ maxSessionsPerWorker: 1, maxPendingLoginsPerWorker: 50 }),
+}));
+vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
+/** Linha salva em `platform_settings` (`get` do repositório); `Error` = banco fora. */
+const stored = vi.hoisted(() => ({ value: null as unknown }));
+vi.mock('../repositories/PrismaWorkerScalingSettingsRepository', () => ({
+  PrismaWorkerScalingSettingsRepository: class {
+    get = vi.fn(async () => {
+      if (stored.value instanceof Error) throw stored.value;
+      return stored.value ? { value: stored.value, updatedAt: new Date(0), updatedById: null } : null;
+    });
+  },
+}));
 
 import { buildSessionLeaseContainer, sessionLeaseContainer } from './sessionLeaseContainer';
 import type { ISessionLeaseRepository } from '../../domain/contracts/ISessionLeaseRepository';
@@ -98,7 +112,7 @@ describe('sessionLeaseContainer', () => {
   });
 
   it('gate expõe acquire tipado: erro de banco = error, outro dono = held (com e sem teto)', async () => {
-    for (const capacity of [undefined, { maxSessions: 5, maxPendingLogins: 5 }]) {
+    for (const capacity of [undefined, () => ({ maxSessions: 5, maxPendingLogins: 5 })]) {
       const repo = fakeRepo();
       const c = buildSessionLeaseContainer(repo, 'w1', capacity);
       vi.mocked(repo.tryAcquire).mockRejectedValueOnce(new Error('db')).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
@@ -109,7 +123,7 @@ describe('sessionLeaseContainer', () => {
   });
 
   it('com teto cheio: acquire tipado de sessão nova = held', async () => {
-    const c = buildSessionLeaseContainer(fakeRepo(), 'w1', { maxSessions: 1, maxPendingLogins: 5 });
+    const c = buildSessionLeaseContainer(fakeRepo(), 'w1', () => ({ maxSessions: 1, maxPendingLogins: 5 }));
     c.bindSocketControl(ctl(() => ['a']));
     expect(await c.gate.acquireResult!('nova')).toBe('held');
   });
@@ -118,14 +132,13 @@ describe('sessionLeaseContainer', () => {
     const repo = fakeRepo();
     const c = buildSessionLeaseContainer(repo, 'w1');
     c.bindSocketControl(ctl(() => ['a', 'b', 'c']));
-    expect(c.gate.constructor).toBe(Object);
     expect(await c.gate.acquire('s1')).toBe(true);
     expect(repo.tryAcquire).toHaveBeenCalledTimes(1);
   });
 
   it('com teto: cheio nega sessão nova, aceita a local; release segue o base', async () => {
     const repo = fakeRepo();
-    const c = buildSessionLeaseContainer(repo, 'w1', { maxSessions: 2, maxPendingLogins: 5 });
+    const c = buildSessionLeaseContainer(repo, 'w1', () => ({ maxSessions: 2, maxPendingLogins: 5 }));
     let local = ['a'];
     c.bindSocketControl(ctl(() => local));
     expect(c.listLocal()).toEqual(['a']);
@@ -139,7 +152,7 @@ describe('sessionLeaseContainer', () => {
   });
 
   it('T24: QR sem leitura não ocupa vaga; occupancy separa sessões e logins pendentes', async () => {
-    const c = buildSessionLeaseContainer(fakeRepo(), 'w1', { maxSessions: 1, maxPendingLogins: 2 });
+    const c = buildSessionLeaseContainer(fakeRepo(), 'w1', () => ({ maxSessions: 1, maxPendingLogins: 2 }));
     let local = ['a'];
     let auth = ['a'];
     let creds = false;
@@ -170,6 +183,54 @@ describe('sessionLeaseContainer', () => {
       expect(await c.gate.acquire('nova')).toBe(false);
     } finally {
       adoptionCfg.enabled = false;
+    }
+  });
+
+  it('flag ligada: o gate lê o teto do provider a cada acquire (WSCALE-04)', async () => {
+    vi.resetModules();
+    adoptionCfg.enabled = true;
+    try {
+      const mod = await import('./sessionLeaseContainer');
+      const c = mod.sessionLeaseContainer();
+      c.bindSocketControl(ctl(() => ['x']));
+      expect(await c.gate.acquire('nova')).toBe(false);
+      stored.value = { maxSessionsPerWorker: 2 };
+      await mod.workerScalingSettingsProvider().refresh();
+      expect(await c.gate.acquire('nova')).toBe(true);
+    } finally {
+      adoptionCfg.enabled = false;
+      stored.value = null;
+    }
+  });
+
+  it('flag desligada: gate sem teto mesmo com teto salvo; o provider existe para as rotas', async () => {
+    vi.resetModules();
+    stored.value = { maxSessionsPerWorker: 1 };
+    try {
+      const mod = await import('./sessionLeaseContainer');
+      const c = mod.sessionLeaseContainer();
+      await mod.workerScalingSettingsProvider().refresh();
+      c.bindSocketControl(ctl(() => ['a', 'b', 'c']));
+      expect(await c.gate.acquire('nova')).toBe(true);
+      expect(c.occupancy()).toEqual({ sessions: 3, pendingLogins: 0 });
+      expect(mod.workerScalingSettingsProvider()).toBe(mod.workerScalingSettingsProvider());
+      expect(mod.workerScalingSettingsProvider().current().value.maxSessionsPerWorker).toBe(1);
+    } finally {
+      stored.value = null;
+    }
+  });
+
+  it('boot com falha de leitura: provider fica com o teto da env', async () => {
+    vi.resetModules();
+    stored.value = new Error('db down');
+    try {
+      const mod = await import('./sessionLeaseContainer');
+      const provider = mod.workerScalingSettingsProvider();
+      await provider.refresh();
+      expect(provider.current().value).toMatchObject({ maxSessionsPerWorker: 1, maxPendingLoginsPerWorker: 50 });
+      expect(provider.current().origin.maxSessionsPerWorker).toBe('default');
+    } finally {
+      stored.value = null;
     }
   });
 });

@@ -29,7 +29,8 @@ const h = vi.hoisted(() => {
     setRelay: vi.fn(),
     deliverLocal: vi.fn(),
     release: { execute: vi.fn() },
-    adoption: { enabled: false, maxSessions: 2, maxPendingLogins: 50, shard: null as string | null },
+    adoption: { enabled: false, shard: null as string | null },
+    maxSessions: 2,
     local: [] as string[],
     pending: 0,
     repo: { findLiveOwner: vi.fn() },
@@ -61,6 +62,7 @@ vi.mock('../shared/redis/redisConnections', () => track('redis', {
 }));
 vi.mock('../modules/sessions/infrastructure/lease/sessionLeaseContainer', () => track('lease', {
   sessionLeaseContainer: () => ({ workerId: 'w-1', release: h.release, repo: h.repo, listLocal: () => h.local, occupancy: () => ({ sessions: h.local.length, pendingLogins: h.pending }) }),
+  workerScalingSettingsProvider: () => ({ current: () => ({ value: { maxSessionsPerWorker: h.maxSessions } }) }),
 }));
 vi.mock('../modules/messaging/infrastructure/remote/EngineCommandServer', () => track('remote', {
   EngineCommandServer: class { constructor(...a: unknown[]) { h.ctor.commandServer(...a); } },
@@ -117,6 +119,7 @@ beforeEach(() => {
   h.adoption.enabled = false;
   h.local = [];
   h.pending = 0;
+  h.maxSessions = 2;
 });
 
 describe('composeForRole', () => {
@@ -198,6 +201,19 @@ describe('composeForRole', () => {
     h.pending = 9; // logins pendentes (QR sem leitura) não ocupam vaga (T24)
     expect(opts.sessionOpenHasCapacity()).toBe(true);
     h.local = ['s1', 's2'];
+    expect(opts.sessionOpenHasCapacity()).toBe(false);
+  });
+
+  it('worker com adoção ligada: session-open lê o teto da configuração a cada checagem (WSCALE-04)', async () => {
+    h.adoption.enabled = true;
+    h.local = ['s1', 's2'];
+    await composeForRole('worker');
+    const opts = h.ctor.queues.mock.calls[0][0];
+    expect(opts.sessionOpenHasCapacity()).toBe(false);
+    h.maxSessions = 3;
+    expect(opts.sessionOpenHasCapacity()).toBe(true);
+    h.maxSessions = 1;
+    h.local = ['s1'];
     expect(opts.sessionOpenHasCapacity()).toBe(false);
   });
 

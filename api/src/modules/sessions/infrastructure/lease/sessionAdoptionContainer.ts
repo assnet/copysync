@@ -16,8 +16,9 @@ import { AdoptNextSessionUseCase } from '../../application/use-cases/AdoptNextSe
 import { SessionAdoptionTicker } from '../../application/services/SessionAdoptionTicker';
 import { WorkerHeartbeatJob } from '../jobs/WorkerHeartbeatJob';
 import { WorkerCapacityAlertJob } from '../jobs/WorkerCapacityAlertJob';
+import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
 import { registerSessionAdoptionResetListener } from '../listeners/SessionAdoptionResetListener';
-import { sessionLeaseContainer, type SessionLeaseContainer } from './sessionLeaseContainer';
+import { sessionLeaseContainer, workerScalingSettingsProvider, type SessionLeaseContainer } from './sessionLeaseContainer';
 
 export interface SessionAdoptionContainer {
   config: WorkerAdoptionConfig;
@@ -36,6 +37,8 @@ export interface SessionAdoptionContainer {
 export interface SessionAdoptionDeps {
   config: WorkerAdoptionConfig;
   lease: Pick<SessionLeaseContainer, 'workerId' | 'occupancy'>;
+  /** Configuração de escala do processo; lida a cada tick, nunca guardada. */
+  settings: Pick<IWorkerScalingSettingsProvider, 'current'>;
   /** Papel do processo (`worker`/`all`), gravado no heartbeat. */
   role: string;
   adoption: ISessionAdoptionRepository;
@@ -52,6 +55,7 @@ export interface SessionAdoptionDeps {
  */
 export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): SessionAdoptionContainer {
   const { config, lease, adoption, heartbeats } = deps;
+  const settings = () => deps.settings.current().value;
   const tick = new AdoptNextSessionUseCase({
     adoption,
     engine: deps.engine,
@@ -59,7 +63,7 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
     occupiedSessions: () => lease.occupancy().sessions,
     workerId: lease.workerId,
     shard: config.shard,
-    maxSessions: config.maxSessions,
+    maxSessions: () => settings().maxSessionsPerWorker,
   });
   const unregister = (deps.registerReset ?? registerSessionAdoptionResetListener)(adoption);
   return {
@@ -71,11 +75,11 @@ export function buildSessionAdoptionContainer(deps: SessionAdoptionDeps): Sessio
       heartbeats,
       workerId: lease.workerId,
       role: deps.role,
-      maxSessions: config.maxSessions,
+      settings,
       occupancy: lease.occupancy,
     }),
     // D5: sem template de e-mail na central, sem `notifier` (alerta só no log).
-    capacityAlert: new WorkerCapacityAlertJob({ lease: deps.jobLease, heartbeats, adoption }),
+    capacityAlert: new WorkerCapacityAlertJob({ lease: deps.jobLease, heartbeats, adoption, settings }),
     dispose: unregister,
   };
 }
@@ -96,6 +100,7 @@ export function sessionAdoptionContainer(): SessionAdoptionContainer | null {
   instance = buildSessionAdoptionContainer({
     config,
     lease: sessionLeaseContainer(),
+    settings: workerScalingSettingsProvider(),
     role: currentRole(),
     adoption: new PrismaSessionAdoptionRepository(),
     heartbeats: new PrismaWorkerHeartbeatRepository(),

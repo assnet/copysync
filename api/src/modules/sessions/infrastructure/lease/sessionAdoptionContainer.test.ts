@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const cfg = vi.hoisted(() => ({ enabled: false, maxSessions: 3, maxPendingLogins: 50, shard: null as string | null }));
+const cfg = vi.hoisted(() => ({ enabled: false, shard: null as string | null }));
+const teto = vi.hoisted(() => ({ maxSessionsPerWorker: 3 }));
 const spies = vi.hoisted(() => ({ adoptionRepo: 0, register: 0, lease: 0 }));
 
 vi.mock('../../../../shared/database/prisma.client', () => ({ prisma: {} }));
@@ -27,6 +28,7 @@ vi.mock('../listeners/SessionAdoptionResetListener', () => ({
 }));
 vi.mock('./sessionLeaseContainer', () => ({
   sessionLeaseContainer: () => { spies.lease++; return { workerId: 'w-test', occupancy: () => ({ sessions: 0, pendingLogins: 0 }) }; },
+  workerScalingSettingsProvider: () => ({ current: () => ({ value: { maxSessionsPerWorker: teto.maxSessionsPerWorker } }) }),
 }));
 
 async function load() {
@@ -58,8 +60,13 @@ describe('sessionAdoptionContainer', () => {
     expect(a).not.toBeNull();
     expect(sessionAdoptionContainer()).toBe(a);
     expect(spies).toEqual({ adoptionRepo: 1, register: 1, lease: 1 });
-    expect(a!.config.maxSessions).toBe(3);
     expect(vi.getTimerCount()).toBe(0);
+    await a!.heartbeat.runTick();
+    expect(a!.heartbeats.beat).toHaveBeenLastCalledWith(expect.objectContaining({ maxSessions: 3 }));
+    teto.maxSessionsPerWorker = 9;
+    await a!.heartbeat.runTick();
+    expect(a!.heartbeats.beat).toHaveBeenLastCalledWith(expect.objectContaining({ maxSessions: 9 }));
+    teto.maxSessionsPerWorker = 3;
 
     a!.ticker.start();
     a!.heartbeat.start();
@@ -78,8 +85,9 @@ describe('sessionAdoptionContainer', () => {
     const registerReset = vi.fn().mockReturnValue(unregister);
     const adoption = { adoptNext: vi.fn(), failExhausted: vi.fn(), resetFailures: vi.fn(), countAwaitingCapacity: vi.fn() };
     const c = buildSessionAdoptionContainer({
-      config: { enabled: true, maxSessions: 2, maxPendingLogins: 5, shard: 'a' },
+      config: { enabled: true, shard: 'a' },
       lease: { workerId: 'w1', occupancy: () => ({ sessions: 0, pendingLogins: 0 }) },
+      settings: { current: () => ({ value: { maxSessionsPerWorker: 2 } }) } as never,
       role: 'all',
       adoption: adoption as never,
       heartbeats: { beat: vi.fn(), listAlive: vi.fn(), remove: vi.fn() } as never,
@@ -91,5 +99,35 @@ describe('sessionAdoptionContainer', () => {
     expect(registerReset).toHaveBeenCalledWith(adoption);
     c.dispose();
     expect(unregister).toHaveBeenCalledTimes(1);
+  });
+
+  it('build: a adoção lê o teto do provider a cada tick (WSCALE-04)', async () => {
+    vi.useFakeTimers();
+    const { buildSessionAdoptionContainer } = await load();
+    const { ADOPT_TICK_MS } = await import('../../domain/services/sessionAdoptionPolicy');
+    let max = 2;
+    const adoption = {
+      adoptNext: vi.fn(async () => null), failExhausted: vi.fn(async () => []), resetFailures: vi.fn(),
+      revertAdoptAttempt: vi.fn(), countAwaitingCapacity: vi.fn(),
+    };
+    const c = buildSessionAdoptionContainer({
+      config: { enabled: true, shard: null },
+      lease: { workerId: 'w1', occupancy: () => ({ sessions: 2, pendingLogins: 0 }) },
+      settings: { current: () => ({ value: { maxSessionsPerWorker: max } }) } as never,
+      role: 'worker',
+      adoption: adoption as never,
+      heartbeats: { beat: vi.fn(), listAlive: vi.fn(), remove: vi.fn() } as never,
+      jobLease: { tryAcquire: vi.fn(), release: vi.fn() } as never,
+      audit: { create: vi.fn() } as never,
+      engine: { adoptSession: vi.fn(), abortSession: vi.fn() },
+      registerReset: () => () => undefined,
+    });
+    c.ticker.start();
+    await vi.advanceTimersByTimeAsync(ADOPT_TICK_MS);
+    expect(adoption.adoptNext).not.toHaveBeenCalled();
+    max = 3;
+    await vi.advanceTimersByTimeAsync(ADOPT_TICK_MS);
+    expect(adoption.adoptNext).toHaveBeenCalledTimes(1);
+    await c.ticker.stop();
   });
 });

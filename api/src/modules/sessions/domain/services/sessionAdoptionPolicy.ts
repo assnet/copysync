@@ -19,10 +19,10 @@ export const HEARTBEAT_MS = 20_000;
 /** Worker vivo = último heartbeat há menos que isto. */
 export const WORKER_ALIVE_MS = 90_000;
 
-/** Alerta quando a ocupação passa (estritamente) desta fração da soma dos tetos. */
+/** Default do limiar de ocupação (fração da soma dos tetos); o valor efetivo vem da configuração de escala. */
 export const CAPACITY_ALERT_RATIO = 0.8;
 
-/** Alerta quando há pedido de conexão sem dono há mais que isto. */
+/** Default da espera máxima de pedido sem dono; o valor efetivo vem da configuração de escala. */
 export const AWAITING_ALERT_MS = 120_000;
 
 /** Intervalo do job de alerta de capacidade. */
@@ -51,15 +51,19 @@ export interface CapacityAlertInput {
   maxSessions: number;
   /** Idade do pedido sem dono mais antigo (ms); `null` sem pedido aguardando. */
   awaitingOverMs: number | null;
+  /** Alerta quando a ocupação passa (estritamente) desta fração (`alertOccupancyRatio`). */
+  ratio: number;
+  /** Alerta quando o pedido sem dono passa (estritamente) destes segundos (`awaitingAlertSeconds`). */
+  awaitingSeconds: number;
 }
 
 /**
- * Motivo do alerta de capacidade, ou `null`. Ocupação em exatos 80 % não alerta;
+ * Motivo do alerta de capacidade, ou `null`. Ocupação exatamente em `ratio` não alerta;
  * soma de tetos 0 (nenhum worker vivo) não alerta por ocupação, só por espera.
  */
 export function capacityAlertReason(input: CapacityAlertInput): CapacityAlertReason | null {
-  const { sessions, maxSessions, awaitingOverMs } = input;
-  if (maxSessions > 0 && sessions / maxSessions > CAPACITY_ALERT_RATIO) return 'occupancy';
-  if (awaitingOverMs !== null && awaitingOverMs > AWAITING_ALERT_MS) return 'awaiting';
+  const { sessions, maxSessions, awaitingOverMs, ratio, awaitingSeconds } = input;
+  if (maxSessions > 0 && sessions / maxSessions > ratio) return 'occupancy';
+  if (awaitingOverMs !== null && awaitingOverMs > awaitingSeconds * 1000) return 'awaiting';
   return null;
 }

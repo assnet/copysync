@@ -9,6 +9,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.82.0 · app 0.101.0 — configuração de escala dos workers em banco
+
+Teto de sessões por worker e limiares de alerta eram env lida no boot (mudar = redeploy, derruba sessões). Agora o super admin ajusta em `/admin/workers/settings`; vale em todas as réplicas em até 30 s. Sem linha salva, nada muda. Doc: `docs/workers-escala.md`. Spec: `.specs/features/worker-scaling/` (WSCALE-01..07, 19; fase P1).
+**Migration Prisma**: sim (1, aditiva: `20261111140000_add_audit_action_worker_scaling`, enum `AuditAction`, aplicada no boot pela Render). **Erros novos**: `INVALID_WORKER_SCALING_SETTINGS` (400, `meta.field`) e `WORKER_SCALING_SETTINGS_CONFLICT` (409). **Breaking**: não. **Limite**: teto só aplicado com `WORKER_ADOPTION_ENABLED=true` (`enforced`).
+
+#### Backend (api/) — `sessions`
+
+- **`workerScalingSettings.ts`** — faixas, defaults (env como valor inicial) e origem `default|saved` por campo.
+- **`PrismaWorkerScalingSettingsRepository.ts`**, **`RefreshingWorkerScalingSettingsProvider.ts`** — `platform_settings.worker_scaling` com concorrência por `updatedAt`; provider síncrono com refresh 30 s que mantém o último valor bom.
+- **`CapacityLimitedLeaseGate.ts`**, **`sessionLeaseContainer.ts`**, **`sessionAdoptionContainer.ts`**, **`roleComposition.ts`**, **`WorkerHeartbeatJob.ts`**, **`WorkerCapacityAlertJob.ts`**, **`server.ts`** — teto e limiares lidos do provider a cada uso.
+- **`Get/UpdateWorkerScalingSettingsUseCase.ts`**, **`workerAdmin.routes.ts`** — `GET`/`PUT /admin/workers/settings` com auditoria `WORKER_SCALING_SETTINGS_CHANGED`.
+
+#### Frontend (app/) — `workersAdmin`
+
+- **`SettingsTab.tsx`**, **`SettingsConfirmDialog.tsx`**, **`useWorkerSettings.ts`**, **`rules.ts`**, **`AdminWorkersPage.tsx`** — aba Configuração: faixa e ajuda por campo, diff antes de salvar, valor digitado para mudar o teto, aviso abaixo da ocupação e "sem efeito" sem adoção, rascunho persistido.
+
 ### Added — api 0.81.0 · app 0.100.0 — link de afiliado sempre do tenant
 
 Gerador, Página de Ofertas e Story recusavam link de outro afiliado e a Shopee passava o link colado sem conferência. Agora aceitam qualquer link do produto e o link sai sempre com a conta do tenant. Doc: `docs/gerador-de-ofertas.md` ("Link do tenant"). Spec: `.specs/features/tenant-affiliate-link/` (TLINK-01..24).

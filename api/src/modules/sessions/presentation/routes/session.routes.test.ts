@@ -27,7 +27,7 @@ vi.mock('../../application/use-cases/GetSessionByIdUseCase', () => ({
   GetSessionByIdUseCase: class { execute = async () => h.session; },
 }));
 vi.mock('../../../../shared/config/workerAdoption', () => ({
-  workerAdoptionConfig: () => ({ enabled: h.adoption, maxSessions: 40, shard: null }),
+  workerAdoptionConfig: () => ({ enabled: h.adoption, shard: null }),
 }));
 
 import type { FastifyInstance } from 'fastify';
