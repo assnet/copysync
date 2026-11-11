@@ -131,6 +131,23 @@ function OutcomeChip({ event }: { event: WorkerScaleEvent }) {
   return event.error ? <Tooltip title={sc.history.errorHint(event.error)} arrow>{chip}</Tooltip> : chip;
 }
 
+/** Recusa antes de ler o escalador grava `fromReplicas = 0`: a origem é desconhecida, não zero. */
+function ReplicaChange({ event: e }: { event: WorkerScaleEvent }) {
+  const unknownFrom = e.fromReplicas === 0 && e.outcome === 'rejected';
+  const label = unknownFrom ? sc.history.unknownChange(e.toReplicas) : sc.dialog.change(e.fromReplicas, e.toReplicas);
+  return (
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }} aria-label={label}>
+      {unknownFrom ? (
+        <Tooltip title={sc.history.unknownFromHint} arrow>
+          <Box component="span" tabIndex={0} sx={{ color: 'text.secondary', cursor: 'help' }}>{sc.history.unknownFrom}</Box>
+        </Tooltip>
+      ) : <span>{e.fromReplicas}</span>}
+      <AppIcon icon={ArrowRight} size="inline" aria-hidden />
+      <span>{e.toReplicas}</span>
+    </Stack>
+  );
+}
+
 function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
   const col = sc.history.columns;
   if (w.events.length === 0 && w.eventsLoading) return <Skeleton variant="rounded" height={120} aria-label={sc.loading} />;
@@ -160,11 +177,7 @@ function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
               <TableRow key={e.id}>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{sc.history.triggers[e.trigger] ?? e.trigger}</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }} aria-label={sc.dialog.change(e.fromReplicas, e.toReplicas)}>
-                    <span>{e.fromReplicas}</span>
-                    <AppIcon icon={ArrowRight} size="inline" aria-hidden />
-                    <span>{e.toReplicas}</span>
-                  </Stack>
+                  <ReplicaChange event={e} />
                 </TableCell>
                 <TableCell sx={{ minWidth: 180, overflowWrap: 'anywhere' }}>{e.reason}</TableCell>
                 <TableCell><OutcomeChip event={e} /></TableCell>
@@ -251,20 +264,23 @@ export default function ScaleTab() {
         </Alert>
       )}
 
-      <Grid container spacing={2}>
-        <Grid item xs={6} md={3}>
-          <Tile label={sc.tiles.desired} help={sc.tiles.desiredHelp} icon={Target} value={ready ? String(ready.desiredReplicas) : null} />
+      {/* Box: o Grid com spacing usa margem negativa que o Stack sobrescreve (cards deslocados). */}
+      <Box>
+        <Grid container spacing={2}>
+          <Grid item xs={6} md={3}>
+            <Tile label={sc.tiles.desired} help={sc.tiles.desiredHelp} icon={Target} value={ready ? String(ready.desiredReplicas) : null} />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <Tile label={sc.tiles.running} help={sc.tiles.runningHelp} icon={Server} value={ready ? String(ready.runningReplicas) : null} />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <Tile label={sc.tiles.mode} help={sc.tiles.modeHelp} icon={SlidersHorizontal} value={sc.modes[scalerMode] ?? scalerMode} />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <Tile label={sc.tiles.range} help={sc.tiles.rangeHelp} icon={Layers} value={sc.tiles.rangeValue(min, max)} />
+          </Grid>
         </Grid>
-        <Grid item xs={6} md={3}>
-          <Tile label={sc.tiles.running} help={sc.tiles.runningHelp} icon={Server} value={ready ? String(ready.runningReplicas) : null} />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Tile label={sc.tiles.mode} help={sc.tiles.modeHelp} icon={SlidersHorizontal} value={sc.modes[scalerMode] ?? scalerMode} />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Tile label={sc.tiles.range} help={sc.tiles.rangeHelp} icon={Layers} value={sc.tiles.rangeValue(min, max)} />
-        </Grid>
-      </Grid>
+      </Box>
 
       <SectionCard title={sc.actions.title}>
         <Stack spacing={2.5}>

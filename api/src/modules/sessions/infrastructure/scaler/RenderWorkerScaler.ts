@@ -86,8 +86,12 @@ export class RenderWorkerScaler implements IWorkerScaler {
         return { status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: err.retryAfterSeconds };
       }
       if (err instanceof ScalerUnavailableError) return { status: 'unavailable', reason: err.reason };
-      // Erro fora do contrato (resposta inesperada, bug de parse): nunca sobe cru.
-      if (!(err instanceof AppError)) return { status: 'unavailable', reason: 'upstream' };
+      // Erro fora do contrato (resposta inesperada, bug de parse): nunca sobe cru. Log sem o erro:
+      // a mensagem pode carregar URL (id do serviço) ou trecho do corpo.
+      if (!(err instanceof AppError)) {
+        this.log.warn({ op: 'state', reason: 'unexpected' }, 'worker scaler state failed unexpectedly');
+        return { status: 'unavailable', reason: 'upstream' };
+      }
       throw err;
     }
   }

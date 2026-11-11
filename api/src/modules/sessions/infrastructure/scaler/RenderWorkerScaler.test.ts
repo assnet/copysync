@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RenderWorkerScaler, parseRetryAfter } from './RenderWorkerScaler';
+import { logger } from '../../../../shared/logger/logger';
 import {
   ScalerRateLimitedError,
   ScalerServiceNotScalableError,
@@ -74,9 +75,20 @@ describe('RenderWorkerScaler.getState', () => {
     await expect(scaler(fetchFn).getState()).resolves.toEqual({ status: 'unavailable', reason: 'upstream' });
   });
 
-  it('erro fora de AppError vira unavailable/upstream (nunca relança cru)', async () => {
+  it('erro fora de AppError vira unavailable/upstream (nunca relança cru) e loga sem o erro', async () => {
+    const warn = vi.fn();
+    const child = vi.spyOn(logger, 'child').mockReturnValue({ warn } as unknown as ReturnType<typeof logger.child>);
     const broken = vi.fn(async () => null) as unknown as typeof fetch;
-    await expect(scaler(broken).getState()).resolves.toEqual({ status: 'unavailable', reason: 'upstream' });
+    try {
+      await expect(scaler(broken).getState()).resolves.toEqual({ status: 'unavailable', reason: 'upstream' });
+      expect(warn).toHaveBeenCalledWith({ op: 'state', reason: 'unexpected' }, expect.any(String));
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged).not.toContain(SERVICE);
+      expect(logged).not.toContain(KEY);
+      expect(logged).not.toMatch(/null|TypeError/);
+    } finally {
+      child.mockRestore();
+    }
   });
 
   it('timeout real do AbortSignal (5 s por padrão, aqui curto) aborta a chamada', async () => {

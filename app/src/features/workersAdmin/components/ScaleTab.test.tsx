@@ -591,6 +591,22 @@ describe('ScaleTab — histórico', () => {
     expect(within(table).getByText('motivo 2')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: sc.history.loadMore })).not.toBeInTheDocument();
   });
+
+  it('recusa com origem desconhecida mostra "—" com Tooltip, não "0"', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view());
+    vi.spyOn(adminWorkersService, 'listScaleEvents').mockResolvedValue({
+      items: [event(2, { fromReplicas: 0, toReplicas: 2, outcome: 'rejected' }), event(1, { fromReplicas: 0, toReplicas: 1, outcome: 'failed' })],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    renderWithTheme(<ScaleTab />);
+    const table = await screen.findByRole('table', { name: sc.history.aria });
+    expect(within(table).getByLabelText(sc.history.unknownChange(2))).toBeInTheDocument();
+    expect(within(table).getByLabelText(sc.dialog.change(0, 1))).toBeInTheDocument();
+    const dash = within(table).getByText(sc.history.unknownFrom);
+    await user.hover(dash);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(sc.history.unknownFromHint);
+  });
 });
 
 describe('AdminWorkersPage — aba Escala', () => {
@@ -623,11 +639,11 @@ describe('useWorkerScale — abrir com rascunho existente', () => {
     return hook;
   }
 
-  it('alvo clicado diferente do rascunho: pedido novo com motivo vazio e requestId novo', async () => {
+  it('alvo clicado diferente do rascunho: pedido novo, mantém o motivo e gera requestId novo', async () => {
     const { result } = await mountWithDraft();
     act(() => result.current.openDialog(1));
     expect(result.current.dialogOpen).toBe(true);
-    expect(result.current.draft).toEqual({ replicas: 1, reason: '', requestId: REQUEST_ID });
+    expect(result.current.draft).toEqual({ replicas: 1, reason: 'restaurado', requestId: REQUEST_ID });
     expect(result.current.resend).toBe(false);
   });
 

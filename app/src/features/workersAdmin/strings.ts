@@ -362,6 +362,9 @@ export const workersAdminStrings = {
       triggers: { manual: 'Manual', auto: 'Automática' } as Record<string, string>,
       outcomes: { requested: 'Pedido', succeeded: 'Concluído', failed: 'Falhou', rejected: 'Recusado' } as Record<string, string>,
       errorHint: (e: string) => `Detalhe: ${e}`,
+      unknownFrom: '—',
+      unknownFromHint: 'Réplicas atuais não lidas: o pedido foi recusado antes de consultar o escalador.',
+      unknownChange: (to: number) => `réplicas atuais não lidas → ${to}`,
     },
   },
 } as const;

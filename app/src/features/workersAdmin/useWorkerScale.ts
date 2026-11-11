@@ -134,7 +134,7 @@ export function useWorkerScale() {
   /**
    * Abre o diálogo. Sem `replicas` (Revisar, Escolher alvo) reabre o rascunho como está. Com o alvo
    * clicado (Subir/Reduzir 1): igual ao do rascunho reabre o mesmo pedido (mesmo `requestId`);
-   * diferente substitui o rascunho por um pedido novo (motivo vazio, `requestId` novo).
+   * diferente troca o alvo num pedido novo (`requestId` novo) e mantém o motivo já digitado.
    */
   const openDialog = useCallback((replicas?: number) => {
     setRequestError(null);
@@ -145,7 +145,7 @@ export function useWorkerScale() {
       return;
     }
     if (replicas === undefined) return;
-    setDraft({ replicas, reason: '', requestId: newRequestId() });
+    setDraft({ replicas, reason: current?.reason ?? '', requestId: newRequestId() });
     setDialogOpen(true);
   }, [setDraft]);
 
