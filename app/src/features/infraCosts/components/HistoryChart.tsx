@@ -69,7 +69,7 @@ export default function HistoryChart({ months, tableId }: { months: InfraCostHis
           valueFormatter: (v: string, ctx) => (ctx.location === 'tick' ? shortMonthLabel(v) : monthLabel(v)),
         }]}
         // Eixo em US$ compacto ("US$ 1,2 mil"): o valor cheio fica no tooltip e na tabela.
-        yAxis={[{ width: 72, min: 0, valueFormatter: (v: number) => formatUsdCompact(v) }]}
+        yAxis={[{ width: 84, min: 0, valueFormatter: (v: number) => formatUsdCompact(v) }]}
         grid={{ horizontal: true }}
         slotProps={{ legend: { position: { vertical: 'top', horizontal: 'start' } }, tooltip: { trigger: 'axis' } }}
         margin={{ top: 8, right: 8, bottom: 0, left: 0 }}

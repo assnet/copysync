@@ -135,7 +135,7 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
                 <TableCell align="right">{connected ? col.sessionsConnected : col.sessionsContracted}</TableCell>
                 <TableCell align="right">{col.share}</TableCell>
                 <TableCell align="right"><HeaderHint label={col.perTenant} hint={p.perTenantHint} /></TableCell>
-                {showMargin && <MarginHeader label={col.marginMonthly} hint={p.marginHint} projected={projected} />}
+                {showMargin && <MarginHeader label={summary.closed ? S.tenants.marginCurrentPrice : col.marginMonthly} hint={summary.closed ? S.tenants.marginCurrentPriceHint : p.marginHint} projected={projected} />}
                 {showMargin && <MarginHeader label={col.marginAnnual} hint={p.marginAnnualHint} projected={projected} />}
               </TableRow>
             </TableHead>
