@@ -54,6 +54,8 @@ export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [];
 /** Chaves numéricas em que ausente não é "sem limite": o limite passa pela função do recurso. */
 const LIMIT_OF: ReadonlyMap<EntitlementKey, (value: number | null) => number> = new Map([
   [ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, identifierLimitOf],
+  /** Achados do caçador: ausente = 0 (bloqueado), nunca ilimitado. */
+  [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY, (value) => value ?? 0],
 ]);
 
 const channelItems = (kind: ChannelLimitKind): SubscriptionLimitItemDef[] =>
@@ -70,6 +72,8 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   { key: ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY, channel: null, kind: 'daily' },
   /** Etiquetas do ML: principal incluída; ausente vale 1 (`affiliateIdentifierLimit.ts`), nunca "sem limite". */
   { key: ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, channel: null, kind: 'count' },
+  /** Achados do caçador por dia: ausente = 0 (`LIMIT_OF`); sem contador de uso por ora (`used` null). */
+  { key: ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY, channel: null, kind: 'daily' },
   feature(ENTITLEMENT_KEYS.AI_REWRITE_ENABLED),
   feature(ENTITLEMENT_KEYS.MENTION_ALL_ENABLED),
   feature(ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH),
@@ -79,6 +83,7 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   feature(ENTITLEMENT_KEYS.ENRICH_LINK_ONLY_ENABLED),
   feature(ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED),
   feature(ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED),
+  feature(ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED),
 ];
 
 /** Mesma leitura do `PrismaEntitlementReader.getNumber`: número ou string numérica; resto = ausente. */

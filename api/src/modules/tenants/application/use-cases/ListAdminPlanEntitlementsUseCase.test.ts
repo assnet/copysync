@@ -16,9 +16,22 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
     ]);
     const out = await new ListAdminPlanEntitlementsUseCase(repo).execute();
     expect(repo.listByKeys).toHaveBeenCalledWith(ADMIN_EDITABLE_ENTITLEMENT_KEYS);
-    expect(out).toEqual([
-      { key: 'marketplace_shein_enabled', plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: null, COPYSYNC_MAX: true } },
-    ]);
+    expect(out[0]).toEqual({
+      key: 'marketplace_shein_enabled',
+      type: { kind: 'boolean' },
+      plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: null, COPYSYNC_MAX: true },
+    });
+    expect(out.map((r) => r.key)).toEqual(['marketplace_shein_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day']);
+  });
+
+  it('chave numérica devolve tipo inteiro com faixa e o valor do preset', async () => {
+    const repo = fakeRepo([{ planSlug: 'COPYSYNC_MAX', key: 'offer_hunter_finds_per_day', value: 10 }]);
+    const out = await new ListAdminPlanEntitlementsUseCase(repo).execute();
+    expect(out.find((r) => r.key === 'offer_hunter_finds_per_day')).toEqual({
+      key: 'offer_hunter_finds_per_day',
+      type: { kind: 'integer', min: 0, max: 100 },
+      plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: 10 },
+    });
   });
 
   it('banco sem presets: todas as chaves com null em todos os planos', async () => {
