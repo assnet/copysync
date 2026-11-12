@@ -47,6 +47,14 @@ describe('PrivacyProvider', () => {
     expect(screen.flags.map((f) => f.id)).toEqual(['offerStory.art', 'offerStory.link']);
   });
 
+  it('tela offerHunter: sessão, grupos (nome e foto) e produtos (imagem e texto)', () => {
+    const screen = PRIVACY_SCREENS.find((s) => s.id === 'offerHunter')!;
+    expect(screen.flags.map((f) => f.id)).toEqual([
+      'offerHunter.sessionName', 'offerHunter.groupNames', 'offerHunter.groupAvatars',
+      'offerHunter.productImages', 'offerHunter.productText',
+    ]);
+  });
+
   it('Grupos de disparo tem uma flag por tipo de dado, todas registradas', () => {
     const screen = PRIVACY_SCREENS.find((s) => s.id === 'broadcastGroups')!;
     const ids = ['broadcastGroups.groupNames', 'broadcastGroups.groupAvatars', 'broadcastGroups.sessionName'];

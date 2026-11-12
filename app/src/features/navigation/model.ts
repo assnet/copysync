@@ -57,6 +57,11 @@ export interface NavigationModel {
 
 export interface BuildNavigationInput {
   isSuperAdmin: boolean;
+  /**
+   * Caçador de Ofertas no menu: vem de `GET /offer-hunts/access` (`useOfferHunterAccess`), não do papel.
+   * Os filhos de Afiliados não passam por `onlyAllowed`; por isso entrada própria e não `superAdminOnly`.
+   */
+  offerHunterVisible: boolean;
 }
 
 export interface ActiveEntry {
@@ -79,7 +84,7 @@ export const AFFILIATE_CREDENTIALS_PATH = '/affiliates/credentials';
 /** Planos são por produto: a vitrine atual é a do Afiliados (rota antiga `/plans` redireciona). */
 export const AFFILIATE_PLANS_PATH = '/affiliates/plans';
 
-export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): NavigationModel {
+export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavigationInput): NavigationModel {
   const onlyAllowed = (links: NavLink[]) => links.filter((l) => !l.superAdminOnly || isSuperAdmin);
 
   const affiliates: NavProduct = {
@@ -95,6 +100,9 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
       { key: 'link-rotation', label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: Link2 },
       { key: 'storefront', label: s.links.storefront, path: '/storefront', icon: MODULE_ICONS.storefront, badge: plansStrings.badgeProfessional },
       { key: 'offer-story', label: s.links.offerStory, path: '/offer-story', icon: MODULE_ICONS.offerStory, badge: plansStrings.badgeBusiness },
+      ...(offerHunterVisible
+        ? [{ key: 'offer-hunter', label: s.links.offerHunter, path: '/offer-hunter', icon: MODULE_ICONS.offerHunter, badge: plansStrings.badgeBusiness, matchPrefix: '/offer-hunter' }]
+        : []),
       { key: 'affiliate-credentials', label: s.links.affiliateCredentials, path: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
       { key: 'affiliate-plans', label: plansStrings.menuLabel, path: AFFILIATE_PLANS_PATH, icon: Crown },
     ],

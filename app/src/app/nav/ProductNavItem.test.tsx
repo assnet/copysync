@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { buildNavigation } from '@/features/navigation';
 import { ProductNavItem } from './ProductNavItem';
 
-const model = buildNavigation({ isSuperAdmin: false });
+const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false });
 const affiliates = model.products[0];
 const soonProduct = model.products.find((p) => p.status === 'soon')!;
 

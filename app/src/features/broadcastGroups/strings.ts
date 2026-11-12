@@ -46,9 +46,11 @@ export const broadcastGroupsStrings = {
 
   usedBy: {
     generator: 'Gerador de ofertas',
+    hunter: 'Caçador de Ofertas',
     monitor: 'Monitoramento',
     monitorOf: (session: string) => `Monitoramento · ${session}`,
     generatorTooltip: 'Recebe as ofertas disparadas pelo gerador.',
+    hunterTooltip: 'Recebe as ofertas escolhidas pelo Caçador de Ofertas.',
     monitorTooltip: 'Recebe as ofertas capturadas pelo monitoramento desta sessão.',
   },
 

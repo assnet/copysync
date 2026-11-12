@@ -28,6 +28,7 @@ export const navigationStrings = {
     broadcastGroups: 'Grupos de disparo',
     storefront: 'Página de Ofertas',
     offerStory: 'Story de Oferta',
+    offerHunter: 'Caçador de Ofertas',
     affiliateCredentials: 'Credenciais de afiliado',
     chat: 'Chat',
     settings: 'Configurações',

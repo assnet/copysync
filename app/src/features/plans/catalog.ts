@@ -94,6 +94,8 @@ export const PLAN_HINTS = {
   enrichLinkOnly: 'No monitoramento, mensagem que chega só com o link vira oferta completa, com título, preço e foto do produto.',
   aiRewrite: 'A IA reescreve o texto de cada oferta para o público escolhido, no gerador de ofertas e no monitoramento.',
   sheinAffiliate: 'Ofertas da Shein com o seu link de afiliado, no gerador e no monitoramento. Pede o aceite de um aviso de risco antes do uso.',
+  offerHunter:
+    'Busca ofertas da Shein no seu horário, escolhe as melhores pela pontuação (e pela IA) e envia ao seu grupo. Pede o aceite de um aviso de risco próprio.',
   storefront: 'Uma página com suas ofertas e links de afiliado para colocar na bio das redes sociais.',
   typing: 'Antes de cada oferta o grupo vê "digitando…", como se fosse uma pessoa enviando.',
   crossSession:
@@ -198,6 +200,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: 'Captura fora do horário de postagem', hint: PLAN_HINTS.captureOutsideWindow, exclusive: true },
       { label: 'Template para Instagram', exclusive: true },
       { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate, exclusive: true },
+      { label: 'Caçador de Ofertas', hint: PLAN_HINTS.offerHunter, exclusive: true },
       { label: 'Suporte exclusivo 24/7' },
     ],
     fit: 'equipes e operações com mais de um número ou nicho.',

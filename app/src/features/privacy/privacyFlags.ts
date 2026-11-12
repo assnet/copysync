@@ -98,6 +98,17 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'offerHunter',
+    label: 'Caçador de Ofertas',
+    flags: [
+      { id: 'offerHunter.sessionName', label: 'Nome da sessão' },
+      { id: 'offerHunter.groupNames', label: 'Nomes dos grupos' },
+      { id: 'offerHunter.groupAvatars', label: 'Fotos dos grupos' },
+      { id: 'offerHunter.productImages', label: 'Imagens dos produtos' },
+      { id: 'offerHunter.productText', label: 'Título e dados dos produtos' },
+    ],
+  },
+  {
     id: 'affiliateCredentials',
     label: 'Credenciais de afiliado',
     flags: [

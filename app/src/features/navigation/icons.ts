@@ -1,4 +1,4 @@
-import { ImagePlus, Radar, Repeat2, Store, UsersRound } from 'lucide-react';
+import { Crosshair, ImagePlus, Radar, Repeat2, Store, UsersRound } from 'lucide-react';
 
 /** Ícones dos módulos do roadmap (docs/produto-roadmap.md): mesmos no menu e nas páginas. */
 export const MODULE_ICONS = {
@@ -7,4 +7,5 @@ export const MODULE_ICONS = {
   members: UsersRound,
   storefront: Store,
   offerStory: ImagePlus,
+  offerHunter: Crosshair,
 } as const;

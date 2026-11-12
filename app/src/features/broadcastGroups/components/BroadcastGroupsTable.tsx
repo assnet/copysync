@@ -3,7 +3,8 @@ import {
   Alert, Box, Button, Chip, IconButton, InputAdornment, MenuItem, Snackbar, Stack, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { Bot, Radar, Search, Trash2, X } from 'lucide-react';
+import { Bot, Radar, Search, Trash2, X, type LucideIcon } from 'lucide-react';
+import { MODULE_ICONS } from '@/features/navigation/icons';
 import { AppIcon, ConfirmDialog } from '@/components';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { ChannelCounterChips } from '@/features/offers/components/config/ChannelCounterChips';
@@ -14,6 +15,16 @@ import type { BroadcastGroupCatalogItem, BroadcastGroupUse, BroadcastGroupsRespo
 import { broadcastGroupsStrings as t } from '../strings';
 
 const CHANNELS: readonly LimitChannel[] = ['whatsapp', 'telegram'];
+
+type UseKind = 'generator' | 'hunter' | 'monitor';
+/** `monitor:<sessionId>` vira `monitor`; o resto é o próprio uso. */
+const useKind = (use: BroadcastGroupUse): UseKind => (use === 'generator' || use === 'hunter' ? use : 'monitor');
+const USE_TOOLTIP: Record<UseKind, string> = {
+  generator: t.usedBy.generatorTooltip,
+  hunter: t.usedBy.hunterTooltip,
+  monitor: t.usedBy.monitorTooltip,
+};
+const USE_ICON: Record<UseKind, LucideIcon> = { generator: Bot, hunter: MODULE_ICONS.offerHunter, monitor: Radar };
 
 export type ChannelFilter = 'all' | LimitChannel;
 export interface BroadcastGroupsFilters { channel: ChannelFilter; query: string }
@@ -69,6 +80,7 @@ export function BroadcastGroupsTable({ data, sessionNameOf, removing, onRemove }
 
   const usageLabel = (use: BroadcastGroupUse) => {
     if (use === 'generator') return t.usedBy.generator;
+    if (use === 'hunter') return t.usedBy.hunter;
     // Nome da sessão no chip só sem desfoque (o rótulo não passa pelo `Blurred`)
     return blurSession ? t.usedBy.monitor : t.usedBy.monitorOf(sessionOf(use.slice('monitor:'.length)));
   };
@@ -176,11 +188,11 @@ export function BroadcastGroupsTable({ data, sessionNameOf, removing, onRemove }
                     <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                       <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                         {g.usedBy.map((use) => (
-                          <Tooltip key={use} title={use === 'generator' ? t.usedBy.generatorTooltip : t.usedBy.monitorTooltip} arrow describeChild>
+                          <Tooltip key={use} title={USE_TOOLTIP[useKind(use)]} arrow describeChild>
                             <Chip
                               size="small"
                               variant="outlined"
-                              icon={<AppIcon icon={use === 'generator' ? Bot : Radar} size="sm" />}
+                              icon={<AppIcon icon={USE_ICON[useKind(use)]} size="sm" />}
                               label={usageLabel(use)}
                             />
                           </Tooltip>

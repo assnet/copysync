@@ -22,6 +22,7 @@ import {
   buildNavigation, isNavAction, navigationStrings, useNavigationState,
   type NavLink, type NavigationModel, type NavigationState,
 } from '@/features/navigation';
+import { useOfferHunterAccess } from '@/features/offerHunter/hooks/useOfferHunterAccess';
 import { NavLinkItem } from './nav/NavLinkItem';
 import { ProductNavItem } from './nav/ProductNavItem';
 import { CollapsedProductNavItem } from './nav/CollapsedProductNavItem';
@@ -322,7 +323,12 @@ export function AppLayout() {
   // Modelo do menu e produtos expandidos vivem aqui: desktop e mobile (keepMounted)
   // compartilham o mesmo estado em vez de cada drawer ler o storage por conta própria.
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
-  const navModel = useMemo(() => buildNavigation({ isSuperAdmin }), [isSuperAdmin]);
+  // Caçador de Ofertas: visibilidade pela API (mesma consulta do guard `OfferHunterRoute`)
+  const { visible: offerHunterVisible } = useOfferHunterAccess();
+  const navModel = useMemo(
+    () => buildNavigation({ isSuperAdmin, offerHunterVisible }),
+    [isSuperAdmin, offerHunterVisible],
+  );
   const nav = useNavigationState(navModel, location.pathname);
 
   // Título da AppBar mobile: a tela atual orienta melhor que o nome do produto,
