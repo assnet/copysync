@@ -59,12 +59,37 @@ export interface OpsWorker {
   seenAt: string;
 }
 
+/** Batimento da instância (processo mais recente dela). */
+export interface OpsWorkerInstanceHeartbeat {
+  workerId: string;
+  sessions: number;
+  pendingLogins: number;
+  maxSessions: number;
+  rssMb: number;
+  seenAt: string;
+}
+
+/**
+ * Instância viva do serviço worker: CPU/RAM da Render casadas com o batimento pelo sufixo da
+ * instância. `resource` nulo = batimento sem amostra; `heartbeat` nulo = amostra sem batimento.
+ */
+export interface OpsWorkerInstance {
+  instance: string;
+  resource: string | null;
+  cpuPct: number | null;
+  memoryPct: number | null;
+  sampledAt: string | null;
+  heartbeat: OpsWorkerInstanceHeartbeat | null;
+}
+
 export interface OpsLatest {
   latest: OpsLatestValue[];
   thresholds: OpsThresholds;
   topQueries: OpsTopQuery[];
   samplerActive: boolean;
   workers: OpsWorker[];
+  /** Vazio sem worker separado (sem `WORKER_SCALER_SERVICE_ID` na API). */
+  workerInstances: OpsWorkerInstance[];
 }
 
 export type OpsRange = '1h' | '6h' | '24h' | '7d';
@@ -78,6 +103,9 @@ export interface UsageFilters {
   resource: OpsResourceFilter;
   autoRefresh: boolean;
 }
+
+/** Gráficos de Servidores: Worker como pior instância (1 linha) ou uma linha por instância. */
+export type WorkerChartView = 'worst' | 'instance';
 
 export type OpsStatus = 'ok' | 'warning' | 'critical' | 'noData';
 

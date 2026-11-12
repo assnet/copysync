@@ -48,5 +48,20 @@ export function presentOpsMetricsLatest(out: GetOpsMetricsLatestOutput) {
     topQueries: out.topQueries.map((q) => ({ ...q, at: q.at.toISOString() })),
     samplerActive: out.samplerActive,
     workers: out.workers.map(presentWorker),
+    workerInstances: out.workerInstances.map((r) => ({
+      instance: r.instance,
+      resource: r.resource,
+      cpuPct: r.cpuPct,
+      memoryPct: r.memoryPct,
+      sampledAt: r.sampledAt?.toISOString() ?? null,
+      heartbeat: r.heartbeat && {
+        workerId: r.heartbeat.workerId,
+        sessions: r.heartbeat.sessions,
+        pendingLogins: r.heartbeat.pendingLogins,
+        maxSessions: r.heartbeat.maxSessions,
+        rssMb: r.heartbeat.rssMb,
+        seenAt: r.heartbeat.seenAt.toISOString(),
+      },
+    })),
   };
 }

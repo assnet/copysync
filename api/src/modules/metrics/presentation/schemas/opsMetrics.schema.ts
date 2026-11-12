@@ -129,6 +129,33 @@ export const opsMetricsSeriesResponse = {
   },
 } as const;
 
+/** Instância viva do serviço worker (Render × batimento); `heartbeat`/`resource` nulos quando falta um lado. */
+const opsWorkerInstance = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['instance', 'resource', 'cpuPct', 'memoryPct', 'sampledAt', 'heartbeat'],
+  properties: {
+    instance: { type: 'string' },
+    resource: { type: ['string', 'null'] },
+    cpuPct: { type: ['number', 'null'] },
+    memoryPct: { type: ['number', 'null'] },
+    sampledAt: { type: ['string', 'null'], format: 'date-time' },
+    heartbeat: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      required: ['workerId', 'sessions', 'pendingLogins', 'maxSessions', 'rssMb', 'seenAt'],
+      properties: {
+        workerId: { type: 'string' },
+        sessions: { type: 'integer' },
+        pendingLogins: { type: 'integer' },
+        maxSessions: { type: 'integer' },
+        rssMb: { type: 'integer' },
+        seenAt: isoDate,
+      },
+    },
+  },
+} as const;
+
 export const opsMetricsLatestResponse = {
   type: 'object',
   additionalProperties: false,
@@ -137,7 +164,7 @@ export const opsMetricsLatestResponse = {
     data: {
       type: 'object',
       additionalProperties: false,
-      required: ['latest', 'thresholds', 'topQueries', 'samplerActive', 'workers'],
+      required: ['latest', 'thresholds', 'topQueries', 'samplerActive', 'workers', 'workerInstances'],
       properties: {
         latest: {
           type: 'array',
@@ -177,6 +204,7 @@ export const opsMetricsLatestResponse = {
         },
         samplerActive: { type: 'boolean' },
         workers: { type: 'array', items: opsWorker },
+        workerInstances: { type: 'array', items: opsWorkerInstance },
       },
     },
   },

@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.87.0 · app 0.107.0 — instâncias do worker no consumo
+
+Com o worker em réplicas, a aba Consumo só mostrava a pior instância. `GET /admin/ops/metrics/latest` passa a devolver `workerInstances` (CPU/RAM da Render casados com o batimento pelo sufixo da instância no `workerId`) e o painel ganha a tabela "Instâncias do worker" e a alternância "Pior instância" × "Por instância" nos gráficos de Servidores. Doc: `docs/ops-metricas.md`.
+**Migration Prisma**: não. **Breaking**: não (campo novo na resposta).
+
+#### Backend (api/) — `metrics`
+
+- **`workerInstancesPolicy.ts`** — `matchWorkerInstances` (pura): corte de 2 min da instância atual, casamento por segmento inteiro do host, lados faltantes como `null`.
+- **`GetOpsMetricsLatestUseCase.ts`**, **`opsMetricsPresenter.ts`**, **`opsMetrics.schema.ts`** — campo `workerInstances`; sem consulta nova nem chamada à Render.
+
+#### Frontend (app/) — `opsMetrics`
+
+- **`WorkerInstancesTable.tsx`** — tabela por instância (CPU, RAM, sessões/teto, logins, visto há) com tooltips e chips "Sem batimento"/"Sem amostra".
+- **`UsageTab.tsx`**, **`rules.ts`** (`seriesByInstance`, `instanceShortName`, `parseWorkerChartView`), **`types.ts`**, **`strings.ts`** — alternância persistida (`workers.usage.workerView`); "Por instância" = uma linha por réplica, mais de 3 = só tabela.
+
 ### Added — app 0.106.0 — estado amigável enquanto o sistema atualiza
 
 Durante deploy da API na Render, as abas de `/admin/workers` mostravam só um alerta vermelho ("Não foi possível carregar…" + "Tentar de novo"). Agora, quando a falha é de indisponibilidade (rede/proxy sem resposta, 502, 503, 504; timeout e cancelada não), a tela mostra "Estamos atualizando o sistema" com ilustração leve (rack + engrenagens em SVG próprio, parada com `prefers-reduced-motion`), contagem até a nova tentativa automática (5 s → 10 s → 20 s, teto 30 s; pausa com a aba oculta), "Tentar agora" (não avança a escada) e, após 3 min, aviso para chamar o suporte, sem desistir. Outros erros seguem no alerta de antes. Doc: `docs/padrao-ui-painel.md` ("Estado de atualização").

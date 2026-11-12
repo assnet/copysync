@@ -2,6 +2,7 @@ import type { IOpsMetricsSeriesReader } from '../../domain/contracts/IOpsMetrics
 import { OPS_ALERT_THRESHOLDS } from '../../domain/services/opsAlertPolicy';
 import { opsResourceKind, type OpsResourceKind } from '../../domain/services/opsMetricsSeriesPolicy';
 import type { IWorkerHeartbeatRepository, WorkerHeartbeat } from '../../../sessions/domain/contracts/IWorkerHeartbeatRepository';
+import { matchWorkerInstances, type WorkerInstanceRow } from '../../domain/services/workerInstancesPolicy';
 import { WORKER_ALIVE_MS } from '../../../sessions/domain/services/sessionAdoptionPolicy';
 
 /** Janela do "agora": 3 persistências do sampler (5 min cada). */
@@ -32,13 +33,15 @@ export interface GetOpsMetricsLatestOutput {
   /** Há amostra persistida nos últimos 15 min. */
   samplerActive: boolean;
   workers: WorkerHeartbeat[];
+  /** Instâncias vivas do serviço worker: CPU/RAM da Render casadas com o batimento (`matchWorkerInstances`). */
+  workerInstances: WorkerInstanceRow[];
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /**
  * Último valor por (resource, metric) nos últimos 15 min, limiares dos alertas (MQ-24), top de
- * consultas do último snapshot e workers vivos. Só tabelas locais; nunca chama a Render.
+ * consultas do último snapshot, workers vivos e instâncias do worker. Só tabelas locais; nunca chama a Render.
  */
 export class GetOpsMetricsLatestUseCase {
   constructor(
@@ -68,6 +71,7 @@ export class GetOpsMetricsLatestUseCase {
       at: s.at,
     }));
     const samplerActive = rows.length > 0 || statements.some((s) => s.at.getTime() >= since.getTime());
-    return { latest, thresholds: OPS_ALERT_THRESHOLDS, topQueries, samplerActive, workers };
+    const workerInstances = matchWorkerInstances(this.workerServiceId, rows.filter((r) => r.source === 'render'), workers);
+    return { latest, thresholds: OPS_ALERT_THRESHOLDS, topQueries, samplerActive, workers, workerInstances };
   }
 }

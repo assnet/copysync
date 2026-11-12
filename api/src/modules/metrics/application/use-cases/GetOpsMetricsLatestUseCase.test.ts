@@ -54,4 +54,18 @@ describe('GetOpsMetricsLatestUseCase', () => {
       ['srv-api', 'api'], ['srv-wk-a1', 'worker_service'], ['srv-wk-b2', 'worker_service'],
     ]);
   });
+
+  it('instâncias do worker: amostra da Render casada com o batimento pelo sufixo; sem serviço = vazio', async () => {
+    const r = (resource: string, metric: string, value: number) =>
+      ({ at: ago(1), source: 'render' as const, resource, metric, value, meta: null });
+    const rows = [r('srv-wk-a1b2c', 'cpu_pct', 20), r('srv-wk-a1b2c', 'memory_pct', 50), r('srv-api', 'cpu_pct', 90)];
+    const beat = { workerId: 'srv-wk-7d9f-a1b2c-19-0011aabb', role: 'worker', sessions: 4, pendingLogins: 0, maxSessions: 40, rssMb: 300, seenAt: ago(0.5) };
+    const { uc, heartbeats } = build(rows, [], 'srv-wk');
+    heartbeats.listAlive.mockResolvedValue([beat] as never);
+    const out = await uc.execute();
+    expect(out.workerInstances).toEqual([
+      { instance: 'a1b2c', resource: 'srv-wk-a1b2c', cpuPct: 20, memoryPct: 50, sampledAt: ago(1), heartbeat: expect.objectContaining({ sessions: 4 }) },
+    ]);
+    expect((await build(rows, []).uc.execute()).workerInstances).toEqual([]);
+  });
 });

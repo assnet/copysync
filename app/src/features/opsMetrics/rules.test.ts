@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas, counterPeriodTotal, countDomainMax, formatBytes,
   formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, currentValues, resourceCount, resourceVisible,
-  seriesPoints, shortQueryId, statusFor,
+  seriesPoints, shortQueryId, statusFor, instanceShortName, seriesByInstance, parseWorkerChartView,
 } from './rules';
 import type { OpsSeries, OpsSeriesPoint } from './types';
 
@@ -182,5 +182,26 @@ describe('formatação', () => {
     expect(querySharePct([q(0)])).toEqual([0]);
     expect(shortQueryId('-4721938475610293')).toBe('…75610293');
     expect(shortQueryId('123')).toBe('123');
+  });
+});
+
+describe('instâncias do worker', () => {
+  it('nome curto: sufixo da instância; sem sufixo, o id inteiro', () => {
+    expect(instanceShortName('srv-dbqhvkrbc2fs73del670-4lx97')).toBe('4lx97');
+    expect(instanceShortName('srv-dbqhvkrbc2fs73del670')).toBe('srv-dbqhvkrbc2fs73del670');
+  });
+  it('uma série por instância do worker_service, ordenada pelo nome curto', () => {
+    const p = [{ at: '2026-11-12T00:00:00.000Z', avg: 1, min: 1, max: 1 }];
+    const out = seriesByInstance([
+      { resource: 'srv-wk-zz', kind: 'worker_service', metric: 'cpu_pct', points: p },
+      { resource: 'srv-wk-aa', kind: 'worker_service', metric: 'cpu_pct', points: p },
+      { resource: 'srv-api', kind: 'api', metric: 'cpu_pct', points: p },
+      { resource: 'srv-wk-aa', kind: 'worker_service', metric: 'memory_pct', points: p },
+    ], 'cpu_pct');
+    expect(out.map((x) => x.label)).toEqual(['aa', 'zz']);
+  });
+  it('visão persistida inválida cai em "pior instância"', () => {
+    expect(parseWorkerChartView('instance')).toBe('instance');
+    expect(parseWorkerChartView('x')).toBe('worst');
   });
 });

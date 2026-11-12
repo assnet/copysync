@@ -6,7 +6,7 @@ import type { OpsLatest, OpsRange, OpsSeriesResult } from './types';
 
 const LATEST: OpsLatest = {
   latest: [], thresholds: { memoryPct: 80, cpuPct: 80, idleInTransaction: 3, eventLoopP99Ms: 200 },
-  topQueries: [], samplerActive: true, workers: [],
+  topQueries: [], samplerActive: true, workers: [], workerInstances: [],
 };
 const SERIES: OpsSeriesResult = { window: { from: 'a', to: 'b' }, bucketMinutes: 15, series: [] };
 

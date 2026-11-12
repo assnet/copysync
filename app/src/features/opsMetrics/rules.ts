@@ -1,7 +1,7 @@
 /** Regras puras da aba Consumo: janela, status vs limiar, delta de counter, alinhamento e formatação. */
 import type {
   OpsKind, OpsLatestValue, OpsRange, OpsResourceFilter, OpsSeries, OpsServerKind, OpsSeriesPoint, OpsStatus, OpsTopQuery, OpsWorker,
-  UsageFilters,
+  UsageFilters, WorkerChartView,
 } from './types';
 
 const MIN = 60_000;
@@ -89,6 +89,28 @@ export function seriesPoints(series: OpsSeries[], metric: string, kind?: OpsKind
     }
   }
   return [...byAt.values()].sort((a, b) => a.at.localeCompare(b.at));
+}
+
+export const WORKER_CHART_VIEWS: WorkerChartView[] = ['worst', 'instance'];
+export const DEFAULT_WORKER_CHART_VIEW: WorkerChartView = 'worst';
+
+/** Visão lida do sessionStorage; valor desconhecido cai no padrão. */
+export function parseWorkerChartView(raw: unknown): WorkerChartView {
+  return WORKER_CHART_VIEWS.includes(raw as WorkerChartView) ? (raw as WorkerChartView) : DEFAULT_WORKER_CHART_VIEW;
+}
+
+/** Nome curto da instância da Render: `srv-<id>-<sufixo>` → `<sufixo>`; sem sufixo, o id inteiro. */
+export function instanceShortName(resource: string): string {
+  const segs = resource.split('-');
+  return segs.length > 2 && segs[segs.length - 1] ? segs[segs.length - 1] : resource;
+}
+
+/** Uma série por instância do worker (`worker_service`), rotulada pelo nome curto e ordenada por ele. */
+export function seriesByInstance(series: OpsSeries[], metric: string): { label: string; points: OpsSeriesPoint[] }[] {
+  return series
+    .filter((s) => s.metric === metric && s.kind === 'worker_service' && s.points.length > 0)
+    .map((s) => ({ label: instanceShortName(s.resource), points: s.points }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** Séries por recurso (ex.: um worker por série), ordenadas pelo id. */

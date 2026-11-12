@@ -11,13 +11,16 @@ import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
 import { chartColors } from '../chartColors';
 import {
-  API_MEMORY_LIMIT_MB, DEFAULT_USAGE_FILTERS, MAX_WORKERS_IN_CHART, OPS_RANGES, OPS_RESOURCE_FILTERS, alignSeries,
+  API_MEMORY_LIMIT_MB, DEFAULT_USAGE_FILTERS, DEFAULT_WORKER_CHART_VIEW, MAX_WORKERS_IN_CHART, WORKER_CHART_VIEWS, parseWorkerChartView,
+  seriesByInstance, OPS_RANGES, OPS_RESOURCE_FILTERS, alignSeries,
   cacheHitDomainMin, cacheHitStatus, counterPeriodTotal, counterRatePerMinute, countDomainMax, formatBytes, formatDateTime,
   currentValues, formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceCount, resourceVisible,
   seriesByResource, seriesPoints, statusFor, valueStats,
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
-import type { OpsLatest, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsServerKind, OpsRange, UsageFilters } from '../types';
+import type {
+  OpsLatest, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsServerKind, OpsRange, UsageFilters, WorkerChartView,
+} from '../types';
 import { useOpsMetrics, type OpsMetricsState } from '../useOpsMetrics';
 import { CollectionOffState } from './CollectionOffState';
 import { CommitsBarChart } from './CommitsBarChart';
@@ -25,9 +28,13 @@ import { MetricChartCard, type ChartTable } from './MetricChartCard';
 import { TimeLineChart, type LineSpec, type TooltipExtra } from './TimeLineChart';
 import { TopQueriesTable } from './TopQueriesTable';
 import { UsageKpiTile, type UsageKpiTileProps } from './UsageKpiTile';
+import { WorkerInstancesTable } from './WorkerInstancesTable';
 
 export const USAGE_FILTERS_KEY = 'workers.usage.filters';
 const FILTER_PERSIST = { version: 1, deserialize: parseUsageFilters } as const;
+/** Worker nos gráficos de Servidores: pior instância × uma linha por instância (por aba do navegador). */
+export const WORKER_VIEW_KEY = 'workers.usage.workerView';
+const WORKER_VIEW_PERSIST = { version: 1, deserialize: parseWorkerChartView } as const;
 
 const fmtCount = (v: number) => formatNumber(v);
 const fmtMs = (v: number) => `${formatNumber(v)} ms`;
@@ -180,18 +187,48 @@ function Filters({ filters, onChange }: { filters: UsageFilters; onChange: (f: P
   );
 }
 
+function WorkerViewToggle({ value, onChange }: { value: WorkerChartView; onChange: (v: WorkerChartView) => void }) {
+  return (
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' }, mb: 1.5 }}>
+      <Typography variant="body2" color="text.secondary">{t.charts.workerView}</Typography>
+      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={value}
+          onChange={(_e, v: WorkerChartView | null) => v && onChange(v)}
+          aria-label={t.charts.workerViewAria}
+          sx={{ display: 'flex', flex: { xs: 1, sm: 'none' } }}
+        >
+          {WORKER_CHART_VIEWS.map((v) => (
+            <ToggleButton key={v} value={v} sx={{ minHeight: { xs: 44, sm: 32 }, px: 1.5, flex: { xs: 1, sm: 'none' } }}>
+              {t.charts.workerViews[v]}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        <Tooltip title={t.charts.workerViewHint} enterTouchDelay={0}>
+          <IconButton size="small" aria-label={t.charts.workerViewHint} sx={{ color: 'text.secondary' }}>
+            <AppIcon icon={Info} size="sm" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    </Stack>
+  );
+}
+
 interface ViewInput {
   latestRes: OpsLatest | null;
   series: OpsMetricsState['series'];
   resource: OpsResourceFilter;
   colors: ReturnType<typeof chartColors>;
+  workerView: WorkerChartView;
 }
 
 /**
  * Tudo que os KPIs e os gráficos mostram, derivado só dos dados da API e do filtro de recurso.
  * Roda num `useMemo`: render por "buscando", anúncio ou relógio não reconstrói os 12 gráficos.
  */
-function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
+function buildUsageView({ latestRes, series, resource, colors, workerView }: ViewInput) {
   const thresholds = latestRes?.thresholds;
   const latest = latestRes?.latest ?? [];
   const serversSeries = series.servers?.series ?? [];
@@ -288,21 +325,28 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
     },
   ];
 
-  const serverLines = (apiPts: OpsSeriesPoint[], workerPts: OpsSeriesPoint[], dbPts: OpsSeriesPoint[], bucket: number) => {
-    const list = [...(showApi ? [{ key: 'api', label: t.charts.series.api, color: colors.api, pts: apiPts }] : []),
-      ...(showWorker ? [{ key: 'workerService', label: t.charts.series.workerService, color: colors.workerService, pts: workerPts }] : []),
-      ...(showDb ? [{ key: 'postgres', label: t.charts.series.postgres, color: colors.postgres, pts: dbPts }] : [])]
-      .filter((x) => x.pts.length > 0);
+  // "Por instância": só o worker, uma linha por instância (cores fixas; mais de 3 = só tabela).
+  const byInstance = workerView === 'instance' && showWorker && hasWorker;
+  const serverLines = (metric: string, apiPts: OpsSeriesPoint[], workerPts: OpsSeriesPoint[], dbPts: OpsSeriesPoint[], bucket: number) => {
+    const list = byInstance
+      ? seriesByInstance(serversSeries, metric).map((x, i) => ({
+        key: `inst${i}`, label: x.label, color: colors.ordered[i % colors.ordered.length], pts: x.points,
+      }))
+      : [...(showApi ? [{ key: 'api', label: t.charts.series.api, color: colors.api, pts: apiPts }] : []),
+        ...(showWorker ? [{ key: 'workerService', label: t.charts.series.workerService, color: colors.workerService, pts: workerPts }] : []),
+        ...(showDb ? [{ key: 'postgres', label: t.charts.series.postgres, color: colors.postgres, pts: dbPts }] : [])]
+        .filter((x) => x.pts.length > 0);
     const aligned = alignSeries(list.map((x) => x.pts), bucket);
-    const lines: LineSpec[] = list.map((x, i) => ({
+    const lines: LineSpec[] = list.slice(0, byInstance ? MAX_WORKERS_IN_CHART : list.length).map((x, i) => ({
       id: x.key, label: x.label, color: x.color, values: avgOf(aligned.rows[i]),
-      band: { min: minOf(aligned.rows[i]), max: maxOf(aligned.rows[i]) }, format: formatPct,
+      band: !byInstance || list.length === 1 ? { min: minOf(aligned.rows[i]), max: maxOf(aligned.rows[i]) } : undefined, format: formatPct,
     }));
     const table = buildTable(aligned.times, list.map((x, i) => ({ label: x.label, rows: aligned.rows[i], format: formatPct })));
-    return { aligned, lines, table, list };
+    const tooMany = byInstance && list.length > MAX_WORKERS_IN_CHART;
+    return { aligned, lines, table, list, tooMany };
   };
-  const cpu = serverLines(cpuApi, cpuWorker, cpuDb, bucketS);
-  const mem = serverLines(memApi, memWorker, memDb, bucketS);
+  const cpu = serverLines('cpu_pct', cpuApi, cpuWorker, cpuDb, bucketS);
+  const mem = serverLines('memory_pct', memApi, memWorker, memDb, bucketS);
   const memApiIdx = mem.list.findIndex((x) => x.key === 'api');
 
   // ---- Banco de dados ----
@@ -414,7 +458,7 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
     tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
     idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
     cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
-    loopByWorker, rssW, loopW, rssTable, loopTable,
+    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance,
   };
 }
 
@@ -424,6 +468,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
   const mode = theme.palette.mode;
   const colors = useMemo(() => chartColors(mode), [mode]);
   const [filters, setFilters] = usePersistedState<UsageFilters>(USAGE_FILTERS_KEY, DEFAULT_USAGE_FILTERS, FILTER_PERSIST);
+  const [workerView, setWorkerView] = usePersistedState<WorkerChartView>(WORKER_VIEW_KEY, DEFAULT_WORKER_CHART_VIEW, WORKER_VIEW_PERSIST);
   const m = useOpsMetrics(filters.range, filters.autoRefresh);
   const [announce, setAnnounce] = useState('');
 
@@ -438,8 +483,8 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
   const samplerActive = m.latest ? m.latest.samplerActive : null;
   const now = serverNow();
   const view = useMemo(
-    () => buildUsageView({ latestRes: m.latest, series: m.series, resource: filters.resource, colors }),
-    [m.latest, m.series, filters.resource, colors],
+    () => buildUsageView({ latestRes: m.latest, series: m.series, resource: filters.resource, colors, workerView }),
+    [m.latest, m.series, filters.resource, colors, workerView],
   );
 
   const onChange = (patch: Partial<UsageFilters>) => setFilters((f) => ({ ...f, ...patch }));
@@ -491,7 +536,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
     tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
     idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
     cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
-    loopByWorker, rssW, loopW, rssTable, loopTable,
+    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance,
   } = view;
   const renderMissing = !loading && renderMissingData;
 
@@ -518,17 +563,21 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
       </Grid>
 
       <SectionTitle>{t.sections.servers}</SectionTitle>
+      {showWorker && hasWorker && (
+        <WorkerViewToggle value={workerView} onChange={setWorkerView} />
+      )}
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
           <MetricChartCard
             title={t.charts.cpu}
             unit={t.charts.cpuUnit}
             help={t.help.cpu_pct}
-            note={t.charts.cpuNote}
+            note={byInstance ? t.charts.instanceNote : t.charts.cpuNote}
             loading={loading}
             error={m.errors.servers}
             onRetry={retry}
-            empty={cpu.lines.length === 0}
+            empty={cpu.list.length === 0}
+            tableOnlyNotice={cpu.tooMany ? t.charts.tooManyInstances : undefined}
             emptyText={renderMissing ? t.charts.renderMissing : undefined}
             figureAria={figureAria(t.charts.cpu, cpu.lines.flatMap((l) => l.values), formatPct, thresholds && formatPct(thresholds.cpuPct))}
             table={cpu.table}
@@ -551,7 +600,8 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
             loading={loading}
             error={m.errors.servers}
             onRetry={retry}
-            empty={mem.lines.length === 0}
+            empty={mem.list.length === 0}
+            tableOnlyNotice={mem.tooMany ? t.charts.tooManyInstances : undefined}
             emptyText={renderMissing ? t.charts.renderMissing : undefined}
             figureAria={figureAria(t.charts.memory, mem.lines.flatMap((l) => l.values), formatPct, thresholds && formatPct(thresholds.memoryPct))}
             table={mem.table}
@@ -568,6 +618,11 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
           </MetricChartCard>
         </Grid>
       </Grid>
+      {showWorker && !loading && !m.errors.latest && m.latest && ((m.latest.workerInstances ?? []).length > 0 || hasWorker) && (
+        <Box sx={{ mt: 2 }}>
+          <WorkerInstancesTable instances={m.latest.workerInstances ?? []} thresholds={thresholds} />
+        </Box>
+      )}
 
       <SectionTitle>{t.sections.database}</SectionTitle>
       <Grid container spacing={2}>

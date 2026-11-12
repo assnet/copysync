@@ -43,6 +43,7 @@ const FULL_LATEST: OpsLatest = {
   ],
   samplerActive: true,
   workers: [],
+  workerInstances: [],
 };
 
 function mockAll(latest: OpsLatest | Error, series: (metrics: string[]) => OpsSeriesResult | Error) {
@@ -286,11 +287,67 @@ describe('Aba Consumo', () => {
       expect(within(ram).getByText(t.kpi.worstOf(2))).toBeInTheDocument();
     });
 
-    it('sem amostra do worker (API sem o id do serviço): sem cartões de Worker', async () => {
+    it('sem amostra do worker (API sem o id do serviço): sem cartões, sem tabela de instâncias e sem alternância', async () => {
       mockAll(FULL_LATEST, fullSeries);
       renderUsage();
       await screen.findByText(t.kpi.ramApi);
       expect(screen.queryByText(t.kpi.ramWorker)).not.toBeInTheDocument();
+      expect(screen.queryByText(t.instances.title)).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: t.charts.workerViewAria })).not.toBeInTheDocument();
+    });
+
+    const INSTANCES_LATEST: OpsLatest = {
+      ...WORKER_LATEST,
+      workerInstances: [
+        {
+          instance: 'a1', resource: 'srv-wk-a1', cpuPct: 21, memoryPct: 45, sampledAt: iso(2),
+          heartbeat: { workerId: 'srv-wk-h-a1-19-0011aabb', sessions: 12, pendingLogins: 2, maxSessions: 40, rssMb: 512, seenAt: iso(0.5) },
+        },
+        { instance: 'b2', resource: 'srv-wk-b2', cpuPct: 9, memoryPct: 73, sampledAt: iso(2), heartbeat: null },
+        {
+          instance: 'c3', resource: null, cpuPct: null, memoryPct: null, sampledAt: null,
+          heartbeat: { workerId: 'srv-wk-h-c3-7-0011aabb', sessions: 0, pendingLogins: 0, maxSessions: 40, rssMb: 200, seenAt: iso(0.2) },
+        },
+      ],
+    };
+
+    it('tabela "Instâncias do worker": uma linha por instância, com falta de batimento ou de amostra sinalizada', async () => {
+      mockAll(INSTANCES_LATEST, workerSeries);
+      renderUsage();
+      const table = await screen.findByRole('table', { name: t.instances.tableAria });
+      const rows = within(table).getAllByRole('row').slice(1);
+      expect(rows).toHaveLength(3);
+      expect(within(rows[0]).getByText('a1')).toBeInTheDocument();
+      expect(within(rows[0]).getByText('21%')).toBeInTheDocument();
+      expect(within(rows[0]).getByText(t.instances.sessions(12, 40))).toBeInTheDocument();
+      expect(within(rows[1]).getByText(t.instances.noHeartbeat)).toBeInTheDocument();
+      expect(within(rows[1]).getByText('73%')).toBeInTheDocument();
+      expect(within(rows[2]).getByText(t.instances.noSample)).toBeInTheDocument();
+    });
+
+    it('réplica sumiu: a linha some junto (tema escuro)', async () => {
+      mockAll({ ...INSTANCES_LATEST, workerInstances: INSTANCES_LATEST.workerInstances.slice(0, 1) }, workerSeries);
+      renderUsage('dark');
+      const table = await screen.findByRole('table', { name: t.instances.tableAria });
+      expect(within(table).getAllByRole('row')).toHaveLength(2);
+      expect(within(table).queryByText('b2')).not.toBeInTheDocument();
+    });
+
+    it('"Por instância": gráficos com uma linha por instância, escolha persistida', async () => {
+      mockAll(INSTANCES_LATEST, workerSeries);
+      renderUsage();
+      await screen.findByText(t.kpi.ramWorker);
+      const group = screen.getByRole('group', { name: t.charts.workerViewAria });
+      expect(within(group).getByRole('button', { name: t.charts.workerViews.worst })).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.click(within(group).getByRole('button', { name: t.charts.workerViews.instance }));
+      expect(sessionStorage.getItem('ui.workers.usage.workerView')).toContain('instance');
+      const [toggle] = screen.getAllByRole('button', { name: t.charts.showTable });
+      await userEvent.click(toggle);
+      const table = screen.getByRole('table', { name: t.charts.cpu });
+      expect(within(table).getAllByText('a1').length).toBeGreaterThan(0);
+      expect(within(table).getAllByText('b2').length).toBeGreaterThan(0);
+      expect(within(table).queryByText(t.charts.series.api)).not.toBeInTheDocument();
+      expect(within(table).queryByText(t.charts.series.workerService)).not.toBeInTheDocument();
     });
   });
 });

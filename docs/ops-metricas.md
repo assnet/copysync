@@ -88,6 +88,23 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
   `meta`. Snapshot antigo também aparece: conferir `at`.
 - `samplerActive`: há amostra nos últimos 15 min (sampler ligado e gravando).
 - `workers`: workers vivos de `worker_heartbeats` (mesmo formato da leitura bruta).
+- `workerInstances` (desde api 0.87.0): uma linha por instância viva do serviço worker,
+  `{ instance, resource, cpuPct, memoryPct, sampledAt, heartbeat: { workerId, sessions, pendingLogins, maxSessions, rssMb, seenAt } | null }`.
+  Casamento puro em `metrics/domain/services/workerInstancesPolicy.ts` (`matchWorkerInstances`), sobre as mesmas
+  linhas do `latest` e o mesmo `listAlive` (90 s); nada novo é lido e a Render não é chamada.
+  - Amostra: `source='render'`, `cpu_pct`/`memory_pct`, `resource` = `WORKER_SCALER_SERVICE_ID` ou `<id>-<sufixo>`.
+    Instância atual = amostra mais nova dela ≥ (mais nova do serviço − 2 min), o mesmo corte do painel; a trocada
+    por deploy sai. Por métrica vale a amostra mais nova.
+  - Batimento: o `workerId` padrão é `<HOSTNAME>-<pid>-<nonce>` e o HOSTNAME na Render é `srv-<id>-<hash>-<sufixo>`
+    (ex.: `srv-dbq…670-5f44954c7b-4lx97-19-18faf21d` ↔ instância `srv-dbq…670-4lx97`). Tira-se o prefixo
+    `<id>-` e os 2 últimos segmentos (pid, nonce); casa com a instância cujo sufixo é um desses segmentos
+    **inteiro** (nunca substring: `4lx9` não casa `4lx97`). Vários batimentos na mesma instância (processo
+    reiniciado ainda vivo) = vale o `seenAt` mais novo.
+  - Instância sem batimento (adoção desligada, processo subindo): `heartbeat = null`. Batimento sem amostra
+    atual (réplica nova antes do 1º tick do sampler): `resource`/`cpuPct`/`memoryPct` nulos, `instance` = último
+    segmento do host. Batimento fora do serviço (api `all`, `WORKER_ID` manual) é ignorado.
+  - Sem `WORKER_SCALER_SERVICE_ID` válido no `http`: lista vazia (sem worker separado).
+  - O batimento não guarda início do processo: a tela mostra "visto há", não uptime. Uptime exigiria coluna nova.
 
 Não fazer: balde no cliente sobre a leitura bruta paginada; aceitar `limit`/tamanho de balde do
 cliente; métrica fora de `OPS_METRIC`; chamar a Render nessas rotas.
@@ -114,6 +131,15 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   fora do N e do pior valor. Os cartões só aparecem com amostra do worker; sem `WORKER_SCALER_SERVICE_ID`
   no `http` tudo segue em API. Nos gráficos de CPU e Memória de Servidores o Worker é a 2ª linha
   (3ª cor; pior instância por balde), separada da API.
+- **Instâncias do worker** (app 0.106.0, `WorkerInstancesTable.tsx`): tabela abaixo dos gráficos de Servidores,
+  uma linha por `workerInstances` (nome curto = sufixo, CPU %, RAM % com a cor do status pelo limiar, sessões/teto
+  com RSS no tooltip, logins em andamento, "visto há" do batimento ou, sem ele, da amostra). Chips "Sem batimento"/
+  "Sem amostra" marcam o lado que falta. Aparece e some com as réplicas (dado do `/latest` a cada 60 s); sem worker
+  separado não aparece. Segue o filtro Recurso (some em API/Postgres). Sem flag de borrar: só id de infraestrutura.
+- **Worker nos gráficos** (alternância acima dos gráficos de Servidores, só com amostra do worker): "Pior instância"
+  (padrão, comportamento anterior) × "Por instância" (uma linha por `resource` do `worker_service` no período,
+  rotulada pelo sufixo; API e Postgres saem do gráfico para não passar de 3 cores; mais de 3 instâncias no período
+  = só tabela). Persistida em `usePersistedState('workers.usage.workerView')`, escopo `tab`.
 - Consultas: só `shape` (forma normalizada) do snapshot mais recente, sem flag de borrar (sem dado
   de cliente). Se a API mandar SQL não normalizado, é bug da API.
 

@@ -185,6 +185,7 @@ describe('GET /admin/ops/metrics/series e /latest', () => {
         topQueries: [{ queryid: '123', shape: 'SELECT 1', totalMs: 50, meanMs: 10, calls: 5, at: at.toISOString() }],
         samplerActive: expect.any(Boolean),
         workers: [{ workerId: 'w1', role: 'worker', sessions: 3, pendingLogins: 0, maxSessions: 40, rssMb: 310, cpuPct: null, eventLoopP99Ms: null, seenAt: seenAt.toISOString() }],
+        workerInstances: [],
       },
     });
   });

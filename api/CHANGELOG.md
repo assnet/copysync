@@ -7,6 +7,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.87.0] — 2026-11-12 — Instâncias do worker no consumo
+
+`GET /admin/ops/metrics/latest` devolve `workerInstances`: por instância viva do serviço worker, CPU %/RAM % da última
+amostra da Render (corte de 2 min da instância atual) casados com o batimento (`sessions`, `pendingLogins`,
+`maxSessions`, `rssMb`, `seenAt`). Casamento pelo sufixo da instância (`srv-<id>-<sufixo>`) como segmento inteiro do
+host no `workerId` (`<HOSTNAME>-<pid>-<nonce>`). Doc: `docs/ops-metricas.md`.
+**Migration Prisma**: não. **Breaking**: não (campo novo).
+
+### Added
+
+#### API — `metrics`
+
+- **`domain/services/workerInstancesPolicy.ts`** — `matchWorkerInstances`/`workerIdHostSegments` (puras): amostra sem batimento e batimento sem amostra viram linha com o lado faltante `null`; sufixo parecido não casa; batimento mais novo vence; sem `WORKER_SCALER_SERVICE_ID` = vazio.
+- **`application/use-cases/GetOpsMetricsLatestUseCase.ts`** — monta `workerInstances` com as linhas já lidas (`latestSince` + `listAlive`); nada novo no banco, sem Render.
+- **`presentation/presenters/opsMetricsPresenter.ts`**, **`schemas/opsMetrics.schema.ts`** — contrato do campo.
+- Testes da política (1 e 2 instâncias, sufixo parecido, sem amostra, sem batimento, instância trocada por deploy), do use case e da rota.
+
 ## [0.86.0] — 2026-11-12 — Worker separado da API no consumo
 
 Com a api em `PROCESS_ROLE=http` e o serviço worker à parte, as amostras da Render do worker (`srv-<idDoWorker>-<sufixo>`)
