@@ -125,6 +125,7 @@ interface SetupOpts {
   fxSources?: IFxRateSource[];
   auto?: boolean;
   start?: number;
+  monthClose?: { execute: ReturnType<typeof vi.fn> };
 }
 
 function setup(opts: SetupOpts = {}) {
@@ -141,7 +142,7 @@ function setup(opts: SetupOpts = {}) {
   let clock = opts.start ?? Date.parse('2026-11-12T10:02:00Z');
   const job = new InfraCostSnapshotJob({
     lease: lease.lease, snapshots: snapshots.repo, plans: plans.plans, live, tenants, settings: settings as never,
-    fxSources, fxState: fxState.repo, now: () => new Date(clock),
+    fxSources, fxState: fxState.repo, now: () => new Date(clock), monthClose: opts.monthClose as never,
   });
   return { job, lease, snapshots, fxState, plans, live, tenants, settings, setClock: (ms: number) => { clock = ms; } };
 }
@@ -448,5 +449,44 @@ describe('InfraCostSnapshotJob — ciclo de vida', () => {
     const job = { start: vi.fn() };
     expect(startInfraCostSnapshotJob(true, () => ({ job, renderConfigured: false }) as never)).toMatchObject({ job });
     expect(job.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('InfraCostSnapshotJob — fechamento mensal', () => {
+  const close = () => ({ execute: vi.fn(async () => 'closed') });
+
+  it('na 1ª hora do mês fecha o mês anterior depois de gravar a última hora dele', async () => {
+    const monthClose = close();
+    const s = setup({ start: Date.parse('2026-11-01T00:03:00Z'), monthClose });
+    await s.job.runTick();
+    expect(s.snapshots.hours.size).toBeGreaterThan(0); // 31/10 23:00 gravada no passo da hora
+    expect(monthClose.execute).toHaveBeenCalledWith({ month: '2026-10', now: new Date('2026-11-01T00:03:00Z') });
+  });
+
+  it('até 01:00 espera a última hora do mês; depois fecha com o que houver; fora das 24 h não tenta', async () => {
+    const monthClose = close();
+    const plans = fakePlans();
+    plans.setFail({ status: 'unavailable', reason: 'upstream' } as never);
+    const s = setup({ start: Date.parse('2026-11-01T00:30:00Z'), monthClose, plans });
+    await s.job.runTick();
+    expect(monthClose.execute).not.toHaveBeenCalled();
+
+    s.setClock(Date.parse('2026-11-01T01:10:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalledTimes(1);
+
+    s.setClock(Date.parse('2026-11-02T00:10:00Z'));
+    await s.job.runTick();
+    s.setClock(Date.parse('2026-11-15T10:00:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha do fechamento não derruba os outros passos', async () => {
+    const monthClose = { execute: vi.fn(async () => { throw new Error('boom'); }) };
+    const s = setup({ start: Date.parse('2026-11-01T00:03:00Z'), monthClose });
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalled();
+    expect(s.snapshots.repo.deleteOlderThan).toHaveBeenCalled();
   });
 });

@@ -9,6 +9,12 @@ import type {
   InfraUsageMetric,
   TenantSessionHourSample,
 } from '../../domain/contracts/IInfraCostSnapshotRepository';
+import type {
+  IInfraCostMonthRepository,
+  InfraCostClosedMonth,
+  InfraCostClosedMonthSummary,
+} from '../../domain/contracts/IInfraCostMonthRepository';
+import type { InfraFxClosingMethod } from '../../domain/services/infraCostSettings';
 
 /** Lote da retenção: curto, sem lock longo nem WAL em rajada (mesmo padrão de `ops_metrics_samples`). */
 export const INFRA_SNAPSHOT_RETENTION_BATCH_SIZE = 5_000;
@@ -39,8 +45,15 @@ export interface PrismaInfraCostSnapshotRepositoryOptions {
   retentionMaxBatches?: number;
 }
 
-/** Snapshots dos custos da infraestrutura (COST-09/10). `tenant_session_hours` é a única tabela tenant-aware. */
-export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepository {
+const usd = (n: number) => new Prisma.Decimal(n.toFixed(4));
+/** Dia 1 do mês (UTC) da data. */
+const monthDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+
+/**
+ * Snapshots dos custos da infraestrutura (COST-09/10) e fechamento mensal (COST-15). `tenant_session_hours`
+ * e `infra_cost_month_tenants` são as tabelas tenant-aware.
+ */
+export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepository, IInfraCostMonthRepository {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly options: PrismaInfraCostSnapshotRepositoryOptions = {},
@@ -176,5 +189,67 @@ export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepo
       }
     }
     return result;
+  }
+
+  async hasClosedMonth(month: Date): Promise<boolean> {
+    const row = await this.prisma.infraCostMonth.findUnique({ where: { month: monthDay(month) }, select: { month: true } });
+    return row !== null;
+  }
+
+  /**
+   * Mês primeiro com `ON CONFLICT DO NOTHING`: quem não inseriu não grava tenants (dois processos fechando o
+   * mesmo mês não duplicam nem reescrevem). Mês e tenants na mesma transação.
+   */
+  async saveClosedMonth(closed: InfraCostClosedMonth): Promise<boolean> {
+    const month = monthDay(closed.month);
+    const fx = closed.fx;
+    return this.prisma.$transaction(async (tx) => {
+      const inserted = await tx.$executeRaw`
+        INSERT INTO "infra_cost_months" ("month", "closingMethod", "fxRate", "fxReferenceDate", "fxSource", "totalUsd", "totals")
+        VALUES (${utcDay(month)}, ${closed.closingMethod}, ${fx ? fx.rate.toFixed(4) : null}::numeric,
+          ${fx ? utcDay(fx.referenceDate) : null}, ${fx?.source ?? null}, ${closed.totalUsd.toFixed(4)}::numeric,
+          ${JSON.stringify(closed.totals)}::jsonb)
+        ON CONFLICT ("month") DO NOTHING`;
+      if (inserted === 0) return false;
+      if (closed.tenants.length > 0) {
+        await tx.infraCostMonthTenant.createMany({
+          data: closed.tenants.map((t) => ({
+            month,
+            tenantId: t.tenantId,
+            planSlug: t.planSlug,
+            contractedAvg: t.contractedAvg,
+            sessionHours: t.sessionHours,
+            sharedUsd: usd(t.sharedUsd),
+            aiUsd: usd(t.aiUsd),
+            totalUsd: usd(t.totalUsd),
+          })),
+        });
+      }
+      return true;
+    });
+  }
+
+  async findClosedMonth(month: Date): Promise<InfraCostClosedMonthSummary | null> {
+    const row = await this.prisma.infraCostMonth.findUnique({ where: { month: monthDay(month) } });
+    if (!row) return null;
+    return {
+      month: row.month,
+      closingMethod: row.closingMethod as InfraFxClosingMethod,
+      fx:
+        row.fxRate && row.fxReferenceDate && row.fxSource
+          ? { rate: row.fxRate.toNumber(), referenceDate: row.fxReferenceDate, source: row.fxSource as 'override' | 'ptax' | 'sgs' }
+          : null,
+      totalUsd: row.totalUsd.toNumber(),
+      totals: row.totals as Record<string, unknown>,
+      closedAt: row.closedAt,
+    };
+  }
+
+  async fxRatesBetween(start: Date, end: Date): Promise<InfraFxRateRecord[]> {
+    const rows = await this.prisma.infraFxRate.findMany({
+      where: { referenceDate: { gte: start, lt: end } },
+      orderBy: { referenceDate: 'asc' },
+    });
+    return rows.map((r) => ({ referenceDate: r.referenceDate, rate: r.rate.toNumber(), source: r.source as InfraFxRateSource, fetchedAt: r.fetchedAt }));
   }
 }

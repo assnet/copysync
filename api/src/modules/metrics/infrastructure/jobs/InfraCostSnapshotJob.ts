@@ -19,6 +19,8 @@ import type { IInfraTenantUsageReader } from '../../domain/contracts/IInfraTenan
 import { fetchFirstFxRate, type IFxRateSource } from '../../domain/services/fxRate';
 import { resolveInfraCostSettings } from '../../domain/services/infraCostSettings';
 import { isFxFetchDue, startFxFetchAttempt } from '../../domain/services/infraFxFetchState';
+import type { CloseInfraCostMonthUseCase } from '../../application/use-cases/CloseInfraCostMonthUseCase';
+import { utcMonthOf } from '../../application/use-cases/GetInfraCostSummaryUseCase';
 
 export const INFRA_COST_SNAPSHOT_LEASE = 'infra-cost-snapshot';
 export const INFRA_FX_RATE_LEASE = 'infra-fx-rate';
@@ -42,6 +44,11 @@ export const INFRA_COST_RENDER_BACKOFF_DEFAULT_MS = 60_000;
 export const INFRA_COST_RENDER_BACKOFF_MAX_MS = 3_600_000;
 /** Banda das horas sem linha reprocessada até esta idade (a guarda `lastHour` evita dobra). */
 export const INFRA_COST_BANDWIDTH_CATCHUP_HOURS = 6;
+/**
+ * Fechamento do mês anterior: tentado do início do mês até 24 h depois (tolera o worker fora do ar na 1ª
+ * hora); mês já fechado é ignorado. Até 01:00 espera a última hora do mês anterior ser gravada.
+ */
+export const INFRA_COST_MONTH_CLOSE_WINDOW_MS = 24 * 3_600_000;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -61,6 +68,8 @@ export interface InfraCostSnapshotJobOptions {
   /** PTAX → SGS. */
   fxSources: readonly IFxRateSource[];
   fxState: IInfraFxFetchStateRepository;
+  /** Fechamento mensal (COST-15); ausente = passo desligado. */
+  monthClose?: Pick<CloseInfraCostMonthUseCase, 'execute'>;
   intervalMs?: number;
   now?: () => Date;
 }
@@ -73,6 +82,8 @@ export interface InfraCostSnapshotJobOptions {
  *    renova o lease e grava sessão-hora → recursos (por último: é a marca de "hora feita"). A sessão-hora é
  *    gravada mesmo sem a Render (não depende dela; idempotente por `lastHour`). Qualquer recurso indisponível
  *    ou sem instâncias → hora sem linha, `warn` uma vez por sequência, tenta de novo no próximo tick.
+ * 1b. **Fechamento** do mês anterior (COST-15) nas primeiras 24 h do mês, depois da hora fechada: espera a
+ *    última hora do mês ser gravada até 01:00; idempotente (mês fechado não muda).
  * 2. **Banda** de cada hora fechada há mais de 1 h sem linha nas últimas 6 h, em ordem (para na 1ª falha:
  *    a guarda `lastHour` não aceita hora anterior a uma já somada).
  * 3. **Build** do dia anterior, 1×/dia após 01:00 UTC (lease `infra-cost-build` até 01:00 do dia seguinte;
@@ -141,6 +152,7 @@ export class InfraCostSnapshotJob {
     this.abort = new AbortController();
     const steps: [string, () => Promise<void>][] = [
       ['hour', () => this.snapshotHour(new Date(floorHour(now).getTime() - HOUR_MS))],
+      ['month', () => this.closeMonth(now)],
       ['bandwidth', () => this.bandwidth(now)],
       ['build', () => this.buildMinutes(now)],
       ['fx', () => this.fxRate(now)],
@@ -230,6 +242,19 @@ export class InfraCostSnapshotJob {
         suspended: r.suspended ?? false,
       };
     }));
+  }
+
+  /** Fecha o mês anterior (passo 1b). */
+  private async closeMonth(now: Date): Promise<void> {
+    const close = this.options.monthClose;
+    if (!close) return;
+    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const since = now.getTime() - monthStart;
+    if (since < 0 || since >= INFRA_COST_MONTH_CLOSE_WINDOW_MS) return;
+    if (since < HOUR_MS && !(await this.options.snapshots.hasResourceHour(new Date(monthStart - HOUR_MS)))) return;
+    const month = utcMonthOf(new Date(monthStart - 1));
+    const result = await close.execute({ month, now });
+    if (result === 'closed') this.log.info({ month }, 'infra cost month closed');
   }
 
   /**

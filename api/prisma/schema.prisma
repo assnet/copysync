@@ -193,6 +193,7 @@ model Tenant {
   storefront                 Storefront?
   storefrontOffers           StorefrontOffer[]
   sessionHours               TenantSessionHour[]
+  costMonths                 InfraCostMonthTenant[]
 
   @@index([slug])
   @@map("tenants")
@@ -503,6 +504,42 @@ model InfraUsageDaily {
 
   @@id([day, metric, resourceKey])
   @@map("infra_usage_daily")
+}
+
+// Mês fechado dos custos (COST-15): preços, cotação e método congelados; edição posterior não reescreve.
+model InfraCostMonth {
+  month           DateTime  @id @db.Date // dia 1 (UTC)
+  closingMethod   String // last_business_day | month_average (CHECK no banco)
+  fxRate          Decimal?  @db.Decimal(10, 4) // null = sem cotação (só USD)
+  fxReferenceDate DateTime? @db.Date
+  fxSource        String? // override | ptax | sgs (CHECK no banco)
+  totalUsd        Decimal   @db.Decimal(14, 4)
+  /// Conta do mês (itens, planos, avisos) e preços usados.
+  totals          Json
+  closedAt        DateTime  @default(now())
+
+  tenants InfraCostMonthTenant[]
+
+  @@map("infra_cost_months")
+}
+
+// Parte de cada tenant no mês fechado (tenant-aware). Índice do cursor: total congelado desc + tenantId.
+model InfraCostMonthTenant {
+  month         DateTime @db.Date
+  tenantId      String
+  planSlug      String?
+  contractedAvg Float
+  sessionHours  Int
+  sharedUsd     Decimal  @db.Decimal(14, 4)
+  aiUsd         Decimal  @db.Decimal(14, 4)
+  totalUsd      Decimal  @db.Decimal(14, 4)
+
+  closedMonth InfraCostMonth @relation(fields: [month], references: [month], onDelete: Cascade)
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([month, tenantId])
+  @@index([month, totalUsd(sort: Desc), tenantId])
+  @@map("infra_cost_month_tenants")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
  * Ordem: override manual → última cotação gravada (PTAX/SGS; `last_known` se a busca de hoje falhou)
  * → `null` (aviso `fx_missing` no calculador). Também o contrato das fontes (`IFxRateSource`).
  */
-import type { InfraFxSettings } from './infraCostSettings';
+import type { InfraFxClosingMethod, InfraFxSettings } from './infraCostSettings';
 
 export type InfraFxSource = 'override' | 'ptax' | 'sgs' | 'last_known';
 
@@ -104,4 +104,46 @@ export function resolveFxRate(input: ResolveFxRateInput): ResolvedFxRate | null 
     };
   }
   return null;
+}
+
+export interface ResolveClosingFxRateInput {
+  fx: Pick<InfraFxSettings, 'override'>;
+  method: InfraFxClosingMethod;
+  /** Último dia do mês fechado (referência do `stale`). */
+  lastDay: Date;
+  /** Cotações gravadas com `referenceDate` dentro do mês (qualquer ordem). */
+  inMonth: readonly SavedFxRate[];
+  /** Última gravada antes do mês (fallback). */
+  before: SavedFxRate | null;
+}
+
+export interface ClosingFxRate {
+  fx: ResolvedFxRate | null;
+  /** Sem cotação no mês: usou a última antes dele (aviso `fx_fallback`). */
+  fallback: boolean;
+}
+
+/**
+ * Cotação do mês fechado (COST-06a, D7): override ativo vence; `last_business_day` = última gravada no mês;
+ * `month_average` = média das gravadas no mês (4 casas; data, fonte e busca da última); nenhuma no mês →
+ * última antes do mês (`fallback`); nada → `null` (`fx_missing` no calculador).
+ */
+export function resolveClosingFxRate(input: ResolveClosingFxRateInput): ClosingFxRate {
+  if (input.fx.override) {
+    return { fx: resolveFxRate({ fx: { auto: false, override: input.fx.override, closingMethod: input.method }, today: input.lastDay }), fallback: false };
+  }
+  const valid = input.inMonth
+    .filter((r) => isValidFxRate(r.rate) && isIsoDay(r.referenceDate))
+    .sort((a, b) => a.referenceDate.localeCompare(b.referenceDate));
+  const last = valid.at(-1);
+  if (last) {
+    const rate =
+      input.method === 'month_average' ? Math.round((valid.reduce((s, r) => s + r.rate, 0) / valid.length) * 10_000) / 10_000 : last.rate;
+    return {
+      fx: { rate, referenceDate: last.referenceDate, source: last.source, fetchedAt: last.fetchedAt, stale: isFxRateStale(last.referenceDate, input.lastDay) },
+      fallback: false,
+    };
+  }
+  const fx = resolveFxRate({ fx: { auto: false, override: null, closingMethod: input.method }, today: input.lastDay, saved: input.before });
+  return { fx, fallback: fx !== null };
 }

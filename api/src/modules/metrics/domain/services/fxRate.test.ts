@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchFirstFxRate, isFxRateStale, isValidFxRate, resolveFxRate, type FetchedFxRate, type IFxRateSource } from './fxRate';
+import { fetchFirstFxRate, isFxRateStale, isValidFxRate, resolveClosingFxRate, resolveFxRate, type FetchedFxRate, type IFxRateSource, type SavedFxRate } from './fxRate';
 import { defaultInfraCostSettings } from './infraCostSettings';
 
 const TODAY = new Date('2026-11-12T15:00:00.000Z');
@@ -73,5 +73,34 @@ describe('fetchFirstFxRate', () => {
   it('PTAX falhou → SGS como fallback; as duas → null', async () => {
     expect(await fetchFirstFxRate([src('ptax', null), src('sgs', sgs)])).toEqual(sgs);
     expect(await fetchFirstFxRate([src('ptax', null), src('sgs', null)])).toBeNull();
+  });
+});
+
+describe('resolveClosingFxRate', () => {
+  const lastDay = new Date('2026-10-31T00:00:00Z');
+  const r = (referenceDate: string, rate: number, source: 'ptax' | 'sgs' = 'ptax'): SavedFxRate =>
+    ({ rate, referenceDate, source, fetchedAt: new Date(`${referenceDate}T17:00:00Z`) });
+  const inMonth = [r('2026-10-30', 5.6), r('2026-10-01', 5.2, 'sgs'), r('2026-10-15', 5.3)];
+  const before = r('2026-09-30', 5.1);
+
+  it('last_business_day = última do mês; month_average = média (4 casas) com data/fonte da última', () => {
+    const last = resolveClosingFxRate({ fx: { override: null }, method: 'last_business_day', lastDay, inMonth, before });
+    expect(last).toEqual({ fx: expect.objectContaining({ rate: 5.6, referenceDate: '2026-10-30', source: 'ptax', stale: false }), fallback: false });
+    const avg = resolveClosingFxRate({ fx: { override: null }, method: 'month_average', lastDay, inMonth, before });
+    expect(avg.fx).toMatchObject({ rate: 5.3667, referenceDate: '2026-10-30', source: 'ptax' });
+    expect(avg.fallback).toBe(false);
+  });
+
+  it('sem cotação no mês → última antes (fallback) nos dois métodos; nada → null sem fallback', () => {
+    for (const method of ['last_business_day', 'month_average'] as const) {
+      const out = resolveClosingFxRate({ fx: { override: null }, method, lastDay, inMonth: [], before });
+      expect(out).toEqual({ fx: expect.objectContaining({ rate: 5.1, referenceDate: '2026-09-30', stale: true }), fallback: true });
+      expect(resolveClosingFxRate({ fx: { override: null }, method, lastDay, inMonth: [], before: null })).toEqual({ fx: null, fallback: false });
+    }
+  });
+
+  it('override ativo vence as gravadas', () => {
+    const out = resolveClosingFxRate({ fx: { override: { rate: 6, date: '2026-10-20' } }, method: 'month_average', lastDay, inMonth, before });
+    expect(out).toEqual({ fx: expect.objectContaining({ rate: 6, source: 'override', referenceDate: '2026-10-20' }), fallback: false });
   });
 });

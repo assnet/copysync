@@ -6,6 +6,7 @@ import { workerScalingSettingsProvider } from '../../sessions/infrastructure/lea
 import { GetInfraCostSettingsUseCase } from '../application/use-cases/GetInfraCostSettingsUseCase';
 import { UpdateInfraCostSettingsUseCase } from '../application/use-cases/UpdateInfraCostSettingsUseCase';
 import { GetInfraCostSummaryUseCase } from '../application/use-cases/GetInfraCostSummaryUseCase';
+import { CloseInfraCostMonthUseCase } from '../application/use-cases/CloseInfraCostMonthUseCase';
 import { PrismaInfraCostSettingsRepository } from './repositories/PrismaInfraCostSettingsRepository';
 import { PrismaInfraCostLiveReader } from './repositories/PrismaInfraCostLiveReader';
 import { InfraCostCapacityReader } from './repositories/infraCostReadTimeout';
@@ -59,15 +60,25 @@ export function getInfraCostSummaryUseCase(): GetInfraCostSummaryUseCase {
  */
 export function createInfraCostSnapshotJob(): { job: InfraCostSnapshotJob; renderConfigured: boolean } {
   const plans = infraResourcePlanReader();
+  const snapshots = new PrismaInfraCostSnapshotRepository(prisma);
+  const settings = new PrismaInfraCostSettingsRepository(prisma);
   const job = new InfraCostSnapshotJob({
     lease: new PrismaJobLease(prisma),
-    snapshots: new PrismaInfraCostSnapshotRepository(prisma),
+    snapshots,
     plans,
     live: new PrismaInfraCostLiveReader(prisma, env.WORKER_SCALER_SERVICE_ID),
     tenants: new PrismaInfraTenantUsageReader(prisma),
-    settings: new PrismaInfraCostSettingsRepository(prisma),
+    settings,
     fxSources: [new BcbPtaxFxRateSource(), new BcbSgsFxRateSource()],
     fxState: new PrismaInfraFxFetchStateRepository(prisma),
+    // Fechamento mensal (COST-15): congela preços e cotação do mês anterior
+    monthClose: new CloseInfraCostMonthUseCase({
+      months: snapshots,
+      fxRates: snapshots,
+      settings,
+      usage: new PrismaInfraCostUsageReader(prisma),
+      scaling: workerScalingSettingsProvider(),
+    }),
   });
   return { job, renderConfigured: plans.configuredKeys().length > 0 };
 }
