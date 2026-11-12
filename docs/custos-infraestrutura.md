@@ -172,6 +172,12 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
   (`ultimos/1`) → mantém a **última** gravada e faz **no máximo 1 nova tentativa 1 h depois**. Estado da tentativa em
   `platform_settings["infra_fx_fetch_state"]` (`ok`, `referenceDay`, `attempts`, `lastAttemptAt`): sobrevive a
   reinício, nunca em memória. Timeout 5 s, URLs fixas no código.
+- **Sem cotação** (nenhuma em `infra_fx_rates`, ou a última com `referenceDate` há mais de 4 dias,
+  `INFRA_FX_MISSING_AFTER_DAYS`): o job busca **já, em qualquer horário**, a última disponível na fonte (a do dia útil
+  anterior serve) e grava o `referenceDate` real dela. Mesmo lease, `fx.auto` e limite (2 tentativas, 1 h entre elas).
+  Antes de 16h30 é uma rodada própria do dia; a rodada das 16h30 sai igual depois (no máximo 1 busca extra no dia, só
+  sem cotação). A rodada vem do horário da tentativa (`lastAttemptAt` antes/depois de 16h30), sem campo novo no estado.
+  Regra pura em `isFxFetchDue(state, now, latestReferenceDate)`. O override manual não muda a busca: só vale na leitura.
 - A aba Preços tem o Switch "Buscar a cotação no Banco Central" (`fx.auto`), com a dica do horário (13h30 de
   Brasília) e da ordem PTAX → SGS → última. Desligado, o job não busca e vale a última gravada. A cotação manual vale
   sobre a automática com o Switch ligado ou desligado.

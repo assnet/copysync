@@ -100,7 +100,9 @@ export interface InfraCostSnapshotJobOptions {
  *    partir das 23:00 fecha assim mesmo com `usage_incomplete`. Fora dessa janela (worker parado) fecha direto,
  *    com `usage_incomplete` se faltar banda ou build. Idempotente (mês fechado não muda).
  * 4. **Cotação** com `fx.auto` (lease `infra-fx-rate`, estado em `platform_settings["infra_fx_fetch_state"]`):
- *    1×/dia após 16h30 UTC, PTAX → SGS, as duas falhando = 1 nova tentativa 1 h depois.
+ *    1×/dia após 16h30 UTC, PTAX → SGS, as duas falhando = 1 nova tentativa 1 h depois. Sem cotação (nenhuma
+ *    gravada ou a última com mais de 4 dias) busca já, em qualquer horário, gravando o `referenceDate` da fonte;
+ *    a rodada das 16h30 segue igual depois (`isFxFetchDue`).
  * 5. **Retenção** de 400 dias, 1×/24 h (lease `infra-cost-retention`, não solto).
  * O lease do job é renovado antes de cada passo (perdeu = passo não roda). 429 da Render grava a pausa no
  * lease `infra-cost-render-backoff` (até `Retry-After`); enquanto vale, nenhuma chamada à Render sai.
@@ -388,13 +390,14 @@ export class InfraCostSnapshotJob {
   /** Cotação do dia (COST-06a), só com `fx.auto`. */
   private async fxRate(now: Date): Promise<void> {
     const { settings, fxState, lease, fxSources, snapshots } = this.options;
-    if (!isFxFetchDue(await fxState.get(), now)) return;
+    const latestReferenceDate = async () => (await snapshots.latestFxRate(now))?.referenceDate ?? null;
+    if (!isFxFetchDue(await fxState.get(), now, await latestReferenceDate())) return;
     if (!resolveInfraCostSettings(await settings.get()).value.fx.auto) return;
     if (!(await lease.tryAcquire(INFRA_FX_RATE_LEASE, this.ownerId, new Date(now.getTime() + INFRA_FX_RATE_LEASE_TTL_MS), now))) return;
     try {
       // Relido sob a trava: outro processo pode ter acabado de buscar
       const state = await fxState.get();
-      if (!isFxFetchDue(state, now)) return;
+      if (!isFxFetchDue(state, now, await latestReferenceDate())) return;
       const attempt = startFxFetchAttempt(state, now);
       await fxState.save(attempt);
       const fetched = await fetchFirstFxRate(fxSources, this.abort?.signal);

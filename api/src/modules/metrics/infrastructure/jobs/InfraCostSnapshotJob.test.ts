@@ -421,14 +421,21 @@ describe('InfraCostSnapshotJob — build, retenção', () => {
 describe('InfraCostSnapshotJob — cotação', () => {
   const at = (iso: string) => Date.parse(`2026-11-12T${iso}Z`);
 
+  /** Cotação de ontem já gravada (recente). */
+  const withRecentRate = () => {
+    const snapshots = memorySnapshots();
+    snapshots.fx.push({ referenceDate: new Date('2026-11-11T00:00:00Z'), rate: 5.3, source: 'ptax', fetchedAt: new Date('2026-11-11T16:31:00Z') });
+    return snapshots;
+  };
+
   it('antes de 16h30 UTC não busca; depois grava a PTAX e marca o dia como feito', async () => {
     const ptax = source('ptax', { rate: 5.4321, referenceDate: '2026-11-12', source: 'ptax' });
-    const s = setup({ fxSources: [ptax], start: at('16:29:00') });
+    const s = setup({ fxSources: [ptax], start: at('16:29:00'), snapshots: withRecentRate() });
     await s.job.runTick();
     expect(ptax.fetchLatest).not.toHaveBeenCalled();
     s.setClock(at('16:35:00'));
     await s.job.runTick();
-    expect(s.snapshots.fx).toEqual([{ referenceDate: new Date('2026-11-12T00:00:00Z'), rate: 5.4321, source: 'ptax', fetchedAt: new Date(at('16:35:00')) }]);
+    expect(s.snapshots.fx.slice(1)).toEqual([{ referenceDate: new Date('2026-11-12T00:00:00Z'), rate: 5.4321, source: 'ptax', fetchedAt: new Date(at('16:35:00')) }]);
     expect(s.fxState.get()).toMatchObject({ referenceDay: '2026-11-12', attempts: 1, ok: true });
     s.setClock(at('18:00:00'));
     await s.job.runTick();
@@ -467,6 +474,68 @@ describe('InfraCostSnapshotJob — cotação', () => {
     await b.job.runTick();
     expect(ptax.fetchLatest).toHaveBeenCalledTimes(2);
     expect(snapshots.fx).toEqual([]);
+  });
+
+  it('sem cotação gravada: busca já (03:00), grava o referenceDate da fonte; a rodada das 16h30 sai 1× depois', async () => {
+    const ptax = source('ptax', { rate: 5.3, referenceDate: '2026-11-11', source: 'ptax' });
+    const s = setup({ fxSources: [ptax], start: at('03:00:00') });
+    await s.job.runTick();
+    expect(s.snapshots.fx).toEqual([{ referenceDate: new Date('2026-11-11T00:00:00Z'), rate: 5.3, source: 'ptax', fetchedAt: new Date(at('03:00:00')) }]);
+    expect(s.fxState.get()).toMatchObject({ referenceDay: '2026-11-12', attempts: 1, ok: true });
+    s.setClock(at('10:00:00'));
+    await s.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(1);
+    ptax.fetchLatest.mockResolvedValue({ rate: 5.4, referenceDate: '2026-11-12', source: 'ptax' });
+    s.setClock(at('16:31:00'));
+    await s.job.runTick();
+    s.setClock(at('20:00:00'));
+    await s.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(2);
+    expect(s.snapshots.fx.map((r) => r.referenceDate.toISOString().slice(0, 10))).toEqual(['2026-11-11', '2026-11-12']);
+  });
+
+  it('última gravada com mais de 4 dias: busca já; recente: espera 16h30', async () => {
+    const old = memorySnapshots();
+    old.fx.push({ referenceDate: new Date('2026-11-07T00:00:00Z'), rate: 5.1, source: 'ptax', fetchedAt: new Date('2026-11-07T16:31:00Z') });
+    const ptax = source('ptax', { rate: 5.3, referenceDate: '2026-11-11', source: 'ptax' });
+    const a = setup({ fxSources: [ptax], snapshots: old, start: at('08:00:00') });
+    await a.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(1);
+    const ptax2 = source('ptax', { rate: 5.3, referenceDate: '2026-11-11', source: 'ptax' });
+    const b = setup({ fxSources: [ptax2], snapshots: withRecentRate(), start: at('08:00:00') });
+    await b.job.runTick();
+    expect(ptax2.fetchLatest).not.toHaveBeenCalled();
+  });
+
+  it('sem cotação e fontes falhando: nova tentativa 1 h depois, no máximo 2 antes de 16h30', async () => {
+    const ptax = source('ptax', null);
+    const sgs = source('sgs', null);
+    const s = setup({ fxSources: [ptax, sgs], start: at('03:00:00') });
+    for (const t of ['03:00:00', '03:30:00', '04:00:00', '05:00:00', '12:00:00']) {
+      s.setClock(at(t));
+      await s.job.runTick();
+    }
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(2);
+    expect(sgs.fetchLatest).toHaveBeenCalledTimes(2);
+    expect(s.fxState.get()).toMatchObject({ attempts: 2, ok: false });
+    expect(s.snapshots.fx).toEqual([]);
+  });
+
+  it('sem cotação, lease infra-fx-rate de outro processo: não busca', async () => {
+    const lease = memoryLease();
+    await lease.lease.tryAcquire('infra-fx-rate', 'outro', new Date(at('03:09:00')), new Date(at('03:00:00')));
+    const ptax = source('ptax', { rate: 5.3, referenceDate: '2026-11-11', source: 'ptax' });
+    const s = setup({ lease, fxSources: [ptax], start: at('03:00:00') });
+    await s.job.runTick();
+    expect(ptax.fetchLatest).not.toHaveBeenCalled();
+    expect(s.fxState.get()).toBeNull();
+  });
+
+  it('sem cotação e fx.auto desligado: não busca', async () => {
+    const ptax = source('ptax', { rate: 5, referenceDate: '2026-11-11', source: 'ptax' });
+    const s = setup({ fxSources: [ptax], auto: false, start: at('03:00:00') });
+    await s.job.runTick();
+    expect(ptax.fetchLatest).not.toHaveBeenCalled();
   });
 
   it('fx.auto desligado: não busca', async () => {
