@@ -63,6 +63,24 @@ function getErrorMessage(error: AxiosError<ApiErrorPayload>): string {
   );
 }
 
+/** Status de proxy/gateway que a Render devolve enquanto a API sobe ou troca de instância (deploy). */
+const SERVICE_UNAVAILABLE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/**
+ * Indisponibilidade passageira (deploy, reinício): sem resposta (rede) ou 502/503/504. 500 e
+ * 4xx não entram: são erro da requisição/da API, não do serviço fora do ar. Cancelada não conta.
+ */
+export function classifyServiceUnavailable(error: Pick<AxiosError, 'response' | 'code'>): boolean {
+  if (error.code === 'ERR_CANCELED') return false;
+  if (!error.response) return true;
+  return SERVICE_UNAVAILABLE_STATUSES.has(error.response.status);
+}
+
+/** O erro rejeitado pelo `apiClient` é de serviço temporariamente indisponível? */
+export function isServiceUnavailable(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { serviceUnavailable?: unknown }).serviceUnavailable === true;
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('refreshToken');
   if (!refreshToken) {
@@ -171,8 +189,17 @@ apiClient.interceptors.response.use(
           originalRequest.headers = headers;
           return apiClient(originalRequest);
         }
-      } catch {
-        // refresh falhou com erro inesperado — trata como sessão inválida
+      } catch (refreshError) {
+        // `/auth/refresh` sem resposta ou 5xx (deploy): o refresh token segue válido. Não desloga;
+        // rejeita como indisponível e a tela tenta de novo depois (o 401 → refresh roda outra vez).
+        // Só `invalid` (refresh 400/401, sem token) cai no logout abaixo.
+        return Promise.reject(
+          Object.assign(new Error(refreshError instanceof Error ? refreshError.message : 'Serviço indisponível'), {
+            status: undefined,
+            code: 'SERVICE_UNAVAILABLE',
+            serviceUnavailable: true,
+          }),
+        );
       }
     }
 
@@ -205,6 +232,8 @@ apiClient.interceptors.response.use(
         meta: error.response?.data?.error?.meta,
         // `Retry-After` de um 429 (segundos ou data HTTP), para a tela dizer quando tentar de novo.
         retryAfter: error.response?.headers?.['retry-after'],
+        // Rede/502/503/504: a tela mostra "Estamos atualizando o sistema" (ver `isServiceUnavailable`).
+        serviceUnavailable: classifyServiceUnavailable(error),
       }),
     );
   },

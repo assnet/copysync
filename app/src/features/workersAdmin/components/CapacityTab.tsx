@@ -6,7 +6,7 @@ import {
 import type { SxProps, Theme } from '@mui/material/styles';
 import type { LucideIcon } from 'lucide-react';
 import { Gauge, HardDrive, Layers, MemoryStick, PlugZap, Server, SlidersHorizontal } from 'lucide-react';
-import { AppIcon, SectionCard } from '@/components';
+import { AppIcon, SectionCard, ServiceUpdatingState } from '@/components';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { MetricChartCard, type ChartTable } from '@/features/opsMetrics/components/MetricChartCard';
 import { TimeLineChart, type LineSpec } from '@/features/opsMetrics/components/TimeLineChart';
@@ -210,6 +210,10 @@ export default function CapacityTab() {
   const w = useWorkerCapacity();
   const { data } = w;
 
+  // API fora do ar (deploy): estado de atualização; a nova tentativa relê cartões e série.
+  if (w.unavailable && !data) {
+    return <ServiceUpdatingState onRetry={() => Promise.all([w.reload(), w.reloadSeries()])} />;
+  }
   if (w.loading && !data) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

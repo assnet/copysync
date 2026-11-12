@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isServiceUnavailable } from '@/services/apiClient';
 import { opsMetricsService } from '@/services/opsMetrics.service';
 import { serverNow } from '@/services/serverClock';
 import { rangeWindow } from './rules';
@@ -28,6 +29,8 @@ export interface OpsMetricsState {
   fetching: boolean;
   /** Atualização falhou com dados já na tela. */
   refreshError: boolean;
+  /** Tudo falhou por API fora do ar (rede/502/503/504, deploy): estado de atualização. */
+  unavailable: boolean;
 }
 
 const EMPTY_SERIES: Record<SeriesBlock, OpsSeriesResult | null> = { servers: null, database: null, workers: null };
@@ -47,7 +50,7 @@ const settle = <T,>(fn: () => Promise<T>): Promise<T> => Promise.resolve().then(
  */
 export function useOpsMetrics(range: OpsRange, autoRefresh: boolean) {
   const [state, setState] = useState<OpsMetricsState>({
-    latest: null, series: EMPTY_SERIES, errors: NO_ERRORS, loading: true, fetching: false, refreshError: false,
+    latest: null, series: EMPTY_SERIES, errors: NO_ERRORS, loading: true, fetching: false, refreshError: false, unavailable: false,
   });
   const reqId = useRef(0);
   const lastFetchAt = useRef(0);
@@ -80,10 +83,12 @@ export function useOpsMetrics(range: OpsRange, autoRefresh: boolean) {
       return false;
     }
     const allFailed = [latest, servers, database, workers].every((r) => r.status === 'rejected');
+    const unavailable = allFailed
+      && [latest, servers, database, workers].every((r) => r.status === 'rejected' && isServiceUnavailable(r.reason));
     setState((s) => {
       // Refresh que falhou inteiro com dados na tela: mantém tudo e só sinaliza.
       if (allFailed && hasData.current && !initial) {
-        return { ...s, fetching: false, loading: false, refreshError: true };
+        return { ...s, fetching: false, loading: false, refreshError: true, unavailable: false };
       }
       const pick = <T,>(r: PromiseSettledResult<T>, prev: T | null): T | null =>
         (r.status === 'fulfilled' ? r.value : initial ? null : prev);
@@ -103,6 +108,7 @@ export function useOpsMetrics(range: OpsRange, autoRefresh: boolean) {
         loading: false,
         fetching: false,
         refreshError: false,
+        unavailable,
       };
       hasData.current = !allFailed;
       return next;

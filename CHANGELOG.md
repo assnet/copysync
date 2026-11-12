@@ -9,6 +9,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.106.0 — estado amigável enquanto o sistema atualiza
+
+Durante deploy da API na Render, as abas de `/admin/workers` mostravam só um alerta vermelho ("Não foi possível carregar…" + "Tentar de novo"). Agora, quando a falha é de indisponibilidade (sem resposta, 502, 503, 504), a tela mostra "Estamos atualizando o sistema" com ilustração leve (rack + engrenagens em SVG próprio, parada com `prefers-reduced-motion`), contagem até a nova tentativa automática (5 s → 10 s → 20 s, teto 30 s; pausa com a aba oculta) e "Tentar agora". Outros erros seguem no alerta de antes. Doc: `docs/padrao-ui-painel.md` ("Estado de atualização").
+**Migration Prisma**: não. **Breaking**: não. **api**: não muda.
+
+#### Frontend (app/) — `services`, `components`, `hooks`, `workersAdmin`, `opsMetrics`
+
+- **`apiClient.ts`** — `classifyServiceUnavailable`/`isServiceUnavailable`: erro rejeitado leva `serviceUnavailable` (rede/502/503/504; cancelada, 4xx e 500 não).
+- **`ServiceUpdatingState.tsx`**, **`serviceUpdatingStrings.ts`** — estado compartilhado (ilustração, textos, contagem, `aria-live="polite"` só no título/"ainda atualizando", Tooltip no "Tentar agora").
+- **`useAutoRetry.ts`** — backoff com um `setTimeout` por vez (sem `setInterval`), pausa/retoma por `visibilitychange`, relógio local (sem `serverNow()`: a API está fora).
+- **`useWorkerSettings.ts`**, **`useWorkerCapacity.ts`**, **`useWorkerScale.ts`**, **`useAdminWorkers.ts`**, **`useOpsMetrics.ts`** — flag de indisponibilidade da 1ª carga, limpa só quando uma leitura conclui.
+- **`SettingsTab.tsx`**, **`CapacityTab.tsx`**, **`ScaleTab.tsx`**, **`AdminWorkersPage.tsx`** (Ocupação), **`UsageTab.tsx`** — usam o estado novo na indisponibilidade.
+
+### Fixed — app 0.106.0 — deploy não desloga mais quem estava com o token vencido
+
+Request com 401 → `/auth/refresh` respondia 502/sem resposta no deploy → o `catch` vazio engolia e o 401 caía em `clearSessionAndRedirect()`, deslogando com o refresh token ainda válido.
+
+- **`apiClient.ts`** — refresh indisponível (rede/5xx) rejeita com erro `serviceUnavailable` (`code: SERVICE_UNAVAILABLE`), sem limpar sessão nem redirecionar; a próxima tentativa refaz 401 → refresh. Só refresh `invalid` (400/401, sem token) desloga.
+
 ### Added — api 0.86.0 · app 0.105.0 — worker separado da API no consumo
 
 Na aba Consumo de `/admin/workers`, CPU e RAM do serviço worker (Render) caíam junto com a API. A API passa a classificar como `worker_service` as amostras de `WORKER_SCALER_SERVICE_ID` e das instâncias dele (réplicas novas entram sozinhas); o painel ganha o recurso "Worker". Doc: `docs/ops-metricas.md`.

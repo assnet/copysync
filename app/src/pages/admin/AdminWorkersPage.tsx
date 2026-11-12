@@ -5,7 +5,7 @@ import {
   TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import { Cable, Hourglass, Info, Server } from 'lucide-react';
-import { AppIcon, EmptyState, PageHeader, SectionCard, StatCard } from '@/components';
+import { AppIcon, EmptyState, PageHeader, SectionCard, ServiceUpdatingState, StatCard } from '@/components';
 import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
 import { occupancyLevel, occupancyPercent, sortWorkers, type OccupancyLevel } from '@/features/workersAdmin/rules';
@@ -255,6 +255,8 @@ function OccupancyTab() {
   const w = useAdminWorkers();
   const data = w.data;
 
+  // API fora do ar (deploy): estado de atualização com nova tentativa automática.
+  if (w.loadUnavailable && !data) return <ServiceUpdatingState onRetry={w.reload} />;
   if (w.loading && !data) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

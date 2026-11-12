@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { isServiceUnavailable } from '@/services/apiClient';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { WORKER_SETTINGS_FIELDS } from './rules';
 import { workersAdminStrings } from './strings';
@@ -50,6 +51,8 @@ export function useWorkerSettings() {
   const [view, setView] = useState<WorkerScalingSettingsView | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Falha da leitura por API fora do ar (deploy): mostra o estado de atualização. Só limpa ao concluir. */
+  const [loadUnavailable, setLoadUnavailable] = useState(false);
   const [occupancy, setOccupancy] = useState<WorkerOccupancyList | null>(null);
   const [suggestedMaxSessions, setSuggestedMaxSessions] = useState<number | null>(null);
   const [suggestedState, setSuggestedState] = useState<SuggestedState>('loading');
@@ -66,8 +69,10 @@ export function useWorkerSettings() {
     setLoadError(null);
     try {
       setView(await adminWorkersService.getSettings());
-    } catch {
+      setLoadUnavailable(false);
+    } catch (err) {
       setLoadError(s.errors.loadFailed);
+      setLoadUnavailable(isServiceUnavailable(err));
     } finally {
       setLoading(false);
     }
@@ -162,7 +167,7 @@ export function useWorkerSettings() {
   }, [clearDraft, draft, load, view]);
 
   return {
-    view, values, loading, loadError, busiest, suggestedMaxSessions, suggestedState, scalerNotConfigured, saving, serverErrors, notice,
+    view, values, loading, loadError, loadUnavailable, busiest, suggestedMaxSessions, suggestedState, scalerNotConfigured, saving, serverErrors, notice,
     dirty: draft !== null, restored: restored && draft !== null,
     change, discard, save, reload: load, clearNotice: () => setNotice(null),
   };

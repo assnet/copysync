@@ -5,7 +5,7 @@ import {
   ToggleButtonGroup, Tooltip, Typography, useTheme,
 } from '@mui/material';
 import { Activity, CirclePause, Cpu, Database, Gauge, Info, MemoryStick, RefreshCw, Server, TriangleAlert } from 'lucide-react';
-import { AppIcon } from '@/components';
+import { AppIcon, ServiceUpdatingState } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
@@ -467,6 +467,10 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
 
   // 1ª carga falhou inteira.
   const allFailed = m.errors.latest && m.errors.servers && m.errors.database && m.errors.workers;
+  if (!m.loading && allFailed && !m.latest && m.unavailable) {
+    // API fora do ar (deploy): estado de atualização com nova tentativa automática.
+    return <Box>{top}<ServiceUpdatingState onRetry={() => m.reload()} /></Box>;
+  }
   if (!m.loading && allFailed && !m.latest) {
     return (
       <Box>

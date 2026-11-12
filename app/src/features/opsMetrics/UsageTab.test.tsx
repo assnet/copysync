@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
+import { serviceUpdatingStrings } from '@/components';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { opsMetricsService } from '@/services/opsMetrics.service';
@@ -155,6 +156,19 @@ describe('Aba Consumo', () => {
     vi.spyOn(opsMetricsService, 'series').mockImplementation(async (m) => fullSeries(m));
     await userEvent.click(screen.getByRole('button', { name: t.retry }));
     expect(await screen.findByText(t.kpi.ramApi)).toBeInTheDocument();
+  });
+
+  it('falha total por API fora do ar (deploy): estado de atualização no lugar do erro', async () => {
+    const down = () => Object.assign(new Error('Network Error'), { serviceUnavailable: true });
+    mockAll(down(), () => down());
+    renderUsage();
+    expect(await screen.findByText(serviceUpdatingStrings.title)).toBeInTheDocument();
+    expect(screen.queryByText(t.loadFailed)).not.toBeInTheDocument();
+    vi.spyOn(opsMetricsService, 'latest').mockResolvedValue(FULL_LATEST);
+    vi.spyOn(opsMetricsService, 'series').mockImplementation(async (m) => fullSeries(m));
+    await userEvent.click(screen.getByRole('button', { name: serviceUpdatingStrings.retryNow }));
+    expect(await screen.findByText(t.kpi.ramApi)).toBeInTheDocument();
+    expect(screen.queryByText(serviceUpdatingStrings.title)).not.toBeInTheDocument();
   });
 
   it('erro só do banco: cartões do banco com erro, servidores normais', async () => {

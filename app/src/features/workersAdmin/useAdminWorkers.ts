@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { isServiceUnavailable } from '@/services/apiClient';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { workersAdminStrings as s } from './strings';
 import type { WorkerOccupancyList } from './types';
@@ -14,6 +15,8 @@ export function useAdminWorkers() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false);
+  /** 1ª carga falhou por API fora do ar (deploy); só limpa ao concluir uma leitura. */
+  const [loadUnavailable, setLoadUnavailable] = useState(false);
 
   const fetchOnce = useCallback(async (initial: boolean) => {
     if (initial) {
@@ -24,8 +27,12 @@ export function useAdminWorkers() {
       setData(await adminWorkersService.list());
       setRefreshError(false);
       setLoadError(null);
-    } catch {
-      if (initial) setLoadError(s.errors.generic);
+      setLoadUnavailable(false);
+    } catch (err) {
+      if (initial) {
+        setLoadError(s.errors.generic);
+        setLoadUnavailable(isServiceUnavailable(err));
+      }
       else setRefreshError(true);
     } finally {
       if (initial) setLoading(false);
@@ -41,5 +48,5 @@ export function useAdminWorkers() {
     return () => window.clearInterval(id);
   }, [fetchOnce]);
 
-  return { data, loading, loadError, refreshError, reload: () => fetchOnce(true) };
+  return { data, loading, loadError, loadUnavailable, refreshError, reload: () => fetchOnce(true) };
 }

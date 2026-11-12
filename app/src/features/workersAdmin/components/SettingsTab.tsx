@@ -4,7 +4,7 @@ import {
   TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
 import { Info } from 'lucide-react';
-import { AppIcon, RangeSlider, SectionCard } from '@/components';
+import { AppIcon, RangeSlider, SectionCard, ServiceUpdatingState } from '@/components';
 import {
   WORKER_SETTINGS_LIMITS, diffSettings, draftToSettings, formatDraftValue, isDraftFieldChanged, needsStrongCapConfirm,
   parseDraftNumber, validateSettingsDraft,
@@ -45,6 +45,8 @@ export default function SettingsTab() {
   const next = w.values && valid ? draftToSettings(w.values) : null;
   const changes = next && w.view ? diffSettings(w.view.settings, next) : [];
 
+  // API fora do ar (deploy): estado de atualização com nova tentativa automática.
+  if (w.loadUnavailable && !w.view) return <ServiceUpdatingState onRetry={w.reload} />;
   if (w.loading && !w.view) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

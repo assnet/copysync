@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { isServiceUnavailable } from '@/services/apiClient';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { UNCERTAIN_SCALE_EVENT_ERRORS, isUncertainScaleError, scaleEventErrorMessage, scaleRequestErrorMessage } from './rules';
 import { workersAdminStrings } from './strings';
@@ -42,6 +43,8 @@ export function useWorkerScale() {
   const [view, setView] = useState<WorkerScaleStateView | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** 1ª leitura falhou por API fora do ar (deploy); só limpa ao concluir uma leitura. */
+  const [loadUnavailable, setLoadUnavailable] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
 
   const [events, setEvents] = useState<WorkerScaleEvent[]>([]);
@@ -76,14 +79,18 @@ export function useWorkerScale() {
       setView(next);
       setRefreshError(false);
       setLoadError(null);
+      setLoadUnavailable(false);
       // Só a leitura `ready` consome a reabertura automática: escalador fora no boot adia para a 1ª pronta.
       if (!autoOpenChecked.current && next.scaler.status === 'ready') {
         autoOpenChecked.current = true;
         if (draftRef.current) setDialogOpen(true);
       }
-    } catch {
+    } catch (err) {
       if (seq !== stateSeq.current) return;
-      if (initial) setLoadError(s.errors.loadFailed);
+      if (initial) {
+        setLoadError(s.errors.loadFailed);
+        setLoadUnavailable(isServiceUnavailable(err));
+      }
       else setRefreshError(true);
     } finally {
       // Qualquer leitura vigente encerra o carregamento (a 1ª pode ter sido superada por outra).
@@ -249,7 +256,7 @@ export function useWorkerScale() {
   }, [clearDraft, draft, loadEvents, loadState, renewRequestId, settleUncertain]);
 
   return {
-    view, loading, loadError, refreshError,
+    view, loading, loadError, loadUnavailable, refreshError,
     events, nextCursor, eventsLoading, eventsError,
     draft, dialogOpen, sending, requestError, notice,
     /** Rascunho veio da recarga e ainda é o mesmo pedido: a ação do diálogo é "Reenviar". */

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { isServiceUnavailable } from '@/services/apiClient';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { opsMetricsService } from '@/services/opsMetrics.service';
 import { serverNow } from '@/services/serverClock';
@@ -18,6 +19,8 @@ export function useWorkerCapacity() {
   const [data, setData] = useState<WorkerCapacityView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Falha por API fora do ar (deploy); só limpa ao concluir a próxima leitura. */
+  const [unavailable, setUnavailable] = useState(false);
   const [series, setSeries] = useState<OpsSeriesResult | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(true);
   const [seriesError, setSeriesError] = useState(false);
@@ -27,8 +30,10 @@ export function useWorkerCapacity() {
     setError(null);
     try {
       setData(await adminWorkersService.getCapacity());
-    } catch {
+      setUnavailable(false);
+    } catch (err) {
       setError(workersAdminStrings.capacity.errors.loadFailed);
+      setUnavailable(isServiceUnavailable(err));
     } finally {
       setLoading(false);
     }
@@ -51,6 +56,6 @@ export function useWorkerCapacity() {
     void loadSeries();
   }, [load, loadSeries]);
 
-  return { data, loading, error, reload: load, series, seriesLoading, seriesError, reloadSeries: loadSeries };
+  return { data, loading, error, unavailable, reload: load, series, seriesLoading, seriesError, reloadSeries: loadSeries };
 }
 

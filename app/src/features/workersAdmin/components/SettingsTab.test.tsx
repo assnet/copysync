@@ -3,6 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
+import { serviceUpdatingStrings } from '@/components';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { readPersisted } from '@/hooks/usePersistedState';
@@ -68,6 +69,28 @@ afterEach(() => {
 });
 
 describe('SettingsTab', () => {
+  it('API fora do ar (deploy): estado de atualização e, voltando, carrega a tela', async () => {
+    const down = Object.assign(new Error('Network Error'), { serviceUnavailable: true });
+    const get = vi.spyOn(adminWorkersService, 'getSettings').mockRejectedValueOnce(down).mockResolvedValue(view());
+    mockList();
+    const user = userEvent.setup();
+    renderWithTheme(<SettingsTab />);
+    expect(await screen.findByText(serviceUpdatingStrings.title)).toBeInTheDocument();
+    expect(screen.queryByText(s.errors.loadFailed)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: serviceUpdatingStrings.retryNow }));
+    expect(await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label })).toHaveValue('40');
+    expect(screen.queryByText(serviceUpdatingStrings.title)).not.toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('erro que não é indisponibilidade continua no alerta com "Tentar de novo"', async () => {
+    vi.spyOn(adminWorkersService, 'getSettings').mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+    mockList();
+    renderWithTheme(<SettingsTab />);
+    expect(await screen.findByText(s.errors.loadFailed)).toBeInTheDocument();
+    expect(screen.queryByText(serviceUpdatingStrings.title)).not.toBeInTheDocument();
+  });
+
   it('carrega os valores e mostra a faixa "sem efeito" com enforced: false', async () => {
     vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view({ enforced: false }));
     mockList();

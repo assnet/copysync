@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowDown, ArrowRight, ArrowUp, Gauge, Layers, Server, SlidersHorizontal, Target, TrendingUp } from 'lucide-react';
-import { AppIcon, SectionCard } from '@/components';
+import { AppIcon, SectionCard, ServiceUpdatingState } from '@/components';
 import { CooldownBar } from '@/components/CooldownBar';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { formatDateTime } from '@/features/opsMetrics/rules';
@@ -295,6 +295,8 @@ export default function ScaleTab() {
   // Re-render ao zerar o intervalo mínimo (a barra avisa uma vez).
   const [, setCooldownTick] = useState(0);
 
+  // API fora do ar (deploy): estado de atualização com nova tentativa automática.
+  if (w.loadUnavailable && !w.view) return <ServiceUpdatingState onRetry={w.reload} />;
   if (w.loading && !w.view) return <Skeleton variant="rounded" height={320} aria-label={sc.loading} />;
   if (!w.view) {
     return (

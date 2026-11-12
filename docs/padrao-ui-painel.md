@@ -10,6 +10,7 @@ casos **não é criado**: usa-se o daqui. Componentes em `app/src/components/` (
 | Opção com título, texto auxiliar e/ou controles filhos | `ToggleOption` (linha inteira clicável, realce quando ligada, filhos revelados abaixo alinhados ao título) | `FormControlLabel` + `Typography` soltos; filhos com `ml` fixo |
 | Faixa "entre X e Y" (intervalo, janela, preço) | `RangeSlider` | dois `TextField` numéricos |
 | Espera/cooldown com fim conhecido | `CooldownBar` + `serverNow()` | `LinearProgress` com `setInterval` |
+| Tela que não carregou porque a API está fora (deploy/reinício: rede, 502, 503, 504) | `ServiceUpdatingState` quando `isServiceUnavailable(err)` | alerta vermelho "Não foi possível carregar"; retry automático por tela |
 | Item indisponível em lista de seleção (grupo onde a sessão não posta / não convida) | `HideUnavailableSwitch` (ligado por padrão, `usePersistedState`) + `UnavailableReason` na linha | esconder sem contador; linha desabilitada sem motivo; deixar marcar e falhar no envio |
 | Ícone | `AppIcon` (Lucide) | emoji, `@mui/icons-material` em tela nova |
 | Confirmação destrutiva | `ConfirmDialog` | `window.confirm` |
@@ -154,6 +155,37 @@ e recalcula por `ResizeObserver`.
 - Chip: `useIsTruncated(ref, conteúdo, el => el.querySelector('.MuiChip-label'))` + `Tooltip` em volta
   (ver `GroupChip`).
 - Não usar `title` nativo: aparência fora do tema e aparece com o texto inteiro.
+
+## Estado de atualização (API indisponível)
+
+Durante deploy na Render a API some por segundos/minutos: sem resposta, 502, 503 ou 504. Isso não é
+erro do usuário nem da tela, então não vira alerta vermelho.
+
+- **Classificação** só no cliente HTTP central: `isServiceUnavailable(err)` (`services/apiClient.ts`),
+  lida do campo `serviceUnavailable` do erro rejeitado. 500, 4xx e requisição cancelada **não** contam.
+  Refresh de token indisponível também rejeita assim e **não desloga** (só refresh 400/401 desloga).
+- **Componente**: `ServiceUpdatingState` (`components/`), textos em `components/serviceUpdatingStrings.ts`.
+  Ilustração (rack + engrenagens), "Estamos atualizando o sistema", contagem até a próxima tentativa,
+  "Tentar agora" com Tooltip. `aria-live="polite"` só no título/texto e no "ainda atualizando" após
+  cada falha (a contagem por segundo não é anunciada). `compact` dentro de cartão/seção.
+- **Nova tentativa**: `useAutoRetry` (`hooks/`), 5 s → 10 s → 20 s → teto 30 s. Um `setTimeout` por vez
+  re-armado por segundo (nunca `setInterval`); aba oculta pausa e retoma do mesmo ponto.
+  Relógio local, **não** `serverNow()`: a API está fora (sem `X-Server-Time` novo) e a espera não é
+  comparada com horário do servidor.
+- **Como ligar numa tela**: o hook de dados guarda `loadUnavailable` (`isServiceUnavailable(err)` no
+  `catch` da 1ª carga), limpa **só quando uma leitura conclui** (não no início do reload, senão a
+  tela pisca para o spinner e o backoff recomeça) e a tela renderiza
+  `<ServiceUpdatingState onRetry={reload} />` **antes** do ramo de carregamento. Quando a leitura dá
+  certo o estado some sozinho.
+- **Telas com o estado**: `/admin/workers` (Ocupação, Consumo, Capacidade, Configuração, Escala).
+  Não há componente de erro compartilhado no painel; outras telas entram uma a uma, sob demanda.
+
+Não fazer:
+- Usar para 500/4xx ou erro de validação: esses continuam no alerta da tela.
+- Mostrar o estado quando a tela já tem dados (atualização periódica que falhou fica no aviso discreto).
+- Vídeo/GIF/imagem externa: pesa, depende de `media-src`/licença. A cena é SVG próprio com cores do
+  tema; sem sparkles/estrelas de 4 pontas nem emoji; parada com `prefers-reduced-motion`.
+- Anunciar a contagem segundo a segundo, ou um 2º laço de retry na mesma tela.
 
 ## Tema (sistema, claro, escuro)
 
