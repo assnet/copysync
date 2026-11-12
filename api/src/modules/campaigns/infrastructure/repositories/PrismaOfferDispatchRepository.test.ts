@@ -14,7 +14,7 @@ function captureClaimSql() {
     }),
   };
   const prisma = { $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } as unknown as PrismaClient;
-  return { repo: new PrismaOfferDispatchRepository(prisma), sqls };
+  return { repo: new PrismaOfferDispatchRepository(prisma, 'worker-test'), sqls };
 }
 
 describe('PrismaOfferDispatchRepository.claimDue', () => {

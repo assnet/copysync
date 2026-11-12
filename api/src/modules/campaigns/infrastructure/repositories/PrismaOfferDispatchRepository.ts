@@ -49,7 +49,11 @@ export function zoneMinuteSql(now: Date): Prisma.Sql {
 }
 
 export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  /** `workerId`: id deste processo no lease de sessão (`currentWorkerId()`); o claim ignora sessões de outro dono. */
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly workerId: string,
+  ) {}
 
   /**
    * Transição da oferta + criação dos envios na mesma transação: sem oferta SENDING órfã nem
@@ -115,6 +119,15 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * Prioridade na faixa: envio vencido do gerador sai antes de qualquer captura do monitoramento da
    * mesma sessão, mesmo com milhares de capturas acumuladas mais antigas. O intervalo da sessão
    * (gapSeconds/SENT recente) continua valendo: só muda quem é a cabeça.
+   *
+   * Dono da sessão (docs/arquitetura-escala.md §3.3): envio cuja sessão tem lease vivo de OUTRO
+   * processo (`ownerWorkerId <> workerId AND leaseUntil > now() AT TIME ZONE 'UTC'`, relógio do banco,
+   * mesma definição do lease) não é candidato — só o dono do socket envia. Sessão minha ou sem dono
+   * vivo: como antes; `sessionId` nulo nunca é excluído. Anti-join com o conjunto (pequeno) de
+   * sessões alheias, aplicado antes do DISTINCT ON, nos dois caminhos (sequencial e concorrente).
+   * EXPLAIN ANALYZE (Postgres 16 descartável, 50k envios/500 QUEUED, 3,2k sessões, ~1 ms): o candidato
+   * segue em `offer_dispatches_status_notBefore_idx` e a subquery vira `hashed SubPlan` avaliado UMA vez
+   * (Seq Scan em "sessions": `<>` não usa `sessions_ownerWorkerId_idx`; tabela pequena) — sem lookup por linha.
    */
   async claimDue(now: Date, limit: number, options: ClaimDueOptions = {}): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
@@ -143,6 +156,10 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                  FROM "offer_dispatches" d
                  JOIN "offers" od ON od."id" = d."offerId" AND od."status" = 'SENDING'::"OfferStatus"
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
+                  -- Sessão com lease vivo de outro processo: só o dono envia (nulo nunca entra no NOT IN)
+                  AND (d."sessionId" IS NULL OR d."sessionId" NOT IN (
+                    SELECT s."id" FROM "sessions" s
+                     WHERE s."ownerWorkerId" <> ${this.workerId} AND s."leaseUntil" > (now() AT TIME ZONE 'UTC')))
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
                   -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir

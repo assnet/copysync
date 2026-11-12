@@ -8,7 +8,7 @@ import { isWithinPostingWindow, weekdayInZone, type PostingWindow } from '../../
  * `claimDue` contra o Postgres real (docs/fila-de-envio.md): janela de operação do monitoramento
  * e pausa global do tenant. Horários em UTC; a janela é em São Paulo (UTC-3).
  */
-const repo = new PrismaOfferDispatchRepository(prisma);
+const repo = new PrismaOfferDispatchRepository(prisma, 'worker-test');
 let tenantId = '';
 let sessionId = '';
 let convMon = '';
@@ -446,5 +446,68 @@ describe('claimDue — exclusões de sessão (concorrência 2, entrega B)', () =
     await queuedIn(gen.id, conv2, session2, spToUtc(10));
     const got = await repo.claimDue(spToUtc(9), 10, { excludeSessionIds: ['outra-sessao'] });
     expect(got.map((d) => d.id)).toEqual([waiting.id]);
+  });
+});
+
+describe('claimDue — só o dono da sessão envia (dois processos)', () => {
+  const repoA = new PrismaOfferDispatchRepository(prisma, 'worker-a');
+  const repoB = new PrismaOfferDispatchRepository(prisma, 'worker-b');
+  const sid: Record<'s1' | 's2' | 's3' | 's4', string> = { s1: '', s2: '', s3: '', s4: '' };
+  const conv: Record<string, string> = {};
+  const lease = (owner: string, minutes: number) => ({ ownerWorkerId: owner, leaseUntil: new Date(Date.now() + minutes * 60_000) });
+
+  beforeAll(async () => {
+    const data = { s1: lease('worker-a', 10), s2: lease('worker-b', 10), s3: {}, s4: lease('worker-b', -10) };
+    for (const k of Object.keys(data) as (keyof typeof data)[]) {
+      sid[k] = (await prisma.session.create({ data: { tenantId, name: k, status: 'CONNECTED', ...data[k] } })).id;
+      conv[k] = (await prisma.chatConversation.create({ data: { tenantId, sessionId: sid[k], isGroup: true, groupJid: `own-${k}` } })).id;
+    }
+  });
+  afterAll(async () => { await sessionTimeZone('UTC'); });
+
+  /** Um envio QUEUED vencido por sessão + um sem sessão; devolve o rótulo de cada id. */
+  async function seed(): Promise<Map<string, string>> {
+    await reset();
+    const labels = new Map<string, string>();
+    // Vencido há 1 dia: `notBefore <= $now` (timestamp × timestamptz) desloca pelo fuso da conexão; aqui só o lease importa
+    const past = new Date(Date.now() - 86_400_000);
+    for (const k of ['s1', 's2', 's3', 's4', 'null'] as const) {
+      const offerId = (await offer('GENERATOR')).id;
+      const d = await prisma.offerDispatch.create({ data: {
+        tenantId, offerId, conversationId: k === 'null' ? convGen : conv[k]!, sessionId: k === 'null' ? null : sid[k],
+        notBefore: past, status: 'QUEUED', gapSeconds: 0,
+      } });
+      labels.set(d.id, k);
+    }
+    return labels;
+  }
+  const names = (labels: Map<string, string>, got: { id: string }[]) => got.map((d) => labels.get(d.id)).sort();
+
+  // Fuso da conexão ≠ UTC: comparar `timestamp` com `now()` cru deslocaria o lease em horas
+  it.each(['Asia/Tokyo', 'America/Sao_Paulo'])('A pega S1/S3/S4/sem sessão e nunca S2; B só sobra S2 (TimeZone %s)', async (tz) => {
+    await sessionTimeZone(tz);
+    let labels = await seed();
+    expect(names(labels, await repoA.claimDue(new Date(), 10))).toEqual(['null', 's1', 's3', 's4']);
+    expect(names(labels, await repoB.claimDue(new Date(), 10))).toEqual(['s2']);
+
+    labels = await seed();
+    expect(names(labels, await repoB.claimDue(new Date(), 10))).toEqual(['null', 's2', 's3', 's4']);
+    expect(names(labels, await repoA.claimDue(new Date(), 10))).toEqual(['s1']);
+  });
+
+  it('caminho concorrente (excludeSessionIds) respeita o dono; disputa simultânea não cruza', async () => {
+    await sessionTimeZone('Asia/Tokyo');
+    let labels = await seed();
+    expect(names(labels, await repoA.claimDue(new Date(), 10, { excludeSessionIds: [sid.s3] }))).toEqual(['null', 's1', 's4']);
+    expect(names(labels, await repoB.claimDue(new Date(), 10, { excludeSessionIds: [] }))).toEqual(['s2', 's3']);
+
+    labels = await seed();
+    const [a, b] = await Promise.all([
+      repoA.claimDue(new Date(), 10, { excludeSessionIds: [] }),
+      repoB.claimDue(new Date(), 10, { excludeSessionIds: [] }),
+    ]);
+    expect(names(labels, a)).not.toContain('s2');
+    expect(names(labels, b)).not.toContain('s1');
+    expect([...names(labels, a), ...names(labels, b)].sort()).toEqual(['null', 's1', 's2', 's3', 's4']);
   });
 });

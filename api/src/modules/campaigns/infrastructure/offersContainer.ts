@@ -1,4 +1,5 @@
 import { prisma } from '../../../shared/database/prisma.client';
+import { currentWorkerId } from '../../../shared/config/workerIdentity';
 import { SecretCipherFactory } from '../../../shared/security/SecretCipherFactory';
 import { mediaContainer } from '../../media/infrastructure/mediaContainer';
 import { PrismaAffiliateCredentialRepository } from '../../integrations/infrastructure/repositories/PrismaAffiliateCredentialRepository';
@@ -61,7 +62,7 @@ function lazy<T>(make: () => T): () => T {
 }
 
 const offers       = lazy(() => new PrismaOfferRepository(prisma));
-const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma));
+const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma, currentWorkerId()));
 const configs      = lazy(() => new PrismaOfferGeneratorConfigRepository(prisma));
 const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
 const groupUsage   = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));

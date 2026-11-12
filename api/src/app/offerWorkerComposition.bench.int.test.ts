@@ -176,7 +176,7 @@ describe.skipIf(!ENABLED)('benchmark A — etapas independentes (sintético redu
     let sends = 0;
     const dispatchUseCase = new ProcessDueOfferDispatchesUseCase({
       offers: new PrismaOfferRepository(db),
-      dispatches: new PrismaOfferDispatchRepository(db),
+      dispatches: new PrismaOfferDispatchRepository(db, 'worker-test'),
       sender: {
         async send() {
           sends++;
