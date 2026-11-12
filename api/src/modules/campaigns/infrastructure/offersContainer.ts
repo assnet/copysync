@@ -195,6 +195,8 @@ export const offersContainer = {
   resolveAffiliateProduct: affiliateProduct,
   offerTexts:           texts,
   credentials:          credentials,
+  // Caçador de ofertas: estado da credencial + marcação de recusa (mesmo caminho do monitoramento)
+  credentialGateway:    credentialGateway,
   credentialRepo:       credentialRepo,
   // Alerta de aceite pendente do monitoramento (módulo automation)
   riskGate:             riskGate,

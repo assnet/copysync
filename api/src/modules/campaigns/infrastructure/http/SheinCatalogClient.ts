@@ -49,7 +49,7 @@ const IMAGE_HOST = 'ltwebstatic.com';
 const SHEIN_SERVER_OFFSET = '-03:00';
 
 /** Códigos observados na página (`sortTypeList`). */
-const SORT_CODE: Record<HuntSort, number> = {
+export const SORT_CODE: Record<HuntSort, number> = {
   RECOMMENDED: 0,
   TOP_RATED: 7,
   NEWEST: 9,
@@ -58,7 +58,7 @@ const SORT_CODE: Record<HuntSort, number> = {
   BEST_SELLING: 12,
 };
 /** Só 4 confirmado na tela; demais inferidos pela ordem (design §1). */
-const COMM_RATE: Record<HuntCommissionBand, number> = {
+export const COMM_RATE: Record<HuntCommissionBand, number> = {
   BELOW_5: 1,
   FROM_5_TO_10: 2,
   FROM_10_TO_15: 3,

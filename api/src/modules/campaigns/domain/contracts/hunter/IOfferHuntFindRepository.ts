@@ -1,0 +1,29 @@
+import type { OfferHuntFind, OfferHuntFindSnapshot, OfferHuntFindStatus } from '../../hunter/OfferHunt';
+import type { OfferHuntPageCursor } from './IOfferHuntRunRepository';
+
+export interface NewOfferHuntFind extends OfferHuntFindSnapshot {
+  huntId: string | null;
+  runId: string | null;
+  status: Extract<OfferHuntFindStatus, 'PENDING_REVIEW' | 'APPROVED'>;
+}
+
+export interface OfferHuntFindTransition {
+  offerId?: string | null;
+  failureReason?: string | null;
+}
+
+/** Achados (só os escolhidos). O teto diário de ofertas garimpadas conta linhas daqui. */
+export interface IOfferHuntFindRepository {
+  /**
+   * Grava `min(finds.length, limit − achados do tenant desde since)` na ordem dada, numa transação
+   * serializada por tenant (desenho do `createWithinDailyLimit`). Devolve os gravados (pode ser `[]`).
+   */
+  insertWithinDailyLimit(tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number }): Promise<OfferHuntFind[]>;
+  countCreatedSince(tenantId: string, since: Date): Promise<number>;
+  /** goodsIds já escolhidos pela caçada desde `since` (qualquer estado): regra de repetição. */
+  recentGoodsIds(tenantId: string, huntId: string, since: Date): Promise<Set<string>>;
+  findById(tenantId: string, id: string): Promise<OfferHuntFind | null>;
+  listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntFind[]>;
+  /** CAS: só muda se o estado atual está em `from`. */
+  transition(tenantId: string, id: string, from: OfferHuntFindStatus[], to: OfferHuntFindStatus, extra?: OfferHuntFindTransition): Promise<boolean>;
+}
