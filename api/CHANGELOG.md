@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.91.2] — 2026-11-12 — Id do Postgres da Render com sufixo
+
+### Fixed
+
+#### metrics
+
+- **`infraCostRenderResources.ts`** — o "Service ID" do Postgres na Render vem com sufixo (`dpg-<id>-a`); o padrão só aceitava `dpg-<id>`, e sem o sufixo a API da Render devolve 404 (`not_found` com `key: postgres` em produção, horas dos recursos sem linha). Aceita um segmento extra e tolera aspas em volta do valor inteiro da env. URL `redis://…` no lugar do id continua ignorada com `invalid_id` (sem logar o valor).
+
 ## [0.91.1] — 2026-11-12 — Aviso do job de custos diz qual recurso falhou
 
 ### Fixed

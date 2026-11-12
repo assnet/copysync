@@ -28,6 +28,21 @@ describe('INFRA_COST_RENDER_RESOURCES', () => {
     expect(logged).not.toMatch(/srv-|dpg-|red-|lixo|banco/);
   });
 
+  it('aceita o Service ID do Postgres com sufixo e o valor entre aspas', () => {
+    const l = log();
+    const map = parseInfraCostRenderResources(`'api=srv-teste1,postgres=dpg-teste4-a'`, undefined, l);
+    expect(Object.fromEntries(map)).toEqual({ api: 'srv-teste1', postgres: 'dpg-teste4-a' });
+    expect(l.warn).not.toHaveBeenCalled();
+  });
+
+  it('URL de conexão do Redis no lugar do id é ignorada com invalid_id, sem logar o valor', () => {
+    const l = log();
+    const map = parseInfraCostRenderResources('redis=redis://red-teste3:6379,postgres=dpg-teste4-a-b', undefined, l);
+    expect(map.size).toBe(0);
+    expect(l.warn.mock.calls.map(([o]) => (o as { issue: string; key: string }).key)).toEqual(['redis', 'postgres']);
+    expect(JSON.stringify(l.warn.mock.calls)).not.toMatch(/red-|dpg-|6379/);
+  });
+
   it('usa WORKER_SCALER_SERVICE_ID quando falta worker=, só se válido', () => {
     expect(parseInfraCostRenderResources('api=srv-teste', 'srv-teste', log()).get('worker')).toBe('srv-teste');
     expect(parseInfraCostRenderResources('worker=srv-teste', 'srv-outro', log()).get('worker')).toBe('srv-teste');

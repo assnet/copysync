@@ -263,7 +263,7 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 | Env | Padrão | Uso |
 | --- | --- | --- |
 | `INFRA_COST_SNAPSHOT_ENABLED` | `false` | Liga o job. Desligada: nada é montado nem chamado |
-| `INFRA_COST_RENDER_RESOURCES` | vazio | `chave=id` por vírgula: `api=srv-<id>,worker=srv-<id>,static=srv-<id>,postgres=dpg-<id>,redis=red-<id>`. Chaves só essas cinco; prefixo exigido por chave (`srv-`/`dpg-`/`red-`). Entrada malformada, chave desconhecida, id inválido ou chave repetida é ignorada com `warn` sem o id. Sem `worker=` usa `WORKER_SCALER_SERVICE_ID` válido |
+| `INFRA_COST_RENDER_RESOURCES` | vazio | `chave=id` por vírgula: `api=srv-<id>,worker=srv-<id>,static=srv-<id>,postgres=dpg-<id>,redis=red-<id>`. Id = o "Service ID" de cada página na Render: o do Postgres **com** o sufixo (`dpg-<id>-a`); o do Key Value é o `red-<id>`, nunca a URL `redis://…`. Sem aspas (aspas em volta da lista inteira são toleradas). Chaves só essas cinco; prefixo exigido por chave (`srv-`/`dpg-`/`red-`). Entrada malformada, chave desconhecida, id inválido ou chave repetida é ignorada com `warn` sem o id. Sem `worker=` usa `WORKER_SCALER_SERVICE_ID` válido |
 | `RENDER_API_KEY` | vazio | Já usada pelo coletor (`docs/ops-metricas.md`). Sem ela ou sem ids, as horas ficam sem leitura da Render. **Intencional**: o job liga só com a flag e, sem a chave, grava a sessão-hora e a cotação (as duas não dependem da Render) |
 
 ### Como ligar com segurança

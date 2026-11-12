@@ -19,8 +19,11 @@ export function isInfraRenderServiceKey(key: InfraRenderKey): boolean {
   return PREFIX_BY_KEY[key] === 'srv';
 }
 
-/** Formato do id da Render (mesmo do escalador, com os três prefixos). */
-export const INFRA_RENDER_ID_PATTERN = /^(srv|dpg|red)-[a-z0-9]+$/;
+/**
+ * Formato do id da Render, com os três prefixos. O Postgres traz um sufixo (`dpg-<id>-a`, o "Service ID" do
+ * painel): aceito um segmento extra; sem ele a API da Render responde 404.
+ */
+export const INFRA_RENDER_ID_PATTERN = /^(srv|dpg|red)-[a-z0-9]+(-[a-z0-9]+)?$/;
 
 export type InfraCostRenderResources = ReadonlyMap<InfraRenderKey, string>;
 
@@ -51,7 +54,9 @@ export function parseInfraCostRenderResources(
       { module: 'infraCostRenderResources', env: 'INFRA_COST_RENDER_RESOURCES', issue, ...(key ? { key } : {}) },
       'infra cost render resource entry ignored',
     );
-  for (const part of (raw ?? '').split(',')) {
+  // Aspas em volta do valor inteiro (colado como no shell) não fazem parte da lista.
+  const list = (raw ?? '').trim().replace(/^(['"])(.*)\1$/s, '$2');
+  for (const part of list.split(',')) {
     const entry = part.trim();
     if (!entry) continue;
     const eq = entry.indexOf('=');
