@@ -77,6 +77,13 @@ regra: o preço nunca vai à API; tenant sem plano do catálogo fica sem margem.
 - **Logos nos benefícios** (`PlanBenefit.marketplaces` em `catalog.ts`): o `PlanCard` troca o check pelos logos
   sobrepostos (`MarketplaceLogos`, decorativos, nome no `label`) numa faixa neutra. LITE = Shopee, Mercado Livre e
   Amazon; MAX = Shein no "Afiliado Shein". Logo vem de `AFFILIATE_PROVIDERS`, nunca caminho solto.
+- **Novidade do plano** (`PlanBenefit.spotlight`): `SpotlightRow` no `PlanCard` — moldura em gradiente fluindo, faixa
+  de luz que atravessa o bloco, anel pulsando no logo, chip `card.newBadge` ("Novidade"). **Um por plano**, só para
+  lançamento (hoje: Afiliado Shein no MAX); ao virar rotina, tirar o `spotlight` em vez de empilhar destaques.
+- **Animações** (`components/planMotion.ts`): entrada escalonada (`index` do card, `fill-mode: backwards` para não
+  prender o `transform` do hover), troca de preço por `key`, moldura do recomendado fluindo. Só
+  `transform`/`opacity`/`background-position`; tudo desligado em `prefers-reduced-motion`. Sem ícone de brilho.
+- **Preço**: "/mês" e "cobrado …" ficam ao lado do número, centralizados na altura dele (`alignItems: center`).
 - `/affiliates/plans?feature=mercadoLivreTags` mostra o aviso `featureNotice.mercadoLivreTags`.
 - **Aviso de upgrade com vários planos**: `PlanLimitKind` `mercadoLivreTags`; `UPSELL_CONFIG` em `planUpsell.ts`
   (`listAll`, `feature`) faz o `PlanLimitBanner` listar **todos** os planos acima (`plansAbove`: LITE → PRO e MAX) e o

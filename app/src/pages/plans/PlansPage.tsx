@@ -29,10 +29,10 @@ export function PlansPage() {
         <SwipeCards
           ariaLabel={t.page.carouselLabel}
           initialKey={PLAN_CATALOG.find((p) => p.recommended)?.slug}
-          items={PLAN_CATALOG.map((plan) => ({
+          items={PLAN_CATALOG.map((plan, index) => ({
             key: plan.slug,
             label: plan.name,
-            content: <PlanCard plan={plan} period={period} getCheckoutUrl={checkoutUrl(plan)} />,
+            content: <PlanCard plan={plan} period={period} index={index} getCheckoutUrl={checkoutUrl(plan)} />,
           }))}
           renderGrid={(items) => (
             <Grid container spacing={2.5} alignItems="stretch" sx={{ mt: 2 }}>

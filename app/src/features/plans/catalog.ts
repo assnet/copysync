@@ -33,6 +33,8 @@ export interface PlanBenefit {
   featureIcon?: 'sessions' | 'channels';
   /** Marketplaces do benefício: logos no lugar do check (decorativos; o nome vem no `label`). */
   marketplaces?: AffiliateProvider[];
+  /** Novidade do plano: bloco premium animado (moldura em gradiente, faixa de luz, chip "Novidade"). Um por plano. */
+  spotlight?: boolean;
 }
 
 export interface PlanCatalogItem {
@@ -200,7 +202,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Captura fora do horário de postagem', hint: PLAN_HINTS.captureOutsideWindow, exclusive: true },
       { label: 'Template para Instagram', exclusive: true },
-      { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate, exclusive: true, marketplaces: ['SHEIN'] },
+      { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate, exclusive: true, marketplaces: ['SHEIN'], spotlight: true, detail: 'Seu link de afiliado no gerador e no monitoramento' },
       { label: 'Suporte exclusivo 24/7' },
     ],
     fit: 'equipes e operações com mais de um número ou nicho.',
