@@ -270,7 +270,7 @@ export type OfferStatus = 'DRAFT' | 'SENDING' | 'PAUSED' | 'SENT' | 'FAILED' | '
 export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
 
 /** Quem criou a oferta. */
-export type OfferOrigin = 'GENERATOR' | 'MONITORING';
+export type OfferOrigin = 'GENERATOR' | 'MONITORING' | 'HUNTER';
 
 /** Um envio na fila de envio, com resumo da oferta e do grupo destino. */
 export interface SendQueueItem {

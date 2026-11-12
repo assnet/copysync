@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type {
   CreateOfferInput,
   DailyQuota,
@@ -11,6 +11,16 @@ import type { Offer } from '../../domain/entities/Offer';
 import type { OfferStatus } from '../../domain/enums/OfferStatus';
 import { PrismaOfferMapper as Mapper } from '../mappers/PrismaOfferMapper';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
+
+/**
+ * Ofertas que contam no limite diário do gerador (`offer_generations_per_day`). Só o caçador fica de fora
+ * (tem teto próprio, D4 de .specs/features/offer-hunter); gerador e monitoramento seguem contando.
+ */
+const countsTowardGeneratorQuota = (tenantId: string, since: Date): Prisma.OfferWhereInput => ({
+  tenantId,
+  createdAt: { gte: since },
+  origin: { not: 'HUNTER' },
+});
 
 export class PrismaOfferRepository implements IOfferRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -27,7 +37,7 @@ export class PrismaOfferRepository implements IOfferRepository {
   async createWithinDailyLimit(input: CreateOfferInput, quota: DailyQuota): Promise<Offer> {
     const raw = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}::text))`;
-      const used = await tx.offer.count({ where: { tenantId: input.tenantId, createdAt: { gte: quota.since } } });
+      const used = await tx.offer.count({ where: countsTowardGeneratorQuota(input.tenantId, quota.since) });
       if (used >= quota.limit) throw new PlanLimitReachedError(quota.key, quota.limit);
       return tx.offer.create({ data: { ...input, status: 'DRAFT' } });
     });
@@ -66,7 +76,7 @@ export class PrismaOfferRepository implements IOfferRepository {
   }
 
   async countCreatedSince(tenantId: string, since: Date): Promise<number> {
-    return this.prisma.offer.count({ where: { tenantId, createdAt: { gte: since } } });
+    return this.prisma.offer.count({ where: countsTowardGeneratorQuota(tenantId, since) });
   }
 
   async transitionStatus(id: string, tenantId: string, from: OfferStatus[], to: OfferStatus): Promise<boolean> {

@@ -60,10 +60,12 @@ export const sendQueueStrings = {
   origin: {
     GENERATOR: 'Gerador',
     MONITORING: 'Monitoramento',
+    HUNTER: 'Caçador',
   } satisfies Record<OfferOrigin, string>,
   originTooltip: {
     GENERATOR: 'Oferta criada no gerador de ofertas',
     MONITORING: 'Oferta capturada pelo monitoramento de grupos',
+    HUNTER: 'Oferta encontrada pelo caçador de ofertas',
   } satisfies Record<OfferOrigin, string>,
   openOffer: 'Abrir oferta',
   control: {
