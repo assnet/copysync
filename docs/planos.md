@@ -25,6 +25,10 @@ custo por tenant em R$ com `price` e `priceAnnualMonthly` de `PLAN_CATALOG` (`fe
 `planMargin`). A conta é só do painel: o preço segue fora do banco e a API de custos nunca recebe nem devolve preço de
 plano. Mudou preço no `catalog.ts` → a margem acompanha sem mudança na API.
 
+**Por cliente (app 0.110.0)**: a aba Por cliente (`/admin/costs/tenants`) mostra a margem de cada tenant = preço do
+plano dele no `PLAN_CATALOG` − custo do cliente em R$ (compartilhado + IA da plataforma; `tenantMarginCost`). Mesma
+regra: o preço nunca vai à API; tenant sem plano do catálogo fica sem margem.
+
 ## Limites por canal (WhatsApp × Telegram)
 
 - `limits` do catálogo espelha `api/src/modules/tenants/domain/planPresets.ts` por canal: `whatsappSessions`,

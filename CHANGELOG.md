@@ -9,6 +9,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.90.0 · app 0.110.0 — custos por cliente e histórico (P3)
+
+Custo por cliente (compartilhado + IA da plataforma), fechamento mensal congelado pelo job e histórico de 12 meses. Rotas novas `GET /api/admin/costs/tenants?month=&plan=&cursor=` (cursor keyset assinado, 400 `INFRA_COST_CURSOR_INVALID`) e `GET /api/admin/costs/history`, só super admin e só tabelas locais. Doc: `docs/custos-infraestrutura.md`.
+**Migration Prisma**: sim (`create_infra_cost_months`: `infra_cost_months`, `infra_cost_month_tenants`). **Breaking**: não.
+
+#### Backend (api/) — `metrics`
+
+- **`PrismaInfraCostUsageReader.ts`**, **`infraCostCalculator.ts`** — IA da plataforma (`ai_usage_logs`, `source = PLATFORM`, `success`) × `aiModelPrices`; avisos `model_without_price` e `ai_tokens_missing` (token nulo nunca vira 0).
+- **`CloseInfraCostMonthUseCase.ts`**, **`InfraCostSnapshotJob.ts`**, **`PrismaInfraCostSnapshotRepository.ts`**, **`fxRate.ts`** — fechamento no dia 1 depois da banda e do build (força às 23:00 UTC com `usage_incomplete`), recuperação até 12 meses, cotação por `closingMethod` com `fx_fallback`; Σ tenants + não rateado + fora do rateio = total.
+- **`ListInfraCostTenantsUseCase.ts`**, **`infraCostTenantCursor.ts`**, **`GetInfraCostHistoryUseCase.ts`**, **`PrismaInfraCostReportReader.ts`**, **`infraCosts.routes.ts`** — lista por cliente (aberto por nome, fechado por total) e histórico; `statement_timeout` 2 s → 503.
+
+#### Frontend (app/) — `infraCosts`
+
+- **`TenantsTab`**, **`HistoryTab`**, **`AdminCostsPage.tsx`**, **`rules.ts`** (`tenantMarginCost`) — abas Por cliente (margem por cliente, filtro de plano persistido) e Histórico.
+- **`privacyFlags.ts`** — flag `costs.tenantName`: nome do cliente com `Blurred`.
+
 ### Added — api 0.89.0 · app 0.109.0 — custos proporcionais ao tempo (P2)
 
 A P1 só tinha a foto do momento × mês cheio. Agora o job horário `InfraCostSnapshotJob` (só no `worker`, flag `INFRA_COST_SNAPSHOT_ENABLED` default `false`) grava plano, instâncias e disco de cada recurso da Render, sessão-hora e contratadas por tenant, banda e build medidos e a cotação PTAX do BCB (SGS e última gravada como fallback, uma nova tentativa 1 h depois). O resumo soma o mês hora a hora, projeta o mês cheio (margem do mês corrente projetada) e ganha seletor de mês e a leitura por sessão-hora. Nenhuma rota chama a Render nem o BCB. Doc: `docs/custos-infraestrutura.md`.

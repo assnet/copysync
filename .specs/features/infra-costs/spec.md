@@ -184,3 +184,12 @@ Pendente de conferência (não é pergunta): formato real das respostas da Rende
 | R2b | 429 → pausa no lease `infra-cost-render-backoff`; `numInstances` ausente = recurso sem leitura; deploys além de 20 páginas = `upstream`; banda reprocessada até 6 h (coluna `infra_usage_daily.hours`, na migration `create_infra_cost_snapshots`); lease renovado antes de cada passo | COST-09 |
 | R2c | Ociosidade só nas horas com leitura do worker (aviso `idle_partial`); aviso `bandwidth_missing_hours`; consumido/excedente do workspace com 4 casas | COST-11, COST-12 |
 | T15 | Resposta ganha `idleCapacity`, `perSession.connected.sessionHours`/`perSessionHour` (`null` na foto) e `plans[].projectedShare`/`projectedCostPerTenant`; seletor do painel = mês corrente + 11 anteriores pelo relógio do servidor | COST-12, COST-16 |
+
+## Desvios aceitos e decisões da P3 (2026-11-12)
+
+| Tarefa | Decisão | Onde ficou |
+| --- | --- | --- |
+| T17 | `totals.ai`/`plans[].ai` e o `kind` do `model_without_price` só no schema/tipos a partir da T19/T20; IA na projeção = só o realizado (sem extrapolar); tenant com IA sem sessão-hora fora de `plans[].ai`; token nulo não marca o total como parcial | COST-13 |
+| T18 | Janela do fechamento de 24 h (espera a última hora até 01:00); colunas extras em `infra_cost_months` (`closingMethod`, `fxRate`/`fxReferenceDate`/`fxSource`, `totalUsd`, DECIMAL 14,4); `fx_fallback` só no tipo do fechamento; tenant com IA sem sessão-hora = compartilhado 0 e `planSlug` `null`; meses fechados fora da retenção de 400 dias | COST-15 |
+| T19 | Página de 50 decidida pelo servidor; `tenantRates` (custo por unidade) interno, gravado no fechamento; o resumo devolve os `settings` usados; mês aberto exclui tenant com IA sem sessão-hora; histórico só com meses fechados (`from`/`to` da janela para o painel mostrar os vazios). O cursor por offset da T19 foi trocado no R3 por keyset assinado (aberto: `lower(nome), tenantId`; fechado: `totalUsd desc, tenantId`), com 400 `INFRA_COST_CURSOR_INVALID` | COST-14, COST-15 |
+| R3 | Mês aberto rateia pela sessão-hora com Σ contratadas 0 (igual ao fechamento); fechamento congela `allocation { unallocatedUsd, excludedUsd }`, expostos como `unallocated`/`excluded` em `{ usd, brl }` no mês fechado e no histórico; job fecha o mês passado mais antigo aberto (até 12, um por tick), fora das 24 h direto com `usage_incomplete`; banda espera só os serviços com banda no mês, build de todos (nulo = incompleto); `findClosedMonth` com `statement_timeout` 2 s e 503 | COST-14, COST-15 |

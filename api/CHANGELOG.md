@@ -7,6 +7,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.90.0] — 2026-11-12 — Custos por cliente e histórico (P3)
+
+Custo de IA da plataforma por cliente, fechamento mensal congelado pelo job e rotas por cliente e de histórico. Rotas
+seguem só com tabelas locais. Doc: `docs/custos-infraestrutura.md`.
+**Migration Prisma**: sim (`create_infra_cost_months`: `infra_cost_months`, `infra_cost_month_tenants` com índice
+`(month, totalUsd desc, tenantId)`). **Breaking**: não (rotas e campos novos).
+
+### Added
+
+#### API — `metrics`
+
+- **`presentation/routes/infraCosts.routes.ts`** (+ schema, presenter) — `GET /api/admin/costs/tenants?month=&plan=&cursor=` (página de 50, cursor keyset assinado; inválido/expirado/de outro escopo → 400 `INFRA_COST_CURSOR_INVALID`) e `GET /api/admin/costs/history` (meses fechados dos 12 anteriores); só super admin.
+- **`application/use-cases/ListInfraCostTenantsUseCase.ts`**, **`infraCostTenantCursor.ts`** — mês aberto pela conta do resumo e custo só da página (ordem `lower(nome), tenantId`); mês fechado congelado (ordem `totalUsd desc, tenantId`), com `sharedBasis`, `unallocated` e `excluded`.
+- **`application/use-cases/GetInfraCostHistoryUseCase.ts`**, **`infrastructure/repositories/PrismaInfraCostReportReader.ts`** — total e por plano em USD e BRL pela cotação congelada; `statement_timeout` 2 s → 503 `INFRA_COST_READ_UNAVAILABLE`.
+- **`application/use-cases/CloseInfraCostMonthUseCase.ts`**, **`infrastructure/jobs/InfraCostSnapshotJob.ts`** — passo de fechamento depois da banda e do build: espera até 24 h (força às 23:00 UTC com `usage_incomplete`), mês esquecido fecha depois (até 12, um por tick), idempotente; preços, cotação (`closingMethod`, `fx_fallback`) e `allocation` congelados.
+- **`domain/services/infraCostCalculator.ts`**, **`infrastructure/repositories/PrismaInfraCostUsageReader.ts`** — IA da plataforma por tenant (`source = PLATFORM`, `success`) × `aiModelPrices`; `model_without_price` e `ai_tokens_missing` (token nulo fora dos tokens, nunca 0); Σ contratadas 0 rateia por sessão-hora, sem base = `shared_unallocated`.
+
 ## [0.89.0] — 2026-11-12 — Custos proporcionais ao tempo (P2)
 
 Job horário de snapshot dos custos no `worker` e custo do mês somado hora a hora, com projeção, sessão-hora e cotação

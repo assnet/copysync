@@ -182,7 +182,9 @@ timeout 5 s cada) + consultas de catálogo do PG. Zero no `http` para métricas.
 sampler (lease `infra-cost-snapshot`, tick 5 min). Por hora cheia: plano, instâncias e disco de cada recurso de
 `INFRA_COST_RENDER_RESOURCES`, banda da hora fechada há mais de 1 h; 1×/dia os deploys do dia anterior e a cotação do
 BCB. Instâncias do worker vêm das amostras de `ops_metrics_samples` deste coletor (Render só como fallback). Timeout 5 s,
-429 respeita `Retry-After`. A regra segue: **nenhuma rota de métricas ou de custos chama a Render**; `/admin/costs` lê só
+429 respeita `Retry-After`. **Fechamento mensal** (api 0.90.0): passo do mesmo tick, depois da banda e do build,
+que grava `infra_cost_months`/`infra_cost_month_tenants` no dia 1 do mês seguinte (espera até 24 h, força às 23:00 UTC
+com `usage_incomplete`; mês esquecido fecha depois, até 12 para trás, um por tick); não chama a Render. A regra segue: **nenhuma rota de métricas ou de custos chama a Render**; `/admin/costs` lê só
 as tabelas gravadas pelo job.
 
 **Antes de ligar**: conferir numa resposta real da Render a unidade (`unit`) e os labels das

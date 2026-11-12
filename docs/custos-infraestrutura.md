@@ -2,7 +2,7 @@
 
 Ferramenta operacional do super admin (`docs/produto-roadmap.md`, "Ferramentas operacionais"). Mostra quanto custa a
 operação por mês, por serviço, por sessão e por plano, com a margem bruta de infraestrutura contra o preço de vitrine.
-Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. Este doc registra o que **está** no código.
+Plano completo (P1–P3, todas entregues): `.specs/features/infra-costs/{spec,design,tasks}.md`. Este doc registra o que **está** no código.
 
 ## O que existe (P1 — api 0.88.0 · app 0.108.0)
 
@@ -27,6 +27,16 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 | Cotação | `sources/BcbPtaxFxRateSource.ts`, `BcbSgsFxRateSource.ts`, `domain/services/fxRate.ts`, `infraFxFetchState.ts` | URLs fixas, valor aceito só finito entre 1 e 20 |
 | Cálculo | `infraCostCalculator.ts` com `basis: 'hours'` | Soma por hora, projeção, sessão-hora, ociosidade |
 | Painel | `SummaryTab.tsx`, `useCostSummary.ts` | Seletor de mês (corrente + 11 anteriores pelo relógio do servidor), base contratadas × sessão-hora, avisos com atalho para Preços |
+
+## O que existe (P3 — api 0.90.0 · app 0.110.0)
+
+| Peça | Onde | Nota |
+| --- | --- | --- |
+| Tabelas | migration `create_infra_cost_months`: `infra_cost_months` (PK `month`), `infra_cost_month_tenants` (PK `(month, tenantId)`, índice `(month, totalUsd desc, tenantId)`) | Fora da retenção de 400 dias: mês fechado fica para sempre |
+| IA por tenant | `PrismaInfraCostUsageReader.ts`, `PrismaInfraCostReportReader.ts`, `calculateInfraAiCosts` em `infraCostCalculator.ts` | Só `ai_usage_logs` com `source = PLATFORM` e `success` |
+| Fechamento | `application/use-cases/CloseInfraCostMonthUseCase.ts`, passo 3b do `InfraCostSnapshotJob` | Idempotente (PK do mês); preços, cotação e `closingMethod` congelados |
+| Rotas | `GET /tenants?month=&plan=&cursor=` (`ListInfraCostTenantsUseCase`, `infraCostTenantCursor.ts`), `GET /history` (`GetInfraCostHistoryUseCase`) | Só super admin; `statement_timeout` 2 s → 503 |
+| Painel | abas Por cliente (`/admin/costs/tenants`) e Histórico (`/admin/costs/history`), `features/infraCosts/components/` | Nome do tenant com `Blurred` (flag `costs.tenantName`) |
 
 ## Job horário (`InfraCostSnapshotJob`)
 
@@ -141,6 +151,10 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 - **Mês corrente por horas = margem projetada**: usa `plans[].projectedCostPerTenant` (contratadas médias ×
   compartilhado projetado ÷ Σ contratadas), marcada "projetada" na tela. **Mês passado** = realizado
   (`costPerTenant`). Foto (sem snapshot) = `costPerTenant`, que já é o mês cheio.
+- **Por cliente (P3)**: margem de cada tenant = preço de vitrine do plano dele − `total` em R$ (compartilhado + IA);
+  mês corrente pelo `projectedShared` + IA realizada (marcada projetada), mês passado aberto pelo realizado, fechado
+  pelo `total` congelado (`tenantMarginCost` em `rules.ts`). Tenant sem `planSlug` ou plano fora
+  do `PLAN_CATALOG` fica sem margem.
 - Sem cotação, a margem não aparece. A API nunca recebe nem devolve preço de plano.
 
 ## Cotação USD→BRL
@@ -158,10 +172,62 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
   Brasília) e da ordem PTAX → SGS → última. Desligado, o job não busca e vale a última gravada. A cotação manual vale
   sobre a automática com o Switch ligado ou desligado.
 
-## Previsto
+## Custo por cliente (P3, `GET /admin/costs/tenants`)
 
-- **P3**: custo de IA da plataforma por tenant (`ai_usage_logs`), fechamento mensal congelado, abas Por cliente
-  (nome com `Blurred`) e Histórico.
+- Query: `month=YYYY-MM` (ausente = corrente), `plan=<slug>` (ausente = todos), `cursor`. Página de **50**, decisão do
+  servidor: o painel só devolve o `nextCursor`, nunca `limit`/`offset`. Do tenant só `tenantId` e `tenantName`.
+- **Mês aberto** (corrente, ou passado ainda sem fechamento): conta do mês pelo `GetInfraCostSummaryUseCase` (mesmas
+  regras e 400/503 do resumo) e custo **só dos tenants da página** pelo custo por unidade (`tenantRates`). Ordem
+  `lower(nome), tenantId` no SQL: o uso muda entre as páginas, o nome não. Entram só tenants com sessão-hora no mês
+  (tenant com IA sem sessão-hora fica fora da lista aberta). Mês corrente sem snapshot (foto) → lista vazia.
+  `projectedShared` só no mês corrente (base da margem); `connectedShared` = 2ª leitura por sessão-hora.
+- **Mês fechado**: valores congelados de `infra_cost_month_tenants`, ordem `totalUsd desc, tenantId`; `connectedShared`
+  e `projectedShared` `null`; `unallocated` e `excluded` em `{ usd, brl }`.
+- `sharedBasis`: `contracted` (padrão) → `session_hours` (Σ contratadas 0) → `null` (não rateado). Igual nos dois estados.
+- **Cursor**: keyset (`sortKey` + `tenantId` da última linha) assinado sobre o `OpaqueCursor`, escopo = mês + plano +
+  aberto/fechado. Adulterado, expirado ou de outro escopo → **400 `INFRA_COST_CURSOR_INVALID`**; o painel recomeça
+  sem cursor. Mês que fecha entre duas páginas troca o escopo, então o cursor antigo cai no 400.
+
+## IA da plataforma por cliente (COST-13)
+
+- `ai_usage_logs` com `source = PLATFORM`, `success = true`, no mês, `GROUP BY tenantId, kind, model`. Chave do tenant
+  (`source = TENANT`) nunca entra: é custo dele.
+- Custo = tokens × `aiModelPrices` (US$ por 1 M tokens, por `kind` + `model`). 1 M tokens de entrada = o preço de entrada.
+- **Token nulo** (`inputTokens`/`outputTokens` são `Int?`): a linha não entra nos tokens (nunca somada como 0) e é
+  contada no aviso `ai_tokens_missing { count }`; não marca o total como parcial.
+- **Modelo sem preço**: aviso `model_without_price { kind, model, count }`, custo fora do total (nunca 0).
+- IA entra como custo **direto** do tenant (`ai`), somada ao compartilhado em `total`. No mês aberto é só o
+  realizado (sem extrapolar na projeção).
+
+## Fechamento mensal (COST-15)
+
+- Feito só pelo job (passo 3b acima), nunca por rota. Ordem no tick: hora → banda → build → **fechamento** →
+  cotação → retenção. Espera de até 24 h após o fim do mês (última hora gravada até 01:00; banda e build por serviço
+  mapeado), força a partir das 23:00 UTC do dia 1 com `usage_incomplete`; fora das 24 h fecha direto.
+- **Recuperação**: worker parado no dia 1 → o job fecha o mês passado mais antigo ainda aberto com snapshot, até 12
+  meses para trás, um por tick.
+- Grava `infra_cost_months` (`closingMethod`, `fxRate`/`fxReferenceDate`/`fxSource`, `totalUsd` DECIMAL 14,4,
+  `totals` JSON com a conta, `allocation` e os `settings` usados) e uma linha por tenant em `infra_cost_month_tenants`
+  (`planSlug`, `contractedAvg`, `sessionHours`, `sharedUsd`, `aiUsd`, `totalUsd`). Tenant com IA sem sessão-hora:
+  compartilhado 0, `planSlug` `null`.
+- **Cotação do fechamento** (`resolveClosingFxRate`): override → `last_business_day` (última do mês) ou
+  `month_average` (média das gravadas no mês) → sem cotação no mês, a última antes dele com aviso `fx_fallback` (só
+  no fechamento) → nada = `fx_missing`.
+- **Invariante**: Σ tenants + não rateado (`unallocated`) + fora do rateio (`excluded`: itens `allocation: 'excluded'`
+  e IA fixa) = `totalUsd` (até o arredondamento de 4 casas por tenant).
+- Editar preço depois **não** muda o mês fechado; fechar duas vezes não duplica (`already_closed`).
+
+## Histórico (`GET /admin/costs/history`)
+
+- Os 12 meses anteriores ao corrente (`from`/`to` da janela), **só meses fechados**, por mês crescente: total,
+  `totalIsPartial`, `unallocated`, `excluded` e por plano (Σ `infra_cost_month_tenants`: tenants, compartilhado, IA,
+  total), em USD e BRL pela cotação congelada. O mês corrente fica no resumo. Mês sem fechamento aparece vazio no painel.
+
+## Privacidade
+
+- Nome do tenant na aba Por cliente sempre por `Blurred`/`useBlur`, flag `costs.tenantName` em `PRIVACY_SCREENS`
+  (`app/src/features/privacy/privacyFlags.ts`). Valores e plano não são dado sensível. Filtro de plano em
+  `usePersistedState('costs.filters', …, { scope: 'tab' })`; a lista é recarregada da API, nunca salva.
 
 ## Envs (só na Render, só no `worker`)
 
@@ -173,7 +239,7 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 
 ### Como ligar com segurança
 
-1. Deploy da versão com a migration `create_infra_cost_snapshots` (aplicada no boot, §5.1 de
+1. Deploy da versão com as migrations `create_infra_cost_snapshots` e `create_infra_cost_months` (aplicada no boot, §5.1 de
    `docs/arquitetura-escala.md`).
 2. Só no serviço `worker` (nunca no `http`): `INFRA_COST_RENDER_RESOURCES` com os ids reais (copiados do painel da
    Render; nunca em doc, chat, log ou git) e depois `INFRA_COST_SNAPSHOT_ENABLED=true`.
@@ -183,6 +249,8 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
    crescendo 1 h por hora, nenhum `infra cost hour without render reading` repetido; banda a partir da 2ª hora, build
    no dia seguinte após 01:00 UTC, cotação após 16h30 UTC. Em `/admin/costs`, o mês corrente passa a `basis: 'hours'`
    sem `config_drift` inesperado.
+   No dia 1 do mês seguinte (até 23:00 UTC), uma linha em `infra_cost_months` e a aba Histórico com o mês; log
+   `infra cost month closed without full usage` só se faltou banda ou build.
 5. **Reverter**: `INFRA_COST_SNAPSHOT_ENABLED=false`. As tabelas ficam; o resumo volta à foto quando o mês não tem
    snapshot (apagar linhas só com autorização).
 
@@ -207,10 +275,14 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 - Mês sem dado (passado) ou futuro → 400 `INFRA_COST_MONTH_UNAVAILABLE`; não inventar mês nem usar a foto de agora
   para mês passado.
 - Não ler `WORKER_MAX_*` nem guardar o teto: provider a cada chamada.
-- Lista por cliente (`/admin/costs/tenants`): keyset no cursor assinado (`infraCostTenantCursor.ts`, sobre o
+- Lista por cliente (`/admin/costs/tenants`): o painel nunca manda `limit`/`offset`; keyset no cursor assinado (`infraCostTenantCursor.ts`, sobre o
   `OpaqueCursor` sem mudá-lo), **nunca offset** (a ordem mudaria entre as páginas). Mês aberto por `lower(nome),
   tenantId`; fechado por `totalUsd desc, tenantId`. Cursor inválido/expirado/de outro escopo → 400
   `INFRA_COST_CURSOR_INVALID` (o painel recomeça sem cursor); nunca voltar à página 1 em silêncio.
 - Base do rateio **igual** no mês aberto e no fechamento (contratadas → sessão-hora → não rateado): não divergir as
   duas contas.
+- Mês fechado **nunca** é recalculado nem editado por rota: só o job grava `infra_cost_months` (e apagar linha só com
+  autorização). Não recalcular o histórico com os preços atuais.
+- IA da chave do tenant (`source = TENANT`) não entra no custo; token nulo nunca vira 0; modelo sem preço nunca vira 0.
+- Nome do tenant sem `Blurred` não entra; a API de custos não devolve outro dado do tenant além de id e nome.
 - Textos só em `features/infraCosts/strings.ts`; rascunho da aba Preços em `usePersistedState` (escopo `tab`), limpo ao salvar.
