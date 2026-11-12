@@ -7,6 +7,40 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.93.0] — 2026-11-12 — Caçador de Ofertas (Shein, MAX, prévia super admin)
+
+### Added
+
+#### campaigns — Caçador de Ofertas ([`docs/cacador-de-ofertas.md`](../docs/cacador-de-ofertas.md))
+
+- **`SheinCatalogClient.ts`** / **`ISheinCatalogClient.ts`** — catálogo de comissão da Shein (`seller/activity/category|categoryRate|goods/list|goods/search`) com 5 headers fixos, sem anti-bot; `goodsList: null` = fonte indisponível.
+- **`domain/services/hunter/`** — filtros locais, nota 0–100 com fatores (`HUNT_SCORE_WEIGHTS`), predefinições, agenda, validação e prompt da IA (funções puras).
+- **`RunOfferHuntUseCase.ts`** — portões (plano Shein → caçador → credencial → aceite `OFFER_HUNTER` → saldo → 24 execuções/dia), até 3 páginas, repetição dentro do lock do teto, IA opcional com fallback, pausa por 3 falhas/credencial recusada.
+- **`AiHuntCandidateRanker.ts`** — 1 chamada `IAiTextGenerator` por execução, títulos como dado não confiável, saída validada.
+- **`HuntFindDelivery.ts`** / **`HuntFindDecisionUseCases.ts`** — entrega via Resolve (`riskScope: OFFER_HUNTER`) + `OfferTextComposer` + `EnqueueOffer` (`origin HUNTER`, `sourceKey hunt:<findId>`); aprovação por CAS, achado preso > 15 min retomável.
+- **`OfferHuntSchedulerJob.ts`** — job no `worker` com lease, 3 por tique e 1 por tenant; flag `OFFER_HUNTER_JOB_ENABLED` (padrão `false`, só na Render).
+- **`offerHunt.routes.ts`** — `/api/offer-hunts` (CRUD, run manual 10/min, histórico com cursor assinado, aprovar/dispensar, uso, opções, destino, `/access`); portão `OFFER_HUNTER_AUDIENCE` (`super_admin` padrão | `entitled`).
+- **Repositórios Prisma do caçador** — teto diário atômico (advisory lock), claim por CAS, histórico preservado ao excluir caçada.
+
+#### tenants
+
+- **`entitlementKeys.ts`** / **`planPresets.ts`** — `offer_hunter_enabled` (MAX) e `offer_hunter_finds_per_day` (MAX 10; ausente = 0).
+- **`adminEditableEntitlements.ts`** / **`SetPlanEntitlementUseCase.ts`** / **`planEntitlementAdmin.routes.ts`** — admin de planos edita chave inteira com faixa (0–100), mesma propagação e auditoria.
+- **`PrismaTenantUsageReader.ts`** / **`subscriptionLimits.ts`** — uso do gerador sem ofertas `HUNTER`; uso diário de ofertas garimpadas.
+
+#### integrations
+
+- **`MarketplaceRiskScope`** — aceite de risco com escopo (`AFFILIATE_LINK` padrão, `OFFER_HUNTER`), unique por escopo; fluxos atuais sem mudança.
+
+### Changed
+
+- **`PrismaOfferRepository.ts`** — `offer_generations_per_day` não conta ofertas `origin = HUNTER`.
+- **`IBroadcastGroupUsageReader`** — destino do caçador entra na união de `broadcast_groups`.
+
+### Breaking Changes
+
+- Nenhuma de contrato existente. **Migrations**: `20261114100000_add_offer_hunter_entitlements`, `…100100_add_offer_origin_hunter`, `…100200_create_offer_hunter_tables`, `…100300_add_risk_acceptance_scope`, `…100400_add_offer_hunt_find_image` (rodam no boot da Render). Envs novas: `OFFER_HUNTER_AUDIENCE`, `OFFER_HUNTER_JOB_ENABLED`.
+
 ## [0.92.1] — 2026-11-12 — Link Shein compartilhado pelo app
 
 ### Fixed

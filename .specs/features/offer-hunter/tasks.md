@@ -78,9 +78,10 @@ Cada tarefa: commit atômico, `tsc --noEmit` na `api/` e no `app/`, testes da á
 
 ## Fase 5 — Fecho
 
-- **T18** **Em andamento**: docs feitas (`docs/cacador-de-ofertas.md`, `afiliado-shein.md`, `navegacao-produtos.md`, `produto-roadmap.md`, `AGENTS.md`); `planos.md`, `CHANGELOG.md` e versões pendentes (outra sessão edita esses arquivos). Plano original: `docs/cacador-de-ofertas.md`, `afiliado-shein.md`, `navegacao-produtos.md`, `planos.md`,
-  `AGENTS.md`. `CHANGELOG.md` + versões api 0.93.0 / app 0.115.0.
-- **T19** Pendente. Revisão (`/code-review`) e correções.
+- **T18** ~~feito~~: docs (`cacador-de-ofertas.md`, `afiliado-shein.md`, `navegacao-produtos.md`, `produto-roadmap.md`,
+  `planos.md`, `AGENTS.md`), `CHANGELOG.md` e versões **api 0.93.0 / app 0.116.0** (app 0.115.0 já era da vitrine de planos).
+- **T19** ~~feito~~: revisão api + app; 9 correções (c178f3ee, 50f337c6); 3 apontamentos recusados (falso positivo do
+  diff de duas pontas e nome/palavra-chave da caçada sem flag por ser configuração do usuário).
 - **T20** Pendente (dono). Pré-requisito: um usuário `ADMIN` do tenant de teste aceita o aviso do caçador (super admin não aceita). Smoke do dono após deploy, com a flag do job ligada só na Render: caçada manual, agendada, `AUTO` em
   grupo de teste, teto de 10 ofertas bloqueando a 11ª, mudança do teto na tela do admin, pausa ao deslogar da Shein.
 

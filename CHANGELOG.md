@@ -9,6 +9,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.116.0 / api 0.93.0 — Caçador de Ofertas (Shein, MAX, prévia super admin)
+
+#### app ([`docs/cacador-de-ofertas.md`](docs/cacador-de-ofertas.md))
+
+- **`features/offerHunter/`** / **`OfferHunterPage.tsx`** / **`OfferHunterDetailPage.tsx`** — tela inicial (uso do dia, portões com ação, grupo de destino, caçadas com liga/desliga), assistente de 3 passos com predefinições e "Testar agora", detalhe com achados (aprovar/dispensar/reenviar) e execuções, aviso de risco próprio com aceite só de administrador.
+- **`navigation/model.ts`** — item "Caçador de Ofertas" em Afiliados só quando `GET /offer-hunts/access` devolve `visible`.
+- **`AdminPlanEntitlementsPage.tsx`** — edição numérica do teto por plano com confirmação.
+- **`plans/catalog.ts`** / **`subscription/strings.ts`** — benefício exclusivo MAX e limite "Ofertas garimpadas".
+
+### Fixed
+
+- **`usePersistedState.ts`** — após `clear()` sem mudança de estado, a alteração seguinte voltava a não gravar.
+
 ### Changed — app 0.115.0 — cards de planos com movimento e Shein em destaque
 
 #### app

@@ -80,6 +80,9 @@ regra: o preço nunca vai à API; tenant sem plano do catálogo fica sem margem.
 - **Novidade do plano** (`PlanBenefit.spotlight`): `SpotlightRow` no `PlanCard` — moldura em gradiente fluindo, faixa
   de luz que atravessa o bloco, anel pulsando no logo, chip `card.newBadge` ("Novidade"). **Um por plano**, só para
   lançamento (hoje: Afiliado Shein no MAX); ao virar rotina, tirar o `spotlight` em vez de empilhar destaques.
+- **Caçador de Ofertas** (MAX, `exclusive: true`, sem `spotlight`): `offer_hunter_enabled` e `offer_hunter_finds_per_day`
+  (10/dia) em `FIXED_MIN_PLAN`/`SUBSCRIPTION_LIMIT_KEYS`; liberar para outro plano pelo admin → atualizar este texto
+  de vitrine ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
 - **Animações** (`components/planMotion.ts`): entrada escalonada (`index` do card, `fill-mode: backwards` para não
   prender o `transform` do hover), troca de preço por `key`, moldura do recomendado fluindo. Só
   `transform`/`opacity`/`background-position`; tudo desligado em `prefers-reduced-motion`. Sem ícone de brilho.

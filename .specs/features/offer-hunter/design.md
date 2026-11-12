@@ -261,7 +261,7 @@ técnica de execuções), `OFFER_HUNT_LIMIT_REACHED` (409), `OFFER_HUNT_DESTINAT
 
 ## 5. Versões e documentação
 
-api 0.93.0 · app 0.115.0 · extensão sem mudança. `CHANGELOG.md` da api e do app. Doc nova
+api 0.93.0 · app 0.116.0 · extensão sem mudança. `CHANGELOG.md` da api e do app. Doc nova
 `docs/cacador-de-ofertas.md`; atualizar `docs/afiliado-shein.md` (endpoints e tabela "observado"),
 `docs/produto-roadmap.md` (item novo no produto Afiliados), `docs/navegacao-produtos.md`, `docs/planos.md` e a
 linha correspondente em `AGENTS.md`.
