@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.112.0 — preço mensal fixo por modelo de IA
+
+#### app
+
+- **`PricesTab.tsx` / `rules.ts` / `strings.ts`** — seletor "Por token" × "Mensal fixo" por modelo de IA em Custos › Preços; no mensal só "US$/mês", com o modo no diff da confirmação.
+
 ### Added — app 0.111.0 — rótulo "Worker N" e instâncias encerradas recolhidas
 
 Tabela "Instâncias do worker" (`/admin/workers/usage`): vivas como "Worker 1", "Worker 2"… pela ordem de início; processos do deploy anterior numa seção recolhida no fim. Só painel, sem banco e sem mudança na API. Doc: `docs/ops-metricas.md`.

@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.91.0] — 2026-11-12 — Preço mensal fixo opcional por modelo de IA
+
+### Added
+
+#### metrics
+
+- **`infraCostSettings.ts` / `infraCostCalculator.ts`** — `aiModelPrices[].billing` (`tokens` padrão; ausente = tokens, compatível com o salvo) e `monthlyUsd`. Mensal entra no fixo, proporcional às horas como os itens fixos; por cliente é rateado pelos tokens do modelo no mês (`tenantRates.aiMonthlyUsdPerToken` na lista paginada). Sem tokens no mês vai para o compartilhado com o aviso novo `ai_monthly_unused`. `totals.ai` passa a contar só a IA rateada a clientes (evita contar o mensal sem uso duas vezes no fechamento). `CloseInfraCostMonth` congela o modo.
+
 ## [0.90.1] — 2026-11-12 — Cotação na hora quando não há nenhuma
 
 ### Fixed
