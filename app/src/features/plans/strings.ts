@@ -79,6 +79,8 @@ export const plansStrings = {
   card: {
     recommended: 'Mais escolhido',
     exclusive: 'Exclusivo',
+    /** Chip do benefício em destaque (`PlanBenefit.spotlight`). */
+    newBadge: 'Novidade',
     perMonth: '/mês',
     billedMonthly: 'cobrado mensalmente',
     billedAnnually: 'cobrado anualmente',

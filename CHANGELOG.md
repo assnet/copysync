@@ -9,6 +9,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.115.0 — cards de planos com movimento e Shein em destaque
+
+#### app
+
+- **`PlanCard.tsx`** — "/mês" e "cobrado anualmente" centralizados ao lado do preço (antes ficavam presos à linha de base e desciam abaixo do número). Entrada escalonada, troca de preço animada, moldura do recomendado fluindo e hover com elevação.
+- **`PlanCard.tsx`** / **`catalog.ts`** — `PlanBenefit.spotlight` + `SpotlightRow`: Afiliado Shein no MAX vira bloco premium (moldura animada, faixa de luz, anel no logo, chip "Novidade").
+- **`planMotion.ts`** — keyframes da vitrine; todas desligadas em `prefers-reduced-motion`.
+- **`PlanCard.tsx`** — contraste AA: chip "Exclusivo" no escuro em `secondary.light`, chip de economia mais escuro no claro, preço riscado e ícones de info em `text.secondary`; selos com 11 px.
+
 ### Changed
 
 #### app — vitrine de planos (app 0.114.1)

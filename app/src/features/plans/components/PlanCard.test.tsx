@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PLAN_CATALOG } from '../catalog';
 import { buildCheckoutUrl } from '../checkout';
@@ -12,15 +12,20 @@ const url = buildCheckoutUrl('max', 'annual', '', PLAN_CATALOG, { email: 'ana@x.
 afterEach(() => vi.restoreAllMocks());
 
 describe('PlanCard', () => {
-  it.each(['light', 'dark'] as const)('benefício de marketplace mostra os logos: 3 no LITE, Shein no MAX (%s)', (mode) => {
+  it.each(['light', 'dark'] as const)('benefício de marketplace mostra os logos: 3 no LITE, Shein em destaque no MAX (%s)', (mode) => {
     const lite = PLAN_CATALOG.find((p) => p.slug === 'lite')!;
     const { unmount } = renderWithTheme(<PlanCard plan={lite} period="monthly" getCheckoutUrl={() => url} />, mode);
     expect(screen.getByText('Shopee, Mercado Livre e Amazon')).toBeInTheDocument();
     expect(screen.getByTestId('plan-benefit-marketplaces').querySelectorAll('img')).toHaveLength(3);
     unmount();
     renderWithTheme(<PlanCard plan={max} period="monthly" getCheckoutUrl={() => url} />, mode);
-    const logos = screen.getByTestId('plan-benefit-marketplaces').querySelectorAll('img');
-    expect(Array.from(logos, (img) => img.getAttribute('src'))).toEqual(['/assets/marketplaces/shein.svg']);
+    // Shein é a novidade do MAX: bloco em destaque com logo, chip "Novidade" e "Exclusivo"
+    const spot = within(screen.getByTestId('plan-benefit-spotlight'));
+    expect(spot.getByText('Afiliado Shein')).toBeInTheDocument();
+    expect(spot.getByText(t.card.newBadge)).toBeInTheDocument();
+    expect(spot.getByText(t.card.exclusive)).toBeInTheDocument();
+    expect(Array.from(screen.getByTestId('plan-benefit-spotlight').querySelectorAll('img'), (img) => img.getAttribute('src'))).toEqual(['/assets/marketplaces/shein.svg']);
+    expect(screen.queryByTestId('plan-benefit-marketplaces')).toBeNull();
   });
 
   it.each(['light', 'dark'] as const)('"Assinar" é botão sem href, com nome acessível de nova aba (%s)', (mode) => {
