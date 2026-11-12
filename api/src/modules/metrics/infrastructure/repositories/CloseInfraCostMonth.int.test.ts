@@ -4,6 +4,7 @@ import {
   CloseInfraCostMonthUseCase,
   type InfraCostClosedMonthTotals,
 } from '../../application/use-cases/CloseInfraCostMonthUseCase';
+import { GetInfraCostSummaryUseCase } from '../../application/use-cases/GetInfraCostSummaryUseCase';
 import type { InfraFxRateSource } from '../../domain/contracts/IInfraCostSnapshotRepository';
 import { defaultInfraCostSettings, type InfraCostSettings, type InfraFxClosingMethod } from '../../domain/services/infraCostSettings';
 import { PrismaInfraCostSnapshotRepository } from './PrismaInfraCostSnapshotRepository';
@@ -29,6 +30,20 @@ function useCase() {
     settings: { get: async () => ({ value: structuredClone(settings), updatedAt: new Date(0), updatedById: null }), save: async () => { throw new Error('não usado'); } },
     usage: new PrismaInfraCostUsageReader(prisma),
     scaling: { current: () => ({ value: { maxSessionsPerWorker: 100, alertOccupancyRatio: 0.8 } }) } as never,
+  });
+}
+
+/** Resumo com repositórios reais; `months` ausente = recálculo (como antes do COST-15 no resumo). */
+function summaryUseCase(withMonths = true) {
+  return new GetInfraCostSummaryUseCase({
+    settings: { get: async () => ({ value: structuredClone(settings), updatedAt: new Date(0), updatedById: null }), save: async () => { throw new Error('não usado'); } },
+    live: { read: async () => { throw new Error('mês passado não lê a foto'); } } as never,
+    capacity: { readByPlan: async () => { throw new Error('mês passado não lê a capacidade'); } },
+    scaling: { current: () => ({ value: { maxSessionsPerWorker: 100, alertOccupancyRatio: 0.8 } }) } as never,
+    fxRates: repo,
+    usage: new PrismaInfraCostUsageReader(prisma),
+    months: withMonths ? repo : undefined,
+    now: () => NOW,
   });
 }
 
@@ -124,6 +139,37 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     expect(after).toEqual(before);
     expect((await totalsOf()).settings.items.find((i) => i.key === 'api')?.monthlyUsd).toBe(25);
     expect(await prisma.infraCostMonthTenant.count({ where: { month: OCT } })).toBe(2);
+  });
+
+  it('resumo do mês fechado lê o congelado: preço e cotação editados depois não mudam o resumo', async () => {
+    await seedMonth();
+    await fxRate('2026-10-30', 5.6);
+    const open = await summaryUseCase().execute({ month: '2026-10' });
+    expect(open.closed).toBe(false);
+
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    const frozen = await totalsOf();
+    const closedAt = (await repo.findClosedMonth(OCT))!.closedAt;
+
+    settings.items = settings.items.map((i) => (i.key === 'api' ? { ...i, monthlyUsd: i.monthlyUsd * 10 } : i));
+    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 20, outputPerMTokUsd: 80 }];
+    settings.fx.override = { rate: 7, date: '2026-10-31' };
+    await fxRate('2026-10-31', 6.1);
+
+    const out = await summaryUseCase().execute({ month: '2026-10' });
+    expect(out.closed).toBe(true);
+    expect(out.generatedAt).toEqual(closedAt);
+    expect(out.calculation.totals).toEqual(frozen.calculation.totals);
+    expect(out.calculation.totals.total.usd).toBe(open.calculation.totals.total.usd);
+    expect(out.calculation.fx).toMatchObject({ rate: 5.6, referenceDate: '2026-10-30', source: 'ptax' });
+    expect(out.calculation.fx?.fetchedAt).toBeInstanceOf(Date);
+    expect(out.settings.items.find((i) => i.key === 'api')?.monthlyUsd).toBe(25);
+
+    // Sem o congelado, a mesma conta já usaria o preço novo (prova de que a edição pesaria)
+    const recalculated = await summaryUseCase(false).execute({ month: '2026-10' });
+    expect(recalculated.closed).toBe(false);
+    expect(recalculated.calculation.totals.total.usd).toBeGreaterThan(out.calculation.totals.total.usd);
+    expect(recalculated.calculation.fx?.rate).toBe(7);
   });
 
   it.each<[InfraFxClosingMethod, number]>([

@@ -216,6 +216,12 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 - **Invariante**: Σ tenants + não rateado (`unallocated`) + fora do rateio (`excluded`: itens `allocation: 'excluded'`
   e IA fixa) = `totalUsd` (até o arredondamento de 4 casas por tenant).
 - Editar preço depois **não** muda o mês fechado; fechar duas vezes não duplica (`already_closed`).
+- **Resumo do mês fechado** (`GET /admin/costs/summary?month=<fechado>`): devolve a conta congelada
+  (`infra_cost_months.totals.calculation`) com a cotação congelada da linha do mês, `closed: true` e `generatedAt` =
+  hora do fechamento; avisos do fechamento inclusos (`fx_fallback`, `usage_incomplete` com `metrics`). Mesmos números
+  do histórico e da lista por cliente. Em todos os outros casos (mês corrente, mês passado ainda não fechado) o resumo
+  recalcula com a configuração atual e devolve `closed: false`. JSON congelado ilegível (versão ≠ 1) → recalcula com
+  `closed: false`, nunca 500.
 
 ## Histórico (`GET /admin/costs/history`)
 
@@ -282,7 +288,7 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 - Base do rateio **igual** no mês aberto e no fechamento (contratadas → sessão-hora → não rateado): não divergir as
   duas contas.
 - Mês fechado **nunca** é recalculado nem editado por rota: só o job grava `infra_cost_months` (e apagar linha só com
-  autorização). Não recalcular o histórico com os preços atuais.
+  autorização). Não recalcular o histórico nem o resumo de mês fechado com os preços atuais.
 - IA da chave do tenant (`source = TENANT`) não entra no custo; token nulo nunca vira 0; modelo sem preço nunca vira 0.
 - Nome do tenant sem `Blurred` não entra; a API de custos não devolve outro dado do tenant além de id e nome.
 - Textos só em `features/infraCosts/strings.ts`; rascunho da aba Preços em `usePersistedState` (escopo `tab`), limpo ao salvar.

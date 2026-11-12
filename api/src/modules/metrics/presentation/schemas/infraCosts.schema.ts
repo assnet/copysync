@@ -121,6 +121,8 @@ const usage = obj({
 const summarySchema = obj({
   month: str,
   basis: strEnum(['snapshot', 'hours']),
+  /** Mês fechado: conta e cotação congeladas (`infra_cost_months`). */
+  closed: bool,
   generatedAt: { type: 'string', format: 'date-time' },
   fx: nullable(
     obj({
@@ -207,6 +209,8 @@ const summarySchema = obj({
           'idle_partial',
           'shared_by_session_hours',
           'shared_unallocated',
+          // Só no mês fechado (avisos do fechamento)
+          'usage_incomplete',
         ]),
         resourceKey: str,
         key: str,
@@ -216,6 +220,7 @@ const summarySchema = obj({
         model: str,
         count: int,
         usd: num,
+        metrics: { type: 'array', items: strEnum(['bandwidth', 'build']) },
       },
     },
   },

@@ -300,6 +300,8 @@ export interface InfraCostSummary {
   /** `YYYY-MM`. */
   month: string;
   basis: InfraCostBasis;
+  /** Mês fechado: conta e cotação congeladas no fechamento (`generatedAt` = hora do fechamento). Opcional: API anterior. */
+  closed?: boolean;
   generatedAt: string;
   /** `null` = sem cotação (só USD, aviso `fx_missing`). */
   fx: InfraFxView | null;

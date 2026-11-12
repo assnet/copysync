@@ -4,7 +4,7 @@ import type { ListInfraCostTenantsOutput } from '../../application/use-cases/Lis
 
 /**
  * `GET /admin/costs/summary` no formato `InfraCostSummary` do painel (`app/src/features/infraCosts/types.ts`).
- * O calculador já segue o contrato; aqui só entram `month`/`generatedAt`, datas ISO e `planLabel` como texto.
+ * O calculador já segue o contrato; aqui só entram `month`/`generatedAt`/`closed`, datas ISO e `planLabel` como texto.
  * Nunca id de recurso da Render nem preço de plano do produto.
  */
 export function presentInfraCostSummary(out: InfraCostSummaryOutput) {
@@ -12,6 +12,8 @@ export function presentInfraCostSummary(out: InfraCostSummaryOutput) {
   return {
     month: out.month,
     basis: c.basis,
+    /** Mês fechado: valores e cotação congelados (preço editado depois não muda). */
+    closed: out.closed,
     generatedAt: out.generatedAt.toISOString(),
     fx: c.fx
       ? {

@@ -24,6 +24,10 @@ seguem só com tabelas locais. Doc: `docs/custos-infraestrutura.md`.
 - **`application/use-cases/CloseInfraCostMonthUseCase.ts`**, **`infrastructure/jobs/InfraCostSnapshotJob.ts`** — passo de fechamento depois da banda e do build: espera até 24 h (força às 23:00 UTC com `usage_incomplete`), mês esquecido fecha depois (até 12, um por tick), idempotente; preços, cotação (`closingMethod`, `fx_fallback`) e `allocation` congelados.
 - **`domain/services/infraCostCalculator.ts`**, **`infrastructure/repositories/PrismaInfraCostUsageReader.ts`** — IA da plataforma por tenant (`source = PLATFORM`, `success`) × `aiModelPrices`; `model_without_price` e `ai_tokens_missing` (token nulo fora dos tokens, nunca 0); Σ contratadas 0 rateia por sessão-hora, sem base = `shared_unallocated`.
 
+### Fixed
+
+- **`application/use-cases/GetInfraCostSummaryUseCase.ts`**, **`infrastructure/infraCostsContainer.ts`** (+ schema, presenter) — `GET /summary?month=<fechado>` recalculava com os preços atuais e divergia do histórico e da lista por cliente; agora lê a conta e a cotação congeladas (`infra_cost_months.totals.calculation`), `generatedAt` = fechamento e `closed: true` (campo novo, `false` nos outros casos). Avisos do fechamento no schema (`usage_incomplete` com `metrics`). JSON congelado ilegível recalcula com `closed: false`.
+
 ## [0.89.0] — 2026-11-12 — Custos proporcionais ao tempo (P2)
 
 Job horário de snapshot dos custos no `worker` e custo do mês somado hora a hora, com projeção, sessão-hora e cotação

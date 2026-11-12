@@ -27,7 +27,7 @@ function calc(over: Partial<InfraCostCalculation> = {}): InfraCostCalculation {
 }
 
 function summary(c: InfraCostCalculation = calc()) {
-  return { execute: vi.fn(async ({ month }: { month?: string }): Promise<InfraCostSummaryOutput> => ({ month: month!, generatedAt: NOW, calculation: c, settings: settings() })) };
+  return { execute: vi.fn(async ({ month }: { month?: string }): Promise<InfraCostSummaryOutput> => ({ month: month!, generatedAt: NOW, calculation: c, settings: settings(), closed: false })) };
 }
 
 const openRow = (tenantId: string, contractedAvg = 2, connectedHours = 4): InfraCostOpenMonthTenantRow =>

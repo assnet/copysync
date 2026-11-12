@@ -13,6 +13,8 @@ import { PrismaInfraCostSnapshotRepository } from '../../infrastructure/reposito
 import { PrismaInfraFxFetchStateRepository } from '../../infrastructure/repositories/PrismaInfraFxFetchStateRepository';
 import { PrismaInfraCostUsageReader } from '../../infrastructure/repositories/PrismaInfraCostUsageReader';
 import { PrismaInfraCostReportReader } from '../../infrastructure/repositories/PrismaInfraCostReportReader';
+import { CloseInfraCostMonthUseCase } from '../../application/use-cases/CloseInfraCostMonthUseCase';
+import type { InfraCostClosedMonth } from '../../domain/contracts/IInfraCostMonthRepository';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
@@ -119,6 +121,7 @@ describe('GET /admin/costs/summary', () => {
   beforeEach(() => {
     vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'latestFxRate').mockResolvedValue(null);
     vi.spyOn(PrismaInfraFxFetchStateRepository.prototype, 'get').mockResolvedValue(null);
+    vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'findClosedMonth').mockResolvedValue(null);
     // Sem snapshot no mês: o corrente cai na foto; mês passado = 400.
     vi.spyOn(PrismaInfraCostUsageReader.prototype, 'readMonth').mockResolvedValue({
       resourceHours: [], bandwidthGb: null, buildMinutes: null, tenants: [],
@@ -198,6 +201,67 @@ describe('GET /admin/costs/summary', () => {
     expect(data.plans[0].projectedCostPerTenant).not.toBeNull();
     expect(data.workspace.bandwidth).toMatchObject({ consumed: 7, source: 'measured' });
     expect(res.body).not.toContain('srv-');
+  });
+
+  it('mês fechado: conta e cotação congeladas, closed true; preço editado depois não muda; aberto = closed false', async () => {
+    auth.isSuperAdmin = true;
+    stubReads();
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const month = start.toISOString().slice(0, 7);
+    const usage = {
+      resourceHours: [{ hour: start, renderKey: 'worker' as const, plan: '1c-2g', instances: 1, diskGb: null, suspended: false }],
+      bandwidthGb: null, buildMinutes: null,
+      tenants: [{ tenantId: 't1', planSlug: 'COPYSYNC_LITE', connectedHours: 10, contractedAvg: 2 }],
+    };
+    vi.mocked(PrismaInfraCostUsageReader.prototype.readMonth).mockResolvedValue(usage);
+
+    // Fechamento com a configuração de agora (override 5,5), gravação capturada
+    const settings = defaultInfraCostSettings();
+    settings.fx.override = { rate: 5.5, date: '2026-11-10' };
+    let saved: InfraCostClosedMonth | undefined;
+    const close = new CloseInfraCostMonthUseCase({
+      months: {
+        hasClosedMonth: async () => false, fxRatesBetween: async () => [], findClosedMonth: async () => null, oldestUnclosedMonth: async () => null,
+        saveClosedMonth: async (m) => { saved = m; return true; },
+      },
+      fxRates: { latestFxRate: async () => null },
+      settings: { get: async () => ({ value: structuredClone(settings), updatedAt: SAVED_AT, updatedById: null }), save: async () => { throw new Error('não usado'); } },
+      usage: { readMonth: async () => usage } as never,
+      scaling: { current: () => ({ value: { maxSessionsPerWorker: 40, alertOccupancyRatio: 0.8 } }) } as never,
+    });
+    expect(await close.execute({ month, now: end })).toBe('closed');
+    const open = (await app.inject({ method: 'GET', url: `${URL}/summary?month=${month}` })).json().data;
+    expect(open.closed).toBe(false);
+
+    const { tenants: _t, ...summary } = saved!;
+    vi.mocked(PrismaInfraCostSnapshotRepository.prototype.findClosedMonth).mockResolvedValue({ ...summary, closedAt: SAVED_AT });
+    // Preço editado depois do fechamento
+    const edited = defaultInfraCostSettings();
+    edited.items = edited.items.map((i) => (i.key === 'worker' ? { ...i, monthlyUsd: 250 } : i));
+    edited.fx.override = { rate: 9, date: '2026-11-10' };
+    vi.mocked(PrismaInfraCostSettingsRepository.prototype.get).mockResolvedValue({ value: edited, updatedAt: SAVED_AT, updatedById: 'admin-1' });
+
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary?month=${month}` });
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.closed).toBe(true);
+    expect(data.generatedAt).toBe(SAVED_AT.toISOString());
+    expect(data.totals).toEqual(open.totals);
+    expect(data.fx).toEqual({ rate: 5.5, referenceDate: '2026-11-10', source: 'override', fetchedAt: null, stale: open.fx.stale });
+    expect(Object.keys(data).sort()).toEqual(Object.keys(open).sort());
+    expect(res.body).not.toContain('tenantRates');
+    expect(res.body).not.toContain('srv-');
+    expect(PrismaInfraCostSnapshotRepository.prototype.findClosedMonth).toHaveBeenCalledWith(start);
+  });
+
+  it('mês corrente nunca consulta o fechamento: closed false', async () => {
+    auth.isSuperAdmin = true;
+    stubReads();
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+    expect(res.json().data.closed).toBe(false);
+    expect(PrismaInfraCostSnapshotRepository.prototype.findClosedMonth).not.toHaveBeenCalled();
   });
 
   it('mês em formato inválido: 400 de validação', async () => {

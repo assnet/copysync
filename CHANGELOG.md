@@ -19,10 +19,16 @@ Custo por cliente (compartilhado + IA da plataforma), fechamento mensal congelad
 - **`PrismaInfraCostUsageReader.ts`**, **`infraCostCalculator.ts`** — IA da plataforma (`ai_usage_logs`, `source = PLATFORM`, `success`) × `aiModelPrices`; avisos `model_without_price` e `ai_tokens_missing` (token nulo nunca vira 0).
 - **`CloseInfraCostMonthUseCase.ts`**, **`InfraCostSnapshotJob.ts`**, **`PrismaInfraCostSnapshotRepository.ts`**, **`fxRate.ts`** — fechamento no dia 1 depois da banda e do build (força às 23:00 UTC com `usage_incomplete`), recuperação até 12 meses, cotação por `closingMethod` com `fx_fallback`; Σ tenants + não rateado + fora do rateio = total.
 - **`ListInfraCostTenantsUseCase.ts`**, **`infraCostTenantCursor.ts`**, **`GetInfraCostHistoryUseCase.ts`**, **`PrismaInfraCostReportReader.ts`**, **`infraCosts.routes.ts`** — lista por cliente (aberto por nome, fechado por total) e histórico; `statement_timeout` 2 s → 503.
+- **`GetInfraCostSummaryUseCase.ts`**, **`infraCostsContainer.ts`**, **`infraCostsPresenter.ts`**, **`infraCosts.schema.ts`** — resumo de mês fechado lê a conta e a cotação congeladas (`infra_cost_months.totals.calculation`) com `closed: true`; antes recalculava com os preços atuais e divergia do histórico e da lista por cliente. Nos outros casos `closed: false`.
 
 #### Frontend (app/) — `infraCosts`
 
 - **`TenantsTab`**, **`HistoryTab`**, **`AdminCostsPage.tsx`**, **`rules.ts`** (`tenantMarginCost`) — abas Por cliente (margem por cliente, filtro de plano persistido) e Histórico.
+- **`CostFiltersBar.tsx`**, **`HistoryChart.tsx`** — barra de filtros (mês, base, plano) compartilhada pelas abas e gráfico do histórico por plano.
+- **`useCostTenants.ts`**, **`useCostHistory.ts`**, **`adminCosts.service.ts`** — leitura da lista por cliente (cursor opaco devolvido pela API) e do histórico pelo serviço HTTP centralizado.
+- **`planSlug.ts`** (`toDomainPlanSlug`) — filtro de plano do painel convertido para o slug do domínio.
+- **`paths.ts`**, **`AppRoutes.tsx`** — rotas das abas Por cliente e Histórico.
+- **`types.ts`** — `closed?` no resumo (mês fechado com valores congelados).
 - **`privacyFlags.ts`** — flag `costs.tenantName`: nome do cliente com `Blurred`.
 
 ### Added — api 0.89.0 · app 0.109.0 — custos proporcionais ao tempo (P2)

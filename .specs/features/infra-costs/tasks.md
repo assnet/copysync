@@ -68,7 +68,7 @@ visual pelo `agent-browser` (claro, escuro, 390 px). Registro em `review.md`.
 | T17 | Custo de IA por tenant | R2 | | feito |
 | T18 | Fechamento mensal (migration + job) | R2 | | feito |
 | T19 | Rotas por cliente e histórico | T17, T18 | | feito |
-| T20 | Painel: abas Por cliente e Histórico, privacidade | T19 | | pendente |
+| T20 | Painel: abas Por cliente e Histórico, privacidade | T19 | | feito |
 | T21 | Docs, versão e changelog da P3 | T20 | | feito |
 | R3 | Revisão da P3 e merge | T21 | | pendente |
 | T22 | R2 automático pela API da Cloudflare (P4) | R3 | | não detalhada |

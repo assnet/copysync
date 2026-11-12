@@ -56,6 +56,8 @@ export function getInfraCostSummaryUseCase(): GetInfraCostSummaryUseCase {
     fxFetchState: new PrismaInfraFxFetchStateRepository(prisma),
     // Snapshots horários do mês (P2): soma por hora, projeção e rateio por sessão-hora.
     usage: new PrismaInfraCostUsageReader(prisma),
+    // Mês fechado (COST-15): conta e cotação congeladas, nunca recalculadas com o preço de hoje.
+    months: new PrismaInfraCostSnapshotRepository(prisma),
   }));
 }
 

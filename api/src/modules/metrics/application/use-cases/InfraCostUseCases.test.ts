@@ -198,6 +198,17 @@ describe('GetInfraCostSummaryUseCase', () => {
       expect(out.calculation.perSession.connected.unallocatedSessions).toBeNull();
     });
 
+    it('mês passado fechado com JSON ilegível: recalcula com closed false (nunca 500)', async () => {
+      const usage = usageOf({ '2026-10': { resourceHours: hours(OCT, 744), bandwidthGb: null, buildMinutes: null, tenants } });
+      const months = { findClosedMonth: vi.fn(async () => ({
+        month: OCT, closingMethod: 'last_business_day' as const, fx: null, totalUsd: 1, totals: { version: 2 }, closedAt: NOW,
+      })) };
+      const out = await setup({ usage, months }).uc.execute({ month: '2026-10' });
+      expect(months.findClosedMonth).toHaveBeenCalledWith(OCT);
+      expect(out.closed).toBe(false);
+      expect(out.calculation.items.find((i) => i.key === 'worker')?.cost?.usd).toBe(25);
+    });
+
     it('mês passado sem dado e mês futuro: 400 INFRA_COST_MONTH_UNAVAILABLE', async () => {
       const usage = usageOf({});
       const { uc } = setup({ usage });
