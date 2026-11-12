@@ -7,6 +7,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.92.0] — 2026-11-12 — Ordem dos grupos e intervalo zerado no gerador de ofertas
+
+### Added
+
+#### campaigns
+
+- **`migrations/20261113200000_add_offer_destination_position`** / **`schema.prisma`** — `offer_destinations.position` (ordem de envio dos grupos do gerador dentro da sessão). Linhas antigas recebem a ordem de gravação (`createdAt`, desempate pelo id da conversa).
+- **`PrismaOfferGeneratorConfigRepository.ts`** — grava `position` na ordem de `conversationIds` e lê por `position`. Antes a leitura ordenava por `createdAt`, que é o mesmo instante para todos os grupos (gravados numa transação), então a ordem era indefinida.
+
+### Changed
+
+#### campaigns
+
+- **`OfferGeneratorConfigUseCases.ts`** / **`offer.schema.ts`** — intervalo entre envios aceita 0 (0–3600 s), como o monitoramento. A fila já tratava `gapSeconds` 0.
+
+**Migration Prisma**: sim (aditiva, com default). **Breaking**: não.
+
 ## [0.91.2] — 2026-11-12 — Id do Postgres da Render com sufixo
 
 ### Fixed

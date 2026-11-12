@@ -1170,6 +1170,8 @@ model OfferDispatch {
 model OfferDestination {
   tenantId       String
   conversationId String
+  /// Ordem de envio (0 = primeiro) dentro da sessão dona do grupo; gravada na ordem de `conversationIds`.
+  position       Int      @default(0)
   createdAt      DateTime @default(now())
 
   tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)

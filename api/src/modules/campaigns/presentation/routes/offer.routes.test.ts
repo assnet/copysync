@@ -172,12 +172,12 @@ describe('rotas estáticas antes de /:id', () => {
     expect(getOffer).not.toHaveBeenCalled();
   });
 
-  it('PUT /config repassa; intervalo fora de 60–3600 s, sem campo ou > 200 grupos → 400', async () => {
+  it('PUT /config repassa; intervalo fora de 0–3600 s, sem campo ou > 200 grupos → 400', async () => {
     const save = vi.spyOn(SaveOfferGeneratorConfigUseCase.prototype, 'execute').mockResolvedValue(CONFIG);
     const body = { sessionIds: ['s1'], intervalMinSeconds: 120, intervalMaxSeconds: 300, dispatchOrder: 'SEQUENTIAL', conversationIds: ['g1'] };
     const ok = await app.inject({ method: 'PUT', url: `${PREFIX}/config`, payload: body });
     const bad = await Promise.all([
-      { ...body, intervalMinSeconds: 59 },
+      { ...body, intervalMinSeconds: -1 },
       { ...body, intervalMaxSeconds: 3601 },
       { ...body, sessionIds: [] },
       { ...body, conversationIds: Array.from({ length: 201 }, (_, i) => `c${i}`) },

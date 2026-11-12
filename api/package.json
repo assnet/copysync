@@ -1,7 +1,7 @@
 {
-  "name": "waioprime-api",
-  "version": "0.91.2",
-  "description": "WaioPrime API — Fastify + TypeScript + Prisma + PostgreSQL",
+  "name": "CopySync-api",
+  "version": "0.92.0",
+  "description": "CopySync API — Fastify + TypeScript + Prisma + PostgreSQL",
   "private": true,
   "scripts": {
     "dev": "tsx watch --env-file=.env.dev src/app/server.ts --host",

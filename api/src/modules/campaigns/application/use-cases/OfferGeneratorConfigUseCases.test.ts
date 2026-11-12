@@ -131,7 +131,7 @@ describe('Offer generator config', () => {
   });
 
   it.each([
-    [59, 600, 'intervalMinSeconds'],
+    [-1, 600, 'intervalMinSeconds'],
     [600, 3601, 'intervalMaxSeconds'],
     [1200, 600, 'intervalMaxSeconds'],
     [90.5, 600, 'intervalMinSeconds'],
@@ -140,6 +140,12 @@ describe('Offer generator config', () => {
     await expect(
       s.save.execute({ ...base, intervalMinSeconds: min, intervalMaxSeconds: max, conversationIds: [] }),
     ).rejects.toMatchObject({ code: 'OFFER_INVALID_INPUT', meta: { field } });
+  });
+
+  it('intervalo zerado (0–0) é válido, como no monitoramento', async () => {
+    const s = setup();
+    const out = await s.save.execute({ ...base, intervalMinSeconds: 0, intervalMaxSeconds: 0, conversationIds: [] });
+    expect(out).toMatchObject({ intervalMinSeconds: 0, intervalMaxSeconds: 0 });
   });
 
   it('min = max é válido; lista vazia limpa os grupos', async () => {

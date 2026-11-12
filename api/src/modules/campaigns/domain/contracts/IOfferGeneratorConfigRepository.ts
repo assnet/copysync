@@ -19,14 +19,14 @@ export interface SaveOfferGeneratorConfigInput {
   windowStartMinute: number;
   windowEndMinute: number;
   weekdaysMask: number;
-  /** Já validados (grupos das sessões e do tenant). */
+  /** Já validados (grupos das sessões e do tenant), na ordem de envio: o índice vira `position`. */
   conversationIds: string[];
 }
 
 export interface IOfferGeneratorConfigRepository {
   /** null = tenant nunca configurou. */
   find(tenantId: string): Promise<OfferGeneratorConfig | null>;
-  /** Grupos selecionados (`OfferDestination`), só conversas do tenant. */
+  /** Grupos selecionados (`OfferDestination`), só conversas do tenant, na ordem de envio (`position`). */
   listGroups(tenantId: string): Promise<OfferDestinationView[]>;
   /** Upsert da configuração + troca dos destinos na mesma transação. */
   save(input: SaveOfferGeneratorConfigInput): Promise<void>;

@@ -72,7 +72,7 @@ export const regenerateOfferBodySchema = {
 } as const;
 
 /**
- * Intervalo: 60–3600 s (1–60 min) no schema; `min ≤ max` e plano no use case.
+ * Intervalo: 0–3600 s (0–60 min) no schema; `min ≤ max` e plano no use case.
  * Horário (`windowStartMinute`/`windowEndMinute`/`weekdays`) opcional: cliente antigo salva sem ele e o
  * use case mantém o salvo; janela vazia é 422.
  */
