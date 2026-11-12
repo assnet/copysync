@@ -745,10 +745,13 @@ export function warningDetail(w: InfraCostWarning, items: readonly LabeledItem[]
       : name ? d.resource(name) : field ? d.field(ROW_FIELD_NAMES[field] ?? field) : null,
     w.plan ? d.plan(w.plan) : null,
     w.model ? d.model(w.model) : null,
-    typeof w.count === 'number' ? (w.code === 'missing_hours' ? d.hours(w.count) : d.count(w.count)) : null,
+    typeof w.count === 'number' ? (HOURS_WARNINGS.has(w.code) ? d.hours(w.count) : d.count(w.count)) : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;
 }
+
+/** Avisos cuja contagem é em horas ("N horas sem leitura"). */
+const HOURS_WARNINGS: ReadonlySet<string> = new Set(['missing_hours', 'idle_partial', 'bandwidth_missing_hours']);
 
 /** Nome do plano do catálogo do painel (`lite`) igual ao da tabela (`planName` do slug do domínio). */
 export function catalogPlanName(slug: PlanSlug): string {

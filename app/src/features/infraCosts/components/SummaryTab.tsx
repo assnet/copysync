@@ -485,13 +485,9 @@ function Tiles({ summary, filters }: { summary: InfraCostSummary; filters: CostF
       sx={{
         display: 'grid',
         gap: 2,
-        // 5 cartões numa linha em 1440 quebram rótulo e BRL: até 4 por linha no lg, todos só no xl.
-        gridTemplateColumns: {
-          xs: 'minmax(0, 1fr)',
-          sm: 'repeat(2, minmax(0, 1fr))',
-          lg: `repeat(${tiles.length > 4 ? 3 : tiles.length}, minmax(0, 1fr))`,
-          xl: `repeat(${tiles.length}, minmax(0, 1fr))`,
-        },
+        // Pela largura do container (com o menu lateral), não da janela: cada cartão com ≥ 280 px
+        // mantém rótulo numa linha e BRL ao lado do USD.
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(auto-fit, minmax(280px, 1fr))' },
       }}
     >
       {tiles.map((tile) => <CostTile key={tile.label} {...tile} />)}
