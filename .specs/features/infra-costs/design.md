@@ -144,7 +144,7 @@ Contagem por hora (job): sessões com `leaseUntil` vivo e status `CONNECTED` agr
 | Configuração inválida | 400 `INVALID_INFRA_COST_SETTINGS` com `field` | Erro no campo |
 | Outro admin salvou antes | 409 `INFRA_COST_SETTINGS_CONFLICT` | Recarrega e descarta o rascunho |
 | Cadastro diverge do lido (plano, instâncias, disco) | Aviso `config_drift` com `resourceKey` e campo; custo usa o lido quando há preço | Cartão "cadastro diferente da Render" |
-| Preço por GB nulo | Aviso `storage_to_confirm`; soma só a computação | Selo "a confirmar" no item |
+| Tamanho (GB) nulo | Aviso `storage_to_confirm`; soma só a computação | Selo "a confirmar" no item |
 | Plano lido sem preço | Aviso `plan_without_price` com `resourceKey` e `plan`; item com custo `null` | Cartão de aviso com atalho para Preços |
 | Hora sem leitura | Usa quantidade manual; aviso `missing_hours` com contagem | Selo "estimado" |
 | Render 429/5xx/timeout no job | Não grava a hora; `warn` uma vez por sequência; sem retry além do próximo tick | Hora "sem leitura" |
