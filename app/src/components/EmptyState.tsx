@@ -47,7 +47,7 @@ export function EmptyState({ icon, title, description, action, sx }: Props) {
         {title}
       </Typography>
       {description && (
-        <Typography variant="body2" color="text.disabled" mb={3} maxWidth={360}>
+        <Typography variant="body2" color="text.secondary" mb={3} maxWidth={360}>
           {description}
         </Typography>
       )}

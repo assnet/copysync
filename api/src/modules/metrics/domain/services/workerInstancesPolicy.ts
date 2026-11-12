@@ -58,8 +58,8 @@ export function workerIdHostSegments(workerId: string, serviceId: string): strin
  *   (nunca substring: `4lx9` não casa `4lx97`). Vários batimentos na mesma instância (processo
  *   reiniciado ainda vivo) = vale o de `seenAt` mais novo.
  * - Batimento do serviço sem amostra atual vira linha só com batimento (nome = último segmento do host),
- *   exceto se o host traz o sufixo de uma instância descartada pelo corte (trocada por deploy, batimento
- *   ainda dentro do TTL): esse é descartado junto, para não virar linha órfã.
+ *   inclusive o da instância cortada pelos 2 min (trocada por deploy ou métrica da Render atrasada): o
+ *   batimento já vem filtrado pelo TTL de 90 s, então nenhuma sessão viva some da tela.
  *   Batimento fora do serviço (`all`, outro host) é ignorado.
  * Sem `serviceId` = lista vazia (sem worker separado). Ordem: nome curto. Pura.
  */
@@ -89,12 +89,7 @@ export function matchWorkerInstances(
     if (!row.sampledAt || s.at > row.sampledAt) row.sampledAt = s.at;
     rows.set(s.resource, row);
   }
-  const replaced = new Set<string>();
-  for (const [k, r] of rows) {
-    if (r.sampledAt!.getTime() >= newest - slackMs) continue;
-    rows.delete(k);
-    if (r.resource !== serviceId) replaced.add(r.instance);
-  }
+  for (const [k, r] of rows) if (r.sampledAt!.getTime() < newest - slackMs) rows.delete(k);
 
   const bySuffix = new Map<string, Acc>();
   for (const r of rows.values()) if (r.resource !== serviceId) bySuffix.set(r.instance, r);
@@ -103,9 +98,7 @@ export function matchWorkerInstances(
   for (const hb of heartbeats) {
     const host = workerIdHostSegments(hb.workerId, serviceId);
     if (!host) continue;
-    const current = host.map((seg) => bySuffix.get(seg)).find(Boolean);
-    if (!current && host.some((seg) => replaced.has(seg))) continue;
-    const target = current
+    const target = host.map((seg) => bySuffix.get(seg)).find(Boolean)
       ?? orphans.get(host[host.length - 1])
       ?? <Acc>{ instance: host[host.length - 1], resource: null, cpuPct: null, memoryPct: null, sampledAt: null, heartbeat: null };
     if (!target.heartbeat || hb.seenAt > target.heartbeat.seenAt) target.heartbeat = { ...hb };

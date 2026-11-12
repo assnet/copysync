@@ -103,8 +103,9 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
   - Instância sem batimento (adoção desligada, processo subindo): `heartbeat = null`. Batimento sem amostra
     atual (réplica nova antes do 1º tick do sampler): `resource`/`cpuPct`/`memoryPct` nulos, `instance` = último
     segmento do host. Batimento fora do serviço (api `all`, `WORKER_ID` manual) é ignorado.
-  - Batimento cujo host traz o sufixo de uma instância descartada pelo corte de 2 min (trocada por deploy,
-    batimento ainda no TTL de 90 s) sai junto: não vira linha órfã "Sem amostra".
+  - Batimento vivo (TTL de 90 s do `listAlive`) de instância cortada pelos 2 min (troca por deploy, métrica da
+    Render atrasada) **continua** como linha "Sem amostra" (CPU/RAM nulos): nenhuma sessão viva some da tela.
+    Não descartar por sufixo.
   - Sem `WORKER_SCALER_SERVICE_ID` válido no `http`: lista vazia (sem worker separado).
   - O batimento não guarda início do processo: a tela mostra "visto há", não uptime. Uptime exigiria coluna nova.
 
@@ -141,9 +142,12 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   separado não aparece. Segue o filtro Recurso (some em API/Postgres). Sem flag de borrar: só id de infraestrutura.
   Decisão em `workerInstancesSection` (`rules.ts`): skeleton carregando; `/latest` falhou = alerta; vazio com
   dado do worker = "Nenhuma instância online agora"; vazio com filtro só Worker e nenhum dado = "Worker não
-  configurado". 1ª coluna fixa (borda direita) na rolagem horizontal; no `xs` os chips ficam só com ícone
-  (palavra para leitor de tela, dica no tooltip); dicas com `describeChild` e foco por teclado; "—" sempre em
-  `text.secondary`; (i) de ajuda ao lado do título, como nos cards de gráfico.
+  configurado". Carregando (skeleton com `role="status"`), erro e vazio ficam dentro do card, com o título.
+  Linhas na ordem do nome curto (igual ao gráfico); em "Por instância" (até 3) um marcador `aria-hidden` mostra a
+  cor da série, estável por instância (`assignInstanceColors`). 1ª coluna fixa; borda + sombra só quando a tabela
+  está rolada. No `xs` os chips ficam só com ícone (palavra para leitor de tela, dica no tooltip, alvo de toque
+  ≥ 44 px); dicas com `describeChild` e foco por teclado; "Visto" = `instanceSeenAt`, tooltip com data completa
+  (`formatFullDateTime`); "—" sempre em `text.secondary`; (i) de ajuda ao lado do título.
 - **Worker nos gráficos** (alternância acima dos gráficos de Servidores, só com amostra do worker): "Pior instância"
   (padrão, comportamento anterior) × "Por instância" (uma linha por `resource` do `worker_service` no período,
   rotulada pelo sufixo; API e Postgres saem do gráfico para não passar de 3 cores; mais de 3 instâncias no período

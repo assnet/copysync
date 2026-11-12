@@ -118,9 +118,24 @@ export function workerInstancesSection(input: {
   const workerOnly = resource === 'worker_service';
   if (latestFailed) return hasWorkerData || workerOnly ? { kind: 'error' } : { kind: 'hidden' };
   if (!instances) return { kind: 'hidden' };
-  if (instances.length > 0) return { kind: 'table', instances };
+  // Mesma ordem do gráfico "Por instância" (`seriesByInstance`): pelo nome curto.
+  if (instances.length > 0) return { kind: 'table', instances: [...instances].sort((a, b) => a.instance.localeCompare(b.instance)) };
   if (hasWorkerData) return { kind: 'empty', reason: 'offline' };
   return workerOnly ? { kind: 'empty', reason: 'notConfigured' } : { kind: 'hidden' };
+}
+
+/** "Visto": batimento mais novo do processo; sem batimento, a última amostra da Render. */
+export function instanceSeenAt(r: OpsWorkerInstance): string | null {
+  return r.heartbeat?.seenAt ?? r.sampledAt ?? null;
+}
+
+/**
+ * Cor por instância no "Por instância", estável entre os gráficos de CPU e RAM e a tabela: nomes
+ * únicos ordenados, cor pela posição (mesma ordem de `seriesByInstance`).
+ */
+export function assignInstanceColors(labels: readonly string[], palette: readonly string[]): Map<string, string> {
+  const sorted = [...new Set(labels)].sort((a, b) => a.localeCompare(b));
+  return new Map(sorted.map((l, i) => [l, palette[i % palette.length]]));
 }
 
 export const WORKER_CHART_VIEWS: WorkerChartView[] = ['worst', 'instance'];
@@ -347,4 +362,11 @@ export function formatTick(ms: number, range: OpsRange): string {
 
 export function formatDateTime(ms: number | string): string {
   return new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Data completa com ano e segundos (tooltip de "Visto"). */
+export function formatFullDateTime(ms: number | string): string {
+  return new Date(ms).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
 }

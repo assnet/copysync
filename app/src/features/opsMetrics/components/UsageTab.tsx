@@ -16,7 +16,7 @@ import {
   cacheHitDomainMin, cacheHitStatus, counterPeriodTotal, counterRatePerMinute, countDomainMax, formatBytes, formatDateTime,
   currentValues, formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceCount, resourceVisible,
   seriesByResource, seriesPoints, statusFor, valueStats,
-  workerInstancesSection,
+  workerInstancesSection, assignInstanceColors,
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
 import type {
@@ -333,10 +333,15 @@ function buildUsageView({ latestRes, series, resource, colors, workerView, loadi
 
   // "Por instância": só o worker, uma linha por instância (cores fixas; mais de 3 = só tabela).
   const byInstance = workerView === 'instance' && showWorker && hasWorker;
+  // Cor por instância estável entre CPU, RAM e a tabela de instâncias.
+  const instanceLabels = [...seriesByInstance(serversSeries, 'cpu_pct'), ...seriesByInstance(serversSeries, 'memory_pct')].map((x) => x.label);
+  const instanceColorMap = assignInstanceColors(instanceLabels, colors.instances);
+  // Marcador na tabela só quando o gráfico mostra uma linha por instância (até 3).
+  const instanceColors = byInstance && instanceColorMap.size <= MAX_WORKERS_IN_CHART ? instanceColorMap : undefined;
   const serverLines = (metric: string, apiPts: OpsSeriesPoint[], workerPts: OpsSeriesPoint[], dbPts: OpsSeriesPoint[], bucket: number) => {
     const list = byInstance
       ? seriesByInstance(serversSeries, metric).map((x, i) => ({
-        key: `inst${i}`, label: x.label, color: colors.instances[i % colors.instances.length], pts: x.points,
+        key: `inst${i}`, label: x.label, color: instanceColorMap.get(x.label) ?? colors.instances[i % colors.instances.length], pts: x.points,
       }))
       : [...(showApi ? [{ key: 'api', label: t.charts.series.api, color: colors.api, pts: apiPts }] : []),
         ...(showWorker ? [{ key: 'workerService', label: t.charts.series.workerService, color: colors.workerService, pts: workerPts }] : []),
@@ -464,7 +469,7 @@ function buildUsageView({ latestRes, series, resource, colors, workerView, loadi
     tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
     idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
     cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
-    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance, workerInstances,
+    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance, workerInstances, instanceColors,
   };
 }
 
@@ -545,7 +550,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
     tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
     idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
     cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
-    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance, workerInstances,
+    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance, workerInstances, instanceColors,
   } = view;
   const renderMissing = !loading && renderMissingData;
 
@@ -630,19 +635,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
       </Grid>
       {workerInstances.kind !== 'hidden' && (
         <Box sx={{ mt: 2 }}>
-          {workerInstances.kind === 'loading' ? (
-            <Skeleton variant="rounded" height={200} aria-label={t.instances.title} />
-          ) : workerInstances.kind === 'error' ? (
-            <Alert severity="error" action={<Button color="inherit" size="small" onClick={retry}>{t.retry}</Button>}>
-              {t.instances.error}
-            </Alert>
-          ) : (
-            <WorkerInstancesTable
-              instances={workerInstances.kind === 'table' ? workerInstances.instances : []}
-              emptyReason={workerInstances.kind === 'empty' ? workerInstances.reason : undefined}
-              thresholds={thresholds}
-            />
-          )}
+          <WorkerInstancesTable section={workerInstances} thresholds={thresholds} instanceColors={instanceColors} onRetry={retry} />
         </Box>
       )}
 

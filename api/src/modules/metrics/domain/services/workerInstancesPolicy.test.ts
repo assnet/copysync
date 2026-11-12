@@ -59,14 +59,15 @@ describe('matchWorkerInstances', () => {
     expect(out).toEqual([{ instance: 'cur01', resource: `${SVC}-cur01`, cpuPct: null, memoryPct: 40, sampledAt: ago(1), heartbeat: null }]);
   });
 
-  it('batimento ainda vivo da instância trocada por deploy sai junto com a amostra (sem linha órfã)', () => {
+  it('batimento vivo de instância com amostra cortada (deploy ou métrica atrasada) fica como linha sem amostra', () => {
     const out = matchWorkerInstances(
       SVC,
       [s('4lx97', 'cpu_pct', 90, ago(8)), s('cur01', 'cpu_pct', 20, ago(1))],
-      [hb('4lx97', { seenAt: ago(1.2) }), hb('cur01'), hb('new02')],
+      [hb('4lx97', { seenAt: ago(1.2) }), hb('cur01')],
     );
-    expect(out.map((r) => [r.instance, r.resource != null, r.heartbeat != null])).toEqual([
-      ['cur01', true, true], ['new02', false, true],
+    expect(out).toEqual([
+      { instance: '4lx97', resource: null, cpuPct: null, memoryPct: null, sampledAt: null, heartbeat: hb('4lx97', { seenAt: ago(1.2) }) },
+      expect.objectContaining({ instance: 'cur01', resource: `${SVC}-cur01`, cpuPct: 20, heartbeat: hb('cur01') }),
     ]);
   });
 

@@ -3,7 +3,7 @@ import {
   alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas, counterPeriodTotal, countDomainMax, formatBytes,
   formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, currentValues, resourceCount, resourceVisible,
   seriesPoints, shortQueryId, statusFor, instanceShortName, seriesByInstance, parseWorkerChartView,
-  workerInstancesSection,
+  workerInstancesSection, instanceSeenAt, assignInstanceColors, formatFullDateTime,
 } from './rules';
 import type { OpsSeries, OpsSeriesPoint, OpsWorkerInstance } from './types';
 
@@ -241,5 +241,30 @@ describe('chartColors.instances', () => {
       expect(c.instances).not.toContain(c.postgres);
       expect(c.instances[0]).toBe(c.workerService);
     }
+  });
+});
+
+describe('instâncias do worker: visto, cores e data completa', () => {
+  const base: OpsWorkerInstance = { instance: 'a1', resource: 'srv-wk-a1', cpuPct: 1, memoryPct: 2, sampledAt: '2026-11-12T12:00:00.000Z', heartbeat: null };
+  const hb = { workerId: 'w', sessions: 1, pendingLogins: 0, maxSessions: 4, rssMb: 1, seenAt: '2026-11-12T12:01:00.000Z' };
+  it('visto = batimento; sem batimento, a amostra; sem nenhum, null', () => {
+    expect(instanceSeenAt({ ...base, heartbeat: hb })).toBe(hb.seenAt);
+    expect(instanceSeenAt(base)).toBe(base.sampledAt);
+    expect(instanceSeenAt({ ...base, sampledAt: null })).toBeNull();
+  });
+  it('cor por nome ordenado, estável e sem duplicar', () => {
+    const m = assignInstanceColors(['b2', 'a1', 'b2', 'c3'], ['g', 'p', 'm']);
+    expect([...m.entries()]).toEqual([['a1', 'g'], ['b2', 'p'], ['c3', 'm']]);
+  });
+  it('tabela na ordem do gráfico (nome)', () => {
+    const out = workerInstancesSection({
+      resource: 'all', loading: false, latestFailed: false, hasWorkerData: true,
+      instances: [{ ...base, instance: 'zz' }, { ...base, instance: 'aa' }],
+    });
+    expect(out.kind === 'table' && out.instances.map((r) => r.instance)).toEqual(['aa', 'zz']);
+  });
+  it('data completa com ano e segundos', () => {
+    const d = new Date(2026, 10, 12, 9, 5, 7);
+    expect(formatFullDateTime(d.getTime())).toMatch(/12\/11\/2026.*09:05:07/);
   });
 });

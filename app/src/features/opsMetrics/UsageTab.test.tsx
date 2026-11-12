@@ -342,6 +342,27 @@ describe('Aba Consumo', () => {
       expect(within(rows[0]).queryByRole('img', { name: /Status/ })).not.toBeInTheDocument();
     });
 
+    it('limiar crítico na tabela: ícone "Acima do limite"', async () => {
+      const [a1, ...rest] = INSTANCES_LATEST.workerInstances;
+      mockAll({ ...INSTANCES_LATEST, workerInstances: [{ ...a1, cpuPct: 99 }, ...rest] }, workerSeries);
+      renderUsage();
+      const table = await screen.findByRole('table', { name: t.instances.tableAria });
+      const [row] = within(table).getAllByRole('row').slice(1);
+      expect(within(row).getByRole('img', { name: t.instances.statusAria(t.status.critical) })).toBeInTheDocument();
+    });
+
+    it('tabela na ordem do nome e, em "Por instância", com o marcador da cor da série', async () => {
+      const [a1, b2, c3] = INSTANCES_LATEST.workerInstances;
+      mockAll({ ...INSTANCES_LATEST, workerInstances: [c3, b2, a1] }, workerSeries);
+      renderUsage();
+      const table = await screen.findByRole('table', { name: t.instances.tableAria });
+      expect(within(table).getAllByRole('row').slice(1).map((r) => within(r).getByText(/^[abc]\d$/).textContent)).toEqual(['a1', 'b2', 'c3']);
+      expect(within(table).queryAllByTestId('instance-color')).toHaveLength(0);
+      const group = screen.getByRole('group', { name: t.charts.workerViewAria });
+      await userEvent.click(within(group).getByRole('button', { name: t.charts.workerViews.instance }));
+      expect(within(table).getAllByTestId('instance-color').length).toBeGreaterThan(0);
+    });
+
     it('worker com dados e nenhuma instância atual: "Nenhuma instância online agora"', async () => {
       mockAll({ ...WORKER_LATEST, workerInstances: [] }, workerSeries);
       renderUsage();
