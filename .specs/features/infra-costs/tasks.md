@@ -46,15 +46,15 @@ visual pelo `agent-browser` (claro, escuro, 390 px). Registro em `review.md`.
 
 | ID | Título | Deps | [P] | Status |
 | --- | --- | --- | --- | --- |
-| T1 | Domínio da configuração de custos | — | P | pendente |
-| T2 | Calculador (função pura), modo foto | T1 | | pendente |
-| T3 | Ação de auditoria | — | P | pendente |
-| T4 | Repositório da configuração | T1, T3 | | pendente |
-| T5 | Leitor do momento (amostras + capacidade) | — | P | pendente |
-| T6 | Use cases e rotas (settings, summary) | T2, T4, T5 | | pendente |
-| T7 | Painel: contratos, regras, serviço, margem | — | P | pendente |
-| T8 | Painel: página, navegação, aba Resumo | T6, T7 | | pendente |
-| T9 | Painel: aba Preços | T8 | | pendente |
+| T1 | Domínio da configuração de custos | — | P | feito |
+| T2 | Calculador (função pura), modo foto | T1 | | feito |
+| T3 | Ação de auditoria | — | P | feito |
+| T4 | Repositório da configuração | T1, T3 | | feito |
+| T5 | Leitor do momento (amostras + capacidade) | — | P | feito |
+| T6 | Use cases e rotas (settings, summary) | T2, T4, T5 | | feito |
+| T7 | Painel: contratos, regras, serviço, margem | — | P | feito |
+| T8 | Painel: página, navegação, aba Resumo | T6, T7 | | feito |
+| T9 | Painel: aba Preços | T8 | | feito |
 | T10 | Docs, versão e changelog da P1 | T9 | | pendente |
 | R1 | Revisão da P1 e merge | T10 | | pendente |
 | T11 | Tabelas de snapshot (migration + repositório) | R1 | | pendente |

@@ -9,6 +9,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.88.0 · app 0.108.0 — custos da infraestrutura (P1)
+
+Ninguém sabia quanto custa uma sessão, um cliente ou um plano. Nova página do super admin `/admin/costs` (seção Plataforma): custo mensal por serviço da Render, workspace (banda e build), e-mail, R2, rateio por sessão e por plano e margem bruta de infraestrutura contra a vitrine. Preços em USD editáveis em `/admin/costs/prices`; valores em USD e BRL com cotação manual (automática na P2). Foto do momento: instâncias do worker pelas amostras do coletor, sessões pela capacidade por plano. Nenhuma rota chama a Render. Doc: `docs/custos-infraestrutura.md`.
+**Migration Prisma**: sim (`add_audit_action_infra_costs`, valor novo no enum de auditoria). **Breaking**: não.
+
+#### Backend (api/) — `metrics`
+
+- **`infraCostSettings.ts`** — `InfraCostSettings` em `platform_settings["infra_costs"]`, parse com erro por `field`, valores iniciais (US$ 120,25 com 1 worker).
+- **`infraCostCalculator.ts`**, **`fxRate.ts`** — conta pura: item, armazenamento, workspace, plano vizinho, marginal por sessão, rateio por contratadas e por conectadas, não alocadas só com amostra recente (`sessions_sample_stale`), total parcial, avisos.
+- **`PrismaInfraCostSettingsRepository.ts`**, **`PrismaInfraCostLiveReader.ts`**, **`infraCostReadTimeout.ts`** — 409 por `expectedUpdatedAt`; instâncias atuais do worker em 15 min; `statement_timeout` → 503 `INFRA_COST_READ_UNAVAILABLE`.
+- **`Get/UpdateInfraCostSettingsUseCase.ts`**, **`GetInfraCostSummaryUseCase.ts`**, **`infraCosts.routes.ts`** — `GET`/`PUT /admin/costs/settings` (auditoria `INFRA_COST_SETTINGS_CHANGED`) e `GET /admin/costs/summary` (só o mês corrente).
+
+#### Frontend (app/) — `infraCosts`, `navigation`, `workersAdmin`
+
+- **`AdminCostsPage.tsx`**, **`SummaryTab.tsx`**, **`useCostSummary.ts`** — cartões, serviços, workspace, por plano com margem mensal e anual (sempre pela base contratadas), avisos, USD e BRL.
+- **`PricesTab.tsx`**, **`PricesConfirmDialog.tsx`**, **`useCostSettings.ts`** — edição com diff, erro por campo, rascunho persistido, 409 recarrega; cotação automática com selo "Próxima versão".
+- **`rules.ts`**, **`strings.ts`**, **`types.ts`**, **`adminCosts.service.ts`** — formatação USD/BRL, `planMargin` com `PLAN_CATALOG` (preço nunca vai à API).
+- **`navigation/model.ts`**, **`CapacityTab.tsx`**, **`supportChat/routes.ts`** — item "Custos", link "Ver custos", `/admin/costs/prices` em `SUPPORT_CHAT_HIDDEN_PATHS` (ação fixa no canto).
+
 ### Added — api 0.87.0 · app 0.107.0 — instâncias do worker no consumo
 
 Com o worker em réplicas, a aba Consumo só mostrava a pior instância. `GET /admin/ops/metrics/latest` passa a devolver `workerInstances` (CPU/RAM da Render casados com o batimento pelo sufixo da instância no `workerId`) e o painel ganha a tabela "Instâncias do worker" e a alternância "Pior instância" × "Por instância" nos gráficos de Servidores. Doc: `docs/ops-metricas.md`.

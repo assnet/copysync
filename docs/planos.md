@@ -18,6 +18,13 @@ Referência visual: `pulsosocial_api/lp-pulsosocial/src/components/Pricing.tsx` 
 (hero com coroa, selo de garantia, card recomendado com moldura em gradiente, faixa de confiança); cores só do tema
 (`primary` → `secondary` no gradiente, `alpha()`), sem hex fixo fora do selo dourado.
 
+## Margem de infraestrutura (app 0.108.0)
+
+A tela de custos do super admin (`/admin/costs`, [`custos-infraestrutura.md`](custos-infraestrutura.md)) compara o
+custo por tenant em R$ com `price` e `priceAnnualMonthly` de `PLAN_CATALOG` (`features/infraCosts/rules.ts`,
+`planMargin`). A conta é só do painel: o preço segue fora do banco e a API de custos nunca recebe nem devolve preço de
+plano. Mudou preço no `catalog.ts` → a margem acompanha sem mudança na API.
+
 ## Limites por canal (WhatsApp × Telegram)
 
 - `limits` do catálogo espelha `api/src/modules/tenants/domain/planPresets.ts` por canal: `whatsappSessions`,

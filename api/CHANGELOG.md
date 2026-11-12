@@ -7,6 +7,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.88.0] — 2026-11-12 — Custos da infraestrutura (P1)
+
+Super admin: configuração de preços (USD) em `platform_settings["infra_costs"]` e resumo do custo do mês corrente por
+item, workspace, sessão e plano, em USD e BRL (cotação manual). Foto do momento × mês cheio, só tabelas locais (nunca
+chama a Render). Doc: `docs/custos-infraestrutura.md`.
+**Migration Prisma**: sim (`add_audit_action_infra_costs`). **Breaking**: não.
+
+### Added
+
+#### API — `metrics`
+
+- **`domain/services/infraCostSettings.ts`** — tipo, parse (faixas, `key` única, limites, campo desconhecido → 400 `INVALID_INFRA_COST_SETTINGS` com `field`), valores iniciais e origem `default`/`saved`.
+- **`domain/services/infraCostCalculator.ts`**, **`fxRate.ts`** — custo por item (fixo, por instância, uso, armazenamento), workspace, plano vizinho, marginal por sessão, rateio por contratadas (padrão) e conectadas, tenant médio, não alocadas só com amostra ≤ 10 min (`sessions_sample_stale`, `sessionsSampledAt` na resposta), `totalIsPartial`, avisos; cotação só por override.
+- **`infrastructure/repositories/PrismaInfraCostSettingsRepository.ts`** — `get`/`save` com 409 `INFRA_COST_SETTINGS_CONFLICT`.
+- **`infrastructure/repositories/PrismaInfraCostLiveReader.ts`** — última amostra de sessões (1 h) e instâncias **atuais** do worker (15 min, ≤ 2 min da mais nova); `statement_timeout` 2 s.
+- **`infrastructure/repositories/infraCostReadTimeout.ts`** — timeout de leitura vira 503 `INFRA_COST_READ_UNAVAILABLE`, sem SQL nem erro do banco.
+- **`application/use-cases/*InfraCost*UseCase.ts`**, **`presentation/routes/infraCosts.routes.ts`** (+ schema, presenter) — `GET`/`PUT /admin/costs/settings`, `GET /admin/costs/summary?month=` (outro mês → 400 `INFRA_COST_MONTH_UNAVAILABLE`); teto do worker lido do provider a cada chamada.
+- **`shared/audit/IAuditLogRepository.ts`**, migration `add_audit_action_infra_costs` — `INFRA_COST_SETTINGS_CHANGED` com antes/depois.
+
 ## [0.87.0] — 2026-11-12 — Instâncias do worker no consumo
 
 `GET /admin/ops/metrics/latest` devolve `workerInstances`: por instância viva do serviço worker, CPU %/RAM % da última

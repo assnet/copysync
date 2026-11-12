@@ -57,6 +57,7 @@ Não são produto nem item de plano: só o super-admin usa, fora do menu dos ten
 |---|---|---|---|
 | Links de redirecionamento | Links curtos da plataforma (`/redirect/<slug>`) para suporte, loja, vídeos e Web Store, com divisão A/B e cliques | `redirect-links` ([doc](redirect-links.md)) | ✅ api 0.67.0 · app 0.85.0 |
 | Gestão de workers | Teto de sessões por worker e limiares de alerta pelo painel, sem redeploy (`/admin/workers/settings`); capacidade contratada × instalada (`/admin/workers/capacity`); escala manual de réplicas (`/admin/workers/scale`, desligada por env até o smoke real); subida automática de +1 réplica com `scalerMode = auto` (nunca reduz) | `sessions` ([doc](workers-escala.md)) | 🟡 P4 api 0.85.0 · app 0.104.0 |
+| Custos da infraestrutura | Custo mensal por serviço da Render, workspace, sessão e plano, com margem bruta de infraestrutura contra a vitrine (`/admin/costs`); preços editáveis em USD, valores em USD e BRL (`/admin/costs/prices`) | `metrics` ([doc](custos-infraestrutura.md)) | 🟡 P1 api 0.88.0 · app 0.108.0 |
 
 Sessão (número conectado, item 1) é do tenant: a mesma sessão serve mais de um produto; limite segue
 por plano, não por produto. Plano, permissões e configurações por produto: etapa futura.
