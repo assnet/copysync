@@ -16,7 +16,7 @@ export const infraCostsStrings = {
   navLabel: 'Custos',
   pageTitle: 'Custos da infraestrutura',
   pageSubtitle: 'Quanto custa a operação no mês, por serviço, por sessão e por plano. Valores estimados.',
-  tabs: { summary: 'Resumo', prices: 'Preços', aria: 'Visões de custos' },
+  tabs: { summary: 'Resumo', prices: 'Preços', tenants: 'Por cliente', history: 'Histórico', aria: 'Visões de custos' },
   retry: 'Tentar de novo',
   /** Valor ausente (sem amostra, sem cotação, divisão por zero). */
   noValue: '—',
@@ -210,6 +210,7 @@ export const infraCostsStrings = {
       plan: (plan: string) => `plano ${plan}`,
       field: (field: string) => `campo ${field}`,
       model: (model: string) => `modelo ${model}`,
+      kind: (kind: string) => `provedor ${kind}`,
       count: (n: number) => `${n.toLocaleString('pt-BR')} ocorrências`,
       hours: (n: number) => (n === 1 ? '1 hora sem leitura' : `${n.toLocaleString('pt-BR')} horas sem leitura`),
     },

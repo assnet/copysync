@@ -4,16 +4,21 @@ import { superAdminHook } from '../../../../shared/http/hooks/superAdminHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import {
   getInfraCostSettingsUseCase,
+  getInfraCostHistoryUseCase,
   getInfraCostSummaryUseCase,
+  listInfraCostTenantsUseCase,
   updateInfraCostSettingsUseCase,
 } from '../../infrastructure/infraCostsContainer';
 import {
+  infraCostHistoryResponse,
   infraCostSettingsBody,
   infraCostSettingsResponse,
   infraCostSummaryQuery,
   infraCostSummaryResponse,
+  infraCostTenantsQuery,
+  infraCostTenantsResponse,
 } from '../schemas/infraCosts.schema';
-import { presentInfraCostSummary } from '../presenters/infraCostsPresenter';
+import { presentInfraCostHistory, presentInfraCostSummary, presentInfraCostTenants } from '../presenters/infraCostsPresenter';
 
 const preHandler = [authHook, superAdminHook];
 const tags = ['Infra costs (admin)'];
@@ -58,5 +63,30 @@ export async function infraCostsRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const out = await getInfraCostSummaryUseCase().execute({ month: request.query.month });
     httpResponse.ok(reply, presentInfraCostSummary(out));
+  });
+
+  app.get<{ Querystring: { month?: string; plan?: string; cursor?: string } }>('/tenants', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Custo por cliente do mês (YYYY-MM, padrão o corrente), paginado por cursor opaco; do tenant só id e nome',
+      querystring: infraCostTenantsQuery,
+      response: { 200: infraCostTenantsResponse },
+    },
+  }, async (request, reply) => {
+    const { month, plan, cursor } = request.query;
+    const out = await listInfraCostTenantsUseCase().execute({ month, planSlug: plan, cursor });
+    httpResponse.ok(reply, presentInfraCostTenants(out));
+  });
+
+  app.get('/history', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Meses fechados dos 12 anteriores ao corrente: total e por plano, com a cotação congelada',
+      response: { 200: infraCostHistoryResponse },
+    },
+  }, async (_request, reply) => {
+    httpResponse.ok(reply, presentInfraCostHistory(await getInfraCostHistoryUseCase().execute()));
   });
 }

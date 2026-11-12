@@ -1,4 +1,6 @@
+import type { InfraCostHistoryOutput } from '../../application/use-cases/GetInfraCostHistoryUseCase';
 import type { InfraCostSummaryOutput } from '../../application/use-cases/GetInfraCostSummaryUseCase';
+import type { ListInfraCostTenantsOutput } from '../../application/use-cases/ListInfraCostTenantsUseCase';
 
 /**
  * `GET /admin/costs/summary` no formato `InfraCostSummary` do painel (`app/src/features/infraCosts/types.ts`).
@@ -41,5 +43,26 @@ export function presentInfraCostSummary(out: InfraCostSummaryOutput) {
     marginalPerSession: c.marginalPerSession,
     plans: c.plans,
     warnings: c.warnings,
+  };
+}
+
+/** `GET /admin/costs/tenants`: do tenant só id e nome; nada da Render. */
+export function presentInfraCostTenants(out: ListInfraCostTenantsOutput) {
+  return {
+    month: out.month,
+    status: out.status,
+    basis: out.basis,
+    fx: out.fx,
+    tenants: out.tenants.map((t) => ({ ...t })),
+    nextCursor: out.nextCursor,
+  };
+}
+
+/** `GET /admin/costs/history`: datas ISO. */
+export function presentInfraCostHistory(out: InfraCostHistoryOutput) {
+  return {
+    from: out.from,
+    to: out.to,
+    months: out.months.map((m) => ({ ...m, closedAt: m.closedAt.toISOString() })),
   };
 }

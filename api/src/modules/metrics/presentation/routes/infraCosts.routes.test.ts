@@ -12,6 +12,7 @@ import { defaultInfraCostSettings } from '../../domain/services/infraCostSetting
 import { PrismaInfraCostSnapshotRepository } from '../../infrastructure/repositories/PrismaInfraCostSnapshotRepository';
 import { PrismaInfraFxFetchStateRepository } from '../../infrastructure/repositories/PrismaInfraFxFetchStateRepository';
 import { PrismaInfraCostUsageReader } from '../../infrastructure/repositories/PrismaInfraCostUsageReader';
+import { PrismaInfraCostReportReader } from '../../infrastructure/repositories/PrismaInfraCostReportReader';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
@@ -54,11 +55,15 @@ describe('auth', () => {
     ['GET', '/settings'],
     ['PUT', '/settings'],
     ['GET', '/summary'],
+    ['GET', '/tenants'],
+    ['GET', '/history'],
   ] as const)('%s %s sem super admin: 401 sem ler o banco', async (method, path) => {
     const get = vi.spyOn(PrismaInfraCostSettingsRepository.prototype, 'get');
+    const page = vi.spyOn(PrismaInfraCostReportReader.prototype, 'listClosedMonths');
     const res = await app.inject({ method, url: `${URL}${path}`, payload: method === 'PUT' ? { settings: {}, expectedUpdatedAt: null } : undefined });
     expect(res.statusCode).toBe(401);
     expect(get).not.toHaveBeenCalled();
+    expect(page).not.toHaveBeenCalled();
   });
 });
 
@@ -149,7 +154,7 @@ describe('GET /admin/costs/summary', () => {
     expect(data.items.find((i: { key: string }) => i.key === 'email').planLabel).toBe('');
     expect(data.plans).toHaveLength(2);
     expect(Object.keys(data.plans[0]).sort()).toEqual([
-      'connectedCostPerTenant', 'connectedSessions', 'connectedShare', 'contractedSessions', 'costPerTenant', 'planSlug',
+      'ai', 'connectedCostPerTenant', 'connectedSessions', 'connectedShare', 'contractedSessions', 'costPerTenant', 'planSlug',
       'projectedCostPerTenant', 'projectedShare', 'share', 'tenants',
     ]);
     expect(data.plans[0]).toMatchObject({ projectedShare: null, projectedCostPerTenant: null });
@@ -257,5 +262,109 @@ describe('GET /admin/costs/summary', () => {
       const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
       expect(res.statusCode).toBe(500);
     });
+  });
+});
+
+const pgTimeout = () =>
+  new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `57014`. Message: `ERROR: canceling statement due to statement timeout`', {
+    code: 'P2010', clientVersion: 'test', meta: { code: '57014', message: 'ERROR: canceling statement due to statement timeout' },
+  });
+
+describe('GET /admin/costs/tenants', () => {
+  const thisMonth = () => new Date().toISOString().slice(0, 7);
+
+  beforeEach(() => {
+    const settings = defaultInfraCostSettings();
+    settings.fx.override = { rate: 5, date: '2026-11-10' };
+    vi.spyOn(PrismaInfraCostSettingsRepository.prototype, 'get').mockResolvedValue({ value: settings, updatedAt: SAVED_AT, updatedById: 'admin-1' });
+    vi.spyOn(PrismaInfraCostLiveReader.prototype, 'read').mockResolvedValue({
+      sessionsConnected: 3, sessionsCapacity: 40, sessionsSampledAt: new Date(), workerInstances: 1,
+    });
+    vi.spyOn(PrismaWorkerCapacityReader.prototype, 'readByPlan').mockResolvedValue([]);
+    vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'latestFxRate').mockResolvedValue(null);
+    vi.spyOn(PrismaInfraFxFetchStateRepository.prototype, 'get').mockResolvedValue(null);
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    vi.spyOn(PrismaInfraCostUsageReader.prototype, 'readMonth').mockResolvedValue({
+      resourceHours: [{ hour: start, renderKey: 'worker', plan: '1c-2g', instances: 1, diskGb: null, suspended: false }],
+      bandwidthGb: null, buildMinutes: null,
+      tenants: [{ tenantId: 't1', planSlug: 'COPYSYNC_PRO', connectedHours: 10, contractedAvg: 2 }],
+      aiUsage: [],
+    });
+  });
+
+  it('mês corrente: só id e nome do tenant, cursor opaco, sem id da Render', async () => {
+    auth.isSuperAdmin = true;
+    const page = vi.spyOn(PrismaInfraCostReportReader.prototype, 'pageOpenMonth').mockResolvedValue({
+      rows: [{ tenantId: 't1', tenantName: 'Loja Um', planSlug: 'COPYSYNC_PRO', connectedHours: 10, contractedAvg: 2 }],
+      aiUsage: [],
+    });
+    // limit/offset do front são descartados: o tamanho é do servidor
+    const res = await app.inject({ method: 'GET', url: `${URL}/tenants?plan=COPYSYNC_PRO&limit=1000&offset=5` });
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(page.mock.calls[0][2]).toEqual({ planSlug: 'COPYSYNC_PRO', offset: 0, limit: 51 });
+    expect(data).toMatchObject({ month: thisMonth(), status: 'open', basis: 'hours', nextCursor: null });
+    expect(Object.keys(data.tenants[0]).sort()).toEqual([
+      'ai', 'connectedShared', 'contractedSessions', 'planSlug', 'projectedShared', 'sessionHours', 'shared', 'tenantId', 'tenantName', 'total',
+    ]);
+    expect(data.tenants[0]).toMatchObject({ tenantName: 'Loja Um', ai: { usd: 0, brl: 0 } });
+    expect(data.tenants[0].shared).not.toBeNull();
+    expect(res.body).not.toContain('srv-');
+  });
+
+  it('mês fechado: valores congelados', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'findClosedMonth').mockResolvedValue({
+      month: new Date('2026-01-01T00:00:00Z'), closingMethod: 'last_business_day', fx: null, totalUsd: 10, totals: {}, closedAt: SAVED_AT,
+    });
+    vi.spyOn(PrismaInfraCostReportReader.prototype, 'pageClosedMonth').mockResolvedValue([
+      { tenantId: 't1', tenantName: 'Loja Um', planSlug: null, contractedAvg: 1, sessionHours: 5, sharedUsd: 4, aiUsd: 1, totalUsd: 5 },
+    ]);
+    const res = await app.inject({ method: 'GET', url: `${URL}/tenants?month=2026-01` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ status: 'closed', fx: null, tenants: [{ total: { usd: 5, brl: null }, connectedShared: null }] });
+  });
+
+  it('plano fora da lista: 400', async () => {
+    auth.isSuperAdmin = true;
+    expect((await app.inject({ method: 'GET', url: `${URL}/tenants?plan=OUTRO` })).statusCode).toBe(400);
+  });
+
+  it('leitura lenta: 503 INFRA_COST_READ_UNAVAILABLE', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaInfraCostReportReader.prototype as unknown as { readOpenMonth: () => Promise<unknown> }, 'readOpenMonth').mockRejectedValue(pgTimeout());
+    const res = await app.inject({ method: 'GET', url: `${URL}/tenants` });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe('INFRA_COST_READ_UNAVAILABLE');
+    expect(res.body).not.toMatch(/57014|canceling|SELECT/);
+  });
+});
+
+describe('GET /admin/costs/history', () => {
+  it('meses fechados com total e por plano', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaInfraCostReportReader.prototype, 'listClosedMonths').mockResolvedValue([{
+      month: new Date('2026-01-01T00:00:00Z'), closingMethod: 'last_business_day',
+      fx: { rate: 5, referenceDate: new Date('2026-01-30T00:00:00Z'), source: 'ptax' },
+      totalUsd: 100, totalIsPartial: false, closedAt: SAVED_AT,
+      plans: [{ planSlug: 'COPYSYNC_LITE', tenants: 3, sharedUsd: 60, aiUsd: 0, totalUsd: 60 }],
+    }]);
+    const res = await app.inject({ method: 'GET', url: `${URL}/history` });
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.months[0]).toEqual({
+      month: '2026-01', closedAt: SAVED_AT.toISOString(), closingMethod: 'last_business_day',
+      fx: { rate: 5, referenceDate: '2026-01-30', source: 'ptax' },
+      total: { usd: 100, brl: 500 }, totalIsPartial: false,
+      plans: [{ planSlug: 'COPYSYNC_LITE', tenants: 3, shared: { usd: 60, brl: 300 }, ai: { usd: 0, brl: 0 }, total: { usd: 60, brl: 300 } }],
+    });
+  });
+
+  it('leitura lenta: 503', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaInfraCostReportReader.prototype as unknown as { readHistory: () => Promise<unknown> }, 'readHistory').mockRejectedValue(pgTimeout());
+    const res = await app.inject({ method: 'GET', url: `${URL}/history` });
+    expect(res.statusCode).toBe(503);
   });
 });

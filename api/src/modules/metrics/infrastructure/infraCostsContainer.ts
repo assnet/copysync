@@ -7,6 +7,9 @@ import { GetInfraCostSettingsUseCase } from '../application/use-cases/GetInfraCo
 import { UpdateInfraCostSettingsUseCase } from '../application/use-cases/UpdateInfraCostSettingsUseCase';
 import { GetInfraCostSummaryUseCase } from '../application/use-cases/GetInfraCostSummaryUseCase';
 import { CloseInfraCostMonthUseCase } from '../application/use-cases/CloseInfraCostMonthUseCase';
+import { ListInfraCostTenantsUseCase } from '../application/use-cases/ListInfraCostTenantsUseCase';
+import { GetInfraCostHistoryUseCase } from '../application/use-cases/GetInfraCostHistoryUseCase';
+import { PrismaInfraCostReportReader } from './repositories/PrismaInfraCostReportReader';
 import { PrismaInfraCostSettingsRepository } from './repositories/PrismaInfraCostSettingsRepository';
 import { PrismaInfraCostLiveReader } from './repositories/PrismaInfraCostLiveReader';
 import { InfraCostCapacityReader } from './repositories/infraCostReadTimeout';
@@ -24,6 +27,8 @@ import { BcbSgsFxRateSource } from './sources/BcbSgsFxRateSource';
 let getSettings: GetInfraCostSettingsUseCase | undefined;
 let updateSettings: UpdateInfraCostSettingsUseCase | undefined;
 let getSummary: GetInfraCostSummaryUseCase | undefined;
+let listTenants: ListInfraCostTenantsUseCase | undefined;
+let getHistory: GetInfraCostHistoryUseCase | undefined;
 
 export function getInfraCostSettingsUseCase(): GetInfraCostSettingsUseCase {
   return (getSettings ??= new GetInfraCostSettingsUseCase(new PrismaInfraCostSettingsRepository(prisma)));
@@ -52,6 +57,20 @@ export function getInfraCostSummaryUseCase(): GetInfraCostSummaryUseCase {
     // Snapshots horários do mês (P2): soma por hora, projeção e rateio por sessão-hora.
     usage: new PrismaInfraCostUsageReader(prisma),
   }));
+}
+
+/** Lista por cliente (P3): conta do mês pelo resumo; fechado pelos valores congelados. */
+export function listInfraCostTenantsUseCase(): ListInfraCostTenantsUseCase {
+  return (listTenants ??= new ListInfraCostTenantsUseCase({
+    summary: getInfraCostSummaryUseCase(),
+    months: new PrismaInfraCostSnapshotRepository(prisma),
+    reports: new PrismaInfraCostReportReader(prisma),
+  }));
+}
+
+/** Histórico mensal (P3): só meses fechados. */
+export function getInfraCostHistoryUseCase(): GetInfraCostHistoryUseCase {
+  return (getHistory ??= new GetInfraCostHistoryUseCase(new PrismaInfraCostReportReader(prisma)));
 }
 
 /**

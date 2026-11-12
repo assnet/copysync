@@ -256,6 +256,8 @@ export interface InfraCostPlanView {
   projectedShare?: InfraMoney | null;
   /** Tenant médio projetado: base da margem do mês corrente ("projetada"). */
   projectedCostPerTenant?: InfraMoney | null;
+  /** P3: IA da plataforma dos tenants do plano (só modelos com preço); `null` na foto. Opcional: API anterior. */
+  ai?: InfraMoney | null;
 }
 
 export type InfraCostWarningCode =
@@ -281,6 +283,8 @@ export interface InfraCostWarning {
   key?: string;
   plan?: string;
   field?: string;
+  /** Provedor do modelo (`model_without_price`). */
+  kind?: AiProviderKind;
   model?: string;
   count?: number;
 }
@@ -304,6 +308,8 @@ export interface InfraCostSummary {
     shared: InfraMoney;
     /** Projeção até o fim do mês (P2+); `null` na P1. */
     projected: InfraMoney | null;
+    /** P3: IA da plataforma (custo direto, fora do rateio); `null` sem leitura. Opcional: API anterior. */
+    ai?: InfraMoney | null;
   };
   items: InfraCostItemView[];
   workspace: InfraWorkspaceView;
@@ -317,6 +323,76 @@ export interface InfraCostSummary {
   marginalPerSession: InfraMoney | null;
   plans: InfraCostPlanView[];
   warnings: InfraCostWarning[];
+}
+
+/* ── Por cliente e histórico (COST-14/15) ──────────────────────────── */
+
+/** Cotação da lista: a da conta (mês aberto) ou a congelada no fechamento. */
+export interface InfraCostTenantsFx {
+  rate: number;
+  /** `YYYY-MM-DD`. */
+  referenceDate: string;
+  source: InfraFxSource;
+}
+
+/** Um cliente: do tenant só id e nome (nome sob `Blurred`, flag `costs.tenantName`). */
+export interface InfraCostTenantView {
+  tenantId: string;
+  tenantName: string;
+  planSlug: string | null;
+  /** Contratadas médias do mês. */
+  contractedSessions: number;
+  sessionHours: number;
+  /** Compartilhado pela base contratadas; `null` sem divisor. */
+  shared: InfraMoney | null;
+  /** Compartilhado pela sessão-hora; `null` no mês fechado. */
+  connectedShared: InfraMoney | null;
+  /** Só no mês corrente: compartilhado projetado (base da margem). */
+  projectedShared: InfraMoney | null;
+  ai: InfraMoney;
+  /** shared + ai; `null` quando shared é `null`. */
+  total: InfraMoney | null;
+}
+
+/**
+ * Resposta de `GET /admin/costs/tenants?month=&plan=&cursor=`. Paginação só pelo cursor opaco devolvido
+ * (`nextCursor`); o painel nunca manda limit/offset.
+ */
+export interface InfraCostTenantsPage {
+  month: string;
+  /** `closed` = valores congelados no fechamento. */
+  status: 'open' | 'closed';
+  /** `snapshot` = mês corrente sem snapshot (lista vazia). */
+  basis: InfraCostBasis;
+  fx: InfraCostTenantsFx | null;
+  tenants: InfraCostTenantView[];
+  nextCursor: string | null;
+}
+
+export interface InfraCostHistoryPlanView {
+  planSlug: string | null;
+  tenants: number;
+  shared: InfraMoney;
+  ai: InfraMoney;
+  total: InfraMoney;
+}
+
+export interface InfraCostHistoryMonthView {
+  /** `YYYY-MM`. */
+  month: string;
+  closedAt: string;
+  closingMethod: InfraFxClosingMethod;
+  fx: { rate: number; referenceDate: string; source: 'override' | 'ptax' | 'sgs' } | null;
+  total: InfraMoney;
+  totalIsPartial: boolean;
+  plans: InfraCostHistoryPlanView[];
+}
+
+/** Resposta de `GET /admin/costs/history`: só meses fechados entre `from` e `to` (12 anteriores ao corrente). */
+export interface InfraCostHistory {
+  from: string;
+  to: string;
+  months: InfraCostHistoryMonthView[];
 }
 
 /* ── Painel ─────────────────────────────────────────────────────────── */

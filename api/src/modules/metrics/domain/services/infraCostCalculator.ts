@@ -254,7 +254,20 @@ export interface InfraCostCalculation {
   /** Preço da instância do worker ÷ (teto × ratio de alerta). */
   marginalPerSession: InfraMoney | null;
   plans: InfraCostPlanResult[];
+  /**
+   * P3: custo cheio (USD, sem arredondar) por unidade do rateio por tenant, para precificar uma página da lista
+   * por cliente sem refazer a conta. `null` na foto. Interno: o presenter do resumo não devolve.
+   */
+  tenantRates: InfraTenantRates | null;
   warnings: InfraCostWarning[];
+}
+
+/** Custo por unidade do rateio por tenant (USD cheio); `null` = divisor zero. */
+export interface InfraTenantRates {
+  perContractedUsd: number | null;
+  perSessionHourUsd: number | null;
+  /** Compartilhado projetado para o mês cheio ÷ contratadas (margem do mês corrente). */
+  projectedPerContractedUsd: number | null;
 }
 
 // ── Conta ─────────────────────────────────────────────────────────────────────
@@ -756,6 +769,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   let plans: InfraCostPlanResult[];
   let hoursView: { sessionHours: number; perSessionHour: InfraMoney | null } | null = null;
   let idleUsd: number | null = null;
+  let tenantRates: InfraTenantRates | null = null;
 
   if (ctx && hourly) {
     const alloc = allocateInfraTenantShares(sharedUsd, hourly.tenants, ai?.byTenant);
@@ -766,6 +780,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     connectedTotal = avgConnected(alloc.sessionHours);
     hoursView = { sessionHours: alloc.sessionHours, perSessionHour: maybeMoney(alloc.perSessionHour, fx) };
     const projectedPerContracted = div(projectedSharedUsd, alloc.contractedTotal);
+    tenantRates = { perContractedUsd: perContracted, perSessionHourUsd: alloc.perSessionHour, projectedPerContractedUsd: projectedPerContracted };
 
     const byPlan = new Map<string | null, InfraTenantShare[]>();
     for (const t of alloc.shares) byPlan.set(t.planSlug, [...(byPlan.get(t.planSlug) ?? []), t]);
@@ -877,6 +892,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     marginalPerSession: maybeMoney(marginalUsd, fx),
     idleCapacity: maybeMoney(idleUsd, fx),
     plans,
+    tenantRates,
     warnings,
   };
 }

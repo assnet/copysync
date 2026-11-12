@@ -11,6 +11,7 @@ import {
   INFRA_RENDER_RESOURCE_TYPES,
 } from '../../domain/services/infraCostSettings';
 import { AI_PROVIDER_KINDS } from '../../../assistants/domain/enums/AiProviderKind';
+import { PLAN_SLUGS } from '../../../tenants/domain/planPresets';
 
 const num = { type: 'number' } as const;
 const nullableNum = { type: ['number', 'null'] } as const;
@@ -132,7 +133,7 @@ const summarySchema = obj({
   ),
   sessionsSampledAt: { type: ['string', 'null'], format: 'date-time' },
   totalIsPartial: bool,
-  totals: obj({ total: money, fixed: money, variable: money, shared: money, projected: nullableMoney }),
+  totals: obj({ total: money, fixed: money, variable: money, shared: money, projected: nullableMoney, ai: nullableMoney }),
   items: {
     type: 'array',
     items: obj({
@@ -181,6 +182,7 @@ const summarySchema = obj({
       connectedCostPerTenant: nullableMoney,
       projectedShare: nullableMoney,
       projectedCostPerTenant: nullableMoney,
+      ai: nullableMoney,
     }),
   },
   warnings: {
@@ -208,6 +210,7 @@ const summarySchema = obj({
         key: str,
         plan: str,
         field: str,
+        kind: strEnum(AI_PROVIDER_KINDS),
         model: str,
         count: int,
       },
@@ -216,3 +219,65 @@ const summarySchema = obj({
 });
 
 export const infraCostSummaryResponse = envelope(summarySchema);
+
+// ── Por cliente e histórico (P3) ─────────────────────────────────────────────
+
+export const infraCostTenantsQuery = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    month: infraCostSummaryQuery.properties.month,
+    plan: strEnum(PLAN_SLUGS),
+    cursor: { type: 'string', maxLength: 512 },
+  },
+} as const;
+
+const closedFx = (sources: readonly string[]) => nullable(obj({ rate: num, referenceDate: str, source: strEnum(sources) }));
+
+/** Do tenant só `tenantId` e `tenantName`. */
+export const infraCostTenantsResponse = envelope(
+  obj({
+    month: str,
+    status: strEnum(['open', 'closed']),
+    basis: strEnum(['snapshot', 'hours']),
+    fx: closedFx(['override', 'ptax', 'sgs', 'last_known']),
+    tenants: {
+      type: 'array',
+      items: obj({
+        tenantId: str,
+        tenantName: str,
+        planSlug: nullableStr,
+        contractedSessions: num,
+        sessionHours: num,
+        shared: nullableMoney,
+        connectedShared: nullableMoney,
+        projectedShared: nullableMoney,
+        ai: money,
+        total: nullableMoney,
+      }),
+    },
+    nextCursor: nullableStr,
+  }),
+);
+
+export const infraCostHistoryResponse = envelope(
+  obj({
+    from: str,
+    to: str,
+    months: {
+      type: 'array',
+      items: obj({
+        month: str,
+        closedAt: { type: 'string', format: 'date-time' },
+        closingMethod: strEnum(INFRA_FX_CLOSING_METHODS),
+        fx: closedFx(['override', 'ptax', 'sgs']),
+        total: money,
+        totalIsPartial: bool,
+        plans: {
+          type: 'array',
+          items: obj({ planSlug: nullableStr, tenants: int, shared: money, ai: money, total: money }),
+        },
+      }),
+    },
+  }),
+);

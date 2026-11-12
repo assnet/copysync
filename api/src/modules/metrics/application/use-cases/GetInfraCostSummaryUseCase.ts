@@ -9,7 +9,7 @@ import type { IInfraCostUsageReader, InfraCostMonthUsage } from '../../domain/co
 import { resolveFxRate, type SavedFxRate } from '../../domain/services/fxRate';
 import { fxFetchFailedToday, utcDayOf } from '../../domain/services/infraFxFetchState';
 import { calculateInfraCosts, type InfraCostCalculation } from '../../domain/services/infraCostCalculator';
-import { resolveInfraCostSettings } from '../../domain/services/infraCostSettings';
+import { resolveInfraCostSettings, type InfraCostSettings } from '../../domain/services/infraCostSettings';
 
 export interface GetInfraCostSummaryInput {
   /** `YYYY-MM`; ausente = mês corrente (UTC). */
@@ -21,6 +21,8 @@ export interface InfraCostSummaryOutput {
   month: string;
   generatedAt: Date;
   calculation: InfraCostCalculation;
+  /** Configuração usada na conta (a lista por cliente precifica a IA da página com os mesmos preços). */
+  settings: InfraCostSettings;
 }
 
 export interface GetInfraCostSummaryDeps {
@@ -102,7 +104,7 @@ export class GetInfraCostSummaryUseCase {
       scaling: { maxSessionsPerWorker, alertOccupancyRatio },
       hourly,
     });
-    return { month, generatedAt: now, calculation };
+    return { month, generatedAt: now, calculation, settings };
   }
 
   private async pastMonth(month: string, now: Date): Promise<InfraCostSummaryOutput> {
@@ -126,7 +128,7 @@ export class GetInfraCostSummaryUseCase {
       scaling: { maxSessionsPerWorker, alertOccupancyRatio },
       hourly: { monthStart: start, monthEnd: end, ...usage },
     });
-    return { month, generatedAt: now, calculation };
+    return { month, generatedAt: now, calculation, settings };
   }
 }
 
