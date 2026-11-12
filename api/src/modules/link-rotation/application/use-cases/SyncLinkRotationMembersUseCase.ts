@@ -10,7 +10,10 @@ export const MEMBER_SYNC_STALE_MS = 15 * 60_000;
 export const MEMBER_SYNC_CLICK_BURST = 25;
 /** …mas nunca antes de 2 min da anterior (piso: rajada contínua não vira 1 chamada/min). */
 export const MEMBER_SYNC_BURST_MIN_MS = 2 * 60_000;
-/** Grupos por tick (60 s): no máximo 50 chamadas/min ao engine (WhatsApp ou Telegram) somando todas as sessões. */
+/**
+ * Grupos por tick (60 s): no máximo 50 chamadas/min ao engine (WhatsApp ou Telegram) **por processo**, somando
+ * as sessões dele (cada processo lê só as próprias). A carga por sessão não muda com mais processos.
+ */
 export const MEMBER_SYNC_BATCH = 50;
 /** Orçamento de tempo do tick: não começa leitura nova depois disso (abaixo do lease de 5 min). */
 export const MEMBER_SYNC_BUDGET_MS = 4 * 60_000;

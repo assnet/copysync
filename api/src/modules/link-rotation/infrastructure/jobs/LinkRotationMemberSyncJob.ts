@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { ILinkRotationJobLease } from '../../domain/contracts/ILinkRotationJobLease';
+import type { IJobLeaseSweep } from '../../../../shared/jobs/IJobLease';
 import { SyncLinkRotationMembersUseCase } from '../../application/use-cases/SyncLinkRotationMembersUseCase';
 import { PurgeExpiredLinkClicksUseCase } from '../../application/use-cases/PurgeExpiredLinkClicksUseCase';
 import { PrismaLinkRotationMemberSyncStore } from '../repositories/PrismaLinkRotationMemberSyncStore';
@@ -8,15 +9,23 @@ import { PrismaLinkRotationJobLease } from '../repositories/PrismaLinkRotationJo
 import { PrismaLinkClickRepository } from '../repositories/PrismaLinkClickRepository';
 import { getActiveEngine } from '../../../../shared/engine/activeEngine';
 import { logger } from '../../../../shared/logger/logger';
+import { currentWorkerId } from '../../../../shared/config/workerIdentity';
 
+/** Prefixo do lease por processo: `link-rotation-member-sync:<workerId>`. */
 export const MEMBER_SYNC_LEASE = 'link-rotation-member-sync';
+/** Lease de processo vencido há mais que isso é apagado (o id do processo muda a cada boot). */
+export const MEMBER_SYNC_STALE_LEASE_MS = 24 * 60 * 60_000;
+
+export const memberSyncLeaseName = (workerId: string): string => `${MEMBER_SYNC_LEASE}:${workerId}`;
 
 interface JobPart {
   execute(): Promise<{ processed: number }>;
 }
 
 export interface LinkRotationMemberSyncJobOptions {
-  lease: ILinkRotationJobLease;
+  lease: ILinkRotationJobLease & IJobLeaseSweep;
+  /** Processo dono das sessões lidas (`currentWorkerId()`); nomeia o lease do tick. */
+  workerId: string;
   /** `null` quando o engine ainda não subiu: o tick pula a leitura de membros. */
   sync: () => JobPart | null;
   purge: () => JobPart;
@@ -33,7 +42,9 @@ const DEFAULT_LEASE_TTL_MS = 5 * 60_000;
 
 /**
  * Membros dos grupos do rodízio + retenção de cliques (design.md §4.5). Tick de 60 s, um por vez
- * no processo; lease `link-rotation-member-sync` garante 1 processo por tick no cluster.
+ * no processo; lease `link-rotation-member-sync:<workerId>` por processo: cada processo lê só os
+ * grupos das próprias sessões (lease vivo), então processos diferentes rodam em paralelo sem
+ * disputar grupo. A retenção mantém o lease global próprio (`link-click-retention`, 1 h).
  * Só é ligado com `LINK_ROTATION_MEMBER_SYNC_ENABLED` (server.ts): escreve no banco e chama o engine da sessão (WhatsApp ou Telegram).
  */
 export class LinkRotationMemberSyncJob {
@@ -81,20 +92,32 @@ export class LinkRotationMemberSyncJob {
     const { lease } = this.options;
     const now = this.options.now?.() ?? new Date();
     const until = new Date(now.getTime() + (this.options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS));
+    const name = memberSyncLeaseName(this.options.workerId);
     let acquired = false;
     try {
-      acquired = await lease.tryAcquire(MEMBER_SYNC_LEASE, this.ownerId, until, now);
+      acquired = await lease.tryAcquire(name, this.ownerId, until, now);
     } catch (err) {
       this.log.warn({ err: (err as Error)?.name }, 'member sync lease failed');
     }
     if (!acquired) return;
     try {
+      await this.sweepStaleLeases(now);
       const sync = this.options.sync();
       const synced = sync ? await this.safe('member-sync', sync) : 0;
       const purged = await this.safe('click-retention', this.options.purge());
       if (synced > 0 || purged > 0) this.log.debug({ synced, purged }, 'link rotation job tick');
     } finally {
-      await lease.release(MEMBER_SYNC_LEASE, this.ownerId).catch(() => undefined);
+      await lease.release(name, this.ownerId).catch(() => undefined);
+    }
+  }
+
+  /** Leases deste job de processos que morreram sem liberar (vencidos há > 1 dia); nunca lança. */
+  private async sweepStaleLeases(now: Date): Promise<void> {
+    try {
+      const before = new Date(now.getTime() - MEMBER_SYNC_STALE_LEASE_MS);
+      await this.options.lease.deleteExpiredByPrefix(`${MEMBER_SYNC_LEASE}:`, before);
+    } catch (err) {
+      this.log.warn({ err: (err as Error)?.name }, 'member sync stale lease sweep failed');
     }
   }
 
@@ -111,10 +134,12 @@ export class LinkRotationMemberSyncJob {
 /** Montagem de produção (Prisma + engine ativo resolvido a cada tick). Ligar só com a flag. */
 export function createLinkRotationMemberSyncJob(prisma: PrismaClient): LinkRotationMemberSyncJob {
   const lease = new PrismaLinkRotationJobLease(prisma);
-  const store = new PrismaLinkRotationMemberSyncStore(prisma);
+  const workerId = currentWorkerId();
+  const store = new PrismaLinkRotationMemberSyncStore(prisma, workerId);
   const purge = new PurgeExpiredLinkClicksUseCase({ clicks: new PrismaLinkClickRepository(prisma), lease });
   return new LinkRotationMemberSyncJob({
     lease,
+    workerId,
     sync: () => {
       const engine = getActiveEngine();
       return engine ? new SyncLinkRotationMembersUseCase({ store, engine }) : null;

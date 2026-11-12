@@ -15,7 +15,7 @@ export interface MemberSyncDueGroup {
 /**
  * Critério de "vencido": `memberCountAt` nulo ou anterior a `staleBefore`, OU
  * `clicksSinceSync ≥ clickBurst` com `memberCountAt` anterior a `burstBefore` (piso anti-rajada).
- * Só rotação ACTIVE, grupo ACTIVE/FULL, sessão CONNECTED sem `deletedAt`, tenant ACTIVE.
+ * Só rotação ACTIVE, grupo ACTIVE/FULL, sessão CONNECTED sem `deletedAt` com lease vivo deste processo, tenant ACTIVE.
  */
 export interface MemberSyncDueQuery {
   staleBefore: Date;

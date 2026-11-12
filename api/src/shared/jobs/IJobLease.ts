@@ -8,3 +8,12 @@ export interface IJobLease {
   /** Libera só se ainda é o dono. */
   release(name: string, ownerId: string): Promise<void>;
 }
+
+/**
+ * Limpeza de leases por processo (nome `<job>:<workerId>`): o id muda a cada boot, então o
+ * lease de processo que morreu sem liberar ficaria para sempre. Apaga só os vencidos antes de `expiredBefore`.
+ */
+export interface IJobLeaseSweep {
+  /** Apaga leases cujo nome começa com `prefix` e `expiresAt < expiredBefore`; devolve quantos. */
+  deleteExpiredByPrefix(prefix: string, expiredBefore: Date): Promise<number>;
+}

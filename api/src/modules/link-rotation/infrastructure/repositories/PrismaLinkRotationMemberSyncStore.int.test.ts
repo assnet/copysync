@@ -5,9 +5,19 @@ import { PrismaLinkRotationJobLease } from './PrismaLinkRotationJobLease';
 import { LinkRotationGroupStatus } from '../../domain/enums/LinkRotationEnums';
 
 /** Job de membros do rodízio: critério de vencido, UPDATE único e lease em job_leases. */
-const store = new PrismaLinkRotationMemberSyncStore(prisma);
-const lease = new PrismaLinkRotationJobLease(prisma);
 const stamp = Date.now();
+const ME = `int-ms-a-${stamp}`;
+const OTHER = `int-ms-b-${stamp}`;
+const store = new PrismaLinkRotationMemberSyncStore(prisma, ME);
+const storeB = new PrismaLinkRotationMemberSyncStore(prisma, OTHER);
+const lease = new PrismaLinkRotationJobLease(prisma);
+/** Lease de sessão pelo relógio do banco (o mesmo que `listDue` compara). */
+async function setLease(sessionId: string, owner: string | null, secondsFromNow: number | null): Promise<void> {
+  await prisma.$executeRaw`UPDATE "sessions" SET "ownerWorkerId" = ${owner},
+    "leaseUntil" = CASE WHEN ${secondsFromNow}::int IS NULL THEN NULL
+      ELSE (now() AT TIME ZONE 'UTC') + make_interval(secs => ${secondsFromNow}::int) END
+    WHERE "id" = ${sessionId}`;
+}
 const NOW = new Date('2026-10-29T12:00:00.000Z');
 const minAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
 const query = { staleBefore: minAgo(15), burstBefore: minAgo(2), clickBurst: 25, limit: 50 };
@@ -31,6 +41,8 @@ beforeAll(async () => {
   tenant = (await prisma.tenant.create({ data: { name: 'int-ms', slug: `int-ms-${stamp}` } })).id;
   sessionOn = (await prisma.session.create({ data: { tenantId: tenant, name: 'on', status: 'CONNECTED' } })).id;
   sessionOff = (await prisma.session.create({ data: { tenantId: tenant, name: 'off', status: 'DISCONNECTED' } })).id;
+  await setLease(sessionOn, ME, 60);
+  await setLease(sessionOff, ME, 60);
   domainId = (await prisma.linkDomain.create({ data: { hostname: `int-ms-${stamp}.test` } })).id;
   rotationOn = (await prisma.linkRotation.create({ data: { tenantId: tenant, sessionId: sessionOn, domainId, slug: 'on' } })).id;
   rotationOff = (await prisma.linkRotation.create({ data: { tenantId: tenant, sessionId: sessionOff, domainId, slug: 'off' } })).id;
@@ -63,6 +75,30 @@ describe('PrismaLinkRotationMemberSyncStore', () => {
     await prisma.linkRotationGroup.deleteMany({ where: { rotationId: { in: [rotationOn, rotationOff, paused] } } });
   });
 
+  it('listDue: só grupos de sessões com lease vivo deste processo (B, sem dono e lease vencido ficam de fora)', async () => {
+    const mk = async (name: string) => (await prisma.session.create({ data: { tenantId: tenant, name, status: 'CONNECTED' } })).id;
+    const sB = await mk('b');
+    const sNone = await mk('none');
+    const sExpired = await mk('expired');
+    await setLease(sB, OTHER, 60);
+    await setLease(sNone, null, null);
+    await setLease(sExpired, ME, -5);
+    const rot = async (sessionId: string, slug: string) =>
+      (await prisma.linkRotation.create({ data: { tenantId: tenant, sessionId, domainId, slug } })).id;
+    const rB = await rot(sB, 'b');
+    const rNone = await rot(sNone, 'none');
+    const rExpired = await rot(sExpired, 'exp');
+    const mine = await group(rotationOn, sessionOn);
+    const ofB = await group(rB, sB);
+    await group(rNone, sNone);
+    await group(rExpired, sExpired);
+
+    expect((await store.listDue(query)).map((d) => d.id)).toEqual([mine]);
+    expect((await storeB.listDue(query)).map((d) => d.id)).toEqual([ofB]);
+    expect(await new PrismaLinkRotationMemberSyncStore(prisma, `int-ms-ninguem-${stamp}`).listDue(query)).toEqual([]);
+    await prisma.linkRotationGroup.deleteMany({ where: { rotationId: { in: [rotationOn, rB, rNone, rExpired] } } });
+  });
+
   it('applyMemberCount: desconta cliques vistos, troca status só de ACTIVE/FULL; tenant errado não grava', async () => {
     const g = await group(rotationOn, sessionOn, { clicksSinceSync: 30 });
     const p = await group(rotationOn, sessionOn, { status: 'PAUSED', clicksSinceSync: 3 });
@@ -89,5 +125,22 @@ describe('PrismaLinkRotationJobLease', () => {
     expect(await lease.tryAcquire(name, 'b', minAgo(-15), minAgo(-6))).toBe(true);
     await lease.release(name, 'b');
     expect(await lease.tryAcquire(name, 'c', minAgo(-5), NOW)).toBe(true);
+  });
+
+  it('deleteExpiredByPrefix: só o prefixo, só vencidos antes do corte; `_` do id não é curinga', async () => {
+    const p = `int-${stamp}-sync:`;
+    const day = 24 * 60;
+    const rows = [
+      { name: `${p}velho`, expiresAt: minAgo(day + 10) },
+      { name: `${p}recente`, expiresAt: minAgo(30) },
+      { name: `${p}vivo`, expiresAt: minAgo(-5) },
+      { name: `int-${stamp}-outro:velho`, expiresAt: minAgo(day + 10) },
+      { name: `int-${stamp}Xsync:velho`, expiresAt: minAgo(day + 10) },
+    ];
+    await prisma.jobLease.createMany({ data: rows.map((r) => ({ ...r, ownerId: 'x' })) });
+    expect(await lease.deleteExpiredByPrefix(p, minAgo(day))).toBe(1);
+    expect(await lease.deleteExpiredByPrefix(`int-${stamp}_sync:`, minAgo(day))).toBe(0);
+    const left = await prisma.jobLease.findMany({ where: { name: { in: rows.map((r) => r.name) } }, select: { name: true } });
+    expect(left.map((r) => r.name).sort()).toEqual(rows.slice(1).map((r) => r.name).sort());
   });
 });

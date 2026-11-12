@@ -7,16 +7,28 @@ import type {
 } from '../../domain/contracts/ILinkRotationMemberSyncStore';
 import { LinkRotationGroupStatus } from '../../domain/enums/LinkRotationEnums';
 
-/** Job de membros do rodízio: varredura global (todos os tenants); escrita sempre por id + tenantId. */
+/**
+ * Job de membros do rodízio: varre todos os tenants, mas só grupos de sessões com lease vivo
+ * **deste processo** (`workerId`) — a leitura usa a engine local. Escrita sempre por id + tenantId.
+ */
 export class PrismaLinkRotationMemberSyncStore implements ILinkRotationMemberSyncStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly workerId: string,
+  ) {}
 
   async listDue(q: MemberSyncDueQuery): Promise<MemberSyncDueGroup[]> {
+    // Lease vivo pelo relógio do banco (mesma definição do gate de sessão); conjunto pequeno: sessões deste processo
+    const own = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "sessions"
+      WHERE "ownerWorkerId" = ${this.workerId} AND "leaseUntil" > (now() AT TIME ZONE 'UTC')`;
+    if (own.length === 0) return [];
     const rows = await this.prisma.linkRotationGroup.findMany({
       where: {
         status: { in: ['ACTIVE', 'FULL'] },
         rotation: {
           status: 'ACTIVE',
+          sessionId: { in: own.map((r) => r.id) },
           session: { status: 'CONNECTED', deletedAt: null },
           tenant: { status: 'ACTIVE' },
         },

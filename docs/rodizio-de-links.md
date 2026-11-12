@@ -80,11 +80,15 @@ Contagem: `ipHash = sha256(ip + dia UTC + LINK_CLICK_SALT)`; IP cru nunca é gra
 ## Contagem de membros (job)
 
 `LinkRotationMemberSyncJob` (ligado em `server.ts`), tick de 60 s, só com **`LINK_ROTATION_MEMBER_SYNC_ENABLED=true`**.
-Lease `link-rotation-member-sync` em `job_leases` (5 min): um processo por tick no cluster.
+Lease **por processo** `link-rotation-member-sync:<workerId>` em `job_leases` (5 min): cada processo lê só os grupos
+das **próprias** sessões (`sessions.ownerWorkerId` = ele e `leaseUntil > now() AT TIME ZONE 'UTC'`, relógio do banco),
+porque a leitura usa a engine local. Sessão sem dono vivo fica de fora até alguém adotá-la. O tick apaga leases desse
+prefixo vencidos há mais de 1 dia (o id do processo muda a cada boot). Não voltar ao lease global: com 2+ processos,
+um deles leria grupos de sessões que não segura e falharia.
 
 - Vencido: `memberCountAt` nulo ou > 15 min, **ou** `clicksSinceSync ≥ 25` com piso de 2 min da leitura anterior.
 - Só grupos `ACTIVE`/`FULL` de rotação `ACTIVE`, sessão `CONNECTED` não excluída, tenant `ACTIVE`.
-- Lote de 50 por tick (≤ 50 chamadas/min ao engine), mais antigos primeiro, agrupados por sessão, orçamento de 4 min.
+- Lote de 50 por tick (≤ 50 chamadas/min ao engine **por processo**; carga por sessão igual), mais antigos primeiro, agrupados por sessão, orçamento de 4 min.
 - Telegram: o roteador manda para o adapter `telegram`; supergrupo/canal contam por `channels.GetFullChannel`
   (`participantsCount`), grupo básico pela própria entidade. Erro GramJS é traduzido (`FLOOD_WAIT` etc.).
 - `IMessagingEngine.getGroupSummary` → `memberCount`, zera `clicksSinceSync` (desconta só os cliques vistos) e ajusta
