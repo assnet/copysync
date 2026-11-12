@@ -141,11 +141,15 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   separado não aparece. Segue o filtro Recurso (some em API/Postgres). Sem flag de borrar: só id de infraestrutura.
   Decisão em `workerInstancesSection` (`rules.ts`): skeleton carregando; `/latest` falhou = alerta; vazio com
   dado do worker = "Nenhuma instância online agora"; vazio com filtro só Worker e nenhum dado = "Worker não
-  configurado". 1ª coluna fixa na rolagem horizontal; dicas com `describeChild` e foco por teclado.
+  configurado". 1ª coluna fixa (borda direita) na rolagem horizontal; no `xs` os chips ficam só com ícone
+  (palavra para leitor de tela, dica no tooltip); dicas com `describeChild` e foco por teclado; "—" sempre em
+  `text.secondary`; (i) de ajuda ao lado do título, como nos cards de gráfico.
 - **Worker nos gráficos** (alternância acima dos gráficos de Servidores, só com amostra do worker): "Pior instância"
   (padrão, comportamento anterior) × "Por instância" (uma linha por `resource` do `worker_service` no período,
   rotulada pelo sufixo; API e Postgres saem do gráfico para não passar de 3 cores; mais de 3 instâncias no período
-  = só tabela). Persistida em `usePersistedState('workers.usage.workerView')`, escopo `tab`.
+  = só tabela). Cores de `chartColors().instances` (verde do Worker, roxo, magenta): nunca o azul da API nem o
+  laranja do Postgres. Nos dois cards (CPU e Memória) o subtítulo vira "% do limite da instância" e a nota diz que
+  API e Postgres ficam na visão "Pior instância". Persistida em `usePersistedState('workers.usage.workerView')`, escopo `tab`.
 - Consultas: só `shape` (forma normalizada) do snapshot mais recente, sem flag de borrar (sem dado
   de cliente). Se a API mandar SQL não normalizado, é bug da API.
 

@@ -1,8 +1,8 @@
 import {
-  Box, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
+  Box, Card, Chip, Divider, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
-import { OctagonAlert, Server, TriangleAlert } from 'lucide-react';
-import { AppIcon, EmptyState, OverflowTooltipText, SectionCard } from '@/components';
+import { CircleDashed, HeartOff, OctagonAlert, Server, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { AppIcon, EmptyState, OverflowTooltipText } from '@/components';
 import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
 import { formatDateTime, formatNumber, formatPct, statusFor } from '../rules';
@@ -16,9 +16,16 @@ const LEVEL = {
   warning: { icon: TriangleAlert, color: (dark: boolean) => (dark ? 'warning.light' : 'warning.dark') },
   critical: { icon: OctagonAlert, color: (dark: boolean) => (dark ? 'error.light' : 'error.dark') },
 } as const;
-/** Primeira coluna fixa na rolagem horizontal (390 px), com o fundo do card. */
-const STICKY = { position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' } as const;
-const dottedHint = { borderBottom: 1, borderColor: 'divider', borderBottomStyle: 'dotted', cursor: 'help' } as const;
+/** Primeira coluna fixa na rolagem horizontal (390 px): fundo do card e borda separando da rolagem. */
+const STICKY = {
+  position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper', borderRight: 1, borderRightColor: 'divider',
+} as const;
+const dottedHint = { borderBottom: 1, borderBottomColor: 'text.disabled', borderBottomStyle: 'dotted', cursor: 'help' } as const;
+/** Rótulo só para leitor de tela (no `xs` o chip fica só com o ícone). */
+const srOnly = {
+  position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+} as const;
+const DASH = <Box component="span" sx={{ color: 'text.secondary' }}>—</Box>;
 
 type ColKey = keyof typeof t.instances.colHints;
 
@@ -45,12 +52,15 @@ function PctCell({ value, threshold }: { value: number | null; threshold?: numbe
   return (
     <TableCell
       align="right"
-      sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', color: value == null ? 'text.secondary' : 'text.primary' }}
+      sx={{
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', verticalAlign: 'middle',
+        color: value == null ? 'text.secondary' : 'text.primary',
+      }}
     >
-      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, verticalAlign: 'middle' }}>
         {level && (
-          <Box component="span" sx={(th) => ({ display: 'inline-flex', color: level.color(th.palette.mode === 'dark') })}>
-            <AppIcon icon={level.icon} label={t.instances.statusAria(t.status[status])} />
+          <Box component="span" sx={(th) => ({ display: 'inline-flex', lineHeight: 0, color: level.color(th.palette.mode === 'dark') })}>
+            <AppIcon icon={level.icon} size="inline" label={t.instances.statusAria(t.status[status])} />
           </Box>
         )}
         {formatPct(value)}
@@ -59,10 +69,21 @@ function PctCell({ value, threshold }: { value: number | null; threshold?: numbe
   );
 }
 
-function MissingChip({ label, hint }: { label: string; hint: string }) {
+/** Falta de batimento/amostra: ícone + palavra; no `xs` só o ícone (palavra fica para leitor de tela). */
+function MissingChip({ label, hint, icon }: { label: string; hint: string; icon: LucideIcon }) {
   return (
     <Tooltip title={hint} arrow describeChild enterTouchDelay={0}>
-      <Chip size="small" variant="outlined" label={label} tabIndex={0} sx={{ ml: 1 }} />
+      <Chip
+        size="small"
+        variant="outlined"
+        icon={<AppIcon icon={icon} size="sm" />}
+        label={label}
+        tabIndex={0}
+        sx={(th) => ({
+          ml: 1,
+          [th.breakpoints.down('sm')]: { '& .MuiChip-label': srOnly, '& .MuiChip-icon': { mx: 0.5 } },
+        })}
+      />
     </Tooltip>
   );
 }
@@ -81,18 +102,21 @@ interface Props {
 export function WorkerInstancesTable({ instances, thresholds, emptyReason = 'offline' }: Props) {
   const now = serverNow();
   return (
-    <SectionCard
-      title={t.instances.title}
-      subtitle={t.instances.subtitle}
-      action={<HelpTip label={t.instances.title} text={t.instances.help} />}
-      noPadding={instances.length > 0}
-    >
+    <Card>
+      <Box sx={{ px: 2.5, py: 2 }}>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+          <Typography variant="subtitle1" component="h3">{t.instances.title}</Typography>
+          <HelpTip label={t.instances.title} text={t.instances.help} />
+        </Stack>
+        <Typography variant="caption" color="text.secondary">{t.instances.subtitle}</Typography>
+      </Box>
+      <Divider />
       {instances.length === 0 ? (
         <EmptyState
           icon={<AppIcon icon={Server} size="lg" />}
           title={emptyReason === 'notConfigured' ? t.instances.notConfigured : t.instances.empty}
           description={emptyReason === 'notConfigured' ? t.instances.notConfiguredHint : t.instances.emptyOfflineHint}
-          sx={{ py: 4 }}
+          sx={{ py: 4, px: 2 }}
         />
       ) : (
         <TableContainer sx={{ overflowX: 'auto' }}>
@@ -121,8 +145,8 @@ export function WorkerInstancesTable({ instances, thresholds, emptyReason = 'off
                       >
                         {r.instance}
                       </OverflowTooltipText>
-                      {!hb && <MissingChip label={t.instances.noHeartbeat} hint={t.instances.noHeartbeatHint} />}
-                      {!r.resource && <MissingChip label={t.instances.noSample} hint={t.instances.noSampleHint} />}
+                      {!hb && <MissingChip icon={HeartOff} label={t.instances.noHeartbeat} hint={t.instances.noHeartbeatHint} />}
+                      {!r.resource && <MissingChip icon={CircleDashed} label={t.instances.noSample} hint={t.instances.noSampleHint} />}
                     </TableCell>
                     <PctCell value={r.cpuPct} threshold={thresholds?.cpuPct} />
                     <PctCell value={r.memoryPct} threshold={thresholds?.memoryPct} />
@@ -131,10 +155,10 @@ export function WorkerInstancesTable({ instances, thresholds, emptyReason = 'off
                         <Tooltip title={t.instances.rss(hb.rssMb)} arrow describeChild enterTouchDelay={0}>
                           <Box component="span" tabIndex={0} sx={dottedHint}>{t.instances.sessions(hb.sessions, hb.maxSessions)}</Box>
                         </Tooltip>
-                      ) : '—'}
+                      ) : DASH}
                     </TableCell>
                     <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                      {hb ? formatNumber(hb.pendingLogins) : '—'}
+                      {hb ? formatNumber(hb.pendingLogins) : DASH}
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
                       {seenIso ? (
@@ -143,7 +167,7 @@ export function WorkerInstancesTable({ instances, thresholds, emptyReason = 'off
                             {formatRelativeTime(seenIso, now, t.header.justNow)}
                           </Box>
                         </Tooltip>
-                      ) : '—'}
+                      ) : DASH}
                     </TableCell>
                   </TableRow>
                 );
@@ -152,6 +176,6 @@ export function WorkerInstancesTable({ instances, thresholds, emptyReason = 'off
           </Table>
         </TableContainer>
       )}
-    </SectionCard>
+    </Card>
   );
 }

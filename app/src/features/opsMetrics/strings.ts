@@ -82,7 +82,8 @@ export const opsMetricsStrings = {
     workerViewAria: 'Como o worker aparece nos gráficos de CPU e memória',
     workerViews: { worst: 'Pior instância', instance: 'Por instância' },
     workerViewHint: 'Pior instância: uma linha com o maior valor entre as réplicas. Por instância: uma linha por réplica do worker (API e Postgres saem do gráfico).',
-    instanceNote: 'Uma linha por instância do worker, inclusive as trocadas por deploy no período.',
+    instanceNote: 'Uma linha por instância do worker, inclusive as trocadas por deploy no período. API e Postgres ficam na visão "Pior instância".',
+    instanceUnit: '% do limite da instância',
   },
   instances: {
     title: 'Instâncias do worker',

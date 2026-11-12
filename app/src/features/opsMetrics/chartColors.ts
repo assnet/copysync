@@ -11,6 +11,16 @@ const CHART_COLORS: Record<PaletteMode, readonly [string, string, string]> = {
   dark: ['#3987e5', '#d95926', '#199e70'],
 };
 
+/**
+ * Séries por instância do worker ("Por instância"): começa no verde do Worker e segue em roxo e
+ * magenta, sem o azul da API nem o laranja do Postgres (essas cores têm significado na mesma tela).
+ * Contraste ≥ 3:1 contra o `background.paper` de cada modo.
+ */
+const INSTANCE_COLORS: Record<PaletteMode, readonly [string, string, string]> = {
+  light: ['#1baf7a', '#7c4fd6', '#b0367a'],
+  dark: ['#199e70', '#9b7af0', '#e06aa8'],
+};
+
 /** Opacidade da banda mín–máx. */
 export const BAND_OPACITY: Record<PaletteMode, number> = { light: 0.14, dark: 0.2 };
 
@@ -28,5 +38,7 @@ export function chartColors(mode: PaletteMode) {
     idle: c3,
     /** Ordem para séries por worker (até 3). */
     ordered: [c1, c2, c3] as const,
+    /** Ordem para séries por instância do worker (até 3), sem as cores da API e do Postgres. */
+    instances: INSTANCE_COLORS[mode],
   };
 }

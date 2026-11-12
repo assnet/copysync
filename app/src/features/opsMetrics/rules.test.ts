@@ -230,3 +230,16 @@ describe('workerInstancesSection', () => {
       .toEqual({ kind: 'empty', reason: 'notConfigured' });
   });
 });
+
+describe('chartColors.instances', () => {
+  it('"Por instância" não usa o azul da API nem o laranja do Postgres', async () => {
+    const { chartColors } = await import('./chartColors');
+    for (const mode of ['light', 'dark'] as const) {
+      const c = chartColors(mode);
+      expect(c.instances).toHaveLength(3);
+      expect(c.instances).not.toContain(c.api);
+      expect(c.instances).not.toContain(c.postgres);
+      expect(c.instances[0]).toBe(c.workerService);
+    }
+  });
+});

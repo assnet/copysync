@@ -336,7 +336,7 @@ function buildUsageView({ latestRes, series, resource, colors, workerView, loadi
   const serverLines = (metric: string, apiPts: OpsSeriesPoint[], workerPts: OpsSeriesPoint[], dbPts: OpsSeriesPoint[], bucket: number) => {
     const list = byInstance
       ? seriesByInstance(serversSeries, metric).map((x, i) => ({
-        key: `inst${i}`, label: x.label, color: colors.ordered[i % colors.ordered.length], pts: x.points,
+        key: `inst${i}`, label: x.label, color: colors.instances[i % colors.instances.length], pts: x.points,
       }))
       : [...(showApi ? [{ key: 'api', label: t.charts.series.api, color: colors.api, pts: apiPts }] : []),
         ...(showWorker ? [{ key: 'workerService', label: t.charts.series.workerService, color: colors.workerService, pts: workerPts }] : []),
@@ -579,7 +579,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
         <Grid item xs={12} md={6}>
           <MetricChartCard
             title={t.charts.cpu}
-            unit={t.charts.cpuUnit}
+            unit={byInstance ? t.charts.instanceUnit : t.charts.cpuUnit}
             help={t.help.cpu_pct}
             note={byInstance ? t.charts.instanceNote : t.charts.cpuNote}
             loading={loading}
@@ -604,8 +604,9 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
         <Grid item xs={12} md={6}>
           <MetricChartCard
             title={t.charts.memory}
-            unit={t.charts.memoryUnit}
+            unit={byInstance ? t.charts.instanceUnit : t.charts.memoryUnit}
             help={t.help.memory_pct}
+            note={byInstance ? t.charts.instanceNote : undefined}
             loading={loading}
             error={m.errors.servers}
             onRetry={retry}
